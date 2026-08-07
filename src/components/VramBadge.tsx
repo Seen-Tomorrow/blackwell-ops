@@ -53,6 +53,8 @@ interface VramBadgeProps {
   hwTopo?: string;
   /** Session idle NVML baseline per GPU index (MiB) — see useGpuIdleBaseline. */
   gpuIdleBaselineMib?: Record<number, number>;
+  /** Forecast GPU bars per row (bezel density). */
+  gpuPerRow?: 2 | 3;
 }
 
 /** Isolated fusion subscriber — keeps forecast/topo off the 25–40 Hz fusion tick path. */
@@ -140,6 +142,7 @@ export default function VramBadge({
   fitLaunchAvailable = false, fullAutoMode = true, onFitLaunchChange, hideFitProbe = false, className,
   modelName, modelQuant, providerName, providerBuildVersion, profileLabel, cudaVersion, launchConfig, hwTopo,
   gpuIdleBaselineMib,
+  gpuPerRow = 2,
 }: VramBadgeProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const { open: benchTrayOpen } = useFusionBenchTray();
@@ -550,6 +553,7 @@ export default function VramBadge({
             gpuIdleBaselineMib={gpuIdleBaselineMib}
             selectedGpuIndices={selectedGpuIndices}
             onDeviceSelect={onDeviceSelect}
+            perRow={gpuPerRow}
           />
         </div>
       )}

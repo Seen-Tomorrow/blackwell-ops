@@ -99,6 +99,27 @@ function cpuAvgBarClass(avg: number): string {
   return "launch-rail-tel__cpu-avg-fill--normal";
 }
 
+/** Prefer live MHz; fall back to advertised max. */
+function formatCpuClock(cpu: CpuInfo): string {
+  const cur = cpu.current_clock_mhz ?? 0;
+  const max = cpu.max_clock_mhz ?? 0;
+  if (cur > 0 && max > 0 && Math.abs(cur - max) > 50) {
+    return `${cur} / ${max} MHz`;
+  }
+  if (cur > 0) return `${cur} MHz`;
+  if (max > 0) return `${max} MHz`;
+  return "— MHz";
+}
+
+function cpuClockTitle(cpu: CpuInfo): string {
+  const cur = cpu.current_clock_mhz ?? 0;
+  const max = cpu.max_clock_mhz ?? 0;
+  if (cur > 0 && max > 0) return `Live ~${cur} MHz · max ${max} MHz`;
+  if (cur > 0) return `Live ~${cur} MHz`;
+  if (max > 0) return `Max ${max} MHz`;
+  return "CPU clock unavailable";
+}
+
 function CpuStrip({
   cpu,
   coresOpen,
@@ -141,8 +162,8 @@ function CpuStrip({
           <p className="launch-rail-tel__cpu-name" title={cpu.name}>
             {cpu.name}
           </p>
-          <p className="launch-rail-tel__cpu-meta">
-            {cpu.cores}C/{cpu.threads}T · {cpu.max_clock_mhz} MHz
+          <p className="launch-rail-tel__cpu-meta" title={cpuClockTitle(cpu)}>
+            {cpu.cores}C/{cpu.threads}T · {formatCpuClock(cpu)}
           </p>
         </div>
         <div className="launch-rail-tel__cpu-head-right">
@@ -260,22 +281,25 @@ export default function LaunchRailTelemetry() {
         </label>
       </div>
 
-      {/* Dimmed body: telemetry + OC. Launch dock is outside this tree. */}
+      {/*
+        Dimmed body: scrollable topo (mem/CPU/GPUs) + pinned OC footer.
+        Many GPU cards must not push OC out of reach — OC stays flex-shrink-0.
+      */}
       <div
         className="launch-rail-tel__body min-h-0 flex-1"
         style={{ opacity: hwDim }}
       >
-        <MemTotals gpus={gpus} systemInfo={systemInfo} />
-        {cpu && (
-          <CpuStrip
-            cpu={cpu}
-            coresOpen={cpuCoresOpen}
-            onToggleCores={toggleCpuCores}
-          />
-        )}
+        <div className="launch-rail-tel__scroll min-h-0 flex-1">
+          <MemTotals gpus={gpus} systemInfo={systemInfo} />
+          {cpu && (
+            <CpuStrip
+              cpu={cpu}
+              coresOpen={cpuCoresOpen}
+              onToggleCores={toggleCpuCores}
+            />
+          )}
 
-        {gpus.length > 0 && (
-          <>
+          {gpus.length > 0 && (
             <div className="launch-rail-tel__gpu-stack" data-gpu-topology>
               {gpus.map((gpu) => (
                 <GpuTopologyCard
@@ -289,7 +313,17 @@ export default function LaunchRailTelemetry() {
                 />
               ))}
             </div>
+          )}
 
+          {!cpu && gpus.length === 0 && (
+            <p className="launch-rail-tel__empty text-[8px] font-mono text-stealth-muted/50 px-2 py-4 text-center">
+              Scanning hardware…
+            </p>
+          )}
+        </div>
+
+        {gpus.length > 0 && (
+          <div className="launch-rail-tel__oc-pin shrink-0">
             <GpuOverclockPanel
               layout="rail"
               ocActive={ocActive}
@@ -313,13 +347,7 @@ export default function LaunchRailTelemetry() {
               onSetDriverModel={handleSetDriverModel}
               onExpandedChange={handleOcExpandedChange}
             />
-          </>
-        )}
-
-        {!cpu && gpus.length === 0 && (
-          <p className="launch-rail-tel__empty text-[8px] font-mono text-stealth-muted/50 px-2 py-4 text-center">
-            Scanning hardware…
-          </p>
+          </div>
         )}
       </div>
     </div>

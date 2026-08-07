@@ -11,6 +11,8 @@ interface GpuTopologyProps {
   gpuIdleBaselineMib?: Record<number, number>;
   selectedGpuIndices?: number[];
   onDeviceSelect?: (gpuIndex: number) => void;
+  /** Cards per row (2 default, 3 for denser multi-GPU). */
+  perRow?: 2 | 3;
 }
 
 const HATCH_PATTERN = `repeating-linear-gradient(-45deg, transparent, transparent 2px, rgba(0,0,0,0.35) 2px, rgba(0,0,0,0.35) 4px)`;
@@ -36,11 +38,22 @@ export default function GpuTopology({
   gpuIdleBaselineMib,
   selectedGpuIndices,
   onDeviceSelect,
+  perRow = 2,
 }: GpuTopologyProps) {
+  const cols = perRow === 3 ? 3 : 2;
+  const gridClass =
+    gpuAllocations.length === 1
+      ? cols === 3
+        ? "max-w-[33%]"
+        : "max-w-[48%]"
+      : cols === 3
+        ? "grid-cols-3"
+        : "grid-cols-2";
+
   return (
-    <div className="space-y-2 gpu-topology-root">
-      {/* GPU Grid — 2 per row */}
-      <div className={`grid gap-2 ${gpuAllocations.length === 1 ? 'max-w-[48%]' : 'grid-cols-2'}`}>
+    <div className="space-y-2 gpu-topology-root" data-gpu-per-row={cols}>
+      {/* GPU Grid — 2 or 3 per row (bezel bottom control) */}
+      <div className={`grid gap-2 ${gridClass}`}>
         {gpuAllocations.map((alloc) => {
           const totalMib = alloc.vramManufacturedGb * 1024;
           const usedMib = (alloc.vramManufacturedGb - alloc.vramAvailableGb) * 1024;

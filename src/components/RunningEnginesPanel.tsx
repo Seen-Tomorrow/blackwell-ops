@@ -114,6 +114,8 @@ interface RunningEnginesPanelProps {
   isHotSwapStale?: (entry: StackEntry) => boolean;
   /** Compact vertical chips for launch rail. */
   variant?: "default" | "rail";
+  /** Below-display cards per row (2 | 3). Ignored for rail. */
+  perRow?: 2 | 3;
 }
 
 function atomcodeRoleForPort(
@@ -139,6 +141,7 @@ export default function RunningEnginesPanel({
   onHotSwap,
   isHotSwapStale,
   variant = "default",
+  perRow = 2,
 }: RunningEnginesPanelProps) {
   const [atomHl, setAtomHl] = useState<AtomcodeHarnessHighlightDetail | null>(null);
 
@@ -271,7 +274,10 @@ export default function RunningEnginesPanel({
         </h3>
       </div>
       <div className="running-engines-scroll px-3 pb-2 eink-scrollbar">
-      <div className="grid grid-cols-2 gap-1">
+      <div
+        className={`grid gap-1 ${perRow === 3 ? "grid-cols-3" : "grid-cols-2"}`}
+        data-engines-per-row={perRow === 3 ? 3 : 2}
+      >
         {instances.map(item => {
           const isThisSelected = selectedSlotIdx === item.entry.idx;
           const isNvfp = item.quant.toLowerCase().includes("nvfp");

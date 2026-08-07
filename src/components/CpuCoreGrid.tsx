@@ -16,14 +16,14 @@ export default function CpuCoreGrid({ cpu, className = "" }: CpuCoreGridProps) {
     if (!el) return;
 
     const measure = () => {
-      setCols(resolveCpuGridColumns(el.clientWidth));
+      setCols(resolveCpuGridColumns(el.clientWidth, undefined, undefined, undefined, undefined, cpu.threads));
     };
 
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [cpu.threads]);
 
   const usages = cpu.core_usages;
 

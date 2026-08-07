@@ -543,33 +543,52 @@
 }
 
 .launch-rail-tel__body {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-height: 0;
+  overflow: hidden; /* scroll lives on __scroll; OC pin stays visible */
+  transition: opacity 0.15s ease;
+}
+
+/* Mem + CPU + GPU cards — independent scroll so OC is never buried */
+.launch-rail-tel__scroll {
   padding: 6px 8px 8px;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  /* Scroll when zoom/OC overflows — no visible scrollbar (still wheel/trackpad). */
   overflow-x: hidden;
   overflow-y: auto;
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* legacy Edge */
-  transition: opacity 0.15s ease;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  min-height: 0;
 }
 
-.launch-rail-tel__body::-webkit-scrollbar {
+.launch-rail-tel__scroll::-webkit-scrollbar {
   width: 0;
   height: 0;
   display: none;
 }
 
-/* Prefer not to fight the dock: keep OC panel fully in view when open */
-.launch-rail-tel__body:has([data-gpu-overclock] .gpu-oc-rail-body) {
-  scroll-padding-bottom: 8px;
+/* OC always at bottom of HW monitor (above launch dock), full height of panel */
+.launch-rail-tel__oc-pin {
+  flex-shrink: 0;
+  border-top: 1px solid color-mix(in srgb, var(--theme-bezel-edge-lo) 50%, transparent);
+  padding: 6px 8px 8px;
+  background: color-mix(in srgb, var(--theme-panel, #0a0c10) 55%, transparent);
 }
 
 .launch-rail-tel__gpu-stack {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex-shrink: 0;
+}
+
+/* CPU + cores must not flex-shrink under tall GPU stacks */
+.launch-rail-tel__cpu {
+  flex-shrink: 0;
 }
 
 /* HW monitor — GPU topology card (selection = border/shadow only) */
@@ -999,6 +1018,8 @@
   overflow: hidden;
 }
 
+
+
 /* PHOSPHOR LIGHT — e-ink label palette on HW monitor widget faces */
 .launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface .launch-rail-tel__total-label,
 .launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface .launch-rail-tel__cpu-meta,
@@ -1179,6 +1200,12 @@
 
 .launch-rail-tel__cpu--cores-open {
   border-color: color-mix(in srgb, var(--tel-cyan) 28%, var(--theme-border) 72%);
+  /* Full core grid must not clip to a single row under phosphor overflow */
+  overflow: visible;
+}
+
+.launch-rail-tel__cpu--cores-open.phosphor-display-surface {
+  overflow: visible;
 }
 
 .launch-rail-tel__cpu-grid {

@@ -37,6 +37,7 @@ import { isMobileDevice } from "../lib/utils";
 import IpcMeterFooter from "./IpcMeterFooter";
 import AppUpdateMenu from "./AppUpdateMenu";
 import DevViewportTool from "./DevViewportTool";
+import DevFakeGpuTopoTool from "./DevFakeGpuTopoTool";
 import { APP_BRAND_LOGO_SIZE, brandLogoDisplaySize } from "../lib/brandLogos";
 
 const MIN_ZOOM = 0.7;
@@ -468,6 +469,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
                 {updFakeOn ? `FAKE v${updFakeVersion ?? "?"}` : "FAKE"}
               </button>
               <DevViewportTool />
+              <DevFakeGpuTopoTool />
             </div>
           )}
         </div>

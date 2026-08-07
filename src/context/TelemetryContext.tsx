@@ -4,6 +4,11 @@ import type { GpuInfo, CpuInfo, SystemInfo } from "../lib/types";
 import { gpuScanSnapshotEqual } from "../lib/telemetryGpu";
 import { useTauriListen } from "../hooks/useTauriListen";
 import { frontendPollEnabled } from "../lib/debugFlags";
+import {
+  appendDevFakeGpus,
+  getDevFakeGpuExtra,
+  subscribeDevFakeGpuExtra,
+} from "../lib/devFakeGpuTopo";
 
 interface TelemetryState {
   gpus: GpuInfo[];
@@ -54,12 +59,21 @@ export function TelemetryProvider({
   /** fast = HW monitor open; normal = catalog or live engines; idle = other tabs */
   gpuPollTier?: GpuPollTier;
 }) {
-  const [gpus, setGpus] = useState<GpuInfo[]>([]);
+  /** Real NVML list only — fakes are merged for consumers in `value`. */
+  const [realGpus, setRealGpus] = useState<GpuInfo[]>([]);
   const [cpu, setCpu] = useState<CpuInfo | null>(null);
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
+  const [devFakeExtra, setDevFakeExtra] = useState(() =>
+    __BUILD_MODE__ === "dev" ? getDevFakeGpuExtra() : 0,
+  );
   const gpusRef = useRef<GpuInfo[]>([]);
   const gpuPollTierRef = useRef(gpuPollTier);
   gpuPollTierRef.current = gpuPollTier;
+
+  useEffect(() => {
+    if (__BUILD_MODE__ !== "dev") return;
+    return subscribeDevFakeGpuExtra(() => setDevFakeExtra(getDevFakeGpuExtra()));
+  }, []);
 
   const pollGpu = useCallback(async () => {
     if (!frontendPollEnabled()) return;
@@ -68,7 +82,7 @@ export function TelemetryProvider({
       const bucketMib = gpuVramBucketMib(gpuPollTierRef.current);
       if (gpuScanSnapshotEqual(gpusRef.current, data, bucketMib)) return;
       gpusRef.current = data;
-      setGpus(data);
+      setRealGpus(data);
     } catch {}
   }, []);
 
@@ -169,6 +183,11 @@ export function TelemetryProvider({
       document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [pollingActive, pollCpu]);
+
+  const gpus = useMemo(() => {
+    if (__BUILD_MODE__ !== "dev" || devFakeExtra <= 0) return realGpus;
+    return appendDevFakeGpus(realGpus, devFakeExtra);
+  }, [realGpus, devFakeExtra]);
 
   const value = useMemo(
     () => ({ gpus, cpu, systemInfo }),

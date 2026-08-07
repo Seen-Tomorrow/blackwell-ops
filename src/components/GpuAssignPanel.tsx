@@ -24,7 +24,39 @@ function isSplitModeActive(split: unknown): boolean {
  * Multi-option segment switch — same chrome language as ASSISTED / FULL AUTO.
  * Options size to label content (config can add/rename freely). Thumb left/width
  * are measured from the active button so unequal labels stay aligned.
+ * Exported for bezel bottom density (GPU/ENG per-row) and Device/Split.
  */
+export function GpuSegmentSwitch({
+  options,
+  selectedId,
+  disabled,
+  ariaLabel,
+  onSelect,
+  title,
+}: {
+  options: { id: string; label: string; title?: string }[];
+  selectedId: string;
+  disabled?: boolean;
+  ariaLabel: string;
+  onSelect: (id: string) => void;
+  title?: string;
+}) {
+  const activeIndex = Math.max(
+    0,
+    options.findIndex((o) => o.id === selectedId),
+  );
+  return (
+    <SegmentOptionGroup
+      options={options}
+      activeIndex={activeIndex}
+      disabled={disabled}
+      ariaLabel={ariaLabel}
+      onSelect={onSelect}
+      title={title}
+    />
+  );
+}
+
 function SegmentOptionGroup({
   options,
   activeIndex,

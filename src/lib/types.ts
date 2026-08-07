@@ -515,7 +515,10 @@ export interface CpuInfo {
   name: string;
   cores: number;
   threads: number;
+  /** Advertised / max clock (MHz). */
   max_clock_mhz: number;
+  /** Live average clock when available (MHz). */
+  current_clock_mhz?: number;
   avg_usage_percent: number;
   core_usages: number[]; // per-core usage percentage (0-100)
 }

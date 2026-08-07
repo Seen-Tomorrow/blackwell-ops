@@ -605,6 +605,67 @@
   color: #f87171;
 }
 
+/* DEV fake GPU topo popover (header GPU+ tool) */
+.dev-fake-gpu-popover {
+  min-width: 11.5rem;
+  width: 12.5rem;
+  max-width: min(16rem, calc(100vw - 12px));
+  padding: 0.4rem 0.45rem 0.45rem;
+  background: var(--theme-panel, #12141a);
+  border: 1px solid color-mix(in srgb, #22d3ee 35%, var(--theme-chrome-control-border) 65%);
+  border-radius: 4px;
+  box-shadow:
+    0 14px 36px rgba(0, 0, 0, 0.5),
+    0 6px 14px rgba(0, 0, 0, 0.35);
+}
+
+.dev-fake-gpu-popover__head {
+  margin-bottom: 0.15rem;
+}
+
+.dev-fake-gpu-popover__title {
+  font-size: 8px;
+  letter-spacing: 0.12em;
+  color: color-mix(in srgb, #22d3ee 80%, var(--theme-chrome-control-text) 20%);
+}
+
+.dev-fake-gpu-popover__hint {
+  margin: 0 0 0.35rem;
+  font-size: 7px;
+  line-height: 1.25;
+  opacity: 0.55;
+  color: var(--theme-chrome-control-text);
+}
+
+.dev-fake-gpu-popover__list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.dev-fake-gpu-popover__row {
+  width: 100%;
+  text-align: left;
+  padding: 0.28rem 0.35rem;
+  border-radius: 2px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--theme-chrome-control-text);
+  font-size: 9px;
+  cursor: pointer;
+}
+
+.dev-fake-gpu-popover__row:hover {
+  background: color-mix(in srgb, #22d3ee 12%, transparent);
+  border-color: color-mix(in srgb, #22d3ee 25%, transparent);
+}
+
+.dev-fake-gpu-popover__row--active {
+  background: color-mix(in srgb, #22d3ee 18%, transparent);
+  border-color: color-mix(in srgb, #22d3ee 45%, transparent);
+  color: #a5f3fc;
+}
+
 .app-quick-settings__sep {
   flex-shrink: 0;
 }

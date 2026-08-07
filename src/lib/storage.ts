@@ -187,6 +187,10 @@ export const KEYS = {
   enginesInRail: `${STORAGE_PREFIX}engines-in-rail`,
   /** CTX strip: docked inside cockpit vs standalone above cockpit. */
   ctxCockpitDock: `${STORAGE_PREFIX}ctx-cockpit-dock`,
+  /** VRAM forecast GPU bars — cards per row (2 | 3). */
+  displayGpuPerRow: `${STORAGE_PREFIX}display-gpu-per-row`,
+  /** Running engines under display — cards per row (2 | 3). */
+  runningEnginesPerRow: `${STORAGE_PREFIX}running-engines-per-row`,
   catalogSplitWidth: `${STORAGE_PREFIX}catalog-split-width`,
   catalogListCollapsed: `${STORAGE_PREFIX}catalog-list-collapsed`,
   /** OPERATIONS catalog list body opacity (0.2–1); search chrome excluded. */
@@ -537,6 +541,25 @@ export function loadCtxCockpitDock(): CtxCockpitDock {
 
 export function saveCtxCockpitDock(dock: CtxCockpitDock): void {
   writeStorage(KEYS.ctxCockpitDock, dock);
+}
+
+/** Cards per row on VRAM GPU bars / running engines (manual density; no auto). */
+export type DisplayCardsPerRow = 2 | 3;
+
+export function loadDisplayGpuPerRow(): DisplayCardsPerRow {
+  return readStorage(KEYS.displayGpuPerRow) === "3" ? 3 : 2;
+}
+
+export function saveDisplayGpuPerRow(n: DisplayCardsPerRow): void {
+  writeStorage(KEYS.displayGpuPerRow, String(n));
+}
+
+export function loadRunningEnginesPerRow(): DisplayCardsPerRow {
+  return readStorage(KEYS.runningEnginesPerRow) === "3" ? 3 : 2;
+}
+
+export function saveRunningEnginesPerRow(n: DisplayCardsPerRow): void {
+  writeStorage(KEYS.runningEnginesPerRow, String(n));
 }
 
 // ── Dynamic key builders (BlackOps-{namespace}:{id}) ─────────────────────────

@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import { useCallback, useState, type RefObject } from "react";
 import type {
   GpuInfo,
   ModelEntry,
@@ -8,8 +8,16 @@ import type {
 } from "../lib/types";
 import type { LaunchChromePolicy } from "../lib/launchChromePolicy";
 import type { FusionShareLaunchConfig } from "../lib/fusionShareCapture";
+import type { DisplayCardsPerRow } from "../lib/storage";
+import {
+  loadDisplayGpuPerRow,
+  loadRunningEnginesPerRow,
+  saveDisplayGpuPerRow,
+  saveRunningEnginesPerRow,
+} from "../lib/storage";
 import GpuAssignPanel from "./GpuAssignPanel";
 import DisplayChromeHints from "./DisplayChromeHints";
+import DisplayBezelGridControls from "./DisplayBezelGridControls";
 import VramBadge from "./VramBadge";
 import FitLaunchToggle from "./FitLaunchToggle";
 import RunningEnginesPanel from "./RunningEnginesPanel";
@@ -88,6 +96,21 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     onHotSwap,
   } = props;
 
+  const [gpuPerRow, setGpuPerRow] = useState<DisplayCardsPerRow>(loadDisplayGpuPerRow);
+  const [enginesPerRow, setEnginesPerRow] = useState<DisplayCardsPerRow>(
+    loadRunningEnginesPerRow,
+  );
+
+  const onGpuPerRow = useCallback((n: DisplayCardsPerRow) => {
+    setGpuPerRow(n);
+    saveDisplayGpuPerRow(n);
+  }, []);
+
+  const onEnginesPerRow = useCallback((n: DisplayCardsPerRow) => {
+    setEnginesPerRow(n);
+    saveRunningEnginesPerRow(n);
+  }, []);
+
   return (
     <div
       ref={displayMeasureRef}
@@ -100,7 +123,7 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
         <div
           className={`${onboardingFrame}${
             showFitOrDeviceChrome ? " industrial-display-frame--top-chrome" : ""
-          }`}
+          } industrial-display-frame--bottom-chrome`}
           data-fusion-share-frame
         >
           {/*
@@ -178,8 +201,16 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
               launchConfig={shareLaunchConfig}
               hwTopo={shareHwTopo}
               gpuIdleBaselineMib={gpuIdleBaselineMib}
+              gpuPerRow={gpuPerRow}
             />
           </div>
+          <DisplayBezelGridControls
+            gpuPerRow={gpuPerRow}
+            enginesPerRow={enginesPerRow}
+            onGpuPerRow={onGpuPerRow}
+            onEnginesPerRow={onEnginesPerRow}
+            showEnginesControl={showEjectBelowVram}
+          />
         </div>
       </div>
 
@@ -193,6 +224,7 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
             onSelectEngine={onSelectEngine!}
             isHotSwapStale={isHotSwapStale}
             onHotSwap={onHotSwap}
+            perRow={enginesPerRow}
           />
         </div>
       )}

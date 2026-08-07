@@ -277,6 +277,54 @@
   overflow: visible;
 }
 
+/*
+ * Bottom bezel chrome: GPU / ENG cards-per-row density (2 | 3).
+ * Same absolute-in-pad pattern as top chrome so frame metal is used, not wasted.
+ */
+.industrial-display-frame--bottom-chrome,
+.industrial-display-frame:has(> .industrial-display-frame__bottom-chrome) {
+  padding-bottom: 32px;
+  overflow: visible;
+}
+
+.industrial-display-frame > .industrial-display-frame__bottom-chrome {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 32px;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0;
+  padding: 0 12px 0 14px;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.industrial-display-frame > .industrial-display-frame__bottom-chrome > * {
+  pointer-events: auto;
+}
+
+.display-bezel-grid-controls__label {
+  font-size: 7px;
+  letter-spacing: 0.1em;
+  color: color-mix(in srgb, var(--theme-chrome-control-text, #ccc) 55%, transparent);
+  flex-shrink: 0;
+}
+
+.industrial-display-frame__bottom-chrome .segment-switch.segment-switch--gpu-bezel {
+  /* Compact height so bottom pad stays thin */
+  min-height: 1.35rem;
+}
+
+.industrial-display-frame__bottom-chrome .segment-switch.segment-switch--gpu-bezel .segment-switch__option {
+  font-size: 8px;
+  padding: 0.1rem 0.45rem;
+  min-width: 1.35rem;
+}
+
 .industrial-display-frame > .industrial-display-frame__top-chrome {
   position: absolute;
   top: 0;
