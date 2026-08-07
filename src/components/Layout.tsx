@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, type CSSProperties } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, type CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { Tab } from "../App";
 import type { ProviderConfig, UpdateOfferings } from "../lib/types";
@@ -36,10 +36,23 @@ import { APP_SHELL_MIN_PX, resolveAppShellWidthPx } from "../lib/uiShell";
 import { isMobileDevice } from "../lib/utils";
 import IpcMeterFooter from "./IpcMeterFooter";
 import AppUpdateMenu from "./AppUpdateMenu";
+import DevViewportTool from "./DevViewportTool";
+import { APP_BRAND_LOGO_SIZE, brandLogoDisplaySize } from "../lib/brandLogos";
 
 const MIN_ZOOM = 0.7;
 const MAX_ZOOM = 1.5;
 const ZOOM_STEP = 0.05;
+
+/**
+ * Logo hide/show for tight nav — must account for the *full slot* reclaimed when
+ * the brand is display:none. A small overflow hysteresis (e.g. 8 vs 60px) is
+ * smaller than the logo (~171px + gap), so hide→space→show→overflow loops and
+ * the logo flashes during resize.
+ */
+const NAV_BRAND_GAP_PX = 16; // .app-header__start gap-4
+const NAV_LOGO_HIDE_OVERFLOW_PX = 8; // hide when tabs overflow by this much
+const NAV_LOGO_SHOW_SPARE_PX = 32; // keep spare after restoring logo
+const NAV_LOGO_FALLBACK_W = brandLogoDisplaySize(APP_BRAND_LOGO_SIZE).width;
 
 function loadZoom(): number {
   return loadUiZoom(1.0, MIN_ZOOM, MAX_ZOOM);
@@ -113,6 +126,60 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
   const [updFakeOn, setUpdFakeOn] = useState(false);
   const [updFakeVersion, setUpdFakeVersion] = useState<string | null>(null);
 
+  // Nav tab horizontal scrolling (chevrons only when the tabs overflow).
+  const navRef = useRef<HTMLElement | null>(null);
+  const brandRef = useRef<HTMLDivElement | null>(null);
+  const [navCanScrollLeft, setNavCanScrollLeft] = useState(false);
+  const [navCanScrollRight, setNavCanScrollRight] = useState(false);
+  // True when the nav needs more width than it has (measured in CSS px —
+  // DPI-independent). Hides the logo so tabs get room; restore only when
+  // there is room for the *full* brand slot (see NAV_LOGO_* constants).
+  const [navTight, setNavTight] = useState(false);
+  const navTightRef = useRef(false);
+  /** Last measured brand width while visible (display:none → offsetWidth 0). */
+  const brandWidthRef = useRef(NAV_LOGO_FALLBACK_W);
+
+  const updateNavScrollState = useCallback(() => {
+    const el = navRef.current;
+    if (!el) return;
+    setNavCanScrollLeft(el.scrollLeft > 2);
+    setNavCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
+
+    const brand = brandRef.current;
+    const measured = brand?.offsetWidth ?? 0;
+    if (measured > 0) brandWidthRef.current = measured;
+    const brandW = brandWidthRef.current || NAV_LOGO_FALLBACK_W;
+    // Slot reclaimed when logo is hidden: brand + flex gap between brand and nav.
+    const logoSlot = brandW + NAV_BRAND_GAP_PX;
+
+    let tight: boolean;
+    if (navTightRef.current) {
+      // Logo already hidden — only restore when spare space covers the full
+      // logo slot + spare (prevents hide/show feedback loops on resize).
+      const needToRestore = logoSlot + NAV_LOGO_SHOW_SPARE_PX;
+      tight = el.scrollWidth + needToRestore > el.clientWidth;
+    } else {
+      // Logo visible — hide on real overflow (tabs need more room).
+      tight = el.scrollWidth > el.clientWidth + NAV_LOGO_HIDE_OVERFLOW_PX;
+    }
+
+    if (tight !== navTightRef.current) {
+      navTightRef.current = tight;
+      setNavTight(tight);
+    }
+  }, []);
+
+  const scrollNav = useCallback(
+    (dir: -1 | 1) => {
+      const el = navRef.current;
+      if (!el) return;
+      el.scrollBy({ left: dir * 220, behavior: "smooth" });
+      // Reflect the new scroll position shortly after the smooth scroll settles.
+      window.setTimeout(updateNavScrollState, 260);
+    },
+    [updateNavScrollState],
+  );
+
   useEffect(() => {
     if (__BUILD_MODE__ !== "dev") return;
     const saved = loadDevUpdateVersionFake();
@@ -165,6 +232,24 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  // Chevron + logo-tight: re-evaluate on resize, scroll, and after tight toggles
+  // (layout changes when logo is display:none).
+  useEffect(() => {
+    updateNavScrollState();
+    const el = navRef.current;
+    if (el) el.addEventListener("scroll", updateNavScrollState, { passive: true });
+    window.addEventListener("resize", updateNavScrollState);
+    return () => {
+      if (el) el.removeEventListener("scroll", updateNavScrollState);
+      window.removeEventListener("resize", updateNavScrollState);
+    };
+  }, [updateNavScrollState]);
+
+  useEffect(() => {
+    const id = window.requestAnimationFrame(() => updateNavScrollState());
+    return () => window.cancelAnimationFrame(id);
+  }, [navTight, updateNavScrollState]);
 
   // Docked one-line preview — newest line from any category (expanded console keeps tab filter).
   useEffect(() => {
@@ -230,37 +315,64 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
 
   return (
     <div
-      className={`app-shell flex flex-col h-screen grid-bg relative${consoleDockedOpen ? " app-shell--console-docked" : ""}`}
+      className={`app-shell flex flex-col h-screen grid-bg relative${consoleDockedOpen ? " app-shell--console-docked" : ""}${navTight ? " app-shell--nav-tight" : ""}`}
       data-ui-density={uiDensity}
       style={shellStyle}
     >
       {/* Top bar */}
       <header className="app-header flex items-center justify-between gap-3 px-6 py-3 backdrop-blur-sm relative z-30 layout-header-enter min-w-0">
         <div className="app-header__start flex items-center gap-4 min-w-0 flex-1">
-          {/* Logo only — version lives in footer after PLATFORM */}
-          <BlackwellBrandMark
-            showVersion={false}
-            packageVersion={updateOfferings?.currentVersion ?? null}
-          />
+          {/* Logo only — version lives in footer after PLATFORM.
+              Wrapper keeps a stable measure target for nav-tight hysteresis. */}
+          <div ref={brandRef} className="app-header-brand-slot flex-shrink-0">
+            <BlackwellBrandMark
+              showVersion={false}
+              packageVersion={updateOfferings?.currentVersion ?? null}
+            />
+          </div>
 
-          {/* Nav tabs */}
-          <nav className="app-header__nav flex items-stretch min-w-0">
-            {visibleTabs.map((tab) => (
-              <div key={tab.id} className="app-header__nav-item relative min-w-0">
-                <button
-                  type="button"
-                  onClick={() => onTabChange(tab.id)}
-                  {...(tab.id === "config" ? { "data-onboarding": "config-tab" } : {})}
-                  className={`app-nav-tab font-mono rounded-sm ${
-                    activeTab === tab.id ? "app-nav-tab-active" : ""
-                  }`}
-                >
-                  {/* <span className="mr-1.5">{tab.icon}</span> */}
-                  {tab.label}
-                </button>
-              </div>
-            ))}
-          </nav>
+          {/* Nav tabs — chevrons appear only when the tabs overflow (no wrap). */}
+          <div className="app-header__nav-wrap">
+            <button
+              type="button"
+              aria-label="Scroll tabs left"
+              onClick={() => scrollNav(-1)}
+              className={`app-header__nav-chev app-header__nav-chev--left${navCanScrollLeft ? " is-visible" : ""}`}
+              tabIndex={navCanScrollLeft ? 0 : -1}
+            >
+              ‹
+            </button>
+            <nav
+              ref={navRef}
+              className="app-header__nav flex items-stretch min-w-0"
+              onScroll={updateNavScrollState}
+            >
+              {visibleTabs.map((tab) => (
+                <div key={tab.id} className="app-header__nav-item relative">
+                  <button
+                    type="button"
+                    onClick={() => onTabChange(tab.id)}
+                    {...(tab.id === "config" ? { "data-onboarding": "config-tab" } : {})}
+                    className={`app-nav-tab font-mono rounded-sm ${
+                      activeTab === tab.id ? "app-nav-tab-active" : ""
+                    }`}
+                  >
+                    {/* <span className="mr-1.5">{tab.icon}</span> */}
+                    {tab.label}
+                  </button>
+                </div>
+              ))}
+            </nav>
+            <button
+              type="button"
+              aria-label="Scroll tabs right"
+              onClick={() => scrollNav(1)}
+              className={`app-header__nav-chev app-header__nav-chev--right${navCanScrollRight ? " is-visible" : ""}`}
+              tabIndex={navCanScrollRight ? 0 : -1}
+            >
+              ›
+            </button>
+          </div>
         </div>
 
         {/* Admin lock + zoom + appearance */}
@@ -355,6 +467,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
               >
                 {updFakeOn ? `FAKE v${updFakeVersion ?? "?"}` : "FAKE"}
               </button>
+              <DevViewportTool />
             </div>
           )}
         </div>

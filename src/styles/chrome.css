@@ -30,22 +30,66 @@
   flex: 1 1 auto;
 }
 
+.app-header__nav-wrap {
+  flex: 1 1 auto;
+  margin-left: 0.5rem;
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+  gap: 0.15rem;
+}
+
 .app-header__nav {
   flex: 1 1 auto;
-  margin-left: 1.25rem;
-  gap: 0.375rem;
+  min-width: 0;
+  gap: 0.1rem;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
+  scroll-behavior: smooth;
+  scroll-padding-inline: 0.25rem;
 }
 
 .app-header__nav::-webkit-scrollbar {
   display: none;
 }
 
+.app-header__nav-chev {
+  flex: 0 0 auto;
+  align-self: center;
+  width: 1.15rem;
+  height: 1.6rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--theme-nav-text);
+  background: color-mix(in srgb, var(--theme-nav-hover-bg, #ffffff12) 70%, transparent);
+  border: 1px solid var(--theme-chrome-control-border, rgba(255, 255, 255, 0.12));
+  border-radius: 3px;
+  font-size: 1rem;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+  cursor: pointer;
+}
+
+.app-header__nav-chev:hover {
+  color: var(--theme-nav-active-text);
+  background: color-mix(in srgb, var(--theme-nav-hover-bg, #ffffff12) 100%, transparent);
+}
+
+.app-header__nav-chev.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .app-header__nav-item {
+  /* Never shrink below the tab label + padding so the active card's border
+     cannot overlap/cut the centered nowrap text. Extra space still stretches
+     via flex-grow; when the nav runs out of room it scrolls (overflow-x: auto). */
   flex: 1 1 0;
-  min-width: 3.75rem;
+  min-width: max-content;
   display: flex;
 }
 
@@ -312,9 +356,9 @@
   min-height: 2.55rem;
   padding:
     clamp(0.45rem, calc(0.28rem + 0.45vw), 0.9rem)
-    clamp(0.65rem, calc(0.45rem + 1.35vw), 2.35rem);
+    clamp(0.3rem, calc(0.22rem + 0.75vw), 2.35rem);
   font-size: clamp(0.72rem, calc(0.62rem + 0.5vw), 1.05rem);
-  letter-spacing: 0.1em;
+  letter-spacing: 0.04em;
   font-weight: 600;
   white-space: nowrap;
   color: var(--theme-nav-text);
@@ -331,8 +375,17 @@
   min-height: 2.15rem;
   padding:
     clamp(0.35rem, calc(0.2rem + 0.35vw), 0.65rem)
-    clamp(0.5rem, calc(0.35rem + 1vw), 1.5rem);
+    clamp(0.25rem, calc(0.18rem + 0.55vw), 1.5rem);
   font-size: clamp(0.65rem, calc(0.55rem + 0.4vw), 0.875rem);
+}
+
+/* Tight nav — drop the app logo so the tabs get more room.
+   Single source: JS overflow measurement (.app-shell--nav-tight) on the nav
+   element (DPI-independent CSS px). Hysteresis must exceed full logo slot
+   width or hide→free space→show loops and the logo flashes on resize.
+   Do not add a hard @container max-width hide — it fights the JS band. */
+.app-shell--nav-tight .app-header__start > .app-header-brand-slot {
+  display: none;
 }
 
 .app-nav-tab:hover {
@@ -420,6 +473,136 @@
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* DEV viewport preset popover — portaled to body (header DEV stack clips overflow). */
+.dev-viewport-popover {
+  min-width: 15.5rem;
+  width: 16.25rem;
+  max-width: min(20rem, calc(100vw - 12px));
+  max-height: min(70vh, 28rem);
+  overflow-y: auto;
+  padding: 0.4rem 0.45rem 0.45rem;
+  background: var(--theme-panel, #12141a);
+  border: 1px solid color-mix(in srgb, #22d3ee 35%, var(--theme-chrome-control-border) 65%);
+  border-radius: 4px;
+  box-shadow:
+    0 14px 36px rgba(0, 0, 0, 0.5),
+    0 6px 14px rgba(0, 0, 0, 0.35);
+}
+
+.dev-viewport-popover__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.15rem;
+}
+
+.dev-viewport-popover__title {
+  font-size: 8px;
+  letter-spacing: 0.12em;
+  color: color-mix(in srgb, #22d3ee 80%, var(--theme-chrome-control-text) 20%);
+}
+
+.dev-viewport-popover__live {
+  font-size: 8px;
+  opacity: 0.75;
+  color: var(--theme-chrome-control-text);
+}
+
+.dev-viewport-popover__hint {
+  margin: 0 0 0.35rem;
+  font-size: 7px;
+  line-height: 1.25;
+  opacity: 0.55;
+  color: var(--theme-chrome-control-text);
+}
+
+.dev-viewport-popover__hint--metrics {
+  margin-top: -0.2rem;
+  opacity: 0.7;
+  letter-spacing: 0.02em;
+}
+
+.dev-viewport-popover__aspect {
+  font-weight: 500;
+  opacity: 0.75;
+}
+
+.dev-viewport-popover__list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: min(16rem, 50vh);
+  overflow-y: auto;
+}
+
+.dev-viewport-popover__row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.05rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.28rem 0.35rem;
+  border-radius: 2px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--theme-chrome-control-text);
+  cursor: pointer;
+}
+
+.dev-viewport-popover__row:hover {
+  background: color-mix(in srgb, #22d3ee 12%, transparent);
+  border-color: color-mix(in srgb, #22d3ee 25%, transparent);
+}
+
+.dev-viewport-popover__row--active {
+  background: color-mix(in srgb, #22d3ee 18%, transparent);
+  border-color: color-mix(in srgb, #22d3ee 45%, transparent);
+  color: #a5f3fc;
+}
+
+.dev-viewport-popover__size {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.dev-viewport-popover__blurb {
+  font-size: 7px;
+  opacity: 0.65;
+  line-height: 1.2;
+}
+
+.dev-viewport-popover__native {
+  margin-top: 0.35rem;
+  width: 100%;
+  padding: 0.28rem 0.35rem;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--theme-chrome-control-border) 80%, #facc15 20%);
+  background: color-mix(in srgb, #000 25%, transparent);
+  color: color-mix(in srgb, #facc15 70%, var(--theme-chrome-control-text) 30%);
+  cursor: pointer;
+}
+
+.dev-viewport-popover__native:hover:not(:disabled) {
+  color: #fde68a;
+  border-color: color-mix(in srgb, #facc15 50%, var(--theme-chrome-control-border) 50%);
+}
+
+.dev-viewport-popover__native:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.dev-viewport-popover__error {
+  margin: 0.3rem 0 0;
+  font-size: 7px;
+  color: #f87171;
 }
 
 .app-quick-settings__sep {
@@ -652,11 +835,12 @@
 
 
 .app-footer-console__live {
-  /* Cap width — was unconstrained flex:1 and stole space from PLATFORM / version / stats.
-     Pair with .app-footer-status-right { ml-auto } so NOMINAL/IPC stay far right. */
+  /* Fill remaining bar between status-left and status-right.
+     Left/right stay shrink-0; live grows with flex:1 (no max-width — the old
+     42vw/28rem cap left a dead gap and felt too short on wide shells).
+     status-right still has ml-auto as a safety pin for NOMINAL/IPC. */
   display: flex;
-  flex: 1 1 14rem;
-  max-width: min(42vw, 28rem);
+  flex: 1 1 auto;
   min-width: 8rem;
   min-height: calc(var(--app-footer-status-h) - 4px);
   align-self: stretch;

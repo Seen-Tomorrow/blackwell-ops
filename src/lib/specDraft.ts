@@ -56,6 +56,8 @@ export function essentialsSpecChipLabel(specType: string): string {
 
 const DRAFT_ARCH_FOR_SPEC: Record<string, DraftRole> = {
   "draft-dflash": "external_dflash",
+  // DSpark reuses external-draft pairing slot; path must contain dspark for engine validate.
+  "draft-dspark": "external_dflash",
   "draft-eagle3": "external_eagle3",
   "draft-external-mtp": "external_mtp",
 };
@@ -88,6 +90,7 @@ export const FAMILY_RULES: { id: string; pattern: RegExp }[] = [
 
 const DFLASH_SIGNAL_RE = /d[-_.\s]?flash/i;
 const EAGLE3_SIGNAL_RE = /eagle[-_.\s]?3/i;
+const DSPARK_SIGNAL_RE = /d[-_.\s]?spark/i;
 
 function compactAlnumLower(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -98,6 +101,14 @@ export function signalContainsDflash(signal: string): boolean {
   if (lower.includes("dflash")) return true;
   if (DFLASH_SIGNAL_RE.test(signal)) return true;
   return compactAlnumLower(signal).includes("dflash");
+}
+
+/** DeepSeek DSpark draft head (path/name: dspark, d-spark, …). */
+export function signalContainsDspark(signal: string): boolean {
+  const lower = signal.toLowerCase();
+  if (lower.includes("dspark")) return true;
+  if (DSPARK_SIGNAL_RE.test(signal)) return true;
+  return compactAlnumLower(signal).includes("dspark");
 }
 
 export function signalContainsEagle3(signal: string): boolean {
@@ -178,6 +189,8 @@ function pathIdentityDraftRole(
   model: Pick<ModelEntry, "path" | "name" | "metadata" | "hfMeta" | "hfModelId" | "sourcePathLabel" | "draftRoleHint">,
 ): DraftRole | null {
   for (const signal of catalogDraftSignals(model)) {
+    // DSpark heads before generic DFlash (path may contain both "dspark" and "Flash")
+    if (signalContainsDspark(signal)) return "external_dflash";
     if (signalContainsDflash(signal)) return "external_dflash";
     if (signalContainsEagle3(signal)) return "external_eagle3";
     if (signalContainsMtpHead(signal)) return "external_mtp";
@@ -282,9 +295,13 @@ export function matchesCatalogDraftFilter(
   return true;
 }
 
-export function draftRoleBadge(role: DraftRole): string | null {
+export function draftRoleBadge(
+  role: DraftRole,
+  model?: Pick<ModelEntry, "path" | "name" | "metadata" | "hfMeta" | "hfModelId" | "sourcePathLabel" | "draftRoleHint">,
+): string | null {
   switch (role) {
     case "external_dflash":
+      if (model && catalogDraftSignals(model).some(signalContainsDspark)) return "DSPARK";
       return "DFLASH";
     case "external_eagle3":
       return "EAGLE3";
@@ -635,11 +652,13 @@ export function resolveExternalDraftPath(
   if (pairing) {
     const pairingRole = draftRoleForSpecType(pairing.specType);
     // Accept saved pair when roles match, or when saved under draft-dflash / draft-eagle3 alias.
+    const st = String(pairing.specType).toLowerCase();
     const roleOk =
       pairingRole === draftRole
-      || (draftRole === "external_dflash" && String(pairing.specType).toLowerCase().includes("dflash"))
-      || (draftRole === "external_eagle3" && String(pairing.specType).toLowerCase().includes("eagle"))
-      || (draftRole === "external_mtp" && String(pairing.specType).toLowerCase().includes("mtp"));
+      || (draftRole === "external_dflash"
+        && (st.includes("dflash") || st.includes("dspark")))
+      || (draftRole === "external_eagle3" && st.includes("eagle"))
+      || (draftRole === "external_mtp" && st.includes("mtp"));
     if (roleOk) {
       const saved = tryPath(pairing.draftPath, "restored");
       if (saved) return saved;
@@ -649,12 +668,20 @@ export function resolveExternalDraftPath(
   return pickBestDraftPair(main, models, draftRole, HIGH_DRAFT_PAIR_SCORE)?.path ?? null;
 }
 
-/** True when Boost DFlash can enable CLI (draft path ready — not waiting on Get draft). */
+/** True when Boost DFlash/DSpark can enable CLI (draft path ready — not waiting on Get draft). */
 export function hasReadyDflashDraft(
   main: ModelEntry | null | undefined,
   models: ModelEntry[] | null | undefined,
   currentDraftPath?: string | null,
 ): boolean {
+  // User-confirmed absolute path (Change draft) — launchable even before role scoring.
+  if (currentDraftPath && isValidGgufDraftPath(String(currentDraftPath))) {
+    const low = String(currentDraftPath).trim().toLowerCase();
+    if (low !== "off" && low !== "auto" && low !== "on" && low !== "none") {
+      return true;
+    }
+  }
+
   if (!main || !models?.length) return false;
   if (pickBestDraftPair(main, models, "external_dflash", HIGH_DRAFT_PAIR_SCORE)) return true;
 
@@ -662,12 +689,14 @@ export function hasReadyDflashDraft(
   if (pickBestDraftPair(main, models, "external_mtp", HIGH_DRAFT_PAIR_SCORE)) return true;
 
   const pairing = loadDraftPairing(main.path);
-  if (
-    pairing
-    && String(pairing.specType).toLowerCase().includes("dflash")
-    && isUsableDraftPairing(pairing, main, models)
-  ) {
-    return true;
+  if (pairing) {
+    const st = String(pairing.specType).toLowerCase();
+    if (
+      (st.includes("dflash") || st.includes("dspark"))
+      && isUsableDraftPairing(pairing, main, models)
+    ) {
+      return true;
+    }
   }
 
   const resolved = resolveExternalDraftPath(main, models, "external_dflash", {

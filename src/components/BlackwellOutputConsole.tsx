@@ -25,7 +25,7 @@ interface BlackwellOutputConsoleProps {
   onCategoryChange: (category: OutputConsoleCategory) => void;
 }
 
-export const OUTPUT_CONSOLE_CATEGORIES = ["engines", "utils", "foundry", "error", "debug"] as const;
+export const OUTPUT_CONSOLE_CATEGORIES = ["engines", "utils", "foundry", "error", "scenarios", "debug"] as const;
 export type OutputConsoleCategory = typeof OUTPUT_CONSOLE_CATEGORIES[number];
 
 type Category = OutputConsoleCategory;
@@ -42,6 +42,7 @@ export const OUTPUT_CONSOLE_CATEGORY_LABELS: Record<Category, string> = {
   utils: "Utils",
   foundry: "Foundry",
   error: "Error",
+  scenarios: "Scenarios",
   debug: "Debug",
 };
 

@@ -15,10 +15,12 @@ import {
   type DflashDraftOffer,
 } from "../lib/dflashGetDraft";
 import {
+  catalogDraftSignals,
   draftRoleFromModel,
   resolveDraftPathLabel,
   saveDraftPairing,
   scoreDraftPair,
+  signalContainsDspark,
 } from "../lib/specDraft";
 import { DFLASH_DRAFT_MODEL } from "../lib/specProfiles";
 import { useDownloadTasks } from "./useDownloadTasks";
@@ -78,29 +80,39 @@ export function useDflashDraft({
 
   const buildLocalDflashPickItems = useCallback((): DraftPickListItem[] => {
     if (!model || !models?.length) return [];
+    const preferDspark = speedBoost === "dspark";
     const items: DraftPickListItem[] = models
-      .filter(
-        (m) =>
-          m.path !== model.path
-          && (draftRoleFromModel(m) === "external_dflash"
-            || draftRoleFromModel(m) === "external_mtp"),
-      )
+      .filter((m) => {
+        if (m.path === model.path) return false;
+        const role = draftRoleFromModel(m);
+        if (role === "external_dflash" || role === "external_mtp") return true;
+        // DSpark heads may not score as DFlash until path signal is present
+        if (preferDspark && catalogDraftSignals(m).some(signalContainsDspark)) return true;
+        return false;
+      })
       .map((m) => {
-        const score = scoreDraftPair(model, m, "external_dflash");
+        const isDspark = catalogDraftSignals(m).some(signalContainsDspark);
+        let score = scoreDraftPair(model, m, "external_dflash");
+        // Prefer explicit dspark heads when Boost is DSpark
+        if (preferDspark && isDspark) score = Math.max(score, 90);
         const label = resolveDraftPathLabel(m.path);
         const quant = m.quant || m.metadata?.file_type_str || "";
         const author = m.author || m.hfMeta?.author || "";
+        const tag = isDspark ? "dspark" : "";
         return {
           id: m.path,
           title: label,
-          meta: [author, quant, m.size_str].filter(Boolean).join(" · "),
+          meta: [author, quant, tag, m.size_str].filter(Boolean).join(" · "),
           score,
           draftRole: draftRoleFromModel(m),
         };
       })
       .sort((a, b) => (b.score ?? -999) - (a.score ?? -999));
 
-    const current = config.spec_draft_model != null ? String(config.spec_draft_model) : "";
+    const current =
+      config[DFLASH_DRAFT_MODEL] != null
+        ? String(config[DFLASH_DRAFT_MODEL])
+        : "";
     if (current) {
       items.sort((a, b) => {
         if (a.id === current) return -1;
@@ -109,7 +121,7 @@ export function useDflashDraft({
       });
     }
     return items;
-  }, [model, models, config.spec_draft_model]);
+  }, [model, models, config, speedBoost]);
 
   const loadDflashHfCandidates = useCallback(async () => {
     if (!model) return;
@@ -216,16 +228,17 @@ export function useDflashDraft({
   const handleConfirmLibraryDraft = useCallback(
     (path: string) => {
       if (!model) return;
+      const speed =
+        speedBoost === "dspark" || speedBoost === "dflash" ? speedBoost : "dflash";
+      const pairType = speed === "dspark" ? "draft-dspark" : "draft-dflash";
       updateParam(DFLASH_DRAFT_MODEL, path);
-      saveDraftPairing(model.path, "draft-dflash", path);
+      saveDraftPairing(model.path, pairType, path);
       setDflashPickOpen(false);
       setLibraryPickItems([]);
       setDflashResolveError(null);
       setDflashGetState("idle");
       setDflashGetError(null);
       // Keep current Boost method (dflash or dspark) when confirming a path
-      const speed =
-        speedBoost === "dspark" || speedBoost === "dflash" ? speedBoost : "dflash";
       void applyFullAutoCockpit(codingMode, speed, brains, think, {
         powerUser: powerCockpitMode,
         preferredDraftPath: path,

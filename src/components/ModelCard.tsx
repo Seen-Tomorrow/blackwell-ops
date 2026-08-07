@@ -123,7 +123,7 @@ export default function ModelCard({
   const hasMetadata = !!model.metadata;
   const isScanning = scanningPath === model.path;
   const draftRole = draftRoleFromModel(model);
-  const draftBadge = draftRoleBadge(draftRole);
+  const draftBadge = draftRoleBadge(draftRole, model);
   const isDraftOnly = isExternalDraftOnly(model);
 
   const isShardNoiseQuant = (label: string) => /^\d{3,}$/.test(label.trim());

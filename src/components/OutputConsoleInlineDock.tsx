@@ -69,8 +69,8 @@ export default function OutputConsoleInlineDock({
         </div>
 
         {/*
-          Live line is width-capped (see .app-footer-console__live). ml-auto keeps
-          foundry / SYSTEM NOMINAL / IPC on the far right instead of packing mid-bar.
+          Live line flex-fills the middle (see .app-footer-console__live).
+          ml-auto keeps foundry / SYSTEM NOMINAL / IPC on the far right.
         */}
         <div className="app-footer-status-right flex items-center gap-2 shrink-0 ml-auto min-w-0">
           {foundrySlot ? (

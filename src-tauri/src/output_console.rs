@@ -53,6 +53,9 @@ pub enum BlackwellOutputConsoleCategory {
     /// General / miscellaneous output that does not clearly belong to another category.
     General,
 
+    /// VRAM scenario factory evaluation (AUTO_FIT, learned/formula forecasts, config dumps).
+    Scenarios,
+
     /// Debug output for development and troubleshooting.
     Debug,
 }
@@ -66,7 +69,22 @@ impl BlackwellOutputConsoleCategory {
             BlackwellOutputConsoleCategory::Foundry => "foundry",
             BlackwellOutputConsoleCategory::Error => "error",
             BlackwellOutputConsoleCategory::General => "general",
+            BlackwellOutputConsoleCategory::Scenarios => "scenarios",
             BlackwellOutputConsoleCategory::Debug => "debug",
+        }
+    }
+
+    /// Parse a stable identifier (`engines`, `scenarios`, …) into a category.
+    pub fn from_identifier(identifier: &str) -> Option<Self> {
+        match identifier {
+            "engines" => Some(BlackwellOutputConsoleCategory::Engines),
+            "utils" => Some(BlackwellOutputConsoleCategory::Utils),
+            "foundry" => Some(BlackwellOutputConsoleCategory::Foundry),
+            "error" => Some(BlackwellOutputConsoleCategory::Error),
+            "general" => Some(BlackwellOutputConsoleCategory::General),
+            "scenarios" => Some(BlackwellOutputConsoleCategory::Scenarios),
+            "debug" => Some(BlackwellOutputConsoleCategory::Debug),
+            _ => None,
         }
     }
 
@@ -79,6 +97,7 @@ impl BlackwellOutputConsoleCategory {
             BlackwellOutputConsoleCategory::Foundry => "Foundry",
             BlackwellOutputConsoleCategory::Error => "Error",
             BlackwellOutputConsoleCategory::General => "General",
+            BlackwellOutputConsoleCategory::Scenarios => "Scenarios",
             BlackwellOutputConsoleCategory::Debug => "Debug",
         }
     }
@@ -234,6 +253,7 @@ impl BlackwellOutputConsoleManager {
             BlackwellOutputConsoleCategory::Foundry,
             BlackwellOutputConsoleCategory::Error,
             BlackwellOutputConsoleCategory::General,
+            BlackwellOutputConsoleCategory::Scenarios,
             BlackwellOutputConsoleCategory::Debug,
         ] {
             category_buffers.insert(

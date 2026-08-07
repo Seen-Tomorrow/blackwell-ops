@@ -466,13 +466,23 @@ export default function MultiAgentBooster({
       ? "smart"
       : plan.speed;
 
+  /** External-draft product boosts (share draft strip + dflash_draft_model path). */
+  const externalDraftBoost =
+    displayBoost === "dflash" || displayBoost === "dspark";
+
   /**
    * SPEC-EXTRA strip — Assisted Essentials + Full (not Full Auto hero).
-   * When Boost is MTP/DFlash (or draft-* raw). Ngram/simple: no strip.
+   * When Boost is MTP/DFlash/DSpark (or draft-* raw). Ngram/simple: no strip.
    */
   const showSpecExtra = useMemo(() => {
     if (hero || specDetailParams.length === 0) return false;
-    if (displayBoost === "mtp" || displayBoost === "dflash") return true;
+    if (
+      displayBoost === "mtp"
+      || displayBoost === "dflash"
+      || displayBoost === "dspark"
+    ) {
+      return true;
+    }
     if (!activeRawSpecType) return false;
     // ngram / simple: no SPEC-EXTRA; other draft-* may show knobs
     const s = activeRawSpecType.toLowerCase();
@@ -480,6 +490,7 @@ export default function MultiAgentBooster({
     return s.startsWith("draft") || s.includes("draft");
   }, [hero, specDetailParams.length, displayBoost, activeRawSpecType]);
 
+  // HF Get-draft is DFlash-only (remote packs). DSpark is local GGUF path.
   const showDflashGet =
     Boolean(onGetDflashDraft) &&
     displayBoost === "dflash" &&
@@ -489,10 +500,11 @@ export default function MultiAgentBooster({
       dflashGetState === "downloading" ||
       dflashGetState === "error");
 
+  // Change draft: DFlash when paired; DSpark always (user must pick dspark head GGUF).
   const showDflashChange =
     Boolean(onChangeDflashDraft) &&
-    dflashLibraryReady &&
-    displayBoost === "dflash";
+    (displayBoost === "dspark"
+      || (displayBoost === "dflash" && dflashLibraryReady));
 
   const mtpAvailable = capSet.has("mtp");
   const dflashAvailable = dflashLibraryReady || dflashGettable || capSet.has("dflash");
@@ -606,7 +618,7 @@ export default function MultiAgentBooster({
   const stripTone: "mtp" | "dflash" | "neutral" =
     displayBoost === "mtp"
       ? "mtp"
-      : displayBoost === "dflash"
+      : externalDraftBoost
         ? "dflash"
         : "neutral";
 
@@ -1407,9 +1419,20 @@ export default function MultiAgentBooster({
               <div className="full-auto-cockpit__dflash-get-sub">Confirm pack to download</div>
             ) : null}
           </>
+        ) : displayBoost === "dspark" && !dflashLibraryReady && !dflashDraftLabel ? (
+          <>
+            <div className="full-auto-cockpit__dflash-get-line">
+              DSpark needs a draft GGUF
+            </div>
+            <div className="full-auto-cockpit__dflash-get-sub">
+              Pick dspark-*.gguf via Change draft
+            </div>
+          </>
         ) : (
           <>
-            <div className="full-auto-cockpit__dflash-get-line">Paired draft</div>
+            <div className="full-auto-cockpit__dflash-get-line">
+              {displayBoost === "dspark" ? "DSpark draft" : "Paired draft"}
+            </div>
             <div
               className="full-auto-cockpit__dflash-get-name"
               title={dflashDraftLabel ?? undefined}
@@ -1425,7 +1448,11 @@ export default function MultiAgentBooster({
             type="button"
             className="full-auto-cockpit__dflash-get-btn full-auto-cockpit__dflash-get-btn--ghost"
             onClick={() => onChangeDflashDraft?.()}
-            title="Pick a different DFlash draft from your library"
+            title={
+              displayBoost === "dspark"
+                ? "Pick DSpark draft GGUF from your library"
+                : "Pick a different DFlash draft from your library"
+            }
           >
             Change draft
           </button>

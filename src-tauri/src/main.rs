@@ -212,6 +212,7 @@ async fn get_blackwell_output_console_categories() -> Vec<String> {
         BlackwellOutputConsoleCategory::Foundry.identifier().to_string(),
         BlackwellOutputConsoleCategory::Error.identifier().to_string(),
         BlackwellOutputConsoleCategory::General.identifier().to_string(),
+        BlackwellOutputConsoleCategory::Scenarios.identifier().to_string(),
         BlackwellOutputConsoleCategory::Debug.identifier().to_string(),
     ]
 }
@@ -224,15 +225,8 @@ async fn get_blackwell_output_console_buffer_for_category(
 ) -> Result<Vec<crate::output_console::BlackwellOutputConsoleTextLine>, String> {
     use crate::output_console::BlackwellOutputConsoleCategory;
 
-    let cat = match category.as_str() {
-        "engines" => BlackwellOutputConsoleCategory::Engines,
-        "utils" => BlackwellOutputConsoleCategory::Utils,
-        "foundry" => BlackwellOutputConsoleCategory::Foundry,
-        "error" => BlackwellOutputConsoleCategory::Error,
-        "general" => BlackwellOutputConsoleCategory::General,
-        "debug" => BlackwellOutputConsoleCategory::Debug,
-        _ => return Err("Unknown category".to_string()),
-    };
+    let cat = BlackwellOutputConsoleCategory::from_identifier(&category)
+        .ok_or_else(|| "Unknown category".to_string())?;
 
     let lines = app.blackwell_output_console_manager
         .get_recent_lines_for_category(cat, limit.unwrap_or(500));
@@ -254,15 +248,8 @@ async fn clear_blackwell_output_console_category(
 ) -> Result<(), String> {
     use crate::output_console::BlackwellOutputConsoleCategory;
 
-    let cat = match category.as_str() {
-        "engines" => BlackwellOutputConsoleCategory::Engines,
-        "utils" => BlackwellOutputConsoleCategory::Utils,
-        "foundry" => BlackwellOutputConsoleCategory::Foundry,
-        "error" => BlackwellOutputConsoleCategory::Error,
-        "general" => BlackwellOutputConsoleCategory::General,
-        "debug" => BlackwellOutputConsoleCategory::Debug,
-        _ => return Err("Unknown category".to_string()),
-    };
+    let cat = BlackwellOutputConsoleCategory::from_identifier(&category)
+        .ok_or_else(|| "Unknown category".to_string())?;
 
     app.blackwell_output_console_manager.clear_category_buffer(cat);
     Ok(())
@@ -288,15 +275,8 @@ async fn emit_to_blackwell_console(
     use crate::output_console::BlackwellOutputConsoleCategory;
     use crate::output_console::BlackwellOutputConsoleLineStyle;
 
-    let cat = match category.as_str() {
-        "engines" => BlackwellOutputConsoleCategory::Engines,
-        "utils" => BlackwellOutputConsoleCategory::Utils,
-        "foundry" => BlackwellOutputConsoleCategory::Foundry,
-        "error" => BlackwellOutputConsoleCategory::Error,
-        "general" => BlackwellOutputConsoleCategory::General,
-        "debug" => BlackwellOutputConsoleCategory::Debug,
-        _ => return Err("Unknown category".to_string()),
-    };
+    let cat = BlackwellOutputConsoleCategory::from_identifier(&category)
+        .ok_or_else(|| "Unknown category".to_string())?;
 
     let style = match style.as_str() {
         "Normal" => BlackwellOutputConsoleLineStyle::Normal,

@@ -20,11 +20,10 @@
       0.3384311634160352,
       0.6615688365839648
     ],
-    "configColumnCount": 3,
+    "configColumnCount": 2,
     "configColumnWidths": [
-      0.4,
-      0.3,
-      0.3
+      0.5,
+      0.5
     ],
     "groupColumn": {
       "ADVANCED": 1,
@@ -42,6 +41,7 @@
       "default": 4096,
       "dock": "",
       "essentialsHiddenValues": [
+        8192,
         16384
       ],
       "flag": "--batch-size",
@@ -61,7 +61,8 @@
         2048,
         4096,
         8192,
-        16384
+        16384,
+        32768
       ]
     },
     {
@@ -87,7 +88,9 @@
         256,
         512,
         1024,
-        4096
+        4096,
+        8192,
+        16384
       ]
     },
     {
@@ -125,8 +128,7 @@
       "ui_group": "PERFORMANCE",
       "values": [
         "on",
-        "off",
-        "auto"
+        "off"
       ]
     },
     {
@@ -155,8 +157,8 @@
       "flag_pair": [],
       "hidden_default": false,
       "key": "load_mode",
-      "label": "LOAD-MODE",
-      "note": "Model load path: mmap / mlock / dio (replaces deprecated --no-mmap). Cockpit header toggle.",
+      "label": "Load Mode",
+      "note": "E                 model loading mode (default: mmap)",
       "pattern": "",
       "ptype": "arg_select",
       "step": null,
@@ -365,6 +367,7 @@
       "ui_group": "SPECULATIVE-MTP",
       "values": [
         0,
+        0.01,
         0.6,
         0.75,
         0.8
@@ -375,7 +378,7 @@
       "dock": "",
       "flag": "--spec-draft-n-max",
       "flag_pair": [],
-      "hidden_default": true,
+      "hidden_default": false,
       "key": "dflash_n_max",
       "label": "DRAFT-N-MAX",
       "note": "DFlash: maximum draft tokens per speculative step.",
@@ -389,6 +392,7 @@
         2,
         3,
         4,
+        5,
         6,
         8,
         12
@@ -421,7 +425,7 @@
       "dock": "",
       "flag": "--spec-draft-p-min",
       "flag_pair": [],
-      "hidden_default": true,
+      "hidden_default": false,
       "key": "dflash_p_min",
       "label": "DRAFT-P-MIN",
       "note": "DFlash: minimum speculative decoding probability (greedy).",
@@ -432,6 +436,7 @@
       "ui_group": "SPECULATIVE-DFLASH",
       "values": [
         0,
+        0.01,
         0.6,
         0.75,
         0.8
@@ -442,7 +447,7 @@
       "dock": "",
       "flag": "--spec-draft-model",
       "flag_pair": [],
-      "hidden_default": true,
+      "hidden_default": false,
       "key": "dflash_draft_model",
       "label": "DRAFT-MODEL",
       "note": "External DFlash draft GGUF path. Set via Boost Get/Change draft.",
@@ -662,8 +667,7 @@
     "enable_metrics": true,
     "essentialParamKeys": [
       "batch",
-      "ubatch",
-      "vision"
+      "ubatch"
     ],
     "fit_adapter": "ggml_master",
     "fit_style": "ggml_fit_params",
@@ -684,8 +688,7 @@
     ],
     "simple_param_keys": [
       "batch",
-      "ubatch",
-      "vision"
+      "ubatch"
     ],
     "supports_fusion": true,
     "tensor_split": true,
@@ -694,6 +697,6 @@
       "4"
     ]
   },
-  "templateVersion": 44,
+  "templateVersion": 45,
   "template_type": "ggml-llama"
 }

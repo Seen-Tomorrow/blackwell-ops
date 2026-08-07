@@ -42,7 +42,9 @@ function Read-MajesticConfig {
     if (-not (Test-Path -LiteralPath $config_path)) {
         throw "Missing majestic.config.json at $config_path"
     }
-    $cfg = Get-Content -LiteralPath $config_path -Raw | ConvertFrom-Json
+    # -Encoding UTF8: release notes / descriptions hold non-ASCII (em-dash).
+    # Windows PowerShell 5.1 defaults to ANSI and mangles UTF-8 into mojibake.
+    $cfg = Get-Content -LiteralPath $config_path -Raw -Encoding UTF8 | ConvertFrom-Json
     # Provider maps always come from scripts/distribution-policy.json (DEV app + scripts).
     Import-RuntimeDistributionPolicy
 
@@ -267,7 +269,7 @@ function Invoke-ForceReleasePackageClean {
 
 function Get-PackKindLabel {
     param([string]$Kind)
-    if ($Kind -eq 'app') { 'App update (7z)' } else { 'Full Bundle (NSIS + packs)' }
+    if ($Kind -eq 'app') { 'App update (7z)' } else { 'Full Bundle (CORE: App .7z + NSIS w/ ggml-master)' }
 }
 
 function Get-ReleaseNotesForVariant {

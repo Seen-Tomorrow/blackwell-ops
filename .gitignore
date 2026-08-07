@@ -70,6 +70,7 @@ src-tauri/updater_private.key
 # --- Temp build/installer junk ---
 $tmp/
 $tmp/**
+tmp/
 scripts/majestic/.majestic-enabled
 scripts/majestic/.majestic-secrets
 scripts/majestic/majestic.lock

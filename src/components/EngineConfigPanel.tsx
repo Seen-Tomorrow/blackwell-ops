@@ -13,7 +13,6 @@ import {
   loadCtxCockpitDock,
   loadEnginesInRail,
   loadHwMonitorOpen,
-  loadLaunchDockCollapsed,
   loadLaunchDockPosition,
   loadLaunchDockPositionExplicit,
   loadUiDensity,
@@ -419,7 +418,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   );
   const [launchDockPosition, setLaunchDockPosition] = useState<LaunchDockPosition>(loadLaunchDockPosition);
   const [launchDockPositionExplicit, setLaunchDockPositionExplicit] = useState(loadLaunchDockPositionExplicit);
-  const [launchDockCollapsed, setLaunchDockCollapsed] = useState(loadLaunchDockCollapsed);
+  // Collapse removed from chrome (lost custom flags for little height). Always expanded.
+  const [launchDockCollapsed, setLaunchDockCollapsed] = useState(false);
   const [hwMonitorOpen, setHwMonitorOpen] = useState(loadHwMonitorOpen);
   const [enginesInRail, setEnginesInRail] = useState(loadEnginesInRail);
   /** AtomCode harness wizard open — full cockpit takeover; skip param dim. */
@@ -484,22 +484,16 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     setLaunchDockPosition(position);
     setLaunchDockPositionExplicit(true);
     saveLaunchDockPosition(position, true);
-    if (position === "right") {
-      setLaunchDockCollapsed(false);
-      saveLaunchDockCollapsed(false);
-    }
+    setLaunchDockCollapsed(false);
+    saveLaunchDockCollapsed(false);
   }, []);
 
-  const toggleLaunchDockCollapsed = useCallback(() => {
-    setLaunchDockCollapsed((prev) => {
-      const next = !prev;
-      saveLaunchDockCollapsed(next);
-      return next;
-    });
-  }, []);
+  /** Single toggle like CTX — bottom ↔ right rail. */
+  const toggleLaunchDockPosition = useCallback(() => {
+    setLaunchDockPositionUser(launchDockPosition === "bottom" ? "right" : "bottom");
+  }, [launchDockPosition, setLaunchDockPositionUser]);
 
-  // Default dock is bottom (right rail closed). Only an explicit user choice
-  // (BOTTOM / RIGHT chips) changes placement — no viewport-height auto-flip.
+  // Default dock is bottom. Explicit user toggle marks explicit (no height auto-flip).
 
   const toggleGroup = useCallback((groupId: string) => {
     setCollapsedGroups(prev => {
@@ -1278,7 +1272,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     const best = pickBestDraftPair(model, models, "external_dflash", HIGH_DRAFT_PAIR_SCORE);
     if (!best) return;
     updateParam(DFLASH_DRAFT_MODEL, best.path);
-    saveDraftPairing(model.path, "draft-dflash", best.path);
+    saveDraftPairing(
+      model.path,
+      specBoostMethod === "dspark" ? "draft-dspark" : "draft-dflash",
+      best.path,
+    );
   }, [specBoostMethod, model, models, currentDraftPath, updateParam]);
 
   const customFlagsReplaceActive = testFlagsEnabled && testFlagsMode === "replace";
@@ -2683,9 +2681,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         }}
         launchDockPosition={launchDockPosition}
         launchDockPositionExplicit={launchDockPositionExplicit}
-        onSetLaunchDockPosition={setLaunchDockPositionUser}
-        launchDockCollapsed={launchDockCollapsed}
-        onToggleLaunchDockCollapsed={toggleLaunchDockCollapsed}
+        onToggleLaunchDockPosition={toggleLaunchDockPosition}
         hwMonitorOpen={hwMonitorOpen}
         onToggleHwMonitor={toggleHwMonitor}
         showLaunchRail={showLaunchRail}

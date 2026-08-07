@@ -6,9 +6,8 @@ import ConfigViewToggle from "./ConfigViewToggle";
 
 /**
  * Config toolbar: CONFIG view toggle / FULL AUTO badge, CTX dock placement,
- * launch-dock position + collapse, HW monitor, engines-in-rail, column count,
- * and layout mode. Pure presentational — the orchestrator owns all state and
- * passes slices + setters down.
+ * launch-dock position (single toggle like CTX), HW monitor, engines-in-rail,
+ * column count, and layout mode. Pure presentational — orchestrator owns state.
  */
 export default function EngineToolbar(props: EngineToolbarProps) {
   const {
@@ -19,9 +18,7 @@ export default function EngineToolbar(props: EngineToolbarProps) {
     onToggleCtxDock,
     launchDockPosition,
     launchDockPositionExplicit,
-    onSetLaunchDockPosition,
-    launchDockCollapsed,
-    onToggleLaunchDockCollapsed,
+    onToggleLaunchDockPosition,
     hwMonitorOpen,
     onToggleHwMonitor,
     showLaunchRail,
@@ -65,49 +62,24 @@ export default function EngineToolbar(props: EngineToolbarProps) {
         >
           CTX {ctxCockpitDock === "cockpit" ? "COCKPIT" : "ABOVE"}
         </button>
+        <button
+          type="button"
+          onClick={onToggleLaunchDockPosition}
+          className={`config-panel-toolbar-chip px-1.5 py-0.5 text-[8px] font-mono rounded-sm ${
+            launchDockPosition === "right" ? "config-panel-toolbar-chip--active" : ""
+          }`}
+          title={
+            launchDockPosition === "bottom"
+              ? "Launch dock along the bottom — click for right rail"
+              : "Launch dock as full-height right rail — click for bottom bar"
+          }
+        >
+          LAUNCH {launchDockPosition === "right" ? "RAIL" : "BOTTOM"}
+          {!launchDockPositionExplicit ? (
+            <span className="opacity-40 ml-0.5 hidden md:inline">·auto</span>
+          ) : null}
+        </button>
         <div className="config-launch-dock-controls flex items-center gap-1.5 min-w-0">
-          <span className="config-panel-toolbar__label">LAUNCH DOCK</span>
-          <div className="flex items-center gap-0.5">
-            <button
-              type="button"
-              onClick={() => onSetLaunchDockPosition("bottom")}
-              className={`config-panel-toolbar-chip px-1.5 py-0.5 text-[8px] font-mono rounded-sm ${
-                launchDockPosition === "bottom" ? "config-panel-toolbar-chip--active" : ""
-              }`}
-              title="Launch dock along the bottom"
-            >
-              BOTOM
-            </button>
-            {launchDockPosition === "bottom" && (
-              <button
-                type="button"
-                onClick={onToggleLaunchDockCollapsed}
-                className="config-panel-toolbar-chip px-1 py-0.5 text-[8px] font-mono rounded-sm"
-                title={
-                  launchDockCollapsed
-                    ? "Expand launch dock (show custom flags)"
-                    : "Collapse launch dock — alias, port, launch only"
-                }
-              >
-                {launchDockCollapsed ? "▼" : "▲"}
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => onSetLaunchDockPosition("right")}
-              className={`config-panel-toolbar-chip px-1.5 py-0.5 text-[8px] font-mono rounded-sm ${
-                launchDockPosition === "right" ? "config-panel-toolbar-chip--active" : ""
-              }`}
-              title="Launch rail — full-height column on the right (auto on short viewports until you pick)"
-            >
-              RIGHT RAIL
-            </button>
-          </div>
-          {!launchDockPositionExplicit && (
-            <span className="text-[7px] font-mono text-stealth-muted/40 hidden md:inline shrink-0">
-              auto
-            </span>
-          )}
           <button
             type="button"
             onClick={onToggleHwMonitor}
@@ -117,7 +89,7 @@ export default function EngineToolbar(props: EngineToolbarProps) {
             title={
               hwMonitorOpen
                 ? "HW monitor on — live CPU/GPU stats (CPU polling active)"
-                : "HW monitor off — open for live CPU/GPU column (works with BOT or RAIL dock)"
+                : "HW monitor off — open for live CPU/GPU column (works with BOTTOM or RAIL dock)"
             }
           >
             HW MONITOR
@@ -186,9 +158,8 @@ export interface EngineToolbarProps {
   onToggleCtxDock: () => void;
   launchDockPosition: LaunchDockPosition;
   launchDockPositionExplicit: boolean;
-  onSetLaunchDockPosition: (p: LaunchDockPosition) => void;
-  launchDockCollapsed: boolean;
-  onToggleLaunchDockCollapsed: () => void;
+  /** Cycle bottom ↔ right (same single-toggle pattern as CTX). */
+  onToggleLaunchDockPosition: () => void;
   hwMonitorOpen: boolean;
   onToggleHwMonitor: () => void;
   showLaunchRail: boolean;

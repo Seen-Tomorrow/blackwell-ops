@@ -51,7 +51,8 @@ type ReleaseAction =
   | "ship_provider"
   | "pack_ship_app"
   | "pack_ship_full"
-  | "pack_ship_provider";
+  | "pack_ship_provider"
+  | "pack_ship_all_providers";
 
 function roleBadge(role: string): string {
   if (role === "core") return "border-nv-green/40 text-nv-green";
@@ -340,80 +341,80 @@ export default function DistributionDevPanel() {
         </section>
 
         <section className="space-y-2">
-          <h3 className="text-[10px] font-mono theme-accent-text tracking-wider uppercase">
-            App / Full (chains)
+          <h3 className="text-[10px] font-mono text-cyan-400/90 tracking-wider uppercase">
+            App update
           </h3>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void runAction("check_app")}
-              className="text-[9px] font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border border-white/15 disabled:opacity-40"
-            >
-              Check App
-            </button>
+          <div className="flex flex-wrap gap-2 items-center">
             <button
               type="button"
               disabled={busy}
               onClick={() => void runAction("pack_ship_app")}
-              className="text-[9px] font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border border-yellow-400/50 text-yellow-400 disabled:opacity-40"
+              className="text-[9px] font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border border-cyan-400/50 text-cyan-300 bg-cyan-400/10 hover:bg-cyan-400/15 disabled:opacity-40"
               title="Bump patch + pack App .7z + ship (no YES prompt)"
             >
               Pack+Ship App
             </button>
-            <span className="text-stealth-muted/40 self-center text-[9px] font-mono">|</span>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void runAction("check_full")}
-              className="text-[9px] font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border border-white/15 disabled:opacity-40"
-            >
-              Check Full
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void runAction("pack_ship_full")}
-              className="text-[9px] font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border border-nv-green/50 text-nv-green disabled:opacity-40"
-              title="Bump patch + pack Full NSIS + ship"
-            >
-              Pack+Ship Full
-            </button>
-          </div>
-          <div className="flex flex-wrap gap-2">
+            <span className="text-[9px] font-mono uppercase px-2 py-0.5 rounded-sm border border-cyan-400/25 text-cyan-300/70 disabled:opacity-40">
+              <button type="button" disabled={busy} onClick={() => void runAction("check_app")} className="disabled:opacity-40">Check</button>
+            </span>
             <button
               type="button"
               disabled={busy}
               onClick={() => void runAction("pack_app")}
-              className="text-[8px] font-mono uppercase px-2 py-0.5 rounded-sm border border-white/10 text-stealth-muted/70 disabled:opacity-40"
+              className="text-[8px] font-mono uppercase px-2 py-0.5 rounded-sm border border-cyan-400/25 text-cyan-300/70 hover:bg-cyan-400/10 disabled:opacity-40"
             >
-              Pack App only
+              Pack only
             </button>
             <button
               type="button"
               disabled={busy}
               onClick={() => void runAction("ship_app")}
-              className="text-[8px] font-mono uppercase px-2 py-0.5 rounded-sm border border-white/10 text-stealth-muted/70 disabled:opacity-40"
+              className="text-[8px] font-mono uppercase px-2 py-0.5 rounded-sm border border-cyan-400/25 text-cyan-300/70 hover:bg-cyan-400/10 disabled:opacity-40"
               title="Ship staged App assets for current version tag (no pack)"
             >
-              Ship App only
+              Ship only
+            </button>
+          </div>
+        </section>
+
+        <section className="space-y-2">
+          <h3 className="text-[10px] font-mono text-nv-green/90 tracking-wider uppercase">
+            Full bundle (ggml-master only)
+          </h3>
+          <div className="flex flex-wrap gap-2 items-center">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void runAction("pack_ship_full")}
+              className="text-[9px] font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border border-nv-green/50 text-nv-green bg-nv-green/10 hover:bg-nv-green/15 disabled:opacity-40"
+              title="Bump patch + pack Full NSIS (ggml-master) + ship"
+            >
+              Pack+Ship Full
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void runAction("check_full")}
+              className="text-[9px] font-mono uppercase tracking-wider px-2 py-1 rounded-sm border border-nv-green/30 text-nv-green/80 hover:bg-nv-green/10 disabled:opacity-40"
+            >
+              Check
             </button>
             <button
               type="button"
               disabled={busy}
               onClick={() => void runAction("pack_full")}
-              className="text-[8px] font-mono uppercase px-2 py-0.5 rounded-sm border border-white/10 text-stealth-muted/70 disabled:opacity-40"
+              className="text-[8px] font-mono uppercase px-2 py-0.5 rounded-sm border border-nv-green/25 text-nv-green/70 hover:bg-nv-green/10 disabled:opacity-40"
             >
-              Pack Full only
+              Pack only
             </button>
             <button
               type="button"
               disabled={busy}
               onClick={() => void runAction("ship_full")}
-              className="text-[8px] font-mono uppercase px-2 py-0.5 rounded-sm border border-white/10 text-stealth-muted/70 disabled:opacity-40"
+              className="text-[8px] font-mono uppercase px-2 py-0.5 rounded-sm border border-nv-green/25 text-nv-green/70 hover:bg-nv-green/10 disabled:opacity-40"
               title="Ship staged Full assets for current version tag (no pack)"
             >
-              Ship Full only
+              Ship only
             </button>
           </div>
           {dash?.workflowNotes && (
@@ -429,9 +430,20 @@ export default function DistributionDevPanel() {
         </section>
 
         <section className="space-y-2">
-          <h3 className="text-[10px] font-mono theme-accent-text tracking-wider uppercase">
-            Providers
-          </h3>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <h3 className="text-[10px] font-mono text-orange-400/90 tracking-wider uppercase">
+              Providers (engine packs)
+            </h3>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void runAction("pack_ship_all_providers")}
+              className="text-[9px] font-mono uppercase tracking-wider px-3 py-1.5 rounded-sm border border-orange-400/60 text-orange-300 bg-orange-400/10 hover:bg-orange-400/15 disabled:opacity-40"
+              title="Pack + ship EVERY provider/profile in distribution-policy.json in one pass (plugins + core ggml-master), one after another. Uses current version tag (no bump)."
+            >
+              Pack+Ship All Providers (Plugins + Core GGML)
+            </button>
+          </div>
           <div className="space-y-2">
             {(dash?.providers ?? []).map((row) => (
               <div

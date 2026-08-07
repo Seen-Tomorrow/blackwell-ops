@@ -96,8 +96,8 @@ interface UseScenarioEvaluatorProps {
   fitStyle?: string;
 }
 
-// Shared debug emission helper to avoid duplicating IPC calls to Blackwell Output Console
-function emitScenarioDebug(
+// Shared scenarios-tab emission helper to avoid duplicating IPC calls to Blackwell Output Console
+function emitScenarioConsole(
   modelName: string,
   modelMeta: any,
   fps: FitPoint[] | null,
@@ -164,9 +164,9 @@ function emitScenarioDebug(
   const ep = engineConfig.extra_params || {};
   lines.push(`[SCENARIO] Config: CTX=${ep.ctx} KVQ=${ep["kv_quant"]} Batch=${ep.batch} Par=${ep.parallel} Split=${ep.split} FA=${fa} Offload=${ep["offload_mode"]}`);
 
-  // Emit to Blackwell Output Console via IPC (fire-and-forget)
+  // Emit to Blackwell Output Console Scenarios tab via IPC (fire-and-forget)
   void invoke("emit_to_blackwell_console", {
-    category: "debug",
+    category: "scenarios",
     content: lines.join("\n"),
     style: "Warning",
   });
@@ -318,7 +318,7 @@ export function useScenarioEvaluator({
     // Model must have GGUF metadata scanned (from cache)
     if (!model.metadata) {
       void invoke("emit_to_blackwell_console", {
-        category: "debug",
+        category: "scenarios",
         content: `[ScenarioEvaluator] No cached GGUF metadata for ${model.path.split("/").pop()}`,
         style: "Warning",
       });
@@ -378,11 +378,11 @@ export function useScenarioEvaluator({
       }
       commitManifest(result);
 
-      // Scenario debug emission (deduped by model path + scenario name)
+      // Scenario console emission (deduped by model path + scenario name)
       if (model.path !== lastScenarioDebugModelRef.current || result.scenario !== lastScenarioDebugNameRef.current) {
         const modelName = model.path.split(/[\/\\]/).pop() || model.path;
         const fps = fitPointsRef.current;
-        emitScenarioDebug(
+        emitScenarioConsole(
           modelName, model.metadata, fps, result.scenario,
           result.vramWeightsGb, result.vramKvGb, result.vramOverheadGb,
           result.vramTotalGb, result.gpuAllocations, result.gpuLayers, result.ramLayers,
@@ -681,11 +681,11 @@ export function useScenarioEvaluator({
 
       commitManifest(validatedManifest);
 
-     // Validation debug emission — emit when scenario changed or validation newly applied
+     // Validation console emission — emit when scenario changed or validation newly applied
       if (model.path !== lastScenarioDebugModelRef.current || validatedManifest.scenario !== lastScenarioDebugNameRef.current || result.vram_mib !== validatedManifest.validatedVramMib) {
         const modelName = model.path.split(/[\/\\]/).pop() || model.path;
         const fps = fitPointsRef.current;
-        emitScenarioDebug(
+        emitScenarioConsole(
           modelName, model.metadata, fps, validatedManifest.scenario,
           validatedManifest.vramWeightsGb, validatedManifest.vramKvGb, validatedManifest.vramOverheadGb,
           validatedManifest.vramTotalGb, validatedManifest.gpuAllocations, validatedManifest.gpuLayers, validatedManifest.ramLayers,

@@ -64,6 +64,26 @@ function Set-JobStatus {
     [System.IO.File]::WriteAllText($status_path, $json, $utf8NoBom)
 }
 
+# Enumerate every provider/profile pack in the distribution policy
+# (nsisCore = CORE packs incl. ggml-master, plugins = PLUGIN packs).
+function Get-AllPolicyProviderRows {
+    $policy_path = Join-Path $root 'scripts\distribution-policy.json'
+    if (-not (Test-Path -LiteralPath $policy_path)) {
+        throw "Missing distribution policy: $policy_path"
+    }
+    $policy = Get-Content -LiteralPath $policy_path -Raw | ConvertFrom-Json
+    $rows = @()
+    $maps = @($policy.nsisCore, $policy.plugins) | Where-Object { $null -ne $_ }
+    foreach ($map in $maps) {
+        foreach ($prop in $map.PSObject.Properties) {
+            foreach ($profile_id in @($prop.Value)) {
+                $rows += [PSCustomObject]@{ Provider = $prop.Name; Profile = $profile_id }
+            }
+        }
+    }
+    $rows
+}
+
 function Invoke-Majestic {
     # Hashtable splat required: array splat is positional only, so '-Mode' became Mode's value.
     param([hashtable]$Params)
@@ -162,7 +182,7 @@ try {
         'pack_ship_full' {
             Write-JobLog '=== bump ==='
             Invoke-Majestic -Params @{ Mode = 'bump' }
-            Write-JobLog '=== pack full (NSIS + packs) - long running ==='
+            Write-JobLog '=== pack full (CORE only: App .7z + NSIS with ggml-master) - long running ==='
             Invoke-Majestic -Params @{ Mode = 'pack'; Variant = 'full' }
             Write-JobLog '=== ship ==='
             Invoke-Majestic -Params @{ Mode = 'ship' }
@@ -175,6 +195,19 @@ try {
             Invoke-Majestic -Params @{ Mode = 'pack-provider'; ProviderId = $ProviderId; ProfileId = $ProfileId }
             Write-JobLog "=== ship $ProviderId/$ProfileId ==="
             Invoke-Majestic -Params @{ Mode = 'ship-provider'; ProviderId = $ProviderId; ProfileId = $ProfileId }
+        }
+        'pack_ship_all_providers' {
+            $rows = Get-AllPolicyProviderRows
+            if ($rows.Count -eq 0) {
+                throw 'No providers in distribution policy to pack/ship'
+            }
+            Write-JobLog "Packing/shipping $($rows.Count) provider/profile pack(s) from distribution-policy.json..."
+            foreach ($row in $rows) {
+                Write-JobLog "=== pack $($row.Provider)/$($row.Profile) ==="
+                Invoke-Majestic -Params @{ Mode = 'pack-provider'; ProviderId = $row.Provider; ProfileId = $row.Profile }
+                Write-JobLog "=== ship $($row.Provider)/$($row.Profile) ==="
+                Invoke-Majestic -Params @{ Mode = 'ship-provider'; ProviderId = $row.Provider; ProfileId = $row.Profile }
+            }
         }
         'pack_provider' {
             if (-not $ProviderId -or -not $ProfileId) { throw 'pack_provider needs ids' }

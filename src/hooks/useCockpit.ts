@@ -271,14 +271,20 @@ export function useCockpit({
   const dflashGettable = useMemo(() => mainMaySupportDflash(model), [model]);
 
   const dflashDraftLabel = useMemo(() => {
+    const cur =
+      config[DFLASH_DRAFT_MODEL] != null ? String(config[DFLASH_DRAFT_MODEL]) : "";
+    if (cur.trim() && /\.gguf$/i.test(cur.trim())) {
+      return resolveDraftPathLabel(cur.trim());
+    }
     if (!model || !models?.length || !dflashLibraryReady) return null;
+    const cliType =
+      speedBoost === "dspark" ? "draft-dspark" : "draft-dflash";
     const path = resolveExternalDraftPath(model, models, "external_dflash", {
-      currentPath:
-        config[DFLASH_DRAFT_MODEL] != null ? String(config[DFLASH_DRAFT_MODEL]) : null,
-      specType: "draft-dflash",
+      currentPath: cur || null,
+      specType: cliType,
     });
     return path ? resolveDraftPathLabel(path) : null;
-  }, [model, models, dflashLibraryReady, config]);
+  }, [model, models, dflashLibraryReady, config, speedBoost]);
 
   const applyFullAutoCockpit = useCallback(
     async (
