@@ -313,6 +313,37 @@
   border-color: color-mix(in srgb, var(--theme-accent) 55%, var(--theme-border));
 }
 
+/* Onboarding scan-meta phase — make the scan buttons unmissable (bigger, bolder, cyan glow).
+   Only the main SCAN META CTA pulses; the 4×/8× options zoom but stay steady.
+   The pulse-grow animation lives in playground.css (loaded later) so it wins the
+   specificity/order battle over the generic [data-onboarding=scan-meta] pulse. */
+.catalog-scan-btn--onboarding {
+  font-size: 13px !important;
+  padding: 0.5rem 1rem !important;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--theme-tel-cyan, #22d3ee) !important;
+  border-color: color-mix(in srgb, var(--theme-tel-cyan, #22d3ee) 70%, transparent) !important;
+  background: color-mix(in srgb, var(--theme-tel-cyan, #22d3ee) 10%, transparent) !important;
+  z-index: 2;
+}
+
+/* Scan-meta submenu options (4× / 8× / ✕) — zoomed to match the CTA, steady (no pulse). */
+.catalog-scan-btn--onboarding-option {
+  font-size: 12px !important;
+  padding: 0.4rem 0.85rem !important;
+  font-weight: 700;
+  color: var(--theme-tel-cyan, #22d3ee) !important;
+  border-color: color-mix(in srgb, var(--theme-tel-cyan, #22d3ee) 55%, transparent) !important;
+  background: transparent !important;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.catalog-scan-btn--onboarding-option:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--theme-tel-cyan, #22d3ee) 14%, transparent) !important;
+  transform: scale(1.05);
+}
+
 .catalog-scan-status {
   color: var(--theme-accent-bright);
 }

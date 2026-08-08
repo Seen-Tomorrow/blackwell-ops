@@ -53,7 +53,7 @@ $Gen = "-G `"$($prof.generator)`" -A $($prof.arch) -DCMAKE_GENERATOR_INSTANCE=`"
 $Toolset = "-T `"cuda=$($prof.cuda)`""
 $ForcedCuda = "-DCMAKE_CUDA_COMPILER=`"$($Nvcc.Replace('\','/'))`" -DCUDAToolkit_ROOT=`"$($CudaRoot.Replace('\','/'))`" -DCMAKE_VS_PLATFORM_TOOLSET_CUDA=`"$($prof.cuda)`""
 $AsmFlag = "-DCMAKE_ASM_COMPILER=`"$($Ml64.Replace('\','/'))`""
-$Flags = "-DLLAMA_CURL=OFF -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=`"$CudaArch`" -DGGML_CUDA_PEER_TO_PEER=ON"
+$Flags = "-DLLAMA_CURL=OFF -DGGML_CUDA=ON -DGGML_NATIVE=OFF -DLLAMA_BUILD_SERVER=ON -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DCMAKE_CUDA_ARCHITECTURES=`"$CudaArch`" -DGGML_CUDA_PEER_TO_PEER=ON"
 $Ml64Bin = Split-Path $Ml64 -Parent
 $Cmake = Join-Path $Toolchain "cmake\bin\cmake.exe"
 if (-not (Test-Path $Cmake)) { throw "Missing portable cmake: $Cmake (re-run populate-foundry-toolchain.ps1)" }
@@ -71,7 +71,8 @@ set "PATH=$CudaRoot\bin;%PATH%"
 if errorlevel 1 exit /b 1
 "@
 if ($Build) {
-    $bat += "`n`"$Cmake`" --build `"$BuildDir`" --config Release --target llama-server -j %NUMBER_OF_PROCESSORS%"
+    # Product core targets only (matches Foundry default; optional cli/quantize via UI toggle).
+    $bat += "`n`"$Cmake`" --build `"$BuildDir`" --config Release --target llama-server --target llama-fit-params -j %NUMBER_OF_PROCESSORS%"
 }
 
 $batPath = Join-Path $WorkRoot "_test_cfg.bat"

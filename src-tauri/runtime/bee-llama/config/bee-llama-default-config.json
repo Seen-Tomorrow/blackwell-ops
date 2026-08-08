@@ -1,7 +1,7 @@
 {
   "binary_name": "llama-server.exe",
   "branch": "main",
-  "build_profile": "-DGGML_CUDA=ON\n-DCMAKE_CUDA_ARCHITECTURES=\"120\"\n-DGGML_AVX512=ON",
+  "build_profile": "-DGGML_CUDA=ON\n-DCMAKE_CUDA_ARCHITECTURES=\"120\"\n-DGGML_AVX512=ON\n-DGGML_NATIVE=OFF",
   "description": "Optional engine fork (bee-llama)",
   "display_name": "Bee Llama",
   "git_url": "https://github.com/Anbeeld/beellama.cpp",

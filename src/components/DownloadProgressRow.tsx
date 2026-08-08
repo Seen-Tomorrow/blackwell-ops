@@ -1,4 +1,4 @@
-import { useCallback, type MouseEvent as ReactMouseEvent } from "react";
+import { useCallback, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { DownloadStatus, DownloadTask } from "@/lib/types";
 
@@ -86,10 +86,14 @@ export default function DownloadProgressRow({
       : 0;
   const speedStr = formatSpeed(task.speedBps);
   const etaStr = formatETA(task.etaSeconds);
+  // Explicit user cancellation (backend sets error = "Cancelled") is NOT resumable — the
+  // partial file is deleted and the task is meant to go away, not be picked back up.
+  const isCancelled = task.status === "failed" && task.error === "Cancelled";
   const canResume =
     task.status === "paused" ||
     ((task.taskKind === "toolchain" || task.taskKind === "app" || task.taskKind === "provider") &&
-      task.status === "failed");
+      task.status === "failed" &&
+      !isCancelled);
 
   const reportActionError = useCallback(
     (action: string, e: unknown) => {
@@ -130,12 +134,19 @@ export default function DownloadProgressRow({
     }
   }, [task.id, onActionError, reportActionError]);
 
+  const [confirmCancel, setConfirmCancel] = useState(false);
   const title = task.hfModelId || task.fileName;
   const showProgress =
     task.status === "downloading" ||
     task.status === "paused" ||
     task.status === "failed" ||
     task.status === "scanning";
+
+  const handleCancelClick = useCallback((e?: ReactMouseEvent) => {
+    e?.stopPropagation();
+    // Ask first — PAUSE and CANCEL sit side by side, and cancel deletes the partial file.
+    setConfirmCancel(true);
+  }, []);
 
   const actionBtns = (
     <>
@@ -162,7 +173,7 @@ export default function DownloadProgressRow({
         task.status === "queued") && (
         <button
           type="button"
-          onClick={(e) => { void handleCancel(e); }}
+          onClick={(e) => { handleCancelClick(e); }}
           className="rounded-sm border border-red-400/30 px-1.5 py-0.5 text-[8px] font-mono text-red-400 transition-all hover:bg-red-400/10 whitespace-nowrap"
         >
           CANCEL
@@ -171,8 +182,40 @@ export default function DownloadProgressRow({
     </>
   );
 
+  const confirmModal = confirmCancel ? (
+    <div className="download-confirm-overlay" onClick={(e) => { e.stopPropagation(); setConfirmCancel(false); }}>
+      <div className="download-confirm" onClick={(e) => e.stopPropagation()}>
+        <p className="download-confirm__title">Cancel this download?</p>
+        <p className="download-confirm__body">
+          This will remove the unfinished download from disk. Pause keeps your progress instead.
+        </p>
+        <div className="download-confirm__actions">
+          <button
+            type="button"
+            className="download-confirm__btn download-confirm__btn--no"
+            onClick={(e) => { e.stopPropagation(); setConfirmCancel(false); }}
+          >
+            NO — KEEP IT
+          </button>
+          <button
+            type="button"
+            className="download-confirm__btn download-confirm__btn--yes"
+            onClick={(e) => {
+              e.stopPropagation();
+              setConfirmCancel(false);
+              void handleCancel(e);
+            }}
+          >
+            YES — REMOVE
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   if (inline) {
     return (
+      <>
       <div className="download-progress-inline flex items-center gap-2 min-w-0 font-mono text-[8px]">
         <span className="download-progress-inline__name text-white/85 whitespace-nowrap">
           {title}
@@ -208,10 +251,13 @@ export default function DownloadProgressRow({
           </span>
         ) : null}
       </div>
+      {confirmModal}
+      </>
     );
   }
 
   return (
+    <>
     <div
       className={`rounded-sm border border-stealth-border/60 bg-stealth-surface/40 space-y-1.5 ${
         compact ? "p-1.5" : "p-2"
@@ -277,5 +323,7 @@ export default function DownloadProgressRow({
         </span>
       )}
     </div>
+    {confirmModal}
+    </>
   );
 }

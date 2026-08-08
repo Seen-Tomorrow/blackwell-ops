@@ -168,6 +168,8 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
     () => splitFoundryBuildProfile(provider.build_profile ?? "").archCodes,
   );
   const [generator, setGenerator] = useState(provider.foundry_generator ?? "");
+  /** Offline llama-cli + llama-quantize; product only needs server + fit-params. */
+  const [includeExtraTools, setIncludeExtraTools] = useState(false);
   const [backupRetryCount, setBackupRetryCount] = useState(0);
   const [showEngineWarning, setShowEngineWarning] = useState(false);
   const [engineListText, setEngineListText] = useState("");
@@ -196,6 +198,7 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
     setBuildProfile(split.base);
     setSelectedArchs(split.archCodes);
     setGenerator(provider.foundry_generator ?? "");
+    setIncludeExtraTools(false);
     setBackupRetryCount(0);
     setShowEngineWarning(false);
     setEngineListText("");
@@ -382,6 +385,7 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
         maxCores: maxCores ?? undefined,
         cmakeFlags: trimmedProfile || null,
         generator: chosenGenerator || null,
+        includeExtraTools,
       });
     } catch (err) {
       clearTimeout(overlayTimeout);
@@ -414,7 +418,7 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
       clearTimeout(overlayTimeout);
       buildInvokeInFlightRef.current = false;
     }
-  }, [provider, environment, prUrl, maxCores, buildProfile, selectedArchs, generator]);
+  }, [provider, environment, prUrl, maxCores, buildProfile, selectedArchs, generator, includeExtraTools]);
 
   const handleConfirmBuild = useCallback(async () => {
     try {
@@ -522,6 +526,8 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
         setSelectedArchs={setSelectedArchs}
         maxCores={maxCores}
         setMaxCores={setMaxCores}
+        includeExtraTools={includeExtraTools}
+        setIncludeExtraTools={setIncludeExtraTools}
         showEngineWarning={showEngineWarning}
         engineListText={engineListText}
         onClose={onClose}

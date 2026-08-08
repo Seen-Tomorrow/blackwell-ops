@@ -82,6 +82,11 @@ export interface ScenarioInput {
   ramAvailableGb: number;
   ramManufacturedGb: number;
   mmprojSizeMib?: number;
+  /**
+   * External draft GGUF size (MiB) for draft-dflash / draft-dspark / eagle.
+   * Added on top of main weights — FIT scan does not include draft.
+   */
+  draftSizeMib?: number;
   fitPoints?: FitPoint[];
   /** True when launch uses provider --fit on (all FIT-capable providers). */
   autoVramLaunch?: boolean;
@@ -100,6 +105,8 @@ export interface ScenarioInput {
   learnedLaunchProfile?: string;
   /** ISO timestamp from learned-vram.json for SOURCE provenance. */
   learnedMeasuredAt?: string;
+  /** LEARNED launch snapshot: post-spec draft buffer sum (MiB) — signals full main+draft capture. */
+  learnedMtpContextMib?: number;
   /** Active FIT probe session — authoritative until config changes. */
   fitProbeVramMib?: number;
   fitProbeHostMib?: number;
@@ -543,6 +550,10 @@ export interface ComputedValues {
   kvCacheGb: number;
   overheadGb: number;
   visionGb: number;
+  /** External draft GGUF weights on GPU (dflash/dspark). */
+  draftWeightsGb: number;
+  /** Draft compute/KV overhead estimate (not in FIT probe). */
+  draftOverheadGb: number;
   vramTotalGb: number;
   gpuAvailable: number[];
   singleMaxAvailable: number;
@@ -560,10 +571,35 @@ export interface ComputedValues {
   fitCacheUsed: boolean;
 }
 
+/** External draft (dflash/dspark/eagle) active when CLI type needs a draft GGUF. */
+export function externalDraftSpecActive(engineConfig: EngineConfig): boolean {
+  const st = cfgStr(engineConfig, "spec_type", "none").toLowerCase()
+    || cfgStr(engineConfig, "__boost_spec_type", "").toLowerCase();
+  if (!st || st === "none" || st === "off") {
+    // Cockpit may only have draft path until launch flattens spec_type.
+    const draft = cfgStr(engineConfig, "dflash_draft_model", "")
+      || cfgStr(engineConfig, "spec_draft_model", "");
+    return !!draft && draft.toLowerCase() !== "auto" && draft.toLowerCase() !== "off" && /\.gguf$/i.test(draft);
+  }
+  if (st.includes("mtp") && !st.includes("dflash") && !st.includes("dspark") && !st.includes("eagle")) {
+    // Embedded MTP — no external GGUF.
+    return false;
+  }
+  return st.includes("dflash") || st.includes("dspark") || st.includes("eagle") || st.includes("draft");
+}
+
 export function computeValues(input: ScenarioInput, validatedVramMib?: number): ComputedValues {
   const { modelMeta, engineConfig, gpus } = input;
   const weightsGb = modelMeta.file_size_bytes / (1024 ** 3);
   const isMoe = modelMeta.n_expert > 0;
+  // Draft GGUF weights (BF16 dspark ~10.5 GiB) — FIT/library scan never sees these.
+  const draftWeightsGb =
+    externalDraftSpecActive(engineConfig) && (input.draftSizeMib ?? 0) > 0
+      ? (input.draftSizeMib as number) / 1024
+      : 0;
+  // Measured DS4+DSpark: ~6.6 GiB compute on ~10.5 GiB weights (~0.63×). Use 0.55 floor + 0.4 base.
+  const draftOverheadGb =
+    draftWeightsGb > 0 ? Math.max(0.4, draftWeightsGb * 0.55) : 0;
 
   // GPU-bound weight fraction — MOE_OPTIMAL always applies reduced fraction when selected.
   // Only attention + router weights go to GPU; expert FFN stays in RAM until dispatch.
@@ -647,11 +683,14 @@ export function computeValues(input: ScenarioInput, validatedVramMib?: number): 
   }
 
   // vramTotalGb is ALWAYS the sum of components — guarantees guards and display are consistent.
+  // External draft (dflash/dspark) is additive: FIT probe never loads the draft GGUF.
+  const draftAddonGb = draftWeightsGb + draftOverheadGb;
   let vramTotalGb: number;
   if (validatedVramMib) {
-    vramTotalGb = validatedVramMib / 1024;
+    // FIT probe = main model only → still add draft estimate.
+    vramTotalGb = validatedVramMib / 1024 + draftAddonGb;
   } else {
-    vramTotalGb = weightsOnGpuGb + kvCacheGb + overheadGb + visionGb;
+    vramTotalGb = weightsOnGpuGb + kvCacheGb + overheadGb + visionGb + draftAddonGb;
   }
 
   const gpuAvailable = computeGpuAvailableList(gpus, input.runningSlots);
@@ -666,7 +705,7 @@ export function computeValues(input: ScenarioInput, validatedVramMib?: number): 
   }
 
   return {
-    weightsGb, kvCacheGb, overheadGb, visionGb, vramTotalGb,
+    weightsGb, kvCacheGb, overheadGb, visionGb, draftWeightsGb, draftOverheadGb, vramTotalGb,
     gpuAvailable, singleMaxAvailable, multiTotalAvailable,
     targetGpuIdx, splitActive, numGpus: numGpusUsed,
     gpuWeightFraction, weightsOnGpuGb, ramWeightsGb, fitCacheUsed,
@@ -793,7 +832,13 @@ function computeMoeAlternative(
     const moeGpuFraction = computeMoeGpuWeightFraction(modelMeta);
     const moeWeightsOnGpuGb = computed.weightsGb * moeGpuFraction;
     
-    const moeVramTotal = moeWeightsOnGpuGb + computed.kvCacheGb + computed.overheadGb + computed.visionGb;
+    const moeVramTotal =
+      moeWeightsOnGpuGb
+      + computed.kvCacheGb
+      + computed.overheadGb
+      + computed.visionGb
+      + computed.draftWeightsGb
+      + computed.draftOverheadGb;
     const currentVramTotal = currentManifest.vramTotalGb;
     const vramSaved = currentVramTotal - moeVramTotal;
     const wouldFitOnGpu = moeVramTotal <= computed.singleMaxAvailable;

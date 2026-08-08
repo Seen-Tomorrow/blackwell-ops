@@ -770,6 +770,8 @@ export default function MultiAgentBooster({
         displayId: `${alias} :${hit.port}`,
         contextWindow: hit.n_ctx && hit.n_ctx > 0 ? hit.n_ctx : undefined,
         parallel: Math.max(1, Number(hit.parallel) || 1),
+        /** mmproj loaded on this seat at launch — harness vision capability. */
+        vision: Boolean(hit.vision),
         live: true as const,
       };
     };
@@ -785,6 +787,7 @@ export default function MultiAgentBooster({
       displayId: "no Running engine",
       contextWindow: undefined as number | undefined,
       parallel: 1,
+      vision: false,
       live: false as const,
     };
   }, [runningEngines, preferredSlotIdx, port]);
@@ -814,6 +817,7 @@ export default function MultiAgentBooster({
         displayId: `BRAIN ${brainAlias} :${brain.port}`,
         contextWindow: brain.n_ctx && brain.n_ctx > 0 ? brain.n_ctx : undefined,
         parallel: Math.max(1, Number(brain.parallel) || 1),
+        vision: Boolean(brain.vision),
         label: brain.alias || brain.model_name,
       },
       worker: {
@@ -822,6 +826,7 @@ export default function MultiAgentBooster({
         displayId: `WORKER ${workerAlias} :${worker.port}`,
         contextWindow: worker.n_ctx && worker.n_ctx > 0 ? worker.n_ctx : undefined,
         parallel: Math.max(1, Number(worker.parallel) || 1),
+        vision: Boolean(worker.vision),
         label: worker.alias || worker.model_name,
       },
     };
@@ -1156,12 +1161,14 @@ export default function MultiAgentBooster({
               model: soloTarget.model,
               contextWindow: soloTarget.contextWindow,
               parallel: soloTarget.parallel,
+              vision: soloTarget.vision,
             }
           : {
               port: dualTargets!.brain.port,
               model: dualTargets!.brain.model,
               contextWindow: dualTargets!.brain.contextWindow,
               parallel: dualTargets!.brain.parallel,
+              vision: dualTargets!.brain.vision,
             };
       const worker =
         mode === "solo"
@@ -1171,6 +1178,7 @@ export default function MultiAgentBooster({
               model: dualTargets!.worker.model,
               contextWindow: dualTargets!.worker.contextWindow,
               parallel: dualTargets!.worker.parallel,
+              vision: dualTargets!.worker.vision,
             };
 
       setAtomBusy("launch");
@@ -2375,7 +2383,7 @@ export default function MultiAgentBooster({
       data-density-unified={densityUnified ? "on" : "off"}
       data-ctx-dock={showCtxRail ? "in" : "above"}
     >
-      {/* Title left · optional soft note · flag toolbar far right (VISION / FLASH / LOAD) */}
+      {/* Title left · soft note · flags · AGENTIC (compact — not a full footer CTA) */}
       <div className="full-auto-cockpit__header full-auto-cockpit__header--minimal">
         <span className="full-auto-cockpit__title font-mono tracking-[0.16em] uppercase shrink-0">
           {powerMode ? "Power cockpit" : "Launch cockpit"}
@@ -2385,7 +2393,19 @@ export default function MultiAgentBooster({
             {plan.softNote}
           </span>
         ) : null}
-        <CockpitFlagToolbar flags={flagToggles} />
+        <div className="full-auto-cockpit__header-right flex items-center gap-1.5 min-w-0 ml-auto shrink-0">
+          <CockpitFlagToolbar flags={flagToggles} />
+          {!harnessOpen && (
+            <button
+              type="button"
+              onClick={() => setHarnessOpen(true)}
+              className="full-auto-cockpit__connect full-auto-cockpit__connect--header font-mono tracking-wider uppercase shrink-0"
+              title="Connect an external coding agent (AtomCode / Qwen / pi)"
+            >
+              AGENTIC
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="full-auto-cockpit__body space-y-3">
@@ -2546,24 +2566,12 @@ export default function MultiAgentBooster({
 
       </div>
 
-      {/* Footer: violet draft + SPEC-EXTRA (Assisted) + Connect.
-          Connect trigger is hidden while the wizard is open — the wizard's own
-          Close button in its header serves the toggle, and keeping the trigger
-          visible created a confusing two-CTA stack with the launch-dock button
-          when launchDockPosition === "bottom". */}
-      <div className="full-auto-cockpit__footer full-auto-cockpit__footer--actions">
-        {violetStrip}
-        {!harnessOpen && (
-          <button
-            type="button"
-            onClick={() => setHarnessOpen(true)}
-            className="full-auto-cockpit__connect font-mono tracking-wider uppercase shrink-0"
-            title="Connect an external coding agent to your engines (AtomCode or Qwen Code)"
-          >
-            TAKE ME TO AGENTIC WORK
-          </button>
-        )}
-      </div>
+      {/* Footer: draft strip + SPEC-EXTRA only (AGENTIC lives in header). */}
+      {violetStrip ? (
+        <div className="full-auto-cockpit__footer full-auto-cockpit__footer--actions">
+          {violetStrip}
+        </div>
+      ) : null}
     </div>
   );
 }

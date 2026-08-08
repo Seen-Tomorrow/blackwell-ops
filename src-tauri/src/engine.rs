@@ -609,6 +609,10 @@ pub async fn launch_engine(
         supports_fusion,
         split_mode: config.get_param_str("split").unwrap_or_else(|| "none".to_string()),
         parallel: config.get_parallel().max(1),
+        vision: cmd_args.windows(2).any(|w| w[0].eq_ignore_ascii_case("--mmproj"))
+            || cmd_args
+                .iter()
+                .any(|a| a.to_ascii_lowercase().starts_with("--mmproj=")),
     })
 }
 
@@ -747,6 +751,7 @@ pub async fn get_stack_status(app: tauri::State<'_, AppContext>) -> Result<Vec<S
                 supports_fusion: e.supports_fusion,
                 split_mode: e.split_mode.clone(),
                 parallel: e.parallel.max(1),
+                vision: e.vision,
             }
         })
         .collect();
@@ -1637,6 +1642,20 @@ pub(crate) fn is_placeholder_build_version(version: &str) -> bool {
             | "downloaded"
             | "catalog"
     )
+}
+
+/// Total on-disk size for a GGUF path (sums multi-shard sets). Used for draft VRAM forecast.
+#[tauri::command]
+pub fn get_path_size_bytes(path: String) -> Result<u64, String> {
+    let p = path.trim();
+    if p.is_empty() {
+        return Err("empty path".into());
+    }
+    let n = crate::model_catalog::get_total_model_size(p);
+    if n == 0 && !std::path::Path::new(p).is_file() {
+        return Err(format!("path not found: {p}"));
+    }
+    Ok(n)
 }
 
 fn clean_version_probe_output(stdout: &[u8], stderr: &[u8]) -> String {

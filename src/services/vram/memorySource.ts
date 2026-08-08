@@ -171,9 +171,14 @@ export function resolveMemorySource(
       || (input.learnedVramMib != null && input.learnedVramMib > 0)
     )
   ) {
+    const draftCtx = input.learnedMtpContextMib;
+    const draftNote =
+      draftCtx != null && draftCtx > 64
+        ? ` · draft/spec ~${(draftCtx / 1024).toFixed(1)} GB`
+        : "";
     return {
       kind: "learned",
-      detail: `Prior launch · ${formatMeasuredAt(input.learnedMeasuredAt)} · ctx ${ctx}${splitSuffix}`,
+      detail: `Prior launch · ${formatMeasuredAt(input.learnedMeasuredAt)} · ctx ${ctx}${splitSuffix}${draftNote}`,
       ...formatBreakdown(
         input.learnedGpuBreakdownMib,
         input.learnedHostMib,

@@ -25,6 +25,9 @@ interface FoundryConfirmFormProps {
   setSelectedArchs: Dispatch<SetStateAction<string[]>>;
   maxCores: number | null;
   setMaxCores: (v: number | null) => void;
+  /** Also cmake --target llama-cli + llama-quantize (offline tools; not used by the app). */
+  includeExtraTools: boolean;
+  setIncludeExtraTools: (v: boolean) => void;
   showEngineWarning: boolean;
   engineListText: string;
   onClose: () => void;
@@ -47,6 +50,8 @@ export default function FoundryConfirmForm({
   setSelectedArchs,
   maxCores,
   setMaxCores,
+  includeExtraTools,
+  setIncludeExtraTools,
   showEngineWarning,
   engineListText,
   onClose,
@@ -360,15 +365,38 @@ export default function FoundryConfirmForm({
             </select>
           </div>
 
+          <div className="pt-2 border border-stealth-border/40 rounded-sm px-2 py-2 bg-black/20">
+            <label className="flex items-start gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={includeExtraTools}
+                onChange={(e) => setIncludeExtraTools(e.target.checked)}
+                className="mt-0.5 accent-[var(--theme-nv-green,#76b900)] shrink-0"
+              />
+              <span className="min-w-0">
+                <span className="text-[8px] font-mono text-stealth-muted uppercase block">
+                  Also build CLI + quantize
+                </span>
+                <span className="text-[7px] font-mono text-stealth-muted/80 leading-snug block mt-0.5">
+                  Off by default (faster). Product always builds <span className="text-white/80">llama-server</span> +{" "}
+                  <span className="text-white/80">llama-fit-params</span>. Enable for offline{" "}
+                  <span className="text-white/80">llama-cli</span> / <span className="text-white/80">llama-quantize</span>{" "}
+                  (not used by the app runtime).
+                </span>
+              </span>
+            </label>
+          </div>
+
           <div className="pt-2">
             <label className="text-[8px] font-mono text-stealth-muted uppercase block mb-1">
               Build profile (CMake flags)
             </label>
             <p className="text-[7px] font-mono text-stealth-muted/80 mb-1.5 leading-tight">
-              Base flags + architectures above are merged when you build. Saved to provider on start. Add whatever you need here.
+              Base flags + architectures above are merged when you build. Server/tests/examples/native are always pinned.
+              Saved to provider on start.
             </p>
             <textarea
-              placeholder={"-DGGML_CUDA=ON\n-DGGML_AVX512=ON"}
+              placeholder={"-DGGML_CUDA=ON\n-DGGML_AVX512=ON\n-DGGML_NATIVE=OFF"}
               rows={5}
               className="foundry-build-profile-textarea w-full px-2 py-1.5 min-h-[5.5rem]"
               value={buildProfile}

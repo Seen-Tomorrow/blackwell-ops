@@ -2150,6 +2150,30 @@ impl FusionBrain {
                 }
                 apply_log_primary_ctx_live(s, d.n_decoded, d.is_proc);
 
+                // Multi-slot CTX bars use session_n_decoded. When NewPrompt/cached log parse
+                // fails (stale `update_slots` regex, silent models, mid-PP), log_prompt_fill
+                // stays 0 and bars show empty for active slots. Fall back to /slots prompt
+                // processed (+ per-request gen delta) without clobbering a higher log pin.
+                if d.is_proc {
+                    let gen_delta = d.n_decoded.saturating_sub(s.request_start_n_decoded);
+                    let slots_prompt = d
+                        .prompt_tokens_processed
+                        .max(d.prompt_tokens_cache)
+                        .max(if d.prompt_tokens_processed == 0 {
+                            // Some builds only expose final prompt.tokens.size during PP.
+                            d.prompt_tokens
+                        } else {
+                            0
+                        });
+                    let slots_live = slots_prompt.saturating_add(gen_delta);
+                    if slots_live > s.session_n_decoded {
+                        s.session_n_decoded = slots_live;
+                    }
+                    if slots_live > s.total_tokens_lifetime {
+                        s.total_tokens_lifetime = slots_live;
+                    }
+                }
+
                 s.prev_n_decoded = new_val;
                 s.prev_timestamp = now;
                 s.was_processing = d.is_proc;

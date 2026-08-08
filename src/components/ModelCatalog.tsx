@@ -87,10 +87,8 @@ export default function ModelCatalog(props: ModelCatalogProps) {
   /** Floating search palette — only when full list is closed. */
   const [searchPaletteOpen, setSearchPaletteOpen] = useState(false);
 
-  const scanBlockedByToolchain =
-    setupGuide.active
-    && setupGuide.phase === "scan-meta"
-    && !setupGuide.runtimeReady;
+  /** Portable CUDA runtime required for llama-server GGUF probe (backend hard gate). */
+  const scanBlockedByToolchain = !setupGuide.runtimeReady;
 
   const { search, setSearch, draftFilter, setCatalogDraftFilter, catalogSelectedModel, panelActiveModel, handleSelect, handleSelectBySlot, selectedSlotIdx, sortField, sortDirection, handleSort,
     catalogModels, runningModelPaths,
@@ -354,6 +352,8 @@ export default function ModelCatalog(props: ModelCatalogProps) {
   const effectiveSupportsFusion = effectiveEngineEntry?.supportsFusion ?? true;
 
   const renderScanMetaControl = () => {
+    // Onboarding-only zoom treatment — live catalog keeps the compact buttons.
+    const scanOnboarding = setupGuide.phase === "scan-meta" && !scanBlockedByToolchain;
     if (batchScanState.active) {
       return (
         <>
@@ -376,7 +376,9 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           <button
             onClick={() => startScan(4)}
             disabled={scanningPath !== null}
-            className="catalog-scan-btn px-1.5 py-0.5 text-[7px] font-mono transition-colors rounded-sm disabled:opacity-30"
+            className={`catalog-scan-btn px-1.5 py-0.5 text-[7px] font-mono transition-colors rounded-sm disabled:opacity-30${
+              scanOnboarding ? " catalog-scan-btn--onboarding catalog-scan-btn--onboarding-option" : ""
+            }`}
             title="Scan all models with 4x parallelism (~2GB RAM)"
           >
             4×
@@ -384,14 +386,18 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           <button
             onClick={() => startScan(8)}
             disabled={scanningPath !== null}
-            className="catalog-scan-btn px-1.5 py-0.5 text-[7px] font-mono transition-colors rounded-sm disabled:opacity-30"
+            className={`catalog-scan-btn px-1.5 py-0.5 text-[7px] font-mono transition-colors rounded-sm disabled:opacity-30${
+              scanOnboarding ? " catalog-scan-btn--onboarding catalog-scan-btn--onboarding-option" : ""
+            }`}
             title="Scan all models with 8x parallelism (~4GB RAM)"
           >
             8×
           </button>
           <button
             onClick={() => setShowScanMenu(false)}
-            className="catalog-scan-btn px-1 py-0.5 text-[7px] font-mono transition-colors rounded-sm opacity-60"
+            className={`catalog-scan-btn px-1 py-0.5 text-[7px] font-mono transition-colors rounded-sm opacity-60${
+              scanOnboarding ? " catalog-scan-btn--onboarding catalog-scan-btn--onboarding-option" : ""
+            }`}
             title="Close scan menu"
           >
             ✕
@@ -403,13 +409,13 @@ export default function ModelCatalog(props: ModelCatalogProps) {
       <button
         onClick={() => setShowScanMenu(true)}
         disabled={scanningPath !== null || scanBlockedByToolchain}
-        data-onboarding={setupGuide.phase === "scan-meta" && !scanBlockedByToolchain ? "scan-meta" : undefined}
+        data-onboarding={scanOnboarding ? "scan-meta" : undefined}
         className={`catalog-scan-btn px-1.5 py-0.5 text-[7px] font-mono transition-colors rounded-sm disabled:opacity-30 whitespace-nowrap${
-          setupGuide.phase === "scan-meta" && !scanBlockedByToolchain ? " catalog-scan-btn--onboarding" : ""
+          scanOnboarding ? " catalog-scan-btn--onboarding" : ""
         }`}
         title={
           scanBlockedByToolchain
-            ? "Install toolchain or use NEXT in setup to skip metadata scan"
+            ? "Install the portable toolchain in setup before scanning GGUF metadata"
             : "Scan all models for metadata"
         }
       >

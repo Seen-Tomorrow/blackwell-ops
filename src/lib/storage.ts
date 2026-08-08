@@ -48,6 +48,7 @@ import type {
  * | BlackOps-logs-ansi-enabled | "0" \| "1" | ENGINE LOGS ANSI color rendering |
  * | BlackOps-startup-updates | JSON | Cached startup update check results |
  * | BlackOps-fusion-hero-tps | live \| avg | Fusion hero TPS display mode |
+ * | BlackOps-fusion-log-verbosity | 3 \| 4 | Engine `-lv` at launch (default 3; 4 = full belt debug) |
  * | BlackOps-fusion-bench-tray | open \| stowed | Fusion overlay benchmark tray (default: stowed) |
  * | BlackOps-config-param-legend | open \| stowed | CONFIG PARAMETERS editor legend panel |
  * | BlackOps-display-texture | clean \| phosphor-dark \| phosphor-light | Display texture cycle (glitch legacy → clean) |
@@ -58,6 +59,7 @@ import type {
  * | BlackOps-model-hub-split-width | number string (0–1) | Model Hub results / quants split ratio |
 
  * | BlackOps-setup-guide-dismissed | "1" | Setup guide dismissed (cache; authority is app_config.setup_completed) |
+ * | BlackOps-toolchain-onboarding-skipped | legacy | Cleared only — toolchain skip removed |
  * | BlackOps-setup-welcome-seen | "1" | Welcome animation seen (cache; replayed when config/ is reset) |
  * | BlackOps-setup-guide-preview | "1" | Dev: force welcome + guide in VRAM display |
  * | BlackOps-bench-controls | JSON | Global TG/PP bench control chips (n_predict, concurrency, warmup, prompt mode) |
@@ -164,6 +166,8 @@ export const KEYS = {
   /** Dev: fake installed version for in-app updater testing (e.g. "1.0.9"). */
   devUpdateVersionFake: `${STORAGE_PREFIX}dev-update-version-fake`,
   fusionHeroTpsMode: `${STORAGE_PREFIX}fusion-hero-tps`,
+  /** Engine launch `-lv` (3 = product timing belt, 4 = full metadata belt). */
+  fusionLogVerbosity: `${STORAGE_PREFIX}fusion-log-verbosity`,
   fusionBenchTray: `${STORAGE_PREFIX}fusion-bench-tray`,
   configParamLegend: `${STORAGE_PREFIX}config-param-legend`,
   displayTexture: `${STORAGE_PREFIX}display-texture`,
@@ -201,7 +205,7 @@ export const KEYS = {
   setupGuideDismissed: `${STORAGE_PREFIX}setup-guide-dismissed`,
   setupWelcomeSeen: `${STORAGE_PREFIX}setup-welcome-seen`,
   setupGuidePreview: `${STORAGE_PREFIX}setup-guide-preview`,
-  /** Onboarding: user skipped 1-click Foundry toolchain (offer again in CONFIG → providers). */
+  /** Legacy: toolchain skip removed — key only cleared on reset / successful install. */
   toolchainOnboardingSkipped: `${STORAGE_PREFIX}toolchain-onboarding-skipped`,
   /** Last completed GGUF batch scan during setup (scanned/failed/total). */
   setupMetaScanSummary: `${STORAGE_PREFIX}setup-meta-scan-summary`,
@@ -306,14 +310,7 @@ export function saveSetupGuideDismissed(): void {
   writeStorage(KEYS.setupGuideDismissed, "1");
 }
 
-export function isToolchainOnboardingSkipped(): boolean {
-  return readStorage(KEYS.toolchainOnboardingSkipped) === "1";
-}
-
-export function saveToolchainOnboardingSkipped(): void {
-  writeStorage(KEYS.toolchainOnboardingSkipped, "1");
-}
-
+/** Clears legacy skip flag (toolchain is no longer skippable in onboarding). */
 export function clearToolchainOnboardingSkipped(): void {
   removeStorage(KEYS.toolchainOnboardingSkipped);
 }
@@ -986,6 +983,21 @@ export function loadFusionHeroTpsMode(): FusionHeroTpsMode {
 
 export function saveFusionHeroTpsMode(mode: FusionHeroTpsMode): void {
   writeStorage(KEYS.fusionHeroTpsMode, mode);
+}
+
+/** llama-server `-lv` at next launch. Default 3 (timing belt without KV spam). */
+export type FusionLogVerbosity = 3 | 4;
+
+export const FUSION_LOG_VERBOSITY_DEFAULT: FusionLogVerbosity = 3;
+
+export function loadFusionLogVerbosity(): FusionLogVerbosity {
+  const v = readStorage(KEYS.fusionLogVerbosity);
+  if (v === "4") return 4;
+  return 3;
+}
+
+export function saveFusionLogVerbosity(level: FusionLogVerbosity): void {
+  writeStorage(KEYS.fusionLogVerbosity, String(level === 4 ? 4 : 3));
 }
 
 export type FusionBenchTrayState = "open" | "stowed";

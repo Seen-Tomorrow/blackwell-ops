@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-shell";
 import type { SetupPhase } from "../../lib/setupGuide";
@@ -13,24 +13,18 @@ import {
 import { useSetupPathsActions } from "../../hooks/useSetupPathsActions";
 import { useTauriListen } from "../../hooks/useTauriListen";
 import FoundryToolchainPanel from "../FoundryToolchainPanel";
-import type {
-  FitScanComplete,
-  FitScanProgress,
-  ProviderConfig,
-} from "../../lib/types";
+import type { FitScanComplete, FitScanProgress } from "../../lib/types";
 
 const DEFAULT_FIT_PROVIDER = "ggml-master";
 
-type FitScanStep = "idle" | "running" | "done" | "skipped";
+type FitScanStep = "idle" | "running" | "done" | "skipped" | "stopped";
 type FitScanParallel = (typeof FIT_SCAN_PARALLEL_OPTIONS)[number];
 
 interface SetupGuideDisplayProps {
   phase: SetupPhase;
   pathsDone: boolean;
-  toolchainSkipped: boolean;
   runtimeReady: boolean;
   toolchainChecked: boolean;
-  toolchainBusy: boolean;
   modelsDeferred: boolean;
   metaDone: boolean;
   metaScanFailed: number;
@@ -38,8 +32,6 @@ interface SetupGuideDisplayProps {
   scannedCount: number;
   catalogLoaded: boolean;
   onDeferModels: () => void;
-  onSkipToolchain: () => void;
-  onSkipMetaScan: () => void;
   onDismiss: () => void;
 }
 
@@ -49,17 +41,19 @@ interface ChecklistItemProps {
   title: string;
   detail: string;
   optional?: boolean;
+  accent?: "green" | "cyan" | "amber";
 }
 
-function ChecklistItem({ done, current, title, detail, optional }: ChecklistItemProps) {
+function ChecklistItem({ done, current, title, detail, optional, accent = "green" }: ChecklistItemProps) {
+  const stateClass = done
+    ? "setup-checklist__item--done"
+    : current
+      ? `setup-checklist__item--current setup-checklist__item--accent-${accent}`
+      : "";
   return (
-    <li
-      className={`setup-checklist__item${done ? " setup-checklist__item--done" : ""}${
-        current ? " setup-checklist__item--current" : ""
-      }`}
-    >
+    <li className={`setup-checklist__item ${stateClass}`}>
       <span className="setup-checklist__mark" aria-hidden="true">
-        {done ? "✓" : "○"}
+        {done ? "✓" : current ? "▶" : "○"}
       </span>
       <span className="setup-checklist__body">
         <span className="setup-checklist__title">
@@ -75,10 +69,8 @@ function ChecklistItem({ done, current, title, detail, optional }: ChecklistItem
 export default function SetupGuideDisplay({
   phase,
   pathsDone,
-  toolchainSkipped,
   runtimeReady,
   toolchainChecked,
-  toolchainBusy,
   modelsDeferred,
   metaDone,
   metaScanFailed,
@@ -86,8 +78,6 @@ export default function SetupGuideDisplay({
   scannedCount,
   catalogLoaded,
   onDeferModels,
-  onSkipToolchain,
-  onSkipMetaScan,
   onDismiss,
 }: SetupGuideDisplayProps) {
   const {
@@ -110,20 +100,25 @@ export default function SetupGuideDisplay({
   const [showDriversStep, setShowDriversStep] = useState(false);
   const [driverVersion, setDriverVersion] = useState<string | null>(null);
   const [driverLoading, setDriverLoading] = useState(false);
+  /** User hit STOP — don't let the in-flight invoke resolve reset the step to idle. */
+  const fitStopRequestedRef = useRef(false);
 
-  const fitDone = fitStep === "done" || fitStep === "skipped";
+  const fitDone = fitStep === "done" || fitStep === "skipped" || fitStep === "stopped";
   const driversStepActive = showDriversStep || (metaDone && fitDone);
   const frontierDriverOk = isDriverSufficientForProfile(driverVersion, ENV_META.frontier.cuda);
   const driverNeedsAck = !frontierDriverOk;
 
   const driverChecklistDetail = useMemo(() => {
+    // Until the wizard actually reaches the driver row, keep it a neutral placeholder.
+    // The verbose detect/confirm message only appears once we're checking that step.
+    if (!driversStepActive) return "Verify your NVIDIA drivers before using CUDA engines";
     if (driverLoading) return "Checking NVIDIA driver via nvidia-smi…";
     if (!driverVersion) return "Could not detect driver — confirm manually or install from NVIDIA";
     if (frontierDriverOk) {
       return `Driver ${driverVersion} — OK for FRONTIER (CUDA ${ENV_META.frontier.cuda})`;
     }
     return `Driver ${driverVersion} — below minimum for FRONTIER (need ${getMinDriverMajorForCuda(ENV_META.frontier.cuda)}+)`;
-  }, [driverLoading, driverVersion, frontierDriverOk]);
+  }, [driverLoading, driverVersion, frontierDriverOk, driversStepActive]);
 
   useEffect(() => {
     if (!metaDone) {
@@ -163,11 +158,22 @@ export default function SetupGuideDisplay({
   }, [frontierDriverOk, driverVersion]);
 
   const skipFitScan = useCallback(() => {
+    fitStopRequestedRef.current = false;
     setFitStep("skipped");
     setShowDriversStep(true);
   }, []);
 
+  const stopFitScan = useCallback(() => {
+    fitStopRequestedRef.current = true;
+    void invoke("fit_stop_scan").catch(() => {
+      // Cancel flag may already be set / scan already finishing.
+    });
+    setFitStep("stopped");
+    setShowDriversStep(true);
+  }, []);
+
   const runFitScan = useCallback(async (parallel: FitScanParallel) => {
+    fitStopRequestedRef.current = false;
     setShowFitScanMenu(false);
     setFitRunning(true);
     setFitStep("running");
@@ -189,19 +195,30 @@ export default function SetupGuideDisplay({
         forceRescan: false,
       });
 
-      setFitStep("done");
+      // STOP may have advanced the wizard already — don't clobber that.
+      if (fitStopRequestedRef.current) {
+        setFitStep("stopped");
+      } else {
+        setFitStep("done");
+      }
       setShowDriversStep(true);
     } catch (err) {
-      const msg = typeof err === "string" ? err : "VRAM fit scan failed.";
-      reportActionError(msg);
-      setFitStep("idle");
-      void invoke("emit_to_blackwell_console", {
-        category: "error",
-        content: `[FIT-SCAN] ${msg}`,
-        style: "Error",
-      });
+      if (fitStopRequestedRef.current) {
+        setFitStep("stopped");
+        setShowDriversStep(true);
+      } else {
+        const msg = typeof err === "string" ? err : "VRAM fit scan failed.";
+        reportActionError(msg);
+        setFitStep("idle");
+        void invoke("emit_to_blackwell_console", {
+          category: "error",
+          content: `[FIT-SCAN] ${msg}`,
+          style: "Error",
+        });
+      }
     } finally {
       setFitRunning(false);
+      fitStopRequestedRef.current = false;
     }
   }, [clearActionError, reportActionError]);
 
@@ -217,10 +234,14 @@ export default function SetupGuideDisplay({
   }, []);
 
   const scanStepApplicable = modelsCount > 0 && !modelsDeferred;
-  const fitCurrent = metaDone && !fitDone && !showDriversStep;
+  // FIT row is only "current" once the wizard has actually reached the fit-scan phase.
+  // metaDone alone can be true early (e.g. no models yet), which would wrongly show the chevron
+  // on the first screen next to LINK YOUR MODEL LIBRARY.
+  const fitCurrent = phase === "fit-scan" && metaDone && !fitDone && !showDriversStep;
   const toolchainStepDone = runtimeReady;
   const toolchainStepCurrent = phase === "toolchain";
   const canScanMeta = runtimeReady;
+  const metaStepActive = phase === "scan-meta" && !metaDone && canScanMeta;
 
   const handleDeferModels = useCallback(() => {
     onDeferModels();
@@ -228,14 +249,12 @@ export default function SetupGuideDisplay({
   }, [onDeferModels, clearActionError]);
 
   return (
-    <div className="setup-guide px-3 py-2.5 min-h-[200px]">
-      <div className="flex items-baseline gap-1 mb-3">
-        <span className="text-xl font-mono text-nv-green">FORECAST: setup</span>
+    <div className="setup-guide">
+      {/* Header row */}
+      <div className="setup-guide__header">
+        <span className="setup-guide__title">FORECAST: setup</span>
+        <span className="setup-guide__eyebrow">Quick start checklist</span>
       </div>
-
-      <p className="text-[9px] font-mono text-stealth-muted tracking-wider mb-3 uppercase">
-        Quick start checklist
-      </p>
 
       <ul className="setup-checklist">
         <ChecklistItem
@@ -244,30 +263,26 @@ export default function SetupGuideDisplay({
           title="Link your model library"
           detail={
             modelsDeferred
-              ? "Skipped — download models later from Model Hub"
-              : "LM Studio one-click or CONFIG → PATHS"
+              ? "Skipped — use MODEL HUB (nav stays open during setup)"
+              : "LM Studio one-click, BROWSE, or CONFIG → PATHS"
           }
         />
         <ChecklistItem
           done={toolchainStepDone}
           current={toolchainStepCurrent}
-          optional={modelsDeferred || modelsCount === 0}
-          title="Portable toolchain"
-          detail={
-            modelsDeferred || modelsCount === 0
-              ? "Optional until you scan local GGUFs or run CUDA engines"
-              : "Hard requirement — CUDA runtimes + Foundry auto-build engine ~1.15 GB one-time download"
-          }
+          title="CUDA runtime"
+          detail="Portable toolkit — engines, metadata scan, and build-from-source"
         />
         {scanStepApplicable && (
           <ChecklistItem
             done={metaDone}
-            current={phase === "scan-meta"}
-            title="Scan GGUF metadata"
+            current={metaStepActive}
+            accent="cyan"
+            title="Scan your models"
             detail={
               metaScanFailed > 0
-                ? `CATALOG → SCAN META (${scannedCount}/${modelsCount}, ${metaScanFailed} failed)`
-                : `CATALOG → SCAN META (${scannedCount}/${modelsCount})`
+                ? `Metadata for ${scannedCount}/${modelsCount} models (${metaScanFailed} failed)`
+                : `Metadata for ${scannedCount}/${modelsCount} models — powers the VRAM forecast`
             }
           />
         )}
@@ -275,7 +290,7 @@ export default function SetupGuideDisplay({
           done={fitDone}
           current={fitCurrent}
           optional
-          title="VRAM fit scan (29-point)"
+          title="VRAM fit scan"
           detail="Measured VRAM per model — runs in background, logs to Output Console"
         />
         <ChecklistItem
@@ -287,48 +302,38 @@ export default function SetupGuideDisplay({
       </ul>
 
       {actionError && (
-        <p className="mt-3 text-[8px] font-mono text-telemetry-red">{actionError}</p>
+        <p className="setup-guide__note setup-guide__note--error">{actionError}</p>
       )}
 
       {needsBrowse && phase === "paths" && (
-        <p className="mt-3 text-[8px] font-mono text-stealth-muted leading-relaxed">
+        <p className="setup-guide__note setup-guide__note--muted">
           Default LM Studio path missing or empty. Browse to the folder where your GGUF models live.
         </p>
       )}
 
       {phase === "toolchain" && !toolchainStepDone && (
-        <p className="mt-3 text-[8px] font-mono text-yellow-400/90 leading-relaxed">
-          SCAN META needs the portable toolchain (~1.15 GB). Use Download or drop toolchain.7z in
-          the cache folder and Install from cache.
+        <p className="setup-guide__note setup-guide__note--amber">
+          Portable CUDA runtime is required. Download it, or drop the archive in the cache folder and
+          install from cache. 
         </p>
       )}
 
-      {modelsCount > 0 && phase === "scan-meta" && canScanMeta && (
-        <p className="mt-3 text-[8px] font-mono text-nv-green">
-          {modelsCount} models loaded — run SCAN META next (button pulses above catalog).
-        </p>
-      )}
-
-      {phase === "scan-meta" && !canScanMeta && !toolchainSkipped && (
-        <p className="mt-3 text-[8px] font-mono text-yellow-400/90 leading-relaxed">
-          SCAN META needs the portable toolchain — use Download or Install from cache in the
-          toolchain step above.
+      {metaStepActive && (
+        <p className="setup-guide__note setup-guide__note--cyan">
+          {modelsCount} models loaded — scan them below to power the VRAM forecast.
         </p>
       )}
 
       {metaScanFailed > 0 && metaDone && (
-        <p className="mt-3 text-[8px] font-mono text-yellow-400/90 leading-relaxed">
+        <p className="setup-guide__note setup-guide__note--amber">
           {metaScanFailed} model{metaScanFailed !== 1 ? "s" : ""} could not be parsed (corrupt or
-          unrecognized GGUF) — skipped for metadata. Continue setup; fix or remove those files later
-          in CATALOG.
+          unrecognized GGUF) — skipped. Fix or remove those files later in CATALOG.
         </p>
       )}
 
-      <div className="flex flex-wrap items-center gap-2 mt-4">
+      <div className="setup-guide__actions">
         {phase === "paths" && !catalogLoaded && (
-          <p className="w-full text-[8px] font-mono text-stealth-muted/80">
-            Loading model catalog…
-          </p>
+          <p className="setup-guide__note setup-guide__note--muted">Loading model catalog…</p>
         )}
 
         {phase === "paths" && catalogLoaded && (
@@ -342,18 +347,16 @@ export default function SetupGuideDisplay({
                   ? `Try default LM Studio folder (${lmStudioDefaultPath})`
                   : "Try default LM Studio models folder"
               }
-              className="px-2 py-0.5 text-[8px] font-mono tracking-widest rounded-sm border border-telemetry-cyan/50 text-telemetry-cyan hover:bg-telemetry-cyan/10 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              className="setup-guide__btn setup-guide__btn--cyan"
             >
-              {migrating ? "LINKING…" : "MIGRATING FROM LM STUDIO"}
+              {migrating ? "LINKING…" : "MIGRATE FROM LM STUDIO"}
             </button>
             <button
               type="button"
               onClick={() => void browseModelLibrary()}
               disabled={migrating || browsing}
-              className={`px-2 py-0.5 text-[8px] font-mono tracking-widest rounded-sm border transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
-                needsBrowse
-                  ? "border-nv-green/70 text-nv-green hover:bg-nv-green/10"
-                  : "border-stealth-muted/40 text-stealth-muted hover:text-white hover:border-stealth-muted"
+              className={`setup-guide__btn ${
+                needsBrowse ? "setup-guide__btn--primary" : "setup-guide__btn--neutral"
               }`}
             >
               {browsing ? "BROWSING…" : "BROWSE FOR MODEL PATH"}
@@ -362,7 +365,7 @@ export default function SetupGuideDisplay({
               type="button"
               onClick={openPaths}
               disabled={migrating || browsing}
-              className="px-2 py-0.5 text-[8px] font-mono tracking-widest rounded-sm border border-nv-green/50 text-nv-green hover:bg-nv-green/10 transition-colors disabled:opacity-30"
+              className="setup-guide__btn setup-guide__btn--green"
             >
               OPEN PATHS
             </button>
@@ -371,7 +374,7 @@ export default function SetupGuideDisplay({
                 type="button"
                 onClick={handleDeferModels}
                 disabled={migrating || browsing}
-                className="px-2 py-0.5 text-[8px] font-mono tracking-widest rounded-sm border border-stealth-muted/40 text-stealth-muted hover:text-white hover:border-stealth-muted transition-colors disabled:opacity-30"
+                className="setup-guide__btn setup-guide__btn--neutral"
               >
                 I&apos;LL DOWNLOAD LATER
               </button>
@@ -382,106 +385,110 @@ export default function SetupGuideDisplay({
         {phase === "toolchain" && !toolchainStepDone && (
           <>
             {!toolchainChecked ? (
-              <p className="w-full text-[8px] font-mono text-stealth-muted/80">
+              <p className="setup-guide__note setup-guide__note--muted">
                 Checking portable toolchain…
               </p>
             ) : (
-              <>
-                <div className="w-full mt-2 mb-1">
-                  <FoundryToolchainPanel onboarding />
-                </div>
-                {!toolchainBusy && (
-                  <button
-                    type="button"
-                    onClick={onSkipToolchain}
-                    className="px-2 py-0.5 text-[8px] font-mono tracking-widest rounded-sm border border-stealth-muted/40 text-stealth-muted hover:text-white hover:border-stealth-muted transition-colors"
-                  >
-                    DOWNLOAD LATER
-                  </button>
-                )}
-              </>
+              <div className="setup-guide__block">
+                <FoundryToolchainPanel onboarding />
+              </div>
             )}
           </>
         )}
 
-        {phase === "scan-meta" && !metaDone && (
-          <>
-            {canScanMeta ? (
-              <p className="w-full text-[8px] font-mono text-nv-green leading-relaxed">
-                Run SCAN META in the catalog (pulsing button above), or skip for now.
-              </p>
-            ) : toolchainSkipped ? (
-              <p className="w-full text-[8px] font-mono text-stealth-muted leading-relaxed">
-                Toolchain download was skipped — metadata scan is unavailable. Use NEXT to continue.
-              </p>
-            ) : null}
-            <button
-              type="button"
-              onClick={onSkipMetaScan}
-              className="px-2 py-0.5 text-[8px] font-mono tracking-widest rounded-sm border border-stealth-muted/40 text-stealth-muted hover:text-white hover:border-stealth-muted transition-colors"
-            >
-              {canScanMeta ? "SKIP SCAN" : "NEXT"}
-            </button>
-          </>
+        {metaStepActive && (
+          <p className="setup-guide__note setup-guide__note--cyan setup-guide__note--scan-hint">
+            Scan in progress? Use <span className="setup-guide__btn-inline-label">SCAN META</span> in
+            the catalog — it pulses while setup is active.
+          </p>
         )}
 
         {phase === "fit-scan" && !fitDone && !showDriversStep && (
           <>
             {fitRunning ? (
-              <button
-                type="button"
-                disabled
-                className="px-2 py-0.5 text-[8px] font-mono tracking-widest rounded-sm border border-nv-green/50 text-nv-green opacity-40 cursor-not-allowed"
-              >
-                FIT SCAN RUNNING…
-              </button>
+              <div className="setup-guide__fit-row">
+                <button
+                  type="button"
+                  disabled
+                  className="setup-guide__btn setup-guide__btn--green setup-guide__btn--running"
+                >
+                  FIT SCAN RUNNING…
+                </button>
+                <button
+                  type="button"
+                  onClick={stopFitScan}
+                  className="setup-guide__btn setup-guide__btn--danger"
+                  title="Stop the running VRAM fit scan"
+                >
+                  STOP
+                </button>
+              </div>
             ) : showFitScanMenu ? (
-              <div className="flex items-center gap-1">
+              <div className="setup-guide__fit-row">
                 {FIT_SCAN_PARALLEL_OPTIONS.map((parallel) => (
                   <button
                     key={parallel}
                     type="button"
                     onClick={() => void runFitScan(parallel)}
-                    className="catalog-scan-btn px-2 py-0.5 text-[8px] font-mono transition-colors rounded-sm"
+                    className="setup-guide__btn setup-guide__btn--primary"
                     title={`VRAM fit scan with ${parallel}x parallelism`}
                   >
                     SPEED {parallel}×
                   </button>
                 ))}
+                <button
+                  type="button"
+                  onClick={() => setShowFitScanMenu(false)}
+                  className="setup-guide__btn setup-guide__btn--neutral"
+                >
+                  CANCEL
+                </button>
               </div>
             ) : (
-              <button
-                type="button"
-                onClick={() => setShowFitScanMenu(true)}
-                className="catalog-scan-btn px-2 py-0.5 text-[8px] font-mono tracking-widest rounded-sm border border-nv-green/50 text-nv-green hover:bg-nv-green/10 transition-colors"
-              >
-                RUN VRAM FIT SCAN ▾
-              </button>
+              <div className="setup-guide__fit-row">
+                <button
+                  type="button"
+                  onClick={() => setShowFitScanMenu(true)}
+                  className="setup-guide__btn setup-guide__btn--primary"
+                >
+                  RUN VRAM FIT SCAN ▾
+                </button>
+                <button
+                  type="button"
+                  onClick={skipFitScan}
+                  disabled={fitRunning}
+                  className="setup-guide__btn setup-guide__btn--neutral"
+                >
+                  SKIP
+                </button>
+              </div>
             )}
-            <button
-              type="button"
-              onClick={skipFitScan}
-              disabled={fitRunning}
-              className="px-2 py-0.5 text-[8px] font-mono tracking-widest rounded-sm border border-stealth-muted/40 text-stealth-muted hover:text-white hover:border-stealth-muted transition-colors disabled:opacity-40"
-            >
-              SKIP
-            </button>
           </>
         )}
 
         {driversStepActive && (!scanStepApplicable || toolchainStepDone) && (
-          <div className="setup-driver-check w-full space-y-1.5">
+          <div className="setup-driver-check">
             {driverLoading ? (
-              <p className="text-[8px] font-mono text-stealth-muted/75">Checking NVIDIA driver…</p>
+              <p className="setup-guide__note setup-guide__note--muted">
+                Checking NVIDIA driver…
+              </p>
             ) : (
               <>
-                <p className="text-[8px] font-mono text-stealth-muted/80">
+                <p className="setup-guide__note setup-guide__note--muted">
                   Detected:{" "}
-                  <span className={frontierDriverOk ? "text-nv-green" : driverVersion ? "text-red-400" : "text-yellow-400/90"}>
+                  <span
+                    className={
+                      frontierDriverOk
+                        ? "setup-driver-check__ok"
+                        : driverVersion
+                          ? "setup-driver-check__bad"
+                          : "setup-driver-check__warn"
+                    }
+                  >
                     {driverVersion ?? "not found (nvidia-smi)"}
                   </span>
                 </p>
-                <ul className="space-y-0.5">
+                <ul className="setup-driver-check__list">
                   {ENV_ORDER.map((profile) => {
                     const meta = ENV_META[profile];
                     const minMajor = getMinDriverMajorForCuda(meta.cuda);
@@ -489,8 +496,8 @@ export default function SetupGuideDisplay({
                     return (
                       <li
                         key={profile}
-                        className={`text-[8px] font-mono leading-snug ${
-                          ok ? "text-nv-green/90" : "text-red-400"
+                        className={`setup-driver-check__row ${
+                          ok ? "setup-driver-check__ok" : "setup-driver-check__bad"
                         }`}
                       >
                         {meta.label} · CUDA {meta.cuda} · min driver {minMajor}+ —{" "}
@@ -504,11 +511,11 @@ export default function SetupGuideDisplay({
                     <button
                       type="button"
                       onClick={() => void open(NVIDIA_DRIVERS_URL)}
-                      className="text-[8px] font-mono text-telemetry-cyan hover:text-telemetry-cyan/80 underline underline-offset-2 transition-colors"
+                      className="setup-guide__link"
                     >
                       Download drivers at nvidia.com
                     </button>
-                    <label className="flex items-center gap-2 text-[8px] font-mono text-stealth-muted cursor-pointer select-none">
+                    <label className="setup-driver-check__ack">
                       <input
                         type="checkbox"
                         checked={driversConfirmed}
@@ -528,8 +535,15 @@ export default function SetupGuideDisplay({
           <button
             type="button"
             onClick={onDismiss}
-            disabled={!driversConfirmed}
-            className="px-2 py-0.5 text-[8px] font-mono tracking-widest rounded-sm border border-nv-green/50 text-nv-green hover:bg-nv-green/10 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            disabled={!driversConfirmed || !runtimeReady}
+            title={
+              !runtimeReady
+                ? "Install the portable toolchain before finishing setup"
+                : !driversConfirmed
+                  ? "Confirm NVIDIA drivers first"
+                  : "Complete first-run setup"
+            }
+            className="setup-guide__btn setup-guide__btn--primary setup-guide__btn--finish"
           >
             FINISH SETUP
           </button>

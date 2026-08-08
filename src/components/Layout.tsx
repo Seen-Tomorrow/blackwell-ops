@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, type CSSProperties }
 import { invoke } from "@tauri-apps/api/core";
 import type { Tab } from "../App";
 import type { ProviderConfig, UpdateOfferings } from "../lib/types";
+import { isSetupNavTabAllowed } from "../lib/setupGuide";
 import { useStatus } from "../context/StatusBarContext";
 import { useFoundry, type Env } from "../hooks/useBuildDock";
 import FoundryStatusChip from "./FoundryStatusChip";
@@ -71,6 +72,8 @@ interface LayoutProps {
   updateOfferings?: UpdateOfferings | null;
   onRefreshUpdateOfferings?: () => void;
   hasBinaryUpdates?: boolean;
+  /** First-run wizard active — lock ENGINES / LOGS / EXTRAS. */
+  setupGuideActive?: boolean;
 }
 
 const tabs: { id: Tab; label: string; icon: string; hidden?: boolean }[] = [
@@ -82,7 +85,16 @@ const tabs: { id: Tab; label: string; icon: string; hidden?: boolean }[] = [
   { id: "config", label: "CONFIG", icon: "\u2699" },
 ];
 
-export default function Layout({ activeTab, onTabChange, children, providers = [], updateOfferings, onRefreshUpdateOfferings, hasBinaryUpdates }: LayoutProps) {
+export default function Layout({
+  activeTab,
+  onTabChange,
+  children,
+  providers = [],
+  updateOfferings,
+  onRefreshUpdateOfferings,
+  hasBinaryUpdates,
+  setupGuideActive = false,
+}: LayoutProps) {
   const [zoom, setZoom] = useState(loadZoom);
   const [uiDensity, setUiDensity] = useState<UiDensity>(loadUiDensity);
   const [shellWidthPx, setShellWidthPx] = useState(() =>
@@ -348,21 +360,34 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
               className="app-header__nav flex items-stretch min-w-0"
               onScroll={updateNavScrollState}
             >
-              {visibleTabs.map((tab) => (
-                <div key={tab.id} className="app-header__nav-item relative">
-                  <button
-                    type="button"
-                    onClick={() => onTabChange(tab.id)}
-                    {...(tab.id === "config" ? { "data-onboarding": "config-tab" } : {})}
-                    className={`app-nav-tab font-mono rounded-sm ${
-                      activeTab === tab.id ? "app-nav-tab-active" : ""
-                    }`}
-                  >
-                    {/* <span className="mr-1.5">{tab.icon}</span> */}
-                    {tab.label}
-                  </button>
-                </div>
-              ))}
+              {visibleTabs.map((tab) => {
+                const lockedBySetup =
+                  setupGuideActive && !isSetupNavTabAllowed(tab.id);
+                return (
+                  <div key={tab.id} className="app-header__nav-item relative">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (lockedBySetup) return;
+                        onTabChange(tab.id);
+                      }}
+                      disabled={lockedBySetup}
+                      title={
+                        lockedBySetup
+                          ? "Finish first-run setup first (OPERATIONS, MODEL HUB, or CONFIG)"
+                          : undefined
+                      }
+                      {...(tab.id === "config" ? { "data-onboarding": "config-tab" } : {})}
+                      className={`app-nav-tab font-mono rounded-sm ${
+                        activeTab === tab.id ? "app-nav-tab-active" : ""
+                      }${lockedBySetup ? " app-nav-tab-disabled" : ""}`}
+                    >
+                      {/* <span className="mr-1.5">{tab.icon}</span> */}
+                      {tab.label}
+                    </button>
+                  </div>
+                );
+              })}
             </nav>
             <button
               type="button"

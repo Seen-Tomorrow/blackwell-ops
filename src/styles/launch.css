@@ -1141,6 +1141,19 @@
   flex-shrink: 0;
 }
 
+/* Live MHz (cores open) — 4 digits need a touch smaller hero type */
+.launch-rail-tel__cpu-avg--mhz .launch-rail-tel__cpu-avg-val {
+  font-size: 13px;
+  letter-spacing: -0.02em;
+  color: var(--tel-cyan, #22d3ee);
+}
+
+.launch-rail-tel__cpu-avg--mhz .launch-rail-tel__cpu-avg-unit {
+  font-size: 7px;
+  color: var(--tel-cyan, #22d3ee);
+  opacity: 0.85;
+}
+
 .launch-rail-tel__cpu-avg-val {
   font-family: ui-monospace, monospace;
   font-size: 16px;

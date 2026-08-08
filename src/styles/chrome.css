@@ -399,6 +399,20 @@
   border-color: var(--theme-nav-active-border) !important;
 }
 
+/* First-run setup: ENGINES / LOGS / EXTRAS locked until wizard finishes */
+.app-nav-tab.app-nav-tab-disabled,
+.app-nav-tab:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.app-nav-tab.app-nav-tab-disabled:hover,
+.app-nav-tab:disabled:hover {
+  color: var(--theme-nav-text);
+  background: transparent;
+}
+
 .app-quick-settings {
   /* Recessed well inset into header chrome (not a floating flat panel) */
   border: 1px solid color-mix(in srgb, var(--theme-bezel-edge-lo) 70%, var(--theme-chrome-control-border) 30%);
@@ -606,64 +620,195 @@
 }
 
 /* DEV fake GPU topo popover (header GPU+ tool) */
-.dev-fake-gpu-popover {
-  min-width: 11.5rem;
-  width: 12.5rem;
-  max-width: min(16rem, calc(100vw - 12px));
-  padding: 0.4rem 0.45rem 0.45rem;
-  background: var(--theme-panel, #12141a);
-  border: 1px solid color-mix(in srgb, #22d3ee 35%, var(--theme-chrome-control-border) 65%);
-  border-radius: 4px;
-  box-shadow:
-    0 14px 36px rgba(0, 0, 0, 0.5),
-    0 6px 14px rgba(0, 0, 0, 0.35);
-}
-
-.dev-fake-gpu-popover__head {
-  margin-bottom: 0.15rem;
-}
-
-.dev-fake-gpu-popover__title {
-  font-size: 8px;
-  letter-spacing: 0.12em;
-  color: color-mix(in srgb, #22d3ee 80%, var(--theme-chrome-control-text) 20%);
-}
-
-.dev-fake-gpu-popover__hint {
-  margin: 0 0 0.35rem;
-  font-size: 7px;
-  line-height: 1.25;
-  opacity: 0.55;
-  color: var(--theme-chrome-control-text);
-}
-
-.dev-fake-gpu-popover__list {
+/* DEV fake GPU topo — full modal builder */
+.dev-fake-gpu-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
   display: flex;
-  flex-direction: column;
-  gap: 1px;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 3.5rem 1rem 1rem;
+  background: color-mix(in srgb, #000 58%, transparent);
 }
 
-.dev-fake-gpu-popover__row {
-  width: 100%;
-  text-align: left;
-  padding: 0.28rem 0.35rem;
-  border-radius: 2px;
-  border: 1px solid transparent;
-  background: transparent;
+.dev-fake-gpu-modal {
+  width: min(34rem, 96vw);
+  max-height: min(85vh, 40rem);
+  overflow: auto;
+  padding: 0.65rem 0.75rem 0.7rem;
+  background: var(--theme-panel, #12141a);
+  border: 1px solid color-mix(in srgb, #22d3ee 40%, var(--theme-chrome-control-border) 60%);
+  border-radius: 5px;
+  box-shadow:
+    0 18px 48px rgba(0, 0, 0, 0.55),
+    0 6px 16px rgba(0, 0, 0, 0.35);
+}
+
+.dev-fake-gpu-modal__title {
+  margin: 0;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: color-mix(in srgb, #22d3ee 85%, var(--theme-chrome-control-text) 15%);
+}
+
+.dev-fake-gpu-modal__hint {
+  margin: 0.25rem 0 0.55rem;
+  font-size: 7.5px;
+  line-height: 1.3;
+  opacity: 0.6;
   color: var(--theme-chrome-control-text);
+}
+
+.dev-fake-gpu-modal__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+
+.dev-fake-gpu-modal__card {
+  border: 1px solid color-mix(in srgb, var(--theme-chrome-control-border) 80%, transparent);
+  border-radius: 3px;
+  padding: 0.35rem 0.4rem 0.4rem;
+  background: color-mix(in srgb, #000 22%, transparent);
+}
+
+.dev-fake-gpu-modal__card-name {
   font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--theme-chrome-control-text);
+}
+
+.dev-fake-gpu-modal__card-meta {
+  font-size: 7px;
+  opacity: 0.55;
+  margin-top: 0.1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.dev-fake-gpu-modal__stepper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem;
+  margin-top: 0.4rem;
+}
+
+.dev-fake-gpu-modal__step {
+  width: 1.4rem;
+  height: 1.25rem;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, #22d3ee 35%, transparent);
+  background: color-mix(in srgb, #22d3ee 10%, transparent);
+  color: #a5f3fc;
+  font-size: 12px;
+  line-height: 1;
   cursor: pointer;
 }
 
-.dev-fake-gpu-popover__row:hover {
-  background: color-mix(in srgb, #22d3ee 12%, transparent);
-  border-color: color-mix(in srgb, #22d3ee 25%, transparent);
+.dev-fake-gpu-modal__step:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
 }
 
-.dev-fake-gpu-popover__row--active {
-  background: color-mix(in srgb, #22d3ee 18%, transparent);
+.dev-fake-gpu-modal__count {
+  min-width: 1.25rem;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.dev-fake-gpu-modal__presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.55rem;
+}
+
+.dev-fake-gpu-modal__presets-label {
+  font-size: 7px;
+  letter-spacing: 0.1em;
+  opacity: 0.5;
+  margin-right: 0.15rem;
+}
+
+.dev-fake-gpu-modal__preset {
+  font-size: 8px;
+  padding: 0.15rem 0.4rem;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--theme-chrome-control-border) 90%, transparent);
+  background: transparent;
+  color: var(--theme-chrome-control-text);
+  cursor: pointer;
+}
+
+.dev-fake-gpu-modal__preset:hover {
   border-color: color-mix(in srgb, #22d3ee 45%, transparent);
   color: #a5f3fc;
+}
+
+.dev-fake-gpu-modal__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid color-mix(in srgb, var(--theme-chrome-control-border) 60%, transparent);
+}
+
+.dev-fake-gpu-modal__total {
+  font-size: 8px;
+  opacity: 0.7;
+}
+
+.dev-fake-gpu-modal__actions {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.dev-fake-gpu-modal__btn {
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  padding: 0.28rem 0.5rem;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--theme-chrome-control-border) 80%, transparent);
+  background: transparent;
+  color: var(--theme-chrome-control-text);
+  cursor: pointer;
+}
+
+.dev-fake-gpu-modal__btn--ghost:hover {
+  border-color: color-mix(in srgb, #facc15 40%, transparent);
+}
+
+.dev-fake-gpu-modal__btn--primary {
+  border-color: color-mix(in srgb, #22d3ee 50%, transparent);
+  background: color-mix(in srgb, #22d3ee 16%, transparent);
+  color: #a5f3fc;
+}
+
+.dev-viewport-popover__band {
+  font-size: 7px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+.dev-viewport-popover__band--marginal {
+  color: #fbbf24;
+}
+
+.dev-viewport-popover__band--ok {
+  color: #86efac;
+}
+
+.dev-viewport-popover__band--ideal {
+  color: #67e8f9;
 }
 
 .app-quick-settings__sep {
@@ -1546,6 +1691,75 @@
   background: var(--theme-accent-soft);
 }
 
+/* Onboarding toolchain — one dominant download CTA, secondary cache/manual */
+.foundry-toolchain-onboarding {}
+
+.foundry-toolchain-onboarding__download {
+  padding: 0.6rem 1.4rem;
+  font-size: 13px;
+  font-family: ui-monospace, monospace;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 4px;
+  border: 1px solid var(--theme-chip-solid-bg, var(--theme-accent-bright));
+  color: var(--theme-chip-solid-text, #0c120a);
+  background: var(--theme-chip-solid-bg, var(--theme-accent-bright));
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+  white-space: nowrap;
+  animation: onboarding-pulse-grow 1.5s ease-in-out infinite;
+}
+
+.foundry-toolchain-onboarding__download:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--theme-chip-solid-bg, #4ade80) 88%, #fff);
+  transform: scale(1.03);
+}
+
+.foundry-toolchain-onboarding__download:disabled {
+  opacity: 0.6;
+  cursor: progress;
+  animation: none;
+}
+
+.foundry-toolchain-onboarding__hint {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.5;
+  font-family: ui-monospace, monospace;
+  color: var(--theme-text-muted);
+}
+
+.foundry-toolchain-onboarding__cancel-hint {
+  margin: 0;
+  font-size: 9px;
+  line-height: 1.5;
+  font-family: ui-monospace, monospace;
+  color: var(--theme-tel-amber, #f59e0b);
+}
+
+.foundry-toolchain-btn--cancel {
+  color: var(--theme-tel-hot, #ef4444);
+  border-color: color-mix(in srgb, var(--theme-tel-hot, #ef4444) 55%, transparent);
+  background: color-mix(in srgb, var(--theme-tel-hot, #ef4444) 8%, transparent);
+}
+
+.foundry-toolchain-btn--cancel:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--theme-tel-hot, #ef4444) 16%, transparent);
+  border-color: color-mix(in srgb, var(--theme-tel-hot, #ef4444) 80%, transparent);
+}
+
+@keyframes onboarding-pulse-grow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--theme-accent-bright, #76b900) 0%, transparent);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--theme-accent-bright, #76b900) 40%, transparent);
+    transform: scale(1.04);
+  }
+}
+
 
 /* Foundry — floating window above status bar (no fullscreen blur overlay) */
 .foundry-window {
@@ -1961,6 +2175,82 @@
 .download-progress-inline__bar {
   width: 4.5rem;
   min-width: 3.5rem;
+}
+
+/* Confirm-cancel modal — dim-only overlay (no blur, per design rule) */
+.download-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, #000 55%, transparent);
+}
+
+.download-confirm {
+  width: min(360px, 90vw);
+  padding: 1rem 1.1rem;
+  border: 1px solid color-mix(in srgb, var(--theme-tel-hot, #ef4444) 40%, var(--theme-border, #1a2e1a));
+  border-radius: 6px;
+  background: var(--theme-panel, #111810);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  font-family: ui-monospace, monospace;
+}
+
+.download-confirm__title {
+  margin: 0 0 0.5rem;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--theme-tel-hot, #ef4444);
+}
+
+.download-confirm__body {
+  margin: 0 0 0.9rem;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--theme-text-muted, #6b7280);
+}
+
+.download-confirm__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.download-confirm__btn {
+  padding: 0.4rem 0.8rem;
+  font-size: 10px;
+  font-family: inherit;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.download-confirm__btn--no {
+  color: var(--theme-text-muted, #6b7280);
+  border-color: var(--theme-border-subtle, #2a3a2a);
+  background: transparent;
+}
+
+.download-confirm__btn--no:hover {
+  color: var(--theme-text, #e0e0e0);
+  border-color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
+}
+
+.download-confirm__btn--yes {
+  color: #fff;
+  border-color: var(--theme-tel-hot, #ef4444);
+  background: var(--theme-tel-hot, #ef4444);
+}
+
+.download-confirm__btn--yes:hover {
+  background: color-mix(in srgb, var(--theme-tel-hot, #ef4444) 82%, #000);
 }
 
 .toast-container--inline {

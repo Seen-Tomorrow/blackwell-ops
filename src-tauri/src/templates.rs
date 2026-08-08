@@ -114,7 +114,9 @@ impl Default for SpawnProfile {
             model_flag: default_model_flag(),
             port_flag: default_port_flag(),
             alias_flag: default_alias_flag(),
-            verbosity_args: vec!["-lv".into(), "4".into()],
+            // Product default: -lv 3 keeps print_timing / draft / eval belt without tokenizer KV spam.
+            // Cockpit can raise to 4 via __log_verbosity (see build_command).
+            verbosity_args: vec!["-lv".into(), "3".into()],
             spawn_flags: Vec::new(),
             fit_binary_provider: String::new(),
             enable_metrics: true,
@@ -368,6 +370,38 @@ fn apply_spawn_profile_overrides(provider_id: &str, tmpl: &mut ProviderTemplate)
     }
 }
 
+/// Cockpit / launch override: `extra_params.__log_verbosity` = 3 or 4.
+/// Rewrites existing `-lv N` (or `--verbosity N`) pairs; no-op when the provider has no lv-style args.
+fn apply_log_verbosity_override(args: &mut Vec<String>, config: &EngineConfig) {
+    let lv = config
+        .extra_params
+        .get("__log_verbosity")
+        .and_then(|v| {
+            v.as_u64()
+                .or_else(|| v.as_i64().map(|i| i as u64))
+                .or_else(|| v.as_str().and_then(|s| s.trim().parse().ok()))
+        })
+        .unwrap_or(0);
+    if lv != 3 && lv != 4 {
+        return;
+    }
+    let lv_s = lv.to_string();
+    let mut i = 0;
+    while i < args.len() {
+        let a = args[i].as_str();
+        if a == "-lv" || a == "--verbosity" {
+            if i + 1 < args.len() {
+                args[i + 1] = lv_s;
+            } else {
+                args.push(lv_s);
+            }
+            return;
+        }
+        i += 1;
+    }
+    // Don't invent -lv for providers that never shipped verbosity_args.
+}
+
 impl ProviderTemplate {
     pub fn template_type_for_id(id: &str) -> String {
         // Try to load from disk defaults first (has explicit template_type field)
@@ -439,7 +473,7 @@ impl ProviderTemplate {
         sp.enable_metrics = caps.metrics;
         if caps.verbose {
             let raw = if caps.verbose_args.trim().is_empty() {
-                "-lv 4"
+                "-lv 3"
             } else {
                 caps.verbose_args.trim()
             };
@@ -543,6 +577,8 @@ impl ProviderTemplate {
         }
 
         args.extend(sp.verbosity_args.clone());
+        // Cockpit LV 3/4 toggle (and any future launch override). Only rewrites `-lv N` tokens.
+        apply_log_verbosity_override(&mut args, config);
 
         // Auto VRAM launch — frontend sets extra_params.__auto_vram; power users can disable.
         let auto_vram_launch = config
@@ -620,13 +656,19 @@ impl ProviderTemplate {
                 .any(|k| k.eq_ignore_ascii_case(&param.key));
 
             // Hidden params are skipped unless launch explicitly overrides via extra_params
-            // (e.g. cockpit parallel / active SPEC profile knobs that exist on this template).
-            if param.hidden
-                && !param.key.eq_ignore_ascii_case("spec_draft_model")
-                && !param.key.eq_ignore_ascii_case("dflash_draft_model")
-                && !key_in_extra
-            {
-                continue;
+            // (e.g. cockpit parallel). Profile knobs (mtp_*/dflash_*) that the user hid must
+            // never re-enter CLI just because Boost put a stale value in extra_params.
+            let is_draft_key = param.key.eq_ignore_ascii_case("spec_draft_model")
+                || param.key.eq_ignore_ascii_case("dflash_draft_model");
+            let is_spec_profile_knob = param.key.starts_with("mtp_")
+                || param.key.starts_with("dflash_");
+            if param.hidden {
+                if is_spec_profile_knob && !is_draft_key {
+                    continue;
+                }
+                if !is_draft_key && !key_in_extra {
+                    continue;
+                }
             }
 
             // Whitelist launch — AUTO_FIT always; MANUAL when frontend sent a filtered extra_params
@@ -731,6 +773,8 @@ impl ProviderTemplate {
                     .to_lowercase();
                 let pattern = if spec_lower.contains("eagle3") {
                     "*eagle3*"
+                } else if spec_lower.contains("dspark") {
+                    "*dspark*"
                 } else {
                     "*dflash*"
                 };
@@ -748,7 +792,8 @@ impl ProviderTemplate {
             }
         }
 
-        // Belt-and-suspenders: emit n-max/n-min/p-min from extra if template rows were skipped
+        // Belt-and-suspenders: emit n-max/n-min/p-min from extra if template rows were skipped.
+        // Never resurrect a row the user hid in Config (hidden / user_hidden).
         for (key, flag) in [
             ("spec_draft_n_max", "--spec-draft-n-max"),
             ("spec_draft_n_min", "--spec-draft-n-min"),
@@ -762,6 +807,14 @@ impl ProviderTemplate {
         ] {
             if args.iter().any(|a| a == flag) {
                 continue;
+            }
+            if let Some(param) = user_params
+                .iter()
+                .find(|p| p.key.eq_ignore_ascii_case(key))
+            {
+                if param.hidden || param.user_hidden {
+                    continue;
+                }
             }
             if let Some(v) = config
                 .extra_params
@@ -809,6 +862,15 @@ impl ProviderTemplate {
                     }
                 }
             }
+        }
+
+        // Desktop default: llama-server warns when CORS is * (default) with no API key.
+        // Localhost reflection is enough for the app / local agents.
+        if !args.iter().any(|a| a == "--cors-origins") {
+            args.extend([
+                "--cors-origins".into(),
+                "localhost".into(),
+            ]);
         }
 
         finalize_launch_cli_args(&mut args);

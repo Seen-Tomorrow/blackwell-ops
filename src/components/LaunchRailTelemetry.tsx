@@ -99,24 +99,26 @@ function cpuAvgBarClass(avg: number): string {
   return "launch-rail-tel__cpu-avg-fill--normal";
 }
 
-/** Prefer live MHz; fall back to advertised max. */
+/** Live MHz (PDH) first; base is WMI MaxClockSpeed (often sticky). */
 function formatCpuClock(cpu: CpuInfo): string {
   const cur = cpu.current_clock_mhz ?? 0;
-  const max = cpu.max_clock_mhz ?? 0;
-  if (cur > 0 && max > 0 && Math.abs(cur - max) > 50) {
-    return `${cur} / ${max} MHz`;
+  const base = cpu.max_clock_mhz ?? 0;
+  if (cur > 0 && base > 0 && Math.abs(cur - base) > 25) {
+    return `${cur} MHz`;
   }
   if (cur > 0) return `${cur} MHz`;
-  if (max > 0) return `${max} MHz`;
+  if (base > 0) return `${base} MHz`;
   return "— MHz";
 }
 
 function cpuClockTitle(cpu: CpuInfo): string {
   const cur = cpu.current_clock_mhz ?? 0;
-  const max = cpu.max_clock_mhz ?? 0;
-  if (cur > 0 && max > 0) return `Live ~${cur} MHz · max ${max} MHz`;
+  const base = cpu.max_clock_mhz ?? 0;
+  if (cur > 0 && base > 0) {
+    return `Live ~${cur} MHz (PDH % performance × base) · base ${base} MHz`;
+  }
   if (cur > 0) return `Live ~${cur} MHz`;
-  if (max > 0) return `Max ${max} MHz`;
+  if (base > 0) return `Base ${base} MHz (live PDH unavailable)`;
   return "CPU clock unavailable";
 }
 
@@ -130,6 +132,20 @@ function CpuStrip({
   onToggleCores: () => void;
 }) {
   const avg = Math.round(cpu.avg_usage_percent);
+  const liveMhz = cpu.current_clock_mhz ?? 0;
+  const baseMhz = cpu.max_clock_mhz ?? 0;
+  // Cores open → hero readout is live frequency; closed → average usage %.
+  const heroVal = coresOpen
+    ? liveMhz > 0
+      ? String(liveMhz)
+      : baseMhz > 0
+        ? String(baseMhz)
+        : "—"
+    : String(avg);
+  const heroUnit = coresOpen ? "MHz" : "%";
+  const heroTitle = coresOpen
+    ? cpuClockTitle(cpu)
+    : `Average utilization ${avg}%`;
 
   const onHeadKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Enter" || event.key === " ") {
@@ -163,7 +179,12 @@ function CpuStrip({
             {cpu.name}
           </p>
           <p className="launch-rail-tel__cpu-meta" title={cpuClockTitle(cpu)}>
-            {cpu.cores}C/{cpu.threads}T · {formatCpuClock(cpu)}
+            {cpu.cores}C/{cpu.threads}T
+            {coresOpen
+              ? avg >= 0
+                ? ` · ${avg}%`
+                : ""
+              : ` · ${formatCpuClock(cpu)}`}
           </p>
         </div>
         <div className="launch-rail-tel__cpu-head-right">
@@ -174,9 +195,14 @@ function CpuStrip({
           >
             CORES {coresOpen ? "ON" : "OFF"}
           </span>
-          <div className="launch-rail-tel__cpu-avg">
-            <span className="launch-rail-tel__cpu-avg-val">{avg}</span>
-            <span className="launch-rail-tel__cpu-avg-unit">%</span>
+          <div
+            className={`launch-rail-tel__cpu-avg${
+              coresOpen ? " launch-rail-tel__cpu-avg--mhz" : ""
+            }`}
+            title={heroTitle}
+          >
+            <span className="launch-rail-tel__cpu-avg-val">{heroVal}</span>
+            <span className="launch-rail-tel__cpu-avg-unit">{heroUnit}</span>
           </div>
         </div>
       </div>

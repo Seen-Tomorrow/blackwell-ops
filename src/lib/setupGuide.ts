@@ -4,14 +4,24 @@
  * Layering (top → bottom):
  * 1. **Phase** — derived from step flags below; never persisted.
  * 2. **Step flags** — pathsDone, toolchainDone, metaDone from disk + session state.
- * 3. **Persistence** — localStorage caches (dismissed, welcome, defer, skip, meta summary);
+ * 3. **Persistence** — localStorage caches (dismissed, welcome, defer, meta summary);
  *    `app_config.setup_completed` is authority for “setup finished”.
  * 4. **Activation** — `useSetupGuide` decides whether the wizard is shown (recovery / wipe edge cases).
  *
- * FIT scan and driver confirmation are optional UI sub-steps inside `fit-scan`; not separate phases.
+ * Portable CUDA toolchain is a hard requirement (no skip). FIT scan and driver
+ * confirmation are optional UI sub-steps inside `fit-scan`; not separate phases.
+ *
+ * While setup is active, header nav allows only OPERATIONS, MODEL HUB, and CONFIG.
  */
 
 export type SetupPhase = "paths" | "toolchain" | "scan-meta" | "fit-scan";
+
+/** Tabs usable during first-run setup (wizard + paths + download models). */
+export const SETUP_ALLOWED_TABS = ["catalog", "modelhub", "config"] as const;
+
+export function isSetupNavTabAllowed(tab: string): boolean {
+  return (SETUP_ALLOWED_TABS as readonly string[]).includes(tab);
+}
 
 export interface MetaScanSummary {
   scanned: number;
@@ -32,19 +42,19 @@ export function computePathsDone(opts: {
   );
 }
 
-export function computeToolchainDone(toolchainSkipped: boolean, runtimeReady: boolean): boolean {
-  return toolchainSkipped || runtimeReady;
+/** Portable CUDA runtime is a hard requirement — no skip path. */
+export function computeToolchainDone(runtimeReady: boolean): boolean {
+  return runtimeReady;
 }
 
+/** Metadata scan is required when local models exist (powers VRAM forecast badges). */
 export function computeMetaDone(opts: {
   modelsDeferred: boolean;
   modelsCount: number;
-  metaScanSkipped: boolean;
   scannedCount: number;
   metaScanSummary: MetaScanSummary | null;
 }): boolean {
   if (opts.modelsDeferred || opts.modelsCount === 0) return true;
-  if (opts.metaScanSkipped) return true;
   if (opts.scannedCount >= opts.modelsCount) return true;
   if (!opts.metaScanSummary) return false;
   const processed = opts.metaScanSummary.scanned + opts.metaScanSummary.failed;

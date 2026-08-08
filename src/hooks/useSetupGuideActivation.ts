@@ -21,7 +21,6 @@ interface UseSetupGuideActivationOptions {
   setDismissed: (v: boolean) => void;
   setWelcomeDone: (v: boolean) => void;
   setModelsDeferred: (v: boolean) => void;
-  setToolchainSkipped: (v: boolean) => void;
 }
 
 /**
@@ -41,7 +40,6 @@ export function useSetupGuideActivation({
   setDismissed,
   setWelcomeDone,
   setModelsDeferred,
-  setToolchainSkipped,
 }: UseSetupGuideActivationOptions) {
   const hadDismissedOnMount = useRef(isSetupGuideDismissed());
   const staleWipeHandled = useRef(false);
@@ -89,7 +87,6 @@ export function useSetupGuideActivation({
     setDismissed(false);
     setWelcomeDone(false);
     setModelsDeferred(false);
-    setToolchainSkipped(false);
   }, [
     diskSetupReady,
     diskSetupCompleted,
@@ -98,7 +95,6 @@ export function useSetupGuideActivation({
     setDismissed,
     setWelcomeDone,
     setModelsDeferred,
-    setToolchainSkipped,
   ]);
 
   useEffect(() => {

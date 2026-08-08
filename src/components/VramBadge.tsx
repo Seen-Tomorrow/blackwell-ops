@@ -476,7 +476,7 @@ export default function VramBadge({
             />
           </div>
         )}
-        {/* GPU / VRAM bar row */}
+        {/* GPU / VRAM bar — layer text lives inside the bar (saves vertical) */}
         <div className="flex items-center gap-2">
           <div
             style={{ backgroundColor: "rgb(20,20,20)" }}
@@ -486,58 +486,52 @@ export default function VramBadge({
               style={{ width: `${vramUsagePct}%` }}
               className={`h-full rounded-sm ${s.gpuBarColor}`}
             />
-            {t.kvSpillRiskText && (
+            {(t.kvSpillRiskText || t.gpuLayerText) && (
               <span
                 className={`vram-forecast-bar__inset-label${
-                  s.kvSpillCritical
-                    ? " vram-forecast-bar__inset-label--kv-critical"
-                    : " vram-forecast-bar__inset-label--kv"
+                  t.kvSpillRiskText
+                    ? s.kvSpillCritical
+                      ? " vram-forecast-bar__inset-label--kv-critical"
+                      : " vram-forecast-bar__inset-label--kv"
+                    : ""
                 }`}
-                title={`${t.kvSpillRiskText} — verify with test run`}
+                title={
+                  t.kvSpillRiskText
+                    ? `${t.kvSpillRiskText} — verify with test run`
+                    : t.gpuLayerText
+                }
               >
-                {t.kvSpillRiskText}
+                {t.kvSpillRiskText || t.gpuLayerText}
               </span>
             )}
           </div>
           <span className={`text-[12px] font-mono ${s.titleColor}`}>| {totalVramGb.toFixed(0)} GB</span>
         </div>
 
-        {/* GPU layer info */}
-        <p className={`system-console-mono vram-forecast-layer-text ${s.titleColor} mt-0.5`}>
-          {t.gpuLayerText}
-        </p>
-
-        {/* RAM bar row */}
+        {/* RAM bar — offload / layer text inside bar */}
         {(t.showRamBar !== false) && (
-          <>
-            <div className="flex items-center gap-2 mt-1.5">
+          <div className="flex items-center gap-2 mt-1.5">
+            <div
+              style={{ backgroundColor: "rgb(20,20,20)" }}
+              className="vram-forecast-ram-bar relative h-4 w-[70%] rounded-sm overflow-hidden border border-stealth-border/30"
+            >
               <div
-                style={{ backgroundColor: "rgb(20,20,20)" }}
-                className="vram-forecast-ram-bar relative h-4 w-[70%] rounded-sm overflow-hidden border border-stealth-border/30"
-              >
-                <div
-                  style={{ width: `${ramUsagePct}%` }}
-                  className={`h-full rounded-sm ${
-                    (t.moeRamBar || offloadMode === "moe_optimal") ? "bg-orange-hatched" : "bg-blue-700"
-                  }`}
-                />
-                {t.offloadWarningText && (
-                  <span
-                    className="vram-forecast-bar__inset-label vram-forecast-bar__inset-label--ram"
-                    title={t.offloadWarningText}
-                  >
-                    {t.offloadWarningText}
-                  </span>
-                )}
-              </div>
-              <span className="text-[12px] font-mono text-blue-700">| {ramMfgGb} GB</span>
+                style={{ width: `${ramUsagePct}%` }}
+                className={`h-full rounded-sm ${
+                  (t.moeRamBar || offloadMode === "moe_optimal") ? "bg-orange-hatched" : "bg-blue-700"
+                }`}
+              />
+              {(t.offloadWarningText || t.ramLayerText) && (
+                <span
+                  className="vram-forecast-bar__inset-label vram-forecast-bar__inset-label--ram"
+                  title={t.offloadWarningText || t.ramLayerText}
+                >
+                  {t.offloadWarningText || t.ramLayerText}
+                </span>
+              )}
             </div>
-
-            {/* RAM layer info — text from scenario */}
-            <p className="system-console-mono vram-forecast-layer-text text-blue-700 mt-0.5">
-              {t.ramLayerText}
-            </p>
-          </>
+            <span className="text-[12px] font-mono text-blue-700">| {ramMfgGb} GB</span>
+          </div>
         )}
         </div>
         )}

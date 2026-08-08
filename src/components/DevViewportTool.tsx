@@ -13,6 +13,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+export type DevViewportBand = "marginal" | "ok" | "ideal";
+
 export type DevViewportPreset = {
   id: string;
   /** Short chip label (e.g. 1920). */
@@ -21,21 +23,23 @@ export type DevViewportPreset = {
   width: number;
   /** Physical height (device pixels on glass). */
   height: number;
-  /** Aspect ratio label only. */
+  /** Aspect ratio. */
   blurb: string;
+  /** Product floor: &lt;1080 unsupported (not listed); 1080 marginal; 1440+ ok; 4K ideal. */
+  band: DevViewportBand;
 };
 
-/** Common physical desktop sizes. Blurbs = aspect only. */
+/**
+ * Physical desktop sizes worth testing.
+ * Unsupported (&lt;1080p) omitted — product floor is 1080 marginal / 1440 recommended.
+ */
 export const DEV_VIEWPORT_PRESETS: DevViewportPreset[] = [
-  { id: "min", label: "960", width: 960, height: 768, blurb: "5:4" },
-  { id: "hd+", label: "1280", width: 1280, height: 800, blurb: "16:10" },
-  { id: "1366", label: "1366", width: 1366, height: 768, blurb: "16:9" },
-  { id: "1440", label: "1440", width: 1440, height: 900, blurb: "16:10" },
-  { id: "1600", label: "1600", width: 1600, height: 900, blurb: "16:9" },
-  { id: "fhd", label: "1920", width: 1920, height: 1080, blurb: "16:9" },
-  { id: "qhd", label: "2560", width: 2560, height: 1440, blurb: "16:9" },
-  { id: "uw", label: "3440", width: 3440, height: 1440, blurb: "21:9" },
-  { id: "4k", label: "3840", width: 3840, height: 2160, blurb: "16:9" },
+  { id: "fhd", label: "1920", width: 1920, height: 1080, blurb: "16:9", band: "marginal" },
+  { id: "1600", label: "1600", width: 1600, height: 900, blurb: "16:9", band: "marginal" },
+  { id: "1440w", label: "1440", width: 1440, height: 900, blurb: "16:10", band: "marginal" },
+  { id: "qhd", label: "2560", width: 2560, height: 1440, blurb: "16:9", band: "ok" },
+  { id: "uw", label: "3440", width: 3440, height: 1440, blurb: "21:9", band: "ok" },
+  { id: "4k", label: "3840", width: 3840, height: 2160, blurb: "16:9", band: "ideal" },
 ];
 
 type PxSize = { width: number; height: number };
@@ -243,8 +247,8 @@ export default function DevViewportTool() {
               </span>
             </div>
             <p className="dev-viewport-popover__hint">
-              Presets = physical (on glass). Layout CSS = phys ÷ scale.
-              Keep app zoom 100% while testing.
+              Physical on glass · CSS = phys ÷ scale · app zoom 100% for tests.
+              Floor: 1080 marginal · 1440+ recommended · &lt;1080 not listed.
             </p>
             <p className="dev-viewport-popover__hint dev-viewport-popover__hint--metrics">
               now phys {livePhys} · CSS {liveLog}
@@ -254,6 +258,8 @@ export default function DevViewportTool() {
                 const selected = p.id === activeId;
                 const cssW = live ? Math.round(p.width / live.scale) : p.width;
                 const cssH = live ? Math.round(p.height / live.scale) : p.height;
+                const bandLabel =
+                  p.band === "ideal" ? "ideal" : p.band === "ok" ? "ok" : "marginal";
                 return (
                   <button
                     key={p.id}
@@ -261,17 +267,21 @@ export default function DevViewportTool() {
                     role="option"
                     aria-selected={selected}
                     disabled={busy}
-                    className={`dev-viewport-popover__row${
+                    className={`dev-viewport-popover__row dev-viewport-popover__row--${p.band}${
                       selected ? " dev-viewport-popover__row--active" : ""
                     }`}
                     onClick={() => {
                       void applyPreset(p);
                     }}
-                    title={`Physical ${p.width}×${p.height} → CSS ~${cssW}×${cssH} @ ${scaleLabel}`}
+                    title={`Physical ${p.width}×${p.height} → CSS ~${cssW}×${cssH} @ ${scaleLabel} · ${bandLabel}`}
                   >
                     <span className="dev-viewport-popover__size">
                       {p.width}×{p.height}
                       <span className="dev-viewport-popover__aspect"> · {p.blurb}</span>
+                      <span className={`dev-viewport-popover__band dev-viewport-popover__band--${p.band}`}>
+                        {" "}
+                        · {bandLabel}
+                      </span>
                     </span>
                     <span className="dev-viewport-popover__blurb">
                       CSS ~{cssW}×{cssH} @ {scaleLabel}

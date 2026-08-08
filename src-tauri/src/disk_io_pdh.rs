@@ -126,3 +126,72 @@ impl Drop for PdhDiskSampler {
         }
     }
 }
+
+/// Live CPU clock via `% Processor Performance` (base × pct/100).
+/// Registry `~MHz` and WMI CurrentClockSpeed stick at base on modern CPUs.
+#[cfg(windows)]
+pub struct PdhCpuPerfSampler {
+    query: PDH_HQUERY,
+    perf_counter: PDH_HCOUNTER,
+}
+
+// PDH handles are process-local; Mutex serializes access across Tauri async workers.
+#[cfg(windows)]
+unsafe impl Send for PdhCpuPerfSampler {}
+
+#[cfg(windows)]
+impl PdhCpuPerfSampler {
+    pub fn new() -> Result<Self, String> {
+        let mut query: PDH_HQUERY = ptr::null_mut();
+        let status = unsafe { PdhOpenQueryW(ptr::null(), 0, &mut query) };
+        if !pdh_ok(status) {
+            return Err(format!("PdhOpenQueryW (cpu) failed: {status}"));
+        }
+        // English path — works regardless of OS UI language.
+        let perf_counter = match add_counter(
+            query,
+            r"\Processor Information(_Total)\% Processor Performance",
+        ) {
+            Ok(c) => c,
+            Err(e) => {
+                unsafe {
+                    let _ = PdhCloseQuery(query);
+                }
+                return Err(e);
+            }
+        };
+        let sampler = Self {
+            query,
+            perf_counter,
+        };
+        let _ = unsafe { PdhCollectQueryData(query) };
+        thread::sleep(Duration::from_millis(50));
+        let _ = unsafe { PdhCollectQueryData(query) };
+        Ok(sampler)
+    }
+
+    /// Returns performance percentage (100 = base clock; turbo often 110–160).
+    pub fn sample_performance_pct(&mut self) -> Option<f64> {
+        let status = unsafe { PdhCollectQueryData(self.query) };
+        if !pdh_ok(status) {
+            return None;
+        }
+        let pct = counter_double(self.perf_counter);
+        if pct.is_finite() && pct > 1.0 && pct < 500.0 {
+            Some(pct)
+        } else {
+            None
+        }
+    }
+}
+
+#[cfg(windows)]
+impl Drop for PdhCpuPerfSampler {
+    fn drop(&mut self) {
+        if !self.query.is_null() {
+            unsafe {
+                let _ = PdhCloseQuery(self.query);
+            }
+        }
+    }
+}

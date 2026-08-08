@@ -331,6 +331,9 @@ pub struct StackEntry {
     /// Engine `--parallel` at launch (for harness restart advice / hot-swap).
     #[serde(default = "default_stack_parallel")]
     pub parallel: i64,
+    /// True when this seat launched with mmproj (vision projector loaded).
+    #[serde(default)]
+    pub vision: bool,
 }
 
 /// serde `#[serde(default = ...)]` calls this by name — the dead-code lint can't see it.

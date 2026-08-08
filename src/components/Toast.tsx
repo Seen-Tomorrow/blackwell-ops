@@ -80,10 +80,12 @@ export function ToastProvider({ children }: ToastProviderProps) {
     };
 
     const handleLaunchError = (e: Event) => {
-      const detail = (e as CustomEvent).detail as { message: string };
+      const detail = (e as CustomEvent).detail as { message: string; durationMs?: number };
       if (detail?.message) {
         const clean = detail.message.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "").replace(/\[[0-9;]+[A-Za-z]/g, "").trim();
-        addToast(clean || detail.message, "error", 6000);
+        const isOom = /oom|out of memory|cudamalloc/i.test(clean);
+        const duration = detail.durationMs ?? (isOom ? 14000 : 6000);
+        addToast(clean || detail.message, "error", duration);
       }
     };
 

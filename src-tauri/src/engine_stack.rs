@@ -106,6 +106,8 @@ pub struct EngineSlot {
     /// Runtime profile binary env (vanguard/frontier/fresh/stable) used at launch.
     pub binary_profile: String,
     pub supports_fusion: bool,
+    /// True when launch injected mmproj (vision on + projector loaded).
+    pub vision: bool,
     /// Set when stop/clear runs — background reaper exits without duplicate cleanup.
     pub reaper_cancel: Arc<AtomicBool>,
     /// One-shot guard — stderr EOF vs reaper must not both emit load-failure UI.
@@ -139,6 +141,7 @@ impl EngineStack {
                 split_mode: String::new(),
                 binary_profile: String::new(),
                 supports_fusion: true,
+                vision: false,
                 reaper_cancel: Arc::new(AtomicBool::new(false)),
                 load_fail_claimed: Arc::new(AtomicBool::new(false)),
             }))));
@@ -315,7 +318,9 @@ impl EngineStack {
         cmd.creation_flags(CREATE_NO_WINDOW)
             .args(&cmd_args)
             .env("CUDA_VISIBLE_DEVICES", &gpu_mask)
-            .env("LLAMA_LOG_COLORS", "on")
+            // Off when piped: ANSI colors add no value for log_hub and can confuse parsers.
+            // (Console CMD can re-enable visually; we never attach a console.)
+            .env("LLAMA_LOG_COLORS", "off")
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
@@ -455,6 +460,11 @@ impl EngineStack {
                 config.binary_profile.clone()
             };
             slot.supports_fusion = supports_fusion;
+            // Vision only when mmproj was actually on the launch line (not just vision=on).
+            slot.vision = cmd_args.windows(2).any(|w| w[0].eq_ignore_ascii_case("--mmproj"))
+                || cmd_args
+                    .iter()
+                    .any(|a| a.to_ascii_lowercase().starts_with("--mmproj="));
             // Health/stderr readiness can fire while we still hold child/pid setup below.
             // Never downgrade Running → Loading or on_ready is one-shot and the stack sticks LOADING
             // while fusion /slots already reports READY (bench + phase bar gated on stack status).
@@ -1165,6 +1175,7 @@ impl EngineStack {
             supports_fusion: slot.supports_fusion,
             split_mode: slot.split_mode.clone(),
             parallel: slot.parallel.max(1),
+            vision: slot.vision,
         }
     }
 
@@ -1189,6 +1200,7 @@ impl EngineStack {
             supports_fusion: false,
             split_mode: String::new(),
             parallel: 1,
+            vision: false,
         }
     }
 

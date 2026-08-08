@@ -43,7 +43,7 @@ export interface ToolchainInstallInfo {
 interface FoundryToolchainPanelProps {
   /** Compact: ready state is one line; incomplete still shows full guide. */
   compact?: boolean;
-  /** Onboarding checklist — emphasize download + allow skip. */
+  /** Onboarding checklist — emphasize required one-click download. */
   onboarding?: boolean;
   /** When set (e.g. Foundry confirm), onReadyChange reflects only this profile. */
   requiredProfile?: Env;
@@ -84,11 +84,16 @@ export default function FoundryToolchainPanel({
   const [showManual, setShowManual] = useState(false);
   const toolchainDownloads = useDownloadTasks("toolchain");
 
-  const activeTask = toolchainDownloads.find((t) =>
-    ACTIVE_TOOLCHAIN_STATUSES.includes(t.status),
+  // A task the user explicitly cancelled (backend sets error = "Cancelled") is treated as
+  // absent — it must not keep the DOWNLOAD button disabled or linger as a fake "failed".
+  const isCancelled = (t: { status: string; error?: string | null }) =>
+    t.status === "failed" && t.error === "Cancelled";
+  const activeTask = toolchainDownloads.find(
+    (t) => ACTIVE_TOOLCHAIN_STATUSES.includes(t.status) && !isCancelled(t),
   );
-  const busyTask = toolchainDownloads.find((t) =>
-    ["queued", "downloading", "paused", "scanning"].includes(t.status),
+  const busyTask = toolchainDownloads.find(
+    (t) =>
+      ["queued", "downloading", "paused", "scanning"].includes(t.status) && !isCancelled(t),
   );
   const downloading = Boolean(busyTask);
 
@@ -143,6 +148,16 @@ export default function FoundryToolchainPanel({
       setActionError(String(e));
     }
   }, []);
+
+  const handleCancelDownload = useCallback(async () => {
+    if (!activeTask?.id) return;
+    setActionError(null);
+    try {
+      await invoke("cancel_download", { taskId: activeTask.id });
+    } catch (e) {
+      setActionError(String(e));
+    }
+  }, [activeTask?.id]);
 
   const handleOpenRelease = useCallback(async () => {
     setActionError(null);
@@ -214,6 +229,145 @@ export default function FoundryToolchainPanel({
     Boolean(busyTask) ||
     (activeTask?.status === "failed" && activeTask.quantType === "full");
   const canInstallFromCache = Boolean(cached) && !downloading;
+  // A download task that can be cancelled (not mid-extract, which cannot be aborted cleanly).
+  const cancelable = Boolean(activeTask && activeTask.status !== "scanning");
+
+  // Onboarding — simplified, jargon-free toolchain block.
+  if (onboarding && !info.all_ready) {
+    return (
+      <div className="foundry-toolchain-onboarding space-y-2">
+        {activeTask && <DownloadProgressRow task={activeTask} onActionError={setActionError} compact />}
+
+        <div className="foundry-toolchain-onboarding__actions flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void handleDownload()}
+            disabled={downloading || packActive}
+            className="foundry-toolchain-onboarding__download"
+          >
+            {packActive && busyTask
+              ? busyTask.status === "scanning"
+                ? "EXTRACTING…"
+                : busyTask.status === "downloading"
+                  ? "DOWNLOADING…"
+                  : busyTask.status === "paused"
+                    ? "PAUSED"
+                    : busyTask.status === "queued"
+                      ? "QUEUED…"
+                      : "DOWNLOAD"
+              : "DOWNLOAD CUDA RUNTIME"}
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleReextract()}
+            disabled={!canInstallFromCache}
+            className="foundry-toolchain-btn foundry-toolchain-btn--neutral"
+            title={
+              cached
+                ? "Extract toolchain.7z from cache (no download)"
+                : `Place ${info.archive_name} in the cache folder, then click here`
+            }
+          >
+            INSTALL FROM CACHE
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowManual((v) => !v)}
+            className={`foundry-toolchain-btn foundry-toolchain-btn--neutral${
+              showManual ? " ring-1 ring-telemetry-cyan/50" : ""
+            }`}
+          >
+            {showManual ? "HIDE MANUAL" : "MANUAL"}
+          </button>
+          {cancelable && (
+            <button
+              type="button"
+              onClick={() => void handleCancelDownload()}
+              className="foundry-toolchain-btn foundry-toolchain-btn--cancel"
+              title="Cancel this download to switch to Install from cache or Manual"
+            >
+              CANCEL DOWNLOAD
+            </button>
+          )}
+        </div>
+
+        {!downloading && !cached && (
+          <p className="foundry-toolchain-onboarding__hint">
+            ~{info.compressed_size_label} one-time download — engines, metadata scan, and
+            build-from-source.
+          </p>
+        )}
+        {cancelable && (
+          <p className="foundry-toolchain-onboarding__cancel-hint">
+            Cancel the download anytime to use Install from cache or Manual instead.
+          </p>
+        )}
+
+        {showManual && (
+          <div className="foundry-toolchain-install-guide border border-stealth-border/40 bg-black/25 rounded-sm p-2.5 space-y-2">
+            <p className="text-[8px] font-mono text-stealth-muted uppercase tracking-wide">
+              Manual install
+            </p>
+            <ol className="foundry-toolchain-install-guide__body list-decimal list-inside space-y-1 text-[8px] font-mono text-white/65 leading-relaxed">
+              <li>
+                Download <span className="text-nv-green">{info.archive_name}</span> from the GitHub
+                release (or use Download above).
+              </li>
+              <li>
+                Place the file in the cache folder below — do not extract it yourself.
+              </li>
+              <li>
+                Click <span className="text-nv-green">Install from cache</span> — the app extracts
+                and verifies into <span className="text-nv-green">toolchain\</span> automatically.
+              </li>
+            </ol>
+
+            <div className="rounded-sm border border-stealth-border/50 bg-black/30 px-2 py-1.5 space-y-0.5">
+              <div className="text-[7px] font-mono text-stealth-muted uppercase">Cache folder</div>
+              <div className="text-[8px] font-mono text-telemetry-cyan break-all">
+                {info.archive_cache_dir}
+              </div>
+              {!info.manifest_present && (
+                <div className="text-[7px] font-mono text-stealth-muted/80">
+                  {cached
+                    ? `${info.archive_name} found — click Install from cache`
+                    : `Waiting for ${info.archive_name} in cache`}
+                </div>
+              )}
+            </div>
+
+            <div className="foundry-toolchain-install-guide__actions flex flex-wrap gap-1.5 pt-0.5">
+              <button
+                type="button"
+                onClick={() => void handleOpenCacheFolder()}
+                className="foundry-toolchain-btn foundry-toolchain-btn--neutral"
+              >
+                OPEN CACHE FOLDER
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleCopyCachePath()}
+                className="foundry-toolchain-btn foundry-toolchain-btn--neutral"
+              >
+                {copied ? "COPIED" : "COPY CACHE PATH"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleOpenRelease()}
+                className="foundry-toolchain-btn foundry-toolchain-btn--link"
+              >
+                OPEN RELEASE PAGE
+              </button>
+            </div>
+          </div>
+        )}
+
+        {actionError && (
+          <p className="text-[7px] font-mono text-red-400/80 break-all">{actionError}</p>
+        )}
+      </div>
+    );
+  }
 
   const statusLabel = info.all_ready
     ? "READY"

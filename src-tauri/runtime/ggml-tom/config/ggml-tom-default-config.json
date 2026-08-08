@@ -1,7 +1,7 @@
 {
   "binary_name": "llama-server.exe",
   "branch": "master",
-  "build_profile": "-DGGML_CUDA=ON\n-DGGML_AVX512=ON",
+  "build_profile": "-DGGML_CUDA=ON\n-DGGML_AVX512=ON\n-DGGML_NATIVE=OFF",
   "description": "TheTom turboquant fork - TQ kernels, fused MTP, Windows-first builds",
   "display_name": "GGML TomTQ",
   "optionalDownload": true,

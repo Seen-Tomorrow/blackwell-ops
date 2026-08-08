@@ -12,17 +12,15 @@ import {
   type SetupPhase,
 } from "../lib/setupGuide";
 import {
-  clearToolchainOnboardingSkipped,
   clearSetupModelsDeferred,
+  clearToolchainOnboardingSkipped,
   isSetupModelsDeferred,
   isSetupWelcomeSeen,
-  isToolchainOnboardingSkipped,
   loadSetupMetaScanSummary,
   saveSetupGuideDismissed,
   saveSetupMetaScanSummary,
   saveSetupModelsDeferred,
   saveSetupWelcomeSeen,
-  saveToolchainOnboardingSkipped,
   isSetupGuideDismissed,
 } from "../lib/storage";
 import { useDownloadTasks } from "./useDownloadTasks";
@@ -35,11 +33,10 @@ export interface SetupGuideState {
   active: boolean;
   phase: SetupPhase;
   pathsDone: boolean;
-  toolchainSkipped: boolean;
   runtimeReady: boolean;
-  /** False until first toolchain status fetch completes — avoids DOWNLOAD LATER flash on replay. */
+  /** False until first toolchain status fetch completes. */
   toolchainChecked: boolean;
-  /** Download or 7z extract in flight — hide skip until idle. */
+  /** Download or 7z extract in flight. */
   toolchainBusy: boolean;
   modelsDeferred: boolean;
   metaDone: boolean;
@@ -49,8 +46,6 @@ export interface SetupGuideState {
   welcomeDone: boolean;
   completeWelcome: () => void;
   deferModels: () => void;
-  skipToolchain: () => void;
-  skipMetaScan: () => void;
   dismiss: () => void;
   modelsCount: number;
   scannedCount: number;
@@ -76,8 +71,6 @@ export function useSetupGuide({ models, catalogLoaded = false, batchScanState }:
   const [dismissed, setDismissed] = useState(() => isSetupGuideDismissed());
   const [welcomeDone, setWelcomeDone] = useState(() => isSetupWelcomeSeen());
   const [modelsDeferred, setModelsDeferred] = useState(() => isSetupModelsDeferred());
-  const [toolchainSkipped, setToolchainSkipped] = useState(() => isToolchainOnboardingSkipped());
-  const [metaScanSkipped, setMetaScanSkipped] = useState(false);
   const [runtimeReady, setRuntimeReady] = useState(false);
   const [toolchainChecked, setToolchainChecked] = useState(false);
   const [pathsConfigured, setPathsConfigured] = useState(false);
@@ -104,12 +97,8 @@ export function useSetupGuide({ models, catalogLoaded = false, batchScanState }:
     try {
       const info = await invoke<{ runtime_ready: boolean }>("foundry_get_toolchain_install_info");
       setRuntimeReady(info.runtime_ready);
-      if (info.runtime_ready) {
-        setToolchainSkipped((skipped) => {
-          if (skipped) clearToolchainOnboardingSkipped();
-          return false;
-        });
-      }
+      // Drop legacy skip flag if present (toolchain is no longer skippable).
+      if (info.runtime_ready) clearToolchainOnboardingSkipped();
     } catch {
       setRuntimeReady(false);
     } finally {
@@ -123,6 +112,8 @@ export function useSetupGuide({ models, catalogLoaded = false, batchScanState }:
   }, [refreshPaths, refreshToolchain]);
 
   useEffect(() => {
+    // Legacy localStorage: toolchain skip is no longer valid.
+    clearToolchainOnboardingSkipped();
     refreshPathsAndToolchain();
   }, [refreshPathsAndToolchain]);
 
@@ -160,18 +151,17 @@ export function useSetupGuide({ models, catalogLoaded = false, batchScanState }:
     catalogLoaded,
     modelsCount,
   });
-  const toolchainDone = computeToolchainDone(toolchainSkipped, runtimeReady);
+  const toolchainDone = computeToolchainDone(runtimeReady);
   const metaScanFailed = metaScanSummary?.failed ?? 0;
   const metaDone = useMemo(
     () =>
       computeMetaDone({
         modelsDeferred,
         modelsCount,
-        metaScanSkipped,
         scannedCount,
         metaScanSummary,
       }),
-    [modelsDeferred, modelsCount, metaScanSkipped, scannedCount, metaScanSummary],
+    [modelsDeferred, modelsCount, scannedCount, metaScanSummary],
   );
 
   const phase = useMemo(
@@ -204,7 +194,6 @@ export function useSetupGuide({ models, catalogLoaded = false, batchScanState }:
     setDismissed,
     setWelcomeDone,
     setModelsDeferred,
-    setToolchainSkipped,
   });
 
   const showWelcome = active && !welcomeDone;
@@ -269,23 +258,17 @@ export function useSetupGuide({ models, catalogLoaded = false, batchScanState }:
     setModelsDeferred(true);
   }, [preview]);
 
-  const skipToolchain = useCallback(() => {
-    if (!preview) saveToolchainOnboardingSkipped();
-    setToolchainSkipped(true);
-  }, [preview]);
-
-  const skipMetaScan = useCallback(() => {
-    setMetaScanSkipped(true);
-  }, []);
-
   const dismiss = useCallback(() => {
+    // Hard gate: never complete setup without portable CUDA runtime.
+    if (!runtimeReady) return;
     if (!preview) {
       saveSetupGuideDismissed();
       saveSetupMetaScanSummary(null);
+      clearToolchainOnboardingSkipped();
       void invoke("mark_setup_completed").then(() => setDiskSetupCompleted(true));
     }
     setDismissed(true);
-  }, [preview, setDiskSetupCompleted]);
+  }, [preview, setDiskSetupCompleted, runtimeReady]);
 
   useEffect(() => {
     if (active) {
@@ -303,7 +286,6 @@ export function useSetupGuide({ models, catalogLoaded = false, batchScanState }:
     active,
     phase,
     pathsDone,
-    toolchainSkipped,
     runtimeReady,
     toolchainChecked,
     toolchainBusy,
@@ -314,8 +296,6 @@ export function useSetupGuide({ models, catalogLoaded = false, batchScanState }:
     welcomeDone,
     completeWelcome,
     deferModels,
-    skipToolchain,
-    skipMetaScan,
     dismiss,
     modelsCount,
     scannedCount,

@@ -25,17 +25,26 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
   // Prior-launch learned totals are regular-mode GPU footprints — not valid for FULL AUTO live forecast or MOE_OPTIMAL.
   const rawLearnedGb = !probeGb && input.learnedVramMib ? input.learnedVramMib / 1024 : null;
   const useLearnedProjection = !fullAuto && !moeOptimalActive && rawLearnedGb != null;
-  const learnedGb = useLearnedProjection ? rawLearnedGb : null;
+  // Full main+draft LEARNED already includes draft buffers (mtp_context_mib set). Older main-only
+  // LEARNED (Boost was off) must add draftWeights+overhead when Boost is on now.
+  // Lookup must not return a draft-dspark row when Boost is off (see vram_learn fuzzy).
+  const draftAddonGb = computed.draftWeightsGb + computed.draftOverheadGb;
+  const learnedHasDraft = (input.learnedMtpContextMib ?? 0) > 64;
+  const learnedGb = useLearnedProjection
+    ? rawLearnedGb! + (draftAddonGb > 0 && !learnedHasDraft ? draftAddonGb : 0)
+    : null;
   const learnedHostGb = useLearnedProjection
     ? (probeHostGb ?? (input.learnedHostMib ? input.learnedHostMib / 1024 : null))
     : null;
 
-  const formulaGb = probeGb ?? computed.vramTotalGb;
+  // FIT probe never loads external draft GGUF — always add draftWeights+overhead when Boost is on.
+  const probeWithDraftGb = probeGb != null ? probeGb + draftAddonGb : null;
+  const formulaGb = probeWithDraftGb ?? computed.vramTotalGb;
   // Weight-only floor is a safety net for UNKNOWN models. A real measurement
   // (FIT probe or learned prior launch) is trusted over this crude floor —
   // otherwise a borderline model proven to fit one GPU by a probe gets forced
   // into split by weightGb*1.05.
-  const hasMeasurement = probeGb != null || learnedGb != null;
+  const hasMeasurement = probeWithDraftGb != null || learnedGb != null;
   const weightFloorGb = moeOptimalActive ? computed.weightsOnGpuGb * 1.05 : weightGb * 1.05;
   const estimateGb = hasMeasurement
     ? Math.max(learnedGb ?? 0, formulaGb)
@@ -52,15 +61,21 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
   const headroomGb = Math.max(1.0, targetAvail * 0.03);
   const exceedsGpuPool = estimateGb > targetAvail - headroomGb;
   const systemAvailableGb = systemMemoryAvailableGb(computed, input);
-  const modelFootprintGb = weightGb + computed.kvCacheGb + computed.overheadGb + computed.visionGb;
+  const modelFootprintGb =
+    weightGb
+    + computed.kvCacheGb
+    + computed.overheadGb
+    + computed.visionGb
+    + computed.draftWeightsGb
+    + computed.draftOverheadGb;
   const overSystemMemory = exceedsSystemMemory(modelFootprintGb, computed, input);
 
   // --fit on can offload to host when GPU pool is tight — MOE_OPTIMAL launches with --fit off.
   const trustFitAtLoad = !overSystemMemory && !moeOptimalActive && (exceedsGpuPool || learnedHostGb != null);
   const fits = !overSystemMemory && (trustFitAtLoad || gpuNeedGb <= targetAvail - headroomGb);
 
-  const gpuProjectionGb = probeGb != null
-    ? probeGb
+  const gpuProjectionGb = probeWithDraftGb != null
+    ? probeWithDraftGb
     : moeOptimalActive
       ? computed.vramTotalGb
       : learnedGb != null

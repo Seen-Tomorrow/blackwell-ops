@@ -167,6 +167,11 @@ export function buildSpecCliExtraParams(
 
   const pickProfileKey = (key: string) => {
     const def = params.find((p) => p.key === key);
+    // Row hidden in Config / cockpit → do not force into extra_params.
+    // Rust treats extra_params as an explicit override that bypasses hidden.
+    if (def?.hidden || def?.userHidden) {
+      return;
+    }
     const raw = config[key];
     if (raw !== undefined && raw !== null && String(raw).trim() !== "") {
       out[key] = raw;
@@ -231,7 +236,7 @@ export function cockpitProfileKnobRows(
 
   const skip = new Set<string>([DFLASH_DRAFT_MODEL]);
   return paramsInProfile(params, group)
-    .filter((d) => !skip.has(d.key) && !d.userHidden)
+    .filter((d) => !skip.has(d.key) && !d.userHidden && !d.hidden)
     .sort((a, b) => a.order - b.order)
     .map((d) => {
       const seen = new Set((d.values || []).map(String));

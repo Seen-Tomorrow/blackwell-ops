@@ -923,68 +923,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   const gpuIdleBaselineMib = useGpuIdleBaseline(gpus, stack);
 
-  const scenarioConfig = useMemo(
-    () => ({
-      ...config,
-      backend_type: effectiveBackendType,
-      ...(fullAutoMode ? { split: "none", offload_mode: "regular" } : {}),
-    }),
-    [config, effectiveBackendType, fullAutoMode],
-  );
-
   // Display value — manufactured capacity, no deductions (what users see)
   const displayVramMib = gpus.reduce((sum, g) => sum + (g.memory_total_manufactured || g.memory_total), 0);
-
- const vramCalc = useScenarioEvaluator({
-    model,
-    config: scenarioConfig,
-    gpus,
-    stack,
-    systemInfo,
-    autoVramLaunch: fitLaunchSupported,
-    fullAutoMode,
-    fitStyle: spawnProfile?.fit_style ?? "",
-  });
 
   const splitModeActive = isSplitModeActive(config.split);
 
   const hasSplitParam = providerHasParamKey(allParamsResolved, "split");
   const softLaunchForecast = shouldSoftLaunchOnForecast(currentProvider);
-
-  const launchChrome = useMemo(() => {
-    // Custom: never multi-GPU lock / device ALL / hide split none — user owns chrome.
-    if (isCustomProvider && !fullAutoMode) {
-      const forecastNo =
-        vramCalc.manifest != null && !vramCalc.manifest.fits;
-      return {
-        mode: "assisted" as const,
-        chromeDisabled: false,
-        deviceLocked: false,
-        splitLocked: !hasSplitParam,
-        hideSplitNone: false,
-        reason: forecastNo
-          ? "Forecast incomplete or tight — launch still allowed for custom providers"
-          : undefined,
-      };
-    }
-    return resolveLaunchChromePolicy({
-      fullAutoMode,
-      gpus,
-      config,
-      manifest: vramCalc.manifest,
-      weightGb: (model?.metadata?.file_size_bytes ?? 0) / (1024 ** 3),
-      runningSlots: runningSlotsForPlan,
-    });
-  }, [
-    isCustomProvider,
-    hasSplitParam,
-    fullAutoMode,
-    gpus,
-    config,
-    vramCalc.manifest,
-    model?.metadata?.file_size_bytes,
-    runningSlotsForPlan,
-  ]);
 
   useEffect(() => {
     if (!fullAutoMode) return;
@@ -992,31 +937,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       updateParam("offload_mode", "regular");
     }
   }, [fullAutoMode, config["offload_mode"], updateParam]);
-
-  useEffect(() => {
-    if (fullAutoMode) return;
-    // Custom: never auto-promote split to layer (false multi-GPU for tiny models).
-    if (isCustomProvider) {
-      const split = String(config.split ?? "none").trim().toLowerCase();
-      if (split === "layer" && autoSplitPromotedRef.current) {
-        autoSplitPromotedRef.current = false;
-        updateParam("split", "none");
-      }
-      return;
-    }
-    const split = String(config.split ?? "none").trim().toLowerCase();
-    if (launchChrome.hideSplitNone) {
-      if (split === "none" || split === "") {
-        autoSplitPromotedRef.current = true;
-        updateParam("split", "layer");
-      }
-      return;
-    }
-    if (autoSplitPromotedRef.current && split === "layer") {
-      autoSplitPromotedRef.current = false;
-      updateParam("split", "none");
-    }
-  }, [fullAutoMode, isCustomProvider, launchChrome.hideSplitNone, config.split, updateParam]);
 
   // Custom: on provider switch, reset topology to solo (starter pack defaults often leave split=layer → ALL GPUs).
   // User can change split/device after; we only reset when the provider id changes.
@@ -1112,6 +1032,98 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     handleConfirmLibraryDraft,
     loadDflashHfCandidates,
   } = dflash;
+
+  // VRAM forecast must see Boost method as CLI spec_type (template row is only set at launch).
+  const scenarioConfig = useMemo(() => {
+    const boostSpec =
+      speedBoost === "mtp"
+        ? "draft-mtp"
+        : speedBoost === "dflash"
+          ? "draft-dflash"
+          : speedBoost === "dspark"
+            ? "draft-dspark"
+            : "";
+    return {
+      ...config,
+      backend_type: effectiveBackendType,
+      ...(boostSpec
+        ? { spec_type: boostSpec, __boost_spec_type: boostSpec }
+        : {}),
+      ...(fullAutoMode ? { split: "none", offload_mode: "regular" } : {}),
+    };
+  }, [config, effectiveBackendType, fullAutoMode, speedBoost]);
+
+  const vramCalc = useScenarioEvaluator({
+    model,
+    config: scenarioConfig,
+    gpus,
+    stack,
+    systemInfo,
+    autoVramLaunch: fitLaunchSupported,
+    fullAutoMode,
+    fitStyle: spawnProfile?.fit_style ?? "",
+    catalogModels: models,
+  });
+
+  const launchChrome = useMemo(() => {
+    // Custom: never multi-GPU lock / device ALL / hide split none — user owns chrome.
+    if (isCustomProvider && !fullAutoMode) {
+      const forecastNo =
+        vramCalc.manifest != null && !vramCalc.manifest.fits;
+      return {
+        mode: "assisted" as const,
+        chromeDisabled: false,
+        deviceLocked: false,
+        splitLocked: !hasSplitParam,
+        hideSplitNone: false,
+        reason: forecastNo
+          ? "Forecast incomplete or tight — launch still allowed for custom providers"
+          : undefined,
+      };
+    }
+    return resolveLaunchChromePolicy({
+      fullAutoMode,
+      gpus,
+      config,
+      manifest: vramCalc.manifest,
+      weightGb: (model?.metadata?.file_size_bytes ?? 0) / (1024 ** 3),
+      runningSlots: runningSlotsForPlan,
+    });
+  }, [
+    isCustomProvider,
+    hasSplitParam,
+    fullAutoMode,
+    gpus,
+    config,
+    vramCalc.manifest,
+    model?.metadata?.file_size_bytes,
+    runningSlotsForPlan,
+  ]);
+
+  useEffect(() => {
+    if (fullAutoMode) return;
+    // Custom: never auto-promote split to layer (false multi-GPU for tiny models).
+    if (isCustomProvider) {
+      const split = String(config.split ?? "none").trim().toLowerCase();
+      if (split === "layer" && autoSplitPromotedRef.current) {
+        autoSplitPromotedRef.current = false;
+        updateParam("split", "none");
+      }
+      return;
+    }
+    const split = String(config.split ?? "none").trim().toLowerCase();
+    if (launchChrome.hideSplitNone) {
+      if (split === "none" || split === "") {
+        autoSplitPromotedRef.current = true;
+        updateParam("split", "layer");
+      }
+      return;
+    }
+    if (autoSplitPromotedRef.current && split === "layer") {
+      autoSplitPromotedRef.current = false;
+      updateParam("split", "none");
+    }
+  }, [fullAutoMode, isCustomProvider, launchChrome.hideSplitNone, config.split, updateParam]);
 
   const specParallelWarn = useMemo(
     () =>
@@ -2461,10 +2473,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 <SetupGuideDisplay
                   phase={setupGuide.phase}
                   pathsDone={setupGuide.pathsDone}
-                  toolchainSkipped={setupGuide.toolchainSkipped}
                   runtimeReady={setupGuide.runtimeReady}
                   toolchainChecked={setupGuide.toolchainChecked}
-                  toolchainBusy={setupGuide.toolchainBusy}
                   modelsDeferred={setupGuide.modelsDeferred}
                   metaDone={setupGuide.metaDone}
                   metaScanFailed={setupGuide.metaScanFailed}
@@ -2472,8 +2482,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                   scannedCount={setupGuide.scannedCount}
                   catalogLoaded={setupGuide.catalogLoaded}
                   onDeferModels={setupGuide.deferModels}
-                  onSkipToolchain={setupGuide.skipToolchain}
-                  onSkipMetaScan={setupGuide.skipMetaScan}
                   onDismiss={setupGuide.dismiss}
                 />
               )}

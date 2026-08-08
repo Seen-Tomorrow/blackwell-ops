@@ -129,18 +129,16 @@ export default function GpuTopology({
                 </span>
               </div>
 
-              {/* Unified VRAM bar — projected from left, existing from right */}
+              {/* Unified VRAM bar — projected L→R; status text inset (no extra line under bar) */}
               <div
                 style={{ backgroundColor: 'rgb(20,20,20)' }}
-                className="relative h-3 rounded-sm overflow-hidden border border-stealth-border/30"
+                className="relative h-3.5 rounded-sm overflow-hidden border border-stealth-border/30"
               >
-                {/* Projected load — fills left → right in scenario color (capped at 100%) */}
                 <div
                   style={{ width: `${Math.min(projectedPct, 100)}%` }}
                   className={`h-full absolute top-0 left-0 gpu-bar-fill ${gpuBarColor}`}
                 />
 
-                {/* External/OS — fills from far right edge, grey hatched (capped) */}
                 {osOtherMib > 0 && (
                   <div
                     style={{
@@ -152,7 +150,6 @@ export default function GpuTopology({
                   />
                 )}
 
-                {/* Our engines — breakdown SELF + capped CUDA/runtime overhead */}
                 {engineBarMib > 0 && (
                   <div
                     style={{
@@ -165,18 +162,18 @@ export default function GpuTopology({
                   />
                 )}
 
-                {/* Tooltip overlay — covers entire bar */}
-                <div className="absolute inset-0 cursor-help" title={tooltipText} />
-              </div>
-
-              {/* Numbers below bar */}
-              <div className="flex justify-between mt-1">
-                <span style={{ color: barColorHex }} className="text-[8px] font-mono">
-                  {alloc.projectedLoadGb.toFixed(1)} GB projected
+                <span
+                  className="gpu-card-bar-inset absolute inset-0 flex items-center justify-between px-1 pointer-events-none z-[1]"
+                  title={tooltipText}
+                >
+                  <span style={{ color: barColorHex }} className="text-[7px] font-mono truncate drop-shadow-[0_1px_1px_rgba(0,0,0,0.9)]">
+                    {alloc.projectedLoadGb.toFixed(1)} GB
+                  </span>
+                  <span className="text-[7px] font-mono text-white/70 shrink-0 drop-shadow-[0_1px_1px_rgba(0,0,0,0.9)]">
+                    /{alloc.vramManufacturedGb.toFixed(0)} GB
+                  </span>
                 </span>
-                <span className="text-[8px] font-mono text-stealth-muted/50">
-                  /{alloc.vramManufacturedGb.toFixed(0)} GB
-                </span>
+                <div className="absolute inset-0 cursor-help z-[2]" title={tooltipText} />
               </div>
 
               </div>

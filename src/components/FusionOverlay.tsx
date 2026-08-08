@@ -16,6 +16,11 @@ import type { GpuInfo } from "../lib/types";
 import { useFusionBenchTray } from "../hooks/useFusionBenchTray";
 import { useFusionHeroTpsMode } from "../hooks/useFusionHeroTpsMode";
 import { useTauriListen } from "../hooks/useTauriListen";
+import {
+  loadFusionLogVerbosity,
+  saveFusionLogVerbosity,
+  type FusionLogVerbosity,
+} from "../lib/storage";
 
 interface FusionOverlayProps {
   alias?: string;
@@ -338,6 +343,15 @@ export default function FusionOverlay({
     invoke("set_fusion_quiet_mode", { port: displayPort, quiet: quietMode }).catch(() => {});
   }, [quietMode, quietKey, displayPort]);
 
+  // ── Engine `-lv` for *next* launch (CLI; cannot change a running process) ──
+  const [logVerbosity, setLogVerbosity] = useState<FusionLogVerbosity>(() => loadFusionLogVerbosity());
+  useEffect(() => {
+    saveFusionLogVerbosity(logVerbosity);
+  }, [logVerbosity]);
+  const toggleLogVerbosity = useCallback(() => {
+    setLogVerbosity((v) => (v === 3 ? 4 : 3));
+  }, []);
+
   if (!supportsFusion) {
     const isLaunching = engineStatus === "LOADING";
 
@@ -607,6 +621,22 @@ export default function FusionOverlay({
                 }`}
               >
                 {quietMode ? "QUIET" : "LOGS"}
+              </button>
+              <button
+                type="button"
+                onClick={toggleLogVerbosity}
+                title={
+                  logVerbosity === 3
+                    ? "Engine -lv 3 (default): print_timing / draft / eval belt, less boot spam. Applies on NEXT launch. Click for -lv 4 (full metadata belt)."
+                    : "Engine -lv 4: full model_loader / slot chatter. Applies on NEXT launch. Click for -lv 3 (timing belt only)."
+                }
+                className={`text-[7px] font-bold tracking-wider px-1.5 py-0.5 rounded select-none ${
+                  logVerbosity === 4
+                    ? "bg-telemetry-cyan/15 text-telemetry-cyan border border-telemetry-cyan/40 hover:bg-telemetry-cyan/25"
+                    : "bg-black/20 text-stealth-muted/50 border border-stealth-border/30 hover:text-stealth-muted/80"
+                }`}
+              >
+                LV{logVerbosity}
               </button>
               <button
                 onClick={handleStopEngine}

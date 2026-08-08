@@ -28,6 +28,7 @@ import {
   resolveLaunchPolicyId,
   resolveSmartBatchPush,
 } from "./launchPolicy";
+import { loadFusionLogVerbosity } from "./storage";
 import {
   type SpecBoostMethod,
   buildSpecCliExtraParams,
@@ -225,6 +226,8 @@ export function buildLaunchConfig(input: BuildLaunchConfigInput): EngineConfig {
       parallel: parallelN,
       __memory_mode: fullAutoMode ? "full_auto" : "assisted",
       __launch_policy: policy.id,
+      // Cockpit LV 3/4 toggle — Rust rewrites spawn_profile `-lv N` (see apply_log_verbosity_override).
+      __log_verbosity: loadFusionLogVerbosity(),
     },
   };
 

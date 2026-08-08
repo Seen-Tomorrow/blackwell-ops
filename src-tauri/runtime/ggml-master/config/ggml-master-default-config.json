@@ -1,7 +1,7 @@
 {
   "binary_name": "llama-server.exe",
   "branch": "master",
-  "build_profile": "-DGGML_CUDA=ON\n-DGGML_AVX512=ON",
+  "build_profile": "-DGGML_CUDA=ON\n-DGGML_AVX512=ON\n-DGGML_NATIVE=OFF",
   "description": "Official llama.cpp master build",
   "display_name": "GGML Master",
   "git_url": "https://github.com/ggml-org/llama.cpp",

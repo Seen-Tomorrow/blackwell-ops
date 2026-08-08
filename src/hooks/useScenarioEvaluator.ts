@@ -23,7 +23,9 @@ function scenarioConfigKey(
   autoVramLaunch: boolean,
   memoryMode: "full_auto" | "assisted",
 ): string {
-  return `${config.device || ""}|${config.split || ""}|${config["offload_mode"] || ""}|${config.ctx || ""}|${config["kv_quant"] || ""}|${config.batch ?? ""}|${config.ubatch ?? ""}|${config["flash_attn"] || ""}|${config.vision || ""}|${config["unified_kv"] || ""}|${config["rope_scaling"] || ""}|${config["rope_scale"] ?? ""}|${config.gpu_sync || ""}|${config.cache_ram || ""}|${config.spec_type || ""}|${config.backend_type || ""}|fit=${autoVramLaunch ? "1" : "0"}|mode=${memoryMode}`;
+  const draft = String(config.dflash_draft_model ?? config.spec_draft_model ?? "");
+  const draftBase = draft.split(/[/\\]/).pop() || draft;
+  return `${config.device || ""}|${config.split || ""}|${config["offload_mode"] || ""}|${config.ctx || ""}|${config["kv_quant"] || ""}|${config.batch ?? ""}|${config.ubatch ?? ""}|${config["flash_attn"] || ""}|${config.vision || ""}|${config["unified_kv"] || ""}|${config["rope_scaling"] || ""}|${config["rope_scale"] ?? ""}|${config.gpu_sync || ""}|${config.cache_ram || ""}|${config.spec_type || ""}|draft=${draftBase}|${config.backend_type || ""}|fit=${autoVramLaunch ? "1" : "0"}|mode=${memoryMode}`;
 }
 
 function probeScenarioFields(session: ProbeSession | null, modelPath: string, configKey: string) {
@@ -94,6 +96,59 @@ interface UseScenarioEvaluatorProps {
   autoVramLaunch?: boolean;
   fullAutoMode?: boolean;
   fitStyle?: string;
+  /** Full catalog — used to resolve external draft GGUF file size for VRAM formula. */
+  catalogModels?: ModelEntry[];
+}
+
+/** Effective CLI spec_type for forecast/learn — cockpit may only have Boost state until launch. */
+export function effectiveSpecTypeFromConfig(config: Record<string, unknown>): string {
+  const raw = String(config.spec_type ?? "none").trim().toLowerCase();
+  if (raw && raw !== "none" && raw !== "off") return raw;
+  // Boost may inject __boost_spec_type into scenarioConfig without writing template row.
+  const boost = String(config.__boost_spec_type ?? "").trim().toLowerCase();
+  if (boost) return boost;
+  return "none";
+}
+
+function externalDraftWanted(config: Record<string, unknown>): boolean {
+  const st = effectiveSpecTypeFromConfig(config);
+  if (st.includes("mtp") && !st.includes("dflash") && !st.includes("dspark") && !st.includes("eagle")) {
+    return false;
+  }
+  if (st.includes("dflash") || st.includes("dspark") || st.includes("eagle")) return true;
+  // Draft path alone (Boost on, spec_type not yet flattened into config row).
+  const draft = String(config.dflash_draft_model ?? config.spec_draft_model ?? "").trim();
+  if (draft && draft.toLowerCase() !== "auto" && draft.toLowerCase() !== "off" && /\.gguf$/i.test(draft)) {
+    return true;
+  }
+  return false;
+}
+
+/** Resolve external draft path + size (MiB) for dflash/dspark forecast (sync path). */
+function resolveDraftSizeMib(
+  config: Record<string, unknown>,
+  catalog: ModelEntry[] | undefined,
+): number | undefined {
+  if (!externalDraftWanted(config)) return undefined;
+  const draftRaw = String(
+    config.dflash_draft_model ?? config.spec_draft_model ?? "",
+  ).trim();
+  if (!draftRaw || draftRaw.toLowerCase() === "auto" || draftRaw.toLowerCase() === "off") {
+    return undefined;
+  }
+  const norm = draftRaw.replace(/\\/g, "/").toLowerCase();
+  const base = norm.split("/").pop() || norm;
+  const hit = (catalog ?? []).find((m) => {
+    const p = m.path.replace(/\\/g, "/").toLowerCase();
+    return p === norm || p.endsWith("/" + base) || p.endsWith(base);
+  });
+  const bytes = hit?.metadata?.file_size_bytes ?? 0;
+  if (bytes > 0) return bytes / (1024 * 1024);
+  return undefined;
+}
+
+function draftPathForLearned(config: Record<string, unknown>): string {
+  return String(config.dflash_draft_model ?? config.spec_draft_model ?? "").trim();
 }
 
 // Shared scenarios-tab emission helper to avoid duplicating IPC calls to Blackwell Output Console
@@ -213,6 +268,7 @@ export function useScenarioEvaluator({
   autoVramLaunch = false,
   fullAutoMode = true,
   fitStyle = "",
+  catalogModels,
 }: UseScenarioEvaluatorProps) {
   // GPU count/capacity — stable across NVML noise (needed before useState seed).
   const gpuTopologyKeyInit = gpus.length > 0
@@ -260,6 +316,12 @@ export function useScenarioEvaluator({
   const learnedGpuComponentsRef = useRef<VramManifest["validatedComponentsMib"]>(null);
   const learnedLaunchProfileRef = useRef<string | undefined>(undefined);
   const learnedMeasuredAtRef = useRef<string | undefined>(undefined);
+  const learnedMtpContextRef = useRef<number | undefined>(undefined);
+  const catalogModelsRef = useRef(catalogModels);
+  catalogModelsRef.current = catalogModels;
+  /** Disk-stat fallback for draft GGUF size when not in catalog metadata (MiB). */
+  const draftDiskSizeRef = useRef<number | undefined>(undefined);
+  const draftDiskPathRef = useRef("");
   const lastFitModelPathRef = useRef("");
   const learnedFetchGenRef = useRef(0);
   const learnedFetchPendingRef = useRef(false);
@@ -358,6 +420,9 @@ export function useScenarioEvaluator({
       ramAvailableGb: sysInfo.available_memory_mib / 1024,
       ramManufacturedGb: sysInfo.total_memory_manufactured_mib / 1024,
       mmprojSizeMib: model.mmproj_size_mib,
+      draftSizeMib:
+        resolveDraftSizeMib(curConfig, catalogModelsRef.current)
+        ?? draftDiskSizeRef.current,
       fitPoints: fitPointsRef.current || undefined,
       autoVramLaunch: autoVramLaunchRef.current,
       fullAutoMode: fullAutoModeRef.current,
@@ -368,6 +433,7 @@ export function useScenarioEvaluator({
       learnedGpuComponentsMib: learnedGpuComponentsRef.current ?? undefined,
       learnedLaunchProfile: learnedLaunchProfileRef.current,
       learnedMeasuredAt: learnedMeasuredAtRef.current,
+      learnedMtpContextMib: learnedMtpContextRef.current,
       ...probeScenarioFields(session, model.path, curConfigKey),
     };
 
@@ -439,6 +505,7 @@ export function useScenarioEvaluator({
       learnedGpuComponentsRef.current = null;
       learnedLaunchProfileRef.current = undefined;
       learnedMeasuredAtRef.current = undefined;
+      learnedMtpContextRef.current = undefined;
       learnedFetchPendingRef.current = false;
       return;
     }
@@ -454,8 +521,10 @@ export function useScenarioEvaluator({
       split: String(curConfig.split ?? "none"),
       memoryMode: fullAutoModeRef.current ? "full_auto" : "assisted",
       offloadMode: String(curConfig["offload_mode"] ?? "regular"),
-      specType: String(curConfig.spec_type ?? "none"),
+      // Boost injects __boost_spec_type / spec_type into scenarioConfig — not always a template row.
+      specType: effectiveSpecTypeFromConfig(curConfig),
       cacheRam: String(curConfig.cache_ram ?? "0"),
+      draftModel: draftPathForLearned(curConfig) || null,
     })
       .then((entry) => {
         if (fetchGen !== learnedFetchGenRef.current) return;
@@ -472,6 +541,7 @@ export function useScenarioEvaluator({
           snap?.gpu_components_mib ?? entry?.gpu_components_mib ?? null;
         learnedLaunchProfileRef.current = snap?.reference_profile;
         learnedMeasuredAtRef.current = entry?.measured_at;
+        learnedMtpContextRef.current = snap?.mtp_context_mib;
       })
       .catch(() => {
         if (fetchGen !== learnedFetchGenRef.current) return;
@@ -481,6 +551,7 @@ export function useScenarioEvaluator({
         learnedGpuComponentsRef.current = null;
         learnedLaunchProfileRef.current = undefined;
         learnedMeasuredAtRef.current = undefined;
+        learnedMtpContextRef.current = undefined;
       })
       .finally(() => {
         if (fetchGen !== learnedFetchGenRef.current) return;
@@ -494,6 +565,40 @@ export function useScenarioEvaluator({
   useEffect(() => {
     refreshLearnedVram();
   }, [refreshLearnedVram]);
+
+  // Draft GGUF often lives outside catalog scan — fall back to on-disk size for VRAM formula.
+  useEffect(() => {
+    const cfg = configRef.current;
+    const draftPath = draftPathForLearned(cfg);
+    if (!externalDraftWanted(cfg) || !draftPath || !/\.gguf$/i.test(draftPath)) {
+      draftDiskSizeRef.current = undefined;
+      draftDiskPathRef.current = "";
+      return;
+    }
+    // Catalog hit already provides size — skip IPC.
+    if (resolveDraftSizeMib(cfg, catalogModelsRef.current) != null) {
+      draftDiskSizeRef.current = undefined;
+      draftDiskPathRef.current = "";
+      return;
+    }
+    if (draftDiskPathRef.current === draftPath && draftDiskSizeRef.current != null) {
+      return;
+    }
+    draftDiskPathRef.current = draftPath;
+    void invoke<number>("get_path_size_bytes", { path: draftPath })
+      .then((bytes) => {
+        if (draftDiskPathRef.current !== draftPath) return;
+        if (bytes > 0) {
+          draftDiskSizeRef.current = bytes / (1024 * 1024);
+          scheduleEvaluationRef.current(true);
+        }
+      })
+      .catch(() => {
+        if (draftDiskPathRef.current === draftPath) {
+          draftDiskSizeRef.current = undefined;
+        }
+      });
+  }, [configKey, model?.path]);
 
   // Re-fetch after launch learn persists (model loaded / exit tables) without switching models
   useTauriListen<{ model_path?: string; provider_id?: string }>(
@@ -650,6 +755,9 @@ export function useScenarioEvaluator({
         ramAvailableGb: sysInfo.available_memory_mib / 1024,
         ramManufacturedGb: sysInfo.total_memory_manufactured_mib / 1024,
         mmprojSizeMib: model.mmproj_size_mib,
+        draftSizeMib:
+          resolveDraftSizeMib(curConfig, catalogModelsRef.current)
+          ?? draftDiskSizeRef.current,
         fitPoints: fitPointsRef.current || undefined,
         autoVramLaunch: autoVramLaunchRef.current,
         fullAutoMode: fullAutoModeRef.current,
@@ -660,6 +768,7 @@ export function useScenarioEvaluator({
         learnedGpuComponentsMib: learnedGpuComponentsRef.current ?? undefined,
         learnedLaunchProfile: learnedLaunchProfileRef.current,
         learnedMeasuredAt: learnedMeasuredAtRef.current,
+        learnedMtpContextMib: learnedMtpContextRef.current,
         fitProbeVramMib: result.vram_mib,
         fitProbeHostMib: result.host_mib,
         fitProbeGpuBreakdownMib: result.gpu_breakdown_mib,

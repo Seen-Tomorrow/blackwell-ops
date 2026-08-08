@@ -75,9 +75,28 @@ static CHILD_PIDS: std::sync::LazyLock<std::sync::Mutex<Vec<u32>>> =
 const DEFAULT_CMAKE_FLAGS: &[(&str, &str)] = &[
     (
         "ggml-llama",
-        concat!("-DLLAMA_CURL=OFF ", "-DGGML_CUDA=ON ", "-DGGML_AVX512=ON"),
+        concat!(
+            "-DLLAMA_CURL=OFF ",
+            "-DGGML_CUDA=ON ",
+            "-DGGML_AVX512=ON ",
+            // Portable CPU + CUDA (not host-only); GPU SMs still set via CMAKE_CUDA_ARCHITECTURES.
+            "-DGGML_NATIVE=OFF ",
+            // Ship llama-server (HTTP API engine) — not a separate "web UI" product.
+            "-DLLAMA_BUILD_SERVER=ON ",
+            "-DLLAMA_BUILD_TESTS=OFF ",
+            "-DLLAMA_BUILD_EXAMPLES=OFF",
+        ),
     ),
 ];
+
+/// Always merge these into configure so provider build_profile cannot re-enable tests/examples,
+/// drop the server target, or leave host-native CPU/CUDA defaults that break ship portability.
+const FOUNDRY_MANDATORY_CMAKE_FLAGS: &str = concat!(
+    "-DGGML_NATIVE=OFF ",
+    "-DLLAMA_BUILD_SERVER=ON ",
+    "-DLLAMA_BUILD_TESTS=OFF ",
+    "-DLLAMA_BUILD_EXAMPLES=OFF",
+);
 
 fn get_default_cmake_flags(template_type: &str) -> &'static str {
     DEFAULT_CMAKE_FLAGS
@@ -210,20 +229,17 @@ async fn nuke_foundry_work_tree_on_exit(provider_id: &str) {
     nuke_foundry_work_tree(provider_id).await;
 }
 
-/// Shipping targets only — avoids building 50+ llama tools and flaky VS tail custom rules.
-const FOUNDRY_CMAKE_BUILD_TARGETS: &[&str] = &[
-    "llama-server",
-    "llama-cli",
-    "llama-quantize",
-    "llama-fit-params",
-];
+/// Product build targets (always).
+/// `llama-server` = HTTP API engine (OpenAI-compatible). Not a separate WebUI package —
+/// any browser UI is served by this binary when you open its port.
+const FOUNDRY_CMAKE_CORE_TARGETS: &[&str] = &["llama-server", "llama-fit-params"];
 
-const FOUNDRY_CORE_BINARIES: &[&str] = &[
-    "llama-server.exe",
-    "llama-cli.exe",
-    "llama-quantize.exe",
-    "llama-fit-params.exe",
-];
+/// Optional offline tools (Foundry modal toggle) — not used by the app runtime.
+const FOUNDRY_CMAKE_EXTRA_TARGETS: &[&str] = &["llama-cli", "llama-quantize"];
+
+const FOUNDRY_CORE_BINARIES: &[&str] = &["llama-server.exe", "llama-fit-params.exe"];
+
+const FOUNDRY_EXTRA_BINARIES: &[&str] = &["llama-cli.exe", "llama-quantize.exe"];
 
 struct FoundryCoreBinaryCheck {
     all_present: bool,
@@ -239,11 +255,37 @@ fn foundry_batch_script_paths(work_root: &std::path::Path, profile_id: &str) -> 
     )
 }
 
-fn foundry_cmake_build_target_args() -> String {
-    FOUNDRY_CMAKE_BUILD_TARGETS
+fn foundry_cmake_build_targets(include_extra_tools: bool) -> Vec<&'static str> {
+    let mut t: Vec<&'static str> = FOUNDRY_CMAKE_CORE_TARGETS.to_vec();
+    if include_extra_tools {
+        t.extend_from_slice(FOUNDRY_CMAKE_EXTRA_TARGETS);
+    }
+    t
+}
+
+fn foundry_cmake_build_target_args(include_extra_tools: bool) -> String {
+    foundry_cmake_build_targets(include_extra_tools)
         .iter()
         .map(|t| format!(" --target {t}"))
         .collect()
+}
+
+/// Ensure mandatory -D flags are present (provider build_profile may omit them).
+fn merge_mandatory_cmake_flags(extra: &str) -> String {
+    let mut out = extra.trim().to_string();
+    for flag in FOUNDRY_MANDATORY_CMAKE_FLAGS.split_whitespace() {
+        let key = flag.split('=').next().unwrap_or(flag);
+        let already = out
+            .split_whitespace()
+            .any(|t| t == flag || t.starts_with(&format!("{key}=")));
+        if !already {
+            if !out.is_empty() {
+                out.push(' ');
+            }
+            out.push_str(flag);
+        }
+    }
+    out
 }
 
 fn foundry_release_candidate_dirs(build_dir: &std::path::Path, src_dir: &std::path::Path) -> Vec<PathBuf> {
@@ -922,6 +964,8 @@ pub async fn foundry_build(
     max_cores: Option<u32>,
     cmake_flags: Option<String>,
     generator: Option<String>,
+    // Also build llama-cli + llama-quantize (offline tools). Omit/null → false (server + fit-params only).
+    include_extra_tools: Option<bool>,
     app: tauri::State<'_, crate::engine::AppContext>,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
@@ -929,6 +973,7 @@ pub async fn foundry_build(
     let profile = foundry_toolchain::validate_profile_ready(&environment)?;
     let profile_id = profile.env_label().to_string();
     let _manifest = foundry_toolchain::load_manifest()?;
+    let include_extra_tools = include_extra_tools.unwrap_or(false);
 
     // Reset cancellation state for new build
     BUILD_CANCELLED.store(false, Ordering::SeqCst);
@@ -970,6 +1015,7 @@ pub async fn foundry_build(
             max_cores,
             cmake_flags,
             generator,
+            include_extra_tools,
             build_id,
         )
         .await
@@ -989,6 +1035,7 @@ async fn run_foundry_build_worker(
     max_cores: Option<u32>,
     cmake_flags: Option<String>,
     generator: Option<String>,
+    include_extra_tools: bool,
     build_id: u64,
 ) -> Result<(), String> {
     let manifest = foundry_toolchain::load_manifest()?;
@@ -1402,7 +1449,7 @@ async fn run_foundry_build_worker(
 
         // Foundry confirm modal loads provider build_profile for edit; persisted on build start.
         // cmake_flags from the invoke carries the edited profile for this configure attempt.
-        if let Some(ref flags) = cmake_flags {
+        let raw = if let Some(ref flags) = cmake_flags {
             if !flags.trim().is_empty() {
                 flags.trim().to_string()
             } else if !build_profile.trim().is_empty() {
@@ -1414,7 +1461,9 @@ async fn run_foundry_build_worker(
             build_profile.trim().to_string()
         } else {
             get_default_cmake_flags(template_type).to_string()
-        }
+        };
+        // Always pin server on, tests/examples off, native off (portable ship).
+        merge_mandatory_cmake_flags(&raw)
     };
 
     let vs_devcmd = profile.vs_devcmd.to_string_lossy().to_string();
@@ -1714,10 +1763,12 @@ async fn run_foundry_build_worker(
 
     // ── PHASE 2: CMake Build (after user approval) ───────────────────
 
+    let build_targets = foundry_cmake_build_targets(include_extra_tools);
     if let Some(state) = snapshot_build_state().await {
         emit_build_event(app_handle, &state, Some(format!(
-            "[STAGE 3/4] BUILD — {} target(s), {} cores...",
-            FOUNDRY_CMAKE_BUILD_TARGETS.len(),
+            "[STAGE 3/4] BUILD — {} target(s) [{}], {} cores...",
+            build_targets.len(),
+            build_targets.join(", "),
             num_cpus
         )));
     }
@@ -1727,7 +1778,7 @@ async fn run_foundry_build_worker(
 
     // Absolute --build (no cd, no reliance on relative layout)
     let build_dir_str = build_dir.to_string_lossy().replace('\\', "/");
-    let build_target_args = foundry_cmake_build_target_args();
+    let build_target_args = foundry_cmake_build_target_args(include_extra_tools);
     let build_batch_lines = build_isolated_batch_script(
         &vs_devcmd,
         &cuda_path_forced,
@@ -1876,6 +1927,26 @@ async fn run_foundry_build_worker(
 
         *CURRENT_BUILD.lock().await = None;
         return Err(format!("Build completed but core binaries missing: {}", missing.join(", ")));
+    }
+
+    if include_extra_tools {
+        let mut missing_extras = Vec::new();
+        for bin in FOUNDRY_EXTRA_BINARIES {
+            let found = candidate_dirs.iter().any(|dir| dir.join(bin).is_file());
+            if !found {
+                missing_extras.push(*bin);
+            }
+        }
+        if !missing_extras.is_empty() {
+            let msg = format!(
+                "[WARN] Optional tools were requested but missing after build: {}. Core server/fit-params are OK.",
+                missing_extras.join(", ")
+            );
+            log::warn!("[foundry] {msg}");
+            if let Some(state) = snapshot_build_state().await {
+                emit_build_event(app_handle, &state, Some(msg));
+            }
+        }
     }
 
     if recovered_tail_flake {

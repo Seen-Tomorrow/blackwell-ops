@@ -41,11 +41,65 @@ pub fn telemetry_tick_ms() -> u64 {
 const MAX_BATCH_SIZE: usize = 10;
 /// Bounded stderr line queue — drops on flood instead of unbounded RAM growth.
 const STDERR_LINE_CHANNEL_CAP: usize = 4096;
+/// Cap a single log line kept for UI/fusion/session. Still drains the full line from the pipe
+/// so a giant tokenizer dump cannot OOM the reader or wedge the child on a full pipe buffer.
+const MAX_ENGINE_LOG_LINE_CHARS: usize = 8 * 1024;
 
 /// Engine pipe line — stderr feeds UI + fusion; stdout is fusion/readiness only (lv≤3 INFO slot lines).
 enum EnginePipeLine {
     Stderr(String),
     Stdout(String),
+}
+
+/// Drain engine stdout/stderr forever until real EOF.
+///
+/// **Never** use `BufRead::lines()` here: it returns `Err(InvalidData)` on any non-UTF-8 byte and
+/// our old `Err(_) => break` permanently killed capture. DS4 tokenizer token dumps include raw
+/// BPE bytes that are not valid UTF-8; console capture rewrites them to U+FFFD, so CMD logs look
+/// fine while the app went silent right after `tokenizer.ggml.pre`.
+fn drain_engine_pipe_lines(
+    pipe: impl std::io::Read,
+    mut on_line: impl FnMut(String),
+    stream_label: &str,
+    slot_idx: usize,
+    alias: &str,
+) {
+    use std::io::{BufRead, BufReader};
+
+    let mut reader = BufReader::new(pipe);
+    let mut buf: Vec<u8> = Vec::with_capacity(512);
+    loop {
+        buf.clear();
+        match reader.read_until(b'\n', &mut buf) {
+            Ok(0) => break, // EOF
+            Ok(_) => {
+                // Strip trailing \n and optional \r (Windows CRLF).
+                if buf.last() == Some(&b'\n') {
+                    buf.pop();
+                }
+                if buf.last() == Some(&b'\r') {
+                    buf.pop();
+                }
+                if buf.is_empty() {
+                    continue;
+                }
+                let mut line = String::from_utf8_lossy(&buf).into_owned();
+                if line.chars().count() > MAX_ENGINE_LOG_LINE_CHARS {
+                    line = line.chars().take(MAX_ENGINE_LOG_LINE_CHARS).collect();
+                    line.push_str(" …[truncated]");
+                }
+                on_line(line);
+            }
+            Err(e) => {
+                // Transient IO — keep draining. Permanent failures usually surface as Ok(0).
+                log::warn!(
+                    "[log_hub] slot={slot_idx} ({alias}) {stream_label} read error (continuing): {e}"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+        }
+    }
+    log::info!("[log_hub] slot={slot_idx} ({alias}) {stream_label} pipe EOF");
 }
 /// MoE --fit can print dozens of memory tables; keep enough stderr for one load.
 const VRAM_LEARN_BUF_CAP: usize = 4096;
@@ -186,39 +240,38 @@ impl LogHub {
         // Internal channel: pipe readers → main processing loop (bounded)
         let (line_tx, line_rx) = mpsc::channel::<EnginePipeLine>(STDERR_LINE_CHANNEL_CAP);
 
+        // blocking_send (not try_send): never drop print_timing / NewPrompt under load flood.
+        // Reader thread may pause briefly; pipe backpressure is fine for llama-server.
         tokio::task::spawn_blocking({
             let tx = line_tx.clone();
+            let alias = alias.clone();
             move || {
-                use std::io::{BufRead, BufReader};
-                let reader = BufReader::new(stderr);
-                for line_result in reader.lines() {
-                    match line_result {
-                        Ok(line) => {
-                            if !line.is_empty() {
-                                let _ = tx.try_send(EnginePipeLine::Stderr(line));
-                            }
-                        }
-                        Err(_) => break,
-                    }
-                }
+                drain_engine_pipe_lines(
+                    stderr,
+                    |line| {
+                        // Closed channel = process_lines exited; stop forwarding.
+                        let _ = tx.blocking_send(EnginePipeLine::Stderr(line));
+                    },
+                    "stderr",
+                    slot_idx,
+                    &alias,
+                );
             }
         });
         if let Some(stdout) = stdout {
             tokio::task::spawn_blocking({
                 let tx = line_tx;
+                let alias = alias.clone();
                 move || {
-                    use std::io::{BufRead, BufReader};
-                    let reader = BufReader::new(stdout);
-                    for line_result in reader.lines() {
-                        match line_result {
-                            Ok(line) => {
-                                if !line.is_empty() {
-                                    let _ = tx.try_send(EnginePipeLine::Stdout(line));
-                                }
-                            }
-                            Err(_) => break,
-                        }
-                    }
+                    drain_engine_pipe_lines(
+                        stdout,
+                        |line| {
+                            let _ = tx.blocking_send(EnginePipeLine::Stdout(line));
+                        },
+                        "stdout",
+                        slot_idx,
+                        &alias,
+                    );
                 }
             });
         }
@@ -1047,7 +1100,47 @@ impl LogHub {
 
 #[cfg(test)]
 mod tests {
-    use super::LogHub;
+    use super::{drain_engine_pipe_lines, LogHub};
+
+    #[test]
+    fn drain_engine_pipe_survives_invalid_utf8() {
+        // DS4-class: tokenizer dump may include raw BPE bytes (not valid UTF-8).
+        // Old BufRead::lines() + Err=>break died here and never saw print_timing.
+        let mut data = b"line before\n".to_vec();
+        data.extend_from_slice(b"tok: \xff\xfe bad\n");
+        data.extend_from_slice(b"print_timing: n_decoded = 100\n");
+        let mut out = Vec::new();
+        drain_engine_pipe_lines(
+            std::io::Cursor::new(data),
+            |line| out.push(line),
+            "test",
+            0,
+            "t",
+        );
+        assert_eq!(out.len(), 3);
+        assert_eq!(out[0], "line before");
+        assert!(out[1].contains("tok:"));
+        assert!(out[1].contains("bad"));
+        assert_eq!(out[2], "print_timing: n_decoded = 100");
+    }
+
+    #[test]
+    fn drain_engine_pipe_handles_crlf_and_truncates_huge_lines() {
+        let huge = "x".repeat(super::MAX_ENGINE_LOG_LINE_CHARS + 500);
+        let data = format!("ok\r\n{huge}\ntrail\n");
+        let mut out = Vec::new();
+        drain_engine_pipe_lines(
+            std::io::Cursor::new(data.into_bytes()),
+            |line| out.push(line),
+            "test",
+            0,
+            "t",
+        );
+        assert_eq!(out[0], "ok");
+        assert!(out[1].ends_with(" …[truncated]"));
+        assert!(out[1].chars().count() <= super::MAX_ENGINE_LOG_LINE_CHARS + 20);
+        assert_eq!(out[2], "trail");
+    }
 
     #[test]
     fn format_reason_with_stderr_tail_replaces_generic_reason() {

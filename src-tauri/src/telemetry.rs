@@ -43,71 +43,15 @@ pub struct CpuInfo {
     pub core_usages: Vec<f32>, // per-core usage percentages from PerfMon
 }
 
-/// Cached WMI MaxClockSpeed (advertised MHz) — queried once per process.
-static CPU_MAX_CLOCK_MHZ: Mutex<Option<u32>> = Mutex::new(None);
-/// Throttle registry ~MHz reads (reg.exe each poll is wasteful).
-static CPU_REG_CLOCK: Mutex<Option<(std::time::Instant, u32)>> = Mutex::new(None);
+/// Cached WMI MaxClockSpeed — base advertised MHz (not turbo peak).
+static CPU_BASE_CLOCK_MHZ: Mutex<Option<u32>> = Mutex::new(None);
 
-/// Registry `~MHz` under CentralProcessor — often tracks live frequency on Windows.
 #[cfg(windows)]
-fn registry_cpu_mhz() -> Option<u32> {
-    {
-        let guard = CPU_REG_CLOCK.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some((at, v)) = *guard {
-            if at.elapsed() < Duration::from_millis(750) {
-                return Some(v);
-            }
-        }
-    }
-    let output = std::process::Command::new("reg")
-        .args([
-            "query",
-            r"HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0",
-            "/v",
-            "~MHz",
-        ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .creation_flags(0x08000000) // CREATE_NO_WINDOW
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let text = String::from_utf8_lossy(&output.stdout);
-    // REG_DWORD    0x10c8  or decimal
-    let mut found: Option<u32> = None;
-    for token in text.split_whitespace() {
-        if let Some(hex) = token.strip_prefix("0x").or_else(|| token.strip_prefix("0X")) {
-            if let Ok(v) = u32::from_str_radix(hex, 16) {
-                if v >= 400 && v <= 10_000 {
-                    found = Some(v);
-                    break;
-                }
-            }
-        }
-        if let Ok(v) = token.parse::<u32>() {
-            if v >= 400 && v <= 10_000 {
-                found = Some(v);
-                break;
-            }
-        }
-    }
-    if let Some(v) = found {
-        *CPU_REG_CLOCK.lock().unwrap_or_else(|e| e.into_inner()) =
-            Some((std::time::Instant::now(), v));
-    }
-    found
-}
+static CPU_PDH_PERF: Mutex<Option<crate::disk_io_pdh::PdhCpuPerfSampler>> = Mutex::new(None);
 
-#[cfg(not(windows))]
-fn registry_cpu_mhz() -> Option<u32> {
-    None
-}
-
-/// One-shot WMI MaxClockSpeed (MHz) — base/turbo advertised, not live.
+/// One-shot WMI MaxClockSpeed (MHz) — Windows “base” clock; turbo is via % Performance.
 #[cfg(windows)]
-fn wmi_max_clock_mhz() -> Option<u32> {
+fn wmi_base_clock_mhz() -> Option<u32> {
     let output = std::process::Command::new("powershell")
         .args([
             "-NoProfile",
@@ -130,21 +74,53 @@ fn wmi_max_clock_mhz() -> Option<u32> {
 }
 
 #[cfg(not(windows))]
-fn wmi_max_clock_mhz() -> Option<u32> {
+fn wmi_base_clock_mhz() -> Option<u32> {
     None
 }
 
-fn cached_max_clock_mhz(fallback: u32) -> u32 {
-    let mut guard = CPU_MAX_CLOCK_MHZ.lock().unwrap_or_else(|e| e.into_inner());
+fn cached_base_clock_mhz(fallback: u32) -> u32 {
+    let mut guard = CPU_BASE_CLOCK_MHZ.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(v) = *guard {
         return v;
     }
-    let v = wmi_max_clock_mhz()
-        .or_else(registry_cpu_mhz)
-        .unwrap_or(fallback)
-        .max(fallback);
-    *guard = Some(v);
+    let v = wmi_base_clock_mhz().unwrap_or(fallback).max(fallback);
+    if v > 0 {
+        *guard = Some(v);
+    }
     v
+}
+
+/// Live MHz from PDH `% Processor Performance` × base.
+/// Registry ~MHz / WMI CurrentClockSpeed / `Processor Frequency` stay glued to base
+/// on modern AMD/Intel — only the performance % counter tracks turbo.
+#[cfg(windows)]
+fn live_cpu_clock_mhz(base_mhz: u32) -> Option<u32> {
+    if base_mhz < 400 {
+        return None;
+    }
+    let mut guard = CPU_PDH_PERF.lock().unwrap_or_else(|e| e.into_inner());
+    if guard.is_none() {
+        match crate::disk_io_pdh::PdhCpuPerfSampler::new() {
+            Ok(s) => *guard = Some(s),
+            Err(e) => {
+                log::debug!("CPU PDH perf sampler unavailable: {e}");
+                return None;
+            }
+        }
+    }
+    let pct = guard.as_mut()?.sample_performance_pct()?;
+    // 100% = base; turbo often 110–160% (e.g. 4300 × 1.24 ≈ 5330).
+    let live = (base_mhz as f64 * (pct / 100.0)).round() as u32;
+    if live >= 400 && live <= 12_000 {
+        Some(live)
+    } else {
+        None
+    }
+}
+
+#[cfg(not(windows))]
+fn live_cpu_clock_mhz(_base_mhz: u32) -> Option<u32> {
+    None
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -309,14 +285,12 @@ pub async fn scan_cpu() -> Result<CpuInfo, String> {
     let mut core_usages = Vec::with_capacity(threads);
     let mut freq_sum: u64 = 0;
     let mut freq_n: u64 = 0;
-    let mut freq_max: u32 = 0;
     for cpu in cpus {
         core_usages.push(cpu.cpu_usage());
         let f = cpu.frequency() as u32;
         if f >= 400 && f <= 10_000 {
             freq_sum += f as u64;
             freq_n += 1;
-            freq_max = freq_max.max(f);
         }
     }
 
@@ -326,18 +300,17 @@ pub async fn scan_cpu() -> Result<CpuInfo, String> {
         0.0
     };
 
-    // Live: prefer registry ~MHz (tracks better on Windows), then sysinfo avg.
-    let current_clock_mhz = registry_cpu_mhz()
-        .or_else(|| {
-            if freq_n > 0 {
-                Some((freq_sum / freq_n) as u32)
-            } else {
-                None
-            }
-        })
+    let sysinfo_avg = if freq_n > 0 {
+        (freq_sum / freq_n) as u32
+    } else {
+        0
+    };
+    // Base/advertised (WMI MaxClockSpeed) — sticky 4300 on Ryzen; turbo is not here.
+    let max_clock_mhz = cached_base_clock_mhz(sysinfo_avg);
+    // Live = base × PDH % Processor Performance (moves under load / turbo).
+    let current_clock_mhz = live_cpu_clock_mhz(max_clock_mhz)
+        .or(if sysinfo_avg > 0 { Some(sysinfo_avg) } else { None })
         .unwrap_or(0);
-
-    let max_clock_mhz = cached_max_clock_mhz(freq_max.max(current_clock_mhz));
 
     Ok(CpuInfo {
         name: cpus[0].brand().to_string(),

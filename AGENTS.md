@@ -18,7 +18,21 @@ Traps and invariants only — not a code map. Read the source for flows, schemas
 
 **Industrial display (bezel / glass)** — One glass only: frame pad = metal, `.phosphor-screen-inner` = full face + unified recess shadow, children = content (no nested phosphor surface). Display texture also paints HW monitor widget faces (`.launch-rail-tel .phosphor-display-surface`) — not catalog quiet-wing desaturate. Full memo: `docs/display-bezel-glass.md`. Do not revive `DisplayGlitchOverlay` / `.display-glitch-*`.
 
-**No `backdrop-filter: blur` (or `-webkit-backdrop-filter: blur`)** — Modal/scrim overlays must **dim only** (semi-opaque `background`, e.g. `color-mix(in srgb, #000 60%, transparent)`). Blur forces continuous full-compositor work in WebView2 and pegs the **iGPU at ~100%** for as long as the overlay is open (AtomCode harness confirm, etc.). Prefer stronger dim over blur. Do not reintroduce blur for “frosted glass” aesthetics without an explicit exception.
+**No `backdrop-filter: blur` (or `-webkit-backdrop-filter: blur`)** — Modal/scrim overlays must **dim only** (semi-opaque `background`, e.g. `color-mix(in srgb, #000 60%, transparent)`). Blur forces continuous full-compositor work in WebView2 and pegs the **iGPU at ~100%** for as long as the overlay is open (harness confirm, etc.). Prefer stronger dim over blur. Do not reintroduce blur for “frosted glass” aesthetics without an explicit exception.
+
+---
+
+## Product floor / layout density
+
+**Supported viewports** — **1080p minimum (marginal)**, **1440p+ recommended**, **4K optimal**. Below 1080 is out of scope (no layout redesign). Vertical space is the constraint; horizontal is fine. Prefer **manual** density (display bezel **GPU 2|3** / **ENG 2|3** cards-per-row) over auto viewport policies. HW monitor: GPU stack scrolls; OC panel stays pinned above launch dock.
+
+**DEV tools (header)** — `VIEW` = physical panel presets + live Windows scale (app zoom 100% when testing). `GPU+` = fake multi-GPU topo (real SKU names/VRAM) for layout + forecast stress — session only. Do not ship these in REL UX.
+
+---
+
+## Agent harness
+
+**Supported harness = pi only** (`pi_code`). **AtomCode and Qwen Code are archived** — do not revive product UX, install paths, or dual-stack routing for them; dead code may still exist until removed. pi models.json: per-seat **`input: text|image`** only when that engine launched with **`--mmproj`** (`stack.vision`); BRAIN and WORKER are independent.
 
 ---
 
@@ -70,7 +84,13 @@ Native crashes also append `%TEMP%\blackwell-crash.log` (heap `0xC0000374`, ille
 
 `merge_template_for_provider` syncs structure from factory templates on every load/save. User-owned fields that must not be overwritten: `hidden`, `order`, `userAddedValues`, `hidden_values`. Bump factory `templateVersion` when shipping param changes — mismatch surfaces `needs_template_attention` in ConfigPage.
 
-**Spec profiles (`SPECULATIVE-MTP` / `SPECULATIVE-DFLASH`)** — Template-owned groups with independent knobs (`mtp_*` / `dflash_*`). Boost selects which profile is visible (`set_group_hidden`); Off hides both. Launch flattens the active profile to CLI keys (`spec_type`, `spec_draft_n_max`, …) via `buildSpecCliExtraParams` — do not emit profile row keys as raw extras. Defaults live only in factory templates (Config editor), not hardcoded presets.
+**Spec profiles (`SPECULATIVE-MTP` / `SPECULATIVE-DFLASH`)** — Template-owned groups with independent knobs (`mtp_*` / `dflash_*`). Boost selects which profile is visible (`set_group_hidden`); Off hides both. Launch flattens the active profile to CLI keys (`spec_type`, …) via `buildSpecCliExtraParams` — do not emit profile row keys as raw extras. Defaults live only in factory templates (Config editor), not hardcoded presets.
+
+**DSpark** — Product Boost method only; **no separate template group**. Shares **SPECULATIVE-DFLASH** knobs + `dflash_draft_model` → `--spec-draft-model` (`-md`); CLI type is **`draft-dspark`**. Do not reintroduce free-form factory `spec_type` chips.
+
+**Hidden profile knobs → CLI** — Config/cockpit **hide** (`hidden` / `userHidden`) on `mtp_*` / `dflash_*` must **not** reach CLI. `buildSpecCliExtraParams` skips hidden rows; Rust must not force-emit hidden profile knobs from `extra_params` (override path + post-loop). Draft path keys still allowed when external draft is active.
+
+**CORS** — Launch injects `--cors-origins localhost` when unset (llama-server default `*` + no API key spams security warnings). Do not force open `*` for desktop.
 
 **Protected groups (CONFIG policy)** — Flag-driven via provider `protectedGroups` (not name hardcoding). Factory ships the list; DEV can toggle **SYS** on a group header. Protected groups sort under a **SYSTEM PARAMS** section (auto-collapsed on open). Actors: locked / user (editor unlocked) / dev (`isDevBuild` unrestricted, or **USER VIEW** preview). Users on protected groups: set defaults, add/hide values (not whole-row hide); cannot delete factory values (hide only) or tear down factory structure. Placement chrome (`split`/`ctx`/SYSTEM bucket) remains Launch placement-locked for users. Do not pin `mtp_*`/`dflash_*` into SYSTEM.
 
@@ -91,7 +111,8 @@ Native crashes also append `%TEMP%\blackwell-crash.log` (heap `0xC0000374`, ille
 - **Runtime quiet toggle:** Silent models on a normal ggml-master provider (e.g. DS4) flip the live brain via the fusion-display `QUIET`/`LOGS` button → `set_fusion_quiet_mode(port, quiet)` → `BrainInbound::SetQuietMode` toggles `has_log_belt` + re-polls `/slots`. Persisted per model (`fusion.quiet.<model>` localStorage). Do not gate this on provider template — it is per-model. Tom uses stdout `PromptProcessingProgress` at `-lv 3`; brain skips `/slots` PP when `slots_expose_prompt_processed() == false`.
 - **FIT adapters:** Per-provider `llama-fit-params` + learned VRAM in `src-tauri/src/fit_adapters/` — set `spawn_profile.fit_adapter`. Tom rejects `--fit-print`; use `projected to use N MiB` from `llama_params_fit_impl` (do not parse CUDA init VRAM lines).
 - **FIT library cache:** `config/cache/fit_scan_full.json` is partitioned by `fit_adapter` (`ggml_master` | `ggml_tom`), not shared across providers. Legacy flat file migrates into `ggml_master` on first read.
-- **Runtime profiles:** `frontier` (CUDA 13.3) + `stable` (12.8) only — `vanguard`/`fresh` migrate to `frontier` on load.
+- **Runtime profiles:** `frontier` (CUDA 13.3.x) + `stable` (12.8) only — `vanguard`/`fresh` migrate to `frontier` on load. Portable toolkit: `{app_root}/toolchain/cuda/v13.3` (slim via `strip-cuda-toolkit.ps1` from Program Files). Update-in-place is fine for toolkit bugfix builds (no new profile for 13.3 Update 1).
+- **Live CPU MHz (HW monitor):** Registry/`Processor Frequency` stick at base on modern CPUs — use PDH `% Processor Performance` × WMI base. Cores open → hero shows live MHz; closed → usage %.
 - **SWA / long-lived slots (Opencode):** TG detection must use **per-request** `n_decoded > request_start_n_decoded`, not `n_decoded > 0`. Parse `forcing full prompt re-processing` → PP. Slot may never idle between turns — also detect `id_task` change as `new_request`. Raw `n_decoded` from prior chat looks like TG during SWA re-prefill.
 - **Agent burst micro-idle:** Opencode file-read cadence &lt;1s — don't `stop_request_clock` / IDLE / zero CTX on brief `/slots` idle; use `INTER_REQUEST_GAP_HOLD_MS` + `max(live, sessionNDecoded)` on bars.
 
@@ -107,7 +128,8 @@ Native crashes also append `%TEMP%\blackwell-crash.log` (heap `0xC0000374`, ille
 |---------|----------------|
 | `npm run vite` | Plain Vite on `127.0.0.1:1420` — browser/UI only (no Tauri IPC) |
 | `npm run server` | Warm Vite (`:1421` internal → `:1420` proxy) — start before the app for fast WebView load |
-| `npm run dev` | Tauri + Rust only — waits for `:1420`, then `cargo run` |
+| `npm run dev` | Tauri + Rust — **`--no-watch`** (manual Rust rebuild / restart after `.rs` edits) |
+| `npm run dev:watch` | Same as old auto-rebuild on Rust file changes |
 
 `npm run dev` still runs `predev` (`sync-dev-runtime.ps1`) — mirrors `src-tauri/runtime` → `target/debug/runtime` only when the source fingerprint changes (path/size/mtime). Use `npm run sync:dev-runtime:force` after foundry installs if the stamp is wrong.
 

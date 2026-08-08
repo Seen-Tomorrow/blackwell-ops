@@ -136,11 +136,20 @@ fn normalize_spec_type(spec_type: &str) -> String {
     }
 }
 
-fn optional_launch_suffix(spec_type: &str, cache_ram: &str) -> String {
+fn optional_launch_suffix(spec_type: &str, cache_ram: &str, draft_key: &str) -> String {
     let mut out = String::new();
     let spec = normalize_spec_type(spec_type);
     if spec != "none" {
         out.push_str(&format!("|spec={spec}"));
+    }
+    let draft = draft_key.trim();
+    if !draft.is_empty() {
+        // Basename only — path moves should not bust learned; same draft GGUF = same key.
+        let base = std::path::Path::new(draft)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or(draft);
+        out.push_str(&format!("|draft={}", base.to_lowercase()));
     }
     let ram = cache_ram.trim();
     if !ram.is_empty() && ram != "0" {
@@ -159,6 +168,7 @@ fn param_suffix(
     offload_mode: &str,
     spec_type: &str,
     cache_ram: &str,
+    draft_key: &str,
 ) -> String {
     format!(
         "|{}|ctx={}|kv={}|dev={}|split={}|mode={}|offload={}{}",
@@ -169,7 +179,7 @@ fn param_suffix(
         split.trim().to_lowercase(),
         memory_mode.trim().to_lowercase(),
         normalize_offload_mode(offload_mode),
-        optional_launch_suffix(spec_type, cache_ram),
+        optional_launch_suffix(spec_type, cache_ram, draft_key),
     )
 }
 
@@ -194,6 +204,7 @@ fn param_suffix_legacy(
 }
 
 /// Fingerprint for learned VRAM — model + provider + launch-relevant params.
+#[allow(dead_code)] // Public API / tests; runtime uses `learned_vram_key_with_draft`.
 pub fn learned_vram_key(
     model_path: &str,
     provider_id: &str,
@@ -205,6 +216,34 @@ pub fn learned_vram_key(
     offload_mode: &str,
     spec_type: &str,
     cache_ram: &str,
+) -> String {
+    learned_vram_key_with_draft(
+        model_path,
+        provider_id,
+        ctx,
+        kv_quant,
+        device,
+        split,
+        memory_mode,
+        offload_mode,
+        spec_type,
+        cache_ram,
+        "",
+    )
+}
+
+pub fn learned_vram_key_with_draft(
+    model_path: &str,
+    provider_id: &str,
+    ctx: &str,
+    kv_quant: &str,
+    device: &str,
+    split: &str,
+    memory_mode: &str,
+    offload_mode: &str,
+    spec_type: &str,
+    cache_ram: &str,
+    draft_key: &str,
 ) -> String {
     let normalized_path = normalize_model_path_for_key(model_path);
     format!(
@@ -220,8 +259,16 @@ pub fn learned_vram_key(
             offload_mode,
             spec_type,
             cache_ram,
+            draft_key,
         ),
     )
+}
+
+fn draft_path_from_config(config: &EngineConfig) -> String {
+    config
+        .get_param_str("spec_draft_model")
+        .or_else(|| config.get_param_str("dflash_draft_model"))
+        .unwrap_or_default()
 }
 
 /// Launch-time fingerprint — survives slot clear on stop (memory breakdown prints at exit).
@@ -255,7 +302,7 @@ fn memory_mode_from_config(config: &EngineConfig) -> String {
 }
 
 pub fn learned_vram_key_from_config(model_path: &str, provider_id: &str, config: &EngineConfig) -> String {
-    learned_vram_key(
+    learned_vram_key_with_draft(
         model_path,
         provider_id,
         &config.get_param_str("ctx").unwrap_or_else(|| "32768".to_string()),
@@ -272,6 +319,7 @@ pub fn learned_vram_key_from_config(model_path: &str, provider_id: &str, config:
         &config
             .get_param_str("cache_ram")
             .unwrap_or_else(|| "0".to_string()),
+        &draft_path_from_config(config),
     )
 }
 
@@ -286,10 +334,11 @@ fn lookup_learned_vram_fuzzy(
     offload_mode: &str,
     spec_type: &str,
     cache_ram: &str,
+    draft_key: &str,
 ) -> Option<LearnedVramEntry> {
     let store = load_store();
     let normalized_path = normalize_model_path_for_key(model_path);
-    let primary = learned_vram_key(
+    let primary = learned_vram_key_with_draft(
         model_path,
         provider_id,
         ctx,
@@ -300,13 +349,35 @@ fn lookup_learned_vram_fuzzy(
         offload_mode,
         spec_type,
         cache_ram,
+        draft_key,
     );
     if let Some(entry) = store.entries.get(&primary) {
         return Some(entry.clone());
     }
+    // Pre-draft-suffix keys (same spec, no |draft=).
+    if !draft_key.trim().is_empty() {
+        let no_draft = learned_vram_key_with_draft(
+            model_path,
+            provider_id,
+            ctx,
+            kv_quant,
+            device,
+            split,
+            memory_mode,
+            offload_mode,
+            spec_type,
+            cache_ram,
+            "",
+        );
+        if no_draft != primary {
+            if let Some(entry) = store.entries.get(&no_draft) {
+                return Some(entry.clone());
+            }
+        }
+    }
     // Without spec/cache_ram suffix (pre-MTP keys).
     if normalize_spec_type(spec_type) == "none" && (cache_ram.trim().is_empty() || cache_ram == "0") {
-        let without_launch = learned_vram_key(
+        let without_launch = learned_vram_key_with_draft(
             model_path,
             provider_id,
             ctx,
@@ -317,6 +388,7 @@ fn lookup_learned_vram_fuzzy(
             offload_mode,
             "none",
             "0",
+            "",
         );
         if without_launch != primary {
             if let Some(entry) = store.entries.get(&without_launch) {
@@ -340,7 +412,7 @@ fn lookup_learned_vram_fuzzy(
         if alt_mode == memory_mode {
             continue;
         }
-        let alt_key = learned_vram_key(
+        let alt_key = learned_vram_key_with_draft(
             model_path,
             provider_id,
             ctx,
@@ -351,10 +423,88 @@ fn lookup_learned_vram_fuzzy(
             offload_mode,
             spec_type,
             cache_ram,
+            draft_key,
         );
         if let Some(entry) = store.entries.get(&alt_key) {
             return Some(entry.clone());
         }
+    }
+
+    // Device often differs UI vs launch (GPU-0 default vs freest GPU-1). Match by
+    // model path + ctx/kv/split/spec/draft ignoring device — but NEVER cross-match
+    // boost-on (draft-dspark) rows when the UI is Boost-off, or wrong KV quant.
+    let path_norm = normalize_model_path_for_key(model_path);
+    let ctx_n = normalize_ctx_key(ctx);
+    let kv_n = kv_quant.trim().to_lowercase();
+    let split_n = split.trim().to_lowercase();
+    let spec_n = normalize_spec_type(spec_type);
+    let draft_base = {
+        let d = draft_key.trim();
+        if d.is_empty() {
+            String::new()
+        } else {
+            std::path::Path::new(d)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or(d)
+                .to_lowercase()
+        }
+    };
+
+    let mut best: Option<&LearnedVramEntry> = None;
+    let mut best_at = String::new();
+    for (k, entry) in &store.entries {
+        if !k.starts_with(&path_norm) {
+            continue;
+        }
+        // Hard requirements: same ctx + same KV quant (Q4 vs Q8 vs BF16 must not collapse).
+        if !k.contains(&format!("|ctx={ctx_n}|")) {
+            continue;
+        }
+        if !k.contains(&format!("|kv={kv_n}|")) {
+            continue;
+        }
+        if !split_n.is_empty() && split_n != "none" && !k.contains(&format!("|split={split_n}|")) {
+            // Allow legacy keys without split= when UI split is none-ish.
+            if k.contains("|split=") {
+                continue;
+            }
+        }
+
+        let key_has_spec = k.contains("|spec=");
+        let key_has_draft = k.contains("|draft=");
+
+        if spec_n == "none" {
+            // Boost OFF: never reuse a launch that had draft-dspark / draft-dflash.
+            if key_has_spec {
+                // Allow only explicit spec=none if present.
+                if !k.contains("|spec=none") {
+                    continue;
+                }
+            }
+            if key_has_draft {
+                continue;
+            }
+        } else {
+            // Boost ON: require exact spec type.
+            if !k.contains(&format!("|spec={spec_n}")) {
+                continue;
+            }
+            // Prefer matching draft basename when the UI has a path; reject other drafts.
+            if !draft_base.is_empty() {
+                if key_has_draft && !k.contains(&format!("|draft={draft_base}")) {
+                    continue;
+                }
+            }
+        }
+
+        if entry.measured_at >= best_at {
+            best_at = entry.measured_at.clone();
+            best = Some(entry);
+        }
+    }
+    if let Some(entry) = best {
+        return Some(entry.clone());
     }
     None
 }
@@ -390,6 +540,7 @@ pub fn lookup_learned_vram_for_config(
         &config
             .get_param_str("cache_ram")
             .unwrap_or_else(|| "0".to_string()),
+        &draft_path_from_config(config),
     )
 }
 
@@ -642,6 +793,7 @@ pub fn get_learned_vram(
     offload_mode: Option<String>,
     spec_type: Option<String>,
     cache_ram: Option<String>,
+    draft_model: Option<String>,
 ) -> Option<LearnedVramEntry> {
     let _guard = STORE_MUTEX.lock().ok()?;
     let mode = memory_mode
@@ -660,6 +812,7 @@ pub fn get_learned_vram(
     let cache = cache_ram
         .as_deref()
         .unwrap_or("0");
+    let draft = draft_model.as_deref().unwrap_or("");
     lookup_learned_vram_fuzzy(
         &model_path,
         &provider_id,
@@ -671,5 +824,6 @@ pub fn get_learned_vram(
         &offload,
         spec,
         cache,
+        draft,
     )
 }

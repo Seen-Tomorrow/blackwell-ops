@@ -405,6 +405,9 @@ pub struct PiEngineRef {
     /// Engine `--parallel` slot count (concurrent subagent capacity).
     #[serde(default)]
     pub parallel: u32,
+    /// Seat launched with mmproj — advertise image input to pi for this model.
+    #[serde(default)]
+    pub vision: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -676,13 +679,14 @@ fn build_models_and_settings(req: &PiLaunchRequest) -> Result<(String, String, S
     let primary_url = format!("http://localhost:{}/v1", req.primary.port);
     let primary_max = if primary_ctx >= 262_144 { 65536 } else { 32768 };
     let primary_slots = req.primary.parallel.max(1);
+    let primary_vision = req.primary.vision;
 
     let is_twin = matches!(mode.as_str(), "brain_workers" | "brain+workers" | "dual");
 
     // ── Hoist worker refs (needed by both models.json and the PI.md routing) ──
     // Twin: a real second engine. Solo: the worker aliases the primary engine so
     // subagents fan out across the same slots (equal capability).
-    let (w_model, w_ctx, w_url, w_max, w_slots) = if is_twin {
+    let (w_model, w_ctx, w_url, w_max, w_slots, w_vision) = if is_twin {
         let worker = req
             .worker
             .as_ref()
@@ -697,18 +701,34 @@ fn build_models_and_settings(req: &PiLaunchRequest) -> Result<(String, String, S
         let w_ctx = worker.context_window.unwrap_or(131_072);
         let w_url = format!("http://localhost:{}/v1", worker.port);
         let w_max = if w_ctx >= 131_072 { 32768 } else { 16384 };
-        (w_model, w_ctx, w_url, w_max, worker.parallel.max(1))
+        (
+            w_model,
+            w_ctx,
+            w_url,
+            w_max,
+            worker.parallel.max(1),
+            worker.vision,
+        )
     } else {
-        // Solo → worker = same engine, same model, equal capability.
-        (primary_model.clone(), primary_ctx, primary_url.clone(), primary_max, primary_slots)
+        // Solo → worker = same engine, same model / vision, equal capability.
+        (
+            primary_model.clone(),
+            primary_ctx,
+            primary_url.clone(),
+            primary_max,
+            primary_slots,
+            primary_vision,
+        )
     };
 
     // ── models.json ───────────────────────────────────────────────────
     let mut models = serde_json::json!({ "providers": {} });
 
-    // Thinking levels exposed in pi: low / high / max only (plus off → server "none").
-    // Live-tested on local llama OpenAI API: low/high/max/none all return 200; the wider
-    // minimal/medium/xhigh ladder is unused noise for our models.
+    // Thinking levels exposed in pi: off/low/high/max → server none/low/high/max.
+    // Retest (Qwen3.6-27B + thinking FT): all server levels work including minimal/medium
+    // via identity if a client sends them — not in this map. On that SKU, none is the only
+    // true OFF; minimal is lightest on-tier; low→max is a tight band (diminishing returns).
+    // See docs/internal/thinking-levels-validation.md. Larger models may separate more.
     let thinking_map = serde_json::json!({
         "off": "none",
         "low": "low",
@@ -722,6 +742,18 @@ fn build_models_and_settings(req: &PiLaunchRequest) -> Result<(String, String, S
         "supportsUsageInStreaming": false
     });
 
+    // Per-seat vision: only advertise image when that engine launched with mmproj.
+    let brain_input = if primary_vision {
+        serde_json::json!(["text", "image"])
+    } else {
+        serde_json::json!(["text"])
+    };
+    let worker_input = if w_vision {
+        serde_json::json!(["text", "image"])
+    } else {
+        serde_json::json!(["text"])
+    };
+
     models["providers"]["local"] = serde_json::json!({
         "baseUrl": primary_url,
         "api": "openai-completions",
@@ -730,7 +762,7 @@ fn build_models_and_settings(req: &PiLaunchRequest) -> Result<(String, String, S
         "models": [{
             "id": primary_model,
             "name": "brain",
-            "input": ["text", "image"],
+            "input": brain_input,
             "contextWindow": primary_ctx,
             "maxTokens": primary_max,
             "reasoning": true,
@@ -754,7 +786,7 @@ fn build_models_and_settings(req: &PiLaunchRequest) -> Result<(String, String, S
         "models": [{
             "id": w_model,
             "name": "worker",
-            "input": if is_twin { serde_json::json!(["text"]) } else { serde_json::json!(["text", "image"]) },
+            "input": worker_input,
             "contextWindow": w_ctx,
             "maxTokens": w_max,
             "reasoning": true,

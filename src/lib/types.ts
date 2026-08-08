@@ -559,6 +559,8 @@ export interface StackEntry {
   splitMode?: string;
   /** Engine `--parallel` at launch (for harness advice / same-port relaunch). */
   parallel?: number;
+  /** True when this seat launched with mmproj (vision projector loaded). */
+  vision?: boolean;
 }
 
 /** Per-slot context bar info — matches Rust SlotCtxInfo struct */

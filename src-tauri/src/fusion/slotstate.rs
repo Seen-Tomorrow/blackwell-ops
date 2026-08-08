@@ -239,7 +239,7 @@ mod tests {
         // no-op on repeat (capacity unchanged)
         assert!(!bank.pin_ctx_capacity(0, 192000));
 
-        let mut s = bank.entry(0);
+        let s = bank.entry(0);
         s.request_start_n_decoded = 10;
         s.peak_prompt_tokens = 0;
         assert!(bank.pin_ctx_fill(0, 500));

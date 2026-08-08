@@ -6,7 +6,8 @@ import { useTauriListen } from "../hooks/useTauriListen";
 import { frontendPollEnabled } from "../lib/debugFlags";
 import {
   appendDevFakeGpus,
-  getDevFakeGpuExtra,
+  getDevFakeGpuPlan,
+  getDevFakeGpuTotal,
   subscribeDevFakeGpuExtra,
 } from "../lib/devFakeGpuTopo";
 
@@ -63,16 +64,14 @@ export function TelemetryProvider({
   const [realGpus, setRealGpus] = useState<GpuInfo[]>([]);
   const [cpu, setCpu] = useState<CpuInfo | null>(null);
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
-  const [devFakeExtra, setDevFakeExtra] = useState(() =>
-    __BUILD_MODE__ === "dev" ? getDevFakeGpuExtra() : 0,
-  );
+  const [devFakeRev, setDevFakeRev] = useState(0);
   const gpusRef = useRef<GpuInfo[]>([]);
   const gpuPollTierRef = useRef(gpuPollTier);
   gpuPollTierRef.current = gpuPollTier;
 
   useEffect(() => {
     if (__BUILD_MODE__ !== "dev") return;
-    return subscribeDevFakeGpuExtra(() => setDevFakeExtra(getDevFakeGpuExtra()));
+    return subscribeDevFakeGpuExtra(() => setDevFakeRev((n) => n + 1));
   }, []);
 
   const pollGpu = useCallback(async () => {
@@ -185,9 +184,11 @@ export function TelemetryProvider({
   }, [pollingActive, pollCpu]);
 
   const gpus = useMemo(() => {
-    if (__BUILD_MODE__ !== "dev" || devFakeExtra <= 0) return realGpus;
-    return appendDevFakeGpus(realGpus, devFakeExtra);
-  }, [realGpus, devFakeExtra]);
+    if (__BUILD_MODE__ !== "dev" || getDevFakeGpuTotal() <= 0) return realGpus;
+    return appendDevFakeGpus(realGpus, getDevFakeGpuPlan());
+    // devFakeRev forces re-merge when the DEV plan changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [realGpus, devFakeRev]);
 
   const value = useMemo(
     () => ({ gpus, cpu, systemInfo }),

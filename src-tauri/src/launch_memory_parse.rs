@@ -93,6 +93,7 @@ pub fn is_launch_memory_line(line: &str) -> bool {
     lower.contains("load_tensors:")
         || lower.contains("llama_kv_cache:")
         || lower.contains("llama_memory_recurrent:")
+        || lower.contains("llama_dsv4_comp_state:")
         || lower.contains("sched_reserve:")
         || lower.contains("reserve_compute_meta:")
         || lower.contains("estimated memory usage of mtp context")
@@ -101,12 +102,15 @@ pub fn is_launch_memory_line(line: &str) -> bool {
         || lower.contains("prompt cache is enabled")
         || lower.contains("exceeds the training context")
         || lower.contains("common_speculative_init")
+        || lower.contains("loading draft model")
         || lower.contains("speculative decoding context initialized")
         || lower.contains("llama_server: model loaded")
         || lower.contains("general.architecture")
         || lower.contains("projected to use")
         || lower.contains("common_memory_breakdown_print")
         || lower.contains("memory breakdown")
+        // Draft GGUF size line (e.g. `print_info: file size = 10.53 GiB`) after draft load
+        || (lower.contains("print_info:") && lower.contains("file size"))
 }
 
 fn extract_number(s: &str) -> Option<f64> {
@@ -329,7 +333,11 @@ pub fn parse_launch_memory_snapshot(output: &str) -> Option<LaunchMemorySnapshot
                 prompt_cache_limit_mib = extract_number(&line[pos + 11..]);
             }
         }
-        if lower.contains("common_speculative_init") || lower.contains("creating mtp draft context") {
+        // External draft (dflash/dspark/eagle) and embedded MTP all open after this.
+        if lower.contains("common_speculative_init")
+            || lower.contains("creating mtp draft context")
+            || lower.contains("loading draft model")
+        {
             past_spec_init = true;
         }
 
@@ -348,6 +356,9 @@ pub fn parse_launch_memory_snapshot(output: &str) -> Option<LaunchMemorySnapshot
             ("kv", "llama_kv_cache")
         } else if lower.contains("llama_memory_recurrent:") {
             ("rs", "llama_memory_recurrent")
+        } else if lower.contains("llama_dsv4_comp_state:") && lower.contains("buffer size") {
+            // DeepSeek-V4 compressor/indexer state — real GPU self, missing from older parsers.
+            ("rs", "llama_dsv4_comp_state")
         } else if lower.contains("reserve_compute_meta:") {
             ("vision_compute", "reserve_compute_meta")
         } else if lower.contains("sched_reserve:") {

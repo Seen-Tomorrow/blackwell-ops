@@ -684,7 +684,7 @@ use engine_stack::EngineStack;
 use log_hub::LogHub;
 use mobile_bridge::MobileBridge;
 use download_manager::DownloadManager;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 /// First frontend IPC after WebView loads the dev/bundled JS module — used to bisect startup delay.
 #[tauri::command]
@@ -892,6 +892,13 @@ async fn main() {
                 // Block exit until engines are torn down — bare exit left orphans under cargo.exe in dev.
                 api.prevent_close();
                 let app_handle = window.app_handle().clone();
+                // Immediate UI feedback — large models can take several seconds to taskkill.
+                let _ = app_handle.emit(
+                    "app-shutting-down",
+                    serde_json::json!({
+                        "message": "Shutting down — stopping engines and releasing GPU memory…",
+                    }),
+                );
                 tauri::async_runtime::spawn(async move {
                     engine::teardown_all_for_app_exit(&app_handle).await;
                     // Do not AppHandle::exit — that path heap-corrupted after clean engine teardown.
@@ -917,6 +924,7 @@ async fn main() {
             provider_mgmt::set_group_hidden,
             provider_mgmt::set_profile_binary_source,
             engine::get_binary_build_info,
+            engine::get_path_size_bytes,
             engine::set_build_info_for_env,
             engine::open_file_dialog,
             engine::open_folder_dialog,

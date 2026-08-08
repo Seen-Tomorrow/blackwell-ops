@@ -40,7 +40,7 @@ export const DEFAULT_CUSTOM_CAPABILITIES: Required<
   fusion: false,
   metrics: false,
   verbose: false,
-  verboseArgs: "-lv 4",
+  verboseArgs: "-lv 3",
 };
 
 export function resolveCustomCapabilities(
@@ -58,7 +58,7 @@ export function resolveCustomCapabilities(
 /** Parse free-form verbose CLI into argv tokens. */
 export function parseVerboseArgs(raw: string): string[] {
   const s = raw.trim();
-  if (!s) return ["-lv", "4"];
+  if (!s) return ["-lv", "3"];
   return s.split(/\s+/).filter(Boolean);
 }
 

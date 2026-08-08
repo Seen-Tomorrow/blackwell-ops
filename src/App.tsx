@@ -36,6 +36,7 @@ import {
   loadHwMonitorOpen,
 } from "./lib/storage";
 import { dispatchAppEvent, EVENTS } from "./lib/events";
+import { isSetupNavTabAllowed } from "./lib/setupGuide";
 
 import { BINARY_UPDATES_ENABLED } from "./lib/foundry_constants";
 import { getActiveStackSlots, isActiveEngineSlot } from "./lib/engineStack";
@@ -154,15 +155,35 @@ function App() {
     return () => window.removeEventListener(EVENTS.hwMonitorOpenChanged, onHwMonitor);
   }, []);
   const setupGuide = useSetupGuide({ models, catalogLoaded, batchScanState });
+  const setupActiveRef = useRef(setupGuide.active);
+  setupActiveRef.current = setupGuide.active;
+
+  const handleTabChange = useCallback((tab: Tab) => {
+    if (setupActiveRef.current && !isSetupNavTabAllowed(tab)) return;
+    setActiveTab(tab);
+  }, []);
+
+  // Bounce off locked tabs if setup becomes active (or is already active).
+  useEffect(() => {
+    if (setupGuide.active && !isSetupNavTabAllowed(activeTab)) {
+      setActiveTab("catalog");
+    }
+  }, [setupGuide.active, activeTab]);
 
   useEffect(() => {
     const handler = () => setIsPowerUser(isPowerUserActive(loadPowerUserState()));
     window.addEventListener("storage", handler);
     const powerUserHandler = () => requestAnimationFrame(handler);
     window.addEventListener(EVENTS.powerUserChanged, powerUserHandler);
-    const navHandler = () => setActiveTab("stack");
+    const navHandler = () => {
+      if (setupActiveRef.current) return;
+      setActiveTab("stack");
+    };
     const catalogNavHandler = () => setActiveTab("catalog");
-    const extrasNavHandler = () => setActiveTab("extras");
+    const extrasNavHandler = () => {
+      if (setupActiveRef.current) return;
+      setActiveTab("extras");
+    };
     const modelHubNavHandler = () => setActiveTab("modelhub");
     window.addEventListener(EVENTS.navigateStack, navHandler);
     window.addEventListener(EVENTS.navigateCatalog, catalogNavHandler);
@@ -370,11 +391,28 @@ function App() {
 
   useTauriListen<{ slot?: number; alias?: string; reason?: string }>("engine-load-failed", (payload) => {
     if (payload?.reason) {
-      dispatchAppEvent(EVENTS.launchError, { message: payload.reason });
+      const raw = payload.reason;
+      const isOom =
+        /out of memory|cudamalloc failed|cuda error|failed to allocate/i.test(raw);
+      const alias = payload.alias ? `[${payload.alias}] ` : "";
+      const message = isOom
+        ? `${alias}OOM — ${raw.replace(/\s+/g, " ").trim().slice(0, 280)}`
+        : raw;
+      dispatchAppEvent(EVENTS.launchError, { message, durationMs: isOom ? 14000 : undefined });
     }
     if (payload?.slot !== undefined) {
       dispatchAppEvent(EVENTS.slotCleared, { slot: payload.slot });
     }
+  });
+
+  // CloseRequested → backend teardowns engines (can take several seconds on large models).
+  const [shuttingDown, setShuttingDown] = useState(false);
+  const [shutdownMessage, setShutdownMessage] = useState(
+    "Shutting down — stopping engines and releasing GPU memory…",
+  );
+  useTauriListen<{ message?: string }>("app-shutting-down", (payload) => {
+    setShuttingDown(true);
+    if (payload?.message) setShutdownMessage(payload.message);
   });
 
   useTauriListen<{ slot: number }>("slot-cleared", (payload) => {
@@ -582,13 +620,35 @@ function App() {
   return (
     <FusionProvider stack={stack}>
     <ToastProvider>
+      {shuttingDown && (
+        <div
+          className="fixed inset-0 z-[99999] flex flex-col items-center justify-center gap-4"
+          style={{
+            background: "color-mix(in srgb, #000 78%, transparent)",
+            pointerEvents: "all",
+          }}
+          role="alertdialog"
+          aria-live="assertive"
+          aria-busy="true"
+        >
+          <p className="text-[18px] md:text-[22px] font-mono font-bold tracking-widest text-nv-green uppercase text-center px-6">
+            {shutdownMessage}
+          </p>
+          <p className="text-[11px] font-mono text-stealth-muted/70 tracking-wider text-center px-6 max-w-md">
+            Large models can take several seconds to release VRAM. Please wait — do not force-kill.
+          </p>
+          <div className="w-48 h-1 rounded-full overflow-hidden bg-stealth-border/40">
+            <div className="h-full w-1/3 bg-nv-green/80 animate-pulse" style={{ animationDuration: "1.2s" }} />
+          </div>
+        </div>
+      )}
       <ThemeProvider>
         <DisplayTextureProvider>
         <IndustrialBezelTextureProvider>
         <FoundryProvider>
           <TelemetryProvider pollingActive={hwMonitorOpen || activeTab === "catalog" || hasLiveEngines} gpuPollTier={gpuPollTier}>
             <StatusProvider value={{ totalParams, hiddenCount, onShowAll: handleShowAll }}>
-            <Layout activeTab={activeTab} onTabChange={setActiveTab} providers={providers} updateOfferings={updateOfferings} onRefreshUpdateOfferings={refreshUpdateOfferings} hasBinaryUpdates={hasBinaryUpdates}>
+            <Layout activeTab={activeTab} onTabChange={handleTabChange} providers={providers} updateOfferings={updateOfferings} onRefreshUpdateOfferings={refreshUpdateOfferings} hasBinaryUpdates={hasBinaryUpdates} setupGuideActive={setupGuide.active}>
         {activeTab === "catalog" && (
               <ModelCatalog models={models} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} setupGuide={setupGuide} catalogHfUpdates={catalogHfUpdates} />
            )}
