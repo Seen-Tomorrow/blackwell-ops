@@ -33,7 +33,7 @@ import {
   loadDevUpdateVersionFake,
   saveDevUpdateVersionFake,
 } from "../lib/storage";
-import { APP_SHELL_MIN_PX, resolveAppShellWidthPx } from "../lib/uiShell";
+import { APP_SHELL_MIN_PX, resolveAppShellWidthPx, resolveChromeScale } from "../lib/uiShell";
 import { isMobileDevice } from "../lib/utils";
 import IpcMeterFooter from "./IpcMeterFooter";
 import AppUpdateMenu from "./AppUpdateMenu";
@@ -98,7 +98,14 @@ export default function Layout({
   const [zoom, setZoom] = useState(loadZoom);
   const [uiDensity, setUiDensity] = useState<UiDensity>(loadUiDensity);
   const [shellWidthPx, setShellWidthPx] = useState(() =>
-    typeof window !== "undefined" ? resolveAppShellWidthPx(window.innerWidth) : APP_SHELL_MIN_PX,
+    typeof window !== "undefined"
+      ? resolveAppShellWidthPx(window.innerWidth, window.innerHeight)
+      : APP_SHELL_MIN_PX,
+  );
+  const [chromeScale, setChromeScale] = useState(() =>
+    typeof window !== "undefined"
+      ? resolveChromeScale(window.innerWidth, window.innerHeight)
+      : 1.12,
   );
   const { totalParams, hiddenCount, onShowAll, flashMessage } = useStatus();
   const {
@@ -240,7 +247,10 @@ export default function Layout({
   }, []);
 
   useEffect(() => {
-    const onResize = () => setShellWidthPx(resolveAppShellWidthPx(window.innerWidth));
+    const onResize = () => {
+      setShellWidthPx(resolveAppShellWidthPx(window.innerWidth, window.innerHeight));
+      setChromeScale(resolveChromeScale(window.innerWidth, window.innerHeight));
+    };
     onResize();
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
@@ -322,6 +332,8 @@ export default function Layout({
   const shellStyle = {
     "--ui-text-scale": String(zoom),
     "--app-shell-width-px": `${shellWidthPx}px`,
+    /** Header/footer density — independent of app zoom (see resolveChromeScale). */
+    "--chrome-scale": String(chromeScale),
   } as CSSProperties;
 
   const isConfigTab = activeTab === "config";

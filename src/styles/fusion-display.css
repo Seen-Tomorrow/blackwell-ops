@@ -12,7 +12,24 @@
 
 /* ── Industrial Display Frame — outer gunmetal bezel ─── */
 .industrial-display-frame--setup {
-  min-height: 240px;
+  /* Content-sized; don't force a tall empty bezel on short viewports. */
+  min-height: 0;
+  max-height: min(72vh, 100%);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.industrial-display-frame--setup .phosphor-screen-inner {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.industrial-display-frame--setup .setup-guide {
+  flex: 1 1 auto;
 }
 
 /* Welcome splash — 1680×960 art frame; scales down to panel width / viewport height */
@@ -55,24 +72,29 @@
   min-height: 0;
 }
 
-/* ══ Onboarding setup guide — responsive scale (1080p floor → 4K) ══ */
+/* ══ Onboarding setup guide — density from viewport *height* (1080p must stay compact) ══
+ * Old scale used 100vw → ultrawide / 4K width made type + gaps huge and the wizard
+ * ate ~80% of a 1080p window. Prefer vh so short vertical space stays dense. */
 .setup-guide {
-  --setup-scale: clamp(1, 100vw / 1500, 1.35);
-  --setup-fs-title: calc(15px * var(--setup-scale));
-  --setup-fs-eyebrow: calc(9px * var(--setup-scale));
-  --setup-fs-item: calc(12px * var(--setup-scale));
-  --setup-fs-detail: calc(10.5px * var(--setup-scale));
-  --setup-fs-note: calc(10.5px * var(--setup-scale));
-  --setup-fs-btn: calc(10.5px * var(--setup-scale));
-  --setup-pad-x: clamp(12px, 2vw, 22px);
-  --setup-pad-y: clamp(10px, 1.6vw, 18px);
-  --setup-gap: clamp(10px, 1.6vw, 16px);
+  --setup-scale: clamp(0.9, 100vh / 1300, 1.12);
+  --setup-fs-title: calc(13.5px * var(--setup-scale));
+  --setup-fs-eyebrow: calc(8.5px * var(--setup-scale));
+  --setup-fs-item: calc(11px * var(--setup-scale));
+  --setup-fs-detail: calc(9.5px * var(--setup-scale));
+  --setup-fs-note: calc(9.5px * var(--setup-scale));
+  --setup-fs-btn: calc(10px * var(--setup-scale));
+  --setup-pad-x: clamp(10px, 1.2vw, 16px);
+  --setup-pad-y: clamp(8px, 1vh, 12px);
+  --setup-gap: clamp(6px, 0.9vh, 10px);
   padding: var(--setup-pad-y) var(--setup-pad-x);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  min-height: 200px;
+  min-height: 0;
+  max-height: 100%;
   display: flex;
   flex-direction: column;
   gap: var(--setup-gap);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .setup-guide__header {
@@ -105,11 +127,10 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  /* Clear empty row between steps — a full blank line, much taller than the small
-     label→description gap inside each step. Em resolves against this list's font size
-     (inherited from .setup-guide) so it scales with the responsive text. */
+  /* Breathing room between steps without eating 1080p vertical budget. */
   font-size: var(--setup-fs-item);
-  gap: 1.25em;
+  gap: clamp(0.4em, 0.85vh, 0.85em);
+  flex-shrink: 0;
 }
 
 .setup-checklist__item {
