@@ -465,7 +465,7 @@ export default function Layout({
           {__BUILD_MODE__ === "dev" && (
             <div
               className="app-header-dev-tools flex flex-col flex-shrink-0"
-              title="DEV tools — height locked to Quick Settings"
+              title="DEV tools — SETUP / CLR / FAKE / VIEW / GPU+"
             >
               <button
                 type="button"

@@ -194,7 +194,7 @@ export default function DevFakeGpuTopoTool() {
     : null;
 
   return (
-    <div className="relative flex flex-1 min-h-0 self-stretch">
+    <div className="relative flex flex-shrink-0 self-stretch">
       <button
         type="button"
         onClick={() => setOpen(true)}

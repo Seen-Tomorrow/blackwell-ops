@@ -490,33 +490,48 @@
   color: var(--theme-chrome-control-hover);
 }
 
-/* Stretch to Quick Settings height only — never grow the header. */
+/*
+ * DEV tools column — natural stack, real hit targets.
+ * Old design forced stretch-to-Quick-Settings + flex:1 1 0 + overflow:hidden,
+ * which collapsed 5 buttons into an unusable overlapping strip after chrome-scale.
+ */
 .app-header-dev-tools {
-  align-self: stretch;
-  justify-content: space-between;
+  align-self: center;
+  justify-content: flex-start;
   border: 1px solid color-mix(in srgb, var(--theme-chrome-control-border) 70%, #facc15 30%);
   border-radius: 4px;
-  padding: 1px 2px;
-  gap: 0;
+  padding: 2px 3px;
+  gap: 1px;
   min-height: 0;
-  max-height: 100%;
-  overflow: hidden;
+  max-height: none;
+  overflow: visible;
   box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .app-header-dev-tools__btn {
-  flex: 1 1 0;
-  min-height: 0;
-  max-height: 100%;
-  padding: 0 3px !important;
-  font-size: 6px !important;
+  flex: 0 0 auto;
+  min-height: calc(15px * var(--chrome-scale));
+  max-height: none;
+  height: auto;
+  padding: calc(2px * var(--chrome-scale)) calc(5px * var(--chrome-scale)) !important;
+  font-size: calc(8px * var(--chrome-scale)) !important;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
-  line-height: 1 !important;
-  letter-spacing: 0.02em;
+  line-height: 1.15 !important;
+  letter-spacing: 0.03em;
   white-space: nowrap;
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
+}
+
+/* VIEW / GPU+ wrappers used flex:1 min-h-0 and collapsed with the old stack */
+.app-header-dev-tools > .relative {
+  flex: 0 0 auto !important;
+  min-height: 0;
+  align-self: stretch;
+  display: flex;
 }
 
 /* DEV viewport preset popover — portaled to body (header DEV stack clips overflow). */
