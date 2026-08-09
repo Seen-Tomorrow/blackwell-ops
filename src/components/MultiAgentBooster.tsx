@@ -28,6 +28,7 @@ import {
   type AtomcodeEngineClickDetail,
 } from "../lib/events";
 import { KEYS, readStorage, writeStorage } from "../lib/storage";
+import { ConfigChipSegment } from "./EngineParamGroups";
 import {
   BRAINS_OPTIONS,
   THINK_OPTIONS,
@@ -1405,6 +1406,49 @@ export default function MultiAgentBooster({
   const showVioletStrip =
     showDraftStrip || (showSpecExtra && specDetailParams.length > 0);
 
+  /** Draft actions only (buttons) — used inline in the 1-row DFlash/DSPARK strip.
+   *  Descriptive text ("DFlash needs a draft model…" / "Confirm pack to download")
+   *  is dropped to keep the strip a single row like MTP; the action is last in line. */
+  const draftActions = showDraftStrip ? (
+    <div className="full-auto-cockpit__dflash-get-actions">
+      {showDflashChange ? (
+        <button
+          type="button"
+          className="full-auto-cockpit__dflash-get-btn full-auto-cockpit__dflash-get-btn--ghost"
+          onClick={() => onChangeDflashDraft?.()}
+          title={
+            displayBoost === "dspark"
+              ? "Pick DSpark draft GGUF from your library"
+              : "Pick a different DFlash draft from your library"
+          }
+        >
+          Change draft
+        </button>
+      ) : null}
+      {showDflashGet ? (
+        <button
+          type="button"
+          className="full-auto-cockpit__dflash-get-btn"
+          disabled={
+            !onGetDflashDraft ||
+            dflashGetState === "searching" ||
+            dflashGetState === "downloading"
+          }
+          onClick={() => onGetDflashDraft?.()}
+          title="Search Hugging Face for DFlash drafts — you confirm before download"
+        >
+          {dflashGetState === "searching"
+            ? "Searching…"
+            : dflashGetState === "downloading"
+              ? "Downloading…"
+              : dflashGetState === "error"
+                ? "Retry Get draft"
+                : "Get draft"}
+        </button>
+      ) : null}
+    </div>
+  ) : null;
+
   const draftStripInner = showDraftStrip ? (
     <>
       <div className="full-auto-cockpit__dflash-get-main min-w-0 flex-1">
@@ -1450,43 +1494,7 @@ export default function MultiAgentBooster({
           </>
         )}
       </div>
-      <div className="full-auto-cockpit__dflash-get-actions">
-        {showDflashChange ? (
-          <button
-            type="button"
-            className="full-auto-cockpit__dflash-get-btn full-auto-cockpit__dflash-get-btn--ghost"
-            onClick={() => onChangeDflashDraft?.()}
-            title={
-              displayBoost === "dspark"
-                ? "Pick DSpark draft GGUF from your library"
-                : "Pick a different DFlash draft from your library"
-            }
-          >
-            Change draft
-          </button>
-        ) : null}
-        {showDflashGet ? (
-          <button
-            type="button"
-            className="full-auto-cockpit__dflash-get-btn"
-            disabled={
-              !onGetDflashDraft ||
-              dflashGetState === "searching" ||
-              dflashGetState === "downloading"
-            }
-            onClick={() => onGetDflashDraft?.()}
-            title="Search Hugging Face for DFlash drafts — you confirm before download"
-          >
-            {dflashGetState === "searching"
-              ? "Searching…"
-              : dflashGetState === "downloading"
-                ? "Downloading…"
-                : dflashGetState === "error"
-                  ? "Retry Get draft"
-                  : "Get draft"}
-          </button>
-        ) : null}
-      </div>
+      {draftActions}
     </>
   ) : null;
 
@@ -1497,57 +1505,61 @@ export default function MultiAgentBooster({
       <div className="full-auto-cockpit__spec-extra font-mono min-w-0 flex-1">
         <span className="full-auto-cockpit__spec-extra-title shrink-0">SPEC-EXTRA</span>
         <div className="full-auto-cockpit__spec-extra-row min-w-0">
-          {specDetailParams.map((p, i) => (
-            <div key={p.key} className="full-auto-cockpit__spec-extra-param inline-flex items-center gap-1 min-w-0">
-              {i > 0 ? <span className="full-auto-cockpit__spec-extra-sep" aria-hidden>|</span> : null}
-              <span
-                className={`full-auto-cockpit__spec-extra-key shrink-0${
-                  p.userAdded ? " full-auto-cockpit__spec-extra-key--custom" : ""
-                }`}
-                title={p.key}
-              >
-                {p.label}
-              </span>
-              <div className="config-chip-row inline-flex flex-wrap gap-0.5">
-                {p.values.map((val) => {
-                  const selected = String(p.current) === String(val);
-                  return (
-                    <button
-                      key={`${p.key}-${String(val)}`}
-                      type="button"
-                      onClick={() => p.onChange(val)}
-                      className={`px-2 py-0.5 text-[9px] font-mono rounded-sm focus:outline-none ${
-                        selected ? "value-chip-active" : "value-chip"
-                      }`}
-                    >
-                      {String(val)}
-                    </button>
-                  );
-                })}
+          {specDetailParams.map((p, i) => {
+            const rendered = p.values;
+            const activeIdx = Math.max(
+              0,
+              rendered.findIndex((v) => String(v) === String(p.current)),
+            );
+            return (
+              <div key={p.key} className="full-auto-cockpit__spec-extra-param inline-flex items-center gap-1 min-w-0">
+                {i > 0 ? <span className="full-auto-cockpit__spec-extra-sep" aria-hidden>|</span> : null}
+                <span
+                  className={`full-auto-cockpit__spec-extra-key shrink-0${
+                    p.userAdded ? " full-auto-cockpit__spec-extra-key--custom" : ""
+                  }`}
+                  title={p.key}
+                >
+                  {p.label}
+                </span>
+                <ConfigChipSegment activeIndex={activeIdx} ariaLabel={`${p.key} values`}>
+                  {rendered.map((val) => {
+                    const selected = String(p.current) === String(val);
+                    return (
+                      <button
+                        key={`${p.key}-${String(val)}`}
+                        type="button"
+                        data-seg-i={rendered.indexOf(val)}
+                        data-selected={selected ? "1" : undefined}
+                        onClick={() => p.onChange(val)}
+                        className={`config-value-segment__opt value-chip font-mono focus:outline-none ${
+                          selected ? "value-chip-active" : ""
+                        }`}
+                      >
+                        {String(val)}
+                      </button>
+                    );
+                  })}
+                </ConfigChipSegment>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     ) : null;
 
   const violetStrip = showVioletStrip ? (
     <div
-      className={`full-auto-cockpit__dflash-get full-auto-cockpit__dflash-get--footer full-auto-cockpit__dflash-get--tone-${stripTone} font-mono min-w-0 flex-1${
-        draftStripInner && specExtraInline ? " full-auto-cockpit__dflash-get--2row" : " full-auto-cockpit__dflash-get--spec-extra"
-      }`}
+      className={`full-auto-cockpit__dflash-get full-auto-cockpit__dflash-get--footer full-auto-cockpit__dflash-get--tone-${stripTone} font-mono min-w-0 flex-1 full-auto-cockpit__dflash-get--spec-extra`}
       data-strip-tone={stripTone}
     >
       {draftStripInner && specExtraInline ? (
         <>
-          {/* Row 1: params */}
-          <div className="full-auto-cockpit__dflash-row full-auto-cockpit__dflash-row--params">
-            {specExtraInline}
-          </div>
-          {/* Row 2: DFlash info + button */}
-          <div className="full-auto-cockpit__dflash-row full-auto-cockpit__dflash-row--draft">
-            {draftStripInner}
-          </div>
+          {specExtraInline}
+          <span className="full-auto-cockpit__spec-extra-sep full-auto-cockpit__spec-extra-sep--block" aria-hidden>
+            |
+          </span>
+          {draftActions}
         </>
       ) : (
         <>

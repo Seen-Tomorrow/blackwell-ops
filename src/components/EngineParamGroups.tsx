@@ -1,4 +1,10 @@
-import type { ReactNode } from "react";
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import type {
   ConfigViewMode,
   UserEditedTemplateParam,
@@ -30,6 +36,65 @@ function paramChipClass(active: boolean): string {
   return `config-value-segment__opt value-chip font-mono focus:outline-none ${
     active ? "value-chip-active" : ""
   }`;
+}
+
+/**
+ * Engine-config param chip rail — renders value options as one continuous bezel
+ * track with a sliding accent thumb, same language as the cockpit VISION/FLASH/LOAD
+ * flag segments (no per-value separators). Theme tokens only. Children must be the
+ * option buttons (rendered with data-seg-i for measurement).
+ */
+export function ConfigChipSegment({
+  activeIndex,
+  ariaLabel,
+  children,
+}: {
+  activeIndex: number;
+  ariaLabel: string;
+  children: ReactNode[];
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [thumb, setThumb] = useState({ left: 2, width: 0 });
+
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const measure = () => {
+      const slot = root.querySelector<HTMLElement>(`[data-seg-i="${activeIndex}"]`);
+      if (!slot) return;
+      setThumb({ left: slot.offsetLeft, width: slot.offsetWidth });
+    };
+    measure();
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(measure);
+      ro.observe(root);
+      root.querySelectorAll("[data-seg-i]").forEach((el) => ro!.observe(el));
+    }
+    window.addEventListener("resize", measure);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [activeIndex, children.length]);
+
+  return (
+    <div
+      ref={rootRef}
+      className="config-value-segment config-value-segment--rail"
+      role="group"
+      aria-label={ariaLabel}
+      style={
+        {
+          "--seg-thumb-left": `${thumb.left}px`,
+          "--seg-thumb-width": `${thumb.width}px`,
+        } as CSSProperties
+      }
+    >
+      <span className="config-value-segment__thumb" aria-hidden />
+      {children}
+    </div>
+  );
 }
 
 function paramRowKey(def: UserEditedTemplateParam, idx?: number): string {
@@ -222,6 +287,8 @@ export function renderParamRow(
     );
   }
 
+  const renderedValues = baseValues.filter((v: any) => !(v?._hidden));
+
   return (
     <div key={paramRowKey(def, rowIdx)} data-param-row className={`flex items-start min-h-[22px] ${isLocked ? 'opacity-50' : ''}`}>
       {isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 bg-yellow-400/40 mr-1.5 mt-0.5" />}
@@ -234,14 +301,18 @@ export function renderParamRow(
       </span>
 
       <div className="config-chip-row flex gap-1.5 flex-wrap flex-1 min-w-0 items-center min-h-[18px]">
-        <div className="config-value-segment" role="group" aria-label={`${def.label} values`}>
-          {baseValues.filter((v: any) => !(v?._hidden)).map((val, valIdx) => {
+        <ConfigChipSegment
+          activeIndex={Math.max(0, renderedValues.findIndex((v) => paramValuesMatch(currentValue, v)))}
+          ariaLabel={`${def.label} values`}
+        >
+          {renderedValues.map((val, valIdx) => {
             const active = paramValuesMatch(currentValue, val);
             return (
               <button
                 key={`${paramRowKey(def, rowIdx)}-val-${valIdx}-${String(val)}`}
                 type="button"
                 tabIndex={isLocked ? -1 : 0}
+                data-seg-i={valIdx}
                 data-selected={active ? "1" : undefined}
                 title={def.key === "base_port" ? BASE_PORT_CHIP_TOOLTIP : undefined}
                 onClick={() => {
@@ -265,7 +336,7 @@ export function renderParamRow(
               </button>
             );
           })}
-        </div>
+        </ConfigChipSegment>
       </div>
     </div>
   );

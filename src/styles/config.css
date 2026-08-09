@@ -1328,6 +1328,94 @@
   text-decoration: line-through;
 }
 
+/*
+ * ENGINE CONFIG panel only — param chips render as a cockpit-flag-style track:
+ * one continuous bezel rail, no per-value separators, with a sliding accent thumb.
+ * Theme tokens only (AGENTS.md themes policy). Scoped to [data-config-panel] so the
+ * CONFIG editor page (mono/eink panels) keeps its own chip treatment.
+ */
+[data-config-panel] .config-value-segment.config-value-segment--rail {
+  position: relative;
+  flex-wrap: wrap;
+  overflow: hidden;
+  gap: 0;
+  padding: 2px;
+  min-height: 20px;
+  border-radius: 4px;
+  /* Unify with .segment-switch (GPU-bezel Device/Split + cockpit flags) — same token
+     surface, resolves correctly on all themes incl. light ARCTIC. No theme fork. */
+  border: 1px solid color-mix(in srgb, var(--theme-border) 85%, transparent);
+  background: linear-gradient(
+    165deg,
+    color-mix(in srgb, var(--theme-panel-accent) 88%, #000 12%) 0%,
+    var(--theme-panel-accent) 100%
+  );
+  /* Recessed — crisp 1px inner-top shadow + soft falloff + light inner-bottom edge. */
+  box-shadow:
+    inset 0 1px 1px color-mix(in srgb, #000 24%, transparent),
+    inset 0 2px 3px color-mix(in srgb, #000 12%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 18%, transparent);
+}
+
+[data-config-panel] .config-value-segment.config-value-segment--rail .config-value-segment__thumb {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: var(--seg-thumb-left, 2px);
+  width: var(--seg-thumb-width, 0px);
+  border-radius: 3px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--theme-accent-bright, #4ade80) 22%, var(--theme-panel, #111810)) 0%,
+    color-mix(in srgb, var(--theme-accent, #4ade80) 14%, var(--theme-panel-accent, #0b120b)) 100%
+  );
+  border: 1px solid color-mix(in srgb, var(--theme-accent, #4ade80) 42%, transparent);
+  box-shadow:
+    0 0 8px color-mix(in srgb, var(--theme-accent-glow, rgba(74, 222, 128, 0.5)) 55%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #fff 12%, transparent);
+  transition:
+    left 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+    width 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Options sit above the thumb; no per-value borders → continuous track */
+[data-config-panel] .config-value-segment.config-value-segment--rail .config-value-segment__opt,
+[data-config-panel] .config-value-segment.config-value-segment--rail button.value-chip {
+  position: relative;
+  z-index: 1;
+  background: transparent !important;
+  border-color: transparent !important;
+  margin: 0 !important;
+}
+
+[data-config-panel] .config-value-segment.config-value-segment--rail .value-chip:hover {
+  background: transparent !important;
+}
+
+/* Active option — glowing accent segment, same as cockpit flag active */
+[data-config-panel] .config-value-segment.config-value-segment--rail .value-chip-active,
+[data-config-panel] .config-value-segment.config-value-segment--rail button.value-chip-active,
+[data-config-panel] .config-value-segment.config-value-segment--rail .config-value-segment__opt[data-selected="1"] {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  color: var(--theme-accent-bright, #4ade80) !important;
+  text-shadow: 0 0 10px color-mix(in srgb, var(--theme-accent-glow, rgba(74, 222, 128, 0.5)) 65%, transparent) !important;
+}
+
+/* Keep default / user-added / hidden markers readable on the rail */
+[data-config-panel] .config-value-segment.config-value-segment--rail .value-chip--factory-default:not(.value-chip-active) {
+  color: var(--theme-chip-hover-text, #4ade80) !important;
+}
+[data-config-panel] .config-value-segment.config-value-segment--rail .value-chip--user-default:not(.value-chip-active) {
+  color: #fbbf24 !important;
+}
+[data-config-panel] .config-value-segment.config-value-segment--rail .value-chip--user-added:not(.value-chip-active) {
+  color: #67e8f9 !important;
+}
+
 /* Beat e-ink global “everything is accent green” on chip glyphs */
 .eink-panel .config-value-segment .value-chip:not(.value-chip-active),
 .eink-panel .config-value-segment button.value-chip:not(.value-chip-active) {
