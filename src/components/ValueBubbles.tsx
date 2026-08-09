@@ -202,7 +202,7 @@ export default function ValueBubbles({
             onOverrideChange(val);
           }
         }}
-        className={`config-value-segment__opt inline-flex items-center gap-1 font-mono cursor-pointer select-none ${chipClass}${
+        className={`inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-mono rounded-sm transition-all cursor-pointer select-none ${chipClass}${
           selected ? " value-chip-active" : ""
         }${essHidden ? " opacity-55" : ""}`}
         data-selected={selected ? "1" : undefined}
@@ -216,7 +216,7 @@ export default function ValueBubbles({
               e.stopPropagation();
               onChangeDefault(val);
             }}
-            className="leading-none font-bold text-[12px] text-nv-green/60 hover:text-yellow-400 transition-colors"
+            className="leading-none font-bold text-[12px] text-nv-green/60 hover:text-yellow-400 transition-colors pl-1"
             title="Set as default value"
           >
             *
@@ -294,7 +294,7 @@ export default function ValueBubbles({
         {/* Hide toggle — admin only */}
         {editorUnlocked && (
           <button onClick={() => toggleHiddenValue?.(paramKey, val)}
-            className="leading-none text-nv-green/50 hover:text-yellow-400 transition-colors"
+            className="leading-none text-nv-green/50 hover:text-yellow-400 transition-colors pr-1"
             title="Hide this value (persists)">
             <svg width="12" height="12" viewBox="0 0 24 24"><path d="M3 12s4-7 9-7 9 7 9 7-4 7-9 7-9-7-9-7z" fill="none" stroke="currentColor" strokeWidth="2"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" strokeWidth="2"/></svg>
           </button>
@@ -306,7 +306,7 @@ export default function ValueBubbles({
             e.stopPropagation();
             onEditValue(val);
           }}
-            className="leading-none text-nv-green/50 hover:text-yellow-400 transition-colors"
+            className="leading-none text-nv-green/50 hover:text-yellow-400 transition-colors pr-1"
             title="Edit sub-args for this value">
             E
           </button>
@@ -319,15 +319,10 @@ export default function ValueBubbles({
 
   return (
     <div className="flex-1 flex flex-col gap-0.5 min-w-0">
-      {/* Segment track (bezel language) + add/override outside the rail */}
-      <div className="config-chip-row flex items-center gap-1.5 flex-wrap min-w-0">
-        <div
-          className="config-value-segment"
-          role="group"
-          aria-label={`${paramKey} values`}
-        >
-          {allDisplayValues.map((item, idx) => renderBubble(item, idx))}
-        </div>
+      {/* Themed value chips + add/override — CONFIG editor page keeps its own
+          .value-chip treatment (no engine-config segment rail) */}
+      <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+        {allDisplayValues.map((item, idx) => renderBubble(item, idx))}
 
         {/* Override selector — show current override when not in any list (skip for slider — custom values are normal) */}
         {onOverrideChange && currentValue && ptype !== 'slider' &&

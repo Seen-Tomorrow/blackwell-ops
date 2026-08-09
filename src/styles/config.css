@@ -1226,15 +1226,16 @@
 }
 
 /*
- * Config value chips → segment rail (same language as cockpit VISION/FLASH/LOAD
- * and VRAM Split/Device bezel switches).
- * Engine Launch path uses EngineParamGroups; CONFIG editor uses ValueBubbles.
- * Both wrap options in .config-value-segment.
+ * ENGINE CONFIG panel only — param value chips → segment rail (same language as
+ * cockpit VISION/FLASH/LOAD and VRAM Split/Device bezel switches).
  *
- * Scope without requiring [data-config-panel] on ancestors (some layouts nest
- * rows under eink-panel only).
+ * Engine Launch path uses EngineParamGroups (rail); the CONFIG editor page uses
+ * ValueBubbles and keeps its own themed .value-chip treatment.
+ *
+ * All rules below are scoped to [data-config-panel] so the CONFIG/PARAMETERS
+ * editor page (mono/eink panels, data-config-page) is NOT restyled by the rail.
  */
-.config-value-segment {
+[data-config-panel] .config-value-segment {
   display: inline-flex;
   flex-direction: row;
   flex-wrap: wrap;
@@ -1251,11 +1252,11 @@
     inset 0 -1px 2px color-mix(in srgb, #000 26%, transparent);
 }
 
-.config-value-segment .config-value-segment__opt,
-.config-value-segment .value-chip,
-.config-value-segment button.value-chip,
-.config-value-segment .value-chip-active,
-.config-value-segment button.value-chip-active {
+[data-config-panel] .config-value-segment .config-value-segment__opt,
+[data-config-panel] .config-value-segment .value-chip,
+[data-config-panel] .config-value-segment button.value-chip,
+[data-config-panel] .config-value-segment .value-chip-active,
+[data-config-panel] .config-value-segment button.value-chip-active {
   flex: 0 0 auto;
   margin: 0 !important;
   padding: 3px 7px !important;
@@ -1279,18 +1280,18 @@
     box-shadow 0.15s ease !important;
 }
 
-.config-value-segment .config-value-segment__opt:hover,
-.config-value-segment .value-chip:hover,
-.config-value-segment button.value-chip:hover {
+[data-config-panel] .config-value-segment .config-value-segment__opt:hover,
+[data-config-panel] .config-value-segment .value-chip:hover,
+[data-config-panel] .config-value-segment button.value-chip:hover {
   color: var(--theme-chip-hover-text, #4ade80) !important;
   background: color-mix(in srgb, var(--theme-accent-soft, rgba(74, 222, 128, 0.06)) 80%, transparent) !important;
 }
 
 /* Selected option — solid thumb (matches cockpit flag active) */
-.config-value-segment .value-chip-active,
-.config-value-segment button.value-chip-active,
-.config-value-segment .config-value-segment__opt[data-selected="1"],
-.config-value-segment .config-value-segment__opt.value-chip-active {
+[data-config-panel] .config-value-segment .value-chip-active,
+[data-config-panel] .config-value-segment button.value-chip-active,
+[data-config-panel] .config-value-segment .config-value-segment__opt[data-selected="1"],
+[data-config-panel] .config-value-segment .config-value-segment__opt.value-chip-active {
   background: color-mix(
     in srgb,
     var(--theme-chip-solid-bg, #4ade80) 88%,
@@ -1307,23 +1308,23 @@
     0 0 0 1px color-mix(in srgb, var(--theme-chip-solid-bg, #4ade80) 25%, transparent) !important;
 }
 
-/* Default / user-added still readable inside the rail (CONFIG editor) */
-.config-value-segment .value-chip--factory-default:not(.value-chip-active) {
+/* Default / user-added still readable inside the rail (ENGINE CONFIG panel) */
+[data-config-panel] .config-value-segment .value-chip--factory-default:not(.value-chip-active) {
   color: var(--theme-chip-hover-text, #4ade80) !important;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-accent-bright, #4ade80) 28%, transparent) !important;
 }
 
-.config-value-segment .value-chip--user-default:not(.value-chip-active) {
+[data-config-panel] .config-value-segment .value-chip--user-default:not(.value-chip-active) {
   color: #fbbf24 !important;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, #fbbf24 35%, transparent) !important;
 }
 
-.config-value-segment .value-chip--user-added:not(.value-chip-active) {
+[data-config-panel] .config-value-segment .value-chip--user-added:not(.value-chip-active) {
   color: #67e8f9 !important;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, #67e8f9 30%, transparent) !important;
 }
 
-.config-value-segment .value-chip--hidden {
+[data-config-panel] .config-value-segment .value-chip--hidden {
   opacity: 0.35;
   text-decoration: line-through;
 }
@@ -1416,9 +1417,9 @@
   color: #67e8f9 !important;
 }
 
-/* Beat e-ink global “everything is accent green” on chip glyphs */
-.eink-panel .config-value-segment .value-chip:not(.value-chip-active),
-.eink-panel .config-value-segment button.value-chip:not(.value-chip-active) {
+/* Beat e-ink global “everything is accent green” on chip glyphs (ENGINE CONFIG panel only) */
+[data-config-panel] .eink-panel .config-value-segment .value-chip:not(.value-chip-active),
+[data-config-panel] .eink-panel .config-value-segment button.value-chip:not(.value-chip-active) {
   color: color-mix(
     in srgb,
     var(--theme-industrial-muted, var(--theme-text-muted, #6a8a6a)) 92%,
@@ -1426,8 +1427,8 @@
   ) !important;
 }
 
-.eink-panel .config-value-segment,
-.mono-panel .config-value-segment {
+[data-config-panel] .eink-panel .config-value-segment,
+[data-config-panel] .mono-panel .config-value-segment {
   background: color-mix(in srgb, var(--theme-panel-accent, #040b01) 80%, #000 20%);
 }
 
