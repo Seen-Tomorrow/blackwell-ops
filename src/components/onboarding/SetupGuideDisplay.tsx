@@ -103,6 +103,34 @@ export default function SetupGuideDisplay({
   /** User hit STOP — don't let the in-flight invoke resolve reset the step to idle. */
   const fitStopRequestedRef = useRef(false);
 
+  // SCAN META control lives in the action row under the wizard steps (like RUN VRAM FIT SCAN).
+  const [metaScanRunning, setMetaScanRunning] = useState(false);
+  const [showMetaMenu, setShowMetaMenu] = useState(false);
+
+  const runMetaScan = useCallback(async (concurrency: number) => {
+    setShowMetaMenu(false);
+    setMetaScanRunning(true);
+    clearActionError();
+    try {
+      await invoke("scan_all_models_cmd", {
+        modelBase: null,
+        providerId: null,
+        concurrency: concurrency || undefined,
+      });
+    } catch (err) {
+      const msg = typeof err === "string" ? err : "Metadata scan failed.";
+      reportActionError(msg);
+    } finally {
+      setMetaScanRunning(false);
+    }
+  }, [clearActionError, reportActionError]);
+
+  const cancelMetaScan = useCallback(() => {
+    void invoke("cancel_gguf_scan_cmd").catch(() => {});
+    setMetaScanRunning(false);
+    setShowMetaMenu(false);
+  }, []);
+
   const fitDone = fitStep === "done" || fitStep === "skipped" || fitStep === "stopped";
   const driversStepActive = showDriversStep || (metaDone && fitDone);
   const frontierDriverOk = isDriverSufficientForProfile(driverVersion, ENV_META.frontier.cuda);
@@ -318,12 +346,6 @@ export default function SetupGuideDisplay({
         </p>
       )}
 
-      {metaStepActive && (
-        <p className="setup-guide__note setup-guide__note--cyan">
-          {modelsCount} models loaded — scan them below to power the VRAM forecast.
-        </p>
-      )}
-
       {metaScanFailed > 0 && metaDone && (
         <p className="setup-guide__note setup-guide__note--amber">
           {metaScanFailed} model{metaScanFailed !== 1 ? "s" : ""} could not be parsed (corrupt or
@@ -396,11 +418,63 @@ export default function SetupGuideDisplay({
           </>
         )}
 
-        {metaStepActive && (
-          <p className="setup-guide__note setup-guide__note--cyan setup-guide__note--scan-hint">
-            Scan in progress? Use <span className="setup-guide__btn-inline-label">SCAN META</span> in
-            the catalog — it pulses while setup is active.
-          </p>
+        {phase === "scan-meta" && !metaDone && (
+          <>
+            {metaScanRunning ? (
+              <div className="setup-guide__fit-row">
+                <button
+                  type="button"
+                  disabled
+                  className="setup-guide__btn setup-guide__btn--cyan setup-guide__btn--running"
+                >
+                  SCANNING MODELS…
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelMetaScan}
+                  className="setup-guide__btn setup-guide__btn--danger"
+                  title="Stop the metadata scan"
+                >
+                  STOP
+                </button>
+              </div>
+            ) : showMetaMenu ? (
+              <div className="setup-guide__fit-row">
+                {[4, 8].map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => void runMetaScan(c)}
+                    className="setup-guide__btn setup-guide__btn--primary"
+                    title={`Scan all models with ${c}x parallelism`}
+                  >
+                    {c}×
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setShowMetaMenu(false)}
+                  className="setup-guide__btn setup-guide__btn--neutral"
+                >
+                  CANCEL
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowMetaMenu(true)}
+                disabled={!canScanMeta}
+                className="setup-guide__btn setup-guide__btn--cyan"
+                title={
+                  canScanMeta
+                    ? "Scan all models for metadata"
+                    : "Install the portable toolchain before scanning"
+                }
+              >
+                SCAN META ▾
+              </button>
+            )}
+          </>
         )}
 
         {phase === "fit-scan" && !fitDone && !showDriversStep && (

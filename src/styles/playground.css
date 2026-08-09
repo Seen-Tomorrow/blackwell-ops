@@ -84,22 +84,6 @@ body[data-onboarding-phase="paths"] [data-onboarding="add-folder"] {
   animation: onboarding-pulse 1.8s ease-in-out infinite;
 }
 
-body[data-onboarding-phase="scan-meta"] [data-onboarding="scan-meta"] {
-  animation: onboarding-scan-pulse 1.5s ease-in-out infinite;
-}
-
-/* Scan-meta CTA — cyan glow + gentle grow, matching the SCAN META text color, unmissable during onboarding */
-@keyframes onboarding-scan-pulse {
-  0%, 100% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--theme-tel-cyan, #22d3ee) 0%, transparent);
-    transform: scale(1);
-  }
-  50% {
-    box-shadow: 0 0 0 4px color-mix(in srgb, var(--theme-tel-cyan, #22d3ee) 45%, transparent);
-    transform: scale(1.05);
-  }
-}
-
 .foundry-toolchain-btn--cache-ready {
   animation: onboarding-pulse 1.8s ease-in-out infinite;
 }

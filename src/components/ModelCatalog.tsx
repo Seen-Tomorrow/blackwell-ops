@@ -352,8 +352,6 @@ export default function ModelCatalog(props: ModelCatalogProps) {
   const effectiveSupportsFusion = effectiveEngineEntry?.supportsFusion ?? true;
 
   const renderScanMetaControl = () => {
-    // Onboarding-only zoom treatment — live catalog keeps the compact buttons.
-    const scanOnboarding = setupGuide.phase === "scan-meta" && !scanBlockedByToolchain;
     if (batchScanState.active) {
       return (
         <>
@@ -376,9 +374,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           <button
             onClick={() => startScan(4)}
             disabled={scanningPath !== null}
-            className={`catalog-scan-btn px-1.5 py-0.5 text-[7px] font-mono transition-colors rounded-sm disabled:opacity-30${
-              scanOnboarding ? " catalog-scan-btn--onboarding catalog-scan-btn--onboarding-option" : ""
-            }`}
+            className="catalog-scan-btn px-1.5 py-0.5 text-[7px] font-mono transition-colors rounded-sm disabled:opacity-30"
             title="Scan all models with 4x parallelism (~2GB RAM)"
           >
             4×
@@ -386,18 +382,14 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           <button
             onClick={() => startScan(8)}
             disabled={scanningPath !== null}
-            className={`catalog-scan-btn px-1.5 py-0.5 text-[7px] font-mono transition-colors rounded-sm disabled:opacity-30${
-              scanOnboarding ? " catalog-scan-btn--onboarding catalog-scan-btn--onboarding-option" : ""
-            }`}
+            className="catalog-scan-btn px-1.5 py-0.5 text-[7px] font-mono transition-colors rounded-sm disabled:opacity-30"
             title="Scan all models with 8x parallelism (~4GB RAM)"
           >
             8×
           </button>
           <button
             onClick={() => setShowScanMenu(false)}
-            className={`catalog-scan-btn px-1 py-0.5 text-[7px] font-mono transition-colors rounded-sm opacity-60${
-              scanOnboarding ? " catalog-scan-btn--onboarding catalog-scan-btn--onboarding-option" : ""
-            }`}
+            className="catalog-scan-btn px-1 py-0.5 text-[7px] font-mono transition-colors rounded-sm opacity-60"
             title="Close scan menu"
           >
             ✕
@@ -409,10 +401,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
       <button
         onClick={() => setShowScanMenu(true)}
         disabled={scanningPath !== null || scanBlockedByToolchain}
-        data-onboarding={scanOnboarding ? "scan-meta" : undefined}
-        className={`catalog-scan-btn px-1.5 py-0.5 text-[7px] font-mono transition-colors rounded-sm disabled:opacity-30 whitespace-nowrap${
-          scanOnboarding ? " catalog-scan-btn--onboarding" : ""
-        }`}
+        className="catalog-scan-btn px-1.5 py-0.5 text-[7px] font-mono transition-colors rounded-sm disabled:opacity-30 whitespace-nowrap"
         title={
           scanBlockedByToolchain
             ? "Install the portable toolchain in setup before scanning GGUF metadata"
