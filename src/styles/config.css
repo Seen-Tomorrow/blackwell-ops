@@ -1915,6 +1915,27 @@
   color: var(--theme-accent-bright) !important;
 }
 
+/* Distribution / App-update cyan — theme-aware via --theme-dist-cyan.
+   Dark themes keep cyan; arctic resolves to a readable teal on light paper. */
+[data-config-page] .text-cyan-400,
+[data-config-page] .text-cyan-400\/90,
+[data-config-page] .text-cyan-300,
+[data-config-page] .text-cyan-300\/70,
+[data-config-page] .text-cyan-300\/80 {
+  color: var(--theme-dist-cyan) !important;
+}
+
+[data-config-page] .border-cyan-400\/25,
+[data-config-page] .border-cyan-400\/50 {
+  border-color: color-mix(in srgb, var(--theme-dist-cyan) 45%, transparent) !important;
+}
+
+[data-config-page] .bg-cyan-400\/10,
+[data-config-page] .hover\:bg-cyan-400\/10:hover,
+[data-config-page] .hover\:bg-cyan-400\/15:hover {
+  background: color-mix(in srgb, var(--theme-dist-cyan) 14%, var(--theme-panel)) !important;
+}
+
 /*
  * UPDATES / Providers / Foundry on CONFIG page — map hard-coded yellow & white
  * Tailwind utilities to theme secondary/text so ARCTIC (light grey panels) stays readable.

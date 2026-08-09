@@ -40,6 +40,8 @@ const MATRIX: AppTheme = {
     "--theme-accent": "#76B900",
     "--theme-accent-bright": "#4ade80",
     "--theme-accent-dim": "#4a6a5a",
+    /* Distribution/App-update cyan — stays cyan on dark themes, readable teal on arctic */
+    "--theme-dist-cyan": "#22d3ee",
     "--theme-accent-glow": "rgba(74, 222, 128, 0.3)",
     "--theme-accent-soft": "rgba(74, 222, 128, 0.06)",
     "--theme-chip-bg": "rgba(74, 222, 128, 0.04)",
@@ -222,6 +224,8 @@ const AMBER: AppTheme = {
     "--theme-accent": "#d4950a",
     "--theme-accent-bright": "#f5b942",
     "--theme-accent-dim": "#7a6030",
+    /* Distribution/App-update cyan — stays cyan on dark themes, readable teal on arctic */
+    "--theme-dist-cyan": "#22d3ee",
     "--theme-accent-glow": "rgba(245, 150, 0, 0.3)",
     "--theme-accent-soft": "rgba(245, 150, 0, 0.06)",
     "--theme-chip-bg": "rgba(245, 150, 0, 0.05)",
@@ -403,6 +407,8 @@ const CYAN: AppTheme = {
     "--theme-accent": "#00b8d4",
     "--theme-accent-bright": "#22d3ee",
     "--theme-accent-dim": "#2a5a6a",
+    /* Distribution/App-update cyan — stays cyan on dark themes, readable teal on arctic */
+    "--theme-dist-cyan": "#22d3ee",
     "--theme-accent-glow": "rgba(0, 229, 255, 0.3)",
     "--theme-accent-soft": "rgba(0, 229, 255, 0.05)",
     "--theme-chip-bg": "rgba(0, 229, 255, 0.05)",
@@ -584,6 +590,8 @@ const SLATE: AppTheme = {
     "--theme-accent": "#8a8a9a",
     "--theme-accent-bright": "#c8c8d0",
     "--theme-accent-dim": "#5a5a6a",
+    /* Distribution/App-update cyan — stays cyan on dark themes, readable teal on arctic */
+    "--theme-dist-cyan": "#22d3ee",
     "--theme-accent-glow": "rgba(160, 160, 176, 0.22)",
     "--theme-accent-soft": "rgba(120, 120, 140, 0.08)",
     "--theme-chip-bg": "rgba(120, 120, 140, 0.06)",
@@ -775,6 +783,8 @@ const ARCTIC: AppTheme = {
     "--theme-accent": "#0284c7",
     "--theme-accent-bright": "#0ea5e9",
     "--theme-accent-dim": "#64748b",
+    /* Distribution/App-update cyan — stays cyan on dark themes, readable teal on arctic */
+    "--theme-dist-cyan": "#0e7490",
     "--theme-accent-glow": "rgba(14, 165, 233, 0.32)",
     "--theme-accent-soft": "rgba(14, 165, 233, 0.1)",
 
