@@ -423,12 +423,14 @@
 }
 
 .app-quick-settings {
-  /* Recessed well inset into header chrome (not a floating flat panel) */
+  /* Recessed well inset into header chrome (not a floating flat panel). Full-width line 1
+     so DEV tools drop onto their own right-aligned line 2 below. */
   border: 1px solid color-mix(in srgb, var(--theme-bezel-edge-lo) 70%, var(--theme-chrome-control-border) 30%);
   border-radius: 5px;
   padding: calc(4px * var(--chrome-scale)) calc(7px * var(--chrome-scale)) calc(3px * var(--chrome-scale));
   flex-shrink: 0;
-  width: fit-content;
+  order: 1;
+  flex-basis: 100%;
   max-width: 100%;
   align-items: flex-end;
   background: color-mix(in srgb, var(--theme-bg) 55%, var(--theme-panel-accent) 45%);
@@ -491,13 +493,20 @@
 }
 
 /*
- * DEV tools column — natural stack, real hit targets.
- * Old design forced stretch-to-Quick-Settings + flex:1 1 0 + overflow:hidden,
- * which collapsed 5 buttons into an unusable overlapping strip after chrome-scale.
+ * DEV tools — single inline row directly under the quick-settings block, right-aligned.
+ * Old design was a vertical column (flex-col) that hung as an awkward stack below the
+ * block; now all 5 buttons (SETUP / CLR / FAKE / VIEW / GPU+) share one horizontal line.
  */
 .app-header-dev-tools {
-  align-self: center;
-  justify-content: flex-start;
+  /* Own full-width right-aligned row BELOW the quick-settings block. */
+  flex-direction: row;
+  flex-wrap: nowrap;
+  order: 2;
+  align-self: flex-end;
+  justify-content: flex-end;
+  align-items: stretch;
+  flex-basis: 100%;
+  max-width: 100%;
   border: 1px solid color-mix(in srgb, var(--theme-chrome-control-border) 70%, #facc15 30%);
   border-radius: 4px;
   padding: 2px 3px;
@@ -511,10 +520,10 @@
 
 .app-header-dev-tools__btn {
   flex: 0 0 auto;
-  min-height: calc(15px * var(--chrome-scale));
+  min-height: calc(12px * var(--chrome-scale));
   max-height: none;
   height: auto;
-  padding: calc(2px * var(--chrome-scale)) calc(5px * var(--chrome-scale)) !important;
+  padding: calc(1px * var(--chrome-scale)) calc(5px * var(--chrome-scale)) !important;
   font-size: calc(8px * var(--chrome-scale)) !important;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
   line-height: 1.15 !important;
@@ -523,7 +532,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 100%;
+  width: auto;
 }
 
 /* VIEW / GPU+ wrappers used flex:1 min-h-0 and collapsed with the old stack */

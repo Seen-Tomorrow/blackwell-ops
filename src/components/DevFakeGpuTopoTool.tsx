@@ -198,7 +198,7 @@ export default function DevFakeGpuTopoTool() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className={`app-header-dev-tools__btn app-chrome-control-btn w-full ${
+        className={`app-header-dev-tools__btn app-chrome-control-btn w-auto ${
           total > 0
             ? "text-cyan-300 hover:text-cyan-200"
             : "text-white/45 hover:text-white/70"
