@@ -221,124 +221,67 @@
   gap: 0.45rem 0.55rem;
 }
 
-/* When SPEC-EXTRA shares the strip with DFlash: fixed 2-row layout (params row 1, draft info row 2) */
-.full-auto-cockpit__dflash-get--2row {
-  flex-direction: column;
-  flex-wrap: nowrap;
-  align-items: stretch;
-  gap: 0;
-  padding: 0;
-}
-
-.full-auto-cockpit__dflash-row {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  min-width: 0;
-}
-
-.full-auto-cockpit__dflash-row--params {
-  padding: 0.4rem 0.55rem 0.3rem;
-}
-
-.full-auto-cockpit__dflash-row--draft {
-  padding: 0.3rem 0.55rem 0.4rem;
-}
-
-.full-auto-cockpit__dflash-row--draft .full-auto-cockpit__dflash-get-main {
-  max-width: 100%;
-  flex: 1 1 auto;
-}
-
 /* SPEC-EXTRA / draft strip — product tones (MTP green, DFlash violet). Chips = theme value-chip. */
+/* Explicit MTP tone — theme tokens (--theme-dflash-mtp-*) resolve on all themes,
+   no [data-theme] fork. Product green, adapted per theme (dark wash / arctic paper wash). */
 .full-auto-cockpit__dflash-get--tone-mtp {
-  border-color: color-mix(in srgb, #4ade80 50%, transparent);
-  background: color-mix(in srgb, #040b06 88%, #4ade80 12%);
-  color: #bbf7d0;
-  box-shadow: inset 0 1px 0 color-mix(in srgb, #4ade80 14%, transparent);
+  border-color: var(--theme-dflash-mtp-border);
+  background: var(--theme-dflash-mtp-bg);
+  color: var(--theme-dflash-mtp-text);
+  box-shadow: var(--theme-dflash-mtp-shadow);
 }
 
 .full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__spec-extra-title,
 .full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__spec-extra-key,
 .full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__spec-extra-sep {
-  color: color-mix(in srgb, #bbf7d0 82%, transparent);
+  color: var(--theme-dflash-mtp-text-soft);
+}
+
+.full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__dflash-get-name {
+  color: var(--theme-dflash-mtp-text);
 }
 
 .full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__dflash-get-btn {
-  border-color: color-mix(in srgb, #4ade80 45%, transparent);
-  color: #bbf7d0;
+  border-color: var(--theme-dflash-mtp-btn-border);
+  background: var(--theme-dflash-mtp-btn-bg);
+  color: var(--theme-dflash-mtp-btn-text);
 }
 
-/* Explicit DFlash tone (do not rely only on base violet — footer class can lose it) */
+.full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__dflash-get-btn:hover:not(:disabled) {
+  background: var(--theme-dflash-mtp-btn-hover-bg);
+  border-color: var(--theme-dflash-mtp-btn-hover-border);
+}
+
+/* Explicit DFlash tone (do not rely only on base violet — footer class can lose it).
+   Theme tokens (--theme-dflash-strip-*) — resolves on all themes, no [data-theme] fork. */
 .full-auto-cockpit__dflash-get--tone-dflash {
-  border-color: color-mix(in srgb, #a78bfa 50%, transparent);
-  background: color-mix(in srgb, #0a0612 88%, #a78bfa 12%);
-  color: #ddd6fe;
-  box-shadow: inset 0 1px 0 color-mix(in srgb, #a78bfa 14%, transparent);
+  border-color: var(--theme-dflash-strip-border);
+  background: var(--theme-dflash-strip-bg);
+  color: var(--theme-dflash-strip-text);
+  box-shadow: var(--theme-dflash-strip-shadow);
 }
 
 .full-auto-cockpit__dflash-get--tone-dflash .full-auto-cockpit__spec-extra-title,
 .full-auto-cockpit__dflash-get--tone-dflash .full-auto-cockpit__spec-extra-key,
 .full-auto-cockpit__dflash-get--tone-dflash .full-auto-cockpit__spec-extra-sep {
-  color: color-mix(in srgb, #ddd6fe 82%, transparent);
+  color: var(--theme-dflash-strip-text-soft);
 }
 
 .full-auto-cockpit__dflash-get--tone-dflash .full-auto-cockpit__dflash-get-btn {
-  border-color: color-mix(in srgb, #a78bfa 45%, transparent);
-  color: #ddd6fe;
+  border-color: var(--theme-dflash-strip-btn-border);
+  background: var(--theme-dflash-strip-btn-bg);
+  color: var(--theme-dflash-strip-btn-text);
 }
 
-/* ARCTIC — MTP strip wash (product green; chips stay theme value-chip) */
-[data-theme="arctic"] .full-auto-cockpit__dflash-get--tone-mtp {
-  background: rgba(74, 222, 128, 0.1);
-  border-color: color-mix(in srgb, #4ade80 70%, transparent);
-  color: #1e6b40;
-  box-shadow: none;
+.full-auto-cockpit__dflash-get--tone-dflash .full-auto-cockpit__dflash-get-btn:hover:not(:disabled) {
+  background: var(--theme-dflash-strip-btn-hover-bg);
 }
 
-[data-theme="arctic"] .full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__dflash-get-name {
-  color: #1e6b40;
+.full-auto-cockpit__dflash-get--tone-dflash .full-auto-cockpit__dflash-get-name {
+  color: var(--theme-dflash-strip-text);
 }
 
-[data-theme="arctic"] .full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__dflash-get-btn {
-  background: color-mix(in srgb, #22c55e 10%, transparent);
-  color: #15803d;
-  border-color: color-mix(in srgb, #4ade80 60%, transparent);
-}
-
-[data-theme="arctic"] .full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__dflash-get-btn:hover:not(:disabled) {
-  background: color-mix(in srgb, #22c55e 18%, transparent);
-  border-color: #4ade80;
-}
-
-[data-theme="arctic"] .full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__spec-extra-title,
-[data-theme="arctic"] .full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__spec-extra-key,
-[data-theme="arctic"] .full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__spec-extra-sep {
-  color: color-mix(in srgb, #1e6b40 80%, transparent);
-}
-
-[data-theme="arctic"] .full-auto-cockpit__dflash-get--tone-dflash {
-  background: rgba(167, 139, 250, 0.1);
-  border-color: color-mix(in srgb, #a78bfa 70%, transparent);
-  color: #4a3858;
-  box-shadow: none;
-}
-
-[data-theme="arctic"] .full-auto-cockpit__dflash-get--tone-dflash .full-auto-cockpit__dflash-get-name {
-  color: #4a3858;
-}
-
-[data-theme="arctic"] .full-auto-cockpit__dflash-get--tone-dflash .full-auto-cockpit__dflash-get-btn {
-  background: color-mix(in srgb, #7c3aed 12%, transparent);
-  color: #6d28d9;
-  border-color: color-mix(in srgb, #a78bfa 60%, transparent);
-}
-
-[data-theme="arctic"] .full-auto-cockpit__dflash-get--tone-dflash .full-auto-cockpit__spec-extra-title,
-[data-theme="arctic"] .full-auto-cockpit__dflash-get--tone-dflash .full-auto-cockpit__spec-extra-key,
-[data-theme="arctic"] .full-auto-cockpit__dflash-get--tone-dflash .full-auto-cockpit__spec-extra-sep {
-  color: color-mix(in srgb, #4a3858 80%, transparent);
-}
+/* DFlash strip tones now come from --theme-dflash-strip-* tokens (all themes). */
 
 .full-auto-cockpit__dflash-get--tone-neutral {
   border-color: color-mix(in srgb, var(--theme-border, #1a2e1a) 60%, transparent);
@@ -493,17 +436,17 @@
 
 /* Higher specificity than base so MTP green / DFlash violet always paint */
 .full-auto-cockpit__dflash-get.full-auto-cockpit__dflash-get--tone-mtp {
-  border-color: color-mix(in srgb, #4ade80 50%, transparent);
-  background: color-mix(in srgb, #040b06 88%, #4ade80 12%);
-  color: #bbf7d0;
-  box-shadow: inset 0 1px 0 color-mix(in srgb, #4ade80 14%, transparent);
+  border-color: var(--theme-dflash-mtp-border);
+  background: var(--theme-dflash-mtp-bg);
+  color: var(--theme-dflash-mtp-text);
+  box-shadow: var(--theme-dflash-mtp-shadow);
 }
 
 .full-auto-cockpit__dflash-get.full-auto-cockpit__dflash-get--tone-dflash {
-  border-color: color-mix(in srgb, #a78bfa 50%, transparent);
-  background: color-mix(in srgb, #0a0612 88%, #a78bfa 12%);
-  color: #ddd6fe;
-  box-shadow: inset 0 1px 0 color-mix(in srgb, #a78bfa 14%, transparent);
+  border-color: var(--theme-dflash-strip-border);
+  background: var(--theme-dflash-strip-bg);
+  color: var(--theme-dflash-strip-text);
+  box-shadow: var(--theme-dflash-strip-shadow);
 }
 
 .full-auto-cockpit__dflash-get.full-auto-cockpit__dflash-get--tone-neutral {
@@ -578,63 +521,14 @@
 }
 
 .full-auto-cockpit__dflash-get-btn--ghost {
-  color: #ddd6fe;
-  border-color: color-mix(in srgb, #a78bfa 40%, transparent);
+  color: var(--theme-dflash-strip-btn-ghost-text);
+  border-color: var(--theme-dflash-strip-btn-ghost-border);
   background: transparent;
 }
 
 .full-auto-cockpit__dflash-get-btn--ghost:hover:not(:disabled) {
-  background: color-mix(in srgb, #a78bfa 16%, transparent);
+  background: var(--theme-dflash-strip-btn-hover-bg);
   border-color: color-mix(in srgb, #a78bfa 60%, transparent);
-}
-
-/* ARCTIC — tone washes (never paint all strips violet) */
-[data-theme="arctic"] .full-auto-cockpit__dflash-get.full-auto-cockpit__dflash-get--tone-dflash {
-  background: rgba(167, 139, 250, 0.1);
-  border-color: color-mix(in srgb, #a78bfa 70%, transparent);
-  color: #4a3858;
-  box-shadow: none;
-}
-
-[data-theme="arctic"] .full-auto-cockpit__dflash-get.full-auto-cockpit__dflash-get--tone-mtp {
-  background: rgba(74, 222, 128, 0.1);
-  border-color: color-mix(in srgb, #4ade80 70%, transparent);
-  color: #1e6b40;
-  box-shadow: none;
-}
-
-[data-theme="arctic"] .full-auto-cockpit__dflash-get.full-auto-cockpit__dflash-get--tone-dflash .full-auto-cockpit__dflash-get-name {
-  color: #4a3858;
-}
-
-[data-theme="arctic"] .full-auto-cockpit__dflash-get.full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__dflash-get-name {
-  color: #1e6b40;
-}
-
-[data-theme="arctic"] .full-auto-cockpit__dflash-get.full-auto-cockpit__dflash-get--tone-dflash .full-auto-cockpit__dflash-get-btn {
-  background: color-mix(in srgb, #7c3aed 12%, transparent);
-  color: #6d28d9;
-  border-color: color-mix(in srgb, #a78bfa 60%, transparent);
-}
-
-[data-theme="arctic"] .full-auto-cockpit__dflash-get.full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__dflash-get-btn {
-  background: color-mix(in srgb, #22c55e 10%, transparent);
-  color: #15803d;
-  border-color: color-mix(in srgb, #4ade80 60%, transparent);
-}
-
-[data-theme="arctic"] .full-auto-cockpit__dflash-get-btn--ghost {
-  background: transparent;
-}
-
-[data-theme="arctic"] .full-auto-cockpit__dflash-get.full-auto-cockpit__dflash-get--tone-dflash .full-auto-cockpit__dflash-get-btn--ghost {
-  color: #6d28d9;
-  border-color: color-mix(in srgb, #a78bfa 40%, transparent);
-}
-
-[data-theme="arctic"] .full-auto-cockpit__dflash-get.full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__dflash-get-btn--ghost {
-  color: #15803d;
-  border-color: color-mix(in srgb, #4ade80 40%, transparent);
 }
 
 /* ── DFlash draft pick modal — violet on black (all themes, including Arctic) ─ */
@@ -1436,69 +1330,43 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--live {
 }
 
 /* Running engine cards — theme-aware (uses --atom-brain/worker vars, not hardcoded colors) */
+/* Running engine cards — theme tokens (--theme-atom-brain/worker-raw) resolve on
+   all themes, no [data-theme] fork. Arctic keeps distinct blue (BRAIN/SOLO) vs
+   copper (WORKER) even though its pill + pair-secondary both resolve to sky. */
 html[data-atomcode-harness="1"] .running-engine-card.atomcode-engine--brain,
 html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--brain {
   opacity: 1 !important;
-  border-color: color-mix(in srgb, var(--atom-brain-bg-raw) 70%, transparent) !important;
+  border-color: color-mix(in srgb, var(--theme-atom-brain-raw) 70%, transparent) !important;
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--atom-brain-bg-raw) 40%, transparent),
-    0 0 12px color-mix(in srgb, var(--atom-brain-bg-raw) 22%, transparent) !important;
-  background: color-mix(in srgb, var(--atom-brain-bg-raw) 28%, var(--theme-eject-card-bg, #1a1810) 72%) !important;
+    0 0 0 1px color-mix(in srgb, var(--theme-atom-brain-raw) 40%, transparent),
+    0 0 12px color-mix(in srgb, var(--theme-atom-brain-raw) 22%, transparent) !important;
+  background: color-mix(in srgb, var(--theme-atom-brain-raw) 28%, var(--theme-eject-card-bg, #1a1810) 72%) !important;
 }
 
 html[data-atomcode-harness="1"] .running-engine-card.atomcode-engine--worker,
 html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--worker {
   opacity: 1 !important;
-  border-color: color-mix(in srgb, var(--atom-worker-bg-raw) 70%, transparent) !important;
+  border-color: color-mix(in srgb, var(--theme-atom-worker-raw) 70%, transparent) !important;
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--atom-worker-bg-raw) 40%, transparent),
-    0 0 12px color-mix(in srgb, var(--atom-worker-bg-raw) 20%, transparent) !important;
-  background: color-mix(in srgb, var(--atom-worker-bg-raw) 30%, var(--theme-eject-card-bg, #14101a) 70%) !important;
+    0 0 0 1px color-mix(in srgb, var(--theme-atom-worker-raw) 40%, transparent),
+    0 0 12px color-mix(in srgb, var(--theme-atom-worker-raw) 20%, transparent) !important;
+  background: color-mix(in srgb, var(--theme-atom-worker-raw) 30%, var(--theme-eject-card-bg, #14101a) 70%) !important;
 }
 
 html[data-atomcode-harness="1"] .running-engine-card.atomcode-engine--solo,
 html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--solo {
   opacity: 1 !important;
-  border-color: color-mix(in srgb, var(--atom-brain-bg-raw) 65%, transparent) !important;
+  border-color: color-mix(in srgb, var(--theme-atom-brain-raw) 65%, transparent) !important;
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--atom-brain-bg-raw) 45%, transparent),
-    0 0 12px color-mix(in srgb, var(--atom-brain-bg-raw) 20%, transparent) !important;
-  background: color-mix(in srgb, var(--atom-brain-bg-raw) 25%, var(--theme-eject-card-bg, #0a1416) 75%) !important;
+    0 0 0 1px color-mix(in srgb, var(--theme-atom-brain-raw) 45%, transparent),
+    0 0 12px color-mix(in srgb, var(--theme-atom-brain-raw) 20%, transparent) !important;
+  background: color-mix(in srgb, var(--theme-atom-brain-raw) 25%, var(--theme-eject-card-bg, #0a1416) 75%) !important;
 }
 
 html[data-atomcode-harness="1"] .running-engine-card.atomcode-engine--picked,
 html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked {
   outline: 1px dashed color-mix(in srgb, #ecfeff 55%, transparent);
   outline-offset: 1px;
-}
-
-/* ARCTIC — running engine cards: BRAIN = darker blue bg (not amber), WORKER = warm copper,
-   SOLO = darker blue (not cyan) to match half-card identity */
-html[data-atomcode-harness="1"][data-theme="arctic"] .running-engine-card.atomcode-engine--brain,
-html[data-atomcode-harness="1"][data-theme="arctic"] .launch-rail-engine-chip.atomcode-engine--brain {
-  border-color: color-mix(in srgb, #0284c7 70%, transparent) !important;
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, #0284c7 40%, transparent),
-    0 0 12px color-mix(in srgb, #0284c7 22%, transparent) !important;
-  background: color-mix(in srgb, #0284c7 24%, var(--theme-eject-card-bg, #f8fafc) 76%) !important;
-}
-
-html[data-atomcode-harness="1"][data-theme="arctic"] .running-engine-card.atomcode-engine--solo,
-html[data-atomcode-harness="1"][data-theme="arctic"] .launch-rail-engine-chip.atomcode-engine--solo {
-  border-color: color-mix(in srgb, #0284c7 70%, transparent) !important;
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, #0284c7 40%, transparent),
-    0 0 12px color-mix(in srgb, #0284c7 22%, transparent) !important;
-  background: color-mix(in srgb, #0284c7 24%, var(--theme-eject-card-bg, #f8fafc) 76%) !important;
-}
-
-html[data-atomcode-harness="1"][data-theme="arctic"] .running-engine-card.atomcode-engine--worker,
-html[data-atomcode-harness="1"][data-theme="arctic"] .launch-rail-engine-chip.atomcode-engine--worker {
-  border-color: color-mix(in srgb, #ea580c 70%, transparent) !important;
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, #ea580c 40%, transparent),
-    0 0 12px color-mix(in srgb, #ea580c 20%, transparent) !important;
-  background: color-mix(in srgb, #ea580c 20%, var(--theme-eject-card-bg, #f8fafc) 80%) !important;
 }
 
 /* ── AtomCode full cockpit wizard (compact, amber/green) ─── */
@@ -1517,14 +1385,15 @@ html[data-atomcode-harness="1"][data-theme="arctic"] .launch-rail-engine-chip.at
 .atomcode-wizard {
   /*
    * Theme-native selected fills (AGENTS.md: tokens only).
-   * BRAIN/SOLO = provider-pill-active · WORKER = pair-secondary (warm on AMBER, green on MATRIX, …)
+   * BRAIN/SOLO = --theme-atom-brain-raw · WORKER = --theme-atom-worker-raw.
+   * Tokens on all themes (arctic keeps distinct blue vs copper).
    * Soften punchy solids by mixing with panel (~68% solid).
    */
-  --atom-brain-bg-raw: var(--theme-provider-pill-active-bg);
+  --atom-brain-bg-raw: var(--theme-atom-brain-raw, var(--theme-provider-pill-active-bg));
   --atom-brain-border: var(--theme-provider-pill-active-border);
   --atom-brain-text: var(--theme-provider-pill-active-text);
   --atom-brain-bg: color-mix(in srgb, var(--atom-brain-bg-raw) 68%, var(--theme-panel, #111) 32%);
-  --atom-worker-bg-raw: var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg));
+  --atom-worker-bg-raw: var(--theme-atom-worker-raw, var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg)));
   --atom-worker-border: var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg));
   --atom-worker-text: var(--theme-pair-secondary-text, var(--theme-chip-solid-text));
   --atom-worker-bg: color-mix(in srgb, var(--atom-worker-bg-raw) 68%, var(--theme-panel, #111) 32%);
@@ -1679,7 +1548,7 @@ html[data-atomcode-harness="1"][data-theme="arctic"] .launch-rail-engine-chip.at
 }
 
 .atomcode-wizard__blurb-brain {
-  color: var(--theme-secondary-bright, var(--theme-provider-pill-hover-text));
+  color: var(--theme-atom-brain-text, var(--theme-secondary-bright, var(--theme-provider-pill-hover-text)));
   font-weight: 700;
 }
 
@@ -2212,11 +2081,6 @@ html[data-atomcode-harness="1"][data-theme="arctic"] .launch-rail-engine-chip.at
   font-family: "JetBrains Mono", monospace;
 }
 
-/* ARCTIC — SOLO shell uses darker ocean blue to match running engine card */
-[data-theme="arctic"] .atomcode-wizard__mode-shell--solo {
-  border-color: color-mix(in srgb, #0284c7 50%, transparent);
-  background: color-mix(in srgb, #0284c7 25%, var(--theme-eject-card-bg, #f8fafc) 75%);
-}
 
 .atomcode-wizard__mode-solo,
 .atomcode-wizard__mode-twin {
@@ -2266,25 +2130,8 @@ html[data-atomcode-harness="1"][data-theme="arctic"] .launch-rail-engine-chip.at
   border-right: 1px solid color-mix(in srgb, var(--atom-brain-bg) 35%, transparent);
 }
 
-/* ARCTIC — stronger blue bg on BRAIN half-card for instant visual distinction from WORKER.
-   GO button keeps white text (revert --atom-brain-text). */
-[data-theme="arctic"] .atomcode-wizard__mode-twin-half--brain {
-  background: color-mix(in srgb, #0284c7 24%, transparent);
-  border-right-color: color-mix(in srgb, #0284c7 50%, transparent);
-}
-
-/* ARCTIC — blurb BRAIN text uses darker blue for contrast on light paper */
-[data-theme="arctic"] .atomcode-wizard__blurb-brain {
-  color: #0284c7;
-}
-
 .atomcode-wizard__mode-twin-half--worker {
   background: color-mix(in srgb, var(--atom-worker-bg-raw) 16%, var(--theme-eject-card-bg, #111) 84%);
-}
-
-/* ARCTIC — WORKER half uses warm copper bg (not blue) to match the running engine card */
-[data-theme="arctic"] .atomcode-wizard__mode-twin-half--worker {
-  background: color-mix(in srgb, #ea580c 20%, transparent);
 }
 
 /* Top split: BIG label (30%) | HERO title + desc (70%) */
