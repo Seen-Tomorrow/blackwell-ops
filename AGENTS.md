@@ -34,6 +34,8 @@ Traps and invariants only — not a code map. Read the source for flows, schemas
 
 **Supported harness = pi only** (`pi_code`). **AtomCode and Qwen Code are archived** — do not revive product UX, install paths, or dual-stack routing for them; dead code may still exist until removed. pi models.json: per-seat **`input: text|image`** only when that engine launched with **`--mmproj`** (`stack.vision`); BRAIN and WORKER are independent.
 
+**Temp / debug / scratch files → `tmp/`** — Any throwaway agent work (test scripts, probe outputs, `nul`, `*.py`, `*results.json`, one-off experiments) must be written under the **gitignored `tmp/` directory** (repo root), never at the repo root or anywhere tracked. Do not `git add` them; do not leave them in the working tree where they show up as untracked. If you need a scratch area, use `tmp/` (already in `.gitignore`) or a subdir under it. Clean up after yourself; a dirty `git status` from agent junk is a review failure. **Commit only real source changes**, categorized logically (feature / fix / theme, separate commits per concern).
+
 ---
 
 ## Regressions to avoid
