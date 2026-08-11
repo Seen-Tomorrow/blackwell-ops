@@ -779,6 +779,26 @@
   background-color: var(--theme-industrial-bar-track) !important;
 }
 
+/* PHOSPHOR DARK — drop the GB-digit neon gradient + glow (flat accent text, no halo).
+   Mirrors the phosphor-light de-glow. On a dark face the bright drop-shadow reads as
+   harsh glow (esp. ARCTIC light theme forced dark). Bars/tracks/readouts unchanged. */
+[data-display-texture="phosphor-dark"] .vram-forecast-display .vram-forecast-gb-accented,
+[data-display-texture="phosphor-dark"] .industrial-display-area .vram-forecast-display .vram-forecast-gb-accented {
+  background-image: none !important;
+  background-clip: unset !important;
+  -webkit-background-clip: unset !important;
+  -webkit-text-fill-color: currentColor !important;
+  filter: none !important;
+  text-shadow: none !important;
+}
+
+/* PHOSPHOR DARK — selected GPU card: crisp border, no glow halo (glow reads harsh on
+   the dark face, esp. ARCTIC light theme forced dark). */
+[data-display-texture="phosphor-dark"] .vram-forecast-display .gpu-card.gpu-selected,
+[data-display-texture="phosphor-dark"] .industrial-display-area .vram-forecast-display .gpu-card.gpu-selected {
+  box-shadow: none !important;
+}
+
 /* PHOSPHOR LIGHT — VRAM forecast: dark e-ink ink (beats industrial-display-area brights) */
 [data-display-texture="phosphor-light"] .vram-forecast-display .text-cyan-400,
 [data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .text-cyan-400,

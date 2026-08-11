@@ -1774,7 +1774,9 @@ html[data-industrial-bezel="brush"] {
 [data-display-texture="phosphor-dark"] .phosphor-screen-inner.phosphor-display-surface,
 .launch-rail-tel[data-display-texture="phosphor-dark"] .phosphor-display-surface {
   position: relative;
-  background-color: #080808;
+  /* Per-theme accent-tinted CRT face (SLATE stays neutral grey). Was hardcoded #080808,
+     which lost the MATRIX/AMBER/CYAN tint. DARK uses --phosphor-bg-dark token. */
+  background-color: var(--phosphor-bg-dark, #080808);
   background-image:
     radial-gradient(circle, rgba(200, 200, 208, 0.055) 0.75px, transparent 0.75px),
     repeating-linear-gradient(
@@ -2310,7 +2312,8 @@ html[data-industrial-bezel="brush"] {
 /* Late cascade — glass face only (phosphor-screen-inner) */
 [data-display-texture="phosphor-dark"] .phosphor-screen-inner.phosphor-display-surface,
 .launch-rail-tel[data-display-texture="phosphor-dark"] .phosphor-display-surface {
-  background-color: #080808 !important;
+  /* Per-theme accent-tinted CRT face (SLATE stays neutral). Matches CLEAN below. */
+  background-color: var(--phosphor-bg-dark, #080808) !important;
   background-image:
     radial-gradient(circle, rgba(200, 200, 208, 0.055) 0.75px, transparent 0.75px),
     repeating-linear-gradient(

@@ -63,6 +63,7 @@ const MATRIX: AppTheme = {
     "--theme-atom-brain-text": "var(--theme-secondary-bright, var(--theme-provider-pill-hover-text))",
     /* Near-black + green tint (CLEAN + DARK share face) */
     "--phosphor-bg": "#030805",
+    "--phosphor-bg-dark": "#020603",
     "--phosphor-glow": "rgba(74, 222, 128, 0.035)",
     "--theme-phosphor-text": "#4ade80",
     "--theme-phosphor-text-muted": "#3a6a4a",
@@ -246,6 +247,7 @@ const AMBER: AppTheme = {
     "--theme-atom-worker-raw": "var(--theme-pair-secondary-bg)",
     "--theme-atom-brain-text": "var(--theme-secondary-bright, var(--theme-provider-pill-hover-text))",
     "--phosphor-bg": "#0a0801",
+    "--phosphor-bg-dark": "#090601",
     "--phosphor-glow": "rgba(245, 150, 0, 0.06)",
     "--theme-phosphor-text": "#f5b942",
     "--theme-phosphor-text-muted": "#7a6030",
@@ -428,6 +430,7 @@ const CYAN: AppTheme = {
     "--theme-atom-worker-raw": "var(--theme-pair-secondary-bg)",
     "--theme-atom-brain-text": "var(--theme-secondary-bright, var(--theme-provider-pill-hover-text))",
     "--phosphor-bg": "#010a0a",
+    "--phosphor-bg-dark": "#000807",
     "--phosphor-glow": "rgba(0, 229, 255, 0.05)",
     "--theme-phosphor-text": "#22d3ee",
     "--theme-phosphor-text-muted": "#2a5a6a",
@@ -611,6 +614,7 @@ const SLATE: AppTheme = {
     "--theme-atom-worker-raw": "var(--theme-pair-secondary-bg)",
     "--theme-atom-brain-text": "var(--theme-secondary-bright, var(--theme-provider-pill-hover-text))",
     "--phosphor-bg": "#080808",
+    "--phosphor-bg-dark": "#080808",
     "--phosphor-glow": "rgba(200, 200, 200, 0.05)",
     "--theme-phosphor-text": "#c8c8d0",
     "--theme-phosphor-text-muted": "#6a6a7a",
@@ -809,6 +813,8 @@ const ARCTIC: AppTheme = {
 
     /* ── CLEAN phosphor face ── cool porcelain */
     "--phosphor-bg": "#f7fafc",
+    /* DARK face = neutral like SLATE (light theme forced dark, avoid tinted banding) */
+    "--phosphor-bg-dark": "#080808",
     "--phosphor-glow": "rgba(255, 255, 255, 0.85)",
     "--theme-phosphor-text": "#0f2744",
     "--theme-phosphor-text-muted": "#5a7088",
