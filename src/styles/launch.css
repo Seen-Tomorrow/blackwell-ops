@@ -70,6 +70,7 @@
   background: var(--theme-chip-bg);
   border: 1px solid var(--theme-chip-border);
   color: var(--theme-chip-text);
+  font-weight: 600;
   border-radius: 0.125rem;
   transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }

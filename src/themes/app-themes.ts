@@ -781,11 +781,11 @@ const ARCTIC: AppTheme = {
 
     /* ── Accent — polar sky (vivid but professional) ── */
     "--theme-accent": "#0284c7",
-    "--theme-accent-bright": "#0ea5e9",
+    "--theme-accent-bright": "#075985",
     "--theme-accent-dim": "#64748b",
     /* Distribution/App-update cyan — stays cyan on dark themes, readable teal on arctic */
     "--theme-dist-cyan": "#0e7490",
-    "--theme-accent-glow": "rgba(14, 165, 233, 0.32)",
+    "--theme-accent-glow": "rgba(14, 165, 233, 0.18)",
     "--theme-accent-soft": "rgba(14, 165, 233, 0.1)",
 
     /* ── Chips — crisp sky glass ── */
