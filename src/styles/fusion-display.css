@@ -1010,7 +1010,9 @@
   isolation: isolate;
   border-top: 1.5px solid var(--theme-bezel-edge-hi);
   border-left: 1.5px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 65%, transparent);
-  border-bottom: 1px solid var(--theme-bezel-edge-lo);
+  /* Bottom connects to the eject tray below — crisp frame border (bezel-edge-lo is
+     ghost on ARCTIC → fuzzy seam). */
+  border-bottom: 1px solid var(--theme-frame-border);
   border-right: 1px solid var(--theme-bezel-edge-lo);
   /* Outer cast + hard metal edge only — soft pocket recess is not second glass shadow */
   box-shadow:
@@ -1038,9 +1040,12 @@
   z-index: 1;
 }
 
-/* LIGHT — stronger outer cast; same hard metal edge as dark (no soft frame recess) */
+/* LIGHT screen texture — same hard metal edge + theme-driven cast as dark/clean.
+   The bezel drop shadow belongs to the theme (strong on dark gunmetal, soft on
+   ARCTIC), NOT to the screen texture — otherwise dark themes lose their 3D drop
+   over the eject tray whenever LIGHT is selected. ARCTIC's theme token is already
+   the soft DISPLAY_PROFILE_BEZEL_CAST, so it stays soft here. */
 [data-display-texture="phosphor-light"] .industrial-display-frame {
-  --theme-bezel-cast-shadow: var(--display-profile-bezel-cast);
   box-shadow:
     var(--theme-bezel-cast-shadow),
     inset 1px 1px 0 var(--theme-bezel-inset-hi),

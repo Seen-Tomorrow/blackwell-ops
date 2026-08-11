@@ -938,7 +938,7 @@ const ARCTIC: AppTheme = {
     "--theme-bezel-bottom-shade": "color-mix(in srgb, #64748b 7%, transparent)",
     "--theme-bezel-dot-shade": "color-mix(in srgb, #64748b 5%, transparent)",
     "--theme-bezel-inset-hi": "rgba(255, 255, 255, 0.55)",
-    "--theme-bezel-inset-lo": "rgba(100, 120, 140, 0.08)",
+    "--theme-bezel-inset-lo": "rgba(15, 40, 70, 0.14)",
     "--theme-phosphor-inset-top": "rgba(15, 40, 70, 0.18)",
     "--theme-phosphor-inset-bottom": "rgba(15, 40, 70, 0.1)",
     "--theme-bezel-cast-shadow": DISPLAY_PROFILE_BEZEL_CAST,

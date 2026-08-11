@@ -672,10 +672,12 @@
   background-color: var(--theme-industrial-bg);
   background-image: none;
   border-radius: 4px;
+  /* Sides use a crisp frame border (not bezel-edge-hi/lo: white/ghost on ARCTIC →
+     fuzzy washed-out edges). Keep top light-catch for the metal face. */
   border-top: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 50%, transparent);
-  border-left: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 35%, transparent);
-  border-right: 1px solid var(--theme-bezel-edge-lo);
-  border-bottom: 1px solid var(--theme-bezel-edge-lo);
+  border-left: 1px solid var(--theme-frame-border);
+  border-right: 1px solid var(--theme-frame-border);
+  border-bottom: 1px solid var(--theme-frame-border);
   position: relative;
   z-index: 1;
   isolation: isolate;
