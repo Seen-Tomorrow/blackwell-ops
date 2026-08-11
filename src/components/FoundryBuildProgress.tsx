@@ -109,14 +109,14 @@ export default function FoundryBuildProgress({
       footer={footer}
     >
       <div className="px-4 py-3 space-y-2 flex flex-col h-full min-h-0">
-        <p className="text-[9px] font-mono text-stealth-muted">
+        <p className="text-[10px] font-mono text-stealth-muted m-0">
           <span className="text-yellow-400">{provider.id}</span> &mdash; {provider.display_name}
         </p>
 
         {!isComplete && !isError && (
           <div className="flex items-center gap-2">
-            <span className="text-[8px] font-mono text-stealth-muted uppercase tracking-wider">Step:</span>
-            <span className="text-[9px] font-mono text-telemetry-cyan animate-pulse">
+            <span className="text-[9px] font-mono text-stealth-muted uppercase tracking-wider">Step:</span>
+            <span className="text-[10px] font-mono text-telemetry-cyan animate-pulse">
               {currentStep ? getStepLabel(currentStep) : "INITIALIZING..."}
             </span>
           </div>
@@ -124,13 +124,13 @@ export default function FoundryBuildProgress({
 
         {waitingForConfirm && (
           <div className="border border-yellow-400/30 bg-yellow-400/[0.05] rounded-sm px-3 py-2 text-center">
-            <span className="text-[9px] font-mono text-yellow-400 animate-pulse">⏸ PAUSED — REVIEW CMAKE OUTPUT ABOVE, THEN CLICK BUILD THE ENGINE</span>
+            <span className="text-[10px] font-mono text-yellow-400 animate-pulse">⏸ PAUSED — REVIEW CMAKE OUTPUT ABOVE, THEN CLICK BUILD THE ENGINE</span>
           </div>
         )}
 
         <div
           ref={effectiveLogRef}
-          className="foundry-build-log flex-1 min-h-0 overflow-y-auto rounded-sm p-2 font-mono text-[8px]"
+          className="foundry-build-log flex-1 min-h-0 overflow-y-auto rounded-sm font-mono"
         >
           {logLines.length === 0 ? (
             <span className="foundry-build-log__idle">Initializing build pipeline...</span>
@@ -169,13 +169,13 @@ export default function FoundryBuildProgress({
         </div>
 
         {isError && logLines.length > 0 && (
-          <p className="text-[8px] font-mono text-red-400/70 break-all">
+          <p className="text-[9px] font-mono text-red-400/70 break-all m-0">
             Last error: {logLines[logLines.length - 1].text}
           </p>
         )}
 
         {isComplete && (
-          <p className="text-[8px] font-mono text-nv-green/70">
+          <p className="text-[9px] font-mono text-nv-green/70 m-0">
             Provider binaries build and READY TO USE.
           </p>
         )}

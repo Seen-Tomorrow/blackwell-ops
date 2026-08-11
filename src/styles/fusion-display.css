@@ -1628,42 +1628,6 @@
   color: var(--theme-bg) !important;
 }
 
-/* ── Share capture only — bench concurrency legend on gunmetal bezel top ─── */
-.vram-bezel-mode-banner--capture {
-  position: absolute;
-  top: -6px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 70;
-  max-width: calc(100% - 4rem);
-  pointer-events: none;
-  text-align: center;
-}
-
-.vram-bezel-mode-banner--capture .vram-bezel-mode-banner__single,
-.vram-bezel-mode-banner--capture .vram-bezel-mode-banner__parallel {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  font-size: 7px;
-  font-weight: 500;
-  letter-spacing: 0.05em;
-  line-height: 1.2;
-  white-space: nowrap;
-}
-
-.vram-bezel-mode-banner--capture .vram-bezel-mode-banner__single {
-  color: rgba(244, 246, 248, 0.82);
-}
-
-.vram-bezel-mode-banner--capture .vram-bezel-mode-banner__parallel {
-  color: #f5c400;
-  font-weight: 600;
-}
-
-.fusion-share-capture-stage[data-fusion-share-capture] .vram-bezel-mode-banner--capture .vram-bezel-mode-banner__single {
-  color: rgba(244, 246, 248, 0.88);
-}
-
-
 html {
   --theme-industrial-texture-active: var(--theme-industrial-texture-sandblast);
 }

@@ -177,7 +177,14 @@ function updateMicroLatch(latch: MicroStatsLatch, fusion: FusionUpdate) {
   }
   latch.lastElapsedRaw = elapsed;
   if (latch.sessionOpen && now - latch.lastBusyAt > MICRO_STATS_IDLE_HOLD_MS) {
+    // Engine fully idle past the hold — clear the latched per-request readout
+    // (tok / PP / +1st) so the small print deterministically shows `--` instead of
+    // non-deterministically keeping stale values from the last bench/request.
     latch.sessionOpen = false;
+    latch.genTokens = 0;
+    latch.prefillMs = null;
+    latch.decodeTtftMs = null;
+    latch.elapsedMs = "0ms";
   }
 }
 

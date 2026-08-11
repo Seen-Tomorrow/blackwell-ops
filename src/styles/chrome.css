@@ -157,6 +157,19 @@
   --chrome-fs-btn: calc(10px * var(--chrome-scale));
   --chrome-fs-title: calc(11px * var(--chrome-scale));
   --chrome-fs-dl: calc(10px * var(--chrome-scale));
+  /*
+   * Foundry floats outside .app-main-frame (no transform zoom). Track both
+   * viewport chrome density and user app zoom so Ctrl+scroll still helps.
+   * Base px are slightly larger than the old 7–9px Tailwind stack.
+   */
+  --foundry-scale: calc(var(--chrome-scale) * var(--ui-text-scale));
+  --foundry-fs-xs: calc(9px * var(--foundry-scale));
+  --foundry-fs-sm: calc(10px * var(--foundry-scale));
+  --foundry-fs-md: calc(12px * var(--foundry-scale));
+  --foundry-fs-lg: calc(13px * var(--foundry-scale));
+  --foundry-fs-title: calc(12px * var(--foundry-scale));
+  --foundry-fs-log: calc(12px * var(--foundry-scale));
+  --foundry-fs-btn: calc(11px * var(--foundry-scale));
 }
 
 /* Fluid shell — width resolved in JS; scale via transform (zoom property shrinks canvas in WebView2). */
@@ -1523,8 +1536,8 @@
  * Labels: "PROCEED TO CONFIGURE" then "BUILD THE ENGINE".
  */
 .foundry-confirm-build-btn {
-  padding: 0.25rem 1rem;
-  font-size: 9px;
+  padding: calc(0.3rem * var(--foundry-scale)) calc(1rem * var(--foundry-scale));
+  font-size: var(--foundry-fs-btn);
   font-family: ui-monospace, monospace;
   letter-spacing: 0.04em;
   border-radius: 2px;
@@ -1676,8 +1689,8 @@
 
 /* Foundry modal — minimize action; navy so it pairs with amber primary CTA */
 .foundry-minimize-btn {
-  padding: 0.25rem 0.75rem;
-  font-size: 9px;
+  padding: calc(0.3rem * var(--foundry-scale)) calc(0.75rem * var(--foundry-scale));
+  font-size: var(--foundry-fs-btn);
   font-family: ui-monospace, monospace;
   letter-spacing: 0.04em;
   border: 1px solid #1e3a5f;
@@ -1696,8 +1709,8 @@
 
 /* Foundry toolchain — install guide action buttons (config + confirm modal) */
 .foundry-toolchain-btn {
-  padding: 0.125rem 0.5rem;
-  font-size: 8px;
+  padding: calc(0.15rem * var(--foundry-scale)) calc(0.55rem * var(--foundry-scale));
+  font-size: var(--foundry-fs-sm);
   font-family: ui-monospace, monospace;
   border-radius: 2px;
   border: 1px solid transparent;
@@ -1778,7 +1791,7 @@
 
 .foundry-toolchain-onboarding__hint {
   margin: 0;
-  font-size: 10px;
+  font-size: var(--foundry-fs-sm);
   line-height: 1.5;
   font-family: ui-monospace, monospace;
   color: var(--theme-text-muted);
@@ -1786,7 +1799,7 @@
 
 .foundry-toolchain-onboarding__cancel-hint {
   margin: 0;
-  font-size: 9px;
+  font-size: var(--foundry-fs-sm);
   line-height: 1.5;
   font-family: ui-monospace, monospace;
   color: var(--theme-tel-amber, #f59e0b);
@@ -1828,6 +1841,11 @@
   align-items: flex-end;
   max-height: none;
   pointer-events: none;
+  /*
+   * Outside app transform zoom — scale type via --foundry-scale (chrome × ui zoom).
+   * Do not apply CSS zoom/transform on the shell: it overflowed 1080p height before.
+   */
+  font-size: var(--foundry-fs-md);
 }
 
 .foundry-window__chrome {
@@ -1849,10 +1867,10 @@
 
 /*
  * Confirm form is tall (arch chips, cmake, toolchain). Never use CSS zoom here —
- * it blew past 1080p height. Cap to viewport and scroll the body.
+ * it blew past 1080p height. Cap to viewport, scroll the body, use width for density.
  */
 .foundry-window--confirm .foundry-window__chrome {
-  max-width: min(720px, 94vw);
+  max-width: min(1180px, 96vw);
   max-height: 100%;
 }
 
@@ -1864,8 +1882,8 @@
 }
 
 .foundry-window--build .foundry-window__chrome {
-  max-width: min(960px, 96vw);
-  height: min(75vh, 100%);
+  max-width: min(1400px, 98vw);
+  height: min(82vh, 100%);
   max-height: 100%;
 }
 
@@ -1875,6 +1893,111 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
+}
+
+/*
+ * Tailwind text-[Npx] inside Foundry is fixed CSS px and ignores app zoom.
+ * Remap to --foundry-scale so Ctrl+scroll + large panels stay readable.
+ * Bases are bumped ~+1–2px vs the original 6–11 stack.
+ */
+.foundry-window .text-\[6px\],
+.foundry-window .text-\[7px\] {
+  font-size: var(--foundry-fs-xs) !important;
+}
+
+.foundry-window .text-\[8px\] {
+  font-size: var(--foundry-fs-sm) !important;
+}
+
+.foundry-window .text-\[9px\] {
+  font-size: var(--foundry-fs-md) !important;
+}
+
+.foundry-window .text-\[10px\] {
+  font-size: var(--foundry-fs-lg) !important;
+}
+
+.foundry-window .text-\[11px\] {
+  font-size: calc(14px * var(--foundry-scale)) !important;
+}
+
+/* Confirm body — two columns when the shell is wide enough */
+.foundry-confirm-body {
+  padding: calc(1rem * var(--foundry-scale)) calc(1.1rem * var(--foundry-scale));
+  display: flex;
+  flex-direction: column;
+  gap: calc(0.85rem * var(--foundry-scale));
+}
+
+.foundry-confirm-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: calc(0.85rem * var(--foundry-scale));
+  min-width: 0;
+}
+
+/* ~900 CSS-px of modal content ≈ shell ≥ ~940; use container when available */
+@supports (width: 1cqi) {
+  .foundry-window--confirm .foundry-window__chrome {
+    container-type: inline-size;
+    container-name: foundry-confirm;
+  }
+
+  @container foundry-confirm (min-width: 880px) {
+    .foundry-confirm-grid {
+      grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+      align-items: start;
+      gap: calc(1rem * var(--foundry-scale));
+    }
+  }
+}
+
+/* Fallback when container queries unavailable: viewport is usually wider than the modal */
+@supports not (width: 1cqi) {
+  @media (min-width: 960px) {
+    .foundry-confirm-grid {
+      grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+      align-items: start;
+    }
+  }
+}
+
+.foundry-confirm-col {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(0.75rem * var(--foundry-scale));
+}
+
+.foundry-confirm-panel {
+  border: 1px solid color-mix(in srgb, var(--theme-border-subtle, rgba(255, 255, 255, 0.12)) 80%, transparent);
+  background: color-mix(in srgb, var(--theme-text) 6%, var(--theme-panel-accent, var(--theme-panel)));
+  border-radius: 2px;
+  padding: calc(0.7rem * var(--foundry-scale));
+}
+
+.foundry-confirm-section-label {
+  font-family: ui-monospace, monospace;
+  font-size: var(--foundry-fs-sm);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--theme-text-muted, #6b7280);
+  margin: 0 0 calc(0.35rem * var(--foundry-scale));
+}
+
+.foundry-confirm-hint {
+  font-family: ui-monospace, monospace;
+  font-size: var(--foundry-fs-xs);
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--theme-text-muted, #6b7280) 88%, transparent);
+  margin: 0 0 calc(0.4rem * var(--foundry-scale));
+}
+
+/* Footer actions that still use raw Tailwind text-[9px] */
+.foundry-window__footer button {
+  font-size: var(--foundry-fs-btn);
+  padding-block: calc(0.3rem * var(--foundry-scale));
+  padding-inline: calc(0.75rem * var(--foundry-scale));
 }
 
 /*
@@ -1930,6 +2053,10 @@
   border: 1px solid color-mix(in srgb, #000 70%, var(--theme-frame-border, #333)) !important;
   color: rgba(220, 228, 236, 0.72);
   box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.55);
+  /* Logs were text-[8px] — unreadable on laptop CSS viewports; track foundry scale. */
+  font-size: var(--foundry-fs-log) !important;
+  line-height: 1.45;
+  padding: calc(0.55rem * var(--foundry-scale)) !important;
 }
 
 .foundry-build-log__idle {
@@ -1985,7 +2112,7 @@
 }
 
 .foundry-window--compact .foundry-window__chrome {
-  max-width: min(620px, 92vw);
+  max-width: min(720px, 94vw);
 }
 
 .foundry-window__header {
@@ -1994,10 +2121,10 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 0.35rem 0.75rem;
+  padding: calc(0.4rem * var(--foundry-scale)) calc(0.85rem * var(--foundry-scale));
   border-bottom: 1px solid #000000;
   font-family: ui-monospace, monospace;
-  font-size: 9px;
+  font-size: var(--foundry-fs-title);
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
@@ -2031,8 +2158,8 @@
 
 .foundry-window__minimize {
   flex-shrink: 0;
-  padding: 0 0.45rem;
-  font-size: 11px;
+  padding: 0 calc(0.5rem * var(--foundry-scale));
+  font-size: calc(13px * var(--foundry-scale));
   line-height: 1;
   border: 1px solid color-mix(in srgb, #000000 35%, transparent);
   border-radius: 2px;
@@ -2056,15 +2183,16 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 0.5rem;
-  padding: 0.65rem 1rem;
+  flex-wrap: wrap;
+  gap: calc(0.5rem * var(--foundry-scale));
+  padding: calc(0.7rem * var(--foundry-scale)) calc(1.1rem * var(--foundry-scale));
   border-top: 1px solid var(--theme-border-subtle, rgba(255, 255, 255, 0.08));
 }
 
 
 .foundry-build-profile-textarea {
   font-family: ui-monospace, monospace;
-  font-size: 9px;
+  font-size: var(--foundry-fs-md);
   line-height: 1.45;
   color: #e8e8e8;
   background: color-mix(in srgb, #000000 55%, transparent);
@@ -2081,14 +2209,14 @@
 .foundry-pr-label {
   color: #3d6ea8;
   font-family: ui-monospace, monospace;
-  font-size: 8px;
+  font-size: var(--foundry-fs-sm);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
 .foundry-pr-input {
   font-family: ui-monospace, monospace;
-  font-size: 9px;
+  font-size: var(--foundry-fs-md);
   color: #6b9fd4;
   background: color-mix(in srgb, #0a1628 70%, #000000 30%);
   border: 1px solid #1e3a5f;

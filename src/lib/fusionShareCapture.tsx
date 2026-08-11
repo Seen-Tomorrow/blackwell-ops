@@ -100,11 +100,13 @@ const NV_GREEN = "#76B900";
 
 const CAPTURE_STRIP_SELECTORS = [
   "[data-fusion-share-exclude]",
+  "[data-frame-bottom-chrome]",
   ".display-texture-toggle",
   ".industrial-bezel-texture-toggle",
   ".vram-forecast-scenario-badge",
   ".fusion-bench-latch",
   ".bench-hw-topo",
+  ".display-chrome-hints",
 ].join(",");
 
 /**
@@ -136,7 +138,28 @@ export interface FusionShareExportLayout {
   widthPx: number;
 }
 
-export function computeFusionShareExportLayout(meta: FusionShareMeta = {}): FusionShareExportLayout {
+/**
+ * Top bezel chrome band (ASSISTED/FULL AUTO + Device/Split) in captures.
+ * Larger than the live 36px band so the buttons get clear clearance above the
+ * phosphor. Kept as a fixed constant (the app's own transform zoom does not affect
+ * the offscreen capture, which is mounted at scale 1).
+ */
+const CAPTURE_TOP_CHROME_BAND_PX = 36;
+
+/**
+ * Share bezel height = phosphor + metal pad. When the live frame renders the top
+ * chrome (ASSISTED/FULL AUTO + Device/Split), the top pad is the chrome band;
+ * otherwise it falls back to the standard bezel pad. Bottom chrome (GPU/ENG density)
+ * is hidden from captures, so the bottom always uses the standard bezel pad.
+ */
+function computeShareBezelHeightPx(phosphorHeightPx: number, topBandPx: number): number {
+  return phosphorHeightPx + topBandPx + DISPLAY_BEZEL_PADDING_PX;
+}
+
+export function computeFusionShareExportLayout(
+  meta: FusionShareMeta = {},
+  topBandPx = DISPLAY_BEZEL_PADDING_PX,
+): FusionShareExportLayout {
   const phosphorHeightPx = computeFusionShareCapturePhosphorHeightPx({
     gpus: meta.shareGpus,
     gpuMask: meta.shareGpuMask,
@@ -146,7 +169,7 @@ export function computeFusionShareExportLayout(meta: FusionShareMeta = {}): Fusi
     meta.shareGpuMask,
     meta.hwTopo,
   );
-  const bezelHeightPx = phosphorHeightPx + DISPLAY_BEZEL_PADDING_PX * 2;
+  const bezelHeightPx = computeShareBezelHeightPx(phosphorHeightPx, topBandPx);
   let frameHeightPx =
     bezelHeightPx
     + hwBandHeightPx
@@ -845,6 +868,17 @@ function createFrameCaptureStage(
 
   const frame = source.cloneNode(true) as HTMLElement;
   applyShareCaptureTheme(frame, variant);
+  /*
+   * Strip the live chrome classes from the clone. Their `padding-top: 36px` /
+   * `padding-bottom: 32px` rules (via `.industrial-display-frame--top-chrome` /
+   * `--bottom-chrome`) would otherwise be baked by html-to-image and squeeze the
+   * phosphor. The chrome child elements themselves stay (they are absolute), so the
+   * buttons remain visible — only the frame's metal pad is re-tuned below.
+   */
+  frame.classList.remove(
+    "industrial-display-frame--top-chrome",
+    "industrial-display-frame--bottom-chrome",
+  );
   frame.style.width = `${innerWidth}px`;
   frame.style.height = `${layout.bezelHeightPx}px`;
   frame.style.minHeight = `${layout.bezelHeightPx}px`;
@@ -857,9 +891,26 @@ function createFrameCaptureStage(
   frame.style.overflow = "hidden";
   frame.style.margin = "0";
   frame.style.position = "relative";
+  /*
+   * Force the bezel metal pad to match the share layout. Without this the live
+   * `:has(.top-chrome)` / `:has(.bottom-chrome)` rules inflate the pad (36px /
+   * 32px) and squeeze the phosphor — the top chrome band then overlaps the glass.
+   * Bottom chrome is hidden from captures, so the bottom stays the standard pad.
+   */
+  const topPad =
+    layout.bezelHeightPx - layout.phosphorHeightPx - DISPLAY_BEZEL_PADDING_PX;
+  /*
+   * html-to-image bakes the clone's computed styles from the stage, and the live
+   * `--top-chrome` / `--bottom-chrome` classes inflate the pad. Force the capture
+   * pad with `!important` so the top chrome band has real headroom and the bottom
+   * stays the standard bezel pad (bottom chrome is hidden from captures).
+   */
+  frame.style.setProperty("padding-top", `${topPad}px`, "important");
+  frame.style.setProperty("padding-right", `${DISPLAY_BEZEL_PADDING_PX}px`, "important");
+  frame.style.setProperty("padding-bottom", `${DISPLAY_BEZEL_PADDING_PX}px`, "important");
+  frame.style.setProperty("padding-left", `${DISPLAY_BEZEL_PADDING_PX}px`, "important");
 
   normalizeFusionCaptureLayout(frame, layout.phosphorHeightPx);
-  injectCaptureBezelModeBanner(frame);
   injectShareBezelBrand(frame);
 
   stage.appendChild(frame);
@@ -952,35 +1003,6 @@ function restoreForecastPadding(restores: PaddingRestore[]): void {
       el.style.overflow = "";
     }
   });
-}
-
-function readBenchConcurrencyFromCaptureFrame(frame: HTMLElement): number | null {
-  const mult = frame.querySelector(".bench-concurrency-badge__mult");
-  if (!(mult instanceof HTMLElement)) return null;
-  const match = mult.textContent?.trim().match(/^×(\d+)$/);
-  if (!match) return null;
-  const parallel = Number.parseInt(match[1], 10);
-  return Number.isFinite(parallel) && parallel > 0 ? parallel : null;
-}
-
-/** Share card only — one bezel line from measured TG bench concurrency. */
-function injectCaptureBezelModeBanner(frame: HTMLElement): void {
-  const parallel = readBenchConcurrencyFromCaptureFrame(frame);
-  if (parallel == null) return;
-
-  const banner = document.createElement("div");
-  banner.className = "vram-bezel-mode-banner--capture";
-
-  const line = document.createElement("span");
-  if (parallel <= 1) {
-    line.className = "vram-bezel-mode-banner__single";
-    line.textContent = "single session";
-  } else {
-    line.className = "vram-bezel-mode-banner__parallel";
-    line.textContent = "multiple concurrency /agentic parallel work";
-  }
-  banner.appendChild(line);
-  frame.appendChild(banner);
 }
 
 function normalizeFusionCaptureLayout(frame: HTMLElement, phosphorHeightPx: number): void {
@@ -1500,7 +1522,9 @@ async function renderFusionSharePngOnce(
   }
 
   const colors = resolveCaptureColors(variant);
-  const layout = computeFusionShareExportLayout(meta);
+  const hasTopChrome = sourceFrame.querySelector("[data-frame-top-chrome]") != null;
+  const topBandPx = hasTopChrome ? CAPTURE_TOP_CHROME_BAND_PX : DISPLAY_BEZEL_PADDING_PX;
+  const layout = computeFusionShareExportLayout(meta, topBandPx);
   const pixelRatio = FUSION_SHARE_EXPORT_PIXEL_RATIO;
   const targetFrameW = layout.widthPx * pixelRatio;
   const targetFrameH = layout.frameHeightPx * pixelRatio;

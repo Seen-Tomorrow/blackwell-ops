@@ -480,11 +480,20 @@ export default function BenchWidget({
     patchHero({ tg: null, pp: null });
     bump();
 
-    await executeBenchTg(false);
-    if (benchAbortRef.current || isBenchStopped(ps.tgResult?.error)) return;
-
+    // PP first, then TG — so the display ends in the TG state. The share card's
+    // per-slot TG meter (concurrent ÷ slots) is only present while the engine sits in
+    // a concurrent TG state; running PP last left it without the per-slot value.
     await executeBenchPp(false);
     if (benchAbortRef.current || isBenchStopped(ps.ppResult?.error)) return;
+
+    // Pin the PP result as soon as it lands so the hero keeps it during the TG run
+    // (otherwise the live PP metric resets when the PP bench ends, briefly clearing it).
+    if (ps.ppResult?.success && ps.ppResult.bench_prefill_tps > 0) {
+      patchHero({ pp: ps.ppResult.bench_prefill_tps });
+    }
+
+    await executeBenchTg(false);
+    if (benchAbortRef.current || isBenchStopped(ps.tgResult?.error)) return;
 
     const heroPatch: BenchHeroPatch = {};
     if (ps.tgResult?.success && ps.tgResult.gen_tps > 0) heroPatch.tg = ps.tgResult.gen_tps;
@@ -732,7 +741,7 @@ export default function BenchWidget({
                 onClick={runBenchBoth}
                 disabled={isAnyRunning}
                 className={runBtnClass(isAnyRunning)}
-                title="Run TG then PP with current token selections"
+                title="Run PP then TG with current token selections (TG last so the share card keeps its per-slot meter)"
               >
                 RUN BOTH
               </button>
