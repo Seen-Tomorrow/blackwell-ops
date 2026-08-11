@@ -1318,7 +1318,8 @@
   direction: ltr;
   background-color: var(--theme-industrial-bg);
   background-image: var(--theme-industrial-texture-active);
-  border: 1.5px solid var(--theme-bezel-edge-hi);
+  /* Crisp outline — bezel-edge-hi is white on ARCTIC → invisible palette border */
+  border: 1.5px solid var(--theme-frame-border-strong);
   box-shadow:
     0 12px 40px color-mix(in srgb, #000000 45%, transparent),
     0 0 0 1px color-mix(in srgb, var(--theme-bezel-edge-hi) 35%, transparent);
