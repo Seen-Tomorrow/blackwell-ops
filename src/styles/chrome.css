@@ -2380,7 +2380,7 @@
   border-radius: 4px;
   font-family: 'JetBrains Mono', monospace;
   font-size: 10px;
-  backdrop-filter: blur(8px);
+  /* Dim only — no backdrop-filter blur (WebView GPU cost) */
   animation: toastSlideIn 0.3s ease-out forwards;
   overflow: hidden;
 }

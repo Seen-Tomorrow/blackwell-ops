@@ -977,8 +977,7 @@
 /* Cards — themed glass */
 [data-config-panel] .running-engine-card {
   background: var(--theme-eject-card-bg) !important;
-  backdrop-filter: blur(2px) !important;
-  -webkit-backdrop-filter: blur(2px) !important;
+  /* Dim only — no backdrop-filter blur (WebView GPU cost) */
   border: 1px solid var(--theme-eject-card-border) !important;
   border-radius: 6px !important;
   box-shadow:
@@ -1717,7 +1716,6 @@
 .config-replace-confirm {
   border: 1px solid var(--dev-rosso);
   background: var(--dev-rosso-shell, #120000);
-  backdrop-filter: blur(2px);
 }
 
 .config-replace-confirm__launch {

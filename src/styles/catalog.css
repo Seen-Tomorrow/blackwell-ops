@@ -617,8 +617,7 @@
     rgba(255, 255, 255, 0.03) 0%,
     rgba(255, 255, 255, 0.01) 100%
   );
-  backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
+  /* Dim only — no backdrop-filter blur (WebView GPU cost) */
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-top-color: rgba(255, 255, 255, 0.10);
   box-shadow:
