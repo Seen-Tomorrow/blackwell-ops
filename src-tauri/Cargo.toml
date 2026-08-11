@@ -1,6 +1,6 @@
 [package]
 name = "blackwell-ops"
-version = "1.0.42"
+version = "1.0.43"
 edition = "2021"
 
 [[bin]]
@@ -9,32 +9,25 @@ path = "src/main.rs"
 
 [features]
 default = []
-reactor11 = []
 
 [dependencies]
 tauri = { version = "2.11", features = [] }
 tauri-plugin-shell = "2"
 tauri-plugin-updater = "2"
-tauri-plugin-mcp-bridge = "0.12"
 tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 reqwest = { version = "0.13", features = ["json", "stream"] }
-thiserror = "2"
 chrono = "0.4"
 log = "0.4"
 env_logger = "0.11"
-async-trait = "0.1"
 rfd = "0.15"
 sysinfo = "0.33"
 sha2 = "0.10"
 libloading = "0.8"
-num_cpus = "1"
 regex = "1.10"
 parking_lot = "0.12"
-# Mobile Sentinel Bridge (WebSocket)
-tokio-tungstenite = "0.26"
 futures-util = "0.3"
 trash = "5"
 

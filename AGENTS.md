@@ -14,7 +14,7 @@ Traps and invariants only — not a code map. Read the source for flows, schemas
 
 **Tailwind** — Prefer layout utilities + semantic theme classes / CSS variables. `stealth` / `nv` utilities resolve to CSS vars (theme-aware). Do not reintroduce hard-coded multi-theme palettes in `tailwind.config.js`.
 
-**Dead modules** — Reactor11 and SENTINEL are removed; do not revive their CSS or tabs.
+**Removed modules** — Reactor11 (`features/reactor11`, `reactor11` feature flag) and the Mobile Sentinel Bridge (`mobile_bridge.rs`, WebSocket `0.0.0.0:3814`, `tokio-tungstenite`) are fully removed — backend and UI. Do not revive them.
 
 **Industrial display (bezel / glass)** — One glass only: frame pad = metal, `.phosphor-screen-inner` = full face + unified recess shadow, children = content (no nested phosphor surface). Display texture also paints HW monitor widget faces (`.launch-rail-tel .phosphor-display-surface`) — not catalog quiet-wing desaturate. Full memo: `docs/display-bezel-glass.md`. Do not revive `DisplayGlitchOverlay` / `.display-glitch-*`.
 

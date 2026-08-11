@@ -92,3 +92,5 @@ log/
 # Blackwell-managed pi routing doc written into the project cwd on each launch
 PI.md
 
+# --- generic ---
+VLLM/

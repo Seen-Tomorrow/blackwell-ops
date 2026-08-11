@@ -6,7 +6,6 @@
     "core:default",
     "core:window:allow-set-theme",
     "core:window:allow-set-size",
-    "shell:default",
-    "mcp-bridge:default"
+    "shell:default"
   ]
 }

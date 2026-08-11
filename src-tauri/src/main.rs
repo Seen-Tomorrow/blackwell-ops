@@ -20,7 +20,6 @@ mod fit_adapters;
 mod fit_scanner;
 mod vram_learn;
 mod launch_memory_parse;
-mod mobile_bridge;
 mod bench_prompts;
 mod burst_bench;
 mod bench_pp_burst;
@@ -46,8 +45,6 @@ mod github_releases;
 mod profile_binaries;
 mod secrets;
 
-#[cfg(feature = "reactor11")]
-pub mod features;
 mod foundry_toolchain;
 mod reactor_foundry;
 mod output_console;
@@ -682,7 +679,6 @@ async fn check_hf_files_against_disk(
 use engine::AppContext;
 use engine_stack::EngineStack;
 use log_hub::LogHub;
-use mobile_bridge::MobileBridge;
 use download_manager::DownloadManager;
 use tauri::{Emitter, Manager};
 
@@ -740,15 +736,6 @@ async fn main() {
     // Updater plugin omitted while BINARY_UPDATES_ENABLED is false — no startup network probe.
     if binary_update::BINARY_UPDATES_ENABLED {
         builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
-    }
-
-    #[cfg(debug_assertions)]
-    {
-        builder = builder.plugin(
-            tauri_plugin_mcp_bridge::Builder::new()
-                .bind_address("127.0.0.1")
-                .build(),
-        );
     }
 
     builder
@@ -873,10 +860,6 @@ async fn main() {
 
             app.manage(download_mgr);
 
-            // -- Mobile Bridge
-            let mobile_bridge = MobileBridge::new(3814);
-            app.manage(mobile_bridge.clone());
-
             telemetry::ensure_disk_io_poller();
             ipc_meter::start_rotator();
 
@@ -997,15 +980,6 @@ async fn main() {
             gpu_control::apply_gpu_control_presets,
             gpu_control::reset_gpu_control,
             gpu_control::set_gpu_driver_model,
-            // Mobile Sentinel Bridge commands (always active)
-            mobile_bridge::cmd_mobile_bridge_start,
-            mobile_bridge::cmd_mobile_bridge_stop,
-            mobile_bridge::cmd_mobile_bridge_status,
-            mobile_bridge::cmd_mobile_bridge_push_telemetry,
-            mobile_bridge::cmd_mobile_bridge_send_heartbeat,
-
-            // Reactor11 commands — DISABLED via feature flag (see Cargo.toml)
-            // Reenable by adding `reactor11` to default features in Cargo.toml
             // Reactor Foundry build commands
             reactor_foundry::foundry_build,
             reactor_foundry::foundry_cancel,
