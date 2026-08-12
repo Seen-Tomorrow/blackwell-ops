@@ -12,7 +12,7 @@ export interface AppTheme {
   tokens: Record<string, string>;
 }
 
-/** Mirrored in index.css as --display-profile-bezel-cast (ARCTIC + LIGHT reference). Soft — heavy drop reads as “bottom smear” on short panels. */
+/** ARCTIC + LIGHT frame drop shadow (fed to --theme-bezel-cast-shadow). Soft — heavy drop reads as “bottom smear” on short panels. */
 const DISPLAY_PROFILE_BEZEL_CAST =
   "0 3px 10px rgba(40, 60, 80, 0.14), 0 1px 3px rgba(40, 60, 80, 0.1)";
 
@@ -110,7 +110,6 @@ const MATRIX: AppTheme = {
     "--theme-phosphor-inset-bottom": "rgba(0, 0, 0, 0.12)",
     "--theme-bezel-cast-shadow": DARK_BEZEL_CAST_SHADOW,
     "--theme-bench-inset-shadow": DISPLAY_PROFILE_BENCH_INSET,
-    "--theme-card-recessed-border": "#111810",
     "--theme-card-selected-bg": "#111810",
     "--theme-card-selected-accent": "#b87a00",
     "--theme-scrollbar-track": "rgba(10, 10, 15, 0.5)",
@@ -139,7 +138,6 @@ const MATRIX: AppTheme = {
     "--theme-provider-pill-active-bg": "#f5971f",
     "--theme-provider-pill-active-border": "#f5971f",
     "--theme-provider-pill-active-text": "#0a0804",
-    "--theme-header-bg": "#000000",
     "--theme-header-border": "#1a2e1a",
     "--theme-header-title": "#ffffff",
     "--theme-header-subtitle": "rgba(255, 255, 255, 0.25)",
@@ -156,9 +154,6 @@ const MATRIX: AppTheme = {
     "--theme-footer-bg": "#000000",
     "--theme-footer-border": "#b87a00",
     "--theme-footer-text": "rgba(255, 255, 255, 0.4)",
-    "--theme-footer-output-bg": "rgba(184, 122, 0, 0.03)",
-    "--theme-footer-output-bg-hover": "rgba(184, 122, 0, 0.08)",
-    "--theme-footer-output-text": "#f5971f",
     "--theme-status-nominal": "#4ade80",
     "--theme-launch-bg": "color-mix(in srgb, var(--theme-chip-solid-bg) 58%, var(--theme-industrial-bg) 42%)",
     "--theme-launch-border": "color-mix(in srgb, var(--theme-chip-active-border) 82%, transparent)",
@@ -297,7 +292,6 @@ const AMBER: AppTheme = {
     "--theme-phosphor-inset-bottom": "rgba(0, 0, 0, 0.13)",
     "--theme-bezel-cast-shadow": "0 8px 24px rgba(0, 0, 0, 0.72), 0 3px 8px rgba(0, 0, 0, 0.52)",
     "--theme-bench-inset-shadow": "rgba(0, 0, 0, 0.24)",
-    "--theme-card-recessed-border": "#1e1a14",
     "--theme-card-selected-bg": "#1e1a14",
     "--theme-card-selected-accent": "#d4950a",
     "--theme-scrollbar-track": "rgba(20, 15, 8, 0.5)",
@@ -326,7 +320,6 @@ const AMBER: AppTheme = {
     "--theme-provider-pill-active-bg": "#d4950a",
     "--theme-provider-pill-active-border": "#d4950a",
     "--theme-provider-pill-active-text": "#1a1000",
-    "--theme-header-bg": "rgba(18, 16, 10, 0.92)",
     "--theme-header-border": "#2e2410",
     "--theme-header-title": "#e8dcc8",
     "--theme-header-subtitle": "rgba(232, 220, 200, 0.35)",
@@ -343,9 +336,6 @@ const AMBER: AppTheme = {
     "--theme-footer-bg": "#0a0801",
     "--theme-footer-border": "#b87a00",
     "--theme-footer-text": "rgba(232, 220, 200, 0.45)",
-    "--theme-footer-output-bg": "rgba(184, 122, 0, 0.06)",
-    "--theme-footer-output-bg-hover": "rgba(184, 122, 0, 0.12)",
-    "--theme-footer-output-text": "#f5971f",
     "--theme-status-nominal": "#f5b942",
     "--theme-launch-bg": "color-mix(in srgb, var(--theme-accent) 58%, var(--theme-industrial-bg) 42%)",
     "--theme-launch-border": "color-mix(in srgb, var(--theme-accent-bright) 78%, transparent)",
@@ -483,7 +473,6 @@ const CYAN: AppTheme = {
     "--theme-phosphor-inset-bottom": "rgba(0, 0, 0, 0.12)",
     "--theme-bezel-cast-shadow": DARK_BEZEL_CAST_SHADOW,
     "--theme-bench-inset-shadow": DISPLAY_PROFILE_BENCH_INSET,
-    "--theme-card-recessed-border": "#141c22",
     "--theme-card-selected-bg": "#141c22",
     "--theme-card-selected-accent": "#00b8d4",
     "--theme-scrollbar-track": "rgba(5, 15, 20, 0.5)",
@@ -512,7 +501,6 @@ const CYAN: AppTheme = {
     "--theme-provider-pill-active-bg": "#f5971f",
     "--theme-provider-pill-active-border": "#f5971f",
     "--theme-provider-pill-active-text": "#0a0804",
-    "--theme-header-bg": "rgba(10, 18, 24, 0.92)",
     "--theme-header-border": "#102030",
     "--theme-header-title": "#d8f0f8",
     "--theme-header-subtitle": "rgba(216, 240, 248, 0.35)",
@@ -529,9 +517,6 @@ const CYAN: AppTheme = {
     "--theme-footer-bg": "#010608",
     "--theme-footer-border": "#5a8aaa",
     "--theme-footer-text": "rgba(216, 240, 248, 0.45)",
-    "--theme-footer-output-bg": "rgba(90, 138, 170, 0.08)",
-    "--theme-footer-output-bg-hover": "rgba(90, 138, 170, 0.14)",
-    "--theme-footer-output-text": "#7ab0d0",
     "--theme-status-nominal": "#22d3ee",
     "--theme-launch-bg": "color-mix(in srgb, var(--theme-accent) 58%, var(--theme-industrial-bg) 42%)",
     "--theme-launch-border": "color-mix(in srgb, var(--theme-accent-bright) 78%, transparent)",
@@ -670,7 +655,6 @@ const SLATE: AppTheme = {
     "--theme-phosphor-inset-bottom": "rgba(0, 0, 0, 0.12)",
     "--theme-bezel-cast-shadow": DARK_BEZEL_CAST_SHADOW,
     "--theme-bench-inset-shadow": DISPLAY_PROFILE_BENCH_INSET,
-    "--theme-card-recessed-border": "#1a1a1e",
     "--theme-card-selected-bg": "#1a1a1e",
     "--theme-card-selected-accent": "#8a8a9a",
     "--theme-scrollbar-track": "rgba(15, 15, 18, 0.5)",
@@ -699,7 +683,6 @@ const SLATE: AppTheme = {
     "--theme-provider-pill-active-bg": "#c8a860",
     "--theme-provider-pill-active-border": "#c8a860",
     "--theme-provider-pill-active-text": "#1a1408",
-    "--theme-header-bg": "rgba(18, 18, 24, 0.92)",
     "--theme-header-border": "#222228",
     "--theme-header-title": "#d0d0d8",
     "--theme-header-subtitle": "rgba(208, 208, 216, 0.35)",
@@ -716,9 +699,6 @@ const SLATE: AppTheme = {
     "--theme-footer-bg": "#0c0c0c",
     "--theme-footer-border": "#7a7a8a",
     "--theme-footer-text": "rgba(208, 208, 216, 0.45)",
-    "--theme-footer-output-bg": "rgba(122, 122, 138, 0.08)",
-    "--theme-footer-output-bg-hover": "rgba(122, 122, 138, 0.14)",
-    "--theme-footer-output-text": "#a0a0b0",
     "--theme-status-nominal": "#c8c8d0",
     "--theme-launch-bg": "var(--theme-provider-pill-active-bg)",
     "--theme-launch-border": "var(--theme-provider-pill-active-border)",
@@ -909,12 +889,7 @@ const ARCTIC: AppTheme = {
     "--theme-catalog-fit-opacity": "0.42",
 
     /* Display texture overlays on light faces */
-    "--theme-display-texture-scan": "rgba(255, 255, 255, 0.06)",
-    "--theme-display-texture-scan-bright": "rgba(255, 255, 255, 0.1)",
-    "--theme-display-texture-vignette": "rgba(15, 40, 70, 0.05)",
-    "--theme-display-texture-aperture": "rgba(255, 255, 255, 0.22)",
-    "--theme-display-texture-beam": "rgba(255, 255, 255, 0.16)",
-    "--theme-display-texture-glare": "rgba(255, 255, 255, 0.12)",
+
 
     /* ── Industrial metal — bright brushed aluminium ── */
     "--theme-industrial-bg": "#c8d4e0",
@@ -961,7 +936,6 @@ const ARCTIC: AppTheme = {
     "--theme-phosphor-inset-bottom": "rgba(15, 40, 70, 0.1)",
     "--theme-bezel-cast-shadow": DISPLAY_PROFILE_BEZEL_CAST,
     "--theme-bench-inset-shadow": "rgba(15, 40, 70, 0.08)",
-    "--theme-card-recessed-border": "#c8d4e0",
     "--theme-card-selected-bg": "#ffffff",
     "--theme-card-selected-accent": "#0ea5e9",
     "--theme-scrollbar-track": "rgba(226, 232, 240, 0.85)",
@@ -998,7 +972,6 @@ const ARCTIC: AppTheme = {
     "--theme-provider-pill-active-text": "#f8fafc",
 
     /* ── Header / nav — bright glass chrome ── */
-    "--theme-header-bg": "rgba(255, 255, 255, 0.92)",
     "--theme-header-border": "#c5d4e4",
     "--theme-header-title": "#0b1220",
     "--theme-header-subtitle": "rgba(11, 18, 32, 0.48)",
@@ -1017,9 +990,6 @@ const ARCTIC: AppTheme = {
     "--theme-footer-bg": "#d5e0eb",
     "--theme-footer-border": "#c2410c",
     "--theme-footer-text": "rgba(11, 18, 32, 0.58)",
-    "--theme-footer-output-bg": "rgba(194, 65, 12, 0.08)",
-    "--theme-footer-output-bg-hover": "rgba(194, 65, 12, 0.14)",
-    "--theme-footer-output-text": "#c2410c",
     "--theme-status-nominal": "#0369a1",
 
     /* ── Launch CTA — solid polar sky ── */

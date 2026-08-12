@@ -1,11 +1,9 @@
 /* ── Stealth & Silicon Base Styles ─────────────────────────────── */
 :root {
-  --color-stealth-black: #000000;
   --color-stealth-dark: #0c120a;
   --color-stealth-panel: #111810;
   --color-stealth-border: #1a2e1a;
   --color-nv-green: #76B900;
-  --color-nv-dim: #4d7a00;
   --color-telemetry-amber: #FFB800;
   --color-telemetry-cyan: #00e5ff;
 
@@ -43,7 +41,6 @@
   --phosphor-bg: #030805;
   --phosphor-bg-dark: #030805;
   --phosphor-glow: rgba(74, 222, 128, 0.04);
-  --phosphor-glow-dark: rgba(74, 222, 128, 0.04);
   --theme-phosphor-text: #4ade80;
   --theme-phosphor-text-muted: #3a6a4a;
   --theme-phosphor-bar-bg: rgba(74, 222, 128, 0.08);
@@ -164,13 +161,8 @@
   --theme-phosphor-inset-bottom: rgba(0, 0, 0, 0.12);
   --theme-bezel-cast-shadow: 0 8px 24px rgba(0, 0, 0, 0.75), 0 3px 8px rgba(0, 0, 0, 0.55);
   --theme-bench-inset-shadow: rgba(0, 0, 0, 0.22);
-  /* Display combo references — bench tray: dark theme+LIGHT; inner face recess: ARCTIC+LIGHT */
+  /* Display combo reference — bench tray inset (dark theme+LIGHT). */
   --display-profile-bench-inset: rgba(0, 0, 0, 0.22);
-  --display-profile-phosphor-inset-top: rgba(0, 0, 0, 0.25);
-  --display-profile-phosphor-inset-bottom: rgba(0, 0, 0, 0.15);
-  --display-profile-phosphor-inset-glare: rgba(255, 255, 255, 0.3);
-  /* Outer frame drop shadow (not the inner display recess) */
-  --display-profile-bezel-cast: 0 3px 10px rgba(40, 60, 80, 0.14), 0 1px 3px rgba(40, 60, 80, 0.1);
   /* Display matrix grain size — shared across all color themes, per-texture (tune here).
      LIGHT = e-ink dot+scanline; DARK = CRT dot+scanline. Fixed px scale with app zoom,
      so values are the ~150% zoom equivalent for visibility at 100%. */
@@ -178,15 +170,6 @@
   --display-crt-scan-light: 6px;
   --display-crt-cell-dark: 2.25px;
   --display-crt-scan-dark: 4.5px;
-  --theme-display-texture-scan: color-mix(in srgb, var(--theme-bg) 42%, transparent);
-  --theme-display-texture-scan-bright: color-mix(in srgb, var(--theme-phosphor-text) 18%, transparent);
-  --theme-display-texture-vignette: color-mix(in srgb, var(--theme-bg) 38%, transparent);
-  --theme-display-texture-aperture: color-mix(in srgb, var(--theme-phosphor-text) 6%, transparent);
-  --theme-display-texture-beam: color-mix(in srgb, var(--theme-phosphor-text) 28%, transparent);
-  --theme-display-texture-glare: color-mix(in srgb, var(--theme-text) 12%, transparent);
-  /* Legacy names (glitch / docs); DARK CRT grain is fixed in fusion-display.css */
-  --theme-display-dot-matrix: rgba(148, 163, 184, 0.05);
-  --theme-display-lcd-band: rgba(148, 163, 184, 0.02);
   /* Phosphor LIGHT — e-ink LCD (fusion overlay) */
   --fusion-eink-surface: #c8d4b8;
   --fusion-eink-dot: rgba(0, 0, 0, 0.025);
@@ -263,7 +246,6 @@
   --fusion-eink-hw-driver: #5a7050;
   --fusion-eink-gpu-name: #4a6a4a;
   --fusion-eink-gpu-name-selected: #1e3a14;
-  --theme-card-recessed-border: #111810;
   --theme-card-selected-bg: #111810;
   --theme-card-selected-accent: #b87a00;
   --theme-scrollbar-track: rgba(10, 10, 15, 0.5);
@@ -293,7 +275,6 @@
   --theme-provider-pill-active-bg: #f5971f;
   --theme-provider-pill-active-border: #f5971f;
   --theme-provider-pill-active-text: #0a0804;
-  --theme-header-bg: #000000;
   --theme-header-border: #1a2e1a;
   --theme-header-title: #ffffff;
   --theme-header-subtitle: rgba(255, 255, 255, 0.25);
@@ -310,14 +291,7 @@
   --theme-footer-bg: #000000;
   --theme-footer-border: #b87a00;
   --theme-footer-text: rgba(255, 255, 255, 0.4);
-  --theme-footer-output-bg: rgba(184, 122, 0, 0.05);
-  --theme-footer-output-bg-hover: rgba(184, 122, 0, 0.1);
-  --theme-footer-output-text: #f5971f;
   --theme-status-nominal: #4ade80;
-
-  /* Dock panel dimensions (single source of truth) */
-  --dock-panel-bottom: 32px;
-  --dock-panel-height: 75vh;
 }
 
 * {
