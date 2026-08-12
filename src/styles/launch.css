@@ -608,7 +608,7 @@
 .gpu-topo-card--selected {
   border-color: color-mix(
     in srgb,
-    var(--theme-industrial-gpu-selected, var(--color-nv-green)) 55%,
+    var(--theme-industrial-gpu-selected, var(--theme-nv-green)) 55%,
     transparent
   );
   /* Border-only selection in HW monitor — no glow halo */
@@ -719,8 +719,8 @@
   color: color-mix(in srgb, var(--theme-text) 85%, #fff);
 }
 
-.gpu-topo-card__value--gpu { color: var(--tel-vram, var(--color-nv-green)); }
-.gpu-topo-card__value--mem { color: var(--tel-cyan, var(--color-telemetry-cyan)); }
+.gpu-topo-card__value--gpu { color: var(--tel-vram, var(--theme-nv-green)); }
+.gpu-topo-card__value--mem { color: var(--tel-cyan, var(--theme-telemetry-cyan)); }
 
 .gpu-topo-card--compact .gpu-topo-card__value {
   font-size: 11px;
@@ -735,11 +735,11 @@
 }
 
 .gpu-topo-card__offset {
-  color: color-mix(in srgb, var(--color-nv-green) 90%, transparent);
+  color: color-mix(in srgb, var(--theme-nv-green) 90%, transparent);
 }
 
 .gpu-topo-card__power-watt {
-  color: var(--color-telemetry-amber);
+  color: var(--theme-telemetry-amber);
   font-size: 11px;
 }
 
@@ -752,7 +752,7 @@
 }
 
 .gpu-topo-card__power-target {
-  color: color-mix(in srgb, var(--color-nv-green) 80%, transparent);
+  color: color-mix(in srgb, var(--theme-nv-green) 80%, transparent);
 }
 
 /* HW monitor — GPU topology card grid */
@@ -1519,14 +1519,14 @@
 }
 
 .config-nobsproof-btn {
-  border-color: color-mix(in srgb, var(--dev-rosso, #c41e3a) 55%, transparent);
-  background: color-mix(in srgb, var(--dev-rosso, #c41e3a) 12%, transparent);
-  color: color-mix(in srgb, var(--dev-rosso, #c41e3a) 88%, #fff 12%);
+  border-color: color-mix(in srgb, var(--dev-danger, #c41e3a) 55%, transparent);
+  background: color-mix(in srgb, var(--dev-danger, #c41e3a) 12%, transparent);
+  color: color-mix(in srgb, var(--dev-danger, #c41e3a) 88%, #fff 12%);
 }
 
 .config-nobsproof-btn:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--dev-rosso, #c41e3a) 75%, transparent);
-  background: color-mix(in srgb, var(--dev-rosso, #c41e3a) 22%, transparent);
+  border-color: color-mix(in srgb, var(--dev-danger, #c41e3a) 75%, transparent);
+  background: color-mix(in srgb, var(--dev-danger, #c41e3a) 22%, transparent);
   color: #fff;
 }
 

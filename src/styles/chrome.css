@@ -1004,9 +1004,9 @@
 
 /* DEV build — Rosso badge only; footer/console keep release chrome */
 .app-build--dev {
-  --dev-rosso: #d40000;
-  --dev-rosso-deep: #8f0000;
-  --dev-rosso-shell: #120000;
+  --dev-danger: #d40000;
+  --dev-danger-deep: #8f0000;
+  --dev-danger-shell: #120000;
 }
 
 .app-build--dev .app-footer-dev-tag {
@@ -1016,7 +1016,7 @@
   letter-spacing: 0.12em;
   border-radius: 2px;
   border: 1px solid #8f0000;
-  background: var(--dev-rosso);
+  background: var(--dev-danger);
   color: #000000;
 }
 
@@ -2298,13 +2298,13 @@
 }
 
 .status-online {
-  background-color: var(--color-nv-green);
-  box-shadow: 0 0 6px var(--color-nv-green);
+  background-color: var(--theme-nv-green);
+  box-shadow: 0 0 6px var(--theme-nv-green);
 }
 
 .status-loading {
-  background-color: var(--color-telemetry-amber);
-  box-shadow: 0 0 6px var(--color-telemetry-amber);
+  background-color: var(--theme-telemetry-amber);
+  box-shadow: 0 0 6px var(--theme-telemetry-amber);
   animation: pulse 1.5s ease-in-out infinite;
 }
 
