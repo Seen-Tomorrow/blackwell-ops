@@ -178,7 +178,8 @@
   --display-face-light-surface: #c8d4b8;
   --display-face-light-dot: rgba(0, 0, 0, 0.025);
   --display-face-light-band: rgba(0, 0, 0, 0.01);
-  --display-face-light-band-opacity: 0.55;
+  /* Horizontal LCD scan-strips — set to 0 to keep only the matrix dot grid. */
+  --display-face-light-band-opacity: 0;
   --display-face-light-texture-blend: multiply;
   --display-face-light-text-muted: #4a6a4a;
   --display-face-light-text-accent: #4d7a00;
