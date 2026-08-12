@@ -251,6 +251,18 @@
   --display-face-light-hw-driver: #5a7050;
   --display-face-light-gpu-name: #4a6a4a;
   --display-face-light-gpu-name-selected: #1e3a14;
+  /*
+   * Display-face CONTROL ink (fusion/bench buttons, labels, chips) — decoupled
+   * from workspace theme tokens so the LCD screen is consistent + visible on
+   * every theme (SLATE's muted grey otherwise renders these invisible). Derived
+   * from --display-face-text but clamped to a brightness floor that survives
+   * dark faces. Override per-theme to re-tint. */
+  --display-face-control-text: color-mix(in srgb, var(--display-face-text) 55%, #e8edf4);
+  --display-face-control-muted: color-mix(in srgb, var(--display-face-text-muted) 50%, #a8b4c4);
+  --display-face-control-border: color-mix(in srgb, var(--display-face-text) 34%, transparent);
+  --display-face-control-active-bg: color-mix(in srgb, var(--display-face-text) 16%, transparent);
+  --display-face-control-active-border: color-mix(in srgb, var(--display-face-text) 65%, transparent);
+  --display-face-control-active-text: var(--display-face-text);
   --theme-card-selected-bg: #111810;
   --theme-card-selected-accent: #b87a00;
   --theme-scrollbar-track: rgba(10, 10, 15, 0.5);

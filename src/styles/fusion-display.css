@@ -1216,7 +1216,8 @@
 [data-display-texture="phosphor-dark"] .phosphor-screen-inner .fusion-readout-idle,
 [data-display-texture="clean"] .phosphor-screen .fusion-readout-idle,
 [data-display-texture="clean"] .phosphor-screen-inner .fusion-readout-idle {
-  color: color-mix(in srgb, var(--display-face-text-muted) 85%, #939daa) !important;
+  /* Brightness-clamped control muted — visible on all dark faces (SLATE grey too). */
+  color: var(--display-face-control-muted) !important;
   opacity: 1 !important;
 }
 
@@ -1344,6 +1345,27 @@
   border-color: var(--display-face-light-concurrency-chip-border) !important;
   color: var(--display-face-light-concurrency-chip-fg) !important;
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--display-face-light-concurrency-chip-border) 45%, transparent);
+}
+
+/* PHOSPHOR DARK + CLEAN — bench control chips: brightness-clamped control ink
+   (decouples from workspace --theme-chip-* so SLATE's grey chips stay visible). */
+[data-display-texture="phosphor-dark"] .bench-widget-panel .value-chip,
+[data-display-texture="phosphor-dark"] .bench-widget-panel .bench-concurrency-chip.value-chip,
+[data-display-texture="clean"] .bench-widget-panel .value-chip,
+[data-display-texture="clean"] .bench-widget-panel .bench-concurrency-chip.value-chip {
+  background: color-mix(in srgb, var(--display-face-control-text) 7%, transparent) !important;
+  border-color: var(--display-face-control-border) !important;
+  color: var(--display-face-control-muted) !important;
+}
+
+[data-display-texture="phosphor-dark"] .bench-widget-panel .value-chip-active,
+[data-display-texture="phosphor-dark"] .bench-widget-panel .bench-concurrency-chip.value-chip-active,
+[data-display-texture="clean"] .bench-widget-panel .value-chip-active,
+[data-display-texture="clean"] .bench-widget-panel .bench-concurrency-chip.value-chip-active {
+  background: var(--display-face-control-active-bg) !important;
+  border-color: var(--display-face-control-active-border) !important;
+  color: var(--display-face-control-active-text) !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--display-face-control-active-border) 45%, transparent);
 }
 
 /* TG result unit row — room under GENERATION number so CONCURRENCY ×N does not overlap */
@@ -1625,14 +1647,14 @@
 /* ARCTIC bench — SLATE chip / control palette on phosphor (theme tokens stay light elsewhere) */
 
 .bench-widget-panel .bench-muted-btn {
-  background: color-mix(in srgb, var(--theme-text) 88%, transparent) !important;
-  color: color-mix(in srgb, var(--theme-bg) 65%, transparent) !important;
-  border: 1px solid var(--theme-border-subtle);
+  background: color-mix(in srgb, var(--display-face-control-text) 88%, transparent) !important;
+  color: color-mix(in srgb, var(--display-face-bg) 65%, transparent) !important;
+  border: 1px solid var(--display-face-control-border);
 }
 
 .bench-widget-panel .bench-muted-btn:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--theme-text) 95%, transparent) !important;
-  color: var(--theme-bg) !important;
+  background: color-mix(in srgb, var(--display-face-control-text) 95%, transparent) !important;
+  color: var(--display-face-bg) !important;
 }
 
 html {
@@ -2342,17 +2364,26 @@ html[data-industrial-bezel="brush"] {
   background-image: none !important;
 }
 
-/* Themed text inside glass (forecast + fusion content) */
+/* Fusion/bench control ink inside glass — routed to brightness-clamped
+   --display-face-control-* so the LCD screen reads consistently + visibly on
+   every dark theme (SLATE's grey muted otherwise renders labels invisible). */
 .phosphor-screen-inner .text-stealth-muted,
+.phosphor-screen-inner .text-stealth-muted\/25,
 .phosphor-screen-inner .text-stealth-muted\/30,
+.phosphor-screen-inner .text-stealth-muted\/35,
 .phosphor-screen-inner .text-stealth-muted\/40,
+.phosphor-screen-inner .text-stealth-muted\/45,
 .phosphor-screen-inner .text-stealth-muted\/50,
-.phosphor-screen-inner .text-stealth-muted\/60 {
-  color: var(--display-face-text-muted) !important;
+.phosphor-screen-inner .text-stealth-muted\/55,
+.phosphor-screen-inner .text-stealth-muted\/60,
+.phosphor-screen-inner .text-stealth-muted\/70,
+.phosphor-screen-inner .text-stealth-muted\/80 {
+  color: var(--display-face-control-muted) !important;
 }
 
-.phosphor-screen-inner .text-nv-green {
-  color: var(--display-face-text) !important;
+.phosphor-screen-inner .text-nv-green,
+.phosphor-screen-inner .text-nv-green\/70 {
+  color: var(--display-face-control-text) !important;
 }
 
 .phosphor-screen-inner .text-telemetry-cyan,
@@ -2371,9 +2402,20 @@ html[data-industrial-bezel="brush"] {
 }
 
 .phosphor-screen-inner .border-stealth-border,
+.phosphor-screen-inner .border-stealth-border\/15,
 .phosphor-screen-inner .border-stealth-border\/30,
-.phosphor-screen-inner .border-stealth-border\/50 {
-  border-color: var(--display-face-border) !important;
+.phosphor-screen-inner .border-stealth-border\/50,
+.phosphor-screen-inner .border-stealth-muted\/30,
+.phosphor-screen-inner .border-stealth-muted\/60 {
+  border-color: var(--display-face-control-border) !important;
+}
+
+/* Hover accents — keep the same control ink, just brightened */
+.phosphor-screen-inner .hover\:text-stealth-muted\/70:hover,
+.phosphor-screen-inner .hover\:text-stealth-muted\/80:hover,
+.phosphor-screen-inner .hover\:border-stealth-muted\/60:hover {
+  color: var(--display-face-control-text) !important;
+  border-color: var(--display-face-control-active-border) !important;
 }
 
 /* CTX bar inline text — dark with e-ink shadow for readability on colored fill */
