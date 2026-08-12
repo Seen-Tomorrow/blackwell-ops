@@ -1008,12 +1008,14 @@
   background-color: var(--theme-industrial-bg);
   background-image: none;
   isolation: isolate;
-  border-top: 1.5px solid var(--theme-bezel-edge-hi);
-  border-left: 1.5px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 65%, transparent);
+  /* Top meets the page/chrome above — crisp frame border, NOT bezel-edge-hi
+     (white on ARCTIC → fuzzy blend into the light page). Matches bottom. */
+  border-top: 1.5px solid var(--theme-frame-border);
+  border-left: 1.5px solid color-mix(in srgb, var(--theme-frame-border) 65%, transparent);
   /* Bottom connects to the eject tray below — crisp frame border (bezel-edge-lo is
      ghost on ARCTIC → fuzzy seam). */
   border-bottom: 1px solid var(--theme-frame-border);
-  border-right: 1px solid var(--theme-bezel-edge-lo);
+  border-right: 1px solid color-mix(in srgb, var(--theme-frame-border) 65%, transparent);
   /* Outer cast + hard metal edge only — soft pocket recess is not second glass shadow */
   box-shadow:
     var(--theme-bezel-cast-shadow),
