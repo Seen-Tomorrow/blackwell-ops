@@ -1763,8 +1763,8 @@ html[data-industrial-bezel="brush"] {
 .phosphor-display-surface,
 .phosphor-screen,
 .phosphor-screen-inner {
-  --display-crt-cell: 2px;
-  --display-crt-scan: 4px;
+  /* Matrix (dot + scanline) size — global per-texture tokens in tokens-base.css,
+     shared across all color themes (tune there). */
 }
 
 /*
@@ -1777,16 +1777,17 @@ html[data-industrial-bezel="brush"] {
   /* Per-theme accent-tinted CRT face (SLATE stays neutral grey). Was hardcoded #080808,
      which lost the MATRIX/AMBER/CYAN tint. DARK uses --phosphor-bg-dark token. */
   background-color: var(--phosphor-bg-dark, #080808);
+  /* CRT matrix size from global dark tokens (tune in tokens-base.css). */
   background-image:
-    radial-gradient(circle, rgba(200, 200, 208, 0.055) 0.75px, transparent 0.75px),
+    radial-gradient(circle, rgba(200, 200, 208, 0.055) calc(var(--display-crt-cell-dark, 2.25px) / 2), transparent calc(var(--display-crt-cell-dark, 2.25px) / 2)),
     repeating-linear-gradient(
       to bottom,
       transparent 0px,
-      transparent 1.5px,
-      rgba(0, 0, 0, 0.22) 1.5px,
-      rgba(0, 0, 0, 0.22) 3px
+      transparent calc(var(--display-crt-scan-dark, 4.5px) / 2),
+      rgba(0, 0, 0, 0.22) calc(var(--display-crt-scan-dark, 4.5px) / 2),
+      rgba(0, 0, 0, 0.22) var(--display-crt-scan-dark, 4.5px)
     );
-  background-size: 1.5px 1.5px, 100% 3px;
+  background-size: var(--display-crt-cell-dark, 2.25px) var(--display-crt-cell-dark, 2.25px), 100% var(--display-crt-scan-dark, 4.5px);
 }
 
 /* DARK: texture is on the face, not ::before/::after */
@@ -1834,11 +1835,11 @@ html[data-industrial-bezel="brush"] {
   background-image: repeating-linear-gradient(
     to bottom,
     transparent 0px,
-    transparent 2px,
-    var(--fusion-eink-band, rgba(0, 0, 0, 0.01)) 2px,
-    var(--fusion-eink-band, rgba(0, 0, 0, 0.01)) 4px
+    transparent calc(var(--display-crt-scan-light, 6px) / 2),
+    var(--fusion-eink-band, rgba(0, 0, 0, 0.01)) calc(var(--display-crt-scan-light, 6px) / 2),
+    var(--fusion-eink-band, rgba(0, 0, 0, 0.01)) var(--display-crt-scan-light, 6px)
   );
-  background-size: 100% var(--display-crt-scan, 4px);
+  background-size: 100% var(--display-crt-scan-light, 6px);
   mix-blend-mode: var(--fusion-eink-texture-blend, multiply);
 }
 
@@ -1857,7 +1858,7 @@ html[data-industrial-bezel="brush"] {
     var(--fusion-eink-dot, rgba(0, 0, 0, 0.025)) 1px,
     transparent 1px
   );
-  background-size: var(--display-crt-cell, 2px) var(--display-crt-cell, 2px);
+  background-size: var(--display-crt-cell-light, 3px) var(--display-crt-cell-light, 3px);
   mix-blend-mode: var(--fusion-eink-texture-blend, multiply);
 }
 
@@ -2314,16 +2315,17 @@ html[data-industrial-bezel="brush"] {
 .launch-rail-tel[data-display-texture="phosphor-dark"] .phosphor-display-surface {
   /* Per-theme accent-tinted CRT face (SLATE stays neutral). Matches CLEAN below. */
   background-color: var(--phosphor-bg-dark, #080808) !important;
+  /* CRT matrix size from global dark tokens (tune in tokens-base.css). */
   background-image:
-    radial-gradient(circle, rgba(200, 200, 208, 0.055) 0.75px, transparent 0.75px),
+    radial-gradient(circle, rgba(200, 200, 208, 0.055) calc(var(--display-crt-cell-dark, 2.25px) / 2), transparent calc(var(--display-crt-cell-dark, 2.25px) / 2)),
     repeating-linear-gradient(
       to bottom,
       transparent 0px,
-      transparent 1.5px,
-      rgba(0, 0, 0, 0.22) 1.5px,
-      rgba(0, 0, 0, 0.22) 3px
+      transparent calc(var(--display-crt-scan-dark, 4.5px) / 2),
+      rgba(0, 0, 0, 0.22) calc(var(--display-crt-scan-dark, 4.5px) / 2),
+      rgba(0, 0, 0, 0.22) var(--display-crt-scan-dark, 4.5px)
     ) !important;
-  background-size: 1.5px 1.5px, 100% 3px !important;
+  background-size: var(--display-crt-cell-dark, 2.25px) var(--display-crt-cell-dark, 2.25px), 100% var(--display-crt-scan-dark, 4.5px) !important;
 }
 
 [data-display-texture="phosphor-light"] .phosphor-screen-inner.phosphor-display-surface,

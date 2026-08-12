@@ -171,6 +171,13 @@
   --display-profile-phosphor-inset-glare: rgba(255, 255, 255, 0.3);
   /* Outer frame drop shadow (not the inner display recess) */
   --display-profile-bezel-cast: 0 3px 10px rgba(40, 60, 80, 0.14), 0 1px 3px rgba(40, 60, 80, 0.1);
+  /* Display matrix grain size — shared across all color themes, per-texture (tune here).
+     LIGHT = e-ink dot+scanline; DARK = CRT dot+scanline. Fixed px scale with app zoom,
+     so values are the ~150% zoom equivalent for visibility at 100%. */
+  --display-crt-cell-light: 3px;
+  --display-crt-scan-light: 6px;
+  --display-crt-cell-dark: 2.25px;
+  --display-crt-scan-dark: 4.5px;
   --theme-display-texture-scan: color-mix(in srgb, var(--theme-bg) 42%, transparent);
   --theme-display-texture-scan-bright: color-mix(in srgb, var(--theme-phosphor-text) 18%, transparent);
   --theme-display-texture-vignette: color-mix(in srgb, var(--theme-bg) 38%, transparent);
