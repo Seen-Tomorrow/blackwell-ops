@@ -1029,7 +1029,7 @@
 .launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface .launch-rail-tel__cpu-avg-unit,
 .launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface .launch-rail-tel__metric-denom,
 .launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface .launch-rail-tel__total-denom {
-  color: var(--fusion-eink-text-muted) !important;
+  color: var(--display-face-light-text-muted) !important;
   opacity: 1;
 }
 
@@ -1038,7 +1038,7 @@
 .launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface .launch-rail-tel__cpu-avg-val,
 .launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface .launch-rail-tel__total-value,
 .launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface .launch-rail-tel__metric-val {
-  color: var(--fusion-eink-readout) !important;
+  color: var(--display-face-light-readout) !important;
 }
 
 
@@ -1047,46 +1047,46 @@
 .launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__meta-text,
 .launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__power-denom,
 .launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__empty {
-  color: var(--fusion-eink-text-muted) !important;
+  color: var(--display-face-light-text-muted) !important;
   opacity: 1;
 }
 
 .launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__name,
 .launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__value--readout,
 .launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__power-val {
-  color: var(--fusion-eink-readout) !important;
+  color: var(--display-face-light-readout) !important;
 }
 
 .launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card--selected .gpu-topo-card__name {
-  color: var(--fusion-eink-gpu-name-selected) !important;
+  color: var(--display-face-light-gpu-name-selected) !important;
 }
 
 .launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__value--gpu,
 .launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__offset,
 .launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__power-target,
 .launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__temp--cool {
-  color: var(--fusion-eink-text-accent) !important;
+  color: var(--display-face-light-text-accent) !important;
   text-shadow: none;
 }
 
 .launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__value--mem {
-  color: var(--fusion-eink-text-cyan) !important;
+  color: var(--display-face-light-text-cyan) !important;
 }
 
 .launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__power-watt,
 .launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__temp--warm {
-  color: var(--fusion-eink-text-amber) !important;
+  color: var(--display-face-light-text-amber) !important;
   text-shadow: none;
 }
 
 .launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__temp--hot {
-  color: var(--fusion-eink-text-red) !important;
+  color: var(--display-face-light-text-red) !important;
   text-shadow: none;
 }
 
 /* Selected GPU topo — border only (no colored drop shadow) */
 .launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card--selected {
-  border-color: var(--fusion-eink-gpu-selected-border, #526848) !important;
+  border-color: var(--display-face-light-gpu-selected-border, #526848) !important;
 }
 
 .launch-rail-tel[data-display-texture="clean"] .gpu-topo-card--selected,
@@ -1095,11 +1095,11 @@
 }
 
 .launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card:not(.gpu-topo-card--selected) {
-  border-color: var(--fusion-eink-border) !important;
+  border-color: var(--display-face-light-border) !important;
 }
 
 .launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card__head {
-  border-bottom-color: var(--fusion-eink-border) !important;
+  border-bottom-color: var(--display-face-light-border) !important;
 }
 
 .launch-rail-tel__cpu-head,

@@ -1054,11 +1054,11 @@
 
 /* Fusion live stats + bench values — theme phosphor text; dark ink on phosphor-light only */
 .fusion-readout-emphasis {
-  color: var(--theme-phosphor-text);
+  color: var(--display-face-text);
 }
 
 .fusion-readout-divider {
-  color: var(--theme-phosphor-text-muted);
+  color: var(--display-face-text-muted);
   opacity: 0.45;
 }
 
@@ -1087,43 +1087,43 @@
   min-width: 11ch;
 }
 
-/* PHOSPHOR LIGHT — TG micro-stats + bench readout (theme tokens via --fusion-eink-readout-*) */
+/* PHOSPHOR LIGHT — TG micro-stats + bench readout (theme tokens via --display-face-light-readout-*) */
 [data-display-texture="phosphor-light"] .phosphor-screen .fusion-readout-emphasis,
 [data-display-texture="phosphor-light"] .phosphor-screen-inner .fusion-readout-emphasis,
 [data-display-texture="phosphor-light"] .bench-widget-panel .fusion-readout-emphasis {
-  color: var(--fusion-eink-readout);
+  color: var(--display-face-light-readout);
 }
 
 [data-display-texture="phosphor-light"] .phosphor-screen .fusion-readout-divider,
 [data-display-texture="phosphor-light"] .phosphor-screen-inner .fusion-readout-divider,
 [data-display-texture="phosphor-light"] .bench-widget-panel .fusion-readout-divider {
-  color: var(--fusion-eink-readout-divider);
-  opacity: var(--fusion-eink-readout-divider-opacity);
+  color: var(--display-face-light-readout-divider);
+  opacity: var(--display-face-light-readout-divider-opacity);
 }
 
 [data-display-texture="phosphor-light"] .phosphor-screen .fusion-readout-idle {
-  color: var(--fusion-eink-readout-idle) !important;
+  color: var(--display-face-light-readout-idle) !important;
   opacity: 1 !important;
 }
 
 [data-display-texture="phosphor-light"] .phosphor-screen .fusion-readout-divider-idle {
-  color: var(--fusion-eink-readout-idle-divider) !important;
-  opacity: var(--fusion-eink-readout-idle-divider-opacity) !important;
+  color: var(--display-face-light-readout-idle-divider) !important;
+  opacity: var(--display-face-light-readout-idle-divider-opacity) !important;
 }
 
 /* PHOSPHOR LIGHT — CONCURRENCY label */
 [data-display-texture="phosphor-light"] .bench-widget-panel .bench-concurrency-badge__label {
-  color: var(--fusion-eink-concurrency-label);
+  color: var(--display-face-light-concurrency-label);
   opacity: 1;
 }
 
 /* PHOSPHOR LIGHT — shared ×N multiplier chip (bench TG + ctx compact) */
 [data-display-texture="phosphor-light"] .fusion-mult-chip,
 [data-display-texture="phosphor-light"] .bench-widget-panel .bench-concurrency-badge__mult {
-  --bench-concurrency-chip-bg: var(--fusion-eink-concurrency-chip-bg);
-  --bench-concurrency-chip-fg: var(--fusion-eink-concurrency-chip-fg);
-  --bench-concurrency-chip-border: var(--fusion-eink-concurrency-chip-border);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--fusion-eink-concurrency-chip-border) 35%, transparent);
+  --bench-concurrency-chip-bg: var(--display-face-light-concurrency-chip-bg);
+  --bench-concurrency-chip-fg: var(--display-face-light-concurrency-chip-fg);
+  --bench-concurrency-chip-border: var(--display-face-light-concurrency-chip-border);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--display-face-light-concurrency-chip-border) 35%, transparent);
 }
 
 
@@ -1135,59 +1135,59 @@
 [data-display-texture="phosphor-light"] .phosphor-screen-inner .ctx-shared-pool-chip,
 [data-display-texture="phosphor-light"] .phosphor-screen .ctx-bar-capacity-chip,
 [data-display-texture="phosphor-light"] .phosphor-screen-inner .ctx-bar-capacity-chip {
-  border-color: var(--fusion-eink-ctx-chip-border);
-  color: var(--fusion-eink-ctx-chip-fg);
+  border-color: var(--display-face-light-ctx-chip-border);
+  color: var(--display-face-light-ctx-chip-fg);
 }
 
 [data-display-texture="phosphor-light"] .phosphor-screen .ctx-bar-fill-pct--active,
 [data-display-texture="phosphor-light"] .phosphor-screen-inner .ctx-bar-fill-pct--active {
-  color: var(--fusion-eink-ctx-fill-pct);
+  color: var(--display-face-light-ctx-fill-pct);
   text-shadow:
-    0 0 3px var(--fusion-eink-ctx-fill-pct-shadow),
-    0 0 6px color-mix(in srgb, var(--fusion-eink-ctx-fill-pct-shadow) 55%, transparent);
+    0 0 3px var(--display-face-light-ctx-fill-pct-shadow),
+    0 0 6px color-mix(in srgb, var(--display-face-light-ctx-fill-pct-shadow) 55%, transparent);
 }
 
 [data-display-texture="phosphor-light"] .phosphor-screen .ctx-bar-track--active,
 [data-display-texture="phosphor-light"] .phosphor-screen-inner .ctx-bar-track--active {
-  background: var(--fusion-eink-ctx-track-bg);
+  background: var(--display-face-light-ctx-track-bg);
   border-color: transparent;
 }
 
 [data-display-texture="phosphor-light"] .phosphor-screen .ctx-bar-track--empty,
 [data-display-texture="phosphor-light"] .phosphor-screen-inner .ctx-bar-track--empty {
   background: transparent;
-  border-color: var(--fusion-eink-ctx-track-border);
+  border-color: var(--display-face-light-ctx-track-border);
 }
 
 [data-display-texture="phosphor-light"] .phosphor-screen .ctx-bar-fill--processing,
 [data-display-texture="phosphor-light"] .phosphor-screen-inner .ctx-bar-fill--processing {
-  background: var(--fusion-eink-ctx-fill-processing);
+  background: var(--display-face-light-ctx-fill-processing);
 }
 
 [data-display-texture="phosphor-light"] .phosphor-screen .ctx-bar-fill--idle,
 [data-display-texture="phosphor-light"] .phosphor-screen-inner .ctx-bar-fill--idle {
-  background: var(--fusion-eink-ctx-fill-idle);
+  background: var(--display-face-light-ctx-fill-idle);
 }
 
 [data-display-texture="phosphor-light"] .phosphor-screen .ctx-bar-slot-label,
 [data-display-texture="phosphor-light"] .phosphor-screen-inner .ctx-bar-slot-label {
-  background: var(--fusion-eink-ctx-slot-bg);
-  color: var(--fusion-eink-ctx-slot-fg);
+  background: var(--display-face-light-ctx-slot-bg);
+  color: var(--display-face-light-ctx-slot-fg);
 }
 
 /* PHOSPHOR LIGHT — bench GPU name + driver */
 [data-display-texture="phosphor-light"] .bench-widget-panel .bench-hw-topo-label {
-  color: var(--fusion-eink-hw-label);
+  color: var(--display-face-light-hw-label);
 }
 
 [data-display-texture="phosphor-light"] .bench-widget-panel .bench-hw-topo-driver {
-  color: var(--fusion-eink-hw-driver);
+  color: var(--display-face-light-hw-driver);
 }
 
 /* LIGHT — same ink for selected + unselected GPU names (selection = card chrome) */
 [data-display-texture="phosphor-light"] .phosphor-display-surface .gpu-card-name,
 [data-display-texture="phosphor-light"] .phosphor-display-surface .gpu-selected .gpu-card-name {
-  color: var(--fusion-eink-gpu-name) !important;
+  color: var(--display-face-light-gpu-name) !important;
 }
 
 /*
@@ -1199,14 +1199,14 @@
 [data-display-texture="phosphor-dark"] .phosphor-screen-inner .fusion-readout-emphasis,
 [data-display-texture="clean"] .phosphor-screen .fusion-readout-emphasis,
 [data-display-texture="clean"] .phosphor-screen-inner .fusion-readout-emphasis {
-  color: color-mix(in srgb, var(--theme-phosphor-text) 72%, #e8edf4);
+  color: color-mix(in srgb, var(--display-face-text) 72%, #e8edf4);
 }
 
 [data-display-texture="phosphor-dark"] .phosphor-screen .fusion-readout-divider,
 [data-display-texture="phosphor-dark"] .phosphor-screen-inner .fusion-readout-divider,
 [data-display-texture="clean"] .phosphor-screen .fusion-readout-divider,
 [data-display-texture="clean"] .phosphor-screen-inner .fusion-readout-divider {
-  color: color-mix(in srgb, var(--theme-phosphor-text-muted) 48%, #a8b4c4);
+  color: color-mix(in srgb, var(--display-face-text-muted) 48%, #a8b4c4);
   opacity: 0.72;
 }
 
@@ -1214,7 +1214,7 @@
 [data-display-texture="phosphor-dark"] .phosphor-screen-inner .fusion-readout-idle,
 [data-display-texture="clean"] .phosphor-screen .fusion-readout-idle,
 [data-display-texture="clean"] .phosphor-screen-inner .fusion-readout-idle {
-  color: color-mix(in srgb, var(--theme-phosphor-text-muted) 85%, #939daa) !important;
+  color: color-mix(in srgb, var(--display-face-text-muted) 85%, #939daa) !important;
   opacity: 1 !important;
 }
 
@@ -1222,7 +1222,7 @@
 [data-display-texture="phosphor-dark"] .phosphor-screen-inner .fusion-readout-divider-idle,
 [data-display-texture="clean"] .phosphor-screen .fusion-readout-divider-idle,
 [data-display-texture="clean"] .phosphor-screen-inner .fusion-readout-divider-idle {
-  color: color-mix(in srgb, var(--theme-phosphor-text-muted) 70%, #727c8c) !important;
+  color: color-mix(in srgb, var(--display-face-text-muted) 70%, #727c8c) !important;
   opacity: 0.72 !important;
 }
 
@@ -1230,23 +1230,23 @@
 [data-display-texture="phosphor-dark"] .phosphor-screen-inner .ctx-shared-pool-chip,
 [data-display-texture="clean"] .phosphor-screen .ctx-shared-pool-chip,
 [data-display-texture="clean"] .phosphor-screen-inner .ctx-shared-pool-chip {
-  border-color: color-mix(in srgb, var(--theme-phosphor-text) 45%, transparent);
-  color: color-mix(in srgb, var(--theme-phosphor-text) 82%, transparent);
+  border-color: color-mix(in srgb, var(--display-face-text) 45%, transparent);
+  color: color-mix(in srgb, var(--display-face-text) 82%, transparent);
 }
 
 [data-display-texture="phosphor-dark"] .phosphor-screen .ctx-bar-capacity-chip,
 [data-display-texture="phosphor-dark"] .phosphor-screen-inner .ctx-bar-capacity-chip,
 [data-display-texture="clean"] .phosphor-screen .ctx-bar-capacity-chip,
 [data-display-texture="clean"] .phosphor-screen-inner .ctx-bar-capacity-chip {
-  border-color: var(--theme-phosphor-border);
-  color: color-mix(in srgb, var(--theme-phosphor-text-muted) 72%, transparent);
+  border-color: var(--display-face-border);
+  color: color-mix(in srgb, var(--display-face-text-muted) 72%, transparent);
 }
 
 [data-display-texture="phosphor-dark"] .phosphor-screen .ctx-bar-fill-pct--active,
 [data-display-texture="phosphor-dark"] .phosphor-screen-inner .ctx-bar-fill-pct--active,
 [data-display-texture="clean"] .phosphor-screen .ctx-bar-fill-pct--active,
 [data-display-texture="clean"] .phosphor-screen-inner .ctx-bar-fill-pct--active {
-  color: color-mix(in srgb, var(--theme-phosphor-text) 92%, #fff);
+  color: color-mix(in srgb, var(--display-face-text) 92%, #fff);
   text-shadow: 0 0 4px color-mix(in srgb, var(--theme-bg) 80%, transparent), 0 1px 2px color-mix(in srgb, #000 55%, transparent);
 }
 
@@ -1254,7 +1254,7 @@
 [data-display-texture="phosphor-dark"] .phosphor-screen-inner .ctx-bar-track--active,
 [data-display-texture="clean"] .phosphor-screen .ctx-bar-track--active,
 [data-display-texture="clean"] .phosphor-screen-inner .ctx-bar-track--active {
-  background: color-mix(in srgb, var(--theme-phosphor-bar-bg) 65%, transparent);
+  background: color-mix(in srgb, var(--display-face-bar-bg) 65%, transparent);
   border-color: transparent;
 }
 
@@ -1263,7 +1263,7 @@
 [data-display-texture="clean"] .phosphor-screen .ctx-bar-track--empty,
 [data-display-texture="clean"] .phosphor-screen-inner .ctx-bar-track--empty {
   background: transparent;
-  border-color: color-mix(in srgb, var(--theme-phosphor-border) 55%, transparent);
+  border-color: color-mix(in srgb, var(--display-face-border) 55%, transparent);
 }
 
 [data-display-texture="phosphor-dark"] .phosphor-screen .ctx-bar-fill--processing,
@@ -1277,7 +1277,7 @@
 [data-display-texture="phosphor-dark"] .phosphor-screen-inner .ctx-bar-fill--idle,
 [data-display-texture="clean"] .phosphor-screen .ctx-bar-fill--idle,
 [data-display-texture="clean"] .phosphor-screen-inner .ctx-bar-fill--idle {
-  background: color-mix(in srgb, var(--theme-phosphor-text) 38%, transparent);
+  background: color-mix(in srgb, var(--display-face-text) 38%, transparent);
 }
 
 [data-display-texture="phosphor-dark"] .phosphor-screen .ctx-bar-slot-label,
@@ -1285,7 +1285,7 @@
 [data-display-texture="clean"] .phosphor-screen .ctx-bar-slot-label,
 [data-display-texture="clean"] .phosphor-screen-inner .ctx-bar-slot-label {
   background: color-mix(in srgb, var(--theme-bg) 50%, transparent);
-  color: color-mix(in srgb, var(--theme-phosphor-text) 78%, transparent);
+  color: color-mix(in srgb, var(--display-face-text) 78%, transparent);
 }
 
 /* PHOSPHOR DARK + CLEAN — shared ×N multiplier chip only (not ctx / readout) */
@@ -1338,10 +1338,10 @@
 /* PHOSPHOR LIGHT — bench control chips: e-ink active fill */
 [data-display-texture="phosphor-light"] .bench-widget-panel .value-chip-active,
 [data-display-texture="phosphor-light"] .bench-widget-panel .bench-concurrency-chip.value-chip-active {
-  background: var(--fusion-eink-concurrency-chip-bg) !important;
-  border-color: var(--fusion-eink-concurrency-chip-border) !important;
-  color: var(--fusion-eink-concurrency-chip-fg) !important;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--fusion-eink-concurrency-chip-border) 45%, transparent);
+  background: var(--display-face-light-concurrency-chip-bg) !important;
+  border-color: var(--display-face-light-concurrency-chip-border) !important;
+  color: var(--display-face-light-concurrency-chip-fg) !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--display-face-light-concurrency-chip-border) 45%, transparent);
 }
 
 /* TG result unit row — room under GENERATION number so CONCURRENCY ×N does not overlap */
@@ -1401,7 +1401,7 @@
 
 /* PHOSPHOR DARK + CLEAN (non-ARCTIC) — bench concurrency label */
 
-/* ARCTIC — CLEAN texture concurrency label (phosphor-light uses --fusion-eink-concurrency-label) */
+/* ARCTIC — CLEAN texture concurrency label (phosphor-light uses --display-face-light-concurrency-label) */
 
 
 .bench-widget-panel .bench-concurrency-badge--compact .bench-concurrency-badge__mult {
@@ -1459,11 +1459,11 @@
 
 /* PHOSPHOR DARK — hw topo uses phosphor tokens (ARCTIC inherits SLATE vars on display face) */
 [data-display-texture="phosphor-dark"] .bench-widget-panel .bench-hw-topo-label {
-  color: color-mix(in srgb, var(--theme-phosphor-text) 82%, transparent);
+  color: color-mix(in srgb, var(--display-face-text) 82%, transparent);
 }
 
 [data-display-texture="phosphor-dark"] .bench-widget-panel .bench-hw-topo-driver {
-  color: color-mix(in srgb, var(--theme-phosphor-text-muted) 90%, transparent);
+  color: color-mix(in srgb, var(--display-face-text-muted) 90%, transparent);
 }
 
 .bench-widget-panel .bench-results-grid {
@@ -1603,8 +1603,8 @@
 
 [data-display-texture="phosphor-light"] .fusion-bench-latch__segments > span.is-lit,
 [data-display-texture="phosphor-light"] .fusion-bench-latch--stowed .fusion-bench-latch__segments > span:first-child {
-  background: color-mix(in srgb, var(--fusion-eink-readout-fg, #1a1a1a) 55%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fusion-eink-readout-fg, #1a1a1a) 25%, transparent);
+  background: color-mix(in srgb, var(--display-face-light-readout-fg, #1a1a1a) 55%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--display-face-light-readout-fg, #1a1a1a) 25%, transparent);
 }
 
 .bench-widget-panel .bench-results-stack {
@@ -1697,15 +1697,15 @@ html[data-industrial-bezel="brush"] {
   position: relative;
   border-radius: 4px;
   border: none;
-  background-color: var(--phosphor-bg, #030801);
+  background-color: var(--display-face-bg, #030801);
   background-image:
-    radial-gradient(ellipse at center, var(--phosphor-glow, rgba(74,222,128,.04)) 0%, transparent 70%);
+    radial-gradient(ellipse at center, var(--display-face-glow, rgba(74,222,128,.04)) 0%, transparent 70%);
   /* Unified bezel-edge glass recess — hard edge lines + tight shadow */
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 55%, transparent),
-    inset 0 2px 4px var(--theme-phosphor-inset-top),
+    inset 0 2px 4px var(--display-face-inset-top),
     inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 35%, transparent),
-    inset 0 -2px 4px var(--theme-phosphor-inset-bottom) !important;
+    inset 0 -2px 4px var(--display-face-inset-bottom) !important;
 }
 
 /* Glass flush to frame; no outer Tailwind border/pad */
@@ -1722,7 +1722,7 @@ html[data-industrial-bezel="brush"] {
 
 /* CLEAN — flat face; shadow stays on phosphor-screen-inner (unified above) */
 [data-display-texture="clean"] .phosphor-screen-inner.phosphor-display-surface {
-  background-color: var(--phosphor-bg, #030801);
+  background-color: var(--display-face-bg, #030801);
   background-image: none;
 }
 
@@ -1775,19 +1775,19 @@ html[data-industrial-bezel="brush"] {
 .launch-rail-tel[data-display-texture="phosphor-dark"] .phosphor-display-surface {
   position: relative;
   /* Per-theme accent-tinted CRT face (SLATE stays neutral grey). Was hardcoded #080808,
-     which lost the MATRIX/AMBER/CYAN tint. DARK uses --phosphor-bg-dark token. */
-  background-color: var(--phosphor-bg-dark, #080808);
+     which lost the MATRIX/AMBER/CYAN tint. DARK uses --display-face-bg-dark token. */
+  background-color: var(--display-face-bg-dark, #080808);
   /* CRT matrix size from global dark tokens (tune in tokens-base.css). */
   background-image:
-    radial-gradient(circle, rgba(200, 200, 208, 0.055) calc(var(--display-crt-cell-dark, 2.25px) / 2), transparent calc(var(--display-crt-cell-dark, 2.25px) / 2)),
+    radial-gradient(circle, rgba(200, 200, 208, 0.055) calc(var(--display-face-dark-grain-cell, 2.25px) / 2), transparent calc(var(--display-face-dark-grain-cell, 2.25px) / 2)),
     repeating-linear-gradient(
       to bottom,
       transparent 0px,
-      transparent calc(var(--display-crt-scan-dark, 4.5px) / 2),
-      rgba(0, 0, 0, 0.22) calc(var(--display-crt-scan-dark, 4.5px) / 2),
-      rgba(0, 0, 0, 0.22) var(--display-crt-scan-dark, 4.5px)
+      transparent calc(var(--display-face-dark-grain-scan, 4.5px) / 2),
+      rgba(0, 0, 0, 0.22) calc(var(--display-face-dark-grain-scan, 4.5px) / 2),
+      rgba(0, 0, 0, 0.22) var(--display-face-dark-grain-scan, 4.5px)
     );
-  background-size: var(--display-crt-cell-dark, 2.25px) var(--display-crt-cell-dark, 2.25px), 100% var(--display-crt-scan-dark, 4.5px);
+  background-size: var(--display-face-dark-grain-cell, 2.25px) var(--display-face-dark-grain-cell, 2.25px), 100% var(--display-face-dark-grain-scan, 4.5px);
 }
 
 /* DARK: texture is on the face, not ::before/::after */
@@ -1809,7 +1809,7 @@ html[data-industrial-bezel="brush"] {
 [data-display-texture="phosphor-light"] .phosphor-screen-inner.phosphor-display-surface,
 .launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface {
   --theme-bench-inset-shadow: var(--display-profile-bench-inset);
-  background-color: var(--fusion-eink-surface) !important;
+  background-color: var(--display-face-light-surface) !important;
   background-image: none !important;
 }
 
@@ -1826,7 +1826,7 @@ html[data-industrial-bezel="brush"] {
 .launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface::before {
   content: "" !important;
   display: block !important;
-  opacity: var(--fusion-eink-band-opacity, 0.55) !important;
+  opacity: var(--display-face-light-band-opacity, 0.55) !important;
   z-index: 7;
   position: absolute;
   inset: 0;
@@ -1835,12 +1835,12 @@ html[data-industrial-bezel="brush"] {
   background-image: repeating-linear-gradient(
     to bottom,
     transparent 0px,
-    transparent calc(var(--display-crt-scan-light, 6px) / 2),
-    var(--fusion-eink-band, rgba(0, 0, 0, 0.01)) calc(var(--display-crt-scan-light, 6px) / 2),
-    var(--fusion-eink-band, rgba(0, 0, 0, 0.01)) var(--display-crt-scan-light, 6px)
+    transparent calc(var(--display-face-light-grain-scan, 6px) / 2),
+    var(--display-face-light-band, rgba(0, 0, 0, 0.01)) calc(var(--display-face-light-grain-scan, 6px) / 2),
+    var(--display-face-light-band, rgba(0, 0, 0, 0.01)) var(--display-face-light-grain-scan, 6px)
   );
-  background-size: 100% var(--display-crt-scan-light, 6px);
-  mix-blend-mode: var(--fusion-eink-texture-blend, multiply);
+  background-size: 100% var(--display-face-light-grain-scan, 6px);
+  mix-blend-mode: var(--display-face-light-texture-blend, multiply);
 }
 
 [data-display-texture="phosphor-light"] .phosphor-screen-inner.phosphor-display-surface::after,
@@ -1855,11 +1855,11 @@ html[data-industrial-bezel="brush"] {
   border-radius: inherit;
   background-image: radial-gradient(
     circle,
-    var(--fusion-eink-dot, rgba(0, 0, 0, 0.025)) 1px,
+    var(--display-face-light-dot, rgba(0, 0, 0, 0.025)) 1px,
     transparent 1px
   );
-  background-size: var(--display-crt-cell-light, 3px) var(--display-crt-cell-light, 3px);
-  mix-blend-mode: var(--fusion-eink-texture-blend, multiply);
+  background-size: var(--display-face-light-grain-cell, 3px) var(--display-face-light-grain-cell, 3px);
+  mix-blend-mode: var(--display-face-light-texture-blend, multiply);
 }
 
 [data-display-texture="phosphor-light"] .phosphor-screen-inner.phosphor-display-surface > *,
@@ -1870,7 +1870,7 @@ html[data-industrial-bezel="brush"] {
 
 /* CLEAN — flat faces on HW widgets too (main glass handled above) */
 .launch-rail-tel[data-display-texture="clean"] .phosphor-display-surface {
-  background-color: var(--phosphor-bg, #030801) !important;
+  background-color: var(--display-face-bg, #030801) !important;
   background-image: none !important;
 }
 
@@ -1891,19 +1891,19 @@ html[data-industrial-bezel="brush"] {
 [data-display-texture="phosphor-light"] .phosphor-screen .text-stealth-muted\/40,
 [data-display-texture="phosphor-light"] .phosphor-screen .text-stealth-muted\/50,
 [data-display-texture="phosphor-light"] .phosphor-screen .text-stealth-muted\/60 {
-  color: var(--fusion-eink-text-muted) !important;
+  color: var(--display-face-light-text-muted) !important;
 }
 
 [data-display-texture="phosphor-light"] .phosphor-screen-inner .text-nv-green,
 [data-display-texture="phosphor-light"] .phosphor-screen .text-nv-green {
-  color: var(--fusion-eink-text-accent) !important;
+  color: var(--display-face-light-text-accent) !important;
 }
 
 [data-display-texture="phosphor-light"] .phosphor-screen-inner .text-electric-blue,
 [data-display-texture="phosphor-light"] .phosphor-screen-inner .text-blue-700,
 [data-display-texture="phosphor-light"] .phosphor-screen .text-telemetry-cyan,
 [data-display-texture="phosphor-light"] .phosphor-screen .text-telemetry-cyan\/70 {
-  color: var(--fusion-eink-text-cyan) !important;
+  color: var(--display-face-light-text-cyan) !important;
 }
 
 [data-display-texture="phosphor-light"] .phosphor-screen-inner .text-orange-400,
@@ -1911,12 +1911,12 @@ html[data-industrial-bezel="brush"] {
 [data-display-texture="phosphor-light"] .phosphor-screen .text-orange-400,
 [data-display-texture="phosphor-light"] .phosphor-screen .text-telemetry-amber,
 [data-display-texture="phosphor-light"] .phosphor-screen .text-telemetry-amber\/80 {
-  color: var(--fusion-eink-text-amber) !important;
+  color: var(--display-face-light-text-amber) !important;
 }
 
 [data-display-texture="phosphor-light"] .phosphor-screen-inner .bg-stealth-dark,
 [data-display-texture="phosphor-light"] .phosphor-screen .bg-stealth-dark {
-  background-color: var(--fusion-eink-bar-bg) !important;
+  background-color: var(--display-face-light-bar-bg) !important;
 }
 
 [data-display-texture="phosphor-light"] .phosphor-screen-inner .border-stealth-border,
@@ -1925,20 +1925,20 @@ html[data-industrial-bezel="brush"] {
 [data-display-texture="phosphor-light"] .phosphor-screen .border-stealth-border,
 [data-display-texture="phosphor-light"] .phosphor-screen .border-stealth-border\/30,
 [data-display-texture="phosphor-light"] .phosphor-screen .border-stealth-border\/50 {
-  border-color: var(--fusion-eink-border) !important;
+  border-color: var(--display-face-light-border) !important;
 }
 
 /* PHOSPHOR LIGHT — VRAM forecast bar tracks: darkened theme accent (not neutral pink-beige) */
 [data-display-texture="phosphor-light"] .vram-forecast-display .relative.overflow-hidden.border-stealth-border\/30,
 [data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .relative.overflow-hidden.border-stealth-border\/30 {
-  background-color: var(--fusion-eink-bar-bg) !important;
+  background-color: var(--display-face-light-bar-bg) !important;
 }
 
 /* PHOSPHOR LIGHT — nominal VRAM/GPU bar fills follow per-theme e-ink accent (ARCTIC = glacier blue) */
 [data-display-texture="phosphor-light"] .vram-forecast-display .bg-nv-green,
 [data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .bg-nv-green,
 [data-display-texture="phosphor-light"] .industrial-display-area .gpu-bar-fill.bg-nv-green {
-  background-color: var(--fusion-eink-ctx-fill-processing) !important;
+  background-color: var(--display-face-light-ctx-fill-processing) !important;
 }
 
 /* PHOSPHOR LIGHT — PREFILL hero TPS: Arctic slate on e-ink (all app themes + share capture) */
@@ -2314,29 +2314,29 @@ html[data-industrial-bezel="brush"] {
 [data-display-texture="phosphor-dark"] .phosphor-screen-inner.phosphor-display-surface,
 .launch-rail-tel[data-display-texture="phosphor-dark"] .phosphor-display-surface {
   /* Per-theme accent-tinted CRT face (SLATE stays neutral). Matches CLEAN below. */
-  background-color: var(--phosphor-bg-dark, #080808) !important;
+  background-color: var(--display-face-bg-dark, #080808) !important;
   /* CRT matrix size from global dark tokens (tune in tokens-base.css). */
   background-image:
-    radial-gradient(circle, rgba(200, 200, 208, 0.055) calc(var(--display-crt-cell-dark, 2.25px) / 2), transparent calc(var(--display-crt-cell-dark, 2.25px) / 2)),
+    radial-gradient(circle, rgba(200, 200, 208, 0.055) calc(var(--display-face-dark-grain-cell, 2.25px) / 2), transparent calc(var(--display-face-dark-grain-cell, 2.25px) / 2)),
     repeating-linear-gradient(
       to bottom,
       transparent 0px,
-      transparent calc(var(--display-crt-scan-dark, 4.5px) / 2),
-      rgba(0, 0, 0, 0.22) calc(var(--display-crt-scan-dark, 4.5px) / 2),
-      rgba(0, 0, 0, 0.22) var(--display-crt-scan-dark, 4.5px)
+      transparent calc(var(--display-face-dark-grain-scan, 4.5px) / 2),
+      rgba(0, 0, 0, 0.22) calc(var(--display-face-dark-grain-scan, 4.5px) / 2),
+      rgba(0, 0, 0, 0.22) var(--display-face-dark-grain-scan, 4.5px)
     ) !important;
-  background-size: var(--display-crt-cell-dark, 2.25px) var(--display-crt-cell-dark, 2.25px), 100% var(--display-crt-scan-dark, 4.5px) !important;
+  background-size: var(--display-face-dark-grain-cell, 2.25px) var(--display-face-dark-grain-cell, 2.25px), 100% var(--display-face-dark-grain-scan, 4.5px) !important;
 }
 
 [data-display-texture="phosphor-light"] .phosphor-screen-inner.phosphor-display-surface,
 .launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface {
-  background-color: var(--fusion-eink-surface) !important;
+  background-color: var(--display-face-light-surface) !important;
   background-image: none !important;
 }
 
 [data-display-texture="clean"] .phosphor-screen-inner.phosphor-display-surface,
 .launch-rail-tel[data-display-texture="clean"] .phosphor-display-surface {
-  background-color: var(--phosphor-bg, #030801) !important;
+  background-color: var(--display-face-bg, #030801) !important;
   background-image: none !important;
 }
 
@@ -2346,11 +2346,11 @@ html[data-industrial-bezel="brush"] {
 .phosphor-screen-inner .text-stealth-muted\/40,
 .phosphor-screen-inner .text-stealth-muted\/50,
 .phosphor-screen-inner .text-stealth-muted\/60 {
-  color: var(--theme-phosphor-text-muted) !important;
+  color: var(--display-face-text-muted) !important;
 }
 
 .phosphor-screen-inner .text-nv-green {
-  color: var(--theme-phosphor-text) !important;
+  color: var(--display-face-text) !important;
 }
 
 .phosphor-screen-inner .text-telemetry-cyan,
@@ -2365,13 +2365,13 @@ html[data-industrial-bezel="brush"] {
 }
 
 .phosphor-screen-inner .bg-stealth-dark {
-  background-color: var(--theme-phosphor-bar-bg) !important;
+  background-color: var(--display-face-bar-bg) !important;
 }
 
 .phosphor-screen-inner .border-stealth-border,
 .phosphor-screen-inner .border-stealth-border\/30,
 .phosphor-screen-inner .border-stealth-border\/50 {
-  border-color: var(--theme-phosphor-border) !important;
+  border-color: var(--display-face-border) !important;
 }
 
 /* CTX bar inline text — dark with e-ink shadow for readability on colored fill */
@@ -2393,7 +2393,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .ctx-bar-capacity-chip {
-  border-color: var(--theme-phosphor-border, rgba(148, 163, 184, 0.45));
+  border-color: var(--display-face-border, rgba(148, 163, 184, 0.45));
   color: rgba(148, 163, 184, 0.72);
 }
 

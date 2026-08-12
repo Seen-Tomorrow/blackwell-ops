@@ -37,14 +37,14 @@
   --theme-chip-active-text: #4ade80;
   --theme-chip-solid-bg: #4ade80;
   --theme-chip-solid-text: #0c120a;
-  /* CLEAN face; DARK uses --phosphor-bg-dark (same on most themes; ARCTIC splits white/black) */
-  --phosphor-bg: #030805;
-  --phosphor-bg-dark: #030805;
-  --phosphor-glow: rgba(74, 222, 128, 0.04);
-  --theme-phosphor-text: #4ade80;
-  --theme-phosphor-text-muted: #3a6a4a;
-  --theme-phosphor-bar-bg: rgba(74, 222, 128, 0.08);
-  --theme-phosphor-border: rgba(74, 222, 128, 0.12);
+  /* CLEAN face; DARK uses --display-face-bg-dark (same on most themes; ARCTIC splits white/black) */
+  --display-face-bg: #030805;
+  --display-face-bg-dark: #030805;
+  --display-face-glow: rgba(74, 222, 128, 0.04);
+  --display-face-text: #4ade80;
+  --display-face-text-muted: #3a6a4a;
+  --display-face-bar-bg: rgba(74, 222, 128, 0.08);
+  --display-face-border: rgba(74, 222, 128, 0.12);
   --theme-industrial-bg: #111810;
   --theme-industrial-text: #4ade80;
   --theme-industrial-muted: #4ade80;
@@ -157,8 +157,8 @@
   --theme-industrial-texture-active: var(--theme-industrial-texture-sandblast);
   --theme-bezel-inset-hi: rgba(74, 222, 128, 0.07);
   --theme-bezel-inset-lo: rgba(0, 0, 0, 0.22);
-  --theme-phosphor-inset-top: rgba(0, 0, 0, 0.35);
-  --theme-phosphor-inset-bottom: rgba(0, 0, 0, 0.12);
+  --display-face-inset-top: rgba(0, 0, 0, 0.35);
+  --display-face-inset-bottom: rgba(0, 0, 0, 0.12);
   --theme-bezel-cast-shadow: 0 8px 24px rgba(0, 0, 0, 0.75), 0 3px 8px rgba(0, 0, 0, 0.55);
   --theme-bench-inset-shadow: rgba(0, 0, 0, 0.22);
   /* Display combo reference — bench tray inset (dark theme+LIGHT). */
@@ -166,22 +166,22 @@
   /* Display matrix grain size — shared across all color themes, per-texture (tune here).
      LIGHT = e-ink dot+scanline; DARK = CRT dot+scanline. Fixed px scale with app zoom,
      so values are the ~150% zoom equivalent for visibility at 100%. */
-  --display-crt-cell-light: 3px;
-  --display-crt-scan-light: 6px;
-  --display-crt-cell-dark: 2.25px;
-  --display-crt-scan-dark: 4.5px;
+  --display-face-light-grain-cell: 3px;
+  --display-face-light-grain-scan: 6px;
+  --display-face-dark-grain-cell: 2.25px;
+  --display-face-dark-grain-scan: 4.5px;
   /* Phosphor LIGHT — e-ink LCD (fusion overlay) */
-  --fusion-eink-surface: #c8d4b8;
-  --fusion-eink-dot: rgba(0, 0, 0, 0.025);
-  --fusion-eink-band: rgba(0, 0, 0, 0.01);
-  --fusion-eink-band-opacity: 0.55;
-  --fusion-eink-texture-blend: multiply;
-  --fusion-eink-text-muted: #4a6a4a;
-  --fusion-eink-text-accent: #4d7a00;
-  --fusion-eink-text-cyan: #0088aa;
-  --fusion-eink-text-amber: #b87a00;
-  --fusion-eink-text-red: #5a2828;
-  --fusion-eink-text-violet: #4a3858;
+  --display-face-light-surface: #c8d4b8;
+  --display-face-light-dot: rgba(0, 0, 0, 0.025);
+  --display-face-light-band: rgba(0, 0, 0, 0.01);
+  --display-face-light-band-opacity: 0.55;
+  --display-face-light-texture-blend: multiply;
+  --display-face-light-text-muted: #4a6a4a;
+  --display-face-light-text-accent: #4d7a00;
+  --display-face-light-text-cyan: #0088aa;
+  --display-face-light-text-amber: #b87a00;
+  --display-face-light-text-red: #5a2828;
+  --display-face-light-text-violet: #4a3858;
   /*
    * HW monitor + OVERCLOCKING signal colors (launch-rail-tel / gpu-oc).
    * Themes override for palette cohesion; CSS falls back to these.
@@ -216,36 +216,36 @@
   --theme-catalog-fit-border: color-mix(in srgb, var(--theme-border) 55%, transparent);
   --theme-catalog-fit-bg: color-mix(in srgb, var(--theme-text) 3%, transparent);
   --theme-catalog-fit-opacity: 0.55;
-  --fusion-eink-bar-bg: #465a40;
-  --fusion-eink-gpu-selected-border: #526848;
-  --fusion-eink-gpu-selected-bg: rgba(70, 90, 64, 0.45);
-  --fusion-eink-gpu-selected-shadow: 0 0 0 1px rgba(82, 104, 72, 0.55), 0 2px 5px rgba(40, 50, 36, 0.25);
-  --fusion-eink-border: rgba(60, 60, 60, 0.25);
+  --display-face-light-bar-bg: #465a40;
+  --display-face-light-gpu-selected-border: #526848;
+  --display-face-light-gpu-selected-bg: rgba(70, 90, 64, 0.45);
+  --display-face-light-gpu-selected-shadow: 0 0 0 1px rgba(82, 104, 72, 0.55), 0 2px 5px rgba(40, 50, 36, 0.25);
+  --display-face-light-border: rgba(60, 60, 60, 0.25);
   /* PHOSPHOR LIGHT readout ink — per-theme overrides in app-themes.ts */
-  --fusion-eink-readout: #1e3a14;
-  --fusion-eink-readout-divider: #1e3a14;
-  --fusion-eink-readout-divider-opacity: 0.32;
-  --fusion-eink-readout-idle: #5a6a52;
-  --fusion-eink-readout-idle-divider: #5a6a52;
-  --fusion-eink-readout-idle-divider-opacity: 0.48;
-  --fusion-eink-concurrency-label: #4a6a4a;
-  --fusion-eink-concurrency-chip-bg: #243818;
-  --fusion-eink-concurrency-chip-fg: #9ed44a;
-  --fusion-eink-concurrency-chip-border: #4d7a00;
-  --fusion-eink-ctx-chip-border: rgba(77, 122, 0, 0.5);
-  --fusion-eink-ctx-chip-fg: #4a6a4a;
-  --fusion-eink-ctx-fill-pct: #1e3a14;
-  --fusion-eink-ctx-fill-pct-shadow: rgba(200, 212, 184, 0.9);
-  --fusion-eink-ctx-track-bg: rgba(0, 0, 0, 0.06);
-  --fusion-eink-ctx-track-border: rgba(60, 60, 60, 0.2);
-  --fusion-eink-ctx-fill-processing: #22c55e;
-  --fusion-eink-ctx-fill-idle: rgba(74, 222, 128, 0.4);
-  --fusion-eink-ctx-slot-bg: rgba(0, 0, 0, 0.06);
-  --fusion-eink-ctx-slot-fg: #4a6a4a;
-  --fusion-eink-hw-label: #3a5a32;
-  --fusion-eink-hw-driver: #5a7050;
-  --fusion-eink-gpu-name: #4a6a4a;
-  --fusion-eink-gpu-name-selected: #1e3a14;
+  --display-face-light-readout: #1e3a14;
+  --display-face-light-readout-divider: #1e3a14;
+  --display-face-light-readout-divider-opacity: 0.32;
+  --display-face-light-readout-idle: #5a6a52;
+  --display-face-light-readout-idle-divider: #5a6a52;
+  --display-face-light-readout-idle-divider-opacity: 0.48;
+  --display-face-light-concurrency-label: #4a6a4a;
+  --display-face-light-concurrency-chip-bg: #243818;
+  --display-face-light-concurrency-chip-fg: #9ed44a;
+  --display-face-light-concurrency-chip-border: #4d7a00;
+  --display-face-light-ctx-chip-border: rgba(77, 122, 0, 0.5);
+  --display-face-light-ctx-chip-fg: #4a6a4a;
+  --display-face-light-ctx-fill-pct: #1e3a14;
+  --display-face-light-ctx-fill-pct-shadow: rgba(200, 212, 184, 0.9);
+  --display-face-light-ctx-track-bg: rgba(0, 0, 0, 0.06);
+  --display-face-light-ctx-track-border: rgba(60, 60, 60, 0.2);
+  --display-face-light-ctx-fill-processing: #22c55e;
+  --display-face-light-ctx-fill-idle: rgba(74, 222, 128, 0.4);
+  --display-face-light-ctx-slot-bg: rgba(0, 0, 0, 0.06);
+  --display-face-light-ctx-slot-fg: #4a6a4a;
+  --display-face-light-hw-label: #3a5a32;
+  --display-face-light-hw-driver: #5a7050;
+  --display-face-light-gpu-name: #4a6a4a;
+  --display-face-light-gpu-name-selected: #1e3a14;
   --theme-card-selected-bg: #111810;
   --theme-card-selected-accent: #b87a00;
   --theme-scrollbar-track: rgba(10, 10, 15, 0.5);
