@@ -1,11 +1,15 @@
 /* ── Stealth & Silicon Base Styles ─────────────────────────────── */
 :root {
-  --color-stealth-dark: #0c120a;
-  --color-stealth-panel: #111810;
-  --color-stealth-border: #1a2e1a;
-  --color-nv-green: #76B900;
-  --color-telemetry-amber: #FFB800;
-  --color-telemetry-cyan: #00e5ff;
+  --theme-stealth-dark: #0c120a;
+  --theme-stealth-panel: #111810;
+  --theme-stealth-border: #1a2e1a;
+  --theme-stealth-text: #c8d4c0;
+  --theme-stealth-muted: #4a6a4a;
+  --theme-nv-green: #76B900;
+  --theme-telemetry-amber: #FFB800;
+  --theme-telemetry-cyan: #00e5ff;
+  --theme-telemetry-red: #ff3333;
+  --theme-electric-blue: #4da3ff;
 
   /* App theme tokens — defaults (matrix); overridden by applyAppTheme() */
   --theme-bg: #000000;
@@ -316,7 +320,7 @@ html, body, #root {
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--color-stealth-dark);
+  background: var(--theme-stealth-dark);
 }
 
 ::-webkit-scrollbar-thumb {

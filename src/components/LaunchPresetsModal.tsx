@@ -97,8 +97,8 @@ export default function LaunchPresetsModal({
         className="launch-presets-modal border border-stealth-border/60 w-[min(920px,94vw)] max-h-[88vh] flex flex-col font-mono text-[10px] shadow-xl rounded-sm text-stealth-text"
         style={{
           // Solid panel — theme-surface-raised alone can be transparent in WebView2
-          backgroundColor: "var(--color-stealth-panel, #111810)",
-          color: "var(--color-stealth-text, #c8d4c0)",
+          backgroundColor: "var(--theme-stealth-panel, #111810)",
+          color: "var(--theme-stealth-text, #c8d4c0)",
         }}
         role="dialog"
         aria-labelledby="launch-presets-modal-title"
@@ -106,7 +106,7 @@ export default function LaunchPresetsModal({
       >
         <header
           className="flex items-center gap-2 px-3 py-2 border-b border-stealth-border/50 flex-shrink-0"
-          style={{ backgroundColor: "var(--color-stealth-panel, #111810)" }}
+          style={{ backgroundColor: "var(--theme-stealth-panel, #111810)" }}
         >
           <h2
             id="launch-presets-modal-title"
@@ -124,11 +124,11 @@ export default function LaunchPresetsModal({
           </button>
         </header>
 
-        <div className="flex flex-1 min-h-0" style={{ backgroundColor: "var(--color-stealth-panel, #111810)" }}>
+        <div className="flex flex-1 min-h-0" style={{ backgroundColor: "var(--theme-stealth-panel, #111810)" }}>
           {/* List */}
           <aside
             className="w-[200px] flex-shrink-0 border-r border-stealth-border/40 overflow-y-auto"
-            style={{ backgroundColor: "color-mix(in srgb, #000 25%, var(--color-stealth-panel, #111810))" }}
+            style={{ backgroundColor: "color-mix(in srgb, #000 25%, var(--theme-stealth-panel, #111810))" }}
           >
             {combos.length === 0 && (
               <p className="p-2 text-stealth-muted/60 m-0">No presets saved yet.</p>
@@ -161,7 +161,7 @@ export default function LaunchPresetsModal({
                   <span className="text-stealth-muted uppercase text-[8px]">Name</span>
                   <input
                     className="border border-stealth-border/50 px-2 py-1 rounded-sm text-stealth-text"
-                    style={{ backgroundColor: "color-mix(in srgb, #000 35%, var(--color-stealth-panel, #111810))" }}
+                    style={{ backgroundColor: "color-mix(in srgb, #000 35%, var(--theme-stealth-panel, #111810))" }}
                     value={draft.name}
                     onChange={(e) => setDraft({ ...draft, name: e.target.value })}
                   />
@@ -171,7 +171,7 @@ export default function LaunchPresetsModal({
                   <span className="text-stealth-muted uppercase text-[8px]">Notes</span>
                   <input
                     className="border border-stealth-border/50 px-2 py-1 rounded-sm text-stealth-text"
-                    style={{ backgroundColor: "color-mix(in srgb, #000 35%, var(--color-stealth-panel, #111810))" }}
+                    style={{ backgroundColor: "color-mix(in srgb, #000 35%, var(--theme-stealth-panel, #111810))" }}
                     value={draft.notes ?? ""}
                     onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
                     placeholder="optional"
@@ -237,12 +237,12 @@ export default function LaunchPresetsModal({
                     <div
                       key={seat.id}
                       className="border border-stealth-border/40 rounded-sm p-2 space-y-1.5"
-                      style={{ backgroundColor: "color-mix(in srgb, #000 20%, var(--color-stealth-panel, #111810))" }}
+                      style={{ backgroundColor: "color-mix(in srgb, #000 20%, var(--theme-stealth-panel, #111810))" }}
                     >
                       <div className="flex items-center gap-2 flex-wrap">
                         <select
                           className="border border-stealth-border/50 px-1 py-0.5 text-stealth-text"
-                          style={{ backgroundColor: "color-mix(in srgb, #000 35%, var(--color-stealth-panel, #111810))" }}
+                          style={{ backgroundColor: "color-mix(in srgb, #000 35%, var(--theme-stealth-panel, #111810))" }}
                           value={seat.role}
                           onChange={(e) =>
                             updateSeat(seat.id, { role: e.target.value as SeatRole })

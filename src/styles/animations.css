@@ -339,14 +339,14 @@
 }
 
 .foundry-clear-cache-btn {
-  color: var(--color-telemetry-red);
-  border-color: color-mix(in srgb, var(--color-telemetry-red) 45%, var(--theme-chip-border) 55%);
-  background: color-mix(in srgb, var(--color-telemetry-red) 8%, var(--theme-chip-bg) 92%);
+  color: var(--theme-telemetry-red);
+  border-color: color-mix(in srgb, var(--theme-telemetry-red) 45%, var(--theme-chip-border) 55%);
+  background: color-mix(in srgb, var(--theme-telemetry-red) 8%, var(--theme-chip-bg) 92%);
 }
 
 .foundry-clear-cache-btn:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--color-telemetry-red) 65%, var(--theme-chip-border) 35%);
-  background: color-mix(in srgb, var(--color-telemetry-red) 14%, var(--theme-chip-bg) 86%);
+  border-color: color-mix(in srgb, var(--theme-telemetry-red) 65%, var(--theme-chip-border) 35%);
+  background: color-mix(in srgb, var(--theme-telemetry-red) 14%, var(--theme-chip-bg) 86%);
 }
 
 /* CUDA arch chips — theme chips, not Tailwind stealth/nv (selection was unreadable) */

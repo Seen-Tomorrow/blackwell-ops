@@ -45,7 +45,7 @@ export default function LaunchPresetConfirmModal({
     >
       <div
         className="w-[min(420px,94vw)] border border-stealth-border/60 rounded-sm font-mono text-[10px] shadow-xl text-stealth-text"
-        style={{ backgroundColor: "var(--color-stealth-panel, #111810)" }}
+        style={{ backgroundColor: "var(--theme-stealth-panel, #111810)" }}
         role="dialog"
         aria-labelledby="preset-confirm-title"
         onClick={(e) => e.stopPropagation()}
@@ -70,7 +70,7 @@ export default function LaunchPresetConfirmModal({
               <li
                 key={s.seatId}
                 className="flex items-center gap-2 border border-stealth-border/30 rounded-sm px-2 py-1"
-                style={{ backgroundColor: "color-mix(in srgb, #000 20%, var(--color-stealth-panel, #111810))" }}
+                style={{ backgroundColor: "color-mix(in srgb, #000 20%, var(--theme-stealth-panel, #111810))" }}
               >
                 <span className="text-nv-green/80 uppercase w-14 shrink-0">{s.role}</span>
                 <span className="truncate flex-1 min-w-0">{s.label}</span>

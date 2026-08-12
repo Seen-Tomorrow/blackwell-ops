@@ -13,7 +13,7 @@ export default {
     extend: {
       colors: {
         stealth: {
-          black: "var(--color-stealth-black, #000000)",
+          black: "var(--theme-stealth-dark, #000000)",
           dark: "var(--theme-bg, #0a0a0f)",
           panel: "var(--theme-panel, #111118)",
           border: "var(--theme-border, #1a1a2e)",
