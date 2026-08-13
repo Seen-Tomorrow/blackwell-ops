@@ -326,6 +326,7 @@ impl DownloadManager {
             lfs_oid,
             batch_id,
             task_kind: TASK_KIND_HF.to_string(),
+                priority: 100,
         };
 
                 persist_task_to_manifest(&task);
@@ -425,6 +426,7 @@ impl DownloadManager {
             lfs_oid: String::new(),
             batch_id: None,
             task_kind: TASK_KIND_TOOLCHAIN.to_string(),
+            priority: 100,
         };
 
                 persist_task_to_manifest(&task);
@@ -499,6 +501,7 @@ impl DownloadManager {
             lfs_oid: String::new(),
             batch_id: None,
             task_kind: TASK_KIND_TOOLCHAIN.to_string(),
+            priority: 100,
         };
         self.tasks.insert(task_id.clone(), task);
 
@@ -610,6 +613,7 @@ impl DownloadManager {
             lfs_oid: String::new(),
             batch_id: None,
             task_kind: TASK_KIND_APP.to_string(),
+            priority: 100,
         };
 
         self.app_update_handle = Some(app_handle);
@@ -696,6 +700,7 @@ impl DownloadManager {
             lfs_oid: release_tag,
             batch_id: None,
             task_kind: TASK_KIND_PROVIDER.to_string(),
+            priority: 100,
         };
 
         self.app_update_handle = Some(app_handle);
@@ -763,6 +768,7 @@ impl DownloadManager {
                 lfs_oid: entry.lfs_oid,
                 batch_id: entry.batch_id,
                 task_kind: entry.task_kind,
+                priority: 100,
             });
         }
 
@@ -852,6 +858,7 @@ impl DownloadManager {
                     lfs_oid: part.lfs_oid.clone(),
                     batch_id: Some(batch_id.clone()),
                     task_kind: TASK_KIND_HF.to_string(),
+                priority: 100,
                 };
                 persist_task_to_manifest(&task);
                 self.tasks.insert(task_id.clone(), task);
@@ -991,6 +998,36 @@ impl DownloadManager {
         self.tasks.values().cloned().collect()
     }
 
+    /// Set queue priority for a task. Returns the new priority on success.
+    pub fn set_task_priority(&mut self, task_id: &str, priority: u32) -> Result<u32, String> {
+        let task = self.tasks.get_mut(task_id).ok_or("Task not found")?;
+        if !matches!(task.status, crate::types::DownloadStatus::Queued | crate::types::DownloadStatus::Paused) {
+            return Err("Only queued or paused tasks can be reprioritized".to_string());
+        }
+        task.priority = priority;
+        Ok(priority)
+    }
+
+    /// Bump a task's priority up (lower number = higher priority). Step = 10, min 0.
+    pub fn bump_priority_up(&mut self, task_id: &str) -> Result<u32, String> {
+        let task = self.tasks.get_mut(task_id).ok_or("Task not found")?;
+        if !matches!(task.status, crate::types::DownloadStatus::Queued | crate::types::DownloadStatus::Paused) {
+            return Err("Only queued or paused tasks can be moved".to_string());
+        }
+        task.priority = task.priority.saturating_sub(10);
+        Ok(task.priority)
+    }
+
+    /// Bump a task's priority down (higher number = lower priority). Step = 10, max 1000.
+    pub fn bump_priority_down(&mut self, task_id: &str) -> Result<u32, String> {
+        let task = self.tasks.get_mut(task_id).ok_or("Task not found")?;
+        if !matches!(task.status, crate::types::DownloadStatus::Queued | crate::types::DownloadStatus::Paused) {
+            return Err("Only queued or paused tasks can be moved".to_string());
+        }
+        task.priority = (task.priority + 10).min(1000);
+        Ok(task.priority)
+    }
+
     /// Remove completed/failed tasks older than the last 20 entries (keeps history).
     pub fn remove_completed(&mut self) {
         let mut sorted: Vec<&DownloadTask> = self.tasks.values().collect();
@@ -1078,15 +1115,28 @@ impl DownloadManager {
             .build()
             .expect("failed to build HTTP client");
 
-        // Wait for a slot to open (under max_concurrent)
+        // Wait for a slot to open (under max_concurrent), respecting queue priority.
+        // Higher-priority tasks (lower priority number) are allowed to skip ahead.
         loop {
             {
                 let dm = manager.read().await;
                 if dm.active_download_count() < dm.max_concurrent {
+                    // Check if a higher-priority queued task should go first.
+                    let my_priority = dm.tasks.get(&task_id).map(|t| t.priority).unwrap_or(100);
+                    let higher_priority_waiting = dm.tasks.values().any(|t| {
+                        t.id != task_id
+                            && t.status == DownloadStatus::Queued
+                            && t.priority < my_priority
+                    });
+                    if !higher_priority_waiting {
+                        drop(dm);
+                        break;
+                    }
+                    // A higher-priority task is queued — let it grab the slot first.
                     drop(dm);
-                    break;
+                } else {
+                    drop(dm);
                 }
-                drop(dm);
             }
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
@@ -2062,6 +2112,7 @@ mod tests {
                 lfs_oid: String::new(),
                 batch_id: None,
                 task_kind: TASK_KIND_HF.to_string(),
+                priority: 100,
             },
         );
 
@@ -2096,6 +2147,7 @@ mod tests {
                 lfs_oid: String::new(),
                 batch_id: None,
                 task_kind: TASK_KIND_HF.to_string(),
+                priority: 100,
             },
         );
         dm.tasks.insert(
@@ -2120,6 +2172,7 @@ mod tests {
                 lfs_oid: String::new(),
                 batch_id: None,
                 task_kind: TASK_KIND_HF.to_string(),
+                priority: 100,
             },
         );
 
@@ -2153,6 +2206,7 @@ mod tests {
                 lfs_oid: String::new(),
                 batch_id: None,
                 task_kind: TASK_KIND_HF.to_string(),
+                priority: 100,
             },
         );
 
@@ -2188,6 +2242,7 @@ mod tests {
                     lfs_oid: String::new(),
                     batch_id: None,
                     task_kind: TASK_KIND_HF.to_string(),
+                priority: 100,
                 },
             );
         }

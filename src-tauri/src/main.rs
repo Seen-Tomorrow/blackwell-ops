@@ -647,6 +647,62 @@ async fn recover_orphaned_batch_parts(
     Ok(created)
 }
 
+/// Adjust queue priority for a download task — lower number = higher priority.
+/// Tasks with higher priority skip ahead when competing for download slots.
+#[tauri::command]
+async fn set_download_priority(
+    app: tauri::AppHandle,
+    manager: tauri::State<'_, Arc<RwLock<DownloadManager>>>,
+    task_id: String,
+    priority: u32,
+) -> Result<(), String> {
+    let mut dm = manager.write().await;
+    let new_priority = dm.set_task_priority(&task_id, priority)?;
+    drop(dm);
+    let _ = app.emit("download-event", serde_json::json!({
+        "type": "reprioritized",
+        "taskId": task_id,
+        "priority": new_priority,
+    }));
+    Ok(())
+}
+
+/// Move a task up in priority (decrements by step, min 0 = highest).
+#[tauri::command]
+async fn move_download_up(
+    app: tauri::AppHandle,
+    manager: tauri::State<'_, Arc<RwLock<DownloadManager>>>,
+    task_id: String,
+) -> Result<(), String> {
+    let mut dm = manager.write().await;
+    let new_priority = dm.bump_priority_up(&task_id)?;
+    drop(dm);
+    let _ = app.emit("download-event", serde_json::json!({
+        "type": "reprioritized",
+        "taskId": task_id,
+        "priority": new_priority,
+    }));
+    Ok(())
+}
+
+/// Move a task down in priority (increments by step, max 1000 = lowest).
+#[tauri::command]
+async fn move_download_down(
+    app: tauri::AppHandle,
+    manager: tauri::State<'_, Arc<RwLock<DownloadManager>>>,
+    task_id: String,
+) -> Result<(), String> {
+    let mut dm = manager.write().await;
+    let new_priority = dm.bump_priority_down(&task_id)?;
+    drop(dm);
+    let _ = app.emit("download-event", serde_json::json!({
+        "type": "reprioritized",
+        "taskId": task_id,
+        "priority": new_priority,
+    }));
+    Ok(())
+}
+
 /// Check whether the target file already exists on disk and compare its LFS OID.
 #[tauri::command]
 fn check_download_target(

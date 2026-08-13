@@ -148,8 +148,49 @@ export default function DownloadProgressRow({
     setConfirmCancel(true);
   }, []);
 
+  const priority = task.priority ?? 100;
+  const canReprioritize = task.status === "queued" || task.status === "paused";
+
+  const handlePriorityUp = useCallback(async (e?: ReactMouseEvent) => {
+    e?.stopPropagation();
+    try {
+      await invoke("move_download_up", { taskId: task.id });
+    } catch (err) {
+      reportActionError("reprioritize", err);
+    }
+  }, [task.id, reportActionError]);
+
+  const handlePriorityDown = useCallback(async (e?: ReactMouseEvent) => {
+    e?.stopPropagation();
+    try {
+      await invoke("move_download_down", { taskId: task.id });
+    } catch (err) {
+      reportActionError("reprioritize", err);
+    }
+  }, [task.id, reportActionError]);
+
   const actionBtns = (
     <>
+      {canReprioritize && (
+        <button
+          type="button"
+          onClick={(e) => { void handlePriorityUp(e); }}
+          className="rounded-sm border border-stealth-muted/30 px-1 py-0.5 text-[8px] font-mono text-stealth-muted/70 transition-all hover:bg-stealth-muted/10 whitespace-nowrap"
+          title="Move up in queue (higher priority)"
+        >
+          ▲
+        </button>
+      )}
+      {canReprioritize && (
+        <button
+          type="button"
+          onClick={(e) => { void handlePriorityDown(e); }}
+          className="rounded-sm border border-stealth-muted/30 px-1 py-0.5 text-[8px] font-mono text-stealth-muted/70 transition-all hover:bg-stealth-muted/10 whitespace-nowrap"
+          title="Move down in queue (lower priority)"
+        >
+          ▼
+        </button>
+      )}
       {task.status === "downloading" && (
         <button
           type="button"

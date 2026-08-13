@@ -844,6 +844,10 @@ pub struct DownloadTask {
     /// `hf` (default), `toolchain`, or `app` (NSIS installer).
     #[serde(default = "default_download_task_kind", rename = "taskKind")]
     pub task_kind: String,
+    /// Queue priority — lower number = higher priority. Default 100 (normal).
+    /// Users can promote/demote tasks to reorder the queue.
+    #[serde(default = "default_task_priority", rename = "priority")]
+    pub priority: u32,
 }
 
 impl Default for DownloadTask {
@@ -868,8 +872,13 @@ impl Default for DownloadTask {
             lfs_oid: String::new(),
             batch_id: None,
             task_kind: default_download_task_kind(),
+            priority: 100,
         }
     }
+}
+
+fn default_task_priority() -> u32 {
+    100
 }
 
 /// One file in a sharded quant download batch.

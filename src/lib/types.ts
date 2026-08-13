@@ -1028,6 +1028,8 @@ export interface DownloadTask {
   lfsOid?: string;     // LFS content hash for incremental scan
   /** `hf` (default), `toolchain`, or `app` (NSIS installer) */
   taskKind?: 'hf' | 'toolchain' | 'app' | 'provider';
+  /** Queue priority — lower number = higher priority. Default 100. */
+  priority?: number;
 }
 
 export interface DownloadTargetCheck {
