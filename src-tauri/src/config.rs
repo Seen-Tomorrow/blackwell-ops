@@ -698,6 +698,12 @@ mod merge_tests {
     }
 
     #[test]
+    fn max_download_size_bytes_is_200_gib() {
+        // 200 GiB = 200 * 1024^3
+        assert_eq!(super::MAX_DOWNLOAD_SIZE_BYTES, 200 * 1024 * 1024 * 1024);
+    }
+
+    #[test]
     fn sort_params_for_factory_export_orders_by_group_then_order() {
         let group_order = vec![
             "ABOVE-CONFIG-LEFT".into(),

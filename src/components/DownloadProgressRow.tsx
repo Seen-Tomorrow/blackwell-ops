@@ -250,6 +250,12 @@ export default function DownloadProgressRow({
             {task.error}
           </span>
         ) : null}
+        {task.retryCount && task.retryCount > 0 && (
+          <span className="text-yellow-400/60 whitespace-nowrap text-[7px]"
+            title={`Retried ${task.retryCount} time(s) due to transient network errors`}>
+            RETRY×{task.retryCount}
+          </span>
+        )}
       </div>
       {confirmModal}
       </>
@@ -294,26 +300,32 @@ export default function DownloadProgressRow({
       )}
       {task.status === "scanning" && task.taskKind === "toolchain" && (
         <p className={`font-mono text-blue-400/80 ${compact ? "text-[7px]" : "text-[8px]"}`}>
-          {task.error ?? "Extracting toolchain…"} (~4 GB, may take a few minutes)
+          {task.statusMessage ?? task.error ?? "Extracting toolchain…"} (~4 GB, may take a few minutes)
         </p>
       )}
       {task.status === "scanning" && task.taskKind === "app" && (
         <p className={`font-mono text-blue-400/80 ${compact ? "text-[7px]" : "text-[8px]"}`}>
-          {task.error ?? "Applying app update…"} (app will restart)
+          {task.statusMessage ?? task.error ?? "Applying app update…"} (app will restart)
         </p>
       )}
       {task.status === "scanning" && task.taskKind === "provider" && (
         <p className={`font-mono text-blue-400/80 ${compact ? "text-[7px]" : "text-[8px]"}`}>
-          {task.error ?? "Extracting engine pack…"}
+          {task.statusMessage ?? task.error ?? "Extracting engine pack…"}
         </p>
       )}
       {task.status === "scanning" &&
         task.taskKind !== "toolchain" &&
         task.taskKind !== "app" &&
         task.taskKind !== "provider" &&
-        task.error && (
+        (task.statusMessage || task.error) && (
         <p className={`font-mono text-stealth-muted/70 ${compact ? "text-[7px]" : "text-[8px]"}`}>
-          {task.error}
+          {task.statusMessage ?? task.error}
+        </p>
+      )}
+      {/* Non-scanning status messages (e.g. "Verifying integrity…", "Retrying…"). */}
+      {task.status !== "scanning" && task.statusMessage && (
+        <p className={`font-mono text-stealth-muted/70 ${compact ? "text-[7px]" : "text-[8px]"}`}>
+          {task.statusMessage}
         </p>
       )}
       <div className="flex items-center gap-1.5">{actionBtns}</div>

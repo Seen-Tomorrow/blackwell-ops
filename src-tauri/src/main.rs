@@ -331,6 +331,13 @@ async fn start_download(
     config::validate_hf_model_id(&hf_model_id)?;
     config::validate_download_file_name(&file_name)?;
     config::validate_download_url_matches_model(&url, &hf_model_id, &file_name)?;
+    if total_bytes > config::MAX_DOWNLOAD_SIZE_BYTES {
+        return Err(format!(
+            "File too large: {} exceeds {} byte limit",
+            total_bytes,
+            config::MAX_DOWNLOAD_SIZE_BYTES
+        ));
+    }
     {
         let cfg = config.lock().map_err(|e| e.to_string())?;
         config::validate_download_dest(&dest_path, &cfg)?;
@@ -377,6 +384,16 @@ async fn start_quant_download(
 ) -> Result<Vec<String>, String> {
     config::validate_hf_model_id(&hf_model_id)?;
     config::validate_quant_download(&gguf_file, &hf_model_id)?;
+    // Enforce size cap on every part of the quant.
+    for part in &gguf_file.download_parts() {
+        if part.size_bytes > config::MAX_DOWNLOAD_SIZE_BYTES {
+            return Err(format!(
+                "Shard too large: {} exceeds {} byte limit",
+                part.size_bytes,
+                config::MAX_DOWNLOAD_SIZE_BYTES
+            ));
+        }
+    }
 
     let default_path = {
         let cfg = config.lock().map_err(|e| e.to_string())?;
@@ -403,6 +420,7 @@ async fn start_quant_download(
             total_bytes: part.size_bytes,
             lfs_oid: part.lfs_oid.clone(),
             file_name: part.file_name.clone(),
+            download_url: part.url.clone(),
         });
     }
 
@@ -606,6 +624,27 @@ async fn clear_completed_downloads(
     let mut dm = manager.write().await;
     dm.remove_completed();
     Ok(())
+}
+
+/// Manual recovery: reconcile persisted sharded-batch manifests against on-disk state and
+/// re-create tasks for any incomplete parts that lost their queue entry after a restart.
+/// Call this from the UI when downloads disappear after the app closes while a multi-part
+/// download is mid-batch.
+#[tauri::command]
+async fn recover_orphaned_batch_parts(
+    app: tauri::AppHandle,
+    manager: tauri::State<'_, Arc<RwLock<DownloadManager>>>,
+) -> Result<usize, String> {
+    let created = {
+        let mut dm = manager.write().await;
+        let created = dm.requeue_orphaned_batch_parts();
+        // After reconciliation, check whether any now-complete batches can finalize.
+        dm.try_finalize_pending_batches();
+        created
+    };
+    // Signal frontend to refresh the download list.
+    let _ = app.emit("download-event", serde_json::json!({ "type": "reconciled" }));
+    Ok(created)
 }
 
 /// Check whether the target file already exists on disk and compare its LFS OID.
@@ -857,6 +896,9 @@ async fn main() {
                     {
                         let mut dm = dm_clone.write().await;
                         dm.insert_recovered_tasks(recovered);
+                        // Re-queue incomplete shards whose sibling completed before the
+                        // batch finalized — otherwise they'd vanish from the queue.
+                        dm.requeue_orphaned_batch_parts();
                         dm.try_finalize_pending_batches();
                     }
                     log::info!(
@@ -1029,6 +1071,7 @@ async fn main() {
             retry_toolchain_extract,
             get_download_tasks,
             clear_completed_downloads,
+            recover_orphaned_batch_parts,
             check_download_target,
             check_hf_files_against_disk,
             // HF Search commands

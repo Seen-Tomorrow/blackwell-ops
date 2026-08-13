@@ -819,6 +819,13 @@ pub struct DownloadTask {
     pub pause_offset: u64,
     #[serde(default)]
     pub error: Option<String>,
+    /// Non-error status messages (e.g. "Extracting toolchain…", "Verifying integrity…").
+    /// Separate from `error` which is reserved for actual failures.
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "statusMessage")]
+    pub status_message: Option<String>,
+    /// Retry count for transient network errors.
+    #[serde(default, rename = "retryCount")]
+    pub retry_count: u32,
     /// Estimated time remaining in seconds (0 if unknown).
     #[serde(default, rename = "etaSeconds")]
     pub eta_seconds: u64,
@@ -839,6 +846,32 @@ pub struct DownloadTask {
     pub task_kind: String,
 }
 
+impl Default for DownloadTask {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            hf_model_id: String::new(),
+            file_name: String::new(),
+            download_url: String::new(),
+            total_bytes: 0,
+            downloaded_bytes: 0,
+            status: DownloadStatus::Queued,
+            dest_path: String::new(),
+            speed_bps: 0,
+            pause_offset: 0,
+            error: None,
+            status_message: None,
+            retry_count: 0,
+            eta_seconds: 0,
+            hf_author: String::new(),
+            quant_type: String::new(),
+            lfs_oid: String::new(),
+            batch_id: None,
+            task_kind: default_download_task_kind(),
+        }
+    }
+}
+
 /// One file in a sharded quant download batch.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QuantBatchPart {
@@ -849,6 +882,10 @@ pub struct QuantBatchPart {
     #[serde(default, rename = "lfsOid")]
     pub lfs_oid: String,
     pub file_name: String,
+    /// Resumable download URL — persisted so restart recovery can recreate tasks
+    /// for shards that completed as `.part` but whose batch never finalized.
+    #[serde(default, rename = "downloadUrl")]
+    pub download_url: String,
 }
 
 /// Sharded quant — finalize all `.part` files together when every part is complete.

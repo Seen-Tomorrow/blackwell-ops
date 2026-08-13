@@ -1018,6 +1018,10 @@ export interface DownloadTask {
   speedBps: number;
   pauseOffset: number;
   error?: string;
+  /** Non-error status messages (e.g. "Extracting…", "Verifying…"). */
+  statusMessage?: string;
+  /** Retry count for transient network errors. */
+  retryCount?: number;
   etaSeconds: number;
   hfAuthor?: string;
   quantType?: string;

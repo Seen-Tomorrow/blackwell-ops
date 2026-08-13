@@ -5,6 +5,7 @@
 
 use std::collections::HashMap;
 
+use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use crate::model_catalog;
 use crate::types::{
     CatalogUpdateEntry, GgufFile, GgufShard, HfFileUpdateCheck, HfModel, HfModelInfo,
@@ -26,7 +27,22 @@ pub fn is_gguf_shard_filename(filename: &str) -> bool {
         .contains("-of-")
 }
 
+/// Validate that a repo-relative path has no traversal segments.
+fn validate_repo_path(path_in_repo: &str) -> Result<(), String> {
+    if path_in_repo.is_empty() {
+        return Err("Empty repo path".to_string());
+    }
+    for seg in path_in_repo.split('/') {
+        if seg.is_empty() || seg == "." || seg == ".." {
+            return Err(format!("Invalid path segment in repo path: '{seg}'"));
+        }
+    }
+    Ok(())
+}
+
 fn build_hf_resolve_url(namespace: &str, repo: &str, path_in_repo: &str) -> String {
+    // path_in_repo is sourced from HF API /tree/main/ — validate defensively.
+    debug_assert!(validate_repo_path(path_in_repo).is_ok());
     format!(
         "https://huggingface.co/{namespace}/{repo}/resolve/main/{path_in_repo}"
     )
@@ -257,15 +273,8 @@ pub async fn search_models(
     );
 
     if !filters.query.is_empty() {
-        // Basic URL-safe encoding for HF search query (alphanumeric, hyphens, dots, underscores are safe)
-        let encoded_query: String = filters
-            .query
-            .chars()
-            .map(|c| match c {
-                'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '.' | '_' | '~' => c.to_string(),
-                _ => format!("%{:02X}", c as u8),
-            })
-            .collect();
+        // Use percent-encoding crate for correct UTF-8 handling.
+        let encoded_query = utf8_percent_encode(&filters.query, NON_ALPHANUMERIC).to_string();
         url.push_str("&search=");
         url.push_str(&encoded_query);
     }
@@ -399,6 +408,11 @@ async fn fetch_repo_gguf_files(
             if entry.r#type == "file" && entry.path.ends_with(".gguf") {
                 let filename = entry.path.split('/').last().unwrap_or(&entry.path);
                 if filename.to_lowercase().contains("mmproj") {
+                    continue;
+                }
+                // Reject paths with traversal segments — defense in depth.
+                if validate_repo_path(&entry.path).is_err() {
+                    log::warn!("Skipping file with invalid path segment: {}", entry.path);
                     continue;
                 }
 
@@ -807,6 +821,22 @@ mod tests {
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].quant_type, "Q4_K_M");
         assert!(files[0].has_update);
+    }
+
+    #[test]
+    fn validate_repo_path_accepts_normal_paths() {
+        assert!(validate_repo_path("model-Q4_K_M.gguf").is_ok());
+        assert!(validate_repo_path("subdir/model-Q4_K_M.gguf").is_ok());
+        assert!(validate_repo_path("a/b/c/file.gguf").is_ok());
+    }
+
+    #[test]
+    fn validate_repo_path_rejects_traversal() {
+        assert!(validate_repo_path("../etc/passwd").is_err());
+        assert!(validate_repo_path("a/../../etc/passwd").is_err());
+        assert!(validate_repo_path("./file.gguf").is_err());
+        assert!(validate_repo_path("").is_err());
+        assert!(validate_repo_path("a//b/file.gguf").is_err());
     }
 
     #[test]

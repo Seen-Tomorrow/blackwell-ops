@@ -26,6 +26,10 @@ const HF_SEARCH_MAX_QUERY_LEN: usize = 200;
 const HF_SEARCH_MAX_LIMIT: usize = 100;
 const HF_VRAM_FILTER_MAX_GB: u32 = 512;
 
+/// Maximum single-file download size (200 GiB). Prevents runaway downloads from
+/// misconfigured repos or accidental selection of non-GGUF large files.
+pub const MAX_DOWNLOAD_SIZE_BYTES: u64 = 200 * 1024 * 1024 * 1024;
+
 fn is_valid_hf_id_segment(segment: &str) -> bool {
     !segment.is_empty()
         && segment.len() <= HF_MODEL_ID_MAX_LEN

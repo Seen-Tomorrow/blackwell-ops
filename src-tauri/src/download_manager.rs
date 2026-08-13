@@ -6,6 +6,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::path::{Path, PathBuf};
+use sha2::{Sha256, Digest};
 
 use chrono::Utc;
 use futures_util::StreamExt;
@@ -185,6 +186,12 @@ fn remove_quant_batch(batch_id: &str) {
 /// Maximum number of concurrent downloads.
 const DEFAULT_MAX_CONCURRENT: usize = 3;
 
+/// Maximum automatic retries for transient network errors (timeouts, connection resets).
+const MAX_RETRIES: u32 = 3;
+
+/// Base delay between retries in milliseconds (doubles each retry: 500ms, 1s, 2s).
+const RETRY_BASE_DELAY_MS: u64 = 500;
+
 /// Interval between progress updates in the download loop (ms).
 const PROGRESS_INTERVAL_MS: u64 = 50;
 
@@ -311,6 +318,8 @@ impl DownloadManager {
             speed_bps: 0,
             pause_offset: 0,
             error: None,
+            status_message: None,
+            retry_count: 0,
             eta_seconds: 0,
             hf_author,
             quant_type,
@@ -408,6 +417,8 @@ impl DownloadManager {
             speed_bps: 0,
             pause_offset: resume_offset,
             error: None,
+            status_message: None,
+            retry_count: 0,
             eta_seconds: 0,
             hf_author: String::new(),
             quant_type: pack_key,
@@ -479,7 +490,9 @@ impl DownloadManager {
             dest_path: crate::foundry_toolchain::toolchain_download_dest(archive_name),
             speed_bps: 0,
             pause_offset: 0,
-            error: Some("Extracting toolchain…".to_string()),
+            error: None,
+            status_message: Some("Extracting toolchain…".to_string()),
+            retry_count: 0,
             eta_seconds: 0,
             hf_author: String::new(),
             quant_type: pack_key.clone(),
@@ -589,6 +602,8 @@ impl DownloadManager {
             speed_bps: 0,
             pause_offset: resume_offset,
             error: None,
+            status_message: None,
+            retry_count: 0,
             eta_seconds: 0,
             hf_author: String::new(),
             quant_type: channel,
@@ -673,6 +688,8 @@ impl DownloadManager {
             speed_bps: 0,
             pause_offset: resume_offset,
             error: None,
+            status_message: None,
+            retry_count: 0,
             eta_seconds: 0,
             hf_author: provider_id,
             quant_type: quant_key,
@@ -738,6 +755,8 @@ impl DownloadManager {
                 speed_bps: 0,
                 pause_offset: part_size,
                 error: None,
+                status_message: None,
+                retry_count: 0,
                 eta_seconds: 0,
                 hf_author: entry.hf_author,
                 quant_type: entry.quant_type,
@@ -767,6 +786,87 @@ impl DownloadManager {
             self.tasks.insert(task.id.clone(), task);
         }
         log::info!("[download] Recovered {} orphaned download(s) into queue", count);
+    }
+
+    /// Recreate download tasks for sharded-batch parts left incomplete after a restart.
+    ///
+    /// Shards are removed from `download_tasks.json` as soon as each individual shard
+    /// finishes (they stay as `.part` until the whole batch is ready). If the app stops
+    /// after one shard completes but before the batch finalizes, recovery finds no task
+    /// for the incomplete siblings and the batch would silently vanish from the queue.
+    /// This reconciles each persisted batch against on-disk progress and re-queues any
+    /// part that is not already complete and does not already have a task.
+    ///
+    /// Returns the number of tasks created.
+    pub fn requeue_orphaned_batch_parts(&mut self) -> usize {
+        let mut created = 0usize;
+        let batch_ids: Vec<String> = self.quant_batches.keys().cloned().collect();
+        for batch_id in batch_ids {
+            let Some(batch) = self.quant_batches.get(&batch_id).cloned() else {
+                continue;
+            };
+            for part in &batch.parts {
+                // Skip parts already fully on disk (`.gguf` or `.part` at expected size).
+                if part_bytes_ready(&part.dest_path, part.total_bytes, &part.lfs_oid) {
+                    continue;
+                }
+                // Skip parts that already have a live task (queued/downloading/paused/completed).
+                if self.tasks.values().any(|t| {
+                    t.batch_id.as_deref() == Some(&batch_id)
+                        && t.dest_path == part.dest_path
+                        && matches!(
+                            t.status,
+                            DownloadStatus::Queued
+                                | DownloadStatus::Downloading
+                                | DownloadStatus::Paused
+                                | DownloadStatus::Completed
+                        )
+                }) {
+                    continue;
+                }
+                // Resume from whatever partial bytes already exist on disk.
+                let partial_path = partial_download_path(&part.dest_path);
+                let resume_offset = std::fs::metadata(&partial_path)
+                    .ok()
+                    .map(|m| m.len())
+                    .unwrap_or(0);
+                let task_id = generate_task_id();
+                // Paused (not Queued) → UI shows "Resume" button; Queued only shows "Cancel".
+                let task = DownloadTask {
+                    id: task_id.clone(),
+                    hf_model_id: batch.hf_model_id.clone(),
+                    file_name: part.file_name.clone(),
+                    download_url: part.download_url.clone(),
+                    total_bytes: part.total_bytes,
+                    downloaded_bytes: resume_offset,
+                    status: DownloadStatus::Paused,
+                    dest_path: part.dest_path.clone(),
+                    speed_bps: 0,
+                    pause_offset: resume_offset,
+                    error: None,
+                    status_message: None,
+                    retry_count: 0,
+                    eta_seconds: 0,
+                    hf_author: batch.hf_author.clone(),
+                    quant_type: batch.quant_type.clone(),
+                    lfs_oid: part.lfs_oid.clone(),
+                    batch_id: Some(batch_id.clone()),
+                    task_kind: TASK_KIND_HF.to_string(),
+                };
+                persist_task_to_manifest(&task);
+                self.tasks.insert(task_id.clone(), task);
+                created += 1;
+                log::info!(
+                    "[download] Re-queued orphaned batch part {} (resume from {} bytes)",
+                    part.file_name,
+                    resume_offset
+                );
+            }
+        }
+        if created > 0 {
+            log::info!("[download] Reconciliation: {} task(s) re-queued", created);
+        }
+        created
     }
 
     /// After recovery or when all batch parts finish — rename `.part` → `.gguf` together.
@@ -1055,6 +1155,7 @@ impl DownloadManager {
         // Build HTTP request with optional Range header for resume.
         // HF's /resolve/main/ returns 302 → signed CAS URL; follow redirects manually to preserve Range.
         let mut download_url = url.clone();
+        let mut retry_count: u32 = 0;
         let resp: reqwest::Response = loop {
             let mut req = base_client.get(&download_url);
             if start_offset > 0 {
@@ -1067,7 +1168,29 @@ impl DownloadManager {
             let interim = match req.send().await {
                 Ok(r) => r,
                 Err(e) => {
-                    mark_failed(&manager, &task_id, format!("Request failed: {}", e)).await;
+                    // Retry transient network errors (timeout, connection reset) with backoff.
+                    let is_transient = e.is_timeout() || e.is_connect()
+                        || e.to_string().contains("connection closed")
+                        || e.to_string().contains("connection reset");
+                    if is_transient && retry_count < MAX_RETRIES {
+                        retry_count += 1;
+                        let delay = RETRY_BASE_DELAY_MS * 2u64.pow(retry_count - 1);
+                        log::warn!(
+                            "[download] Transient error on task {}: {} (retry {}/{} in {}ms)",
+                            task_id, e, retry_count, MAX_RETRIES, delay
+                        );
+                        // Update retry count on the task for UI visibility.
+                        {
+                            let mut dm = manager.write().await;
+                            if let Some(task) = dm.tasks.get_mut(&task_id) {
+                                task.retry_count = retry_count;
+                                task.status_message = Some(format!("Retrying… ({retry_count}/{MAX_RETRIES})"));
+                            }
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                        continue;
+                    }
+                    mark_failed(&manager, &task_id, format!("Request failed: {e}")).await;
                     return;
                 }
             };
@@ -1470,7 +1593,7 @@ async fn mark_completed_worker(
                 task.status = DownloadStatus::Scanning;
                 task.speed_bps = 0;
                 task.eta_seconds = 0;
-                task.error = Some("Extracting toolchain…".to_string());
+                task.status_message = Some("Extracting toolchain…".to_string());
             }
         }
         remove_task_from_manifest(&task_id_for_finalization);
@@ -1490,7 +1613,7 @@ async fn mark_completed_worker(
                 task.status = DownloadStatus::Scanning;
                 task.speed_bps = 0;
                 task.eta_seconds = 0;
-                task.error = Some(if is_7z {
+                task.status_message = Some(if is_7z {
                     "Applying portable app update…".to_string()
                 } else {
                     "Launching NSIS installer…".to_string()
@@ -1520,7 +1643,7 @@ async fn mark_completed_worker(
                 task.status = DownloadStatus::Scanning;
                 task.speed_bps = 0;
                 task.eta_seconds = 0;
-                task.error = Some("Extracting engine pack…".to_string());
+                task.status_message = Some("Extracting engine pack…".to_string());
             }
         }
         remove_task_from_manifest(&task_id_for_finalization);
@@ -1545,6 +1668,28 @@ async fn mark_completed_worker(
     drop(dm_snapshot);
 
     if let Some((hf_model_id, hf_author, quant_type, total_bytes, lfs_oid)) = cache_data {
+        // Integrity verification: compare SHA256 of final file against HF LFS OID.
+        let _expected_hash = if let Some(expected) = lfs_oid.strip_prefix("sha256:") {
+            // Set status message so the UI shows we're verifying before declaring complete.
+            {
+                let mut dm = manager.write().await;
+                if let Some(task) = dm.tasks.get_mut(&task_id_for_finalization) {
+                    task.status_message = Some("Verifying integrity…".to_string());
+                }
+            }
+            let verify_path = dest_to_rename.clone();
+            let verify_tid = task_id_for_finalization.clone();
+            let manager_verify = Arc::clone(manager);
+            let expected_owned = expected.to_string();
+            tokio::task::spawn_blocking(move || {
+                verify_file_integrity(&manager_verify, &verify_tid, &verify_path, &expected_owned)
+            })
+            .await
+            .ok();
+            Some(true)
+        } else {
+            None
+        };
         save_hf_metadata_for_part(
             &dest_to_rename,
             &hf_model_id,
@@ -1757,6 +1902,73 @@ async fn finalize_toolchain_extract_worker(
     task.eta_seconds = 0;
 }
 
+/// Verify a downloaded file's SHA256 matches the expected LFS OID.
+/// HF LFS OIDs are formatted as "sha256:<hex>"; we strip the prefix before comparing.
+/// On mismatch, marks the task failed and removes the corrupt file.
+fn verify_file_integrity(
+    manager: &Arc<RwLock<DownloadManager>>,
+    task_id: &str,
+    file_path: &str,
+    expected_hex: &str,
+) {
+    use std::io::Read;
+
+    let mut hasher = Sha256::new();
+    let mut file = match std::fs::File::open(file_path) {
+        Ok(f) => f,
+        Err(e) => {
+            let err = format!("Failed to open file for integrity check: {e}");
+            let manager = Arc::clone(manager);
+            let tid = task_id.to_string();
+            std::thread::spawn(move || {
+                let rt = tokio::runtime::Handle::current();
+                rt.block_on(async { mark_failed(&manager, &tid, err).await });
+            });
+            return;
+        }
+    };
+    let mut buf = [0u8; 1024 * 1024]; // 1 MiB buffer for throughput
+    loop {
+        let n = match file.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => n,
+            Err(e) => {
+                let err = format!("Read error during integrity check: {e}");
+                let manager = Arc::clone(manager);
+                let tid = task_id.to_string();
+                std::thread::spawn(move || {
+                    let rt = tokio::runtime::Handle::current();
+                    rt.block_on(async { mark_failed(&manager, &tid, err).await });
+                });
+                return;
+            }
+        };
+        hasher.update(&buf[..n]);
+    }
+    let result = hasher.finalize();
+    let actual_hex = hex::encode(result);
+
+    if actual_hex.eq_ignore_ascii_case(expected_hex) {
+        log::info!("[download] Integrity OK: {} matches LFS OID", file_path);
+        return;
+    }
+
+    // Mismatch — mark failed and remove the corrupt file.
+    let err = format!(
+        "Integrity check failed: expected sha256:{}, got sha256:{}",
+        expected_hex, actual_hex
+    );
+    log::error!("[download] {}", err);
+    let _ = std::fs::remove_file(file_path);
+    let manager = Arc::clone(manager);
+    let tid = task_id.to_string();
+    let err_clone = err.clone();
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Handle::current();
+        rt.block_on(async { mark_failed(&manager, &tid, err_clone).await });
+    });
+}
+
 /// Mark a task as failed with an error message.
 async fn mark_failed(manager: &Arc<RwLock<DownloadManager>>, task_id: &str, error_msg: String) {
     let keep_manifest = {
@@ -1842,6 +2054,8 @@ mod tests {
                 speed_bps: 0,
                 pause_offset: 0,
                 error: None,
+                status_message: None,
+                retry_count: 0,
                 eta_seconds: 0,
                 hf_author: "author".to_string(),
                 quant_type: "Q4_K_M".to_string(),
@@ -1874,6 +2088,8 @@ mod tests {
                 speed_bps: 0,
                 pause_offset: 0,
                 error: None,
+                status_message: None,
+                retry_count: 0,
                 eta_seconds: 0,
                 hf_author: "a".to_string(),
                 quant_type: "Q4".to_string(),
@@ -1896,6 +2112,8 @@ mod tests {
                 speed_bps: 0,
                 pause_offset: 0,
                 error: None,
+                status_message: None,
+                retry_count: 0,
                 eta_seconds: 0,
                 hf_author: "a".to_string(),
                 quant_type: "Q4".to_string(),
@@ -1927,6 +2145,8 @@ mod tests {
                 speed_bps: 0,
                 pause_offset: 0,
                 error: None,
+                status_message: None,
+                retry_count: 0,
                 eta_seconds: 0,
                 hf_author: "a".to_string(),
                 quant_type: "Q4".to_string(),
@@ -1960,6 +2180,8 @@ mod tests {
                     speed_bps: 0,
                     pause_offset: 0,
                     error: None,
+                    status_message: None,
+                    retry_count: 0,
                     eta_seconds: 0,
                     hf_author: "author".to_string(),
                     quant_type: "Q4_K_M".to_string(),
