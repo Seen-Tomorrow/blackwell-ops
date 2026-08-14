@@ -26,12 +26,18 @@ pub enum PatchResult {
 struct GgufReader<R: Read + Seek> {
     reader: R,
     offset: u64,
+    file_size: u64,
 }
 
 impl<R: Read + Seek> GgufReader<R> {
     fn new(mut reader: R) -> Result<Self, String> {
-        let offset = reader.seek(SeekFrom::Current(0)).map_err(|e| e.to_string())?;
-        Ok(Self { reader, offset })
+        let file_size = reader.seek(SeekFrom::End(0)).map_err(|e| e.to_string())?;
+        reader.rewind().map_err(|e| e.to_string())?;
+        Ok(Self { reader, offset: 0, file_size })
+    }
+
+    fn remaining(&self) -> u64 {
+        self.file_size.saturating_sub(self.offset)
     }
 
     fn current_pos(&mut self) -> Result<u64, String> {
@@ -41,8 +47,16 @@ impl<R: Read + Seek> GgufReader<R> {
     }
 
     fn read_bytes(&mut self, len: usize) -> Result<Vec<u8>, String> {
+        if (len as u64) > self.remaining() {
+            return Err(format!(
+                "Requested {} bytes at offset {} but only {} remain in file",
+                len, self.offset, self.remaining()
+            ));
+        }
         let mut buf = vec![0u8; len];
-        self.reader.read_exact(&mut buf).map_err(|e| e.to_string())?;
+        self.reader.read_exact(&mut buf).map_err(|e| {
+            format!("Failed to read {} bytes at offset {}: {}", len, self.offset, e)
+        })?;
         self.offset += len as u64;
         Ok(buf)
     }
@@ -59,6 +73,12 @@ impl<R: Read + Seek> GgufReader<R> {
 
     fn read_string(&mut self) -> Result<String, String> {
         let len = self.read_u64()?;
+        if len > self.remaining() {
+            return Err(format!(
+                "String length {} at offset {} exceeds remaining file size {}",
+                len, self.offset - 8, self.remaining()
+            ));
+        }
         let buf = self.read_bytes(len as usize)?;
         Ok(String::from_utf8_lossy(&buf).to_string())
     }
