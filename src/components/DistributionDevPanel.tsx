@@ -41,6 +41,7 @@ export interface DistributionDashboard {
 
 type ReleaseAction =
   | "bump"
+  | "bump_pi"
   | "pack_app"
   | "ship_app"
   | "pack_full"
@@ -229,6 +230,11 @@ export default function DistributionDevPanel() {
               ...p,
               "Version bumped — Pack+Ship App/Full will use the new tag. (Dev rebuild may pick up Cargo.toml on next cargo run.)",
             ]);
+          } else if (action === "bump_pi") {
+            setLogLines((p) => [
+              ...p,
+              "pi pinned to the DEV-installed (tested) version — Pack Full/App will embed it. Bundle should already be refreshed via Harness UPDATE.",
+            ]);
           }
         }
       } catch (e) {
@@ -331,6 +337,15 @@ export default function DistributionDevPanel() {
               title="Bump patch version only (e.g. 1.0.18 → 1.0.19). No pack/ship."
             >
               BUMP
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void runAction("bump_pi")}
+              className="text-[10px] font-mono uppercase tracking-wider px-3 py-1.5 rounded-sm border border-fuchsia-400/50 text-fuchsia-300 bg-fuchsia-400/10 hover:bg-fuchsia-400/15 disabled:opacity-40"
+              title="Pin the shipped pi to the DEV-installed (tested) version (src-tauri/pi-pinned-version.txt). Release binary embeds it. No pack/ship."
+            >
+              BUMP HARNESS
             </button>
             {dash && (
               <span className="text-[9px] font-mono config-muted">

@@ -3,7 +3,7 @@
 
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('check', 'pack', 'ship', 'bump', 'ship-toolchain', 'pack-provider', 'ship-provider')]
+    [ValidateSet('check', 'pack', 'ship', 'bump', 'bump-pi', 'ship-toolchain', 'pack-provider', 'ship-provider')]
     [string]$Mode,
 
     [ValidateSet('app', 'full')]
@@ -864,6 +864,68 @@ function Invoke-MajesticBump {
     Write-Majestic "Next: pack (rebuild installer) then ship." -Color Cyan
 }
 
+# ── pi harness pin ─────────────────────────────────────────────────────
+
+function Get-PiPinnedVersionPath {
+    Join-Path $root 'src-tauri\pi-pinned-version.txt'
+}
+
+function Read-PiPinnedVersion {
+    $p = Get-PiPinnedVersionPath
+    if (-not (Test-Path -LiteralPath $p)) { return '' }
+    (Get-Content -LiteralPath $p -Raw).Trim()
+}
+
+function Get-DevPiInstalledVersion {
+    # The running DEV app's pi version stamp (same version the developer tested).
+    $stamp = Join-Path $root 'src-tauri\target\debug\external-tools\pi\version.txt'
+    if (Test-Path -LiteralPath $stamp) {
+        $v = (Get-Content -LiteralPath $stamp -Raw).Trim().TrimStart('v')
+        if ($v) { return $v }
+    }
+    # Fallback: probe the DEV pi binary directly.
+    $exe = Join-Path $root 'src-tauri\target\debug\external-tools\pi\pi\pi.exe'
+    if (Test-Path -LiteralPath $exe) {
+        $line = (& $exe --version 2>&1 | Select-Object -First 1).ToString().Trim().TrimStart('v')
+        if ($line) { return $line }
+    }
+    throw "Cannot determine DEV-installed pi version (no stamp at $stamp). Update pi first via Harness connect (UPDATE), then bump."
+}
+
+function Set-PiPinnedVersion {
+    param([string]$NewVersion)
+    $p = Get-PiPinnedVersionPath
+    # No trailing newline: pi_code.rs reads it verbatim via include_str!.
+    $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllText($p, $NewVersion, $utf8NoBom)
+}
+
+function Invoke-MajesticBumpPi {
+    $installed = Get-DevPiInstalledVersion
+    $current = Read-PiPinnedVersion
+    Write-Majestic "Bump pi pin: '$current' -> '$installed' (DEV-installed, tested)" -Color Cyan
+    Write-Majestic "Writes: src-tauri/pi-pinned-version.txt (baked into the next release binary)" -Color DarkGray
+
+    if ($DryRun) {
+        Write-Majestic "[dry-run] would set pi pin to $installed" -Color Yellow
+        return
+    }
+
+    if (-not $Force) {
+        $confirm = Read-Host "Type YES to pin pi to $installed"
+        if ($confirm -ne 'YES') {
+            Write-Majestic "Bump pi cancelled." -Color Yellow
+            return
+        }
+    } else {
+        Write-Majestic "Force: pinning pi to $installed without prompt" -Color DarkGray
+    }
+
+    Set-PiPinnedVersion -NewVersion $installed
+    Write-Majestic "pi pinned to $installed (src-tauri/pi-pinned-version.txt)." -Color Green
+    Write-Majestic "Next: pack Full/App - the release binary embeds this pin. (pi-subagents bundle should already be refreshed via Harness UPDATE.)" -Color Cyan
+}
+
 function Assert-ShipUnlocked {
     if (-not (Test-Path -LiteralPath $enabled_path)) {
         throw @"
@@ -1297,6 +1359,7 @@ switch ($Mode) {
     'pack' { Invoke-MajesticPack -Config $config -Variant $Variant }
     'ship' { Invoke-MajesticShip -Config $config }
     'bump' { Invoke-MajesticBump }
+    'bump-pi' { Invoke-MajesticBumpPi }
     'ship-toolchain' { Invoke-MajesticShipToolchain -Config $config }
     'pack-provider' { Invoke-MajesticPackProvider -Config $config -ProviderId $ProviderId -ProfileId $ProfileId }
     'ship-provider' { Invoke-MajesticShipProvider -Config $config -ProviderId $ProviderId -ProfileId $ProfileId }

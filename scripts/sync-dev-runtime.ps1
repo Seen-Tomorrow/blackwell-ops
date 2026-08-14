@@ -124,6 +124,25 @@ $fingerprint = Get-SourceFingerprint -SourceDirs $source_dirs
 # find the local-path pi-subagents bundle in DEV (release ships it via tauri
 # resources instead). Independent fingerprint so engine-runtime cache skips
 # don't block a pi-subagents bump. Uses the same fingerprint helper.
+
+# Copy-Item -Recurse follows junctions/symlinks, so a dangling link (target
+# removed — e.g. an npm `file:` devDependency pointing at a missing fixture)
+# hard-fails the whole mirror with "Could not find a part of the path". Strip
+# broken reparse points before copying so a pi-subagents bump can't break
+# `npm run dev`. Valid links are left untouched.
+function Remove-BrokenReparsePoints {
+    param([string]$Root)
+    Get-ChildItem -LiteralPath $Root -Recurse -Force -ErrorAction SilentlyContinue |
+        Where-Object { $_.LinkType -or ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) } |
+        ForEach-Object {
+            $target = $_.Target
+            if (-not $target -or -not (Test-Path -LiteralPath $target)) {
+                Write-Host ("[sync-dev-runtime]   prune broken link: {0}" -f $_.FullName) -ForegroundColor DarkYellow
+                Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+}
+
 $piext_src = Join-Path $root 'src-tauri\pi-ext'
 $piext_dst = Join-Path (Split-Path -Parent $dest_root) 'pi-ext'
 $piext_fp_path = Join-Path (Split-Path -Parent $dest_root) '.blackwell-dev-pi-ext-sync'
@@ -136,6 +155,7 @@ if (Test-Path -LiteralPath $piext_src) {
             Remove-Item -LiteralPath $piext_dst -Recurse -Force -ErrorAction SilentlyContinue
         }
         New-Item -ItemType Directory -Path $piext_dst -Force | Out-Null
+        Remove-BrokenReparsePoints -Root $piext_src
         Copy-Item -Path (Join-Path $piext_src '*') -Destination $piext_dst -Recurse -Force
         Set-Content -LiteralPath $piext_fp_path -Value $piext_fp -NoNewline -Encoding ascii
         Write-Host '[sync-dev-runtime] pi-ext -> target/debug/pi-ext' -ForegroundColor Green

@@ -153,6 +153,9 @@ try {
         'bump' {
             Invoke-Majestic -Params @{ Mode = 'bump' }
         }
+        'bump_pi' {
+            Invoke-Majestic -Params @{ Mode = 'bump-pi' }
+        }
         'pack_app' {
             Invoke-Majestic -Params @{ Mode = 'pack'; Variant = 'app' }
         }

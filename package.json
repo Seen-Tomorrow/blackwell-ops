@@ -27,6 +27,7 @@
     "majestic:check": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode check -Variant full",
     "majestic:check:app": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode check -Variant app",
     "majestic:bump": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode bump",
+    "majestic:bump:pi": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode bump-pi",
     "majestic:pack": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode pack -Variant full",
     "majestic:pack:app": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode pack -Variant app",
     "majestic:ship": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode ship",

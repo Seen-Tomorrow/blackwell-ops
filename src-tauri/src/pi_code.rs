@@ -12,7 +12,13 @@ use crate::external_agents::emit_dbg;
 use std::path::{Path, PathBuf};
 
 /// Pinned release we verified against local OpenAI-compatible engines.
-pub const PINNED_VERSION: &str = "0.83.0";
+///
+/// Sourced from `src-tauri/pi-pinned-version.txt` at build time (see the majestic
+/// `bump-pi` release step) so the release binary embeds the same pi version the
+/// developer tested in DEV — no hand-editing Rust. Keep the file in sync before
+/// packing a release; `pi-ext/` is bundled as-is at build time too. The file is
+/// written without a trailing newline; the install path trims anyway.
+pub const PINNED_VERSION: &str = include_str!("../pi-pinned-version.txt");
 
 const GITHUB_RELEASE_BASE: &str = "https://github.com/earendil-works/pi/releases/download";
 
@@ -286,6 +292,96 @@ fn copy_dir_all(src: &Path, dst: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Install (or reinstall) a specific pi binary version into `external-tools/pi`.
+/// Shared by the pinned install command and the DEV-only update-to-latest path.
+#[cfg(windows)]
+async fn install_pi_version(version: &str) -> Result<(), String> {
+    if !disclaimer_path().is_file() {
+        return Err("Accept the pi disclaimer first (pi_code_accept_disclaimer).".into());
+    }
+    let ver = version.trim().trim_start_matches('v').to_string();
+    if ver.is_empty() {
+        return Err("pi version must not be empty.".into());
+    }
+
+    let tools = tools_dir();
+    std::fs::create_dir_all(&tools).map_err(|e| format!("tools dir: {e}"))?;
+    std::fs::create_dir_all(home_dir()).map_err(|e| format!("home: {e}"))?;
+
+    let archive_name = format!("pi-windows-{}.zip", windows_arch_tag()?);
+    let zip_url = release_zip_url(&ver);
+    let sums_url = release_sums_url(&ver);
+    emit_dbg(&format!("[Pi] Downloading standalone {ver}…"));
+    emit_dbg(&format!("[Pi] {zip_url}"));
+
+    let zip_bytes = crate::external_agents::download_bytes(&zip_url).await?;
+    if zip_bytes.len() < 10_000_000 {
+        return Err(format!(
+            "Standalone zip too small ({} bytes) — release may be missing: {zip_url}",
+            zip_bytes.len()
+        ));
+    }
+    let actual = crate::external_agents::sha256_hex(&zip_bytes);
+    let sums_text = match crate::external_agents::download_bytes(&sums_url).await {
+        Ok(b) => String::from_utf8_lossy(&b).to_string(),
+        Err(e) => {
+            emit_dbg(&format!("[Pi] SHA256SUMS download failed: {e}"));
+            String::new()
+        }
+    };
+    if let Some(expected) = parse_sums_expected(&sums_text, &archive_name) {
+        if expected != actual {
+            return Err(format!(
+                "Checksum mismatch for {archive_name}: expected {expected}, got {actual}"
+            ));
+        }
+        emit_dbg("[Pi] SHA-256 OK");
+    } else {
+        emit_dbg(&format!("[Pi] No SHA256SUMS entry — proceeding with sha256={actual}"));
+    }
+
+    // Save with a real `.zip` extension: PowerShell Expand-Archive determines the
+    // archive type from the file extension, so a `.download` suffix would be rejected.
+    let zip_path = tools.join(&archive_name);
+    std::fs::write(&zip_path, &zip_bytes).map_err(|e| format!("write zip: {e}"))?;
+
+    let extract_root = tools.join("_extract");
+    if extract_root.exists() {
+        let _ = std::fs::remove_dir_all(&extract_root);
+    }
+    std::fs::create_dir_all(&extract_root).map_err(|e| format!("extract dir: {e}"))?;
+    extract_zip_windows(&zip_path, &extract_root)?;
+
+    // Zip contains top-level `pi.exe` (flat) + assets/theme/docs/etc.
+    if !extract_root.join("pi.exe").is_file() {
+        let _ = std::fs::remove_dir_all(&extract_root);
+        let _ = std::fs::remove_file(&zip_path);
+        return Err("Archive missing pi.exe.".into());
+    }
+
+    let dest_pkg = package_dir();
+    if dest_pkg.exists() {
+        std::fs::remove_dir_all(&dest_pkg).map_err(|e| {
+            format!(
+                "Cannot replace {}: {e}. Close any running pi from Blackwell and retry.",
+                dest_pkg.display()
+            )
+        })?;
+    }
+    if let Err(e) = std::fs::rename(&extract_root, &dest_pkg) {
+        copy_dir_all(&extract_root, &dest_pkg).map_err(|e2| {
+            format!("install move failed: {e} / {e2}")
+        })?;
+    }
+
+    write_outer_shim(&tools)?;
+    std::fs::write(version_stamp_path(), format!("{ver}\n"))
+        .map_err(|e| format!("version stamp: {e}"))?;
+
+    let _ = std::fs::remove_file(&zip_path);
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn pi_code_install(
     app: tauri::AppHandle,
@@ -299,97 +395,155 @@ pub async fn pi_code_install(
 
     #[cfg(windows)]
     {
-        if !disclaimer_path().is_file() {
-            return Err("Accept the pi disclaimer first (pi_code_accept_disclaimer).".into());
-        }
-
         let ver = version
             .as_deref()
             .map(str::trim)
             .filter(|s| !s.is_empty())
             .map(|s| s.trim_start_matches('v').to_string())
             .unwrap_or_else(|| PINNED_VERSION.to_string());
-
-        let tools = tools_dir();
-        std::fs::create_dir_all(&tools).map_err(|e| format!("tools dir: {e}"))?;
-        std::fs::create_dir_all(home_dir()).map_err(|e| format!("home: {e}"))?;
-
-        let archive_name = format!("pi-windows-{}.zip", windows_arch_tag()?);
-        let zip_url = release_zip_url(&ver);
-        let sums_url = release_sums_url(&ver);
-        emit_dbg(&format!("[Pi] Downloading standalone {ver}…"));
-        emit_dbg(&format!("[Pi] {zip_url}"));
-
-        let zip_bytes = crate::external_agents::download_bytes(&zip_url).await?;
-        if zip_bytes.len() < 10_000_000 {
-            return Err(format!(
-                "Standalone zip too small ({} bytes) — release may be missing: {zip_url}",
-                zip_bytes.len()
-            ));
-        }
-        let actual = crate::external_agents::sha256_hex(&zip_bytes);
-        let sums_text = match crate::external_agents::download_bytes(&sums_url).await {
-            Ok(b) => String::from_utf8_lossy(&b).to_string(),
-            Err(e) => {
-                emit_dbg(&format!("[Pi] SHA256SUMS download failed: {e}"));
-                String::new()
-            }
-        };
-        if let Some(expected) = parse_sums_expected(&sums_text, &archive_name) {
-            if expected != actual {
-                return Err(format!(
-                    "Checksum mismatch for {archive_name}: expected {expected}, got {actual}"
-                ));
-            }
-            emit_dbg("[Pi] SHA-256 OK");
-        } else {
-            emit_dbg(&format!("[Pi] No SHA256SUMS entry — proceeding with sha256={actual}"));
-        }
-
-        // Save with a real `.zip` extension: PowerShell Expand-Archive determines the
-        // archive type from the file extension, so a `.download` suffix would be rejected.
-        let zip_path = tools.join(&archive_name);
-        std::fs::write(&zip_path, &zip_bytes).map_err(|e| format!("write zip: {e}"))?;
-
-        let extract_root = tools.join("_extract");
-        if extract_root.exists() {
-            let _ = std::fs::remove_dir_all(&extract_root);
-        }
-        std::fs::create_dir_all(&extract_root).map_err(|e| format!("extract dir: {e}"))?;
-        extract_zip_windows(&zip_path, &extract_root)?;
-
-        // Zip contains top-level `pi.exe` (flat) + assets/theme/docs/etc.
-        if !extract_root.join("pi.exe").is_file() {
-            let _ = std::fs::remove_dir_all(&extract_root);
-            let _ = std::fs::remove_file(&zip_path);
-            return Err("Archive missing pi.exe.".into());
-        }
-
-        let dest_pkg = package_dir();
-        if dest_pkg.exists() {
-            std::fs::remove_dir_all(&dest_pkg).map_err(|e| {
-                format!(
-                    "Cannot replace {}: {e}. Close any running pi from Blackwell and retry.",
-                    dest_pkg.display()
-                )
-            })?;
-        }
-        if let Err(e) = std::fs::rename(&extract_root, &dest_pkg) {
-            copy_dir_all(&extract_root, &dest_pkg).map_err(|e2| {
-                format!("install move failed: {e} / {e2}")
-            })?;
-        }
-
-        write_outer_shim(&tools)?;
-        std::fs::write(version_stamp_path(), format!("{ver}\n"))
-            .map_err(|e| format!("version stamp: {e}"))?;
-
-        let _ = std::fs::remove_file(&zip_path);
-
+        install_pi_version(&ver).await?;
         let _ = app;
         emit_dbg(&format!("[Pi] Installed → {}", launcher_path().display()));
         pi_code_status().await
     }
+}
+
+// ── Update to latest (DEV-only) ────────────────────────────────────────
+
+/// Repo root for the bundled pi-subagents extension (DEV source tree).
+/// `env!("CARGO_MANIFEST_DIR")` is `src-tauri/` at build time.
+#[cfg(windows)]
+fn dev_pi_ext_src() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("pi-ext")
+}
+
+/// 1-click DEV update: fetch the newest pi release, reinstall the binary, then
+/// refresh the bundled pi-subagents extension from npm and re-sync the DEV tree.
+///
+/// **DEV-only.** Release builds ship the pinned, verified pi (see `PINNED_VERSION`);
+/// following GitHub "latest" is an unverified action a regular user shouldn't take,
+/// so the UI hides the button outside dev builds and this command refuses to run
+/// unless compiled as a debug build.
+#[tauri::command]
+pub async fn pi_code_update_latest() -> Result<PiCodeStatus, String> {
+    #[cfg(not(windows))]
+    {
+        return Err("pi tool install is only supported on Windows.".into());
+    }
+
+    #[cfg(windows)]
+    {
+        if !cfg!(debug_assertions) {
+            return Err(
+                "pi update-to-latest is DEV-only — release builds ship the pinned, verified pi."
+                    .into(),
+            );
+        }
+
+        let latest = crate::github_releases::fetch_latest_release_tag("earendil-works/pi").await?;
+        let ver = latest.trim_start_matches('v').to_string();
+        emit_dbg(&format!("[Pi] Latest release: {latest} — updating…"));
+
+        install_pi_version(&ver).await?;
+
+        refresh_pi_subagents_bundle()?;
+        sync_dev_pi_ext()?;
+
+        emit_dbg(&format!("[Pi] Updated to {ver} (latest) + pi-subagents refreshed"));
+        pi_code_status().await
+    }
+}
+
+/// Refresh `src-tauri/pi-ext/pi-subagents` from the latest npm `pi-subagents`
+/// release, installing only its runtime deps (jiti/typebox/yaml) — the correct
+/// way to bump the bundle. Installing with `--omit=dev` avoids the upstream
+/// `file:./test/fixtures/pi-coding-agent-shim` devDep that otherwise creates a
+/// dangling junction and breaks the dev-runtime mirror.
+#[cfg(windows)]
+fn refresh_pi_subagents_bundle() -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    use std::process::{Command, Stdio};
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+    let bundle_src = dev_pi_ext_src().join("pi-subagents");
+    if !cfg!(debug_assertions) {
+        return Err("pi-subagents bundle refresh is DEV-only.".into());
+    }
+
+    // Temp project so npm resolves pi-subagents + runtime deps without touching
+    // the repo's own package manager state.
+    let tmp = std::env::temp_dir().join("blackwell-pi-subagents-update");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).map_err(|e| format!("mk temp project: {e}"))?;
+    std::fs::write(tmp.join("package.json"), "{}\n")
+        .map_err(|e| format!("write temp package.json: {e}"))?;
+
+    let out = Command::new("npm.cmd")
+        .args([
+            "install",
+            "pi-subagents@latest",
+            "--omit=dev",
+            "--no-audit",
+            "--no-fund",
+        ])
+        .current_dir(&tmp)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .map_err(|e| format!("npm spawn: {e}"))?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        let _ = std::fs::remove_dir_all(&tmp);
+        return Err(format!("npm install pi-subagents failed: {err}"));
+    }
+
+    let installed = tmp.join("node_modules").join("pi-subagents");
+    if !installed.join("package.json").is_file() {
+        let _ = std::fs::remove_dir_all(&tmp);
+        return Err("npm install produced no pi-subagents package.".into());
+    }
+
+    // Replace the DEV bundle source with the fresh package.
+    if bundle_src.exists() {
+        std::fs::remove_dir_all(&bundle_src).map_err(|e| format!("clear bundle: {e}"))?;
+    }
+    copy_dir_all(&installed, &bundle_src)?;
+
+    // Ship the runtime deps so pi can load the package without npm/network.
+    let bnm = bundle_src.join("node_modules");
+    std::fs::create_dir_all(&bnm).map_err(|e| format!("bundle node_modules: {e}"))?;
+    for dep in ["jiti", "typebox", "yaml"] {
+        let from = tmp.join("node_modules").join(dep);
+        if from.is_dir() {
+            copy_dir_all(&from, &bnm.join(dep))?;
+        }
+    }
+
+    let _ = std::fs::remove_dir_all(&tmp);
+    emit_dbg(&format!(
+        "[Pi] Refreshed pi-subagents bundle → {}",
+        bundle_src.display()
+    ));
+    Ok(())
+}
+
+/// Mirror the refreshed DEV pi-ext source to `target/debug/pi-ext` so the running
+/// DEV app (which materializes pi-ext next to the exe) picks it up immediately.
+#[cfg(windows)]
+fn sync_dev_pi_ext() -> Result<(), String> {
+    let src = dev_pi_ext_src();
+    let dst = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("target")
+        .join("debug")
+        .join("pi-ext");
+    if dst.exists() {
+        std::fs::remove_dir_all(&dst).map_err(|e| format!("clear debug pi-ext: {e}"))?;
+    }
+    copy_dir_all(&src, &dst)?;
+    emit_dbg(&format!("[Pi] Re-synced DEV pi-ext → {}", dst.display()));
+    Ok(())
 }
 
 // ── Launch ─────────────────────────────────────────────────────────────

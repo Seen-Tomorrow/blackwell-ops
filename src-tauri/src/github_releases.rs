@@ -233,6 +233,17 @@ pub async fn fetch_release_by_tag(tag: &str) -> Result<GitHubRelease, String> {
     parse_release(&body).ok_or_else(|| format!("Invalid release payload for tag '{tag}'"))
 }
 
+/// Latest release `tag_name` for an arbitrary GitHub repo (e.g. the DEV-only pi
+/// update check for `earendil-works/pi`). Reuses the shared GitHub API access.
+pub async fn fetch_latest_release_tag(repo: &str) -> Result<String, String> {
+    let url = format!("https://api.github.com/repos/{repo}/releases/latest");
+    let body = github_get_json(&url).await?;
+    body.get("tag_name")
+        .and_then(|v| v.as_str())
+        .map(String::from)
+        .ok_or_else(|| format!("No tag_name in latest release for {repo}"))
+}
+
 /// Recent semver releases (newest first).
 pub async fn fetch_recent_version_releases(per_page: u32) -> Result<Vec<GitHubRelease>, String> {
     let url = format!("https://api.github.com/repos/{GITHUB_REPO}/releases?per_page={per_page}");

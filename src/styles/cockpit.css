@@ -2273,6 +2273,28 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   margin-top: 1px;
 }
 
+/* DEV-only "update pi to latest" button (hidden outside dev builds). */
+.atomcode-wizard__update {
+  align-self: center;
+  padding: 4px 9px;
+  font-size: 8px;
+  letter-spacing: 0.14em;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--theme-accent, #76b900) 55%, transparent);
+  color: color-mix(in srgb, var(--theme-accent, #76b900) 85%, var(--theme-text, #f8fafc));
+  background: color-mix(in srgb, var(--theme-accent, #76b900) 12%, transparent);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.atomcode-wizard__update:hover:not(:disabled) {
+  border-color: var(--theme-accent, #76b900);
+  background: color-mix(in srgb, var(--theme-accent, #76b900) 20%, transparent);
+}
+.atomcode-wizard__update:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 /* ── Launch dock dim while harness is open ──────────────────────────
    When the right rail is closed, the launch dock sits directly under
    the wizard — visually colliding with the "Open {tool}" CTA. Instead

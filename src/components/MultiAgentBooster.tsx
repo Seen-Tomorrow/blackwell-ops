@@ -28,6 +28,7 @@ import {
   type AtomcodeEngineClickDetail,
 } from "../lib/events";
 import { KEYS, readStorage, writeStorage } from "../lib/storage";
+import { isDevBuild } from "../lib/build";
 import { ConfigChipSegment } from "./EngineParamGroups";
 import {
   BRAINS_OPTIONS,
@@ -327,6 +328,8 @@ export default function MultiAgentBooster({
   const [atomStatus, setAtomStatus] = useState<AtomcodeStatus | null>(null);
   const [qwenStatus, setQwenStatus] = useState<QwenCodeStatus | null>(null);
   const [piStatus, setPiStatus] = useState<PiCodeStatus | null>(null);
+  /** True while the DEV-only "update pi to latest" command is in flight. */
+  const [piUpdating, setPiUpdating] = useState(false);
   const [atomBusy, setAtomBusy] = useState<"idle" | "install" | "launch" | "webui">("idle");
   const [atomError, setAtomError] = useState<string | null>(null);
   const [atomMsg, setAtomMsg] = useState<string | null>(null);
@@ -1106,6 +1109,33 @@ export default function MultiAgentBooster({
     }
     return s;
   }, [piStatus, refreshPiStatus, normalizeError]);
+
+  /**
+   * DEV-only 1-click update: fetch the latest pi release, reinstall the binary,
+   * and refresh the bundled pi-subagents extension. Rust refuses to run outside
+   * a debug build; the button is hidden for non-dev builds via isDevBuild().
+   */
+  const updatePiToLatest = useCallback(async () => {
+    if (piUpdating) return;
+    setAtomError(null);
+    setAtomMsg(null);
+    setPiUpdating(true);
+    setInstallPhase("download");
+    try {
+      setInstallPhase("verify");
+      const s = await invoke<PiCodeStatus>("pi_code_update_latest");
+      setInstallPhase("finalize");
+      setPiStatus(s);
+      setAtomMsg(
+        `pi updated to ${s.version ?? s.pinnedVersion} + pi-subagents refreshed`,
+      );
+    } catch (e) {
+      setAtomError(normalizeError(e));
+    } finally {
+      setPiUpdating(false);
+      setInstallPhase(null);
+    }
+  }, [piUpdating, normalizeError]);
 
   const executeHarnessLaunch = useCallback(
     async (mode: "solo" | "brain_workers") => {
@@ -1914,6 +1944,17 @@ export default function MultiAgentBooster({
                   : "~46 MB standalone"}
               </span>
             </button>
+            {isDevBuild() && harnessTool === "pi" && (
+              <button
+                type="button"
+                className="atomcode-wizard__update font-mono"
+                onClick={updatePiToLatest}
+                disabled={piUpdating || atomBusy === "install"}
+                title="DEV: fetch the latest pi release + refresh the bundled pi-subagents extension"
+              >
+                {piUpdating ? "UPDATING…" : "UPDATE"}
+              </button>
+            )}
           </div>
 
           <button

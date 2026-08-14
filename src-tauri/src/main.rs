@@ -1072,6 +1072,7 @@ async fn main() {
             pi_code::pi_code_accept_disclaimer,
             pi_code::pi_code_set_project,
             pi_code::pi_code_install,
+            pi_code::pi_code_update_latest,
             pi_code::pi_code_launch,
             qwen_code::qwen_code_status,
             qwen_code::qwen_code_accept_disclaimer,

@@ -811,7 +811,11 @@ pub async fn run_dev_release_action(
 
     // Fast paths stay in-process (no detached console).
     // Bump is quick version-file edits — run inline so UI can refresh immediately.
-    if action.action == "check_app" || action.action == "check_full" || action.action == "bump" {
+    if action.action == "check_app"
+        || action.action == "check_full"
+        || action.action == "bump"
+        || action.action == "bump_pi"
+    {
         if RELEASE_JOB_RUNNING.swap(true, Ordering::SeqCst) {
             return Err("A release job is already running".into());
         }
@@ -821,6 +825,8 @@ pub async fn run_dev_release_action(
             move || {
                 if action.action == "bump" {
                     run_bump_inline(&app)
+                } else if action.action == "bump_pi" {
+                    run_bump_pi_inline(&app)
                 } else {
                     run_check_inline(&app, &action)
                 }
@@ -863,6 +869,14 @@ fn run_check_inline(app: &tauri::AppHandle, action: &DevReleaseAction) -> Result
 /// Patch version bump only (tauri conf + package.json + Cargo.toml). No pack/ship.
 fn run_bump_inline(app: &tauri::AppHandle) -> Result<String, String> {
     run_majestic_step(app, &["-Mode", "bump"])?;
+    Ok("ok".into())
+}
+
+/// Pin the shipped pi version to the DEV-installed (tested) version. No pack/ship.
+/// Writes `src-tauri/pi-pinned-version.txt`, which the release build embeds via
+/// `pi_code::PINNED_VERSION` (`include_str!`).
+fn run_bump_pi_inline(app: &tauri::AppHandle) -> Result<String, String> {
+    run_majestic_step(app, &["-Mode", "bump-pi"])?;
     Ok("ok".into())
 }
 
