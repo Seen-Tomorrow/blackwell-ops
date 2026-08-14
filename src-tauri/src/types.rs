@@ -1016,6 +1016,15 @@ pub struct HfRepoUpdateStatus {
     pub error: Option<String>,
 }
 
+/// How a local GGUF differs from the current Hub file.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QuantUpdateKind {
+    Current,
+    Header,
+    Full,
+}
+
 /// Catalog entry with an HF update available for its paired repo + quant.
 #[derive(Debug, Clone, Serialize)]
 pub struct CatalogUpdateEntry {
@@ -1025,5 +1034,13 @@ pub struct CatalogUpdateEntry {
     pub quant: String,
     #[serde(rename = "hasUpdate")]
     pub has_update: bool,
+    /// `header` = metadata/jinja only; `full` = weights changed.
+    pub kind: QuantUpdateKind,
+    #[serde(default, rename = "remoteUrl")]
+    pub remote_url: String,
+    #[serde(default, rename = "remoteTotalSize")]
+    pub remote_total_size: u64,
+    #[serde(default)]
+    pub reason: String,
 }
 

@@ -97,7 +97,9 @@ interface ModelCardProps {
   onSelect: (model: ModelEntry) => void;
   onScanModel?: (model: ModelEntry) => void;
   scanningPath: string | null;
-  hfUpdateAvailable?: boolean;
+  hfUpdateKind?: "header" | "full" | "current" | null;
+  hfUpdateBusy?: boolean;
+  onApplyHfUpdate?: () => void;
   fitScanBadge?: string | null;
   fitScanAvailable?: boolean;
   needsFitScan?: boolean;
@@ -112,7 +114,9 @@ export default function ModelCard({
   onSelect,
   onScanModel,
   scanningPath,
-  hfUpdateAvailable = false,
+  hfUpdateKind = null,
+  hfUpdateBusy = false,
+  onApplyHfUpdate,
   fitScanBadge = null,
   fitScanAvailable = false,
   needsFitScan = false,
@@ -186,13 +190,33 @@ export default function ModelCard({
           <span className="text-[8px] font-mono px-1 py-0.5 rounded-sm border border-gray-500/20 text-gray-500">
             GGUF
           </span>
-          {hfUpdateAvailable && (
-            <span
-              className="text-[7px] font-mono px-1 py-0.5 rounded-sm border border-yellow-400/30 text-yellow-400/80 bg-yellow-400/10"
-              title="Newer version available on Hugging Face"
+          {hfUpdateKind === "header" && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onApplyHfUpdate?.();
+              }}
+              disabled={hfUpdateBusy}
+              className="text-[7px] font-mono px-1 py-0.5 rounded-sm border border-cyan-400/40 text-cyan-400 bg-cyan-400/10 hover:bg-cyan-400/20 disabled:opacity-40"
+              title="Metadata / jinja template only — small download"
             >
-              HF UPDATE
-            </span>
+              {hfUpdateBusy ? "PATCHING…" : "HEADER"}
+            </button>
+          )}
+          {hfUpdateKind === "full" && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onApplyHfUpdate?.();
+              }}
+              disabled={hfUpdateBusy}
+              className="text-[7px] font-mono px-1 py-0.5 rounded-sm border border-yellow-400/40 text-yellow-400 bg-yellow-400/10 hover:bg-yellow-400/20 disabled:opacity-40"
+              title="Weights changed — full re-download (confirmation required)"
+            >
+              {hfUpdateBusy ? "QUEUING…" : "FULL"}
+            </button>
           )}
         </div>
       </div>

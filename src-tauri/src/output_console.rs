@@ -447,3 +447,11 @@ pub fn emit_blackwell_output_console_engines_line(
 ) {
     emit_blackwell_output_console_line(BlackwellOutputConsoleCategory::Engines, content, style);
 }
+
+/// Utils tab — library/hub utilities (GGUF patch, scans, disk checks).
+pub fn emit_blackwell_output_console_utils_line(
+    content: impl Into<String>,
+    style: BlackwellOutputConsoleLineStyle,
+) {
+    emit_blackwell_output_console_line(BlackwellOutputConsoleCategory::Utils, content, style);
+}

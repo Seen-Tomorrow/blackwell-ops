@@ -1065,11 +1065,28 @@ export interface HfRepoUpdateStatus {
   error?: string | null;
 }
 
+export type QuantUpdateKind = 'current' | 'header' | 'full';
+
 export interface CatalogUpdateEntry {
   path: string;
   hfModelId: string;
   quant: string;
   hasUpdate: boolean;
+  kind: QuantUpdateKind;
+  remoteUrl?: string;
+  remoteTotalSize?: number;
+  reason?: string;
+}
+
+export interface DownloadHistoryEntry {
+  id: string;
+  hfModelId: string;
+  file_name: string;
+  quantType: string;
+  kind: 'header' | 'full';
+  status: string;
+  bytes: number;
+  finishedAt: number;
 }
 
 export type IpcMeterTier = "green" | "yellow" | "orange" | "red";

@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import type { DownloadTask, DownloadStatus } from '@/lib/types';
+import type { DownloadTask, DownloadStatus, DownloadHistoryEntry } from '@/lib/types';
 import DownloadProgressRow from './DownloadProgressRow';
 
 const ACTIVE_STATUSES: DownloadStatus[] = ['downloading', 'queued', 'paused', 'scanning'];
@@ -19,6 +19,15 @@ export default function ModelHubDownloads({ downloads }: ModelHubDownloadsProps)
   const [actionError, setActionError] = useState<string | null>(null);
   const [sizeSort, setSizeSort] = useState<SizeSort>('default');
   const [recoveryBusy, setRecoveryBusy] = useState(false);
+  const [pane, setPane] = useState<'queue' | 'history'>('queue');
+  const [history, setHistory] = useState<DownloadHistoryEntry[]>([]);
+
+  useEffect(() => {
+    if (pane !== 'history') return;
+    void invoke<DownloadHistoryEntry[]>('get_download_history')
+      .then((rows) => setHistory(rows.slice().reverse()))
+      .catch(() => setHistory([]));
+  }, [pane, downloads]);
 
   const handleRecover = async () => {
     setRecoveryBusy(true);
@@ -65,26 +74,67 @@ export default function ModelHubDownloads({ downloads }: ModelHubDownloadsProps)
       )}
       <div className="mb-2 flex items-center gap-2 text-[9px] font-mono tracking-wider uppercase text-stealth-muted">
         <span>Download manager</span>
-        {activeDownloads.length > 0 && (
+        {activeDownloads.length > 0 && pane === 'queue' && (
           <span className="text-stealth-muted/50">{activeDownloads.length} active</span>
         )}
         <button
           type="button"
-          onClick={cycleSizeSort}
-          className={`ml-auto value-chip px-1.5 py-0 text-[7px] font-mono rounded-sm transition-colors ${
-            sizeSort !== 'default' ? 'value-chip-active' : ''
-          }`}
-          title="Sort by total size — click to cycle: default (newest) → largest → smallest"
+          onClick={() => setPane('queue')}
+          className={`value-chip px-1.5 py-0 text-[7px] font-mono rounded-sm ${pane === 'queue' ? 'value-chip-active' : ''}`}
         >
-          {sortLabel}
+          QUEUE
         </button>
+        <button
+          type="button"
+          onClick={() => setPane('history')}
+          className={`value-chip px-1.5 py-0 text-[7px] font-mono rounded-sm ${pane === 'history' ? 'value-chip-active' : ''}`}
+        >
+          HISTORY
+        </button>
+        {pane === 'queue' && (
+          <button
+            type="button"
+            onClick={cycleSizeSort}
+            className={`ml-auto value-chip px-1.5 py-0 text-[7px] font-mono rounded-sm transition-colors ${
+              sizeSort !== 'default' ? 'value-chip-active' : ''
+            }`}
+            title="Sort by total size — click to cycle: default (newest) → largest → smallest"
+          >
+            {sortLabel}
+          </button>
+        )}
       </div>
       <p className="mb-2 text-[7px] font-mono text-stealth-muted/50 leading-snug">
         Models · app updates · engine packs · toolchain
       </p>
 
       <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto">
-        {sorted.length === 0 ? (
+        {pane === 'history' ? (
+          history.length === 0 ? (
+            <div className="py-6 text-center text-[9px] font-mono text-stealth-muted/60">
+              NO DOWNLOAD HISTORY
+            </div>
+          ) : (
+            history.map((row) => (
+              <div key={row.id} className="rounded-sm border border-stealth-border/40 px-2 py-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate text-[8px] font-mono text-white/80">
+                    {row.hfModelId || row.file_name}
+                  </span>
+                  <span className={`shrink-0 text-[7px] font-mono ${
+                    row.kind === 'header' ? 'text-cyan-400' : 'text-stealth-muted'
+                  }`}>
+                    {row.kind === 'header' ? 'HEADER' : 'FULL'}
+                  </span>
+                </div>
+                <div className="mt-0.5 flex items-center justify-between text-[7px] font-mono text-stealth-muted/70">
+                  <span>{row.status}{row.quantType ? ` · ${row.quantType}` : ''}</span>
+                  <span>{row.bytes > 0 ? `${(row.bytes / 1_048_576).toFixed(2)} MB` : ''}</span>
+                </div>
+              </div>
+            ))
+          )
+        ) : sorted.length === 0 ? (
           <div className="py-6 text-center">
             <div className="mb-3 text-[9px] font-mono text-stealth-muted/60">
               NO ACTIVE DOWNLOADS

@@ -69,6 +69,71 @@ fn needs_github_auth(task: &DownloadTask) -> bool {
 
 const MANIFEST_FILE: &str = "download_tasks.json";
 const BATCHES_FILE: &str = "download_batches.json";
+const HISTORY_FILE: &str = "download_history.json";
+const HISTORY_MAX: usize = 50;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DownloadHistoryEntry {
+    pub id: String,
+    #[serde(rename = "hfModelId")]
+    pub hf_model_id: String,
+    pub file_name: String,
+    #[serde(rename = "quantType")]
+    pub quant_type: String,
+    /// `header` or `full`
+    pub kind: String,
+    /// `completed` | `failed` | `patched` | `cancelled`
+    pub status: String,
+    pub bytes: u64,
+    #[serde(rename = "finishedAt")]
+    pub finished_at: i64,
+}
+
+fn history_path() -> PathBuf {
+    crate::config::cache_dir().join(HISTORY_FILE)
+}
+
+pub fn record_download_history(entry: DownloadHistoryEntry) {
+    let mut rows = load_download_history();
+    rows.retain(|e| e.id != entry.id);
+    rows.push(entry);
+    if rows.len() > HISTORY_MAX {
+        let drop_n = rows.len() - HISTORY_MAX;
+        rows.drain(0..drop_n);
+    }
+    if let Ok(json) = serde_json::to_string_pretty(&rows) {
+        let _ = std::fs::create_dir_all(crate::config::cache_dir());
+        let _ = std::fs::write(history_path(), json);
+    }
+}
+
+pub fn load_download_history() -> Vec<DownloadHistoryEntry> {
+    let path = history_path();
+    if !path.exists() {
+        return Vec::new();
+    }
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+fn history_from_task(task: &DownloadTask, status: &str) -> DownloadHistoryEntry {
+    DownloadHistoryEntry {
+        id: task.id.clone(),
+        hf_model_id: task.hf_model_id.clone(),
+        file_name: task.file_name.clone(),
+        quant_type: task.quant_type.clone(),
+        kind: if task.task_kind == "hf-header" {
+            "header".into()
+        } else {
+            "full".into()
+        },
+        status: status.to_string(),
+        bytes: task.downloaded_bytes,
+        finished_at: Utc::now().timestamp(),
+    }
+}
 
 fn manifest_path() -> PathBuf {
     crate::config::cache_dir().join(MANIFEST_FILE)
@@ -902,34 +967,84 @@ impl DownloadManager {
         }
     }
 
-    /// Cancel a download. Sets status to Failed and removes the partial file from disk.
-    pub fn cancel_task(&mut self, task_id: &str) -> Result<(), String> {
-        match self.tasks.get_mut(task_id) {
-            Some(task) => {
-                let dest = task.dest_path.clone();
-                let partial = partial_download_path(&dest);
-                task.status = DownloadStatus::Failed;
-                task.error = Some("Cancelled".to_string());
+    /// Cancel a download. Marks the task (and every shard in its quant batch) Failed,
+    /// drops recovery manifests so restart will not re-queue, and returns `.part`
+    /// paths the caller should delete after workers close their file handles.
+    /// Never deletes a finished `.gguf`.
+    pub fn cancel_task(&mut self, task_id: &str) -> Result<Vec<String>, String> {
+        let Some(task) = self.tasks.get(task_id) else {
+            return Err(format!("Task {} not found", task_id));
+        };
+        let batch_id = task.batch_id.clone();
+        let dest_path = task.dest_path.clone();
+        let label = if task.hf_model_id.is_empty() {
+            task.file_name.clone()
+        } else {
+            format!("{} / {}", task.hf_model_id, task.quant_type)
+        };
 
-                // Manifest cleanup — spawned off blocking pool to avoid stalling IPC handler.
-                let tid = task_id.to_string();
-                std::thread::spawn(move || {
-                    remove_task_from_manifest(&tid);
-                });
+        let mut part_paths: Vec<String> = Vec::new();
+        let mut manifest_ids: Vec<String> = Vec::new();
 
-                // Remove partial (and legacy in-progress final path) from disk
-                tokio::task::spawn_blocking(move || {
-                    for path in [partial.as_str(), dest.as_str()] {
-                        if !path.is_empty() && Path::new(path).exists() {
-                            let _ = std::fs::remove_file(path);
-                        }
-                    }
-                });
-
-                Ok(())
+        if let Some(bid) = batch_id {
+            if let Some(batch) = self.quant_batches.remove(&bid) {
+                save_quant_batches(&self.quant_batches);
+                for part in &batch.parts {
+                    part_paths.push(partial_download_path(&part.dest_path));
+                }
+                crate::output_console::emit_blackwell_output_console_utils_line(
+                    format!(
+                        "[download] cancel {} — dropping batch {} ({} shard(s))",
+                        label,
+                        bid,
+                        batch.parts.len()
+                    ),
+                    crate::output_console::BlackwellOutputConsoleLineStyle::Warning,
+                );
             }
-            None => Err(format!("Task {} not found", task_id)),
+            for t in self.tasks.values_mut() {
+                if t.batch_id.as_deref() == Some(bid.as_str()) {
+                    t.status = DownloadStatus::Failed;
+                    t.error = Some("Cancelled".to_string());
+                    t.speed_bps = 0;
+                    t.eta_seconds = 0;
+                    manifest_ids.push(t.id.clone());
+                    part_paths.push(partial_download_path(&t.dest_path));
+                }
+            }
+        } else {
+            if let Some(t) = self.tasks.get_mut(task_id) {
+                t.status = DownloadStatus::Failed;
+                t.error = Some("Cancelled".to_string());
+                t.speed_bps = 0;
+                t.eta_seconds = 0;
+            }
+            manifest_ids.push(task_id.to_string());
+            part_paths.push(partial_download_path(&dest_path));
+            crate::output_console::emit_blackwell_output_console_utils_line(
+                format!("[download] cancel {label}"),
+                crate::output_console::BlackwellOutputConsoleLineStyle::Warning,
+            );
         }
+
+        part_paths.sort();
+        part_paths.dedup();
+
+        for id in &manifest_ids {
+            remove_task_from_manifest(id);
+        }
+
+        if let Some(t) = self.tasks.get(task_id) {
+            record_download_history(history_from_task(t, "cancelled"));
+        }
+
+        log::info!(
+            "[download] cancelled {} — {} .part path(s) to delete, {} manifest row(s) dropped",
+            task_id,
+            part_paths.len(),
+            manifest_ids.len()
+        );
+        Ok(part_paths)
     }
 
     /// Resume a paused download. Resets status to Queued and spawns a new worker.
@@ -1588,6 +1703,7 @@ async fn mark_completed_worker(
         let app = is_app_task(task);
         if !toolchain && !app {
             task.status = DownloadStatus::Completed;
+            record_download_history(history_from_task(task, "completed"));
         }
         task.speed_bps = 0;
         task.eta_seconds = 0;
@@ -2052,6 +2168,43 @@ async fn mark_failed(manager: &Arc<RwLock<DownloadManager>>, task_id: &str, erro
     }
 }
 
+/// Delete `.part` files only. Retries because the worker may still hold the handle on Windows.
+pub fn delete_partial_files(paths: &[String]) {
+    for path in paths {
+        if path.is_empty() {
+            continue;
+        }
+        if !path.ends_with(".part") {
+            log::warn!("[download] refuse to delete non-.part on cancel: {path}");
+            continue;
+        }
+        for attempt in 0..12 {
+            match std::fs::remove_file(path) {
+                Ok(()) => {
+                    log::info!("[download] deleted partial {path}");
+                    crate::output_console::emit_blackwell_output_console_utils_line(
+                        format!("[download] deleted {path}"),
+                        crate::output_console::BlackwellOutputConsoleLineStyle::Normal,
+                    );
+                    break;
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => break,
+                Err(e) => {
+                    if attempt == 11 {
+                        log::warn!("[download] could not delete {path}: {e}");
+                        crate::output_console::emit_blackwell_output_console_utils_line(
+                            format!("[download] could not delete {path}: {e}"),
+                            crate::output_console::BlackwellOutputConsoleLineStyle::Error,
+                        );
+                    } else {
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Generate a unique task ID using microsecond timestamp.
 fn generate_task_id() -> String {
     Utc::now().timestamp_micros().to_string()
@@ -2252,5 +2405,109 @@ mod tests {
             dm.resume_download(task_id, Arc::clone(&manager)).await
         };
         assert!(result.is_err());
+    }
+
+    fn dummy_task(id: &str, dest: &str, batch_id: Option<String>, status: DownloadStatus) -> DownloadTask {
+        DownloadTask {
+            id: id.to_string(),
+            hf_model_id: "MiniMaxAI/MiniMax-M2.7-GGUF".to_string(),
+            file_name: dest.rsplit(['/', '\\']).next().unwrap_or(dest).to_string(),
+            download_url: "https://huggingface.co/x".to_string(),
+            total_bytes: 1000,
+            downloaded_bytes: 100,
+            status,
+            dest_path: dest.to_string(),
+            speed_bps: 10,
+            pause_offset: 100,
+            error: None,
+            status_message: None,
+            retry_count: 0,
+            eta_seconds: 0,
+            hf_author: "MiniMaxAI".to_string(),
+            quant_type: "Q4_K_M".to_string(),
+            lfs_oid: String::new(),
+            batch_id,
+            task_kind: TASK_KIND_HF.to_string(),
+            priority: 100,
+        }
+    }
+
+    #[test]
+    fn cancel_task_returns_part_path_not_gguf() {
+        let mut dm = DownloadManager::new();
+        dm.tasks.insert(
+            "t1".into(),
+            dummy_task("t1", "models/m.gguf", None, DownloadStatus::Downloading),
+        );
+        let parts = dm.cancel_task("t1").expect("cancel");
+        assert_eq!(parts, vec!["models/m.gguf.part".to_string()]);
+        let t = dm.tasks.get("t1").unwrap();
+        assert_eq!(t.status, DownloadStatus::Failed);
+        assert_eq!(t.error.as_deref(), Some("Cancelled"));
+    }
+
+    #[test]
+    fn cancel_one_shard_drops_whole_batch_so_restart_cannot_revive() {
+        let mut dm = DownloadManager::new();
+        let batch_id = "batch-minimax".to_string();
+        dm.quant_batches.insert(
+            batch_id.clone(),
+            QuantDownloadBatch {
+                id: batch_id.clone(),
+                hf_model_id: "MiniMaxAI/MiniMax-M2.7-GGUF".into(),
+                quant_type: "Q4_K_M".into(),
+                hf_author: "MiniMaxAI".into(),
+                parts: vec![
+                    QuantBatchPart {
+                        dest_path: "models/a-00001-of-00002.gguf".into(),
+                        total_bytes: 100,
+                        lfs_oid: String::new(),
+                        file_name: "a-00001-of-00002.gguf".into(),
+                        download_url: "https://x/1".into(),
+                    },
+                    QuantBatchPart {
+                        dest_path: "models/a-00002-of-00002.gguf".into(),
+                        total_bytes: 100,
+                        lfs_oid: String::new(),
+                        file_name: "a-00002-of-00002.gguf".into(),
+                        download_url: "https://x/2".into(),
+                    },
+                ],
+            },
+        );
+        dm.tasks.insert(
+            "s1".into(),
+            dummy_task(
+                "s1",
+                "models/a-00001-of-00002.gguf",
+                Some(batch_id.clone()),
+                DownloadStatus::Downloading,
+            ),
+        );
+        dm.tasks.insert(
+            "s2".into(),
+            dummy_task(
+                "s2",
+                "models/a-00002-of-00002.gguf",
+                Some(batch_id.clone()),
+                DownloadStatus::Queued,
+            ),
+        );
+
+        let parts = dm.cancel_task("s1").expect("cancel");
+        assert!(dm.quant_batches.get(&batch_id).is_none());
+        assert_eq!(dm.tasks.get("s1").unwrap().status, DownloadStatus::Failed);
+        assert_eq!(dm.tasks.get("s2").unwrap().status, DownloadStatus::Failed);
+        assert!(parts.iter().any(|p| p.ends_with("a-00001-of-00002.gguf.part")));
+        assert!(parts.iter().any(|p| p.ends_with("a-00002-of-00002.gguf.part")));
+
+        // Batch gone → restart reconciliation must not invent new tasks.
+        let created = dm.requeue_orphaned_batch_parts();
+        assert_eq!(created, 0);
+    }
+
+    #[test]
+    fn delete_partial_files_skips_non_part() {
+        delete_partial_files(&["models/finished.gguf".into()]);
     }
 }

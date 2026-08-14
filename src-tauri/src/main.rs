@@ -511,9 +511,18 @@ async fn cancel_download(
     manager: tauri::State<'_, Arc<RwLock<DownloadManager>>>,
     task_id: String,
 ) -> Result<(), String> {
-    let mut dm = manager.write().await;
-    dm.cancel_task(&task_id)?;
-    drop(dm);
+    let part_paths = {
+        let mut dm = manager.write().await;
+        dm.cancel_task(&task_id)?
+    };
+    // Worker checks Failed on a 50ms tick and must drop the file handle first (Windows).
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    let paths = part_paths.clone();
+    tokio::task::spawn_blocking(move || {
+        download_manager::delete_partial_files(&paths);
+    })
+    .await
+    .map_err(|e| format!("cancel cleanup join: {e}"))?;
 
     ipc_meter::emit_tracked(&app, "download-event", serde_json::json!({
         "type": "cancelled",
@@ -619,6 +628,11 @@ async fn get_download_tasks(
 }
 
 #[tauri::command]
+async fn get_download_history() -> Result<Vec<crate::download_manager::DownloadHistoryEntry>, String> {
+    Ok(crate::download_manager::load_download_history())
+}
+
+#[tauri::command]
 async fn clear_completed_downloads(
     manager: tauri::State<'_, Arc<RwLock<DownloadManager>>>,
 ) -> Result<(), String> {
@@ -669,6 +683,24 @@ async fn patch_model_metadata(
                 header_bytes_downloaded,
                 local_io_bytes
             );
+            let name = std::path::Path::new(&local_path)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("model.gguf")
+                .to_string();
+            crate::download_manager::record_download_history(
+                crate::download_manager::DownloadHistoryEntry {
+                    id: format!("patch-{}", chrono::Utc::now().timestamp_micros()),
+                    hf_model_id: String::new(),
+                    file_name: name,
+                    quant_type: String::new(),
+                    kind: "header".into(),
+                    status: "patched".into(),
+                    bytes: header_bytes_downloaded,
+                    finished_at: chrono::Utc::now().timestamp(),
+                },
+            );
+            let _ = local_io_bytes;
             Ok("patched".to_string())
         }
         gguf_patch::PatchResult::RequiresFullDownload { reason } => {
@@ -1158,6 +1190,7 @@ async fn main() {
             start_toolchain_download,
             retry_toolchain_extract,
             get_download_tasks,
+            get_download_history,
             clear_completed_downloads,
             recover_orphaned_batch_parts,
             patch_model_metadata,

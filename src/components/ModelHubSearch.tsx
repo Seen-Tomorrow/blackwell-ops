@@ -335,20 +335,37 @@ export default function ModelHubSearch() {
   }, [showToast, diskChecks]);
 
   const handlePatchMetadata = useCallback(async (modelId: string, file: GgufFile) => {
+    const parts = getDownloadParts(file);
+    showToast(`PATCHING ${file.type}…`);
+    void invoke('emit_to_blackwell_console', {
+      category: 'utils',
+      content: `[gguf-patch] UI click  quant=${file.type}  parts=${parts.length}`,
+      style: 'Highlight',
+    });
     try {
-      const parts = getDownloadParts(file);
+      let patched = 0;
+      let current = 0;
       for (const part of parts) {
         const localPath = await buildDownloadDestPath(modelId, part.pathInRepo);
+        void invoke('emit_to_blackwell_console', {
+          category: 'utils',
+          content: `[gguf-patch] UI invoke  ${localPath}`,
+          style: 'Command',
+        });
         const result = await invoke<string>('patch_model_metadata', {
           localPath,
           remoteUrl: part.url,
           remoteTotalSize: part.size_bytes,
         });
-        if (result === 'patched') {
-          showToast(`PATCHED ${file.type} METADATA`);
-        } else if (result === 'already_current') {
-          // already up to date — skip
-        }
+        if (result === 'patched') patched += 1;
+        else if (result === 'already_current') current += 1;
+      }
+      if (patched > 0) {
+        showToast(`PATCHED ${file.type} METADATA`);
+      } else if (current > 0) {
+        showToast(`${file.type} ALREADY CURRENT`);
+      } else {
+        showToast(`${file.type} PATCH FINISHED`);
       }
     } catch (e) {
       console.error('Patch failed:', e);

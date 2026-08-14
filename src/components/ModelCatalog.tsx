@@ -1,6 +1,7 @@
 import { useRef, useEffect, useMemo, useState, useCallback } from "react";
 import type { CatalogDraftFilter } from "../lib/specDraft";
-import type { EngineConfig, ModelEntry, ProviderConfig, StackEntry } from "../lib/types";
+import type { CatalogUpdateEntry, EngineConfig, HfModelInfo, ModelEntry, ProviderConfig, StackEntry } from "../lib/types";
+import { invoke } from "@tauri-apps/api/core";
 import EngineConfigPanel from "./EngineConfigPanel";
 import ModelCard from "./ModelCard";
 import ModelSearchPalette from "./ModelSearchPalette";
@@ -28,7 +29,10 @@ interface ModelCatalogProps {
   setBatchScanState: React.Dispatch<React.SetStateAction<{ active: boolean; scanned: number; failed: number; total: number }>>;
   stack: StackEntry[];
   setupGuide: SetupGuideState;
-  catalogHfUpdates?: Set<string>;
+  catalogHfUpdates?: CatalogUpdateEntry[];
+  catalogUpdatesBusy?: boolean;
+  onCheckCatalogUpdates?: () => void;
+  onClearCatalogUpdate?: (path: string) => void;
 }
 
 /** Sort chips — no NAME (search covers free-text); keep one row when rail is narrow. */
@@ -49,7 +53,18 @@ const draftFilterLabels: Record<CatalogDraftFilter, string> = {
 };
 
 export default function ModelCatalog(props: ModelCatalogProps) {
-  const { models, onLaunch, error, onReload, providers: externalProviders, committedVramMib, scanningPath, setScanningPath, batchScanState, setBatchScanState, stack, setupGuide, catalogHfUpdates } = props;
+  const { models, onLaunch, error, onReload, providers: externalProviders, committedVramMib, scanningPath, setScanningPath, batchScanState, setBatchScanState, stack, setupGuide, catalogHfUpdates, catalogUpdatesBusy, onCheckCatalogUpdates, onClearCatalogUpdate } = props;
+  const [updatesOnly, setUpdatesOnly] = useState(false);
+  const [fullConfirm, setFullConfirm] = useState<CatalogUpdateEntry | null>(null);
+  const [updateBusyPath, setUpdateBusyPath] = useState<string | null>(null);
+
+  const updateByPath = useMemo(() => {
+    const map = new Map<string, CatalogUpdateEntry>();
+    for (const row of catalogHfUpdates ?? []) {
+      if (row.hasUpdate) map.set(row.path, row);
+    }
+    return map;
+  }, [catalogHfUpdates]);
   const { gpus, systemInfo } = useTelemetry();
   const [showScanMenu, setShowScanMenu] = useState(false);
   const [editMode, setEditMode] = useState(false);
@@ -90,13 +105,57 @@ export default function ModelCatalog(props: ModelCatalogProps) {
   /** Portable CUDA runtime required for llama-server GGUF probe (backend hard gate). */
   const scanBlockedByToolchain = !setupGuide.runtimeReady;
 
+  const applyHeaderUpdate = useCallback(async (row: CatalogUpdateEntry) => {
+    setUpdateBusyPath(row.path);
+    try {
+      await invoke<string>("patch_model_metadata", {
+        localPath: row.path,
+        remoteUrl: row.remoteUrl ?? "",
+        remoteTotalSize: row.remoteTotalSize ?? 0,
+      });
+      onClearCatalogUpdate?.(row.path);
+    } catch (e) {
+      console.error("Header patch failed:", e);
+    } finally {
+      setUpdateBusyPath(null);
+    }
+  }, [onClearCatalogUpdate]);
+
+  const applyFullUpdate = useCallback(async (row: CatalogUpdateEntry) => {
+    setUpdateBusyPath(row.path);
+    try {
+      const info = await invoke<HfModelInfo>("get_hf_model_info", { modelId: row.hfModelId });
+      const file = info.gguf_files.find((f) => f.type === row.quant);
+      if (!file) throw new Error(`Quant ${row.quant} not on Hub`);
+      const slash = row.hfModelId.indexOf("/");
+      const hfAuthor = slash > 0 ? row.hfModelId.slice(0, slash) : info.author || "unknown";
+      await invoke<string[]>("start_quant_download", {
+        hfModelId: row.hfModelId,
+        hfAuthor,
+        quantType: file.type,
+        ggufFile: file,
+      });
+      onClearCatalogUpdate?.(row.path);
+      setFullConfirm(null);
+    } catch (e) {
+      console.error("Full update failed:", e);
+    } finally {
+      setUpdateBusyPath(null);
+    }
+  }, [onClearCatalogUpdate]);
+
   const { search, setSearch, draftFilter, setCatalogDraftFilter, catalogSelectedModel, panelActiveModel, handleSelect, handleSelectBySlot, selectedSlotIdx, sortField, sortDirection, handleSort,
-    catalogModels, runningModelPaths,
+    catalogModels: catalogModelsRaw, runningModelPaths,
     handleScanModel, handleScanAll, handleCancelScan,
     handleDeleteModel, handleRenameModel,
     fitScanAvailable, isFitScanning, getFitScanActiveLabel, getFitScanBadge, modelNeedsFitScan, handleFitScanModel,
     fitScanningCount,
     zone, visibleCount, setVisibleCount } = catalog;
+
+  const catalogModels = useMemo(
+    () => (updatesOnly ? catalogModelsRaw.filter((m) => updateByPath.has(m.path)) : catalogModelsRaw),
+    [updatesOnly, catalogModelsRaw, updateByPath],
+  );
 
   const cycleDraftFilter = useCallback(() => {
     const idx = DRAFT_FILTER_CYCLE.indexOf(draftFilter);
@@ -522,6 +581,25 @@ export default function ModelCatalog(props: ModelCatalogProps) {
         )}
         <button
           type="button"
+          onClick={() => onCheckCatalogUpdates?.()}
+          disabled={catalogUpdatesBusy}
+          className="catalog-cycle-btn value-chip px-1.5 py-0 text-[7px] font-mono uppercase rounded-sm transition-colors disabled:opacity-40"
+          title="Check Hugging Face for header/template or full-weight updates on local models"
+        >
+          {catalogUpdatesBusy ? "CHECKING…" : "CHECK UPDATES"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setUpdatesOnly((v) => !v)}
+          className={`catalog-cycle-btn value-chip px-1.5 py-0 text-[7px] font-mono uppercase rounded-sm transition-colors ${
+            updatesOnly ? "value-chip-active" : ""
+          }`}
+          title="Show only models with a Hub update"
+        >
+          UPDATES{updateByPath.size > 0 ? ` ${updateByPath.size}` : ""}
+        </button>
+        <button
+          type="button"
           onClick={cycleDraftFilter}
           className="catalog-cycle-btn value-chip px-1.5 py-0 text-[7px] font-mono uppercase rounded-sm transition-colors"
           title="Model filter — click to cycle: MAIN → DRAFT → ALL"
@@ -709,6 +787,35 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                 </div>
               </div>
             )}
+            {fullConfirm && (
+              <div
+                className="catalog-list-panel__chrome-dialog rounded-sm border border-yellow-400/35 bg-yellow-400/5 px-2 py-2 space-y-2"
+                role="alertdialog"
+                aria-label="Confirm full weight re-download"
+              >
+                <p className="text-[7px] font-mono text-white/90 leading-relaxed">
+                  FULL update for <span className="text-yellow-400">{fullConfirm.quant}</span> re-downloads weights
+                  ({fullConfirm.reason || "tensor data changed"}).
+                </p>
+                <div className="flex gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => void applyFullUpdate(fullConfirm)}
+                    disabled={updateBusyPath === fullConfirm.path}
+                    className="value-chip-active text-[7px] font-mono px-2 py-0.5 rounded-sm border border-yellow-400/40 text-yellow-400 disabled:opacity-30"
+                  >
+                    DOWNLOAD
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFullConfirm(null)}
+                    className="value-chip text-[7px] font-mono px-2 py-0.5 rounded-sm"
+                  >
+                    CANCEL
+                  </button>
+                </div>
+              </div>
+            )}
             {deleteConfirmOpen && editTarget && (
               <div
                 className="catalog-list-panel__chrome-dialog rounded-sm border border-telemetry-red/35 bg-telemetry-red/5 px-2 py-2 space-y-2"
@@ -794,7 +901,14 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                         onSelect={handleSelect}
                         onScanModel={handleScanModel}
                         scanningPath={scanningPath}
-                        hfUpdateAvailable={catalogHfUpdates?.has(model.path) ?? false}
+                        hfUpdateKind={updateByPath.get(model.path)?.kind ?? null}
+                        hfUpdateBusy={updateBusyPath === model.path}
+                        onApplyHfUpdate={() => {
+                          const row = updateByPath.get(model.path);
+                          if (!row) return;
+                          if (row.kind === "full") setFullConfirm(row);
+                          else void applyHeaderUpdate(row);
+                        }}
                         fitScanBadge={getFitScanBadge(model)}
                         fitScanAvailable={fitScanAvailable}
                         needsFitScan={modelNeedsFitScan(model)}

@@ -10,6 +10,7 @@ use crate::model_catalog;
 use crate::types::{
     CatalogUpdateEntry, GgufFile, GgufShard, HfFileUpdateCheck, HfModel, HfModelInfo,
     HfRepoUpdateStatus, HfSearchFilters, HfSearchResponse, ModelEntry, ModelPathEntry,
+    QuantUpdateKind,
 };
 use reqwest::Client;
 use serde::Deserialize;
@@ -737,15 +738,67 @@ pub async fn check_catalog_hf_updates(
             let Some(disk) = disk_results.iter().find(|d| d.quant_type == entry.quant) else {
                 continue;
             };
-            if disk.match_type == "none" {
+            if disk.match_type == "none" || disk.match_type == "lfs" {
                 continue;
             }
-            let has_update = disk.match_type == "mismatch";
+            let hf = hf_ggufs.iter().find(|g| g.r#type == entry.quant);
+            let remote_url = hf.map(|g| g.url.clone()).unwrap_or_default();
+            let remote_size = hf.map(|g| g.size_bytes).unwrap_or(0);
+            let remote_oid = hf.map(|g| g.lfs_oid.clone()).unwrap_or_default();
+            let local_oid = entry
+                .hf_meta
+                .as_ref()
+                .map(|h| h.lfs_oid.as_str())
+                .filter(|s| !s.is_empty());
+
+            let kind = if remote_url.is_empty() {
+                QuantUpdateKind::Full
+            } else {
+                match crate::gguf_patch::classify_update(
+                    &entry.path,
+                    &remote_url,
+                    remote_size,
+                    &remote_oid,
+                    local_oid,
+                    false,
+                )
+                .await
+                {
+                    Ok(k) => k,
+                    Err(e) => {
+                        log::warn!("[catalog-updates] classify {} failed: {e}", entry.path);
+                        if disk.match_type == "size" {
+                            QuantUpdateKind::Header
+                        } else {
+                            QuantUpdateKind::Full
+                        }
+                    }
+                }
+            };
+            if kind == QuantUpdateKind::Current {
+                continue;
+            }
+            let reason = match kind {
+                QuantUpdateKind::Header => "Metadata / template only — small download".to_string(),
+                QuantUpdateKind::Full => "Weights differ — full re-download".to_string(),
+                QuantUpdateKind::Current => String::new(),
+            };
+            crate::output_console::emit_blackwell_output_console_utils_line(
+                format!(
+                    "[catalog-updates] {} {} → {:?}",
+                    repo_id, entry.quant, kind
+                ),
+                crate::output_console::BlackwellOutputConsoleLineStyle::Normal,
+            );
             results.push(CatalogUpdateEntry {
                 path: entry.path.clone(),
                 hf_model_id: repo_id.clone(),
                 quant: entry.quant.clone(),
-                has_update,
+                has_update: true,
+                kind,
+                remote_url,
+                remote_total_size: remote_size,
+                reason,
             });
         }
     }

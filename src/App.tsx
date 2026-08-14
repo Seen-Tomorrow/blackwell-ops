@@ -64,7 +64,8 @@ function App() {
   const logSearchHitIndexRef = useRef(0);
 
   const [catalogError, setCatalogError] = useState<string | null>(null);
-  const [catalogHfUpdates] = useState<Set<string>>(() => new Set()); // populated when manual check ships — CATALOG-HF-UPDATES.md
+  const [catalogHfUpdates, setCatalogHfUpdates] = useState<import("./lib/types").CatalogUpdateEntry[]>([]);
+  const [catalogUpdatesBusy, setCatalogUpdatesBusy] = useState(false);
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
   const [scanningPath, setScanningPath] = useState<string | null>(null);
   const [batchScanState, setBatchScanState] = useState<{active: boolean; scanned: number; failed: number; total: number}>({ active: false, scanned: 0, failed: 0, total: 0 });
@@ -307,7 +308,18 @@ function App() {
     })();
   });
 
-  // Catalog HF update check disabled until catalog UX is ready — see CATALOG-HF-UPDATES.md
+  const checkCatalogHfUpdates = useCallback(async () => {
+    setCatalogUpdatesBusy(true);
+    try {
+      const rows = await invoke<import("./lib/types").CatalogUpdateEntry[]>("check_catalog_hf_updates");
+      setCatalogHfUpdates((rows || []).filter((r) => r.hasUpdate && r.kind !== "current"));
+    } catch (err) {
+      console.error("Catalog HF update check failed:", err);
+    } finally {
+      setCatalogUpdatesBusy(false);
+    }
+  }, []);
+
   const reloadModels = useCallback(async () => {
     try {
       setCatalogError(null);
@@ -650,7 +662,7 @@ function App() {
             <StatusProvider value={{ totalParams, hiddenCount, onShowAll: handleShowAll }}>
             <Layout activeTab={activeTab} onTabChange={handleTabChange} providers={providers} updateOfferings={updateOfferings} onRefreshUpdateOfferings={refreshUpdateOfferings} hasBinaryUpdates={hasBinaryUpdates} setupGuideActive={setupGuide.active}>
         {activeTab === "catalog" && (
-              <ModelCatalog models={models} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} setupGuide={setupGuide} catalogHfUpdates={catalogHfUpdates} />
+              <ModelCatalog models={models} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} setupGuide={setupGuide} catalogHfUpdates={catalogHfUpdates} catalogUpdatesBusy={catalogUpdatesBusy} onCheckCatalogUpdates={checkCatalogHfUpdates} onClearCatalogUpdate={(path) => setCatalogHfUpdates((prev) => prev.filter((r) => r.path !== path))} />
            )}
         {activeTab === "config" && (
           <Suspense fallback={<TabFallback />}>
