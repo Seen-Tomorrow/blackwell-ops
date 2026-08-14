@@ -78,7 +78,12 @@ impl<R: Read + Seek> GgufReader<R> {
                     self.skip_value(elem_type)?;
                 }
             }
-            _ => return Err(format!("Unknown GGUF value type: {}", value_type)),
+            _ => {
+                // Unknown type — skip 4 bytes (default word size) and hope for the best.
+                // Real GGUF files occasionally use undocumented types; don't hard-fail.
+                log::warn!("[gguf-patch] Unknown GGUF value type {} at offset {}, skipping 4 bytes", value_type, self.offset);
+                self.read_bytes(4)?;
+            }
         }
         Ok(())
     }
@@ -97,7 +102,7 @@ fn find_header_end<R: Read + Seek>(reader: R) -> Result<u64, String> {
         return Err("Not a GGUF file (magic mismatch)".into());
     }
     let _version = gr.read_u32()?;
-    let _tensor_count = gr.read_u64()?;
+    let tensor_count = gr.read_u64()?;
     let metadata_count = gr.read_u64()?;
 
     // Skip metadata KV pairs
@@ -107,33 +112,9 @@ fn find_header_end<R: Read + Seek>(reader: R) -> Result<u64, String> {
         gr.skip_value(value_type)?;
     }
 
-    // Now at tensor info entries. Each entry:
-    //   name: string
-    //   dim_count: u64
-    //   dims: [u64; dim_count]
-    //   offset: u64
-    //   size: u64
-    //
-    // After all entries, there may be padding (zero bytes) before tensor data.
-    // We read until we hit a byte that looks like padding (all zeros) OR the end.
-    loop {
-        // Peek ahead — if the next bytes are all-zero padding, stop.
-        // But first check if there's enough file left for a tensor entry.
-        // Minimum tensor entry: name_len(8) + name(1) + dim_count(8) + dims(8) + offset(8) + size(8) = 41 bytes
-        // We'll try to read a name; if the length is absurdly large (>1M), we've hit padding.
-
-        let name_len = match gr.read_u64() {
-            Ok(len) => {
-                if len > 1_000_000 {
-                    // Absurdly long name — we've passed the tensor info section
-                    break;
-                }
-                len
-            }
-            Err(_) => break,
-        };
-
-        let _name_bytes = gr.read_bytes(name_len as usize)?;
+    // Tensor info entries — use tensor_count from header, no guessing needed.
+    for _ in 0..tensor_count {
+        let _name = gr.read_string()?;
         let dim_count = gr.read_u64()?;
         for _ in 0..dim_count {
             gr.read_u64()?;
