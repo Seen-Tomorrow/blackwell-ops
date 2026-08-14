@@ -334,6 +334,29 @@ export default function ModelHubSearch() {
     }
   }, [showToast, diskChecks]);
 
+  const handlePatchMetadata = useCallback(async (modelId: string, file: GgufFile) => {
+    try {
+      const parts = getDownloadParts(file);
+      for (const part of parts) {
+        const localPath = await buildDownloadDestPath(modelId, part.pathInRepo);
+        const result = await invoke<string>('patch_model_metadata', {
+          localPath,
+          remoteUrl: part.url,
+          remoteTotalSize: part.sizeBytes,
+        });
+        if (result === 'patched') {
+          showToast(`PATCHED ${file.type} METADATA`);
+        } else if (result === 'already_current') {
+          // already up to date — skip
+        }
+      }
+    } catch (e) {
+      console.error('Patch failed:', e);
+      const msg = typeof e === 'string' ? e : 'patch failed';
+      showToast(`PATCH FAILED: ${msg}`);
+    }
+  }, [showToast]);
+
   const handleConfirmDownload = useCallback(async () => {
     if (!confirmDownload) return;
     const { modelId, file, action } = confirmDownload;
@@ -705,9 +728,17 @@ export default function ModelHubSearch() {
                             ✓ IDENTICAL
                           </span>
                         ) : matchType === 'size' ? (
-                          <span className="shrink-0 px-2 py-1 text-[9px] font-mono tracking-wider text-blue-400 border border-blue-400/30 rounded-sm bg-blue-400/10">
-                            ✓ ON DISK
-                          </span>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className="px-2 py-1 text-[9px] font-mono tracking-wider text-blue-400 border border-blue-400/30 rounded-sm bg-blue-400/10">
+                              ✓ ON DISK
+                            </span>
+                            <button
+                              onClick={() => handlePatchMetadata(detailInfo.id, file)}
+                              className="px-2 py-1 text-[9px] font-mono tracking-wider bg-cyan-400/20 text-cyan-400 border border-cyan-400/40 rounded-sm hover:bg-cyan-400/30 transition-all"
+                            >
+                              PATCH
+                            </button>
+                          </div>
                         ) : matchType === 'mismatch' ? (
                           <button
                             onClick={() => handleDownload(detailInfo.id, file)}

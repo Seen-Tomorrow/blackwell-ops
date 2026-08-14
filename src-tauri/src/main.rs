@@ -25,6 +25,7 @@ mod burst_bench;
 mod bench_pp_burst;
 mod bench_cancel;
 mod gguf_scan;
+mod gguf_patch;
 mod model_cache;
 mod download_manager;
 mod model_catalog;
@@ -647,6 +648,36 @@ async fn recover_orphaned_batch_parts(
     Ok(created)
 }
 
+/// Patch a local GGUF file with new metadata from HF when only the header
+/// (metadata section) has changed. Avoids re-downloading the entire file.
+///
+/// - `local_path` — full path to the local .gguf file
+/// - `remote_url` — HF download URL for the same quant
+/// - `remote_total_size` — total file size of the remote file (from HF API)
+#[tauri::command]
+async fn patch_model_metadata(
+    local_path: String,
+    remote_url: String,
+    remote_total_size: u64,
+) -> Result<String, String> {
+    match gguf_patch::patch_metadata(&local_path, &remote_url, remote_total_size).await {
+        gguf_patch::PatchResult::AlreadyCurrent => Ok("already_current".to_string()),
+        gguf_patch::PatchResult::Patched { header_bytes_downloaded, local_io_bytes } => {
+            log::info!(
+                "[patch-model] Patched {}: downloaded {} header bytes, {} local I/O",
+                local_path,
+                header_bytes_downloaded,
+                local_io_bytes
+            );
+            Ok("patched".to_string())
+        }
+        gguf_patch::PatchResult::RequiresFullDownload { reason } => {
+            Err(format!("Requires full re-download: {}", reason))
+        }
+        gguf_patch::PatchResult::Error(e) => Err(e),
+    }
+}
+
 /// Adjust queue priority for a download task — lower number = higher priority.
 /// Tasks with higher priority skip ahead when competing for download slots.
 #[tauri::command]
@@ -1128,6 +1159,7 @@ async fn main() {
             get_download_tasks,
             clear_completed_downloads,
             recover_orphaned_batch_parts,
+            patch_model_metadata,
             check_download_target,
             check_hf_files_against_disk,
             // HF Search commands
