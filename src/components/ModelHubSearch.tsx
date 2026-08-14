@@ -342,7 +342,7 @@ export default function ModelHubSearch() {
         const result = await invoke<string>('patch_model_metadata', {
           localPath,
           remoteUrl: part.url,
-          remoteTotalSize: part.sizeBytes,
+          remoteTotalSize: part.size_bytes,
         });
         if (result === 'patched') {
           showToast(`PATCHED ${file.type} METADATA`);
