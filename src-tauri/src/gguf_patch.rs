@@ -89,18 +89,19 @@ impl<R: Read + Seek> GgufReader<R> {
             2 | 3 => { self.read_bytes(2)?; }      // uint16, int16
             4 | 5 | 6 => { self.read_bytes(4)?; }  // uint32, int32, float32
             8 => { let _ = self.read_string(); }   // string
-            9 | 10 | 11 => { self.read_bytes(8)?; } // uint64, int64, float64
-            12 => { self.read_bytes(2)?; }          // float16
-            13 => {                                 // array
+            // Type 9: some files use v3 version header but v2 type encoding where
+            // type 9 = ARRAY (not UINT64). Always treat type 9 as array to be safe.
+            9 | 13 => {
                 let elem_type = self.read_u32()?;
                 let count = self.read_u64()?;
                 for _ in 0..count {
                     self.skip_value(elem_type)?;
                 }
             }
+            10 | 11 => { self.read_bytes(8)?; }     // INT64, FLOAT64
+            12 => { self.read_bytes(2)?; }          // FLOAT16
             _ => {
-                // Unknown type — skip 4 bytes (default word size) and hope for the best.
-                // Real GGUF files occasionally use undocumented types; don't hard-fail.
+                // Unknown type — skip 4 bytes and hope for the best.
                 log::warn!("[gguf-patch] Unknown GGUF value type {} at offset {}, skipping 4 bytes", value_type, self.offset);
                 self.read_bytes(4)?;
             }
