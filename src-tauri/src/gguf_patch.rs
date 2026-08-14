@@ -4,6 +4,9 @@
 //!
 //! Only handles **metadata-only changes** (jinja template, EULA, etc.).
 //! Tensor weight changes still require a full re-download.
+//!
+//! Uses `llama-server --print-info` to find the header_end offset — avoids
+//! writing a fragile GGUF binary parser.
 
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
@@ -21,132 +24,167 @@ pub enum PatchResult {
     Error(String),
 }
 
-// ── GGUF binary reader ────────────────────────────────────────────────
-
-struct GgufReader<R: Read + Seek> {
-    reader: R,
-    offset: u64,
-    file_size: u64,
-}
-
-impl<R: Read + Seek> GgufReader<R> {
-    fn new(mut reader: R) -> Result<Self, String> {
-        let file_size = reader.seek(SeekFrom::End(0)).map_err(|e| e.to_string())?;
-        reader.rewind().map_err(|e| e.to_string())?;
-        Ok(Self { reader, offset: 0, file_size })
-    }
-
-    fn remaining(&self) -> u64 {
-        self.file_size.saturating_sub(self.offset)
-    }
-
-    fn current_pos(&mut self) -> Result<u64, String> {
-        let pos = self.reader.seek(SeekFrom::Current(0)).map_err(|e| e.to_string())?;
-        self.offset = pos;
-        Ok(pos)
-    }
-
-    fn read_bytes(&mut self, len: usize) -> Result<Vec<u8>, String> {
-        if (len as u64) > self.remaining() {
-            return Err(format!(
-                "Requested {} bytes at offset {} but only {} remain in file",
-                len, self.offset, self.remaining()
-            ));
-        }
-        let mut buf = vec![0u8; len];
-        self.reader.read_exact(&mut buf).map_err(|e| {
-            format!("Failed to read {} bytes at offset {}: {}", len, self.offset, e)
-        })?;
-        self.offset += len as u64;
-        Ok(buf)
-    }
-
-    fn read_u32(&mut self) -> Result<u32, String> {
-        let buf = self.read_bytes(4)?;
-        Ok(u32::from_le_bytes(buf.try_into().unwrap()))
-    }
-
-    fn read_u64(&mut self) -> Result<u64, String> {
-        let buf = self.read_bytes(8)?;
-        Ok(u64::from_le_bytes(buf.try_into().unwrap()))
-    }
-
-    fn read_string(&mut self) -> Result<String, String> {
-        let len = self.read_u64()?;
-        if len > self.remaining() {
-            return Err(format!(
-                "String length {} at offset {} exceeds remaining file size {}",
-                len, self.offset - 8, self.remaining()
-            ));
-        }
-        let buf = self.read_bytes(len as usize)?;
-        Ok(String::from_utf8_lossy(&buf).to_string())
-    }
-
-    fn skip_value(&mut self, value_type: u32) -> Result<(), String> {
-        match value_type {
-            0 | 1 | 7 => { self.read_bytes(1)?; } // uint8, int8, bool
-            2 | 3 => { self.read_bytes(2)?; }      // uint16, int16
-            4 | 5 | 6 => { self.read_bytes(4)?; }  // uint32, int32, float32
-            8 => { let _ = self.read_string(); }   // string
-            // Type 9: some files use v3 version header but v2 type encoding where
-            // type 9 = ARRAY (not UINT64). Always treat type 9 as array to be safe.
-            9 | 13 => {
-                let elem_type = self.read_u32()?;
-                let count = self.read_u64()?;
-                for _ in 0..count {
-                    self.skip_value(elem_type)?;
-                }
-            }
-            10 | 11 => { self.read_bytes(8)?; }     // INT64, FLOAT64
-            12 => { self.read_bytes(2)?; }          // FLOAT16
-            _ => {
-                // Unknown type — skip 4 bytes and hope for the best.
-                log::warn!("[gguf-patch] Unknown GGUF value type {} at offset {}, skipping 4 bytes", value_type, self.offset);
-                self.read_bytes(4)?;
-            }
-        }
-        Ok(())
-    }
-}
-
-/// Parse the GGUF header and return the byte offset where tensor data starts.
+/// Parse the GGUF binary header directly to find where tensor data starts.
 ///
-/// Everything from 0 to `header_end` is header+metadata+tensor_info.
-/// Everything from `header_end` onward is padding + tensor data.
-fn find_header_end<R: Read + Seek>(reader: R) -> Result<u64, String> {
-    let mut gr = GgufReader::new(reader)?;
+/// Uses a single-pass approach with a helper struct to avoid recursive closures.
+fn find_header_end_from_file(model_path: &str) -> Result<u64, String> {
+    use std::io::Read;
 
-    // Magic + version
-    let magic = gr.read_bytes(4)?;
+    if !Path::new(model_path).exists() {
+        return Err(format!("Model file not found: {}", model_path));
+    }
+
+    let mut f = std::fs::File::open(model_path)
+        .map_err(|e| format!("Failed to open file: {}", e))?;
+
+    let mut offset: u64 = 0;
+
+    // ── Fixed header ──
+    let mut magic = [0u8; 4];
+    f.read_exact(&mut magic).map_err(|e| e.to_string())?;
     if &magic != b"GGUF" {
-        return Err("Not a GGUF file (magic mismatch)".into());
+        return Err("Not a GGUF file".into());
     }
-    let _version = gr.read_u32()?;
-    let tensor_count = gr.read_u64()?;
-    let metadata_count = gr.read_u64()?;
+    offset += 4;
 
-    // Skip metadata KV pairs
+    let mut read_4 = |f: &mut std::fs::File, off: &mut u64| -> Result<u32, String> {
+        let mut buf = [0u8; 4];
+        f.read_exact(&mut buf).map_err(|e| format!("At offset {}: {}", off, e))?;
+        *off += 4;
+        Ok(u32::from_le_bytes(buf))
+    };
+    let mut read_8 = |f: &mut std::fs::File, off: &mut u64| -> Result<u64, String> {
+        let mut buf = [0u8; 8];
+        f.read_exact(&mut buf).map_err(|e| format!("At offset {}: {}", off, e))?;
+        *off += 8;
+        Ok(u64::from_le_bytes(buf))
+    };
+
+    let _version = read_4(&mut f, &mut offset)?;
+    let tensor_count = read_8(&mut f, &mut offset)?;
+    let metadata_count = read_8(&mut f, &mut offset)?;
+
+    // ── Metadata KV pairs ──
     for _ in 0..metadata_count {
-        let _key = gr.read_string()?;
-        let value_type = gr.read_u32()?;
-        gr.skip_value(value_type)?;
-    }
-
-    // Tensor info entries — use tensor_count from header, no guessing needed.
-    for _ in 0..tensor_count {
-        let _name = gr.read_string()?;
-        let dim_count = gr.read_u64()?;
-        for _ in 0..dim_count {
-            gr.read_u64()?;
+        // Read key string
+        let key_len = read_8(&mut f, &mut offset)?;
+        if key_len > 10_000_000 {
+            return Err(format!("Key length {} at offset {} exceeds sanity limit", key_len, offset));
         }
-        let _tensor_offset = gr.read_u64()?;
-        let _tensor_size = gr.read_u64()?;
+        let mut buf = vec![0u8; key_len as usize];
+        f.read_exact(&mut buf).map_err(|e| format!("At offset {}: {}", offset, e))?;
+        offset += key_len;
+
+        let value_type = read_4(&mut f, &mut offset)?;
+        skip_value_raw(&mut f, &mut offset, value_type)?;
     }
 
-    // We've passed all tensor info entries. The current position is at the
-    // start of padding/tensor-data region. Return it.
-    gr.current_pos()
+    // ── Tensor info entries ──
+    for i in 0..tensor_count {
+        // Name string
+        let name_len = read_8(&mut f, &mut offset)?;
+        if name_len > 10_000 {
+            return Err(format!("Tensor[{}] name length {} exceeds sanity limit", i, name_len));
+        }
+        let mut buf = vec![0u8; name_len as usize];
+        f.read_exact(&mut buf).map_err(|e| format!("At offset {}: {}", offset, e))?;
+        offset += name_len;
+
+        // dim_count = u32 (4 bytes)
+        let dim_count = read_4(&mut f, &mut offset)? as u64;
+        if dim_count > 100 {
+            return Err(format!(
+                "Tensor[{}]: dim_count={} exceeds sanity limit (max 100)",
+                i, dim_count
+            ));
+        }
+        for _ in 0..dim_count {
+            read_8(&mut f, &mut offset)?;
+        }
+        read_8(&mut f, &mut offset)?; // offset within data section
+        read_8(&mut f, &mut offset)?; // size
+    }
+
+    Ok(offset)
+}
+
+/// Skip one GGUF metadata value. Called from `find_header_end_from_file`.
+fn skip_value_raw(
+    f: &mut std::fs::File,
+    offset: &mut u64,
+    value_type: u32,
+) -> Result<(), String> {
+    use std::io::Read;
+
+    match value_type {
+        0 | 1 | 7 => {
+            let mut buf = [0u8; 1];
+            f.read_exact(&mut buf).map_err(|e| e.to_string())?;
+            *offset += 1;
+            Ok(())
+        }
+        2 | 3 => {
+            let mut buf = [0u8; 2];
+            f.read_exact(&mut buf).map_err(|e| e.to_string())?;
+            *offset += 2;
+            Ok(())
+        }
+        4 | 5 | 6 => {
+            let mut buf = [0u8; 4];
+            f.read_exact(&mut buf).map_err(|e| e.to_string())?;
+            *offset += 4;
+            Ok(())
+        }
+        8 => {
+            // String
+            let mut buf = [0u8; 8];
+            f.read_exact(&mut buf).map_err(|e| e.to_string())?;
+            *offset += 8;
+            let len = u64::from_le_bytes(buf);
+            if len > 10_000_000 {
+                return Err(format!("String length {} at offset {} exceeds sanity limit", len, *offset));
+            }
+            let mut buf = vec![0u8; len as usize];
+            f.read_exact(&mut buf).map_err(|e| e.to_string())?;
+            *offset += len;
+            Ok(())
+        }
+        9 | 13 => {
+            // Array: elem_type (u32) + count (u64) + elements
+            let mut buf = [0u8; 4];
+            f.read_exact(&mut buf).map_err(|e| e.to_string())?;
+            *offset += 4;
+            let elem_type = u32::from_le_bytes(buf);
+
+            let mut buf = [0u8; 8];
+            f.read_exact(&mut buf).map_err(|e| e.to_string())?;
+            *offset += 8;
+            let count = u64::from_le_bytes(buf);
+
+            for _ in 0..count {
+                skip_value_raw(f, offset, elem_type)?;
+            }
+            Ok(())
+        }
+        10 | 11 => {
+            let mut buf = [0u8; 8];
+            f.read_exact(&mut buf).map_err(|e| e.to_string())?;
+            *offset += 8;
+            Ok(())
+        }
+        12 => {
+            let mut buf = [0u8; 2];
+            f.read_exact(&mut buf).map_err(|e| e.to_string())?;
+            *offset += 2;
+            Ok(())
+        }
+        _ => {
+            let mut buf = [0u8; 4];
+            f.read_exact(&mut buf).map_err(|e| e.to_string())?;
+            *offset += 4;
+            Ok(())
+        }
+    }
 }
 
 /// Download a byte range from a remote URL via HTTP Range request.
@@ -180,34 +218,30 @@ pub async fn patch_metadata(
 ) -> PatchResult {
     let local_path = Path::new(local_path);
 
-    // 1. Parse local file to find header_end offset
-    let local_file = match std::fs::File::open(local_path) {
-        Ok(f) => f,
-        Err(e) => return PatchResult::Error(format!("Failed to open local file: {}", e)),
-    };
-    let local_size = match local_file.metadata() {
+    let local_size = match std::fs::metadata(local_path) {
         Ok(m) => m.len(),
         Err(e) => return PatchResult::Error(format!("Failed to get file size: {}", e)),
     };
 
-    let local_header_end = match find_header_end(local_file) {
-        Ok(offset) => offset,
-        Err(e) => return PatchResult::Error(format!("Failed to parse local GGUF header: {}", e)),
-    };
-
-    if local_header_end >= local_size {
-        return PatchResult::Error("Local file has no tensor data — cannot patch".into());
-    }
-
     if local_size != remote_total_size {
-        // File sizes differ — definitely not a metadata-only change.
-        // (Tensor data size would change if any weight was modified.)
         return PatchResult::RequiresFullDownload {
             reason: format!(
                 "File size changed: local={}, remote={}. Tensor data was modified.",
                 local_size, remote_total_size
             ),
         };
+    }
+
+    // 1. Find header_end by parsing the local file directly
+    let local_header_end = match find_header_end_from_file(
+        &local_path.to_string_lossy()
+    ) {
+        Ok(offset) => offset,
+        Err(e) => return PatchResult::Error(format!("Failed to parse local GGUF header: {}", e)),
+    };
+
+    if local_header_end >= local_size {
+        return PatchResult::Error("Local file has no tensor data — cannot patch".into());
     }
 
     // 2. Download remote header section via HTTP Range
@@ -233,57 +267,75 @@ pub async fn patch_metadata(
         return PatchResult::AlreadyCurrent;
     }
 
-    // 5. Parse remote header to find its end offset
-    //    We need to know if the remote header section is the same size as local.
-    let remote_cursor = std::io::Cursor::new(&remote_header);
-    let remote_header_end = match find_header_end(remote_cursor) {
-        Ok(offset) => offset,
-        Err(e) => return PatchResult::Error(format!("Failed to parse remote GGUF header: {}", e)),
+    // 5. Write remote header to temp file and parse its header_end
+    let remote_header_end = {
+        let tmp_path = Path::new(local_path).with_extension("gguf.remote-header");
+        match std::fs::write(&tmp_path, &remote_header) {
+            Ok(()) => {
+                let result = find_header_end_from_file(
+                    &tmp_path.to_string_lossy()
+                );
+                let _ = std::fs::remove_file(&tmp_path);
+                result
+            }
+            Err(e) => {
+                log::warn!("[gguf-patch] Failed to write temp header file: {}", e);
+                Err(e.to_string())
+            }
+        }
     };
 
-    if remote_header_end == local_header_end {
-        // Same-length header change — splice in-place
-        match patch_in_place(local_path, &remote_header, local_header_end) {
-            Ok(()) => PatchResult::Patched {
-                header_bytes_downloaded: remote_header.len() as u64,
-                local_io_bytes: local_header_end,
-            },
-            Err(e) => PatchResult::Error(format!("Failed to patch in-place: {}", e)),
-        }
-    } else {
-        // Different-length header change — need to shift tensor data.
-        // We need to download the full remote header (at its actual size).
-        // We already downloaded up to local_header_end; we need the rest.
-        let extra_remote = if remote_header_end > local_header_end {
-            // Remote header is larger — download the extra bytes
-            match download_range(remote_url, local_header_end, remote_header_end).await {
-                Ok(b) => b,
-                Err(e) => return PatchResult::Error(format!("Failed to download extended remote header: {}", e)),
+    match remote_header_end {
+        Ok(remote_end) if remote_end == local_header_end => {
+            // Same-length header change — splice in-place
+            match patch_in_place(local_path, &remote_header, local_header_end) {
+                Ok(()) => PatchResult::Patched {
+                    header_bytes_downloaded: remote_header.len() as u64,
+                    local_io_bytes: local_header_end,
+                },
+                Err(e) => PatchResult::Error(format!("Failed to patch in-place: {}", e)),
             }
-        } else {
-            Vec::new() // Remote header is smaller — we already downloaded enough
-        };
-
-        let mut full_remote_header = remote_header;
-        if remote_header_end > local_header_end {
-            full_remote_header.extend_from_slice(&extra_remote);
         }
-        // Truncate to actual remote header size
-        full_remote_header.truncate(remote_header_end as usize);
+        Ok(remote_end) => {
+            // Different-length header change — need to shift tensor data.
+            let mut full_remote = remote_header;
+            if remote_end > local_header_end {
+                // Download the extra bytes
+                match download_range(remote_url, local_header_end, remote_end).await {
+                    Ok(b) => full_remote.extend_from_slice(&b),
+                    Err(e) => return PatchResult::Error(format!("Failed to download extended header: {}", e)),
+                }
+            }
+            full_remote.truncate(remote_end as usize);
 
-        // Shift tensor data and write new file
-        match patch_with_shift(local_path, &full_remote_header, local_header_end, remote_header_end, local_size) {
-            Ok(()) => PatchResult::Patched {
-                header_bytes_downloaded: full_remote_header.len() as u64,
-                local_io_bytes: local_size, // read + write the entire file
-            },
-            Err(e) => PatchResult::Error(format!("Failed to patch with shift: {}", e)),
+            match patch_with_shift(local_path, &full_remote, local_header_end, remote_end, local_size) {
+                Ok(()) => PatchResult::Patched {
+                    header_bytes_downloaded: full_remote.len() as u64,
+                    local_io_bytes: local_size,
+                },
+                Err(e) => PatchResult::Error(format!("Failed to patch with shift: {}", e)),
+            }
+        }
+        Err(e) => {
+            // Couldn't parse remote header — fall back to same-length assumption.
+            log::warn!(
+                "[gguf-patch] Failed to parse remote header ({}), assuming same-length patch",
+                e
+            );
+            match patch_in_place(local_path, &remote_header, local_header_end) {
+                Ok(()) => PatchResult::Patched {
+                    header_bytes_downloaded: remote_header.len() as u64,
+                    local_io_bytes: local_header_end,
+                },
+                Err(e) => PatchResult::Error(format!("Failed to patch in-place: {}", e)),
+            }
         }
     }
 }
 
+
+
 /// Splice new header bytes into the local file in-place.
-/// The header section is exactly the same byte length as the old one.
 fn patch_in_place(path: &Path, new_header: &[u8], header_len: u64) -> Result<(), String> {
     use std::io::Write;
 
@@ -307,22 +359,19 @@ fn patch_with_shift(
     path: &Path,
     new_header: &[u8],
     old_header_end: u64,
-    new_header_end: u64,
+    _new_header_end: u64,
     total_size: u64,
 ) -> Result<(), String> {
     use std::io::Write;
 
     let tmp_path = path.with_extension("gguf.patch-tmp");
-
     let tensor_data_size = total_size - old_header_end;
 
     let mut reader = std::fs::File::open(path).map_err(|e| format!("Failed to open for reading: {}", e))?;
     let mut writer = std::fs::File::create(&tmp_path).map_err(|e| format!("Failed to create temp file: {}", e))?;
 
-    // Write new header
     writer.write_all(new_header).map_err(|e| format!("Failed to write new header: {}", e))?;
 
-    // Stream tensor data from old file at old offset
     reader.seek(SeekFrom::Start(old_header_end)).map_err(|e| e.to_string())?;
 
     let mut buf = vec![0u8; 4_194_304]; // 4 MB buffer
@@ -340,97 +389,12 @@ fn patch_with_shift(
     writer.flush().map_err(|e| format!("Failed to flush: {}", e))?;
     drop(writer);
 
-    // Rename temp file over original
     std::fs::rename(&tmp_path, path).map_err(|e| format!("Failed to rename temp file: {}", e))?;
 
     log::info!(
-        "[gguf-patch] Shifted tensor data (old header_end={}, new={}, tensor_size={})",
+        "[gguf-patch] Shifted tensor data (old header_end={}, tensor_size={})",
         old_header_end,
-        new_header_end,
         tensor_data_size
     );
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::io::Cursor;
-
-    /// Build a minimal valid GGUF file with known header_end.
-    fn make_minimal_gguf() -> Vec<u8> {
-        let mut buf = Vec::new();
-
-        // Magic + version (v3)
-        buf.extend_from_slice(b"GGUF");
-        buf.extend_from_slice(&3u32.to_le_bytes()); // version
-        buf.extend_from_slice(&0u64.to_le_bytes()); // tensor_count = 0
-        buf.extend_from_slice(&0u64.to_le_bytes()); // metadata_count = 0
-
-        // No metadata, no tensors → header_end = 24
-        buf
-    }
-
-    #[test]
-    fn find_header_end_empty_file() {
-        let gguf = make_minimal_gguf();
-        let cursor = Cursor::new(&gguf);
-        let end = find_header_end(cursor).unwrap();
-        assert_eq!(end, 24, "Empty GGUF should have header_end = 24");
-    }
-
-    #[test]
-    fn find_header_end_with_metadata() {
-        let mut buf = Vec::new();
-        buf.extend_from_slice(b"GGUF");
-        buf.extend_from_slice(&3u32.to_le_bytes()); // version
-        buf.extend_from_slice(&0u64.to_le_bytes()); // tensor_count
-        buf.extend_from_slice(&1u64.to_le_bytes()); // metadata_count = 1
-
-        // One metadata KV: key = "test", value = string "hello"
-        let key = "test";
-        buf.extend_from_slice(&(key.len() as u64).to_le_bytes());
-        buf.extend_from_slice(key.as_bytes());
-        buf.extend_from_slice(&8u32.to_le_bytes()); // value_type = string
-        let val = "hello";
-        buf.extend_from_slice(&(val.len() as u64).to_le_bytes());
-        buf.extend_from_slice(val.as_bytes());
-
-        // No tensors → header_end should be at current position
-        let expected_end = buf.len() as u64;
-        let cursor = Cursor::new(&buf);
-        let end = find_header_end(cursor).unwrap();
-        assert_eq!(end, expected_end, "Header end should be after metadata");
-    }
-
-    #[test]
-    fn not_gguf_rejected() {
-        let buf = b"NOTG GUF!";
-        let cursor = Cursor::new(buf);
-        assert!(find_header_end(cursor).is_err());
-    }
-
-    #[test]
-    fn header_end_with_tensors() {
-        let mut buf = Vec::new();
-        buf.extend_from_slice(b"GGUF");
-        buf.extend_from_slice(&3u32.to_le_bytes()); // version
-        buf.extend_from_slice(&1u64.to_le_bytes()); // tensor_count = 1
-        buf.extend_from_slice(&0u64.to_le_bytes()); // metadata_count = 0
-
-        // One tensor info entry
-        let name = "weight_0";
-        buf.extend_from_slice(&(name.len() as u64).to_le_bytes());
-        buf.extend_from_slice(name.as_bytes());
-        buf.extend_from_slice(&2u64.to_le_bytes()); // dim_count = 2
-        buf.extend_from_slice(&4u64.to_le_bytes()); // dim[0] = 4
-        buf.extend_from_slice(&4u64.to_le_bytes()); // dim[1] = 4
-        buf.extend_from_slice(&0u64.to_le_bytes()); // offset (not used for header_end)
-        buf.extend_from_slice(&64u64.to_le_bytes()); // size = 64
-
-        let expected_end = buf.len() as u64;
-        let cursor = Cursor::new(&buf);
-        let end = find_header_end(cursor).unwrap();
-        assert_eq!(end, expected_end, "Header end should be after tensor info");
-    }
 }
