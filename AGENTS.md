@@ -4,6 +4,26 @@ Traps and invariants only — not a code map. Read the source for flows, schemas
 
 ---
 
+## CRITICAL: never kill the running app
+
+**NEVER `Stop-Process` / kill `blackwell-ops` without explicitly asking the user first.**
+The running instance is frequently the REL build that is actively serving the LLM engine
+(and thus the very agent session doing the work). Killing it kills the session/engine.
+If a build fails because the exe is locked (`Access is denied (os error 5)` / cannot remove
+`target\...\blackwell-ops.exe`), that is normal — ASK the user to close the app, or use a
+different build target. Do not auto-kill. The only exception is a user explicitly instructing
+`npm run tauri` full-restart flow, and even then confirm before stopping a REL-served session.
+
+**How to tell REL vs DEV before touching anything** — by executable path (use
+`scripts/identify-app-processes.ps1`):
+- **REL** = path contains `Blackwell OPS portable` (e.g. `C:\AI-MASTER\Blackwell OPS portable\blackwell-ops.exe`)
+  → serves the engine/session; **never kill**.
+- **DEV** = path contains `target\debug` (e.g. `...\src-tauri\target\debug\blackwell-ops.exe`).
+- If a `cargo build` fails with a locked exe, the REL app is running — ASK the user to close
+  it or build to a separate target.
+
+---
+
 ## CSS / themes (frontend)
 
 **Tokens only** — Theme differences live in `src/themes/app-themes.ts` (`--theme-*`, `--fusion-eink-*`, `--theme-launch-*`). Apply via `applyAppTheme()`. Do **not** add new `[data-theme="…"]` or `html:not([data-theme=…])` component rules in CSS.

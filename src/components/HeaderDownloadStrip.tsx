@@ -49,7 +49,7 @@ export default function HeaderDownloadStrip() {
     <button
       type="button"
       className="tab-page-header__downloads flex items-center gap-2 flex-shrink-0 justify-end cursor-pointer hover:opacity-95 text-left"
-      title="Open download manager (MODEL HUB)"
+      title="Open download manager (DOWNLOADS)"
       onClick={() => dispatchNavigateModelHub()}
     >
       <DownloadProgressRow task={primary} inline />

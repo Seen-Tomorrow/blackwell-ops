@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import type { DownloadTask, DownloadStatus } from '@/lib/types';
 import DownloadProgressRow from './DownloadProgressRow';
 
@@ -17,6 +18,20 @@ export default function ModelHubDownloads({ downloads }: ModelHubDownloadsProps)
   );
   const [actionError, setActionError] = useState<string | null>(null);
   const [sizeSort, setSizeSort] = useState<SizeSort>('default');
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
+
+  const handleRecover = async () => {
+    setRecoveryBusy(true);
+    setActionError(null);
+    try {
+      await invoke('recover_orphaned_batch_parts');
+    } catch (err) {
+      const msg = typeof err === 'string' ? err : 'Recovery failed';
+      setActionError(msg);
+    } finally {
+      setRecoveryBusy(false);
+    }
+  };
 
   const sorted = useMemo(() => {
     if (sizeSort === 'default') {
@@ -70,8 +85,19 @@ export default function ModelHubDownloads({ downloads }: ModelHubDownloadsProps)
 
       <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto">
         {sorted.length === 0 ? (
-          <div className="py-6 text-center text-[9px] font-mono text-stealth-muted/60">
-            NO ACTIVE DOWNLOADS
+          <div className="py-6 text-center">
+            <div className="mb-3 text-[9px] font-mono text-stealth-muted/60">
+              NO ACTIVE DOWNLOADS
+            </div>
+            <button
+              type="button"
+              onClick={handleRecover}
+              disabled={recoveryBusy}
+              className="inline-flex items-center gap-1.5 rounded-sm border border-stealth-muted/30 px-2 py-1 text-[8px] font-mono text-stealth-muted/70 transition-colors hover:border-stealth-muted/60 hover:text-stealth-muted disabled:opacity-50"
+              title="Reconcile persisted batch manifests with on-disk .part files. Use if a multi-shard download disappeared from the queue after a restart."
+            >
+              {recoveryBusy ? 'SCANNING...' : 'RECOVER LOST SHARDS'}
+            </button>
           </div>
         ) : (
           sorted.map((task) => (

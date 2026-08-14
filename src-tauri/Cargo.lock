@@ -383,15 +383,17 @@ dependencies = [
 
 [[package]]
 name = "blackwell-ops"
-version = "1.0.43"
+version = "1.0.44"
 dependencies = [
  "chrono",
  "env_logger",
  "futures-util",
+ "hex",
  "keyring",
  "libloading 0.8.9",
  "log",
  "parking_lot",
+ "percent-encoding",
  "regex",
  "reqwest",
  "rfd",

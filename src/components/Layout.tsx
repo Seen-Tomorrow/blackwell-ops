@@ -80,7 +80,7 @@ const tabs: { id: Tab; label: string; icon: string; hidden?: boolean }[] = [
   { id: "catalog", label: "OPERATIONS", icon: "\u269B" },
   { id: "stack", label: "ENGINES", icon: "\uD83D\uDDA4" },
   { id: "logs", label: "LOGS", icon: "\uD83D\uDCCD" },
-  { id: "modelhub", label: "MODEL HUB", icon: "\u2B21" },
+  { id: "modelhub", label: "DOWNLOADS", icon: "\u2B21" },
   { id: "extras", label: "EXTRAS", icon: "\u2726" },
   { id: "config", label: "CONFIG", icon: "\u2699" },
 ];
@@ -386,7 +386,7 @@ export default function Layout({
                       disabled={lockedBySetup}
                       title={
                         lockedBySetup
-                          ? "Finish first-run setup first (OPERATIONS, MODEL HUB, or CONFIG)"
+                          ? "Finish first-run setup first (OPERATIONS, DOWNLOADS, or CONFIG)"
                           : undefined
                       }
                       {...(tab.id === "config" ? { "data-onboarding": "config-tab" } : {})}

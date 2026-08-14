@@ -291,7 +291,7 @@ export default function SetupGuideDisplay({
           title="Link your model library"
           detail={
             modelsDeferred
-              ? "Skipped — use MODEL HUB (nav stays open during setup)"
+              ? "Skipped — use DOWNLOADS (nav stays open during setup)"
               : "LM Studio one-click, BROWSE, or CONFIG → PATHS"
           }
         />

@@ -66,13 +66,72 @@ pub fn classify_draft_role(meta: &ModelMetadata, model_path: &str) -> DraftRole 
     // Small-file MTP head: has nextn layers AND the file is tiny compared to a full model
     // of the same architecture (e.g., <10 GiB for a multi-hundred-GB MoE model).
     // This catches head exports that carry a full tokenizer but are clearly not the main model.
-    if meta.nextn_predict_layers > 0 && meta.file_size_bytes > 0 && meta.file_size_bytes < 10_737_418_240 {
+    //
+    // Size-class aware: a sub-10 GiB file is a NORMAL full main model when the declared
+    // total params are small (e.g. a 4B coder at IQ4_XS is ~2.6 GiB). Only treat a small
+    // file as a standalone head when it is implausibly small for its declared parameter
+    // count (a head carries only the extra MTP layers, so its file is far under a full
+    // quantized main model of the same params).
+    if meta.nextn_predict_layers > 0
+        && meta.file_size_bytes > 0
+        && meta.file_size_bytes < 10_737_418_240
+        && !is_plausible_full_model_size(meta)
+    {
         return DraftRole::ExternalMtp;
     }
     if meta.nextn_predict_layers > 0 {
         return DraftRole::MtpEmbedded;
     }
     DraftRole::None
+}
+
+/// Parse a declared total-parameter count in billions from `total_params_str`
+/// (e.g. "4.33 B", "27.32 B", "309.77 B", "256x1.3B") or `model_type_label`.
+/// Returns `None` when no usable parameter count is present.
+fn total_params_billions(meta: &ModelMetadata) -> Option<f64> {
+    for src in [meta.total_params_str.trim(), meta.model_type_label.trim()] {
+        if src.is_empty() {
+            continue;
+        }
+        // Grab the first numeric token (handles "256x1.3B" → 256; "4.33 B" → 4.33).
+        if let Some(start) = src.find(|c: char| c.is_ascii_digit()) {
+            let tail = &src[start..];
+            let end = tail
+                .find(|c: char| !(c.is_ascii_digit() || c == '.'))
+                .unwrap_or(tail.len());
+            if let Ok(v) = tail[..end].parse::<f64>() {
+                // "1.3B" style (no space) already means billions; treat any bare
+                // number as billions since llama reports params in B (or M for tiny).
+                let lower = src.to_lowercase();
+                let v = if lower.contains('m') { v / 1000.0 } else { v };
+                return Some(v);
+            }
+        }
+    }
+    None
+}
+
+/// True when the file size is plausibly a FULL main model for the model's declared
+/// parameter count. Used to stop the "small-file MTP head" heuristic from misfiring on
+/// legitimately small main models (e.g. a 4B model at IQ4_XS is ~2.6 GiB).
+///
+/// When no param count is known, fall back to treating sub-10 GiB as implausible (head),
+/// preserving the previous behavior for unknown-param models.
+fn is_plausible_full_model_size(meta: &ModelMetadata) -> bool {
+    let Some(params_b) = total_params_billions(meta) else {
+        return false;
+    };
+    // Small main models (<= ~10B params) routinely produce files well under 10 GiB at
+    // low quants, so a sub-10 GiB file is expected — NOT a standalone head.
+    if params_b <= 10.0 {
+        return true;
+    }
+    // For larger models, a full main model at even the lowest practical quant (Q2 ~2.5
+    // bpw ≈ 0.31 B/GB-per-param) still needs params_b * ~0.31 GiB. If the file is far
+    // smaller than that floor, it carries only MTP head layers -> treat as a head.
+    let min_full_gib = params_b * 0.31;
+    let file_gib = meta.file_size_bytes as f64 / (1024.0 * 1024.0 * 1024.0);
+    file_gib >= min_full_gib * 0.5
 }
 
 fn compact_alnum_lower(s: &str) -> String {
@@ -495,6 +554,49 @@ mod tests {
         assert_eq!(
             classify_draft_role(&meta, r"C:\models\full-deepseek.gguf"),
             DraftRole::MtpEmbedded
+        );
+    }
+
+    #[test]
+    fn small_main_model_with_mtp_stays_embedded_not_head() {
+        // Regression: a legitimately small (4B) MAIN model with MTP baked in and a full
+        // vocab is well under the old 10 GiB "small-file" threshold (2.6 GiB at IQ4_XS), so
+        // the size-class-unaware heuristic misclassified it as a standalone MTP head and hid
+        // it from the default MAIN catalog filter. A full 4B model must stay mtp_embedded.
+        let meta = ModelMetadata {
+            architecture: "qwen35".into(),
+            nextn_predict_layers: 1,
+            vocab_size: 248320,
+            total_params_str: "4.33 B".into(),
+            model_type_label: "4B".into(),
+            file_size_bytes: 2_593_555_904, // ~2.6 GiB, < 10 GiB
+            ..empty_meta()
+        };
+        assert_eq!(
+            classify_draft_role(
+                &meta,
+                r"C:\AI-MASTER\models\Jackrong\Qwopus3.5-4B-Coder-GGUF\Qwopus3.5-4B-coder-IQ4_XS.gguf"
+            ),
+            DraftRole::MtpEmbedded
+        );
+    }
+
+    #[test]
+    fn large_model_tiny_file_still_classifies_as_head() {
+        // A genuine standalone MTP head of a large model is implausibly small for its
+        // declared 27B params (a full Q2 27B is ~8+ GiB) -> still external_mtp.
+        let meta = ModelMetadata {
+            architecture: "qwen35".into(),
+            nextn_predict_layers: 2,
+            vocab_size: 248320,
+            total_params_str: "27.32 B".into(),
+            model_type_label: "27B".into(),
+            file_size_bytes: 1_500_000_000, // ~1.4 GiB — way too small for a 27B main
+            ..empty_meta()
+        };
+        assert_eq!(
+            classify_draft_role(&meta, r"C:\models\qwen35-27b-mtp-head-q4.gguf"),
+            DraftRole::ExternalMtp
         );
     }
 

@@ -232,6 +232,46 @@ function parseDraftRoleHint(hint: string | undefined): DraftRole | null {
   return null;
 }
 
+/**
+ * Parse a declared total-parameter count in billions from `totalParamsStr`
+ * (e.g. "4.33 B", "27.32 B", "309.77 B", "256x1.3B") or `modelTypeLabel`.
+ * Returns null when no usable parameter count is present.
+ */
+function totalParamsBillions(meta: ModelEntry["metadata"]): number | null {
+  for (const src of [meta?.total_params_str ?? "", meta?.modelTypeLabel ?? ""]) {
+    if (!src.trim()) continue;
+    const m = src.trim().match(/\d+(\.\d+)?/);
+    if (m) {
+      let v = parseFloat(m[0]);
+      const lower = src.toLowerCase();
+      if (lower.includes("m")) v = v / 1000; // "1.3M" → billions
+      return v;
+    }
+  }
+  return null;
+}
+
+/**
+ * True when the file size is plausibly a FULL main model for the model's declared
+ * parameter count. Stops the "small-file MTP head" heuristic from misfiring on
+ * legitimately small main models (e.g. a 4B model at IQ4_XS is ~2.6 GiB).
+ * When no param count is known, fall back to treating sub-10 GiB as implausible (head),
+ * preserving the previous behavior for unknown-param models.
+ */
+function isPlausibleFullModelSize(meta: ModelEntry["metadata"]): boolean {
+  const paramsB = totalParamsBillions(meta);
+  if (paramsB === null) return false;
+  // Small main models (<= ~10B params) routinely produce files well under 10 GiB at
+  // low quants, so a sub-10 GiB file is expected — NOT a standalone head.
+  if (paramsB <= 10) return true;
+  // For larger models, a full main model at even the lowest practical quant (Q2 ~2.5
+  // bpw ≈ 0.31 B/GB-per-param) still needs paramsB * ~0.31 GiB. If the file is far
+  // smaller than that floor, it carries only MTP head layers -> treat as a head.
+  const minFullGib = paramsB * 0.31;
+  const fileGib = (meta?.file_size_bytes ?? 0) / (1024 * 1024 * 1024);
+  return fileGib >= minFullGib * 0.5;
+}
+
 export function draftRoleFromModel(
   model: Pick<ModelEntry, "path" | "name" | "metadata" | "hfMeta" | "hfModelId" | "sourcePathLabel" | "draftRoleHint">,
 ): DraftRole {
@@ -263,7 +303,15 @@ export function draftRoleFromModel(
   }
   // Small-file MTP head: has nextn layers AND the file is tiny (<10 GiB) compared to a full model
   // of the same architecture. Catches head exports that carry a full tokenizer.
-  if ((meta?.nextn_predict_layers ?? 0) > 0 && (meta?.file_size_bytes ?? 0) > 0 && (meta?.file_size_bytes ?? 0) < 10_737_418_240) {
+  // Size-class aware: a sub-10 GiB file is a NORMAL full main model when the declared total
+  // params are small (e.g. a 4B coder at IQ4_XS is ~2.6 GiB). Only treat a small file as a
+  // standalone head when it is implausibly small for its declared parameter count.
+  if (
+    (meta?.nextn_predict_layers ?? 0) > 0 &&
+    (meta?.file_size_bytes ?? 0) > 0 &&
+    (meta?.file_size_bytes ?? 0) < 10_737_418_240 &&
+    !isPlausibleFullModelSize(meta)
+  ) {
     return "external_mtp";
   }
 
