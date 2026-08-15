@@ -8,7 +8,6 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
-import { createPortal } from "react-dom";
 import type { CpuInfo, GpuInfo, SystemInfo } from "../lib/types";
 import { useDisplayTexture } from "../context/DisplayTextureContext";
 import { useTelemetry } from "../context/TelemetryContext";
@@ -243,8 +242,8 @@ export default function LaunchRailTelemetry({
   /** User cores pref while OC is open — restored on OC collapse. */
   const coresPrefBeforeOcRef = useRef(loadHwMonitorCpuCoresOpen());
   const [ocExpanded, setOcExpanded] = useState(false);
-  /** below mode: OC opens as a modal instead of a pinned footer. */
-  const [ocModalOpen, setOcModalOpen] = useState(false);
+  /** below: OC panel expands from the badge, no overlay. */
+  const [ocPopoverOpen, setOcPopoverOpen] = useState(false);
   /** Opacity of HW body + OC (not launch block). 1 = full, 0.2 = min dim. */
   const [hwDim, setHwDim] = useState(loadHwMonitorDim);
   const {
@@ -282,7 +281,10 @@ export default function LaunchRailTelemetry({
 
   const handleOcExpandedChange = useCallback((open: boolean) => {
     setOcExpanded(open);
-    if (below) return;
+    if (below) {
+      if (!open) setOcPopoverOpen(false);
+      return;
+    }
     if (open) {
       // Free vertical room at high zoom — temp collapse cores (keep user pref).
       coresPrefBeforeOcRef.current = loadHwMonitorCpuCoresOpen();
@@ -293,49 +295,14 @@ export default function LaunchRailTelemetry({
   }, [below]);
 
   useEffect(() => {
-    if (!ocModalOpen) return;
+    if (!ocPopoverOpen) return;
     const onKey = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") setOcModalOpen(false);
+      if (event.key === "Escape") setOcPopoverOpen(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [ocModalOpen]);
+  }, [ocPopoverOpen]);
 
-  /** below: first GPU card's natural height pins the row — totals/CPU match
-      or scroll internally instead of growing the row.
-      Ratchet guard: never grow the pinned height (a totals/CPU that briefly
-      overflows must not inflate the strip); only a real card-content change
-      (gpus.length) or a genuine shrink re-pins it. */
-  const belowGridRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!below) return;
-    const grid = belowGridRef.current;
-    if (!grid) return;
-    const card = grid.querySelector<HTMLElement>(".gpu-topo-card");
-    if (!card) {
-      grid.style.removeProperty("--hw-below-row-h");
-      return;
-    }
-    let pinned = 0;
-    const apply = () => {
-      if (getComputedStyle(card).alignSelf !== "start") return;
-      const h = card.getBoundingClientRect().height;
-      if (!(h > 0) || h > 280) return; // 0 = not laid out; >280 = runaway
-      const rounded = Math.round(h);
-      if (pinned && Math.abs(rounded - pinned) < 2) return;
-      if (pinned && rounded > pinned) return; // never ratchet up
-      pinned = rounded;
-      grid.style.setProperty("--hw-below-row-h", `${pinned}px`);
-    };
-    apply();
-    const ro = new ResizeObserver(apply);
-    ro.observe(card);
-    return () => {
-      ro.disconnect();
-      grid.style.removeProperty("--hw-below-row-h");
-    };
-  }, [below, gpus.length]);
 
   const onHwDimChange = useCallback((value: number) => {
     const next = Math.min(1, Math.max(0.2, value));
@@ -367,52 +334,40 @@ export default function LaunchRailTelemetry({
 
   const hasGpus = gpus.length > 0;
 
-  // below: OC is a small badge in the totals stack; the full panel opens as a modal.
+  // below: badge expands the OC panel in-place above the totals stack.
   const ocBadge =
     below && hasGpus ? (
-      <button
-        type="button"
-        className={`launch-rail-tel__oc-badge ${TEL_WIDGET_SURFACE}${
-          ocActive ? " launch-rail-tel__oc-badge--active" : ""
-        }${ocModalOpen ? " launch-rail-tel__oc-badge--open" : ""}`}
-        onClick={() => setOcModalOpen((v) => !v)}
-        aria-expanded={ocModalOpen}
-        title={ocActive ? "OVERCLOCK ACTIVE — open OC panel" : "Open OC panel"}
-      >
-        <span className="launch-rail-tel__oc-badge-label">OC · OVERCLOCK</span>
-        <span className="launch-rail-tel__oc-badge-hint">
-          {ocActive ? "ACTIVE · tap to tune" : "tap to tune"}
-        </span>
-      </button>
+      <div className="launch-rail-tel__oc-slot">
+        {ocPopoverOpen ? (
+          <div className="launch-rail-tel__oc-popover" role="region" aria-label="GPU overclock">
+            <GpuOverclockPanel
+              layout="rail"
+              {...ocPanelProps}
+              defaultExpanded
+              onExpandedChange={handleOcExpandedChange}
+            />
+          </div>
+        ) : null}
+        <button
+          type="button"
+          className={`launch-rail-tel__oc-badge ${TEL_WIDGET_SURFACE}${
+            ocActive ? " launch-rail-tel__oc-badge--active" : ""
+          }${ocPopoverOpen ? " launch-rail-tel__oc-badge--open" : ""}`}
+          onClick={() => setOcPopoverOpen((v) => !v)}
+          aria-expanded={ocPopoverOpen}
+          title={ocActive ? "OVERCLOCK ACTIVE — collapse OC panel" : "Expand OC panel"}
+        >
+          <span className="launch-rail-tel__oc-badge-label">OC · OVERCLOCK</span>
+          <span className="launch-rail-tel__oc-badge-hint">
+            {ocPopoverOpen
+              ? "tap to collapse"
+              : ocActive
+                ? "ACTIVE · tap to tune"
+                : "tap to tune"}
+          </span>
+        </button>
+      </div>
     ) : null;
-
-  const ocModal =
-    below && hasGpus && ocModalOpen && typeof document !== "undefined"
-      ? createPortal(
-          <>
-            {/*
-              Dim layer: pointer-events none so GPU cards / HW strip stay
-              clickable; the panel sits on top with its own pointer events.
-              Close via badge toggle, Esc, or click on the dim layer.
-            */}
-            <div className="launch-rail-tel__oc-modal-dim" aria-hidden="true" />
-            <div
-              className="launch-rail-tel__oc-modal"
-              role="dialog"
-              aria-modal="true"
-              aria-label="GPU overclock"
-            >
-              <GpuOverclockPanel
-                layout="rail"
-                {...ocPanelProps}
-                defaultExpanded
-                onExpandedChange={handleOcExpandedChange}
-              />
-            </div>
-          </>,
-          document.body
-        )
-      : null;
 
   const gpuStack = (
     <div className="launch-rail-tel__gpu-stack" data-gpu-topology>
@@ -454,8 +409,7 @@ export default function LaunchRailTelemetry({
       }`}
       data-display-texture={displayTexture}
       data-hw-layout={layout}
-      data-oc-expanded={ocExpanded ? "true" : "false"}
-      data-oc-modal={ocModalOpen ? "1" : undefined}
+      data-oc-expanded={ocExpanded || ocPopoverOpen ? "true" : "false"}
       style={{ "--hw-monitor-dim": hwDim } as CSSProperties}
     >
       <div className="launch-rail-tel__header">
@@ -490,7 +444,7 @@ export default function LaunchRailTelemetry({
         style={{ opacity: hwDim }}
       >
         {below ? (
-          <div className="launch-rail-tel__below-grid" ref={belowGridRef}>
+          <div className="launch-rail-tel__below-grid">
             <MemTotals gpus={gpus} systemInfo={systemInfo}>
               {ocBadge}
             </MemTotals>
@@ -527,7 +481,6 @@ export default function LaunchRailTelemetry({
           </>
         )}
       </div>
-      {ocModal}
     </div>
   );
 }

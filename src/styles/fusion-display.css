@@ -2711,14 +2711,28 @@ html[data-industrial-bezel="brush"] {
   align-items: stretch;
 }
 
+.config-hw-below-display:has(.launch-rail-tel--below[data-oc-expanded="true"]) {
+  overflow: visible;
+}
+
 .launch-rail-tel--below {
   height: auto;
   max-height: none;
   overflow: hidden;
 }
 
+.launch-rail-tel--below[data-oc-expanded="true"] {
+  overflow: visible;
+}
+
 .launch-rail-tel--below .launch-rail-tel__body {
   overflow: hidden;
+}
+
+.launch-rail-tel--below[data-oc-expanded="true"] .launch-rail-tel__body,
+.launch-rail-tel--below[data-oc-expanded="true"] .launch-rail-tel__below-grid,
+.launch-rail-tel--below[data-oc-expanded="true"] .launch-rail-tel__totals-stack {
+  overflow: visible;
 }
 
 /* HW-below strip — GPU cards set the row height; totals + CPU stretch to match.
@@ -2727,8 +2741,9 @@ html[data-industrial-bezel="brush"] {
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: minmax(160px, 1fr);
-  grid-template-rows: var(--hw-below-row-h, auto);
-  height: var(--hw-below-row-h, auto);
+  grid-template-rows: minmax(0, 1fr);
+  height: auto;
+  min-height: 0;
   align-items: stretch;
   gap: 8px;
   padding: 0 8px;
@@ -2737,14 +2752,15 @@ html[data-industrial-bezel="brush"] {
 }
 
 /* GPU cards each become their own column of the same row; natural height
-   defines --hw-below-row-h (measured by JS), so cards never stretch. */
+   defines the row, so cards never stretch. */
 .launch-rail-tel--below .launch-rail-tel__gpu-stack {
   display: contents;
 }
 
 .launch-rail-tel--below .launch-rail-tel__gpu-stack .gpu-topo-card {
   min-width: 0;
-  align-self: start;
+  min-height: 0;
+  align-self: stretch;
 }
 
 /* Totals stack — 3 rows filling the GPU-card row height:
@@ -2771,7 +2787,7 @@ html[data-industrial-bezel="brush"] {
 
 .launch-rail-tel--below .launch-rail-tel__totals-stack > .launch-rail-tel__total-cell,
 .launch-rail-tel--below .launch-rail-tel__totals-stack > .launch-rail-tel__totals,
-.launch-rail-tel--below .launch-rail-tel__totals-stack > .launch-rail-tel__oc-badge {
+.launch-rail-tel--below .launch-rail-tel__totals-stack > .launch-rail-tel__oc-slot {
   flex: 1 1 0;
   min-height: 0;
   width: 100%;
@@ -2819,10 +2835,37 @@ html[data-industrial-bezel="brush"] {
   overflow-x: hidden;
 }
 
-/* OC badge — below mode replaces the pinned OC footer (panel opens as modal) */
+/* OC badge — below mode expands the rail panel in-place above the badge. */
+.launch-rail-tel--below .launch-rail-tel__oc-slot {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
 .launch-rail-tel--below .launch-rail-tel__oc-badge {
   padding: 2px 6px;
   gap: 0;
+  flex: 1 1 0;
+}
+
+.launch-rail-tel--below .launch-rail-tel__oc-popover {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 4px);
+  z-index: 20;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  max-height: min(62vh, 560px);
+  overflow: auto;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--theme-border, #334155) 60%, transparent);
+  background: var(--theme-panel, #0a0c10);
+  box-shadow: 0 10px 28px color-mix(in srgb, #000 48%, transparent);
 }
 
 .launch-rail-tel__oc-badge {
@@ -2878,41 +2921,6 @@ html[data-industrial-bezel="brush"] {
 .launch-rail-tel__oc-badge--active .launch-rail-tel__oc-badge-hint {
   color: var(--theme-tel-amber-ink, color-mix(in srgb, #fbbf24 78%, #fff 22%));
   opacity: 0.85;
-}
-
-/* OC modal — dim only (NO backdrop-filter: blur pegs iGPU).
-   The dim layer is pointer-events: none so the HW-below strip (GPU cards,
-   OC badge) stays fully clickable while the modal is open. The panel is a
-   floating card in the upper window; the bottom HW strip is never covered. */
-.launch-rail-tel__oc-modal-dim {
-  position: fixed;
-  inset: 0;
-  z-index: 10040;
-  pointer-events: none;
-  background: color-mix(in srgb, #000 45%, transparent);
-}
-
-/* HW-below strip only lifts above the OC dim layer while the modal is open
-   (data-oc-modal set on .launch-rail-tel--below). Default: no z-index, so an
-   overflowing strip can never paint over the cockpit. */
-.launch-rail-tel--below[data-oc-modal="1"] {
-  position: relative;
-  z-index: 10050;
-}
-
-.launch-rail-tel__oc-modal {
-  position: fixed;
-  top: 8vh;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 10060;
-  width: min(960px, 92vw);
-  max-height: min(88vh, 820px);
-  overflow-y: auto;
-  border-radius: 4px;
-  border: 1px solid color-mix(in srgb, var(--theme-border, #334155) 60%, transparent);
-  background: var(--theme-panel, #0a0c10);
-  box-shadow: 0 12px 40px color-mix(in srgb, #000 55%, transparent);
 }
 
 .monitor-focus-exit-bar {
