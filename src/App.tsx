@@ -308,11 +308,21 @@ function App() {
     })();
   });
 
-  const checkCatalogHfUpdates = useCallback(async () => {
+  const checkCatalogHfUpdates = useCallback(async (onlyPath?: string) => {
     setCatalogUpdatesBusy(true);
     try {
-      const rows = await invoke<import("./lib/types").CatalogUpdateEntry[]>("check_catalog_hf_updates");
-      setCatalogHfUpdates((rows || []).filter((r) => r.hasUpdate && r.kind !== "current"));
+      const rows = await invoke<import("./lib/types").CatalogUpdateEntry[]>("check_catalog_hf_updates", {
+        onlyPath: onlyPath ?? null,
+      });
+      const fresh = (rows || []).filter((r) => r.hasUpdate && r.kind !== "current");
+      if (onlyPath) {
+        setCatalogHfUpdates((prev) => {
+          const rest = prev.filter((r) => r.path !== onlyPath);
+          return [...rest, ...fresh];
+        });
+      } else {
+        setCatalogHfUpdates(fresh);
+      }
     } catch (err) {
       console.error("Catalog HF update check failed:", err);
     } finally {

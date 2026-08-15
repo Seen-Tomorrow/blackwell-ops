@@ -111,13 +111,14 @@ async fn check_hf_repo_updates(
 #[tauri::command]
 async fn check_catalog_hf_updates(
     config: tauri::State<'_, Arc<std::sync::Mutex<config::AppConfig>>>,
+    only_path: Option<String>,
 ) -> Result<Vec<crate::types::CatalogUpdateEntry>, String> {
     let paths = {
         let cfg = config.lock().map_err(|e| e.to_string())?;
         config::get_model_paths(&cfg)
     };
     let hf_token = secrets::get_secret("hf_token")?;
-    hf_api::check_catalog_hf_updates(&paths, hf_token.as_deref()).await
+    hf_api::check_catalog_hf_updates(&paths, hf_token.as_deref(), only_path.as_deref()).await
 }
 
 // ── Model Path Management Commands ────────────────────────────────────

@@ -690,15 +690,22 @@ pub async fn check_repo_for_updates(
 }
 
 /// Scan the local catalog for HF-paired models whose on-disk quant differs from Hub.
+/// If `only_path` is set, only that local file (and its Hub repo tree) is checked.
 pub async fn check_catalog_hf_updates(
     paths: &[ModelPathEntry],
     hf_token: Option<&str>,
+    only_path: Option<&str>,
 ) -> Result<Vec<CatalogUpdateEntry>, String> {
     let (catalog, _) = model_catalog::merge_catalogs(paths, None, None)?;
     let client = build_client(hf_token);
 
     let mut by_repo: HashMap<String, Vec<&ModelEntry>> = HashMap::new();
     for entry in &catalog {
+        if let Some(want) = only_path {
+            if entry.path != want {
+                continue;
+            }
+        }
         let repo_id = entry
             .hf_meta
             .as_ref()
@@ -711,6 +718,15 @@ pub async fn check_catalog_hf_updates(
         by_repo.entry(repo_id).or_default().push(entry);
     }
 
+    crate::output_console::emit_blackwell_output_console_utils_line(
+        format!(
+            "[catalog-updates] start  {} repo(s)  {}",
+            by_repo.len(),
+            only_path.unwrap_or("all local HF models")
+        ),
+        crate::output_console::BlackwellOutputConsoleLineStyle::Highlight,
+    );
+
     let mut results = Vec::new();
     for (repo_id, entries) in by_repo {
         let parts: Vec<&str> = repo_id.split('/').collect();
@@ -720,9 +736,19 @@ pub async fn check_catalog_hf_updates(
         let (namespace, repo) = (parts[0], parts[1]);
 
         let hf_ggufs = match fetch_repo_gguf_files(&client, namespace, repo).await {
-            Ok(g) => g,
+            Ok(g) => {
+                crate::output_console::emit_blackwell_output_console_utils_line(
+                    format!("[catalog-updates] tree {repo_id}  {} quant(s)", g.len()),
+                    crate::output_console::BlackwellOutputConsoleLineStyle::Normal,
+                );
+                g
+            }
             Err(e) => {
                 log::warn!("[catalog-updates] Skipping {repo_id}: {e}");
+                crate::output_console::emit_blackwell_output_console_utils_line(
+                    format!("[catalog-updates] skip {repo_id}: {e}"),
+                    crate::output_console::BlackwellOutputConsoleLineStyle::Warning,
+                );
                 continue;
             }
         };

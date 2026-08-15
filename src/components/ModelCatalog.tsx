@@ -31,7 +31,7 @@ interface ModelCatalogProps {
   setupGuide: SetupGuideState;
   catalogHfUpdates?: CatalogUpdateEntry[];
   catalogUpdatesBusy?: boolean;
-  onCheckCatalogUpdates?: () => void;
+  onCheckCatalogUpdates?: (onlyPath?: string) => void;
   onClearCatalogUpdate?: (path: string) => void;
 }
 
@@ -584,9 +584,21 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           onClick={() => onCheckCatalogUpdates?.()}
           disabled={catalogUpdatesBusy}
           className="catalog-cycle-btn value-chip px-1.5 py-0 text-[7px] font-mono uppercase rounded-sm transition-colors disabled:opacity-40"
-          title="Check Hugging Face for header/template or full-weight updates on local models"
+          title="Check every local HF-paired model against the Hub (tree listing only unless size is close)"
         >
-          {catalogUpdatesBusy ? "CHECKING…" : "CHECK UPDATES"}
+          {catalogUpdatesBusy ? "CHECKING…" : "CHECK ALL"}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            const path = catalogSelectedModel?.path ?? panelActiveModel?.path;
+            if (path) onCheckCatalogUpdates?.(path);
+          }}
+          disabled={catalogUpdatesBusy || !(catalogSelectedModel || panelActiveModel)}
+          className="catalog-cycle-btn value-chip px-1.5 py-0 text-[7px] font-mono uppercase rounded-sm transition-colors disabled:opacity-40"
+          title="Check only the selected model against Hugging Face"
+        >
+          CHECK THIS
         </button>
         <button
           type="button"
