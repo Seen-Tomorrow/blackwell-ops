@@ -372,13 +372,6 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     }
   };
 
-  const searchInputPadding = () => {
-    if (batchScanState.active) return "pr-[8.25rem]";
-    if (showScanMenu && editMode) return "pr-[15rem]";
-    if (showScanMenu) return "pr-[8.25rem]";
-    if (editMode) return "pr-[16rem]";
-    return "pr-[8.5rem]";
-  };
 
   // Auto-scroll selected model into view in the catalog scroll container
   const catalogScrollRef = useRef<HTMLDivElement>(null);
@@ -726,7 +719,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           */}
           <div className="catalog-list-panel__chrome">
             <div className="catalog-list-panel__chrome-search">
-              <div className="catalog-search-wrap relative min-w-0">
+              <div className="catalog-search-wrap min-w-0">
                 <input
                   ref={catalogSearchInputRef}
                   type="text"
@@ -740,13 +733,11 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                     }
                   }}
                   autoFocus
-                  className={`catalog-search-input theme-input w-full text-xs font-mono pl-3 py-1.5 rounded-sm ${searchInputPadding()}`}
+                  className="catalog-search-input theme-input w-full text-xs font-mono px-3 py-1.5 rounded-sm"
                 />
-                <div className="catalog-search-actions absolute inset-y-0 right-1.5 flex items-center gap-1 pointer-events-none">
-                  <div className="flex items-center gap-1 pointer-events-auto">
-                    {renderScanMetaControl()}
-                    {renderEditControl()}
-                  </div>
+                <div className="catalog-search-actions">
+                  {renderScanMetaControl()}
+                  {renderEditControl()}
                 </div>
               </div>
             </div>
