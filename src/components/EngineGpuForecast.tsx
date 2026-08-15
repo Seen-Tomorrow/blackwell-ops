@@ -8,7 +8,7 @@ import type {
 } from "../lib/types";
 import type { LaunchChromePolicy } from "../lib/launchChromePolicy";
 import type { FusionShareLaunchConfig } from "../lib/fusionShareCapture";
-import type { DisplayCardsPerRow, FusionDualOrient, HwMonitorDock } from "../lib/storage";
+import type { DisplayCardsPerRow, FusionDualOrient } from "../lib/storage";
 import {
   loadDisplayGpuPerRow,
   loadEnginesPanelVisible,
@@ -107,9 +107,6 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     onPinSecondary,
     monitorFocus = false,
     onToggleMonitor,
-    hwMonitorDock = "rail",
-    onToggleHwDock,
-    hwMonitorOpen = false,
   } = props;
 
   const [gpuPerRow, setGpuPerRow] = useState<DisplayCardsPerRow>(loadDisplayGpuPerRow);
@@ -284,6 +281,13 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
             enginesPerRow={enginesPerRow}
             onGpuPerRow={onGpuPerRow}
             onEnginesPerRow={onEnginesPerRow}
+            showGpuDensity={
+              !(
+                selectedSlotIdx != null &&
+                activeEnginePort != null &&
+                (engineStatus === "LOADING" || engineStatus === "RUNNING")
+              )
+            }
             showEnginesControl={showEjectBelowVram}
             enginesPanelVisible={enginesPanelVisible}
             onToggleEnginesPanel={onToggleEnginesPanel}
@@ -295,9 +299,6 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
             onToggleOrient={onToggleOrient}
             monitorFocus={monitorFocus}
             onToggleMonitor={onToggleMonitor}
-            hwMonitorDock={hwMonitorDock}
-            onToggleHwDock={onToggleHwDock}
-            hwMonitorOpen={hwMonitorOpen}
             liveEngineCount={liveEngineSlots.length}
             onCycleEngine={onCycleLiveEngine}
           />
@@ -388,8 +389,4 @@ export interface EngineGpuForecastProps {
   onPinSecondary?: (slotIdx: number) => void;
   monitorFocus?: boolean;
   onToggleMonitor?: () => void;
-  hwMonitorDock?: HwMonitorDock;
-  onToggleHwDock?: () => void;
-  /** HW monitor visible (toolbar on/off) — bezel placement chip only shown when open. */
-  hwMonitorOpen?: boolean;
 }

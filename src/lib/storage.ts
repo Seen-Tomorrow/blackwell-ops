@@ -505,6 +505,7 @@ export function saveHwMonitorOpen(open: boolean): void {
 }
 
 export type HwMonitorDock = "rail" | "below";
+export type HwMonitorPlacement = "off" | HwMonitorDock;
 
 export function loadHwMonitorDock(): HwMonitorDock {
   return readStorage(KEYS.hwMonitorDock) === "below" ? "below" : "rail";
@@ -512,6 +513,16 @@ export function loadHwMonitorDock(): HwMonitorDock {
 
 export function saveHwMonitorDock(dock: HwMonitorDock): void {
   writeStorage(KEYS.hwMonitorDock, dock);
+}
+
+/** Cycle OFF → BELOW → RAIL → OFF. Placement persists independently of OFF. */
+export function cycleHwMonitorPlacement(
+  open: boolean,
+  dock: HwMonitorDock,
+): { open: boolean; dock: HwMonitorDock } {
+  if (!open) return { open: true, dock: "below" };
+  if (dock === "below") return { open: true, dock: "rail" };
+  return { open: false, dock };
 }
 
 
@@ -1043,12 +1054,19 @@ export function saveFusionBenchTray(state: FusionBenchTrayState): void {
 export type FusionDisplayMode = "single" | "dual";
 export type FusionDualOrient = "side" | "stack";
 
+/** Dual fusion is session-only — never restored from localStorage. */
 export function loadFusionDisplayMode(): FusionDisplayMode {
-  return readStorage(KEYS.fusionDisplayMode) === "dual" ? "dual" : "single";
+  removeStorage(KEYS.fusionDisplayMode);
+  return "single";
 }
 
+/**
+ * Dual fusion is session-only — never persists `dual`.
+ * On single, clears any stale key so a restart cannot reopen dual.
+ */
 export function saveFusionDisplayMode(mode: FusionDisplayMode): void {
-  writeStorage(KEYS.fusionDisplayMode, mode);
+  if (mode === "dual") return;
+  removeStorage(KEYS.fusionDisplayMode);
 }
 
 export function loadFusionDualOrient(): FusionDualOrient {
@@ -1059,15 +1077,15 @@ export function saveFusionDualOrient(orient: FusionDualOrient): void {
   writeStorage(KEYS.fusionDualOrient, orient);
 }
 
+/** Dual secondary pin is session-only — never restored from localStorage. */
 export function loadFusionSecondarySlotIdx(): number | null {
-  const raw = readStorage(KEYS.fusionSecondarySlotIdx);
-  if (raw == null || raw === "" || raw === "-1") return null;
-  const n = Number.parseInt(raw, 10);
-  return Number.isFinite(n) && n >= 0 ? n : null;
+  removeStorage(KEYS.fusionSecondarySlotIdx);
+  return null;
 }
 
-export function saveFusionSecondarySlotIdx(slotIdx: number | null): void {
-  writeStorage(KEYS.fusionSecondarySlotIdx, String(slotIdx ?? -1));
+/** Dual secondary pin is session-only — never persists. */
+export function saveFusionSecondarySlotIdx(_slotIdx: number | null): void {
+  removeStorage(KEYS.fusionSecondarySlotIdx);
 }
 
 /** Monitor focus is session-only — never restored from localStorage. */

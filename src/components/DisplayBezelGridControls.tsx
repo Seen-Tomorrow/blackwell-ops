@@ -3,7 +3,7 @@
  * Same segment-switch language as cockpit / top-bezel Device·Split.
  */
 
-import type { DisplayCardsPerRow, FusionDualOrient, HwMonitorDock } from "../lib/storage";
+import type { DisplayCardsPerRow, FusionDualOrient } from "../lib/storage";
 import { GpuSegmentSwitch } from "./GpuAssignPanel";
 
 export interface DisplayBezelGridControlsProps {
@@ -29,10 +29,8 @@ export interface DisplayBezelGridControlsProps {
   onToggleOrient?: () => void;
   monitorFocus?: boolean;
   onToggleMonitor?: () => void;
-  hwMonitorDock?: HwMonitorDock;
-  onToggleHwDock?: () => void;
-  /** HW monitor visible (toolbar on/off) — placement chip only shown when open. */
-  hwMonitorOpen?: boolean;
+  /** Forecast GPU-density control — hidden while fusion metrics overlay is on. */
+  showGpuDensity?: boolean;
 }
 
 export default function DisplayBezelGridControls({
@@ -53,9 +51,7 @@ export default function DisplayBezelGridControls({
   onToggleOrient,
   monitorFocus = false,
   onToggleMonitor,
-  hwMonitorDock = "rail",
-  onToggleHwDock,
-  hwMonitorOpen = false,
+  showGpuDensity = true,
 }: DisplayBezelGridControlsProps) {
   const showFusionControls = Boolean(onToggleDual || onToggleMonitor || onCycleEngine);
 
@@ -65,21 +61,23 @@ export default function DisplayBezelGridControls({
       data-frame-bottom-chrome
     >
       <div className="display-bezel-grid-controls flex items-center gap-3 min-w-0">
-        <div className="display-bezel-grid-controls__group flex items-center gap-1.5 min-w-0">
-          <span className="display-bezel-grid-controls__label font-mono uppercase tracking-wider">
-            SHOW GPU
-          </span>
-          <GpuSegmentSwitch
-            ariaLabel="VRAM GPU cards per row"
-            title="GPU forecast cards per row — 2 or 3 (manual density)"
-            options={[
-              { id: "2", label: "2", title: "2 per row" },
-              { id: "3", label: "3", title: "3 per row" },
-            ]}
-            selectedId={String(gpuPerRow)}
-            onSelect={(id) => onGpuPerRow(id === "3" ? 3 : 2)}
-          />
-        </div>
+        {showGpuDensity ? (
+          <div className="display-bezel-grid-controls__group flex items-center gap-1.5 min-w-0">
+            <span className="display-bezel-grid-controls__label font-mono uppercase tracking-wider">
+              SHOW GPU
+            </span>
+            <GpuSegmentSwitch
+              ariaLabel="VRAM GPU cards per row"
+              title="GPU forecast cards per row — 2 or 3 (manual density)"
+              options={[
+                { id: "2", label: "2", title: "2 per row" },
+                { id: "3", label: "3", title: "3 per row" },
+              ]}
+              selectedId={String(gpuPerRow)}
+              onSelect={(id) => onGpuPerRow(id === "3" ? 3 : 2)}
+            />
+          </div>
+        ) : null}
         {showEnginesControl ? (
           <div className="display-bezel-grid-controls__group flex items-center gap-1.5 min-w-0">
             <span className="display-bezel-grid-controls__label font-mono uppercase tracking-wider">
@@ -165,14 +163,14 @@ export default function DisplayBezelGridControls({
                 onClick={onToggleMonitor}
                 title={
                   monitorFocus
-                    ? "Exit monitor focus (show app chrome)"
-                    : "Monitor focus — fusion display + HW only"
+                    ? "Exit focus HUD (show app chrome)"
+                    : "Focus HUD — fusion display + HW only"
                 }
                 className={`display-bezel-fusion-chip font-mono uppercase tracking-wider${
                   monitorFocus ? " display-bezel-fusion-chip--active" : ""
                 }`}
               >
-                MONITOR
+                FOCUS
               </button>
             ) : null}
             {onCycleEngine && monitorFocus && !dualActive && liveEngineCount >= 2 ? (
@@ -183,22 +181,6 @@ export default function DisplayBezelGridControls({
                 className="display-bezel-fusion-chip font-mono uppercase tracking-wider"
               >
                 CYCLE
-              </button>
-            ) : null}
-            {onToggleHwDock && hwMonitorOpen ? (
-              <button
-                type="button"
-                onClick={onToggleHwDock}
-                title={
-                  hwMonitorDock === "below"
-                    ? "Place HW monitor in right rail"
-                    : "Place HW monitor under the fusion display"
-                }
-                className={`display-bezel-fusion-chip font-mono uppercase tracking-wider${
-                  hwMonitorDock === "below" ? " display-bezel-fusion-chip--active" : ""
-                }`}
-              >
-                {hwMonitorDock === "below" ? "BELOW" : "RAIL"}
               </button>
             ) : null}
           </div>

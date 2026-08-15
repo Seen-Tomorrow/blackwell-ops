@@ -10,6 +10,7 @@ import {
   engineAliasKey,
   migrateGlobalSpecOutOfCatalogOverrides,
   normalizeModelPathKey,
+  cycleHwMonitorPlacement,
   loadCtxCockpitDock,
   loadEnginesInRail,
   loadHwMonitorDock,
@@ -428,27 +429,28 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const [hwMonitorDock, setHwMonitorDock] = useState<HwMonitorDock>(loadHwMonitorDock);
   const fusionDisplay = useFusionDisplayMode(selectedSlotIdx, stack);
 
-  const toggleHwDock = useCallback(() => {
-    setHwMonitorDock((prev) => {
-      const next: HwMonitorDock = prev === "below" ? "rail" : "below";
-      saveHwMonitorDock(next);
-      return next;
-    });
-  }, []);
+  const applyHwPlacement = useCallback((open: boolean, dock: HwMonitorDock) => {
+    setHwMonitorOpen(open);
+    saveHwMonitorOpen(open);
+    dispatchAppEvent(EVENTS.hwMonitorOpenChanged, { open });
+    if (dock !== hwMonitorDock) {
+      setHwMonitorDock(dock);
+      saveHwMonitorDock(dock);
+    }
+  }, [hwMonitorDock]);
 
-  // Monitor focus: stacked HUD — HW under fusion. Dual is user's choice.
+  const cycleHwMonitor = useCallback(() => {
+    const next = cycleHwMonitorPlacement(hwMonitorOpen, hwMonitorDock);
+    applyHwPlacement(next.open, next.dock);
+  }, [hwMonitorOpen, hwMonitorDock, applyHwPlacement]);
+
+  // Focus HUD: stacked fusion + HW below. Dual is user's choice.
   useEffect(() => {
     if (!fusionDisplay.monitorFocus) return;
-    if (!hwMonitorOpen) {
-      setHwMonitorOpen(true);
-      saveHwMonitorOpen(true);
-      dispatchAppEvent(EVENTS.hwMonitorOpenChanged, { open: true });
+    if (!hwMonitorOpen || hwMonitorDock !== "below") {
+      applyHwPlacement(true, "below");
     }
-    if (hwMonitorDock !== "below") {
-      setHwMonitorDock("below");
-      saveHwMonitorDock("below");
-    }
-  }, [fusionDisplay.monitorFocus, hwMonitorOpen, hwMonitorDock]);
+  }, [fusionDisplay.monitorFocus, hwMonitorOpen, hwMonitorDock, applyHwPlacement]);
 
   const [enginesInRail, setEnginesInRail] = useState(loadEnginesInRail);
   /** AtomCode harness wizard open — full cockpit takeover; skip param dim. */
@@ -478,12 +480,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const [launchRailUpperPadHeight, setLaunchRailUpperPadHeight] = useState(0);
   const [launchRailDisplayHeight, setLaunchRailDisplayHeight] = useState(0);
 
-  const toggleHwMonitor = useCallback(() => {
-    const next = !hwMonitorOpen;
-    setHwMonitorOpen(next);
-    saveHwMonitorOpen(next);
-    dispatchAppEvent(EVENTS.hwMonitorOpenChanged, { open: next });
-  }, [hwMonitorOpen]);
 
   const toggleEnginesInRail = useCallback(() => {
     const next = !enginesInRail;
@@ -2722,9 +2718,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           const next = !fusionDisplay.monitorFocus;
           fusionDisplay.setMonitorFocus(next);
         }}
-        hwMonitorDock={hwMonitorDock}
-        onToggleHwDock={toggleHwDock}
-        hwMonitorOpen={hwMonitorOpen}
       />
 
       {/*
@@ -2753,7 +2746,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         launchDockPositionExplicit={launchDockPositionExplicit}
         onToggleLaunchDockPosition={toggleLaunchDockPosition}
         hwMonitorOpen={hwMonitorOpen}
-        onToggleHwMonitor={toggleHwMonitor}
+        hwMonitorDock={hwMonitorDock}
+        onCycleHwMonitor={cycleHwMonitor}
         showLaunchRail={showLaunchRail}
         enginesInRail={enginesInRail}
         onToggleEnginesInRail={toggleEnginesInRail}

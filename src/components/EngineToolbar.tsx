@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { ConfigViewMode } from "../lib/types";
 import type { ConfigColumnCount } from "../lib/configColumnLayout";
-import type { CtxCockpitDock, LaunchDockPosition } from "../lib/storage";
+import type { CtxCockpitDock, HwMonitorDock, LaunchDockPosition } from "../lib/storage";
 import ConfigViewToggle from "./ConfigViewToggle";
 
 /**
@@ -20,7 +20,8 @@ export default function EngineToolbar(props: EngineToolbarProps) {
     launchDockPositionExplicit,
     onToggleLaunchDockPosition,
     hwMonitorOpen,
-    onToggleHwMonitor,
+    hwMonitorDock,
+    onCycleHwMonitor,
     showLaunchRail,
     enginesInRail,
     onToggleEnginesInRail,
@@ -80,20 +81,6 @@ export default function EngineToolbar(props: EngineToolbarProps) {
           ) : null}
         </button>
         <div className="config-launch-dock-controls flex items-center gap-1.5 min-w-0">
-          <button
-            type="button"
-            onClick={onToggleHwMonitor}
-            className={`config-panel-toolbar-chip px-1.5 py-0.5 text-[8px] font-mono rounded-sm ${
-              hwMonitorOpen ? "config-panel-toolbar-chip--active" : ""
-            }`}
-            title={
-              hwMonitorOpen
-                ? "HW monitor on — live CPU/GPU stats (CPU polling active)"
-                : "HW monitor off — open for live CPU/GPU column (works with BOTTOM or RAIL dock)"
-            }
-          >
-            HW MONITOR
-          </button>
           {showLaunchRail && (
             <button
               type="button"
@@ -110,6 +97,22 @@ export default function EngineToolbar(props: EngineToolbarProps) {
               ENGINES{enginesInRail ? "↑RAIL" : "↓DSP"}
             </button>
           )}
+          <button
+            type="button"
+            onClick={onCycleHwMonitor}
+            className={`config-panel-toolbar-chip px-1.5 py-0.5 text-[8px] font-mono rounded-sm ${
+              hwMonitorOpen ? "config-panel-toolbar-chip--active" : ""
+            }`}
+            title={
+              !hwMonitorOpen
+                ? "HW monitor off — click for BELOW display"
+                : hwMonitorDock === "below"
+                  ? "HW monitor below display — click for right RAIL"
+                  : "HW monitor in right rail — click to turn off"
+            }
+          >
+            HW {!hwMonitorOpen ? "OFF" : hwMonitorDock === "below" ? "BELOW" : "RAIL"}
+          </button>
         </div>
         {hasParams && (
           <>
@@ -161,7 +164,9 @@ export interface EngineToolbarProps {
   /** Cycle bottom ↔ right (same single-toggle pattern as CTX). */
   onToggleLaunchDockPosition: () => void;
   hwMonitorOpen: boolean;
-  onToggleHwMonitor: () => void;
+  hwMonitorDock: HwMonitorDock;
+  /** Cycle HW monitor OFF → BELOW → RAIL → OFF. Last chrome control before columns. */
+  onCycleHwMonitor: () => void;
   showLaunchRail: boolean;
   enginesInRail: boolean;
   onToggleEnginesInRail: () => void;

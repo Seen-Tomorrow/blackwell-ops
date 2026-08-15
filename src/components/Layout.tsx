@@ -446,7 +446,7 @@ export default function Layout({
       {monitorFocus ? (
         <div className="monitor-focus-exit-bar flex items-center justify-between gap-3 px-4 py-1.5 relative z-40">
           <span className="font-mono text-[9px] uppercase tracking-wider text-stealth-muted/70">
-            Monitor focus · Esc to exit
+            Focus HUD · Esc to exit
           </span>
           <div className="flex items-center gap-1 flex-shrink-0" title="Ctrl+scroll to zoom">
             <span className="font-mono text-[8px] uppercase tracking-wider text-stealth-muted/50">
@@ -484,7 +484,7 @@ export default function Layout({
               dispatchAppEvent(EVENTS.monitorFocusChanged, { open: false });
             }}
           >
-            EXIT MONITOR
+            EXIT FOCUS
           </button>
         </div>
       ) : null}
