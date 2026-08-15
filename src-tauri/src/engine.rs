@@ -1104,6 +1104,25 @@ fn spawn_nobsproof_cmd_window(script_path: &std::path::Path) -> Result<(), Strin
             .map(|_| ())
     };
 
+    // 0) Preferred: Windows Terminal — opens the visible console in the modern terminal
+    //    instead of legacy conhost. `wt.exe` is a UWP launcher that returns immediately
+    //    and accepts the command to run as argv. `cmd /k` keeps the window open.
+    //    When this process is already elevated, the resulting terminal window is
+    //    elevated too. `wt.exe` must be launched with CREATE_NO_WINDOW so no extra
+    //    conhost flashes.
+    if let Some(wt) = crate::sidecar_elevate::wt_exe() {
+        // Quote the script path so install dirs with spaces are one token after /k.
+        let quoted_script = format!("\"{script}\"");
+        let ok = spawn_hidden(
+            wt.to_str().unwrap_or("wt.exe"),
+            &["cmd", "/k", &quoted_script],
+        )
+        .is_ok();
+        if ok {
+            return Ok(());
+        }
+    }
+
     // 1) PowerShell Start-Process — fully detached visible console, no job breakaway needed.
     // ArgumentList as an array keeps paths with spaces as one argument to cmd /k.
     let ps_cmd = format!(

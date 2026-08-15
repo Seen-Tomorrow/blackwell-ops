@@ -1288,7 +1288,26 @@ fn spawn_pi_console_user(launcher: &Path, home: &Path, project: &Path) -> Result
     let proj_s = q(&project.to_string_lossy());
     let home_s = q(&home.to_string_lossy());
 
-    // Visible console via start; session bat sets PI_CODING_AGENT_DIR before pi.cmd.
+    // Visible console. Prefer Windows Terminal (modern terminal); fall back to
+    // Start-Process cmd.exe (legacy conhost) if wt.exe is unavailable.
+    if let Some(wt) = crate::sidecar_elevate::wt_exe() {
+        // wt.exe cmd /c call "session.bat"  — session bat sets PI_CODING_AGENT_DIR.
+        let quoted_bat = format!("\"{bat_s}\"");
+        let mut c = std::process::Command::new(&wt);
+        c.arg("cmd")
+            .args(["/c", "call", &quoted_bat])
+            .current_dir(project)
+            .env("PI_CODING_AGENT_DIR", home)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .creation_flags(CREATE_NO_WINDOW);
+        if c.spawn().is_ok() {
+            return Ok(());
+        }
+    }
+
+    // Fallback: Start-Process cmd.exe via hidden powershell.
     let ps = format!(
         "$env:PI_CODING_AGENT_DIR = '{home_s}'; \
          Start-Process -FilePath 'cmd.exe' \
@@ -1318,7 +1337,11 @@ fn spawn_pi_console_user(launcher: &Path, home: &Path, project: &Path) -> Result
 }
 
 /// Elevated detached pi console via bundled gsudo (one UAC prompt unless already admin).
-/// Uses `gsudo --new` so the elevated window stays open and the app does not wait.
+///
+/// The usual UI path ("Elevated (gsudo)") runs while the **app is not admin**.
+/// `gsudo --new cmd <session>` would open legacy conhost — that is the window the
+/// user sees. Elevate a hidden `cmd` instead and `start` Windows Terminal from
+/// that cmd (`gsudo wt <args>` drops argv via UWP activation).
 #[cfg(windows)]
 fn spawn_pi_console_elevated(
     app: &tauri::AppHandle,
@@ -1335,9 +1358,33 @@ fn spawn_pi_console_elevated(
     let session_bat = write_session_launch_bat(home, launcher, project)?;
     let cmd_exe = crate::sidecar_elevate::system_cmd_exe();
     let raw_tail = crate::sidecar_elevate::cmd_script_raw_tail(&session_bat);
+    let app_elevated = crate::sidecar_elevate::is_process_elevated();
+    let wt = crate::sidecar_elevate::wt_exe();
+    emit_dbg(&format!(
+        "[Pi] elevated console: app_elevated={app_elevated} wt={}",
+        wt.as_ref()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "None".into())
+    ));
 
     // Already elevated → new console, no UAC.
-    if crate::sidecar_elevate::is_process_elevated() {
+    if app_elevated {
+        if let Some(wt) = wt.as_ref() {
+            let mut c = Command::new(wt);
+            c.arg("cmd")
+                .raw_arg(&raw_tail)
+                .current_dir(project)
+                .env("PI_CODING_AGENT_DIR", home)
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .creation_flags(CREATE_NO_WINDOW);
+            if c.spawn().is_ok() {
+                emit_dbg("[Pi] elevated console: branch=already-admin-wt");
+                return Ok(());
+            }
+            emit_dbg("[Pi] elevated console: already-admin wt spawn failed, falling back");
+        }
         let mut c = Command::new(&cmd_exe);
         c.raw_arg(&raw_tail)
             .current_dir(project)
@@ -1348,12 +1395,54 @@ fn spawn_pi_console_elevated(
             .creation_flags(CREATE_NEW_CONSOLE);
         c.spawn()
             .map_err(|e| format!("Failed to spawn elevated pi (already admin): {e}"))?;
+        emit_dbg("[Pi] elevated console: branch=already-admin-conhost");
         return Ok(());
     }
 
     let gsudo = crate::sidecar_elevate::stage_gsudo(app)?;
-    // --new = new elevated console window, return immediately (do not -w wait).
-    // Space-safe cmd /d /s /c ""session.bat"" via raw_arg (same as Foundry/GPU priv).
+
+    // Preferred: gsudo elevates cmd (argv-safe). Hidden cmd `start`s wt.exe with
+    // the session bat. Do not pass wt.exe as gsudo's target. Do not use --new
+    // here — that is a new conhost for the elevated process.
+    if let Some(wt) = wt.as_ref() {
+        let bridge = home.join("launch-session-wt.cmd");
+        let body = crate::sidecar_elevate::wt_start_bridge_bat_body(wt, &session_bat);
+        std::fs::write(&bridge, body)
+            .map_err(|e| format!("write launch-session-wt.cmd: {e}"))?;
+        let bridge_tail = crate::sidecar_elevate::cmd_script_raw_tail(&bridge);
+        let mut c = Command::new(&gsudo);
+        c.arg("-d")
+            .arg(&cmd_exe)
+            .raw_arg(&bridge_tail)
+            .current_dir(project)
+            .env("PI_CODING_AGENT_DIR", home)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .creation_flags(CREATE_NO_WINDOW);
+        match c.status() {
+            Ok(status) if status.success() => {
+                emit_dbg("[Pi] elevated console: branch=gsudo-cmd-start-wt");
+                return Ok(());
+            }
+            Ok(status) => {
+                let code = status.code().unwrap_or(-1);
+                if code == 1223 || code == 999 {
+                    return Err(crate::sidecar_elevate::UAC_DENIED_MESSAGE.to_string());
+                }
+                emit_dbg(&format!(
+                    "[Pi] elevated console: gsudo-wt failed exit {code}, falling back to --new"
+                ));
+            }
+            Err(e) => {
+                emit_dbg(&format!(
+                    "[Pi] elevated console: gsudo-wt spawn error ({e}), falling back to --new"
+                ));
+            }
+        }
+    }
+
+    // No WT, or WT bridge failed: legacy elevated conhost.
     let mut c = Command::new(&gsudo);
     c.arg("--new")
         .arg(&cmd_exe)
@@ -1369,7 +1458,6 @@ fn spawn_pi_console_elevated(
         .map_err(|e| format!("gsudo elevated pi launch failed: {e}"))?;
     if !status.success() {
         let code = status.code().unwrap_or(-1);
-        // gsudo UAC cancel codes
         if code == 1223 || code == 999 {
             return Err(crate::sidecar_elevate::UAC_DENIED_MESSAGE.to_string());
         }
@@ -1377,6 +1465,7 @@ fn spawn_pi_console_elevated(
             "gsudo elevated pi launch failed (exit {code}). Approve UAC or install gsudo in bin/."
         ));
     }
+    emit_dbg("[Pi] elevated console: branch=gsudo-new-conhost");
     let _ = launcher;
     Ok(())
 }

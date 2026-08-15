@@ -296,6 +296,83 @@ pub fn system_cmd_exe() -> PathBuf {
     PathBuf::from(r"C:\Windows\System32\cmd.exe")
 }
 
+/// Windows Terminal launcher `wt.exe` (UWP app execution alias).
+///
+/// Returns `Some(path)` when Windows Terminal is installed. Used to open visible
+/// console windows in the modern terminal instead of legacy conhost —
+/// `CREATE_NEW_CONSOLE` / `Start-Process cmd.exe` force the old console host and
+/// bypass the Windows "default terminal = Windows Terminal" setting.
+///
+/// The WindowsApps `wt.exe` is a 0-byte App Execution Alias, not a regular PE.
+/// `CreateProcess` / `cmd start` on that path work and keep argv. **`gsudo wt
+/// <args>` does not** — gsudo's UWP activation drops arguments. Elevate `cmd`
+/// (or an already-admin process) and launch `wt` from there.
+///
+/// `wt.exe` returns immediately; it accepts the command as argv
+/// (e.g. `wt.exe cmd /c call "session.bat"`). A child started from an elevated
+/// process is elevated too.
+#[cfg(windows)]
+pub fn wt_exe() -> Option<PathBuf> {
+    // Alias first — this is the documented launch path and the one that works
+    // from a GUI / already-elevated CreateProcess. Do not prefer
+    // `C:\Program Files\WindowsApps\Microsoft.WindowsTerminal_*\wt.exe`: that
+    // real PE is AppX-protected and often fails CreateProcess for unpackaged
+    // callers (would break the working non-elevated spawn).
+    if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+        let mut p = PathBuf::from(local);
+        p.push("Microsoft");
+        p.push("WindowsApps");
+        p.push("wt.exe");
+        // Alias is a reparse point; `is_file()` is true on current Windows, but
+        // `exists()` still matches if the metadata type is reported oddly.
+        if p.is_file() || p.exists() {
+            return Some(p);
+        }
+    }
+
+    let unpackaged = PathBuf::from(r"C:\Program Files\Windows Terminal\wt.exe");
+    if unpackaged.is_file() {
+        return Some(unpackaged);
+    }
+
+    if let Ok(out) = crate::engine_utils::run_hidden_output(|| {
+        let mut cmd = std::process::Command::new("where.exe");
+        cmd.arg("wt");
+        cmd
+    }) {
+        if out.status.success() {
+            let s = String::from_utf8_lossy(&out.stdout);
+            if let Some(line) = s.lines().next() {
+                let found = PathBuf::from(line.trim());
+                if found.is_file() || found.exists() {
+                    return Some(found);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Batch that an elevated `cmd` runs to open Windows Terminal with argv intact.
+///
+/// `start "" "wt.exe" cmd /c call "session.bat"` — empty title is required so
+/// `start` does not treat the wt path as a window title.
+pub fn wt_start_bridge_bat_body(wt: &Path, session_bat: &Path) -> String {
+    let wt_s = path_for_cmd(wt).to_string_lossy().replace('"', "");
+    let session_s = path_for_cmd(session_bat).to_string_lossy().replace('"', "");
+    format!(
+        "@echo off\r\n\
+         REM Blackwell managed — gsudo elevates this helper; start opens WT\r\n\
+         start \"\" \"{wt_s}\" cmd /c call \"{session_s}\"\r\n"
+    )
+}
+
+/// Non-Windows stub.
+#[cfg(not(windows))]
+pub fn wt_exe() -> Option<PathBuf> {
+    None
+}
+
 /// Build the `/d /s /c ""<batch>""` tail for `cmd.exe`.
 ///
 /// **Why double quotes:** `cmd /s /c` always strips the first and last `"` from the
@@ -478,5 +555,16 @@ mod tests {
         assert_eq!(prog, PathBuf::from(r"C:\Windows\System32\cmd.exe"));
         assert!(tail.starts_with(r#"/d /s /c """#));
         assert!(tail.ends_with('"'));
+    }
+
+    #[test]
+    fn wt_start_bridge_bat_starts_quoted_wt_and_session() {
+        let body = wt_start_bridge_bat_body(
+            Path::new(r"C:\Users\GHOST-TOWER\AppData\Local\Microsoft\WindowsApps\wt.exe"),
+            Path::new(r"C:\AI-MASTER\Blackwell OPS portable\config\external-tools\pi-home\launch-session.cmd"),
+        );
+        assert!(body.contains(
+            r#"start "" "C:\Users\GHOST-TOWER\AppData\Local\Microsoft\WindowsApps\wt.exe" cmd /c call "C:\AI-MASTER\Blackwell OPS portable\config\external-tools\pi-home\launch-session.cmd""#
+        ));
     }
 }
