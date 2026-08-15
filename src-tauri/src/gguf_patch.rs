@@ -242,6 +242,32 @@ fn skip_value<R: Read>(r: &mut GgufReader<R>, value_type: u32) -> Result<(), Str
     }
 }
 
+/// Jinja/metadata growth stays well under this. A requant is gigabytes.
+const MAX_METADATA_SIZE_DELTA: u64 = 16 * 1024 * 1024;
+/// Never Range-GET more than this while classifying or patching a header.
+const MAX_HEADER_PROBE: u64 = 32 * 1024 * 1024;
+
+/// How many leading bytes to fetch. `None` = size delta is a weight change — do not download.
+pub fn header_probe_end(local_size: u64, remote_size: u64, local_header_end: u64) -> Option<u64> {
+    if remote_size == 0 || local_header_end == 0 {
+        return None;
+    }
+    let delta = remote_size.abs_diff(local_size);
+    if delta > MAX_METADATA_SIZE_DELTA {
+        return None;
+    }
+    if remote_size == local_size {
+        return Some(local_header_end.min(remote_size).min(MAX_HEADER_PROBE));
+    }
+    let slack = delta.saturating_add(1_048_576);
+    Some(
+        local_header_end
+            .saturating_add(slack)
+            .min(remote_size)
+            .min(MAX_HEADER_PROBE),
+    )
+}
+
 /// Decide whether a size/header delta is metadata-only or a weight change.
 pub fn classify_from_headers(
     local_size: u64,
@@ -284,16 +310,25 @@ pub async fn classify_update(
     let local_size = std::fs::metadata(local_path)
         .map_err(|e| format!("Failed to get file size: {e}"))?
         .len();
+    if local_size.abs_diff(remote_total_size) > MAX_METADATA_SIZE_DELTA {
+        return Ok(crate::types::QuantUpdateKind::Full);
+    }
     let local_header_end = find_header_end_from_file(local_path)?;
     if local_header_end >= local_size {
         return Ok(crate::types::QuantUpdateKind::Full);
     }
 
-    let probe_end = if remote_total_size == local_size {
-        local_header_end
-    } else {
-        let delta = remote_total_size.abs_diff(local_size);
-        (local_header_end + delta + 1_048_576).min(remote_total_size)
+    let Some(probe_end) = header_probe_end(local_size, remote_total_size, local_header_end) else {
+        if verbose {
+            patch_log(
+                format!(
+                    "[gguf-patch] size delta {} — treating as full (no header probe)",
+                    fmt_bytes(local_size.abs_diff(remote_total_size))
+                ),
+                BlackwellOutputConsoleLineStyle::Warning,
+            );
+        }
+        return Ok(crate::types::QuantUpdateKind::Full);
     };
 
     let remote_prefix = download_range(remote_url, 0, probe_end, verbose).await?;
@@ -308,8 +343,8 @@ pub async fn classify_update(
 
     let remote_header_end = match find_header_end_from_bytes(&remote_prefix) {
         Ok(end) => end,
-        Err(_) if probe_end < remote_total_size => {
-            let grown = (probe_end + 8_388_608).min(remote_total_size);
+        Err(_) if probe_end < remote_total_size && probe_end < MAX_HEADER_PROBE => {
+            let grown = (probe_end + 4_194_304).min(remote_total_size).min(MAX_HEADER_PROBE);
             let more = download_range(remote_url, 0, grown, verbose).await?;
             find_header_end_from_bytes(&more).unwrap_or(local_header_end)
         }
@@ -508,12 +543,17 @@ pub async fn patch_metadata(
         return PatchResult::Error(msg.into());
     }
 
-    // 2. Download remote header section via HTTP Range
-    let probe_end = if remote_total_size == local_size {
-        local_header_end
-    } else {
-        let delta = remote_total_size.abs_diff(local_size);
-        (local_header_end + delta + 1_048_576).min(remote_total_size)
+    // 2. Download remote header section via HTTP Range (capped — never the size delta)
+    let Some(probe_end) = header_probe_end(local_size, remote_total_size, local_header_end) else {
+        let reason = format!(
+            "File size delta {} exceeds metadata budget — full re-download",
+            fmt_bytes(local_size.abs_diff(remote_total_size))
+        );
+        patch_log(
+            format!("[gguf-patch] cannot patch — {reason}"),
+            BlackwellOutputConsoleLineStyle::Warning,
+        );
+        return PatchResult::RequiresFullDownload { reason };
     };
     let remote_header = match download_range(remote_url, 0, probe_end, true).await {
         Ok(b) => b,
@@ -899,6 +939,20 @@ mod tests {
             classify_from_headers(1000, 1000, 100, 100, true),
             crate::types::QuantUpdateKind::Current
         );
+    }
+
+    #[test]
+    fn header_probe_refuses_gigabyte_size_delta() {
+        let local = 17_000_000_000u64;
+        let remote = 20_000_000_000u64;
+        assert_eq!(header_probe_end(local, remote, 11_000_000), None);
+    }
+
+    #[test]
+    fn header_probe_allows_small_template_growth() {
+        let end = header_probe_end(17_000_000_000, 17_000_050_000, 11_000_000).unwrap();
+        assert!(end <= 32 * 1024 * 1024);
+        assert!(end >= 11_000_000);
     }
 
     #[test]
