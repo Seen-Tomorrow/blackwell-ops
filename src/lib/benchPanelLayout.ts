@@ -298,6 +298,20 @@ export function computeFusionPhosphorHeightForTray(
   return computeFusionPhosphorFixedHeight(opts);
 }
 
+/**
+ * Dual stack phosphor height — two full hero+tray panes (shared latch chrome once per pane).
+ * Side dual keeps single-pane height (horizontal split).
+ */
+export function computeDualStackPhosphorHeightForTray(
+  benchTrayOpen: boolean,
+  opts: Pick<BenchPanelLayoutOpts, "gpus" | "gpuMask" | "inlineActions">,
+): number {
+  const one = computeFusionPhosphorHeightForTray(benchTrayOpen, opts);
+  // Two independent panes stacked; small divider allowance.
+  return one * 2 + 2;
+}
+
+
 export function computeBenchPanelHeight(opts: BenchPanelLayoutOpts): number {
   const compact = opts.compact ?? false;
   const { isAnyRunning, hasResults } = benchResultVisibility(opts);

@@ -17,6 +17,8 @@ interface GpuOverclockPanelProps {
   status: string | null;
   ocActive?: boolean;
   layout?: "page" | "rail";
+  /** Initial expanded state; rail footer defaults to collapsed. */
+  defaultExpanded?: boolean;
   onModeChange: (mode: GpuControlOcMode) => void;
   onPatchPreset: (patch: Partial<GpuControlSharedPreset>) => void;
   onApply: () => void | Promise<void>;
@@ -76,8 +78,9 @@ export default function GpuOverclockPanel({
   onSetDriverModel,
   onExpandedChange,
   layout = "page",
+  defaultExpanded = false,
 }: GpuOverclockPanelProps) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const [tccConfirmOpen, setTccConfirmOpen] = useState(false);
   const rail = layout === "rail";
 

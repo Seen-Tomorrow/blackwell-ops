@@ -15,10 +15,14 @@ import FoundryModal from "./FoundryModal";
 import AppearanceControls from "./AppearanceControls";
 import BlackwellBrandMark from "./BlackwellBrandMark";
 import {
+  loadMonitorWindow,
   loadUiDensity,
   loadUiZoom,
+  saveMonitorFocusMode,
+  saveMonitorWindow,
   saveUiDensity,
   saveUiZoom,
+  type MonitorWindowSnap,
   type UiDensity,
 } from "../lib/storage";
 import {
@@ -97,6 +101,7 @@ export default function Layout({
 }: LayoutProps) {
   const [zoom, setZoom] = useState(loadZoom);
   const [uiDensity, setUiDensity] = useState<UiDensity>(loadUiDensity);
+  const [monitorFocus, setMonitorFocus] = useState(false);
   const [shellWidthPx, setShellWidthPx] = useState(() =>
     typeof window !== "undefined"
       ? resolveAppShellWidthPx(window.innerWidth, window.innerHeight)
@@ -158,6 +163,99 @@ export default function Layout({
   const navTightRef = useRef(false);
   /** Last measured brand width while visible (display:none → offsetWidth 0). */
   const brandWidthRef = useRef(NAV_LOGO_FALLBACK_W);
+
+  useEffect(() => {
+    const onFocus = (e: Event) => {
+      const open = (e as CustomEvent<{ open?: boolean }>).detail?.open;
+      if (typeof open === "boolean") setMonitorFocus(open);
+    };
+    window.addEventListener(EVENTS.monitorFocusChanged, onFocus);
+    return () => window.removeEventListener(EVENTS.monitorFocusChanged, onFocus);
+  }, []);
+
+  useEffect(() => {
+    if (!monitorFocus) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        saveMonitorFocusMode(false);
+        setMonitorFocus(false);
+        dispatchAppEvent(EVENTS.monitorFocusChanged, { open: false });
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [monitorFocus]);
+
+  // MONITOR window memory (physical px, OUTER frame — inner/client coords
+  // mismatch with setPosition, so outer is used for both snapshot + restore).
+  // cockpitSnap: session-only ref — HWND geometry when entering monitor.
+  // monitorSnap: last geometry while in monitor — persisted across sessions.
+  const cockpitSnapRef = useRef<MonitorWindowSnap | null>(null);
+
+  useEffect(() => {
+    if (monitorFocus) {
+      // Enter: snapshot cockpit once, then restore persisted monitor size (if any).
+      if (cockpitSnapRef.current) return;
+      // Dynamic import (not static): this file also runs in non-Tauri Vite.
+      void (async () => {
+        try {
+          const { getCurrentWindow } = await import("@tauri-apps/api/window");
+          const win = getCurrentWindow();
+          const [size, pos] = await Promise.all([win.outerSize(), win.outerPosition()]);
+          cockpitSnapRef.current = {
+            w: size.width,
+            h: size.height,
+            x: pos.x,
+            y: pos.y,
+          };
+          const saved = loadMonitorWindow();
+          if (saved) {
+            const { PhysicalSize, PhysicalPosition } = await import("@tauri-apps/api/dpi");
+            await win.setSize(new PhysicalSize(saved.w, saved.h));
+            if (typeof saved.x === "number" && typeof saved.y === "number") {
+              await win.setPosition(new PhysicalPosition(saved.x, saved.y));
+            }
+          }
+        } catch {
+          // non-Tauri / API failure — no-op, window stays as-is
+        }
+      })();
+      return;
+    }
+
+    // Exit: persist current monitor geometry, restore cockpit, keep monitorSnap.
+    // First mount (never entered) has no cockpit snap — do nothing.
+    const cockpit = cockpitSnapRef.current;
+    if (!cockpit) return;
+    cockpitSnapRef.current = null;
+    void (async () => {
+      try {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        const { PhysicalSize, PhysicalPosition } = await import("@tauri-apps/api/dpi");
+        const win = getCurrentWindow();
+        const [size, pos] = await Promise.all([win.outerSize(), win.outerPosition()]);
+        const monitorSnap: MonitorWindowSnap = {
+          w: size.width,
+          h: size.height,
+          x: pos.x,
+          y: pos.y,
+        };
+        saveMonitorWindow(monitorSnap);
+        if (cockpit) {
+          await win.setSize(new PhysicalSize(cockpit.w, cockpit.h));
+          if (typeof cockpit.x === "number" && typeof cockpit.y === "number") {
+            await win.setPosition(new PhysicalPosition(cockpit.x, cockpit.y));
+          }
+        }
+      } catch {
+        // non-Tauri / API failure — no-op
+      }
+    })();
+  }, [monitorFocus]);
+
+
+
 
   const updateNavScrollState = useCallback(() => {
     const el = navRef.current;
@@ -340,10 +438,57 @@ export default function Layout({
 
   return (
     <div
-      className={`app-shell flex flex-col h-screen grid-bg relative${consoleDockedOpen ? " app-shell--console-docked" : ""}${navTight ? " app-shell--nav-tight" : ""}`}
+      className={`app-shell flex flex-col h-screen grid-bg relative${consoleDockedOpen ? " app-shell--console-docked" : ""}${navTight ? " app-shell--nav-tight" : ""}${monitorFocus ? " app-shell--monitor-focus" : ""}`}
       data-ui-density={uiDensity}
+      data-monitor-focus={monitorFocus ? "1" : undefined}
       style={shellStyle}
     >
+      {monitorFocus ? (
+        <div className="monitor-focus-exit-bar flex items-center justify-between gap-3 px-4 py-1.5 relative z-40">
+          <span className="font-mono text-[9px] uppercase tracking-wider text-stealth-muted/70">
+            Monitor focus · Esc to exit
+          </span>
+          <div className="flex items-center gap-1 flex-shrink-0" title="Ctrl+scroll to zoom">
+            <span className="font-mono text-[8px] uppercase tracking-wider text-stealth-muted/50">
+              Ctrl+scroll to zoom
+            </span>
+            <button
+              type="button"
+              onClick={() => adjustZoom(-ZOOM_STEP)}
+              className="font-mono text-[9px] leading-none px-1 rounded-sm border border-stealth-border/40 text-stealth-muted/80 hover:text-nv-green"
+              title="Decrease zoom (Ctrl+scroll)"
+            >
+              −
+            </button>
+            <span
+              className="font-mono text-[9px] leading-none w-9 text-center text-stealth-muted/70"
+              title="Zoom (Ctrl+scroll)"
+            >
+              {Math.round(zoom * 100)}%
+            </span>
+            <button
+              type="button"
+              onClick={() => adjustZoom(ZOOM_STEP)}
+              className="font-mono text-[9px] leading-none px-1 rounded-sm border border-stealth-border/40 text-stealth-muted/80 hover:text-nv-green"
+              title="Increase zoom (Ctrl+scroll)"
+            >
+              +
+            </button>
+          </div>
+          <button
+            type="button"
+            className="font-mono text-[9px] uppercase tracking-wider px-2 py-0.5 rounded-sm border border-stealth-border/50 text-nv-green/90 hover:text-nv-green"
+            onClick={() => {
+              saveMonitorFocusMode(false);
+              setMonitorFocus(false);
+              dispatchAppEvent(EVENTS.monitorFocusChanged, { open: false });
+            }}
+          >
+            EXIT MONITOR
+          </button>
+        </div>
+      ) : null}
+
       {/* Top bar */}
       <header className="app-header flex items-center justify-between gap-3 px-6 py-3 backdrop-blur-sm relative z-30 layout-header-enter min-w-0">
         <div className="app-header__start flex items-center gap-4 min-w-0 flex-1">

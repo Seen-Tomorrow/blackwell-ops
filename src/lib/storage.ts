@@ -169,6 +169,20 @@ export const KEYS = {
   /** Engine launch `-lv` (3 = product timing belt, 4 = full metadata belt). */
   fusionLogVerbosity: `${STORAGE_PREFIX}fusion-log-verbosity`,
   fusionBenchTray: `${STORAGE_PREFIX}fusion-bench-tray`,
+  /** Fusion display: single pane vs dual BRAIN+WORKER panes. */
+  fusionDisplayMode: `${STORAGE_PREFIX}fusion-display-mode`,
+  /** Dual fusion pane orientation: side | stack. */
+  fusionDualOrient: `${STORAGE_PREFIX}fusion-dual-orient`,
+  /** Pinned secondary fusion slot (-1 / missing = auto). */
+  fusionSecondarySlotIdx: `${STORAGE_PREFIX}fusion-secondary-slot-idx`,
+  /** Monitor focus — hide chrome, keep fusion + HW. */
+  /** MONITOR window memory — last outer size/pos while in monitor (physical px). */
+  monitorWindow: `${STORAGE_PREFIX}monitor-window`,
+  monitorFocusMode: `${STORAGE_PREFIX}monitor-focus-mode`,
+  /** Running engines panel under VRAM display — show/hide. */
+  enginesPanelVisible: `${STORAGE_PREFIX}engines-panel-visible`,
+
+
   configParamLegend: `${STORAGE_PREFIX}config-param-legend`,
   displayTexture: `${STORAGE_PREFIX}display-texture`,
   industrialBezelTexture: `${STORAGE_PREFIX}industrial-bezel-texture`,
@@ -183,6 +197,9 @@ export const KEYS = {
   launchRailTelemetryRatio: `${STORAGE_PREFIX}launch-rail-telemetry-ratio`,
   /** Config panel — live HW monitor column (any dock layout). */
   hwMonitorOpen: `${STORAGE_PREFIX}hw-monitor-open`,
+  /** HW monitor placement: right rail vs under fusion display. */
+  hwMonitorDock: `${STORAGE_PREFIX}hw-monitor-dock`,
+
   /** HW monitor — per-core CPU grid expanded under CPU header. */
   hwMonitorCpuCoresOpen: `${STORAGE_PREFIX}hw-monitor-cpu-cores-open`,
   /** HW monitor + OC panel opacity (0.2–1); launch block excluded. */
@@ -486,6 +503,17 @@ export function loadHwMonitorOpen(): boolean {
 export function saveHwMonitorOpen(open: boolean): void {
   writeStorage(KEYS.hwMonitorOpen, open ? "1" : "0");
 }
+
+export type HwMonitorDock = "rail" | "below";
+
+export function loadHwMonitorDock(): HwMonitorDock {
+  return readStorage(KEYS.hwMonitorDock) === "below" ? "below" : "rail";
+}
+
+export function saveHwMonitorDock(dock: HwMonitorDock): void {
+  writeStorage(KEYS.hwMonitorDock, dock);
+}
+
 
 export function loadHwMonitorCpuCoresOpen(): boolean {
   return readStorage(KEYS.hwMonitorCpuCoresOpen) === "1";
@@ -1011,6 +1039,86 @@ export function loadFusionBenchTray(): FusionBenchTrayState {
 export function saveFusionBenchTray(state: FusionBenchTrayState): void {
   writeStorage(KEYS.fusionBenchTray, state);
 }
+
+export type FusionDisplayMode = "single" | "dual";
+export type FusionDualOrient = "side" | "stack";
+
+export function loadFusionDisplayMode(): FusionDisplayMode {
+  return readStorage(KEYS.fusionDisplayMode) === "dual" ? "dual" : "single";
+}
+
+export function saveFusionDisplayMode(mode: FusionDisplayMode): void {
+  writeStorage(KEYS.fusionDisplayMode, mode);
+}
+
+export function loadFusionDualOrient(): FusionDualOrient {
+  return readStorage(KEYS.fusionDualOrient) === "stack" ? "stack" : "side";
+}
+
+export function saveFusionDualOrient(orient: FusionDualOrient): void {
+  writeStorage(KEYS.fusionDualOrient, orient);
+}
+
+export function loadFusionSecondarySlotIdx(): number | null {
+  const raw = readStorage(KEYS.fusionSecondarySlotIdx);
+  if (raw == null || raw === "" || raw === "-1") return null;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+export function saveFusionSecondarySlotIdx(slotIdx: number | null): void {
+  writeStorage(KEYS.fusionSecondarySlotIdx, String(slotIdx ?? -1));
+}
+
+/** Monitor focus is session-only — never restored from localStorage. */
+export function loadMonitorFocusMode(): boolean {
+  return false;
+}
+
+/**
+ * Monitor focus is session-only — never persists `true`.
+ * On exit, clears any stale key so a restart can never reopen MONITOR.
+ */
+export function saveMonitorFocusMode(on: boolean): void {
+  if (on) return;
+  removeStorage(KEYS.monitorFocusMode);
+}
+/** Last MONITOR window geometry (physical px) — restored on re-enter. */
+export interface MonitorWindowSnap {
+  w: number;
+  h: number;
+  x?: number;
+  y?: number;
+}
+
+export function loadMonitorWindow(): MonitorWindowSnap | null {
+  const raw = readJsonStorage<unknown>(KEYS.monitorWindow);
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (typeof o.w !== "number" || typeof o.h !== "number" || o.w <= 0 || o.h <= 0) return null;
+  const snap: MonitorWindowSnap = { w: o.w, h: o.h };
+  if (typeof o.x === "number" && typeof o.y === "number") {
+    snap.x = o.x;
+    snap.y = o.y;
+  }
+  return snap;
+}
+
+export function saveMonitorWindow(snap: MonitorWindowSnap): void {
+  writeJsonStorage(KEYS.monitorWindow, snap);
+}
+
+
+export function loadEnginesPanelVisible(): boolean {
+  // Default ON — missing key keeps prior always-visible behavior.
+  return readStorage(KEYS.enginesPanelVisible) !== "0";
+}
+
+export function saveEnginesPanelVisible(visible: boolean): void {
+  writeStorage(KEYS.enginesPanelVisible, visible ? "1" : "0");
+}
+
+
 
 export type ConfigParamLegendState = "open" | "stowed";
 

@@ -1,18 +1,20 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import type { GpuInfo, VramManifest, ModelMetadata } from "../lib/types";
-import { computeFusionPhosphorHeightForTray } from "../lib/benchPanelLayout";
+import { computeDualStackPhosphorHeightForTray, computeFusionPhosphorHeightForTray } from "../lib/benchPanelLayout";
 import { getFusionBenchTrayOpen, refreshFusionBenchTrayFromStorage } from "../lib/fusionBenchTrayStore";
 import { FORECAST_PHOSPHOR_HEIGHT_PX } from "../lib/onboardingDisplay";
 import { useFusionBenchTray } from "../hooks/useFusionBenchTray";
 import GpuTopology from "./GpuTopology";
-import FusionOverlay from "./FusionOverlay";
+import FusionPane from "./FusionPane";
+import FusionDualStage, { type FusionPaneIdentity } from "./FusionDualStage";
 import MoeBadge from "./MoeBadge";
 import FitLaunchToggle from "./FitLaunchToggle";
 import MemorySourcePanel, { FitProbeButton, manifestHasFitProbe } from "./MemorySourcePanel";
 import { useForecastContentHeight } from "../hooks/useForecastContentHeight";
-import { useFusionSlot } from "../hooks/useFusionData";
 import { MEMORY_SOURCE_ACCENT } from "../services/vram/memorySource";
 import type { FusionShareLaunchConfig } from "../lib/fusionShareCapture";
+import type { FusionDualOrient } from "../lib/storage";
+
 
 interface VramBadgeProps {
   manifest: VramManifest | null;
@@ -55,82 +57,11 @@ interface VramBadgeProps {
   gpuIdleBaselineMib?: Record<number, number>;
   /** Forecast GPU bars per row (bezel density). */
   gpuPerRow?: 2 | 3;
-}
-
-/** Isolated fusion subscriber — keeps forecast/topo off the 25–40 Hz fusion tick path. */
-function VramBadgeFusionLayer({
-  active,
-  selectedSlotIdx,
-  activeEngineAlias,
-  activeEnginePort,
-  supportsFusion,
-  engineStatus,
-  gpus,
-  gpuMask,
-  vramTargetMib,
-  modelLayerTotal,
-  gpuLoadTargetsMib,
-  modelName,
-  modelQuant,
-  providerName,
-  providerBuildVersion,
-  profileLabel,
-  cudaVersion,
-  launchConfig,
-  hwTopo,
-}: {
-  active: boolean;
-  selectedSlotIdx?: number | null;
-  activeEngineAlias?: string;
-  activeEnginePort?: number;
-  supportsFusion?: boolean;
-  engineStatus?: string;
-  gpus: GpuInfo[];
-  gpuMask?: string;
-  vramTargetMib?: number;
-  modelLayerTotal?: number;
-  gpuLoadTargetsMib?: Record<number, number>;
-  modelName?: string;
-  modelQuant?: string;
-  providerName?: string;
-  providerBuildVersion?: string;
-  profileLabel?: string;
-  cudaVersion?: string;
-  launchConfig?: FusionShareLaunchConfig;
-  hwTopo?: string;
-}) {
-  const fusion = useFusionSlot(active ? selectedSlotIdx : null);
-  if (!active) return null;
-
-  // Content fill only — glass/texture/shadow live on outer `.phosphor-screen-inner`.
-  return (
-    <div
-      className="relative z-10 flex-1 min-h-0 w-full overflow-hidden flex flex-col fusion-overlay-fill"
-      style={{ animation: "fadeIn 0.2s ease" }}
-    >
-      <FusionOverlay
-        alias={activeEngineAlias}
-        enginePort={activeEnginePort}
-        fusion={fusion}
-        supportsFusion={supportsFusion}
-        engineStatus={engineStatus}
-        slotIdx={selectedSlotIdx ?? -1}
-        gpus={gpus}
-        gpuMask={gpuMask}
-        vramTargetMib={vramTargetMib}
-        modelLayerTotal={modelLayerTotal}
-        gpuLoadTargetsMib={gpuLoadTargetsMib}
-        modelName={modelName}
-        modelQuant={modelQuant}
-        providerName={providerName}
-        providerBuildVersion={providerBuildVersion}
-        profileLabel={profileLabel}
-        cudaVersion={cudaVersion}
-        launchConfig={launchConfig}
-        hwTopo={hwTopo}
-      />
-    </div>
-  );
+  /** Dual fusion active (two live panes). */
+  dualActive?: boolean;
+  dualOrient?: FusionDualOrient;
+  /** Secondary pane identity when dualActive. */
+  secondaryPane?: FusionPaneIdentity | null;
 }
 
 /** Pure skeleton renderer — reads all text, visibility, and colors from scenario's uiTemplate.
@@ -143,6 +74,9 @@ export default function VramBadge({
   modelName, modelQuant, providerName, providerBuildVersion, profileLabel, cudaVersion, launchConfig, hwTopo,
   gpuIdleBaselineMib,
   gpuPerRow = 2,
+  dualActive = false,
+  dualOrient = "side",
+  secondaryPane = null,
 }: VramBadgeProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const { open: benchTrayOpen } = useFusionBenchTray();
@@ -182,13 +116,20 @@ export default function VramBadge({
 
     refreshFusionBenchTrayFromStorage();
     const trayOpen = getFusionBenchTrayOpen();
-    const heightPx = computeFusionPhosphorHeightForTray(trayOpen, {
+    const heightOpts = {
       gpus,
       gpuMask,
-      inlineActions: true,
-    });
+      inlineActions: true as const,
+    };
+    // Stack dual = two full hero+tray panes; side shares single height budget.
+    let heightPx =
+      dualActive && dualOrient === "stack"
+        ? computeDualStackPhosphorHeightForTray(trayOpen, heightOpts)
+        : computeFusionPhosphorHeightForTray(trayOpen, heightOpts);
 
     display.dataset.fusionHeightManaged = "";
+    if (dualActive) display.setAttribute("data-fusion-dual", dualOrient);
+    else display.removeAttribute("data-fusion-dual");
     if (!trayOpen) display.setAttribute("data-fusion-tray-stowed", "");
     else display.removeAttribute("data-fusion-tray-stowed");
 
@@ -200,7 +141,7 @@ export default function VramBadge({
   /* Before paint — avoid one frame of stowed height with an open tray after HMR */
   useLayoutEffect(() => {
     applyFusionDisplayHeight();
-  }, [fusionOverlayActive, engineStatus, benchTrayOpen, gpus, gpuMask]);
+  }, [fusionOverlayActive, engineStatus, benchTrayOpen, gpus, gpuMask, dualActive, dualOrient]);
 
   /* HMR: forecast ResizeObserver or effect teardown can clear height after layout */
   useEffect(() => {
@@ -215,7 +156,7 @@ export default function VramBadge({
       cancelAnimationFrame(raf1);
       cancelAnimationFrame(raf2);
     };
-  }, [fusionOverlayActive, engineStatus, benchTrayOpen, gpus, gpuMask]);
+  }, [fusionOverlayActive, engineStatus, benchTrayOpen, gpus, gpuMask, dualActive, dualOrient]);
 
   // Mode toggle is UI state — layout follows prop, not manifest snapshot dedup.
   const showDetailedForecast = fitLaunchAvailable
@@ -251,34 +192,43 @@ export default function VramBadge({
   // Engine LOADING/RUNNING: fusion only — no forecast mount underneath (kills veil/collapse flash).
   // No px/py inset: glass is full phosphor-screen-inner; content pads itself.
   if (fusionOverlayActive) {
+    const primaryPane: FusionPaneIdentity = {
+      slotIdx: selectedSlotIdx,
+      alias: activeEngineAlias,
+      enginePort: activeEnginePort,
+      supportsFusion,
+      engineStatus,
+      gpus,
+      gpuMask,
+      vramTargetMib,
+      modelLayerTotal,
+      gpuLoadTargetsMib,
+      modelName,
+      modelQuant,
+      providerName,
+      providerBuildVersion,
+      profileLabel,
+      cudaVersion,
+      launchConfig,
+      hwTopo,
+    };
     return (
       <div
         ref={rootRef}
         className={`vram-badge-forecast relative flex flex-col min-h-0 overflow-hidden ${className || ""}`}
         data-fusion-only="1"
+        data-fusion-dual={dualActive ? dualOrient : undefined}
       >
         {fitLaunchDock}
-        <VramBadgeFusionLayer
-          active
-          selectedSlotIdx={selectedSlotIdx}
-          activeEngineAlias={activeEngineAlias}
-          activeEnginePort={activeEnginePort}
-          supportsFusion={supportsFusion}
-          engineStatus={engineStatus}
-          gpus={gpus}
-          gpuMask={gpuMask}
-          vramTargetMib={vramTargetMib}
-          modelLayerTotal={modelLayerTotal}
-          gpuLoadTargetsMib={gpuLoadTargetsMib}
-          modelName={modelName}
-          modelQuant={modelQuant}
-          providerName={providerName}
-          providerBuildVersion={providerBuildVersion}
-          profileLabel={profileLabel}
-          cudaVersion={cudaVersion}
-          launchConfig={launchConfig}
-          hwTopo={hwTopo}
-        />
+        {dualActive && secondaryPane ? (
+          <FusionDualStage
+            orient={dualOrient}
+            primary={primaryPane}
+            secondary={secondaryPane}
+          />
+        ) : (
+          <FusionPane {...primaryPane} active />
+        )}
       </div>
     );
   }

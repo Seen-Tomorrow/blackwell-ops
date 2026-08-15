@@ -43,6 +43,9 @@ interface FusionOverlayProps {
   cudaVersion?: string;
   launchConfig?: FusionShareLaunchConfig;
   hwTopo?: string;
+  /** Dual secondary pane — no bench tray (primary owns tray height). */
+  hideBenchTray?: boolean;
+
 }
 
 function formatMs(ms: number): string {
@@ -208,6 +211,7 @@ export default function FusionOverlay({
   cudaVersion,
   launchConfig,
   hwTopo,
+  hideBenchTray = false,
 }: FusionOverlayProps) {
   const displayAlias = alias ?? "ENGINE";
   const displayPort = enginePort ?? 9090;
@@ -872,7 +876,7 @@ export default function FusionOverlay({
           {!benchTrayOpen && <div className="flex-1 min-h-0" aria-hidden />}
 
           {/* ═══ BENCHMARK TRAY — stowable bench + results (persisted) ═══ */}
-          {fusion.engine_state !== "LOADING" && (
+          {!hideBenchTray && fusion.engine_state !== "LOADING" && (
             <div className="flex-shrink-0 flex flex-col">
               <FusionBenchTrayLatch open={benchTrayOpen} onToggle={toggleBenchTray} />
               {benchTrayOpen && (

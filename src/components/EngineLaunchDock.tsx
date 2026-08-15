@@ -72,6 +72,8 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
     models,
     selectedSlotIdx,
     onSelectEngine,
+    secondarySlotIdx = null,
+    onPinSecondary,
     isHotSwapStale,
     onHotSwap,
   } = props;
@@ -281,6 +283,8 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
                 models={models}
                 selectedSlotIdx={selectedSlotIdx ?? null}
                 onSelectEngine={onSelectEngine}
+                secondarySlotIdx={secondarySlotIdx}
+                onPinSecondary={onPinSecondary}
                 variant="rail"
                 isHotSwapStale={isHotSwapStale}
                 onHotSwap={onHotSwap}
@@ -384,6 +388,8 @@ export interface EngineLaunchDockProps {
   models?: ModelEntry[];
   selectedSlotIdx: number | null;
   onSelectEngine?: (slotIdx: number) => void;
+  secondarySlotIdx?: number | null;
+  onPinSecondary?: (slotIdx: number) => void;
   isHotSwapStale?: (entry: StackEntry) => boolean;
   onHotSwap?: (entry: StackEntry) => void;
 }

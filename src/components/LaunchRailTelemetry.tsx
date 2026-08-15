@@ -1,11 +1,14 @@
 import {
   useCallback,
+  useEffect,
   useRef,
   useState,
   type CSSProperties,
   type KeyboardEvent,
   type MouseEvent,
+  type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import type { CpuInfo, GpuInfo, SystemInfo } from "../lib/types";
 import { useDisplayTexture } from "../context/DisplayTextureContext";
 import { useTelemetry } from "../context/TelemetryContext";
@@ -22,7 +25,15 @@ import GpuTopologyCard from "./GpuTopologyCard";
 
 const TEL_WIDGET_SURFACE = "phosphor-display-surface";
 
-function MemTotals({ gpus, systemInfo }: { gpus: GpuInfo[]; systemInfo: SystemInfo | null }) {
+function MemTotals({
+  gpus,
+  systemInfo,
+  children,
+}: {
+  gpus: GpuInfo[];
+  systemInfo: SystemInfo | null;
+  children?: ReactNode;
+}) {
   const totalPowerW = gpus.reduce((s, g) => s + (g.power_draw || 0), 0);
   const totalPowerLimitW = gpus.reduce((s, g) => s + (g.power_limit || 0), 0);
   const powerPct = totalPowerLimitW > 0 ? (totalPowerW / totalPowerLimitW) * 100 : 0;
@@ -89,6 +100,7 @@ function MemTotals({ gpus, systemInfo }: { gpus: GpuInfo[]; systemInfo: SystemIn
         </div>
       )}
       </div>
+      {children}
     </div>
   );
 }
@@ -217,16 +229,24 @@ function CpuStrip({
   );
 }
 
-export default function LaunchRailTelemetry() {
+export default function LaunchRailTelemetry({
+  layout = "rail",
+}: {
+  layout?: "rail" | "below";
+} = {}) {
   const { gpus, cpu, systemInfo } = useTelemetry();
   const { texture: displayTexture } = useDisplayTexture();
-  const [cpuCoresOpen, setCpuCoresOpen] = useState(loadHwMonitorCpuCoresOpen);
+  const below = layout === "below";
+  const [cpuCoresOpen, setCpuCoresOpen] = useState(() =>
+    loadHwMonitorCpuCoresOpen()
+  );
   /** User cores pref while OC is open — restored on OC collapse. */
   const coresPrefBeforeOcRef = useRef(loadHwMonitorCpuCoresOpen());
   const [ocExpanded, setOcExpanded] = useState(false);
+  /** below mode: OC opens as a modal instead of a pinned footer. */
+  const [ocModalOpen, setOcModalOpen] = useState(false);
   /** Opacity of HW body + OC (not launch block). 1 = full, 0.2 = min dim. */
   const [hwDim, setHwDim] = useState(loadHwMonitorDim);
-
   const {
     ocMode,
     syncGroup,
@@ -262,6 +282,7 @@ export default function LaunchRailTelemetry() {
 
   const handleOcExpandedChange = useCallback((open: boolean) => {
     setOcExpanded(open);
+    if (below) return;
     if (open) {
       // Free vertical room at high zoom — temp collapse cores (keep user pref).
       coresPrefBeforeOcRef.current = loadHwMonitorCpuCoresOpen();
@@ -269,7 +290,52 @@ export default function LaunchRailTelemetry() {
     } else {
       setCpuCoresOpen(coresPrefBeforeOcRef.current);
     }
-  }, []);
+  }, [below]);
+
+  useEffect(() => {
+    if (!ocModalOpen) return;
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") setOcModalOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [ocModalOpen]);
+
+  /** below: first GPU card's natural height pins the row — totals/CPU match
+      or scroll internally instead of growing the row.
+      Ratchet guard: never grow the pinned height (a totals/CPU that briefly
+      overflows must not inflate the strip); only a real card-content change
+      (gpus.length) or a genuine shrink re-pins it. */
+  const belowGridRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!below) return;
+    const grid = belowGridRef.current;
+    if (!grid) return;
+    const card = grid.querySelector<HTMLElement>(".gpu-topo-card");
+    if (!card) {
+      grid.style.removeProperty("--hw-below-row-h");
+      return;
+    }
+    let pinned = 0;
+    const apply = () => {
+      if (getComputedStyle(card).alignSelf !== "start") return;
+      const h = card.getBoundingClientRect().height;
+      if (!(h > 0) || h > 280) return; // 0 = not laid out; >280 = runaway
+      const rounded = Math.round(h);
+      if (pinned && Math.abs(rounded - pinned) < 2) return;
+      if (pinned && rounded > pinned) return; // never ratchet up
+      pinned = rounded;
+      grid.style.setProperty("--hw-below-row-h", `${pinned}px`);
+    };
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(card);
+    return () => {
+      ro.disconnect();
+      grid.style.removeProperty("--hw-below-row-h");
+    };
+  }, [below, gpus.length]);
 
   const onHwDimChange = useCallback((value: number) => {
     const next = Math.min(1, Math.max(0.2, value));
@@ -277,11 +343,119 @@ export default function LaunchRailTelemetry() {
     saveHwMonitorDim(next);
   }, []);
 
+  const ocPanelProps = {
+    ocActive,
+    ocMode,
+    syncGroupCount: syncGroup.length,
+    syncGroupName: syncGroup[0]?.name ?? "",
+    selectedGpuIndex,
+    sliderDevice,
+    activePreset,
+    busy,
+    elevated,
+    devicesCount: devices.length,
+    initialLoading,
+    error,
+    status,
+    onModeChange: handleModeChange,
+    onPatchPreset: patchActivePreset,
+    onApply: handleApply,
+    onResetAll: handleResetAll,
+    onResetGpu: handleResetGpu,
+    onSetDriverModel: handleSetDriverModel,
+  };
+
+  const hasGpus = gpus.length > 0;
+
+  // below: OC is a small badge in the totals stack; the full panel opens as a modal.
+  const ocBadge =
+    below && hasGpus ? (
+      <button
+        type="button"
+        className={`launch-rail-tel__oc-badge ${TEL_WIDGET_SURFACE}${
+          ocActive ? " launch-rail-tel__oc-badge--active" : ""
+        }${ocModalOpen ? " launch-rail-tel__oc-badge--open" : ""}`}
+        onClick={() => setOcModalOpen((v) => !v)}
+        aria-expanded={ocModalOpen}
+        title={ocActive ? "OVERCLOCK ACTIVE — open OC panel" : "Open OC panel"}
+      >
+        <span className="launch-rail-tel__oc-badge-label">OC · OVERCLOCK</span>
+        <span className="launch-rail-tel__oc-badge-hint">
+          {ocActive ? "ACTIVE · tap to tune" : "tap to tune"}
+        </span>
+      </button>
+    ) : null;
+
+  const ocModal =
+    below && hasGpus && ocModalOpen && typeof document !== "undefined"
+      ? createPortal(
+          <>
+            {/*
+              Dim layer: pointer-events none so GPU cards / HW strip stay
+              clickable; the panel sits on top with its own pointer events.
+              Close via badge toggle, Esc, or click on the dim layer.
+            */}
+            <div className="launch-rail-tel__oc-modal-dim" aria-hidden="true" />
+            <div
+              className="launch-rail-tel__oc-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-label="GPU overclock"
+            >
+              <GpuOverclockPanel
+                layout="rail"
+                {...ocPanelProps}
+                defaultExpanded
+                onExpandedChange={handleOcExpandedChange}
+              />
+            </div>
+          </>,
+          document.body
+        )
+      : null;
+
+  const gpuStack = (
+    <div className="launch-rail-tel__gpu-stack" data-gpu-topology>
+      {gpus.map((gpu) => (
+        <GpuTopologyCard
+          key={gpu.index}
+          gpu={gpu}
+          oc={getOverlay(gpu.index)}
+          selected={isOcTarget(gpu.index)}
+          busy={busy}
+          compact
+          onSelect={() => handleSelectGpu(gpu.index)}
+        />
+      ))}
+    </div>
+  );
+
+  // rail: OC stays the pinned footer under the scroll area.
+  const ocPin = !below && hasGpus ? (
+    <div className="launch-rail-tel__oc-pin shrink-0">
+      <GpuOverclockPanel
+        layout="rail"
+        {...ocPanelProps}
+        onExpandedChange={handleOcExpandedChange}
+      />
+    </div>
+  ) : null;
+
+  const emptyState = !cpu && gpus.length === 0 ? (
+    <p className="launch-rail-tel__empty text-[8px] font-mono text-stealth-muted/50 px-2 py-4 text-center">
+      Scanning hardware…
+    </p>
+  ) : null;
+
   return (
     <div
-      className="launch-rail-tel h-full min-h-0 flex flex-col"
+      className={`launch-rail-tel min-h-0 flex flex-col${
+        layout === "below" ? " launch-rail-tel--below" : " h-full"
+      }`}
       data-display-texture={displayTexture}
+      data-hw-layout={layout}
       data-oc-expanded={ocExpanded ? "true" : "false"}
+      data-oc-modal={ocModalOpen ? "1" : undefined}
       style={{ "--hw-monitor-dim": hwDim } as CSSProperties}
     >
       <div className="launch-rail-tel__header">
@@ -315,67 +489,45 @@ export default function LaunchRailTelemetry() {
         className="launch-rail-tel__body min-h-0 flex-1"
         style={{ opacity: hwDim }}
       >
-        <div className="launch-rail-tel__scroll min-h-0 flex-1">
-          <MemTotals gpus={gpus} systemInfo={systemInfo} />
-          {cpu && (
-            <CpuStrip
-              cpu={cpu}
-              coresOpen={cpuCoresOpen}
-              onToggleCores={toggleCpuCores}
-            />
-          )}
-
-          {gpus.length > 0 && (
-            <div className="launch-rail-tel__gpu-stack" data-gpu-topology>
-              {gpus.map((gpu) => (
-                <GpuTopologyCard
-                  key={gpu.index}
-                  gpu={gpu}
-                  oc={getOverlay(gpu.index)}
-                  selected={isOcTarget(gpu.index)}
-                  busy={busy}
-                  compact
-                  onSelect={() => handleSelectGpu(gpu.index)}
+        {below ? (
+          <div className="launch-rail-tel__below-grid" ref={belowGridRef}>
+            <MemTotals gpus={gpus} systemInfo={systemInfo}>
+              {ocBadge}
+            </MemTotals>
+            {cpu && (
+              <div className="launch-rail-tel__cpu-col">
+                <CpuStrip
+                  cpu={cpu}
+                  coresOpen={cpuCoresOpen}
+                  onToggleCores={toggleCpuCores}
                 />
-              ))}
-            </div>
-          )}
-
-          {!cpu && gpus.length === 0 && (
-            <p className="launch-rail-tel__empty text-[8px] font-mono text-stealth-muted/50 px-2 py-4 text-center">
-              Scanning hardware…
-            </p>
-          )}
-        </div>
-
-        {gpus.length > 0 && (
-          <div className="launch-rail-tel__oc-pin shrink-0">
-            <GpuOverclockPanel
-              layout="rail"
-              ocActive={ocActive}
-              ocMode={ocMode}
-              syncGroupCount={syncGroup.length}
-              syncGroupName={syncGroup[0]?.name ?? ""}
-              selectedGpuIndex={selectedGpuIndex}
-              sliderDevice={sliderDevice}
-              activePreset={activePreset}
-              busy={busy}
-              elevated={elevated}
-              devicesCount={devices.length}
-              initialLoading={initialLoading}
-              error={error}
-              status={status}
-              onModeChange={handleModeChange}
-              onPatchPreset={patchActivePreset}
-              onApply={handleApply}
-              onResetAll={handleResetAll}
-              onResetGpu={handleResetGpu}
-              onSetDriverModel={handleSetDriverModel}
-              onExpandedChange={handleOcExpandedChange}
-            />
+              </div>
+            )}
+            {emptyState}
+            {gpuStack}
           </div>
+        ) : (
+          <>
+            <div className="launch-rail-tel__scroll min-h-0 flex-1">
+              <MemTotals gpus={gpus} systemInfo={systemInfo} />
+              {cpu && (
+                <CpuStrip
+                  cpu={cpu}
+                  coresOpen={cpuCoresOpen}
+                  onToggleCores={toggleCpuCores}
+                />
+              )}
+
+              {gpuStack}
+
+              {emptyState}
+            </div>
+
+            {ocPin}
+          </>
         )}
       </div>
+      {ocModal}
     </div>
   );
 }

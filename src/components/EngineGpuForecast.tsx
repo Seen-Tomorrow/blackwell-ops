@@ -1,4 +1,4 @@
-import { useCallback, useState, type RefObject } from "react";
+import { useCallback, useMemo, useState, type RefObject } from "react";
 import type {
   GpuInfo,
   ModelEntry,
@@ -8,11 +8,13 @@ import type {
 } from "../lib/types";
 import type { LaunchChromePolicy } from "../lib/launchChromePolicy";
 import type { FusionShareLaunchConfig } from "../lib/fusionShareCapture";
-import type { DisplayCardsPerRow } from "../lib/storage";
+import type { DisplayCardsPerRow, FusionDualOrient, HwMonitorDock } from "../lib/storage";
 import {
   loadDisplayGpuPerRow,
+  loadEnginesPanelVisible,
   loadRunningEnginesPerRow,
   saveDisplayGpuPerRow,
+  saveEnginesPanelVisible,
   saveRunningEnginesPerRow,
 } from "../lib/storage";
 import GpuAssignPanel from "./GpuAssignPanel";
@@ -21,6 +23,7 @@ import DisplayBezelGridControls from "./DisplayBezelGridControls";
 import VramBadge from "./VramBadge";
 import FitLaunchToggle from "./FitLaunchToggle";
 import RunningEnginesPanel from "./RunningEnginesPanel";
+import type { FusionPaneIdentity } from "./FusionDualStage";
 
 /** GPU assignment / forecast data derived from the orchestrator's booter props. */
 export interface EngineGpuBooterProps {
@@ -94,12 +97,47 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     onSelectEngine,
     isHotSwapStale,
     onHotSwap,
+    dualActive = false,
+    dualArmed = false,
+    canDual = false,
+    dualOrient = "side",
+    onToggleDual,
+    onToggleOrient,
+    secondarySlotIdx = null,
+    onPinSecondary,
+    monitorFocus = false,
+    onToggleMonitor,
+    hwMonitorDock = "rail",
+    onToggleHwDock,
+    hwMonitorOpen = false,
   } = props;
 
   const [gpuPerRow, setGpuPerRow] = useState<DisplayCardsPerRow>(loadDisplayGpuPerRow);
   const [enginesPerRow, setEnginesPerRow] = useState<DisplayCardsPerRow>(
     loadRunningEnginesPerRow,
   );
+  const [enginesPanelVisible, setEnginesPanelVisible] = useState(loadEnginesPanelVisible);
+
+  const onToggleEnginesPanel = useCallback(() => {
+    setEnginesPanelVisible((prev) => {
+      const next = !prev;
+      saveEnginesPanelVisible(next);
+      return next;
+    });
+  }, []);
+
+  /** Live (RUNNING/LOADING) seats — monitor-mode model switcher (eject + bezel CYCLE). */
+  const liveEngineSlots = useMemo(
+    () => stack.filter((s) => s.status === "RUNNING" || s.status === "LOADING"),
+    [stack],
+  );
+
+  const onCycleLiveEngine = useCallback(() => {
+    if (liveEngineSlots.length < 2) return;
+    const pos = liveEngineSlots.findIndex((s) => s.idx === selectedSlotIdx);
+    const next = liveEngineSlots[(pos + 1) % liveEngineSlots.length];
+    onSelectEngine?.(next.idx);
+  }, [liveEngineSlots, selectedSlotIdx, onSelectEngine]);
 
   const onGpuPerRow = useCallback((n: DisplayCardsPerRow) => {
     setGpuPerRow(n);
@@ -110,6 +148,40 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     setEnginesPerRow(n);
     saveRunningEnginesPerRow(n);
   }, []);
+
+  const secondaryPane = useMemo((): FusionPaneIdentity | null => {
+    if (!dualActive || secondarySlotIdx == null) return null;
+    const entry = stack.find((s) => s.idx === secondarySlotIdx);
+    if (!entry) return null;
+    const model = models?.find((m) => m.path === entry.model_path);
+    return {
+      slotIdx: entry.idx,
+      alias: entry.alias,
+      enginePort: entry.port,
+      supportsFusion: entry.supportsFusion !== false,
+      engineStatus: entry.status,
+      gpus,
+      gpuMask: entry.gpu || "",
+      vramTargetMib: entry.vram_mib,
+      modelLayerTotal: model?.metadata?.n_layer ?? 0,
+      gpuLoadTargetsMib: {},
+      modelName: model?.name || entry.model_name,
+      modelQuant: model?.quant,
+      providerName: entry.provider_name || shareProfileMeta.providerName,
+      providerBuildVersion: shareProfileMeta.providerBuildVersion,
+      profileLabel: shareProfileMeta.profileLabel,
+      cudaVersion: shareProfileMeta.cudaVersion,
+      hwTopo: shareHwTopo,
+    };
+  }, [
+    dualActive,
+    secondarySlotIdx,
+    stack,
+    models,
+    gpus,
+    shareProfileMeta,
+    shareHwTopo,
+  ]);
 
   return (
     <div
@@ -202,6 +274,9 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
               hwTopo={shareHwTopo}
               gpuIdleBaselineMib={gpuIdleBaselineMib}
               gpuPerRow={gpuPerRow}
+              dualActive={dualActive}
+              dualOrient={dualOrient}
+              secondaryPane={secondaryPane}
             />
           </div>
           <DisplayBezelGridControls
@@ -210,18 +285,35 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
             onGpuPerRow={onGpuPerRow}
             onEnginesPerRow={onEnginesPerRow}
             showEnginesControl={showEjectBelowVram}
+            enginesPanelVisible={enginesPanelVisible}
+            onToggleEnginesPanel={onToggleEnginesPanel}
+            dualArmed={dualArmed}
+            dualActive={dualActive}
+            canDual={canDual}
+            onToggleDual={onToggleDual}
+            dualOrient={dualOrient}
+            onToggleOrient={onToggleOrient}
+            monitorFocus={monitorFocus}
+            onToggleMonitor={onToggleMonitor}
+            hwMonitorDock={hwMonitorDock}
+            onToggleHwDock={onToggleHwDock}
+            hwMonitorOpen={hwMonitorOpen}
+            liveEngineCount={liveEngineSlots.length}
+            onCycleEngine={onCycleLiveEngine}
           />
         </div>
       </div>
 
       {/* Running Engines — fusion switcher; below VRAM bezel (outside display area flex) */}
-      {showEjectBelowVram && (
+      {showEjectBelowVram && enginesPanelVisible && (
         <div className="industrial-eject-panel relative flex-shrink-0 min-h-0">
           <RunningEnginesPanel
             stack={stack}
             models={models}
             selectedSlotIdx={selectedSlotIdx ?? null}
             onSelectEngine={onSelectEngine!}
+            secondarySlotIdx={dualArmed || dualActive ? secondarySlotIdx : null}
+            onPinSecondary={onPinSecondary}
             isHotSwapStale={isHotSwapStale}
             onHotSwap={onHotSwap}
             perRow={enginesPerRow}
@@ -286,4 +378,18 @@ export interface EngineGpuForecastProps {
   onSelectEngine?: (slotIdx: number) => void;
   isHotSwapStale?: (entry: StackEntry) => boolean;
   onHotSwap?: (entry: StackEntry) => void;
+  dualActive?: boolean;
+  dualArmed?: boolean;
+  canDual?: boolean;
+  dualOrient?: FusionDualOrient;
+  onToggleDual?: () => void;
+  onToggleOrient?: () => void;
+  secondarySlotIdx?: number | null;
+  onPinSecondary?: (slotIdx: number) => void;
+  monitorFocus?: boolean;
+  onToggleMonitor?: () => void;
+  hwMonitorDock?: HwMonitorDock;
+  onToggleHwDock?: () => void;
+  /** HW monitor visible (toolbar on/off) — bezel placement chip only shown when open. */
+  hwMonitorOpen?: boolean;
 }

@@ -108,6 +108,9 @@ interface RunningEnginesPanelProps {
   models: ModelEntry[];
   selectedSlotIdx: number | null;
   onSelectEngine: (slotIdx: number) => void;
+  /** Dual fusion secondary pane pin. */
+  secondarySlotIdx?: number | null;
+  onPinSecondary?: (slotIdx: number) => void;
   /** Same-port hot-swap: panel model/config + optional parallel. */
   onHotSwap?: (entry: StackEntry) => void;
   /** True when panel model/CTX/parallel differs from this live seat — HS hint animation. */
@@ -138,6 +141,8 @@ export default function RunningEnginesPanel({
   models,
   selectedSlotIdx,
   onSelectEngine,
+  secondarySlotIdx = null,
+  onPinSecondary,
   onHotSwap,
   isHotSwapStale,
   variant = "default",
@@ -202,13 +207,26 @@ export default function RunningEnginesPanel({
                 key={`slot-${item.entry.idx}`}
                 className={`launch-rail-engine-chip w-full rounded-sm px-2 py-1 border flex items-center gap-1 min-w-0 transition-colors ${
                   isThisSelected ? "launch-rail-engine-chip--selected" : ""
-                }${roleClass}${isThisSelected && atomHl?.open ? " atomcode-engine--picked" : ""}`}
+                }${secondarySlotIdx === item.entry.idx ? " launch-rail-engine-chip--secondary" : ""}${roleClass}${isThisSelected && atomHl?.open ? " atomcode-engine--picked" : ""}`}
                 data-engine-port={item.entry.port}
                 data-engine-slot={item.entry.idx}
               >
                 <button
                   type="button"
-                  onClick={() => onEngineActivate(item.entry.idx, item.entry.port)}
+                  onClick={(e) => {
+                    if ((e.altKey || e.shiftKey) && onPinSecondary) {
+                      e.preventDefault();
+                      onPinSecondary(item.entry.idx);
+                      return;
+                    }
+                    onEngineActivate(item.entry.idx, item.entry.port);
+                  }}
+                  onContextMenu={(e) => {
+                    if (!onPinSecondary) return;
+                    e.preventDefault();
+                    onPinSecondary(item.entry.idx);
+                  }}
+                  title={onPinSecondary ? "Click primary · Alt/Shift/right-click pin dual B" : undefined}
                   className="flex items-center gap-1.5 min-w-0 flex-1 text-left bg-transparent border-0 p-0 cursor-pointer"
                 >
                   {role && (
@@ -294,14 +312,27 @@ export default function RunningEnginesPanel({
           return (
             <div
               key={`slot-${item.entry.idx}`}
-              onClick={() => onEngineActivate(item.entry.idx, item.entry.port)}
+              onClick={(e) => {
+                if ((e.altKey || e.shiftKey) && onPinSecondary) {
+                  e.preventDefault();
+                  onPinSecondary(item.entry.idx);
+                  return;
+                }
+                onEngineActivate(item.entry.idx, item.entry.port);
+              }}
+              onContextMenu={(e) => {
+                if (!onPinSecondary) return;
+                e.preventDefault();
+                onPinSecondary(item.entry.idx);
+              }}
+              title={onPinSecondary ? "Click primary · Alt/Shift/right-click pin dual B" : undefined}
               data-engine-port={item.entry.port}
               data-engine-slot={item.entry.idx}
               className={`cursor-pointer rounded-sm px-2.5 py-1.5 border flex flex-col gap-0.5 min-w-0 running-engine-card engine-panel-enter ${
                 isThisSelected
                   ? "running-engine-card-selected"
                   : ""
-              }${roleClass}${isThisSelected && atomHl?.open ? " atomcode-engine--picked" : ""}`}
+              }${secondarySlotIdx === item.entry.idx ? " running-engine-card-secondary" : ""}${roleClass}${isThisSelected && atomHl?.open ? " atomcode-engine--picked" : ""}`}
             >
               {/* Row 1: fixed-width alias → model names align across cards */}
               <div className="flex items-center gap-2 min-w-0 w-full">

@@ -12,15 +12,18 @@ import {
   normalizeModelPathKey,
   loadCtxCockpitDock,
   loadEnginesInRail,
+  loadHwMonitorDock,
   loadHwMonitorOpen,
   loadLaunchDockPosition,
   loadLaunchDockPositionExplicit,
   loadUiDensity,
   type CtxCockpitDock,
+  type HwMonitorDock,
   type LaunchDockPosition,
   normalizeUiGroup,
   saveCtxCockpitDock,
   saveEnginesInRail,
+  saveHwMonitorDock,
   saveHwMonitorOpen,
   saveLaunchDockCollapsed,
   saveLaunchDockPosition,
@@ -92,6 +95,7 @@ import ConfigBelowGroups from "./ConfigBelowGroups";
 import type { ConfigColumnCount } from "../lib/configColumnLayout";
 import { useGroupLayoutControls } from "../hooks/useGroupLayoutControls";
 import { useLaunchDockRailResize } from "../hooks/useCatalogSplitResize";
+import { useFusionDisplayMode } from "../hooks/useFusionDisplayMode";
 import LaunchRailTelemetry from "./LaunchRailTelemetry";
 
 import { dispatchAppEvent, EVENTS } from "../lib/events";
@@ -421,13 +425,40 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   // Collapse removed from chrome (lost custom flags for little height). Always expanded.
   const [launchDockCollapsed, setLaunchDockCollapsed] = useState(false);
   const [hwMonitorOpen, setHwMonitorOpen] = useState(loadHwMonitorOpen);
+  const [hwMonitorDock, setHwMonitorDock] = useState<HwMonitorDock>(loadHwMonitorDock);
+  const fusionDisplay = useFusionDisplayMode(selectedSlotIdx, stack);
+
+  const toggleHwDock = useCallback(() => {
+    setHwMonitorDock((prev) => {
+      const next: HwMonitorDock = prev === "below" ? "rail" : "below";
+      saveHwMonitorDock(next);
+      return next;
+    });
+  }, []);
+
+  // Monitor focus: stacked HUD — HW under fusion. Dual is user's choice.
+  useEffect(() => {
+    if (!fusionDisplay.monitorFocus) return;
+    if (!hwMonitorOpen) {
+      setHwMonitorOpen(true);
+      saveHwMonitorOpen(true);
+      dispatchAppEvent(EVENTS.hwMonitorOpenChanged, { open: true });
+    }
+    if (hwMonitorDock !== "below") {
+      setHwMonitorDock("below");
+      saveHwMonitorDock("below");
+    }
+  }, [fusionDisplay.monitorFocus, hwMonitorOpen, hwMonitorDock]);
+
   const [enginesInRail, setEnginesInRail] = useState(loadEnginesInRail);
   /** AtomCode harness wizard open — full cockpit takeover; skip param dim. */
   const [atomcodeHarnessOpen, setAtomcodeHarnessOpen] = useState(false);
   /** CTX strip: docked in cockpit vs above-config zone (near VRAM / pin-above groups). */
   const [ctxCockpitDock, setCtxCockpitDock] = useState<CtxCockpitDock>(() => loadCtxCockpitDock());
   const showLaunchRail = launchDockPosition === "right";
-  const showRightColumn = hwMonitorOpen || showLaunchRail;
+  const hwInRail = hwMonitorOpen && hwMonitorDock === "rail";
+  const hwBelowDisplay = hwMonitorOpen && hwMonitorDock === "below";
+  const showRightColumn = hwInRail || showLaunchRail;
   const showEnginesBelowVram = !(enginesInRail && showLaunchRail);
   const hasRunningEnginesForEject = useMemo(
     () => stack.some((s) => s.status === "RUNNING" || s.status === "LOADING"),
@@ -910,10 +941,24 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   const handleSelectEngine = useCallback(
     (slotIdx: number) => {
+      if (fusionDisplay.dualActive) {
+        // Dual fusion keeps pane sides stable: left = primary, right = secondary.
+        if (slotIdx === selectedSlotIdx) return;
+        if (slotIdx === fusionDisplay.secondarySlotIdx) return;
+        fusionDisplay.pinSecondaryOrCycle(slotIdx);
+        return;
+      }
       applyParamsLiveDim();
       onSelectEngine?.(slotIdx);
     },
-    [onSelectEngine, applyParamsLiveDim],
+    [
+      fusionDisplay.dualActive,
+      fusionDisplay.secondarySlotIdx,
+      fusionDisplay.pinSecondaryOrCycle,
+      selectedSlotIdx,
+      onSelectEngine,
+      applyParamsLiveDim,
+    ],
   );
 
   const runningSlotsForPlan = useMemo(
@@ -2512,6 +2557,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       data-launch-dock-position={launchDockPosition}
       data-launch-dock-collapsed={launchDockCollapsed && launchDockPosition === "bottom" ? "true" : "false"}
       data-hw-monitor-open={hwMonitorOpen ? "true" : "false"}
+      data-hw-monitor-dock={hwMonitorDock}
       data-engines-in-rail={enginesInRail ? "true" : "false"}
     >
       <div
@@ -2519,6 +2565,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         className={`config-panel-body flex flex-1 min-h-0 min-w-0${
           showRightColumn ? " config-panel-body--split" : " config-panel-body--stacked"
         }`}
+        data-monitor-focus={fusionDisplay.monitorFocus ? "1" : undefined}
       >
         <div className="config-panel-center-stack flex flex-col flex-1 min-h-0 min-w-0">
           <div ref={launchRailTopChromeMeasureRef} className="config-panel-top-chrome flex-shrink-0">
@@ -2662,15 +2709,30 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             });
           });
         }}
+        dualActive={fusionDisplay.dualActive}
+        dualArmed={fusionDisplay.dualArmed}
+        canDual={fusionDisplay.canDual}
+        dualOrient={fusionDisplay.orient}
+        onToggleDual={fusionDisplay.toggleDual}
+        onToggleOrient={fusionDisplay.toggleOrient}
+        secondarySlotIdx={fusionDisplay.secondarySlotIdx}
+        onPinSecondary={fusionDisplay.pinSecondaryOrCycle}
+        monitorFocus={fusionDisplay.monitorFocus}
+        onToggleMonitor={() => {
+          const next = !fusionDisplay.monitorFocus;
+          fusionDisplay.setMonitorFocus(next);
+        }}
+        hwMonitorDock={hwMonitorDock}
+        onToggleHwDock={toggleHwDock}
+        hwMonitorOpen={hwMonitorOpen}
       />
 
-      <div
-        className={
-          launchDockPosition === "right"
-            ? "config-rail-main-column flex flex-col flex-1 min-h-0 min-w-0"
-            : `config-panel-center flex flex-col min-h-0 ${launchDockPosition === "bottom" ? "flex-1" : ""}`
-        }
-      >
+      {/*
+        Toolbar host: carries the monitor-hidden class so MONITOR drops the
+        layout panel. HW-below stays a SIBLING (visible in MONITOR) and the
+        params column below keeps the main-column class.
+      */}
+      <div className="config-panel-center flex flex-col flex-shrink-0 min-h-0 min-w-0">
       <EngineToolbar
         fullAutoFixed={fullAutoFixed}
         configView={configView}
@@ -2714,6 +2776,21 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           />
         }
       />
+      </div>
+
+      {hwBelowDisplay && (
+        <div className="config-hw-below-display min-h-0 flex-shrink-0">
+          <LaunchRailTelemetry layout="below" />
+        </div>
+      )}
+
+      <div
+        className={
+          launchDockPosition === "right"
+            ? "config-rail-main-column flex flex-col flex-1 min-h-0 min-w-0"
+            : `config-panel-center flex flex-col min-h-0 ${launchDockPosition === "bottom" ? "flex-1" : ""}`
+        }
+      >
 
       {/*
         Unified scroll column: cockpit + (Assisted) chip groups + open harness.
@@ -2938,6 +3015,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           models={models}
           selectedSlotIdx={selectedSlotIdx ?? null}
           onSelectEngine={handleSelectEngine}
+          secondarySlotIdx={fusionDisplay.secondarySlotIdx}
+          onPinSecondary={fusionDisplay.pinSecondaryOrCycle}
           isHotSwapStale={isHotSwapStale}
           onHotSwap={(entry) => {
             void hotSwapEngineSeat({
@@ -2986,9 +3065,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               />
             ) : null}
             <div className="launch-rail-body flex flex-col flex-1 min-h-0 min-w-0">
-            {hwMonitorOpen && (
+            {hwInRail && (
               <div className="launch-rail-telemetry flex-1 min-h-0 overflow-hidden">
-                <LaunchRailTelemetry />
+                <LaunchRailTelemetry layout="rail" />
               </div>
             )}
             {showLaunchRail && !hwMonitorOpen && launchRailDisplayHeight > 0 ? (
@@ -3037,6 +3116,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 models={models}
                 selectedSlotIdx={selectedSlotIdx ?? null}
                 onSelectEngine={handleSelectEngine}
+                secondarySlotIdx={fusionDisplay.secondarySlotIdx}
+                onPinSecondary={fusionDisplay.pinSecondaryOrCycle}
                 isHotSwapStale={isHotSwapStale}
                 onHotSwap={(entry) => {
                   void hotSwapEngineSeat({

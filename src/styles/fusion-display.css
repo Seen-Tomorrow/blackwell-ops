@@ -567,9 +567,16 @@
   align-items: center;
   justify-content: flex-end;
   gap: 0;
-  padding: 0 12px 0 14px;
+  /* Flush to the bezel metal — frame's own side pad is the lip; no extra inset. */
+  padding: 0 4px;
   box-sizing: border-box;
   pointer-events: none;
+}
+
+.industrial-display-frame > .industrial-display-frame__bottom-chrome > .display-bezel-grid-controls {
+  flex: 1 1 auto;
+  width: 100%;
+  justify-content: space-between;
 }
 
 .industrial-display-frame > .industrial-display-frame__bottom-chrome > * {
@@ -2486,4 +2493,429 @@ html[data-industrial-bezel="brush"] {
 .fusion-mult-chip {
   display: inline-block;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+
+/* ══ Dual fusion stage + monitor focus ══════════════════════════════════════ */
+
+.fusion-dual-stage {
+  gap: 0;
+}
+
+.fusion-dual-stage--side {
+  flex-direction: row;
+}
+
+.fusion-dual-stage--stack {
+  flex-direction: column;
+}
+
+.fusion-dual-stage--side > .fusion-dual-stage__pane {
+  flex: 1 1 50%;
+  min-width: 0;
+}
+
+.fusion-dual-stage--stack > .fusion-dual-stage__pane {
+  flex: 1 1 50%;
+  min-height: 0;
+}
+
+.fusion-dual-stage__divider {
+  flex: 0 0 1px;
+  background: color-mix(in srgb, var(--theme-border, #334155) 70%, transparent);
+}
+
+.fusion-dual-stage--side > .fusion-dual-stage__divider {
+  width: 1px;
+  align-self: stretch;
+}
+
+.fusion-dual-stage--stack > .fusion-dual-stage__divider {
+  height: 1px;
+  width: 100%;
+}
+
+.fusion-pane--secondary {
+  opacity: 0.98;
+}
+
+.display-bezel-fusion-chip {
+  font-size: 8px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--theme-border, #475569) 80%, transparent);
+  background: color-mix(in srgb, #000 35%, transparent);
+  color: color-mix(in srgb, var(--theme-text-muted, #94a3b8) 90%, transparent);
+  cursor: pointer;
+}
+
+.display-bezel-fusion-chip:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.display-bezel-fusion-chip--armed {
+  border-color: color-mix(in srgb, #38bdf8 55%, transparent);
+  color: #7dd3fc;
+}
+
+.display-bezel-fusion-chip--active {
+  border-color: color-mix(in srgb, #22c55e 65%, transparent);
+  color: #4ade80;
+  background: color-mix(in srgb, #22c55e 12%, transparent);
+}
+
+.running-engine-card-secondary,
+.launch-rail-engine-chip--secondary {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #38bdf8 55%, transparent);
+}
+
+/* Monitor focus — stacked HUD: fusion + optional HW below. Keep mounts hot. */
+.app-shell[data-monitor-focus="1"] .app-header,
+.app-shell[data-monitor-focus="1"] .app-footer {
+  display: none !important;
+}
+
+/* OPERATIONS tab chrome + leftover catalog column (width was the left crop). */
+.app-shell[data-monitor-focus="1"] .tab-page-header,
+.app-shell[data-monitor-focus="1"] .catalog-list-panel,
+.app-shell[data-monitor-focus="1"] .catalog-split-rail,
+.app-shell[data-monitor-focus="1"] .catalog-split-handle,
+.app-shell[data-monitor-focus="1"] [data-model-catalog] > .tab-page-header {
+  display: none !important;
+}
+
+/* Providers bar + CTX / pin-above zone above display */
+.app-shell[data-monitor-focus="1"] .config-panel-top-chrome,
+.app-shell[data-monitor-focus="1"] .config-params-above-shell,
+.app-shell[data-monitor-focus="1"] .industrial-display-frame__top-chrome {
+  display: none !important;
+}
+
+/* Cockpit / param editor body */
+.app-shell[data-monitor-focus="1"] .config-rail-main-column,
+.app-shell[data-monitor-focus="1"] .config-panel-center {
+  display: none !important;
+}
+
+/* Launch dock + leftover right rail (eject strip stays visible — monitor model switcher) */
+.app-shell[data-monitor-focus="1"] .launch-rail-launch,
+.app-shell[data-monitor-focus="1"] .engine-launch-dock,
+.app-shell[data-monitor-focus="1"] .config-launch-dock,
+.app-shell[data-monitor-focus="1"] .config-launch-rail,
+.app-shell[data-monitor-focus="1"] .launch-rail-split-handle {
+  display: none !important;
+}
+
+/* Fill remaining width — no reserved catalog gutter */
+.app-shell[data-monitor-focus="1"] .catalog-split-workspace {
+  display: flex;
+}
+
+.app-shell[data-monitor-focus="1"] .catalog-split-workspace > .eink-panel-wrapper:not(.catalog-list-panel) {
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: none;
+}
+
+.app-shell[data-monitor-focus="1"] [data-model-catalog] {
+  min-width: 0;
+}
+
+/* Shell must fill the real window, not the 960px cockpit floor */
+.app-shell[data-monitor-focus="1"] {
+  min-height: 0;
+}
+
+.app-shell[data-monitor-focus="1"] .app-main-zoom {
+  justify-content: stretch;
+  align-items: stretch;
+}
+
+.app-shell[data-monitor-focus="1"] .app-main-frame {
+  /* Restore app zoom: fill the HWND at the saved --ui-text-scale (no 960px cockpit floor).
+     Layout box is window/scale, scaled back up from top-left; .app-main-zoom's stretch
+     rules left- + top-align it so the scaled frame fills the window exactly. */
+  width: calc(100% / var(--ui-text-scale));
+  height: calc(100% / var(--ui-text-scale));
+  min-height: 0;
+  flex-shrink: 0;
+  transform: scale(var(--ui-text-scale));
+  transform-origin: top left;
+}
+
+.app-shell[data-monitor-focus="1"] .app-main {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Inner content packs to the TOP — leftover window height stays BELOW HW-below,
+   never a blank band between fusion and HW. Stack + rails hug content height,
+   but stretch to the FULL canvas width (no content-width crop). */
+.app-shell[data-monitor-focus="1"] .config-display-stack {
+  flex: 0 0 auto;
+  min-height: 0;
+  width: 100%;
+  align-self: stretch;
+  align-items: stretch;
+}
+
+.app-shell[data-monitor-focus="1"] .industrial-display-area {
+  flex: 0 0 auto;
+  min-height: 0;
+  width: 100%;
+  align-self: stretch;
+  align-items: stretch;
+}
+
+.app-shell[data-monitor-focus="1"] .config-panel-body,
+.app-shell[data-monitor-focus="1"] .config-panel-center-stack {
+  flex: 0 0 auto;
+  width: 100%;
+  align-self: stretch;
+  align-items: stretch;
+}
+
+/* Right rail is display:none in MONITOR — force column so body never runs as a row */
+.app-shell[data-monitor-focus="1"] .config-panel-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.app-shell[data-monitor-focus="1"] .config-rail-workspace,
+.app-shell[data-monitor-focus="1"] .config-rail-left {
+  flex: 0 0 auto;
+  width: 100%;
+  align-self: stretch;
+  align-items: stretch;
+}
+
+/* Dual stack: each pane scrolls its own tray if needed */
+.app-shell[data-monitor-focus="1"] .fusion-dual-stage--stack > .fusion-dual-stage__pane {
+  overflow: auto;
+}
+
+/* HW under fusion — horizontal GPU strip so N cards don't force full-window height.
+   In MONITOR it hugs content immediately under the display stack (or eject tray). */
+.config-hw-below-display {
+  min-height: 0;
+  overflow: hidden;
+  border-top: 1px solid color-mix(in srgb, var(--theme-border, #334155) 55%, transparent);
+}
+
+.app-shell[data-monitor-focus="1"] .config-hw-below-display {
+  flex: 0 0 auto;
+  width: 100%;
+  align-self: stretch;
+  align-items: stretch;
+}
+
+.launch-rail-tel--below {
+  height: auto;
+  max-height: none;
+  overflow: hidden;
+}
+
+.launch-rail-tel--below .launch-rail-tel__body {
+  overflow: hidden;
+}
+
+/* HW-below strip — GPU cards set the row height; totals + CPU stretch to match.
+   Columns L→R: totals stack (power/VRAM/RAM/OC badge) | CPU | GPU cards (1 col each). */
+.launch-rail-tel--below .launch-rail-tel__below-grid {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(160px, 1fr);
+  grid-template-rows: var(--hw-below-row-h, auto);
+  height: var(--hw-below-row-h, auto);
+  align-items: stretch;
+  gap: 8px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+/* GPU cards each become their own column of the same row; natural height
+   defines --hw-below-row-h (measured by JS), so cards never stretch. */
+.launch-rail-tel--below .launch-rail-tel__gpu-stack {
+  display: contents;
+}
+
+.launch-rail-tel--below .launch-rail-tel__gpu-stack .gpu-topo-card {
+  min-width: 0;
+  align-self: start;
+}
+
+/* Totals stack — 3 rows filling the GPU-card row height:
+   power (full width) | VRAM+RAM (2-col) | OC badge (full width). */
+.launch-rail-tel--below .launch-rail-tel__totals-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+/* Compress totals cells in below mode so 3 rows fit the GPU-card row */
+.launch-rail-tel--below .launch-rail-tel__total-cell {
+  padding: 2px 6px;
+}
+
+.launch-rail-tel--below .launch-rail-tel__total-value {
+  font-size: 13px;
+}
+
+.launch-rail-tel--below .launch-rail-tel__totals-stack > .launch-rail-tel__total-cell,
+.launch-rail-tel--below .launch-rail-tel__totals-stack > .launch-rail-tel__totals,
+.launch-rail-tel--below .launch-rail-tel__totals-stack > .launch-rail-tel__oc-badge {
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+}
+
+/* VRAM|RAM stay side by side inside their 2-col row */
+.launch-rail-tel--below .launch-rail-tel__totals-stack .launch-rail-tel__totals {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.launch-rail-tel--below .launch-rail-tel__totals-stack .launch-rail-tel__totals > .launch-rail-tel__total-cell {
+  min-height: 0;
+}
+
+/* CPU column — stretches to row height; cores-open scrolls inside, never grows row */
+.launch-rail-tel--below .launch-rail-tel__cpu-col {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.launch-rail-tel--below .launch-rail-tel__cpu-col .launch-rail-tel__cpu {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.launch-rail-tel--below .launch-rail-tel__cpu-col .launch-rail-tel__cpu::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.launch-rail-tel--below .launch-rail-tel__cpu-col .launch-rail-tel__cpu--cores-open,
+.launch-rail-tel--below .launch-rail-tel__cpu-col .launch-rail-tel__cpu--cores-open.phosphor-display-surface {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* OC badge — below mode replaces the pinned OC footer (panel opens as modal) */
+.launch-rail-tel--below .launch-rail-tel__oc-badge {
+  padding: 2px 6px;
+  gap: 0;
+}
+
+.launch-rail-tel__oc-badge {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 5px 6px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
+  background: var(--theme-tel-cell-bg, color-mix(in srgb, #000 22%, transparent));
+  cursor: pointer;
+  font-family: ui-monospace, monospace;
+  text-transform: uppercase;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.launch-rail-tel__oc-badge-label {
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--theme-text);
+  opacity: 0.85;
+}
+
+.launch-rail-tel__oc-badge--open {
+  border-color: color-mix(in srgb, var(--tel-amber, #f59e0b) 70%, transparent);
+  background: color-mix(in srgb, var(--tel-amber, #f59e0b) 20%, transparent);
+}
+.launch-rail-tel__oc-badge-hint {
+  font-size: 5.5px;
+  letter-spacing: 0.08em;
+  color: var(--theme-text-muted);
+  opacity: 0.7;
+}
+
+.launch-rail-tel__oc-badge:hover {
+  border-color: color-mix(in srgb, var(--tel-amber, #f59e0b) 55%, transparent);
+}
+
+.launch-rail-tel__oc-badge--active {
+  border-color: color-mix(in srgb, var(--tel-amber, #f59e0b) 60%, transparent);
+  background: color-mix(in srgb, var(--tel-amber, #f59e0b) 14%, transparent);
+}
+
+.launch-rail-tel__oc-badge--active .launch-rail-tel__oc-badge-label {
+  color: var(--theme-tel-amber-ink, color-mix(in srgb, #fbbf24 78%, #fff 22%));
+}
+
+.launch-rail-tel__oc-badge--active .launch-rail-tel__oc-badge-hint {
+  color: var(--theme-tel-amber-ink, color-mix(in srgb, #fbbf24 78%, #fff 22%));
+  opacity: 0.85;
+}
+
+/* OC modal — dim only (NO backdrop-filter: blur pegs iGPU).
+   The dim layer is pointer-events: none so the HW-below strip (GPU cards,
+   OC badge) stays fully clickable while the modal is open. The panel is a
+   floating card in the upper window; the bottom HW strip is never covered. */
+.launch-rail-tel__oc-modal-dim {
+  position: fixed;
+  inset: 0;
+  z-index: 10040;
+  pointer-events: none;
+  background: color-mix(in srgb, #000 45%, transparent);
+}
+
+/* HW-below strip only lifts above the OC dim layer while the modal is open
+   (data-oc-modal set on .launch-rail-tel--below). Default: no z-index, so an
+   overflowing strip can never paint over the cockpit. */
+.launch-rail-tel--below[data-oc-modal="1"] {
+  position: relative;
+  z-index: 10050;
+}
+
+.launch-rail-tel__oc-modal {
+  position: fixed;
+  top: 8vh;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10060;
+  width: min(960px, 92vw);
+  max-height: min(88vh, 820px);
+  overflow-y: auto;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--theme-border, #334155) 60%, transparent);
+  background: var(--theme-panel, #0a0c10);
+  box-shadow: 0 12px 40px color-mix(in srgb, #000 55%, transparent);
+}
+
+.monitor-focus-exit-bar {
+  background: color-mix(in srgb, #000 55%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-border, #334155) 70%, transparent);
 }

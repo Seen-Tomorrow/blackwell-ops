@@ -67,6 +67,9 @@ export const EVENTS = {
   fitScanCacheChanged: `${STORAGE_PREFIX}fit-scan-cache-changed`,
   /** Config panel HW monitor open — enables CPU live polling outside TELEMETRY tab. */
   hwMonitorOpenChanged: `${STORAGE_PREFIX}hw-monitor-open-changed`,
+  /** Monitor focus mode — fusion + HW only chrome hide. */
+  monitorFocusChanged: `${STORAGE_PREFIX}monitor-focus-changed`,
+
   /** Dev: fake update version toggled — refresh GitHub offerings. */
   updateOfferingsRefresh: `${STORAGE_PREFIX}update-offerings-refresh`,
   /** AtomCode harness open — highlight running engines (brain/worker/solo roles). */

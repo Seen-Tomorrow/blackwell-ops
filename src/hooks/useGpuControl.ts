@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useTelemetry } from "../context/TelemetryContext";
 import { presetsForApply, syncGroupFor } from "../lib/gpuControlPresets";
 import {
   loadGpuControlState,
@@ -133,6 +134,8 @@ export function useGpuControl() {
   const [status, setStatus] = useState<string | null>(null);
   const [elevated, setElevated] = useState<boolean | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  /** Visible topo cards (real + DEV fake) — SYNC selection must cover all. */
+  const { gpus: visibleGpus } = useTelemetry();
 
   const hydrateFromDevices = useCallback((list: GpuControlDeviceInfo[], saved: GpuControlSavedState) => {
     setDevices(list);
@@ -213,10 +216,14 @@ export function useGpuControl() {
 
   const ocTargetIndices = useMemo(() => {
     if (ocMode === "sync") {
-      return new Set(syncGroup.map((d) => d.index));
+      // SYNC highlights every visible topo card — real + DEV fake GPUs.
+      // Apply stays limited to real NVML devices (presetsForApply).
+      const set = new Set(syncGroup.map((d) => d.index));
+      for (const gpu of visibleGpus) set.add(gpu.index);
+      return set;
     }
     return new Set([selectedGpuIndex]);
-  }, [ocMode, syncGroup, selectedGpuIndex]);
+  }, [ocMode, syncGroup, visibleGpus, selectedGpuIndex]);
 
   const isOcTarget = useCallback(
     (gpuIndex: number) => ocTargetIndices.has(gpuIndex),
