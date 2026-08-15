@@ -181,6 +181,65 @@
   flex-shrink: 0;
 }
 
+.catalog-chrome-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+}
+
+.catalog-chrome-row--filters {
+  justify-content: space-between;
+}
+
+.catalog-chrome-row--sort {
+  justify-content: flex-start;
+}
+
+.catalog-kind-filter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.catalog-kind-filter__btn {
+  min-width: 2.25rem;
+  padding: 1px 6px;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--theme-border, #334155) 55%, transparent);
+  background: transparent;
+  font-family: ui-monospace, monospace;
+  font-size: 7px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--theme-text-muted, #94a3b8);
+}
+
+.catalog-kind-filter__btn--regular.catalog-kind-filter__btn--active {
+  color: var(--theme-text, #e5e7eb);
+  border-color: color-mix(in srgb, var(--theme-text, #e5e7eb) 35%, transparent);
+  background: color-mix(in srgb, var(--theme-text, #e5e7eb) 8%, transparent);
+}
+
+.catalog-kind-filter__btn--draft {
+  color: color-mix(in srgb, #a78bfa 80%, #fff 10%);
+}
+
+.catalog-kind-filter__btn--draft.catalog-kind-filter__btn--active {
+  color: #ddd6fe;
+  border-color: color-mix(in srgb, #8b5cf6 55%, transparent);
+  background: color-mix(in srgb, #7c3aed 22%, transparent);
+}
+
+.catalog-kind-filter__btn--all.catalog-kind-filter__btn--active {
+  color: var(--theme-nv-green, #76b900);
+  border-color: color-mix(in srgb, var(--theme-nv-green, #76b900) 45%, transparent);
+  background: color-mix(in srgb, var(--theme-nv-green, #76b900) 12%, transparent);
+}
+
 .catalog-list-panel__chrome-msg {
   margin: 0;
 }
@@ -467,7 +526,7 @@
   flex-wrap: wrap;
   justify-content: flex-start;
   gap: 6px;
-  width: 100%;
+  flex: 1 1 auto;
   min-width: 0;
 }
 
@@ -497,18 +556,6 @@
   direction: ltr;
 }
 
-/* Visible-count viewport — CSS estimate avoids post-mount measure layout shifts */
-.catalog-scroll--limited[data-visible-count="4"] {
-  max-height: calc(2rem + 4 * 4.75rem + 3 * 0.5rem);
-}
-
-.catalog-scroll--limited[data-visible-count="6"] {
-  max-height: calc(2rem + 6 * 4.75rem + 5 * 0.5rem);
-}
-
-.catalog-scroll--limited[data-visible-count="8"] {
-  max-height: calc(2rem + 8 * 4.75rem + 7 * 0.5rem);
-}
 
 /* Model card styles */
 /* ── Catalog card (unselected) — no fill; list panel tint shows through ─── */

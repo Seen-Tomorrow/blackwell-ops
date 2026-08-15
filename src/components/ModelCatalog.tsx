@@ -44,7 +44,6 @@ const sortLabels: Record<string, string> = {
 };
 
 const DRAFT_FILTER_CYCLE: CatalogDraftFilter[] = ["regular", "draft", "all"];
-const VISIBLE_COUNT_CYCLE: Array<"4" | "6" | "8" | "all"> = ["4", "6", "8", "all"];
 
 const draftFilterLabels: Record<CatalogDraftFilter, string> = {
   regular: "MAIN",
@@ -150,24 +149,13 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     handleDeleteModel, handleRenameModel,
     fitScanAvailable, isFitScanning, getFitScanActiveLabel, getFitScanBadge, modelNeedsFitScan, handleFitScanModel,
     fitScanningCount,
-    zone, visibleCount, setVisibleCount } = catalog;
+    zone } = catalog;
 
   const catalogModels = useMemo(
     () => (updatesOnly ? catalogModelsRaw.filter((m) => updateByPath.has(m.path)) : catalogModelsRaw),
     [updatesOnly, catalogModelsRaw, updateByPath],
   );
 
-  const cycleDraftFilter = useCallback(() => {
-    const idx = DRAFT_FILTER_CYCLE.indexOf(draftFilter);
-    const next = DRAFT_FILTER_CYCLE[(idx + 1) % DRAFT_FILTER_CYCLE.length];
-    setCatalogDraftFilter(next);
-  }, [draftFilter, setCatalogDraftFilter]);
-
-  const cycleVisibleCount = useCallback(() => {
-    const idx = VISIBLE_COUNT_CYCLE.indexOf(visibleCount);
-    const next = VISIBLE_COUNT_CYCLE[(idx + 1) % VISIBLE_COUNT_CYCLE.length];
-    setVisibleCount(next);
-  }, [visibleCount, setVisibleCount]);
 
   useEffect(() => {
     const workspace = splitContainerRef.current;
@@ -219,7 +207,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
       observer.disconnect();
       window.removeEventListener("resize", measureToggleTop);
     };
-  }, [splitContainerRef, catalogCollapsed, catalogModels.length, visibleCount]);
+  }, [splitContainerRef, catalogCollapsed, catalogModels.length]);
 
   const startScan = (concurrency: number) => {
     setShowScanMenu(false);
@@ -548,77 +536,86 @@ export default function ModelCatalog(props: ModelCatalogProps) {
   // ── Chrome tools row: sort + MAIN/MAX + dim (always full opacity) ────────────────
   const renderChromeTools = () => (
     <div className="catalog-list-panel__chrome-tools">
-      <div className="catalog-sort-group flex items-center gap-0.5 min-w-0 flex-1">
-        {CATALOG_SORT_FIELDS.map((field) => (
-          <button
-            key={field}
-            onClick={() => handleSort(field)}
-            className={`catalog-sort-btn px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-wider transition-colors rounded-sm ${
-              sortField === field
-                ? "text-nv-green bg-nv-green/10"
-                : "text-stealth-muted hover:text-white"
-            }`}
-          >
-            <span>{sortLabels[field] || field.replace("_", " ")}</span>
-            <span className="catalog-sort-arrow" aria-hidden="true">
-              {sortField === field ? (sortDirection === "asc" ? "▲" : "▼") : ""}
+      <div className="catalog-chrome-row catalog-chrome-row--filters">
+        <div className="catalog-sort-actions">
+          {fitScanningCount > 0 && (
+            <span className="catalog-scan-status text-[8px] font-mono text-stealth-muted whitespace-nowrap">
+              FIT {fitScanningCount}
             </span>
+          )}
+          <button
+            type="button"
+            onClick={() => onCheckCatalogUpdates?.()}
+            disabled={catalogUpdatesBusy}
+            className="catalog-cycle-btn value-chip px-1.5 py-0 text-[7px] font-mono uppercase rounded-sm transition-colors disabled:opacity-40"
+            title="Check every local HF-paired model against the Hub (tree listing only unless size is close)"
+          >
+            {catalogUpdatesBusy ? "CHECKING…" : "CHECK ALL"}
           </button>
-        ))}
+          <button
+            type="button"
+            onClick={() => {
+              const path = catalogSelectedModel?.path ?? panelActiveModel?.path;
+              if (path) onCheckCatalogUpdates?.(path);
+            }}
+            disabled={catalogUpdatesBusy || !(catalogSelectedModel || panelActiveModel)}
+            className="catalog-cycle-btn value-chip px-1.5 py-0 text-[7px] font-mono uppercase rounded-sm transition-colors disabled:opacity-40"
+            title="Check only the selected model against Hugging Face"
+          >
+            CHECK SELECTED
+          </button>
+          <button
+            type="button"
+            onClick={() => setUpdatesOnly((v) => !v)}
+            className={`catalog-cycle-btn value-chip px-1.5 py-0 text-[7px] font-mono uppercase rounded-sm transition-colors ${
+              updatesOnly ? "value-chip-active" : ""
+            }`}
+            title="Show only models with a Hub update"
+          >
+            UPDATES{updateByPath.size > 0 ? ` ${updateByPath.size}` : ""}
+          </button>
+        </div>
+        <div className="catalog-kind-filter" role="group" aria-label="Model kind">
+          {DRAFT_FILTER_CYCLE.map((kind) => (
+            <button
+              key={kind}
+              type="button"
+              onClick={() => setCatalogDraftFilter(kind)}
+              className={`catalog-kind-filter__btn catalog-kind-filter__btn--${kind}${
+                draftFilter === kind ? " catalog-kind-filter__btn--active" : ""
+              }`}
+              title={
+                kind === "regular"
+                  ? "Show main models"
+                  : kind === "draft"
+                    ? "Show draft models"
+                    : "Show all models"
+              }
+            >
+              {draftFilterLabels[kind]}
+            </button>
+          ))}
+        </div>
       </div>
-      <div className="catalog-sort-actions flex items-center gap-1.5 shrink-0">
-        {fitScanningCount > 0 && (
-          <span className="catalog-scan-status text-[8px] font-mono text-stealth-muted whitespace-nowrap">
-            FIT {fitScanningCount}
-          </span>
-        )}
-        <button
-          type="button"
-          onClick={() => onCheckCatalogUpdates?.()}
-          disabled={catalogUpdatesBusy}
-          className="catalog-cycle-btn value-chip px-1.5 py-0 text-[7px] font-mono uppercase rounded-sm transition-colors disabled:opacity-40"
-          title="Check every local HF-paired model against the Hub (tree listing only unless size is close)"
-        >
-          {catalogUpdatesBusy ? "CHECKING…" : "CHECK ALL"}
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            const path = catalogSelectedModel?.path ?? panelActiveModel?.path;
-            if (path) onCheckCatalogUpdates?.(path);
-          }}
-          disabled={catalogUpdatesBusy || !(catalogSelectedModel || panelActiveModel)}
-          className="catalog-cycle-btn value-chip px-1.5 py-0 text-[7px] font-mono uppercase rounded-sm transition-colors disabled:opacity-40"
-          title="Check only the selected model against Hugging Face"
-        >
-          CHECK THIS
-        </button>
-        <button
-          type="button"
-          onClick={() => setUpdatesOnly((v) => !v)}
-          className={`catalog-cycle-btn value-chip px-1.5 py-0 text-[7px] font-mono uppercase rounded-sm transition-colors ${
-            updatesOnly ? "value-chip-active" : ""
-          }`}
-          title="Show only models with a Hub update"
-        >
-          UPDATES{updateByPath.size > 0 ? ` ${updateByPath.size}` : ""}
-        </button>
-        <button
-          type="button"
-          onClick={cycleDraftFilter}
-          className="catalog-cycle-btn value-chip px-1.5 py-0 text-[7px] font-mono uppercase rounded-sm transition-colors"
-          title="Model filter — click to cycle: MAIN → DRAFT → ALL"
-        >
-          {draftFilterLabels[draftFilter]}
-        </button>
-        <button
-          type="button"
-          onClick={cycleVisibleCount}
-          className="catalog-cycle-btn value-chip px-1.5 py-0 text-[7px] font-mono rounded-sm transition-colors"
-          title="Catalog list height — click to cycle: 4 → 6 → 8 → MAX (full scroll)"
-        >
-          {visibleCount === "all" ? "MAX" : visibleCount}
-        </button>
+      <div className="catalog-chrome-row catalog-chrome-row--sort">
+        <div className="catalog-sort-group">
+          {CATALOG_SORT_FIELDS.map((field) => (
+            <button
+              key={field}
+              onClick={() => handleSort(field)}
+              className={`catalog-sort-btn px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-wider transition-colors rounded-sm ${
+                sortField === field
+                  ? "text-nv-green bg-nv-green/10"
+                  : "text-stealth-muted hover:text-white"
+              }`}
+            >
+              <span>{sortLabels[field] || field.replace("_", " ")}</span>
+              <span className="catalog-sort-arrow" aria-hidden="true">
+                {sortField === field ? (sortDirection === "asc" ? "▲" : "▼") : ""}
+              </span>
+            </button>
+          ))}
+        </div>
         <label
           className="panel-dim-control"
           title={`Catalog list dim — ${Math.round(catalogListDim * 100)}% (header + selected model stay full)`}
@@ -855,10 +852,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           <div
             ref={catalogScrollRef}
             id="model-table-container"
-            data-visible-count={visibleCount}
-            className={`catalog-list-scroll overflow-y-auto eink-scrollbar pt-3 px-3 pb-5 ${
-              visibleCount === "all" ? "flex-1 min-h-0" : "catalog-scroll--limited flex-shrink-0"
-            }`}
+            className="catalog-list-scroll overflow-y-auto eink-scrollbar pt-3 px-3 pb-5 flex-1 min-h-0"
           >
             {catalogModels.length === 0 ? (
               <div

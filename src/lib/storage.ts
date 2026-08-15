@@ -36,7 +36,6 @@ import type {
  * | BlackOps-sort-dir | asc \| desc | Catalog sort direction (default: desc) |
  * | BlackOps-ui-zoom | number string | Main content text scale (0.7–1.5) |
  * | BlackOps-ui-density | comfortable \| compact | Engine config chip/row density |
- * | BlackOps-catalog-visible-count | 4 \| 6 \| 8 \| all | Models visible per page (default: all) |
  * | BlackOps-catalog-draft-filter | regular \| draft \| all | Catalog main/draft filter |
  * | BlackOps-model-spec:{modelPath} | JSON | Per-main-model profile knobs (mtp_ / dflash_ keys) |
  * | BlackOps-draft-pairings | JSON Record<targetPath, {specType, draftPath}> | Per-target DFlash draft pairings |
@@ -148,7 +147,6 @@ export const KEYS = {
   sortDir: `${STORAGE_PREFIX}sort-dir`,
   uiZoom: `${STORAGE_PREFIX}ui-zoom`,
   uiDensity: `${STORAGE_PREFIX}ui-density`,
-  catalogVisibleCount: `${STORAGE_PREFIX}catalog-visible-count`,
   catalogDraftFilter: `${STORAGE_PREFIX}catalog-draft-filter`,
   draftPairings: `${STORAGE_PREFIX}draft-pairings`,
   /** HF Get-draft scored candidate list cache (TTL ~4h, stale OK on 429). */

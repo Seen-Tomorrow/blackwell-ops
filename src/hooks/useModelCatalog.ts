@@ -266,11 +266,6 @@ export function useModelCatalog({
   const setSelectedSlotIdx = useCallback((v: number | null) => {
     setSelectedSlotIdxState(v);
   }, []);
-  const [visibleCount, setVisibleCount] = useState<"4" | "6" | "8" | "all">(() => {
-    const v = readStorage(KEYS.catalogVisibleCount);
-    if (v === "4" || v === "6" || v === "8" || v === "all") return v;
-    return "all";
-  });
   const [sortField, setSortField] = useState<SortField>(() => {
     const v = readStorage(KEYS.sortField) as SortField | null;
     // NAME removed from UI (search covers it) — migrate legacy storage
@@ -347,7 +342,6 @@ export function useModelCatalog({
   // Persist sort state
   useEffect(() => { writeStorage(KEYS.sortField, sortField); }, [sortField]);
   useEffect(() => { writeStorage(KEYS.sortDir, sortDirection); }, [sortDirection]);
-  useEffect(() => { writeStorage(KEYS.catalogVisibleCount, visibleCount); }, [visibleCount]);
 
   // Listen for engine launch event — deterministic auto-select from backend return value
   useEffect(() => {
@@ -706,7 +700,6 @@ export function useModelCatalog({
     catalogSelectedModel, setCatalogSelectedModel, handleSelect, handleSelectBySlot, clearEngineSelection,
     panelActiveModel, setPanelActiveModel,
     selectedSlotIdx: selectedSlotIdxState, setSelectedSlotIdx,
-    visibleCount, setVisibleCount,
     sortField, sortDirection, handleSort,
     catalogModels,
     runningModelPaths, runningInstances, activeEngineByModel,
