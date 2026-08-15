@@ -591,21 +591,37 @@ pub async fn install_app_update(
     Ok(task_id)
 }
 
+fn empty_startup_status(current_version: String) -> StartupUpdateStatus {
+    StartupUpdateStatus {
+        app_update: AppUpdateInfo {
+            available: false,
+            version: String::new(),
+            current_version: current_version.clone(),
+            release_notes: None,
+        },
+        update_offerings: empty_update_offerings(current_version),
+        binary_updates: Vec::new(),
+    }
+}
+
+// Dev builds: the #[cfg(debug_assertions)] gate below returns unconditionally,
+// so the check body is intentionally unreachable there — DEV restarts must not
+// auto-hit the GitHub API (60 req/h unauthenticated per IP).
+#[allow(unreachable_code)]
 #[tauri::command]
 pub async fn get_startup_updates(app_handle: tauri::AppHandle) -> Result<StartupUpdateStatus, String> {
+    let current_version = app_handle.package_info().version.to_string();
     if !BINARY_UPDATES_ENABLED {
         log::debug!("[binary-update] All update checks disabled (feature flag off). Returning empty results.");
-        let current_version = app_handle.package_info().version.to_string();
-        return Ok(StartupUpdateStatus {
-            app_update: AppUpdateInfo {
-                available: false,
-                version: String::new(),
-                current_version: current_version.clone(),
-                release_notes: None,
-            },
-            update_offerings: empty_update_offerings(current_version),
-            binary_updates: Vec::new(),
-        });
+        return Ok(empty_startup_status(current_version));
+    }
+    // DEV builds restart/rebuild many times per day — the auto startup check would
+    // burn GitHub API budget (60 req/h unauthenticated per IP). Explicit checks stay
+    // available: Updates page, header refresh, dev version-override tools.
+    #[cfg(debug_assertions)]
+    {
+        log::debug!("[startup-updates] DEV build — skipping auto startup update check");
+        return Ok(empty_startup_status(current_version));
     }
 
     let offerings_future = resolve_update_offerings(&app_handle);
