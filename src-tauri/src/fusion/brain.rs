@@ -222,6 +222,11 @@ pub struct FusionBrain {
     sticky_wave_peak: usize,
     /// Peak per-request gen tokens this wave (freeze fallback when /slots empty).
     peak_gen_tokens_request: usize,
+    /// Peak live gen TPS this wave — multi-slot drain undercounts last_gen near end.
+    peak_gen_tps_request: f64,
+    /// Gen tokens already done when parallel decode wall opened (exclude from wall TPS).
+    /// High-N: early slots decode while stragglers finish PP — counting those freebies ≈2× live.
+    decode_wall_token_base: Option<usize>,
     /// Throttle DEV fusion-stats live lines.
     last_fusion_stats_log_at: Option<Instant>,
 
@@ -309,6 +314,8 @@ impl FusionBrain {
             last_busy_slot_count: 0,
             sticky_wave_peak: 0,
             peak_gen_tokens_request: 0,
+            peak_gen_tps_request: 0.0,
+            decode_wall_token_base: None,
             last_fusion_stats_log_at: None,
         }
     }
@@ -352,12 +359,32 @@ impl FusionBrain {
             .wave_ready(self.busy_slot_count(slots), !self.has_log_belt)
     }
 
+    fn parallel_decode_tokens(&self, slots: &[crate::fusion::poller::SlotData]) -> usize {
+        let total = self.per_request_gen_tokens(slots);
+        match self.decode_wall_token_base {
+            Some(base) => total.saturating_sub(base),
+            // Wall not open yet — don't report a freebie numerator.
+            None => 0,
+        }
+    }
+
     fn parallel_decode_tps(&self, slots: &[crate::fusion::poller::SlotData]) -> f64 {
         ParallelMeter::wall_tps(
-            self.per_request_gen_tokens(slots),
+            self.parallel_decode_tokens(slots),
             self.parallel_meter.decode_wall_at(),
             MIN_TG_PER_REQUEST_AVG_MS,
         )
+    }
+
+    /// Snapshot gen tokens when decode wall first opens; clear when wall drops.
+    fn sync_decode_wall_token_base(&mut self, slots: &[crate::fusion::poller::SlotData]) {
+        if self.parallel_meter.decode_wall_at().is_none() {
+            self.decode_wall_token_base = None;
+            return;
+        }
+        if self.decode_wall_token_base.is_none() {
+            self.decode_wall_token_base = Some(self.per_request_gen_tokens(slots));
+        }
     }
 
     fn parallel_prefill_tps(&self, slots: &[crate::fusion::poller::SlotData]) -> f64 {
@@ -669,6 +696,8 @@ impl FusionBrain {
         self.frozen_concurrent_slots = 0;
         self.sticky_wave_peak = 0;
         self.peak_gen_tokens_request = 0;
+        self.peak_gen_tps_request = 0.0;
+        self.decode_wall_token_base = None;
         self.request_start = Some(Instant::now());
         self.request_elapsed_frozen_ms = 0;
         self.ttft_ms = None;
@@ -870,10 +899,22 @@ impl FusionBrain {
 
         // Pin live rate first. Recomputing wall here undercounts: idle poll zeros decode_wall /
         // tg_start keeps running until freeze, and empty-slot freeze has no fresh n_decoded.
+        // Multi-slot: end-of-wave drain lowers last_gen (slots finish one-by-one) — use peak.
         let mut pin_src = "none";
-        if self.last_gen_tps > 0.0 {
-            self.frozen_request_gen_tps = clamp_display_tps(self.last_gen_tps);
-            pin_src = "last_gen";
+        let live_pin = if self.sticky_wave_peak > 1 {
+            self.last_gen_tps.max(self.peak_gen_tps_request)
+        } else {
+            self.last_gen_tps
+        };
+        if live_pin > 0.0 {
+            self.frozen_request_gen_tps = clamp_display_tps(live_pin);
+            pin_src = if self.peak_gen_tps_request > self.last_gen_tps + 0.05
+                && self.sticky_wave_peak > 1
+            {
+                "peak_gen"
+            } else {
+                "last_gen"
+            };
         } else {
             let wall_start = if self.sticky_wave_peak > 1 {
                 self.parallel_meter
@@ -945,9 +986,10 @@ impl FusionBrain {
         self.reset_pp_session_avg();
         self.reset_tg_session_avg();
         self.parallel_meter.reset();
-        self.last_busy_slot_count = 0;
         self.sticky_wave_peak = 0;
         self.peak_gen_tokens_request = 0;
+        self.peak_gen_tps_request = 0.0;
+        self.decode_wall_token_base = None;
         self.last_fusion_stats_log_at = None;
         self.prev_instant_poll_at = None;
         self.prev_instant_prefill_tokens = 0;
@@ -1001,13 +1043,19 @@ impl FusionBrain {
             .max(self.frozen_concurrent_slots)
             .max(busy)
             .max(1);
-        let gen_tok = if !slots.is_empty() {
+        let gen_tok_raw = if !slots.is_empty() {
             self.per_request_gen_tokens(slots)
         } else {
             0
         }
         .max(self.peak_gen_tokens_request)
         .max(self.prev_instant_gen_decoded);
+        let gen_tok_wall = if !slots.is_empty() {
+            self.parallel_decode_tokens(slots)
+        } else {
+            0
+        };
+        let wall_base = self.decode_wall_token_base.unwrap_or(0);
         let (_, pp_tok) = self.merged_prefill_display(slots);
         let gen_sess = self.tg_session_avg_tps(slots);
         let pp_sess = self.pp_session_avg_tps(slots, pp_tok);
@@ -1045,7 +1093,8 @@ impl FusionBrain {
         let pin = pin_src.unwrap_or("-");
         let line = format!(
             "[fusion-stats] {kind} port={} alias={} lane={lane} phase={phase} busy={busy} peak={peak} \
-             genTok={gen_tok} peakTok={} genTps={:.1} last={:.1} sess={:.1} inst={:.1} perSlot={:.1} lpTg={:.1} \
+             genTok={gen_tok_raw} wallTok={gen_tok_wall} wallBase={wall_base} peakTok={} \
+             genTps={:.1} last={:.1} sess={:.1} inst={:.1} perSlot={:.1} lpTg={:.1} \
              ppTok={pp_tok} ppSess={:.1} ppInst={:.1} lpPp={:.1} ppEval={:.1} \
              wallTgMs={wall_tg_ms} wallPpMs={wall_pp_ms} closed={} frozen={:.1} frozenPer={:.1} pin={pin}",
             self.port,
@@ -1068,6 +1117,7 @@ impl FusionBrain {
         crate::session_log::append_session_line(&line);
         log::info!("{line}");
     }
+
 
 
     fn per_request_gen_tokens(&self, slots: &[crate::fusion::poller::SlotData]) -> usize {
@@ -2352,6 +2402,7 @@ impl FusionBrain {
         let any_pp = self.any_busy_slot_prefilling(slots);
         self.parallel_meter
             .note_decode_wave(now, busy_count, any_decode, any_pp, !self.has_log_belt);
+        self.sync_decode_wall_token_base(slots);
 
         self.update_prefill_from_slots(slots);
         self.reconcile_phase(slots, any_processing, now);
@@ -2410,12 +2461,18 @@ impl FusionBrain {
                 let wall = self.parallel_decode_tps(slots);
                 if wall > 0.0 {
                     self.last_gen_tps = wall;
+                    if wall > self.peak_gen_tps_request {
+                        self.peak_gen_tps_request = wall;
+                    }
                 }
             } else if let Some(start) = self.tg_start_time {
                 let elapsed_ms = start.elapsed().as_millis() as u64;
                 if elapsed_ms > 0 && tokens_generated > 0 {
-                    self.last_gen_tps =
-                        (tokens_generated as f64) / (elapsed_ms as f64 / 1000.0);
+                    let tps = (tokens_generated as f64) / (elapsed_ms as f64 / 1000.0);
+                    self.last_gen_tps = tps;
+                    if tps > self.peak_gen_tps_request {
+                        self.peak_gen_tps_request = tps;
+                    }
                 }
             }
         }
