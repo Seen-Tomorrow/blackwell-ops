@@ -632,6 +632,12 @@ function App() {
     () => stack.some(isActiveEngineSlot),
     [stack],
   );
+  /** Fusion overlay + VramBadge stay mounted across tab switches while an engine is up. */
+  const keepOpsAlive = useMemo(
+    () => stack.some((s) => s.status === "RUNNING" || s.status === "LOADING"),
+    [stack],
+  );
+
 
   const gpuPollTier = useMemo((): GpuPollTier => {
     if (hwMonitorOpen) return "fast";
@@ -671,9 +677,16 @@ function App() {
           <TelemetryProvider pollingActive={hwMonitorOpen || activeTab === "catalog" || hasLiveEngines} gpuPollTier={gpuPollTier}>
             <StatusProvider value={{ totalParams, hiddenCount, onShowAll: handleShowAll }}>
             <Layout activeTab={activeTab} onTabChange={handleTabChange} providers={providers} updateOfferings={updateOfferings} onRefreshUpdateOfferings={refreshUpdateOfferings} hasBinaryUpdates={hasBinaryUpdates} setupGuideActive={setupGuide.active}>
-        {activeTab === "catalog" && (
-              <ModelCatalog models={models} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} setupGuide={setupGuide} catalogHfUpdates={catalogHfUpdates} catalogUpdatesBusy={catalogUpdatesBusy} onCheckCatalogUpdates={checkCatalogHfUpdates} onClearCatalogUpdate={(path) => setCatalogHfUpdates((prev) => prev.filter((r) => r.path !== path))} />
-           )}
+        {(activeTab === "catalog" || keepOpsAlive) && (
+          <div
+            className={activeTab === "catalog" ? "h-full min-h-0" : "hidden"}
+            aria-hidden={activeTab !== "catalog"}
+            inert={activeTab !== "catalog" ? true : undefined}
+          >
+            <ModelCatalog models={models} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} setupGuide={setupGuide} catalogHfUpdates={catalogHfUpdates} catalogUpdatesBusy={catalogUpdatesBusy} onCheckCatalogUpdates={checkCatalogHfUpdates} onClearCatalogUpdate={(path) => setCatalogHfUpdates((prev) => prev.filter((r) => r.path !== path))} />
+          </div>
+        )}
+
         {activeTab === "config" && (
           <Suspense fallback={<TabFallback />}>
             <ConfigPage
