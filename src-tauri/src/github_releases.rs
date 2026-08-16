@@ -1093,4 +1093,43 @@ mod tests {
             "PLUGIN_ggml-tom-stable.7z"
         );
     }
+
+    #[test]
+    fn core_engine_pack_eligible_custom_not_without_catalog() {
+        assert!(is_core_engine_provider("ggml-master"));
+        assert!(!is_core_engine_provider("ds4"));
+        assert!(!is_core_engine_provider("my-custom-fork"));
+        // Core always eligible for pack checks regardless of plugins.json.
+        assert!(crate::binary_update::is_pack_update_eligible("ggml-master"));
+        // Non-catalog custom must not be treated as core.
+        // (Full catalog membership needs plugins.json on disk — covered by runtime path.)
+    }
+
+    #[test]
+    fn find_provider_pack_in_scans_list_without_network() {
+        let empty = find_provider_pack_in(&[], "ggml-master", "frontier");
+        assert!(empty.is_none());
+
+        let release = GitHubRelease {
+            tag_name: "v1.0.99".into(),
+            body: None,
+            assets: vec![ReleaseAsset {
+                name: "CORE_ggml-master-frontier.7z".into(),
+                download_url: "https://example.invalid/x.7z".into(),
+                size: 42,
+            }],
+        };
+        let hit = find_provider_pack_in(&[release], "ggml-master", "frontier");
+        assert_eq!(hit, Some(("v1.0.99".into(), 42)));
+        let miss = find_provider_pack_in(
+            &[GitHubRelease {
+                tag_name: "v1.0.99".into(),
+                body: None,
+                assets: vec![],
+            }],
+            "ds4",
+            "frontier",
+        );
+        assert!(miss.is_none());
+    }
 }

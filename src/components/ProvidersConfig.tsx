@@ -569,9 +569,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
           let updates: BinaryUpdateInfo[];
           if (cachedUpdates && cachedUpdates[p.id]) {
             updates = cachedUpdates[p.id];
-            console.info(`[Foundry] binary-updates CACHE hit for ${p.id}`);
           } else {
-            console.info(`[Foundry] binary-updates LIVE check for ${p.id}`);
             updates = await invoke<BinaryUpdateInfo[]>("check_binary_updates", {
               providerId: p.id,
               force: false,

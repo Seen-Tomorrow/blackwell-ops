@@ -14,6 +14,8 @@ import type {
 } from "@/lib/types";
 import { DEFAULT_PROVIDER_ID, envBinaryLookup } from "@/lib/types";
 import { BINARY_UPDATES_ENABLED } from "@/lib/foundry_constants";
+import { isDevBuild } from "@/lib/build";
+
 import { useDownloadTasks } from "@/hooks/useDownloadTasks";
 import { useTauriListen } from "@/hooks/useTauriListen";
 import DownloadProgressRow from "./DownloadProgressRow";
@@ -130,7 +132,9 @@ export default function UpdatesConfig({
     setGlobalError(null);
     try {
       // force:true — intentional Updates refresh bypasses releases TTL.
-      console.info("[Updates] LIVE refresh (force=true) — offerings + catalog + core packs");
+      if (isDevBuild()) {
+        console.info("[Updates] LIVE refresh (force=true) — offerings + catalog + core packs");
+      }
       const [off, cat, coreUpdates, providers] = await Promise.all([
         invoke<UpdateOfferings>("get_update_offerings", { force: true }),
         invoke<PluginCatalogResponse>("get_plugin_catalog", { force: true }),
