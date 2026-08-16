@@ -16,6 +16,12 @@ use serde::Serialize;
 
 use tokio::task::JoinSet;
 
+fn bench_session_log(line: &str) {
+    log::info!("{line}");
+    crate::session_log::append_session_line(line);
+}
+
+
 #[derive(Debug, Clone)]
 struct RunStats {
     prompt_tps: f64,
@@ -155,7 +161,7 @@ async fn run_measured_completions(
         return Ok((vec![stats], 0.0));
     }
 
-    log::info!("[BENCH_TG] launching parallel×{n} completion feeds");
+    bench_session_log(&format!("[BENCH_TG] launching parallel×{n} completion feeds"));
     let wall_start = Instant::now();
     let mut set = JoinSet::new();
 
@@ -177,13 +183,15 @@ async fn run_measured_completions(
         let elapsed_ms = req_start.elapsed().as_secs_f64() * 1000.0;
         match result {
             Ok(stats) => {
-                log::info!(
-                    "[BENCH_TG] parallel feed {} done in {:.0} ms | g_tok={} gen={:.1} t/s",
+                bench_session_log(&format!(
+                    "[BENCH_TG] parallel feed {} done in {:.0} ms | g_tok={} gen={:.1} t/s p_ms={:.0} pred_ms={:.0}",
                     i,
                     elapsed_ms,
                     stats.gen_tokens,
-                    stats.gen_tps
-                );
+                    stats.gen_tps,
+                    stats.prompt_ms,
+                    stats.predicted_ms,
+                ));
                 runs.push(stats);
             }
             Err(e) => return Err(e),
@@ -191,21 +199,28 @@ async fn run_measured_completions(
     }
 
     let wall_ms = wall_start.elapsed().as_secs_f64() * 1000.0;
-    log::info!(
+    bench_session_log(&format!(
         "[BENCH_TG] parallel×{n} wall {:.0} ms (sum of per-feed wall times would be {:.0} ms if serial)",
         wall_ms,
         runs.len() as f64 * (wall_ms / runs.len().max(1) as f64)
-    );
+    ));
     Ok((runs, wall_ms))
 }
 
 /// Decode-only wall window for parallel feeds — subtract overlapping prefill, not summed prefill.
+/// Prefer engine max(predicted_ms) when HTTP wall only adds overhead (matches llama print_timing).
+/// Keep HTTP wall when feeds are staggered (wall much longer than one feed's decode).
 fn parallel_decode_window_ms(runs: &[RunStats], wall_ms: f64) -> f64 {
     let max_prompt_ms = runs.iter().map(|r| r.prompt_ms).fold(0.0f64, f64::max);
     let max_predicted_ms = runs.iter().map(|r| r.predicted_ms).fold(0.0f64, f64::max);
-    let decode_ms = wall_ms - max_prompt_ms;
-    if decode_ms > 1.0 {
-        decode_ms
+    let wall_decode_ms = wall_ms - max_prompt_ms;
+    if max_predicted_ms > 1.0
+        && wall_decode_ms > 1.0
+        && wall_decode_ms <= max_predicted_ms * 1.15
+    {
+        max_predicted_ms
+    } else if wall_decode_ms > 1.0 {
+        wall_decode_ms
     } else {
         max_predicted_ms.max(1.0)
     }
@@ -247,7 +262,7 @@ fn aggregate_parallel_runs(
         avg_gen_tps
     };
 
-    log::info!(
+    bench_session_log(&format!(
         "[BENCH_TG] parallel×{} | system {:.1} TPS (decode window {:.0} ms) | per-req avg {:.1} TPS | wall raw {:.1} TPS | summed-pred {:.1} TPS | max_p_ms={:.0} wall_ms={:.0} | g_tok={}",
         parallel_requests,
         system_gen_tps,
@@ -258,7 +273,7 @@ fn aggregate_parallel_runs(
         max_prompt_ms,
         wall_ms,
         total_gen
-    );
+    ));
 
     RunStats {
         prompt_tps: avg_prompt_tps,
@@ -297,14 +312,14 @@ pub async fn cmd_burst_bench(
 
     let repetitive = bench_prompts::is_repetitive_mode(&bench_prompt_mode);
 
-    log::info!(
+    bench_session_log(&format!(
         "[BENCH_TG] start | n_predict={} parallel={} engine_slots={} mode={} prefill_target={}",
         n_predict,
         parallel_requests,
         engine_slots,
         bench_prompt_mode,
         TG_PREFILL_TARGET_TOKENS
-    );
+    ));
 
     let warmup_runs = if tg_warmup_enabled { 1 } else { 0 };
     let total_runs = warmup_runs + 1;
@@ -387,16 +402,18 @@ pub async fn cmd_burst_bench(
                     })
                 };
 
-                log::info!(
-                    "[BENCH_TG] run {} | mode={} | parallel={} | prefill: {:.1} TPS | gen: {:.1} TPS | p_tok={} g_tok={}",
+                bench_session_log(&format!(
+                    "[BENCH_TG] run {} | mode={} | parallel={} | prefill: {:.1} TPS | gen: {:.1} TPS | p_tok={} g_tok={} p_ms={:.0} pred_ms={:.0}",
                     run + 1,
                     bench_prompt_mode,
                     run_parallel,
                     summary.prompt_tps,
                     summary.gen_tps,
                     summary.prompt_tokens,
-                    summary.gen_tokens
-                );
+                    summary.gen_tokens,
+                    summary.prompt_ms,
+                    summary.predicted_ms,
+                ));
 
                 crate::fusion::freeze_request_meters_for_port(port).await;
 
@@ -441,14 +458,17 @@ pub async fn cmd_burst_bench(
         0.0
     };
 
-    log::info!(
-        "[BENCH_TG] RESULT | mode={} | parallel={} | prefill: {:.1} TPS | gen: {:.1} TPS | ITL: {:.2}ms",
+    bench_session_log(&format!(
+        "[BENCH_TG] RESULT | mode={} | parallel={} | prefill: {:.1} TPS | gen: {:.1} TPS | ITL: {:.2}ms | g_tok={} per_req_avg={:?} aggregate={:?}",
         bench_prompt_mode,
         measured_parallel,
         run.prompt_tps,
         run.gen_tps,
-        itl_ms
-    );
+        itl_ms,
+        run.gen_tokens,
+        measured_per_request_gen_tps,
+        measured_aggregate_gen_tps,
+    ));
 
     Ok(BenchResult {
         prompt_tokens: run.prompt_tokens,

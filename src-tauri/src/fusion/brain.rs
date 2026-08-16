@@ -46,6 +46,9 @@ const IDLE_HEARTBEAT_MS: u64 = 10_000;
 const IDLE_CHEAP_HEALTH_STREAK_MAX: u32 = 0;
 /// Hold sparse `print_timing` PP TPS — poll deltas must exceed this fraction to replace LIVE.
 const PP_LOG_INSTANT_HOLD_MS: u64 = 1500;
+/// DEV fusion-stats sample cadence (session.log) — live TG/PP only.
+const FUSION_STATS_LOG_INTERVAL_MS: u64 = 1000;
+
 const PP_LOG_INSTANT_POLL_FLOOR: f64 = 0.25;
 
 /// Log lines that signal in-flight work — reschedule active poll + immediate emit (belt).
@@ -215,6 +218,13 @@ pub struct FusionBrain {
 
     /// Parallel 8–64× hero meters — wall clock + latched peak (stderr TPS is per-slot).
     parallel_meter: ParallelMeter,
+    /// Peak concurrent slots this request/wave — survives idle observe_wave zeroing.
+    sticky_wave_peak: usize,
+    /// Peak per-request gen tokens this wave (freeze fallback when /slots empty).
+    peak_gen_tokens_request: usize,
+    /// Throttle DEV fusion-stats live lines.
+    last_fusion_stats_log_at: Option<Instant>,
+
     /// Cached `/slots` busy count for log handlers without a slots slice.
     last_busy_slot_count: usize,
 }
@@ -297,6 +307,9 @@ impl FusionBrain {
             tg_burst_started_at: None,
             parallel_meter: ParallelMeter::default(),
             last_busy_slot_count: 0,
+            sticky_wave_peak: 0,
+            peak_gen_tokens_request: 0,
+            last_fusion_stats_log_at: None,
         }
     }
 
@@ -313,6 +326,15 @@ impl FusionBrain {
         let rp = self.metrics_requests_processing();
         let was_parallel = self.parallel_meter.is_parallel(busy);
         self.parallel_meter.observe_wave(rp, busy);
+        // Latch peak before idle observe_wave zeros ParallelMeter — freeze/per-slot need it.
+        let wave = self
+            .parallel_meter
+            .latched_peak()
+            .max(busy)
+            .max(rp);
+        if wave > self.sticky_wave_peak {
+            self.sticky_wave_peak = wave;
+        }
         if !was_parallel && self.parallel_meter.is_parallel(busy) {
             self.lp_gen_tps = 0.0;
             self.lp_prefill_tps = 0.0;
@@ -322,7 +344,7 @@ impl FusionBrain {
 
     /// Multi-slot bench / concurrency — hero TPS from poll sums only (stderr is per-slot ~80, not ×N).
     fn aggregate_tps_mode(&self) -> bool {
-        self.parallel_meter.latched_peak() > 1
+        self.parallel_meter.latched_peak() > 1 || self.sticky_wave_peak > 1
     }
 
     fn parallel_wave_ready(&self, slots: &[crate::fusion::poller::SlotData]) -> bool {
@@ -625,9 +647,12 @@ impl FusionBrain {
         self.emit_dirty = true;
     }
 
-    /// Concurrent denominator for per-slot TPS (busy now, else latched peak, else 1).
+    /// Concurrent denominator for per-slot TPS (busy now, else latched/sticky peak, else 1).
     fn concurrent_slots_for_meter(&self, busy_slots: usize) -> usize {
-        let peak = self.parallel_meter.latched_peak();
+        let peak = self
+            .parallel_meter
+            .latched_peak()
+            .max(self.sticky_wave_peak);
         if self.request_closed && self.frozen_concurrent_slots > 1 {
             return self.frozen_concurrent_slots;
         }
@@ -642,6 +667,8 @@ impl FusionBrain {
         self.frozen_request_gen_tps = 0.0;
         self.frozen_gen_tps_per_slot = 0.0;
         self.frozen_concurrent_slots = 0;
+        self.sticky_wave_peak = 0;
+        self.peak_gen_tokens_request = 0;
         self.request_start = Some(Instant::now());
         self.request_elapsed_frozen_ms = 0;
         self.ttft_ms = None;
@@ -828,45 +855,58 @@ impl FusionBrain {
             return;
         }
         // Freeze often arrives with empty slots (bench HTTP path) — use latched peaks, not zero.
-        let tokens = if !slots.is_empty() {
+        let live_tokens = if !slots.is_empty() {
             self.per_request_gen_tokens(slots)
         } else {
-            self.tg_burst_peak_tokens
-                .max(self.prev_instant_gen_decoded)
+            0
         };
-        if let Some(start) = self.tg_start_time {
-            let elapsed_ms = start.elapsed().as_millis().max(1) as u64;
-            if tokens > 0 {
-                // Prefer engine last_gen_tps when wall is absurdly short (late TG latch → 200k flash).
-                let wall_tps =
-                    clamp_display_tps((tokens as f64) / (elapsed_ms as f64 / 1000.0));
-                let pinned = if elapsed_ms < MIN_TG_PER_REQUEST_AVG_MS && self.last_gen_tps > 0.0 {
-                    self.last_gen_tps
-                } else if self.last_gen_tps > 0.0
-                    && wall_tps > self.last_gen_tps * 4.0
-                    && self.last_gen_tps > 1.0
-                {
-                    // Wall math exploded vs live — keep the live-ish pin
-                    self.last_gen_tps
-                } else {
-                    wall_tps
-                };
-                self.frozen_request_gen_tps = clamp_display_tps(pinned);
-                self.last_gen_tps = self.frozen_request_gen_tps;
-            } else if self.last_gen_tps > 0.0 {
-                self.frozen_request_gen_tps = self.last_gen_tps;
-            }
-        } else if self.last_gen_tps > 0.0 {
-            self.frozen_request_gen_tps = self.last_gen_tps;
+        let tokens = live_tokens
+            .max(self.peak_gen_tokens_request)
+            .max(self.tg_burst_peak_tokens)
+            .max(self.prev_instant_gen_decoded);
+        if tokens > self.peak_gen_tokens_request {
+            self.peak_gen_tokens_request = tokens;
         }
-        // Capture concurrent peak before idle observe_wave zeros it.
+
+        // Pin live rate first. Recomputing wall here undercounts: idle poll zeros decode_wall /
+        // tg_start keeps running until freeze, and empty-slot freeze has no fresh n_decoded.
+        let mut pin_src = "none";
+        if self.last_gen_tps > 0.0 {
+            self.frozen_request_gen_tps = clamp_display_tps(self.last_gen_tps);
+            pin_src = "last_gen";
+        } else {
+            let wall_start = if self.sticky_wave_peak > 1 {
+                self.parallel_meter
+                    .decode_wall_at()
+                    .or(self.tg_start_time)
+                    .or(self.tg_burst_started_at)
+            } else {
+                self.tg_start_time
+                    .or(self.tg_burst_started_at)
+            };
+            if let Some(start) = wall_start {
+                let elapsed_ms = start.elapsed().as_millis().max(1) as u64;
+                if tokens > 0 && elapsed_ms >= MIN_TG_PER_REQUEST_AVG_MS {
+                    self.frozen_request_gen_tps = clamp_display_tps(
+                        (tokens as f64) / (elapsed_ms as f64 / 1000.0),
+                    );
+                    pin_src = "wall";
+                }
+            }
+        }
+        if self.frozen_request_gen_tps > 0.0 {
+            self.last_gen_tps = self.frozen_request_gen_tps;
+        }
+
+        // sticky_wave_peak survives idle observe_wave zeroing of ParallelMeter.
         let peak = self
-            .parallel_meter
-            .latched_peak()
+            .sticky_wave_peak
+            .max(self.parallel_meter.latched_peak())
             .max(self.last_busy_slot_count)
             .max(1);
         self.frozen_concurrent_slots = peak;
         self.frozen_gen_tps_per_slot = meter::per_slot_tps(self.frozen_request_gen_tps, peak);
+        self.log_fusion_stats("FINAL", slots, Some(pin_src));
         self.close_tg_burst();
         self.log_request_open = false;
         self.stop_request_clock();
@@ -906,6 +946,9 @@ impl FusionBrain {
         self.reset_tg_session_avg();
         self.parallel_meter.reset();
         self.last_busy_slot_count = 0;
+        self.sticky_wave_peak = 0;
+        self.peak_gen_tokens_request = 0;
+        self.last_fusion_stats_log_at = None;
         self.prev_instant_poll_at = None;
         self.prev_instant_prefill_tokens = 0;
         self.prev_instant_gen_decoded = 0;
@@ -920,6 +963,112 @@ impl FusionBrain {
         self.bump_meter_seq();
         self.emit_dirty = true;
     }
+
+    /// DEV-only fusion meter dump → session.log (compare with llama print_timing).
+    /// LIVE: ≤1 Hz while TG/PP active. FINAL: once on freeze.
+    fn log_fusion_stats(
+        &mut self,
+        kind: &str,
+        slots: &[crate::fusion::poller::SlotData],
+        pin_src: Option<&str>,
+    ) {
+        if !crate::session_log::is_active() {
+            return;
+        }
+        let now = Instant::now();
+        if kind == "LIVE" {
+            if self.request_closed {
+                return;
+            }
+            let active = self.tg_generation_active(slots)
+                || self.pp_prefill_active(slots)
+                || self.phase != InferencePhase::Idle;
+            if !active {
+                return;
+            }
+            if let Some(prev) = self.last_fusion_stats_log_at {
+                if now.duration_since(prev).as_millis() < FUSION_STATS_LOG_INTERVAL_MS as u128 {
+                    return;
+                }
+            }
+            self.last_fusion_stats_log_at = Some(now);
+        }
+
+        let busy = self.busy_slot_count(slots);
+        let peak = self
+            .sticky_wave_peak
+            .max(self.parallel_meter.latched_peak())
+            .max(self.frozen_concurrent_slots)
+            .max(busy)
+            .max(1);
+        let gen_tok = if !slots.is_empty() {
+            self.per_request_gen_tokens(slots)
+        } else {
+            0
+        }
+        .max(self.peak_gen_tokens_request)
+        .max(self.prev_instant_gen_decoded);
+        let (_, pp_tok) = self.merged_prefill_display(slots);
+        let gen_sess = self.tg_session_avg_tps(slots);
+        let pp_sess = self.pp_session_avg_tps(slots, pp_tok);
+        let gen_out = if self.request_closed && self.frozen_request_gen_tps > 0.0 {
+            self.frozen_request_gen_tps
+        } else if gen_sess > 0.0 {
+            gen_sess
+        } else {
+            self.last_gen_tps
+        };
+        let per_slot = if self.request_closed && self.frozen_gen_tps_per_slot > 0.0 {
+            self.frozen_gen_tps_per_slot
+        } else {
+            meter::per_slot_tps(gen_out, peak)
+        };
+        let wall_tg_ms = self
+            .parallel_meter
+            .decode_wall_at()
+            .or(self.tg_start_time)
+            .or(self.tg_burst_started_at)
+            .map(|t| t.elapsed().as_millis() as u64)
+            .unwrap_or(0);
+        let wall_pp_ms = self
+            .parallel_meter
+            .prefill_wall_at()
+            .or(self.pp_burst_started_at)
+            .map(|t| t.elapsed().as_millis() as u64)
+            .unwrap_or(0);
+        let lane = if peak > 1 { "parallel" } else { "single" };
+        let phase = match self.phase {
+            InferencePhase::Idle => "IDLE",
+            InferencePhase::PP => "PP",
+            InferencePhase::Tg => "TG",
+        };
+        let pin = pin_src.unwrap_or("-");
+        let line = format!(
+            "[fusion-stats] {kind} port={} alias={} lane={lane} phase={phase} busy={busy} peak={peak} \
+             genTok={gen_tok} peakTok={} genTps={:.1} last={:.1} sess={:.1} inst={:.1} perSlot={:.1} lpTg={:.1} \
+             ppTok={pp_tok} ppSess={:.1} ppInst={:.1} lpPp={:.1} ppEval={:.1} \
+             wallTgMs={wall_tg_ms} wallPpMs={wall_pp_ms} closed={} frozen={:.1} frozenPer={:.1} pin={pin}",
+            self.port,
+            self.alias,
+            self.peak_gen_tokens_request,
+            gen_out,
+            self.last_gen_tps,
+            gen_sess,
+            self.gen_tps_instant,
+            per_slot,
+            self.lp_gen_tps,
+            pp_sess,
+            self.prefill_tps_instant,
+            self.lp_prefill_tps,
+            self.prefill_tps_eval,
+            self.request_closed as u8,
+            self.frozen_request_gen_tps,
+            self.frozen_gen_tps_per_slot,
+        );
+        crate::session_log::append_session_line(&line);
+        log::info!("{line}");
+    }
+
 
     fn per_request_gen_tokens(&self, slots: &[crate::fusion::poller::SlotData]) -> usize {
         let mut n = 0usize;
@@ -2227,7 +2376,6 @@ impl FusionBrain {
                 }
             }
         }
-
         // Single-slot: defer TG clock until PP done. Parallel lane uses ParallelMeter decode wall.
         if self.parallel_meter.is_parallel(busy_count) {
             if self.any_busy_slot_prefilling(slots) {
@@ -2254,13 +2402,16 @@ impl FusionBrain {
 
         // Update last known gen TPS — store for use during phase transitions / after request end.
         if !self.request_closed {
-            if self.parallel_meter.is_parallel(busy_count) {
+            let tokens_generated = self.per_request_gen_tokens(slots);
+            if tokens_generated > self.peak_gen_tokens_request {
+                self.peak_gen_tokens_request = tokens_generated;
+            }
+            if self.parallel_meter.is_parallel(busy_count) || self.sticky_wave_peak > 1 {
                 let wall = self.parallel_decode_tps(slots);
                 if wall > 0.0 {
                     self.last_gen_tps = wall;
                 }
             } else if let Some(start) = self.tg_start_time {
-                let tokens_generated = self.per_request_gen_tokens(slots);
                 let elapsed_ms = start.elapsed().as_millis() as u64;
                 if elapsed_ms > 0 && tokens_generated > 0 {
                     self.last_gen_tps =
@@ -2277,9 +2428,11 @@ impl FusionBrain {
             && !self.within_inter_request_hold(now)
         {
             self.finalize_request_meters(slots);
+        } else if !self.request_closed {
+            self.log_fusion_stats("LIVE", slots, None);
         }
-
     }
+
 
     // ── Build FusionUpdate from current state + fresh poll data ─────
 

@@ -173,7 +173,7 @@ pub async fn cmd_bench_pp_burst(
         }
     };
 
-    log::info!(
+    let pp_line = format!(
         "[BENCH_PP] RESULT | mode={} | requested={} effective={} actual={} tok | slot_n_ctx={} | prefill: {:.1} TPS",
         bench_prompt_mode,
         target_tokens,
@@ -182,6 +182,8 @@ pub async fn cmd_bench_pp_burst(
         slot_n_ctx,
         run.prefill_tps
     );
+    log::info!("{pp_line}");
+    crate::session_log::append_session_line(&pp_line);
 
     Ok(BenchPPResult {
         bench_prefill_tps: run.prefill_tps,
