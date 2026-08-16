@@ -207,25 +207,12 @@ async fn run_measured_completions(
     Ok((runs, wall_ms))
 }
 
-/// Decode-only wall window for parallel feeds — subtract overlapping prefill, not summed prefill.
-/// Prefer engine max(predicted_ms) when HTTP wall only adds overhead (matches llama print_timing).
-/// Keep HTTP wall when feeds are staggered (wall much longer than one feed's decode).
-fn parallel_decode_window_ms(runs: &[RunStats], wall_ms: f64) -> f64 {
-    let max_prompt_ms = runs.iter().map(|r| r.prompt_ms).fold(0.0f64, f64::max);
-    let max_predicted_ms = runs.iter().map(|r| r.predicted_ms).fold(0.0f64, f64::max);
-    let wall_decode_ms = wall_ms - max_prompt_ms;
-    if max_predicted_ms > 1.0
-        && wall_decode_ms > 1.0
-        && wall_decode_ms <= max_predicted_ms * 1.15
-    {
-        max_predicted_ms
-    } else if wall_decode_ms > 1.0 {
-        wall_decode_ms
-    } else {
-        max_predicted_ms.max(1.0)
-    }
-}
-
+/// Concurrent multi-slot headline TG.
+///
+/// llama `print_timing` eval line is per-slot (e.g. 57.9 t/s). Fully overlapped ×N
+/// capacity is `sum(per-slot gen_tps)` ≈ `sum(tokens) / max(predicted_ms)`.
+/// HTTP wall often includes prefill + response drain (~total_time) and under-reports
+/// (e.g. 379 vs 465). Never use HTTP wall when engine timings exist.
 fn aggregate_parallel_runs(
     runs: &[RunStats],
     wall_ms: f64,
@@ -246,30 +233,54 @@ fn aggregate_parallel_runs(
     let total_gen: usize = runs.iter().map(|r| r.gen_tokens).sum();
     let total_prompt: usize = runs.iter().map(|r| r.prompt_tokens).sum();
     let max_prompt_ms = runs.iter().map(|r| r.prompt_ms).fold(0.0f64, f64::max);
-    let total_predicted_ms: f64 = runs.iter().map(|r| r.predicted_ms).sum();
+    let max_predicted_ms = runs.iter().map(|r| r.predicted_ms).fold(0.0f64, f64::max);
     let avg_prompt_tps = runs.iter().map(|r| r.prompt_tps).sum::<f64>() / n;
     let avg_gen_tps = runs.iter().map(|r| r.gen_tps).sum::<f64>() / n;
-    let decode_window_ms = parallel_decode_window_ms(runs, wall_ms);
-    let system_gen_tps = (total_gen as f64 / decode_window_ms) * 1000.0;
-    let wall_raw_tps = if wall_ms > 0.0 {
+    let sum_engine_gen_tps: f64 = runs.iter().map(|r| r.gen_tps).filter(|t| *t > 0.0).sum();
+    let engine_window_tps = if max_predicted_ms > 1.0 && total_gen > 0 {
+        (total_gen as f64 / max_predicted_ms) * 1000.0
+    } else {
+        0.0
+    };
+    let wall_decode_ms = (wall_ms - max_prompt_ms).max(0.0);
+    let wall_decode_tps = if wall_decode_ms > 1.0 && total_gen > 0 {
+        (total_gen as f64 / wall_decode_ms) * 1000.0
+    } else {
+        0.0
+    };
+    let wall_raw_tps = if wall_ms > 0.0 && total_gen > 0 {
         (total_gen as f64 / wall_ms) * 1000.0
     } else {
-        system_gen_tps
+        0.0
     };
-    let summed_pred_tps = if total_predicted_ms > 0.0 {
-        (total_gen as f64 / total_predicted_ms) * 1000.0
+
+    // Prefer sum(engine gen_tps) — matches print_timing eval × N.
+    // Else tokens/max(predicted_ms). HTTP wall only if engine timings missing.
+    let (system_gen_tps, decode_window_ms, src) = if sum_engine_gen_tps > 0.0 {
+        let win = if max_predicted_ms > 1.0 {
+            max_predicted_ms
+        } else {
+            wall_decode_ms.max(1.0)
+        };
+        (sum_engine_gen_tps, win, "sum_engine")
+    } else if engine_window_tps > 0.0 {
+        (engine_window_tps, max_predicted_ms, "max_predicted")
+    } else if wall_decode_tps > 0.0 {
+        (wall_decode_tps, wall_decode_ms, "http_wall_decode")
     } else {
-        avg_gen_tps
+        (0.0, wall_ms.max(1.0), "none")
     };
 
     bench_session_log(&format!(
-        "[BENCH_TG] parallel×{} | system {:.1} TPS (decode window {:.0} ms) | per-req avg {:.1} TPS | wall raw {:.1} TPS | summed-pred {:.1} TPS | max_p_ms={:.0} wall_ms={:.0} | g_tok={}",
+        "[BENCH_TG] parallel×{} | headline {:.1} TPS src={src} | sum_engine {:.1} | max_pred_win {:.1} (ms={:.0}) | wall_dec {:.1} | wall_raw {:.1} | per-req avg {:.1} | max_p_ms={:.0} wall_ms={:.0} | g_tok={}",
         parallel_requests,
         system_gen_tps,
-        decode_window_ms,
-        avg_gen_tps,
+        sum_engine_gen_tps,
+        engine_window_tps,
+        max_predicted_ms,
+        wall_decode_tps,
         wall_raw_tps,
-        summed_pred_tps,
+        avg_gen_tps,
         max_prompt_ms,
         wall_ms,
         total_gen
@@ -284,6 +295,7 @@ fn aggregate_parallel_runs(
         predicted_ms: decode_window_ms,
     }
 }
+
 
 #[tauri::command(rename_all = "camelCase")]
 pub async fn cmd_burst_bench(
@@ -482,4 +494,85 @@ pub async fn cmd_burst_bench(
         aggregate_gen_tps: measured_aggregate_gen_tps,
         per_request_gen_tps: measured_per_request_gen_tps,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn slot(gen_tokens: usize, predicted_ms: f64, prompt_ms: f64) -> RunStats {
+        let gen_tps = if predicted_ms > 0.0 {
+            (gen_tokens as f64 / predicted_ms) * 1000.0
+        } else {
+            0.0
+        };
+        let prompt_tokens = 550usize;
+        let prompt_tps = if prompt_ms > 0.0 {
+            (prompt_tokens as f64 / prompt_ms) * 1000.0
+        } else {
+            0.0
+        };
+        RunStats {
+            prompt_tps,
+            gen_tps,
+            prompt_tokens,
+            gen_tokens,
+            prompt_ms,
+            predicted_ms,
+        }
+    }
+
+    /// User repro: ×8 @ ~57.87 t/s/slot. Fat HTTP wall (~total_time) must not win.
+    #[test]
+    fn parallel_aggregate_uses_engine_sum_not_fat_wall() {
+        let runs: Vec<RunStats> = (0..8)
+            .map(|i| {
+                let prompt_ms = 2173.0 - i as f64 * 3.5;
+                let predicted_ms = 8831.0 - i as f64 * 0.15;
+                slot(512, predicted_ms, prompt_ms)
+            })
+            .collect();
+        // ~11s total-time-like wall (PP+TG) — old path reported ~379.
+        let wall_ms = 11_050.0;
+        let agg = aggregate_parallel_runs(&runs, wall_ms, 8);
+        let expected_sum: f64 = runs.iter().map(|r| r.gen_tps).sum();
+        assert!(
+            (agg.gen_tps - expected_sum).abs() < 0.5,
+            "headline {} != sum_engine {}",
+            agg.gen_tps,
+            expected_sum
+        );
+        assert!(
+            agg.gen_tps > 450.0 && agg.gen_tps < 480.0,
+            "expected ~463, got {}",
+            agg.gen_tps
+        );
+        // Fat wall would be ~370-390 — must not regress.
+        assert!(agg.gen_tps > 400.0, "regressed to wall-ish {}", agg.gen_tps);
+    }
+
+    #[test]
+    fn parallel_aggregate_falls_back_to_max_predicted_without_rates() {
+        let runs = vec![
+            RunStats {
+                prompt_tps: 0.0,
+                gen_tps: 0.0,
+                prompt_tokens: 550,
+                gen_tokens: 512,
+                prompt_ms: 2000.0,
+                predicted_ms: 8000.0,
+            },
+            RunStats {
+                prompt_tps: 0.0,
+                gen_tps: 0.0,
+                prompt_tokens: 550,
+                gen_tokens: 512,
+                prompt_ms: 2100.0,
+                predicted_ms: 8100.0,
+            },
+        ];
+        let agg = aggregate_parallel_runs(&runs, 12_000.0, 2);
+        // 1024 / 8100 * 1000 ≈ 126.4
+        assert!((agg.gen_tps - 126.4).abs() < 1.0, "got {}", agg.gen_tps);
+    }
 }
