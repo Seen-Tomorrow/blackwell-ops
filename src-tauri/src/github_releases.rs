@@ -9,9 +9,15 @@
 //! upload separate CORE runtime packs unless you run pack-provider for ggml-master.
 
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
+
+
+use std::time::{Duration, Instant};
 
 use reqwest::RequestBuilder;
 use serde::Serialize;
+use tokio::sync::Mutex;
+
 
 pub const GITHUB_REPO: &str = "Seen-Tomorrow/blackwell-ops";
 
@@ -177,6 +183,14 @@ pub fn apply_github_auth(req: RequestBuilder) -> RequestBuilder {
     req
 }
 
+fn github_pat_present() -> bool {
+    crate::secrets::get_secret("github_pat")
+        .ok()
+        .flatten()
+        .map(|p| !p.trim().is_empty())
+        .unwrap_or(false)
+}
+
 fn parse_release(body: &serde_json::Value) -> Option<GitHubRelease> {
     let tag_name = body.get("tag_name")?.as_str()?.to_string();
     let body_text = body.get("body").and_then(|b| b.as_str()).map(String::from);
@@ -206,25 +220,82 @@ fn parse_release(body: &serde_json::Value) -> Option<GitHubRelease> {
     })
 }
 
+/// In-memory TTL for the shared releases list (all pack/offering checks share one fetch).
+const RELEASES_CACHE_TTL: Duration = Duration::from_secs(30 * 60);
+
+struct ReleasesListCache {
+    fetched_at: Instant,
+    per_page: u32,
+    releases: Vec<GitHubRelease>,
+}
+
+fn releases_list_cache() -> &'static Mutex<Option<ReleasesListCache>> {
+    static CACHE: LazyLock<Mutex<Option<ReleasesListCache>>> =
+        LazyLock::new(|| Mutex::new(None));
+    &CACHE
+}
+
+/// Single-flight lock so concurrent callers share one live HTTP round-trip.
+fn releases_fetch_lock() -> &'static Mutex<()> {
+    static LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+    &LOCK
+}
+
+fn dev_github_log(msg: &str) {
+    // DEV terminal (env_logger). Always info in debug so live vs cache is visible
+    // before rate-limit 403s show up in the webview.
+    if cfg!(debug_assertions) {
+        log::info!("{msg}");
+    } else {
+        log::debug!("{msg}");
+    }
+}
+
 async fn github_get_json(url: &str) -> Result<serde_json::Value, String> {
+    github_get_json_inner(url, true).await
+}
+
+async fn github_get_json_inner(url: &str, try_auth: bool) -> Result<serde_json::Value, String> {
     let client = reqwest::Client::new();
-    let resp = apply_github_auth(
-        client
+    let mut attempt_auth = try_auth && github_pat_present();
+
+    loop {
+        let mut req = client
             .get(url)
             .header("User-Agent", "Blackwell-Ops")
-            .header("Accept", "application/vnd.github+json"),
-    )
-    .send()
-    .await
-    .map_err(|e| format!("GitHub request failed: {e}"))?;
+            .header("Accept", "application/vnd.github+json");
 
-    if !resp.status().is_success() {
-        return Err(format!("GitHub API returned {} for {url}", resp.status()));
+        if attempt_auth {
+            req = apply_github_auth(req);
+        }
+
+        dev_github_log(&format!(
+            "[github] LIVE GET {url}{}",
+            if attempt_auth { " (auth)" } else { " (anon)" }
+        ));
+
+        let resp = req
+            .send()
+            .await
+            .map_err(|e| format!("GitHub request failed: {e}"))?;
+
+        let status = resp.status();
+        if (status.as_u16() == 401 || status.as_u16() == 403) && attempt_auth {
+            log::warn!(
+                "[github] PAT rejected ({status}) for {url} — retrying anonymous once"
+            );
+            attempt_auth = false;
+            continue;
+        }
+        if !status.is_success() {
+            return Err(format!("GitHub API returned {status} for {url}"));
+        }
+
+        return resp
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse GitHub response: {e}"));
     }
-
-    resp.json()
-        .await
-        .map_err(|e| format!("Failed to parse GitHub response: {e}"))
 }
 
 pub async fn fetch_release_by_tag(tag: &str) -> Result<GitHubRelease, String> {
@@ -244,8 +315,56 @@ pub async fn fetch_latest_release_tag(repo: &str) -> Result<String, String> {
         .ok_or_else(|| format!("No tag_name in latest release for {repo}"))
 }
 
-/// Recent semver releases (newest first).
+/// Recent semver releases (newest first). Shared 30m TTL + single-flight.
 pub async fn fetch_recent_version_releases(per_page: u32) -> Result<Vec<GitHubRelease>, String> {
+    fetch_recent_version_releases_ex(per_page, false).await
+}
+
+/// `force` bypasses TTL (manual Updates refresh). Still single-flight with other callers.
+pub async fn fetch_recent_version_releases_ex(
+    per_page: u32,
+    force: bool,
+) -> Result<Vec<GitHubRelease>, String> {
+    if !force {
+        let guard = releases_list_cache().lock().await;
+        if let Some(c) = guard.as_ref() {
+            if c.per_page >= per_page && c.fetched_at.elapsed() < RELEASES_CACHE_TTL {
+                let age_s = c.fetched_at.elapsed().as_secs();
+                dev_github_log(&format!(
+                    "[github] CACHE HIT releases?per_page={} (have {}, age {}s, {} tags)",
+                    per_page,
+                    c.per_page,
+                    age_s,
+                    c.releases.len()
+                ));
+                return Ok(c.releases.clone());
+            }
+        }
+    } else {
+        dev_github_log(&format!(
+            "[github] CACHE BYPASS (force) releases?per_page={per_page}"
+        ));
+    }
+
+    // Single-flight: waiters re-check cache after the winner finishes.
+    let _fetch_guard = releases_fetch_lock().lock().await;
+
+    if !force {
+        let guard = releases_list_cache().lock().await;
+        if let Some(c) = guard.as_ref() {
+            if c.per_page >= per_page && c.fetched_at.elapsed() < RELEASES_CACHE_TTL {
+                let age_s = c.fetched_at.elapsed().as_secs();
+                dev_github_log(&format!(
+                    "[github] CACHE HIT (after wait) releases?per_page={} (age {}s, {} tags)",
+                    per_page,
+                    age_s,
+                    c.releases.len()
+                ));
+                return Ok(c.releases.clone());
+            }
+        }
+    }
+
     let url = format!("https://api.github.com/repos/{GITHUB_REPO}/releases?per_page={per_page}");
     let body = github_get_json(&url).await?;
     let releases = body
@@ -269,6 +388,23 @@ pub async fn fetch_recent_version_releases(per_page: u32) -> Result<Vec<GitHubRe
             out.push(parsed);
         }
     }
+
+    dev_github_log(&format!(
+        "[github] CACHE STORE releases?per_page={} → {} version tags (TTL {}s)",
+        per_page,
+        out.len(),
+        RELEASES_CACHE_TTL.as_secs()
+    ));
+
+    {
+        let mut guard = releases_list_cache().lock().await;
+        *guard = Some(ReleasesListCache {
+            fetched_at: Instant::now(),
+            per_page,
+            releases: out.clone(),
+        });
+    }
+
     Ok(out)
 }
 
@@ -375,8 +511,15 @@ fn offering_from_hit(
 
 /// Scan recent releases and build App-Only / Full Bundle offerings.
 pub async fn fetch_update_offerings(current_version: &str) -> Result<UpdateOfferings, String> {
+    fetch_update_offerings_ex(current_version, false).await
+}
+
+pub async fn fetch_update_offerings_ex(
+    current_version: &str,
+    force: bool,
+) -> Result<UpdateOfferings, String> {
     let engines_available = crate::profile_binaries::launch_engines_available();
-    let releases = fetch_recent_version_releases(40).await?;
+    let releases = fetch_recent_version_releases_ex(40, force).await?;
 
     let mut app_hit: Option<(GitHubRelease, ReleaseAsset)> = None;
     let mut full_hit: Option<(GitHubRelease, ReleaseAsset)> = None;
@@ -459,13 +602,33 @@ pub async fn fetch_update_offerings(current_version: &str) -> Result<UpdateOffer
 }
 
 /// Resolve provider pack URL from the newest semver release that contains the asset.
+/// Prefer matching against an already-fetched releases list (see `find_provider_pack_in`).
+#[allow(dead_code)]
 pub async fn find_provider_pack_offering(
     provider_id: &str,
     profile: &str,
 ) -> Option<(String, u64)> {
-    let releases = fetch_recent_version_releases(40).await.ok()?;
+    find_provider_pack_offering_ex(provider_id, profile, false).await
+}
+
+#[allow(dead_code)]
+pub async fn find_provider_pack_offering_ex(
+    provider_id: &str,
+    profile: &str,
+    force: bool,
+) -> Option<(String, u64)> {
+    let releases = fetch_recent_version_releases_ex(40, force).await.ok()?;
+    find_provider_pack_in(&releases, provider_id, profile)
+}
+
+/// In-memory pack lookup (no network) — use after one shared releases fetch.
+pub fn find_provider_pack_in(
+    releases: &[GitHubRelease],
+    provider_id: &str,
+    profile: &str,
+) -> Option<(String, u64)> {
     for release in releases {
-        if let Some(asset) = find_provider_pack(&release, provider_id, profile) {
+        if let Some(asset) = find_provider_pack(release, provider_id, profile) {
             return Some((release.tag_name.clone(), asset.size));
         }
     }

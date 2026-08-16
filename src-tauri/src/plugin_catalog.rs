@@ -173,9 +173,27 @@ fn profile_installed(
 
 pub async fn build_plugin_catalog(
     providers: &[crate::types::ProviderConfig],
+    force: bool,
 ) -> Result<PluginCatalogResponse, String> {
     let file = load_catalog_file()?;
     let mut entries = Vec::new();
+
+    // One shared releases list for all plugin×profile pack lookups (TTL/single-flight).
+    let releases = match crate::github_releases::fetch_recent_version_releases_ex(40, force).await {
+        Ok(r) => {
+            if cfg!(debug_assertions) {
+                log::info!(
+                    "[plugin-catalog] pack scan using {} version tags (force={force})",
+                    r.len()
+                );
+            }
+            Some(r)
+        }
+        Err(e) => {
+            log::warn!("[plugin-catalog] GitHub releases unavailable: {e}");
+            None
+        }
+    };
 
     for plugin in &file.plugins {
         let live = providers.iter().find(|p| p.id == plugin.id);
@@ -190,8 +208,9 @@ pub async fn build_plugin_catalog(
                 any_installed = true;
             }
 
-            let pack_hit =
-                crate::github_releases::find_provider_pack_offering(&plugin.id, profile).await;
+            let pack_hit = releases.as_ref().and_then(|rels| {
+                crate::github_releases::find_provider_pack_in(rels, &plugin.id, profile)
+            });
             let (pack_available, pack_version, size_bytes) = match pack_hit {
                 Some((tag, size)) => (true, tag, size),
                 None => (false, String::new(), 0),

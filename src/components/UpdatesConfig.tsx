@@ -129,10 +129,15 @@ export default function UpdatesConfig({
     setLoading(true);
     setGlobalError(null);
     try {
+      // force:true — intentional Updates refresh bypasses releases TTL.
+      console.info("[Updates] LIVE refresh (force=true) — offerings + catalog + core packs");
       const [off, cat, coreUpdates, providers] = await Promise.all([
-        invoke<UpdateOfferings>("get_update_offerings"),
-        invoke<PluginCatalogResponse>("get_plugin_catalog"),
-        invoke<BinaryUpdateInfo[]>("check_binary_updates", { providerId: DEFAULT_PROVIDER_ID }),
+        invoke<UpdateOfferings>("get_update_offerings", { force: true }),
+        invoke<PluginCatalogResponse>("get_plugin_catalog", { force: true }),
+        invoke<BinaryUpdateInfo[]>("check_binary_updates", {
+          providerId: DEFAULT_PROVIDER_ID,
+          force: true,
+        }),
         invoke<ProviderConfig[]>("list_providers").catch(() => [] as ProviderConfig[]),
       ]);
       setOfferings(off);

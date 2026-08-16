@@ -246,7 +246,7 @@ function App() {
   const refreshUpdateOfferings = useCallback(async () => {
     if (!BINARY_UPDATES_ENABLED) return;
     try {
-      const data = await invoke<UpdateOfferings>("get_update_offerings");
+      const data = await invoke<UpdateOfferings>("get_update_offerings", { force: false });
       // Always keep catalog (not only when anyAvailable) so header UPDATE stays usable
       setUpdateOfferings(data);
     } catch {

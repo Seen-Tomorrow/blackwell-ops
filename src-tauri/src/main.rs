@@ -1225,6 +1225,7 @@ async fn main() {
             // Binary update commands
             binary_update::get_app_package_version,
             binary_update::check_binary_updates,
+            binary_update::get_pack_update_provider_ids,
             binary_update::download_binary_update,
             binary_update::get_profile_labels,
             binary_update::check_app_update,

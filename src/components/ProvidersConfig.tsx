@@ -33,6 +33,8 @@ import { FIT_SCAN_PARALLEL_OPTIONS } from "../lib/onboarding";
 import { dispatchAppEvent, EVENTS } from "../lib/events";
 import { loadFoundryLastRefresh, loadStartupUpdatesCache, saveFoundryLastRefresh } from "../lib/storage";
 import { isPlaceholderBuildVersion, refreshProvidersBuildInfo } from "../lib/foundryBuildRefresh";
+import { isDevBuild } from "../lib/build";
+
 import { BuildProfileRow, RestoreConfirmModal, UpdateStatus, type BinarySourceKind } from "./FoundryComponents";
 import FoundryToolchainPanel from "./FoundryToolchainPanel";
 import {
@@ -482,12 +484,31 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
   }, []);
 
   // ── Binary update badges (cached / check) — after providers are known ─
+  // GitHub pack checks only for core + plugins.json rows (backend enforces too).
+  // DEV: never auto-hit GitHub from this page — cache-only + console visibility.
   useEffect(() => {
     if (providers.length === 0) return;
-    const foundryProviders = providers.filter((p) => p.git_url && p.branch);
-    if (foundryProviders.length === 0) return;
 
     let cancelled = false;
+
+    const applyUpdateRows = (providerId: string, updates: BinaryUpdateInfo[], p: ProviderConfig) => {
+      if (cancelled || updates.length === 0) return;
+      const withInstalled = updates.map((u) => ({
+        ...u,
+        installedVersion: p.downloadedVersionPerEnv?.[u.profile] || null,
+        available:
+          u.available && !(p.downloadedVersionPerEnv?.[u.profile] === `v${u.latestVersion}`),
+      }));
+      setBinaryUpdates((prev) => {
+        const next = { ...prev };
+        next[providerId] = {};
+        withInstalled.forEach((u) => {
+          next[providerId]![u.profile] = u;
+        });
+        return next;
+      });
+    };
+
     let cachedUpdates: Record<string, BinaryUpdateInfo[]> | null = null;
     try {
       const parsed = loadStartupUpdatesCache();
@@ -496,39 +517,72 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
         parsed.binaryUpdates.forEach((bu: { providerId: string; updates: BinaryUpdateInfo[] }) => {
           cachedUpdates![bu.providerId] = bu.updates;
         });
+        if (isDevBuild()) {
+          console.info(
+            "[Foundry] binary-updates CACHE (startup, age <5m)",
+            Object.keys(cachedUpdates),
+          );
+        }
       }
     } catch (err) {
       console.error("[Foundry] Binary updates cache error:", err);
     }
 
-    foundryProviders.forEach(async (p) => {
+    void (async () => {
+      let eligibleIds: string[] = [DEFAULT_PROVIDER_ID];
       try {
-        let updates: BinaryUpdateInfo[];
-        if (cachedUpdates && cachedUpdates[p.id]) {
-          updates = cachedUpdates[p.id];
-        } else {
-          updates = await invoke<BinaryUpdateInfo[]>("check_binary_updates", { providerId: p.id });
-        }
-        if (!cancelled && updates.length > 0) {
-          const withInstalled = updates.map((u) => ({
-            ...u,
-            installedVersion: p.downloadedVersionPerEnv?.[u.profile] || null,
-            available:
-              u.available && !(p.downloadedVersionPerEnv?.[u.profile] === `v${u.latestVersion}`),
-          }));
-          setBinaryUpdates((prev) => {
-            const next = { ...prev };
-            next[p.id] = {};
-            withInstalled.forEach((u) => {
-              next[p.id]![u.profile] = u;
-            });
-            return next;
-          });
-        }
-      } catch (err) {
-        console.error("[Foundry] Failed to check binary updates for", p.id, err);
+        eligibleIds = await invoke<string[]>("get_pack_update_provider_ids");
+      } catch {
+        /* offline / older backend */
       }
-    });
+      if (cancelled) return;
+
+      const eligible = new Set(eligibleIds);
+      const targets = providers.filter((p) => eligible.has(p.id));
+
+      if (isDevBuild()) {
+        const skipped = providers
+          .filter((p) => p.git_url && p.branch && !eligible.has(p.id))
+          .map((p) => p.id);
+        if (skipped.length > 0) {
+          console.info(
+            "[Foundry] DEV: skip pack-update GitHub for non-catalog providers:",
+            skipped,
+          );
+        }
+        // DEV: never auto network from Providers — apply cache only.
+        console.info(
+          "[Foundry] DEV: Providers auto binary-update = cache-only (no GitHub). Eligible:",
+          targets.map((p) => p.id),
+        );
+        for (const p of targets) {
+          const cached = cachedUpdates?.[p.id];
+          if (cached) applyUpdateRows(p.id, cached, p);
+        }
+        return;
+      }
+
+      // REL: cache hit first; network only for eligible missing from cache (backend TTL).
+      for (const p of targets) {
+        if (cancelled) return;
+        try {
+          let updates: BinaryUpdateInfo[];
+          if (cachedUpdates && cachedUpdates[p.id]) {
+            updates = cachedUpdates[p.id];
+            console.info(`[Foundry] binary-updates CACHE hit for ${p.id}`);
+          } else {
+            console.info(`[Foundry] binary-updates LIVE check for ${p.id}`);
+            updates = await invoke<BinaryUpdateInfo[]>("check_binary_updates", {
+              providerId: p.id,
+              force: false,
+            });
+          }
+          applyUpdateRows(p.id, updates, p);
+        } catch (err) {
+          console.error("[Foundry] Failed to check binary updates for", p.id, err);
+        }
+      }
+    })();
 
     return () => {
       cancelled = true;
@@ -536,6 +590,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
     // Only re-check when provider set identity changes, not every build-info patch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [providers.map((p) => p.id).join(",")]);
+
 
   // ── Foundry build complete event listener ─────────────────────
 

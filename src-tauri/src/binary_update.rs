@@ -186,13 +186,41 @@ fn is_placeholder_install_version(v: &str) -> bool {
         || n == "local"
 }
 
+/// True when this provider can ship a GitHub CORE_/PLUGIN_ pack.
+/// Core engines always; optional plugins only when listed in plugins.json.
+/// Custom Foundry providers (e.g. DS4) with git_url but no catalog row → no GitHub calls.
+pub fn is_pack_update_eligible(provider_id: &str) -> bool {
+    if crate::github_releases::is_core_engine_provider(provider_id) {
+        return true;
+    }
+    crate::plugin_catalog::load_catalog_file()
+        .map(|c| c.plugins.iter().any(|p| p.id == provider_id))
+        .unwrap_or(false)
+}
+
+/// Local-only ids that may receive pack update checks (no network).
+#[tauri::command]
+pub fn get_pack_update_provider_ids() -> Vec<String> {
+    let mut ids = vec![crate::config::DEFAULT_PROVIDER_ID.to_string()];
+    if let Ok(cat) = crate::plugin_catalog::load_catalog_file() {
+        for p in cat.plugins {
+            if !ids.iter().any(|id| id == &p.id) {
+                ids.push(p.id);
+            }
+        }
+    }
+    ids
+}
+
 /// Scan recent releases for `{provider}-{profile}.7z` packs.
 /// `available` = **update** for an installed profile with a known release tag that differs —
 /// not “pack exists on GitHub” (that would forever light the header badge).
+/// `force`: bypass releases-list TTL (Updates page Refresh).
 #[tauri::command]
 pub async fn check_binary_updates(
     app_handle: tauri::AppHandle,
     provider_id: String,
+    force: Option<bool>,
 ) -> Result<Vec<BinaryUpdateInfo>, String> {
     if !BINARY_UPDATES_ENABLED {
         log::debug!(
@@ -202,13 +230,29 @@ pub async fn check_binary_updates(
         return Ok(Vec::new());
     }
 
+    if !is_pack_update_eligible(&provider_id) {
+        if cfg!(debug_assertions) {
+            log::info!(
+                "[binary-update] SKIP GitHub pack check for '{provider_id}' (not core and not in plugins catalog)"
+            );
+        }
+        return Ok(Vec::new());
+    }
+
+    let force = force.unwrap_or(false);
+    if cfg!(debug_assertions) {
+        log::info!(
+            "[binary-update] check_binary_updates provider={provider_id} force={force}"
+        );
+    }
+
     let provider = {
         let ctx = app_handle.state::<crate::engine::AppContext>();
         let cfg = ctx.config.lock().map_err(|e| e.to_string())?;
         cfg.providers.iter().find(|p| p.id == provider_id).cloned()
     };
 
-    let releases = crate::github_releases::fetch_recent_version_releases(40).await?;
+    let releases = crate::github_releases::fetch_recent_version_releases_ex(40, force).await?;
     let mut results = Vec::new();
 
     for &(profile, label) in PROFILES {
@@ -451,14 +495,16 @@ pub struct BinaryUpdateEvent {
 #[tauri::command]
 pub async fn get_plugin_catalog(
     app_handle: tauri::AppHandle,
+    force: Option<bool>,
 ) -> Result<crate::plugin_catalog::PluginCatalogResponse, String> {
     let providers = {
         let ctx = app_handle.state::<crate::engine::AppContext>();
         let cfg = ctx.config.lock().map_err(|e| e.to_string())?;
         cfg.providers.clone()
     };
-    crate::plugin_catalog::build_plugin_catalog(&providers).await
+    crate::plugin_catalog::build_plugin_catalog(&providers, force.unwrap_or(false)).await
 }
+
 
 #[tauri::command]
 pub fn get_profile_labels() -> Vec<serde_json::Value> {
@@ -521,12 +567,13 @@ fn empty_update_offerings(current_version: String) -> crate::github_releases::Up
 
 async fn resolve_update_offerings(
     app_handle: &tauri::AppHandle,
+    force: bool,
 ) -> Result<crate::github_releases::UpdateOfferings, String> {
     let current_version = effective_update_version(app_handle);
     if !BINARY_UPDATES_ENABLED {
         return Ok(empty_update_offerings(current_version));
     }
-    crate::github_releases::fetch_update_offerings(&current_version)
+    crate::github_releases::fetch_update_offerings_ex(&current_version, force)
         .await
         .map_err(|e| {
             log::warn!("[app-update] {e}");
@@ -538,14 +585,16 @@ async fn resolve_update_offerings(
 #[tauri::command]
 pub async fn get_update_offerings(
     app_handle: tauri::AppHandle,
+    force: Option<bool>,
 ) -> Result<crate::github_releases::UpdateOfferings, String> {
-    resolve_update_offerings(&app_handle).await
+    resolve_update_offerings(&app_handle, force.unwrap_or(false)).await
 }
+
 
 /// Legacy single-channel check — maps to recommended offering.
 #[tauri::command]
 pub async fn check_app_update(app_handle: tauri::AppHandle) -> Result<AppUpdateInfo, String> {
-    let offerings = resolve_update_offerings(&app_handle).await?;
+    let offerings = resolve_update_offerings(&app_handle, false).await?;
     Ok(offerings_to_legacy_app_update(&offerings))
 }
 
@@ -620,18 +669,18 @@ pub async fn get_startup_updates(app_handle: tauri::AppHandle) -> Result<Startup
     // available: Updates page, header refresh, dev version-override tools.
     #[cfg(debug_assertions)]
     {
-        log::debug!("[startup-updates] DEV build — skipping auto startup update check");
+        log::info!("[startup-updates] DEV build — skipping auto startup update check");
         return Ok(empty_startup_status(current_version));
     }
 
-    let offerings_future = resolve_update_offerings(&app_handle);
+    let offerings_future = resolve_update_offerings(&app_handle, false);
     let catalog_future = async {
         let providers = {
             let ctx = app_handle.state::<crate::engine::AppContext>();
             let cfg = ctx.config.lock().map_err(|e| e.to_string())?;
             cfg.providers.clone()
         };
-        crate::plugin_catalog::build_plugin_catalog(&providers).await
+        crate::plugin_catalog::build_plugin_catalog(&providers, false).await
     };
 
     let (offerings_result, catalog_result) = tokio::join!(offerings_future, catalog_future);
@@ -650,6 +699,7 @@ pub async fn get_startup_updates(app_handle: tauri::AppHandle) -> Result<Startup
     match check_binary_updates(
         app_handle.clone(),
         crate::config::DEFAULT_PROVIDER_ID.to_string(),
+        Some(false),
     )
     .await
     {
