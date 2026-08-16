@@ -11,8 +11,8 @@
 #   2. Copy ALL Release binaries from foundry artifacts (foundry/artifacts/<provider>/<env>/Release/)
 #   3. Config files at runtime/<provider>/config/ are NOT touched
 #
-# DEV sync uses npm run predev (sync-dev-runtime.ps1). Distribution ships only
-# llama-server.exe, llama-fit-params.exe, and DLLs (see prepare-release-runtime.ps1).
+# DEV sync uses npm run predev (sync-dev-runtime.ps1). Distribution ships
+# llama-server.exe, llama-fit-params.exe, llama-bench.exe, and DLLs (see prepare-release-runtime.ps1).
 
 $ErrorActionPreference = "Stop"
 

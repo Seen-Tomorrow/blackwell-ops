@@ -83,6 +83,8 @@ const DEFAULT_CMAKE_FLAGS: &[(&str, &str)] = &[
             "-DGGML_NATIVE=OFF ",
             // Ship llama-server (HTTP API engine) — not a separate "web UI" product.
             "-DLLAMA_BUILD_SERVER=ON ",
+            // llama-bench lives under tools/ (not examples/).
+            "-DLLAMA_BUILD_TOOLS=ON ",
             "-DLLAMA_BUILD_TESTS=OFF ",
             "-DLLAMA_BUILD_EXAMPLES=OFF",
         ),
@@ -90,10 +92,11 @@ const DEFAULT_CMAKE_FLAGS: &[(&str, &str)] = &[
 ];
 
 /// Always merge these into configure so provider build_profile cannot re-enable tests/examples,
-/// drop the server target, or leave host-native CPU/CUDA defaults that break ship portability.
+/// drop the server/tools targets, or leave host-native CPU/CUDA defaults that break ship portability.
 const FOUNDRY_MANDATORY_CMAKE_FLAGS: &str = concat!(
     "-DGGML_NATIVE=OFF ",
     "-DLLAMA_BUILD_SERVER=ON ",
+    "-DLLAMA_BUILD_TOOLS=ON ",
     "-DLLAMA_BUILD_TESTS=OFF ",
     "-DLLAMA_BUILD_EXAMPLES=OFF",
 );
@@ -232,12 +235,17 @@ async fn nuke_foundry_work_tree_on_exit(provider_id: &str) {
 /// Product build targets (always).
 /// `llama-server` = HTTP API engine (OpenAI-compatible). Not a separate WebUI package —
 /// any browser UI is served by this binary when you open its port.
-const FOUNDRY_CMAKE_CORE_TARGETS: &[&str] = &["llama-server", "llama-fit-params"];
+/// `llama-bench` = industry-standard offline PP/TG reference (secondary to fusion bench).
+const FOUNDRY_CMAKE_CORE_TARGETS: &[&str] = &["llama-server", "llama-fit-params", "llama-bench"];
 
 /// Optional offline tools (Foundry modal toggle) — not used by the app runtime.
 const FOUNDRY_CMAKE_EXTRA_TARGETS: &[&str] = &["llama-cli", "llama-quantize"];
 
-const FOUNDRY_CORE_BINARIES: &[&str] = &["llama-server.exe", "llama-fit-params.exe"];
+const FOUNDRY_CORE_BINARIES: &[&str] = &[
+    "llama-server.exe",
+    "llama-fit-params.exe",
+    "llama-bench.exe",
+];
 
 const FOUNDRY_EXTRA_BINARIES: &[&str] = &["llama-cli.exe", "llama-quantize.exe"];
 
@@ -964,7 +972,8 @@ pub async fn foundry_build(
     max_cores: Option<u32>,
     cmake_flags: Option<String>,
     generator: Option<String>,
-    // Also build llama-cli + llama-quantize (offline tools). Omit/null → false (server + fit-params only).
+    // Also build llama-cli + llama-quantize (offline tools). Omit/null → false
+    // (server + fit-params + llama-bench only).
     include_extra_tools: Option<bool>,
     app: tauri::State<'_, crate::engine::AppContext>,
     app_handle: tauri::AppHandle,
@@ -1939,7 +1948,7 @@ async fn run_foundry_build_worker(
         }
         if !missing_extras.is_empty() {
             let msg = format!(
-                "[WARN] Optional tools were requested but missing after build: {}. Core server/fit-params are OK.",
+                "[WARN] Optional tools were requested but missing after build: {}. Core server/fit-params/llama-bench are OK.",
                 missing_extras.join(", ")
             );
             log::warn!("[foundry] {msg}");

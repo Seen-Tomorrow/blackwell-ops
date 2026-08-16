@@ -53,6 +53,7 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
     // action
     isDev,
     onOpenNobsproofCmd,
+    onOpenLlamaBenchCmd,
     launchDisabled,
     replaceLaunchConfirmOpen,
     onCancelReplaceLaunch,
@@ -188,15 +189,26 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
   const renderAction = (replaceId: string) => (
     <div className={`config-launch-dock__action relative${rail ? " shrink-0" : ""}`}>
       {isDev && (
-        <button
-          type="button"
-          onClick={onOpenNobsproofCmd}
-          disabled={launchDisabled}
-          className="config-nobsproof-btn absolute bottom-1 right-1 z-20 px-1.5 py-0.5 text-[7px] font-mono uppercase tracking-wider rounded-sm border disabled:opacity-40 disabled:cursor-not-allowed"
-          title="NoBSproof — open exact launch CLI in a new CMD window (DEV)"
-        >
-          CMD
-        </button>
+        <>
+          <button
+            type="button"
+            onClick={onOpenLlamaBenchCmd}
+            disabled={launchDisabled}
+            className="config-nobsproof-btn absolute bottom-1 right-10 z-20 px-1.5 py-0.5 text-[7px] font-mono uppercase tracking-wider rounded-sm border disabled:opacity-40 disabled:cursor-not-allowed"
+            title="llama-bench — map launch knobs → industry bench in external CMD (DEV). Edit config/llama-bench/defaults.json for -p/-n sweeps."
+          >
+            BENCH
+          </button>
+          <button
+            type="button"
+            onClick={onOpenNobsproofCmd}
+            disabled={launchDisabled}
+            className="config-nobsproof-btn absolute bottom-1 right-1 z-20 px-1.5 py-0.5 text-[7px] font-mono uppercase tracking-wider rounded-sm border disabled:opacity-40 disabled:cursor-not-allowed"
+            title="NoBSproof — open exact launch CLI in a new CMD window (DEV)"
+          >
+            CMD
+          </button>
+        </>
       )}
       {replaceLaunchConfirmOpen && (
         <div
@@ -369,6 +381,7 @@ export interface EngineLaunchDockProps {
   /** Launch action. */
   isDev: boolean;
   onOpenNobsproofCmd: () => void;
+  onOpenLlamaBenchCmd: () => void;
   launchDisabled: boolean;
   replaceLaunchConfirmOpen: boolean;
   onCancelReplaceLaunch: () => void;

@@ -72,7 +72,7 @@ if errorlevel 1 exit /b 1
 "@
 if ($Build) {
     # Product core targets only (matches Foundry default; optional cli/quantize via UI toggle).
-    $bat += "`n`"$Cmake`" --build `"$BuildDir`" --config Release --target llama-server --target llama-fit-params -j %NUMBER_OF_PROCESSORS%"
+    $bat += "`n`"$Cmake`" --build `"$BuildDir`" --config Release --target llama-server --target llama-fit-params --target llama-bench -j %NUMBER_OF_PROCESSORS%"
 }
 
 $batPath = Join-Path $WorkRoot "_test_cfg.bat"

@@ -12,6 +12,7 @@
 # Distribution binaries per profile:
 #   - llama-server.exe + supporting DLLs
 #   - llama-fit-params.exe (VRAM fit scan)
+#   - llama-bench.exe (industry PP/TG reference)
 # GGUF metadata scan uses llama-server (not llama-gguf* tools).
 
 $ErrorActionPreference = 'Stop'

@@ -24,6 +24,7 @@ mod bench_prompts;
 mod burst_bench;
 mod bench_pp_burst;
 mod bench_cancel;
+mod llama_bench_cmd;
 mod gguf_scan;
 mod gguf_patch;
 mod model_cache;
@@ -1095,6 +1096,7 @@ async fn main() {
             engine::get_template_for_provider,
             engine::preview_launch_command,
             engine::open_nobsproof_cmd,
+            llama_bench_cmd::open_llama_bench_cmd,
             atomcode::atomcode_status,
             atomcode::atomcode_accept_disclaimer,
             atomcode::atomcode_set_project,

@@ -168,7 +168,7 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
     () => splitFoundryBuildProfile(provider.build_profile ?? "").archCodes,
   );
   const [generator, setGenerator] = useState(provider.foundry_generator ?? "");
-  /** Offline llama-cli + llama-quantize; product only needs server + fit-params. */
+  /** Offline llama-cli + llama-quantize; product needs server + fit-params + llama-bench. */
   const [includeExtraTools, setIncludeExtraTools] = useState(false);
   const [backupRetryCount, setBackupRetryCount] = useState(0);
   const [showEngineWarning, setShowEngineWarning] = useState(false);

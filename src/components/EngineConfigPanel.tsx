@@ -2086,6 +2086,17 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     });
   }, [buildCurrentLaunchConfig, effectiveBackendType]);
 
+  const handleOpenLlamaBenchCmd = useCallback(() => {
+    const fullConfig = buildCurrentLaunchConfig();
+    if (!fullConfig) return;
+    void invoke<string>("open_llama_bench_cmd", {
+      config: fullConfig,
+      providerId: effectiveBackendType,
+    }).catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      dispatchAppEvent(EVENTS.launchError, { message: `llama-bench CMD: ${msg}` });
+    });
+  }, [buildCurrentLaunchConfig, effectiveBackendType]);
   const findModelForSeat = useCallback(
     (seat: LaunchSeat): ModelEntry | null => {
       const want = normalizeModelPath(seat.modelPath);
@@ -2991,6 +3002,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           portRow={basePortParamDef ? renderParamRow(paramGroupsCtx, basePortParamDef, false, 0) : null}
           isDev={isDevBuild()}
           onOpenNobsproofCmd={handleOpenNobsproofCmd}
+          onOpenLlamaBenchCmd={handleOpenLlamaBenchCmd}
           launchDisabled={launchDisabled}
           replaceLaunchConfirmOpen={replaceLaunchConfirmOpen}
           onCancelReplaceLaunch={() => setReplaceLaunchConfirmOpen(false)}
@@ -3092,6 +3104,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 portRow={basePortParamDef ? renderParamRow(paramGroupsCtx, basePortParamDef, false, 0) : null}
                 isDev={isDevBuild()}
                 onOpenNobsproofCmd={handleOpenNobsproofCmd}
+                onOpenLlamaBenchCmd={handleOpenLlamaBenchCmd}
                 launchDisabled={launchDisabled}
                 replaceLaunchConfirmOpen={replaceLaunchConfirmOpen}
                 onCancelReplaceLaunch={() => setReplaceLaunchConfirmOpen(false)}

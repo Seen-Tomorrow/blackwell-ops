@@ -131,6 +131,7 @@ function Test-RuntimeNsisProfile {
 $script:RuntimeDistributionExecutables = @(
     'llama-server.exe'
     'llama-fit-params.exe'
+    'llama-bench.exe'
 )
 
 function Test-RuntimeDistributionFile {
@@ -150,6 +151,7 @@ function Test-RuntimeDistributionFile {
     return $File.Name -in @(
         'llama-server-impl.dll'
         'llama-fit-params-impl.dll'
+        'llama-bench-impl.dll'
     )
 }
 

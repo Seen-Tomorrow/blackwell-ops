@@ -381,8 +381,9 @@ export default function FoundryConfirmForm({
                     Also build CLI + quantize
                   </span>
                   <span className="text-[7px] font-mono text-stealth-muted/80 leading-snug block mt-0.5">
-                    Off by default (faster). Product always builds <span className="text-white/80">llama-server</span> +{" "}
-                    <span className="text-white/80">llama-fit-params</span>. Enable for offline{" "}
+                    Off by default (faster). Product always builds <span className="text-white/80">llama-server</span>,{" "}
+                    <span className="text-white/80">llama-fit-params</span>, and{" "}
+                    <span className="text-white/80">llama-bench</span>. Enable for offline{" "}
                     <span className="text-white/80">llama-cli</span> / <span className="text-white/80">llama-quantize</span>{" "}
                     (not used by the app runtime).
                   </span>

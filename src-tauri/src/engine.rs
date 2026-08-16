@@ -907,14 +907,17 @@ pub fn get_template_for_provider(provider_id: String) -> Result<crate::templates
     Ok(crate::templates::load_provider_defaults(&template_key).ok_or("Unknown provider")?)
 }
 
-struct AssembledLaunch {
-    launch_cmd: String,
-    gpu_mask: String,
-    model_dir: std::path::PathBuf,
-    binary_profile: String,
+pub(crate) struct AssembledLaunch {
+    pub launch_cmd: String,
+    /// Unquoted argv after the executable (same tokens as `launch_cmd` without the exe).
+    pub cmd_args: Vec<String>,
+    pub binary_path: std::path::PathBuf,
+    pub gpu_mask: String,
+    pub model_dir: std::path::PathBuf,
+    pub binary_profile: String,
 }
 
-fn assemble_launch_command(
+pub(crate) fn assemble_launch_command(
     cfg: &AppConfig,
     config: &EngineConfig,
     backend_type: &str,
@@ -969,6 +972,8 @@ fn assemble_launch_command(
 
     Ok(AssembledLaunch {
         launch_cmd,
+        cmd_args,
+        binary_path,
         gpu_mask,
         model_dir,
         binary_profile,
@@ -1082,7 +1087,7 @@ fn write_nobsproof_batch(
 }
 
 #[cfg(windows)]
-fn spawn_nobsproof_cmd_window(script_path: &std::path::Path) -> Result<(), String> {
+pub(crate) fn spawn_nobsproof_cmd_window(script_path: &std::path::Path) -> Result<(), String> {
     use std::os::windows::process::CommandExt;
     use std::process::Stdio;
 
