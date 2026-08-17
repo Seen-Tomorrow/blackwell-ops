@@ -42,7 +42,8 @@
       "dock": "",
       "essentialsHiddenValues": [
         8192,
-        16384
+        16384,
+        32768
       ],
       "flag": "--batch-size",
       "flag_pair": [],
@@ -66,10 +67,12 @@
       ]
     },
     {
-      "default": 512,
+      "default": 1024,
       "dock": "",
       "essentialsHiddenValues": [
-        4096
+        64,
+        128,
+        8192
       ],
       "flag": "--ubatch-size",
       "flag_pair": [],
@@ -88,6 +91,8 @@
         256,
         512,
         1024,
+        1536,
+        2048,
         4096,
         8192,
         16384
@@ -132,8 +137,12 @@
       ]
     },
     {
-      "default": 1,
+      "default": 0.7,
       "dock": "",
+      "essentialsHiddenValues": [
+        0.8,
+        0.9
+      ],
       "flag": "--temp",
       "flag_pair": [],
       "hidden_default": false,
@@ -146,6 +155,7 @@
       "sub_params": null,
       "ui_group": "DEV-WORKFLOW",
       "values": [
+        0.7,
         0.8,
         0.9,
         1
@@ -308,6 +318,10 @@
     {
       "default": 3,
       "dock": "",
+      "essentialsHiddenValues": [
+        12,
+        8
+      ],
       "flag": "--spec-draft-n-max",
       "flag_pair": [],
       "hidden_default": true,
@@ -332,6 +346,10 @@
     {
       "default": 1,
       "dock": "",
+      "essentialsHiddenValues": [
+        4,
+        5
+      ],
       "flag": "--spec-draft-n-min",
       "flag_pair": [],
       "hidden_default": true,
@@ -354,6 +372,11 @@
     {
       "default": 0,
       "dock": "",
+      "essentialsHiddenValues": [
+        0.6,
+        0.75,
+        0.8
+      ],
       "flag": "--spec-draft-p-min",
       "flag_pair": [],
       "hidden_default": true,
@@ -376,6 +399,10 @@
     {
       "default": 3,
       "dock": "",
+      "essentialsHiddenValues": [
+        8,
+        12
+      ],
       "flag": "--spec-draft-n-max",
       "flag_pair": [],
       "hidden_default": true,
@@ -401,6 +428,10 @@
     {
       "default": 1,
       "dock": "",
+      "essentialsHiddenValues": [
+        4,
+        5
+      ],
       "flag": "--spec-draft-n-min",
       "flag_pair": [],
       "hidden_default": true,
@@ -423,6 +454,11 @@
     {
       "default": 0,
       "dock": "",
+      "essentialsHiddenValues": [
+        0.8,
+        0.75,
+        0.6
+      ],
       "flag": "--spec-draft-p-min",
       "flag_pair": [],
       "hidden_default": true,
@@ -464,6 +500,9 @@
     {
       "default": "q4_0",
       "dock": "",
+      "essentialsHiddenValues": [
+        "bf16"
+      ],
       "flag": null,
       "flag_pair": [
         "--cache-type-k",
@@ -515,7 +554,8 @@
       "dock": "",
       "essentialsHiddenValues": [
         64,
-        128
+        128,
+        3
       ],
       "flag": "--parallel",
       "flag_pair": [],
@@ -531,6 +571,7 @@
       "values": [
         1,
         2,
+        3,
         4,
         8,
         16,
@@ -655,9 +696,9 @@
     }
   ],
   "protectedGroups": [
+    "SYSTEM",
     "SPECULATIVE-MTP",
-    "SPECULATIVE-DFLASH",
-    "SYSTEM"
+    "SPECULATIVE-DFLASH"
   ],
   "spawn_profile": {
     "alias_flag": [
@@ -697,6 +738,6 @@
       "4"
     ]
   },
-  "templateVersion": 46,
+  "templateVersion": 47,
   "template_type": "ggml-llama"
 }
