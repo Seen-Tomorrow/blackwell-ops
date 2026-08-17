@@ -863,6 +863,11 @@ impl ProviderTemplate {
                 }
             }
         }
+        // X3D / CCD pin: compute CCD, physical cores, modest -t (ggml/llama only).
+        // Skip when user already set cpu-mask/range or __cpu_affinity=off.
+        if provider_supports_cpu_mask(self) {
+            crate::cpu_topology::apply_to_launch_args(&mut args, config);
+        }
 
         // Desktop default: llama-server warns when CORS is * (default) with no API key.
         // Localhost reflection is enough for the app / local agents.
@@ -1082,6 +1087,13 @@ fn dedupe_flag_pair_last_wins(args: &mut Vec<String>, flag: &str) {
     remove_all_flag_pairs(args, flag);
     args.push(flag.to_string());
     args.push(value);
+}
+
+fn provider_supports_cpu_mask(template: &ProviderTemplate) -> bool {
+    let fa = template.spawn_profile.fusion_adapter.to_ascii_lowercase();
+    let fit = template.spawn_profile.fit_adapter.to_ascii_lowercase();
+    // Factory ggml providers set these. Bare test templates / non-ggml custom stay unpinned.
+    fa.contains("ggml") || fit.contains("ggml")
 }
 
 /// Collapse duplicate paired flags; drop `--fit-ctx` when final `--fit` is `off`.

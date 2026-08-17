@@ -6,6 +6,7 @@ mod debug_flags;
 mod ipc_meter;
 mod engine;
 mod disk_io_pdh;
+mod cpu_topology;
 mod telemetry;
 mod intel;
 mod config;
