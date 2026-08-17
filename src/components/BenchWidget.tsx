@@ -218,50 +218,6 @@ function benchConcurrencyChipTitle(n: number): string {
   return `×${n}: ${n} parallel /completion feeds pinned to slots 0–${n - 1}. Requires --parallel ≥ ${n} at launch; capped to live slot count if lower. Not for MTP models.`;
 }
 
-type BenchPresetId = "agent" | "share" | "stress";
-
-const BENCH_PRESETS: Record<
-  BenchPresetId,
-  {
-    label: string;
-    title: string;
-    nPredict: number;
-    ppTargetTokens: number;
-    tgParallel: number;
-    tgWarmupEnabled: boolean;
-    promptMode: "unique" | "repetitive";
-  }
-> = {
-  agent: {
-    label: "AGENT",
-    title: "Multi-slot agent stress — short TG, mid PP, ×8 concurrent",
-    nPredict: 512,
-    ppTargetTokens: 8192,
-    tgParallel: 8,
-    tgWarmupEnabled: true,
-    promptMode: "unique",
-  },
-  share: {
-    label: "SHARE",
-    title: "Clean share card — TG 2K · PP 32K · single stream",
-    nPredict: 2048,
-    ppTargetTokens: 32768,
-    tgParallel: 1,
-    tgWarmupEnabled: true,
-    promptMode: "unique",
-  },
-  stress: {
-    label: "STRESS",
-    title: "Ceiling push — long TG · max PP · ×32 concurrent",
-    nPredict: 10000,
-    ppTargetTokens: 100000,
-    tgParallel: 32,
-    tgWarmupEnabled: true,
-    promptMode: "repetitive",
-  },
-};
-
-const BENCH_PRESET_ORDER: BenchPresetId[] = ["agent", "share", "stress"];
 
 type BenchLastRunGhost = {
   tgTps: number | null;
@@ -336,32 +292,6 @@ export default function BenchWidget({
     }));
   }, [ps.tgResult, ps.ppResult]);
 
-  const applyPreset = (id: BenchPresetId) => {
-    if (ps.tgRunning || ps.ppRunning) return;
-    const preset = BENCH_PRESETS[id];
-    ps.nPredict = preset.nPredict;
-    ps.tgParallel = preset.tgParallel;
-    ps.tgWarmupEnabled = preset.tgWarmupEnabled;
-    ps.promptMode = preset.promptMode;
-    let pp = preset.ppTargetTokens;
-    if (!ppChipAllowed(pp)) {
-      const allowed = [...BENCH_PP_TOKEN_OPTIONS].filter((t) => ppChipAllowed(t));
-      pp = allowed.length > 0 ? allowed[allowed.length - 1]! : BENCH_PP_TOKEN_OPTIONS[0]!;
-    }
-    ps.ppTargetTokens = pp;
-    bumpControls();
-  };
-
-  const activePresetId = (BENCH_PRESET_ORDER.find((id) => {
-    const p = BENCH_PRESETS[id];
-    return (
-      ps.nPredict === p.nPredict
-      && ps.tgParallel === p.tgParallel
-      && ps.tgWarmupEnabled === p.tgWarmupEnabled
-      && ps.promptMode === p.promptMode
-      && ps.ppTargetTokens === p.ppTargetTokens
-    );
-  }) ?? null);
 
   // If saved PP target exceeds live slot budget, drop to the largest allowed chip.
   useEffect(() => {
@@ -754,24 +684,6 @@ export default function BenchWidget({
           >
             {!(isCompact || stackMode) && (
               <div className="fusion-bench-controls__bay">
-                <div className="fusion-bench-bay__presets">
-                  {BENCH_PRESET_ORDER.map((id) => {
-                    const preset = BENCH_PRESETS[id];
-                    const active = activePresetId === id;
-                    return (
-                      <button
-                        key={id}
-                        type="button"
-                        disabled={isAnyRunning}
-                        title={preset.title}
-                        onClick={() => applyPreset(id)}
-                        className={`fusion-bench-bay__preset${active ? " is-active" : ""}`}
-                      >
-                        {preset.label}
-                      </button>
-                    );
-                  })}
-                </div>
                 <div className="fusion-bench-bay__armed">
                   <span className="fusion-bench-bay__armed-label">ARMED</span>
                   <span className="fusion-bench-bay__armed-line">
@@ -928,7 +840,7 @@ export default function BenchWidget({
               </div>
 
               <div className="fusion-bench-table__row" role="row">
-                <span className="fusion-bench-row-label" role="rowheader" title="Decode warmup + prompt style">WARMUP</span>
+                <span className="fusion-bench-row-label" role="rowheader" title="Decode warmup + prompt style">SETTINGS</span>
                 <div className="fusion-bench-table__chips" role="cell">
                   <div className="fusion-bench-field">
                     <span className="fusion-bench-field__lab" title="TG warmup pass before measured decode">WARM</span>
@@ -997,6 +909,37 @@ export default function BenchWidget({
                    >
                      STOP
                    </button>
+                 </div>
+               )}
+
+               {isAnyRunning && (!showTgResults || !showPpResults) && (
+                 <div className="fusion-bench-ghost" aria-label="Previous bench scores">
+                   {!showTgResults && (
+                     <div className="fusion-bench-ghost__lane">
+                       <span className="fusion-bench-ghost__lab">PREV TG</span>
+                       <span className={`fusion-bench-ghost__value fusion-instrument__value ${lastRun?.tgTps != null ? "is-ghost" : "is-empty"}`}>
+                         {lastRun?.tgTps != null
+                           ? lastRun.tgTps.toFixed(1)
+                           : "—"}
+                       </span>
+                       <span className="fusion-bench-ghost__unit">
+                         tok/s{lastRun != null && lastRun.tgPar > 1 ? ` · ×${lastRun.tgPar}` : ""}
+                       </span>
+                     </div>
+                   )}
+                   {!showPpResults && (
+                     <div className="fusion-bench-ghost__lane">
+                       <span className="fusion-bench-ghost__lab">PREV PP</span>
+                       <span className={`fusion-bench-ghost__value fusion-instrument__value ${lastRun?.ppTps != null ? "is-ghost" : "is-empty"}`}>
+                         {lastRun?.ppTps != null
+                           ? (lastRun.ppTps >= 1000
+                             ? `${(lastRun.ppTps / 1000).toFixed(1)}k`
+                             : lastRun.ppTps.toFixed(0))
+                           : "—"}
+                       </span>
+                       <span className="fusion-bench-ghost__unit">tok/s</span>
+                     </div>
+                   )}
                  </div>
                )}
 

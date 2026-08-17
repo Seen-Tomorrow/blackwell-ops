@@ -3658,58 +3658,19 @@ html[data-industrial-bezel="brush"] {
   grid-template-columns: minmax(0, 1fr);
 }
 
-/* Left bay — presets + armed recipe + last-run ghost */
+/* Left bay — armed recipe + last-run ghost */
 .fusion-bench-controls__bay {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 3px;
+  gap: 6px;
   min-width: 0;
   min-height: 0;
-  padding: 2px 4px 2px 3px;
+  padding: 3px 4px 3px 3px;
   border-radius: 3px;
   border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.35)) 50%, transparent);
   background: color-mix(in srgb, var(--theme-bg, #0b1220) 22%, transparent);
   box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 4%, transparent);
-}
-
-.fusion-bench-bay__presets {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  min-width: 0;
-}
-
-.fusion-bench-bay__preset {
-  flex: 1 1 0;
-  min-width: 0;
-  padding: 2px 2px;
-  border-radius: 2px;
-  border: 1px solid color-mix(in srgb, var(--display-face-control-border, rgba(148, 163, 184, 0.35)) 70%, transparent);
-  background: color-mix(in srgb, var(--display-face-control-text, #cbd5e1) 6%, transparent);
-  color: color-mix(in srgb, var(--display-face-control-muted, #94a3b8) 92%, transparent);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 6px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  line-height: 1.1;
-  cursor: pointer;
-}
-
-.fusion-bench-bay__preset:hover:not(:disabled) {
-  color: var(--display-face-text, #e2e8f0);
-  border-color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 28%, transparent);
-}
-
-.fusion-bench-bay__preset.is-active {
-  background: color-mix(in srgb, #22c55e 16%, transparent);
-  border-color: color-mix(in srgb, #22c55e 45%, transparent);
-  color: #86efac;
-}
-
-.fusion-bench-bay__preset:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
 }
 
 .fusion-bench-bay__armed {
@@ -3772,6 +3733,7 @@ html[data-industrial-bezel="brush"] {
   font-size: 7px;
   color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 45%, transparent);
 }
+
 
 /* Right table — one shared grid so RUN/BOTH share a vertical edge */
 .fusion-bench-controls__table {
@@ -3976,19 +3938,67 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-bench-result {
-  border-radius: 3px;
-  padding: 2px 3px 1px;
-  border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.35)) 55%, transparent);
-  background: color-mix(in srgb, var(--theme-bg, #0b1220) 22%, transparent);
+  border-radius: 0;
+  padding: 1px 2px 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
 }
 
-.fusion-bench-result--tg {
-  border-color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 18%, transparent);
-}
-
+.fusion-bench-result--tg,
 .fusion-bench-result--pp {
-  border-color: color-mix(in srgb, #f59e0b 22%, transparent);
+  border: none;
 }
+
+.fusion-bench-ghost {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-evenly;
+  gap: 12px;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  padding: 4px 6px 2px;
+}
+
+.fusion-bench-ghost__lane {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 0;
+}
+
+.fusion-bench-ghost__lab {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 6.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  line-height: 1;
+  color: color-mix(in srgb, var(--display-face-control-muted, var(--display-face-text-muted, #94a3b8)) 72%, transparent);
+}
+
+.fusion-bench-ghost__value {
+  /* Match instrument hero scale, clamped for bench slot height */
+  font-size: clamp(1.55rem, 4.8vh, 2.65rem) !important;
+  line-height: 0.92 !important;
+  opacity: 0.42;
+}
+
+.fusion-bench-ghost__value.is-empty {
+  opacity: 0.22;
+}
+
+.fusion-bench-ghost__unit {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 6px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 58%, transparent);
+}
+
 
 .fusion-bench-metric {
   display: flex;
