@@ -115,7 +115,9 @@ fn bench_body(prompt: &str, n_predict: usize, parallel_index: Option<usize>) -> 
         "prompt": prompt,
         "n_predict": n_predict,
         "temperature": 0.0,
-        "stream": false,
+        "stream": true,
+        "return_progress": true,
+        "sse_ping_interval": 1,
         "cache_prompt": false,
         "ignore_eos": true,
     });
@@ -142,8 +144,9 @@ async fn run_one_completion(
     client: &reqwest::Client,
     url: &str,
     body: &serde_json::Value,
+    port: u16,
 ) -> Result<RunStats, String> {
-    let parsed = post_json(client, url, body).await?;
+    let parsed = post_json(client, url, body, port).await?;
     Ok(stats_from_completion(&parsed))
 }
 
@@ -153,11 +156,12 @@ async fn run_measured_completions(
     prompt: &str,
     n_predict: usize,
     parallel_requests: usize,
+    port: u16,
 ) -> Result<(Vec<RunStats>, f64), String> {
     let n = parallel_requests.max(1);
     if n == 1 {
         let body = bench_body(prompt, n_predict, None);
-        let stats = run_one_completion(client, url, &body).await?;
+        let stats = run_one_completion(client, url, &body, port).await?;
         return Ok((vec![stats], 0.0));
     }
 
@@ -172,14 +176,14 @@ async fn run_measured_completions(
         set.spawn(async move {
             let req_start = Instant::now();
             let body = bench_body(&prompt, n_predict, Some(i));
-            let result = run_one_completion(&client, &url, &body).await;
+            let result = run_one_completion(&client, &url, &body, port).await;
             (i, req_start, result)
         });
     }
 
     let mut runs = Vec::with_capacity(n);
     while let Some(joined) = set.join_next().await {
-        let (i, req_start, result) = joined.map_err(|e| format!("Parallel task failed: {}", e))?;
+        let (i, req_start, result) = joined.map_err(|e| format!("Parallel task failed: {e}"))?;
         let elapsed_ms = req_start.elapsed().as_secs_f64() * 1000.0;
         match result {
             Ok(stats) => {
@@ -194,7 +198,17 @@ async fn run_measured_completions(
                 ));
                 runs.push(stats);
             }
-            Err(e) => return Err(e),
+            Err(e) if bench_cancel::is_stopped_err(&e) => {
+                // Abort siblings so STOP does not wait for the whole fan-out.
+                set.abort_all();
+                while set.join_next().await.is_some() {}
+                return Err(e);
+            }
+            Err(e) => {
+                set.abort_all();
+                while set.join_next().await.is_some() {}
+                return Err(e);
+            }
         }
     }
 
@@ -393,6 +407,7 @@ pub async fn cmd_burst_bench(
             &bench_prompt_text,
             effective_length,
             run_parallel,
+            port,
         )
         .await
         {
@@ -433,6 +448,9 @@ pub async fn cmd_burst_bench(
                     measured_parallel = run_parallel;
                     measured_run = Some(summary);
                 }
+            }
+            Err(e) if bench_cancel::is_stopped_err(&e) => {
+                return Ok(bench_stopped_result(parallel_requests));
             }
             Err(e) => return Err(e),
         }

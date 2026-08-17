@@ -261,7 +261,7 @@ export default function BenchWidget({
     bump();
   };
   const benchAbortRef = useRef(false);
-  const benchStopPendingRef = useRef(false);
+  const [stopPending, setStopPending] = useState(false);
 
   const isBenchStopped = (error?: string) => error === "Cancelled" || error === "Stopped";
 
@@ -318,18 +318,18 @@ export default function BenchWidget({
     setSessionMode("idle");
     patchHero({ tg: null, pp: null });
     benchAbortRef.current = true;
-    benchStopPendingRef.current = false;
+    setStopPending(false);
     bump();
   };
 
   const stopBench = async () => {
+    if (stopPending) return;
     benchAbortRef.current = true;
-    benchStopPendingRef.current = true;
-    bump();
+    setStopPending(true);
     try {
-      await invoke("cmd_cancel_bench", { port });
-    } catch {
-      // Backend may already have finished; UI resets when the bench invoke returns.
+      await invoke("cmd_cancel_bench", { port: Number(port) });
+    } catch (e) {
+      console.error("[BENCH] cmd_cancel_bench failed", e);
     }
   };
 
@@ -405,7 +405,7 @@ export default function BenchWidget({
     } finally {
       ps.tgRunning = false;
       ps.tgPhase = null;
-      benchStopPendingRef.current = false;
+      setStopPending(false);
       bump();
     }
   };
@@ -440,7 +440,7 @@ export default function BenchWidget({
     } finally {
       ps.ppRunning = false;
       ps.ppPhase = null;
-      benchStopPendingRef.current = false;
+      setStopPending(false);
       bump();
     }
   };
@@ -448,7 +448,7 @@ export default function BenchWidget({
   const runBenchTg = async () => {
     if (ps.tgRunning || ps.ppRunning || !port) return;
     benchAbortRef.current = false;
-    benchStopPendingRef.current = false;
+    setStopPending(false);
     setSessionMode("tg");
     ps.showResults = true;
     ps.ppResult = null;
@@ -460,7 +460,7 @@ export default function BenchWidget({
   const runBenchPp = async () => {
     if (ps.tgRunning || ps.ppRunning || !port) return;
     benchAbortRef.current = false;
-    benchStopPendingRef.current = false;
+    setStopPending(false);
     setSessionMode("pp");
     ps.showResults = true;
     ps.tgResult = null;
@@ -472,7 +472,7 @@ export default function BenchWidget({
   const runBenchBoth = async () => {
     if (ps.tgRunning || ps.ppRunning || !port) return;
     benchAbortRef.current = false;
-    benchStopPendingRef.current = false;
+    setStopPending(false);
     setSessionMode("both");
     ps.showResults = true;
     ps.tgResult = null;
@@ -778,27 +778,25 @@ export default function BenchWidget({
                    <div className="flex items-center gap-1.5 min-w-0">
                      <span className="inline-block w-1 h-1 bg-yellow-400 rounded-full animate-pulse flex-shrink-0" />
                      <span className="text-[7px] font-mono text-stealth-muted truncate">
-                       {benchStopPendingRef.current
-                         ? "Finishing current run..."
+                       {stopPending
+                         ? "Stopping…"
                          : ps.tgRunning
                            ? (ps.tgPhase === "warmup"
-                             ? `TG WARMUP (${ps.tgEffectiveLength ?? 512} tok)`
-                             : ps.tgParallel > 1
-                               ? `TG (${ps.nPredict} tok ×${ps.tgParallel})...`
-                               : `TG (${ps.nPredict} tok)...`)
+                             ? `TG warmup · ${ps.tgEffectiveLength} tok`
+                             : `TG measured · ${ps.tgEffectiveLength} tok${ps.tgParallel > 1 ? ` · ×${ps.tgParallel}` : ""}`)
                            : ps.ppRunning
                              ? (ps.ppPhase === "warmup"
-                               ? `PP WARMUP (${formatBenchK(ps.ppEffectiveLength ?? 512)} tok)`
-                               : `PP (${formatBenchK(ps.ppTargetTokens)} tok)...`)
-                             : ""}
+                               ? `PP warmup · ${ps.ppEffectiveLength} tok`
+                               : `PP measured · ${ps.ppEffectiveLength} tok`)
+                             : "Running…"}
                      </span>
                    </div>
                    <button
                      type="button"
                      onClick={() => { void stopBench(); }}
-                     disabled={benchStopPendingRef.current}
+                     disabled={stopPending}
                      className={stopBtnClass}
-                     title="Finish the in-flight request, then stop before the next run"
+                     title="Abort the in-flight completion and stop the bench"
                    >
                      STOP
                    </button>

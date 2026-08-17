@@ -166,15 +166,30 @@ async fn count_prompt_tokens(client: &reqwest::Client, port: u16, content: &str)
         "add_special": false,
         "parse_special": false,
     });
-    let resp = client.post(&url).json(&body).send().await.ok()?;
-    if !resp.status().is_success() {
-        return None;
+    let client = client.clone();
+    let result = bench_cancel::race_stop(port, async move {
+        let resp = client
+            .post(&url)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        if !resp.status().is_success() {
+            return Err("tokenize failed".into());
+        }
+        let parsed: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+        parsed
+            .get("tokens")
+            .and_then(|t| t.as_array())
+            .map(|a| a.len())
+            .ok_or_else(|| "no tokens".into())
+    })
+    .await;
+    match result {
+        Ok(n) => Some(n),
+        Err(e) if bench_cancel::is_stopped_err(&e) => None, // caller loop checks stop flag
+        Err(_) => None,
     }
-    let parsed: serde_json::Value = resp.json().await.ok()?;
-    parsed
-        .get("tokens")
-        .and_then(|t| t.as_array())
-        .map(|a| a.len())
 }
 
 /// Build prompt text so `/tokenize` count is within tolerance of `target_tokens`.
@@ -236,11 +251,14 @@ pub async fn build_prompt_for_token_target_capped(
 
     for _ in 0..8 {
         if bench_cancel::stop_after_current_requested(port) {
-            return Err("Stopped".to_string());
+            return Err(bench_cancel::STOPPED_ERR.to_string());
         }
 
         let text = build(words);
         let Some(actual) = count_prompt_tokens(client, port, &text).await else {
+            if bench_cancel::stop_after_current_requested(port) {
+                return Err(bench_cancel::STOPPED_ERR.to_string());
+            }
             log::debug!(
                 "{log_tag} /tokenize unavailable — using word estimate {} ({mode_label})",
                 words
@@ -290,6 +308,10 @@ pub async fn build_prompt_for_token_target_capped(
         words = words.clamp(64, target_tokens.saturating_mul(3));
     }
 
+    if bench_cancel::stop_after_current_requested(port) {
+        return Err(bench_cancel::STOPPED_ERR.to_string());
+    }
+
     let chosen = best_under_text.unwrap_or(best_text);
     if let Some(actual) = count_prompt_tokens(client, port, &chosen).await {
         log::info!(
@@ -301,6 +323,8 @@ pub async fn build_prompt_for_token_target_capped(
             max_tokens,
             best_actual
         );
+    } else if bench_cancel::stop_after_current_requested(port) {
+        return Err(bench_cancel::STOPPED_ERR.to_string());
     } else {
         log::info!(
             "{log_tag} prompt best-effort: mode={mode_label} target={} err={} words={} max={:?}",

@@ -119,11 +119,13 @@ pub async fn cmd_bench_pp_burst(
             "prompt": bench_prompt_text,
             "n_predict": 0,
             "temperature": 0.0,
-            "stream": false,
+            "stream": true,
+            "return_progress": true,
+            "sse_ping_interval": 1,
             "cache_prompt": false,
         });
 
-        match post_json(&client, &url, &body).await {
+        match post_json(&client, &url, &body, port).await {
             Ok(parsed) => {
                 let p_tokens = parsed["tokens_evaluated"].as_u64().unwrap_or(0) as usize;
                 let p_ms = parsed["timings"]["prompt_ms"].as_f64().unwrap_or(0.0);
@@ -148,6 +150,9 @@ pub async fn cmd_bench_pp_burst(
                         prompt_tokens: p_tokens,
                     });
                 }
+            }
+            Err(e) if bench_cancel::is_stopped_err(&e) => {
+                return Ok(bench_stopped_pp_result());
             }
             Err(e) => return Err(e),
         }
