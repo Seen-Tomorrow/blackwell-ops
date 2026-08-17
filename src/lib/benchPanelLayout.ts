@@ -68,10 +68,15 @@ export type BenchPanelLayoutOpts = {
 
 function benchResultVisibility(opts: BenchPanelLayoutOpts) {
   const isAnyRunning = opts.tgRunning || opts.ppRunning;
+  // Keep result rows collapsed while ANY phase of BOTH is still running.
   const showTgResults =
-    (opts.sessionMode === "tg" || opts.sessionMode === "both") && Boolean(opts.tgResult) && !opts.tgRunning;
+    !isAnyRunning
+    && (opts.sessionMode === "tg" || opts.sessionMode === "both")
+    && Boolean(opts.tgResult);
   const showPpResults =
-    (opts.sessionMode === "pp" || opts.sessionMode === "both") && Boolean(opts.ppResult) && !opts.ppRunning;
+    !isAnyRunning
+    && (opts.sessionMode === "pp" || opts.sessionMode === "both")
+    && Boolean(opts.ppResult);
   return { isAnyRunning, showTgResults, showPpResults, hasResults: showTgResults || showPpResults };
 }
 

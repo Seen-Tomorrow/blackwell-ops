@@ -545,10 +545,16 @@ export default function BenchWidget({
     : "Warmup off — measured run only";
 
   const isAnyRunning = ps.tgRunning || ps.ppRunning;
+  // BOTH finishes PP first — never paint live result grids until the whole session is idle
+  // (avoids PREV-TG ghost + full PP results mixed mid-run).
   const showTgResults =
-    (ps.sessionMode === "tg" || ps.sessionMode === "both") && Boolean(ps.tgResult) && !ps.tgRunning;
+    !isAnyRunning
+    && (ps.sessionMode === "tg" || ps.sessionMode === "both")
+    && Boolean(ps.tgResult);
   const showPpResults =
-    (ps.sessionMode === "pp" || ps.sessionMode === "both") && Boolean(ps.ppResult) && !ps.ppRunning;
+    !isAnyRunning
+    && (ps.sessionMode === "pp" || ps.sessionMode === "both")
+    && Boolean(ps.ppResult);
   const hasResults = showTgResults || showPpResults;
 
   const chipBtnClass = (active: boolean, _disabled: boolean) =>
@@ -843,7 +849,7 @@ export default function BenchWidget({
                 <span className="fusion-bench-row-label" role="rowheader" title="Decode warmup + prompt style">SETTINGS</span>
                 <div className="fusion-bench-table__chips" role="cell">
                   <div className="fusion-bench-field">
-                    <span className="fusion-bench-field__lab" title="TG warmup pass before measured decode">WARM</span>
+                    <span className="fusion-bench-field__lab" title="TG warmup pass before measured decode">WARMUP </span>
                     <button
                       type="button"
                       onClick={toggleTgWarmup}
@@ -857,7 +863,7 @@ export default function BenchWidget({
                     </button>
                   </div>
                   <div className="fusion-bench-field">
-                    <span className="fusion-bench-field__lab" title="Prefill prompt vocabulary style">CONTENT</span>
+                    <span className="fusion-bench-field__lab" title="Prefill prompt vocabulary style">CONTENT to generate</span>
                     <button
                       onClick={cyclePromptMode}
                       disabled={isAnyRunning}
@@ -912,34 +918,30 @@ export default function BenchWidget({
                  </div>
                )}
 
-               {isAnyRunning && (!showTgResults || !showPpResults) && (
+               {isAnyRunning && (
                  <div className="fusion-bench-ghost" aria-label="Previous bench scores">
-                   {!showTgResults && (
-                     <div className="fusion-bench-ghost__lane">
-                       <span className="fusion-bench-ghost__lab">PREV TG</span>
-                       <span className={`fusion-bench-ghost__value fusion-instrument__value ${lastRun?.tgTps != null ? "is-ghost" : "is-empty"}`}>
-                         {lastRun?.tgTps != null
-                           ? lastRun.tgTps.toFixed(1)
-                           : "—"}
-                       </span>
-                       <span className="fusion-bench-ghost__unit">
-                         tok/s{lastRun != null && lastRun.tgPar > 1 ? ` · ×${lastRun.tgPar}` : ""}
-                       </span>
-                     </div>
-                   )}
-                   {!showPpResults && (
-                     <div className="fusion-bench-ghost__lane">
-                       <span className="fusion-bench-ghost__lab">PREV PP</span>
-                       <span className={`fusion-bench-ghost__value fusion-instrument__value ${lastRun?.ppTps != null ? "is-ghost" : "is-empty"}`}>
-                         {lastRun?.ppTps != null
-                           ? (lastRun.ppTps >= 1000
-                             ? `${(lastRun.ppTps / 1000).toFixed(1)}k`
-                             : lastRun.ppTps.toFixed(0))
-                           : "—"}
-                       </span>
-                       <span className="fusion-bench-ghost__unit">tok/s</span>
-                     </div>
-                   )}
+                   <div className="fusion-bench-ghost__lane">
+                     <span className="fusion-bench-ghost__lab">PREV TG</span>
+                     <span className={`fusion-bench-ghost__value fusion-instrument__value ${lastRun?.tgTps != null ? "is-ghost" : "is-empty"}`}>
+                       {lastRun?.tgTps != null
+                         ? lastRun.tgTps.toFixed(1)
+                         : "—"}
+                     </span>
+                     <span className="fusion-bench-ghost__unit">
+                       tok/s{lastRun != null && lastRun.tgPar > 1 ? ` · ×${lastRun.tgPar}` : ""}
+                     </span>
+                   </div>
+                   <div className="fusion-bench-ghost__lane">
+                     <span className="fusion-bench-ghost__lab">PREV PP</span>
+                     <span className={`fusion-bench-ghost__value fusion-instrument__value ${lastRun?.ppTps != null ? "is-ghost" : "is-empty"}`}>
+                       {lastRun?.ppTps != null
+                         ? (lastRun.ppTps >= 1000
+                           ? `${(lastRun.ppTps / 1000).toFixed(1)}k`
+                           : lastRun.ppTps.toFixed(0))
+                         : "—"}
+                     </span>
+                     <span className="fusion-bench-ghost__unit">tok/s</span>
+                   </div>
                  </div>
                )}
 
