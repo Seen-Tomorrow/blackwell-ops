@@ -858,6 +858,7 @@ export default function FusionOverlay({
                   port={displayPort}
                   footerDocked
                   maxPpTokens={ctxPerSlot > 0 ? ctxPerSlot : ctxTotal > 0 ? ctxTotal : undefined}
+                  engineParallel={fusion.parallel > 0 ? fusion.parallel : undefined}
                   onHeroPatch={handleBenchHeroPatch}
                   onBenchSessionChange={setBenchSessionMode}
                   onCloseResults={handleCloseBenchResults}

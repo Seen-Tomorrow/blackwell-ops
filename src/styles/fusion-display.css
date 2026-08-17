@@ -3792,7 +3792,8 @@ html[data-industrial-bezel="brush"] {
 
 .fusion-bench-table__row {
   display: grid;
-  grid-template-columns: 2.25rem max-content max-content;
+  /* label | chips | fixed ops — RUN/BOTH share one column width */
+  grid-template-columns: 3.6rem max-content 2.6rem;
   align-items: center;
   column-gap: 5px;
   height: var(--bench-control-row-h, 18px);
@@ -3802,7 +3803,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-bench-controls--solo .fusion-bench-table__row {
-  grid-template-columns: 2.25rem minmax(0, 1fr) max-content;
+  grid-template-columns: 3.6rem minmax(0, 1fr) 2.6rem;
   width: 100%;
 }
 
@@ -3829,8 +3830,16 @@ html[data-industrial-bezel="brush"] {
 .fusion-bench-table__ops {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  width: max-content;
+  justify-content: stretch;
+  width: 2.6rem;
+  min-width: 2.6rem;
+  max-width: 2.6rem;
+}
+
+.fusion-bench-table__ops > .fusion-bench-run {
+  width: 100%;
+  text-align: center;
+  box-sizing: border-box;
 }
 
 .fusion-bench-row-label {
@@ -3839,9 +3848,9 @@ html[data-industrial-bezel="brush"] {
   justify-content: flex-start;
   width: 100%;
   min-width: 0;
-  font-size: 7px;
+  font-size: 6.5px;
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.1em;
   line-height: 1;
   color: color-mix(in srgb, var(--display-face-control-muted, var(--display-face-text-muted, #94a3b8)) 92%, transparent);
 }
@@ -3894,6 +3903,30 @@ html[data-industrial-bezel="brush"] {
 .fusion-bench-toggle--on {
   box-shadow: 0 0 0 1px color-mix(in srgb, #22c55e 35%, transparent);
 }
+
+.fusion-bench-chip--over-engine {
+  opacity: 0.55;
+}
+
+.fusion-bench-chip--over-engine-active {
+  box-shadow: 0 0 0 1px color-mix(in srgb, #f59e0b 55%, transparent);
+}
+
+.fusion-bench-par-hint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 5.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  color: color-mix(in srgb, #fbbf24 88%, transparent);
+  white-space: nowrap;
+  cursor: help;
+}
+
 
 .fusion-bench-running {
   border-radius: 3px;

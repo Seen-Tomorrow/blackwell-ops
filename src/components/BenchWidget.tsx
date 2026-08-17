@@ -190,6 +190,9 @@ interface BenchWidgetProps {
    * full-slot targets trip "out of context" after specials / calibration.
    */
   maxPpTokens?: number;
+  /** Live engine `--parallel` (slot bank size). Bench ×N above this is capped at run. */
+  engineParallel?: number;
+
 }
 
 export interface BenchHwContext {
@@ -295,6 +298,7 @@ export default function BenchWidget({
   footerDocked = false,
   onCloseResults,
   maxPpTokens,
+  engineParallel,
 }: BenchWidgetProps) {
   const isCompact = compact || stackMode;
   const ps = getBenchPortState(port);
@@ -624,7 +628,7 @@ export default function BenchWidget({
     `bench-concurrency-chip value-chip fusion-bench-chip ${active ? "value-chip-active" : ""} whitespace-nowrap focus:outline-none cursor-pointer select-none disabled:opacity-30`;
 
   const runBtnClass = (_disabled: boolean) =>
-    "fusion-bench-run text-[8px] font-bold tracking-wider px-2 py-0.5 rounded cursor-pointer select-none disabled:opacity-30";
+    "fusion-bench-run text-[8px] font-bold tracking-wider px-1.5 py-0.5 rounded cursor-pointer select-none disabled:opacity-30";
 
   const stopBtnClass =
     "fusion-bench-stop text-[7px] font-bold tracking-wider px-1.5 py-0.5 rounded cursor-pointer select-none flex-shrink-0";
@@ -806,7 +810,7 @@ export default function BenchWidget({
             )}
             <div className="fusion-bench-controls__table" role="table" aria-label="Benchmark controls">
               <div className="fusion-bench-table__row" role="row">
-                <span className="fusion-bench-row-label" role="rowheader">TG</span>
+                <span className="fusion-bench-row-label" role="rowheader" title="Token generation (decode) length">DECODE</span>
                 <div className="fusion-bench-table__chips" role="cell">
                   {BENCH_TG_PREDICT_OPTIONS.map((tok) => (
                     <button
@@ -831,7 +835,7 @@ export default function BenchWidget({
               </div>
 
               <div className="fusion-bench-table__row" role="row">
-                <span className="fusion-bench-row-label" role="rowheader">PP</span>
+                <span className="fusion-bench-row-label" role="rowheader" title="Prompt prefill size">PREFILL</span>
                 <div className="fusion-bench-table__chips" role="cell">
                   {BENCH_PP_TOKEN_OPTIONS.map((tok) => {
                     const overCtx = !ppChipAllowed(tok);
@@ -873,7 +877,7 @@ export default function BenchWidget({
               </div>
 
               <div className="fusion-bench-table__row" role="row">
-                <span className="fusion-bench-row-label" role="rowheader">WARM</span>
+                <span className="fusion-bench-row-label" role="rowheader" title="TG warmup + prompt style">WARMUP</span>
                 <div className="fusion-bench-table__chips" role="cell">
                   <button
                     type="button"
@@ -904,7 +908,7 @@ export default function BenchWidget({
                     onClick={runBenchBoth}
                     disabled={isAnyRunning}
                     className={runBtnClass(isAnyRunning)}
-                    title="Run PP then TG with current token selections (TG last so the share card keeps its per-slot meter)"
+                    title="Run PREFILL then DECODE with current token selections (DECODE last so the share card keeps its per-slot meter)"
                   >
                     BOTH
                   </button>
@@ -917,22 +921,41 @@ export default function BenchWidget({
                   role="rowheader"
                   title={BENCH_CONCURRENCY_HELP}
                 >
-                  ×N
+                  PARALLEL
                 </span>
                 <div className="fusion-bench-table__chips fusion-bench-table__chips--concur" role="cell">
-                  {BENCH_TG_PARALLEL_OPTIONS.map((n) => (
-                    <button
-                      key={`par-${n}`}
-                      onClick={() => { ps.tgParallel = n; bumpControls(); }}
-                      disabled={isAnyRunning}
-                      title={benchConcurrencyChipTitle(n)}
-                      className={`font-mono rounded-sm ${chipPadClass} ${concurrencyChipClass(ps.tgParallel === n, isAnyRunning)}`}
-                    >
-                      ×{n}
-                    </button>
-                  ))}
+                  {BENCH_TG_PARALLEL_OPTIONS.map((n) => {
+                    const overEngine =
+                      engineParallel != null && engineParallel > 0 && n > engineParallel;
+                    return (
+                      <button
+                        key={`par-${n}`}
+                        onClick={() => { ps.tgParallel = n; bumpControls(); }}
+                        disabled={isAnyRunning}
+                        title={
+                          overEngine
+                            ? `×${n} needs engine --parallel ≥ ${n} (live ×${engineParallel}). Bench will cap to ×${engineParallel}. Hot-swap the engine card (HS) to raise slots.`
+                            : benchConcurrencyChipTitle(n)
+                        }
+                        className={`font-mono rounded-sm ${chipPadClass} ${concurrencyChipClass(ps.tgParallel === n, isAnyRunning)}${
+                          overEngine && ps.tgParallel !== n ? " fusion-bench-chip--over-engine" : ""
+                        }${overEngine && ps.tgParallel === n ? " fusion-bench-chip--over-engine-active" : ""}`}
+                      >
+                        ×{n}
+                      </button>
+                    );
+                  })}
                 </div>
-                <div className="fusion-bench-table__ops" role="cell" aria-hidden="true" />
+                <div className="fusion-bench-table__ops" role="cell">
+                  {engineParallel != null && engineParallel > 0 && ps.tgParallel > engineParallel ? (
+                    <span
+                      className="fusion-bench-par-hint"
+                      title={`Selected ×${ps.tgParallel} exceeds live engine --parallel ×${engineParallel}. Run caps to ×${engineParallel}. Use HS on the running engine card after raising Agents/parallel in the panel.`}
+                    >
+                      ENG×{engineParallel}
+                    </span>
+                  ) : null}
+                </div>
               </div>
             </div>
           </div>
