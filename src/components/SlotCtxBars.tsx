@@ -219,7 +219,7 @@ function BarTrack({
   );
 }
 
-export default function SlotCtxBars({ slotCtx, ctxTotal, ctxPerSlot, parallel }: SlotCtxBarsProps) {
+function SlotCtxBars({ slotCtx, ctxTotal, ctxPerSlot, parallel }: SlotCtxBarsProps) {
   const numSlots = Math.max(1, parallel || 1);
   const useAggregate = numSlots > MAX_INDIVIDUAL_SLOTS;
   const dense = numSlots > BARS_PER_ROW;
@@ -404,3 +404,6 @@ export default function SlotCtxBars({ slotCtx, ctxTotal, ctxPerSlot, parallel }:
     </div>
   );
 }
+
+export { SlotCtxBars };
+export default SlotCtxBars;
