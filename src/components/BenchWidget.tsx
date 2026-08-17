@@ -877,7 +877,58 @@ export default function BenchWidget({
               </div>
 
               <div className="fusion-bench-table__row" role="row">
-                <span className="fusion-bench-row-label" role="rowheader" title="TG warmup + prompt style">WARMUP</span>
+                <span
+                  className="fusion-bench-row-label"
+                  role="rowheader"
+                  title={BENCH_CONCURRENCY_HELP}
+                >
+                  AGENTS
+                </span>
+                <div className="fusion-bench-table__chips fusion-bench-table__chips--concur" role="cell">
+                  {BENCH_TG_PARALLEL_OPTIONS.map((n) => {
+                    const overEngine =
+                      engineParallel != null && engineParallel > 0 && n > engineParallel;
+                    return (
+                      <button
+                        key={`par-${n}`}
+                        onClick={() => { ps.tgParallel = n; bumpControls(); }}
+                        disabled={isAnyRunning}
+                        title={
+                          overEngine
+                            ? `×${n} needs engine --parallel ≥ ${n} (live ×${engineParallel}). Bench will cap to ×${engineParallel}. Hot-swap the engine card (HS) to raise slots.`
+                            : benchConcurrencyChipTitle(n)
+                        }
+                        className={`font-mono rounded-sm ${chipPadClass} ${concurrencyChipClass(ps.tgParallel === n, isAnyRunning)}${
+                          overEngine && ps.tgParallel !== n ? " fusion-bench-chip--over-engine" : ""
+                        }${overEngine && ps.tgParallel === n ? " fusion-bench-chip--over-engine-active" : ""}`}
+                      >
+                        ×{n}
+                      </button>
+                    );
+                  })}
+                  {engineParallel != null && engineParallel > 0 && ps.tgParallel > engineParallel ? (
+                    <span
+                      className="fusion-bench-par-hint"
+                      title={`Selected ×${ps.tgParallel} exceeds live engine --parallel ×${engineParallel}. Run caps to ×${engineParallel}. Use HS on the running engine card after raising Agents in the panel.`}
+                    >
+                      ENG×{engineParallel}
+                    </span>
+                  ) : null}
+                </div>
+                <div className="fusion-bench-table__ops" role="cell">
+                  <button
+                    onClick={runBenchBoth}
+                    disabled={isAnyRunning}
+                    className={runBtnClass(isAnyRunning)}
+                    title="Run PREFILL then DECODE with current selections (DECODE last so the share card keeps its per-slot meter)"
+                  >
+                    BOTH
+                  </button>
+                </div>
+              </div>
+
+              <div className="fusion-bench-table__row" role="row">
+                <span className="fusion-bench-row-label" role="rowheader" title="Decode warmup + prompt style">WARMUP</span>
                 <div className="fusion-bench-table__chips" role="cell">
                   <button
                     type="button"
@@ -903,59 +954,7 @@ export default function BenchWidget({
                     {ps.promptMode === "unique" ? "Unique ▸" : "◂ Repetitive"}
                   </button>
                 </div>
-                <div className="fusion-bench-table__ops" role="cell">
-                  <button
-                    onClick={runBenchBoth}
-                    disabled={isAnyRunning}
-                    className={runBtnClass(isAnyRunning)}
-                    title="Run PREFILL then DECODE with current token selections (DECODE last so the share card keeps its per-slot meter)"
-                  >
-                    BOTH
-                  </button>
-                </div>
-              </div>
-
-              <div className="fusion-bench-table__row" role="row">
-                <span
-                  className="fusion-bench-row-label"
-                  role="rowheader"
-                  title={BENCH_CONCURRENCY_HELP}
-                >
-                  PARALLEL
-                </span>
-                <div className="fusion-bench-table__chips fusion-bench-table__chips--concur" role="cell">
-                  {BENCH_TG_PARALLEL_OPTIONS.map((n) => {
-                    const overEngine =
-                      engineParallel != null && engineParallel > 0 && n > engineParallel;
-                    return (
-                      <button
-                        key={`par-${n}`}
-                        onClick={() => { ps.tgParallel = n; bumpControls(); }}
-                        disabled={isAnyRunning}
-                        title={
-                          overEngine
-                            ? `×${n} needs engine --parallel ≥ ${n} (live ×${engineParallel}). Bench will cap to ×${engineParallel}. Hot-swap the engine card (HS) to raise slots.`
-                            : benchConcurrencyChipTitle(n)
-                        }
-                        className={`font-mono rounded-sm ${chipPadClass} ${concurrencyChipClass(ps.tgParallel === n, isAnyRunning)}${
-                          overEngine && ps.tgParallel !== n ? " fusion-bench-chip--over-engine" : ""
-                        }${overEngine && ps.tgParallel === n ? " fusion-bench-chip--over-engine-active" : ""}`}
-                      >
-                        ×{n}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="fusion-bench-table__ops" role="cell">
-                  {engineParallel != null && engineParallel > 0 && ps.tgParallel > engineParallel ? (
-                    <span
-                      className="fusion-bench-par-hint"
-                      title={`Selected ×${ps.tgParallel} exceeds live engine --parallel ×${engineParallel}. Run caps to ×${engineParallel}. Use HS on the running engine card after raising Agents/parallel in the panel.`}
-                    >
-                      ENG×{engineParallel}
-                    </span>
-                  ) : null}
-                </div>
+                <div className="fusion-bench-table__ops" role="cell" aria-hidden="true" />
               </div>
             </div>
           </div>
