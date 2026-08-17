@@ -2927,3 +2927,559 @@ html[data-industrial-bezel="brush"] {
   background: color-mix(in srgb, #000 55%, transparent);
   border-bottom: 1px solid color-mix(in srgb, var(--theme-border, #334155) 70%, transparent);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * Fusion instrument cluster — precision TG/PP performance meter
+ * Tokens only · no backdrop-filter · content is not a second glass
+ * Share hooks preserved: .fusion-tg-hero-value · .fusion-prefill-hero-value
+ *   · .fusion-per-slot-meter · .fusion-micro-stat-cell*
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.fusion-identity-rail__label,
+.fusion-identity-rail__meta,
+.fusion-identity-rail__port,
+.fusion-instrument__phase,
+.fusion-instrument__unit,
+.fusion-instrument__prompt-meta,
+.fusion-per-slot-meter__unit,
+.fusion-micro-cell__label,
+.fusion-ops-chip,
+.fusion-mode-seg__btn {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.fusion-identity-rail__label {
+  font-size: 8px;
+  letter-spacing: 0.18em;
+  color: var(--display-face-control-muted, var(--display-face-text-muted));
+  opacity: 0.72;
+}
+
+.fusion-identity-rail__rule {
+  font-size: 8px;
+  color: var(--display-face-text-muted);
+  opacity: 0.35;
+  user-select: none;
+}
+
+.fusion-identity-rail__meta {
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  color: color-mix(in srgb, var(--display-face-text) 55%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+.fusion-identity-rail__alias {
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  color: color-mix(in srgb, var(--display-face-text) 62%, transparent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  max-width: 42%;
+}
+
+.fusion-identity-rail__port {
+  font-size: 11px;
+  color: color-mix(in srgb, var(--display-face-text-muted) 80%, transparent);
+  opacity: 0.75;
+}
+
+/* Ops chips — QUIET / LV / STOP */
+.fusion-ops-chip {
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  padding: 2px 6px;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--display-face-border) 80%, transparent);
+  background: color-mix(in srgb, var(--display-face-control-text, var(--display-face-text)) 6%, transparent);
+  color: var(--display-face-control-muted, var(--display-face-text-muted));
+  cursor: pointer;
+  user-select: none;
+  transition: color 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.fusion-ops-chip:hover {
+  color: var(--display-face-text);
+  border-color: color-mix(in srgb, var(--display-face-text) 35%, transparent);
+}
+
+.fusion-ops-chip--quiet {
+  background: color-mix(in srgb, #f59e0b 18%, transparent);
+  border-color: color-mix(in srgb, #f59e0b 42%, transparent);
+  color: #fbbf24;
+}
+
+.fusion-ops-chip--lv {
+  background: color-mix(in srgb, var(--theme-dist-cyan, #22d3ee) 14%, transparent);
+  border-color: color-mix(in srgb, var(--theme-dist-cyan, #22d3ee) 40%, transparent);
+  color: var(--theme-dist-cyan, #22d3ee);
+}
+
+.fusion-ops-chip--stop {
+  background: color-mix(in srgb, #dc2626 78%, transparent);
+  border-color: color-mix(in srgb, #ef4444 55%, transparent);
+  color: #fff;
+}
+
+.fusion-ops-chip--stop:hover {
+  background: color-mix(in srgb, #ef4444 88%, transparent);
+  color: #fff;
+}
+
+.fusion-ops-chip--stop.is-stopping {
+  opacity: 0.55;
+  cursor: wait;
+  animation: fusion-instrument-pulse 1.1s ease-in-out infinite;
+}
+
+/* Instrument wells */
+.fusion-instrument {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  padding: 5px 8px 4px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--display-face-border) 70%, transparent);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--display-face-text) 3.5%, transparent) 0%,
+      transparent 42%
+    ),
+    color-mix(in srgb, var(--display-face-bar-bg) 55%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 5%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, #000 28%, transparent);
+  transition:
+    border-color 200ms ease,
+    box-shadow 220ms ease,
+    background 220ms ease;
+  overflow: hidden;
+}
+
+.fusion-instrument--live {
+  border-color: color-mix(in srgb, var(--display-face-text) 38%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 7%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, #000 32%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--display-face-text) 12%, transparent),
+    0 0 18px color-mix(in srgb, var(--display-face-text) 10%, transparent);
+}
+
+.fusion-instrument--pp.fusion-instrument--live {
+  border-color: color-mix(in srgb, #f59e0b 42%, var(--display-face-border));
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 6%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, #000 30%, transparent),
+    0 0 0 1px color-mix(in srgb, #f59e0b 16%, transparent),
+    0 0 16px color-mix(in srgb, #f59e0b 10%, transparent);
+}
+
+.fusion-instrument__chrome {
+  margin-bottom: 1px;
+  min-height: 16px;
+}
+
+.fusion-instrument__phase {
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.fusion-instrument__phase--pp {
+  color: #f59e0b;
+  text-shadow: 0 0 8px color-mix(in srgb, #f59e0b 35%, transparent);
+}
+
+.fusion-instrument__phase--tg {
+  color: var(--display-face-text);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--display-face-text) 40%, transparent);
+}
+
+.fusion-instrument__phase--tg-dim {
+  color: color-mix(in srgb, var(--display-face-text-muted) 70%, transparent);
+  font-weight: 600;
+}
+
+.fusion-instrument__phase--idle {
+  color: var(--display-face-control-muted, var(--display-face-text-muted));
+  opacity: 0.85;
+}
+
+.fusion-instrument__phase--pp-label {
+  color: color-mix(in srgb, var(--display-face-text-muted) 88%, transparent);
+  letter-spacing: 0.14em;
+}
+
+.fusion-instrument__pct {
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
+/* LIVE | AVG segment */
+.fusion-mode-seg {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid color-mix(in srgb, var(--display-face-border) 85%, transparent);
+  border-radius: 2px;
+  overflow: hidden;
+  flex-shrink: 0;
+  height: 14px;
+}
+
+.fusion-mode-seg__btn {
+  font-size: 6px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  padding: 0 5px;
+  border: 0;
+  background: transparent;
+  color: var(--display-face-control-muted, var(--display-face-text-muted));
+  cursor: pointer;
+  line-height: 14px;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.fusion-mode-seg__btn + .fusion-mode-seg__btn {
+  border-left: 1px solid color-mix(in srgb, var(--display-face-border) 85%, transparent);
+}
+
+.fusion-mode-seg__btn:hover {
+  color: var(--display-face-text);
+}
+
+.fusion-mode-seg__btn.is-active {
+  background: color-mix(in srgb, var(--display-face-text) 16%, transparent);
+  color: var(--display-face-text);
+}
+
+/* Hero figure */
+.fusion-instrument__figure {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  justify-content: center;
+  min-height: 0;
+  line-height: 1;
+}
+
+.fusion-instrument__value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+  line-height: 0.92;
+  font-size: clamp(1.85rem, 5.6vh, 3.35rem);
+  transition: color 180ms ease, text-shadow 220ms ease, opacity 180ms ease;
+}
+
+.fusion-tg-hero-value.is-hot,
+.fusion-instrument--tg .fusion-instrument__value.is-hot {
+  color: var(--display-face-text);
+  text-shadow:
+    0 0 12px color-mix(in srgb, var(--display-face-text) 42%, transparent),
+    0 0 28px color-mix(in srgb, var(--display-face-text) 18%, transparent);
+}
+
+.fusion-tg-hero-value.is-ghost,
+.fusion-instrument--tg .fusion-instrument__value.is-ghost {
+  color: color-mix(in srgb, var(--display-face-text-muted) 55%, transparent);
+  text-shadow: none;
+}
+
+.fusion-prefill-hero-value--active,
+.fusion-prefill-hero-value.is-hot {
+  color: color-mix(in srgb, var(--display-face-text) 72%, #94a3b8);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--display-face-text) 22%, transparent);
+}
+
+.fusion-prefill-hero-value--idle,
+.fusion-prefill-hero-value.is-ghost {
+  color: color-mix(in srgb, var(--display-face-text-muted) 48%, transparent);
+  text-shadow: none;
+}
+
+.fusion-instrument__unit {
+  font-size: 7px;
+  letter-spacing: 0.12em;
+  color: color-mix(in srgb, var(--display-face-text-muted) 70%, transparent);
+  align-self: flex-end;
+  margin-bottom: 3px;
+  flex-shrink: 0;
+}
+
+/* Per-slot satellite */
+.fusion-per-slot-meter__value {
+  font-size: clamp(0.9rem, 2.4vh, 1.45rem);
+  font-variant-numeric: tabular-nums;
+  transition: color 160ms ease;
+}
+
+.fusion-per-slot-meter__value.is-hot {
+  color: color-mix(in srgb, var(--display-face-text) 92%, transparent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--display-face-text) 30%, transparent);
+}
+
+.fusion-per-slot-meter__value.is-ghost {
+  color: color-mix(in srgb, var(--display-face-text-muted) 40%, transparent);
+}
+
+.fusion-per-slot-meter__unit {
+  font-size: 6px;
+  letter-spacing: 0.12em;
+  margin-top: 2px;
+  color: color-mix(in srgb, var(--display-face-text-muted) 65%, transparent);
+}
+
+/* TG sparkline */
+.fusion-instrument__spark {
+  width: 100%;
+  height: 16px;
+  margin-top: 2px;
+  opacity: 0.9;
+}
+
+.fusion-hero-spark {
+  display: block;
+  width: 100%;
+  height: 100%;
+  color: color-mix(in srgb, var(--display-face-text-muted) 55%, transparent);
+}
+
+.fusion-hero-spark--active,
+.fusion-hero-spark--ink.fusion-hero-spark--active {
+  color: var(--display-face-text);
+}
+
+.fusion-hero-spark__line {
+  opacity: 0.92;
+}
+
+.fusion-hero-spark__area {
+  opacity: 0.85;
+}
+
+/* Micro instrument strip */
+.fusion-micro-readout--instrument {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 3px;
+  width: 100%;
+  min-width: 0;
+  margin-top: 3px;
+  overflow: hidden;
+  flex-wrap: nowrap;
+}
+
+.fusion-micro-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.fusion-micro-cell__label {
+  font-size: 5.5px;
+  letter-spacing: 0.14em;
+  line-height: 1;
+  color: color-mix(in srgb, var(--display-face-text-muted) 72%, transparent);
+}
+
+.fusion-micro-cell--idle .fusion-micro-cell__label {
+  opacity: 0.55;
+}
+
+.fusion-micro-cell__value {
+  font-size: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.fusion-micro-rule {
+  font-size: 7px;
+  line-height: 1;
+  padding-bottom: 1px;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+/* Tighten existing fixed cell widths for stacked label layout */
+.fusion-micro-readout--instrument .fusion-micro-tokens {
+  min-width: 7.5ch;
+}
+
+.fusion-micro-readout--instrument .fusion-micro-pp {
+  min-width: 5.5ch;
+}
+
+.fusion-micro-readout--instrument .fusion-micro-decode {
+  min-width: 5.5ch;
+}
+
+.fusion-micro-readout--instrument .fusion-micro-elapsed {
+  min-width: 6.5ch;
+}
+
+.fusion-micro-readout--instrument .fusion-micro-mtp {
+  min-width: 5ch;
+}
+
+.fusion-micro-readout--instrument .fusion-micro-mtp .fusion-micro-cell__value {
+  color: color-mix(in srgb, #fbbf24 88%, var(--display-face-text));
+}
+
+.fusion-micro-readout--instrument.is-idle .fusion-micro-mtp .fusion-micro-cell__value {
+  color: inherit;
+}
+
+/* PP progress */
+.fusion-pp-progress {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.fusion-pp-progress__track {
+  position: relative;
+  flex: 1;
+  height: 3px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--display-face-bar-bg) 80%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--display-face-border) 40%, transparent);
+}
+
+.fusion-pp-progress__fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--display-face-text) 55%, #94a3b8);
+  transition: width 120ms linear;
+}
+
+.fusion-pp-progress__fill.is-active {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, #f59e0b 70%, var(--display-face-text)),
+    color-mix(in srgb, #fbbf24 55%, var(--display-face-text))
+  );
+  box-shadow: 0 0 8px color-mix(in srgb, #f59e0b 35%, transparent);
+}
+
+.fusion-instrument__prompt-meta {
+  font-size: 7px;
+  letter-spacing: 0.04em;
+  height: 12px;
+  line-height: 12px;
+  color: color-mix(in srgb, var(--display-face-text-muted) 78%, transparent);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@keyframes fusion-instrument-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fusion-instrument,
+  .fusion-instrument__value,
+  .fusion-ops-chip,
+  .fusion-mode-seg__btn,
+  .fusion-pp-progress__fill {
+    transition: none !important;
+  }
+
+  .fusion-ops-chip--stop.is-stopping {
+    animation: none;
+  }
+}
+
+/* PHOSPHOR LIGHT — instrument wells + heroes on e-ink face */
+[data-display-texture="phosphor-light"] .fusion-instrument {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, #000 4%, transparent) 0%,
+      transparent 50%
+    ),
+    color-mix(in srgb, var(--display-face-light-bar-bg, #465a40) 10%, transparent);
+  border-color: color-mix(in srgb, var(--display-face-light-border, rgba(0, 0, 0, 0.18)) 70%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 55%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, #000 8%, transparent);
+}
+
+[data-display-texture="phosphor-light"] .fusion-instrument--live {
+  border-color: color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 35%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 60%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 12%, transparent);
+}
+
+[data-display-texture="phosphor-light"] .fusion-tg-hero-value.is-hot,
+[data-display-texture="phosphor-light"] .fusion-instrument--tg .fusion-instrument__value.is-hot {
+  color: var(--display-face-light-readout, #1e3a14);
+  text-shadow: none;
+}
+
+[data-display-texture="phosphor-light"] .fusion-prefill-hero-value--active,
+[data-display-texture="phosphor-light"] .fusion-prefill-hero-value.is-hot {
+  color: #4a5568;
+  text-shadow: none;
+}
+
+[data-display-texture="phosphor-light"] .fusion-prefill-hero-value--idle,
+[data-display-texture="phosphor-light"] .fusion-prefill-hero-value.is-ghost {
+  color: rgba(90, 100, 120, 0.38);
+}
+
+[data-display-texture="phosphor-light"] .fusion-instrument__phase--tg {
+  color: var(--display-face-light-readout, #1e3a14);
+  text-shadow: none;
+}
+
+[data-display-texture="phosphor-light"] .fusion-hero-spark--active {
+  color: var(--display-face-light-readout, #1e3a14);
+}
+
+[data-display-texture="phosphor-light"] .fusion-mode-seg__btn.is-active {
+  background: color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 14%, transparent);
+  color: var(--display-face-light-readout, #1e3a14);
+}
+
+[data-display-texture="phosphor-light"] .fusion-pp-progress__fill.is-active {
+  background: color-mix(in srgb, #b45309 70%, #1e3a14);
+  box-shadow: none;
+}
+
+/* Share capture — keep hero sizes pinned (existing rules); spark can hide for clean PNG */
+.fusion-share-capture-stage[data-fusion-share-capture] .fusion-instrument__spark {
+  opacity: 0.55;
+}
+
+.fusion-share-capture-stage[data-fusion-share-capture] .fusion-instrument {
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 5%, transparent);
+}

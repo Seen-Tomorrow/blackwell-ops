@@ -11,6 +11,14 @@ export type { FusionHeroTpsMode };
 export function useFusionHeroTpsMode() {
   const [mode, setMode] = useState<FusionHeroTpsMode>(loadFusionHeroTpsMode);
 
+  const setHeroMode = useCallback((next: FusionHeroTpsMode) => {
+    setMode((prev) => {
+      if (prev === next) return prev;
+      saveFusionHeroTpsMode(next);
+      return next;
+    });
+  }, []);
+
   const toggle = useCallback(() => {
     setMode((prev) => {
       const next: FusionHeroTpsMode = prev === "live" ? "avg" : "live";
@@ -19,5 +27,5 @@ export function useFusionHeroTpsMode() {
     });
   }, []);
 
-  return { mode, toggle };
+  return { mode, toggle, setMode: setHeroMode };
 }

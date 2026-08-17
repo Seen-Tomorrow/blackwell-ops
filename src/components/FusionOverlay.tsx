@@ -12,6 +12,8 @@ import FusionBooter from "./FusionBooter";
 import type { FusionShareLaunchConfig } from "../lib/fusionShareCapture";
 import FusionBenchTrayLatch from "./FusionBenchTrayLatch";
 import SlotCtxBars, { formatTokenCount, fusionSlotColumnLayout } from "./SlotCtxBars";
+import FusionHeroSparkline from "./FusionHeroSparkline";
+import FusionMicroReadout from "./FusionMicroReadout";
 import type { GpuInfo } from "../lib/types";
 import { useFusionBenchTray } from "../hooks/useFusionBenchTray";
 import { useFusionHeroTpsMode } from "../hooks/useFusionHeroTpsMode";
@@ -232,7 +234,7 @@ export default function FusionOverlay({
   const [, setBenchPortTick] = useState(0);
   useEffect(() => subscribeBenchPortStore(() => setBenchPortTick((n) => n + 1)), []);
   const benchPort = getBenchPortState(displayPort);
-  const { mode: heroTpsMode, toggle: toggleHeroTpsMode } = useFusionHeroTpsMode();
+  const { mode: heroTpsMode, setMode: setHeroTpsMode } = useFusionHeroTpsMode();
   const { open: benchTrayOpen, toggle: toggleBenchTray } = useFusionBenchTray();
 
   const handleCloseBenchResults = useCallback(() => {
@@ -589,36 +591,37 @@ export default function FusionOverlay({
       ) : (
         <div
           key="dashboard"
-          className="flex flex-col w-full h-full px-2 py-1 gap-0 overflow-hidden absolute inset-0"
-          style={{ animation: 'fadeIn 0.2s ease' }}
+          className="fusion-dashboard flex flex-col w-full h-full px-2 py-1 gap-0 overflow-hidden absolute inset-0"
+          style={{ animation: "fadeIn 0.2s ease" }}
         >
-          {/* ═══ HEADER — context slots + alias/stop (phase lives on TG block) ═══════ */}
-          <div className="flex items-center flex-shrink-0 mb-1 gap-2">
+          {/* ═══ IDENTITY RAIL ═══════════════════════════════════════════ */}
+          <div className="fusion-identity-rail flex items-center flex-shrink-0 mb-1 gap-2">
             <div className="flex items-center flex-1 min-w-0 justify-start gap-1.5">
-              <span className="text-[9px] font-mono text-stealth-muted/40 tracking-widest">
-                CONTEXT SLOTS
-              </span>
+              <span className="fusion-identity-rail__label">CONTEXT</span>
               {ctxTotal > 0 && (
                 <>
-                  <span className="text-[8px] font-mono text-stealth-muted/25 select-none">│</span>
+                  <span className="fusion-identity-rail__rule" aria-hidden>
+                    │
+                  </span>
                   <span
-                    className="text-[8px] font-mono text-stealth-muted/50 tracking-wider"
+                    className="fusion-identity-rail__meta"
                     title={
                       fusion.parallel > 1 && ctxPerSlot > 0
                         ? `${formatTokenCount(ctxTotal)} total · ${formatTokenCount(ctxPerSlot)} per slot`
                         : `${formatTokenCount(ctxTotal)} total context`
                     }
                   >
-                    {formatTokenCount(ctxTotal)} total
+                    {formatTokenCount(ctxTotal)}
+                    {fusion.parallel > 1 ? ` · ×${fusion.parallel}` : ""}
                   </span>
                 </>
               )}
             </div>
-            <div className="flex items-center gap-2 flex-1 min-w-0 justify-end">
-              <span className="text-[14px] font-mono text-stealth-muted/50 tracking-wider truncate" title={displayAlias}>
+            <div className="flex items-center gap-1.5 flex-1 min-w-0 justify-end">
+              <span className="fusion-identity-rail__alias truncate" title={displayAlias}>
                 {displayAlias.toUpperCase()}
               </span>
-              <span className="text-[12px] font-mono text-stealth-muted/30">:{displayPort}</span>
+              <span className="fusion-identity-rail__port">:{displayPort}</span>
               <button
                 type="button"
                 onClick={() => setQuietMode((q) => !q)}
@@ -627,11 +630,7 @@ export default function FusionOverlay({
                     ? "Quiet mode: /slots-derived PP + multi-slot TG (no stderr logs). Click for log-belt mode."
                     : "Log-belt mode: expects stderr print_timing/NewPrompt logs. Click for quiet (/slots-only) mode — use for silent models like DS4."
                 }
-                className={`text-[7px] font-bold tracking-wider px-1.5 py-0.5 rounded select-none ${
-                  quietMode
-                    ? "bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30"
-                    : "bg-black/20 text-stealth-muted/40 border border-stealth-border/30 hover:text-stealth-muted/70"
-                }`}
+                className={`fusion-ops-chip ${quietMode ? "fusion-ops-chip--quiet" : ""}`}
               >
                 {quietMode ? "QUIET" : "LOGS"}
               </button>
@@ -643,37 +642,28 @@ export default function FusionOverlay({
                     ? "Engine -lv 3 (default): print_timing / draft / eval belt, less boot spam. Applies on NEXT launch. Click for -lv 4 (full metadata belt)."
                     : "Engine -lv 4: full model_loader / slot chatter. Applies on NEXT launch. Click for -lv 3 (timing belt only)."
                 }
-                className={`text-[7px] font-bold tracking-wider px-1.5 py-0.5 rounded select-none ${
-                  logVerbosity === 4
-                    ? "bg-telemetry-cyan/15 text-telemetry-cyan border border-telemetry-cyan/40 hover:bg-telemetry-cyan/25"
-                    : "bg-black/20 text-stealth-muted/50 border border-stealth-border/30 hover:text-stealth-muted/80"
-                }`}
+                className={`fusion-ops-chip ${logVerbosity === 4 ? "fusion-ops-chip--lv" : ""}`}
               >
                 LV{logVerbosity}
               </button>
               <button
+                type="button"
                 onClick={handleStopEngine}
                 disabled={isStopping}
-                className={`text-[7px] font-bold tracking-wider px-1.5 py-0.5 rounded text-white select-none ${
-                  isStopping
-                    ? "bg-red-600/50 cursor-wait animate-pulse"
-                    : "bg-red-600/80 hover:bg-red-500 active:bg-red-700 cursor-pointer"
-                }`}
+                className={`fusion-ops-chip fusion-ops-chip--stop ${isStopping ? "is-stopping" : ""}`}
               >
                 {isStopping ? "STOPPING…" : "STOP"}
               </button>
             </div>
           </div>
 
-          {/* ═══ MAIN BODY — fixed-height hero row (PP progress slot always reserved) ═══ */}
+          {/* ═══ INSTRUMENT ROW — slots · TG · PP (fixed height) ═════════ */}
           <div
-            className="flex gap-2 flex-shrink-0 items-stretch"
+            className="fusion-instrument-row flex gap-2 flex-shrink-0 items-stretch"
             style={{ height: FUSION_HERO_ROW_PX, minHeight: FUSION_HERO_ROW_PX }}
           >
-
-            {/* ── LEFT: Slot CTX bars — 1–8 classic row; 9–32 multi-row bank (same bar language) ─── */}
             <div
-              className="flex-shrink-0 self-stretch min-h-0 min-w-0"
+              className="fusion-instrument-slots flex-shrink-0 self-stretch min-h-0 min-w-0"
               style={{ width: `${slotCol.widthPct}%`, minWidth: slotCol.minWidth }}
             >
               <SlotCtxBars
@@ -684,177 +674,157 @@ export default function FusionOverlay({
               />
             </div>
 
-            {/* ── RIGHT: TG hero + PREFILL side by side ─── */}
-            <div className="flex gap-3 flex-1 min-w-0">
-              {/* ── LEFT: TG TPS HERO (dominant) ─── */}
-              <div className={`flex flex-col items-center justify-start px-2 py-1.5 rounded-sm border transition-colors relative h-full min-h-0 ${
-                 !suppressTgHero && fusion.phase === "TG"
-                   ? "border-green-500/30 bg-black/8"
-                   : "border-stone-500/10 bg-black/4"
-               }`} style={{ flex: "1 1 45%", minWidth: 0 }}>
-                 {/* Per-agent rate — absolute top-right (slot count is on the CTX bank) */}
-                 {showPerSlotMeter && (
-                   <div
-                     className="fusion-per-slot-meter absolute top-1.5 right-2 z-[1] flex flex-col items-end leading-none select-none pointer-events-none"
-                     title={`Per-agent TG ≈ ${perSlotLabel ?? "—"} tok/s (system ÷ concurrent slots). Big number = total system throughput.`}
-                   >
-                     <span
-                       className="fusion-per-slot-meter__value font-mono font-bold tracking-tight"
-                       style={{
-                         fontSize: "clamp(0.95rem, 2.6vh, 1.55rem)",
-                         color: perSlotLabel
-                           ? "rgba(74, 222, 128, 0.92)"
-                           : "rgba(148, 163, 184, 0.28)",
-                       }}
-                     >
-                       {perSlotLabel ?? "--"}
-                     </span>
-                     <span className="text-[6px] font-mono tracking-wider text-stealth-muted/40 mt-0.5">
-                       /slot
-                     </span>
-                   </div>
-                 )}
+            <div className="fusion-instrument-meters flex gap-2 flex-1 min-w-0">
+              {/* ── TG INSTRUMENT ── */}
+              <div
+                className={`fusion-instrument fusion-instrument--tg relative h-full min-h-0 min-w-0 ${
+                  !suppressTgHero && fusion.phase === "TG"
+                    ? "fusion-instrument--live"
+                    : ""
+                } ${tgHeroActive ? "fusion-instrument--hot" : ""}`}
+                style={{ flex: "1 1 48%" }}
+                data-phase={
+                  isPrefillPhase ? "pp" : fusion.phase === "TG" ? "tg" : "idle"
+                }
+              >
+                {showPerSlotMeter && (
+                  <div
+                    className="fusion-per-slot-meter absolute top-1 right-1.5 z-[1] flex flex-col items-end leading-none select-none pointer-events-none"
+                    title={`Per-agent TG ≈ ${perSlotLabel ?? "—"} tok/s (system ÷ concurrent slots). Big number = total system throughput.`}
+                  >
+                    <span
+                      className={`fusion-per-slot-meter__value font-mono font-bold tracking-tight ${
+                        perSlotLabel ? "is-hot" : "is-ghost"
+                      }`}
+                    >
+                      {perSlotLabel ?? "--"}
+                    </span>
+                    <span className="fusion-per-slot-meter__unit">/slot</span>
+                  </div>
+                )}
 
-                 {/* Phase + LIVE/AVG — left of TG hero figure (was centered in header) */}
-                 <div className={`flex items-center gap-1.5 w-full mb-0.5 min-w-0 ${showPerSlotMeter ? "pr-14" : ""}`}>
-                   {isPrefillPhase ? (
-                     <span className="text-[7px] font-mono font-bold tracking-widest text-orange-400 flex-shrink-0">
-                       PROMPT PROCESSING
-                     </span>
-                   ) : fusion.phase === "IDLE" && fusion.engine_state !== "ACTIVE" ? (
-                     <span className="text-[7px] font-mono font-bold tracking-widest text-stealth-muted/60 flex-shrink-0">
-                       AWAITING REQUEST
-                     </span>
-                   ) : (
-                     <span
-                       className={`text-[7px] font-mono tracking-wider flex-shrink-0 ${
-                         fusion.phase === "TG"
-                           ? "font-bold text-nv-green tracking-widest"
-                           : "text-stealth-muted/40"
-                       }`}
-                     >
-                       GENERATION
-                     </span>
-                   )}
-                   <button
-                     type="button"
-                     onClick={toggleHeroTpsMode}
-                     title={heroTpsMode === "live" ? "Hero TPS: live (per chunk). Click for session average." : "Hero TPS: session average (bench). Click for live."}
-                     className="text-[6px] font-mono tracking-wider px-1 py-0.5 rounded-sm border border-stealth-border/50 text-stealth-muted/70 hover:text-white hover:border-stealth-muted/60 cursor-pointer select-none flex-shrink-0"
-                   >
-                     {heroTpsMode === "live" ? "LIVE" : "AVG"}
-                   </button>
-                 </div>
-
-                 {/* Big TG number — system aggregate; unit pinned bottom-right of the figure */}
-                 <div className="flex items-baseline gap-1">
-                   <span
-                     className="fusion-tg-hero-value font-mono font-bold tracking-tight leading-none"
-                     style={{
-                       fontSize: 'clamp(2rem, 6vh, 3.5rem)',
-                       color: tgHeroActive ? '#22c55e' : 'rgba(148,163,184,0.25)'
-                     }}
-                   >
-                     {tgHeroDisplay}
-                   </span>
-                   <span className="text-[7px] font-mono text-stealth-muted/30 tracking-wider self-end mb-0.5">
-                     tok/s
-                   </span>
-                 </div>
-
-                {/* Per-request micro-stats — latched + fixed-width cells (no jitter on multi-slot idle gaps) */}
-                 <div className="flex items-center justify-center w-full min-w-0 gap-x-1 mt-1.5 overflow-hidden flex-nowrap fusion-micro-readout">
-                   <span
-                     className={`fusion-micro-stat-cell fusion-micro-tokens text-[7px] font-mono ${microReadoutLive ? "fusion-readout-emphasis" : "fusion-readout-idle"}`}
-                   >
-                     {microTokenText}
-                   </span>
-                   <span className={`text-[6px] flex-shrink-0 ${microReadoutLive ? "fusion-readout-divider" : "fusion-readout-divider-idle"}`}>│</span>
-                   <span
-                     className={`fusion-micro-stat-cell fusion-micro-pp text-[7px] font-mono ${microReadoutLive ? "fusion-readout-emphasis" : "fusion-readout-idle"}`}
-                     title="Prompt prefill duration"
-                   >
-                     PP {microLatch.prefillMs ?? "--"}
-                   </span>
-                   <span className={`text-[6px] flex-shrink-0 ${microReadoutLive ? "fusion-readout-divider" : "fusion-readout-divider-idle"}`}>│</span>
-                   <span
-                     className={`fusion-micro-stat-cell fusion-micro-decode text-[7px] font-mono ${microReadoutLive ? "fusion-readout-emphasis" : "fusion-readout-idle"}`}
-                     title="First output token after prefill"
-                   >
-                     +1st {microLatch.decodeTtftMs ?? "--"}
-                   </span>
-                   <span className={`text-[6px] flex-shrink-0 ${microReadoutLive ? "fusion-readout-divider" : "fusion-readout-divider-idle"}`}>│</span>
-                   <span className={`fusion-micro-stat-cell fusion-micro-elapsed text-[7px] font-mono ${microReadoutLive ? "fusion-readout-emphasis" : "fusion-readout-idle"}`}>
-                     ELAPSED {microLatch.elapsedMs}
-                   </span>
-                   {(specSlotActive || mtpAcceptPct != null) && mtpAcceptPct != null && (
-                     <>
-                       <span className={`text-[6px] flex-shrink-0 ${microReadoutLive ? "fusion-readout-divider" : "fusion-readout-divider-idle"}`}>│</span>
-                       <span
-                         className={`text-[7px] font-mono flex-shrink-0 whitespace-nowrap ${microReadoutLive ? "text-amber-300/90" : "fusion-readout-idle"}`}
-                         title={mtpAcceptTitle}
-                       >
-                         MTP {mtpAcceptPct}%
-                       </span>
-                     </>
-                   )}
-                 </div>
-
-                 {/* Bench warmup overlay — TEMP DISABLED */}
-                 {/* {isBenchWarmup && (
-                   <div className="absolute inset-0 flex items-center justify-center rounded-sm z-10" style={{ backgroundColor: '#3d3d3d' }}>
-                     <p className="text-xl font-mono animate-pulse" style={{ color: '#22c55e' }}>WARMING UP</p>
-                   </div>
-                 )} */}
-               </div>
-
-              {/* ── RIGHT: PREFILL (secondary) — use logPrefillTps as primary, fallback to /metrics ─── */}
-              <div className={`flex flex-col items-center justify-start px-2 py-1.5 rounded-sm border transition-colors h-full min-h-0 ${
-                !suppressPrefillHero && isPrefillPhase
-                  ? "border-stealth-muted/30 bg-black/8"
-                  : "border-stone-500/10 bg-black/4"
-              }`} style={{ flex: "1 1 35%", minWidth: 0 }}>
-                <div className="flex items-center justify-between w-full mb-0.5 gap-1">
-                  <span className="text-[7px] font-mono text-stealth-muted/40 tracking-wider">PREFILL</span>
+                <div
+                  className={`fusion-instrument__chrome flex items-center gap-1.5 w-full min-w-0 ${
+                    showPerSlotMeter ? "pr-12" : ""
+                  }`}
+                >
+                  <span
+                    className={`fusion-instrument__phase ${
+                      isPrefillPhase
+                        ? "fusion-instrument__phase--pp"
+                        : fusion.phase === "TG"
+                          ? "fusion-instrument__phase--tg"
+                          : fusion.phase === "IDLE" && fusion.engine_state !== "ACTIVE"
+                            ? "fusion-instrument__phase--idle"
+                            : "fusion-instrument__phase--tg-dim"
+                    }`}
+                  >
+                    {isPrefillPhase
+                      ? "PROMPT PROCESSING"
+                      : fusion.phase === "IDLE" && fusion.engine_state !== "ACTIVE"
+                        ? "AWAITING REQUEST"
+                        : "GENERATION"}
+                  </span>
+                  <div className="fusion-mode-seg" role="group" aria-label="Hero TPS mode">
+                    <button
+                      type="button"
+                      onClick={() => setHeroTpsMode("live")}
+                      title="Hero TPS: live (per chunk)"
+                      className={`fusion-mode-seg__btn ${heroTpsMode === "live" ? "is-active" : ""}`}
+                    >
+                      LIVE
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHeroTpsMode("avg")}
+                      title="Hero TPS: session average (bench)"
+                      className={`fusion-mode-seg__btn ${heroTpsMode === "avg" ? "is-active" : ""}`}
+                    >
+                      AVG
+                    </button>
+                  </div>
                 </div>
 
-                {/* PP TPS number — primary value from log parser, fallback to /metrics */}
-                <div className="flex items-baseline gap-1">
+                <div className="fusion-instrument__figure">
                   <span
-                    className={`fusion-prefill-hero-value font-mono font-bold tracking-tight leading-none ${
-                      ppHeroActive
-                        ? "fusion-prefill-hero-value--active"
-                        : "fusion-prefill-hero-value--idle"
+                    className={`fusion-tg-hero-value fusion-instrument__value ${
+                      tgHeroActive ? "is-hot" : "is-ghost"
                     }`}
-                    style={{ fontSize: "clamp(2rem, 6vh, 3.5rem)" }}
+                  >
+                    {tgHeroDisplay}
+                  </span>
+                  <span className="fusion-instrument__unit">tok/s</span>
+                </div>
+
+                <div className="fusion-instrument__spark">
+                  <FusionHeroSparkline
+                    value={!suppressTgHero && tgTpsLive > 0 ? tgTpsLive : 0}
+                    active={tgHeroActive && fusion.phase === "TG"}
+                  />
+                </div>
+
+                <FusionMicroReadout
+                  live={microReadoutLive}
+                  tokensText={microTokenText}
+                  prefillMs={microLatch.prefillMs}
+                  decodeTtftMs={microLatch.decodeTtftMs}
+                  elapsedMs={microLatch.elapsedMs}
+                  mtpAcceptPct={
+                    (specSlotActive || mtpAcceptPct != null) && mtpAcceptPct != null
+                      ? mtpAcceptPct
+                      : null
+                  }
+                  mtpAcceptTitle={mtpAcceptTitle}
+                />
+              </div>
+
+              {/* ── PP INSTRUMENT ── */}
+              <div
+                className={`fusion-instrument fusion-instrument--pp h-full min-h-0 min-w-0 ${
+                  !suppressPrefillHero && isPrefillPhase ? "fusion-instrument--live" : ""
+                } ${ppHeroActive ? "fusion-instrument--hot" : ""}`}
+                style={{ flex: "1 1 36%" }}
+                data-phase={isPrefillPhase ? "pp" : "idle"}
+              >
+                <div className="fusion-instrument__chrome flex items-center justify-between w-full gap-1">
+                  <span className="fusion-instrument__phase fusion-instrument__phase--pp-label">
+                    PREFILL
+                  </span>
+                  {showPrefillProgress && (
+                    <span className="fusion-instrument__pct fusion-readout-emphasis">
+                      {(primaryPrefillProgress * 100).toFixed(0)}%
+                    </span>
+                  )}
+                </div>
+
+                <div className="fusion-instrument__figure">
+                  <span
+                    className={`fusion-prefill-hero-value fusion-instrument__value ${
+                      ppHeroActive
+                        ? "fusion-prefill-hero-value--active is-hot"
+                        : "fusion-prefill-hero-value--idle is-ghost"
+                    }`}
                   >
                     {ppHeroDisplay}
                   </span>
-                  <span className="text-[7px] font-mono text-stealth-muted/30 tracking-wider">tok/s</span>
+                  <span className="fusion-instrument__unit">tok/s</span>
                 </div>
 
-                {/* PP progress + prompt row — fixed height so hero row never shifts */}
-                <div className="flex flex-col justify-end flex-1 w-full min-h-0 mt-auto">
+                <div className="fusion-instrument__pp-foot flex flex-col justify-end flex-1 w-full min-h-0 mt-auto">
                   <div
-                    className="flex items-center gap-1 w-full h-[18px] flex-shrink-0"
+                    className="fusion-pp-progress"
                     style={{ visibility: showPrefillProgress ? "visible" : "hidden" }}
                     aria-hidden={!showPrefillProgress}
                   >
-                    <div className="flex-1 h-1 rounded-full bg-black/20 overflow-hidden relative">
+                    <div className="fusion-pp-progress__track">
                       <div
-                        className="h-full rounded-full absolute left-0 top-0"
-                        style={{
-                          width: `${(primaryPrefillProgress ?? 0) * 100}%`,
-                          backgroundColor: "rgba(148,163,184,0.7)",
-                        }}
+                        className={`fusion-pp-progress__fill${isPrefillPhase ? " is-active" : ""}`}
+                        style={{ width: `${(primaryPrefillProgress ?? 0) * 100}%` }}
                       />
                     </div>
-                    <span className="text-[12px] font-mono fusion-readout-emphasis flex-shrink-0">
-                      {(primaryPrefillProgress * 100).toFixed(0)}%
-                    </span>
                   </div>
                   <span
-                    className="text-[7px] font-mono text-stealth-muted/40 h-[14px] leading-[14px] flex-shrink-0"
+                    className="fusion-instrument__prompt-meta"
                     title="Prompt tokens processed / estimated task size"
                     style={{
                       visibility:
@@ -862,7 +832,9 @@ export default function FusionOverlay({
                           ? "visible"
                           : "hidden",
                     }}
-                    aria-hidden={suppressPrefillHero || !isPrefillPhase || primaryPrefillTokens <= 0}
+                    aria-hidden={
+                      suppressPrefillHero || !isPrefillPhase || primaryPrefillTokens <= 0
+                    }
                   >
                     {primaryPrefillTokens > 0
                       ? prefillTotal > 0 && primaryPrefillTokens < prefillTotal
@@ -902,9 +874,7 @@ export default function FusionOverlay({
                     shareGpus: gpus,
                     shareGpuMask: gpuMask,
                     shareSplitMode: launchConfig?.splitMode,
-                    tgTps:
-                      benchHero.tg ??
-                      (tgTpsPick > 0 ? tgTpsPick : null),
+                    tgTps: benchHero.tg ?? (tgTpsPick > 0 ? tgTpsPick : null),
                   }}
                   benchHw={{
                     gpus,
