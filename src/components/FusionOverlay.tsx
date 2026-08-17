@@ -446,12 +446,14 @@ export default function FusionOverlay({
   const MAX_HERO_TPS = 200_000;
   const clampHeroTps = (n: number) => (n > 0 && n <= MAX_HERO_TPS ? n : 0);
 
+  const ppTpsAvg = clampHeroTps(fusion.prefillTpsSession ?? 0);
   const ppTpsLive = clampHeroTps(Math.max(
     fusion.prefillTpsInstant ?? 0,
     fusion.logPrefillTps ?? 0,
   ));
-  const ppTpsAvg = clampHeroTps(fusion.prefillTpsSession ?? 0);
-  const ppTpsPick = heroTpsMode === "avg" ? ppTpsAvg : ppTpsLive;
+  // Default hero mode is AVG, but AVG is 0 until a long wall / print_timing.
+  // Show the live /slots rate until AVG exists; print_timing then replaces it.
+  const ppTpsPick = heroTpsMode === "avg" && ppTpsAvg > 0 ? ppTpsAvg : ppTpsLive;
   const ppTpsValue =
     ppTpsPick > 0
       ? ppTpsPick.toFixed(0)

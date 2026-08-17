@@ -137,35 +137,38 @@ fn parse_prometheus_text(text: &str) -> Result<MetricsSnapshot, String> {
             continue;
         }
 
-        // Format: "llamacpp:key_name value" — split on last space
+        // Format: "llamacpp:key value" or "llamacpp_key value"; ignore {labels}.
         if let Some(space_idx) = line.rfind(' ') {
-            let key = &line[..space_idx];
+            let raw_key = &line[..space_idx];
+            let key = raw_key.split('{').next().unwrap_or(raw_key);
             let val_str = &line[space_idx + 1..];
 
             match key {
-                "llamacpp:prompt_tokens_total" => {
+                "llamacpp:prompt_tokens_total" | "llamacpp_prompt_tokens_total" => {
                     prompt_tokens_total = parse_usize(val_str);
                 }
-                "llamacpp:prompt_seconds_total" => {
+                "llamacpp:prompt_seconds_total" | "llamacpp_prompt_seconds_total" => {
                     prompt_seconds_total = parse_f64(val_str);
                 }
-                "llamacpp:tokens_predicted_total" => {
+                "llamacpp:tokens_predicted_total" | "llamacpp_tokens_predicted_total" => {
                     predicted_tokens_total = parse_usize(val_str);
                 }
-                "llamacpp:prompt_tokens_seconds" => {
+                "llamacpp:prompt_tokens_seconds" | "llamacpp_prompt_tokens_seconds" => {
                     prompt_tps_gauge = parse_f64(val_str);
                 }
-                "llamacpp:requests_processing" => {
+                "llamacpp:requests_processing" | "llamacpp_requests_processing" => {
                     requests_processing = parse_usize(val_str);
                 }
-                // Gen TPS gauge (name varies slightly across versions)
-                "llamacpp:predicted_tokens_seconds" | "llamacpp:tokens_predicted_seconds" => {
+                "llamacpp:predicted_tokens_seconds"
+                | "llamacpp:tokens_predicted_seconds"
+                | "llamacpp_predicted_tokens_seconds"
+                | "llamacpp_tokens_predicted_seconds" => {
                     predicted_tps_gauge = parse_f64(val_str);
                 }
-                "llamacpp:n_decode_total" => {
+                "llamacpp:n_decode_total" | "llamacpp_n_decode_total" => {
                     n_decode_total = parse_usize(val_str);
                 }
-                "llamacpp:n_busy_slots_total" => {
+                "llamacpp:n_busy_slots_total" | "llamacpp_n_busy_slots_total" => {
                     n_busy_slots_total = parse_usize(val_str);
                 }
                 _ => {}
@@ -192,3 +195,22 @@ fn parse_usize(s: &str) -> Option<usize> {
 fn parse_f64(s: &str) -> Option<f64> {
     s.trim().parse::<f64>().ok()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_colon_and_underscore_metric_names() {
+        let colon = parse_prometheus_text("llamacpp:prompt_tokens_total 100\nllamacpp:prompt_tokens_seconds 50.5\n")
+            .unwrap();
+        assert_eq!(colon.prompt_tokens_total, 100);
+        assert!((colon.prompt_tps_gauge - 50.5).abs() < f64::EPSILON);
+
+        let under = parse_prometheus_text("llamacpp_prompt_tokens_total 200\nllamacpp_prompt_tokens_seconds 75\n")
+            .unwrap();
+        assert_eq!(under.prompt_tokens_total, 200);
+        assert!((under.prompt_tps_gauge - 75.0).abs() < f64::EPSILON);
+    }
+}
+

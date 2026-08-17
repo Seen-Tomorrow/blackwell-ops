@@ -425,7 +425,8 @@ impl FusionBrain {
         if self.parallel_meter.is_parallel(self.busy_slot_count(slots)) {
             return;
         }
-        let pp_active = self.pp_burst_active(slots);
+        // ×1 log-belt: parallel_wave_ready is false, so do not require it here.
+        let pp_active = self.pp_prefill_active(slots);
         if pp_active {
             if self.pp_burst_started_at.is_none() {
                 self.pp_burst_started_at = Some(Instant::now());
@@ -447,15 +448,20 @@ impl FusionBrain {
         }
         let mut total_ms = self.pp_completed_ms;
         let mut total_tokens = self.pp_completed_tokens;
-        if self.pp_burst_active(slots) {
-            if let Some(start) = self.pp_burst_started_at {
+        let live = self.pp_prefill_active(slots) && !self.request_closed;
+        if live || self.pp_burst_started_at.is_some() {
+            if let Some(start) = self.pp_burst_started_at.or(self.request_start) {
                 total_ms += start.elapsed().as_millis() as u64;
             }
-            let peak = prefill_tokens.max(self.pp_burst_peak_tokens) as u64;
+            let peak = prefill_tokens
+                .max(self.pp_burst_peak_tokens)
+                .max(self.aggregate_prefill_work_tokens(slots)) as u64;
             total_tokens = self.pp_completed_tokens.saturating_add(peak);
         }
-        if total_ms >= MIN_PP_SESSION_AVG_MS && total_tokens > 0 {
-            meter::session_avg_tps(total_tokens, total_ms, MIN_PP_SESSION_AVG_MS)
+        // 10s gate is for folding tiny agent bursts. Live PP must number immediately.
+        let min_ms = if live { 200 } else { MIN_PP_SESSION_AVG_MS };
+        if total_ms >= min_ms && total_tokens > 0 {
+            meter::session_avg_tps(total_tokens, total_ms, min_ms)
         } else {
             0.0
         }
@@ -809,8 +815,6 @@ impl FusionBrain {
     fn any_busy_slot_prefilling(&self, slots: &[crate::fusion::poller::SlotData]) -> bool {
         slots.iter().any(|s| self.slot_prefill_in_progress(s))
     }
-
-    /// Sum `n_prompt_tokens_processed` across busy slots (64× concurrent prefill).
     fn aggregate_prefill_work_tokens(&self, slots: &[crate::fusion::poller::SlotData]) -> usize {
         if self.adapter.slots_expose_prompt_processed() {
             let sum = self.slot_bank.aggregate_prefill_work_tokens(slots, 0);
@@ -820,6 +824,7 @@ impl FusionBrain {
         }
         self.prefill_tokens.max(self.lp_prompt_tokens)
     }
+
 
     /// TG AVG/LIVE window — multi-slot waits until every busy slot exits PP.
     /// No-log-belt engines: open once any slot is decoding (decode on a slot means it left PP);
@@ -1149,9 +1154,15 @@ impl FusionBrain {
             if dt >= MIN_INSTANT_TPS_DT_SEC {
                 if tokens > self.prev_instant_prefill_tokens {
                     let delta = tokens - self.prev_instant_prefill_tokens;
-                    // First sample after reset often jumps by full cache size in one poll.
+                    // First sample after reset often jumps by full cache size in one poll dt.
+                    // During PP use the request clock so the hero is not `--` until print_timing.
                     if self.prev_instant_prefill_tokens > 0 || delta <= MAX_INSTANT_TOKEN_JUMP {
                         self.apply_pp_instant_from_poll(delta as f64 / dt, now);
+                    } else if let Some(start) = self.request_start {
+                        let elapsed = now.duration_since(start).as_secs_f64();
+                        if elapsed >= 0.08 {
+                            self.apply_pp_instant_from_poll(tokens as f64 / elapsed, now);
+                        }
                     }
                 }
                 if gen_request_tokens > self.prev_instant_gen_decoded {
@@ -1789,13 +1800,17 @@ impl FusionBrain {
             if *progress > self.prefill_progress {
                 self.prefill_progress = *progress;
             }
+            if self.prefill_tokens_total == 0 && *progress > 0.0 {
+                let total = ((*n_tokens as f64) / *progress).round() as usize;
+                if total > 0 {
+                    self.prefill_tokens_total = total;
+                }
+            }
             if !self.aggregate_tps_mode() {
                 self.lp_prefill_tps = *pp_tps;
                 if *pp_tps > 0.0 {
-                    let log_tps = clamp_display_tps(*pp_tps);
-                    if log_tps > self.prefill_tps_instant {
-                        self.prefill_tps_instant = log_tps;
-                    }
+                    // Engine cumulative rate is the precise LIVE — replace the /slots estimate.
+                    self.prefill_tps_instant = clamp_display_tps(*pp_tps);
                     self.prefill_tps_log_at = Some(Instant::now());
                 }
             }
@@ -2022,7 +2037,7 @@ impl FusionBrain {
             }
         }
 
-        // Prefill TPS from prompt_tokens_total delta
+        // Prefill TPS from prompt_tokens_total delta (lifetime counter — not this-request).
         if pt_delta > 0 && dt_sec > 0.01 {
             self.prefill_tps = pt_delta as f64 / dt_sec;
             self.log_request_open = true;
@@ -2034,6 +2049,7 @@ impl FusionBrain {
                 self.prompt_tokens = pt_delta;
             }
         }
+
 
         // Phase PP↔TG is decided in process_slots. TTFT is captured there on first real decode
         // (per-request n_decoded) — not from predicted_tokens_total, which is cumulative and often
@@ -2134,14 +2150,16 @@ impl FusionBrain {
         }
     }
 
-    /// Per-slot prompt target for the current request — log `prefill_tokens_total` when a belt exists,
-    /// otherwise the running peak `n_prompt_tokens` (prompt.tokens.size() grows during eval → final size).
+    /// Per-slot prompt target. Log `prefill_tokens_total` (NewPrompt / print_timing) wins.
+    /// Before that, use the running `/slots` peak so the hero is not `--` for the first ~3s
+    /// while llama withholds `print_timing`. Peak is provisional — `n_prompt_tokens` grows
+    /// during eval and is replaced when the belt reports `task.n_tokens`.
     /// Returns `None` when no usable denominator is known yet.
     fn request_prompt_total(&self, slots: &[crate::fusion::poller::SlotData]) -> Option<usize> {
         if self.prefill_tokens_total > 0 {
             return Some(self.prefill_tokens_total);
         }
-        if self.has_log_belt || !self.adapter.slots_expose_prompt_processed() {
+        if !self.adapter.slots_expose_prompt_processed() {
             return None;
         }
         // Sum per-slot peaks (each busy slot carries its own prompt in the wave).
@@ -2706,11 +2724,11 @@ impl FusionBrain {
 
         let (prefill_progress, prefill_tokens) = self.merged_prefill_display(slots);
 
-        // PP hero AVG: cumulative PP wall across bursts — not tokens/request_elapsed (spikes on SWA/file cadence).
+        // PP hero AVG: poll wall is the early estimate. print_timing / eval overwrite — they are precise.
         let mut prefill_tps_session = self.pp_session_avg_tps(slots, prefill_tokens);
-        if prefill_tps_session <= 0.0 && self.prefill_tps_eval > 0.0 {
+        if self.prefill_tps_eval > 0.0 {
             prefill_tps_session = self.prefill_tps_eval;
-        } else if prefill_tps_session <= 0.0 && !parallel_lane && self.lp_prefill_tps > 0.0 {
+        } else if !parallel_lane && self.lp_prefill_tps > 0.0 {
             prefill_tps_session = clamp_display_tps(self.lp_prefill_tps);
         } else if prefill_tps_session <= 0.0 && parallel_lane && self.prefill_tps_instant > 0.0 {
             prefill_tps_session = self.prefill_tps_instant;
@@ -3083,11 +3101,18 @@ mod tests {
         assert!((prog - 0.50).abs() < 0.01, "progress = {prog}");
         assert_eq!(tokens, 576);
 
-        // A log-belt engine must NOT synthesize a total from /slots.
+        // Log-belt with no NewPrompt yet: same provisional peak so the hero is not `--`.
         let mut master = brain;
         master.has_log_belt = true;
+        master.adapter = FusionAdapterId::GgmlMaster;
+        master.prefill_tokens_total = 0;
         let mslots = vec![slot(0, true, 512, 256)];
-        assert!(master.request_prompt_total(&mslots).is_none());
+        master.process_slots(&mslots);
+        assert_eq!(master.request_prompt_total(&mslots), Some(512));
+
+        // NewPrompt / print_timing total wins over the peak estimate.
+        master.prefill_tokens_total = 1000;
+        assert_eq!(master.request_prompt_total(&mslots), Some(1000));
     }
 
     #[test]
@@ -3100,15 +3125,47 @@ mod tests {
     }
 
     #[test]
+    fn print_timing_pp_infers_total_and_overwrites_instant() {
+        let mut brain = FusionBrain::new(&quiet_config());
+        brain.has_log_belt = true;
+        brain.adapter = FusionAdapterId::GgmlMaster;
+        brain.prefill_tps_instant = 30_000.0; // /slots estimate
+        brain.handle_print_timing_pp(&crate::fusion::log::LogEvent::PrintTimingPP {
+            slot_id: 0,
+            task_id: 37,
+            n_tokens: 65536,
+            progress: 0.66,
+            elapsed_s: 3.11,
+            pp_tps: 21_049.76,
+        });
+        assert_eq!(brain.prefill_tokens_total, 99_297); // 65536 / 0.66
+        assert!((brain.prefill_tps_instant - 21_049.76).abs() < 1.0);
+        assert!((brain.lp_prefill_tps - 21_049.76).abs() < 0.01);
+    }
+
+
+    #[test]
+    fn live_pp_avg_does_not_wait_ten_seconds() {
+        let mut brain = FusionBrain::new(&quiet_config());
+        brain.has_log_belt = true;
+        brain.adapter = FusionAdapterId::GgmlMaster;
+        brain.phase = InferencePhase::PP;
+        brain.request_closed = false;
+        let slots = vec![slot(0, true, 8192, 4096)];
+        brain.process_slots(&slots);
+        brain.pp_burst_started_at = Some(std::time::Instant::now() - std::time::Duration::from_millis(250));
+        brain.pp_burst_peak_tokens = 4096;
+        let avg = brain.pp_session_avg_tps(&slots, 4096);
+        assert!(avg > 0.0, "avg={avg}");
+    }
+
+    #[test]
     fn quiet_adapter_no_log_belt_relaxes_decode_wall() {
         let mut meter = ParallelMeter::default();
-        // Simulate a wave peak of 8 with only 1 slot observed busy (staggered multi-slot).
         meter.observe_wave(8, 1);
         let now = std::time::Instant::now();
-        // Tolerant (no log belt): decode wall starts with any decode even at busy=1.
         meter.note_decode_wave(now, 1, true, false, true);
         assert!(meter.decode_wall_at().is_some());
-        // Non-tolerant (log belt): busy=1 must not start the wall.
         let mut strict = ParallelMeter::default();
         strict.observe_wave(8, 1);
         strict.note_decode_wave(now, 1, true, false, false);

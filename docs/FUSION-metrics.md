@@ -159,7 +159,7 @@ Wired: stderr + fusion-relevant stdout → `parse_and_route_log_event` → `rout
 | `PrintTimingGen` | `n_decoded, tg = X t/s` | `handle_print_timing_gen` | **Yes** — LP + instant TG TPS only |
 | `StopProcessing` | `stop processing` | `handle_stop_processing` | **Yes** — idle + reset (guarded by slots in metrics path) |
 
-**Known server quirk:** `print_timing` PP is skipped when prefill &lt; ~3 s → logs alone miss short PP; `/slots` + `cached n_tokens` cover that (ggml-master). Tom relies on stdout `PromptProcessingProgress` at `-lv 3`.
+**Known server quirk:** `print_timing` PP is skipped for the first ~3 s (then every `n_batch`). Hero uses provisional `/slots` peak + poll TPS immediately; `print_timing` / `prompt eval` overwrite as the precise rate. Tom relies on stdout `PromptProcessingProgress` at `-lv 3`.
 
 **`lp_phase` / `logPhase`:** Updated by log handlers for **SlotLogPanel**; hero banner uses fused `phase`, not `logPhase`.
 
