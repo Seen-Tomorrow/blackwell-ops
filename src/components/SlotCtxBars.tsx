@@ -11,8 +11,13 @@ interface SlotCtxBarsProps {
 interface SlotBarData {
   index: number;
   isProcessing: boolean;
+  speculative: boolean;
   pct: number;
   capacity: number;
+  sessionDecoded: number;
+  promptTokens: number;
+  promptProcessed: number;
+  nRemain: number | null;
 }
 
 /**
@@ -24,9 +29,6 @@ const BARS_PER_ROW = 8;
 const MAX_INDIVIDUAL_SLOTS = 32;
 
 const equalBarStyle = { flex: "1 1 0%" } as const;
-
-const outlineChip =
-  "ctx-bar-capacity-chip text-[6px] font-mono tracking-wider px-1 py-0.5 rounded-sm border bg-transparent";
 
 export function formatTokenCount(n: number): string {
   // Binary K/M (÷1024) — matches the app's own `750k` → 750×1024 = 768,000 token
@@ -73,12 +75,17 @@ function buildSlotBarData(
   return Array.from({ length: numSlots }, (_, i) => {
     const slot = slotCtx.find((s) => s.id === i);
     const capacity = slotCapacity(slot, ctxPerSlot, ctxTotal);
-    const { pct } = slotUsage(slot, capacity);
+    const { pct, tokenBase } = slotUsage(slot, capacity);
     return {
       index: i,
       isProcessing: slot?.is_processing ?? false,
+      speculative: slot?.speculative ?? false,
       pct,
       capacity,
+      sessionDecoded: tokenBase,
+      promptTokens: slot?.promptTokens ?? 0,
+      promptProcessed: slot?.promptTokensProcessed ?? 0,
+      nRemain: slot?.nRemain != null && slot.nRemain >= 0 ? slot.nRemain : null,
     };
   });
 }
@@ -90,17 +97,40 @@ function aggregateSlotBarData(
 ) {
   let maxPct = 0;
   let anyProcessing = false;
+  let anySpec = false;
   let inUse = 0;
   let peakCapacity = ctxPerSlot > 0 ? ctxPerSlot : ctxTotal;
+  let totalDecoded = 0;
   for (const slot of slotCtx) {
     const capacity = slotCapacity(slot, ctxPerSlot, ctxTotal);
     peakCapacity = Math.max(peakCapacity, capacity);
-    const { pct } = slotUsage(slot, capacity);
+    const { pct, tokenBase } = slotUsage(slot, capacity);
+    totalDecoded += tokenBase;
     if (pct > 0 || slot.is_processing) inUse += 1;
     maxPct = Math.max(maxPct, pct);
     anyProcessing = anyProcessing || slot.is_processing;
+    anySpec = anySpec || Boolean(slot.speculative);
   }
-  return { maxPct, anyProcessing, inUse, peakCapacity };
+  return { maxPct, anyProcessing, anySpec, inUse, peakCapacity, totalDecoded };
+}
+
+function slotTooltip(slot: SlotBarData): string {
+  const parts = [
+    `S${slot.index + 1}`,
+    `${Math.round(slot.pct)}% of ${formatTokenCount(slot.capacity)}`,
+  ];
+  if (slot.sessionDecoded > 0) parts.push(`${slot.sessionDecoded.toLocaleString()} gen tok`);
+  if (slot.promptTokens > 0) {
+    parts.push(
+      slot.promptProcessed > 0 && slot.promptProcessed < slot.promptTokens
+        ? `pp ${slot.promptProcessed.toLocaleString()}/${slot.promptTokens.toLocaleString()}`
+        : `pp ${slot.promptTokens.toLocaleString()}`,
+    );
+  }
+  if (slot.nRemain != null) parts.push(`remain ${slot.nRemain.toLocaleString()}`);
+  if (slot.speculative) parts.push("spec");
+  if (slot.isProcessing) parts.push("live");
+  return parts.join(" · ");
 }
 
 function pctTitle(pct: number, capacity: number, slotLabel?: string): string | undefined {
@@ -120,6 +150,7 @@ function BarTrack({
   pct,
   isProcessing,
   isActive,
+  speculative,
   emptyLabel,
   fillTitle,
   dense,
@@ -127,15 +158,16 @@ function BarTrack({
   pct: number;
   isProcessing: boolean;
   isActive: boolean;
+  speculative?: boolean;
   emptyLabel?: ReactNode;
   fillTitle?: string;
   dense?: boolean;
 }) {
   return (
     <div
-      className={`ctx-bar-track flex-1 min-h-0 w-full rounded-sm overflow-hidden relative ${
+      className={`ctx-bar-track flex-1 min-h-0 w-full overflow-hidden relative ${
         isActive ? "ctx-bar-track--active" : "ctx-bar-track--empty"
-      }`}
+      }${speculative ? " ctx-bar-track--spec" : ""}${isProcessing ? " ctx-bar-track--live" : ""}`}
       title={fillTitle}
     >
       {emptyLabel && pct <= 0 && (
@@ -173,15 +205,16 @@ function BarTrack({
       )}
       {pct > 0 && (
         <div
-          className={`ctx-bar-fill absolute bottom-0 left-0 right-0 rounded-sm z-[1] ${
+          className={`ctx-bar-fill absolute bottom-0 left-0 right-0 z-[1] ${
             isProcessing ? "ctx-bar-fill--processing" : "ctx-bar-fill--idle"
-          }`}
+          }${speculative ? " ctx-bar-fill--spec" : ""}`}
           style={{
             height: `${pct}%`,
             transition: "height 0.3s ease",
           }}
         />
       )}
+      {speculative && <span className="ctx-bar-spec-tick" aria-hidden />}
     </div>
   );
 }
@@ -201,12 +234,16 @@ export default function SlotCtxBars({ slotCtx, ctxTotal, ctxPerSlot, parallel }:
 
   const aggregate = useAggregate ? aggregateSlotBarData(slotCtx, ctxPerSlot, ctxTotal) : null;
 
+  const activeCount = slots
+    ? slots.filter((s) => s.pct > 0 || s.isProcessing).length
+    : aggregate?.inUse ?? 0;
+  const perSlotBudget = ctxPerSlot > 0 ? ctxPerSlot : ctxTotal;
+  const bankLive = slots?.some((s) => s.isProcessing) || aggregate?.anyProcessing;
+
   const bankTitle =
     slots != null
-      ? `${numSlots} slots · ${formatTokenCount(ctxPerSlot > 0 ? ctxPerSlot : ctxTotal)} per slot`
-        + (slots.filter((s) => s.pct > 0 || s.isProcessing).length > 0
-          ? ` · ${slots.filter((s) => s.pct > 0 || s.isProcessing).length} active`
-          : "")
+      ? `${numSlots} slots · ${formatTokenCount(perSlotBudget)} per slot`
+        + (activeCount > 0 ? ` · ${activeCount} active` : "")
       : undefined;
 
   const compactTitle = aggregate
@@ -218,7 +255,6 @@ export default function SlotCtxBars({ slotCtx, ctxTotal, ctxPerSlot, parallel }:
   const renderIndividualBars = () => {
     if (!slots) return null;
 
-    // Classic single-row 1–8 (pixel-identical structure)
     if (!dense) {
       return (
         <>
@@ -228,13 +264,14 @@ export default function SlotCtxBars({ slotCtx, ctxTotal, ctxPerSlot, parallel }:
                 <BarTrack
                   pct={slot.pct}
                   isProcessing={slot.isProcessing}
-                  isActive={slot.isProcessing}
+                  isActive={slot.isProcessing || slot.pct > 0}
+                  speculative={slot.speculative}
                   emptyLabel={
-                    <span className={`inline-block ${outlineChip}`}>
+                    <span className="ctx-bar-capacity-chip fusion-slot-cap-chip">
                       {formatTokenCount(slot.capacity)}
                     </span>
                   }
-                  fillTitle={pctTitle(slot.pct, slot.capacity, `S${slot.index + 1}`)}
+                  fillTitle={slotTooltip(slot)}
                 />
               </div>
             ))}
@@ -247,7 +284,12 @@ export default function SlotCtxBars({ slotCtx, ctxTotal, ctxPerSlot, parallel }:
                 className="flex flex-col items-center min-w-0"
                 style={equalBarStyle}
               >
-                <span className="ctx-bar-slot-label text-[7px] font-mono px-1 py-0.5 rounded-sm leading-none">
+                <span
+                  className={`ctx-bar-slot-label text-[7px] font-mono px-1 py-0.5 rounded-sm leading-none${
+                    slot.isProcessing ? " ctx-bar-slot-label--live" : ""
+                  }${slot.speculative ? " ctx-bar-slot-label--spec" : ""}`}
+                  title={slotTooltip(slot)}
+                >
                   S{slot.index + 1}
                 </span>
               </div>
@@ -257,7 +299,6 @@ export default function SlotCtxBars({ slotCtx, ctxTotal, ctxPerSlot, parallel }:
       );
     }
 
-    // 9–32: same bars, multi-row bank (8 per row) — heroes stay full glory on the right
     const rows = chunkSlots(slots, BARS_PER_ROW);
 
     return (
@@ -277,29 +318,26 @@ export default function SlotCtxBars({ slotCtx, ctxTotal, ctxPerSlot, parallel }:
                 key={slot.index}
                 className="flex flex-col min-w-0 h-full gap-px"
                 style={equalBarStyle}
-                title={
-                  pctTitle(slot.pct, slot.capacity, `S${slot.index + 1}`)
-                  ?? `S${slot.index + 1} · ${formatTokenCount(slot.capacity)} budget`
-                }
+                title={slotTooltip(slot)}
               >
                 <BarTrack
                   pct={slot.pct}
                   isProcessing={slot.isProcessing}
-                  isActive={slot.isProcessing}
+                  isActive={slot.isProcessing || slot.pct > 0}
+                  speculative={slot.speculative}
                   dense
-                  fillTitle={pctTitle(slot.pct, slot.capacity, `S${slot.index + 1}`)}
+                  fillTitle={slotTooltip(slot)}
                 />
                 <span
                   className={`ctx-bar-slot-label text-center font-mono leading-none rounded-sm flex-shrink-0 ${
                     slot.isProcessing ? "ctx-bar-slot-label--live" : ""
-                  }`}
+                  }${slot.speculative ? " ctx-bar-slot-label--spec" : ""}`}
                   style={{ fontSize: numSlots > 16 ? 5 : 6, padding: "1px 0" }}
                 >
                   {slot.index + 1}
                 </span>
               </div>
             ))}
-            {/* Pad incomplete last row so bar widths match full rows */}
             {row.length < BARS_PER_ROW &&
               Array.from({ length: BARS_PER_ROW - row.length }, (_, pad) => (
                 <div key={`pad-${pad}`} className="min-w-0" style={equalBarStyle} aria-hidden />
@@ -321,8 +359,9 @@ export default function SlotCtxBars({ slotCtx, ctxTotal, ctxPerSlot, parallel }:
               pct={aggregate.maxPct}
               isProcessing={aggregate.anyProcessing}
               isActive
+              speculative={aggregate.anySpec}
               emptyLabel={
-                <span className={`inline-block ${outlineChip}`}>
+                <span className="ctx-bar-capacity-chip fusion-slot-cap-chip">
                   {formatTokenCount(aggregate.peakCapacity)}/slot
                 </span>
               }
@@ -337,6 +376,7 @@ export default function SlotCtxBars({ slotCtx, ctxTotal, ctxPerSlot, parallel }:
             title={compactTitle}
           >
             ×{numSlots}
+            {aggregate.inUse > 0 ? ` · ${aggregate.inUse}` : ""}
           </span>
         </div>
       </>
@@ -344,9 +384,22 @@ export default function SlotCtxBars({ slotCtx, ctxTotal, ctxPerSlot, parallel }:
   };
 
   return (
-    <div className="flex w-full h-full min-h-0">
-      <div className="flex flex-col flex-1 min-w-0 h-full min-h-0">
-        {useAggregate ? renderCompactBars() : renderIndividualBars()}
+    <div
+      className={`fusion-slot-bank flex w-full h-full min-h-0${bankLive ? " fusion-slot-bank--live" : ""}`}
+      title={bankTitle ?? compactTitle}
+    >
+      <div className="fusion-slot-bank__well flex flex-col flex-1 min-w-0 h-full min-h-0">
+        <div className="fusion-slot-bank__chrome flex items-center justify-between gap-1 flex-shrink-0">
+          <span className="fusion-slot-bank__title">SLOTS</span>
+          <span className="fusion-slot-bank__meta">
+            ×{numSlots}
+            {perSlotBudget > 0 ? ` · ${formatTokenCount(perSlotBudget)}` : ""}
+            {activeCount > 0 ? ` · ${activeCount}↑` : ""}
+          </span>
+        </div>
+        <div className="fusion-slot-bank__body flex flex-col flex-1 min-h-0 min-w-0">
+          {useAggregate ? renderCompactBars() : renderIndividualBars()}
+        </div>
       </div>
     </div>
   );

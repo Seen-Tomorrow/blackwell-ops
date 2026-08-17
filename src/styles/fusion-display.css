@@ -1571,10 +1571,18 @@
   gap: 6px;
   flex-shrink: 0;
   padding: 3px 8px 3px 6px;
-  border-radius: 2px;
-  border: 1px solid color-mix(in srgb, var(--theme-border-subtle, rgba(120, 113, 108, 0.2)) 80%, transparent);
-  background: color-mix(in srgb, var(--theme-bg, #000) 55%, transparent);
-  box-shadow: inset 0 1px 3px var(--theme-bench-inset-shadow, rgba(0, 0, 0, 0.35));
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--display-face-border, var(--theme-border-subtle, rgba(120, 113, 108, 0.2))) 80%, transparent);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, #fff 5%, transparent) 0%,
+      transparent 70%
+    ),
+    color-mix(in srgb, var(--theme-bg, #000) 55%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 6%, transparent),
+    inset 0 1px 3px var(--theme-bench-inset-shadow, rgba(0, 0, 0, 0.35));
 }
 
 .fusion-bench-latch:hover .fusion-bench-latch__core {
@@ -3482,4 +3490,325 @@ html[data-industrial-bezel="brush"] {
 
 .fusion-share-capture-stage[data-fusion-share-capture] .fusion-instrument {
   box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 5%, transparent);
+}
+
+/* ══ Slot bank instrument ═══════════════════════════════════════════════════ */
+
+.fusion-slot-bank {
+  min-width: 0;
+}
+
+.fusion-slot-bank__well {
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.35)) 70%, transparent);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, #fff 4%, transparent) 0%,
+      transparent 28%
+    ),
+    color-mix(in srgb, var(--display-face-bar-bg, rgba(0, 0, 0, 0.35)) 55%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 6%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, #000 35%, transparent);
+  padding: 3px 4px 2px;
+}
+
+.fusion-slot-bank--live .fusion-slot-bank__well {
+  border-color: color-mix(in srgb, #22c55e 38%, var(--display-face-border, rgba(148, 163, 184, 0.35)));
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 7%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, #000 30%, transparent),
+    0 0 0 1px color-mix(in srgb, #22c55e 18%, transparent),
+    0 0 10px color-mix(in srgb, #22c55e 12%, transparent);
+}
+
+.fusion-slot-bank__chrome {
+  min-height: 11px;
+  margin-bottom: 2px;
+  padding: 0 1px;
+}
+
+.fusion-slot-bank__title,
+.fusion-slot-bank__meta,
+.fusion-bench-row-label,
+.fusion-bench-metric__label,
+.fusion-bench-running__text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.fusion-slot-bank__title {
+  font-size: 6.5px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  line-height: 1;
+  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 88%, transparent);
+}
+
+.fusion-slot-bank__meta {
+  font-size: 6px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 72%, transparent);
+}
+
+.fusion-slot-bank__body {
+  min-height: 0;
+}
+
+.ctx-bar-track {
+  border-radius: 2px;
+}
+
+.ctx-bar-track--live {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #22c55e 28%, transparent);
+}
+
+.ctx-bar-track--spec {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #f59e0b 30%, transparent);
+}
+
+.ctx-bar-track--live.ctx-bar-track--spec {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, #22c55e 28%, transparent),
+    0 0 6px color-mix(in srgb, #f59e0b 18%, transparent);
+}
+
+.ctx-bar-fill--processing {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, #4ade80 92%, #fff) 0%,
+      #22c55e 55%,
+      color-mix(in srgb, #16a34a 90%, #000) 100%
+    );
+  box-shadow: 0 0 8px color-mix(in srgb, #22c55e 35%, transparent);
+}
+
+.ctx-bar-fill--spec {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, #fbbf24 88%, #fff) 0%,
+      #f59e0b 60%,
+      color-mix(in srgb, #d97706 90%, #000) 100%
+    );
+}
+
+.ctx-bar-spec-tick {
+  position: absolute;
+  top: 0;
+  left: 15%;
+  right: 15%;
+  height: 2px;
+  border-radius: 0 0 1px 1px;
+  background: color-mix(in srgb, #fbbf24 85%, transparent);
+  box-shadow: 0 0 4px color-mix(in srgb, #f59e0b 55%, transparent);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.ctx-bar-slot-label--spec {
+  color: color-mix(in srgb, #fbbf24 90%, var(--display-face-text, #e2e8f0));
+}
+
+.ctx-bar-slot-label--live.ctx-bar-slot-label--spec {
+  color: #fde68a;
+  box-shadow: 0 0 6px color-mix(in srgb, #f59e0b 40%, transparent);
+}
+
+.fusion-slot-cap-chip {
+  font-size: 6px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.1;
+  padding: 1px 2px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-bg, #0b1220) 40%, transparent);
+}
+
+/* ══ Bench instrument tray ══════════════════════════════════════════════════ */
+
+.fusion-bench-panel.bench-widget-panel {
+  border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.35)) 65%, transparent);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, #fff 3.5%, transparent) 0%,
+      transparent 40%
+    ),
+    color-mix(in srgb, var(--display-face-bar-bg, rgba(0, 0, 0, 0.28)) 48%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 5%, transparent),
+    inset 0 -1px 2px color-mix(in srgb, #000 28%, transparent);
+}
+
+.fusion-bench-controls {
+  gap: 1px;
+}
+
+.fusion-bench-row-label {
+  flex: 0 0 auto;
+  min-width: 2.6rem;
+  margin-right: auto;
+  font-size: 6px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  line-height: 1;
+  color: color-mix(in srgb, var(--display-face-control-muted, var(--display-face-text-muted, #94a3b8)) 92%, transparent);
+}
+
+.fusion-bench-chip {
+  border-radius: 2px;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.fusion-bench-run {
+  border: 1px solid color-mix(in srgb, #22c55e 48%, transparent);
+  background: color-mix(in srgb, #22c55e 16%, transparent);
+  color: #86efac;
+  letter-spacing: 0.12em;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.fusion-bench-run:hover:not(:disabled) {
+  background: color-mix(in srgb, #22c55e 28%, transparent);
+  border-color: color-mix(in srgb, #4ade80 60%, transparent);
+  color: #bbf7d0;
+}
+
+.fusion-bench-stop {
+  border: 1px solid color-mix(in srgb, #ef4444 55%, transparent);
+  background: color-mix(in srgb, #dc2626 78%, transparent);
+  color: #fff;
+  letter-spacing: 0.12em;
+}
+
+.fusion-bench-stop:hover:not(:disabled) {
+  background: color-mix(in srgb, #ef4444 88%, transparent);
+}
+
+.fusion-bench-stop:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.fusion-bench-toggle {
+  letter-spacing: 0.04em;
+}
+
+.fusion-bench-toggle--on {
+  box-shadow: 0 0 0 1px color-mix(in srgb, #22c55e 35%, transparent);
+}
+
+.fusion-bench-running {
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.4)) 70%, transparent);
+  background: color-mix(in srgb, var(--display-face-bar-bg, rgba(0, 0, 0, 0.4)) 55%, transparent);
+  margin-bottom: 2px;
+}
+
+.fusion-bench-running__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  background: #4ade80;
+  box-shadow: 0 0 6px color-mix(in srgb, #22c55e 55%, transparent);
+  animation: fusion-instrument-pulse 1.1s ease-in-out infinite;
+}
+
+.fusion-bench-running__text {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 88%, transparent);
+}
+
+.fusion-bench-result {
+  border-radius: 3px;
+  padding: 2px 3px 1px;
+  border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.35)) 55%, transparent);
+  background: color-mix(in srgb, var(--theme-bg, #0b1220) 22%, transparent);
+}
+
+.fusion-bench-result--tg {
+  border-color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 18%, transparent);
+}
+
+.fusion-bench-result--pp {
+  border-color: color-mix(in srgb, #f59e0b 22%, transparent);
+}
+
+.fusion-bench-metric {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.fusion-bench-metric__label {
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  line-height: 1;
+  color: color-mix(in srgb, var(--display-face-control-muted, var(--display-face-text-muted, #94a3b8)) 90%, transparent);
+  margin-bottom: 1px;
+}
+
+.fusion-bench-metric__value {
+  font-variant-numeric: tabular-nums;
+}
+
+.fusion-bench-metric__unit {
+  margin-top: 1px;
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 75%, transparent);
+}
+
+/* (bench tray latch keeps .fusion-bench-latch — share-strip + layout margins) */
+
+/* Phosphor light — slot/bench instruments */
+[data-display-texture="phosphor-light"] .fusion-slot-bank__well,
+[data-display-texture="phosphor-light"] .fusion-bench-panel.bench-widget-panel {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, #fff 55%, transparent) 0%,
+      color-mix(in srgb, var(--display-face-light-surface, #e8e4d8) 70%, transparent) 100%
+    );
+  border-color: color-mix(in srgb, var(--display-face-light-ctx-track-border, #9ca38a) 70%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 70%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, #000 8%, transparent);
+}
+
+[data-display-texture="phosphor-light"] .fusion-slot-bank--live .fusion-slot-bank__well {
+  border-color: color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 40%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 70%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 18%, transparent);
+}
+
+[data-display-texture="phosphor-light"] .fusion-slot-bank__title,
+[data-display-texture="phosphor-light"] .fusion-bench-row-label,
+[data-display-texture="phosphor-light"] .fusion-bench-metric__label {
+  color: color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 55%, transparent);
+}
+
+[data-display-texture="phosphor-light"] .fusion-bench-run {
+  background: color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 12%, transparent);
+  border-color: color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 35%, transparent);
+  color: var(--display-face-light-readout, #1e3a14);
+}
+
+[data-display-texture="phosphor-light"] .ctx-bar-fill--processing {
+  background: var(--display-face-light-ctx-fill-processing, #3f6b2a);
+  box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fusion-bench-running__dot {
+    animation: none;
+  }
 }

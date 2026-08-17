@@ -525,17 +525,17 @@ export default function BenchWidget({
     (ps.sessionMode === "pp" || ps.sessionMode === "both") && Boolean(ps.ppResult) && !ps.ppRunning;
   const hasResults = showTgResults || showPpResults;
 
-  const chipBtnClass = (active: boolean, disabled: boolean) =>
-    `value-chip ${active ? "value-chip-active" : ""} whitespace-nowrap focus:outline-none cursor-pointer select-none disabled:opacity-30`;
+  const chipBtnClass = (active: boolean, _disabled: boolean) =>
+    `value-chip fusion-bench-chip ${active ? "value-chip-active" : ""} whitespace-nowrap focus:outline-none cursor-pointer select-none disabled:opacity-30`;
 
-  const concurrencyChipClass = (active: boolean, disabled: boolean) =>
-    `bench-concurrency-chip value-chip ${active ? "value-chip-active" : ""} whitespace-nowrap focus:outline-none cursor-pointer select-none disabled:opacity-30`;
+  const concurrencyChipClass = (active: boolean, _disabled: boolean) =>
+    `bench-concurrency-chip value-chip fusion-bench-chip ${active ? "value-chip-active" : ""} whitespace-nowrap focus:outline-none cursor-pointer select-none disabled:opacity-30`;
 
-  const runBtnClass = (disabled: boolean) =>
-    `text-[7px] font-bold tracking-wider px-1.5 py-0.5 rounded bg-green-600/80 hover:bg-green-500 active:bg-green-700 text-white cursor-pointer select-none disabled:opacity-30`;
+  const runBtnClass = (_disabled: boolean) =>
+    "fusion-bench-run text-[7px] font-bold tracking-wider px-1.5 py-0.5 rounded cursor-pointer select-none disabled:opacity-30";
 
   const stopBtnClass =
-    "text-[7px] font-bold tracking-wider px-1.5 py-0.5 rounded bg-red-700/85 hover:bg-red-600 active:bg-red-800 text-white cursor-pointer select-none flex-shrink-0";
+    "fusion-bench-stop text-[7px] font-bold tracking-wider px-1.5 py-0.5 rounded cursor-pointer select-none flex-shrink-0";
 
   const closeResults = () => {
     ps.showResults = false;
@@ -639,7 +639,7 @@ export default function BenchWidget({
 
   return (
       <div
-        className={`bench-widget-panel w-full h-full rounded-sm flex flex-col overflow-hidden flex-shrink-0 ${isCompact ? "p-1" : "p-1.5"}`}
+        className={`bench-widget-panel fusion-bench-panel w-full h-full rounded-sm flex flex-col overflow-hidden flex-shrink-0 ${isCompact ? "p-1" : "p-1.5"}`}
         data-bench-dual-results={dualBenchLayout ? "" : undefined}
         style={{
           height: panelHeight,
@@ -650,9 +650,9 @@ export default function BenchWidget({
         }}
       >
         {!isAnyRunning && !ps.showResults && (
-          <div className="mt-auto flex flex-col flex-shrink-0">
+          <div className="fusion-bench-controls mt-auto flex flex-col flex-shrink-0">
             <div className={benchRowClass}>
-              <span className="text-[6px] font-mono text-stealth-muted/40 tracking-wider flex-shrink-0 mr-0.5">TG</span>
+              <span className="fusion-bench-row-label">TG</span>
               {BENCH_TG_PREDICT_OPTIONS.map((tok) => (
                 <button
                   key={tok}
@@ -673,7 +673,7 @@ export default function BenchWidget({
             </div>
 
             <div className={benchRowClass}>
-              <span className="text-[6px] font-mono text-stealth-muted/40 tracking-wider flex-shrink-0 mr-0.5">PP</span>
+              <span className="fusion-bench-row-label">PP</span>
               {BENCH_PP_TOKEN_OPTIONS.map((tok) => {
                 const overCtx = !ppChipAllowed(tok);
                 const disabled = isAnyRunning || overCtx;
@@ -711,16 +711,14 @@ export default function BenchWidget({
             </div>
 
             <div className={benchRowClass}>
-              <span className="text-[6px] font-mono text-stealth-muted/40 tracking-wider flex-shrink-0 mr-0.5">
-                WARMUP
-              </span>
+              <span className="fusion-bench-row-label">WARMUP</span>
               <button
                 type="button"
                 onClick={toggleTgWarmup}
                 disabled={isAnyRunning}
                 title={tgWarmupTitle}
-                className={`bench-muted-btn px-1.5 py-0.5 text-[6px] font-mono rounded-sm focus:outline-none cursor-pointer select-none disabled:opacity-30 flex-shrink-0 ${
-                  ps.tgWarmupEnabled ? "text-yellow-400/90" : "text-stealth-muted/55"
+                className={`bench-muted-btn fusion-bench-toggle px-1.5 py-0.5 text-[6px] font-mono rounded-sm focus:outline-none cursor-pointer select-none disabled:opacity-30 flex-shrink-0 ${
+                  ps.tgWarmupEnabled ? "fusion-bench-toggle--on" : ""
                 }`}
               >
                 {ps.tgWarmupEnabled ? "ON" : "OFF"}
@@ -728,7 +726,7 @@ export default function BenchWidget({
               <button
                 onClick={cyclePromptMode}
                 disabled={isAnyRunning}
-                className="bench-muted-btn px-1 py-0.5 text-[6px] font-mono rounded-sm focus:outline-none cursor-pointer select-none disabled:opacity-30"
+                className="bench-muted-btn fusion-bench-toggle px-1 py-0.5 text-[6px] font-mono rounded-sm focus:outline-none cursor-pointer select-none disabled:opacity-30"
                 title={
                   ps.promptMode === "unique"
                     ? "Unique: diverse technical vocabulary (512-tok prefill, token-calibrated). TG decode is temp-0 continuation."
@@ -749,10 +747,10 @@ export default function BenchWidget({
 
             <div className={benchRowClass}>
               <span
-                className="text-[6px] font-mono text-stealth-muted/40 tracking-wider flex-shrink-0 mr-0.5"
+                className="fusion-bench-row-label"
                 title={BENCH_CONCURRENCY_HELP}
               >
-                CONCURRENCY
+                CONCUR
               </span>
               {BENCH_TG_PARALLEL_OPTIONS.map((n) => (
                 <button
@@ -774,10 +772,10 @@ export default function BenchWidget({
              <div className="bench-results-body flex flex-row items-start gap-x-1 px-1 flex-shrink-0">
                <div className={`flex flex-col flex-1 min-w-0${dualBenchLayout ? " gap-y-2.5" : ""}`}>
                {isAnyRunning && (
-                 <div className="flex items-center justify-between gap-1.5 px-1 py-0.5">
+                 <div className="fusion-bench-running flex items-center justify-between gap-1.5 px-1 py-0.5">
                    <div className="flex items-center gap-1.5 min-w-0">
-                     <span className="inline-block w-1 h-1 bg-yellow-400 rounded-full animate-pulse flex-shrink-0" />
-                     <span className="text-[7px] font-mono text-stealth-muted truncate">
+                     <span className="fusion-bench-running__dot" aria-hidden />
+                     <span className="fusion-bench-running__text text-[7px] font-mono truncate">
                        {stopPending
                          ? "Stopping…"
                          : ps.tgRunning
@@ -803,57 +801,94 @@ export default function BenchWidget({
                  </div>
                )}
 
-               {showTgResults && ps.tgResult?.success && (
-                  <div className={benchResultGridClass()}>
-                    <div>
-                      <p className={`${benchLabelClass} font-mono text-stealth-muted uppercase tracking-wider`}>REQUEST LENGTH</p>
-                      <p className={`font-mono fusion-readout-emphasis leading-none ${benchValueClass}`}>{ps.tgResult.gen_tokens}</p>
-                      <p className={`${benchUnitClass} font-mono text-stealth-muted/50 uppercase`}>
-                        {ps.promptMode}
+               {showTgResults && ps.tgResult?.success && (() => {
+                 const tg = ps.tgResult!;
+                 const par = tg.parallel_requests ?? 1;
+                 const multi = par > 1;
+                 const systemTps = multi && tg.aggregate_gen_tps && tg.aggregate_gen_tps > 0
+                   ? tg.aggregate_gen_tps
+                   : tg.gen_tps;
+                 const perReq = multi
+                   ? (tg.per_request_gen_tps && tg.per_request_gen_tps > 0
+                     ? tg.per_request_gen_tps
+                     : systemTps / par)
+                   : null;
+                 const itl = multi && perReq && perReq > 0
+                   ? 1000 / perReq
+                   : tg.itl_ms;
+                 return (
+                  <div className={`${benchResultGridClass()} fusion-bench-result fusion-bench-result--tg`}>
+                    <div className="fusion-bench-metric">
+                      <p className={`${benchLabelClass} fusion-bench-metric__label`}>DECODE</p>
+                      <p className={`font-mono fusion-readout-emphasis leading-none fusion-bench-metric__value ${benchValueClass}`}>{tg.gen_tokens}</p>
+                      <p className={`${benchUnitClass} fusion-bench-metric__unit`}>
+                        {tg.prompt_tokens > 0
+                          ? `${tg.prompt_tokens.toLocaleString()} pp · ${ps.promptMode}`
+                          : ps.promptMode}
                       </p>
                     </div>
-                    <div>
-                      <p className={`${benchLabelClass} font-mono text-stealth-muted uppercase tracking-wider`}>GENERATION</p>
-                      <p className={`font-mono fusion-readout-emphasis leading-none ${benchValueClass}`}>{ps.tgResult.gen_tps.toFixed(1)}</p>
+                    <div className="fusion-bench-metric">
+                      <p className={`${benchLabelClass} fusion-bench-metric__label`}>{multi ? "SYSTEM" : "GENERATION"}</p>
+                      <p className={`font-mono fusion-readout-emphasis leading-none fusion-bench-metric__value ${benchValueClass}`}>{systemTps.toFixed(1)}</p>
                       <div className="bench-result-unit-slot">
-                        <BenchConcurrencyBadge
-                          parallel={ps.tgResult.parallel_requests ?? 1}
-                          compact={dualResults}
-                        />
+                        {multi ? (
+                          <BenchConcurrencyBadge
+                            parallel={par}
+                            compact={dualResults}
+                          />
+                        ) : (
+                          <p className={`${benchUnitClass} fusion-bench-metric__unit`}>
+                            {tg.prompt_tps > 0 ? `tok/s · pp ${tg.prompt_tps.toFixed(0)}` : "tok/s"}
+                          </p>
+                        )}
                       </div>
                     </div>
-                    <div>
-                      <p className={`${benchLabelClass} font-mono text-stealth-muted uppercase tracking-wider`}>ITL</p>
-                      <p className={`font-mono fusion-readout-emphasis leading-none ${benchValueClass}`}>
-                        {((ps.tgResult.parallel_requests ?? 1) > 1 && ps.tgResult.per_request_gen_tps)
-                          ? (1000 / ps.tgResult.per_request_gen_tps).toFixed(2)
-                          : ps.tgResult.itl_ms.toFixed(2)}
+                    <div className="fusion-bench-metric">
+                      <p className={`${benchLabelClass} fusion-bench-metric__label`}>{multi ? "/REQ" : "ITL"}</p>
+                      <p className={`font-mono fusion-readout-emphasis leading-none fusion-bench-metric__value ${benchValueClass}`}>
+                        {multi && perReq != null ? perReq.toFixed(1) : itl.toFixed(2)}
                       </p>
-                      <p className={`${benchUnitClass} font-mono text-stealth-muted/50`}>
-                        {(ps.tgResult.parallel_requests ?? 1) > 1 ? "req ms" : "ms"}
+                      <p className={`${benchUnitClass} fusion-bench-metric__unit`}>
+                        {multi ? `${itl.toFixed(2)} ms itl` : "ms"}
                       </p>
                     </div>
                   </div>
-              )}
+                 );
+               })()}
 
-              {showPpResults && ps.ppResult?.success && (
-                  <div className={benchResultGridClass()}>
-                    <div>
-                      <p className={`${benchLabelClass} font-mono text-stealth-muted uppercase tracking-wider`}>TOKENS</p>
-                      <p className={`font-mono fusion-readout-emphasis leading-none ${benchValueClass}`}>
-                        {ps.ppResult.bench_prompt_tokens_actual.toLocaleString()}
+              {showPpResults && ps.ppResult?.success && (() => {
+                const pp = ps.ppResult!;
+                const ppMs = pp.bench_prefill_tps > 0 && pp.bench_prompt_tokens_actual > 0
+                  ? (pp.bench_prompt_tokens_actual / pp.bench_prefill_tps) * 1000
+                  : null;
+                return (
+                  <div className={`${benchResultGridClass()} fusion-bench-result fusion-bench-result--pp`}>
+                    <div className="fusion-bench-metric">
+                      <p className={`${benchLabelClass} fusion-bench-metric__label`}>TOKENS</p>
+                      <p className={`font-mono fusion-readout-emphasis leading-none fusion-bench-metric__value ${benchValueClass}`}>
+                        {pp.bench_prompt_tokens_actual.toLocaleString()}
                       </p>
-                      <p className={`${benchUnitClass} font-mono text-stealth-muted/50`}>prompt tok</p>
+                      <p className={`${benchUnitClass} fusion-bench-metric__unit`}>prompt tok</p>
                     </div>
-                    <div>
-                      <p className={`${benchLabelClass} font-mono text-stealth-muted uppercase tracking-wider`}>PREFILL</p>
-                      <p className={`font-mono fusion-readout-emphasis leading-none ${benchValueClass}`}>
-                        {ps.ppResult.bench_prefill_tps.toFixed(1)}
+                    <div className="fusion-bench-metric">
+                      <p className={`${benchLabelClass} fusion-bench-metric__label`}>PREFILL</p>
+                      <p className={`font-mono fusion-readout-emphasis leading-none fusion-bench-metric__value ${benchValueClass}`}>
+                        {pp.bench_prefill_tps.toFixed(1)}
                       </p>
-                      <p className={`${benchUnitClass} font-mono text-stealth-muted/50`}>tok/s</p>
+                      <p className={`${benchUnitClass} fusion-bench-metric__unit`}>tok/s</p>
                     </div>
+                    {ppMs != null && (
+                      <div className="fusion-bench-metric">
+                        <p className={`${benchLabelClass} fusion-bench-metric__label`}>WALL</p>
+                        <p className={`font-mono fusion-readout-emphasis leading-none fusion-bench-metric__value ${benchValueClass}`}>
+                          {ppMs >= 1000 ? `${(ppMs / 1000).toFixed(2)}s` : `${ppMs.toFixed(0)}ms`}
+                        </p>
+                        <p className={`${benchUnitClass} fusion-bench-metric__unit`}>duration</p>
+                      </div>
+                    )}
                   </div>
-              )}
+                );
+              })()}
              </div>
 
              {showResultsSidebar && (

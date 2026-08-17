@@ -44,7 +44,7 @@
 - Content hierarchy:
   1. Identity + ops (alias, port, QUIET/LV/STOP)
   2. Hero triad: context slot bank · TG instrument · PP instrument
-  3. Bench tray (unchanged contract)
+  3. Bench tray — instrument controls + metric-cell results
 
 ## Design principles
 - Principle 1: **One dominant number** — TG system throughput owns the eye; PP is peer but cooler; per-slot is satellite.
@@ -69,13 +69,13 @@
 ## Components
 - Existing components to reuse:
   - `FusionOverlay` (state/math owner)
-  - `SlotCtxBars` (slot bank)
-  - `FusionBenchTrayLatch` + `BenchWidget`
+  - `SlotCtxBars` — instrument slot bank (chrome + speculative/live ticks)
+  - `FusionBenchTrayLatch` + `BenchWidget` — instrument controls/results
   - Share classes: `.fusion-tg-hero-value`, `.fusion-prefill-hero-value`, `.fusion-per-slot-meter`, `.fusion-per-slot-meter__value`, micro-stat cells
 - New/changed components:
   - `FusionHeroSparkline` — TG live history waveform
   - `FusionMicroReadout` — latched precision strip (label/value cells)
-  - CSS cluster `.fusion-instrument*` in `fusion-display.css`
+  - CSS cluster `.fusion-instrument*` / `.fusion-slot-bank*` / `.fusion-bench-*` in `fusion-display.css`
 - Variants and states: idle / pp-active / tg-active / suppressed (`--`) / parallel per-slot visible / micro live vs latched idle
 - Token/component ownership:
   - Presentation tokens in CSS using existing `--display-face-*` + `--theme-*`
@@ -119,3 +119,4 @@
 ## Open questions
 - [ ] Optional later: secondary spark history for PP (space-limited now).
 - [ ] Optional later: retire unused `FusionTpsDisplay` / `FusionPhaseBadge` / `FusionFuelTank` dead leaves.
+- [x] Slot bank + bench tray restyled to instrument language; surface unused fields (speculative, prompt_tps, aggregate/per-req, PP wall).
