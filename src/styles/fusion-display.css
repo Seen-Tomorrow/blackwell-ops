@@ -3646,14 +3646,81 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-bench-controls {
+  display: grid;
+  grid-template-columns: minmax(4.5rem, 0.34fr) minmax(0, 1fr);
+  gap: 6px;
+  align-items: stretch;
+  width: 100%;
+  min-height: 0;
+}
+
+.fusion-bench-controls--solo {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Reserved left bay — armed recipe / last-run later */
+.fusion-bench-controls__bay {
+  border-radius: 3px;
+  border: 1px dashed color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.35)) 55%, transparent);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, #fff 2.5%, transparent) 0%,
+      transparent 55%
+    ),
+    color-mix(in srgb, var(--theme-bg, #0b1220) 28%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 4%, transparent);
+  min-width: 0;
+  min-height: 0;
+}
+
+.fusion-bench-controls__table {
+  display: flex;
+  flex-direction: column;
   gap: 1px;
+  min-width: 0;
+  justify-content: center;
+}
+
+.fusion-bench-table__row {
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr) 3rem;
+  align-items: center;
+  column-gap: 4px;
+  height: var(--bench-control-row-h, 18px);
+  min-height: var(--bench-control-row-h, 18px);
+  max-height: var(--bench-control-row-h, 18px);
+  min-width: 0;
+}
+
+.fusion-bench-table__chips {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+  gap: 3px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.fusion-bench-table__chips--concur {
+  gap: 2px;
+}
+
+.fusion-bench-table__ops {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
 }
 
 .fusion-bench-row-label {
-  flex: 0 0 auto;
-  min-width: 2.6rem;
-  margin-right: auto;
-  font-size: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  min-width: 0;
+  font-size: 7px;
   font-weight: 700;
   letter-spacing: 0.14em;
   line-height: 1;
@@ -3662,7 +3729,13 @@ html[data-industrial-bezel="brush"] {
 
 .fusion-bench-chip {
   border-radius: 2px;
+  line-height: 1.15;
+  min-height: 14px;
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.fusion-bench-controls:not(.fusion-bench-controls--solo) .fusion-bench-chip {
+  min-height: 15px;
 }
 
 .fusion-bench-run {

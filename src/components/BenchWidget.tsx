@@ -532,10 +532,12 @@ export default function BenchWidget({
     `bench-concurrency-chip value-chip fusion-bench-chip ${active ? "value-chip-active" : ""} whitespace-nowrap focus:outline-none cursor-pointer select-none disabled:opacity-30`;
 
   const runBtnClass = (_disabled: boolean) =>
-    "fusion-bench-run text-[7px] font-bold tracking-wider px-1.5 py-0.5 rounded cursor-pointer select-none disabled:opacity-30";
+    "fusion-bench-run text-[8px] font-bold tracking-wider px-2 py-0.5 rounded cursor-pointer select-none disabled:opacity-30";
 
   const stopBtnClass =
     "fusion-bench-stop text-[7px] font-bold tracking-wider px-1.5 py-0.5 rounded cursor-pointer select-none flex-shrink-0";
+
+  const chipPadClass = isCompact ? "px-1 py-0 text-[6px]" : "px-1.5 py-0.5 text-[7px]";
 
   const closeResults = () => {
     ps.showResults = false;
@@ -549,7 +551,6 @@ export default function BenchWidget({
   };
 
   const benchRowH = isCompact ? 16 : 18;
-  const benchRowClass = "bench-control-row flex items-center justify-end gap-1 flex-shrink-0 overflow-hidden";
   const dualResults = ps.sessionMode === "both";
   const dualBenchLayout = isDualBenchResults({
     showResults: ps.showResults,
@@ -650,119 +651,144 @@ export default function BenchWidget({
         }}
       >
         {!isAnyRunning && !ps.showResults && (
-          <div className="fusion-bench-controls mt-auto flex flex-col flex-shrink-0">
-            <div className={benchRowClass}>
-              <span className="fusion-bench-row-label">TG</span>
-              {BENCH_TG_PREDICT_OPTIONS.map((tok) => (
-                <button
-                  key={tok}
-                  onClick={() => { ps.nPredict = tok; bumpControls(); }}
-                  disabled={isAnyRunning}
-                  className={`px-1 py-0 text-[6px] font-mono rounded-sm ${chipBtnClass(ps.nPredict === tok, isAnyRunning)}`}
-                >
-                  {formatBenchK(tok)}
-                </button>
-              ))}
-              <button
-                onClick={runBenchTg}
-                disabled={isAnyRunning}
-                className={`${runBtnClass(isAnyRunning)} ml-0.5`}
-              >
-                RUN
-              </button>
-            </div>
-
-            <div className={benchRowClass}>
-              <span className="fusion-bench-row-label">PP</span>
-              {BENCH_PP_TOKEN_OPTIONS.map((tok) => {
-                const overCtx = !ppChipAllowed(tok);
-                const disabled = isAnyRunning || overCtx;
-                return (
+          <div
+            className={`fusion-bench-controls mt-auto flex-shrink-0${
+              isCompact || stackMode ? " fusion-bench-controls--solo" : ""
+            }`}
+          >
+            {!(isCompact || stackMode) && (
+              <div className="fusion-bench-controls__bay" aria-hidden="true" />
+            )}
+            <div className="fusion-bench-controls__table" role="table" aria-label="Benchmark controls">
+              <div className="fusion-bench-table__row" role="row">
+                <span className="fusion-bench-row-label" role="rowheader">TG</span>
+                <div className="fusion-bench-table__chips" role="cell">
+                  {BENCH_TG_PREDICT_OPTIONS.map((tok) => (
+                    <button
+                      key={tok}
+                      onClick={() => { ps.nPredict = tok; bumpControls(); }}
+                      disabled={isAnyRunning}
+                      className={`font-mono rounded-sm ${chipPadClass} ${chipBtnClass(ps.nPredict === tok, isAnyRunning)}`}
+                    >
+                      {formatBenchK(tok)}
+                    </button>
+                  ))}
+                </div>
+                <div className="fusion-bench-table__ops" role="cell">
                   <button
-                    key={tok}
-                    onClick={() => {
-                      if (overCtx) return;
-                      ps.ppTargetTokens = tok;
-                      bumpControls();
-                    }}
-                    disabled={disabled}
-                    title={
-                      overCtx
-                        ? `Disabled — exceeds per-slot context (${maxPpTokens?.toLocaleString() ?? "?"} tok). Full-slot targets trip out-of-context.`
-                        : undefined
-                    }
-                    className={`px-1 py-0 text-[6px] font-mono rounded-sm ${
-                      overCtx
-                        ? "opacity-30 cursor-not-allowed line-through"
-                        : chipBtnClass(ps.ppTargetTokens === tok, isAnyRunning)
+                    onClick={runBenchTg}
+                    disabled={isAnyRunning}
+                    className={runBtnClass(isAnyRunning)}
+                  >
+                    RUN
+                  </button>
+                </div>
+              </div>
+
+              <div className="fusion-bench-table__row" role="row">
+                <span className="fusion-bench-row-label" role="rowheader">PP</span>
+                <div className="fusion-bench-table__chips" role="cell">
+                  {BENCH_PP_TOKEN_OPTIONS.map((tok) => {
+                    const overCtx = !ppChipAllowed(tok);
+                    const disabled = isAnyRunning || overCtx;
+                    return (
+                      <button
+                        key={tok}
+                        onClick={() => {
+                          if (overCtx) return;
+                          ps.ppTargetTokens = tok;
+                          bumpControls();
+                        }}
+                        disabled={disabled}
+                        title={
+                          overCtx
+                            ? `Disabled — exceeds per-slot context (${maxPpTokens?.toLocaleString() ?? "?"} tok). Full-slot targets trip out-of-context.`
+                            : undefined
+                        }
+                        className={`font-mono rounded-sm ${chipPadClass} ${
+                          overCtx
+                            ? "opacity-30 cursor-not-allowed line-through"
+                            : chipBtnClass(ps.ppTargetTokens === tok, isAnyRunning)
+                        }`}
+                      >
+                        {formatBenchK(tok)}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="fusion-bench-table__ops" role="cell">
+                  <button
+                    onClick={runBenchPp}
+                    disabled={isAnyRunning || !ppChipAllowed(ps.ppTargetTokens)}
+                    className={runBtnClass(isAnyRunning)}
+                  >
+                    RUN
+                  </button>
+                </div>
+              </div>
+
+              <div className="fusion-bench-table__row" role="row">
+                <span className="fusion-bench-row-label" role="rowheader">WARM</span>
+                <div className="fusion-bench-table__chips" role="cell">
+                  <button
+                    type="button"
+                    onClick={toggleTgWarmup}
+                    disabled={isAnyRunning}
+                    title={tgWarmupTitle}
+                    className={`bench-muted-btn fusion-bench-toggle font-mono rounded-sm focus:outline-none cursor-pointer select-none disabled:opacity-30 flex-shrink-0 ${chipPadClass} ${
+                      ps.tgWarmupEnabled ? "fusion-bench-toggle--on" : ""
                     }`}
                   >
-                    {formatBenchK(tok)}
+                    {ps.tgWarmupEnabled ? "ON" : "OFF"}
                   </button>
-                );
-              })}
-              <button
-                onClick={runBenchPp}
-                disabled={isAnyRunning || !ppChipAllowed(ps.ppTargetTokens)}
-                className={`${runBtnClass(isAnyRunning)} ml-0.5`}
-              >
-                RUN
-              </button>
-            </div>
+                  <button
+                    onClick={cyclePromptMode}
+                    disabled={isAnyRunning}
+                    className={`bench-muted-btn fusion-bench-toggle font-mono rounded-sm focus:outline-none cursor-pointer select-none disabled:opacity-30 ${chipPadClass}`}
+                    title={
+                      ps.promptMode === "unique"
+                        ? "Unique: diverse technical vocabulary (512-tok prefill, token-calibrated). TG decode is temp-0 continuation."
+                        : "Repetitive: fixed phrase cycled to 512-tok prefill — predictable for MTP/spec-decode. TG decode is temp-0 continuation of the pattern."
+                    }
+                  >
+                    {ps.promptMode === "unique" ? "Unique ▸" : "◂ Repetitive"}
+                  </button>
+                </div>
+                <div className="fusion-bench-table__ops" role="cell">
+                  <button
+                    onClick={runBenchBoth}
+                    disabled={isAnyRunning}
+                    className={runBtnClass(isAnyRunning)}
+                    title="Run PP then TG with current token selections (TG last so the share card keeps its per-slot meter)"
+                  >
+                    BOTH
+                  </button>
+                </div>
+              </div>
 
-            <div className={benchRowClass}>
-              <span className="fusion-bench-row-label">WARMUP</span>
-              <button
-                type="button"
-                onClick={toggleTgWarmup}
-                disabled={isAnyRunning}
-                title={tgWarmupTitle}
-                className={`bench-muted-btn fusion-bench-toggle px-1.5 py-0.5 text-[6px] font-mono rounded-sm focus:outline-none cursor-pointer select-none disabled:opacity-30 flex-shrink-0 ${
-                  ps.tgWarmupEnabled ? "fusion-bench-toggle--on" : ""
-                }`}
-              >
-                {ps.tgWarmupEnabled ? "ON" : "OFF"}
-              </button>
-              <button
-                onClick={cyclePromptMode}
-                disabled={isAnyRunning}
-                className="bench-muted-btn fusion-bench-toggle px-1 py-0.5 text-[6px] font-mono rounded-sm focus:outline-none cursor-pointer select-none disabled:opacity-30"
-                title={
-                  ps.promptMode === "unique"
-                    ? "Unique: diverse technical vocabulary (512-tok prefill, token-calibrated). TG decode is temp-0 continuation."
-                    : "Repetitive: fixed phrase cycled to 512-tok prefill — predictable for MTP/spec-decode. TG decode is temp-0 continuation of the pattern."
-                }
-              >
-                {ps.promptMode === "unique" ? "Unique ▸" : "◂ Repetitive"}
-              </button>
-              <button
-                onClick={runBenchBoth}
-                disabled={isAnyRunning}
-                className={runBtnClass(isAnyRunning)}
-                title="Run PP then TG with current token selections (TG last so the share card keeps its per-slot meter)"
-              >
-                RUN BOTH
-              </button>
-            </div>
-
-            <div className={benchRowClass}>
-              <span
-                className="fusion-bench-row-label"
-                title={BENCH_CONCURRENCY_HELP}
-              >
-                CONCUR
-              </span>
-              {BENCH_TG_PARALLEL_OPTIONS.map((n) => (
-                <button
-                  key={`par-${n}`}
-                  onClick={() => { ps.tgParallel = n; bumpControls(); }}
-                  disabled={isAnyRunning}
-                  title={benchConcurrencyChipTitle(n)}
-                  className={`px-1 py-0 text-[6px] font-mono rounded-sm ${concurrencyChipClass(ps.tgParallel === n, isAnyRunning)}`}
+              <div className="fusion-bench-table__row" role="row">
+                <span
+                  className="fusion-bench-row-label"
+                  role="rowheader"
+                  title={BENCH_CONCURRENCY_HELP}
                 >
-                  ×{n}
-                </button>
-              ))}
+                  ×N
+                </span>
+                <div className="fusion-bench-table__chips fusion-bench-table__chips--concur" role="cell">
+                  {BENCH_TG_PARALLEL_OPTIONS.map((n) => (
+                    <button
+                      key={`par-${n}`}
+                      onClick={() => { ps.tgParallel = n; bumpControls(); }}
+                      disabled={isAnyRunning}
+                      title={benchConcurrencyChipTitle(n)}
+                      className={`font-mono rounded-sm ${chipPadClass} ${concurrencyChipClass(ps.tgParallel === n, isAnyRunning)}`}
+                    >
+                      ×{n}
+                    </button>
+                  ))}
+                </div>
+                <div className="fusion-bench-table__ops" role="cell" aria-hidden="true" />
+              </div>
             </div>
           </div>
         )}
