@@ -53,6 +53,21 @@ fn exe_modified_secs(path: &Path) -> u64 {
         .unwrap_or(0)
 }
 
+/// Freshness of a launch tree. Stub `llama-server.exe` can lag; prefer max of
+/// exe + `llama-server-impl.dll` (real ggml code) so Foundry rebuilds win auto-pick.
+fn binary_tree_modified_secs(exe_path: &Path) -> u64 {
+    let mut best = exe_modified_secs(exe_path);
+    if let Some(dir) = exe_path.parent() {
+        for name in ["llama-server-impl.dll", "llama.dll", "ggml.dll"] {
+            let t = exe_modified_secs(&dir.join(name));
+            if t > best {
+                best = t;
+            }
+        }
+    }
+    best
+}
+
 /// True when bundled `runtime/` or Foundry artifact engines exist for any factory provider profile.
 pub fn launch_engines_available() -> bool {
     const PROVIDERS: &[&str] = &[crate::config::DEFAULT_PROVIDER_ID, "ggml-tom"];
@@ -163,12 +178,13 @@ fn auto_pick_source(
     }
     match (bundled, foundry) {
         (Some((bp, _)), Some((fp, _))) => {
-            let bt = exe_modified_secs(&resolve_path(bp));
-            let ft = exe_modified_secs(&resolve_path(fp));
-            if bt >= ft {
-                SOURCE_BUNDLED
-            } else {
+            let bt = binary_tree_modified_secs(&resolve_path(bp));
+            let ft = binary_tree_modified_secs(&resolve_path(fp));
+            // Foundry wins on equal mtime — a just-built artifact must beat a stale NSIS stub.
+            if ft >= bt {
                 SOURCE_FOUNDRY
+            } else {
+                SOURCE_BUNDLED
             }
         }
         (Some(_), None) => SOURCE_BUNDLED,

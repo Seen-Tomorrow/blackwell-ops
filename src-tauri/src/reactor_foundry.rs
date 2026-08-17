@@ -1964,16 +1964,16 @@ async fn run_foundry_build_worker(
         );
     }
 
-    // ── Success: Capture build info + update per-env paths ────────────
+    // ── Success: publish artifacts, activate foundry as ACTIVE, THEN Complete ─
+    // Do NOT emit Complete before path/source update — frontend refresh_build_info
+    // on early Complete races and can pin binary_source_per_env back to bundled.
 
-    {
-        let mut current = CURRENT_BUILD.lock().await;
-        if let Some(ref mut s) = *current {
-            s.phase = BuildPhase::Complete;
-        }
-    }
     if let Some(state) = snapshot_build_state().await {
-        emit_build_event(app_handle, &state, Some("Build successful. Capturing version info...".into()));
+        emit_build_event(
+            app_handle,
+            &state,
+            Some("Build successful. Publishing artifacts + activating Foundry binary...".into()),
+        );
     }
 
     // Publish sacred artifacts (copy from disposable work tree into artifacts/<id>/<env>/Release)
@@ -1987,57 +1987,97 @@ async fn run_foundry_build_worker(
         }
     };
 
-    match crate::engine::get_binary_build_info(sacred_binary_path.clone()).await {
-        Ok(build_info_raw) => {
-            log::info!("[foundry] Captured build info for provider '{}' profile '{}': {} built {}",
-                provider_id, profile_id, build_info_raw.version, build_info_raw.build_date);
+    // Always force ACTIVE → foundry for this profile (even if --version probe fails).
+    // Probe outside the config lock — never hold Mutex across await.
+    let probed = crate::engine::get_binary_build_info(sacred_binary_path.clone()).await;
+    {
+        let mut cfg = worker.config.lock().map_err(|e| e.to_string())?;
+        if let Some(provider) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
+            provider.binary_source_per_env.insert(
+                profile_id.clone(),
+                crate::profile_binaries::SOURCE_FOUNDRY.to_string(),
+            );
+            provider.downloaded_version_per_env.remove(&profile_id);
+            crate::profile_binaries::resolve_after_source_change(provider);
 
-            let mut cfg = worker.config.lock().map_err(|e| e.to_string())?;
-            if let Some(provider) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
-                let arches = crate::engine_utils::parse_cuda_architectures_from_cmake(&cmake_extra);
-                let build_info = crate::types::BuildInfo {
-                    version: build_info_raw.version,
-                    build_date: build_info_raw.build_date,
-                    cuda_version: build_info_raw.cuda_version.clone(),
-                    cuda_architectures: if arches.is_empty() { None } else { Some(arches) },
-                };
-                provider.binary_source_per_env.insert(
-                    profile_id.clone(),
-                    crate::profile_binaries::SOURCE_FOUNDRY.to_string(),
-                );
-                provider.downloaded_version_per_env.remove(&profile_id);
-                crate::profile_binaries::resolve_after_source_change(provider);
-
-                provider
-                    .build_info_per_env
-                    .insert(profile_id.clone(), build_info.clone());
-                let inv = provider
-                    .inventory_per_env
-                    .entry(profile_id.clone())
-                    .or_default();
-                let foundry_path = inv
-                    .foundry
-                    .as_ref()
-                    .map(|e| e.path.clone())
-                    .or_else(|| provider.binary_path_per_env.get(&profile_id).cloned())
-                    .unwrap_or_default();
-                inv.foundry = Some(crate::types::BinaryEntry {
-                    path: foundry_path,
-                    info: Some(build_info),
+            let foundry_path = provider
+                .binary_path_per_env
+                .get(&profile_id)
+                .cloned()
+                .unwrap_or_else(|| {
+                    crate::config::to_relative_path(&std::path::PathBuf::from(&sacred_binary_path))
                 });
-            }
-            drop(cfg);
-            if let Err(e) = persist_providers_atomic(&worker.config) {
-                log::error!("[foundry] Failed to persist provider config: {}", e);
+
+            match probed {
+                Ok(build_info_raw) => {
+                    log::info!(
+                        "[foundry] Captured build info for provider '{}' profile '{}': {} built {}",
+                        provider_id,
+                        profile_id,
+                        build_info_raw.version,
+                        build_info_raw.build_date
+                    );
+                    let arches =
+                        crate::engine_utils::parse_cuda_architectures_from_cmake(&cmake_extra);
+                    let build_info = crate::types::BuildInfo {
+                        version: build_info_raw.version,
+                        build_date: build_info_raw.build_date,
+                        cuda_version: build_info_raw.cuda_version.clone(),
+                        cuda_architectures: if arches.is_empty() {
+                            None
+                        } else {
+                            Some(arches)
+                        },
+                    };
+                    provider
+                        .build_info_per_env
+                        .insert(profile_id.clone(), build_info.clone());
+                    let inv = provider
+                        .inventory_per_env
+                        .entry(profile_id.clone())
+                        .or_default();
+                    inv.foundry = Some(crate::types::BinaryEntry {
+                        path: foundry_path,
+                        info: Some(build_info),
+                    });
+                }
+                Err(e) => {
+                    log::warn!(
+                        "[foundry] Failed to capture build info for provider '{}': {} — Foundry still ACTIVE",
+                        provider_id,
+                        e
+                    );
+                    let inv = provider
+                        .inventory_per_env
+                        .entry(profile_id.clone())
+                        .or_default();
+                    if inv.foundry.is_none() {
+                        inv.foundry = Some(crate::types::BinaryEntry {
+                            path: foundry_path,
+                            info: None,
+                        });
+                    }
+                }
             }
         }
-        Err(e) => {
-            log::warn!("[foundry] Failed to capture build info for provider '{}': {}", provider_id, e);
+        drop(cfg);
+        if let Err(e) = persist_providers_atomic(&worker.config) {
+            log::error!("[foundry] Failed to persist provider config: {}", e);
         }
     }
 
+    {
+        let mut current = CURRENT_BUILD.lock().await;
+        if let Some(ref mut s) = *current {
+            s.phase = BuildPhase::Complete;
+        }
+    }
     if let Some(state) = snapshot_build_state().await {
-        emit_build_event(app_handle, &state, Some("Foundry build complete.".into()));
+        emit_build_event(
+            app_handle,
+            &state,
+            Some("Foundry build complete — ACTIVE binary source: foundry.".into()),
+        );
     }
 
     // Feed final success message into the Blackwell Output Console
@@ -2415,50 +2455,66 @@ pub async fn refresh_build_info(
         }
     };
 
-    let _prov = {
-        if prov.binary_path_per_env.is_empty() && !prov.binary_path.is_empty() {
-            let src_dir = foundry_src_dir(&provider_id);
-            let old_build_dir = src_dir.join("build");
-            if old_build_dir.exists() {
-                let new_build_dir = src_dir.join("build-frontier");
-                if !new_build_dir.exists() && old_build_dir.join("bin").exists() {
-                    log::info!("[migration] One-time historical migration of ancient 'build/' directory for '{}'", provider_id);
-                    let _ = tokio::fs::create_dir_all(&new_build_dir).await;
-                    if tokio::fs::rename(&old_build_dir, &new_build_dir).await.is_ok() {
-                        let new_bin = new_build_dir.join("bin").join("Release");
-                        if new_bin.exists() {
-                            // Publish binaries to sacred artifacts BEFORE setting paths.
-                            // Never point config at disposable work/ directories.
-                            let sacred_exe = crate::config::foundry_artifacts_dir()
-                                .join(&provider_id).join("frontier").join("Release").join("llama-server.exe");
-                            if let Some(sacred_dir) = sacred_exe.parent() {
-                                let _ = tokio::fs::create_dir_all(sacred_dir).await;
-                                if copy_dir_contents(&new_bin, &sacred_dir.to_path_buf()).await.is_ok() && sacred_exe.exists() {
-                                    let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
-                                    if let Some(p) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
-                                        let rel = crate::config::to_relative_path(&sacred_exe);
-                                        p.binary_path_per_env.insert("frontier".to_string(), rel.clone());
-                                        p.binary_path = rel;
-                                    }
-                                    drop(cfg);
-                                    if let Err(e) = persist_providers_atomic(&app.config) {
-                                        log::error!("[foundry] Failed to persist provider config: {}", e);
-                                    }
-                                } else {
-                                    log::warn!("[migration] Failed to copy binaries to sacred artifacts for '{}'", provider_id);
+    // One-time migration: ancient build/ → sacred artifacts (legacy installs).
+    if prov.binary_path_per_env.is_empty() && !prov.binary_path.is_empty() {
+        let src_dir = foundry_src_dir(&provider_id);
+        let old_build_dir = src_dir.join("build");
+        if old_build_dir.exists() {
+            let new_build_dir = src_dir.join("build-frontier");
+            if !new_build_dir.exists() && old_build_dir.join("bin").exists() {
+                log::info!(
+                    "[migration] One-time historical migration of ancient 'build/' directory for '{}'",
+                    provider_id
+                );
+                let _ = tokio::fs::create_dir_all(&new_build_dir).await;
+                if tokio::fs::rename(&old_build_dir, &new_build_dir).await.is_ok() {
+                    let new_bin = new_build_dir.join("bin").join("Release");
+                    if new_bin.exists() {
+                        let sacred_exe = crate::config::foundry_artifacts_dir()
+                            .join(&provider_id)
+                            .join("frontier")
+                            .join("Release")
+                            .join("llama-server.exe");
+                        if let Some(sacred_dir) = sacred_exe.parent() {
+                            let _ = tokio::fs::create_dir_all(sacred_dir).await;
+                            if copy_dir_contents(&new_bin, &sacred_dir.to_path_buf())
+                                .await
+                                .is_ok()
+                                && sacred_exe.exists()
+                            {
+                                let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
+                                if let Some(p) =
+                                    cfg.providers.iter_mut().find(|p| p.id == provider_id)
+                                {
+                                    let rel = crate::config::to_relative_path(&sacred_exe);
+                                    p.binary_path_per_env
+                                        .insert("frontier".to_string(), rel.clone());
+                                    p.binary_path = rel;
                                 }
+                                drop(cfg);
+                                if let Err(e) = persist_providers_atomic(&app.config) {
+                                    log::error!(
+                                        "[foundry] Failed to persist provider config: {}",
+                                        e
+                                    );
+                                }
+                            } else {
+                                log::warn!(
+                                    "[migration] Failed to copy binaries to sacred artifacts for '{}'",
+                                    provider_id
+                                );
                             }
                         }
-                    } else {
-                        log::warn!("[migration] Failed to rename build/ for '{}'", provider_id);
                     }
+                } else {
+                    log::warn!(
+                        "[migration] Failed to rename build/ for '{}'",
+                        provider_id
+                    );
                 }
             }
         }
-        let cfg = app.config.lock().map_err(|e| e.to_string())?;
-        cfg.providers.iter().find(|p| p.id == provider_id).cloned()
-            .unwrap_or_else(|| prov)
-    };
+    }
 
     let mut provider = {
         let cfg = app.config.lock().map_err(|e| e.to_string())?;
@@ -2468,19 +2524,28 @@ pub async fn refresh_build_info(
             .cloned()
             .ok_or_else(|| format!("Provider '{}' not found", provider_id))?
     };
+    let before_source = provider.binary_source_per_env.clone();
+    let before_paths = provider.binary_path_per_env.clone();
     crate::profile_binaries::resolve_after_source_change(&mut provider);
-    let changed = enrich_provider_binary_info(&mut provider, &provider_id).await;
+    let probed_changed = enrich_provider_binary_info(&mut provider, &provider_id).await;
+    let inventory_changed = provider.binary_source_per_env != before_source
+        || provider.binary_path_per_env != before_paths
+        || probed_changed;
 
-    if changed {
+    // Always write resolved provider back — previously only probe-change persisted,
+    // so auto-pick / Foundry activation from resolve was discarded when versions reused.
+    {
         let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
         if let Some(p) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
             *p = provider.clone();
         }
         drop(cfg);
-        // Persist only this provider — writing all three on every refresh was pure thrash.
-        if let Err(e) = crate::config::persist_user_providers_meta(std::slice::from_ref(&provider))
-        {
-            log::error!("[foundry] Failed to persist provider config: {}", e);
+        if inventory_changed {
+            if let Err(e) =
+                crate::config::persist_user_providers_meta(std::slice::from_ref(&provider))
+            {
+                log::error!("[foundry] Failed to persist provider config: {}", e);
+            }
         }
     }
 

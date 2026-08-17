@@ -177,6 +177,7 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
   const logRef = useRef<HTMLDivElement>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
   const buildInvokeInFlightRef = useRef(false);
+  const completeNotifiedRef = useRef(false);
 
   // Reset when provider or environment changes
   const prevProviderIdRef = useRef(provider.id);
@@ -295,7 +296,10 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
               // Do NOT auto-clear the log here.
               // User wants to review the full build log on the success/error screen.
               // The log will be cleared when they explicitly close the modal (or start a new build for a different provider).
-              if (mapping.frontend === "complete" && onComplete) onComplete(provider.id);
+              if (mapping.frontend === "complete" && onComplete && !completeNotifiedRef.current) {
+                completeNotifiedRef.current = true;
+                onComplete(provider.id);
+              }
             }
             if (mapping.frontend === "backup-locked") setBackupRetryCount(p => p + 1);
           }
@@ -323,6 +327,7 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
   // ── Confirm flow handlers ───────────────────────────────────────────
   const startBuild = useCallback(async () => {
     if (buildInvokeInFlightRef.current) return;
+    completeNotifiedRef.current = false;
 
     // Never start a duplicate while the backend still owns an in-flight build.
     try {

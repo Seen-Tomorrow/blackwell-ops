@@ -133,6 +133,19 @@ export default function Layout({
 
   const resolvedEnvironment = foundryModal?.environment || "frontier";
 
+  const handleFoundryComplete = useCallback((providerId: string) => {
+    // Prefer full inventory re-resolve + version probe over bare list_providers.
+    // Bare list left ACTIVE/source stale until user reopened Providers.
+    void (async () => {
+      try {
+        await invoke<ProviderConfig[]>("refresh_build_info", { providerId });
+      } catch (err) {
+        console.error("[Foundry] post-complete refresh_build_info failed:", err);
+      }
+      dispatchAppEvent(EVENTS.reloadProviders);
+    })();
+  }, []);
+
   const buildProviderLabel = useMemo(() => {
     if (!buildProgress) return "";
     const match = providers?.find((p) => p.id === buildProgress.providerId);
@@ -779,7 +792,7 @@ export default function Layout({
         provider={resolvedProvider}
         environment={resolvedEnvironment}
         onClose={closeBuildModal}
-        onComplete={() => dispatchAppEvent(EVENTS.reloadProviders)}
+        onComplete={handleFoundryComplete}
         visible={foundryModalVisible}
         onMinimize={minimizeBuildModal}
       />
