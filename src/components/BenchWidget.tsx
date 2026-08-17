@@ -930,29 +930,35 @@ export default function BenchWidget({
               <div className="fusion-bench-table__row" role="row">
                 <span className="fusion-bench-row-label" role="rowheader" title="Decode warmup + prompt style">WARMUP</span>
                 <div className="fusion-bench-table__chips" role="cell">
-                  <button
-                    type="button"
-                    onClick={toggleTgWarmup}
-                    disabled={isAnyRunning}
-                    title={tgWarmupTitle}
-                    className={`bench-muted-btn fusion-bench-toggle font-mono rounded-sm focus:outline-none cursor-pointer select-none disabled:opacity-30 flex-shrink-0 ${chipPadClass} ${
-                      ps.tgWarmupEnabled ? "fusion-bench-toggle--on" : ""
-                    }`}
-                  >
-                    {ps.tgWarmupEnabled ? "ON" : "OFF"}
-                  </button>
-                  <button
-                    onClick={cyclePromptMode}
-                    disabled={isAnyRunning}
-                    className={`bench-muted-btn fusion-bench-toggle font-mono rounded-sm focus:outline-none cursor-pointer select-none disabled:opacity-30 ${chipPadClass}`}
-                    title={
-                      ps.promptMode === "unique"
-                        ? "Unique: diverse technical vocabulary (512-tok prefill, token-calibrated). TG decode is temp-0 continuation."
-                        : "Repetitive: fixed phrase cycled to 512-tok prefill — predictable for MTP/spec-decode. TG decode is temp-0 continuation of the pattern."
-                    }
-                  >
-                    {ps.promptMode === "unique" ? "Unique ▸" : "◂ Repetitive"}
-                  </button>
+                  <div className="fusion-bench-field">
+                    <span className="fusion-bench-field__lab" title="TG warmup pass before measured decode">WARM</span>
+                    <button
+                      type="button"
+                      onClick={toggleTgWarmup}
+                      disabled={isAnyRunning}
+                      title={tgWarmupTitle}
+                      className={`bench-muted-btn fusion-bench-toggle font-mono rounded-sm focus:outline-none cursor-pointer select-none disabled:opacity-30 flex-shrink-0 ${chipPadClass} ${
+                        ps.tgWarmupEnabled ? "fusion-bench-toggle--on" : ""
+                      }`}
+                    >
+                      {ps.tgWarmupEnabled ? "ON" : "OFF"}
+                    </button>
+                  </div>
+                  <div className="fusion-bench-field">
+                    <span className="fusion-bench-field__lab" title="Prefill prompt vocabulary style">CONTENT</span>
+                    <button
+                      onClick={cyclePromptMode}
+                      disabled={isAnyRunning}
+                      className={`bench-muted-btn fusion-bench-toggle font-mono rounded-sm focus:outline-none cursor-pointer select-none disabled:opacity-30 ${chipPadClass}`}
+                      title={
+                        ps.promptMode === "unique"
+                          ? "Unique: diverse technical vocabulary (512-tok prefill, token-calibrated). TG decode is temp-0 continuation."
+                          : "Repetitive: fixed phrase cycled to 512-tok prefill — predictable for MTP/spec-decode. TG decode is temp-0 continuation of the pattern."
+                      }
+                    >
+                      {ps.promptMode === "unique" ? "Unique ▸" : "◂ Repetitive"}
+                    </button>
+                  </div>
                 </div>
                 <div className="fusion-bench-table__ops" role="cell" aria-hidden="true" />
               </div>

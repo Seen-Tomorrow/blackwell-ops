@@ -3897,6 +3897,32 @@ html[data-industrial-bezel="brush"] {
   box-shadow: 0 0 0 1px color-mix(in srgb, #22c55e 35%, transparent);
 }
 
+.fusion-bench-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.fusion-bench-field + .fusion-bench-field {
+  margin-left: 4px;
+  padding-left: 5px;
+  border-left: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.35)) 70%, transparent);
+}
+
+.fusion-bench-field__lab {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 5.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  line-height: 1;
+  color: color-mix(in srgb, var(--display-face-control-muted, var(--display-face-text-muted, #94a3b8)) 78%, transparent);
+  white-space: nowrap;
+  user-select: none;
+}
+
+
 .fusion-bench-chip--over-engine {
   opacity: 0.55;
 }
