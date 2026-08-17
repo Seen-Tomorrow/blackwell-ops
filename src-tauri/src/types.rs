@@ -451,7 +451,7 @@ pub struct ProviderConfig {
     /// Active launch path per profile (resolved from bundled / foundry / download).
     #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "binaryPathPerEnv")]
     pub binary_path_per_env: HashMap<String, String>,
-    /// User preference per profile: `foundry` | `bundled` | `catalog` (empty = auto by mtime).
+    /// User preference per profile: `foundry` | `bundled` | `catalog`. Missing key = auto (newest tree). Never overwritten by resolve.
     #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "binarySourcePerEnv")]
     pub binary_source_per_env: HashMap<String, String>,
     /// Per-profile binary inventory (bundled / foundry / catalog) — re-scanned from disk on every load.

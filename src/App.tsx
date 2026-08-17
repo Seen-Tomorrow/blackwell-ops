@@ -293,7 +293,8 @@ function App() {
     return () => window.removeEventListener(EVENTS.reloadProviders, handler);
   }, [reloadProviders]);
 
-  // Foundry finished: refresh only that provider's binary metadata (not all 3×N probes).
+  // Sole owner: foundry Complete → refresh_build_info (probe + inventory). Do not
+  // also refresh from Layout/ProvidersConfig — duplicate callers race list_providers.
   useTauriListen<{ phase: string; provider_id?: string }>("foundry-progress", (payload) => {
     if (payload.phase !== "Complete" || !payload.provider_id) return;
     void (async () => {

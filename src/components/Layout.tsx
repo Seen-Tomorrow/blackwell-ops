@@ -133,18 +133,9 @@ export default function Layout({
 
   const resolvedEnvironment = foundryModal?.environment || "frontier";
 
-  const handleFoundryComplete = useCallback((providerId: string) => {
-    // Prefer full inventory re-resolve + version probe over bare list_providers.
-    // Bare list left ACTIVE/source stale until user reopened Providers.
-    void (async () => {
-      try {
-        await invoke<ProviderConfig[]>("refresh_build_info", { providerId });
-      } catch (err) {
-        console.error("[Foundry] post-complete refresh_build_info failed:", err);
-      }
-      dispatchAppEvent(EVENTS.reloadProviders);
-    })();
-  }, []);
+  // App.tsx is the sole foundry-progress → refresh_build_info owner.
+  // Do not list_providers here — it races and can clobber probed build info.
+  const handleFoundryComplete = useCallback((_providerId: string) => {}, []);
 
   const buildProviderLabel = useMemo(() => {
     if (!buildProgress) return "";

@@ -1909,22 +1909,23 @@ async fn run_foundry_build_worker(
     if let Some(found_dir) = &validated_binary_dir {
         if *found_dir != cmake_build_output_dir {
             log::info!("Binaries found at {:?}, updating provider path", found_dir);
-            let cfg = worker.config.lock().map_err(|e| e.to_string())?;
-            let mut cfg_mut = cfg.clone();
-            for p in &mut cfg_mut.providers {
-                if p.id == provider_id {
-                    let _ = found_dir.join("llama-server.exe");
-                    let _ = crate::profile_binaries::set_profile_source(
-                        p,
-                        &profile_id,
-                        crate::profile_binaries::SOURCE_FOUNDRY,
-                    );
-                    crate::profile_binaries::resolve_after_source_change(p);
+            let mut cfg = worker.config.lock().map_err(|e| e.to_string())?;
+            if let Some(p) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
+                let _ = found_dir.join("llama-server.exe");
+                if let Err(e) = crate::profile_binaries::activate_profile_source(
+                    p,
+                    &profile_id,
+                    crate::profile_binaries::SOURCE_FOUNDRY,
+                ) {
+                    log::warn!("[foundry] path-correction activate failed: {e}");
                 }
             }
             drop(cfg);
             if let Err(e) = persist_providers_atomic(&worker.config) {
-                log::error!("[foundry] Failed to persist provider config after path correction: {}", e);
+                log::error!(
+                    "[foundry] Failed to persist provider config after path correction: {}",
+                    e
+                );
             }
         }
     }
@@ -1993,12 +1994,14 @@ async fn run_foundry_build_worker(
     {
         let mut cfg = worker.config.lock().map_err(|e| e.to_string())?;
         if let Some(provider) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
-            provider.binary_source_per_env.insert(
-                profile_id.clone(),
-                crate::profile_binaries::SOURCE_FOUNDRY.to_string(),
-            );
             provider.downloaded_version_per_env.remove(&profile_id);
-            crate::profile_binaries::resolve_after_source_change(provider);
+            if let Err(e) = crate::profile_binaries::activate_profile_source(
+                provider,
+                &profile_id,
+                crate::profile_binaries::SOURCE_FOUNDRY,
+            ) {
+                log::error!("[foundry] activate foundry source failed: {e}");
+            }
 
             let foundry_path = provider
                 .binary_path_per_env
@@ -2626,12 +2629,13 @@ pub async fn foundry_restore(
     {
         let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
         if let Some(p) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
-            let _ = crate::profile_binaries::set_profile_source(
+            if let Err(e) = crate::profile_binaries::activate_profile_source(
                 p,
                 &env_label,
                 crate::profile_binaries::SOURCE_FOUNDRY,
-            );
-            crate::profile_binaries::resolve_after_source_change(p);
+            ) {
+                log::error!("[foundry] restore activate failed: {e}");
+            }
             p.build_info_per_env
                 .insert(env_label.to_string(), info.clone());
             let inv = p

@@ -590,22 +590,9 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
   }, [providers.map((p) => p.id).join(",")]);
 
 
-  // ── Foundry build complete event listener ─────────────────────
-
-  useEffect(() => {
-    const unsub = listen<{ build_id: number; phase: string; provider_id: string }>("foundry-progress", async (e) => {
-      if (e.payload.phase === "Complete") {
-        try {
-          const updated = await invoke<ProviderConfig[]>("refresh_build_info", { providerId: e.payload.provider_id });
-          if (updated.length > 0) {
-            applyProviders(updated);
-          }
-          // Do not dispatch reloadProviders here — that re-lists and can wipe build info again.
-        } catch (err) { console.error("[Foundry] Status check error:", err); }
-      }
-    });
-    return () => { unsub.then(u => u()); };
-  }, [applyProviders]);
+  // ── Foundry build complete ────────────────────────────────────
+  // App.tsx owns refresh_build_info on Complete and pushes providers down.
+  // Do not double-refresh here (races / duplicate probes).
 
   useTauriListen<{ provider_id: string; profile: string }>("binary-update:download-start", (payload) => {
     const key = `${payload.provider_id}:${payload.profile}`;

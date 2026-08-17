@@ -308,24 +308,12 @@ pub fn resolve_provider_binaries_from_meta(
     p: &mut crate::types::ProviderConfig,
     meta: Option<&crate::types::ProviderConfig>,
 ) {
-    let empty = HashMap::new();
-    let source_pref = meta
-        .map(|m| &m.binary_source_per_env)
-        .unwrap_or(&empty);
-    let saved_paths = meta
-        .map(|m| &m.binary_path_per_env)
-        .unwrap_or(&empty);
     if let Some(m) = meta {
+        // Preference is intent-only — copy from disk meta, never invent here.
         p.binary_source_per_env = m.binary_source_per_env.clone();
         p.downloaded_version_per_env = m.downloaded_version_per_env.clone();
     }
-    crate::profile_binaries::resolve_provider_binaries(
-        p,
-        crate::profile_binaries::ResolveContext {
-            source_pref,
-            saved_paths,
-        },
-    );
+    crate::profile_binaries::resolve_provider_binaries(p);
 }
 
 fn merge_template_into_user_params_by_key(

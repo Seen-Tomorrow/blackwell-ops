@@ -182,7 +182,7 @@ export interface ProviderConfig {
   display_order?: number;
   buildInfoPerEnv?: Record<string, BuildInfo>;
   binaryPathPerEnv?: Record<string, string>; // env -> active launch path (bundled, foundry, or catalog)
-  /** User preference per profile: foundry | bundled | catalog (empty = auto by mtime). */
+  /** User preference per profile: foundry | bundled | catalog. Missing = auto (newest tree). Resolve never overwrites. */
   binarySourcePerEnv?: Record<string, string>;
   /** Per-profile binary inventory (bundled / foundry / catalog) — re-scanned from disk on load. */
   inventoryPerEnv?: Record<string, EnvBinaryInventory>;
@@ -289,11 +289,14 @@ export function isProfileSourceActive(
   const active = profileEnvLookup(provider.binaryPathPerEnv, env);
   if (!active?.trim()) return false;
 
-  // Explicit user/system preference wins — avoids dual ACTIVE when paths collide
-  // (legacy catalog-on-runtime) or inventory rows both match the active path.
+  // Explicit preference wins only when that source still exists on disk.
+  // If preferred source is missing, backend auto-falls back — match by path.
   const pref = profileEnvLookup(provider.binarySourcePerEnv, env);
   if (pref === "foundry" || pref === "bundled" || pref === "catalog") {
-    return pref === source;
+    const prefPath = envBinaryLookup(provider, env, pref)?.path;
+    if (prefPath?.trim()) {
+      return pref === source;
+    }
   }
 
   const inventory = envBinaryLookup(provider, env, source)?.path;

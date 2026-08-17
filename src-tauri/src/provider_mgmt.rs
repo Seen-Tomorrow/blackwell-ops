@@ -323,8 +323,7 @@ pub async fn set_profile_binary_source(
         .find(|p| p.id == provider_id)
         .ok_or_else(|| format!("Provider '{}' not found", provider_id))?;
 
-    crate::profile_binaries::set_profile_source(provider, &profile, &source)?;
-    crate::profile_binaries::resolve_after_source_change(provider);
+    crate::profile_binaries::activate_profile_source(provider, &profile, &source)?;
 
     let updated = cfg.providers.clone();
     drop(cfg);

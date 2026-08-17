@@ -5,9 +5,12 @@
 //! - **Catalog** — core: `runtime-catalog/{id}/{profile}/` (does not clobber NSIS);
 //!   plugins: same tree as bundled under `runtime/` with `downloadedVersion` stamp
 //!
-//! Active launch path is user-selectable via `binary_source_per_env`.
+//! Model:
+//! - `inventory_per_env` = disk scan (paths + optional probed build info)
+//! - `binary_source_per_env` = **user/intent preference only** (`foundry` | `bundled` |
+//!   `catalog`). Missing key = **auto** (newest tree). Resolve never overwrites preference.
+//! - `binary_path_per_env` / `build_info_per_env` = pure(active) from inventory + preference
 
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
@@ -22,11 +25,8 @@ pub const SOURCE_FOUNDRY: &str = "foundry";
 pub const SOURCE_BUNDLED: &str = "bundled";
 pub const SOURCE_CATALOG: &str = "catalog";
 
-pub struct ResolveContext<'a> {
-    /// Saved per-env source preference (`foundry` | `bundled` | `catalog`).
-    pub source_pref: &'a HashMap<String, String>,
-    /// Prior persisted active paths.
-    pub saved_paths: &'a HashMap<String, String>,
+fn is_known_source(s: &str) -> bool {
+    s == SOURCE_FOUNDRY || s == SOURCE_BUNDLED || s == SOURCE_CATALOG
 }
 
 fn build_info_from_mtime(exe: &Path, version_label: &str) -> Option<BuildInfo> {
@@ -230,10 +230,14 @@ fn merge_probed_version(
 }
 
 /// Scan sources, resolve active path + metadata, populate inventory fields on `p`.
-pub fn resolve_provider_binaries(p: &mut ProviderConfig, ctx: ResolveContext<'_>) {
+///
+/// Does **not** mutate `binary_source_per_env` — preference is intent-only.
+pub fn resolve_provider_binaries(p: &mut ProviderConfig) {
     // Preserve probed engine versions before inventory clear (rescans use mtime placeholders).
     let prev_inventory = p.inventory_per_env.clone();
     let prev_active_info = p.build_info_per_env.clone();
+    // Preference map is read-only here; clone so we can still clear inventory freely.
+    let source_pref = p.binary_source_per_env.clone();
 
     p.inventory_per_env.clear();
 
@@ -256,7 +260,6 @@ pub fn resolve_provider_binaries(p: &mut ProviderConfig, ctx: ResolveContext<'_>
                 .map(|s| !s.trim().is_empty())
                 .unwrap_or(false)
         {
-            // Plugin pack installed — no separate NSIS row
             None
         } else {
             bundled.clone()
@@ -308,13 +311,10 @@ pub fn resolve_provider_binaries(p: &mut ProviderConfig, ctx: ResolveContext<'_>
             });
         }
 
-        let pref = ctx
-            .source_pref
+        let pref = source_pref
             .get(&profile)
             .map(|s| s.as_str())
-            .filter(|s| {
-                *s == SOURCE_BUNDLED || *s == SOURCE_FOUNDRY || *s == SOURCE_CATALOG
-            });
+            .filter(|s| is_known_source(s));
 
         let prefer_catalog = catalog.is_some()
             && p.downloaded_version_per_env
@@ -322,21 +322,19 @@ pub fn resolve_provider_binaries(p: &mut ProviderConfig, ctx: ResolveContext<'_>
                 .map(|s| !s.trim().is_empty())
                 .unwrap_or(false);
 
+        // Explicit pref if that source exists; otherwise auto (do not rewrite pref).
         let source = match pref {
             Some(SOURCE_CATALOG) if catalog.is_some() => SOURCE_CATALOG,
             Some(SOURCE_BUNDLED) if show_bundled_as_nsis.is_some() => SOURCE_BUNDLED,
             Some(SOURCE_FOUNDRY) if foundry.is_some() => SOURCE_FOUNDRY,
-            Some(SOURCE_CATALOG) | Some(SOURCE_BUNDLED) | Some(SOURCE_FOUNDRY) => {
-                auto_pick_source(&show_bundled_as_nsis, &foundry, &catalog, prefer_catalog)
-            }
             _ => auto_pick_source(&show_bundled_as_nsis, &foundry, &catalog, prefer_catalog),
         };
 
-        p.binary_source_per_env
-            .insert(profile.to_string(), source.to_string());
-
         let active = match source {
-            SOURCE_CATALOG => catalog.clone().or(show_bundled_as_nsis.clone()).or(foundry.clone()),
+            SOURCE_CATALOG => catalog
+                .clone()
+                .or(show_bundled_as_nsis.clone())
+                .or(foundry.clone()),
             SOURCE_BUNDLED => show_bundled_as_nsis
                 .clone()
                 .or(catalog.clone())
@@ -345,13 +343,10 @@ pub fn resolve_provider_binaries(p: &mut ProviderConfig, ctx: ResolveContext<'_>
                 .clone()
                 .or(show_bundled_as_nsis.clone())
                 .or(catalog.clone()),
-            _ => show_bundled_as_nsis
-                .or(catalog)
-                .or(foundry),
+            _ => show_bundled_as_nsis.or(catalog).or(foundry),
         };
 
         if let Some((path, info)) = active {
-            // Prefer inventory row we just filled (may carry preserved --version).
             let from_inv = match source {
                 SOURCE_CATALOG => inv.catalog.as_ref().and_then(|e| e.info.clone()),
                 SOURCE_BUNDLED => inv.bundled.as_ref().and_then(|e| e.info.clone()),
@@ -371,21 +366,20 @@ pub fn resolve_provider_binaries(p: &mut ProviderConfig, ctx: ResolveContext<'_>
         } else {
             p.binary_path_per_env.remove(&profile);
             p.build_info_per_env.remove(&profile);
-            p.binary_source_per_env.remove(&profile);
+            // Preference stays — user intent survives missing disk rows.
         }
 
         if inv.bundled.is_some() || inv.foundry.is_some() || inv.catalog.is_some() {
             p.inventory_per_env.insert(profile.to_string(), inv);
         }
-
-        let _ = ctx.saved_paths;
     }
 
     sync_main_binary_path(p);
 }
 
+/// Set intent preference only (`foundry` | `bundled` | `catalog`). Does not resolve paths.
 pub fn set_profile_source(p: &mut ProviderConfig, profile: &str, source: &str) -> Result<(), String> {
-    if source != SOURCE_FOUNDRY && source != SOURCE_BUNDLED && source != SOURCE_CATALOG {
+    if !is_known_source(source) {
         return Err(format!(
             "Invalid binary source '{}' (use foundry | bundled | catalog)",
             source
@@ -397,16 +391,20 @@ pub fn set_profile_source(p: &mut ProviderConfig, profile: &str, source: &str) -
     Ok(())
 }
 
+/// Set preference and re-scan/resolve active path. Single entry for Foundry/catalog/UI.
+pub fn activate_profile_source(
+    p: &mut ProviderConfig,
+    profile: &str,
+    source: &str,
+) -> Result<(), String> {
+    set_profile_source(p, profile, source)?;
+    resolve_provider_binaries(p);
+    Ok(())
+}
+
+/// Re-scan inventory + recompute active paths from existing preference.
 pub fn resolve_after_source_change(p: &mut ProviderConfig) {
-    let source_pref = p.binary_source_per_env.clone();
-    let saved_paths = p.binary_path_per_env.clone();
-    resolve_provider_binaries(
-        p,
-        ResolveContext {
-            source_pref: &source_pref,
-            saved_paths: &saved_paths,
-        },
-    );
+    resolve_provider_binaries(p);
 }
 
 fn sync_main_binary_path(p: &mut ProviderConfig) {

@@ -407,59 +407,47 @@ pub fn activate_provider_pack(
     }
 
     if let Some(provider) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
-        let rel = crate::config::to_relative_path(&server_exe.to_path_buf());
         let tag = release_tag.trim().to_string();
 
         // Product tag for UPDATES comparison only — not engine build identity.
         provider
             .downloaded_version_per_env
             .insert(profile.to_string(), tag.clone());
-        provider
-            .binary_source_per_env
-            .insert(
-                profile.to_string(),
-                crate::profile_binaries::SOURCE_CATALOG.to_string(),
-            );
-        provider
-            .binary_path_per_env
-            .insert(profile.to_string(), rel.clone());
 
-        // Placeholder build-info only — real llama --version is filled by the standing
-        // refresh_build_info path (Providers page / App load), which now includes catalog.
-        let build_date = std::fs::metadata(server_exe)
-            .ok()
-            .and_then(|m| m.modified().ok())
-            .map(|mt| {
-                chrono::DateTime::<chrono::Local>::from(mt)
-                    .format("%Y-%m-%d %H:%M")
-                    .to_string()
-            })
-            .unwrap_or_else(|| "unknown".to_string());
-        let mut info = crate::types::BuildInfo {
-            version: "catalog".to_string(),
-            build_date,
-            cuda_version: None,
-            cuda_architectures: None,
-        };
-        info = crate::engine_utils::enrich_build_info_cuda_arch(info, &provider.build_profile);
-        provider
-            .build_info_per_env
-            .insert(profile.to_string(), info.clone());
-        let inv = provider
-            .inventory_per_env
-            .entry(profile.to_string())
-            .or_default();
-        inv.catalog = Some(crate::types::BinaryEntry {
-            path: rel.clone(),
-            info: Some(info),
-        });
-        // Do NOT write bundled_* — core NSIS inventory stays intact.
+        crate::profile_binaries::activate_profile_source(
+            provider,
+            profile,
+            crate::profile_binaries::SOURCE_CATALOG,
+        )?;
 
-        if provider.binary_path.is_empty() || profile == crate::config::DEFAULT_BINARY_PROFILE {
-            provider.binary_path = rel;
+        // Placeholder build-info until refresh_build_info probes llama --version.
+        if let Some(inv) = provider.inventory_per_env.get_mut(profile) {
+            if let Some(entry) = inv.catalog.as_mut() {
+                let build_date = std::fs::metadata(server_exe)
+                    .ok()
+                    .and_then(|m| m.modified().ok())
+                    .map(|mt| {
+                        chrono::DateTime::<chrono::Local>::from(mt)
+                            .format("%Y-%m-%d %H:%M")
+                            .to_string()
+                    })
+                    .unwrap_or_else(|| "unknown".to_string());
+                let mut info = crate::types::BuildInfo {
+                    version: "catalog".to_string(),
+                    build_date,
+                    cuda_version: None,
+                    cuda_architectures: None,
+                };
+                info = crate::engine_utils::enrich_build_info_cuda_arch(
+                    info,
+                    &provider.build_profile,
+                );
+                entry.info = Some(info.clone());
+                provider
+                    .build_info_per_env
+                    .insert(profile.to_string(), info);
+            }
         }
-
-        crate::profile_binaries::resolve_after_source_change(provider);
 
         log::info!(
             "[binary-update] Activated catalog {} [{}]: {} (product tag: {})",
@@ -760,12 +748,11 @@ pub async fn revert_binary_to_bundled(
     if let Some(provider) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
         // Switch active launch to NSIS bundled; keep catalog overlay on disk + product tag
         // so the Catalog row remains USE-able.
-        crate::profile_binaries::set_profile_source(
+        crate::profile_binaries::activate_profile_source(
             provider,
             &profile,
             crate::profile_binaries::SOURCE_BUNDLED,
         )?;
-        crate::profile_binaries::resolve_after_source_change(provider);
 
         log::info!(
             "[binary-update] Active binary for {provider_id} [{profile}] → bundled (catalog overlay kept if present)"
