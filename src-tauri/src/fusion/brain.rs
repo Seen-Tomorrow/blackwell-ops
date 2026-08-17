@@ -958,6 +958,14 @@ impl FusionBrain {
         self.stop_request_clock();
         self.lp_gen_tps = 0.0;
         self.gen_tps_instant = 0.0;
+        // Don't leave a tokens/1ms latch (displays as 200000) after TG ends.
+        if self.prefill_tps_eval > 0.0 {
+            self.prefill_tps_instant = clamp_display_tps(self.prefill_tps_eval);
+        } else if self.lp_prefill_tps > 0.0 {
+            self.prefill_tps_instant = clamp_display_tps(self.lp_prefill_tps);
+        } else {
+            self.prefill_tps_instant = 0.0;
+        }
         self.log_prefill_done = false;
         self.phase = InferencePhase::Idle;
         self.lp_phase = InferencePhase::Idle;

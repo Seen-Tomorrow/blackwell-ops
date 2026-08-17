@@ -130,10 +130,10 @@ impl ParallelMeter {
 }
 
 pub fn clamp_display_tps(tps: f64) -> f64 {
-    if !tps.is_finite() || tps <= 0.0 {
+    if !tps.is_finite() || tps <= 0.0 || tps >= MAX_DISPLAY_TPS {
         0.0
     } else {
-        tps.min(MAX_DISPLAY_TPS)
+        tps
     }
 }
 
@@ -154,4 +154,16 @@ pub fn per_slot_tps(system: f64, concurrent: usize) -> f64 {
         return 0.0;
     }
     clamp_display_tps(system / concurrent as f64)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clamp_rejects_ceiling_spike() {
+        assert_eq!(clamp_display_tps(200_000.0), 0.0);
+        assert_eq!(clamp_display_tps(1_000_000.0), 0.0);
+        assert!(clamp_display_tps(21_049.0) > 0.0);
+    }
 }

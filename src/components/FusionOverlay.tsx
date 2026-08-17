@@ -444,7 +444,7 @@ export default function FusionOverlay({
   const ctxPerSlot = fusion.ctxPerSlot || 0;
 
   const MAX_HERO_TPS = 200_000;
-  const clampHeroTps = (n: number) => (n > 0 && n <= MAX_HERO_TPS ? n : 0);
+  const clampHeroTps = (n: number) => (n > 0 && n < MAX_HERO_TPS ? n : 0);
 
   const ppTpsAvg = clampHeroTps(fusion.prefillTpsSession ?? 0);
   const ppTpsLive = clampHeroTps(Math.max(
