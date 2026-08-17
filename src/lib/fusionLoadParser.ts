@@ -75,12 +75,14 @@ export function parseLoadLogLine(line: string): LoadParseResult {
     result.phase = "kv";
   }
 
+  // Single-model product path starts HTTP *before* load_model. "listening" must not
+  // leapfrog WEIGHTS/KV via maxPhase. READY comes from readiness= / engine ready.
   if (
     lower.includes("http server listening")
     || lower.includes("server is listening")
     || lower.includes("http server is listening")
   ) {
-    result.phase = "server";
+    // no phase promotion
   }
 
   if (lower.includes("readiness=") || lower.includes("engine ready")) {

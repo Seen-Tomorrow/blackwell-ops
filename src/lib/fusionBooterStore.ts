@@ -19,6 +19,11 @@ export interface BooterSession {
   tickerLines: string[];
   layerCurrent: number;
   layerTotal: number;
+  /** 0..1 from GET /models/sse when available; -1 = unknown */
+  loadProgress01: number;
+  loadStage: string;
+  /** Where phase/progress is coming from right now */
+  progressSource: "none" | "sse" | "logs";
   pingAttempts: number;
   startedAt: number;
   phaseSince: number;
@@ -41,6 +46,9 @@ function createSession(slotIdx: number, port: number, modelLayerTotal: number): 
     tickerLines: [],
     layerCurrent: 0,
     layerTotal: modelLayerTotal,
+    loadProgress01: -1,
+    loadStage: "",
+    progressSource: "none",
     pingAttempts: 0,
     startedAt: now,
     phaseSince: now,
@@ -87,7 +95,12 @@ function processLogText(session: BooterSession, text: string) {
   if (parsed.phase) {
     const prev = session.logPhase;
     applyLogPhase(session, parsed.phase);
-    if (session.logPhase !== prev) changed = true;
+    if (session.logPhase !== prev) {
+      changed = true;
+      if (session.progressSource !== "sse") {
+        session.progressSource = "logs";
+      }
+    }
   }
   if (parsed.loadFailed) {
     markLoadFailed(session, parsed.loadErrorReason ?? text);
@@ -98,6 +111,7 @@ function processLogText(session: BooterSession, text: string) {
     if (next !== session.layerCurrent) {
       session.layerCurrent = next;
       changed = true;
+      if (session.progressSource !== "sse") session.progressSource = "logs";
     }
   }
   if (parsed.layerTotal != null) {
@@ -110,6 +124,92 @@ function processLogText(session: BooterSession, text: string) {
   if (parsed.gpuIndex != null && !session.logGpuIndices.includes(parsed.gpuIndex)) {
     session.logGpuIndices = [...session.logGpuIndices, parsed.gpuIndex].sort((a, b) => a - b);
     changed = true;
+  }
+
+  if (changed) bump(session);
+}
+
+/** Map llama-server SSE load progress → boot phases (prefer over pure stderr). */
+function applySseProgress(
+  session: BooterSession,
+  payload: {
+    status?: string;
+    stage?: string;
+    stages?: string[];
+    value?: number | null;
+  },
+) {
+  let changed = false;
+  const status = (payload.status ?? "").toLowerCase();
+  const stage = (payload.stage ?? "").trim();
+  const valueRaw = payload.value;
+  const value =
+    typeof valueRaw === "number" && Number.isFinite(valueRaw)
+      ? Math.min(1, Math.max(0, valueRaw))
+      : null;
+
+  if (session.progressSource !== "sse") {
+    session.progressSource = "sse";
+    changed = true;
+  }
+
+  const pctLabel = value != null ? `${(value * 100).toFixed(0)}%` : null;
+  if (stage || pctLabel) {
+    const tick = stage
+      ? pctLabel
+        ? `SSE ${stage} ${pctLabel}`
+        : `SSE ${stage}`
+      : `SSE load ${pctLabel}`;
+    const last = session.tickerLines[session.tickerLines.length - 1];
+    if (last !== tick) {
+      session.tickerLines = [...session.tickerLines.slice(-2), tick];
+      changed = true;
+    }
+  }
+  if (stage && stage !== session.loadStage) {
+    session.loadStage = stage;
+    changed = true;
+  }
+
+  if (value != null && value !== session.loadProgress01) {
+    session.loadProgress01 = value;
+    changed = true;
+    if (session.layerTotal > 0) {
+      const nextLayer = Math.max(
+        session.layerCurrent,
+        Math.min(session.layerTotal, Math.round(value * session.layerTotal)),
+      );
+      if (nextLayer !== session.layerCurrent) {
+        session.layerCurrent = nextLayer;
+      }
+    }
+  }
+
+  let incoming: LoadPhaseId | null = null;
+  if (status === "loaded" || status === "ready") {
+    incoming = "ready";
+  } else if (status === "failed") {
+    markLoadFailed(session, stage || "Model load failed");
+    return;
+  } else if (status === "loading" || value != null || stage) {
+    const stageL = stage.toLowerCase();
+    if (stageL.includes("kv") || stageL.includes("cache")) {
+      incoming = "kv";
+    } else if (value != null && value >= 0.97) {
+      incoming = "server";
+    } else if (value != null && value >= 0.02) {
+      incoming = "weights";
+    } else if (stageL.includes("mmproj") || stageL.includes("text") || stageL.includes("model")) {
+      incoming = "weights";
+    } else if (value != null && value >= 0) {
+      incoming = value > 0 ? "weights" : "spawn";
+    }
+  }
+
+  if (incoming) {
+    const prev = session.logPhase;
+    applyLogPhase(session, incoming);
+    if (session.logPhase !== prev) changed = true;
   }
 
   if (changed) bump(session);
@@ -165,6 +265,22 @@ function ensureGlobalListeners() {
     const session = sessions.get(e.payload.slot);
     if (!session) return;
     markLoadFailed(session, e.payload.reason ?? "Model load failed");
+  });
+
+  void listen<{
+    slot: number;
+    port?: number;
+    status?: string;
+    stage?: string;
+    stages?: string[];
+    value?: number | null;
+    event?: string;
+  }>("engine-load-progress", (e) => {
+    const p = e.payload;
+    const session = sessions.get(p.slot);
+    if (!session || session.loadFailed) return;
+    if (p.port != null && session.port !== p.port) return;
+    applySseProgress(session, p);
   });
 
   void listen<{ slot: number }>("slot-cleared", (e) => {

@@ -11,6 +11,8 @@ mod telemetry;
 mod intel;
 mod config;
 mod engine_stack;
+mod engine_load_progress;
+
 mod log_hub;
 mod hf_api;
 mod types;

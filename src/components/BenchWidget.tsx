@@ -863,7 +863,7 @@ export default function BenchWidget({
                     </button>
                   </div>
                   <div className="fusion-bench-field">
-                    <span className="fusion-bench-field__lab" title="Prefill prompt vocabulary style">CONTENT to generate</span>
+                    <span className="fusion-bench-field__lab" title="Prefill prompt vocabulary style">CONTENT style</span>
                     <button
                       onClick={cyclePromptMode}
                       disabled={isAnyRunning}
@@ -874,7 +874,7 @@ export default function BenchWidget({
                           : "Repetitive: fixed phrase cycled to 512-tok prefill — predictable for MTP/spec-decode. TG decode is temp-0 continuation of the pattern."
                       }
                     >
-                      {ps.promptMode === "unique" ? "Unique ▸" : "◂ Repetitive"}
+                      {ps.promptMode === "unique" ? "Unique" : "CODE gen"}
                     </button>
                   </div>
                 </div>

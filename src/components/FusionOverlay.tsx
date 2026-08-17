@@ -627,12 +627,12 @@ export default function FusionOverlay({
                 onClick={() => setQuietMode((q) => !q)}
                 title={
                   quietMode
-                    ? "Quiet mode: /slots-derived PP + multi-slot TG (no stderr logs). Click for log-belt mode."
-                    : "Log-belt mode: expects stderr print_timing/NewPrompt logs. Click for quiet (/slots-only) mode — use for silent models like DS4."
+                    ? "FULL mode - fully realtime GENERATION AND PREFILL data"
+                    : "FALLBACK mode fore quit models - not fully supported yet"
                 }
                 className={`fusion-ops-chip ${quietMode ? "fusion-ops-chip--quiet" : ""}`}
               >
-                {quietMode ? "QUIET" : "LOGS"}
+                {quietMode ? "FALLBACK" : "FULL"}
               </button>
               <button
                 type="button"

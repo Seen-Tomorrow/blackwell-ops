@@ -311,17 +311,8 @@
   min-width: 11ch;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
-  color: rgba(34, 211, 238, 0.62);
 }
 
-/* FusionBooter — animated GPU interconnect during model load */
-@keyframes fusion-boot-dash {
-  to { stroke-dashoffset: -20; }
-}
-
-.fusion-boot-link-active {
-  animation: fusion-boot-dash 0.6s linear infinite;
-}
 
 /* CUDA version badges — NVIDIA green in every theme */
 .cuda-badge {

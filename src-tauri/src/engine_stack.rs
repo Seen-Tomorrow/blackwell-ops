@@ -392,6 +392,20 @@ impl EngineStack {
             fusion_adapter,
         );
 
+        // Real model-load fraction from GET /models/sse (router, or single-model foundry patch).
+        // 404 is quiet — FusionBooter keeps stderr phase fallback.
+        {
+            let cancel = slot_arc.lock().reaper_cancel.clone();
+            crate::engine_load_progress::spawn_models_sse_progress(
+                config.port,
+                config.alias.clone(),
+                slot_idx,
+                log_hub.clone(),
+                slot_arc.clone(),
+                cancel,
+            );
+        }
+
         // Quick alive check — give process 500ms to initialize (async — do not block tokio worker)
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         if let Ok(status) = child.try_wait() {

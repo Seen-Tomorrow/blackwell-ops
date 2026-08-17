@@ -3,13 +3,15 @@
 ## Source of truth
 - Status: Active
 - Last refreshed: 2026-08-17
-- Primary product surfaces: Fusion live performance meter (phosphor glass inside industrial bezel)
+- Primary product surfaces: Fusion live performance meter + engine boot instrument (phosphor glass inside industrial bezel)
 - Evidence reviewed:
   - `src/components/FusionOverlay.tsx`
+  - `src/components/FusionBooter.tsx`
   - `src/components/SlotCtxBars.tsx`
   - `src/styles/fusion-display.css`
   - `src/lib/benchPanelLayout.ts`
   - `src/lib/fusionShareCapture.tsx`
+  - `src/lib/fusionLoadParser.ts`
   - `docs/display-bezel-glass.md`
   - `AGENTS.md` (tokens-only themes, no blur, one glass)
 
@@ -23,19 +25,22 @@
   - Make live TG/PP the most enviable local-LLM performance readout on the market.
   - Instant phase legibility (IDLE / PP / TG) without reading labels twice.
   - Keep every existing metric/behavior (LIVE/AVG, micro latch, per-slot, MTP, bench suppress, quiet/lv/stop, share classes).
+  - Engine load feels like the same instrument cluster — NVMe + VRAM + phase rail, not a toy progress screen.
 - Non-goals:
   - Backend brain/math changes.
   - Reworking VRAM forecast scenarios or bezel chrome.
-  - New product features beyond presentation of existing `FusionUpdate` fields.
+  - New product features beyond presentation of existing `FusionUpdate` / boot parse fields.
+  - Bytes-loaded / ETA (not in payload today).
 - Success signals:
   - Hero numbers feel carved into phosphor, not floated Tailwind text.
   - Active channel blooms; idle channel stays ghosted but readable.
   - Share PNG still captures TG/PP/per-slot via existing class hooks.
   - No layout thrash when tokens/ms update at 25ms telemetry.
+  - Boot: disk hero + GPU bank read at a glance; no fake SONAR / bitstream chrome.
 
 ## Personas and jobs
 - Primary personas: Local inference power users, bench sharers, multi-slot agent runners.
-- User jobs: Read system tok/s at a glance; compare LIVE vs AVG; watch PP progress; latch last-request timing; screenshot flex.
+- User jobs: Read system tok/s at a glance; compare LIVE vs AVG; watch PP progress; latch last-request timing; screenshot flex; watch model load without leaving the instrument.
 - Key contexts of use: 1080p marginal → 1440p/4K optimal; dark CRT themes + phosphor-light e-ink faces.
 
 ## Information architecture
@@ -45,6 +50,7 @@
   1. Identity + ops (alias, port, QUIET/LV/STOP)
   2. Hero triad: context slot bank · TG instrument · PP instrument
   3. Bench tray — instrument controls + metric-cell results
+  4. Engine boot (LOADING only): header · GPU VRAM bank · NVMe READ · phase rail · stderr ticker
 
 ## Design principles
 - Principle 1: **One dominant number** — TG system throughput owns the eye; PP is peer but cooler; per-slot is satellite.
@@ -68,35 +74,36 @@
 
 ## Components
 - Existing components to reuse:
-  - `FusionOverlay` (state/math owner)
+  - `FusionOverlay` (state/math owner + boot gate)
   - `SlotCtxBars` — instrument slot bank (chrome + speculative/live ticks)
   - `FusionBenchTrayLatch` + `BenchWidget` — instrument controls/results
+  - `FusionBooter` — engine load instrument (LOADING gate)
   - Share classes: `.fusion-tg-hero-value`, `.fusion-prefill-hero-value`, `.fusion-per-slot-meter`, `.fusion-per-slot-meter__value`, micro-stat cells
 - New/changed components:
   - `FusionHeroSparkline` — TG live history waveform
   - `FusionMicroReadout` — latched precision strip (label/value cells)
-  - CSS cluster `.fusion-instrument*` / `.fusion-slot-bank*` / `.fusion-bench-*` in `fusion-display.css`
-- Variants and states: idle / pp-active / tg-active / suppressed (`--`) / parallel per-slot visible / micro live vs latched idle
+  - CSS cluster `.fusion-instrument*` / `.fusion-slot-bank*` / `.fusion-bench-*` / `.fusion-boot-*` in `fusion-display.css`
+- Variants and states: idle / pp-active / tg-active / suppressed (`--`) / parallel per-slot visible / micro live vs latched idle / boot hot-warm-idle disk / load-failed
 - Token/component ownership:
-  - Presentation tokens in CSS using existing `--display-face-*` + `--theme-*`
+  - Presentation tokens in CSS using existing `--display-face-*` + `--theme-*` (+ `--theme-telemetry-cyan` for NVMe)
   - Prefer zero new theme keys unless a face color cannot be mixed
 
 ## Accessibility
 - Target standard: keyboard-focusable controls (LIVE/AVG, QUIET, LV, STOP) keep visible focus rings.
 - Keyboard/focus behavior: buttons remain real `<button>` elements.
 - Contrast/readout: idle values stay ≥ readable muted; light phosphor uses existing light-readout tokens.
-- Screen-reader semantics: phase text remains textual; progress bars keep reserved space with `aria-hidden` when suppressed.
-- Reduced motion: disable sparkline animation / rim pulse under `prefers-reduced-motion`.
+- Screen-reader semantics: phase text remains textual; progress bars keep reserved space with `aria-hidden` when suppressed; boot GPU bank is a labeled group.
+- Reduced motion: disable sparkline animation / rim pulse / phase bar pulse under `prefers-reduced-motion`.
 
 ## Responsive behavior
 - Supported breakpoints/devices: 1080p min, 1440p+ recommended (product floor).
-- Layout adaptations: existing slot column width via `fusionSlotColumnLayout`; hero flex 45/35 TG/PP.
+- Layout adaptations: existing slot column width via `fusionSlotColumnLayout`; hero flex 45/35 TG/PP; boot GPU bank flexes ≤8 columns.
 - Touch/hover: denser click targets on LIVE/AVG segment (≥18px height).
 
 ## Interaction states
-- Loading: `FusionBooter` unchanged.
+- Loading: `FusionBooter` instrument (ENGINE BOOT) — GPU VRAM bank, NVMe READ hero, SPAWN→READY phase rail, optional `/models/sse` LOAD% bar, stderr ticker, LAYER/LOAD/PHASE/ELAPSED meta. No fake SONAR. Prefer real SSE `progress.value` when the engine exposes it; stderr phase parse is fallback.
 - Empty/sync: SYNCING FUSION placeholder unchanged.
-- Error / fusion off: existing non-fusion engine panel.
+- Error / fusion off: existing non-fusion engine panel; boot LOAD FAILED frame with reason.
 - Success: live metrics + bench pin.
 - Disabled: STOP while stopping; suppressed heroes show `--`.
 - Offline/slow network: n/a (local engine).
@@ -120,3 +127,6 @@
 - [ ] Optional later: secondary spark history for PP (space-limited now).
 - [ ] Optional later: retire unused `FusionTpsDisplay` / `FusionPhaseBadge` / `FusionFuelTank` dead leaves.
 - [x] Slot bank + bench tray restyled to instrument language; surface unused fields (speculative, prompt_tps, aggregate/per-req, PP wall).
+- [x] Engine boot restyled to instrument language (GPU bank + NVMe hero + phase rail); drop bitstream/SONAR chrome.
+- [x] Wire real load fraction: foundry single-model `GET /models/sse` + Rust `engine-load-progress` → Booter LOAD% (needs foundry rebuild of ggml-master).
+- [ ] Optional later: true bytes-loaded / ETA if backend ever emits them.

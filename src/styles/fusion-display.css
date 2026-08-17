@@ -4071,3 +4071,608 @@ html[data-industrial-bezel="brush"] {
     animation: none;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * ENGINE BOOT — instrument cluster (FusionBooter)
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.fusion-boot {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  gap: 6px;
+  padding: 6px 8px 5px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.fusion-boot__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.fusion-boot__title {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  line-height: 1;
+  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 78%, transparent);
+  flex-shrink: 0;
+}
+
+.fusion-boot__title--fail {
+  color: color-mix(in srgb, #f87171 92%, transparent);
+}
+
+.fusion-boot__src {
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.4)) 55%, transparent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 6.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  line-height: 1.2;
+  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 70%, transparent);
+  background: color-mix(in srgb, var(--display-face-bar-bg, rgba(0, 0, 0, 0.4)) 55%, transparent);
+}
+
+.fusion-boot__src--sse {
+  color: color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 88%, transparent);
+  border-color: color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 40%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 22%, transparent);
+}
+
+.fusion-boot__src--logs {
+  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 78%, transparent);
+  border-color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 28%, transparent);
+}
+
+.fusion-boot__src--none {
+  opacity: 0.72;
+}
+
+.fusion-boot__timer {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  color: var(--display-face-text, #e2e8f0);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--display-face-text, #e2e8f0) 28%, transparent);
+  flex-shrink: 0;
+}
+
+.fusion-boot__ident {
+  margin-left: auto;
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 78%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
+}
+
+.fusion-boot__body {
+  display: flex;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-height: 0;
+  align-items: stretch;
+}
+
+.fusion-boot__gpus {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+
+/* GPU VRAM bank — same outer height as NVMe card (label inside well) */
+.fusion-boot-gpu-bank {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.fusion-boot-gpu-bank__well {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.35)) 55%, transparent);
+  background: color-mix(in srgb, var(--display-face-bar-bg, rgba(0, 0, 0, 0.35)) 62%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 5%, transparent),
+    inset 0 -1px 2px color-mix(in srgb, #000 30%, transparent);
+  padding: 5px 5px 4px;
+  box-sizing: border-box;
+}
+
+.fusion-boot-gpu-bank__title {
+  display: block;
+  flex-shrink: 0;
+  width: 100%;
+  margin-bottom: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 6.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  line-height: 1;
+  text-align: center;
+  color: color-mix(in srgb, var(--display-face-control-muted, var(--display-face-text-muted, #94a3b8)) 88%, transparent);
+}
+
+.fusion-boot-gpu-bank__bars {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.fusion-boot-gpu-col {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 14%;
+  display: flex;
+  flex-direction: column;
+}
+
+.fusion-boot-gpu-col__track {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 48px;
+  border-radius: 2px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.4)) 45%, transparent);
+  background: color-mix(in srgb, #000 28%, transparent);
+}
+
+.fusion-boot-gpu-col.is-active .fusion-boot-gpu-col__track {
+  border-color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 28%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--display-face-text, #e2e8f0) 10%, transparent);
+}
+
+.fusion-boot-gpu-col__fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--display-face-text, #e2e8f0) 55%, transparent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--display-face-text, #e2e8f0) 22%, transparent);
+  transition: height 280ms ease-out, opacity 200ms ease;
+  opacity: 0.72;
+  z-index: 0;
+}
+
+.fusion-boot-gpu-col.is-idle .fusion-boot-gpu-col__fill {
+  opacity: 0.18;
+  box-shadow: none;
+}
+
+.fusion-boot-gpu-col__readout {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 3px 1px 0;
+  pointer-events: none;
+}
+
+.fusion-boot-gpu-col__id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 6px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  line-height: 1;
+  color: color-mix(in srgb, var(--display-face-control-muted, #94a3b8) 90%, transparent);
+}
+
+.fusion-boot-gpu-col__val {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--display-face-text, #e2e8f0);
+}
+
+.fusion-boot-gpu-col.is-idle .fusion-boot-gpu-col__val {
+  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 70%, transparent);
+}
+
+.fusion-boot-gpu-col__unit {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 5.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 62%, transparent);
+}
+
+/* NVMe disk hero */
+.fusion-boot-disk {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  align-self: stretch;
+  min-width: 118px;
+  width: 32%;
+  max-width: 152px;
+  padding: 6px 8px 5px;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.35)) 50%, transparent);
+  background: color-mix(in srgb, var(--display-face-bar-bg, rgba(0, 0, 0, 0.35)) 55%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 5%, transparent),
+    inset 0 -1px 2px color-mix(in srgb, #000 28%, transparent);
+  overflow: hidden;
+  box-sizing: border-box;
+  transition: border-color 200ms ease, box-shadow 220ms ease;
+}
+
+.fusion-boot-disk.is-hot {
+  border-color: color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 45%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 6%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 18%, transparent),
+    0 0 18px color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 14%, transparent);
+}
+
+.fusion-boot-disk.is-warm {
+  border-color: color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 28%, transparent);
+}
+
+.fusion-boot-disk__lab {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 6.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  line-height: 1;
+  margin-bottom: 3px;
+  color: color-mix(in srgb, var(--display-face-control-muted, var(--display-face-text-muted, #94a3b8)) 85%, transparent);
+}
+
+.fusion-boot-disk__value {
+  font-size: clamp(1.55rem, 5vh, 2.35rem) !important;
+  line-height: 0.92 !important;
+  min-width: 7ch;
+  text-align: center;
+  color: color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 42%, transparent);
+  text-shadow: none;
+  transition: color 180ms ease, text-shadow 220ms ease;
+}
+
+.fusion-boot-disk.is-warm .fusion-boot-disk__value {
+  color: color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 78%, transparent);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 28%, transparent);
+}
+
+.fusion-boot-disk.is-hot .fusion-boot-disk__value {
+  color: var(--theme-telemetry-cyan, #00e5ff);
+  text-shadow:
+    0 0 12px color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 45%, transparent),
+    0 0 28px color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 18%, transparent);
+}
+
+.fusion-boot-disk__unit {
+  margin-top: 3px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 7px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 70%, transparent);
+}
+
+.fusion-boot-disk__mbit {
+  margin-top: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: clamp(0.65rem, 1.65vh, 0.8rem);
+  min-width: 11ch;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  text-align: center;
+  color: color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 55%, transparent);
+}
+
+/* Phase rail */
+.fusion-boot-phase {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+  width: 100%;
+  padding: 0 1px;
+}
+
+.fusion-boot-phase__steps {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  width: 100%;
+}
+
+.fusion-boot-phase__step {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.fusion-boot-phase__bar {
+  width: 100%;
+  height: 3px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.4)) 55%, transparent);
+  transition: background 200ms ease, box-shadow 220ms ease;
+}
+
+.fusion-boot-phase__step.is-done .fusion-boot-phase__bar {
+  background: color-mix(in srgb, var(--display-face-text, #e2e8f0) 72%, transparent);
+}
+
+.fusion-boot-phase__step.is-active .fusion-boot-phase__bar {
+  background: color-mix(in srgb, var(--display-face-text, #e2e8f0) 88%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--display-face-text, #e2e8f0) 35%, transparent);
+  animation: fusion-instrument-pulse 1.15s ease-in-out infinite;
+}
+
+.fusion-boot-phase__lab {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 5.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  width: 100%;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 48%, transparent);
+}
+
+.fusion-boot-phase__step.is-done .fusion-boot-phase__lab,
+.fusion-boot-phase__step.is-active .fusion-boot-phase__lab {
+  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 82%, transparent);
+}
+
+.fusion-boot-phase__progress {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+
+.fusion-boot-phase__progress-track {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--display-face-bar-bg, rgba(0, 0, 0, 0.45)) 70%, transparent);
+  border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.35)) 50%, transparent);
+}
+
+.fusion-boot-phase__progress-fill {
+  height: 100%;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--display-face-text, #e2e8f0) 78%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--display-face-text, #e2e8f0) 28%, transparent);
+  transition: width 180ms linear;
+}
+
+.fusion-boot-phase__progress-val {
+  flex: 0 0 auto;
+  min-width: 3.2ch;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 82%, transparent);
+  text-align: right;
+}
+
+/* Ticker + meta */
+.fusion-boot__footer {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.fusion-boot-ticker {
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.35)) 48%, transparent);
+  background: color-mix(in srgb, var(--display-face-bar-bg, rgba(0, 0, 0, 0.4)) 58%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 4%, transparent);
+  padding: 4px 6px;
+  min-height: 32px;
+  max-height: 42px;
+  overflow: hidden;
+}
+
+.fusion-boot-ticker__empty {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 7.5px;
+  font-style: italic;
+  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 45%, transparent);
+}
+
+.fusion-boot-ticker__line {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 7.5px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 72%, transparent);
+}
+
+.fusion-boot-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.fusion-boot-meta__cell {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+}
+
+.fusion-boot-meta__lab {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 5.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: color-mix(in srgb, var(--display-face-control-muted, var(--display-face-text-muted, #94a3b8)) 80%, transparent);
+}
+
+.fusion-boot-meta__val {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 8px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 88%, transparent);
+}
+
+.fusion-boot-meta__unit {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 6.5px;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 70%, transparent);
+}
+
+/* Fail state */
+.fusion-boot--failed {
+  justify-content: flex-start;
+}
+
+.fusion-boot-fail {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+  padding: 8px 12px;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, #f87171 35%, transparent);
+  background: color-mix(in srgb, #7f1d1d 18%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 4%, transparent);
+}
+
+.fusion-boot-fail__reason {
+  margin: 0;
+  max-width: 22rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 9px;
+  line-height: 1.45;
+  color: color-mix(in srgb, #fecaca 92%, transparent);
+}
+
+.fusion-boot-fail__hint {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 7px;
+  letter-spacing: 0.06em;
+  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 70%, transparent);
+}
+
+/* Phosphor light boot */
+[data-display-texture="phosphor-light"] .fusion-boot-gpu-bank__well,
+[data-display-texture="phosphor-light"] .fusion-boot-disk,
+[data-display-texture="phosphor-light"] .fusion-boot-ticker {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, #fff 55%, transparent) 0%,
+      color-mix(in srgb, var(--display-face-light-surface, #e8e4d8) 70%, transparent) 100%
+    );
+  border-color: color-mix(in srgb, var(--display-face-light-ctx-track-border, #9ca38a) 70%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 70%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, #000 8%, transparent);
+}
+
+[data-display-texture="phosphor-light"] .fusion-boot__title,
+[data-display-texture="phosphor-light"] .fusion-boot-gpu-bank__title,
+[data-display-texture="phosphor-light"] .fusion-boot-disk__lab,
+[data-display-texture="phosphor-light"] .fusion-boot-phase__lab,
+[data-display-texture="phosphor-light"] .fusion-boot-meta__lab {
+  color: color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 55%, transparent);
+}
+
+[data-display-texture="phosphor-light"] .fusion-boot__timer,
+[data-display-texture="phosphor-light"] .fusion-boot-gpu-col__val,
+[data-display-texture="phosphor-light"] .fusion-boot-meta__val,
+[data-display-texture="phosphor-light"] .fusion-boot-phase__step.is-done .fusion-boot-phase__lab,
+[data-display-texture="phosphor-light"] .fusion-boot-phase__step.is-active .fusion-boot-phase__lab {
+  color: var(--display-face-light-readout, #1e3a14);
+  text-shadow: none;
+}
+
+[data-display-texture="phosphor-light"] .fusion-boot-gpu-col__fill {
+  background: var(--display-face-light-ctx-fill-processing, #3f6b2a);
+  box-shadow: none;
+  opacity: 0.85;
+}
+
+[data-display-texture="phosphor-light"] .fusion-boot-disk.is-hot .fusion-boot-disk__value,
+[data-display-texture="phosphor-light"] .fusion-boot-disk.is-warm .fusion-boot-disk__value {
+  color: #0e7490;
+  text-shadow: none;
+}
+
+[data-display-texture="phosphor-light"] .fusion-boot-disk__mbit {
+  color: color-mix(in srgb, #0e7490 70%, transparent);
+}
+
+[data-display-texture="phosphor-light"] .fusion-boot-ticker__line {
+  color: color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 78%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fusion-boot-phase__step.is-active .fusion-boot-phase__bar {
+    animation: none;
+  }
+  .fusion-boot-gpu-col__fill {
+    transition: none;
+  }
+}
+

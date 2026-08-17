@@ -19,27 +19,28 @@ interface FusionBooterProps {
   gpuLoadTargetsMib?: Record<number, number>;
 }
 
-function binaryStream(tick: number, len = 8, seed = 0): string {
-  return Array.from({ length: len }, (_, i) => {
-    const wave = (tick * 3 + i * 2 + seed) % 11;
-    return wave < 4 ? "0" : wave < 8 ? "1" : "·";
-  }).join("").replace(/·/g, "0");
-}
-
 function vramLoadForGpu(loads: GpuVramLoad[], index: number): GpuVramLoad | undefined {
   return loads.find((l) => l.index === index);
+}
+
+function formatDiskRate(n: number): string {
+  return Math.round(n).toLocaleString("en-US");
+}
+
+function formatTimer(elapsedSec: number): string {
+  const mm = Math.floor(elapsedSec / 60);
+  const ss = Math.floor(elapsedSec % 60);
+  return `${mm}:${ss.toString().padStart(2, "0")}`;
 }
 
 function GpuLoadMap({
   gpus,
   activeIndices,
   gpuVramLoads,
-  bitTick,
 }: {
   gpus: GpuInfo[];
   activeIndices: number[];
   gpuVramLoads: GpuVramLoad[];
-  bitTick: number;
 }) {
   if (gpus.length === 0) return null;
 
@@ -50,110 +51,113 @@ function GpuLoadMap({
   const displayGpus = (orderedActive.length > 0 ? orderedActive : gpus).slice(0, MAX_BOOT_GPUS);
 
   return (
-    <div className="flex items-end justify-center gap-1 sm:gap-1.5 w-full h-full min-h-0 px-0.5">
-      {displayGpus.map((gpu, i) => {
-        const active = activeSet.has(gpu.index);
-        const load = vramLoadForGpu(gpuVramLoads, gpu.index);
-        const fillPct = load ? Math.min(100, load.pct) : 0;
-        const usedGb = load ? (load.usedMib / 1024).toFixed(1) : "0.0";
-        const bits = binaryStream(bitTick + i * 4, 6, i);
+    <div className="fusion-boot-gpu-bank" role="group" aria-label="GPU VRAM load">
+      <div className="fusion-boot-gpu-bank__well">
+        <span className="fusion-boot-gpu-bank__title">GPU VRAM</span>
+        <div className="fusion-boot-gpu-bank__bars">
+          {displayGpus.map((gpu) => {
+            const active = activeSet.has(gpu.index);
+            const load = vramLoadForGpu(gpuVramLoads, gpu.index);
+            const fillPct = load ? Math.min(100, load.pct) : 0;
+            const usedGb = load ? (load.usedMib / 1024).toFixed(1) : "0.0";
+            const targetGb = load && load.targetMib > 0
+              ? (load.targetMib / 1024).toFixed(0)
+              : null;
 
-        return (
-          <div
-            key={gpu.index}
-            className="flex flex-col items-center flex-1 min-w-0 h-full max-w-[11%]"
-          >
-            <div
-              className={`relative w-full flex-1 min-h-[48px] rounded-sm border overflow-hidden ${
-                active ? "border-nv-green/50 bg-black/30" : "border-stealth-border/40 bg-black/15"
-              }`}
-            >
+            return (
               <div
-                className="absolute bottom-0 left-0 right-0 bg-nv-green transition-all duration-300 ease-out z-0"
-                style={{
-                  height: `${Math.max(2, fillPct)}%`,
-                  opacity: active ? 0.6 : 0.12,
-                }}
-              />
-              <div className="absolute inset-x-0 top-1 z-10 flex flex-col items-center gap-0.5 px-0.5 pointer-events-none">
-                <span className="text-[6px] font-mono tracking-wider px-1 py-0.5 rounded-sm border border-stealth-border/50 bg-white/85 text-black leading-none truncate max-w-full">
-                  GPU-{gpu.index}
-                </span>
-                <span className="text-[10px] font-mono font-bold leading-none text-black bg-white/80 px-1 py-px rounded-sm">
-                  {usedGb}
-                  <span className="text-[7px] font-normal"> GB</span>
-                </span>
+                key={gpu.index}
+                className={`fusion-boot-gpu-col${active ? " is-active" : " is-idle"}`}
+              >
+                <div
+                  className="fusion-boot-gpu-col__track"
+                  title={
+                    targetGb
+                      ? `GPU ${gpu.index}: +${usedGb} GiB / ~${targetGb} GiB target (Δ from load baseline)`
+                      : `GPU ${gpu.index}: +${usedGb} GiB since load start`
+                  }
+                >
+                  <div
+                    className="fusion-boot-gpu-col__fill"
+                    style={{ height: `${Math.max(active ? 3 : 2, fillPct)}%` }}
+                  />
+                  <div className="fusion-boot-gpu-col__readout">
+                    <span className="fusion-boot-gpu-col__id">G{gpu.index}</span>
+                    <span className="fusion-boot-gpu-col__val">{usedGb}</span>
+                    <span className="fusion-boot-gpu-col__unit">GiB</span>
+                  </div>
+                </div>
               </div>
-            </div>
-
-            <span className="h-[9px] mt-0.5 text-[5px] font-mono text-nv-green/55 tracking-widest text-center w-full leading-none overflow-hidden">
-              {active ? bits : "······"}
-            </span>
-          </div>
-        );
-      })}
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
-}
-
-function formatDiskRate(n: number): string {
-  return Math.round(n).toLocaleString("en-US");
 }
 
 function DiskIoHero({ mibPerS }: { mibPerS: number }) {
   const value = formatDiskRate(mibPerS);
   const mbitPerS = formatDiskRate(mibPerS * 8);
   const hot = mibPerS >= 4096;
+  const warm = !hot && mibPerS > 8;
 
   return (
     <div
-      className={`fusion-disk-hero flex flex-col items-center justify-center px-2 py-1 rounded-sm border flex-shrink-0 self-stretch min-w-[118px] w-[34%] max-w-[148px] overflow-hidden ${
-        hot ? "border-telemetry-cyan/40 bg-black/10" : "border-stone-500/10 bg-black/4"
-      }`}
+      className={`fusion-boot-disk fusion-disk-hero${hot ? " is-hot" : warm ? " is-warm" : " is-idle"}`}
+      aria-label={`NVMe read ${value} mebibytes per second`}
     >
-      <span className="text-[7px] font-mono text-stealth-muted/50 tracking-wider mb-0.5 px-0.5 text-center leading-tight">
-        NVMe READ
-      </span>
-      <span
-        className="fusion-disk-hero__value font-mono font-bold tabular-nums tracking-tight leading-none text-center"
-        style={{
-          color: hot ? "#22d3ee" : mibPerS > 8 ? "rgba(34, 211, 238, 0.75)" : "rgba(34, 211, 238, 0.35)",
-        }}
-      >
+      <span className="fusion-boot-disk__lab">NVMe READ</span>
+      <span className="fusion-boot-disk__value fusion-disk-hero__value fusion-instrument__value">
         {value}
       </span>
-      <span className="text-[8px] font-mono text-stealth-muted/55 tracking-wider mt-0.5 px-0.5">MiB/s</span>
-      <span className="fusion-disk-hero__mbit font-mono mt-1 px-0.5 text-center leading-tight">
+      <span className="fusion-boot-disk__unit">MiB/s</span>
+      <span className="fusion-boot-disk__mbit fusion-disk-hero__mbit">
         {mbitPerS} Mbit/s
       </span>
     </div>
   );
 }
 
-function PhaseLadder({ phase }: { phase: LoadPhaseId }) {
+function PhaseLadder({
+  phase,
+  loadProgress01,
+}: {
+  phase: LoadPhaseId;
+  loadProgress01: number;
+}) {
   const current = phaseIndex(phase);
+  const hasPct = loadProgress01 >= 0;
+  const fillPct = hasPct ? Math.min(100, Math.round(loadProgress01 * 100)) : null;
   return (
-    <div className="flex items-center justify-between gap-1 w-full px-1">
-      {LOAD_PHASE_ORDER.map((id, i) => {
-        const done = i < current;
-        const active = i === current;
-        return (
-          <div key={id} className="flex-1 flex flex-col items-center gap-0.5 min-w-0">
+    <div className="fusion-boot-phase" aria-label="Load phase">
+      <div className="fusion-boot-phase__steps" role="list">
+        {LOAD_PHASE_ORDER.map((id, i) => {
+          const done = i < current;
+          const active = i === current;
+          const state = done ? "is-done" : active ? "is-active" : "is-todo";
+          return (
+            <div key={id} className={`fusion-boot-phase__step ${state}`} role="listitem">
+              <div className="fusion-boot-phase__bar" />
+              <span className="fusion-boot-phase__lab">{LOAD_PHASE_LABELS[id]}</span>
+            </div>
+          );
+        })}
+      </div>
+      {fillPct != null && (
+        <div
+          className="fusion-boot-phase__progress"
+          aria-label={`Load progress ${fillPct} percent`}
+        >
+          <div className="fusion-boot-phase__progress-track">
             <div
-              className={`h-1 w-full rounded-sm transition-colors ${
-                done ? "bg-nv-green" : active ? "bg-nv-green/60 animate-pulse" : "bg-stealth-border/60"
-              }`}
+              className="fusion-boot-phase__progress-fill"
+              style={{ width: `${Math.max(2, fillPct)}%` }}
             />
-            <span
-              className={`text-[6px] font-mono tracking-wider truncate w-full text-center ${
-                done || active ? "text-nv-green" : "text-stealth-muted/40"
-              }`}
-            >
-              {LOAD_PHASE_LABELS[id]}
-            </span>
           </div>
-        );
-      })}
+          <span className="fusion-boot-phase__progress-val">{fillPct}%</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -181,14 +185,17 @@ export default function FusionBooter({
 
   if (state.loadFailed) {
     return (
-      <div className="flex flex-col w-full h-full items-center justify-center gap-3 px-4 py-2 text-center">
-        <span className="text-[11px] font-mono text-red-400 tracking-widest">LOAD FAILED</span>
-        <p className="text-[9px] font-mono text-stealth-muted/80 leading-relaxed max-w-[320px]">
-          {state.loadErrorReason}
-        </p>
-        <span className="text-[8px] font-mono text-stealth-muted/45">
-          {alias.toUpperCase()} :{port}
-        </span>
+      <div className="fusion-boot fusion-boot--failed">
+        <div className="fusion-boot__header">
+          <span className="fusion-boot__title fusion-boot__title--fail">LOAD FAILED</span>
+          <span className="fusion-boot__ident">
+            {alias.toUpperCase()} :{port}
+          </span>
+        </div>
+        <div className="fusion-boot-fail">
+          <p className="fusion-boot-fail__reason">{state.loadErrorReason}</p>
+          <p className="fusion-boot-fail__hint">Check engine logs · adjust CTX / layers / VRAM</p>
+        </div>
       </div>
     );
   }
@@ -196,63 +203,108 @@ export default function FusionBooter({
   const mapGpus = state.liveGpus.length > 0 ? state.liveGpus : gpus;
   const layerLabel =
     state.layerTotal > 0
-      ? `LAYER ${Math.min(state.layerCurrent, state.layerTotal)} / ${state.layerTotal}`
+      ? `${Math.min(state.layerCurrent, state.layerTotal)} / ${state.layerTotal}`
       : state.layerCurrent > 0
-        ? `LAYER ${state.layerCurrent}`
-        : "LAYER —";
+        ? `${state.layerCurrent}`
+        : "—";
+  const layerPct =
+    state.layerTotal > 0
+      ? Math.min(100, Math.round((Math.min(state.layerCurrent, state.layerTotal) / state.layerTotal) * 100))
+      : null;
 
-  const elapsed = state.elapsedSec;
-  const mm = Math.floor(elapsed / 60);
-  const ss = Math.floor(elapsed % 60);
-  const timerLabel = `${mm}:${ss.toString().padStart(2, "0")}`;
+  const srcLabel =
+    state.progressSource === "sse"
+      ? "SSE"
+      : state.progressSource === "logs"
+        ? "LOGS"
+        : "—";
+  const srcTitle =
+    state.progressSource === "sse"
+      ? "Progress from GET /models/sse (real load fraction)"
+      : state.progressSource === "logs"
+        ? "Progress from engine stderr / system events only"
+        : "No progress feed yet (waiting for SSE or logs)";
 
   return (
-    <div className="flex flex-col w-full h-full gap-1.5 px-2 py-1 overflow-hidden">
-      <div className="flex items-center justify-between flex-shrink-0 gap-2">
-        <span className="text-[9px] font-mono text-nv-green tracking-widest shrink-0">FUSION BOOT</span>
+    <div
+      className={`fusion-boot${
+        state.progressSource === "sse"
+          ? " fusion-boot--src-sse"
+          : state.progressSource === "logs"
+            ? " fusion-boot--src-logs"
+            : ""
+      }`}
+    >
+      <div className="fusion-boot__header">
+        <span className="fusion-boot__title">ENGINE BOOT</span>
         <span
-          className="text-[11px] font-mono font-bold tabular-nums text-nv-green tracking-wider shrink-0"
-          title="Time since load started"
+          className={`fusion-boot__src fusion-boot__src--${state.progressSource}`}
+          title={srcTitle}
         >
-          {timerLabel}
+          SRC {srcLabel}
         </span>
-        <span className="text-[8px] font-mono text-stealth-muted/50 truncate min-w-0 text-right">
+        <span className="fusion-boot__timer" title="Time since load started">
+          {formatTimer(state.elapsedSec)}
+        </span>
+        <span className="fusion-boot__ident">
           {alias.toUpperCase()} :{port}
         </span>
       </div>
 
-      <div className="flex gap-2 flex-1 min-h-0 items-stretch">
-        <div className="flex-1 min-w-0 min-h-0 flex">
+      <div className="fusion-boot__body">
+        <div className="fusion-boot__gpus">
           <GpuLoadMap
             gpus={mapGpus}
             activeIndices={state.activeGpuIndices}
             gpuVramLoads={state.gpuVramLoads}
-            bitTick={state.bitTick}
           />
         </div>
         <DiskIoHero mibPerS={state.diskReadMibPerS} />
       </div>
 
-      <div className="flex-shrink-0">
-        <PhaseLadder phase={state.phase} />
-      </div>
+      <PhaseLadder phase={state.phase} loadProgress01={state.loadProgress01} />
 
-      <div className="flex-shrink-0 flex flex-col gap-1">
-        <div className="bg-black/40 border border-stealth-border/40 rounded-sm px-2 py-1.5 min-h-[36px] max-h-[48px] overflow-hidden">
+      <div className="fusion-boot__footer">
+        <div className="fusion-boot-ticker">
           {state.tickerLines.length === 0 ? (
-            <p className="text-[8px] font-mono text-stealth-muted/40 italic">awaiting stderr…</p>
+            <p className="fusion-boot-ticker__empty">awaiting SSE / stderr…</p>
           ) : (
             state.tickerLines.map((line, i) => (
-              <p key={`${i}-${line.slice(0, 12)}`} className="text-[8px] font-mono text-nv-green/70 leading-snug truncate">
+              <p key={`${i}-${line.slice(0, 12)}`} className="fusion-boot-ticker__line">
                 {line}
               </p>
             ))
           )}
         </div>
-        <div className="flex items-center justify-between text-[7px] font-mono text-stealth-muted/60">
-          <span>{layerLabel}</span>
-          <span>SONAR :{port} ×{state.pingAttempts}</span>
-          <span>{state.elapsedSec}s</span>
+        <div className="fusion-boot-meta">
+          <div className="fusion-boot-meta__cell">
+            <span className="fusion-boot-meta__lab">LAYER</span>
+            <span className="fusion-boot-meta__val">{layerLabel}</span>
+            {layerPct != null && (
+              <span className="fusion-boot-meta__unit">{layerPct}%</span>
+            )}
+          </div>
+          <div className="fusion-boot-meta__cell">
+            <span className="fusion-boot-meta__lab">LOAD</span>
+            <span className="fusion-boot-meta__val">
+              {state.loadProgress01 >= 0
+                ? `${Math.round(state.loadProgress01 * 100)}%`
+                : "—"}
+            </span>
+            {state.loadStage ? (
+              <span className="fusion-boot-meta__unit" title={state.loadStage}>
+                {state.loadStage.replace(/_/g, " ").slice(0, 14)}
+              </span>
+            ) : null}
+          </div>
+          <div className="fusion-boot-meta__cell">
+            <span className="fusion-boot-meta__lab">PHASE</span>
+            <span className="fusion-boot-meta__val">{LOAD_PHASE_LABELS[state.phase]}</span>
+          </div>
+          <div className="fusion-boot-meta__cell">
+            <span className="fusion-boot-meta__lab">ELAPSED</span>
+            <span className="fusion-boot-meta__val">{state.elapsedSec}s</span>
+          </div>
         </div>
       </div>
     </div>

@@ -43,6 +43,11 @@ export interface FusionBooterState {
   tickerLines: string[];
   layerCurrent: number;
   layerTotal: number;
+  /** 0..1 from /models/sse; -1 unknown */
+  loadProgress01: number;
+  loadStage: string;
+  /** sse | logs | none — which feed advanced boot progress */
+  progressSource: "none" | "sse" | "logs";
   pingAttempts: number;
   elapsedSec: number;
   diskReadMibPerS: number;
@@ -50,7 +55,6 @@ export interface FusionBooterState {
   activeGpuIndices: number[];
   gpuVramLoads: GpuVramLoad[];
   liveGpus: GpuInfo[];
-  bitTick: number;
   loadFailed: boolean;
   loadErrorReason: string;
 }
@@ -78,7 +82,6 @@ export function useFusionBooterState({
   const session = getBooterSession(slotIdx);
 
   const [liveGpus, setLiveGpus] = useState<GpuInfo[]>(gpus);
-  const [bitTick, setBitTick] = useState(0);
   const [elapsedSec, setElapsedSec] = useState(0);
   const vramBaseline = useRef<Map<number, number>>(new Map());
   const baselineCaptured = useRef(false);
@@ -104,7 +107,6 @@ export function useFusionBooterState({
     if (!active || !session) return;
     const id = window.setInterval(() => {
       setElapsedSec(elapsedSecForSession(session));
-      setBitTick((t) => t + 1);
     }, 250);
     return () => window.clearInterval(id);
   }, [active, session, revision]);
@@ -193,7 +195,7 @@ export function useFusionBooterState({
       const pct = Math.min(100, (usedMib / Math.max(targetMib, 1)) * 100);
       return { index: idx, usedMib, targetMib, pct };
     });
-  }, [liveGpus, activeGpuIndices, gpuLoadTargetsMib, perGpuShareMib, bitTick]);
+  }, [liveGpus, activeGpuIndices, gpuLoadTargetsMib, perGpuShareMib]);
 
   const diskReadMibPerS = session?.diskReadMibPerS ?? 0;
   const diskReadMbitPerS = diskReadMibPerS * 8;
@@ -204,6 +206,9 @@ export function useFusionBooterState({
       tickerLines: [],
       layerCurrent: 0,
       layerTotal: modelLayerTotal,
+      loadProgress01: -1,
+      loadStage: "",
+      progressSource: "none",
       pingAttempts: 0,
       elapsedSec: 0,
       diskReadMibPerS: 0,
@@ -211,7 +216,6 @@ export function useFusionBooterState({
       activeGpuIndices: gpus.map((g) => g.index),
       gpuVramLoads: [],
       liveGpus: gpus,
-      bitTick: 0,
       loadFailed: false,
       loadErrorReason: "",
     };
@@ -222,6 +226,9 @@ export function useFusionBooterState({
     tickerLines: session.tickerLines,
     layerCurrent: session.layerCurrent,
     layerTotal: session.layerTotal || modelLayerTotal,
+    loadProgress01: session.loadProgress01,
+    loadStage: session.loadStage,
+    progressSource: session.progressSource,
     pingAttempts: session.pingAttempts,
     elapsedSec,
     diskReadMibPerS,
@@ -229,7 +236,6 @@ export function useFusionBooterState({
     activeGpuIndices,
     gpuVramLoads,
     liveGpus,
-    bitTick,
     loadFailed: session.loadFailed,
     loadErrorReason: session.loadErrorReason,
   };
