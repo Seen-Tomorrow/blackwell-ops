@@ -215,6 +215,57 @@ function benchConcurrencyChipTitle(n: number): string {
   return `×${n}: ${n} parallel /completion feeds pinned to slots 0–${n - 1}. Requires --parallel ≥ ${n} at launch; capped to live slot count if lower. Not for MTP models.`;
 }
 
+type BenchPresetId = "agent" | "share" | "stress";
+
+const BENCH_PRESETS: Record<
+  BenchPresetId,
+  {
+    label: string;
+    title: string;
+    nPredict: number;
+    ppTargetTokens: number;
+    tgParallel: number;
+    tgWarmupEnabled: boolean;
+    promptMode: "unique" | "repetitive";
+  }
+> = {
+  agent: {
+    label: "AGENT",
+    title: "Multi-slot agent stress — short TG, mid PP, ×8 concurrent",
+    nPredict: 512,
+    ppTargetTokens: 8192,
+    tgParallel: 8,
+    tgWarmupEnabled: true,
+    promptMode: "unique",
+  },
+  share: {
+    label: "SHARE",
+    title: "Clean share card — TG 2K · PP 32K · single stream",
+    nPredict: 2048,
+    ppTargetTokens: 32768,
+    tgParallel: 1,
+    tgWarmupEnabled: true,
+    promptMode: "unique",
+  },
+  stress: {
+    label: "STRESS",
+    title: "Ceiling push — long TG · max PP · ×32 concurrent",
+    nPredict: 10000,
+    ppTargetTokens: 100000,
+    tgParallel: 32,
+    tgWarmupEnabled: true,
+    promptMode: "repetitive",
+  },
+};
+
+const BENCH_PRESET_ORDER: BenchPresetId[] = ["agent", "share", "stress"];
+
+type BenchLastRunGhost = {
+  tgTps: number | null;
+  ppTps: number | null;
+  tgPar: number;
+};
+
 function BenchConcurrencyBadge({
   parallel,
   compact = false,
@@ -266,6 +317,47 @@ export default function BenchWidget({
   const isBenchStopped = (error?: string) => error === "Cancelled" || error === "Stopped";
 
   useEffect(() => subscribeBenchPortStore(() => setTick((t) => t + 1)), []);
+
+  const [lastRun, setLastRun] = useState<BenchLastRunGhost | null>(null);
+
+  // Keep a ghost of the last successful bench after HIDE clears live results.
+  useEffect(() => {
+    const tgOk = ps.tgResult?.success && ps.tgResult.gen_tps > 0 ? ps.tgResult : null;
+    const ppOk = ps.ppResult?.success && ps.ppResult.bench_prefill_tps > 0 ? ps.ppResult : null;
+    if (!tgOk && !ppOk) return;
+    setLastRun((prev) => ({
+      tgTps: tgOk ? tgOk.gen_tps : prev?.tgTps ?? null,
+      ppTps: ppOk ? ppOk.bench_prefill_tps : prev?.ppTps ?? null,
+      tgPar: tgOk ? (tgOk.parallel_requests ?? 1) : prev?.tgPar ?? 1,
+    }));
+  }, [ps.tgResult, ps.ppResult]);
+
+  const applyPreset = (id: BenchPresetId) => {
+    if (ps.tgRunning || ps.ppRunning) return;
+    const preset = BENCH_PRESETS[id];
+    ps.nPredict = preset.nPredict;
+    ps.tgParallel = preset.tgParallel;
+    ps.tgWarmupEnabled = preset.tgWarmupEnabled;
+    ps.promptMode = preset.promptMode;
+    let pp = preset.ppTargetTokens;
+    if (!ppChipAllowed(pp)) {
+      const allowed = [...BENCH_PP_TOKEN_OPTIONS].filter((t) => ppChipAllowed(t));
+      pp = allowed.length > 0 ? allowed[allowed.length - 1]! : BENCH_PP_TOKEN_OPTIONS[0]!;
+    }
+    ps.ppTargetTokens = pp;
+    bumpControls();
+  };
+
+  const activePresetId = (BENCH_PRESET_ORDER.find((id) => {
+    const p = BENCH_PRESETS[id];
+    return (
+      ps.nPredict === p.nPredict
+      && ps.tgParallel === p.tgParallel
+      && ps.tgWarmupEnabled === p.tgWarmupEnabled
+      && ps.promptMode === p.promptMode
+      && ps.ppTargetTokens === p.ppTargetTokens
+    );
+  }) ?? null);
 
   // If saved PP target exceeds live slot budget, drop to the largest allowed chip.
   useEffect(() => {
@@ -657,7 +749,60 @@ export default function BenchWidget({
             }`}
           >
             {!(isCompact || stackMode) && (
-              <div className="fusion-bench-controls__bay" aria-hidden="true" />
+              <div className="fusion-bench-controls__bay">
+                <div className="fusion-bench-bay__presets">
+                  {BENCH_PRESET_ORDER.map((id) => {
+                    const preset = BENCH_PRESETS[id];
+                    const active = activePresetId === id;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        disabled={isAnyRunning}
+                        title={preset.title}
+                        onClick={() => applyPreset(id)}
+                        className={`fusion-bench-bay__preset${active ? " is-active" : ""}`}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="fusion-bench-bay__armed">
+                  <span className="fusion-bench-bay__armed-label">ARMED</span>
+                  <span className="fusion-bench-bay__armed-line">
+                    TG {formatBenchK(ps.nPredict)}
+                    {ps.tgParallel > 1 ? ` · ×${ps.tgParallel}` : ""}
+                    {ps.tgWarmupEnabled ? " · W" : ""}
+                  </span>
+                  <span className="fusion-bench-bay__armed-line">
+                    PP {formatBenchK(ps.ppTargetTokens)}
+                    {" · "}
+                    {ps.promptMode === "unique" ? "uniq" : "rep"}
+                  </span>
+                </div>
+                <div className="fusion-bench-bay__last">
+                  <span className="fusion-bench-bay__last-label">LAST</span>
+                  {lastRun && (lastRun.tgTps != null || lastRun.ppTps != null) ? (
+                    <span className="fusion-bench-bay__last-vals">
+                      {lastRun.tgTps != null && (
+                        <span title="Last TG gen tok/s">
+                          TG {lastRun.tgTps.toFixed(1)}
+                          {lastRun.tgPar > 1 ? `×${lastRun.tgPar}` : ""}
+                        </span>
+                      )}
+                      {lastRun.tgTps != null && lastRun.ppTps != null && (
+                        <span className="fusion-bench-bay__last-sep">·</span>
+                      )}
+                      {lastRun.ppTps != null && (
+                        <span title="Last PP prefill tok/s">PP {lastRun.ppTps >= 1000 ? `${(lastRun.ppTps / 1000).toFixed(1)}k` : lastRun.ppTps.toFixed(0)}</span>
+                      )}
+                    </span>
+                  ) : (
+                    <span className="fusion-bench-bay__last-empty">—</span>
+                  )}
+                </div>
+              </div>
             )}
             <div className="fusion-bench-controls__table" role="table" aria-label="Benchmark controls">
               <div className="fusion-bench-table__row" role="row">
