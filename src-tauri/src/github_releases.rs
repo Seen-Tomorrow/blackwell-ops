@@ -8,14 +8,14 @@
 //! Full pack embeds NSIS core engines (ggml-master) inside Setup only — it does **not**
 //! upload separate CORE runtime packs unless you run pack-provider for ggml-master.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::LazyLock;
-
-
+use std::sync::{Arc, LazyLock};
+use parking_lot::Mutex as PlMutex;
 use std::time::{Duration, Instant};
 
 use reqwest::RequestBuilder;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
 
@@ -220,25 +220,105 @@ fn parse_release(body: &serde_json::Value) -> Option<GitHubRelease> {
     })
 }
 
-/// In-memory TTL for the shared releases list (all pack/offering checks share one fetch).
+// ── Single GitHub REST gateway ─────────────────────────────────────────────
+// Every api.github.com call goes through `github_get_json_cached`: persistent
+// disk cache (survives rebuilds/restarts) + ETag/304 + per-URL single-flight +
+// a short force-dedup window + an hourly budget. This is what keeps call volume
+// sane — the old in-memory-only cache was wiped on every restart, so 100 rebuilds
+// per day re-hit the API 100 times.
+
+/// TTLs per resource class. The releases list is shared by every pack/offering check.
 const RELEASES_CACHE_TTL: Duration = Duration::from_secs(30 * 60);
+const TAG_CACHE_TTL: Duration = Duration::from_secs(60 * 60);
+const LATEST_TAG_CACHE_TTL: Duration = Duration::from_secs(6 * 60 * 60);
+/// `force` re-fetches issued within this window share one round-trip (the Updates tab
+/// fires 3 parallel force calls; without this they'd be 3 separate API hits).
+const FORCE_DEDUP_WINDOW: Duration = Duration::from_secs(60);
+/// Hard hourly cap on real API calls. Background (non-force) fetches serve stale cache
+/// once we're within 2 of the cap; user-initiated force fetches always proceed.
+const BUDGET_MAX_PER_HOUR: usize = 45;
 
-struct ReleasesListCache {
-    fetched_at: Instant,
-    per_page: u32,
-    releases: Vec<GitHubRelease>,
+fn github_cache_dir() -> PathBuf {
+    crate::config::cache_dir().join("github")
 }
 
-fn releases_list_cache() -> &'static Mutex<Option<ReleasesListCache>> {
-    static CACHE: LazyLock<Mutex<Option<ReleasesListCache>>> =
-        LazyLock::new(|| Mutex::new(None));
-    &CACHE
+fn now_unix_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
-/// Single-flight lock so concurrent callers share one live HTTP round-trip.
-fn releases_fetch_lock() -> &'static Mutex<()> {
-    static LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-    &LOCK
+/// Sanitize a URL into a stable on-disk cache filename.
+fn github_cache_file(url: &str) -> PathBuf {
+    let key: String = url
+        .chars()
+        .map(|c| match c {
+            '/' | '?' | '&' | '=' | ':' | '{' | '}' | ' ' | '#' => '_',
+            c => c,
+        })
+        .collect();
+    github_cache_dir().join(format!("gh_{key}.json"))
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct GitHubCacheEntry {
+    fetched_at: u64,
+    etag: Option<String>,
+    body: serde_json::Value,
+}
+
+fn read_github_cache(url: &str) -> Option<GitHubCacheEntry> {
+    let s = std::fs::read_to_string(github_cache_file(url)).ok()?;
+    serde_json::from_str(&s).ok()
+}
+
+fn write_github_cache(url: &str, entry: &GitHubCacheEntry) {
+    if std::fs::create_dir_all(github_cache_dir()).is_err() {
+        return;
+    }
+    if let Ok(s) = serde_json::to_string(entry) {
+        let _ = std::fs::write(github_cache_file(url), s);
+    }
+}
+
+fn cache_age(e: &GitHubCacheEntry) -> Duration {
+    Duration::from_secs(now_unix_secs().saturating_sub(e.fetched_at))
+}
+
+/// In-memory single-flight locks (per URL) + recent-fetch dedup window + hourly budget.
+struct GatewayMem {
+    locks: HashMap<String, Arc<Mutex<()>>>,
+    recent: HashMap<String, (Instant, serde_json::Value)>,
+    budget: Vec<Instant>,
+}
+
+static GATEWAY_MEM: LazyLock<PlMutex<GatewayMem>> = LazyLock::new(|| {
+    PlMutex::new(GatewayMem {
+        locks: HashMap::new(),
+        recent: HashMap::new(),
+        budget: Vec::new(),
+    })
+});
+
+/// Shared HTTP client (connection pooling — the old code built a new client per call).
+static GITHUB_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
+    reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new())
+});
+
+fn budget_remaining() -> usize {
+    let mut g = GATEWAY_MEM.lock();
+    let cutoff = Instant::now() - Duration::from_secs(3600);
+    g.budget.retain(|t| *t > cutoff);
+    BUDGET_MAX_PER_HOUR.saturating_sub(g.budget.len())
+}
+
+fn budget_record() {
+    let mut g = GATEWAY_MEM.lock();
+    g.budget.push(Instant::now());
 }
 
 fn dev_github_log(msg: &str) {
@@ -251,22 +331,112 @@ fn dev_github_log(msg: &str) {
     }
 }
 
-async fn github_get_json(url: &str) -> Result<serde_json::Value, String> {
-    github_get_json_inner(url, true).await
+/// The single chokepoint for api.github.com. `force` = revalidate (bypass TTL) but still
+/// dedups within `FORCE_DEDUP_WINDOW` and yields to stale cache when the hourly budget
+/// is nearly exhausted (background calls only).
+async fn github_get_json_cached(
+    url: &str,
+    ttl: Duration,
+    force: bool,
+) -> Result<serde_json::Value, String> {
+    let url = url.to_string();
+
+    // 1. Fresh disk cache (non-force) → 0 API calls. Survives rebuilds/restarts.
+    if !force {
+        if let Some(e) = read_github_cache(&url) {
+            if cache_age(&e) < ttl {
+                dev_github_log(&format!(
+                    "[github] DISK CACHE HIT (age {}s < ttl {}s)",
+                    cache_age(&e).as_secs(),
+                    ttl.as_secs()
+                ));
+                return Ok(e.body);
+            }
+        }
+    }
+
+    // 2. Force-dedup window: a fetch for this URL finished recently → share it.
+    {
+        let g = GATEWAY_MEM.lock();
+        if let Some((at, body)) = g.recent.get(&url) {
+            if at.elapsed() < FORCE_DEDUP_WINDOW {
+                dev_github_log(&format!(
+                    "[github] DEDUP HIT (age {}s < {}s)",
+                    at.elapsed().as_secs(),
+                    FORCE_DEDUP_WINDOW.as_secs()
+                ));
+                return Ok(body.clone());
+            }
+        }
+    }
+
+    // 3. Single-flight per URL: waiters re-check after the winner finishes.
+    let lock = {
+        let mut g = GATEWAY_MEM.lock();
+        g.locks.entry(url.clone()).or_insert_with(|| Arc::new(Mutex::new(()))).clone()
+    };
+    let _guard = lock.lock().await;
+
+    // Re-check disk cache + dedup after waiting (another caller may have fetched).
+    if !force {
+        if let Some(e) = read_github_cache(&url) {
+            if cache_age(&e) < ttl {
+                return Ok(e.body);
+            }
+        }
+    }
+    if let Some((at, body)) = GATEWAY_MEM.lock().recent.get(&url) {
+        if at.elapsed() < FORCE_DEDUP_WINDOW {
+            return Ok(body.clone());
+        }
+    }
+
+    // 4. Budget: background (non-force) calls yield to stale cache when near the cap.
+    if !force && budget_remaining() <= 2 {
+        if let Some(e) = read_github_cache(&url) {
+            dev_github_log("[github] BUDGET LOW — serving stale cache");
+            return Ok(e.body);
+        }
+    }
+
+    // 5. Conditional GET (ETag): 304 refreshes TTL cheaply, 200 stores the new body.
+    let prior = read_github_cache(&url);
+    let (body, new_etag) =
+        github_get_json_conditional(&url, prior.as_ref().and_then(|e| e.etag.clone())).await?;
+
+    // 6. Persist: 200 → new body+etag; 304 → prior body, refreshed TTL.
+    let entry = GitHubCacheEntry {
+        fetched_at: now_unix_secs(),
+        etag: new_etag.or_else(|| prior.and_then(|e| e.etag)),
+        body: body.clone(),
+    };
+    write_github_cache(&url, &entry);
+    {
+        let mut g = GATEWAY_MEM.lock();
+        g.recent.insert(url.clone(), (Instant::now(), body.clone()));
+    }
+
+    Ok(body)
 }
 
-async fn github_get_json_inner(url: &str, try_auth: bool) -> Result<serde_json::Value, String> {
-    let client = reqwest::Client::new();
-    let mut attempt_auth = try_auth && github_pat_present();
+/// Conditional GET with ETag + PAT (401/403 → anon retry). Returns (body, etag). On 304
+/// the body is the prior cached body. Records against the hourly budget (304s count too).
+async fn github_get_json_conditional(
+    url: &str,
+    etag: Option<String>,
+) -> Result<(serde_json::Value, Option<String>), String> {
+    let mut attempt_auth = github_pat_present();
 
     loop {
-        let mut req = client
+        let mut req = GITHUB_CLIENT
             .get(url)
             .header("User-Agent", "Blackwell-Ops")
             .header("Accept", "application/vnd.github+json");
-
         if attempt_auth {
             req = apply_github_auth(req);
+        }
+        if let Some(tag) = &etag {
+            req = req.header("If-None-Match", tag.clone());
         }
 
         dev_github_log(&format!(
@@ -280,6 +450,20 @@ async fn github_get_json_inner(url: &str, try_auth: bool) -> Result<serde_json::
             .map_err(|e| format!("GitHub request failed: {e}"))?;
 
         let status = resp.status();
+
+        if status.as_u16() == 304 {
+            let prior_body = read_github_cache(url)
+                .map(|e| e.body)
+                .ok_or_else(|| "GitHub 304 but no prior cache body".to_string())?;
+            let new_etag = resp
+                .headers()
+                .get("ETag")
+                .and_then(|v| v.to_str().ok())
+                .map(String::from);
+            budget_record();
+            return Ok((prior_body, new_etag));
+        }
+
         if (status.as_u16() == 401 || status.as_u16() == 403) && attempt_auth {
             log::warn!(
                 "[github] PAT rejected ({status}) for {url} — retrying anonymous once"
@@ -291,24 +475,38 @@ async fn github_get_json_inner(url: &str, try_auth: bool) -> Result<serde_json::
             return Err(format!("GitHub API returned {status} for {url}"));
         }
 
-        return resp
+        let new_etag = resp
+            .headers()
+            .get("ETag")
+            .and_then(|v| v.to_str().ok())
+            .map(String::from);
+        let body = resp
             .json()
             .await
-            .map_err(|e| format!("Failed to parse GitHub response: {e}"));
+            .map_err(|e| format!("Failed to parse GitHub response: {e}"))?;
+        budget_record();
+        return Ok((body, new_etag));
     }
 }
 
 pub async fn fetch_release_by_tag(tag: &str) -> Result<GitHubRelease, String> {
+    // Serve from the shared releases list first (0 API calls for recent semver tags).
+    if let Ok(releases) = fetch_recent_version_releases(40).await {
+        if let Some(rel) = releases.into_iter().find(|r| r.tag_name == tag) {
+            return Ok(rel);
+        }
+    }
+    // Not in the list (e.g. the `toolchain` tag) → conditional cached fetch (1h TTL).
     let url = format!("https://api.github.com/repos/{GITHUB_REPO}/releases/tags/{tag}");
-    let body = github_get_json(&url).await?;
+    let body = github_get_json_cached(&url, TAG_CACHE_TTL, false).await?;
     parse_release(&body).ok_or_else(|| format!("Invalid release payload for tag '{tag}'"))
 }
 
 /// Latest release `tag_name` for an arbitrary GitHub repo (e.g. the DEV-only pi
-/// update check for `earendil-works/pi`). Reuses the shared GitHub API access.
+/// update check for `earendil-works/pi`). Cached per-repo for 6h on disk.
 pub async fn fetch_latest_release_tag(repo: &str) -> Result<String, String> {
     let url = format!("https://api.github.com/repos/{repo}/releases/latest");
-    let body = github_get_json(&url).await?;
+    let body = github_get_json_cached(&url, LATEST_TAG_CACHE_TTL, false).await?;
     body.get("tag_name")
         .and_then(|v| v.as_str())
         .map(String::from)
@@ -320,53 +518,15 @@ pub async fn fetch_recent_version_releases(per_page: u32) -> Result<Vec<GitHubRe
     fetch_recent_version_releases_ex(per_page, false).await
 }
 
-/// `force` bypasses TTL (manual Updates refresh). Still single-flight with other callers.
+/// `force` revalidates against GitHub (bypasses the disk TTL) but still dedups within
+/// the shared gateway window. Every pack/offering check shares one releases-list fetch
+/// plus the persistent disk cache (keyed by the full URL, incl. `per_page`).
 pub async fn fetch_recent_version_releases_ex(
     per_page: u32,
     force: bool,
 ) -> Result<Vec<GitHubRelease>, String> {
-    if !force {
-        let guard = releases_list_cache().lock().await;
-        if let Some(c) = guard.as_ref() {
-            if c.per_page >= per_page && c.fetched_at.elapsed() < RELEASES_CACHE_TTL {
-                let age_s = c.fetched_at.elapsed().as_secs();
-                dev_github_log(&format!(
-                    "[github] CACHE HIT releases?per_page={} (have {}, age {}s, {} tags)",
-                    per_page,
-                    c.per_page,
-                    age_s,
-                    c.releases.len()
-                ));
-                return Ok(c.releases.clone());
-            }
-        }
-    } else {
-        dev_github_log(&format!(
-            "[github] CACHE BYPASS (force) releases?per_page={per_page}"
-        ));
-    }
-
-    // Single-flight: waiters re-check cache after the winner finishes.
-    let _fetch_guard = releases_fetch_lock().lock().await;
-
-    if !force {
-        let guard = releases_list_cache().lock().await;
-        if let Some(c) = guard.as_ref() {
-            if c.per_page >= per_page && c.fetched_at.elapsed() < RELEASES_CACHE_TTL {
-                let age_s = c.fetched_at.elapsed().as_secs();
-                dev_github_log(&format!(
-                    "[github] CACHE HIT (after wait) releases?per_page={} (age {}s, {} tags)",
-                    per_page,
-                    age_s,
-                    c.releases.len()
-                ));
-                return Ok(c.releases.clone());
-            }
-        }
-    }
-
     let url = format!("https://api.github.com/repos/{GITHUB_REPO}/releases?per_page={per_page}");
-    let body = github_get_json(&url).await?;
+    let body = github_get_json_cached(&url, RELEASES_CACHE_TTL, force).await?;
     let releases = body
         .as_array()
         .ok_or_else(|| "GitHub releases response was not an array".to_string())?;
@@ -387,22 +547,6 @@ pub async fn fetch_recent_version_releases_ex(
         if is_version_release_tag(&parsed.tag_name) {
             out.push(parsed);
         }
-    }
-
-    dev_github_log(&format!(
-        "[github] CACHE STORE releases?per_page={} → {} version tags (TTL {}s)",
-        per_page,
-        out.len(),
-        RELEASES_CACHE_TTL.as_secs()
-    ));
-
-    {
-        let mut guard = releases_list_cache().lock().await;
-        *guard = Some(ReleasesListCache {
-            fetched_at: Instant::now(),
-            per_page,
-            releases: out.clone(),
-        });
     }
 
     Ok(out)
@@ -1131,5 +1275,56 @@ mod tests {
             "frontier",
         );
         assert!(miss.is_none());
+    }
+
+    #[test]
+    fn cache_file_sanitizes_url() {
+        let url =
+            "https://api.github.com/repos/Seen-Tomorrow/blackwell-ops/releases?per_page=40";
+        let file = github_cache_file(url);
+        let name = file
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap()
+            .to_string();
+        // No path/query chars leak into the on-disk filename.
+        assert!(!name.contains('/'));
+        assert!(!name.contains('?'));
+        assert!(!name.contains('='));
+        assert!(name.starts_with("gh_"));
+        // Distinct URLs (per_page) must not collide on the same cache file.
+        let url2 =
+            "https://api.github.com/repos/Seen-Tomorrow/blackwell-ops/releases?per_page=50";
+        assert_ne!(github_cache_file(url), github_cache_file(url2));
+    }
+
+    #[test]
+    fn budget_reaches_zero_at_cap() {
+        // Saturating: once BUDGET_MAX_PER_HOUR calls are recorded in the window,
+        // remaining reports 0 regardless of any pre-existing entries.
+        for _ in 0..BUDGET_MAX_PER_HOUR {
+            budget_record();
+        }
+        assert_eq!(budget_remaining(), 0);
+    }
+
+    #[test]
+    fn cache_round_trip_persists_body_and_etag() {
+        // Fixed test-only URL (never used by the app) so the on-disk file is stable
+        // across runs and can be cleaned up.
+        let url =
+            "https://api.github.com/repos/test/blackwell-ops-test/__cache_round_trip__";
+        let path = github_cache_file(url);
+        let entry = GitHubCacheEntry {
+            fetched_at: now_unix_secs(),
+            etag: Some("\"abc123\"".into()),
+            body: serde_json::json!({ "tag_name": "v9.9.9" }),
+        };
+        write_github_cache(url, &entry);
+        let read = read_github_cache(url).expect("cache entry should persist to disk");
+        assert_eq!(read.etag.as_deref(), Some("\"abc123\""));
+        assert_eq!(read.body["tag_name"], "v9.9.9");
+        assert!(cache_age(&read) < Duration::from_secs(5));
+        let _ = std::fs::remove_file(&path);
     }
 }
