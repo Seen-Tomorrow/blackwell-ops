@@ -12,6 +12,11 @@ interface MemorySourcePanelProps {
   hasProbed?: boolean;
   onValidate?: () => void;
   hideValidate?: boolean;
+  /**
+   * One-line strip: SOURCE · KIND · detail.
+   * Breakdown lines stay hidden — density pass for fixed phosphor height.
+   */
+  compact?: boolean;
 }
 
 function ConfidencePips({ level }: { level: MemorySource["confidence"] }) {
@@ -27,21 +32,27 @@ function ConfidencePips({ level }: { level: MemorySource["confidence"] }) {
   );
 }
 
-/** SOURCE instrument strip — fixed 3 body slots so kind swaps never reflow height. */
+/** SOURCE instrument strip — compact one-liner by default (no breakdown reflow). */
 export default function MemorySourcePanel({
   memorySource,
   isValidating = false,
   hasProbed = false,
   onValidate,
   hideValidate = false,
+  compact = true,
 }: MemorySourcePanelProps) {
   const accent = MEMORY_SOURCE_ACCENT[memorySource.kind];
   const label = MEMORY_SOURCE_LABELS[memorySource.kind];
+  const detail = memorySource.detail?.trim() || "";
 
   return (
     <div
-      className="vram-fc-source memory-source-strip"
+      className={`vram-fc-source memory-source-strip${compact ? " vram-fc-source--inline" : ""}`}
       data-source-kind={memorySource.kind}
+      data-source-layout={compact ? "inline" : "stack"}
+      title={[label, detail, memorySource.breakdown, memorySource.breakdownSecondary]
+        .filter(Boolean)
+        .join(" · ")}
     >
       <div className="vram-fc-source__head memory-source-header">
         <span className="vram-fc-source__lab">SOURCE</span>
@@ -51,6 +62,14 @@ export default function MemorySourcePanel({
             {label}
           </span>
         </span>
+        {compact && detail ? (
+          <>
+            <span className="vram-fc-source__dot" aria-hidden>
+              ·
+            </span>
+            <span className="vram-fc-source__detail">{detail}</span>
+          </>
+        ) : null}
         {onValidate && !hideValidate && (
           <FitProbeButton
             isValidating={isValidating}
@@ -60,25 +79,27 @@ export default function MemorySourcePanel({
         )}
       </div>
 
-      <div className="vram-fc-source__body memory-source-body">
-        <span className="memory-source-body__line memory-source-body__line--detail vram-fc-source__line">
-          {memorySource.detail || "\u00a0"}
-        </span>
-        <span
-          className={`memory-source-body__line memory-source-body__line--breakdown vram-fc-source__line${
-            memorySource.breakdown ? "" : " memory-source-body__line--empty"
-          }`}
-        >
-          {memorySource.breakdown || "\u00a0"}
-        </span>
-        <span
-          className={`memory-source-body__line memory-source-body__line--secondary vram-fc-source__line${
-            memorySource.breakdownSecondary ? "" : " memory-source-body__line--empty"
-          }`}
-        >
-          {memorySource.breakdownSecondary || "\u00a0"}
-        </span>
-      </div>
+      {!compact && (
+        <div className="vram-fc-source__body memory-source-body">
+          <span className="memory-source-body__line memory-source-body__line--detail vram-fc-source__line">
+            {memorySource.detail || "\u00a0"}
+          </span>
+          <span
+            className={`memory-source-body__line memory-source-body__line--breakdown vram-fc-source__line${
+              memorySource.breakdown ? "" : " memory-source-body__line--empty"
+            }`}
+          >
+            {memorySource.breakdown || "\u00a0"}
+          </span>
+          <span
+            className={`memory-source-body__line memory-source-body__line--secondary vram-fc-source__line${
+              memorySource.breakdownSecondary ? "" : " memory-source-body__line--empty"
+            }`}
+          >
+            {memorySource.breakdownSecondary || "\u00a0"}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

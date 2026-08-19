@@ -11,7 +11,6 @@ import MoeBadge from "./MoeBadge";
 import FitLaunchToggle from "./FitLaunchToggle";
 import MemorySourcePanel, { FitProbeButton, manifestHasFitProbe } from "./MemorySourcePanel";
 import { useForecastContentHeight } from "../hooks/useForecastContentHeight";
-import { MEMORY_SOURCE_LABELS } from "../services/vram/memorySource";
 import type { FusionShareLaunchConfig } from "../lib/fusionShareCapture";
 import type { FusionDualOrient } from "../lib/storage";
 
@@ -300,10 +299,11 @@ export default function VramBadge({
       hasProbed={manifestHasFitProbe(manifest)}
       onValidate={onValidate}
       hideValidate
+      compact
     />
   ) : null;
 
-  // Fit probe + memory source stay in forecast body; ASSISTED/FULL AUTO is the top dock.
+  // One-line SOURCE + probe — both FULL AUTO and ASSISTED (breakdown hidden).
   const forecastSourceRow = (memorySourcePanel || fitProbeButton) ? (
     <div className="vram-fc__source-row vram-forecast-header__fit-row">
       {fitProbeButton && (
@@ -319,16 +319,6 @@ export default function VramBadge({
     </div>
   ) : null;
 
-  const sourceChip = memorySource ? (
-    <span
-      className="vram-fc__src"
-      data-source-kind={memorySource.kind}
-      title={memorySource.detail || MEMORY_SOURCE_LABELS[memorySource.kind]}
-    >
-      SRC {MEMORY_SOURCE_LABELS[memorySource.kind]}
-    </span>
-  ) : null;
-
   const scenarioChip = (
     <span className="vram-fc__ident vram-forecast-scenario-badge">
       <span className={`vram-fc__scenario ${s.badgeBg}`}>
@@ -336,6 +326,11 @@ export default function VramBadge({
       </span>
     </span>
   );
+
+  const remainPct =
+    manifest.fits && totalVramMib > 0
+      ? Math.max(0, Math.round(100 - vramUsagePct))
+      : null;
 
   const needInstruments = (
     <div className="vram-fc__need-row vram-forecast-needs" data-source-kind={sourceKind || "formula"}>
@@ -448,10 +443,13 @@ export default function VramBadge({
     </div>
   ) : null;
 
+  const heroText =
+    t.heroText ?? (manifest.fits ? "Your model will launch ALRIGHT" : "WON'T LAUNCH");
+
   return (
     <div
       ref={rootRef}
-      className={`vram-badge-forecast vram-fc px-3 py-2 relative flex flex-col min-h-0 overflow-hidden ${className || ""}`}
+      className={`vram-badge-forecast vram-fc relative flex flex-col min-h-0 overflow-hidden ${className || ""}`}
       data-forecast-mode={showDetailedForecast ? "assisted" : "auto"}
       data-fits={manifest.fits ? "1" : "0"}
       data-source-kind={sourceKind || undefined}
@@ -462,7 +460,6 @@ export default function VramBadge({
         <div className="vram-fc__header vram-forecast-header vram-forecast-header--assisted flex-shrink-0 min-w-0">
           <div className="vram-fc__title-row">
             <span className={`vram-fc__title ${s.titleColor}`}>FORECAST</span>
-            {sourceChip}
             <span
               className={`vram-fc__verdict${manifest.fits ? " is-ok" : " is-fail"}`}
               title={manifest.fits ? "Projected fit" : "Projected no-fit"}
@@ -475,39 +472,34 @@ export default function VramBadge({
           {forecastSourceRow}
         </div>
       ) : (
-        <div className="vram-fc__header vram-forecast-hero flex-shrink-0 min-w-0">
-          <div className="vram-fc__title-row">
-            <span
-              className={`vram-fc__title vram-fc__title--hero vram-forecast-hero__title ${s.titleColor}`}
-            >
-              {t.heroText ?? (manifest.fits ? "WILL LAUNCH" : "WON'T LAUNCH")}
-            </span>
-            {sourceChip}
+        <div className="vram-fc__header vram-fc-auto vram-forecast-hero flex-shrink-0 min-w-0">
+          <div className="vram-fc-auto__top">
+            <p className={`vram-fc-auto__headline ${s.titleColor}`}>{heroText}</p>
             {scenarioChip}
           </div>
-          {/* Always reserve one sub line in FULL AUTO so fits/won't + learned swap don't nudge height. */}
-          {fullAutoMode ? (
-            <p
-              className={`vram-fc__sub vram-forecast-hero__sub${
-                manifest.fits && totalVramMib > 0 ? "" : " vram-forecast-hero__sub--placeholder"
-              }`}
-            >
-              {manifest.fits && totalVramMib > 0
-                ? `${Math.max(0, Math.round(100 - vramUsagePct))}% total VRAM remains`
-                : (t.heroSubtext || "\u00a0")}
+
+          {remainPct != null ? (
+            <p className="vram-fc-auto__remain" aria-label={`${remainPct} percent total VRAM remains`}>
+              <span className="vram-fc-auto__pct">{remainPct}%</span>
+              <span className="vram-fc-auto__pct-lab">total VRAM remains</span>
             </p>
           ) : (
-            (t.heroSubtext || (showDetailedForecast && manifest.recommendation)) && (
-              <p className="vram-fc__sub vram-forecast-hero__sub">
-                {t.heroSubtext || manifest.recommendation}
-              </p>
-            )
+            <p
+              className={`vram-fc-auto__remain vram-fc-auto__remain--fail${
+                t.heroSubtext || manifest.recommendation ? "" : " vram-forecast-hero__sub--placeholder"
+              }`}
+            >
+              <span className="vram-fc-auto__fail-lab">
+                {t.heroSubtext || manifest.recommendation || "\u00a0"}
+              </span>
+            </p>
           )}
+
           {forecastSourceRow}
         </div>
       )}
 
-      <div className="vram-badge-body vram-fc__body relative flex-shrink-0 overflow-x-hidden">
+      <div className="vram-badge-body vram-fc__body relative min-h-0 overflow-hidden">
         {barBank}
 
         {manifest.gpuAllocations.length > 0 && (
@@ -522,6 +514,7 @@ export default function VramBadge({
               selectedGpuIndices={selectedGpuIndices}
               onDeviceSelect={onDeviceSelect}
               perRow={gpuPerRow}
+              compact
             />
           </div>
         )}

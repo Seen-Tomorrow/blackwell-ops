@@ -13,6 +13,8 @@ interface GpuTopologyProps {
   onDeviceSelect?: (gpuIndex: number) => void;
   /** Cards per row (2 default, 3 for denser multi-GPU). */
   perRow?: 2 | 3;
+  /** Denser cards for fixed phosphor forecast glass. */
+  compact?: boolean;
 }
 
 const HATCH_PATTERN = `repeating-linear-gradient(-45deg, transparent, transparent 2px, rgba(0,0,0,0.35) 2px, rgba(0,0,0,0.35) 4px)`;
@@ -39,6 +41,7 @@ export default function GpuTopology({
   selectedGpuIndices,
   onDeviceSelect,
   perRow = 2,
+  compact = false,
 }: GpuTopologyProps) {
   const cols = perRow === 3 ? 3 : 2;
   const gridClass =
@@ -51,9 +54,13 @@ export default function GpuTopology({
         : "grid-cols-2";
 
   return (
-    <div className="space-y-2 gpu-topology-root" data-gpu-per-row={cols}>
+    <div
+      className={`gpu-topology-root${compact ? " gpu-topology-root--compact" : ""}`}
+      data-gpu-per-row={cols}
+      data-compact={compact ? "1" : undefined}
+    >
       {/* GPU Grid — 2 or 3 per row (bezel bottom control) */}
-      <div className={`grid gap-2 ${gridClass}`}>
+      <div className={`gpu-topology-grid grid ${gridClass}`}>
         {gpuAllocations.map((alloc) => {
           const totalMib = alloc.vramManufacturedGb * 1024;
           const usedMib = (alloc.vramManufacturedGb - alloc.vramAvailableGb) * 1024;
@@ -111,42 +118,37 @@ export default function GpuTopology({
             <div
               key={alloc.gpuIndex}
               onClick={() => onDeviceSelect?.(alloc.gpuIndex)}
-              className={`rounded-sm p-2 bg-theme-bg/30 gpu-card gpu-card-enter ${
+              className={`gpu-card gpu-card-enter${
                 isSelected
-                  ? "gpu-selected"
+                  ? " gpu-selected"
                   : onDeviceSelect
-                    ? "cursor-pointer hover:border-stealth-muted/50"
+                    ? " cursor-pointer hover:border-stealth-muted/50"
                     : ""
               }`}
             >
-              {/* GPU header */}
-              <div className="flex justify-between items-center mb-1.5">
-                <span className="gpu-card-name text-[9px] font-mono truncate flex-1 mr-2" title={alloc.name}>
+              <div className="gpu-card__head">
+                <span className="gpu-card-name" title={alloc.name}>
                   {alloc.name}
                 </span>
-                <span style={{ color: pctColor }} className="text-[7px] font-mono flex-shrink-0">
+                <span style={{ color: pctColor }} className="gpu-card__pct">
                   {totalUsedPct.toFixed(0)}%
                 </span>
               </div>
 
-              {/* Unified VRAM bar — projected L→R; status text inset (no extra line under bar) */}
-              <div
-                style={{ backgroundColor: 'rgb(20,20,20)' }}
-                className="relative h-3.5 rounded-sm overflow-hidden border border-stealth-border/30"
-              >
+              <div className="gpu-card__bar" title={tooltipText}>
                 <div
                   style={{ width: `${Math.min(projectedPct, 100)}%` }}
-                  className={`h-full absolute top-0 left-0 gpu-bar-fill ${gpuBarColor}`}
+                  className={`gpu-card__bar-fill gpu-bar-fill ${gpuBarColor}`}
                 />
 
                 {osOtherMib > 0 && (
                   <div
                     style={{
                       width: `${Math.min(osPct, 100)}%`,
-                      backgroundColor: '#585858',
+                      backgroundColor: "#585858",
                       backgroundImage: HATCH_PATTERN,
                     }}
-                    className="h-full absolute top-0 right-0 gpu-bar-fill"
+                    className="gpu-card__bar-fill gpu-card__bar-fill--os gpu-bar-fill"
                   />
                 )}
 
@@ -158,25 +160,20 @@ export default function GpuTopology({
                       backgroundColor: existingBarColor,
                       backgroundImage: HATCH_PATTERN,
                     }}
-                    className="h-full absolute top-0 gpu-bar-fill"
+                    className="gpu-card__bar-fill gpu-card__bar-fill--engine gpu-bar-fill"
                   />
                 )}
 
-                <span
-                  className="gpu-card-bar-inset absolute inset-0 flex items-center justify-between px-1 pointer-events-none z-[1]"
-                  title={tooltipText}
-                >
-                  <span style={{ color: barColorHex }} className="text-[7px] font-mono truncate drop-shadow-[0_1px_1px_rgba(0,0,0,0.9)]">
+                <span className="gpu-card-bar-inset">
+                  <span style={{ color: barColorHex }} className="gpu-card__bar-need">
                     {alloc.projectedLoadGb.toFixed(1)} GB
                   </span>
-                  <span className="text-[7px] font-mono text-white/70 shrink-0 drop-shadow-[0_1px_1px_rgba(0,0,0,0.9)]">
+                  <span className="gpu-card__bar-cap">
                     /{alloc.vramManufacturedGb.toFixed(0)} GB
                   </span>
                 </span>
-                <div className="absolute inset-0 cursor-help z-[2]" title={tooltipText} />
               </div>
-
-              </div>
+            </div>
           );
         })}
       </div>
