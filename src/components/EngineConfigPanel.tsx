@@ -369,7 +369,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const [aliasFocused, setAliasFocused] = useState(false);
   const aliasInitializedRef = useRef<{ modelPath: string; done: boolean }>({ modelPath: "", done: false });
   const lastLaunchAtRef = useRef(0);
-  const autoSplitPromotedRef = useRef(false);
   const [launchAck, setLaunchAck] = useState(false);
   const launchAckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -1127,7 +1126,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       gpus,
       config,
       manifest: vramCalc.manifest,
-      weightGb: (model?.metadata?.file_size_bytes ?? 0) / (1024 ** 3),
       runningSlots: runningSlotsForPlan,
     });
   }, [
@@ -1137,34 +1135,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     gpus,
     config,
     vramCalc.manifest,
-    model?.metadata?.file_size_bytes,
     runningSlotsForPlan,
   ]);
 
-  useEffect(() => {
-    if (fullAutoMode) return;
-    // Custom: never auto-promote split to layer (false multi-GPU for tiny models).
-    if (isCustomProvider) {
-      const split = String(config.split ?? "none").trim().toLowerCase();
-      if (split === "layer" && autoSplitPromotedRef.current) {
-        autoSplitPromotedRef.current = false;
-        updateParam("split", "none");
-      }
-      return;
-    }
-    const split = String(config.split ?? "none").trim().toLowerCase();
-    if (launchChrome.hideSplitNone) {
-      if (split === "none" || split === "") {
-        autoSplitPromotedRef.current = true;
-        updateParam("split", "layer");
-      }
-      return;
-    }
-    if (autoSplitPromotedRef.current && split === "layer") {
-      autoSplitPromotedRef.current = false;
-      updateParam("split", "none");
-    }
-  }, [fullAutoMode, isCustomProvider, launchChrome.hideSplitNone, config.split, updateParam]);
+
 
   const specParallelWarn = useMemo(
     () =>
@@ -1729,8 +1703,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       onCtxChange: (v: number) => updateParam("ctx", v),
       ctxSlotCount: slots,
       ctxPerSlot: perSlot,
+      learnedMarks: vramCalc.manifest?.learnedCurveCtxs,
     };
-  }, [config, allParamsResolved, updateParam, cockpitValueView]);
+  }, [config, allParamsResolved, updateParam, cockpitValueView, vramCalc.manifest?.learnedCurveCtxs]);
 
   const ctxDockedInCockpit = ctxCockpitDock === "cockpit";
   const showCtxAboveConfig =
@@ -2644,7 +2619,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         onFitLaunchChange={(nextFullAuto) => {
           setFullAuto(nextFullAuto);
           if (nextFullAuto) {
-            autoSplitPromotedRef.current = false;
             updateParam("split", "none");
             if (String(config["offload_mode"] ?? "regular").toLowerCase() === "moe_optimal") {
               updateParam("offload_mode", "regular");
@@ -2666,7 +2640,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         }}
         onSplitChange={(v) => {
           if (launchChrome.chromeDisabled || launchChrome.splitLocked) return;
-          autoSplitPromotedRef.current = false;
           updateParam("split", v);
         }}
         onDeviceSelect={(gpuIndex) => {
@@ -2692,7 +2665,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         onMoeSuggestionClick={() => {
           updateParam("offload_mode", config["offload_mode"] === "moe_optimal" ? "regular" : "moe_optimal");
         }}
-        hideMoeBadge={fullAutoMode || !((model?.metadata?.n_expert ?? 0) > 0)}
+        hideMoeBadge
         modelMeta={model?.metadata}
         modelName={model?.name}
         modelQuant={model?.quant}

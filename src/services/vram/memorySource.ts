@@ -145,7 +145,40 @@ export function resolveMemorySource(
   const activeSplit = split.length > 0 && split.toUpperCase() !== "NONE" ? split : undefined;
   const weightFileBytes = input.modelMeta.file_size_bytes;
 
-  // Active on-demand probe session — temporary overlay until config changes.
+  if (manifest.learnedFromPreviousRun) {
+    const draftCtx = input.learnedMtpContextMib;
+    const draftNote =
+      draftCtx != null && draftCtx > 64
+        ? ` · draft/spec ~${(draftCtx / 1024).toFixed(1)} GB`
+        : "";
+    return {
+      kind: "learned",
+      detail: `Launch at this ctx · ${formatMeasuredAt(input.learnedMeasuredAt)}${draftNote}`,
+      ...formatBreakdown(
+        input.learnedGpuBreakdownMib,
+        input.learnedHostMib,
+        input.learnedGpuComponentsMib,
+        input.learnedLaunchProfile,
+        activeSplit,
+        weightFileBytes,
+      ),
+      confidence: 4,
+    };
+  }
+
+  if (manifest.learnedInterpolated) {
+    const marks = (manifest.learnedCurveCtxs ?? [])
+      .slice()
+      .sort((a, b) => a - b)
+      .map((c) => (c >= 1024 ? `${Math.round(c / 1024)}K` : String(c)))
+      .join(" · ");
+    return {
+      kind: "learned_curve",
+      detail: marks ? `Between launches ${marks}` : "Between stored launches",
+      confidence: 4,
+    };
+  }
+
   if (manifest.fitProbeMeasuredAt != null && manifest.validatedVramMib != null) {
     const when = manifest.fitProbeMeasuredAt;
     return {
@@ -160,34 +193,6 @@ export function resolveMemorySource(
         weightFileBytes,
       ),
       confidence: 3,
-    };
-  }
-
-  // Steady-state priority: LEARNED → FIT CACHE → FORMULA (FULL AUTO uses live formula/FIT cache only)
-  if (
-    !input.fullAutoMode
-    && (
-      manifest.learnedFromPreviousRun
-      || (input.learnedVramMib != null && input.learnedVramMib > 0)
-    )
-  ) {
-    const draftCtx = input.learnedMtpContextMib;
-    const draftNote =
-      draftCtx != null && draftCtx > 64
-        ? ` · draft/spec ~${(draftCtx / 1024).toFixed(1)} GB`
-        : "";
-    return {
-      kind: "learned",
-      detail: `Prior launch · ${formatMeasuredAt(input.learnedMeasuredAt)} · ctx ${ctx}${splitSuffix}${draftNote}`,
-      ...formatBreakdown(
-        input.learnedGpuBreakdownMib,
-        input.learnedHostMib,
-        input.learnedGpuComponentsMib,
-        input.learnedLaunchProfile,
-        activeSplit,
-        weightFileBytes,
-      ),
-      confidence: 4,
     };
   }
 
@@ -224,6 +229,7 @@ export const MEMORY_SOURCE_LABELS: Record<MemorySource["kind"], string> = {
   fit_cache: "FIT CACHE",
   fit_probe: "FIT PROBE",
   learned: "LEARNED",
+  learned_curve: "LEARNED ≈",
 };
 
 export const MEMORY_SOURCE_ACCENT: Record<
@@ -250,6 +256,12 @@ export const MEMORY_SOURCE_ACCENT: Record<
   learned: {
     text: "text-cyan-400",
     border: "border-cyan-400/50",
+    gbGradient:
+      "bg-gradient-to-r from-cyan-300 via-sky-400 to-cyan-500 bg-clip-text text-transparent drop-shadow-[0_0_8px_rgba(34,211,238,0.35)]",
+  },
+  learned_curve: {
+    text: "text-cyan-400",
+    border: "border-cyan-400/40",
     gbGradient:
       "bg-gradient-to-r from-cyan-300 via-sky-400 to-cyan-500 bg-clip-text text-transparent drop-shadow-[0_0_8px_rgba(34,211,238,0.35)]",
   },

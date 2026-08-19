@@ -22,6 +22,7 @@ mod nvml_probe;
 mod fit_adapters;
 mod fit_scanner;
 mod vram_learn;
+mod forecast_log;
 mod launch_memory_parse;
 mod bench_prompts;
 mod burst_bench;
@@ -1141,6 +1142,7 @@ async fn main() {
             fit_scanner::get_fit_scan_points,
             fit_scanner::get_fit_scan_cache_snapshot,
             vram_learn::get_learned_vram,
+            vram_learn::get_learned_vram_curve,
             // GGUF Metadata Scanner commands
             engine::scan_model_metadata_cmd,
             engine::scan_all_models_cmd,

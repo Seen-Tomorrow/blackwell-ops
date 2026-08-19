@@ -336,6 +336,14 @@ pub fn scan_path(
     Ok(temp_catalog.into_values().collect())
 }
 
+/// Same filter as the catalog Regular tab — exclude external draft-only GGUFs.
+pub fn is_launchable_main_model(entry: &ModelEntry) -> bool {
+    if crate::spec_draft::is_external_draft_role_hint(&entry.draft_role_hint) {
+        return false;
+    }
+    crate::spec_draft::is_launchable_target(entry.metadata.as_ref(), &entry.path)
+}
+
 pub fn merge_catalogs(
     paths: &[ModelPathEntry],
     log_hub: Option<&crate::log_hub::LogHub>,

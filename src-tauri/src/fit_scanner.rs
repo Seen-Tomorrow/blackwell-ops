@@ -24,47 +24,16 @@ use tokio::sync::Mutex as TokioMutex;
 pub const FIT_OVERHEAD_PER_GPU: f64 = 256.0; // MiB static overhead per GPU for CUDA context/P2P
 const SCAN_TIMEOUT_SECS: u64 = 30;
 
-/// The complete scan plan — essential data points per model.
-/// All points run with flash attention ON (required for non-f16 KV quant on modern architectures).
+/// CTX spine only — live FIT probe owns absolute level at user knobs.
+/// These points exist so the CTX slider can interpolate measured VRAM.
 /// Tuple: (label, ctx_tokens, kv_quant, batch, parallel, split_mode)
 const SCAN_PLAN: &[(&str, usize, &str, u32, u32, &str)] = &[
-    // === BASELINE — weights + KV + CUDA overhead isolation ===
-    ("base_no_batch", 8192, "q4_0", 1, 1, "none"),
-    ("base", 8192, "q4_0", 512, 1, "none"),
-
-    // === KV QUANT CURVE — how VRAM changes with KV quantization ===
-    ("quant_f16", 131072, "f16", 512, 1, "none"),
-    ("quant_q8", 131072, "q8_0", 512, 1, "none"),
-    ("quant_q4", 131072, "q4_0", 512, 1, "none"),
-
-    // === CONTEXT SWEEP — KV growth rate across all sizes ===
     ("ctx_4k", 4096, "q4_0", 512, 1, "none"),
-    ("ctx_8k", 8192, "q4_0", 512, 1, "none"),
-    ("ctx_16k", 16384, "q4_0", 512, 1, "none"),
     ("ctx_32k", 32768, "q4_0", 512, 1, "none"),
     ("ctx_64k", 65536, "q4_0", 512, 1, "none"),
     ("ctx_128k", 131072, "q4_0", 512, 1, "none"),
     ("ctx_256k", 262144, "q4_0", 512, 1, "none"),
     ("ctx_512k", 524288, "q4_0", 512, 1, "none"),
-    ("ctx_1m", 1048576, "q4_0", 512, 1, "none"),
-
-    // === BATCH SWEEP — activation memory curve ===
-    ("batch_128", 131072, "q4_0", 128, 1, "none"),
-    ("batch_256", 131072, "q4_0", 256, 1, "none"),
-    ("batch_1k", 131072, "q4_0", 1024, 1, "none"),
-    ("batch_2k", 131072, "q4_0", 2048, 1, "none"),
-    ("batch_4k", 131072, "q4_0", 4096, 1, "none"),
-    ("batch_8k", 131072, "q4_0", 8192, 1, "none"),
-
-    // === SPLIT TAX — multi-GPU communication overhead at various contexts ===
-    ("split_layer_64k", 65536, "q4_0", 512, 1, "layer"),
-    ("split_tensor_64k", 65536, "q4_0", 512, 1, "tensor"),
-    ("split_layer_256k", 262144, "q4_0", 512, 1, "layer"),
-    ("split_tensor_256k", 262144, "q4_0", 512, 1, "tensor"),
-
-    // === EDGE CASES — large batch + large context combos ===
-    ("heavy_256k_b2k", 262144, "q4_0", 2048, 1, "none"),
-    ("heavy_1m_b1k", 1048576, "q4_0", 1024, 1, "none"),
 ];
 
 // ── Result Types ────────────────────────────────────────────────────
@@ -1091,7 +1060,7 @@ pub fn fit_scan_labels_done(full: &FitScanFull) -> HashSet<String> {
     done
 }
 
-/// Find all models using the shared model_catalog logic (multi-path, shard dedup, mmproj filter).
+/// Find launchable main models via catalog merge (multi-path, shard dedup, mmproj + draft filter).
 fn find_all_models(paths: &[String], log_hub: Option<&LogHub>) -> Vec<String> {
     let path_entries: Vec<crate::types::ModelPathEntry> = paths
         .iter()
@@ -1109,7 +1078,24 @@ fn find_all_models(paths: &[String], log_hub: Option<&LogHub>) -> Vec<String> {
         .collect();
 
     match crate::model_catalog::merge_catalogs(&path_entries, log_hub, None) {
-        Ok((entries, _conflicts)) => entries.into_iter().map(|e| e.path).collect(),
+        Ok((entries, _conflicts)) => {
+            let total = entries.len();
+            let mains: Vec<String> = entries
+                .into_iter()
+                .filter(crate::model_catalog::is_launchable_main_model)
+                .map(|e| e.path)
+                .collect();
+            let skipped = total.saturating_sub(mains.len());
+            if skipped > 0 {
+                emit_fit_scan_line(
+                    log_hub,
+                    BlackwellOutputConsoleCategory::Utils,
+                    &format!("[FIT-SCAN] Skipping {skipped} draft-only GGUF(s) (catalog Regular filter)"),
+                    BlackwellOutputConsoleLineStyle::Normal,
+                );
+            }
+            mains
+        }
         Err(e) => {
             log::warn!("Failed to scan model paths: {}", e);
             emit_fit_scan_line(

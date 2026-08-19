@@ -13,7 +13,7 @@ export {
   fullAutoSingleDeviceLabel,
 } from "./fullAutoGpuPick";
 
-function headroomGb(capacityGb: number): number {
+export function gpuHeadroomGb(capacityGb: number): number {
   return Math.max(1.0, capacityGb * 0.03);
 }
 
@@ -24,99 +24,57 @@ export function forecastUsesMultiGpu(manifest: VramManifest | null): boolean {
 }
 
 /**
- * Best-available VRAM estimate (GB) for split/device decisions.
- * Priority: FIT-probe (validated) → learned prior launch → formula.
- *
- * A measured value (probe or learned) is authoritative and must NOT be
- * overridden by the greedy formula or a weight-only floor — otherwise a
- * borderline model that a FIT probe proves fits on one GPU keeps getting
- * forced into split by the stale formula total.
+ * GPU-side total AUTO_FIT already committed.
+ * Learned (real launch) → FIT probe → formula.
  */
 export function bestVramEstimateGb(manifest: VramManifest | null): number {
   if (!manifest) return 0;
-  // FIT probe / validated total is the most authoritative.
-  if (manifest.validatedVramMib != null && manifest.validatedVramMib > 0) {
-    return manifest.validatedVramMib / 1024;
-  }
-  // Learned prior-launch total.
   if (manifest.learnedFromPreviousRun) {
+    return manifest.vramTotalGb;
+  }
+  if (manifest.validatedVramMib != null && manifest.validatedVramMib > 0) {
     return manifest.vramTotalGb;
   }
   return manifest.formulaVramTotalGb ?? manifest.vramTotalGb ?? 0;
 }
 
-/**
- * Weight-only floor (GB) used ONLY when no measured estimate exists.
- * A real measurement (probe/learned) is trusted over this crude floor.
- */
-export function weightFloorGb(weightGb: number): number {
-  return weightGb * 1.05;
-}
-
-/**
- * Promote layer-split when the estimate exceeds the best single GPU's free VRAM.
- * Does not require fitting in pooled VRAM — --fit may reduce actual usage (MoE, etc.).
- */
+/** Promote layer-split when the estimate exceeds the best single GPU's free VRAM. */
 export function needsAutoLayerSplit(
   estimateGb: number,
   perGpuAvailable: number[],
 ): boolean {
   if (perGpuAvailable.length <= 1) return false;
   const bestSingle = Math.max(...perGpuAvailable, 0);
-  return estimateGb > bestSingle - headroomGb(bestSingle);
+  return estimateGb > bestSingle - gpuHeadroomGb(bestSingle);
 }
 
-/**
- * Which estimate drives the split decision + the outcome. Shared by the SOURCE
- * panel and the Split chrome badge so the UI and the actual launch agree.
- */
 export interface SplitDriver {
-  /** `FIT` | `LEARNED` | `FORMULA` — authoritative estimate backing the decision. */
   label: string;
-  /** True when a real measurement (probe or learned) drives the decision. */
   measured: boolean;
-  /** GB estimate used for the split decision. */
   estimateGb: number;
-  /** True when the forecast will layer-split across GPUs. */
   willSplit: boolean;
 }
 
 export function resolveSplitDriver(manifest: VramManifest | null): SplitDriver | null {
   if (!manifest) return null;
-  const measured = !!manifest.validatedVramMib || !!manifest.learnedFromPreviousRun;
-  const label = manifest.validatedVramMib != null && manifest.validatedVramMib > 0
-    ? "FIT"
-    : manifest.learnedFromPreviousRun
-      ? "LEARNED"
+  const measured = !!manifest.learnedFromPreviousRun || !!manifest.validatedVramMib;
+  const label = manifest.learnedFromPreviousRun
+    ? "LEARNED"
+    : manifest.validatedVramMib != null && manifest.validatedVramMib > 0
+      ? "FIT"
       : "FORMULA";
-  const weightGb = manifest.vramWeightsGb ?? 0;
-  const estimateGb = measured
-    ? bestVramEstimateGb(manifest)
-    : Math.max(bestVramEstimateGb(manifest), weightFloorGb(weightGb));
+  const estimateGb = bestVramEstimateGb(manifest);
   const perGpu = manifest.gpuAllocations?.map((a) => a.vramAvailableGb) ?? [];
-  const willSplit = resolveAutoLayerSplit({
-    manifest,
-    weightGb,
-    perGpuAvailable: perGpu,
-  });
+  const willSplit = resolveAutoLayerSplit({ manifest, perGpuAvailable: perGpu });
   return { label, measured, estimateGb, willSplit };
 }
 
-/** Authoritative split decision — must match AUTO_FIT forecast bars. */
+/** Same number as AUTO_FIT bars: estimate vs free VRAM. No flag / bar-shape override. */
 export function resolveAutoLayerSplit(opts: {
   manifest: VramManifest | null;
-  weightGb: number;
   perGpuAvailable: number[];
 }): boolean {
-  const { manifest, weightGb, perGpuAvailable } = opts;
-  if (manifest?.autoLayerSplit === true) return true;
-  if (forecastUsesMultiGpu(manifest)) return true;
-  const measured = !!manifest
-    && (!!manifest.validatedVramMib || !!manifest.learnedFromPreviousRun);
-  const estimateGb = measured
-    ? bestVramEstimateGb(manifest)
-    : Math.max(bestVramEstimateGb(manifest), weightFloorGb(weightGb));
-  return needsAutoLayerSplit(estimateGb, perGpuAvailable);
+  return needsAutoLayerSplit(bestVramEstimateGb(opts.manifest), opts.perGpuAvailable);
 }
 
 /**
@@ -131,14 +89,13 @@ export function buildAutoVramLaunchParams(opts: {
   gpus: GpuInfo[];
   runningSlots: RunningSlotInfo[];
   manifest: VramManifest | null;
-  weightGb: number;
   fullAutoMode?: boolean;
   memoryMode?: "full_auto" | "assisted";
 }): Record<string, unknown> {
-  const { config, launchKeys, paramDefs, gpus, runningSlots, manifest, weightGb, fullAutoMode, memoryMode } = opts;
+  const { config, launchKeys, paramDefs, gpus, runningSlots, manifest, fullAutoMode, memoryMode } = opts;
 
   const perGpu = computeGpuAvailableList(gpus, runningSlots);
-  const autoSplit = resolveAutoLayerSplit({ manifest, weightGb, perGpuAvailable: perGpu });
+  const autoSplit = resolveAutoLayerSplit({ manifest, perGpuAvailable: perGpu });
 
   const params: Record<string, unknown> = {
     __auto_vram: true,

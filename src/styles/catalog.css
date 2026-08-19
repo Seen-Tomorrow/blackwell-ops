@@ -631,7 +631,7 @@
   box-shadow: none;
 }
 
-/* FIT:26/27 — quiet meta, not a status beacon */
+/* FIT:6/6 — quiet meta, not a status beacon */
 [data-model-catalog] .model-card-fit-badge {
   color: var(--theme-catalog-fit-fg) !important;
   border-color: var(--theme-catalog-fit-border) !important;

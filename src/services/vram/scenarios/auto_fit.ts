@@ -4,6 +4,9 @@ import {
   buildManifest,
   exceedsSystemMemory,
   systemMemoryAvailableGb,
+  adjustMeasuredGbForCtx,
+  interpolateLearnedCurveGb,
+  parseCtx,
 } from "./scenarios_factory";
 import { autoSplitPerGpuLoad, needsAutoLayerSplit } from "../../../lib/autoVramLaunch";
 import type { VramManifest } from "../../../lib/types";
@@ -16,45 +19,62 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
   if (!input.autoVramLaunch) return null;
 
   const fullAuto = input.fullAutoMode === true;
+  const liveCtx = parseCtx(String(input.engineConfig.extra_params?.ctx ?? "32768"));
+  const kvQuant = String(input.engineConfig.extra_params?.kv_quant ?? "f16");
   const probeGb = input.fitProbeVramMib ? input.fitProbeVramMib / 1024 : null;
   const probeHostGb = input.fitProbeHostMib ? input.fitProbeHostMib / 1024 : null;
-  const moeRamGb = computed.ramWeightsGb;
-  const moeOptimalActive = moeRamGb > 0.5;
   const weightGb = input.modelMeta.file_size_bytes / (1024 ** 3);
 
-  // Prior-launch learned totals are regular-mode GPU footprints — not valid for FULL AUTO live forecast or MOE_OPTIMAL.
-  const rawLearnedGb = !probeGb && input.learnedVramMib ? input.learnedVramMib / 1024 : null;
-  const useLearnedProjection = !fullAuto && !moeOptimalActive && rawLearnedGb != null;
-  // Full main+draft LEARNED already includes draft buffers (mtp_context_mib set). Older main-only
-  // LEARNED (Boost was off) must add draftWeights+overhead when Boost is on now.
-  // Lookup must not return a draft-dspark row when Boost is off (see vram_learn fuzzy).
   const draftAddonGb = computed.draftWeightsGb + computed.draftOverheadGb;
   const learnedHasDraft = (input.learnedMtpContextMib ?? 0) > 64;
-  const learnedGb = useLearnedProjection
-    ? rawLearnedGb! + (draftAddonGb > 0 && !learnedHasDraft ? draftAddonGb : 0)
+  const mergedCurve = (input.learnedCurve ?? []).map((p) => ({ ...p }));
+  const probeAnchor = input.fitProbeAnchorCtx ?? 0;
+  // Auto-FIT always probes split:none. Do not inject that point into a layer/tensor curve.
+  const probeAppliesToCurve = probeGb != null && !computed.splitActive;
+  if (probeAppliesToCurve && probeAnchor > 0 && !mergedCurve.some((p) => p.ctx === probeAnchor)) {
+    mergedCurve.push({
+      ctx: probeAnchor,
+      vramMib: (probeGb + draftAddonGb) * 1024,
+      hostMib: probeHostGb != null ? probeHostGb * 1024 : undefined,
+    });
+  }
+  const curveHit = interpolateLearnedCurveGb(mergedCurve, liveCtx);
+  const learnedExactGb = input.learnedCurve?.some((p) => p.ctx === liveCtx)
+    ? (curveHit?.vramGb ?? null)
     : null;
-  const learnedHostGb = useLearnedProjection
-    ? (probeHostGb ?? (input.learnedHostMib ? input.learnedHostMib / 1024 : null))
+  const curveGb = learnedExactGb == null && curveHit && mergedCurve.length >= 2
+    ? curveHit.vramGb
     : null;
-
-  // FIT probe never loads external draft GGUF — always add draftWeights+overhead when Boost is on.
-  const probeWithDraftGb = probeGb != null ? probeGb + draftAddonGb : null;
-  const formulaGb = probeWithDraftGb ?? computed.vramTotalGb;
-  // Weight-only floor is a safety net for UNKNOWN models. A real measurement
-  // (FIT probe or learned prior launch) is trusted over this crude floor —
-  // otherwise a borderline model proven to fit one GPU by a probe gets forced
-  // into split by weightGb*1.05.
-  const hasMeasurement = probeWithDraftGb != null || learnedGb != null;
-  const weightFloorGb = moeOptimalActive ? computed.weightsOnGpuGb * 1.05 : weightGb * 1.05;
-  const estimateGb = hasMeasurement
-    ? Math.max(learnedGb ?? 0, formulaGb)
-    : Math.max(formulaGb, weightFloorGb);
-
-  // GPU-side only — MoE expert weights live in ramWeightsGb, not stacked on VRAM.
-  const gpuNeedGb = moeOptimalActive ? computed.vramTotalGb : estimateGb;
-
+  const rawLearnedGb = input.learnedVramMib ? input.learnedVramMib / 1024 : null;
+  const learnedBaseGb = rawLearnedGb != null
+    ? rawLearnedGb + (draftAddonGb > 0 && !learnedHasDraft ? draftAddonGb : 0)
+    : null;
+  const learnedDeltaGb = learnedBaseGb != null && learnedExactGb == null && curveGb == null
+    ? adjustMeasuredGbForCtx(
+      learnedBaseGb,
+      input.learnedAnchorCtx ?? liveCtx,
+      liveCtx,
+      input.fitPoints,
+      input.modelMeta,
+      kvQuant,
+    )
+    : null;
+  const probeWithDraftGb = probeAppliesToCurve && curveGb == null && learnedExactGb == null
+    ? adjustMeasuredGbForCtx(
+      probeGb + draftAddonGb,
+      probeAnchor || liveCtx,
+      liveCtx,
+      input.fitPoints,
+      input.modelMeta,
+      kvQuant,
+    )
+    : null;
+  const learnedGb = learnedExactGb ?? curveGb ?? learnedDeltaGb;
+  const learnedHostGb = curveHit?.hostGb
+    ?? (rawLearnedGb != null && input.learnedHostMib ? input.learnedHostMib / 1024 : null);
+  const estimateGb = learnedExactGb ?? curveGb ?? probeWithDraftGb ?? learnedDeltaGb ?? computed.vramTotalGb;
+  const gpuNeedGb = estimateGb;
   const autoSplit = needsAutoLayerSplit(estimateGb, computed.gpuAvailable);
-
   const targetAvail = autoSplit
     ? computed.multiTotalAvailable
     : (computed.gpuAvailable[computed.targetGpuIdx] ?? computed.singleMaxAvailable);
@@ -70,37 +90,42 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
     + computed.draftOverheadGb;
   const overSystemMemory = exceedsSystemMemory(modelFootprintGb, computed, input);
 
-  // --fit on can offload to host when GPU pool is tight — MOE_OPTIMAL launches with --fit off.
-  const trustFitAtLoad = !overSystemMemory && !moeOptimalActive && (exceedsGpuPool || learnedHostGb != null);
+  const trustFitAtLoad = !overSystemMemory && (exceedsGpuPool || learnedHostGb != null);
   const fits = !overSystemMemory && (trustFitAtLoad || gpuNeedGb <= targetAvail - headroomGb);
 
-  const gpuProjectionGb = probeWithDraftGb != null
-    ? probeWithDraftGb
-    : moeOptimalActive
-      ? computed.vramTotalGb
-      : learnedGb != null
-        ? learnedGb
-        : Math.min(estimateGb, Math.max(targetAvail - headroomGb, 0));
-  const hostOffloadGb = learnedHostGb ?? (exceedsGpuPool && !moeOptimalActive
-    ? Math.max(0, estimateGb - gpuProjectionGb)
-    : 0);
+  const measuredGb = learnedExactGb ?? probeWithDraftGb ?? learnedGb;
+  const gpuProjectionGb = measuredGb != null
+    ? estimateGb
+    : Math.min(estimateGb, Math.max(targetAvail - headroomGb, 0));
+  const hostOffloadGb = learnedHostGb
+    ?? probeHostGb
+    ?? (exceedsGpuPool ? Math.max(0, estimateGb - gpuProjectionGb) : 0);
 
   const userSplitMultiGpu = computed.splitActive && input.gpus.length > 1;
   const breakdownSpansMultipleGpus = (loadsGb: number[]) =>
     loadsGb.filter((gb) => gb > 0.1).length > 1;
 
+  const currentPlacementKey = `${input.engineConfig.extra_params?.device || ""}|${input.engineConfig.extra_params?.split || ""}|${input.engineConfig.extra_params?.gpu_sync || ""}`;
+  const probePlacementMatches =
+    input.fitProbePlacementKey == null
+    || input.fitProbePlacementKey === currentPlacementKey;
+
   const perGpuLoad = (() => {
-    const probeBreakdown = input.fitProbeGpuBreakdownMib;
-    if (probeBreakdown && probeBreakdown.length === input.gpus.length) {
-      const loads = probeBreakdown.map((mib) => mib / 1024);
-      if (!userSplitMultiGpu || breakdownSpansMultipleGpus(loads)) return loads;
-    }
     if (
-      useLearnedProjection
+      learnedGb != null
       && input.learnedGpuBreakdownMib
       && input.learnedGpuBreakdownMib.length === input.gpus.length
     ) {
       const loads = input.learnedGpuBreakdownMib.map((mib) => mib / 1024);
+      if (!userSplitMultiGpu || breakdownSpansMultipleGpus(loads)) return loads;
+    }
+    const probeBreakdown = input.fitProbeGpuBreakdownMib;
+    if (
+      probePlacementMatches
+      && probeBreakdown
+      && probeBreakdown.length === input.gpus.length
+    ) {
+      const loads = probeBreakdown.map((mib) => mib / 1024);
       if (!userSplitMultiGpu || breakdownSpansMultipleGpus(loads)) return loads;
     }
     if (autoSplit || userSplitMultiGpu) {
@@ -134,7 +159,7 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
       ? "Reduce ctx or free VRAM — model exceeds available GPU memory"
       : "";
 
-  const showHostRam = hostOffloadGb > 0.5 || exceedsGpuPool || moeRamGb > 0.5;
+  const showHostRam = hostOffloadGb > 0.5 || exceedsGpuPool;
   const useOffloadPalette = trustFitAtLoad && exceedsGpuPool;
   const assisted = !fullAuto;
 
@@ -184,33 +209,29 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
         showDetailedForecast: assisted,
         gpuLayerText: layerText,
         ramLayerText: showHostRam
-          ? moeRamGb > 0.5 && isRealHostOffload && hostOffloadGb > 0.5
-            ? `~${moeRamGb.toFixed(1)} GB MoE experts + ~${hostOffloadGb.toFixed(1)} GB host offload (MOE_OPTIMAL)`
-            : moeRamGb > 0.5
-              ? `~${moeRamGb.toFixed(1)} GB MoE expert weights in host RAM (MOE_OPTIMAL)`
-              : isRealHostOffload
-                ? learnedHostGb
-                  ? `${hostOffloadGb.toFixed(1)} GB on host RAM (measured on prior launch)`
-                  : `~${hostOffloadGb.toFixed(1)} GB will spill to RAM — engine decides on load`
-                : learnedHostGb
-                  ? `${hostOffloadGb.toFixed(1)} GB host buffer (measured on prior launch)`
-                  : `~${hostOffloadGb.toFixed(1)} GB host buffer — engine overhead at load`
+          ? isRealHostOffload
+            ? learnedHostGb
+              ? `${hostOffloadGb.toFixed(1)} GB on host RAM (measured on prior launch)`
+              : `~${hostOffloadGb.toFixed(1)} GB will spill to RAM — engine decides on load`
+            : learnedHostGb
+              ? `${hostOffloadGb.toFixed(1)} GB host buffer (measured on prior launch)`
+              : `~${hostOffloadGb.toFixed(1)} GB host buffer — engine overhead at load`
           : autoSplit
             ? "VRAM spread across GPUs — offload decided at load"
             : assisted
               ? "engine might use some RAM at launch"
               : "Layer offload decided by engine at launch",
         showRamBar: assisted,
-        moeRamBar: moeRamGb > 0.5,
+        moeRamBar: false,
         offloadWarningText: isRealHostOffload
           ? "Host RAM offload — slower inference"
           : undefined,
       },
     },
     gpuProjectionGb,
-    computed.kvCacheGb * (gpuProjectionGb / Math.max(formulaGb, 0.01)),
+    computed.kvCacheGb,
     computed.overheadGb + computed.visionGb,
-    moeRamGb,
+    0,
     0,
     hostOffloadGb,
     fits,
@@ -224,6 +245,8 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
     autoLayerSplit: autoSplit,
     vramTotalGb: Math.round(gpuProjectionGb * 100) / 100,
     formulaVramTotalGb: Math.round(computed.vramTotalGb * 100) / 100,
-    learnedFromPreviousRun: useLearnedProjection,
+    learnedFromPreviousRun: learnedExactGb != null,
+    learnedInterpolated: curveGb != null,
+    learnedCurveCtxs: (input.learnedCurve ?? []).map((p) => p.ctx),
   };
 }

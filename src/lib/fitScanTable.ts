@@ -1,13 +1,16 @@
 import type { FitDataPoint, FitScanFull } from "./types";
 
-/** Full probe count per model — keep in sync with `SCAN_PLAN.len()` in fit_scanner.rs */
-export const FIT_SCAN_POINTS_TOTAL = 26;
+/** Keep in sync with `SCAN_PLAN.len()` in fit_scanner.rs */
+export const FIT_SCAN_POINTS_TOTAL = 6;
 
-/** Highlight columns — keep in sync with SCAN_PLAN split labels in fit_scanner.rs */
+/** Highlight columns — keep in sync with SCAN_PLAN ctx labels. */
 export const FIT_SCAN_TABLE_COLUMNS = [
-  { label: "base", header: "Base" },
-  { label: "split_layer_64k", header: "Lyr" },
-  { label: "split_tensor_64k", header: "Tns" },
+  { label: "ctx_4k", header: "4K" },
+  { label: "ctx_32k", header: "32K" },
+  { label: "ctx_64k", header: "64K" },
+  { label: "ctx_128k", header: "128K" },
+  { label: "ctx_256k", header: "256K" },
+  { label: "ctx_512k", header: "512K" },
 ] as const;
 
 export function fitScanModelDisplayName(path: string): string {

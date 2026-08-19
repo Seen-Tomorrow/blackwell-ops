@@ -15,6 +15,7 @@ import type {
   VramManifest,
 } from "./types";
 import { buildAutoVramLaunchParams } from "./autoVramLaunch";
+import { forecastSnapshotFromManifest } from "./forecastSnapshot";
 import { buildLaunchExtraParams, resolveParamDefaultValue } from "./paramConfigResolve";
 import { snapEssentialsHiddenInValues } from "./launchProfile";
 import {
@@ -194,7 +195,6 @@ export function buildLaunchConfig(input: BuildLaunchConfigInput): EngineConfig {
           gpus,
           runningSlots: runningSlotsForPlan,
           manifest: vramManifest,
-          weightGb: model.metadata.file_size_bytes / 1024 ** 3,
           fullAutoMode,
           memoryMode: fullAutoMode ? "full_auto" : "assisted",
         })
@@ -226,6 +226,10 @@ export function buildLaunchConfig(input: BuildLaunchConfigInput): EngineConfig {
       parallel: parallelN,
       __memory_mode: fullAutoMode ? "full_auto" : "assisted",
       __launch_policy: policy.id,
+      __forecast: forecastSnapshotFromManifest(vramManifest, model, {
+        ...merged,
+        ...launchExtra,
+      }),
       // Cockpit LV 3/4 toggle — Rust rewrites spawn_profile `-lv N` (see apply_log_verbosity_override).
       __log_verbosity: loadFusionLogVerbosity(),
     },

@@ -273,6 +273,14 @@ pub fn is_launchable_target(meta: Option<&ModelMetadata>, model_path: &str) -> b
     }
 }
 
+/// Catalog `draftRoleHint` / GGUF `draft_role` — same roles the UI hides as Draft.
+pub fn is_external_draft_role_hint(hint: &str) -> bool {
+    matches!(
+        hint.trim().to_lowercase().as_str(),
+        "external_dflash" | "external_eagle3" | "external_mtp"
+    )
+}
+
 pub fn spec_type_needs_external_draft(spec_type: &str) -> bool {
     let lower = spec_type.trim().to_lowercase();
     // External MTP heads are loaded via --spec-draft-model, same as DFlash.

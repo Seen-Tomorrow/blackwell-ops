@@ -698,7 +698,7 @@ export interface VramFitResult {
 
 export type Scenario = 'AUTO_FIT' | 'HW_LOCKED';
 
-/** MOE_OPTIMAL suggestion — computed internally, not exposed as scenario */
+/** @soon-remove moe_optimal — leftover suggestion chip; not a scenario. */
 export interface MoeSuggestion {
   /** Whether MOE_OPTIMAL would fit (on GPU or with less RAM offload) */
   wouldFit: boolean;
@@ -773,8 +773,8 @@ export interface GpuAllocation {
   runningEngines: RunningEngine[];
 }
 
-/** Where the forecast GB number comes from — priority: FIT PROBE → LEARNED → FIT CACHE → FORMULA */
-export type MemorySourceKind = "formula" | "fit_cache" | "fit_probe" | "learned";
+export type MemorySourceKind = "formula" | "fit_cache" | "fit_probe" | "learned" | "learned_curve";
+
 
 export interface MemorySource {
   kind: MemorySourceKind;
@@ -810,8 +810,12 @@ export interface VramManifest {
   formulaVramTotalGb: number;
   /** FIT-validated total VRAM in MiB (replaces formula when set) */
   validatedVramMib?: number;
-  /** Forecast uses VRAM measured on a prior launch (learned-vram.json). */
+  /** Forecast uses VRAM measured on a prior launch at this exact ctx. */
   learnedFromPreviousRun?: boolean;
+  /** Forecast interpolated between launch (and session probe) ctx points. */
+  learnedInterpolated?: boolean;
+  /** Ctx token counts that have a stored launch measurement — slider marks. */
+  learnedCurveCtxs?: number[];
   /** Per-GPU breakdown from FIT scan (MiB per GPU) */
   validatedGpuBreakdownMib?: number[];
   /** Host RAM usage from FIT scan */

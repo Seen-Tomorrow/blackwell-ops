@@ -723,6 +723,21 @@ mod dedup_tests {
     }
 
     #[test]
+    fn curve_split_none_ignores_layer_and_tensor_keys() {
+        let none = "C:/m.gguf|ggml-master|ctx=65536|kv=q8_0|dev=GPU-0|split=none|mode=full_auto";
+        let layer = "C:/m.gguf|ggml-master|ctx=65536|kv=q8_0|dev=GPU-0|split=layer|mode=full_auto";
+        let tensor = "C:/m.gguf|ggml-master|ctx=65536|kv=q8_0|dev=GPU-0|split=tensor|mode=full_auto";
+        let legacy = "C:/m.gguf|ggml-master|ctx=65536|kv=q8_0|dev=GPU-0|mode=full_auto";
+        assert!(key_matches_split(none, "none"));
+        assert!(key_matches_split(legacy, "none"));
+        assert!(!key_matches_split(layer, "none"));
+        assert!(!key_matches_split(tensor, "none"));
+        assert!(key_matches_split(layer, "layer"));
+        assert!(!key_matches_split(none, "layer"));
+        assert!(key_matches_split(tensor, "tensor"));
+    }
+
+    #[test]
     fn append_skips_duplicate_attempt_rows() {
         let tables = vec![MemoryBreakdownTable {
             gpu_self_mib: vec![100.0, 50.0],
@@ -777,8 +792,13 @@ pub fn record_launch_memory_snapshot(
     entry.gpu_components_mib = snapshot.gpu_components_mib.clone();
     entry.host_components_mib = snapshot.host_components_mib.clone();
     entry.measured_at = snapshot.measured_at.clone();
+    let measured_mib = snapshot.vram_mib;
+    let measured_host = snapshot.host_mib;
     entry.launch_snapshot = Some(snapshot);
-    save_store(&store)
+    save_store(&store)?;
+    drop(_guard);
+    crate::forecast_log::record_measured(key, measured_mib, Some(measured_host), "launch");
+    Ok(())
 }
 
 #[tauri::command]
@@ -826,4 +846,158 @@ pub fn get_learned_vram(
         cache,
         draft,
     )
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LearnedVramCurvePoint {
+    pub ctx: usize,
+    pub vram_mib: f64,
+    pub host_mib: Option<f64>,
+}
+
+fn ctx_from_learn_key(key: &str) -> Option<usize> {
+    let marker = "|ctx=";
+    let start = key.find(marker)? + marker.len();
+    let rest = &key[start..];
+    let end = rest.find('|').unwrap_or(rest.len());
+    rest[..end].parse().ok()
+}
+
+fn entry_matches_curve_hard_knobs(
+    key: &str,
+    path_norm: &str,
+    provider_id: &str,
+    kv_n: &str,
+    spec_n: &str,
+    draft_base: &str,
+) -> bool {
+    let path_prefix = format!("{path_norm}|");
+    if !key.starts_with(&path_prefix) {
+        return false;
+    }
+    let prov = provider_id.trim();
+    if !prov.is_empty() {
+        let rest = &key[path_prefix.len()..];
+        if !rest.starts_with(&format!("{prov}|")) {
+            return false;
+        }
+    }
+    if !key.contains(&format!("|kv={kv_n}|")) {
+        return false;
+    }
+    let key_has_spec = key.contains("|spec=");
+    let key_has_draft = key.contains("|draft=");
+    if spec_n == "none" {
+        if key_has_spec && !key.contains("|spec=none") {
+            return false;
+        }
+        if key_has_draft {
+            return false;
+        }
+    } else {
+        if !key.contains(&format!("|spec={spec_n}")) {
+            return false;
+        }
+        if !draft_base.is_empty()
+            && key_has_draft
+            && !key.contains(&format!("|draft={draft_base}"))
+        {
+            return false;
+        }
+    }
+    true
+}
+
+fn normalize_split_mode(split: &str) -> String {
+    let s = split.trim().to_lowercase();
+    if s.is_empty() {
+        "none".to_string()
+    } else {
+        s
+    }
+}
+
+/// Writes keep split in the key; curve reads must not mix none with layer/tensor.
+fn key_matches_split(key: &str, split: &str) -> bool {
+    let want = normalize_split_mode(split);
+    let want_none = want == "none";
+    if let Some(rest) = key.split("|split=").nth(1) {
+        let got = rest.split('|').next().unwrap_or("").trim().to_lowercase();
+        if want_none {
+            return got.is_empty() || got == "none";
+        }
+        return got == want;
+    }
+    want_none
+}
+
+/// Launch measurements for this model + kv/spec/draft + split, every ctx (device ignored).
+#[tauri::command]
+pub fn get_learned_vram_curve(
+    model_path: String,
+    provider_id: String,
+    kv_quant: String,
+    spec_type: Option<String>,
+    draft_model: Option<String>,
+    split: Option<String>,
+) -> Vec<LearnedVramCurvePoint> {
+    let Some(_guard) = STORE_MUTEX.lock().ok() else {
+        return Vec::new();
+    };
+    let store = load_store();
+    let path_norm = normalize_model_path_for_key(&model_path);
+    let kv_n = kv_quant.trim().to_lowercase();
+    let spec_n = normalize_spec_type(spec_type.as_deref().unwrap_or("none"));
+    let draft_base = {
+        let d = draft_model.as_deref().unwrap_or("").trim();
+        if d.is_empty() {
+            String::new()
+        } else {
+            std::path::Path::new(d)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or(d)
+                .to_lowercase()
+        }
+    };
+    let split_n = normalize_split_mode(split.as_deref().unwrap_or("none"));
+    let mut best: std::collections::HashMap<usize, (String, LearnedVramCurvePoint)> =
+        std::collections::HashMap::new();
+    for (k, entry) in &store.entries {
+        if !entry_matches_curve_hard_knobs(
+            k,
+            &path_norm,
+            &provider_id,
+            &kv_n,
+            &spec_n,
+            &draft_base,
+        ) {
+            continue;
+        }
+        if !key_matches_split(k, &split_n) {
+            continue;
+        }
+        let Some(ctx) = ctx_from_learn_key(k) else {
+            continue;
+        };
+        let vram = if entry.vram_mib > 0.0 {
+            entry.vram_mib
+        } else {
+            continue;
+        };
+        let point = LearnedVramCurvePoint {
+            ctx,
+            vram_mib: vram,
+            host_mib: entry.host_mib,
+        };
+        match best.get(&ctx) {
+            Some((at, _)) if entry.measured_at < *at => {}
+            _ => {
+                best.insert(ctx, (entry.measured_at.clone(), point));
+            }
+        }
+    }
+    let mut out: Vec<LearnedVramCurvePoint> = best.into_values().map(|(_, p)| p).collect();
+    out.sort_by_key(|p| p.ctx);
+    out
 }

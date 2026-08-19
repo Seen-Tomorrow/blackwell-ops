@@ -362,6 +362,13 @@ impl EngineStack {
             &backend_type,
             config,
         );
+        crate::forecast_log::record_prelaunch(
+            config,
+            &learn_snapshot.learn_key,
+            slot_idx,
+            pid,
+            config.port,
+        );
         let model_ready = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let fire_ready = {
             let ready_flag = model_ready.clone();

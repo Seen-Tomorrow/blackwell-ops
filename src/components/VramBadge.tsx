@@ -92,12 +92,12 @@ export default function VramBadge({
     if (!(display instanceof HTMLElement)) return;
 
     if (!fusionOverlayActive) {
-      delete display.dataset.fusionHeightManaged;
+      display.dataset.fusionHeightManaged = "";
       display.removeAttribute("data-fusion-tray-stowed");
       display.removeAttribute("data-fusion-boot");
-      display.style.height = "";
-      display.style.minHeight = "";
-      display.style.maxHeight = "";
+      display.style.height = `${FORECAST_PHOSPHOR_HEIGHT_PX}px`;
+      display.style.minHeight = `${FORECAST_PHOSPHOR_HEIGHT_PX}px`;
+      display.style.maxHeight = `${FORECAST_PHOSPHOR_HEIGHT_PX}px`;
       return;
     }
 
@@ -171,7 +171,7 @@ export default function VramBadge({
 
   useForecastContentHeight(
     rootRef,
-    !!manifest && !fusionOverlayActive,
+    false,
     forecastContentKey,
   );
 
@@ -263,9 +263,7 @@ export default function VramBadge({
     ? MEMORY_SOURCE_ACCENT[memorySource.kind]
     : null;
   const isFitProbe = memorySource?.kind === "fit_probe";
-  const displayVramNeedGb = isFitProbe
-    ? manifest.validatedVramMib! / 1024
-    : manifest.vramTotalGb;
+  const displayVramNeedGb = manifest.vramTotalGb;
   const displayRamNeedGb = isFitProbe
     ? (manifest.validatedHostMib != null && manifest.validatedHostMib > 0
         ? manifest.validatedHostMib / 1024

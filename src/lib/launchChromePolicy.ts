@@ -1,5 +1,5 @@
 import type { GpuInfo, VramManifest } from "./types";
-import { needsAutoLayerSplit, bestVramEstimateGb, weightFloorGb } from "./autoVramLaunch";
+import { needsAutoLayerSplit, bestVramEstimateGb, gpuHeadroomGb } from "./autoVramLaunch";
 import {
   computeGpuAvailableList,
   type RunningSlotInfo,
@@ -17,10 +17,6 @@ export interface LaunchChromePolicy {
   reason?: string;
 }
 
-function headroomGb(capacityGb: number): number {
-  return Math.max(1.0, capacityGb * 0.03);
-}
-
 function parseTargetGpuIdx(device: unknown): number {
   const deviceStr = String(device ?? "GPU-0");
   return parseInt(deviceStr.replace(/^GPU-/i, "").split("/")[0], 10) || 0;
@@ -36,7 +32,6 @@ export function resolveLaunchChromePolicy(opts: {
   gpus: GpuInfo[];
   config: Record<string, unknown>;
   manifest: VramManifest | null;
-  weightGb: number;
   runningSlots: RunningSlotInfo[];
 }): LaunchChromePolicy {
   const mode: LaunchMemoryMode = opts.fullAutoMode ? "full_auto" : "assisted";
@@ -65,14 +60,9 @@ export function resolveLaunchChromePolicy(opts: {
   const targetIdx = parseTargetGpuIdx(opts.config.device);
   const splitActive = isSplitActive(opts.config.split);
 
-  const measured = !!opts.manifest
-    && (!!opts.manifest.validatedVramMib || !!opts.manifest.learnedFromPreviousRun);
-  const estimateGb = measured
-    ? bestVramEstimateGb(opts.manifest)
-    : Math.max(bestVramEstimateGb(opts.manifest), weightFloorGb(opts.weightGb));
-
+  const estimateGb = bestVramEstimateGb(opts.manifest);
   const selectedAvail = perGpu[targetIdx] ?? 0;
-  const fitsOnSelected = estimateGb <= selectedAvail - headroomGb(selectedAvail);
+  const fitsOnSelected = estimateGb <= selectedAvail - gpuHeadroomGb(selectedAvail);
   const needsMultiGpu =
     !fitsOnSelected && needsAutoLayerSplit(estimateGb, perGpu);
 

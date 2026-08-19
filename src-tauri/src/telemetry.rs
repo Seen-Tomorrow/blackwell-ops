@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::os::windows::process::CommandExt;
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 use sysinfo::System;
 
@@ -494,18 +494,22 @@ pub async fn scan_system_info() -> Result<SystemInfo, String> {
 /// Detect physical GPU count via nvidia-smi. Shared across engine, fit_scanner, config.
 /// Returns 1 as fallback if detection fails (safer than guessing wrong).
 ///
+/// Cached for the process — FIT library used to call this per model (nvidia-smi storm).
 /// NOTE: MUST use Stdio::piped() — Stdio::null() discards output and always returns fallback.
-/// The null() → piped() change was needed because fd53291 accidentally broke GPU detection by
-/// adding Stdio::null() to suppress CMD windows in release builds. CREATE_NO_WINDOW flag handles
-/// that; stdout must still be captured for the actual data.
+static GPU_COUNT: LazyLock<usize> = LazyLock::new(detect_gpu_count_uncached);
+
 pub fn detect_gpu_count() -> usize {
-    let fallback = 1; // Safe default — single GPU rather than guessing wrong
+    *GPU_COUNT
+}
+
+fn detect_gpu_count_uncached() -> usize {
+    let fallback = 1;
     let smi = crate::engine_utils::resolve_nvidia_smi_path();
     if let Ok(output) = std::process::Command::new(&smi)
         .args(&["--query-gpu=index", "--format=csv,noheader"])
-        .stdout(Stdio::piped())   // MUST be piped — null() discards output, always returns fallback
+        .stdout(Stdio::piped())
         .stderr(Stdio::null())
-        .creation_flags(0x08000000) // CREATE_NO_WINDOW — prevents CMD window flash in release builds
+        .creation_flags(0x08000000)
         .output()
     {
         let count = String::from_utf8_lossy(&output.stdout)

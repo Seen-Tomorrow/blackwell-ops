@@ -1,16 +1,16 @@
 # VRAM Forecast — Redesign Intent & Observed Failure
 
-> **STATUS: DESIGN NOTE — NOT YET ACTED ON.** Captured by the user after hitting a
-> concrete borderline-model failure. This documents the *intent* of what the VRAM
-> forecast / split auto-switching *should* do, plus a real reproduction of where the
-> current tier system (FORMULA → FIT → LEARNED) fights the user.
+> **HISTORICAL.** The rewrite landed. Current behavior:
+> [`docs/VRAM-FORECAST.md`](docs/VRAM-FORECAST.md). Keep this file only as the
+> reproduction that motivated C2 (probe vs placement) and C1 (do not persist
+> auto-split). Do not implement from the ranked list below.
 
-This is intentionally a problem statement + design intent, not a patch. The current
-auto-switching and temp-locking between learned / fit / formula is fine for normal
-use (especially with a large VRAM pool). The failure is **specific to borderline /
-tiny models near a single-GPU boundary**, and would be genuinely painful on modest
-dual-16GB setups. Read the reproduction, then the intent, then the concrete fixes
-ranked by impact.
+This was a problem statement after a borderline-model failure (formula forces
+split → FIT proves single GPU → GPU pick drops the probe → formula again).
+Live priority is **LEARNED → FIT probe → formula**.
+
+The failure was specific to borderline / tiny models near a single-GPU
+boundary (painful on modest dual-16GB setups).
 
 ---
 

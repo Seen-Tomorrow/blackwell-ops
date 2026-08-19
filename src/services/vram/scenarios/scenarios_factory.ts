@@ -107,10 +107,18 @@ export interface ScenarioInput {
   learnedMeasuredAt?: string;
   /** LEARNED launch snapshot: post-spec draft buffer sum (MiB) — signals full main+draft capture. */
   learnedMtpContextMib?: number;
-  /** Active FIT probe session — authoritative until config changes. */
+  /** Active FIT probe session — authoritative until hard knobs change (not ctx). */
   fitProbeVramMib?: number;
   fitProbeHostMib?: number;
   fitProbeGpuBreakdownMib?: number[];
+  /** Placement key captured with the probe — mismatch → re-slice total, keep probe. */
+  fitProbePlacementKey?: string;
+  /** Ctx tokens the probe was measured at — slider applies KV delta from here. */
+  fitProbeAnchorCtx?: number;
+  /** Ctx tokens for the learned row currently applied. */
+  learnedAnchorCtx?: number;
+  /** All launch measurements for this model+kv/spec — interpolate CTX. */
+  learnedCurve?: Array<{ ctx: number; vramMib: number; hostMib?: number }>;
 }
 
 // ── Pure Helpers (no scenario logic) ────────────────────────────────────────
@@ -141,6 +149,71 @@ export function kvBytesForQuant(kvQuant: string): number {
     if (key.includes(k) || key.includes(k.replace("_", ""))) return v;
   }
   return 2.0; // default f16
+}
+
+/** Shift a measured GPU total from anchor ctx to the live slider ctx. */
+export function adjustMeasuredGbForCtx(
+  measuredGb: number,
+  anchorCtx: number,
+  liveCtx: number,
+  points: FitPoint[] | undefined,
+  meta: ModelMetadata,
+  kvQuant: string,
+): number {
+  if (anchorCtx <= 0 || liveCtx === anchorCtx) return measuredGb;
+  if (points && points.length >= 2) {
+    const a = extrapolateVramFromPoints(points, anchorCtx, kvQuant, 512, "", 0);
+    const b = extrapolateVramFromPoints(points, liveCtx, kvQuant, 512, "", 0);
+    if (a != null && b != null) return Math.max(0, measuredGb + (b - a) / 1024);
+  }
+  const headDim = meta.n_head > 0 ? meta.n_embd / meta.n_head : 128;
+  const bytes = kvBytesForQuant(kvQuant);
+  if (meta.n_layer <= 0 || meta.n_head_kv <= 0) return measuredGb;
+  const delta = (2 * meta.n_layer * meta.n_head_kv * headDim * (liveCtx - anchorCtx) * bytes) / (1024 ** 3);
+  return Math.max(0, measuredGb + delta);
+}
+
+export function interpolateLearnedCurveGb(
+  curve: Array<{ ctx: number; vramMib: number; hostMib?: number }> | undefined,
+  liveCtx: number,
+): { vramGb: number; hostGb: number | null; exact: boolean } | null {
+  if (!curve || curve.length === 0) return null;
+  const pts = curve.slice().sort((a, b) => a.ctx - b.ctx);
+  const exact = pts.find((p) => p.ctx === liveCtx);
+  if (exact) {
+    return {
+      vramGb: exact.vramMib / 1024,
+      hostGb: exact.hostMib != null ? exact.hostMib / 1024 : null,
+      exact: true,
+    };
+  }
+  if (pts.length === 1) return null;
+  let lo = pts[0];
+  let hi = pts[pts.length - 1];
+  for (let i = 0; i < pts.length - 1; i++) {
+    if (liveCtx >= pts[i].ctx && liveCtx <= pts[i + 1].ctx) {
+      lo = pts[i];
+      hi = pts[i + 1];
+      break;
+    }
+  }
+  if (liveCtx <= pts[0].ctx) {
+    lo = pts[0];
+    hi = pts[1];
+  } else if (liveCtx >= pts[pts.length - 1].ctx) {
+    lo = pts[pts.length - 2];
+    hi = pts[pts.length - 1];
+  }
+  if (hi.ctx === lo.ctx) {
+    return { vramGb: lo.vramMib / 1024, hostGb: lo.hostMib != null ? lo.hostMib / 1024 : null, exact: false };
+  }
+  const t = (liveCtx - lo.ctx) / (hi.ctx - lo.ctx);
+  const vramMib = lo.vramMib + t * (hi.vramMib - lo.vramMib);
+  let hostGb: number | null = null;
+  if (lo.hostMib != null && hi.hostMib != null) {
+    hostGb = (lo.hostMib + t * (hi.hostMib - lo.hostMib)) / 1024;
+  }
+  return { vramGb: vramMib / 1024, hostGb, exact: false };
 }
 
 export function gpuManufacturedMib(g: GpuInfo): number {
@@ -437,9 +510,9 @@ export function perLayerWeightGb(input: ScenarioInput, computed: ComputedValues)
   return computed.weightsGb / nLayer;
 }
 
-/** Compute the fraction of MOE model weights that stay on GPU in MOE_OPTIMAL mode.
- *  Non-expert weights (attention, norms, router) always stay on GPU.
- *  Expert FFN weights are streamed from RAM — only n_expert_used activate per token. */
+/** @soon-remove moe_optimal — leftover offload knob; --fit + learned replace it.
+ *  Fraction of MoE weights that stay on GPU when offload_mode=moe_optimal.
+ *  Non-expert (attention, norms, router) stay on GPU; expert FFN streamed from RAM. */
 function computeMoeGpuWeightFraction(meta: ModelMetadata): number {
   if (meta.n_expert === 0 || meta.n_expert_used === 0) return 0.25;
 
@@ -474,7 +547,7 @@ export function estimateActivationPerBatchToken(points: FitPoint[]): number | nu
 }
 
 export function estimateKvGrowthPerToken(points: FitPoint[]): number | null {
-  const ctxPoints = points.filter(p => p.label.startsWith("ctx_") && p.batch <= 8);
+  const ctxPoints = points.filter((p) => p.label.startsWith("ctx_"));
   if (ctxPoints.length < 2) return null;
   ctxPoints.sort((a, b) => a.ctx - b.ctx);
   const lower = ctxPoints[0];
@@ -502,33 +575,55 @@ export function estimateSplitTaxMiB(points: FitPoint[], splitMode: string): numb
   return null;
 }
 
+/** Piecewise-linear VRAM vs ctx from library CTX points (legacy labels still work). */
 export function extrapolateVramFromPoints(
   points: FitPoint[],
   userCtx: number,
   _userKvQuant: string,
   userBatch: number,
   splitMode: string,
-  weightsGb: number
+  _weightsGb: number
 ): number | null {
-  const baseNoBatch = findFitPoint(points, "base_no_batch");
-  const base = baseNoBatch || findFitPoint(points, "base");
-  if (!base) return null;
+  const ctxPoints = points
+    .filter((p) => p.label.startsWith("ctx_") || p.label === "base" || p.label === "base_no_batch")
+    .slice()
+    .sort((a, b) => a.ctx - b.ctx);
+  if (ctxPoints.length === 0) return null;
 
-  let totalMib = base.vram_mib;
-
-  // KV growth extrapolation for context difference
-  const kvGrowthPerToken = estimateKvGrowthPerToken(points);
-  if (kvGrowthPerToken !== null && userCtx !== base.ctx) {
-    totalMib += kvGrowthPerToken * (userCtx - base.ctx);
+  let totalMib: number;
+  if (ctxPoints.length === 1) {
+    totalMib = ctxPoints[0].vram_mib;
+  } else {
+    let lo = ctxPoints[0];
+    let hi = ctxPoints[ctxPoints.length - 1];
+    for (let i = 0; i < ctxPoints.length - 1; i++) {
+      if (userCtx >= ctxPoints[i].ctx && userCtx <= ctxPoints[i + 1].ctx) {
+        lo = ctxPoints[i];
+        hi = ctxPoints[i + 1];
+        break;
+      }
+    }
+    if (userCtx <= ctxPoints[0].ctx) {
+      lo = ctxPoints[0];
+      hi = ctxPoints[1];
+    } else if (userCtx >= ctxPoints[ctxPoints.length - 1].ctx) {
+      lo = ctxPoints[ctxPoints.length - 2];
+      hi = ctxPoints[ctxPoints.length - 1];
+    }
+    if (hi.ctx === lo.ctx) {
+      totalMib = lo.vram_mib;
+    } else {
+      const t = (userCtx - lo.ctx) / (hi.ctx - lo.ctx);
+      totalMib = lo.vram_mib + t * (hi.vram_mib - lo.vram_mib);
+    }
   }
 
-  // Activation delta for batch difference
   const actPerToken = estimateActivationPerBatchToken(points);
-  if (actPerToken !== null && userBatch !== base.batch) {
-    totalMib += actPerToken * (userBatch - base.batch);
+  const baseForBatch = findFitPoint(points, "base") || ctxPoints[0];
+  if (actPerToken !== null && userBatch !== baseForBatch.batch) {
+    totalMib += actPerToken * (userBatch - baseForBatch.batch);
   }
 
-  // Split tax
   if (splitMode.length > 0 && splitMode.toUpperCase() !== "NONE") {
     const splitTax = estimateSplitTaxMiB(points, splitMode.toLowerCase());
     if (splitTax !== null) {
@@ -576,13 +671,11 @@ export function externalDraftSpecActive(engineConfig: EngineConfig): boolean {
   const st = cfgStr(engineConfig, "spec_type", "none").toLowerCase()
     || cfgStr(engineConfig, "__boost_spec_type", "").toLowerCase();
   if (!st || st === "none" || st === "off") {
-    // Cockpit may only have draft path until launch flattens spec_type.
     const draft = cfgStr(engineConfig, "dflash_draft_model", "")
       || cfgStr(engineConfig, "spec_draft_model", "");
     return !!draft && draft.toLowerCase() !== "auto" && draft.toLowerCase() !== "off" && /\.gguf$/i.test(draft);
   }
   if (st.includes("mtp") && !st.includes("dflash") && !st.includes("dspark") && !st.includes("eagle")) {
-    // Embedded MTP — no external GGUF.
     return false;
   }
   return st.includes("dflash") || st.includes("dspark") || st.includes("eagle") || st.includes("draft");
@@ -601,11 +694,7 @@ export function computeValues(input: ScenarioInput, validatedVramMib?: number): 
   const draftOverheadGb =
     draftWeightsGb > 0 ? Math.max(0.4, draftWeightsGb * 0.55) : 0;
 
-  // GPU-bound weight fraction — MOE_OPTIMAL always applies reduced fraction when selected.
-  // Only attention + router weights go to GPU; expert FFN stays in RAM until dispatch.
-  const gpuWeightFraction = (isMoe && cfgStr(engineConfig, "offload_mode", "regular") === "moe_optimal")
-    ? computeMoeGpuWeightFraction(modelMeta)
-    : 1.0;
+  const gpuWeightFraction = 1.0;
 
   // ── Soft Cap: effective context length ────────────────────────────────
   const userCtx = parseCtx(cfgStr(engineConfig, "ctx", "32k"));
@@ -810,7 +899,7 @@ export function buildManifest(
 import { tryEvaluate as autoFit } from "./auto_fit";
 import { evaluate as hwLocked } from "./hw_locked";
 
-/** Compute MOE_OPTIMAL suggestion internally (not exposed as actual scenario) */
+/** @soon-remove moe_optimal — leftover suggestion; not a real scenario. */
 function computeMoeAlternative(
   input: ScenarioInput, 
   computed: ComputedValues,
@@ -882,14 +971,8 @@ export function evaluate(input: ScenarioInput, validatedVramMib?: number): VramM
   if (!manifest) {
     manifest = hwLocked(input, computed, `Model requires ${computed.vramTotalGb.toFixed(1)} GB VRAM + RAM, system has ${(computed.multiTotalAvailable + input.ramAvailableGb).toFixed(1)} GB combined`);
   }
-
-  // Compute MOE suggestion and attach to manifest
-  const moeSuggestion = computeMoeAlternative(input, computed, manifest);
-  
-  // Always sync moeSuggestion (remove when not applicable)
-  (manifest as VramManifestWithMoe).moeSuggestion = moeSuggestion;
-
   return attachMemorySource(manifest, input, computed);
+
 }
 
 /** Apply FIT-validated total to a formula-based manifest.
