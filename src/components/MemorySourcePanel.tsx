@@ -13,8 +13,8 @@ interface MemorySourcePanelProps {
   onValidate?: () => void;
   hideValidate?: boolean;
   /**
-   * One-line strip: SOURCE · KIND · detail.
-   * Breakdown lines stay hidden — density pass for fixed phosphor height.
+   * true  → one-line SOURCE · KIND · detail (FULL AUTO)
+   * false → header + original detail/breakdown stack (ASSISTED)
    */
   compact?: boolean;
 }
@@ -32,7 +32,7 @@ function ConfidencePips({ level }: { level: MemorySource["confidence"] }) {
   );
 }
 
-/** SOURCE instrument strip — compact one-liner by default (no breakdown reflow). */
+/** SOURCE instrument — compact strip or full memory breakdown. */
 export default function MemorySourcePanel({
   memorySource,
   isValidating = false,

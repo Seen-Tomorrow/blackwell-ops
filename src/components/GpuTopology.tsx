@@ -1,8 +1,8 @@
 import type { GpuAllocation } from "../lib/types";
 import { splitGpuTopoBarUsage } from "../services/vram/scenarios/scenarios_factory";
 
-/** Comfort bank — power-user ceiling; extras scroll in the topo well. */
-export const GPU_TOPO_BANK_MAX = 8;
+/** Visible row bank in forecast glass — extra rows scroll (wheel). */
+export const GPU_TOPO_MAX_ROWS = 3;
 
 interface GpuTopologyProps {
   gpuAllocations: GpuAllocation[];
@@ -18,7 +18,7 @@ interface GpuTopologyProps {
   perRow?: 2 | 3;
   /**
    * Forecast phosphor mode: cards flex-fill remaining glass height
-   * (slot-bank style), density tiers by GPU count.
+   * (slot-bank style). Density by visible bank; max 3 rows then scroll.
    */
   fill?: boolean;
 }
@@ -37,7 +37,7 @@ function formatExternalTooltip(systemReservedMib: number, foreignAppsMib: number
   return parts.join(" | ");
 }
 
-/** Density tier — fat 1–2, med 3–4, dense 5–8 (slot-bank style). */
+/** Density tier — fat 1–2, med 3–4, dense 5+ (slot-bank style). */
 export function gpuTopoDensity(count: number): "fat" | "med" | "dense" {
   if (count <= 2) return "fat";
   if (count <= 4) return "med";
@@ -58,11 +58,14 @@ export default function GpuTopology({
 }: GpuTopologyProps) {
   const cols = perRow === 3 ? 3 : 2;
   const total = gpuAllocations.length;
-  const bank = fill ? gpuAllocations.slice(0, GPU_TOPO_BANK_MAX) : gpuAllocations;
-  const overflow = fill ? Math.max(0, total - GPU_TOPO_BANK_MAX) : 0;
+  /** All cards render; scroll kicks in past max visible rows. */
+  const bank = gpuAllocations;
   const n = bank.length;
-  const density = gpuTopoDensity(Math.max(1, n));
   const rows = Math.max(1, Math.ceil(Math.max(n, 1) / cols));
+  const visibleRows = Math.min(rows, fill ? GPU_TOPO_MAX_ROWS : rows);
+  const densityCount = Math.min(n, visibleRows * cols);
+  const density = gpuTopoDensity(Math.max(1, densityCount));
+  const scroll = fill && rows > GPU_TOPO_MAX_ROWS;
 
   return (
     <div
@@ -72,13 +75,18 @@ export default function GpuTopology({
       data-gpu-total={total}
       data-gpu-density={density}
       data-gpu-rows={rows}
+      data-gpu-visible-rows={visibleRows}
+      data-gpu-max-rows={fill ? GPU_TOPO_MAX_ROWS : undefined}
+      data-gpu-scroll={scroll ? "1" : undefined}
       data-gpu-fill={fill ? "1" : undefined}
     >
       <div
         className="gpu-topology-grid"
         style={{
           gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-          gridTemplateRows: fill ? `repeat(${rows}, minmax(0, 1fr))` : undefined,
+          // ≤3 rows: equal flex rows fill the topo. >3: CSS grid-auto-rows from cqh.
+          gridTemplateRows:
+            fill && !scroll ? `repeat(${rows}, minmax(0, 1fr))` : undefined,
         }}
       >
         {bank.map((alloc) => {
@@ -201,11 +209,6 @@ export default function GpuTopology({
         })}
       </div>
 
-      {overflow > 0 && (
-        <div className="gpu-topology-overflow" title={`${overflow} more GPU(s) not shown in bank`}>
-          +{overflow} more · scroll bank / set cols
-        </div>
-      )}
 
       {ramVisible && (
         <div className="pt-2 border-t border-stealth-border/20 gpu-ram-enter">

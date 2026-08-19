@@ -299,11 +299,11 @@ export default function VramBadge({
       hasProbed={manifestHasFitProbe(manifest)}
       onValidate={onValidate}
       hideValidate
-      compact
+      compact={!showDetailedForecast}
     />
   ) : null;
 
-  // One-line SOURCE + probe — both FULL AUTO and ASSISTED (breakdown hidden).
+  // FULL AUTO: one-line SOURCE. ASSISTED: full breakdown stack.
   const forecastSourceRow = (memorySourcePanel || fitProbeButton) ? (
     <div className="vram-fc__source-row vram-forecast-header__fit-row">
       {fitProbeButton && (
@@ -319,6 +319,7 @@ export default function VramBadge({
     </div>
   ) : null;
 
+  /** Scenario identity chip — FULL AUTO top-right. */
   const scenarioChip = (
     <span className="vram-fc__ident vram-forecast-scenario-badge">
       <span className={`vram-fc__scenario ${s.badgeBg}`}>
@@ -326,6 +327,17 @@ export default function VramBadge({
       </span>
     </span>
   );
+
+  /** ASSISTED: scenario replaces the FORECAST wordmark. */
+  const forecastScenarioTitle = (
+    <span
+      className={`vram-fc__title vram-fc__title--scenario vram-forecast-scenario-badge ${s.badgeBg}`}
+      title={s.label}
+    >
+      <span className="vram-fc__scenario-lab">{s.label}</span>
+    </span>
+  );
+
 
   const remainPct =
     manifest.fits && totalVramMib > 0
@@ -392,24 +404,6 @@ export default function VramBadge({
               className={`vram-fc-bar__fill ${s.gpuBarColor}`}
               style={{ width: `${vramUsagePct}%` }}
             />
-            {(t.kvSpillRiskText || t.gpuLayerText) && (
-              <span
-                className={`vram-forecast-bar__inset-label${
-                  t.kvSpillRiskText
-                    ? s.kvSpillCritical
-                      ? " vram-forecast-bar__inset-label--kv-critical"
-                      : " vram-forecast-bar__inset-label--kv"
-                    : ""
-                }`}
-                title={
-                  t.kvSpillRiskText
-                    ? `${t.kvSpillRiskText} — verify with test run`
-                    : t.gpuLayerText
-                }
-              >
-                {t.kvSpillRiskText || t.gpuLayerText}
-              </span>
-            )}
           </div>
         </div>
         <span className={`vram-fc-bar__cap ${s.titleColor}`}>
@@ -427,14 +421,6 @@ export default function VramBadge({
                 }`}
                 style={{ width: `${ramUsagePct}%` }}
               />
-              {(t.offloadWarningText || t.ramLayerText) && (
-                <span
-                  className="vram-forecast-bar__inset-label vram-forecast-bar__inset-label--ram"
-                  title={t.offloadWarningText || t.ramLayerText}
-                >
-                  {t.offloadWarningText || t.ramLayerText}
-                </span>
-              )}
             </div>
           </div>
           <span className="vram-fc-bar__cap vram-fc-bar__cap--ram">| {ramMfgGb} GB</span>
@@ -458,18 +444,24 @@ export default function VramBadge({
 
       {showDetailedForecast ? (
         <div className="vram-fc__header vram-forecast-header vram-forecast-header--assisted flex-shrink-0 min-w-0">
-          <div className="vram-fc__title-row">
-            <span className={`vram-fc__title ${s.titleColor}`}>FORECAST</span>
-            <span
-              className={`vram-fc__verdict${manifest.fits ? " is-ok" : " is-fail"}`}
-              title={manifest.fits ? "Projected fit" : "Projected no-fit"}
-            >
-              {manifest.fits ? "FITS" : "WON'T"}
-            </span>
-            {scenarioChip}
+          <div className="vram-fc__assisted-pack">
+            <div className="vram-fc__assisted-main">
+              <div className="vram-fc__title-row">
+                {forecastScenarioTitle}
+                <span
+                  className={`vram-fc__verdict${manifest.fits ? " is-ok" : " is-fail"}`}
+                  title={manifest.fits ? "Projected fit" : "Projected no-fit"}
+                >
+                  {manifest.fits ? "FITS" : "WON'T"}
+                </span>
+              </div>
+              {needInstruments}
+              {forecastSourceRow}
+            </div>
+            <div className="vram-fc__assisted-bars">
+              {barBank}
+            </div>
           </div>
-          {needInstruments}
-          {forecastSourceRow}
         </div>
       ) : (
         <div className="vram-fc__header vram-fc-auto vram-forecast-hero flex-shrink-0 min-w-0">
@@ -500,8 +492,6 @@ export default function VramBadge({
       )}
 
       <div className="vram-badge-body vram-fc__body relative min-h-0 overflow-hidden">
-        {barBank}
-
         {manifest.gpuAllocations.length > 0 && (
           <div className="vram-fc__topo">
             <GpuTopology

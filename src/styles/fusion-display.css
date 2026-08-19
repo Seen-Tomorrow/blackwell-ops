@@ -566,6 +566,62 @@
   gap: calc(3px * var(--vram-fc-scale));
 }
 
+/* ASSISTED upper pack: instruments left, VRAM/RAM bars right */
+.vram-fc__assisted-pack {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(7.5rem, 0.9fr);
+  gap: calc(8px * var(--vram-fc-scale));
+  align-items: stretch;
+  min-width: 0;
+}
+
+.vram-fc__assisted-main {
+  display: flex;
+  flex-direction: column;
+  gap: calc(3px * var(--vram-fc-scale));
+  min-width: 0;
+  min-height: 0;
+}
+
+.vram-fc__assisted-bars {
+  display: flex;
+  flex-direction: column;
+  justify-content: stretch;
+  min-width: 0;
+  min-height: 0;
+}
+
+.vram-fc__assisted-bars .vram-fc-bars {
+  flex: 1 1 auto;
+  height: 100%;
+  justify-content: center;
+  gap: calc(7px * var(--vram-fc-scale));
+  padding: 0;
+}
+
+.vram-fc__assisted-bars .vram-fc-bar-row {
+  flex: 1 1 auto;
+  align-items: stretch;
+  min-height: calc(22px * var(--vram-fc-scale));
+}
+
+.vram-fc__assisted-bars .vram-fc-bar {
+  display: flex;
+  flex-direction: column;
+}
+
+.vram-fc__assisted-bars .vram-fc-bar__track {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: calc(16px * var(--vram-fc-scale));
+}
+
+.vram-fc__assisted-bars .vram-fc-bar__cap {
+  align-self: center;
+  font-size: var(--vram-fc-fs-sm);
+  min-width: 4.5ch;
+}
+
 .vram-fc__title-row {
   display: flex;
   align-items: center;
@@ -583,6 +639,25 @@
   text-transform: uppercase;
   color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 78%, transparent);
   flex-shrink: 0;
+}
+
+/* Scenario label occupies the FORECAST badge slot (ASSISTED) */
+.vram-fc__title--scenario {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 7px;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.4)) 48%, transparent);
+  letter-spacing: 0.1em;
+  line-height: 1.15;
+  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 90%, transparent);
+  background: color-mix(in srgb, var(--display-face-bar-bg, rgba(0, 0, 0, 0.4)) 50%, transparent);
+}
+
+.vram-fc__title--scenario .vram-fc__scenario-lab {
+  font-size: calc(8px * var(--vram-fc-scale));
+  letter-spacing: 0.12em;
 }
 
 /* ── FULL AUTO hero ─────────────────────────────────────────────────── */
@@ -914,14 +989,7 @@
   overflow: hidden;
 }
 
-.vram-fc__topo {
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
+/* topo scroll/container rules live with GPU topology block */
 
 /* ── Dominant VRAM / RAM bars (ASSISTED) ─────────────────────────────── */
 .vram-fc-bars {
@@ -1137,12 +1205,21 @@
   display: flex;
   flex-direction: column;
   gap: 1px;
-  min-height: 30px;
+  min-height: 0;
   flex: 0 0 auto;
+  margin-top: 2px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: calc(7.5px * var(--vram-fc-scale));
   line-height: 1.25;
   color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 88%, transparent);
+}
+
+/* Stacked breakdown: allow wrap so model/ctx lines stay readable */
+.vram-fc-source[data-source-layout="stack"] .memory-source-body__line,
+.vram-fc-source[data-source-layout="stack"] .vram-fc-source__line {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
 }
 
 .memory-source-body__line,
@@ -1177,6 +1254,21 @@
 }
 
 /* ── GPU topology — flex-fill like slot bank ─────────────────────────── */
+.vram-fc__topo {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  container-type: size;
+  container-name: vram-topo;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 18%, transparent) transparent;
+}
+
 .gpu-topology-root {
   min-height: 0;
   min-width: 0;
@@ -1187,13 +1279,22 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  min-height: 0;
-  overflow: hidden;
+  min-height: 100%;
+  min-width: 0;
+  overflow: visible;
+}
+
+/* When >3 rows: content taller than viewport; topo scrolls */
+.gpu-topology-root--fill[data-gpu-scroll="1"] {
+  height: auto;
+  min-height: 100%;
+  flex: 0 0 auto;
 }
 
 .gpu-topology-grid {
+  --gpu-topo-gap: calc(6px * var(--vram-fc-scale, 1.12));
   display: grid;
-  gap: calc(6px * var(--vram-fc-scale, 1.12));
+  gap: var(--gpu-topo-gap);
   min-width: 0;
   min-height: 0;
 }
@@ -1202,6 +1303,17 @@
   flex: 1 1 auto;
   height: 100%;
   align-content: stretch;
+}
+
+/* >3 rows: each row = 1/3 of topo viewport; wheel reveals more */
+.gpu-topology-root--fill[data-gpu-scroll="1"] .gpu-topology-grid {
+  flex: 0 0 auto;
+  height: auto;
+  align-content: start;
+  grid-auto-rows: calc(
+    (100cqh - (var(--gpu-topo-max-rows, 3) - 1) * var(--gpu-topo-gap))
+    / var(--gpu-topo-max-rows, 3)
+  );
 }
 
 .gpu-topology-overflow {
@@ -1345,7 +1457,8 @@
 }
 
 .gpu-topology-root--fill[data-gpu-density="dense"] .gpu-topology-grid {
-  gap: calc(4px * var(--vram-fc-scale, 1.12));
+  --gpu-topo-gap: calc(4px * var(--vram-fc-scale, 1.12));
+  gap: var(--gpu-topo-gap);
 }
 
 .gpu-topology-root--fill[data-gpu-density="dense"] .gpu-card {
@@ -1372,13 +1485,6 @@
 /* Single-card: still full width of grid (cols may pad empty cells via 1fr rows) */
 .gpu-topology-root--fill[data-gpu-count="1"] .gpu-topology-grid {
   grid-template-columns: minmax(0, 1fr) !important;
-}
-
-/* >8 bank: allow topo scroll for overflow note + rare extras if fill false */
-.vram-fc__topo:has(.gpu-topology-overflow) {
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 18%, transparent) transparent;
 }
 
 /* FIT probe — boot-style action chip */
