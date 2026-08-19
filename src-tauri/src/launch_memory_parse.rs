@@ -142,9 +142,29 @@ fn parse_buffer_size_mib(line: &str) -> Option<f64> {
 
 fn device_from_padding_line(line: &str) -> Option<String> {
     let trimmed = line.trim();
+    if trimmed.contains("Meta()") || trimmed.contains("Meta device") {
+        return Some("Meta".to_string());
+    }
     for token in ["CUDA_Host", "CUDA0", "CUDA1", "CUDA2", "CUDA3", "CPU"] {
         if trimmed.contains(token) {
             return Some(token.to_string());
+        }
+    }
+    None
+}
+
+/// `creating a Meta device for tensor parallelism from N devices`
+fn parse_tensor_meta_gpu_count(output: &str) -> Option<usize> {
+    for line in output.lines() {
+        let lower = line.to_lowercase();
+        let Some(rest) = lower.split("tensor parallelism from ").nth(1) else {
+            continue;
+        };
+        if let Some(n) = extract_number(rest) {
+            let count = n as usize;
+            if count >= 2 {
+                return Some(count);
+            }
         }
     }
     None
@@ -169,10 +189,42 @@ fn push_buffer(
     match device {
         "CUDA_Host" => *host_pinned += mib,
         "CPU" => *host_cpu += mib,
+        "Meta" => {
+            *per_gpu.entry("Meta".to_string()).or_insert(0.0) += mib;
+        }
         d if d.starts_with("CUDA") => {
             *per_gpu.entry(d.to_string()).or_insert(0.0) += mib;
         }
         _ => {}
+    }
+}
+
+/// Tensor-parallel `Meta()` size is one GPU's shard — replicate onto CUDA0..N-1.
+fn expand_meta_device(
+    buffers: &mut Vec<BufferLine>,
+    per_gpu: &mut HashMap<String, f64>,
+    gpu_count: usize,
+) {
+    let Some(meta_mib) = per_gpu.remove("Meta") else {
+        return;
+    };
+    if gpu_count < 2 || meta_mib <= 0.0 {
+        per_gpu.insert("Meta".to_string(), meta_mib);
+        return;
+    }
+    let meta_bufs: Vec<BufferLine> = buffers.iter().filter(|b| b.device == "Meta").cloned().collect();
+    buffers.retain(|b| b.device != "Meta");
+    for i in 0..gpu_count {
+        let name = format!("CUDA{i}");
+        *per_gpu.entry(name.clone()).or_insert(0.0) += meta_mib;
+        for b in &meta_bufs {
+            buffers.push(BufferLine {
+                device: name.clone(),
+                category: b.category.clone(),
+                mib: b.mib,
+                source: b.source.clone(),
+            });
+        }
     }
 }
 
@@ -389,6 +441,12 @@ pub fn parse_launch_memory_snapshot(output: &str) -> Option<LaunchMemorySnapshot
         );
     }
 
+    let meta_gpus = parse_tensor_meta_gpu_count(parse_region)
+        .or_else(|| per_gpu.contains_key("Meta").then_some(2));
+    if let Some(n) = meta_gpus {
+        expand_meta_device(&mut buffers, &mut per_gpu, n);
+    }
+
     if per_gpu.is_empty() {
         return None;
     }
@@ -525,5 +583,28 @@ mod tests {
             "0.01.878.441 I load_tensors: CUDA0 model buffer size = 7788.32 MiB"
         ));
         assert!(!is_launch_memory_line("0.10.334.904 I srv  update_slots: all slots are idle"));
+    }
+
+    #[test]
+    fn parses_tensor_split_meta_device_as_per_gpu() {
+        const TENSOR: &str = r#"0.00 I llama_prepare_model_devices: creating a Meta device for tensor parallelism from 2 devices:
+0.00 I llama_prepare_model_devices: - device 0: CUDA0
+0.00 I llama_prepare_model_devices: - device 1: CUDA1
+0.00 I load_tensors:   CPU_Mapped model buffer size =   994.63 MiB
+0.00 I load_tensors:       Meta() model buffer size = 10238.65 MiB
+0.00 I llama_kv_cache:     Meta() KV buffer size =  2176.00 MiB
+0.00 I llama_memory_recurrent:     Meta() RS buffer size =    74.81 MiB
+0.00 I sched_reserve:     Meta() compute buffer size =  1136.31 MiB
+0.00 I sched_reserve:  CUDA_Host compute buffer size =   444.32 MiB
+0.00 I reserve_compute_meta:      CUDA0 compute buffer size =   248.10 MiB
+0.00 I srv  llama_server: model loaded
+"#;
+        let snap = parse_launch_memory_snapshot(TENSOR).expect("tensor snapshot");
+        assert_eq!(snap.gpu_breakdown_mib.len(), 2);
+        assert!((snap.gpu_breakdown_mib[1] - 13625.77).abs() < 0.2);
+        assert!((snap.gpu_breakdown_mib[0] - (13625.77 + 248.10)).abs() < 0.2);
+        assert!(snap.vram_mib > 27_000.0);
+        assert!(snap.vram_mib < 28_000.0);
+        assert!(snap.host_mib > 1400.0);
     }
 }

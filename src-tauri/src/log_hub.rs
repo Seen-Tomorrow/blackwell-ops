@@ -820,6 +820,12 @@ impl LogHub {
                 BlackwellOutputConsoleLineStyle::Normal,
             );
         }
+        Self::emit_readiness_debug(
+            app_handle,
+            alias,
+            "learned VRAM",
+            &format!("{mib:.0} MiB{gpu_detail} — buffer inventory"),
+        );
     }
 
     fn emit_vram_learn_progress(
