@@ -514,7 +514,7 @@ export default function VramBadge({
               selectedGpuIndices={selectedGpuIndices}
               onDeviceSelect={onDeviceSelect}
               perRow={gpuPerRow}
-              compact
+              fill
             />
           </div>
         )}

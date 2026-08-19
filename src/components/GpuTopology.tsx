@@ -1,6 +1,9 @@
 import type { GpuAllocation } from "../lib/types";
 import { splitGpuTopoBarUsage } from "../services/vram/scenarios/scenarios_factory";
 
+/** Comfort bank — power-user ceiling; extras scroll in the topo well. */
+export const GPU_TOPO_BANK_MAX = 8;
+
 interface GpuTopologyProps {
   gpuAllocations: GpuAllocation[];
   gpuBarColor: string;
@@ -13,8 +16,11 @@ interface GpuTopologyProps {
   onDeviceSelect?: (gpuIndex: number) => void;
   /** Cards per row (2 default, 3 for denser multi-GPU). */
   perRow?: 2 | 3;
-  /** Denser cards for fixed phosphor forecast glass. */
-  compact?: boolean;
+  /**
+   * Forecast phosphor mode: cards flex-fill remaining glass height
+   * (slot-bank style), density tiers by GPU count.
+   */
+  fill?: boolean;
 }
 
 const HATCH_PATTERN = `repeating-linear-gradient(-45deg, transparent, transparent 2px, rgba(0,0,0,0.35) 2px, rgba(0,0,0,0.35) 4px)`;
@@ -31,6 +37,13 @@ function formatExternalTooltip(systemReservedMib: number, foreignAppsMib: number
   return parts.join(" | ");
 }
 
+/** Density tier — fat 1–2, med 3–4, dense 5–8 (slot-bank style). */
+export function gpuTopoDensity(count: number): "fat" | "med" | "dense" {
+  if (count <= 2) return "fat";
+  if (count <= 4) return "med";
+  return "dense";
+}
+
 export default function GpuTopology({
   gpuAllocations,
   gpuBarColor,
@@ -41,31 +54,37 @@ export default function GpuTopology({
   selectedGpuIndices,
   onDeviceSelect,
   perRow = 2,
-  compact = false,
+  fill = false,
 }: GpuTopologyProps) {
   const cols = perRow === 3 ? 3 : 2;
-  const gridClass =
-    gpuAllocations.length === 1
-      ? cols === 3
-        ? "max-w-[33%]"
-        : "max-w-[48%]"
-      : cols === 3
-        ? "grid-cols-3"
-        : "grid-cols-2";
+  const total = gpuAllocations.length;
+  const bank = fill ? gpuAllocations.slice(0, GPU_TOPO_BANK_MAX) : gpuAllocations;
+  const overflow = fill ? Math.max(0, total - GPU_TOPO_BANK_MAX) : 0;
+  const n = bank.length;
+  const density = gpuTopoDensity(Math.max(1, n));
+  const rows = Math.max(1, Math.ceil(Math.max(n, 1) / cols));
 
   return (
     <div
-      className={`gpu-topology-root${compact ? " gpu-topology-root--compact" : ""}`}
+      className={`gpu-topology-root${fill ? " gpu-topology-root--fill" : ""}`}
       data-gpu-per-row={cols}
-      data-compact={compact ? "1" : undefined}
+      data-gpu-count={n}
+      data-gpu-total={total}
+      data-gpu-density={density}
+      data-gpu-rows={rows}
+      data-gpu-fill={fill ? "1" : undefined}
     >
-      {/* GPU Grid — 2 or 3 per row (bezel bottom control) */}
-      <div className={`gpu-topology-grid grid ${gridClass}`}>
-        {gpuAllocations.map((alloc) => {
+      <div
+        className="gpu-topology-grid"
+        style={{
+          gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+          gridTemplateRows: fill ? `repeat(${rows}, minmax(0, 1fr))` : undefined,
+        }}
+      >
+        {bank.map((alloc) => {
           const totalMib = alloc.vramManufacturedGb * 1024;
           const usedMib = (alloc.vramManufacturedGb - alloc.vramAvailableGb) * 1024;
 
-          // Projected load percentage
           const projectedPct = totalMib > 0 ? (alloc.projectedLoadGb * 1024 / totalMib) * 100 : 0;
 
           const breakdownMib = alloc.runningEngines.reduce((sum, e) => sum + e.vramUsedMib, 0);
@@ -82,27 +101,31 @@ export default function GpuTopology({
           const enginePct = totalMib > 0 ? (engineBarMib / totalMib) * 100 : 0;
           const osPct = totalMib > 0 ? (osOtherMib / totalMib) * 100 : 0;
 
-          // Total utilization: projected + existing used (cap at 100% for display)
           const totalUsedMib = alloc.projectedLoadGb * 1024 + usedMib;
           const totalUsedPct = Math.min(totalMib > 0 ? (totalUsedMib / totalMib) * 100 : 0, 100);
 
-          // Color hex for inline styles — derive from tailwind class name
-          const barColorHex = gpuBarColor.includes('nv-green') || gpuBarColor.includes('green') ? 'var(--display-face-light-ctx-fill-processing)' :
-                              gpuBarColor.includes('yellow') ? '#FBBF24' :
-                              gpuBarColor.includes('telemetry-red') ? '#ff3333' :
-                              gpuBarColor.includes('red-5') ? '#EF4444' :
-                              gpuBarColor.includes('red-6') || gpuBarColor.includes('red-7') ? '#B91C1C' :
-                              gpuBarColor.includes('orange') ? '#FB923C' :
-                              gpuBarColor.includes('cyan') ? '#22D3EE' :
-                              gpuBarColor.includes('gray') ? '#4B5563' :
-                              'var(--display-face-light-ctx-fill-processing)';
+          const barColorHex = gpuBarColor.includes("nv-green") || gpuBarColor.includes("green")
+            ? "var(--display-face-light-ctx-fill-processing)"
+            : gpuBarColor.includes("yellow")
+              ? "#FBBF24"
+              : gpuBarColor.includes("telemetry-red")
+                ? "#ff3333"
+                : gpuBarColor.includes("red-5")
+                  ? "#EF4444"
+                  : gpuBarColor.includes("red-6") || gpuBarColor.includes("red-7")
+                    ? "#B91C1C"
+                    : gpuBarColor.includes("orange")
+                      ? "#FB923C"
+                      : gpuBarColor.includes("cyan")
+                        ? "#22D3EE"
+                        : gpuBarColor.includes("gray")
+                          ? "#4B5563"
+                          : "var(--display-face-light-ctx-fill-processing)";
 
-          // Percentage label color — based on total utilization (existing + projected)
-          const pctColor = totalUsedPct > 95 ? '#ff3333' : totalUsedPct > 85 ? '#FB923C' : barColorHex;
+          const pctColor = totalUsedPct > 95 ? "#ff3333" : totalUsedPct > 85 ? "#FB923C" : barColorHex;
 
-          // Existing usage alone can be high even with no projection — color the hatched fill accordingly
           const existingOnlyPct = totalMib > 0 ? (usedMib / totalMib) * 100 : 0;
-          const existingBarColor = existingOnlyPct > 95 ? '#ff3333' : existingOnlyPct > 85 ? '#FB923C' : barColorHex;
+          const existingBarColor = existingOnlyPct > 95 ? "#ff3333" : existingOnlyPct > 85 ? "#FB923C" : barColorHex;
 
           const isSelected = selectedGpuIndices?.includes(alloc.gpuIndex) ?? false;
 
@@ -178,10 +201,14 @@ export default function GpuTopology({
         })}
       </div>
 
-      {/* System RAM bar — shown when ramVisible from template */}
+      {overflow > 0 && (
+        <div className="gpu-topology-overflow" title={`${overflow} more GPU(s) not shown in bank`}>
+          +{overflow} more · scroll bank / set cols
+        </div>
+      )}
+
       {ramVisible && (
         <div className="pt-2 border-t border-stealth-border/20 gpu-ram-enter">
-          {/* RAM header + spill info */}
           <div className="flex items-center gap-2 mb-1.5">
             <span className="text-[9px] font-mono text-theme-accent">SYSTEM RAM</span>
             <span className="text-[8px] font-mono text-stealth-muted/40">|</span>
@@ -196,15 +223,18 @@ export default function GpuTopology({
             )}
           </div>
 
-          {/* RAM fill bar */}
-          <div style={{ backgroundColor: 'rgb(20,20,20)' }} className="relative h-4 rounded-sm overflow-hidden border border-stealth-border/30">
+          <div
+            style={{ backgroundColor: "rgb(20,20,20)" }}
+            className="relative h-4 rounded-sm overflow-hidden border border-stealth-border/30"
+          >
             <div
-              style={{ width: `${ramManufacturedGb > 0 ? Math.min((ramTotalGb / ramManufacturedGb) * 100, 100) : 0}%` }}
+              style={{
+                width: `${ramManufacturedGb > 0 ? Math.min((ramTotalGb / ramManufacturedGb) * 100, 100) : 0}%`,
+              }}
               className="h-full rounded-sm bg-theme-accent gpu-bar-fill"
             />
           </div>
 
-          {/* Spill info below bar */}
           <div className="flex justify-start mt-1">
             <span className="text-[8px] font-mono text-theme-accent">
               {ramTotalGb.toFixed(0)} GB will spill to RAM — expect slower inference
