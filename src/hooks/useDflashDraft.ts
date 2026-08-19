@@ -4,6 +4,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import type { ModelEntry } from "../lib/types";
 import type { DflashGetUiState } from "../components/MultiAgentBooster";
 import type { DraftPickListItem, DraftPickMode } from "../components/DraftPickModal";
@@ -23,6 +24,7 @@ import {
   signalContainsDspark,
 } from "../lib/specDraft";
 import { DFLASH_DRAFT_MODEL } from "../lib/specProfiles";
+import { dispatchAppEvent, EVENTS } from "../lib/events";
 import { useDownloadTasks } from "./useDownloadTasks";
 import type {
   BrainsId,
@@ -75,6 +77,7 @@ export function useDflashDraft({
   const [dflashResolving, setDflashResolving] = useState(false);
   const [dflashResolveError, setDflashResolveError] = useState<string | null>(null);
   const dflashDownloadIdsRef = useRef<Set<string>>(new Set());
+  const dflashScannedBatchRef = useRef("");
   const prevDflashReadyRef = useRef(false);
   const hfDownloads = useDownloadTasks("hf");
 
@@ -189,6 +192,7 @@ export function useDflashDraft({
     setDflashGetOfferLabel(offer.label);
     setDflashGetState("downloading");
     dflashDownloadIdsRef.current = new Set();
+    dflashScannedBatchRef.current = "";
     try {
       const ids = await startDflashDraftDownload(offer);
       dflashDownloadIdsRef.current = new Set(ids);
@@ -300,7 +304,6 @@ export function useDflashDraft({
     applyFullAutoCockpit,
     powerCockpitMode,
   ]);
-
   useEffect(() => {
     if (dflashGetState !== "downloading") return;
     const ids = dflashDownloadIdsRef.current;
@@ -309,7 +312,29 @@ export function useDflashDraft({
     if (failed) {
       setDflashGetState("error");
       setDflashGetError(failed.error || "DFlash draft download failed");
+      return;
     }
+    const watched = hfDownloads.filter((t) => ids.has(t.id));
+    if (watched.length === 0) return;
+    if (!watched.every((t) => t.status === "completed")) return;
+    const batchKey = watched.map((t) => t.id).sort().join(",");
+    if (dflashScannedBatchRef.current === batchKey) return;
+    dflashScannedBatchRef.current = batchKey;
+    const dests = watched.map((t) => t.destPath).filter((p) => p && /\.gguf$/i.test(p));
+    void (async () => {
+      for (const dest of dests) {
+        try {
+          await invoke("scan_model_metadata_cmd", {
+            modelPath: dest,
+            providerId: null,
+          });
+        } catch (err) {
+          console.error("[dflashGetDraft] post-download GGUF scan failed:", dest, err);
+        }
+      }
+      dispatchAppEvent(EVENTS.downloadCompleted);
+      setDflashGetState("idle");
+    })();
   }, [hfDownloads, dflashGetState]);
 
   // Capability drop away from external-draft boost → clear CTA noise
