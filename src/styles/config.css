@@ -861,10 +861,6 @@
   color: var(--display-face-light-text-amber) !important;
 }
 
-[data-display-texture="phosphor-light"] .vram-forecast-display .vram-forecast-gb-accented--fit_cache,
-[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .vram-forecast-gb-accented--fit_cache {
-  color: var(--display-face-light-text-violet) !important;
-}
 
 /* PHOSPHOR LIGHT — GPU topo selected: darkened theme-accent ring */
 [data-display-texture="phosphor-light"] .vram-forecast-display .gpu-card.gpu-selected,

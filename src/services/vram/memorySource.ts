@@ -1,7 +1,5 @@
 import type { EngineConfig, MemorySource, VramManifest } from "../../lib/types";
 import {
-  extrapolateVramFromPoints,
-  parseCtx,
   type ComputedValues,
   type ScenarioInput,
 } from "./scenarios/scenarios_factory";
@@ -10,13 +8,6 @@ function cfgStr(cfg: EngineConfig, key: string, fallback: string): string {
   const v = cfg.extra_params?.[key];
   if (v == null || v === "") return fallback;
   return String(v);
-}
-
-function cfgNum(cfg: EngineConfig, key: string, fallback: number): number {
-  const v = cfg.extra_params?.[key];
-  if (v == null || v === "") return fallback;
-  const n = typeof v === "number" ? v : parseInt(String(v), 10);
-  return Number.isFinite(n) ? n : fallback;
 }
 
 function formatPerGpuVram(gpuMib: number[]): string {
@@ -114,34 +105,14 @@ function formatMeasuredAt(iso?: string): string {
   });
 }
 
-function wasFitCacheUsed(input: ScenarioInput): boolean {
-  if (!input.fitPoints?.length) return false;
-  const { engineConfig, modelMeta } = input;
-  const weightsGb = modelMeta.file_size_bytes / (1024 ** 3);
-  const userCtx = parseCtx(cfgStr(engineConfig, "ctx", "32k"));
-  const splitRaw = cfgStr(engineConfig, "split", "none");
-  const splitActive = splitRaw.length > 0 && splitRaw.toUpperCase() !== "NONE";
-  const splitMode = splitActive ? splitRaw.toLowerCase() : "";
-  return extrapolateVramFromPoints(
-    input.fitPoints,
-    userCtx,
-    cfgStr(engineConfig, "kv_quant", "f16"),
-    cfgNum(engineConfig, "batch", 2048),
-    splitMode,
-    weightsGb,
-  ) !== null;
-}
 
-/** Resolve which of the four memory paths is driving the displayed GB number. */
+/** Resolve which memory path is driving the displayed GB number. */
 export function resolveMemorySource(
   manifest: VramManifest,
   input: ScenarioInput,
-  computed?: ComputedValues,
+  _computed?: ComputedValues,
 ): MemorySource {
-  const ctx = parseCtx(cfgStr(input.engineConfig, "ctx", "32k"));
   const split = cfgStr(input.engineConfig, "split", "none");
-  const splitSuffix =
-    split.length > 0 && split.toUpperCase() !== "NONE" ? ` · ${split} split` : "";
   const activeSplit = split.length > 0 && split.toUpperCase() !== "NONE" ? split : undefined;
   const weightFileBytes = input.modelMeta.file_size_bytes;
 
@@ -196,15 +167,6 @@ export function resolveMemorySource(
     };
   }
 
-  if (computed?.fitCacheUsed ?? wasFitCacheUsed(input)) {
-    const count = input.fitPoints?.length ?? 0;
-    return {
-      kind: "fit_cache",
-      detail: `Library scan · ${count} points · interpolated to ctx ${ctx}`,
-      confidence: 2,
-    };
-  }
-
   return {
     kind: "formula",
     detail: "GGUF estimate · no measurement yet",
@@ -226,7 +188,6 @@ export function attachMemorySource(
 
 export const MEMORY_SOURCE_LABELS: Record<MemorySource["kind"], string> = {
   formula: "FORMULA",
-  fit_cache: "FIT CACHE",
   fit_probe: "FIT PROBE",
   learned: "LEARNED",
   learned_curve: "LEARNED ≈",
@@ -240,12 +201,6 @@ export const MEMORY_SOURCE_ACCENT: Record<
     text: "text-stealth-muted",
     border: "border-stealth-muted/30",
     gbGradient: "",
-  },
-  fit_cache: {
-    text: "text-violet-400",
-    border: "border-violet-400/40",
-    gbGradient:
-      "bg-gradient-to-r from-violet-300 via-purple-400 to-violet-500 bg-clip-text text-transparent drop-shadow-[0_0_8px_rgba(167,139,250,0.35)]",
   },
   fit_probe: {
     text: "text-amber-400",

@@ -773,7 +773,7 @@ export interface GpuAllocation {
   runningEngines: RunningEngine[];
 }
 
-export type MemorySourceKind = "formula" | "fit_cache" | "fit_probe" | "learned" | "learned_curve";
+export type MemorySourceKind = "formula" | "fit_probe" | "learned" | "learned_curve";
 
 
 export interface MemorySource {

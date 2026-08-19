@@ -339,6 +339,8 @@ export function useScenarioEvaluator({
   const lastGpuMemoryRef = useRef<string>("");
   const lastModelPathRef = useRef("");
   const lastConfigKeyRef = useRef<string>("");
+  const lastHardKeyRef = useRef<string>("");
+  const lastPlacementKeyRef = useRef<string>("");
   const lastStackKeyRef = useRef<string>("");
   const fitPointsRef = useRef<FitPoint[] | null>(null);
   const learnedVramRef = useRef<number | null>(null);
@@ -753,6 +755,17 @@ export function useScenarioEvaluator({
     const stackChanged = stackKey !== lastStackKeyRef.current || isFirstMount;
     const sysInfoJustLoaded = sysInfoLoaded && !hadSysInfoRef.current;
     hadSysInfoRef.current = sysInfoLoaded;
+    const placementKey = placementConfigKey(configRef.current);
+    const ctxOnly =
+      !isFirstMount
+      && configChanged
+      && !modelChanged
+      && !topologyChanged
+      && !gpuMemoryChanged
+      && !stackChanged
+      && !sysInfoJustLoaded
+      && hardKey === lastHardKeyRef.current
+      && placementKey === lastPlacementKeyRef.current;
 
     if (!modelChanged && !topologyChanged && !gpuMemoryChanged && !configChanged && !stackChanged && !sysInfoJustLoaded) {
       return;
@@ -761,14 +774,16 @@ export function useScenarioEvaluator({
     lastTopologyRef.current = gpuTopologyKey;
     lastGpuMemoryRef.current = gpuMemoryKey;
     lastConfigKeyRef.current = configKey;
+    lastHardKeyRef.current = hardKey;
+    lastPlacementKeyRef.current = placementKey;
     lastStackKeyRef.current = stackKey;
 
-    // Immediate on remount / model change so phosphor is never empty for 150ms+.
-    // Config/stack/gpu-memory chatter keeps the debounce to coalesce bursts.
-    const immediate = isFirstMount || modelChanged || sysInfoJustLoaded;
+    // CTX slider is curve math only — run now. Debounce other chatter.
+    const immediate = isFirstMount || modelChanged || sysInfoJustLoaded || ctxOnly;
     scheduleEvaluationRef.current(immediate);
-    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
-  }, [model, stack, gpuTopologyKey, gpuMemoryKey, gpus.length, configKey, stackKey, sysInfoLoaded, commitManifest]);
+    if (ctxOnly) return;
+    return () => { clearTimeout(timerRef.current); };
+  }, [model, stack, gpuTopologyKey, gpuMemoryKey, gpus.length, configKey, hardKey, stackKey, sysInfoLoaded, commitManifest]);
 
   const validate = useCallback(async () => {
     if (!model || validatingRef.current) return;

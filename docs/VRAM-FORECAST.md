@@ -1,229 +1,162 @@
-# VRAM Forecast — Current State
+# VRAM forecast
 
-> **Partially stale (2026-08-19).** Live law, keys, and leftover list:
-> [`docs/VRAM-FORECAST-HANDOFF.md`](VRAM-FORECAST-HANDOFF.md).
-> This file is still useful for file map and older sections; §1 estimate order
-> and “ctx invalidates probe” are **wrong** now.
+Current product law. There is no historical appendix.
 
-Three facts, one number, one split check.
-
-1. **How much** the model wants (footprint).
-2. **Where** it sits (placement: device / split / `gpu_sync`).
-3. **Whether it fits** that placement.
+Live level = **measurement + CTX curve**. Formula is last resort. Library FIT scan is not a SOURCE.
 
 ---
 
-## 1. The law
-
-### 1.1 Estimate priority
+## Estimate (AUTO_FIT)
 
 ```
-LEARNED  →  FIT probe  →  formula
+exact LEARNED at this ctx + this split
+  → piecewise interp of the measurement curve
+       (learned ctx points ∪ session FIT probe at its anchor ctx,
+        probe only if chrome split is none)
+  → FIT probe GQA-stretched only if the curve has <2 points
+  → one-point learned + GQA delta (same)
+  → formula (GGUF math only)
 ```
 
-| Source | What it is | When it exists |
+`manifest.vramTotalGb` is the number chrome, hero, bars, and launch use. Do **not** display `validatedVramMib` as the hero — that is the raw probe at one ctx.
+
+Do **not** auto-FIT on the CTX slider. Do **not** use library FIT interpolation as the live level.
+
+---
+
+## Keys (`useScenarioEvaluator.ts`)
+
+| Key | Contains | Invalidates |
 |---|---|---|
-| **LEARNED** | Last *real* launch for this footprint (`learned-vram.json` via `get_learned_vram`) | After at least one successful launch that persisted a row |
-| **FIT probe** | On-demand `llama-fit-params` session in the evaluator | User ran FIT; session still valid for this footprint |
-| **Formula** | `computeValues()` GGUF math (+ optional FIT *library cache* interpolation) | Always; last resort |
+| `placementConfigKey` | `device\|split\|gpu_sync` | nothing (re-slice bars) |
+| `hardFootprintKey` | kv, batch, ubatch, flash, vision, rope, cache_ram, spec, draft, backend, fit, mode | probe session + auto-FIT + learned **fetch** |
+| `liveEvalKey` | placement + hard + **ctx** | re-eval only |
 
-Learned is the most precise number we have. A FIT probe is a synthetic load, not a full engine. Formula is a guess.
+CTX is not a hard knob. Probe session stores `hardKey` + `anchorCtx`.
 
-First run of a new footprint: no learned row → probe if you ran one, else formula. After a launch saves, **learned wins even if a probe is still sitting in memory**.
-
-**Exception (temporary):** `offload_mode=moe_optimal` still ignores learned. Those stored rows are regular-mode GPU footprints and would lie. See §6.
-
-Learned is used in **FULL AUTO and ASSISTED**. FULL AUTO used to skip it; that is gone.
-
-### 1.2 Placement never invalidates a measurement
-
-**Footprint** (probe invalidates if any of these change):
-
-`ctx`, `kv_quant`, `batch`, `ubatch`, `flash_attn`, `vision`, `unified_kv`, `rope_scaling`, `rope_scale`, `cache_ram`, `spec_type`, draft GGUF, `backend_type`, `offload_mode`, `--fit` on/off, full-auto vs assisted.
-
-**Placement** (probe *stays*; bars re-slice):
-
-`device`, `split`, `gpu_sync`.
-
-Picking a GPU or toggling `split: none` must not throw away a FIT probe. That was the borderline-model trap (formula forces split → probe proves single GPU → user picks a card → fingerprint dropped the probe → formula forced split again).
-
-### 1.3 One number for split / chrome / launch
-
-`bestVramEstimateGb(manifest)` is the only GPU-side total those three may use:
-
-- Learned → `manifest.vramTotalGb` (AUTO_FIT already committed learned + draft overlay).
-- Else probe → `manifest.vramTotalGb` (probe + draft overlay).
-- Else formula → `manifest.formulaVramTotalGb` so a *clamped bar* cannot shrink the decision.
-
-`resolveAutoLayerSplit` is only:
-
-```ts
-needsAutoLayerSplit(bestVramEstimateGb(manifest), perGpuAvailable)
-```
-
-No `max(measurement, formula)`. No `weight × 1.05` floor on a measurement. No `autoLayerSplit` flag override. No “bars already span two GPUs so we must split” override.
-
-`needsAutoLayerSplit`: estimate exceeds the *best single GPU’s free VRAM* minus `max(1 GB, 3%)` headroom. One GPU in the box → never auto-split.
-
-### 1.4 Forecast must not write `split` into config
-
-Auto-promoted `split: layer` is **not** a user choice. The old `EngineConfigPanel` effect that wrote / un-wrote `split` is deleted.
-
-- Chrome: `hideSplitNone` is a *live overlay* (shows ALL / hides `none` when the estimate needs multi-GPU).
-- Launch: `buildAutoVramLaunchParams` injects `split: layer` at spawn if the estimate needs it and the user did not pick a split.
-- Stored `config.split` is only what the user picked.
+CTX-only slider moves evaluate **immediately** (curve math). Other config chatter stays debounced (~150ms).
 
 ---
 
-## 2. Pipeline
+## Auto-FIT
 
-```
-useScenarioEvaluator
-  ├─ footprintKey / placementKey / configKey
-  ├─ learned fetch (IPC get_learned_vram)     ─┐
-  ├─ FIT library points (get_fit_scan_points) ─┤
-  └─ optional FIT probe session                ─┤
-                                                ▼
-evaluate(input)
-  computeValues()          formula + optional FIT-cache residual
-  auto_fit.tryEvaluate()   overlay LEARNED → probe → formula
-                           one estimateGb → split, bars, hero
-  attachMemorySource()     SOURCE label matches the overlay that won
-  attachProbeManifest()    stamps validated* if probe still valid
-```
-
-`hw_locked` is only “zero GPUs” or “auto_fit declined” (`autoVramLaunch` off). It is not a third physics.
+- After learned fetch, if there is **no exact ctx** on the learned curve for the current split.
+- One in-flight (`validatingRef`, cleared in `finally`).
+- Probe IPC: `splitMode: "none"`, `offloadMode: "regular"`, `parseCtx` for ctx.
+- Skip only if best free GPU < 2.5 GB. Engines on other cards do not skip.
+- Fail → formula. In-flight with nothing to show → skeleton (`commitManifest(null)`).
 
 ---
 
-## 3. What AUTO_FIT actually computes
+## Learned curve
 
-File: `src/services/vram/scenarios/auto_fit.ts`
+Writes: `vram_learn.rs` key still includes device + split (separate rows).
 
-```
-estimateGb =
-    learnedGb          // prior launch, + draft addon if Boost on and row is main-only
- ?? probeWithDraftGb   // FIT session + draft addon (probe never loads draft GGUF)
- ?? computed.vramTotalGb
+Curve read (`get_learned_vram_curve`): `{path}|{provider}|` + same `kv` + spec/draft + **same split** (`none` / `layer` / `tensor`). Device ignored. Newest `measured_at` wins per ctx.
 
-autoSplit = needsAutoLayerSplit(estimateGb, freeVRAM[])
+Frontend refetches when `hardKey` or `config.split` changes.
 
-gpuProjectionGb = same priority as estimate (learned / probe / formula).
-  Formula-only path may clamp the *bar* to free VRAM; formulaVramTotalGb stays unclamped.
+Session none-FIT probe may join the **none** curve as a point at `fitProbeAnchorCtx`. Layer/tensor never inherit that probe.
 
-perGpuLoad =
-    learned breakdown   if learned won and length matches
- ?? probe breakdown     if placement still matches the probe
- ?? autoSplitPerGpuLoad or single-GPU targetGpuIdx
-```
+### Tensor learn
 
-`learnedFromPreviousRun` on the manifest is true only when learned actually drove the overlay. SOURCE uses that flag, not “a learned row exists somewhere.”
+Tensor-split stderr reports a virtual **`Meta()`** device (one GPU’s shard), not `CUDA0`/`CUDA1`. Parser fans `Meta()` across `N` TP devices. Vision CLIP compute on CUDA0 is extra on GPU0 only.
 
-Draft: FIT never loads the external draft GGUF. Forecast adds `draftWeightsGb + draftOverheadGb`. A learned row with `mtp_context_mib > 64` already includes draft; do not add again.
+Measured tax (DEV, several models): tensor ~1.5–2.5 GB, layer ~5–7 GB (pipeline compute, not a second weight copy).
 
 ---
 
-## 4. Probe session (evaluator)
+## SOURCE
 
-File: `src/hooks/useScenarioEvaluator.ts`
-
-| Key | Contents | Used for |
+| Kind | Chip | When |
 |---|---|---|
-| `footprintKey` | §1.2 footprint params | Drop / keep probe |
-| `placementKey` | `device\|split\|gpu_sync` | Re-slice bars if mismatch |
-| `configKey` | placement + footprint | Re-eval, manifest cache, **learned re-fetch** |
+| `learned` | **LEARNED** cyan | Exact launch at this ctx + split |
+| `learned_curve` | **LEARNED ≈** cyan | Between stored (and none-probe) points |
+| `fit_probe` | **FIT PROBE** amber | Probe-only / GQA stretch |
+| `formula` | **FORMULA** muted | No measurement yet |
 
-Learned IPC is still keyed by `device` + `split` in Rust (`vram_learn.rs`). A GPU pick re-fetches; a missing row for that device falls back to probe/formula. Making learned *totals* placement-agnostic is a follow-on (backend fuzzy ignore device/split).
-
----
-
-## 5. File map
-
-| File | Owns |
-|---|---|
-| `src/lib/autoVramLaunch.ts` | `bestVramEstimateGb`, `needsAutoLayerSplit`, `resolveAutoLayerSplit`, `resolveSplitDriver`, launch param assembly |
-| `src/lib/launchChromePolicy.ts` | Device/split chrome locks; uses the same estimate |
-| `src/services/vram/scenarios/auto_fit.ts` | Overlay + hero / bars |
-| `src/services/vram/scenarios/scenarios_factory.ts` | Formula, FIT-cache residual, `buildManifest`, orchestrator |
-| `src/hooks/useScenarioEvaluator.ts` | Keys, probe session, learned fetch, FIT validate |
-| `src/services/vram/memorySource.ts` | SOURCE label: learned → probe → FIT cache → formula |
-| `src/lib/buildLaunchConfig.ts` | Calls `buildAutoVramLaunchParams` (no `weightGb`) |
-| `src/components/EngineConfigPanel.tsx` | Does **not** persist forecast split |
-| `src/components/GpuAssignPanel.tsx` | `hideSplitNone` treated as live split for ALL-GPU chrome |
+No FIT CACHE chip. Library 6-point spine only stretches a real measurement when the curve has &lt;2 points.
 
 ---
 
-## 6. `moe_optimal` — leave in place, scheduled for removal
+## CTX slider
 
-`offload_mode=moe_optimal` is a **legacy product knob**. It peels expert FFN to host RAM in the formula and the badge. It is **obsolete as a strategy** and will be replaced (engine `--fit` + real learned launches already do a better job of host offload).
+One component: `CockpitCtxStrip` (above-dock `standalone`, in-cockpit `standalone={false}`).
 
-**Do not delete the path in this pass.** Marked in code. Known lies if you treat it as current architecture:
-
-- Learned rows are regular-mode; AUTO_FIT skips learned when MoE-optimal is on.
-- FIT library scans measure all experts on GPU; formula then “peels” experts — approximate.
-- MoE-optimal launches with `--fit off`.
-- `computeMoeAlternative` / `MoeBadge` still advertise it.
-
-Replacement (later): drop the offload-mode fork. Regular + `--fit` + learned is the whole story. MoE expert placement becomes whatever the engine actually did on the last launch.
+- Fluid: hard key unchanged → re-eval interpolates.
+- Arrow / Page / Home / End when thumb focused.
+- Cyan ticks at `manifest.learnedCurveCtxs`. Non-preset ctx = dotted. Clickable.
+- MARKS → CUSTOM → OFF toggle (`BlackOps-ctx-learned-marks`).
 
 ---
 
-## 7. What this rewrite did *not* do
+## Phosphor
 
-- **No formula calibration.** Formula is last resort; starving it with learned/probe is the maintainable path.
-- **No hysteresis band** near the single-GPU boundary (old intent C5).
-- **Learned backend key still includes `device` + `split`.** Totals are conceptually placement-agnostic; lookup is not. Follow-on.
-- **C3 “fallback to next-best on footprint invalidation”** is implicit (drop probe → learned if row exists → else formula). No extra state machine.
+Pinned `FORECAST_PHOSPHOR_HEIGHT_PX` (250) for skeleton and live. Content observer does not re-hug. Skeleton sweep is basic.
 
 ---
 
-## 8. Debug
+## Library FIT scan
 
-“Why did it split?”
+`SCAN_PLAN` = 6 ctx: 4k / 32k / 64k / 128k / 256k / 512k (`q4_0`, batch 512). Incremental: old 26-point caches still complete if those 6 labels exist.
 
-1. SOURCE chip: `LEARNED` / `FIT` / `FIT CACHE` / `FORMULA`.
-2. `bestVramEstimateGb(manifest)` vs `max(gpu.vramAvailableGb) - headroom`.
-3. If SOURCE is FORMULA after a probe: footprint changed (`ctx` / kv / batch / …), or you are on `moe_optimal`.
-4. If SOURCE is FORMULA after a launch: learned key miss (ctx/kv/offload/draft/device/split) — check `get_learned_vram` args.
+Model list: `model_catalog::is_launchable_main_model` (Regular-tab draft filter). `detect_gpu_count()` is process-cached.
 
-Do not add a fourth estimate. If chrome and launch disagree, one of them is not calling `bestVramEstimateGb`.
+---
 
-## 9. Forecast vs measured log
+## Split chrome
 
-Each launch stamps `extra_params.__forecast` (not a CLI flag) and Rust appends JSONL:
+Forecast does **not** write `split` into config. `hideSplitNone` is overlay. Launch injects `split: layer` in `buildAutoVramLaunchParams` when needed.
+
+`resolveAutoLayerSplit` = `needsAutoLayerSplit(bestVramEstimateGb(manifest), free)`.
+
+---
+
+## Forecast log
 
 `{exe_dir}/config/cache/forecast-log.jsonl`
 
-| `kind` | When | Join |
-|---|---|---|
-| `prelaunch` | Engine spawn | `launch_id`, `learn_key`, SOURCE, `estimate_gb`, formula/KV split, arch dims, knobs |
-| `measured` | Launch buffer inventory persisted | same `learn_key`, `vram_gb`, `host_mib` |
+- `prelaunch` at spawn (`__forecast` on extra_params, not CLI).
+- `measured` when launch buffer inventory persists.
+- Join `learn_key`. Session: `[forecast] prelaunch source=…`.
 
-Session log also gets `[forecast] prelaunch source=… estimate_gb=…`.
+---
 
-Tune later: `ratio = measured.vram_gb / prelaunch.estimate_gb` grouped by `n_head_kv`, `source`, `kv_quant`.
+## Files
 
-## 10. Library FIT scan (CTX spine)
+| File | Role |
+|---|---|
+| `src/hooks/useScenarioEvaluator.ts` | Keys, probe session, auto-FIT, learned fetch |
+| `src/services/vram/scenarios/auto_fit.ts` | Estimate merge / hero / bars |
+| `src/services/vram/scenarios/scenarios_factory.ts` | Formula fallback, GQA stretch, curve interp |
+| `src/services/vram/memorySource.ts` | SOURCE chips |
+| `src/lib/autoVramLaunch.ts` | One split number |
+| `src/lib/launchChromePolicy.ts` | Chrome locks |
+| `src/lib/buildLaunchConfig.ts` | `__forecast` stamp |
+| `src-tauri/src/vram_learn.rs` | Store + curve IPC |
+| `src-tauri/src/launch_memory_parse.rs` | Buffer inventory (incl. `Meta()`) |
+| `src-tauri/src/log_hub.rs` | Persist + readiness line |
+| `src-tauri/src/forecast_log.rs` | JSONL |
+| `src-tauri/src/fit_scanner.rs` | 6-point plan + catalog filter |
+| `src-tauri/src/telemetry.rs` | Cached GPU count |
+| `src/components/CockpitCtxStrip.tsx` | Shared CTX rail |
+| `src/components/VramBadge.tsx` | Hero = `vramTotalGb`; height pin |
 
-`SCAN_PLAN` is **6 ctx points** (`4k…512k`, q4_0, batch 512). Incremental: models that
-already have those labels are complete; extra legacy points are ignored.
+---
 
-Live session FIT / learned remain the badge **level**. Library points are the
-slider **spine** (piecewise interpolate). Hard knobs still need a live re-probe
-(not in this slice).
+## Still open (not live law)
 
+- **`moe_optimal`** — peel off (`gpuWeightFraction = 1`), badge hidden. Factory JSON / `templates.rs` `--fit off` / `MoeBadge` still exist.
+- **Formula KV** — textbook GQA (`n_embd/n_head`). No MLA/SWA on `ModelMetadata`.
+- **Learned write key** still includes device. Split-agnostic totals on write not done.
+- Auto-FIT costs ~1–2 GB on one GPU (`split: none`). Skip if best free &lt; 2.5 GB.
 
-## 11. Auto-FIT + CTX slider (B/C)
+---
 
-- **Hard knobs** (kv, batch, ubatch, flash, draft, vision, spec, backend) trigger a live FIT
-  after learned miss. CTX is **not** a hard knob.
-- Until probe/learned exists (and no engine is occupying GPUs), forecast stays on the
-  skeleton — no formula flash.
-- Live **level** = learned ?? FIT probe. CTX drag adds `adjustMeasuredGbForCtx`
-  (library CTX spine if ≥2 points, else textbook GQA KV).
-- Probe session key is `hardKey` (no ctx). Slider does not drop the probe.
+## Verify (Rust + UI rebuild)
 
-`moe_optimal` peel is off (`gpuWeightFraction = 1`). Badge hidden. Factory JSON /
-CLI sub_params may still exist until a later template cleanup.
-
-
+1. No learned: select → skeleton → FIT PROBE. Drag CTX; hero and bars move. SOURCE stays FIT PROBE until a launch. Never FIT CACHE.
+2. Launch 64K then 128K: cyan ticks. 65K just above 64K, not above 128K. SOURCE LEARNED ≈. Park 64K → LEARNED.
+3. Switch none → layer: hero uses the layer curve (or formula if none). None-FIT probe does not ride along.
+4. Tensor launch: readiness learned line with both GPUs, not ~0.2 GB CLIP leftover.
+5. Library scan: no draft GGUFs; one GPU-count log; 6 points.

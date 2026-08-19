@@ -1,4 +1,4 @@
-import type { GpuInfo, ModelMetadata, EngineConfig, Scenario, StyleObject, RunningEngine, GpuAllocation, VramManifest, MoeSuggestion } from "../../../lib/types";
+import type { GpuInfo, ModelMetadata, EngineConfig, Scenario, StyleObject, RunningEngine, GpuAllocation, VramManifest } from "../../../lib/types";
 import { pickFullAutoSingleGpuListPos } from "../../../lib/fullAutoGpuPick";
 import { attachMemorySource } from "../memorySource";
 
@@ -443,92 +443,6 @@ function cfgBool(cfg: EngineConfig, key: string, fallback: boolean): boolean {
   return fallback;
 }
 
-/** Compute per-layer weight in GB from architecture dimensions (full layer).
- *  Replaces uniform `weightsGb / nLayer` which is wrong for MoE models
- *  where expert FFN weights dominate layer size. */
-export function perLayerWeightGb(input: ScenarioInput, computed: ComputedValues): number {
-  const m = input.modelMeta;
-  const nLayer = m.n_layer;
-  if (nLayer === 0 || m.n_embd === 0) return computed.weightsGb / Math.max(nLayer, 1);
-
-  const headDim = m.n_head > 0 ? m.n_embd / m.n_head : 128;
-  const nHeadKv = m.n_head_kv > 0 ? m.n_head_kv : m.n_head;
-  const isMoe = m.n_expert > 0;
-
-  // Per-layer param count from architecture
-  let perLayerParams: number;
-
-  if (isMoe) {
-    // Attention: Q + K + V + output_proj
-    const attnParams = m.n_embd * m.n_embd
-      + 2 * m.n_embd * (nHeadKv * headDim)
-      + m.n_embd * m.n_embd;
-    // Router weight
-    const routerParams = m.n_embd * m.n_expert;
-
-    // Expert FFN length — prefer GGUF metadata, derive from file size if missing.
-    let expertFfnLen: number | null = m.expert_feed_forward_length || null;
-    if (expertFfnLen === null && m.bpw > 0) {
-      // Derive: totalParams = file_size * 8 / bpw
-      const totalParams = (m.file_size_bytes * 8) / m.bpw;
-      // Non-expert params per layer: attention + router + norms (~2*n_embd per norm, 4 norms/layer)
-      const normParamsPerLayer = 4 * m.n_embd;
-      const nonExpertPerLayer = attnParams + routerParams + normParamsPerLayer;
-      // Token embedding (shared, not per-layer)
-      const tokenEmbedding = m.vocab_size * m.n_embd;
-      // Final LM head — often shares weights with token embedding in llama.cpp models.
-      // If shared: 0 extra params. If not shared: vocab_size * n_embd more.
-      // Conservative: assume shared (most GGUF models do).
-      const totalNonExpert = nonExpertPerLayer * nLayer + tokenEmbedding;
-      // Remaining params are all in expert FFN: n_layer * n_expert * 3 * n_embd * expertFfnLen
-      const expertTotalParams = totalParams - totalNonExpert;
-      if (expertTotalParams > 0 && m.n_expert > 0) {
-        expertFfnLen = Math.round(expertTotalParams / (nLayer * m.n_expert * 3 * m.n_embd));
-      }
-    }
-    // Last resort fallback
-    if (expertFfnLen === null || expertFfnLen <= 0) {
-      expertFfnLen = m.feed_forward_length || Math.round(m.n_embd * 4);
-    }
-
-    const moeParams = m.n_expert * 3 * m.n_embd * expertFfnLen;
-    perLayerParams = attnParams + moeParams + routerParams;
-  } else {
-    // Dense: attention + FFN (gate + up + down)
-    const ffnLen = m.feed_forward_length || (m.n_embd * 4);
-    const attnParams = m.n_embd * m.n_embd
-      + 2 * m.n_embd * (nHeadKv * headDim)
-      + m.n_embd * m.n_embd;
-    const ffnParams = 3 * m.n_embd * ffnLen;
-    perLayerParams = attnParams + ffnParams;
-  }
-
-  // Convert to GB using bpw from file metadata
-  if (m.bpw > 0) {
-    return (perLayerParams * m.bpw / 8) / (1024 ** 3);
-  }
-  return computed.weightsGb / nLayer;
-}
-
-/** @soon-remove moe_optimal — leftover offload knob; --fit + learned replace it.
- *  Fraction of MoE weights that stay on GPU when offload_mode=moe_optimal.
- *  Non-expert (attention, norms, router) stay on GPU; expert FFN streamed from RAM. */
-function computeMoeGpuWeightFraction(meta: ModelMetadata): number {
-  if (meta.n_expert === 0 || meta.n_expert_used === 0) return 0.25;
-
-  const expertDensity = meta.n_expert_used / meta.n_expert;
-  const nonExpertFraction = 1.0 - (1.0 - expertDensity) * 0.75;
-
-  return Math.max(0.1, Math.min(1.0, nonExpertFraction));
-}
-
-/** GPU-bound per-layer weight — applies gpuWeightFraction for MOE_OPTIMAL.
- *  In MOE_OPTIMAL mode only attention+router weights go to VRAM (~25% of layer).
- *  Use this for spill scenario layer counting (how many layers fit on GPU). */
-export function gpuPerLayerWeightGb(input: ScenarioInput, computed: ComputedValues): number {
-  return perLayerWeightGb(input, computed) * computed.gpuWeightFraction;
-}
-
 function round2(v: number): number {
   return Math.round(v * 100) / 100;
 }
@@ -556,24 +470,7 @@ export function estimateKvGrowthPerToken(points: FitPoint[]): number | null {
   return (higher.vram_mib - lower.vram_mib) / (higher.ctx - lower.ctx);
 }
 
-export function estimateSplitTaxMiB(points: FitPoint[], splitMode: string): number | null {
-  const mode = splitMode.toLowerCase();
-  const candidates = [
-    `split_${mode}`,
-    `split_${mode}_64k`,
-    `split_${mode}_256k`,
-  ];
 
-  const baseNoBatch = findFitPoint(points, "base_no_batch");
-  const base = baseNoBatch || findFitPoint(points, "base");
-  if (!base) return null;
-
-  for (const label of candidates) {
-    const splitPt = findFitPoint(points, label);
-    if (splitPt) return splitPt.vram_mib - base.vram_mib;
-  }
-  return null;
-}
 
 /** Piecewise-linear VRAM vs ctx from library CTX points (legacy labels still work). */
 export function extrapolateVramFromPoints(
@@ -624,13 +521,6 @@ export function extrapolateVramFromPoints(
     totalMib += actPerToken * (userBatch - baseForBatch.batch);
   }
 
-  if (splitMode.length > 0 && splitMode.toUpperCase() !== "NONE") {
-    const splitTax = estimateSplitTaxMiB(points, splitMode.toLowerCase());
-    if (splitTax !== null) {
-      totalMib += splitTax;
-    }
-  }
-
   return Math.max(0, totalMib);
 }
 
@@ -656,14 +546,12 @@ export interface ComputedValues {
   targetGpuIdx: number;
   splitActive: boolean;
   numGpus: number;
-  /** Fraction of weights that actually go to GPU VRAM (1.0 for dense/regular, ~0.25 for MoE+MOE_OPTIMAL) */
+  /** Fraction of weights that actually go to GPU VRAM (always 1 after moe_optimal peel). */
   gpuWeightFraction: number;
   /** Portion of model weights bound to GPU VRAM */
   weightsOnGpuGb: number;
-  /** Portion of model weights offloaded to RAM (MoE expert FFN in MOE_OPTIMAL mode) */
+  /** Portion of model weights offloaded to RAM */
   ramWeightsGb: number;
-  /** True when the FIT library cache drove the estimate (extrapolation produced a value). */
-  fitCacheUsed: boolean;
 }
 
 /** External draft (dflash/dspark/eagle) active when CLI type needs a draft GGUF. */
@@ -724,52 +612,12 @@ export function computeValues(input: ScenarioInput, validatedVramMib?: number): 
 
   const weightsOnGpuGb = weightsGb * gpuWeightFraction;
   const ramWeightsGb = weightsGb - weightsOnGpuGb;
-  const moeOptimal = gpuWeightFraction < 1.0;
-
   // Vision addon — mmproj file size only
   const visionGb = cfgStr(engineConfig, "vision", "auto").toUpperCase() !== "OFF" ? (input.mmprojSizeMib || 0) / 1024 : 0;
 
-  let overheadGb: number;
-  let fitCacheExtrapolatedGb: number | null = null;
-  let fitCacheUsed = false;
-
-  if (input.fitPoints && input.fitPoints.length > 0) {
-    // ── FIT-based estimation ────────────────────────────────────────────
-    const splitMode = splitActive ? cfgStr(engineConfig, "split", "none").toLowerCase() : "";
-    const extrapolatedMib = extrapolateVramFromPoints(
-      input.fitPoints, userCtx, cfgStr(engineConfig, "kv_quant", "f16"), cfgNum(engineConfig, "batch", 2048), splitMode, weightsGb
-    );
-
-    if (extrapolatedMib !== null) {
-      fitCacheUsed = true;
-      fitCacheExtrapolatedGb = extrapolatedMib / 1024;
-      const formulaOverheadGb = computeDefaultOverhead(
-        engineConfig, modelMeta, weightsGb, weightsOnGpuGb, numGpusUsed, effectiveCtx, isMoe, moeOptimal,
-      );
-      if (moeOptimal) {
-        // Library scan measures regular offload (all experts on GPU) — peel experts to host RAM.
-        const moeGpuGb = Math.max(
-          weightsOnGpuGb + kvCacheGb + visionGb,
-          fitCacheExtrapolatedGb - ramWeightsGb,
-        );
-        overheadGb = Math.max(0, moeGpuGb - weightsOnGpuGb - kvCacheGb - visionGb);
-        overheadGb = Math.max(overheadGb, formulaOverheadGb);
-      } else {
-        // Derive overhead from measured FIT data: residual after subtracting known components.
-        const fitOverheadGb = Math.max(0, fitCacheExtrapolatedGb - weightsOnGpuGb - kvCacheGb - visionGb);
-        overheadGb = Math.max(fitOverheadGb, formulaOverheadGb);
-      }
-    } else {
-      overheadGb = computeDefaultOverhead(
-        engineConfig, modelMeta, weightsGb, weightsOnGpuGb, numGpusUsed, effectiveCtx, isMoe, moeOptimal,
-      );
-    }
-  } else {
-    // ── Default formula (no FIT data) ───────────────────────────────────
-    overheadGb = computeDefaultOverhead(
-      engineConfig, modelMeta, weightsGb, weightsOnGpuGb, numGpusUsed, effectiveCtx, isMoe, moeOptimal,
-    );
-  }
+  const overheadGb = computeDefaultOverhead(
+    engineConfig, modelMeta, weightsGb, weightsOnGpuGb, numGpusUsed, effectiveCtx, isMoe, false,
+  );
 
   // vramTotalGb is ALWAYS the sum of components — guarantees guards and display are consistent.
   // External draft (dflash/dspark) is additive: FIT probe never loads the draft GGUF.
@@ -797,7 +645,7 @@ export function computeValues(input: ScenarioInput, validatedVramMib?: number): 
     weightsGb, kvCacheGb, overheadGb, visionGb, draftWeightsGb, draftOverheadGb, vramTotalGb,
     gpuAvailable, singleMaxAvailable, multiTotalAvailable,
     targetGpuIdx, splitActive, numGpus: numGpusUsed,
-    gpuWeightFraction, weightsOnGpuGb, ramWeightsGb, fitCacheUsed,
+    gpuWeightFraction, weightsOnGpuGb, ramWeightsGb,
   };
 }
 
@@ -899,61 +747,6 @@ export function buildManifest(
 import { tryEvaluate as autoFit } from "./auto_fit";
 import { evaluate as hwLocked } from "./hw_locked";
 
-/** @soon-remove moe_optimal — leftover suggestion; not a real scenario. */
-function computeMoeAlternative(
-  input: ScenarioInput, 
-  computed: ComputedValues,
-  currentManifest: VramManifest
-): MoeSuggestion | null {
-  const { modelMeta } = input;
-  
-  // Only suggest for MoE models
-  if (modelMeta.n_expert === 0) return null;
-  
-  // Don't suggest if already in MOE_OPTIMAL mode
-  if (cfgStr(input.engineConfig, "offload_mode", "regular") === "moe_optimal") return null;
-  
-  // Simulate MOE_OPTIMAL computation with reduced GPU weight fraction
-  const currentGpuFraction = computed.gpuWeightFraction;
-  
-  // Apply MOE_OPTIMAL reduction (~25% to GPU, ~75% to RAM)
-  if (currentGpuFraction === 1.0) {
-    const moeGpuFraction = computeMoeGpuWeightFraction(modelMeta);
-    const moeWeightsOnGpuGb = computed.weightsGb * moeGpuFraction;
-    
-    const moeVramTotal =
-      moeWeightsOnGpuGb
-      + computed.kvCacheGb
-      + computed.overheadGb
-      + computed.visionGb
-      + computed.draftWeightsGb
-      + computed.draftOverheadGb;
-    const currentVramTotal = currentManifest.vramTotalGb;
-    const vramSaved = currentVramTotal - moeVramTotal;
-    const wouldFitOnGpu = moeVramTotal <= computed.singleMaxAvailable;
-    const hostOffloadLikely = currentManifest.ramTotalGb > 0.5
-      || (currentManifest.style.uiTemplate.offloadWarningText?.length ?? 0) > 0;
-    const shouldHighlight = hostOffloadLikely && wouldFitOnGpu;
-    
-    return {
-      wouldFit: wouldFitOnGpu || vramSaved > 0,
-      vramSavedGb: vramSaved > 0 ? vramSaved : undefined,
-      avoidsSpill: hostOffloadLikely && wouldFitOnGpu,
-      speedImpact: "<10%",
-      shouldHighlight, // New field to control animation
-      suggestionText: wouldFitOnGpu 
-        ? `Use MOE_OPTIMAL to save ~${vramSaved.toFixed(1)} GB VRAM with minimal speed impact`
-        : `MOE_OPTIMAL reduces VRAM usage by ~${vramSaved.toFixed(1)} GB`,
-    };
-  }
-  
-  return null;
-}
-
-// Extend VramManifest type locally for MOE suggestion
-interface VramManifestWithMoe extends VramManifest {
-  moeSuggestion?: MoeSuggestion | null;
-}
 
 export function evaluate(input: ScenarioInput, validatedVramMib?: number): VramManifest {
   const computed = computeValues(input, validatedVramMib);
@@ -975,51 +768,3 @@ export function evaluate(input: ScenarioInput, validatedVramMib?: number): VramM
 
 }
 
-/** Apply FIT-validated total to a formula-based manifest.
- *  Scales component breakdown proportionally so weights+kv+overhead sum to measured total.
- *  Also replaces per-GPU projected load with measured breakdown if available. */
-export function applyFitValidation(
-  manifest: VramManifest,
-  validatedMib: number,
-  gpuBreakdown?: number[],
-  hostMib?: number,
-): VramManifest {
-  const formulaTotalGb = manifest.formulaVramTotalGb;
-  if (formulaTotalGb === 0) return manifest;
-
-  const scale = (validatedMib / 1024) / formulaTotalGb;
-  const validatedTotalGb = validatedMib / 1024;
-
-  // Scale component breakdown proportionally
-  const scaledWeights = round2(manifest.vramWeightsGb * scale);
-  const scaledKv = round2(manifest.vramKvGb * scale);
-  const scaledOverhead = round2(validatedTotalGb - scaledWeights - scaledKv);
-
-  // Scale per-GPU projected load — use measured breakdown if available, else proportional
-  const scaledAllocations = manifest.gpuAllocations.map((alloc, i) => {
-    let load: number;
-    if (gpuBreakdown && gpuBreakdown[i] != null) {
-      load = round2(gpuBreakdown[i] / 1024);
-    } else {
-      load = round2(alloc.projectedLoadGb * scale);
-    }
-    return { ...alloc, projectedLoadGb: load };
-  });
-
-  // Recalculate fits based on validated total
-  const totalGpuVramGb = manifest.gpuAllocations.reduce((s, a) => s + a.vramManufacturedGb, 0);
-  const newFits = validatedTotalGb <= totalGpuVramGb;
-
-  return {
-    ...manifest,
-    vramWeightsGb: scaledWeights,
-    vramKvGb: scaledKv,
-    vramOverheadGb: Math.max(0, scaledOverhead),
-    vramTotalGb: round2(validatedTotalGb),
-    gpuAllocations: scaledAllocations,
-    fits: newFits,
-    validatedVramMib: validatedMib,
-    validatedGpuBreakdownMib: gpuBreakdown,
-    validatedHostMib: hostMib,
-  };
-}
