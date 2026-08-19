@@ -56,10 +56,20 @@ export default function CustomSliderParam({
   onChange,
   step = 1024,
   values = [],
+  learnedMarks = [],
+  learnedMarkMode = "all",
 }: SliderParamSharedProps) {
   const numericValues = parseSliderValues(values);
   const min = numericValues.length > 0 ? Math.min(...numericValues) : 2048;
   const max = numericValues.length > 0 ? Math.max(...numericValues) : 524288;
+  const presetCtxSet = new Set(numericValues);
+  const visibleLearnedMarks =
+    learnedMarkMode === "off"
+      ? []
+      : learnedMarks.filter((mark) => {
+        if (learnedMarkMode === "custom" && presetCtxSet.has(mark)) return false;
+        return mark >= min && mark <= max;
+      });
 
   const numericValue =
     typeof currentValue === "number" ? currentValue : parseInt(String(currentValue), 10);
@@ -70,10 +80,34 @@ export default function CustomSliderParam({
   const [hoveredPresetIdx, setHoveredPresetIdx] = useState<number | null>(null);
   const [dragging, setDragging] = useState(false);
   const dragRef = useRef(false);
-
   const commitValue = useCallback(
     (val: number) => onChange(clampSteppedValue(val, min, max, step)),
     [onChange, min, max, step],
+  );
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "ArrowRight" || e.key === "ArrowUp") {
+        e.preventDefault();
+        commitValue(safeValue + step);
+      } else if (e.key === "ArrowLeft" || e.key === "ArrowDown") {
+        e.preventDefault();
+        commitValue(safeValue - step);
+      } else if (e.key === "PageUp") {
+        e.preventDefault();
+        commitValue(safeValue + step * 8);
+      } else if (e.key === "PageDown") {
+        e.preventDefault();
+        commitValue(safeValue - step * 8);
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        commitValue(min);
+      } else if (e.key === "End") {
+        e.preventDefault();
+        commitValue(max);
+      }
+    },
+    [commitValue, safeValue, step, min, max],
   );
 
   const updateFromClientX = useCallback(
@@ -221,9 +255,48 @@ export default function CustomSliderParam({
           </div>
         );
       })}
+      {visibleLearnedMarks.map((mark) => {
+        const pct = trackWidthPx > 0 ? thumbCenterPercent(mark, min, max, trackWidthPx) : 0;
+        const isCustom = !presetCtxSet.has(mark);
+        return (
+          <div
+            key={`${paramKey}-learned-${mark}`}
+            data-preset-tick
+            className="absolute z-[2]"
+            style={{
+              left: `${pct}%`,
+              transform: "translateX(-50%)",
+              visibility: trackWidthPx > 0 ? "visible" : "hidden",
+            }}
+          >
+            <button
+              type="button"
+              data-preset-tick
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => commitValue(mark)}
+              className={`ctx-slider-tick ctx-slider-tick--learned absolute left-1/2 -translate-x-1/2 block rounded-sm border-0 p-0 cursor-pointer${
+                isCustom ? " ctx-slider-tick--learned-custom" : ""
+              }`}
+              style={{
+                top: `${TICK_TOP_PX}px`,
+                height: `${isCustom ? TICK_HEIGHT_PX - 1 : TICK_HEIGHT_PX + 2}px`,
+                width: isCustom ? "2px" : "3px",
+              }}
+              title={`Learned ${formatTokenLabel(mark)}`}
+              aria-label={`Set learned ${formatTokenLabel(mark)}`}
+            />
+          </div>
+        );
+      })}
 
       <div
-        className={`ctx-slider-thumb absolute z-[3] rounded-[2px] ${
+        role="slider"
+        tabIndex={0}
+        aria-valuemin={min}
+        aria-valuemax={max}
+        aria-valuenow={safeValue}
+        aria-label="Context length"
+        className={`ctx-slider-thumb absolute z-[3] rounded-[2px] outline-none focus-visible:ring-1 focus-visible:ring-cyan-400/70 ${
           dragging ? "cursor-grabbing" : "cursor-grab"
         }`}
         style={{
@@ -234,7 +307,8 @@ export default function CustomSliderParam({
           transform: "translate(-50%, -50%)",
           visibility: trackWidthPx > 0 ? "visible" : "hidden",
         }}
-        aria-hidden
+        onKeyDown={handleKeyDown}
+        onPointerDown={(e) => e.currentTarget.focus()}
       />
     </div>
   );

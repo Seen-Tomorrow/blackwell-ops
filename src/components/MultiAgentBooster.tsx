@@ -47,8 +47,7 @@ import {
   type SpeedBoostId,
   type ThinkId,
 } from "../lib/multiAgentBooster";
-import { formatCtxChipLabel } from "../lib/sliderParamUtils";
-import CustomSliderParam from "./CustomSliderParam";
+import CockpitCtxStrip from "./CockpitCtxStrip";
 import CockpitSlider from "./CockpitSlider";
 import CockpitFlagToolbar, { type CockpitFlagToggle } from "./CockpitFlagToolbar";
 
@@ -165,6 +164,7 @@ export interface MultiAgentBoosterProps {
   onCtxChange?: (v: number) => void;
   ctxPerSlot?: number;
   ctxSlotCount?: number;
+  learnedMarks?: number[];
   /**
    * Live engine stack — used for AtomCode one-click (solo against RUNNING, or Brain+Workers).
    * When omitted, AtomCode uses port/modelId config values only.
@@ -263,6 +263,7 @@ export default function MultiAgentBooster({
   onCtxChange,
   ctxPerSlot,
   ctxSlotCount = 1,
+  learnedMarks,
   stack = [],
   preferredSlotIdx = null,
   onHarnessOpenChange,
@@ -2462,35 +2463,18 @@ export default function MultiAgentBooster({
       </div>
 
       <div className="full-auto-cockpit__body space-y-3">
-        {/* CTX on top for Full Auto + Assisted (unifies layout) */}
-        {showCtxRail && (
-          <div className="full-auto-cockpit__ctx-hero">
-            <div className="full-auto-cockpit__ctx-slider min-w-0">
-              <CustomSliderParam
-                paramKey="ctx"
-                currentValue={ctxValue}
-                defaultValue={ctxDefault}
-                onChange={onCtxChange!}
-                step={ctxStep}
-                values={ctxValues}
-              />
-            </div>
-            <div className="full-auto-cockpit__ctx-values">
-              <span className="full-auto-cockpit__ctx-value font-mono">
-                {typeof ctxValue === "number"
-                  ? formatCtxChipLabel(ctxValue)
-                  : String(ctxValue)}
-              </span>
-              {ctxPerSlot != null && ctxPerSlot > 0 && ctxSlotCount != null && ctxSlotCount > 1 && (
-                <>
-                  <span className="full-auto-cockpit__ctx-sep font-mono">|</span>
-                  <span className="full-auto-cockpit__ctx-per-slot font-mono">
-                    {formatCtxChipLabel(ctxPerSlot)} / slot
-                  </span>
-                </>
-              )}
-            </div>
-          </div>
+        {showCtxRail && onCtxChange != null && (
+          <CockpitCtxStrip
+            ctxValue={ctxValue}
+            ctxDefault={ctxDefault}
+            ctxValues={ctxValues}
+            ctxStep={ctxStep}
+            onCtxChange={onCtxChange}
+            ctxPerSlot={ctxPerSlot}
+            ctxSlotCount={ctxSlotCount}
+            learnedMarks={learnedMarks}
+            standalone={false}
+          />
         )}
 
         <div className="full-auto-cockpit__grid">

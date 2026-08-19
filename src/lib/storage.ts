@@ -206,6 +206,8 @@ export const KEYS = {
   enginesInRail: `${STORAGE_PREFIX}engines-in-rail`,
   /** CTX strip: docked inside cockpit vs standalone above cockpit. */
   ctxCockpitDock: `${STORAGE_PREFIX}ctx-cockpit-dock`,
+  /** CTX learned ticks: all | custom | off. */
+  ctxLearnedMarks: `${STORAGE_PREFIX}ctx-learned-marks`,
   /** VRAM forecast GPU bars — cards per row (2 | 3). */
   displayGpuPerRow: `${STORAGE_PREFIX}display-gpu-per-row`,
   /** Running engines under display — cards per row (2 | 3). */
@@ -575,6 +577,24 @@ export function loadCtxCockpitDock(): CtxCockpitDock {
 
 export function saveCtxCockpitDock(dock: CtxCockpitDock): void {
   writeStorage(KEYS.ctxCockpitDock, dock);
+}
+
+export type CtxLearnedMarkMode = "all" | "custom" | "off";
+
+export function loadCtxLearnedMarkMode(): CtxLearnedMarkMode {
+  const raw = readStorage(KEYS.ctxLearnedMarks);
+  if (raw === "custom" || raw === "off") return raw;
+  return "all";
+}
+
+export function saveCtxLearnedMarkMode(mode: CtxLearnedMarkMode): void {
+  writeStorage(KEYS.ctxLearnedMarks, mode);
+}
+
+export function cycleCtxLearnedMarkMode(mode: CtxLearnedMarkMode): CtxLearnedMarkMode {
+  if (mode === "all") return "custom";
+  if (mode === "custom") return "off";
+  return "all";
 }
 
 /** Cards per row on VRAM GPU bars / running engines (manual density; no auto). */

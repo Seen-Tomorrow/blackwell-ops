@@ -21,11 +21,14 @@ export const TICK_HEIGHT_PX = TICK_ZONE_HEIGHT_PX;
 export interface SliderParamSharedProps {
   paramKey: string;
   currentValue?: number | string;
-  /** Configured default — strong tick highlight; independent of slider position. */
   defaultValue?: number | string;
   onChange: (value: number) => void;
   step?: number;
   values?: (string | number)[];
+  /** Launch-measured ctx tokens — cyan ticks on the rail. */
+  learnedMarks?: number[];
+  /** all = every learned tick; custom = non-preset only; off = hidden. */
+  learnedMarkMode?: "all" | "custom" | "off";
 }
 
 export function parseSliderValues(values: (string | number)[]): number[] {

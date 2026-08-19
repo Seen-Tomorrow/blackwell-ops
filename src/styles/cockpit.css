@@ -2395,7 +2395,8 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--brain 
   flex-direction: row;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.7rem 0.5rem 0.5rem;
+  padding: 0.7rem 0.5rem 0.7rem;
+  overflow: visible;
   border-radius: 3px;
   border: 1px solid var(--theme-frame-border, color-mix(in srgb, var(--theme-border) 55%, transparent));
   background: color-mix(
@@ -2426,6 +2427,24 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--brain 
   padding-left: 2ch;
   white-space: nowrap;
   gap: 0.4ch;
+}
+
+.full-auto-cockpit__ctx-marks-toggle {
+  margin-left: 0.35rem;
+  padding: 0.05rem 0.28rem;
+  font-size: 7px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, #22d3ee 70%, transparent);
+  border: 1px solid color-mix(in srgb, #22d3ee 28%, transparent);
+  background: transparent;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.full-auto-cockpit__ctx-marks-toggle:hover {
+  color: #22d3ee;
+  border-color: color-mix(in srgb, #22d3ee 55%, transparent);
 }
 
 .full-auto-cockpit__ctx-value {
