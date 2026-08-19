@@ -11,7 +11,7 @@ import MoeBadge from "./MoeBadge";
 import FitLaunchToggle from "./FitLaunchToggle";
 import MemorySourcePanel, { FitProbeButton, manifestHasFitProbe } from "./MemorySourcePanel";
 import { useForecastContentHeight } from "../hooks/useForecastContentHeight";
-import { MEMORY_SOURCE_ACCENT } from "../services/vram/memorySource";
+import { MEMORY_SOURCE_LABELS } from "../services/vram/memorySource";
 import type { FusionShareLaunchConfig } from "../lib/fusionShareCapture";
 import type { FusionDualOrient } from "../lib/storage";
 
@@ -239,7 +239,7 @@ export default function VramBadge({
     return (
       <div
         ref={rootRef}
-        className={`vram-badge-forecast vram-badge-forecast--skeleton px-3 py-2 relative flex flex-col min-h-0 overflow-hidden ${className || ""}`}
+        className={`vram-badge-forecast vram-fc vram-badge-forecast--skeleton px-3 py-2 relative flex flex-col min-h-0 overflow-hidden ${className || ""}`}
         style={{ minHeight: FORECAST_PHOSPHOR_HEIGHT_PX }}
         data-forecast-skeleton="1"
         aria-busy="true"
@@ -259,10 +259,8 @@ export default function VramBadge({
   const s = manifest.style;
   const t = s.uiTemplate;
   const memorySource = manifest.memorySource;
-  const sourceAccent = memorySource
-    ? MEMORY_SOURCE_ACCENT[memorySource.kind]
-    : null;
-  const isFitProbe = memorySource?.kind === "fit_probe";
+  const sourceKind = memorySource?.kind;
+  const isFitProbe = sourceKind === "fit_probe";
   const displayVramNeedGb = manifest.vramTotalGb;
   const displayRamNeedGb = isFitProbe
     ? (manifest.validatedHostMib != null && manifest.validatedHostMib > 0
@@ -270,10 +268,6 @@ export default function VramBadge({
         : manifest.ramTotalGb)
     : manifest.ramTotalGb;
   const showRamNeed = displayRamNeedGb >= 0.05;
-  const gbAccentClass = sourceAccent?.gbGradient || s.titleColor;
-  const vramNeedClass = sourceAccent?.gbGradient && memorySource
-    ? `${sourceAccent.gbGradient} vram-forecast-gb-accented vram-forecast-gb-accented--${memorySource.kind}`
-    : gbAccentClass;
 
   // Total manufactured VRAM capacity across all GPUs
   const totalVramMib = gpus.reduce((sum, g) => {
@@ -285,9 +279,6 @@ export default function VramBadge({
   const vramUsagePct = totalVramMib > 0
     ? Math.min((displayVramNeedGb * 1024 / totalVramMib) * 100, 100)
     : 0;
-
- // RAM headroom: available RAM minus projected RAM usage
-  const ramHeadroomMib = (manifest.ramAvailableGb - manifest.ramTotalGb) * 1024;
 
   // RAM info for bar fill — OS usage from manufactured capacity
   const ramUsagePct = manifest.ramManufacturedGb > 0 ? Math.min((manifest.ramTotalGb / manifest.ramManufacturedGb) * 100, 100) : 0;
@@ -313,10 +304,10 @@ export default function VramBadge({
   ) : null;
 
   // Fit probe + memory source stay in forecast body; ASSISTED/FULL AUTO is the top dock.
-  const forecastFitRow = (memorySourcePanel || fitProbeButton) ? (
-    <div className="vram-forecast-header__fit-row">
+  const forecastSourceRow = (memorySourcePanel || fitProbeButton) ? (
+    <div className="vram-fc__source-row vram-forecast-header__fit-row">
       {fitProbeButton && (
-        <div className="vram-forecast-header__fit-controls">
+        <div className="vram-fc__probe-slot vram-forecast-header__fit-controls">
           {fitProbeButton}
         </div>
       )}
@@ -328,111 +319,83 @@ export default function VramBadge({
     </div>
   ) : null;
 
-  return (
-    <div
-      ref={rootRef}
-      className={`vram-badge-forecast px-3 py-2 relative flex flex-col min-h-0 overflow-hidden ${className || ""}`}
+  const sourceChip = memorySource ? (
+    <span
+      className="vram-fc__src"
+      data-source-kind={memorySource.kind}
+      title={memorySource.detail || MEMORY_SOURCE_LABELS[memorySource.kind]}
     >
-      {fitLaunchDock}
+      SRC {MEMORY_SOURCE_LABELS[memorySource.kind]}
+    </span>
+  ) : null;
 
-      {/* FORECAST header — detailed (ASSISTED) or compact (FULL AUTO) */}
-      {showDetailedForecast ? (
-        <div className="vram-forecast-header vram-forecast-header--assisted flex-shrink-0 mb-1 min-w-0">
-          <div
-            className="vram-forecast-header__top grid gap-x-1 min-w-0"
-            style={{ gridTemplateColumns: "auto 1fr" }}
-          >
-            <span className={`text-xl font-mono ${s.titleColor} shrink-0`}>
-              FORECAST: model
+  const scenarioChip = (
+    <span className="vram-fc__ident vram-forecast-scenario-badge">
+      <span className={`vram-fc__scenario ${s.badgeBg}`}>
+        <span className="vram-fc__scenario-lab">{s.label}</span>
+      </span>
+    </span>
+  );
+
+  const needInstruments = (
+    <div className="vram-fc__need-row vram-forecast-needs" data-source-kind={sourceKind || "formula"}>
+      <div className="vram-fc-need" aria-label="VRAM need">
+        <span className="vram-fc-need__lab">VRAM</span>
+        <span
+          className={`vram-fc-need__val vram-forecast-gb-value${
+            sourceKind && sourceKind !== "formula"
+              ? ` vram-forecast-gb-accented vram-forecast-gb-accented--${sourceKind}`
+              : ""
+          }`}
+        >
+          {displayVramNeedGb.toFixed(1)}
+        </span>
+        <span className="vram-fc-need__unit">GB</span>
+        <span className="vram-fc-need__of">of</span>
+        <span className="vram-fc-need__cap vram-forecast-gb-value">{totalVramGb.toFixed(1)}</span>
+        <span className="vram-fc-need__unit vram-fc-need__unit--muted">GB</span>
+      </div>
+      {showRamNeed ? (
+        <>
+          <span className="vram-fc-need__sep vram-forecast-needs-sep" aria-hidden>
+            //
+          </span>
+          <div className="vram-fc-need vram-fc-need--ram" aria-label="RAM need">
+            <span className="vram-fc-need__lab">RAM</span>
+            <span className="vram-fc-need__val vram-forecast-gb-value">
+              {displayRamNeedGb.toFixed(1)}
             </span>
-            <div className="vram-forecast-needs min-w-0">
-              <div className="flex flex-wrap items-baseline gap-x-1 gap-y-px min-w-0 vram-forecast-needs-row">
-                <span className={`text-xl font-mono ${s.titleColor}`}>needs</span>
-                <span className={`text-xl font-mono vram-forecast-gb-value ${vramNeedClass}`}>
-                  {displayVramNeedGb.toFixed(1)}
-                </span>
-                <span className={`text-xl font-mono ${s.titleColor}`}>GB</span>
-                <span className="text-[9px] font-mono text-stealth-muted">of</span>
-                <span className="text-xl font-mono text-stealth-muted vram-forecast-gb-value">
-                  {totalVramGb.toFixed(1)}
-                </span>
-                <span className="text-xl font-mono text-stealth-muted">GB</span>
-                <span className="text-[9px] font-mono text-stealth-muted tracking-wide">VRAM</span>
-                {showRamNeed ? (
-                  <>
-                    <span className="vram-forecast-needs-sep text-[9px] font-mono text-stealth-muted/50">//</span>
-                    <span className="text-xl font-mono text-blue-400 vram-forecast-gb-value">
-                      {displayRamNeedGb.toFixed(1)}
-                    </span>
-                    <span className="text-xl font-mono text-blue-400">GB</span>
-                    <span className="text-[9px] font-mono text-stealth-muted">of</span>
-                    <span className="text-xl font-mono text-stealth-muted vram-forecast-gb-value">
-                      {manifest.ramManufacturedGb.toFixed(1)}
-                    </span>
-                    <span className="text-xl font-mono text-stealth-muted">GB</span>
-                    <span className="text-[9px] font-mono text-blue-400/80 tracking-wide">RAM</span>
-                  </>
-                ) : null}
-              </div>
-            </div>
+            <span className="vram-fc-need__unit vram-fc-need__unit--ram">GB</span>
+            <span className="vram-fc-need__of">of</span>
+            <span className="vram-fc-need__cap vram-forecast-gb-value">
+              {manifest.ramManufacturedGb.toFixed(1)}
+            </span>
+            <span className="vram-fc-need__unit vram-fc-need__unit--muted">GB</span>
           </div>
-          {forecastFitRow}
-        </div>
-      ) : (
-        <div className="vram-forecast-hero flex-shrink-0 mb-1 min-w-0">
-          <p className={`vram-forecast-hero__title font-mono tracking-[0.18em] uppercase ${s.titleColor}`}>
-            {t.heroText ?? (manifest.fits ? "WILL LAUNCH" : "WON'T LAUNCH")}
-          </p>
-          {/* Always reserve one sub line in FULL AUTO so fits/won't + learned swap don't nudge height. */}
-          {fullAutoMode ? (
-            <p
-              className={`vram-forecast-hero__sub text-[9px] font-mono text-stealth-muted/80 leading-snug mt-1${
-                manifest.fits && totalVramMib > 0 ? "" : " vram-forecast-hero__sub--placeholder"
-              }`}
-            >
-              {manifest.fits && totalVramMib > 0
-                ? `${Math.max(0, Math.round(100 - vramUsagePct))}% total VRAM remains`
-                : (t.heroSubtext || "\u00a0")}
-            </p>
-          ) : (
-            (t.heroSubtext || (showDetailedForecast && manifest.recommendation)) && (
-              <p className="vram-forecast-hero__sub text-[9px] font-mono text-stealth-muted/80 leading-snug mt-1">
-                {t.heroSubtext || manifest.recommendation}
-              </p>
-            )
-          )}
-          {forecastFitRow}
+        </>
+      ) : null}
+    </div>
+  );
+
+  const barBank = showDetailedForecast ? (
+    <div className="vram-fc-bars vram-badge-bars relative">
+      {!hideMoeBadge && modelMeta != null && modelMeta.n_expert > 0 && (
+        <div className="absolute right-0 top-0 bottom-0 flex items-center z-10">
+          <MoeBadge
+            offloadMode={offloadMode}
+            shouldHighlight={manifest.moeSuggestion?.shouldHighlight}
+            onMoeSuggestionClick={onMoeSuggestionClick}
+            suggestionText={manifest.moeSuggestion?.suggestionText}
+          />
         </div>
       )}
 
-      <div className="absolute top-0 right-2 opacity-75 vram-forecast-scenario-badge">
-        <div className={`inline-flex items-center px-2 py-0.5 rounded-sm ${s.badgeBg}`}>
-          <span className="text-[8px] font-mono tracking-wide uppercase">{s.label}</span>
-        </div>
-      </div>
-
-      <div className="vram-badge-body relative flex-shrink-0 overflow-x-hidden mt-1.5">
-        {showDetailedForecast && (
-        <div className="vram-badge-bars relative">
-        {!hideMoeBadge && modelMeta?.n_expert > 0 && (
-          <div className="absolute right-0 top-0 bottom-0 flex items-center z-10">
-            <MoeBadge
-              offloadMode={offloadMode}
-              shouldHighlight={manifest.moeSuggestion?.shouldHighlight}
-              onMoeSuggestionClick={onMoeSuggestionClick}
-              suggestionText={manifest.moeSuggestion?.suggestionText}
-            />
-          </div>
-        )}
-        {/* GPU / VRAM bar — layer text lives inside the bar (saves vertical) */}
-        <div className="flex items-center gap-2">
-          <div
-            style={{ backgroundColor: "rgb(20,20,20)" }}
-            className="vram-forecast-vram-bar relative h-4 w-[70%] rounded-sm overflow-hidden border border-stealth-border/30"
-          >
+      <div className="vram-fc-bar-row">
+        <div className="vram-fc-bar vram-forecast-vram-bar" aria-label="VRAM fill">
+          <div className="vram-fc-bar__track">
             <div
+              className={`vram-fc-bar__fill ${s.gpuBarColor}`}
               style={{ width: `${vramUsagePct}%` }}
-              className={`h-full rounded-sm ${s.gpuBarColor}`}
             />
             {(t.kvSpillRiskText || t.gpuLayerText) && (
               <span
@@ -453,21 +416,21 @@ export default function VramBadge({
               </span>
             )}
           </div>
-          <span className={`text-[12px] font-mono ${s.titleColor}`}>| {totalVramGb.toFixed(0)} GB</span>
         </div>
+        <span className={`vram-fc-bar__cap ${s.titleColor}`}>
+          | {totalVramGb.toFixed(0)} GB
+        </span>
+      </div>
 
-        {/* RAM bar — offload / layer text inside bar */}
-        {(t.showRamBar !== false) && (
-          <div className="flex items-center gap-2 mt-1.5">
-            <div
-              style={{ backgroundColor: "rgb(20,20,20)" }}
-              className="vram-forecast-ram-bar relative h-4 w-[70%] rounded-sm overflow-hidden border border-stealth-border/30"
-            >
+      {t.showRamBar !== false && (
+        <div className="vram-fc-bar-row">
+          <div className="vram-fc-bar vram-forecast-ram-bar" aria-label="RAM fill">
+            <div className="vram-fc-bar__track">
               <div
-                style={{ width: `${ramUsagePct}%` }}
-                className={`h-full rounded-sm ${
-                  (t.moeRamBar || offloadMode === "moe_optimal") ? "bg-orange-hatched" : "bg-blue-700"
+                className={`vram-fc-bar__fill ${
+                  t.moeRamBar || offloadMode === "moe_optimal" ? "bg-orange-hatched" : "bg-blue-700"
                 }`}
+                style={{ width: `${ramUsagePct}%` }}
               />
               {(t.offloadWarningText || t.ramLayerText) && (
                 <span
@@ -478,27 +441,90 @@ export default function VramBadge({
                 </span>
               )}
             </div>
-            <span className="text-[12px] font-mono text-blue-700">| {ramMfgGb} GB</span>
           </div>
-        )}
-        </div>
-        )}
-
-      {manifest.gpuAllocations.length > 0 && (
-        <div className="mt-1.5 pb-0.5">
-          <GpuTopology
-            gpuAllocations={manifest.gpuAllocations}
-            gpuBarColor={s.gpuBarColor}
-            ramVisible={false}
-            ramTotalGb={manifest.ramTotalGb}
-            ramManufacturedGb={manifest.ramManufacturedGb}
-            gpuIdleBaselineMib={gpuIdleBaselineMib}
-            selectedGpuIndices={selectedGpuIndices}
-            onDeviceSelect={onDeviceSelect}
-            perRow={gpuPerRow}
-          />
+          <span className="vram-fc-bar__cap vram-fc-bar__cap--ram">| {ramMfgGb} GB</span>
         </div>
       )}
+    </div>
+  ) : null;
+
+  return (
+    <div
+      ref={rootRef}
+      className={`vram-badge-forecast vram-fc px-3 py-2 relative flex flex-col min-h-0 overflow-hidden ${className || ""}`}
+      data-forecast-mode={showDetailedForecast ? "assisted" : "auto"}
+      data-fits={manifest.fits ? "1" : "0"}
+      data-source-kind={sourceKind || undefined}
+    >
+      {fitLaunchDock}
+
+      {showDetailedForecast ? (
+        <div className="vram-fc__header vram-forecast-header vram-forecast-header--assisted flex-shrink-0 min-w-0">
+          <div className="vram-fc__title-row">
+            <span className={`vram-fc__title ${s.titleColor}`}>FORECAST</span>
+            {sourceChip}
+            <span
+              className={`vram-fc__verdict${manifest.fits ? " is-ok" : " is-fail"}`}
+              title={manifest.fits ? "Projected fit" : "Projected no-fit"}
+            >
+              {manifest.fits ? "FITS" : "WON'T"}
+            </span>
+            {scenarioChip}
+          </div>
+          {needInstruments}
+          {forecastSourceRow}
+        </div>
+      ) : (
+        <div className="vram-fc__header vram-forecast-hero flex-shrink-0 min-w-0">
+          <div className="vram-fc__title-row">
+            <span
+              className={`vram-fc__title vram-fc__title--hero vram-forecast-hero__title ${s.titleColor}`}
+            >
+              {t.heroText ?? (manifest.fits ? "WILL LAUNCH" : "WON'T LAUNCH")}
+            </span>
+            {sourceChip}
+            {scenarioChip}
+          </div>
+          {/* Always reserve one sub line in FULL AUTO so fits/won't + learned swap don't nudge height. */}
+          {fullAutoMode ? (
+            <p
+              className={`vram-fc__sub vram-forecast-hero__sub${
+                manifest.fits && totalVramMib > 0 ? "" : " vram-forecast-hero__sub--placeholder"
+              }`}
+            >
+              {manifest.fits && totalVramMib > 0
+                ? `${Math.max(0, Math.round(100 - vramUsagePct))}% total VRAM remains`
+                : (t.heroSubtext || "\u00a0")}
+            </p>
+          ) : (
+            (t.heroSubtext || (showDetailedForecast && manifest.recommendation)) && (
+              <p className="vram-fc__sub vram-forecast-hero__sub">
+                {t.heroSubtext || manifest.recommendation}
+              </p>
+            )
+          )}
+          {forecastSourceRow}
+        </div>
+      )}
+
+      <div className="vram-badge-body vram-fc__body relative flex-shrink-0 overflow-x-hidden">
+        {barBank}
+
+        {manifest.gpuAllocations.length > 0 && (
+          <div className="vram-fc__topo">
+            <GpuTopology
+              gpuAllocations={manifest.gpuAllocations}
+              gpuBarColor={s.gpuBarColor}
+              ramVisible={false}
+              ramTotalGb={manifest.ramTotalGb}
+              ramManufacturedGb={manifest.ramManufacturedGb}
+              gpuIdleBaselineMib={gpuIdleBaselineMib}
+              selectedGpuIndices={selectedGpuIndices}
+              onDeviceSelect={onDeviceSelect}
+              perRow={gpuPerRow}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

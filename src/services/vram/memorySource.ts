@@ -200,24 +200,22 @@ export const MEMORY_SOURCE_ACCENT: Record<
   formula: {
     text: "text-stealth-muted",
     border: "border-stealth-muted/30",
+    /** Kept for callers; GB value color lives on data-source-kind CSS. */
     gbGradient: "",
   },
   fit_probe: {
     text: "text-amber-400",
     border: "border-amber-400/50",
-    gbGradient:
-      "bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 bg-clip-text text-transparent drop-shadow-[0_0_8px_rgba(251,191,36,0.4)]",
+    gbGradient: "",
   },
   learned: {
     text: "text-cyan-400",
     border: "border-cyan-400/50",
-    gbGradient:
-      "bg-gradient-to-r from-cyan-300 via-sky-400 to-cyan-500 bg-clip-text text-transparent drop-shadow-[0_0_8px_rgba(34,211,238,0.35)]",
+    gbGradient: "",
   },
   learned_curve: {
     text: "text-cyan-400",
     border: "border-cyan-400/40",
-    gbGradient:
-      "bg-gradient-to-r from-cyan-300 via-sky-400 to-cyan-500 bg-clip-text text-transparent drop-shadow-[0_0_8px_rgba(34,211,238,0.35)]",
+    gbGradient: "",
   },
 };

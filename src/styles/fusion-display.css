@@ -520,32 +520,255 @@
   border-radius: 2px;
 }
 
-/* FORECAST header — fixed canvas (same idea as DEVICE row: chip/glow swaps must not nudge layout) */
-.vram-forecast-header {
-  height: 52px;
-  min-height: 52px;
-  max-height: 52px;
-  flex-shrink: 0;
+/* ═══════════════════════════════════════════════════════════════════════
+ * VRAM FORECAST — instrument cluster (aligned with FusionBooter)
+ * Classes: .vram-fc*  · legacy aliases kept for share-capture selectors
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.vram-fc {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-sizing: border-box;
 }
 
-/* ASSISTED — SOURCE + mode toggle share one row (saves vertical space on notebook displays) */
-.vram-forecast-header--assisted {
+.vram-fc__header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+/* FORECAST header — fixed canvas (legacy selector; assisted grows) */
+.vram-forecast-header {
   height: auto;
   min-height: 0;
   max-height: none;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  flex-shrink: 0;
 }
 
-.vram-forecast-header__fit-row {
+.vram-forecast-header--assisted {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.vram-fc__title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.vram-fc__title {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  line-height: 1;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 78%, transparent);
+  flex-shrink: 0;
+}
+
+.vram-fc__title--hero {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+}
+
+/* SRC chip — same recipe as fusion-boot__src */
+.vram-fc__src {
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.4)) 55%, transparent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 6.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  line-height: 1.2;
+  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 78%, transparent);
+  background: color-mix(in srgb, var(--display-face-bar-bg, rgba(0, 0, 0, 0.4)) 55%, transparent);
+  white-space: nowrap;
+}
+
+.vram-fc__src[data-source-kind="learned"],
+.vram-fc__src[data-source-kind="learned_curve"] {
+  color: color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 88%, transparent);
+  border-color: color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 40%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 18%, transparent);
+}
+
+.vram-fc__src[data-source-kind="fit_probe"] {
+  color: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 90%, transparent);
+  border-color: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 42%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 18%, transparent);
+}
+
+.vram-fc__verdict {
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.4)) 50%, transparent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 6.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  line-height: 1.2;
+  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 80%, transparent);
+  background: color-mix(in srgb, var(--display-face-bar-bg, rgba(0, 0, 0, 0.4)) 45%, transparent);
+}
+
+.vram-fc__verdict.is-ok {
+  color: color-mix(in srgb, var(--theme-nv-green, #76b900) 92%, transparent);
+  border-color: color-mix(in srgb, var(--theme-nv-green, #76b900) 40%, transparent);
+}
+
+.vram-fc__verdict.is-fail {
+  color: color-mix(in srgb, #f87171 92%, transparent);
+  border-color: color-mix(in srgb, #f87171 42%, transparent);
+}
+
+.vram-fc__ident {
+  margin-left: auto;
+  min-width: 0;
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Scenario badge — fixed corner slot (legacy share-capture class) */
+.vram-forecast-scenario-badge {
+  width: auto;
+  min-width: 4.25rem;
+  min-height: 0;
+}
+
+.vram-fc__scenario {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 4.25rem;
+  padding: 2px 6px;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.4)) 40%, transparent);
+}
+
+.vram-fc__scenario-lab {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  line-height: 1;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 82%, transparent);
+}
+
+/* Need instruments — LAB / VAL / UNIT like fusion-boot-meta */
+.vram-fc__need-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  min-width: 0;
+  line-height: 1.15;
+}
+
+.vram-fc-need {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+}
+
+.vram-fc-need__lab {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 6px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 72%, transparent);
+}
+
+.vram-fc-need__val {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  color: var(--display-face-text, #e2e8f0);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--display-face-text, #e2e8f0) 22%, transparent);
+}
+
+.vram-fc-need__cap {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 88%, transparent);
+}
+
+.vram-fc-need__unit {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 78%, transparent);
+}
+
+.vram-fc-need__unit--muted,
+.vram-fc-need__of {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 7px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 70%, transparent);
+}
+
+.vram-fc-need__unit--ram {
+  color: color-mix(in srgb, var(--theme-telemetry-blue, #60a5fa) 88%, transparent);
+}
+
+.vram-fc-need--ram .vram-fc-need__val {
+  color: color-mix(in srgb, var(--theme-telemetry-blue, #60a5fa) 92%, transparent);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--theme-telemetry-blue, #60a5fa) 24%, transparent);
+}
+
+.vram-fc-need__sep {
+  padding: 0 1px;
+  letter-spacing: -0.05em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 9px;
+  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 45%, transparent);
+}
+
+/* Measured GB — solid instrument accent (no neon gradient text) */
+.vram-fc-need__val.vram-forecast-gb-accented--learned,
+.vram-fc-need__val.vram-forecast-gb-accented--learned_curve,
+.vram-fc[data-source-kind="learned"] .vram-fc-need:not(.vram-fc-need--ram) .vram-fc-need__val,
+.vram-fc[data-source-kind="learned_curve"] .vram-fc-need:not(.vram-fc-need--ram) .vram-fc-need__val {
+  color: color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 92%, transparent);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 28%, transparent);
+}
+
+.vram-fc-need__val.vram-forecast-gb-accented--fit_probe,
+.vram-fc[data-source-kind="fit_probe"] .vram-fc-need:not(.vram-fc-need--ram) .vram-fc-need__val {
+  color: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 94%, transparent);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 28%, transparent);
+}
+
+.vram-forecast-header__fit-row,
+.vram-fc__source-row {
   display: flex;
   align-items: flex-start;
   gap: 8px;
   min-width: 0;
 }
 
-.vram-forecast-header__fit-controls {
+.vram-forecast-header__fit-controls,
+.vram-fc__probe-slot {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -557,6 +780,439 @@
   flex-shrink: 0;
 }
 
+.vram-forecast-needs-row {
+  line-height: 1.2;
+}
+
+.vram-forecast-needs-sep {
+  padding: 0 2px;
+  letter-spacing: -0.05em;
+}
+
+.vram-forecast-hero {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+}
+
+.vram-forecast-hero__title {
+  line-height: 1.15;
+}
+
+.vram-fc__sub,
+.vram-forecast-hero__sub {
+  max-width: 28rem;
+  min-height: 1.125rem;
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 8px;
+  line-height: 1.25;
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 78%, transparent);
+}
+
+.vram-forecast-hero__sub--placeholder {
+  visibility: hidden;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Tabular digits + fixed slots so 9.1 → 88.4 does not shift labels */
+.vram-forecast-gb-value {
+  font-variant-numeric: tabular-nums;
+  display: inline-block;
+  min-width: 4.5ch;
+  text-align: right;
+}
+
+.vram-forecast-gb-value:not(.vram-forecast-gb-accented) {
+  filter: none;
+}
+
+/* SOURCE row — under need instruments */
+.vram-forecast-source {
+  padding-top: 0;
+}
+
+.vram-forecast-layer-text {
+  font-size: 9px;
+  line-height: 1.25;
+}
+
+/* Body stack */
+.vram-fc__body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.vram-fc__topo {
+  min-width: 0;
+}
+
+/* Bars — boot-style wells, no hardcoded rgb tracks */
+.vram-fc-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.vram-fc-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.vram-fc-bar {
+  position: relative;
+  flex: 0 1 70%;
+  max-width: 70%;
+  min-width: 0;
+}
+
+.vram-fc-bar__track {
+  position: relative;
+  height: 14px;
+  border-radius: 2px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.4)) 42%, transparent);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--display-face-text, #e2e8f0) 4%, transparent),
+      transparent 40%
+    ),
+    color-mix(in srgb, var(--display-face-bar-bg, rgba(0, 0, 0, 0.45)) 88%, transparent);
+  box-shadow:
+    inset 0 1px 2px color-mix(in srgb, #000 35%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--display-face-text, #e2e8f0) 6%, transparent);
+}
+
+.vram-fc-bar__fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 1px;
+  transition: width 0.18s ease-out;
+}
+
+.vram-fc-bar__cap {
+  flex: 0 0 auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 82%, transparent);
+  white-space: nowrap;
+}
+
+.vram-fc-bar__cap--ram {
+  color: color-mix(in srgb, var(--theme-telemetry-blue, #60a5fa) 88%, transparent);
+}
+
+/* VRAM / RAM bars — compact inset warnings (SPILL, AUTO host offload) */
+.vram-forecast-bar__inset-label {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 6px;
+  font-size: 7px;
+  font-family: ui-monospace, monospace;
+  line-height: 1;
+  text-align: right;
+  pointer-events: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vram-forecast-bar__inset-label--ram {
+  color: rgba(191, 219, 254, 0.92);
+  text-shadow: 0 0 4px rgba(0, 0, 0, 0.85);
+}
+
+.vram-forecast-bar__inset-label--kv {
+  color: rgba(248, 113, 113, 0.92);
+  text-shadow: 0 0 4px rgba(0, 0, 0, 0.85);
+}
+
+.vram-forecast-bar__inset-label--kv-critical {
+  color: rgba(248, 113, 113, 0.98);
+  text-shadow: 0 0 5px rgba(0, 0, 0, 0.9);
+}
+
+[data-display-texture="phosphor-light"] .vram-forecast-bar__inset-label--ram {
+  color: rgba(30, 58, 138, 0.88);
+  text-shadow: none;
+}
+
+[data-display-texture="phosphor-light"] .vram-forecast-bar__inset-label--kv,
+[data-display-texture="phosphor-light"] .vram-forecast-bar__inset-label--kv-critical {
+  color: rgba(153, 27, 27, 0.9);
+  text-shadow: none;
+}
+
+/* SOURCE band — instrument well + fixed 3 body lines */
+.memory-source-strip,
+.vram-fc-source {
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 3px 5px 4px;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.4)) 36%, transparent);
+  background: color-mix(in srgb, var(--display-face-bar-bg, rgba(0, 0, 0, 0.4)) 42%, transparent);
+  box-sizing: border-box;
+}
+
+.vram-fc-source__head,
+.memory-source-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 12px;
+  min-width: 0;
+}
+
+.vram-fc-source__lab {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 6px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  line-height: 1;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 68%, transparent);
+  flex-shrink: 0;
+}
+
+.vram-fc-source__kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  line-height: 1;
+}
+
+.vram-fc-source__pips {
+  display: inline-flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.vram-fc-source__pip {
+  display: inline-block;
+  width: 3px;
+  height: 3px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.22;
+}
+
+.vram-fc-source__pip.is-on {
+  opacity: 0.9;
+}
+
+.vram-fc-source__body,
+.memory-source-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-height: 30px;
+  flex: 0 0 auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 7.5px;
+  line-height: 1.25;
+  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 88%, transparent);
+}
+
+.memory-source-body__line,
+.vram-fc-source__line {
+  display: block;
+  min-width: 0;
+  min-height: 10px;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.memory-source-body__line--breakdown {
+  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 78%, transparent);
+}
+
+.memory-source-body__line--secondary {
+  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 62%, transparent);
+}
+
+.memory-source-body__line--empty {
+  visibility: hidden;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* SOURCE kind — widest label (FIT PROBE) reserves width */
+.memory-source-kind-label,
+.vram-fc-source__kind-lab {
+  display: inline-block;
+  min-width: 4.75rem;
+}
+
+/* FIT probe — boot-style action chip */
+.vram-fc-probe,
+.fit-probe-btn {
+  flex: 0 0 auto;
+  min-width: 5.25rem;
+  padding: 2px 6px;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.4)) 55%, transparent);
+  background: color-mix(in srgb, var(--display-face-bar-bg, rgba(0, 0, 0, 0.4)) 55%, transparent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 6.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  line-height: 1.2;
+  text-align: center;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 88%, transparent);
+  cursor: pointer;
+  transition: color 0.12s ease, border-color 0.12s ease, background-color 0.12s ease;
+  white-space: nowrap;
+}
+
+.vram-fc-probe:hover:not(:disabled),
+.fit-probe-btn:hover:not(:disabled) {
+  color: var(--display-face-text, #e2e8f0);
+  border-color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 35%, transparent);
+}
+
+.vram-fc-probe[data-probe-state="probing"],
+.fit-probe-btn[data-probe-state="probing"] {
+  color: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 92%, transparent);
+  border-color: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 42%, transparent);
+  cursor: wait;
+  animation: vram-fc-probe-pulse 1.1s ease-in-out infinite;
+}
+
+.vram-fc-probe[data-probe-state="reprobe"],
+.fit-probe-btn[data-probe-state="reprobe"] {
+  color: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 88%, transparent);
+  border-color: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 38%, transparent);
+}
+
+.vram-fc-probe:disabled,
+.fit-probe-btn:disabled {
+  opacity: 0.85;
+}
+
+@keyframes vram-fc-probe-pulse {
+  0%,
+  100% { opacity: 0.72; }
+  50% { opacity: 1; }
+}
+
+/* Phosphor light — forecast instrument ink */
+[data-display-texture="phosphor-light"] .vram-fc__title,
+[data-display-texture="phosphor-light"] .vram-fc-need__lab,
+[data-display-texture="phosphor-light"] .vram-fc-source__lab,
+[data-display-texture="phosphor-light"] .vram-fc-need__of,
+[data-display-texture="phosphor-light"] .vram-fc-need__unit--muted {
+  color: color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 55%, transparent);
+}
+
+[data-display-texture="phosphor-light"] .vram-fc-need__val,
+[data-display-texture="phosphor-light"] .vram-fc-bar__cap,
+[data-display-texture="phosphor-light"] .vram-fc__scenario-lab {
+  color: var(--display-face-light-readout, #1e3a14);
+  text-shadow: none;
+}
+
+[data-display-texture="phosphor-light"] .vram-fc-need--ram .vram-fc-need__val,
+[data-display-texture="phosphor-light"] .vram-fc-bar__cap--ram,
+[data-display-texture="phosphor-light"] .vram-fc-need__unit--ram {
+  color: var(--display-face-light-text-cyan, #0e4a5c);
+  text-shadow: none;
+}
+
+[data-display-texture="phosphor-light"] .vram-fc-need__val.vram-forecast-gb-accented--learned,
+[data-display-texture="phosphor-light"] .vram-fc-need__val.vram-forecast-gb-accented--learned_curve,
+[data-display-texture="phosphor-light"] .vram-fc[data-source-kind="learned"] .vram-fc-need:not(.vram-fc-need--ram) .vram-fc-need__val,
+[data-display-texture="phosphor-light"] .vram-fc[data-source-kind="learned_curve"] .vram-fc-need:not(.vram-fc-need--ram) .vram-fc-need__val {
+  color: var(--display-face-light-text-cyan, #0e4a5c);
+  text-shadow: none;
+}
+
+[data-display-texture="phosphor-light"] .vram-fc-need__val.vram-forecast-gb-accented--fit_probe,
+[data-display-texture="phosphor-light"] .vram-fc[data-source-kind="fit_probe"] .vram-fc-need:not(.vram-fc-need--ram) .vram-fc-need__val {
+  color: var(--display-face-light-text-amber, #7a4a08);
+  text-shadow: none;
+}
+
+[data-display-texture="phosphor-light"] .vram-fc-source,
+[data-display-texture="phosphor-light"] .memory-source-strip,
+[data-display-texture="phosphor-light"] .vram-fc-bar__track {
+  background: color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 6%, transparent);
+  border-color: color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 22%, transparent);
+  box-shadow: none;
+}
+
+[data-display-texture="phosphor-light"] .vram-fc__src,
+[data-display-texture="phosphor-light"] .vram-fc__verdict,
+[data-display-texture="phosphor-light"] .vram-fc-probe,
+[data-display-texture="phosphor-light"] .fit-probe-btn {
+  background: color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 8%, transparent);
+  border-color: color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 28%, transparent);
+  color: color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 72%, transparent);
+  box-shadow: none;
+}
+
+[data-display-texture="phosphor-light"] .vram-fc__src[data-source-kind="learned"],
+[data-display-texture="phosphor-light"] .vram-fc__src[data-source-kind="learned_curve"] {
+  color: var(--display-face-light-text-cyan, #0e4a5c);
+  border-color: color-mix(in srgb, var(--display-face-light-text-cyan, #0e4a5c) 40%, transparent);
+}
+
+[data-display-texture="phosphor-light"] .vram-fc__src[data-source-kind="fit_probe"],
+[data-display-texture="phosphor-light"] .vram-fc-probe[data-probe-state="reprobe"],
+[data-display-texture="phosphor-light"] .vram-fc-probe[data-probe-state="probing"] {
+  color: var(--display-face-light-text-amber, #7a4a08);
+  border-color: color-mix(in srgb, var(--display-face-light-text-amber, #7a4a08) 40%, transparent);
+}
+
+[data-display-texture="phosphor-light"] .vram-fc__verdict.is-ok {
+  color: var(--display-face-light-text-accent, #1e3a14);
+  border-color: color-mix(in srgb, var(--display-face-light-text-accent, #1e3a14) 40%, transparent);
+}
+
+[data-display-texture="phosphor-light"] .vram-fc__verdict.is-fail {
+  color: var(--display-face-light-text-red, #7f1d1d);
+  border-color: color-mix(in srgb, var(--display-face-light-text-red, #7f1d1d) 40%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vram-fc-bar__fill {
+    transition: none;
+  }
+  .vram-fc-probe[data-probe-state="probing"],
+  .fit-probe-btn[data-probe-state="probing"] {
+    animation: none;
+  }
+}
 /*
  * Top bezel chrome: fit-launch | Split | Device (device claims right).
  *
@@ -860,174 +1516,6 @@
   pointer-events: auto;
 }
 
-.vram-forecast-needs-row {
-  line-height: 1.2;
-}
-
-.vram-forecast-needs-sep {
-  padding: 0 2px;
-  letter-spacing: -0.05em;
-}
-
-.vram-forecast-hero {
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 2px;
-}
-
-
-.vram-forecast-hero__title {
-  font-size: 1.05rem;
-  line-height: 1.2;
-  letter-spacing: 0.14em;
-}
-
-.vram-forecast-hero__sub {
-  max-width: 28rem;
-  min-height: 1.125rem; /* 9px × 1.25 — always one row reserved in FULL AUTO */
-}
-
-.vram-forecast-hero__sub--placeholder {
-  visibility: hidden;
-  pointer-events: none;
-  user-select: none;
-}
-
-/* Tabular digits + fixed slots so 9.1 → 88.4 does not shift "of VRAM / RAM" */
-.vram-forecast-gb-value {
-  font-variant-numeric: tabular-nums;
-  display: inline-block;
-  min-width: 4.5ch;
-  text-align: right;
-}
-
-/* Reserve glow slot when plain formula digits ↔ accented measured digits */
-.vram-forecast-gb-value:not(.vram-forecast-gb-accented) {
-  filter: drop-shadow(0 0 8px transparent);
-}
-
-/* Scenario badge — fixed corner slot */
-.vram-forecast-scenario-badge {
-  width: 4.75rem;
-  min-height: 1.75rem;
-}
-
-.vram-forecast-scenario-badge > div {
-  width: 100%;
-}
-
-/* SOURCE row — breathing room below FORECAST "needs" line */
-.vram-forecast-source {
-  padding-top: 4px;
-}
-
-/* FORECAST GPU/RAM layer captions — system-console-mono at readable size */
-.vram-forecast-layer-text {
-  font-size: 9px;
-  line-height: 1.25;
-}
-
-/* VRAM / RAM bars — compact inset warnings (SPILL, AUTO host offload) */
-.vram-forecast-bar__inset-label {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding: 0 6px;
-  font-size: 7px;
-  font-family: ui-monospace, monospace;
-  line-height: 1;
-  text-align: right;
-  pointer-events: none;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.vram-forecast-bar__inset-label--ram {
-  color: rgba(191, 219, 254, 0.92);
-  text-shadow: 0 0 4px rgba(0, 0, 0, 0.85);
-}
-
-.vram-forecast-bar__inset-label--kv {
-  color: rgba(248, 113, 113, 0.92);
-  text-shadow: 0 0 4px rgba(0, 0, 0, 0.85);
-}
-
-.vram-forecast-bar__inset-label--kv-critical {
-  color: rgba(248, 113, 113, 0.98);
-  text-shadow: 0 0 5px rgba(0, 0, 0, 0.9);
-}
-
-[data-display-texture="phosphor-light"] .vram-forecast-bar__inset-label--ram {
-  color: rgba(30, 58, 138, 0.88);
-  text-shadow: none;
-}
-
-[data-display-texture="phosphor-light"] .vram-forecast-bar__inset-label--kv,
-[data-display-texture="phosphor-light"] .vram-forecast-bar__inset-label--kv-critical {
-  color: rgba(153, 27, 27, 0.9);
-  text-shadow: none;
-}
-
-/* SOURCE band — header + fixed 3 body lines (formula/learned/FIT must not reflow height) */
-.memory-source-strip {
-  /* header (~10px) + 3×10px body + gaps */
-  min-height: 44px;
-}
-
-.memory-source-header {
-  min-height: 10px;
-}
-
-.memory-source-body {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  /* 8px mono × leading 1.25 × 3 lines + 2×1px gap */
-  min-height: 32px;
-  flex: 0 0 auto;
-}
-
-.memory-source-body__line {
-  display: block;
-  min-width: 0;
-  min-height: 10px;
-  line-height: 1.25;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.memory-source-body__line--breakdown {
-  color: color-mix(in srgb, currentColor 80%, transparent);
-}
-
-.memory-source-body__line--secondary {
-  color: color-mix(in srgb, currentColor 65%, transparent);
-}
-
-.memory-source-body__line--empty {
-  visibility: hidden;
-  pointer-events: none;
-  user-select: none;
-}
-
-/* SOURCE kind — widest label (FIT PROBE) reserves width */
-.memory-source-kind-label {
-  display: inline-block;
-  min-width: 4.75rem;
-}
-
-/* FIT probe btn — RUN / PROBING / RE-PROBE share one width */
-.fit-probe-btn {
-  min-width: 5.25rem;
-  text-align: center;
-}
 
 .industrial-display-frame {
   position: relative;

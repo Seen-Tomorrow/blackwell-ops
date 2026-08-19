@@ -779,11 +779,12 @@
   background-color: var(--theme-industrial-bar-track) !important;
 }
 
-/* PHOSPHOR DARK — drop the GB-digit neon gradient + glow (flat accent text, no halo).
-   Mirrors the phosphor-light de-glow. On a dark face the bright drop-shadow reads as
-   harsh glow (esp. ARCTIC light theme forced dark). Bars/tracks/readouts unchanged. */
+/* PHOSPHOR DARK — measured GB digits stay flat (no halo). Instrument accents are solid
+   color now; still kill any leftover filter/text-shadow from accent classes. */
 [data-display-texture="phosphor-dark"] .vram-forecast-display .vram-forecast-gb-accented,
-[data-display-texture="phosphor-dark"] .industrial-display-area .vram-forecast-display .vram-forecast-gb-accented {
+[data-display-texture="phosphor-dark"] .industrial-display-area .vram-forecast-display .vram-forecast-gb-accented,
+[data-display-texture="phosphor-dark"] .vram-forecast-display .vram-fc-need__val,
+[data-display-texture="phosphor-dark"] .industrial-display-area .vram-forecast-display .vram-fc-need__val {
   background-image: none !important;
   background-clip: unset !important;
   -webkit-background-clip: unset !important;

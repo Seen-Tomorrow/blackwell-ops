@@ -16,21 +16,18 @@ interface MemorySourcePanelProps {
 
 function ConfidencePips({ level }: { level: MemorySource["confidence"] }) {
   return (
-    <span className="inline-flex gap-px shrink-0" aria-hidden>
+    <span className="vram-fc-source__pips" aria-hidden>
       {[1, 2, 3, 4].map((n) => (
         <span
           key={n}
-          className={`inline-block w-[3px] h-[3px] rounded-full ${
-            n <= level ? "bg-current opacity-90" : "bg-current opacity-25"
-          }`}
+          className={`vram-fc-source__pip${n <= level ? " is-on" : ""}`}
         />
       ))}
     </span>
   );
 }
 
-/** SOURCE block — header + fixed 3 body slots (detail / breakdown / secondary).
- *  Always mount all three lines so formula ↔ learned ↔ FIT cache never shifts VramBadge height. */
+/** SOURCE instrument strip — fixed 3 body slots so kind swaps never reflow height. */
 export default function MemorySourcePanel({
   memorySource,
   isValidating = false,
@@ -42,15 +39,17 @@ export default function MemorySourcePanel({
   const label = MEMORY_SOURCE_LABELS[memorySource.kind];
 
   return (
-    <div className="memory-source-strip flex flex-col gap-px min-w-0">
-      <div className="memory-source-header flex items-center gap-1 min-w-0 text-[8px] font-mono leading-none">
-        <span className="text-[7px] tracking-widest text-stealth-muted uppercase shrink-0">
-          SOURCE
-        </span>
-        <span className="text-stealth-muted/40 shrink-0">·</span>
-        <span className={`inline-flex items-center gap-0.5 shrink-0 ${accent.text}`}>
+    <div
+      className="vram-fc-source memory-source-strip"
+      data-source-kind={memorySource.kind}
+    >
+      <div className="vram-fc-source__head memory-source-header">
+        <span className="vram-fc-source__lab">SOURCE</span>
+        <span className={`vram-fc-source__kind ${accent.text}`}>
           <ConfidencePips level={memorySource.confidence} />
-          <span className="memory-source-kind-label tracking-wider">{label}</span>
+          <span className="memory-source-kind-label vram-fc-source__kind-lab">
+            {label}
+          </span>
         </span>
         {onValidate && !hideValidate && (
           <FitProbeButton
@@ -61,19 +60,19 @@ export default function MemorySourcePanel({
         )}
       </div>
 
-      <div className="memory-source-body min-w-0 text-[8px] font-mono text-stealth-muted">
-        <span className="memory-source-body__line memory-source-body__line--detail">
+      <div className="vram-fc-source__body memory-source-body">
+        <span className="memory-source-body__line memory-source-body__line--detail vram-fc-source__line">
           {memorySource.detail || "\u00a0"}
         </span>
         <span
-          className={`memory-source-body__line memory-source-body__line--breakdown${
+          className={`memory-source-body__line memory-source-body__line--breakdown vram-fc-source__line${
             memorySource.breakdown ? "" : " memory-source-body__line--empty"
           }`}
         >
           {memorySource.breakdown || "\u00a0"}
         </span>
         <span
-          className={`memory-source-body__line memory-source-body__line--secondary${
+          className={`memory-source-body__line memory-source-body__line--secondary vram-fc-source__line${
             memorySource.breakdownSecondary ? "" : " memory-source-body__line--empty"
           }`}
         >
@@ -101,20 +100,17 @@ export function FitProbeButton({
 }: FitProbeButtonProps) {
   if (!onClick) return null;
 
+  const state = isValidating ? "probing" : hasProbed ? "reprobe" : "idle";
+
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={isValidating}
-      className={`fit-probe-btn px-1.5 py-px text-[7px] font-mono tracking-widest rounded-sm border whitespace-nowrap shrink-0 transition-colors ${
-        isValidating
-          ? "border-yellow-400/40 text-yellow-400 cursor-wait animate-pulse"
-          : hasProbed
-            ? "border-amber-400/50 text-amber-400 hover:bg-amber-400/10"
-            : "border-stealth-muted/50 text-stealth-muted hover:text-white hover:border-stealth-muted"
-      }`}
+      data-probe-state={state}
+      className="vram-fc-probe fit-probe-btn"
     >
-      {isValidating ? "⟳ PROBING…" : hasProbed ? "↻ RE-PROBE" : "RUN FIT PROBE"}
+      {isValidating ? "PROBING…" : hasProbed ? "RE-PROBE" : "FIT PROBE"}
     </button>
   );
 }
