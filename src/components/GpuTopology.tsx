@@ -2,7 +2,7 @@ import type { GpuAllocation } from "../lib/types";
 import { splitGpuTopoBarUsage } from "../services/vram/scenarios/scenarios_factory";
 
 /** Visible row bank in forecast glass — extra rows scroll (wheel). */
-export const GPU_TOPO_MAX_ROWS = 3;
+export const GPU_TOPO_MAX_ROWS = 2;
 
 interface GpuTopologyProps {
   gpuAllocations: GpuAllocation[];

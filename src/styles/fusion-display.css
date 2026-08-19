@@ -566,62 +566,6 @@
   gap: calc(3px * var(--vram-fc-scale));
 }
 
-/* ASSISTED upper pack: instruments left, VRAM/RAM bars right */
-.vram-fc__assisted-pack {
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(7.5rem, 0.9fr);
-  gap: calc(8px * var(--vram-fc-scale));
-  align-items: stretch;
-  min-width: 0;
-}
-
-.vram-fc__assisted-main {
-  display: flex;
-  flex-direction: column;
-  gap: calc(3px * var(--vram-fc-scale));
-  min-width: 0;
-  min-height: 0;
-}
-
-.vram-fc__assisted-bars {
-  display: flex;
-  flex-direction: column;
-  justify-content: stretch;
-  min-width: 0;
-  min-height: 0;
-}
-
-.vram-fc__assisted-bars .vram-fc-bars {
-  flex: 1 1 auto;
-  height: 100%;
-  justify-content: center;
-  gap: calc(7px * var(--vram-fc-scale));
-  padding: 0;
-}
-
-.vram-fc__assisted-bars .vram-fc-bar-row {
-  flex: 1 1 auto;
-  align-items: stretch;
-  min-height: calc(22px * var(--vram-fc-scale));
-}
-
-.vram-fc__assisted-bars .vram-fc-bar {
-  display: flex;
-  flex-direction: column;
-}
-
-.vram-fc__assisted-bars .vram-fc-bar__track {
-  flex: 1 1 auto;
-  height: auto;
-  min-height: calc(16px * var(--vram-fc-scale));
-}
-
-.vram-fc__assisted-bars .vram-fc-bar__cap {
-  align-self: center;
-  font-size: var(--vram-fc-fs-sm);
-  min-width: 4.5ch;
-}
-
 .vram-fc__title-row {
   display: flex;
   align-items: center;
@@ -991,7 +935,7 @@
 
 /* topo scroll/container rules live with GPU topology block */
 
-/* ── Dominant VRAM / RAM bars (ASSISTED) ─────────────────────────────── */
+/* ── VRAM / RAM bars — one horizontal split row (ASSISTED) ───────────── */
 .vram-fc-bars {
   display: flex;
   flex-direction: column;
@@ -1000,17 +944,42 @@
   flex: 0 0 auto;
 }
 
+.vram-fc-bars--split {
+  flex-direction: row;
+  align-items: center;
+  gap: calc(10px * var(--vram-fc-scale));
+}
+
 .vram-fc[data-forecast-mode="assisted"] .vram-fc-bars {
-  /* Claim a solid band so bars read as primary instruments */
   flex: 0 0 auto;
-  padding: calc(2px * var(--vram-fc-scale)) 0;
+  padding: calc(1px * var(--vram-fc-scale)) 0;
 }
 
 .vram-fc-bar-row {
   display: flex;
   align-items: center;
-  gap: calc(8px * var(--vram-fc-scale));
+  gap: calc(6px * var(--vram-fc-scale));
   min-width: 0;
+  flex: 1 1 0;
+}
+
+.vram-fc-bars--split .vram-fc-bar-row--vram,
+.vram-fc-bars--split .vram-fc-bar-row--ram {
+  min-width: 0;
+}
+
+.vram-fc-bar__lab {
+  flex: 0 0 auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--vram-fc-fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  line-height: 1;
+  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 72%, transparent);
+}
+
+.vram-fc-bar__lab--ram {
+  color: color-mix(in srgb, var(--theme-telemetry-blue, #60a5fa) 78%, transparent);
 }
 
 .vram-fc-bar {
@@ -1051,13 +1020,14 @@
 .vram-fc-bar__cap {
   flex: 0 0 auto;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: var(--vram-fc-fs-md);
+  font-size: var(--vram-fc-fs-sm);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
   color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 86%, transparent);
   white-space: nowrap;
-  min-width: 5.5ch;
+  min-width: 4.5ch;
+  text-align: right;
 }
 
 .vram-fc-bar__cap--ram {
@@ -1109,7 +1079,7 @@
   text-shadow: none;
 }
 
-/* SOURCE — one-line */
+/* SOURCE — bare type, no plate (ASSISTED + FULL AUTO) */
 .memory-source-strip,
 .vram-fc-source {
   min-height: 0;
@@ -1117,15 +1087,16 @@
   flex-direction: column;
   gap: 0;
   min-width: 0;
-  padding: calc(3px * var(--vram-fc-scale)) calc(6px * var(--vram-fc-scale));
-  border-radius: 2px;
-  border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.4)) 36%, transparent);
-  background: color-mix(in srgb, var(--display-face-bar-bg, rgba(0, 0, 0, 0.4)) 42%, transparent);
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
   box-sizing: border-box;
 }
 
 .vram-fc-source--inline {
-  min-height: calc(20px * var(--vram-fc-scale));
+  min-height: calc(16px * var(--vram-fc-scale));
   justify-content: center;
 }
 
@@ -1284,7 +1255,7 @@
   overflow: visible;
 }
 
-/* When >3 rows: content taller than viewport; topo scrolls */
+/* When >max rows: content taller than viewport; topo scrolls */
 .gpu-topology-root--fill[data-gpu-scroll="1"] {
   height: auto;
   min-height: 100%;
@@ -1305,14 +1276,14 @@
   align-content: stretch;
 }
 
-/* >3 rows: each row = 1/3 of topo viewport; wheel reveals more */
+/* >max rows: each row = 1/max of topo viewport; wheel reveals more */
 .gpu-topology-root--fill[data-gpu-scroll="1"] .gpu-topology-grid {
   flex: 0 0 auto;
   height: auto;
   align-content: start;
   grid-auto-rows: calc(
-    (100cqh - (var(--gpu-topo-max-rows, 3) - 1) * var(--gpu-topo-gap))
-    / var(--gpu-topo-max-rows, 3)
+    (100cqh - (var(--gpu-topo-max-rows, 2) - 1) * var(--gpu-topo-gap))
+    / var(--gpu-topo-max-rows, 2)
   );
 }
 

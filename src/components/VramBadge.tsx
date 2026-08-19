@@ -385,9 +385,9 @@ export default function VramBadge({
   );
 
   const barBank = showDetailedForecast ? (
-    <div className="vram-fc-bars vram-badge-bars relative">
+    <div className="vram-fc-bars vram-badge-bars vram-fc-bars--split relative">
       {!hideMoeBadge && modelMeta != null && modelMeta.n_expert > 0 && (
-        <div className="absolute right-0 top-0 bottom-0 flex items-center z-10">
+        <div className="absolute right-0 -top-5 flex items-center z-10">
           <MoeBadge
             offloadMode={offloadMode}
             shouldHighlight={manifest.moeSuggestion?.shouldHighlight}
@@ -397,7 +397,8 @@ export default function VramBadge({
         </div>
       )}
 
-      <div className="vram-fc-bar-row">
+      <div className="vram-fc-bar-row vram-fc-bar-row--vram">
+        <span className="vram-fc-bar__lab">VRAM</span>
         <div className="vram-fc-bar vram-forecast-vram-bar" aria-label="VRAM fill">
           <div className="vram-fc-bar__track">
             <div
@@ -407,12 +408,13 @@ export default function VramBadge({
           </div>
         </div>
         <span className={`vram-fc-bar__cap ${s.titleColor}`}>
-          | {totalVramGb.toFixed(0)} GB
+          {totalVramGb.toFixed(0)} GB
         </span>
       </div>
 
       {t.showRamBar !== false && (
-        <div className="vram-fc-bar-row">
+        <div className="vram-fc-bar-row vram-fc-bar-row--ram">
+          <span className="vram-fc-bar__lab vram-fc-bar__lab--ram">RAM</span>
           <div className="vram-fc-bar vram-forecast-ram-bar" aria-label="RAM fill">
             <div className="vram-fc-bar__track">
               <div
@@ -423,7 +425,7 @@ export default function VramBadge({
               />
             </div>
           </div>
-          <span className="vram-fc-bar__cap vram-fc-bar__cap--ram">| {ramMfgGb} GB</span>
+          <span className="vram-fc-bar__cap vram-fc-bar__cap--ram">{ramMfgGb} GB</span>
         </div>
       )}
     </div>
@@ -444,24 +446,17 @@ export default function VramBadge({
 
       {showDetailedForecast ? (
         <div className="vram-fc__header vram-forecast-header vram-forecast-header--assisted flex-shrink-0 min-w-0">
-          <div className="vram-fc__assisted-pack">
-            <div className="vram-fc__assisted-main">
-              <div className="vram-fc__title-row">
-                {forecastScenarioTitle}
-                <span
-                  className={`vram-fc__verdict${manifest.fits ? " is-ok" : " is-fail"}`}
-                  title={manifest.fits ? "Projected fit" : "Projected no-fit"}
-                >
-                  {manifest.fits ? "FITS" : "WON'T"}
-                </span>
-              </div>
-              {needInstruments}
-              {forecastSourceRow}
-            </div>
-            <div className="vram-fc__assisted-bars">
-              {barBank}
-            </div>
+          <div className="vram-fc__title-row">
+            {forecastScenarioTitle}
+            <span
+              className={`vram-fc__verdict${manifest.fits ? " is-ok" : " is-fail"}`}
+              title={manifest.fits ? "Projected fit" : "Projected no-fit"}
+            >
+              {manifest.fits ? "FITS" : "WON'T"}
+            </span>
           </div>
+          {needInstruments}
+          {forecastSourceRow}
         </div>
       ) : (
         <div className="vram-fc__header vram-fc-auto vram-forecast-hero flex-shrink-0 min-w-0">
@@ -492,6 +487,8 @@ export default function VramBadge({
       )}
 
       <div className="vram-badge-body vram-fc__body relative min-h-0 overflow-hidden">
+        {barBank}
+
         {manifest.gpuAllocations.length > 0 && (
           <div className="vram-fc__topo">
             <GpuTopology
