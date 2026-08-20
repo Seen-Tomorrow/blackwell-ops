@@ -136,7 +136,68 @@ fn normalize_spec_type(spec_type: &str) -> String {
     }
 }
 
-fn optional_launch_suffix(spec_type: &str, cache_ram: &str, draft_key: &str) -> String {
+fn normalize_batch_key(batch: &str) -> String {
+    let s = batch.trim();
+    if s.is_empty() {
+        return "0".to_string();
+    }
+    // Keep digits only when possible so "512" and "512.0" collapse.
+    if let Ok(n) = s.parse::<u64>() {
+        return n.to_string();
+    }
+    s.to_lowercase()
+}
+
+fn normalize_flash_key(flash: &str) -> String {
+    let s = flash.trim().to_lowercase();
+    if s.is_empty() || s == "off" || s == "0" || s == "false" || s == "no" {
+        "off".to_string()
+    } else if s == "on" || s == "1" || s == "true" || s == "yes" || s == "auto" {
+        // Treat auto as on for footprint — FA auto still allocates FA path on master.
+        "on".to_string()
+    } else {
+        s
+    }
+}
+
+/// Parse `|name=value` from a learn key (value ends at next `|`).
+fn key_field<'a>(key: &'a str, name: &str) -> Option<&'a str> {
+    let marker = format!("|{name}=");
+    let start = key.find(&marker)? + marker.len();
+    let rest = &key[start..];
+    let end = rest.find('|').unwrap_or(rest.len());
+    Some(rest[..end].trim())
+}
+
+/// batch / ubatch / flash must match when present on the key.
+/// Missing fields (pre-hard-mem keys) never match — demotes stale LEARNED until re-launch.
+fn key_matches_hard_mem(key: &str, batch: &str, ubatch: &str, flash: &str) -> bool {
+    let want_b = normalize_batch_key(batch);
+    let want_u = normalize_batch_key(ubatch);
+    let want_f = normalize_flash_key(flash);
+    match key_field(key, "batch") {
+        Some(v) if normalize_batch_key(v) == want_b => {}
+        _ => return false,
+    }
+    match key_field(key, "ubatch") {
+        Some(v) if normalize_batch_key(v) == want_u => {}
+        _ => return false,
+    }
+    match key_field(key, "flash") {
+        Some(v) if normalize_flash_key(v) == want_f => {}
+        _ => return false,
+    }
+    true
+}
+
+fn optional_launch_suffix(
+    spec_type: &str,
+    cache_ram: &str,
+    draft_key: &str,
+    batch: &str,
+    ubatch: &str,
+    flash: &str,
+) -> String {
     let mut out = String::new();
     let spec = normalize_spec_type(spec_type);
     if spec != "none" {
@@ -155,6 +216,10 @@ fn optional_launch_suffix(spec_type: &str, cache_ram: &str, draft_key: &str) -> 
     if !ram.is_empty() && ram != "0" {
         out.push_str(&format!("|cache_ram={ram}"));
     }
+    // Always emit — FIT-hard knobs that move VRAM independent of ctx.
+    out.push_str(&format!("|batch={}", normalize_batch_key(batch)));
+    out.push_str(&format!("|ubatch={}", normalize_batch_key(ubatch)));
+    out.push_str(&format!("|flash={}", normalize_flash_key(flash)));
     out
 }
 
@@ -169,6 +234,9 @@ fn param_suffix(
     spec_type: &str,
     cache_ram: &str,
     draft_key: &str,
+    batch: &str,
+    ubatch: &str,
+    flash: &str,
 ) -> String {
     format!(
         "|{}|ctx={}|kv={}|dev={}|split={}|mode={}|offload={}{}",
@@ -179,7 +247,7 @@ fn param_suffix(
         split.trim().to_lowercase(),
         memory_mode.trim().to_lowercase(),
         normalize_offload_mode(offload_mode),
-        optional_launch_suffix(spec_type, cache_ram, draft_key),
+        optional_launch_suffix(spec_type, cache_ram, draft_key, batch, ubatch, flash),
     )
 }
 
@@ -216,6 +284,9 @@ pub fn learned_vram_key(
     offload_mode: &str,
     spec_type: &str,
     cache_ram: &str,
+    batch: &str,
+    ubatch: &str,
+    flash: &str,
 ) -> String {
     learned_vram_key_with_draft(
         model_path,
@@ -229,6 +300,9 @@ pub fn learned_vram_key(
         spec_type,
         cache_ram,
         "",
+        batch,
+        ubatch,
+        flash,
     )
 }
 
@@ -244,6 +318,9 @@ pub fn learned_vram_key_with_draft(
     spec_type: &str,
     cache_ram: &str,
     draft_key: &str,
+    batch: &str,
+    ubatch: &str,
+    flash: &str,
 ) -> String {
     let normalized_path = normalize_model_path_for_key(model_path);
     format!(
@@ -260,6 +337,9 @@ pub fn learned_vram_key_with_draft(
             spec_type,
             cache_ram,
             draft_key,
+            batch,
+            ubatch,
+            flash,
         ),
     )
 }
@@ -301,6 +381,25 @@ fn memory_mode_from_config(config: &EngineConfig) -> String {
         .unwrap_or_else(|| "full_auto".to_string())
 }
 
+fn batch_from_config(config: &EngineConfig) -> String {
+    config
+        .get_param_str("batch")
+        .unwrap_or_else(|| "512".to_string())
+}
+
+fn ubatch_from_config(config: &EngineConfig) -> String {
+    config
+        .get_param_str("ubatch")
+        .unwrap_or_else(|| "512".to_string())
+}
+
+fn flash_from_config(config: &EngineConfig) -> String {
+    config
+        .get_param_str("flash_attn")
+        .or_else(|| config.get_param_str("flash"))
+        .unwrap_or_else(|| "on".to_string())
+}
+
 pub fn learned_vram_key_from_config(model_path: &str, provider_id: &str, config: &EngineConfig) -> String {
     learned_vram_key_with_draft(
         model_path,
@@ -320,6 +419,9 @@ pub fn learned_vram_key_from_config(model_path: &str, provider_id: &str, config:
             .get_param_str("cache_ram")
             .unwrap_or_else(|| "0".to_string()),
         &draft_path_from_config(config),
+        &batch_from_config(config),
+        &ubatch_from_config(config),
+        &flash_from_config(config),
     )
 }
 
@@ -335,6 +437,9 @@ fn lookup_learned_vram_fuzzy(
     spec_type: &str,
     cache_ram: &str,
     draft_key: &str,
+    batch: &str,
+    ubatch: &str,
+    flash: &str,
 ) -> Option<LearnedVramEntry> {
     let store = load_store();
     let normalized_path = normalize_model_path_for_key(model_path);
@@ -350,7 +455,9 @@ fn lookup_learned_vram_fuzzy(
         spec_type,
         cache_ram,
         draft_key,
-    );
+        batch,
+        ubatch,
+        flash);
     if let Some(entry) = store.entries.get(&primary) {
         return Some(entry.clone());
     }
@@ -368,7 +475,9 @@ fn lookup_learned_vram_fuzzy(
             spec_type,
             cache_ram,
             "",
-        );
+        batch,
+        ubatch,
+        flash);
         if no_draft != primary {
             if let Some(entry) = store.entries.get(&no_draft) {
                 return Some(entry.clone());
@@ -389,7 +498,9 @@ fn lookup_learned_vram_fuzzy(
             "none",
             "0",
             "",
-        );
+        batch,
+        ubatch,
+        flash);
         if without_launch != primary {
             if let Some(entry) = store.entries.get(&without_launch) {
                 return Some(entry.clone());
@@ -424,7 +535,9 @@ fn lookup_learned_vram_fuzzy(
             spec_type,
             cache_ram,
             draft_key,
-        );
+        batch,
+        ubatch,
+        flash);
         if let Some(entry) = store.entries.get(&alt_key) {
             return Some(entry.clone());
         }
@@ -462,6 +575,9 @@ fn lookup_learned_vram_fuzzy(
             continue;
         }
         if !k.contains(&format!("|kv={kv_n}|")) {
+            continue;
+        }
+        if !key_matches_hard_mem(k, batch, ubatch, flash) {
             continue;
         }
         if !split_n.is_empty() && split_n != "none" && !k.contains(&format!("|split={split_n}|")) {
@@ -541,6 +657,9 @@ pub fn lookup_learned_vram_for_config(
             .get_param_str("cache_ram")
             .unwrap_or_else(|| "0".to_string()),
         &draft_path_from_config(config),
+        &batch_from_config(config),
+        &ubatch_from_config(config),
+        &flash_from_config(config),
     )
 }
 
@@ -814,6 +933,9 @@ pub fn get_learned_vram(
     spec_type: Option<String>,
     cache_ram: Option<String>,
     draft_model: Option<String>,
+    batch: Option<String>,
+    ubatch: Option<String>,
+    flash: Option<String>,
 ) -> Option<LearnedVramEntry> {
     let _guard = STORE_MUTEX.lock().ok()?;
     let mode = memory_mode
@@ -833,6 +955,9 @@ pub fn get_learned_vram(
         .as_deref()
         .unwrap_or("0");
     let draft = draft_model.as_deref().unwrap_or("");
+    let batch_s = batch.as_deref().unwrap_or("512");
+    let ubatch_s = ubatch.as_deref().unwrap_or("512");
+    let flash_s = flash.as_deref().unwrap_or("on");
     lookup_learned_vram_fuzzy(
         &model_path,
         &provider_id,
@@ -845,6 +970,9 @@ pub fn get_learned_vram(
         spec,
         cache,
         draft,
+        batch_s,
+        ubatch_s,
+        flash_s,
     )
 }
 
@@ -870,6 +998,9 @@ fn entry_matches_curve_hard_knobs(
     kv_n: &str,
     spec_n: &str,
     draft_base: &str,
+    batch: &str,
+    ubatch: &str,
+    flash: &str,
 ) -> bool {
     let path_prefix = format!("{path_norm}|");
     if !key.starts_with(&path_prefix) {
@@ -883,6 +1014,9 @@ fn entry_matches_curve_hard_knobs(
         }
     }
     if !key.contains(&format!("|kv={kv_n}|")) {
+        return false;
+    }
+    if !key_matches_hard_mem(key, batch, ubatch, flash) {
         return false;
     }
     let key_has_spec = key.contains("|spec=");
@@ -940,6 +1074,9 @@ pub fn get_learned_vram_curve(
     spec_type: Option<String>,
     draft_model: Option<String>,
     split: Option<String>,
+    batch: Option<String>,
+    ubatch: Option<String>,
+    flash: Option<String>,
 ) -> Vec<LearnedVramCurvePoint> {
     let Some(_guard) = STORE_MUTEX.lock().ok() else {
         return Vec::new();
@@ -961,6 +1098,9 @@ pub fn get_learned_vram_curve(
         }
     };
     let split_n = normalize_split_mode(split.as_deref().unwrap_or("none"));
+    let batch_s = batch.as_deref().unwrap_or("512");
+    let ubatch_s = ubatch.as_deref().unwrap_or("512");
+    let flash_s = flash.as_deref().unwrap_or("on");
     let mut best: std::collections::HashMap<usize, (String, LearnedVramCurvePoint)> =
         std::collections::HashMap::new();
     for (k, entry) in &store.entries {
@@ -971,6 +1111,9 @@ pub fn get_learned_vram_curve(
             &kv_n,
             &spec_n,
             &draft_base,
+            batch_s,
+            ubatch_s,
+            flash_s,
         ) {
             continue;
         }

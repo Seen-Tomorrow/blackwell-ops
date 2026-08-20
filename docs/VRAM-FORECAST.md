@@ -99,14 +99,13 @@ FIT table T columns show **`noΔ`** when `|T − none| ≤ 128 MiB`. Upstream ll
 
 ## Learned curve
 
-- Write key (`vram_learn.rs`): full model path + provider + ctx + kv + device + split + mode + offload + optional spec/draft/cache_ram.
-- Curve read: same path/provider/kv/spec/draft/**split**; device ignored; newest `measured_at` per ctx.
-- Frontend refetches when `learnedIdentityKey` or placement split changes.
-- Session none-FIT probe may join the **none** curve only. Layer/tensor never inherit that probe as a curve point without tax.
+- Write key (`vram_learn.rs`): full model path + provider + ctx + kv + device + split + mode + offload + optional spec/draft/cache_ram + **batch + ubatch + flash**.
+- Curve read: same path/provider/kv/spec/draft/**split** + **batch/ubatch/flash**; device ignored; newest `measured_at` per ctx.
+- Pre-hard-mem rows (no `|batch=` / `|ubatch=` / `|flash=`) **do not** match — change batch/ubatch/flash demotes to FIT PROBE until a launch re-learns at those knobs.
+- Frontend refetches when `learnedIdentityKey` (includes fitProbeKey: kv/batch/ubatch/flash) or split changes.
+- Session none-FIT probe may join the **none** curve only when hard knobs match. Layer/tensor never inherit that probe as a curve point without tax.
 
 **Path move:** main model is full-path keyed → move/rename loses LEARNED/FIT rows (orphan keys remain). Draft is basename-only. Content-hash keys deferred.
-
----
 
 ## SOURCE chips
 
