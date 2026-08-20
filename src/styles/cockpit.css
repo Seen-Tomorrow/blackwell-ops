@@ -2393,10 +2393,9 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--brain 
 .full-auto-cockpit__ctx-hero {
   position: relative;
   display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.7rem 0.5rem 0.7rem;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.45rem 0.5rem 0.35rem;
   overflow: visible;
   border-radius: 3px;
   border: 1px solid var(--theme-frame-border, color-mix(in srgb, var(--theme-border) 55%, transparent));
@@ -2415,6 +2414,14 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--brain 
   box-shadow: none;
 }
 
+.full-auto-cockpit__ctx-hero-main {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
 .full-auto-cockpit__ctx-slider {
   flex: 1;
   min-width: 0;
@@ -2430,20 +2437,67 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--brain 
   gap: 0.4ch;
 }
 
-/* Pin to hero far-left — must not steal horizontal space from slider/value. */
+/* Footer: legend + filter grouped on the right under the value chip. */
+.full-auto-cockpit__ctx-footer {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.45rem;
+  min-height: 14px;
+  padding: 0 0.1rem 0.05rem;
+}
+
+.full-auto-cockpit__ctx-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  font-size: 7px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--theme-industrial-muted, #4ade80) 55%, transparent);
+  line-height: 1;
+  user-select: none;
+}
+
+.full-auto-cockpit__ctx-legend-sep {
+  opacity: 0.45;
+  margin: 0 0.05rem;
+}
+
+.full-auto-cockpit__ctx-swatch {
+  display: inline-block;
+  width: 2px;
+  height: 9px;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+
+.full-auto-cockpit__ctx-swatch--learned {
+  background: #22d3ee;
+  box-shadow: 0 0 4px rgba(34, 211, 238, 0.75);
+}
+
+.full-auto-cockpit__ctx-swatch--custom {
+  width: 2px;
+  background: repeating-linear-gradient(
+    to bottom,
+    #22d3ee 0 2px,
+    transparent 2px 3.5px
+  );
+}
+
 .full-auto-cockpit__ctx-marks-toggle {
-  position: absolute;
-  left: 0.28rem;
-  bottom: 0.18rem;
-  z-index: 3;
+  position: static;
+  flex-shrink: 0;
   margin: 0;
-  padding: 0.02rem 0.22rem;
-  font-size: 6px;
+  padding: 0.08rem 0.32rem;
+  font-size: 7px;
   letter-spacing: 0.08em;
   line-height: 1.2;
   text-transform: uppercase;
-  color: color-mix(in srgb, #22d3ee 70%, transparent);
-  border: 1px solid color-mix(in srgb, #22d3ee 28%, transparent);
+  color: color-mix(in srgb, #22d3ee 75%, transparent);
+  border: 1px solid color-mix(in srgb, #22d3ee 32%, transparent);
   background: color-mix(in srgb, var(--theme-panel, #0a0a0a) 55%, transparent);
   border-radius: 2px;
   cursor: pointer;

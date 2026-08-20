@@ -125,8 +125,9 @@ No formula chip. Skeleton until one of the above lands.
 `CockpitCtxStrip` (above-dock `standalone`, in-cockpit `standalone={false}`).
 
 - Fluid: hard key unchanged → re-eval interpolates.
-- Cyan ticks = `manifest.learnedCurveCtxs` (non-preset = dotted). Clickable.
-- Toggle **ALL → REG → OFF** (absolute **bottom-left** of hero): all learned / preset-only / hidden.
+- `layout="hero"` rail: value labels sit above; ticks run label→through-rail→below; hit target ~16px wide × full host height.
+- Cyan ticks = `manifest.learnedCurveCtxs` (custom/non-preset = dotted + italic label). Clickable.
+- Footer (when any LEARNED): legend `LEARNED · custom ctx` + filter **ALL → REG → OFF**.
 - Storage: `BlackOps-ctx-learned-marks` (legacy `custom` → `all`).
 
 ---
@@ -153,7 +154,6 @@ Cache: `config/cache/fit_scan_full.json` partitioned by `fit_adapter`. No prune/
 ## Forecast log
 
 `{exe_dir}/config/cache/forecast-log.jsonl`
-
 - `prelaunch` at spawn (`__forecast` on extra_params, not CLI)
 - `measured` when launch buffer inventory persists
 - Join on `learn_key`

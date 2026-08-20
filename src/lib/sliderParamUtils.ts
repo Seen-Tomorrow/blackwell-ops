@@ -18,6 +18,22 @@ export const TRACK_BOTTOM_PX = TRACK_TOP_PX + TRACK_HEIGHT_PX;
 export const TICK_TOP_PX = TRACK_BOTTOM_PX + 2;
 export const TICK_HEIGHT_PX = TICK_ZONE_HEIGHT_PX;
 
+/**
+ * CTX hero rail — taller host so value labels sit above the bar and ticks
+ * run label→through-rail→below (bigger hit targets for learned marks).
+ */
+export const HERO_TRACK_AREA_HEIGHT_PX = 32;
+/** Double the inline track thickness. */
+export const HERO_TRACK_HEIGHT_PX = 12;
+export const HERO_LABEL_ZONE_PX = 10;
+export const HERO_TRACK_TOP_PX = HERO_LABEL_ZONE_PX + 1;
+/** Tick bar from under label through rail and a few px below. */
+export const HERO_TICK_HEIGHT_PX = HERO_TRACK_AREA_HEIGHT_PX - HERO_LABEL_ZONE_PX;
+export const HERO_TICK_TOP_PX = HERO_LABEL_ZONE_PX;
+export const HERO_HIT_WIDTH_PX = 16;
+/** ~25% larger than inline thumb (15 → 19). */
+export const HERO_SLIDER_THUMB_WIDTH_PX = 19;
+
 export interface SliderParamSharedProps {
   paramKey: string;
   currentValue?: number | string;
@@ -29,6 +45,8 @@ export interface SliderParamSharedProps {
   learnedMarks?: number[];
   /** all = preset+custom learned; regular = preset-only; off = hidden. */
   learnedMarkMode?: "all" | "regular" | "off";
+  /** `hero` = CTX strip (taller marks + labels). Default inline param row. */
+  layout?: "inline" | "hero";
 }
 
 export function parseSliderValues(values: (string | number)[]): number[] {

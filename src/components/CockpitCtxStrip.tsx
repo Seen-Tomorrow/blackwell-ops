@@ -1,5 +1,6 @@
 /**
  * CTX rail — one component, two placements (above-dock standalone vs in-cockpit).
+ * Hero layout: taller slider + footer legend (LEARNED marks) + filter toggle.
  */
 
 import { useCallback, useState } from "react";
@@ -18,8 +19,8 @@ export function useCtxLearnedMarkMode(): {
 } {
   const [mode, setMode] = useState<CtxLearnedMarkMode>(loadCtxLearnedMarkMode);
   const cycle = useCallback(() => {
-    setMode((cur) => {
-      const next = cycleCtxLearnedMarkMode(cur);
+    setMode((prev) => {
+      const next = cycleCtxLearnedMarkMode(prev);
       saveCtxLearnedMarkMode(next);
       return next;
     });
@@ -83,40 +84,55 @@ export default function CockpitCtxStrip({
   standalone = true,
 }: CockpitCtxStripProps) {
   const { mode, cycle } = useCtxLearnedMarkMode();
+  const hasLearned = (learnedMarks?.length ?? 0) > 0;
+
   return (
-    <div className={`full-auto-cockpit__ctx-hero${standalone ? " full-auto-cockpit__ctx-hero--standalone" : ""} ${className}`}>
-      <div className="full-auto-cockpit__ctx-slider min-w-0">
-        <CustomSliderParam
-          paramKey="ctx"
-          currentValue={ctxValue}
-          defaultValue={ctxDefault}
-          onChange={onCtxChange}
-          step={ctxStep}
-          values={ctxValues}
-          learnedMarks={learnedMarks}
-          learnedMarkMode={mode}
-        />
+    <div
+      className={`full-auto-cockpit__ctx-hero${standalone ? " full-auto-cockpit__ctx-hero--standalone" : ""}${hasLearned ? " full-auto-cockpit__ctx-hero--has-marks" : ""} ${className}`}
+    >
+      <div className="full-auto-cockpit__ctx-hero-main">
+        <div className="full-auto-cockpit__ctx-slider min-w-0">
+          <CustomSliderParam
+            paramKey="ctx"
+            currentValue={ctxValue}
+            defaultValue={ctxDefault}
+            onChange={onCtxChange}
+            step={ctxStep}
+            values={ctxValues}
+            learnedMarks={learnedMarks}
+            learnedMarkMode={mode}
+            layout="hero"
+          />
+        </div>
+        <div className="full-auto-cockpit__ctx-values">
+          <span className="full-auto-cockpit__ctx-value font-mono">
+            {typeof ctxValue === "number"
+              ? formatCtxChipLabel(ctxValue)
+              : String(ctxValue ?? "")}
+          </span>
+          {ctxPerSlot != null && ctxPerSlot > 0 && ctxSlotCount != null && ctxSlotCount > 1 && (
+            <>
+              <span className="full-auto-cockpit__ctx-sep font-mono">|</span>
+              <span className="full-auto-cockpit__ctx-per-slot font-mono">
+                {formatCtxChipLabel(ctxPerSlot)} / slot
+              </span>
+            </>
+          )}
+        </div>
       </div>
-      <div className="full-auto-cockpit__ctx-values">
-        <span className="full-auto-cockpit__ctx-value font-mono">
-          {typeof ctxValue === "number"
-            ? formatCtxChipLabel(ctxValue)
-            : String(ctxValue ?? "")}
-        </span>
-        {ctxPerSlot != null && ctxPerSlot > 0 && ctxSlotCount != null && ctxSlotCount > 1 && (
-          <>
-            <span className="full-auto-cockpit__ctx-sep font-mono">|</span>
-            <span className="full-auto-cockpit__ctx-per-slot font-mono">
-              {formatCtxChipLabel(ctxPerSlot)} / slot
-            </span>
-          </>
-        )}
-      </div>
-      <CtxLearnedMarkToggle
-        mode={mode}
-        onCycle={cycle}
-        visible={(learnedMarks?.length ?? 0) > 0}
-      />
+
+      {hasLearned ? (
+        <div className="full-auto-cockpit__ctx-footer font-mono">
+          <span className="full-auto-cockpit__ctx-legend" title="Cyan ticks = prior launch measurements at that ctx">
+            <span className="full-auto-cockpit__ctx-swatch full-auto-cockpit__ctx-swatch--learned" aria-hidden />
+            LEARNED
+            <span className="full-auto-cockpit__ctx-legend-sep">·</span>
+            <span className="full-auto-cockpit__ctx-swatch full-auto-cockpit__ctx-swatch--custom" aria-hidden />
+            custom ctx
+          </span>
+          <CtxLearnedMarkToggle mode={mode} onCycle={cycle} visible />
+        </div>
+      ) : null}
     </div>
   );
 }

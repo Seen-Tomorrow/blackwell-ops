@@ -1,9 +1,17 @@
 /**
  * Custom CTX slider — div track, aligned thumb, preset ticks below the rail.
+ * `layout="hero"` (CTX strip): taller host, labels hug vertical marks, fat hit targets.
  */
 
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
+  HERO_HIT_WIDTH_PX,
+  HERO_SLIDER_THUMB_WIDTH_PX,
+  HERO_TICK_HEIGHT_PX,
+  HERO_TICK_TOP_PX,
+  HERO_TRACK_AREA_HEIGHT_PX,
+  HERO_TRACK_HEIGHT_PX,
+  HERO_TRACK_TOP_PX,
   SLIDER_THUMB_WIDTH_PX,
   TRACK_AREA_HEIGHT_PX,
   TRACK_HEIGHT_PX,
@@ -29,8 +37,7 @@ function useTrackWidth() {
     if (!node) return;
 
     const measure = () => {
-      const width = node.getBoundingClientRect().width;
-      if (width > 0) setTrackWidthPx(width);
+      setTrackWidthPx(node.getBoundingClientRect().width);
     };
 
     measure();
@@ -58,7 +65,17 @@ export default function CustomSliderParam({
   values = [],
   learnedMarks = [],
   learnedMarkMode = "all",
+  layout = "inline",
 }: SliderParamSharedProps) {
+  const hero = layout === "hero";
+  const areaH = hero ? HERO_TRACK_AREA_HEIGHT_PX : TRACK_AREA_HEIGHT_PX;
+  const trackH = hero ? HERO_TRACK_HEIGHT_PX : TRACK_HEIGHT_PX;
+  const trackTop = hero ? HERO_TRACK_TOP_PX : TRACK_TOP_PX;
+  const tickTop = hero ? HERO_TICK_TOP_PX : TICK_TOP_PX;
+  const tickH = hero ? HERO_TICK_HEIGHT_PX : TICK_HEIGHT_PX;
+  const hitW = hero ? HERO_HIT_WIDTH_PX : 8;
+  const thumbW = hero ? HERO_SLIDER_THUMB_WIDTH_PX : SLIDER_THUMB_WIDTH_PX;
+
   const numericValues = parseSliderValues(values);
   const min = numericValues.length > 0 ? Math.min(...numericValues) : 2048;
   const max = numericValues.length > 0 ? Math.max(...numericValues) : 524288;
@@ -72,6 +89,8 @@ export default function CustomSliderParam({
         if (learnedMarkMode === "regular" && !presetCtxSet.has(mark)) return false;
         return true;
       });
+  // Preset values that already have a LEARNED cyan mark — draw cyan once, skip white tick.
+  const learnedCoverSet = new Set(visibleLearnedMarks);
 
   const numericValue =
     typeof currentValue === "number" ? currentValue : parseInt(String(currentValue), 10);
@@ -80,6 +99,7 @@ export default function CustomSliderParam({
 
   const { trackRef, trackWidthPx } = useTrackWidth();
   const [hoveredPresetIdx, setHoveredPresetIdx] = useState<number | null>(null);
+  const [hoveredLearned, setHoveredLearned] = useState<number | null>(null);
   const [dragging, setDragging] = useState(false);
   const dragRef = useRef(false);
   const commitValue = useCallback(
@@ -193,8 +213,8 @@ export default function CustomSliderParam({
   return (
     <div
       ref={trackRef}
-      className="ctx-slider-track-host relative flex-1 min-w-0 select-none touch-none"
-      style={{ height: `${TRACK_AREA_HEIGHT_PX}px` }}
+      className={`ctx-slider-track-host relative flex-1 min-w-0 select-none touch-none${hero ? " ctx-slider-track-host--hero" : ""}`}
+      style={{ height: `${areaH}px` }}
       onPointerDown={handleTrackPointerDown}
       onPointerMove={handleTrackPointerMove}
       onPointerUp={endDrag}
@@ -202,10 +222,11 @@ export default function CustomSliderParam({
     >
       <div
         className="ctx-slider-track absolute left-0 right-0 rounded-sm z-[1]"
-        style={{ top: `${TRACK_TOP_PX}px`, height: `${TRACK_HEIGHT_PX}px` }}
+        style={{ top: `${trackTop}px`, height: `${trackH}px` }}
       />
-
       {numericValues.map((pNum, idx) => {
+        // LEARNED owns this ctx — cyan mark only (no white+cyan stack).
+        if (learnedCoverSet.has(pNum)) return null;
         const pct =
           trackWidthPx > 0 ? thumbCenterPercent(pNum, min, max, trackWidthPx) : 0;
         const isDefault = hasDefault && pNum === defaultNumeric;
@@ -219,16 +240,18 @@ export default function CustomSliderParam({
             style={{
               left: `${pct}%`,
               transform: "translateX(-50%)",
-              width: "8px",
+              width: `${hitW}px`,
+              height: hero ? `${areaH}px` : undefined,
+              top: hero ? 0 : undefined,
               visibility: trackWidthPx > 0 ? "visible" : "hidden",
             }}
           >
             <span
               aria-hidden
-              className={`ctx-slider-tick absolute left-1/2 -translate-x-1/2 block w-[3px] rounded-sm transition-colors${
+              className={`ctx-slider-tick absolute left-1/2 -translate-x-1/2 block w-[3px] rounded-sm transition-colors pointer-events-none${
                 isDefault ? " ctx-slider-tick--default" : isSelected ? " ctx-slider-tick--selected" : ""
               }`}
-              style={{ top: `${TICK_TOP_PX}px`, height: `${TICK_HEIGHT_PX}px` }}
+              style={{ top: `${tickTop}px`, height: `${tickH}px` }}
             />
             <button
               type="button"
@@ -239,17 +262,21 @@ export default function CustomSliderParam({
               onMouseLeave={() => setHoveredPresetIdx(null)}
               className="absolute left-1/2 -translate-x-1/2 cursor-pointer bg-transparent border-0 p-0"
               style={{
-                top: `${TICK_TOP_PX}px`,
-                width: "8px",
-                height: `${TICK_HEIGHT_PX}px`,
+                top: hero ? 0 : `${tickTop}px`,
+                width: `${hitW}px`,
+                height: hero ? `${areaH}px` : `${tickH}px`,
               }}
               title={formatTokenLabel(pNum)}
               aria-label={`Set ${formatTokenLabel(pNum)}`}
             />
             {showLabel ? (
               <span
-                className={`ctx-slider-tick-tooltip absolute left-1/2 text-[7px] font-mono whitespace-nowrap pointer-events-none${hoveredPresetIdx === idx || safeValue === pNum ? " ctx-slider-tick-tooltip--active" : ""}`}
-                style={{ top: "0px", transform: "translate(-50%, -100%)" }}
+                className={`ctx-slider-tick-tooltip absolute left-1/2 text-[7px] font-mono whitespace-nowrap pointer-events-none${hoveredPresetIdx === idx || safeValue === pNum ? " ctx-slider-tick-tooltip--active" : ""}${hero ? " ctx-slider-tick-tooltip--hero" : ""}`}
+                style={
+                  hero
+                    ? { top: "0px", transform: "translateX(-50%)" }
+                    : { top: "0px", transform: "translate(-50%, -100%)" }
+                }
               >
                 {formatTokenLabel(pNum)}
               </span>
@@ -260,6 +287,9 @@ export default function CustomSliderParam({
       {visibleLearnedMarks.map((mark) => {
         const pct = trackWidthPx > 0 ? thumbCenterPercent(mark, min, max, trackWidthPx) : 0;
         const isCustom = !presetCtxSet.has(mark);
+        const isActive = safeValue === mark || hoveredLearned === mark;
+        // On presets, always show label (replaces the skipped white tick's label).
+        const showLearnedLabel = hero || isCustom;
         return (
           <div
             key={`${paramKey}-learned-${mark}`}
@@ -268,29 +298,50 @@ export default function CustomSliderParam({
             style={{
               left: `${pct}%`,
               transform: "translateX(-50%)",
+              width: `${hitW}px`,
+              height: hero ? `${areaH}px` : undefined,
+              top: hero ? 0 : undefined,
               visibility: trackWidthPx > 0 ? "visible" : "hidden",
             }}
           >
+            <span
+              aria-hidden
+              className={`ctx-slider-tick ctx-slider-tick--learned absolute left-1/2 -translate-x-1/2 block rounded-sm pointer-events-none${
+                isCustom ? " ctx-slider-tick--learned-custom" : ""
+              }${isActive ? " ctx-slider-tick--learned-active" : ""}`}
+              style={{
+                top: `${tickTop}px`,
+                height: `${tickH}px`,
+                width: isCustom ? "2px" : "3px",
+              }}
+            />
             <button
               type="button"
               data-preset-tick
               onPointerDown={(e) => e.stopPropagation()}
               onClick={() => commitValue(mark)}
-              className={`ctx-slider-tick ctx-slider-tick--learned absolute left-1/2 -translate-x-1/2 block rounded-sm border-0 p-0 cursor-pointer${
-                isCustom ? " ctx-slider-tick--learned-custom" : ""
-              }`}
+              onMouseEnter={() => setHoveredLearned(mark)}
+              onMouseLeave={() => setHoveredLearned(null)}
+              className="absolute left-1/2 -translate-x-1/2 cursor-pointer bg-transparent border-0 p-0"
               style={{
-                top: `${TICK_TOP_PX}px`,
-                height: `${isCustom ? TICK_HEIGHT_PX - 1 : TICK_HEIGHT_PX + 2}px`,
-                width: isCustom ? "2px" : "3px",
+                top: hero ? 0 : `${tickTop}px`,
+                width: `${hitW}px`,
+                height: hero ? `${areaH}px` : `${tickH}px`,
               }}
               title={`Learned ${formatTokenLabel(mark)}`}
               aria-label={`Set learned ${formatTokenLabel(mark)}`}
             />
+            {showLearnedLabel ? (
+              <span
+                className={`ctx-slider-tick-tooltip ctx-slider-tick-tooltip--learned absolute left-1/2 text-[7px] font-mono whitespace-nowrap pointer-events-none${isActive ? " ctx-slider-tick-tooltip--active" : ""}${isCustom ? " ctx-slider-tick-tooltip--custom" : ""}${hero ? " ctx-slider-tick-tooltip--hero" : ""}`}
+                style={{ top: "0px", transform: hero ? "translateX(-50%)" : "translate(-50%, -100%)" }}
+              >
+                {formatTokenLabel(mark)}
+              </span>
+            ) : null}
           </div>
         );
       })}
-
       <div
         role="slider"
         tabIndex={0}
@@ -302,10 +353,10 @@ export default function CustomSliderParam({
           dragging ? "cursor-grabbing" : "cursor-grab"
         }`}
         style={{
-          top: `${TRACK_TOP_PX + TRACK_HEIGHT_PX / 2}px`,
+          top: `${trackTop + trackH / 2}px`,
           left: `${thumbPct}%`,
-          width: `${SLIDER_THUMB_WIDTH_PX}px`,
-          height: `${SLIDER_THUMB_WIDTH_PX}px`,
+          width: `${thumbW}px`,
+          height: `${thumbW}px`,
           transform: "translate(-50%, -50%)",
           visibility: trackWidthPx > 0 ? "visible" : "hidden",
         }}
