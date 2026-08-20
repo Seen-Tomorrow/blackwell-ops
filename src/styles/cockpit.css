@@ -2487,6 +2487,14 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--brain 
   );
 }
 
+.full-auto-cockpit__ctx-swatch--limit {
+  width: 2px;
+  height: 9px;
+  background: #fbbf24;
+  box-shadow: 0 0 4px rgba(251, 191, 36, 0.7);
+}
+
+
 .full-auto-cockpit__ctx-marks-toggle {
   position: static;
   flex-shrink: 0;

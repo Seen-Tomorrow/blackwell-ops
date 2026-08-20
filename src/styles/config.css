@@ -2366,18 +2366,48 @@ select option {
   box-sizing: border-box;
 }
 
-/* Fits-boundary ghost under the rail (hero CTX). */
+/* Fits-boundary ghost on the rail (hero CTX).
+   Green = still within free VRAM; red = projected over.
+   Labeled stem is the *fixed* max-fit ctx — thumb crosses it as you raise CTX. */
 .ctx-slider-ghost--ok {
-  background: color-mix(in srgb, #4ade80 28%, transparent);
+  background: color-mix(in srgb, #4ade80 42%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #4ade80 35%, transparent);
 }
 .ctx-slider-ghost--over {
-  background: color-mix(in srgb, #f87171 22%, transparent);
+  background: color-mix(in srgb, #f87171 38%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #f87171 30%, transparent);
 }
-.ctx-slider-ghost-edge {
+.ctx-slider-ghost-mark {
+  top: 0;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   width: 0;
-  border-left: 1px dashed color-mix(in srgb, #fbbf24 75%, transparent);
-  transform: translateX(-0.5px);
-  box-shadow: 0 0 4px color-mix(in srgb, #fbbf24 40%, transparent);
+}
+.ctx-slider-ghost-stem {
+  position: absolute;
+  left: 50%;
+  width: 0;
+  border-left: 2px solid color-mix(in srgb, #fbbf24 90%, transparent);
+  transform: translateX(-50%);
+  box-shadow: 0 0 6px color-mix(in srgb, #fbbf24 55%, transparent);
+}
+.ctx-slider-ghost-label {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0 3px;
+  font-size: 7px;
+  line-height: 1.15;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: #fbbf24;
+  background: color-mix(in srgb, var(--theme-panel, #0a0a0a) 82%, transparent);
+  border: 1px solid color-mix(in srgb, #fbbf24 45%, transparent);
+  border-radius: 2px;
+  text-shadow: 0 0 6px color-mix(in srgb, #fbbf24 35%, transparent);
 }
 
 .ctx-slider-thumb {

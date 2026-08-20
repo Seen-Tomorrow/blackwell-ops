@@ -288,36 +288,41 @@ export default function CustomSliderParam({
       />
       {fitsBoundaryPct != null && fitsBoundaryCtx != null ? (
         <>
+          {/* Fixed VRAM limit on the ctx scale — green still fits, red over free pool. */}
           <div
             className="ctx-slider-ghost ctx-slider-ghost--ok absolute z-[0] pointer-events-none rounded-sm"
             style={{
               top: `${trackTop}px`,
               height: `${trackH}px`,
               left: 0,
-              width: `${fitsBoundaryPct}%`,
+              width: `${Math.max(fitsBoundaryPct, 0)}%`,
             }}
             aria-hidden
           />
-          <div
-            className="ctx-slider-ghost ctx-slider-ghost--over absolute z-[0] pointer-events-none rounded-sm"
-            style={{
-              top: `${trackTop}px`,
-              height: `${trackH}px`,
-              left: `${fitsBoundaryPct}%`,
-              right: 0,
-            }}
-            aria-hidden
-          />
-          <div
-            className="ctx-slider-ghost-edge absolute z-[1] pointer-events-none"
-            style={{
-              top: `${trackTop - 2}px`,
-              height: `${trackH + 4}px`,
-              left: `${fitsBoundaryPct}%`,
-            }}
-            title={`Fits up to ${formatTokenLabel(fitsBoundaryCtx)}`}
-            aria-hidden
-          />
+          {fitsBoundaryPct < 99.5 ? (
+            <div
+              className="ctx-slider-ghost ctx-slider-ghost--over absolute z-[0] pointer-events-none rounded-sm"
+              style={{
+                top: `${trackTop}px`,
+                height: `${trackH}px`,
+                left: `${fitsBoundaryPct}%`,
+                right: 0,
+              }}
+              aria-hidden
+            />
+          ) : null}
+          {fitsBoundaryPct > 0.5 && fitsBoundaryPct < 99.5 ? (
+            <div
+              className="ctx-slider-ghost-mark absolute z-[4] pointer-events-none"
+              style={{ left: `${fitsBoundaryPct}%` }}
+              title={`Forecast VRAM limit — fits up to ${formatTokenLabel(fitsBoundaryCtx)} (free pool). Thumb left of this = OK, right = over.}`}
+            >
+              <span className="ctx-slider-ghost-stem" style={{ top: `${trackTop - 3}px`, height: `${trackH + 6}px` }} aria-hidden />
+              <span className="ctx-slider-ghost-label font-mono">
+                ≤{formatTokenLabel(fitsBoundaryCtx)}
+              </span>
+            </div>
+          ) : null}
         </>
       ) : null}
       {numericValues.map((pNum, idx) => {

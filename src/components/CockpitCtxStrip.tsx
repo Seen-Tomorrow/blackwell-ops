@@ -89,10 +89,13 @@ export default function CockpitCtxStrip({
 }: CockpitCtxStripProps) {
   const { mode, cycle } = useCtxLearnedMarkMode();
   const hasLearned = (learnedMarks?.length ?? 0) > 0;
+  const hasGhost =
+    (forecastCurve?.length ?? 0) > 0 && forecastFreeGb != null && forecastFreeGb > 0;
+  const showFooter = hasLearned || hasGhost;
 
   return (
     <div
-      className={`full-auto-cockpit__ctx-hero${standalone ? " full-auto-cockpit__ctx-hero--standalone" : ""}${hasLearned ? " full-auto-cockpit__ctx-hero--has-marks" : ""} ${className}`}
+      className={`full-auto-cockpit__ctx-hero${standalone ? " full-auto-cockpit__ctx-hero--standalone" : ""}${showFooter ? " full-auto-cockpit__ctx-hero--has-marks" : ""} ${className}`}
     >
       <div className="full-auto-cockpit__ctx-hero-main">
         <div className="full-auto-cockpit__ctx-slider min-w-0">
@@ -127,21 +130,34 @@ export default function CockpitCtxStrip({
         </div>
       </div>
 
-      {hasLearned ? (
+      {showFooter ? (
         <div className="full-auto-cockpit__ctx-footer font-mono">
           <span
             className="full-auto-cockpit__ctx-legend"
-            title="Cyan ticks = prior launch measurements. Drag snaps to them; hold Alt/Shift for free drag. Green/red rail = forecast fits boundary."
+            title="Cyan = LEARNED launches (drag snaps; Alt/Shift free). Amber ≤N = max CTX that still fits free VRAM — fixed limit; thumb crosses it when you raise CTX. Green rail OK / red over."
           >
-            <span className="full-auto-cockpit__ctx-swatch full-auto-cockpit__ctx-swatch--learned" aria-hidden />
-            LEARNED
-            <span className="full-auto-cockpit__ctx-legend-sep">·</span>
-            <span className="full-auto-cockpit__ctx-swatch full-auto-cockpit__ctx-swatch--custom" aria-hidden />
-            custom ctx
-            <span className="full-auto-cockpit__ctx-legend-sep">·</span>
-            snap
+            {hasLearned ? (
+              <>
+                <span className="full-auto-cockpit__ctx-swatch full-auto-cockpit__ctx-swatch--learned" aria-hidden />
+                LEARNED
+                <span className="full-auto-cockpit__ctx-legend-sep">·</span>
+                <span className="full-auto-cockpit__ctx-swatch full-auto-cockpit__ctx-swatch--custom" aria-hidden />
+                custom
+                <span className="full-auto-cockpit__ctx-legend-sep">·</span>
+                snap
+              </>
+            ) : null}
+            {hasLearned && hasGhost ? (
+              <span className="full-auto-cockpit__ctx-legend-sep">·</span>
+            ) : null}
+            {hasGhost ? (
+              <>
+                <span className="full-auto-cockpit__ctx-swatch full-auto-cockpit__ctx-swatch--limit" aria-hidden />
+                VRAM limit
+              </>
+            ) : null}
           </span>
-          <CtxLearnedMarkToggle mode={mode} onCycle={cycle} visible />
+          <CtxLearnedMarkToggle mode={mode} onCycle={cycle} visible={hasLearned} />
         </div>
       ) : null}
     </div>
