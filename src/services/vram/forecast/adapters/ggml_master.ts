@@ -65,7 +65,11 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   const tgt = targetGpuIdx(input, gpuAvailable);
   const userSplitMultiGpu = splitActive(input) && input.gpus.length > 1;
   const draftAddon = draftAddonGb(input);
+  // Launch snapshot mtp_context > 64 MiB ⇒ measurement already includes draft/spec buffers.
   const learnedHasDraft = (input.learnedMtpContextMib ?? 0) > 64;
+  const needsDraftAdd = draftAddon > 0 && !learnedHasDraft;
+  const withDraft = (gb: number | null): number | null =>
+    gb == null ? null : needsDraftAdd ? gb + draftAddon : gb;
   const splitMode = cfgStr(input.engineConfig, "split", "none");
   // Independent of live KV/batch/quant — library Δ(split−none) @ CTX, else fallback constants.
   const splitTax = resolveSplitTax(splitMode, liveCtx, input.fitPoints);
@@ -96,7 +100,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   const rawLearnedGb = input.learnedVramMib != null ? input.learnedVramMib / 1024 : null;
   const learnedBaseGb =
     rawLearnedGb != null
-      ? rawLearnedGb + (draftAddon > 0 && !learnedHasDraft ? draftAddon : 0)
+      ? rawLearnedGb + (needsDraftAdd ? draftAddon : 0)
       : null;
   const learnedDeltaGb =
     learnedBaseGb != null && learnedExactGb == null && curveGb == null
@@ -112,6 +116,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
 
   // 1) Bring none-probe to live CTX (hard knobs live inside the probe).
   // 2) Add split tax at live CTX — separate measured delta, not baked into CTX adjust.
+  // FIT probe never loads external draft GGUF — always add draft addon when active.
   const probeNoneAtLiveGb =
     curveGb == null && learnedExactGb == null && probeGb != null
       ? adjustMeasuredGbForCtx(
@@ -126,11 +131,13 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   const probeWithDraftGb =
     probeNoneAtLiveGb != null ? probeNoneAtLiveGb + splitTaxGb : null;
 
-  // Prefer learned exact/curve for this split; else probe(none)+tax; else learned delta.
-  const estimateGb = learnedExactGb ?? curveGb ?? probeWithDraftGb ?? learnedDeltaGb;
+  // Prefer learned exact/curve for this split (+ draft if measurement lacked it);
+  // else probe(none)+tax+draft; else learned delta (already bumped).
+  const estimateGb =
+    withDraft(learnedExactGb) ?? withDraft(curveGb) ?? probeWithDraftGb ?? learnedDeltaGb;
   if (estimateGb == null) return null;
 
-  const learnedGb = learnedExactGb ?? curveGb ?? learnedDeltaGb;
+  const learnedGb = withDraft(learnedExactGb) ?? withDraft(curveGb) ?? learnedDeltaGb;
   const learnedHostGb =
     curveHit?.hostGb ??
     (rawLearnedGb != null && input.learnedHostMib != null ? input.learnedHostMib / 1024 : null);

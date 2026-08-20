@@ -490,9 +490,9 @@ fn lookup_learned_vram_fuzzy(
             if !k.contains(&format!("|spec={spec_n}")) {
                 continue;
             }
-            // Prefer matching draft basename when the UI has a path; reject other drafts.
+            // External draft path set → only rows that launched with that draft GGUF.
             if !draft_base.is_empty() {
-                if key_has_draft && !k.contains(&format!("|draft={draft_base}")) {
+                if !key_has_draft || !k.contains(&format!("|draft={draft_base}")) {
                     continue;
                 }
             }
@@ -898,11 +898,12 @@ fn entry_matches_curve_hard_knobs(
         if !key.contains(&format!("|spec={spec_n}")) {
             return false;
         }
-        if !draft_base.is_empty()
-            && key_has_draft
-            && !key.contains(&format!("|draft={draft_base}"))
-        {
-            return false;
+        // External draft (dflash/dspark): only launches that recorded this draft basename.
+        // Main-only rows must not paint the curve while Boost+draft is on (FIT adds draft).
+        if !draft_base.is_empty() {
+            if !key_has_draft || !key.contains(&format!("|draft={draft_base}")) {
+                return false;
+            }
         }
     }
     true

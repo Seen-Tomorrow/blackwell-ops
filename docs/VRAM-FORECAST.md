@@ -7,21 +7,21 @@ Current product law. Measured only — no GGUF formula paint.
 ## Estimate
 
 ```
-LEARNED(split) @ live ctx
-  else  LEARNED≈ curve  (piecewise; session FIT probe may seed none-curve only)
-  else  PROBE(none @ user knobs) + tax(mode, live ctx)
+LEARNED(split) @ live ctx   (+ draft addon if launch lacked draft buffers)
+  else  LEARNED≈ curve      (+ draft addon if needed)
+  else  PROBE(none @ user knobs) + tax(mode, live ctx) + draft addon
   else  null → skeleton (auto-probe in flight)
 ```
 
 ```
 tax(mode, ctx) = library FIT  (VRAM_split − VRAM_none) @ ctx   // piecewise vs CTX
               or fallback     (layer 6 GB / tensor 2 GB)
-```
 
-- `manifest.vramTotalGb` is the single number chrome, hero, bars, and launch use.
-- Do **not** show raw `validatedVramMib` as the hero (probe at one anchor ctx).
-- Do **not** use library FIT spine as the live absolute level — only for **tax Δ** and sparse GQA stretch when the curve has &lt;2 points.
-- No formula. No `FORMULA` SOURCE chip.
+draft addon (dflash/dspark/eagle only; not pure MTP) =
+  draft GGUF weights + max(0.4, 0.55×weights) GB
+  skipped when LEARNED snapshot already has mtp_context/draft buffers
+FIT probe never loads the draft GGUF — always additive on probe path.
+```
 
 ---
 
