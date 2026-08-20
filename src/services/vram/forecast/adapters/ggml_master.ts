@@ -329,6 +329,17 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     learnedFromPreviousRun: learnedExactGb != null,
     learnedInterpolated: curveGb != null,
     learnedCurveCtxs: (input.learnedCurve ?? []).map((p) => p.ctx),
+    forecastCurve: (() => {
+      const pts = mergedCurve.map((p) => ({
+        ctx: p.ctx,
+        gb: round2(p.vramMib / 1024),
+      }));
+      if (!pts.some((p) => p.ctx === liveCtx)) {
+        pts.push({ ctx: liveCtx, gb: round2(estimateGb) });
+      }
+      return pts;
+    })(),
+    forecastFreeGb: round2(targetAvail),
     validatedVramMib,
     validatedHostMib,
     validatedGpuBreakdownMib: probePlacementMatches

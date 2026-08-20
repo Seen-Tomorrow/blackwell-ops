@@ -814,6 +814,10 @@ export interface VramManifest {
   learnedInterpolated?: boolean;
   /** Ctx token counts that have a stored launch measurement — slider marks. */
   learnedCurveCtxs?: number[];
+  /** Sparse measured curve for CTX rail ghost (ctx → GPU GB). */
+  forecastCurve?: Array<{ ctx: number; gb: number }>;
+  /** Free GPU pool GB used for fits gate (single target or multi-sum). */
+  forecastFreeGb?: number;
   /** Per-GPU breakdown from FIT scan (MiB per GPU) */
   validatedGpuBreakdownMib?: number[];
   /** Host RAM usage from FIT scan */

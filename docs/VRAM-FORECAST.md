@@ -126,8 +126,9 @@ No formula chip. Skeleton until one of the above lands.
 
 - Fluid: hard key unchanged → re-eval interpolates.
 - `layout="hero"` rail: value labels sit above; ticks run label→through-rail→below; hit target ~16px wide × full host height.
-- Cyan ticks = `manifest.learnedCurveCtxs` (custom/non-preset = dotted + italic label). Clickable.
-- Footer (when any LEARNED): legend `LEARNED · custom ctx` + filter **ALL → REG → OFF**.
+- Cyan ticks = `manifest.learnedCurveCtxs` (custom/non-preset = dotted + italic label). Clickable. Drag **snaps** to LEARNED marks (~12px); hold **Alt/Shift** for free drag.
+- **Fits ghost** on the track: green ≤ max fitting ctx, red beyond (from `forecastCurve` + `forecastFreeGb`). Amber dashed edge at the boundary.
+- Footer (when any LEARNED): legend `LEARNED · custom ctx · snap` + filter **ALL → REG → OFF** (right-aligned).
 - Storage: `BlackOps-ctx-learned-marks` (legacy `custom` → `all`).
 
 ---

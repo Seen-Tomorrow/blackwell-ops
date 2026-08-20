@@ -2366,6 +2366,20 @@ select option {
   box-sizing: border-box;
 }
 
+/* Fits-boundary ghost under the rail (hero CTX). */
+.ctx-slider-ghost--ok {
+  background: color-mix(in srgb, #4ade80 28%, transparent);
+}
+.ctx-slider-ghost--over {
+  background: color-mix(in srgb, #f87171 22%, transparent);
+}
+.ctx-slider-ghost-edge {
+  width: 0;
+  border-left: 1px dashed color-mix(in srgb, #fbbf24 75%, transparent);
+  transform: translateX(-0.5px);
+  box-shadow: 0 0 4px color-mix(in srgb, #fbbf24 40%, transparent);
+}
+
 .ctx-slider-thumb {
   background: var(--theme-accent-bright);
   box-shadow: 0 0 6px var(--theme-accent-glow);

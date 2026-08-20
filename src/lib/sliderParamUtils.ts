@@ -47,6 +47,10 @@ export interface SliderParamSharedProps {
   learnedMarkMode?: "all" | "regular" | "off";
   /** `hero` = CTX strip (taller marks + labels). Default inline param row. */
   layout?: "inline" | "hero";
+  /** Measured curve for fits-boundary ghost (hero). */
+  forecastCurve?: Array<{ ctx: number; gb: number }>;
+  /** Free GPU pool GB for fits ghost. */
+  forecastFreeGb?: number;
 }
 
 export function parseSliderValues(values: (string | number)[]): number[] {
@@ -104,11 +108,12 @@ export function thumbCenterPercent(
   min: number,
   max: number,
   trackWidthPx: number,
+  thumbWidthPx: number = SLIDER_THUMB_WIDTH_PX,
 ): number {
   if (max <= min || trackWidthPx <= 0) return 0;
   const ratio = (value - min) / (max - min);
   const centerPx =
-    SLIDER_THUMB_WIDTH_PX / 2 + ratio * (trackWidthPx - SLIDER_THUMB_WIDTH_PX);
+    thumbWidthPx / 2 + ratio * (trackWidthPx - thumbWidthPx);
   return (centerPx / trackWidthPx) * 100;
 }
 
@@ -122,6 +127,44 @@ export function clampSteppedValue(
   return Math.max(min, Math.min(max, stepped));
 }
 
+/** Pixel radius for LEARNED magnetic notches (hero rail). */
+export const LEARNED_SNAP_RADIUS_PX = 12;
+
+/**
+ * Pull value onto nearest mark when within snapRadiusPx of that mark on the track.
+ * `freeDrag` (Alt/Shift) disables magnetism.
+ */
+export function snapToNearestMark(
+  value: number,
+  marks: number[],
+  min: number,
+  max: number,
+  step: number,
+  trackWidthPx: number,
+  freeDrag: boolean,
+  snapRadiusPx: number = LEARNED_SNAP_RADIUS_PX,
+  thumbWidthPx: number = SLIDER_THUMB_WIDTH_PX,
+): number {
+  const stepped = clampSteppedValue(value, min, max, step);
+  if (freeDrag || marks.length === 0 || trackWidthPx <= thumbWidthPx || max <= min) {
+    return stepped;
+  }
+  const usable = trackWidthPx - thumbWidthPx;
+  const valuePerPx = (max - min) / usable;
+  const radiusVal = snapRadiusPx * valuePerPx;
+  let best = stepped;
+  let bestDist = Infinity;
+  for (const m of marks) {
+    if (m < min || m > max) continue;
+    const d = Math.abs(m - stepped);
+    if (d <= radiusVal && d < bestDist) {
+      bestDist = d;
+      best = m;
+    }
+  }
+  return clampSteppedValue(best, min, max, step);
+}
+
 export function valueFromPointerX(
   clientX: number,
   trackLeft: number,
@@ -129,12 +172,94 @@ export function valueFromPointerX(
   min: number,
   max: number,
   step: number,
+  thumbWidthPx: number = SLIDER_THUMB_WIDTH_PX,
 ): number {
-  if (trackWidth <= SLIDER_THUMB_WIDTH_PX) return min;
-  const ratio = (clientX - trackLeft - SLIDER_THUMB_WIDTH_PX / 2) / (trackWidth - SLIDER_THUMB_WIDTH_PX);
+  if (trackWidth <= thumbWidthPx) return min;
+  const ratio =
+    (clientX - trackLeft - thumbWidthPx / 2) / (trackWidth - thumbWidthPx);
   const clamped = Math.max(0, Math.min(1, ratio));
   const raw = min + clamped * (max - min);
   return clampSteppedValue(raw, min, max, step);
+}
+
+/** Piecewise-linear GB at ctx from sparse measured anchors. */
+export function interpolateGbAtCtx(
+  curve: Array<{ ctx: number; gb: number }>,
+  ctx: number,
+): number | null {
+  const pts = curve
+    .filter((p) => p.ctx > 0 && p.gb > 0)
+    .slice()
+    .sort((a, b) => a.ctx - b.ctx);
+  if (pts.length === 0) return null;
+  if (pts.length === 1) return pts[0].gb;
+  if (ctx <= pts[0].ctx) {
+    const a = pts[0];
+    const b = pts[1];
+    if (b.ctx === a.ctx) return a.gb;
+    const t = (ctx - a.ctx) / (b.ctx - a.ctx);
+    return Math.max(0, a.gb + t * (b.gb - a.gb));
+  }
+  if (ctx >= pts[pts.length - 1].ctx) {
+    const a = pts[pts.length - 2];
+    const b = pts[pts.length - 1];
+    if (b.ctx === a.ctx) return b.gb;
+    const t = (ctx - a.ctx) / (b.ctx - a.ctx);
+    return Math.max(0, a.gb + t * (b.gb - a.gb));
+  }
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i];
+    const b = pts[i + 1];
+    if (ctx >= a.ctx && ctx <= b.ctx) {
+      if (b.ctx === a.ctx) return a.gb;
+      const t = (ctx - a.ctx) / (b.ctx - a.ctx);
+      return Math.max(0, a.gb + t * (b.gb - a.gb));
+    }
+  }
+  return pts[pts.length - 1].gb;
+}
+
+/**
+ * Highest ctx that still fits in freeGb (same 3% / 1G headroom as forecast gate).
+ * null when curve empty or free unknown.
+ */
+export function findMaxFittingCtx(
+  min: number,
+  max: number,
+  step: number,
+  freeGb: number,
+  curve: Array<{ ctx: number; gb: number }>,
+): number | null {
+  if (!(freeGb > 0) || curve.length === 0 || max <= min) return null;
+  const headroom = Math.max(1.0, freeGb * 0.03);
+  const budget = freeGb - headroom;
+  if (!(budget > 0)) return null;
+
+  const fits = (ctx: number): boolean | null => {
+    const gb = interpolateGbAtCtx(curve, ctx);
+    if (gb == null) return null;
+    return gb <= budget;
+  };
+
+  const loOk = fits(min);
+  const hiOk = fits(max);
+  if (loOk == null && hiOk == null) return null;
+  if (loOk === false) return min;
+  if (hiOk === true) return max;
+
+  let lo = min;
+  let hi = max;
+  // Binary search highest fitting stepped ctx.
+  for (let i = 0; i < 48; i++) {
+    if (hi - lo <= step) break;
+    const mid = clampSteppedValue((lo + hi) / 2, min, max, step);
+    if (mid <= lo || mid >= hi) break;
+    const ok = fits(mid);
+    if (ok == null) break;
+    if (ok) lo = mid;
+    else hi = mid;
+  }
+  return lo;
 }
 
 export function useSliderParamState({

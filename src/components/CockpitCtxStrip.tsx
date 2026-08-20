@@ -56,7 +56,6 @@ export function CtxLearnedMarkToggle({
     </button>
   );
 }
-
 export interface CockpitCtxStripProps {
   ctxValue?: number | string;
   ctxDefault?: number | string;
@@ -67,6 +66,9 @@ export interface CockpitCtxStripProps {
   ctxSlotCount?: number;
   className?: string;
   learnedMarks?: number[];
+  /** Sparse measured curve for fits ghost. */
+  forecastCurve?: Array<{ ctx: number; gb: number }>;
+  forecastFreeGb?: number;
   /** Above-dock chrome. False when nested inside the cockpit. */
   standalone?: boolean;
 }
@@ -81,6 +83,8 @@ export default function CockpitCtxStrip({
   ctxSlotCount = 1,
   className = "",
   learnedMarks,
+  forecastCurve,
+  forecastFreeGb,
   standalone = true,
 }: CockpitCtxStripProps) {
   const { mode, cycle } = useCtxLearnedMarkMode();
@@ -102,6 +106,8 @@ export default function CockpitCtxStrip({
             learnedMarks={learnedMarks}
             learnedMarkMode={mode}
             layout="hero"
+            forecastCurve={forecastCurve}
+            forecastFreeGb={forecastFreeGb}
           />
         </div>
         <div className="full-auto-cockpit__ctx-values">
@@ -123,12 +129,17 @@ export default function CockpitCtxStrip({
 
       {hasLearned ? (
         <div className="full-auto-cockpit__ctx-footer font-mono">
-          <span className="full-auto-cockpit__ctx-legend" title="Cyan ticks = prior launch measurements at that ctx">
+          <span
+            className="full-auto-cockpit__ctx-legend"
+            title="Cyan ticks = prior launch measurements. Drag snaps to them; hold Alt/Shift for free drag. Green/red rail = forecast fits boundary."
+          >
             <span className="full-auto-cockpit__ctx-swatch full-auto-cockpit__ctx-swatch--learned" aria-hidden />
             LEARNED
             <span className="full-auto-cockpit__ctx-legend-sep">·</span>
             <span className="full-auto-cockpit__ctx-swatch full-auto-cockpit__ctx-swatch--custom" aria-hidden />
             custom ctx
+            <span className="full-auto-cockpit__ctx-legend-sep">·</span>
+            snap
           </span>
           <CtxLearnedMarkToggle mode={mode} onCycle={cycle} visible />
         </div>

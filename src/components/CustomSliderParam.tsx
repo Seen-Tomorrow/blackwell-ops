@@ -19,8 +19,10 @@ import {
   TICK_HEIGHT_PX,
   TICK_TOP_PX,
   clampSteppedValue,
+  findMaxFittingCtx,
   formatTokenLabel,
   parseSliderValues,
+  snapToNearestMark,
   thumbCenterPercent,
   valueFromPointerX,
   type SliderParamSharedProps,
@@ -66,6 +68,8 @@ export default function CustomSliderParam({
   learnedMarks = [],
   learnedMarkMode = "all",
   layout = "inline",
+  forecastCurve,
+  forecastFreeGb,
 }: SliderParamSharedProps) {
   const hero = layout === "hero";
   const areaH = hero ? HERO_TRACK_AREA_HEIGHT_PX : TRACK_AREA_HEIGHT_PX;
@@ -109,18 +113,39 @@ export default function CustomSliderParam({
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      const freeDrag = e.altKey || e.shiftKey;
+      const nudge = (raw: number) => {
+        if (!hero || freeDrag || visibleLearnedMarks.length === 0) {
+          commitValue(raw);
+          return;
+        }
+        // Keyboard: soft-snap onto learned notches when landing nearby.
+        commitValue(
+          snapToNearestMark(
+            raw,
+            visibleLearnedMarks,
+            min,
+            max,
+            step,
+            trackWidthPx,
+            false,
+            12,
+            thumbW,
+          ),
+        );
+      };
       if (e.key === "ArrowRight" || e.key === "ArrowUp") {
         e.preventDefault();
-        commitValue(safeValue + step);
+        nudge(safeValue + step);
       } else if (e.key === "ArrowLeft" || e.key === "ArrowDown") {
         e.preventDefault();
-        commitValue(safeValue - step);
+        nudge(safeValue - step);
       } else if (e.key === "PageUp") {
         e.preventDefault();
-        commitValue(safeValue + step * 8);
+        nudge(safeValue + step * 8);
       } else if (e.key === "PageDown") {
         e.preventDefault();
-        commitValue(safeValue - step * 8);
+        nudge(safeValue - step * 8);
       } else if (e.key === "Home") {
         e.preventDefault();
         commitValue(min);
@@ -129,15 +154,38 @@ export default function CustomSliderParam({
         commitValue(max);
       }
     },
-    [commitValue, safeValue, step, min, max],
+    [commitValue, safeValue, step, min, max, hero, visibleLearnedMarks, trackWidthPx, thumbW],
   );
 
   const updateFromClientX = useCallback(
-    (clientX: number, trackEl: HTMLDivElement) => {
+    (clientX: number, trackEl: HTMLDivElement, freeDrag: boolean) => {
       const rect = trackEl.getBoundingClientRect();
-      commitValue(valueFromPointerX(clientX, rect.left, rect.width, min, max, step));
+      const raw = valueFromPointerX(
+        clientX,
+        rect.left,
+        rect.width,
+        min,
+        max,
+        step,
+        thumbW,
+      );
+      const next =
+        hero && visibleLearnedMarks.length > 0
+          ? snapToNearestMark(
+              raw,
+              visibleLearnedMarks,
+              min,
+              max,
+              step,
+              rect.width,
+              freeDrag,
+              12,
+              thumbW,
+            )
+          : raw;
+      commitValue(next);
     },
-    [commitValue, min, max, step],
+    [commitValue, min, max, step, thumbW, hero, visibleLearnedMarks],
   );
 
   const handleTrackPointerDown = useCallback(
@@ -146,7 +194,7 @@ export default function CustomSliderParam({
       dragRef.current = true;
       setDragging(true);
       e.currentTarget.setPointerCapture(e.pointerId);
-      updateFromClientX(e.clientX, e.currentTarget);
+      updateFromClientX(e.clientX, e.currentTarget, e.altKey || e.shiftKey);
     },
     [updateFromClientX],
   );
@@ -154,7 +202,7 @@ export default function CustomSliderParam({
   const handleTrackPointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (!dragRef.current) return;
-      updateFromClientX(e.clientX, e.currentTarget);
+      updateFromClientX(e.clientX, e.currentTarget, e.altKey || e.shiftKey);
     },
     [updateFromClientX],
   );
@@ -181,7 +229,16 @@ export default function CustomSliderParam({
     };
   }, []);
 
-  const thumbPct = thumbCenterPercent(safeValue, min, max, trackWidthPx);
+  const thumbPct = thumbCenterPercent(safeValue, min, max, trackWidthPx, thumbW);
+
+  const fitsBoundaryCtx =
+    hero && forecastCurve && forecastCurve.length > 0 && forecastFreeGb != null && forecastFreeGb > 0
+      ? findMaxFittingCtx(min, max, step, forecastFreeGb, forecastCurve)
+      : null;
+  const fitsBoundaryPct =
+    fitsBoundaryCtx != null && trackWidthPx > 0
+      ? thumbCenterPercent(fitsBoundaryCtx, min, max, trackWidthPx, thumbW)
+      : null;
 
   const defaultNumeric =
     defaultValue !== undefined
@@ -219,11 +276,50 @@ export default function CustomSliderParam({
       onPointerMove={handleTrackPointerMove}
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
+      title={
+        hero
+          ? "Drag CTX — snaps to LEARNED marks. Hold Alt or Shift for free drag."
+          : undefined
+      }
     >
       <div
         className="ctx-slider-track absolute left-0 right-0 rounded-sm z-[1]"
         style={{ top: `${trackTop}px`, height: `${trackH}px` }}
       />
+      {fitsBoundaryPct != null && fitsBoundaryCtx != null ? (
+        <>
+          <div
+            className="ctx-slider-ghost ctx-slider-ghost--ok absolute z-[0] pointer-events-none rounded-sm"
+            style={{
+              top: `${trackTop}px`,
+              height: `${trackH}px`,
+              left: 0,
+              width: `${fitsBoundaryPct}%`,
+            }}
+            aria-hidden
+          />
+          <div
+            className="ctx-slider-ghost ctx-slider-ghost--over absolute z-[0] pointer-events-none rounded-sm"
+            style={{
+              top: `${trackTop}px`,
+              height: `${trackH}px`,
+              left: `${fitsBoundaryPct}%`,
+              right: 0,
+            }}
+            aria-hidden
+          />
+          <div
+            className="ctx-slider-ghost-edge absolute z-[1] pointer-events-none"
+            style={{
+              top: `${trackTop - 2}px`,
+              height: `${trackH + 4}px`,
+              left: `${fitsBoundaryPct}%`,
+            }}
+            title={`Fits up to ${formatTokenLabel(fitsBoundaryCtx)}`}
+            aria-hidden
+          />
+        </>
+      ) : null}
       {numericValues.map((pNum, idx) => {
         // LEARNED owns this ctx — cyan mark only (no white+cyan stack).
         if (learnedCoverSet.has(pNum)) return null;

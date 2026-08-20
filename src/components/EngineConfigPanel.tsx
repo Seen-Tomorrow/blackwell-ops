@@ -1704,8 +1704,18 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       ctxSlotCount: slots,
       ctxPerSlot: perSlot,
       learnedMarks: vramCalc.manifest?.learnedCurveCtxs,
+      forecastCurve: vramCalc.manifest?.forecastCurve,
+      forecastFreeGb: vramCalc.manifest?.forecastFreeGb,
     };
-  }, [config, allParamsResolved, updateParam, cockpitValueView, vramCalc.manifest?.learnedCurveCtxs]);
+  }, [
+    config,
+    allParamsResolved,
+    updateParam,
+    cockpitValueView,
+    vramCalc.manifest?.learnedCurveCtxs,
+    vramCalc.manifest?.forecastCurve,
+    vramCalc.manifest?.forecastFreeGb,
+  ]);
 
   const ctxDockedInCockpit = ctxCockpitDock === "cockpit";
   const showCtxAboveConfig =
