@@ -232,8 +232,6 @@ export default function VramBadge({
     );
   }
 
-  // Tab remount / scenario re-eval: keep phosphor height so the bezel does not collapse.
-  // Parent still mounts VramBadge when a model is selected; null manifest is only a brief gap.
   if (!manifest) {
     return (
       <div
@@ -242,7 +240,7 @@ export default function VramBadge({
         style={{ minHeight: FORECAST_PHOSPHOR_HEIGHT_PX }}
         data-forecast-skeleton="1"
         aria-busy="true"
-        aria-label="Loading VRAM forecast"
+        aria-label="Measuring VRAM"
       >
         {fitLaunchDock}
         <div className="vram-forecast-skeleton flex flex-col gap-2 flex-1 min-h-0 justify-center">
@@ -345,12 +343,12 @@ export default function VramBadge({
       : null;
 
   const needInstruments = (
-    <div className="vram-fc__need-row vram-forecast-needs" data-source-kind={sourceKind || "formula"}>
+    <div className="vram-fc__need-row vram-forecast-needs" data-source-kind={sourceKind || "pending"}>
       <div className="vram-fc-need" aria-label="VRAM need">
         <span className="vram-fc-need__lab">VRAM</span>
         <span
           className={`vram-fc-need__val vram-forecast-gb-value${
-            sourceKind && sourceKind !== "formula"
+            sourceKind
               ? ` vram-forecast-gb-accented vram-forecast-gb-accented--${sourceKind}`
               : ""
           }`}

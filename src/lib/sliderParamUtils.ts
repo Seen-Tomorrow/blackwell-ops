@@ -27,8 +27,8 @@ export interface SliderParamSharedProps {
   values?: (string | number)[];
   /** Launch-measured ctx tokens — cyan ticks on the rail. */
   learnedMarks?: number[];
-  /** all = every learned tick; custom = non-preset only; off = hidden. */
-  learnedMarkMode?: "all" | "custom" | "off";
+  /** all = preset+custom learned; regular = preset-only; off = hidden. */
+  learnedMarkMode?: "all" | "regular" | "off";
 }
 
 export function parseSliderValues(values: (string | number)[]): number[] {

@@ -773,7 +773,7 @@ export interface GpuAllocation {
   runningEngines: RunningEngine[];
 }
 
-export type MemorySourceKind = "formula" | "fit_probe" | "learned" | "learned_curve";
+export type MemorySourceKind = "fit_probe" | "learned" | "learned_curve";
 
 
 export interface MemorySource {
@@ -784,8 +784,8 @@ export interface MemorySource {
   breakdown?: string;
   /** Breakdown line 2 — W/KV/OH components + host RAM when learned. */
   breakdownSecondary?: string;
-  /** Confidence tier: formula=1 … learned=4 */
-  confidence: 1 | 2 | 3 | 4;
+  /** Confidence tier: fit_probe=3 … learned=4 */
+  confidence: 3 | 4;
 }
 
 export interface VramManifest {
@@ -806,9 +806,7 @@ export interface VramManifest {
   recommendation: string;
   gpuLayers: number;
   ramLayers: number;
-  /** Original formula total before validation (preserved for comparison) */
-  formulaVramTotalGb: number;
-  /** FIT-validated total VRAM in MiB (replaces formula when set) */
+  /** FIT-validated total VRAM in MiB */
   validatedVramMib?: number;
   /** Forecast uses VRAM measured on a prior launch at this exact ctx. */
   learnedFromPreviousRun?: boolean;

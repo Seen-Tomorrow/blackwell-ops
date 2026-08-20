@@ -206,7 +206,7 @@ export const KEYS = {
   enginesInRail: `${STORAGE_PREFIX}engines-in-rail`,
   /** CTX strip: docked inside cockpit vs standalone above cockpit. */
   ctxCockpitDock: `${STORAGE_PREFIX}ctx-cockpit-dock`,
-  /** CTX learned ticks: all | custom | off. */
+  /** CTX learned ticks: all | regular | off. */
   ctxLearnedMarks: `${STORAGE_PREFIX}ctx-learned-marks`,
   /** VRAM forecast GPU bars — cards per row (2 | 3). */
   displayGpuPerRow: `${STORAGE_PREFIX}display-gpu-per-row`,
@@ -579,11 +579,14 @@ export function saveCtxCockpitDock(dock: CtxCockpitDock): void {
   writeStorage(KEYS.ctxCockpitDock, dock);
 }
 
-export type CtxLearnedMarkMode = "all" | "custom" | "off";
+/** all = preset+custom learned; regular = only marks on CTX param values; off = hidden. */
+export type CtxLearnedMarkMode = "all" | "regular" | "off";
 
 export function loadCtxLearnedMarkMode(): CtxLearnedMarkMode {
   const raw = readStorage(KEYS.ctxLearnedMarks);
-  if (raw === "custom" || raw === "off") return raw;
+  // Legacy "custom" (custom-only) retired — treat as all.
+  if (raw === "off") return "off";
+  if (raw === "regular") return "regular";
   return "all";
 }
 
@@ -592,8 +595,8 @@ export function saveCtxLearnedMarkMode(mode: CtxLearnedMarkMode): void {
 }
 
 export function cycleCtxLearnedMarkMode(mode: CtxLearnedMarkMode): CtxLearnedMarkMode {
-  if (mode === "all") return "custom";
-  if (mode === "custom") return "off";
+  if (mode === "all") return "regular";
+  if (mode === "regular") return "off";
   return "all";
 }
 

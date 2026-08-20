@@ -24,8 +24,11 @@ use tokio::sync::Mutex as TokioMutex;
 pub const FIT_OVERHEAD_PER_GPU: f64 = 256.0; // MiB static overhead per GPU for CUDA context/P2P
 const SCAN_TIMEOUT_SECS: u64 = 30;
 
-/// CTX spine only — live FIT probe owns absolute level at user knobs.
-/// These points exist so the CTX slider can interpolate measured VRAM.
+/// CTX spine + split-tax anchors.
+/// Live FIT probe owns absolute level at user knobs (always split=none).
+/// Split points (2 ctx × layer/tensor) let the forecast interpolate multi-GPU tax vs CTX.
+/// Layer fit-print emits CUDA0+CUDA1 — library Δ is real.
+/// Tensor fit-print emits Meta() ≈ none (no multi-GPU tax) — forecast uses LEARNED/fallback.
 /// Tuple: (label, ctx_tokens, kv_quant, batch, parallel, split_mode)
 const SCAN_PLAN: &[(&str, usize, &str, u32, u32, &str)] = &[
     ("ctx_4k", 4096, "q4_0", 512, 1, "none"),
@@ -34,6 +37,11 @@ const SCAN_PLAN: &[(&str, usize, &str, u32, u32, &str)] = &[
     ("ctx_128k", 131072, "q4_0", 512, 1, "none"),
     ("ctx_256k", 262144, "q4_0", 512, 1, "none"),
     ("ctx_512k", 524288, "q4_0", 512, 1, "none"),
+    // Multi-GPU communication tax — same KV/batch as spine; tax grows with CTX.
+    ("split_layer_64k", 65536, "q4_0", 512, 1, "layer"),
+    ("split_tensor_64k", 65536, "q4_0", 512, 1, "tensor"),
+    ("split_layer_256k", 262144, "q4_0", 512, 1, "layer"),
+    ("split_tensor_256k", 262144, "q4_0", 512, 1, "tensor"),
 ];
 
 // ── Result Types ────────────────────────────────────────────────────
@@ -374,6 +382,13 @@ pub fn build_fit_command_base(
 
 /// Parse stdout from `--fit-print on` / `common_fit_print`.
 /// Lines: "<device> <model_mib> <ctx_mib> <compute_mib>" (Host row uses same layout).
+///
+/// **Tensor / Meta note:** launch LEARN expands `Meta()` buffer lines × N GPUs because
+/// those are real per-GPU shards from `load_tensors`. `llama-fit-params --fit-print` is
+/// different — a Meta/CUDA row is already a full no_alloc estimate (empirically ≈ split=none
+/// total). Doubling it produced 2× model VRAM in the library table (e.g. 69G → 138G).
+/// Do **not** apply LEARN-style Meta expansion here. Tensor multi-GPU tax from library FIT
+/// is often ~0; forecast falls back to launch-calibrated constants or LEARNED launches.
 pub fn parse_fit_print_stdout(stdout: &str) -> Option<FitScanRaw> {
     let mut gpu_self: Vec<f64> = Vec::new();
     let mut gpu_components: Vec<GpuComponentMib> = Vec::new();
@@ -391,14 +406,22 @@ pub fn parse_fit_print_stdout(stdout: &str) -> Option<FitScanRaw> {
             continue;
         }
 
-        let model_mib: f64 = parts[1].parse().ok()?;
-        let ctx_mib: f64 = parts[2].parse().ok()?;
-        let compute_mib: f64 = parts[3].parse().ok()?;
+        let Ok(model_mib) = parts[1].parse::<f64>() else {
+            continue;
+        };
+        let Ok(ctx_mib) = parts[2].parse::<f64>() else {
+            continue;
+        };
+        let Ok(compute_mib) = parts[3].parse::<f64>() else {
+            continue;
+        };
         let self_mib = model_mib + ctx_mib + compute_mib;
+        let device = parts[0].trim_end_matches("()");
 
-        if parts[0].eq_ignore_ascii_case("host") {
+        if device.eq_ignore_ascii_case("host") {
             host_mib = Some(self_mib);
         } else {
+            // Include Meta as a single estimate row (do not ×N — see doc above).
             gpu_self.push(self_mib);
             gpu_components.push(GpuComponentMib {
                 model_mib,
@@ -1838,6 +1861,16 @@ Host 994 0 84
         assert_eq!(raw.vram_mib, 23606.0);
         assert_eq!(raw.gpu_breakdown_mib, Some(vec![11234.0, 12372.0]));
         assert_eq!(raw.host_mib, Some(1078.0));
+    }
+
+    #[test]
+    fn parses_fit_print_meta_device_not_doubled() {
+        // Unlike launch LEARN Meta() shards, fit-print Meta is a full estimate row.
+        const OUT: &str = "Meta() 10238.65 2176.00 1136.31\nHost 994 0 84\n";
+        let raw = parse_fit_print_stdout(OUT).expect("meta fit-print");
+        let once = 10238.65 + 2176.00 + 1136.31;
+        assert!((raw.vram_mib - once).abs() < 0.5);
+        assert_eq!(raw.gpu_breakdown_mib.as_ref().map(|g: &Vec<f64>| g.len()), Some(1));
     }
 
     #[test]

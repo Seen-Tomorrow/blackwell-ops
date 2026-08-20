@@ -24,18 +24,11 @@ export function forecastUsesMultiGpu(manifest: VramManifest | null): boolean {
 }
 
 /**
- * GPU-side total AUTO_FIT already committed.
- * Learned (real launch) → FIT probe → formula.
+ * GPU-side total forecast already committed (measured only).
  */
 export function bestVramEstimateGb(manifest: VramManifest | null): number {
   if (!manifest) return 0;
-  if (manifest.learnedFromPreviousRun) {
-    return manifest.vramTotalGb;
-  }
-  if (manifest.validatedVramMib != null && manifest.validatedVramMib > 0) {
-    return manifest.vramTotalGb;
-  }
-  return manifest.formulaVramTotalGb ?? manifest.vramTotalGb ?? 0;
+  return manifest.vramTotalGb ?? 0;
 }
 
 /** Promote layer-split when the estimate exceeds the best single GPU's free VRAM. */
@@ -57,12 +50,18 @@ export interface SplitDriver {
 
 export function resolveSplitDriver(manifest: VramManifest | null): SplitDriver | null {
   if (!manifest) return null;
-  const measured = !!manifest.learnedFromPreviousRun || !!manifest.validatedVramMib;
-  const label = manifest.learnedFromPreviousRun
-    ? "LEARNED"
-    : manifest.validatedVramMib != null && manifest.validatedVramMib > 0
-      ? "FIT"
-      : "FORMULA";
+  const kind = manifest.memorySource?.kind;
+  const measured =
+    !!manifest.learnedFromPreviousRun
+    || !!manifest.learnedInterpolated
+    || !!manifest.validatedVramMib
+    || kind === "fit_probe"
+    || kind === "learned"
+    || kind === "learned_curve";
+  const label =
+    kind === "learned" || kind === "learned_curve" || manifest.learnedFromPreviousRun || manifest.learnedInterpolated
+      ? "LEARNED"
+      : "FIT";
   const estimateGb = bestVramEstimateGb(manifest);
   const perGpu = manifest.gpuAllocations?.map((a) => a.vramAvailableGb) ?? [];
   const willSplit = resolveAutoLayerSplit({ manifest, perGpuAvailable: perGpu });

@@ -67,8 +67,10 @@ export default function CustomSliderParam({
     learnedMarkMode === "off"
       ? []
       : learnedMarks.filter((mark) => {
-        if (learnedMarkMode === "custom" && presetCtxSet.has(mark)) return false;
-        return mark >= min && mark <= max;
+        if (mark < min || mark > max) return false;
+        // regular = only marks that land on CTX template preset values
+        if (learnedMarkMode === "regular" && !presetCtxSet.has(mark)) return false;
+        return true;
       });
 
   const numericValue =

@@ -40,6 +40,28 @@ different build target. Do not auto-kill. The only exception is a user explicitl
 
 **No `backdrop-filter: blur` (or `-webkit-backdrop-filter: blur`)** — Modal/scrim overlays must **dim only** (semi-opaque `background`, e.g. `color-mix(in srgb, #000 60%, transparent)`). Blur forces continuous full-compositor work in WebView2 and pegs the **iGPU at ~100%** for as long as the overlay is open (harness confirm, etc.). Prefer stronger dim over blur. Do not reintroduce blur for “frosted glass” aesthetics without an explicit exception.
 
+**Vite/Rolldown barrel re-exports** — Never mix `type` into a value re-export list:
+`export { type Foo, bar } from "./x"`. Vite 8 / Rolldown can emit an **empty module**
+(only a sourcemap). Symptom: black WebView, DevTools `Uncaught SyntaxError: Invalid or
+unexpected token`, while `tsc` / `npm run build` stay clean. Split them:
+`export { bar } from "./x"` + `export type { Foo } from "./x"`. Sanity-check a suspect
+URL: `curl http://127.0.0.1:1420/src/.../file.ts` must show real `export { ... }`, not
+solely `//# sourceMappingURL=...`.
+
+**WebView2 module cache** — After a bad transform (empty barrel, half-HMR), F5 / Vite
+restart / rebuild may still black-screen: Chromium caches the broken JS under
+`%LOCALAPPDATA%\com.blackwell-ops.app.dev\EBWebView\Default\` (`Cache`, `Code Cache`,
+`GPUCache`, `Service Worker`). Clear those folders (app may lock files — close DEV
+window first if needed), then reload. REL profile is `com.blackwell-ops.app`. This is
+**not** localStorage; wiping storage keys will not fix a cached empty module.
+
+**VRAM forecast is measured-only** — No GGUF formula path. Paint sources:
+`LEARNED` / `LEARNED≈` / `FIT PROBE` only (`src/services/vram/forecast/`, default adapter
+`ggml_master`). `evaluate()` returns `null` → skeleton until probe/learned lands. Old
+formula scenarios live under `tmp/archive_vram_formula/` (gitignored scratch), not in
+the live graph.
+
+
 ---
 
 ## Product floor / layout density

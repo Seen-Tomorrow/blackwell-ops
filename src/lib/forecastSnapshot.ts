@@ -1,7 +1,7 @@
 import type { ModelEntry, VramManifest } from "./types";
 import { bestVramEstimateGb, resolveSplitDriver } from "./autoVramLaunch";
 
-export type ForecastSourceLabel = "LEARNED" | "FIT" | "FORMULA";
+export type ForecastSourceLabel = "LEARNED" | "FIT" | "PENDING";
 
 export function forecastSnapshotFromManifest(
   manifest: VramManifest | null,
@@ -10,15 +10,16 @@ export function forecastSnapshotFromManifest(
 ): Record<string, unknown> {
   const meta = model.metadata;
   const driver = resolveSplitDriver(manifest);
-  const source: ForecastSourceLabel = driver?.label === "LEARNED" || driver?.label === "FIT"
-    ? driver.label
-    : "FORMULA";
+  const source: ForecastSourceLabel = !manifest
+    ? "PENDING"
+    : driver?.label === "LEARNED" || driver?.label === "FIT"
+      ? driver.label
+      : "PENDING";
   return {
     launch_id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
     at: new Date().toISOString(),
     source,
     estimate_gb: Math.round(bestVramEstimateGb(manifest) * 1000) / 1000,
-    formula_gb: manifest?.formulaVramTotalGb ?? null,
     vram_total_gb: manifest?.vramTotalGb ?? null,
     vram_kv_gb: manifest?.vramKvGb ?? null,
     vram_weights_gb: manifest?.vramWeightsGb ?? null,

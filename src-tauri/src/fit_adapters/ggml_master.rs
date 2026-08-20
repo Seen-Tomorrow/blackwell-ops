@@ -75,4 +75,16 @@ mod tests {
         let raw = parse_scan_output(OUT, "").expect("master fit-print");
         assert_eq!(raw.vram_mib, 23088.0);
     }
+
+    #[test]
+    fn master_fit_print_meta_is_not_doubled() {
+        // fit-print Meta ≈ full estimate (same class as none) — must NOT ×N like LEARN shards.
+        const OUT: &str = "Meta 10238 2176 1136\nHost 994 0 84\n";
+        const ERR: &str =
+            "llama_prepare_model_devices: creating a Meta device for tensor parallelism from 2 devices:\n";
+        let raw = parse_scan_output(OUT, ERR).expect("meta fit-print");
+        let once = 10238.0 + 2176.0 + 1136.0;
+        assert!((raw.vram_mib - once).abs() < 0.1);
+        assert_eq!(raw.gpu_breakdown_mib.as_ref().map(|g: &Vec<f64>| g.len()), Some(1));
+    }
 }

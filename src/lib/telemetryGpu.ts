@@ -72,7 +72,6 @@ export function vramManifestSnapshotEqual(
     || !nums(prev.vramKvGb, next.vramKvGb)
     || !nums(prev.vramOverheadGb, next.vramOverheadGb)
     || !nums(prev.ramTotalGb, next.ramTotalGb)
-    || !nums(prev.formulaVramTotalGb, next.formulaVramTotalGb)
   ) {
     return false;
   }

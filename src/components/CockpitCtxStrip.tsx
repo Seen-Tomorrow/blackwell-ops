@@ -37,7 +37,7 @@ export function CtxLearnedMarkToggle({
   visible: boolean;
 }) {
   if (!visible) return null;
-  const label = mode === "all" ? "MARKS" : mode === "custom" ? "CUSTOM" : "OFF";
+  const label = mode === "all" ? "ALL" : mode === "regular" ? "REG" : "OFF";
   return (
     <button
       type="button"
@@ -45,10 +45,10 @@ export function CtxLearnedMarkToggle({
       onClick={onCycle}
       title={
         mode === "all"
-          ? "Hide preset learned ticks — keep custom ctx only"
-          : mode === "custom"
-            ? "Hide all learned ticks"
-            : "Show learned ticks"
+          ? "Learned marks: all (preset + custom). Click → regular presets only"
+          : mode === "regular"
+            ? "Learned marks: regular CTX presets only. Click → off"
+            : "Learned marks off. Click → show all"
       }
     >
       {label}
@@ -111,12 +111,12 @@ export default function CockpitCtxStrip({
             </span>
           </>
         )}
-        <CtxLearnedMarkToggle
-          mode={mode}
-          onCycle={cycle}
-          visible={(learnedMarks?.length ?? 0) > 0}
-        />
       </div>
+      <CtxLearnedMarkToggle
+        mode={mode}
+        onCycle={cycle}
+        visible={(learnedMarks?.length ?? 0) > 0}
+      />
     </div>
   );
 }

@@ -58,11 +58,11 @@ Frontend refetches when `hardKey` or `config.split` changes.
 
 Session none-FIT probe may join the **none** curve as a point at `fitProbeAnchorCtx`. Layer/tensor never inherit that probe.
 
-### Tensor learn
+### Tensor learn vs FIT library
 
-Tensor-split stderr reports a virtual **`Meta()`** device (one GPU’s shard), not `CUDA0`/`CUDA1`. Parser fans `Meta()` across `N` TP devices. Vision CLIP compute on CUDA0 is extra on GPU0 only.
+**Launch LEARN** tensor-split stderr reports a virtual **`Meta()`** device (one GPU’s shard). Parser fans `Meta()` across `N` TP devices. Vision CLIP compute on CUDA0 is extra on GPU0 only. Measured launch tax (DEV): tensor ~1.5–2.5 GB, layer ~5–7 GB (pipeline compute, not a second weight copy).
 
-Measured tax (DEV, several models): tensor ~1.5–2.5 GB, layer ~5–7 GB (pipeline compute, not a second weight copy).
+**Library FIT `--fit-print`** is different. Tensor mode prints a single `Meta()` estimate row already ≈ **split=none** total (slightly less KV). It does **not** emit multi-GPU CUDA0/CUDA1 shards or real TP tax. Live capture (Fara 27B @64K): none `17.42G` / layer `18.36G` (+0.95G) / tensor Meta `17.34G` (noΔ). Do **not** Meta×N fit-print (that doubled weights). Table T columns show **`noΔ`** when |T−none|≤128 MiB; forecast tensor tax = **LEARNED(split=tensor)** else **fallback +2 GB** (layer uses library Δ when positive).
 
 ---
 
@@ -72,10 +72,9 @@ Measured tax (DEV, several models): tensor ~1.5–2.5 GB, layer ~5–7 GB (pipel
 |---|---|---|
 | `learned` | **LEARNED** cyan | Exact launch at this ctx + split |
 | `learned_curve` | **LEARNED ≈** cyan | Between stored (and none-probe) points |
-| `fit_probe` | **FIT PROBE** amber | Probe-only / GQA stretch |
-| `formula` | **FORMULA** muted | No measurement yet |
+| `fit_probe` | **FIT PROBE** amber | Probe(none) ± library/fallback split tax |
 
-No FIT CACHE chip. Library 6-point spine only stretches a real measurement when the curve has &lt;2 points.
+No formula paint. Skeleton until LEARNED or FIT probe lands. Library CTX spine stretches a real measurement when the curve has &lt;2 points.
 
 ---
 
@@ -86,7 +85,8 @@ One component: `CockpitCtxStrip` (above-dock `standalone`, in-cockpit `standalon
 - Fluid: hard key unchanged → re-eval interpolates.
 - Arrow / Page / Home / End when thumb focused.
 - Cyan ticks at `manifest.learnedCurveCtxs`. Non-preset ctx = dotted. Clickable.
-- MARKS → CUSTOM → OFF toggle (`BlackOps-ctx-learned-marks`).
+- Corner toggle **ALL → REG → OFF**: all learned (preset+custom) / regular CTX presets only / hidden. Absolute bottom-left of the hero (does not steal slider width).
+- MARKS persistence: `BlackOps-ctx-learned-marks`.
 
 ---
 

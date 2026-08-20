@@ -769,17 +769,24 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
           <p className="text-[8px] font-mono text-red-400 mb-1.5 break-all">{state.error}</p>
         )}
 
-        {/* Results table */}
+        {/* Results table — CTX spine + split tax (L/T @ 64K/256K) */}
         {state.results && Object.keys(state.results.results).length > 0 && (
-          <div className="max-h-48 overflow-y-auto pr-1">
+          <div className="max-h-48 overflow-auto pr-1">
             <div
-              className="grid items-center gap-1 text-[7px] font-mono py-0.5 config-muted uppercase tracking-wider border-b border-stealth-border/30 mb-0.5"
-              style={{ gridTemplateColumns: `20px minmax(0,1fr) repeat(${FIT_SCAN_TABLE_COLUMNS.length}, 40px) 44px` }}
+              className="grid items-center gap-1 text-[7px] font-mono py-0.5 config-muted uppercase tracking-wider border-b border-stealth-border/30 mb-0.5 min-w-max"
+              style={{
+                gridTemplateColumns: `20px minmax(96px,1.2fr) repeat(${FIT_SCAN_TABLE_COLUMNS.length}, minmax(34px,40px)) 44px`,
+              }}
             >
               <span></span>
               <span>Model</span>
               {FIT_SCAN_TABLE_COLUMNS.map((col) => (
-                <span key={col.label} title={col.label}>{col.header}</span>
+                <span
+                  key={col.label}
+                  title={"title" in col && col.title ? col.title : col.label}
+                >
+                  {col.header}
+                </span>
               ))}
               <span>Pts</span>
             </div>
@@ -798,8 +805,10 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
               return (
                 <div
                   key={path}
-                  className={`grid items-center gap-1 text-[8px] font-mono py-0.5 ${isActive ? "bg-stealth-border/20 rounded-sm" : ""}`}
-                  style={{ gridTemplateColumns: `20px minmax(0,1fr) repeat(${FIT_SCAN_TABLE_COLUMNS.length}, 40px) 44px` }}
+                  className={`grid items-center gap-1 text-[8px] font-mono py-0.5 min-w-max ${isActive ? "bg-stealth-border/20 rounded-sm" : ""}`}
+                  style={{
+                    gridTemplateColumns: `20px minmax(96px,1.2fr) repeat(${FIT_SCAN_TABLE_COLUMNS.length}, minmax(34px,40px)) 44px`,
+                  }}
                 >
                   <span
                     className={`${full.error && !isSkipped ? "text-red-400" : isSkipped ? "text-amber-400/80" : isComplete || nPts > 0 ? "theme-accent-text" : "config-muted"}`}
@@ -825,9 +834,18 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                       col.label,
                       full.skip_reason,
                       pointSkip,
+                      pts,
                     );
                     const failed = cell === "✖";
-                    const skipped = cell === "MTP" || cell === "n/a";
+                    const skipped =
+                      cell === "MTP" || cell === "n/a" || cell === "noT" || cell === "noΔ";
+                    const colTitle =
+                      cell === "noΔ"
+                        ? "fit-print tensor Meta ≈ none — no multi-GPU tax from FIT; forecast uses LEARNED or +2G fallback"
+                        : pointSkip
+                          ?? ("title" in col && col.title ? col.title : undefined)
+                          ?? full.skip_reason
+                          ?? col.label;
                     return (
                       <span
                         key={col.label}
@@ -840,7 +858,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                                 ? "theme-accent-text"
                                 : "config-muted opacity-40"
                         }
-                        title={pointSkip ?? full.skip_reason ?? col.label}
+                        title={colTitle}
                       >
                         {cell}
                       </span>

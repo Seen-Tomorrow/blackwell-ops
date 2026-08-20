@@ -2391,6 +2391,7 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--brain 
 
 /* CTX hero — match industrial/panel face (not a black inset well) */
 .full-auto-cockpit__ctx-hero {
+  position: relative;
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -2429,15 +2430,21 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--brain 
   gap: 0.4ch;
 }
 
+/* Pin to hero far-left — must not steal horizontal space from slider/value. */
 .full-auto-cockpit__ctx-marks-toggle {
-  margin-left: 0.35rem;
-  padding: 0.05rem 0.28rem;
-  font-size: 7px;
+  position: absolute;
+  left: 0.28rem;
+  bottom: 0.18rem;
+  z-index: 3;
+  margin: 0;
+  padding: 0.02rem 0.22rem;
+  font-size: 6px;
   letter-spacing: 0.08em;
+  line-height: 1.2;
   text-transform: uppercase;
   color: color-mix(in srgb, #22d3ee 70%, transparent);
   border: 1px solid color-mix(in srgb, #22d3ee 28%, transparent);
-  background: transparent;
+  background: color-mix(in srgb, var(--theme-panel, #0a0a0a) 55%, transparent);
   border-radius: 2px;
   cursor: pointer;
 }
