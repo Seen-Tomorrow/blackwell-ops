@@ -606,9 +606,6 @@ export function useScenarioEvaluator({
         specType,
         cacheRam: String(curConfig.cache_ram ?? "0"),
         draftModel,
-        batch: String(curConfig.batch ?? "512"),
-        ubatch: String(curConfig.ubatch ?? "512"),
-        flash: String(curConfig.flash_attn ?? curConfig.flash ?? "on"),
       }),
       invoke<Array<{ ctx: number; vram_mib: number; host_mib?: number }>>("get_learned_vram_curve", {
         modelPath: model.path,
@@ -617,9 +614,6 @@ export function useScenarioEvaluator({
         specType,
         draftModel,
         split: String(curConfig.split ?? "none"),
-        batch: String(curConfig.batch ?? "512"),
-        ubatch: String(curConfig.ubatch ?? "512"),
-        flash: String(curConfig.flash_attn ?? curConfig.flash ?? "on"),
       }).catch(() => []),
     ])
       .then(([entry, curve]) => {
