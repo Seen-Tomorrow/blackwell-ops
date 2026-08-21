@@ -243,7 +243,7 @@ export default function VramBadge({
         aria-label="Evaluating VRAM footprint"
       >
         {fitLaunchDock}
-        <div className="vram-forecast-measuring flex flex-1 min-h-0 items-center justify-center gap-3 px-1">
+        <div className="vram-forecast-measuring flex flex-1 min-h-0 items-stretch justify-between gap-2 sm:gap-4 w-full">
           <div className="vram-forecast-measuring__flank vram-forecast-measuring__flank--left font-mono" aria-hidden>
             <span className="vram-forecast-measuring__flank-label">GPU</span>
             <span className="vram-forecast-measuring__ladder">
@@ -255,7 +255,7 @@ export default function VramBadge({
             </span>
           </div>
 
-          <div className="vram-forecast-measuring__center flex flex-col items-center justify-center gap-2 min-w-0">
+          <div className="vram-forecast-measuring__center flex flex-col items-center justify-center gap-2.5 min-w-0 self-center">
             <div className="vram-forecast-measuring__scope" aria-hidden>
               <span className="vram-forecast-measuring__ring" />
               <span className="vram-forecast-measuring__ring vram-forecast-measuring__ring--delay" />
