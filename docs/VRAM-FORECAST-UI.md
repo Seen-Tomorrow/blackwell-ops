@@ -20,19 +20,18 @@ Primary code:
 
 | Constant / helper | Use |
 |-------------------|-----|
-| `FORECAST_PHOSPHOR_HEIGHT_1ROW_PX` (228) | ASSISTED forecast when GPU bank fits **one** row |
+| `FORECAST_PHOSPHOR_HEIGHT_1ROW_PX` (228) | ASSISTED when GPU bank fits **one** row |
 | `FORECAST_PHOSPHOR_HEIGHT_2ROW_PX` (280) | ASSISTED when bank needs **two** visible rows |
-| `computeForecastPhosphorHeightPx(gpuCount, perRow)` | Picks 1- vs 2-row |
+| `computeForecastPhosphorHeightPx(gpuCount, perRow)` | Shared by forecast, EVALUATING radar, and LOADING boot |
 | `FUSION_*` in `benchPanelLayout.ts` | **Running** overlay only — header + hero + latch + bench |
-| Boot / EVALUATING radar | Always **280** (2-row). Short-lived; do not squash to 1-row |
 
 **Do not** set fusion tray height from `FORECAST_PHOSPHOR_HEIGHT_*`. Coupling them reintroduced ~50px dead space above the BENCHMARK latch after ASSISTED grew to 280.
 
-`VramBadge.applyFusionDisplayHeight`:
+**Do not** hardcode skeleton CSS to 280 — `VramBadge` applies `forecastHeightPx` so model/GPU-bank changes don’t jump the glass.
 
-- No engine → forecast height from GPU count  
-- `LOADING` → 280  
-- `RUNNING` → `computeFusionPhosphorHeightForTray` / dual-stack helpers  
+**Evaluator traps**
+- Hold previous manifest while LEARNED fetch or FIT PROBE is in flight (`commitManifest(null)` only when idle) — avoids hard-knob skeleton blimp.
+- Auto-probe must not skip solely because the learned **curve** has this CTX (curve ignores batch/ubatch/flash). Skip only when LEARNED/curve can already paint, or a probe session already matches the hard key.
 
 ---
 

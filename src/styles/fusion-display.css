@@ -442,11 +442,12 @@
   overflow: hidden;
 }
 
-/* Holds phosphor open while LEARNED / FIT PROBE resolve (~1s). */
+/* Holds phosphor open while LEARNED / FIT PROBE resolve.
+ * Height comes from VramBadge (computeForecastPhosphorHeightPx) — not a fixed 280. */
 .vram-badge-forecast--skeleton {
-  min-height: 280px;
-  height: 280px;
-  max-height: 280px;
+  min-height: 0;
+  height: 100%;
+  max-height: none;
   /* Edge-to-edge on phosphor face — no px/py inset */
   padding: 0 !important;
   margin: 0;

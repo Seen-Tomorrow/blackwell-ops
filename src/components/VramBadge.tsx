@@ -5,10 +5,7 @@ import {
   computeFusionPhosphorHeightForTray,
 } from "../lib/benchPanelLayout";
 import { getFusionBenchTrayOpen, refreshFusionBenchTrayFromStorage } from "../lib/fusionBenchTrayStore";
-import {
-  computeForecastPhosphorHeightPx,
-  FORECAST_PHOSPHOR_HEIGHT_2ROW_PX,
-} from "../lib/onboardingDisplay";
+import { computeForecastPhosphorHeightPx } from "../lib/onboardingDisplay";
 import { useFusionBenchTray } from "../hooks/useFusionBenchTray";
 import GpuTopology from "./GpuTopology";
 import FusionPane from "./FusionPane";
@@ -108,23 +105,21 @@ export default function VramBadge({
       display.dataset.fusionHeightManaged = "";
       display.removeAttribute("data-fusion-tray-stowed");
       display.removeAttribute("data-fusion-boot");
-      // EVALUATING radar / pre-manifest: full 2-row glass (short-lived, don't squash).
-      const idlePx = manifest ? forecastHeightPx : FORECAST_PHOSPHOR_HEIGHT_2ROW_PX;
-      display.style.height = `${idlePx}px`;
-      display.style.minHeight = `${idlePx}px`;
-      display.style.maxHeight = `${idlePx}px`;
+      // Forecast + EVALUATING radar share GPU-row height (no 228↔280 jump).
+      display.style.height = `${forecastHeightPx}px`;
+      display.style.minHeight = `${forecastHeightPx}px`;
+      display.style.maxHeight = `${forecastHeightPx}px`;
       return;
     }
 
-    // LOADING: full 280px glass for boot progress (short-lived).
+    // LOADING: same glass height as current forecast bank.
     if (engineStatus === "LOADING") {
       display.dataset.fusionHeightManaged = "";
       display.setAttribute("data-fusion-boot", "");
       display.removeAttribute("data-fusion-tray-stowed");
-      const bootPx = FORECAST_PHOSPHOR_HEIGHT_2ROW_PX;
-      display.style.height = `${bootPx}px`;
-      display.style.minHeight = `${bootPx}px`;
-      display.style.maxHeight = `${bootPx}px`;
+      display.style.height = `${forecastHeightPx}px`;
+      display.style.minHeight = `${forecastHeightPx}px`;
+      display.style.maxHeight = `${forecastHeightPx}px`;
       return;
     }
 
@@ -254,7 +249,7 @@ export default function VramBadge({
       <div
         ref={rootRef}
         className={`vram-badge-forecast vram-fc vram-badge-forecast--skeleton relative flex flex-col min-h-0 overflow-hidden ${className || ""}`}
-        style={{ minHeight: FORECAST_PHOSPHOR_HEIGHT_2ROW_PX }}
+        style={{ minHeight: forecastHeightPx, height: forecastHeightPx }}
         data-forecast-skeleton="1"
         aria-busy="true"
         aria-label="Evaluating VRAM footprint"

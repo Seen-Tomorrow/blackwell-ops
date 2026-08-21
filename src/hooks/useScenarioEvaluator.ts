@@ -504,7 +504,22 @@ export function useScenarioEvaluator({
           session.placementKey === curPlacementKey,
         );
       }
-      commitManifest(result);
+      // Hold previous paint while LEARNED fetch or FIT PROBE is in flight.
+      // Hard-knob churn used to commitManifest(null) for one frame → skeleton blimp,
+      // then probe/learn landed later. Cold null still goes to skeleton.
+      if (
+        result == null
+        && manifestRef.current != null
+        && (learnedFetchPendingRef.current || validatingRef.current)
+      ) {
+        // keep manifestRef / React state
+      } else {
+        commitManifest(result);
+      }
+      // Nothing measured and not already probing → kick auto FIT (may no-op if disabled).
+      if (result == null && !validatingRef.current) {
+        maybeAutoFitRef.current();
+      }
 
       if (
         result
@@ -526,7 +541,10 @@ export function useScenarioEvaluator({
       }
     } catch (e) {
       console.error("[ScenarioEvaluator]", e);
-      commitManifest(null);
+      if (!(learnedFetchPendingRef.current || validatingRef.current) || manifestRef.current == null) {
+        commitManifest(null);
+      }
+      maybeAutoFitRef.current();
     } finally {
       setIsEvaluating(false);
     }
@@ -936,19 +954,32 @@ export function useScenarioEvaluator({
   maybeAutoFitRef.current = () => {
     if (!autoVramLaunchRef.current || !model?.path || !model.metadata) return;
     if (validatingRef.current) return;
+    if (learnedFetchPendingRef.current) return;
+    // Already have a live probe for this hard-key footprint.
+    if (
+      probeSessionRef.current?.modelPath === model.path
+      && probeSessionRef.current.hardKey === probeKey
+    ) {
+      return;
+    }
     const liveCtx = parseCtx(configRef.current.ctx ?? "32768");
-    if (learnedCurveRef.current.some((p) => p.ctx === liveCtx)) return;
-    if (probeSessionRef.current?.modelPath === model.path && probeSessionRef.current.hardKey === probeKey) return;
-    const free = computeGpuAvailableList(gpusRef.current, committedSlotsFromStack(stackRef.current));
+    const curve = learnedCurveRef.current;
+    // Skip auto-probe only when evaluate() can already paint from LEARNED/curve.
+    // (Exact-CTX curve skip alone was wrong: curve is not keyed on batch/ubatch/flash,
+    // and left EVALUATING stuck after restart when estimate was still null.)
+    const hasLearnedPaint = learnedVramRef.current != null;
+    const hasCurvePaint =
+      curve.some((p) => p.ctx === liveCtx) || curve.length >= 2;
+    if (hasLearnedPaint || hasCurvePaint) return;
+    const free = computeGpuAvailableList(
+      gpusRef.current,
+      committedSlotsFromStack(stackRef.current),
+    );
     if (Math.max(...free, 0) < 2.5) return;
     const providerId = String(configRef.current.backend_type || "");
     if (tomMtpBlocked(providerId, model)) return;
     void validate();
   };
-
-  useEffect(() => {
-    maybeAutoFitRef.current();
-  }, [model?.path, probeKey, autoVramLaunch, metaReady]);
 
   return { manifest, isEvaluating, isValidating, validate };
 }
