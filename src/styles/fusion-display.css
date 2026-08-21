@@ -1173,29 +1173,58 @@
 }
 /* ASSISTED body — fixed-height dominant bars; GPU bank keeps remaining space */
 
-/* ASSISTED measure cluster — rails + need heroes + SOURCE/PROBE */
+/* ASSISTED measure cluster — SOURCE above rails; need chips fused on bar ends */
 .vram-fc-measure {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   align-items: stretch;
-  gap: calc(8px * var(--vram-fc-scale, 1.12));
+  gap: calc(5px * var(--vram-fc-scale, 1.12));
   flex: 0 0 auto;
   align-self: stretch;
   width: 100%;
   min-width: 0;
 }
-/* Must beat .vram-fc__body--assisted .vram-fc-bars--assisted { flex: 0 0 auto }
-   which otherwise sizes rails to chip content (~1/10 width). */
+.vram-fc-measure__main {
+  display: flex;
+  flex-direction: column;
+  gap: calc(5px * var(--vram-fc-scale, 1.12));
+  width: 100%;
+  min-width: 0;
+}
+/* SOURCE sits above bars, right-aligned over the need-hero column */
+.vram-fc-measure__source {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+  min-width: 0;
+}
+.vram-fc-measure__source .vram-fc__source-row {
+  margin: 0;
+  width: auto;
+  max-width: 100%;
+}
+.vram-fc-measure__source .vram-forecast-source {
+  width: auto;
+}
+.vram-fc-measure__source .vram-fc-source--dominant .vram-fc-source__head {
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+}
+.vram-fc-measure__source .vram-fc-source--dominant .vram-fc-probe {
+  margin-left: 0.35rem;
+}
+
+/* Rails full width — need chips are back inside fused bars */
 .vram-fc-measure__rails,
 .vram-fc__body--assisted .vram-fc-measure__rails.vram-fc-bars--assisted,
 .vram-fc[data-forecast-mode="assisted"] .vram-fc-measure__rails.vram-fc-bars {
-  flex: 1 1 0% !important;
+  flex: 0 0 auto !important;
+  width: 100% !important;
   min-width: 0 !important;
-  width: auto !important;
   max-width: none !important;
-  align-self: stretch;
   display: flex;
   flex-direction: column;
+  gap: calc(6px * var(--vram-fc-scale, 1.12));
 }
 .vram-fc-measure__rails .vram-fc-bar-row {
   width: 100%;
@@ -1207,69 +1236,6 @@
   flex: 1 1 auto;
   min-width: 0;
 }
-.vram-fc-measure__side {
-  flex: 0 0 auto;
-  width: calc(11.5ch + 2.6rem);
-  min-width: calc(11.5ch + 2.6rem);
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: calc(4px * var(--vram-fc-scale, 1.12));
-}
-.vram-fc-measure__needs {
-  display: flex;
-  flex-direction: column;
-  gap: calc(6px * var(--vram-fc-scale, 1.12));
-}
-.vram-fc-measure__need {
-  display: flex;
-  flex-direction: row;
-  align-items: baseline;
-  justify-content: flex-end;
-  gap: 0.28em;
-  min-height: calc(36px * var(--vram-fc-scale, 1.12));
-  padding: 0 2px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  line-height: 1;
-}
-.vram-fc-measure__need-lab {
-  font-size: calc(7px * var(--vram-fc-scale, 1.12));
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  opacity: 0.5;
-}
-.vram-fc-measure__need-val {
-  font-size: calc(20px * var(--vram-fc-scale, 1.12));
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.01em;
-  text-shadow: 0 0 12px color-mix(in srgb, currentColor 35%, transparent);
-}
-.vram-fc-measure__need-unit {
-  font-size: calc(9px * var(--vram-fc-scale, 1.12));
-  font-weight: 700;
-  opacity: 0.55;
-  letter-spacing: 0.06em;
-}
-.vram-fc-measure__need--ram {
-  color: color-mix(in srgb, #93c5fd 88%, var(--display-face-text, #e2e8f0));
-}
-.vram-fc-measure__side .vram-fc__source-row {
-  margin: 0;
-  margin-top: auto;
-}
-.vram-fc-measure__side .vram-fc-source--dominant .vram-fc-source__head {
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 4px 6px;
-}
-.vram-fc-measure__side .vram-fc-source--dominant .vram-fc-probe {
-  margin-left: 0;
-}
-.vram-fc-measure__side .vram-forecast-source {
-  width: 100%;
-}
 
 .vram-fc__body--assisted .vram-fc-measure {
   flex: 0 0 auto;
@@ -1277,6 +1243,7 @@
 .vram-fc__body--assisted .vram-fc-bars--assisted {
   gap: calc(6px * var(--vram-fc-scale, 1.12));
 }
+
 .vram-fc__body--assisted {
   gap: calc(8px * var(--vram-fc-scale, 1.12));
   justify-content: flex-start;
