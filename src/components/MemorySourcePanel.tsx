@@ -1,3 +1,4 @@
+import { useCallback, useId, useRef, useState } from "react";
 import type { MemorySource, VramManifest } from "../lib/types";
 import {
   MEMORY_SOURCE_ACCENT,
@@ -6,16 +7,11 @@ import {
 
 interface MemorySourcePanelProps {
   memorySource: MemorySource;
-  /** Full manifest (reserved for detail wiring). */
   manifest?: VramManifest | null;
   isValidating?: boolean;
   hasProbed?: boolean;
   onValidate?: () => void;
   hideValidate?: boolean;
-  /**
-   * true  → one-line SOURCE · KIND · [RE-PROBE]
-   * false → same head (legacy stack removed — recap is tooltip-only)
-   */
   compact?: boolean;
   /** Optional launch summary included in hover recap. */
   launchSummary?: string;
@@ -34,50 +30,79 @@ function ConfidencePips({ level }: { level: MemorySource["confidence"] }) {
   );
 }
 
-function buildRecapTooltip(
-  memorySource: MemorySource,
-  label: string,
-  launchSummary?: string,
-): string {
-  const lines: string[] = [];
-  if (launchSummary?.trim()) lines.push(launchSummary.trim());
-  lines.push(`SOURCE · ${label}`);
-  if (memorySource.detail?.trim()) lines.push(memorySource.detail.trim());
-  if (memorySource.breakdown?.trim()) lines.push(memorySource.breakdown.trim());
-  if (memorySource.breakdownSecondary?.trim()) {
-    lines.push(memorySource.breakdownSecondary.trim());
-  }
-  return lines.join("\n");
+function kindDisplayLabel(kind: MemorySource["kind"]): string {
+  // Curve = same LEARNED word + live "updating" treatment in CSS/markup.
+  if (kind === "learned_curve") return "LEARNED";
+  return MEMORY_SOURCE_LABELS[kind];
 }
 
-/** SOURCE instrument — dominant kind chip + optional RE-PROBE; full recap on hover. */
+interface RecapBits {
+  summary?: string;
+  kindLabel: string;
+  detail?: string;
+  breakdown?: string;
+  secondary?: string;
+}
+
+function collectRecap(
+  memorySource: MemorySource,
+  kindLabel: string,
+  launchSummary?: string,
+): RecapBits {
+  return {
+    summary: launchSummary?.trim() || undefined,
+    kindLabel,
+    detail: memorySource.detail?.trim() || undefined,
+    breakdown: memorySource.breakdown?.trim() || undefined,
+    secondary: memorySource.breakdownSecondary?.trim() || undefined,
+  };
+}
+
+/** SOURCE instrument — LEARNED (+live), PROBE; rich HTML recap on hover. */
 export default function MemorySourcePanel({
   memorySource,
   isValidating = false,
   hasProbed = false,
   onValidate,
   hideValidate = false,
-  compact: _compact = true,
   launchSummary,
 }: MemorySourcePanelProps) {
   const accent = MEMORY_SOURCE_ACCENT[memorySource.kind];
-  const label = MEMORY_SOURCE_LABELS[memorySource.kind];
-  const tip = buildRecapTooltip(memorySource, label, launchSummary);
+  const kindLabel = kindDisplayLabel(memorySource.kind);
+  const isCurve = memorySource.kind === "learned_curve";
+  const recap = collectRecap(memorySource, kindLabel, launchSummary);
+  const tipId = useId();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+
+  const show = useCallback(() => setOpen(true), []);
+  const hide = useCallback(() => setOpen(false), []);
 
   return (
     <div
+      ref={rootRef}
       className="vram-fc-source memory-source-strip vram-fc-source--inline vram-fc-source--dominant"
       data-source-kind={memorySource.kind}
       data-source-layout="inline"
-      title={tip}
+      data-tip-open={open ? "1" : undefined}
+      onMouseEnter={show}
+      onMouseLeave={hide}
+      onFocus={show}
+      onBlur={hide}
     >
       <div className="vram-fc-source__head memory-source-header">
         <span className="vram-fc-source__lab">SOURCE</span>
         <span className={`vram-fc-source__kind ${accent.text}`}>
           <ConfidencePips level={memorySource.confidence} />
           <span className="memory-source-kind-label vram-fc-source__kind-lab">
-            {label}
+            {kindLabel}
           </span>
+          {isCurve ? (
+            <span className="vram-fc-source__live" title="Interpolating between measured launches">
+              <span className="vram-fc-source__live-dot" aria-hidden />
+              <span className="vram-fc-source__live-lab">LIVE</span>
+            </span>
+          ) : null}
         </span>
         {onValidate && !hideValidate ? (
           <FitProbeButton
@@ -87,6 +112,45 @@ export default function MemorySourcePanel({
           />
         ) : null}
       </div>
+
+      {open ? (
+        <div
+          id={tipId}
+          className="vram-fc-recap"
+          role="tooltip"
+          data-source-kind={memorySource.kind}
+        >
+          {recap.summary ? (
+            <div className="vram-fc-recap__summary">{recap.summary}</div>
+          ) : null}
+          <div className="vram-fc-recap__row">
+            <span className="vram-fc-recap__k">SOURCE</span>
+            <span className={`vram-fc-recap__v vram-fc-recap__v--kind ${accent.text}`}>
+              {recap.kindLabel}
+              {isCurve ? <span className="vram-fc-recap__live-tag">LIVE</span> : null}
+            </span>
+          </div>
+          {recap.detail ? (
+            <div className="vram-fc-recap__row">
+              <span className="vram-fc-recap__k">WHEN</span>
+              <span className="vram-fc-recap__v">{recap.detail}</span>
+            </div>
+          ) : null}
+          {recap.breakdown ? (
+            <div className="vram-fc-recap__block">
+              <span className="vram-fc-recap__k">SPLIT</span>
+              <span className="vram-fc-recap__v vram-fc-recap__v--mono">{recap.breakdown}</span>
+            </div>
+          ) : null}
+          {recap.secondary ? (
+            <div className="vram-fc-recap__block">
+              <span className="vram-fc-recap__k">HOST</span>
+              <span className="vram-fc-recap__v vram-fc-recap__v--mono">{recap.secondary}</span>
+            </div>
+          ) : null}
+          <div className="vram-fc-recap__foot">hover recap · cockpit has the knobs</div>
+        </div>
+      ) : null}
     </div>
   );
 }

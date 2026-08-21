@@ -179,7 +179,7 @@ export function attachMemorySource(
 export const MEMORY_SOURCE_LABELS: Record<MemorySource["kind"], string> = {
   fit_probe: "FIT PROBE",
   learned: "LEARNED",
-  learned_curve: "LEARNED ≈",
+  learned_curve: "LEARNED",
 };
 
 export const MEMORY_SOURCE_ACCENT: Record<
