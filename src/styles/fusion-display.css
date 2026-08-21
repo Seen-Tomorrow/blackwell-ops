@@ -1306,9 +1306,16 @@
   min-height: 100%;
   border: none;
   border-radius: 0;
-  /* Flat well — avoid strong vertical vignette (reads as barrel on light themes) */
-  background: color-mix(in srgb, var(--display-face-text, #e2e8f0) 7%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, #000 12%, transparent);
+  /* Soft well: light top/bottom shade only — not a deep barrel vignette */
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--display-face-text, #e2e8f0) 5%, transparent),
+    color-mix(in srgb, var(--display-face-text, #e2e8f0) 9%, transparent) 45%,
+    color-mix(in srgb, var(--display-face-text, #e2e8f0) 5%, transparent)
+  );
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--display-face-text, #e2e8f0) 8%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, #000 10%, transparent);
 }
 
 .vram-fc-bar--fused .vram-fc-bar__fill {
@@ -1318,56 +1325,17 @@
 }
 .vram-fc-bar__fill--bevel {
   box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 28%, transparent),
-    inset 0 -2px 3px color-mix(in srgb, #000 35%, transparent);
+    inset 0 1px 0 color-mix(in srgb, #fff 22%, transparent),
+    inset 0 -1px 1px color-mix(in srgb, #000 18%, transparent);
   background-image: linear-gradient(
     180deg,
-    color-mix(in srgb, #fff 22%, transparent),
-    transparent 42%,
-    color-mix(in srgb, #000 28%, transparent)
+    color-mix(in srgb, #fff 16%, transparent),
+    transparent 50%,
+    color-mix(in srgb, #000 14%, transparent)
   );
   background-blend-mode: soft-light;
 }
 
-/* Dark faces: subtle depth without barrel curve */
-html:not([data-theme="arctic"]) .vram-fc-bar--fused .vram-fc-bar__track {
-  background: color-mix(in srgb, var(--display-face-text, #e2e8f0) 6%, transparent);
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #000 28%, transparent),
-    inset 0 -1px 0 color-mix(in srgb, #fff 4%, transparent);
-}
-
-/* Arctic / light phosphor: flat paper well, hairline only */
-html[data-theme="arctic"] .vram-fc-bar--fused .vram-fc-bar__track {
-  background: color-mix(in srgb, var(--display-face-text, #1e293b) 6%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--display-face-text, #1e293b) 10%, transparent);
-}
-html[data-theme="arctic"] .vram-fc-bar__fill--bevel {
-  /* Keep a thin top edge, drop heavy bottom shade (barrel) */
-  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 35%, transparent);
-  background-image: linear-gradient(
-    180deg,
-    color-mix(in srgb, #fff 18%, transparent),
-    transparent 55%
-  );
-}
-html[data-theme="arctic"] .vram-fc-bar--fused {
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 40%, transparent),
-    0 1px 0 color-mix(in srgb, #000 6%, transparent);
-}
-html[data-theme="arctic"] .vram-fc__topo--compact .gpu-card__bar--3d {
-  background: color-mix(in srgb, var(--display-face-text, #1e293b) 7%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--display-face-text, #1e293b) 12%, transparent);
-}
-html[data-theme="arctic"] .vram-fc__topo--compact .gpu-card__bar-fill--bevel {
-  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 40%, transparent);
-  background-image: linear-gradient(
-    180deg,
-    color-mix(in srgb, #fff 22%, transparent),
-    transparent 60%
-  );
-}
 
 
 .vram-fc-bar__cap-chip {
