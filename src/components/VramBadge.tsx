@@ -241,14 +241,14 @@ export default function VramBadge({
     return (
       <div
         ref={rootRef}
-        className={`vram-badge-forecast vram-fc vram-badge-forecast--skeleton px-3 py-2 relative flex flex-col min-h-0 overflow-hidden ${className || ""}`}
+        className={`vram-badge-forecast vram-fc vram-badge-forecast--skeleton relative flex flex-col min-h-0 overflow-hidden ${className || ""}`}
         style={{ minHeight: FORECAST_PHOSPHOR_HEIGHT_PX }}
         data-forecast-skeleton="1"
         aria-busy="true"
         aria-label="Evaluating VRAM footprint"
       >
         {fitLaunchDock}
-        <div className="vram-forecast-measuring flex flex-1 min-h-0 items-stretch justify-between gap-2 sm:gap-4 w-full">
+        <div className="vram-forecast-measuring flex flex-1 min-h-0 items-stretch justify-between w-full">
           <div className="vram-forecast-measuring__flank vram-forecast-measuring__flank--left font-mono" aria-hidden>
             <span className="vram-forecast-measuring__flank-label">GPU</span>
             <span className="vram-forecast-measuring__ladder">
