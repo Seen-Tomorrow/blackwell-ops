@@ -444,9 +444,9 @@
 
 /* Holds phosphor open while LEARNED / FIT PROBE resolve (~1s). */
 .vram-badge-forecast--skeleton {
-  min-height: 275px;
-  height: 275px;
-  max-height: 275px;
+  min-height: 280px;
+  height: 280px;
+  max-height: 280px;
 }
 
 .vram-forecast-measuring {
@@ -1306,14 +1306,9 @@
   min-height: 100%;
   border: none;
   border-radius: 0;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, #000 35%, transparent),
-      color-mix(in srgb, var(--display-face-text, #e2e8f0) 5%, transparent) 40%,
-      color-mix(in srgb, #000 25%, transparent)
-    );
-  box-shadow: inset 0 2px 4px color-mix(in srgb, #000 45%, transparent);
+  /* Flat well — avoid strong vertical vignette (reads as barrel on light themes) */
+  background: color-mix(in srgb, var(--display-face-text, #e2e8f0) 7%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #000 12%, transparent);
 }
 
 .vram-fc-bar--fused .vram-fc-bar__fill {
@@ -1333,6 +1328,47 @@
   );
   background-blend-mode: soft-light;
 }
+
+/* Dark faces: subtle depth without barrel curve */
+html:not([data-theme="arctic"]) .vram-fc-bar--fused .vram-fc-bar__track {
+  background: color-mix(in srgb, var(--display-face-text, #e2e8f0) 6%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #000 28%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, #fff 4%, transparent);
+}
+
+/* Arctic / light phosphor: flat paper well, hairline only */
+html[data-theme="arctic"] .vram-fc-bar--fused .vram-fc-bar__track {
+  background: color-mix(in srgb, var(--display-face-text, #1e293b) 6%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--display-face-text, #1e293b) 10%, transparent);
+}
+html[data-theme="arctic"] .vram-fc-bar__fill--bevel {
+  /* Keep a thin top edge, drop heavy bottom shade (barrel) */
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 35%, transparent);
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, #fff 18%, transparent),
+    transparent 55%
+  );
+}
+html[data-theme="arctic"] .vram-fc-bar--fused {
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 40%, transparent),
+    0 1px 0 color-mix(in srgb, #000 6%, transparent);
+}
+html[data-theme="arctic"] .vram-fc__topo--compact .gpu-card__bar--3d {
+  background: color-mix(in srgb, var(--display-face-text, #1e293b) 7%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--display-face-text, #1e293b) 12%, transparent);
+}
+html[data-theme="arctic"] .vram-fc__topo--compact .gpu-card__bar-fill--bevel {
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 40%, transparent);
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, #fff 22%, transparent),
+    transparent 60%
+  );
+}
+
 
 .vram-fc-bar__cap-chip {
   flex: 0 0 8.4ch;
