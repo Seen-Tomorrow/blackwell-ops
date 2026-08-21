@@ -1207,11 +1207,12 @@
   width: auto;
 }
 .vram-fc-measure__source .vram-fc-source--dominant .vram-fc-source__head {
-  justify-content: flex-end;
+  justify-content: flex-start;
   flex-wrap: nowrap;
+  width: 100%;
 }
-.vram-fc-measure__source .vram-fc-source--dominant .vram-fc-probe {
-  margin-left: 0.35rem;
+.vram-fc-measure__source .vram-fc-source--dominant {
+  width: 100%;
 }
 
 /* Rails full width — need chips are back inside fused bars */
@@ -1685,57 +1686,82 @@
 
 
 /*
- * Status slot — fixed footprint for:
- *   LEARNED → "(from previous run)"
- *   LEARNED curve / FIT PROBE → live memory meter
- * so CTX moves never shift the SOURCE row.
+ * Status slot — grows across the empty row.
+ *   [ HERO status | live meter ]  [ RE-PROBE? ]
+ * RE-PROBE only when estimate (hidden on EXACT/MEASURED).
  */
 .vram-fc-source__status-slot {
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
-  flex: 0 0 20ch;
-  width: 20ch;
-  min-width: 20ch;
-  max-width: 20ch;
-  height: calc(14px * var(--vram-fc-scale, 1.12));
-  margin-left: 4px;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 12ch;
+  max-width: none;
+  width: auto;
+  height: calc(18px * var(--vram-fc-scale, 1.12));
+  margin-left: 8px;
   overflow: hidden;
 }
-.vram-fc-source__prev-lab {
-  font-size: calc(7px * var(--vram-fc-scale, 1.12));
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  text-transform: none;
-  opacity: 0.75;
-  white-space: nowrap;
-  line-height: 1;
-  padding-left: 1px;
-}
-.vram-fc-source__idle-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
+.vram-fc-source__status-main {
+  flex: 1 1 auto;
   min-width: 0;
-  max-width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
 }
+/* Hero status — louder than LEARNED / FIT PROBE kind word */
+.vram-fc-source__status-hero {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: calc(13px * var(--vram-fc-scale, 1.12));
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  line-height: 1;
+  white-space: nowrap;
+  color: inherit;
+  text-shadow: 0 0 12px color-mix(in srgb, currentColor 28%, transparent);
+}
+.vram-fc-source__status-hero.is-exact {
+  opacity: 1;
+}
+.vram-fc-source__status-hero.is-estimate {
+  opacity: 0.92;
+}
+/* legacy alias */
+.vram-fc-source__prev-lab {
+  display: block;
+  width: 100%;
+  font-size: calc(13px * var(--vram-fc-scale, 1.12));
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  line-height: 1;
+  white-space: nowrap;
+}
+/* RE-PROBE — padded chip, fixed width when present */
 .vram-fc-source__reprobe {
   flex: 0 0 auto;
   margin: 0;
-  padding: 1px 5px;
+  padding: 3px 10px;
   border-radius: 2px;
   border: 1px solid color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 55%, transparent);
   background: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 14%, transparent);
   color: var(--theme-telemetry-amber, #fbbf24);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: calc(7px * var(--vram-fc-scale, 1.12));
+  font-size: calc(8px * var(--vram-fc-scale, 1.12));
   font-weight: 800;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   line-height: 1.2;
   cursor: pointer;
   white-space: nowrap;
+  text-align: center;
 }
-.vram-fc-source__reprobe:hover {
+.vram-fc-source__reprobe:hover:not(:disabled) {
   background: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 28%, transparent);
   border-color: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 75%, transparent);
 }
@@ -1743,36 +1769,40 @@
   outline: 1px solid var(--theme-telemetry-amber, #fbbf24);
   outline-offset: 1px;
 }
+.vram-fc-source__reprobe[data-probe-state="probing"],
+.vram-fc-source__reprobe:disabled {
+  cursor: wait;
+  opacity: 0.85;
+}
 
-/* Live memory measure — equalizer bars + sweep + scanline */
+/* Live meter — bars + horizontal scanline (no side-to-side sweep) */
 .vram-fc-source__live-meter {
   --mem-accent: var(--theme-telemetry-cyan, #22d3ee);
   position: relative;
   display: block;
   width: 100%;
-  height: calc(13px * var(--vram-fc-scale, 1.12));
+  height: calc(12px * var(--vram-fc-scale, 1.12));
   border-radius: 2px;
-  border: 1px solid color-mix(in srgb, var(--mem-accent) 50%, transparent);
+  border: 1px solid color-mix(in srgb, var(--mem-accent) 45%, transparent);
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--mem-accent) 14%, transparent) 0%,
-      color-mix(in srgb, #000 35%, transparent) 100%
+      color-mix(in srgb, var(--mem-accent) 12%, transparent) 0%,
+      color-mix(in srgb, #000 28%, transparent) 100%
     );
   overflow: hidden;
   box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 12%, transparent),
-    0 0 10px color-mix(in srgb, var(--mem-accent) 28%, transparent);
-  /* Whole well breathes so motion is obvious even if bars stall */
-  animation: vram-fc-mem-glow 1.4s ease-in-out infinite alternate !important;
+    inset 0 1px 0 color-mix(in srgb, #fff 10%, transparent),
+    0 0 8px color-mix(in srgb, var(--mem-accent) 22%, transparent);
 }
 .vram-fc-source__live-meter--probe {
   --mem-accent: var(--theme-telemetry-amber, #fbbf24);
 }
 .vram-fc-source__live-meter.is-probing {
+  border-color: color-mix(in srgb, var(--mem-accent) 65%, transparent);
   box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 14%, transparent),
-    0 0 14px color-mix(in srgb, var(--mem-accent) 45%, transparent);
+    inset 0 1px 0 color-mix(in srgb, #fff 12%, transparent),
+    0 0 12px color-mix(in srgb, var(--mem-accent) 38%, transparent);
 }
 .vram-fc-source__live-meter-bars {
   position: absolute;
@@ -1783,16 +1813,11 @@
   justify-content: space-between;
   gap: 2px;
 }
-/*
- * Live meter motion is driven by rAF in MemorySourcePanel (useLiveMeterDrive).
- * CSS keyframes alone die under Windows "Show animations" off /
- * prefers-reduced-motion in WebView2 — keep only static base styles here.
- */
 .vram-fc-source__live-bar {
   display: block;
   flex: 1 1 0;
   min-width: 2px;
-  max-width: 5px;
+  max-width: 4px;
   width: auto;
   height: 100%;
   margin: 0;
@@ -1800,37 +1825,18 @@
   font-style: normal;
   border-radius: 1px 1px 0 0;
   transform-origin: bottom center;
-  transform: scaleY(0.35);
-  opacity: 0.7;
+  transform: scaleY(0.3);
+  opacity: 0.65;
   background: linear-gradient(
     180deg,
     color-mix(in srgb, #fff 70%, var(--mem-accent)) 0%,
     var(--mem-accent) 55%,
     color-mix(in srgb, var(--mem-accent) 45%, #000) 100%
   );
-  box-shadow: 0 0 5px color-mix(in srgb, var(--mem-accent) 70%, transparent);
+  box-shadow: 0 0 4px color-mix(in srgb, var(--mem-accent) 65%, transparent);
   will-change: transform, opacity;
 }
-.vram-fc-source__live-meter-sweep {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 3;
-  width: 40%;
-  pointer-events: none;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    color-mix(in srgb, #fff 18%, transparent) 30%,
-    color-mix(in srgb, #fff 65%, var(--mem-accent)) 50%,
-    color-mix(in srgb, #fff 18%, transparent) 70%,
-    transparent 100%
-  );
-  opacity: 0.9;
-  transform: translateX(-120%);
-  will-change: transform;
-}
+/* Horizontal scanline only (no lateral sweep band) */
 .vram-fc-source__live-meter-scan {
   position: absolute;
   left: 0;
@@ -1841,25 +1847,8 @@
   pointer-events: none;
   background: color-mix(in srgb, #fff 75%, var(--mem-accent, #22d3ee));
   box-shadow: 0 0 6px color-mix(in srgb, var(--mem-accent, #22d3ee) 85%, transparent);
-  opacity: 0.8;
+  opacity: 0.75;
   will-change: transform, opacity;
-}
-
-@keyframes vram-fc-mem-bar {
-  0%   { transform: scaleY(0.18); opacity: 0.45; }
-  100% { transform: scaleY(1);    opacity: 1; }
-}
-@keyframes vram-fc-mem-sweep {
-  0%   { transform: translateX(-130%); }
-  100% { transform: translateX(280%); }
-}
-@keyframes vram-fc-mem-scan {
-  0%   { transform: translateY(1px); opacity: 0.35; }
-  100% { transform: translateY(9px); opacity: 0.95; }
-}
-@keyframes vram-fc-mem-glow {
-  0%   { box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 10%, transparent), 0 0 6px color-mix(in srgb, var(--mem-accent) 18%, transparent); border-color: color-mix(in srgb, var(--mem-accent) 40%, transparent); }
-  100% { box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 18%, transparent), 0 0 14px color-mix(in srgb, var(--mem-accent) 48%, transparent); border-color: color-mix(in srgb, var(--mem-accent) 70%, transparent); }
 }
 
 /* Rich SOURCE hover recap */
@@ -1970,6 +1959,7 @@
 
 .vram-fc-source--dominant {
   min-width: 0;
+  width: 100%;
 }
 .vram-fc-source--dominant .vram-fc-source__head {
   display: flex;
@@ -1977,6 +1967,7 @@
   align-items: center;
   gap: calc(8px * var(--vram-fc-scale, 1.12));
   min-width: 0;
+  width: 100%;
   flex-wrap: nowrap;
 }
 .vram-fc-source--dominant .vram-fc-source__lab {
@@ -1985,27 +1976,29 @@
   font-weight: 800;
   opacity: 0.9;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 .vram-fc-source--dominant .vram-fc-source__kind {
   display: inline-flex;
   align-items: center;
   gap: calc(5px * var(--vram-fc-scale, 1.12));
   min-width: 0;
+  flex-shrink: 0;
 }
 .vram-fc-source--dominant .vram-fc-source__kind-lab {
-  font-size: calc(11px * var(--vram-fc-scale, 1.12));
-  font-weight: 800;
+  font-size: calc(10px * var(--vram-fc-scale, 1.12));
+  font-weight: 700;
   letter-spacing: 0.1em;
+  opacity: 0.85;
 }
 .vram-fc-source--dominant .vram-fc-source__pips {
   transform: scale(1.05);
 }
-.vram-fc-source--dominant .vram-fc-probe {
-  margin-left: auto;
-  flex-shrink: 0;
-  font-size: calc(8px * var(--vram-fc-scale, 1.12));
-  letter-spacing: 0.1em;
-  padding: 0.12rem 0.4rem;
+.vram-fc-source--dominant .vram-fc-source__status-slot {
+  flex: 1 1 auto;
+}
+.vram-fc-source--dominant .vram-fc-source__status-hero {
+  font-size: calc(14px * var(--vram-fc-scale, 1.12));
 }
 
 .vram-fc-source--inline {

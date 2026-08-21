@@ -53,13 +53,13 @@ function useCtxSliderDragging(): boolean {
       clearTimeout(coastTimer);
     };
   }, []);
+
   return dragging || coast;
 }
 
 /**
- * Drive live-meter bars via rAF when CSS animations are blocked
- * (Windows "Show animations" off → prefers-reduced-motion). WebView2 still
- * paints transforms if we set them directly each frame.
+ * Vertical equalizer + scanline via rAF (no horizontal sweep).
+ * CSS keyframes die under Windows animations-off / prefers-reduced-motion.
  */
 function useLiveMeterDrive(active: boolean) {
   const barsRef = useRef<HTMLSpanElement | null>(null);
@@ -69,42 +69,38 @@ function useLiveMeterDrive(active: boolean) {
     if (!root) return;
     const bars = Array.from(root.querySelectorAll<HTMLElement>(".vram-fc-source__live-bar"));
     if (bars.length === 0) return;
+    const meter = root.parentElement;
+    const scan = meter?.querySelector<HTMLElement>(".vram-fc-source__live-meter-scan") ?? null;
 
     let raf = 0;
     const t0 = performance.now();
-    const phase = bars.map((_, i) => i * 0.37);
+    const phase = bars.map((_, i) => i * 0.38);
 
     const tick = (now: number) => {
       const t = (now - t0) / 1000;
       for (let i = 0; i < bars.length; i++) {
-        const s = 0.18 + 0.82 * (0.5 + 0.5 * Math.sin(t * 4.2 + phase[i]));
-        const o = 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(t * 4.2 + phase[i] + 0.4));
+        const s = 0.16 + 0.84 * (0.5 + 0.5 * Math.sin(t * 3.8 + phase[i]));
+        const o = 0.42 + 0.58 * (0.5 + 0.5 * Math.sin(t * 3.8 + phase[i] + 0.4));
         bars[i].style.transform = `scaleY(${s.toFixed(3)})`;
         bars[i].style.opacity = o.toFixed(3);
       }
-      const meter = root.parentElement;
-      if (meter) {
-        const sweep = meter.querySelector<HTMLElement>(".vram-fc-source__live-meter-sweep");
-        const scan = meter.querySelector<HTMLElement>(".vram-fc-source__live-meter-scan");
-        if (sweep) {
-          const x = ((t * 0.8) % 1.4) * 280 - 130;
-          sweep.style.transform = `translateX(${x.toFixed(1)}%)`;
-        }
-        if (scan) {
-          const y = 1 + (0.5 + 0.5 * Math.sin(t * 3.0)) * 8;
-          scan.style.transform = `translateY(${y.toFixed(2)}px)`;
-          scan.style.opacity = (0.35 + 0.6 * (0.5 + 0.5 * Math.sin(t * 3.0))).toFixed(3);
-        }
+      if (scan) {
+        const y = 1 + (0.5 + 0.5 * Math.sin(t * 2.8)) * 8;
+        scan.style.transform = `translateY(${y.toFixed(2)}px)`;
+        scan.style.opacity = (0.35 + 0.55 * (0.5 + 0.5 * Math.sin(t * 2.8))).toFixed(3);
       }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => {
       cancelAnimationFrame(raf);
-      // Idle resting pose
       for (const bar of bars) {
         bar.style.transform = "";
         bar.style.opacity = "";
+      }
+      if (scan) {
+        scan.style.transform = "";
+        scan.style.opacity = "";
       }
     };
   }, [active]);
@@ -152,14 +148,13 @@ function collectRecap(
 }
 
 function sourceRecapLabel(memorySource: MemorySource): string {
-  if (memorySource.kind === "learned") return "LEARNED (from previous run)";
-  if (memorySource.kind === "learned_curve") return "LEARNED · interpolated";
+  if (memorySource.kind === "learned") return "LEARNED · EXACT (previous launch)";
+  if (memorySource.kind === "learned_curve") return "LEARNED · INTERPOLATED";
   if (memorySource.kind === "fit_probe") {
-    return memorySource.exact === false ? "FIT PROBE · estimate" : "FIT PROBE · measured";
+    return memorySource.exact === false ? "FIT PROBE · ESTIMATE" : "FIT PROBE · MEASURED";
   }
   return MEMORY_SOURCE_LABELS[memorySource.kind];
 }
-
 /** MEMORY FORECAST SOURCE — exact / estimate / live meter while CTX drag. */
 export default function MemorySourcePanel({
   memorySource,
@@ -175,17 +170,16 @@ export default function MemorySourcePanel({
   const isFitProbe = memorySource.kind === "fit_probe";
   const isLearnedExact = memorySource.kind === "learned";
   const isExact = memorySource.exact !== false && !isCurve;
-  // Estimate path: curve interp, or probe moved off its anchor.
   const isEstimate = isCurve || (isFitProbe && memorySource.exact === false);
 
   const ctxDragging = useCtxSliderDragging();
-  // Meter only while scrubbing CTX (or active PROBE). Exact parked marks stay quiet.
+  // Meter only while scrubbing CTX (or active PROBE).
   const meterActive =
     isValidating || (ctxDragging && (isEstimate || isFitProbe || isCurve));
 
   const showStatusSlot = isLearnedExact || isCurve || isFitProbe;
-  const showReprobeNudge =
-    isEstimate && Boolean(onValidate) && !hideValidate && !isValidating && !meterActive;
+  // Exact measurement already locked — PROBE does nothing useful here.
+  const canProbe = Boolean(onValidate) && !hideValidate && !isExact;
 
   const recap = collectRecap(memorySource, kindLabel, launchSummary);
   const tipId = useId();
@@ -196,12 +190,15 @@ export default function MemorySourcePanel({
   const show = useCallback(() => setOpen(true), []);
   const hide = useCallback(() => setOpen(false), []);
 
+  // Hero status — more important than LEARNED / FIT PROBE kind word.
   const idleStatus = (() => {
-    if (isLearnedExact) return "(from previous run)";
-    if (isCurve) return "interpolated";
-    if (isFitProbe) return isExact ? "(measured)" : "estimate";
+    if (isLearnedExact) return "EXACT";
+    if (isCurve) return "INTERPOLATED";
+    if (isFitProbe) return isExact ? "MEASURED" : "ESTIMATE";
     return null;
   })();
+
+  const probeLabel = isValidating ? "PROBING…" : "RE-PROBE";
 
   return (
     <div
@@ -224,12 +221,15 @@ export default function MemorySourcePanel({
           <span className="memory-source-kind-label vram-fc-source__kind-lab">
             {kindLabel}
           </span>
-          {showStatusSlot ? (
-            <span
-              className="vram-fc-source__status-slot"
-              data-live={meterActive ? "1" : "0"}
-              data-kind={memorySource.kind}
-            >
+        </span>
+        {showStatusSlot ? (
+          <span
+            className="vram-fc-source__status-slot"
+            data-live={meterActive ? "1" : "0"}
+            data-kind={memorySource.kind}
+            data-has-probe={canProbe ? "1" : "0"}
+          >
+            <span className="vram-fc-source__status-main">
               {meterActive ? (
                 <span
                   className={`vram-fc-source__live-meter${
@@ -255,38 +255,43 @@ export default function MemorySourcePanel({
                       <i key={i} className="vram-fc-source__live-bar" />
                     ))}
                   </span>
-                  <span className="vram-fc-source__live-meter-sweep" aria-hidden />
                   <span className="vram-fc-source__live-meter-scan" aria-hidden />
                 </span>
               ) : (
-                <span className="vram-fc-source__idle-status">
-                  {idleStatus ? (
-                    <span className="vram-fc-source__prev-lab">{idleStatus}</span>
-                  ) : null}
-                  {showReprobeNudge ? (
-                    <button
-                      type="button"
-                      className="vram-fc-source__reprobe"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onValidate?.();
-                      }}
-                      title="Run FIT PROBE at this CTX to lock a measured point"
-                    >
-                      RE-PROBE?
-                    </button>
-                  ) : null}
+                <span
+                  className={`vram-fc-source__status-hero${
+                    isExact ? " is-exact" : " is-estimate"
+                  }`}
+                  title={
+                    isLearnedExact
+                      ? "Exact launch measurement at this CTX"
+                      : isCurve
+                        ? "Interpolated between learned launches"
+                        : isExact
+                          ? "FIT PROBE measurement at this CTX"
+                          : "Estimate adjusted from probe anchor — re-probe to lock"
+                  }
+                >
+                  {idleStatus}
                 </span>
               )}
             </span>
-          ) : null}
-        </span>
-        {onValidate && !hideValidate ? (
-          <FitProbeButton
-            isValidating={isValidating}
-            hasProbed={hasProbed}
-            onClick={onValidate}
-          />
+            {canProbe ? (
+              <button
+                type="button"
+                className="vram-fc-source__reprobe"
+                data-probe-state={isValidating ? "probing" : "reprobe"}
+                disabled={isValidating}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onValidate?.();
+                }}
+                title="Run FIT PROBE at this CTX to lock a measured point"
+              >
+                {probeLabel}
+              </button>
+            ) : null}
+          </span>
         ) : null}
       </div>
 
@@ -339,32 +344,4 @@ export default function MemorySourcePanel({
 
 export function manifestHasFitProbe(manifest: VramManifest): boolean {
   return manifest.memorySource?.kind === "fit_probe";
-}
-
-interface FitProbeButtonProps {
-  isValidating?: boolean;
-  hasProbed?: boolean;
-  onClick?: () => void;
-}
-
-export function FitProbeButton({
-  isValidating = false,
-  hasProbed = false,
-  onClick,
-}: FitProbeButtonProps) {
-  if (!onClick) return null;
-
-  const state = isValidating ? "probing" : hasProbed ? "reprobe" : "idle";
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={isValidating}
-      data-probe-state={state}
-      className="vram-fc-probe fit-probe-btn"
-    >
-      {isValidating ? "PROBING…" : hasProbed ? "RE-PROBE" : "PROBE"}
-    </button>
-  );
 }
