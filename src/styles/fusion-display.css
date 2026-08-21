@@ -779,10 +779,7 @@
   display: flex;
   flex-direction: column;
   gap: calc(3px * var(--vram-fc-scale));
-}
-/* One row of air under SOURCE/PROBE before dominant bars */
-.vram-forecast-header--assisted .vram-fc__source-row {
-  margin-bottom: calc(10px * var(--vram-fc-scale, 1.12));
+  margin-bottom: calc(6px * var(--vram-fc-scale, 1.12));
 }
 
 .vram-fc__title-row {
@@ -799,11 +796,11 @@
   margin: 0;
   min-width: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: calc(11px * var(--vram-fc-scale, 1.12));
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  line-height: 1.25;
-  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 88%, transparent);
+  font-size: calc(15px * var(--vram-fc-scale, 1.12));
+  font-weight: 700;
+  letter-spacing: 0.015em;
+  line-height: 1.2;
+  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 92%, transparent);
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -1175,6 +1172,90 @@
   overflow: hidden;
 }
 /* ASSISTED body — fixed-height dominant bars; GPU bank keeps remaining space */
+
+/* ASSISTED measure cluster — rails + need heroes + SOURCE/PROBE */
+.vram-fc-measure {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: calc(8px * var(--vram-fc-scale, 1.12));
+  flex: 0 0 auto;
+  min-width: 0;
+}
+.vram-fc-measure__rails {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.vram-fc-measure__side {
+  flex: 0 0 auto;
+  width: calc(11.5ch + 2.6rem);
+  min-width: calc(11.5ch + 2.6rem);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: calc(4px * var(--vram-fc-scale, 1.12));
+}
+.vram-fc-measure__needs {
+  display: flex;
+  flex-direction: column;
+  gap: calc(6px * var(--vram-fc-scale, 1.12));
+}
+.vram-fc-measure__need {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 0.28em;
+  min-height: calc(36px * var(--vram-fc-scale, 1.12));
+  padding: 0 2px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  line-height: 1;
+}
+.vram-fc-measure__need-lab {
+  font-size: calc(7px * var(--vram-fc-scale, 1.12));
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.5;
+}
+.vram-fc-measure__need-val {
+  font-size: calc(20px * var(--vram-fc-scale, 1.12));
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  text-shadow: 0 0 12px color-mix(in srgb, currentColor 35%, transparent);
+}
+.vram-fc-measure__need-unit {
+  font-size: calc(9px * var(--vram-fc-scale, 1.12));
+  font-weight: 700;
+  opacity: 0.55;
+  letter-spacing: 0.06em;
+}
+.vram-fc-measure__need--ram {
+  color: color-mix(in srgb, #93c5fd 88%, var(--display-face-text, #e2e8f0));
+}
+.vram-fc-measure__side .vram-fc__source-row {
+  margin: 0;
+  margin-top: auto;
+}
+.vram-fc-measure__side .vram-fc-source--dominant .vram-fc-source__head {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px 6px;
+}
+.vram-fc-measure__side .vram-fc-source--dominant .vram-fc-probe {
+  margin-left: 0;
+}
+.vram-fc-measure__side .vram-forecast-source {
+  width: 100%;
+}
+
+.vram-fc__body--assisted .vram-fc-measure {
+  flex: 0 0 auto;
+}
+.vram-fc__body--assisted .vram-fc-bars--assisted {
+  gap: calc(6px * var(--vram-fc-scale, 1.12));
+}
 .vram-fc__body--assisted {
   gap: calc(8px * var(--vram-fc-scale, 1.12));
   justify-content: flex-start;
@@ -1306,16 +1387,9 @@
   min-height: 100%;
   border: none;
   border-radius: 0;
-  /* Soft well: light top/bottom shade only — not a deep barrel vignette */
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--display-face-text, #e2e8f0) 5%, transparent),
-    color-mix(in srgb, var(--display-face-text, #e2e8f0) 9%, transparent) 45%,
-    color-mix(in srgb, var(--display-face-text, #e2e8f0) 5%, transparent)
-  );
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, var(--display-face-text, #e2e8f0) 8%, transparent),
-    inset 0 -1px 0 color-mix(in srgb, #000 10%, transparent);
+  /* Flat rectangular well — no vertical vignette */
+  background: color-mix(in srgb, var(--display-face-text, #e2e8f0) 8%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--display-face-text, #e2e8f0) 10%, transparent);
 }
 
 .vram-fc-bar--fused .vram-fc-bar__fill {
@@ -1324,14 +1398,15 @@
   position: relative;
 }
 .vram-fc-bar__fill--bevel {
+  /* First-pass bevel: brighter top edge, clearer body */
   box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 22%, transparent),
-    inset 0 -1px 1px color-mix(in srgb, #000 18%, transparent);
+    inset 0 1px 0 color-mix(in srgb, #fff 28%, transparent),
+    inset 0 -2px 3px color-mix(in srgb, #000 28%, transparent);
   background-image: linear-gradient(
     180deg,
-    color-mix(in srgb, #fff 16%, transparent),
-    transparent 50%,
-    color-mix(in srgb, #000 14%, transparent)
+    color-mix(in srgb, #fff 22%, transparent),
+    transparent 42%,
+    color-mix(in srgb, #000 22%, transparent)
   );
   background-blend-mode: soft-light;
 }
