@@ -91,11 +91,13 @@ export default function CockpitCtxStrip({
   const hasLearned = (learnedMarks?.length ?? 0) > 0;
   const hasGhost =
     (forecastCurve?.length ?? 0) > 0 && forecastFreeGb != null && forecastFreeGb > 0;
-  const showFooter = hasLearned || hasGhost;
+  // Footer row is always mounted (fixed height) so LEARNED fetch / eval cannot
+  // collapse the strip and shove the dock/content upward.
+  const footerBusy = !hasLearned && !hasGhost;
 
   return (
     <div
-      className={`full-auto-cockpit__ctx-hero${standalone ? " full-auto-cockpit__ctx-hero--standalone" : ""}${showFooter ? " full-auto-cockpit__ctx-hero--has-marks" : ""} ${className}`}
+      className={`full-auto-cockpit__ctx-hero full-auto-cockpit__ctx-hero--has-footer${standalone ? " full-auto-cockpit__ctx-hero--standalone" : ""} ${className}`}
     >
       <div className="full-auto-cockpit__ctx-hero-main">
         <div className="full-auto-cockpit__ctx-slider min-w-0">
@@ -130,36 +132,48 @@ export default function CockpitCtxStrip({
         </div>
       </div>
 
-      {showFooter ? (
-        <div className="full-auto-cockpit__ctx-footer font-mono">
-          <span
-            className="full-auto-cockpit__ctx-legend"
-            title="Cyan = LEARNED launches (drag snaps; Alt/Shift free). Amber ≤N = max CTX that still fits free VRAM — fixed limit; thumb crosses it when you raise CTX. Green rail OK / red over."
-          >
-            {hasLearned ? (
-              <>
-                <span className="full-auto-cockpit__ctx-swatch full-auto-cockpit__ctx-swatch--learned" aria-hidden />
-                LEARNED
-                <span className="full-auto-cockpit__ctx-legend-sep">·</span>
-                <span className="full-auto-cockpit__ctx-swatch full-auto-cockpit__ctx-swatch--custom" aria-hidden />
-                custom
-                <span className="full-auto-cockpit__ctx-legend-sep">·</span>
-                snap
-              </>
-            ) : null}
-            {hasLearned && hasGhost ? (
+      <div
+        className={`full-auto-cockpit__ctx-footer font-mono${footerBusy ? " full-auto-cockpit__ctx-footer--idle" : ""}`}
+        aria-hidden={footerBusy || undefined}
+      >
+        <span
+          className="full-auto-cockpit__ctx-legend"
+          title="Cyan = LEARNED launches (drag snaps; Alt/Shift free). Amber ≤N = max CTX that still fits free VRAM — fixed limit; thumb crosses it when you raise CTX. Green rail OK / red over."
+        >
+          {hasLearned ? (
+            <>
+              <span className="full-auto-cockpit__ctx-swatch full-auto-cockpit__ctx-swatch--learned" aria-hidden />
+              LEARNED
               <span className="full-auto-cockpit__ctx-legend-sep">·</span>
-            ) : null}
-            {hasGhost ? (
-              <>
-                <span className="full-auto-cockpit__ctx-swatch full-auto-cockpit__ctx-swatch--limit" aria-hidden />
-                VRAM limit
-              </>
-            ) : null}
+              <span className="full-auto-cockpit__ctx-swatch full-auto-cockpit__ctx-swatch--custom" aria-hidden />
+              custom
+              <span className="full-auto-cockpit__ctx-legend-sep">·</span>
+              snap
+            </>
+          ) : null}
+          {hasLearned && hasGhost ? (
+            <span className="full-auto-cockpit__ctx-legend-sep">·</span>
+          ) : null}
+          {hasGhost ? (
+            <>
+              <span className="full-auto-cockpit__ctx-swatch full-auto-cockpit__ctx-swatch--limit" aria-hidden />
+              VRAM limit
+            </>
+          ) : null}
+          {/* Invisible spacer keeps legend line-box when idle (no marks yet). */}
+          {footerBusy ? (
+            <span className="full-auto-cockpit__ctx-legend-spacer">LEARNED · snap</span>
+          ) : null}
+        </span>
+        {/* Toggle slot always reserved — invisible placeholder when no marks. */}
+        {hasLearned ? (
+          <CtxLearnedMarkToggle mode={mode} onCycle={cycle} visible />
+        ) : (
+          <span className="full-auto-cockpit__ctx-marks-toggle full-auto-cockpit__ctx-marks-toggle--slot" aria-hidden>
+            ALL
           </span>
-          <CtxLearnedMarkToggle mode={mode} onCycle={cycle} visible={hasLearned} />
-        </div>
-      ) : null}
+        )}
+      </div>
     </div>
   );
 }

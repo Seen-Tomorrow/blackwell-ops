@@ -2437,15 +2437,29 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--brain 
   gap: 0.4ch;
 }
 
-/* Footer: legend + filter grouped on the right under the value chip. */
+/* Footer: always reserved — LEARNED fetch must not collapse strip height. */
 .full-auto-cockpit__ctx-footer {
   display: flex;
   flex-direction: row;
   align-items: center;
   justify-content: flex-end;
   gap: 0.45rem;
-  min-height: 14px;
-  padding: 0 0.1rem 0.05rem;
+  height: 16px;
+  min-height: 16px;
+  max-height: 16px;
+  padding: 0 0.1rem;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.full-auto-cockpit__ctx-footer--idle {
+  visibility: hidden; /* keeps layout box; no flash of empty chrome */
+  pointer-events: none;
+}
+
+.full-auto-cockpit__ctx-legend-spacer {
+  visibility: hidden;
+  white-space: nowrap;
 }
 
 .full-auto-cockpit__ctx-legend {
@@ -2509,6 +2523,13 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--brain 
   background: color-mix(in srgb, var(--theme-panel, #0a0a0a) 55%, transparent);
   border-radius: 2px;
   cursor: pointer;
+}
+
+
+.full-auto-cockpit__ctx-marks-toggle--slot {
+  visibility: hidden;
+  pointer-events: none;
+  user-select: none;
 }
 
 .full-auto-cockpit__ctx-marks-toggle:hover {
