@@ -73,8 +73,8 @@ function GpuLoadMap({
                   className="fusion-boot-gpu-col__track"
                   title={
                     targetGb
-                      ? `GPU ${gpu.index}: +${usedGb} GiB / ~${targetGb} GiB target (Δ from load baseline)`
-                      : `GPU ${gpu.index}: +${usedGb} GiB since load start`
+                      ? `GPU ${gpu.index}: +${usedGb} GiB / ~${targetGb} GiB (SSE load %; NVML only if no SSE)`
+                      : `GPU ${gpu.index}: +${usedGb} GiB (SSE load %; NVML only if no SSE)`
                   }
                 >
                   <div

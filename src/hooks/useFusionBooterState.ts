@@ -180,11 +180,15 @@ export function useFusionBooterState({
       ? vramTargetMib / activeGpuIndices.length
       : 0;
 
+  const loadProgress01 = session?.loadProgress01 ?? -1;
+
   const gpuVramLoads = useMemo((): GpuVramLoad[] => {
+    // SSE primary when engine-load-progress is live; NVML Δ only as fallback.
+    const hasSse = loadProgress01 >= 0;
+    const sse01 = hasSse ? Math.min(1, Math.max(0, loadProgress01)) : 0;
+
     return activeGpuIndices.map((idx) => {
       const gpu = liveGpus.find((g) => g.index === idx);
-      const base = vramBaseline.current.get(idx) ?? gpu?.memory_used ?? 0;
-      const usedMib = gpu ? Math.max(0, gpu.memory_used - base) : 0;
       const forecastMib = gpuLoadTargetsMib[idx] ?? 0;
       const targetMib =
         forecastMib > 0
@@ -192,10 +196,19 @@ export function useFusionBooterState({
           : perGpuShareMib > 0
             ? perGpuShareMib
             : gpu?.memory_total ?? 1;
+
+      if (hasSse) {
+        const usedMib = targetMib > 0 ? sse01 * targetMib : 0;
+        const pct = Math.min(100, sse01 * 100);
+        return { index: idx, usedMib, targetMib, pct };
+      }
+
+      const base = vramBaseline.current.get(idx) ?? gpu?.memory_used ?? 0;
+      const usedMib = gpu ? Math.max(0, gpu.memory_used - base) : 0;
       const pct = Math.min(100, (usedMib / Math.max(targetMib, 1)) * 100);
       return { index: idx, usedMib, targetMib, pct };
     });
-  }, [liveGpus, activeGpuIndices, gpuLoadTargetsMib, perGpuShareMib]);
+  }, [liveGpus, activeGpuIndices, gpuLoadTargetsMib, perGpuShareMib, loadProgress01]);
 
   const diskReadMibPerS = session?.diskReadMibPerS ?? 0;
   const diskReadMbitPerS = diskReadMibPerS * 8;
