@@ -70,6 +70,9 @@ export const EVENTS = {
   /** Monitor focus mode — fusion + HW only chrome hide. */
   monitorFocusChanged: `${STORAGE_PREFIX}monitor-focus-changed`,
 
+  /** CTX slider pointer drag — SOURCE live meter gates on this. */
+  ctxSliderDragging: `${STORAGE_PREFIX}ctx-slider-dragging`,
+
   /** Dev: fake update version toggled — refresh GitHub offerings. */
   updateOfferingsRefresh: `${STORAGE_PREFIX}update-offerings-refresh`,
   /** AtomCode harness open — highlight running engines (brain/worker/solo roles). */
@@ -90,7 +93,11 @@ export type AtomcodeHarnessHighlightDetail = {
 /** Running-engine card click while harness open (role cycle for twin). */
 export type AtomcodeEngineClickDetail = {
   port: number;
-  slotIdx: number;
+};
+
+/** Detail for `EVENTS.ctxSliderDragging`. */
+export type CtxSliderDraggingDetail = {
+  dragging: boolean;
 };
 
 export type AppEventName = (typeof EVENTS)[keyof typeof EVENTS];

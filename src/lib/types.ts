@@ -780,6 +780,12 @@ export type MemorySourceKind = "fit_probe" | "learned" | "learned_curve";
 
 export interface MemorySource {
   kind: MemorySourceKind;
+  /**
+   * True when GB is an exact measurement at this CTX
+   * (learned launch mark, or FIT PROBE at its anchor).
+   * False = interpolated / ctx-adjusted estimate.
+   */
+  exact?: boolean;
   /** Primary provenance line (9px muted in UI). */
   detail: string;
   /** Breakdown line 1 — profile, per-GPU split, or hint text. */

@@ -103,6 +103,7 @@ export function resolveMemorySource(
         : "";
     return {
       kind: "learned",
+      exact: true,
       detail: `Launch at this ctx · ${formatMeasuredAt(input.learnedMeasuredAt)}${draftNote}`,
       ...formatBreakdown(
         input.learnedGpuBreakdownMib,
@@ -124,12 +125,16 @@ export function resolveMemorySource(
       .join(" · ");
     return {
       kind: "learned_curve",
+      exact: false,
       detail: marks ? `Between launches ${marks}` : "Between stored launches",
       confidence: 4,
     };
   }
   if (manifest.fitProbeMeasuredAt != null && manifest.validatedVramMib != null) {
     const liveCtx = parseCtx(String(input.engineConfig.extra_params?.ctx ?? "32768"));
+    const probeAnchor = input.fitProbeAnchorCtx ?? 0;
+    // Exact only when still parked on the CTX the probe was taken at.
+    const exact = probeAnchor > 0 ? liveCtx === probeAnchor : true;
     const tax = resolveSplitTax(split, liveCtx, input.fitPoints);
     let taxNote = "";
     if (tax.taxGb > 0) {
@@ -157,10 +162,13 @@ export function resolveMemorySource(
     ].filter(Boolean);
     return {
       kind: "fit_probe",
-      detail: `measured ${manifest.fitProbeMeasuredAt}`,
+      exact,
+      detail: exact
+        ? `measured ${manifest.fitProbeMeasuredAt}`
+        : `estimate from probe @ ${probeAnchor >= 1024 ? `${Math.round(probeAnchor / 1024)}K` : probeAnchor} · ${manifest.fitProbeMeasuredAt}`,
       breakdown: tipBits.length > 0 ? tipBits.join(" · ") : bd.breakdown,
       breakdownSecondary: undefined,
-      confidence: 3,
+      confidence: exact ? 3 : 3,
     };
   }
 

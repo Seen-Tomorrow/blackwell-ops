@@ -27,6 +27,7 @@ import {
   valueFromPointerX,
   type SliderParamSharedProps,
 } from "../lib/sliderParamUtils";
+import { dispatchAppEvent, EVENTS } from "../lib/events";
 
 function useTrackWidth() {
   const [trackWidthPx, setTrackWidthPx] = useState(0);
@@ -228,6 +229,15 @@ export default function CustomSliderParam({
       window.removeEventListener("pointercancel", stop);
     };
   }, []);
+
+  // Broadcast CTX drag so MEMORY FORECAST SOURCE can animate only while scrubbing.
+  useEffect(() => {
+    if (paramKey !== "ctx") return;
+    dispatchAppEvent(EVENTS.ctxSliderDragging, { dragging });
+    return () => {
+      if (dragging) dispatchAppEvent(EVENTS.ctxSliderDragging, { dragging: false });
+    };
+  }, [dragging, paramKey]);
 
   const thumbPct = thumbCenterPercent(safeValue, min, max, trackWidthPx, thumbW);
 

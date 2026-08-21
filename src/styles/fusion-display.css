@@ -1712,6 +1712,37 @@
   line-height: 1;
   padding-left: 1px;
 }
+.vram-fc-source__idle-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+}
+.vram-fc-source__reprobe {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 1px 5px;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 55%, transparent);
+  background: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 14%, transparent);
+  color: var(--theme-telemetry-amber, #fbbf24);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: calc(7px * var(--vram-fc-scale, 1.12));
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.vram-fc-source__reprobe:hover {
+  background: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 28%, transparent);
+  border-color: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 75%, transparent);
+}
+.vram-fc-source__reprobe:focus-visible {
+  outline: 1px solid var(--theme-telemetry-amber, #fbbf24);
+  outline-offset: 1px;
+}
 
 /* Live memory measure — equalizer bars + sweep + scanline */
 .vram-fc-source__live-meter {
