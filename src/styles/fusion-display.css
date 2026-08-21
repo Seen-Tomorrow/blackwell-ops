@@ -2240,12 +2240,11 @@
   padding: 8px 10px 7px;
   border-radius: 4px;
   border: 1px solid color-mix(in srgb, var(--theme-accent, #76B900) 28%, transparent);
-  background:
-    linear-gradient(
-      165deg,
-      color-mix(in srgb, var(--theme-panel, #0c0c0c) 92%, var(--theme-accent, #76B900) 8%),
-      color-mix(in srgb, #050505 94%, transparent)
-    );
+  /* Flat panel face — no accent gradient wash */
+  background: var(
+    --display-face-recap-bg,
+    color-mix(in srgb, var(--theme-panel, #0c0c0c) 96%, var(--theme-accent, #76B900) 4%)
+  );
   box-shadow:
     0 8px 28px rgba(0, 0, 0, 0.55),
     0 0 0 1px color-mix(in srgb, #000 40%, transparent),

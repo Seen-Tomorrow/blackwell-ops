@@ -885,6 +885,8 @@ const ARCTIC: AppTheme = {
     "--display-face-plate-wash-mid": "color-mix(in srgb, #0f172a 36%, transparent)",
     "--display-face-gpu-trough-wash-start": "color-mix(in srgb, #0b1220 48%, transparent)",
     "--display-face-gpu-trough-wash-mid": "color-mix(in srgb, #0f172a 28%, transparent)",
+    /* SOURCE hover recap — flat glacier panel (no gradient) */
+    "--display-face-recap-bg": "color-mix(in srgb, #0f172a 94%, #0c4a6e 6%)",
 
     /* ── PHOSPHOR LIGHT — bright glacier glass (light paper, soft grain) ── */
     "--display-face-light-surface": "#f4f8fc",

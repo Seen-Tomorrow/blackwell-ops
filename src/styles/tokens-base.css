@@ -219,6 +219,8 @@
   --display-face-plate-wash-mid: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 7%, transparent);
   --display-face-gpu-trough-wash-start: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 14%, transparent);
   --display-face-gpu-trough-wash-mid: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 5%, transparent);
+  /* SOURCE hover recap — flat face (themes may override; ARCTIC sets glacier slate) */
+  --display-face-recap-bg: color-mix(in srgb, var(--theme-panel, #0c0c0c) 96%, var(--theme-accent, #76B900) 4%);
   /*
    * HW monitor + OVERCLOCKING signal colors (launch-rail-tel / gpu-oc).
    * Themes override for palette cohesion; CSS falls back to these.
