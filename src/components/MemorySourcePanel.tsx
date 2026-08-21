@@ -122,9 +122,9 @@ function useLiveMeterDrive(active: boolean) {
 }
 
 /**
- * NEED frame mini-display drive (rAF only).
- * mode "full" = field + columns + scan (RE-PROBE);
- * mode "scan" = vertical scanline only (CTX scrub).
+ * NEED frame live drive (rAF only) — horizontal swipe band.
+ * Leaves need GB / status readable (no full-face fill).
+ * full = RE-PROBE (stronger/faster); scan = CTX scrub (thin pass).
  */
 function useNeedFrameLiveDrive(active: boolean, mode: "full" | "scan") {
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -132,74 +132,38 @@ function useNeedFrameLiveDrive(active: boolean, mode: "full" | "scan") {
     if (!active) return;
     const root = rootRef.current;
     if (!root) return;
-    const field = root.querySelector<HTMLElement>(".vram-fc-need-frame__live-field");
-    const scans = Array.from(
-      root.querySelectorAll<HTMLElement>(".vram-fc-need-frame__live-scan"),
+    const swipes = Array.from(
+      root.querySelectorAll<HTMLElement>(".vram-fc-need-frame__live-swipe"),
     );
-    const cols = Array.from(root.querySelectorAll<HTMLElement>(".vram-fc-need-frame__live-col"));
-    const full = mode === "full";
-    if (scans.length === 0) return;
-    if (full && (!field || cols.length === 0)) return;
+    if (swipes.length === 0) return;
 
     let raf = 0;
     const t0 = performance.now();
-    const phase = cols.map((_, i) => i * 0.47);
-    const speed = full ? 1.55 : 1;
-
-    // Reset idle pieces when entering scan-only
-    if (!full) {
-      if (field) field.style.opacity = "0";
-      for (const c of cols) {
-        c.style.transform = "scaleY(0)";
-        c.style.opacity = "0";
-      }
-    }
+    const full = mode === "full";
+    const speed = full ? 0.85 : 0.55;
 
     const tick = (now: number) => {
       const t = ((now - t0) / 1000) * speed;
+      // 0→1 loop, ease slightly so the edge lingers less on the numbers
+      const p = t % 1;
+      const xPct = (p * 120 - 10); // start slightly off-left, end off-right
+      const edgeFade = Math.sin(Math.min(1, Math.max(0, p)) * Math.PI); // 0 at ends
+      const baseOp = full ? 0.55 : 0.38;
+      const op = baseOp * (0.35 + 0.65 * edgeFade);
 
-      if (full && field) {
-        const breathe = 0.28 + 0.22 * (0.5 + 0.5 * Math.sin(t * 1.7));
-        field.style.opacity = breathe.toFixed(3);
+      for (let i = 0; i < swipes.length; i++) {
+        const echo = swipes[i].classList.contains("vram-fc-need-frame__live-swipe--echo");
+        const lag = echo ? -14 : 0;
+        swipes[i].style.transform = `translateX(${(xPct + lag).toFixed(2)}%)`;
+        swipes[i].style.opacity = (echo ? op * 0.4 : op).toFixed(3);
       }
-
-      if (full) {
-        for (let i = 0; i < cols.length; i++) {
-          const wave =
-            0.12 +
-            0.88 *
-              (0.5 +
-                0.5 *
-                  Math.sin(t * 3.1 + phase[i]) *
-                  (0.65 + 0.35 * Math.sin(t * 1.4 + phase[i] * 0.5)));
-          const o = 0.2 + 0.75 * wave;
-          cols[i].style.transform = `scaleY(${wave.toFixed(3)})`;
-          cols[i].style.opacity = o.toFixed(3);
-        }
-      }
-
-      // Vertical scan — always when live
-      const p = (t * (full ? 0.48 : 0.55)) % 1;
-      const yPct = p * 100;
-      const scanOp = (full ? 0.22 : 0.32) + (full ? 0.45 : 0.5) * Math.sin(p * Math.PI);
-      for (let s = 0; s < scans.length; s++) {
-        const echo = scans[s].classList.contains("vram-fc-need-frame__live-scan--echo");
-        scans[s].style.top = `${yPct.toFixed(2)}%`;
-        scans[s].style.opacity = (echo ? scanOp * 0.45 : scanOp).toFixed(3);
-      }
-
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => {
       cancelAnimationFrame(raf);
-      if (field) field.style.opacity = "";
-      for (const c of cols) {
-        c.style.transform = "";
-        c.style.opacity = "";
-      }
-      for (const s of scans) {
-        s.style.top = "";
+      for (const s of swipes) {
+        s.style.transform = "";
         s.style.opacity = "";
       }
     };
@@ -295,8 +259,8 @@ export interface MemorySourceNeedOverlayProps {
 }
 
 /**
- * Mini-display overlay on the NEED frame (monochrome glass).
- * RE-PROBE → full face; CTX scrub → vertical scanline only.
+ * Mini-display live cue on the NEED frame — monochrome horizontal swipe.
+ * Does not paint a full-face veil over the need GB readout.
  * Mount last in the need-frame so paint order owns stacking.
  */
 export function MemorySourceNeedOverlay({
@@ -326,19 +290,9 @@ export function MemorySourceNeedOverlay({
       data-live="1"
       aria-hidden
     >
+      <span className="vram-fc-need-frame__live-swipe" />
       {mode === "full" ? (
-        <>
-          <span className="vram-fc-need-frame__live-field" />
-          <span className="vram-fc-need-frame__live-cols">
-            {Array.from({ length: 14 }, (_, i) => (
-              <i key={i} className="vram-fc-need-frame__live-col" />
-            ))}
-          </span>
-        </>
-      ) : null}
-      <span className="vram-fc-need-frame__live-scan" />
-      {mode === "full" ? (
-        <span className="vram-fc-need-frame__live-scan vram-fc-need-frame__live-scan--echo" />
+        <span className="vram-fc-need-frame__live-swipe vram-fc-need-frame__live-swipe--echo" />
       ) : null}
     </div>
   );
