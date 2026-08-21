@@ -378,7 +378,12 @@ export default function VramBadge({
           className="vram-fc-bar vram-fc-bar--fused vram-forecast-vram-bar"
           aria-label={`VRAM ${displayVramNeedGb.toFixed(1)} of ${totalVramGb.toFixed(1)} GB`}
         >
-          <span className="vram-fc-bar__name-chip">VRAM</span>
+          <span className="vram-fc-bar__name-chip">
+            <span className="vram-fc-bar__name-lab">VRAM</span>
+            <span className="vram-fc-bar__name-total">
+              total <span className="vram-fc-bar__name-total-val">{totalVramGb.toFixed(1)}</span>
+            </span>
+          </span>
           <span className="vram-fc-bar__cap-chip" title="Free pool capacity">
             <span className="vram-fc-bar__cap-val">{totalVramGb.toFixed(1)}</span>
             <span className="vram-fc-bar__cap-unit">GB</span>
@@ -400,9 +405,6 @@ export default function VramBadge({
             <span className="vram-fc-bar__unit">GB</span>
           </span>
         </div>
-        <span className="vram-fc-bar__under">
-          total <span className="vram-fc-bar__under-val">{totalVramGb.toFixed(1)} GB</span>
-        </span>
       </div>
 
       {t.showRamBar !== false && (
@@ -411,7 +413,12 @@ export default function VramBadge({
             className="vram-fc-bar vram-fc-bar--fused vram-forecast-ram-bar"
             aria-label={`RAM ${displayRamNeedGb.toFixed(1)} of ${manifest.ramManufacturedGb.toFixed(1)} GB`}
           >
-            <span className="vram-fc-bar__name-chip vram-fc-bar__name-chip--ram">RAM</span>
+            <span className="vram-fc-bar__name-chip vram-fc-bar__name-chip--ram">
+              <span className="vram-fc-bar__name-lab">RAM</span>
+              <span className="vram-fc-bar__name-total">
+                total <span className="vram-fc-bar__name-total-val">{manifest.ramManufacturedGb.toFixed(1)}</span>
+              </span>
+            </span>
             <span className="vram-fc-bar__cap-chip vram-fc-bar__cap-chip--ram" title="Installed RAM">
               <span className="vram-fc-bar__cap-val">{manifest.ramManufacturedGb.toFixed(1)}</span>
               <span className="vram-fc-bar__cap-unit">GB</span>
@@ -430,9 +437,6 @@ export default function VramBadge({
               <span className="vram-fc-bar__unit">GB</span>
             </span>
           </div>
-          <span className="vram-fc-bar__under vram-fc-bar__under--ram">
-            total <span className="vram-fc-bar__under-val">{manifest.ramManufacturedGb.toFixed(1)} GB</span>
-          </span>
         </div>
       )}
     </div>
