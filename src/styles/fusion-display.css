@@ -1310,32 +1310,42 @@
 }
 
 /*
- * NEED frame — subgrid rows lock GB heroes to VRAM/RAM bars.
- * Status + RE-PROBE sit in row 1 (beside SOURCE strip).
+ * NEED frame — bumped 3D plate; subgrid locks GB heroes to bar rows.
+ * Status sits in row 1 (beside SOURCE strip).
  */
 .vram-fc-need-frame {
   --need-frame-accent: color-mix(in srgb, var(--theme-accent, #76b900) 55%, transparent);
-  --need-frame-recess: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 32%, transparent);
+  --need-frame-hi: color-mix(in srgb, #fff 18%, transparent);
+  --need-frame-lo: color-mix(in srgb, #000 48%, transparent);
+  --need-frame-face: color-mix(
+    in srgb,
+    var(--display-face-bar-bg, color-mix(in srgb, var(--theme-accent, #76b900) 12%, transparent)) 78%,
+    transparent
+  );
   grid-column: 2;
   grid-row: 1 / -1;
   display: grid;
   grid-template-rows: subgrid;
   align-items: stretch;
-  /* ~4ch narrower than prior 14.5ch frame */
-  min-width: calc(10.5ch + 4.8rem);
-  width: calc(10.5ch + 4.8rem);
-  border: 1px solid var(--need-frame-recess);
-  border-radius: 3px;
-  background: color-mix(
-    in srgb,
-    var(--display-face-bar-bg, color-mix(in srgb, var(--theme-accent, #76b900) 10%, transparent)) 70%,
-    transparent
-  );
-  /* Stronger depressed well — deeper/wider inset channel */
+  min-width: calc(11ch + 4.6rem);
+  width: calc(11ch + 4.6rem);
+  border: 1px solid color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 28%, transparent);
+  border-radius: 4px;
+  background:
+    linear-gradient(
+      165deg,
+      color-mix(in srgb, #fff 10%, transparent) 0%,
+      transparent 42%,
+      color-mix(in srgb, #000 14%, transparent) 100%
+    ),
+    var(--need-frame-face);
+  /* Raised 3D bump: outer lift + beveled rim + soft face */
   box-shadow:
-    inset 2px 2px 3px color-mix(in srgb, #000 55%, transparent),
-    inset -1px -1px 2px color-mix(in srgb, #fff 10%, transparent),
-    inset 0 0 0 1px color-mix(in srgb, #000 22%, transparent);
+    0 1px 0 color-mix(in srgb, #000 35%, transparent),
+    0 3px 6px color-mix(in srgb, #000 28%, transparent),
+    inset 1px 1px 0 var(--need-frame-hi),
+    inset -1px -1px 0 var(--need-frame-lo),
+    inset 0 0 0 1px color-mix(in srgb, #000 18%, transparent);
   overflow: hidden;
 }
 .vram-fc-need-frame[data-source-kind="learned"],
@@ -1363,10 +1373,10 @@
 }
 .vram-fc-need-frame__need--ram {
   grid-row: 3;
-  border-top: 1px solid color-mix(in srgb, var(--need-frame-accent) 35%, transparent) !important;
+  border-top: 1px solid color-mix(in srgb, var(--need-frame-accent) 28%, transparent) !important;
 }
 
-/* Status — row 1 beside SOURCE; no divider under it */
+/* Status — larger hero mark beside SOURCE */
 .vram-fc-need-frame__status-row {
   grid-row: 1;
   display: flex;
@@ -1375,7 +1385,7 @@
   justify-content: center;
   gap: calc(6px * var(--vram-fc-scale, 1.12));
   min-height: 0;
-  padding: 3px 6px;
+  padding: 4px 6px;
   border-bottom: none;
   background: transparent;
 }
@@ -1392,14 +1402,16 @@
   justify-content: center;
   min-width: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: calc(11px * var(--vram-fc-scale, 1.12));
+  font-size: calc(13.5px * var(--vram-fc-scale, 1.12));
   font-weight: 800;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   line-height: 1;
   white-space: nowrap;
-  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 92%, transparent);
-  text-shadow: 0 0 8px color-mix(in srgb, var(--need-frame-accent) 35%, transparent);
+  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 94%, transparent);
+  text-shadow:
+    0 1px 0 color-mix(in srgb, #000 45%, transparent),
+    0 0 10px color-mix(in srgb, var(--need-frame-accent) 40%, transparent);
   user-select: none;
 }
 .vram-fc-need-frame__status.is-empty {
@@ -1407,10 +1419,10 @@
 }
 .vram-fc-need-frame__status.is-exact {
   opacity: 1;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.12em;
 }
 .vram-fc-need-frame__status.is-estimate {
-  opacity: 0.95;
+  opacity: 0.96;
 }
 .vram-fc-need-frame[data-source-kind="learned"] .vram-fc-need-frame__status,
 .vram-fc-need-frame[data-source-kind="learned_curve"] .vram-fc-need-frame__status {
@@ -2904,14 +2916,26 @@
   border-color: color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 18%, transparent);
 }
 
-/* NEED frame — stronger depressed well on glacier paper */
+/* NEED frame — bumped 3D plate on glacier paper */
 [data-display-texture="phosphor-light"] .vram-fc-need-frame {
-  --need-frame-recess: color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 40%, transparent);
-  background: color-mix(in srgb, var(--display-face-light-surface, #f4f8fc) 55%, transparent);
+  --need-frame-hi: color-mix(in srgb, #fff 92%, transparent);
+  --need-frame-lo: color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 38%, transparent);
+  --need-frame-face: color-mix(in srgb, var(--display-face-light-surface, #f4f8fc) 72%, transparent);
+  border-color: color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 32%, transparent);
+  background:
+    linear-gradient(
+      165deg,
+      color-mix(in srgb, #fff 70%, transparent) 0%,
+      transparent 46%,
+      color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 10%, transparent) 100%
+    ),
+    var(--need-frame-face);
   box-shadow:
-    inset 2px 2px 4px color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 42%, transparent),
-    inset -1px -1px 2px color-mix(in srgb, #fff 85%, transparent),
-    inset 0 0 0 1px color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 18%, transparent);
+    0 1px 0 color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 22%, transparent),
+    0 3px 7px color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 18%, transparent),
+    inset 1px 1px 0 var(--need-frame-hi),
+    inset -1px -1px 0 var(--need-frame-lo),
+    inset 0 0 0 1px color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 12%, transparent);
 }
 [data-display-texture="phosphor-light"] .vram-fc-need-frame[data-source-kind="learned"],
 [data-display-texture="phosphor-light"] .vram-fc-need-frame[data-source-kind="learned_curve"] {
@@ -2927,7 +2951,7 @@
   background: transparent;
 }
 [data-display-texture="phosphor-light"] .vram-fc-need-frame__status {
-  text-shadow: none;
+  text-shadow: 0 1px 0 color-mix(in srgb, #fff 80%, transparent);
 }
 [data-display-texture="phosphor-light"] .vram-fc-need-frame[data-source-kind="learned"] .vram-fc-need-frame__status,
 [data-display-texture="phosphor-light"] .vram-fc-need-frame[data-source-kind="learned_curve"] .vram-fc-need-frame__status {
