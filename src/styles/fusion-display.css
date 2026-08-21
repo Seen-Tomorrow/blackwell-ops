@@ -452,19 +452,119 @@
 .vram-forecast-measuring {
   position: relative;
   overflow: hidden;
-  padding: 0.35rem 0.25rem 0.5rem;
+  padding: 0.45rem 0.35rem 0.55rem;
   /* subtle CRT/instrument wash — no grey placeholder bars */
   background:
     radial-gradient(
-      ellipse 70% 55% at 50% 42%,
-      color-mix(in srgb, var(--theme-accent, #76B900) 10%, transparent),
-      transparent 70%
+      ellipse 55% 50% at 50% 42%,
+      color-mix(in srgb, var(--theme-accent, #76B900) 11%, transparent),
+      transparent 72%
     ),
     linear-gradient(
       180deg,
       color-mix(in srgb, var(--theme-panel, #0a0a0a) 35%, transparent),
       transparent 60%
     );
+}
+
+.vram-forecast-measuring__center {
+  flex: 0 1 auto;
+  z-index: 1;
+}
+
+/* Side instrument ladders — balance the center scope */
+.vram-forecast-measuring__flank {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.28rem;
+  width: 36px;
+  flex-shrink: 0;
+  opacity: 0.85;
+  user-select: none;
+}
+
+.vram-forecast-measuring__flank-label {
+  font-size: 7px;
+  letter-spacing: 0.16em;
+  color: color-mix(in srgb, var(--theme-accent, #76B900) 70%, transparent);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--theme-accent, #76B900) 30%, transparent);
+}
+
+.vram-forecast-measuring__flank-readout {
+  font-size: 7px;
+  letter-spacing: 0.12em;
+  color: color-mix(in srgb, var(--theme-text-muted, #9ca3af) 80%, transparent);
+  animation: vram-forecast-title-pulse 1.6s ease-in-out infinite;
+}
+
+.vram-forecast-measuring__flank--right .vram-forecast-measuring__flank-readout {
+  animation-delay: 0.4s;
+}
+
+.vram-forecast-measuring__ladder {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 4px 0;
+}
+
+.vram-forecast-measuring__ladder i {
+  display: block;
+  width: 14px;
+  height: 2px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--theme-accent, #76B900) 28%, transparent);
+  animation: vram-forecast-ladder-tick 1.2s ease-in-out infinite;
+}
+
+.vram-forecast-measuring__flank--left .vram-forecast-measuring__ladder i:nth-child(1) { animation-delay: 0s; width: 10px; }
+.vram-forecast-measuring__flank--left .vram-forecast-measuring__ladder i:nth-child(2) { animation-delay: 0.08s; width: 12px; }
+.vram-forecast-measuring__flank--left .vram-forecast-measuring__ladder i:nth-child(3) { animation-delay: 0.16s; width: 14px; }
+.vram-forecast-measuring__flank--left .vram-forecast-measuring__ladder i:nth-child(4) { animation-delay: 0.24s; width: 11px; }
+.vram-forecast-measuring__flank--left .vram-forecast-measuring__ladder i:nth-child(5) { animation-delay: 0.32s; width: 13px; }
+.vram-forecast-measuring__flank--left .vram-forecast-measuring__ladder i:nth-child(6) { animation-delay: 0.4s; width: 14px; }
+.vram-forecast-measuring__flank--left .vram-forecast-measuring__ladder i:nth-child(7) { animation-delay: 0.48s; width: 12px; }
+.vram-forecast-measuring__flank--left .vram-forecast-measuring__ladder i:nth-child(8) { animation-delay: 0.56s; width: 10px; }
+
+.vram-forecast-measuring__flank--right .vram-forecast-measuring__ladder i:nth-child(1) { animation-delay: 0.56s; width: 10px; }
+.vram-forecast-measuring__flank--right .vram-forecast-measuring__ladder i:nth-child(2) { animation-delay: 0.48s; width: 12px; }
+.vram-forecast-measuring__flank--right .vram-forecast-measuring__ladder i:nth-child(3) { animation-delay: 0.4s; width: 14px; }
+.vram-forecast-measuring__flank--right .vram-forecast-measuring__ladder i:nth-child(4) { animation-delay: 0.32s; width: 11px; }
+.vram-forecast-measuring__flank--right .vram-forecast-measuring__ladder i:nth-child(5) { animation-delay: 0.24s; width: 13px; }
+.vram-forecast-measuring__flank--right .vram-forecast-measuring__ladder i:nth-child(6) { animation-delay: 0.16s; width: 14px; }
+.vram-forecast-measuring__flank--right .vram-forecast-measuring__ladder i:nth-child(7) { animation-delay: 0.08s; width: 12px; }
+.vram-forecast-measuring__flank--right .vram-forecast-measuring__ladder i:nth-child(8) { animation-delay: 0s; width: 10px; }
+
+.vram-forecast-measuring__flank-meter {
+  position: relative;
+  width: 4px;
+  height: 42px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--theme-panel-accent, #1f2937) 65%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-border, #374151) 35%, transparent);
+}
+
+.vram-forecast-measuring__flank-meter-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 55%;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--theme-accent-bright, #a3e635) 70%, transparent),
+    color-mix(in srgb, var(--theme-accent, #76B900) 35%, transparent)
+  );
+  animation: vram-forecast-flank-level 1.5s ease-in-out infinite;
+  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-accent, #76B900) 40%, transparent);
+}
+
+.vram-forecast-measuring__flank-meter-fill--rev {
+  animation-direction: reverse;
+  animation-duration: 1.7s;
 }
 
 .vram-forecast-measuring__scope {

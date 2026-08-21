@@ -243,19 +243,43 @@ export default function VramBadge({
         aria-label="Evaluating VRAM footprint"
       >
         {fitLaunchDock}
-        <div className="vram-forecast-measuring flex flex-col flex-1 min-h-0 items-center justify-center gap-2">
-          <div className="vram-forecast-measuring__scope" aria-hidden>
-            <span className="vram-forecast-measuring__ring" />
-            <span className="vram-forecast-measuring__ring vram-forecast-measuring__ring--delay" />
-            <span className="vram-forecast-measuring__beam" />
-            <span className="vram-forecast-measuring__core font-mono">VRAM</span>
+        <div className="vram-forecast-measuring flex flex-1 min-h-0 items-center justify-center gap-3 px-1">
+          <div className="vram-forecast-measuring__flank vram-forecast-measuring__flank--left font-mono" aria-hidden>
+            <span className="vram-forecast-measuring__flank-label">GPU</span>
+            <span className="vram-forecast-measuring__ladder">
+              <i /><i /><i /><i /><i /><i /><i /><i />
+            </span>
+            <span className="vram-forecast-measuring__flank-readout">SCAN</span>
+            <span className="vram-forecast-measuring__flank-meter">
+              <span className="vram-forecast-measuring__flank-meter-fill" />
+            </span>
           </div>
-          <div className="vram-forecast-measuring__copy font-mono">
-            <span className="vram-forecast-measuring__title">EVALUATING</span>
-            <span className="vram-forecast-measuring__sub">footprint · learned · fit probe</span>
+
+          <div className="vram-forecast-measuring__center flex flex-col items-center justify-center gap-2 min-w-0">
+            <div className="vram-forecast-measuring__scope" aria-hidden>
+              <span className="vram-forecast-measuring__ring" />
+              <span className="vram-forecast-measuring__ring vram-forecast-measuring__ring--delay" />
+              <span className="vram-forecast-measuring__beam" />
+              <span className="vram-forecast-measuring__core font-mono">VRAM</span>
+            </div>
+            <div className="vram-forecast-measuring__copy font-mono">
+              <span className="vram-forecast-measuring__title">EVALUATING</span>
+              <span className="vram-forecast-measuring__sub">footprint · learned · fit probe</span>
+            </div>
+            <div className="vram-forecast-measuring__bar" aria-hidden>
+              <span className="vram-forecast-measuring__bar-fill" />
+            </div>
           </div>
-          <div className="vram-forecast-measuring__bar" aria-hidden>
-            <span className="vram-forecast-measuring__bar-fill" />
+
+          <div className="vram-forecast-measuring__flank vram-forecast-measuring__flank--right font-mono" aria-hidden>
+            <span className="vram-forecast-measuring__flank-label">CTX</span>
+            <span className="vram-forecast-measuring__ladder">
+              <i /><i /><i /><i /><i /><i /><i /><i />
+            </span>
+            <span className="vram-forecast-measuring__flank-readout">MAP</span>
+            <span className="vram-forecast-measuring__flank-meter">
+              <span className="vram-forecast-measuring__flank-meter-fill vram-forecast-measuring__flank-meter-fill--rev" />
+            </span>
           </div>
         </div>
       </div>
