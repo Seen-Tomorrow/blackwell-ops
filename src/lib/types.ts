@@ -726,6 +726,8 @@ export interface MoeSuggestion {
 export interface UiTemplate {
   /** FULL AUTO hero headline — replaces detailed bars when showDetailedForecast is false. */
   heroText?: string;
+  /** ASSISTED personal launch summary line (outcome + placement). */
+  launchSummary?: string;
   heroSubtext?: string;
   /** ASSISTED shows full breakdown; FULL AUTO collapses to hero. */
   showDetailedForecast?: boolean;

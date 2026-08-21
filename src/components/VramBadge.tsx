@@ -350,7 +350,7 @@ export default function VramBadge({
     </div>
   ) : null;
 
-  /** Scenario identity chip — FULL AUTO top-right. */
+  /** Scenario identity chip — FULL AUTO top-right only. */
   const scenarioChip = (
     <span className="vram-fc__ident vram-forecast-scenario-badge">
       <span className={`vram-fc__scenario ${s.badgeBg}`}>
@@ -359,64 +359,17 @@ export default function VramBadge({
     </span>
   );
 
-  /** ASSISTED: scenario replaces the FORECAST wordmark. */
-  const forecastScenarioTitle = (
-    <span
-      className={`vram-fc__title vram-fc__title--scenario vram-forecast-scenario-badge ${s.badgeBg}`}
-      title={s.label}
-    >
-      <span className="vram-fc__scenario-lab">{s.label}</span>
-    </span>
-  );
-
+  /** ASSISTED: personal launch summary (not FIT SINGLE/MULTI stamp). */
+  const assistedLaunchSummary =
+    t.launchSummary || t.heroText || s.label;
 
   const remainPct =
     manifest.fits && totalVramMib > 0
       ? Math.max(0, Math.round(100 - vramUsagePct))
       : null;
 
-  const needInstruments = (
-    <div className="vram-fc__need-row vram-forecast-needs" data-source-kind={sourceKind || "pending"}>
-      <div className="vram-fc-need" aria-label="VRAM need">
-        <span className="vram-fc-need__lab">VRAM</span>
-        <span
-          className={`vram-fc-need__val vram-forecast-gb-value${
-            sourceKind
-              ? ` vram-forecast-gb-accented vram-forecast-gb-accented--${sourceKind}`
-              : ""
-          }`}
-        >
-          {displayVramNeedGb.toFixed(1)}
-        </span>
-        <span className="vram-fc-need__unit">GB</span>
-        <span className="vram-fc-need__of">of</span>
-        <span className="vram-fc-need__cap vram-forecast-gb-value">{totalVramGb.toFixed(1)}</span>
-        <span className="vram-fc-need__unit vram-fc-need__unit--muted">GB</span>
-      </div>
-      {showRamNeed ? (
-        <>
-          <span className="vram-fc-need__sep vram-forecast-needs-sep" aria-hidden>
-            //
-          </span>
-          <div className="vram-fc-need vram-fc-need--ram" aria-label="RAM need">
-            <span className="vram-fc-need__lab">RAM</span>
-            <span className="vram-fc-need__val vram-forecast-gb-value">
-              {displayRamNeedGb.toFixed(1)}
-            </span>
-            <span className="vram-fc-need__unit vram-fc-need__unit--ram">GB</span>
-            <span className="vram-fc-need__of">of</span>
-            <span className="vram-fc-need__cap vram-forecast-gb-value">
-              {manifest.ramManufacturedGb.toFixed(1)}
-            </span>
-            <span className="vram-fc-need__unit vram-fc-need__unit--muted">GB</span>
-          </div>
-        </>
-      ) : null}
-    </div>
-  );
-
   const barBank = showDetailedForecast ? (
-    <div className="vram-fc-bars vram-badge-bars vram-fc-bars--split relative">
+    <div className="vram-fc-bars vram-badge-bars vram-fc-bars--assisted relative">
       {!hideMoeBadge && modelMeta != null && modelMeta.n_expert > 0 && (
         <div className="absolute right-0 -top-5 flex items-center z-10">
           <MoeBadge
@@ -438,8 +391,16 @@ export default function VramBadge({
             />
           </div>
         </div>
-        <span className={`vram-fc-bar__cap ${s.titleColor}`}>
-          {totalVramGb.toFixed(0)} GB
+        <span
+          className={`vram-fc-bar__nums${
+            sourceKind ? ` vram-forecast-gb-accented vram-forecast-gb-accented--${sourceKind}` : ""
+          }`}
+          title={`${displayVramNeedGb.toFixed(1)} GB need of ${totalVramGb.toFixed(1)} GB free pool`}
+        >
+          <span className="vram-fc-bar__need">{displayVramNeedGb.toFixed(1)}</span>
+          <span className="vram-fc-bar__slash">/</span>
+          <span className="vram-fc-bar__pool">{totalVramGb.toFixed(1)}</span>
+          <span className="vram-fc-bar__unit">GB</span>
         </span>
       </div>
 
@@ -456,7 +417,15 @@ export default function VramBadge({
               />
             </div>
           </div>
-          <span className="vram-fc-bar__cap vram-fc-bar__cap--ram">{ramMfgGb} GB</span>
+          <span
+            className="vram-fc-bar__nums vram-fc-bar__nums--ram"
+            title={`${displayRamNeedGb.toFixed(1)} GB host of ${manifest.ramManufacturedGb.toFixed(1)} GB RAM`}
+          >
+            <span className="vram-fc-bar__need">{displayRamNeedGb.toFixed(1)}</span>
+            <span className="vram-fc-bar__slash">/</span>
+            <span className="vram-fc-bar__pool">{manifest.ramManufacturedGb.toFixed(1)}</span>
+            <span className="vram-fc-bar__unit">GB</span>
+          </span>
         </div>
       )}
     </div>
@@ -477,16 +446,12 @@ export default function VramBadge({
 
       {showDetailedForecast ? (
         <div className="vram-fc__header vram-forecast-header vram-forecast-header--assisted flex-shrink-0 min-w-0">
-          <div className="vram-fc__title-row">
-            {forecastScenarioTitle}
-            <span
-              className={`vram-fc__verdict${manifest.fits ? " is-ok" : " is-fail"}`}
-              title={manifest.fits ? "Projected fit" : "Projected no-fit"}
-            >
-              {manifest.fits ? "FITS" : "WON'T"}
-            </span>
-          </div>
-          {needInstruments}
+          <p
+            className={`vram-fc__launch-summary${manifest.fits ? " is-ok" : " is-fail"}`}
+            title={assistedLaunchSummary}
+          >
+            {assistedLaunchSummary}
+          </p>
           {forecastSourceRow}
         </div>
       ) : (

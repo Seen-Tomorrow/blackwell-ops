@@ -225,40 +225,59 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
       ? `split across ${input.gpus.length} GPU(s) + ${fitHint}`
       : fitHint;
 
-  const fitLabel = !fits
-    ? "DO NOT FIT"
-    : useOffloadPalette || (isRealHostOffload && hostOffloadGb > 0.5)
-      ? "FIT OFFLOAD"
-      : autoSplit || multiGpuLoad || (!fullAuto && splitActive(input))
-        ? "FIT MULTI"
-        : "FIT SINGLE";
-
   const hostOffloadLaunch = useOffloadPalette || (isRealHostOffload && hostOffloadGb > 0.5);
+  const multiNote =
+    autoSplit || multiGpuLoad || (!fullAuto && splitActive(input) && input.gpus.length > 1);
+  const gpuWord =
+    multiNote
+      ? autoSplit
+        ? `auto layer-split across ${input.gpus.length} GPUs`
+        : `split across ${input.gpus.length} GPUs`
+      : input.gpus.length > 1
+        ? `full on GPU-${tgt}`
+        : "full on GPU";
+
   const recommendation = overSystemMemory
-    ? `Needs ~${modelFootprintGb.toFixed(0)} GB — ~${systemAvailableGb.toFixed(0)} GB available (VRAM + RAM)`
+    ? `needs ~${modelFootprintGb.toFixed(0)}G but only ~${systemAvailableGb.toFixed(0)}G free (VRAM+RAM)`
     : !fits && !trustFitAtLoad
-      ? "Reduce ctx or free VRAM — model exceeds available GPU memory"
+      ? "needs more free VRAM — lower CTX or free a GPU"
       : "";
 
-  const heroText = !fits
-    ? "WON'T LAUNCH"
-    : fullAuto
-      ? hostOffloadLaunch
+  // Compact chip (Full Auto top-right). Assisted uses launchSummary as the header line.
+  const fitLabel = !fits
+    ? "NO FIT"
+    : hostOffloadLaunch
+      ? "OFFLOAD"
+      : multiNote
+        ? "MULTI"
+        : "SINGLE";
+
+  /** Personal one-liner — Assisted header (not hard knobs; those live on the cockpit). */
+  const launchSummary = !fits
+    ? recommendation
+      ? `Model won't launch — ${recommendation}`
+      : "Model won't launch — projected over available memory"
+    : hostOffloadLaunch
+      ? multiNote
+        ? `Model will launch with some RAM offload (${gpuWord}) — slower`
+        : "Model will launch with some RAM offload — slower"
+      : multiNote
+        ? `Model will launch alright — ${gpuWord}`
+        : "Model will launch alright";
+
+  const heroText = fullAuto
+    ? !fits
+      ? "WON'T LAUNCH"
+      : hostOffloadLaunch
         ? "Model will launch - need some RAM, will be slower"
         : "Your model will launch ALRIGHT"
-      : hostOffloadLaunch
-        ? "WILL LAUNCH — HOST RAM"
-        : "WILL LAUNCH";
+    : launchSummary;
 
   const heroSubtext = fullAuto
     ? !fits
-      ? recommendation
+      ? (recommendation || undefined)
       : undefined
-    : !fits
-      ? recommendation
-      : hostOffloadLaunch
-        ? "Engine will offload to host RAM — slower inference"
-        : "Engine manages GPU + host memory at load";
+    : undefined;
 
   const layerText =
     learnedGb != null
@@ -292,6 +311,8 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
       uiTemplate: {
         heroText,
         heroSubtext,
+        /** Assisted header line — same as heroText in assisted mode. */
+        launchSummary: assisted ? launchSummary : undefined,
         showDetailedForecast: assisted,
         gpuLayerText: layerText,
         ramLayerText: showHostRam

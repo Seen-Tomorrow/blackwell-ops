@@ -39,7 +39,7 @@ function formatExternalTooltip(systemReservedMib: number, foreignAppsMib: number
 
 /** Density tier — fat 1–2, med 3–4, dense 5+ (slot-bank style). */
 export function gpuTopoDensity(count: number): "fat" | "med" | "dense" {
-  if (count <= 2) return "fat";
+  // fat was too tall for 1-row Assisted phosphor; med is the default compact card.
   if (count <= 4) return "med";
   return "dense";
 }
@@ -85,8 +85,14 @@ export default function GpuTopology({
         style={{
           gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
           // ≤3 rows: equal flex rows fill the topo. >3: CSS grid-auto-rows from cqh.
+          // 1 visible row: auto height (don't stretch one card to full phosphor).
+          // 2+ rows: equal flex rows fill remaining glass.
           gridTemplateRows:
-            fill && !scroll ? `repeat(${rows}, minmax(0, 1fr))` : undefined,
+            fill && !scroll
+              ? rows <= 1
+                ? "auto"
+                : `repeat(${rows}, minmax(0, 1fr))`
+              : undefined,
         }}
       >
         {bank.map((alloc) => {
