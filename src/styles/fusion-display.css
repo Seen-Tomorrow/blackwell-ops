@@ -1320,11 +1320,11 @@
     var(--display-face-bar-bg, color-mix(in srgb, var(--theme-accent, #76b900) 10%, transparent)) 70%,
     transparent
   );
-  /* Thin depressed edge — dark top/left inset, soft bottom lift */
+  /* Stronger depressed well — deeper/wider inset channel */
   box-shadow:
-    inset 1px 1px 0 color-mix(in srgb, #000 42%, transparent),
-    inset -1px -1px 0 color-mix(in srgb, #fff 7%, transparent),
-    inset 0 0 0 1px color-mix(in srgb, #000 12%, transparent);
+    inset 2px 2px 3px color-mix(in srgb, #000 55%, transparent),
+    inset -1px -1px 2px color-mix(in srgb, #fff 10%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, #000 22%, transparent);
   overflow: hidden;
 }
 .vram-fc-need-frame[data-source-kind="learned"],
@@ -1366,7 +1366,7 @@
   min-height: 0;
   padding: 3px 6px;
   border-bottom: 1px solid color-mix(in srgb, var(--need-frame-accent) 40%, transparent);
-  background: color-mix(in srgb, var(--need-frame-accent) 12%, transparent);
+  background: transparent;
 }
 .vram-fc-need-frame__status-row--empty {
   padding: 0;
@@ -2898,14 +2898,14 @@
   border-color: color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 18%, transparent);
 }
 
-/* NEED frame — thin depressed edge on glacier paper */
+/* NEED frame — stronger depressed well on glacier paper */
 [data-display-texture="phosphor-light"] .vram-fc-need-frame {
-  --need-frame-recess: color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 34%, transparent);
+  --need-frame-recess: color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 40%, transparent);
   background: color-mix(in srgb, var(--display-face-light-surface, #f4f8fc) 55%, transparent);
   box-shadow:
-    inset 1px 1px 0 color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 28%, transparent),
-    inset -1px -1px 0 color-mix(in srgb, #fff 80%, transparent),
-    inset 0 0 0 1px color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 10%, transparent);
+    inset 2px 2px 4px color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 42%, transparent),
+    inset -1px -1px 2px color-mix(in srgb, #fff 85%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 18%, transparent);
 }
 [data-display-texture="phosphor-light"] .vram-fc-need-frame[data-source-kind="learned"],
 [data-display-texture="phosphor-light"] .vram-fc-need-frame[data-source-kind="learned_curve"] {
@@ -2918,7 +2918,7 @@
   --need-frame-accent: color-mix(in srgb, var(--display-face-light-fc-label-border, #0284c7) 70%, transparent);
 }
 [data-display-texture="phosphor-light"] .vram-fc-need-frame__status-row {
-  background: color-mix(in srgb, var(--need-frame-accent) 14%, transparent);
+  background: transparent;
 }
 [data-display-texture="phosphor-light"] .vram-fc-need-frame__status {
   text-shadow: none;
