@@ -1174,11 +1174,12 @@
 /* ASSISTED body — fixed-height dominant bars; GPU bank keeps remaining space */
 
 /* ASSISTED measure cluster — SOURCE above rails; need chips fused on bar ends */
+/* ASSISTED measure cluster — keep compact so GPU topo keeps height inside 280px phosphor */
 .vram-fc-measure {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: calc(5px * var(--vram-fc-scale, 1.12));
+  gap: calc(2px * var(--vram-fc-scale, 1.12));
   flex: 0 0 auto;
   align-self: stretch;
   width: 100%;
@@ -1187,32 +1188,41 @@
 .vram-fc-measure__main {
   display: flex;
   flex-direction: column;
-  gap: calc(5px * var(--vram-fc-scale, 1.12));
+  gap: calc(2px * var(--vram-fc-scale, 1.12));
   width: 100%;
   min-width: 0;
 }
-/* SOURCE sits above bars, right-aligned over the need-hero column */
+/* SOURCE sits above bars — transparent, packed to the RIGHT */
 .vram-fc-measure__source {
   display: flex;
   justify-content: flex-end;
   width: 100%;
   min-width: 0;
+  flex: 0 0 auto;
+  background: transparent;
 }
 .vram-fc-measure__source .vram-fc__source-row {
   margin: 0;
   width: auto;
   max-width: 100%;
+  background: transparent;
 }
 .vram-fc-measure__source .vram-forecast-source {
   width: auto;
+  max-width: 100%;
+  background: transparent;
 }
 .vram-fc-measure__source .vram-fc-source--dominant .vram-fc-source__head {
-  justify-content: flex-start;
+  justify-content: flex-end;
   flex-wrap: nowrap;
-  width: 100%;
+  width: auto;
+  min-height: 0;
 }
 .vram-fc-measure__source .vram-fc-source--dominant {
-  width: 100%;
+  width: auto;
+  max-width: 100%;
+  margin-left: auto;
+  background: transparent !important;
 }
 
 /* Rails full width — need chips are back inside fused bars */
@@ -1246,20 +1256,21 @@
 }
 
 .vram-fc__body--assisted {
-  gap: calc(8px * var(--vram-fc-scale, 1.12));
+  /* Air between RAM bar and GPU bank (one empty-row feel) */
+  gap: calc(12px * var(--vram-fc-scale, 1.12));
   justify-content: flex-start;
 }
 .vram-fc__body--assisted .vram-fc-bars--assisted {
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  gap: calc(6px * var(--vram-fc-scale, 1.12));
+  gap: calc(4px * var(--vram-fc-scale, 1.12));
 }
 .vram-fc__body--assisted .vram-fc-bar-row {
   flex: 0 0 auto;
-  height: calc(36px * var(--vram-fc-scale, 1.12));
-  min-height: calc(36px * var(--vram-fc-scale, 1.12));
-  max-height: calc(36px * var(--vram-fc-scale, 1.12));
+  height: calc(34px * var(--vram-fc-scale, 1.12));
+  min-height: calc(34px * var(--vram-fc-scale, 1.12));
+  max-height: calc(34px * var(--vram-fc-scale, 1.12));
   display: flex;
   flex-direction: row;
   align-items: stretch;
@@ -1275,6 +1286,9 @@
   max-height: none;
   display: flex;
   flex-direction: column;
+  /* Extra separation from RAM measure cluster */
+  margin-top: calc(4px * var(--vram-fc-scale, 1.12));
+  padding-top: calc(2px * var(--vram-fc-scale, 1.12));
 }
 
 
@@ -1686,45 +1700,44 @@
 
 
 /*
- * Status slot — grows across the empty row.
- *   [ HERO status | live meter ]  [ RE-PROBE? ]
- * RE-PROBE only when estimate (hidden on EXACT/MEASURED).
+ * Status slot — fixed footprint on the RIGHT (not flex-grow).
+ * Live meter must NOT expand across the row and shove KIND left.
  */
 .vram-fc-source__status-slot {
   display: inline-flex;
   align-items: center;
-  justify-content: flex-start;
-  gap: 8px;
-  flex: 1 1 auto;
-  min-width: 12ch;
+  justify-content: flex-end;
+  gap: 6px;
+  flex: 0 0 auto;
+  margin-left: 0;
+  height: calc(14px * var(--vram-fc-scale, 1.12));
   max-width: none;
-  width: auto;
-  height: calc(18px * var(--vram-fc-scale, 1.12));
-  margin-left: 8px;
-  overflow: hidden;
+  overflow: visible;
 }
 .vram-fc-source__status-main {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   min-width: 0;
   height: 100%;
-  display: flex;
+  display: inline-flex;
   align-items: center;
+  max-width: 14ch;
 }
-/* Hero status — louder than LEARNED / FIT PROBE kind word */
+/* Hero status — inline with kind row (don't steal topo height) */
 .vram-fc-source__status-hero {
   display: block;
-  width: 100%;
+  width: auto;
+  max-width: 14ch;
   overflow: hidden;
   text-overflow: ellipsis;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: calc(13px * var(--vram-fc-scale, 1.12));
+  font-size: calc(11px * var(--vram-fc-scale, 1.12));
   font-weight: 800;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   line-height: 1;
   white-space: nowrap;
   color: inherit;
-  text-shadow: 0 0 12px color-mix(in srgb, currentColor 28%, transparent);
+  text-shadow: 0 0 8px color-mix(in srgb, currentColor 22%, transparent);
 }
 .vram-fc-source__status-hero.is-exact {
   opacity: 1;
@@ -1735,10 +1748,10 @@
 /* legacy alias */
 .vram-fc-source__prev-lab {
   display: block;
-  width: 100%;
-  font-size: calc(13px * var(--vram-fc-scale, 1.12));
+  width: auto;
+  font-size: calc(11px * var(--vram-fc-scale, 1.12));
   font-weight: 800;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   line-height: 1;
   white-space: nowrap;
@@ -1747,13 +1760,13 @@
 .vram-fc-source__reprobe {
   flex: 0 0 auto;
   margin: 0;
-  padding: 3px 10px;
+  padding: 2px 8px;
   border-radius: 2px;
   border: 1px solid color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 55%, transparent);
   background: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 14%, transparent);
   color: var(--theme-telemetry-amber, #fbbf24);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: calc(8px * var(--vram-fc-scale, 1.12));
+  font-size: calc(7px * var(--vram-fc-scale, 1.12));
   font-weight: 800;
   letter-spacing: 0.08em;
   line-height: 1.2;
@@ -1775,12 +1788,15 @@
   opacity: 0.85;
 }
 
-/* Live meter — bars + horizontal scanline (no side-to-side sweep) */
+/* Live meter — FIXED width chip (never width:100% of the source row) */
 .vram-fc-source__live-meter {
   --mem-accent: var(--theme-telemetry-cyan, #22d3ee);
   position: relative;
   display: block;
-  width: 100%;
+  flex: 0 0 5.5ch;
+  width: 5.5ch;
+  min-width: 5.5ch;
+  max-width: 5.5ch;
   height: calc(12px * var(--vram-fc-scale, 1.12));
   border-radius: 2px;
   border: 1px solid color-mix(in srgb, var(--mem-accent) 45%, transparent);
@@ -1965,40 +1981,62 @@
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: calc(8px * var(--vram-fc-scale, 1.12));
+  justify-content: flex-end;
+  gap: calc(5px * var(--vram-fc-scale, 1.12));
   min-width: 0;
-  width: 100%;
+  width: auto;
+  max-width: 100%;
+  margin-left: auto;
   flex-wrap: nowrap;
+  min-height: calc(14px * var(--vram-fc-scale, 1.12));
+  max-height: calc(16px * var(--vram-fc-scale, 1.12));
 }
 .vram-fc-source--dominant .vram-fc-source__lab {
-  font-size: calc(8px * var(--vram-fc-scale, 1.12));
-  letter-spacing: 0.1em;
+  font-size: calc(7px * var(--vram-fc-scale, 1.12));
+  letter-spacing: 0.08em;
   font-weight: 800;
-  opacity: 0.9;
+  opacity: 0.8;
   white-space: nowrap;
   flex-shrink: 0;
+  order: 1;
 }
 .vram-fc-source--dominant .vram-fc-source__kind {
   display: inline-flex;
   align-items: center;
-  gap: calc(5px * var(--vram-fc-scale, 1.12));
+  gap: calc(3px * var(--vram-fc-scale, 1.12));
   min-width: 0;
   flex-shrink: 0;
+  order: 2;
 }
 .vram-fc-source--dominant .vram-fc-source__kind-lab {
-  font-size: calc(10px * var(--vram-fc-scale, 1.12));
+  font-size: calc(9px * var(--vram-fc-scale, 1.12));
   font-weight: 700;
-  letter-spacing: 0.1em;
-  opacity: 0.85;
+  letter-spacing: 0.08em;
+  opacity: 0.88;
 }
 .vram-fc-source--dominant .vram-fc-source__pips {
-  transform: scale(1.05);
-}
-.vram-fc-source--dominant .vram-fc-source__status-slot {
-  flex: 1 1 auto;
+  transform: scale(0.9);
 }
 .vram-fc-source--dominant .vram-fc-source__status-hero {
-  font-size: calc(14px * var(--vram-fc-scale, 1.12));
+  font-size: calc(11px * var(--vram-fc-scale, 1.12));
+}
+.vram-fc-source--dominant .vram-fc-source__status-slot {
+  flex: 0 0 auto;
+  margin-left: 0;
+  order: 3;
+  height: calc(14px * var(--vram-fc-scale, 1.12));
+}
+.vram-fc-source--dominant .vram-fc-source__status-main {
+  flex: 0 0 auto;
+}
+.vram-fc-source--dominant .vram-fc-source__live-meter {
+  width: 5.5ch;
+  min-width: 5.5ch;
+  max-width: 5.5ch;
+}
+.vram-fc-source--dominant .vram-fc-source__reprobe {
+  padding: 2px 7px;
+  font-size: calc(7px * var(--vram-fc-scale, 1.12));
 }
 
 .vram-fc-source--inline {
@@ -2260,18 +2298,34 @@
   overflow-x: hidden;
   overflow-y: auto;
 }
-/* ≤2 rows: pack to content; do not invent tall empty cards */
+/*
+ * ≤2 rows: still use full topo height with 2-row geometry so cards aren't tiny.
+ * Empty lower half acts as the air gap under sparse GPU counts.
+ */
 .vram-fc__topo--compact .gpu-topology-root--fill:not([data-gpu-scroll="1"]) {
-  height: auto;
+  height: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
   max-height: 100%;
+  overflow: hidden;
 }
 .vram-fc__topo--compact .gpu-topology-root--fill:not([data-gpu-scroll="1"]) .gpu-topology-grid {
-  flex: 0 0 auto;
-  height: auto;
+  flex: 1 1 auto;
+  height: 100%;
+  min-height: 0;
   align-content: start;
+  grid-template-rows: none !important;
+  grid-auto-rows: calc(
+    (100cqh - (var(--gpu-topo-max-rows, 2) - 1) * var(--gpu-topo-gap))
+    / var(--gpu-topo-max-rows, 2)
+  );
 }
 .vram-fc__topo--compact .gpu-topology-root--fill:not([data-gpu-scroll="1"]) .gpu-card--rail {
-  height: auto;
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 /* >2 rows: root fills topo viewport; each row = 1/2 cqh — overflow same height as visible */
 .vram-fc__topo--compact .gpu-topology-root--fill[data-gpu-scroll="1"] {
@@ -2619,12 +2673,12 @@
   text-shadow: none;
 }
 
-/* Light tracks/troughs: use bar-bg (ARCTIC #0c4a6e sky), NEVER readout ink (greys to slate) */
+/* SOURCE row — no plate / no grey wash on ARCTIC light paper */
 [data-display-texture="phosphor-light"] .vram-fc-source,
 [data-display-texture="phosphor-light"] .memory-source-strip {
-  background: color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 6%, transparent);
-  border-color: color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 22%, transparent);
-  box-shadow: none;
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
 }
 
 [data-display-texture="phosphor-light"] .vram-fc-bar__track,
@@ -2723,15 +2777,16 @@
   -webkit-text-fill-color: var(--theme-telemetry-red, #ef4444) !important;
 }
 
+/* GPU troughs — deeper sky well (26% washed to grey on paper) */
 [data-display-texture="phosphor-light"] .gpu-card__bar,
 [data-display-texture="phosphor-light"] .vram-fc__topo--compact .gpu-card__bar--3d {
-  background: color-mix(in srgb, var(--display-face-light-bar-bg, var(--theme-accent, #76b900)) 26%, transparent);
-  border-color: color-mix(in srgb, var(--display-face-light-bar-bg, var(--theme-accent, #76b900)) 42%, transparent);
-  border-top-color: color-mix(in srgb, var(--display-face-light-bar-bg, var(--theme-accent, #76b900)) 55%, #000);
+  background: color-mix(in srgb, var(--display-face-light-bar-bg, var(--theme-accent, #76b900)) 38%, transparent);
+  border-color: color-mix(in srgb, var(--display-face-light-bar-bg, var(--theme-accent, #76b900)) 52%, transparent);
+  border-top-color: color-mix(in srgb, var(--display-face-light-bar-bg, var(--theme-accent, #76b900)) 65%, #000);
   border-bottom-color: color-mix(in srgb, #fff 40%, transparent);
   box-shadow:
-    inset 0 2px 5px color-mix(in srgb, var(--display-face-light-bar-bg, var(--theme-accent, #76b900)) 28%, transparent),
-    inset 0 1px 0 color-mix(in srgb, #000 12%, transparent),
+    inset 0 2px 5px color-mix(in srgb, var(--display-face-light-bar-bg, var(--theme-accent, #76b900)) 34%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #000 14%, transparent),
     inset 0 -1px 0 color-mix(in srgb, #fff 45%, transparent);
 }
 
