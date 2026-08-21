@@ -4,7 +4,6 @@ import {
   type BenchGpuTopoEntry,
 } from "./benchHwTopo";
 import type { BenchSessionMode } from "./benchPortStore";
-import { FORECAST_PHOSPHOR_HEIGHT_PX } from "./onboardingDisplay";
 import type { GpuInfo } from "./types";
 
 /** Vertical padding on `.bench-widget-panel` (p-1.5 × 2). */
@@ -31,24 +30,35 @@ export const BENCH_RUNNING_ROW_PX = 20;
 export const BENCH_IDLE_PANEL_PX = 84;
 /** Extra phosphor height when bench results replace idle controls. */
 export const BENCH_PHOSPHOR_EXTRA_PX = 64;
-/**
- * Flex slack between the fusion hero row and idle bench controls in the base phosphor.
- * Omitted when bench results sit flush under the hero.
- */
-export const FUSION_BENCH_IDLE_SLACK_PX = 18;
 
 /** Fixed hero row height (slots + TG + PP) — PP progress slot always reserved. */
 export const FUSION_HERO_ROW_PX = 122;
 
+/** Alias/port header strip inside fusion overlay. */
+export const FUSION_HEADER_CHROME_PX = 26;
+
+/** Vertical pad around fusion dashboard stack (not forecast ASSISTED chrome). */
+export const FUSION_DASHBOARD_PAD_Y_PX = 8;
+
 /** Benchmark tray latch row (drawer lip control + open/stowed margins). */
 export const FUSION_BENCH_TRAY_LATCH_PX = 28;
 
+/** Stowed latch headroom so OPEN is fully clickable (was clipped to top lip). */
+export const FUSION_BENCH_LATCH_STOW_HEADROOM_PX = 6;
+
 /**
- * Header + hero + dashboard padding when bench is flush under the hero (no flex spacer).
- * Includes ~14px headroom for 6vh hero clamp + micro-stats row.
+ * Header + hero + dashboard pad — fusion metrics chrome only.
+ * Independent of FORECAST_PHOSPHOR_HEIGHT_PX (ASSISTED layout grew to 280; fusion must not inherit that slack).
  */
 export const FUSION_DASHBOARD_TIGHT_CHROME_PX =
-  FORECAST_PHOSPHOR_HEIGHT_PX - BENCH_IDLE_PANEL_PX - FUSION_BENCH_IDLE_SLACK_PX + 14;
+  FUSION_HEADER_CHROME_PX + FUSION_HERO_ROW_PX + FUSION_DASHBOARD_PAD_Y_PX;
+
+/**
+ * Base fusion phosphor when bench tray is open with idle controls.
+ * = chrome + latch + idle bench stack. Forecast height is separate (onboardingDisplay).
+ */
+export const FUSION_PHOSPHOR_BASE_HEIGHT_PX =
+  FUSION_DASHBOARD_TIGHT_CHROME_PX + FUSION_BENCH_TRAY_LATCH_PX + BENCH_IDLE_PANEL_PX;
 
 export type BenchPanelLayoutOpts = {
   showResults: boolean;
@@ -231,16 +241,16 @@ export function isBenchPanelExpanded(panelHeight: number): boolean {
   return panelHeight > BENCH_IDLE_PANEL_PX;
 }
 
-/** Live forecast phosphor height for fusion overlay + bench panel state. */
+/** Live fusion phosphor height for overlay + bench panel state. */
 export function computeFusionPhosphorHeight(benchPanelHeight: number): number {
-  if (!isBenchPanelExpanded(benchPanelHeight)) return FORECAST_PHOSPHOR_HEIGHT_PX;
-  return FORECAST_PHOSPHOR_HEIGHT_PX + (benchPanelHeight - BENCH_IDLE_PANEL_PX);
+  if (!isBenchPanelExpanded(benchPanelHeight)) return FUSION_PHOSPHOR_BASE_HEIGHT_PX;
+  return FUSION_PHOSPHOR_BASE_HEIGHT_PX + (benchPanelHeight - BENCH_IDLE_PANEL_PX);
 }
 
-/** Grow forecast phosphor only when the bench panel is taller than the idle control stack. */
+/** Grow fusion phosphor only when the bench panel is taller than the idle control stack. */
 export function computeBenchPhosphorExtra(opts: Parameters<typeof computeBenchPanelHeight>[0]): number {
   const panelH = computeBenchPanelHeight(opts);
-  return Math.max(0, computeFusionPhosphorHeight(panelH) - FORECAST_PHOSPHOR_HEIGHT_PX);
+  return Math.max(0, computeFusionPhosphorHeight(panelH) - FUSION_PHOSPHOR_BASE_HEIGHT_PX);
 }
 
 const FUSION_BENCH_SLOT_STUB = {} as unknown;
@@ -288,10 +298,13 @@ export function computeFusionPhosphorFixedHeight(
   );
 }
 
-/** Metrics-only phosphor — header + hero + tray latch (no bench slack). */
+/** Metrics-only phosphor — header + hero + tray latch (no idle bench slack). */
 export function computeFusionPhosphorStowedHeight(): number {
-  // +16px: room for bench latch fully visible (was only showing the top lip)
-  return FUSION_DASHBOARD_TIGHT_CHROME_PX + FUSION_BENCH_TRAY_LATCH_PX + 16;
+  return (
+    FUSION_DASHBOARD_TIGHT_CHROME_PX
+    + FUSION_BENCH_TRAY_LATCH_PX
+    + FUSION_BENCH_LATCH_STOW_HEADROOM_PX
+  );
 }
 
 /** Fusion overlay phosphor height from tray open/closed. */

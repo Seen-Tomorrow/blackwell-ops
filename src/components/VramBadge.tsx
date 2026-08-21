@@ -1,6 +1,10 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { GpuInfo, VramManifest, ModelMetadata } from "../lib/types";
-import { computeDualStackPhosphorHeightForTray, computeFusionPhosphorHeightForTray } from "../lib/benchPanelLayout";
+import {
+  computeDualStackPhosphorHeightForTray,
+  computeFusionPhosphorHeightForTray,
+  computeFusionPhosphorStowedHeight,
+} from "../lib/benchPanelLayout";
 import { getFusionBenchTrayOpen, refreshFusionBenchTrayFromStorage } from "../lib/fusionBenchTrayStore";
 import { FORECAST_PHOSPHOR_HEIGHT_PX } from "../lib/onboardingDisplay";
 import { useFusionBenchTray } from "../hooks/useFusionBenchTray";
@@ -105,14 +109,15 @@ export default function VramBadge({
       return;
     }
 
-    // LOADING: pin phosphor to forecast baseline — do not hug compact FULL AUTO forecast body.
+    // LOADING: pin to fusion stowed height — not ASSISTED forecast 280px baseline.
     if (engineStatus === "LOADING") {
       display.dataset.fusionHeightManaged = "";
       display.setAttribute("data-fusion-boot", "");
       display.removeAttribute("data-fusion-tray-stowed");
-      display.style.height = `${FORECAST_PHOSPHOR_HEIGHT_PX}px`;
-      display.style.minHeight = `${FORECAST_PHOSPHOR_HEIGHT_PX}px`;
-      display.style.maxHeight = `${FORECAST_PHOSPHOR_HEIGHT_PX}px`;
+      const bootPx = computeFusionPhosphorStowedHeight();
+      display.style.height = `${bootPx}px`;
+      display.style.minHeight = `${bootPx}px`;
+      display.style.maxHeight = `${bootPx}px`;
       return;
     }
 
