@@ -2255,13 +2255,13 @@
 .vram-fc-recap__summary {
   margin: 0 0 7px;
   padding-bottom: 6px;
-  border-bottom: 1px solid color-mix(in srgb, var(--display-face-text, #e2e8f0) 12%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--display-face-recap-text, #e2e8f0) 12%, transparent);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 10px;
   font-weight: 600;
   line-height: 1.35;
   letter-spacing: 0.02em;
-  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 92%, transparent);
+  color: color-mix(in srgb, var(--display-face-recap-text, #e2e8f0) 92%, transparent);
 }
 .vram-fc-recap__row,
 .vram-fc-recap__block {
@@ -2276,7 +2276,7 @@
   font-size: 7px;
   font-weight: 800;
   letter-spacing: 0.14em;
-  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 85%, transparent);
+  color: color-mix(in srgb, var(--display-face-recap-text-muted, #94a3b8) 85%, transparent);
   padding-top: 2px;
 }
 .vram-fc-recap__v {
@@ -2284,7 +2284,7 @@
   font-size: 10px;
   font-weight: 600;
   line-height: 1.35;
-  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 90%, transparent);
+  color: color-mix(in srgb, var(--display-face-recap-text, #e2e8f0) 90%, transparent);
   min-width: 0;
 }
 .vram-fc-recap__v--kind {
@@ -2312,11 +2312,11 @@
 .vram-fc-recap__foot {
   margin-top: 7px;
   padding-top: 5px;
-  border-top: 1px solid color-mix(in srgb, var(--display-face-text, #e2e8f0) 10%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--display-face-recap-text, #e2e8f0) 10%, transparent);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 7px;
   letter-spacing: 0.08em;
-  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 70%, transparent);
+  color: color-mix(in srgb, var(--display-face-recap-text-muted, #94a3b8) 70%, transparent);
 }
 .vram-fc-source[data-source-kind="fit_probe"] .vram-fc-recap {
   border-color: color-mix(in srgb, #22d3ee 35%, transparent);
