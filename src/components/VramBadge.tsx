@@ -462,7 +462,7 @@ export default function VramBadge({
           )}
         </div>
 
-        {/* NEED + status + RE-PROBE — spans SOURCE row height + bar rails */}
+        {/* Status+RE-PROBE above; VRAM/RAM needs aligned to bars */}
         <div
           className="vram-fc-need-frame"
           data-source-kind={sourceKind ?? undefined}
@@ -473,8 +473,19 @@ export default function VramBadge({
             memorySource && sourceView?.canProbe && !hideFitProbe ? "1" : "0"
           }
         >
+          {memorySource && (sourceView?.showStatus || (sourceView?.canProbe && !hideFitProbe)) ? (
+            <MemorySourceStatusMark
+              memorySource={memorySource}
+              isValidating={isValidating}
+              onValidate={hideFitProbe ? undefined : onValidate}
+              hideValidate={hideFitProbe || !onValidate}
+            />
+          ) : (
+            <div className="vram-fc-need-frame__status-row vram-fc-need-frame__status-row--empty" aria-hidden />
+          )}
+
           <span
-            className="vram-fc-bar__need-chip vram-fc-need-frame__need"
+            className="vram-fc-bar__need-chip vram-fc-need-frame__need vram-fc-need-frame__need--vram"
             data-need-tone={vramNeedTone}
             title="Projected VRAM need"
           >
@@ -485,18 +496,9 @@ export default function VramBadge({
             <span className="vram-fc-bar__unit">GB</span>
           </span>
 
-          {memorySource && (sourceView?.showStatus || (sourceView?.canProbe && !hideFitProbe)) ? (
-            <MemorySourceStatusMark
-              memorySource={memorySource}
-              isValidating={isValidating}
-              onValidate={hideFitProbe ? undefined : onValidate}
-              hideValidate={hideFitProbe || !onValidate}
-            />
-          ) : null}
-
           {showRamBar ? (
             <span
-              className="vram-fc-bar__need-chip vram-fc-bar__need-chip--ram vram-fc-need-frame__need"
+              className="vram-fc-bar__need-chip vram-fc-bar__need-chip--ram vram-fc-need-frame__need vram-fc-need-frame__need--ram"
               data-need-tone={ramNeedTone}
               title="Host RAM need"
             >

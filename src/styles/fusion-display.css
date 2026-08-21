@@ -1187,16 +1187,17 @@
   min-width: 0;
 }
 /*
- * Grid:
- *   [ SOURCE strip ........ ] [ NEED frame ]
- *   [ rails (VRAM/RAM) .... ] [    ↕ span  ]
+ * Grid (subgrid on NEED frame so GB values lock to bar rows):
+ *   [ SOURCE strip ........ ] [ status + RE-PROBE ]
+ *   [ VRAM bar ............ ] [ need 42.0 GB      ]
+ *   [ RAM bar ............. ] [ need  1.2 GB      ]
  */
 .vram-fc-measure__main {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-rows: auto auto;
+  grid-template-rows: auto auto auto;
   column-gap: calc(6px * var(--vram-fc-scale, 1.12));
-  row-gap: calc(3px * var(--vram-fc-scale, 1.12));
+  row-gap: calc(6px * var(--vram-fc-scale, 1.12));
   width: 100%;
   min-width: 0;
   align-items: stretch;
@@ -1268,26 +1269,25 @@
   max-width: 5.5ch;
 }
 
-/* Rails under SOURCE strip */
-.vram-fc-measure__rails,
-.vram-fc__body--assisted .vram-fc-measure__rails.vram-fc-bars--assisted,
-.vram-fc[data-forecast-mode="assisted"] .vram-fc-measure__rails.vram-fc-bars {
+/* Rails unwrap so each bar is its own main-grid row */
+.vram-fc-measure__main > .vram-fc-measure__rails,
+.vram-fc__body--assisted .vram-fc-measure__main > .vram-fc-measure__rails.vram-fc-bars--assisted,
+.vram-fc[data-forecast-mode="assisted"] .vram-fc-measure__main > .vram-fc-measure__rails.vram-fc-bars {
+  display: contents !important;
+}
+.vram-fc-measure__main .vram-fc-bar-row--vram {
   grid-column: 1;
   grid-row: 2;
-  flex: 1 1 auto !important;
-  width: auto !important;
-  min-width: 0 !important;
-  max-width: none !important;
-  display: flex;
-  flex-direction: column;
-  gap: calc(6px * var(--vram-fc-scale, 1.12));
 }
-.vram-fc-measure__rails .vram-fc-bar-row {
+.vram-fc-measure__main .vram-fc-bar-row--ram {
+  grid-column: 1;
+  grid-row: 3;
+}
+.vram-fc-measure__main .vram-fc-bar-row {
   width: 100%;
-  flex: 0 0 auto;
   min-width: 0;
 }
-.vram-fc-measure__rails .vram-fc-bar--fused {
+.vram-fc-measure__main .vram-fc-bar--fused {
   width: 100%;
   flex: 1 1 auto;
   min-width: 0;
@@ -1299,23 +1299,18 @@
 }
 
 /*
- * NEED frame — spans SOURCE row + rails (extends up + a bit left via width).
- * Thin outline ties VRAM need + status/RE-PROBE + RAM need.
+ * NEED frame — subgrid rows lock GB heroes to VRAM/RAM bars.
+ * Status + RE-PROBE sit in row 1 (beside SOURCE strip).
  */
 .vram-fc-need-frame {
   --need-frame-accent: color-mix(in srgb, var(--theme-accent, #76b900) 55%, transparent);
   grid-column: 2;
   grid-row: 1 / -1;
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: subgrid;
   align-items: stretch;
-  justify-content: stretch;
-  gap: 0;
-  /* Wider to fit status + RE-PROBE side by side */
   min-width: calc(14.5ch + 4.8rem);
   width: calc(14.5ch + 4.8rem);
-  align-self: stretch;
   border: 1px solid var(--need-frame-accent);
   border-radius: 4px;
   background: color-mix(
@@ -1341,36 +1336,44 @@
     0 0 10px color-mix(in srgb, var(--need-frame-accent) 22%, transparent);
 }
 
-/* Need chips inside frame — full width cells, no side borders (frame owns outline) */
+/* Need chips — one per bar row, full cell, no side borders */
 .vram-fc-need-frame .vram-fc-bar__need-chip,
 .vram-fc-need-frame__need {
-  flex: 1 1 0;
   width: 100%;
   min-width: 0;
-  height: auto;
-  min-height: calc(28px * var(--vram-fc-scale, 1.12));
+  height: 100%;
+  min-height: 0;
   border: none !important;
   border-radius: 0;
   justify-content: center;
   padding: 0 8px;
 }
-.vram-fc-need-frame .vram-fc-bar__need-chip + .vram-fc-bar__need-chip {
+.vram-fc-need-frame__need--vram {
+  grid-row: 2;
+}
+.vram-fc-need-frame__need--ram {
+  grid-row: 3;
   border-top: 1px solid color-mix(in srgb, var(--need-frame-accent) 35%, transparent) !important;
 }
 
-/* Status row — quality mark + RE-PROBE side by side */
+/* Status + RE-PROBE — row 1, beside SOURCE */
 .vram-fc-need-frame__status-row {
-  flex: 0 0 auto;
+  grid-row: 1;
   display: flex;
   flex-direction: row;
   align-items: center;
   justify-content: center;
   gap: calc(6px * var(--vram-fc-scale, 1.12));
-  min-height: calc(20px * var(--vram-fc-scale, 1.12));
-  padding: 4px 6px;
-  border-top: 1px solid color-mix(in srgb, var(--need-frame-accent) 40%, transparent);
+  min-height: 0;
+  padding: 3px 6px;
   border-bottom: 1px solid color-mix(in srgb, var(--need-frame-accent) 40%, transparent);
   background: color-mix(in srgb, var(--need-frame-accent) 12%, transparent);
+}
+.vram-fc-need-frame__status-row--empty {
+  padding: 0;
+  border-bottom: none;
+  background: transparent;
+  pointer-events: none;
 }
 .vram-fc-need-frame__status {
   flex: 0 1 auto;
@@ -1406,17 +1409,12 @@
 .vram-fc-need-frame[data-source-kind="fit_probe"] .vram-fc-need-frame__status {
   color: var(--theme-telemetry-amber, #fbbf24);
 }
-/* RE-PROBE chip inside status row */
 .vram-fc-need-frame__reprobe,
 .vram-fc-need-frame .vram-fc-source__reprobe {
   flex: 0 0 auto;
   padding: 2px 6px;
   font-size: calc(7px * var(--vram-fc-scale, 1.12));
   line-height: 1.15;
-}
-/* Single-bar (no RAM): status row still under VRAM need */
-.vram-fc-need-frame[data-has-ram="0"] .vram-fc-need-frame__status-row {
-  border-bottom: none;
 }
 
 /* legacy cluster wrapper (no longer used in ASSISTED measure) */
