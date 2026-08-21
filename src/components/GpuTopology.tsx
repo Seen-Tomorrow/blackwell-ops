@@ -155,27 +155,36 @@ export default function GpuTopology({
             <div
               key={alloc.gpuIndex}
               onClick={() => onDeviceSelect?.(alloc.gpuIndex)}
-              className={`gpu-card gpu-card-enter${
+              className={`gpu-card gpu-card--rail gpu-card-enter${
                 isSelected
                   ? " gpu-selected"
                   : onDeviceSelect
                     ? " cursor-pointer hover:border-stealth-muted/50"
                     : ""
               }`}
+              title={tooltipText}
             >
-              <div className="gpu-card__head">
+              <div className="gpu-card__meta">
                 <span className="gpu-card-name" title={alloc.name}>
                   {alloc.name}
                 </span>
-                <span style={{ color: pctColor }} className="gpu-card__pct">
-                  {totalUsedPct.toFixed(0)}%
+                <span className="gpu-card__readout">
+                  <span style={{ color: barColorHex }} className="gpu-card__bar-need">
+                    {alloc.projectedLoadGb.toFixed(1)}
+                  </span>
+                  <span className="gpu-card__bar-cap">
+                    /{alloc.vramManufacturedGb.toFixed(0)}G
+                  </span>
+                  <span style={{ color: pctColor }} className="gpu-card__pct">
+                    {totalUsedPct.toFixed(0)}%
+                  </span>
                 </span>
               </div>
 
-              <div className="gpu-card__bar" title={tooltipText}>
+              <div className="gpu-card__bar gpu-card__bar--3d">
                 <div
                   style={{ width: `${Math.min(projectedPct, 100)}%` }}
-                  className={`gpu-card__bar-fill gpu-bar-fill ${gpuBarColor}`}
+                  className={`gpu-card__bar-fill gpu-card__bar-fill--bevel gpu-bar-fill ${gpuBarColor}`}
                 />
 
                 {osOtherMib > 0 && (
@@ -185,7 +194,7 @@ export default function GpuTopology({
                       backgroundColor: "#585858",
                       backgroundImage: HATCH_PATTERN,
                     }}
-                    className="gpu-card__bar-fill gpu-card__bar-fill--os gpu-bar-fill"
+                    className="gpu-card__bar-fill gpu-card__bar-fill--os gpu-card__bar-fill--bevel gpu-bar-fill"
                   />
                 )}
 
@@ -197,18 +206,9 @@ export default function GpuTopology({
                       backgroundColor: existingBarColor,
                       backgroundImage: HATCH_PATTERN,
                     }}
-                    className="gpu-card__bar-fill gpu-card__bar-fill--engine gpu-bar-fill"
+                    className="gpu-card__bar-fill gpu-card__bar-fill--engine gpu-card__bar-fill--bevel gpu-bar-fill"
                   />
                 )}
-
-                <span className="gpu-card-bar-inset">
-                  <span style={{ color: barColorHex }} className="gpu-card__bar-need">
-                    {alloc.projectedLoadGb.toFixed(1)} GB
-                  </span>
-                  <span className="gpu-card__bar-cap">
-                    /{alloc.vramManufacturedGb.toFixed(0)} GB
-                  </span>
-                </span>
               </div>
             </div>
           );

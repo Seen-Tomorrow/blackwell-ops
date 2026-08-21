@@ -374,18 +374,18 @@ export default function VramBadge({
       )}
 
       <div className="vram-fc-bar-row vram-fc-bar-row--vram">
-        <span className="vram-fc-bar__lab">VRAM</span>
         <div
           className="vram-fc-bar vram-fc-bar--fused vram-forecast-vram-bar"
           aria-label={`VRAM ${displayVramNeedGb.toFixed(1)} of ${totalVramGb.toFixed(1)} GB`}
         >
+          <span className="vram-fc-bar__name-chip">VRAM</span>
           <span className="vram-fc-bar__cap-chip" title="Free pool capacity">
             <span className="vram-fc-bar__cap-val">{totalVramGb.toFixed(1)}</span>
             <span className="vram-fc-bar__cap-unit">GB</span>
           </span>
           <div className="vram-fc-bar__track">
             <div
-              className={`vram-fc-bar__fill ${s.gpuBarColor}`}
+              className={`vram-fc-bar__fill vram-fc-bar__fill--bevel ${s.gpuBarColor}`}
               style={{ width: `${vramUsagePct}%` }}
             />
           </div>
@@ -403,18 +403,18 @@ export default function VramBadge({
 
       {t.showRamBar !== false && (
         <div className="vram-fc-bar-row vram-fc-bar-row--ram">
-          <span className="vram-fc-bar__lab vram-fc-bar__lab--ram">RAM</span>
           <div
             className="vram-fc-bar vram-fc-bar--fused vram-forecast-ram-bar"
             aria-label={`RAM ${displayRamNeedGb.toFixed(1)} of ${manifest.ramManufacturedGb.toFixed(1)} GB`}
           >
+            <span className="vram-fc-bar__name-chip vram-fc-bar__name-chip--ram">RAM</span>
             <span className="vram-fc-bar__cap-chip vram-fc-bar__cap-chip--ram" title="Installed RAM">
               <span className="vram-fc-bar__cap-val">{manifest.ramManufacturedGb.toFixed(1)}</span>
               <span className="vram-fc-bar__cap-unit">GB</span>
             </span>
             <div className="vram-fc-bar__track">
               <div
-                className={`vram-fc-bar__fill ${
+                className={`vram-fc-bar__fill vram-fc-bar__fill--bevel ${
                   t.moeRamBar || offloadMode === "moe_optimal" ? "bg-orange-hatched" : "bg-blue-700"
                 }`}
                 style={{ width: `${ramUsagePct}%` }}
@@ -481,11 +481,15 @@ export default function VramBadge({
         </div>
       )}
 
-      <div className="vram-badge-body vram-fc__body relative min-h-0 overflow-hidden">
+      <div
+        className={`vram-badge-body vram-fc__body relative min-h-0 overflow-hidden${
+          showDetailedForecast ? " vram-fc__body--assisted" : ""
+        }`}
+      >
         {barBank}
 
         {manifest.gpuAllocations.length > 0 && (
-          <div className="vram-fc__topo">
+          <div className={`vram-fc__topo${showDetailedForecast ? " vram-fc__topo--compact" : ""}`}>
             <GpuTopology
               gpuAllocations={manifest.gpuAllocations}
               gpuBarColor={s.gpuBarColor}
