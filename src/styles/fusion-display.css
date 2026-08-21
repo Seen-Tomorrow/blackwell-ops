@@ -819,9 +819,6 @@
 .vram-forecast-header--assisted .vram-fc-source__reprobe {
   flex: 0 0 auto;
   align-self: center;
-  padding: 3px 8px;
-  font-size: calc(8px * var(--vram-fc-scale, 1.12));
-  line-height: 1.15;
   margin-left: calc(8px * var(--vram-fc-scale, 1.12));
 }
 
@@ -1227,20 +1224,41 @@
   min-height: calc(18px * var(--vram-fc-scale, 1.12));
   padding: 3px 8px 3px 10px;
   border-radius: 3px;
-  /* Fully clear on the left → solid light grey under the SOURCE label */
+  /* Fully clear on the left → light grey under SOURCE label (no stroke) */
   background: linear-gradient(
     90deg,
     transparent 0%,
     color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 6%, transparent) 42%,
     color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 14%, transparent) 100%
   );
-  border: 1px solid transparent;
-  border-image: linear-gradient(
-    90deg,
-    transparent 0%,
-    color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 22%, transparent) 100%
-  ) 1;
+  border: none;
   box-sizing: border-box;
+}
+/* Match PROVIDER bar label cadence */
+.vram-fc-measure__source .vram-fc-source__lab {
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  opacity: 0.85;
+  color: color-mix(
+    in srgb,
+    var(--display-face-text, #e2e8f0) 68%,
+    var(--display-face-text-muted, #94a3b8)
+  );
+}
+/* LEARNED / kind — same family as value-chip / provider pills */
+.vram-fc-measure__source .vram-fc-source__kind {
+  padding: 1px 6px;
+  border-radius: 0.125rem;
+  border: 1px solid var(--theme-chip-border, color-mix(in srgb, var(--theme-border, #333) 80%, transparent));
+  background: var(--theme-chip-bg, color-mix(in srgb, var(--theme-panel, #111) 70%, transparent));
+  box-shadow: 0 1px 2px color-mix(in srgb, #000 28%, transparent);
+}
+.vram-fc-measure__source .vram-fc-source__kind-lab {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  opacity: 1;
 }
 .vram-fc-measure__source .vram-fc__source-row {
   margin: 0;
@@ -2061,36 +2079,53 @@
   line-height: 1;
   white-space: nowrap;
 }
-/* RE-PROBE — padded chip, fixed width when present */
-.vram-fc-source__reprobe {
+/* RE-PROBE — same language as PROVIDER / PROFILE pills */
+.vram-fc-source__reprobe,
+.vram-fc-header__reprobe {
   flex: 0 0 auto;
   margin: 0;
   padding: 2px 8px;
-  border-radius: 2px;
-  border: 1px solid color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 55%, transparent);
-  background: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 14%, transparent);
-  color: var(--theme-telemetry-amber, #fbbf24);
+  border-radius: 0.125rem;
+  border: 1px solid var(--theme-provider-pill-border, #b87a00);
+  background: var(--theme-provider-pill-bg, #1a1206);
+  color: var(--theme-provider-pill-text, #b87a00);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: calc(7px * var(--vram-fc-scale, 1.12));
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  line-height: 1.2;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 1.25;
   cursor: pointer;
   white-space: nowrap;
   text-align: center;
+  box-shadow: 0 1px 2px color-mix(in srgb, #000 30%, transparent);
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
 }
-.vram-fc-source__reprobe:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 28%, transparent);
-  border-color: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 75%, transparent);
+.vram-fc-source__reprobe:hover:not(:disabled),
+.vram-fc-header__reprobe:hover:not(:disabled) {
+  border-color: var(--theme-provider-pill-hover-border, #f5971f);
+  color: var(--theme-provider-pill-hover-text, #f5971f);
+  background: color-mix(
+    in srgb,
+    var(--theme-provider-pill-active-bg, #f5971f) 14%,
+    var(--theme-provider-pill-bg, #1a1206)
+  );
 }
-.vram-fc-source__reprobe:focus-visible {
-  outline: 1px solid var(--theme-telemetry-amber, #fbbf24);
+.vram-fc-source__reprobe:focus-visible,
+.vram-fc-header__reprobe:focus-visible {
+  outline: 1px solid var(--theme-provider-pill-hover-border, #f5971f);
   outline-offset: 1px;
 }
 .vram-fc-source__reprobe[data-probe-state="probing"],
-.vram-fc-source__reprobe:disabled {
+.vram-fc-source__reprobe:disabled,
+.vram-fc-header__reprobe[data-probe-state="probing"],
+.vram-fc-header__reprobe:disabled {
   cursor: wait;
-  opacity: 0.85;
+  font-weight: 600;
+  color: var(--theme-provider-pill-active-text, #0a0804);
+  border-color: var(--theme-provider-pill-active-border, #f5971f);
+  background: var(--theme-provider-pill-active-bg, #f5971f);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-provider-pill-active-bg, #f5971f) 40%, transparent);
+  opacity: 1;
 }
 
 /* Live meter — FIXED width chip (never width:100% of the source row) */
@@ -2339,9 +2374,10 @@
   min-width: 5.5ch;
   max-width: 5.5ch;
 }
+/* RE-PROBE keeps provider-pill metrics (don't shrink vs PROVIDER bar) */
 .vram-fc-source--dominant .vram-fc-source__reprobe {
-  padding: 2px 7px;
-  font-size: calc(7px * var(--vram-fc-scale, 1.12));
+  padding: 2px 8px;
+  font-size: 9px;
 }
 
 .vram-fc-source--inline {
@@ -3024,7 +3060,7 @@
   opacity: 0.85;
 }
 
-/* SOURCE strip — clear→grey wash on glacier paper */
+/* SOURCE strip — clear→grey wash on glacier paper (no stroke) */
 [data-display-texture="phosphor-light"] .vram-fc-measure__source {
   background: linear-gradient(
     90deg,
@@ -3032,12 +3068,19 @@
     color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 5%, transparent) 40%,
     color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 12%, transparent) 100%
   );
-  border-color: transparent;
-  border-image: linear-gradient(
-    90deg,
-    transparent 0%,
-    color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 20%, transparent) 100%
-  ) 1;
+  border: none;
+}
+[data-display-texture="phosphor-light"] .vram-fc-measure__source .vram-fc-source__lab {
+  color: color-mix(
+    in srgb,
+    var(--display-face-light-readout, #1e3a14) 68%,
+    var(--display-face-light-text-muted, #64748b)
+  );
+}
+[data-display-texture="phosphor-light"] .vram-fc-measure__source .vram-fc-source__kind {
+  background: color-mix(in srgb, var(--display-face-light-surface, #f4f8fc) 80%, transparent);
+  border-color: color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 28%, transparent);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 12%, transparent);
 }
 
 /* NEED frame — bumped 3D plate on glacier paper */
@@ -3191,11 +3234,24 @@
 }
 /* RE-PROBE action stays warm copper so the button still reads as CTA */
 [data-display-texture="phosphor-light"] .vram-fc-probe[data-probe-state="reprobe"],
-[data-display-texture="phosphor-light"] .vram-fc-probe[data-probe-state="probing"],
-[data-display-texture="phosphor-light"] .vram-fc-header__reprobe,
-[data-display-texture="phosphor-light"] .vram-fc-source__reprobe {
+[data-display-texture="phosphor-light"] .vram-fc-probe[data-probe-state="probing"] {
   color: var(--display-face-light-text-amber, #7a4a08);
   border-color: color-mix(in srgb, var(--display-face-light-text-amber, #7a4a08) 40%, transparent);
+}
+/* RE-PROBE follows theme provider-pill tokens even on paper faces */
+[data-display-texture="phosphor-light"] .vram-fc-header__reprobe,
+[data-display-texture="phosphor-light"] .vram-fc-source__reprobe {
+  background: var(--theme-provider-pill-bg);
+  border-color: var(--theme-provider-pill-border);
+  color: var(--theme-provider-pill-text);
+}
+[data-display-texture="phosphor-light"] .vram-fc-header__reprobe[data-probe-state="probing"],
+[data-display-texture="phosphor-light"] .vram-fc-source__reprobe[data-probe-state="probing"],
+[data-display-texture="phosphor-light"] .vram-fc-header__reprobe:disabled,
+[data-display-texture="phosphor-light"] .vram-fc-source__reprobe:disabled {
+  background: var(--theme-provider-pill-active-bg);
+  border-color: var(--theme-provider-pill-active-border);
+  color: var(--theme-provider-pill-active-text);
 }
 
 [data-display-texture="phosphor-light"] .vram-fc__verdict.is-ok {
