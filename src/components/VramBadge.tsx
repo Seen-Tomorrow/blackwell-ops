@@ -395,10 +395,14 @@ export default function VramBadge({
             }`}
             title="Projected need"
           >
+            <span className="vram-fc-bar__need-prefix">need</span>
             <span className="vram-fc-bar__need">{displayVramNeedGb.toFixed(1)}</span>
             <span className="vram-fc-bar__unit">GB</span>
           </span>
         </div>
+        <span className="vram-fc-bar__under">
+          total <span className="vram-fc-bar__under-val">{totalVramGb.toFixed(1)} GB</span>
+        </span>
       </div>
 
       {t.showRamBar !== false && (
@@ -421,10 +425,14 @@ export default function VramBadge({
               />
             </div>
             <span className="vram-fc-bar__need-chip vram-fc-bar__need-chip--ram" title="Host need">
+              <span className="vram-fc-bar__need-prefix">need</span>
               <span className="vram-fc-bar__need">{displayRamNeedGb.toFixed(1)}</span>
               <span className="vram-fc-bar__unit">GB</span>
             </span>
           </div>
+          <span className="vram-fc-bar__under vram-fc-bar__under--ram">
+            total <span className="vram-fc-bar__under-val">{manifest.ramManufacturedGb.toFixed(1)} GB</span>
+          </span>
         </div>
       )}
     </div>
