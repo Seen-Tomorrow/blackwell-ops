@@ -151,6 +151,5 @@ That nested “inner display” only showed under fusion + LIGHT and fought the 
 ---
 
 ## Related
-
-- Theme/CSS domain rules: `Agents.md` → **CSS / themes**
 - Fusion metrics field names: `docs/FUSION-metrics.md` (if current)
+- Forecast / fusion UI height + SOURCE/NEED traps: `docs/VRAM-FORECAST-UI.md`

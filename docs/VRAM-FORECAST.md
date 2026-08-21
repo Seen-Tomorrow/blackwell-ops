@@ -2,6 +2,8 @@
 
 Current product law. Measured only — no GGUF formula paint.
 
+UI glass / heights / SOURCE chrome traps: `docs/VRAM-FORECAST-UI.md`.
+
 ---
 
 ## Estimate

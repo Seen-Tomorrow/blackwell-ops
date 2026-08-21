@@ -224,3 +224,9 @@ fixture's architecture line — see commit `125706b`.
 ## Optional reference
 
 `docs/FUSION-metrics.md` — fusion poller field names when working on metrics/TG-PP, if that file is still current.
+
+`docs/VRAM-FORECAST-UI.md` — ASSISTED forecast / fusion overlay height traps, SOURCE+NEED chrome, GPU bank rows, config chip thumb wrap (gotchas only).
+
+`docs/VRAM-FORECAST.md` — measured SOURCE model / probe law (backend product).
+
+`docs/display-bezel-glass.md` — one glass bezel stack; fusion is not a second glass.
