@@ -3307,6 +3307,18 @@
   border-color: color-mix(in srgb, var(--display-face-light-text-red, #7f1d1d) 40%, transparent);
 }
 
+/* ASSISTED launch summary — dark ink on paper (bright accent washes out) */
+[data-display-texture="phosphor-light"] .vram-fc__launch-summary {
+  color: var(--display-face-light-readout, #1e3a14);
+  text-shadow: none;
+}
+[data-display-texture="phosphor-light"] .vram-fc__launch-summary.is-ok {
+  color: var(--display-face-light-text-accent, #1e3a14);
+}
+[data-display-texture="phosphor-light"] .vram-fc__launch-summary.is-fail {
+  color: var(--display-face-light-text-red, #5a2828);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .vram-fc-bar__fill {
     transition: none;
