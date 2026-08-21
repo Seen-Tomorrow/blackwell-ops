@@ -1180,9 +1180,30 @@
   align-items: stretch;
   gap: calc(8px * var(--vram-fc-scale, 1.12));
   flex: 0 0 auto;
+  align-self: stretch;
+  width: 100%;
   min-width: 0;
 }
-.vram-fc-measure__rails {
+/* Must beat .vram-fc__body--assisted .vram-fc-bars--assisted { flex: 0 0 auto }
+   which otherwise sizes rails to chip content (~1/10 width). */
+.vram-fc-measure__rails,
+.vram-fc__body--assisted .vram-fc-measure__rails.vram-fc-bars--assisted,
+.vram-fc[data-forecast-mode="assisted"] .vram-fc-measure__rails.vram-fc-bars {
+  flex: 1 1 0% !important;
+  min-width: 0 !important;
+  width: auto !important;
+  max-width: none !important;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+}
+.vram-fc-measure__rails .vram-fc-bar-row {
+  width: 100%;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+.vram-fc-measure__rails .vram-fc-bar--fused {
+  width: 100%;
   flex: 1 1 auto;
   min-width: 0;
 }
