@@ -1174,28 +1174,31 @@
   min-height: 0;
   overflow: hidden;
 }
-/* ASSISTED body — bars take leftover height; topo stays a compact bank */
+/* ASSISTED body — fixed-height dominant bars; GPU bank keeps remaining space */
 .vram-fc__body--assisted {
   gap: calc(8px * var(--vram-fc-scale, 1.12));
+  justify-content: flex-start;
 }
 .vram-fc__body--assisted .vram-fc-bars--assisted {
-  flex: 1 1 auto;
-  min-height: 0;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  justify-content: stretch;
-  gap: calc(8px * var(--vram-fc-scale, 1.12));
+  gap: calc(6px * var(--vram-fc-scale, 1.12));
 }
 .vram-fc__body--assisted .vram-fc-bar-row {
-  flex: 1 1 0;
-  min-height: calc(36px * var(--vram-fc-scale, 1.12));
+  flex: 0 0 auto;
+  height: calc(34px * var(--vram-fc-scale, 1.12));
+  min-height: calc(34px * var(--vram-fc-scale, 1.12));
+  max-height: calc(34px * var(--vram-fc-scale, 1.12));
   display: flex;
   align-items: stretch;
 }
 .vram-fc__body--assisted .vram-fc__topo--compact {
-  flex: 0 0 auto;
-  max-height: 42%;
+  flex: 1 1 auto;
   min-height: 0;
+  max-height: none;
+  display: flex;
+  flex-direction: column;
 }
 
 
@@ -1233,9 +1236,10 @@
   flex: 1 1 auto;
   min-width: 0;
   width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: row;
-  align-items: stretch;
+  align-items: center;
   gap: 0;
   border-radius: 4px;
   overflow: hidden;
@@ -1247,15 +1251,17 @@
 }
 
 .vram-fc-bar__name-chip {
-  flex: 0 0 3.8ch;
-  width: 3.8ch;
+  flex: 0 0 5.2ch;
+  width: 5.2ch;
+  min-width: 5.2ch;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: calc(9px * var(--vram-fc-scale, 1.12));
   font-weight: 800;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.08em;
   color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 78%, transparent);
   background: color-mix(in srgb, var(--display-face-text, #e2e8f0) 7%, transparent);
   border-right: 1px solid color-mix(in srgb, var(--display-face-text, #e2e8f0) 12%, transparent);
@@ -1270,6 +1276,7 @@
 .vram-fc-bar--fused .vram-fc-bar__track {
   flex: 1 1 auto;
   min-width: 0;
+  align-self: stretch;
   height: auto;
   min-height: 100%;
   border: none;
@@ -1303,15 +1310,16 @@
 }
 
 .vram-fc-bar__cap-chip {
-  flex: 0 0 7.2ch;
-  width: 7.2ch;
-  min-width: 7.2ch;
+  flex: 0 0 8.4ch;
+  width: 8.4ch;
+  min-width: 8.4ch;
+  height: 100%;
   display: inline-flex;
   flex-direction: row;
-  align-items: baseline;
+  align-items: center;
   justify-content: center;
-  gap: 0.2em;
-  padding: 0 4px;
+  gap: 0.25em;
+  padding: 0 6px;
   background: color-mix(in srgb, var(--display-face-text, #e2e8f0) 9%, transparent);
   border-right: 1px solid color-mix(in srgb, var(--display-face-text, #e2e8f0) 12%, transparent);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -1338,15 +1346,16 @@
 }
 
 .vram-fc-bar__need-chip {
-  flex: 0 0 8.5ch;
-  width: 8.5ch;
-  min-width: 8.5ch;
+  flex: 0 0 calc(8.5ch + 2rem);
+  width: calc(8.5ch + 2rem);
+  min-width: calc(8.5ch + 2rem);
+  height: 100%;
   display: inline-flex;
   flex-direction: row;
-  align-items: baseline;
+  align-items: center;
   justify-content: center;
-  gap: 0.2em;
-  padding: 0 5px;
+  gap: 0.25em;
+  padding: 0 8px;
   background: color-mix(in srgb, var(--display-face-bg, #0a0a0a) 35%, transparent);
   border-left: 1px solid color-mix(in srgb, var(--display-face-text, #e2e8f0) 14%, transparent);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -1371,9 +1380,9 @@
   font-weight: 700;
 }
 
-/* Assisted bars taller when body stretches them */
 .vram-fc__body--assisted .vram-fc-bar--fused {
-  min-height: calc(40px * var(--vram-fc-scale, 1.12));
+  min-height: 0;
+  height: 100%;
 }
 
 
@@ -1943,9 +1952,12 @@
   grid-template-rows: repeat(2, auto) !important;
 }
 .vram-fc__topo--compact .gpu-topology-root--fill {
-  flex: 0 0 auto;
-  height: auto;
+  flex: 1 1 auto;
+  height: 100%;
   min-height: 0;
+}
+.vram-fc__topo--compact .gpu-topology-root--fill .gpu-topology-grid {
+  flex: 0 0 auto;
 }
 
 .vram-fc__topo {
