@@ -345,6 +345,12 @@ export function useScenarioEvaluator({
     }
   }, []);
 
+  /** Last successful paint identity — hold only for soft refresh of the same model+hard knobs. */
+  const paintIdentityRef = useRef<{ modelPath: string; probeKey: string }>({
+    modelPath: model?.path ?? "",
+    probeKey: model?.path ? fitProbeKey(config, autoVramLaunch) : "",
+  });
+
   // GPU count/capacity — stable across NVML noise.
   const gpuTopologyKey = gpus.length > 0
     ? `${gpus.length}-${gpus.reduce((s, g) => s + (g.memory_total_manufactured || g.memory_total), 0)}`
@@ -409,7 +415,16 @@ export function useScenarioEvaluator({
 
   useEffect(() => {
     probeSessionRef.current = null;
-  }, [probeKey, model?.path]);
+    // Model or hard-knob footprint changed → show EVALUATING radar (don't keep stale paint).
+    const prev = paintIdentityRef.current;
+    const path = model?.path ?? "";
+    if (path !== prev.modelPath || probeKey !== prev.probeKey) {
+      if (manifestRef.current != null) {
+        commitManifest(null);
+      }
+      paintIdentityRef.current = { modelPath: path, probeKey };
+    }
+  }, [probeKey, model?.path, commitManifest]);
 
   // Stack fingerprint — changes when committed engines (RUNNING/LOADING) start/stop or VRAM shifts.
   const stackKey = committedStackKey(stack);
@@ -504,17 +519,24 @@ export function useScenarioEvaluator({
           session.placementKey === curPlacementKey,
         );
       }
-      // Hold previous paint while LEARNED fetch or FIT PROBE is in flight.
-      // Hard-knob churn used to commitManifest(null) for one frame → skeleton blimp,
-      // then probe/learn landed later. Cold null still goes to skeleton.
+      // Hold previous paint only for soft refresh of the *same* model + hard knobs
+      // (LEARNED re-fetch / RE-PROBE). Model switch and hard-knob changes must show
+      // EVALUATING radar — holding across identity made the skeleton disappear entirely.
+      const sameIdentity =
+        model.path === paintIdentityRef.current.modelPath
+        && curProbeKey === paintIdentityRef.current.probeKey;
       if (
         result == null
         && manifestRef.current != null
+        && sameIdentity
         && (learnedFetchPendingRef.current || validatingRef.current)
       ) {
         // keep manifestRef / React state
       } else {
         commitManifest(result);
+        if (result != null) {
+          paintIdentityRef.current = { modelPath: model.path, probeKey: curProbeKey };
+        }
       }
       // Nothing measured and not already probing → kick auto FIT (may no-op if disabled).
       if (result == null && !validatingRef.current) {

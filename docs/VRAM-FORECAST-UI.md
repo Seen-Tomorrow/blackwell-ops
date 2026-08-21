@@ -30,7 +30,7 @@ Primary code:
 **Do not** hardcode skeleton CSS to 280 — `VramBadge` applies `forecastHeightPx` so model/GPU-bank changes don’t jump the glass.
 
 **Evaluator traps**
-- Hold previous manifest while LEARNED fetch or FIT PROBE is in flight (`commitManifest(null)` only when idle) — avoids hard-knob skeleton blimp.
+- Show EVALUATING radar on **model** or **hard-knob** change (`probeKey`). Hold previous paint only for soft same-identity LEARNED re-fetch / RE-PROBE.
 - Auto-probe must not skip solely because the learned **curve** has this CTX (curve ignores batch/ubatch/flash). Skip only when LEARNED/curve can already paint, or a probe session already matches the hard key.
 
 ---
