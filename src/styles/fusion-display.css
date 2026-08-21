@@ -2664,8 +2664,8 @@
   overflow-y: auto;
 }
 /*
- * ≤2 rows: still use full topo height with 2-row geometry so cards aren't tiny.
- * Empty lower half acts as the air gap under sparse GPU counts.
+ * Visible-row geometry: 1-row bank fills topo height; 2-row splits cqh.
+ * --gpu-topo-max-rows is set from data-gpu-visible-rows (not fixed at 2).
  */
 .vram-fc__topo--compact .gpu-topology-root--fill:not([data-gpu-scroll="1"]) {
   height: 100%;
@@ -2681,9 +2681,13 @@
   align-content: start;
   grid-template-rows: none !important;
   grid-auto-rows: calc(
-    (100cqh - (var(--gpu-topo-max-rows, 2) - 1) * var(--gpu-topo-gap))
-    / var(--gpu-topo-max-rows, 2)
+    (100cqh - (var(--gpu-topo-max-rows, 1) - 1) * var(--gpu-topo-gap))
+    / var(--gpu-topo-max-rows, 1)
   );
+}
+.vram-fc__topo--compact .gpu-topology-root--fill[data-gpu-visible-rows="1"] .gpu-topology-grid {
+  /* One row — full topo cqh, no empty second-row air */
+  grid-auto-rows: 100cqh;
 }
 .vram-fc__topo--compact .gpu-topology-root--fill:not([data-gpu-scroll="1"]) .gpu-card--rail {
   height: 100%;

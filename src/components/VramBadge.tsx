@@ -6,7 +6,7 @@ import {
   computeFusionPhosphorStowedHeight,
 } from "../lib/benchPanelLayout";
 import { getFusionBenchTrayOpen, refreshFusionBenchTrayFromStorage } from "../lib/fusionBenchTrayStore";
-import { FORECAST_PHOSPHOR_HEIGHT_PX } from "../lib/onboardingDisplay";
+import { computeForecastPhosphorHeightPx } from "../lib/onboardingDisplay";
 import { useFusionBenchTray } from "../hooks/useFusionBenchTray";
 import GpuTopology from "./GpuTopology";
 import FusionPane from "./FusionPane";
@@ -95,6 +95,9 @@ export default function VramBadge({
     activeEnginePort != null &&
     (engineStatus === "LOADING" || engineStatus === "RUNNING");
 
+  const forecastGpuCount = gpus?.length ?? 0;
+  const forecastHeightPx = computeForecastPhosphorHeightPx(forecastGpuCount, gpuPerRow);
+
   const applyFusionDisplayHeight = () => {
     const display = rootRef.current?.closest(".vram-forecast-display");
     if (!(display instanceof HTMLElement)) return;
@@ -103,9 +106,9 @@ export default function VramBadge({
       display.dataset.fusionHeightManaged = "";
       display.removeAttribute("data-fusion-tray-stowed");
       display.removeAttribute("data-fusion-boot");
-      display.style.height = `${FORECAST_PHOSPHOR_HEIGHT_PX}px`;
-      display.style.minHeight = `${FORECAST_PHOSPHOR_HEIGHT_PX}px`;
-      display.style.maxHeight = `${FORECAST_PHOSPHOR_HEIGHT_PX}px`;
+      display.style.height = `${forecastHeightPx}px`;
+      display.style.minHeight = `${forecastHeightPx}px`;
+      display.style.maxHeight = `${forecastHeightPx}px`;
       return;
     }
 
@@ -150,7 +153,7 @@ export default function VramBadge({
   /* Before paint — avoid one frame of stowed height with an open tray after HMR */
   useLayoutEffect(() => {
     applyFusionDisplayHeight();
-  }, [fusionOverlayActive, engineStatus, benchTrayOpen, gpus, gpuMask, dualActive, dualOrient]);
+  }, [fusionOverlayActive, engineStatus, benchTrayOpen, gpus, gpuMask, dualActive, dualOrient, forecastHeightPx]);
 
   /* HMR: forecast ResizeObserver or effect teardown can clear height after layout */
   useEffect(() => {
@@ -247,7 +250,7 @@ export default function VramBadge({
       <div
         ref={rootRef}
         className={`vram-badge-forecast vram-fc vram-badge-forecast--skeleton relative flex flex-col min-h-0 overflow-hidden ${className || ""}`}
-        style={{ minHeight: FORECAST_PHOSPHOR_HEIGHT_PX }}
+        style={{ minHeight: forecastHeightPx }}
         data-forecast-skeleton="1"
         aria-busy="true"
         aria-label="Evaluating VRAM footprint"

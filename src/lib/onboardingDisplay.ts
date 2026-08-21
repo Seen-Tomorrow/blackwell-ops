@@ -14,14 +14,34 @@ export const DISPLAY_BEZEL_PADDING_PX = 18;
 /** Minimum outer frame height in setup/forecast mode (px) — `.industrial-display-frame--setup`. */
 export const DISPLAY_FRAME_MIN_HEIGHT_PX = 240;
 
-/** Fixed phosphor inner height for VRAM forecast ASSISTED layout (px) — not fusion overlay. */
-export const FORECAST_PHOSPHOR_HEIGHT_PX = 280;
+/**
+ * ASSISTED forecast phosphor heights — sized for GPU topo rows, not fusion.
+ * 1-row (1–3 GPUs depending on per-row density) is the common case; 2-row only
+ * when the bank needs a second line. >2 rows scroll inside the 2-row bank.
+ */
+export const FORECAST_PHOSPHOR_HEIGHT_1ROW_PX = 228;
+export const FORECAST_PHOSPHOR_HEIGHT_2ROW_PX = 280;
+/** @deprecated Prefer computeForecastPhosphorHeightPx — kept as 2-row max alias. */
+export const FORECAST_PHOSPHOR_HEIGHT_PX = FORECAST_PHOSPHOR_HEIGHT_2ROW_PX;
+
+/** Visible GPU rows for forecast glass (caps at 2; extras scroll). */
+export function forecastGpuVisibleRows(gpuCount: number, perRow: 2 | 3 = 2): 1 | 2 {
+  const n = Math.max(0, gpuCount | 0);
+  if (n <= 1) return 1;
+  const cols = perRow === 3 ? 3 : 2;
+  const rows = Math.ceil(n / cols);
+  return rows <= 1 ? 1 : 2;
+}
+
+/** Phosphor inner height for ASSISTED forecast from GPU bank shape. */
+export function computeForecastPhosphorHeightPx(gpuCount: number, perRow: 2 | 3 = 2): number {
+  return forecastGpuVisibleRows(gpuCount, perRow) === 1
+    ? FORECAST_PHOSPHOR_HEIGHT_1ROW_PX
+    : FORECAST_PHOSPHOR_HEIGHT_2ROW_PX;
+}
 
 /** VramBadge / setup content horizontal padding (px) — `px-3`. */
 export const PHOSPHOR_CONTENT_PAD_X_PX = 12;
-
-/** VramBadge / setup content vertical padding (px) — `py-2.5`. */
-export const PHOSPHOR_CONTENT_PAD_Y_PX = 10;
 
 /** Welcome splash art + frame design size (px); matches `onboarding-intro.webp`. */
 export const WELCOME_ART_WIDTH_PX = 1680;

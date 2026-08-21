@@ -1,6 +1,6 @@
+import type { CSSProperties } from "react";
 import type { GpuAllocation } from "../lib/types";
 import { splitGpuTopoBarUsage } from "../services/vram/scenarios/scenarios_factory";
-
 /** Visible row bank in forecast glass — extra rows scroll (wheel). */
 export const GPU_TOPO_MAX_ROWS = 2;
 
@@ -56,8 +56,9 @@ export default function GpuTopology({
   perRow = 2,
   fill = false,
 }: GpuTopologyProps) {
-  const cols = perRow === 3 ? 3 : 2;
   const total = gpuAllocations.length;
+  /** 1 GPU → full-width single column (no half-empty 2-col row). */
+  const cols = total <= 1 ? 1 : perRow === 3 ? 3 : 2;
   /** All cards render; scroll kicks in past max visible rows. */
   const bank = gpuAllocations;
   const n = bank.length;
@@ -76,22 +77,27 @@ export default function GpuTopology({
       data-gpu-density={density}
       data-gpu-rows={rows}
       data-gpu-visible-rows={visibleRows}
-      data-gpu-max-rows={fill ? GPU_TOPO_MAX_ROWS : undefined}
+      data-gpu-max-rows={fill ? Math.min(visibleRows, GPU_TOPO_MAX_ROWS) : undefined}
       data-gpu-scroll={scroll ? "1" : undefined}
       data-gpu-fill={fill ? "1" : undefined}
+      style={
+        fill
+          ? ({
+              // Geometry follows visible bank (1-row vs 2-row), not a fixed 2-row cqh split.
+              ["--gpu-topo-max-rows" as string]: String(Math.max(1, Math.min(visibleRows, GPU_TOPO_MAX_ROWS))),
+            } as CSSProperties)
+          : undefined
+      }
     >
       <div
         className="gpu-topology-grid"
         style={{
           gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-          // ≤3 rows: equal flex rows fill the topo. >3: CSS grid-auto-rows from cqh.
-          // 1 visible row: auto height (don't stretch one card to full phosphor).
-          // 2+ rows: equal flex rows fill remaining glass.
           gridTemplateRows:
             fill && !scroll
-              ? rows <= 1
-                ? "auto"
-                : `repeat(${rows}, minmax(0, 1fr))`
+              ? visibleRows <= 1
+                ? "minmax(0, 1fr)"
+                : `repeat(${visibleRows}, minmax(0, 1fr))`
               : undefined,
         }}
       >
