@@ -1359,8 +1359,14 @@
   align-items: stretch;
   min-width: calc(11ch + 4.6rem);
   width: calc(11ch + 4.6rem);
-  /* room for outer ring (outline-offset 3px) so it isn’t clipped */
-  margin: 3px;
+  /*
+   * Double-border air only on the sides — vertical margin was shorting the
+   * plate vs SOURCE/VRAM/RAM rows so status + need strips misaligned.
+   */
+  margin: 0 3px;
+  /* Slightly taller plate so status / VRAM / RAM bands meet the bar rows */
+  padding-block: 2px;
+  box-sizing: border-box;
   border: 1px solid var(--need-frame-ring);
   border-radius: 4px;
   /* Outer ring — 3px air gap between borders */
