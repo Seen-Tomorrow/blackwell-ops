@@ -210,8 +210,8 @@ export interface MemorySourceLiveFloatProps {
 }
 
 /**
- * Live meter + RE-PROBE — floats top-right of the measure cluster.
- * Meter only while CTX drag (estimates) or active PROBE.
+ * Live equalizer meter — floats / sits in SOURCE row while CTX drag or PROBE.
+ * RE-PROBE lives next to the status mark inside the NEED frame.
  */
 export function MemorySourceLiveFloat({
   memorySource,
@@ -226,92 +226,133 @@ export function MemorySourceLiveFloat({
     isValidating ||
     (ctxDragging && (view.isEstimate || view.isFitProbe || view.isCurve));
   const barsRef = useLiveMeterDrive(meterActive);
-  const probeLabel = isValidating ? "PROBING…" : "RE-PROBE";
 
-  if (!meterActive && !view.canProbe) return null;
+  if (!meterActive) return null;
 
   return (
     <div
       className={`vram-fc-source__live-float${className ? ` ${className}` : ""}`}
       data-source-kind={memorySource.kind}
-      data-live={meterActive ? "1" : "0"}
-      data-has-probe={view.canProbe ? "1" : "0"}
+      data-live="1"
     >
-      {meterActive ? (
-        <span
-          className={`vram-fc-source__live-meter${
-            view.isFitProbe ? " vram-fc-source__live-meter--probe" : ""
-          }${isValidating ? " is-probing" : ""}`}
-          title={
-            isValidating
-              ? "FIT PROBE running — measuring VRAM"
-              : view.isFitProbe
-                ? view.isExact
-                  ? "FIT PROBE measured at this CTX"
-                  : "FIT PROBE estimate — scrubbing CTX"
-                : "LEARNED interpolation — scrubbing CTX"
-          }
-          aria-label="Live memory measurement"
-        >
-          <span ref={barsRef} className="vram-fc-source__live-meter-bars" aria-hidden>
-            {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
-              <i key={i} className="vram-fc-source__live-bar" />
-            ))}
-          </span>
-          <span className="vram-fc-source__live-meter-scan" aria-hidden />
+      <span
+        className={`vram-fc-source__live-meter${
+          view.isFitProbe ? " vram-fc-source__live-meter--probe" : ""
+        }${isValidating ? " is-probing" : ""}`}
+        title={
+          isValidating
+            ? "FIT PROBE running — measuring VRAM"
+            : view.isFitProbe
+              ? view.isExact
+                ? "FIT PROBE measured at this CTX"
+                : "FIT PROBE estimate — scrubbing CTX"
+              : "LEARNED interpolation — scrubbing CTX"
+        }
+        aria-label="Live memory measurement"
+      >
+        <span ref={barsRef} className="vram-fc-source__live-meter-bars" aria-hidden>
+          {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+            <i key={i} className="vram-fc-source__live-bar" />
+          ))}
         </span>
-      ) : null}
-      {view.canProbe ? (
-        <button
-          type="button"
-          className="vram-fc-source__reprobe"
-          data-probe-state={isValidating ? "probing" : "reprobe"}
-          disabled={isValidating}
-          onClick={(e) => {
-            e.stopPropagation();
-            onValidate?.();
-          }}
-          title="Run FIT PROBE at this CTX to lock a measured point"
-        >
-          {probeLabel}
-        </button>
-      ) : null}
+        <span className="vram-fc-source__live-meter-scan" aria-hidden />
+      </span>
     </div>
+  );
+}
+
+export interface MemorySourceReprobeProps {
+  memorySource: MemorySource;
+  isValidating?: boolean;
+  onValidate?: () => void;
+  hideValidate?: boolean;
+  className?: string;
+}
+
+/** RE-PROBE control — sits beside status text inside the NEED frame. */
+export function MemorySourceReprobe({
+  memorySource,
+  isValidating = false,
+  onValidate,
+  hideValidate = false,
+  className,
+}: MemorySourceReprobeProps) {
+  const view = getMemorySourceView(memorySource, { onValidate, hideValidate });
+  if (!view.canProbe) return null;
+
+  return (
+    <button
+      type="button"
+      className={`vram-fc-source__reprobe vram-fc-need-frame__reprobe${
+        className ? ` ${className}` : ""
+      }`}
+      data-probe-state={isValidating ? "probing" : "reprobe"}
+      disabled={isValidating}
+      onClick={(e) => {
+        e.stopPropagation();
+        onValidate?.();
+      }}
+      title="Run FIT PROBE at this CTX to lock a measured point"
+    >
+      {isValidating ? "PROBING…" : "RE-PROBE"}
+    </button>
   );
 }
 
 export interface MemorySourceStatusMarkProps {
   memorySource: MemorySource;
+  isValidating?: boolean;
+  onValidate?: () => void;
+  hideValidate?: boolean;
   className?: string;
 }
 
-/** Quality mark for the NEED frame (EXACT / INTERPOLATED / …). */
+/** Status band for NEED frame — quality mark + optional RE-PROBE. */
 export function MemorySourceStatusMark({
   memorySource,
+  isValidating = false,
+  onValidate,
+  hideValidate = false,
   className,
 }: MemorySourceStatusMarkProps) {
-  const view = getMemorySourceView(memorySource);
-  if (!view.idleStatus) return null;
+  const view = getMemorySourceView(memorySource, { onValidate, hideValidate });
+  if (!view.idleStatus && !view.canProbe) return null;
 
   return (
-    <span
-      className={`vram-fc-need-frame__status${
-        view.isExact ? " is-exact" : " is-estimate"
-      }${className ? ` ${className}` : ""}`}
+    <div
+      className={`vram-fc-need-frame__status-row${className ? ` ${className}` : ""}`}
       data-source-kind={memorySource.kind}
-      data-status={view.idleStatus}
-      title={
-        view.isLearnedExact
-          ? "Exact launch measurement at this CTX"
-          : view.isCurve
-            ? "Interpolated between learned launches"
-            : view.isExact
-              ? "FIT PROBE measurement at this CTX"
-              : "Estimate adjusted from probe anchor — re-probe to lock"
-      }
+      data-has-status={view.idleStatus ? "1" : "0"}
+      data-has-probe={view.canProbe ? "1" : "0"}
     >
-      {view.idleStatus}
-    </span>
+      {view.idleStatus ? (
+        <span
+          className={`vram-fc-need-frame__status${
+            view.isExact ? " is-exact" : " is-estimate"
+          }`}
+          data-status={view.idleStatus}
+          title={
+            view.isLearnedExact
+              ? "Exact launch measurement at this CTX"
+              : view.isCurve
+                ? "Interpolated between learned launches"
+                : view.isExact
+                  ? "FIT PROBE measurement at this CTX"
+                  : "Estimate adjusted from probe anchor — re-probe to lock"
+          }
+        >
+          {view.idleStatus}
+        </span>
+      ) : (
+        <span className="vram-fc-need-frame__status is-empty" aria-hidden />
+      )}
+      <MemorySourceReprobe
+        memorySource={memorySource}
+        isValidating={isValidating}
+        onValidate={onValidate}
+        hideValidate={hideValidate}
+      />
+    </div>
   );
 }
 

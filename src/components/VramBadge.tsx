@@ -394,115 +394,119 @@ export default function VramBadge({
         </div>
       )}
 
-      {/* Live meter + RE-PROBE — float above top-right of measure */}
-      {memorySource && !hideFitProbe ? (
-        <MemorySourceLiveFloat
-          memorySource={memorySource}
-          isValidating={isValidating}
-          onValidate={onValidate}
-          hideValidate={!onValidate}
-          className="vram-fc-measure__live-float"
-        />
-      ) : null}
-
       <div className="vram-fc-measure__main">
-        {forecastSourceRow ? (
-          <div className="vram-fc-measure__source">{forecastSourceRow}</div>
-        ) : null}
+        {/* SOURCE identity + live meter — light grey strip; frame spans up beside it */}
+        {forecastSourceRow || (memorySource && !hideFitProbe) ? (
+          <div className="vram-fc-measure__source">
+            {forecastSourceRow}
+            {memorySource && !hideFitProbe ? (
+              <MemorySourceLiveFloat
+                memorySource={memorySource}
+                isValidating={isValidating}
+                onValidate={onValidate}
+                hideValidate={!onValidate}
+              />
+            ) : null}
+          </div>
+        ) : (
+          <div className="vram-fc-measure__source vram-fc-measure__source--empty" aria-hidden />
+        )}
 
-        <div
-          className="vram-fc-measure__cluster"
-          data-has-status={sourceView?.showStatus ? "1" : "0"}
-          data-has-ram={showRamBar ? "1" : "0"}
-        >
-          <div className="vram-fc-measure__rails vram-fc-bars vram-badge-bars vram-fc-bars--assisted">
-            <div className="vram-fc-bar-row vram-fc-bar-row--vram">
+        <div className="vram-fc-measure__rails vram-fc-bars vram-badge-bars vram-fc-bars--assisted">
+          <div className="vram-fc-bar-row vram-fc-bar-row--vram">
+            <div
+              className="vram-fc-bar vram-fc-bar--fused vram-fc-bar--track-only vram-forecast-vram-bar"
+              aria-label={`VRAM ${displayVramNeedGb.toFixed(1)} of ${totalVramGb.toFixed(1)} GB`}
+            >
+              <span className="vram-fc-bar__name-chip">
+                <span className="vram-fc-bar__name-lab">VRAM</span>
+                <span className="vram-fc-bar__name-total">total</span>
+              </span>
+              <span className="vram-fc-bar__cap-chip" title="Free pool capacity">
+                <span className="vram-fc-bar__cap-val">{totalVramGb.toFixed(1)}</span>
+                <span className="vram-fc-bar__cap-unit">GB</span>
+              </span>
+              <div className="vram-fc-bar__track">
+                <div
+                  className={`vram-fc-bar__fill vram-fc-bar__fill--bevel ${s.gpuBarColor}`}
+                  style={{ width: `${vramUsagePct}%` }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {showRamBar && (
+            <div className="vram-fc-bar-row vram-fc-bar-row--ram">
               <div
-                className="vram-fc-bar vram-fc-bar--fused vram-fc-bar--track-only vram-forecast-vram-bar"
-                aria-label={`VRAM ${displayVramNeedGb.toFixed(1)} of ${totalVramGb.toFixed(1)} GB`}
+                className="vram-fc-bar vram-fc-bar--fused vram-fc-bar--track-only vram-forecast-ram-bar"
+                aria-label={`RAM ${displayRamNeedGb.toFixed(1)} of ${manifest.ramManufacturedGb.toFixed(1)} GB`}
               >
-                <span className="vram-fc-bar__name-chip">
-                  <span className="vram-fc-bar__name-lab">VRAM</span>
+                <span className="vram-fc-bar__name-chip vram-fc-bar__name-chip--ram">
+                  <span className="vram-fc-bar__name-lab">RAM</span>
                   <span className="vram-fc-bar__name-total">total</span>
                 </span>
-                <span className="vram-fc-bar__cap-chip" title="Free pool capacity">
-                  <span className="vram-fc-bar__cap-val">{totalVramGb.toFixed(1)}</span>
+                <span className="vram-fc-bar__cap-chip vram-fc-bar__cap-chip--ram" title="Installed RAM">
+                  <span className="vram-fc-bar__cap-val">{manifest.ramManufacturedGb.toFixed(1)}</span>
                   <span className="vram-fc-bar__cap-unit">GB</span>
                 </span>
                 <div className="vram-fc-bar__track">
                   <div
-                    className={`vram-fc-bar__fill vram-fc-bar__fill--bevel ${s.gpuBarColor}`}
-                    style={{ width: `${vramUsagePct}%` }}
+                    className={`vram-fc-bar__fill vram-fc-bar__fill--bevel ${
+                      t.moeRamBar || offloadMode === "moe_optimal" ? "bg-orange-hatched" : "bg-blue-700"
+                    }`}
+                    style={{ width: `${ramUsagePct}%` }}
                   />
                 </div>
               </div>
             </div>
+          )}
+        </div>
 
-            {showRamBar && (
-              <div className="vram-fc-bar-row vram-fc-bar-row--ram">
-                <div
-                  className="vram-fc-bar vram-fc-bar--fused vram-fc-bar--track-only vram-forecast-ram-bar"
-                  aria-label={`RAM ${displayRamNeedGb.toFixed(1)} of ${manifest.ramManufacturedGb.toFixed(1)} GB`}
-                >
-                  <span className="vram-fc-bar__name-chip vram-fc-bar__name-chip--ram">
-                    <span className="vram-fc-bar__name-lab">RAM</span>
-                    <span className="vram-fc-bar__name-total">total</span>
-                  </span>
-                  <span className="vram-fc-bar__cap-chip vram-fc-bar__cap-chip--ram" title="Installed RAM">
-                    <span className="vram-fc-bar__cap-val">{manifest.ramManufacturedGb.toFixed(1)}</span>
-                    <span className="vram-fc-bar__cap-unit">GB</span>
-                  </span>
-                  <div className="vram-fc-bar__track">
-                    <div
-                      className={`vram-fc-bar__fill vram-fc-bar__fill--bevel ${
-                        t.moeRamBar || offloadMode === "moe_optimal" ? "bg-orange-hatched" : "bg-blue-700"
-                      }`}
-                      style={{ width: `${ramUsagePct}%` }}
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* NEED values + SOURCE status — one thin outline tied to both bars */}
-          <div
-            className="vram-fc-need-frame"
-            data-source-kind={sourceKind ?? undefined}
-            data-exact={sourceView?.isExact ? "1" : sourceView ? "0" : undefined}
-            data-has-status={sourceView?.showStatus ? "1" : "0"}
-            data-has-ram={showRamBar ? "1" : "0"}
+        {/* NEED + status + RE-PROBE — spans SOURCE row height + bar rails */}
+        <div
+          className="vram-fc-need-frame"
+          data-source-kind={sourceKind ?? undefined}
+          data-exact={sourceView?.isExact ? "1" : sourceView ? "0" : undefined}
+          data-has-status={sourceView?.showStatus ? "1" : "0"}
+          data-has-ram={showRamBar ? "1" : "0"}
+          data-has-probe={
+            memorySource && sourceView?.canProbe && !hideFitProbe ? "1" : "0"
+          }
+        >
+          <span
+            className="vram-fc-bar__need-chip vram-fc-need-frame__need"
+            data-need-tone={vramNeedTone}
+            title="Projected VRAM need"
           >
+            <span className="vram-fc-bar__need-prefix">need</span>
+            <span className={`vram-fc-bar__need vram-fc-bar__need--${vramNeedTone}`}>
+              {displayVramNeedGb.toFixed(1)}
+            </span>
+            <span className="vram-fc-bar__unit">GB</span>
+          </span>
+
+          {memorySource && (sourceView?.showStatus || (sourceView?.canProbe && !hideFitProbe)) ? (
+            <MemorySourceStatusMark
+              memorySource={memorySource}
+              isValidating={isValidating}
+              onValidate={hideFitProbe ? undefined : onValidate}
+              hideValidate={hideFitProbe || !onValidate}
+            />
+          ) : null}
+
+          {showRamBar ? (
             <span
-              className="vram-fc-bar__need-chip vram-fc-need-frame__need"
-              data-need-tone={vramNeedTone}
-              title="Projected VRAM need"
+              className="vram-fc-bar__need-chip vram-fc-bar__need-chip--ram vram-fc-need-frame__need"
+              data-need-tone={ramNeedTone}
+              title="Host RAM need"
             >
               <span className="vram-fc-bar__need-prefix">need</span>
-              <span className={`vram-fc-bar__need vram-fc-bar__need--${vramNeedTone}`}>
-                {displayVramNeedGb.toFixed(1)}
+              <span className={`vram-fc-bar__need vram-fc-bar__need--${ramNeedTone}`}>
+                {displayRamNeedGb.toFixed(1)}
               </span>
               <span className="vram-fc-bar__unit">GB</span>
             </span>
-
-            {memorySource && sourceView?.showStatus ? (
-              <MemorySourceStatusMark memorySource={memorySource} />
-            ) : null}
-
-            {showRamBar ? (
-              <span
-                className="vram-fc-bar__need-chip vram-fc-bar__need-chip--ram vram-fc-need-frame__need"
-                data-need-tone={ramNeedTone}
-                title="Host RAM need"
-              >
-                <span className="vram-fc-bar__need-prefix">need</span>
-                <span className={`vram-fc-bar__need vram-fc-bar__need--${ramNeedTone}`}>
-                  {displayRamNeedGb.toFixed(1)}
-                </span>
-                <span className="vram-fc-bar__unit">GB</span>
-              </span>
-            ) : null}
-          </div>
+          ) : null}
         </div>
       </div>
     </div>
