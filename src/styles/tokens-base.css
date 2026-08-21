@@ -202,6 +202,24 @@
   --display-face-light-source-kind-bg: color-mix(in srgb, #020617 72%, transparent);
   --display-face-light-source-kind-border: color-mix(in srgb, #94a3b8 32%, transparent);
   /*
+   * Default face plates (CLEAN / DARK textures) — soft wash on dark CRT faces.
+   * Light-paper themes (ARCTIC) override these to the dark slate wash so CLEAN
+   * matches LIGHT without a CSS theme fork.
+   */
+  --display-face-source-wash-mid: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 6%, transparent);
+  --display-face-source-wash-end: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 14%, transparent);
+  --display-face-source-lab: color-mix(
+    in srgb,
+    var(--display-face-text, #e2e8f0) 68%,
+    var(--display-face-text-muted, #94a3b8)
+  );
+  --display-face-source-kind-bg: var(--theme-chip-bg, color-mix(in srgb, var(--theme-panel, #111) 70%, transparent));
+  --display-face-source-kind-border: var(--theme-chip-border, color-mix(in srgb, var(--theme-border, #333) 80%, transparent));
+  --display-face-plate-wash-start: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 16%, transparent);
+  --display-face-plate-wash-mid: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 7%, transparent);
+  --display-face-gpu-trough-wash-start: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 14%, transparent);
+  --display-face-gpu-trough-wash-mid: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 5%, transparent);
+  /*
    * HW monitor + OVERCLOCKING signal colors (launch-rail-tel / gpu-oc).
    * Themes override for palette cohesion; CSS falls back to these.
    */
