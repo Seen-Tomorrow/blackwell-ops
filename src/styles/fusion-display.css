@@ -1508,7 +1508,7 @@
   border-top: 1px solid color-mix(in srgb, var(--need-frame-accent) 28%, transparent) !important;
 }
 
-/* Status — larger hero mark beside SOURCE */
+/* Status — hero mark; reverse of SOURCE strip (dense left → clear right) */
 .vram-fc-need-frame__status-row {
   grid-row: 1;
   display: flex;
@@ -1519,7 +1519,13 @@
   min-height: 0;
   padding: 4px 6px;
   border-bottom: none;
-  background: transparent;
+  border: none;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 14%, transparent) 0%,
+    color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 6%, transparent) 58%,
+    transparent 100%
+  );
 }
 .vram-fc-need-frame__status-row--empty {
   padding: 0;
@@ -3106,6 +3112,25 @@
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, #fff 6%, transparent),
     0 1px 2px color-mix(in srgb, #020617 35%, transparent);
+}
+
+[data-display-texture="phosphor-light"] .vram-fc-need-frame__status-row {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 12%, transparent) 0%,
+    color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 5%, transparent) 55%,
+    transparent 100%
+  );
+}
+/* ARCTIC — darker reverse wash so gold/cyan INTERPOLATED/EXACT pops */
+[data-theme="arctic"] .vram-fc-need-frame__status-row {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, #0b1220 52%, transparent) 0%,
+    color-mix(in srgb, #0f172a 38%, transparent) 28%,
+    color-mix(in srgb, #0f172a 14%, transparent) 64%,
+    transparent 100%
+  );
 }
 
 /* NEED frame — bumped 3D plate on glacier paper */
