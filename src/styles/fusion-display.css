@@ -1414,9 +1414,38 @@
   box-shadow: 0 0 6px rgba(255, 255, 255, 0.2);
 }
 .vram-fc-need-frame__live.is-mode-scan .vram-fc-need-frame__live-rim {
-  /* Even rim — no hot wedge; opacity breathes via rAF */
-  background: rgba(255, 255, 255, 0.45);
-  box-shadow: 0 0 5px rgba(255, 255, 255, 0.18);
+  /* Same chase language, dashed segments (scrub = estimating, not locking) */
+  padding: 2px;
+  background: conic-gradient(
+    from var(--rim-angle),
+    rgba(255, 255, 255, 0.9) 0deg 14deg,
+    transparent 14deg 28deg,
+    rgba(255, 255, 255, 0.55) 28deg 40deg,
+    transparent 40deg 54deg,
+    rgba(255, 255, 255, 0.9) 54deg 68deg,
+    transparent 68deg 82deg,
+    rgba(255, 255, 255, 0.55) 82deg 94deg,
+    transparent 94deg 108deg,
+    rgba(255, 255, 255, 0.9) 108deg 122deg,
+    transparent 122deg 136deg,
+    rgba(255, 255, 255, 0.55) 136deg 148deg,
+    transparent 148deg 162deg,
+    rgba(255, 255, 255, 0.9) 162deg 176deg,
+    transparent 176deg 190deg,
+    rgba(255, 255, 255, 0.55) 190deg 202deg,
+    transparent 202deg 216deg,
+    rgba(255, 255, 255, 0.9) 216deg 230deg,
+    transparent 230deg 244deg,
+    rgba(255, 255, 255, 0.55) 244deg 256deg,
+    transparent 256deg 270deg,
+    rgba(255, 255, 255, 0.9) 270deg 284deg,
+    transparent 284deg 298deg,
+    rgba(255, 255, 255, 0.55) 298deg 310deg,
+    transparent 310deg 324deg,
+    rgba(255, 255, 255, 0.9) 324deg 338deg,
+    transparent 338deg 360deg
+  );
+  box-shadow: 0 0 5px rgba(255, 255, 255, 0.22);
 }
 /* Leading spark — tighter, brighter wedge on the same orbit */
 .vram-fc-need-frame__live-tick {

@@ -149,15 +149,14 @@ function useNeedFrameLiveDrive(active: boolean, mode: "full" | "scan") {
         rim.style.setProperty("--rim-angle", `${deg.toFixed(1)}deg`);
         rim.style.opacity = (0.72 + 0.2 * Math.sin(t * 5.5)).toFixed(3);
         if (tickEl) {
-          // Leading spark on the same orbit
           tickEl.style.setProperty("--rim-angle", `${deg.toFixed(1)}deg`);
           tickEl.style.opacity = (0.55 + 0.35 * Math.sin(t * 5.5 + 0.8)).toFixed(3);
         }
       } else {
-        // Gentle breathe — no chase, just presence while scrubbing CTX
-        const b = 0.28 + 0.32 * (0.5 + 0.5 * Math.sin(t * 2.2));
-        rim.style.setProperty("--rim-angle", "0deg");
-        rim.style.opacity = b.toFixed(3);
+        // Same chase, slower — dashed ring via CSS is-mode-scan
+        const deg = (t * 220) % 360;
+        rim.style.setProperty("--rim-angle", `${deg.toFixed(1)}deg`);
+        rim.style.opacity = (0.5 + 0.18 * Math.sin(t * 3.2)).toFixed(3);
         if (tickEl) tickEl.style.opacity = "0";
       }
       raf = requestAnimationFrame(tick);
