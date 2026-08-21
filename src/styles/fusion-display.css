@@ -2610,11 +2610,18 @@
   border: 1px solid color-mix(in srgb, var(--theme-accent, #76b900) 28%, transparent);
   border-top-color: color-mix(in srgb, #000 45%, var(--theme-accent, #76b900));
   border-bottom-color: color-mix(in srgb, var(--theme-accent, #76b900) 18%, transparent);
-  background: color-mix(
-    in srgb,
-    var(--display-face-bar-bg, color-mix(in srgb, var(--theme-accent, #76b900) 12%, transparent)) 70%,
-    #000
-  );
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 14%, transparent) 0%,
+      color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 5%, transparent) 55%,
+      transparent 100%
+    ),
+    color-mix(
+      in srgb,
+      var(--display-face-bar-bg, color-mix(in srgb, var(--theme-accent, #76b900) 12%, transparent)) 70%,
+      #000
+    );
   box-shadow:
     inset 0 2px 5px color-mix(in srgb, #000 55%, transparent),
     inset 0 1px 0 color-mix(in srgb, #000 40%, transparent),
@@ -2831,11 +2838,18 @@
   border: 1px solid color-mix(in srgb, var(--theme-accent, #76b900) 26%, transparent);
   border-top-color: color-mix(in srgb, #000 42%, var(--theme-accent, #76b900));
   border-bottom-color: color-mix(in srgb, var(--theme-accent, #76b900) 16%, transparent);
-  background: color-mix(
-    in srgb,
-    var(--display-face-bar-bg, color-mix(in srgb, var(--theme-accent, #76b900) 12%, transparent)) 68%,
-    #000
-  );
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 14%, transparent) 0%,
+      color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 5%, transparent) 55%,
+      transparent 100%
+    ),
+    color-mix(
+      in srgb,
+      var(--display-face-bar-bg, color-mix(in srgb, var(--theme-accent, #76b900) 12%, transparent)) 68%,
+      #000
+    );
   box-shadow:
     inset 0 2px 5px color-mix(in srgb, #000 52%, transparent),
     inset 0 1px 0 color-mix(in srgb, #000 38%, transparent),
@@ -3262,10 +3276,17 @@
   -webkit-text-fill-color: var(--theme-telemetry-red, #ef4444) !important;
 }
 
-/* GPU troughs — deeper sky well (26% washed to grey on paper) */
+/* GPU troughs — reverse wash + deeper sky well on paper */
 [data-display-texture="phosphor-light"] .gpu-card__bar,
 [data-display-texture="phosphor-light"] .vram-fc__topo--compact .gpu-card__bar--3d {
-  background: color-mix(in srgb, var(--display-face-light-bar-bg, var(--theme-accent, #76b900)) 38%, transparent);
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 16%, transparent) 0%,
+      color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 6%, transparent) 55%,
+      transparent 100%
+    ),
+    color-mix(in srgb, var(--display-face-light-bar-bg, var(--theme-accent, #76b900)) 38%, transparent);
   border-color: color-mix(in srgb, var(--display-face-light-bar-bg, var(--theme-accent, #76b900)) 52%, transparent);
   border-top-color: color-mix(in srgb, var(--display-face-light-bar-bg, var(--theme-accent, #76b900)) 65%, #000);
   border-bottom-color: color-mix(in srgb, #fff 40%, transparent);
@@ -3273,6 +3294,19 @@
     inset 0 2px 5px color-mix(in srgb, var(--display-face-light-bar-bg, var(--theme-accent, #76b900)) 34%, transparent),
     inset 0 1px 0 color-mix(in srgb, #000 14%, transparent),
     inset 0 -1px 0 color-mix(in srgb, #fff 45%, transparent);
+}
+/* ARCTIC — darker reverse wash on GPU tracks (gold/cyan readout contrast) */
+[data-theme="arctic"] .gpu-card__bar,
+[data-theme="arctic"] .vram-fc__topo--compact .gpu-card__bar--3d {
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, #0b1220 48%, transparent) 0%,
+      color-mix(in srgb, #0f172a 28%, transparent) 40%,
+      color-mix(in srgb, #0f172a 8%, transparent) 72%,
+      transparent 100%
+    ),
+    color-mix(in srgb, var(--display-face-light-bar-bg, var(--theme-accent, #76b900)) 32%, transparent);
 }
 
 [data-display-texture="phosphor-light"] .vram-fc__src,
