@@ -122,9 +122,10 @@ function useLiveMeterDrive(active: boolean) {
 }
 
 /**
- * NEED frame live drive (rAF only) — horizontal swipe band.
- * Leaves need GB / status readable (no full-face fill).
- * full = RE-PROBE (stronger/faster); scan = CTX scrub (thin pass).
+ * NEED frame live drive (rAF only) — perimeter rim only.
+ * Never paints over need GB / status. Works on every theme.
+ * full (RE-PROBE) = chasing highlight around the ring;
+ * scan (CTX scrub) = slow breathing rim.
  */
 function useNeedFrameLiveDrive(active: boolean, mode: "full" | "scan") {
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -132,39 +133,43 @@ function useNeedFrameLiveDrive(active: boolean, mode: "full" | "scan") {
     if (!active) return;
     const root = rootRef.current;
     if (!root) return;
-    const swipes = Array.from(
-      root.querySelectorAll<HTMLElement>(".vram-fc-need-frame__live-swipe"),
-    );
-    if (swipes.length === 0) return;
+    const rim = root.querySelector<HTMLElement>(".vram-fc-need-frame__live-rim");
+    const tickEl = root.querySelector<HTMLElement>(".vram-fc-need-frame__live-tick");
+    if (!rim) return;
 
     let raf = 0;
     const t0 = performance.now();
     const full = mode === "full";
-    const speed = full ? 0.85 : 0.55;
 
     const tick = (now: number) => {
-      const t = ((now - t0) / 1000) * speed;
-      // 0→1 loop, ease slightly so the edge lingers less on the numbers
-      const p = t % 1;
-      const xPct = (p * 120 - 10); // start slightly off-left, end off-right
-      const edgeFade = Math.sin(Math.min(1, Math.max(0, p)) * Math.PI); // 0 at ends
-      const baseOp = full ? 0.55 : 0.38;
-      const op = baseOp * (0.35 + 0.65 * edgeFade);
-
-      for (let i = 0; i < swipes.length; i++) {
-        const echo = swipes[i].classList.contains("vram-fc-need-frame__live-swipe--echo");
-        const lag = echo ? -14 : 0;
-        swipes[i].style.transform = `translateX(${(xPct + lag).toFixed(2)}%)`;
-        swipes[i].style.opacity = (echo ? op * 0.4 : op).toFixed(3);
+      const t = (now - t0) / 1000;
+      if (full) {
+        // Chase around the ring (~1.1 rev/s)
+        const deg = (t * 400) % 360;
+        rim.style.setProperty("--rim-angle", `${deg.toFixed(1)}deg`);
+        rim.style.opacity = (0.72 + 0.2 * Math.sin(t * 5.5)).toFixed(3);
+        if (tickEl) {
+          // Leading spark on the same orbit
+          tickEl.style.setProperty("--rim-angle", `${deg.toFixed(1)}deg`);
+          tickEl.style.opacity = (0.55 + 0.35 * Math.sin(t * 5.5 + 0.8)).toFixed(3);
+        }
+      } else {
+        // Gentle breathe — no chase, just presence while scrubbing CTX
+        const b = 0.28 + 0.32 * (0.5 + 0.5 * Math.sin(t * 2.2));
+        rim.style.setProperty("--rim-angle", "0deg");
+        rim.style.opacity = b.toFixed(3);
+        if (tickEl) tickEl.style.opacity = "0";
       }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => {
       cancelAnimationFrame(raf);
-      for (const s of swipes) {
-        s.style.transform = "";
-        s.style.opacity = "";
+      rim.style.removeProperty("--rim-angle");
+      rim.style.opacity = "";
+      if (tickEl) {
+        tickEl.style.removeProperty("--rim-angle");
+        tickEl.style.opacity = "";
       }
     };
   }, [active, mode]);
@@ -259,9 +264,9 @@ export interface MemorySourceNeedOverlayProps {
 }
 
 /**
- * Mini-display live cue on the NEED frame — monochrome horizontal swipe.
- * Does not paint a full-face veil over the need GB readout.
- * Mount last in the need-frame so paint order owns stacking.
+ * Live cue on the NEED frame — perimeter rim only (no face veil).
+ * RE-PROBE: chasing rim spark. CTX scrub: slow rim breathe.
+ * Mount last so paint order owns stacking.
  */
 export function MemorySourceNeedOverlay({
   memorySource,
@@ -290,10 +295,8 @@ export function MemorySourceNeedOverlay({
       data-live="1"
       aria-hidden
     >
-      <span className="vram-fc-need-frame__live-swipe" />
-      {mode === "full" ? (
-        <span className="vram-fc-need-frame__live-swipe vram-fc-need-frame__live-swipe--echo" />
-      ) : null}
+      <span className="vram-fc-need-frame__live-rim" />
+      {mode === "full" ? <span className="vram-fc-need-frame__live-tick" /> : null}
     </div>
   );
 }

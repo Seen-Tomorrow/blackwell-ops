@@ -1368,9 +1368,9 @@
 }
 
 /*
- * NEED frame live cue — monochrome horizontal swipe (not a full-face veil).
- * Last child + difference blend. Need GB stays readable while RE-PROBE runs.
- * full = stronger L→R band; scan = thin CTX-scrub pass.
+ * NEED frame live cue — perimeter only (hollow ring).
+ * Never covers INTERPOLATED / need GB. Monochrome. Theme-proof.
+ * full = chasing conic highlight; scan = soft breathing rim.
  */
 .vram-fc-need-frame__live {
   position: absolute;
@@ -1379,42 +1379,63 @@
   pointer-events: none;
   overflow: hidden;
   border-radius: inherit;
-  opacity: 0.7;
-  mix-blend-mode: difference;
 }
-.vram-fc-need-frame__live.is-probing,
-.vram-fc-need-frame__live.is-mode-full {
-  opacity: 0.85;
-}
-.vram-fc-need-frame__live.is-mode-scan {
-  opacity: 0.55;
-}
-/* Vertical band sweeping horizontally — narrow so GB heroes stay clear */
-.vram-fc-need-frame__live-swipe {
+.vram-fc-need-frame__live-rim,
+.vram-fc-need-frame__live-tick {
+  --rim-angle: 0deg;
   position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 28%;
-  transform: translateX(-30%);
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.15) 28%,
-    rgba(255, 255, 255, 0.9) 50%,
-    rgba(255, 255, 255, 0.15) 72%,
-    transparent 100%
+  inset: 0;
+  border-radius: inherit;
+  padding: 2px; /* ring thickness */
+  box-sizing: border-box;
+  pointer-events: none;
+  /* Hollow ring via mask: paint only the border band */
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+}
+/* Soft full-perimeter base + rotating hot wedge */
+.vram-fc-need-frame__live-rim {
+  opacity: 0.55;
+  background: conic-gradient(
+    from var(--rim-angle),
+    rgba(255, 255, 255, 0.08) 0deg,
+    rgba(255, 255, 255, 0.08) 200deg,
+    rgba(255, 255, 255, 0.55) 250deg,
+    rgba(255, 255, 255, 0.95) 280deg,
+    rgba(255, 255, 255, 0.55) 310deg,
+    rgba(255, 255, 255, 0.08) 360deg
   );
-  opacity: 0.5;
-  will-change: transform, opacity;
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.2);
 }
-.vram-fc-need-frame__live.is-mode-scan .vram-fc-need-frame__live-swipe {
-  width: 16%;
+.vram-fc-need-frame__live.is-mode-scan .vram-fc-need-frame__live-rim {
+  /* Even rim — no hot wedge; opacity breathes via rAF */
+  background: rgba(255, 255, 255, 0.45);
+  box-shadow: 0 0 5px rgba(255, 255, 255, 0.18);
 }
-.vram-fc-need-frame__live-swipe--echo {
-  width: 18%;
-  opacity: 0.28;
-  filter: blur(1.5px);
+/* Leading spark — tighter, brighter wedge on the same orbit */
+.vram-fc-need-frame__live-tick {
+  opacity: 0.7;
+  padding: 2.5px;
+  background: conic-gradient(
+    from var(--rim-angle),
+    transparent 0deg,
+    transparent 262deg,
+    rgba(255, 255, 255, 0.35) 272deg,
+    rgba(255, 255, 255, 1) 280deg,
+    rgba(255, 255, 255, 0.35) 288deg,
+    transparent 298deg,
+    transparent 360deg
+  );
+  filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.75));
+}
+.vram-fc-need-frame__live.is-mode-full .vram-fc-need-frame__live-rim {
+  padding: 2.5px;
 }
 .vram-fc-need-frame .vram-fc-bar__need-chip,
 .vram-fc-need-frame__need {
