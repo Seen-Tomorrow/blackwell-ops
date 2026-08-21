@@ -11,6 +11,7 @@ import MoeBadge from "./MoeBadge";
 import FitLaunchToggle from "./FitLaunchToggle";
 import MemorySourcePanel, {
   MemorySourceLiveFloat,
+  MemorySourceReprobe,
   MemorySourceStatusMark,
   getMemorySourceView,
 } from "./MemorySourcePanel";
@@ -394,9 +395,19 @@ export default function VramBadge({
         </div>
       )}
 
+      {/* RE-PROBE — absolute top-right of measure */}
+      {memorySource && !hideFitProbe ? (
+        <MemorySourceReprobe
+          memorySource={memorySource}
+          isValidating={isValidating}
+          onValidate={onValidate}
+          hideValidate={!onValidate}
+        />
+      ) : null}
+
       <div className="vram-fc-measure__main">
         {/* SOURCE identity + live meter — light grey strip; frame spans up beside it */}
-        {forecastSourceRow || (memorySource && !hideFitProbe) ? (
+        {forecastSourceRow || memorySource ? (
           <div className="vram-fc-measure__source">
             {forecastSourceRow}
             {memorySource && !hideFitProbe ? (
@@ -462,7 +473,7 @@ export default function VramBadge({
           )}
         </div>
 
-        {/* Status+RE-PROBE above; VRAM/RAM needs aligned to bars */}
+        {/* Status above; VRAM/RAM needs aligned to bars */}
         <div
           className="vram-fc-need-frame"
           data-source-kind={sourceKind ?? undefined}
@@ -473,13 +484,8 @@ export default function VramBadge({
             memorySource && sourceView?.canProbe && !hideFitProbe ? "1" : "0"
           }
         >
-          {memorySource && (sourceView?.showStatus || (sourceView?.canProbe && !hideFitProbe)) ? (
-            <MemorySourceStatusMark
-              memorySource={memorySource}
-              isValidating={isValidating}
-              onValidate={hideFitProbe ? undefined : onValidate}
-              hideValidate={hideFitProbe || !onValidate}
-            />
+          {memorySource && sourceView?.showStatus ? (
+            <MemorySourceStatusMark memorySource={memorySource} />
           ) : (
             <div className="vram-fc-need-frame__status-row vram-fc-need-frame__status-row--empty" aria-hidden />
           )}

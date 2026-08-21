@@ -269,7 +269,7 @@ export interface MemorySourceReprobeProps {
   className?: string;
 }
 
-/** RE-PROBE control — sits beside status text inside the NEED frame. */
+/** RE-PROBE control — absolute top-right of the measure cluster. */
 export function MemorySourceReprobe({
   memorySource,
   isValidating = false,
@@ -283,7 +283,7 @@ export function MemorySourceReprobe({
   return (
     <button
       type="button"
-      className={`vram-fc-source__reprobe vram-fc-need-frame__reprobe${
+      className={`vram-fc-source__reprobe vram-fc-measure__reprobe${
         className ? ` ${className}` : ""
       }`}
       data-probe-state={isValidating ? "probing" : "reprobe"}
@@ -301,57 +301,40 @@ export function MemorySourceReprobe({
 
 export interface MemorySourceStatusMarkProps {
   memorySource: MemorySource;
-  isValidating?: boolean;
-  onValidate?: () => void;
-  hideValidate?: boolean;
   className?: string;
 }
 
-/** Status band for NEED frame — quality mark + optional RE-PROBE. */
+/** Status band for NEED frame — quality mark only (EXACT / INTERPOLATED / …). */
 export function MemorySourceStatusMark({
   memorySource,
-  isValidating = false,
-  onValidate,
-  hideValidate = false,
   className,
 }: MemorySourceStatusMarkProps) {
-  const view = getMemorySourceView(memorySource, { onValidate, hideValidate });
-  if (!view.idleStatus && !view.canProbe) return null;
+  const view = getMemorySourceView(memorySource);
+  if (!view.idleStatus) return null;
 
   return (
     <div
       className={`vram-fc-need-frame__status-row${className ? ` ${className}` : ""}`}
       data-source-kind={memorySource.kind}
-      data-has-status={view.idleStatus ? "1" : "0"}
-      data-has-probe={view.canProbe ? "1" : "0"}
+      data-has-status="1"
     >
-      {view.idleStatus ? (
-        <span
-          className={`vram-fc-need-frame__status${
-            view.isExact ? " is-exact" : " is-estimate"
-          }`}
-          data-status={view.idleStatus}
-          title={
-            view.isLearnedExact
-              ? "Exact launch measurement at this CTX"
-              : view.isCurve
-                ? "Interpolated between learned launches"
-                : view.isExact
-                  ? "FIT PROBE measurement at this CTX"
-                  : "Estimate adjusted from probe anchor — re-probe to lock"
-          }
-        >
-          {view.idleStatus}
-        </span>
-      ) : (
-        <span className="vram-fc-need-frame__status is-empty" aria-hidden />
-      )}
-      <MemorySourceReprobe
-        memorySource={memorySource}
-        isValidating={isValidating}
-        onValidate={onValidate}
-        hideValidate={hideValidate}
-      />
+      <span
+        className={`vram-fc-need-frame__status${
+          view.isExact ? " is-exact" : " is-estimate"
+        }`}
+        data-status={view.idleStatus}
+        title={
+          view.isLearnedExact
+            ? "Exact launch measurement at this CTX"
+            : view.isCurve
+              ? "Interpolated between learned launches"
+              : view.isExact
+                ? "FIT PROBE measurement at this CTX"
+                : "Estimate adjusted from probe anchor — re-probe to lock"
+        }
+      >
+        {view.idleStatus}
+      </span>
     </div>
   );
 }
