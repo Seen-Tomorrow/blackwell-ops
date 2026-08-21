@@ -337,7 +337,7 @@ export default function VramBadge({
   }, 0);
   const totalVramGb = totalVramMib / 1024;
 
-  // Usage percentage for main VRAM bar — GPU need only, not host RAM
+  // Usage percentage for main VRAM bar — forecast need vs manufactured pool
   const vramUsagePct = totalVramMib > 0
     ? Math.min((displayVramNeedGb * 1024 / totalVramMib) * 100, 100)
     : 0;
@@ -345,6 +345,32 @@ export default function VramBadge({
   // RAM info for bar fill — OS usage from manufactured capacity
   const ramUsagePct = manifest.ramManufacturedGb > 0 ? Math.min((manifest.ramTotalGb / manifest.ramManufacturedGb) * 100, 100) : 0;
   const ramMfgGb = manifest.ramManufacturedGb.toFixed(0);
+
+  /*
+   * NEED hero pressure — same formula as GpuTopology card %:
+   *   (projectedLoad + alreadyUsed) / manufactured
+   * Worst GPU drives the tone (ok ≤85, warn ≤95, hot >95).
+   * Do NOT use need/total alone — ignores resident used and stays neutral.
+   */
+  const pressureTone = (pct: number): "ok" | "warn" | "hot" =>
+    pct > 95 ? "hot" : pct > 85 ? "warn" : "ok";
+
+  const vramNeedTone = (() => {
+    const allocs = manifest.gpuAllocations ?? [];
+    if (allocs.length > 0) {
+      let worst = 0;
+      for (const a of allocs) {
+        const totalMib = a.vramManufacturedGb * 1024;
+        if (!(totalMib > 0)) continue;
+        const usedMib = Math.max(0, (a.vramManufacturedGb - a.vramAvailableGb) * 1024);
+        const pct = Math.min(((a.projectedLoadGb * 1024 + usedMib) / totalMib) * 100, 100);
+        if (pct > worst) worst = pct;
+      }
+      return pressureTone(worst);
+    }
+    return pressureTone(vramUsagePct);
+  })();
+  const ramNeedTone = pressureTone(ramUsagePct);
 
   /** Scenario identity chip — FULL AUTO top-right only. */
   const scenarioChip = (
@@ -399,13 +425,14 @@ export default function VramBadge({
                 />
               </div>
               <span
-                className={`vram-fc-bar__need-chip${
-                  sourceKind ? ` vram-forecast-gb-accented vram-forecast-gb-accented--${sourceKind}` : ""
-                }`}
+                className="vram-fc-bar__need-chip"
+                data-need-tone={vramNeedTone}
                 title="Projected need"
               >
                 <span className="vram-fc-bar__need-prefix">need</span>
-                <span className="vram-fc-bar__need">{displayVramNeedGb.toFixed(1)}</span>
+                <span className={`vram-fc-bar__need vram-fc-bar__need--${vramNeedTone}`}>
+                  {displayVramNeedGb.toFixed(1)}
+                </span>
                 <span className="vram-fc-bar__unit">GB</span>
               </span>
             </div>
@@ -433,9 +460,15 @@ export default function VramBadge({
                     style={{ width: `${ramUsagePct}%` }}
                   />
                 </div>
-                <span className="vram-fc-bar__need-chip vram-fc-bar__need-chip--ram" title="Host need">
+                <span
+                  className="vram-fc-bar__need-chip vram-fc-bar__need-chip--ram"
+                  data-need-tone={ramNeedTone}
+                  title="Host need"
+                >
                   <span className="vram-fc-bar__need-prefix">need</span>
-                  <span className="vram-fc-bar__need">{displayRamNeedGb.toFixed(1)}</span>
+                  <span className={`vram-fc-bar__need vram-fc-bar__need--${ramNeedTone}`}>
+                    {displayRamNeedGb.toFixed(1)}
+                  </span>
                   <span className="vram-fc-bar__unit">GB</span>
                 </span>
               </div>

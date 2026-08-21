@@ -118,28 +118,31 @@ export default function GpuTopology({
           const totalUsedMib = alloc.projectedLoadGb * 1024 + usedMib;
           const totalUsedPct = Math.min(totalMib > 0 ? (totalUsedMib / totalMib) * 100 : 0, 100);
 
-          const barColorHex = gpuBarColor.includes("nv-green") || gpuBarColor.includes("green")
-            ? "var(--display-face-light-ctx-fill-processing)"
-            : gpuBarColor.includes("yellow")
-              ? "#FBBF24"
-              : gpuBarColor.includes("telemetry-red")
-                ? "#ff3333"
-                : gpuBarColor.includes("red-5")
-                  ? "#EF4444"
-                  : gpuBarColor.includes("red-6") || gpuBarColor.includes("red-7")
-                    ? "#B91C1C"
-                    : gpuBarColor.includes("orange")
-                      ? "#FB923C"
-                      : gpuBarColor.includes("cyan")
-                        ? "#22D3EE"
-                        : gpuBarColor.includes("gray")
-                          ? "#4B5563"
-                          : "var(--display-face-light-ctx-fill-processing)";
+          // Engine hatch fill still needs a concrete color; readout uses CSS tokens.
+          const barColorHex =
+            gpuBarColor.includes("yellow")
+              ? "var(--theme-telemetry-amber, #FBBF24)"
+              : gpuBarColor.includes("telemetry-red") || gpuBarColor.includes("red-5")
+                ? "var(--theme-telemetry-red, #EF4444)"
+                : gpuBarColor.includes("red-6") || gpuBarColor.includes("red-7")
+                  ? "#B91C1C"
+                  : gpuBarColor.includes("orange")
+                    ? "var(--theme-telemetry-amber, #FB923C)"
+                    : gpuBarColor.includes("cyan")
+                      ? "var(--theme-telemetry-cyan, #22D3EE)"
+                      : gpuBarColor.includes("gray")
+                        ? "#4B5563"
+                        : "var(--display-face-gpu-readout, var(--theme-accent))";
 
-          const pctColor = totalUsedPct > 95 ? "#ff3333" : totalUsedPct > 85 ? "#FB923C" : barColorHex;
-
+          const pctTone =
+            totalUsedPct > 95 ? "hot" : totalUsedPct > 85 ? "warn" : "ok";
           const existingOnlyPct = totalMib > 0 ? (usedMib / totalMib) * 100 : 0;
-          const existingBarColor = existingOnlyPct > 95 ? "#ff3333" : existingOnlyPct > 85 ? "#FB923C" : barColorHex;
+          const existingBarColor =
+            existingOnlyPct > 95
+              ? "var(--theme-telemetry-red, #ff3333)"
+              : existingOnlyPct > 85
+                ? "var(--theme-telemetry-amber, #FB923C)"
+                : barColorHex;
 
           const isSelected = selectedGpuIndices?.includes(alloc.gpuIndex) ?? false;
 
@@ -169,14 +172,14 @@ export default function GpuTopology({
                   {alloc.name}
                 </span>
                 <span className="gpu-card__readout">
-                  <span style={{ color: barColorHex }} className="gpu-card__bar-need">
-                    {alloc.projectedLoadGb.toFixed(1)}
+                  <span className={`gpu-card__bar-need gpu-card__bar-need--${pctTone}`}>
+                    {alloc.projectedLoadGb.toFixed(1)}G
+                  </span>
+                  <span className={`gpu-card__pct gpu-card__pct--${pctTone}`}>
+                    ({totalUsedPct.toFixed(0)}%)
                   </span>
                   <span className="gpu-card__bar-cap">
-                    /{alloc.vramManufacturedGb.toFixed(0)}G
-                  </span>
-                  <span style={{ color: pctColor }} className="gpu-card__pct">
-                    {totalUsedPct.toFixed(0)}%
+                    //{alloc.vramManufacturedGb.toFixed(0)}G
                   </span>
                 </span>
               </div>
