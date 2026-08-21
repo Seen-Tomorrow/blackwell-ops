@@ -388,6 +388,7 @@ export function useScenarioEvaluator({
   const probeSessionRef = useRef<ProbeSession | null>(null);
   const validatingRef = useRef(false);
   const hadSysInfoRef = useRef(systemInfo != null);
+  const hadMetaRef = useRef(Boolean(model?.metadata));
   const runEvaluationRef = useRef<() => void>(() => {});
   const scheduleEvaluationRef = useRef<(immediate?: boolean) => void>(() => {});
   const maybeAutoFitRef = useRef<() => void>(() => {});
@@ -417,6 +418,9 @@ export function useScenarioEvaluator({
 
   // System info loaded flag — triggers re-eval when it arrives (was null before).
   const sysInfoLoaded = systemInfo != null;
+  // Catalog often restores last-model path before GGUF metadata is attached.
+  // Path-stable updates must still re-kick eval + auto-probe once metadata lands.
+  const metaReady = Boolean(model?.metadata);
 
   const runEvaluation = useCallback(() => {
     const curGpus = gpusRef.current;
@@ -753,6 +757,7 @@ export function useScenarioEvaluator({
       lastConfigKeyRef.current = "";
       lastStackKeyRef.current = "";
       fitPointsRef.current = null;
+      hadMetaRef.current = false;
       return;
     }
 
@@ -777,6 +782,8 @@ export function useScenarioEvaluator({
     const stackChanged = stackKey !== lastStackKeyRef.current || isFirstMount;
     const sysInfoJustLoaded = sysInfoLoaded && !hadSysInfoRef.current;
     hadSysInfoRef.current = sysInfoLoaded;
+    const metaJustLoaded = metaReady && !hadMetaRef.current;
+    hadMetaRef.current = metaReady;
     const placementKey = placementConfigKey(configRef.current);
     const ctxOnly =
       !isFirstMount
@@ -784,10 +791,19 @@ export function useScenarioEvaluator({
       && !modelChanged
       && !stackChanged
       && !sysInfoJustLoaded
+      && !metaJustLoaded
       && learnedKey === lastHardKeyRef.current
       && placementKey === lastPlacementKeyRef.current;
 
-    if (!modelChanged && !topologyChanged && !gpuMemoryChanged && !configChanged && !stackChanged && !sysInfoJustLoaded) {
+    if (
+      !modelChanged
+      && !topologyChanged
+      && !gpuMemoryChanged
+      && !configChanged
+      && !stackChanged
+      && !sysInfoJustLoaded
+      && !metaJustLoaded
+    ) {
       return;
     }
     lastModelPathRef.current = model.path;
@@ -797,16 +813,16 @@ export function useScenarioEvaluator({
     lastHardKeyRef.current = learnedKey;
     lastPlacementKeyRef.current = placementKey;
     lastStackKeyRef.current = stackKey;
-    const immediate = isFirstMount || modelChanged || sysInfoJustLoaded || ctxOnly;
+    const immediate = isFirstMount || modelChanged || sysInfoJustLoaded || metaJustLoaded || ctxOnly;
     scheduleEvaluationRef.current(immediate);
     // CTX does not invalidate a live probe (KV delta only). But if we still have no
     // measurement at all, retry auto-probe — first attempt may have raced metadata/free VRAM.
-    if (ctxOnly) {
+    if (ctxOnly || metaJustLoaded) {
       maybeAutoFitRef.current();
-      return;
+      if (ctxOnly) return;
     }
     return () => { clearTimeout(timerRef.current); };
-  }, [model?.path, stack, gpuTopologyKey, gpuMemoryKey, gpus.length, configKey, learnedKey, stackKey, sysInfoLoaded, commitManifest]);
+  }, [model?.path, stack, gpuTopologyKey, gpuMemoryKey, gpus.length, configKey, learnedKey, stackKey, sysInfoLoaded, metaReady, commitManifest]);
 
   const validate = useCallback(async () => {
     if (!model || validatingRef.current) return;
@@ -932,7 +948,7 @@ export function useScenarioEvaluator({
 
   useEffect(() => {
     maybeAutoFitRef.current();
-  }, [model?.path, probeKey, autoVramLaunch]);
+  }, [model?.path, probeKey, autoVramLaunch, metaReady]);
 
   return { manifest, isEvaluating, isValidating, validate };
 }
