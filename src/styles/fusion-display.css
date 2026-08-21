@@ -1375,11 +1375,14 @@
   --need-live-accent: var(--need-frame-accent, var(--theme-telemetry-amber, #fbbf24));
   position: absolute;
   inset: 0;
-  z-index: 1;
+  /* Above status + need chips — glass over the whole mini-display */
+  z-index: 4;
   pointer-events: none;
   overflow: hidden;
   border-radius: inherit;
-  opacity: 0.48;
+  opacity: 0.52;
+  /* Dark/clean faces: brighten phosphor over troughs */
+  mix-blend-mode: screen;
 }
 .vram-fc-need-frame__live.is-probe {
   --need-live-accent: var(--theme-telemetry-cyan, #22d3ee);
@@ -1389,10 +1392,10 @@
 }
 .vram-fc-need-frame__live.is-probing,
 .vram-fc-need-frame__live.is-mode-full {
-  opacity: 0.62;
+  opacity: 0.68;
 }
 .vram-fc-need-frame__live.is-mode-scan {
-  opacity: 0.4;
+  opacity: 0.48;
 }
 .vram-fc-need-frame__live-field {
   position: absolute;
@@ -1454,7 +1457,7 @@
     transparent 100%
   );
   opacity: 0.35;
-  mix-blend-mode: screen;
+  /* no per-scan blend — parent owns blend so light themes stay consistent */
 }
 .vram-fc-need-frame__live-scan--echo {
   height: 8%;
@@ -1472,10 +1475,16 @@
     color-mix(in srgb, #000 22%, transparent) 100%
   );
 }
-/* Content sits above the phosphor overlay */
+/* Content under the glass; keep type sharp */
 .vram-fc-need-frame > :not(.vram-fc-need-frame__live) {
   position: relative;
-  z-index: 2;
+  z-index: 1;
+}
+.vram-fc-need-frame:has(> .vram-fc-need-frame__live) .vram-fc-need-frame__status,
+.vram-fc-need-frame:has(> .vram-fc-need-frame__live) .vram-fc-bar__need {
+  text-shadow:
+    0 0 1px color-mix(in srgb, #000 55%, transparent),
+    0 1px 2px color-mix(in srgb, #000 40%, transparent);
 }
 .vram-fc-need-frame .vram-fc-bar__need-chip,
 .vram-fc-need-frame__need {
@@ -3070,33 +3079,54 @@
   --need-frame-accent: color-mix(in srgb, var(--display-face-light-fc-label-border, #0284c7) 70%, transparent);
 }
 
-/* NEED frame mini-display overlay — glacier paper */
-[data-display-texture="phosphor-light"] .vram-fc-need-frame__live {
-  opacity: 0.38;
+/*
+ * Light paper + ARCTIC — same foreground glass as dark.
+ * screen washes out on white; use multiply so gold/cyan ink shows over chips.
+ * ARCTIC is paper even on DARK/CLEAN display texture — theme selector required.
+ */
+[data-display-texture="phosphor-light"] .vram-fc-need-frame__live,
+[data-theme="arctic"] .vram-fc-need-frame__live {
+  mix-blend-mode: multiply;
+  opacity: 0.55;
 }
 [data-display-texture="phosphor-light"] .vram-fc-need-frame__live.is-probing,
-[data-display-texture="phosphor-light"] .vram-fc-need-frame__live.is-mode-full {
-  opacity: 0.52;
+[data-display-texture="phosphor-light"] .vram-fc-need-frame__live.is-mode-full,
+[data-theme="arctic"] .vram-fc-need-frame__live.is-probing,
+[data-theme="arctic"] .vram-fc-need-frame__live.is-mode-full {
+  opacity: 0.7;
 }
-[data-display-texture="phosphor-light"] .vram-fc-need-frame__live.is-mode-scan {
-  opacity: 0.34;
+[data-display-texture="phosphor-light"] .vram-fc-need-frame__live.is-mode-scan,
+[data-theme="arctic"] .vram-fc-need-frame__live.is-mode-scan {
+  opacity: 0.48;
 }
-[data-display-texture="phosphor-light"] .vram-fc-need-frame__live.is-probe {
+[data-display-texture="phosphor-light"] .vram-fc-need-frame__live.is-probe,
+[data-theme="arctic"] .vram-fc-need-frame__live.is-probe {
   --need-live-accent: var(--display-face-light-text-cyan, #0e7490);
 }
-[data-display-texture="phosphor-light"] .vram-fc-need-frame__live.is-learned {
+[data-display-texture="phosphor-light"] .vram-fc-need-frame__live.is-learned,
+[data-theme="arctic"] .vram-fc-need-frame__live.is-learned {
   --need-live-accent: color-mix(in srgb, var(--display-face-light-text-amber, #b45309) 75%, #ca8a04 25%);
 }
-[data-display-texture="phosphor-light"] .vram-fc-need-frame__live-scan {
-  mix-blend-mode: multiply;
+/* Kill old per-scan multiply that only worked when glass was behind chips */
+[data-display-texture="phosphor-light"] .vram-fc-need-frame__live-scan,
+[data-theme="arctic"] .vram-fc-need-frame__live-scan {
+  mix-blend-mode: normal;
 }
-[data-display-texture="phosphor-light"] .vram-fc-need-frame__live-vignette {
+[data-display-texture="phosphor-light"] .vram-fc-need-frame__live-vignette,
+[data-theme="arctic"] .vram-fc-need-frame__live-vignette {
   box-shadow: inset 0 0 12px color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 22%, transparent);
   background: radial-gradient(
     90% 80% at 50% 50%,
     transparent 45%,
     color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 12%, transparent) 100%
   );
+}
+/* Keep INTERPOLATED / need GB legible under glass on paper */
+[data-display-texture="phosphor-light"] .vram-fc-need-frame:has(> .vram-fc-need-frame__live) .vram-fc-need-frame__status,
+[data-display-texture="phosphor-light"] .vram-fc-need-frame:has(> .vram-fc-need-frame__live) .vram-fc-bar__need,
+[data-theme="arctic"] .vram-fc-need-frame:has(> .vram-fc-need-frame__live) .vram-fc-need-frame__status,
+[data-theme="arctic"] .vram-fc-need-frame:has(> .vram-fc-need-frame__live) .vram-fc-bar__need {
+  text-shadow: 0 1px 0 color-mix(in srgb, #fff 85%, transparent);
 }
 [data-display-texture="phosphor-light"] .vram-fc-need-frame__status-row {
   background: transparent;
