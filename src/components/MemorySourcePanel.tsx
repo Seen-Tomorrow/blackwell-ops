@@ -1,4 +1,4 @@
-import { useCallback, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { MemorySource, VramManifest } from "../lib/types";
 import {
   MEMORY_SOURCE_ACCENT,
@@ -17,6 +17,54 @@ interface MemorySourcePanelProps {
   launchSummary?: string;
 }
 
+/**
+ * Drive live-meter bars via rAF when CSS animations are blocked
+ * (Windows "Show animations" off → prefers-reduced-motion). WebView2 still
+ * paints transforms if we set them directly each frame.
+ */
+function useLiveMeterDrive(active: boolean) {
+  const barsRef = useRef<HTMLSpanElement | null>(null);
+  useEffect(() => {
+    if (!active) return;
+    const root = barsRef.current;
+    if (!root) return;
+    const bars = Array.from(root.querySelectorAll<HTMLElement>(".vram-fc-source__live-bar"));
+    if (bars.length === 0) return;
+
+    let raf = 0;
+    const t0 = performance.now();
+    const phase = bars.map((_, i) => i * 0.37);
+
+    const tick = (now: number) => {
+      const t = (now - t0) / 1000;
+      for (let i = 0; i < bars.length; i++) {
+        const s = 0.18 + 0.82 * (0.5 + 0.5 * Math.sin(t * 4.2 + phase[i]));
+        const o = 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(t * 4.2 + phase[i] + 0.4));
+        bars[i].style.transform = `scaleY(${s.toFixed(3)})`;
+        bars[i].style.opacity = o.toFixed(3);
+      }
+      const meter = root.parentElement;
+      if (meter) {
+        const sweep = meter.querySelector<HTMLElement>(".vram-fc-source__live-meter-sweep");
+        const scan = meter.querySelector<HTMLElement>(".vram-fc-source__live-meter-scan");
+        if (sweep) {
+          const x = ((t * 0.8) % 1.4) * 280 - 130;
+          sweep.style.transform = `translateX(${x.toFixed(1)}%)`;
+        }
+        if (scan) {
+          const y = 1 + (0.5 + 0.5 * Math.sin(t * 3.0)) * 8;
+          scan.style.transform = `translateY(${y.toFixed(2)}px)`;
+          scan.style.opacity = (0.35 + 0.6 * (0.5 + 0.5 * Math.sin(t * 3.0))).toFixed(3);
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [active]);
+  return barsRef;
+}
+
 function ConfidencePips({ level }: { level: MemorySource["confidence"] }) {
   return (
     <span className="vram-fc-source__pips" aria-hidden>
@@ -31,8 +79,8 @@ function ConfidencePips({ level }: { level: MemorySource["confidence"] }) {
 }
 
 function kindDisplayLabel(kind: MemorySource["kind"]): string {
-  // Curve = same LEARNED word + live "updating" treatment in CSS/markup.
-  if (kind === "learned_curve") return "LEARNED";
+  // LEARNED static/live share the same root word; status slot differentiates.
+  if (kind === "learned_curve" || kind === "learned") return "LEARNED";
   return MEMORY_SOURCE_LABELS[kind];
 }
 
@@ -58,7 +106,6 @@ function collectRecap(
   };
 }
 
-/** SOURCE instrument — LEARNED (+live), PROBE; rich HTML recap on hover. */
 export default function MemorySourcePanel({
   memorySource,
   isValidating = false,
@@ -70,9 +117,14 @@ export default function MemorySourcePanel({
   const accent = MEMORY_SOURCE_ACCENT[memorySource.kind];
   const kindLabel = kindDisplayLabel(memorySource.kind);
   const isCurve = memorySource.kind === "learned_curve";
+  const isFitProbe = memorySource.kind === "fit_probe";
+  const isLiveMeter = isCurve || isFitProbe;
+  const showStatusSlot =
+    memorySource.kind === "learned" || isCurve || isFitProbe;
   const recap = collectRecap(memorySource, kindLabel, launchSummary);
   const tipId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
+  const barsRef = useLiveMeterDrive(isLiveMeter);
   const [open, setOpen] = useState(false);
 
   const show = useCallback(() => setOpen(true), []);
@@ -91,16 +143,50 @@ export default function MemorySourcePanel({
       onBlur={hide}
     >
       <div className="vram-fc-source__head memory-source-header">
-        <span className="vram-fc-source__lab">SOURCE</span>
+        <span className="vram-fc-source__lab">MEMORY FORECAST SOURCE</span>
         <span className={`vram-fc-source__kind ${accent.text}`}>
           <ConfidencePips level={memorySource.confidence} />
           <span className="memory-source-kind-label vram-fc-source__kind-lab">
             {kindLabel}
           </span>
-          {isCurve ? (
-            <span className="vram-fc-source__live" title="Interpolating between measured launches">
-              <span className="vram-fc-source__live-dot" aria-hidden />
-              <span className="vram-fc-source__live-lab">LIVE</span>
+          {/* Fixed-width status slot — static vs live never shifts the row */}
+          {showStatusSlot ? (
+            <span
+              className="vram-fc-source__status-slot"
+              data-live={isLiveMeter ? "1" : "0"}
+              data-kind={memorySource.kind}
+            >
+              {isLiveMeter ? (
+                <span
+                  className={`vram-fc-source__live-meter${
+                    isFitProbe ? " vram-fc-source__live-meter--probe" : ""
+                  }${isValidating ? " is-probing" : ""}`}
+                  title={
+                    isFitProbe
+                      ? isValidating
+                        ? "FIT PROBE running — measuring VRAM"
+                        : "FIT PROBE memory measurement"
+                      : "Live memory measurement — interpolating between measured launches"
+                  }
+                  aria-label={
+                    isFitProbe ? "FIT PROBE memory measurement" : "Live memory measurement"
+                  }
+                >
+                  <span
+                    ref={barsRef}
+                    className="vram-fc-source__live-meter-bars"
+                    aria-hidden
+                  >
+                    {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+                      <i key={i} className="vram-fc-source__live-bar" />
+                    ))}
+                  </span>
+                  <span className="vram-fc-source__live-meter-sweep" aria-hidden />
+                  <span className="vram-fc-source__live-meter-scan" aria-hidden />
+                </span>
+              ) : (
+                <span className="vram-fc-source__prev-lab">(from previous run)</span>
+              )}
             </span>
           ) : null}
         </span>
@@ -126,8 +212,13 @@ export default function MemorySourcePanel({
           <div className="vram-fc-recap__row">
             <span className="vram-fc-recap__k">SOURCE</span>
             <span className={`vram-fc-recap__v vram-fc-recap__v--kind ${accent.text}`}>
-              {recap.kindLabel}
-              {isCurve ? <span className="vram-fc-recap__live-tag">LIVE</span> : null}
+              {isCurve
+                ? "LEARNED · live measure"
+                : memorySource.kind === "learned"
+                  ? "LEARNED (from previous run)"
+                  : isFitProbe
+                    ? "FIT PROBE · measured"
+                    : recap.kindLabel}
             </span>
           </div>
           {recap.detail ? (
