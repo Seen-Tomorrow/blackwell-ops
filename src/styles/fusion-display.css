@@ -1368,25 +1368,23 @@
 }
 
 /*
- * NEED frame live cue — perimeter only (hollow ring).
- * Never covers INTERPOLATED / need GB. Monochrome. Theme-proof.
- * full = chasing conic highlight; scan = soft breathing rim.
+ * NEED frame live cue — perimeter only (hollow ring(s)).
+ * RE-PROBE: double runner (outer + inner, ~3px gap like double border).
+ * CTX scrub: single dashed outer chase.
  */
 .vram-fc-need-frame__live {
   position: absolute;
   inset: 0;
   z-index: 1;
   pointer-events: none;
-  overflow: hidden;
+  overflow: visible; /* outer track may sit on the plate edge */
   border-radius: inherit;
 }
 .vram-fc-need-frame__live-rim,
 .vram-fc-need-frame__live-tick {
   --rim-angle: 0deg;
   position: absolute;
-  inset: 0;
   border-radius: inherit;
-  padding: 2px; /* ring thickness */
   box-sizing: border-box;
   pointer-events: none;
   /* Hollow ring via mask: paint only the border band */
@@ -1399,7 +1397,21 @@
     linear-gradient(#fff 0 0);
   mask-composite: exclude;
 }
-/* Soft full-perimeter base + rotating hot wedge */
+/* Outer runner — plate edge */
+.vram-fc-need-frame__live-rim--outer,
+.vram-fc-need-frame__live-tick--outer {
+  inset: 0;
+  padding: 2px;
+  border-radius: inherit;
+}
+/* Inner runner — ~3px air gap (matches double-border offset) */
+.vram-fc-need-frame__live-rim--inner,
+.vram-fc-need-frame__live-tick--inner {
+  inset: 5px;
+  padding: 2px;
+  border-radius: 2px;
+}
+/* Soft perimeter base + rotating hot wedge */
 .vram-fc-need-frame__live-rim {
   opacity: 0.55;
   background: conic-gradient(
@@ -1413,9 +1425,11 @@
   );
   box-shadow: 0 0 6px rgba(255, 255, 255, 0.2);
 }
-.vram-fc-need-frame__live.is-mode-scan .vram-fc-need-frame__live-rim {
-  /* Same chase language, dashed segments (scrub = estimating, not locking) */
-  padding: 2px;
+.vram-fc-need-frame__live-rim--inner {
+  box-shadow: 0 0 4px rgba(255, 255, 255, 0.16);
+}
+.vram-fc-need-frame__live.is-mode-scan .vram-fc-need-frame__live-rim--outer {
+  /* Dashed segments (scrub = estimating, not locking) */
   background: conic-gradient(
     from var(--rim-angle),
     rgba(255, 255, 255, 0.9) 0deg 14deg,
@@ -1447,10 +1461,9 @@
   );
   box-shadow: 0 0 5px rgba(255, 255, 255, 0.22);
 }
-/* Leading spark — tighter, brighter wedge on the same orbit */
+/* Leading spark — tighter wedge on each track */
 .vram-fc-need-frame__live-tick {
   opacity: 0.7;
-  padding: 2.5px;
   background: conic-gradient(
     from var(--rim-angle),
     transparent 0deg,
@@ -1463,7 +1476,14 @@
   );
   filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.75));
 }
-.vram-fc-need-frame__live.is-mode-full .vram-fc-need-frame__live-rim {
+.vram-fc-need-frame__live-tick--outer {
+  padding: 2.5px;
+}
+.vram-fc-need-frame__live-tick--inner {
+  padding: 2px;
+  filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.65));
+}
+.vram-fc-need-frame__live.is-mode-full .vram-fc-need-frame__live-rim--outer {
   padding: 2.5px;
 }
 .vram-fc-need-frame .vram-fc-bar__need-chip,
