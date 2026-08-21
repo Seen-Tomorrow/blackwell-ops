@@ -455,7 +455,7 @@ export default function VramBadge({
           )}
         </div>
 
-        {/* Status above; VRAM/RAM needs aligned to bars; live overlay on frame */}
+        {/* Status above; VRAM/RAM needs aligned to bars; mono live glass last */}
         <div
           className="vram-fc-need-frame"
           data-source-kind={sourceKind ?? undefined}
@@ -467,15 +467,6 @@ export default function VramBadge({
           }
           data-live={isValidating ? "1" : undefined}
         >
-          {memorySource ? (
-            <MemorySourceNeedOverlay
-              memorySource={memorySource}
-              isValidating={isValidating}
-              onValidate={hideFitProbe ? undefined : onValidate}
-              hideValidate={hideFitProbe || !onValidate}
-            />
-          ) : null}
-
           {memorySource && sourceView?.showStatus ? (
             <MemorySourceStatusMark memorySource={memorySource} />
           ) : (
@@ -506,6 +497,16 @@ export default function VramBadge({
               </span>
               <span className="vram-fc-bar__unit">GB</span>
             </span>
+          ) : null}
+
+          {/* Last child → paints on top; mono + difference blend in CSS */}
+          {memorySource ? (
+            <MemorySourceNeedOverlay
+              memorySource={memorySource}
+              isValidating={isValidating}
+              onValidate={hideFitProbe ? undefined : onValidate}
+              hideValidate={hideFitProbe || !onValidate}
+            />
           ) : null}
         </div>
       </div>

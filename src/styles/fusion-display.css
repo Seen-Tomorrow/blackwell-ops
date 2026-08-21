@@ -1368,51 +1368,45 @@
 }
 
 /*
- * NEED frame mini-display — phosphor overlay over status + need GB.
+ * NEED frame mini-display — monochrome glass over status + need GB.
+ * Last child in DOM (paint order). One blend for all themes/textures:
+ * difference = high-contrast invert, no gold/cyan fight with chips.
  * full = RE-PROBE; scan = CTX scrub (scanline only).
  */
 .vram-fc-need-frame__live {
-  --need-live-accent: var(--need-frame-accent, var(--theme-telemetry-amber, #fbbf24));
   position: absolute;
   inset: 0;
-  /* Above status + need chips — glass over the whole mini-display */
-  z-index: 4;
+  z-index: 1; /* above in-flow grid cells; last-child + absolute */
   pointer-events: none;
   overflow: hidden;
   border-radius: inherit;
-  opacity: 0.52;
-  /* Dark/clean faces: brighten phosphor over troughs */
-  mix-blend-mode: screen;
-}
-.vram-fc-need-frame__live.is-probe {
-  --need-live-accent: var(--theme-telemetry-cyan, #22d3ee);
-}
-.vram-fc-need-frame__live.is-learned {
-  --need-live-accent: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 70%, #fde68a 30%);
+  opacity: 0.55;
+  mix-blend-mode: difference;
 }
 .vram-fc-need-frame__live.is-probing,
 .vram-fc-need-frame__live.is-mode-full {
-  opacity: 0.68;
+  opacity: 0.72;
 }
 .vram-fc-need-frame__live.is-mode-scan {
-  opacity: 0.48;
+  opacity: 0.5;
 }
+/* Pure luminance — no theme/source chroma */
 .vram-fc-need-frame__live-field {
   position: absolute;
   inset: 0;
   background:
     radial-gradient(
       120% 90% at 50% 40%,
-      color-mix(in srgb, var(--need-live-accent) 28%, transparent) 0%,
-      color-mix(in srgb, var(--need-live-accent) 8%, transparent) 55%,
+      rgba(255, 255, 255, 0.42) 0%,
+      rgba(255, 255, 255, 0.12) 55%,
       transparent 100%
     ),
     repeating-linear-gradient(
       0deg,
       transparent 0 2px,
-      color-mix(in srgb, var(--need-live-accent) 6%, transparent) 2px 3px
+      rgba(255, 255, 255, 0.08) 2px 3px
     );
-  opacity: 0.4;
+  opacity: 0.55;
 }
 .vram-fc-need-frame__live-cols {
   position: absolute;
@@ -1422,7 +1416,6 @@
   align-items: flex-end;
   justify-content: space-between;
   gap: 2px;
-  z-index: 1;
 }
 .vram-fc-need-frame__live-col {
   display: block;
@@ -1434,12 +1427,11 @@
   border-radius: 1px 1px 0 0;
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, #fff 55%, var(--need-live-accent)) 0%,
-    color-mix(in srgb, var(--need-live-accent) 85%, transparent) 55%,
-    color-mix(in srgb, var(--need-live-accent) 25%, transparent) 100%
+    rgba(255, 255, 255, 0.95) 0%,
+    rgba(255, 255, 255, 0.55) 55%,
+    rgba(255, 255, 255, 0.12) 100%
   );
-  box-shadow: 0 0 6px color-mix(in srgb, var(--need-live-accent) 35%, transparent);
-  opacity: 0.35;
+  opacity: 0.55;
 }
 .vram-fc-need-frame__live-scan {
   position: absolute;
@@ -1447,44 +1439,20 @@
   right: 0;
   height: 18%;
   top: 0;
-  z-index: 2;
   background: linear-gradient(
     180deg,
     transparent 0%,
-    color-mix(in srgb, var(--need-live-accent) 22%, transparent) 40%,
-    color-mix(in srgb, #fff 18%, var(--need-live-accent)) 50%,
-    color-mix(in srgb, var(--need-live-accent) 18%, transparent) 60%,
+    rgba(255, 255, 255, 0.2) 40%,
+    rgba(255, 255, 255, 0.85) 50%,
+    rgba(255, 255, 255, 0.2) 60%,
     transparent 100%
   );
-  opacity: 0.35;
-  /* no per-scan blend — parent owns blend so light themes stay consistent */
+  opacity: 0.55;
 }
 .vram-fc-need-frame__live-scan--echo {
   height: 8%;
-  opacity: 0.18;
+  opacity: 0.28;
   filter: blur(1px);
-}
-.vram-fc-need-frame__live-vignette {
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  box-shadow: inset 0 0 14px color-mix(in srgb, #000 45%, transparent);
-  background: radial-gradient(
-    90% 80% at 50% 50%,
-    transparent 40%,
-    color-mix(in srgb, #000 22%, transparent) 100%
-  );
-}
-/* Content under the glass; keep type sharp */
-.vram-fc-need-frame > :not(.vram-fc-need-frame__live) {
-  position: relative;
-  z-index: 1;
-}
-.vram-fc-need-frame:has(> .vram-fc-need-frame__live) .vram-fc-need-frame__status,
-.vram-fc-need-frame:has(> .vram-fc-need-frame__live) .vram-fc-bar__need {
-  text-shadow:
-    0 0 1px color-mix(in srgb, #000 55%, transparent),
-    0 1px 2px color-mix(in srgb, #000 40%, transparent);
 }
 .vram-fc-need-frame .vram-fc-bar__need-chip,
 .vram-fc-need-frame__need {
@@ -3079,55 +3047,7 @@
   --need-frame-accent: color-mix(in srgb, var(--display-face-light-fc-label-border, #0284c7) 70%, transparent);
 }
 
-/*
- * Light paper + ARCTIC — same foreground glass as dark.
- * screen washes out on white; use multiply so gold/cyan ink shows over chips.
- * ARCTIC is paper even on DARK/CLEAN display texture — theme selector required.
- */
-[data-display-texture="phosphor-light"] .vram-fc-need-frame__live,
-[data-theme="arctic"] .vram-fc-need-frame__live {
-  mix-blend-mode: multiply;
-  opacity: 0.55;
-}
-[data-display-texture="phosphor-light"] .vram-fc-need-frame__live.is-probing,
-[data-display-texture="phosphor-light"] .vram-fc-need-frame__live.is-mode-full,
-[data-theme="arctic"] .vram-fc-need-frame__live.is-probing,
-[data-theme="arctic"] .vram-fc-need-frame__live.is-mode-full {
-  opacity: 0.7;
-}
-[data-display-texture="phosphor-light"] .vram-fc-need-frame__live.is-mode-scan,
-[data-theme="arctic"] .vram-fc-need-frame__live.is-mode-scan {
-  opacity: 0.48;
-}
-[data-display-texture="phosphor-light"] .vram-fc-need-frame__live.is-probe,
-[data-theme="arctic"] .vram-fc-need-frame__live.is-probe {
-  --need-live-accent: var(--display-face-light-text-cyan, #0e7490);
-}
-[data-display-texture="phosphor-light"] .vram-fc-need-frame__live.is-learned,
-[data-theme="arctic"] .vram-fc-need-frame__live.is-learned {
-  --need-live-accent: color-mix(in srgb, var(--display-face-light-text-amber, #b45309) 75%, #ca8a04 25%);
-}
-/* Kill old per-scan multiply that only worked when glass was behind chips */
-[data-display-texture="phosphor-light"] .vram-fc-need-frame__live-scan,
-[data-theme="arctic"] .vram-fc-need-frame__live-scan {
-  mix-blend-mode: normal;
-}
-[data-display-texture="phosphor-light"] .vram-fc-need-frame__live-vignette,
-[data-theme="arctic"] .vram-fc-need-frame__live-vignette {
-  box-shadow: inset 0 0 12px color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 22%, transparent);
-  background: radial-gradient(
-    90% 80% at 50% 50%,
-    transparent 45%,
-    color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 12%, transparent) 100%
-  );
-}
-/* Keep INTERPOLATED / need GB legible under glass on paper */
-[data-display-texture="phosphor-light"] .vram-fc-need-frame:has(> .vram-fc-need-frame__live) .vram-fc-need-frame__status,
-[data-display-texture="phosphor-light"] .vram-fc-need-frame:has(> .vram-fc-need-frame__live) .vram-fc-bar__need,
-[data-theme="arctic"] .vram-fc-need-frame:has(> .vram-fc-need-frame__live) .vram-fc-need-frame__status,
-[data-theme="arctic"] .vram-fc-need-frame:has(> .vram-fc-need-frame__live) .vram-fc-bar__need {
-  text-shadow: 0 1px 0 color-mix(in srgb, #fff 85%, transparent);
-}
+/* (NEED live glass is monochrome + difference — no paper/theme overrides) */
 [data-display-texture="phosphor-light"] .vram-fc-need-frame__status-row {
   background: transparent;
 }

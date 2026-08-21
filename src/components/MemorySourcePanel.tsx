@@ -295,8 +295,9 @@ export interface MemorySourceNeedOverlayProps {
 }
 
 /**
- * Mini-display overlay on the NEED frame.
- * RE-PROBE → full phosphor face; CTX scrub → vertical scanline only.
+ * Mini-display overlay on the NEED frame (monochrome glass).
+ * RE-PROBE → full face; CTX scrub → vertical scanline only.
+ * Mount last in the need-frame so paint order owns stacking.
  */
 export function MemorySourceNeedOverlay({
   memorySource,
@@ -320,8 +321,7 @@ export function MemorySourceNeedOverlay({
       ref={rootRef}
       className={`vram-fc-need-frame__live${
         probing ? " is-probing is-mode-full" : " is-mode-scan"
-      }${view.isFitProbe ? " is-probe" : " is-learned"}`}
-      data-source-kind={memorySource.kind}
+      }`}
       data-live-mode={mode}
       data-live="1"
       aria-hidden
@@ -334,7 +334,6 @@ export function MemorySourceNeedOverlay({
               <i key={i} className="vram-fc-need-frame__live-col" />
             ))}
           </span>
-          <span className="vram-fc-need-frame__live-vignette" />
         </>
       ) : null}
       <span className="vram-fc-need-frame__live-scan" />
