@@ -3,10 +3,12 @@ import type { GpuInfo, VramManifest, ModelMetadata } from "../lib/types";
 import {
   computeDualStackPhosphorHeightForTray,
   computeFusionPhosphorHeightForTray,
-  computeFusionPhosphorStowedHeight,
 } from "../lib/benchPanelLayout";
 import { getFusionBenchTrayOpen, refreshFusionBenchTrayFromStorage } from "../lib/fusionBenchTrayStore";
-import { computeForecastPhosphorHeightPx } from "../lib/onboardingDisplay";
+import {
+  computeForecastPhosphorHeightPx,
+  FORECAST_PHOSPHOR_HEIGHT_2ROW_PX,
+} from "../lib/onboardingDisplay";
 import { useFusionBenchTray } from "../hooks/useFusionBenchTray";
 import GpuTopology from "./GpuTopology";
 import FusionPane from "./FusionPane";
@@ -106,18 +108,20 @@ export default function VramBadge({
       display.dataset.fusionHeightManaged = "";
       display.removeAttribute("data-fusion-tray-stowed");
       display.removeAttribute("data-fusion-boot");
-      display.style.height = `${forecastHeightPx}px`;
-      display.style.minHeight = `${forecastHeightPx}px`;
-      display.style.maxHeight = `${forecastHeightPx}px`;
+      // EVALUATING radar / pre-manifest: full 2-row glass (short-lived, don't squash).
+      const idlePx = manifest ? forecastHeightPx : FORECAST_PHOSPHOR_HEIGHT_2ROW_PX;
+      display.style.height = `${idlePx}px`;
+      display.style.minHeight = `${idlePx}px`;
+      display.style.maxHeight = `${idlePx}px`;
       return;
     }
 
-    // LOADING: pin to fusion stowed height — not ASSISTED forecast 280px baseline.
+    // LOADING: full 280px glass for boot progress (short-lived).
     if (engineStatus === "LOADING") {
       display.dataset.fusionHeightManaged = "";
       display.setAttribute("data-fusion-boot", "");
       display.removeAttribute("data-fusion-tray-stowed");
-      const bootPx = computeFusionPhosphorStowedHeight();
+      const bootPx = FORECAST_PHOSPHOR_HEIGHT_2ROW_PX;
       display.style.height = `${bootPx}px`;
       display.style.minHeight = `${bootPx}px`;
       display.style.maxHeight = `${bootPx}px`;
@@ -153,7 +157,7 @@ export default function VramBadge({
   /* Before paint — avoid one frame of stowed height with an open tray after HMR */
   useLayoutEffect(() => {
     applyFusionDisplayHeight();
-  }, [fusionOverlayActive, engineStatus, benchTrayOpen, gpus, gpuMask, dualActive, dualOrient, forecastHeightPx]);
+  }, [fusionOverlayActive, engineStatus, benchTrayOpen, gpus, gpuMask, dualActive, dualOrient, forecastHeightPx, manifest]);
 
   /* HMR: forecast ResizeObserver or effect teardown can clear height after layout */
   useEffect(() => {
@@ -250,7 +254,7 @@ export default function VramBadge({
       <div
         ref={rootRef}
         className={`vram-badge-forecast vram-fc vram-badge-forecast--skeleton relative flex flex-col min-h-0 overflow-hidden ${className || ""}`}
-        style={{ minHeight: forecastHeightPx }}
+        style={{ minHeight: FORECAST_PHOSPHOR_HEIGHT_2ROW_PX }}
         data-forecast-skeleton="1"
         aria-busy="true"
         aria-label="Evaluating VRAM footprint"
