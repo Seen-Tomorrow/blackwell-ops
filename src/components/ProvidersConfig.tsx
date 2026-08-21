@@ -320,10 +320,13 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
 
       await invoke("save_provider", { provider });
       await loadProviders();
+      // Push to App/Layout (Foundry modal seeds from App providers, not ConfigPage local).
+      dispatchAppEvent(EVENTS.reloadProviders);
 
       resetProviderForm();
       setEditingId(null);
       setShowAddForm(false);
+
     } catch (err) {
       console.error("Failed to save provider:", err);
       setError(typeof err === "string" ? err : JSON.stringify(err));

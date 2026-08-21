@@ -179,31 +179,93 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
   const buildInvokeInFlightRef = useRef(false);
   const completeNotifiedRef = useRef(false);
 
-  // Reset when provider or environment changes
+  // Reset when provider or environment changes. Also re-seed confirm-form flags when the
+  // same provider's build_profile / foundry_generator is edited on the Providers page
+  // (App reloads providers → Layout passes a new object; without this, local state stays stale
+  // until full app restart because we only keyed off provider.id before).
   const prevProviderIdRef = useRef(provider.id);
   const prevEnvironmentRef = useRef(environment);
+  const prevBuildProfileRef = useRef(provider.build_profile ?? "");
+  const prevGeneratorRef = useRef(provider.foundry_generator ?? "");
   useEffect(() => {
-    if (prevProviderIdRef.current === provider.id && prevEnvironmentRef.current === environment) return;
+    const idChanged = prevProviderIdRef.current !== provider.id;
+    const envChanged = prevEnvironmentRef.current !== environment;
+    const profileChanged = prevBuildProfileRef.current !== (provider.build_profile ?? "");
+    const generatorChanged = prevGeneratorRef.current !== (provider.foundry_generator ?? "");
+
     prevProviderIdRef.current = provider.id;
     prevEnvironmentRef.current = environment;
+    prevBuildProfileRef.current = provider.build_profile ?? "";
+    prevGeneratorRef.current = provider.foundry_generator ?? "";
 
-    setPhase("confirm");
-    setLogLines([]);
-    setCurrentStep("");
-    setWaitingForConfirm(false);
-    setStoppingEngines(false);
-    buildIdRef.current = null;
-    setPrUrl("");
-    setMaxCores(null);
-    const split = splitFoundryBuildProfile(provider.build_profile ?? "");
-    setBuildProfile(split.base);
-    setSelectedArchs(split.archCodes);
-    setGenerator(provider.foundry_generator ?? "");
-    setIncludeExtraTools(false);
-    setBackupRetryCount(0);
-    setShowEngineWarning(false);
-    setEngineListText("");
-  }, [provider.id, environment]);
+    if (!idChanged && !envChanged && !profileChanged && !generatorChanged) return;
+
+    // Full reset only when switching provider/env (or opening a different build target).
+    // Flag-only updates keep phase/log so an in-flight build isn't wiped mid-run.
+    if (idChanged || envChanged) {
+      setPhase("confirm");
+      setLogLines([]);
+      setCurrentStep("");
+      setWaitingForConfirm(false);
+      setStoppingEngines(false);
+      buildIdRef.current = null;
+      setPrUrl("");
+      setMaxCores(null);
+      setIncludeExtraTools(false);
+      setBackupRetryCount(0);
+      setShowEngineWarning(false);
+      setEngineListText("");
+    }
+
+    // Always re-seed cmake/generator from the live provider when not mid-build.
+    // If a build is already running, leave the form values that were snapshotted at start.
+    const midBuild =
+      phaseRef.current === "building" ||
+      phaseRef.current === "complete" ||
+      phaseRef.current === "error" ||
+      phaseRef.current === "backup-locked";
+    if (!midBuild || idChanged || envChanged) {
+      const split = splitFoundryBuildProfile(provider.build_profile ?? "");
+      setBuildProfile(split.base);
+      setSelectedArchs(split.archCodes);
+      setGenerator(provider.foundry_generator ?? "");
+    }
+  }, [provider.id, provider.build_profile, provider.foundry_generator, environment]);
+
+  // When the confirm form is shown, always re-pull build_profile from the backend.
+  // Covers App/Layout provider lag after Providers-page save (reloadProviders is async).
+  // Only on hidden→visible edge so minimize/restore does not clobber in-progress edits.
+  const prevVisibleRef = useRef(false);
+
+  useEffect(() => {
+    const becameVisible = visible && !prevVisibleRef.current;
+    prevVisibleRef.current = visible;
+    if (!becameVisible) return;
+    if (phaseRef.current !== "confirm") return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const list = await invoke<ProviderConfig[]>("list_providers");
+        if (cancelled) return;
+        const live = list.find((p) => p.id === provider.id);
+        if (!live) return;
+        const split = splitFoundryBuildProfile(live.build_profile ?? "");
+        setBuildProfile(split.base);
+        setSelectedArchs(split.archCodes);
+        setGenerator(live.foundry_generator ?? "");
+        prevBuildProfileRef.current = live.build_profile ?? "";
+        prevGeneratorRef.current = live.foundry_generator ?? "";
+      } catch (err) {
+        console.warn("[Foundry] confirm-form provider refresh failed:", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [visible, provider.id, environment]);
+
+
+
 
   // Rehydrate from backend after HMR/remount (source of truth when UI state was wiped).
   useEffect(() => {

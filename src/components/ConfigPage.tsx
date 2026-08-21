@@ -74,6 +74,14 @@ export default function ConfigPage({
     [editorUnlocked, devPreviewAsUser],
   );
 
+  // Keep local list aligned with App providers (Foundry + other pages share App state).
+  useEffect(() => {
+    if (externalProviders && externalProviders.length > 0) {
+      setAllProviders(externalProviders);
+    }
+  }, [externalProviders]);
+
+
   useEffect(() => {
     const handler = () => setPowerUserState(loadPowerUserState());
     window.addEventListener(EVENTS.powerUserChanged, handler);
