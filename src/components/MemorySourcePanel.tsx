@@ -121,6 +121,71 @@ function useLiveMeterDrive(active: boolean) {
   return barsRef;
 }
 
+/**
+ * Full-face mini-display drive for the NEED frame overlay.
+ * Soft field + column equalizer + slow scan band (rAF only).
+ */
+function useNeedFrameLiveDrive(active: boolean, probing: boolean) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!active) return;
+    const root = rootRef.current;
+    if (!root) return;
+    const field = root.querySelector<HTMLElement>(".vram-fc-need-frame__live-field");
+    const scan = root.querySelector<HTMLElement>(".vram-fc-need-frame__live-scan");
+    const cols = Array.from(root.querySelectorAll<HTMLElement>(".vram-fc-need-frame__live-col"));
+    if (!field || cols.length === 0) return;
+
+    let raf = 0;
+    const t0 = performance.now();
+    const phase = cols.map((_, i) => i * 0.47);
+    const speed = probing ? 1.55 : 1;
+
+    const tick = (now: number) => {
+      const t = ((now - t0) / 1000) * speed;
+      // Soft breathing face
+      const breathe = 0.28 + 0.22 * (0.5 + 0.5 * Math.sin(t * 1.7));
+      field.style.opacity = breathe.toFixed(3);
+
+      for (let i = 0; i < cols.length; i++) {
+        const wave =
+          0.12 +
+          0.88 *
+            (0.5 +
+              0.5 *
+                Math.sin(t * 3.1 + phase[i]) *
+                (0.65 + 0.35 * Math.sin(t * 1.4 + phase[i] * 0.5)));
+        const o = 0.2 + 0.75 * wave;
+        cols[i].style.transform = `scaleY(${wave.toFixed(3)})`;
+        cols[i].style.opacity = o.toFixed(3);
+      }
+
+      if (scan) {
+        // Slow top→bottom sweep (0..1), loop
+        const p = (t * 0.42) % 1;
+        const yPct = p * 100;
+        scan.style.top = `${yPct.toFixed(2)}%`;
+        scan.style.opacity = (0.22 + 0.45 * Math.sin(p * Math.PI)).toFixed(3);
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(raf);
+      if (field) field.style.opacity = "";
+      for (const c of cols) {
+        c.style.transform = "";
+        c.style.opacity = "";
+      }
+      if (scan) {
+        scan.style.top = "";
+        scan.style.opacity = "";
+      }
+    };
+  }, [active, probing]);
+  return rootRef;
+}
+
 function ConfidencePips({ level }: { level: MemorySource["confidence"] }) {
   return (
     <span className="vram-fc-source__pips" aria-hidden>
@@ -201,6 +266,55 @@ export function getMemorySourceView(
   };
 }
 
+export interface MemorySourceNeedOverlayProps {
+  memorySource: MemorySource;
+  isValidating?: boolean;
+  onValidate?: () => void;
+  hideValidate?: boolean;
+}
+
+/**
+ * Mini-display overlay for the NEED frame — phosphor field + columns + scan
+ * over INTERPOLATED + need GB content. Active on CTX drag (estimates) or PROBE.
+ */
+export function MemorySourceNeedOverlay({
+  memorySource,
+  isValidating = false,
+  onValidate,
+  hideValidate = false,
+}: MemorySourceNeedOverlayProps) {
+  const view = getMemorySourceView(memorySource, { onValidate, hideValidate });
+  const ctxDragging = useCtxSliderDragging();
+  const liveActive =
+    isValidating ||
+    (ctxDragging && (view.isEstimate || view.isFitProbe || view.isCurve));
+  const rootRef = useNeedFrameLiveDrive(liveActive, isValidating);
+
+  if (!liveActive) return null;
+
+  return (
+    <div
+      ref={rootRef}
+      className={`vram-fc-need-frame__live${isValidating ? " is-probing" : ""}${
+        view.isFitProbe ? " is-probe" : " is-learned"
+      }`}
+      data-source-kind={memorySource.kind}
+      data-live="1"
+      aria-hidden
+    >
+      <span className="vram-fc-need-frame__live-field" />
+      <span className="vram-fc-need-frame__live-cols">
+        {Array.from({ length: 14 }, (_, i) => (
+          <i key={i} className="vram-fc-need-frame__live-col" />
+        ))}
+      </span>
+      <span className="vram-fc-need-frame__live-scan" />
+      <span className="vram-fc-need-frame__live-scan vram-fc-need-frame__live-scan--echo" />
+      <span className="vram-fc-need-frame__live-vignette" />
+    </div>
+  );
+}
+
 export interface MemorySourceLiveFloatProps {
   memorySource: MemorySource;
   isValidating?: boolean;
@@ -210,8 +324,8 @@ export interface MemorySourceLiveFloatProps {
 }
 
 /**
- * Live equalizer meter — floats / sits in SOURCE row while CTX drag or PROBE.
- * RE-PROBE lives next to the status mark inside the NEED frame.
+ * Compact equalizer chip (legacy / optional). Prefer MemorySourceNeedOverlay
+ * on the NEED frame for the live mini-display treatment.
  */
 export function MemorySourceLiveFloat({
   memorySource,

@@ -10,7 +10,7 @@ import FusionDualStage, { type FusionPaneIdentity } from "./FusionDualStage";
 import MoeBadge from "./MoeBadge";
 import FitLaunchToggle from "./FitLaunchToggle";
 import MemorySourcePanel, {
-  MemorySourceLiveFloat,
+  MemorySourceNeedOverlay,
   MemorySourceReprobe,
   MemorySourceStatusMark,
   getMemorySourceView,
@@ -396,18 +396,10 @@ export default function VramBadge({
       )}
 
       <div className="vram-fc-measure__main">
-        {/* SOURCE identity + live meter — light grey strip; frame spans up beside it */}
+        {/* SOURCE identity strip — live animation lives on NEED frame */}
         {forecastSourceRow || memorySource ? (
           <div className="vram-fc-measure__source">
             {forecastSourceRow}
-            {memorySource && !hideFitProbe ? (
-              <MemorySourceLiveFloat
-                memorySource={memorySource}
-                isValidating={isValidating}
-                onValidate={onValidate}
-                hideValidate={!onValidate}
-              />
-            ) : null}
           </div>
         ) : (
           <div className="vram-fc-measure__source vram-fc-measure__source--empty" aria-hidden />
@@ -463,7 +455,7 @@ export default function VramBadge({
           )}
         </div>
 
-        {/* Status above; VRAM/RAM needs aligned to bars */}
+        {/* Status above; VRAM/RAM needs aligned to bars; live overlay on frame */}
         <div
           className="vram-fc-need-frame"
           data-source-kind={sourceKind ?? undefined}
@@ -473,7 +465,17 @@ export default function VramBadge({
           data-has-probe={
             memorySource && sourceView?.canProbe && !hideFitProbe ? "1" : "0"
           }
+          data-live={isValidating ? "1" : undefined}
         >
+          {memorySource ? (
+            <MemorySourceNeedOverlay
+              memorySource={memorySource}
+              isValidating={isValidating}
+              onValidate={hideFitProbe ? undefined : onValidate}
+              hideValidate={hideFitProbe || !onValidate}
+            />
+          ) : null}
+
           {memorySource && sourceView?.showStatus ? (
             <MemorySourceStatusMark memorySource={memorySource} />
           ) : (

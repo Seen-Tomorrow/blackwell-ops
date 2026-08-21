@@ -1353,6 +1353,9 @@
     inset -1px -1px 0 var(--need-frame-lo),
     inset 0 0 0 1px color-mix(in srgb, #000 18%, transparent);
   overflow: hidden;
+  /* Anchor for mini-display live overlay */
+  position: relative;
+  isolation: isolate;
 }
 .vram-fc-need-frame[data-source-kind="learned"],
 .vram-fc-need-frame[data-source-kind="learned_curve"] {
@@ -1362,7 +1365,109 @@
   --need-frame-accent: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 55%, transparent);
 }
 
-/* Need chips — one per bar row, full cell, no side borders */
+/*
+ * NEED frame mini-display — phosphor overlay over status + need GB.
+ * rAF-driven; only mounted while CTX drag / PROBE.
+ */
+.vram-fc-need-frame__live {
+  --need-live-accent: var(--need-frame-accent, var(--theme-telemetry-cyan, #22d3ee));
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: inherit;
+  opacity: 0.48;
+}
+.vram-fc-need-frame__live.is-probe {
+  --need-live-accent: var(--theme-telemetry-amber, #fbbf24);
+}
+.vram-fc-need-frame__live.is-probing {
+  opacity: 0.62;
+}
+.vram-fc-need-frame__live-field {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(
+      120% 90% at 50% 40%,
+      color-mix(in srgb, var(--need-live-accent) 28%, transparent) 0%,
+      color-mix(in srgb, var(--need-live-accent) 8%, transparent) 55%,
+      transparent 100%
+    ),
+    repeating-linear-gradient(
+      0deg,
+      transparent 0 2px,
+      color-mix(in srgb, var(--need-live-accent) 6%, transparent) 2px 3px
+    );
+  opacity: 0.4;
+}
+.vram-fc-need-frame__live-cols {
+  position: absolute;
+  inset: 10% 8% 8%;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 2px;
+  z-index: 1;
+}
+.vram-fc-need-frame__live-col {
+  display: block;
+  flex: 1 1 0;
+  min-width: 2px;
+  height: 100%;
+  transform-origin: bottom center;
+  transform: scaleY(0.2);
+  border-radius: 1px 1px 0 0;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, #fff 55%, var(--need-live-accent)) 0%,
+    color-mix(in srgb, var(--need-live-accent) 85%, transparent) 55%,
+    color-mix(in srgb, var(--need-live-accent) 25%, transparent) 100%
+  );
+  box-shadow: 0 0 6px color-mix(in srgb, var(--need-live-accent) 35%, transparent);
+  opacity: 0.35;
+}
+.vram-fc-need-frame__live-scan {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 18%;
+  top: 0;
+  z-index: 2;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    color-mix(in srgb, var(--need-live-accent) 22%, transparent) 40%,
+    color-mix(in srgb, #fff 18%, var(--need-live-accent)) 50%,
+    color-mix(in srgb, var(--need-live-accent) 18%, transparent) 60%,
+    transparent 100%
+  );
+  opacity: 0.35;
+  mix-blend-mode: screen;
+}
+.vram-fc-need-frame__live-scan--echo {
+  height: 8%;
+  opacity: 0.18;
+  filter: blur(1px);
+}
+.vram-fc-need-frame__live-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  box-shadow: inset 0 0 14px color-mix(in srgb, #000 45%, transparent);
+  background: radial-gradient(
+    90% 80% at 50% 50%,
+    transparent 40%,
+    color-mix(in srgb, #000 22%, transparent) 100%
+  );
+}
+/* Content sits above the phosphor overlay */
+.vram-fc-need-frame > :not(.vram-fc-need-frame__live) {
+  position: relative;
+  z-index: 2;
+}
 .vram-fc-need-frame .vram-fc-bar__need-chip,
 .vram-fc-need-frame__need {
   width: 100%;
@@ -2954,6 +3059,31 @@
 }
 [data-display-texture="phosphor-light"] .vram-fc-need-frame:not([data-source-kind]) {
   --need-frame-accent: color-mix(in srgb, var(--display-face-light-fc-label-border, #0284c7) 70%, transparent);
+}
+
+/* NEED frame mini-display overlay — glacier paper */
+[data-display-texture="phosphor-light"] .vram-fc-need-frame__live {
+  opacity: 0.38;
+}
+[data-display-texture="phosphor-light"] .vram-fc-need-frame__live.is-probing {
+  opacity: 0.52;
+}
+[data-display-texture="phosphor-light"] .vram-fc-need-frame__live.is-probe {
+  --need-live-accent: var(--display-face-light-text-amber, #b45309);
+}
+[data-display-texture="phosphor-light"] .vram-fc-need-frame__live.is-learned {
+  --need-live-accent: var(--display-face-light-text-cyan, #0e7490);
+}
+[data-display-texture="phosphor-light"] .vram-fc-need-frame__live-scan {
+  mix-blend-mode: multiply;
+}
+[data-display-texture="phosphor-light"] .vram-fc-need-frame__live-vignette {
+  box-shadow: inset 0 0 12px color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 22%, transparent);
+  background: radial-gradient(
+    90% 80% at 50% 50%,
+    transparent 45%,
+    color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 12%, transparent) 100%
+  );
 }
 [data-display-texture="phosphor-light"] .vram-fc-need-frame__status-row {
   background: transparent;
