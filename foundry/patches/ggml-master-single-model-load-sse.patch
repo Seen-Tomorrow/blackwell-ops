@@ -1,0 +1,206 @@
+diff --git a/tools/server/server-http.cpp b/tools/server/server-http.cpp
+index b11dc09..d54fbf6 100644
+--- a/tools/server/server-http.cpp
++++ b/tools/server/server-http.cpp
+@@ -257,6 +257,11 @@ bool server_http_context::init(const common_params & params) {
+             if (frontend_paths.count(req.path)) {
+                 return true; // frontend asset, allow it to load and show "loading"
+             }
++            // Cold-boot progress stream must be reachable while weights load (single-model + router).
++            // Without this, GET /models/sse returns 503 "Loading model" and never streams progress.
++            if (req.path == "/models/sse") {
++                return true;
++            }
+             // no endpoints are allowed to be accessed when the server is not ready
+             // this is to prevent any data races or inconsistent states
+             res.status = 503;
+diff --git a/tools/server/server.cpp b/tools/server/server.cpp
+index 6d1aa43..6e8c3f2 100644
+--- a/tools/server/server.cpp
++++ b/tools/server/server.cpp
+@@ -13,8 +13,11 @@
+ #include "log.h"
+ 
+ #include <atomic>
++#include <chrono>
+ #include <clocale>
++#include <condition_variable>
+ #include <exception>
++#include <mutex>
+ #include <signal.h>
+ #include <thread> // for std::thread::hardware_concurrency
+ 
+@@ -36,6 +39,74 @@ static inline void signal_handler(int signal) {
+     shutdown_handler(signal);
+ }
+ 
++
++// Single-model cold-boot progress bus (mirrors router /models/sse event shape).
++// Router mode uses server_models::notify_sse instead.
++static struct single_model_load_hub {
++    std::mutex mutex;
++    std::condition_variable cv;
++    json last = nullptr;
++    uint64_t seq = 0;
++    bool done = false;
++
++    void reset() {
++        std::lock_guard<std::mutex> lk(mutex);
++        last = nullptr;
++        seq = 0;
++        done = false;
++    }
++
++    void publish(json evt, bool finished) {
++        {
++            std::lock_guard<std::mutex> lk(mutex);
++            last = std::move(evt);
++            seq += 1;
++            if (finished) {
++                done = true;
++            }
++        }
++        cv.notify_all();
++    }
++} g_single_model_load_hub;
++
++static server_http_res_ptr handle_single_model_load_sse(const server_http_req & req) {
++    auto res = std::make_unique<server_http_res>();
++    res->status = 200;
++    res->content_type = "text/event-stream";
++    // shared so the streaming callback can advance across chunks
++    auto seen = std::make_shared<uint64_t>(0);
++    res->next = [seen, &req](std::string & output) -> bool {
++        std::unique_lock<std::mutex> lk(g_single_model_load_hub.mutex);
++        auto wait_pred = [&]() {
++            return g_single_model_load_hub.seq > *seen
++                || g_single_model_load_hub.done
++                || req.should_stop();
++        };
++        // First chunk: catch up with latest snapshot if any.
++        if (*seen == 0 && !g_single_model_load_hub.last.is_null()) {
++            *seen = g_single_model_load_hub.seq;
++            output = "data: " + safe_json_to_str(g_single_model_load_hub.last) + "\n\n";
++            return true;
++        }
++        g_single_model_load_hub.cv.wait_for(lk, std::chrono::seconds(1), wait_pred);
++        if (req.should_stop()) {
++            return false;
++        }
++        if (g_single_model_load_hub.seq > *seen) {
++            *seen = g_single_model_load_hub.seq;
++            output = "data: " + safe_json_to_str(g_single_model_load_hub.last) + "\n\n";
++            return true;
++        }
++        if (g_single_model_load_hub.done) {
++            return false;
++        }
++        // SSE comment keep-alive while still loading
++        output = ":\n\n";
++        return true;
++    };
++    return res;
++}
++
+ // satisfies -Wmissing-declarations (used by llama command)
+ int llama_server(int argc, char ** argv);
+ 
+@@ -228,6 +299,10 @@ int llama_server(common_params & params, int argc, char ** argv) {
+         ctx_http.post("/models/unload",        ex_wrapper(models_routes->post_router_models_unload));
+         ctx_http.get ("/models/sse",           ex_wrapper(models_routes->get_router_models_sse));
+         ctx_http.del ("/models",               ex_wrapper(models_routes->del_router_models));
++    } else {
++        // Product cold-boot path uses -m (single-model). HTTP starts before load_model;
++        // expose the same /models/sse progress surface as router mode.
++        ctx_http.get("/models/sse", ex_wrapper(handle_single_model_load_sse));
+     }
+ 
+     ctx_http.get ("/health",                   ex_wrapper(routes.get_health)); // public endpoint (no API key check)
+@@ -442,12 +517,62 @@ int llama_server(common_params & params, int argc, char ** argv) {
+             return 1;
+         }
+ 
+-        // setup communication child --> router if necessary
+-        if (child.is_child()) {
+-            ctx_server.set_state_callback([&](server_state state, json payload) {
+-                child.notify_to_router(server_state_to_str(state), payload);
+-            });
++        // Reset + publish load progress on /models/sse (and notify router parent if any).
++        g_single_model_load_hub.reset();
++        std::string model_label;
++        if (!params.model_alias.empty()) {
++            model_label = *params.model_alias.begin();
++        } else {
++            model_label = params.model.get_name();
++        }
++        if (model_label.empty()) {
++            model_label = "model";
++        }
++        {
++            json boot = {
++                {"model", model_label},
++                {"event", "model_status"},
++                {"data", {{"status", "loading"}}},
++            };
++            g_single_model_load_hub.publish(std::move(boot), false);
+         }
++        ctx_server.set_state_callback([&, model_label](server_state state, json payload) {
++            if (child.is_child()) {
++                child.notify_to_router(server_state_to_str(state), payload);
++            }
++            json data = json::object();
++            bool finished = false;
++            if (state == SERVER_STATE_LOADING) {
++                data["status"] = "loading";
++                if (payload.is_object() && !payload.empty()) {
++                    if (payload.contains("value") || payload.contains("stages") || payload.contains("current")) {
++                        data["progress"] = payload;
++                    } else if (payload.contains("stage")) {
++                        data["progress"] = {
++                            {"current", payload.at("stage")},
++                            {"value", 0.0},
++                        };
++                    }
++                }
++            } else if (state == SERVER_STATE_READY) {
++                data["status"] = "loaded";
++                if (payload.is_object() && !payload.empty()) {
++                    data["info"] = payload;
++                }
++                finished = true;
++            } else if (state == SERVER_STATE_SLEEPING) {
++                data["status"] = "sleeping";
++                finished = true;
++            } else {
++                data["status"] = server_state_to_str(state);
++            }
++            json evt = {
++                {"model", model_label},
++                {"event", "status_change"},
++                {"data", data},
++            };
++            g_single_model_load_hub.publish(std::move(evt), finished);
++        });
+ 
+         if (!ctx_server.load_model(params)) {
+             clean_up();
+@@ -458,6 +583,19 @@ int llama_server(common_params & params, int argc, char ** argv) {
+             return 1;
+         }
+ 
++        // Guarantee terminal SSE event (callback also emits READY; this covers late subscribers).
++        {
++            json loaded = {
++                {"model", model_label},
++                {"event", "status_change"},
++                {"data", {
++                    {"status", "loaded"},
++                    {"progress", {{"stages", json::array({"text_model"})}, {"current", "text_model"}, {"value", 1.0}}},
++                }},
++            };
++            g_single_model_load_hub.publish(std::move(loaded), true);
++        }
++
+         routes.update_meta(ctx_server);
+         ctx_http.is_ready.store(true);
+ 

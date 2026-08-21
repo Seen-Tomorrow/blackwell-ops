@@ -139,10 +139,16 @@ export default function FoundryBuildProgress({
               const isCmakeBox = entry.text.includes("═════") ||
                 entry.text.startsWith("SET ") ||
                 entry.text.startsWith("cmake ");
+              const text = entry.text;
+              const isErrorText =
+                /\[ERROR\]|\[WARN\]\s*PATCH FAIL|PATCH FAIL/i.test(text);
+              const isWarnText = /\[WARN\]/i.test(text) && !isErrorText;
               let lineTone = "foundry-build-log__line";
-              if (entry.step === "ERROR" || entry.step === "FAIL") lineTone += " foundry-build-log__line--error";
-              else if (entry.step === "WARNING") lineTone += " foundry-build-log__line--warn";
-              else if (entry.step === "DONE") lineTone += " foundry-build-log__line--done";
+              if (entry.step === "ERROR" || entry.step === "FAIL" || isErrorText) {
+                lineTone += " foundry-build-log__line--error";
+              } else if (entry.step === "WARNING" || isWarnText) {
+                lineTone += " foundry-build-log__line--warn";
+              } else if (entry.step === "DONE") lineTone += " foundry-build-log__line--done";
               else if (isCmakeBox) lineTone += " foundry-build-log__line--cmake";
               else if (
                 entry.step.startsWith("INIT") ||
@@ -153,6 +159,7 @@ export default function FoundryBuildProgress({
               } else if (entry.step === "BUILD" || entry.step === "CONFIGURE") {
                 lineTone += " foundry-build-log__line--build";
               }
+
               return (
                 <div key={i} className={`py-0.5 ${lineTone}`}>
                   {!isCmakeBox && (

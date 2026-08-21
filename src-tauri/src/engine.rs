@@ -1714,13 +1714,40 @@ fn clean_version_probe_output(stdout: &[u8], stderr: &[u8]) -> String {
 
 fn parse_llama_version_line(cleaned: &str) -> Option<String> {
     use std::sync::LazyLock;
-    static VER_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
-        regex::Regex::new(r"version:\s*(\d+)\s*\(([^)]+)\)").expect("version regex")
+    // Current ggml master: "version: 0.2.0-dev (build 1026, commit d7fa69b)"
+    static NEW_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(
+            r"(?i)version:\s*([^\r\n(]+?)\s*\([^)]*commit\s+([0-9a-f]{7,40})[^)]*\)",
+        )
+        .expect("new version regex")
     });
-    VER_RE
+    // Legacy bXXXX style: "version: 519 (635cdd5)"
+    static OLD_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"(?i)version:\s*(\d+)\s*\(([0-9a-f]{7,40})\)")
+            .expect("old version regex")
+    });
+    // Fallback: any "version: X (…hex…)" — keep full paren body for extractors.
+    static GENERIC_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"(?i)version:\s*([^\r\n(]+?)\s*\(([^)]*[0-9a-f]{7,40}[^)]*)\)")
+            .expect("generic version regex")
+    });
+
+    if let Some(caps) = NEW_RE.captures(cleaned) {
+        // Normalize to "0.2.0-dev (d7fa69b)" so commit extract stays simple.
+        return Some(format!("{} ({})", caps[1].trim(), short_hex(&caps[2])));
+    }
+    if let Some(caps) = OLD_RE.captures(cleaned) {
+        return Some(format!("{} ({})", &caps[1], short_hex(&caps[2])));
+    }
+    GENERIC_RE
         .captures(cleaned)
-        .map(|caps| format!("{} ({})", &caps[1], &caps[2]))
+        .map(|caps| format!("{} ({})", caps[1].trim(), caps[2].trim()))
 }
+
+fn short_hex(hash: &str) -> String {
+    hash.trim().chars().take(8).collect()
+}
+
 
 /// Blocking llama-server --version — same spawn shape as catalog `get_llama_catalog` (`--help`):
 /// one `run_hidden_output`, cwd = exe dir, portable CUDA PATH, no pre-sleep / preflight.

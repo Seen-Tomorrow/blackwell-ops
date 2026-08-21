@@ -31,7 +31,8 @@
     "resources": {
       "runtime-bundle/": "runtime/",
       "bin/": "bin/",
-      "pi-ext/": "pi-ext/"
+      "pi-ext/": "pi-ext/",
+      "../foundry/patches/": "foundry/patches/"
     },
     "icon": [
       "icons/icon-release.ico"

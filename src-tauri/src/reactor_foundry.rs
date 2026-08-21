@@ -627,6 +627,303 @@ fn foundry_src_dir(provider_id: &str) -> PathBuf {
     crate::config::foundry_dir(provider_id).join("llama.cpp")
 }
 
+/// Resolve product vendor patches for a provider (`foundry/patches/<id>-*.patch`).
+fn foundry_vendor_patch_files(provider_id: &str) -> Vec<PathBuf> {
+    let dir = crate::config::foundry_patches_dir();
+    let mut out = Vec::new();
+    let Ok(rd) = std::fs::read_dir(&dir) else {
+        return out;
+    };
+    let prefix = format!("{provider_id}-");
+    for ent in rd.flatten() {
+        let path = ent.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("patch") {
+            continue;
+        }
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default();
+        if name.starts_with(&prefix) || name.starts_with("all-") {
+            out.push(path);
+        }
+    }
+    out.sort();
+    out
+}
+
+fn git_output_text(output: &std::process::Output) -> String {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let s = if !stderr.trim().is_empty() {
+        stderr.trim()
+    } else {
+        stdout.trim()
+    };
+    s.lines()
+        .take(8)
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect::<Vec<_>>()
+        .join(" | ")
+}
+
+/// Snapshot dirty source tree before hard-reset so hand-edits are not silently lost.
+async fn backup_foundry_src_dirty_diff(
+    git_exe: &std::path::Path,
+    src_dir: &std::path::Path,
+    provider_id: &str,
+) {
+    let diff = match git_hidden_output(
+        git_exe.to_path_buf(),
+        src_dir.to_path_buf(),
+        vec!["diff".into(), "--binary".into()],
+    )
+    .await
+    {
+        Ok(o) if !o.stdout.is_empty() => o.stdout,
+        _ => return,
+    };
+    let backup_dir = crate::config::cache_dir().join("foundry-src-backups");
+    if tokio::fs::create_dir_all(&backup_dir).await.is_err() {
+        return;
+    }
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let path = backup_dir.join(format!("{provider_id}-{ts}.patch"));
+    let _ = tokio::fs::write(&path, diff).await;
+    log::info!(
+        "[foundry] Backed up dirty llama.cpp diff → {}",
+        path.display()
+    );
+}
+
+/// Fast-forward source to origin/<branch> (hard reset). Local dirt never blocks Foundry.
+async fn git_hard_sync_branch(
+    git_exe: &std::path::Path,
+    src_dir: &std::path::Path,
+    branch: &str,
+) -> Result<(), String> {
+    let remote_ref = format!("origin/{branch}");
+    let fetch = git_hidden_output(
+        git_exe.to_path_buf(),
+        src_dir.to_path_buf(),
+        vec![
+            "fetch".into(),
+            "origin".into(),
+            branch.to_string(),
+            "--recurse-submodules".into(),
+        ],
+    )
+    .await
+    .map_err(|e| format!("Git fetch failed: {e}"))?;
+    if !fetch.status.success() {
+        return Err(format!("Git fetch failed: {}", git_output_text(&fetch)));
+    }
+
+    let checkout = git_hidden_output(
+        git_exe.to_path_buf(),
+        src_dir.to_path_buf(),
+        vec![
+            "checkout".into(),
+            "-f".into(),
+            "-B".into(),
+            branch.to_string(),
+            remote_ref.clone(),
+        ],
+    )
+
+    .await
+    .map_err(|e| format!("Git checkout failed: {e}"))?;
+    if !checkout.status.success() {
+        return Err(format!(
+            "Git checkout failed: {}",
+            git_output_text(&checkout)
+        ));
+    }
+
+    let reset = git_hidden_output(
+        git_exe.to_path_buf(),
+        src_dir.to_path_buf(),
+        vec!["reset".into(), "--hard".into(), remote_ref],
+    )
+    .await
+    .map_err(|e| format!("Git reset failed: {e}"))?;
+    if !reset.status.success() {
+        return Err(format!("Git reset failed: {}", git_output_text(&reset)));
+    }
+
+    let _ = git_hidden_output(
+        git_exe.to_path_buf(),
+        src_dir.to_path_buf(),
+        vec![
+            "submodule".into(),
+            "update".into(),
+            "--init".into(),
+            "--recursive".into(),
+        ],
+    )
+    .await;
+    Ok(())
+}
+
+/// Apply durable product patches after clean clone/sync. Idempotent when already applied.
+/// Never hard-fails the build: a broken/outdated patch is reported and skipped so the
+/// battle-tested cmake/ninja path still runs (product has a fallback boot path without SSE).
+async fn apply_foundry_vendor_patches(
+    git_exe: &std::path::Path,
+    src_dir: &std::path::Path,
+    provider_id: &str,
+) -> (Vec<String>, Vec<String>) {
+    let patches = foundry_vendor_patch_files(provider_id);
+    if patches.is_empty() {
+        return (vec![], vec![]);
+    }
+
+    let mut applied = Vec::new();
+    let mut failed = Vec::new();
+    for patch in patches {
+        let Some(patch_str) = patch.to_str().map(|s| s.to_string()) else {
+            failed.push(format!(
+                "patch path is not valid UTF-8: {}",
+                patch.display()
+            ));
+            continue;
+        };
+        let name = patch
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("patch")
+            .to_string();
+
+        // Already applied? reverse --check succeeds only when the forward diff is present.
+        let reverse_ok = git_hidden_output(
+            git_exe.to_path_buf(),
+            src_dir.to_path_buf(),
+            vec![
+                "apply".into(),
+                "--reverse".into(),
+                "--check".into(),
+                patch_str.clone(),
+            ],
+        )
+        .await
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+        if reverse_ok {
+            applied.push(format!("{name} (already applied)"));
+            continue;
+        }
+
+        let check = match git_hidden_output(
+            git_exe.to_path_buf(),
+            src_dir.to_path_buf(),
+            vec![
+                "apply".into(),
+                "--check".into(),
+                "--whitespace=nowarn".into(),
+                patch_str.clone(),
+            ],
+        )
+        .await
+        {
+            Ok(o) => o,
+            Err(e) => {
+                failed.push(format!("{name}: git apply --check spawn failed: {e}"));
+                continue;
+            }
+        };
+
+        if !check.status.success() {
+            // 3-way can still land on drifted upstream context.
+            let check3 = match git_hidden_output(
+                git_exe.to_path_buf(),
+                src_dir.to_path_buf(),
+                vec![
+                    "apply".into(),
+                    "--3way".into(),
+                    "--check".into(),
+                    "--whitespace=nowarn".into(),
+                    patch_str.clone(),
+                ],
+            )
+            .await
+            {
+                Ok(o) => o,
+                Err(e) => {
+                    failed.push(format!("{name}: git apply --3way --check spawn failed: {e}"));
+                    continue;
+                }
+            };
+            if !check3.status.success() {
+                failed.push(format!(
+                    "{name}: does not apply on this upstream tree — {}",
+                    git_output_text(&check3)
+                ));
+                continue;
+            }
+            let apply3 = match git_hidden_output(
+                git_exe.to_path_buf(),
+                src_dir.to_path_buf(),
+                vec![
+                    "apply".into(),
+                    "--3way".into(),
+                    "--whitespace=nowarn".into(),
+                    patch_str.clone(),
+                ],
+            )
+            .await
+            {
+                Ok(o) => o,
+                Err(e) => {
+                    failed.push(format!("{name}: git apply --3way spawn failed: {e}"));
+                    continue;
+                }
+            };
+            if !apply3.status.success() {
+                failed.push(format!(
+                    "{name}: 3-way apply failed — {}",
+                    git_output_text(&apply3)
+                ));
+                continue;
+            }
+            applied.push(format!("{name} (3-way)"));
+            continue;
+        }
+
+        let apply = match git_hidden_output(
+            git_exe.to_path_buf(),
+            src_dir.to_path_buf(),
+            vec![
+                "apply".into(),
+                "--whitespace=nowarn".into(),
+                patch_str,
+            ],
+        )
+        .await
+        {
+            Ok(o) => o,
+            Err(e) => {
+                failed.push(format!("{name}: git apply spawn failed: {e}"));
+                continue;
+            }
+        };
+        if !apply.status.success() {
+            failed.push(format!(
+                "{name}: apply failed — {}",
+                git_output_text(&apply)
+            ));
+            continue;
+        }
+        applied.push(name);
+    }
+    (applied, failed)
+}
+
+
+
 // ── State Machine ────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -1175,11 +1472,13 @@ async fn run_foundry_build_worker(
         Ok(exe) => exe,
         Err(e) => {
             rollback_build(app_handle, &provider_id, &profile_id, build_id)
+                .with_message(e.clone())
                 .execute()
                 .await;
             return Err(e);
         }
     };
+
 
     let (git_url, branch) = {
         let cfg = worker.config.lock().map_err(|e| e.to_string())?;
@@ -1239,8 +1538,12 @@ async fn run_foundry_build_worker(
 
         if !clone_output.status.success() {
             let stderr = String::from_utf8_lossy(&clone_output.stderr).to_string();
-            rollback_build(app_handle, &provider_id, &profile_id, build_id).execute().await;
-            return Err(format!("Git clone failed: {}", stderr));
+            let msg = format!("Git clone failed: {}", stderr.trim());
+            rollback_build(app_handle, &provider_id, &profile_id, build_id)
+                .with_message(msg.clone())
+                .execute()
+                .await;
+            return Err(msg);
         }
 
         set_build_phase(BuildPhase::Configuring).await;
@@ -1258,40 +1561,26 @@ async fn run_foundry_build_worker(
                 app_handle,
                 &state,
                 Some(format!(
-                    "[STAGE 1/4] REPOSITORY — Fetching latest changes for branch '{}'…",
+                    "[STAGE 1/4] REPOSITORY — Syncing branch '{}' (fetch + hard reset)…",
                     branch
                 )),
             );
         }
 
-        let heartbeat = spawn_repo_heartbeat(app_handle.clone(), "updating repository", BuildPhase::GitPull);
-        let pull_output = git_hidden_output(
-            git_exe.clone(),
-            src_dir.clone(),
-            vec!["pull".into(), "--recurse-submodules".into()],
-        )
-        .await
-        .map_err(|e| format!("Git pull failed: {}", e))?;
-
-        if pull_output.status.success() {
-            let _ = git_hidden_output(
-                git_exe.clone(),
-                src_dir.clone(),
-                vec![
-                    "submodule".into(),
-                    "update".into(),
-                    "--init".into(),
-                    "--recursive".into(),
-                ],
-            )
-            .await;
-        }
+        // Product trees are build inputs, not hand-edit workspaces. Backup any dirt,
+        // then hard-sync so local patches never block the build (re-applied below).
+        let heartbeat =
+            spawn_repo_heartbeat(app_handle.clone(), "updating repository", BuildPhase::GitPull);
+        backup_foundry_src_dirty_diff(&git_exe, &src_dir, &provider_id).await;
+        let sync_result = git_hard_sync_branch(&git_exe, &src_dir, &branch).await;
         heartbeat.abort();
 
-        if !pull_output.status.success() {
-            let stderr = String::from_utf8_lossy(&pull_output.stderr).to_string();
-            rollback_build(app_handle, &provider_id, &profile_id, build_id).execute().await;
-            return Err(format!("Git pull failed: {}", stderr));
+        if let Err(e) = sync_result {
+            rollback_build(app_handle, &provider_id, &profile_id, build_id)
+                .with_message(e.clone())
+                .execute()
+                .await;
+            return Err(e);
         }
 
         set_build_phase(BuildPhase::Configuring).await;
@@ -1300,9 +1589,52 @@ async fn run_foundry_build_worker(
             &provider_id,
             &profile_id,
             build_id,
-            Some("[STAGE 1/4] REPOSITORY — Repository updated.".into()),
+            Some("[STAGE 1/4] REPOSITORY — Repository synced to origin.".into()),
         );
     }
+
+
+    // Refresh app_root/foundry/patches from repo/resource so DEV edits ship immediately.
+    if let Err(e) = crate::config::ensure_foundry_patches_materialized(app_handle) {
+        log::warn!("[foundry] patch materialize: {e}");
+    }
+
+    // Product vendor patches (e.g. single-model /models/sse cold-boot). Soft-fail:
+    // a drifted upstream must not kill the 1-click newest-engine path.
+    let (applied_patches, failed_patches) =
+        apply_foundry_vendor_patches(&git_exe, &src_dir, &provider_id).await;
+    if !applied_patches.is_empty() {
+        emit_config_event(
+            app_handle,
+            &provider_id,
+            &profile_id,
+            build_id,
+            Some(format!(
+                "[STAGE 1/4] REPOSITORY — Applied vendor patch(es): {}",
+                applied_patches.join(", ")
+            )),
+        );
+    }
+    for fail in &failed_patches {
+        let msg = format!(
+            "[WARN] PATCH FAIL — {fail}. Continuing without this patch (fallback boot path)."
+        );
+        log::warn!("[foundry] {msg}");
+        emit_config_event(
+            app_handle,
+            &provider_id,
+            &profile_id,
+            build_id,
+            Some(msg.clone()),
+        );
+        foundry_console_emit(
+            app_handle,
+            msg,
+            BlackwellOutputConsoleLineStyle::Error,
+        );
+    }
+
+
 
     // ── PR Patch Apply (optional) — URL or number format ─────────────
     if let Some(ref pr_input_str) = pr_url {
@@ -2172,10 +2504,36 @@ fn short_commit_hash(hash: &str) -> String {
 }
 
 fn extract_commit_from_build_version(version: &str) -> Option<String> {
-    let re = regex::Regex::new(r"\(([^)]+)\)").ok()?;
-    re.captures(version.trim())
-        .map(|caps| short_commit_hash(&caps[1]))
+    let v = version.trim();
+    if v.is_empty() || crate::engine::is_placeholder_build_version(v) {
+        return None;
+    }
+    // Prefer explicit "commit <hash>" (new llama.cpp) or bare "(deadbeef)".
+    use std::sync::LazyLock;
+    static COMMIT_WORD: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"(?i)commit\s+([0-9a-f]{7,40})").expect("commit word")
+    });
+    static BARE_PAREN_HASH: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"\(([0-9a-fA-F]{7,40})\)").expect("bare paren hash")
+    });
+    static ANY_HEX: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"(?i)\b([0-9a-f]{7,40})\b").expect("any hex")
+    });
+
+    if let Some(caps) = COMMIT_WORD.captures(v) {
+        return Some(short_commit_hash(&caps[1]));
+    }
+    if let Some(caps) = BARE_PAREN_HASH.captures(v) {
+        return Some(short_commit_hash(&caps[1]));
+    }
+    // Last resort: first hex token that isn't a tiny number.
+    ANY_HEX
+        .captures_iter(v)
+        .map(|c| c[1].to_string())
+        .find(|h| h.len() >= 7)
+        .map(|h| short_commit_hash(&h))
 }
+
 
 fn commits_match(a: &str, b: &str) -> bool {
     let a = a.trim().to_lowercase();
@@ -2243,7 +2601,7 @@ pub async fn foundry_preview_source(
     environment: String,
 ) -> Result<FoundrySourcePreview, String> {
     let profile_key = environment.to_ascii_lowercase();
-    let (git_url, branch, installed_version, installed_commit) = {
+    let (git_url, branch, installed_version, installed_commit, installed_build_date, has_foundry_binary) = {
         let cfg = app.config.lock().map_err(|e| e.to_string())?;
         let provider = cfg
             .providers
@@ -2256,24 +2614,126 @@ pub async fn foundry_preview_source(
             provider.branch.clone()
         };
         let inv = provider.inventory_per_env.get(&profile_key);
-        let build_info = inv
-            .and_then(|i| i.foundry.as_ref())
+        let foundry_entry = inv.and_then(|i| i.foundry.as_ref());
+        let build_info = foundry_entry
             .and_then(|e| e.info.as_ref())
-            .or_else(|| {
-                inv.and_then(|i| i.bundled.as_ref())
-                    .and_then(|e| e.info.as_ref())
-            });
+            .or_else(|| provider.build_info_per_env.get(&profile_key));
         let installed_version = build_info.map(|b| b.version.clone());
+        let installed_build_date = build_info.map(|b| b.build_date.clone());
         let installed_commit = installed_version
             .as_deref()
             .and_then(extract_commit_from_build_version);
+
+        let path_candidates: Vec<String> = [
+            foundry_entry.map(|e| e.path.clone()),
+            provider.binary_path_per_env.get(&profile_key).cloned(),
+            Some(
+                crate::config::foundry_artifact_release_dir(&provider_id, &profile_key)
+                    .join("llama-server.exe")
+                    .to_string_lossy()
+                    .to_string(),
+            ),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        let has_foundry_binary = path_candidates.iter().any(|p| {
+            let abs = crate::config::resolve_path(p);
+            abs.is_file()
+        });
+
         (
             provider.git_url.clone(),
             branch,
             installed_version,
             installed_commit,
+            installed_build_date,
+            has_foundry_binary,
         )
     };
+
+    // Inventory often keeps mtime placeholders ("foundry-artifact") after a successful build
+    // when --version parse lagged the new llama.cpp format. Probe the sacred exe once so the
+    // banner can say "matches latest" instead of lying about a missing install.
+    let (installed_version, installed_commit, installed_build_date) = if has_foundry_binary
+        && installed_commit.is_none()
+    {
+        let probe_path = {
+            let cfg = app.config.lock().map_err(|e| e.to_string())?;
+            let provider = cfg
+                .providers
+                .iter()
+                .find(|p| p.id == provider_id);
+            let inv_path = provider
+                .and_then(|p| p.inventory_per_env.get(&profile_key))
+                .and_then(|i| i.foundry.as_ref())
+                .map(|e| e.path.clone());
+            let active_path = provider
+                .and_then(|p| p.binary_path_per_env.get(&profile_key).cloned());
+            inv_path
+                .or(active_path)
+                .unwrap_or_else(|| {
+                    crate::config::foundry_artifact_release_dir(&provider_id, &profile_key)
+                        .join("llama-server.exe")
+                        .to_string_lossy()
+                        .to_string()
+                })
+        };
+        match crate::engine::get_binary_build_info(probe_path.clone()).await {
+            Ok(info) => {
+                let commit = extract_commit_from_build_version(&info.version);
+                if commit.is_some() {
+                    let mut wrote = false;
+                    if let Ok(mut cfg) = app.config.lock() {
+                        if let Some(provider) =
+                            cfg.providers.iter_mut().find(|p| p.id == provider_id)
+                        {
+                            let date = info.build_date.clone();
+                            provider
+                                .build_info_per_env
+                                .insert(profile_key.clone(), info.clone());
+                            let inv = provider
+                                .inventory_per_env
+                                .entry(profile_key.clone())
+                                .or_default();
+                            let path = inv
+                                .foundry
+                                .as_ref()
+                                .map(|e| e.path.clone())
+                                .unwrap_or_else(|| {
+                                    crate::config::to_relative_path(&crate::config::resolve_path(
+                                        &probe_path,
+                                    ))
+                                });
+                            inv.foundry = Some(crate::types::BinaryEntry {
+                                path,
+                                info: Some(info.clone()),
+                            });
+                            wrote = true;
+                            log::info!(
+                                "[foundry] Preview refreshed {}/{} version → {} ({})",
+                                provider_id,
+                                profile_key,
+                                info.version,
+                                date
+                            );
+                        }
+                    }
+                    if wrote {
+                        // Must not hold config lock — persist re-locks.
+                        let _ = persist_providers_atomic(&app.config);
+                    }
+
+                }
+                (Some(info.version), commit, Some(info.build_date))
+            }
+            Err(_) => (installed_version, installed_commit, installed_build_date),
+        }
+    } else {
+        (installed_version, installed_commit, installed_build_date)
+    };
+
+
 
     if git_url.trim().is_empty() {
         return Ok(FoundrySourcePreview {
@@ -2318,6 +2778,10 @@ pub async fn foundry_preview_source(
         has_repo
     };
 
+    let env_label = environment.to_uppercase();
+    let local_s = local_commit.as_deref().unwrap_or("?");
+    let remote_s = remote_commit.as_deref().unwrap_or("?");
+
     let (status, message, banner_tone) = if !has_repo {
         (
             "first_clone",
@@ -2331,41 +2795,51 @@ pub async fn foundry_preview_source(
     } else if remote_known
         && local_commit.is_some()
         && remote_commit.is_some()
-        && !commits_match(local_commit.as_deref().unwrap(), remote_commit.as_deref().unwrap())
+        && !commits_match(local_s, remote_s)
     {
         (
             "update_available",
             format!(
                 "New commits on {} — local {} → remote {}. Build will pull before compile.",
-                branch,
-                local_commit.as_deref().unwrap_or("?"),
-                remote_commit.as_deref().unwrap_or("?")
+                branch, local_s, remote_s
             ),
             "cyan",
         )
     } else if source_current
         && installed_commit.is_some()
         && local_commit.is_some()
-        && commits_match(installed_commit.as_deref().unwrap(), local_commit.as_deref().unwrap())
+        && commits_match(installed_commit.as_deref().unwrap(), local_s)
     {
         (
             "up_to_date",
             format!(
                 "Your {} binary already matches the latest {} source (commit {}). Rebuild only if you changed CMake flags or GPU architectures.",
-                environment.to_uppercase(),
-                branch,
-                local_commit.as_deref().unwrap_or("?")
+                env_label, branch, local_s
             ),
             "amber",
         )
-    } else if source_current && installed_commit.is_none() {
+    } else if source_current && has_foundry_binary && installed_commit.is_none() {
+        // Binary is on disk (you just built) but inventory still has a placeholder version
+        // like "foundry-artifact" — never claim "no binary installed".
+        let when = installed_build_date
+            .as_deref()
+            .filter(|s| !s.is_empty() && *s != "unknown")
+            .map(|d| format!(" (file {d})"))
+            .unwrap_or_default();
+        (
+            "binary_present_unknown_rev",
+            format!(
+                "{} Foundry binary is installed{when}; source is current on {} ({}). Commit identity not in inventory yet — open Launch once or rebuild to refresh version probe. Not a missing install.",
+                env_label, branch, local_s
+            ),
+            "amber",
+        )
+    } else if source_current && !has_foundry_binary && installed_commit.is_none() {
         (
             "no_binary",
             format!(
                 "Repository is current on {} ({}), but no {} Foundry binary is installed yet — build required.",
-                branch,
-                local_commit.as_deref().unwrap_or("?"),
-                environment.to_uppercase()
+                branch, local_s, env_label
             ),
             "cyan",
         )
@@ -2375,8 +2849,8 @@ pub async fn foundry_preview_source(
             format!(
                 "Repository is current on {} ({}), but your {} binary ({}) was built from a different revision — build recommended.",
                 branch,
-                local_commit.as_deref().unwrap_or("?"),
-                environment.to_uppercase(),
+                local_s,
+                env_label,
                 installed_version.as_deref().unwrap_or("unknown")
             ),
             "cyan",
@@ -2386,7 +2860,7 @@ pub async fn foundry_preview_source(
             "offline",
             format!(
                 "Could not reach remote git (offline?). Local checkout: {}.",
-                local_commit.as_deref().unwrap_or("unknown")
+                local_s
             ),
             "muted",
         )

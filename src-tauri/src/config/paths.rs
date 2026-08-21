@@ -73,6 +73,13 @@ pub fn foundry_artifacts_dir() -> std::path::PathBuf {
     app_root_dir().join("foundry").join("artifacts")
 }
 
+/// Vendor patches applied to Foundry source trees after clone/pull.
+/// Layout: foundry/patches/<provider-id>-*.patch
+pub fn foundry_patches_dir() -> std::path::PathBuf {
+    app_root_dir().join("foundry").join("patches")
+}
+
+
 /// Per-provider disposable work directory for the current (or last) build attempt.
 /// Everything under here may be deleted at the end of any build (success/failure/cancel).
 pub fn foundry_work_dir(provider_id: &str) -> std::path::PathBuf {
@@ -309,6 +316,12 @@ pub fn ensure_portable_structure(app_handle: &tauri::AppHandle) {
     let foundry_base = app_root_dir().join("foundry");
     let _ = std::fs::create_dir_all(&foundry_base);
     let _ = std::fs::create_dir_all(foundry_artifacts_dir());
+    let _ = std::fs::create_dir_all(foundry_patches_dir());
+    if let Err(e) = ensure_foundry_patches_materialized(app_handle) {
+        log::warn!("[setup] foundry patches materialize: {e}");
+    }
+
+
 
     // Copy bundled binaries from Tauri resources (REL only)
     if !cfg!(debug_assertions) {
@@ -326,6 +339,84 @@ pub fn ensure_portable_structure(app_handle: &tauri::AppHandle) {
 
     log::info!("[setup] Portable structure ready at {}", root.display());
 }
+
+/// Ensure product Foundry vendor patches exist under `app_root/foundry/patches`.
+///
+/// Sources (first hit wins per file name, later sources fill gaps):
+/// 1. Bundled Tauri resource `foundry/patches/` (REL)
+/// 2. Repo `foundry/patches/` when running from `target/debug|release` (DEV)
+///
+/// Existing app-root patches are overwritten when the source file is newer or
+/// dest is missing — keeps the single-model SSE patch from rotting after pull.
+pub fn ensure_foundry_patches_materialized(app_handle: &tauri::AppHandle) -> Result<(), String> {
+    let dest = foundry_patches_dir();
+    std::fs::create_dir_all(&dest).map_err(|e| format!("create foundry/patches: {e}"))?;
+
+    let mut sources: Vec<PathBuf> = Vec::new();
+    if let Ok(res) = app_handle
+        .path()
+        .resolve("foundry/patches", BaseDirectory::Resource)
+    {
+        if res.is_dir() {
+            sources.push(res);
+        }
+    }
+    // DEV: exe is …/src-tauri/target/{debug|release}/blackwell-ops.exe
+    // → repo root is three ancestors up from app_root.
+    let app = app_root_dir();
+    if let Some(repo_root) = app.ancestors().nth(3) {
+        let repo_patches = repo_root.join("foundry").join("patches");
+        if repo_patches.is_dir() {
+            sources.push(repo_patches);
+        }
+    }
+
+    if sources.is_empty() {
+        return Ok(());
+    }
+
+    let mut copied = 0usize;
+    for src_dir in sources {
+        let rd = match std::fs::read_dir(&src_dir) {
+            Ok(rd) => rd,
+            Err(_) => continue,
+        };
+        for ent in rd.flatten() {
+            let path = ent.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("patch") {
+                continue;
+            }
+            let Some(name) = path.file_name() else { continue };
+            let dest_file = dest.join(name);
+            let should_copy = match (std::fs::metadata(&path), std::fs::metadata(&dest_file)) {
+                (Ok(src_meta), Ok(dst_meta)) => {
+                    src_meta.len() != dst_meta.len()
+                        || src_meta
+                            .modified()
+                            .ok()
+                            .zip(dst_meta.modified().ok())
+                            .map(|(s, d)| s > d)
+                            .unwrap_or(true)
+                }
+                (Ok(_), Err(_)) => true,
+                _ => false,
+            };
+            if should_copy {
+                std::fs::copy(&path, &dest_file)
+                    .map_err(|e| format!("copy {} → foundry/patches: {e}", path.display()))?;
+                copied += 1;
+            }
+        }
+    }
+    if copied > 0 {
+        log::info!(
+            "[setup] Materialized {copied} foundry patch file(s) → {}",
+            dest.display()
+        );
+    }
+    Ok(())
+}
+
 
 /// Materialize bundled `pi-ext/` next to the exe (REL).
 ///
