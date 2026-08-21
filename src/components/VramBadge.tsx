@@ -302,7 +302,7 @@ export default function VramBadge({
   // SOURCE identity only (lab + kind). Status lives in NEED frame; live controls float top-right.
   const forecastSourceRow = memorySource ? (
     <div className="vram-fc__source-row vram-forecast-header__fit-row">
-      <div className="vram-forecast-source min-w-0 flex-1">
+      <div className="vram-forecast-source min-w-0">
         <MemorySourcePanel
           memorySource={memorySource}
           manifest={manifest}

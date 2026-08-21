@@ -1259,13 +1259,14 @@
   margin: 0;
   width: auto;
   max-width: 100%;
-  flex: 1 1 auto;
+  flex: 0 0 auto; /* don't stretch — recap anchors to this box */
   min-width: 0;
   background: transparent;
 }
 .vram-fc-measure__source .vram-forecast-source {
   width: auto;
   max-width: 100%;
+  flex: 0 0 auto;
   background: transparent;
 }
 .vram-fc-measure__source .vram-fc-source--dominant .vram-fc-source__head {
@@ -1275,11 +1276,19 @@
   min-height: 0;
 }
 .vram-fc-measure__source .vram-fc-source--dominant {
+  position: relative;
   width: auto;
   max-width: 100%;
-  margin-left: auto;
+  margin-left: 0;
   margin-right: 0;
   background: transparent !important;
+}
+/* Recap sits under MEMORY FORECAST SOURCE · LEARNED (right-packed cluster) */
+.vram-fc-measure__source .vram-fc-recap {
+  left: auto;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: min(280px, 72vw);
 }
 /* Spacer when no SOURCE — keeps need-frame grid row alignment */
 .vram-fc-measure__source--empty {
