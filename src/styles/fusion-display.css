@@ -1223,8 +1223,13 @@
   min-height: calc(18px * var(--vram-fc-scale, 1.12));
   padding: 3px 8px 3px 10px;
   border-radius: 3px;
-  /* Flat plate under SOURCE (transparent default; ARCTIC sets dark slate token) */
-  background: var(--display-face-source-plate-bg, transparent);
+  /* Fully clear on the left → wash under SOURCE label (tokenized; ARCTIC = dark) */
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--display-face-source-wash-mid) 42%,
+    var(--display-face-source-wash-end) 100%
+  );
   border: none;
   box-sizing: border-box;
 }
@@ -3082,26 +3087,34 @@
   );
   box-shadow: none;
 }
-/* SOURCE strip — flat plate token (ARCTIC dark; others transparent) */
+[data-display-texture="phosphor-light"] .vram-fc-source__prev-lab {
+  color: var(--display-face-light-text-cyan, #0e4a5c);
+  opacity: 0.85;
+}
+
+/* SOURCE strip — clear→dark wash on paper (gold/cyan kind readable; all themes) */
 [data-display-texture="phosphor-light"] .vram-fc-measure__source {
-  background: var(--display-face-source-plate-bg, transparent);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--display-face-light-plate-ink-soft, #0f172a) 14%, transparent) 36%,
+    color-mix(in srgb, var(--display-face-light-plate-ink-soft, #0f172a) 38%, transparent) 72%,
+    color-mix(in srgb, var(--display-face-light-plate-ink, #0b1220) 52%, transparent) 100%
+  );
   border: none;
 }
 [data-display-texture="phosphor-light"] .vram-fc-measure__source .vram-fc-source__lab {
-  color: var(--display-face-source-lab, var(--display-face-light-source-lab, var(--display-face-light-readout, #1e3a14)));
+  color: var(--display-face-light-source-lab, color-mix(in srgb, #e2e8f0 78%, #94a3b8));
 }
 [data-display-texture="phosphor-light"] .vram-fc-measure__source .vram-fc-source__kind {
-  background: var(
-    --display-face-source-kind-bg,
-    var(--display-face-light-source-kind-bg, color-mix(in srgb, #020617 72%, transparent))
-  );
+  background: var(--display-face-light-source-kind-bg, color-mix(in srgb, #020617 72%, transparent));
   border-color: var(
-    --display-face-source-kind-border,
-    var(--display-face-light-source-kind-border, color-mix(in srgb, #94a3b8 32%, transparent))
+    --display-face-light-source-kind-border,
+    color-mix(in srgb, #94a3b8 32%, transparent)
   );
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, #fff 6%, transparent),
-    0 1px 2px color-mix(in srgb, #000 20%, transparent);
+    0 1px 2px color-mix(in srgb, var(--display-face-light-plate-ink, #0b1220) 35%, transparent);
 }
 
 [data-display-texture="phosphor-light"] .vram-fc-need-frame__status-row {
