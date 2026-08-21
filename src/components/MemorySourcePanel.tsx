@@ -144,19 +144,19 @@ function useNeedFrameLiveDrive(active: boolean, mode: "full" | "scan") {
     const tick = (now: number) => {
       const t = (now - t0) / 1000;
       if (full) {
-        // Chase around the ring (~1.1 rev/s)
-        const deg = (t * 400) % 360;
+        // Chase around the ring (~0.35 rev/s)
+        const deg = (t * 125) % 360;
         rim.style.setProperty("--rim-angle", `${deg.toFixed(1)}deg`);
-        rim.style.opacity = (0.72 + 0.2 * Math.sin(t * 5.5)).toFixed(3);
+        rim.style.opacity = (0.72 + 0.16 * Math.sin(t * 2.4)).toFixed(3);
         if (tickEl) {
           tickEl.style.setProperty("--rim-angle", `${deg.toFixed(1)}deg`);
-          tickEl.style.opacity = (0.55 + 0.35 * Math.sin(t * 5.5 + 0.8)).toFixed(3);
+          tickEl.style.opacity = (0.55 + 0.28 * Math.sin(t * 2.4 + 0.8)).toFixed(3);
         }
       } else {
-        // Same chase, slower — dashed ring via CSS is-mode-scan
-        const deg = (t * 220) % 360;
+        // Dashed chase — slower still (~0.22 rev/s)
+        const deg = (t * 80) % 360;
         rim.style.setProperty("--rim-angle", `${deg.toFixed(1)}deg`);
-        rim.style.opacity = (0.5 + 0.18 * Math.sin(t * 3.2)).toFixed(3);
+        rim.style.opacity = (0.5 + 0.14 * Math.sin(t * 1.6)).toFixed(3);
         if (tickEl) tickEl.style.opacity = "0";
       }
       raf = requestAnimationFrame(tick);
