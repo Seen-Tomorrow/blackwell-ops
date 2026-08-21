@@ -54,7 +54,7 @@ export function ConfigChipSegment({
   children: ReactNode[];
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
-  const [thumb, setThumb] = useState({ left: 2, width: 0 });
+  const [thumb, setThumb] = useState({ left: 2, top: 2, width: 0, height: 0 });
 
   useLayoutEffect(() => {
     const root = rootRef.current;
@@ -62,7 +62,14 @@ export function ConfigChipSegment({
     const measure = () => {
       const slot = root.querySelector<HTMLElement>(`[data-seg-i="${activeIndex}"]`);
       if (!slot) return;
-      setThumb({ left: slot.offsetLeft, width: slot.offsetWidth });
+      // offset* is relative to the rail — works when chips wrap to a 2nd row
+      // (a full-height thumb would paint both rows and look like dual selection).
+      setThumb({
+        left: slot.offsetLeft,
+        top: slot.offsetTop,
+        width: slot.offsetWidth,
+        height: slot.offsetHeight,
+      });
     };
     measure();
     let ro: ResizeObserver | null = null;
@@ -87,7 +94,9 @@ export function ConfigChipSegment({
       style={
         {
           "--seg-thumb-left": `${thumb.left}px`,
+          "--seg-thumb-top": `${thumb.top}px`,
           "--seg-thumb-width": `${thumb.width}px`,
+          "--seg-thumb-height": `${thumb.height}px`,
         } as CSSProperties
       }
     >

@@ -1378,10 +1378,11 @@
 
 [data-config-panel] .config-value-segment.config-value-segment--rail .config-value-segment__thumb {
   position: absolute;
-  top: 2px;
-  bottom: 2px;
+  /* Follow the selected chip box — never stretch full rail height when options wrap */
+  top: var(--seg-thumb-top, 2px);
   left: var(--seg-thumb-left, 2px);
   width: var(--seg-thumb-width, 0px);
+  height: var(--seg-thumb-height, 0px);
   border-radius: 3px;
   background: linear-gradient(
     180deg,
@@ -1394,7 +1395,9 @@
     inset 0 1px 0 color-mix(in srgb, #fff 12%, transparent);
   transition:
     left 0.22s cubic-bezier(0.22, 1, 0.36, 1),
-    width 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+    top 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+    width 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+    height 0.22s cubic-bezier(0.22, 1, 0.36, 1);
   pointer-events: none;
   z-index: 0;
 }
