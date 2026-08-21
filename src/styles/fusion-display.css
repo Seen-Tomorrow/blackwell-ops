@@ -3087,77 +3087,55 @@
   opacity: 0.85;
 }
 
-/* SOURCE strip — clear→grey wash on glacier paper (no stroke) */
+/* SOURCE strip — clear→dark wash on paper (gold/cyan kind readable; all themes) */
 [data-display-texture="phosphor-light"] .vram-fc-measure__source {
   background: linear-gradient(
     90deg,
     transparent 0%,
-    color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 5%, transparent) 40%,
-    color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 12%, transparent) 100%
+    color-mix(in srgb, var(--display-face-light-plate-ink-soft, #0f172a) 14%, transparent) 36%,
+    color-mix(in srgb, var(--display-face-light-plate-ink-soft, #0f172a) 38%, transparent) 72%,
+    color-mix(in srgb, var(--display-face-light-plate-ink, #0b1220) 52%, transparent) 100%
   );
   border: none;
 }
 [data-display-texture="phosphor-light"] .vram-fc-measure__source .vram-fc-source__lab {
-  color: color-mix(
-    in srgb,
-    var(--display-face-light-readout, #1e3a14) 68%,
-    var(--display-face-light-text-muted, #64748b)
-  );
+  color: var(--display-face-light-source-lab, color-mix(in srgb, #e2e8f0 78%, #94a3b8));
 }
 [data-display-texture="phosphor-light"] .vram-fc-measure__source .vram-fc-source__kind {
-  background: color-mix(in srgb, var(--display-face-light-surface, #f4f8fc) 80%, transparent);
-  border-color: color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 28%, transparent);
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 12%, transparent);
-}
-
-/*
- * ARCTIC — paper face on every display texture. Gold LEARNED / cyan PROBE
- * kind text needs a much darker right-hand wash than generic phosphor-light.
- */
-[data-theme="arctic"] .vram-fc-measure__source {
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    color-mix(in srgb, #0f172a 14%, transparent) 36%,
-    color-mix(in srgb, #0f172a 38%, transparent) 72%,
-    color-mix(in srgb, #0b1220 52%, transparent) 100%
+  background: var(--display-face-light-source-kind-bg, color-mix(in srgb, #020617 72%, transparent));
+  border-color: var(
+    --display-face-light-source-kind-border,
+    color-mix(in srgb, #94a3b8 32%, transparent)
   );
-  border: none;
-}
-[data-theme="arctic"] .vram-fc-measure__source .vram-fc-source__lab {
-  color: color-mix(in srgb, #e2e8f0 78%, #94a3b8);
-}
-[data-theme="arctic"] .vram-fc-measure__source .vram-fc-source__kind {
-  background: color-mix(in srgb, #020617 72%, transparent);
-  border-color: color-mix(in srgb, #94a3b8 32%, transparent);
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, #fff 6%, transparent),
-    0 1px 2px color-mix(in srgb, #020617 35%, transparent);
+    0 1px 2px color-mix(in srgb, var(--display-face-light-plate-ink, #0b1220) 35%, transparent);
 }
 
 [data-display-texture="phosphor-light"] .vram-fc-need-frame__status-row {
   background: transparent;
 }
-/* NEED frame — bumped plate + reverse wash on glacier paper */
+/* NEED frame — bumped plate + reverse dark wash on paper */
 [data-display-texture="phosphor-light"] .vram-fc-need-frame {
   --need-frame-hi: color-mix(in srgb, #fff 92%, transparent);
-  --need-frame-lo: color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 38%, transparent);
+  --need-frame-lo: color-mix(in srgb, var(--display-face-light-plate-ink-soft, #0f172a) 38%, transparent);
   --need-frame-ring: color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 48%, transparent);
-  --need-frame-face: color-mix(in srgb, var(--display-face-light-surface, #f4f8fc) 72%, transparent);
+  --need-frame-face: color-mix(in srgb, var(--display-face-light-surface, #f4f8fc) 55%, transparent);
   border-color: var(--need-frame-ring);
   outline-color: var(--need-frame-ring);
   background:
     linear-gradient(
       90deg,
-      color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 14%, transparent) 0%,
-      color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 5%, transparent) 55%,
+      color-mix(in srgb, var(--display-face-light-plate-ink, #0b1220) 52%, transparent) 0%,
+      color-mix(in srgb, var(--display-face-light-plate-ink-soft, #0f172a) 36%, transparent) 32%,
+      color-mix(in srgb, var(--display-face-light-plate-ink-soft, #0f172a) 12%, transparent) 68%,
       transparent 100%
     ),
     linear-gradient(
       165deg,
-      color-mix(in srgb, #fff 70%, transparent) 0%,
+      color-mix(in srgb, #fff 55%, transparent) 0%,
       transparent 46%,
-      color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 10%, transparent) 100%
+      color-mix(in srgb, var(--display-face-light-plate-ink-soft, #0f172a) 10%, transparent) 100%
     ),
     var(--need-frame-face);
   box-shadow:
@@ -3166,27 +3144,6 @@
     inset 1px 1px 0 var(--need-frame-hi),
     inset -1px -1px 0 var(--need-frame-lo),
     inset 0 0 0 1px color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 12%, transparent);
-}
-/* ARCTIC — darker reverse wash on whole NEED block for gold/cyan status */
-[data-theme="arctic"] .vram-fc-need-frame {
-  background:
-    linear-gradient(
-      90deg,
-      color-mix(in srgb, #0b1220 52%, transparent) 0%,
-      color-mix(in srgb, #0f172a 36%, transparent) 32%,
-      color-mix(in srgb, #0f172a 12%, transparent) 68%,
-      transparent 100%
-    ),
-    linear-gradient(
-      165deg,
-      color-mix(in srgb, #fff 55%, transparent) 0%,
-      transparent 46%,
-      color-mix(in srgb, #0f172a 10%, transparent) 100%
-    ),
-    color-mix(in srgb, var(--display-face-light-surface, #f4f8fc) 55%, transparent);
-}
-[data-theme="arctic"] .vram-fc-need-frame__status-row {
-  background: transparent;
 }
 [data-display-texture="phosphor-light"] .vram-fc-need-frame[data-source-kind="learned"],
 [data-display-texture="phosphor-light"] .vram-fc-need-frame[data-source-kind="learned_curve"] {
@@ -3281,17 +3238,18 @@
   -webkit-text-fill-color: var(--theme-telemetry-red, #ef4444) !important;
 }
 
-/* GPU troughs — reverse wash + deeper sky well on paper */
+/* GPU troughs — reverse dark wash on paper (all themes; no arctic fork) */
 [data-display-texture="phosphor-light"] .gpu-card__bar,
 [data-display-texture="phosphor-light"] .vram-fc__topo--compact .gpu-card__bar--3d {
   background:
     linear-gradient(
       90deg,
-      color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 16%, transparent) 0%,
-      color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 6%, transparent) 55%,
+      color-mix(in srgb, var(--display-face-light-plate-ink, #0b1220) 48%, transparent) 0%,
+      color-mix(in srgb, var(--display-face-light-plate-ink-soft, #0f172a) 28%, transparent) 40%,
+      color-mix(in srgb, var(--display-face-light-plate-ink-soft, #0f172a) 8%, transparent) 72%,
       transparent 100%
     ),
-    color-mix(in srgb, var(--display-face-light-bar-bg, var(--theme-accent, #76b900)) 38%, transparent);
+    color-mix(in srgb, var(--display-face-light-bar-bg, var(--theme-accent, #76b900)) 32%, transparent);
   border-color: color-mix(in srgb, var(--display-face-light-bar-bg, var(--theme-accent, #76b900)) 52%, transparent);
   border-top-color: color-mix(in srgb, var(--display-face-light-bar-bg, var(--theme-accent, #76b900)) 65%, #000);
   border-bottom-color: color-mix(in srgb, #fff 40%, transparent);
@@ -3299,19 +3257,6 @@
     inset 0 2px 5px color-mix(in srgb, var(--display-face-light-bar-bg, var(--theme-accent, #76b900)) 34%, transparent),
     inset 0 1px 0 color-mix(in srgb, #000 14%, transparent),
     inset 0 -1px 0 color-mix(in srgb, #fff 45%, transparent);
-}
-/* ARCTIC — darker reverse wash on GPU tracks (gold/cyan readout contrast) */
-[data-theme="arctic"] .gpu-card__bar,
-[data-theme="arctic"] .vram-fc__topo--compact .gpu-card__bar--3d {
-  background:
-    linear-gradient(
-      90deg,
-      color-mix(in srgb, #0b1220 48%, transparent) 0%,
-      color-mix(in srgb, #0f172a 28%, transparent) 40%,
-      color-mix(in srgb, #0f172a 8%, transparent) 72%,
-      transparent 100%
-    ),
-    color-mix(in srgb, var(--display-face-light-bar-bg, var(--theme-accent, #76b900)) 32%, transparent);
 }
 
 [data-display-texture="phosphor-light"] .vram-fc__src,

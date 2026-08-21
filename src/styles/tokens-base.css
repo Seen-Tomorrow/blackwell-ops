@@ -192,6 +192,16 @@
   --display-face-light-text-red: #5a2828;
   --display-face-light-text-violet: #4a3858;
   /*
+   * LIGHT paper plates (SOURCE strip, NEED frame, GPU troughs) — dark wash so
+   * gold LEARNED / cyan PROBE ink stays readable on e-ink faces (all themes).
+   * Themes may override; CSS must not special-case [data-theme=arctic].
+   */
+  --display-face-light-plate-ink: #0b1220;
+  --display-face-light-plate-ink-soft: #0f172a;
+  --display-face-light-source-lab: color-mix(in srgb, #e2e8f0 78%, #94a3b8);
+  --display-face-light-source-kind-bg: color-mix(in srgb, #020617 72%, transparent);
+  --display-face-light-source-kind-border: color-mix(in srgb, #94a3b8 32%, transparent);
+  /*
    * HW monitor + OVERCLOCKING signal colors (launch-rail-tel / gpu-oc).
    * Themes override for palette cohesion; CSS falls back to these.
    */
