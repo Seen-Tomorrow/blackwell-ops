@@ -240,14 +240,23 @@ export default function VramBadge({
         style={{ minHeight: FORECAST_PHOSPHOR_HEIGHT_PX }}
         data-forecast-skeleton="1"
         aria-busy="true"
-        aria-label="Measuring VRAM"
+        aria-label="Evaluating VRAM footprint"
       >
         {fitLaunchDock}
-        <div className="vram-forecast-skeleton flex flex-col gap-2 flex-1 min-h-0 justify-center">
-          <div className="vram-forecast-skeleton__line h-3 w-[42%] rounded-sm" />
-          <div className="vram-forecast-skeleton__line h-4 w-[70%] rounded-sm" />
-          <div className="vram-forecast-skeleton__line h-3 w-[55%] rounded-sm mt-1" />
-          <div className="vram-forecast-skeleton__line h-10 w-full rounded-sm mt-2" />
+        <div className="vram-forecast-measuring flex flex-col flex-1 min-h-0 items-center justify-center gap-2">
+          <div className="vram-forecast-measuring__scope" aria-hidden>
+            <span className="vram-forecast-measuring__ring" />
+            <span className="vram-forecast-measuring__ring vram-forecast-measuring__ring--delay" />
+            <span className="vram-forecast-measuring__beam" />
+            <span className="vram-forecast-measuring__core font-mono">VRAM</span>
+          </div>
+          <div className="vram-forecast-measuring__copy font-mono">
+            <span className="vram-forecast-measuring__title">EVALUATING</span>
+            <span className="vram-forecast-measuring__sub">footprint · learned · fit probe</span>
+          </div>
+          <div className="vram-forecast-measuring__bar" aria-hidden>
+            <span className="vram-forecast-measuring__bar-fill" />
+          </div>
         </div>
       </div>
     );

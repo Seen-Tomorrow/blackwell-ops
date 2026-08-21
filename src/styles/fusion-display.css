@@ -442,63 +442,172 @@
   overflow: hidden;
 }
 
-/* Brief gap while scenario re-evals after tab remount — holds phosphor open */
+/* Holds phosphor open while LEARNED / FIT PROBE resolve (~1s). */
 .vram-badge-forecast--skeleton {
   min-height: 250px;
   height: 250px;
   max-height: 250px;
 }
 
-.vram-forecast-skeleton {
+.vram-forecast-measuring {
   position: relative;
   overflow: hidden;
+  padding: 0.35rem 0.25rem 0.5rem;
+  /* subtle CRT/instrument wash — no grey placeholder bars */
+  background:
+    radial-gradient(
+      ellipse 70% 55% at 50% 42%,
+      color-mix(in srgb, var(--theme-accent, #76B900) 10%, transparent),
+      transparent 70%
+    ),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--theme-panel, #0a0a0a) 35%, transparent),
+      transparent 60%
+    );
 }
 
-.vram-forecast-skeleton::after {
-  content: "";
+.vram-forecast-measuring__scope {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.vram-forecast-measuring__ring {
   position: absolute;
-  inset: 0 auto 0 0;
-  width: 28%;
+  inset: 8px;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--theme-accent, #76B900) 45%, transparent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--theme-accent, #76B900) 18%, transparent);
+  animation: vram-forecast-ring-breathe 1.8s ease-in-out infinite;
+}
+
+.vram-forecast-measuring__ring--delay {
+  inset: 0;
+  border-color: color-mix(in srgb, var(--theme-accent, #76B900) 22%, transparent);
+  box-shadow: none;
+  animation-delay: 0.35s;
+  animation-duration: 2.2s;
+}
+
+.vram-forecast-measuring__beam {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 46%;
+  height: 1px;
+  margin-left: -1px;
+  transform-origin: 0 50%;
   background: linear-gradient(
     90deg,
-    transparent,
-    color-mix(in srgb, var(--theme-accent, #76B900) 22%, transparent),
+    color-mix(in srgb, var(--theme-accent, #76B900) 85%, #fff),
     transparent
   );
-  animation: vram-forecast-scan-sweep 1.6s ease-in-out infinite;
+  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-accent, #76B900) 55%, transparent);
+  animation: vram-forecast-beam-spin 1.35s linear infinite;
   pointer-events: none;
 }
 
-.vram-forecast-skeleton__line {
-  background: color-mix(in srgb, var(--theme-text-muted, #6b7280) 18%, transparent);
-  animation: vram-forecast-skeleton-pulse 1.1s ease-in-out infinite;
+.vram-forecast-measuring__core {
+  position: relative;
+  z-index: 1;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: color-mix(in srgb, var(--theme-accent-bright, var(--theme-accent, #76B900)) 90%, #fff);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent, #76B900) 45%, transparent);
+  opacity: 0.9;
 }
 
-.vram-forecast-skeleton__line:nth-child(2) {
-  animation-delay: 0.12s;
+.vram-forecast-measuring__copy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  text-align: center;
+  user-select: none;
 }
 
-.vram-forecast-skeleton__line:nth-child(3) {
-  animation-delay: 0.24s;
+.vram-forecast-measuring__title {
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  color: color-mix(in srgb, var(--theme-text, #e5e7eb) 88%, transparent);
+  animation: vram-forecast-title-pulse 1.4s ease-in-out infinite;
 }
 
-.vram-forecast-skeleton__line:nth-child(4) {
-  animation-delay: 0.36s;
+.vram-forecast-measuring__sub {
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  text-transform: lowercase;
+  color: color-mix(in srgb, var(--theme-text-muted, #9ca3af) 75%, transparent);
 }
 
-@keyframes vram-forecast-skeleton-pulse {
+.vram-forecast-measuring__bar {
+  position: relative;
+  width: min(72%, 220px);
+  height: 3px;
+  margin-top: 0.35rem;
+  border-radius: 2px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--theme-panel-accent, #1f2937) 70%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-border, #374151) 40%, transparent);
+}
+
+.vram-forecast-measuring__bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 38%;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--theme-accent, #76B900) 75%, transparent),
+    color-mix(in srgb, var(--theme-accent-bright, #a3e635) 55%, transparent),
+    transparent
+  );
+  animation: vram-forecast-bar-sweep 1.15s ease-in-out infinite;
+}
+
+@keyframes vram-forecast-ring-breathe {
   0%,
   100% {
-    opacity: 0.35;
+    transform: scale(0.94);
+    opacity: 0.45;
   }
   50% {
-    opacity: 0.7;
+    transform: scale(1);
+    opacity: 0.95;
   }
 }
 
-@keyframes vram-forecast-scan-sweep {
-  0% { transform: translateX(-120%); }
-  100% { transform: translateX(420%); }
+@keyframes vram-forecast-beam-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes vram-forecast-title-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes vram-forecast-bar-sweep {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
 }
 
 .vram-forecast-display[data-fusion-height-managed] .vram-badge-forecast {
