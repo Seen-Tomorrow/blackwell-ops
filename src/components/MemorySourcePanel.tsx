@@ -269,7 +269,7 @@ export interface MemorySourceReprobeProps {
   className?: string;
 }
 
-/** RE-PROBE control — absolute top-right of the measure cluster. */
+/** RE-PROBE control — sits right of the assisted launch summary. */
 export function MemorySourceReprobe({
   memorySource,
   isValidating = false,
@@ -283,7 +283,7 @@ export function MemorySourceReprobe({
   return (
     <button
       type="button"
-      className={`vram-fc-source__reprobe vram-fc-measure__reprobe${
+      className={`vram-fc-source__reprobe vram-fc-header__reprobe${
         className ? ` ${className}` : ""
       }`}
       data-probe-state={isValidating ? "probing" : "reprobe"}

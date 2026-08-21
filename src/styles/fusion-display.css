@@ -777,8 +777,10 @@
 
 .vram-forecast-header--assisted {
   display: flex;
-  flex-direction: column;
-  gap: calc(3px * var(--vram-fc-scale));
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(8px * var(--vram-fc-scale));
   margin-bottom: calc(6px * var(--vram-fc-scale, 1.12));
 }
 
@@ -791,9 +793,10 @@
 }
 
 
-/* ASSISTED — personal launch summary (replaces FIT SINGLE stamp + need instruments) */
+/* ASSISTED — personal launch summary + RE-PROBE on the right */
 .vram-fc__launch-summary {
   margin: 0;
+  flex: 1 1 auto;
   min-width: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: calc(15px * var(--vram-fc-scale, 1.12));
@@ -811,6 +814,15 @@
 }
 .vram-fc__launch-summary.is-fail {
   color: color-mix(in srgb, #f87171 88%, var(--display-face-text, #e2e8f0));
+}
+.vram-forecast-header--assisted .vram-fc-header__reprobe,
+.vram-forecast-header--assisted .vram-fc-source__reprobe {
+  flex: 0 0 auto;
+  align-self: center;
+  padding: 3px 8px;
+  font-size: calc(8px * var(--vram-fc-scale, 1.12));
+  line-height: 1.15;
+  margin-left: calc(8px * var(--vram-fc-scale, 1.12));
 }
 
 .vram-fc__title {
@@ -1219,11 +1231,6 @@
   border: 1px solid color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 16%, transparent);
   box-sizing: border-box;
 }
-/* When RE-PROBE floats over the measure, keep status clear */
-.vram-fc-measure:has(> .vram-fc-measure__reprobe) .vram-fc-need-frame__status-row,
-.vram-fc-measure:has(> .vram-fc-source__reprobe) .vram-fc-need-frame__status-row {
-  padding-right: calc(4.5rem * var(--vram-fc-scale, 1.12));
-}
 .vram-fc-measure__source .vram-fc__source-row {
   margin: 0;
   width: auto;
@@ -1413,17 +1420,7 @@
   color: var(--theme-telemetry-amber, #fbbf24);
 }
 
-/* RE-PROBE — absolute top-right of measure, padded in */
-.vram-fc-measure__reprobe,
-.vram-fc-measure > .vram-fc-source__reprobe {
-  position: absolute;
-  top: calc(4px * var(--vram-fc-scale, 1.12));
-  right: calc(6px * var(--vram-fc-scale, 1.12));
-  z-index: 6;
-  padding: 2px 6px;
-  font-size: calc(7px * var(--vram-fc-scale, 1.12));
-  line-height: 1.15;
-}
+/* legacy measure RE-PROBE absolute — unused; header owns RE-PROBE now */
 
 /* legacy cluster wrapper (no longer used in ASSISTED measure) */
 .vram-fc-measure__cluster {

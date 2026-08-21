@@ -395,16 +395,6 @@ export default function VramBadge({
         </div>
       )}
 
-      {/* RE-PROBE — absolute top-right of measure */}
-      {memorySource && !hideFitProbe ? (
-        <MemorySourceReprobe
-          memorySource={memorySource}
-          isValidating={isValidating}
-          onValidate={onValidate}
-          hideValidate={!onValidate}
-        />
-      ) : null}
-
       <div className="vram-fc-measure__main">
         {/* SOURCE identity + live meter — light grey strip; frame spans up beside it */}
         {forecastSourceRow || memorySource ? (
@@ -541,6 +531,14 @@ export default function VramBadge({
           >
             {assistedLaunchSummary}
           </p>
+          {memorySource && !hideFitProbe ? (
+            <MemorySourceReprobe
+              memorySource={memorySource}
+              isValidating={isValidating}
+              onValidate={onValidate}
+              hideValidate={!onValidate}
+            />
+          ) : null}
         </div>
       ) : (
         <div className="vram-fc__header vram-fc-auto vram-forecast-hero flex-shrink-0 min-w-0">
