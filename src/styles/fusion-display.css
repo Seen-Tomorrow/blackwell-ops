@@ -1317,6 +1317,7 @@
   --need-frame-accent: color-mix(in srgb, var(--theme-accent, #76b900) 55%, transparent);
   --need-frame-hi: color-mix(in srgb, #fff 18%, transparent);
   --need-frame-lo: color-mix(in srgb, #000 48%, transparent);
+  --need-frame-ring: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 42%, transparent);
   --need-frame-face: color-mix(
     in srgb,
     var(--display-face-bar-bg, color-mix(in srgb, var(--theme-accent, #76b900) 12%, transparent)) 78%,
@@ -1329,8 +1330,13 @@
   align-items: stretch;
   min-width: calc(11ch + 4.6rem);
   width: calc(11ch + 4.6rem);
-  border: 1px solid color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 28%, transparent);
+  /* room for outer ring (outline-offset 3px) so it isn’t clipped */
+  margin: 3px;
+  border: 1px solid var(--need-frame-ring);
   border-radius: 4px;
+  /* Outer ring — 3px air gap between borders */
+  outline: 1px solid var(--need-frame-ring);
+  outline-offset: 3px;
   background:
     linear-gradient(
       165deg,
@@ -1339,7 +1345,7 @@
       color-mix(in srgb, #000 14%, transparent) 100%
     ),
     var(--need-frame-face);
-  /* Raised 3D bump: outer lift + beveled rim + soft face */
+  /* Raised 3D bump on the inner plate */
   box-shadow:
     0 1px 0 color-mix(in srgb, #000 35%, transparent),
     0 3px 6px color-mix(in srgb, #000 28%, transparent),
@@ -2920,8 +2926,10 @@
 [data-display-texture="phosphor-light"] .vram-fc-need-frame {
   --need-frame-hi: color-mix(in srgb, #fff 92%, transparent);
   --need-frame-lo: color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 38%, transparent);
+  --need-frame-ring: color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 48%, transparent);
   --need-frame-face: color-mix(in srgb, var(--display-face-light-surface, #f4f8fc) 72%, transparent);
-  border-color: color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 32%, transparent);
+  border-color: var(--need-frame-ring);
+  outline-color: var(--need-frame-ring);
   background:
     linear-gradient(
       165deg,
