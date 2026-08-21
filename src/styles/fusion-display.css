@@ -940,15 +940,15 @@
 
 .vram-fc__src[data-source-kind="learned"],
 .vram-fc__src[data-source-kind="learned_curve"] {
-  color: color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 88%, transparent);
-  border-color: color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 40%, transparent);
-  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 18%, transparent);
+  color: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 92%, #fde68a 18%);
+  border-color: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 48%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 20%, transparent);
 }
 
 .vram-fc__src[data-source-kind="fit_probe"] {
-  color: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 90%, transparent);
-  border-color: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 42%, transparent);
-  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 18%, transparent);
+  color: color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 90%, transparent);
+  border-color: color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 42%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 18%, transparent);
 }
 
 .vram-fc__verdict {
@@ -1092,14 +1092,14 @@
 .vram-fc-need__val.vram-forecast-gb-accented--learned_curve,
 .vram-fc[data-source-kind="learned"] .vram-fc-need:not(.vram-fc-need--ram) .vram-fc-need__val,
 .vram-fc[data-source-kind="learned_curve"] .vram-fc-need:not(.vram-fc-need--ram) .vram-fc-need__val {
-  color: color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 92%, transparent);
-  text-shadow: 0 0 8px color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 24%, transparent);
+  color: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 88%, #fde68a 22%);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 28%, transparent);
 }
 
 .vram-fc-need__val.vram-forecast-gb-accented--fit_probe,
 .vram-fc[data-source-kind="fit_probe"] .vram-fc-need:not(.vram-fc-need--ram) .vram-fc-need__val {
-  color: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 94%, transparent);
-  text-shadow: 0 0 8px color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 24%, transparent);
+  color: color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 94%, transparent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 24%, transparent);
 }
 
 .vram-forecast-header__fit-row,
@@ -1359,18 +1359,20 @@
 }
 .vram-fc-need-frame[data-source-kind="learned"],
 .vram-fc-need-frame[data-source-kind="learned_curve"] {
-  --need-frame-accent: color-mix(in srgb, var(--theme-telemetry-cyan, #22d3ee) 55%, transparent);
+  /* Premium gold */
+  --need-frame-accent: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 52%, #fde68a 18%);
 }
 .vram-fc-need-frame[data-source-kind="fit_probe"] {
-  --need-frame-accent: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 55%, transparent);
+  /* Instrument cyan */
+  --need-frame-accent: color-mix(in srgb, var(--theme-telemetry-cyan, #22d3ee) 55%, transparent);
 }
 
 /*
  * NEED frame mini-display — phosphor overlay over status + need GB.
- * rAF-driven; only mounted while CTX drag / PROBE.
+ * full = RE-PROBE; scan = CTX scrub (scanline only).
  */
 .vram-fc-need-frame__live {
-  --need-live-accent: var(--need-frame-accent, var(--theme-telemetry-cyan, #22d3ee));
+  --need-live-accent: var(--need-frame-accent, var(--theme-telemetry-amber, #fbbf24));
   position: absolute;
   inset: 0;
   z-index: 1;
@@ -1380,10 +1382,17 @@
   opacity: 0.48;
 }
 .vram-fc-need-frame__live.is-probe {
-  --need-live-accent: var(--theme-telemetry-amber, #fbbf24);
+  --need-live-accent: var(--theme-telemetry-cyan, #22d3ee);
 }
-.vram-fc-need-frame__live.is-probing {
+.vram-fc-need-frame__live.is-learned {
+  --need-live-accent: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 70%, #fde68a 30%);
+}
+.vram-fc-need-frame__live.is-probing,
+.vram-fc-need-frame__live.is-mode-full {
   opacity: 0.62;
+}
+.vram-fc-need-frame__live.is-mode-scan {
+  opacity: 0.4;
 }
 .vram-fc-need-frame__live-field {
   position: absolute;
@@ -1537,10 +1546,10 @@
 }
 .vram-fc-need-frame[data-source-kind="learned"] .vram-fc-need-frame__status,
 .vram-fc-need-frame[data-source-kind="learned_curve"] .vram-fc-need-frame__status {
-  color: var(--theme-telemetry-cyan, #22d3ee);
+  color: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 82%, #fde68a 28%);
 }
 .vram-fc-need-frame[data-source-kind="fit_probe"] .vram-fc-need-frame__status {
-  color: var(--theme-telemetry-amber, #fbbf24);
+  color: var(--theme-telemetry-cyan, #22d3ee);
 }
 
 /* legacy measure RE-PROBE absolute — unused; header owns RE-PROBE now */
@@ -2114,7 +2123,7 @@
     0 0 8px color-mix(in srgb, var(--mem-accent) 22%, transparent);
 }
 .vram-fc-source__live-meter--probe {
-  --mem-accent: var(--theme-telemetry-amber, #fbbf24);
+  --mem-accent: var(--theme-telemetry-cyan, #22d3ee);
 }
 .vram-fc-source__live-meter.is-probing {
   border-color: color-mix(in srgb, var(--mem-accent) 65%, transparent);
@@ -2264,11 +2273,11 @@
   color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 70%, transparent);
 }
 .vram-fc-source[data-source-kind="fit_probe"] .vram-fc-recap {
-  border-color: color-mix(in srgb, #fbbf24 35%, transparent);
+  border-color: color-mix(in srgb, #22d3ee 35%, transparent);
 }
 .vram-fc-source[data-source-kind="learned"] .vram-fc-recap,
 .vram-fc-source[data-source-kind="learned_curve"] .vram-fc-recap {
-  border-color: color-mix(in srgb, #22d3ee 35%, transparent);
+  border-color: color-mix(in srgb, #fbbf24 40%, transparent);
 }
 @keyframes vram-fc-recap-in {
   from { opacity: 0; transform: translateY(-3px); }
@@ -2965,13 +2974,13 @@
 [data-display-texture="phosphor-light"] .vram-fc-need__val.vram-forecast-gb-accented--learned_curve,
 [data-display-texture="phosphor-light"] .vram-fc[data-source-kind="learned"] .vram-fc-need:not(.vram-fc-need--ram) .vram-fc-need__val,
 [data-display-texture="phosphor-light"] .vram-fc[data-source-kind="learned_curve"] .vram-fc-need:not(.vram-fc-need--ram) .vram-fc-need__val {
-  color: var(--display-face-light-text-cyan, #0e4a5c);
+  color: var(--display-face-light-text-amber, #7a4a08);
   text-shadow: none;
 }
 
 [data-display-texture="phosphor-light"] .vram-fc-need__val.vram-forecast-gb-accented--fit_probe,
 [data-display-texture="phosphor-light"] .vram-fc[data-source-kind="fit_probe"] .vram-fc-need:not(.vram-fc-need--ram) .vram-fc-need__val {
-  color: var(--display-face-light-text-amber, #7a4a08);
+  color: var(--display-face-light-text-cyan, #0e4a5c);
   text-shadow: none;
 }
 
@@ -2994,8 +3003,8 @@
 
 [data-display-texture="phosphor-light"] .vram-fc__src[data-source-kind="learned"],
 [data-display-texture="phosphor-light"] .vram-fc__src[data-source-kind="learned_curve"] {
-  color: var(--display-face-light-text-cyan, #0e4a5c);
-  border-color: color-mix(in srgb, var(--display-face-light-text-cyan, #0e4a5c) 40%, transparent);
+  color: var(--display-face-light-text-amber, #7a4a08);
+  border-color: color-mix(in srgb, var(--display-face-light-text-amber, #7a4a08) 42%, transparent);
 }
 [data-display-texture="phosphor-light"] .vram-fc-source__live-meter {
   border-color: color-mix(in srgb, var(--mem-accent, var(--display-face-light-text-cyan, #0e7490)) 55%, transparent);
@@ -3052,10 +3061,10 @@
 }
 [data-display-texture="phosphor-light"] .vram-fc-need-frame[data-source-kind="learned"],
 [data-display-texture="phosphor-light"] .vram-fc-need-frame[data-source-kind="learned_curve"] {
-  --need-frame-accent: color-mix(in srgb, var(--display-face-light-text-cyan, #0e7490) 65%, transparent);
+  --need-frame-accent: color-mix(in srgb, var(--display-face-light-text-amber, #b45309) 62%, #ca8a04 18%);
 }
 [data-display-texture="phosphor-light"] .vram-fc-need-frame[data-source-kind="fit_probe"] {
-  --need-frame-accent: color-mix(in srgb, var(--display-face-light-text-amber, #b45309) 65%, transparent);
+  --need-frame-accent: color-mix(in srgb, var(--display-face-light-text-cyan, #0e7490) 65%, transparent);
 }
 [data-display-texture="phosphor-light"] .vram-fc-need-frame:not([data-source-kind]) {
   --need-frame-accent: color-mix(in srgb, var(--display-face-light-fc-label-border, #0284c7) 70%, transparent);
@@ -3065,14 +3074,18 @@
 [data-display-texture="phosphor-light"] .vram-fc-need-frame__live {
   opacity: 0.38;
 }
-[data-display-texture="phosphor-light"] .vram-fc-need-frame__live.is-probing {
+[data-display-texture="phosphor-light"] .vram-fc-need-frame__live.is-probing,
+[data-display-texture="phosphor-light"] .vram-fc-need-frame__live.is-mode-full {
   opacity: 0.52;
 }
+[data-display-texture="phosphor-light"] .vram-fc-need-frame__live.is-mode-scan {
+  opacity: 0.34;
+}
 [data-display-texture="phosphor-light"] .vram-fc-need-frame__live.is-probe {
-  --need-live-accent: var(--display-face-light-text-amber, #b45309);
+  --need-live-accent: var(--display-face-light-text-cyan, #0e7490);
 }
 [data-display-texture="phosphor-light"] .vram-fc-need-frame__live.is-learned {
-  --need-live-accent: var(--display-face-light-text-cyan, #0e7490);
+  --need-live-accent: color-mix(in srgb, var(--display-face-light-text-amber, #b45309) 75%, #ca8a04 25%);
 }
 [data-display-texture="phosphor-light"] .vram-fc-need-frame__live-scan {
   mix-blend-mode: multiply;
@@ -3093,10 +3106,10 @@
 }
 [data-display-texture="phosphor-light"] .vram-fc-need-frame[data-source-kind="learned"] .vram-fc-need-frame__status,
 [data-display-texture="phosphor-light"] .vram-fc-need-frame[data-source-kind="learned_curve"] .vram-fc-need-frame__status {
-  color: var(--display-face-light-text-cyan, #0e4a5c);
+  color: var(--display-face-light-text-amber, #7a4a08);
 }
 [data-display-texture="phosphor-light"] .vram-fc-need-frame[data-source-kind="fit_probe"] .vram-fc-need-frame__status {
-  color: var(--display-face-light-text-amber, #7a4a08);
+  color: var(--display-face-light-text-cyan, #0e4a5c);
 }
 /* Frame need chips keep dark wells (same as other chips) */
 [data-display-texture="phosphor-light"] .vram-fc-need-frame .vram-fc-bar__need-chip {
@@ -3191,13 +3204,19 @@
 
 [data-display-texture="phosphor-light"] .vram-fc__src[data-source-kind="learned"],
 [data-display-texture="phosphor-light"] .vram-fc__src[data-source-kind="learned_curve"] {
+  color: var(--display-face-light-text-amber, #7a4a08);
+  border-color: color-mix(in srgb, var(--display-face-light-text-amber, #7a4a08) 42%, transparent);
+}
+
+[data-display-texture="phosphor-light"] .vram-fc__src[data-source-kind="fit_probe"] {
   color: var(--display-face-light-text-cyan, #0e4a5c);
   border-color: color-mix(in srgb, var(--display-face-light-text-cyan, #0e4a5c) 40%, transparent);
 }
-
-[data-display-texture="phosphor-light"] .vram-fc__src[data-source-kind="fit_probe"],
+/* RE-PROBE action stays warm copper so the button still reads as CTA */
 [data-display-texture="phosphor-light"] .vram-fc-probe[data-probe-state="reprobe"],
-[data-display-texture="phosphor-light"] .vram-fc-probe[data-probe-state="probing"] {
+[data-display-texture="phosphor-light"] .vram-fc-probe[data-probe-state="probing"],
+[data-display-texture="phosphor-light"] .vram-fc-header__reprobe,
+[data-display-texture="phosphor-light"] .vram-fc-source__reprobe {
   color: var(--display-face-light-text-amber, #7a4a08);
   border-color: color-mix(in srgb, var(--display-face-light-text-amber, #7a4a08) 40%, transparent);
 }

@@ -194,19 +194,21 @@ export const MEMORY_SOURCE_ACCENT: Record<
   MemorySource["kind"],
   { text: string; border: string; gbGradient: string }
 > = {
+  /* Instrument / active measure */
   fit_probe: {
-    text: "text-amber-400",
-    border: "border-amber-400/50",
-    gbGradient: "",
-  },
-  learned: {
     text: "text-cyan-400",
     border: "border-cyan-400/50",
     gbGradient: "",
   },
+  /* Premium locked / trusted launches */
+  learned: {
+    text: "text-yellow-400",
+    border: "border-yellow-400/50",
+    gbGradient: "",
+  },
   learned_curve: {
-    text: "text-cyan-400",
-    border: "border-cyan-400/40",
+    text: "text-yellow-400",
+    border: "border-yellow-400/40",
     gbGradient: "",
   },
 };
