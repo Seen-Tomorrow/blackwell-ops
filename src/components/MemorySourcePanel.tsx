@@ -13,10 +13,12 @@ interface MemorySourcePanelProps {
   onValidate?: () => void;
   hideValidate?: boolean;
   /**
-   * true  → one-line SOURCE · KIND · detail (FULL AUTO)
-   * false → header + original detail/breakdown stack (ASSISTED)
+   * true  → one-line SOURCE · KIND · [RE-PROBE]
+   * false → same head (legacy stack removed — recap is tooltip-only)
    */
   compact?: boolean;
+  /** Optional launch summary included in hover recap. */
+  launchSummary?: string;
 }
 
 function ConfidencePips({ level }: { level: MemorySource["confidence"] }) {
@@ -32,27 +34,42 @@ function ConfidencePips({ level }: { level: MemorySource["confidence"] }) {
   );
 }
 
-/** SOURCE instrument — compact strip or full memory breakdown. */
+function buildRecapTooltip(
+  memorySource: MemorySource,
+  label: string,
+  launchSummary?: string,
+): string {
+  const lines: string[] = [];
+  if (launchSummary?.trim()) lines.push(launchSummary.trim());
+  lines.push(`SOURCE · ${label}`);
+  if (memorySource.detail?.trim()) lines.push(memorySource.detail.trim());
+  if (memorySource.breakdown?.trim()) lines.push(memorySource.breakdown.trim());
+  if (memorySource.breakdownSecondary?.trim()) {
+    lines.push(memorySource.breakdownSecondary.trim());
+  }
+  return lines.join("\n");
+}
+
+/** SOURCE instrument — dominant kind chip + optional RE-PROBE; full recap on hover. */
 export default function MemorySourcePanel({
   memorySource,
   isValidating = false,
   hasProbed = false,
   onValidate,
   hideValidate = false,
-  compact = true,
+  compact: _compact = true,
+  launchSummary,
 }: MemorySourcePanelProps) {
   const accent = MEMORY_SOURCE_ACCENT[memorySource.kind];
   const label = MEMORY_SOURCE_LABELS[memorySource.kind];
-  const detail = memorySource.detail?.trim() || "";
+  const tip = buildRecapTooltip(memorySource, label, launchSummary);
 
   return (
     <div
-      className={`vram-fc-source memory-source-strip${compact ? " vram-fc-source--inline" : ""}`}
+      className="vram-fc-source memory-source-strip vram-fc-source--inline vram-fc-source--dominant"
       data-source-kind={memorySource.kind}
-      data-source-layout={compact ? "inline" : "stack"}
-      title={[label, detail, memorySource.breakdown, memorySource.breakdownSecondary]
-        .filter(Boolean)
-        .join(" · ")}
+      data-source-layout="inline"
+      title={tip}
     >
       <div className="vram-fc-source__head memory-source-header">
         <span className="vram-fc-source__lab">SOURCE</span>
@@ -62,44 +79,14 @@ export default function MemorySourcePanel({
             {label}
           </span>
         </span>
-        {compact && detail ? (
-          <>
-            <span className="vram-fc-source__dot" aria-hidden>
-              ·
-            </span>
-            <span className="vram-fc-source__detail">{detail}</span>
-          </>
-        ) : null}
-        {onValidate && !hideValidate && (
+        {onValidate && !hideValidate ? (
           <FitProbeButton
             isValidating={isValidating}
             hasProbed={hasProbed}
             onClick={onValidate}
           />
-        )}
+        ) : null}
       </div>
-
-      {!compact && (
-        <div className="vram-fc-source__body memory-source-body">
-          <span className="memory-source-body__line memory-source-body__line--detail vram-fc-source__line">
-            {memorySource.detail || "\u00a0"}
-          </span>
-          <span
-            className={`memory-source-body__line memory-source-body__line--breakdown vram-fc-source__line${
-              memorySource.breakdown ? "" : " memory-source-body__line--empty"
-            }`}
-          >
-            {memorySource.breakdown || "\u00a0"}
-          </span>
-          <span
-            className={`memory-source-body__line memory-source-body__line--secondary vram-fc-source__line${
-              memorySource.breakdownSecondary ? "" : " memory-source-body__line--empty"
-            }`}
-          >
-            {memorySource.breakdownSecondary || "\u00a0"}
-          </span>
-        </div>
-      )}
     </div>
   );
 }
@@ -131,7 +118,7 @@ export function FitProbeButton({
       data-probe-state={state}
       className="vram-fc-probe fit-probe-btn"
     >
-      {isValidating ? "PROBING…" : hasProbed ? "RE-PROBE" : "FIT PROBE"}
+      {isValidating ? "PROBING…" : hasProbed ? "RE-PROBE" : "PROBE"}
     </button>
   );
 }

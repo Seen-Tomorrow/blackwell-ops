@@ -140,17 +140,26 @@ export function resolveMemorySource(
         taxNote = ` · +${tax.taxGb.toFixed(1)} GB ${modeLab} tax (fallback — no library Δ)`;
       }
     }
+    const bd = formatBreakdown(
+      manifest.validatedGpuBreakdownMib,
+      manifest.validatedHostMib,
+      manifest.validatedComponentsMib ?? undefined,
+      undefined,
+      activeSplit,
+      weightFileBytes,
+    );
+    // Inline detail stays short; GPU/host/tax live in tooltip recap only.
+    const tipBits = [
+      bd.breakdown,
+      bd.breakdownSecondary,
+      taxNote.replace(/^ · /, "") || undefined,
+      "via llama-fit-params",
+    ].filter(Boolean);
     return {
       kind: "fit_probe",
-      detail: `llama-fit-params · measured ${manifest.fitProbeMeasuredAt}${taxNote}`,
-      ...formatBreakdown(
-        manifest.validatedGpuBreakdownMib,
-        manifest.validatedHostMib,
-        manifest.validatedComponentsMib ?? undefined,
-        undefined,
-        activeSplit,
-        weightFileBytes,
-      ),
+      detail: `measured ${manifest.fitProbeMeasuredAt}`,
+      breakdown: tipBits.length > 0 ? tipBits.join(" · ") : bd.breakdown,
+      breakdownSecondary: undefined,
       confidence: 3,
     };
   }

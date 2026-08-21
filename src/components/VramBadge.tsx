@@ -9,7 +9,7 @@ import FusionPane from "./FusionPane";
 import FusionDualStage, { type FusionPaneIdentity } from "./FusionDualStage";
 import MoeBadge from "./MoeBadge";
 import FitLaunchToggle from "./FitLaunchToggle";
-import MemorySourcePanel, { FitProbeButton, manifestHasFitProbe } from "./MemorySourcePanel";
+import MemorySourcePanel, { manifestHasFitProbe } from "./MemorySourcePanel";
 import { useForecastContentHeight } from "../hooks/useForecastContentHeight";
 import type { FusionShareLaunchConfig } from "../lib/fusionShareCapture";
 import type { FusionDualOrient } from "../lib/storage";
@@ -291,6 +291,38 @@ export default function VramBadge({
   const memorySource = manifest.memorySource;
   const sourceKind = memorySource?.kind;
   const isFitProbe = sourceKind === "fit_probe";
+  const assistedLaunchSummary =
+    t.launchSummary || t.heroText || s.label;
+
+  // SOURCE · KIND · RE-PROBE (inline). GPU/host/tooling detail is hover recap only.
+  const forecastSourceRow = memorySource && !hideFitProbe ? (
+    <div className="vram-fc__source-row vram-forecast-header__fit-row">
+      <div className="vram-forecast-source min-w-0 flex-1">
+        <MemorySourcePanel
+          memorySource={memorySource}
+          manifest={manifest}
+          isValidating={isValidating}
+          hasProbed={manifestHasFitProbe(manifest)}
+          onValidate={onValidate}
+          hideValidate={!onValidate}
+          compact
+          launchSummary={showDetailedForecast ? assistedLaunchSummary : undefined}
+        />
+      </div>
+    </div>
+  ) : memorySource ? (
+    <div className="vram-fc__source-row vram-forecast-header__fit-row">
+      <div className="vram-forecast-source min-w-0 flex-1">
+        <MemorySourcePanel
+          memorySource={memorySource}
+          manifest={manifest}
+          compact
+          launchSummary={showDetailedForecast ? assistedLaunchSummary : undefined}
+        />
+      </div>
+    </div>
+  ) : null;
+
   const displayVramNeedGb = manifest.vramTotalGb;
   const displayRamNeedGb = isFitProbe
     ? (manifest.validatedHostMib != null && manifest.validatedHostMib > 0
@@ -314,42 +346,6 @@ export default function VramBadge({
   const ramUsagePct = manifest.ramManufacturedGb > 0 ? Math.min((manifest.ramTotalGb / manifest.ramManufacturedGb) * 100, 100) : 0;
   const ramMfgGb = manifest.ramManufacturedGb.toFixed(0);
 
-  const fitProbeButton = !hideFitProbe && onValidate ? (
-    <FitProbeButton
-      isValidating={isValidating}
-      hasProbed={manifestHasFitProbe(manifest)}
-      onClick={onValidate}
-    />
-  ) : null;
-
-  const memorySourcePanel = memorySource ? (
-    <MemorySourcePanel
-      memorySource={memorySource}
-      manifest={manifest}
-      isValidating={isValidating}
-      hasProbed={manifestHasFitProbe(manifest)}
-      onValidate={onValidate}
-      hideValidate
-      compact={!showDetailedForecast}
-    />
-  ) : null;
-
-  // FULL AUTO: one-line SOURCE. ASSISTED: full breakdown stack.
-  const forecastSourceRow = (memorySourcePanel || fitProbeButton) ? (
-    <div className="vram-fc__source-row vram-forecast-header__fit-row">
-      {fitProbeButton && (
-        <div className="vram-fc__probe-slot vram-forecast-header__fit-controls">
-          {fitProbeButton}
-        </div>
-      )}
-      {memorySourcePanel && (
-        <div className="vram-forecast-source min-w-0 flex-1">
-          {memorySourcePanel}
-        </div>
-      )}
-    </div>
-  ) : null;
-
   /** Scenario identity chip — FULL AUTO top-right only. */
   const scenarioChip = (
     <span className="vram-fc__ident vram-forecast-scenario-badge">
@@ -358,10 +354,6 @@ export default function VramBadge({
       </span>
     </span>
   );
-
-  /** ASSISTED: personal launch summary (not FIT SINGLE/MULTI stamp). */
-  const assistedLaunchSummary =
-    t.launchSummary || t.heroText || s.label;
 
   const remainPct =
     manifest.fits && totalVramMib > 0

@@ -84,7 +84,7 @@ export function resolveLaunchChromePolicy(opts: {
       deviceLocked: true,
       splitLocked: false,
       hideSplitNone: true,
-      reason: "Model needs multiple GPUs — device locked to ALL",
+      // No amber bezel banner — locks alone communicate multi-GPU.
     };
   }
 

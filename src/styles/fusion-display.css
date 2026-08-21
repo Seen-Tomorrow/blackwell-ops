@@ -1192,42 +1192,67 @@
   flex: 0 0 auto;
 }
 
+.vram-fc-bars--assisted .vram-fc-bar__lab {
+  flex: 0 0 3.6ch;
+  width: 3.6ch;
+  min-width: 3.6ch;
+  text-align: left;
+}
+
+.vram-fc-bars--assisted .vram-fc-bar {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .vram-fc-bar__nums {
-  flex: 0 0 auto;
-  display: inline-flex;
+  flex: 0 0 11.5ch;
+  width: 11.5ch;
+  display: grid;
+  grid-template-columns: minmax(4.8ch, auto) 0.7ch minmax(3.6ch, auto) 1.6ch;
   align-items: baseline;
-  gap: 0.12em;
-  min-width: 7.5ch;
-  justify-content: flex-end;
+  justify-content: end;
+  column-gap: 0.1em;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: calc(10px * var(--vram-fc-scale, 1.12));
-  font-weight: 700;
-  letter-spacing: 0.02em;
   line-height: 1;
-  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 88%, transparent);
+  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 90%, transparent);
   white-space: nowrap;
 }
 
 .vram-fc-bar__nums--ram {
-  color: color-mix(in srgb, #60a5fa 75%, var(--display-face-text, #e2e8f0));
+  color: color-mix(in srgb, #60a5fa 78%, var(--display-face-text, #e2e8f0));
+}
+
+.vram-fc-bar__need {
+  font-size: calc(13px * var(--vram-fc-scale, 1.12));
+  font-weight: 800;
+  text-align: right;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
 }
 
 .vram-fc-bar__slash {
-  opacity: 0.45;
+  opacity: 0.4;
+  font-size: calc(9px * var(--vram-fc-scale, 1.12));
   font-weight: 500;
+  text-align: center;
 }
 
 .vram-fc-bar__pool {
-  opacity: 0.72;
+  font-size: calc(9px * var(--vram-fc-scale, 1.12));
   font-weight: 600;
+  opacity: 0.72;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .vram-fc-bar__unit {
-  margin-left: 0.15em;
-  font-size: 0.85em;
-  opacity: 0.55;
+  font-size: calc(8px * var(--vram-fc-scale, 1.12));
+  opacity: 0.5;
   letter-spacing: 0.06em;
+  text-align: left;
+  padding-left: 0.1em;
 }
+
 
 .vram-fc-bars--split {
   flex-direction: row;
@@ -1378,6 +1403,46 @@
   background: transparent;
   box-shadow: none;
   box-sizing: border-box;
+}
+
+
+.vram-fc-source--dominant {
+  min-width: 0;
+}
+.vram-fc-source--dominant .vram-fc-source__head {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: calc(8px * var(--vram-fc-scale, 1.12));
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+.vram-fc-source--dominant .vram-fc-source__lab {
+  font-size: calc(9px * var(--vram-fc-scale, 1.12));
+  letter-spacing: 0.16em;
+  font-weight: 800;
+  opacity: 0.9;
+}
+.vram-fc-source--dominant .vram-fc-source__kind {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(5px * var(--vram-fc-scale, 1.12));
+  min-width: 0;
+}
+.vram-fc-source--dominant .vram-fc-source__kind-lab {
+  font-size: calc(11px * var(--vram-fc-scale, 1.12));
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+.vram-fc-source--dominant .vram-fc-source__pips {
+  transform: scale(1.05);
+}
+.vram-fc-source--dominant .vram-fc-probe {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: calc(8px * var(--vram-fc-scale, 1.12));
+  letter-spacing: 0.1em;
+  padding: 0.12rem 0.4rem;
 }
 
 .vram-fc-source--inline {
