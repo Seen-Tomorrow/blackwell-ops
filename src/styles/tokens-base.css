@@ -202,12 +202,11 @@
   --display-face-light-source-kind-bg: color-mix(in srgb, #020617 72%, transparent);
   --display-face-light-source-kind-border: color-mix(in srgb, #94a3b8 32%, transparent);
   /*
-   * Default face plates (CLEAN / DARK textures) — soft wash on dark CRT faces.
-   * Light-paper themes (ARCTIC) override these to the dark slate wash so CLEAN
-   * matches LIGHT without a CSS theme fork.
+   * Default face plates (CLEAN / DARK) — no SOURCE plate wash.
+   * ARCTIC overrides --display-face-source-plate-bg to a flat dark slate
+   * so gold LEARNED / cyan PROBE stay readable on paper (CLEAN + LIGHT).
    */
-  --display-face-source-wash-mid: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 6%, transparent);
-  --display-face-source-wash-end: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 14%, transparent);
+  --display-face-source-plate-bg: transparent;
   --display-face-source-lab: color-mix(
     in srgb,
     var(--display-face-text, #e2e8f0) 68%,

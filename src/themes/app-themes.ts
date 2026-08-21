@@ -873,18 +873,18 @@ const ARCTIC: AppTheme = {
     "--display-face-control-active-border": "#0284c7",
     "--display-face-control-active-text": "#e0f2fe",
     /*
-     * CLEAN (and any non-LIGHT texture on paper face) — same dark slate wash as
-     * phosphor-light so gold LEARNED / cyan PROBE stay readable. Token path only.
+     * SOURCE strip — flat dark slate under MEMORY FORECAST SOURCE · LEARNED
+     * (CLEAN + LIGHT). No gradient; gold/cyan kind stays readable.
      */
-    "--display-face-source-wash-mid": "color-mix(in srgb, #0f172a 14%, transparent)",
-    "--display-face-source-wash-end": "color-mix(in srgb, #0b1220 52%, transparent)",
+    "--display-face-source-plate-bg": "color-mix(in srgb, #0b1220 48%, transparent)",
     "--display-face-source-lab": "color-mix(in srgb, #e2e8f0 78%, #94a3b8)",
     "--display-face-source-kind-bg": "color-mix(in srgb, #020617 72%, transparent)",
     "--display-face-source-kind-border": "color-mix(in srgb, #94a3b8 32%, transparent)",
-    "--display-face-plate-wash-start": "color-mix(in srgb, #0b1220 52%, transparent)",
-    "--display-face-plate-wash-mid": "color-mix(in srgb, #0f172a 36%, transparent)",
-    "--display-face-gpu-trough-wash-start": "color-mix(in srgb, #0b1220 48%, transparent)",
-    "--display-face-gpu-trough-wash-mid": "color-mix(in srgb, #0f172a 28%, transparent)",
+    /* NEED / GPU reverse wash still soft on CLEAN paper */
+    "--display-face-plate-wash-start": "color-mix(in srgb, #0b1220 40%, transparent)",
+    "--display-face-plate-wash-mid": "color-mix(in srgb, #0f172a 18%, transparent)",
+    "--display-face-gpu-trough-wash-start": "color-mix(in srgb, #0b1220 40%, transparent)",
+    "--display-face-gpu-trough-wash-mid": "color-mix(in srgb, #0f172a 18%, transparent)",
 
     /* ── PHOSPHOR LIGHT — bright glacier glass (light paper, soft grain) ── */
     "--display-face-light-surface": "#f4f8fc",
