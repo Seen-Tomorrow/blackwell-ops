@@ -444,9 +444,9 @@
 
 /* Holds phosphor open while LEARNED / FIT PROBE resolve (~1s). */
 .vram-badge-forecast--skeleton {
-  min-height: 300px;
-  height: 300px;
-  max-height: 300px;
+  min-height: 275px;
+  height: 275px;
+  max-height: 275px;
 }
 
 .vram-forecast-measuring {
