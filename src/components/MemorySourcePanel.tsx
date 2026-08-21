@@ -133,13 +133,9 @@ function useNeedFrameLiveDrive(active: boolean, mode: "full" | "scan") {
     if (!active) return;
     const root = rootRef.current;
     if (!root) return;
-    const rims = Array.from(
-      root.querySelectorAll<HTMLElement>(".vram-fc-need-frame__live-rim"),
-    );
-    const ticks = Array.from(
-      root.querySelectorAll<HTMLElement>(".vram-fc-need-frame__live-tick"),
-    );
-    if (rims.length === 0) return;
+    const rim = root.querySelector<HTMLElement>(".vram-fc-need-frame__live-rim");
+    const tickEl = root.querySelector<HTMLElement>(".vram-fc-need-frame__live-tick");
+    if (!rim) return;
 
     let raf = 0;
     const t0 = performance.now();
@@ -148,48 +144,27 @@ function useNeedFrameLiveDrive(active: boolean, mode: "full" | "scan") {
     const tick = (now: number) => {
       const t = (now - t0) / 1000;
       if (full) {
-        // Dual runners — outer + inner, slight phase lag like double border
-        const degOuter = (t * 125) % 360;
-        const degInner = (degOuter + 28) % 360; // lag on the inner track
-        const op = 0.72 + 0.16 * Math.sin(t * 2.4);
-        for (const rim of rims) {
-          const inner = rim.classList.contains("vram-fc-need-frame__live-rim--inner");
-          const deg = inner ? degInner : degOuter;
-          rim.style.setProperty("--rim-angle", `${deg.toFixed(1)}deg`);
-          rim.style.opacity = (inner ? op * 0.92 : op).toFixed(3);
-        }
-        for (const tickEl of ticks) {
-          const inner = tickEl.classList.contains("vram-fc-need-frame__live-tick--inner");
-          const deg = inner ? degInner : degOuter;
+        const deg = (t * 125) % 360;
+        rim.style.setProperty("--rim-angle", `${deg.toFixed(1)}deg`);
+        rim.style.opacity = (0.72 + 0.16 * Math.sin(t * 2.4)).toFixed(3);
+        if (tickEl) {
           tickEl.style.setProperty("--rim-angle", `${deg.toFixed(1)}deg`);
-          tickEl.style.opacity = (
-            (inner ? 0.5 : 0.62) + 0.28 * Math.sin(t * 2.4 + (inner ? 1.1 : 0.8))
-          ).toFixed(3);
+          tickEl.style.opacity = (0.55 + 0.28 * Math.sin(t * 2.4 + 0.8)).toFixed(3);
         }
       } else {
-        // Single dashed chase on outer track
         const deg = (t * 80) % 360;
-        const op = 0.5 + 0.14 * Math.sin(t * 1.6);
-        for (const rim of rims) {
-          if (rim.classList.contains("vram-fc-need-frame__live-rim--inner")) {
-            rim.style.opacity = "0";
-            continue;
-          }
-          rim.style.setProperty("--rim-angle", `${deg.toFixed(1)}deg`);
-          rim.style.opacity = op.toFixed(3);
-        }
-        for (const tickEl of ticks) tickEl.style.opacity = "0";
+        rim.style.setProperty("--rim-angle", `${deg.toFixed(1)}deg`);
+        rim.style.opacity = (0.5 + 0.14 * Math.sin(t * 1.6)).toFixed(3);
+        if (tickEl) tickEl.style.opacity = "0";
       }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => {
       cancelAnimationFrame(raf);
-      for (const rim of rims) {
-        rim.style.removeProperty("--rim-angle");
-        rim.style.opacity = "";
-      }
-      for (const tickEl of ticks) {
+      rim.style.removeProperty("--rim-angle");
+      rim.style.opacity = "";
+      if (tickEl) {
         tickEl.style.removeProperty("--rim-angle");
         tickEl.style.opacity = "";
       }
@@ -317,16 +292,8 @@ export function MemorySourceNeedOverlay({
       data-live="1"
       aria-hidden
     >
-      {/* Outer track — sits on plate edge / outer double-border */}
-      <span className="vram-fc-need-frame__live-rim vram-fc-need-frame__live-rim--outer" />
-      {mode === "full" ? (
-        <>
-          <span className="vram-fc-need-frame__live-tick vram-fc-need-frame__live-tick--outer" />
-          {/* Inner track — 3px gap, mirrors double-border air */}
-          <span className="vram-fc-need-frame__live-rim vram-fc-need-frame__live-rim--inner" />
-          <span className="vram-fc-need-frame__live-tick vram-fc-need-frame__live-tick--inner" />
-        </>
-      ) : null}
+      <span className="vram-fc-need-frame__live-rim" />
+      {mode === "full" ? <span className="vram-fc-need-frame__live-tick" /> : null}
     </div>
   );
 }
