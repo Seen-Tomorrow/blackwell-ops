@@ -9,7 +9,11 @@ import FusionPane from "./FusionPane";
 import FusionDualStage, { type FusionPaneIdentity } from "./FusionDualStage";
 import MoeBadge from "./MoeBadge";
 import FitLaunchToggle from "./FitLaunchToggle";
-import MemorySourcePanel, { manifestHasFitProbe } from "./MemorySourcePanel";
+import MemorySourcePanel, {
+  MemorySourceLiveFloat,
+  MemorySourceStatusMark,
+  getMemorySourceView,
+} from "./MemorySourcePanel";
 import { useForecastContentHeight } from "../hooks/useForecastContentHeight";
 import type { FusionShareLaunchConfig } from "../lib/fusionShareCapture";
 import type { FusionDualOrient } from "../lib/storage";
@@ -294,23 +298,8 @@ export default function VramBadge({
   const assistedLaunchSummary =
     t.launchSummary || t.heroText || s.label;
 
-  // SOURCE · KIND · RE-PROBE (inline). GPU/host/tooling detail is hover recap only.
-  const forecastSourceRow = memorySource && !hideFitProbe ? (
-    <div className="vram-fc__source-row vram-forecast-header__fit-row">
-      <div className="vram-forecast-source min-w-0 flex-1">
-        <MemorySourcePanel
-          memorySource={memorySource}
-          manifest={manifest}
-          isValidating={isValidating}
-          hasProbed={manifestHasFitProbe(manifest)}
-          onValidate={onValidate}
-          hideValidate={!onValidate}
-          compact
-          launchSummary={showDetailedForecast ? assistedLaunchSummary : undefined}
-        />
-      </div>
-    </div>
-  ) : memorySource ? (
+  // SOURCE identity only (lab + kind). Status lives in NEED frame; live controls float top-right.
+  const forecastSourceRow = memorySource ? (
     <div className="vram-fc__source-row vram-forecast-header__fit-row">
       <div className="vram-forecast-source min-w-0 flex-1">
         <MemorySourcePanel
@@ -323,13 +312,20 @@ export default function VramBadge({
     </div>
   ) : null;
 
+  const sourceView = memorySource
+    ? getMemorySourceView(memorySource, {
+        onValidate: hideFitProbe ? undefined : onValidate,
+        hideValidate: hideFitProbe || !onValidate,
+      })
+    : null;
+
   const displayVramNeedGb = manifest.vramTotalGb;
   const displayRamNeedGb = isFitProbe
     ? (manifest.validatedHostMib != null && manifest.validatedHostMib > 0
         ? manifest.validatedHostMib / 1024
         : manifest.ramTotalGb)
     : manifest.ramTotalGb;
-  const showRamNeed = displayRamNeedGb >= 0.05;
+  const showRamBar = t.showRamBar !== false;
 
   // Total manufactured VRAM capacity across all GPUs
   const totalVramMib = gpus.reduce((sum, g) => {
@@ -344,7 +340,6 @@ export default function VramBadge({
 
   // RAM info for bar fill — OS usage from manufactured capacity
   const ramUsagePct = manifest.ramManufacturedGb > 0 ? Math.min((manifest.ramTotalGb / manifest.ramManufacturedGb) * 100, 100) : 0;
-  const ramMfgGb = manifest.ramManufacturedGb.toFixed(0);
 
   /*
    * NEED hero pressure — same formula as GpuTopology card %:
@@ -399,81 +394,115 @@ export default function VramBadge({
         </div>
       )}
 
+      {/* Live meter + RE-PROBE — float above top-right of measure */}
+      {memorySource && !hideFitProbe ? (
+        <MemorySourceLiveFloat
+          memorySource={memorySource}
+          isValidating={isValidating}
+          onValidate={onValidate}
+          hideValidate={!onValidate}
+          className="vram-fc-measure__live-float"
+        />
+      ) : null}
+
       <div className="vram-fc-measure__main">
         {forecastSourceRow ? (
           <div className="vram-fc-measure__source">{forecastSourceRow}</div>
         ) : null}
 
-        <div className="vram-fc-measure__rails vram-fc-bars vram-badge-bars vram-fc-bars--assisted">
-          <div className="vram-fc-bar-row vram-fc-bar-row--vram">
-            <div
-              className="vram-fc-bar vram-fc-bar--fused vram-forecast-vram-bar"
-              aria-label={`VRAM ${displayVramNeedGb.toFixed(1)} of ${totalVramGb.toFixed(1)} GB`}
-            >
-              <span className="vram-fc-bar__name-chip">
-                <span className="vram-fc-bar__name-lab">VRAM</span>
-                <span className="vram-fc-bar__name-total">total</span>
-              </span>
-              <span className="vram-fc-bar__cap-chip" title="Free pool capacity">
-                <span className="vram-fc-bar__cap-val">{totalVramGb.toFixed(1)}</span>
-                <span className="vram-fc-bar__cap-unit">GB</span>
-              </span>
-              <div className="vram-fc-bar__track">
-                <div
-                  className={`vram-fc-bar__fill vram-fc-bar__fill--bevel ${s.gpuBarColor}`}
-                  style={{ width: `${vramUsagePct}%` }}
-                />
-              </div>
-              <span
-                className="vram-fc-bar__need-chip"
-                data-need-tone={vramNeedTone}
-                title="Projected need"
-              >
-                <span className="vram-fc-bar__need-prefix">need</span>
-                <span className={`vram-fc-bar__need vram-fc-bar__need--${vramNeedTone}`}>
-                  {displayVramNeedGb.toFixed(1)}
-                </span>
-                <span className="vram-fc-bar__unit">GB</span>
-              </span>
-            </div>
-          </div>
-
-          {t.showRamBar !== false && (
-            <div className="vram-fc-bar-row vram-fc-bar-row--ram">
+        <div
+          className="vram-fc-measure__cluster"
+          data-has-status={sourceView?.showStatus ? "1" : "0"}
+          data-has-ram={showRamBar ? "1" : "0"}
+        >
+          <div className="vram-fc-measure__rails vram-fc-bars vram-badge-bars vram-fc-bars--assisted">
+            <div className="vram-fc-bar-row vram-fc-bar-row--vram">
               <div
-                className="vram-fc-bar vram-fc-bar--fused vram-forecast-ram-bar"
-                aria-label={`RAM ${displayRamNeedGb.toFixed(1)} of ${manifest.ramManufacturedGb.toFixed(1)} GB`}
+                className="vram-fc-bar vram-fc-bar--fused vram-fc-bar--track-only vram-forecast-vram-bar"
+                aria-label={`VRAM ${displayVramNeedGb.toFixed(1)} of ${totalVramGb.toFixed(1)} GB`}
               >
-                <span className="vram-fc-bar__name-chip vram-fc-bar__name-chip--ram">
-                  <span className="vram-fc-bar__name-lab">RAM</span>
+                <span className="vram-fc-bar__name-chip">
+                  <span className="vram-fc-bar__name-lab">VRAM</span>
                   <span className="vram-fc-bar__name-total">total</span>
                 </span>
-                <span className="vram-fc-bar__cap-chip vram-fc-bar__cap-chip--ram" title="Installed RAM">
-                  <span className="vram-fc-bar__cap-val">{manifest.ramManufacturedGb.toFixed(1)}</span>
+                <span className="vram-fc-bar__cap-chip" title="Free pool capacity">
+                  <span className="vram-fc-bar__cap-val">{totalVramGb.toFixed(1)}</span>
                   <span className="vram-fc-bar__cap-unit">GB</span>
                 </span>
                 <div className="vram-fc-bar__track">
                   <div
-                    className={`vram-fc-bar__fill vram-fc-bar__fill--bevel ${
-                      t.moeRamBar || offloadMode === "moe_optimal" ? "bg-orange-hatched" : "bg-blue-700"
-                    }`}
-                    style={{ width: `${ramUsagePct}%` }}
+                    className={`vram-fc-bar__fill vram-fc-bar__fill--bevel ${s.gpuBarColor}`}
+                    style={{ width: `${vramUsagePct}%` }}
                   />
                 </div>
-                <span
-                  className="vram-fc-bar__need-chip vram-fc-bar__need-chip--ram"
-                  data-need-tone={ramNeedTone}
-                  title="Host need"
-                >
-                  <span className="vram-fc-bar__need-prefix">need</span>
-                  <span className={`vram-fc-bar__need vram-fc-bar__need--${ramNeedTone}`}>
-                    {displayRamNeedGb.toFixed(1)}
-                  </span>
-                  <span className="vram-fc-bar__unit">GB</span>
-                </span>
               </div>
             </div>
-          )}
+
+            {showRamBar && (
+              <div className="vram-fc-bar-row vram-fc-bar-row--ram">
+                <div
+                  className="vram-fc-bar vram-fc-bar--fused vram-fc-bar--track-only vram-forecast-ram-bar"
+                  aria-label={`RAM ${displayRamNeedGb.toFixed(1)} of ${manifest.ramManufacturedGb.toFixed(1)} GB`}
+                >
+                  <span className="vram-fc-bar__name-chip vram-fc-bar__name-chip--ram">
+                    <span className="vram-fc-bar__name-lab">RAM</span>
+                    <span className="vram-fc-bar__name-total">total</span>
+                  </span>
+                  <span className="vram-fc-bar__cap-chip vram-fc-bar__cap-chip--ram" title="Installed RAM">
+                    <span className="vram-fc-bar__cap-val">{manifest.ramManufacturedGb.toFixed(1)}</span>
+                    <span className="vram-fc-bar__cap-unit">GB</span>
+                  </span>
+                  <div className="vram-fc-bar__track">
+                    <div
+                      className={`vram-fc-bar__fill vram-fc-bar__fill--bevel ${
+                        t.moeRamBar || offloadMode === "moe_optimal" ? "bg-orange-hatched" : "bg-blue-700"
+                      }`}
+                      style={{ width: `${ramUsagePct}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* NEED values + SOURCE status — one thin outline tied to both bars */}
+          <div
+            className="vram-fc-need-frame"
+            data-source-kind={sourceKind ?? undefined}
+            data-exact={sourceView?.isExact ? "1" : sourceView ? "0" : undefined}
+            data-has-status={sourceView?.showStatus ? "1" : "0"}
+            data-has-ram={showRamBar ? "1" : "0"}
+          >
+            <span
+              className="vram-fc-bar__need-chip vram-fc-need-frame__need"
+              data-need-tone={vramNeedTone}
+              title="Projected VRAM need"
+            >
+              <span className="vram-fc-bar__need-prefix">need</span>
+              <span className={`vram-fc-bar__need vram-fc-bar__need--${vramNeedTone}`}>
+                {displayVramNeedGb.toFixed(1)}
+              </span>
+              <span className="vram-fc-bar__unit">GB</span>
+            </span>
+
+            {memorySource && sourceView?.showStatus ? (
+              <MemorySourceStatusMark memorySource={memorySource} />
+            ) : null}
+
+            {showRamBar ? (
+              <span
+                className="vram-fc-bar__need-chip vram-fc-bar__need-chip--ram vram-fc-need-frame__need"
+                data-need-tone={ramNeedTone}
+                title="Host RAM need"
+              >
+                <span className="vram-fc-bar__need-prefix">need</span>
+                <span className={`vram-fc-bar__need vram-fc-bar__need--${ramNeedTone}`}>
+                  {displayRamNeedGb.toFixed(1)}
+                </span>
+                <span className="vram-fc-bar__unit">GB</span>
+              </span>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>

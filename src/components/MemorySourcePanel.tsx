@@ -21,6 +21,20 @@ interface MemorySourcePanelProps {
   launchSummary?: string;
 }
 
+export interface MemorySourceView {
+  kindLabel: string;
+  accent: (typeof MEMORY_SOURCE_ACCENT)[MemorySource["kind"]];
+  isCurve: boolean;
+  isFitProbe: boolean;
+  isLearnedExact: boolean;
+  isExact: boolean;
+  isEstimate: boolean;
+  /** Hero quality mark — EXACT / INTERPOLATED / MEASURED / ESTIMATE */
+  idleStatus: "EXACT" | "INTERPOLATED" | "MEASURED" | "ESTIMATE" | null;
+  showStatus: boolean;
+  canProbe: boolean;
+}
+
 const CTX_DRAG_COAST_MS = 300;
 
 /** Listen for CTX slider drag (+ short coast after release). */
@@ -155,7 +169,153 @@ function sourceRecapLabel(memorySource: MemorySource): string {
   }
   return MEMORY_SOURCE_LABELS[memorySource.kind];
 }
-/** MEMORY FORECAST SOURCE — exact / estimate / live meter while CTX drag. */
+
+/** Derive SOURCE view flags (status mark, probe eligibility, accents). */
+export function getMemorySourceView(
+  memorySource: MemorySource,
+  opts?: { onValidate?: () => void; hideValidate?: boolean },
+): MemorySourceView {
+  const isCurve = memorySource.kind === "learned_curve";
+  const isFitProbe = memorySource.kind === "fit_probe";
+  const isLearnedExact = memorySource.kind === "learned";
+  const isExact = memorySource.exact !== false && !isCurve;
+  const isEstimate = isCurve || (isFitProbe && memorySource.exact === false);
+  const idleStatus = ((): MemorySourceView["idleStatus"] => {
+    if (isLearnedExact) return "EXACT";
+    if (isCurve) return "INTERPOLATED";
+    if (isFitProbe) return isExact ? "MEASURED" : "ESTIMATE";
+    return null;
+  })();
+
+  return {
+    kindLabel: kindDisplayLabel(memorySource.kind),
+    accent: MEMORY_SOURCE_ACCENT[memorySource.kind],
+    isCurve,
+    isFitProbe,
+    isLearnedExact,
+    isExact,
+    isEstimate,
+    idleStatus,
+    showStatus: Boolean(idleStatus),
+    canProbe: Boolean(opts?.onValidate) && !opts?.hideValidate && !isExact,
+  };
+}
+
+export interface MemorySourceLiveFloatProps {
+  memorySource: MemorySource;
+  isValidating?: boolean;
+  onValidate?: () => void;
+  hideValidate?: boolean;
+  className?: string;
+}
+
+/**
+ * Live meter + RE-PROBE — floats top-right of the measure cluster.
+ * Meter only while CTX drag (estimates) or active PROBE.
+ */
+export function MemorySourceLiveFloat({
+  memorySource,
+  isValidating = false,
+  onValidate,
+  hideValidate = false,
+  className,
+}: MemorySourceLiveFloatProps) {
+  const view = getMemorySourceView(memorySource, { onValidate, hideValidate });
+  const ctxDragging = useCtxSliderDragging();
+  const meterActive =
+    isValidating ||
+    (ctxDragging && (view.isEstimate || view.isFitProbe || view.isCurve));
+  const barsRef = useLiveMeterDrive(meterActive);
+  const probeLabel = isValidating ? "PROBING…" : "RE-PROBE";
+
+  if (!meterActive && !view.canProbe) return null;
+
+  return (
+    <div
+      className={`vram-fc-source__live-float${className ? ` ${className}` : ""}`}
+      data-source-kind={memorySource.kind}
+      data-live={meterActive ? "1" : "0"}
+      data-has-probe={view.canProbe ? "1" : "0"}
+    >
+      {meterActive ? (
+        <span
+          className={`vram-fc-source__live-meter${
+            view.isFitProbe ? " vram-fc-source__live-meter--probe" : ""
+          }${isValidating ? " is-probing" : ""}`}
+          title={
+            isValidating
+              ? "FIT PROBE running — measuring VRAM"
+              : view.isFitProbe
+                ? view.isExact
+                  ? "FIT PROBE measured at this CTX"
+                  : "FIT PROBE estimate — scrubbing CTX"
+                : "LEARNED interpolation — scrubbing CTX"
+          }
+          aria-label="Live memory measurement"
+        >
+          <span ref={barsRef} className="vram-fc-source__live-meter-bars" aria-hidden>
+            {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+              <i key={i} className="vram-fc-source__live-bar" />
+            ))}
+          </span>
+          <span className="vram-fc-source__live-meter-scan" aria-hidden />
+        </span>
+      ) : null}
+      {view.canProbe ? (
+        <button
+          type="button"
+          className="vram-fc-source__reprobe"
+          data-probe-state={isValidating ? "probing" : "reprobe"}
+          disabled={isValidating}
+          onClick={(e) => {
+            e.stopPropagation();
+            onValidate?.();
+          }}
+          title="Run FIT PROBE at this CTX to lock a measured point"
+        >
+          {probeLabel}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+export interface MemorySourceStatusMarkProps {
+  memorySource: MemorySource;
+  className?: string;
+}
+
+/** Quality mark for the NEED frame (EXACT / INTERPOLATED / …). */
+export function MemorySourceStatusMark({
+  memorySource,
+  className,
+}: MemorySourceStatusMarkProps) {
+  const view = getMemorySourceView(memorySource);
+  if (!view.idleStatus) return null;
+
+  return (
+    <span
+      className={`vram-fc-need-frame__status${
+        view.isExact ? " is-exact" : " is-estimate"
+      }${className ? ` ${className}` : ""}`}
+      data-source-kind={memorySource.kind}
+      data-status={view.idleStatus}
+      title={
+        view.isLearnedExact
+          ? "Exact launch measurement at this CTX"
+          : view.isCurve
+            ? "Interpolated between learned launches"
+            : view.isExact
+              ? "FIT PROBE measurement at this CTX"
+              : "Estimate adjusted from probe anchor — re-probe to lock"
+      }
+    >
+      {view.idleStatus}
+    </span>
+  );
+}
+
+/** MEMORY FORECAST SOURCE identity — lab + kind + pips; hover recap. */
 export default function MemorySourcePanel({
   memorySource,
   isValidating = false,
@@ -164,50 +324,27 @@ export default function MemorySourcePanel({
   hideValidate = false,
   launchSummary,
 }: MemorySourcePanelProps) {
-  const accent = MEMORY_SOURCE_ACCENT[memorySource.kind];
-  const kindLabel = kindDisplayLabel(memorySource.kind);
-  const isCurve = memorySource.kind === "learned_curve";
-  const isFitProbe = memorySource.kind === "fit_probe";
-  const isLearnedExact = memorySource.kind === "learned";
-  const isExact = memorySource.exact !== false && !isCurve;
-  const isEstimate = isCurve || (isFitProbe && memorySource.exact === false);
+  void isValidating;
+  void hasProbed;
+  void onValidate;
+  void hideValidate;
 
-  const ctxDragging = useCtxSliderDragging();
-  // Meter only while scrubbing CTX (or active PROBE).
-  const meterActive =
-    isValidating || (ctxDragging && (isEstimate || isFitProbe || isCurve));
-
-  const showStatusSlot = isLearnedExact || isCurve || isFitProbe;
-  // Exact measurement already locked — PROBE does nothing useful here.
-  const canProbe = Boolean(onValidate) && !hideValidate && !isExact;
-
-  const recap = collectRecap(memorySource, kindLabel, launchSummary);
+  const view = getMemorySourceView(memorySource);
+  const recap = collectRecap(memorySource, view.kindLabel, launchSummary);
   const tipId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
-  const barsRef = useLiveMeterDrive(meterActive);
   const [open, setOpen] = useState(false);
 
   const show = useCallback(() => setOpen(true), []);
   const hide = useCallback(() => setOpen(false), []);
-
-  // Hero status — more important than LEARNED / FIT PROBE kind word.
-  const idleStatus = (() => {
-    if (isLearnedExact) return "EXACT";
-    if (isCurve) return "INTERPOLATED";
-    if (isFitProbe) return isExact ? "MEASURED" : "ESTIMATE";
-    return null;
-  })();
-
-  const probeLabel = isValidating ? "PROBING…" : "RE-PROBE";
 
   return (
     <div
       ref={rootRef}
       className="vram-fc-source memory-source-strip vram-fc-source--inline vram-fc-source--dominant"
       data-source-kind={memorySource.kind}
-      data-source-exact={isExact ? "1" : "0"}
+      data-source-exact={view.isExact ? "1" : "0"}
       data-source-layout="inline"
-      data-ctx-dragging={ctxDragging ? "1" : undefined}
       data-tip-open={open ? "1" : undefined}
       onMouseEnter={show}
       onMouseLeave={hide}
@@ -216,83 +353,12 @@ export default function MemorySourcePanel({
     >
       <div className="vram-fc-source__head memory-source-header">
         <span className="vram-fc-source__lab">MEMORY FORECAST SOURCE</span>
-        <span className={`vram-fc-source__kind ${accent.text}`}>
+        <span className={`vram-fc-source__kind ${view.accent.text}`}>
           <ConfidencePips level={memorySource.confidence} />
           <span className="memory-source-kind-label vram-fc-source__kind-lab">
-            {kindLabel}
+            {view.kindLabel}
           </span>
         </span>
-        {showStatusSlot ? (
-          <span
-            className="vram-fc-source__status-slot"
-            data-live={meterActive ? "1" : "0"}
-            data-kind={memorySource.kind}
-            data-has-probe={canProbe ? "1" : "0"}
-          >
-            <span className="vram-fc-source__status-main">
-              {meterActive ? (
-                <span
-                  className={`vram-fc-source__live-meter${
-                    isFitProbe ? " vram-fc-source__live-meter--probe" : ""
-                  }${isValidating ? " is-probing" : ""}`}
-                  title={
-                    isValidating
-                      ? "FIT PROBE running — measuring VRAM"
-                      : isFitProbe
-                        ? isExact
-                          ? "FIT PROBE measured at this CTX"
-                          : "FIT PROBE estimate — scrubbing CTX"
-                        : "LEARNED interpolation — scrubbing CTX"
-                  }
-                  aria-label="Live memory measurement"
-                >
-                  <span
-                    ref={barsRef}
-                    className="vram-fc-source__live-meter-bars"
-                    aria-hidden
-                  >
-                    {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
-                      <i key={i} className="vram-fc-source__live-bar" />
-                    ))}
-                  </span>
-                  <span className="vram-fc-source__live-meter-scan" aria-hidden />
-                </span>
-              ) : (
-                <span
-                  className={`vram-fc-source__status-hero${
-                    isExact ? " is-exact" : " is-estimate"
-                  }`}
-                  title={
-                    isLearnedExact
-                      ? "Exact launch measurement at this CTX"
-                      : isCurve
-                        ? "Interpolated between learned launches"
-                        : isExact
-                          ? "FIT PROBE measurement at this CTX"
-                          : "Estimate adjusted from probe anchor — re-probe to lock"
-                  }
-                >
-                  {idleStatus}
-                </span>
-              )}
-            </span>
-            {canProbe ? (
-              <button
-                type="button"
-                className="vram-fc-source__reprobe"
-                data-probe-state={isValidating ? "probing" : "reprobe"}
-                disabled={isValidating}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onValidate?.();
-                }}
-                title="Run FIT PROBE at this CTX to lock a measured point"
-              >
-                {probeLabel}
-              </button>
-            ) : null}
-          </span>
-        ) : null}
       </div>
 
       {open ? (
@@ -307,7 +373,7 @@ export default function MemorySourcePanel({
           ) : null}
           <div className="vram-fc-recap__row">
             <span className="vram-fc-recap__k">SOURCE</span>
-            <span className={`vram-fc-recap__v vram-fc-recap__v--kind ${accent.text}`}>
+            <span className={`vram-fc-recap__v vram-fc-recap__v--kind ${view.accent.text}`}>
               {sourceRecapLabel(memorySource)}
             </span>
           </div>
@@ -329,7 +395,7 @@ export default function MemorySourcePanel({
               <span className="vram-fc-recap__v vram-fc-recap__v--mono">{recap.secondary}</span>
             </div>
           ) : null}
-          {isEstimate ? (
+          {view.isEstimate ? (
             <div className="vram-fc-recap__foot">
               estimate — RE-PROBE at this CTX to lock a measured point
             </div>
