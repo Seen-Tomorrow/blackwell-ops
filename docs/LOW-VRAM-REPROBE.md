@@ -1,133 +1,273 @@
-# Low-VRAM RE-PROBE (free-aware spill)
+# Low-VRAM / offload forecast
 
-Design + implementation notes for honest spill / OOM chrome when free VRAM is tight.
-Keep this path **isolated** — do not grow a second forecast graph.
+Working memo for ASSISTED forecast paint when free VRAM is tight, plus the
+manual free-aware FIT path. Product law (measured-only estimate) stays in
+`docs/VRAM-FORECAST.md`. UI height/chrome traps stay in `docs/VRAM-FORECAST-UI.md`.
 
-## Why
+**Do not grow a second forecast graph.** This path is isolated helpers + one
+FIT regime flag on the existing session.
 
-Live FIT probes (2026-08) showed:
+Branch that landed the first cut: `feat/low-vram-reprobe`.
 
-| Mode | Host row |
-|------|----------|
-| App default `--fit-print --fit off -ngl 999` | ~1 GB **host buffer only** |
-| Forced `-ngl 20` | Host **weights + KV** (tens of GB) |
-| `--fit on` alone | Often `-ngl -1` because FIT free ≠ NVML free |
+---
 
-On a stuffed GPU, nvidia-smi free was ~55 GB while FIT `--list-devices` reported ~95 GB free.
-So UI “HOST OFFLOAD · 4 GB” from full-need fit-print is **not** weight spill.
-Soft OOM bands (85% / 92% free util) are still valid as “tight if we stay full-GPU.”
+## The questions this UI answers (they are not the same)
 
-Product choice: **never auto-probe on CTX drag**. Fluid slider stays on full-need curve/tax.
-When tight, **nudge** the existing RE-PROBE control → `RE-PROBE LOW VRAM` (manual).
+| Question | Denominator | Chrome |
+|----------|-------------|--------|
+| Will it **launch** on this free pool? | `estimate` vs `NVML free − headroom` | bar fill green / orange / red |
+| How **full** will the card look? | `estimate` vs **manufactured** | uncolored `%` on GPU cards |
+| Will it **spill weights to host**? | measured Host **model** or fitted `-ngl` | `HOST OFFLOAD` / `SPILL · SLOWER` |
+| Might unknown load buffers **OOM** while still full-GPU? | `estimate / free` | `LOW/HIGH OOM RISK` |
 
-## Architecture (minimal)
+We originally painted NEED from manufactured 85/95% and the bar from the
+launch gate. NEED went amber/red first. Unify: **bar + NEED share launch
+paint**; manufactured `%` is capacity context only (uncolored).
+
+Soft OOM bands (85% / 92% of **free**) are an early-warn on the full-GPU
+plan — not a claim that FIT will offload.
+
+---
+
+## What we measured live (2026-08, stuffed GPU0)
+
+Model: `Qwen3.8-27B-Uncensored-Cyber-Q6_K.gguf`  
+Binary: `runtime/ggml-master/frontier/llama-fit-params.exe`  
+nvidia-smi GPU0: ~40 GB used / ~55 GB free. GPU1 empty.
+
+| FIT command | Result |
+|-------------|--------|
+| App path `--fit-print on --fit off -ngl 999` | Full GPU need. Host ~1.1–1.5 GB = **buffer only** |
+| Forced `-ngl 20` | CUDA shrinks; Host `15494+5737+158` ≈ **21 GB** weight+KV. Log: `offloaded 20/65 layers` |
+| `--fit on` (free-aware) | Still `-ngl -1` — FIT thought free ≈ **95 GB** |
+| `--list-devices` | Both cards **~95 GB free** while nvidia-smi showed 55 GB on GPU0 |
+
+Conclusions that still hold:
+
+1. FIT **can** print real spill (Host model column + `offloaded A/B`).
+2. App FIT **never produced it** because we force `-ngl 999` (true total need).
+3. `--fit on` alone is not enough — FIT’s free ≠ NVML free on a stuffed card.
+4. UI “HOST OFFLOAD · ~4 GB” from full-need Host was **host buffer**, not 10–20 GB layer spill.
+5. We already parse the Host row. We were running the wrong command for spill truth.
+
+Logs from that session (gitignored): `tmp/fit-offload-probe/`.
+
+---
+
+## Two FIT regimes (same runner, one session slot)
 
 ```
-full probe (auto / normal RE-PROBE)
+full  (auto + RE-PROBE)
   --fit-print on --fit off -ngl 999
   → true total GPU need (SOURCE)
+  → Host ≈ 1 GB buffer — never call this “offload”
 
-tight free / over free  →  UI nudge only (no auto FIT)
-
-manual RE-PROBE LOW VRAM
-  --fit on  (no ngl 999)
-  --fit-target corrected from NVML free vs FIT list-devices free
-  → parse last memory breakdown Host + CUDA
+low_vram  (manual RE-PROBE LOW VRAM only)
+  --fit on   (no ngl 999)
+  --fit-target from NVML vs FIT list-devices
+  → fitted -ngl + last memory-breakdown Host/CUDA
   → session.mode = "low_vram"
 ```
 
-### Isolated modules
+**Never auto-FIT on CTX drag.** Slider stays on full-need curve/tax.
+Tight free → nudge only (REL: swap one button; DEV: both buttons, LOW VRAM pulses).
+
+`--fit-target` correction (because FIT free overstates):
+
+```
+headroom    = max(1024 MiB, 3% of nvmlFree)
+wantUsable  = nvmlFree − headroom
+fitTarget   = max(1024, fitFree − wantUsable)
+```
+
+`usable ≈ fitFree − fitTarget` then tracks **our** NVML free.
+
+---
+
+## Paint rules (current)
+
+Shared helpers: `src/services/vram/lowVramProbe.ts`, `src/services/vram/shared.ts`.
+
+```
+headroom     = max(1 GB, 3% of free)     // same as CTX ghost / fits gate
+exceedsFree  = estimate > free − headroom
+freeUtil     = estimate / free
+caution      = freeUtil > 0.85           // LOW OOM RISK
+warn         = freeUtil > 0.92           // HIGH OOM RISK
+weightHost   = hostGb > 2.5              // HOST_BUFFER_CEILING_GB
+partialNgl   = 0 ≤ fittedNgl < 900       // −1 / 999 = all GPU
+
+realSpill    = exceedsFree && (weightHost || (mode==low_vram && partialNgl))
+```
+
+| State | Bar / NEED | Inset |
+|-------|------------|--------|
+| fits, freeUtil ≤ 0.85 | green / ok | none |
+| fits, 0.85–0.92 | amber / caution | `LOW OOM RISK` |
+| fits, > 0.92 until headroom | orange / warn | `HIGH OOM RISK` |
+| exceedsFree, no measured spill | orange | `OVER FREE · RE-PROBE` |
+| exceedsFree + weight host / partial ngl | orange | `OVER FREE · SPILL · SLOWER` + RAM `HOST OFFLOAD · SLOWER` |
+| system OOM | red / hot | `NO FIT` / `NO FIT · SYSTEM` |
+
+**Do not** invent multi-GB host from `estimate − (free − headroom)`.
+**Do not** paint HOST OFFLOAD from ~1 GB fit-print Host.
+**Do not** paint spill from leftover LEARNED/session host when `estimate` already fits free
+(that was the “20% usage still says OFFLOAD” bug).
+
+Manufactured `%` on GPU cards stays **uncolored**.
+
+---
+
+## LEARNED vs session vs probe
+
+```
+Session FIT (RE-PROBE / auto-probe)  →  in-memory ProbeSession only
+Real engine load tables + launch inventory  →  learned-vram.json
+```
+
+### Learn key (`vram_learn.rs`)
+
+`model|provider|ctx|kv|device|split|memory_mode|offload` + optional spec/draft/cache_ram.
+
+| In key? | |
+|---------|--|
+| ctx, kv, device, split, offload mode | yes |
+| **free VRAM** | **no** |
+| fitted ngl | no |
+
+Do **not** add free to the key — combinations explode.
+
+### Promote rule
+
+Primary `entry.vram_mib` only goes **up** (`new + 1 MiB >= existing`).
+A spill launch (small GPU + fat host) must not replace a fuller full-GPU need.
+
+- `fit_attempts` still appends every distinct table.
+- `launch_snapshot` is **always overwritten** (diagnostics / “what just ran”).
+- First-ever launch that is a spill **does** become primary (`existing == 0`).
+  Later empty-GPU same ctx then under-forecasts unless we discard that row
+  (DEV heuristic below) or the user runs a full RE-PROBE.
+
+### Frontend host source (easy to get wrong)
+
+Hook prefers `launch_snapshot.host` (latest launch, including spill).
+Adapter prefers **curve host**, and curve host is **not ctx-adjusted**
+(lerp between ctx points). Those can disagree.
+
+After the live-over-free gate this no longer flashes OFFLOAD at 20% usage.
+If you later go over free, the host **GB** may still be a stale/interpolated
+spill number until a fresh low_vram probe or a full-GPU launch promotes.
+
+### Session hard-key (`fitProbeKey`)
+
+`backend|kv_quant|batch|ubatch|flash_attn|autoVramLaunch`
+
+**Not** in hard-key: ctx, device, split, free. Intentional — CTX slider must
+not drop a full probe. Side effect: a `low_vram` session survives device
+switch and engine-stop unless DEV ignore-rules fire.
+
+---
+
+## Isolated files
 
 | Path | Role |
 |------|------|
-| `src/services/vram/lowVramProbe.ts` | needs-reprobe, free fingerprint, real-spill threshold, bar inset copy |
-| `src-tauri/src/fit_low_vram.rs` | build args, list-devices free parse, fit-target math, fitted `-ngl` parse |
-| Session field `mode` + `freeFingerprint` | stale when free pool moves |
+| `src/services/vram/lowVramProbe.ts` | spill/OOM helpers, insets, fingerprints, DEV discard |
+| `src/services/vram/shared.ts` | `freePoolHeadroomGb`, `needToneFromLaunchPaint`, OOM constants |
+| `src/services/vram/forecast/adapters/ggml_master.ts` | estimate + paint; DEV spill-LEARNED discard |
+| `src/hooks/useScenarioEvaluator.ts` | ProbeSession, auto full-probe, validate(mode) |
+| `src/components/MemorySourcePanel.tsx` | RE-PROBE button(s) |
+| `src-tauri/src/fit_low_vram.rs` | args, list-devices free, fit-target, fitted `-ngl` |
+| `src-tauri/src/engine.rs` `fit_scan_model` | `mode` + `free_budget_mib` |
+| `src-tauri/src/vram_learn.rs` | promote-upward primary |
+| `src-tauri/src/log_hub.rs` | learn console includes `+ N MiB RAM` |
 
-No second cache file, no second evaluator, no ngl binary-search loop in TS.
+No second cache file. No ngl binary-search in TS. No second evaluator.
 
-## Paint rules
+---
 
-1. **LOW / HIGH OOM RISK** — only while still **fit** (full-GPU plan) and freeUtil crosses 0.85 / 0.92.
-2. **OVER FREE · RE-PROBE** — estimate > free−headroom and **no** fresh low_vram probe. Do **not** invent multi-GB host spill.
-3. **HOST OFFLOAD / SPILL** — only if **live estimate exceeds free−headroom** *and* host is weight-class or low_vram fitted ngl is partial. A leftover LEARNED host from a stuffed-GPU run must **not** paint offload at low usage.
-4. Full-need Host ~1 GB → never labeled “offload.”
-5. Auto-probe / normal RE-PROBE is always **full** (`ngl 999`). `low_vram` only when the button flashes and the user clicks.
+## Thresholds (tune from live launches)
 
-## Fit-target correction
+| Constant | Default | Meaning |
+|----------|---------|---------|
+| `FREE_POOL_OOM_CAUTION` | 0.85 | LOW OOM RISK (still fit) |
+| `FREE_POOL_OOM_WARN` | 0.92 | HIGH OOM RISK (still fit) |
+| free headroom | max(1 GB, 3% free) | launch / CTX-ghost / exceedsFree |
+| `HOST_BUFFER_CEILING_GB` | 2.5 | above this ≈ weight/KV, not buffer |
+| spill-LEARNED host/GPU | 0.35 | DEV: fat host relative to GPU |
+| free fingerprint | 0.5 GB buckets | session freshness |
 
-```
-fitFree     = FIT list-devices free (often overstates free)
-nvmlFree    = app NVML free for target GPU(s)
-headroom    = max(1024 MiB, 3% nvmlFree)
-wantUsable  = nvmlFree - headroom
-fitTarget   = max(1024, fitFree - wantUsable)
-```
+---
 
-Pass `--fit-target {fitTarget}` so free-aware fit budgets against **our** free.
+## DEV vs REL (`isDevBuild()`)
 
-## Session freshness
+REL:
 
-Low-vram probe is fresh when:
+- One RE-PROBE button; label swaps to `RE-PROBE LOW VRAM` + pulse when tight.
+- Click then runs low_vram; otherwise full.
+- Auto-probe always **full**.
+- Spill chrome still live-over-free gated (all builds).
 
-- `hardKey` matches (existing FIT hard knobs)
-- `freeFingerprint` matches live free (rounded)
-- `mode === "low_vram"`
+DEV extra (`feat/low-vram-reprobe`):
 
-CTX may still slide; estimate adjusts from anchor like full probe.
-If free fingerprint changes (other engine stop/start), nudge returns.
+1. **Both buttons** always: `RE-PROBE` (ngl 999) and `RE-PROBE LOW VRAM`.
+   Pulse only on the low_vram control when tight. Use this to compare
+   results in the 85–97% band.
+2. **Discard spill-shaped LEARNED** when `host > 2.5` **and**
+   `host ≥ 0.35 × GPU` **and** that GPU slice already fits free.
+   Full-GPU + leftover smaller host is kept. Unblocks auto full-probe.
+3. **Ignore `low_vram` session** unless fingerprint matches **and**
+   probe GPU is still over free.
 
-## Non-goals
+---
 
-- Auto FIT when slider enters OOM territory
-- Dual continuous probes
-- Second LEARNED curve partition for low_vram
-- Claiming spill from free-pool overshoot guess alone
+## Known holes (do not “fix” by exploding keys)
 
-## Thresholds (tune later)
+1. **First-and-only launch was spill** — primary LEARNED is small GPU + fat
+   host for that ctx. Empty GPU later under-reads until DEV discard + full
+   probe, or a fuller same-key launch promotes.
+2. **FIT list-devices free still wrong** — `--fit-target` is a workaround.
+   If it undershoots, low_vram returns `-ngl -1` + ~1 GB host → we correctly
+   refuse to claim spill, but the click was a no-op.
+3. **Skeleton** if `autoVramLaunch` off and nothing measured, or **all** GPUs
+   free &lt; 2.5 GB and no LEARNED. Hard-knob EVALUATING should recover via
+   forced full probe (do not skip auto on curve-only).
+4. Failed FIT does **not** clear a previous session.
 
-- `FREE_POOL_OOM_CAUTION = 0.85`
-- `FREE_POOL_OOM_WARN = 0.92`
-- `HOST_BUFFER_CEILING_GB = 2.5`
-- free fingerprint: free GB rounded to 0.5
+---
+
+## What not to build
+
+- Auto FIT when the CTX slider enters OOM territory
+- Dual continuous probes / second LEARNED curve for low_vram
+- Learn key by free VRAM / ngl / “every combo”
+- Spill GB guessed from free-pool overshoot
+- Manufactured 85/95 as NEED color (bar is launch/free, not card-fullness)
+- Second forecast adapter or second JSON cache
+
+---
 
 ## Manual test checklist
 
-1. Empty GPU, small CTX — RE-PROBE normal; no LOW VRAM flash.
-2. Stuff GPU + aggressive CTX — LOW/HIGH OOM or OVER FREE · RE-PROBE; button flashes LOW VRAM.
-3. Click RE-PROBE LOW VRAM — Host weight-class if FIT spills; chrome SPILL · SLOWER.
-4. Drag CTX after low_vram — still fluid; no auto re-probe.
-5. Stop other engine (free jumps) — low_vram stale; nudge returns if still tight.
+1. Empty GPU, small CTX — green; DEV shows both buttons; no LOW VRAM pulse.
+2. Stuff GPU + aggressive CTX — LOW/HIGH OOM or `OVER FREE · RE-PROBE`; LOW VRAM pulses.
+3. Click **RE-PROBE LOW VRAM** — if FIT spills, Host weight-class + `SPILL · SLOWER`.
+4. Click **RE-PROBE** (DEV) at the same point — Host stays ~1 GB; NEED is full GPU.
+5. Drag CTX — fluid; no auto FIT.
+6. Stop stuffing engine — no leftover HOST OFFLOAD at ~20% usage; DEV may auto full-probe if LEARNED looked like spill.
+7. Hard-knob change (kv) — EVALUATING then full probe or LEARNED paint; not infinite skeleton.
 
-## LEARNED cache vs free-dependent spill
+---
 
-**RE-PROBE / FIT session probe never writes LEARNED.** Only real engine load
-tables + launch buffer inventory do (`log_hub` → `vram_learn`).
+## History (why the code looks like this)
 
-Learn key = model + launch knobs (ctx, kv, device, split, …). **Free VRAM is not
-in the key** — stuffing another model then launching with layer spill must not
-replace a fuller full-GPU measurement, or empty-GPU forecasts under-read forever.
-
-Rule (2026-08): primary `entry.vram_mib` only **promotes upward** (max GPU
-footprint). Lower-GPU spill attempts still append to `fit_attempts` history and
-`launch_snapshot` keeps “what just ran,” but forecast primary need stays the
-fuller measurement. Host RAM is shown on console lines and stored with the
-promoted primary (buffer-sized on full-GPU path).
-
-We do **not** key LEARNED by free fingerprint — combinations explode.
-
-
-## DEV-only (feat/low-vram-reprobe)
-
-Gated by `isDevBuild()`:
-
-1. Discard LEARNED GPU/host when the row looks like a free-dependent spill
-   (`host > 2.5 GB` and `host >= 0.35 × GPU`) **and** that GPU slice already
-   fits live free. Full-GPU + leftover smaller host stays. Allows auto
-   **full** probe again.
-2. Ignore in-session `low_vram` unless fingerprint matches **and** probe GPU
-   is still over free.
-3. Header shows **both** `RE-PROBE` (ngl 999) and `RE-PROBE LOW VRAM`
-   (free-aware). LOW VRAM still pulses when tight. REL keeps the single
-   swapped button.
-
+1. NEED vs bar used different math (manufactured 85/95 vs free-pool fits).
+2. Soft 85% band on NEED only → amber before the bar. Then locked together.
+3. Two OOM tiers + bar insets (`LOW/HIGH OOM RISK`, `HOST OFFLOAD · SLOWER`).
+4. Live FIT proved Host-from-ngl999 is buffer; real spill needs a second regime.
+5. Leftover LEARNED/session host painted OFFLOAD at 20% usage →
+   `isLiveWeightSpill` requires **live exceedsFree**.
+6. Auto-probe skipped on `curve.length >= 2` → hard-knob skeleton. Skip only
+   identity-matched LEARNED; auto is always full.
+7. DEV dual buttons + discard spill-LEARNED / stale low_vram session so we
+   can tune thresholds without another full archaeology pass.
