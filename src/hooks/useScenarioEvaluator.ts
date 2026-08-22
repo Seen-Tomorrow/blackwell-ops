@@ -83,8 +83,16 @@ function probeScenarioFields(
   placementKey: string,
   liveFreeGb?: number,
   liveFreeFp?: string,
+  liveCtx?: number,
 ) {
   if (!session || session.modelPath !== modelPath || session.hardKey !== hardKey) {
+    return {};
+  }
+  if (
+    session.mode === "low_vram"
+    && liveCtx != null
+    && session.anchorCtx !== liveCtx
+  ) {
     return {};
   }
   if (
@@ -98,6 +106,8 @@ function probeScenarioFields(
       liveFreeFingerprint: liveFreeFp,
       probeGpuGb: session.validatedVramMib / 1024,
       liveFreeGb,
+      anchorCtx: session.anchorCtx,
+      liveCtx,
     })
   ) {
     return {};
@@ -529,6 +539,7 @@ export function useScenarioEvaluator({
       curPlacementKey,
       liveFreeGb,
       liveFreeFp,
+      parseCtx(curConfig.ctx ?? "32768"),
     );
     const input: ScenarioInput = {
       modelMeta: model.metadata,

@@ -97,16 +97,17 @@ warn         = freeUtil > 0.92           // HIGH OOM RISK
 weightHost   = hostGb > 2.5              // HOST_BUFFER_CEILING_GB
 partialNgl   = 0 ≤ fittedNgl < 900       // −1 / 999 = all GPU
 
-realSpill    = (exceedsFree || oomTier) && (weightHost || (mode==low_vram && partialNgl))
+realSpill    = exceedsFree && measurementAtThisCtx && (weightHost || partialNgl)
 ```
 
-Border case: LEARNED often stores **GPU-only** after an offload launch (primary
-need is the fuller GPU footprint). Sitting just inside free−headroom then
-painted HIGH OOM RISK with no RAM. If host &gt; 2.5 GB **or** a fresh low_vram
-session still has partial ngl, use spill chrome in the 85/92% band too — not
-OOM-risk-on-a-full-GPU-plan. 20% usage + leftover host stays quiet (no band).
+The CTX slider **amber fits-line** (`findMaxFittingCtx`, same 3%/1G headroom)
+is the honest “offload starts here.” SPILL / HOST OFFLOAD only if we measured
+at **this CTX** (exact LEARNED host or low_vram session whose `anchorCtx`
+equals live ctx). A low_vram `ngl=63` from another CTX must not paint 610k.
+The 85/92% band is LOW/HIGH OOM RISK only — it must not jump to SPILL.
 
-RE-PROBE stays available on EXACT LEARNED. Exact is a quality mark, not a lock.
+Offload LEARNED rows stay off the GPU lerp (slider ticks only).
+
 
 | State | Bar / NEED | Inset |
 |-------|------------|--------|

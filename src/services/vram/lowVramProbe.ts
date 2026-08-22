@@ -29,9 +29,10 @@ export function isPartialFittedNgl(ngl: number | null | undefined): boolean {
 }
 
 /**
- * Spill chrome: live pressure + measured spill (host or partial ngl).
- * Over-free OR the 85/92% free-util OOM band. Leftover host at 20% usage
- * (no OOM band, not over free) stays quiet.
+ * SPILL / HOST OFFLOAD only with a measurement at this plan.
+ * The amber CTX fits-line (exceedsFree) is the honest offload start.
+ * Do not use the 85/92% band — that invented SPILL at 610k while FIT
+ * stayed ngl=-1 until ~760k.
  */
 export function isLiveWeightSpill(args: {
   estimateGb: number;
@@ -39,11 +40,13 @@ export function isLiveWeightSpill(args: {
   hostGb?: number | null;
   probeMode?: FitProbeMode | null;
   fittedNgl?: number | null;
+  /** Host/ngl only count when they belong to this CTX. */
+  measurementAtLiveCtx?: boolean;
 }): boolean {
   const headroom = freePoolHeadroomGb(args.freeGb);
   const overFree = args.estimateGb > args.freeGb - headroom;
-  const tight = freePoolOomTier(freePoolUtil(args.estimateGb, args.freeGb)) !== "none";
-  if (!overFree && !tight) return false;
+  if (!overFree) return false;
+  if (args.measurementAtLiveCtx === false) return false;
   return (
     isWeightClassHostSpill(args.hostGb) ||
     (args.probeMode === "low_vram" && isPartialFittedNgl(args.fittedNgl))
@@ -66,23 +69,28 @@ export function learnedLooksLikeFreeDependentSpill(
   return (hostGb as number) >= Math.max(HOST_BUFFER_CEILING_GB, gpuGb * 0.35);
 }
 
-/** DEV: keep a low_vram session when still over free or in the OOM band. */
+/** low_vram session is CTX-specific — ngl/host from 800k must not paint 610k. */
 export function shouldApplyLowVramSession(args: {
   mode?: FitProbeMode | null;
   probeFreeFingerprint?: string | null;
   liveFreeFingerprint: string;
   probeGpuGb: number;
   liveFreeGb: number;
+  anchorCtx?: number | null;
+  liveCtx?: number | null;
 }): boolean {
   if (args.mode !== "low_vram") return true;
+  if (
+    args.anchorCtx != null
+    && args.liveCtx != null
+    && args.anchorCtx !== args.liveCtx
+  ) {
+    return false;
+  }
   if (!isLowVramProbeFresh(args.mode, args.probeFreeFingerprint, args.liveFreeFingerprint)) {
     return false;
   }
-  const headroom = freePoolHeadroomGb(args.liveFreeGb);
-  const overFree = args.probeGpuGb > args.liveFreeGb - headroom;
-  const tight =
-    freePoolOomTier(freePoolUtil(args.probeGpuGb, args.liveFreeGb)) !== "none";
-  return overFree || tight;
+  return true;
 }
 
 /** Round free GB to 0.5 so NVML noise doesn't thrash freshness. */

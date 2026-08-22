@@ -255,12 +255,18 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
 
   const liveFreeFp = freeFingerprintFromGb(targetAvail);
   const fittedNgl = input.fitProbeFittedNgl;
+  const measurementAtLiveCtx =
+    exactPt != null
+    || (input.fitProbeMode === "low_vram"
+      && input.fitProbeAnchorCtx != null
+      && input.fitProbeAnchorCtx === liveCtx);
   const realSpill = isLiveWeightSpill({
     estimateGb,
     freeGb: targetAvail,
     hostGb: hostMeasuredGb,
     probeMode: input.fitProbeMode,
     fittedNgl,
+    measurementAtLiveCtx,
   });
   const displayHostGb = realSpill
     ? Math.max(hostOffloadGb, isWeightClassHostSpill(hostMeasuredGb) ? (hostMeasuredGb as number) : 0)
