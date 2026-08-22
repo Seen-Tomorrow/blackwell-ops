@@ -50,13 +50,14 @@ function draftBaseName(config: Record<string, unknown>): string {
  * Thinking / parallel / samplers / threads are not FIT inputs — ignore them.
  */
 function fitProbeKey(config: Record<string, unknown>, autoVramLaunch: boolean): string {
+  const split = String(config.split ?? "none").trim().toLowerCase() || "none";
   return [
     config.backend_type || "",
     config["kv_quant"] || "",
     String(config.batch ?? ""),
     String(config.ubatch ?? ""),
     config["flash_attn"] || "",
-    String(config.split ?? "none"),
+    split,
     autoVramLaunch ? "1" : "0",
   ].join("|");
 }
@@ -460,16 +461,14 @@ export function useScenarioEvaluator({
   const learnedKey = learnedIdentityKey(config, autoVramLaunch);
 
   useEffect(() => {
-    probeSessionRef.current = null;
-    // Model or hard-knob footprint changed → show EVALUATING radar (don't keep stale paint).
     const prev = paintIdentityRef.current;
     const path = model?.path ?? "";
-    if (path !== prev.modelPath || probeKey !== prev.probeKey) {
-      if (manifestRef.current != null) {
-        commitManifest(null);
-      }
-      paintIdentityRef.current = { modelPath: path, probeKey };
+    if (path === prev.modelPath && probeKey === prev.probeKey) return;
+    probeSessionRef.current = null;
+    if (manifestRef.current != null) {
+      commitManifest(null);
     }
+    paintIdentityRef.current = { modelPath: path, probeKey };
   }, [probeKey, model?.path, commitManifest]);
 
   // Stack fingerprint — changes when committed engines (RUNNING/LOADING) start/stop or VRAM shifts.

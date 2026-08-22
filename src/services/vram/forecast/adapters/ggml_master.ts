@@ -198,7 +198,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     : withDraft(learnedExactGb) ?? withDraft(curveGb) ?? learnedDeltaGb;
 
   const autoSplit = needsAutoLayerSplit(estimateGb, gpuAvailable);
-  const targetAvail = autoSplit
+  const targetAvail = autoSplit || userSplitMultiGpu
     ? multiTotalAvailable
     : (gpuAvailable[tgt] ?? Math.max(...gpuAvailable, 0));
   const headroomGb = freePoolHeadroomGb(targetAvail);
@@ -231,6 +231,12 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   const breakdownSpansMultipleGpus = (loadsGb: number[]) =>
     loadsGb.filter((gb) => gb > 0.1).length > 1;
 
+  const scaleLoads = (loadsGb: number[]): number[] => {
+    const sum = loadsGb.reduce((a, b) => a + b, 0);
+    if (!(sum > 0.05) || !(gpuProjectionGb > 0)) return loadsGb;
+    return loadsGb.map((x) => (gpuProjectionGb * x) / sum);
+  };
+
   let perGpuLoad: number[];
   if (
     learnedGb != null &&
@@ -239,7 +245,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   ) {
     const loads = input.learnedGpuBreakdownMib.map((mib) => mib / 1024);
     perGpuLoad = !userSplitMultiGpu || breakdownSpansMultipleGpus(loads)
-      ? loads
+      ? scaleLoads(loads)
       : autoSplit || userSplitMultiGpu
         ? autoSplitPerGpuLoad(gpuProjectionGb, input.gpus, gpuAvailable)
         : (() => {
@@ -254,7 +260,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   ) {
     const loads = input.fitProbeGpuBreakdownMib.map((mib) => mib / 1024);
     perGpuLoad = !userSplitMultiGpu || breakdownSpansMultipleGpus(loads)
-      ? loads
+      ? scaleLoads(loads)
       : autoSplit || userSplitMultiGpu
         ? autoSplitPerGpuLoad(gpuProjectionGb, input.gpus, gpuAvailable)
         : (() => {
