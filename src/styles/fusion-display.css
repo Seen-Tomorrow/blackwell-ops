@@ -1729,7 +1729,7 @@
   border-left-color: var(--display-face-fc-label-ram-border, color-mix(in srgb, #60a5fa 30%, transparent));
   color: var(--display-face-fc-label-ram-fg, #93c5fd);
 }
-/* NEED hero — free-pool launch paint tone (fit/offload/nofit + soft 85% free util), not manufactured 85/95 */
+/* NEED hero — 1:1 free-pool launch paint (fit/offload/nofit); flips with bar, no early soft band */
 .vram-fc-bar__need-prefix {
   font-size: calc(7px * var(--vram-fc-scale, 1.12));
   font-weight: 700;

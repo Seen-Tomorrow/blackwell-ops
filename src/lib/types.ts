@@ -743,7 +743,7 @@ export interface UiTemplate {
 
 /** Free-pool launch paint — VRAM bar fill + NEED tone source of truth. */
 export type ForecastLaunchPaint = "fit" | "offload" | "nofit";
-/** NEED chip tone derived from launch paint (+ soft free-util warn). */
+/** NEED chip tone — 1:1 with launch paint (fit/offload/nofit). */
 export type ForecastNeedTone = "ok" | "warn" | "hot";
 
 export interface StyleObject {

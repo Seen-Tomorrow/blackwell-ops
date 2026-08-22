@@ -24,7 +24,6 @@ import {
   cfgStr,
   computeGpuAvailableList,
   freePoolHeadroomGb,
-  freePoolUtil,
   interpolateLearnedCurveGb,
   launchPaintFromGate,
   launchPaintStyleClasses,
@@ -287,22 +286,15 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
 
   const launchPaint = launchPaintFromGate(fits, useOffloadPalette);
   const paintClasses = launchPaintStyleClasses(launchPaint);
-  const vramNeedTone = needToneFromLaunchPaint(
-    launchPaint,
-    freePoolUtil(estimateGb, targetAvail),
-  );
-  // RAM NEED: system OOM → hot; real host spill → warn + free-util soft band; else ok.
+  const vramNeedTone = needToneFromLaunchPaint(launchPaint);
+  // RAM NEED tracks host spill / system OOM — same paint steps as bar (no soft band).
   const ramLaunchPaint = overSystemMemory
     ? ("nofit" as const)
     : hostOffloadLaunch && hostOffloadGb > 0.5
       ? ("offload" as const)
       : ("fit" as const);
-  const ramNeedTone = needToneFromLaunchPaint(
-    ramLaunchPaint,
-    hostOffloadGb > 0.05
-      ? freePoolUtil(hostOffloadGb, input.ramAvailableGb)
-      : undefined,
-  );
+  const ramNeedTone = needToneFromLaunchPaint(ramLaunchPaint);
+
 
   const base: VramManifest = {
     scenario: "AUTO_FIT",
