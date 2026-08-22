@@ -234,6 +234,7 @@ export default function VramBadge({
             isValidating={isValidating}
             onValidate={onValidate}
             needsLowVramReprobe={!!s.needsLowVramReprobe}
+            overFreeReprobe={s.launchPaint === "offload" || s.launchPaint === "nofit"}
           />
         ) : null}
       </div>

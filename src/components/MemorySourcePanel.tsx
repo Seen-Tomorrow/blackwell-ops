@@ -255,8 +255,9 @@ export interface MemorySourceReprobeProps {
   className?: string;
   /** Tight free — flash LOW VRAM (REL swaps one button; DEV shows both). */
   needsLowVramReprobe?: boolean;
+  /** Past amber fits-line — punch both probe controls red. */
+  overFreeReprobe?: boolean;
 }
-
 
 /** RE-PROBE control — sits right of the assisted launch summary. */
 export function MemorySourceReprobe({
@@ -266,6 +267,7 @@ export function MemorySourceReprobe({
   hideValidate = false,
   className,
   needsLowVramReprobe = false,
+  overFreeReprobe = false,
 }: MemorySourceReprobeProps) {
   const view = getMemorySourceView(memorySource, { onValidate, hideValidate });
   if (!view.canProbe) return null;
@@ -289,20 +291,32 @@ export function MemorySourceReprobe({
     <button
       type="button"
       className={`vram-fc-source__reprobe vram-fc-header__reprobe${
-        autoLow ? " vram-fc-header__reprobe--low-vram" : ""
+        overFreeReprobe
+          ? " vram-fc-header__reprobe--over-free"
+          : autoLow
+            ? " vram-fc-header__reprobe--low-vram"
+            : ""
       }`}
-      data-probe-state={isValidating ? "probing" : autoLow ? "low-vram" : "reprobe"}
+      data-probe-state={
+        isValidating ? "probing" : overFreeReprobe ? "over-free" : autoLow ? "low-vram" : "reprobe"
+      }
       disabled={isValidating}
-      onClick={fire(autoLow ? "low_vram" : "full")}
+      onClick={fire(autoLow || overFreeReprobe ? "low_vram" : "full")}
       title={
-        autoLow
-          ? "Auto: free VRAM is tight — free-aware FIT (not on CTX drag)"
-          : "Auto: full-need FIT at this CTX"
+        overFreeReprobe
+          ? "Over free VRAM — run FIT now (auto picks low-vram)"
+          : autoLow
+            ? "Auto: free VRAM is tight — free-aware FIT (not on CTX drag)"
+            : "Auto: full-need FIT at this CTX"
       }
     >
       {autoLabel}
     </button>
   );
+
+  const manualCls = `vram-fc-source__reprobe vram-fc-header__reprobe vram-fc-header__reprobe--manual${
+    overFreeReprobe ? " vram-fc-header__reprobe--over-free" : ""
+  }`;
 
   if (isDevBuild()) {
     return (
@@ -310,8 +324,8 @@ export function MemorySourceReprobe({
         {autoBtn}
         <button
           type="button"
-          className="vram-fc-source__reprobe vram-fc-header__reprobe vram-fc-header__reprobe--manual"
-          data-probe-state={isValidating ? "probing" : "reprobe"}
+          className={manualCls}
+          data-probe-state={isValidating ? "probing" : overFreeReprobe ? "over-free" : "reprobe"}
           disabled={isValidating}
           onClick={fire("full")}
           title="Manual full-need FIT (ngl 999) — ignore auto swap"
@@ -320,8 +334,8 @@ export function MemorySourceReprobe({
         </button>
         <button
           type="button"
-          className="vram-fc-source__reprobe vram-fc-header__reprobe vram-fc-header__reprobe--manual"
-          data-probe-state={isValidating ? "probing" : "reprobe"}
+          className={manualCls}
+          data-probe-state={isValidating ? "probing" : overFreeReprobe ? "over-free" : "reprobe"}
           disabled={isValidating}
           onClick={fire("low_vram")}
           title="Manual free-aware FIT — ignore auto swap"

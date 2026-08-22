@@ -2106,13 +2106,29 @@
   background: color-mix(in srgb, #6b7280 38%, var(--theme-panel, #0a0a0a));
 }
 
-/* Manual free-aware spill probe — flash until user runs RE-PROBE LOW VRAM */
-.vram-fc-header__reprobe--low-vram,
-.vram-fc-source__reprobe[data-probe-state="low-vram"],
-.vram-fc-header__reprobe[data-probe-state="low-vram"] {
-  color: var(--theme-telemetry-amber, #fbbf24);
-  border-color: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 55%, transparent);
-  animation: vram-fc-low-vram-pulse 1.25s ease-in-out infinite;
+.vram-fc-header__reprobe--over-free,
+.vram-fc-source__reprobe[data-probe-state="over-free"],
+.vram-fc-header__reprobe[data-probe-state="over-free"],
+.vram-fc-header__reprobe--manual.vram-fc-header__reprobe--over-free {
+  color: #fff;
+  -webkit-text-fill-color: #fff;
+  border-color: var(--theme-telemetry-red, #ef4444);
+  background: color-mix(in srgb, var(--theme-telemetry-red, #ef4444) 82%, #000);
+  animation: vram-fc-over-free-pulse 0.9s ease-in-out infinite;
+}
+
+.vram-fc-header__reprobe--over-free:hover:not(:disabled) {
+  filter: brightness(1.12);
+}
+
+@keyframes vram-fc-over-free-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--theme-telemetry-red, #ef4444) 0%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 12px 2px color-mix(in srgb, var(--theme-telemetry-red, #ef4444) 65%, transparent);
+  }
 }
 
 @keyframes vram-fc-low-vram-pulse {
