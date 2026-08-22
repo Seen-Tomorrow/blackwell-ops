@@ -816,6 +816,10 @@ export interface VramManifest {
   ramKvGb: number;
   ramSpillGb: number;
   ramTotalGb: number;
+  /** Host buffer (ctx+compute or residual when not spilling). */
+  ramBufferGb?: number;
+  /** Host weight-layer offload (FIT Host model column, or host − buffer). */
+  ramWeightGb?: number;
   ramManufacturedGb: number;
   ramAvailableGb: number;
   gpuAllocations: GpuAllocation[];
@@ -823,7 +827,6 @@ export interface VramManifest {
   recommendation: string;
   gpuLayers: number;
   ramLayers: number;
-  /** FIT-validated total VRAM in MiB */
   validatedVramMib?: number;
   /** Forecast uses VRAM measured on a prior launch at this exact ctx. */
   learnedFromPreviousRun?: boolean;
@@ -878,6 +881,8 @@ export interface FitScanResult {
   host_mib?: number;
   /** Per-GPU component breakdown (model/ctx/compute per GPU) */
   gpu_components_mib?: GpuComponentMib[];
+  /** Host row model/ctx/compute from FIT `Host a b c`. */
+  host_components_mib?: GpuComponentMib;
   /** Fitted -ngl from low_vram free-aware probe (−1 = all GPU). */
   fitted_ngl?: number;
   /** `full` | `low_vram` */

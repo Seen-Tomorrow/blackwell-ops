@@ -42,6 +42,7 @@ import {
   lowVramBarInsets,
   ramNeedToneForHost,
   showHostRamBar,
+  splitHostRamGb,
 } from "../../lowVramProbe";
 import { attachMemorySource } from "../memorySource";
 import { isDevBuild } from "../../../../lib/build";
@@ -381,29 +382,44 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     realSpill: insets.realSpill,
   });
 
+  const hostTotalGb = Math.max(
+    displayHostGb,
+    hostMeasuredGb ?? 0,
+    probeHostGb ?? 0,
+    learnedHostGb ?? 0,
+  );
+  const hostSplit = splitHostRamGb({
+    hostGb: hostTotalGb,
+    hostModelGb:
+      input.fitProbeHostModelMib != null ? input.fitProbeHostModelMib / 1024 : null,
+    realSpill: insets.realSpill,
+  });
+  const ramNeedGb = hostSplit.bufferGb + hostSplit.weightGb;
+
   const base: VramManifest = {
     scenario: "AUTO_FIT",
     style: {
       ...paintClasses,
       icon: vramNeedTone === "ok" ? "*" : "o",
       label: fitLabel,
-      ramVisible: showHostRam,
+      ramVisible: ramNeedGb > 0.05,
       launchPaint,
       vramNeedTone,
-      ramNeedTone,
+      ramNeedTone: hostSplit.weightGb > 0.05 ? ramNeedTone : "ok",
       needsLowVramReprobe: insets.needsReprobe,
       uiTemplate: {
         heroText,
         launchSummary,
         gpuLayerText: layerText,
-        ramLayerText: showHostRam
-          ? learnedHostGb != null
-            ? `${displayHostGb.toFixed(1)} GB on host RAM (measured on prior launch)`
-            : `~${displayHostGb.toFixed(1)} GB host spill (low-VRAM probe)`
-          : autoSplit
-            ? "VRAM spread across GPUs — offload decided at load"
-            : "engine might use some RAM at launch",
-        showRamBar: true,
+        ramLayerText:
+          hostSplit.weightGb > 0.05
+            ? `${ramNeedGb.toFixed(1)} GB host (${hostSplit.bufferGb.toFixed(1)} buffer + ${hostSplit.weightGb.toFixed(1)} weight)`
+            : ramNeedGb > 0.05
+              ? `${ramNeedGb.toFixed(1)} GB host buffer (not layer offload)`
+              : autoSplit
+                ? "VRAM spread across GPUs — offload decided at load"
+                : "engine might use some RAM at launch",
+        showRamBar: ramNeedGb > 0.05,
         moeRamBar: false,
         kvSpillRiskText: insets.vramInset,
         offloadWarningText: insets.ramInset,
@@ -415,8 +431,10 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     vramTotalGb: round2(gpuProjectionGb),
     ramWeightsGb: 0,
     ramKvGb: 0,
-    ramSpillGb: round2(displayHostGb),
-    ramTotalGb: round2(displayHostGb),
+    ramSpillGb: round2(hostSplit.weightGb),
+    ramTotalGb: round2(ramNeedGb),
+    ramBufferGb: round2(hostSplit.bufferGb),
+    ramWeightGb: round2(hostSplit.weightGb),
     ramManufacturedGb: input.ramManufacturedGb,
     ramAvailableGb: input.ramAvailableGb,
     gpuAllocations: buildGpuAllocations(

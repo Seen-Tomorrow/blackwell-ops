@@ -381,13 +381,30 @@ export default function VramBadge({
                 <span
                   className="vram-fc-bar__need-chip vram-fc-bar__need-chip--ram vram-fc-need-frame__need vram-fc-need-frame__need--ram"
                   data-need-tone={ramNeedTone}
-                  title="Host RAM need"
+                  data-ram-split={
+                    (manifest.ramWeightGb ?? 0) > 0.05 ? "1" : "buffer"
+                  }
+                  title={
+                    (manifest.ramWeightGb ?? 0) > 0.05
+                      ? `Host ${displayRamNeedGb.toFixed(1)} GB = ${(manifest.ramBufferGb ?? 0).toFixed(1)} buffer + ${(manifest.ramWeightGb ?? 0).toFixed(1)} weight`
+                      : `Host ${displayRamNeedGb.toFixed(1)} GB buffer (not layer offload)`
+                  }
                 >
                   <span className="vram-fc-bar__need-prefix">need</span>
                   <span className={`vram-fc-bar__need vram-fc-bar__need--${ramNeedTone}`}>
                     {displayRamNeedGb.toFixed(1)}
                   </span>
                   <span className="vram-fc-bar__unit">GB</span>
+                  {(manifest.ramWeightGb ?? 0) > 0.05 ? (
+                    <span className="vram-fc-bar__need-split">
+                      <span>{(manifest.ramBufferGb ?? 0).toFixed(1)} buf</span>
+                      <span>{(manifest.ramWeightGb ?? 0).toFixed(1)} wgt</span>
+                    </span>
+                  ) : (
+                    <span className="vram-fc-bar__need-split vram-fc-bar__need-split--buf">
+                      host buffer
+                    </span>
+                  )}
                 </span>
               ) : null}
 

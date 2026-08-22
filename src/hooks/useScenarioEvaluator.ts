@@ -24,6 +24,7 @@ type ProbeSession = {
   validatedVramMib: number;
   validatedGpuBreakdownMib?: number[];
   validatedHostMib?: number;
+  validatedHostModelMib?: number;
   validatedComponentsMib?: VramManifest["validatedComponentsMib"];
   fitProbeMeasuredAt: string;
   /** full = ngl999 need; low_vram = free-aware spill. */
@@ -116,6 +117,7 @@ function probeScenarioFields(
   return {
     fitProbeVramMib: session.validatedVramMib,
     fitProbeHostMib: session.validatedHostMib,
+    fitProbeHostModelMib: session.validatedHostModelMib,
     fitProbeGpuBreakdownMib: placementMatches ? session.validatedGpuBreakdownMib : undefined,
     fitProbePlacementKey: session.placementKey,
     fitProbeAnchorCtx: session.anchorCtx,
@@ -148,6 +150,7 @@ function attachProbeManifest(
     input,
   );
 }
+
 
 interface LearnedVramFitAttempt {
   vram_mib: number;
@@ -1030,10 +1033,10 @@ export function useScenarioEvaluator({
         fitProbeGpuBreakdownMib: result.gpu_breakdown_mib,
         fitProbePlacementKey: curPlacementKey,
         fitProbeAnchorCtx: anchorCtx,
-        fitProbeMeasuredAt: probeMeasuredAt,
         fitProbeMode: resultMode,
         fitProbeFreeFingerprint: liveFreeFp,
         fitProbeFittedNgl: result.fitted_ngl,
+        fitProbeHostModelMib: result.host_components_mib?.model_mib,
       };
 
       const session: ProbeSession = {
@@ -1044,6 +1047,7 @@ export function useScenarioEvaluator({
         validatedVramMib: result.vram_mib,
         validatedGpuBreakdownMib: result.gpu_breakdown_mib,
         validatedHostMib: result.host_mib,
+        validatedHostModelMib: result.host_components_mib?.model_mib,
         validatedComponentsMib: result.gpu_components_mib ?? null,
         fitProbeMeasuredAt: probeMeasuredAt,
         mode: resultMode,

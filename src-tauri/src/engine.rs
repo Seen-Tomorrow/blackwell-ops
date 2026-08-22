@@ -1460,19 +1460,15 @@ pub async fn fit_scan_model(
         .map_err(|e| format!("low-vram list-devices join: {e}"))??;
 
         // Single-device mask → first free; multi → min free (tightest card).
-        let fit_free = fit_frees
-            .iter()
-            .copied()
-            .fold(f64::INFINITY, f64::min);
+        let fit_free = fit_frees.iter().copied().fold(f64::INFINITY, f64::min);
         let nvml_free = free_budget_mib.unwrap_or(fit_free);
         let fit_target = fit_low_vram::fit_target_mib_from_free(fit_free, nvml_free);
         app.log_hub.emit_console_line(
             BlackwellOutputConsoleCategory::Utils,
             &format!(
-                "[FIT] low_vram target={} MiB (fit_free={:.0} nvml_free={:.0})",
-                fit_target, fit_free, nvml_free
+                "[FIT] PROBE-LOW_VRAM  target={fit_target} MiB (fit_free={fit_free:.0} nvml_free={nvml_free:.0})"
             ),
-            BlackwellOutputConsoleLineStyle::Normal,
+            BlackwellOutputConsoleLineStyle::Warning,
         );
         fit_low_vram::build_low_vram_fit_command(
             &model_path,
@@ -1500,23 +1496,53 @@ pub async fn fit_scan_model(
         fit_scanner::scan_single_anchor(&fit_binary, &args, &gpu_mask, fit_adapter).await;
     match &fit_result {
         Ok(raw) => {
+            let model_name = std::path::Path::new(&model_path)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or(&model_path);
+            let tag = if is_low_vram {
+                "PROBE-LOW_VRAM"
+            } else {
+                "PROBE"
+            };
+            let ngl = raw
+                .fitted_ngl
+                .map(|n| n.to_string())
+                .unwrap_or_else(|| "full".into());
+            let host = raw.host_mib.unwrap_or(0.0);
+            let host_split = raw
+                .host_components_mib
+                .as_ref()
+                .map(|c| {
+                    format!(
+                        " host={:.0} (wgt={:.0} ctx={:.0} buf={:.0})",
+                        host, c.model_mib, c.ctx_mib, c.compute_mib
+                    )
+                })
+                .unwrap_or_else(|| format!(" host={host:.0}"));
+            let style = if is_low_vram {
+                BlackwellOutputConsoleLineStyle::Warning
+            } else {
+                BlackwellOutputConsoleLineStyle::Normal
+            };
             app.log_hub.emit_console_line(
                 BlackwellOutputConsoleCategory::Utils,
                 &format!(
-                    "[FIT] {} mode={} -> {:.1} MiB host={:?} ngl={:?}",
-                    model_path,
-                    probe_mode,
-                    raw.vram_mib,
-                    raw.host_mib,
-                    raw.fitted_ngl
+                    "[FIT] {tag}  ngl={ngl}  GPU={:.0}{host_split}  {model_name}",
+                    raw.vram_mib
                 ),
-                BlackwellOutputConsoleLineStyle::Normal,
+                style,
             );
         }
         Err(e) => {
+            let tag = if is_low_vram {
+                "PROBE-LOW_VRAM"
+            } else {
+                "PROBE"
+            };
             app.log_hub.emit_console_line(
                 BlackwellOutputConsoleCategory::Error,
-                &format!("[FIT] {} mode={} failed: {}", model_path, probe_mode, e),
+                &format!("[FIT] {tag}  failed: {e}  {model_path}"),
                 BlackwellOutputConsoleLineStyle::Error,
             );
         }
@@ -1536,6 +1562,7 @@ pub async fn fit_scan_model(
         gpu_breakdown_mib: raw.gpu_breakdown_mib,
         host_mib: raw.host_mib,
         gpu_components_mib: raw.gpu_components_mib,
+        host_components_mib: raw.host_components_mib,
         fitted_ngl: raw.fitted_ngl,
         probe_mode: Some(if is_low_vram {
             "low_vram".into()

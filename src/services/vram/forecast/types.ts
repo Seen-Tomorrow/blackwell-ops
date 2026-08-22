@@ -37,6 +37,8 @@ export interface ForecastInput {
 
   fitProbeVramMib?: number;
   fitProbeHostMib?: number;
+  /** FIT Host model column (weight on host) when printed. */
+  fitProbeHostModelMib?: number;
   fitProbeGpuBreakdownMib?: number[];
   fitProbePlacementKey?: string;
   fitProbeAnchorCtx?: number;

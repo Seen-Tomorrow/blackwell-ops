@@ -66,6 +66,9 @@ pub struct FitScanResult {
     /// Per-GPU component breakdown (model/ctx/compute) from memory table.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gpu_components_mib: Option<Vec<GpuComponentMib>>,
+    /// Host row model/ctx/compute (`Host a b c`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host_components_mib: Option<GpuComponentMib>,
     /// Fitted `-ngl` from free-aware low_vram probe (−1 = all on GPU).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fitted_ngl: Option<i32>,
@@ -399,6 +402,7 @@ pub fn parse_fit_print_stdout(stdout: &str) -> Option<FitScanRaw> {
     let mut gpu_self: Vec<f64> = Vec::new();
     let mut gpu_components: Vec<GpuComponentMib> = Vec::new();
     let mut host_mib: Option<f64> = None;
+    let mut host_components_mib: Option<GpuComponentMib> = None;
 
     for line in stdout.lines() {
         let cleaned = strip_ansi(line);
@@ -426,8 +430,12 @@ pub fn parse_fit_print_stdout(stdout: &str) -> Option<FitScanRaw> {
 
         if device.eq_ignore_ascii_case("host") {
             host_mib = Some(self_mib);
+            host_components_mib = Some(GpuComponentMib {
+                model_mib,
+                ctx_mib,
+                compute_mib,
+            });
         } else {
-            // Include Meta as a single estimate row (do not ×N — see doc above).
             gpu_self.push(self_mib);
             gpu_components.push(GpuComponentMib {
                 model_mib,
@@ -451,6 +459,7 @@ pub fn parse_fit_print_stdout(stdout: &str) -> Option<FitScanRaw> {
         gpu_breakdown_mib: Some(gpu_self),
         host_mib,
         gpu_components_mib: Some(gpu_components),
+        host_components_mib,
         fitted_ngl: None,
     })
 }
@@ -548,12 +557,13 @@ fn extract_number(s: &str) -> Option<f64> {
         }
     }
     if started && !num_chars.is_empty() && num_chars.matches('.').count() <= 1 {
-        return num_chars.replace(',', "").parse::<f64>().ok();
+        if let Ok(val) = num_chars.replace(',', "").parse::<f64>() {
+            return Some(val);
+        }
     }
     None
 }
 
-/// Raw result from a single FIT scan — total + optional per-GPU breakdown.
 #[derive(Debug, Clone)]
 pub struct FitScanRaw {
     pub vram_mib: f64,
@@ -561,6 +571,8 @@ pub struct FitScanRaw {
     pub host_mib: Option<f64>,
     /// Per-GPU component breakdown (model/ctx/compute).
     pub gpu_components_mib: Option<Vec<GpuComponentMib>>,
+    /// Host row model/ctx/compute when FIT printed `Host a b c`.
+    pub host_components_mib: Option<GpuComponentMib>,
     /// Optional fitted ngl from free-aware fit logs.
     pub fitted_ngl: Option<i32>,
 }

@@ -23,6 +23,22 @@ export function isWeightClassHostSpill(hostGb: number | null | undefined): boole
 export function isFullGpuLearnedPoint(hostMib?: number | null): boolean {
   return !isWeightClassHostSpill((hostMib ?? 0) / 1024);
 }
+/** Split FIT Host row into buffer vs weight-layer offload (GB). */
+export function splitHostRamGb(opts: {
+  hostGb: number;
+  hostModelGb?: number | null;
+  realSpill: boolean;
+}): { bufferGb: number; weightGb: number } {
+  const host = opts.hostGb > 0 && Number.isFinite(opts.hostGb) ? opts.hostGb : 0;
+  if (host <= 0) return { bufferGb: 0, weightGb: 0 };
+  if (opts.hostModelGb != null && Number.isFinite(opts.hostModelGb) && opts.hostModelGb > 0.05) {
+    const weight = Math.max(0, opts.hostModelGb);
+    return { bufferGb: Math.max(0, host - weight), weightGb: weight };
+  }
+  if (!opts.realSpill) return { bufferGb: host, weightGb: 0 };
+  const buffer = Math.min(host, HOST_BUFFER_CEILING_GB);
+  return { bufferGb: buffer, weightGb: Math.max(0, host - buffer) };
+}
 /** Partial fitted ngl from a free-aware low_vram probe (−1 / 999 = all GPU). */
 export function isPartialFittedNgl(ngl: number | null | undefined): boolean {
   return ngl != null && ngl >= 0 && ngl < 900;
