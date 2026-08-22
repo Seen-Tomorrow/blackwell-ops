@@ -1706,6 +1706,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       learnedMarks: vramCalc.learnedCurveCtxs,
       forecastCurve: vramCalc.manifest?.forecastCurve,
       forecastFreeGb: vramCalc.manifest?.forecastFreeGb,
+      onPruneCustom: vramCalc.pruneLearnedCtxs,
     };
   }, [
     config,
@@ -1715,6 +1716,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     vramCalc.learnedCurveCtxs,
     vramCalc.manifest?.forecastCurve,
     vramCalc.manifest?.forecastFreeGb,
+    vramCalc.pruneLearnedCtxs,
   ]);
 
   const ctxDockedInCockpit = ctxCockpitDock === "cockpit";

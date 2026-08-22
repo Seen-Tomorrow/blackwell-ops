@@ -2525,6 +2525,22 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--brain 
   cursor: pointer;
 }
 
+.full-auto-cockpit__ctx-footer-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.full-auto-cockpit__ctx-marks-toggle--prune {
+  color: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 80%, transparent);
+  border-color: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 38%, transparent);
+}
+
+.full-auto-cockpit__ctx-marks-toggle--prune:hover {
+  color: var(--theme-telemetry-amber, #fbbf24);
+  border-color: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 60%, transparent);
+}
 
 .full-auto-cockpit__ctx-marks-toggle--slot {
   visibility: hidden;

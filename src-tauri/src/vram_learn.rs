@@ -1033,3 +1033,82 @@ pub fn get_learned_vram_curve(
     out.sort_by_key(|p| p.ctx);
     out
 }
+
+/// Delete LEARNED rows for this curve identity whose ctx is in `remove_ctxs`.
+/// Same match as `get_learned_vram_curve` (model + kv/spec/draft + split; device ignored).
+#[tauri::command]
+pub fn prune_learned_vram_curve(
+    app: tauri::AppHandle,
+    model_path: String,
+    provider_id: String,
+    kv_quant: String,
+    spec_type: Option<String>,
+    draft_model: Option<String>,
+    split: Option<String>,
+    remove_ctxs: Vec<u64>,
+) -> Result<u32, String> {
+    use tauri::Emitter;
+
+    if remove_ctxs.is_empty() {
+        return Ok(0);
+    }
+    let want: std::collections::HashSet<usize> =
+        remove_ctxs.into_iter().map(|c| c as usize).collect();
+
+    let _guard = STORE_MUTEX
+        .lock()
+        .map_err(|e| format!("learned-vram store lock poisoned: {e}"))?;
+    let mut store = load_store();
+    let path_norm = normalize_model_path_for_key(&model_path);
+    let kv_n = kv_quant.trim().to_lowercase();
+    let spec_n = normalize_spec_type(spec_type.as_deref().unwrap_or("none"));
+    let draft_base = {
+        let d = draft_model.as_deref().unwrap_or("").trim();
+        if d.is_empty() {
+            String::new()
+        } else {
+            std::path::Path::new(d)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or(d)
+                .to_lowercase()
+        }
+    };
+    let split_n = normalize_split_mode(split.as_deref().unwrap_or("none"));
+
+    let before = store.entries.len();
+    store.entries.retain(|k, _| {
+        if !entry_matches_curve_hard_knobs(
+            k,
+            &path_norm,
+            &provider_id,
+            &kv_n,
+            &spec_n,
+            &draft_base,
+        ) {
+            return true;
+        }
+        if !key_matches_split(k, &split_n) {
+            return true;
+        }
+        let Some(ctx) = ctx_from_learn_key(k) else {
+            return true;
+        };
+        !want.contains(&ctx)
+    });
+    let removed = (before.saturating_sub(store.entries.len())) as u32;
+    if removed > 0 {
+        save_store(&store)?;
+        let _ = app.emit(
+            "learned-vram-changed",
+            serde_json::json!({
+                "model_path": model_path,
+                "provider_id": provider_id,
+            }),
+        );
+        log::info!(
+            "[vram_learn] pruned {removed} custom curve row(s) for {path_norm} kv={kv_n} split={split_n}"
+        );
+    }
+    Ok(removed)
+}

@@ -1109,5 +1109,33 @@ export function useScenarioEvaluator({
     void validate("full");
   };
 
-  return { manifest, isEvaluating, isValidating, validate, learnedCurveCtxs };
+  const pruneLearnedCtxs = useCallback(async (removeCtxs: number[]) => {
+    if (!model?.path || removeCtxs.length === 0) return 0;
+    const curConfig = configRef.current;
+    try {
+      const n = await invoke<number>("prune_learned_vram_curve", {
+        modelPath: model.path,
+        providerId: curConfig.backend_type || "ggml-master",
+        kvQuant: String(curConfig["kv_quant"] ?? "f16"),
+        specType: effectiveSpecTypeFromConfig(curConfig),
+        draftModel: draftPathForLearned(curConfig) || null,
+        split: String(curConfig.split ?? "none"),
+        removeCtxs,
+      });
+      if (n > 0) {
+        window.__blackopsToasts?.addToast(
+          `Pruned ${n} custom LEARNED CTX mark${n === 1 ? "" : "s"}`,
+          "success",
+        );
+      }
+      refreshLearnedVram();
+      return n;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      window.__blackopsToasts?.addToast(`Prune LEARNED failed: ${msg}`, "error");
+      return 0;
+    }
+  }, [model?.path, refreshLearnedVram]);
+
+  return { manifest, isEvaluating, isValidating, validate, learnedCurveCtxs, pruneLearnedCtxs };
 }

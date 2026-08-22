@@ -296,6 +296,10 @@ key (same as “identical hard knobs” for marks).
    none vs layer is also a different curve.
 5. Track width 0 briefly hides ticks (`visibility: hidden`) until layout.
 
+**PRUNE N** on the CTX footer deletes **custom** (non-preset) LEARNED rows for
+the **current curve key** only (model + kv/spec/draft + split). Preset CTX
+ticks stay. Emits `learned-vram-changed` so the rail refreshes. Does not wipe
+the whole `learned-vram.json` file.
+
 If ticks are still missing with ALL + in-range ctx: check learn keys in
 `learned-vram.json` for `|kv=` `|spec=` `|draft=` `|split=` vs the live cockpit.
-

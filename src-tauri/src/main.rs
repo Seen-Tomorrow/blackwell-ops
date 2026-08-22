@@ -1144,6 +1144,7 @@ async fn main() {
             fit_scanner::get_fit_scan_cache_snapshot,
             vram_learn::get_learned_vram,
             vram_learn::get_learned_vram_curve,
+            vram_learn::prune_learned_vram_curve,
             // GGUF Metadata Scanner commands
             engine::scan_model_metadata_cmd,
             engine::scan_all_models_cmd,
