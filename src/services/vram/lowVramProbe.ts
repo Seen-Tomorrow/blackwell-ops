@@ -235,7 +235,7 @@ export function lowVramBarInsets(args: {
   if (args.overSystemMemory) {
     ramInset = "NO FIT · SYSTEM";
   } else if (realSpill) {
-    ramInset = "HOST OFFLOAD · SLOWER";
+    ramInset = "OFFLOADING TO RAM";
   }
   // No RAM inset for ~1 GB host buffer.
 

@@ -394,6 +394,12 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     bufferBaselineGb: curveHit?.hostGb,
     realSpill: spill,
   });
+  if (spill && !overSystemMemory) {
+    insets.ramInset =
+      hostSplit.weightGb > 0.05
+        ? `OFFLOADING ${hostSplit.weightGb.toFixed(1)}GB TO RAM`
+        : "OFFLOADING TO RAM";
+  }
   const ramNeedGb = hostSplit.bufferGb + hostSplit.weightGb;
 
   const base: VramManifest = {
