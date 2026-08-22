@@ -271,3 +271,31 @@ DEV extra (`feat/low-vram-reprobe`):
    identity-matched LEARNED; auto is always full.
 7. DEV dual buttons + discard spill-LEARNED / stale low_vram session so we
    can tune thresholds without another full archaeology pass.
+
+## CTX slider learned marks
+
+Cyan ticks are **launch measurements** from `get_learned_vram_curve`, not FIT
+session probes.
+
+**Curve query matches:** model path, provider, `kv`, `spec`, draft basename,
+`split`. **Ignores device and ctx.** Batch/ubatch/flash are not in the curve
+key (same as “identical hard knobs” for marks).
+
+**Why they vanish while you swear the launches exist**
+
+1. **Was: marks only on `manifest.learnedCurveCtxs`.** `evaluate() == null`
+   (skeleton, discarded spill LEARNED, hard-knob EVALUATING) dropped the
+   ticks even after curve IPC succeeded. **Fixed:** slider reads
+   `learnedCurveCtxs` from the fetch, independent of the glass.
+2. **Toggle ALL / REGULAR / OFF** on the CTX strip (`ctx-learned-marks`
+   localStorage). OFF hides everything; REGULAR hides custom ctx that is
+   not a template preset.
+3. **Mark outside slider min/max** (filtered in `CustomSliderParam`).
+4. **Identity miss on fetch:** Boost/`spec_type` or draft path on when you
+   launched, off now (or the reverse) → curve IPC returns `[]`. Split
+   none vs layer is also a different curve.
+5. Track width 0 briefly hides ticks (`visibility: hidden`) until layout.
+
+If ticks are still missing with ALL + in-range ctx: check learn keys in
+`learned-vram.json` for `|kv=` `|spec=` `|draft=` `|split=` vs the live cockpit.
+

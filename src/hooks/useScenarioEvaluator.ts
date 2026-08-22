@@ -359,8 +359,9 @@ export function useScenarioEvaluator({
   const seedRaw = seedCacheKey ? readManifestCache(seedCacheKey) : null;
   // Seed last measured forecast for instant remount paint; fresh eval follows.
   const seedManifest = seedRaw;
-
   const [manifest, setManifest] = useState<VramManifest | null>(seedManifest);
+  /** Slider marks — from curve IPC, not evaluate(). Skeleton must not hide them. */
+  const [learnedCurveCtxs, setLearnedCurveCtxs] = useState<number[]>([]);
   const manifestRef = useRef<VramManifest | null>(seedManifest);
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
@@ -653,7 +654,6 @@ export function useScenarioEvaluator({
       isMountedRef.current = false;
     };
   }, []);
-
   const refreshLearnedVram = useCallback(() => {
     if (!model) {
       learnedVramRef.current = null;
@@ -665,6 +665,7 @@ export function useScenarioEvaluator({
       learnedMtpContextRef.current = undefined;
       learnedAnchorCtxRef.current = undefined;
       learnedCurveRef.current = [];
+      setLearnedCurveCtxs([]);
       learnedFetchPendingRef.current = false;
       return;
     }
@@ -735,6 +736,7 @@ export function useScenarioEvaluator({
           vramMib: p.vram_mib,
           hostMib: p.host_mib,
         }));
+        setLearnedCurveCtxs((curve ?? []).map((p) => p.ctx));
       })
       .catch(() => {
         if (fetchGen !== learnedFetchGenRef.current) return;
@@ -747,6 +749,7 @@ export function useScenarioEvaluator({
         learnedMtpContextRef.current = undefined;
         learnedAnchorCtxRef.current = undefined;
         learnedCurveRef.current = [];
+        setLearnedCurveCtxs([]);
       })
       .finally(() => {
         if (fetchGen !== learnedFetchGenRef.current) return;
@@ -1106,5 +1109,5 @@ export function useScenarioEvaluator({
     void validate("full");
   };
 
-  return { manifest, isEvaluating, isValidating, validate };
+  return { manifest, isEvaluating, isValidating, validate, learnedCurveCtxs };
 }
