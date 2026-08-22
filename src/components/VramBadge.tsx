@@ -207,25 +207,10 @@ export default function VramBadge({
     ? Math.min((displayRamNeedGb / ramManufacturedGb) * 100, 100)
     : 0;
 
-  const pressureTone = (pct: number): "ok" | "warn" | "hot" =>
-    pct > 95 ? "hot" : pct > 85 ? "warn" : "ok";
+  // NEED tone from adapter free-pool launch paint (not manufactured 85/95).
+  const vramNeedTone = s.vramNeedTone ?? "ok";
+  const ramNeedTone = s.ramNeedTone ?? "ok";
 
-  const vramNeedTone = (() => {
-    const allocs = manifest.gpuAllocations ?? [];
-    if (allocs.length > 0) {
-      let worst = 0;
-      for (const a of allocs) {
-        const totalMib = a.vramManufacturedGb * 1024;
-        if (!(totalMib > 0)) continue;
-        const usedMib = Math.max(0, (a.vramManufacturedGb - a.vramAvailableGb) * 1024);
-        const pct = Math.min(((a.projectedLoadGb * 1024 + usedMib) / totalMib) * 100, 100);
-        if (pct > worst) worst = pct;
-      }
-      return pressureTone(worst);
-    }
-    return pressureTone(vramUsagePct);
-  })();
-  const ramNeedTone = pressureTone(ramUsagePct);
 
   return (
     <div
@@ -390,6 +375,7 @@ export default function VramBadge({
             <GpuTopology
               gpuAllocations={manifest.gpuAllocations}
               gpuBarColor={s.gpuBarColor}
+              needTone={vramNeedTone}
               ramVisible={false}
               ramTotalGb={manifest.ramTotalGb}
               ramManufacturedGb={manifest.ramManufacturedGb}

@@ -23,7 +23,12 @@ import {
   buildGpuAllocations,
   cfgStr,
   computeGpuAvailableList,
+  freePoolHeadroomGb,
+  freePoolUtil,
   interpolateLearnedCurveGb,
+  launchPaintFromGate,
+  launchPaintStyleClasses,
+  needToneFromLaunchPaint,
   parseCtx,
   resolveSplitTax,
   round2,
@@ -145,7 +150,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   const targetAvail = autoSplit
     ? multiTotalAvailable
     : (gpuAvailable[tgt] ?? Math.max(...gpuAvailable, 0));
-  const headroomGb = Math.max(1.0, targetAvail * 0.03);
+  const headroomGb = freePoolHeadroomGb(targetAvail);
   const exceedsGpuPool = estimateGb > targetAvail - headroomGb;
 
   // System pool gate — weight file + measured host if known.
@@ -280,21 +285,35 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     ? input.fitProbeHostMib
     : input.fitProbeHostMib ?? (learnedHostGb != null ? Math.round(learnedHostGb * 1024) : undefined);
 
+  const launchPaint = launchPaintFromGate(fits, useOffloadPalette);
+  const paintClasses = launchPaintStyleClasses(launchPaint);
+  const vramNeedTone = needToneFromLaunchPaint(
+    launchPaint,
+    freePoolUtil(estimateGb, targetAvail),
+  );
+  // RAM NEED: system OOM → hot; real host spill → warn + free-util soft band; else ok.
+  const ramLaunchPaint = overSystemMemory
+    ? ("nofit" as const)
+    : hostOffloadLaunch && hostOffloadGb > 0.5
+      ? ("offload" as const)
+      : ("fit" as const);
+  const ramNeedTone = needToneFromLaunchPaint(
+    ramLaunchPaint,
+    hostOffloadGb > 0.05
+      ? freePoolUtil(hostOffloadGb, input.ramAvailableGb)
+      : undefined,
+  );
+
   const base: VramManifest = {
     scenario: "AUTO_FIT",
     style: {
-      titleColor: useOffloadPalette ? "text-orange-400" : fits ? "text-nv-green" : "text-red-400",
-      gpuBarColor: useOffloadPalette ? "bg-orange-400/70" : fits ? "bg-nv-green" : "bg-red-500",
-      borderColor: useOffloadPalette
-        ? "border-orange-400/30"
-        : fits
-          ? "border-nv-green/30"
-          : "border-red-400/30",
-      bgTint: useOffloadPalette ? "bg-orange-400/5" : fits ? "bg-nv-green/5" : "bg-red-400/5",
-      badgeBg: useOffloadPalette ? "bg-orange-400/20" : fits ? "bg-nv-green/20" : "bg-red-400/20",
+      ...paintClasses,
       icon: useOffloadPalette ? "o" : "*",
       label: fitLabel,
       ramVisible: showHostRam,
+      launchPaint,
+      vramNeedTone,
+      ramNeedTone,
       uiTemplate: {
         heroText,
         launchSummary,

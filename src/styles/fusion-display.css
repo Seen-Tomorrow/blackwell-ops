@@ -1729,7 +1729,7 @@
   border-left-color: var(--display-face-fc-label-ram-border, color-mix(in srgb, #60a5fa 30%, transparent));
   color: var(--display-face-fc-label-ram-fg, #93c5fd);
 }
-/* NEED hero — pressure tone (same 85/95 as GPU card %), not source-kind amber/cyan */
+/* NEED hero — free-pool launch paint tone (fit/offload/nofit + soft 85% free util), not manufactured 85/95 */
 .vram-fc-bar__need-prefix {
   font-size: calc(7px * var(--vram-fc-scale, 1.12));
   font-weight: 700;
@@ -2408,12 +2408,11 @@
   color: var(--display-face-gpu-readout-muted, var(--display-face-text-muted, #94a3b8));
   opacity: 0.9;
 }
-.vram-fc__topo--compact .gpu-card__bar-need--warn,
-.vram-fc__topo--compact .gpu-card__pct--warn {
+/* Projected load G only — manufactured % stays uncolored capacity context */
+.vram-fc__topo--compact .gpu-card__bar-need--warn {
   color: var(--theme-telemetry-amber, #fb923c);
 }
-.vram-fc__topo--compact .gpu-card__bar-need--hot,
-.vram-fc__topo--compact .gpu-card__pct--hot {
+.vram-fc__topo--compact .gpu-card__bar-need--hot {
   color: var(--theme-telemetry-red, #ef4444);
 }
 /*
@@ -3665,24 +3664,17 @@
   text-shadow: none !important;
 }
 [data-display-texture="phosphor-light"] .phosphor-display-surface .gpu-card__bar-need:not(.gpu-card__bar-need--warn):not(.gpu-card__bar-need--hot),
-[data-display-texture="phosphor-light"] .phosphor-display-surface .gpu-card__pct:not(.gpu-card__pct--warn):not(.gpu-card__pct--hot),
+[data-display-texture="phosphor-light"] .phosphor-display-surface .gpu-card__pct,
 [data-display-texture="phosphor-light"] .vram-forecast-display .gpu-card__bar-need:not(.gpu-card__bar-need--warn):not(.gpu-card__bar-need--hot),
-[data-display-texture="phosphor-light"] .vram-forecast-display .gpu-card__pct:not(.gpu-card__pct--warn):not(.gpu-card__pct--hot) {
+[data-display-texture="phosphor-light"] .vram-forecast-display .gpu-card__pct {
   color: var(--display-face-light-gpu-readout, var(--display-face-light-text-accent, var(--theme-accent))) !important;
   text-shadow: none !important;
   filter: none !important;
 }
-[data-display-texture="phosphor-light"] .phosphor-display-surface .gpu-card__bar-cap,
-[data-display-texture="phosphor-light"] .vram-forecast-display .gpu-card__bar-cap {
-  color: var(--display-face-light-gpu-readout-muted, var(--display-face-light-text-muted)) !important;
-  text-shadow: none !important;
-}
-[data-display-texture="phosphor-light"] .vram-forecast-display .gpu-card__bar-need--warn,
-[data-display-texture="phosphor-light"] .vram-forecast-display .gpu-card__pct--warn {
+[data-display-texture="phosphor-light"] .vram-forecast-display .gpu-card__bar-need--warn {
   color: var(--theme-telemetry-amber, #fb923c) !important;
 }
-[data-display-texture="phosphor-light"] .vram-forecast-display .gpu-card__bar-need--hot,
-[data-display-texture="phosphor-light"] .vram-forecast-display .gpu-card__pct--hot {
+[data-display-texture="phosphor-light"] .vram-forecast-display .gpu-card__bar-need--hot {
   color: var(--theme-telemetry-red, #ef4444) !important;
 }
 

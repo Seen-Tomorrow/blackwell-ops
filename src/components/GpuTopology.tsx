@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import type { GpuAllocation } from "../lib/types";
+import type { ForecastNeedTone, GpuAllocation } from "../lib/types";
 import { splitGpuTopoBarUsage } from "../services/vram/scenarios/scenarios_factory";
 /** Visible row bank in forecast glass — extra rows scroll (wheel). */
 export const GPU_TOPO_MAX_ROWS = 2;
@@ -7,6 +7,8 @@ export const GPU_TOPO_MAX_ROWS = 2;
 interface GpuTopologyProps {
   gpuAllocations: GpuAllocation[];
   gpuBarColor: string;
+  /** Free-pool NEED tone for projected load G (manufactured % stays uncolored). */
+  needTone?: ForecastNeedTone;
   ramVisible: boolean;
   ramTotalGb: number;
   ramManufacturedGb: number;
@@ -47,6 +49,7 @@ export function gpuTopoDensity(count: number): "fat" | "med" | "dense" {
 export default function GpuTopology({
   gpuAllocations,
   gpuBarColor,
+  needTone = "ok",
   ramVisible,
   ramTotalGb,
   ramManufacturedGb,
@@ -140,8 +143,7 @@ export default function GpuTopology({
                         ? "#4B5563"
                         : "var(--display-face-gpu-readout, var(--theme-accent))";
 
-          const pctTone =
-            totalUsedPct > 95 ? "hot" : totalUsedPct > 85 ? "warn" : "ok";
+          // Projected load G follows free-pool NEED tone; manufactured % is capacity context only.
           const existingOnlyPct = totalMib > 0 ? (usedMib / totalMib) * 100 : 0;
           const existingBarColor =
             existingOnlyPct > 95
@@ -178,10 +180,10 @@ export default function GpuTopology({
                   {alloc.name}
                 </span>
                 <span className="gpu-card__readout">
-                  <span className={`gpu-card__bar-need gpu-card__bar-need--${pctTone}`}>
+                  <span className={`gpu-card__bar-need gpu-card__bar-need--${needTone}`}>
                     {alloc.projectedLoadGb.toFixed(1)}G
                   </span>
-                  <span className={`gpu-card__pct gpu-card__pct--${pctTone}`}>
+                  <span className="gpu-card__pct" title="Card fill after projected load (capacity context)">
                     ({totalUsedPct.toFixed(0)}%)
                   </span>
                   <span className="gpu-card__bar-cap">

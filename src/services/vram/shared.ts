@@ -4,7 +4,11 @@ import type {
   RunningEngine,
   GpuAllocation,
   EngineConfig,
+  ForecastLaunchPaint,
+  ForecastNeedTone,
 } from "../../lib/types";
+
+export type { ForecastLaunchPaint, ForecastNeedTone };
 
 /** Library FIT scan point (ctx curve / batch deltas). */
 export interface FitPoint {
@@ -554,3 +558,86 @@ export function buildGpuAllocations(
     runningEngines: getRunningEnginesOnGpu(g.index, runningSlots),
   }));
 }
+
+// ── Forecast paint (bar fill + NEED tone share free-pool launch gate) ─────────
+
+/** Soft amber band: still fits free pool, but estimate > this fraction of free. */
+export const FREE_POOL_SOFT_WARN = 0.85;
+
+
+/** Same headroom as fits gate / CTX ghost: max(1 GB, 3% of free). */
+export function freePoolHeadroomGb(freeGb: number): number {
+  return Math.max(1.0, freeGb * 0.03);
+}
+
+/** estimate / free — Infinity when free is 0 and estimate > 0. */
+export function freePoolUtil(estimateGb: number, freeGb: number): number {
+  if (!(freeGb > 0)) return estimateGb > 0 ? Number.POSITIVE_INFINITY : 0;
+  return estimateGb / freeGb;
+}
+
+export function launchPaintFromGate(fits: boolean, useOffloadPalette: boolean): ForecastLaunchPaint {
+  if (useOffloadPalette) return "offload";
+  if (fits) return "fit";
+  return "nofit";
+}
+
+/**
+ * NEED tone aligned to free-pool launch gate:
+ * - nofit → hot (red) — same moment bar goes red
+ * - offload → warn (amber) — same as orange bar
+ * - fit + freeUtil > 0.85 → warn (soft early band; bar stays green)
+ * - else ok
+ */
+export function needToneFromLaunchPaint(
+  paint: ForecastLaunchPaint,
+  freeUtil?: number,
+): ForecastNeedTone {
+  if (paint === "nofit") return "hot";
+  if (paint === "offload") return "warn";
+  if (
+    freeUtil != null &&
+    Number.isFinite(freeUtil) &&
+    freeUtil > FREE_POOL_SOFT_WARN
+  ) {
+    return "warn";
+  }
+  return "ok";
+}
+
+/** Tailwind classes for launch-paint chrome (bar fill, borders, tints). */
+export function launchPaintStyleClasses(paint: ForecastLaunchPaint): {
+  titleColor: string;
+  gpuBarColor: string;
+  borderColor: string;
+  bgTint: string;
+  badgeBg: string;
+} {
+  switch (paint) {
+    case "offload":
+      return {
+        titleColor: "text-orange-400",
+        gpuBarColor: "bg-orange-400/70",
+        borderColor: "border-orange-400/30",
+        bgTint: "bg-orange-400/5",
+        badgeBg: "bg-orange-400/20",
+      };
+    case "nofit":
+      return {
+        titleColor: "text-red-400",
+        gpuBarColor: "bg-red-500",
+        borderColor: "border-red-400/30",
+        bgTint: "bg-red-400/5",
+        badgeBg: "bg-red-400/20",
+      };
+    default:
+      return {
+        titleColor: "text-nv-green",
+        gpuBarColor: "bg-nv-green",
+        borderColor: "border-nv-green/30",
+        bgTint: "bg-nv-green/5",
+        badgeBg: "bg-nv-green/20",
+      };
+  }
+}
+

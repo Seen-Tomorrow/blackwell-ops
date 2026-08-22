@@ -741,6 +741,11 @@ export interface UiTemplate {
   kvSpillRiskText?: string | null;
 }
 
+/** Free-pool launch paint — VRAM bar fill + NEED tone source of truth. */
+export type ForecastLaunchPaint = "fit" | "offload" | "nofit";
+/** NEED chip tone derived from launch paint (+ soft free-util warn). */
+export type ForecastNeedTone = "ok" | "warn" | "hot";
+
 export interface StyleObject {
   titleColor: string;
   gpuBarColor: string;
@@ -752,6 +757,12 @@ export interface StyleObject {
   ramVisible: boolean;
   /** KV cache may spill to system RAM — honest warning, not certainty */
   kvSpillCritical?: boolean;
+  /** Launch gate palette (fit / offload / nofit). */
+  launchPaint?: ForecastLaunchPaint;
+  /** VRAM NEED chip tone — free-pool aligned, not manufactured 85/95. */
+  vramNeedTone?: ForecastNeedTone;
+  /** Host RAM NEED chip tone — free-pool / offload aligned. */
+  ramNeedTone?: ForecastNeedTone;
   /** Scenario-driven UI config — REQUIRED. Controls all text and visibility in VramBadge. */
   uiTemplate: UiTemplate;
 }

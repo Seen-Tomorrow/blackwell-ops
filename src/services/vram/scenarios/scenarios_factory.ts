@@ -23,8 +23,19 @@ export {
   round2,
   cfgStr,
   buildGpuAllocations,
+  FREE_POOL_SOFT_WARN,
+  freePoolHeadroomGb,
+  freePoolUtil,
+  launchPaintFromGate,
+  needToneFromLaunchPaint,
+  launchPaintStyleClasses,
 } from "../shared";
 
-export type { FitPoint, RunningSlotInfo } from "../shared";
+export type {
+  FitPoint,
+  RunningSlotInfo,
+  ForecastLaunchPaint,
+  ForecastNeedTone,
+} from "../shared";
 export type { ForecastInput as ScenarioInput } from "../forecast/types";
 export { evaluate } from "../forecast/evaluate";
