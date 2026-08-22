@@ -759,10 +759,12 @@ export interface StyleObject {
   kvSpillCritical?: boolean;
   /** Launch gate palette (fit / offload / nofit). */
   launchPaint?: ForecastLaunchPaint;
-  /** VRAM NEED chip tone — free-pool aligned, not manufactured 85/95. */
+  /** VRAM NEED chip tone — free-pool aligned (+ soft OOM tiers). */
   vramNeedTone?: ForecastNeedTone;
-  /** Host RAM NEED chip tone — free-pool / offload aligned. */
+  /** Host RAM NEED chip tone — weight-class spill only. */
   ramNeedTone?: ForecastNeedTone;
+  /** Manual RE-PROBE LOW VRAM nudge (tight free, no fresh low_vram probe). */
+  needsLowVramReprobe?: boolean;
   /** Scenario-driven UI config — REQUIRED. Controls all text and visibility in VramBadge. */
   uiTemplate: UiTemplate;
 }
@@ -870,12 +872,16 @@ export interface FitScanResult {
   ctx: number;
   kv_quant: string;
   fits: boolean;
-  /** Per-GPU self MiB breakdown from memory table */
+  /** Per-GPU self MiB from FIT table */
   gpu_breakdown_mib?: number[];
   /** Host RAM usage from memory table */
   host_mib?: number;
   /** Per-GPU component breakdown (model/ctx/compute per GPU) */
   gpu_components_mib?: GpuComponentMib[];
+  /** Fitted -ngl from low_vram free-aware probe (−1 = all GPU). */
+  fitted_ngl?: number;
+  /** `full` | `low_vram` */
+  probe_mode?: string;
 }
 
 /** Progress update during library scanning */

@@ -250,6 +250,8 @@ export interface MemorySourceReprobeProps {
   onValidate?: () => void;
   hideValidate?: boolean;
   className?: string;
+  /** Tight free — manual free-aware spill probe (no auto on CTX drag). */
+  needsLowVramReprobe?: boolean;
 }
 
 /** RE-PROBE control — sits right of the assisted launch summary. */
@@ -259,25 +261,39 @@ export function MemorySourceReprobe({
   onValidate,
   hideValidate = false,
   className,
+  needsLowVramReprobe = false,
 }: MemorySourceReprobeProps) {
   const view = getMemorySourceView(memorySource, { onValidate, hideValidate });
   if (!view.canProbe) return null;
+
+  const lowVram = needsLowVramReprobe && !isValidating;
+  const label = isValidating
+    ? lowVram || needsLowVramReprobe
+      ? "PROBING LOW VRAM…"
+      : "PROBING…"
+    : lowVram
+      ? "RE-PROBE LOW VRAM"
+      : "RE-PROBE";
 
   return (
     <button
       type="button"
       className={`vram-fc-source__reprobe vram-fc-header__reprobe${
-        className ? ` ${className}` : ""
-      }`}
-      data-probe-state={isValidating ? "probing" : "reprobe"}
+        lowVram ? " vram-fc-header__reprobe--low-vram" : ""
+      }${className ? ` ${className}` : ""}`}
+      data-probe-state={isValidating ? "probing" : lowVram ? "low-vram" : "reprobe"}
       disabled={isValidating}
       onClick={(e) => {
         e.stopPropagation();
         onValidate?.();
       }}
-      title="Run FIT PROBE at this CTX to lock a measured point"
+      title={
+        lowVram
+          ? "Free VRAM is tight — run free-aware FIT to measure real host spill (not auto on CTX drag)"
+          : "Run FIT PROBE at this CTX to lock a measured point"
+      }
     >
-      {isValidating ? "PROBING…" : "RE-PROBE"}
+      {label}
     </button>
   );
 }

@@ -2083,16 +2083,29 @@
   cursor: wait;
   font-weight: 600;
   color: var(--theme-provider-pill-active-text, #0a0804);
-  border-color: var(--theme-provider-pill-active-border, #f5971f);
   background: var(--theme-provider-pill-active-bg, #f5971f);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-provider-pill-active-bg, #f5971f) 40%, transparent);
-  opacity: 1;
+  border-color: var(--theme-provider-pill-active-border, #f5971f);
 }
 
+/* Manual free-aware spill probe — flash until user runs RE-PROBE LOW VRAM */
+.vram-fc-header__reprobe--low-vram,
+.vram-fc-source__reprobe[data-probe-state="low-vram"],
+.vram-fc-header__reprobe[data-probe-state="low-vram"] {
+  color: var(--theme-telemetry-amber, #fbbf24);
+  border-color: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 55%, transparent);
+  animation: vram-fc-low-vram-pulse 1.25s ease-in-out infinite;
+}
 
-/* Rich SOURCE hover recap */
-.vram-fc-source {
-  position: relative;
+@keyframes vram-fc-low-vram-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 0%, transparent);
+    filter: brightness(1);
+  }
+  50% {
+    box-shadow: 0 0 10px 1px color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 45%, transparent);
+    filter: brightness(1.15);
+  }
 }
 .vram-fc-recap {
   position: absolute;

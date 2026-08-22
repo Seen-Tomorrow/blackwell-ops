@@ -21,6 +21,7 @@ mod templates;
 mod nvml_probe;
 mod fit_adapters;
 mod fit_scanner;
+mod fit_low_vram;
 mod vram_learn;
 mod forecast_log;
 mod launch_memory_parse;

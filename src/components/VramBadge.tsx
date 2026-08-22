@@ -233,7 +233,7 @@ export default function VramBadge({
             memorySource={memorySource}
             isValidating={isValidating}
             onValidate={onValidate}
-            hideValidate={!onValidate}
+            needsLowVramReprobe={!!s.needsLowVramReprobe}
           />
         ) : null}
       </div>

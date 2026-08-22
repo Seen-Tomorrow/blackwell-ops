@@ -2,6 +2,10 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { ModelEntry, EngineConfig, GpuInfo, StackEntry, SystemInfo, VramManifest, FitScanResult } from "../lib/types";
 import { evaluate, committedSlotsFromStack, committedStackKey, parseCtx, computeGpuAvailableList, type ScenarioInput, type FitPoint } from "../services/vram/scenarios/scenarios_factory";
+import {
+  freeFingerprintFromGb,
+  type FitProbeMode,
+} from "../services/vram/lowVramProbe";
 import { attachMemorySource, MEMORY_SOURCE_LABELS } from "../services/vram/memorySource";
 import { gpuMemoryBucketKey, vramManifestSnapshotEqual } from "../lib/telemetryGpu";
 import { tomMtpBlocked, toastTomMtpSkip, TOM_MTP_SKIP_MESSAGE } from "../lib/tomMtp";
@@ -20,6 +24,11 @@ type ProbeSession = {
   validatedHostMib?: number;
   validatedComponentsMib?: VramManifest["validatedComponentsMib"];
   fitProbeMeasuredAt: string;
+  /** full = ngl999 need; low_vram = free-aware spill. */
+  mode: FitProbeMode;
+  /** Free-pool fingerprint at probe time. */
+  freeFingerprint: string;
+  fittedNgl?: number;
 };
 
 function placementConfigKey(config: Record<string, unknown>): string {
@@ -82,6 +91,9 @@ function probeScenarioFields(
     fitProbePlacementKey: session.placementKey,
     fitProbeAnchorCtx: session.anchorCtx,
     fitProbeMeasuredAt: session.fitProbeMeasuredAt,
+    fitProbeMode: session.mode,
+    fitProbeFreeFingerprint: session.freeFingerprint,
+    fitProbeFittedNgl: session.fittedNgl,
   };
 }
 
@@ -875,6 +887,24 @@ export function useScenarioEvaluator({
     validatingRef.current = true;
     setIsValidating(true);
     try {
+      // Prefer low_vram when the live glass is already nudging (tight free).
+      const wantLowVram = !!manifestRef.current?.style?.needsLowVramReprobe
+        || manifestRef.current?.style?.launchPaint === "offload"
+        || manifestRef.current?.style?.vramNeedTone === "caution"
+        || manifestRef.current?.style?.vramNeedTone === "warn"
+        || manifestRef.current?.style?.vramNeedTone === "hot";
+      const probeMode: FitProbeMode = wantLowVram ? "low_vram" : "full";
+      const runningSlots = committedSlotsFromStack(stackRef.current);
+      const gpuAvail = computeGpuAvailableList(gpusRef.current, runningSlots);
+      const devMatch = /GPU-?(\d+)/i.exec(String(curConfig.device || "GPU-0"));
+      const devIdx = devMatch ? parseInt(devMatch[1], 10) : 0;
+      const targetFreeGb =
+        devIdx >= 0 && devIdx < gpuAvail.length
+          ? Math.max(0, gpuAvail[devIdx] ?? 0)
+          : Math.max(0, ...gpuAvail, 0);
+      const freeBudgetMib = targetFreeGb * 1024;
+      const liveFreeFp = freeFingerprintFromGb(targetFreeGb);
+
       const result: FitScanResult = await invoke("fit_scan_model", {
         modelPath: model.path,
         providerId: curConfig.backend_type || null,
@@ -886,6 +916,8 @@ export function useScenarioEvaluator({
         ubatch: typeof curConfig.ubatch === "number" ? curConfig.ubatch : parseInt(String(curConfig.ubatch), 10) || 512,
         flashAttn: curConfig["flash_attn"]?.toLowerCase() !== "off",
         offloadMode: "regular",
+        mode: probeMode,
+        freeBudgetMib: probeMode === "low_vram" ? freeBudgetMib : null,
       });
 
       const engineConfig: EngineConfig = {
@@ -896,7 +928,6 @@ export function useScenarioEvaluator({
         extra_params: { ...curConfig },
       };
 
-      const runningSlots = committedSlotsFromStack(stackRef.current);
       const sysInfo = systemInfoRef.current || {
         total_memory_mib: 0,
         available_memory_mib: 0,
@@ -911,6 +942,8 @@ export function useScenarioEvaluator({
       const curProbeKey = fitProbeKey(curConfig, autoVramLaunchRef.current);
       const curPlacementKey = placementConfigKey(curConfig);
       const anchorCtx = parseCtx(curConfig.ctx ?? "32768");
+      const resultMode: FitProbeMode =
+        result.probe_mode === "low_vram" ? "low_vram" : probeMode;
 
       const input: ScenarioInput = {
         modelMeta: model.metadata!,
@@ -942,6 +975,9 @@ export function useScenarioEvaluator({
         fitProbePlacementKey: curPlacementKey,
         fitProbeAnchorCtx: anchorCtx,
         fitProbeMeasuredAt: probeMeasuredAt,
+        fitProbeMode: resultMode,
+        fitProbeFreeFingerprint: liveFreeFp,
+        fitProbeFittedNgl: result.fitted_ngl,
       };
 
       const session: ProbeSession = {
@@ -954,6 +990,9 @@ export function useScenarioEvaluator({
         validatedHostMib: result.host_mib,
         validatedComponentsMib: result.gpu_components_mib ?? null,
         fitProbeMeasuredAt: probeMeasuredAt,
+        mode: resultMode,
+        freeFingerprint: liveFreeFp,
+        fittedNgl: result.fitted_ngl,
       };
 
       probeSessionRef.current = session;

@@ -42,6 +42,12 @@ export interface ForecastInput {
   fitProbeAnchorCtx?: number;
   /** Display clock when probe completed (session). */
   fitProbeMeasuredAt?: string;
+  /** `full` | `low_vram` session probe regime. */
+  fitProbeMode?: "full" | "low_vram";
+  /** Free-pool fingerprint when probe was taken (stale when free moves). */
+  fitProbeFreeFingerprint?: string;
+  /** Fitted -ngl from low_vram probe when known. */
+  fitProbeFittedNgl?: number;
 }
 
 /** Compat alias — old scenario call sites. */

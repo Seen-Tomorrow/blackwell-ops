@@ -1,0 +1,99 @@
+# Low-VRAM RE-PROBE (free-aware spill)
+
+Design + implementation notes for honest spill / OOM chrome when free VRAM is tight.
+Keep this path **isolated** — do not grow a second forecast graph.
+
+## Why
+
+Live FIT probes (2026-08) showed:
+
+| Mode | Host row |
+|------|----------|
+| App default `--fit-print --fit off -ngl 999` | ~1 GB **host buffer only** |
+| Forced `-ngl 20` | Host **weights + KV** (tens of GB) |
+| `--fit on` alone | Often `-ngl -1` because FIT free ≠ NVML free |
+
+On a stuffed GPU, nvidia-smi free was ~55 GB while FIT `--list-devices` reported ~95 GB free.
+So UI “HOST OFFLOAD · 4 GB” from full-need fit-print is **not** weight spill.
+Soft OOM bands (85% / 92% free util) are still valid as “tight if we stay full-GPU.”
+
+Product choice: **never auto-probe on CTX drag**. Fluid slider stays on full-need curve/tax.
+When tight, **nudge** the existing RE-PROBE control → `RE-PROBE LOW VRAM` (manual).
+
+## Architecture (minimal)
+
+```
+full probe (auto / normal RE-PROBE)
+  --fit-print on --fit off -ngl 999
+  → true total GPU need (SOURCE)
+
+tight free / over free  →  UI nudge only (no auto FIT)
+
+manual RE-PROBE LOW VRAM
+  --fit on  (no ngl 999)
+  --fit-target corrected from NVML free vs FIT list-devices free
+  → parse last memory breakdown Host + CUDA
+  → session.mode = "low_vram"
+```
+
+### Isolated modules
+
+| Path | Role |
+|------|------|
+| `src/services/vram/lowVramProbe.ts` | needs-reprobe, free fingerprint, real-spill threshold, bar inset copy |
+| `src-tauri/src/fit_low_vram.rs` | build args, list-devices free parse, fit-target math, fitted `-ngl` parse |
+| Session field `mode` + `freeFingerprint` | stale when free pool moves |
+
+No second cache file, no second evaluator, no ngl binary-search loop in TS.
+
+## Paint rules
+
+1. **LOW / HIGH OOM RISK** — only while still **fit** (full-GPU plan) and freeUtil crosses 0.85 / 0.92.
+2. **OVER FREE · RE-PROBE** — estimate > free−headroom and **no** fresh low_vram probe. Do **not** invent multi-GB host spill.
+3. **HOST OFFLOAD · SLOWER / OVER FREE · SPILL · SLOWER** — only if host is **weight-class** (`hostGb > HOST_BUFFER_CEILING_GB`, default 2.5) from low_vram / LEARNED, or low_vram fitted ngl is partial.
+4. Full-need Host ~1 GB → never labeled “offload.”
+
+## Fit-target correction
+
+```
+fitFree     = FIT list-devices free (often overstates free)
+nvmlFree    = app NVML free for target GPU(s)
+headroom    = max(1024 MiB, 3% nvmlFree)
+wantUsable  = nvmlFree - headroom
+fitTarget   = max(1024, fitFree - wantUsable)
+```
+
+Pass `--fit-target {fitTarget}` so free-aware fit budgets against **our** free.
+
+## Session freshness
+
+Low-vram probe is fresh when:
+
+- `hardKey` matches (existing FIT hard knobs)
+- `freeFingerprint` matches live free (rounded)
+- `mode === "low_vram"`
+
+CTX may still slide; estimate adjusts from anchor like full probe.
+If free fingerprint changes (other engine stop/start), nudge returns.
+
+## Non-goals
+
+- Auto FIT when slider enters OOM territory
+- Dual continuous probes
+- Second LEARNED curve partition for low_vram
+- Claiming spill from free-pool overshoot guess alone
+
+## Thresholds (tune later)
+
+- `FREE_POOL_OOM_CAUTION = 0.85`
+- `FREE_POOL_OOM_WARN = 0.92`
+- `HOST_BUFFER_CEILING_GB = 2.5`
+- free fingerprint: free GB rounded to 0.5
+
+## Manual test checklist
+
+1. Empty GPU, small CTX — RE-PROBE normal; no LOW VRAM flash.
+2. Stuff GPU + aggressive CTX — LOW/HIGH OOM or OVER FREE · RE-PROBE; button flashes LOW VRAM.
+3. Click RE-PROBE LOW VRAM — Host weight-class if FIT spills; chrome SPILL · SLOWER.
+4. Drag CTX after low_vram — still fluid; no auto re-probe.
+5. Stop other engine (free jumps) — low_vram stale; nudge returns if still tight.

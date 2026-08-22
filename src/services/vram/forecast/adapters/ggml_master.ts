@@ -25,7 +25,6 @@ import {
   cfgStr,
   computeGpuAvailableList,
   freePoolHeadroomGb,
-  freePoolOomTier,
   freePoolUtil,
   interpolateLearnedCurveGb,
   launchPaintFromGate,
@@ -34,6 +33,13 @@ import {
   resolveSplitTax,
   round2,
 } from "../../shared";
+import {
+  freeFingerprintFromGb,
+  isWeightClassHostSpill,
+  lowVramBarInsets,
+  ramNeedToneForHost,
+  showHostRamBar,
+} from "../../lowVramProbe";
 import { attachMemorySource } from "../memorySource";
 import type { ForecastAdapter, ForecastInput } from "../types";
 
@@ -166,10 +172,14 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     !overSystemMemory && (trustFitAtLoad || estimateGb <= targetAvail - headroomGb);
 
   const gpuProjectionGb = estimateGb;
-  const hostOffloadGb =
+  // Prefer measured host; never invent multi-GB spill from free overshoot alone.
+  const hostMeasuredGb =
     learnedHostGb ??
     probeHostGb ??
-    (exceedsGpuPool ? Math.max(0, estimateGb - Math.max(targetAvail - headroomGb, 0)) : 0);
+    null;
+  const hostOffloadGb = isWeightClassHostSpill(hostMeasuredGb)
+    ? (hostMeasuredGb as number)
+    : 0;
 
   const currentPlacementKey = `${input.engineConfig.extra_params?.device || ""}|${input.engineConfig.extra_params?.split || ""}|${input.engineConfig.extra_params?.gpu_sync || ""}`;
   const probePlacementMatches =
@@ -217,10 +227,27 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   }
 
   const headroomThreshold = targetAvail - headroomGb;
-  const totalProjectedGb = gpuProjectionGb + hostOffloadGb;
-  const isRealHostOffload = totalProjectedGb > headroomThreshold + 0.1;
-  const showHostRam = hostOffloadGb > 0.5 || exceedsGpuPool;
-  const useOffloadPalette = trustFitAtLoad && exceedsGpuPool;
+  const liveFreeFp = freeFingerprintFromGb(targetAvail);
+  const fittedNgl = input.fitProbeFittedNgl;
+  const realSpillFromNgl =
+    input.fitProbeMode === "low_vram" &&
+    fittedNgl != null &&
+    fittedNgl >= 0 &&
+    fittedNgl < 900;
+  // Weight-class host from LEARNED / low_vram; include measured host when ngl says spill.
+  const spillHostGb = isWeightClassHostSpill(hostMeasuredGb)
+    ? (hostMeasuredGb as number)
+    : realSpillFromNgl && hostMeasuredGb != null && hostMeasuredGb > 0.5
+      ? hostMeasuredGb
+      : hostOffloadGb;
+  const realSpill = isWeightClassHostSpill(spillHostGb) || realSpillFromNgl;
+  const displayHostGb = realSpill ? Math.max(hostOffloadGb, spillHostGb) : 0;
+  const showHostRam = showHostRamBar({
+    hostOffloadGb: displayHostGb,
+    realSpill,
+    overSystemMemory,
+  });
+  const useOffloadPalette = (trustFitAtLoad && exceedsGpuPool) || realSpill;
   const multiGpuLoad = perGpuLoad.filter((gb) => gb > 0.1).length > 1;
 
   const fitHint = "ENGINE pre-tunes on load";
@@ -230,7 +257,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
       ? `split across ${input.gpus.length} GPU(s) + ${fitHint}`
       : fitHint;
 
-  const hostOffloadLaunch = useOffloadPalette || (isRealHostOffload && hostOffloadGb > 0.5);
+  const hostOffloadLaunch = useOffloadPalette || realSpill;
   const multiNote =
     autoSplit || multiGpuLoad || (!fullAuto && splitActive(input) && input.gpus.length > 1);
   const gpuWord =
@@ -284,34 +311,29 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
 
   const launchPaint = launchPaintFromGate(fits, useOffloadPalette);
   const vramFreeUtil = freePoolUtil(estimateGb, targetAvail);
-  const vramNeedTone = needToneFromLaunchPaint(launchPaint, vramFreeUtil);
+  // Soft OOM only when still full-GPU fit; spill path skips OOM risk copy.
+  const vramNeedTone = needToneFromLaunchPaint(
+    launchPaint,
+    realSpill ? undefined : vramFreeUtil,
+  );
   const paintClasses = barStyleFromNeedTone(vramNeedTone);
-  const ramLaunchPaint = overSystemMemory
-    ? ("nofit" as const)
-    : hostOffloadLaunch && hostOffloadGb > 0.5
-      ? ("offload" as const)
-      : ("fit" as const);
-  const ramNeedTone = needToneFromLaunchPaint(ramLaunchPaint);
-
-  // Inset bar copy (right end, need-hero size). Thresholds tunable via FREE_POOL_OOM_*.
-  const oomTier = freePoolOomTier(vramFreeUtil);
-  const vramBarInsetText =
-    launchPaint === "nofit"
-      ? "NO FIT"
-      : launchPaint === "offload"
-        ? "OVER FREE · SPILL · SLOWER"
-        : oomTier === "warn"
-          ? "HIGH OOM RISK"
-          : oomTier === "caution"
-            ? "LOW OOM RISK"
-            : null;
-  const ramBarInsetText =
-    overSystemMemory
-      ? "NO FIT · SYSTEM"
-      : hostOffloadLaunch && hostOffloadGb > 0.5
-        ? "HOST OFFLOAD · SLOWER"
-        : null;
-
+  const insets = lowVramBarInsets({
+    launchPaint,
+    freeUtil: vramFreeUtil,
+    freeGb: targetAvail,
+    estimateGb,
+    hostOffloadGb: displayHostGb,
+    overSystemMemory,
+    probeMode: input.fitProbeMode,
+    probeFreeFingerprint: input.fitProbeFreeFingerprint,
+    liveFreeFingerprint: liveFreeFp,
+    fittedNgl,
+  });
+  const ramNeedTone = ramNeedToneForHost({
+    overSystemMemory,
+    hostOffloadGb: displayHostGb,
+    realSpill: insets.realSpill,
+  });
 
   const base: VramManifest = {
     scenario: "AUTO_FIT",
@@ -323,25 +345,22 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
       launchPaint,
       vramNeedTone,
       ramNeedTone,
+      needsLowVramReprobe: insets.needsReprobe,
       uiTemplate: {
         heroText,
         launchSummary,
         gpuLayerText: layerText,
         ramLayerText: showHostRam
-          ? isRealHostOffload
-            ? learnedHostGb != null
-              ? `${hostOffloadGb.toFixed(1)} GB on host RAM (measured on prior launch)`
-              : `~${hostOffloadGb.toFixed(1)} GB will spill to RAM — engine decides on load`
-            : learnedHostGb != null
-              ? `${hostOffloadGb.toFixed(1)} GB host buffer (measured on prior launch)`
-              : `~${hostOffloadGb.toFixed(1)} GB host buffer — engine overhead at load`
+          ? learnedHostGb != null
+            ? `${displayHostGb.toFixed(1)} GB on host RAM (measured on prior launch)`
+            : `~${displayHostGb.toFixed(1)} GB host spill (low-VRAM probe)`
           : autoSplit
             ? "VRAM spread across GPUs — offload decided at load"
             : "engine might use some RAM at launch",
         showRamBar: true,
         moeRamBar: false,
-        kvSpillRiskText: vramBarInsetText,
-        offloadWarningText: ramBarInsetText,
+        kvSpillRiskText: insets.vramInset,
+        offloadWarningText: insets.ramInset,
       },
     },
     vramWeightsGb: round2(weightGb),
@@ -350,8 +369,8 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     vramTotalGb: round2(gpuProjectionGb),
     ramWeightsGb: 0,
     ramKvGb: 0,
-    ramSpillGb: round2(hostOffloadGb),
-    ramTotalGb: round2(hostOffloadGb),
+    ramSpillGb: round2(displayHostGb),
+    ramTotalGb: round2(displayHostGb),
     ramManufacturedGb: input.ramManufacturedGb,
     ramAvailableGb: input.ramAvailableGb,
     gpuAllocations: buildGpuAllocations(

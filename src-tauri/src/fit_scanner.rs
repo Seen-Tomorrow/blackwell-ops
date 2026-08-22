@@ -66,6 +66,12 @@ pub struct FitScanResult {
     /// Per-GPU component breakdown (model/ctx/compute) from memory table.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gpu_components_mib: Option<Vec<GpuComponentMib>>,
+    /// Fitted `-ngl` from free-aware low_vram probe (−1 = all on GPU).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fitted_ngl: Option<i32>,
+    /// `full` | `low_vram` — which FIT regime produced this result.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub probe_mode: Option<String>,
 }
 
 /// Per-GPU component breakdown parsed from llama's memory table.
@@ -445,6 +451,7 @@ pub fn parse_fit_print_stdout(stdout: &str) -> Option<FitScanRaw> {
         gpu_breakdown_mib: Some(gpu_self),
         host_mib,
         gpu_components_mib: Some(gpu_components),
+        fitted_ngl: None,
     })
 }
 
@@ -554,12 +561,15 @@ pub struct FitScanRaw {
     pub host_mib: Option<f64>,
     /// Per-GPU component breakdown (model/ctx/compute).
     pub gpu_components_mib: Option<Vec<GpuComponentMib>>,
+    /// Optional fitted ngl from free-aware fit logs.
+    pub fitted_ngl: Option<i32>,
 }
 
-struct FitProcessOutput {
-    stdout: Vec<u8>,
-    stderr: Vec<u8>,
-    status: ExitStatus,
+#[derive(Debug, Clone)]
+pub struct FitProcessOutput {
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
+    pub status: ExitStatus,
 }
 
 /// Blocking FIT subprocess — mirrors gguf_scan / engine_stack spawn pattern.
@@ -567,7 +577,7 @@ struct FitProcessOutput {
 /// `tokio::process::Command::output()` with CREATE_NO_WINDOW intermittently returns
 /// ERROR_INVALID_HANDLE (os error 6) in release builds on Windows. Stdio must be
 /// explicit; CWD must be the binary directory so bundled DLLs resolve beside the exe.
-fn run_fit_process_blocking(
+pub fn run_fit_process_blocking(
     fit_binary: &str,
     args: &[String],
     cuda_visible_devices: &str,
@@ -750,7 +760,9 @@ pub async fn scan_single_anchor(
         ));
     }
 
-    if let Some(raw) = adapter.parse_scan_output(&stdout, &stderr) {
+    if let Some(mut raw) = adapter.parse_scan_output(&stdout, &stderr) {
+        let combined = format!("{stdout}\n{stderr}");
+        crate::fit_low_vram::enrich_raw_with_fitted_ngl(&mut raw, &combined);
         return Ok(raw);
     }
 

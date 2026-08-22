@@ -49,6 +49,7 @@ pub fn parse_scan_output(stdout: &str, stderr: &str) -> Option<FitScanRaw> {
         gpu_breakdown_mib,
         host_mib,
         gpu_components_mib,
+        fitted_ngl: None,
     })
 }
 
