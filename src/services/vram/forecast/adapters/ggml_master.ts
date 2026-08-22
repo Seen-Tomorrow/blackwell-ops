@@ -151,15 +151,14 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
         )
       : null;
 
-  // Host only at an exact CTX. Never lerp host.
-  // Same-CTX low_vram session wins over a stored full-GPU LEARNED row.
+  // Exact CTX host, else lerp host from full-GPU curve (buffer only).
   const learnedHostGbRaw = liveLowVram
     ? probeHostGb
     : exactPt != null && exactPt.hostMib != null
       ? exactPt.hostMib / 1024
       : learnedExactGbRaw != null && input.learnedHostMib != null
         ? input.learnedHostMib / 1024
-        : null;
+        : curveHit?.hostGb ?? null;
   const targetAvailForGate = gpuAvailable[tgt] ?? Math.max(...gpuAvailable, 0);
   const discardSpillLearned =
     !liveLowVram

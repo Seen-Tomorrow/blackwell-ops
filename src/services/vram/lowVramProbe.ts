@@ -50,10 +50,9 @@ export function isPartialFittedNgl(ngl: number | null | undefined): boolean {
 }
 
 /**
- * SPILL / HOST OFFLOAD only with a measurement at this plan.
- * The amber CTX fits-line (exceedsFree) is the honest offload start.
- * Do not use the 85/92% band — that invented SPILL at 610k while FIT
- * stayed ngl=-1 until ~760k.
+ * SPILL / HOST OFFLOAD with a this-CTX measurement.
+ * Partial ngl counts even when the reduced GPU estimate now fits free
+ * (that's the whole point of low_vram). Do not use the 85/92% band alone.
  */
 export function isLiveWeightSpill(args: {
   estimateGb: number;
@@ -61,17 +60,21 @@ export function isLiveWeightSpill(args: {
   hostGb?: number | null;
   probeMode?: FitProbeMode | null;
   fittedNgl?: number | null;
-  /** Host/ngl only count when they belong to this CTX. */
   measurementAtLiveCtx?: boolean;
 }): boolean {
-  const headroom = freePoolHeadroomGb(args.freeGb);
-  const overFree = args.estimateGb > args.freeGb - headroom;
+  const atThisCtx = args.measurementAtLiveCtx === true;
+  if (
+    atThisCtx
+    && args.probeMode === "low_vram"
+    && isPartialFittedNgl(args.fittedNgl)
+  ) {
+    return true;
+  }
+  if (!atThisCtx) return false;
+  const overFree =
+    args.estimateGb > args.freeGb - freePoolHeadroomGb(args.freeGb);
   if (!overFree) return false;
-  if (args.measurementAtLiveCtx === false) return false;
-  return (
-    isWeightClassHostSpill(args.hostGb) ||
-    (args.probeMode === "low_vram" && isPartialFittedNgl(args.fittedNgl))
-  );
+  return isWeightClassHostSpill(args.hostGb);
 }
 
 /**
