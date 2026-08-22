@@ -488,6 +488,8 @@ export function useScenarioEvaluator({
     const curSystemInfo = systemInfoRef.current;
     const curConfig = configRef.current;
 
+    if (validatingRef.current) return;
+
     if (!model || curGpus.length === 0) {
       commitManifest(null);
       return;

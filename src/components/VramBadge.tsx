@@ -191,7 +191,7 @@ export default function VramBadge({
         ? manifest.validatedHostMib / 1024
         : manifest.ramTotalGb)
     : manifest.ramTotalGb;
-  const showRamBar = t.showRamBar !== false;
+  const showRamBar = t.showRamBar !== false || !!isValidating;
 
   const totalVramMib = gpus.reduce((sum, g) => {
     return sum + (g.memory_total_manufactured || g.memory_total);
@@ -357,7 +357,6 @@ export default function VramBadge({
               data-has-probe={
                 memorySource && sourceView?.canProbe && !hideFitProbe ? "1" : "0"
               }
-              data-live={isValidating ? "1" : undefined}
             >
               {memorySource && sourceView?.showStatus ? (
                 <MemorySourceStatusMark memorySource={memorySource} />
