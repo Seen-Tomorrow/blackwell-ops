@@ -367,21 +367,22 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     freeUtil: vramFreeUtil,
     freeGb: targetAvail,
     estimateGb,
-    hostOffloadGb: displayHostGb,
+    hostOffloadGb: hostMeasuredGb ?? 0,
     overSystemMemory,
     probeMode: input.fitProbeMode,
     probeFreeFingerprint: input.fitProbeFreeFingerprint,
     liveFreeFingerprint: liveFreeFp,
     fittedNgl,
+    measurementAtLiveCtx,
   });
+  const spill = realSpill || insets.realSpill;
   const ramNeedTone = ramNeedToneForHost({
     overSystemMemory,
-    hostOffloadGb: displayHostGb,
-    realSpill: insets.realSpill,
+    hostOffloadGb: hostMeasuredGb ?? 0,
+    realSpill: spill,
   });
 
   const hostTotalGb = Math.max(
-    displayHostGb,
     hostMeasuredGb ?? 0,
     probeHostGb ?? 0,
     learnedHostGb ?? 0,
@@ -391,7 +392,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     hostModelGb:
       input.fitProbeHostModelMib != null ? input.fitProbeHostModelMib / 1024 : null,
     bufferBaselineGb: curveHit?.hostGb,
-    realSpill: insets.realSpill,
+    realSpill: spill,
   });
   const ramNeedGb = hostSplit.bufferGb + hostSplit.weightGb;
 

@@ -66,15 +66,14 @@ export function isLiveWeightSpill(args: {
   fittedNgl?: number | null;
   measurementAtLiveCtx?: boolean;
 }): boolean {
-  const atThisCtx = args.measurementAtLiveCtx === true;
+  // Session is dropped when CTX moves, so ngl here is already this-CTX.
   if (
-    atThisCtx
-    && args.probeMode === "low_vram"
+    args.probeMode === "low_vram"
     && isPartialFittedNgl(args.fittedNgl)
   ) {
     return true;
   }
-  if (!atThisCtx) return false;
+  if (args.measurementAtLiveCtx !== true) return false;
   const overFree =
     args.estimateGb > args.freeGb - freePoolHeadroomGb(args.freeGb);
   if (!overFree) return false;
@@ -192,8 +191,8 @@ export function lowVramBarInsets(args: {
   probeMode?: FitProbeMode | null;
   probeFreeFingerprint?: string | null;
   liveFreeFingerprint: string;
-  /** Fitted ngl from low_vram probe when known (−1 / 999 = all on GPU). */
   fittedNgl?: number | null;
+  measurementAtLiveCtx?: boolean;
 }): LowVramBarInsets {
   const realSpill = isLiveWeightSpill({
     estimateGb: args.estimateGb,
@@ -201,6 +200,7 @@ export function lowVramBarInsets(args: {
     hostGb: args.hostOffloadGb,
     probeMode: args.probeMode,
     fittedNgl: args.fittedNgl,
+    measurementAtLiveCtx: args.measurementAtLiveCtx,
   });
 
   const needsReprobe = needsLowVramReprobe({
