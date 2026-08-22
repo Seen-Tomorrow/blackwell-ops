@@ -88,7 +88,7 @@ export default function FusionPane({
         cudaVersion={cudaVersion}
         launchConfig={secondary ? undefined : launchConfig}
         hwTopo={hwTopo}
-        hideBenchTray={false}
+        hideBenchTray={secondary}
       />
     </div>
   );

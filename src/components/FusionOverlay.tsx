@@ -628,7 +628,7 @@ export default function FusionOverlay({
                 title={
                   quietMode
                     ? "FULL mode - fully realtime GENERATION AND PREFILL data"
-                    : "FALLBACK mode fore quit models - not fully supported yet"
+                    : "FALLBACK mode for quiet models — not fully supported yet"
                 }
                 className={`fusion-ops-chip ${quietMode ? "fusion-ops-chip--quiet" : ""}`}
               >

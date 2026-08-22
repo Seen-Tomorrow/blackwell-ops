@@ -443,7 +443,7 @@
 }
 
 /* Holds phosphor open while LEARNED / FIT PROBE resolve.
- * Height comes from VramBadge (computeForecastPhosphorHeightPx) — not a fixed 280. */
+ * Height comes from EngineGpuForecast (computeForecastPhosphorHeightPx) — not a fixed 280. */
 .vram-badge-forecast--skeleton {
   min-height: 0;
   height: 100%;
@@ -852,73 +852,6 @@
   letter-spacing: 0.12em;
 }
 
-/* ── FULL AUTO hero ─────────────────────────────────────────────────── */
-.vram-fc-auto {
-  gap: calc(2px * var(--vram-fc-scale));
-}
-
-.vram-fc-auto__top {
-  display: flex;
-  align-items: flex-start;
-  gap: calc(8px * var(--vram-fc-scale));
-  min-width: 0;
-}
-
-.vram-fc-auto__headline {
-  margin: 0;
-  flex: 1 1 auto;
-  min-width: 0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: calc(13px * var(--vram-fc-scale));
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  line-height: 1.2;
-  text-wrap: balance;
-}
-
-.vram-fc-auto__remain {
-  display: flex;
-  align-items: baseline;
-  gap: calc(8px * var(--vram-fc-scale));
-  margin: 0;
-  min-height: calc(1.7rem * var(--vram-fc-scale));
-  line-height: 1;
-}
-
-.vram-fc-auto__pct {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: var(--vram-fc-fs-hero);
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
-  line-height: 0.95;
-  color: var(--display-face-text, #e2e8f0);
-  text-shadow: 0 0 14px color-mix(in srgb, var(--display-face-text, #e2e8f0) 28%, transparent);
-}
-
-.vram-fc[data-fits="1"] .vram-fc-auto__pct {
-  color: color-mix(in srgb, var(--theme-nv-green, #76b900) 94%, transparent);
-  text-shadow: 0 0 16px color-mix(in srgb, var(--theme-nv-green, #76b900) 30%, transparent);
-}
-
-.vram-fc-auto__pct-lab {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: calc(11px * var(--vram-fc-scale));
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 88%, transparent);
-}
-
-.vram-fc-auto__remain--fail {
-  min-height: calc(1.25rem * var(--vram-fc-scale));
-}
-
-.vram-fc-auto__fail-lab {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: calc(9px * var(--vram-fc-scale));
-  line-height: 1.25;
-  color: color-mix(in srgb, #f87171 88%, transparent);
-}
 
 .vram-fc__src {
   flex: 0 0 auto;
@@ -1122,33 +1055,6 @@
 .vram-forecast-needs-row { line-height: 1.15; }
 .vram-forecast-needs-sep { padding: 0 2px; letter-spacing: -0.05em; }
 
-.vram-forecast-hero {
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-  gap: calc(2px * var(--vram-fc-scale));
-}
-
-.vram-forecast-hero__title { line-height: 1.15; }
-
-.vram-fc__sub,
-.vram-forecast-hero__sub {
-  max-width: 32rem;
-  min-height: 1rem;
-  margin: 0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: var(--vram-fc-fs-sm);
-  line-height: 1.25;
-  letter-spacing: 0.04em;
-  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 78%, transparent);
-}
-
-.vram-forecast-hero__sub--placeholder {
-  visibility: hidden;
-  pointer-events: none;
-  user-select: none;
-}
 
 .vram-forecast-gb-value {
   font-variant-numeric: tabular-nums;
@@ -1300,19 +1206,6 @@
   pointer-events: none;
 }
 
-/* Live meter — inline in SOURCE strip (not absolute) */
-.vram-fc-measure__source .vram-fc-source__live-float {
-  position: static;
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  z-index: auto;
-}
-.vram-fc-source__live-float .vram-fc-source__live-meter {
-  width: 5.5ch;
-  min-width: 5.5ch;
-  max-width: 5.5ch;
-}
 
 /* Rails unwrap so each bar is its own main-grid row */
 .vram-fc-measure__main > .vram-fc-measure__rails,
@@ -2147,84 +2040,6 @@
   opacity: 1;
 }
 
-/* Live meter — FIXED width chip (never width:100% of the source row) */
-.vram-fc-source__live-meter {
-  --mem-accent: var(--theme-telemetry-cyan, #22d3ee);
-  position: relative;
-  display: block;
-  flex: 0 0 5.5ch;
-  width: 5.5ch;
-  min-width: 5.5ch;
-  max-width: 5.5ch;
-  height: calc(12px * var(--vram-fc-scale, 1.12));
-  border-radius: 2px;
-  border: 1px solid color-mix(in srgb, var(--mem-accent) 45%, transparent);
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--mem-accent) 12%, transparent) 0%,
-      color-mix(in srgb, #000 28%, transparent) 100%
-    );
-  overflow: hidden;
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 10%, transparent),
-    0 0 8px color-mix(in srgb, var(--mem-accent) 22%, transparent);
-}
-.vram-fc-source__live-meter--probe {
-  --mem-accent: var(--theme-telemetry-cyan, #22d3ee);
-}
-.vram-fc-source__live-meter.is-probing {
-  border-color: color-mix(in srgb, var(--mem-accent) 65%, transparent);
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 12%, transparent),
-    0 0 12px color-mix(in srgb, var(--mem-accent) 38%, transparent);
-}
-.vram-fc-source__live-meter-bars {
-  position: absolute;
-  inset: 2px 3px 2px;
-  z-index: 1;
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 2px;
-}
-.vram-fc-source__live-bar {
-  display: block;
-  flex: 1 1 0;
-  min-width: 2px;
-  max-width: 4px;
-  width: auto;
-  height: 100%;
-  margin: 0;
-  padding: 0;
-  font-style: normal;
-  border-radius: 1px 1px 0 0;
-  transform-origin: bottom center;
-  transform: scaleY(0.3);
-  opacity: 0.65;
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, #fff 70%, var(--mem-accent)) 0%,
-    var(--mem-accent) 55%,
-    color-mix(in srgb, var(--mem-accent) 45%, #000) 100%
-  );
-  box-shadow: 0 0 4px color-mix(in srgb, var(--mem-accent) 65%, transparent);
-  will-change: transform, opacity;
-}
-/* Horizontal scanline only (no lateral sweep band) */
-.vram-fc-source__live-meter-scan {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  z-index: 2;
-  height: 2px;
-  pointer-events: none;
-  background: color-mix(in srgb, #fff 75%, var(--mem-accent, #22d3ee));
-  box-shadow: 0 0 6px color-mix(in srgb, var(--mem-accent, #22d3ee) 85%, transparent);
-  opacity: 0.75;
-  will-change: transform, opacity;
-}
 
 /* Rich SOURCE hover recap */
 .vram-fc-source {
@@ -2386,11 +2201,6 @@
 }
 .vram-fc-source--dominant .vram-fc-source__status-main {
   flex: 0 0 auto;
-}
-.vram-fc-source--dominant .vram-fc-source__live-meter {
-  width: 5.5ch;
-  min-width: 5.5ch;
-  max-width: 5.5ch;
 }
 /* RE-PROBE keeps provider-pill metrics (don't shrink vs PROVIDER bar) */
 .vram-fc-source--dominant .vram-fc-source__reprobe {
@@ -3071,25 +2881,6 @@
 [data-display-texture="phosphor-light"] .vram-fc__src[data-source-kind="learned_curve"] {
   color: var(--display-face-light-text-amber, #7a4a08);
   border-color: color-mix(in srgb, var(--display-face-light-text-amber, #7a4a08) 42%, transparent);
-}
-[data-display-texture="phosphor-light"] .vram-fc-source__live-meter {
-  border-color: color-mix(in srgb, var(--mem-accent, var(--display-face-light-text-cyan, #0e7490)) 55%, transparent);
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--mem-accent, var(--display-face-light-text-cyan, #0e7490)) 16%, transparent),
-      color-mix(in srgb, var(--mem-accent, var(--display-face-light-text-cyan, #0e7490)) 7%, transparent)
-    );
-  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 55%, transparent);
-}
-[data-display-texture="phosphor-light"] .vram-fc-source__live-bar {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, #fff 45%, var(--mem-accent, var(--display-face-light-text-cyan, #0e7490))),
-    var(--mem-accent, var(--display-face-light-text-cyan, #0e7490)) 60%,
-    color-mix(in srgb, var(--mem-accent, var(--display-face-light-text-cyan, #0e7490)) 55%, #000)
-  );
-  box-shadow: none;
 }
 [data-display-texture="phosphor-light"] .vram-fc-source__prev-lab {
   color: var(--display-face-light-text-cyan, #0e4a5c);

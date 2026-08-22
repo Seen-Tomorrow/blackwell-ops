@@ -21,8 +21,6 @@ export const DISPLAY_FRAME_MIN_HEIGHT_PX = 240;
  */
 export const FORECAST_PHOSPHOR_HEIGHT_1ROW_PX = 228;
 export const FORECAST_PHOSPHOR_HEIGHT_2ROW_PX = 280;
-/** @deprecated Prefer computeForecastPhosphorHeightPx — kept as 2-row max alias. */
-export const FORECAST_PHOSPHOR_HEIGHT_PX = FORECAST_PHOSPHOR_HEIGHT_2ROW_PX;
 
 /** Visible GPU rows for forecast glass (caps at 2; extras scroll). */
 export function forecastGpuVisibleRows(gpuCount: number, perRow: 2 | 3 = 2): 1 | 2 {

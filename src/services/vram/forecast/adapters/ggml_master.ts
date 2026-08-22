@@ -59,7 +59,6 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   const liveCtx = parseCtx(String(input.engineConfig.extra_params?.ctx ?? "32768"));
   const kvQuant = String(input.engineConfig.extra_params?.kv_quant ?? "f16");
   const fullAuto = input.fullAutoMode === true;
-  const assisted = !fullAuto;
   const gpuAvailable = computeGpuAvailableList(input.gpus, input.runningSlots);
   const multiTotalAvailable = gpuAvailable.reduce((a, b) => a + b, 0);
   const tgt = targetGpuIdx(input, gpuAvailable);
@@ -243,7 +242,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
       ? "needs more free VRAM — lower CTX or free a GPU"
       : "";
 
-  // Compact chip (Full Auto top-right). Assisted uses launchSummary as the header line.
+  // Compact chip label (scenario style). Glass always uses launchSummary.
   const fitLabel = !fits
     ? "NO FIT"
     : hostOffloadLaunch
@@ -252,7 +251,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
         ? "MULTI"
         : "SINGLE";
 
-  /** Personal one-liner — Assisted header (not hard knobs; those live on the cockpit). */
+  /** Personal one-liner — forecast header (not hard knobs; those live on the cockpit). */
   const launchSummary = !fits
     ? recommendation
       ? `Model won't launch — ${recommendation}`
@@ -265,19 +264,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
         ? `Model will launch alright — ${gpuWord}`
         : "Model will launch alright";
 
-  const heroText = fullAuto
-    ? !fits
-      ? "WON'T LAUNCH"
-      : hostOffloadLaunch
-        ? "Model will launch - need some RAM, will be slower"
-        : "Your model will launch ALRIGHT"
-    : launchSummary;
-
-  const heroSubtext = fullAuto
-    ? !fits
-      ? (recommendation || undefined)
-      : undefined
-    : undefined;
+  const heroText = launchSummary;
 
   const layerText =
     learnedGb != null
@@ -310,10 +297,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
       ramVisible: showHostRam,
       uiTemplate: {
         heroText,
-        heroSubtext,
-        /** Assisted header line — same as heroText in assisted mode. */
-        launchSummary: assisted ? launchSummary : undefined,
-        showDetailedForecast: assisted,
+        launchSummary,
         gpuLayerText: layerText,
         ramLayerText: showHostRam
           ? isRealHostOffload
@@ -325,10 +309,8 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
               : `~${hostOffloadGb.toFixed(1)} GB host buffer — engine overhead at load`
           : autoSplit
             ? "VRAM spread across GPUs — offload decided at load"
-            : assisted
-              ? "engine might use some RAM at launch"
-              : "Layer offload decided by engine at launch",
-        showRamBar: assisted,
+            : "engine might use some RAM at launch",
+        showRamBar: true,
         moeRamBar: false,
         offloadWarningText: isRealHostOffload ? "Host RAM offload — slower inference" : undefined,
       },

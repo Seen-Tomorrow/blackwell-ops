@@ -719,18 +719,14 @@ export interface MoeSuggestion {
   suggestionText: string;
 }
 
-/** Scenario-driven UI template — controls what VramBadge renders.
- *  Each scenario defines its own inline. VramBadge is a dumb skeleton that reads these values.
- *  GOLDEN RULE: If you want to change text, visibility, or color of an element in the forecast block,
- *  edit the scenario's uiTemplate — NOT VramBadge.tsx. */
+/** Scenario-driven UI template — copy/colors for the one ASSISTED forecast glass.
+ *  Layout lives in VramBadge; do not revive a second FULL AUTO forecast UI. */
 export interface UiTemplate {
-  /** FULL AUTO hero headline — replaces detailed bars when showDetailedForecast is false. */
+  /** Fallback header if launchSummary is absent. */
   heroText?: string;
-  /** ASSISTED personal launch summary line (outcome + placement). */
+  /** Forecast header line (outcome + placement). */
   launchSummary?: string;
   heroSubtext?: string;
-  /** ASSISTED shows full breakdown; FULL AUTO collapses to hero. */
-  showDetailedForecast?: boolean;
   /** GPU layer info line text (e.g. "→ 37 layers goes to GPU VRAM ~ 48.6 GB (32%)") */
   gpuLayerText: string;
   /** RAM layer info line text (e.g. "→ 23 layers in RAM — 111 GB offload (44%)") */

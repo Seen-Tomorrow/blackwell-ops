@@ -94,8 +94,7 @@ export function vramManifestSnapshotEqual(
   const prevUi = prev.style.uiTemplate;
   const nextUi = next.style.uiTemplate;
   if (
-    prevUi.showDetailedForecast !== nextUi.showDetailedForecast
-    || prevUi.showRamBar !== nextUi.showRamBar
+    prevUi.showRamBar !== nextUi.showRamBar
     || prevUi.heroText !== nextUi.heroText
     || prevUi.heroSubtext !== nextUi.heroSubtext
     || prevUi.gpuLayerText !== nextUi.gpuLayerText

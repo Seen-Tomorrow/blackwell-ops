@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import type { MemorySource, VramManifest } from "../lib/types";
+import type { MemorySource } from "../lib/types";
 import {
   MEMORY_SOURCE_ACCENT,
   MEMORY_SOURCE_LABELS,
@@ -11,12 +11,6 @@ import {
 
 interface MemorySourcePanelProps {
   memorySource: MemorySource;
-  manifest?: VramManifest | null;
-  isValidating?: boolean;
-  hasProbed?: boolean;
-  onValidate?: () => void;
-  hideValidate?: boolean;
-  compact?: boolean;
   /** Optional launch summary included in hover recap. */
   launchSummary?: string;
 }
@@ -71,55 +65,6 @@ function useCtxSliderDragging(): boolean {
   return dragging || coast;
 }
 
-/**
- * Vertical equalizer + scanline via rAF (no horizontal sweep).
- * CSS keyframes die under Windows animations-off / prefers-reduced-motion.
- */
-function useLiveMeterDrive(active: boolean) {
-  const barsRef = useRef<HTMLSpanElement | null>(null);
-  useEffect(() => {
-    if (!active) return;
-    const root = barsRef.current;
-    if (!root) return;
-    const bars = Array.from(root.querySelectorAll<HTMLElement>(".vram-fc-source__live-bar"));
-    if (bars.length === 0) return;
-    const meter = root.parentElement;
-    const scan = meter?.querySelector<HTMLElement>(".vram-fc-source__live-meter-scan") ?? null;
-
-    let raf = 0;
-    const t0 = performance.now();
-    const phase = bars.map((_, i) => i * 0.38);
-
-    const tick = (now: number) => {
-      const t = (now - t0) / 1000;
-      for (let i = 0; i < bars.length; i++) {
-        const s = 0.16 + 0.84 * (0.5 + 0.5 * Math.sin(t * 3.8 + phase[i]));
-        const o = 0.42 + 0.58 * (0.5 + 0.5 * Math.sin(t * 3.8 + phase[i] + 0.4));
-        bars[i].style.transform = `scaleY(${s.toFixed(3)})`;
-        bars[i].style.opacity = o.toFixed(3);
-      }
-      if (scan) {
-        const y = 1 + (0.5 + 0.5 * Math.sin(t * 2.8)) * 8;
-        scan.style.transform = `translateY(${y.toFixed(2)}px)`;
-        scan.style.opacity = (0.35 + 0.55 * (0.5 + 0.5 * Math.sin(t * 2.8))).toFixed(3);
-      }
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => {
-      cancelAnimationFrame(raf);
-      for (const bar of bars) {
-        bar.style.transform = "";
-        bar.style.opacity = "";
-      }
-      if (scan) {
-        scan.style.transform = "";
-        scan.style.opacity = "";
-      }
-    };
-  }, [active]);
-  return barsRef;
-}
 
 /**
  * NEED frame live drive (rAF only) — perimeter rim only.
@@ -298,65 +243,6 @@ export function MemorySourceNeedOverlay({
   );
 }
 
-export interface MemorySourceLiveFloatProps {
-  memorySource: MemorySource;
-  isValidating?: boolean;
-  onValidate?: () => void;
-  hideValidate?: boolean;
-  className?: string;
-}
-
-/**
- * Compact equalizer chip (legacy / optional). Prefer MemorySourceNeedOverlay
- * on the NEED frame for the live mini-display treatment.
- */
-export function MemorySourceLiveFloat({
-  memorySource,
-  isValidating = false,
-  onValidate,
-  hideValidate = false,
-  className,
-}: MemorySourceLiveFloatProps) {
-  const view = getMemorySourceView(memorySource, { onValidate, hideValidate });
-  const ctxDragging = useCtxSliderDragging();
-  const meterActive =
-    isValidating ||
-    (ctxDragging && (view.isEstimate || view.isFitProbe || view.isCurve));
-  const barsRef = useLiveMeterDrive(meterActive);
-
-  if (!meterActive) return null;
-
-  return (
-    <div
-      className={`vram-fc-source__live-float${className ? ` ${className}` : ""}`}
-      data-source-kind={memorySource.kind}
-      data-live="1"
-    >
-      <span
-        className={`vram-fc-source__live-meter${
-          view.isFitProbe ? " vram-fc-source__live-meter--probe" : ""
-        }${isValidating ? " is-probing" : ""}`}
-        title={
-          isValidating
-            ? "FIT PROBE running — measuring VRAM"
-            : view.isFitProbe
-              ? view.isExact
-                ? "FIT PROBE measured at this CTX"
-                : "FIT PROBE estimate — scrubbing CTX"
-              : "LEARNED interpolation — scrubbing CTX"
-        }
-        aria-label="Live memory measurement"
-      >
-        <span ref={barsRef} className="vram-fc-source__live-meter-bars" aria-hidden>
-          {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
-            <i key={i} className="vram-fc-source__live-bar" />
-          ))}
-        </span>
-        <span className="vram-fc-source__live-meter-scan" aria-hidden />
-      </span>
-    </div>
-  );
-}
 
 export interface MemorySourceReprobeProps {
   memorySource: MemorySource;
@@ -439,16 +325,8 @@ export function MemorySourceStatusMark({
 /** MEMORY FORECAST SOURCE identity — lab + kind + pips; hover recap. */
 export default function MemorySourcePanel({
   memorySource,
-  isValidating = false,
-  hasProbed = false,
-  onValidate,
-  hideValidate = false,
   launchSummary,
 }: MemorySourcePanelProps) {
-  void isValidating;
-  void hasProbed;
-  void onValidate;
-  void hideValidate;
 
   const view = getMemorySourceView(memorySource);
   const recap = collectRecap(memorySource, view.kindLabel, launchSummary);
@@ -529,6 +407,3 @@ export default function MemorySourcePanel({
   );
 }
 
-export function manifestHasFitProbe(manifest: VramManifest): boolean {
-  return manifest.memorySource?.kind === "fit_probe";
-}

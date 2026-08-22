@@ -48,7 +48,7 @@ export const FUSION_BENCH_LATCH_STOW_HEADROOM_PX = 6;
 
 /**
  * Header + hero + dashboard pad — fusion metrics chrome only.
- * Independent of FORECAST_PHOSPHOR_HEIGHT_PX (ASSISTED layout grew to 280; fusion must not inherit that slack).
+ * Independent of ASSISTED forecast phosphor height (do not inherit 228/280 slack).
  */
 export const FUSION_DASHBOARD_TIGHT_CHROME_PX =
   FUSION_HEADER_CHROME_PX + FUSION_HERO_ROW_PX + FUSION_DASHBOARD_PAD_Y_PX;
@@ -317,16 +317,16 @@ export function computeFusionPhosphorHeightForTray(
 }
 
 /**
- * Dual stack phosphor height — two full hero+tray panes (shared latch chrome once per pane).
+ * Dual stack phosphor height — primary hero+tray + secondary metrics-only pane.
  * Side dual keeps single-pane height (horizontal split).
  */
 export function computeDualStackPhosphorHeightForTray(
   benchTrayOpen: boolean,
   opts: Pick<BenchPanelLayoutOpts, "gpus" | "gpuMask" | "inlineActions">,
 ): number {
-  const one = computeFusionPhosphorHeightForTray(benchTrayOpen, opts);
-  // Two independent panes stacked; small divider allowance.
-  return one * 2 + 2;
+  const primary = computeFusionPhosphorHeightForTray(benchTrayOpen, opts);
+  // Secondary hides the bench tray; only identity + hero chrome.
+  return primary + FUSION_DASHBOARD_TIGHT_CHROME_PX + 2;
 }
 
 

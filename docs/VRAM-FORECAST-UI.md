@@ -7,8 +7,8 @@ Primary code:
 
 | Area | Where |
 |------|--------|
-| Heights | `src/lib/onboardingDisplay.ts`, `src/lib/benchPanelLayout.ts` |
-| Forecast shell | `src/components/VramBadge.tsx` |
+| Heights | `src/lib/onboardingDisplay.ts`, `src/lib/benchPanelLayout.ts` — applied by `EngineGpuForecast` |
+| Forecast shell | `src/components/VramBadge.tsx` (one ASSISTED glass; no FULL AUTO fork) |
 | SOURCE / NEED | `src/components/MemorySourcePanel.tsx` |
 | GPU bank | `src/components/GpuTopology.tsx` |
 | CSS | `src/styles/fusion-display.css`, `src/styles/config.css` |
@@ -27,7 +27,9 @@ Primary code:
 
 **Do not** set fusion tray height from `FORECAST_PHOSPHOR_HEIGHT_*`. Coupling them reintroduced ~50px dead space above the BENCHMARK latch after ASSISTED grew to 280.
 
-**Do not** hardcode skeleton CSS to 280 — `VramBadge` applies `forecastHeightPx` so model/GPU-bank changes don’t jump the glass.
+**Do not** hardcode skeleton CSS to 280 — `EngineGpuForecast` applies `forecastHeightPx` so model/GPU-bank changes don’t jump the glass.
+
+**Do not** write glass height from `VramBadge` via `closest()`. The phosphor node owns its height.
 
 **Evaluator traps**
 - Show EVALUATING radar on **model** or **hard-knob** change (`probeKey`). Hold previous paint only for soft same-identity LEARNED re-fetch / RE-PROBE.
@@ -90,11 +92,10 @@ Sliding thumb must track the **selected chip box** (`offsetLeft/Top/Width/Height
 Full-rail `top/bottom` stretch looks like **two** selections when the value row wraps.  
 See `ConfigChipSegment` in `EngineParamGroups.tsx` + `.config-value-segment__thumb` in `config.css`.
 
----
-
 ## Product layout decision
 
-**One ASSISTED forecast layout** for the glass. FULL AUTO as a second UI was deferred — prefer policy/behavior flags over a second visual system if revived.
+**One ASSISTED forecast layout** for the glass. FULL AUTO remains a launch policy (FIT / chrome lock), not a second forecast UI.
+
 
 ---
 

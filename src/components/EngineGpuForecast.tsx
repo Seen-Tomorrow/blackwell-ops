@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type RefObject } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type {
   GpuInfo,
   ModelEntry,
@@ -17,6 +17,12 @@ import {
   saveEnginesPanelVisible,
   saveRunningEnginesPerRow,
 } from "../lib/storage";
+import {
+  computeDualStackPhosphorHeightForTray,
+  computeFusionPhosphorHeightForTray,
+} from "../lib/benchPanelLayout";
+import { computeForecastPhosphorHeightPx } from "../lib/onboardingDisplay";
+import { useFusionBenchTray } from "../hooks/useFusionBenchTray";
 import GpuAssignPanel from "./GpuAssignPanel";
 import DisplayChromeHints from "./DisplayChromeHints";
 import DisplayBezelGridControls from "./DisplayBezelGridControls";
@@ -180,6 +186,69 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     shareHwTopo,
   ]);
 
+  const displayRef = useRef<HTMLDivElement>(null);
+  const { open: benchTrayOpen } = useFusionBenchTray();
+  const forecastHeightPx = computeForecastPhosphorHeightPx(gpus.length, gpuPerRow);
+  const fusionOverlayActive =
+    selectedSlotIdx != null &&
+    activeEnginePort != null &&
+    (engineStatus === "LOADING" || engineStatus === "RUNNING");
+
+  useLayoutEffect(() => {
+    const display = displayRef.current;
+    if (!display) return;
+
+    const pin = (heightPx: number) => {
+      display.dataset.fusionHeightManaged = "";
+      display.style.height = `${heightPx}px`;
+      display.style.minHeight = `${heightPx}px`;
+      display.style.maxHeight = `${heightPx}px`;
+    };
+
+    if (!fusionOverlayActive) {
+      display.removeAttribute("data-fusion-tray-stowed");
+      display.removeAttribute("data-fusion-boot");
+      display.removeAttribute("data-fusion-dual");
+      pin(forecastHeightPx);
+      return;
+    }
+
+    if (engineStatus === "LOADING") {
+      display.setAttribute("data-fusion-boot", "");
+      display.removeAttribute("data-fusion-tray-stowed");
+      display.removeAttribute("data-fusion-dual");
+      pin(forecastHeightPx);
+      return;
+    }
+
+    display.removeAttribute("data-fusion-boot");
+    const heightOpts = {
+      gpus,
+      gpuMask: booterProps.gpuMask,
+      inlineActions: true as const,
+    };
+    // Primary owns the tray. Stacked dual = primary tray height + metrics-only secondary.
+    const heightPx =
+      dualActive && dualOrient === "stack"
+        ? computeDualStackPhosphorHeightForTray(benchTrayOpen, heightOpts)
+        : computeFusionPhosphorHeightForTray(benchTrayOpen, heightOpts);
+
+    if (dualActive) display.setAttribute("data-fusion-dual", dualOrient);
+    else display.removeAttribute("data-fusion-dual");
+    if (!benchTrayOpen) display.setAttribute("data-fusion-tray-stowed", "");
+    else display.removeAttribute("data-fusion-tray-stowed");
+    pin(heightPx);
+  }, [
+    fusionOverlayActive,
+    engineStatus,
+    benchTrayOpen,
+    gpus,
+    booterProps.gpuMask,
+    dualActive,
+    dualOrient,
+    forecastHeightPx,
+  ]);
+
   return (
     <div
       ref={displayMeasureRef}
@@ -233,6 +302,7 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
             <DisplayChromeHints policyReason={launchChrome.reason} />
           )}
           <div
+            ref={displayRef}
             key="forecast-phosphor"
             className="phosphor-screen-inner phosphor-display-surface vram-forecast-display"
           >
@@ -245,7 +315,6 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
               onDeviceSelect={onDeviceSelect}
               isValidating={isValidating}
               onValidate={onValidate}
-              isModelRunning={isModelRunning}
               activeEngineAlias={activeEngineAlias}
               activeEnginePort={activeEnginePort}
               selectedSlotIdx={selectedSlotIdx}
@@ -257,8 +326,6 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
               gpuLoadTargetsMib={booterProps.gpuLoadTargetsMib}
               offloadMode={offloadMode}
               onMoeSuggestionClick={onMoeSuggestionClick}
-              fitLaunchAvailable={false}
-              fullAutoMode={fullAutoMode}
               hideMoeBadge={hideMoeBadge}
               modelMeta={modelMeta}
               modelName={modelName}
