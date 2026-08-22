@@ -27,11 +27,12 @@ export function isFullGpuLearnedPoint(hostMib?: number | null): boolean {
 export function splitHostRamGb(opts: {
   hostGb: number;
   hostModelGb?: number | null;
+  /** Interpolated full-GPU LEARNED host at this CTX — fallback buffer. */
+  bufferBaselineGb?: number | null;
   realSpill: boolean;
 }): { bufferGb: number; weightGb: number } {
   const host = opts.hostGb > 0 && Number.isFinite(opts.hostGb) ? opts.hostGb : 0;
   if (host <= 0) return { bufferGb: 0, weightGb: 0 };
-  // Host.model on a full ngl=999 print is ~1 GB metadata — NOT layer offload.
   const model = opts.hostModelGb;
   const modelIsWeight =
     model != null && Number.isFinite(model) && model > HOST_BUFFER_CEILING_GB;
@@ -39,8 +40,11 @@ export function splitHostRamGb(opts: {
     return { bufferGb: Math.max(0, host - model), weightGb: model };
   }
   if (opts.realSpill) {
-    const buffer = Math.min(host, HOST_BUFFER_CEILING_GB);
-    return { bufferGb: buffer, weightGb: Math.max(0, host - buffer) };
+    const baseline =
+      opts.bufferBaselineGb != null && opts.bufferBaselineGb > 0.05
+        ? Math.min(host, opts.bufferBaselineGb)
+        : Math.min(host, HOST_BUFFER_CEILING_GB);
+    return { bufferGb: baseline, weightGb: Math.max(0, host - baseline) };
   }
   return { bufferGb: host, weightGb: 0 };
 }

@@ -1071,6 +1071,43 @@ pub fn parse_gpu_components(output: &str) -> Option<Vec<GpuComponentMib>> {
     if last_components.is_empty() { None } else { Some(last_components) }
 }
 
+/// Last Host row `self = model + context + compute` from a memory-breakdown table.
+pub fn parse_last_host_components(output: &str) -> Option<GpuComponentMib> {
+    let mut last = None;
+    for line in output.lines() {
+        if let Some(c) = parse_host_components_from_breakdown_line(line) {
+            last = Some(c);
+        }
+    }
+    last
+}
+
+fn parse_host_components_from_breakdown_line(line: &str) -> Option<GpuComponentMib> {
+    let lower = line.to_lowercase();
+    if !lower.contains("host") || lower.contains("cuda") || !line.contains('|') {
+        return None;
+    }
+    let host_pos = line.find("Host").or_else(|| {
+        lower.find("host").map(|i| i)
+    })?;
+    let after = line.get(host_pos..)?;
+    let cell = after.split('|').nth(1).unwrap_or(after);
+    let eq = cell.find('=')?;
+    let rhs = &cell[eq + 1..];
+    let parts: Vec<f64> = rhs
+        .split('+')
+        .filter_map(|s| extract_number(s))
+        .collect();
+    if parts.len() < 3 {
+        return None;
+    }
+    Some(GpuComponentMib {
+        model_mib: parts[0],
+        ctx_mib: parts[1],
+        compute_mib: parts[2],
+    })
+}
+
 // ── Library Scanner ─────────────────────────────────────────────────
 
 fn emit_fit_scan_line(
@@ -1903,6 +1940,10 @@ Host 994 0 84
 0.00.971.505 I common_memory_breakdown_print: |   - CUDA0 (RTX PRO 6000 Blackwell Workstation Edition) | 97886 = 95357 + (2395 =   500 +    1632 +     263) +         133 |
 0.00.971.506 I common_memory_breakdown_print: |   - Host                                               |                   269 =   137 +       0 +     131                |"#;
         assert_eq!(parse_engine_memory_breakdown_mib(FIT_AT_LOAD), Some(2395.0));
+        let host = super::parse_last_host_components(FIT_AT_LOAD).expect("host split");
+        assert!((host.model_mib - 137.0).abs() < 0.1);
+        assert!((host.ctx_mib - 0.0).abs() < 0.1);
+        assert!((host.compute_mib - 131.0).abs() < 0.1);
     }
 
     #[test]

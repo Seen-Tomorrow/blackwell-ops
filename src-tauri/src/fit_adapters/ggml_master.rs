@@ -43,13 +43,14 @@ pub fn parse_scan_output(stdout: &str, stderr: &str) -> Option<FitScanRaw> {
 
     let (gpu_breakdown_mib, host_mib) = parse_fit_breakdown(&combined);
     let gpu_components_mib = parse_gpu_components(&combined);
+    let host_components_mib = crate::fit_scanner::parse_last_host_components(&combined);
 
     Some(FitScanRaw {
         vram_mib,
         gpu_breakdown_mib,
         host_mib,
         gpu_components_mib,
-        host_components_mib: None,
+        host_components_mib,
         fitted_ngl: None,
     })
 }

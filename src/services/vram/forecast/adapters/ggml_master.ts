@@ -390,6 +390,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     hostGb: hostTotalGb,
     hostModelGb:
       input.fitProbeHostModelMib != null ? input.fitProbeHostModelMib / 1024 : null,
+    bufferBaselineGb: curveHit?.hostGb,
     realSpill: insets.realSpill,
   });
   const ramNeedGb = hostSplit.bufferGb + hostSplit.weightGb;
