@@ -606,6 +606,13 @@ fn timestamp_now() -> String {
     chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
+/// Prefer the fuller GPU footprint as primary LEARNED need.
+/// Free VRAM is not in the learn key — a spill launch on a stuffed GPU must not
+/// replace a prior full-GPU measurement (or under-forecast when free opens up).
+fn should_promote_primary_vram(existing_vram_mib: f64, new_vram_mib: f64) -> bool {
+    existing_vram_mib <= 0.0 || new_vram_mib + 1.0 >= existing_vram_mib
+}
+
 /// Append newly seen breakdown tables (MoE --fit may emit many per launch).
 /// `already_stored` = number of tables previously persisted for this load.
 /// Returns (latest_mib, table_count) when new tables were consumed (including deduped).
@@ -666,10 +673,22 @@ pub fn append_fit_breakdown_tables(
             phase: phase.to_string(),
             measured_at: now.clone(),
         });
-        latest_mib = mib;
-        entry.vram_mib = mib;
-        entry.gpu_breakdown_mib = Some(table.gpu_self_mib.clone());
-        entry.host_mib = table.host_mib;
+        // Primary need = max GPU footprint. Spill/low-free launches (lower GPU +
+        // weight-class host) must not replace a fuller full-GPU measurement — free
+        // VRAM is not part of the learn key and combinations explode.
+        if should_promote_primary_vram(entry.vram_mib, mib) {
+            latest_mib = mib;
+            entry.vram_mib = mib;
+            entry.gpu_breakdown_mib = Some(table.gpu_self_mib.clone());
+            entry.host_mib = table.host_mib;
+        } else {
+            latest_mib = entry.vram_mib;
+            log::info!(
+                "[vram_learn] keep primary {:.1} MiB GPU (new {:.1} lower — likely free-dependent spill)",
+                entry.vram_mib,
+                mib
+            );
+        }
         entry.measured_at = now;
         dirty = true;
     }
@@ -766,7 +785,8 @@ mod dedup_tests {
     }
 }
 
-/// Persist post-load buffer inventory — overrides FIT-era totals for forecast/topo.
+/// Persist post-load buffer inventory — overrides FIT-era totals for forecast/topo
+/// only when the new GPU footprint is at least as large (fuller need wins).
 pub fn record_launch_memory_snapshot(
     key: &str,
     snapshot: LaunchMemorySnapshot,
@@ -786,14 +806,25 @@ pub fn record_launch_memory_snapshot(
         fit_attempts: Vec::new(),
     });
 
-    entry.vram_mib = snapshot.vram_mib;
-    entry.gpu_breakdown_mib = Some(snapshot.gpu_breakdown_mib.clone());
-    entry.host_mib = Some(snapshot.host_mib);
-    entry.gpu_components_mib = snapshot.gpu_components_mib.clone();
-    entry.host_components_mib = snapshot.host_components_mib.clone();
-    entry.measured_at = snapshot.measured_at.clone();
     let measured_mib = snapshot.vram_mib;
     let measured_host = snapshot.host_mib;
+    // Always keep latest launch snapshot for diagnostics / topo of what just ran.
+    // Primary forecast vram_mib only promotes upward (fuller GPU need).
+    if should_promote_primary_vram(entry.vram_mib, snapshot.vram_mib) {
+        entry.vram_mib = snapshot.vram_mib;
+        entry.gpu_breakdown_mib = Some(snapshot.gpu_breakdown_mib.clone());
+        entry.host_mib = Some(snapshot.host_mib);
+        entry.gpu_components_mib = snapshot.gpu_components_mib.clone();
+        entry.host_components_mib = snapshot.host_components_mib.clone();
+    } else {
+        log::info!(
+            "[vram_learn] launch snapshot keep primary {:.1} MiB GPU (new {:.1}, host {:.1}) — spill/low-free not promoted",
+            entry.vram_mib,
+            snapshot.vram_mib,
+            snapshot.host_mib
+        );
+    }
+    entry.measured_at = snapshot.measured_at.clone();
     entry.launch_snapshot = Some(snapshot);
     save_store(&store)?;
     drop(_guard);

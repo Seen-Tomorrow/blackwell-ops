@@ -97,3 +97,21 @@ If free fingerprint changes (other engine stop/start), nudge returns.
 3. Click RE-PROBE LOW VRAM — Host weight-class if FIT spills; chrome SPILL · SLOWER.
 4. Drag CTX after low_vram — still fluid; no auto re-probe.
 5. Stop other engine (free jumps) — low_vram stale; nudge returns if still tight.
+
+## LEARNED cache vs free-dependent spill
+
+**RE-PROBE / FIT session probe never writes LEARNED.** Only real engine load
+tables + launch buffer inventory do (`log_hub` → `vram_learn`).
+
+Learn key = model + launch knobs (ctx, kv, device, split, …). **Free VRAM is not
+in the key** — stuffing another model then launching with layer spill must not
+replace a fuller full-GPU measurement, or empty-GPU forecasts under-read forever.
+
+Rule (2026-08): primary `entry.vram_mib` only **promotes upward** (max GPU
+footprint). Lower-GPU spill attempts still append to `fit_attempts` history and
+`launch_snapshot` keeps “what just ran,” but forecast primary need stays the
+fuller measurement. Host RAM is shown on console lines and stored with the
+promoted primary (buffer-sized on full-GPU path).
+
+We do **not** key LEARNED by free fingerprint — combinations explode.
+
