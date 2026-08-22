@@ -45,10 +45,11 @@ nvidia-smi GPU0: ~40 GB used / ~55 GB free. GPU1 empty.
 Conclusions that still hold:
 
 1. FIT **can** print real spill (Host model column + `offloaded A/B`).
-2. App FIT **never produced it** because we force `-ngl 999` (true total need).
+2. App FIT **never produced it** because we force `-ngl 999` (true total need) on the full probe.
 3. `--fit on` alone is not enough — FIT’s free ≠ NVML free on a stuffed card.
 4. UI “HOST OFFLOAD · ~4 GB” from full-need Host was **host buffer**, not 10–20 GB layer spill.
 5. We already parse the Host row. We were running the wrong command for spill truth.
+
 
 Logs from that session (gitignored): `tmp/fit-offload-probe/`.
 
@@ -71,6 +72,11 @@ low_vram  (manual RE-PROBE LOW VRAM only)
 
 **Never auto-FIT on CTX drag.** Slider stays on full-need curve/tax.
 Tight free → nudge only (REL: swap one button; DEV: both buttons, LOW VRAM pulses).
+
+**Split is a probe hard-key.** Toggling none / layer / tensor drops the session
+(EVALUATING radar) and FIT uses the live `--split-mode`. Library split-tax is
+not added on top of a this-split probe or LEARNED row.
+
 
 `--fit-target` correction (because FIT free overstates):
 

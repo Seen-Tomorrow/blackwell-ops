@@ -87,14 +87,14 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   const withDraft = (gb: number | null): number | null =>
     gb == null ? null : needsDraftAdd ? gb + draftAddon : gb;
   const splitMode = cfgStr(input.engineConfig, "split", "none");
-  // Independent of live KV/batch/quant — library Δ(split−none) @ CTX, else fallback constants.
   const splitTax = resolveSplitTax(splitMode, liveCtx, input.fitPoints);
-  const splitTaxGb = splitTax.taxGb;
-
+  // Probe + LEARNED are split-keyed. Library tax only if we have neither.
   const probeGb = input.fitProbeVramMib != null ? input.fitProbeVramMib / 1024 : null;
   const probeHostGb = input.fitProbeHostMib != null ? input.fitProbeHostMib / 1024 : null;
   const probeAnchor = input.fitProbeAnchorCtx ?? 0;
-  const probeAppliesToCurve = probeGb != null && splitTaxGb <= 0;
+  const nativeSplitMeasure = probeGb != null;
+  const splitTaxGb = nativeSplitMeasure ? 0 : splitTax.taxGb;
+  const probeAppliesToCurve = probeGb != null;
 
   const allLearnedPts = input.learnedCurve ?? [];
   // Offload rows stay as slider ticks; they must not join the 100% GPU curve.

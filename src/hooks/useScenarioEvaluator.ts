@@ -46,7 +46,7 @@ function draftBaseName(config: Record<string, unknown>): string {
 /**
  * llama-fit-params loads model + context with no_alloc.
  * Memory actually moves with: model, n_ctx, n_batch, n_ubatch, cache-type k/v,
- * flash-attn, ngl, split-mode. We always probe split=none, ngl=999, flash=on.
+ * flash-attn, ngl, split-mode. Probe uses live split (none/layer/tensor).
  * Thinking / parallel / samplers / threads are not FIT inputs — ignore them.
  */
 function fitProbeKey(config: Record<string, unknown>, autoVramLaunch: boolean): string {
@@ -56,6 +56,7 @@ function fitProbeKey(config: Record<string, unknown>, autoVramLaunch: boolean): 
     String(config.batch ?? ""),
     String(config.ubatch ?? ""),
     config["flash_attn"] || "",
+    String(config.split ?? "none"),
     autoVramLaunch ? "1" : "0",
   ].join("|");
 }
@@ -453,7 +454,7 @@ export function useScenarioEvaluator({
   configRef.current = config;
 
   // Combined key triggers re-eval / cache / learned fetch.
-  // Probe invalidation uses footprint only — placement (device/split/gpu_sync) does not drop it.
+  // Split is a probe hard-key — none/layer/tensor drops the session and re-probes.
   const configKey = liveEvalKey(config, autoVramLaunch);
   const probeKey = fitProbeKey(config, autoVramLaunch);
   const learnedKey = learnedIdentityKey(config, autoVramLaunch);
@@ -972,7 +973,7 @@ export function useScenarioEvaluator({
         ctxSize: parseCtx(curConfig.ctx ?? "32768"),
         kvQuant: curConfig["kv_quant"] || "f16",
         device: curConfig.device || "GPU-0",
-        splitMode: "none",
+        splitMode: String(curConfig.split ?? "none"),
         batch: typeof curConfig.batch === "number" ? curConfig.batch : parseInt(String(curConfig.batch), 10) || 2048,
         ubatch: typeof curConfig.ubatch === "number" ? curConfig.ubatch : parseInt(String(curConfig.ubatch), 10) || 512,
         flashAttn: curConfig["flash_attn"]?.toLowerCase() !== "off",
