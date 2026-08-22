@@ -97,8 +97,16 @@ warn         = freeUtil > 0.92           // HIGH OOM RISK
 weightHost   = hostGb > 2.5              // HOST_BUFFER_CEILING_GB
 partialNgl   = 0 ≤ fittedNgl < 900       // −1 / 999 = all GPU
 
-realSpill    = exceedsFree && (weightHost || (mode==low_vram && partialNgl))
+realSpill    = (exceedsFree || oomTier) && (weightHost || (mode==low_vram && partialNgl))
 ```
+
+Border case: LEARNED often stores **GPU-only** after an offload launch (primary
+need is the fuller GPU footprint). Sitting just inside free−headroom then
+painted HIGH OOM RISK with no RAM. If host &gt; 2.5 GB **or** a fresh low_vram
+session still has partial ngl, use spill chrome in the 85/92% band too — not
+OOM-risk-on-a-full-GPU-plan. 20% usage + leftover host stays quiet (no band).
+
+RE-PROBE stays available on EXACT LEARNED. Exact is a quality mark, not a lock.
 
 | State | Bar / NEED | Inset |
 |-------|------------|--------|

@@ -196,7 +196,8 @@ export function getMemorySourceView(
     isEstimate,
     idleStatus,
     showStatus: Boolean(idleStatus),
-    canProbe: Boolean(opts?.onValidate) && !opts?.hideValidate && !isExact,
+    // Exact LEARNED is a quality mark, not a lock — border/offload points need a re-probe.
+    canProbe: Boolean(opts?.onValidate) && !opts?.hideValidate,
   };
 }
 

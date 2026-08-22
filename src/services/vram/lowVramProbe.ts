@@ -25,8 +25,9 @@ export function isPartialFittedNgl(ngl: number | null | undefined): boolean {
 }
 
 /**
- * Spill chrome is live-free only. A leftover LEARNED/session host from an
- * aggressive stuffed-GPU run must not paint HOST OFFLOAD at 20% usage.
+ * Spill chrome: live pressure + measured spill (host or partial ngl).
+ * Over-free OR the 85/92% free-util OOM band. Leftover host at 20% usage
+ * (no OOM band, not over free) stays quiet.
  */
 export function isLiveWeightSpill(args: {
   estimateGb: number;
@@ -37,7 +38,8 @@ export function isLiveWeightSpill(args: {
 }): boolean {
   const headroom = freePoolHeadroomGb(args.freeGb);
   const overFree = args.estimateGb > args.freeGb - headroom;
-  if (!overFree) return false;
+  const tight = freePoolOomTier(freePoolUtil(args.estimateGb, args.freeGb)) !== "none";
+  if (!overFree && !tight) return false;
   return (
     isWeightClassHostSpill(args.hostGb) ||
     (args.probeMode === "low_vram" && isPartialFittedNgl(args.fittedNgl))
@@ -60,7 +62,7 @@ export function learnedLooksLikeFreeDependentSpill(
   return (hostGb as number) >= Math.max(HOST_BUFFER_CEILING_GB, gpuGb * 0.35);
 }
 
-/** DEV: apply a low_vram session only when fingerprint matches and still over free. */
+/** DEV: keep a low_vram session when still over free or in the OOM band. */
 export function shouldApplyLowVramSession(args: {
   mode?: FitProbeMode | null;
   probeFreeFingerprint?: string | null;
@@ -73,7 +75,10 @@ export function shouldApplyLowVramSession(args: {
     return false;
   }
   const headroom = freePoolHeadroomGb(args.liveFreeGb);
-  return args.probeGpuGb > args.liveFreeGb - headroom;
+  const overFree = args.probeGpuGb > args.liveFreeGb - headroom;
+  const tight =
+    freePoolOomTier(freePoolUtil(args.probeGpuGb, args.liveFreeGb)) !== "none";
+  return overFree || tight;
 }
 
 /** Round free GB to 0.5 so NVML noise doesn't thrash freshness. */
