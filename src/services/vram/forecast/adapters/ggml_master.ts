@@ -37,11 +37,13 @@ import {
   freeFingerprintFromGb,
   isLiveWeightSpill,
   isWeightClassHostSpill,
+  learnedLooksLikeFreeDependentSpill,
   lowVramBarInsets,
   ramNeedToneForHost,
   showHostRamBar,
 } from "../../lowVramProbe";
 import { attachMemorySource } from "../memorySource";
+import { isDevBuild } from "../../../../lib/build";
 import type { ForecastAdapter, ForecastInput } from "../types";
 
 function draftAddonGb(input: ForecastInput): number {
@@ -103,19 +105,19 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   }
 
   const curveHit = interpolateLearnedCurveGb(mergedCurve, liveCtx);
-  const learnedExactGb = input.learnedCurve?.some((p) => p.ctx === liveCtx)
+  const learnedExactGbRaw = input.learnedCurve?.some((p) => p.ctx === liveCtx)
     ? (curveHit?.vramGb ?? null)
     : null;
-  const curveGb =
-    learnedExactGb == null && curveHit && mergedCurve.length >= 2 ? curveHit.vramGb : null;
+  const curveGbRaw =
+    learnedExactGbRaw == null && curveHit && mergedCurve.length >= 2 ? curveHit.vramGb : null;
 
   const rawLearnedGb = input.learnedVramMib != null ? input.learnedVramMib / 1024 : null;
   const learnedBaseGb =
     rawLearnedGb != null
       ? rawLearnedGb + (needsDraftAdd ? draftAddon : 0)
       : null;
-  const learnedDeltaGb =
-    learnedBaseGb != null && learnedExactGb == null && curveGb == null
+  const learnedDeltaGbRaw =
+    learnedBaseGb != null && learnedExactGbRaw == null && curveGbRaw == null
       ? adjustMeasuredGbForCtx(
           learnedBaseGb,
           input.learnedAnchorCtx ?? liveCtx,
@@ -126,9 +128,23 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
         )
       : null;
 
-  // 1) Bring none-probe to live CTX (hard knobs live inside the probe).
-  // 2) Add split tax at live CTX — separate measured delta, not baked into CTX adjust.
-  // FIT probe never loads external draft GGUF — always add draft addon when active.
+  const learnedHostGbRaw =
+    curveHit?.hostGb ??
+    (rawLearnedGb != null && input.learnedHostMib != null ? input.learnedHostMib / 1024 : null);
+  const targetAvailForGate = gpuAvailable[tgt] ?? Math.max(...gpuAvailable, 0);
+  const discardSpillLearned =
+    isDevBuild() &&
+    learnedLooksLikeFreeDependentSpill(
+      withDraft(learnedExactGbRaw) ?? withDraft(curveGbRaw) ?? learnedDeltaGbRaw,
+      learnedHostGbRaw,
+      targetAvailForGate,
+    );
+
+  const learnedExactGb = discardSpillLearned ? null : learnedExactGbRaw;
+  const curveGb = discardSpillLearned ? null : curveGbRaw;
+  const learnedDeltaGb = discardSpillLearned ? null : learnedDeltaGbRaw;
+  const learnedHostGb = discardSpillLearned ? null : learnedHostGbRaw;
+
   const probeNoneAtLiveGb =
     curveGb == null && learnedExactGb == null && probeGb != null
       ? adjustMeasuredGbForCtx(
@@ -143,16 +159,13 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   const probeWithDraftGb =
     probeNoneAtLiveGb != null ? probeNoneAtLiveGb + splitTaxGb : null;
 
-  // Prefer learned exact/curve for this split (+ draft if measurement lacked it);
-  // else probe(none)+tax+draft; else learned delta (already bumped).
   const estimateGb =
     withDraft(learnedExactGb) ?? withDraft(curveGb) ?? probeWithDraftGb ?? learnedDeltaGb;
   if (estimateGb == null) return null;
 
-  const learnedGb = withDraft(learnedExactGb) ?? withDraft(curveGb) ?? learnedDeltaGb;
-  const learnedHostGb =
-    curveHit?.hostGb ??
-    (rawLearnedGb != null && input.learnedHostMib != null ? input.learnedHostMib / 1024 : null);
+  const learnedGb = discardSpillLearned
+    ? null
+    : withDraft(learnedExactGb) ?? withDraft(curveGb) ?? learnedDeltaGb;
 
   const autoSplit = needsAutoLayerSplit(estimateGb, gpuAvailable);
   const targetAvail = autoSplit

@@ -4,8 +4,11 @@ import type { ModelEntry, EngineConfig, GpuInfo, StackEntry, SystemInfo, VramMan
 import { evaluate, committedSlotsFromStack, committedStackKey, parseCtx, computeGpuAvailableList, type ScenarioInput, type FitPoint } from "../services/vram/scenarios/scenarios_factory";
 import {
   freeFingerprintFromGb,
+  learnedLooksLikeFreeDependentSpill,
+  shouldApplyLowVramSession,
   type FitProbeMode,
 } from "../services/vram/lowVramProbe";
+import { isDevBuild } from "../lib/build";
 import { attachMemorySource, MEMORY_SOURCE_LABELS } from "../services/vram/memorySource";
 import { gpuMemoryBucketKey, vramManifestSnapshotEqual } from "../lib/telemetryGpu";
 import { tomMtpBlocked, toastTomMtpSkip, TOM_MTP_SKIP_MESSAGE } from "../lib/tomMtp";
@@ -79,8 +82,25 @@ function probeScenarioFields(
   modelPath: string,
   hardKey: string,
   placementKey: string,
+  liveFreeGb?: number,
+  liveFreeFp?: string,
 ) {
   if (!session || session.modelPath !== modelPath || session.hardKey !== hardKey) {
+    return {};
+  }
+  if (
+    isDevBuild()
+    && session.mode === "low_vram"
+    && liveFreeGb != null
+    && liveFreeFp
+    && !shouldApplyLowVramSession({
+      mode: session.mode,
+      probeFreeFingerprint: session.freeFingerprint,
+      liveFreeFingerprint: liveFreeFp,
+      probeGpuGb: session.validatedVramMib / 1024,
+      liveFreeGb,
+    })
+  ) {
     return {};
   }
   const placementMatches = session.placementKey === placementKey;
@@ -494,6 +514,22 @@ export function useScenarioEvaluator({
     const curProbeKey = fitProbeKey(curConfig, autoVramLaunchRef.current);
     const curPlacementKey = placementConfigKey(curConfig);
     const session = probeSessionRef.current;
+    const gpuAvailLive = computeGpuAvailableList(curGpus, runningSlots);
+    const devMatchLive = /GPU-?(\d+)/i.exec(String(curConfig.device || "GPU-0"));
+    const devIdxLive = devMatchLive ? parseInt(devMatchLive[1], 10) : 0;
+    const liveFreeGb =
+      devIdxLive >= 0 && devIdxLive < gpuAvailLive.length
+        ? Math.max(0, gpuAvailLive[devIdxLive] ?? 0)
+        : Math.max(0, ...gpuAvailLive, 0);
+    const liveFreeFp = freeFingerprintFromGb(liveFreeGb);
+    const sessionFields = probeScenarioFields(
+      session,
+      model.path,
+      curProbeKey,
+      curPlacementKey,
+      liveFreeGb,
+      liveFreeFp,
+    );
     const input: ScenarioInput = {
       modelMeta: model.metadata,
       engineConfig,
@@ -518,12 +554,17 @@ export function useScenarioEvaluator({
       learnedMtpContextMib: learnedMtpContextRef.current,
       learnedAnchorCtx: learnedAnchorCtxRef.current,
       learnedCurve: learnedCurveRef.current,
-      ...probeScenarioFields(session, model.path, curProbeKey, curPlacementKey),
+      ...sessionFields,
     };
 
     try {
       let result = evaluate(input);
-      if (session && session.modelPath === model.path && session.hardKey === curProbeKey) {
+      if (
+        session
+        && session.modelPath === model.path
+        && session.hardKey === curProbeKey
+        && sessionFields.fitProbeMode
+      ) {
         result = attachProbeManifest(
           result,
           session,
@@ -1019,12 +1060,42 @@ export function useScenarioEvaluator({
       probeSessionRef.current?.modelPath === model.path
       && probeSessionRef.current.hardKey === probeKey
     ) {
-      return;
+      const sess = probeSessionRef.current;
+      const freeList = computeGpuAvailableList(
+        gpusRef.current,
+        committedSlotsFromStack(stackRef.current),
+      );
+      const freeGb = Math.max(...freeList, 0);
+      const staleLowVram =
+        isDevBuild()
+        && sess.mode === "low_vram"
+        && !shouldApplyLowVramSession({
+          mode: sess.mode,
+          probeFreeFingerprint: sess.freeFingerprint,
+          liveFreeFingerprint: freeFingerprintFromGb(freeGb),
+          probeGpuGb: sess.validatedVramMib / 1024,
+          liveFreeGb: freeGb,
+        });
+      if (!staleLowVram) return;
     }
-    // Skip auto-probe only for an identity-matched LEARNED row.
-    // Curve-only skip left EVALUATING stuck after hard knobs (curve is not
-    // keyed on batch/ubatch/flash).
-    if (learnedVramRef.current != null) return;
+    // Skip auto-probe only for an identity-matched LEARNED row that is still
+    // usable. DEV: spill-shaped LEARNED (fat host, GPU already fits free) must
+    // not block a full ngl999 probe.
+    if (learnedVramRef.current != null) {
+      const freeList = computeGpuAvailableList(
+        gpusRef.current,
+        committedSlotsFromStack(stackRef.current),
+      );
+      const freeGb = Math.max(...freeList, 0);
+      const spillLearned =
+        isDevBuild()
+        && learnedLooksLikeFreeDependentSpill(
+          learnedVramRef.current / 1024,
+          (learnedHostRef.current ?? 0) / 1024,
+          freeGb,
+        );
+      if (!spillLearned) return;
+    }
     const free = computeGpuAvailableList(
       gpusRef.current,
       committedSlotsFromStack(stackRef.current),

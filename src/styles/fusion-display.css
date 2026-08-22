@@ -2087,6 +2087,13 @@
   border-color: var(--theme-provider-pill-active-border, #f5971f);
 }
 
+.vram-fc-header__reprobe-pair {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
 /* Manual free-aware spill probe — flash until user runs RE-PROBE LOW VRAM */
 .vram-fc-header__reprobe--low-vram,
 .vram-fc-source__reprobe[data-probe-state="low-vram"],

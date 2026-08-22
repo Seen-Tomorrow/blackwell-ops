@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { MemorySource } from "../lib/types";
+import type { FitProbeMode } from "../services/vram/lowVramProbe";
+import { isDevBuild } from "../lib/build";
 import {
   MEMORY_SOURCE_ACCENT,
   MEMORY_SOURCE_LABELS,
@@ -247,12 +249,13 @@ export function MemorySourceNeedOverlay({
 export interface MemorySourceReprobeProps {
   memorySource: MemorySource;
   isValidating?: boolean;
-  onValidate?: () => void;
+  onValidate?: (mode?: FitProbeMode) => void;
   hideValidate?: boolean;
   className?: string;
-  /** Tight free — manual free-aware spill probe (no auto on CTX drag). */
+  /** Tight free — flash LOW VRAM (REL swaps one button; DEV shows both). */
   needsLowVramReprobe?: boolean;
 }
+
 
 /** RE-PROBE control — sits right of the assisted launch summary. */
 export function MemorySourceReprobe({
@@ -266,9 +269,44 @@ export function MemorySourceReprobe({
   const view = getMemorySourceView(memorySource, { onValidate, hideValidate });
   if (!view.canProbe) return null;
 
+  const wrap = className ? ` ${className}` : "";
+  const fire = (mode: FitProbeMode) => (e: { stopPropagation: () => void }) => {
+    e.stopPropagation();
+    onValidate?.(mode);
+  };
+
+  if (isDevBuild()) {
+    return (
+      <span className={`vram-fc-header__reprobe-pair${wrap}`}>
+        <button
+          type="button"
+          className="vram-fc-source__reprobe vram-fc-header__reprobe"
+          data-probe-state={isValidating ? "probing" : "reprobe"}
+          disabled={isValidating}
+          onClick={fire("full")}
+          title="Full-need FIT (ngl 999) — true GPU total, host buffer only"
+        >
+          {isValidating ? "PROBING…" : "RE-PROBE"}
+        </button>
+        <button
+          type="button"
+          className={`vram-fc-source__reprobe vram-fc-header__reprobe${
+            needsLowVramReprobe ? " vram-fc-header__reprobe--low-vram" : ""
+          }`}
+          data-probe-state={isValidating ? "probing" : needsLowVramReprobe ? "low-vram" : "reprobe"}
+          disabled={isValidating}
+          onClick={fire("low_vram")}
+          title="Free-aware FIT — real host spill / fitted ngl (no auto on CTX drag)"
+        >
+          {isValidating ? "PROBING LOW VRAM…" : "RE-PROBE LOW VRAM"}
+        </button>
+      </span>
+    );
+  }
+
   const lowVram = needsLowVramReprobe && !isValidating;
   const label = isValidating
-    ? lowVram || needsLowVramReprobe
+    ? needsLowVramReprobe
       ? "PROBING LOW VRAM…"
       : "PROBING…"
     : lowVram
@@ -280,13 +318,10 @@ export function MemorySourceReprobe({
       type="button"
       className={`vram-fc-source__reprobe vram-fc-header__reprobe${
         lowVram ? " vram-fc-header__reprobe--low-vram" : ""
-      }${className ? ` ${className}` : ""}`}
+      }${wrap}`}
       data-probe-state={isValidating ? "probing" : lowVram ? "low-vram" : "reprobe"}
       disabled={isValidating}
-      onClick={(e) => {
-        e.stopPropagation();
-        onValidate?.();
-      }}
+      onClick={fire(lowVram ? "low_vram" : "full")}
       title={
         lowVram
           ? "Free VRAM is tight — run free-aware FIT to measure real host spill (not auto on CTX drag)"
@@ -303,7 +338,6 @@ export interface MemorySourceStatusMarkProps {
   className?: string;
 }
 
-/** Status band for NEED frame — quality mark only (EXACT / INTERPOLATED / …). */
 export function MemorySourceStatusMark({
   memorySource,
   className,
@@ -337,7 +371,6 @@ export function MemorySourceStatusMark({
     </div>
   );
 }
-
 /** MEMORY FORECAST SOURCE identity — lab + kind + pips; hover recap. */
 export default function MemorySourcePanel({
   memorySource,

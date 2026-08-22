@@ -44,6 +44,38 @@ export function isLiveWeightSpill(args: {
   );
 }
 
+/**
+ * DEV: LEARNED row looks like a free-dependent spill (small GPU + fat host)
+ * and the GPU slice already fits live free — do not paint it as full need.
+ * Full-GPU + leftover host (host << GPU) stays usable.
+ */
+export function learnedLooksLikeFreeDependentSpill(
+  gpuGb: number | null | undefined,
+  hostGb: number | null | undefined,
+  freeGb: number,
+): boolean {
+  if (gpuGb == null || !(gpuGb > 0) || !isWeightClassHostSpill(hostGb)) return false;
+  const headroom = freePoolHeadroomGb(freeGb);
+  if (gpuGb > freeGb - headroom) return false;
+  return (hostGb as number) >= Math.max(HOST_BUFFER_CEILING_GB, gpuGb * 0.35);
+}
+
+/** DEV: apply a low_vram session only when fingerprint matches and still over free. */
+export function shouldApplyLowVramSession(args: {
+  mode?: FitProbeMode | null;
+  probeFreeFingerprint?: string | null;
+  liveFreeFingerprint: string;
+  probeGpuGb: number;
+  liveFreeGb: number;
+}): boolean {
+  if (args.mode !== "low_vram") return true;
+  if (!isLowVramProbeFresh(args.mode, args.probeFreeFingerprint, args.liveFreeFingerprint)) {
+    return false;
+  }
+  const headroom = freePoolHeadroomGb(args.liveFreeGb);
+  return args.probeGpuGb > args.liveFreeGb - headroom;
+}
+
 /** Round free GB to 0.5 so NVML noise doesn't thrash freshness. */
 export function freeFingerprintFromGb(freeGb: number): string {
   if (!(freeGb > 0) || !Number.isFinite(freeGb)) return "0";

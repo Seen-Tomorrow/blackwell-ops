@@ -116,3 +116,18 @@ promoted primary (buffer-sized on full-GPU path).
 
 We do **not** key LEARNED by free fingerprint — combinations explode.
 
+
+## DEV-only (feat/low-vram-reprobe)
+
+Gated by `isDevBuild()`:
+
+1. Discard LEARNED GPU/host when the row looks like a free-dependent spill
+   (`host > 2.5 GB` and `host >= 0.35 × GPU`) **and** that GPU slice already
+   fits live free. Full-GPU + leftover smaller host stays. Allows auto
+   **full** probe again.
+2. Ignore in-session `low_vram` unless fingerprint matches **and** probe GPU
+   is still over free.
+3. Header shows **both** `RE-PROBE` (ngl 999) and `RE-PROBE LOW VRAM`
+   (free-aware). LOW VRAM still pulses when tight. REL keeps the single
+   swapped button.
+
