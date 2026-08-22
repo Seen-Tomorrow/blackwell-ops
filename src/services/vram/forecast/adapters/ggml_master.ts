@@ -24,6 +24,7 @@ import {
   cfgStr,
   computeGpuAvailableList,
   freePoolHeadroomGb,
+  freePoolUtil,
   interpolateLearnedCurveGb,
   launchPaintFromGate,
   launchPaintStyleClasses,
@@ -31,6 +32,7 @@ import {
   parseCtx,
   resolveSplitTax,
   round2,
+  visualPaintFromLaunch,
 } from "../../shared";
 import { attachMemorySource } from "../memorySource";
 import type { ForecastAdapter, ForecastInput } from "../types";
@@ -285,9 +287,11 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     : input.fitProbeHostMib ?? (learnedHostGb != null ? Math.round(learnedHostGb * 1024) : undefined);
 
   const launchPaint = launchPaintFromGate(fits, useOffloadPalette);
-  const paintClasses = launchPaintStyleClasses(launchPaint);
-  const vramNeedTone = needToneFromLaunchPaint(launchPaint);
-  // RAM NEED tracks host spill / system OOM — same paint steps as bar (no soft band).
+  const vramFreeUtil = freePoolUtil(estimateGb, targetAvail);
+  // Bar + NEED share visual paint (hard gate + soft 85% free band).
+  const vramVisualPaint = visualPaintFromLaunch(launchPaint, vramFreeUtil);
+  const paintClasses = launchPaintStyleClasses(vramVisualPaint);
+  const vramNeedTone = needToneFromLaunchPaint(vramVisualPaint);
   const ramLaunchPaint = overSystemMemory
     ? ("nofit" as const)
     : hostOffloadLaunch && hostOffloadGb > 0.5
@@ -295,12 +299,27 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
       : ("fit" as const);
   const ramNeedTone = needToneFromLaunchPaint(ramLaunchPaint);
 
+  // Inset bar copy (right end) — short so need-hero size still fits the track.
+  const vramBarInsetText =
+    launchPaint === "nofit"
+      ? "NO FIT"
+      : launchPaint === "offload"
+        ? "OVER FREE · SPILL"
+        : vramVisualPaint === "offload"
+          ? "TIGHT · OOM RISK"
+          : null;
+  const ramBarInsetText =
+    overSystemMemory
+      ? "NO FIT · SYSTEM"
+      : hostOffloadLaunch && hostOffloadGb > 0.5
+        ? "HOST OFFLOAD"
+        : null;
 
   const base: VramManifest = {
     scenario: "AUTO_FIT",
     style: {
       ...paintClasses,
-      icon: useOffloadPalette ? "o" : "*",
+      icon: useOffloadPalette || vramVisualPaint === "offload" ? "o" : "*",
       label: fitLabel,
       ramVisible: showHostRam,
       launchPaint,
@@ -323,7 +342,8 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
             : "engine might use some RAM at launch",
         showRamBar: true,
         moeRamBar: false,
-        offloadWarningText: isRealHostOffload ? "Host RAM offload — slower inference" : undefined,
+        kvSpillRiskText: vramBarInsetText,
+        offloadWarningText: ramBarInsetText,
       },
     },
     vramWeightsGb: round2(weightGb),

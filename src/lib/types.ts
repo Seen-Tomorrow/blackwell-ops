@@ -735,15 +735,15 @@ export interface UiTemplate {
   showRamBar?: boolean;
   /** MOE_OPTIMAL expert weights — orange hatched RAM bar. */
   moeRamBar?: boolean;
-  /** Inset label on RAM bar (e.g. "RAM offload — slower inference"). Omit or null to hide. */
+  /** Inset label on RAM bar (right end, need-hero size). Host offload / system fail. */
   offloadWarningText?: string | null;
-  /** Inset label on VRAM bar (e.g. KV spill risk). Omit or null to hide. */
+  /** Inset label on VRAM bar (right end, need-hero size). Tight free / spill / no-fit. */
   kvSpillRiskText?: string | null;
 }
 
-/** Free-pool launch paint — VRAM bar fill + NEED tone source of truth. */
+/** Free-pool launch paint — hard gate (fit / offload / nofit). */
 export type ForecastLaunchPaint = "fit" | "offload" | "nofit";
-/** NEED chip tone — 1:1 with launch paint (fit/offload/nofit). */
+/** NEED + bar visual tone (includes soft 85% free warn → amber). */
 export type ForecastNeedTone = "ok" | "warn" | "hot";
 
 export interface StyleObject {

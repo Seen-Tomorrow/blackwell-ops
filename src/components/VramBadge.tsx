@@ -207,9 +207,11 @@ export default function VramBadge({
     ? Math.min((displayRamNeedGb / ramManufacturedGb) * 100, 100)
     : 0;
 
-  // NEED tone from adapter free-pool launch paint (not manufactured 85/95).
+  // NEED tone from adapter (hard gate + soft high free-util); bar uses same visual paint.
   const vramNeedTone = s.vramNeedTone ?? "ok";
   const ramNeedTone = s.ramNeedTone ?? "ok";
+  const vramBarInset = t.kvSpillRiskText?.trim() || null;
+  const ramBarInset = t.offloadWarningText?.trim() || null;
 
 
   return (
@@ -284,6 +286,20 @@ export default function VramBadge({
                       className={`vram-fc-bar__fill vram-fc-bar__fill--bevel ${s.gpuBarColor}`}
                       style={{ width: `${vramUsagePct}%` }}
                     />
+                    {vramBarInset ? (
+                      <span
+                        className={`vram-forecast-bar__inset-label vram-forecast-bar__inset-label--vram${
+                          vramNeedTone === "hot"
+                            ? " vram-forecast-bar__inset-label--hot"
+                            : vramNeedTone === "warn"
+                              ? " vram-forecast-bar__inset-label--warn"
+                              : ""
+                        }`}
+                        title={vramBarInset}
+                      >
+                        {vramBarInset}
+                      </span>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -305,10 +321,26 @@ export default function VramBadge({
                     <div className="vram-fc-bar__track">
                       <div
                         className={`vram-fc-bar__fill vram-fc-bar__fill--bevel ${
-                          t.moeRamBar || offloadMode === "moe_optimal" ? "bg-orange-hatched" : "bg-blue-700"
+                          t.moeRamBar || offloadMode === "moe_optimal"
+                            ? "bg-orange-hatched"
+                            : ramNeedTone === "warn" || ramNeedTone === "hot"
+                              ? "bg-orange-400/70"
+                              : "bg-blue-700"
                         }`}
                         style={{ width: `${ramUsagePct}%` }}
                       />
+                      {ramBarInset ? (
+                        <span
+                          className={`vram-forecast-bar__inset-label vram-forecast-bar__inset-label--ram${
+                            ramNeedTone === "hot"
+                              ? " vram-forecast-bar__inset-label--hot"
+                              : " vram-forecast-bar__inset-label--warn"
+                          }`}
+                          title={ramBarInset}
+                        >
+                          {ramBarInset}
+                        </span>
+                      ) : null}
                     </div>
                   </div>
                 </div>

@@ -561,9 +561,21 @@ export function buildGpuAllocations(
 
 // ── Forecast paint (bar fill + NEED tone share free-pool launch gate) ─────────
 
+/**
+ * Soft amber band while still launch-fit: estimate / free > this.
+ * Unknown load buffers can OOM near full free — warn before hard offload/nofit.
+ */
+export const FREE_POOL_SOFT_WARN = 0.85;
+
 /** Same headroom as fits gate / CTX ghost: max(1 GB, 3% of free). */
 export function freePoolHeadroomGb(freeGb: number): number {
   return Math.max(1.0, freeGb * 0.03);
+}
+
+/** estimate / free — Infinity when free is 0 and estimate > 0. */
+export function freePoolUtil(estimateGb: number, freeGb: number): number {
+  if (!(freeGb > 0)) return estimateGb > 0 ? Number.POSITIVE_INFINITY : 0;
+  return estimateGb / freeGb;
 }
 
 export function launchPaintFromGate(fits: boolean, useOffloadPalette: boolean): ForecastLaunchPaint {
@@ -573,16 +585,31 @@ export function launchPaintFromGate(fits: boolean, useOffloadPalette: boolean): 
 }
 
 /**
- * NEED tone = launch paint 1:1 (no early soft band — bar and NEED flip together):
- * - fit → ok (green)
- * - offload → warn (amber) — same moment bar goes orange (~free − 3%/1G)
- * - nofit → hot (red)
+ * Visual paint for bar + NEED (hard gate + soft high-util band).
+ * Soft high maps to offload chrome (amber) so bar and NEED stay locked.
  */
+export function visualPaintFromLaunch(
+  paint: ForecastLaunchPaint,
+  freeUtil?: number,
+): ForecastLaunchPaint {
+  if (paint === "nofit" || paint === "offload") return paint;
+  if (
+    freeUtil != null &&
+    Number.isFinite(freeUtil) &&
+    freeUtil > FREE_POOL_SOFT_WARN
+  ) {
+    return "offload";
+  }
+  return "fit";
+}
+
+/** NEED tone from visual paint (fit→ok, offload/soft→warn, nofit→hot). */
 export function needToneFromLaunchPaint(paint: ForecastLaunchPaint): ForecastNeedTone {
   if (paint === "nofit") return "hot";
   if (paint === "offload") return "warn";
   return "ok";
 }
+
 
 
 /** Tailwind classes for launch-paint chrome (bar fill, borders, tints). */

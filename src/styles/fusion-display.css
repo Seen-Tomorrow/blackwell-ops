@@ -1729,7 +1729,7 @@
   border-left-color: var(--display-face-fc-label-ram-border, color-mix(in srgb, #60a5fa 30%, transparent));
   color: var(--display-face-fc-label-ram-fg, #93c5fd);
 }
-/* NEED hero — 1:1 free-pool launch paint (fit/offload/nofit); flips with bar, no early soft band */
+/* NEED hero — free-pool visual paint (hard gate + soft 85% free util); locked to bar fill */
 .vram-fc-bar__need-prefix {
   font-size: calc(7px * var(--vram-fc-scale, 1.12));
   font-weight: 700;
@@ -1871,50 +1871,77 @@
   color: color-mix(in srgb, var(--theme-telemetry-blue, #60a5fa) 90%, transparent);
 }
 
-/* VRAM / RAM inset warnings */
+/* VRAM / RAM inset warnings — right end of track, need-hero type scale */
 .vram-forecast-bar__inset-label {
   position: absolute;
   inset: 0;
-  z-index: 1;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  padding: 0 calc(7px * var(--vram-fc-scale));
-  font-size: calc(8px * var(--vram-fc-scale));
+  padding: 0 calc(8px * var(--vram-fc-scale, 1.12));
   font-family: ui-monospace, monospace;
+  /* Match NEED hero number */
+  font-size: calc(20px * var(--vram-fc-scale, 1.12));
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
   line-height: 1;
   text-align: right;
   pointer-events: none;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: color-mix(in srgb, #fff 92%, transparent);
+  -webkit-text-fill-color: currentColor;
+  text-shadow:
+    0 0 6px color-mix(in srgb, #000 75%, transparent),
+    0 1px 0 color-mix(in srgb, #000 55%, transparent);
+}
+
+.vram-forecast-bar__inset-label--warn {
+  color: var(--theme-telemetry-amber, #fbbf24);
+  -webkit-text-fill-color: var(--theme-telemetry-amber, #fbbf24);
+}
+
+.vram-forecast-bar__inset-label--hot {
+  color: var(--theme-telemetry-red, #ef4444);
+  -webkit-text-fill-color: var(--theme-telemetry-red, #ef4444);
 }
 
 .vram-forecast-bar__inset-label--ram {
-  color: rgba(191, 219, 254, 0.92);
-  text-shadow: 0 0 4px rgba(0, 0, 0, 0.85);
+  color: color-mix(in srgb, #bfdbfe 94%, transparent);
+  -webkit-text-fill-color: color-mix(in srgb, #bfdbfe 94%, transparent);
 }
 
-.vram-forecast-bar__inset-label--kv {
-  color: rgba(248, 113, 113, 0.92);
-  text-shadow: 0 0 4px rgba(0, 0, 0, 0.85);
+.vram-forecast-bar__inset-label--ram.vram-forecast-bar__inset-label--warn {
+  color: var(--theme-telemetry-amber, #fbbf24);
+  -webkit-text-fill-color: var(--theme-telemetry-amber, #fbbf24);
 }
 
-.vram-forecast-bar__inset-label--kv-critical {
-  color: rgba(248, 113, 113, 0.98);
-  text-shadow: 0 0 5px rgba(0, 0, 0, 0.9);
+.vram-forecast-bar__inset-label--ram.vram-forecast-bar__inset-label--hot {
+  color: var(--theme-telemetry-red, #ef4444);
+  -webkit-text-fill-color: var(--theme-telemetry-red, #ef4444);
 }
 
-[data-display-texture="phosphor-light"] .vram-forecast-bar__inset-label--ram {
-  color: rgba(30, 58, 138, 0.88);
+[data-display-texture="phosphor-light"] .vram-forecast-bar__inset-label {
   text-shadow: none;
+  color: var(--display-face-light-plate-ink, #0b1220);
+  -webkit-text-fill-color: var(--display-face-light-plate-ink, #0b1220);
 }
 
-[data-display-texture="phosphor-light"] .vram-forecast-bar__inset-label--kv,
-[data-display-texture="phosphor-light"] .vram-forecast-bar__inset-label--kv-critical {
-  color: rgba(153, 27, 27, 0.9);
-  text-shadow: none;
+[data-display-texture="phosphor-light"] .vram-forecast-bar__inset-label--warn,
+[data-display-texture="phosphor-light"] .vram-forecast-bar__inset-label--ram.vram-forecast-bar__inset-label--warn {
+  color: var(--theme-telemetry-amber, #b45309);
+  -webkit-text-fill-color: var(--theme-telemetry-amber, #b45309);
 }
+
+[data-display-texture="phosphor-light"] .vram-forecast-bar__inset-label--hot,
+[data-display-texture="phosphor-light"] .vram-forecast-bar__inset-label--ram.vram-forecast-bar__inset-label--hot {
+  color: var(--theme-telemetry-red, #b91c1c);
+  -webkit-text-fill-color: var(--theme-telemetry-red, #b91c1c);
+}
+
 
 /* SOURCE — bare type, no plate (ASSISTED + FULL AUTO) */
 .memory-source-strip,
