@@ -336,3 +336,14 @@ When launch is host-offload (`__host_offload=1` from forecast spill, or
 `--n-gpu-layers` / `__ngl` in `0..899`), affinity inject is **skipped** so
 ggml can use all cores. User `--cpu-mask` still wins.
 
+
+## Three different host RAM numbers
+
+| Source | When | What it is |
+|--------|------|------------|
+| `[FIT] PROBE` Host `model+ctx+compute` | llama-fit-params, no real load | **Estimate.** `model=` is FIT’s Host MODEL column (~1 GB metadata on a full ngl=999 print — **not** layer offload). `compute=` grows with CTX. |
+| `[ENGINE] Learned launch memory` | Real llama-server load | **Inventory.** CPU + pinned host buffers after load. Often **lower** than FIT Host (1151 vs 1822 at 256k). This is what `learned-vram.json` `host_mib` / snapshot stores. |
+| Glass RAM NEED | Session or LEARNED at **this CTX** | Last **FIT session** host if you just probed that CTX; else LEARNED host at that CTX. Probes **never write** the cache. Slide off the probe CTX → session host gone unless LEARNED has that ctx. |
+
+FIT `wgt=` in older console lines was a bad label for Host.model. Current print is `model=/ctx=/compute=`.
+

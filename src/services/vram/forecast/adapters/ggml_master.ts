@@ -219,10 +219,9 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     !overSystemMemory && (trustFitAtLoad || estimateGb <= targetAvail - headroomGb);
 
   const gpuProjectionGb = estimateGb;
-  const hostMeasuredGb =
-    learnedHostGb ??
-    probeHostGb ??
-    null;
+  const probeHostAtLive =
+    probeHostGb != null && probeAnchor === liveCtx ? probeHostGb : null;
+  const hostMeasuredGb = learnedHostGb ?? probeHostAtLive;
   const hostOffloadGb = isWeightClassHostSpill(hostMeasuredGb)
     ? (hostMeasuredGb as number)
     : 0;

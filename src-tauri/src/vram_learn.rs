@@ -1066,7 +1066,9 @@ pub fn get_learned_vram_curve(
         let point = LearnedVramCurvePoint {
             ctx,
             vram_mib: vram,
-            host_mib: entry.host_mib,
+            host_mib: entry.host_mib.or_else(|| {
+                entry.launch_snapshot.as_ref().map(|s| s.host_mib)
+            }),
         };
         match best.get(&ctx) {
             Some((at, _)) if entry.measured_at < *at => {}

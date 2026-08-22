@@ -1515,7 +1515,7 @@ pub async fn fit_scan_model(
                 .as_ref()
                 .map(|c| {
                     format!(
-                        " host={:.0} (wgt={:.0} ctx={:.0} buf={:.0})",
+                        " host={:.0} (model={:.0} ctx={:.0} compute={:.0})",
                         host, c.model_mib, c.ctx_mib, c.compute_mib
                     )
                 })
