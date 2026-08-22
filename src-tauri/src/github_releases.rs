@@ -311,8 +311,12 @@ static GITHUB_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
 
 fn budget_remaining() -> usize {
     let mut g = GATEWAY_MEM.lock();
-    let cutoff = Instant::now() - Duration::from_secs(3600);
-    g.budget.retain(|t| *t > cutoff);
+    // Windows Instant is boot-relative: `now - 1h` panics when uptime < 1h
+    // ("overflow when subtracting duration from instant") and REL aborts (panic=abort).
+    let now = Instant::now();
+    let window = Duration::from_secs(3600);
+    g.budget
+        .retain(|t| now.saturating_duration_since(*t) < window);
     BUDGET_MAX_PER_HOUR.saturating_sub(g.budget.len())
 }
 

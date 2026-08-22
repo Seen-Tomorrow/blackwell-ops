@@ -3,6 +3,14 @@
 # Incremental causes file locks that prevent cargo-watch from detecting changes
 incremental = false
 
+# aws-lc-sys (via reqwest/rustls): CPU jitter entropy panics on short Windows uptime
+# with Instant overflow ("overflow when subtracting duration from instant") inside
+# jent_entropy_switch_notime_impl. REL uses panic=abort → process dies (blink+close,
+# exit 0xC0000409). DEV survives because panics unwind. OS RNG is enough here.
+[env]
+AWS_LC_SYS_NO_JITTER_ENTROPY = "1"
+
+
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "link-args=/DEBUG"]
 
