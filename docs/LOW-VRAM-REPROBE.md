@@ -125,14 +125,6 @@ RE-PROBE stays available on EXACT LEARNED. Exact is a quality mark, not a lock.
 Manufactured `%` on GPU cards stays **uncolored**.
 
 ---
-
-## LEARNED vs session vs probe
-
-```
-Session FIT (RE-PROBE / auto-probe)  →  in-memory ProbeSession only
-Real engine load tables + launch inventory  →  learned-vram.json
-```
-
 ### Learn key (`vram_learn.rs`)
 
 `model|provider|ctx|kv|dev={vramGB}|split|mode|offload` + optional spec/draft/cache_ram.
@@ -142,6 +134,21 @@ Real engine load tables + launch inventory  →  learned-vram.json
 | ctx, kv, split, offload mode | yes |
 | **manufactured VRAM GB** of selected device(s) (`96`, `24+96`) | **yes** |
 | GPU index / SKU / arch | **no** — two 96 GB cards share |
+| **free VRAM** | **no** |
+| fitted ngl | no |
+
+Identical 96 GB pair → same key on GPU-0 or GPU-1. Mixed 24+96 is a different
+key. Do **not** add free or ngl — combinations explode.
+
+Launch writes `__vram_topo`. Lookups pass the same tag. Legacy `dev=GPU-N`
+keys still fuzzy-match when no topo tag is sent.
+
+**Offload launches must not join the GPU-vs-CTX lerp.** Host &gt; 2.5 GB
+(weight-class) rows stay in the store and as slider ticks. Interpolation
+uses only full-GPU points (host buffer or missing). Host is applied only
+at an **exact** CTX — never lerped (that invented 2.8 GB HOST OFFLOAD).
+The full-GPU curve is the 100% path; edge-case offload is isolated.
+
 | **free VRAM** | **no** |
 | fitted ngl | no |
 

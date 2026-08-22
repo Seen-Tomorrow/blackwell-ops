@@ -19,6 +19,10 @@ export function isWeightClassHostSpill(hostGb: number | null | undefined): boole
   return hostGb != null && Number.isFinite(hostGb) && hostGb > HOST_BUFFER_CEILING_GB;
 }
 
+/** Host is buffer-sized or missing — safe to put on the GPU-vs-CTX lerp. */
+export function isFullGpuLearnedPoint(hostMib?: number | null): boolean {
+  return !isWeightClassHostSpill((hostMib ?? 0) / 1024);
+}
 /** Partial fitted ngl from a free-aware low_vram probe (−1 / 999 = all GPU). */
 export function isPartialFittedNgl(ngl: number | null | undefined): boolean {
   return ngl != null && ngl >= 0 && ngl < 900;

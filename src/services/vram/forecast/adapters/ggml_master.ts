@@ -35,6 +35,7 @@ import {
 } from "../../shared";
 import {
   freeFingerprintFromGb,
+  isFullGpuLearnedPoint,
   isLiveWeightSpill,
   isWeightClassHostSpill,
   learnedLooksLikeFreeDependentSpill,
@@ -92,11 +93,19 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   const probeGb = input.fitProbeVramMib != null ? input.fitProbeVramMib / 1024 : null;
   const probeHostGb = input.fitProbeHostMib != null ? input.fitProbeHostMib / 1024 : null;
   const probeAnchor = input.fitProbeAnchorCtx ?? 0;
-  // Never seed a layer/tensor learned curve with a split=none probe point.
   const probeAppliesToCurve = probeGb != null && splitTaxGb <= 0;
 
-  const mergedCurve = (input.learnedCurve ?? []).map((p) => ({ ...p }));
-  if (probeAppliesToCurve && probeAnchor > 0 && !mergedCurve.some((p) => p.ctx === probeAnchor)) {
+  const allLearnedPts = input.learnedCurve ?? [];
+  // Offload rows stay as slider ticks; they must not join the 100% GPU curve.
+  const fitCurvePts = allLearnedPts.filter((p) => isFullGpuLearnedPoint(p.hostMib));
+
+  const mergedCurve = fitCurvePts.map((p) => ({ ...p }));
+  if (
+    probeAppliesToCurve
+    && probeAnchor > 0
+    && isFullGpuLearnedPoint(probeHostGb != null ? probeHostGb * 1024 : undefined)
+    && !mergedCurve.some((p) => p.ctx === probeAnchor)
+  ) {
     mergedCurve.push({
       ctx: probeAnchor,
       vramMib: (probeGb + draftAddon) * 1024,
@@ -104,10 +113,10 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     });
   }
 
+  const exactPt = allLearnedPts.find((p) => p.ctx === liveCtx);
   const curveHit = interpolateLearnedCurveGb(mergedCurve, liveCtx);
-  const learnedExactGbRaw = input.learnedCurve?.some((p) => p.ctx === liveCtx)
-    ? (curveHit?.vramGb ?? null)
-    : null;
+  const learnedExactGbRaw =
+    exactPt != null && exactPt.vramMib > 0 ? exactPt.vramMib / 1024 : null;
   const curveGbRaw =
     learnedExactGbRaw == null && curveHit && mergedCurve.length >= 2 ? curveHit.vramGb : null;
 
@@ -128,9 +137,13 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
         )
       : null;
 
+  // Host only at an exact CTX. Never lerp host (invented 2.8 GB "spill").
   const learnedHostGbRaw =
-    curveHit?.hostGb ??
-    (rawLearnedGb != null && input.learnedHostMib != null ? input.learnedHostMib / 1024 : null);
+    exactPt != null && exactPt.hostMib != null
+      ? exactPt.hostMib / 1024
+      : learnedExactGbRaw != null && input.learnedHostMib != null
+        ? input.learnedHostMib / 1024
+        : null;
   const targetAvailForGate = gpuAvailable[tgt] ?? Math.max(...gpuAvailable, 0);
   const discardSpillLearned =
     isDevBuild() &&
