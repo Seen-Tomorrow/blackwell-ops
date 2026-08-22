@@ -3,7 +3,8 @@
 Memo for humans and agents. If a change “looks inset” or the glass doesn’t fill the metal, read this before adding another box-shadow or nested surface.
 
 Primary CSS: `src/styles/fusion-display.css`  
-Mount: `EngineConfigPanel` (frame + glass) → `VramBadge` (forecast or fusion fill)
+Mount: `EngineGpuForecast` (frame + glass height) → `VramBadge` (forecast or fusion fill)
+
 
 ---
 
@@ -132,8 +133,9 @@ That nested “inner display” only showed under fusion + LIGHT and fought the 
 |------|--------|
 | Frame, glass, textures, share-stage bezel | `src/styles/fusion-display.css` |
 | Theme phosphor inset / e-ink tokens | `src/themes/app-themes.ts`, `src/styles/tokens-base.css` |
-| Frame + glass mount | `EngineConfigPanel.tsx` |
-| Forecast / fusion fill | `VramBadge.tsx` (`fusion-overlay-fill`) |
+| Frame + glass mount / phosphor height | `EngineGpuForecast.tsx` |
+| Forecast / fusion fill | `VramBadge.tsx` |
+
 | Fusion widgets | `FusionOverlay.tsx` |
 | Share capture host = glass face | `fusionShareCapture.tsx` → `.vram-forecast-display` / phosphor-screen-inner |
 

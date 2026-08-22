@@ -176,10 +176,11 @@ Cache: `config/cache/fit_scan_full.json` partitioned by `fit_adapter`. No prune/
 | `src/services/vram/scenarios/scenarios_factory.ts` | Compat re-exports only |
 | `src/lib/autoVramLaunch.ts` | One split number from measured total |
 | `src/lib/fitScanTable.ts` | FIT table columns + `noΔ` |
-| `src/components/VramBadge.tsx` | Hero = `vramTotalGb`; dumb phosphor |
+| `src/components/VramBadge.tsx` | One ASSISTED glass (SOURCE / NEED / bars); fusion fill when running |
 | `src/components/CockpitCtxStrip.tsx` | CTX rail + marks toggle |
 | `src-tauri/src/vram_learn.rs` | Store + curve IPC |
 | `src-tauri/src/launch_memory_parse.rs` | Buffer inventory (LEARN Meta×N) |
+
 | `src-tauri/src/fit_scanner.rs` | SCAN_PLAN + fit-print parse (**no** Meta×N) |
 | `src-tauri/src/forecast_log.rs` | JSONL |
 
