@@ -1729,7 +1729,7 @@
   border-left-color: var(--display-face-fc-label-ram-border, color-mix(in srgb, #60a5fa 30%, transparent));
   color: var(--display-face-fc-label-ram-fg, #93c5fd);
 }
-/* NEED hero — free-pool visual paint (hard gate + soft 85% free util); locked to bar fill */
+/* NEED hero — free-pool visual paint (ok / caution / warn / hot); locked to bar fill */
 .vram-fc-bar__need-prefix {
   font-size: calc(7px * var(--vram-fc-scale, 1.12));
   font-weight: 700;
@@ -1746,12 +1746,17 @@
   letter-spacing: -0.01em;
   line-height: 1;
   opacity: 1;
-  /* ok = chip label ink; warn/hot set below (set text-fill too — color alone loses) */
+  /* ok = chip label ink; caution/warn/hot set below (set text-fill too — color alone loses) */
   color: inherit;
   -webkit-text-fill-color: currentColor;
   text-shadow: none;
 }
 /* Prefer data-need-tone on chip — beats inherit + text-fill traps */
+.vram-fc-bar__need-chip[data-need-tone="caution"] .vram-fc-bar__need,
+.vram-fc-bar__need-chip .vram-fc-bar__need--caution {
+  color: #fcd34d !important;
+  -webkit-text-fill-color: #fcd34d !important;
+}
 .vram-fc-bar__need-chip[data-need-tone="warn"] .vram-fc-bar__need,
 .vram-fc-bar__need-chip .vram-fc-bar__need--warn {
   color: var(--theme-telemetry-amber, #fbbf24) !important;
@@ -1899,6 +1904,11 @@
     0 1px 0 color-mix(in srgb, #000 55%, transparent);
 }
 
+.vram-forecast-bar__inset-label--caution {
+  color: #fcd34d;
+  -webkit-text-fill-color: #fcd34d;
+}
+
 .vram-forecast-bar__inset-label--warn {
   color: var(--theme-telemetry-amber, #fbbf24);
   -webkit-text-fill-color: var(--theme-telemetry-amber, #fbbf24);
@@ -1912,6 +1922,11 @@
 .vram-forecast-bar__inset-label--ram {
   color: color-mix(in srgb, #bfdbfe 94%, transparent);
   -webkit-text-fill-color: color-mix(in srgb, #bfdbfe 94%, transparent);
+}
+
+.vram-forecast-bar__inset-label--ram.vram-forecast-bar__inset-label--caution {
+  color: #fcd34d;
+  -webkit-text-fill-color: #fcd34d;
 }
 
 .vram-forecast-bar__inset-label--ram.vram-forecast-bar__inset-label--warn {
@@ -1930,6 +1945,12 @@
   -webkit-text-fill-color: var(--display-face-light-plate-ink, #0b1220);
 }
 
+[data-display-texture="phosphor-light"] .vram-forecast-bar__inset-label--caution,
+[data-display-texture="phosphor-light"] .vram-forecast-bar__inset-label--ram.vram-forecast-bar__inset-label--caution {
+  color: #b45309;
+  -webkit-text-fill-color: #b45309;
+}
+
 [data-display-texture="phosphor-light"] .vram-forecast-bar__inset-label--warn,
 [data-display-texture="phosphor-light"] .vram-forecast-bar__inset-label--ram.vram-forecast-bar__inset-label--warn {
   color: var(--theme-telemetry-amber, #b45309);
@@ -1941,6 +1962,7 @@
   color: var(--theme-telemetry-red, #b91c1c);
   -webkit-text-fill-color: var(--theme-telemetry-red, #b91c1c);
 }
+
 
 
 /* SOURCE — bare type, no plate (ASSISTED + FULL AUTO) */
@@ -2436,6 +2458,9 @@
   opacity: 0.9;
 }
 /* Projected load G only — manufactured % stays uncolored capacity context */
+.vram-fc__topo--compact .gpu-card__bar-need--caution {
+  color: #fcd34d;
+}
 .vram-fc__topo--compact .gpu-card__bar-need--warn {
   color: var(--theme-telemetry-amber, #fb923c);
 }
@@ -3053,6 +3078,11 @@
   opacity: 0.88 !important;
 }
 /* Pressure tones — must set text-fill; color-only loses to currentColor fill */
+[data-display-texture="phosphor-light"] .vram-fc-bar__need-chip[data-need-tone="caution"] .vram-fc-bar__need,
+[data-display-texture="phosphor-light"] .vram-fc-bar__need-chip .vram-fc-bar__need--caution {
+  color: #b45309 !important;
+  -webkit-text-fill-color: #b45309 !important;
+}
 [data-display-texture="phosphor-light"] .vram-fc-bar__need-chip[data-need-tone="warn"] .vram-fc-bar__need,
 [data-display-texture="phosphor-light"] .vram-fc-bar__need-chip .vram-fc-bar__need--warn {
   color: var(--theme-telemetry-amber, #fbbf24) !important;
@@ -3690,13 +3720,16 @@
   color: var(--display-face-light-gpu-name) !important;
   text-shadow: none !important;
 }
-[data-display-texture="phosphor-light"] .phosphor-display-surface .gpu-card__bar-need:not(.gpu-card__bar-need--warn):not(.gpu-card__bar-need--hot),
+[data-display-texture="phosphor-light"] .phosphor-display-surface .gpu-card__bar-need:not(.gpu-card__bar-need--caution):not(.gpu-card__bar-need--warn):not(.gpu-card__bar-need--hot),
 [data-display-texture="phosphor-light"] .phosphor-display-surface .gpu-card__pct,
-[data-display-texture="phosphor-light"] .vram-forecast-display .gpu-card__bar-need:not(.gpu-card__bar-need--warn):not(.gpu-card__bar-need--hot),
+[data-display-texture="phosphor-light"] .vram-forecast-display .gpu-card__bar-need:not(.gpu-card__bar-need--caution):not(.gpu-card__bar-need--warn):not(.gpu-card__bar-need--hot),
 [data-display-texture="phosphor-light"] .vram-forecast-display .gpu-card__pct {
   color: var(--display-face-light-gpu-readout, var(--display-face-light-text-accent, var(--theme-accent))) !important;
   text-shadow: none !important;
   filter: none !important;
+}
+[data-display-texture="phosphor-light"] .vram-forecast-display .gpu-card__bar-need--caution {
+  color: #b45309 !important;
 }
 [data-display-texture="phosphor-light"] .vram-forecast-display .gpu-card__bar-need--warn {
   color: var(--theme-telemetry-amber, #fb923c) !important;

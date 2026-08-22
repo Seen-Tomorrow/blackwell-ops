@@ -743,8 +743,8 @@ export interface UiTemplate {
 
 /** Free-pool launch paint — hard gate (fit / offload / nofit). */
 export type ForecastLaunchPaint = "fit" | "offload" | "nofit";
-/** NEED + bar visual tone (includes soft 85% free warn → amber). */
-export type ForecastNeedTone = "ok" | "warn" | "hot";
+/** NEED + bar visual tone: ok → caution (low OOM) → warn (high OOM / spill) → hot. */
+export type ForecastNeedTone = "ok" | "caution" | "warn" | "hot";
 
 export interface StyleObject {
   titleColor: string;

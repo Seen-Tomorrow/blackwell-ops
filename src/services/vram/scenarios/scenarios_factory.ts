@@ -23,13 +23,14 @@ export {
   round2,
   cfgStr,
   buildGpuAllocations,
-  FREE_POOL_SOFT_WARN,
+  FREE_POOL_OOM_CAUTION,
+  FREE_POOL_OOM_WARN,
   freePoolHeadroomGb,
   freePoolUtil,
+  freePoolOomTier,
   launchPaintFromGate,
-  visualPaintFromLaunch,
   needToneFromLaunchPaint,
-  launchPaintStyleClasses,
+  barStyleFromNeedTone,
 } from "../shared";
 
 export type {

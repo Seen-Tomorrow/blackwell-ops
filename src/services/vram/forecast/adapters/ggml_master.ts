@@ -21,18 +21,18 @@ import {
 import {
   adjustMeasuredGbForCtx,
   buildGpuAllocations,
+  barStyleFromNeedTone,
   cfgStr,
   computeGpuAvailableList,
   freePoolHeadroomGb,
+  freePoolOomTier,
   freePoolUtil,
   interpolateLearnedCurveGb,
   launchPaintFromGate,
-  launchPaintStyleClasses,
   needToneFromLaunchPaint,
   parseCtx,
   resolveSplitTax,
   round2,
-  visualPaintFromLaunch,
 } from "../../shared";
 import { attachMemorySource } from "../memorySource";
 import type { ForecastAdapter, ForecastInput } from "../types";
@@ -257,18 +257,14 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
         ? "MULTI"
         : "SINGLE";
 
-  /** Personal one-liner — forecast header (not hard knobs; those live on the cockpit). */
+  /** Compact header — offload/slower live on bars, not here. */
   const launchSummary = !fits
     ? recommendation
-      ? `Model won't launch — ${recommendation}`
-      : "Model won't launch — projected over available memory"
-    : hostOffloadLaunch
-      ? multiNote
-        ? `Model will launch with some RAM offload (${gpuWord}) — slower`
-        : "Model will launch with some RAM offload — slower"
-      : multiNote
-        ? `Model will launch alright — ${gpuWord}`
-        : "Model will launch alright";
+      ? `Won't launch — ${recommendation}`
+      : "Won't launch — over available memory"
+    : multiNote
+      ? `Will launch — ${gpuWord}`
+      : "Will launch alright";
 
   const heroText = launchSummary;
 
@@ -288,10 +284,8 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
 
   const launchPaint = launchPaintFromGate(fits, useOffloadPalette);
   const vramFreeUtil = freePoolUtil(estimateGb, targetAvail);
-  // Bar + NEED share visual paint (hard gate + soft 85% free band).
-  const vramVisualPaint = visualPaintFromLaunch(launchPaint, vramFreeUtil);
-  const paintClasses = launchPaintStyleClasses(vramVisualPaint);
-  const vramNeedTone = needToneFromLaunchPaint(vramVisualPaint);
+  const vramNeedTone = needToneFromLaunchPaint(launchPaint, vramFreeUtil);
+  const paintClasses = barStyleFromNeedTone(vramNeedTone);
   const ramLaunchPaint = overSystemMemory
     ? ("nofit" as const)
     : hostOffloadLaunch && hostOffloadGb > 0.5
@@ -299,27 +293,31 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
       : ("fit" as const);
   const ramNeedTone = needToneFromLaunchPaint(ramLaunchPaint);
 
-  // Inset bar copy (right end) — short so need-hero size still fits the track.
+  // Inset bar copy (right end, need-hero size). Thresholds tunable via FREE_POOL_OOM_*.
+  const oomTier = freePoolOomTier(vramFreeUtil);
   const vramBarInsetText =
     launchPaint === "nofit"
       ? "NO FIT"
       : launchPaint === "offload"
-        ? "OVER FREE · SPILL"
-        : vramVisualPaint === "offload"
-          ? "TIGHT · OOM RISK"
-          : null;
+        ? "OVER FREE · SPILL · SLOWER"
+        : oomTier === "warn"
+          ? "HIGH OOM RISK"
+          : oomTier === "caution"
+            ? "LOW OOM RISK"
+            : null;
   const ramBarInsetText =
     overSystemMemory
       ? "NO FIT · SYSTEM"
       : hostOffloadLaunch && hostOffloadGb > 0.5
-        ? "HOST OFFLOAD"
+        ? "HOST OFFLOAD · SLOWER"
         : null;
+
 
   const base: VramManifest = {
     scenario: "AUTO_FIT",
     style: {
       ...paintClasses,
-      icon: useOffloadPalette || vramVisualPaint === "offload" ? "o" : "*",
+      icon: vramNeedTone === "ok" ? "*" : "o",
       label: fitLabel,
       ramVisible: showHostRam,
       launchPaint,

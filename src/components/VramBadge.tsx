@@ -289,11 +289,9 @@ export default function VramBadge({
                     {vramBarInset ? (
                       <span
                         className={`vram-forecast-bar__inset-label vram-forecast-bar__inset-label--vram${
-                          vramNeedTone === "hot"
-                            ? " vram-forecast-bar__inset-label--hot"
-                            : vramNeedTone === "warn"
-                              ? " vram-forecast-bar__inset-label--warn"
-                              : ""
+                          vramNeedTone !== "ok"
+                            ? ` vram-forecast-bar__inset-label--${vramNeedTone}`
+                            : ""
                         }`}
                         title={vramBarInset}
                       >
@@ -323,18 +321,20 @@ export default function VramBadge({
                         className={`vram-fc-bar__fill vram-fc-bar__fill--bevel ${
                           t.moeRamBar || offloadMode === "moe_optimal"
                             ? "bg-orange-hatched"
-                            : ramNeedTone === "warn" || ramNeedTone === "hot"
-                              ? "bg-orange-400/70"
-                              : "bg-blue-700"
+                            : ramNeedTone === "hot"
+                              ? "bg-red-500"
+                              : ramNeedTone === "warn" || ramNeedTone === "caution"
+                                ? "bg-orange-400/70"
+                                : "bg-blue-700"
                         }`}
                         style={{ width: `${ramUsagePct}%` }}
                       />
                       {ramBarInset ? (
                         <span
                           className={`vram-forecast-bar__inset-label vram-forecast-bar__inset-label--ram${
-                            ramNeedTone === "hot"
-                              ? " vram-forecast-bar__inset-label--hot"
-                              : " vram-forecast-bar__inset-label--warn"
+                            ramNeedTone !== "ok"
+                              ? ` vram-forecast-bar__inset-label--${ramNeedTone}`
+                              : ""
                           }`}
                           title={ramBarInset}
                         >

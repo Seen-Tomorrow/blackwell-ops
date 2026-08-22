@@ -562,10 +562,11 @@ export function buildGpuAllocations(
 // ── Forecast paint (bar fill + NEED tone share free-pool launch gate) ─────────
 
 /**
- * Soft amber band while still launch-fit: estimate / free > this.
- * Unknown load buffers can OOM near full free — warn before hard offload/nofit.
+ * Free-pool OOM risk bands (estimate / free). Tune from live launches later.
+ * Soft bands fire while still launch-fit — unknown load buffers can OOM near full free.
  */
-export const FREE_POOL_SOFT_WARN = 0.85;
+export const FREE_POOL_OOM_CAUTION = 0.85; // low / small OOM risk
+export const FREE_POOL_OOM_WARN = 0.92; // higher OOM risk (still may fit)
 
 /** Same headroom as fits gate / CTX ghost: max(1 GB, 3% of free). */
 export function freePoolHeadroomGb(freeGb: number): number {
@@ -584,44 +585,50 @@ export function launchPaintFromGate(fits: boolean, useOffloadPalette: boolean): 
   return "nofit";
 }
 
-/**
- * Visual paint for bar + NEED (hard gate + soft high-util band).
- * Soft high maps to offload chrome (amber) so bar and NEED stay locked.
- */
-export function visualPaintFromLaunch(
-  paint: ForecastLaunchPaint,
+/** Soft free-util tier only (ignores hard launch gate). */
+export function freePoolOomTier(
   freeUtil?: number,
-): ForecastLaunchPaint {
-  if (paint === "nofit" || paint === "offload") return paint;
-  if (
-    freeUtil != null &&
-    Number.isFinite(freeUtil) &&
-    freeUtil > FREE_POOL_SOFT_WARN
-  ) {
-    return "offload";
-  }
-  return "fit";
+): "none" | "caution" | "warn" {
+  if (freeUtil == null || !Number.isFinite(freeUtil)) return "none";
+  if (freeUtil > FREE_POOL_OOM_WARN) return "warn";
+  if (freeUtil > FREE_POOL_OOM_CAUTION) return "caution";
+  return "none";
 }
 
-/** NEED tone from visual paint (fit→ok, offload/soft→warn, nofit→hot). */
-export function needToneFromLaunchPaint(paint: ForecastLaunchPaint): ForecastNeedTone {
+/**
+ * Bar + NEED tone from hard launch paint + free-util OOM tiers.
+ * nofit→hot, offload→warn, free>0.92→warn, free>0.85→caution, else ok.
+ */
+export function needToneFromLaunchPaint(
+  paint: ForecastLaunchPaint,
+  freeUtil?: number,
+): ForecastNeedTone {
   if (paint === "nofit") return "hot";
   if (paint === "offload") return "warn";
+  const tier = freePoolOomTier(freeUtil);
+  if (tier === "warn") return "warn";
+  if (tier === "caution") return "caution";
   return "ok";
 }
 
-
-
-/** Tailwind classes for launch-paint chrome (bar fill, borders, tints). */
-export function launchPaintStyleClasses(paint: ForecastLaunchPaint): {
+/** Tailwind chrome for bar fill / borders from NEED tone (bar locked to NEED). */
+export function barStyleFromNeedTone(tone: ForecastNeedTone): {
   titleColor: string;
   gpuBarColor: string;
   borderColor: string;
   bgTint: string;
   badgeBg: string;
 } {
-  switch (paint) {
-    case "offload":
+  switch (tone) {
+    case "caution":
+      return {
+        titleColor: "text-amber-300",
+        gpuBarColor: "bg-amber-300/65",
+        borderColor: "border-amber-300/35",
+        bgTint: "bg-amber-300/5",
+        badgeBg: "bg-amber-300/20",
+      };
+    case "warn":
       return {
         titleColor: "text-orange-400",
         gpuBarColor: "bg-orange-400/70",
@@ -629,7 +636,7 @@ export function launchPaintStyleClasses(paint: ForecastLaunchPaint): {
         bgTint: "bg-orange-400/5",
         badgeBg: "bg-orange-400/20",
       };
-    case "nofit":
+    case "hot":
       return {
         titleColor: "text-red-400",
         gpuBarColor: "bg-red-500",
