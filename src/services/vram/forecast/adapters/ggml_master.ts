@@ -113,12 +113,22 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     });
   }
 
-  const exactPt = allLearnedPts.find((p) => p.ctx === liveCtx);
+  const liveLowVram =
+    input.fitProbeMode === "low_vram"
+    && probeGb != null
+    && probeAnchor === liveCtx;
+
+  const exactPt = liveLowVram ? undefined : allLearnedPts.find((p) => p.ctx === liveCtx);
   const curveHit = interpolateLearnedCurveGb(mergedCurve, liveCtx);
   const learnedExactGbRaw =
     exactPt != null && exactPt.vramMib > 0 ? exactPt.vramMib / 1024 : null;
   const curveGbRaw =
-    learnedExactGbRaw == null && curveHit && mergedCurve.length >= 2 ? curveHit.vramGb : null;
+    !liveLowVram
+    && learnedExactGbRaw == null
+    && curveHit
+    && mergedCurve.length >= 2
+      ? curveHit.vramGb
+      : null;
 
   const rawLearnedGb = input.learnedVramMib != null ? input.learnedVramMib / 1024 : null;
   const learnedBaseGb =
@@ -126,7 +136,10 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
       ? rawLearnedGb + (needsDraftAdd ? draftAddon : 0)
       : null;
   const learnedDeltaGbRaw =
-    learnedBaseGb != null && learnedExactGbRaw == null && curveGbRaw == null
+    !liveLowVram
+    && learnedBaseGb != null
+    && learnedExactGbRaw == null
+    && curveGbRaw == null
       ? adjustMeasuredGbForCtx(
           learnedBaseGb,
           input.learnedAnchorCtx ?? liveCtx,
@@ -137,17 +150,20 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
         )
       : null;
 
-  // Host only at an exact CTX. Never lerp host (invented 2.8 GB "spill").
-  const learnedHostGbRaw =
-    exactPt != null && exactPt.hostMib != null
+  // Host only at an exact CTX. Never lerp host.
+  // Same-CTX low_vram session wins over a stored full-GPU LEARNED row.
+  const learnedHostGbRaw = liveLowVram
+    ? probeHostGb
+    : exactPt != null && exactPt.hostMib != null
       ? exactPt.hostMib / 1024
       : learnedExactGbRaw != null && input.learnedHostMib != null
         ? input.learnedHostMib / 1024
         : null;
   const targetAvailForGate = gpuAvailable[tgt] ?? Math.max(...gpuAvailable, 0);
   const discardSpillLearned =
-    isDevBuild() &&
-    learnedLooksLikeFreeDependentSpill(
+    !liveLowVram
+    && isDevBuild()
+    && learnedLooksLikeFreeDependentSpill(
       withDraft(learnedExactGbRaw) ?? withDraft(curveGbRaw) ?? learnedDeltaGbRaw,
       learnedHostGbRaw,
       targetAvailForGate,
@@ -159,7 +175,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   const learnedHostGb = discardSpillLearned ? null : learnedHostGbRaw;
 
   const probeNoneAtLiveGb =
-    curveGb == null && learnedExactGb == null && probeGb != null
+    liveLowVram || (curveGb == null && learnedExactGb == null && probeGb != null)
       ? adjustMeasuredGbForCtx(
           probeGb + draftAddon,
           probeAnchor || liveCtx,
@@ -172,8 +188,9 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   const probeWithDraftGb =
     probeNoneAtLiveGb != null ? probeNoneAtLiveGb + splitTaxGb : null;
 
-  const estimateGb =
-    withDraft(learnedExactGb) ?? withDraft(curveGb) ?? probeWithDraftGb ?? learnedDeltaGb;
+  const estimateGb = liveLowVram
+    ? probeWithDraftGb
+    : withDraft(learnedExactGb) ?? withDraft(curveGb) ?? probeWithDraftGb ?? learnedDeltaGb;
   if (estimateGb == null) return null;
 
   const learnedGb = discardSpillLearned

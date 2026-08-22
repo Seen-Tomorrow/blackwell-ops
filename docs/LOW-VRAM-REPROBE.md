@@ -143,15 +143,16 @@ key. Do **not** add free or ngl — combinations explode.
 
 Launch writes `__vram_topo`. Lookups pass the same tag. Legacy `dev=GPU-N`
 keys still fuzzy-match when no topo tag is sent.
-
 **Offload launches must not join the GPU-vs-CTX lerp.** Host &gt; 2.5 GB
 (weight-class) rows stay in the store and as slider ticks. Interpolation
 uses only full-GPU points (host buffer or missing). Host is applied only
 at an **exact** CTX — never lerped (that invented 2.8 GB HOST OFFLOAD).
 The full-GPU curve is the 100% path; edge-case offload is isolated.
 
-| **free VRAM** | **no** |
-| fitted ngl | no |
+A **same-CTX** `low_vram` session (just probed) wins the glass over a stored
+full-GPU LEARNED row at that CTX. It does **not** rewrite `learned-vram.json`.
+Slide off that CTX and the regular curve returns.
+
 
 Identical 96 GB pair → same key on GPU-0 or GPU-1. Mixed 24+96 is a different
 key. Do **not** add free or ngl — combinations explode.
