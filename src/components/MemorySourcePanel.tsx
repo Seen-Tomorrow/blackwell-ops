@@ -275,61 +275,66 @@ export function MemorySourceReprobe({
     onValidate?.(mode);
   };
 
+  const autoLow = needsLowVramReprobe && !isValidating;
+  const autoLabel = isValidating
+    ? needsLowVramReprobe
+      ? "PROBING LOW VRAM…"
+      : "PROBING…"
+    : autoLow
+      ? "RE-PROBE LOW VRAM"
+      : "RE-PROBE";
+
+  const autoBtn = (
+    <button
+      type="button"
+      className={`vram-fc-source__reprobe vram-fc-header__reprobe${
+        autoLow ? " vram-fc-header__reprobe--low-vram" : ""
+      }`}
+      data-probe-state={isValidating ? "probing" : autoLow ? "low-vram" : "reprobe"}
+      disabled={isValidating}
+      onClick={fire(autoLow ? "low_vram" : "full")}
+      title={
+        autoLow
+          ? "Auto: free VRAM is tight — free-aware FIT (not on CTX drag)"
+          : "Auto: full-need FIT at this CTX"
+      }
+    >
+      {autoLabel}
+    </button>
+  );
+
   if (isDevBuild()) {
     return (
       <span className={`vram-fc-header__reprobe-pair${wrap}`}>
+        {autoBtn}
         <button
           type="button"
-          className="vram-fc-source__reprobe vram-fc-header__reprobe"
+          className="vram-fc-source__reprobe vram-fc-header__reprobe vram-fc-header__reprobe--manual"
           data-probe-state={isValidating ? "probing" : "reprobe"}
           disabled={isValidating}
           onClick={fire("full")}
-          title="Full-need FIT (ngl 999) — true GPU total, host buffer only"
+          title="Manual full-need FIT (ngl 999) — ignore auto swap"
         >
-          {isValidating ? "PROBING…" : "RE-PROBE"}
+          RE-PROBE
         </button>
         <button
           type="button"
-          className={`vram-fc-source__reprobe vram-fc-header__reprobe${
-            needsLowVramReprobe ? " vram-fc-header__reprobe--low-vram" : ""
-          }`}
-          data-probe-state={isValidating ? "probing" : needsLowVramReprobe ? "low-vram" : "reprobe"}
+          className="vram-fc-source__reprobe vram-fc-header__reprobe vram-fc-header__reprobe--manual"
+          data-probe-state={isValidating ? "probing" : "reprobe"}
           disabled={isValidating}
           onClick={fire("low_vram")}
-          title="Free-aware FIT — real host spill / fitted ngl (no auto on CTX drag)"
+          title="Manual free-aware FIT — ignore auto swap"
         >
-          {isValidating ? "PROBING LOW VRAM…" : "RE-PROBE LOW VRAM"}
+          RE-PROBE LOW VRAM
         </button>
       </span>
     );
   }
 
-  const lowVram = needsLowVramReprobe && !isValidating;
-  const label = isValidating
-    ? needsLowVramReprobe
-      ? "PROBING LOW VRAM…"
-      : "PROBING…"
-    : lowVram
-      ? "RE-PROBE LOW VRAM"
-      : "RE-PROBE";
-
   return (
-    <button
-      type="button"
-      className={`vram-fc-source__reprobe vram-fc-header__reprobe${
-        lowVram ? " vram-fc-header__reprobe--low-vram" : ""
-      }${wrap}`}
-      data-probe-state={isValidating ? "probing" : lowVram ? "low-vram" : "reprobe"}
-      disabled={isValidating}
-      onClick={fire(lowVram ? "low_vram" : "full")}
-      title={
-        lowVram
-          ? "Free VRAM is tight — run free-aware FIT to measure real host spill (not auto on CTX drag)"
-          : "Run FIT PROBE at this CTX to lock a measured point"
-      }
-    >
-      {label}
-    </button>
+    <span className={wrap.trim() || undefined}>
+      {autoBtn}
+    </span>
   );
 }
 

@@ -9,12 +9,11 @@ import {
   type FitProbeMode,
 } from "../services/vram/lowVramProbe";
 import { isDevBuild } from "../lib/build";
+import { gpuMemoryBucketKey, vramManifestSnapshotEqual, vramTopoTag } from "../lib/telemetryGpu";
 import { attachMemorySource, MEMORY_SOURCE_LABELS } from "../services/vram/memorySource";
-import { gpuMemoryBucketKey, vramManifestSnapshotEqual } from "../lib/telemetryGpu";
 import { tomMtpBlocked, toastTomMtpSkip, TOM_MTP_SKIP_MESSAGE } from "../lib/tomMtp";
 import { EVENTS } from "../lib/events";
 import { useTauriListen } from "./useTauriListen";
-
 type ProbeSession = {
   modelPath: string;
   /** Hard knobs only — ctx slider does not drop the probe. */
@@ -691,6 +690,7 @@ export function useScenarioEvaluator({
     const kvQuant = String(curConfig["kv_quant"] ?? "f16");
     const specType = effectiveSpecTypeFromConfig(curConfig);
     const draftModel = draftPathForLearned(curConfig) || null;
+    const vramTopo = vramTopoTag(gpusRef.current, curConfig.device);
     void Promise.all([
       invoke<LearnedVramEntry | null>("get_learned_vram", {
         modelPath: model.path,
@@ -704,6 +704,7 @@ export function useScenarioEvaluator({
         specType,
         cacheRam: String(curConfig.cache_ram ?? "0"),
         draftModel,
+        vramTopo: vramTopo || null,
       }),
       invoke<Array<{ ctx: number; vram_mib: number; host_mib?: number }>>("get_learned_vram_curve", {
         modelPath: model.path,
@@ -712,6 +713,7 @@ export function useScenarioEvaluator({
         specType,
         draftModel,
         split: String(curConfig.split ?? "none"),
+        vramTopo: vramTopo || null,
       }).catch(() => []),
     ])
       .then(([entry, curve]) => {
@@ -1120,6 +1122,7 @@ export function useScenarioEvaluator({
         specType: effectiveSpecTypeFromConfig(curConfig),
         draftModel: draftPathForLearned(curConfig) || null,
         split: String(curConfig.split ?? "none"),
+        vramTopo: vramTopoTag(gpusRef.current, curConfig.device) || null,
         removeCtxs,
       });
       if (n > 0) {

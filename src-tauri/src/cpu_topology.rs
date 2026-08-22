@@ -216,12 +216,17 @@ pub fn apply_to_launch_args(
 ) -> Option<AffinityPlan> {
     if user_owns_cpu_affinity(args) {
         log::debug!("[cpu-affinity] skip inject — user already set cpu-mask/range/strict");
-        // Still return a plan from the user mask so process affinity can apply.
         return plan_from_existing_args(args);
     }
 
     let mode = affinity_mode_from_config(config);
     if mode == AffinityMode::Off {
+        return None;
+    }
+
+    // Host weight/KV offload needs all cores. V-Cache pin (8/32) starves CPU layers.
+    if launch_looks_like_host_offload(args, config) {
+        log::info!("[cpu-affinity] skip V-Cache pin — host offload / partial ngl");
         return None;
     }
 
@@ -368,6 +373,56 @@ fn set_process_affinity_mask(pid: u32, mask: u64) -> Result<(), String> {
     Ok(())
 }
 
+fn launch_looks_like_host_offload(args: &[String], config: &EngineConfig) -> bool {
+    if let Some(v) = config
+        .extra_params
+        .get("__host_offload")
+        .and_then(|x| x.as_str().map(str::to_string).or_else(|| x.as_bool().map(|b| b.to_string())))
+    {
+        let s = v.trim().to_ascii_lowercase();
+        if s == "1" || s == "true" || s == "yes" {
+            return true;
+        }
+    }
+    if let Some(v) = config.get_param_str("__host_offload") {
+        let s = v.trim().to_ascii_lowercase();
+        if s == "1" || s == "true" || s == "yes" {
+            return true;
+        }
+    }
+    if ngl_is_partial(read_flag_value(args, &["-ngl", "--n-gpu-layers"])) {
+        return true;
+    }
+    if let Some(v) = config.extra_params.get("__ngl") {
+        let s = v.as_str().map(String::from).unwrap_or_else(|| v.to_string());
+        if ngl_is_partial(Some(s.as_str())) {
+            return true;
+        }
+    }
+    false
+}
+
+fn ngl_is_partial(raw: Option<&str>) -> bool {
+    let Some(s) = raw else {
+        return false;
+    };
+    let Ok(n) = s.trim().parse::<i32>() else {
+        return false;
+    };
+    n >= 0 && n < 900
+}
+
+fn read_flag_value<'a>(args: &'a [String], flags: &[&str]) -> Option<&'a str> {
+    let mut i = 0;
+    while i < args.len() {
+        if flags.iter().any(|f| args[i] == *f) {
+            return args.get(i + 1).map(String::as_str);
+        }
+        i += 1;
+    }
+    None
+}
+
 fn user_owns_cpu_affinity(args: &[String]) -> bool {
     const FLAGS: &[&str] = &[
         "-C",
@@ -381,7 +436,7 @@ fn user_owns_cpu_affinity(args: &[String]) -> bool {
         "--cpu-range-batch",
         "--cpu-strict-batch",
     ];
-    args.iter().any(|a| FLAGS.iter().any(|f| a == f))
+    args.iter().any(|a| FLAGS.iter().any(|f| a == *f))
 }
 
 fn read_thread_count(args: &[String], flags: &[&str]) -> Option<usize> {

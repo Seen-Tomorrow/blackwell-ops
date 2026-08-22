@@ -302,12 +302,13 @@ fn memory_mode_from_config(config: &EngineConfig) -> String {
 }
 
 pub fn learned_vram_key_from_config(model_path: &str, provider_id: &str, config: &EngineConfig) -> String {
+    let device_token = vram_device_token_from_config(config);
     learned_vram_key_with_draft(
         model_path,
         provider_id,
         &config.get_param_str("ctx").unwrap_or_else(|| "32768".to_string()),
         &config.get_param_str("kv_quant").unwrap_or_else(|| "f16".to_string()),
-        &config.get_param_str("device").unwrap_or_else(|| "GPU-0".to_string()),
+        &device_token,
         &config.get_param_str("split").unwrap_or_else(|| "none".to_string()),
         &memory_mode_from_config(config),
         &config
@@ -321,6 +322,24 @@ pub fn learned_vram_key_from_config(model_path: &str, provider_id: &str, config:
             .unwrap_or_else(|| "0".to_string()),
         &draft_path_from_config(config),
     )
+}
+
+/// Prefer manufactured-GB topo (`96` / `24+96`) over GPU index.
+fn vram_device_token_from_config(config: &EngineConfig) -> String {
+    if let Some(v) = config.get_param_str("__vram_topo") {
+        let t = v.trim();
+        if !t.is_empty() {
+            return t.to_string();
+        }
+    }
+    config
+        .get_param_str("device")
+        .unwrap_or_else(|| "GPU-0".to_string())
+}
+
+fn device_token_is_vram_topo(token: &str) -> bool {
+    let t = token.trim();
+    !t.is_empty() && !t.to_ascii_uppercase().starts_with("GPU")
 }
 
 fn lookup_learned_vram_fuzzy(
@@ -498,6 +517,10 @@ fn lookup_learned_vram_fuzzy(
             }
         }
 
+        if !key_matches_vram_topo(k, device) {
+            continue;
+        }
+
         if entry.measured_at >= best_at {
             best_at = entry.measured_at.clone();
             best = Some(entry);
@@ -528,7 +551,7 @@ pub fn lookup_learned_vram_for_config(
         provider_id,
         &config.get_param_str("ctx").unwrap_or_else(|| "32768".to_string()),
         &config.get_param_str("kv_quant").unwrap_or_else(|| "f16".to_string()),
-        &config.get_param_str("device").unwrap_or_else(|| "GPU-0".to_string()),
+        &vram_device_token_from_config(config),
         &config.get_param_str("split").unwrap_or_else(|| "none".to_string()),
         &memory_mode_from_config(config),
         &config
@@ -845,6 +868,7 @@ pub fn get_learned_vram(
     spec_type: Option<String>,
     cache_ram: Option<String>,
     draft_model: Option<String>,
+    vram_topo: Option<String>,
 ) -> Option<LearnedVramEntry> {
     let _guard = STORE_MUTEX.lock().ok()?;
     let mode = memory_mode
@@ -864,12 +888,17 @@ pub fn get_learned_vram(
         .as_deref()
         .unwrap_or("0");
     let draft = draft_model.as_deref().unwrap_or("");
+    let device_token = vram_topo
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(device.as_str());
     lookup_learned_vram_fuzzy(
         &model_path,
         &provider_id,
         &ctx,
         &kv_quant,
-        &device,
+        device_token,
         &split,
         &mode,
         &offload,
@@ -963,6 +992,17 @@ fn key_matches_split(key: &str, split: &str) -> bool {
     want_none
 }
 
+fn key_matches_vram_topo(key: &str, want: &str) -> bool {
+    if !device_token_is_vram_topo(want) {
+        return true;
+    }
+    let Some(rest) = key.split("|dev=").nth(1) else {
+        return true;
+    };
+    let got = rest.split('|').next().unwrap_or("").trim();
+    got.eq_ignore_ascii_case(want.trim())
+}
+
 /// Launch measurements for this model + kv/spec/draft + split, every ctx (device ignored).
 #[tauri::command]
 pub fn get_learned_vram_curve(
@@ -972,6 +1012,7 @@ pub fn get_learned_vram_curve(
     spec_type: Option<String>,
     draft_model: Option<String>,
     split: Option<String>,
+    vram_topo: Option<String>,
 ) -> Vec<LearnedVramCurvePoint> {
     let Some(_guard) = STORE_MUTEX.lock().ok() else {
         return Vec::new();
@@ -1009,6 +1050,11 @@ pub fn get_learned_vram_curve(
         if !key_matches_split(k, &split_n) {
             continue;
         }
+        if let Some(topo) = vram_topo.as_deref() {
+            if !key_matches_vram_topo(k, topo) {
+                continue;
+            }
+        }
         let Some(ctx) = ctx_from_learn_key(k) else {
             continue;
         };
@@ -1045,6 +1091,7 @@ pub fn prune_learned_vram_curve(
     spec_type: Option<String>,
     draft_model: Option<String>,
     split: Option<String>,
+    vram_topo: Option<String>,
     remove_ctxs: Vec<u64>,
 ) -> Result<u32, String> {
     use tauri::Emitter;
@@ -1090,6 +1137,11 @@ pub fn prune_learned_vram_curve(
         }
         if !key_matches_split(k, &split_n) {
             return true;
+        }
+        if let Some(topo) = vram_topo.as_deref() {
+            if !key_matches_vram_topo(k, topo) {
+                return true;
+            }
         }
         let Some(ctx) = ctx_from_learn_key(k) else {
             return true;

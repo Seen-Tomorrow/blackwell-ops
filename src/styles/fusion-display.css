@@ -2094,6 +2094,18 @@
   flex-wrap: wrap;
 }
 
+.vram-fc-header__reprobe--manual {
+  color: color-mix(in srgb, var(--theme-text-muted, #9ca3af) 88%, #fff);
+  border-color: color-mix(in srgb, #6b7280 45%, transparent);
+  background: color-mix(in srgb, #4b5563 42%, var(--theme-panel, #0a0a0a));
+}
+
+.vram-fc-header__reprobe--manual:hover:not(:disabled) {
+  color: #e5e7eb;
+  border-color: color-mix(in srgb, #9ca3af 55%, transparent);
+  background: color-mix(in srgb, #6b7280 38%, var(--theme-panel, #0a0a0a));
+}
+
 /* Manual free-aware spill probe — flash until user runs RE-PROBE LOW VRAM */
 .vram-fc-header__reprobe--low-vram,
 .vram-fc-source__reprobe[data-probe-state="low-vram"],

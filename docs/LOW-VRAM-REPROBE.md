@@ -127,15 +127,21 @@ Real engine load tables + launch inventory  →  learned-vram.json
 
 ### Learn key (`vram_learn.rs`)
 
-`model|provider|ctx|kv|device|split|memory_mode|offload` + optional spec/draft/cache_ram.
+`model|provider|ctx|kv|dev={vramGB}|split|mode|offload` + optional spec/draft/cache_ram.
 
 | In key? | |
 |---------|--|
-| ctx, kv, device, split, offload mode | yes |
+| ctx, kv, split, offload mode | yes |
+| **manufactured VRAM GB** of selected device(s) (`96`, `24+96`) | **yes** |
+| GPU index / SKU / arch | **no** — two 96 GB cards share |
 | **free VRAM** | **no** |
 | fitted ngl | no |
 
-Do **not** add free to the key — combinations explode.
+Identical 96 GB pair → same key on GPU-0 or GPU-1. Mixed 24+96 is a different
+key. Do **not** add free or ngl — combinations explode.
+
+Launch writes `__vram_topo`. Lookups pass the same tag. Legacy `dev=GPU-N`
+keys still fuzzy-match when no topo tag is sent.
 
 ### Promote rule
 
@@ -303,3 +309,13 @@ the whole `learned-vram.json` file.
 
 If ticks are still missing with ALL + in-range ctx: check learn keys in
 `learned-vram.json` for `|kv=` `|spec=` `|draft=` `|split=` vs the live cockpit.
+
+## CPU affinity vs host offload
+
+Default X3D pin is V-Cache CCD, high-half, `-t ≤ 8` (best GPU-decode TPS).
+That starves **CPU-layer** offload (8 of 32 cores).
+
+When launch is host-offload (`__host_offload=1` from forecast spill, or
+`--n-gpu-layers` / `__ngl` in `0..899`), affinity inject is **skipped** so
+ggml can use all cores. User `--cpu-mask` still wins.
+

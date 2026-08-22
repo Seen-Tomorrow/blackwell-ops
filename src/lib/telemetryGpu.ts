@@ -40,6 +40,25 @@ export function gpuMemoryBucketKey(gpus: GpuInfo[], bucketMib: number): string {
   return gpus.map((g) => bucketGpuMib(g.memory_used, bucketMib)).join(",");
 }
 
+/** Manufactured-GB fingerprint for LEARNED keys — not GPU index / arch. */
+export function vramTopoTag(gpus: GpuInfo[], device: unknown): string {
+  const raw = String(device ?? "GPU-0");
+  const idxs = raw
+    .split(/[/+,|]/)
+    .map((s) => parseInt(s.replace(/\D/g, ""), 10))
+    .filter((n) => !Number.isNaN(n));
+  const use = idxs.length > 0 ? idxs : [0];
+  const gbs = [
+    ...new Set(
+      use.map((i) => {
+        const g = gpus.find((x) => x.index === i) ?? gpus[i];
+        const mib = g?.memory_total_manufactured || g?.memory_total || 0;
+        return Math.round(mib / 1024);
+      }).filter((n) => n > 0),
+    ),
+  ].sort((a, b) => a - b);
+  return gbs.join("+");
+}
 /** Skip manifest state replace when scenario output is unchanged for UI. */
 export function vramManifestSnapshotEqual(
   prev: VramManifest | null,
