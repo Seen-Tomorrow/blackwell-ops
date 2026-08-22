@@ -35,6 +35,7 @@ import {
 } from "../../shared";
 import {
   freeFingerprintFromGb,
+  isLiveWeightSpill,
   isWeightClassHostSpill,
   lowVramBarInsets,
   ramNeedToneForHost,
@@ -167,12 +168,13 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   const modelFootprintGb = Math.max(estimateGb, weightGb);
   const overSystemMemory = modelFootprintGb > systemAvailableGb - systemHeadroom;
 
-  const trustFitAtLoad = !overSystemMemory && (exceedsGpuPool || learnedHostGb != null);
+  // learnedHostGb is often a leftover from a stuffed-GPU spill launch — do not
+  // treat "we have a host number" as proof this launch will offload.
+  const trustFitAtLoad = !overSystemMemory && exceedsGpuPool;
   const fits =
     !overSystemMemory && (trustFitAtLoad || estimateGb <= targetAvail - headroomGb);
 
   const gpuProjectionGb = estimateGb;
-  // Prefer measured host; never invent multi-GB spill from free overshoot alone.
   const hostMeasuredGb =
     learnedHostGb ??
     probeHostGb ??
@@ -180,7 +182,6 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   const hostOffloadGb = isWeightClassHostSpill(hostMeasuredGb)
     ? (hostMeasuredGb as number)
     : 0;
-
   const currentPlacementKey = `${input.engineConfig.extra_params?.device || ""}|${input.engineConfig.extra_params?.split || ""}|${input.engineConfig.extra_params?.gpu_sync || ""}`;
   const probePlacementMatches =
     input.fitProbePlacementKey == null || input.fitProbePlacementKey === currentPlacementKey;
@@ -226,22 +227,18 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     perGpuLoad[tgt] = gpuProjectionGb;
   }
 
-  const headroomThreshold = targetAvail - headroomGb;
   const liveFreeFp = freeFingerprintFromGb(targetAvail);
   const fittedNgl = input.fitProbeFittedNgl;
-  const realSpillFromNgl =
-    input.fitProbeMode === "low_vram" &&
-    fittedNgl != null &&
-    fittedNgl >= 0 &&
-    fittedNgl < 900;
-  // Weight-class host from LEARNED / low_vram; include measured host when ngl says spill.
-  const spillHostGb = isWeightClassHostSpill(hostMeasuredGb)
-    ? (hostMeasuredGb as number)
-    : realSpillFromNgl && hostMeasuredGb != null && hostMeasuredGb > 0.5
-      ? hostMeasuredGb
-      : hostOffloadGb;
-  const realSpill = isWeightClassHostSpill(spillHostGb) || realSpillFromNgl;
-  const displayHostGb = realSpill ? Math.max(hostOffloadGb, spillHostGb) : 0;
+  const realSpill = isLiveWeightSpill({
+    estimateGb,
+    freeGb: targetAvail,
+    hostGb: hostMeasuredGb,
+    probeMode: input.fitProbeMode,
+    fittedNgl,
+  });
+  const displayHostGb = realSpill
+    ? Math.max(hostOffloadGb, isWeightClassHostSpill(hostMeasuredGb) ? (hostMeasuredGb as number) : 0)
+    : 0;
   const showHostRam = showHostRamBar({
     hostOffloadGb: displayHostGb,
     realSpill,

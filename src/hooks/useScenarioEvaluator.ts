@@ -876,7 +876,7 @@ export function useScenarioEvaluator({
     return () => { clearTimeout(timerRef.current); };
   }, [model?.path, stack, gpuTopologyKey, gpuMemoryKey, gpus.length, configKey, learnedKey, stackKey, sysInfoLoaded, metaReady, commitManifest]);
 
-  const validate = useCallback(async () => {
+  const validate = useCallback(async (requestedMode?: FitProbeMode) => {
     if (!model || validatingRef.current) return;
     const curConfig = configRef.current;
     const providerId = curConfig.backend_type || "";
@@ -887,13 +887,12 @@ export function useScenarioEvaluator({
     validatingRef.current = true;
     setIsValidating(true);
     try {
-      // Prefer low_vram when the live glass is already nudging (tight free).
-      const wantLowVram = !!manifestRef.current?.style?.needsLowVramReprobe
-        || manifestRef.current?.style?.launchPaint === "offload"
-        || manifestRef.current?.style?.vramNeedTone === "caution"
-        || manifestRef.current?.style?.vramNeedTone === "warn"
-        || manifestRef.current?.style?.vramNeedTone === "hot";
-      const probeMode: FitProbeMode = wantLowVram ? "low_vram" : "full";
+      // Auto / default RE-PROBE is always full-need (ngl 999).
+      // low_vram only when the button is flashing and the user clicks it.
+      const probeMode: FitProbeMode =
+        requestedMode
+        ?? (manifestRef.current?.style?.needsLowVramReprobe ? "low_vram" : "full");
+
       const runningSlots = committedSlotsFromStack(stackRef.current);
       const gpuAvail = computeGpuAvailableList(gpusRef.current, runningSlots);
       const devMatch = /GPU-?(\d+)/i.exec(String(curConfig.device || "GPU-0"));
@@ -1016,22 +1015,16 @@ export function useScenarioEvaluator({
     if (!autoVramLaunchRef.current || !model?.path || !model.metadata) return;
     if (validatingRef.current) return;
     if (learnedFetchPendingRef.current) return;
-    // Already have a live probe for this hard-key footprint.
     if (
       probeSessionRef.current?.modelPath === model.path
       && probeSessionRef.current.hardKey === probeKey
     ) {
       return;
     }
-    const liveCtx = parseCtx(configRef.current.ctx ?? "32768");
-    const curve = learnedCurveRef.current;
-    // Skip auto-probe only when evaluate() can already paint from LEARNED/curve.
-    // (Exact-CTX curve skip alone was wrong: curve is not keyed on batch/ubatch/flash,
-    // and left EVALUATING stuck after restart when estimate was still null.)
-    const hasLearnedPaint = learnedVramRef.current != null;
-    const hasCurvePaint =
-      curve.some((p) => p.ctx === liveCtx) || curve.length >= 2;
-    if (hasLearnedPaint || hasCurvePaint) return;
+    // Skip auto-probe only for an identity-matched LEARNED row.
+    // Curve-only skip left EVALUATING stuck after hard knobs (curve is not
+    // keyed on batch/ubatch/flash).
+    if (learnedVramRef.current != null) return;
     const free = computeGpuAvailableList(
       gpusRef.current,
       committedSlotsFromStack(stackRef.current),
@@ -1039,7 +1032,7 @@ export function useScenarioEvaluator({
     if (Math.max(...free, 0) < 2.5) return;
     const providerId = String(configRef.current.backend_type || "");
     if (tomMtpBlocked(providerId, model)) return;
-    void validate();
+    void validate("full");
   };
 
   return { manifest, isEvaluating, isValidating, validate };

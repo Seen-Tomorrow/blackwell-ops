@@ -50,8 +50,9 @@ No second cache file, no second evaluator, no ngl binary-search loop in TS.
 
 1. **LOW / HIGH OOM RISK** — only while still **fit** (full-GPU plan) and freeUtil crosses 0.85 / 0.92.
 2. **OVER FREE · RE-PROBE** — estimate > free−headroom and **no** fresh low_vram probe. Do **not** invent multi-GB host spill.
-3. **HOST OFFLOAD · SLOWER / OVER FREE · SPILL · SLOWER** — only if host is **weight-class** (`hostGb > HOST_BUFFER_CEILING_GB`, default 2.5) from low_vram / LEARNED, or low_vram fitted ngl is partial.
+3. **HOST OFFLOAD / SPILL** — only if **live estimate exceeds free−headroom** *and* host is weight-class or low_vram fitted ngl is partial. A leftover LEARNED host from a stuffed-GPU run must **not** paint offload at low usage.
 4. Full-need Host ~1 GB → never labeled “offload.”
+5. Auto-probe / normal RE-PROBE is always **full** (`ngl 999`). `low_vram` only when the button flashes and the user clicks.
 
 ## Fit-target correction
 

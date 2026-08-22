@@ -15,9 +15,33 @@ import {
 export const HOST_BUFFER_CEILING_GB = 2.5;
 
 export type FitProbeMode = "full" | "low_vram";
-
 export function isWeightClassHostSpill(hostGb: number | null | undefined): boolean {
   return hostGb != null && Number.isFinite(hostGb) && hostGb > HOST_BUFFER_CEILING_GB;
+}
+
+/** Partial fitted ngl from a free-aware low_vram probe (−1 / 999 = all GPU). */
+export function isPartialFittedNgl(ngl: number | null | undefined): boolean {
+  return ngl != null && ngl >= 0 && ngl < 900;
+}
+
+/**
+ * Spill chrome is live-free only. A leftover LEARNED/session host from an
+ * aggressive stuffed-GPU run must not paint HOST OFFLOAD at 20% usage.
+ */
+export function isLiveWeightSpill(args: {
+  estimateGb: number;
+  freeGb: number;
+  hostGb?: number | null;
+  probeMode?: FitProbeMode | null;
+  fittedNgl?: number | null;
+}): boolean {
+  const headroom = freePoolHeadroomGb(args.freeGb);
+  const overFree = args.estimateGb > args.freeGb - headroom;
+  if (!overFree) return false;
+  return (
+    isWeightClassHostSpill(args.hostGb) ||
+    (args.probeMode === "low_vram" && isPartialFittedNgl(args.fittedNgl))
+  );
 }
 
 /** Round free GB to 0.5 so NVML noise doesn't thrash freshness. */
@@ -94,12 +118,13 @@ export function lowVramBarInsets(args: {
   /** Fitted ngl from low_vram probe when known (−1 / 999 = all on GPU). */
   fittedNgl?: number | null;
 }): LowVramBarInsets {
-  const realSpill =
-    isWeightClassHostSpill(args.hostOffloadGb) ||
-    (args.probeMode === "low_vram" &&
-      args.fittedNgl != null &&
-      args.fittedNgl >= 0 &&
-      args.fittedNgl < 900);
+  const realSpill = isLiveWeightSpill({
+    estimateGb: args.estimateGb,
+    freeGb: args.freeGb,
+    hostGb: args.hostOffloadGb,
+    probeMode: args.probeMode,
+    fittedNgl: args.fittedNgl,
+  });
 
   const needsReprobe = needsLowVramReprobe({
     estimateGb: args.estimateGb,
