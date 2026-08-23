@@ -432,13 +432,25 @@ export default function MemorySourcePanel({
       onBlur={hide}
     >
       <div className="vram-fc-source__head memory-source-header">
-        <span className="vram-fc-source__lab">MEMORY FORECAST SOURCE</span>
-        <span className={`vram-fc-source__kind ${view.accent.text}`}>
-          <ConfidencePips level={memorySource.confidence} />
-          <span className="memory-source-kind-label vram-fc-source__kind-lab">
-            {view.kindLabel}
+        <div className="vram-fc-source__line1">
+          <span className="vram-fc-source__lab">MEMORY FORECAST SOURCE</span>
+          <span className={`vram-fc-source__kind ${view.accent.text}`}>
+            <span className="memory-source-kind-label vram-fc-source__kind-lab">
+              {view.kindLabel}
+            </span>
           </span>
-        </span>
+        </div>
+        <div className="vram-fc-source__line2">
+          {memorySource.confidence <= 2 ? (
+            <span className="vram-fc-source__curve-hint">
+              Do two LAUNCHES on any CTX to get best precision
+            </span>
+          ) : (
+            <span className="vram-fc-source__curve-hint vram-fc-source__curve-hint--slot" aria-hidden>
+              Do two LAUNCHES on any CTX to get best precision
+            </span>
+          )}
+        </div>
       </div>
 
       {open ? (

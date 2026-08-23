@@ -222,19 +222,12 @@ export default function VramBadge({
       data-source-kind={sourceKind || undefined}
     >
       <div className="vram-fc__header vram-forecast-header vram-forecast-header--assisted flex-shrink-0 min-w-0">
-        <div className="vram-fc__launch-block">
-          <p
-            className={`vram-fc__launch-summary${manifest.fits ? " is-ok" : " is-fail"}`}
-            title={launchSummary}
-          >
-            {launchSummary}
-          </p>
-          {memorySource && memorySource.confidence <= 2 ? (
-            <span className="vram-fc__launch-hint">
-              Do two LAUNCHES on any CTX to get best precision
-            </span>
-          ) : null}
-        </div>
+        <p
+          className={`vram-fc__launch-summary${manifest.fits ? " is-ok" : " is-fail"}`}
+          title={launchSummary}
+        >
+          {launchSummary}
+        </p>
         {memorySource && !hideFitProbe ? (
           <MemorySourceReprobe
             memorySource={memorySource}

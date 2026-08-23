@@ -1141,15 +1141,14 @@
   grid-row: 1;
   display: flex;
   flex-direction: row;
-  align-items: center;
+  align-items: stretch;
   justify-content: flex-end;
   gap: calc(8px * var(--vram-fc-scale, 1.12));
   width: 100%;
   min-width: 0;
-  min-height: calc(18px * var(--vram-fc-scale, 1.12));
+  min-height: 0;
   padding: 3px 8px 3px 10px;
   border-radius: 3px;
-  /* Fully clear on the left → wash under SOURCE label (tokenized; ARCTIC = dark) */
   background: linear-gradient(
     90deg,
     transparent 0%,
@@ -2349,17 +2348,39 @@
 }
 .vram-fc-source--dominant .vram-fc-source__head {
   display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 3px;
+  flex-wrap: nowrap;
+  width: auto;
+  min-height: 0;
+}
+.vram-fc-source__line1 {
+  display: flex;
   flex-direction: row;
   align-items: center;
   justify-content: flex-end;
   gap: calc(5px * var(--vram-fc-scale, 1.12));
-  min-width: 0;
-  width: auto;
-  max-width: 100%;
-  margin-left: auto;
-  flex-wrap: nowrap;
   min-height: calc(14px * var(--vram-fc-scale, 1.12));
-  max-height: calc(16px * var(--vram-fc-scale, 1.12));
+}
+.vram-fc-source__line2 {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: calc(12px * var(--vram-fc-scale, 1.12));
+}
+.vram-fc-source__curve-hint {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: calc(7.5px * var(--vram-fc-scale, 1.12));
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.15;
+  white-space: nowrap;
+  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 48%, transparent);
+}
+.vram-fc-source__curve-hint--slot {
+  visibility: hidden;
 }
 .vram-fc-source--dominant .vram-fc-source__lab {
   font-size: calc(7px * var(--vram-fc-scale, 1.12));
@@ -3331,7 +3352,7 @@
   filter: none;
   background: color-mix(
     in srgb,
-    var(--display-face-light-text-red, #ef4444) 24%,
+    var(--display-face-light-text-red, #ef4444) 22%,
     var(--display-face-light-surface, #f4f8fc)
   );
 }
@@ -3346,14 +3367,14 @@
   }
 }
 
-
 [data-display-texture="phosphor-light"] .vram-fc__verdict.is-ok {
   color: var(--display-face-light-text-accent, #1e3a14);
   border-color: color-mix(in srgb, var(--display-face-light-text-accent, #1e3a14) 40%, transparent);
 }
-[data-display-texture="phosphor-light"] .vram-fc__launch-hint {
+[data-display-texture="phosphor-light"] .vram-fc-source__curve-hint {
   color: color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 42%, transparent);
 }
+
 
 
 [data-display-texture="phosphor-light"] .vram-fc__verdict.is-fail {
