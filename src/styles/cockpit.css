@@ -2505,8 +2505,18 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--brain 
   pointer-events: none;
   z-index: 6;
 }
-
-
+.ctx-forecast-ribbon__value-tip {
+  max-width: 22ch;
+  margin-left: 0.35rem;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.15;
+  color: color-mix(in srgb, var(--theme-text, #e2e8f0) 72%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .full-auto-cockpit__ctx-values {
   display: flex;

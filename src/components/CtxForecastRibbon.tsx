@@ -22,6 +22,7 @@ export type CtxForecastRibbonProps = {
   ctxValues?: (string | number)[];
   /** track = fill the hero rail; marks = thin strip at tick bottoms. */
   place?: CtxForecastRibbonPlace;
+  onHover?: (text: string | null) => void;
 };
 
 export default function CtxForecastRibbon({
@@ -32,6 +33,7 @@ export default function CtxForecastRibbon({
   learnedMarks = [],
   ctxValues = [],
   place = "marks",
+  onHover,
 }: CtxForecastRibbonProps) {
   const [hover, setHover] = useState<{ pct: number; text: string } | null>(null);
 
@@ -52,17 +54,19 @@ export default function CtxForecastRibbon({
     const nearest = stops.reduce((best, s) =>
       Math.abs(s.ctx - ctx) < Math.abs(best.ctx - ctx) ? s : best,
     );
-    setHover({
-      pct: pct * 100,
-      text: ribbonTooltip(nearest.ctx, nearest.gb, forecastFreeGb, learnedMarks),
-    });
+    const text = ribbonTooltip(nearest.ctx, nearest.gb, forecastFreeGb, learnedMarks);
+    setHover({ pct: pct * 100, text });
+    onHover?.(text);
   };
 
   return (
     <div
       className={`ctx-forecast-ribbon ctx-forecast-ribbon--${place}`}
       onPointerMove={onMove}
-      onPointerLeave={() => setHover(null)}
+      onPointerLeave={() => {
+        setHover(null);
+        onHover?.(null);
+      }}
     >
       <div className="ctx-forecast-ribbon__rail" style={{ background: gradient }} />
       {learnedMarks.map((mark) => {
@@ -81,7 +85,7 @@ export default function CtxForecastRibbon({
           />
         );
       })}
-      {hover ? (
+      {hover && place !== "track" ? (
         <span className="ctx-forecast-ribbon__tip font-mono" style={{ left: `${hover.pct}%` }}>
           {hover.text}
         </span>

@@ -96,7 +96,8 @@ export default function CockpitCtxStrip({
   standalone = true,
 }: CockpitCtxStripProps) {
   const { mode, cycle } = useCtxLearnedMarkMode();
-  const [ribbonPlace, setRibbonPlace] = useState<"track" | "marks" | "both">("both");
+  const [ribbonPlace, setRibbonPlace] = useState<"track" | "marks" | "both">("track");
+  const [ribbonHover, setRibbonHover] = useState<string | null>(null);
   const hasLearned = (learnedMarks?.length ?? 0) > 0;
   const customCtxs = useMemo(() => {
     const presets = new Set(parseSliderValues(ctxValues ?? []));
@@ -126,6 +127,7 @@ export default function CockpitCtxStrip({
     forecastFreeGb: forecastFreeGb ?? 0,
     learnedMarks,
     ctxValues,
+    onHover: setRibbonHover,
   };
 
   return (
@@ -165,6 +167,11 @@ export default function CockpitCtxStrip({
               ? formatCtxChipLabel(ctxValue)
               : String(ctxValue ?? "")}
           </span>
+          {ribbonHover ? (
+            <span className="ctx-forecast-ribbon__value-tip font-mono" title={ribbonHover}>
+              {ribbonHover}
+            </span>
+          ) : null}
           {ctxPerSlot != null && ctxPerSlot > 0 && ctxSlotCount != null && ctxSlotCount > 1 && (
             <>
               <span className="full-auto-cockpit__ctx-sep font-mono">|</span>
@@ -175,6 +182,7 @@ export default function CockpitCtxStrip({
           )}
         </div>
       </div>
+
 
       <div
         className={`full-auto-cockpit__ctx-footer font-mono${footerBusy ? " full-auto-cockpit__ctx-footer--idle" : ""}`}
