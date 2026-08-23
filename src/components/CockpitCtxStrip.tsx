@@ -10,8 +10,6 @@ import {
   formatCtxChipLabel,
   parseSliderValues,
   interpolateGbAtCtx,
-  HERO_TRACK_HEIGHT_PX,
-  HERO_TRACK_TOP_PX,
 } from "../lib/sliderParamUtils";
 import { isDevBuild } from "../lib/build";
 import { ribbonTooltip } from "./ctxForecastRibbonMath";
@@ -117,8 +115,8 @@ export default function CockpitCtxStrip({
     && (forecastCurve?.length ?? 0) > 0
     && forecastFreeGb != null
     && forecastFreeGb > 0;
-  const showTrack = showRibbon && ribbonPlace === "track";
   const showMarks = showRibbon && ribbonPlace === "marks";
+
   const hasGhost =
     (forecastCurve?.length ?? 0) > 0 && forecastFreeGb != null && forecastFreeGb > 0;
   const footerBusy = !hasLearned && !hasGhost;
@@ -166,14 +164,6 @@ export default function CockpitCtxStrip({
               forecastCurve={forecastCurve}
               forecastFreeGb={forecastFreeGb}
             />
-            {showTrack ? (
-              <div
-                className="ctx-forecast-ribbon-slot ctx-forecast-ribbon-slot--track"
-                style={{ top: HERO_TRACK_TOP_PX, height: HERO_TRACK_HEIGHT_PX }}
-              >
-                <CtxForecastRibbon {...ribbonProps} place="track" />
-              </div>
-            ) : null}
           </div>
           {showMarks ? <CtxForecastRibbon {...ribbonProps} place="marks" /> : null}
         </div>

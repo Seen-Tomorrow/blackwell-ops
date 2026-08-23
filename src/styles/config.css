@@ -2392,25 +2392,26 @@ select option {
   position: absolute;
   left: 50%;
   width: 0;
-  border-left: 2px solid color-mix(in srgb, #fbbf24 90%, transparent);
+  border-left: 2px solid color-mix(in srgb, #fbbf24 92%, transparent);
   transform: translateX(-50%);
-  box-shadow: 0 0 6px color-mix(in srgb, #fbbf24 55%, transparent);
+  box-shadow: 0 0 7px color-mix(in srgb, #fbbf24 60%, transparent);
 }
 .ctx-slider-ghost-label {
   position: absolute;
   top: 0;
   left: 50%;
-  transform: translateX(-50%);
+  transform: translate(-50%, -20%);
+  z-index: 5;
   padding: 0 3px;
   font-size: 7px;
-  line-height: 1.15;
+  line-height: 1.1;
   letter-spacing: 0.02em;
   white-space: nowrap;
   color: #fbbf24;
-  background: color-mix(in srgb, var(--theme-panel, #0a0a0a) 82%, transparent);
-  border: 1px solid color-mix(in srgb, #fbbf24 45%, transparent);
+  background: color-mix(in srgb, var(--theme-panel, #0a0a0a) 88%, transparent);
+  border: 1px solid color-mix(in srgb, #fbbf24 50%, transparent);
   border-radius: 2px;
-  text-shadow: 0 0 6px color-mix(in srgb, #fbbf24 35%, transparent);
+  text-shadow: 0 0 6px color-mix(in srgb, #fbbf24 40%, transparent);
 }
 
 .ctx-slider-thumb {

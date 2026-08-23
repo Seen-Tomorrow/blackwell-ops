@@ -3,7 +3,7 @@
  * `layout="hero"` (CTX strip): taller host, labels hug vertical marks, fat hit targets.
  */
 
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   HERO_HIT_WIDTH_PX,
   HERO_SLIDER_THUMB_WIDTH_PX,
@@ -27,6 +27,7 @@ import {
   valueFromPointerX,
   type SliderParamSharedProps,
 } from "../lib/sliderParamUtils";
+import { ribbonCssGradient, sampleRibbonStops } from "./ctxForecastRibbonMath";
 import { dispatchAppEvent, EVENTS } from "../lib/events";
 
 function useTrackWidth() {
@@ -239,6 +240,14 @@ export default function CustomSliderParam({
     };
   }, [dragging, paramKey]);
 
+  const ribbonGradient = useMemo(() => {
+    if (!hero || !forecastCurve?.length || !(forecastFreeGb != null && forecastFreeGb > 0)) {
+      return null;
+    }
+    const stops = sampleRibbonStops(min, max, forecastFreeGb, forecastCurve);
+    return stops.length >= 2 ? ribbonCssGradient(stops) : null;
+  }, [hero, forecastCurve, forecastFreeGb, min, max]);
+
   const thumbPct = thumbCenterPercent(safeValue, min, max, trackWidthPx, thumbW);
 
   const fitsBoundaryCtx =
@@ -294,46 +303,27 @@ export default function CustomSliderParam({
     >
       <div
         className="ctx-slider-track absolute left-0 right-0 rounded-sm z-[1]"
-        style={{ top: `${trackTop}px`, height: `${trackH}px` }}
+        style={{
+          top: `${trackTop}px`,
+          height: `${trackH}px`,
+          ...(ribbonGradient ? { background: ribbonGradient, borderColor: "transparent" } : {}),
+        }}
       />
       {fitsBoundaryPct != null && fitsBoundaryCtx != null ? (
-        <>
-          {/* Fixed VRAM limit on the ctx scale — green still fits, red over free pool. */}
-          <div
-            className="ctx-slider-ghost ctx-slider-ghost--ok absolute z-[0] pointer-events-none rounded-sm"
-            style={{
-              top: `${trackTop}px`,
-              height: `${trackH}px`,
-              left: 0,
-              width: `${Math.max(fitsBoundaryPct, 0)}%`,
-            }}
+        <div
+          className="ctx-slider-ghost-mark absolute z-[4] pointer-events-none"
+          style={{ left: `${fitsBoundaryPct}%` }}
+          title={`Forecast VRAM limit — fits up to ${formatTokenLabel(fitsBoundaryCtx)} (free pool). Thumb left of this = OK, right = over.`}
+        >
+          <span
+            className="ctx-slider-ghost-stem"
+            style={{ top: 0, height: `${areaH}px` }}
             aria-hidden
           />
-          {fitsBoundaryPct < 99.5 ? (
-            <div
-              className="ctx-slider-ghost ctx-slider-ghost--over absolute z-[0] pointer-events-none rounded-sm"
-              style={{
-                top: `${trackTop}px`,
-                height: `${trackH}px`,
-                left: `${fitsBoundaryPct}%`,
-                right: 0,
-              }}
-              aria-hidden
-            />
-          ) : null}
-          {fitsBoundaryPct > 0.5 && fitsBoundaryPct < 99.5 ? (
-            <div
-              className="ctx-slider-ghost-mark absolute z-[4] pointer-events-none"
-              style={{ left: `${fitsBoundaryPct}%` }}
-              title={`Forecast VRAM limit — fits up to ${formatTokenLabel(fitsBoundaryCtx)} (free pool). Thumb left of this = OK, right = over.}`}
-            >
-              <span className="ctx-slider-ghost-stem" style={{ top: `${trackTop - 3}px`, height: `${trackH + 6}px` }} aria-hidden />
-              <span className="ctx-slider-ghost-label font-mono">
-                ≤{formatTokenLabel(fitsBoundaryCtx)}
-              </span>
-            </div>
-          ) : null}
-        </>
+          <span className="ctx-slider-ghost-label font-mono">
+            ≤{formatTokenLabel(fitsBoundaryCtx)}
+          </span>
+        </div>
       ) : null}
       {numericValues.map((pNum, idx) => {
         // LEARNED owns this ctx — cyan mark only (no white+cyan stack).
