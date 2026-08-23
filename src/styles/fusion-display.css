@@ -1437,34 +1437,26 @@
   grid-row: 3;
   border-top: 1px solid color-mix(in srgb, var(--need-frame-accent) 28%, transparent) !important;
 }
-
-/* Status — hero mark; reverse of SOURCE strip (dense left → clear right) */
-.vram-fc-need-frame__status-row {
-  grid-row: 1;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  gap: calc(6px * var(--vram-fc-scale, 1.12));
-  min-height: 0;
-  padding: 4px 6px;
-  border-bottom: none;
-  border: none;
-  background: transparent;
-}
 .vram-fc-need-frame__status-stack {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
+  gap: 0;
   min-width: 0;
 }
 .vram-fc-need-frame__precision {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 3px);
+  z-index: 2;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 5px;
+  transform: translateX(-50%);
+  pointer-events: none;
 }
 .vram-fc-need-frame__precision-label {
   margin-right: 2px;
@@ -1487,7 +1479,6 @@
   background: color-mix(in srgb, var(--display-face-text, #e2e8f0) 72%, transparent);
   border-color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 55%, transparent);
 }
-
 
 .vram-fc-need-frame__status-row--empty {
   padding: 0;
@@ -2347,11 +2338,12 @@
   width: 100%;
 }
 .vram-fc-source--dominant .vram-fc-source__head {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   justify-content: center;
-  gap: 3px;
+  gap: 0;
   flex-wrap: nowrap;
   width: auto;
   min-height: 0;
@@ -2362,13 +2354,16 @@
   align-items: center;
   justify-content: flex-end;
   gap: calc(5px * var(--vram-fc-scale, 1.12));
-  min-height: calc(14px * var(--vram-fc-scale, 1.12));
 }
 .vram-fc-source__line2 {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 3px);
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  min-height: calc(12px * var(--vram-fc-scale, 1.12));
+  pointer-events: none;
 }
 .vram-fc-source__curve-hint {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
