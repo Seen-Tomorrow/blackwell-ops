@@ -25,10 +25,8 @@ pub const FIT_OVERHEAD_PER_GPU: f64 = 256.0; // MiB static overhead per GPU for 
 const SCAN_TIMEOUT_SECS: u64 = 30;
 
 /// CTX spine + split-tax anchors.
-/// Live FIT probe owns absolute level at user knobs (always split=none).
-/// Split points (2 ctx × layer/tensor) let the forecast interpolate multi-GPU tax vs CTX.
-/// Layer fit-print emits CUDA0+CUDA1 — library Δ is real.
-/// Tensor fit-print emits Meta() ≈ none (no multi-GPU tax) — forecast uses LEARNED/fallback.
+/// llama-fit-params cannot `SPLIT_MODE_TENSOR` (abort or 0xC0000409).
+/// Tensor UI probes use layer FIT + optional Δ(tensor−layer) tax.
 /// Tuple: (label, ctx_tokens, kv_quant, batch, parallel, split_mode)
 const SCAN_PLAN: &[(&str, usize, &str, u32, u32, &str)] = &[
     ("ctx_4k", 4096, "q4_0", 512, 1, "none"),
@@ -37,12 +35,19 @@ const SCAN_PLAN: &[(&str, usize, &str, u32, u32, &str)] = &[
     ("ctx_128k", 131072, "q4_0", 512, 1, "none"),
     ("ctx_256k", 262144, "q4_0", 512, 1, "none"),
     ("ctx_512k", 524288, "q4_0", 512, 1, "none"),
-    // Multi-GPU communication tax — same KV/batch as spine; tax grows with CTX.
     ("split_layer_64k", 65536, "q4_0", 512, 1, "layer"),
-    ("split_tensor_64k", 65536, "q4_0", 512, 1, "tensor"),
     ("split_layer_256k", 262144, "q4_0", 512, 1, "layer"),
-    ("split_tensor_256k", 262144, "q4_0", 512, 1, "tensor"),
 ];
+
+/// FIT binary has no tensor fit. Map tensor → layer for all llama-fit-params argv.
+pub fn fit_cli_split_mode(split_mode: &str) -> String {
+    match split_mode.trim().to_lowercase().as_str() {
+        "tensor" => "layer".into(),
+        s if !s.is_empty() && s != "none" => s.into(),
+        _ => String::new(),
+    }
+}
+
 
 // ── Result Types ────────────────────────────────────────────────────
 
@@ -376,9 +381,9 @@ pub fn build_fit_command_base(
         args.extend(["--parallel".into(), parallel.to_string()]);
     }
 
-    // Split mode (only if not "none")
-    if !split_mode.is_empty() && split_mode.to_lowercase() != "none" {
-        args.extend(["--split-mode".into(), split_mode.to_lowercase().into()]);
+    let cli_split = fit_cli_split_mode(split_mode);
+    if !cli_split.is_empty() {
+        args.extend(["--split-mode".into(), cli_split]);
     }
 
     // Flash attention — always ON (required for non-f16 KV quant on modern architectures)

@@ -81,8 +81,9 @@ pub fn build_low_vram_fit_command(
         "--flash-attn".into(),
         "on".into(),
     ];
-    if !split_mode.is_empty() && split_mode.to_lowercase() != "none" {
-        args.extend(["--split-mode".into(), split_mode.to_lowercase()]);
+    let cli_split = crate::fit_scanner::fit_cli_split_mode(split_mode);
+    if !cli_split.is_empty() {
+        args.extend(["--split-mode".into(), cli_split]);
     }
     args
 }

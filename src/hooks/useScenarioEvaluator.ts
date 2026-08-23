@@ -440,6 +440,8 @@ export function useScenarioEvaluator({
   const lastScenarioDebugNameRef = useRef("");
   const probeSessionRef = useRef<ProbeSession | null>(null);
   const validatingRef = useRef(false);
+  /** Last probeKey whose FIT failed — do not auto-loop radar. */
+  const fitFailKeyRef = useRef<string | null>(null);
   const hadSysInfoRef = useRef(systemInfo != null);
   const hadMetaRef = useRef(Boolean(model?.metadata));
   const runEvaluationRef = useRef<() => void>(() => {});
@@ -465,6 +467,7 @@ export function useScenarioEvaluator({
     const path = model?.path ?? "";
     if (path === prev.modelPath && probeKey === prev.probeKey) return;
     probeSessionRef.current = null;
+    fitFailKeyRef.current = null;
     if (manifestRef.current != null) {
       commitManifest(null);
     }
@@ -1062,6 +1065,7 @@ export function useScenarioEvaluator({
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error("[FitValidate]", e);
+      fitFailKeyRef.current = probeKey;
       if (msg.includes(TOM_MTP_SKIP_MESSAGE) || msg.toLowerCase().includes("mtp")) {
         toastTomMtpSkip(msg);
       } else {
@@ -1077,6 +1081,7 @@ export function useScenarioEvaluator({
   maybeAutoFitRef.current = () => {
     if (!autoVramLaunchRef.current || !model?.path || !model.metadata) return;
     if (validatingRef.current) return;
+    if (fitFailKeyRef.current === probeKey) return;
     if (learnedFetchPendingRef.current) return;
     if (
       probeSessionRef.current?.modelPath === model.path

@@ -88,12 +88,19 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     gb == null ? null : needsDraftAdd ? gb + draftAddon : gb;
   const splitMode = cfgStr(input.engineConfig, "split", "none");
   const splitTax = resolveSplitTax(splitMode, liveCtx, input.fitPoints);
-  // Probe + LEARNED are split-keyed. Library tax only if we have neither.
   const probeGb = input.fitProbeVramMib != null ? input.fitProbeVramMib / 1024 : null;
   const probeHostGb = input.fitProbeHostMib != null ? input.fitProbeHostMib / 1024 : null;
   const probeAnchor = input.fitProbeAnchorCtx ?? 0;
-  const nativeSplitMeasure = probeGb != null;
-  const splitTaxGb = nativeSplitMeasure ? 0 : splitTax.taxGb;
+  // FIT cannot tensor — probe ran as layer. Add Δ(tensor−layer) if library has it.
+  const tensorProxyTaxGb =
+    splitMode.toLowerCase() === "tensor" && probeGb != null
+      ? Math.max(
+          0,
+          resolveSplitTax("tensor", liveCtx, input.fitPoints).taxGb
+            - resolveSplitTax("layer", liveCtx, input.fitPoints).taxGb,
+        )
+      : 0;
+  const splitTaxGb = probeGb != null ? tensorProxyTaxGb : splitTax.taxGb;
   const probeAppliesToCurve = probeGb != null;
 
   const allLearnedPts = input.learnedCurve ?? [];
