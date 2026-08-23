@@ -1071,6 +1071,14 @@ export function useScenarioEvaluator({
       } else {
         window.__blackopsToasts?.addToast(`FIT probe failed: ${msg}`, "error");
       }
+      const hasLearned = learnedVramRef.current != null || (learnedCurveRef.current?.length ?? 0) > 0;
+      void invoke("emit_to_blackwell_console", {
+        category: "utils",
+        content: hasLearned
+          ? `[FIT] PROBE  glass=LEARNED fallback (FIT failed — will not auto-retry this split/kv)`
+          : `[FIT] PROBE  glass=EVALUATING (no LEARNED + FIT failed — change model/knob to retry). ${msg.slice(0, 180)}`,
+        style: "Error",
+      });
       scheduleEvaluationRef.current(true);
     } finally {
       validatingRef.current = false;

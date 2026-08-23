@@ -705,6 +705,28 @@ fn fit_stderr_reason(stderr: &str) -> String {
         .unwrap_or_else(|| "unknown fit error".to_string())
 }
 
+/// Human reason for llama-fit-params process death.
+pub fn decode_fit_exit(exit_code: Option<i32>) -> String {
+    match exit_code {
+        None => "no exit code (killed / timeout / spawn fail)".into(),
+        Some(1) => "exit 1 (FIT abort — see why line)".into(),
+        Some(-1073740791) | Some(0xC0000409u32 as i32) => {
+            "exit 0xC0000409 (STATUS_STACK_BUFFER_OVERRUN — FIT crash, often unimplemented tensor or bad load)".into()
+        }
+        Some(-1073741819) | Some(0xC0000005u32 as i32) => {
+            "exit 0xC0000005 (access violation)".into()
+        }
+        Some(-1073740940) | Some(0xC0000374u32 as i32) => {
+            "exit 0xC0000374 (heap corruption)".into()
+        }
+        Some(c) => format!("exit={c} (0x{c:08X})"),
+    }
+}
+
+pub fn fit_stderr_reason_pub(stderr: &str) -> String {
+    fit_stderr_reason(stderr)
+}
+
 fn fit_process_error_message(
     model_path: &str,
     adapter: crate::fit_adapters::FitAdapterId,
@@ -713,11 +735,11 @@ fn fit_process_error_message(
     stderr: &str,
 ) -> String {
     format!(
-        "Fit process failed for {} (adapter={}, binary={}, exit={:?}): {}",
+        "Fit process failed for {} (adapter={}, binary={}, {}): {}",
         model_path,
         adapter.as_str(),
         fit_binary,
-        exit_code,
+        decode_fit_exit(exit_code),
         fit_stderr_reason(stderr)
     )
 }

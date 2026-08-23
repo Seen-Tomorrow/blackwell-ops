@@ -1540,9 +1540,42 @@ pub async fn fit_scan_model(
             } else {
                 "PROBE"
             };
+            let model_name = std::path::Path::new(&model_path)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or(&model_path);
+            let cli_split = fit_scanner::fit_cli_split_mode(&split_mode);
+            let split_note = if cli_split.is_empty() {
+                "split=none".to_string()
+            } else if cli_split != split_mode.trim().to_lowercase() {
+                format!("split={split_mode}→{cli_split}")
+            } else {
+                format!("split={cli_split}")
+            };
+            let why = e
+                .rsplit("): ")
+                .next()
+                .unwrap_or(e.as_str())
+                .trim();
+            let decode = if e.contains("0xC0000409") || e.contains("STACK_BUFFER") {
+                "crash=0xC0000409"
+            } else if e.contains("exit 1") {
+                "abort=exit1"
+            } else if e.contains("timeout") {
+                "timeout"
+            } else {
+                "fail"
+            };
             app.log_hub.emit_console_line(
                 BlackwellOutputConsoleCategory::Error,
-                &format!("[FIT] {tag}  failed: {e}  {model_path}"),
+                &format!(
+                    "[FIT] {tag}  FAILED  {decode}  {split_note}  ctx={ctx_int}  kv={kv_quant}  gpus={gpu_count}  mask={gpu_mask}  {model_name}"
+                ),
+                BlackwellOutputConsoleLineStyle::Error,
+            );
+            app.log_hub.emit_console_line(
+                BlackwellOutputConsoleCategory::Error,
+                &format!("[FIT] {tag}  why: {why}"),
                 BlackwellOutputConsoleLineStyle::Error,
             );
         }
