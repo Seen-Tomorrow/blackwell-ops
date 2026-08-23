@@ -25,8 +25,8 @@ export interface MemorySourceView {
   isLearnedExact: boolean;
   isExact: boolean;
   isEstimate: boolean;
-  /** Hero quality mark — EXACT / INTERPOLATED / MEASURED / ESTIMATE */
-  idleStatus: "EXACT" | "INTERPOLATED" | "MEASURED" | "ESTIMATE" | null;
+  /** Hero quality mark — EXACT / CURVE / MEASURED / ESTIMATE */
+  idleStatus: "EXACT" | "CURVE" | "MEASURED" | "ESTIMATE" | null;
   showStatus: boolean;
   canProbe: boolean;
 }
@@ -162,7 +162,7 @@ function collectRecap(
 
 function sourceRecapLabel(memorySource: MemorySource): string {
   if (memorySource.kind === "learned") return "LEARNED · EXACT (previous launch)";
-  if (memorySource.kind === "learned_curve") return "LEARNED · INTERPOLATED";
+  if (memorySource.kind === "learned_curve") return "LEARNED · CURVE";
   if (memorySource.kind === "fit_probe") {
     return memorySource.exact === false ? "FIT PROBE · ESTIMATE" : "FIT PROBE · MEASURED";
   }
@@ -181,7 +181,7 @@ export function getMemorySourceView(
   const isEstimate = isCurve || (isFitProbe && memorySource.exact === false);
   const idleStatus = ((): MemorySourceView["idleStatus"] => {
     if (isLearnedExact) return "EXACT";
-    if (isCurve) return "INTERPOLATED";
+    if (isCurve) return "CURVE";
     if (isFitProbe) return isExact ? "MEASURED" : "ESTIMATE";
     return null;
   })();
@@ -370,24 +370,38 @@ export function MemorySourceStatusMark({
       className={`vram-fc-need-frame__status-row${className ? ` ${className}` : ""}`}
       data-source-kind={memorySource.kind}
       data-has-status="1"
+      data-precision={memorySource.confidence}
     >
-      <span
-        className={`vram-fc-need-frame__status${
-          view.isExact ? " is-exact" : " is-estimate"
-        }`}
-        data-status={view.idleStatus}
-        title={
-          view.isLearnedExact
-            ? "Exact launch measurement at this CTX"
-            : view.isCurve
-              ? "Interpolated between learned launches"
-              : view.isExact
-                ? "FIT PROBE measurement at this CTX"
-                : "Estimate adjusted from probe anchor — re-probe to lock"
-        }
-      >
-        {view.idleStatus}
-      </span>
+      <div className="vram-fc-need-frame__status-stack">
+        <span
+          className={`vram-fc-need-frame__status${
+            view.isExact ? " is-exact" : " is-estimate"
+          }`}
+          data-status={view.idleStatus}
+          title={
+            view.isLearnedExact
+              ? "EXACT · 4/4 — launch measurement at this CTX"
+              : view.isCurve
+                ? "CURVE · 3/4 — between two LEARNED launches (~95%)"
+                : view.isExact
+                  ? "MEASURED · 2/4 — FIT probe at this CTX. Launch twice at different CTX for CURVE."
+                  : "ESTIMATE · 1/4 — FIT walked off its probe CTX. Launch twice at different CTX for CURVE."
+          }
+        >
+          {view.idleStatus}
+        </span>
+        <span className="vram-fc-need-frame__precision" aria-label={`Precision ${memorySource.confidence} of 4`}>
+          {[1, 2, 3, 4].map((n) => (
+            <span
+              key={n}
+              className={`vram-fc-need-frame__pip${n <= memorySource.confidence ? " is-on" : ""}`}
+            />
+          ))}
+        </span>
+        {memorySource.confidence <= 2 ? (
+          <span className="vram-fc-need-frame__hint">2 LAUNCHES → CURVE</span>
+        ) : null}
+      </div>
     </div>
   );
 }

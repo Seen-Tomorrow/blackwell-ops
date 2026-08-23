@@ -801,8 +801,8 @@ export interface MemorySource {
   breakdown?: string;
   /** Breakdown line 2 — W/KV/OH components + host RAM when learned. */
   breakdownSecondary?: string;
-  /** Confidence tier: fit_probe=3 … learned=4 */
-  confidence: 3 | 4;
+  /** Precision: ESTIMATE=1 MEASURED=2 CURVE=3 EXACT=4 */
+  confidence: 1 | 2 | 3 | 4;
 }
 
 export interface VramManifest {

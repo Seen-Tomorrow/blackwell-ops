@@ -127,7 +127,7 @@ export function resolveMemorySource(
       kind: "learned_curve",
       exact: false,
       detail: marks ? `Between launches ${marks}` : "Between stored launches",
-      confidence: 4,
+      confidence: 3,
     };
   }
   if (manifest.fitProbeMeasuredAt != null && manifest.validatedVramMib != null) {
@@ -168,7 +168,7 @@ export function resolveMemorySource(
         : `estimate from probe @ ${probeAnchor >= 1024 ? `${Math.round(probeAnchor / 1024)}K` : probeAnchor} · ${manifest.fitProbeMeasuredAt}`,
       breakdown: tipBits.length > 0 ? tipBits.join(" · ") : bd.breakdown,
       breakdownSecondary: undefined,
-      confidence: exact ? 3 : 3,
+      confidence: exact ? 2 : 1,
     };
   }
 
@@ -189,7 +189,7 @@ export function attachMemorySource(
         kind: input.fitProbeVramMib != null ? "fit_probe" : "learned",
         exact: false,
         detail: "measured (source kind recovered)",
-        confidence: 3,
+        confidence: 2,
       },
     };
   }

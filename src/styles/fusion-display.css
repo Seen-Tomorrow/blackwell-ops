@@ -1408,8 +1408,9 @@
   min-height: 0;
   border: none !important;
   border-radius: 0;
-  justify-content: center;
-  padding: 0 8px;
+  justify-content: flex-start;
+  align-items: center;
+  padding: 0 6px;
 }
 .vram-fc-need-frame__need--vram {
   grid-row: 2;
@@ -1433,6 +1434,52 @@
   border: none;
   background: transparent;
 }
+.vram-fc-need-frame__status-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+}
+.vram-fc-need-frame__precision {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+}
+.vram-fc-need-frame__pip {
+  width: 5px;
+  height: 5px;
+  transform: rotate(45deg);
+  border: 1px solid color-mix(in srgb, currentColor 55%, transparent);
+  background: transparent;
+  opacity: 0.28;
+}
+.vram-fc-need-frame[data-source-kind="learned"] .vram-fc-need-frame__pip,
+.vram-fc-need-frame[data-source-kind="learned_curve"] .vram-fc-need-frame__pip {
+  color: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 82%, #fde68a 28%);
+}
+.vram-fc-need-frame[data-source-kind="fit_probe"] .vram-fc-need-frame__pip {
+  color: var(--theme-telemetry-cyan, #22d3ee);
+}
+.vram-fc-need-frame__pip.is-on {
+  opacity: 1;
+  background: currentColor;
+  box-shadow: 0 0 6px color-mix(in srgb, currentColor 55%, transparent);
+}
+.vram-fc-need-frame__hint {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: calc(7px * var(--vram-fc-scale, 1.12));
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1;
+  opacity: 0.72;
+  white-space: nowrap;
+  color: inherit;
+}
+
 .vram-fc-need-frame__status-row--empty {
   padding: 0;
   border-bottom: none;
@@ -1707,16 +1754,17 @@
 }
 
 .vram-fc-bar__need-chip {
-  flex: 0 0 calc(10.5ch + 2.4rem);
-  width: calc(10.5ch + 2.4rem);
-  min-width: calc(10.5ch + 2.4rem);
+  flex: 0 0 calc(12ch + 6.8rem);
+  width: calc(12ch + 6.8rem);
+  min-width: calc(12ch + 6.8rem);
   height: 100%;
   display: inline-flex;
   flex-direction: row;
+  flex-wrap: nowrap;
   align-items: center;
-  justify-content: center;
-  gap: 0.3em;
-  padding: 0 8px;
+  justify-content: flex-start;
+  gap: 0.35em;
+  padding: 0 6px;
   background: var(--display-face-fc-label-bg, color-mix(in srgb, var(--theme-accent, #76b900) 14%, transparent));
   border-left: 1px solid var(--display-face-fc-label-border, color-mix(in srgb, var(--theme-accent, #76b900) 26%, transparent));
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -1728,27 +1776,46 @@
   background: var(--display-face-fc-label-ram-bg, color-mix(in srgb, #60a5fa 14%, transparent));
   border-left-color: var(--display-face-fc-label-ram-border, color-mix(in srgb, #60a5fa 30%, transparent));
   color: var(--display-face-fc-label-ram-fg, #93c5fd);
-  flex-wrap: wrap;
-  align-items: center;
-  column-gap: 4px;
-  row-gap: 0;
 }
+/*
+ * RAM breakdown of the NEED hero — one row with the hero, stack inside a
+ * tiny plate: buffer over Weights.
+ */
 .vram-fc-bar__need-split {
-  display: flex;
+  display: inline-flex;
   flex-direction: column;
   justify-content: center;
+  align-items: stretch;
+  gap: 1px;
+  margin-left: 0.2em;
+  padding: 2px 4px 2px 4px;
+  border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+  border-radius: 2px;
+  background: transparent;
   font-size: calc(7px * var(--vram-fc-scale, 1.12));
   font-weight: 700;
-  letter-spacing: 0.04em;
-  line-height: 1.15;
-  text-transform: lowercase;
-  opacity: 0.88;
+  letter-spacing: 0.02em;
+  line-height: 1.12;
+  opacity: 0.95;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.vram-fc-bar__need-split-line {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: 0.3em;
+}
+.vram-fc-bar__need-split-val {
+  min-width: 3.6ch;
+  text-align: right;
+}
+.vram-fc-bar__need-split-lab {
+  opacity: 0.88;
 }
 .vram-fc-bar__need-split--buf {
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  opacity: 0.75;
+  opacity: 0.8;
 }
 /* NEED hero — free-pool visual paint (ok / caution / warn / hot); locked to bar fill */
 .vram-fc-bar__need-prefix {
@@ -2138,7 +2205,9 @@
   animation: vram-fc-over-free-pulse 0.9s ease-in-out infinite;
 }
 
-.vram-fc-header__reprobe--over-free:hover:not(:disabled) {
+.vram-fc-header__reprobe--over-free:hover:not(:disabled),
+.vram-fc-source__reprobe[data-probe-state="over-free"]:hover:not(:disabled),
+.vram-fc-header__reprobe[data-probe-state="over-free"]:hover:not(:disabled) {
   filter: brightness(1.12);
 }
 
@@ -3216,6 +3285,7 @@
   background: var(--theme-provider-pill-bg);
   border-color: var(--theme-provider-pill-border);
   color: var(--theme-provider-pill-text);
+  -webkit-text-fill-color: currentColor;
 }
 [data-display-texture="phosphor-light"] .vram-fc-header__reprobe[data-probe-state="probing"],
 [data-display-texture="phosphor-light"] .vram-fc-source__reprobe[data-probe-state="probing"],
@@ -3224,7 +3294,48 @@
   background: var(--theme-provider-pill-active-bg);
   border-color: var(--theme-provider-pill-active-border);
   color: var(--theme-provider-pill-active-text);
+  -webkit-text-fill-color: currentColor;
 }
+/*
+ * OVER FREE flash — paper face must not keep dark-theme white fill on a light
+ * pill (ARCTIC + LIGHT was unreadable). Dark red ink + soft red wash + pulse.
+ */
+[data-display-texture="phosphor-light"] .vram-fc-header__reprobe--over-free,
+[data-display-texture="phosphor-light"] .vram-fc-source__reprobe[data-probe-state="over-free"],
+[data-display-texture="phosphor-light"] .vram-fc-header__reprobe[data-probe-state="over-free"],
+[data-display-texture="phosphor-light"] .vram-fc-header__reprobe--manual.vram-fc-header__reprobe--over-free {
+  color: var(--display-face-light-text-red, #9f1239);
+  -webkit-text-fill-color: var(--display-face-light-text-red, #9f1239);
+  border-color: color-mix(in srgb, var(--display-face-light-text-red, #9f1239) 72%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--display-face-light-text-red, #ef4444) 16%,
+    var(--display-face-light-surface, #f4f8fc)
+  );
+  animation: vram-fc-over-free-pulse-light 0.9s ease-in-out infinite;
+  filter: none;
+}
+[data-display-texture="phosphor-light"] .vram-fc-header__reprobe--over-free:hover:not(:disabled),
+[data-display-texture="phosphor-light"] .vram-fc-source__reprobe[data-probe-state="over-free"]:hover:not(:disabled),
+[data-display-texture="phosphor-light"] .vram-fc-header__reprobe[data-probe-state="over-free"]:hover:not(:disabled) {
+  filter: none;
+  background: color-mix(
+    in srgb,
+    var(--display-face-light-text-red, #ef4444) 24%,
+    var(--display-face-light-surface, #f4f8fc)
+  );
+}
+@keyframes vram-fc-over-free-pulse-light {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--display-face-light-text-red, #ef4444) 0%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--display-face-light-text-red, #9f1239) 35%, transparent),
+      0 0 10px 1px color-mix(in srgb, var(--display-face-light-text-red, #ef4444) 28%, transparent);
+  }
+}
+
 
 [data-display-texture="phosphor-light"] .vram-fc__verdict.is-ok {
   color: var(--display-face-light-text-accent, #1e3a14);
