@@ -710,15 +710,14 @@ pub fn decode_fit_exit(exit_code: Option<i32>) -> String {
     match exit_code {
         None => "no exit code (killed / timeout / spawn fail)".into(),
         Some(1) => "exit 1 (FIT abort — see why line)".into(),
-        Some(-1073740791) | Some(0xC0000409u32 as i32) => {
+        // 0xC0000409 STATUS_STACK_BUFFER_OVERRUN
+        Some(-1073740791) => {
             "exit 0xC0000409 (STATUS_STACK_BUFFER_OVERRUN — FIT crash, often unimplemented tensor or bad load)".into()
         }
-        Some(-1073741819) | Some(0xC0000005u32 as i32) => {
-            "exit 0xC0000005 (access violation)".into()
-        }
-        Some(-1073740940) | Some(0xC0000374u32 as i32) => {
-            "exit 0xC0000374 (heap corruption)".into()
-        }
+        // 0xC0000005 ACCESS_VIOLATION
+        Some(-1073741819) => "exit 0xC0000005 (access violation)".into(),
+        // 0xC0000374 STATUS_HEAP_CORRUPTION
+        Some(-1073740940) => "exit 0xC0000374 (heap corruption)".into(),
         Some(c) => format!("exit={c} (0x{c:08X})"),
     }
 }
