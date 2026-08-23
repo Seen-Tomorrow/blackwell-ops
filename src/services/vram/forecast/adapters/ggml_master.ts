@@ -204,7 +204,10 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     ? null
     : withDraft(learnedExactGb) ?? withDraft(curveGb) ?? learnedDeltaGb;
 
-  const autoSplit = needsAutoLayerSplit(estimateGb, gpuAvailable);
+  // ASSISTED: NONE means this GPU + offload, never auto-promote to layer.
+  // FULL AUTO may still shift when need exceeds the best single card.
+  const autoSplit =
+    input.fullAutoMode === true && needsAutoLayerSplit(estimateGb, gpuAvailable);
   const targetAvail = autoSplit || userSplitMultiGpu
     ? multiTotalAvailable
     : (gpuAvailable[tgt] ?? Math.max(...gpuAvailable, 0));

@@ -128,10 +128,8 @@ export function buildAutoVramLaunchParams(opts: {
       if (userSplit.length > 0 && userSplit !== "none") {
         params.split = userSplit;
         params.gpu_sync = config.gpu_sync ?? "1";
-      } else if (autoSplit) {
-        params.split = "layer";
-        params.gpu_sync = config.gpu_sync ?? "1";
       }
+      // NONE / unset: stay on the selected device. No auto layer-shift in ASSISTED.
     }
   } else if (fullAutoMode && gpus.length >= 1 && params.split === undefined && !autoSplit) {
     params.device = fullAutoSingleDeviceLabel(gpus, perGpu);
