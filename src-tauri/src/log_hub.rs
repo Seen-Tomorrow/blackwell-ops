@@ -353,7 +353,7 @@ impl LogHub {
                             }
                             if model_ready.load(Ordering::Acquire) {
                                 let prev = tables_persisted;
-                                if let Some((mib, total, gpu_breakdown)) = Self::persist_pending_fit_tables(
+                                if let Some((mib, total, gpu_breakdown, host_mib)) = Self::persist_pending_fit_tables(
                                     &app_handle,
                                     &alias,
                                     &learn_snapshot,
@@ -375,6 +375,7 @@ impl LogHub {
                                             total,
                                             added,
                                             gpu_breakdown.as_deref(),
+                                            host_mib,
                                         );
                                     }
                                 }
@@ -427,7 +428,7 @@ impl LogHub {
                                 );
                             }
                             if !launch_snapshot_persisted {
-                                if let Some((mib, gpu_breakdown, profile)) =
+                                if let Some((mib, gpu_breakdown, profile, host_mib)) =
                                     Self::persist_launch_memory_snapshot(
                                         &app_handle,
                                         slot_idx,
@@ -444,12 +445,13 @@ impl LogHub {
                                         mib,
                                         profile.as_deref(),
                                         gpu_breakdown.as_deref(),
+                                        host_mib,
                                     );
                                 }
                             }
                             if tables_seen > tables_persisted {
                                 let prev = tables_persisted;
-                                if let Some((mib, total, gpu_breakdown)) = Self::persist_pending_fit_tables(
+                                if let Some((mib, total, gpu_breakdown, host_mib)) = Self::persist_pending_fit_tables(
                                     &app_handle,
                                     &alias,
                                     &learn_snapshot,
@@ -470,6 +472,7 @@ impl LogHub {
                                             total,
                                             added,
                                             gpu_breakdown.as_deref(),
+                                            host_mib,
                                         );
                                     }
                                 }
@@ -530,7 +533,7 @@ impl LogHub {
                         let ready = model_ready.load(Ordering::Acquire);
                         let phase = if ready { "exit" } else { "fit" };
                         let prev_seen = tables_seen;
-                        if let Some((mib, total, gpu_breakdown)) = Self::try_record_fit_tables(
+                        if let Some((mib, total, gpu_breakdown, host_mib)) = Self::try_record_fit_tables(
                             &app_handle,
                             slot_idx,
                             &alias,
@@ -557,6 +560,7 @@ impl LogHub {
                                         total,
                                         added,
                                         gpu_breakdown.as_deref(),
+                                        host_mib,
                                     );
                                 }
                             }
@@ -630,7 +634,7 @@ impl LogHub {
         already_persisted: usize,
         phase: &str,
         fit_adapter: crate::fit_adapters::FitAdapterId,
-    ) -> Option<(f64, usize, Option<Vec<f64>>)> {
+    ) -> Option<(f64, usize, Option<Vec<f64>>, Option<f64>)> {
         let combined = line_buf.join("\n");
         let tables = fit_adapter.parse_vram_learn_tables(&combined);
         if tables.len() <= already_persisted {
@@ -643,6 +647,7 @@ impl LogHub {
             return None;
         }
         let gpu_breakdown = Some(table.gpu_self_mib.clone());
+        let host_mib = table.host_mib;
         let total = tables.len();
         let learn_key = &learn_snapshot.learn_key;
         match crate::vram_learn::append_fit_breakdown_tables(
@@ -653,14 +658,15 @@ impl LogHub {
         ) {
             Ok(Some(_)) => {
                 log::info!(
-                    "[vram_learn] persisted {} table(s) for {} → {:.1} MiB GPU (phase={})",
+                    "[vram_learn] persisted {} table(s) for {} → {:.1} MiB GPU host={:?} (phase={})",
                     total.saturating_sub(already_persisted),
                     alias,
                     latest_mib,
+                    host_mib,
                     phase
                 );
                 Self::emit_learned_vram_changed(app_handle, learn_snapshot);
-                Some((latest_mib, total, gpu_breakdown))
+                Some((latest_mib, total, gpu_breakdown, host_mib))
             }
             Ok(None) => None,
             Err(e) => {
@@ -681,7 +687,7 @@ impl LogHub {
         phase: &str,
         persist: bool,
         fit_adapter: crate::fit_adapters::FitAdapterId,
-    ) -> Option<(f64, usize, Option<Vec<f64>>)> {
+    ) -> Option<(f64, usize, Option<Vec<f64>>, Option<f64>)> {
         let combined = line_buf.join("\n");
         let tables = fit_adapter.parse_vram_learn_tables(&combined);
         if tables.len() <= already_seen {
@@ -695,6 +701,7 @@ impl LogHub {
             return None;
         }
         let gpu_breakdown = Some(table.gpu_self_mib.clone());
+        let host_mib = table.host_mib;
         let total = tables.len();
 
         {
@@ -713,11 +720,12 @@ impl LogHub {
             ) {
                 Ok(Some(_)) => {
                     log::info!(
-                        "[vram_learn] slot={} provider={} model={} → {:.1} MiB GPU total ({} tables, phase={})",
+                        "[vram_learn] slot={} provider={} model={} → {:.1} MiB GPU host={:?} ({} tables, phase={})",
                         slot_idx,
                         learn_snapshot.provider_id,
                         learn_snapshot.model_path,
                         latest_mib,
+                        host_mib,
                         total,
                         phase
                     );
@@ -730,15 +738,16 @@ impl LogHub {
             }
         } else {
             log::info!(
-                "[vram_learn] slot={} reserved {:.1} MiB GPU (table {}, phase={}) — persist deferred until ready",
+                "[vram_learn] slot={} reserved {:.1} MiB GPU host={:?} (table {}, phase={}) — persist deferred until ready",
                 slot_idx,
                 latest_mib,
+                host_mib,
                 total,
                 phase
             );
         }
 
-        Some((latest_mib, total, gpu_breakdown))
+        Some((latest_mib, total, gpu_breakdown, host_mib))
     }
 
     fn format_gpu_self_breakdown(gpus: Option<&[f64]>) -> String {
@@ -760,10 +769,11 @@ impl LogHub {
         alias: &str,
         learn_snapshot: &crate::vram_learn::VramLearnSnapshot,
         line_buf: &[String],
-    ) -> Option<(f64, Option<Vec<f64>>, Option<String>)> {
+    ) -> Option<(f64, Option<Vec<f64>>, Option<String>, f64)> {
         let combined = line_buf.join("\n");
         let snapshot = crate::launch_memory_parse::parse_launch_memory_snapshot(&combined)?;
         let mib = snapshot.vram_mib;
+        let host_mib = snapshot.host_mib;
         let gpu_breakdown = Some(snapshot.gpu_breakdown_mib.clone());
         let profile = snapshot.reference_profile.clone();
 
@@ -779,19 +789,27 @@ impl LogHub {
         ) {
             Ok(()) => {
                 log::info!(
-                    "[vram_learn] launch snapshot slot={} provider={} → {:.1} MiB GPU ({})",
+                    "[vram_learn] launch snapshot slot={} provider={} → {:.1} MiB GPU + {:.1} MiB host ({})",
                     slot_idx,
                     learn_snapshot.provider_id,
                     mib,
+                    host_mib,
                     profile.as_deref().unwrap_or("generic"),
                 );
                 Self::emit_learned_vram_changed(app_handle, learn_snapshot);
-                Some((mib, gpu_breakdown, profile))
+                Some((mib, gpu_breakdown, profile, host_mib))
             }
             Err(e) => {
                 log::warn!("[vram_learn] launch snapshot persist failed for {alias}: {e}");
                 None
             }
+        }
+    }
+
+    fn format_host_need(host_mib: Option<f64>) -> String {
+        match host_mib {
+            Some(h) if h > 0.5 => format!(" + {:.0} MiB RAM", h),
+            _ => String::new(),
         }
     }
 
@@ -801,6 +819,7 @@ impl LogHub {
         mib: f64,
         profile: Option<&str>,
         gpu_breakdown: Option<&[f64]>,
+        host_mib: f64,
     ) {
         let per_gpu = Self::format_gpu_self_breakdown(gpu_breakdown);
         let gpu_detail = if per_gpu.is_empty() {
@@ -808,6 +827,7 @@ impl LogHub {
         } else {
             format!(" ({per_gpu})")
         };
+        let host_detail = Self::format_host_need(Some(host_mib));
         let profile_tag = profile
             .map(|p| format!(" · {p}"))
             .unwrap_or_default();
@@ -815,7 +835,7 @@ impl LogHub {
             ctx.blackwell_output_console_manager.emit_line_to_category(
                 BlackwellOutputConsoleCategory::Engines,
                 format!(
-                    "[{alias}] Learned launch memory: {mib:.0} MiB{gpu_detail}{profile_tag} — buffer inventory saved"
+                    "[{alias}] Learned launch memory: {mib:.0} MiB GPU{host_detail}{gpu_detail}{profile_tag} — buffer inventory saved"
                 ),
                 BlackwellOutputConsoleLineStyle::Normal,
             );
@@ -824,7 +844,7 @@ impl LogHub {
             app_handle,
             alias,
             "learned VRAM",
-            &format!("{mib:.0} MiB{gpu_detail} — buffer inventory"),
+            &format!("{mib:.0} MiB GPU{host_detail}{gpu_detail} — buffer inventory"),
         );
     }
 
@@ -835,6 +855,7 @@ impl LogHub {
         total_tables: usize,
         added: usize,
         gpu_breakdown: Option<&[f64]>,
+        host_mib: Option<f64>,
     ) {
         let per_gpu = Self::format_gpu_self_breakdown(gpu_breakdown);
         let gpu_detail = if per_gpu.is_empty() {
@@ -842,17 +863,18 @@ impl LogHub {
         } else {
             format!(" ({per_gpu})")
         };
+        let host_detail = Self::format_host_need(host_mib);
 
         if let Some(ctx) = app_handle.try_state::<crate::engine::AppContext>() {
             let msg = if total_tables <= 1 {
-                format!("[{alias}] Learned VRAM: {mib:.0} MiB{gpu_detail} — saved for next launch forecast")
+                format!("[{alias}] Learned VRAM: {mib:.0} MiB GPU{host_detail}{gpu_detail} — saved for next launch forecast")
             } else if added > 1 {
                 format!(
-                    "[{alias}] Learned VRAM: {mib:.0} MiB{gpu_detail} — {total_tables} FIT tables recorded (+{added} new)"
+                    "[{alias}] Learned VRAM: {mib:.0} MiB GPU{host_detail}{gpu_detail} — {total_tables} FIT tables recorded (+{added} new)"
                 )
             } else {
                 format!(
-                    "[{alias}] Learned VRAM: {mib:.0} MiB{gpu_detail} — FIT table {total_tables} recorded"
+                    "[{alias}] Learned VRAM: {mib:.0} MiB GPU{host_detail}{gpu_detail} — FIT table {total_tables} recorded"
                 )
             };
             ctx.blackwell_output_console_manager.emit_line_to_category(
@@ -865,7 +887,7 @@ impl LogHub {
             app_handle,
             alias,
             "learned VRAM",
-            &format!("{mib:.0} MiB{gpu_detail} — {total_tables} table(s)"),
+            &format!("{mib:.0} MiB GPU{host_detail}{gpu_detail} — {total_tables} table(s)"),
         );
     }
 

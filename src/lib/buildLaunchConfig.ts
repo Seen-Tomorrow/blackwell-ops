@@ -17,7 +17,7 @@ import type {
 import { buildAutoVramLaunchParams } from "./autoVramLaunch";
 import { forecastSnapshotFromManifest } from "./forecastSnapshot";
 import { buildLaunchExtraParams, resolveParamDefaultValue } from "./paramConfigResolve";
-import { snapEssentialsHiddenInValues } from "./launchProfile";
+import { vramTopoTag } from "./telemetryGpu";
 import {
   type LaunchPolicy,
   type LaunchPolicyId,
@@ -30,6 +30,7 @@ import {
   resolveSmartBatchPush,
 } from "./launchPolicy";
 import { loadFusionLogVerbosity } from "./storage";
+import { snapEssentialsHiddenInValues } from "./launchProfile";
 import {
   type SpecBoostMethod,
   buildSpecCliExtraParams,
@@ -214,6 +215,10 @@ export function buildLaunchConfig(input: BuildLaunchConfigInput): EngineConfig {
 
   const parallelRaw = filteredConfig.parallel ?? launchExtra.parallel ?? merged.parallel ?? 1;
   const parallelN = Math.max(1, Number(parallelRaw) || 1);
+  const vramTopo = vramTopoTag(gpus, launchExtra.device ?? merged.device ?? "GPU-0");
+  const hostOffload =
+    vramManifest?.style?.launchPaint === "offload"
+    || (vramManifest?.ramSpillGb ?? 0) > 2.5;
 
   const fullConfig: EngineConfig = {
     alias: finalAlias,
@@ -226,6 +231,8 @@ export function buildLaunchConfig(input: BuildLaunchConfigInput): EngineConfig {
       parallel: parallelN,
       __memory_mode: fullAutoMode ? "full_auto" : "assisted",
       __launch_policy: policy.id,
+      __vram_topo: vramTopo || undefined,
+      ...(hostOffload ? { __host_offload: "1", __cpu_affinity: "off" } : {}),
       __forecast: forecastSnapshotFromManifest(vramManifest, model, {
         ...merged,
         ...launchExtra,

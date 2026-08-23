@@ -1715,18 +1715,20 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       onCtxChange: (v: number) => updateParam("ctx", v),
       ctxSlotCount: slots,
       ctxPerSlot: perSlot,
-      learnedMarks: vramCalc.manifest?.learnedCurveCtxs,
+      learnedMarks: vramCalc.learnedCurveCtxs,
       forecastCurve: vramCalc.manifest?.forecastCurve,
       forecastFreeGb: vramCalc.manifest?.forecastFreeGb,
+      onPruneCustom: vramCalc.pruneLearnedCtxs,
     };
   }, [
     config,
     allParamsResolved,
     updateParam,
     cockpitValueView,
-    vramCalc.manifest?.learnedCurveCtxs,
+    vramCalc.learnedCurveCtxs,
     vramCalc.manifest?.forecastCurve,
     vramCalc.manifest?.forecastFreeGb,
+    vramCalc.pruneLearnedCtxs,
   ]);
 
   const ctxDockedInCockpit = ctxCockpitDock === "cockpit";

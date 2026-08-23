@@ -3,6 +3,7 @@
 Current product law. Measured only — no GGUF formula paint.
 
 UI glass / heights / SOURCE chrome traps: `docs/VRAM-FORECAST-UI.md`.
+Tight-free / offload / RE-PROBE LOW VRAM working memo: `docs/LOW-VRAM-REPROBE.md`.
 
 ---
 

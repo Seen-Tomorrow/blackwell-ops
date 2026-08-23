@@ -3,9 +3,9 @@
  * Hero layout: taller slider + footer legend (LEARNED marks) + filter toggle.
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import CustomSliderParam from "./CustomSliderParam";
-import { formatCtxChipLabel } from "../lib/sliderParamUtils";
+import { formatCtxChipLabel, parseSliderValues } from "../lib/sliderParamUtils";
 import {
   cycleCtxLearnedMarkMode,
   loadCtxLearnedMarkMode,
@@ -56,6 +56,7 @@ export function CtxLearnedMarkToggle({
     </button>
   );
 }
+
 export interface CockpitCtxStripProps {
   ctxValue?: number | string;
   ctxDefault?: number | string;
@@ -69,6 +70,8 @@ export interface CockpitCtxStripProps {
   /** Sparse measured curve for fits ghost. */
   forecastCurve?: Array<{ ctx: number; gb: number }>;
   forecastFreeGb?: number;
+  /** Delete custom (non-preset) LEARNED ctx rows for this keyed view. */
+  onPruneCustom?: (ctxs: number[]) => void | Promise<number | void>;
   /** Above-dock chrome. False when nested inside the cockpit. */
   standalone?: boolean;
 }
@@ -85,14 +88,17 @@ export default function CockpitCtxStrip({
   learnedMarks,
   forecastCurve,
   forecastFreeGb,
+  onPruneCustom,
   standalone = true,
 }: CockpitCtxStripProps) {
   const { mode, cycle } = useCtxLearnedMarkMode();
   const hasLearned = (learnedMarks?.length ?? 0) > 0;
+  const customCtxs = useMemo(() => {
+    const presets = new Set(parseSliderValues(ctxValues ?? []));
+    return (learnedMarks ?? []).filter((m) => !presets.has(m));
+  }, [ctxValues, learnedMarks]);
   const hasGhost =
     (forecastCurve?.length ?? 0) > 0 && forecastFreeGb != null && forecastFreeGb > 0;
-  // Footer row is always mounted (fixed height) so LEARNED fetch / eval cannot
-  // collapse the strip and shove the dock/content upward.
   const footerBusy = !hasLearned && !hasGhost;
 
   return (
@@ -160,14 +166,26 @@ export default function CockpitCtxStrip({
               VRAM limit
             </>
           ) : null}
-          {/* Invisible spacer keeps legend line-box when idle (no marks yet). */}
           {footerBusy ? (
             <span className="full-auto-cockpit__ctx-legend-spacer">LEARNED · snap</span>
           ) : null}
         </span>
-        {/* Toggle slot always reserved — invisible placeholder when no marks. */}
         {hasLearned ? (
-          <CtxLearnedMarkToggle mode={mode} onCycle={cycle} visible />
+          <span className="full-auto-cockpit__ctx-footer-actions">
+            {onPruneCustom && customCtxs.length > 0 ? (
+              <button
+                type="button"
+                className="full-auto-cockpit__ctx-marks-toggle full-auto-cockpit__ctx-marks-toggle--prune font-mono"
+                onClick={() => {
+                  void onPruneCustom(customCtxs);
+                }}
+                title={`Remove ${customCtxs.length} custom LEARNED CTX mark${customCtxs.length === 1 ? "" : "s"} for this model + kv/spec/split (preset ticks stay)`}
+              >
+                PRUNE {customCtxs.length}
+              </button>
+            ) : null}
+            <CtxLearnedMarkToggle mode={mode} onCycle={cycle} visible />
+          </span>
         ) : (
           <span className="full-auto-cockpit__ctx-marks-toggle full-auto-cockpit__ctx-marks-toggle--slot" aria-hidden>
             ALL

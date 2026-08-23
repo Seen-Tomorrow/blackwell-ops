@@ -165,6 +165,9 @@ export interface MultiAgentBoosterProps {
   ctxPerSlot?: number;
   ctxSlotCount?: number;
   learnedMarks?: number[];
+  forecastCurve?: Array<{ ctx: number; gb: number }>;
+  forecastFreeGb?: number;
+  onPruneCustom?: (ctxs: number[]) => void | Promise<number | void>;
   /**
    * Live engine stack — used for AtomCode one-click (solo against RUNNING, or Brain+Workers).
    * When omitted, AtomCode uses port/modelId config values only.
@@ -264,6 +267,9 @@ export default function MultiAgentBooster({
   ctxPerSlot,
   ctxSlotCount = 1,
   learnedMarks,
+  forecastCurve,
+  forecastFreeGb,
+  onPruneCustom,
   stack = [],
   preferredSlotIdx = null,
   onHarnessOpenChange,
@@ -2473,6 +2479,9 @@ export default function MultiAgentBooster({
             ctxPerSlot={ctxPerSlot}
             ctxSlotCount={ctxSlotCount}
             learnedMarks={learnedMarks}
+            forecastCurve={forecastCurve}
+            forecastFreeGb={forecastFreeGb}
+            onPruneCustom={onPruneCustom}
             standalone={false}
           />
         )}

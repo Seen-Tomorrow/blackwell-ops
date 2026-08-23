@@ -92,6 +92,15 @@ Sliding thumb must track the **selected chip box** (`offsetLeft/Top/Width/Height
 Full-rail `top/bottom` stretch looks like **two** selections when the value row wraps.  
 See `ConfigChipSegment` in `EngineParamGroups.tsx` + `.config-value-segment__thumb` in `config.css`.
 
+## CTX learned marks
+
+Ticks come from `get_learned_vram_curve` → hook `learnedCurveCtxs`, **not**
+from `evaluate()` / forecast skeleton. Do not bind the rail only to
+`manifest.learnedCurveCtxs` or EVALUATING hides known launches.
+Hide reasons that are *not* a missing store: strip toggle ALL/REGULAR/OFF,
+mark outside slider min/max, `spec`/draft/split mismatch on the curve query.
+Full memo: `docs/LOW-VRAM-REPROBE.md` § CTX slider learned marks.
+
 ## Product layout decision
 
 **One ASSISTED forecast layout** for the glass. FULL AUTO remains a launch policy (FIT / chrome lock), not a second forecast UI.

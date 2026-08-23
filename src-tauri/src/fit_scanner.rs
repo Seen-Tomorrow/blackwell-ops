@@ -66,6 +66,15 @@ pub struct FitScanResult {
     /// Per-GPU component breakdown (model/ctx/compute) from memory table.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gpu_components_mib: Option<Vec<GpuComponentMib>>,
+    /// Host row model/ctx/compute (`Host a b c`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host_components_mib: Option<GpuComponentMib>,
+    /// Fitted `-ngl` from free-aware low_vram probe (−1 = all on GPU).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fitted_ngl: Option<i32>,
+    /// `full` | `low_vram` — which FIT regime produced this result.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub probe_mode: Option<String>,
 }
 
 /// Per-GPU component breakdown parsed from llama's memory table.
@@ -393,6 +402,7 @@ pub fn parse_fit_print_stdout(stdout: &str) -> Option<FitScanRaw> {
     let mut gpu_self: Vec<f64> = Vec::new();
     let mut gpu_components: Vec<GpuComponentMib> = Vec::new();
     let mut host_mib: Option<f64> = None;
+    let mut host_components_mib: Option<GpuComponentMib> = None;
 
     for line in stdout.lines() {
         let cleaned = strip_ansi(line);
@@ -420,8 +430,12 @@ pub fn parse_fit_print_stdout(stdout: &str) -> Option<FitScanRaw> {
 
         if device.eq_ignore_ascii_case("host") {
             host_mib = Some(self_mib);
+            host_components_mib = Some(GpuComponentMib {
+                model_mib,
+                ctx_mib,
+                compute_mib,
+            });
         } else {
-            // Include Meta as a single estimate row (do not ×N — see doc above).
             gpu_self.push(self_mib);
             gpu_components.push(GpuComponentMib {
                 model_mib,
@@ -445,6 +459,8 @@ pub fn parse_fit_print_stdout(stdout: &str) -> Option<FitScanRaw> {
         gpu_breakdown_mib: Some(gpu_self),
         host_mib,
         gpu_components_mib: Some(gpu_components),
+        host_components_mib,
+        fitted_ngl: None,
     })
 }
 
@@ -541,12 +557,13 @@ fn extract_number(s: &str) -> Option<f64> {
         }
     }
     if started && !num_chars.is_empty() && num_chars.matches('.').count() <= 1 {
-        return num_chars.replace(',', "").parse::<f64>().ok();
+        if let Ok(val) = num_chars.replace(',', "").parse::<f64>() {
+            return Some(val);
+        }
     }
     None
 }
 
-/// Raw result from a single FIT scan — total + optional per-GPU breakdown.
 #[derive(Debug, Clone)]
 pub struct FitScanRaw {
     pub vram_mib: f64,
@@ -554,12 +571,17 @@ pub struct FitScanRaw {
     pub host_mib: Option<f64>,
     /// Per-GPU component breakdown (model/ctx/compute).
     pub gpu_components_mib: Option<Vec<GpuComponentMib>>,
+    /// Host row model/ctx/compute when FIT printed `Host a b c`.
+    pub host_components_mib: Option<GpuComponentMib>,
+    /// Optional fitted ngl from free-aware fit logs.
+    pub fitted_ngl: Option<i32>,
 }
 
-struct FitProcessOutput {
-    stdout: Vec<u8>,
-    stderr: Vec<u8>,
-    status: ExitStatus,
+#[derive(Debug, Clone)]
+pub struct FitProcessOutput {
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
+    pub status: ExitStatus,
 }
 
 /// Blocking FIT subprocess — mirrors gguf_scan / engine_stack spawn pattern.
@@ -567,7 +589,7 @@ struct FitProcessOutput {
 /// `tokio::process::Command::output()` with CREATE_NO_WINDOW intermittently returns
 /// ERROR_INVALID_HANDLE (os error 6) in release builds on Windows. Stdio must be
 /// explicit; CWD must be the binary directory so bundled DLLs resolve beside the exe.
-fn run_fit_process_blocking(
+pub fn run_fit_process_blocking(
     fit_binary: &str,
     args: &[String],
     cuda_visible_devices: &str,
@@ -750,7 +772,9 @@ pub async fn scan_single_anchor(
         ));
     }
 
-    if let Some(raw) = adapter.parse_scan_output(&stdout, &stderr) {
+    if let Some(mut raw) = adapter.parse_scan_output(&stdout, &stderr) {
+        let combined = format!("{stdout}\n{stderr}");
+        crate::fit_low_vram::enrich_raw_with_fitted_ngl(&mut raw, &combined);
         return Ok(raw);
     }
 
@@ -1045,6 +1069,43 @@ pub fn parse_gpu_components(output: &str) -> Option<Vec<GpuComponentMib>> {
     }
 
     if last_components.is_empty() { None } else { Some(last_components) }
+}
+
+/// Last Host row `self = model + context + compute` from a memory-breakdown table.
+pub fn parse_last_host_components(output: &str) -> Option<GpuComponentMib> {
+    let mut last = None;
+    for line in output.lines() {
+        if let Some(c) = parse_host_components_from_breakdown_line(line) {
+            last = Some(c);
+        }
+    }
+    last
+}
+
+fn parse_host_components_from_breakdown_line(line: &str) -> Option<GpuComponentMib> {
+    let lower = line.to_lowercase();
+    if !lower.contains("host") || lower.contains("cuda") || !line.contains('|') {
+        return None;
+    }
+    let host_pos = line.find("Host").or_else(|| {
+        lower.find("host").map(|i| i)
+    })?;
+    let after = line.get(host_pos..)?;
+    let cell = after.split('|').nth(1).unwrap_or(after);
+    let eq = cell.find('=')?;
+    let rhs = &cell[eq + 1..];
+    let parts: Vec<f64> = rhs
+        .split('+')
+        .filter_map(|s| extract_number(s))
+        .collect();
+    if parts.len() < 3 {
+        return None;
+    }
+    Some(GpuComponentMib {
+        model_mib: parts[0],
+        ctx_mib: parts[1],
+        compute_mib: parts[2],
+    })
 }
 
 // ── Library Scanner ─────────────────────────────────────────────────
@@ -1879,6 +1940,10 @@ Host 994 0 84
 0.00.971.505 I common_memory_breakdown_print: |   - CUDA0 (RTX PRO 6000 Blackwell Workstation Edition) | 97886 = 95357 + (2395 =   500 +    1632 +     263) +         133 |
 0.00.971.506 I common_memory_breakdown_print: |   - Host                                               |                   269 =   137 +       0 +     131                |"#;
         assert_eq!(parse_engine_memory_breakdown_mib(FIT_AT_LOAD), Some(2395.0));
+        let host = super::parse_last_host_components(FIT_AT_LOAD).expect("host split");
+        assert!((host.model_mib - 137.0).abs() < 0.1);
+        assert!((host.ctx_mib - 0.0).abs() < 0.1);
+        assert!((host.compute_mib - 131.0).abs() < 0.1);
     }
 
     #[test]

@@ -2,12 +2,18 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { ModelEntry, EngineConfig, GpuInfo, StackEntry, SystemInfo, VramManifest, FitScanResult } from "../lib/types";
 import { evaluate, committedSlotsFromStack, committedStackKey, parseCtx, computeGpuAvailableList, type ScenarioInput, type FitPoint } from "../services/vram/scenarios/scenarios_factory";
+import {
+  freeFingerprintFromGb,
+  learnedLooksLikeFreeDependentSpill,
+  shouldApplyLowVramSession,
+  type FitProbeMode,
+} from "../services/vram/lowVramProbe";
+import { isDevBuild } from "../lib/build";
+import { gpuMemoryBucketKey, vramManifestSnapshotEqual, vramTopoTag } from "../lib/telemetryGpu";
 import { attachMemorySource, MEMORY_SOURCE_LABELS } from "../services/vram/memorySource";
-import { gpuMemoryBucketKey, vramManifestSnapshotEqual } from "../lib/telemetryGpu";
 import { tomMtpBlocked, toastTomMtpSkip, TOM_MTP_SKIP_MESSAGE } from "../lib/tomMtp";
 import { EVENTS } from "../lib/events";
 import { useTauriListen } from "./useTauriListen";
-
 type ProbeSession = {
   modelPath: string;
   /** Hard knobs only — ctx slider does not drop the probe. */
@@ -18,8 +24,14 @@ type ProbeSession = {
   validatedVramMib: number;
   validatedGpuBreakdownMib?: number[];
   validatedHostMib?: number;
+  validatedHostModelMib?: number;
   validatedComponentsMib?: VramManifest["validatedComponentsMib"];
   fitProbeMeasuredAt: string;
+  /** full = ngl999 need; low_vram = free-aware spill. */
+  mode: FitProbeMode;
+  /** Free-pool fingerprint at probe time. */
+  freeFingerprint: string;
+  fittedNgl?: number;
 };
 
 function placementConfigKey(config: Record<string, unknown>): string {
@@ -34,16 +46,18 @@ function draftBaseName(config: Record<string, unknown>): string {
 /**
  * llama-fit-params loads model + context with no_alloc.
  * Memory actually moves with: model, n_ctx, n_batch, n_ubatch, cache-type k/v,
- * flash-attn, ngl, split-mode. We always probe split=none, ngl=999, flash=on.
+ * flash-attn, ngl, split-mode. Probe uses live split (none/layer/tensor).
  * Thinking / parallel / samplers / threads are not FIT inputs — ignore them.
  */
 function fitProbeKey(config: Record<string, unknown>, autoVramLaunch: boolean): string {
+  const split = String(config.split ?? "none").trim().toLowerCase() || "none";
   return [
     config.backend_type || "",
     config["kv_quant"] || "",
     String(config.batch ?? ""),
     String(config.ubatch ?? ""),
     config["flash_attn"] || "",
+    split,
     autoVramLaunch ? "1" : "0",
   ].join("|");
 }
@@ -70,18 +84,49 @@ function probeScenarioFields(
   modelPath: string,
   hardKey: string,
   placementKey: string,
+  liveFreeGb?: number,
+  liveFreeFp?: string,
+  liveCtx?: number,
 ) {
   if (!session || session.modelPath !== modelPath || session.hardKey !== hardKey) {
+    return {};
+  }
+  if (
+    session.mode === "low_vram"
+    && liveCtx != null
+    && session.anchorCtx !== liveCtx
+  ) {
+    return {};
+  }
+  if (
+    isDevBuild()
+    && session.mode === "low_vram"
+    && liveFreeGb != null
+    && liveFreeFp
+    && !shouldApplyLowVramSession({
+      mode: session.mode,
+      probeFreeFingerprint: session.freeFingerprint,
+      liveFreeFingerprint: liveFreeFp,
+      probeGpuGb: session.validatedVramMib / 1024,
+      liveFreeGb,
+      anchorCtx: session.anchorCtx,
+      liveCtx,
+    })
+  ) {
     return {};
   }
   const placementMatches = session.placementKey === placementKey;
   return {
     fitProbeVramMib: session.validatedVramMib,
     fitProbeHostMib: session.validatedHostMib,
+    fitProbeHostModelMib: session.validatedHostModelMib,
     fitProbeGpuBreakdownMib: placementMatches ? session.validatedGpuBreakdownMib : undefined,
     fitProbePlacementKey: session.placementKey,
     fitProbeAnchorCtx: session.anchorCtx,
     fitProbeMeasuredAt: session.fitProbeMeasuredAt,
+    fitProbeMode: session.mode,
+    fitProbeFreeFingerprint: session.freeFingerprint,
+    fitProbeFittedNgl: session.fittedNgl,
   };
 }
 
@@ -107,6 +152,7 @@ function attachProbeManifest(
     input,
   );
 }
+
 
 interface LearnedVramFitAttempt {
   vram_mib: number;
@@ -327,8 +373,9 @@ export function useScenarioEvaluator({
   const seedRaw = seedCacheKey ? readManifestCache(seedCacheKey) : null;
   // Seed last measured forecast for instant remount paint; fresh eval follows.
   const seedManifest = seedRaw;
-
   const [manifest, setManifest] = useState<VramManifest | null>(seedManifest);
+  /** Slider marks — from curve IPC, not evaluate(). Skeleton must not hide them. */
+  const [learnedCurveCtxs, setLearnedCurveCtxs] = useState<number[]>([]);
   const manifestRef = useRef<VramManifest | null>(seedManifest);
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
@@ -408,22 +455,20 @@ export function useScenarioEvaluator({
   configRef.current = config;
 
   // Combined key triggers re-eval / cache / learned fetch.
-  // Probe invalidation uses footprint only — placement (device/split/gpu_sync) does not drop it.
+  // Split is a probe hard-key — none/layer/tensor drops the session and re-probes.
   const configKey = liveEvalKey(config, autoVramLaunch);
   const probeKey = fitProbeKey(config, autoVramLaunch);
   const learnedKey = learnedIdentityKey(config, autoVramLaunch);
 
   useEffect(() => {
-    probeSessionRef.current = null;
-    // Model or hard-knob footprint changed → show EVALUATING radar (don't keep stale paint).
     const prev = paintIdentityRef.current;
     const path = model?.path ?? "";
-    if (path !== prev.modelPath || probeKey !== prev.probeKey) {
-      if (manifestRef.current != null) {
-        commitManifest(null);
-      }
-      paintIdentityRef.current = { modelPath: path, probeKey };
+    if (path === prev.modelPath && probeKey === prev.probeKey) return;
+    probeSessionRef.current = null;
+    if (manifestRef.current != null) {
+      commitManifest(null);
     }
+    paintIdentityRef.current = { modelPath: path, probeKey };
   }, [probeKey, model?.path, commitManifest]);
 
   // Stack fingerprint — changes when committed engines (RUNNING/LOADING) start/stop or VRAM shifts.
@@ -442,6 +487,8 @@ export function useScenarioEvaluator({
     const curStack = stackRef.current;
     const curSystemInfo = systemInfoRef.current;
     const curConfig = configRef.current;
+
+    if (validatingRef.current) return;
 
     if (!model || curGpus.length === 0) {
       commitManifest(null);
@@ -482,6 +529,23 @@ export function useScenarioEvaluator({
     const curProbeKey = fitProbeKey(curConfig, autoVramLaunchRef.current);
     const curPlacementKey = placementConfigKey(curConfig);
     const session = probeSessionRef.current;
+    const gpuAvailLive = computeGpuAvailableList(curGpus, runningSlots);
+    const devMatchLive = /GPU-?(\d+)/i.exec(String(curConfig.device || "GPU-0"));
+    const devIdxLive = devMatchLive ? parseInt(devMatchLive[1], 10) : 0;
+    const liveFreeGb =
+      devIdxLive >= 0 && devIdxLive < gpuAvailLive.length
+        ? Math.max(0, gpuAvailLive[devIdxLive] ?? 0)
+        : Math.max(0, ...gpuAvailLive, 0);
+    const liveFreeFp = freeFingerprintFromGb(liveFreeGb);
+    const sessionFields = probeScenarioFields(
+      session,
+      model.path,
+      curProbeKey,
+      curPlacementKey,
+      liveFreeGb,
+      liveFreeFp,
+      parseCtx(curConfig.ctx ?? "32768"),
+    );
     const input: ScenarioInput = {
       modelMeta: model.metadata,
       engineConfig,
@@ -506,12 +570,17 @@ export function useScenarioEvaluator({
       learnedMtpContextMib: learnedMtpContextRef.current,
       learnedAnchorCtx: learnedAnchorCtxRef.current,
       learnedCurve: learnedCurveRef.current,
-      ...probeScenarioFields(session, model.path, curProbeKey, curPlacementKey),
+      ...sessionFields,
     };
 
     try {
       let result = evaluate(input);
-      if (session && session.modelPath === model.path && session.hardKey === curProbeKey) {
+      if (
+        session
+        && session.modelPath === model.path
+        && session.hardKey === curProbeKey
+        && sessionFields.fitProbeMode
+      ) {
         result = attachProbeManifest(
           result,
           session,
@@ -600,7 +669,6 @@ export function useScenarioEvaluator({
       isMountedRef.current = false;
     };
   }, []);
-
   const refreshLearnedVram = useCallback(() => {
     if (!model) {
       learnedVramRef.current = null;
@@ -612,6 +680,7 @@ export function useScenarioEvaluator({
       learnedMtpContextRef.current = undefined;
       learnedAnchorCtxRef.current = undefined;
       learnedCurveRef.current = [];
+      setLearnedCurveCtxs([]);
       learnedFetchPendingRef.current = false;
       return;
     }
@@ -637,6 +706,7 @@ export function useScenarioEvaluator({
     const kvQuant = String(curConfig["kv_quant"] ?? "f16");
     const specType = effectiveSpecTypeFromConfig(curConfig);
     const draftModel = draftPathForLearned(curConfig) || null;
+    const vramTopo = vramTopoTag(gpusRef.current, curConfig.device);
     void Promise.all([
       invoke<LearnedVramEntry | null>("get_learned_vram", {
         modelPath: model.path,
@@ -650,6 +720,7 @@ export function useScenarioEvaluator({
         specType,
         cacheRam: String(curConfig.cache_ram ?? "0"),
         draftModel,
+        vramTopo: vramTopo || null,
       }),
       invoke<Array<{ ctx: number; vram_mib: number; host_mib?: number }>>("get_learned_vram_curve", {
         modelPath: model.path,
@@ -658,6 +729,7 @@ export function useScenarioEvaluator({
         specType,
         draftModel,
         split: String(curConfig.split ?? "none"),
+        vramTopo: vramTopo || null,
       }).catch(() => []),
     ])
       .then(([entry, curve]) => {
@@ -682,6 +754,7 @@ export function useScenarioEvaluator({
           vramMib: p.vram_mib,
           hostMib: p.host_mib,
         }));
+        setLearnedCurveCtxs((curve ?? []).map((p) => p.ctx));
       })
       .catch(() => {
         if (fetchGen !== learnedFetchGenRef.current) return;
@@ -694,6 +767,7 @@ export function useScenarioEvaluator({
         learnedMtpContextRef.current = undefined;
         learnedAnchorCtxRef.current = undefined;
         learnedCurveRef.current = [];
+        setLearnedCurveCtxs([]);
       })
       .finally(() => {
         if (fetchGen !== learnedFetchGenRef.current) return;
@@ -864,7 +938,7 @@ export function useScenarioEvaluator({
     return () => { clearTimeout(timerRef.current); };
   }, [model?.path, stack, gpuTopologyKey, gpuMemoryKey, gpus.length, configKey, learnedKey, stackKey, sysInfoLoaded, metaReady, commitManifest]);
 
-  const validate = useCallback(async () => {
+  const validate = useCallback(async (requestedMode?: FitProbeMode) => {
     if (!model || validatingRef.current) return;
     const curConfig = configRef.current;
     const providerId = curConfig.backend_type || "";
@@ -875,17 +949,36 @@ export function useScenarioEvaluator({
     validatingRef.current = true;
     setIsValidating(true);
     try {
+      // Auto / default RE-PROBE is always full-need (ngl 999).
+      // low_vram only when the button is flashing and the user clicks it.
+      const probeMode: FitProbeMode =
+        requestedMode
+        ?? (manifestRef.current?.style?.needsLowVramReprobe ? "low_vram" : "full");
+
+      const runningSlots = committedSlotsFromStack(stackRef.current);
+      const gpuAvail = computeGpuAvailableList(gpusRef.current, runningSlots);
+      const devMatch = /GPU-?(\d+)/i.exec(String(curConfig.device || "GPU-0"));
+      const devIdx = devMatch ? parseInt(devMatch[1], 10) : 0;
+      const targetFreeGb =
+        devIdx >= 0 && devIdx < gpuAvail.length
+          ? Math.max(0, gpuAvail[devIdx] ?? 0)
+          : Math.max(0, ...gpuAvail, 0);
+      const freeBudgetMib = targetFreeGb * 1024;
+      const liveFreeFp = freeFingerprintFromGb(targetFreeGb);
+
       const result: FitScanResult = await invoke("fit_scan_model", {
         modelPath: model.path,
         providerId: curConfig.backend_type || null,
         ctxSize: parseCtx(curConfig.ctx ?? "32768"),
         kvQuant: curConfig["kv_quant"] || "f16",
         device: curConfig.device || "GPU-0",
-        splitMode: "none",
+        splitMode: String(curConfig.split ?? "none"),
         batch: typeof curConfig.batch === "number" ? curConfig.batch : parseInt(String(curConfig.batch), 10) || 2048,
         ubatch: typeof curConfig.ubatch === "number" ? curConfig.ubatch : parseInt(String(curConfig.ubatch), 10) || 512,
         flashAttn: curConfig["flash_attn"]?.toLowerCase() !== "off",
         offloadMode: "regular",
+        mode: probeMode,
+        freeBudgetMib: probeMode === "low_vram" ? freeBudgetMib : null,
       });
 
       const engineConfig: EngineConfig = {
@@ -896,7 +989,6 @@ export function useScenarioEvaluator({
         extra_params: { ...curConfig },
       };
 
-      const runningSlots = committedSlotsFromStack(stackRef.current);
       const sysInfo = systemInfoRef.current || {
         total_memory_mib: 0,
         available_memory_mib: 0,
@@ -911,6 +1003,8 @@ export function useScenarioEvaluator({
       const curProbeKey = fitProbeKey(curConfig, autoVramLaunchRef.current);
       const curPlacementKey = placementConfigKey(curConfig);
       const anchorCtx = parseCtx(curConfig.ctx ?? "32768");
+      const resultMode: FitProbeMode =
+        result.probe_mode === "low_vram" ? "low_vram" : probeMode;
 
       const input: ScenarioInput = {
         modelMeta: model.metadata!,
@@ -941,7 +1035,10 @@ export function useScenarioEvaluator({
         fitProbeGpuBreakdownMib: result.gpu_breakdown_mib,
         fitProbePlacementKey: curPlacementKey,
         fitProbeAnchorCtx: anchorCtx,
-        fitProbeMeasuredAt: probeMeasuredAt,
+        fitProbeMode: resultMode,
+        fitProbeFreeFingerprint: liveFreeFp,
+        fitProbeFittedNgl: result.fitted_ngl,
+        fitProbeHostModelMib: result.host_components_mib?.model_mib,
       };
 
       const session: ProbeSession = {
@@ -952,8 +1049,12 @@ export function useScenarioEvaluator({
         validatedVramMib: result.vram_mib,
         validatedGpuBreakdownMib: result.gpu_breakdown_mib,
         validatedHostMib: result.host_mib,
+        validatedHostModelMib: result.host_components_mib?.model_mib,
         validatedComponentsMib: result.gpu_components_mib ?? null,
         fitProbeMeasuredAt: probeMeasuredAt,
+        mode: resultMode,
+        freeFingerprint: liveFreeFp,
+        fittedNgl: result.fitted_ngl,
       };
 
       probeSessionRef.current = session;
@@ -977,22 +1078,46 @@ export function useScenarioEvaluator({
     if (!autoVramLaunchRef.current || !model?.path || !model.metadata) return;
     if (validatingRef.current) return;
     if (learnedFetchPendingRef.current) return;
-    // Already have a live probe for this hard-key footprint.
     if (
       probeSessionRef.current?.modelPath === model.path
       && probeSessionRef.current.hardKey === probeKey
     ) {
-      return;
+      const sess = probeSessionRef.current;
+      const freeList = computeGpuAvailableList(
+        gpusRef.current,
+        committedSlotsFromStack(stackRef.current),
+      );
+      const freeGb = Math.max(...freeList, 0);
+      const staleLowVram =
+        isDevBuild()
+        && sess.mode === "low_vram"
+        && !shouldApplyLowVramSession({
+          mode: sess.mode,
+          probeFreeFingerprint: sess.freeFingerprint,
+          liveFreeFingerprint: freeFingerprintFromGb(freeGb),
+          probeGpuGb: sess.validatedVramMib / 1024,
+          liveFreeGb: freeGb,
+        });
+      if (!staleLowVram) return;
     }
-    const liveCtx = parseCtx(configRef.current.ctx ?? "32768");
-    const curve = learnedCurveRef.current;
-    // Skip auto-probe only when evaluate() can already paint from LEARNED/curve.
-    // (Exact-CTX curve skip alone was wrong: curve is not keyed on batch/ubatch/flash,
-    // and left EVALUATING stuck after restart when estimate was still null.)
-    const hasLearnedPaint = learnedVramRef.current != null;
-    const hasCurvePaint =
-      curve.some((p) => p.ctx === liveCtx) || curve.length >= 2;
-    if (hasLearnedPaint || hasCurvePaint) return;
+    // Skip auto-probe only for an identity-matched LEARNED row that is still
+    // usable. DEV: spill-shaped LEARNED (fat host, GPU already fits free) must
+    // not block a full ngl999 probe.
+    if (learnedVramRef.current != null) {
+      const freeList = computeGpuAvailableList(
+        gpusRef.current,
+        committedSlotsFromStack(stackRef.current),
+      );
+      const freeGb = Math.max(...freeList, 0);
+      const spillLearned =
+        isDevBuild()
+        && learnedLooksLikeFreeDependentSpill(
+          learnedVramRef.current / 1024,
+          (learnedHostRef.current ?? 0) / 1024,
+          freeGb,
+        );
+      if (!spillLearned) return;
+    }
     const free = computeGpuAvailableList(
       gpusRef.current,
       committedSlotsFromStack(stackRef.current),
@@ -1000,8 +1125,37 @@ export function useScenarioEvaluator({
     if (Math.max(...free, 0) < 2.5) return;
     const providerId = String(configRef.current.backend_type || "");
     if (tomMtpBlocked(providerId, model)) return;
-    void validate();
+    void validate("full");
   };
 
-  return { manifest, isEvaluating, isValidating, validate };
+  const pruneLearnedCtxs = useCallback(async (removeCtxs: number[]) => {
+    if (!model?.path || removeCtxs.length === 0) return 0;
+    const curConfig = configRef.current;
+    try {
+      const n = await invoke<number>("prune_learned_vram_curve", {
+        modelPath: model.path,
+        providerId: curConfig.backend_type || "ggml-master",
+        kvQuant: String(curConfig["kv_quant"] ?? "f16"),
+        specType: effectiveSpecTypeFromConfig(curConfig),
+        draftModel: draftPathForLearned(curConfig) || null,
+        split: String(curConfig.split ?? "none"),
+        vramTopo: vramTopoTag(gpusRef.current, curConfig.device) || null,
+        removeCtxs,
+      });
+      if (n > 0) {
+        window.__blackopsToasts?.addToast(
+          `Pruned ${n} custom LEARNED CTX mark${n === 1 ? "" : "s"}`,
+          "success",
+        );
+      }
+      refreshLearnedVram();
+      return n;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      window.__blackopsToasts?.addToast(`Prune LEARNED failed: ${msg}`, "error");
+      return 0;
+    }
+  }, [model?.path, refreshLearnedVram]);
+
+  return { manifest, isEvaluating, isValidating, validate, learnedCurveCtxs, pruneLearnedCtxs };
 }

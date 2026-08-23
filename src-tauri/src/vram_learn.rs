@@ -302,12 +302,13 @@ fn memory_mode_from_config(config: &EngineConfig) -> String {
 }
 
 pub fn learned_vram_key_from_config(model_path: &str, provider_id: &str, config: &EngineConfig) -> String {
+    let device_token = vram_device_token_from_config(config);
     learned_vram_key_with_draft(
         model_path,
         provider_id,
         &config.get_param_str("ctx").unwrap_or_else(|| "32768".to_string()),
         &config.get_param_str("kv_quant").unwrap_or_else(|| "f16".to_string()),
-        &config.get_param_str("device").unwrap_or_else(|| "GPU-0".to_string()),
+        &device_token,
         &config.get_param_str("split").unwrap_or_else(|| "none".to_string()),
         &memory_mode_from_config(config),
         &config
@@ -321,6 +322,24 @@ pub fn learned_vram_key_from_config(model_path: &str, provider_id: &str, config:
             .unwrap_or_else(|| "0".to_string()),
         &draft_path_from_config(config),
     )
+}
+
+/// Prefer manufactured-GB topo (`96` / `24+96`) over GPU index.
+fn vram_device_token_from_config(config: &EngineConfig) -> String {
+    if let Some(v) = config.get_param_str("__vram_topo") {
+        let t = v.trim();
+        if !t.is_empty() {
+            return t.to_string();
+        }
+    }
+    config
+        .get_param_str("device")
+        .unwrap_or_else(|| "GPU-0".to_string())
+}
+
+fn device_token_is_vram_topo(token: &str) -> bool {
+    let t = token.trim();
+    !t.is_empty() && !t.to_ascii_uppercase().starts_with("GPU")
 }
 
 fn lookup_learned_vram_fuzzy(
@@ -498,6 +517,10 @@ fn lookup_learned_vram_fuzzy(
             }
         }
 
+        if !key_matches_vram_topo(k, device) {
+            continue;
+        }
+
         if entry.measured_at >= best_at {
             best_at = entry.measured_at.clone();
             best = Some(entry);
@@ -528,7 +551,7 @@ pub fn lookup_learned_vram_for_config(
         provider_id,
         &config.get_param_str("ctx").unwrap_or_else(|| "32768".to_string()),
         &config.get_param_str("kv_quant").unwrap_or_else(|| "f16".to_string()),
-        &config.get_param_str("device").unwrap_or_else(|| "GPU-0".to_string()),
+        &vram_device_token_from_config(config),
         &config.get_param_str("split").unwrap_or_else(|| "none".to_string()),
         &memory_mode_from_config(config),
         &config
@@ -606,6 +629,13 @@ fn timestamp_now() -> String {
     chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
+/// Prefer the fuller GPU footprint as primary LEARNED need.
+/// Free VRAM is not in the learn key — a spill launch on a stuffed GPU must not
+/// replace a prior full-GPU measurement (or under-forecast when free opens up).
+fn should_promote_primary_vram(existing_vram_mib: f64, new_vram_mib: f64) -> bool {
+    existing_vram_mib <= 0.0 || new_vram_mib + 1.0 >= existing_vram_mib
+}
+
 /// Append newly seen breakdown tables (MoE --fit may emit many per launch).
 /// `already_stored` = number of tables previously persisted for this load.
 /// Returns (latest_mib, table_count) when new tables were consumed (including deduped).
@@ -666,10 +696,22 @@ pub fn append_fit_breakdown_tables(
             phase: phase.to_string(),
             measured_at: now.clone(),
         });
-        latest_mib = mib;
-        entry.vram_mib = mib;
-        entry.gpu_breakdown_mib = Some(table.gpu_self_mib.clone());
-        entry.host_mib = table.host_mib;
+        // Primary need = max GPU footprint. Spill/low-free launches (lower GPU +
+        // weight-class host) must not replace a fuller full-GPU measurement — free
+        // VRAM is not part of the learn key and combinations explode.
+        if should_promote_primary_vram(entry.vram_mib, mib) {
+            latest_mib = mib;
+            entry.vram_mib = mib;
+            entry.gpu_breakdown_mib = Some(table.gpu_self_mib.clone());
+            entry.host_mib = table.host_mib;
+        } else {
+            latest_mib = entry.vram_mib;
+            log::info!(
+                "[vram_learn] keep primary {:.1} MiB GPU (new {:.1} lower — likely free-dependent spill)",
+                entry.vram_mib,
+                mib
+            );
+        }
         entry.measured_at = now;
         dirty = true;
     }
@@ -766,7 +808,8 @@ mod dedup_tests {
     }
 }
 
-/// Persist post-load buffer inventory — overrides FIT-era totals for forecast/topo.
+/// Persist post-load buffer inventory — overrides FIT-era totals for forecast/topo
+/// only when the new GPU footprint is at least as large (fuller need wins).
 pub fn record_launch_memory_snapshot(
     key: &str,
     snapshot: LaunchMemorySnapshot,
@@ -786,14 +829,25 @@ pub fn record_launch_memory_snapshot(
         fit_attempts: Vec::new(),
     });
 
-    entry.vram_mib = snapshot.vram_mib;
-    entry.gpu_breakdown_mib = Some(snapshot.gpu_breakdown_mib.clone());
-    entry.host_mib = Some(snapshot.host_mib);
-    entry.gpu_components_mib = snapshot.gpu_components_mib.clone();
-    entry.host_components_mib = snapshot.host_components_mib.clone();
-    entry.measured_at = snapshot.measured_at.clone();
     let measured_mib = snapshot.vram_mib;
     let measured_host = snapshot.host_mib;
+    // Always keep latest launch snapshot for diagnostics / topo of what just ran.
+    // Primary forecast vram_mib only promotes upward (fuller GPU need).
+    if should_promote_primary_vram(entry.vram_mib, snapshot.vram_mib) {
+        entry.vram_mib = snapshot.vram_mib;
+        entry.gpu_breakdown_mib = Some(snapshot.gpu_breakdown_mib.clone());
+        entry.host_mib = Some(snapshot.host_mib);
+        entry.gpu_components_mib = snapshot.gpu_components_mib.clone();
+        entry.host_components_mib = snapshot.host_components_mib.clone();
+    } else {
+        log::info!(
+            "[vram_learn] launch snapshot keep primary {:.1} MiB GPU (new {:.1}, host {:.1}) — spill/low-free not promoted",
+            entry.vram_mib,
+            snapshot.vram_mib,
+            snapshot.host_mib
+        );
+    }
+    entry.measured_at = snapshot.measured_at.clone();
     entry.launch_snapshot = Some(snapshot);
     save_store(&store)?;
     drop(_guard);
@@ -814,6 +868,7 @@ pub fn get_learned_vram(
     spec_type: Option<String>,
     cache_ram: Option<String>,
     draft_model: Option<String>,
+    vram_topo: Option<String>,
 ) -> Option<LearnedVramEntry> {
     let _guard = STORE_MUTEX.lock().ok()?;
     let mode = memory_mode
@@ -833,12 +888,17 @@ pub fn get_learned_vram(
         .as_deref()
         .unwrap_or("0");
     let draft = draft_model.as_deref().unwrap_or("");
+    let device_token = vram_topo
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(device.as_str());
     lookup_learned_vram_fuzzy(
         &model_path,
         &provider_id,
         &ctx,
         &kv_quant,
-        &device,
+        device_token,
         &split,
         &mode,
         &offload,
@@ -932,6 +992,17 @@ fn key_matches_split(key: &str, split: &str) -> bool {
     want_none
 }
 
+fn key_matches_vram_topo(key: &str, want: &str) -> bool {
+    if !device_token_is_vram_topo(want) {
+        return true;
+    }
+    let Some(rest) = key.split("|dev=").nth(1) else {
+        return true;
+    };
+    let got = rest.split('|').next().unwrap_or("").trim();
+    got.eq_ignore_ascii_case(want.trim())
+}
+
 /// Launch measurements for this model + kv/spec/draft + split, every ctx (device ignored).
 #[tauri::command]
 pub fn get_learned_vram_curve(
@@ -941,6 +1012,7 @@ pub fn get_learned_vram_curve(
     spec_type: Option<String>,
     draft_model: Option<String>,
     split: Option<String>,
+    vram_topo: Option<String>,
 ) -> Vec<LearnedVramCurvePoint> {
     let Some(_guard) = STORE_MUTEX.lock().ok() else {
         return Vec::new();
@@ -978,6 +1050,11 @@ pub fn get_learned_vram_curve(
         if !key_matches_split(k, &split_n) {
             continue;
         }
+        if let Some(topo) = vram_topo.as_deref() {
+            if !key_matches_vram_topo(k, topo) {
+                continue;
+            }
+        }
         let Some(ctx) = ctx_from_learn_key(k) else {
             continue;
         };
@@ -989,7 +1066,9 @@ pub fn get_learned_vram_curve(
         let point = LearnedVramCurvePoint {
             ctx,
             vram_mib: vram,
-            host_mib: entry.host_mib,
+            host_mib: entry.host_mib.or_else(|| {
+                entry.launch_snapshot.as_ref().map(|s| s.host_mib)
+            }),
         };
         match best.get(&ctx) {
             Some((at, _)) if entry.measured_at < *at => {}
@@ -1001,4 +1080,89 @@ pub fn get_learned_vram_curve(
     let mut out: Vec<LearnedVramCurvePoint> = best.into_values().map(|(_, p)| p).collect();
     out.sort_by_key(|p| p.ctx);
     out
+}
+
+/// Delete LEARNED rows for this curve identity whose ctx is in `remove_ctxs`.
+/// Same match as `get_learned_vram_curve` (model + kv/spec/draft + split; device ignored).
+#[tauri::command]
+pub fn prune_learned_vram_curve(
+    app: tauri::AppHandle,
+    model_path: String,
+    provider_id: String,
+    kv_quant: String,
+    spec_type: Option<String>,
+    draft_model: Option<String>,
+    split: Option<String>,
+    vram_topo: Option<String>,
+    remove_ctxs: Vec<u64>,
+) -> Result<u32, String> {
+    use tauri::Emitter;
+
+    if remove_ctxs.is_empty() {
+        return Ok(0);
+    }
+    let want: std::collections::HashSet<usize> =
+        remove_ctxs.into_iter().map(|c| c as usize).collect();
+
+    let _guard = STORE_MUTEX
+        .lock()
+        .map_err(|e| format!("learned-vram store lock poisoned: {e}"))?;
+    let mut store = load_store();
+    let path_norm = normalize_model_path_for_key(&model_path);
+    let kv_n = kv_quant.trim().to_lowercase();
+    let spec_n = normalize_spec_type(spec_type.as_deref().unwrap_or("none"));
+    let draft_base = {
+        let d = draft_model.as_deref().unwrap_or("").trim();
+        if d.is_empty() {
+            String::new()
+        } else {
+            std::path::Path::new(d)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or(d)
+                .to_lowercase()
+        }
+    };
+    let split_n = normalize_split_mode(split.as_deref().unwrap_or("none"));
+
+    let before = store.entries.len();
+    store.entries.retain(|k, _| {
+        if !entry_matches_curve_hard_knobs(
+            k,
+            &path_norm,
+            &provider_id,
+            &kv_n,
+            &spec_n,
+            &draft_base,
+        ) {
+            return true;
+        }
+        if !key_matches_split(k, &split_n) {
+            return true;
+        }
+        if let Some(topo) = vram_topo.as_deref() {
+            if !key_matches_vram_topo(k, topo) {
+                return true;
+            }
+        }
+        let Some(ctx) = ctx_from_learn_key(k) else {
+            return true;
+        };
+        !want.contains(&ctx)
+    });
+    let removed = (before.saturating_sub(store.entries.len())) as u32;
+    if removed > 0 {
+        save_store(&store)?;
+        let _ = app.emit(
+            "learned-vram-changed",
+            serde_json::json!({
+                "model_path": model_path,
+                "provider_id": provider_id,
+            }),
+        );
+        log::info!(
+            "[vram_learn] pruned {removed} custom curve row(s) for {path_norm} kv={kv_n} split={split_n}"
+        );
+    }
+    Ok(removed)
 }

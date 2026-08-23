@@ -25,7 +25,6 @@ import {
   cfgStr,
   computeGpuAvailableList,
   freePoolHeadroomGb,
-  freePoolOomTier,
   freePoolUtil,
   interpolateLearnedCurveGb,
   launchPaintFromGate,
@@ -34,7 +33,19 @@ import {
   resolveSplitTax,
   round2,
 } from "../../shared";
+import {
+  freeFingerprintFromGb,
+  isFullGpuLearnedPoint,
+  isLiveWeightSpill,
+  isWeightClassHostSpill,
+  learnedLooksLikeFreeDependentSpill,
+  lowVramBarInsets,
+  ramNeedToneForHost,
+  showHostRamBar,
+  splitHostRamGb,
+} from "../../lowVramProbe";
 import { attachMemorySource } from "../memorySource";
+import { isDevBuild } from "../../../../lib/build";
 import type { ForecastAdapter, ForecastInput } from "../types";
 
 function draftAddonGb(input: ForecastInput): number {
@@ -76,18 +87,26 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   const withDraft = (gb: number | null): number | null =>
     gb == null ? null : needsDraftAdd ? gb + draftAddon : gb;
   const splitMode = cfgStr(input.engineConfig, "split", "none");
-  // Independent of live KV/batch/quant — library Δ(split−none) @ CTX, else fallback constants.
   const splitTax = resolveSplitTax(splitMode, liveCtx, input.fitPoints);
-  const splitTaxGb = splitTax.taxGb;
-
+  // Probe + LEARNED are split-keyed. Library tax only if we have neither.
   const probeGb = input.fitProbeVramMib != null ? input.fitProbeVramMib / 1024 : null;
   const probeHostGb = input.fitProbeHostMib != null ? input.fitProbeHostMib / 1024 : null;
   const probeAnchor = input.fitProbeAnchorCtx ?? 0;
-  // Never seed a layer/tensor learned curve with a split=none probe point.
-  const probeAppliesToCurve = probeGb != null && splitTaxGb <= 0;
+  const nativeSplitMeasure = probeGb != null;
+  const splitTaxGb = nativeSplitMeasure ? 0 : splitTax.taxGb;
+  const probeAppliesToCurve = probeGb != null;
 
-  const mergedCurve = (input.learnedCurve ?? []).map((p) => ({ ...p }));
-  if (probeAppliesToCurve && probeAnchor > 0 && !mergedCurve.some((p) => p.ctx === probeAnchor)) {
+  const allLearnedPts = input.learnedCurve ?? [];
+  // Offload rows stay as slider ticks; they must not join the 100% GPU curve.
+  const fitCurvePts = allLearnedPts.filter((p) => isFullGpuLearnedPoint(p.hostMib));
+
+  const mergedCurve = fitCurvePts.map((p) => ({ ...p }));
+  if (
+    probeAppliesToCurve
+    && probeAnchor > 0
+    && isFullGpuLearnedPoint(probeHostGb != null ? probeHostGb * 1024 : undefined)
+    && !mergedCurve.some((p) => p.ctx === probeAnchor)
+  ) {
     mergedCurve.push({
       ctx: probeAnchor,
       vramMib: (probeGb + draftAddon) * 1024,
@@ -95,20 +114,33 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     });
   }
 
+  const liveLowVram =
+    input.fitProbeMode === "low_vram"
+    && probeGb != null
+    && probeAnchor === liveCtx;
+
+  const exactPt = liveLowVram ? undefined : allLearnedPts.find((p) => p.ctx === liveCtx);
   const curveHit = interpolateLearnedCurveGb(mergedCurve, liveCtx);
-  const learnedExactGb = input.learnedCurve?.some((p) => p.ctx === liveCtx)
-    ? (curveHit?.vramGb ?? null)
-    : null;
-  const curveGb =
-    learnedExactGb == null && curveHit && mergedCurve.length >= 2 ? curveHit.vramGb : null;
+  const learnedExactGbRaw =
+    exactPt != null && exactPt.vramMib > 0 ? exactPt.vramMib / 1024 : null;
+  const curveGbRaw =
+    !liveLowVram
+    && learnedExactGbRaw == null
+    && curveHit
+    && mergedCurve.length >= 2
+      ? curveHit.vramGb
+      : null;
 
   const rawLearnedGb = input.learnedVramMib != null ? input.learnedVramMib / 1024 : null;
   const learnedBaseGb =
     rawLearnedGb != null
       ? rawLearnedGb + (needsDraftAdd ? draftAddon : 0)
       : null;
-  const learnedDeltaGb =
-    learnedBaseGb != null && learnedExactGb == null && curveGb == null
+  const learnedDeltaGbRaw =
+    !liveLowVram
+    && learnedBaseGb != null
+    && learnedExactGbRaw == null
+    && curveGbRaw == null
       ? adjustMeasuredGbForCtx(
           learnedBaseGb,
           input.learnedAnchorCtx ?? liveCtx,
@@ -119,11 +151,31 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
         )
       : null;
 
-  // 1) Bring none-probe to live CTX (hard knobs live inside the probe).
-  // 2) Add split tax at live CTX — separate measured delta, not baked into CTX adjust.
-  // FIT probe never loads external draft GGUF — always add draft addon when active.
+  // Exact CTX host, else lerp host from full-GPU curve (buffer only).
+  const learnedHostGbRaw = liveLowVram
+    ? probeHostGb
+    : exactPt != null && exactPt.hostMib != null
+      ? exactPt.hostMib / 1024
+      : learnedExactGbRaw != null && input.learnedHostMib != null
+        ? input.learnedHostMib / 1024
+        : curveHit?.hostGb ?? null;
+  const targetAvailForGate = gpuAvailable[tgt] ?? Math.max(...gpuAvailable, 0);
+  const discardSpillLearned =
+    !liveLowVram
+    && isDevBuild()
+    && learnedLooksLikeFreeDependentSpill(
+      withDraft(learnedExactGbRaw) ?? withDraft(curveGbRaw) ?? learnedDeltaGbRaw,
+      learnedHostGbRaw,
+      targetAvailForGate,
+    );
+
+  const learnedExactGb = discardSpillLearned ? null : learnedExactGbRaw;
+  const curveGb = discardSpillLearned ? null : curveGbRaw;
+  const learnedDeltaGb = discardSpillLearned ? null : learnedDeltaGbRaw;
+  const learnedHostGb = discardSpillLearned ? null : learnedHostGbRaw;
+
   const probeNoneAtLiveGb =
-    curveGb == null && learnedExactGb == null && probeGb != null
+    liveLowVram || (curveGb == null && learnedExactGb == null && probeGb != null)
       ? adjustMeasuredGbForCtx(
           probeGb + draftAddon,
           probeAnchor || liveCtx,
@@ -136,19 +188,17 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   const probeWithDraftGb =
     probeNoneAtLiveGb != null ? probeNoneAtLiveGb + splitTaxGb : null;
 
-  // Prefer learned exact/curve for this split (+ draft if measurement lacked it);
-  // else probe(none)+tax+draft; else learned delta (already bumped).
-  const estimateGb =
-    withDraft(learnedExactGb) ?? withDraft(curveGb) ?? probeWithDraftGb ?? learnedDeltaGb;
+  const estimateGb = liveLowVram
+    ? probeWithDraftGb
+    : withDraft(learnedExactGb) ?? withDraft(curveGb) ?? probeWithDraftGb ?? learnedDeltaGb;
   if (estimateGb == null) return null;
 
-  const learnedGb = withDraft(learnedExactGb) ?? withDraft(curveGb) ?? learnedDeltaGb;
-  const learnedHostGb =
-    curveHit?.hostGb ??
-    (rawLearnedGb != null && input.learnedHostMib != null ? input.learnedHostMib / 1024 : null);
+  const learnedGb = discardSpillLearned
+    ? null
+    : withDraft(learnedExactGb) ?? withDraft(curveGb) ?? learnedDeltaGb;
 
   const autoSplit = needsAutoLayerSplit(estimateGb, gpuAvailable);
-  const targetAvail = autoSplit
+  const targetAvail = autoSplit || userSplitMultiGpu
     ? multiTotalAvailable
     : (gpuAvailable[tgt] ?? Math.max(...gpuAvailable, 0));
   const headroomGb = freePoolHeadroomGb(targetAvail);
@@ -161,22 +211,31 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   const modelFootprintGb = Math.max(estimateGb, weightGb);
   const overSystemMemory = modelFootprintGb > systemAvailableGb - systemHeadroom;
 
-  const trustFitAtLoad = !overSystemMemory && (exceedsGpuPool || learnedHostGb != null);
+  // learnedHostGb is often a leftover from a stuffed-GPU spill launch — do not
+  // treat "we have a host number" as proof this launch will offload.
+  const trustFitAtLoad = !overSystemMemory && exceedsGpuPool;
   const fits =
     !overSystemMemory && (trustFitAtLoad || estimateGb <= targetAvail - headroomGb);
 
   const gpuProjectionGb = estimateGb;
-  const hostOffloadGb =
-    learnedHostGb ??
-    probeHostGb ??
-    (exceedsGpuPool ? Math.max(0, estimateGb - Math.max(targetAvail - headroomGb, 0)) : 0);
-
+  const probeHostAtLive =
+    probeHostGb != null && probeAnchor === liveCtx ? probeHostGb : null;
+  const hostMeasuredGb = learnedHostGb ?? probeHostAtLive;
+  const hostOffloadGb = isWeightClassHostSpill(hostMeasuredGb)
+    ? (hostMeasuredGb as number)
+    : 0;
   const currentPlacementKey = `${input.engineConfig.extra_params?.device || ""}|${input.engineConfig.extra_params?.split || ""}|${input.engineConfig.extra_params?.gpu_sync || ""}`;
   const probePlacementMatches =
     input.fitProbePlacementKey == null || input.fitProbePlacementKey === currentPlacementKey;
 
   const breakdownSpansMultipleGpus = (loadsGb: number[]) =>
     loadsGb.filter((gb) => gb > 0.1).length > 1;
+
+  const scaleLoads = (loadsGb: number[]): number[] => {
+    const sum = loadsGb.reduce((a, b) => a + b, 0);
+    if (!(sum > 0.05) || !(gpuProjectionGb > 0)) return loadsGb;
+    return loadsGb.map((x) => (gpuProjectionGb * x) / sum);
+  };
 
   let perGpuLoad: number[];
   if (
@@ -186,7 +245,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   ) {
     const loads = input.learnedGpuBreakdownMib.map((mib) => mib / 1024);
     perGpuLoad = !userSplitMultiGpu || breakdownSpansMultipleGpus(loads)
-      ? loads
+      ? scaleLoads(loads)
       : autoSplit || userSplitMultiGpu
         ? autoSplitPerGpuLoad(gpuProjectionGb, input.gpus, gpuAvailable)
         : (() => {
@@ -201,7 +260,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   ) {
     const loads = input.fitProbeGpuBreakdownMib.map((mib) => mib / 1024);
     perGpuLoad = !userSplitMultiGpu || breakdownSpansMultipleGpus(loads)
-      ? loads
+      ? scaleLoads(loads)
       : autoSplit || userSplitMultiGpu
         ? autoSplitPerGpuLoad(gpuProjectionGb, input.gpus, gpuAvailable)
         : (() => {
@@ -216,11 +275,30 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     perGpuLoad[tgt] = gpuProjectionGb;
   }
 
-  const headroomThreshold = targetAvail - headroomGb;
-  const totalProjectedGb = gpuProjectionGb + hostOffloadGb;
-  const isRealHostOffload = totalProjectedGb > headroomThreshold + 0.1;
-  const showHostRam = hostOffloadGb > 0.5 || exceedsGpuPool;
-  const useOffloadPalette = trustFitAtLoad && exceedsGpuPool;
+  const liveFreeFp = freeFingerprintFromGb(targetAvail);
+  const fittedNgl = input.fitProbeFittedNgl;
+  const measurementAtLiveCtx =
+    exactPt != null
+    || (input.fitProbeMode === "low_vram"
+      && input.fitProbeAnchorCtx != null
+      && input.fitProbeAnchorCtx === liveCtx);
+  const realSpill = isLiveWeightSpill({
+    estimateGb,
+    freeGb: targetAvail,
+    hostGb: hostMeasuredGb,
+    probeMode: input.fitProbeMode,
+    fittedNgl,
+    measurementAtLiveCtx,
+  });
+  const displayHostGb = realSpill
+    ? Math.max(hostOffloadGb, isWeightClassHostSpill(hostMeasuredGb) ? (hostMeasuredGb as number) : 0)
+    : 0;
+  const showHostRam = showHostRamBar({
+    hostOffloadGb: displayHostGb,
+    realSpill,
+    overSystemMemory,
+  });
+  const useOffloadPalette = (trustFitAtLoad && exceedsGpuPool) || realSpill;
   const multiGpuLoad = perGpuLoad.filter((gb) => gb > 0.1).length > 1;
 
   const fitHint = "ENGINE pre-tunes on load";
@@ -230,7 +308,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
       ? `split across ${input.gpus.length} GPU(s) + ${fitHint}`
       : fitHint;
 
-  const hostOffloadLaunch = useOffloadPalette || (isRealHostOffload && hostOffloadGb > 0.5);
+  const hostOffloadLaunch = useOffloadPalette || realSpill;
   const multiNote =
     autoSplit || multiGpuLoad || (!fullAuto && splitActive(input) && input.gpus.length > 1);
   const gpuWord =
@@ -284,34 +362,51 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
 
   const launchPaint = launchPaintFromGate(fits, useOffloadPalette);
   const vramFreeUtil = freePoolUtil(estimateGb, targetAvail);
-  const vramNeedTone = needToneFromLaunchPaint(launchPaint, vramFreeUtil);
+  // Soft OOM only when still full-GPU fit; spill path skips OOM risk copy.
+  const vramNeedTone = needToneFromLaunchPaint(
+    launchPaint,
+    realSpill ? undefined : vramFreeUtil,
+  );
   const paintClasses = barStyleFromNeedTone(vramNeedTone);
-  const ramLaunchPaint = overSystemMemory
-    ? ("nofit" as const)
-    : hostOffloadLaunch && hostOffloadGb > 0.5
-      ? ("offload" as const)
-      : ("fit" as const);
-  const ramNeedTone = needToneFromLaunchPaint(ramLaunchPaint);
+  const insets = lowVramBarInsets({
+    launchPaint,
+    freeUtil: vramFreeUtil,
+    freeGb: targetAvail,
+    estimateGb,
+    hostOffloadGb: hostMeasuredGb ?? 0,
+    overSystemMemory,
+    probeMode: input.fitProbeMode,
+    probeFreeFingerprint: input.fitProbeFreeFingerprint,
+    liveFreeFingerprint: liveFreeFp,
+    fittedNgl,
+    measurementAtLiveCtx,
+  });
+  const spill = realSpill || insets.realSpill;
+  const ramNeedTone = ramNeedToneForHost({
+    overSystemMemory,
+    hostOffloadGb: hostMeasuredGb ?? 0,
+    realSpill: spill,
+  });
 
-  // Inset bar copy (right end, need-hero size). Thresholds tunable via FREE_POOL_OOM_*.
-  const oomTier = freePoolOomTier(vramFreeUtil);
-  const vramBarInsetText =
-    launchPaint === "nofit"
-      ? "NO FIT"
-      : launchPaint === "offload"
-        ? "OVER FREE · SPILL · SLOWER"
-        : oomTier === "warn"
-          ? "HIGH OOM RISK"
-          : oomTier === "caution"
-            ? "LOW OOM RISK"
-            : null;
-  const ramBarInsetText =
-    overSystemMemory
-      ? "NO FIT · SYSTEM"
-      : hostOffloadLaunch && hostOffloadGb > 0.5
-        ? "HOST OFFLOAD · SLOWER"
-        : null;
-
+  const hostTotalGb = Math.max(
+    hostMeasuredGb ?? 0,
+    probeHostGb ?? 0,
+    learnedHostGb ?? 0,
+  );
+  const hostSplit = splitHostRamGb({
+    hostGb: hostTotalGb,
+    hostModelGb:
+      input.fitProbeHostModelMib != null ? input.fitProbeHostModelMib / 1024 : null,
+    bufferBaselineGb: curveHit?.hostGb,
+    realSpill: spill,
+  });
+  if (spill && !overSystemMemory) {
+    insets.ramInset =
+      hostSplit.weightGb > 0.05
+        ? `OFFLOADING ${hostSplit.weightGb.toFixed(1)}GB TO RAM`
+        : "OFFLOADING TO RAM";
+  }
+  const ramNeedGb = hostSplit.bufferGb + hostSplit.weightGb;
 
   const base: VramManifest = {
     scenario: "AUTO_FIT",
@@ -319,29 +414,27 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
       ...paintClasses,
       icon: vramNeedTone === "ok" ? "*" : "o",
       label: fitLabel,
-      ramVisible: showHostRam,
+      ramVisible: ramNeedGb > 0.05,
       launchPaint,
       vramNeedTone,
-      ramNeedTone,
+      ramNeedTone: hostSplit.weightGb > 0.05 ? ramNeedTone : "ok",
+      needsLowVramReprobe: insets.needsReprobe,
       uiTemplate: {
         heroText,
         launchSummary,
         gpuLayerText: layerText,
-        ramLayerText: showHostRam
-          ? isRealHostOffload
-            ? learnedHostGb != null
-              ? `${hostOffloadGb.toFixed(1)} GB on host RAM (measured on prior launch)`
-              : `~${hostOffloadGb.toFixed(1)} GB will spill to RAM — engine decides on load`
-            : learnedHostGb != null
-              ? `${hostOffloadGb.toFixed(1)} GB host buffer (measured on prior launch)`
-              : `~${hostOffloadGb.toFixed(1)} GB host buffer — engine overhead at load`
-          : autoSplit
-            ? "VRAM spread across GPUs — offload decided at load"
-            : "engine might use some RAM at launch",
-        showRamBar: true,
+        ramLayerText:
+          hostSplit.weightGb > 0.05
+            ? `${ramNeedGb.toFixed(1)} GB host (${hostSplit.bufferGb.toFixed(1)} buffer + ${hostSplit.weightGb.toFixed(1)} weight)`
+            : ramNeedGb > 0.05
+              ? `${ramNeedGb.toFixed(1)} GB host buffer (not layer offload)`
+              : autoSplit
+                ? "VRAM spread across GPUs — offload decided at load"
+                : "engine might use some RAM at launch",
+        showRamBar: ramNeedGb > 0.05,
         moeRamBar: false,
-        kvSpillRiskText: vramBarInsetText,
-        offloadWarningText: ramBarInsetText,
+        kvSpillRiskText: insets.vramInset,
+        offloadWarningText: insets.ramInset,
       },
     },
     vramWeightsGb: round2(weightGb),
@@ -350,8 +443,10 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     vramTotalGb: round2(gpuProjectionGb),
     ramWeightsGb: 0,
     ramKvGb: 0,
-    ramSpillGb: round2(hostOffloadGb),
-    ramTotalGb: round2(hostOffloadGb),
+    ramSpillGb: round2(hostSplit.weightGb),
+    ramTotalGb: round2(ramNeedGb),
+    ramBufferGb: round2(hostSplit.bufferGb),
+    ramWeightGb: round2(hostSplit.weightGb),
     ramManufacturedGb: input.ramManufacturedGb,
     ramAvailableGb: input.ramAvailableGb,
     gpuAllocations: buildGpuAllocations(

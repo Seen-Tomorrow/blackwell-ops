@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { MemorySource } from "../lib/types";
+import type { FitProbeMode } from "../services/vram/lowVramProbe";
+import { isDevBuild } from "../lib/build";
 import {
   MEMORY_SOURCE_ACCENT,
   MEMORY_SOURCE_LABELS,
@@ -194,7 +196,8 @@ export function getMemorySourceView(
     isEstimate,
     idleStatus,
     showStatus: Boolean(idleStatus),
-    canProbe: Boolean(opts?.onValidate) && !opts?.hideValidate && !isExact,
+    // Exact LEARNED is a quality mark, not a lock — border/offload points need a re-probe.
+    canProbe: Boolean(opts?.onValidate) && !opts?.hideValidate,
   };
 }
 
@@ -247,9 +250,13 @@ export function MemorySourceNeedOverlay({
 export interface MemorySourceReprobeProps {
   memorySource: MemorySource;
   isValidating?: boolean;
-  onValidate?: () => void;
+  onValidate?: (mode?: FitProbeMode) => void;
   hideValidate?: boolean;
   className?: string;
+  /** Tight free — flash LOW VRAM (REL swaps one button; DEV shows both). */
+  needsLowVramReprobe?: boolean;
+  /** Past amber fits-line — punch both probe controls red. */
+  overFreeReprobe?: boolean;
 }
 
 /** RE-PROBE control — sits right of the assisted launch summary. */
@@ -259,26 +266,90 @@ export function MemorySourceReprobe({
   onValidate,
   hideValidate = false,
   className,
+  needsLowVramReprobe = false,
+  overFreeReprobe = false,
 }: MemorySourceReprobeProps) {
   const view = getMemorySourceView(memorySource, { onValidate, hideValidate });
   if (!view.canProbe) return null;
 
-  return (
+  const wrap = className ? ` ${className}` : "";
+  const fire = (mode: FitProbeMode) => (e: { stopPropagation: () => void }) => {
+    e.stopPropagation();
+    onValidate?.(mode);
+  };
+
+  const autoLow = needsLowVramReprobe && !isValidating;
+  const autoLabel = isValidating
+    ? needsLowVramReprobe
+      ? "PROBING LOW VRAM…"
+      : "PROBING…"
+    : autoLow
+      ? "RE-PROBE LOW VRAM"
+      : "RE-PROBE";
+
+  const autoBtn = (
     <button
       type="button"
       className={`vram-fc-source__reprobe vram-fc-header__reprobe${
-        className ? ` ${className}` : ""
+        overFreeReprobe
+          ? " vram-fc-header__reprobe--over-free"
+          : autoLow
+            ? " vram-fc-header__reprobe--low-vram"
+            : ""
       }`}
-      data-probe-state={isValidating ? "probing" : "reprobe"}
+      data-probe-state={
+        isValidating ? "probing" : overFreeReprobe ? "over-free" : autoLow ? "low-vram" : "reprobe"
+      }
       disabled={isValidating}
-      onClick={(e) => {
-        e.stopPropagation();
-        onValidate?.();
-      }}
-      title="Run FIT PROBE at this CTX to lock a measured point"
+      onClick={fire(autoLow || overFreeReprobe ? "low_vram" : "full")}
+      title={
+        overFreeReprobe
+          ? "Over free VRAM — run FIT now (auto picks low-vram)"
+          : autoLow
+            ? "Auto: free VRAM is tight — free-aware FIT (not on CTX drag)"
+            : "Auto: full-need FIT at this CTX"
+      }
     >
-      {isValidating ? "PROBING…" : "RE-PROBE"}
+      {autoLabel}
     </button>
+  );
+
+  const manualCls = `vram-fc-source__reprobe vram-fc-header__reprobe vram-fc-header__reprobe--manual${
+    overFreeReprobe ? " vram-fc-header__reprobe--over-free" : ""
+  }`;
+
+  if (isDevBuild()) {
+    return (
+      <span className={`vram-fc-header__reprobe-pair${wrap}`}>
+        {autoBtn}
+        <button
+          type="button"
+          className={manualCls}
+          data-probe-state={isValidating ? "probing" : overFreeReprobe ? "over-free" : "reprobe"}
+          disabled={isValidating}
+          onClick={fire("full")}
+          title="Manual full-need FIT (ngl 999) — ignore auto swap"
+        >
+          RE-PROBE
+        </button>
+        <button
+          type="button"
+          className={manualCls}
+          data-probe-state={isValidating ? "probing" : overFreeReprobe ? "over-free" : "reprobe"}
+          disabled={isValidating}
+          onClick={fire("low_vram")}
+          title="Manual free-aware FIT — ignore auto swap"
+        >
+          RE-PROBE LOW VRAM
+        </button>
+      </span>
+    );
+  }
+
+  return (
+    <span className={wrap.trim() || undefined}>
+      {autoBtn}
+    </span>
   );
 }
 
@@ -287,7 +358,6 @@ export interface MemorySourceStatusMarkProps {
   className?: string;
 }
 
-/** Status band for NEED frame — quality mark only (EXACT / INTERPOLATED / …). */
 export function MemorySourceStatusMark({
   memorySource,
   className,
@@ -321,7 +391,6 @@ export function MemorySourceStatusMark({
     </div>
   );
 }
-
 /** MEMORY FORECAST SOURCE identity — lab + kind + pips; hover recap. */
 export default function MemorySourcePanel({
   memorySource,

@@ -1728,6 +1728,27 @@
   background: var(--display-face-fc-label-ram-bg, color-mix(in srgb, #60a5fa 14%, transparent));
   border-left-color: var(--display-face-fc-label-ram-border, color-mix(in srgb, #60a5fa 30%, transparent));
   color: var(--display-face-fc-label-ram-fg, #93c5fd);
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 4px;
+  row-gap: 0;
+}
+.vram-fc-bar__need-split {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  font-size: calc(7px * var(--vram-fc-scale, 1.12));
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.15;
+  text-transform: lowercase;
+  opacity: 0.88;
+  white-space: nowrap;
+}
+.vram-fc-bar__need-split--buf {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.75;
 }
 /* NEED hero — free-pool visual paint (ok / caution / warn / hot); locked to bar fill */
 .vram-fc-bar__need-prefix {
@@ -2083,16 +2104,64 @@
   cursor: wait;
   font-weight: 600;
   color: var(--theme-provider-pill-active-text, #0a0804);
-  border-color: var(--theme-provider-pill-active-border, #f5971f);
   background: var(--theme-provider-pill-active-bg, #f5971f);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-provider-pill-active-bg, #f5971f) 40%, transparent);
-  opacity: 1;
+  border-color: var(--theme-provider-pill-active-border, #f5971f);
 }
 
+.vram-fc-header__reprobe-pair {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
 
-/* Rich SOURCE hover recap */
-.vram-fc-source {
-  position: relative;
+.vram-fc-header__reprobe--manual {
+  color: color-mix(in srgb, var(--theme-text-muted, #9ca3af) 88%, #fff);
+  border-color: color-mix(in srgb, #6b7280 45%, transparent);
+  background: color-mix(in srgb, #4b5563 42%, var(--theme-panel, #0a0a0a));
+}
+
+.vram-fc-header__reprobe--manual:hover:not(:disabled) {
+  color: #e5e7eb;
+  border-color: color-mix(in srgb, #9ca3af 55%, transparent);
+  background: color-mix(in srgb, #6b7280 38%, var(--theme-panel, #0a0a0a));
+}
+
+.vram-fc-header__reprobe--over-free,
+.vram-fc-source__reprobe[data-probe-state="over-free"],
+.vram-fc-header__reprobe[data-probe-state="over-free"],
+.vram-fc-header__reprobe--manual.vram-fc-header__reprobe--over-free {
+  color: #fff;
+  -webkit-text-fill-color: #fff;
+  border-color: var(--theme-telemetry-red, #ef4444);
+  background: color-mix(in srgb, var(--theme-telemetry-red, #ef4444) 82%, #000);
+  animation: vram-fc-over-free-pulse 0.9s ease-in-out infinite;
+}
+
+.vram-fc-header__reprobe--over-free:hover:not(:disabled) {
+  filter: brightness(1.12);
+}
+
+@keyframes vram-fc-over-free-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--theme-telemetry-red, #ef4444) 0%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 12px 2px color-mix(in srgb, var(--theme-telemetry-red, #ef4444) 65%, transparent);
+  }
+}
+
+@keyframes vram-fc-low-vram-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 0%, transparent);
+    filter: brightness(1);
+  }
+  50% {
+    box-shadow: 0 0 10px 1px color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 45%, transparent);
+    filter: brightness(1.15);
+  }
 }
 .vram-fc-recap {
   position: absolute;

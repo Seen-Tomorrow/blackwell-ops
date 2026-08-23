@@ -37,11 +37,19 @@ export interface ForecastInput {
 
   fitProbeVramMib?: number;
   fitProbeHostMib?: number;
+  /** FIT Host model column (weight on host) when printed. */
+  fitProbeHostModelMib?: number;
   fitProbeGpuBreakdownMib?: number[];
   fitProbePlacementKey?: string;
   fitProbeAnchorCtx?: number;
   /** Display clock when probe completed (session). */
   fitProbeMeasuredAt?: string;
+  /** `full` | `low_vram` session probe regime. */
+  fitProbeMode?: "full" | "low_vram";
+  /** Free-pool fingerprint when probe was taken (stale when free moves). */
+  fitProbeFreeFingerprint?: string;
+  /** Fitted -ngl from low_vram probe when known. */
+  fitProbeFittedNgl?: number;
 }
 
 /** Compat alias — old scenario call sites. */
