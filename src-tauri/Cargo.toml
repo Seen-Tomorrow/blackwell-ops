@@ -1,6 +1,6 @@
 [package]
 name = "blackwell-ops"
-version = "1.0.50"
+version = "1.0.55"
 edition = "2021"
 
 [[bin]]
