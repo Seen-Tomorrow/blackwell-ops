@@ -2444,7 +2444,8 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--brain 
 .ctx-forecast-ribbon-slot--track .ctx-forecast-ribbon {
   height: 100%;
   margin: 0;
-  pointer-events: auto;
+  pointer-events: none;
+  cursor: inherit;
 }
 .ctx-forecast-ribbon-slot--track .ctx-forecast-ribbon__rail {
   inset: 0;
@@ -2530,10 +2531,9 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--brain 
 
 /* Footer: always reserved — LEARNED fetch must not collapse strip height. */
 .full-auto-cockpit__ctx-footer {
-  display: flex;
-  flex-direction: row;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(22ch, auto) minmax(0, 1fr);
   align-items: center;
-  justify-content: flex-end;
   gap: 0.45rem;
   height: 16px;
   min-height: 16px;
@@ -2541,6 +2541,24 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--brain 
   padding: 0 0.1rem;
   box-sizing: border-box;
   overflow: hidden;
+}
+.full-auto-cockpit__ctx-legend {
+  justify-self: start;
+}
+.full-auto-cockpit__ctx-footer-hover {
+  justify-self: center;
+  min-width: 22ch;
+  text-align: center;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: color-mix(in srgb, var(--theme-text, #e2e8f0) 78%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.full-auto-cockpit__ctx-footer-actions {
+  justify-self: end;
 }
 
 .full-auto-cockpit__ctx-footer--idle {

@@ -9,10 +9,12 @@ import CtxForecastRibbon from "./CtxForecastRibbon";
 import {
   formatCtxChipLabel,
   parseSliderValues,
+  interpolateGbAtCtx,
   HERO_TRACK_HEIGHT_PX,
   HERO_TRACK_TOP_PX,
 } from "../lib/sliderParamUtils";
 import { isDevBuild } from "../lib/build";
+import { ribbonTooltip } from "./ctxForecastRibbonMath";
 import {
   cycleCtxLearnedMarkMode,
   loadCtxLearnedMarkMode,
@@ -136,7 +138,21 @@ export default function CockpitCtxStrip({
     >
       <div className="full-auto-cockpit__ctx-hero-main">
         <div className="full-auto-cockpit__ctx-slider min-w-0">
-          <div className="full-auto-cockpit__ctx-slider-host">
+          <div
+            className="full-auto-cockpit__ctx-slider-host"
+            onPointerMove={(e) => {
+              if (!showRibbon || !forecastCurve || forecastFreeGb == null) return;
+              const rect = e.currentTarget.getBoundingClientRect();
+              if (!(rect.width > 0)) return;
+              const pct = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+              const ctx = sliderRange.min + pct * (sliderRange.max - sliderRange.min);
+              const gb = interpolateGbAtCtx(forecastCurve, ctx);
+              setRibbonHover(
+                gb == null ? null : ribbonTooltip(ctx, gb, forecastFreeGb, learnedMarks ?? []),
+              );
+            }}
+            onPointerLeave={() => setRibbonHover(null)}
+          >
             <CustomSliderParam
               paramKey="ctx"
               currentValue={ctxValue}
@@ -167,11 +183,6 @@ export default function CockpitCtxStrip({
               ? formatCtxChipLabel(ctxValue)
               : String(ctxValue ?? "")}
           </span>
-          {ribbonHover ? (
-            <span className="ctx-forecast-ribbon__value-tip font-mono" title={ribbonHover}>
-              {ribbonHover}
-            </span>
-          ) : null}
           {ctxPerSlot != null && ctxPerSlot > 0 && ctxSlotCount != null && ctxSlotCount > 1 && (
             <>
               <span className="full-auto-cockpit__ctx-sep font-mono">|</span>
@@ -190,7 +201,7 @@ export default function CockpitCtxStrip({
       >
         <span
           className="full-auto-cockpit__ctx-legend"
-          title="Cyan = LEARNED launches (drag snaps; Alt/Shift free). Amber ≤N = max CTX that still fits free VRAM — fixed limit; thumb crosses it when you raise CTX. Green rail OK / red over."
+          title="Cyan ticks = LEARNED launches. Amber ≤N = VRAM limit. Ribbon paint = need vs free."
         >
           {hasLearned ? (
             <>
@@ -215,6 +226,9 @@ export default function CockpitCtxStrip({
           {footerBusy ? (
             <span className="full-auto-cockpit__ctx-legend-spacer">LEARNED · snap</span>
           ) : null}
+        </span>
+        <span className="full-auto-cockpit__ctx-footer-hover font-mono">
+          {ribbonHover || "\u00a0"}
         </span>
         <span className="full-auto-cockpit__ctx-footer-actions">
           {showRibbon ? (

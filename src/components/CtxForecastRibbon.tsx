@@ -69,22 +69,24 @@ export default function CtxForecastRibbon({
       }}
     >
       <div className="ctx-forecast-ribbon__rail" style={{ background: gradient }} />
-      {learnedMarks.map((mark) => {
-        if (mark < min || mark > max) return null;
-        const pct = ((mark - min) / (max - min)) * 100;
-        const custom = !presetSet.has(mark);
-        const near = stops.reduce((best, s) =>
-          Math.abs(s.ctx - mark) < Math.abs(best.ctx - mark) ? s : best,
-        );
-        return (
-          <span
-            key={mark}
-            className={`ctx-forecast-ribbon__tick${custom ? " is-custom" : ""}`}
-            style={{ left: `${pct}%` }}
-            title={ribbonTooltip(mark, near.gb, forecastFreeGb, [mark])}
-          />
-        );
-      })}
+      {place === "marks"
+        ? learnedMarks.map((mark) => {
+            if (mark < min || mark > max) return null;
+            const pct = ((mark - min) / (max - min)) * 100;
+            const custom = !presetSet.has(mark);
+            const near = stops.reduce((best, s) =>
+              Math.abs(s.ctx - mark) < Math.abs(best.ctx - mark) ? s : best,
+            );
+            return (
+              <span
+                key={mark}
+                className={`ctx-forecast-ribbon__tick${custom ? " is-custom" : ""}`}
+                style={{ left: `${pct}%` }}
+                title={ribbonTooltip(mark, near.gb, forecastFreeGb, [mark])}
+              />
+            );
+          })
+        : null}
       {hover && place !== "track" ? (
         <span className="ctx-forecast-ribbon__tip font-mono" style={{ left: `${hover.pct}%` }}>
           {hover.text}
