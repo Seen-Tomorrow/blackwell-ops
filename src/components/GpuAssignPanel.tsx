@@ -177,7 +177,7 @@ export default function GpuAssignPanel({
   if (gpus.length === 0) return null;
 
   const splitActive = isSplitModeActive(splitValue) || hideSplitNone;
-  const deviceOptions = gpus.map((_, i) => `GPU-${i}`);
+  const deviceOptions = gpus.map((g) => `GPU-${g.index}`);
   const visibleSplitValues = splitValues.filter((val) => {
     const mode = String(val).toLowerCase();
     if (hideSplitNone && mode === "none") return false;

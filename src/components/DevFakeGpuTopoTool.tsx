@@ -1,67 +1,97 @@
 /**
- * DEV-only: configurable fake multi-GPU topo (real SKU names + VRAM).
- * Modal grid: set counts per card (e.g. 4× RTX 5090 32G). Session only.
+ * DEV-only: GPU topology override (visible real count + synthetic extras).
+ * Session only. Forecast / assign / split see the merged list as real units.
  */
 
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { useTelemetry } from "../context/TelemetryContext";
 import {
   DEV_FAKE_GPU_CATALOG,
   DEV_FAKE_GPU_COUNT_MAX,
   clearDevFakeGpus,
   getDevFakeGpuPlan,
+  getDevLastRealGpuCount,
+  getDevRealVisibleLimit,
   setDevFakeGpuPlan,
+  setDevRealVisibleLimit,
   subscribeDevFakeGpuExtra,
   type DevFakeGpuPlan,
 } from "../lib/devFakeGpuTopo";
 
-function planSnapshot(): DevFakeGpuPlan {
-  return getDevFakeGpuPlan();
+type Draft = {
+  extras: DevFakeGpuPlan;
+  /** null = all NVML cards */
+  realLimit: number | null;
+};
+
+function snap(): Draft {
+  return {
+    extras: getDevFakeGpuPlan(),
+    realLimit: getDevRealVisibleLimit(),
+  };
+}
+
+function extraTotal(p: DevFakeGpuPlan): number {
+  return Object.values(p).reduce((s, n) => s + (n || 0), 0);
 }
 
 export default function DevFakeGpuTopoTool() {
+  const { gpus } = useTelemetry();
   const [open, setOpen] = useState(false);
-  const [plan, setPlan] = useState<DevFakeGpuPlan>(planSnapshot);
-  const [draft, setDraft] = useState<DevFakeGpuPlan>(planSnapshot);
-  const total = Object.values(plan).reduce((s, n) => s + (n || 0), 0);
+  const [applied, setApplied] = useState<Draft>(snap);
+  const [draft, setDraft] = useState<Draft>(snap);
+  const nvmlCount = Math.max(getDevLastRealGpuCount(), 1);
+  const extraN = extraTotal(applied.extras);
+  const realCapped = applied.realLimit != null;
+  const active = extraN > 0 || realCapped;
+  const visibleN = gpus.length;
 
   useEffect(() => {
-    return subscribeDevFakeGpuExtra(() => setPlan(planSnapshot()));
+    return subscribeDevFakeGpuExtra(() => setApplied(snap()));
   }, []);
 
   useEffect(() => {
-    if (!open) return;
-    setDraft(planSnapshot());
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    if (open) setDraft(snap());
   }, [open]);
 
-  const bump = useCallback((id: string, delta: number) => {
+  const bumpSku = useCallback((id: string, delta: number) => {
     setDraft((prev) => {
-      const cur = Math.max(0, Math.floor(Number(prev[id]) || 0));
+      const cur = Math.max(0, Math.floor(Number(prev.extras[id]) || 0));
       const next = Math.max(0, Math.min(DEV_FAKE_GPU_COUNT_MAX, cur + delta));
-      return { ...prev, [id]: next };
+      return { ...prev, extras: { ...prev.extras, [id]: next } };
     });
   }, []);
 
+  const bumpReal = useCallback((delta: number) => {
+    setDraft((prev) => {
+      const base = prev.realLimit ?? nvmlCount;
+      const next = Math.max(1, Math.min(nvmlCount, base + delta));
+      return { ...prev, realLimit: next >= nvmlCount ? null : next };
+    });
+  }, [nvmlCount]);
+
   const apply = useCallback(() => {
-    setDevFakeGpuPlan(draft);
-    setPlan(planSnapshot());
+    setDevFakeGpuPlan(draft.extras);
+    setDevRealVisibleLimit(draft.realLimit);
+    setApplied(snap());
     setOpen(false);
   }, [draft]);
 
   const clear = useCallback(() => {
     clearDevFakeGpus();
-    setDraft({});
-    setPlan({});
+    setDraft({ extras: {}, realLimit: null });
+    setApplied({ extras: {}, realLimit: null });
     setOpen(false);
   }, []);
 
-  const draftTotal = Object.values(draft).reduce((s, n) => s + (n || 0), 0);
-  const btnLabel = total > 0 ? `+${total}G` : "GPU+";
+  const draftExtras = extraTotal(draft.extras);
+  const draftReal = draft.realLimit ?? nvmlCount;
+  const btnLabel = !active
+    ? "GPU+"
+    : realCapped
+      ? `${applied.realLimit}R${extraN > 0 ? `+${extraN}` : ""}`
+      : `+${extraN}G`;
 
   const modal = open
     ? createPortal(
@@ -80,16 +110,45 @@ export default function DevFakeGpuTopoTool() {
           >
             <div className="dev-fake-gpu-modal__head">
               <h3 id="dev-fake-gpu-title" className="dev-fake-gpu-modal__title">
-                FAKE GPU TOPO
+                GPU TOPO (DEV)
               </h3>
               <p className="dev-fake-gpu-modal__hint">
-                Real product names + VRAM · append after NVML · session only · layout / forecast
+                Visible list is first-class: forecast, assign, split, VRAM. Session only.
+                Launch/OC still only touch real NVML cards.
               </p>
+            </div>
+
+            <div className="dev-fake-gpu-modal__card" style={{ marginBottom: "0.45rem" }}>
+              <div className="dev-fake-gpu-modal__card-name">Visible real GPUs</div>
+              <div className="dev-fake-gpu-modal__card-meta">
+                NVML {nvmlCount} · keep first N (safe 1-GPU) · extras append after
+              </div>
+              <div className="dev-fake-gpu-modal__stepper">
+                <button
+                  type="button"
+                  className="dev-fake-gpu-modal__step"
+                  disabled={draftReal <= 1}
+                  onClick={() => bumpReal(-1)}
+                  aria-label="Fewer real GPUs"
+                >
+                  −
+                </button>
+                <span className="dev-fake-gpu-modal__count tabular-nums">{draftReal}</span>
+                <button
+                  type="button"
+                  className="dev-fake-gpu-modal__step"
+                  disabled={draftReal >= nvmlCount}
+                  onClick={() => bumpReal(1)}
+                  aria-label="More real GPUs"
+                >
+                  +
+                </button>
+              </div>
             </div>
 
             <div className="dev-fake-gpu-modal__grid">
               {DEV_FAKE_GPU_CATALOG.map((sku) => {
-                const n = Math.max(0, Math.floor(Number(draft[sku.id]) || 0));
+                const n = Math.max(0, Math.floor(Number(draft.extras[sku.id]) || 0));
                 return (
                   <div key={sku.id} className="dev-fake-gpu-modal__card">
                     <div className="dev-fake-gpu-modal__card-name" title={sku.name}>
@@ -103,7 +162,7 @@ export default function DevFakeGpuTopoTool() {
                         type="button"
                         className="dev-fake-gpu-modal__step"
                         disabled={n <= 0}
-                        onClick={() => bump(sku.id, -1)}
+                        onClick={() => bumpSku(sku.id, -1)}
                         aria-label={`Fewer ${sku.short}`}
                       >
                         −
@@ -113,7 +172,7 @@ export default function DevFakeGpuTopoTool() {
                         type="button"
                         className="dev-fake-gpu-modal__step"
                         disabled={n >= DEV_FAKE_GPU_COUNT_MAX}
-                        onClick={() => bump(sku.id, 1)}
+                        onClick={() => bumpSku(sku.id, 1)}
                         aria-label={`More ${sku.short}`}
                       >
                         +
@@ -129,43 +188,45 @@ export default function DevFakeGpuTopoTool() {
               <button
                 type="button"
                 className="dev-fake-gpu-modal__preset"
-                onClick={() => setDraft({ rtx5090: 4 })}
+                onClick={() => setDraft({ extras: {}, realLimit: 1 })}
               >
-                4×5090
+                1 real
               </button>
               <button
                 type="button"
                 className="dev-fake-gpu-modal__preset"
-                onClick={() => setDraft({ rtx4090: 2 })}
+                onClick={() => setDraft({ extras: {}, realLimit: null })}
               >
-                2×4090
+                all real
               </button>
               <button
                 type="button"
                 className="dev-fake-gpu-modal__preset"
-                onClick={() => setDraft({ rtx6000ada: 2 })}
+                onClick={() => setDraft({ extras: { pro6000: 4 }, realLimit: null })}
               >
-                2×Ada48
+                +4×PRO
               </button>
               <button
                 type="button"
                 className="dev-fake-gpu-modal__preset"
-                onClick={() => setDraft({ pro6000: 8 })}
+                onClick={() => setDraft({ extras: { rtx5090: 4 }, realLimit: null })}
               >
-                8×PRO
+                +4×5090
               </button>
               <button
                 type="button"
                 className="dev-fake-gpu-modal__preset"
-                onClick={() => setDraft({ rtx5090: 2, rtx6000ada: 2 })}
+                onClick={() => setDraft({ extras: { rtx4090: 2 }, realLimit: null })}
               >
-                mixed
+                +2×4090
               </button>
             </div>
 
             <div className="dev-fake-gpu-modal__foot">
               <span className="dev-fake-gpu-modal__total">
-                {draftTotal === 0 ? "Real GPUs only" : `+${draftTotal} synthetic`}
+                {draftExtras === 0 && draft.realLimit == null
+                  ? `Real GPUs only (${nvmlCount})`
+                  : `${draftReal} real + ${draftExtras} extra → ${draftReal + draftExtras} visible`}
               </span>
               <div className="dev-fake-gpu-modal__actions">
                 <button type="button" className="dev-fake-gpu-modal__btn" onClick={clear}>
@@ -199,14 +260,14 @@ export default function DevFakeGpuTopoTool() {
         type="button"
         onClick={() => setOpen(true)}
         className={`app-header-dev-tools__btn app-chrome-control-btn w-auto ${
-          total > 0
+          active
             ? "text-cyan-300 hover:text-cyan-200"
             : "text-white/45 hover:text-white/70"
         }`}
         title={
-          total > 0
-            ? `DEV: +${total} synthetic GPU(s) — open topo builder`
-            : "DEV: fake multi-GPU topo (real SKU names + VRAM)"
+          active
+            ? `DEV: ${visibleN} visible GPU(s) — open topo builder`
+            : "DEV: GPU topo — hide reals / add extras (forecast + layout)"
         }
       >
         {btnLabel}

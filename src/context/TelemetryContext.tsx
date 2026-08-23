@@ -5,9 +5,7 @@ import { gpuScanSnapshotEqual } from "../lib/telemetryGpu";
 import { useTauriListen } from "../hooks/useTauriListen";
 import { frontendPollEnabled } from "../lib/debugFlags";
 import {
-  appendDevFakeGpus,
-  getDevFakeGpuPlan,
-  getDevFakeGpuTotal,
+  applyDevGpuTopo,
   subscribeDevFakeGpuExtra,
 } from "../lib/devFakeGpuTopo";
 
@@ -70,7 +68,6 @@ export function TelemetryProvider({
   gpuPollTierRef.current = gpuPollTier;
 
   useEffect(() => {
-    if (__BUILD_MODE__ !== "dev") return;
     return subscribeDevFakeGpuExtra(() => setDevFakeRev((n) => n + 1));
   }, []);
 
@@ -184,8 +181,7 @@ export function TelemetryProvider({
   }, [pollingActive, pollCpu]);
 
   const gpus = useMemo(() => {
-    if (__BUILD_MODE__ !== "dev" || getDevFakeGpuTotal() <= 0) return realGpus;
-    return appendDevFakeGpus(realGpus, getDevFakeGpuPlan());
+    return applyDevGpuTopo(realGpus);
     // devFakeRev forces re-merge when the DEV plan changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [realGpus, devFakeRev]);

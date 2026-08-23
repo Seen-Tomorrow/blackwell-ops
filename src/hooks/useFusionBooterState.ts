@@ -11,6 +11,7 @@ import {
   patchBooterSession,
   subscribeBooterSession,
 } from "../lib/fusionBooterStore";
+import { applyDevGpuTopo } from "../lib/devFakeGpuTopo";
 
 export interface GpuVramLoad {
   index: number;
@@ -124,7 +125,7 @@ export function useFusionBooterState({
     const pollGpu = async () => {
       try {
         const data = await invoke<GpuInfo[]>("scan_gpus");
-        if (!cancelled) setLiveGpus(data);
+        if (!cancelled) setLiveGpus(applyDevGpuTopo(data));
       } catch {}
     };
 

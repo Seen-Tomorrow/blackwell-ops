@@ -655,9 +655,11 @@ export default function Layout({
                 {updFakeOn ? `FAKE v${updFakeVersion ?? "?"}` : "FAKE"}
               </button>
               <DevViewportTool />
-              <DevFakeGpuTopoTool />
             </div>
           )}
+          <div className="app-header-dev-tools flex flex-row flex-shrink-0" title="GPU topo override">
+            <DevFakeGpuTopoTool />
+          </div>
         </div>
       </header>
 

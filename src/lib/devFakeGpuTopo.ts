@@ -1,6 +1,7 @@
 /**
- * DEV-only: inject synthetic GPUs into telemetry for layout + forecast stress.
- * Session state only. Real NVML list is never mutated at the source.
+ * DEV-only: session GPU topology override for layout + forecast stress.
+ * Real NVML is never mutated. Visible list = first N real cards + synthetic extras.
+ * Forecast / assign / split treat every visible row as a real unit.
  */
 
 import type { GpuInfo } from "./types";
@@ -75,8 +76,15 @@ export const DEV_FAKE_GPU_COUNT_MAX = 8;
 export type DevFakeGpuPlan = Record<string, number>;
 
 let plan: DevFakeGpuPlan = {};
+/** null = keep every NVML card. Otherwise first N by index (min 1). */
+let realVisibleLimit: number | null = null;
+let lastRealCount = 0;
 const fakeIndices = new Set<number>();
 const listeners = new Set<() => void>();
+
+function notify(): void {
+  for (const cb of listeners) cb();
+}
 
 export function getDevFakeGpuPlan(): DevFakeGpuPlan {
   return { ...plan };
@@ -86,6 +94,18 @@ export function getDevFakeGpuTotal(): number {
   return Object.values(plan).reduce((s, n) => s + Math.max(0, n | 0), 0);
 }
 
+export function getDevRealVisibleLimit(): number | null {
+  return realVisibleLimit;
+}
+
+export function getDevLastRealGpuCount(): number {
+  return lastRealCount;
+}
+
+export function isDevGpuTopoActive(): boolean {
+  return getDevFakeGpuTotal() > 0 || realVisibleLimit != null;
+}
+
 export function setDevFakeGpuPlan(next: DevFakeGpuPlan): void {
   const cleaned: DevFakeGpuPlan = {};
   for (const sku of DEV_FAKE_GPU_CATALOG) {
@@ -93,7 +113,18 @@ export function setDevFakeGpuPlan(next: DevFakeGpuPlan): void {
     if (n > 0) cleaned[sku.id] = n;
   }
   plan = cleaned;
-  for (const cb of listeners) cb();
+  notify();
+}
+
+export function setDevRealVisibleLimit(limit: number | null): void {
+  if (limit == null || !Number.isFinite(limit)) {
+    realVisibleLimit = null;
+    notify();
+    return;
+  }
+  const n = Math.floor(limit);
+  realVisibleLimit = n < 1 ? 1 : n;
+  notify();
 }
 
 export function setDevFakeGpuCount(skuId: string, count: number): void {
@@ -101,7 +132,9 @@ export function setDevFakeGpuCount(skuId: string, count: number): void {
 }
 
 export function clearDevFakeGpus(): void {
-  setDevFakeGpuPlan({});
+  plan = {};
+  realVisibleLimit = null;
+  notify();
 }
 
 export function subscribeDevFakeGpuExtra(cb: () => void): () => void {
@@ -115,9 +148,16 @@ export function isDevFakeGpu(gpu: Pick<GpuInfo, "index" | "name">): boolean {
   return fakeIndices.has(gpu.index);
 }
 
+function sliceVisibleReals(real: GpuInfo[]): GpuInfo[] {
+  lastRealCount = real.length;
+  if (realVisibleLimit == null || real.length === 0) return real;
+  const n = Math.min(real.length, Math.max(1, realVisibleLimit));
+  return [...real].sort((a, b) => a.index - b.index).slice(0, n);
+}
+
 /**
- * Expand plan into GpuInfo rows after real NVML entries.
- * Indices continue from max real index. Names are real product strings.
+ * Expand plan into GpuInfo rows after visible NVML entries.
+ * Indices continue from max visible index. Names are real product strings.
  */
 export function appendDevFakeGpus(real: GpuInfo[], p: DevFakeGpuPlan = plan): GpuInfo[] {
   fakeIndices.clear();
@@ -125,8 +165,7 @@ export function appendDevFakeGpus(real: GpuInfo[], p: DevFakeGpuPlan = plan): Gp
   if (total <= 0) return real;
 
   const template = real[real.length - 1];
-  let nextIdx =
-    real.length > 0 ? Math.max(...real.map((g) => g.index)) + 1 : 0;
+  let nextIdx = real.length > 0 ? Math.max(...real.map((g) => g.index)) + 1 : 0;
   const driver = template?.driver_version;
   const fakes: GpuInfo[] = [];
 
@@ -138,7 +177,7 @@ export function appendDevFakeGpus(real: GpuInfo[], p: DevFakeGpuPlan = plan): Gp
       const used = 256;
       fakes.push({
         index,
-        name: n > 1 ? `${sku.name} (${i + 1})` : sku.name,
+        name: sku.name,
         memory_total: sku.vramMib,
         memory_used: used,
         memory_free: sku.vramMib - used,
@@ -156,6 +195,16 @@ export function appendDevFakeGpus(real: GpuInfo[], p: DevFakeGpuPlan = plan): Gp
   }
 
   return real.length === 0 ? fakes : [...real, ...fakes];
+}
+
+/** Apply visible-real cap + synthetic extras. Identity when inactive. */
+export function applyDevGpuTopo(real: GpuInfo[]): GpuInfo[] {
+  lastRealCount = real.length;
+  if (!isDevGpuTopoActive()) {
+    fakeIndices.clear();
+    return real;
+  }
+  return appendDevFakeGpus(sliceVisibleReals(real), plan);
 }
 
 /** @deprecated Use getDevFakeGpuTotal / plan — kept for button label helpers. */

@@ -730,7 +730,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       label: "DEVICE",
       flag: null,
       ptype: "arg_select" as const,
-      values: gpus.map((_, i) => `GPU-${i}`),
+      values: gpus.map((g) => `GPU-${g.index}`),
       order: -1,
       hidden: false,
       defaultValue: "GPU-0",
@@ -744,7 +744,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     // Repair mtp_*/dflash_* if an older migrate pinned them into SYSTEM.
     const { params: migrated } = migrateCatalogParams(cleaned);
     const defs = deviceParam ? [deviceParam, ...migrated] : [...migrated];
-    const gpuValues = gpus.map((_, i) => `GPU-${i}`);
+    const gpuValues = gpus.map((g) => `GPU-${g.index}`);
     return defs
       .map((d) => {
         if (d.key === "mmap") {
@@ -991,6 +991,18 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     updateParam("device", "GPU-0");
     updateParam("split", "none");
   }, [isCustomProvider, effectiveBackendType, updateParam]);
+
+  useEffect(() => {
+    if (gpus.length === 0) return;
+    const allowed = new Set(gpus.map((g) => `GPU-${g.index}`));
+    const cur = String(config.device ?? "GPU-0");
+    if (!allowed.has(cur)) {
+      updateParam("device", `GPU-${gpus[0].index}`);
+    }
+    if (gpus.length === 1 && isSplitModeActive(config.split)) {
+      updateParam("split", "none");
+    }
+  }, [gpus, config.device, config.split, updateParam]);
 
   const showChromeHints = useMemo(
     () => !fullAutoMode && !stack.some((s) => s.status === "LOADING"),
