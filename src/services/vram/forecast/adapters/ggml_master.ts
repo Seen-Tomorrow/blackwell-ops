@@ -101,8 +101,12 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   const fitCurvePts = allLearnedPts.filter((p) => isFullGpuLearnedPoint(p.hostMib));
 
   const mergedCurve = fitCurvePts.map((p) => ({ ...p }));
+  // A live FIT probe at the slider CTX must not break lerp between real launches
+  // (128k/512k/1M looked like "probe curve" in the gaps). Only seed when LEARNED
+  // cannot interpolate on its own.
   if (
     probeAppliesToCurve
+    && fitCurvePts.length < 2
     && probeAnchor > 0
     && isFullGpuLearnedPoint(probeHostGb != null ? probeHostGb * 1024 : undefined)
     && !mergedCurve.some((p) => p.ctx === probeAnchor)
