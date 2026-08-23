@@ -11,6 +11,8 @@ import {
   sampleRibbonStops,
 } from "./ctxForecastRibbonMath";
 
+export type CtxForecastRibbonPlace = "track" | "marks";
+
 export type CtxForecastRibbonProps = {
   min: number;
   max: number;
@@ -18,6 +20,8 @@ export type CtxForecastRibbonProps = {
   forecastFreeGb: number;
   learnedMarks?: number[];
   ctxValues?: (string | number)[];
+  /** track = fill the hero rail; marks = thin strip at tick bottoms. */
+  place?: CtxForecastRibbonPlace;
 };
 
 export default function CtxForecastRibbon({
@@ -27,6 +31,7 @@ export default function CtxForecastRibbon({
   forecastFreeGb,
   learnedMarks = [],
   ctxValues = [],
+  place = "marks",
 }: CtxForecastRibbonProps) {
   const [hover, setHover] = useState<{ pct: number; text: string } | null>(null);
 
@@ -55,7 +60,7 @@ export default function CtxForecastRibbon({
 
   return (
     <div
-      className="ctx-forecast-ribbon"
+      className={`ctx-forecast-ribbon ctx-forecast-ribbon--${place}`}
       onPointerMove={onMove}
       onPointerLeave={() => setHover(null)}
     >

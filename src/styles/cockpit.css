@@ -2427,14 +2427,47 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--brain 
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   min-width: 0;
+}
+.full-auto-cockpit__ctx-slider-host {
+  position: relative;
+  min-width: 0;
+}
+.ctx-forecast-ribbon-slot--track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+.ctx-forecast-ribbon-slot--track .ctx-forecast-ribbon {
+  height: 100%;
+  margin: 0;
+  pointer-events: auto;
+}
+.ctx-forecast-ribbon-slot--track .ctx-forecast-ribbon__rail {
+  inset: 0;
+  border-radius: 2px;
+  opacity: 0.78;
+}
+.ctx-forecast-ribbon-slot--track .ctx-forecast-ribbon__tick {
+  top: 1px;
+  height: calc(100% - 2px);
 }
 .ctx-forecast-ribbon {
   position: relative;
-  height: 10px;
-  margin: 0 1px 2px;
+  height: 7px;
+  margin: 0 1px 1px;
   cursor: crosshair;
+}
+.ctx-forecast-ribbon--marks {
+  height: 6px;
+  margin-top: -1px;
+}
+.ctx-forecast-ribbon--marks .ctx-forecast-ribbon__rail {
+  inset: 1px 0 0;
+  border-radius: 1px;
 }
 .ctx-forecast-ribbon__rail {
   position: absolute;
@@ -2472,6 +2505,7 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--brain 
   pointer-events: none;
   z-index: 6;
 }
+
 
 
 .full-auto-cockpit__ctx-values {

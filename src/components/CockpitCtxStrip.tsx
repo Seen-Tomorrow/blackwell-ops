@@ -6,7 +6,12 @@
 import { useCallback, useMemo, useState } from "react";
 import CustomSliderParam from "./CustomSliderParam";
 import CtxForecastRibbon from "./CtxForecastRibbon";
-import { formatCtxChipLabel, parseSliderValues } from "../lib/sliderParamUtils";
+import {
+  formatCtxChipLabel,
+  parseSliderValues,
+  HERO_TRACK_HEIGHT_PX,
+  HERO_TRACK_TOP_PX,
+} from "../lib/sliderParamUtils";
 import { isDevBuild } from "../lib/build";
 import {
   cycleCtxLearnedMarkMode,
@@ -14,6 +19,7 @@ import {
   saveCtxLearnedMarkMode,
   type CtxLearnedMarkMode,
 } from "../lib/storage";
+
 export function useCtxLearnedMarkMode(): {
   mode: CtxLearnedMarkMode;
   cycle: () => void;
@@ -68,12 +74,9 @@ export interface CockpitCtxStripProps {
   ctxSlotCount?: number;
   className?: string;
   learnedMarks?: number[];
-  /** Sparse measured curve for fits ghost. */
   forecastCurve?: Array<{ ctx: number; gb: number }>;
   forecastFreeGb?: number;
-  /** Delete custom (non-preset) LEARNED ctx rows for this keyed view. */
   onPruneCustom?: (ctxs: number[]) => void | Promise<number | void>;
-  /** Above-dock chrome. False when nested inside the cockpit. */
   standalone?: boolean;
 }
 
@@ -93,14 +96,37 @@ export default function CockpitCtxStrip({
   standalone = true,
 }: CockpitCtxStripProps) {
   const { mode, cycle } = useCtxLearnedMarkMode();
+  const [ribbonPlace, setRibbonPlace] = useState<"track" | "marks" | "both">("both");
   const hasLearned = (learnedMarks?.length ?? 0) > 0;
   const customCtxs = useMemo(() => {
     const presets = new Set(parseSliderValues(ctxValues ?? []));
     return (learnedMarks ?? []).filter((m) => !presets.has(m));
   }, [ctxValues, learnedMarks]);
+  const sliderRange = useMemo(() => {
+    const nums = parseSliderValues(ctxValues ?? []);
+    return {
+      min: nums.length ? Math.min(...nums) : 2048,
+      max: nums.length ? Math.max(...nums) : 524288,
+    };
+  }, [ctxValues]);
+  const showRibbon =
+    isDevBuild()
+    && (forecastCurve?.length ?? 0) > 0
+    && forecastFreeGb != null
+    && forecastFreeGb > 0;
+  const showTrack = showRibbon && (ribbonPlace === "track" || ribbonPlace === "both");
+  const showMarks = showRibbon && (ribbonPlace === "marks" || ribbonPlace === "both");
   const hasGhost =
     (forecastCurve?.length ?? 0) > 0 && forecastFreeGb != null && forecastFreeGb > 0;
   const footerBusy = !hasLearned && !hasGhost;
+  const ribbonProps = {
+    min: sliderRange.min,
+    max: sliderRange.max,
+    forecastCurve: forecastCurve ?? [],
+    forecastFreeGb: forecastFreeGb ?? 0,
+    learnedMarks,
+    ctxValues,
+  };
 
   return (
     <div
@@ -108,29 +134,30 @@ export default function CockpitCtxStrip({
     >
       <div className="full-auto-cockpit__ctx-hero-main">
         <div className="full-auto-cockpit__ctx-slider min-w-0">
-          <CustomSliderParam
-            paramKey="ctx"
-            currentValue={ctxValue}
-            defaultValue={ctxDefault}
-            onChange={onCtxChange}
-            step={ctxStep}
-            values={ctxValues}
-            learnedMarks={learnedMarks}
-            learnedMarkMode={mode}
-            layout="hero"
-            forecastCurve={forecastCurve}
-            forecastFreeGb={forecastFreeGb}
-          />
-          {isDevBuild() && forecastCurve && forecastCurve.length > 0 && forecastFreeGb != null && forecastFreeGb > 0 ? (
-            <CtxForecastRibbon
-              min={parseSliderValues(ctxValues ?? []).length ? Math.min(...parseSliderValues(ctxValues ?? [])) : 2048}
-              max={parseSliderValues(ctxValues ?? []).length ? Math.max(...parseSliderValues(ctxValues ?? [])) : 524288}
+          <div className="full-auto-cockpit__ctx-slider-host">
+            <CustomSliderParam
+              paramKey="ctx"
+              currentValue={ctxValue}
+              defaultValue={ctxDefault}
+              onChange={onCtxChange}
+              step={ctxStep}
+              values={ctxValues}
+              learnedMarks={learnedMarks}
+              learnedMarkMode={mode}
+              layout="hero"
               forecastCurve={forecastCurve}
               forecastFreeGb={forecastFreeGb}
-              learnedMarks={learnedMarks}
-              ctxValues={ctxValues}
             />
-          ) : null}
+            {showTrack ? (
+              <div
+                className="ctx-forecast-ribbon-slot ctx-forecast-ribbon-slot--track"
+                style={{ top: HERO_TRACK_TOP_PX, height: HERO_TRACK_HEIGHT_PX }}
+              >
+                <CtxForecastRibbon {...ribbonProps} place="track" />
+              </div>
+            ) : null}
+          </div>
+          {showMarks ? <CtxForecastRibbon {...ribbonProps} place="marks" /> : null}
         </div>
         <div className="full-auto-cockpit__ctx-values">
           <span className="full-auto-cockpit__ctx-value font-mono">
@@ -181,27 +208,41 @@ export default function CockpitCtxStrip({
             <span className="full-auto-cockpit__ctx-legend-spacer">LEARNED · snap</span>
           ) : null}
         </span>
-        {hasLearned ? (
-          <span className="full-auto-cockpit__ctx-footer-actions">
-            {onPruneCustom && customCtxs.length > 0 ? (
-              <button
-                type="button"
-                className="full-auto-cockpit__ctx-marks-toggle full-auto-cockpit__ctx-marks-toggle--prune font-mono"
-                onClick={() => {
-                  void onPruneCustom(customCtxs);
-                }}
-                title={`Remove ${customCtxs.length} custom LEARNED CTX mark${customCtxs.length === 1 ? "" : "s"} for this model + kv/spec/split (preset ticks stay)`}
-              >
-                PRUNE {customCtxs.length}
-              </button>
-            ) : null}
-            <CtxLearnedMarkToggle mode={mode} onCycle={cycle} visible />
-          </span>
-        ) : (
-          <span className="full-auto-cockpit__ctx-marks-toggle full-auto-cockpit__ctx-marks-toggle--slot" aria-hidden>
-            ALL
-          </span>
-        )}
+        <span className="full-auto-cockpit__ctx-footer-actions">
+          {showRibbon ? (
+            <button
+              type="button"
+              className="full-auto-cockpit__ctx-marks-toggle font-mono"
+              onClick={() => {
+                setRibbonPlace((p) => (p === "both" ? "track" : p === "track" ? "marks" : "both"));
+              }}
+              title="DEV ribbon: both / over track / under marks"
+            >
+              {ribbonPlace === "both" ? "RIBBON BOTH" : ribbonPlace === "track" ? "RIBBON TRACK" : "RIBBON MARKS"}
+            </button>
+          ) : null}
+          {hasLearned ? (
+            <>
+              {onPruneCustom && customCtxs.length > 0 ? (
+                <button
+                  type="button"
+                  className="full-auto-cockpit__ctx-marks-toggle full-auto-cockpit__ctx-marks-toggle--prune font-mono"
+                  onClick={() => {
+                    void onPruneCustom(customCtxs);
+                  }}
+                  title={`Remove ${customCtxs.length} custom LEARNED CTX mark${customCtxs.length === 1 ? "" : "s"} for this model + kv/spec/split (preset ticks stay)`}
+                >
+                  PRUNE {customCtxs.length}
+                </button>
+              ) : null}
+              <CtxLearnedMarkToggle mode={mode} onCycle={cycle} visible />
+            </>
+          ) : (
+            <span className="full-auto-cockpit__ctx-marks-toggle full-auto-cockpit__ctx-marks-toggle--slot" aria-hidden>
+              ALL
+            </span>
+          )}
+        </span>
       </div>
     </div>
   );
