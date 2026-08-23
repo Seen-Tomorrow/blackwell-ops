@@ -180,8 +180,20 @@ export function attachMemorySource(
   input: ForecastInput,
 ): VramManifest | null {
   const memorySource = resolveMemorySource(manifest, input);
-  if (!memorySource) return null;
-  return { ...manifest, memorySource };
+  if (memorySource) return { ...manifest, memorySource };
+  // FIT/LEARNED number exists but SOURCE kind missed — still paint, don't radar.
+  if (manifest.vramTotalGb > 0 || manifest.validatedVramMib != null) {
+    return {
+      ...manifest,
+      memorySource: {
+        kind: input.fitProbeVramMib != null ? "fit_probe" : "learned",
+        exact: false,
+        detail: "measured (source kind recovered)",
+        confidence: 3,
+      },
+    };
+  }
+  return null;
 }
 
 export const MEMORY_SOURCE_LABELS: Record<MemorySource["kind"], string> = {

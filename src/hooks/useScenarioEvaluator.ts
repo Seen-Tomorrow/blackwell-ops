@@ -1038,6 +1038,7 @@ export function useScenarioEvaluator({
         fitProbeGpuBreakdownMib: result.gpu_breakdown_mib,
         fitProbePlacementKey: curPlacementKey,
         fitProbeAnchorCtx: anchorCtx,
+        fitProbeMeasuredAt: probeMeasuredAt,
         fitProbeMode: resultMode,
         fitProbeFreeFingerprint: liveFreeFp,
         fitProbeFittedNgl: result.fitted_ngl,
@@ -1061,7 +1062,11 @@ export function useScenarioEvaluator({
       };
 
       probeSessionRef.current = session;
-      commitManifest(evaluate(input));
+      const painted = evaluate(input);
+      commitManifest(painted);
+      if (painted == null) {
+        scheduleEvaluationRef.current(true);
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error("[FitValidate]", e);
