@@ -19,8 +19,8 @@ export const DISPLAY_FRAME_MIN_HEIGHT_PX = 240;
  * 1-row (1–3 GPUs depending on per-row density) is the common case; 2-row only
  * when the bank needs a second line. >2 rows scroll inside the 2-row bank.
  */
-export const FORECAST_PHOSPHOR_HEIGHT_1ROW_PX = 228;
-export const FORECAST_PHOSPHOR_HEIGHT_2ROW_PX = 280;
+export const FORECAST_PHOSPHOR_HEIGHT_1ROW_PX = 248;
+export const FORECAST_PHOSPHOR_HEIGHT_2ROW_PX = 300;
 
 /** Visible GPU rows for forecast glass (caps at 2; extras scroll). */
 export function forecastGpuVisibleRows(gpuCount: number, perRow: 2 | 3 = 2): 1 | 2 {

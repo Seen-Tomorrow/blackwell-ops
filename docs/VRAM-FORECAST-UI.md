@@ -20,8 +20,8 @@ Primary code:
 
 | Constant / helper | Use |
 |-------------------|-----|
-| `FORECAST_PHOSPHOR_HEIGHT_1ROW_PX` (228) | ASSISTED when GPU bank fits **one** row |
-| `FORECAST_PHOSPHOR_HEIGHT_2ROW_PX` (280) | ASSISTED when bank needs **two** visible rows |
+| `FORECAST_PHOSPHOR_HEIGHT_1ROW_PX` (248) | ASSISTED when GPU bank fits **one** row |
+| `FORECAST_PHOSPHOR_HEIGHT_2ROW_PX` (300) | ASSISTED when bank needs **two** visible rows |
 | `computeForecastPhosphorHeightPx(gpuCount, perRow)` | Shared by forecast, EVALUATING radar, and LOADING boot |
 | `FUSION_*` in `benchPanelLayout.ts` | **Running** overlay only — header + hero + latch + bench |
 

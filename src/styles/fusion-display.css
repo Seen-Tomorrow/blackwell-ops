@@ -1108,7 +1108,7 @@
 /* ASSISTED body — fixed-height dominant bars; GPU bank keeps remaining space */
 
 /* ASSISTED measure — SOURCE strip | NEED frame (spans up); rails under SOURCE */
-/* Keep compact so GPU topo keeps height inside 280px phosphor */
+/* Keep compact so GPU topo keeps height inside the phosphor (248/300) */
 .vram-fc-measure {
   position: relative;
   display: flex;
@@ -1443,20 +1443,14 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0;
+  gap: 3px;
   min-width: 0;
 }
 .vram-fc-need-frame__precision {
-  position: absolute;
-  left: 50%;
-  top: calc(100% + 3px);
-  z-index: 2;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 5px;
-  transform: translateX(-50%);
-  pointer-events: none;
 }
 .vram-fc-need-frame__precision-label {
   margin-right: 2px;
@@ -2338,12 +2332,11 @@
   width: 100%;
 }
 .vram-fc-source--dominant .vram-fc-source__head {
-  position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   justify-content: center;
-  gap: 0;
+  gap: 3px;
   flex-wrap: nowrap;
   width: auto;
   min-height: 0;
@@ -2356,14 +2349,9 @@
   gap: calc(5px * var(--vram-fc-scale, 1.12));
 }
 .vram-fc-source__line2 {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 3px);
-  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  pointer-events: none;
 }
 .vram-fc-source__curve-hint {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
