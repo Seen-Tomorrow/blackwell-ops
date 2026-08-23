@@ -265,6 +265,25 @@ DEV extra (`feat/low-vram-reprobe`):
 
 ---
 
+## Later — persist + RAM (do not start until VramBadge logic settles)
+
+`FusionOverlay` stays mounted; **`useScenarioEvaluator` does not**. Leave CONFIG
+and the hook remounts. Manifest has a small in-memory cache (seed paint) but
+**ProbeSession is a ref** → gone on remount → auto-FIT + CTX ribbon flash.
+
+When paint rules freeze:
+
+1. Module-level `ProbeSession` map next to `manifestCacheByKey` (session only,
+   no disk). Survive CONFIG remount. Do **not** persist FIT/low_vram to
+   `learned-vram.json`.
+2. Ribbon hover: skip `setState` when the tooltip string is unchanged.
+3. Then, if REL heap still climbs: profiler on CTX drag (`evaluate()` per
+   step). DEV Strict Mode doubles fetches — ignore that for REL.
+
+Not worth a persist/memory project while split/probe/SOURCE are still moving.
+
+---
+
 ## What not to build
 
 - Auto FIT when the CTX slider enters OOM territory
@@ -275,6 +294,7 @@ DEV extra (`feat/low-vram-reprobe`):
 - Second forecast adapter or second JSON cache
 
 ---
+
 
 ## Manual test checklist
 
