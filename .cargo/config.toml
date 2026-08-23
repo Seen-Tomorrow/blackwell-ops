@@ -1,18 +1,24 @@
 [build]
-# Disable incremental compilation on Windows to fix hot-reload issues
-# Incremental causes file locks that prevent cargo-watch from detecting changes
-incremental = false
+# Use all logical CPUs for crate-graph parallelism (default is already nCPU;
+# pin explicitly so nested jobservers / IDE wrappers cannot quietly throttle).
+jobs = 32
+# Incremental is the main lever for tens-hundreds of rebuilds/day on a mono-crate.
+# Was disabled for old cargo-watch file-lock flakiness; default dev path is now
+# `tauri dev --no-watch` (see package.json). Re-enable so only dirty modules rebuild.
+incremental = true
 
 # aws-lc-sys (via reqwest/rustls): CPU jitter entropy panics on short Windows uptime
 # with Instant overflow ("overflow when subtracting duration from instant") inside
-# jent_entropy_switch_notime_impl. REL uses panic=abort → process dies (blink+close,
+# jent_entropy_switch_notime_impl. REL uses panic=abort -> process dies (blink+close,
 # exit 0xC0000409). DEV survives because panics unwind. OS RNG is enough here.
 [env]
 AWS_LC_SYS_NO_JITTER_ENTROPY = "1"
 
-
+# rust-lld is bundled with the rustup toolchain (much faster than MSVC link.exe).
+# Dropped unconditional `/DEBUG` link-arg: rustc already emits the right debug
+# flags per profile, and forced full PDBs made every link pay full MSVC cost.
 [target.x86_64-pc-windows-msvc]
-rustflags = ["-C", "link-args=/DEBUG"]
+linker = "rust-lld"
 
 [watch]
 # Watch only src directory, ignore target and other dirs

@@ -40,8 +40,19 @@ windows-sys = { version = "0.61", features = ["Win32_System_Console", "Win32_Sys
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
+[profile.dev]
+# Day-to-day rebuilds: thin debuginfo -> much faster rust-lld links; full +0 still
+# available via CARGO_PROFILE_DEV_DEBUG=2 when deep-debugging.
+debug = "line-tables-only"
+# Parallel monomorphization/codegen inside the huge binary crate (default 256).
+# Keep high so the final blackwell-ops unit can use the 32-core box.
+codegen-units = 256
+
 [profile.release]
 opt-level = 3
+# Prefer link speed over last-percent runtime; pack/ship does many clean release builds.
 lto = false
-codegen-units = 16
+codegen-units = 32
 panic = "abort"
+# No PDB tax on release links unless explicitly debugging a REL build.
+debug = false

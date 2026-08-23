@@ -38,6 +38,9 @@ export default function GpuTopologyCard({
   onSelect,
 }: GpuTopologyCardProps) {
   const powerPercent = gpu.power_limit > 0 ? (gpu.power_draw / gpu.power_limit) * 100 : 0;
+  const usedVramGb = gpu.memory_used / 1024;
+  const freeVramGb = gpu.memory_free / 1024;
+
   const driverVer = formatGpuDriverVersion(gpu.driver_version);
 
   return (
@@ -123,9 +126,19 @@ export default function GpuTopologyCard({
             </div>
           </div>
           <div className="gpu-topo-card__cell">
-            <span className="gpu-topo-card__label">MEM UTIL</span>
-            <p className="gpu-topo-card__value gpu-topo-card__value--readout font-mono tabular-nums">
-              {gpu.utilization_memory}%
+            <span className="gpu-topo-card__label">MEM % · USED / FREE</span>
+            <p className="gpu-topo-card__value gpu-topo-card__value--readout gpu-topo-card__value-row font-mono tabular-nums">
+              <span>{gpu.utilization_memory}%</span>
+              <span className="gpu-topo-card__vdiv" aria-hidden="true" />
+              <span
+                className="gpu-topo-card__mem-gb"
+                title={`VRAM used ${usedVramGb.toFixed(1)} GB · free ${freeVramGb.toFixed(1)} GB`}
+              >
+                {usedVramGb.toFixed(1)}
+                <span className="gpu-topo-card__mem-gb-sep"> / </span>
+                {freeVramGb.toFixed(1)}
+                <span className="gpu-topo-card__mem-gb-unit"> GB</span>
+              </span>
             </p>
             <div className="gpu-topo-card__util-track">
               <div

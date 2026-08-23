@@ -200,7 +200,7 @@ export const KEYS = {
 
   /** HW monitor — per-core CPU grid expanded under CPU header. */
   hwMonitorCpuCoresOpen: `${STORAGE_PREFIX}hw-monitor-cpu-cores-open`,
-  /** HW monitor + OC panel opacity (0.2–1); launch block excluded. */
+  /** HW monitor widget opacity (0.2–1); expanded OC full; launch block excluded. */
   hwMonitorDim: `${STORAGE_PREFIX}hw-monitor-dim`,
   /** Running engine / fusion switcher in launch rail instead of below VRAM display. */
   enginesInRail: `${STORAGE_PREFIX}engines-in-rail`,

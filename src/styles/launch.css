@@ -552,8 +552,36 @@
   gap: 0;
   min-height: 0;
   overflow: hidden; /* scroll lives on __scroll; OC pin stays visible */
+}
+
+/*
+ * HW dim — apply per widget, never on a parent of expanded OC.
+ * Opacity on an ancestor traps children; they cannot restore to full.
+ * Expanded OC (below popover / rail pin) stays opacity 1.
+ */
+.launch-rail-tel:not(.launch-rail-tel--below) .launch-rail-tel__scroll,
+.launch-rail-tel:not(.launch-rail-tel--below) .launch-rail-tel__oc-pin {
+  opacity: var(--hw-monitor-dim, 1);
   transition: opacity 0.15s ease;
 }
+
+.launch-rail-tel:not(.launch-rail-tel--below)[data-oc-expanded="true"] .launch-rail-tel__oc-pin {
+  opacity: 1;
+}
+
+.launch-rail-tel--below .launch-rail-tel__total-cell,
+.launch-rail-tel--below .launch-rail-tel__cpu-col,
+.launch-rail-tel--below .gpu-topo-card,
+.launch-rail-tel--below .launch-rail-tel__empty,
+.launch-rail-tel--below .launch-rail-tel__oc-badge {
+  opacity: var(--hw-monitor-dim, 1);
+  transition: opacity 0.15s ease;
+}
+
+.launch-rail-tel--below .launch-rail-tel__oc-popover {
+  opacity: 1;
+}
+
 
 /* Mem + CPU + GPU cards — independent scroll so OC is never buried */
 .launch-rail-tel__scroll {
@@ -790,6 +818,37 @@
   margin: 0;
   line-height: 1.1;
 }
+
+.gpu-topo-card__value-row {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+}
+
+.gpu-topo-card__vdiv {
+  width: 1px;
+  align-self: stretch;
+  flex-shrink: 0;
+  margin: 1px 0;
+  background: color-mix(in srgb, var(--theme-text-muted) 42%, transparent);
+}
+
+.gpu-topo-card__mem-gb {
+  min-width: 0;
+  font-size: 0.82em;
+  line-height: 1.1;
+  color: color-mix(in srgb, var(--tel-cyan, var(--theme-telemetry-cyan)) 78%, var(--theme-text));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gpu-topo-card__mem-gb-sep,
+.gpu-topo-card__mem-gb-unit {
+  color: color-mix(in srgb, var(--theme-text-muted) 88%, transparent);
+}
+
 
 .gpu-topo-card__offset {
   font-size: 0.5em;
@@ -1048,6 +1107,8 @@
 .launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__label,
 .launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__meta-text,
 .launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__power-denom,
+.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__mem-gb-sep,
+.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__mem-gb-unit,
 .launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__empty {
   color: var(--display-face-light-text-muted) !important;
   opacity: 1;
@@ -1074,6 +1135,15 @@
 .launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__value--mem {
   color: var(--display-face-light-text-cyan) !important;
 }
+
+.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__mem-gb {
+  color: var(--display-face-light-text-cyan) !important;
+}
+
+.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__vdiv {
+  background: var(--display-face-light-border) !important;
+}
+
 
 .launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__power-watt,
 .launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__temp--warm {

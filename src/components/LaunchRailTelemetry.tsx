@@ -419,7 +419,7 @@ export default function LaunchRailTelemetry({
         </div>
         <label
           className="launch-rail-tel__dim"
-          title={`HW monitor dim — ${Math.round(hwDim * 100)}% (launch block unaffected)`}
+          title={`HW monitor dim — ${Math.round(hwDim * 100)}% (expanded OC stays full; launch block unaffected)`}
         >
           <span className="launch-rail-tel__dim-label">DIM</span>
           <input
@@ -436,13 +436,11 @@ export default function LaunchRailTelemetry({
       </div>
 
       {/*
-        Dimmed body: scrollable topo (mem/CPU/GPUs) + pinned OC footer.
-        Many GPU cards must not push OC out of reach — OC stays flex-shrink-0.
+        Dim is CSS via --hw-monitor-dim on widgets (not this body). Expanded OC
+        is exempt — parent opacity cannot be undone by children.
+        Rail: OC pin stays flex-shrink-0 under scroll.
       */}
-      <div
-        className="launch-rail-tel__body min-h-0 flex-1"
-        style={{ opacity: hwDim }}
-      >
+      <div className="launch-rail-tel__body min-h-0 flex-1">
         {below ? (
           <div className="launch-rail-tel__below-grid">
             <MemTotals gpus={gpus} systemInfo={systemInfo}>

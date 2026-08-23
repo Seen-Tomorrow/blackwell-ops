@@ -5373,6 +5373,13 @@ html[data-industrial-bezel="brush"] {
 
 .config-hw-below-display:has(.launch-rail-tel--below[data-oc-expanded="true"]) {
   overflow: visible;
+  position: relative;
+  /*
+   * Dim (opacity < 1) on .launch-rail-tel__body creates a stacking context that
+   * traps the OC popover's z-index inside auto — loses to .industrial-eject-panel
+   * (z-index: 1). Lift the whole strip above eject while OC is expanded.
+   */
+  z-index: 4;
 }
 
 .launch-rail-tel--below {
