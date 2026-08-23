@@ -2398,9 +2398,9 @@ select option {
 }
 .ctx-slider-ghost-label {
   position: absolute;
-  top: 0;
+  top: -2px;
   left: 50%;
-  transform: translate(-50%, -20%);
+  transform: translate(-50%, -85%);
   z-index: 5;
   padding: 0 3px;
   font-size: 7px;

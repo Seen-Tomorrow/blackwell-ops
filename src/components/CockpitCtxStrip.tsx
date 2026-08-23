@@ -163,6 +163,7 @@ export default function CockpitCtxStrip({
               layout="hero"
               forecastCurve={forecastCurve}
               forecastFreeGb={forecastFreeGb}
+              forecastRibbonOnTrack={ribbonPlace !== "marks"}
             />
           </div>
           {showMarks ? <CtxForecastRibbon {...ribbonProps} place="marks" /> : null}

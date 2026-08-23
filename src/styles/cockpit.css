@@ -2464,7 +2464,7 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--brain 
 }
 .ctx-forecast-ribbon--marks {
   height: 5px;
-  margin-top: -5px;
+  margin-top: -3px;
 }
 .ctx-forecast-ribbon--marks .ctx-forecast-ribbon__rail {
   inset: 0;

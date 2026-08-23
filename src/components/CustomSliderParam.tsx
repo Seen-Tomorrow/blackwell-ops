@@ -72,6 +72,7 @@ export default function CustomSliderParam({
   layout = "inline",
   forecastCurve,
   forecastFreeGb,
+  forecastRibbonOnTrack = true,
 }: SliderParamSharedProps) {
   const hero = layout === "hero";
   const areaH = hero ? HERO_TRACK_AREA_HEIGHT_PX : TRACK_AREA_HEIGHT_PX;
@@ -239,14 +240,13 @@ export default function CustomSliderParam({
       if (dragging) dispatchAppEvent(EVENTS.ctxSliderDragging, { dragging: false });
     };
   }, [dragging, paramKey]);
-
   const ribbonGradient = useMemo(() => {
-    if (!hero || !forecastCurve?.length || !(forecastFreeGb != null && forecastFreeGb > 0)) {
+    if (!hero || forecastRibbonOnTrack === false || !forecastCurve?.length || !(forecastFreeGb != null && forecastFreeGb > 0)) {
       return null;
     }
     const stops = sampleRibbonStops(min, max, forecastFreeGb, forecastCurve);
     return stops.length >= 2 ? ribbonCssGradient(stops) : null;
-  }, [hero, forecastCurve, forecastFreeGb, min, max]);
+  }, [hero, forecastRibbonOnTrack, forecastCurve, forecastFreeGb, min, max]);
 
   const thumbPct = thumbCenterPercent(safeValue, min, max, trackWidthPx, thumbW);
 
@@ -317,7 +317,7 @@ export default function CustomSliderParam({
         >
           <span
             className="ctx-slider-ghost-stem"
-            style={{ top: 0, height: `${areaH}px` }}
+            style={{ top: -10, height: areaH + 18 }}
             aria-hidden
           />
           <span className="ctx-slider-ghost-label font-mono">

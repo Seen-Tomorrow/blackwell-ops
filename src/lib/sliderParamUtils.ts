@@ -51,6 +51,8 @@ export interface SliderParamSharedProps {
   forecastCurve?: Array<{ ctx: number; gb: number }>;
   /** Free GPU pool GB for fits ghost. */
   forecastFreeGb?: number;
+  /** When false, hero rail stays the theme track (MARKS mode). */
+  forecastRibbonOnTrack?: boolean;
 }
 
 export function parseSliderValues(values: (string | number)[]): number[] {
