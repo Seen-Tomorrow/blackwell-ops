@@ -2422,10 +2422,57 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--brain 
   min-width: 0;
 }
 
+/* DEV forecast ribbon — under CTX hero rail, not inside CustomSliderParam */
 .full-auto-cockpit__ctx-slider {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
   min-width: 0;
 }
+.ctx-forecast-ribbon {
+  position: relative;
+  height: 10px;
+  margin: 0 1px 2px;
+  cursor: crosshair;
+}
+.ctx-forecast-ribbon__rail {
+  position: absolute;
+  inset: 3px 0 2px;
+  border-radius: 2px;
+  opacity: 0.92;
+}
+.ctx-forecast-ribbon__tick {
+  position: absolute;
+  top: 1px;
+  width: 5px;
+  height: 8px;
+  transform: translateX(-50%);
+  background: #fbbf24;
+  box-shadow: 0 0 4px color-mix(in srgb, #fbbf24 55%, transparent);
+  pointer-events: none;
+}
+.ctx-forecast-ribbon__tick.is-custom {
+  width: 6px;
+  background: #f59e0b;
+}
+.ctx-forecast-ribbon__tip {
+  position: absolute;
+  bottom: 100%;
+  transform: translateX(-50%);
+  margin-bottom: 2px;
+  padding: 1px 5px;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  color: var(--theme-text, #e2e8f0);
+  background: color-mix(in srgb, #000 72%, transparent);
+  border: 1px solid color-mix(in srgb, #fff 12%, transparent);
+  pointer-events: none;
+  z-index: 6;
+}
+
 
 .full-auto-cockpit__ctx-values {
   display: flex;

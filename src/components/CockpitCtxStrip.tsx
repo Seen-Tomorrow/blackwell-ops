@@ -5,14 +5,15 @@
 
 import { useCallback, useMemo, useState } from "react";
 import CustomSliderParam from "./CustomSliderParam";
+import CtxForecastRibbon from "./CtxForecastRibbon";
 import { formatCtxChipLabel, parseSliderValues } from "../lib/sliderParamUtils";
+import { isDevBuild } from "../lib/build";
 import {
   cycleCtxLearnedMarkMode,
   loadCtxLearnedMarkMode,
   saveCtxLearnedMarkMode,
   type CtxLearnedMarkMode,
 } from "../lib/storage";
-
 export function useCtxLearnedMarkMode(): {
   mode: CtxLearnedMarkMode;
   cycle: () => void;
@@ -120,6 +121,16 @@ export default function CockpitCtxStrip({
             forecastCurve={forecastCurve}
             forecastFreeGb={forecastFreeGb}
           />
+          {isDevBuild() && forecastCurve && forecastCurve.length > 0 && forecastFreeGb != null && forecastFreeGb > 0 ? (
+            <CtxForecastRibbon
+              min={parseSliderValues(ctxValues ?? []).length ? Math.min(...parseSliderValues(ctxValues ?? [])) : 2048}
+              max={parseSliderValues(ctxValues ?? []).length ? Math.max(...parseSliderValues(ctxValues ?? [])) : 524288}
+              forecastCurve={forecastCurve}
+              forecastFreeGb={forecastFreeGb}
+              learnedMarks={learnedMarks}
+              ctxValues={ctxValues}
+            />
+          ) : null}
         </div>
         <div className="full-auto-cockpit__ctx-values">
           <span className="full-auto-cockpit__ctx-value font-mono">
