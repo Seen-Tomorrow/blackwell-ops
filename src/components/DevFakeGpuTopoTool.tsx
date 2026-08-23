@@ -259,11 +259,7 @@ export default function DevFakeGpuTopoTool() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className={`app-header-dev-tools__btn app-chrome-control-btn w-auto ${
-          active
-            ? "text-cyan-300 hover:text-cyan-200"
-            : "text-white/45 hover:text-white/70"
-        }`}
+        className="app-header-dev-tools__btn app-chrome-control-btn w-auto"
         title={
           active
             ? `DEV: ${visibleN} visible GPU(s) — open topo builder`

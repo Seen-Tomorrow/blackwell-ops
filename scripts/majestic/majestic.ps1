@@ -849,13 +849,19 @@ function Invoke-MajesticBump {
     $old_tag = Get-TagName -Version $current -Prefix (Read-MajesticConfig).tagPrefix
     Push-Location $root
     try {
+        # Optional cleanup only. Missing tag must NOT fail the chain: PowerShell
+        # keeps native LASTEXITCODE, and run-detached-chain treats it as bump fail
+        # *after* version files were already written (→ skipped pack + ghost bumps).
         $prev_eap = $ErrorActionPreference
         $ErrorActionPreference = 'SilentlyContinue'
         git tag -d $old_tag 2>$null | Out-Null
+        $tag_del_code = if ($null -ne $LASTEXITCODE) { [int]$LASTEXITCODE } else { 1 }
         $ErrorActionPreference = $prev_eap
-        if ($LASTEXITCODE -eq 0) {
+        if ($tag_del_code -eq 0) {
             Write-Majestic "Removed stale local tag $old_tag" -Color DarkGray
         }
+        # Clear native exit so successful bump never reports fail to the chain.
+        $global:LASTEXITCODE = 0
     } finally {
         Pop-Location
     }
@@ -1364,3 +1370,6 @@ switch ($Mode) {
     'pack-provider' { Invoke-MajesticPackProvider -Config $config -ProviderId $ProviderId -ProfileId $ProfileId }
     'ship-provider' { Invoke-MajesticShipProvider -Config $config -ProviderId $ProviderId -ProfileId $ProfileId }
 }
+# Native tools (git/gh/7z) can leave LASTEXITCODE non-zero after a successful
+# mode. Detached chain treats that as failure — force clean success exit.
+exit 0

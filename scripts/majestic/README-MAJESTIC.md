@@ -12,7 +12,7 @@ Menu: **10 BUMP** → CHECK → PACK → SHIP (plus backups and dry-runs).
 
 | Cadence | Menu / npm | Output |
 |---------|------------|--------|
-| **Daily** | `majestic:pack:app` → ship | `Blackwell-Ops-App-vX.Y.Z.7z` (~5 MB) — UI + core templates + **plugin catalog** |
+| **Daily** | `majestic:pack:app` → ship | `Blackwell-Ops-App-vX.Y.Z.7z` (~5 MB) — UI + core templates + **plugin catalog** + **foundry/patches** |
 | **Weekly** | `majestic:pack` → ship | Full NSIS (**ggml-master only**) + App `.7z` + optional `{provider}-{profile}.7z` packs |
 | **One plugin** | `majestic:pack:provider` → `majestic:ship:provider` | Single `bee-llama-frontier.7z` (etc.) onto current tag |
 | **Rare** | toolchain | `toolchain.7z` on tag `toolchain` |

@@ -1,9 +1,11 @@
-# Pack lean App update archive: blackwell-ops.exe + factory templates + bundled 7z.
+# Pack lean App update archive: blackwell-ops.exe + factory templates + foundry
+# vendor patches + bundled 7z.
 # Target size ~5 MB. Layout (prefixed for safe extract):
 #
 #   app/
 #     blackwell-ops.exe
 #     runtime/<provider>/config/*.json
+#     foundry/patches/*.patch   # vendor patches (same as NSIS resource)
 #     bin/7z.exe, bin/7z.dll
 #
 # Usage:
@@ -115,6 +117,24 @@ New-Item -ItemType Directory -Path $bin_dst -Force | Out-Null
 Copy-Item -LiteralPath $SevenZip -Destination (Join-Path $bin_dst '7z.exe') -Force
 Copy-Item -LiteralPath $SevenZipDll -Destination (Join-Path $bin_dst '7z.dll') -Force
 
+# Foundry vendor patches - same product files NSIS gets via tauri.conf resources.
+# Extract lands at {install}/foundry/patches (app_root); Foundry apply reads there.
+$patches_src = Join-Path $root 'foundry\patches'
+if (-not (Test-Path -LiteralPath $patches_src)) {
+    throw "foundry/patches missing at $patches_src - required for App update (Foundry vendor patches)"
+}
+$patch_files = @(Get-ChildItem -LiteralPath $patches_src -File -Filter '*.patch' -ErrorAction SilentlyContinue)
+if ($patch_files.Count -eq 0) {
+    throw "No *.patch files under $patches_src - required for App update"
+}
+$patches_dst = Join-Path $app_stage 'foundry\patches'
+New-Item -ItemType Directory -Path $patches_dst -Force | Out-Null
+foreach ($pf in $patch_files) {
+    Copy-Item -LiteralPath $pf.FullName -Destination (Join-Path $patches_dst $pf.Name) -Force
+}
+Write-Host ("[pack-app-update] Included {0} foundry patch file(s)" -f $patch_files.Count) -ForegroundColor DarkGray
+
+
 $out_parent = Split-Path -Parent $Output
 if ($out_parent -and -not (Test-Path -LiteralPath $out_parent)) {
     New-Item -ItemType Directory -Path $out_parent -Force | Out-Null
@@ -125,7 +145,7 @@ if (Test-Path -LiteralPath $Output) {
 
 Push-Location $work
 try {
-    # Prefix layout: app/blackwell-ops.exe, app/runtime/..., app/bin/...
+    # Prefix layout: app/blackwell-ops.exe, app/runtime/..., app/foundry/patches, app/bin/...
     # Discard native 7z stdout/stderr so this script never pollutes caller assignment.
     $seven_out = & $SevenZip a -t7z -mx=9 -mmt=on $Output 'app' 2>&1
     $seven_exit = $LASTEXITCODE
@@ -138,7 +158,7 @@ try {
 }
 
 $size_mb = [math]::Round((Get-Item -LiteralPath $Output).Length / 1MB, 2)
-Write-Host ("[pack-app-update] OK: {0} ({1} MB) - {2} provider template tree(s) + exe + 7z" -f $Output, $size_mb, $template_count) -ForegroundColor Cyan
+Write-Host ("[pack-app-update] OK: {0} ({1} MB) - {2} provider template tree(s) + exe + 7z + {3} patch(es)" -f $Output, $size_mb, $template_count, $patch_files.Count) -ForegroundColor Cyan
 
 # Cleanup staging (keep archive)
 Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue

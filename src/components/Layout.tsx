@@ -563,7 +563,7 @@ export default function Layout({
         </div>
 
         {/* Admin lock + zoom + appearance */}
-        <div className="app-header-actions flex items-stretch gap-1.5 flex-shrink-0">
+        <div className="app-header-actions gap-1.5 flex-shrink-0">
           <div className="app-quick-settings flex flex-col items-end gap-px flex-shrink-0">
             <AppearanceControls embedded />
             <div className="app-quick-settings__tools app-quick-settings__row flex items-center gap-2">
@@ -613,9 +613,12 @@ export default function Layout({
           </div>
           {__BUILD_MODE__ === "dev" && (
             <div
-              className="app-header-dev-tools flex flex-row flex-shrink-0"
+              className="app-header-dev-tools flex flex-row flex-shrink-0 items-center"
               title="DEV tools — SETUP / CLR / FAKE / VIEW / GPU+"
             >
+              <span className="app-header-dev-tools__label font-mono tracking-widest uppercase shrink-0">
+                DEV
+              </span>
               <button
                 type="button"
                 onClick={(e) => {
@@ -625,7 +628,7 @@ export default function Layout({
                   }
                   void dispatchReplaySetupGuide();
                 }}
-                className="app-header-dev-tools__btn app-chrome-control-btn text-nv-green/70 hover:text-nv-green"
+                className="app-header-dev-tools__btn app-chrome-control-btn"
                 title="Dev: reset config/ (user provider overrides, caches) + setup guide. Does NOT clear localStorage — use CLR. Optional plugins without binaries stay hidden. Shift+click: onboarding UI only (keeps paths + metadata cache)."
               >
                 SETUP
@@ -633,7 +636,7 @@ export default function Layout({
               <button
                 type="button"
                 onClick={() => dispatchClearLocalStorage(true)}
-                className="app-header-dev-tools__btn app-chrome-control-btn text-yellow-400/70 hover:text-yellow-400"
+                className="app-header-dev-tools__btn app-chrome-control-btn"
                 title="Dev: clear BlackOps localStorage only (UI prefs) — does NOT reset config/ or replay setup. Use SETUP for fresh-install test."
               >
                 CLR
@@ -641,11 +644,7 @@ export default function Layout({
               <button
                 type="button"
                 onClick={() => { void toggleUpdFake(); }}
-                className={`app-header-dev-tools__btn app-chrome-control-btn ${
-                  updFakeOn
-                    ? "text-orange-300 hover:text-orange-200"
-                    : "text-white/40 hover:text-white/65"
-                }`}
+                className="app-header-dev-tools__btn app-chrome-control-btn"
                 title={
                   updFakeOn
                     ? `Updater test ON — fake v${updFakeVersion ?? "?"} (real ${updateOfferings?.currentVersion ?? "?"}) — click to disable`
@@ -655,11 +654,9 @@ export default function Layout({
                 {updFakeOn ? `FAKE v${updFakeVersion ?? "?"}` : "FAKE"}
               </button>
               <DevViewportTool />
+              <DevFakeGpuTopoTool />
             </div>
           )}
-          <div className="app-header-dev-tools flex flex-row flex-shrink-0" title="GPU topo override">
-            <DevFakeGpuTopoTool />
-          </div>
         </div>
       </header>
 

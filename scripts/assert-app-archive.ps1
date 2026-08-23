@@ -45,9 +45,15 @@ try {
         throw "App archive has no blackwell-ops.exe: $ArchivePath"
     }
 
+    $patches = Get-ChildItem -LiteralPath $work -Recurse -Filter '*.patch' -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -match '[\\/]foundry[\\/]patches[\\/]' }
+    if (-not $patches -or @($patches).Count -eq 0) {
+        throw "App archive missing foundry/patches/*.patch: $ArchivePath"
+    }
+
     $assert = Join-Path $script_dir 'assert-release-exe.ps1'
     & $assert -ExePath $exe.FullName -ExpectedVersion $ExpectedVersion -ExpectedProductName $ExpectedProductName
-    Write-Host ("[assert-app-archive] OK: {0} embeds REL v{1}" -f (Split-Path -Leaf $ArchivePath), $ExpectedVersion) -ForegroundColor Green
+    Write-Host ("[assert-app-archive] OK: {0} embeds REL v{1} + {2} foundry patch(es)" -f (Split-Path -Leaf $ArchivePath), $ExpectedVersion, @($patches).Count) -ForegroundColor Green
 } finally {
     Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
 }

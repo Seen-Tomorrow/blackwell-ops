@@ -67,6 +67,46 @@ fn needs_github_auth(task: &DownloadTask) -> bool {
     is_toolchain_task(task) || is_app_task(task) || is_provider_task(task)
 }
 
+/// Hub hosts that need Bearer hf_token for gated repos. LFS/CAS CDNs do not.
+fn is_huggingface_hub_url(url: &str) -> bool {
+    match reqwest::Url::parse(url) {
+        Ok(u) => {
+            let host = u.host_str().unwrap_or("").to_ascii_lowercase();
+            matches!(
+                host.as_str(),
+                "huggingface.co" | "www.huggingface.co" | "hf.co" | "www.hf.co"
+            )
+        }
+        Err(_) => {
+            let lower = url.to_ascii_lowercase();
+            lower.contains("://huggingface.co/")
+                || lower.contains("://www.huggingface.co/")
+                || lower.contains("://hf.co/")
+                || lower.contains("://www.hf.co/")
+        }
+    }
+}
+
+fn apply_hf_auth_if_hub(mut req: reqwest::RequestBuilder, url: &str) -> reqwest::RequestBuilder {
+    if !is_huggingface_hub_url(url) {
+        return req;
+    }
+    match crate::secrets::get_secret("hf_token") {
+        Ok(Some(token)) if !token.trim().is_empty() => {
+            match reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token.trim())) {
+                Ok(val) => req = req.header(reqwest::header::AUTHORIZATION, val),
+                Err(e) => log::warn!("[download] invalid hf_token header value: {e}"),
+            }
+        }
+        Ok(None) | Ok(Some(_)) => {
+            // No token — public repos still work; gated will 401/403 with a clear error below.
+        }
+        Err(e) => log::warn!("[download] failed to read hf_token from keyring: {e}"),
+    }
+    req
+}
+
+
 const MANIFEST_FILE: &str = "download_tasks.json";
 const BATCHES_FILE: &str = "download_batches.json";
 const HISTORY_FILE: &str = "download_history.json";
@@ -1329,6 +1369,8 @@ impl DownloadManager {
             if use_github_auth {
                 req = crate::github_releases::apply_github_auth(req);
             }
+            // Gated HF models need Bearer on hub /resolve only — not on CDN after redirect.
+            req = apply_hf_auth_if_hub(req, &download_url);
 
             let interim = match req.send().await {
                 Ok(r) => r,
@@ -1361,7 +1403,8 @@ impl DownloadManager {
             };
 
             let status = interim.status();
-            if status == reqwest::StatusCode::MOVED_PERMANENTLY || status == reqwest::StatusCode::FOUND {
+            // HF uses 302 (and sometimes 307/308) hub → signed LFS/CAS URL.
+            if status.is_redirection() {
                 if let Some(loc) = interim.headers().get(reqwest::header::LOCATION) {
                     if let Ok(loc_str) = loc.to_str() {
                         download_url = loc_str.to_string();
@@ -1402,12 +1445,16 @@ impl DownloadManager {
         }
 
         if status_code != reqwest::StatusCode::OK && status_code != reqwest::StatusCode::PARTIAL_CONTENT {
-            mark_failed(
-                &manager,
-                &task_id,
-                format!("Unexpected status: {} {}", status_code.as_u16(), status_code.canonical_reason().unwrap_or("Unknown")),
-            )
-            .await;
+            let code = status_code.as_u16();
+            let reason = status_code.canonical_reason().unwrap_or("Unknown");
+            let error_msg = match code {
+                401 | 403 => format!(
+                    "HF denied access ({code} {reason}). Gated model requires a Hugging Face token \
+                     in Config → SECRETS (hf_token) and accepted model access on the Hub page."
+                ),
+                _ => format!("Unexpected status: {code} {reason}"),
+            };
+            mark_failed(&manager, &task_id, error_msg).await;
             return;
         }
 
@@ -2231,6 +2278,21 @@ mod tests {
             "models/author/repo/model.gguf.part"
         );
     }
+
+    #[test]
+    fn huggingface_hub_url_detects_hub_not_cdn() {
+        assert!(is_huggingface_hub_url(
+            "https://huggingface.co/orcarouter/Qwen3.8-27B-Uncensored-GGUF/resolve/main/x.gguf"
+        ));
+        assert!(is_huggingface_hub_url("https://hf.co/org/repo/resolve/main/x.gguf"));
+        assert!(!is_huggingface_hub_url(
+            "https://cdn-lfs.huggingface.co/repos/aa/bb/oid?response-content-disposition=x"
+        ));
+        assert!(!is_huggingface_hub_url(
+            "https://cas-server.xethub.hf.co/v1/chunk/..."
+        ));
+    }
+
 
     #[test]
     fn download_bytes_complete_requires_full_file_when_total_known() {
