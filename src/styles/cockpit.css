@@ -2531,8 +2531,8 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--brain 
 
 /* Footer: always reserved — LEARNED fetch must not collapse strip height. */
 .full-auto-cockpit__ctx-footer {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(22ch, auto) minmax(0, 1fr);
+  display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 0.45rem;
   height: 16px;
@@ -2542,13 +2542,10 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--brain 
   box-sizing: border-box;
   overflow: hidden;
 }
-.full-auto-cockpit__ctx-legend {
-  justify-self: start;
-}
 .full-auto-cockpit__ctx-footer-hover {
-  justify-self: center;
-  min-width: 22ch;
-  text-align: center;
+  flex: 1 1 auto;
+  min-width: 12ch;
+  text-align: left;
   font-size: 8px;
   font-weight: 700;
   letter-spacing: 0.03em;
@@ -2557,8 +2554,18 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--brain 
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.full-auto-cockpit__ctx-footer-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+.full-auto-cockpit__ctx-legend {
+  justify-self: unset;
+}
 .full-auto-cockpit__ctx-footer-actions {
-  justify-self: end;
+  justify-self: unset;
 }
 
 .full-auto-cockpit__ctx-footer--idle {

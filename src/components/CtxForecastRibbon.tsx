@@ -4,7 +4,6 @@
  */
 
 import { useMemo, useState, type PointerEvent } from "react";
-import { parseSliderValues } from "../lib/sliderParamUtils";
 import {
   ribbonCssGradient,
   ribbonTooltip,
@@ -42,7 +41,7 @@ export default function CtxForecastRibbon({
     [min, max, forecastFreeGb, forecastCurve],
   );
   const gradient = useMemo(() => ribbonCssGradient(stops), [stops]);
-  const presetSet = useMemo(() => new Set(parseSliderValues(ctxValues)), [ctxValues]);
+
 
   if (stops.length < 2 || !(max > min)) return null;
 
@@ -69,24 +68,6 @@ export default function CtxForecastRibbon({
       }}
     >
       <div className="ctx-forecast-ribbon__rail" style={{ background: gradient }} />
-      {place === "marks"
-        ? learnedMarks.map((mark) => {
-            if (mark < min || mark > max) return null;
-            const pct = ((mark - min) / (max - min)) * 100;
-            const custom = !presetSet.has(mark);
-            const near = stops.reduce((best, s) =>
-              Math.abs(s.ctx - mark) < Math.abs(best.ctx - mark) ? s : best,
-            );
-            return (
-              <span
-                key={mark}
-                className={`ctx-forecast-ribbon__tick${custom ? " is-custom" : ""}`}
-                style={{ left: `${pct}%` }}
-                title={ribbonTooltip(mark, near.gb, forecastFreeGb, [mark])}
-              />
-            );
-          })
-        : null}
       {hover && place !== "track" ? (
         <span className="ctx-forecast-ribbon__tip font-mono" style={{ left: `${hover.pct}%` }}>
           {hover.text}

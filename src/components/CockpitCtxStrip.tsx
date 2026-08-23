@@ -98,7 +98,7 @@ export default function CockpitCtxStrip({
   standalone = true,
 }: CockpitCtxStripProps) {
   const { mode, cycle } = useCtxLearnedMarkMode();
-  const [ribbonPlace, setRibbonPlace] = useState<"track" | "marks" | "both">("track");
+  const [ribbonPlace, setRibbonPlace] = useState<"track" | "marks">("track");
   const [ribbonHover, setRibbonHover] = useState<string | null>(null);
   const hasLearned = (learnedMarks?.length ?? 0) > 0;
   const customCtxs = useMemo(() => {
@@ -117,8 +117,8 @@ export default function CockpitCtxStrip({
     && (forecastCurve?.length ?? 0) > 0
     && forecastFreeGb != null
     && forecastFreeGb > 0;
-  const showTrack = showRibbon && (ribbonPlace === "track" || ribbonPlace === "both");
-  const showMarks = showRibbon && (ribbonPlace === "marks" || ribbonPlace === "both");
+  const showTrack = showRibbon && ribbonPlace === "track";
+  const showMarks = showRibbon && ribbonPlace === "marks";
   const hasGhost =
     (forecastCurve?.length ?? 0) > 0 && forecastFreeGb != null && forecastFreeGb > 0;
   const footerBusy = !hasLearned && !hasGhost;
@@ -199,6 +199,10 @@ export default function CockpitCtxStrip({
         className={`full-auto-cockpit__ctx-footer font-mono${footerBusy ? " full-auto-cockpit__ctx-footer--idle" : ""}`}
         aria-hidden={footerBusy || undefined}
       >
+        <span className="full-auto-cockpit__ctx-footer-hover font-mono">
+          {ribbonHover || "\u00a0"}
+        </span>
+        <span className="full-auto-cockpit__ctx-footer-right">
         <span
           className="full-auto-cockpit__ctx-legend"
           title="Cyan ticks = LEARNED launches. Amber ≤N = VRAM limit. Ribbon paint = need vs free."
@@ -227,20 +231,17 @@ export default function CockpitCtxStrip({
             <span className="full-auto-cockpit__ctx-legend-spacer">LEARNED · snap</span>
           ) : null}
         </span>
-        <span className="full-auto-cockpit__ctx-footer-hover font-mono">
-          {ribbonHover || "\u00a0"}
-        </span>
         <span className="full-auto-cockpit__ctx-footer-actions">
           {showRibbon ? (
             <button
               type="button"
               className="full-auto-cockpit__ctx-marks-toggle font-mono"
               onClick={() => {
-                setRibbonPlace((p) => (p === "both" ? "track" : p === "track" ? "marks" : "both"));
+                setRibbonPlace((p) => (p === "track" ? "marks" : "track"));
               }}
-              title="DEV ribbon: both / over track / under marks"
+              title="DEV ribbon: over track or under marks"
             >
-              {ribbonPlace === "both" ? "RIBBON BOTH" : ribbonPlace === "track" ? "RIBBON TRACK" : "RIBBON MARKS"}
+              {ribbonPlace === "track" ? "RIBBON TRACK" : "RIBBON MARKS"}
             </button>
           ) : null}
           {hasLearned ? (
@@ -264,6 +265,7 @@ export default function CockpitCtxStrip({
               ALL
             </span>
           )}
+        </span>
         </span>
       </div>
     </div>
