@@ -97,16 +97,12 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   const probeAppliesToCurve = probeGb != null;
 
   const allLearnedPts = input.learnedCurve ?? [];
-  // Offload rows stay as slider ticks; they must not join the 100% GPU curve.
-  const fitCurvePts = allLearnedPts.filter((p) => isFullGpuLearnedPoint(p.hostMib));
-
-  const mergedCurve = fitCurvePts.map((p) => ({ ...p }));
-  // A live FIT probe at the slider CTX must not break lerp between real launches
-  // (128k/512k/1M looked like "probe curve" in the gaps). Only seed when LEARNED
-  // cannot interpolate on its own.
+  // GPU lerp uses every launch at this split. Host>2.5 must not drop a 1M
+  // point or the slider cliffs to FIT (~42G) one tick off the mark.
+  const mergedCurve = allLearnedPts.map((p) => ({ ...p }));
   if (
     probeAppliesToCurve
-    && fitCurvePts.length < 2
+    && allLearnedPts.length < 2
     && probeAnchor > 0
     && isFullGpuLearnedPoint(probeHostGb != null ? probeHostGb * 1024 : undefined)
     && !mergedCurve.some((p) => p.ctx === probeAnchor)
@@ -194,7 +190,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
 
   const estimateGb = liveLowVram
     ? probeWithDraftGb
-    : withDraft(learnedExactGb) ?? withDraft(curveGb) ?? probeWithDraftGb ?? learnedDeltaGb;
+    : withDraft(learnedExactGb) ?? withDraft(curveGb) ?? withDraft(learnedDeltaGb) ?? probeWithDraftGb;
   if (estimateGb == null) return null;
 
   const learnedGb = discardSpillLearned
