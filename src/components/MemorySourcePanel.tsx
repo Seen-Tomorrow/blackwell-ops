@@ -384,13 +384,14 @@ export function MemorySourceStatusMark({
               : view.isCurve
                 ? "CURVE · 3/4 — between two LEARNED launches (~95%)"
                 : view.isExact
-                  ? "MEASURED · 2/4 — FIT probe at this CTX. Launch twice at different CTX for CURVE."
-                  : "ESTIMATE · 1/4 — FIT walked off its probe CTX. Launch twice at different CTX for CURVE."
+                  ? "MEASURED · 2/4 — FIT probe at this CTX"
+                  : "ESTIMATE · 1/4 — FIT walked off its probe CTX"
           }
         >
           {view.idleStatus}
         </span>
         <span className="vram-fc-need-frame__precision" aria-label={`Precision ${memorySource.confidence} of 4`}>
+          <span className="vram-fc-need-frame__precision-label">precision</span>
           {[1, 2, 3, 4].map((n) => (
             <span
               key={n}
@@ -398,9 +399,6 @@ export function MemorySourceStatusMark({
             />
           ))}
         </span>
-        {memorySource.confidence <= 2 ? (
-          <span className="vram-fc-need-frame__hint">2 LAUNCHES → CURVE</span>
-        ) : null}
       </div>
     </div>
   );

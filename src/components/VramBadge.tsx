@@ -222,12 +222,19 @@ export default function VramBadge({
       data-source-kind={sourceKind || undefined}
     >
       <div className="vram-fc__header vram-forecast-header vram-forecast-header--assisted flex-shrink-0 min-w-0">
-        <p
-          className={`vram-fc__launch-summary${manifest.fits ? " is-ok" : " is-fail"}`}
-          title={launchSummary}
-        >
-          {launchSummary}
-        </p>
+        <div className="vram-fc__launch-block">
+          <p
+            className={`vram-fc__launch-summary${manifest.fits ? " is-ok" : " is-fail"}`}
+            title={launchSummary}
+          >
+            {launchSummary}
+          </p>
+          {memorySource && memorySource.confidence <= 2 ? (
+            <span className="vram-fc__launch-hint">
+              Do two LAUNCHES on any CTX to get best precision
+            </span>
+          ) : null}
+        </div>
         {memorySource && !hideFitProbe ? (
           <MemorySourceReprobe
             memorySource={memorySource}
@@ -395,13 +402,25 @@ export default function VramBadge({
                   </span>
                   <span className="vram-fc-bar__unit">GB</span>
                   {(manifest.ramWeightGb ?? 0) > 0.05 ? (
-                    <span className="vram-fc-bar__need-split">
-                      <span>{(manifest.ramBufferGb ?? 0).toFixed(1)} buf</span>
-                      <span>{(manifest.ramWeightGb ?? 0).toFixed(1)} wgt</span>
+                    <span className="vram-fc-bar__need-split" aria-label="RAM need breakdown">
+                      <span className="vram-fc-bar__need-split-line">
+                        <span className="vram-fc-bar__need-split-val">
+                          {(manifest.ramBufferGb ?? 0).toFixed(1)}GB
+                        </span>
+                        <span className="vram-fc-bar__need-split-lab">buffer</span>
+                      </span>
+                      <span className="vram-fc-bar__need-split-line">
+                        <span className="vram-fc-bar__need-split-val">
+                          {(manifest.ramWeightGb ?? 0).toFixed(1)}GB
+                        </span>
+                        <span className="vram-fc-bar__need-split-lab"> weights</span>
+                      </span>
                     </span>
                   ) : (
-                    <span className="vram-fc-bar__need-split vram-fc-bar__need-split--buf">
-                      host buffer
+                    <span className="vram-fc-bar__need-split vram-fc-bar__need-split--buf" aria-label="RAM buffer only">
+                      <span className="vram-fc-bar__need-split-line">
+                        <span className="vram-fc-bar__need-split-lab">buffer</span>
+                      </span>
                     </span>
                   )}
                 </span>
