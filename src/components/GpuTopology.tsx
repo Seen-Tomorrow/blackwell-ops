@@ -124,14 +124,14 @@ export default function GpuTopology({
           const enginePct = totalMib > 0 ? (engineBarMib / totalMib) * 100 : 0;
           const osPct = totalMib > 0 ? (osOtherMib / totalMib) * 100 : 0;
 
-          const totalUsedMib = alloc.projectedLoadGb * 1024 + usedMib;
-          const totalUsedPct = Math.min(totalMib > 0 ? (totalUsedMib / totalMib) * 100 : 0, 100);
-          const reservedMib = (alloc.hwReservedGb ?? 1) * 1024;
+          const reservedMib = (alloc.hwReservedGb ?? 1.75) * 1024;
           const reservedPct = totalMib > 0 ? (reservedMib / totalMib) * 100 : 0;
           const liveFreeGb = Math.max(
             0,
-            alloc.vramManufacturedGb - usedMib / 1024 - (alloc.hwReservedGb ?? 0),
+            alloc.vramManufacturedGb - usedMib / 1024 - reservedMib / 1024,
           );
+          const totalUsedMib = alloc.projectedLoadGb * 1024 + usedMib + reservedMib;
+          const totalUsedPct = Math.min(totalMib > 0 ? (totalUsedMib / totalMib) * 100 : 0, 100);
           const barColorHex =
             gpuBarColor.includes("yellow")
               ? "var(--theme-telemetry-amber, #FBBF24)"

@@ -520,14 +520,14 @@ export function splitGpuTopoBarUsage(
   };
 }
 
-/** TCC: ~1 GB CUDA/driver floor. WDDM: ~1.75 GB (measured 1.5–2.2). */
+/** TCC: ~1 GB CUDA/driver floor. WDDM: ~1.75 GB (measured 1.5–2.2). Default WDDM. */
 export const HW_RESERVED_TCC_MIB = 1024;
 export const HW_RESERVED_WDDM_MIB = 1792;
 
 export function hwReservedMib(driverModel?: string): number {
   const m = (driverModel ?? "").toUpperCase();
-  if (m.includes("WDDM")) return HW_RESERVED_WDDM_MIB;
-  return HW_RESERVED_TCC_MIB;
+  if (m.includes("TCC")) return HW_RESERVED_TCC_MIB;
+  return HW_RESERVED_WDDM_MIB;
 }
 
 export function computeGpuAvailableList(gpus: GpuInfo[], runningSlots: RunningSlotInfo[]): number[] {
