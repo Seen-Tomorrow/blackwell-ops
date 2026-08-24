@@ -520,9 +520,10 @@ export function splitGpuTopoBarUsage(
   };
 }
 
-/** TCC: ~1 GB CUDA/driver floor. WDDM: ~1.75 GB (measured 1.5–2.2). Default WDDM. */
+/** TCC: measured OOM ~1 GB leftover. WDDM loosened to 512 MiB so pack tests can
+ *  reach the real hole (WDDM rarely OOMs; 1.75 GB blocked that). Retune after HAGS. */
 export const HW_RESERVED_TCC_MIB = 1024;
-export const HW_RESERVED_WDDM_MIB = 1792;
+export const HW_RESERVED_WDDM_MIB = 512;
 
 export function hwReservedMib(driverModel?: string): number {
   const m = (driverModel ?? "").toUpperCase();

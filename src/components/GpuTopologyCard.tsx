@@ -1,6 +1,7 @@
 import type { GpuInfo } from "../lib/types";
 import { formatGpuDriverVersion } from "../lib/benchHwTopo";
 import type { GpuOcOverlay } from "../hooks/useGpuControl";
+import { hwReservedMib } from "../services/vram/shared";
 
 interface GpuTopologyCardProps {
   gpu: GpuInfo;
@@ -39,7 +40,7 @@ export default function GpuTopologyCard({
 }: GpuTopologyCardProps) {
   const usedVramGb = gpu.memory_used / 1024;
   const totalVramGb = (gpu.memory_total_manufactured || gpu.memory_total) / 1024;
-  const reservedGb = (gpu.driver_model ?? "").toUpperCase().includes("TCC") ? 1.0 : 1.75;
+  const reservedGb = hwReservedMib(gpu.driver_model) / 1024;
   const freeVramGb = Math.max(0, totalVramGb - usedVramGb - reservedGb);
   const powerPercent = gpu.power_limit > 0 ? (gpu.power_draw / gpu.power_limit) * 100 : 0;
 
