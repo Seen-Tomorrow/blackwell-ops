@@ -580,6 +580,15 @@ impl ProviderTemplate {
         // Cockpit LV 3/4 toggle (and any future launch override). Only rewrites `-lv N` tokens.
         apply_log_verbosity_override(&mut args, config);
 
+        let auto_vram_launch = config
+            .extra_params
+            .get("__auto_vram")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        let moe_optimal_launch = extra_param_eq_ignore_ascii(config, "offload_mode", "moe_optimal");
+        let external_draft_spec = external_draft_spec_needs_fit_off(config);
+
         let yolo_full_gpu = extra_param_eq_ignore_ascii(config, "__yolo_full_gpu", "1")
             || extra_param_eq_ignore_ascii(config, "__yolo_full_gpu", "true");
 
