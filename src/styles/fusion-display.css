@@ -2571,25 +2571,28 @@
   flex: 0 0 auto;
   display: inline-flex;
   align-items: baseline;
-  gap: 0.45em;
+  gap: 0.4em;
+  font-size: calc(7px * var(--vram-fc-scale, 1.12));
+  line-height: 1.1;
 }
 .gpu-card__stat-lab {
-  margin-right: 0.25em;
-  font-size: 0.78em;
+  margin-right: 0.22em;
+  font-size: 0.72em;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  opacity: 0.55;
+  opacity: 0.5;
 }
 .gpu-card__stat-pct {
-  margin-left: 0.2em;
-  opacity: 0.75;
+  margin-left: 0.15em;
+  opacity: 0.7;
 }
 .vram-fc__topo--compact .gpu-card__bar-need,
 .vram-fc__topo--compact .gpu-card__pct,
 .vram-fc__topo--compact .gpu-card__bar-cap {
   font-size: inherit;
-  font-weight: inherit;
+  font-weight: 700;
+  line-height: 1.1;
   text-shadow: none;
   filter: none;
   min-width: 0;
@@ -2940,10 +2943,10 @@
 .gpu-topology-root--fill[data-gpu-density="fat"] .gpu-card-name {
   font-size: calc(11px * var(--vram-fc-scale, 1.12));
 }
-
 .gpu-topology-root--fill[data-gpu-density="fat"] .gpu-card__readout {
-  font-size: calc(9px * var(--vram-fc-scale, 1.12));
+  font-size: calc(8px * var(--vram-fc-scale, 1.12));
 }
+
 
 .gpu-topology-root--fill[data-gpu-density="fat"] .gpu-card__bar-need,
 .gpu-topology-root--fill[data-gpu-density="fat"] .gpu-card__pct,
