@@ -106,8 +106,8 @@ export default function GpuTopology({
       >
         {bank.map((alloc) => {
           const totalMib = alloc.vramManufacturedGb * 1024;
-          const usedMib = (alloc.vramManufacturedGb - alloc.vramAvailableGb) * 1024;
-
+          const usedMib =
+            (alloc.nvmlUsedGb ?? alloc.vramManufacturedGb - alloc.vramAvailableGb) * 1024;
           const projectedPct = totalMib > 0 ? (alloc.projectedLoadGb * 1024 / totalMib) * 100 : 0;
 
           const breakdownMib = alloc.runningEngines.reduce((sum, e) => sum + e.vramUsedMib, 0);
@@ -126,7 +126,7 @@ export default function GpuTopology({
 
           const totalUsedMib = alloc.projectedLoadGb * 1024 + usedMib;
           const totalUsedPct = Math.min(totalMib > 0 ? (totalUsedMib / totalMib) * 100 : 0, 100);
-
+          const liveFreeGb = Math.max(0, alloc.vramManufacturedGb - usedMib / 1024);
           // Engine hatch fill still needs a concrete color; readout uses CSS tokens.
           const barColorHex =
             gpuBarColor.includes("yellow")
@@ -183,7 +183,7 @@ export default function GpuTopology({
                   <span className={`gpu-card__bar-need gpu-card__bar-need--${needTone}`}>
                     {alloc.projectedLoadGb.toFixed(1)}G
                   </span>
-                  <span className="gpu-card__pct" title="Card fill after projected load (capacity context)">
+                  <span className="gpu-card__pct" title={`Live ${liveFreeGb.toFixed(1)} GB free · fill after projected load`}>
                     ({totalUsedPct.toFixed(0)}%)
                   </span>
                   <span className="gpu-card__bar-cap">

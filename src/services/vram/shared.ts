@@ -554,6 +554,7 @@ export function buildGpuAllocations(
     name: g.name,
     vramManufacturedGb: round2(gpuManufacturedMib(g) / 1024),
     vramAvailableGb: round2(gpuAvailable[i] ?? 0),
+    nvmlUsedGb: round2(g.memory_used / 1024),
     projectedLoadGb: round2(perGpuLoad[i] ?? 0),
     runningEngines: getRunningEnginesOnGpu(g.index, runningSlots),
   }));

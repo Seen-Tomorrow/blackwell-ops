@@ -780,6 +780,8 @@ export interface GpuAllocation {
   name: string;
   vramManufacturedGb: number;
   vramAvailableGb: number;
+  /** Live NVML used GB — occupancy %; not max(stack, nvml). */
+  nvmlUsedGb: number;
   projectedLoadGb: number;
   runningEngines: RunningEngine[];
 }
