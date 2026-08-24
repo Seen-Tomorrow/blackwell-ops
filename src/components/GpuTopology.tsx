@@ -124,7 +124,7 @@ export default function GpuTopology({
           const enginePct = totalMib > 0 ? (engineBarMib / totalMib) * 100 : 0;
           const osPct = totalMib > 0 ? (osOtherMib / totalMib) * 100 : 0;
 
-          const reservedMib = (alloc.hwReservedGb ?? 0.5) * 1024;
+          const reservedMib = (alloc.hwReservedGb ?? 1.75) * 1024;
           const reservedPct = totalMib > 0 ? (reservedMib / totalMib) * 100 : 0;
           const liveFreeGb = Math.max(
             0,
@@ -161,7 +161,7 @@ export default function GpuTopology({
           const externalDetail = formatExternalTooltip(systemReservedMib, foreignAppsMib);
 
           const reservedLabel =
-            (alloc.hwReservedGb ?? 0) >= 1.0 ? "TCC/CUDA HW reserved" : "WDDM HW reserved";
+            (alloc.hwReservedGb ?? 0) >= 1.4 ? "WDDM HW reserved" : "TCC/CUDA HW reserved";
           const tooltipText = hasOurEngines
             ? attributedOverheadMib >= 64
               ? `Engines: ${(engineBarMib / 1024).toFixed(1)} GB (${(breakdownMib / 1024).toFixed(1)} GB tracked + ${(attributedOverheadMib / 1024).toFixed(1)} GB ${overheadLabel}) | ${externalDetail} | ${reservedLabel} ${(reservedMib / 1024).toFixed(1)} GB`

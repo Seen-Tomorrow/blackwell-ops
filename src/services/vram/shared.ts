@@ -520,10 +520,9 @@ export function splitGpuTopoBarUsage(
   };
 }
 
-/** TCC: measured OOM ~1 GB leftover. WDDM loosened to 512 MiB so pack tests can
- *  reach the real hole (WDDM rarely OOMs; 1.75 GB blocked that). Retune after HAGS. */
+/** TCC: measured OOM ~1 GB leftover. WDDM: ~1.75 GB (pack ceiling ~94.3 / 96). */
 export const HW_RESERVED_TCC_MIB = 1024;
-export const HW_RESERVED_WDDM_MIB = 512;
+export const HW_RESERVED_WDDM_MIB = 1792;
 
 export function hwReservedMib(driverModel?: string): number {
   const m = (driverModel ?? "").toUpperCase();
