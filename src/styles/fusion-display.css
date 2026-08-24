@@ -2571,14 +2571,19 @@
   flex: 0 0 auto;
   display: inline-flex;
   align-items: baseline;
-  gap: 3px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  line-height: 1;
-  /* One size for need / pct / cap — former 96G scale */
-  font-size: calc(7px * var(--vram-fc-scale, 1.12));
+  gap: 0.45em;
+}
+.gpu-card__stat-lab {
+  margin-right: 0.25em;
+  font-size: 0.78em;
   font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.55;
+}
+.gpu-card__stat-pct {
+  margin-left: 0.2em;
+  opacity: 0.75;
 }
 .vram-fc__topo--compact .gpu-card__bar-need,
 .vram-fc__topo--compact .gpu-card__pct,

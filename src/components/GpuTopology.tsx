@@ -180,14 +180,20 @@ export default function GpuTopology({
                   {alloc.name}
                 </span>
                 <span className="gpu-card__readout">
-                  <span className={`gpu-card__bar-need gpu-card__bar-need--${needTone}`}>
+                  <span
+                    className={`gpu-card__stat gpu-card__bar-need gpu-card__bar-need--${needTone}`}
+                    title="Projected new load on this GPU"
+                  >
+                    <span className="gpu-card__stat-lab">new</span>
                     {alloc.projectedLoadGb.toFixed(1)}G
                   </span>
-                  <span className="gpu-card__pct" title={`Live ${liveFreeGb.toFixed(1)} GB free · fill after projected load`}>
-                    ({totalUsedPct.toFixed(0)}%)
-                  </span>
-                  <span className="gpu-card__bar-cap">
-                    //{alloc.vramManufacturedGb.toFixed(0)}G
+                  <span
+                    className="gpu-card__stat gpu-card__pct"
+                    title={`After load: ${(usedMib / 1024 + alloc.projectedLoadGb).toFixed(1)} GB · live free ${liveFreeGb.toFixed(1)} GB`}
+                  >
+                    <span className="gpu-card__stat-lab">after</span>
+                    {(usedMib / 1024 + alloc.projectedLoadGb).toFixed(1)}G
+                    <span className="gpu-card__stat-pct">({totalUsedPct.toFixed(0)}%)</span>
                   </span>
                 </span>
               </div>
