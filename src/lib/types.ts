@@ -512,8 +512,9 @@ export interface GpuInfo {
   utilization_memory: number;
   /** NVIDIA driver version from nvidia-smi (e.g. "610.47.23"). */
   driver_version?: string;
+  /** Windows: TCC | WDDM. */
+  driver_model?: string;
 }
-
 export interface CpuInfo {
   name: string;
   cores: number;
@@ -780,8 +781,9 @@ export interface GpuAllocation {
   name: string;
   vramManufacturedGb: number;
   vramAvailableGb: number;
-  /** Live NVML used GB — occupancy %; not max(stack, nvml). */
   nvmlUsedGb: number;
+  /** Unusable dedicated floor (TCC ~1G / WDDM ~1.75G). */
+  hwReservedGb: number;
   projectedLoadGb: number;
   runningEngines: RunningEngine[];
 }

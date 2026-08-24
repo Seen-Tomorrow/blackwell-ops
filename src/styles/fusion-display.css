@@ -2893,6 +2893,20 @@
   color: var(--theme-accent, #76b900);
 }
 
+.gpu-card__bar-fill--hw-reserved {
+  left: auto;
+  right: 0;
+  z-index: 2;
+  background-color: color-mix(in srgb, #64748b 55%, #0f172a);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 3px,
+    color-mix(in srgb, #94a3b8 22%, transparent) 3px,
+    color-mix(in srgb, #94a3b8 22%, transparent) 5px
+  );
+}
+
 .gpu-card__bar-fill--os {
   left: auto;
   right: 0;

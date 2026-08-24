@@ -126,8 +126,12 @@ export default function GpuTopology({
 
           const totalUsedMib = alloc.projectedLoadGb * 1024 + usedMib;
           const totalUsedPct = Math.min(totalMib > 0 ? (totalUsedMib / totalMib) * 100 : 0, 100);
-          const liveFreeGb = Math.max(0, alloc.vramManufacturedGb - usedMib / 1024);
-          // Engine hatch fill still needs a concrete color; readout uses CSS tokens.
+          const reservedMib = (alloc.hwReservedGb ?? 1) * 1024;
+          const reservedPct = totalMib > 0 ? (reservedMib / totalMib) * 100 : 0;
+          const liveFreeGb = Math.max(
+            0,
+            alloc.vramManufacturedGb - usedMib / 1024 - (alloc.hwReservedGb ?? 0),
+          );
           const barColorHex =
             gpuBarColor.includes("yellow")
               ? "var(--theme-telemetry-amber, #FBBF24)"
@@ -153,15 +157,16 @@ export default function GpuTopology({
                 : barColorHex;
 
           const isSelected = selectedGpuIndices?.includes(alloc.gpuIndex) ?? false;
-
           const overheadLabel = breakdownUnderReports ? "KV/runtime" : "CUDA/runtime";
           const externalDetail = formatExternalTooltip(systemReservedMib, foreignAppsMib);
+
+          const reservedLabel =
+            (alloc.hwReservedGb ?? 0) >= 1.4 ? "WDDM HW reserved" : "TCC/CUDA HW reserved";
           const tooltipText = hasOurEngines
             ? attributedOverheadMib >= 64
-              ? `Engines: ${(engineBarMib / 1024).toFixed(1)} GB (${(breakdownMib / 1024).toFixed(1)} GB tracked + ${(attributedOverheadMib / 1024).toFixed(1)} GB ${overheadLabel}) | ${externalDetail}`
-              : `Engines: ${(engineBarMib / 1024).toFixed(1)} GB | ${externalDetail}`
-            : `Running engines: ${(breakdownMib / 1024).toFixed(1)} GB | ${externalDetail}`;
-
+              ? `Engines: ${(engineBarMib / 1024).toFixed(1)} GB (${(breakdownMib / 1024).toFixed(1)} GB tracked + ${(attributedOverheadMib / 1024).toFixed(1)} GB ${overheadLabel}) | ${externalDetail} | ${reservedLabel} ${(reservedMib / 1024).toFixed(1)} GB`
+              : `Engines: ${(engineBarMib / 1024).toFixed(1)} GB | ${externalDetail} | ${reservedLabel} ${(reservedMib / 1024).toFixed(1)} GB`
+            : `Running engines: ${(breakdownMib / 1024).toFixed(1)} GB | ${externalDetail} | ${reservedLabel} ${(reservedMib / 1024).toFixed(1)} GB`;
           return (
             <div
               key={alloc.gpuIndex}
@@ -215,6 +220,14 @@ export default function GpuTopology({
                   />
                 )}
 
+                {reservedPct > 0.5 && (
+                  <div
+                    style={{ width: `${Math.min(reservedPct, 100)}%` }}
+                    className="gpu-card__bar-fill gpu-card__bar-fill--hw-reserved"
+                    title={`${reservedLabel} ${(reservedMib / 1024).toFixed(1)} GB — not usable for weights`}
+                  />
+                )}
+
                 {engineBarMib > 0 && (
                   <div
                     style={{
@@ -232,12 +245,12 @@ export default function GpuTopology({
         })}
       </div>
 
-
       {ramVisible && (
         <div className="pt-2 border-t border-stealth-border/20 gpu-ram-enter">
           <div className="flex items-center gap-2 mb-1.5">
-            <span className="text-[9px] font-mono text-theme-accent">SYSTEM RAM</span>
-            <span className="text-[8px] font-mono text-stealth-muted/40">|</span>
+            <span className="text-[9px] font-mono font-semibold text-theme-accent">
+              SYSTEM RAM OFFLOAD
+            </span>
             {ramManufacturedGb > 0 ? (
               <span className="text-[8px] font-mono text-theme-accent">
                 {ramTotalGb.toFixed(0)} GB spill / {ramManufacturedGb.toFixed(0)} GB ({((ramTotalGb / ramManufacturedGb) * 100).toFixed(0)}%)
@@ -248,6 +261,7 @@ export default function GpuTopology({
               </span>
             )}
           </div>
+
 
           <div
             style={{ backgroundColor: "rgb(20,20,20)" }}

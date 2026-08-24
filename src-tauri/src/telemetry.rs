@@ -26,7 +26,10 @@ pub struct GpuInfo {
     pub utilization_gpu: u32,  // Percentage
     pub utilization_memory: u32, // Percentage
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub driver_version: Option<String>, // e.g. "610.47.23" from nvidia-smi
+    pub driver_version: Option<String>,
+    /// Windows: `TCC` | `WDDM` | omitted.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub driver_model: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -167,10 +170,10 @@ pub async fn scan_gpus() -> Result<Vec<GpuInfo>, String> {
     let output = crate::engine_utils::run_hidden_output_async(move || {
         let mut cmd = std::process::Command::new(&smi);
         cmd.args([
-            "--query-gpu=index,name,driver_version,memory.total,memory.used,memory.free,temperature.gpu,power.draw,power.limit,utilization.gpu,utilization.memory",
+            "--query-gpu=index,name,driver_version,memory.total,memory.used,memory.free,temperature.gpu,power.draw,power.limit,utilization.gpu,utilization.memory,driver_model.current",
             "--format=csv,noheader,nounits",
         ])
-        .stdout(Stdio::piped()) // MUST be piped — null() discards output, returns empty GPU list
+        .stdout(Stdio::piped())
         .stderr(Stdio::null());
         cmd
     })
@@ -191,18 +194,17 @@ pub async fn scan_gpus() -> Result<Vec<GpuInfo>, String> {
             continue;
         }
 
-        // Split from the right: last 9 fields are driver_version + mem/temp/power/util metrics.
-        // Everything between index(0) and those fields is the GPU name.
+        // Last 10 fields: driver_version + mem/temp/power/util + driver_model.
         let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
 
-        if parts.len() < 10 {
+        if parts.len() < 11 {
             log::debug!("nvidia-smi line has too few fields ({}): {}", parts.len(), line);
             continue;
         }
 
         let index: u32 = parts[0].parse().unwrap_or(0);
 
-        let num_trailing = 9;
+        let num_trailing = 10;
         let name_end = parts.len() - num_trailing;
         let gpu_name = if name_end > 1 {
             parts[1..name_end].join(", ")
@@ -227,6 +229,16 @@ pub async fn scan_gpus() -> Result<Vec<GpuInfo>, String> {
         let power_limit: f32 = parts[base + 6].parse().unwrap_or(0.0);
         let utilization_gpu: u32 = parts[base + 7].parse().unwrap_or(0);
         let utilization_memory: u32 = parts[base + 8].parse().unwrap_or(0);
+        let driver_model = {
+            let raw = parts.get(base + 9).copied().unwrap_or("").to_uppercase();
+            if raw.contains("TCC") {
+                "TCC".into()
+            } else if raw.contains("WDDM") {
+                "WDDM".into()
+            } else {
+                String::new()
+            }
+        };
 
         gpus.push(GpuInfo {
             index,
@@ -243,6 +255,7 @@ pub async fn scan_gpus() -> Result<Vec<GpuInfo>, String> {
             utilization_gpu,
             utilization_memory,
             driver_version,
+            driver_model,
         });
     }
 

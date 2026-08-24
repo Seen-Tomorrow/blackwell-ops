@@ -520,6 +520,16 @@ export function splitGpuTopoBarUsage(
   };
 }
 
+/** TCC: ~1 GB CUDA/driver floor. WDDM: ~1.75 GB (measured 1.5–2.2). */
+export const HW_RESERVED_TCC_MIB = 1024;
+export const HW_RESERVED_WDDM_MIB = 1792;
+
+export function hwReservedMib(driverModel?: string): number {
+  const m = (driverModel ?? "").toUpperCase();
+  if (m.includes("WDDM")) return HW_RESERVED_WDDM_MIB;
+  return HW_RESERVED_TCC_MIB;
+}
+
 export function computeGpuAvailableList(gpus: GpuInfo[], runningSlots: RunningSlotInfo[]): number[] {
   return gpus.map((g) => {
     const manufactured = gpuManufacturedMib(g) / 1024;
@@ -528,8 +538,9 @@ export function computeGpuAvailableList(gpus: GpuInfo[], runningSlots: RunningSl
       (sum, e) => sum + e.vramUsedMib / 1024,
       0,
     );
+    const reserved = hwReservedMib(g.driver_model) / 1024;
     const committed = Math.max(nvmlUsed, stackUsed);
-    return Math.max(0, manufactured - committed);
+    return Math.max(0, manufactured - reserved - committed);
   });
 }
 
@@ -555,10 +566,12 @@ export function buildGpuAllocations(
     vramManufacturedGb: round2(gpuManufacturedMib(g) / 1024),
     vramAvailableGb: round2(gpuAvailable[i] ?? 0),
     nvmlUsedGb: round2(g.memory_used / 1024),
+    hwReservedGb: round2(hwReservedMib(g.driver_model) / 1024),
     projectedLoadGb: round2(perGpuLoad[i] ?? 0),
     runningEngines: getRunningEnginesOnGpu(g.index, runningSlots),
   }));
 }
+
 
 // ── Forecast paint (bar fill + NEED tone share free-pool launch gate) ─────────
 
