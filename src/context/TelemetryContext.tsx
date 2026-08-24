@@ -31,9 +31,10 @@ const GPU_BACKGROUND_INTERVAL_MS = 1000;
 /** Idle tabs — slow poll; slot-cleared still triggers immediate refresh. */
 const GPU_IDLE_INTERVAL_MS = 5000;
 const CPU_INTERVAL_MS = 500;
+/** Host RAM used/free — widget + forecast; 1–2s is enough. */
+const RAM_INTERVAL_MS = 2000;
 /** NVML can lag CUDA free by 1–2s after engine stop. */
 const GPU_POST_STOP_POLL_MS = 2000;
-
 export type GpuPollTier = "fast" | "normal" | "idle";
 
 function gpuPollIntervalMs(tier: GpuPollTier): number {
@@ -179,6 +180,44 @@ export function TelemetryProvider({
       document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [pollingActive, pollCpu]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let paused = document.visibilityState !== "visible";
+
+    const tickRam = () => {
+      if (cancelled || paused) return;
+      invoke<SystemInfo>("scan_system_info")
+        .then((data) => {
+          if (cancelled) return;
+          setSystemInfo((prev) => {
+            if (
+              prev
+              && prev.total_memory_mib === data.total_memory_mib
+              && prev.available_memory_mib === data.available_memory_mib
+              && prev.total_memory_manufactured_mib === data.total_memory_manufactured_mib
+            ) {
+              return prev;
+            }
+            return data;
+          });
+        })
+        .catch(() => { /* keep last */ });
+    };
+
+    tickRam();
+    const ramTimer = setInterval(tickRam, RAM_INTERVAL_MS);
+    const handleVisibility = () => {
+      paused = document.visibilityState !== "visible";
+      if (!paused) tickRam();
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      cancelled = true;
+      clearInterval(ramTimer);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, []);
 
   const gpus = useMemo(() => {
     return applyDevGpuTopo(realGpus);
