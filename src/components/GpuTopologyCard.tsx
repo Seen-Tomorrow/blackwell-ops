@@ -39,7 +39,8 @@ export default function GpuTopologyCard({
 }: GpuTopologyCardProps) {
   const powerPercent = gpu.power_limit > 0 ? (gpu.power_draw / gpu.power_limit) * 100 : 0;
   const usedVramGb = gpu.memory_used / 1024;
-  const freeVramGb = gpu.memory_free / 1024;
+  const totalVramGb = (gpu.memory_total_manufactured || gpu.memory_total) / 1024;
+  const freeVramGb = Math.max(0, totalVramGb - usedVramGb);
 
   const driverVer = formatGpuDriverVersion(gpu.driver_version);
 

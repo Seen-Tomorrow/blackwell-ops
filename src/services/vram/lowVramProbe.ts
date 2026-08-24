@@ -141,7 +141,7 @@ export function isLowVramProbeFresh(
 
 /**
  * Show RE-PROBE LOW VRAM nudge — never auto-runs FIT.
- * True when free is soft-tight or over free-headroom, and no fresh low_vram probe.
+ * Yellow 85/92% is chrome only. Nudge only at the hard over-free gate.
  */
 export function needsLowVramReprobe(args: {
   estimateGb: number;
@@ -164,10 +164,7 @@ export function needsLowVramReprobe(args: {
   }
 
   const headroom = freePoolHeadroomGb(freeGb);
-  const overFree = estimateGb > freeGb - headroom;
-  const util = freePoolUtil(estimateGb, freeGb);
-  const softTight = freePoolOomTier(util) !== "none";
-  return overFree || softTight;
+  return estimateGb > freeGb - headroom;
 }
 
 export type LowVramBarInsets = {

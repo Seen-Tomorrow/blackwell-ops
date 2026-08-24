@@ -2111,6 +2111,14 @@
 .vram-fc-source__status-hero.is-estimate {
   opacity: 0.92;
 }
+.vram-fc-header__reprobe--yolo {
+  color: #fff;
+  border-color: color-mix(in srgb, #f97316 70%, transparent);
+  background: color-mix(in srgb, #ea580c 78%, #000);
+}
+.vram-fc-header__reprobe--yolo:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
 /* legacy alias */
 .vram-fc-source__prev-lab {
   display: block;
@@ -2169,29 +2177,9 @@
   border-color: var(--theme-provider-pill-active-border, #f5971f);
 }
 
-.vram-fc-header__reprobe-pair {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.vram-fc-header__reprobe--manual {
-  color: color-mix(in srgb, var(--theme-text-muted, #9ca3af) 88%, #fff);
-  border-color: color-mix(in srgb, #6b7280 45%, transparent);
-  background: color-mix(in srgb, #4b5563 42%, var(--theme-panel, #0a0a0a));
-}
-
-.vram-fc-header__reprobe--manual:hover:not(:disabled) {
-  color: #e5e7eb;
-  border-color: color-mix(in srgb, #9ca3af 55%, transparent);
-  background: color-mix(in srgb, #6b7280 38%, var(--theme-panel, #0a0a0a));
-}
-
 .vram-fc-header__reprobe--over-free,
 .vram-fc-source__reprobe[data-probe-state="over-free"],
-.vram-fc-header__reprobe[data-probe-state="over-free"],
-.vram-fc-header__reprobe--manual.vram-fc-header__reprobe--over-free {
+.vram-fc-header__reprobe[data-probe-state="over-free"] {
   color: #fff;
   -webkit-text-fill-color: #fff;
   border-color: var(--theme-telemetry-red, #ef4444);
@@ -3316,8 +3304,7 @@
  */
 [data-display-texture="phosphor-light"] .vram-fc-header__reprobe--over-free,
 [data-display-texture="phosphor-light"] .vram-fc-source__reprobe[data-probe-state="over-free"],
-[data-display-texture="phosphor-light"] .vram-fc-header__reprobe[data-probe-state="over-free"],
-[data-display-texture="phosphor-light"] .vram-fc-header__reprobe--manual.vram-fc-header__reprobe--over-free {
+[data-display-texture="phosphor-light"] .vram-fc-header__reprobe[data-probe-state="over-free"] {
   color: var(--display-face-light-text-red, #9f1239);
   -webkit-text-fill-color: var(--display-face-light-text-red, #9f1239);
   border-color: color-mix(in srgb, var(--display-face-light-text-red, #9f1239) 72%, transparent);

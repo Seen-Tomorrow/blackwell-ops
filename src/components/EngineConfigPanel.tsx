@@ -2073,6 +2073,29 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     onLaunch,
   ]);
 
+  const handleYoloLaunch = useCallback(() => {
+    if (!isDevBuild()) return;
+    if (!model) return;
+    pulseLaunchAck();
+    const fullConfig = buildCurrentLaunchConfig();
+    if (!fullConfig) return;
+    fullConfig.extra_params = {
+      ...fullConfig.extra_params,
+      __yolo_full_gpu: "1",
+      __ngl: "999",
+    };
+    void onLaunch(fullConfig).then((result) => {
+      if (result?.port) {
+        dispatchAppEvent(EVENTS.launchSuccess, {
+          alias: result.alias ?? fullConfig.alias,
+          port: result.port,
+        });
+      }
+    }).catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      dispatchAppEvent(EVENTS.launchError, { message: `YOLO: ${msg}` });
+    });
+  }, [model, pulseLaunchAck, buildCurrentLaunchConfig, onLaunch]);
   const handleOpenNobsproofCmd = useCallback(() => {
     const fullConfig = buildCurrentLaunchConfig();
     if (!fullConfig) return;
@@ -2678,6 +2701,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         selectedGpuIndices={selectedGpuIndices}
         isValidating={vramCalc.isValidating}
         onValidate={vramCalc.validate}
+        onYoloLaunch={isDevBuild() ? handleYoloLaunch : undefined}
         isModelRunning={isModelRunning}
         activeEngineAlias={activeEngineAlias}
         activeEnginePort={activeEnginePort}

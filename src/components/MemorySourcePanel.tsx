@@ -253,13 +253,12 @@ export interface MemorySourceReprobeProps {
   onValidate?: (mode?: FitProbeMode) => void;
   hideValidate?: boolean;
   className?: string;
-  /** Tight free — flash LOW VRAM (REL swaps one button; DEV shows both). */
   needsLowVramReprobe?: boolean;
-  /** Past amber fits-line — punch both probe controls red. */
   overFreeReprobe?: boolean;
+  /** DEV: --fit off -ngl 999, ignore forecast gate. */
+  onYoloLaunch?: () => void;
 }
 
-/** RE-PROBE control — sits right of the assisted launch summary. */
 export function MemorySourceReprobe({
   memorySource,
   isValidating = false,
@@ -268,6 +267,7 @@ export function MemorySourceReprobe({
   className,
   needsLowVramReprobe = false,
   overFreeReprobe = false,
+  onYoloLaunch,
 }: MemorySourceReprobeProps) {
   const view = getMemorySourceView(memorySource, { onValidate, hideValidate });
   if (!view.canProbe) return null;
@@ -287,68 +287,45 @@ export function MemorySourceReprobe({
       ? "RE-PROBE LOW VRAM"
       : "RE-PROBE";
 
-  const autoBtn = (
-    <button
-      type="button"
-      className={`vram-fc-source__reprobe vram-fc-header__reprobe${
-        overFreeReprobe
-          ? " vram-fc-header__reprobe--over-free"
-          : autoLow
-            ? " vram-fc-header__reprobe--low-vram"
-            : ""
-      }`}
-      data-probe-state={
-        isValidating ? "probing" : overFreeReprobe ? "over-free" : autoLow ? "low-vram" : "reprobe"
-      }
-      disabled={isValidating}
-      onClick={fire(autoLow || overFreeReprobe ? "low_vram" : "full")}
-      title={
-        overFreeReprobe
-          ? "Over free VRAM — run FIT now (auto picks low-vram)"
-          : autoLow
-            ? "Auto: free VRAM is tight — free-aware FIT (not on CTX drag)"
-            : "Auto: full-need FIT at this CTX"
-      }
-    >
-      {autoLabel}
-    </button>
-  );
-
-  const manualCls = `vram-fc-source__reprobe vram-fc-header__reprobe vram-fc-header__reprobe--manual${
-    overFreeReprobe ? " vram-fc-header__reprobe--over-free" : ""
-  }`;
-
-  if (isDevBuild()) {
-    return (
-      <span className={`vram-fc-header__reprobe-pair${wrap}`}>
-        {autoBtn}
-        <button
-          type="button"
-          className={manualCls}
-          data-probe-state={isValidating ? "probing" : overFreeReprobe ? "over-free" : "reprobe"}
-          disabled={isValidating}
-          onClick={fire("full")}
-          title="Manual full-need FIT (ngl 999) — ignore auto swap"
-        >
-          RE-PROBE
-        </button>
-        <button
-          type="button"
-          className={manualCls}
-          data-probe-state={isValidating ? "probing" : overFreeReprobe ? "over-free" : "reprobe"}
-          disabled={isValidating}
-          onClick={fire("low_vram")}
-          title="Manual free-aware FIT — ignore auto swap"
-        >
-          RE-PROBE LOW VRAM
-        </button>
-      </span>
-    );
-  }
-
   return (
-    <span className={wrap.trim() || undefined}>
-      {autoBtn}
+    <span className={`vram-fc-header__reprobe-pair${wrap}`}>
+      <button
+        type="button"
+        className={`vram-fc-source__reprobe vram-fc-header__reprobe${
+          overFreeReprobe
+            ? " vram-fc-header__reprobe--over-free"
+            : autoLow
+              ? " vram-fc-header__reprobe--low-vram"
+              : ""
+        }`}
+        data-probe-state={
+          isValidating ? "probing" : overFreeReprobe ? "over-free" : autoLow ? "low-vram" : "reprobe"
+        }
+        disabled={isValidating}
+        onClick={fire(autoLow || overFreeReprobe ? "low_vram" : "full")}
+        title={
+          overFreeReprobe
+            ? "Over free VRAM — run FIT now (auto picks low-vram)"
+            : autoLow
+              ? "Auto: free VRAM is tight — free-aware FIT (not on CTX drag)"
+              : "Auto: full-need FIT at this CTX"
+        }
+      >
+        {autoLabel}
+      </button>
+      {isDevBuild() && onYoloLaunch ? (
+        <button
+          type="button"
+          className="vram-fc-source__reprobe vram-fc-header__reprobe vram-fc-header__reprobe--yolo"
+          onClick={(e) => {
+            e.stopPropagation();
+            onYoloLaunch();
+          }}
+          title="DEV: --fit off --n-gpu-layers 999. No auto offload. May OOM or use shared GPU memory."
+        >
+          YOLO
+        </button>
+      ) : null}
     </span>
   );
 }

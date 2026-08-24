@@ -580,20 +580,16 @@ impl ProviderTemplate {
         // Cockpit LV 3/4 toggle (and any future launch override). Only rewrites `-lv N` tokens.
         apply_log_verbosity_override(&mut args, config);
 
-        // Auto VRAM launch — frontend sets extra_params.__auto_vram; power users can disable.
-        let auto_vram_launch = config
-            .extra_params
-            .get("__auto_vram")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+        let yolo_full_gpu = extra_param_eq_ignore_ascii(config, "__yolo_full_gpu", "1")
+            || extra_param_eq_ignore_ascii(config, "__yolo_full_gpu", "true");
 
-        let moe_optimal_launch = extra_param_eq_ignore_ascii(config, "offload_mode", "moe_optimal");
-        let external_draft_spec = external_draft_spec_needs_fit_off(config);
-
-        if auto_vram_launch {
+        if yolo_full_gpu {
+            args.extend(["--fit".into(), "off".into()]);
+            if let Some(flag) = sp.ngl_flag.first() {
+                args.extend([flag.clone(), "999".into()]);
+            }
+        } else if auto_vram_launch {
             if moe_optimal_launch || external_draft_spec {
-                // MOE_OPTIMAL owns expert placement — --fit on fights eviction/tensor offload strategy.
-                // External draft specs (dflash/eagle3/…) probe draft VRAM before ctx_other exists — hard-fail.
                 args.extend(["--fit".into(), "off".into()]);
             } else {
                 args.extend(sp.spawn_flags.clone());
