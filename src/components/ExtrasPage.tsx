@@ -23,7 +23,7 @@ export default function ExtrasPage({
 
   return (
     <div className="h-full flex flex-col overflow-hidden" data-extras-page>
-      <TabPageHeader title="EXTRAS" showIcon={false} />
+      <TabPageHeader title="EXTRAS" />
       <div className="flex-1 min-h-0 overflow-hidden">
         {subTab === "intel" && <IntelPage embedded />}
         {subTab === "playground" && <Playground stack={stack} models={models} embedded />}

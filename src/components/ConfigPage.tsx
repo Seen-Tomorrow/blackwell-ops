@@ -111,7 +111,7 @@ export default function ConfigPage({
 
   return (
     <div className="h-full flex flex-col overflow-hidden" data-config-page>
-      <TabPageHeader title="CONFIG" showIcon={false} />
+      <TabPageHeader title="CONFIG" />
 
       {effectiveSub === "providers" ? (
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
