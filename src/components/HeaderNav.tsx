@@ -1,5 +1,4 @@
 import {
-  forwardRef,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -7,7 +6,6 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type RefObject,
 } from "react";
 import type { Tab } from "../App";
 import { isSetupNavTabAllowed } from "../lib/setupGuide";
@@ -51,12 +49,8 @@ export interface HeaderNavProps {
 /**
  * Header navigation rail — primary segmented switch plus the sub-rail docked
  * under the horizontal midpoint of the active parent option.
- *
- * The parent (Layout) forwards a ref to the cluster element so its
- * logo-hide (`navTight`) hysteresis can read the cluster's scroll metrics.
  */
-const HeaderNav = forwardRef<HTMLDivElement, HeaderNavProps>(function HeaderNav(
-  {
+function HeaderNav({
     activeTab,
     onTabChange,
     configSubTab,
@@ -69,17 +63,8 @@ const HeaderNav = forwardRef<HTMLDivElement, HeaderNavProps>(function HeaderNav(
     shellWidthPx,
     qsHeightPx,
   },
-  ref,
 ) {
   const clusterRef = useRef<HTMLDivElement | null>(null);
-  const setClusterRef = useCallback(
-    (node: HTMLDivElement | null) => {
-      clusterRef.current = node;
-      if (typeof ref === "function") ref(node);
-      else if (ref) (ref as RefObject<HTMLDivElement>).current = node;
-    },
-    [ref],
-  );
   const lastOpsTabRef = useRef<Tab>("catalog");
   useEffect(() => {
     if (isOpsTab(activeTab)) lastOpsTabRef.current = activeTab;
@@ -173,9 +158,10 @@ const HeaderNav = forwardRef<HTMLDivElement, HeaderNavProps>(function HeaderNav(
         ".segment-switch__option--active",
       );
       if (!primary || !active) return;
-      const parentLeft = primary.offsetLeft + active.offsetLeft;
+      // Align the sub-rail's left edge with the parent option's midpoint.
+      const left = primary.offsetLeft + active.offsetLeft + active.offsetWidth / 2;
       setSubAnchor({
-        left: Math.max(0, parentLeft + active.offsetWidth / 2),
+        left: Math.max(0, left),
         width: active.offsetWidth,
       });
     };
@@ -196,7 +182,7 @@ const HeaderNav = forwardRef<HTMLDivElement, HeaderNavProps>(function HeaderNav(
   }, [showSubRail, primaryId, chromeScale, zoom, shellWidthPx, primaryOptions, qsHeightPx]);
 
   return (
-    <div ref={setClusterRef} className="app-header__nav-cluster min-w-0 flex-1">
+    <div ref={clusterRef} className="app-header__nav-cluster min-w-0 flex-1">
       <SegmentSwitch
         ariaLabel="Main navigation"
         size="fit"
@@ -252,6 +238,6 @@ const HeaderNav = forwardRef<HTMLDivElement, HeaderNavProps>(function HeaderNav(
       )}
     </div>
   );
-});
+}
 
 export default HeaderNav;

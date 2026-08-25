@@ -71,13 +71,6 @@
   min-height: calc(var(--header-primary-h) + 4px + var(--header-sub-h));
 }
 
-/* Match primary rail box so logo centers on the main switch, not the sub strip */
-.app-header-brand-slot {
-  height: var(--header-primary-h);
-  display: flex;
-  align-items: center;
-}
-
 /*
  * Primary — fill free width, height = Quick Settings well (JS --header-primary-h).
  * Same recessed inset chrome as .app-quick-settings so the pair matches.
@@ -136,7 +129,7 @@
   border-radius: calc(4px * var(--header-nav-scale));
 }
 
-/* Sub — starts at horizontal midpoint of parent option (--sub-left) */
+/* Sub — left edge aligned to the parent option's midpoint (--sub-left) */
 .app-header__sub-under {
   position: relative;
   box-sizing: border-box;

@@ -44,22 +44,10 @@ import IpcMeterFooter from "./IpcMeterFooter";
 import AppUpdateMenu from "./AppUpdateMenu";
 import DevViewportTool from "./DevViewportTool";
 import DevFakeGpuTopoTool from "./DevFakeGpuTopoTool";
-import { APP_BRAND_LOGO_SIZE, brandLogoDisplaySize } from "../lib/brandLogos";
 
 const MIN_ZOOM = 0.7;
 const MAX_ZOOM = 1.5;
 const ZOOM_STEP = 0.05;
-
-/**
- * Logo hide/show for tight nav — must account for the *full slot* reclaimed when
- * the brand is display:none. A small overflow hysteresis (e.g. 8 vs 60px) is
- * smaller than the logo (~171px + gap), so hide→space→show→overflow loops and
- * the logo flashes during resize.
- */
-const NAV_BRAND_GAP_PX = 16; // .app-header__start gap-4
-const NAV_LOGO_HIDE_OVERFLOW_PX = 8; // hide when tabs overflow by this much
-const NAV_LOGO_SHOW_SPARE_PX = 32; // keep spare after restoring logo
-const NAV_LOGO_FALLBACK_W = brandLogoDisplaySize(APP_BRAND_LOGO_SIZE).width;
 
 function loadZoom(): number {
   return loadUiZoom(1.0, MIN_ZOOM, MAX_ZOOM);
@@ -157,18 +145,6 @@ export default function Layout({
   const [updFakeOn, setUpdFakeOn] = useState(false);
   const [updFakeVersion, setUpdFakeVersion] = useState<string | null>(null);
 
-  // Nav cluster ref — forwarded into HeaderNav; the logo-tight hysteresis
-  // below reads its scroll metrics alongside the brand width.
-  const navRef = useRef<HTMLDivElement | null>(null);
-  const brandRef = useRef<HTMLDivElement | null>(null);
-  // True when the nav needs more width than it has (measured in CSS px —
-  // DPI-independent). Hides the logo so tabs get room; restore only when
-  // there is room for the *full* brand slot (see NAV_LOGO_* constants).
-  const [navTight, setNavTight] = useState(false);
-  const navTightRef = useRef(false);
-  /** Last measured brand width while visible (display:none → offsetWidth 0). */
-  const brandWidthRef = useRef(NAV_LOGO_FALLBACK_W);
-
   useEffect(() => {
     const onFocus = (e: Event) => {
       const open = (e as CustomEvent<{ open?: boolean }>).detail?.open;
@@ -259,37 +235,6 @@ export default function Layout({
     })();
   }, [monitorFocus]);
 
-
-
-
-  const updateNavScrollState = useCallback(() => {
-    const el = navRef.current;
-    if (!el) return;
-
-    const brand = brandRef.current;
-    const measured = brand?.offsetWidth ?? 0;
-    if (measured > 0) brandWidthRef.current = measured;
-    const brandW = brandWidthRef.current || NAV_LOGO_FALLBACK_W;
-    // Slot reclaimed when logo is hidden: brand + flex gap between brand and nav.
-    const logoSlot = brandW + NAV_BRAND_GAP_PX;
-
-    let tight: boolean;
-    if (navTightRef.current) {
-      // Logo already hidden — only restore when spare space covers the full
-      // logo slot + spare (prevents hide/show feedback loops on resize).
-      const needToRestore = logoSlot + NAV_LOGO_SHOW_SPARE_PX;
-      tight = el.scrollWidth + needToRestore > el.clientWidth;
-    } else {
-      // Logo visible — hide on real overflow (tabs need more room).
-      tight = el.scrollWidth > el.clientWidth + NAV_LOGO_HIDE_OVERFLOW_PX;
-    }
-
-    if (tight !== navTightRef.current) {
-      navTightRef.current = tight;
-      setNavTight(tight);
-    }
-  }, []);
-
   useEffect(() => {
     if (__BUILD_MODE__ !== "dev") return;
     const saved = loadDevUpdateVersionFake();
@@ -345,24 +290,6 @@ export default function Layout({
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
-
-  // Logo-tight: re-evaluate on resize, scroll, and after tight toggles
-  // (layout changes when logo is display:none).
-  useEffect(() => {
-    updateNavScrollState();
-    const el = navRef.current;
-    if (el) el.addEventListener("scroll", updateNavScrollState, { passive: true });
-    window.addEventListener("resize", updateNavScrollState);
-    return () => {
-      if (el) el.removeEventListener("scroll", updateNavScrollState);
-      window.removeEventListener("resize", updateNavScrollState);
-    };
-  }, [updateNavScrollState]);
-
-  useEffect(() => {
-    const id = window.requestAnimationFrame(() => updateNavScrollState());
-    return () => window.cancelAnimationFrame(id);
-  }, [navTight, updateNavScrollState]);
 
   // Docked one-line preview — newest line from any category (expanded console keeps tab filter).
   useEffect(() => {
@@ -452,7 +379,7 @@ export default function Layout({
 
   return (
     <div
-      className={`app-shell flex flex-col h-screen grid-bg relative${consoleDockedOpen ? " app-shell--console-docked" : ""}${navTight ? " app-shell--nav-tight" : ""}${monitorFocus ? " app-shell--monitor-focus" : ""}`}
+      className={`app-shell flex flex-col h-screen grid-bg relative${consoleDockedOpen ? " app-shell--console-docked" : ""}${monitorFocus ? " app-shell--monitor-focus" : ""}`}
       data-ui-density={uiDensity}
       data-monitor-focus={monitorFocus ? "1" : undefined}
       style={shellStyle}
@@ -507,17 +434,7 @@ export default function Layout({
       <header className="app-header relative z-30 layout-header-enter min-w-0">
         <div className="app-header__main flex items-start justify-between gap-3 min-w-0 w-full">
           <div className="app-header__start flex items-start gap-4 min-w-0 flex-1">
-            {/* Logo only — version lives in footer after PLATFORM.
-                Share cards use their own brand mark path (not this slot). */}
-            <div ref={brandRef} className="app-header-brand-slot flex-shrink-0">
-              <BlackwellBrandMark
-                showVersion={false}
-                packageVersion={updateOfferings?.currentVersion ?? null}
-              />
-            </div>
-
             <HeaderNav
-              ref={navRef}
               activeTab={activeTab}
               onTabChange={onTabChange}
               configSubTab={configSubTab}
