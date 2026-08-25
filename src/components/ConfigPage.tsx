@@ -1,6 +1,5 @@
-// Config tab shell — routes between sub-tabs. The PARAMETERS editor lives in
-// ParamConfigPanel; this file keeps only the tab bar, the sub-tab switch, and
-// the self-contained PATHS (model paths) panel.
+// Config tab shell — content only. Section switching lives in the app header
+// sub-rail (Layout). This file keeps the sub-tab body + PATHS panel.
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -22,11 +21,9 @@ import {
   type PowerUserState,
 } from "../lib/storage";
 import {
-  consumePendingConfigSubTab,
-  dispatchPowerUserChanged,
   dispatchAppEvent,
+  dispatchPowerUserChanged,
   EVENTS,
-  type NavigateConfigDetail,
 } from "../lib/events";
 import type { SetupGuideState } from "../hooks/useSetupGuide";
 import { isDevBuild } from "../lib/build";
@@ -34,8 +31,7 @@ import {
   resolveConfigActor,
   type ConfigActor,
 } from "../lib/systemParams";
-
-type ConfigSubTab = "providers" | "params" | "paths" | "secrets" | "recovery" | "updates" | "distribution";
+import type { ConfigSubTab } from "../lib/appNav";
 
 interface ConfigPageProps {
   providers?: ProviderConfig[];
@@ -43,8 +39,9 @@ interface ConfigPageProps {
   updateOfferings?: UpdateOfferings | null;
   onRefreshUpdateOfferings?: () => void | Promise<void>;
   onBinaryUpdatesChange?: (hasUpdates: boolean) => void;
-  /** Amber nav pulse — also badges UPDATES sub-tab. */
-  hasBinaryUpdates?: boolean;
+  /** Controlled section — header sub-rail owns selection. */
+  subTab: ConfigSubTab;
+  onSubTabChange: (tab: ConfigSubTab) => void;
 }
 
 export default function ConfigPage({
@@ -53,9 +50,9 @@ export default function ConfigPage({
   updateOfferings,
   onRefreshUpdateOfferings,
   onBinaryUpdatesChange,
-  hasBinaryUpdates = false,
+  subTab,
+  onSubTabChange,
 }: ConfigPageProps) {
-  const [subTab, setSubTab] = useState<ConfigSubTab>(() => consumePendingConfigSubTab() ?? "providers");
   const [selectedProviderId, setSelectedProviderId] = useState<string>(DEFAULT_PROVIDER_ID);
   const [allProviders, setAllProviders] = useState<ProviderConfig[]>(externalProviders || []);
   // Power-user tri-state — synced with Layout.tsx header toggle
@@ -81,7 +78,6 @@ export default function ConfigPage({
     }
   }, [externalProviders]);
 
-
   useEffect(() => {
     const handler = () => setPowerUserState(loadPowerUserState());
     window.addEventListener(EVENTS.powerUserChanged, handler);
@@ -89,20 +85,17 @@ export default function ConfigPage({
   }, []);
 
   useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent<NavigateConfigDetail>).detail;
-      if (detail?.subTab) setSubTab(detail.subTab);
-    };
-    window.addEventListener(EVENTS.navigateConfig, handler);
-
-    return () => window.removeEventListener(EVENTS.navigateConfig, handler);
-  }, []);
-
-  useEffect(() => {
     if (setupGuide.active && setupGuide.phase === "paths") {
-      setSubTab("paths");
+      onSubTabChange("paths");
     }
-  }, [setupGuide.active, setupGuide.phase]);
+  }, [setupGuide.active, setupGuide.phase, onSubTabChange]);
+
+  // Non-dev cannot stay on DISTRIBUTION
+  useEffect(() => {
+    if (subTab === "distribution" && !factoryExportEnabled) {
+      onSubTabChange("providers");
+    }
+  }, [subTab, factoryExportEnabled, onSubTabChange]);
 
   const handleEditorToggle = useCallback(() => {
     setPowerUserState(prev => {
@@ -113,53 +106,36 @@ export default function ConfigPage({
     });
   }, []);
 
+  const effectiveSub =
+    subTab === "distribution" && !factoryExportEnabled ? "providers" : subTab;
+
   return (
     <div className="h-full flex flex-col overflow-hidden" data-config-page>
-      <TabPageHeader title="CONFIG" />
-      <div className="px-4 py-1 config-section-bar flex items-center gap-1">
-        <button onClick={() => setSubTab("providers")} className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "providers" ? "app-nav-tab-active" : ""}`}>PROVIDERS &amp; FOUNDRY</button>
-        <button onClick={() => setSubTab("params")} className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "params" ? "app-nav-tab-active" : ""}`}>PARAMETERS</button>
-        <button onClick={() => setSubTab("paths")} data-onboarding="paths-tab" className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "paths" ? "app-nav-tab-active" : ""}`}>PATHS</button>
-        <button
-          onClick={() => setSubTab("updates")}
-          className={`relative app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "updates" ? "app-nav-tab-active" : ""}`}
-          title={hasBinaryUpdates ? "Runtime / app packs available" : undefined}
-        >
-          UPDATES
-          {hasBinaryUpdates && (
-            <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse" aria-hidden />
-          )}
-        </button>
-        {factoryExportEnabled && (
-          <button onClick={() => setSubTab("distribution")} className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "distribution" ? "app-nav-tab-active" : ""}`}>DISTRIBUTION</button>
-        )}
-        <button onClick={() => setSubTab("secrets")} className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "secrets" ? "app-nav-tab-active" : ""}`}>SECRETS</button>
-        <button onClick={() => setSubTab("recovery")} className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "recovery" ? "app-nav-tab-active" : ""}`}>RECOVERY</button>
-       </div>
+      <TabPageHeader title="CONFIG" showIcon={false} />
 
-       {subTab === "providers" ? (
-         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-           <ProvidersConfig providers={allProviders} onProvidersChange={setAllProviders} />
-         </div>
-       ) : subTab === "updates" ? (
-         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-           <UpdatesConfig
-             offerings={updateOfferings ?? null}
-             onRefreshOfferings={onRefreshUpdateOfferings}
-             onBinaryUpdatesChange={onBinaryUpdatesChange}
-           />
-         </div>
-       ) : subTab === "distribution" && factoryExportEnabled ? (
-         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-           <DistributionDevPanel />
-         </div>
-       ) : subTab === "paths" ? (
-         <ModelPathsPanel />
-       ) : subTab === "secrets" ? (
-         <SecretsConfig />
-       ) : subTab === "recovery" ? (
-         <RecoveryConfig />
-       ) : (
+      {effectiveSub === "providers" ? (
+        <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+          <ProvidersConfig providers={allProviders} onProvidersChange={setAllProviders} />
+        </div>
+      ) : effectiveSub === "updates" ? (
+        <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+          <UpdatesConfig
+            offerings={updateOfferings ?? null}
+            onRefreshOfferings={onRefreshUpdateOfferings}
+            onBinaryUpdatesChange={onBinaryUpdatesChange}
+          />
+        </div>
+      ) : effectiveSub === "distribution" && factoryExportEnabled ? (
+        <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+          <DistributionDevPanel />
+        </div>
+      ) : effectiveSub === "paths" ? (
+        <ModelPathsPanel />
+      ) : effectiveSub === "secrets" ? (
+        <SecretsConfig />
+      ) : effectiveSub === "recovery" ? (
+        <RecoveryConfig />
+      ) : (
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
           <ParamConfigPanel
             providers={allProviders}
@@ -176,8 +152,7 @@ export default function ConfigPage({
             onEditorToggle={handleEditorToggle}
           />
         </div>
-       )}
-
+      )}
     </div>
   );
 }

@@ -1808,16 +1808,21 @@
 }
 
 .segment-switch.segment-switch--multi .segment-switch__thumb {
-  top: 2px;
-  bottom: 2px;
+  top: var(--seg-thumb-top, 2px);
   left: var(--seg-thumb-left, 2px);
   width: var(--seg-thumb-width, 0px);
+  height: var(--seg-thumb-height, 0px);
+  bottom: auto;
   transform: none;
   transition:
     left 0.2s cubic-bezier(0.22, 1, 0.36, 1),
-    width 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+    width 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    top 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    height 0.2s cubic-bezier(0.22, 1, 0.36, 1);
   border-radius: 3px;
 }
+
+
 
 /* Fit — ASSISTED / FULL AUTO bezel scale (provider bar) */
 .segment-switch.segment-switch--size-fit {

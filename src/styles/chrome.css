@@ -19,6 +19,26 @@
     inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-lo) 55%, transparent),
     0 2px 8px color-mix(in srgb, #000000 35%, transparent),
     0 10px 24px color-mix(in srgb, #000000 18%, transparent);
+  /*
+   * Nav density: viewport chrome only — NOT app zoom.
+   * --header-qs-h is set on .app-shell from measured Quick Settings height.
+   * Must not redefine --header-primary-h as a bare calc here — that shadows the
+   * inherited measured value and leaves the primary rail shorter than QS.
+   */
+  --header-nav-scale: calc(
+    var(--chrome-scale, 1.12) *
+      clamp(1, calc(1.12 / sqrt(var(--device-pixel-ratio, 1))), 1.25)
+  );
+  --header-primary-h: var(--header-qs-h, calc(48px * var(--header-nav-scale)));
+  --header-sub-h: calc(30px * var(--header-nav-scale));
+  /* Track pad = gap around selected thumb */
+  --header-primary-inset: max(1px, calc(2px * var(--header-nav-scale)));
+  --header-sub-inset: max(1px, calc(1.5px * var(--header-nav-scale)));
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: calc(8px * var(--header-nav-scale)) calc(20px * var(--header-nav-scale))
+    calc(7px * var(--header-nav-scale));
 }
 
 .app-header > * {
@@ -26,9 +46,38 @@
   z-index: 1;
 }
 
+.app-header__main {
+  min-width: 0;
+  width: 100%;
+  align-items: flex-start;
+}
+
 .app-header__start {
   flex: 1 1 auto;
+  min-width: 0;
+  align-items: flex-start;
 }
+
+/* Primary + sub share one cluster so sub can dock under the active parent option.
+   Reserve sub-strip height so primary does not jump when DOWNLOADS hides it. */
+.app-header__nav-cluster {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 auto;
+  min-height: calc(var(--header-primary-h) + 4px + var(--header-sub-h));
+}
+
+/* Match primary rail box so logo centers on the main switch, not the sub strip */
+.app-header-brand-slot {
+  height: var(--header-primary-h);
+  display: flex;
+  align-items: center;
+}
+
 
 .app-header__nav-wrap {
   flex: 1 1 auto;
@@ -38,6 +87,135 @@
   align-items: stretch;
   gap: 0.15rem;
 }
+
+/*
+ * Primary — fill free width, height = Quick Settings well (JS --header-primary-h).
+ * Same recessed inset chrome as .app-quick-settings so the pair matches.
+ */
+.app-header .app-header__primary-switch.segment-switch.segment-switch--size-fit,
+.app-header .app-header__primary-switch.segment-switch {
+  --seg-inset: var(--header-primary-inset);
+  box-sizing: border-box;
+  width: 100%;
+  max-width: none;
+  height: var(--header-primary-h) !important;
+  min-height: var(--header-primary-h) !important;
+  max-height: var(--header-primary-h) !important;
+  padding: var(--seg-inset) !important;
+  border: 1px solid color-mix(in srgb, var(--theme-bezel-edge-lo) 70%, var(--theme-chrome-control-border) 30%);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--theme-bg) 55%, var(--theme-panel-accent) 45%);
+  box-shadow:
+    inset 0 2px 5px color-mix(in srgb, #000000 42%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #000000 28%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 28%, transparent),
+    0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 18%, transparent);
+}
+
+
+.app-header .app-header__primary-switch.segment-switch--multi {
+  display: flex;
+  width: 100%;
+  align-items: stretch;
+}
+
+.app-header
+  .app-header__primary-switch.segment-switch.segment-switch--size-fit
+  .segment-switch__option,
+.app-header .app-header__primary-switch.segment-switch--multi .segment-switch__option,
+.app-header .app-header__primary-switch .segment-switch__option {
+  flex: 1 1 0 !important;
+  min-width: 0;
+  height: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: calc(13px * var(--header-nav-scale)) !important;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  padding: 0 calc(12px * var(--header-nav-scale)) !important;
+  line-height: 1.2;
+  box-sizing: border-box;
+}
+
+.app-header .app-header__primary-switch .segment-switch__thumb,
+.app-header
+  .app-header__primary-switch.segment-switch--multi
+  .segment-switch__thumb {
+  border-radius: calc(4px * var(--header-nav-scale));
+}
+
+/* Sub — starts at horizontal midpoint of parent option (--sub-left) */
+.app-header__sub-under {
+  position: relative;
+  box-sizing: border-box;
+  margin-left: var(--sub-left, 0px);
+  width: max-content;
+  max-width: calc(100% - var(--sub-left, 0px));
+  min-width: 0;
+  height: var(--header-sub-h);
+  padding-left: 0;
+}
+
+
+.app-header .app-header__sub-switch.segment-switch.segment-switch--size-compact,
+.app-header .app-header__sub-switch.segment-switch {
+  --seg-inset: var(--header-sub-inset);
+  box-sizing: border-box;
+  width: max-content;
+  max-width: 100%;
+  height: var(--header-sub-h) !important;
+  min-height: var(--header-sub-h) !important;
+  max-height: var(--header-sub-h) !important;
+  padding: var(--seg-inset) !important;
+  border: 1px solid color-mix(in srgb, var(--theme-bezel-edge-lo) 70%, var(--theme-chrome-control-border) 30%);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--theme-bg) 55%, var(--theme-panel-accent) 45%);
+  box-shadow:
+    inset 0 2px 5px color-mix(in srgb, #000000 42%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #000000 28%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 28%, transparent),
+    0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 18%, transparent);
+}
+
+
+.app-header
+  .app-header__sub-switch.segment-switch.segment-switch--size-compact
+  .segment-switch__option,
+.app-header .app-header__sub-switch .segment-switch__option {
+  flex: 0 0 auto;
+  height: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(11px * var(--header-nav-scale)) !important;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  padding: 0 calc(12px * var(--header-nav-scale)) !important;
+  line-height: 1.2;
+  box-sizing: border-box;
+}
+
+.app-header .app-header__sub-switch .segment-switch__thumb,
+.app-header
+  .app-header__sub-switch.segment-switch--multi
+  .segment-switch__thumb {
+  border-radius: calc(3.5px * var(--header-nav-scale));
+}
+
+
+
+
+
+
+
+
+.app-header__sub-rail {
+  display: contents;
+}
+
+
 
 .app-header__nav {
   flex: 1 1 auto;
@@ -404,14 +582,6 @@
   font-size: clamp(0.65rem, calc(0.55rem + 0.4vw), 0.875rem);
 }
 
-/* Tight nav — drop the app logo so the tabs get more room.
-   Single source: JS overflow measurement (.app-shell--nav-tight) on the nav
-   element (DPI-independent CSS px). Hysteresis must exceed full logo slot
-   width or hide→free space→show loops and the logo flashes on resize.
-   Do not add a hard @container max-width hide — it fights the JS band. */
-.app-shell--nav-tight .app-header__start > .app-header-brand-slot {
-  display: none;
-}
 
 .app-nav-tab:hover {
   color: var(--theme-nav-hover-text);

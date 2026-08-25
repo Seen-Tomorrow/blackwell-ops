@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback, useMemo, useRef, type CSSProperties } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, type CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { Tab } from "../App";
 import type { ProviderConfig, UpdateOfferings } from "../lib/types";
-import { isSetupNavTabAllowed } from "../lib/setupGuide";
+import type { ConfigSubTab, ExtrasSubTab } from "../lib/appNav";
+import HeaderNav from "./HeaderNav";
 import { useStatus } from "../context/StatusBarContext";
 import { useFoundry, type Env } from "../hooks/useBuildDock";
 import FoundryStatusChip from "./FoundryStatusChip";
@@ -78,16 +79,13 @@ interface LayoutProps {
   hasBinaryUpdates?: boolean;
   /** First-run wizard active — lock ENGINES / LOGS / EXTRAS. */
   setupGuideActive?: boolean;
+  /** CONFIG section — header sub-rail. */
+  configSubTab: ConfigSubTab;
+  onConfigSubTabChange: (tab: ConfigSubTab) => void;
+  /** EXTRAS section — header sub-rail. */
+  extrasSubTab: ExtrasSubTab;
+  onExtrasSubTabChange: (tab: ExtrasSubTab) => void;
 }
-
-const tabs: { id: Tab; label: string; icon: string; hidden?: boolean }[] = [
-  { id: "catalog", label: "OPERATIONS", icon: "\u269B" },
-  { id: "stack", label: "ENGINES", icon: "\uD83D\uDDA4" },
-  { id: "logs", label: "LOGS", icon: "\uD83D\uDCCD" },
-  { id: "modelhub", label: "DOWNLOADS", icon: "\u2B21" },
-  { id: "extras", label: "EXTRAS", icon: "\u2726" },
-  { id: "config", label: "CONFIG", icon: "\u2699" },
-];
 
 export default function Layout({
   activeTab,
@@ -98,6 +96,10 @@ export default function Layout({
   onRefreshUpdateOfferings,
   hasBinaryUpdates,
   setupGuideActive = false,
+  configSubTab,
+  onConfigSubTabChange,
+  extrasSubTab,
+  onExtrasSubTabChange,
 }: LayoutProps) {
   const [zoom, setZoom] = useState(loadZoom);
   const [uiDensity, setUiDensity] = useState<UiDensity>(loadUiDensity);
@@ -155,11 +157,10 @@ export default function Layout({
   const [updFakeOn, setUpdFakeOn] = useState(false);
   const [updFakeVersion, setUpdFakeVersion] = useState<string | null>(null);
 
-  // Nav tab horizontal scrolling (chevrons only when the tabs overflow).
-  const navRef = useRef<HTMLElement | null>(null);
+  // Nav cluster ref — forwarded into HeaderNav; the logo-tight hysteresis
+  // below reads its scroll metrics alongside the brand width.
+  const navRef = useRef<HTMLDivElement | null>(null);
   const brandRef = useRef<HTMLDivElement | null>(null);
-  const [navCanScrollLeft, setNavCanScrollLeft] = useState(false);
-  const [navCanScrollRight, setNavCanScrollRight] = useState(false);
   // True when the nav needs more width than it has (measured in CSS px —
   // DPI-independent). Hides the logo so tabs get room; restore only when
   // there is room for the *full* brand slot (see NAV_LOGO_* constants).
@@ -264,8 +265,6 @@ export default function Layout({
   const updateNavScrollState = useCallback(() => {
     const el = navRef.current;
     if (!el) return;
-    setNavCanScrollLeft(el.scrollLeft > 2);
-    setNavCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
 
     const brand = brandRef.current;
     const measured = brand?.offsetWidth ?? 0;
@@ -290,17 +289,6 @@ export default function Layout({
       setNavTight(tight);
     }
   }, []);
-
-  const scrollNav = useCallback(
-    (dir: -1 | 1) => {
-      const el = navRef.current;
-      if (!el) return;
-      el.scrollBy({ left: dir * 220, behavior: "smooth" });
-      // Reflect the new scroll position shortly after the smooth scroll settles.
-      window.setTimeout(updateNavScrollState, 260);
-    },
-    [updateNavScrollState],
-  );
 
   useEffect(() => {
     if (__BUILD_MODE__ !== "dev") return;
@@ -358,7 +346,7 @@ export default function Layout({
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // Chevron + logo-tight: re-evaluate on resize, scroll, and after tight toggles
+  // Logo-tight: re-evaluate on resize, scroll, and after tight toggles
   // (layout changes when logo is display:none).
   useEffect(() => {
     updateNavScrollState();
@@ -401,9 +389,26 @@ export default function Layout({
     return () => clearInterval(interval);
   }, []);
 
-  const visibleTabs = useMemo(() => {
-    return tabs.filter(t => !t.hidden);
-  }, []);
+  const qsRef = useRef<HTMLDivElement | null>(null);
+  const [qsHeightPx, setQsHeightPx] = useState(0);
+
+  useLayoutEffect(() => {
+    const qs = qsRef.current;
+    if (!qs) return;
+    const measureQs = () => {
+      const h = Math.round(qs.getBoundingClientRect().height);
+      if (h > 0) setQsHeightPx(h);
+    };
+    measureQs();
+    const ro =
+      typeof ResizeObserver !== "undefined" ? new ResizeObserver(measureQs) : null;
+    ro?.observe(qs);
+    window.addEventListener("resize", measureQs);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener("resize", measureQs);
+    };
+  }, [chromeScale, uiDensity]);
 
   const adjustZoom = useCallback((delta: number) => {
     setZoom(prev => {
@@ -436,9 +441,15 @@ export default function Layout({
     "--app-shell-width-px": `${shellWidthPx}px`,
     /** Header/footer density — independent of app zoom (see resolveChromeScale). */
     "--chrome-scale": String(chromeScale),
+    "--device-pixel-ratio": String(
+      typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1,
+    ),
+    /** Primary rail height locked to Quick Settings well (measured). */
+    ...(qsHeightPx > 0
+      ? { "--header-qs-h": `${qsHeightPx}px`, "--header-primary-h": `${qsHeightPx}px` }
+      : {}),
   } as CSSProperties;
 
-  const isConfigTab = activeTab === "config";
 
   return (
     <div
@@ -493,170 +504,131 @@ export default function Layout({
         </div>
       ) : null}
 
-      {/* Top bar */}
-      <header className="app-header flex items-center justify-between gap-3 px-6 py-3 backdrop-blur-sm relative z-30 layout-header-enter min-w-0">
-        <div className="app-header__start flex items-center gap-4 min-w-0 flex-1">
-          {/* Logo only — version lives in footer after PLATFORM.
-              Wrapper keeps a stable measure target for nav-tight hysteresis. */}
-          <div ref={brandRef} className="app-header-brand-slot flex-shrink-0">
-            <BlackwellBrandMark
-              showVersion={false}
-              packageVersion={updateOfferings?.currentVersion ?? null}
+      {/* Top bar — primary fills free space; sub-rail docks under active parent center */}
+      <header className="app-header relative z-30 layout-header-enter min-w-0">
+        <div className="app-header__main flex items-start justify-between gap-3 min-w-0 w-full">
+          <div className="app-header__start flex items-start gap-4 min-w-0 flex-1">
+            {/* Logo only — version lives in footer after PLATFORM.
+                Share cards use their own brand mark path (not this slot). */}
+            <div ref={brandRef} className="app-header-brand-slot flex-shrink-0">
+              <BlackwellBrandMark
+                showVersion={false}
+                packageVersion={updateOfferings?.currentVersion ?? null}
+              />
+            </div>
+
+            <HeaderNav
+              ref={navRef}
+              activeTab={activeTab}
+              onTabChange={onTabChange}
+              configSubTab={configSubTab}
+              onConfigSubTabChange={onConfigSubTabChange}
+              extrasSubTab={extrasSubTab}
+              onExtrasSubTabChange={onExtrasSubTabChange}
+              setupGuideActive={setupGuideActive}
+              chromeScale={chromeScale}
+              zoom={zoom}
+              shellWidthPx={shellWidthPx}
+              qsHeightPx={qsHeightPx}
             />
           </div>
 
-          {/* Nav tabs — chevrons appear only when the tabs overflow (no wrap). */}
-          <div className="app-header__nav-wrap">
-            <button
-              type="button"
-              aria-label="Scroll tabs left"
-              onClick={() => scrollNav(-1)}
-              className={`app-header__nav-chev app-header__nav-chev--left${navCanScrollLeft ? " is-visible" : ""}`}
-              tabIndex={navCanScrollLeft ? 0 : -1}
-            >
-              ‹
-            </button>
-            <nav
-              ref={navRef}
-              className="app-header__nav flex items-stretch min-w-0"
-              onScroll={updateNavScrollState}
-            >
-              {visibleTabs.map((tab) => {
-                const lockedBySetup =
-                  setupGuideActive && !isSetupNavTabAllowed(tab.id);
-                return (
-                  <div key={tab.id} className="app-header__nav-item relative">
+          {/* Admin lock + zoom + appearance */}
+          <div className="app-header-actions gap-1.5 flex-shrink-0">
+            <div ref={qsRef} className="app-quick-settings flex flex-col items-end gap-px flex-shrink-0">
+              <AppearanceControls embedded />
+              <div className="app-quick-settings__tools app-quick-settings__row flex items-center gap-2">
+                <span className="app-quick-settings__title font-mono tracking-widest uppercase shrink-0">
+                  Quick Settings
+                </span>
+                <div className="app-quick-settings__tool-group flex items-center gap-1 flex-wrap justify-end min-w-0">
+                  <div className="app-appearance-inline-group flex items-center gap-0.5 flex-shrink-0">
+                    <span className="app-appearance-section__label app-appearance-section__label--compact text-[6px] font-mono tracking-widest uppercase">
+                      Comfort
+                    </span>
                     <button
                       type="button"
-                      onClick={() => {
-                        if (lockedBySetup) return;
-                        onTabChange(tab.id);
-                      }}
-                      disabled={lockedBySetup}
-                      title={
-                        lockedBySetup
-                          ? "Finish first-run setup first (OPERATIONS, DOWNLOADS, or CONFIG)"
-                          : undefined
-                      }
-                      {...(tab.id === "config" ? { "data-onboarding": "config-tab" } : {})}
-                      className={`app-nav-tab font-mono rounded-sm ${
-                        activeTab === tab.id ? "app-nav-tab-active" : ""
-                      }${lockedBySetup ? " app-nav-tab-disabled" : ""}`}
+                      onClick={toggleUiDensity}
+                      className={`app-chrome-control-btn px-1.5 text-[8px] font-mono transition-colors leading-none ${uiDensity === "compact" ? "text-yellow-400/90" : ""}`}
+                      title={uiDensity === "compact" ? "Density: Compact (click for Comfortable)" : "Density: Comfortable (click for Compact)"}
                     >
-                      {/* <span className="mr-1.5">{tab.icon}</span> */}
-                      {tab.label}
+                      {uiDensity === "compact" ? "COMPACT" : "COMFORT"}
                     </button>
                   </div>
-                );
-              })}
-            </nav>
-            <button
-              type="button"
-              aria-label="Scroll tabs right"
-              onClick={() => scrollNav(1)}
-              className={`app-header__nav-chev app-header__nav-chev--right${navCanScrollRight ? " is-visible" : ""}`}
-              tabIndex={navCanScrollRight ? 0 : -1}
-            >
-              ›
-            </button>
-          </div>
-        </div>
-
-        {/* Admin lock + zoom + appearance */}
-        <div className="app-header-actions gap-1.5 flex-shrink-0">
-          <div className="app-quick-settings flex flex-col items-end gap-px flex-shrink-0">
-            <AppearanceControls embedded />
-            <div className="app-quick-settings__tools app-quick-settings__row flex items-center gap-2">
-              <span className="app-quick-settings__title font-mono tracking-widest uppercase shrink-0">
-                Quick Settings
-              </span>
-              <div className="app-quick-settings__tool-group flex items-center gap-1 flex-wrap justify-end min-w-0">
-              <div className="app-appearance-inline-group flex items-center gap-0.5 flex-shrink-0">
-                <span className="app-appearance-section__label app-appearance-section__label--compact text-[6px] font-mono tracking-widest uppercase">
-                  Comfort
+                  <span className="app-quick-settings__sep app-chrome-control-btn text-[8px] font-mono opacity-40" aria-hidden>|</span>
+                  <div className="app-appearance-inline-group flex items-center gap-0.5 flex-shrink-0">
+                    <span className="app-appearance-section__label app-appearance-section__label--compact text-[6px] font-mono tracking-widest uppercase">
+                      Zoom
+                    </span>
+                    <button onClick={() => adjustZoom(-ZOOM_STEP)} className="app-chrome-control-btn px-1 text-[9px] font-mono transition-colors leading-none" title="Decrease text scale (Ctrl+scroll)">−</button>
+                    <span className="app-chrome-control-btn text-[8px] font-mono opacity-60 w-8 text-center" title="Text scale (Ctrl+scroll)">{Math.round(zoom * 100)}%</span>
+                    <button onClick={() => adjustZoom(ZOOM_STEP)} className="app-chrome-control-btn px-1 text-[9px] font-mono transition-colors leading-none" title="Increase text scale (Ctrl+scroll)">+</button>
+                  </div>
+                  <span className="app-quick-settings__sep app-chrome-control-btn text-[8px] font-mono opacity-40" aria-hidden>|</span>
+                  <AppUpdateMenu
+                    offerings={updateOfferings ?? null}
+                    hasBinaryUpdates={hasBinaryUpdates}
+                    onRefresh={onRefreshUpdateOfferings}
+                  />
+                  <span className="app-quick-settings__sep app-chrome-control-btn text-[8px] font-mono opacity-40" aria-hidden>|</span>
+                  <button
+                    type="button"
+                    onClick={dispatchNavigateRecovery}
+                    className="app-quick-settings__recovery app-chrome-control-btn px-1.5 text-[8px] font-mono transition-colors leading-none"
+                    title="CONFIG → RECOVERY — clear local UI prefs or reset portable config/"
+                  >
+                    RECOVERY
+                  </button>
+                </div>
+              </div>
+            </div>
+            {__BUILD_MODE__ === "dev" && (
+              <div
+                className="app-header-dev-tools flex flex-row flex-shrink-0 items-center"
+                title="DEV tools — SETUP / CLR / FAKE / VIEW / GPU+"
+              >
+                <span className="app-header-dev-tools__label font-mono tracking-widest uppercase shrink-0">
+                  DEV
                 </span>
                 <button
                   type="button"
-                  onClick={toggleUiDensity}
-                  className={`app-chrome-control-btn px-1.5 text-[8px] font-mono transition-colors leading-none ${uiDensity === "compact" ? "text-yellow-400/90" : ""}`}
-                  title={uiDensity === "compact" ? "Density: Compact (click for Comfortable)" : "Density: Comfortable (click for Compact)"}
+                  onClick={(e) => {
+                    if (e.shiftKey) {
+                      dispatchReplaySetupGuideOnboardingOnly();
+                      return;
+                    }
+                    void dispatchReplaySetupGuide();
+                  }}
+                  className="app-header-dev-tools__btn app-chrome-control-btn"
+                  title="Dev: reset config/ (user provider overrides, caches) + setup guide. Does NOT clear localStorage — use CLR. Optional plugins without binaries stay hidden. Shift+click: onboarding UI only (keeps paths + metadata cache)."
                 >
-                  {uiDensity === "compact" ? "COMPACT" : "COMFORT"}
+                  SETUP
                 </button>
-              </div>
-              <span className="app-quick-settings__sep app-chrome-control-btn text-[8px] font-mono opacity-40" aria-hidden>|</span>
-              <div className="app-appearance-inline-group flex items-center gap-0.5 flex-shrink-0">
-                <span className="app-appearance-section__label app-appearance-section__label--compact text-[6px] font-mono tracking-widest uppercase">
-                  Zoom
-                </span>
-                <button onClick={() => adjustZoom(-ZOOM_STEP)} className="app-chrome-control-btn px-1 text-[9px] font-mono transition-colors leading-none" title="Decrease text scale (Ctrl+scroll)">−</button>
-                <span className="app-chrome-control-btn text-[8px] font-mono opacity-60 w-8 text-center" title="Text scale (Ctrl+scroll)">{Math.round(zoom * 100)}%</span>
-                <button onClick={() => adjustZoom(ZOOM_STEP)} className="app-chrome-control-btn px-1 text-[9px] font-mono transition-colors leading-none" title="Increase text scale (Ctrl+scroll)">+</button>
-              </div>
-              <span className="app-quick-settings__sep app-chrome-control-btn text-[8px] font-mono opacity-40" aria-hidden>|</span>
-              <AppUpdateMenu
-                offerings={updateOfferings ?? null}
-                hasBinaryUpdates={hasBinaryUpdates}
-                onRefresh={onRefreshUpdateOfferings}
-              />
-              <span className="app-quick-settings__sep app-chrome-control-btn text-[8px] font-mono opacity-40" aria-hidden>|</span>
-              <button
-                type="button"
-                onClick={dispatchNavigateRecovery}
-                className="app-quick-settings__recovery app-chrome-control-btn px-1.5 text-[8px] font-mono transition-colors leading-none"
-                title="CONFIG → RECOVERY — clear local UI prefs or reset portable config/"
-              >
-                RECOVERY
-              </button>
-              </div>
-            </div>
-          </div>
-          {__BUILD_MODE__ === "dev" && (
-            <div
-              className="app-header-dev-tools flex flex-row flex-shrink-0 items-center"
-              title="DEV tools — SETUP / CLR / FAKE / VIEW / GPU+"
-            >
-              <span className="app-header-dev-tools__label font-mono tracking-widest uppercase shrink-0">
-                DEV
-              </span>
-              <button
-                type="button"
-                onClick={(e) => {
-                  if (e.shiftKey) {
-                    dispatchReplaySetupGuideOnboardingOnly();
-                    return;
+                <button
+                  type="button"
+                  onClick={() => dispatchClearLocalStorage(true)}
+                  className="app-header-dev-tools__btn app-chrome-control-btn"
+                  title="Dev: clear BlackOps localStorage only (UI prefs) — does NOT reset config/ or replay setup. Use SETUP for fresh-install test."
+                >
+                  CLR
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { void toggleUpdFake(); }}
+                  className="app-header-dev-tools__btn app-chrome-control-btn"
+                  title={
+                    updFakeOn
+                      ? `Updater test ON — fake v${updFakeVersion ?? "?"} (real ${updateOfferings?.currentVersion ?? "?"}) — click to disable`
+                      : "Updater test OFF — click to fake patch-1 version so UPDATE menu appears"
                   }
-                  void dispatchReplaySetupGuide();
-                }}
-                className="app-header-dev-tools__btn app-chrome-control-btn"
-                title="Dev: reset config/ (user provider overrides, caches) + setup guide. Does NOT clear localStorage — use CLR. Optional plugins without binaries stay hidden. Shift+click: onboarding UI only (keeps paths + metadata cache)."
-              >
-                SETUP
-              </button>
-              <button
-                type="button"
-                onClick={() => dispatchClearLocalStorage(true)}
-                className="app-header-dev-tools__btn app-chrome-control-btn"
-                title="Dev: clear BlackOps localStorage only (UI prefs) — does NOT reset config/ or replay setup. Use SETUP for fresh-install test."
-              >
-                CLR
-              </button>
-              <button
-                type="button"
-                onClick={() => { void toggleUpdFake(); }}
-                className="app-header-dev-tools__btn app-chrome-control-btn"
-                title={
-                  updFakeOn
-                    ? `Updater test ON — fake v${updFakeVersion ?? "?"} (real ${updateOfferings?.currentVersion ?? "?"}) — click to disable`
-                    : "Updater test OFF — click to fake patch-1 version so UPDATE menu appears"
-                }
-              >
-                {updFakeOn ? `FAKE v${updFakeVersion ?? "?"}` : "FAKE"}
-              </button>
-              <DevViewportTool />
-              <DevFakeGpuTopoTool />
-            </div>
-          )}
+                >
+                  {updFakeOn ? `FAKE v${updFakeVersion ?? "?"}` : "FAKE"}
+                </button>
+                <DevViewportTool />
+                <DevFakeGpuTopoTool />
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -745,7 +717,7 @@ export default function Layout({
           }
           statusRight={
             <>
-              {isConfigTab && (
+              {activeTab === "config" && (
                 <>
                   <span>TOTAL PARAMS: {totalParams}</span>
                   <div className="relative inline-block">

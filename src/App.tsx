@@ -34,8 +34,11 @@ import {
   saveLogsAnsiEnabled,
   saveStartupUpdatesCache,
   loadHwMonitorOpen,
+  loadExtrasSubTab,
+  type ExtrasSubTab,
 } from "./lib/storage";
-import { dispatchAppEvent, EVENTS } from "./lib/events";
+import { dispatchAppEvent, EVENTS, consumePendingConfigSubTab, consumePendingExtrasSubTab, type NavigateConfigDetail, type NavigateExtrasDetail } from "./lib/events";
+import type { ConfigSubTab } from "./lib/appNav";
 import { isSetupNavTabAllowed } from "./lib/setupGuide";
 
 import { BINARY_UPDATES_ENABLED } from "./lib/foundry_constants";
@@ -46,6 +49,12 @@ export type Tab = "catalog" | "stack" | "extras" | "modelhub" | "logs" | "config
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>("catalog");
+  const [configSubTab, setConfigSubTab] = useState<ConfigSubTab>(
+    () => consumePendingConfigSubTab() ?? "providers",
+  );
+  const [extrasSubTab, setExtrasSubTab] = useState<ExtrasSubTab>(
+    () => consumePendingExtrasSubTab() ?? loadExtrasSubTab(),
+  );
   const [models, setModels] = useState<ModelEntry[]>([]);
   const [catalogLoaded, setCatalogLoaded] = useState(false);
   const [stack, setStack] = useState<StackEntry[]>([]);
@@ -181,9 +190,13 @@ function App() {
       setActiveTab("stack");
     };
     const catalogNavHandler = () => setActiveTab("catalog");
-    const extrasNavHandler = () => {
+    const extrasNavHandler = (e: Event) => {
       if (setupActiveRef.current) return;
       setActiveTab("extras");
+      const detail = (e as CustomEvent<NavigateExtrasDetail>).detail;
+      const pending = consumePendingExtrasSubTab();
+      const sub = detail?.subTab ?? pending;
+      if (sub) setExtrasSubTab(sub);
     };
     const modelHubNavHandler = () => setActiveTab("modelhub");
     window.addEventListener(EVENTS.navigateStack, navHandler);
@@ -372,7 +385,13 @@ function App() {
   }, [reloadModels, reloadProviders]);
 
   useEffect(() => {
-    const handler = () => setActiveTab("config");
+    const handler = (e: Event) => {
+      setActiveTab("config");
+      const detail = (e as CustomEvent<NavigateConfigDetail>).detail;
+      const pending = consumePendingConfigSubTab();
+      const sub = detail?.subTab ?? pending;
+      if (sub) setConfigSubTab(sub);
+    };
     window.addEventListener(EVENTS.navigateConfig, handler);
     return () => window.removeEventListener(EVENTS.navigateConfig, handler);
   }, []);
@@ -677,7 +696,19 @@ function App() {
         <FoundryProvider>
           <TelemetryProvider pollingActive={hwMonitorOpen || activeTab === "catalog" || hasLiveEngines} gpuPollTier={gpuPollTier}>
             <StatusProvider value={{ totalParams, hiddenCount, onShowAll: handleShowAll }}>
-            <Layout activeTab={activeTab} onTabChange={handleTabChange} providers={providers} updateOfferings={updateOfferings} onRefreshUpdateOfferings={refreshUpdateOfferings} hasBinaryUpdates={hasBinaryUpdates} setupGuideActive={setupGuide.active}>
+            <Layout
+              activeTab={activeTab}
+              onTabChange={handleTabChange}
+              providers={providers}
+              updateOfferings={updateOfferings}
+              onRefreshUpdateOfferings={refreshUpdateOfferings}
+              hasBinaryUpdates={hasBinaryUpdates}
+              setupGuideActive={setupGuide.active}
+              configSubTab={configSubTab}
+              onConfigSubTabChange={setConfigSubTab}
+              extrasSubTab={extrasSubTab}
+              onExtrasSubTabChange={setExtrasSubTab}
+            >
         {(activeTab === "catalog" || keepOpsAlive) && (
           <div
             className={activeTab === "catalog" ? "h-full min-h-0" : "hidden"}
@@ -696,7 +727,8 @@ function App() {
               updateOfferings={updateOfferings}
               onRefreshUpdateOfferings={refreshUpdateOfferings}
               onBinaryUpdatesChange={setHasBinaryUpdates}
-              hasBinaryUpdates={hasBinaryUpdates}
+              subTab={configSubTab}
+              onSubTabChange={setConfigSubTab}
             />
           </Suspense>
         )}
@@ -712,7 +744,12 @@ function App() {
         )}
         {activeTab === "extras" && (
           <Suspense fallback={<TabFallback />}>
-            <ExtrasPage stack={stack} models={models} />
+            <ExtrasPage
+              stack={stack}
+              models={models}
+              subTab={extrasSubTab}
+              onSubTabChange={setExtrasSubTab}
+            />
           </Suspense>
         )}
         {activeTab === "logs" && (

@@ -13,6 +13,8 @@ export type SegmentSwitchOption = {
   disabled?: boolean;
   /** Extra classes on the option button (e.g. animate-pulse while building). */
   className?: string;
+  /** Optional data-* attributes (onboarding hooks, etc.). */
+  dataAttrs?: Record<string, string>;
 };
 
 export type SegmentSwitchSize = "fit" | "compact";
@@ -62,7 +64,7 @@ export default function SegmentSwitch({
   );
   const safeIdx = activeIndex >= 0 && activeIndex < n ? activeIndex : 0;
   const rootRef = useRef<HTMLDivElement>(null);
-  const [thumb, setThumb] = useState({ left: 2, width: 0 });
+  const [thumb, setThumb] = useState({ left: 2, width: 0, top: 2, height: 0 });
   // Label text is ReactNode — key off ids/disabled only; ResizeObserver covers size.
   const optionKey = options.map((o) => `${o.id}:${o.disabled ? 1 : 0}`).join("|");
 
@@ -75,9 +77,12 @@ export default function SegmentSwitch({
         `.segment-switch__option[data-seg-i="${safeIdx}"]`,
       );
       if (!btn) return;
+      // Full option box — thumb hugs label pad equally on all sides (track pad = gap).
       setThumb({
         left: btn.offsetLeft,
         width: btn.offsetWidth,
+        top: btn.offsetTop,
+        height: btn.offsetHeight,
       });
     };
 
@@ -123,6 +128,8 @@ export default function SegmentSwitch({
         {
           "--seg-thumb-left": `${thumb.left}px`,
           "--seg-thumb-width": `${thumb.width}px`,
+          "--seg-thumb-top": `${thumb.top}px`,
+          "--seg-thumb-height": `${thumb.height}px`,
         } as CSSProperties
       }
     >
@@ -150,6 +157,7 @@ export default function SegmentSwitch({
             ]
               .filter(Boolean)
               .join(" ")}
+            {...opt.dataAttrs}
           >
             {opt.label}
           </button>

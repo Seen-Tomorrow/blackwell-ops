@@ -28,10 +28,7 @@
  * | BlackOps-fit-scan-cache-changed | FIT library partition updated — refresh forecast points |
  */
 
-export type NavigateConfigDetail = {
-  subTab?: "providers" | "params" | "paths" | "secrets" | "recovery" | "updates" | "distribution";
-};
-
+import type { ConfigSubTab } from "./appNav";
 import { invoke } from "@tauri-apps/api/core";
 import {
   clearAllBlackOpsStorage,
@@ -41,6 +38,10 @@ import {
   STORAGE_PREFIX,
   type ExtrasSubTab,
 } from "./storage";
+
+export type NavigateConfigDetail = {
+  subTab?: ConfigSubTab;
+};
 
 export const EVENTS = {
   powerUserChanged: `${STORAGE_PREFIX}power-user-changed`,
