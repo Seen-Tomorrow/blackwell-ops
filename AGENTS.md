@@ -83,6 +83,14 @@ the live graph.
 Route grunt work to WORKER; keep design/plan/judgment here; escalate only when blocked.
 
 **Temp / debug / scratch files → `tmp/`** — Any throwaway agent work (test scripts, probe outputs, `nul`, `*.py`, `*results.json`, one-off experiments) must be written under the **gitignored `tmp/` directory** (repo root), never at the repo root or anywhere tracked. Do not `git add` them; do not leave them in the working tree where they show up as untracked. If you need a scratch area, use `tmp/` (already in `.gitignore`) or a subdir under it. Clean up after yourself; a dirty `git status` from agent junk is a review failure. **Commit only real source changes**, categorized logically (feature / fix / theme, separate commits per concern).
+**Orphaned headless Chrome (visual checks)** — The agent browser tool (puppeteer) runs its own headless Chromium under `C:\Users\<user>\.omp\puppeteer\chrome\win64-<ver>\chrome-win64\chrome.exe`. Sessions/tabs that close (or error mid-run) **orphan the process tree** — invisible (no window) but ~85 MB each, accumulating until the user Task Manager-hunts them. **Reap them in the same step as closing the browser session.** Kill by path filter ONLY — the user's real Chrome/Edge share the `chrome.exe` name, so a bare `Stop-Process -Name chrome` is forbidden:
+```powershell
+Get-Process -Name chrome -ErrorAction SilentlyContinue |
+  Where-Object { $_.Path -like '*\.omp\puppeteer\*' } |
+  Stop-Process -Force
+```
+The bash tool mangles `$_`/`$p` in inline `powershell -Command` strings (eats the `$`) — write the snippet to a script under gitignored `tmp/` and run `powershell -NoProfile -ExecutionPolicy Bypass -File tmp/<name>.ps1`.
+
 
 ---
 
