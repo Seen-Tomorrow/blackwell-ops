@@ -707,13 +707,18 @@ async fn git_hard_sync_branch(
     branch: &str,
 ) -> Result<(), String> {
     let remote_ref = format!("origin/{branch}");
+    // Explicit refspec: a bare `git fetch origin <branch>` only updates FETCH_HEAD —
+    // the remote-tracking ref is created only when it is already known, so a branch
+    // switch on an existing (shallow) clone would leave `origin/<branch>` absent and
+    // the checkout below would fail with "is not a commit".
+    let fetch_refspec = format!("refs/heads/{branch}:refs/remotes/origin/{branch}");
     let fetch = git_hidden_output(
         git_exe.to_path_buf(),
         src_dir.to_path_buf(),
         vec![
             "fetch".into(),
             "origin".into(),
-            branch.to_string(),
+            fetch_refspec,
             "--recurse-submodules".into(),
         ],
     )
