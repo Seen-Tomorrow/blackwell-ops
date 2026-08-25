@@ -164,6 +164,10 @@
   --display-face-inset-top: rgba(0, 0, 0, 0.35);
   --display-face-inset-bottom: rgba(0, 0, 0, 0.12);
   --theme-bezel-cast-shadow: 0 8px 24px rgba(0, 0, 0, 0.75), 0 3px 8px rgba(0, 0, 0, 0.55);
+  /* Eject panel (running engines) cast — defaults to the bezel shadow; ARCTIC
+     overrides with a stronger, longer drop so the aluminium panel reads as
+     floating above the toolbar below (dark-theme parity). */
+  --theme-eject-cast-shadow: var(--theme-bezel-cast-shadow);
   --theme-bench-inset-shadow: rgba(0, 0, 0, 0.22);
   /* Display combo reference — bench tray inset (dark theme+LIGHT). */
   --display-profile-bench-inset: rgba(0, 0, 0, 0.22);

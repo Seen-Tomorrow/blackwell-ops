@@ -1034,6 +1034,11 @@ const ARCTIC: AppTheme = {
     "--display-face-inset-top": "rgba(15, 40, 70, 0.18)",
     "--display-face-inset-bottom": "rgba(15, 40, 70, 0.1)",
     "--theme-bezel-cast-shadow": DISPLAY_PROFILE_BEZEL_CAST,
+    /* Eject panel (running engines) — stronger, longer cast than the frame so
+       the aluminium panel reads as floating above the toolbar below. Cool
+       slate (not pure black) to stay on the Glacier Dawn language. */
+    "--theme-eject-cast-shadow":
+      "0 10px 28px rgba(15, 40, 70, 0.28), 0 4px 10px rgba(15, 40, 70, 0.18)",
     "--theme-bench-inset-shadow": "rgba(15, 40, 70, 0.08)",
     "--theme-card-selected-bg": "#ffffff",
     "--theme-card-selected-accent": "#0ea5e9",

@@ -723,10 +723,12 @@
   z-index: 1;
 }
 
-/* Eject panel — tuck under frame (z-index 1); cast shadow onto toolbar below */
+/* Eject panel — tuck under frame (z-index 1); cast shadow onto toolbar below.
+   Own token (--theme-eject-cast-shadow, falls back to the bezel shadow) so a
+   light theme can carry a stronger/longer drop without re-shading the frame. */
 [data-config-panel] .industrial-eject-panel {
   z-index: 1;
-  box-shadow: var(--theme-bezel-cast-shadow);
+  box-shadow: var(--theme-eject-cast-shadow, var(--theme-bezel-cast-shadow));
 }
 
 /* Themed text on industrial display frame */
