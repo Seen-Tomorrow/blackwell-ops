@@ -1,12 +1,13 @@
 /**
  * CTX rail — one component, two placements (above-dock standalone vs in-cockpit).
- * Hero layout: taller slider + footer legend (LEARNED marks) + filter toggle.
+ * Hero layout: full-flex track + footer readout (CTX · per-slot · chevrons) + legend.
  */
 
 import { useCallback, useMemo, useState } from "react";
 import CustomSliderParam from "./CustomSliderParam";
 import CtxForecastRibbon from "./CtxForecastRibbon";
 import {
+  clampSteppedValue,
   formatCtxChipLabel,
   parseSliderValues,
   interpolateGbAtCtx,
@@ -119,7 +120,7 @@ export default function CockpitCtxStrip({
 
   const hasGhost =
     (forecastCurve?.length ?? 0) > 0 && forecastFreeGb != null && forecastFreeGb > 0;
-  const footerBusy = !hasLearned && !hasGhost;
+  const legendIdle = !hasLearned && !hasGhost;
   const ribbonProps = {
     min: sliderRange.min,
     max: sliderRange.max,
@@ -129,6 +130,37 @@ export default function CockpitCtxStrip({
     ctxValues,
     onHover: setRibbonHover,
   };
+
+  const ctxNumeric = useMemo(() => {
+    if (typeof ctxValue === "number" && Number.isFinite(ctxValue)) return ctxValue;
+    const n = parseInt(String(ctxValue ?? ""), 10);
+    return Number.isFinite(n) ? n : sliderRange.min;
+  }, [ctxValue, sliderRange.min]);
+
+  const ctxLabel = Number.isFinite(ctxNumeric)
+    ? formatCtxChipLabel(ctxNumeric)
+    : String(ctxValue ?? "");
+
+  const showPerSlot =
+    ctxPerSlot != null && ctxPerSlot > 0 && ctxSlotCount != null && ctxSlotCount > 1;
+  const perSlotLabel = showPerSlot ? formatCtxChipLabel(ctxPerSlot!) : "";
+  const perSlotTitle = showPerSlot
+    ? `${ctxLabel} (${ctxNumeric}) ÷ ${ctxSlotCount} slots = ${perSlotLabel} per slot`
+    : undefined;
+
+  const nudgeCtx = useCallback(
+    (dir: -1 | 1) => {
+      onCtxChange(
+        clampSteppedValue(
+          ctxNumeric + dir * ctxStep,
+          sliderRange.min,
+          sliderRange.max,
+          ctxStep,
+        ),
+      );
+    },
+    [onCtxChange, ctxNumeric, ctxStep, sliderRange.min, sliderRange.max],
+  );
 
   return (
     <div
@@ -168,95 +200,120 @@ export default function CockpitCtxStrip({
           </div>
           {showMarks ? <CtxForecastRibbon {...ribbonProps} place="marks" /> : null}
         </div>
-        <div className="full-auto-cockpit__ctx-values">
-          <span className="full-auto-cockpit__ctx-value font-mono">
-            {typeof ctxValue === "number"
-              ? formatCtxChipLabel(ctxValue)
-              : String(ctxValue ?? "")}
-          </span>
-          {ctxPerSlot != null && ctxPerSlot > 0 && ctxSlotCount != null && ctxSlotCount > 1 && (
-            <>
-              <span className="full-auto-cockpit__ctx-sep font-mono">|</span>
-              <span className="full-auto-cockpit__ctx-per-slot font-mono">
-                {formatCtxChipLabel(ctxPerSlot)} / slot
-              </span>
-            </>
-          )}
-        </div>
       </div>
 
-
-      <div
-        className={`full-auto-cockpit__ctx-footer font-mono${footerBusy ? " full-auto-cockpit__ctx-footer--idle" : ""}`}
-        aria-hidden={footerBusy || undefined}
-      >
+      <div className="full-auto-cockpit__ctx-footer font-mono">
         <span className="full-auto-cockpit__ctx-footer-hover font-mono">
           {ribbonHover || "\u00a0"}
         </span>
-        <span className="full-auto-cockpit__ctx-footer-right">
-        <span
-          className="full-auto-cockpit__ctx-legend"
-          title="Cyan ticks = LEARNED launches. Amber ≤N = VRAM limit. Ribbon paint = need vs free."
-        >
-          {hasLearned ? (
-            <>
-              <span className="full-auto-cockpit__ctx-swatch full-auto-cockpit__ctx-swatch--learned" aria-hidden />
-              LEARNED
-              <span className="full-auto-cockpit__ctx-legend-sep">·</span>
-              <span className="full-auto-cockpit__ctx-swatch full-auto-cockpit__ctx-swatch--custom" aria-hidden />
-              custom
-              <span className="full-auto-cockpit__ctx-legend-sep">·</span>
-              snap
-            </>
-          ) : null}
-          {hasLearned && hasGhost ? (
-            <span className="full-auto-cockpit__ctx-legend-sep">·</span>
-          ) : null}
-          {hasGhost ? (
-            <>
-              <span className="full-auto-cockpit__ctx-swatch full-auto-cockpit__ctx-swatch--limit" aria-hidden />
-              VRAM limit
-            </>
-          ) : null}
-          {footerBusy ? (
-            <span className="full-auto-cockpit__ctx-legend-spacer">LEARNED · snap</span>
-          ) : null}
-        </span>
-        <span className="full-auto-cockpit__ctx-footer-actions">
-          {showRibbon ? (
+
+        <div className="full-auto-cockpit__ctx-footer-readout" aria-label="Context length">
+          <span className="full-auto-cockpit__ctx-value font-mono" title={`${ctxNumeric} tokens`}>
+            {ctxLabel}
+          </span>
+          <span
+            className={`full-auto-cockpit__ctx-slot-block${showPerSlot ? "" : " full-auto-cockpit__ctx-slot-block--empty"}`}
+            title={perSlotTitle}
+            aria-hidden={!showPerSlot || undefined}
+          >
+            <span className="full-auto-cockpit__ctx-sep font-mono" aria-hidden>
+              |
+            </span>
+            <span className="full-auto-cockpit__ctx-per-slot font-mono">
+              {showPerSlot ? `${perSlotLabel} / slot` : "\u00a0"}
+            </span>
+          </span>
+          <span className="full-auto-cockpit__ctx-nudge" role="group" aria-label="Nudge context by 1K">
             <button
               type="button"
-              className="full-auto-cockpit__ctx-marks-toggle font-mono"
-              onClick={() => {
-                setRibbonPlace((p) => (p === "track" ? "marks" : "track"));
-              }}
-              title="DEV ribbon: over track or under marks"
+              className="full-auto-cockpit__ctx-chevron font-mono"
+              onClick={() => nudgeCtx(-1)}
+              disabled={ctxNumeric <= sliderRange.min}
+              title={`−${formatCtxChipLabel(ctxStep)} (fine)`}
+              aria-label={`Decrease context by ${ctxStep}`}
             >
-              {ribbonPlace === "track" ? "RIBBON TRACK" : "RIBBON MARKS"}
+              ‹
             </button>
-          ) : null}
-          {hasLearned ? (
-            <>
-              {onPruneCustom && customCtxs.length > 0 ? (
-                <button
-                  type="button"
-                  className="full-auto-cockpit__ctx-marks-toggle full-auto-cockpit__ctx-marks-toggle--prune font-mono"
-                  onClick={() => {
-                    void onPruneCustom(customCtxs);
-                  }}
-                  title={`Remove ${customCtxs.length} custom LEARNED CTX mark${customCtxs.length === 1 ? "" : "s"} for this model + kv/spec/split (preset ticks stay)`}
-                >
-                  PRUNE {customCtxs.length}
-                </button>
-              ) : null}
-              <CtxLearnedMarkToggle mode={mode} onCycle={cycle} visible />
-            </>
-          ) : (
-            <span className="full-auto-cockpit__ctx-marks-toggle full-auto-cockpit__ctx-marks-toggle--slot" aria-hidden>
-              ALL
-            </span>
-          )}
-        </span>
+            <button
+              type="button"
+              className="full-auto-cockpit__ctx-chevron font-mono"
+              onClick={() => nudgeCtx(1)}
+              disabled={ctxNumeric >= sliderRange.max}
+              title={`+${formatCtxChipLabel(ctxStep)} (fine)`}
+              aria-label={`Increase context by ${ctxStep}`}
+            >
+              ›
+            </button>
+          </span>
+        </div>
+
+        <span className="full-auto-cockpit__ctx-footer-right">
+          <span
+            className={`full-auto-cockpit__ctx-legend${legendIdle ? " full-auto-cockpit__ctx-legend--idle" : ""}`}
+            title="Cyan ticks = LEARNED launches. Amber ≤N = VRAM limit. Ribbon paint = need vs free."
+            aria-hidden={legendIdle || undefined}
+          >
+            {hasLearned ? (
+              <>
+                <span className="full-auto-cockpit__ctx-swatch full-auto-cockpit__ctx-swatch--learned" aria-hidden />
+                LEARNED
+                <span className="full-auto-cockpit__ctx-legend-sep">·</span>
+                <span className="full-auto-cockpit__ctx-swatch full-auto-cockpit__ctx-swatch--custom" aria-hidden />
+                custom
+                <span className="full-auto-cockpit__ctx-legend-sep">·</span>
+                snap
+              </>
+            ) : null}
+            {hasLearned && hasGhost ? (
+              <span className="full-auto-cockpit__ctx-legend-sep">·</span>
+            ) : null}
+            {hasGhost ? (
+              <>
+                <span className="full-auto-cockpit__ctx-swatch full-auto-cockpit__ctx-swatch--limit" aria-hidden />
+                VRAM limit
+              </>
+            ) : null}
+            {legendIdle ? (
+              <span className="full-auto-cockpit__ctx-legend-spacer">LEARNED · snap</span>
+            ) : null}
+          </span>
+          <span
+            className={`full-auto-cockpit__ctx-footer-actions${legendIdle && !showRibbon ? " full-auto-cockpit__ctx-footer-actions--idle" : ""}`}
+          >
+            {showRibbon ? (
+              <button
+                type="button"
+                className="full-auto-cockpit__ctx-marks-toggle font-mono"
+                onClick={() => {
+                  setRibbonPlace((p) => (p === "track" ? "marks" : "track"));
+                }}
+                title="DEV ribbon: over track or under marks"
+              >
+                {ribbonPlace === "track" ? "RIBBON TRACK" : "RIBBON MARKS"}
+              </button>
+            ) : null}
+            {hasLearned ? (
+              <>
+                {onPruneCustom && customCtxs.length > 0 ? (
+                  <button
+                    type="button"
+                    className="full-auto-cockpit__ctx-marks-toggle full-auto-cockpit__ctx-marks-toggle--prune font-mono"
+                    onClick={() => {
+                      void onPruneCustom(customCtxs);
+                    }}
+                    title={`Remove ${customCtxs.length} custom LEARNED CTX mark${customCtxs.length === 1 ? "" : "s"} for this model + kv/spec/split (preset ticks stay)`}
+                  >
+                    PRUNE {customCtxs.length}
+                  </button>
+                ) : null}
+                <CtxLearnedMarkToggle mode={mode} onCycle={cycle} visible />
+              </>
+            ) : (
+              <span className="full-auto-cockpit__ctx-marks-toggle full-auto-cockpit__ctx-marks-toggle--slot" aria-hidden>
+                ALL
+              </span>
+            )}
+          </span>
         </span>
       </div>
     </div>

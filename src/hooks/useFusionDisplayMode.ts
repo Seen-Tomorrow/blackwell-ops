@@ -22,7 +22,10 @@ function isLive(s: StackEntry): boolean {
   return s.status === "RUNNING" || s.status === "LOADING";
 }
 
-/** Other live slot for secondary pane — prefer next higher idx, else any other. */
+/**
+ * Other live seat for dual B.
+ * Prefer pinned; else next live after primary in stack/eject order; else previous.
+ */
 export function autoPickSecondarySlot(
   primary: number | null | undefined,
   stack: StackEntry[],
@@ -39,9 +42,30 @@ export function autoPickSecondarySlot(
     return live[1] ?? live[0] ?? null;
   }
 
-  const others = live.filter((idx) => idx !== primary).sort((a, b) => a - b);
-  return others[0] ?? null;
+  const pPos = live.indexOf(primary);
+  if (pPos < 0) {
+    return live[1] ?? live[0] ?? null;
+  }
+
+  if (pPos + 1 < live.length) return live[pPos + 1]!;
+  if (pPos > 0) return live[pPos - 1]!;
+  return null;
 }
+
+/**
+ * Dual visual order matches RUNNING ENGINES / eject: lower stack idx paints
+ * first (left / top). Ownership (bench tray / share) stays on selected primary
+ * regardless of side.
+ */
+export function dualPrimaryPaintsFirst(
+  primarySlotIdx: number | null | undefined,
+  secondarySlotIdx: number | null | undefined,
+): boolean {
+  if (primarySlotIdx == null || primarySlotIdx < 0) return true;
+  if (secondarySlotIdx == null || secondarySlotIdx < 0) return true;
+  return primarySlotIdx <= secondarySlotIdx;
+}
+
 
 export function useFusionDisplayMode(
   selectedSlotIdx: number | null | undefined,

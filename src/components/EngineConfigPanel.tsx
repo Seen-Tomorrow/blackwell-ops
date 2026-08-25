@@ -937,7 +937,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const handleSelectEngine = useCallback(
     (slotIdx: number) => {
       if (fusionDisplay.dualActive) {
-        // Dual fusion keeps pane sides stable: left = primary, right = secondary.
+        // Dual panes follow eject/stack order; ownership stays on selection.
+        // Click another live seat to pin dual B (primary unchanged).
         if (slotIdx === selectedSlotIdx) return;
         if (slotIdx === fusionDisplay.secondarySlotIdx) return;
         fusionDisplay.pinSecondaryOrCycle(slotIdx);
@@ -2610,7 +2611,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           selectedBinaryProfile={selectedBinaryProfile}
           onSelectProfile={setSelectedBinaryProfile}
           isProfileBuilding={isProfileBuilding}
-          driverVersion={driverVersion}
         />
 
       {/*

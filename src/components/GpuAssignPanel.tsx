@@ -1,5 +1,5 @@
-import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import type { GpuInfo, VramManifest } from "../lib/types";
+import SegmentSwitch from "./SegmentSwitch";
 
 const DEVICE_LABEL_CLASS =
   "gpu-assign-panel__label font-mono w-14 flex-shrink-0 uppercase tracking-wider truncate text-[9px] text-stealth-muted";
@@ -21,9 +21,8 @@ function isSplitModeActive(split: unknown): boolean {
 
 /**
  * Multi-option segment switch — same chrome language as ASSISTED / FULL AUTO.
- * Options size to label content (config can add/rename freely). Thumb left/width
- * are measured from the active button so unequal labels stay aligned.
- * Exported for bezel bottom density (GPU/ENG per-row) and Device/Split.
+ * Thin wrapper over SegmentSwitch (compact + accent) with the legacy
+ * `segment-switch--gpu-bezel` class so bezel CSS keeps matching.
  */
 export function GpuSegmentSwitch({
   options,
@@ -40,105 +39,21 @@ export function GpuSegmentSwitch({
   onSelect: (id: string) => void;
   title?: string;
 }) {
-  const activeIndex = Math.max(
-    0,
-    options.findIndex((o) => o.id === selectedId),
-  );
   return (
-    <SegmentOptionGroup
+    <SegmentSwitch
       options={options}
-      activeIndex={activeIndex}
+      selectedId={selectedId}
       disabled={disabled}
       ariaLabel={ariaLabel}
       onSelect={onSelect}
       title={title}
+      size="compact"
+      tone="accent"
+      className={`segment-switch--gpu-bezel${disabled ? " segment-switch--gpu-bezel-disabled" : ""}`}
     />
   );
 }
 
-function SegmentOptionGroup({
-  options,
-  activeIndex,
-  disabled,
-  ariaLabel,
-  onSelect,
-  title,
-}: {
-  options: { id: string; label: string; title?: string }[];
-  activeIndex: number;
-  disabled?: boolean;
-  ariaLabel: string;
-  onSelect: (id: string) => void;
-  title?: string;
-}) {
-  const n = Math.max(1, options.length);
-  const safeIdx = activeIndex >= 0 && activeIndex < n ? activeIndex : 0;
-  const rootRef = useRef<HTMLDivElement>(null);
-  const [thumb, setThumb] = useState({ left: 2, width: 0 });
-
-  useLayoutEffect(() => {
-    const root = rootRef.current;
-    if (!root) return;
-
-    const measure = () => {
-      const btn = root.querySelector<HTMLElement>(
-        `.segment-switch__option[data-seg-i="${safeIdx}"]`,
-      );
-      if (!btn) return;
-      // offset* is relative to the padding edge of the offsetParent (the switch)
-      setThumb({
-        left: btn.offsetLeft,
-        width: btn.offsetWidth,
-      });
-    };
-
-    measure();
-    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
-    ro?.observe(root);
-    for (const el of root.querySelectorAll(".segment-switch__option")) {
-      ro?.observe(el);
-    }
-    window.addEventListener("resize", measure);
-    return () => {
-      ro?.disconnect();
-      window.removeEventListener("resize", measure);
-    };
-  }, [safeIdx, options.map((o) => `${o.id}:${o.label}`).join("|")]);
-
-  return (
-    <div
-      ref={rootRef}
-      className={`segment-switch segment-switch--gpu-bezel${disabled ? " segment-switch--gpu-bezel-disabled" : ""}`}
-      data-segment-switch
-      data-active-index={safeIdx}
-      role="group"
-      aria-label={ariaLabel}
-      title={title}
-      style={
-        {
-          "--seg-thumb-left": `${thumb.left}px`,
-          "--seg-thumb-width": `${thumb.width}px`,
-        } as CSSProperties
-      }
-    >
-      <span className="segment-switch__thumb" aria-hidden />
-      {options.map((opt, i) => (
-        <button
-          key={opt.id}
-          type="button"
-          data-seg-i={i}
-          disabled={disabled}
-          aria-pressed={i === safeIdx}
-          title={opt.title}
-          onClick={() => onSelect(opt.id)}
-          className={`segment-switch__option${i === safeIdx ? " segment-switch__option--active" : ""}`}
-        >
-          {opt.label}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 interface GpuAssignPanelProps {
   gpus: GpuInfo[];
@@ -195,19 +110,21 @@ export default function GpuAssignPanel({
     const deviceSegOpts = splitActive
       ? [{ id: "__all__", label: `ALL (${gpus.length})`, title: "Split mode uses all GPUs" }]
       : deviceOptions.map((val) => ({ id: val, label: val }));
-    const deviceActive = splitActive
-      ? 0
-      : Math.max(0, deviceOptions.findIndex((v) => String(deviceValue) === v));
+    const deviceSelectedId = splitActive
+      ? "__all__"
+      : deviceOptions.includes(String(deviceValue ?? ""))
+        ? String(deviceValue)
+        : (deviceSegOpts[0]?.id ?? "");
     const splitSegOpts = visibleSplitValues.map((val) => ({
       id: String(val),
       label: String(val).toUpperCase(),
     }));
-    const splitActiveIdx = Math.max(
-      0,
-      splitSegOpts.findIndex(
+    const splitSelectedId = (() => {
+      const hit = splitSegOpts.find(
         (o) => o.id.toLowerCase() === String(splitValue).toLowerCase(),
-      ),
-    );
+      );
+      return hit?.id ?? splitSegOpts[0]?.id ?? "";
+    })();
 
     return (
       <div
@@ -223,10 +140,10 @@ export default function GpuAssignPanel({
                 <div className="gpu-assign-panel__split-head">
                   <span className="gpu-assign-panel__label gpu-assign-panel__label--bezel">Split</span>
                 </div>
-                <SegmentOptionGroup
+                <GpuSegmentSwitch
                   ariaLabel="Split"
                   disabled={chipDisabled(splitLocked)}
-                  activeIndex={splitActiveIdx}
+                  selectedId={splitSelectedId}
                   options={splitSegOpts}
                   onSelect={(id) => onSplitChange(id)}
                 />
@@ -236,10 +153,10 @@ export default function GpuAssignPanel({
           )}
           <div className="gpu-assign-panel__half gpu-assign-panel__half--device">
             <span className="gpu-assign-panel__label gpu-assign-panel__label--bezel">Device</span>
-            <SegmentOptionGroup
+            <GpuSegmentSwitch
               ariaLabel="Device"
               disabled={chipDisabled(deviceLocked) || splitActive}
-              activeIndex={deviceActive}
+              selectedId={deviceSelectedId}
               options={deviceSegOpts}
               onSelect={(id) => {
                 if (id === "__all__" || splitActive) return;

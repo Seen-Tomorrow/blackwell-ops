@@ -222,10 +222,20 @@
   border-left: 1px solid color-mix(in srgb, var(--theme-border-subtle) 65%, transparent);
 }
 
-.config-provider-profile-bar__half--profile > .flex {
+.config-provider-profile-bar__control {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.config-provider-profile-bar__control--end {
   justify-content: flex-end;
   margin-left: auto;
 }
+
 
 .config-provider-profile-bar__label {
   font-size: 8px;
@@ -259,15 +269,27 @@
   letter-spacing: 0.1em;
 }
 
-[data-config-panel] .config-provider-profile-bar .provider-pill {
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--theme-panel) 40%, transparent);
+[data-config-panel] .config-provider-profile-bar .segment-switch {
+  box-shadow:
+    inset 0 1px 1px color-mix(in srgb, #000 24%, transparent),
+    inset 0 2px 3px color-mix(in srgb, #000 12%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 18%, transparent),
+    0 1px 2px color-mix(in srgb, var(--theme-panel) 40%, transparent);
 }
 
-[data-config-panel] .config-provider-profile-bar .provider-pill-active {
+[data-config-panel] .config-provider-profile-bar .segment-switch--tone-amber .segment-switch__thumb {
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--theme-provider-pill-active-bg) 32%, transparent),
-    0 2px 8px color-mix(in srgb, var(--theme-panel) 45%, transparent);
+    0 0 10px color-mix(in srgb, var(--theme-provider-pill-active-bg) 50%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--theme-provider-pill-active-bg) 28%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #fff 16%, transparent);
 }
+
+[data-config-panel] .config-provider-profile-bar .segment-switch--tone-accent .segment-switch__thumb {
+  box-shadow:
+    0 0 8px color-mix(in srgb, var(--theme-accent-glow) 55%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #fff 12%, transparent);
+}
+
 
 /* ── GPU assign inject panel (above bezel) — full-width chrome row ─── */
 .gpu-assign-panel {
