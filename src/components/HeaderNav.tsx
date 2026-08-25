@@ -143,8 +143,16 @@ function HeaderNav({
     [onTabChange, setupGuideActive],
   );
 
-  /** Sub-rail starts at horizontal midpoint of active primary option. */
-  const [subAnchor, setSubAnchor] = useState({ left: 0, width: 0 });
+  /**
+   * Sub-rail docked under the horizontal midpoint of the active parent option.
+   * `left` is clamped so the rail never overflows the cluster's right edge — the
+   * right-side chrome (Quick Settings / UPDATE) is always present, so an
+   * unclamped anchor would push the last sub-option under it (EXTRAS is the
+   * rightmost parent, so its rail is the one that overflows below ~2500px).
+   * `shift` slides the whole rail left when clamped, keeping it under its parent.
+   */
+  const [subAnchor, setSubAnchor] = useState({ left: 0, width: 0, shift: 0 });
+  const subRef = useRef<HTMLDivElement | null>(null);
   const showSubRail = showOpsSub || showConfigSub || showExtrasSub;
 
   useLayoutEffect(() => {
@@ -157,12 +165,18 @@ function HeaderNav({
       const active = primary?.querySelector<HTMLElement>(
         ".segment-switch__option--active",
       );
-      if (!primary || !active) return;
+      const sub = subRef.current;
+      if (!primary || !active || !sub) return;
       // Align the sub-rail's left edge with the parent option's midpoint.
-      const left = primary.offsetLeft + active.offsetLeft + active.offsetWidth / 2;
+      const mid = primary.offsetLeft + active.offsetLeft + active.offsetWidth / 2;
+      const natural = sub.scrollWidth;
+      const maxLeft = Math.max(0, cluster.clientWidth - natural);
+      const left = Math.max(0, Math.min(mid, maxLeft));
       setSubAnchor({
-        left: Math.max(0, left),
+        left,
         width: active.offsetWidth,
+        // Slide left so the rail stays under its parent when the anchor was clamped.
+        shift: mid > maxLeft ? mid - maxLeft : 0,
       });
     };
 
@@ -171,6 +185,7 @@ function HeaderNav({
     const ro =
       typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
     ro?.observe(cluster);
+    ro?.observe(subRef.current ?? cluster);
     const primary = cluster.querySelector(".app-header__primary-switch");
     if (primary) ro?.observe(primary);
     window.addEventListener("resize", measure);
@@ -195,11 +210,15 @@ function HeaderNav({
 
       {showSubRail && (
         <div
+          ref={subRef}
           className="app-header__sub-under"
           style={
             {
               "--sub-left": `${subAnchor.left}px`,
               "--sub-parent-width": `${subAnchor.width}px`,
+              // Slide the rail left when the anchor was clamped at the right edge,
+              // so it stays under its parent option instead of clipping.
+              transform: subAnchor.shift ? `translateX(-${subAnchor.shift}px)` : undefined,
             } as CSSProperties
           }
         >
