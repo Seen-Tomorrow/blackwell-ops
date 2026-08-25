@@ -37,7 +37,6 @@ export const EXTRAS_SUB_NAV: { id: ExtrasSubTab; label: string }[] = [
   { id: "playground", label: "PLAYGROUND" },
 ];
 
-
 const CONFIG_SUB_NAV_ALL: {
   id: ConfigSubTab;
   label: string;
@@ -83,16 +82,4 @@ export function defaultTabForPrimary(
     case "config":
       return "config";
   }
-}
-
-export function isConfigSubTab(value: string | null | undefined): value is ConfigSubTab {
-  return (
-    value === "providers" ||
-    value === "params" ||
-    value === "paths" ||
-    value === "secrets" ||
-    value === "recovery" ||
-    value === "updates" ||
-    value === "distribution"
-  );
 }

@@ -10,7 +10,6 @@ interface ExtrasPageProps {
   models: ModelEntry[];
   /** Controlled — header EXTRAS sub-rail owns selection. */
   subTab: ExtrasSubTab;
-  onSubTabChange: (tab: ExtrasSubTab) => void;
 }
 
 export default function ExtrasPage({

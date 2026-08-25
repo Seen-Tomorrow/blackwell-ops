@@ -450,7 +450,6 @@ export default function Layout({
       : {}),
   } as CSSProperties;
 
-
   return (
     <div
       className={`app-shell flex flex-col h-screen grid-bg relative${consoleDockedOpen ? " app-shell--console-docked" : ""}${navTight ? " app-shell--nav-tight" : ""}${monitorFocus ? " app-shell--monitor-focus" : ""}`}

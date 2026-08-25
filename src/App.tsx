@@ -748,7 +748,6 @@ function App() {
               stack={stack}
               models={models}
               subTab={extrasSubTab}
-              onSubTabChange={setExtrasSubTab}
             />
           </Suspense>
         )}

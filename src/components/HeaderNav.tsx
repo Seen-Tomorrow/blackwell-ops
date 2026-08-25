@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type RefObject,
 } from "react";
 import type { Tab } from "../App";
 import { isSetupNavTabAllowed } from "../lib/setupGuide";
@@ -75,7 +76,7 @@ const HeaderNav = forwardRef<HTMLDivElement, HeaderNavProps>(function HeaderNav(
     (node: HTMLDivElement | null) => {
       clusterRef.current = node;
       if (typeof ref === "function") ref(node);
-      else if (ref) (ref as React.RefObject<HTMLDivElement>).current = node;
+      else if (ref) (ref as RefObject<HTMLDivElement>).current = node;
     },
     [ref],
   );

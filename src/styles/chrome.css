@@ -78,16 +78,6 @@
   align-items: center;
 }
 
-
-.app-header__nav-wrap {
-  flex: 1 1 auto;
-  margin-left: 0.5rem;
-  min-width: 0;
-  display: flex;
-  align-items: stretch;
-  gap: 0.15rem;
-}
-
 /*
  * Primary — fill free width, height = Quick Settings well (JS --header-primary-h).
  * Same recessed inset chrome as .app-quick-settings so the pair matches.
@@ -202,77 +192,6 @@
   .app-header__sub-switch.segment-switch--multi
   .segment-switch__thumb {
   border-radius: calc(3.5px * var(--header-nav-scale));
-}
-
-
-
-
-
-
-
-
-.app-header__sub-rail {
-  display: contents;
-}
-
-
-
-.app-header__nav {
-  flex: 1 1 auto;
-  min-width: 0;
-  gap: 0.1rem;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
-  scroll-behavior: smooth;
-  scroll-padding-inline: 0.25rem;
-}
-
-.app-header__nav::-webkit-scrollbar {
-  display: none;
-}
-
-.app-header__nav-chev {
-  flex: 0 0 auto;
-  align-self: center;
-  width: 1.15rem;
-  height: 1.6rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--theme-nav-text);
-  background: color-mix(in srgb, var(--theme-nav-hover-bg, #ffffff12) 70%, transparent);
-  border: 1px solid var(--theme-chrome-control-border, rgba(255, 255, 255, 0.12));
-  border-radius: 3px;
-  font-size: 1rem;
-  line-height: 1;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.15s ease, color 0.15s ease, background-color 0.15s ease;
-  cursor: pointer;
-}
-
-.app-header__nav-chev:hover {
-  color: var(--theme-nav-active-text);
-  background: color-mix(in srgb, var(--theme-nav-hover-bg, #ffffff12) 100%, transparent);
-}
-
-.app-header__nav-chev.is-visible {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.app-header__nav-item {
-  /* Never shrink below the tab label + padding so the active card's border
-     cannot overlap/cut the centered nowrap text. Extra space still stretches
-     via flex-grow; when the nav runs out of room it scrolls (overflow-x: auto). */
-  flex: 1 1 0;
-  min-width: max-content;
-  display: flex;
-}
-
-.app-header__nav-item .app-nav-tab {
-  flex: 1 1 auto;
 }
 
 .app-header-brand {
@@ -595,14 +514,12 @@
 }
 
 /* First-run setup: ENGINES / LOGS / EXTRAS locked until wizard finishes */
-.app-nav-tab.app-nav-tab-disabled,
 .app-nav-tab:disabled {
   opacity: 0.35;
   cursor: not-allowed;
   pointer-events: none;
 }
 
-.app-nav-tab.app-nav-tab-disabled:hover,
 .app-nav-tab:disabled:hover {
   color: var(--theme-nav-text);
   background: transparent;
