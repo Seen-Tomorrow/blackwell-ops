@@ -30,6 +30,7 @@ import {
 import { KEYS, readStorage, writeStorage } from "../lib/storage";
 import { isDevBuild } from "../lib/build";
 import { ConfigChipSegment } from "./EngineParamGroups";
+import SegmentSwitch from "./SegmentSwitch";
 import {
   BRAINS_OPTIONS,
   THINK_OPTIONS,
@@ -2015,41 +2016,23 @@ export default function MultiAgentBooster({
         {/* Mode switch — directly above the unified mode button. Uses the same
             .segment-switch styling as the engine config Essentials/FULL toggle. */}
         <div className="atomcode-wizard__mode-switch-row">
-          <span className="atomcode-wizard__mode-switch-label">Mode</span>
-          <div
-            className="segment-switch segment-switch--harness"
-            data-segment-switch
-            data-active={wizardMode === "solo" ? "left" : "right"}
-            role="group"
-            aria-label="Harness mode"
-          >
-            <span className="segment-switch__thumb" aria-hidden />
-            <button
-              type="button"
-              className={`segment-switch__option${wizardMode === "solo" ? " segment-switch__option--active" : ""}`}
-              aria-pressed={wizardMode === "solo"}
-              onClick={() => setWizardMode("solo")}
-            >
-              SOLO
-            </button>
-            <button
-              type="button"
-              className={`segment-switch__option${wizardMode === "twin" ? " segment-switch__option--active" : ""}`}
-              aria-pressed={wizardMode === "twin"}
-              onClick={() => {
-                if (twinDisabled) return;
-                setWizardMode("twin");
-              }}
-              disabled={twinDisabled}
-              title={
-                twinDisabled
-                  ? "Twin needs 2+ running engines"
-                  : undefined
-              }
-            >
-              TWIN
-            </button>
-          </div>
+          <SegmentSwitch
+            ariaLabel="Harness mode"
+            className="segment-switch--harness"
+            options={[
+              { id: "solo", label: "SOLO" },
+              {
+                id: "twin",
+                label: "TWIN",
+                disabled: twinDisabled,
+                title: twinDisabled ? "Twin needs 2+ running engines" : undefined,
+              },
+            ]}
+            selectedId={wizardMode}
+            onSelect={(id) => setWizardMode(id as typeof wizardMode)}
+            size="compact"
+            tone="accent"
+          />
         </div>
 
         {/* Unified mode button — single visual element, renders either a

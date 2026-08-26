@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import SegmentSwitch from "./SegmentSwitch";
 
 export type CockpitFlagToggle = {
   key: string;
@@ -12,6 +12,9 @@ export type CockpitFlagToggle = {
 
 /**
  * Compact multi-option segment — same chrome language as VRAM bezel Split/Device.
+ * Thin wrapper over the shared SegmentSwitch (compact + accent) with the
+ * cockpit-flag bezel classes. The shared component measures all four thumb
+ * vars (left/width/top/height), so the thumb never collapses to a line.
  */
 function FlagSegment({
   options,
@@ -28,63 +31,18 @@ function FlagSegment({
 }) {
   const n = Math.max(1, options.length);
   const safeIdx = activeIndex >= 0 && activeIndex < n ? activeIndex : 0;
-  const rootRef = useRef<HTMLDivElement>(null);
-  const [thumb, setThumb] = useState({ left: 2, width: 0 });
-
-  useLayoutEffect(() => {
-    const root = rootRef.current;
-    if (!root) return;
-    const measure = () => {
-      const btn = root.querySelector<HTMLElement>(
-        `.segment-switch__option[data-seg-i="${safeIdx}"]`,
-      );
-      if (!btn) return;
-      setThumb({ left: btn.offsetLeft, width: btn.offsetWidth });
-    };
-    measure();
-    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
-    ro?.observe(root);
-    for (const el of root.querySelectorAll(".segment-switch__option")) {
-      ro?.observe(el);
-    }
-    window.addEventListener("resize", measure);
-    return () => {
-      ro?.disconnect();
-      window.removeEventListener("resize", measure);
-    };
-  }, [safeIdx, options.map((o) => `${o.id}:${o.label}`).join("|")]);
-
+  const selectedId = options[safeIdx]?.id ?? "";
   return (
-    <div
-      ref={rootRef}
-      className="segment-switch segment-switch--gpu-bezel segment-switch--cockpit-flag"
-      data-segment-switch
-      data-active-index={safeIdx}
-      role="group"
-      aria-label={ariaLabel}
+    <SegmentSwitch
+      ariaLabel={ariaLabel}
       title={title}
-      style={
-        {
-          "--seg-thumb-left": `${thumb.left}px`,
-          "--seg-thumb-width": `${thumb.width}px`,
-        } as CSSProperties
-      }
-    >
-      <span className="segment-switch__thumb" aria-hidden />
-      {options.map((opt, i) => (
-        <button
-          key={opt.id}
-          type="button"
-          data-seg-i={i}
-          aria-pressed={i === safeIdx}
-          title={opt.label}
-          onClick={() => onSelect(opt.id)}
-          className={`segment-switch__option${i === safeIdx ? " segment-switch__option--active" : ""}`}
-        >
-          {opt.label}
-        </button>
-      ))}
-    </div>
+      options={options}
+      selectedId={selectedId}
+      onSelect={onSelect}
+      size="compact"
+      tone="accent"
+      className="segment-switch--gpu-bezel segment-switch--cockpit-flag"
+    />
   );
 }
 

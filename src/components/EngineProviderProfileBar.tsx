@@ -4,7 +4,7 @@ import {
   ENV_ORDER,
   type Env,
 } from "../lib/foundry_constants";
-import SegmentSwitch from "./SegmentSwitch";
+import ProviderProfileSegment from "./ProviderProfileSegment";
 
 /**
  * Provider + binary-profile selector bar above the config toolbar. Pure
@@ -56,7 +56,7 @@ export default function EngineProviderProfileBar(props: EngineProviderProfileBar
         <span className="config-provider-profile-bar__label">PROVIDER</span>
         <div className="config-provider-profile-bar__control">
           {providerOptions.length > 0 && (
-            <SegmentSwitch
+            <ProviderProfileSegment
               ariaLabel="Engine provider"
               options={providerOptions}
               selectedId={selectedProvider}
@@ -70,14 +70,14 @@ export default function EngineProviderProfileBar(props: EngineProviderProfileBar
       <div className="config-provider-profile-bar__half config-provider-profile-bar__half--profile">
         <span className="config-provider-profile-bar__label">PROFILE</span>
         <div className="config-provider-profile-bar__control config-provider-profile-bar__control--end">
-          <SegmentSwitch
-            ariaLabel="Runtime profile"
-            options={profileOptions}
-            selectedId={selectedBinaryProfile}
-            onSelect={(id) => onSelectProfile(id as Env)}
-            size="fit"
-            tone="amber"
-          />
+            <ProviderProfileSegment
+              ariaLabel="Runtime profile"
+              options={profileOptions}
+              selectedId={selectedBinaryProfile}
+              onSelect={(id) => onSelectProfile(id as Env)}
+              size="fit"
+              tone="amber"
+            />
         </div>
       </div>
     </div>

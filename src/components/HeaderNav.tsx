@@ -21,7 +21,7 @@ import {
   type ExtrasSubTab,
   type PrimaryNavId,
 } from "../lib/appNav";
-import SegmentSwitch from "./SegmentSwitch";
+import HeaderNavSegment from "./HeaderNavSegment";
 
 export interface HeaderNavProps {
   activeTab: Tab;
@@ -198,10 +198,9 @@ function HeaderNav({
 
   return (
     <div ref={clusterRef} className="app-header__nav-cluster min-w-0 flex-1">
-      <SegmentSwitch
+      <HeaderNavSegment
         ariaLabel="Main navigation"
         size="fit"
-        tone="accent"
         className="app-header__primary-switch"
         options={primaryOptions}
         selectedId={primaryId}
@@ -223,30 +222,27 @@ function HeaderNav({
           }
         >
           {showOpsSub ? (
-            <SegmentSwitch
+            <HeaderNavSegment
               ariaLabel="Operations section"
               size="compact"
-              tone="accent"
               className="app-header__sub-switch"
               options={opsOptions}
               selectedId={activeTab}
               onSelect={(id) => onTabChange(id as Tab)}
             />
           ) : showConfigSub ? (
-            <SegmentSwitch
+            <HeaderNavSegment
               ariaLabel="Config section"
               size="compact"
-              tone="accent"
               className="app-header__sub-switch"
               options={configOptions}
               selectedId={configSubTab}
               onSelect={(id) => onConfigSubTabChange(id as ConfigSubTab)}
             />
           ) : (
-            <SegmentSwitch
+            <HeaderNavSegment
               ariaLabel="Extras section"
               size="compact"
-              tone="accent"
               className="app-header__sub-switch"
               options={extrasOptions}
               selectedId={extrasSubTab}

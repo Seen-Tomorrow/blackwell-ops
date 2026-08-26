@@ -1,3 +1,5 @@
+import SegmentSwitch from "./SegmentSwitch";
+
 interface FitLaunchToggleProps {
   fullAuto: boolean;
   available: boolean;
@@ -9,30 +11,17 @@ export default function FitLaunchToggle({ fullAuto, available, onChange }: FitLa
   if (!available) return null;
 
   return (
-    <div
-      className="segment-switch segment-switch--fit-launch"
-      data-segment-switch
-      data-active={fullAuto ? "right" : "left"}
-      role="group"
-      aria-label="Launch memory mode"
-    >
-      <span className="segment-switch__thumb" aria-hidden />
-      <button
-        type="button"
-        className={`segment-switch__option${!fullAuto ? " segment-switch__option--active" : ""}`}
-        aria-pressed={!fullAuto}
-        onClick={() => onChange(false)}
-      >
-        ASSISTED
-      </button>
-      <button
-        type="button"
-        className={`segment-switch__option${fullAuto ? " segment-switch__option--active" : ""}`}
-        aria-pressed={fullAuto}
-        onClick={() => onChange(true)}
-      >
-        FULL AUTO
-      </button>
-    </div>
+    <SegmentSwitch
+      ariaLabel="Launch memory mode"
+      className="segment-switch--fit-launch"
+      options={[
+        { id: "assisted", label: "ASSISTED" },
+        { id: "full-auto", label: "FULL AUTO" },
+      ]}
+      selectedId={fullAuto ? "full-auto" : "assisted"}
+      onSelect={(id) => onChange(id === "full-auto")}
+      size="compact"
+      tone="accent"
+    />
   );
 }
