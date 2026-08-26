@@ -179,14 +179,23 @@
   min-width: 0;
 }
 
-/* Row 2 under the search input — SCAN META + EDIT controls. */
+/* Row 2 under the search input — SCAN META + EDIT controls, docked right with
+   breathing room and an amber border to group them as a distinct unit. */
 .catalog-search-tools {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 4px;
+  justify-content: flex-end;
+  gap: 6px;
   min-width: 0;
   width: 100%;
+  padding: 5px 0;
+}
+
+/* Amber grouping border on the SCAN META / EDIT chips. */
+.catalog-search-tools .catalog-scan-btn {
+  border: 1px solid color-mix(in srgb, #d97706 55%, transparent);
+  border-radius: 3px;
 }
 
 .catalog-list-panel__chrome-tools {
@@ -219,11 +228,10 @@
   justify-content: flex-start;
 }
 
-/* Single cycler for model kind (MAIN / DRAFT / ALL) — docked in the search row,
-   same height as the input. */
+/* Single cycler for model kind (MAIN / DRAFT / ALL) — compact, same size as
+   the SCAN META / EDIT chips. */
 .catalog-kind-cycler {
   min-width: 3.25rem;
-  align-self: stretch;
   flex-shrink: 0;
   text-align: center;
   border: 1px solid color-mix(in srgb, var(--theme-border, #334155) 55%, transparent);
