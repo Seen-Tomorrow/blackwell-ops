@@ -79,6 +79,8 @@ import LaunchPresetConfirmModal from "./LaunchPresetConfirmModal";
 import {
   type ComboPreset,
   type LaunchSeat,
+  buildTwinCombo,
+  captureSeatFromPanel,
   normalizeModelPath,
   orderSeatsForLaunch,
   resolveComboApply,
@@ -98,8 +100,8 @@ import { useGroupLayoutControls } from "../hooks/useGroupLayoutControls";
 import { useLaunchDockRailResize } from "../hooks/useCatalogSplitResize";
 import { useFusionDisplayMode } from "../hooks/useFusionDisplayMode";
 import LaunchRailTelemetry from "./LaunchRailTelemetry";
+import { dispatchAppEvent, EVENTS, type CatalogLaunchSeatsDetail } from "../lib/events";
 
-import { dispatchAppEvent, EVENTS } from "../lib/events";
 import { tomMtpBlocked, TOM_MTP_SKIP_MESSAGE } from "../lib/tomMtp";
 import {
   type DraftRole,
@@ -2375,6 +2377,72 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       handleSelectEngine,
     ],
   );
+
+  // Catalog SEATS ▶ TWIN — ephemeral BRAIN+WORKER combo; DRAFT path → BRAIN Boost pack only.
+  useEffect(() => {
+    const onCatalogLaunchSeats = (e: Event) => {
+      const detail = (e as CustomEvent<CatalogLaunchSeatsDetail>).detail;
+      if (!detail?.brainPath || !detail?.workerPath) return;
+      const list = models ?? [];
+      const brainModel =
+        list.find((m) => normalizeModelPath(m.path) === normalizeModelPath(detail.brainPath)) ?? null;
+      const workerModel =
+        list.find((m) => normalizeModelPath(m.path) === normalizeModelPath(detail.workerPath)) ?? null;
+      if (!brainModel || !workerModel) {
+        dispatchAppEvent(EVENTS.launchError, {
+          message: "Catalog seats: BRAIN or WORKER model not in library",
+        });
+        return;
+      }
+      const policyId = resolveLaunchPolicyId({ fullAutoMode, configView });
+      const providerId = effectiveBackendType || DEFAULT_PROVIDER_ID;
+      const draftPath = detail.draftPath?.trim() || "";
+      const brainConfig: Record<string, unknown> = { ...config };
+      if (draftPath) {
+        // Spec pack for BRAIN Boost — not a third launched engine.
+        brainConfig.dflash_draft_model = draftPath;
+        brainConfig.spec_draft_model = draftPath;
+      }
+      const brain = captureSeatFromPanel({
+        model: brainModel,
+        providerId,
+        binaryProfile: selectedBinaryProfile,
+        policyId,
+        config: brainConfig,
+        role: "brain",
+        label: "BRAIN",
+      });
+      const worker = captureSeatFromPanel({
+        model: workerModel,
+        providerId,
+        binaryProfile: selectedBinaryProfile,
+        policyId,
+        config: { ...config },
+        role: "worker",
+        label: "WORKER",
+      });
+      const combo = buildTwinCombo({
+        name: "Catalog seats",
+        brain,
+        worker,
+        sequenceBrainFirst: true,
+      });
+      // Catalog twin → dual fusion panes (session-only display mode).
+      fusionDisplay.setMode("dual");
+      void applyComboPreset(combo, { loadIntoPanel: false });
+    };
+    window.addEventListener(EVENTS.catalogLaunchSeats, onCatalogLaunchSeats);
+    return () => window.removeEventListener(EVENTS.catalogLaunchSeats, onCatalogLaunchSeats);
+  }, [
+    models,
+    config,
+    effectiveBackendType,
+    selectedBinaryProfile,
+    fullAutoMode,
+    configView,
+    applyComboPreset,
+    fusionDisplay,
+  ]);
 
   const handleSaveSoloPreset = useCallback(() => {
     if (!model) return;

@@ -80,6 +80,11 @@ export const EVENTS = {
   atomcodeHarnessHighlight: `${STORAGE_PREFIX}atomcode-harness-highlight`,
   /** AtomCode harness: user clicked a running engine card (twin role cycle). */
   atomcodeEngineClick: `${STORAGE_PREFIX}atomcode-engine-click`,
+  /**
+   * Catalog seats → launch BRAIN+WORKER twin (optional DRAFT path = BRAIN spec pack).
+   * EngineConfigPanel applies an ephemeral combo; does not persist a preset.
+   */
+  catalogLaunchSeats: `${STORAGE_PREFIX}catalog-launch-seats`,
 } as const;
 
 /** Detail for `EVENTS.atomcodeHarnessHighlight`. */
@@ -89,6 +94,14 @@ export type AtomcodeHarnessHighlightDetail = {
   brainPort?: number | null;
   workerPort?: number | null;
   selectedSlotIdx?: number | null;
+};
+
+/** Detail for `EVENTS.catalogLaunchSeats`. */
+export type CatalogLaunchSeatsDetail = {
+  brainPath: string;
+  workerPath: string;
+  /** Speculative draft pack path for BRAIN Boost (DFlash/DSpark) — not a third engine. */
+  draftPath?: string | null;
 };
 
 /** Running-engine card click while harness open (role cycle for twin). */

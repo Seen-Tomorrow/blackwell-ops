@@ -25,14 +25,17 @@ import {
   assignCatalogSeat,
   clearCatalogSeat,
   isCatalogPinned,
+  loadCatalogActiveSeatSet,
   loadCatalogPins,
   loadCatalogRecents,
   loadCatalogSeats,
   pushCatalogRecent,
   seatRoleForPath,
+  setCatalogActiveSeatSet,
   toggleCatalogPin,
   type CatalogRecentEntry,
   type CatalogSeatRole,
+  type CatalogSeatSetIndex,
   type CatalogSeatsState,
 } from "../lib/catalogQuickAccess";
 import {
@@ -308,6 +311,7 @@ export function useModelCatalog({
   const [catalogPins, setCatalogPins] = useState<string[]>(() => loadCatalogPins());
   const [catalogRecents, setCatalogRecents] = useState<CatalogRecentEntry[]>(() => loadCatalogRecents());
   const [catalogSeats, setCatalogSeats] = useState<CatalogSeatsState>(() => loadCatalogSeats());
+  const [activeSeatSet, setActiveSeatSetState] = useState<CatalogSeatSetIndex>(() => loadCatalogActiveSeatSet());
   const [fitNowFilter, setFitNowFilter] = useState<CatalogFitNowFilter>("all");
 
   // After onboarding — pick first scannable model when nothing is selected (fresh install has no lastModel).
@@ -489,6 +493,12 @@ export function useModelCatalog({
 
   const handleClearSeat = useCallback((role: CatalogSeatRole) => {
     setCatalogSeats(clearCatalogSeat(role));
+  }, []);
+
+  const handleSelectSeatSet = useCallback((index: CatalogSeatSetIndex) => {
+    const next = setCatalogActiveSeatSet(index);
+    setActiveSeatSetState(next.activeSeatSet);
+    setCatalogSeats(next.seats);
   }, []);
 
   const isPinned = useCallback(
@@ -703,8 +713,51 @@ export function useModelCatalog({
       sorted = sorted.filter((m) => matchesFitNowFilter(getFitNowVerdict(m), fitNowFilter));
     }
 
+    // Pins float to the top (pin order). Selected pin is always first.
+    if (catalogPins.length > 0) {
+      const pathKeyOf = (p: string) => normalizeModelPathKey(p);
+      const byKey = new Map(sorted.map((m) => [pathKeyOf(m.path), m] as const));
+      const pinnedTop: ModelEntry[] = [];
+      const seen: Record<string, true> = {};
+
+      const selectedKey = catalogSelectedModel
+        ? pathKeyOf(catalogSelectedModel.path)
+        : null;
+      if (selectedKey && catalogPins.some((p) => pathKeyOf(p) === selectedKey)) {
+        const sel = byKey.get(selectedKey);
+        if (sel) {
+          pinnedTop.push(sel);
+          seen[selectedKey] = true;
+        }
+      }
+
+      for (const p of catalogPins) {
+        const k = pathKeyOf(p);
+        if (seen[k]) continue;
+        const m = byKey.get(k);
+        if (!m) continue;
+        pinnedTop.push(m);
+        seen[k] = true;
+      }
+
+      if (pinnedTop.length > 0) {
+        const rest = sorted.filter((m) => !seen[pathKeyOf(m.path)]);
+        sorted = [...pinnedTop, ...rest];
+      }
+    }
+
     return sorted;
-  }, [models, sortField, sortDirection, search, draftFilter, fitNowFilter, getFitNowVerdict]);
+  }, [
+    models,
+    sortField,
+    sortDirection,
+    search,
+    draftFilter,
+    fitNowFilter,
+    getFitNowVerdict,
+    catalogPins,
+    catalogSelectedModel?.path,
+  ]);
 
   const setCatalogDraftFilter = useCallback((filter: CatalogDraftFilter) => {
     setDraftFilter(filter);
@@ -809,8 +862,8 @@ export function useModelCatalog({
     fitScanAvailable, isFitScanning, getFitScanActiveLabel, getFitScanBadge, modelNeedsFitScan, handleFitScanModel,
     fitScanningCount: fitScanningPaths.size,
     // Quick access (pins / recents / seats)
-    catalogPins, catalogRecents, catalogSeats,
-    handleTogglePin, handleTogglePinPath, handleAssignSeat, handleClearSeat, handleSelectPath,
+    catalogPins, catalogRecents, catalogSeats, activeSeatSet,
+    handleTogglePin, handleTogglePinPath, handleAssignSeat, handleClearSeat, handleSelectSeatSet, handleSelectPath,
     isPinned, getSeatRole,
     // Fit-now (FIT cache + free VRAM only — no forecast)
     fitNowFilter, setFitNowFilter, getFitNowMeta, freeVramMib,

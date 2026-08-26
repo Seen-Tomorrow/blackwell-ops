@@ -151,8 +151,8 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     handleDeleteModel, handleRenameModel,
     fitScanAvailable, isFitScanning, getFitScanActiveLabel, getFitScanBadge, modelNeedsFitScan, handleFitScanModel,
     fitScanningCount,
-    catalogPins, catalogRecents, catalogSeats,
-    handleTogglePin, handleTogglePinPath, handleAssignSeat, handleClearSeat, handleSelectPath,
+    catalogPins, catalogRecents, catalogSeats, activeSeatSet,
+    handleTogglePin, handleTogglePinPath, handleAssignSeat, handleClearSeat, handleSelectSeatSet, handleSelectPath,
     isPinned, getSeatRole,
     fitNowFilter, setFitNowFilter, getFitNowMeta,
     zone } = catalog;
@@ -367,19 +367,26 @@ export default function ModelCatalog(props: ModelCatalogProps) {
   };
 
 
-  // Auto-scroll selected model into view in the catalog scroll container
+  // Auto-scroll selected model into view — pins land at the top of the list body
   const catalogScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!catalogSelectedModel || !catalogScrollRef.current) return;
     const container = catalogScrollRef.current;
+    const selectedPath = catalogSelectedModel.path;
+    const pinFirst = isPinned(selectedPath);
     requestAnimationFrame(() => {
-      const el = container.querySelector(`[data-model-path="${CSS.escape(catalogSelectedModel.path)}"]`);
-      if (el) {
-        el.scrollIntoView({ block: "nearest", behavior: "auto" });
-      }
+      const el = container.querySelector(
+        `[data-model-path="${CSS.escape(selectedPath)}"]`,
+      ) as HTMLElement | null;
+      if (!el) return;
+      // Selected pin is sorted to index 0 — pin it to the top of the scrollport.
+      el.scrollIntoView({
+        block: pinFirst ? "start" : "nearest",
+        behavior: "auto",
+      });
     });
-  }, [catalogSelectedModel?.path]);
+  }, [catalogSelectedModel?.path, isPinned, catalogModels]);
 
 
 
@@ -891,12 +898,14 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           <CatalogQuickStrip
             models={models}
             seats={catalogSeats}
+            activeSeatSet={activeSeatSet}
             pins={catalogPins}
             recents={catalogRecents}
             selectedPath={catalogSelectedModel?.path ?? null}
             onSelectPath={handleSelectPath}
             onAssignSeat={(role) => handleAssignSeat(role)}
             onClearSeat={handleClearSeat}
+            onSelectSeatSet={handleSelectSeatSet}
             onTogglePinPath={handleTogglePinPath}
           />
           <div className="catalog-list-panel__body">
