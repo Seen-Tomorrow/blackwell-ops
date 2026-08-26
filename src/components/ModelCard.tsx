@@ -159,6 +159,22 @@ export default function ModelCard({
     ? 'model-card-quant-badge model-card-quant-badge--nvfp bg-nv-green/10 border border-nv-green/20 text-nv-green/50'
     : 'model-card-quant-badge model-card-quant-badge--cyan border border-telemetry-cyan/15 text-telemetry-cyan/50';
 
+  const metaTip = [
+    model.metadata?.architecture ? `arch ${model.metadata.architecture}` : null,
+    model.metadata?.n_ctx_train ? `KV ${model.metadata.n_ctx_train.toLocaleString()}` : null,
+    fitScanBadge || null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  const dateLabel = model.metadata?.file_created
+    ? new Date(model.metadata.file_created * 1000).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "2-digit",
+      })
+    : "--";
+
   return (
     <div
       onClick={() => onSelect(model)}
@@ -169,7 +185,11 @@ export default function ModelCard({
           ? "gunmetal-card border"
           : "buried-card"
       }`}
+      title={isDraftOnly ? "Draft model — cannot launch as main (use as speculative draft)" : undefined}
     >
+      {isDraftOnly && (
+        <div className="model-card-draft-hatch" aria-hidden="true" />
+      )}
       {/* ── Author + path + GGUF badge ─── */}
       <div className="flex items-center justify-between gap-1.5 mb-1">
         <span className="text-[8px] font-mono text-stealth-muted truncate">{model.author}</span>
@@ -245,39 +265,20 @@ export default function ModelCard({
         </div>
       )}
 
-      {/* Footer — size/date (left) | actions+quant (right). Arch/KV/FIT live in tooltip. */}
+      {/* Footer — size/date (left) | stacked badges (right). Arch/KV/FIT in hover tip. */}
       {hasMetadata ? (
-        <div className="mt-1 pt-1 border-t border-stealth-border/30 flex items-center justify-between gap-2 min-w-0">
+        <div className="model-card-footer mt-1 pt-1 border-t border-stealth-border/30">
           <div
-            className="model-card-meta min-w-0 flex items-baseline gap-1.5"
-            title={[
-              model.metadata?.architecture
-                ? `arch ${model.metadata.architecture}`
-                : null,
-              model.metadata?.n_ctx_train
-                ? `KV ${model.metadata.n_ctx_train.toLocaleString()}`
-                : null,
-              fitScanBadge || null,
-            ]
-              .filter(Boolean)
-              .join(" · ")}
+            className={`model-card-meta${metaTip ? " model-card-meta--tip" : ""}`}
+            {...(metaTip ? { "data-tip": metaTip } : {})}
           >
-            <span className="model-card-size font-mono text-stealth-muted shrink-0">
-              {model.size_str}
-            </span>
-            <span className="model-card-date font-mono text-white/60 whitespace-nowrap shrink-0">
-              {model.metadata?.file_created
-                ? new Date(model.metadata.file_created * 1000).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    year: "2-digit",
-                  })
-                : "--"}
-            </span>
+            <span className="model-card-size font-mono text-stealth-muted">{model.size_str}</span>
+            <span className="model-card-date font-mono text-white/60">{dateLabel}</span>
           </div>
-          <div className="flex items-center gap-0.5 flex-shrink-0">
+          <div className="model-card-badges">
             {fitScanAvailable && needsFitScan && (
               <button
+                type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   onFitScanModel?.(model);
@@ -298,54 +299,56 @@ export default function ModelCard({
               </button>
             )}
             {draftBadge && isDraftOnly && (
-              <span className="text-[7px] font-mono px-1 py-0.5 rounded-sm bg-violet-500/15 border border-violet-400/25 text-violet-300/80">
+              <span className="model-card-draft-badge text-[7px] font-mono px-1 py-0.5 rounded-sm">
                 {draftBadge}
               </span>
             )}
-            {hasMultimodal && (
-              <span className="text-[8px] font-mono px-1 py-0.5 rounded-sm border border-amber-400/15 text-amber-400/50">
-                MULTIMODAL
-              </span>
-            )}
-            {quantBadge && (
-              <span className={`text-[8px] font-mono px-1 py-0.5 rounded-sm whitespace-nowrap ${quantBadgeClass}`}>
-                {quantBadge}
-              </span>
+            {/* Stack MULTIMODAL above QUANT so date never collides on narrow panels */}
+            {(hasMultimodal || quantBadge) && (
+              <div className="model-card-badges__stack">
+                {hasMultimodal && (
+                  <span
+                    className="model-card-mm-badge text-[7px] font-mono px-1 py-0.5 rounded-sm border border-amber-400/20 text-amber-400/60"
+                    title="Multimodal / vision"
+                  >
+                    MM
+                  </span>
+                )}
+                {quantBadge && (
+                  <span className={`text-[8px] font-mono px-1 py-0.5 rounded-sm whitespace-nowrap ${quantBadgeClass}`}>
+                    {quantBadge}
+                  </span>
+                )}
+              </div>
             )}
           </div>
         </div>
       ) : (
-        <div className="mt-1 pt-1 border-t border-stealth-border/30 flex items-center justify-between gap-2 min-w-0">
-          <div className="model-card-meta min-w-0 flex items-baseline gap-1.5">
-            <span className="model-card-size font-mono text-stealth-muted shrink-0">
-              {model.size_str}
-            </span>
-            <span className="model-card-date font-mono text-white/60 whitespace-nowrap shrink-0">
-              {model.metadata?.file_created
-                ? new Date(model.metadata.file_created * 1000).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    year: "2-digit",
-                  })
-                : "--"}
-            </span>
+        <div className="model-card-footer mt-1 pt-1 border-t border-stealth-border/30">
+          <div className="model-card-meta">
+            <span className="model-card-size font-mono text-stealth-muted">{model.size_str}</span>
+            <span className="model-card-date font-mono text-white/60">{dateLabel}</span>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="model-card-badges">
             {draftBadge && (
-              <span className="text-[7px] font-mono px-1 py-0.5 rounded-sm bg-violet-500/15 border border-violet-400/25 text-violet-300/80">
+              <span className="model-card-draft-badge text-[7px] font-mono px-1 py-0.5 rounded-sm">
                 {draftBadge}
               </span>
             )}
             <button
-              onClick={(e) => { e.stopPropagation(); onScanModel?.(model); }}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onScanModel?.(model);
+              }}
               disabled={isScanning || scanningPath !== null}
               className={`text-[7px] font-mono px-1.5 py-0.5 rounded-sm transition-colors ${
                 isScanning
-                  ? 'text-telemetry-cyan border border-telemetry-cyan/40 bg-telemetry-cyan/10'
-                  : 'text-orange-400 border border-orange-400/30 hover:bg-orange-400/10 disabled:opacity-30'
+                  ? "text-telemetry-cyan border border-telemetry-cyan/40 bg-telemetry-cyan/10"
+                  : "text-orange-400 border border-orange-400/30 hover:bg-orange-400/10 disabled:opacity-30"
               }`}
             >
-              {isScanning ? '⠋ SCANNING...' : '⚠ SCAN'}
+              {isScanning ? "⠋ SCANNING..." : "⚠ SCAN"}
             </button>
           </div>
         </div>

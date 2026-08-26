@@ -615,7 +615,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
         </div>
         <label
           className="panel-dim-control"
-          title={`Catalog list dim — ${Math.round(catalogListDim * 100)}% (header + selected model stay full)`}
+          title={`Catalog list mute — ${Math.round(catalogListDim * 100)}% (selected stays full; soft floor keeps cards readable)`}
         >
           <span className="panel-dim-control__label">DIM</span>
           <input
@@ -889,6 +889,9 @@ export default function ModelCatalog(props: ModelCatalogProps) {
               <div className="grid grid-cols-1 gap-2">
                 {catalogModels.map((model) => {
                   const isSelected = catalogSelectedModel?.path === model.path;
+                  // Soft mute: slider 20–100% → opacity ~0.52–1.0 so the list calms
+                  // without looking disabled. Selected always full strength.
+                  const unselectedOpacity = 0.4 + catalogListDim * 0.6;
                   return (
                     <div
                       key={model.path}
@@ -898,7 +901,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                           ? "catalog-list-card-wrap catalog-list-card-wrap--selected"
                           : "catalog-list-card-wrap"
                       }
-                      style={isSelected ? undefined : { opacity: catalogListDim }}
+                      style={isSelected ? undefined : { opacity: unselectedOpacity }}
                     >
                       <ModelCard
                         model={model}

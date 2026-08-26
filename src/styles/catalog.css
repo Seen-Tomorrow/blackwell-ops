@@ -564,11 +564,42 @@
 }
 
 .model-catalog-card {
-  contain: layout style paint;
+  contain: layout style;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.model-catalog-card > *:not(.model-card-draft-hatch) {
+  position: relative;
+  z-index: 1;
+}
+
+/* Draft-only hatch — violet diagonal veil; text stays above and readable */
+.model-card-draft-hatch {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      -52deg,
+      color-mix(in srgb, var(--theme-dflash-strip-border, #a78bfa) 22%, transparent) 0 5px,
+      transparent 5px 11px
+    ),
+    color-mix(in srgb, var(--theme-dflash-strip-bg, #2e1065) 18%, transparent);
+  opacity: 0.9;
 }
 
 .model-catalog-card--draft {
-  opacity: 0.82;
+  /* keep full ink; hatch carries the draft cue (opacity mute looked disabled) */
+  opacity: 1;
+}
+
+.model-catalog-card--draft .model-card-draft-badge {
+  color: var(--theme-dflash-strip-text, #ddd6fe);
+  border: 1px solid var(--theme-dflash-strip-border, color-mix(in srgb, #a78bfa 50%, transparent));
+  background: color-mix(in srgb, var(--theme-dflash-strip-bg, #2e1065) 55%, transparent);
 }
 
 .catalog-sort-bar {
@@ -698,7 +729,7 @@
   box-shadow: var(--theme-catalog-card-hover-shadow) !important;
 }
 
-/* Selected — lifted ice / accent face + left rail */
+/* Selected — lifted accent face + left rail (must read at dim=100% on dark themes) */
 [data-model-catalog] .model-catalog-card.gunmetal-card,
 [data-model-catalog] .gunmetal-card {
   background-color: var(--theme-catalog-card-selected-bg) !important;
@@ -708,19 +739,62 @@
   border-radius: 8px;
 }
 
-[data-model-catalog] .gunmetal-card::before {
-  width: 3px;
+[data-model-catalog] .gunmetal-card::before,
+[data-model-catalog] .model-catalog-card.gunmetal-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 5px;
+  bottom: 5px;
+  width: 4px;
+  border-radius: 2px;
   background: var(--theme-catalog-card-rail);
-  box-shadow: none;
+  box-shadow: 0 0 10px color-mix(in srgb, var(--theme-catalog-card-rail) 55%, transparent);
+  pointer-events: none;
+  z-index: 2;
+}
+
+[data-model-catalog] .model-catalog-card.gunmetal-card .model-card-name {
+  color: var(--theme-accent-bright, var(--theme-accent)) !important;
+}
+
+/* Footer: size/date left, badge column right */
+[data-model-catalog] .model-card-footer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+[data-model-catalog] .model-card-badges {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 0.25rem;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+[data-model-catalog] .model-card-badges__stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
 }
 
 /* Size + date footer meta — size is the primary weight readout */
 [data-model-catalog] .model-card-meta {
+  position: relative;
   display: flex;
   flex-wrap: nowrap;
   align-items: baseline;
   gap: 0.4rem;
   min-width: 0;
+  flex: 1 1 auto;
 }
 
 [data-model-catalog] .model-card-size {
@@ -729,6 +803,7 @@
   letter-spacing: 0.02em;
   font-variant-numeric: tabular-nums;
   font-weight: 600;
+  flex-shrink: 0;
 }
 
 [data-model-catalog] .model-card-date {
@@ -737,6 +812,46 @@
   letter-spacing: 0.02em;
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+/*
+ * In-card hover tip for arch / KV / FIT — native title is unreliable under
+ * contain + content-visibility in WebView2; paint the tip inside the card.
+ */
+[data-model-catalog] .model-card-meta--tip {
+  cursor: help;
+}
+
+[data-model-catalog] .model-card-meta--tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 0;
+  bottom: 100%;
+  z-index: 5;
+  max-width: min(16rem, 100%);
+  margin-bottom: 4px;
+  padding: 3px 7px;
+  border-radius: 3px;
+  font-family: ui-monospace, monospace;
+  font-size: 8px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+  white-space: normal;
+  color: var(--theme-text);
+  background: color-mix(in srgb, var(--theme-panel) 94%, var(--theme-accent) 6%);
+  border: 1px solid color-mix(in srgb, var(--theme-border) 70%, var(--theme-accent) 30%);
+  box-shadow: 0 2px 8px color-mix(in srgb, #000 35%, transparent);
+  opacity: 0;
+  transform: translateY(2px);
+  pointer-events: none;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+[data-model-catalog] .model-card-meta--tip:hover::after,
+[data-model-catalog] .model-card-meta--tip:focus-visible::after {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 /* FIT badge kept for any residual callsites — quiet meta, not a status beacon */
