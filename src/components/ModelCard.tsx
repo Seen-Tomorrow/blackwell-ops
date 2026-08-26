@@ -190,23 +190,26 @@ export default function ModelCard({
       {isDraftOnly && (
         <div className="model-card-draft-hatch" aria-hidden="true" />
       )}
-      {/* ── Author + path + GGUF badge ─── */}
-      <div className="flex items-center justify-between gap-1.5 mb-1">
-        <span className="text-[8px] font-mono text-stealth-muted truncate">{model.author}</span>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
+      {/* ── Path (dbl-click → Explorer) above author · GGUF / update badges ─── */}
+      <div className="flex items-start justify-between gap-1.5 mb-1">
+        <div className="min-w-0 flex flex-col gap-px">
           {model.sourcePathLabel && (
             <button
               type="button"
-              onClick={(e) => {
+              onDoubleClick={(e) => {
+                e.preventDefault();
                 e.stopPropagation();
                 void revealPathInExplorer(model.path);
               }}
-              className="text-[7px] font-mono text-stealth-muted/50 bg-stealth-surface px-1 py-0.5 rounded-sm hover:text-stealth-muted hover:bg-stealth-surface/80 transition-colors cursor-pointer"
-              title={`Open in Explorer: ${model.path}`}
+              className="model-card-path self-start max-w-full text-left text-[7px] font-mono truncate px-0 py-0 border-0 bg-transparent rounded-none cursor-default hover:text-stealth-muted/80 transition-colors"
+              title={`Double-click to open in Explorer:\n${model.path}`}
             >
-              📁 {model.sourcePathLabel}
+              {model.sourcePathLabel}
             </button>
           )}
+          <span className="text-[8px] font-mono text-stealth-muted truncate">{model.author}</span>
+        </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
           <span className="text-[8px] font-mono px-1 py-0.5 rounded-sm border border-gray-500/20 text-gray-500">
             GGUF
           </span>
@@ -257,14 +260,14 @@ export default function ModelCard({
           {archBadge && (
             <span className="text-[7px] font-mono bg-black text-white/70 px-1 py-0.5 rounded-sm shrink-0">{archBadge}</span>
           )}
-          {hasMultimodal && (
-            <span className="model-card-mm-badge text-[7px] font-mono px-1 py-0.5 rounded-sm border border-amber-400/20 text-amber-400/60 shrink-0">
-              MULTIMODAL
-            </span>
-          )}
           {draftBadge && !isDraftOnly && (
             <span className="text-[7px] font-mono bg-black text-white/70 px-1 py-0.5 rounded-sm shrink-0">
               {draftBadge}
+            </span>
+          )}
+          {hasMultimodal && (
+            <span className="model-card-mm-badge ml-auto text-[7px] font-mono px-1 py-0.5 rounded-sm border border-amber-400/20 text-amber-400/60 shrink-0 whitespace-nowrap">
+              MULTIMODAL
             </span>
           )}
         </div>
