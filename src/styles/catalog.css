@@ -151,45 +151,71 @@
   min-width: 0;
 }
 
-/* Search field — full-width input box with the kind cycler fused top-right and
-   the model count bottom-right. Tall enough to hold both. */
+/* Search field — full-width input with a fused right rail:
+   kind cycler (MAIN/DRAFT/ALL) on top, model count below. */
 .catalog-list-panel__chrome-search .catalog-search-field {
   position: relative;
   flex: 1 1 10rem;
   min-width: 0;
-  height: 40px;
-  display: flex;
-  align-items: stretch;
+  height: 38px;
+  display: block;
 }
 
-/* Model count — bottom-right inside the search input, on a chrome (gunmetal)
-   chip so it reads as part of the industrial chrome. */
-.catalog-search-count {
+/* Right rail — stacks cycler + count inside the input face */
+.catalog-search-field__rail {
   position: absolute;
-  right: 8px;
-  bottom: 4px;
-  padding: 1px 6px;
-  font-family: ui-monospace, monospace;
-  font-size: 9px;
-  letter-spacing: 0.06em;
-  color: var(--theme-text, #e5e7eb);
-  opacity: 0.6;
+  top: 3px;
+  right: 3px;
+  bottom: 3px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 2px;
+  width: 3.55rem;
   pointer-events: none;
+}
+
+.catalog-search-field__rail .catalog-kind-cycler {
+  pointer-events: auto;
+}
+
+/* Model count — under the kind cycler, same rail width */
+.catalog-search-count {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  flex: 0 0 auto;
+  padding: 0 4px;
+  height: 13px;
+  font-family: ui-monospace, monospace;
+  font-size: 8px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  color: var(--theme-text-muted, var(--theme-text, #e5e7eb));
+  opacity: 0.85;
   white-space: nowrap;
   user-select: none;
-  z-index: 2;
-  border-radius: 3px;
-  background-color: color-mix(in srgb, var(--theme-industrial-bg) 70%, transparent);
+  border-radius: 2px;
+  background-color: color-mix(in srgb, var(--theme-industrial-bg) 78%, transparent);
   background-image: var(--theme-industrial-texture-active);
-  border: 1px solid color-mix(in srgb, var(--theme-border-subtle) 60%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-border-subtle) 55%, transparent);
+  pointer-events: none;
 }
 
 .catalog-list-panel__chrome-search .catalog-search-input {
-  flex: 1 1 10rem;
-  min-width: 0;
+  display: block;
+  width: 100%;
   height: 100%;
-  align-self: stretch;
+  min-width: 0;
+  padding: 0 3.95rem 0 0.75rem;
+  line-height: 36px;
+  box-sizing: border-box;
 }
+
 
 /* Row 2 under the search input — SCAN META + EDIT controls, docked right with
    breathing room and an amber border to group them as a distinct unit. */
@@ -236,18 +262,23 @@
   justify-content: space-between;
 }
 
-/* Single cycler for model kind (MAIN / DRAFT / ALL) — fused top-right inside
-   the search input box. Accent-tinted face, state-aware per kind. */
+/* Single cycler for model kind (MAIN / DRAFT / ALL) — top of the fused rail */
 .catalog-kind-cycler {
-  top: 5px;
-  right: 4px;
-  min-width: 3.5rem;
-  padding: 2px 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0 4px;
   text-align: center;
   font-size: 9px;
-  letter-spacing: 0.08em;
-  border-radius: 4px;
-  border: 1px solid color-mix(in srgb, var(--theme-accent) 45%, transparent);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  line-height: 1;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 50%, transparent);
   /* Chrome (gunmetal industrial) face — matches the catalog chrome panel. */
   background-color: var(--theme-industrial-bg);
   background-image:
@@ -255,35 +286,41 @@
     var(--theme-industrial-face-gradient, none);
   color: var(--theme-accent-bright, var(--theme-accent));
   cursor: pointer;
-  z-index: 1;
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 50%, transparent),
     inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-lo) 45%, transparent);
-  transition: border-color 0.15s ease, filter 0.15s ease;
+  transition: border-color 0.15s ease, filter 0.15s ease, color 0.15s ease;
 }
+
 
 .catalog-kind-cycler:hover {
   border-color: color-mix(in srgb, var(--theme-accent-bright, var(--theme-accent)) 70%, transparent);
   filter: brightness(1.18);
 }
 
-/* State-aware accent — border + text tint per active kind (chrome face stays). */
+/* State-aware accent — border + text tint per active kind */
 .catalog-kind-cycler[data-kind="draft"] {
-  border-color: color-mix(in srgb, #8b5cf6 60%, transparent);
-  color: #ddd6fe;
+  border-color: var(--theme-dflash-strip-border, color-mix(in srgb, #8b5cf6 60%, transparent));
+  color: var(--theme-dflash-strip-text, #ddd6fe);
+  background-color: color-mix(
+    in srgb,
+    var(--theme-dflash-strip-bg, #2e1065) 42%,
+    var(--theme-industrial-bg) 58%
+  );
 }
 
 .catalog-kind-cycler[data-kind="draft"]:hover {
-  border-color: color-mix(in srgb, #a78bfa 80%, transparent);
+  border-color: color-mix(in srgb, var(--theme-dflash-strip-border, #a78bfa) 85%, transparent);
+  filter: brightness(1.08);
 }
 
 .catalog-kind-cycler[data-kind="all"] {
-  border-color: color-mix(in srgb, var(--theme-nv-green, #76b900) 55%, transparent);
+  border-color: color-mix(in srgb, var(--theme-nv-green, #76b900) 60%, transparent);
   color: var(--theme-nv-green, #76b900);
 }
 
 .catalog-kind-cycler[data-kind="all"]:hover {
-  border-color: color-mix(in srgb, var(--theme-nv-green, #76b900) 80%, transparent);
+  border-color: color-mix(in srgb, var(--theme-nv-green, #76b900) 85%, transparent);
 }
 
 .catalog-list-panel__chrome-msg {
@@ -677,7 +714,32 @@
   box-shadow: none;
 }
 
-/* FIT:6/6 — quiet meta, not a status beacon */
+/* Size + date footer meta — size is the primary weight readout */
+[data-model-catalog] .model-card-meta {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: baseline;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+[data-model-catalog] .model-card-size {
+  font-size: 11px;
+  line-height: 1.1;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+[data-model-catalog] .model-card-date {
+  font-size: 8px;
+  line-height: 1.1;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* FIT badge kept for any residual callsites — quiet meta, not a status beacon */
 [data-model-catalog] .model-card-fit-badge {
   color: var(--theme-catalog-fit-fg) !important;
   border-color: var(--theme-catalog-fit-border) !important;

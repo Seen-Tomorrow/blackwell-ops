@@ -727,16 +727,18 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                       }
                     }}
                     autoFocus
-                    className="catalog-search-input theme-input w-full text-xs font-mono pl-3 pr-16 rounded-sm"
+                    className="catalog-search-input theme-input w-full text-xs font-mono rounded-sm"
                   />
-                  {renderKindCycler()}
-                  <span
-                    className="catalog-search-count"
-                    aria-hidden="true"
-                    title={`${catalogModels.length} shown / ${models.length} total`}
-                  >
-                    {catalogModels.length} / {models.length}
-                  </span>
+                  <div className="catalog-search-field__rail">
+                    {renderKindCycler()}
+                    <span
+                      className="catalog-search-count"
+                      aria-hidden="true"
+                      title={`${catalogModels.length} shown / ${models.length} total`}
+                    >
+                      {catalogModels.length} / {models.length}
+                    </span>
+                  </div>
                 </div>
               </div>
               <div className="catalog-search-tools">

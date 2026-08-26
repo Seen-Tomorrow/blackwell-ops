@@ -162,7 +162,7 @@ export default function ModelCard({
   return (
     <div
       onClick={() => onSelect(model)}
-      className={`relative cursor-pointer rounded-sm p-2.5 model-catalog-card ${
+      className={`relative cursor-pointer rounded-sm px-2.5 py-2 model-catalog-card ${
         isDraftOnly ? "model-catalog-card--draft " : ""
       }${
         isSelected
@@ -230,51 +230,58 @@ export default function ModelCard({
       </span>
 
       {(paramsNum || (model.metadata?.nextn_predict_layers ?? 0) > 0 || draftBadge) && (
-        <div className="flex items-center gap-1 mt-0.5">
+        <div className="flex items-center gap-1 mt-0.5 min-w-0">
           {paramsNum && (
-            <span className="text-[8px] font-mono text-white">{paramsNum}</span>
+            <span className="text-[8px] font-mono text-white shrink-0">{paramsNum}</span>
           )}
           {archBadge && (
-            <span className="text-[7px] font-mono bg-black text-white/70 px-1 py-0.5 rounded-sm">{archBadge}</span>
+            <span className="text-[7px] font-mono bg-black text-white/70 px-1 py-0.5 rounded-sm shrink-0">{archBadge}</span>
           )}
           {draftBadge && !isDraftOnly && (
-            <span className="text-[7px] font-mono bg-black text-white/70 px-1 py-0.5 rounded-sm">
+            <span className="text-[7px] font-mono bg-black text-white/70 px-1 py-0.5 rounded-sm shrink-0">
               {draftBadge}
-            </span>
-          )}
-          {hasMetadata && (
-            <span className="text-[7px] font-mono text-white/[0.06]" title={model.metadata.architecture}>
-              · {model.metadata.architecture} · KV:{model.metadata.n_ctx_train.toLocaleString()}
             </span>
           )}
         </div>
       )}
 
-      {/* Footer — size/date (left) | multimodal+quant (right) */}
+      {/* Footer — size/date (left) | actions+quant (right). Arch/KV/FIT live in tooltip. */}
       {hasMetadata ? (
-        <div className="mt-1 pt-1 border-t border-stealth-border/30 flex items-center justify-between">
-          <div className="min-w-0 flex flex-col gap-0.5">
-            <div className="flex items-center gap-1.5">
-              <span className="text-[8px] font-mono text-stealth-muted">{model.size_str}</span>
-              <span className="text-[7px] font-mono text-white/60">
-                {model.metadata?.file_created
-                  ? new Date(model.metadata.file_created * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
-                  : '--'}
-              </span>
-            </div>
+        <div className="mt-1 pt-1 border-t border-stealth-border/30 flex items-center justify-between gap-2 min-w-0">
+          <div
+            className="model-card-meta min-w-0 flex items-baseline gap-1.5"
+            title={[
+              model.metadata?.architecture
+                ? `arch ${model.metadata.architecture}`
+                : null,
+              model.metadata?.n_ctx_train
+                ? `KV ${model.metadata.n_ctx_train.toLocaleString()}`
+                : null,
+              fitScanBadge || null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          >
+            <span className="model-card-size font-mono text-stealth-muted shrink-0">
+              {model.size_str}
+            </span>
+            <span className="model-card-date font-mono text-white/60 whitespace-nowrap shrink-0">
+              {model.metadata?.file_created
+                ? new Date(model.metadata.file_created * 1000).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "2-digit",
+                  })
+                : "--"}
+            </span>
           </div>
-          <div className="flex items-center gap-0.5 flex-shrink-0 ml-2">
-            {fitScanBadge && (
-              <span
-                className="model-card-fit-badge text-[7px] font-mono px-1 py-0.5 rounded-sm border whitespace-nowrap"
-                title="VRAM fit probe data cached for forecast"
-              >
-                {fitScanBadge}
-              </span>
-            )}
+          <div className="flex items-center gap-0.5 flex-shrink-0">
             {fitScanAvailable && needsFitScan && (
               <button
-                onClick={(e) => { e.stopPropagation(); onFitScanModel?.(model); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onFitScanModel?.(model);
+                }}
                 disabled={fitScanning}
                 className={`model-card-fit-scan text-[7px] font-mono px-1.5 py-0.5 rounded-sm transition-colors whitespace-nowrap ${
                   fitScanning
@@ -284,7 +291,9 @@ export default function ModelCard({
                 title="Run full VRAM fit probe (same 28 points as library FIT scan)"
               >
                 {fitScanning
-                  ? (fitScanActiveLabel ? `⠋ FIT ${fitScanActiveLabel}` : "⠋ FIT…")
+                  ? fitScanActiveLabel
+                    ? `⠋ FIT ${fitScanActiveLabel}`
+                    : "⠋ FIT…"
                   : "FIT SCAN"}
               </button>
             )}
@@ -306,13 +315,19 @@ export default function ModelCard({
           </div>
         </div>
       ) : (
-        <div className="mt-1 pt-1 border-t border-stealth-border/30 flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <span className="text-[8px] font-mono text-stealth-muted">{model.size_str}</span>
-            <span className="text-[7px] font-mono text-white/60">
+        <div className="mt-1 pt-1 border-t border-stealth-border/30 flex items-center justify-between gap-2 min-w-0">
+          <div className="model-card-meta min-w-0 flex items-baseline gap-1.5">
+            <span className="model-card-size font-mono text-stealth-muted shrink-0">
+              {model.size_str}
+            </span>
+            <span className="model-card-date font-mono text-white/60 whitespace-nowrap shrink-0">
               {model.metadata?.file_created
-                ? new Date(model.metadata.file_created * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
-                : '--'}
+                ? new Date(model.metadata.file_created * 1000).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "2-digit",
+                  })
+                : "--"}
             </span>
           </div>
           <div className="flex items-center gap-1">
