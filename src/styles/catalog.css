@@ -165,16 +165,17 @@
 /* Model count — bottom-right inside the search input. */
 .catalog-search-count {
   position: absolute;
-  right: 8px;
-  bottom: 5px;
+  right: 10px;
+  bottom: 6px;
   font-family: ui-monospace, monospace;
-  font-size: 8px;
+  font-size: 9px;
   letter-spacing: 0.06em;
-  color: var(--theme-text-muted, #94a3b8);
-  opacity: 0.55;
+  color: var(--theme-text, #e5e7eb);
+  opacity: 0.5;
   pointer-events: none;
   white-space: nowrap;
   user-select: none;
+  z-index: 2;
 }
 
 .catalog-list-panel__chrome-search .catalog-search-input {
