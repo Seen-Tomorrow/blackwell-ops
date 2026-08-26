@@ -99,6 +99,9 @@ export default function SegmentSwitch({
     };
   }, [safeIdx, options.length, optionKey]);
 
+  // 2-option switches use the CSS-only data-active thumb (base .segment-switch
+  // grid + translateX(100%)). 3+ options use the JS-measured --multi thumb.
+  const isTwo = n === 2;
   const sizeClass =
     size === "fit" ? "segment-switch--size-fit" : "segment-switch--size-compact";
   const toneClass =
@@ -109,7 +112,7 @@ export default function SegmentSwitch({
       ref={rootRef}
       className={[
         "segment-switch",
-        "segment-switch--multi",
+        !isTwo ? "segment-switch--multi" : "",
         sizeClass,
         toneClass,
         disabled ? "segment-switch--disabled" : "",
@@ -118,9 +121,9 @@ export default function SegmentSwitch({
         .filter(Boolean)
         .join(" ")}
       data-segment-switch
+      data-active={isTwo ? (safeIdx === 0 ? "left" : "right") : undefined}
       data-active-index={safeIdx}
       data-size={size}
-      data-tone={tone}
       role="group"
       aria-label={ariaLabel}
       title={title}
