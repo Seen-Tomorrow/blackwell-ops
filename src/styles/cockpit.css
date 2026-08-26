@@ -1042,6 +1042,21 @@
   line-height: 1.2;
 }
 
+/* Accent variant — prominent theme-accent CTA (AGENTIC HARNESS, docked left). */
+.full-auto-cockpit__connect--accent {
+  color: var(--theme-accent-bright, var(--theme-accent));
+  border-color: color-mix(in srgb, var(--theme-accent-bright, var(--theme-accent)) 55%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 22%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent-glow, transparent) 45%, transparent);
+}
+
+.full-auto-cockpit__connect--accent:hover {
+  color: var(--theme-selection-text, #fff);
+  border-color: var(--theme-accent-bright, var(--theme-accent));
+  background: color-mix(in srgb, var(--theme-accent) 42%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--theme-accent-glow, transparent) 70%, transparent);
+}
+
 .full-auto-cockpit__header-right {
   margin-left: auto;
 }

@@ -2426,11 +2426,21 @@ export default function MultiAgentBooster({
       data-density-unified={densityUnified ? "on" : "off"}
       data-ctx-dock={showCtxRail ? "in" : "above"}
     >
-      {/* Title left · soft note · flags · AGENTIC (compact — not a full footer CTA) */}
+      {/* Title left · AGENTIC HARNESS (accent) · soft note · flags */}
       <div className="full-auto-cockpit__header full-auto-cockpit__header--minimal">
         <span className="full-auto-cockpit__title font-mono tracking-[0.16em] uppercase shrink-0">
           {powerMode ? "Power cockpit" : "Launch cockpit"}
         </span>
+        {!harnessOpen && (
+          <button
+            type="button"
+            onClick={() => setHarnessOpen(true)}
+            className="full-auto-cockpit__connect full-auto-cockpit__connect--header full-auto-cockpit__connect--accent font-mono tracking-wider uppercase shrink-0"
+            title="Connect an external coding agent (AtomCode / Qwen / pi)"
+          >
+            AGENTIC HARNESS
+          </button>
+        )}
         {plan.softNote ? (
           <span className="full-auto-cockpit__status-note font-mono min-w-0 truncate" title={plan.softNote}>
             {plan.softNote}
@@ -2438,16 +2448,6 @@ export default function MultiAgentBooster({
         ) : null}
         <div className="full-auto-cockpit__header-right flex items-center gap-1.5 min-w-0 ml-auto shrink-0">
           <CockpitFlagToolbar flags={flagToggles} />
-          {!harnessOpen && (
-            <button
-              type="button"
-              onClick={() => setHarnessOpen(true)}
-              className="full-auto-cockpit__connect full-auto-cockpit__connect--header font-mono tracking-wider uppercase shrink-0"
-              title="Connect an external coding agent (AtomCode / Qwen / pi)"
-            >
-              AGENTIC
-            </button>
-          )}
         </div>
       </div>
 
