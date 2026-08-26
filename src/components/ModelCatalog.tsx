@@ -543,7 +543,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
         const next = DRAFT_FILTER_CYCLE[(idx + 1) % DRAFT_FILTER_CYCLE.length];
         setCatalogDraftFilter(next);
       }}
-      className="catalog-kind-cycler value-chip px-2 py-0 text-[7px] font-mono uppercase rounded-sm transition-colors"
+      className="catalog-kind-cycler font-mono uppercase"
       title={`Model kind — ${draftFilterLabels[draftFilter]} (click to cycle MAIN / DRAFT / ALL)`}
       aria-label={`Model kind: ${draftFilterLabels[draftFilter]}. Click to cycle.`}
     >
@@ -727,7 +727,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                       }
                     }}
                     autoFocus
-                    className="catalog-search-input theme-input w-full text-xs font-mono pl-3 pr-20 rounded-sm"
+                    className="catalog-search-input theme-input w-full text-xs font-mono pl-3 pr-24 rounded-sm"
                   />
                   {renderKindCycler()}
                   <span
