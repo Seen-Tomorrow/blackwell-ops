@@ -151,19 +151,22 @@
   min-width: 0;
 }
 
-/* Input + count share one field so the count hugs the input's right edge. */
+/* Search field — full-width input box with the kind cycler fused top-right and
+   the model count bottom-right. Tall enough to hold both. */
 .catalog-list-panel__chrome-search .catalog-search-field {
   position: relative;
   flex: 1 1 10rem;
   min-width: 0;
+  height: 44px;
+  display: flex;
+  align-items: stretch;
 }
 
-/* Model count — constant far-right background inside the search input. */
+/* Model count — bottom-right inside the search input. */
 .catalog-search-count {
   position: absolute;
   right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
+  bottom: 6px;
   font-family: ui-monospace, monospace;
   font-size: 8px;
   letter-spacing: 0.06em;
@@ -177,6 +180,8 @@
 .catalog-list-panel__chrome-search .catalog-search-input {
   flex: 1 1 10rem;
   min-width: 0;
+  height: 100%;
+  align-self: stretch;
 }
 
 /* Row 2 under the search input — SCAN META + EDIT controls, docked right with
@@ -224,20 +229,19 @@
   justify-content: space-between;
 }
 
-.catalog-chrome-row--sort {
-  justify-content: flex-start;
-}
-
-/* Single cycler for model kind (MAIN / DRAFT / ALL) — compact, same size as
-   the SCAN META / EDIT chips. */
+/* Single cycler for model kind (MAIN / DRAFT / ALL) — fused top-right inside
+   the search input box. */
 .catalog-kind-cycler {
+  top: 6px;
+  right: 4px;
   min-width: 3.25rem;
-  flex-shrink: 0;
+  padding: 1px 6px;
   text-align: center;
   border: 1px solid color-mix(in srgb, var(--theme-border, #334155) 55%, transparent);
-  background: transparent;
+  background: color-mix(in srgb, var(--theme-panel, #0b0f0b) 70%, transparent);
   color: var(--theme-text-muted, #94a3b8);
   cursor: pointer;
+  z-index: 1;
 }
 
 /* State-aware accent — matches the old per-kind active colors. */

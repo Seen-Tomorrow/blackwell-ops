@@ -727,8 +727,9 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                       }
                     }}
                     autoFocus
-                    className="catalog-search-input theme-input w-full text-xs font-mono px-3 py-1.5 pr-16 rounded-sm"
+                    className="catalog-search-input theme-input w-full text-xs font-mono pl-3 pr-20 rounded-sm"
                   />
+                  {renderKindCycler()}
                   <span
                     className="catalog-search-count"
                     aria-hidden="true"
@@ -737,7 +738,6 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                     {catalogModels.length} / {models.length}
                   </span>
                 </div>
-                {renderKindCycler()}
               </div>
               <div className="catalog-search-tools">
                 {renderScanMetaControl()}
