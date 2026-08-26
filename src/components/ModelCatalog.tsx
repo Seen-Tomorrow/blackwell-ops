@@ -533,6 +533,24 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     );
   };
 
+  // ── Kind cycler (MAIN / DRAFT / ALL) — single button, docked in the search row ──
+  const renderKindCycler = () => (
+    <button
+      type="button"
+      data-kind={draftFilter}
+      onClick={() => {
+        const idx = DRAFT_FILTER_CYCLE.indexOf(draftFilter);
+        const next = DRAFT_FILTER_CYCLE[(idx + 1) % DRAFT_FILTER_CYCLE.length];
+        setCatalogDraftFilter(next);
+      }}
+      className="catalog-kind-cycler value-chip px-2 py-0 text-[7px] font-mono uppercase rounded-sm transition-colors"
+      title={`Model kind — ${draftFilterLabels[draftFilter]} (click to cycle MAIN / DRAFT / ALL)`}
+      aria-label={`Model kind: ${draftFilterLabels[draftFilter]}. Click to cycle.`}
+    >
+      {draftFilterLabels[draftFilter]}
+    </button>
+  );
+
   // ── Chrome tools row: sort + MAIN/MAX + dim (always full opacity) ────────────────
   const renderChromeTools = () => (
     <div className="catalog-list-panel__chrome-tools">
@@ -575,20 +593,6 @@ export default function ModelCatalog(props: ModelCatalogProps) {
             UPDATES{updateByPath.size > 0 ? ` ${updateByPath.size}` : ""}
           </button>
         </div>
-        <button
-          type="button"
-          data-kind={draftFilter}
-          onClick={() => {
-            const idx = DRAFT_FILTER_CYCLE.indexOf(draftFilter);
-            const next = DRAFT_FILTER_CYCLE[(idx + 1) % DRAFT_FILTER_CYCLE.length];
-            setCatalogDraftFilter(next);
-          }}
-          className="catalog-kind-cycler value-chip px-1.5 py-0 text-[7px] font-mono uppercase rounded-sm transition-colors"
-          title={`Model kind — ${draftFilterLabels[draftFilter]} (click to cycle MAIN / DRAFT / ALL)`}
-          aria-label={`Model kind: ${draftFilterLabels[draftFilter]}. Click to cycle.`}
-        >
-          {draftFilterLabels[draftFilter]}
-        </button>
       </div>
       <div className="catalog-chrome-row catalog-chrome-row--sort">
         <div className="catalog-sort-group">
@@ -733,10 +737,11 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                     {catalogModels.length} / {models.length}
                   </span>
                 </div>
-                <div className="catalog-search-actions">
-                  {renderScanMetaControl()}
-                  {renderEditControl()}
-                </div>
+                {renderKindCycler()}
+              </div>
+              <div className="catalog-search-tools">
+                {renderScanMetaControl()}
+                {renderEditControl()}
               </div>
             </div>
             {renderChromeTools()}

@@ -179,15 +179,14 @@
   min-width: 0;
 }
 
-.catalog-list-panel__chrome-search .catalog-search-actions {
+/* Row 2 under the search input — SCAN META + EDIT controls. */
+.catalog-search-tools {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  justify-content: flex-end;
   gap: 4px;
-  flex: 1 1 auto;
   min-width: 0;
-  max-width: none;
+  width: 100%;
 }
 
 .catalog-list-panel__chrome-tools {
@@ -220,11 +219,12 @@
   justify-content: flex-start;
 }
 
-/* Single cycler for model kind (MAIN / DRAFT / ALL) — replaces the 3-button group. */
+/* Single cycler for model kind (MAIN / DRAFT / ALL) — docked in the search row,
+   same height as the input. */
 .catalog-kind-cycler {
   min-width: 3.25rem;
+  align-self: stretch;
   flex-shrink: 0;
-  margin-left: auto;
   text-align: center;
   border: 1px solid color-mix(in srgb, var(--theme-border, #334155) 55%, transparent);
   background: transparent;
