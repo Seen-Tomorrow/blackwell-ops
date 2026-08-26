@@ -230,15 +230,14 @@
 }
 
 /* Single cycler for model kind (MAIN / DRAFT / ALL) — fused top-right inside
-   the search input box. Reads as a deliberate control: accent-tinted face,
-   soft glow, cycle chevron, hover brighten. */
+   the search input box. Accent-tinted face, state-aware per kind. */
 .catalog-kind-cycler {
   top: 6px;
   right: 4px;
   min-width: 3.5rem;
   padding: 2px 7px;
   text-align: center;
-  font-size: 7px;
+  font-size: 9px;
   letter-spacing: 0.08em;
   border-radius: 4px;
   border: 1px solid color-mix(in srgb, var(--theme-accent) 45%, transparent);
@@ -246,46 +245,35 @@
   color: var(--theme-accent-bright, var(--theme-accent));
   cursor: pointer;
   z-index: 1;
-  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-accent-glow, transparent) 40%, transparent);
-  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
-}
-
-.catalog-kind-cycler::after {
-  content: " ▾";
-  opacity: 0.7;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .catalog-kind-cycler:hover {
   background: color-mix(in srgb, var(--theme-accent) 26%, var(--theme-panel, #0b0f0b));
   border-color: color-mix(in srgb, var(--theme-accent-bright, var(--theme-accent)) 70%, transparent);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--theme-accent-glow, transparent) 65%, transparent);
 }
 
-/* State-aware accent — tints the face + glow per active kind. */
+/* State-aware accent — tints the face per active kind. */
 .catalog-kind-cycler[data-kind="draft"] {
   border-color: color-mix(in srgb, #8b5cf6 60%, transparent);
   background: color-mix(in srgb, #7c3aed 20%, var(--theme-panel, #0b0f0b));
   color: #ddd6fe;
-  box-shadow: 0 0 6px color-mix(in srgb, #8b5cf6 35%, transparent);
 }
 
 .catalog-kind-cycler[data-kind="draft"]:hover {
   background: color-mix(in srgb, #7c3aed 32%, var(--theme-panel, #0b0f0b));
   border-color: color-mix(in srgb, #a78bfa 80%, transparent);
-  box-shadow: 0 0 10px color-mix(in srgb, #8b5cf6 55%, transparent);
 }
 
 .catalog-kind-cycler[data-kind="all"] {
   border-color: color-mix(in srgb, var(--theme-nv-green, #76b900) 55%, transparent);
   background: color-mix(in srgb, var(--theme-nv-green, #76b900) 16%, var(--theme-panel, #0b0f0b));
   color: var(--theme-nv-green, #76b900);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-nv-green, #76b900) 30%, transparent);
 }
 
 .catalog-kind-cycler[data-kind="all"]:hover {
   background: color-mix(in srgb, var(--theme-nv-green, #76b900) 28%, var(--theme-panel, #0b0f0b));
   border-color: color-mix(in srgb, var(--theme-nv-green, #76b900) 80%, transparent);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--theme-nv-green, #76b900) 50%, transparent);
 }
 
 .catalog-list-panel__chrome-msg {
