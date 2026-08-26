@@ -2458,6 +2458,13 @@
   min-height: 1.65rem;
 }
 
+/* ── TEMP: hide only the page-title text (✦ OPERATIONS / CONFIG / EXTRAS / …).
+   Header strip (meta, actions, toasts, download bar) stays. Reviewing before
+   deciding whether to remove permanently. To restore: delete this rule. */
+.tab-page-header h2 {
+  display: none !important;
+}
+
 .tab-page-header__toast-anchor {
   flex: 1 1 auto;
   width: auto;

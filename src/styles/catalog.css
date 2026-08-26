@@ -151,6 +151,29 @@
   min-width: 0;
 }
 
+/* Input + count share one field so the count hugs the input's right edge. */
+.catalog-list-panel__chrome-search .catalog-search-field {
+  position: relative;
+  flex: 1 1 10rem;
+  min-width: 0;
+}
+
+/* Model count — constant far-right background inside the search input. */
+.catalog-search-count {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: ui-monospace, monospace;
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  color: var(--theme-text-muted, #94a3b8);
+  opacity: 0.55;
+  pointer-events: none;
+  white-space: nowrap;
+  user-select: none;
+}
+
 .catalog-list-panel__chrome-search .catalog-search-input {
   flex: 1 1 10rem;
   min-width: 0;
@@ -197,44 +220,32 @@
   justify-content: flex-start;
 }
 
-.catalog-kind-filter {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+/* Single cycler for model kind (MAIN / DRAFT / ALL) — replaces the 3-button group. */
+.catalog-kind-cycler {
+  min-width: 3.25rem;
   flex-shrink: 0;
   margin-left: auto;
-}
-
-.catalog-kind-filter__btn {
-  min-width: 2.25rem;
-  padding: 1px 6px;
-  border-radius: 2px;
+  text-align: center;
   border: 1px solid color-mix(in srgb, var(--theme-border, #334155) 55%, transparent);
   background: transparent;
-  font-family: ui-monospace, monospace;
-  font-size: 7px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--theme-text-muted, #94a3b8);
+  cursor: pointer;
 }
 
-.catalog-kind-filter__btn--regular.catalog-kind-filter__btn--active {
+/* State-aware accent — matches the old per-kind active colors. */
+.catalog-kind-cycler[data-kind="regular"] {
   color: var(--theme-text, #e5e7eb);
   border-color: color-mix(in srgb, var(--theme-text, #e5e7eb) 35%, transparent);
   background: color-mix(in srgb, var(--theme-text, #e5e7eb) 8%, transparent);
 }
 
-.catalog-kind-filter__btn--draft {
-  color: color-mix(in srgb, #a78bfa 80%, #fff 10%);
-}
-
-.catalog-kind-filter__btn--draft.catalog-kind-filter__btn--active {
+.catalog-kind-cycler[data-kind="draft"] {
   color: #ddd6fe;
   border-color: color-mix(in srgb, #8b5cf6 55%, transparent);
   background: color-mix(in srgb, #7c3aed 22%, transparent);
 }
 
-.catalog-kind-filter__btn--all.catalog-kind-filter__btn--active {
+.catalog-kind-cycler[data-kind="all"] {
   color: var(--theme-nv-green, #76b900);
   border-color: color-mix(in srgb, var(--theme-nv-green, #76b900) 45%, transparent);
   background: color-mix(in srgb, var(--theme-nv-green, #76b900) 12%, transparent);

@@ -575,27 +575,20 @@ export default function ModelCatalog(props: ModelCatalogProps) {
             UPDATES{updateByPath.size > 0 ? ` ${updateByPath.size}` : ""}
           </button>
         </div>
-        <div className="catalog-kind-filter" role="group" aria-label="Model kind">
-          {DRAFT_FILTER_CYCLE.map((kind) => (
-            <button
-              key={kind}
-              type="button"
-              onClick={() => setCatalogDraftFilter(kind)}
-              className={`catalog-kind-filter__btn catalog-kind-filter__btn--${kind}${
-                draftFilter === kind ? " catalog-kind-filter__btn--active" : ""
-              }`}
-              title={
-                kind === "regular"
-                  ? "Show main models"
-                  : kind === "draft"
-                    ? "Show draft models"
-                    : "Show all models"
-              }
-            >
-              {draftFilterLabels[kind]}
-            </button>
-          ))}
-        </div>
+        <button
+          type="button"
+          data-kind={draftFilter}
+          onClick={() => {
+            const idx = DRAFT_FILTER_CYCLE.indexOf(draftFilter);
+            const next = DRAFT_FILTER_CYCLE[(idx + 1) % DRAFT_FILTER_CYCLE.length];
+            setCatalogDraftFilter(next);
+          }}
+          className="catalog-kind-cycler value-chip px-1.5 py-0 text-[7px] font-mono uppercase rounded-sm transition-colors"
+          title={`Model kind — ${draftFilterLabels[draftFilter]} (click to cycle MAIN / DRAFT / ALL)`}
+          aria-label={`Model kind: ${draftFilterLabels[draftFilter]}. Click to cycle.`}
+        >
+          {draftFilterLabels[draftFilter]}
+        </button>
       </div>
       <div className="catalog-chrome-row catalog-chrome-row--sort">
         <div className="catalog-sort-group">
@@ -642,7 +635,6 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     <div className="flex flex-col h-full min-h-0 overflow-hidden" data-model-catalog>
       <TabPageHeader
         title="OPERATIONS"
-        meta={<span className="text-[8px] font-mono opacity-40">({catalogModels.length} / {models.length})</span>}
         actions={
           <span className="flex items-center gap-1.5">
             <button
@@ -717,21 +709,30 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           <div className="catalog-list-panel__chrome">
             <div className="catalog-list-panel__chrome-search">
               <div className="catalog-search-wrap min-w-0">
-                <input
-                  ref={catalogSearchInputRef}
-                  type="text"
-                  placeholder="▶  SEARCH MODELS..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value.replace(/\//g, ""))}
-                  onKeyDown={(e) => {
-                    // `/` is the focus/open shortcut — never type into the query
-                    if (e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey) {
-                      e.preventDefault();
-                    }
-                  }}
-                  autoFocus
-                  className="catalog-search-input theme-input w-full text-xs font-mono px-3 py-1.5 rounded-sm"
-                />
+                <div className="catalog-search-field">
+                  <input
+                    ref={catalogSearchInputRef}
+                    type="text"
+                    placeholder="▶  SEARCH MODELS..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value.replace(/\//g, ""))}
+                    onKeyDown={(e) => {
+                      // `/` is the focus/open shortcut — never type into the query
+                      if (e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                        e.preventDefault();
+                      }
+                    }}
+                    autoFocus
+                    className="catalog-search-input theme-input w-full text-xs font-mono px-3 py-1.5 pr-16 rounded-sm"
+                  />
+                  <span
+                    className="catalog-search-count"
+                    aria-hidden="true"
+                    title={`${catalogModels.length} shown / ${models.length} total`}
+                  >
+                    {catalogModels.length} / {models.length}
+                  </span>
+                </div>
                 <div className="catalog-search-actions">
                   {renderScanMetaControl()}
                   {renderEditControl()}
