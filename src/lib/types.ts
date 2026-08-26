@@ -682,6 +682,8 @@ export interface FusionUpdate {
   specDraftAcceptRateLast?: number;
   specDraftAcceptedLast?: number;
   specDraftGeneratedLast?: number;
+  /** Speculative draft family — "mtp" | "dflash" | "dspark" (from `common_specu` log line). */
+  specMode?: 'mtp' | 'dflash' | 'dspark';
 }
 
 export interface VramFitResult {

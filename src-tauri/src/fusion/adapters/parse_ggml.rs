@@ -4,7 +4,7 @@
 //! `slot update_slots:`. Older trees still use `update_slots`. Match both.
 //! Also `slot      release:` (aligned padding) must not require a single space.
 
-use std::sync::OnceLock;
+use std::sync::{LazyLock, OnceLock};
 
 use crate::fusion::log::{strip_log_prefix, LogEvent};
 
@@ -22,9 +22,26 @@ static RE_STOP_PROCESSING: OnceLock<regex::Regex> = OnceLock::new();
 static RE_CACHED_PROMPT: OnceLock<regex::Regex> = OnceLock::new();
 static RE_PROMPT_EVAL: OnceLock<regex::Regex> = OnceLock::new();
 static RE_FORCE_PROMPT_REPROCESS: OnceLock<regex::Regex> = OnceLock::new();
+static RE_SPEC_MODE: LazyLock<regex::Regex> = LazyLock::new(|| {
+    // Matches both signals:
+    //  - load-time: `common_speculative_impl_draft_dflash: adding speculative implementation 'draft-dspark'`
+    //  - per-request: `spec common_specu: statistics     draft-dflash: #calls...`
+    regex::Regex::new(
+        r"(?:(?:spec\s+common_specu:\s*statistics)|(?:adding\s+speculative\s+implementation))\s+'?(draft-[a-z0-9]+)'?",
+    )
+    .unwrap()
+});
 
 pub fn parse_line(line: &str) -> Option<LogEvent> {
     let line = strip_log_prefix(line);
+
+    if let Some(caps) = RE_SPEC_MODE.captures(line) {
+        if let Some(spec_type) = caps.get(1).map(|m| m.as_str()) {
+            return Some(LogEvent::SpecMode {
+                mode: crate::fusion::log::SpecDraftMode::from_spec_type(spec_type),
+            });
+        }
+    }
 
     if let Some(caps) = re_new_prompt_ctx().captures(line) {
         if let (Ok(slot_id), Ok(task_id), Ok(n_ctx_slot), Ok(prompt_tokens)) = (
@@ -381,6 +398,71 @@ mod tests {
                 assert_eq!(n_tokens, 2440);
                 assert!((progress - 1.0).abs() < 0.001);
                 assert!((pp_tps - 598.54).abs() < 0.01);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_spec_mode_common_specu_real_session_lines() {
+        // Exact engine output from session logs — note the multi-space column padding
+        // after `statistics` and inside the parens.
+        let dspark = "2.42.216.749 I spec common_specu: statistics     draft-dspark: #calls(b,g,a) =    1     85     85, #gen drafts =     85, #acc drafts =    85, #gen tokens =    425, #acc tokens =   425, #mean acc len = 6.00, #acc rate/pos = (1.000, 1.000, 1.000, 1.000, 1.000), dur(b,g,a) = 0.000, 417.692, 0.021 ms";
+        match parse_line(dspark).expect("dspark spec mode") {
+            LogEvent::SpecMode { mode } => {
+                assert_eq!(mode, crate::fusion::log::SpecDraftMode::Dspark);
+                assert_eq!(mode.label(), Some("DSPARK"));
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+
+
+        // Load-time signal — fires at engine start, before any request completes.
+        let load_dspark = "2.31.727.547 I common_speculative_impl_draft_dflash: adding speculative implementation 'draft-dspark'";
+        match parse_line(load_dspark).expect("load-time dspark spec mode") {
+            LogEvent::SpecMode { mode } => {
+                assert_eq!(mode, crate::fusion::log::SpecDraftMode::Dspark);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+
+        let load_dflash = "0.04.884.438 I common_speculative_impl_draft_dflash: adding speculative implementation 'draft-dflash'";
+        match parse_line(load_dflash).expect("load-time dflash spec mode") {
+            LogEvent::SpecMode { mode } => {
+                assert_eq!(mode, crate::fusion::log::SpecDraftMode::Dflash);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+        let dflash = "0.08.053.588 I spec common_specu: statistics     draft-dflash: #calls(b,g,a) =    1    137    137, #gen drafts =    137, #acc drafts =   127, #gen tokens =    410, #acc tokens =   374, #mean acc len = 3.73, #acc rate/pos = (0.927, 0.912, 0.891), dur(b,g,a) = 0.001, 325.173, 0.014 ms";
+        match parse_line(dflash).expect("dflash spec mode") {
+            LogEvent::SpecMode { mode } => {
+                assert_eq!(mode, crate::fusion::log::SpecDraftMode::Dflash);
+                assert_eq!(mode.label(), Some("DFLASH"));
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+
+        let mtp = "0.05.010.002 I spec common_specu: statistics     draft-mtp: #gen drafts =     5";
+        match parse_line(mtp).expect("mtp spec mode") {
+            LogEvent::SpecMode { mode } => {
+                assert_eq!(mode, crate::fusion::log::SpecDraftMode::Mtp);
+                assert_eq!(mode.label(), Some("MTP"));
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+
+        // The `print_timing draft acceptance` line (same multi-space padding) must parse
+        // as DraftAcceptance, NOT SpecMode — the rate source for all three draft families.
+        match parse_line("2.42.216.724 I slot print_timing: id  0 | task 6 | draft acceptance = 1.00000 (  425 accepted /   425 generated), mean len =  6.00").expect("draft acceptance") {
+            LogEvent::DraftAcceptance {
+                accept_rate,
+                accepted,
+                generated,
+                ..
+            } => {
+                assert!((accept_rate - 1.00000).abs() < 0.00001);
+                assert_eq!(accepted, 425);
+                assert_eq!(generated, 425);
             }
             other => panic!("unexpected: {other:?}"),
         }

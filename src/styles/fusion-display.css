@@ -6140,7 +6140,8 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-micro-readout--instrument .fusion-micro-mtp {
-  min-width: 5ch;
+  /* Sized by the "ACC <MODE>" label; no fixed floor so it doesn't push the row left. */
+  min-width: 6ch;
 }
 
 .fusion-micro-readout--instrument .fusion-micro-mtp .fusion-micro-cell__value {

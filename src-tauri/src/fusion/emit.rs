@@ -159,6 +159,9 @@ pub struct FusionUpdate {
     pub spec_draft_accepted_last: Option<usize>,
     #[serde(rename = "specDraftGeneratedLast", skip_serializing_if = "Option::is_none")]
     pub spec_draft_generated_last: Option<usize>,
+    /// Speculative draft family — "mtp" | "dflash" | "dspark" (from `common_specu` log line).
+    #[serde(rename = "specMode", skip_serializing_if = "Option::is_none")]
+    pub spec_mode: Option<String>,
 
     /// Reset source indicator — "prompt" if NewPrompt caught request start (belt), "regression" if fallback detected (suspenders). Flashes for visual feedback then clears on next PP line.
     #[serde(rename = "phaseResetSource", skip_serializing_if = "Option::is_none")]

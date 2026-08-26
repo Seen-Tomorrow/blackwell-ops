@@ -536,12 +536,16 @@ export default function FusionOverlay({
     fusion.specDraftAcceptRate != null && fusion.specDraftAcceptRate > 0
       ? (fusion.specDraftAcceptRate * 100).toFixed(1)
       : null;
+  // Draft family suffix — from `common_specu` log line; MTP is the fallback when only
+  // the `print_timing draft acceptance` rate is seen (baked-in nextn emits no spec line).
+  const specModeLabel = (fusion.specMode ?? "mtp").toUpperCase();
+  const mtpAcceptLabel = `ACC ${specModeLabel}`;
   const mtpAcceptTitle =
     fusion.specDraftAcceptedLast != null && fusion.specDraftGeneratedLast != null
       ? `Last: ${fusion.specDraftAcceptedLast}/${fusion.specDraftGeneratedLast} accepted · Session: ${fusion.specDraftAccepted ?? 0}/${fusion.specDraftGenerated ?? 0}`
       : fusion.specDraftGenerated
         ? `Session: ${fusion.specDraftAccepted ?? 0}/${fusion.specDraftGenerated} draft tokens accepted`
-        : "MTP draft acceptance (updates when a request completes)";
+        : `${specModeLabel} draft acceptance (updates when a request completes)`;
 
   // Primary prefill progress/tokens from /slots poll (reliable); LP log is red comparison fallback
   const prefillTotal = fusion.prefillTokensTotal ?? 0;
@@ -775,6 +779,7 @@ export default function FusionOverlay({
                       : null
                   }
                   mtpAcceptTitle={mtpAcceptTitle}
+                  mtpAcceptLabel={mtpAcceptLabel}
                 />
               </div>
 

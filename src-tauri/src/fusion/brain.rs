@@ -203,6 +203,8 @@ pub struct FusionBrain {
     spec_draft_accept_rate_last: Option<f64>,
     spec_draft_accepted_last: Option<usize>,
     spec_draft_generated_last: Option<usize>,
+    /// Speculative draft family (MTP / DFLASH / DSPARK) — sticky from `common_specu` log line.
+    spec_mode: Option<crate::fusion::log::SpecDraftMode>,
 
     /// PP hero AVG — cumulative across PP bursts this engine session (not per-request wall / elapsed).
     pp_completed_tokens: u64,
@@ -302,6 +304,7 @@ impl FusionBrain {
             spec_draft_accept_rate_last: None,
             spec_draft_accepted_last: None,
             spec_draft_generated_last: None,
+            spec_mode: None,
             pp_completed_tokens: 0,
             pp_completed_ms: 0,
             pp_burst_peak_tokens: 0,
@@ -1577,6 +1580,10 @@ impl FusionBrain {
             crate::fusion::log::LogEvent::DraftAcceptance { .. } => {
                 self.handle_draft_acceptance(event);
             }
+            crate::fusion::log::LogEvent::SpecMode { mode } => {
+                self.spec_mode = Some(*mode);
+                self.emit_dirty = true;
+            }
             crate::fusion::log::LogEvent::SamplerInit {
                 slot_id,
                 total_tokens,
@@ -2816,6 +2823,7 @@ impl FusionBrain {
             spec_draft_accepted_last: self.spec_draft_accepted_last,
             spec_draft_generated_last: self.spec_draft_generated_last,
             request_closed: self.request_closed,
+            spec_mode: self.spec_mode.and_then(|m| m.label()).map(str::to_string),
             meter_lane,
             busy_slot_count: busy_slots,
             concurrent_slots: concurrent,
@@ -2845,6 +2853,7 @@ impl FusionBrain {
         update.spec_draft_accept_rate_last = None;
         update.spec_draft_accepted_last = None;
         update.spec_draft_generated_last = None;
+        update.spec_mode = None;
         // Note: lp_reset_source stays as computed by build_update above (shows last reset source)
         update
     }

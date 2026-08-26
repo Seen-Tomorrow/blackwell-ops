@@ -6,6 +6,7 @@ interface FusionMicroReadoutProps {
   elapsedMs: string;
   mtpAcceptPct: string | null;
   mtpAcceptTitle?: string;
+  mtpAcceptLabel?: string;
 }
 
 function Cell({
@@ -47,6 +48,7 @@ export default function FusionMicroReadout({
   elapsedMs,
   mtpAcceptPct,
   mtpAcceptTitle,
+  mtpAcceptLabel,
 }: FusionMicroReadoutProps) {
   const ruleClass = live ? "fusion-readout-divider" : "fusion-readout-divider-idle";
   return (
@@ -82,9 +84,9 @@ export default function FusionMicroReadout({
             |
           </span>
           <Cell
-            label="MTP"
             value={`${mtpAcceptPct}%`}
             live={live}
+            label={mtpAcceptLabel ?? "ACC"}
             className="fusion-micro-mtp"
             title={mtpAcceptTitle}
           />
