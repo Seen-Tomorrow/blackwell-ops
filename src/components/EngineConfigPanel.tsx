@@ -2672,8 +2672,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             }
           }
         }}
-        showFitOrDeviceChrome={fitLaunchSupported || Boolean(model && gpus.length > 0)}
-        showGpuAssign={Boolean(model && gpus.length > 0 && !fullAutoMode)}
+        showFitOrDeviceChrome={!modelIsDraftOnly && (fitLaunchSupported || Boolean(model && gpus.length > 0))}
+        showGpuAssign={Boolean(model && !modelIsDraftOnly && gpus.length > 0 && !fullAutoMode)}
         gpus={gpus}
         deviceValue={config.device}
         splitValue={config.split}
@@ -2714,6 +2714,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           updateParam("offload_mode", config["offload_mode"] === "moe_optimal" ? "regular" : "moe_optimal");
         }}
         hideMoeBadge
+        draftOnly={modelIsDraftOnly}
         modelMeta={model?.metadata}
         modelName={model?.name}
         modelQuant={model?.quant}

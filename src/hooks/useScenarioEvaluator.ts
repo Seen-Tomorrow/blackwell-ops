@@ -12,6 +12,7 @@ import { isDevBuild } from "../lib/build";
 import { gpuMemoryBucketKey, vramManifestSnapshotEqual, vramTopoTag } from "../lib/telemetryGpu";
 import { attachMemorySource, MEMORY_SOURCE_LABELS } from "../services/vram/memorySource";
 import { tomMtpBlocked, toastTomMtpSkip, TOM_MTP_SKIP_MESSAGE } from "../lib/tomMtp";
+import { isExternalDraftOnly } from "../lib/specDraft";
 import { EVENTS } from "../lib/events";
 import { useTauriListen } from "./useTauriListen";
 type ProbeSession = {
@@ -498,6 +499,12 @@ export function useScenarioEvaluator({
       return;
     }
 
+    // Draft packs are not mains — no LEARNED/FIT glass, no auto probe.
+    if (isExternalDraftOnly(model)) {
+      commitManifest(null);
+      return;
+    }
+
     // Model must have GGUF metadata scanned (from cache)
     if (!model.metadata) {
       void invoke("emit_to_blackwell_console", {
@@ -943,6 +950,7 @@ export function useScenarioEvaluator({
 
   const validate = useCallback(async (requestedMode?: FitProbeMode) => {
     if (!model || validatingRef.current) return;
+    if (isExternalDraftOnly(model)) return;
     const curConfig = configRef.current;
     const providerId = curConfig.backend_type || "";
     if (tomMtpBlocked(providerId, model)) {
@@ -1093,6 +1101,7 @@ export function useScenarioEvaluator({
 
   maybeAutoFitRef.current = () => {
     if (!autoVramLaunchRef.current || !model?.path || !model.metadata) return;
+    if (isExternalDraftOnly(model)) return;
     if (validatingRef.current) return;
     if (fitFailKeyRef.current === probeKey) return;
     if (learnedFetchPendingRef.current) return;

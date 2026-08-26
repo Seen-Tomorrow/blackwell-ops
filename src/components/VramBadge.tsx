@@ -34,6 +34,8 @@ interface VramBadgeProps {
   onMoeSuggestionClick?: () => void;
   hideMoeBadge?: boolean;
   hideFitProbe?: boolean;
+  /** External draft pack selected — no main forecast / FIT. */
+  draftOnly?: boolean;
   className?: string;
   modelName?: string;
   modelQuant?: string;
@@ -57,6 +59,14 @@ const EVALUATING_COPY = {
   aria: "Evaluating VRAM footprint",
 } as const;
 
+const DRAFT_FACE_COPY = {
+  title: "SPECULATIVE DRAFT",
+  kicker: "NOT A MAIN MODEL",
+  body: "This pack is a draft head for DFlash / MTP / Eagle boost — it cannot launch alone and has no VRAM forecast.",
+  hint: "Select a main model, enable Boost, then pair this draft.",
+  aria: "Draft model — no VRAM forecast",
+} as const;
+
 /**
  * One forecast glass: ASSISTED measure cluster (SOURCE + bars + NEED + GPU bank).
  * Fusion overlay replaces the glass while an engine is LOADING/RUNNING.
@@ -66,7 +76,7 @@ export default function VramBadge({
   manifest, gpus, modelMeta, selectedGpuIndices, onDeviceSelect, isValidating, onValidate, onYoloLaunch,
   activeEngineAlias, activeEnginePort, selectedSlotIdx, supportsFusion = true, engineStatus,
   gpuMask = "", vramTargetMib, modelLayerTotal, gpuLoadTargetsMib, offloadMode, onMoeSuggestionClick, hideMoeBadge = false,
-  hideFitProbe = false, className,
+  hideFitProbe = false, draftOnly = false, className,
   modelName, modelQuant, providerName, providerBuildVersion, profileLabel, cudaVersion, launchConfig, hwTopo,
   gpuIdleBaselineMib,
   gpuPerRow = 2,
@@ -117,6 +127,58 @@ export default function VramBadge({
         ) : (
           <FusionPane {...primaryPane} active />
         )}
+      </div>
+    );
+  }
+
+  if (draftOnly) {
+    return (
+      <div
+        className={`vram-badge-forecast vram-fc vram-badge-forecast--draft relative flex flex-col min-h-0 overflow-hidden ${className || ""}`}
+        data-forecast-draft="1"
+        aria-label={DRAFT_FACE_COPY.aria}
+      >
+        <div className="vram-forecast-draft flex flex-1 min-h-0 items-stretch justify-between w-full">
+          <div className="vram-forecast-draft__hatch" aria-hidden="true" />
+
+          <div className="vram-forecast-draft__flank vram-forecast-draft__flank--left font-mono" aria-hidden>
+            <span className="vram-forecast-draft__flank-label">ROLE</span>
+            <span className="vram-forecast-draft__ladder">
+              <i /><i /><i /><i /><i /><i />
+            </span>
+            <span className="vram-forecast-draft__flank-readout">DRAFT</span>
+          </div>
+
+          <div className="vram-forecast-draft__center flex flex-col items-center justify-center gap-3 min-w-0 self-center">
+            <div className="vram-forecast-draft__seal font-mono" aria-hidden>
+              <span className="vram-forecast-draft__seal-ring" />
+              <span className="vram-forecast-draft__seal-ring vram-forecast-draft__seal-ring--outer" />
+              <span className="vram-forecast-draft__seal-core">SPEC</span>
+            </div>
+            <div className="vram-forecast-draft__copy font-mono">
+              <span className="vram-forecast-draft__kicker">{DRAFT_FACE_COPY.kicker}</span>
+              <span className="vram-forecast-draft__title">{DRAFT_FACE_COPY.title}</span>
+              <span className="vram-forecast-draft__body">{DRAFT_FACE_COPY.body}</span>
+              <span className="vram-forecast-draft__hint">{DRAFT_FACE_COPY.hint}</span>
+            </div>
+            {(modelName || modelQuant) && (
+              <div className="vram-forecast-draft__meta font-mono" title={modelName}>
+                <span className="vram-forecast-draft__meta-name">{modelName || "draft pack"}</span>
+                {modelQuant ? (
+                  <span className="vram-forecast-draft__meta-quant">{modelQuant}</span>
+                ) : null}
+              </div>
+            )}
+          </div>
+
+          <div className="vram-forecast-draft__flank vram-forecast-draft__flank--right font-mono" aria-hidden>
+            <span className="vram-forecast-draft__flank-label">FIT</span>
+            <span className="vram-forecast-draft__ladder">
+              <i /><i /><i /><i /><i /><i />
+            </span>
+            <span className="vram-forecast-draft__flank-readout">SKIP</span>
+          </div>
+        </div>
       </div>
     );
   }

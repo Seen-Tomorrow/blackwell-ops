@@ -17,6 +17,7 @@ import {
 import {
   type CatalogDraftFilter,
   draftRoleFromModel,
+  isExternalDraftOnly,
   isLaunchableMain,
   matchesCatalogDraftFilter,
 } from "../lib/specDraft";
@@ -632,6 +633,7 @@ export function useModelCatalog({
   const modelNeedsFitScan = useCallback(
     (model: ModelEntry) => {
       if (!model.metadata) return false;
+      if (isExternalDraftOnly(model)) return false;
       const entry = findFitScanEntry(fitScanResults, model.path);
       return !modelHasCompleteFitScan(entry, fitScanPointsTotal);
     },
@@ -650,6 +652,7 @@ export function useModelCatalog({
 
   const handleFitScanModel = useCallback((model: ModelEntry) => {
     if (!model.metadata || fitScanInFlightRef.current.has(model.path)) return;
+    if (isExternalDraftOnly(model)) return;
     fitScanInFlightRef.current.add(model.path);
     setFitScanningPaths((prev) => new Set(prev).add(model.path));
     setFitScanActiveLabels((prev) => ({ ...prev, [model.path]: "" }));

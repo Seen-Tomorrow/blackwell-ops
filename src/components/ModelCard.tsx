@@ -249,13 +249,18 @@ export default function ModelCard({
         {model.name}
       </span>
 
-      {(paramsNum || (model.metadata?.nextn_predict_layers ?? 0) > 0 || draftBadge) && (
+      {(paramsNum || hasMultimodal || (model.metadata?.nextn_predict_layers ?? 0) > 0 || draftBadge) && (
         <div className="flex items-center gap-1 mt-0.5 min-w-0">
           {paramsNum && (
             <span className="text-[8px] font-mono text-white shrink-0">{paramsNum}</span>
           )}
           {archBadge && (
             <span className="text-[7px] font-mono bg-black text-white/70 px-1 py-0.5 rounded-sm shrink-0">{archBadge}</span>
+          )}
+          {hasMultimodal && (
+            <span className="model-card-mm-badge text-[7px] font-mono px-1 py-0.5 rounded-sm border border-amber-400/20 text-amber-400/60 shrink-0">
+              MULTIMODAL
+            </span>
           )}
           {draftBadge && !isDraftOnly && (
             <span className="text-[7px] font-mono bg-black text-white/70 px-1 py-0.5 rounded-sm shrink-0">
@@ -303,23 +308,10 @@ export default function ModelCard({
                 {draftBadge}
               </span>
             )}
-            {/* Stack MULTIMODAL above QUANT so date never collides on narrow panels */}
-            {(hasMultimodal || quantBadge) && (
-              <div className="model-card-badges__stack">
-                {hasMultimodal && (
-                  <span
-                    className="model-card-mm-badge text-[7px] font-mono px-1 py-0.5 rounded-sm border border-amber-400/20 text-amber-400/60"
-                    title="Multimodal / vision"
-                  >
-                    MM
-                  </span>
-                )}
-                {quantBadge && (
-                  <span className={`text-[8px] font-mono px-1 py-0.5 rounded-sm whitespace-nowrap ${quantBadgeClass}`}>
-                    {quantBadge}
-                  </span>
-                )}
-              </div>
+            {quantBadge && (
+              <span className={`text-[8px] font-mono px-1 py-0.5 rounded-sm whitespace-nowrap ${quantBadgeClass}`}>
+                {quantBadge}
+              </span>
             )}
           </div>
         </div>

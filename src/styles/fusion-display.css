@@ -716,6 +716,218 @@
   }
 }
 
+/* ── Draft-only full glass face (no FIT / LEARNED) ───────────────────────── */
+.vram-badge-forecast--draft {
+  --vram-draft-ink: var(--theme-dflash-strip-text, #ddd6fe);
+  --vram-draft-edge: var(--theme-dflash-strip-border, #a78bfa);
+  --vram-draft-wash: var(--theme-dflash-strip-bg, color-mix(in srgb, #2e1065 70%, transparent));
+}
+
+.vram-forecast-draft {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0;
+  gap: 0.55rem;
+  background: transparent;
+}
+
+.vram-forecast-draft__hatch {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      -52deg,
+      color-mix(in srgb, var(--vram-draft-edge) 22%, transparent) 0 6px,
+      transparent 6px 13px
+    ),
+    linear-gradient(
+      160deg,
+      color-mix(in srgb, var(--vram-draft-wash) 55%, transparent) 0%,
+      transparent 58%,
+      color-mix(in srgb, var(--vram-draft-edge) 10%, transparent) 100%
+    );
+  opacity: 0.95;
+}
+
+.vram-forecast-draft__flank,
+.vram-forecast-draft__center {
+  position: relative;
+  z-index: 1;
+}
+
+.vram-forecast-draft__flank {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  flex: 1 1 0;
+  min-width: 0;
+  align-self: stretch;
+  padding: 0.4rem 0.5rem;
+  user-select: none;
+  opacity: 0.92;
+}
+
+.vram-forecast-draft__flank-label {
+  font-size: 8px;
+  letter-spacing: 0.2em;
+  color: color-mix(in srgb, var(--vram-draft-edge) 85%, transparent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--vram-draft-edge) 35%, transparent);
+}
+
+.vram-forecast-draft__flank-readout {
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  font-weight: 600;
+  color: var(--vram-draft-ink);
+}
+
+.vram-forecast-draft__ladder {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 0;
+}
+
+.vram-forecast-draft__ladder i {
+  display: block;
+  height: 2px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--vram-draft-edge) 40%, transparent);
+  box-shadow: 0 0 5px color-mix(in srgb, var(--vram-draft-edge) 25%, transparent);
+}
+
+.vram-forecast-draft__flank--left .vram-forecast-draft__ladder i:nth-child(1) { width: 12px; }
+.vram-forecast-draft__flank--left .vram-forecast-draft__ladder i:nth-child(2) { width: 18px; }
+.vram-forecast-draft__flank--left .vram-forecast-draft__ladder i:nth-child(3) { width: 22px; }
+.vram-forecast-draft__flank--left .vram-forecast-draft__ladder i:nth-child(4) { width: 16px; }
+.vram-forecast-draft__flank--left .vram-forecast-draft__ladder i:nth-child(5) { width: 20px; }
+.vram-forecast-draft__flank--left .vram-forecast-draft__ladder i:nth-child(6) { width: 14px; }
+
+.vram-forecast-draft__flank--right .vram-forecast-draft__ladder i:nth-child(1) { width: 14px; }
+.vram-forecast-draft__flank--right .vram-forecast-draft__ladder i:nth-child(2) { width: 20px; }
+.vram-forecast-draft__flank--right .vram-forecast-draft__ladder i:nth-child(3) { width: 16px; }
+.vram-forecast-draft__flank--right .vram-forecast-draft__ladder i:nth-child(4) { width: 22px; }
+.vram-forecast-draft__flank--right .vram-forecast-draft__ladder i:nth-child(5) { width: 18px; }
+.vram-forecast-draft__flank--right .vram-forecast-draft__ladder i:nth-child(6) { width: 12px; }
+
+.vram-forecast-draft__center {
+  flex: 0 1 auto;
+  max-width: min(72%, 360px);
+  width: min(58%, 360px);
+  padding: 0.35rem 0.5rem;
+}
+
+.vram-forecast-draft__seal {
+  position: relative;
+  width: 92px;
+  height: 92px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.vram-forecast-draft__seal-ring {
+  position: absolute;
+  inset: 10px;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--vram-draft-edge) 55%, transparent);
+  box-shadow:
+    0 0 14px color-mix(in srgb, var(--vram-draft-edge) 28%, transparent),
+    inset 0 0 12px color-mix(in srgb, var(--vram-draft-edge) 12%, transparent);
+}
+
+.vram-forecast-draft__seal-ring--outer {
+  inset: 0;
+  border-color: color-mix(in srgb, var(--vram-draft-edge) 28%, transparent);
+  box-shadow: none;
+}
+
+.vram-forecast-draft__seal-core {
+  position: relative;
+  z-index: 1;
+  font-size: 12px;
+  letter-spacing: 0.22em;
+  font-weight: 700;
+  color: var(--vram-draft-ink);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--vram-draft-edge) 45%, transparent);
+}
+
+.vram-forecast-draft__copy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  text-align: center;
+  user-select: none;
+}
+
+.vram-forecast-draft__kicker {
+  font-size: 8px;
+  letter-spacing: 0.22em;
+  color: color-mix(in srgb, var(--vram-draft-edge) 90%, transparent);
+}
+
+.vram-forecast-draft__title {
+  font-size: 14px;
+  letter-spacing: 0.2em;
+  font-weight: 700;
+  color: var(--vram-draft-ink);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--vram-draft-edge) 30%, transparent);
+}
+
+.vram-forecast-draft__body {
+  max-width: 28rem;
+  font-size: 9px;
+  line-height: 1.45;
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, var(--theme-text, #e5e7eb) 82%, var(--vram-draft-ink) 18%);
+}
+
+.vram-forecast-draft__hint {
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--theme-text-muted, #9ca3af) 80%, var(--vram-draft-ink) 20%);
+}
+
+.vram-forecast-draft__meta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  max-width: 100%;
+  margin-top: 0.15rem;
+  padding: 3px 8px;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--vram-draft-edge) 35%, transparent);
+  background: color-mix(in srgb, var(--vram-draft-wash) 40%, transparent);
+}
+
+.vram-forecast-draft__meta-name {
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: var(--vram-draft-ink);
+  max-width: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vram-forecast-draft__meta-quant {
+  flex-shrink: 0;
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  color: color-mix(in srgb, var(--vram-draft-ink) 75%, transparent);
+}
+
 .vram-forecast-display[data-fusion-height-managed] .vram-badge-forecast {
   flex: 1 1 auto;
   height: 100%;

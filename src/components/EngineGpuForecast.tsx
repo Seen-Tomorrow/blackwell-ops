@@ -91,6 +91,7 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     offloadMode,
     onMoeSuggestionClick,
     hideMoeBadge,
+    draftOnly = false,
     modelMeta,
     modelName,
     modelQuant,
@@ -329,6 +330,7 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
               offloadMode={offloadMode}
               onMoeSuggestionClick={onMoeSuggestionClick}
               hideMoeBadge={hideMoeBadge}
+              draftOnly={draftOnly}
               modelMeta={modelMeta}
               modelName={modelName}
               modelQuant={modelQuant}
@@ -435,6 +437,8 @@ export interface EngineGpuForecastProps {
   offloadMode?: string;
   onMoeSuggestionClick: () => void;
   hideMoeBadge: boolean;
+  /** External draft pack — full-face draft explanation, no FIT. */
+  draftOnly?: boolean;
   modelMeta?: ModelMetadata;
   modelName?: string;
   modelQuant?: string;
