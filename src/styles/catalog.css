@@ -1084,3 +1084,244 @@
   border: 1px solid var(--theme-border-subtle);
   background: var(--theme-industrial-bar-track);
 }
+
+
+/* ── Catalog quick strip: seats + pins + recents ─────────────────────────── */
+.catalog-quick-strip {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 6px 6px;
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-border-subtle, var(--theme-border)) 70%, transparent);
+  background: color-mix(in srgb, var(--theme-panel-accent, var(--theme-panel)) 55%, transparent);
+}
+
+.catalog-quick-strip__seats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.catalog-quick-seat {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  flex: 1 1 5.5rem;
+  max-width: 100%;
+  border-radius: 3px;
+  border: 1px dashed color-mix(in srgb, var(--theme-border) 65%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 70%, transparent);
+}
+
+.catalog-quick-seat--filled {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--theme-accent) 40%, transparent);
+}
+
+.catalog-quick-seat--selected {
+  border-color: var(--theme-accent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-accent) 25%, transparent);
+}
+
+.catalog-quick-seat--brain.catalog-quick-seat--filled {
+  border-color: color-mix(in srgb, var(--theme-accent) 55%, transparent);
+}
+
+.catalog-quick-seat--worker.catalog-quick-seat--filled {
+  border-color: color-mix(in srgb, var(--theme-nv-green, #76b900) 50%, transparent);
+}
+
+.catalog-quick-seat--draft.catalog-quick-seat--filled {
+  border-color: color-mix(in srgb, var(--theme-dflash-strip-border, #a78bfa) 55%, transparent);
+}
+
+.catalog-quick-seat__main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  margin: 0;
+  padding: 3px 6px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.catalog-quick-seat__role {
+  font-family: ui-monospace, monospace;
+  font-size: 7px;
+  letter-spacing: 0.14em;
+  font-weight: 700;
+  color: var(--theme-text-muted);
+}
+
+.catalog-quick-seat--brain .catalog-quick-seat__role {
+  color: var(--theme-accent-bright, var(--theme-accent));
+}
+
+.catalog-quick-seat--worker .catalog-quick-seat__role {
+  color: var(--theme-nv-green, #76b900);
+}
+
+.catalog-quick-seat--draft .catalog-quick-seat__role {
+  color: var(--theme-dflash-strip-text, #ddd6fe);
+}
+
+.catalog-quick-seat__name {
+  font-family: ui-monospace, monospace;
+  font-size: 8px;
+  line-height: 1.15;
+  color: var(--theme-text);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catalog-quick-seat--empty .catalog-quick-seat__name {
+  color: var(--theme-text-muted);
+  opacity: 0.7;
+}
+
+.catalog-quick-seat__clear {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0 5px;
+  border: 0;
+  border-left: 1px solid color-mix(in srgb, var(--theme-border-subtle) 60%, transparent);
+  background: transparent;
+  color: var(--theme-text-muted);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.catalog-quick-seat__clear:hover {
+  color: var(--theme-text);
+}
+
+.catalog-quick-strip__rail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  min-width: 0;
+  align-items: center;
+}
+
+.catalog-quick-rail-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+}
+
+.catalog-quick-rail-label {
+  font-family: ui-monospace, monospace;
+  font-size: 7px;
+  letter-spacing: 0.12em;
+  color: var(--theme-text-muted);
+  opacity: 0.8;
+  flex-shrink: 0;
+}
+
+.catalog-quick-chip {
+  max-width: 8.5rem;
+  margin: 0;
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 80%, transparent);
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, monospace;
+  font-size: 8px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.catalog-quick-chip--pin {
+  border-color: color-mix(in srgb, var(--theme-accent) 35%, transparent);
+  color: var(--theme-text);
+}
+
+.catalog-quick-chip--selected,
+.catalog-quick-chip:hover {
+  border-color: color-mix(in srgb, var(--theme-accent) 55%, transparent);
+  color: var(--theme-accent-bright, var(--theme-accent));
+}
+
+.catalog-sort-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 1px 2px;
+  background: color-mix(in srgb, var(--theme-border-subtle) 70%, transparent);
+}
+
+/* Card pin / seat / fit-now chips */
+[data-model-catalog] .model-card-pin {
+  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
+}
+
+[data-model-catalog] .model-card-pin--on {
+  color: var(--theme-accent-bright, var(--theme-accent));
+}
+
+[data-model-catalog] .model-card-pin--off:hover {
+  color: var(--theme-text);
+}
+
+[data-model-catalog] .model-card-seat {
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 40%, transparent);
+  color: var(--theme-accent-bright, var(--theme-accent));
+  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
+  letter-spacing: 0.06em;
+}
+
+[data-model-catalog] .model-card-seat--worker {
+  border-color: color-mix(in srgb, var(--theme-nv-green, #76b900) 45%, transparent);
+  color: var(--theme-nv-green, #76b900);
+  background: color-mix(in srgb, var(--theme-nv-green, #76b900) 10%, transparent);
+}
+
+[data-model-catalog] .model-card-seat--draft {
+  border-color: color-mix(in srgb, var(--theme-dflash-strip-border, #a78bfa) 50%, transparent);
+  color: var(--theme-dflash-strip-text, #ddd6fe);
+  background: color-mix(in srgb, var(--theme-dflash-strip-bg, #2e1065) 35%, transparent);
+}
+
+[data-model-catalog] .model-card-fitnow {
+  letter-spacing: 0.06em;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent);
+  color: var(--theme-text-muted);
+  background: transparent;
+}
+
+[data-model-catalog] .model-card-fitnow--fits {
+  border-color: color-mix(in srgb, var(--theme-nv-green, #76b900) 45%, transparent);
+  color: var(--theme-nv-green, #76b900);
+}
+
+[data-model-catalog] .model-card-fitnow--tight {
+  border-color: color-mix(in srgb, #f59e0b 50%, transparent);
+  color: #f59e0b;
+}
+
+[data-model-catalog] .model-card-fitnow--no {
+  border-color: color-mix(in srgb, #ef4444 45%, transparent);
+  color: color-mix(in srgb, #ef4444 85%, transparent);
+}
+
+[data-model-catalog] .model-card-fitnow--unknown {
+  opacity: 0.7;
+}
+

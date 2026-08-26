@@ -216,6 +216,8 @@ export const KEYS = {
   catalogListCollapsed: `${STORAGE_PREFIX}catalog-list-collapsed`,
   /** OPERATIONS catalog list body opacity (0.2–1); search chrome excluded. */
   catalogListDim: `${STORAGE_PREFIX}catalog-list-dim`,
+  /** OPERATIONS catalog pins / recents / sticky seats (path-only). */
+  catalogQuickAccess: `${STORAGE_PREFIX}catalog-quick-access`,
   /** OPERATIONS model list: auto | open | closed */
   catalogPresentation: `${STORAGE_PREFIX}catalog-presentation`,
   modelHubSplitWidth: `${STORAGE_PREFIX}model-hub-split-width`,
