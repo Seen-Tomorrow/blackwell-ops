@@ -727,7 +727,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                       }
                     }}
                     autoFocus
-                    className="catalog-search-input theme-input w-full text-xs font-mono pl-3 pr-24 rounded-sm"
+                    className="catalog-search-input theme-input w-full text-xs font-mono pl-3 pr-16 rounded-sm"
                   />
                   {renderKindCycler()}
                   <span
