@@ -229,7 +229,7 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
       gpuMask: booterProps.gpuMask,
       inlineActions: true as const,
     };
-    // Primary owns the tray. Stacked dual = primary tray height + metrics-only secondary.
+    // Dual stack: both panes own a bench tray (shared open/stow). Side = one pane height.
     const heightPx =
       dualActive && dualOrient === "stack"
         ? computeDualStackPhosphorHeightForTray(benchTrayOpen, heightOpts)

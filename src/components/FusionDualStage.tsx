@@ -1,6 +1,6 @@
 /**
  * Side-by-side or stacked dual fusion panes.
- * Ownership: primary keeps share/bench; secondary is metrics-only.
+ * Each pane owns share/bench for its engine; secondary is layout order only.
  * Visual order follows RUNNING ENGINES / eject (lower stack idx first:
  * left in side, top in stack) — not catalog selection.
  */

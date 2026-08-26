@@ -317,16 +317,16 @@ export function computeFusionPhosphorHeightForTray(
 }
 
 /**
- * Dual stack phosphor height — primary hero+tray + secondary metrics-only pane.
+ * Dual stack phosphor height — both panes own a bench tray (shared open/stow).
  * Side dual keeps single-pane height (horizontal split).
  */
 export function computeDualStackPhosphorHeightForTray(
   benchTrayOpen: boolean,
   opts: Pick<BenchPanelLayoutOpts, "gpus" | "gpuMask" | "inlineActions">,
 ): number {
-  const primary = computeFusionPhosphorHeightForTray(benchTrayOpen, opts);
-  // Secondary hides the bench tray; only identity + hero chrome.
-  return primary + FUSION_DASHBOARD_TIGHT_CHROME_PX + 2;
+  const pane = computeFusionPhosphorHeightForTray(benchTrayOpen, opts);
+  // Two full panes + 2px stack divider.
+  return pane * 2 + 2;
 }
 
 

@@ -1,6 +1,7 @@
 /**
  * Isolated per-slot fusion subscriber — keeps parent off 25–40 Hz ticks.
  * One pane = one useFusionSlot. Dual stage mounts two of these.
+ * Each pane owns its own bench tray (per-port BenchWidget).
  */
 
 import type { GpuInfo } from "../lib/types";
@@ -28,7 +29,7 @@ export interface FusionPaneProps {
   cudaVersion?: string;
   launchConfig?: FusionShareLaunchConfig;
   hwTopo?: string;
-  /** Dim chrome for secondary pane (no dual tray ownership). */
+  /** Dim chrome for secondary dual pane (layout order only — still has bench). */
   secondary?: boolean;
   className?: string;
 }
@@ -86,9 +87,9 @@ export default function FusionPane({
         providerBuildVersion={providerBuildVersion}
         profileLabel={profileLabel}
         cudaVersion={cudaVersion}
-        launchConfig={secondary ? undefined : launchConfig}
+        launchConfig={launchConfig}
         hwTopo={hwTopo}
-        hideBenchTray={secondary}
+        hideBenchTray={false}
       />
     </div>
   );
