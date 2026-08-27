@@ -1,11 +1,14 @@
-//! Shared plumbing for external coding-agent launchers (AtomCode, Qwen Code).
+//! Shared plumbing for the external coding-agent launcher (pi).
 //!
-//! Both agents are intentionally **isolated** from any user-installed copy on the
-//! system — they never resolve from `PATH`, `%LOCALAPPDATA%`, `~/.atomcode` or
-//! `~/.qwen`. That isolation lives in each agent's *path computation* (a bundled
+//! The agent is intentionally **isolated** from any user-installed copy on the
+//! system — it never resolves from `PATH`, `%LOCALAPPDATA%`, or a user `~/.pi`.
+//! That isolation lives in the agent's *path computation* (a bundled
 //! `external-tools/<agent>` under the app root + a private
 //! `config/external-tools/<agent>-home`). The helpers here only take dirs/paths as
 //! parameters, so an agent can never accidentally fall back to a user-installed binary.
+//!
+//! AtomCode and Qwen Code harnesses were removed (archived products); this module
+//! stays because `pi_code.rs` and `download_manager.rs` depend on it.
 
 use sha2::Digest;
 use std::path::Path;

@@ -56,9 +56,7 @@ mod foundry_toolchain;
 mod reactor_foundry;
 mod output_console;
 mod playground;
-mod atomcode;
 mod pi_code;
-mod qwen_code;
 mod external_agents;
 mod gpu_control;
 mod sidecar_elevate;
@@ -1102,23 +1100,12 @@ async fn main() {
             engine::preview_launch_command,
             engine::open_nobsproof_cmd,
             llama_bench_cmd::open_llama_bench_cmd,
-            atomcode::atomcode_status,
-            atomcode::atomcode_accept_disclaimer,
-            atomcode::atomcode_set_project,
-            atomcode::atomcode_install,
-            atomcode::atomcode_launch,
-            atomcode::atomcode_open_webui,
             pi_code::pi_code_status,
             pi_code::pi_code_accept_disclaimer,
             pi_code::pi_code_set_project,
             pi_code::pi_code_install,
             pi_code::pi_code_update_latest,
             pi_code::pi_code_launch,
-            qwen_code::qwen_code_status,
-            qwen_code::qwen_code_accept_disclaimer,
-            qwen_code::qwen_code_set_project,
-            qwen_code::qwen_code_install,
-            qwen_code::qwen_code_launch,
             intel::fetch_github_intel,
             telemetry::scan_gpus,
             telemetry::scan_cpu,
