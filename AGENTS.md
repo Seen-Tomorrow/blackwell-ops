@@ -74,7 +74,7 @@ the live graph.
 
 ## Agent harness
 
-**Supported harness = pi only** (`pi_code`). **AtomCode and Qwen Code are archived** — do not revive product UX, install paths, or dual-stack routing for them; dead code may still exist until removed. pi models.json: per-seat **`input: text|image`** only when that engine launched with **`--mmproj`** (`stack.vision`); BRAIN and WORKER are independent.
+**Supported harness = pi only** (`pi_code`). **AtomCode and Qwen Code are removed** (archived products) — backends, Tauri commands, `lib/atomcode.ts` / `lib/qwenCode.ts`, and their root docs are gone. Do not revive product UX, install paths, or dual-stack routing for them. `external_agents.rs` **stays** (`pi_code.rs` + `download_manager.rs` depend on it). The `atomcode-*` CSS classes, `html[data-atomcode-harness]`, and `EVENTS.harness*` also stay — they render the harness **BRAIN/WORKER role chrome**, which is live pi surface; do not delete them chasing the old name. pi models.json: per-seat **`input: text|image`** only when that engine launched with **`--mmproj`** (`stack.vision`); BRAIN and WORKER are independent.
 
 **Session roles (local stack)** — This seat is the **designer/planner mastermind**. Local engines:
 - **BRAIN** — capable thinking model (design, planning, hard reasoning)
