@@ -1264,6 +1264,186 @@ fn parse_pr_input(pr_input: &str) -> Option<(Option<String>, String)> {
     None
 }
 
+/// Apply a GitHub PR onto a clean foundry source tree (hard-synced branch, no local dirty).
+///
+/// Prefers `git fetch … pull/<n>/head` + merge so already-landed hunks (common when master
+/// moved under an open PR) resolve via real merge instead of brittle `git apply` context.
+/// Falls back to the PR `.diff` with plain apply then `--3way`.
+///
+/// Returns a short method tag on success (`"merged"` / `"patch"` / `"patch-3way"`).
+async fn apply_foundry_github_pr(
+    git_exe: &std::path::Path,
+    src_dir: &std::path::Path,
+    owner_repo: &str,
+    pr_num: &str,
+) -> Result<&'static str, String> {
+    let local_ref = format!("refs/foundry/pr-{pr_num}");
+    let pull_refspec = format!("pull/{pr_num}/head:{local_ref}");
+
+    // 1) Fetch PR head — origin first (provider clone), then explicit base-repo URL.
+    let mut fetch = git_hidden_output(
+        git_exe.to_path_buf(),
+        src_dir.to_path_buf(),
+        vec![
+            "fetch".into(),
+            "origin".into(),
+            pull_refspec.clone(),
+            "--force".into(),
+        ],
+    )
+    .await;
+
+    if !fetch.as_ref().map(|o| o.status.success()).unwrap_or(false) {
+        let url = format!("https://github.com/{owner_repo}.git");
+        fetch = git_hidden_output(
+            git_exe.to_path_buf(),
+            src_dir.to_path_buf(),
+            vec![
+                "fetch".into(),
+                url,
+                format!("pull/{pr_num}/head:{local_ref}"),
+                "--force".into(),
+            ],
+        )
+        .await;
+    }
+
+    if let Ok(out) = &fetch {
+        if out.status.success() {
+            let merge = git_hidden_output(
+                git_exe.to_path_buf(),
+                src_dir.to_path_buf(),
+                vec!["merge".into(), "--no-edit".into(), local_ref.clone()],
+            )
+            .await;
+            match merge {
+                Ok(mout) if mout.status.success() => return Ok("merged"),
+                Ok(mout) => {
+                    let _ = git_hidden_output(
+                        git_exe.to_path_buf(),
+                        src_dir.to_path_buf(),
+                        vec!["merge".into(), "--abort".into()],
+                    )
+                    .await;
+                    // Fall through to patch apply — merge conflicts on drifted trees still happen.
+                    log::warn!(
+                        "[foundry] PR #{pr_num} merge failed, trying patch apply: {}",
+                        git_output_text(&mout)
+                    );
+                }
+                Err(e) => {
+                    log::warn!("[foundry] PR #{pr_num} merge spawn failed, trying patch apply: {e}");
+                }
+            }
+        } else {
+            log::warn!(
+                "[foundry] PR #{pr_num} fetch failed, trying patch apply: {}",
+                git_output_text(out)
+            );
+        }
+    } else if let Err(e) = &fetch {
+        log::warn!("[foundry] PR #{pr_num} fetch spawn failed, trying patch apply: {e}");
+    }
+
+    // 2) Fallback: raw .diff (same source Foundry used historically).
+    let patch_url = format!(
+        "https://patch-diff.githubusercontent.com/raw/{owner_repo}/pull/{pr_num}.diff"
+    );
+    let patch_resp = reqwest::get(&patch_url)
+        .await
+        .map_err(|e| format!("HTTP fetch failed: {e}"))?;
+    if !patch_resp.status().is_success() {
+        return Err(format!(
+            "PR not found or inaccessible (HTTP {})",
+            patch_resp.status()
+        ));
+    }
+    let patch = String::from_utf8_lossy(&patch_resp.bytes().await.unwrap_or_default()).to_string();
+    if patch.trim().is_empty() {
+        return Ok("merged"); // empty diff == already on tree
+    }
+
+    let patch_parent = src_dir
+        .parent()
+        .ok_or_else(|| "Cannot resolve patch path".to_string())?;
+    let patch_path = patch_parent.join("pr-patch.diff");
+    tokio::fs::write(&patch_path, &patch)
+        .await
+        .map_err(|e| format!("could not write patch file: {e}"))?;
+    let patch_path_str = patch_path
+        .to_str()
+        .ok_or_else(|| "Patch path is not valid UTF-8".to_string())?
+        .to_string();
+
+    let mut apply_output = git_hidden_output(
+        git_exe.to_path_buf(),
+        src_dir.to_path_buf(),
+        vec![
+            "apply".into(),
+            "--whitespace=nowarn".into(),
+            patch_path_str.clone(),
+        ],
+    )
+    .await;
+
+    let mut method = "patch";
+    if apply_output.as_ref().map_or(true, |o| !o.status.success()) {
+        method = "patch-3way";
+        apply_output = git_hidden_output(
+            git_exe.to_path_buf(),
+            src_dir.to_path_buf(),
+            vec![
+                "apply".into(),
+                "--3way".into(),
+                "--whitespace=nowarn".into(),
+                patch_path_str,
+            ],
+        )
+        .await;
+    }
+
+    let _ = tokio::fs::remove_file(&patch_path).await;
+
+    match &apply_output {
+        Ok(out) if out.status.success() => Ok(method),
+        Ok(out) => {
+            let _ = git_hidden_output(
+                git_exe.to_path_buf(),
+                src_dir.to_path_buf(),
+                vec!["merge".into(), "--abort".into()],
+            )
+            .await;
+            // Prefer real failure lines (error:/fatal:/conflict) over "Applied … cleanly".
+            let raw = {
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                let stdout = String::from_utf8_lossy(&out.stdout);
+                format!("{stderr}\n{stdout}")
+            };
+            let interesting = raw
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty())
+                .find(|l| {
+                    let lower = l.to_ascii_lowercase();
+                    lower.contains("error:")
+                        || lower.contains("fatal:")
+                        || lower.contains("conflict")
+                        || lower.contains("does not apply")
+                        || lower.contains("failed")
+                })
+                .unwrap_or_else(|| {
+                    raw.lines()
+                        .map(str::trim)
+                        .find(|l| !l.is_empty())
+                        .unwrap_or("unknown error")
+                });
+            Err(interesting.to_string())
+        }
+        Err(e) => Err(format!("git apply spawn failed: {e}")),
+    }
+}
+
+
 // ── Core Build Service ───────────────────────────────────────────────
 
 #[tauri::command]
@@ -1604,8 +1784,101 @@ async fn run_foundry_build_worker(
         log::warn!("[foundry] patch materialize: {e}");
     }
 
+    // ── Optional GitHub PR (fetch+merge on clean tree) ───────────────
+    // Must run BEFORE vendor patches: merge needs a clean worktree, and
+    // product overlays should sit on top of upstream+PR.
+    if let Some(pr_input_str) = pr_url.as_deref() {
+        match parse_pr_input(pr_input_str) {
+            Some((owner_repo_opt, pr_num)) => {
+                let resolved_owner_repo = owner_repo_opt.clone().or_else(|| {
+                    if let Ok(cfg) = worker.config.lock() {
+                        if let Some(p) = cfg.providers.iter().find(|p| p.id == provider_id) {
+                            if !p.git_url.trim().is_empty() {
+                                return extract_github_owner_repo(&p.git_url);
+                            }
+                        }
+                    }
+                    None
+                });
+
+                let log_msg = if let Some(owner_repo) = resolved_owner_repo.as_deref() {
+                    if owner_repo_opt.is_none() {
+                        format!(
+                            "[PR] Guessed repo {owner_repo} from provider git_url — fetching PR #{pr_num}..."
+                        )
+                    } else {
+                        format!("[PR] Fetching PR #{pr_num} from {owner_repo}...")
+                    }
+                } else {
+                    format!(
+                        "[PR] PR #{pr_num} (number only, no repo detected — informational only)"
+                    )
+                };
+                emit_config_event(
+                    app_handle,
+                    &provider_id,
+                    &profile_id,
+                    build_id,
+                    Some(log_msg),
+                );
+
+                if let Some(owner_repo) = resolved_owner_repo.as_deref() {
+                    match apply_foundry_github_pr(&git_exe, &src_dir, owner_repo, &pr_num).await {
+                        Ok(method) => {
+                            let how = match method {
+                                "merged" => "merged (pull head)",
+                                "patch" => "applied (patch)",
+                                "patch-3way" => "applied (patch 3-way)",
+                                other => other,
+                            };
+                            emit_config_event(
+                                app_handle,
+                                &provider_id,
+                                &profile_id,
+                                build_id,
+                                Some(format!("[PR] #{pr_num} {how}")),
+                            );
+
+                            let env_key = profile_id.clone();
+                            if let Ok(mut cfg) = worker.config.lock() {
+                                if let Some(p) =
+                                    cfg.providers.iter_mut().find(|p| p.id == provider_id)
+                                {
+                                    p.last_pr_per_env.insert(env_key, pr_num.clone());
+                                }
+                            }
+                        }
+                        Err(err) => {
+                            emit_config_event(
+                                app_handle,
+                                &provider_id,
+                                &profile_id,
+                                build_id,
+                                Some(format!(
+                                    "[WARN] PR #{pr_num} apply failed: {err} — continuing build"
+                                )),
+                            );
+                        }
+                    }
+                }
+            }
+            None => {
+                emit_config_event(
+                    app_handle,
+                    &provider_id,
+                    &profile_id,
+                    build_id,
+                    Some(format!(
+                        "[WARN] Invalid PR input: '{pr_input_str}' — must be a GitHub PR URL or plain number"
+                    )),
+                );
+            }
+        }
+    }
+
     // Product vendor patches (e.g. single-model /models/sse cold-boot). Soft-fail:
     // a drifted upstream must not kill the 1-click newest-engine path.
+    // Applied AFTER PR so overlays always win on product paths.
     let (applied_patches, failed_patches) =
         apply_foundry_vendor_patches(&git_exe, &src_dir, &provider_id).await;
     if !applied_patches.is_empty() {
@@ -1637,137 +1910,6 @@ async fn run_foundry_build_worker(
             msg,
             BlackwellOutputConsoleLineStyle::Error,
         );
-    }
-
-
-
-    // ── PR Patch Apply (optional) — URL or number format ─────────────
-    if let Some(ref pr_input_str) = pr_url {
-        match parse_pr_input(pr_input_str) {
-            Some((owner_repo_opt, pr_num)) => {
-                // Try to resolve owner/repo if only a number was given (user request)
-                let resolved_owner_repo = owner_repo_opt.clone().or_else(|| {
-                    // Load the provider's git_url and try to guess
-                    if let Ok(cfg) = worker.config.lock() {
-                        if let Some(p) = cfg.providers.iter().find(|p| p.id == provider_id) {
-                            if !p.git_url.trim().is_empty() {
-                                return extract_github_owner_repo(&p.git_url);
-                            }
-                        }
-                    }
-                    None
-                });
-
-                let log_msg = if let Some(ref owner_repo) = resolved_owner_repo {
-                    if owner_repo_opt.is_none() {
-                        format!("[PR] Guessed repo {} from provider git_url — fetching PR #{}...", owner_repo, pr_num)
-                    } else {
-                        format!("[PR] Fetching PR #{} from {}...", pr_num, owner_repo)
-                    }
-                } else {
-                    format!("[PR] PR #{} (number only, no repo detected — informational only)", pr_num)
-                };
-
-                emit_config_event(app_handle, &provider_id, &profile_id, build_id, Some(log_msg));
-
-                // Only attempt actual patch download if we have a resolved owner/repo
-                if let Some(ref owner_repo) = resolved_owner_repo {
-                    let patch_url = format!("https://patch-diff.githubusercontent.com/raw/{}/pull/{}.diff", owner_repo, pr_num);
-                    let patch_bytes = reqwest::get(&patch_url)
-                        .await
-                        .map_err(|e| format!("HTTP fetch failed: {}", e))?;
-
-                    if !patch_bytes.status().is_success() {
-                        emit_config_event(app_handle, &provider_id, &profile_id, build_id,
-                            Some(format!("[WARN] PR #{} not found or inaccessible (HTTP {}) — continuing build", pr_num, patch_bytes.status())));
-                    } else {
-                        let patch = String::from_utf8_lossy(&patch_bytes.bytes().await.unwrap_or_default()).to_string();
-
-                        if patch.trim().is_empty() {
-                            emit_config_event(app_handle, &provider_id, &profile_id, build_id,
-                                Some(format!("[PR] #{} already applied — no changes needed", pr_num)));
-                        } else if let Some(patch_parent) = src_dir.parent() {
-                            let patch_path = patch_parent.join("pr-patch.diff");
-                            if let Ok(()) = tokio::fs::write(&patch_path, &patch).await {
-                                if let Some(patch_path_str) = patch_path.to_str() {
-                                let mut apply_output = git_hidden_output(
-                                    git_exe.clone(),
-                                    src_dir.clone(),
-                                    vec![
-                                        "apply".into(),
-                                        "--whitespace=nowarn".into(),
-                                        patch_path_str.to_string(),
-                                    ],
-                                )
-                                .await;
-
-                                if apply_output.as_ref().map_or(true, |o| !o.status.success()) {
-                                    apply_output = git_hidden_output(
-                                        git_exe.clone(),
-                                        src_dir.clone(),
-                                        vec![
-                                            "apply".into(),
-                                            "--3way".into(),
-                                            "--whitespace=nowarn".into(),
-                                            patch_path_str.to_string(),
-                                        ],
-                                    )
-                                    .await;
-                                }
-
-                                let _ = tokio::fs::remove_file(&patch_path).await;
-
-                                match apply_output {
-                                    Ok(ref out) if out.status.success() => {
-                                        emit_config_event(app_handle, &provider_id, &profile_id, build_id,
-                                            Some(format!("[PR] #{} applied successfully", pr_num)));
-
-                                        let env_key = profile_id.clone();
-                                        if let Ok(mut cfg) = worker.config.lock() {
-                                            if let Some(p) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
-                                                p.last_pr_per_env.insert(env_key, pr_num.clone());
-                                            }
-                                        }
-                                    }
-                                    _ => {
-                                        let stderr = {
-                                            let raw = apply_output
-                                                .as_ref()
-                                                .ok()
-                                                .map(|o| String::from_utf8_lossy(&o.stderr).to_string())
-                                                .unwrap_or_default();
-                                            raw.lines().next().map(|l| l.trim().to_string()).unwrap_or_else(|| "unknown error".into())
-                                        };
-                                        let _ = git_hidden_output(
-                                            git_exe.clone(),
-                                            src_dir.clone(),
-                                            vec!["merge".into(), "--abort".into()],
-                                        )
-                                        .await;
-                                        emit_config_event(app_handle, &provider_id, &profile_id, build_id,
-                                            Some(format!("[WARN] PR #{} apply failed: {} — continuing build", pr_num, stderr)));
-                                    }
-                                }
-                                } else {
-                                    emit_config_event(app_handle, &provider_id, &profile_id, build_id,
-                                        Some("[WARN] Patch path is not valid UTF-8 — skipping PR apply".into()));
-                                }
-                            } else {
-                                emit_config_event(app_handle, &provider_id, &profile_id, build_id,
-                                    Some(format!("[WARN] PR #{} could not write patch file — continuing build", pr_num)));
-                            }
-                        } else {
-                            emit_config_event(app_handle, &provider_id, &profile_id, build_id,
-                                Some("[WARN] Cannot resolve patch path — skipping PR apply".into()));
-                        }
-                    }
-                }
-            }
-            None => {
-                emit_config_event(app_handle, &provider_id, &profile_id, build_id,
-                    Some(format!("[WARN] Invalid PR input: '{}' — must be a GitHub PR URL or plain number", pr_input_str)));
-            }
-        }
     }
 
     // ── Provider display name (used in messages) ─────────────────────
