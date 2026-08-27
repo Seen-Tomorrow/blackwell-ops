@@ -4,19 +4,6 @@ import { invoke } from "@tauri-apps/api/core";
 import type { SpecCapability } from "../lib/specDraft";
 import type { StackEntry } from "../lib/types";
 import {
-  ATOMCODE_DISCLAIMER,
-  type AtomcodeLaunchRequest,
-  type AtomcodeLaunchResult,
-  type AtomcodeStatus,
-  type AtomcodeWebuiResult,
-} from "../lib/atomcode";
-import {
-  QWEN_CODE_DISCLAIMER,
-  type QwenCodeStatus,
-  type QwenLaunchRequest,
-  type QwenLaunchResult,
-} from "../lib/qwenCode";
-import {
   PI_CODE_DISCLAIMER,
   type PiCodeStatus,
   type PiLaunchRequest,
@@ -25,7 +12,7 @@ import {
 import {
   dispatchAppEvent,
   EVENTS,
-  type AtomcodeEngineClickDetail,
+  type HarnessEngineClickDetail,
 } from "../lib/events";
 import { KEYS, readStorage, writeStorage } from "../lib/storage";
 import { isDevBuild } from "../lib/build";
@@ -59,7 +46,7 @@ export type DflashGetUiState = "idle" | "searching" | "downloading" | "error";
  * bytes/percent without an explicit event), but we can split it into these
  * 4 buckets the user actually feels: download → verify → extract → finalize.
  * The phase strip + indeterminate bar under the wizard proves the app is
- * alive during the 30-90s Qwen install (180 MB).
+ * alive during the multi-minute pi standalone install (~46 MB).
  */
 export type InstallPhase = "download" | "verify" | "extract" | "finalize";
 
@@ -83,17 +70,16 @@ const INSTALL_PHASE_LABEL: Record<InstallPhase, string> = {
 };
 
 /**
- * Harness product surface: **pi is primary** (isolated install, BRAIN/WORKER
- * routing, pi-subagents fan-out; also the only candidate with native
- * llama-server / router-style management later).
+ * Harness product surface: **pi only** (isolated install, BRAIN/WORKER routing,
+ * pi-subagents fan-out; also the only candidate with native llama-server /
+ * router-style management later).
  *
- * AtomCode + Qwen Code stay fully wired in code (install/launch/Tauri cmds)
- * but their tool chips are hidden until we re-expose them. Flip this to
- * `true` to show the three-way picker again — no delete required.
+ * AtomCode and Qwen Code were **removed** (archived products): their Rust
+ * backends (`atomcode.rs`, `qwen_code.rs`), their 11 Tauri commands, and
+ * `lib/atomcode.ts` / `lib/qwenCode.ts` are gone. The `atomcode-*` CSS class
+ * names and the `EVENTS.atomcode*` DOM bus survive on purpose — they render the
+ * harness BRAIN/WORKER role chrome, which is product surface for pi too.
  */
-const SHOW_LEGACY_HARNESS_TOOLS = false;
-
-type HarnessToolId = "atomcode" | "qwen" | "pi";
 
 /** Contextual SPECULATIVE-DECODING knobs under Boost (n_max, n_min, …). */
 export interface CockpitSpecDetailParam {
@@ -170,8 +156,8 @@ export interface MultiAgentBoosterProps {
   forecastFreeGb?: number;
   onPruneCustom?: (ctxs: number[]) => void | Promise<number | void>;
   /**
-   * Live engine stack — used for AtomCode one-click (solo against RUNNING, or Brain+Workers).
-   * When omitted, AtomCode uses port/modelId config values only.
+   * Live engine stack — used for harness one-click (solo against RUNNING, or Brain+Workers).
+   * When omitted, the harness uses port/modelId config values only.
    */
   stack?: StackEntry[];
   /** Preferred running slot (e.g. selected engine). */
@@ -188,7 +174,7 @@ export interface MultiAgentBoosterProps {
     alias: string;
     parallel: number;
   }) => Promise<void>;
-  /** Select a running engine card (e.g. BRAIN after AtomCode opens). */
+  /** Select a running engine card (e.g. BRAIN after the harness opens). */
   onSelectEngine?: (slotIdx: number) => void;
   /**
    * Which product sliders to show. Default all on (Master).
@@ -287,14 +273,6 @@ export default function MultiAgentBooster({
   onPresetTwinBindConsumed,
 }: MultiAgentBoosterProps) {
   const [harnessOpen, setHarnessOpen] = useState(false);
-  /** Which external agent tool the harness targets. */
-  const [harnessTool, setHarnessTool] = useState<HarnessToolId>("pi");
-  // Legacy tools hidden → keep selection pinned to pi (no dead code paths in UI).
-  useEffect(() => {
-    if (!SHOW_LEGACY_HARNESS_TOOLS && harnessTool !== "pi") {
-      setHarnessTool("pi");
-    }
-  }, [harnessTool]);
   /** Wizard: SOLO vs TWIN (even if more than 2 engines run). */
   const [wizardMode, setWizardMode] = useState<"solo" | "twin">("solo");
   /** Twin: explicit ports from click cycle (none → BRAIN → WORKER → clear). */
@@ -333,12 +311,10 @@ export default function MultiAgentBooster({
     onPresetTwinBindConsumed?.();
   }, [presetTwinBind, onPresetTwinBindConsumed]);
 
-  const [atomStatus, setAtomStatus] = useState<AtomcodeStatus | null>(null);
-  const [qwenStatus, setQwenStatus] = useState<QwenCodeStatus | null>(null);
   const [piStatus, setPiStatus] = useState<PiCodeStatus | null>(null);
   /** True while the DEV-only "update pi to latest" command is in flight. */
   const [piUpdating, setPiUpdating] = useState(false);
-  const [atomBusy, setAtomBusy] = useState<"idle" | "install" | "launch" | "webui">("idle");
+  const [atomBusy, setAtomBusy] = useState<"idle" | "install" | "launch">("idle");
   const [atomError, setAtomError] = useState<string | null>(null);
   const [atomMsg, setAtomMsg] = useState<string | null>(null);
   /**
@@ -644,28 +620,6 @@ export default function MultiAgentBooster({
     return firstLine.length > 200 ? `${firstLine.slice(0, 197)}…` : firstLine;
   }, []);
 
-  const refreshAtomStatus = useCallback(async () => {
-    try {
-      const s = await invoke<AtomcodeStatus>("atomcode_status");
-      setAtomStatus(s);
-      return s;
-    } catch (e) {
-      setAtomError(normalizeError(e));
-      return null;
-    }
-  }, [normalizeError]);
-
-  const refreshQwenStatus = useCallback(async () => {
-    try {
-      const s = await invoke<QwenCodeStatus>("qwen_code_status");
-      setQwenStatus(s);
-      return s;
-    } catch (e) {
-      setAtomError(normalizeError(e));
-      return null;
-    }
-  }, [normalizeError]);
-
   const refreshPiStatus = useCallback(async () => {
     try {
       const s = await invoke<PiCodeStatus>("pi_code_status");
@@ -677,15 +631,12 @@ export default function MultiAgentBooster({
     }
   }, [normalizeError]);
 
-  const activeToolStatus =
-    harnessTool === "qwen" ? qwenStatus : harnessTool === "pi" ? piStatus : atomStatus;
+  const activeToolStatus = piStatus;
 
   useEffect(() => {
     if (!harnessOpen) return;
-    void refreshAtomStatus();
-    void refreshQwenStatus();
     void refreshPiStatus();
-  }, [harnessOpen, refreshAtomStatus, refreshQwenStatus, refreshPiStatus]);
+  }, [harnessOpen, refreshPiStatus]);
 
   useEffect(() => {
     if (!harnessOpen) {
@@ -697,7 +648,7 @@ export default function MultiAgentBooster({
     } else {
       // Seed from UI codingMode (not plan — MTP may force plan to Solo)
       setHarnessAgents(Math.max(1, parallelForCodingMode(codingMode)));
-      // Drop prior open/install toast so reconnect does not show a stale "Opened AtomCode…"
+      // Drop prior open/install toast so reconnect does not show a stale "Opened pi…"
       setAtomMsg(null);
       setAtomError(null);
       setRelaunchBusy(false);
@@ -942,7 +893,7 @@ export default function MultiAgentBooster({
   useEffect(() => {
     if (!harnessOpen) return;
     const onClick = (e: Event) => {
-      const d = (e as CustomEvent<AtomcodeEngineClickDetail>).detail;
+      const d = (e as CustomEvent<HarnessEngineClickDetail>).detail;
       if (!d?.port || wizardMode !== "twin") return;
       if (presetRolesLocked) return;
       const port = d.port;
@@ -970,8 +921,8 @@ export default function MultiAgentBooster({
         return { brain: port, worker: worker === port ? null : worker };
       });
     };
-    window.addEventListener(EVENTS.atomcodeEngineClick, onClick);
-    return () => window.removeEventListener(EVENTS.atomcodeEngineClick, onClick);
+    window.addEventListener(EVENTS.harnessEngineClick, onClick);
+    return () => window.removeEventListener(EVENTS.harnessEngineClick, onClick);
   }, [harnessOpen, wizardMode, presetRolesLocked]);
 
   /** Highlight running engines while harness open. */
@@ -979,12 +930,12 @@ export default function MultiAgentBooster({
     const root = document.documentElement;
     if (!harnessOpen) {
       delete root.dataset.atomcodeHarness;
-      dispatchAppEvent(EVENTS.atomcodeHarnessHighlight, { open: false });
+      dispatchAppEvent(EVENTS.harnessHighlight, { open: false });
       return;
     }
     root.dataset.atomcodeHarness = "1";
     if (wizardMode === "twin") {
-      dispatchAppEvent(EVENTS.atomcodeHarnessHighlight, {
+      dispatchAppEvent(EVENTS.harnessHighlight, {
         open: true,
         soloPort: null,
         brainPort: twinBrainPort,
@@ -992,7 +943,7 @@ export default function MultiAgentBooster({
         selectedSlotIdx: preferredSlotIdx,
       });
     } else {
-      dispatchAppEvent(EVENTS.atomcodeHarnessHighlight, {
+      dispatchAppEvent(EVENTS.harnessHighlight, {
         open: true,
         soloPort: soloTarget.live ? soloTarget.port : null,
         brainPort: null,
@@ -1002,7 +953,7 @@ export default function MultiAgentBooster({
     }
     return () => {
       delete root.dataset.atomcodeHarness;
-      dispatchAppEvent(EVENTS.atomcodeHarnessHighlight, { open: false });
+      dispatchAppEvent(EVENTS.harnessHighlight, { open: false });
     };
   }, [
     harnessOpen,
@@ -1021,71 +972,6 @@ export default function MultiAgentBooster({
   }, []);
 
 
-
-  const ensureAtomInstalled = useCallback(async (): Promise<AtomcodeStatus | null> => {
-    setAtomError(null);
-    setAtomMsg(null);
-    let s = atomStatus ?? (await refreshAtomStatus());
-    if (!s) return null;
-    if (!s.disclaimerAccepted) {
-      setShowDisclaimer(true);
-      return null;
-    }
-    if (!s.installed) {
-      setAtomBusy("install");
-      setInstallPhase("download");
-      setAtomMsg(`Downloading AtomCode ${s.pinnedVersion} (~30 MB)…`);
-      try {
-        // The Rust install is one blocking call; we mark verify/extract/finalize
-        // visually to give the user a sense of progress without lying about % done.
-        setInstallPhase("verify");
-        s = await invoke<AtomcodeStatus>("atomcode_install", { version: null });
-        setInstallPhase("finalize");
-        setAtomStatus(s);
-        setAtomMsg(`Installed ${s.version ?? s.pinnedVersion}`);
-      } catch (e) {
-        setAtomError(normalizeError(e));
-        // Keep atomBusy cleared so the user can retry from the wizard footer's "Install" button.
-        setAtomBusy("idle");
-        setInstallPhase(null);
-        return null;
-      }
-      setAtomBusy("idle");
-      setInstallPhase(null);
-    }
-    return s;
-  }, [atomStatus, refreshAtomStatus, normalizeError]);
-
-  const ensureQwenInstalled = useCallback(async (): Promise<QwenCodeStatus | null> => {
-    setAtomError(null);
-    setAtomMsg(null);
-    let s = qwenStatus ?? (await refreshQwenStatus());
-    if (!s) return null;
-    if (!s.disclaimerAccepted) {
-      setShowDisclaimer(true);
-      return null;
-    }
-    if (!s.installed) {
-      setAtomBusy("install");
-      setInstallPhase("download");
-      setAtomMsg(`Downloading Qwen Code ${s.pinnedVersion} (~180 MB standalone)…`);
-      try {
-        setInstallPhase("verify");
-        s = await invoke<QwenCodeStatus>("qwen_code_install", { version: null });
-        setInstallPhase("finalize");
-        setQwenStatus(s);
-        setAtomMsg(`Installed Qwen ${s.version ?? s.pinnedVersion}`);
-      } catch (e) {
-        setAtomError(normalizeError(e));
-        setAtomBusy("idle");
-        setInstallPhase(null);
-        return null;
-      }
-      setAtomBusy("idle");
-      setInstallPhase(null);
-    }
-    return s;
-  }, [qwenStatus, refreshQwenStatus, normalizeError]);
 
   const ensurePiInstalled = useCallback(async (): Promise<PiCodeStatus | null> => {
     setAtomError(null);
@@ -1163,23 +1049,8 @@ export default function MultiAgentBooster({
         return;
       }
 
-      const tool = harnessTool;
-      let projectDir: string | null | undefined =
-        tool === "qwen"
-          ? qwenStatus?.lastProject
-          : tool === "pi"
-            ? piStatus?.lastProject
-            : atomStatus?.lastProject;
-
-      if (tool === "atomcode") {
-        const s = await ensureAtomInstalled();
-        if (!s) return;
-        projectDir = s.lastProject;
-      } else if (tool === "qwen") {
-        const s = await ensureQwenInstalled();
-        if (!s) return;
-        projectDir = s.lastProject;
-      } else {
+      let projectDir: string | null | undefined = piStatus?.lastProject;
+      {
         const s = await ensurePiInstalled();
         if (!s) return;
         projectDir = s.lastProject;
@@ -1222,57 +1093,22 @@ export default function MultiAgentBooster({
 
       setAtomBusy("launch");
       try {
-        if (tool === "atomcode") {
-          const concurrent = Math.max(1, harnessAgents);
-          const req: AtomcodeLaunchRequest = {
-            mode,
-            primary,
-            worker,
-            maxConcurrent: concurrent,
-            projectDir,
-          };
-          const result = await invoke<AtomcodeLaunchResult>("atomcode_launch", {
-            request: req,
-          });
-          setAtomMsg(
-            `Opened AtomCode (${result.mode}) → :${primary.port}` +
-              (worker ? ` + worker :${worker.port}` : ""),
-          );
-          void refreshAtomStatus();
-        } else if (tool === "qwen") {
-          const req: QwenLaunchRequest = {
-            mode,
-            primary,
-            worker,
-            projectDir,
-          };
-          const result = await invoke<QwenLaunchResult>("qwen_code_launch", {
-            request: req,
-          });
-          setAtomMsg(
-            `Opened Qwen Code (${result.mode}) → :${primary.port}` +
-              (worker ? ` + worker :${worker.port}` : ""),
-          );
-          void refreshQwenStatus();
-        } else {
-          const req: PiLaunchRequest = {
-            mode,
-            primary,
-            worker,
-            projectDir,
-            elevated: piElevated,
-          };
-          const result = await invoke<PiLaunchResult>("pi_code_launch", {
-            request: req,
-          });
-          const elev =
-            result.elevated || piElevated ? " · elevated" : "";
-          setAtomMsg(
-            `Opened pi (${result.mode}${elev}) → :${primary.port}` +
-              (worker ? ` + worker :${worker.port}` : ""),
-          );
-          void refreshPiStatus();
-        }
+        const req: PiLaunchRequest = {
+          mode,
+          primary,
+          worker,
+          projectDir,
+          elevated: piElevated,
+        };
+        const result = await invoke<PiLaunchResult>("pi_code_launch", {
+          request: req,
+        });
+        const elev = result.elevated || piElevated ? " · elevated" : "";
+        setAtomMsg(
+          `Opened pi (${result.mode}${elev}) → :${primary.port}` +
+            (worker ? ` + worker :${worker.port}` : ""),
+        );
+        void refreshPiStatus();
         setConfirmMode(null);
 
         const brainPort = primary.port;
@@ -1291,19 +1127,11 @@ export default function MultiAgentBooster({
       }
     },
     [
-      harnessTool,
-      atomStatus?.lastProject,
-      qwenStatus?.lastProject,
       piStatus?.lastProject,
-      ensureAtomInstalled,
-      ensureQwenInstalled,
       ensurePiInstalled,
       soloTarget,
       dualTargets,
       pickProjectDir,
-      harnessAgents,
-      refreshAtomStatus,
-      refreshQwenStatus,
       refreshPiStatus,
       runningEngines,
       onSelectEngine,
@@ -1311,27 +1139,6 @@ export default function MultiAgentBooster({
       piElevated,
     ],
   );
-
-  /** Start AtomCode browser webui (token URL from process stderr). */
-  const openAtomcodeWebui = useCallback(async () => {
-    setAtomError(null);
-    setAtomMsg(null);
-    if (!atomStatus?.installed) {
-      setAtomError("Install AtomCode first (or open TUI once).");
-      return;
-    }
-    setAtomBusy("webui");
-    try {
-      const result = await invoke<AtomcodeWebuiResult>("atomcode_open_webui", {
-        port: null,
-      });
-      setAtomMsg(`WebUI opened → ${result.url}`);
-    } catch (e) {
-      setAtomError(normalizeError(e));
-    } finally {
-      setAtomBusy("idle");
-    }
-  }, [atomStatus?.installed, normalizeError]);
 
   /** Validate + open confirm modal (or disclaimer first). */
   const requestHarnessOpen = useCallback(
@@ -1346,12 +1153,7 @@ export default function MultiAgentBooster({
         setAtomError("Twin needs two Running engines on different ports.");
         return;
       }
-      const st =
-        harnessTool === "qwen"
-          ? qwenStatus
-          : harnessTool === "pi"
-            ? piStatus
-            : atomStatus;
+      const st = piStatus;
       if (st && !st.disclaimerAccepted) {
         setShowDisclaimer(true);
         setConfirmMode(mode);
@@ -1359,49 +1161,23 @@ export default function MultiAgentBooster({
       }
       setConfirmMode(mode);
     },
-    [soloTarget.live, dualTargets, harnessTool, atomStatus, qwenStatus, piStatus],
+    [soloTarget.live, dualTargets, piStatus],
   );
 
   const acceptDisclaimerAndInstall = useCallback(async () => {
     setAtomError(null);
     try {
-      if (harnessTool === "qwen") {
-        await invoke("qwen_code_accept_disclaimer");
-        setShowDisclaimer(false);
-        setAtomBusy("install");
-        setInstallPhase("download");
-        setAtomMsg("Downloading Qwen Code standalone (~180 MB)…");
-        setInstallPhase("verify");
-        const s = await invoke<QwenCodeStatus>("qwen_code_install", { version: null });
-        setInstallPhase("finalize");
-        setQwenStatus(s);
-        setAtomMsg(`Installed Qwen ${s.version ?? s.pinnedVersion}`);
-        void refreshQwenStatus();
-      } else if (harnessTool === "pi") {
-        await invoke("pi_code_accept_disclaimer");
-        setShowDisclaimer(false);
-        setAtomBusy("install");
-        setInstallPhase("download");
-        setAtomMsg("Downloading pi standalone (~46 MB)…");
-        setInstallPhase("verify");
-        const s = await invoke<PiCodeStatus>("pi_code_install", { version: null });
-        setInstallPhase("finalize");
-        setPiStatus(s);
-        setAtomMsg(`Installed pi ${s.version ?? s.pinnedVersion}`);
-        void refreshPiStatus();
-      } else {
-        await invoke("atomcode_accept_disclaimer");
-        setShowDisclaimer(false);
-        setAtomBusy("install");
-        setInstallPhase("download");
-        setAtomMsg("Downloading AtomCode…");
-        setInstallPhase("verify");
-        const s = await invoke<AtomcodeStatus>("atomcode_install", { version: null });
-        setInstallPhase("finalize");
-        setAtomStatus(s);
-        setAtomMsg(`Installed ${s.version ?? s.pinnedVersion}`);
-        void refreshAtomStatus();
-      }
+      await invoke("pi_code_accept_disclaimer");
+      setShowDisclaimer(false);
+      setAtomBusy("install");
+      setInstallPhase("download");
+      setAtomMsg("Downloading pi standalone (~46 MB)…");
+      setInstallPhase("verify");
+      const s = await invoke<PiCodeStatus>("pi_code_install", { version: null });
+      setInstallPhase("finalize");
+      setPiStatus(s);
+      setAtomMsg(`Installed pi ${s.version ?? s.pinnedVersion}`);
+      void refreshPiStatus();
     } catch (e) {
       setAtomError(normalizeError(e));
       // On install failure, drop the confirm modal but leave showDisclaimer false — the
@@ -1411,33 +1187,21 @@ export default function MultiAgentBooster({
       setAtomBusy("idle");
       setInstallPhase(null);
     }
-  }, [harnessTool, normalizeError, refreshAtomStatus, refreshQwenStatus, refreshPiStatus]);
+  }, [normalizeError, refreshPiStatus]);
 
   const changeProjectDir = useCallback(async () => {
     const picked = await pickProjectDir();
     if (!picked) return;
     try {
-      if (harnessTool === "qwen") {
-        const s = await invoke<QwenCodeStatus>("qwen_code_set_project", {
-          projectDir: picked,
-        });
-        setQwenStatus(s);
-      } else if (harnessTool === "pi") {
-        const s = await invoke<PiCodeStatus>("pi_code_set_project", {
-          projectDir: picked,
-        });
-        setPiStatus(s);
-      } else {
-        const s = await invoke<AtomcodeStatus>("atomcode_set_project", {
-          projectDir: picked,
-        });
-        setAtomStatus(s);
-      }
+      const s = await invoke<PiCodeStatus>("pi_code_set_project", {
+        projectDir: picked,
+      });
+      setPiStatus(s);
       setAtomMsg(`Project: ${picked}`);
     } catch (e) {
       setAtomError(normalizeError(e));
     }
-  }, [pickProjectDir, harnessTool, normalizeError]);
+  }, [pickProjectDir, normalizeError]);
 
   const showDraftStrip = showDflashGet || showDflashChange;
   /** Assisted: violet strip for draft and/or SPEC-EXTRA. Full Auto: draft only (no SPEC-EXTRA). */
@@ -1717,15 +1481,9 @@ export default function MultiAgentBooster({
           >
             <div className="atomcode-confirm-modal font-mono">
               <h3 id="atomcode-confirm-title" className="atomcode-confirm-title">
-                {confirmMode === "solo"
-                  ? `Open ${
-                      harnessTool === "qwen" ? "Qwen Code" : harnessTool === "pi" ? "pi" : "AtomCode"
-                    } — SOLO`
-                  : `Open ${
-                      harnessTool === "qwen" ? "Qwen Code" : harnessTool === "pi" ? "pi" : "AtomCode"
-                    } — TWIN`}
+                {confirmMode === "solo" ? "Open pi — SOLO" : "Open pi — TWIN"}
               </h3>
-              {harnessTool === "pi" && piElevated && (
+              {piElevated && (
                 <p className="atomcode-confirm-elevated font-mono text-[9px] text-yellow-400/90 m-0 mb-2">
                   Elevated (gsudo) — UAC prompt, then admin pi console
                 </p>
@@ -1735,9 +1493,7 @@ export default function MultiAgentBooster({
                   <>
                     <span className="atomcode-confirm-summary__mode">BRAIN SOLO</span>
                     <span className="atomcode-confirm-summary__engine">{soloTarget.displayId}</span>
-                    {harnessTool !== "qwen" && (
-                      <span className="atomcode-confirm-summary__agents">AGENTS ×{agentsN}</span>
-                    )}
+                    <span className="atomcode-confirm-summary__agents">AGENTS ×{agentsN}</span>
                   </>
                 ) : dualTargets ? (
                   <>
@@ -1749,9 +1505,7 @@ export default function MultiAgentBooster({
                     <span className="atomcode-confirm-summary__engine atomcode-confirm-summary__engine--worker">
                       WORKER {dualTargets.worker.model} : {dualTargets.worker.port}
                     </span>
-                    {harnessTool !== "qwen" && (
-                      <span className="atomcode-confirm-summary__agents">AGENTS ×{agentsN}</span>
-                    )}
+                    <span className="atomcode-confirm-summary__agents">AGENTS ×{agentsN}</span>
                   </>
                 ) : (
                   <span className="atomcode-confirm-summary__mode">TWIN — pick engines</span>
@@ -1855,10 +1609,7 @@ export default function MultiAgentBooster({
 
   /* ── Full takeover wizard (replaces power cockpit while open) ── */
   if (harnessOpen) {
-    const toolName =
-      harnessTool === "qwen" ? "Qwen Code" : harnessTool === "pi" ? "pi" : "AtomCode";
-    const toolShort =
-      harnessTool === "qwen" ? "Qwen" : harnessTool === "pi" ? "pi" : "AtomCode";
+    const toolShort = "pi";
     const twinDisabled = runningEngines.length < 2;
     return (
       <div
@@ -1873,72 +1624,16 @@ export default function MultiAgentBooster({
               under the title — keeps the wizard body focused on actionable
               choices (mode / project / concurrency / launch). */}
           <p className="atomcode-wizard__blurb font-mono">
-            {SHOW_LEGACY_HARNESS_TOOLS
-              ? "External coding agent on your engines · isolated home · no cloud keys. "
-              : "pi on your engines · isolated home · BRAIN/WORKER routing · no cloud keys. "}
+            pi on your engines · isolated home · BRAIN/WORKER routing · no cloud keys.{" "}
             <span className="atomcode-wizard__blurb-brain">BRAIN</span> plans ·{" "}
             <span className="atomcode-wizard__blurb-worker">WORKER</span> swarms.
           </p>
-          {/* Tool chips: pi is the only exposed harness. AtomCode/Qwen remain
-              in the tree behind SHOW_LEGACY_HARNESS_TOOLS (code not deleted). */}
+          {/* Harness tool chip: pi is the only harness (AtomCode / Qwen Code were
+              removed — archived products). The chip stays as the install-status /
+              update affordance. */}
           <div className="atomcode-wizard__header-tools" role="group" aria-label="Harness tool">
-            {SHOW_LEGACY_HARNESS_TOOLS && (
-              <>
-                <button
-                  type="button"
-                  className={`atomcode-wizard__tool-chip font-mono${harnessTool === "atomcode" ? " atomcode-wizard__tool-chip--on" : ""}`}
-                  onClick={() => {
-                    setHarnessTool("atomcode");
-                    setShowDisclaimer(false);
-                    setAtomError(null);
-                  }}
-                  aria-pressed={harnessTool === "atomcode"}
-                  title={
-                    atomStatus?.installed
-                      ? `AtomCode ${atomStatus.version ?? atomStatus.pinnedVersion} installed`
-                      : "AtomCode — installs on first open (~30 MB)"
-                  }
-                >
-                  AtomCode
-                  <span className="atomcode-wizard__tool-meta">
-                    {atomStatus?.installed
-                      ? atomStatus.version ?? atomStatus.pinnedVersion
-                      : "~30 MB"}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className={`atomcode-wizard__tool-chip font-mono${harnessTool === "qwen" ? " atomcode-wizard__tool-chip--on" : ""}`}
-                  onClick={() => {
-                    setHarnessTool("qwen");
-                    setShowDisclaimer(false);
-                    setAtomError(null);
-                  }}
-                  aria-pressed={harnessTool === "qwen"}
-                  title={
-                    qwenStatus?.installed
-                      ? `Qwen Code ${qwenStatus.version ?? qwenStatus.pinnedVersion} installed`
-                      : "Qwen Code — installs on first open (~180 MB · vision)"
-                  }
-                >
-                  Qwen Code
-                  <span className="atomcode-wizard__tool-meta">
-                    {qwenStatus?.installed
-                      ? qwenStatus.version ?? qwenStatus.pinnedVersion
-                      : "~180 MB · vision"}
-                  </span>
-                </button>
-              </>
-            )}
-            <button
-              type="button"
-              className={`atomcode-wizard__tool-chip font-mono${harnessTool === "pi" ? " atomcode-wizard__tool-chip--on" : ""}`}
-              onClick={() => {
-                setHarnessTool("pi");
-                setShowDisclaimer(false);
-                setAtomError(null);
-              }}
-              aria-pressed={harnessTool === "pi"}
+            <span
+              className={`atomcode-wizard__tool-chip font-mono atomcode-wizard__tool-chip--on`}
               title={
                 piStatus?.installed
                   ? `pi ${piStatus.version ?? piStatus.pinnedVersion} installed`
@@ -1951,8 +1646,8 @@ export default function MultiAgentBooster({
                   ? piStatus.version ?? piStatus.pinnedVersion
                   : "~46 MB standalone"}
               </span>
-            </button>
-            {isDevBuild() && harnessTool === "pi" && (
+            </span>
+            {isDevBuild() && (
               <button
                 type="button"
                 className="atomcode-wizard__update font-mono"
@@ -2175,11 +1870,7 @@ export default function MultiAgentBooster({
         {showDisclaimer && (
           <div className="atomcode-wizard__disclaimer space-y-2">
             <pre className="atomcode-wizard__disclaimer-body font-mono">
-              {harnessTool === "qwen"
-                ? QWEN_CODE_DISCLAIMER
-                : harnessTool === "pi"
-                  ? PI_CODE_DISCLAIMER
-                  : ATOMCODE_DISCLAIMER}
+              {PI_CODE_DISCLAIMER}
             </pre>
             <div className="flex flex-wrap gap-2">
               <button
@@ -2262,26 +1953,24 @@ export default function MultiAgentBooster({
                 </button>
               </div>
             )}
-            {harnessTool === "pi" && (
-              <label
-                className="atomcode-wizard__elevated flex items-center gap-1.5 mb-1.5 w-full cursor-pointer select-none"
-                title="Run pi console elevated via bundled gsudo (UAC). Use for system ops (services, hosts, privileged shell)."
-              >
-                <input
-                  type="checkbox"
-                  className="accent-nv-green"
-                  checked={piElevated}
-                  onChange={(e) => {
-                    const on = e.target.checked;
-                    setPiElevated(on);
-                    writeStorage(KEYS.piCodeElevated, on ? "1" : "0");
-                  }}
-                />
-                <span className="text-[8px] font-mono uppercase tracking-wide text-stealth-muted">
-                  Elevated (gsudo)
-                </span>
-              </label>
-            )}
+            <label
+              className="atomcode-wizard__elevated flex items-center gap-1.5 mb-1.5 w-full cursor-pointer select-none"
+              title="Run pi console elevated via bundled gsudo (UAC). Use for system ops (services, hosts, privileged shell)."
+            >
+              <input
+                type="checkbox"
+                className="accent-nv-green"
+                checked={piElevated}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  setPiElevated(on);
+                  writeStorage(KEYS.piCodeElevated, on ? "1" : "0");
+                }}
+              />
+              <span className="text-[8px] font-mono uppercase tracking-wide text-stealth-muted">
+                Elevated (gsudo)
+              </span>
+            </label>
             {/* LEFT — concurrency chips */}
             <div className="atomcode-wizard__footer-agents">
               <p className="atomcode-wizard__step-label font-mono m-0">
@@ -2370,18 +2059,6 @@ export default function MultiAgentBooster({
                       : `Open ${toolShort} on BRAIN + WORKER`}
               </button>
 
-              {harnessTool === "atomcode" && atomStatus?.installed && (
-                <button
-                  type="button"
-                  className="full-auto-cockpit__copy font-mono atomcode-wizard__webui"
-                  disabled={atomBusy !== "idle"}
-                  title="Start AtomCode webui, capture token URL, open system browser (standalone — not TUI sync)"
-                  onClick={() => void openAtomcodeWebui()}
-                >
-                  {atomBusy === "webui" ? "Starting WebUI…" : "Or open AtomCode WebUI"}
-                </button>
-              )}
-
               {activeToolStatus && !activeToolStatus.installed && (
                 <button
                   type="button"
@@ -2390,20 +2067,12 @@ export default function MultiAgentBooster({
                   onClick={() => {
                     if (!activeToolStatus.disclaimerAccepted) {
                       setShowDisclaimer(true);
-                    } else if (harnessTool === "qwen") {
-                      void ensureQwenInstalled();
-                    } else if (harnessTool === "pi") {
-                      void ensurePiInstalled();
                     } else {
-                      void ensureAtomInstalled();
+                      void ensurePiInstalled();
                     }
                   }}
                 >
-                  {harnessTool === "qwen"
-                    ? "Pre-install Qwen Code (~180 MB)"
-                    : harnessTool === "pi"
-                      ? "Pre-install pi (~46 MB)"
-                      : "Pre-install AtomCode (~30 MB)"}
+                  Pre-install pi (~46 MB)
                 </button>
               )}
             </div>
@@ -2436,7 +2105,7 @@ export default function MultiAgentBooster({
             type="button"
             onClick={() => setHarnessOpen(true)}
             className="full-auto-cockpit__connect full-auto-cockpit__connect--header full-auto-cockpit__connect--accent font-mono tracking-wider uppercase shrink-0"
-            title="Connect an external coding agent (AtomCode / Qwen / pi)"
+            title="Connect pi to your engines (isolated harness · BRAIN/WORKER routing)"
           >
             AGENTIC HARNESS
           </button>

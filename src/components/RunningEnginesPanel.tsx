@@ -4,7 +4,7 @@ import { DEFAULT_BINARY_PROFILE, ENV_META, type Env } from "../lib/foundry_const
 import {
   dispatchAppEvent,
   EVENTS,
-  type AtomcodeHarnessHighlightDetail,
+  type HarnessHighlightDetail,
 } from "../lib/events";
 
 function runtimeProfileLabel(binaryProfile?: string): string {
@@ -123,7 +123,7 @@ interface RunningEnginesPanelProps {
 
 function atomcodeRoleForPort(
   port: number,
-  hl: AtomcodeHarnessHighlightDetail | null,
+  hl: HarnessHighlightDetail | null,
 ): "brain" | "worker" | "solo" | null {
   if (!hl?.open) return null;
   if (hl.brainPort != null && port === hl.brainPort) return "brain";
@@ -148,15 +148,15 @@ export default function RunningEnginesPanel({
   variant = "default",
   perRow = 2,
 }: RunningEnginesPanelProps) {
-  const [atomHl, setAtomHl] = useState<AtomcodeHarnessHighlightDetail | null>(null);
+  const [atomHl, setAtomHl] = useState<HarnessHighlightDetail | null>(null);
 
   useEffect(() => {
     const onHl = (e: Event) => {
-      const detail = (e as CustomEvent<AtomcodeHarnessHighlightDetail>).detail;
+      const detail = (e as CustomEvent<HarnessHighlightDetail>).detail;
       setAtomHl(detail?.open ? detail : null);
     };
-    window.addEventListener(EVENTS.atomcodeHarnessHighlight, onHl);
-    return () => window.removeEventListener(EVENTS.atomcodeHarnessHighlight, onHl);
+    window.addEventListener(EVENTS.harnessHighlight, onHl);
+    return () => window.removeEventListener(EVENTS.harnessHighlight, onHl);
   }, []);
 
   const instances = useMemo(() => {
@@ -180,7 +180,7 @@ export default function RunningEnginesPanel({
   const onEngineActivate = (slotIdx: number, port: number) => {
     onSelectEngine(slotIdx);
     if (atomHl?.open) {
-      dispatchAppEvent(EVENTS.atomcodeEngineClick, { port, slotIdx });
+      dispatchAppEvent(EVENTS.harnessEngineClick, { port, slotIdx });
     }
   };
 

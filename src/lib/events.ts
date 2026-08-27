@@ -76,14 +76,14 @@ export const EVENTS = {
 
   /** Dev: fake update version toggled — refresh GitHub offerings. */
   updateOfferingsRefresh: `${STORAGE_PREFIX}update-offerings-refresh`,
-  /** AtomCode harness open — highlight running engines (brain/worker/solo roles). */
-  atomcodeHarnessHighlight: `${STORAGE_PREFIX}atomcode-harness-highlight`,
-  /** AtomCode harness: user clicked a running engine card (twin role cycle). */
-  atomcodeEngineClick: `${STORAGE_PREFIX}atomcode-engine-click`,
+  /** Agentic harness open — highlight running engines (brain/worker/solo roles). */
+  harnessHighlight: `${STORAGE_PREFIX}harness-highlight`,
+  /** Agentic harness: user clicked a running engine card (twin role cycle). */
+  harnessEngineClick: `${STORAGE_PREFIX}harness-engine-click`,
 } as const;
 
-/** Detail for `EVENTS.atomcodeHarnessHighlight`. */
-export type AtomcodeHarnessHighlightDetail = {
+/** Detail for `EVENTS.harnessHighlight`. */
+export type HarnessHighlightDetail = {
   open: boolean;
   soloPort?: number | null;
   brainPort?: number | null;
@@ -92,7 +92,7 @@ export type AtomcodeHarnessHighlightDetail = {
 };
 
 /** Running-engine card click while harness open (role cycle for twin). */
-export type AtomcodeEngineClickDetail = {
+export type HarnessEngineClickDetail = {
   port: number;
 };
 

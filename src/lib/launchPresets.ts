@@ -39,7 +39,18 @@ export type LaunchSeat = {
   portPolicy: PortPolicy;
 };
 
-export type HarnessToolId = "pi" | "atomcode" | "qwen";
+/**
+ * Agentic harness tool id. pi is the only harness — AtomCode and Qwen Code were
+ * removed as archived products. Old combos may still carry `tool: "atomcode" | "qwen"`
+ * in localStorage; readers must treat any non-`"pi"` value as pi (see
+ * {@link normalizeHarnessTool}).
+ */
+export type HarnessToolId = "pi";
+
+/** Coerce a persisted (possibly legacy) harness tool id to the only live tool. */
+export function normalizeHarnessTool(_raw: unknown): HarnessToolId {
+  return "pi";
+}
 
 export type ComboPreset = {
   id: string;
@@ -50,6 +61,7 @@ export type ComboPreset = {
   /** When true, cold-launch BRAIN before WORKER (default: parallel). */
   sequenceBrainFirst?: boolean;
   harness?: {
+    /** pi-only; legacy combos may hold `"atomcode"` / `"qwen"` — use {@link normalizeHarnessTool}. */
     tool: HarnessToolId;
     defaultMode: "solo" | "twin";
     /** Override WORKER parallel for harness agents N. */

@@ -452,8 +452,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   }, [fusionDisplay.monitorFocus, hwMonitorOpen, hwMonitorDock, applyHwPlacement]);
 
   const [enginesInRail, setEnginesInRail] = useState(loadEnginesInRail);
-  /** AtomCode harness wizard open — full cockpit takeover; skip param dim. */
-  const [atomcodeHarnessOpen, setAtomcodeHarnessOpen] = useState(false);
+  /** Agentic harness wizard open — full cockpit takeover; skip param dim. */
+  const [harnessWizardOpen, setHarnessWizardOpen] = useState(false);
   /** CTX strip: docked in cockpit vs above-config zone (near VRAM / pin-above groups). */
   const [ctxCockpitDock, setCtxCockpitDock] = useState<CtxCockpitDock>(() => loadCtxCockpitDock());
   const showLaunchRail = launchDockPosition === "right";
@@ -808,7 +808,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   configRef.current = config;
 
   const applyParamsLiveDim = useCallback(() => {
-    if (atomcodeHarnessOpen) return;
+    if (harnessWizardOpen) return;
     skipNextModelPathUndimRef.current = true;
     liveDimConfigSnapRef.current = JSON.stringify(configRef.current);
     setParamsLiveDimmed(true);
@@ -816,15 +816,15 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       // Path effect did not run (same model) — drop the one-shot skip
       skipNextModelPathUndimRef.current = false;
     }, 0);
-  }, [atomcodeHarnessOpen]);
+  }, [harnessWizardOpen]);
 
   // Harness wizard needs full brightness — clear live dim while open
   useEffect(() => {
-    if (!atomcodeHarnessOpen) return;
+    if (!harnessWizardOpen) return;
     setParamsLiveDimmed(false);
     liveDimConfigSnapRef.current = null;
     skipNextModelPathUndimRef.current = false;
-  }, [atomcodeHarnessOpen]);
+  }, [harnessWizardOpen]);
 
   /**
    * When the harness wizard opens and the launch dock is docked at the BOTTOM,
@@ -861,7 +861,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   }, []);
 
   useEffect(() => {
-    if (atomcodeHarnessOpen) {
+    if (harnessWizardOpen) {
       // Only auto-move when the right rail is open — otherwise the dock
       // already has its own column below the wizard and dimming is the
       // less-invasive fix.
@@ -894,7 +894,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     // Re-fire when showRightColumn flips mid-session (e.g. user opens HW
     // monitor while harness is already open). The ref guard prevents a loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [atomcodeHarnessOpen, showRightColumn]);
+  }, [harnessWizardOpen, showRightColumn]);
 
   // Catalog model cycle → clear live dim (not the path change that follows engine focus/launch)
   useEffect(() => {
@@ -1322,9 +1322,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const customFlagsReplaceActive = testFlagsEnabled && testFlagsMode === "replace";
   const customFlagsLaunchActive = testFlagsEnabled;
   // REPLACE mode OR live-dim after launch / focus running engine (visual only — launch stays free).
-  // Never dim while AtomCode harness wizard is open (user is picking engines).
+  // Never dim while the agentic harness wizard is open (user is picking engines).
   const paramsBypassedClass =
-    !atomcodeHarnessOpen && (customFlagsReplaceActive || paramsLiveDimmed)
+    !harnessWizardOpen && (customFlagsReplaceActive || paramsLiveDimmed)
       ? " config-panel-params--bypassed"
       : "";
 
@@ -2826,7 +2826,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       */}
       <div
         className={`config-params-scroll px-4 py-3 relative flex-1 overflow-y-auto eink-scrollbar eink-panel min-h-0${
-          atomcodeHarnessOpen ? " config-params-scroll--atomcode-wizard" : ""
+          harnessWizardOpen ? " config-params-scroll--atomcode-wizard" : ""
         }`}
       >
         {model && !modelIsDraftOnly && !showCockpitSurface && isCustomProvider && (
@@ -2840,7 +2840,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         <EngineBoostSection
           show={Boolean(model && !modelIsDraftOnly && showCockpitSurface)}
           wrapperClass={
-            atomcodeHarnessOpen
+            harnessWizardOpen
               ? "mb-0 min-h-0 flex-1"
               : fullAutoFixed
                 ? "mb-3"
@@ -2895,7 +2895,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           }
           stack={stack}
           preferredSlotIdx={selectedSlotIdx ?? null}
-          onHarnessOpenChange={setAtomcodeHarnessOpen}
+          onHarnessOpenChange={setHarnessWizardOpen}
           onRelaunchSeat={async ({ slotIdx, port, alias, parallel }) => {
             await hotSwapEngineSeat({ slotIdx, port, alias, parallel });
           }}
@@ -2935,7 +2935,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           />
         )}
 
-        {!fullAutoFixed && !atomcodeHarnessOpen && (
+        {!fullAutoFixed && !harnessWizardOpen && (
           <div className="config-detailed-panel mb-1.5 border border-stealth-border/30 rounded-sm">
             <div className="config-detailed-panel__row flex items-center gap-1.5">
               <span className="config-detailed-panel__label text-[8px] font-mono tracking-widest uppercase text-stealth-muted/70 flex-shrink-0">
@@ -2965,7 +2965,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         )}
 
         {/* Engine chips hidden while harness wizard owns the panel */}
-        {!fullAutoFixed && !atomcodeHarnessOpen && (
+        {!fullAutoFixed && !harnessWizardOpen && (
           <div className={paramsBypassedClass}>
             {allParamsForDisplay.length === 0 ? (
               <div className="text-stealth-muted text-[10px] font-mono opacity-50">NO PARAMS DEFINED</div>
@@ -2999,7 +2999,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       {launchDockPosition === "bottom" && (
         <EngineLaunchDock
           position="bottom"
-          atomcodeHarnessOpen={atomcodeHarnessOpen}
+          harnessWizardOpen={harnessWizardOpen}
           showRightColumn={showRightColumn}
           launchDockCollapsed={launchDockCollapsed}
           onExpandCollapsedDock={() => {

@@ -25,7 +25,7 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
   const {
     position,
     // dim (bottom only)
-    atomcodeHarnessOpen = false,
+    harnessWizardOpen = false,
     showRightColumn = false,
     // flags pill (bottom only)
     launchDockCollapsed = false,
@@ -323,7 +323,7 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
     <div
       className="config-launch-dock flex-shrink-0 px-4 flex flex-col"
       data-launch-dock-dim={
-        atomcodeHarnessOpen && !showRightColumn ? "true" : "false"
+        harnessWizardOpen && !showRightColumn ? "true" : "false"
       }
     >
       <div className="config-launch-dock__content flex flex-col min-w-0">
@@ -353,7 +353,7 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
 export interface EngineLaunchDockProps {
   position: LaunchDockPosition;
   /** Bottom dim: harness wizard open with the right rail closed. */
-  atomcodeHarnessOpen?: boolean;
+  harnessWizardOpen?: boolean;
   showRightColumn?: boolean;
   /** Bottom: collapsed flags pill. */
   launchDockCollapsed?: boolean;
