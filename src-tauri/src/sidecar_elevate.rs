@@ -367,6 +367,20 @@ pub fn wt_start_bridge_bat_body(wt: &Path, session_bat: &Path) -> String {
     )
 }
 
+/// Path argument for `wt.exe` **argv** — must carry NO literal quote characters.
+///
+/// WT parses its own command line, then re-serializes argv for the spawned cmd,
+/// DOUBLING any embedded quote: a value `"C:\path with space\x.cmd"` arrives at
+/// cmd as `""C:\path with space\x.cmd""`, and cmd reports
+/// `'""C:\path' is not recognized as an internal or external command` — the
+/// spaced-install-dir pi/NoBSproof launch failure. Rust's own argv quoting is
+/// the single layer WT's parser strips; anything baked in on top is the bug.
+/// (This is the argv path only — inside a batch file body, ordinary single
+/// quotes are correct, see [`wt_start_bridge_bat_body`].)
+pub fn wt_path_arg(path: impl AsRef<Path>) -> String {
+    path.as_ref().to_string_lossy().replace('"', "")
+}
+
 /// Non-Windows stub.
 #[cfg(not(windows))]
 pub fn wt_exe() -> Option<PathBuf> {
@@ -566,5 +580,21 @@ mod tests {
         assert!(body.contains(
             r#"start "" "C:\Users\GHOST-TOWER\AppData\Local\Microsoft\WindowsApps\wt.exe" cmd /c call "C:\AI-MASTER\Blackwell OPS portable\config\external-tools\pi-home\launch-session.cmd""#
         ));
+    }
+
+    /// wt.exe argv values must carry no literal quotes — WT doubles them when
+    /// re-serializing for the spawned cmd (`'""C:\…' is not recognized`).
+    #[test]
+    fn wt_path_arg_never_contains_literal_quotes() {
+        let clean = wt_path_arg(Path::new(
+            r"C:\AI-MASTER\Blackwell OPS portable\config\external-tools\pi-home\launch-session.cmd",
+        ));
+        assert!(!clean.contains('"'));
+        assert!(clean.contains("Blackwell OPS portable"));
+
+        let dirty = wt_path_arg(Path::new(
+            r#"C:\AI-MASTER\Blackwell OPS portable\"launch-session.cmd""#,
+        ));
+        assert!(!dirty.contains('"'));
     }
 }

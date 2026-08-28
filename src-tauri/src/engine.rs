@@ -1117,11 +1117,13 @@ pub(crate) fn spawn_nobsproof_cmd_window(script_path: &std::path::Path) -> Resul
     //    elevated too. `wt.exe` must be launched with CREATE_NO_WINDOW so no extra
     //    conhost flashes.
     if let Some(wt) = crate::sidecar_elevate::wt_exe() {
-        // Quote the script path so install dirs with spaces are one token after /k.
-        let quoted_script = format!("\"{script}\"");
+        // Pass the script path BARE. WT re-serializes argv for the spawned cmd
+        // and DOUBLES any embedded quote: `wt cmd /k "\"C:\path with space\x.cmd\""`
+        // arrives at cmd as `""C:\path with space\x.cmd""` → `'""C:\path' is not
+        // recognized`. Rust's own argv quoting is the single layer WT strips.
         let ok = spawn_hidden(
             wt.to_str().unwrap_or("wt.exe"),
-            &["cmd", "/k", &quoted_script],
+            &["cmd", "/k", &crate::sidecar_elevate::wt_path_arg(&script)],
         )
         .is_ok();
         if ok {

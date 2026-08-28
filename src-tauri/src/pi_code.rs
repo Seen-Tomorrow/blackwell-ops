@@ -1681,11 +1681,15 @@ fn spawn_pi_console_user(launcher: &Path, home: &Path, project: &Path) -> Result
     // Visible console. Prefer Windows Terminal (modern terminal); fall back to
     // Start-Process cmd.exe (legacy conhost) if wt.exe is unavailable.
     if let Some(wt) = crate::sidecar_elevate::wt_exe() {
-        // wt.exe cmd /c call "session.bat"  — session bat sets PI_CODING_AGENT_DIR.
-        let quoted_bat = format!("\"{bat_s}\"");
-        let mut c = std::process::Command::new(&wt);
+        // Pass the bat path BARE — never with baked-in quotes. WT re-serializes
+        // argv for the spawned cmd and DOUBLES any embedded quote, producing
+        // `cmd /c call ""C:\path with space\x.cmd""` → cmd reports
+        // `'""C:\path' is not recognized` (spaced install dirs). Rust's own
+        // argv quoting is the single layer WT's parser strips.
+        let bat_arg = crate::sidecar_elevate::wt_path_arg(&session_bat);
+        let mut c = std::process::Command::new(wt);
         c.arg("cmd")
-            .args(["/c", "call", &quoted_bat])
+            .args(["/c", "call", &bat_arg])
             .current_dir(project)
             .env("PI_CODING_AGENT_DIR", home)
             .stdin(Stdio::null())
@@ -1760,9 +1764,14 @@ fn spawn_pi_console_elevated(
     // Already elevated → new console, no UAC.
     if app_elevated {
         if let Some(wt) = wt.as_ref() {
+            // Same bare-argv rule as spawn_pi_console_user: the cmd-shaped
+            // `/d /s /c ""path""` raw tail is for cmd, NOT for WT — WT parses
+            // it, collapses the doubled quotes, and re-quotes once, so cmd's
+            // /s strip leaves the spaced path unquoted. Pass argv directly.
+            let bat_arg = crate::sidecar_elevate::wt_path_arg(&session_bat);
             let mut c = Command::new(wt);
             c.arg("cmd")
-                .raw_arg(&raw_tail)
+                .args(["/c", "call", &bat_arg])
                 .current_dir(project)
                 .env("PI_CODING_AGENT_DIR", home)
                 .stdin(Stdio::null())
