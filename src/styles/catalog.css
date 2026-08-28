@@ -1264,7 +1264,10 @@
 }
 
 .catalog-quick-seat__btn--replace,
-.catalog-quick-seat__btn--edit {
+.catalog-quick-seat__btn--edit,
+.catalog-quick-seat__btn--yes,
+.catalog-quick-seat__btn--no,
+.catalog-quick-seat__btn--clear {
   font-size: 13px;
   font-weight: 800;
   letter-spacing: 0;
@@ -1272,7 +1275,8 @@
   min-width: 28px;
 }
 
-.catalog-quick-seat__btn--replace {
+.catalog-quick-seat__btn--replace,
+.catalog-quick-seat__btn--yes {
   color: var(--theme-atom-brain-text, var(--theme-accent-bright, var(--theme-accent)));
 }
 
@@ -1284,11 +1288,10 @@
   color: var(--theme-accent-bright, var(--theme-accent));
 }
 
-.catalog-quick-seat__btn--clear {
-  font-size: 12px;
-  letter-spacing: 0;
-  padding: 0 6px;
+.catalog-quick-seat__btn--no {
+  color: var(--theme-danger, #f87171);
 }
+
 
 .catalog-quick-seat__btn--save {
   color: var(--theme-text);

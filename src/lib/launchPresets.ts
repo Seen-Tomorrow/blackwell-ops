@@ -108,16 +108,21 @@ function emptyStore(): LaunchPresetsStore {
 export function readLaunchPresetsStore(): LaunchPresetsStore {
   const raw = readJsonStorage<LaunchPresetsStore>(LAUNCH_PRESETS_KEY);
   if (!raw || raw.version !== 1 || !Array.isArray(raw.combos)) return emptyStore();
+  const valid = raw.combos.filter(isComboPreset);
+  const catalog = valid.filter((c) => c.source === "catalog-set");
+  const user = valid.filter((c) => c.source !== "catalog-set").slice(0, LAUNCH_PRESETS_MAX);
   return {
     version: 1,
-    combos: raw.combos.filter(isComboPreset).slice(0, LAUNCH_PRESETS_MAX),
+    combos: [...catalog, ...user],
   };
 }
 
 export function writeLaunchPresetsStore(store: LaunchPresetsStore): void {
+  const catalog = store.combos.filter((c) => c.source === "catalog-set");
+  const user = store.combos.filter((c) => c.source !== "catalog-set").slice(0, LAUNCH_PRESETS_MAX);
   writeJsonStorage(LAUNCH_PRESETS_KEY, {
     version: 1,
-    combos: store.combos.slice(0, LAUNCH_PRESETS_MAX),
+    combos: [...catalog, ...user],
   });
 }
 
@@ -373,12 +378,80 @@ export function catalogSetComboName(setIndex: 0 | 1 | 2): string {
   return `Catalog set ${setIndex + 1}`;
 }
 
+export function seatHasModelPath(seat: LaunchSeat | null | undefined): boolean {
+  return Boolean(seat?.modelPath && seat.modelPath.trim());
+}
+
+export function catalogComboReadyForTwin(combo: ComboPreset | null | undefined): boolean {
+  if (!combo) return false;
+  return seatHasModelPath(seatOnCombo(combo, "brain")) && seatHasModelPath(seatOnCombo(combo, "worker"));
+}
+
+/** One-seat catalog bag — never clone the sibling from the seat being saved. */
+export function ensureCatalogSetCombo(opts: {
+  existing: ComboPreset | null;
+  setIndex: 0 | 1 | 2;
+  seat: LaunchSeat;
+}): ComboPreset {
+  const now = Date.now();
+  if (!opts.existing) {
+    return {
+      id: newPresetId(),
+      name: catalogSetComboName(opts.setIndex),
+      version: 1,
+      kind: "twin",
+      seats: [opts.seat],
+      sequenceBrainFirst: true,
+      harness: { tool: "pi", defaultMode: "twin", agentsOverride: undefined },
+      source: "catalog-set",
+      catalogSetIndex: opts.setIndex,
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+  return {
+    ...upsertSeatOnCombo(opts.existing, opts.seat),
+    source: "catalog-set",
+    catalogSetIndex: opts.setIndex,
+    name: opts.existing.name || catalogSetComboName(opts.setIndex),
+  };
+}
+
+/** Path pin write-through — keep knobs. */
+export function writeComboSeatPath(
+  combo: ComboPreset,
+  role: SeatRole,
+  path: string,
+  name?: string,
+): ComboPreset {
+  const paths =
+    role === "brain"
+      ? { brain: path }
+      : role === "worker"
+        ? { worker: path }
+        : {};
+  const names =
+    role === "brain"
+      ? { brain: name }
+      : role === "worker"
+        ? { worker: name }
+        : {};
+  return syncComboModelPaths(combo, paths, names);
+}
+
+/** Clear path on a bag seat; keep overrides for a later re-pin. */
+export function clearComboSeatPath(combo: ComboPreset, role: SeatRole): ComboPreset {
+  const seats = combo.seats.map((s) =>
+    s.role === role ? { ...s, modelPath: "", modelName: s.modelName } : s,
+  );
+  return { ...combo, seats, updatedAt: Date.now() };
+}
+
 /** Replace or insert a role seat on a twin combo; preserves sibling seat. */
 export function upsertSeatOnCombo(combo: ComboPreset, seat: LaunchSeat): ComboPreset {
   const role = seat.role;
   const seats = combo.seats.filter((s) => s.role !== role);
   seats.push(seat);
-  // Stable order: brain, worker, rest
   seats.sort((a, b) => {
     const rank = (r: SeatRole) => (r === "brain" ? 0 : r === "worker" ? 1 : 2);
     return rank(a.role) - rank(b.role);
@@ -419,7 +492,7 @@ export function syncComboModelPaths(
     }
     return s;
   });
-  return { ...combo, seats };
+  return { ...combo, seats, updatedAt: Date.now() };
 }
 
 export function resolveAgentsN(combo: ComboPreset): number {

@@ -24,12 +24,12 @@ import {
 import {
   assignCatalogSeat,
   clearCatalogSeat,
-  CATALOG_SEAT_LABEL,
   isCatalogPinned,
   loadCatalogActiveSeatSet,
   loadCatalogPins,
   loadCatalogRecents,
   loadCatalogSeats,
+  loadCatalogSetComboId,
   pushCatalogRecent,
   seatRoleForPath,
   setCatalogActiveSeatSet,
@@ -40,6 +40,12 @@ import {
   type CatalogSeatSetIndex,
   type CatalogSeatsState,
 } from "../lib/catalogQuickAccess";
+import {
+  clearComboSeatPath,
+  getCombo,
+  saveCombo,
+  writeComboSeatPath,
+} from "../lib/launchPresets";
 import {
   fitNowNeedMib,
   fitNowTitle,
@@ -314,8 +320,9 @@ export function useModelCatalog({
   const [catalogRecents, setCatalogRecents] = useState<CatalogRecentEntry[]>(() => loadCatalogRecents());
   const [catalogSeats, setCatalogSeats] = useState<CatalogSeatsState>(() => loadCatalogSeats());
   const [activeSeatSet, setActiveSeatSetState] = useState<CatalogSeatSetIndex>(() => loadCatalogActiveSeatSet());
+  /** Temporary: only the favorite just clicked sits at catalog top. */
+  const [floatFavoritePath, setFloatFavoritePath] = useState<string | null>(null);
   const [fitNowFilter, setFitNowFilter] = useState<CatalogFitNowFilter>("all");
-
   // After onboarding — pick first scannable model when nothing is selected (fresh install has no lastModel).
   useEffect(() => {
     const handler = (e: Event) => {
@@ -428,7 +435,8 @@ export function useModelCatalog({
     setPanelActiveModel(model);
     setSelectedSlotIdx(null); // Generic selection — clear engine-specific pairing
     saveLastModel(model.path);
-  }, []);
+    setFloatFavoritePath(isCatalogPinned(model.path, catalogPins) ? model.path : null);
+  }, [catalogPins]);
 
   // Select a specific running engine instance by slot index (for mini card clicks)
   const handleSelectBySlot = useCallback((slotIdx: number) => {
@@ -502,6 +510,13 @@ export function useModelCatalog({
         return;
       }
       setCatalogSeats(assignCatalogSeat(role, target.path));
+      const setIndex = loadCatalogActiveSeatSet();
+      const comboId = loadCatalogSetComboId(setIndex);
+      const combo = comboId ? getCombo(comboId) : null;
+      if (combo && (role === "brain" || role === "worker")) {
+        saveCombo(writeComboSeatPath(combo, role, target.path, target.name));
+      }
+      dispatchAppEvent(EVENTS.catalogSeatsChanged);
     },
     [catalogSelectedModel, panelActiveModel, catalogSeats],
   );
@@ -509,9 +524,17 @@ export function useModelCatalog({
   const handleClearSeat = useCallback((role: CatalogEngineSeatRole | CatalogSeatRole) => {
     if (role === "draft") return;
     setCatalogSeats(clearCatalogSeat(role));
+    const setIndex = loadCatalogActiveSeatSet();
+    const comboId = loadCatalogSetComboId(setIndex);
+    const combo = comboId ? getCombo(comboId) : null;
+    if (combo && (role === "brain" || role === "worker")) {
+      saveCombo(clearComboSeatPath(combo, role));
+    }
+    dispatchAppEvent(EVENTS.catalogSeatsChanged);
   }, []);
 
   const handleSelectSeatSet = useCallback((index: CatalogSeatSetIndex) => {
+    dispatchAppEvent(EVENTS.catalogSeatCancel);
     const next = setCatalogActiveSeatSet(index);
     setActiveSeatSetState(next.activeSeatSet);
     setCatalogSeats(next.seats);
@@ -729,36 +752,12 @@ export function useModelCatalog({
       sorted = sorted.filter((m) => matchesFitNowFilter(getFitNowVerdict(m), fitNowFilter));
     }
 
-    // Pins float to the top (pin order). Selected pin is always first.
-    if (catalogPins.length > 0) {
-      const pathKeyOf = (p: string) => normalizeModelPathKey(p);
-      const byKey = new Map(sorted.map((m) => [pathKeyOf(m.path), m] as const));
-      const pinnedTop: ModelEntry[] = [];
-      const seen: Record<string, true> = {};
-
-      const selectedKey = catalogSelectedModel
-        ? pathKeyOf(catalogSelectedModel.path)
-        : null;
-      if (selectedKey && catalogPins.some((p) => pathKeyOf(p) === selectedKey)) {
-        const sel = byKey.get(selectedKey);
-        if (sel) {
-          pinnedTop.push(sel);
-          seen[selectedKey] = true;
-        }
-      }
-
-      for (const p of catalogPins) {
-        const k = pathKeyOf(p);
-        if (seen[k]) continue;
-        const m = byKey.get(k);
-        if (!m) continue;
-        pinnedTop.push(m);
-        seen[k] = true;
-      }
-
-      if (pinnedTop.length > 0) {
-        const rest = sorted.filter((m) => !seen[pathKeyOf(m.path)]);
-        sorted = [...pinnedTop, ...rest];
+    // Clicking a favorite briefly floats *that* card to top — not the whole pin list.
+    if (floatFavoritePath) {
+      const key = normalizeModelPathKey(floatFavoritePath);
+      const hit = sorted.find((m) => normalizeModelPathKey(m.path) === key);
+      if (hit) {
+        sorted = [hit, ...sorted.filter((m) => normalizeModelPathKey(m.path) !== key)];
       }
     }
 
@@ -771,9 +770,12 @@ export function useModelCatalog({
     draftFilter,
     fitNowFilter,
     getFitNowVerdict,
-    catalogPins,
-    catalogSelectedModel?.path,
+    floatFavoritePath,
   ]);
+
+  useEffect(() => {
+    setFloatFavoritePath(null);
+  }, [sortField, sortDirection, search, draftFilter, fitNowFilter]);
 
   const setCatalogDraftFilter = useCallback((filter: CatalogDraftFilter) => {
     setDraftFilter(filter);

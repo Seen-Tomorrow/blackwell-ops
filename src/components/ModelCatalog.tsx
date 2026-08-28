@@ -900,7 +900,6 @@ export default function ModelCatalog(props: ModelCatalogProps) {
             seats={catalogSeats}
             activeSeatSet={activeSeatSet}
             pins={catalogPins}
-            recents={catalogRecents}
             selectedPath={catalogSelectedModel?.path ?? null}
             onSelectPath={handleSelectPath}
             onAssignSeat={(role) => handleAssignSeat(role)}

@@ -85,7 +85,8 @@ export const EVENTS = {
    * EngineConfigPanel prefers linked combo when present; else ephemeral.
    */
   catalogLaunchSeats: `${STORAGE_PREFIX}catalog-launch-seats`,
-  /** Enter seat-edit mode (panel loads seat bag into real config). */
+  /** Catalog seats → launch one seat as solo (harness connect). */
+  catalogLaunchSeatSolo: `${STORAGE_PREFIX}catalog-launch-seat-solo`,
   catalogSeatEdit: `${STORAGE_PREFIX}catalog-seat-edit`,
   /** Persist panel config into the active seat-edit bag. */
   catalogSeatSave: `${STORAGE_PREFIX}catalog-seat-save`,
@@ -120,6 +121,12 @@ export type CatalogLaunchSeatsDetail = {
   setIndex?: 0 | 1 | 2;
 };
 
+/** Detail for `EVENTS.catalogLaunchSeatSolo`. */
+export type CatalogLaunchSeatSoloDetail = {
+  role: "brain" | "worker";
+  modelPath: string;
+  setIndex?: 0 | 1 | 2;
+};
 /** Detail for `EVENTS.catalogSeatEdit`. */
 export type CatalogSeatEditDetail = {
   role: "brain" | "worker";

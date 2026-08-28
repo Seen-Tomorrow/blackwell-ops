@@ -5,12 +5,16 @@ import {
   buildTwinCombo,
   captureSeatFromPanel,
   captureSeatFromStack,
+  catalogComboReadyForTwin,
+  clearComboSeatPath,
+  ensureCatalogSetCombo,
   normalizeModelPath,
   orderSeatsForLaunch,
   resolveAgentsN,
   resolveComboApply,
   resolveSeatLaunchPort,
   sparseOverridesFromConfig,
+  writeComboSeatPath,
 } from "./launchPresets";
 
 const model = {
@@ -201,5 +205,62 @@ describe("captureSeatFromStack", () => {
     expect(seat.paramOverrides.parallel).toBe(8);
     expect(seat.paramOverrides.kv_quant).toBe("q8_0");
     expect(seat.paramOverrides.ctx).toBe(4096);
+  });
+});
+
+describe("catalog set combo", () => {
+  it("does not clone a sibling when ensuring a one-seat bag", () => {
+    const brain = captureSeatFromPanel({
+      model,
+      providerId: "ggml-master",
+      policyId: "full_auto",
+      config: { ctx: 8192 },
+      role: "brain",
+    });
+    const combo = ensureCatalogSetCombo({ existing: null, setIndex: 0, seat: brain });
+    expect(combo.source).toBe("catalog-set");
+    expect(combo.seats).toHaveLength(1);
+    expect(combo.seats[0].role).toBe("brain");
+    expect(catalogComboReadyForTwin(combo)).toBe(false);
+  });
+
+  it("is twin-ready only when both seats have paths", () => {
+    const brain = captureSeatFromPanel({
+      model,
+      providerId: "ggml-master",
+      policyId: "full_auto",
+      config: {},
+      role: "brain",
+    });
+    const workerModel = { ...model, path: "C:\\models\\worker.gguf", name: "Worker" };
+    const worker = captureSeatFromPanel({
+      model: workerModel,
+      providerId: "ggml-master",
+      policyId: "full_auto",
+      config: { parallel: 4 },
+      role: "worker",
+    });
+    let combo = ensureCatalogSetCombo({ existing: null, setIndex: 1, seat: brain });
+    combo = ensureCatalogSetCombo({ existing: combo, setIndex: 1, seat: worker });
+    expect(catalogComboReadyForTwin(combo)).toBe(true);
+    combo = clearComboSeatPath(combo, "worker");
+    expect(catalogComboReadyForTwin(combo)).toBe(false);
+    expect(combo.seats.find((s) => s.role === "worker")?.paramOverrides.parallel).toBe(4);
+  });
+
+  it("REPLACE writes path through and keeps knobs", () => {
+    const brain = captureSeatFromPanel({
+      model,
+      providerId: "ggml-master",
+      policyId: "full_auto",
+      config: { ctx: 32768, parallel: 8 },
+      role: "brain",
+    });
+    let combo = ensureCatalogSetCombo({ existing: null, setIndex: 0, seat: brain });
+    combo = writeComboSeatPath(combo, "brain", "D:\\other\\new.gguf", "New");
+    const next = combo.seats.find((s) => s.role === "brain")!;
+    expect(next.modelPath).toBe("D:\\other\\new.gguf");
+    expect(next.paramOverrides.ctx).toBe(32768);
+    expect(next.paramOverrides.parallel).toBe(8);
   });
 });

@@ -1,6 +1,6 @@
 # Catalog seats — granular control plan
 
-Status: **Stage 1 shipped** (this branch)  
+Status: **Stage 1 shipped + hardening** (this branch)  
 Branch: `feat/catalog-quick-access`  
 Date: 2026-08-28  
 Review lock: panel seat-edit + capture; dual forecast strip = **stage 2**
@@ -18,16 +18,17 @@ Edit knobs in the **existing config panel + VramBadge**. Save into the seat. Do 
 
 | Layer | Owns | Persists |
 |---|---|---|
-| **Catalog seats** | BRAIN / WORKER **paths** only (no DRAFT tile), 3 sets, ▶ TWIN, **E** / **R** / SAVE chrome | `catalog-quick-access` **v3** (paths + `comboIds[3]`) |
-| **Linked combos** | Full twin bags (`source: "catalog-set"`) | `launchPresets` store (hidden from casual PRESETS via `listUserCombos`) |
+| **Catalog seats** | BRAIN / WORKER paths, 3 sets, **SOLO/TWIN**, **E** / **R** / SAVE | `catalog-quick-access` **v3** |
+| **Linked combos** | Twin bags (`source: "catalog-set"`) — **not** counted in PRESETS 50-cap | `launchPresets` store |
 | **Config panel + VramBadge** | Live knobs + measured forecast for **one** selected model | Session + templates |
+| **FAVORITE** | Pinned catalog chips (recents strip **removed**) | pins in v3 store |
 
-**Not a third engine.** Boost / MTP / DFLASH / DSPARK / draft path live on each **engine seat bag** (BRAIN and WORKER), saved from the natural cockpit — no catalog DRAFT seat.
+**Not a third engine.** Boost / MTP / DFLASH / DSPARK / draft path live on each **engine seat bag**.
 
 ### UX (current)
 
 ```
-[1][2][3]  SEATS  [▶ TWIN]
+[1][2][3]  AGENTIC HARNESS SEATS  [TWIN|SOLO] [▶]
 ┌ BRAIN (harness colors)  R E × ┐  ┌ WORKER  R E × ┐
 ```
 
@@ -35,13 +36,15 @@ Edit knobs in the **existing config panel + VramBadge**. Save into the seat. Do 
 |---|---|
 | Empty seat click | Assign selected catalog model (path only) |
 | Filled seat click | **Select only** — never silent overwrite |
-| **R** | Replace path → seat flips to **YES / NO** (no dialogs) |
-| **E** | Enter edit: seat goes **full width**, peer hidden; NEED-style live rim on seat + section |
-| **×** | Clear path → **YES / NO** |
-| Edit mode SAVE | On the seat: mono `▣ SAVE` + CANCEL |
-| Toolbar `SEAT →B / →W` | Save current panel config to that seat (active set) |
-| Running rail `→B / →W` | `captureSeatFromStack` into seat |
-| AGENTIC HARNESS | Hidden until ≥1 RUNNING engine |
+| **R** | Replace path → YES/NO; writes path through on bag (**keeps knobs**) |
+| **E** | Full-width edit; parks running-slot panel bind; hydrate lock for whole session |
+| **×** | Clear path → YES/NO; clears bag path, keeps knobs |
+| Edit SAVE | On the seat: `▣ SAVE` / CANCEL |
+| Toolbar / rail `→B / →W` | Save panel or running engine into **that role only** (no cloned sibling) |
+| **TWIN** `▶` | Both seats must have **saved bags with paths**; else error (use SOLO) |
+| **SOLO** `▶` | Launch selected (or only) seat as solo for harness connect |
+| AGENTIC HARNESS (cockpit) | Hidden until ≥1 RUNNING engine |
+| Set switch mid-edit | Cancels edit |
 
 While editing:
 
@@ -68,19 +71,15 @@ Boost/spec:   natural cockpit; bag hydrates without applyFullAutoCockpit replan 
 
 - Knobs on `LaunchSeat` inside linked twin `ComboPreset` (`paramOverrides`, `boostMethod`, `policyId`, `providerId`, …).  
 - Lazy create on first SAVE.  
-- Orphan `comboId` cleared → ephemeral TWIN fallback.  
-- Path pin write-through on SAVE.
+### Seat-edit hydrate
 
-### Seat-edit hydrate (race fix)
+Do **not** call `applyFullAutoCockpit` during EDIT load.
 
-Do **not** call `applyFullAutoCockpit` during EDIT load (it replans parallel/kv/draft and fought the bag → endless CTX/SPEC re-eval).
-
-Shipped path:
-
-1. Latch `applied` immediately + `hydrateLockRef` (blocks cockpit capability re-snap ~120ms).  
+1. `hydrateLockRef` for the **whole edit session** (unlock on SAVE/CANCEL only).  
 2. Policy / provider / profile.  
 3. `setSpeedBoost` + `applySpecBoostProfiles` only.  
-4. Clear stale `mtp_*` / `dflash_*` not in bag; `updateParams(seat.paramOverrides)` **last**.
+4. Seat bag last. No bag → clear stale SPEC, Boost off (do not keep previous model).  
+5. Running-engine clicks do not steal the panel while editing.
 
 ### Capture
 
@@ -88,11 +87,12 @@ Shipped path:
 `LaunchSeat.boostMethod` for product Boost (not a CLI key).  
 Shared helpers: `captureSeatFromPanel`, `captureSeatFromStack`.
 
-### TWIN launch
+### Launch
 
-1. Prefer linked combo for set; `syncComboModelPaths` from pins (overrides kept).  
-2. Else ephemeral twin from paths + current panel snapshot.  
-3. `applyComboPreset` + fusion dual.
+1. **TWIN** — linked combo only; both seats must have model paths + bags (`catalogComboReadyForTwin`). No ephemeral clone of one panel onto two engines.  
+2. **SOLO** — selected (or only filled) seat as `kind: "solo"` for harness connect; fusion single.  
+3. Catalog-set combos are exempt from `LAUNCH_PRESETS_MAX`.
+
 
 ---
 

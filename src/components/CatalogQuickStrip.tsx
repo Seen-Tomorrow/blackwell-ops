@@ -6,13 +6,13 @@ import {
   CATALOG_SEAT_SET_COUNT,
   catalogPathChipLabel,
   type CatalogEngineSeatRole,
-  type CatalogRecentEntry,
   type CatalogSeatSetIndex,
   type CatalogSeatsState,
 } from "../lib/catalogQuickAccess";
 import {
   dispatchAppEvent,
   EVENTS,
+  type CatalogLaunchSeatSoloDetail,
   type CatalogLaunchSeatsDetail,
   type CatalogSeatEditDetail,
   type CatalogSeatEditEndedDetail,
@@ -23,10 +23,8 @@ export type CatalogQuickStripProps = {
   seats: CatalogSeatsState;
   activeSeatSet: CatalogSeatSetIndex;
   pins: string[];
-  recents: CatalogRecentEntry[];
   selectedPath: string | null;
   onSelectPath: (path: string) => void;
-  /** Assign selected catalog model to role (no dialog — strip owns YES/NO). */
   onAssignSeat: (role: CatalogEngineSeatRole) => void;
   onClearSeat: (role: CatalogEngineSeatRole) => void;
   onSelectSeatSet: (index: CatalogSeatSetIndex) => void;
@@ -117,7 +115,6 @@ export default function CatalogQuickStrip({
   seats,
   activeSeatSet,
   pins,
-  recents,
   selectedPath,
   onSelectPath,
   onAssignSeat,
@@ -127,6 +124,7 @@ export default function CatalogQuickStrip({
 }: CatalogQuickStripProps) {
   const [editingRole, setEditingRole] = useState<CatalogEngineSeatRole | null>(null);
   const [pending, setPending] = useState<PendingAction>(null);
+  const [launchMode, setLaunchMode] = useState<"solo" | "twin">("twin");
 
   useEffect(() => {
     const onEnded = (e: Event) => {
@@ -141,45 +139,38 @@ export default function CatalogQuickStrip({
   }, []);
 
   useEffect(() => {
-    setEditingRole(null);
     setPending(null);
   }, [activeSeatSet]);
-
-  const seatPathKeys: Record<string, true> = {};
-  for (const r of CATALOG_ENGINE_SEAT_ROLES) {
-    const p = seats[r]?.path;
-    if (p) seatPathKeys[pathKey(p)] = true;
-  }
 
   const pinModels = pins
     .map((p) => findModel(models, p))
     .filter((m): m is ModelEntry => !!m);
 
-  const pinKeys: Record<string, true> = {};
-  for (const p of pins) pinKeys[pathKey(p)] = true;
-
-  const recentModels = recents
-    .map((r) => findModel(models, r.path))
-    .filter((m): m is ModelEntry => !!m)
-    .filter((m) => {
-      const key = pathKey(m.path);
-      return !seatPathKeys[key] && !pinKeys[key];
-    })
-    .slice(0, 6);
-
   const selectedKey = selectedPath ? pathKey(selectedPath) : null;
   const canLaunchTwin = Boolean(seats.brain?.path && seats.worker?.path);
+  const canLaunchSolo = Boolean(seats.brain?.path);
   const seatEditing = editingRole != null;
   const hasSelection = Boolean(selectedPath);
 
-  const launchSeatedTwin = () => {
-    if (!seats.brain?.path || !seats.worker?.path) return;
-    const detail: CatalogLaunchSeatsDetail = {
-      brainPath: seats.brain.path,
-      workerPath: seats.worker.path,
+  const launchSeats = () => {
+    if (launchMode === "twin") {
+      if (!seats.brain?.path || !seats.worker?.path) return;
+      const detail: CatalogLaunchSeatsDetail = {
+        brainPath: seats.brain.path,
+        workerPath: seats.worker.path,
+        setIndex: activeSeatSet,
+      };
+      dispatchAppEvent(EVENTS.catalogLaunchSeats, detail);
+      return;
+    }
+    const path = seats.brain?.path;
+    if (!path) return;
+    const detail: CatalogLaunchSeatSoloDetail = {
+      role: "brain",
+      modelPath: path,
       setIndex: activeSeatSet,
     };
-    dispatchAppEvent(EVENTS.catalogLaunchSeats, detail);
+    dispatchAppEvent(EVENTS.catalogLaunchSeatSolo, detail);
   };
 
   const beginSeatEdit = (role: CatalogEngineSeatRole) => {
@@ -228,14 +219,12 @@ export default function CatalogQuickStrip({
         className={[
           "catalog-quick-section catalog-quick-section--seats",
           seatEditing ? "catalog-quick-section--seats-editing" : "",
-        ]
-          .filter(Boolean)
-          .join(" ")}
+        ].filter(Boolean).join(" ")}
       >
         {seatEditing ? <SeatLiveRim /> : null}
         <header
           className="catalog-quick-section__head"
-          title="BRAIN + WORKER twin seats. Colors match harness connect. EDIT expands the seat full-width until SAVE or CANCEL."
+          title="Agentic harness seats — BRAIN / WORKER. SOLO launches one seat; TWIN needs both saved bags."
         >
           <div className="catalog-quick-section__sets" role="tablist" aria-label="Seat sets">
             {Array.from({ length: CATALOG_SEAT_SET_COUNT }, (_, i) => {
@@ -250,7 +239,10 @@ export default function CatalogQuickStrip({
                   className={`catalog-quick-set-btn${active ? " catalog-quick-set-btn--active" : ""}`}
                   title={`Seat set ${idx + 1}${active ? " (active)" : ""}`}
                   disabled={seatEditing}
-                  onClick={() => onSelectSeatSet(idx)}
+                  onClick={() => {
+                    if (seatEditing) dispatchAppEvent(EVENTS.catalogSeatCancel);
+                    onSelectSeatSet(idx);
+                  }}
                 >
                   {idx + 1}
                 </button>
@@ -260,23 +252,37 @@ export default function CatalogQuickStrip({
           <span className="catalog-quick-section__title">
             {seatEditing
               ? `EDITING ${CATALOG_SEAT_LABEL[editingRole!]}`
-              : "SEATS"}
+              : "AGENTIC HARNESS SEATS"}
           </span>
           <div className="catalog-quick-section__actions">
             {!seatEditing ? (
-              <button
-                type="button"
-                className="catalog-quick-section__action"
-                disabled={!canLaunchTwin}
-                title={
-                  canLaunchTwin
-                    ? `Launch set ${activeSeatSet + 1}: BRAIN + WORKER twin`
-                    : "Assign BRAIN and WORKER on this set first"
-                }
-                onClick={launchSeatedTwin}
-              >
-                ▶ TWIN
-              </button>
+              <>
+                <button
+                  type="button"
+                  className="catalog-quick-section__action catalog-quick-section__action--mode"
+                  title="Switch SOLO / TWIN launch"
+                  onClick={() => setLaunchMode((m) => (m === "twin" ? "solo" : "twin"))}
+                >
+                  {launchMode === "twin" ? "TWIN" : "SOLO"}
+                </button>
+                <button
+                  type="button"
+                  className="catalog-quick-section__action"
+                  disabled={launchMode === "twin" ? !canLaunchTwin : !canLaunchSolo}
+                  title={
+                    launchMode === "twin"
+                      ? canLaunchTwin
+                        ? "Launch BRAIN + WORKER (needs saved bags on both)"
+                        : "Assign BRAIN and WORKER first"
+                      : canLaunchSolo
+                        ? "Launch BRAIN seat as solo"
+                        : "Assign BRAIN seat first"
+                  }
+                  onClick={launchSeats}
+                >
+                  ▶
+                </button>
+              </>
             ) : null}
           </div>
         </header>
@@ -362,7 +368,7 @@ export default function CatalogQuickStrip({
                           confirmPending();
                         }}
                       >
-                        YES
+                        Y
                       </button>
                       <button
                         type="button"
@@ -373,7 +379,7 @@ export default function CatalogQuickStrip({
                           setPending(null);
                         }}
                       >
-                        NO
+                        N
                       </button>
                     </>
                   ) : isEditing ? (
@@ -457,7 +463,7 @@ export default function CatalogQuickStrip({
       {pinModels.length > 0 && (
         <section className="catalog-quick-section catalog-quick-section--pins">
           <header className="catalog-quick-section__head">
-            <span className="catalog-quick-section__title">PINS</span>
+            <span className="catalog-quick-section__title">FAVORITE</span>
             <span className="catalog-quick-section__count">{pinModels.length}</span>
           </header>
           <div className="catalog-quick-section__grid">
@@ -479,26 +485,6 @@ export default function CatalogQuickStrip({
         </section>
       )}
 
-      {recentModels.length > 0 && (
-        <section className="catalog-quick-section catalog-quick-section--recents">
-          <header className="catalog-quick-section__head">
-            <span className="catalog-quick-section__title">RECENTS</span>
-            <span className="catalog-quick-section__count">{recentModels.length}</span>
-          </header>
-          <div className="catalog-quick-section__grid">
-            {recentModels.map((m) => (
-              <QuickModelChip
-                key={`rec-${m.path}`}
-                model={m}
-                variant="recent"
-                selected={selectedKey != null && pathKey(m.path) === selectedKey}
-                title={`${m.name}\n${modelQuantLabel(m)} · recently launched`}
-                onSelect={() => onSelectPath(m.path)}
-              />
-            ))}
-          </div>
-        </section>
-      )}
     </div>
   );
 }
