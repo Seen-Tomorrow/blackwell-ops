@@ -996,6 +996,31 @@ pub fn apply_app_update_archive(
         }
     }
 
+    // pi-subagents extension (pi-ext). Staged by pack-app-update.ps1 only when the
+    // extension actually changed, so its presence here means "install the new tree".
+    // Replaces {app_root}/pi-ext wholesale rather than merging: a merge would leave
+    // pruned/removed modules behind from the previous version. Materializing into
+    // app_root is what pi_code's sync_bundled_subagents reads on next session launch,
+    // and that sync also self-heals the pi-home copy (version stamp + shadow-link
+    // scrub), so no extra work is needed here.
+    let staged_piext = payload.join("pi-ext");
+    if staged_piext.join("pi-subagents").join("package.json").is_file() {
+        let piext_dst = app_root.join("pi-ext");
+        if piext_dst.exists() {
+            std::fs::remove_dir_all(&piext_dst).map_err(|e| {
+                format!(
+                    "Failed to clear {} before pi-ext update: {e}. Close any running pi from Blackwell and retry.",
+                    piext_dst.display()
+                )
+            })?;
+        }
+        crate::archive_util::copy_dir_merge(&staged_piext, &piext_dst)?;
+        log::info!(
+            "[app-update] Installed pi-ext → {} (pi-subagents refreshed)",
+            piext_dst.display()
+        );
+    }
+
     // Ensure 7z is always available next to the app
     let staged_bin = payload.join("bin");
     if staged_bin.is_dir() {
