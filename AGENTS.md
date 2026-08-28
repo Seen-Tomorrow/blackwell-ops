@@ -240,3 +240,12 @@ fixture's architecture line — see commit `125706b`.
 `docs/VRAM-FORECAST.md` — measured SOURCE model / probe law (backend product).
 
 `docs/display-bezel-glass.md` — one glass bezel stack; fusion is not a second glass.
+
+`docs/SELF-SUFFICIENT-INSTALL.md` — **read before touching `pi_code.rs`, `foundry_toolchain.rs`,
+`runtime-distribution.ps1`, `pack-app-update.ps1`, or `majestic.ps1`.** What ships vs downloads
+(App `.7z` ~5 MB / NSIS ~274 MB / toolchain ~1.15 GB), the lean pi-ext pipeline and the
+`pi-coding-agent-shim` junction that broke extension resolution, why UPDATE PI is unsafe while a
+session is live (it `remove_dir_all`s the running `pi.exe`'s own directory), the hash gate that
+keeps daily app updates at 3 s, the pi pin gate, and the x64 MSVC CRT (`vcruntime140`,
+`vcruntime140_1`, `msvcp140`) that every engine imports and that onboarding used to report green
+without.
