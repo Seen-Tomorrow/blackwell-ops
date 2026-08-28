@@ -211,29 +211,83 @@ fn parse_sums_expected(sums: &str, archive_name: &str) -> Option<String> {
 fn write_outer_shim(tools: &Path) -> Result<(), String> {
     let bin = tools.join("bin");
     std::fs::create_dir_all(&bin).map_err(|e| format!("bin dir: {e}"))?;
-    // Prefer absolute home when we know it (spaces-safe); fall back to relative
-    // resolution from this shim so portable moves still work.
-    let home_abs = home_dir().to_string_lossy().replace('"', "");
-    let shim = format!(
+    let shim = outer_shim_body(tools, &home_dir());
+    std::fs::write(bin.join("pi.cmd"), shim).map_err(|e| format!("write shim: {e}"))?;
+    Ok(())
+}
+
+/// Batch body for the outer shim. Pure so the spaced-path contract is testable
+/// without touching the real install dir.
+///
+/// Anchor `PKG` and `PI_CODING_AGENT_DIR` on ABSOLUTE paths baked in at write
+/// time. `%~dp0` is NOT reliable as the primary source: under the launch chain
+/// (`cmd /d /s /c ""session.cmd""` → `call "launcher.cmd"`), an outer
+/// `call ""path""` injects a stray `"` into the middle of `%~dp0`, so
+/// `%~dp0..\pi` resolves to `…\Blackwell OPS\"…\pi` and pi.exe is "not found"
+/// (the `'""C:\AI-MASTER\Blackwell' is not recognized` symptom on install dirs
+/// with spaces). The app always knows its own layout, so bake it in; keep the
+/// `%~dp0` form only as a guarded fallback for a moved portable install.
+fn outer_shim_body(tools: &Path, home: &Path) -> String {
+    let home_abs = home.to_string_lossy().replace('"', "");
+    let pkg_abs = tools.join("pi").to_string_lossy().replace('"', "");
+    format!(
         r#"@echo off
 setlocal
 REM Blackwell-isolated pi launcher (package lives in ..\pi)
 REM PI_CODING_AGENT_DIR overrides pi default ~/.pi/agent - never user profile.
+REM Absolute anchors first: %~dp0 is unreliable under the spaced-path launch chain.
+set "PKG={pkg_abs}"
+if not exist "%PKG%\pi.exe" set "PKG=%~dp0..\pi"
 if not defined PI_CODING_AGENT_DIR (
   if exist "{home_abs}\" (
     set "PI_CODING_AGENT_DIR={home_abs}"
   ) else (
-    set "PI_CODING_AGENT_DIR=%~dp0..\..\..\config\external-tools\pi-home"
+    set "PI_CODING_AGENT_DIR=%PKG%\..\..\..\config\external-tools\pi-home"
   )
 )
-set "PKG=%~dp0..\pi"
 if not defined PI_SUBAGENT_PI_BINARY set "PI_SUBAGENT_PI_BINARY=%PKG%\pi.exe"
 "%PKG%\pi.exe" %*
 exit /b %ERRORLEVEL%
 "#
-    );
-    std::fs::write(bin.join("pi.cmd"), shim).map_err(|e| format!("write shim: {e}"))?;
-    Ok(())
+    )
+}
+
+#[cfg(test)]
+mod shim_tests {
+    use super::*;
+
+    /// The outer shim must anchor `PKG` on an ABSOLUTE path baked in at write
+    /// time, never on `%~dp0` as the primary source. Under the spaced-path launch
+    /// chain (`cmd /d /s /c ""session.cmd""` → `call "launcher.cmd"`), an outer
+    /// `call ""path""` injects a stray `"` into `%~dp0`, which previously made
+    /// `%~dp0..\pi` resolve to `…\Blackwell OPS\"…\pi` — the
+    /// `'""C:\AI-MASTER\Blackwell' is not recognized` launch failure.
+    #[test]
+    fn outer_shim_anchors_pkg_on_absolute_path_not_dp0() {
+        let tools = Path::new(r"C:\AI-MASTER\Blackwell OPS portable\external-tools\pi");
+        let home = Path::new(r"C:\AI-MASTER\Blackwell OPS portable\config\external-tools\pi-home");
+        let body = outer_shim_body(tools, home);
+
+        // Primary PKG anchor must be the absolute package dir, not %~dp0.
+        let primary = body
+            .lines()
+            .find(|l| l.starts_with("set \"PKG="))
+            .expect("PKG assignment present");
+        assert!(
+            !primary.contains("%~dp0"),
+            "primary PKG anchor must not use %%~dp0 (polluted by spaced-path launch chain): {primary}"
+        );
+        assert!(
+            primary.contains(&tools.to_string_lossy().replace('"', "")),
+            "primary PKG anchor must be the absolute package dir: {primary}"
+        );
+        // The %~dp0 fallback may still exist (moved portable install), but only
+        // behind an `if not exist` guard.
+        assert!(
+            body.contains("if not exist \"%PKG%\\pi.exe\" set \"PKG=%~dp0..\\pi\""),
+            "%%~dp0 fallback must remain guarded for moved installs"
+        );
+    }
 }
 
 fn extract_zip_windows(zip: &Path, dest: &Path) -> Result<(), String> {
