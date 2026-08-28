@@ -1118,15 +1118,34 @@ export default function MultiAgentBooster({
     return s;
   }, [piStatus, refreshPiStatus, normalizeError]);
 
+  /** PIDs of live pi consoles launched from our external-tools package. */
+  const [piConsolePids, setPiConsolePids] = useState<number[] | null>(null);
+
   /**
    * DEV-only 1-click update: fetch the latest pi release, reinstall the binary,
    * and refresh the bundled pi-subagents extension. Rust refuses to run outside
    * a debug build; the button is hidden for non-dev builds via isDevBuild().
+   *
+   * Refuses to start while a pi console is live: the update replaces
+   * `external-tools/pi/` (the directory a running pi.exe executes from) and
+   * `target/debug/pi-ext/` (the tree the session's extension loads from). The backend
+   * enforces this too — this is the UI half, so the user gets a clear modal instead of
+   * a sharing violation after a 46 MB download.
    */
   const updatePiToLatest = useCallback(async () => {
     if (piUpdating) return;
     setAtomError(null);
     setAtomMsg(null);
+    try {
+      const pids = await invoke<number[]>("pi_code_console_running");
+      if (pids.length > 0) {
+        setPiConsolePids(pids);
+        return;
+      }
+    } catch {
+      // Probe failed — fall through to the update and let the backend guard decide.
+    }
+    setPiConsolePids(null);
     setPiUpdating(true);
     setInstallPhase("download");
     try {
@@ -1144,6 +1163,12 @@ export default function MultiAgentBooster({
       setInstallPhase(null);
     }
   }, [piUpdating, normalizeError]);
+
+  /** Re-check after the user says they closed the window, then proceed. */
+  const confirmUpdatePi = useCallback(async () => {
+    setPiConsolePids(null);
+    await updatePiToLatest();
+  }, [updatePiToLatest]);
 
   const executeHarnessLaunch = useCallback(
     async (mode: "solo" | "brain_workers") => {
@@ -1800,6 +1825,63 @@ export default function MultiAgentBooster({
         )
       : null;
 
+  /**
+   * "Close the pi window first" modal. Shown when UPDATE PI is clicked with a live
+   * console — the update replaces the package directory that pi.exe is running from.
+   * YES re-probes and proceeds; a still-open console is refused again by the backend.
+   */
+  const closePiFirstPortal =
+    piConsolePids && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            className="atomcode-confirm-overlay"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pi-close-first-title"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setPiConsolePids(null);
+            }}
+          >
+            <div className="atomcode-confirm-modal font-mono">
+              <h3 id="pi-close-first-title" className="atomcode-confirm-title">
+                Close pi before updating
+              </h3>
+              <p className="atomcode-confirm-summary" aria-live="polite">
+                <span className="atomcode-confirm-summary__mode">PI CONSOLE RUNNING</span>
+                <span className="atomcode-confirm-summary__agents">
+                  PID {piConsolePids.join(", ")}
+                </span>
+              </p>
+              <p className="atomcode-confirm-elevated font-mono text-[9px] text-yellow-400/90 m-0 mb-2">
+                The update replaces the pi package that the running pi.exe is executing
+                from, and the pi-ext tree its extension loads from. Updating now would
+                fail mid-way or leave the session on a half-replaced install.
+              </p>
+              <p className="font-mono text-[10px] opacity-80 m-0 mb-2">
+                Close the pi console window. An active agent session will be interrupted.
+              </p>
+              <div className="atomcode-confirm-actions">
+                <button
+                  type="button"
+                  className="full-auto-cockpit__copy font-mono"
+                  onClick={() => setPiConsolePids(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="full-auto-cockpit__copy font-mono"
+                  onClick={() => void confirmUpdatePi()}
+                >
+                  I have closed it — update
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )
+      : null;
+
   const soloEngineLine = soloReady
     ? `${soloTarget.model} :${soloTarget.port} · ${soloTarget.modelName}`
     : "Click a running engine above";
@@ -2414,6 +2496,7 @@ export default function MultiAgentBooster({
         {atomError && <p className="atomcode-msg-err font-mono m-0">{atomError}</p>}
 
         {confirmPortal}
+        {closePiFirstPortal}
       </div>
     );
   }

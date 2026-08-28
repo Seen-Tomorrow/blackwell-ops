@@ -417,6 +417,58 @@ fn dev_pi_ext_src() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("pi-ext")
 }
 
+/// Running pi console processes whose image lives under our `external-tools/pi` package.
+///
+/// `install_pi_version` replaces that whole directory and `sync_dev_pi_ext` replaces
+/// `target/debug/pi-ext`. Both `remove_dir_all` the tree a **live** session is executing
+/// from: on Windows the running image cannot be deleted, so the update fails with a
+/// sharing violation after the download, and a session that survives the call may be
+/// left with its docs/assets/wasm replaced underneath it. Match on the image path, not
+/// just the name `pi.exe`, so a pi installed elsewhere on the machine is not counted.
+#[cfg(windows)]
+fn running_pi_consoles() -> Vec<u32> {
+    use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
+
+    let pkg = match package_dir().canonicalize() {
+        Ok(p) => p,
+        Err(_) => return Vec::new(),
+    };
+    let pkg_l = pkg.to_string_lossy().to_lowercase();
+
+    let mut sys = System::new();
+    sys.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::nothing().with_exe(sysinfo::UpdateKind::Always),
+    );
+
+    sys.processes()
+        .iter()
+        .filter(|(_, proc)| {
+            proc.name().to_string_lossy().eq_ignore_ascii_case("pi.exe")
+                && proc
+                    .exe()
+                    .map(|exe| exe.to_string_lossy().to_lowercase().starts_with(&pkg_l))
+                    .unwrap_or(false)
+        })
+        .map(|(pid, _)| pid.as_u32())
+        .collect()
+}
+
+#[cfg(not(windows))]
+fn running_pi_consoles() -> Vec<u32> {
+    Vec::new()
+}
+
+/// True when a pi console launched from our package is still running.
+///
+/// Exposed so the UI can block "UPDATE PI" behind a confirm modal instead of letting
+/// the user discover the sharing violation mid-update.
+#[tauri::command]
+pub async fn pi_code_console_running() -> Result<Vec<u32>, String> {
+    Ok(running_pi_consoles())
+}
+
 /// 1-click DEV update: fetch the newest pi release, reinstall the binary, then
 /// refresh the bundled pi-subagents extension from npm and re-sync the DEV tree.
 ///
@@ -438,6 +490,23 @@ pub async fn pi_code_update_latest() -> Result<PiCodeStatus, String> {
                 "pi update-to-latest is DEV-only — release builds ship the pinned, verified pi."
                     .into(),
             );
+        }
+
+        // Hard backend guard. The UI asks for confirmation, but the guard lives here so
+        // no caller (or retry path) can replace a package directory a live pi.exe is
+        // executing from. Err before downloading anything.
+        let live = running_pi_consoles();
+        if !live.is_empty() {
+            let ids = live
+                .iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(format!(
+                "pi console still running (PID {ids}). Close the pi window and retry — \
+                 the update replaces {pkg}, which a running pi.exe cannot survive.",
+                pkg = package_dir().display()
+            ));
         }
 
         let latest = crate::github_releases::fetch_latest_release_tag("earendil-works/pi").await?;
