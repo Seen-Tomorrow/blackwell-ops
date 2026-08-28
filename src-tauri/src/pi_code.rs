@@ -1172,8 +1172,18 @@ struct PiRouting {
     worker_target: String,
     /// Engine `--parallel` slot count (concurrent subagent capacity).
     slots: u32,
+    /// Per-slot KV budget advertised to pi for the WORKER seat (`ctx_total / slots`).
+    worker_ctx_per_slot: u64,
     /// True when BRAIN and WORKER are separate engines.
     is_twin: bool,
+}
+
+/// Per-slot KV budget for a fused engine: llama.cpp splits `-c` across `--parallel`
+/// slots (`n_ctx_seq = n_ctx / n_parallel`). A session can never exceed this, so it —
+/// not the engine-level total — is what pi must be told for a shared WORKER seat.
+fn ctx_per_slot(ctx_total: u64, parallel: u32) -> u64 {
+    let slots = parallel.max(1) as u64;
+    ctx_total / slots
 }
 
 /// Build the isolated pi `models.json` (PI_CODING_AGENT_DIR/models.json) so pi
@@ -1221,15 +1231,20 @@ fn build_models_and_settings(req: &PiLaunchRequest) -> Result<(String, String, S
             return Err("Brain and worker must use different ports.".into());
         }
         let w_model = openai_model_id(&worker.model);
-        let w_ctx = worker.context_window.unwrap_or(131_072);
+        // Engine-level `-c` total. Output budget ladder keys off THIS, never the
+        // per-slot split — 512K×4 and 1M×8 both land on 128K/slot and must not
+        // silently drop maxTokens to 16384.
+        let w_ctx_total = worker.context_window.unwrap_or(131_072 * 4);
+        let w_slots = worker.parallel.max(1);
         let w_url = format!("http://localhost:{}/v1", worker.port);
-        let w_max = if w_ctx >= 131_072 { 32768 } else { 16384 };
+        let w_max = if w_ctx_total >= 131_072 { 32768 } else { 16384 };
         (
             w_model,
-            w_ctx,
+            // Advertise the PER-SLOT budget: a fused session is capped at n_ctx/slots.
+            ctx_per_slot(w_ctx_total, w_slots),
             w_url,
             w_max,
-            worker.parallel.max(1),
+            w_slots,
             worker.vision,
         )
     } else {
@@ -1434,6 +1449,12 @@ fn build_models_and_settings(req: &PiLaunchRequest) -> Result<(String, String, S
     let routing_facts = PiRouting {
         worker_target: format!("{}/{}", if is_twin { "worker" } else { "local" }, w_model),
         slots: w_slots,
+        // Solo: worker aliases the primary engine, so split the primary's `-c`.
+        worker_ctx_per_slot: if is_twin {
+            w_ctx
+        } else {
+            ctx_per_slot(primary_ctx, primary_slots)
+        },
         is_twin,
     };
 
@@ -1941,19 +1962,12 @@ pub async fn pi_code_launch(
         }
         // Write the worker agent in BOTH modes. Twin: worker engine (leaner/faster).
         // Solo: worker aliases the same engine → equal-capability fan-out on shared slots.
-        let w_ctx = if routing_facts.is_twin {
-            request
-                .worker
-                .as_ref()
-                .and_then(|w| w.context_window)
-                .unwrap_or(131_072)
-        } else {
-            request.primary.context_window.unwrap_or(262_144)
-        };
+        // Use the per-slot budget (already split by slot count) so the worker's own
+        // idea of its context matches what models.json advertises to pi.
         if let Err(e) = write_worker_agent(
             &home,
             &routing_facts.worker_target,
-            w_ctx,
+            routing_facts.worker_ctx_per_slot,
             routing_facts.slots,
             routing_facts.is_twin,
         ) {
