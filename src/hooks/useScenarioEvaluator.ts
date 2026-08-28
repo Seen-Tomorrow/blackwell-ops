@@ -246,6 +246,7 @@ function resolveDraftSizeMib(
 }
 
 function draftPathForLearned(config: Record<string, unknown>): string {
+  if (!externalDraftWanted(config)) return "";
   return String(config.dflash_draft_model ?? config.spec_draft_model ?? "").trim();
 }
 

@@ -129,11 +129,31 @@ fn normalize_offload_mode(offload_mode: &str) -> String {
 
 fn normalize_spec_type(spec_type: &str) -> String {
     let s = spec_type.trim().to_lowercase();
-    if s.is_empty() || s == "none" {
+    if s.is_empty() || s == "none" || s == "off" {
         "none".to_string()
     } else {
         s
     }
+}
+
+/// Baked-in MTP has no external draft GGUF — leftover DFLASH paths must not
+/// fingerprint or filter LEARNED rows.
+fn spec_uses_external_draft(spec_type: &str) -> bool {
+    let s = normalize_spec_type(spec_type);
+    if s == "none" {
+        return false;
+    }
+    if s.contains("mtp") && !s.contains("dflash") && !s.contains("dspark") && !s.contains("eagle") {
+        return false;
+    }
+    s.contains("dflash") || s.contains("dspark") || s.contains("eagle")
+}
+
+fn draft_key_for_learn(spec_type: &str, draft_key: &str) -> String {
+    if !spec_uses_external_draft(spec_type) {
+        return String::new();
+    }
+    draft_key.trim().to_string()
 }
 
 fn optional_launch_suffix(spec_type: &str, cache_ram: &str, draft_key: &str) -> String {
@@ -142,13 +162,12 @@ fn optional_launch_suffix(spec_type: &str, cache_ram: &str, draft_key: &str) -> 
     if spec != "none" {
         out.push_str(&format!("|spec={spec}"));
     }
-    let draft = draft_key.trim();
+    let draft = draft_key_for_learn(&spec, draft_key);
     if !draft.is_empty() {
-        // Basename only — path moves should not bust learned; same draft GGUF = same key.
-        let base = std::path::Path::new(draft)
+        let base = std::path::Path::new(&draft)
             .file_name()
             .and_then(|s| s.to_str())
-            .unwrap_or(draft);
+            .unwrap_or(draft.as_str());
         out.push_str(&format!("|draft={}", base.to_lowercase()));
     }
     let ram = cache_ram.trim();
@@ -265,6 +284,12 @@ pub fn learned_vram_key_with_draft(
 }
 
 fn draft_path_from_config(config: &EngineConfig) -> String {
+    let spec = config
+        .get_param_str("spec_type")
+        .unwrap_or_else(|| "none".to_string());
+    if !spec_uses_external_draft(&spec) {
+        return String::new();
+    }
     config
         .get_param_str("spec_draft_model")
         .or_else(|| config.get_param_str("dflash_draft_model"))
@@ -780,6 +805,22 @@ mod dedup_tests {
     }
 
     #[test]
+    fn mtp_curve_ignores_leftover_external_draft() {
+        let key = "C:/m.gguf|ggml-master|ctx=65536|kv=q8_0|dev=GPU-0|split=none|mode=full_auto|spec=draft-mtp";
+        assert!(entry_matches_curve_hard_knobs(
+            key,
+            "C:/m.gguf",
+            "ggml-master",
+            "q8_0",
+            "draft-mtp",
+            "leftover-draft.gguf",
+        ));
+        assert!(!spec_uses_external_draft("draft-mtp"));
+        assert!(spec_uses_external_draft("draft-dflash"));
+        assert_eq!(draft_key_for_learn("draft-mtp", "C:/d.gguf"), "");
+    }
+
+    #[test]
     fn append_skips_duplicate_attempt_rows() {
         let tables = vec![MemoryBreakdownTable {
             gpu_self_mib: vec![100.0, 50.0],
@@ -881,13 +922,9 @@ pub fn get_learned_vram(
         .map(|s| s.trim().to_lowercase())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "regular".to_string());
-    let spec = spec_type
-        .as_deref()
-        .unwrap_or("none");
-    let cache = cache_ram
-        .as_deref()
-        .unwrap_or("0");
-    let draft = draft_model.as_deref().unwrap_or("");
+    let spec = spec_type.as_deref().unwrap_or("none");
+    let cache = cache_ram.as_deref().unwrap_or("0");
+    let draft = draft_key_for_learn(spec, draft_model.as_deref().unwrap_or(""));
     let device_token = vram_topo
         .as_deref()
         .map(str::trim)
@@ -904,7 +941,7 @@ pub fn get_learned_vram(
         &offload,
         spec,
         cache,
-        draft,
+        &draft,
     )
 }
 
@@ -958,9 +995,7 @@ fn entry_matches_curve_hard_knobs(
         if !key.contains(&format!("|spec={spec_n}")) {
             return false;
         }
-        // External draft (dflash/dspark): only launches that recorded this draft basename.
-        // Main-only rows must not paint the curve while Boost+draft is on (FIT adds draft).
-        if !draft_base.is_empty() {
+        if spec_uses_external_draft(spec_n) && !draft_base.is_empty() {
             if !key_has_draft || !key.contains(&format!("|draft={draft_base}")) {
                 return false;
             }
@@ -1021,8 +1056,9 @@ pub fn get_learned_vram_curve(
     let path_norm = normalize_model_path_for_key(&model_path);
     let kv_n = kv_quant.trim().to_lowercase();
     let spec_n = normalize_spec_type(spec_type.as_deref().unwrap_or("none"));
+    let draft_raw = draft_key_for_learn(&spec_n, draft_model.as_deref().unwrap_or(""));
     let draft_base = {
-        let d = draft_model.as_deref().unwrap_or("").trim();
+        let d = draft_raw.trim();
         if d.is_empty() {
             String::new()
         } else {
@@ -1111,8 +1147,9 @@ pub fn prune_learned_vram_curve(
     let path_norm = normalize_model_path_for_key(&model_path);
     let kv_n = kv_quant.trim().to_lowercase();
     let spec_n = normalize_spec_type(spec_type.as_deref().unwrap_or("none"));
+    let draft_raw = draft_key_for_learn(&spec_n, draft_model.as_deref().unwrap_or(""));
     let draft_base = {
-        let d = draft_model.as_deref().unwrap_or("").trim();
+        let d = draft_raw.trim();
         if d.is_empty() {
             String::new()
         } else {
