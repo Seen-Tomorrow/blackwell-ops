@@ -1,15 +1,22 @@
+import { useEffect, useState } from "react";
 import type { ModelEntry } from "../lib/types";
 import {
+  CATALOG_ENGINE_SEAT_ROLES,
   CATALOG_SEAT_LABEL,
-  CATALOG_SEAT_ROLES,
   CATALOG_SEAT_SET_COUNT,
   catalogPathChipLabel,
+  type CatalogEngineSeatRole,
   type CatalogRecentEntry,
-  type CatalogSeatRole,
   type CatalogSeatSetIndex,
   type CatalogSeatsState,
 } from "../lib/catalogQuickAccess";
-import { dispatchAppEvent, EVENTS, type CatalogLaunchSeatsDetail } from "../lib/events";
+import {
+  dispatchAppEvent,
+  EVENTS,
+  type CatalogLaunchSeatsDetail,
+  type CatalogSeatEditDetail,
+  type CatalogSeatEditEndedDetail,
+} from "../lib/events";
 
 export type CatalogQuickStripProps = {
   models: ModelEntry[];
@@ -19,8 +26,9 @@ export type CatalogQuickStripProps = {
   recents: CatalogRecentEntry[];
   selectedPath: string | null;
   onSelectPath: (path: string) => void;
-  onAssignSeat: (role: CatalogSeatRole) => void;
-  onClearSeat: (role: CatalogSeatRole) => void;
+  /** Assign selected catalog model to role (no dialog — strip owns YES/NO). */
+  onAssignSeat: (role: CatalogEngineSeatRole) => void;
+  onClearSeat: (role: CatalogEngineSeatRole) => void;
   onSelectSeatSet: (index: CatalogSeatSetIndex) => void;
   onTogglePinPath: (path: string) => void;
 };
@@ -38,7 +46,6 @@ function isShardNoiseQuant(label: string): boolean {
   return /^\d{3,}$/.test(label.trim());
 }
 
-/** Quant line under the model name — never the bare "GGUF" / shard index. */
 function modelQuantLabel(m: ModelEntry): string {
   const header = m.metadata?.file_type_str?.trim() ?? "";
   const catalog = m.quant?.trim() ?? "";
@@ -91,6 +98,20 @@ function QuickModelChip({
   );
 }
 
+/** Live perimeter cue — same family as VramBadge NEED frame rim. */
+function SeatLiveRim() {
+  return (
+    <span className="catalog-quick-seat__live" aria-hidden>
+      <span className="catalog-quick-seat__live-rim" />
+    </span>
+  );
+}
+
+type PendingAction =
+  | { kind: "replace"; role: CatalogEngineSeatRole }
+  | { kind: "clear"; role: CatalogEngineSeatRole }
+  | null;
+
 export default function CatalogQuickStrip({
   models,
   seats,
@@ -104,8 +125,28 @@ export default function CatalogQuickStrip({
   onSelectSeatSet,
   onTogglePinPath,
 }: CatalogQuickStripProps) {
+  const [editingRole, setEditingRole] = useState<CatalogEngineSeatRole | null>(null);
+  const [pending, setPending] = useState<PendingAction>(null);
+
+  useEffect(() => {
+    const onEnded = (e: Event) => {
+      const detail = (e as CustomEvent<CatalogSeatEditEndedDetail>).detail;
+      if (detail) {
+        setEditingRole(null);
+        setPending(null);
+      }
+    };
+    window.addEventListener(EVENTS.catalogSeatEditEnded, onEnded);
+    return () => window.removeEventListener(EVENTS.catalogSeatEditEnded, onEnded);
+  }, []);
+
+  useEffect(() => {
+    setEditingRole(null);
+    setPending(null);
+  }, [activeSeatSet]);
+
   const seatPathKeys: Record<string, true> = {};
-  for (const r of CATALOG_SEAT_ROLES) {
+  for (const r of CATALOG_ENGINE_SEAT_ROLES) {
     const p = seats[r]?.path;
     if (p) seatPathKeys[pathKey(p)] = true;
   }
@@ -128,23 +169,73 @@ export default function CatalogQuickStrip({
 
   const selectedKey = selectedPath ? pathKey(selectedPath) : null;
   const canLaunchTwin = Boolean(seats.brain?.path && seats.worker?.path);
+  const seatEditing = editingRole != null;
+  const hasSelection = Boolean(selectedPath);
 
   const launchSeatedTwin = () => {
     if (!seats.brain?.path || !seats.worker?.path) return;
     const detail: CatalogLaunchSeatsDetail = {
       brainPath: seats.brain.path,
       workerPath: seats.worker.path,
-      draftPath: seats.draft?.path ?? null,
+      setIndex: activeSeatSet,
     };
     dispatchAppEvent(EVENTS.catalogLaunchSeats, detail);
   };
 
+  const beginSeatEdit = (role: CatalogEngineSeatRole) => {
+    const path = seats[role]?.path;
+    if (!path) return;
+    setPending(null);
+    // Always (re)select so panel path + bag apply race lands on this seat.
+    onSelectPath(path);
+    setEditingRole(role);
+    const detail: CatalogSeatEditDetail = {
+      role,
+      setIndex: activeSeatSet,
+      modelPath: path,
+    };
+    dispatchAppEvent(EVENTS.catalogSeatEdit, detail);
+  };
+
+  const tryAssignEmpty = (role: CatalogEngineSeatRole) => {
+    if (!hasSelection) return;
+    onAssignSeat(role);
+  };
+
+  const confirmPending = () => {
+    if (!pending) return;
+    if (pending.kind === "replace") onAssignSeat(pending.role);
+    else onClearSeat(pending.role);
+    setPending(null);
+  };
+
+  const rolesToShow: CatalogEngineSeatRole[] = seatEditing
+    ? [editingRole!]
+    : [...CATALOG_ENGINE_SEAT_ROLES];
+
   return (
-    <div className="catalog-quick-strip" data-catalog-quick-strip>
-      <section className="catalog-quick-section catalog-quick-section--seats">
+    <div
+      className={[
+        "catalog-quick-strip",
+        seatEditing ? "catalog-quick-strip--seat-editing" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      data-catalog-quick-strip
+      data-seat-editing={seatEditing ? editingRole : undefined}
+    >
+      <section
+        className={[
+          "catalog-quick-section catalog-quick-section--seats",
+          seatEditing ? "catalog-quick-section--seats-editing" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
+        {seatEditing ? <SeatLiveRim /> : null}
         <header
           className="catalog-quick-section__head"
-          title="BRAIN + WORKER launch as engines. DRAFT is BRAIN’s speculative pack (Boost), not a third server. Sets 1–3 are independent twin stacks (catalog-only, not launch presets)."
+          title="BRAIN + WORKER twin seats. Colors match harness connect. EDIT expands the seat full-width until SAVE or CANCEL."
         >
           <div className="catalog-quick-section__sets" role="tablist" aria-label="Seat sets">
             {Array.from({ length: CATALOG_SEAT_SET_COUNT }, (_, i) => {
@@ -158,6 +249,7 @@ export default function CatalogQuickStrip({
                   aria-selected={active}
                   className={`catalog-quick-set-btn${active ? " catalog-quick-set-btn--active" : ""}`}
                   title={`Seat set ${idx + 1}${active ? " (active)" : ""}`}
+                  disabled={seatEditing}
                   onClick={() => onSelectSeatSet(idx)}
                 >
                   {idx + 1}
@@ -165,43 +257,53 @@ export default function CatalogQuickStrip({
               );
             })}
           </div>
-          <span className="catalog-quick-section__title">SEATS</span>
-          <button
-            type="button"
-            className="catalog-quick-section__action"
-            disabled={!canLaunchTwin}
-            title={
-              canLaunchTwin
-                ? seats.draft?.path
-                  ? `Launch set ${activeSeatSet + 1}: BRAIN + WORKER · DRAFT → BRAIN Boost`
-                  : `Launch set ${activeSeatSet + 1}: BRAIN + WORKER twin`
-                : "Assign BRAIN and WORKER on this set first"
-            }
-            onClick={launchSeatedTwin}
-          >
-            ▶ TWIN
-          </button>
+          <span className="catalog-quick-section__title">
+            {seatEditing
+              ? `EDITING ${CATALOG_SEAT_LABEL[editingRole!]}`
+              : "SEATS"}
+          </span>
+          <div className="catalog-quick-section__actions">
+            {!seatEditing ? (
+              <button
+                type="button"
+                className="catalog-quick-section__action"
+                disabled={!canLaunchTwin}
+                title={
+                  canLaunchTwin
+                    ? `Launch set ${activeSeatSet + 1}: BRAIN + WORKER twin`
+                    : "Assign BRAIN and WORKER on this set first"
+                }
+                onClick={launchSeatedTwin}
+              >
+                ▶ TWIN
+              </button>
+            ) : null}
+          </div>
         </header>
-        <div className="catalog-quick-strip__seats">
-          {CATALOG_SEAT_ROLES.map((role) => {
+        <div
+          className={[
+            "catalog-quick-strip__seats catalog-quick-strip__seats--twin",
+            seatEditing ? "catalog-quick-strip__seats--editing" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
+          {rolesToShow.map((role) => {
             const slot = seats[role];
             const model = slot ? findModel(models, slot.path) : undefined;
             const filled = Boolean(slot?.path);
             const isSelected =
               filled && selectedKey != null && pathKey(slot!.path) === selectedKey;
+            const isEditing = editingRole === role;
+            const selectionDiffers =
+              filled
+              && selectedPath
+              && pathKey(slot!.path) !== pathKey(selectedPath);
+            const pendingHere =
+              pending && pending.role === role ? pending.kind : null;
             const label = filled
               ? catalogPathChipLabel(slot!.path, model?.name)
-              : role === "draft"
-                ? "spec pack"
-                : "—";
-            const roleTitle =
-              role === "draft"
-                ? filled
-                  ? `DRAFT (spec pack for BRAIN Boost) · ${model?.name || slot!.path}\nNot a third engine — pairs under BRAIN DFlash/DSpark\nClick select · right-click clear`
-                  : "DRAFT seat — assign a speculative draft pack (DFlash/Eagle). Used by BRAIN Boost, not launched alone."
-                : filled
-                  ? `${CATALOG_SEAT_LABEL[role]} · ${model?.name || slot!.path}\nClick to select · right-click to clear`
-                  : `${CATALOG_SEAT_LABEL[role]} empty — select a model, then click to assign`;
+              : "— empty";
 
             return (
               <div
@@ -211,44 +313,141 @@ export default function CatalogQuickStrip({
                   `catalog-quick-seat--${role}`,
                   filled ? "catalog-quick-seat--filled" : "catalog-quick-seat--empty",
                   isSelected ? "catalog-quick-seat--selected" : "",
+                  isEditing ? "catalog-quick-seat--editing" : "",
+                  pendingHere ? "catalog-quick-seat--pending" : "",
                 ]
                   .filter(Boolean)
                   .join(" ")}
               >
+                {isEditing ? <SeatLiveRim /> : null}
                 <button
                   type="button"
                   className="catalog-quick-seat__main"
-                  title={roleTitle}
+                  title={
+                    isEditing
+                      ? `Editing ${CATALOG_SEAT_LABEL[role]} — tune panel, then SAVE on this seat`
+                      : filled
+                        ? `${CATALOG_SEAT_LABEL[role]} · ${model?.name || slot!.path}\nClick = select · EDIT = knobs · REPLACE = swap model`
+                        : hasSelection
+                          ? `${CATALOG_SEAT_LABEL[role]} empty — click to seat selected model`
+                          : `${CATALOG_SEAT_LABEL[role]} empty — select a catalog model first`
+                  }
                   onClick={() => {
-                    if (filled && slot) onSelectPath(slot.path);
-                    else onAssignSeat(role);
-                  }}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    if (filled) onClearSeat(role);
+                    if (isEditing) return;
+                    if (filled && slot) {
+                      onSelectPath(slot.path);
+                      return;
+                    }
+                    tryAssignEmpty(role);
                   }}
                 >
                   <span className="catalog-quick-seat__role">
-                    {role === "draft" ? "DRAFT" : CATALOG_SEAT_LABEL[role]}
+                    {CATALOG_SEAT_LABEL[role]}
                   </span>
                   <span className="catalog-quick-seat__name">{label}</span>
-                  {filled && model && (
+                  {filled && model ? (
                     <span className="catalog-quick-seat__quant">{modelQuantLabel(model)}</span>
-                  )}
+                  ) : null}
                 </button>
-                {filled && (
-                  <button
-                    type="button"
-                    className="catalog-quick-seat__clear"
-                    title={`Clear ${CATALOG_SEAT_LABEL[role]} seat`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onClearSeat(role);
-                    }}
-                  >
-                    ×
-                  </button>
-                )}
+
+                <div className="catalog-quick-seat__actions">
+                  {pendingHere ? (
+                    <>
+                      <button
+                        type="button"
+                        className="catalog-quick-seat__btn catalog-quick-seat__btn--yes"
+                        title="Confirm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          confirmPending();
+                        }}
+                      >
+                        YES
+                      </button>
+                      <button
+                        type="button"
+                        className="catalog-quick-seat__btn catalog-quick-seat__btn--no"
+                        title="Cancel"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPending(null);
+                        }}
+                      >
+                        NO
+                      </button>
+                    </>
+                  ) : isEditing ? (
+                    <>
+                      <button
+                        type="button"
+                        className="catalog-quick-seat__btn catalog-quick-seat__btn--save"
+                        title="Save panel config into this seat"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          dispatchAppEvent(EVENTS.catalogSeatSave);
+                        }}
+                      >
+                        <span className="catalog-quick-seat__save-ico" aria-hidden>
+                          ▣
+                        </span>
+                        SAVE
+                      </button>
+                      <button
+                        type="button"
+                        className="catalog-quick-seat__btn catalog-quick-seat__btn--cancel"
+                        title="Cancel seat edit"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          dispatchAppEvent(EVENTS.catalogSeatCancel);
+                        }}
+                      >
+                        CANCEL
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      {filled && selectionDiffers ? (
+                        <button
+                          type="button"
+                          className="catalog-quick-seat__btn catalog-quick-seat__btn--replace"
+                          title="Replace this seat’s model with the selected catalog model"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPending({ kind: "replace", role });
+                          }}
+                        >
+                          R
+                        </button>
+                      ) : null}
+                      {filled ? (
+                        <button
+                          type="button"
+                          className="catalog-quick-seat__btn catalog-quick-seat__btn--edit"
+                          title={`Edit ${CATALOG_SEAT_LABEL[role]} knobs in the real panel`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            beginSeatEdit(role);
+                          }}
+                        >
+                          E
+                        </button>
+                      ) : null}
+                      {filled ? (
+                        <button
+                          type="button"
+                          className="catalog-quick-seat__btn catalog-quick-seat__btn--clear"
+                          title={`Clear ${CATALOG_SEAT_LABEL[role]} seat`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPending({ kind: "clear", role });
+                          }}
+                        >
+                          ×
+                        </button>
+                      ) : null}
+                    </>
+                  )}
+                </div>
               </div>
             );
           })}

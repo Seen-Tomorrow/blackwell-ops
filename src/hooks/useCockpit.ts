@@ -90,6 +90,11 @@ export type UseCockpitOptions = {
   isCustomProvider: boolean;
   specDecodingGroupVisible: boolean;
   setResolvedProviders: React.Dispatch<React.SetStateAction<ProviderConfig[]>>;
+  /**
+   * While true, skip model/capability Boost re-snap (seat-edit hydrate).
+   * Prevents applyFullAutoCockpit fighting seat bag + endless VRAM re-eval.
+   */
+  hydrateLockRef?: React.MutableRefObject<boolean>;
 };
 
 export function useCockpit({
@@ -106,6 +111,7 @@ export function useCockpit({
   isCustomProvider,
   specDecodingGroupVisible,
   setResolvedProviders,
+  hydrateLockRef,
 }: UseCockpitOptions) {
   const [codingMode, setCodingMode] = useState<CodingModeId>("solo");
   const [speedBoost, setSpeedBoost] = useState<SpeedBoostId>("off");
@@ -450,6 +456,7 @@ export function useCockpit({
 
   // Model / capability drop → snap Boost (derive agents/memory/think from config).
   useEffect(() => {
+    if (hydrateLockRef?.current) return;
     if (!model) return;
     if (!allParamsResolved.length || Object.keys(config).length === 0) return;
     const modeFromCfg = codingModeFromParallel(

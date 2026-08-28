@@ -2431,12 +2431,13 @@ export default function MultiAgentBooster({
         <span className="full-auto-cockpit__title font-mono tracking-[0.16em] uppercase shrink-0">
           {powerMode ? "Power cockpit" : "Launch cockpit"}
         </span>
-        {!harnessOpen && (
+        {!harnessOpen
+          && stack.some((e) => e.status === "RUNNING" && e.port > 0) && (
           <button
             type="button"
             onClick={() => setHarnessOpen(true)}
             className="full-auto-cockpit__connect full-auto-cockpit__connect--header full-auto-cockpit__connect--accent font-mono tracking-wider uppercase shrink-0"
-            title="Connect an external coding agent (AtomCode / Qwen / pi)"
+            title="Connect an external coding agent (pi)"
           >
             AGENTIC HARNESS
           </button>

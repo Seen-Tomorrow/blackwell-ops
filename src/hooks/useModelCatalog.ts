@@ -24,6 +24,7 @@ import {
 import {
   assignCatalogSeat,
   clearCatalogSeat,
+  CATALOG_SEAT_LABEL,
   isCatalogPinned,
   loadCatalogActiveSeatSet,
   loadCatalogPins,
@@ -33,6 +34,7 @@ import {
   seatRoleForPath,
   setCatalogActiveSeatSet,
   toggleCatalogPin,
+  type CatalogEngineSeatRole,
   type CatalogRecentEntry,
   type CatalogSeatRole,
   type CatalogSeatSetIndex,
@@ -401,17 +403,23 @@ export function useModelCatalog({
       if (payload?.slot !== undefined) {
         try {
           const saved = readStorage(KEYS.selectedSlotIdx);
-          if (saved && parseInt(saved) === payload.slot) setSelectedSlotIdx(null);
+          if (saved != null && Number(saved) === payload.slot) setSelectedSlotIdx(null);
         } catch {}
       }
+    };
+    const onSeatsChanged = () => {
+      setCatalogSeats(loadCatalogSeats());
+      setActiveSeatSetState(loadCatalogActiveSeatSet());
     };
     window.addEventListener(EVENTS.engineLaunched, onLaunch);
     window.addEventListener(EVENTS.stopAll, onStopAll);
     window.addEventListener(EVENTS.slotCleared, onSlotCleared);
+    window.addEventListener(EVENTS.catalogSeatsChanged, onSeatsChanged);
     return () => {
       window.removeEventListener(EVENTS.engineLaunched, onLaunch);
       window.removeEventListener(EVENTS.stopAll, onStopAll);
       window.removeEventListener(EVENTS.slotCleared, onSlotCleared);
+      window.removeEventListener(EVENTS.catalogSeatsChanged, onSeatsChanged);
     };
   }, [models]);
 
@@ -483,15 +491,23 @@ export function useModelCatalog({
   }, []);
 
   const handleAssignSeat = useCallback(
-    (role: CatalogSeatRole, model?: ModelEntry | null) => {
+    (role: CatalogEngineSeatRole | CatalogSeatRole, model?: ModelEntry | null) => {
+      if (role === "draft") return;
       const target = model ?? catalogSelectedModel ?? panelActiveModel;
       if (!target) return;
+      const current = catalogSeats[role];
+      if (current?.path
+        && normalizeModelPathKey(current.path) === normalizeModelPathKey(target.path)
+      ) {
+        return;
+      }
       setCatalogSeats(assignCatalogSeat(role, target.path));
     },
-    [catalogSelectedModel, panelActiveModel],
+    [catalogSelectedModel, panelActiveModel, catalogSeats],
   );
 
-  const handleClearSeat = useCallback((role: CatalogSeatRole) => {
+  const handleClearSeat = useCallback((role: CatalogEngineSeatRole | CatalogSeatRole) => {
+    if (role === "draft") return;
     setCatalogSeats(clearCatalogSeat(role));
   }, []);
 

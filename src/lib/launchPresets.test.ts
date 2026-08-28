@@ -49,6 +49,21 @@ describe("sparseOverridesFromConfig", () => {
     expect(o.parallel).toBe(8);
     expect(o.__memory_mode).toBeUndefined();
   });
+
+  it("captures device and boost/spec pack keys", () => {
+    const o = sparseOverridesFromConfig({
+      device: "GPU-1",
+      dflash_draft_model: "C:\\models\\draft.gguf",
+      mtp_n_max: 4,
+      dflash_n_min: 1,
+      __noise: 1,
+    });
+    expect(o.device).toBe("GPU-1");
+    expect(o.dflash_draft_model).toBe("C:\\models\\draft.gguf");
+    expect(o.mtp_n_max).toBe(4);
+    expect(o.dflash_n_min).toBe(1);
+    expect(o.__noise).toBeUndefined();
+  });
 });
 
 describe("resolveComboApply", () => {

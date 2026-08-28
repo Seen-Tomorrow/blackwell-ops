@@ -1,12 +1,17 @@
 /**
- * Catalog quick-access: pins, recents, sticky seats (BRAIN / WORKER / DRAFT).
- * Path-only memory — does not touch launch presets or forecast.
+ * Catalog quick-access: pins, recents, sticky seats (BRAIN / WORKER).
+ * Path pins + optional linked launch-preset combo id per set (knobs live on ComboPreset).
+ * Draft/Boost stays on the cockpit — not a catalog seat.
  *
  * Three independent seat *sets* (1/2/3) for quick twin-stack switching.
  */
 import { KEYS, readJsonStorage, writeJsonStorage } from "./storage";
 
 export type CatalogSeatRole = "brain" | "worker" | "draft";
+
+/** Engine seats shown in the catalog strip (DRAFT is storage-only legacy). */
+export const CATALOG_ENGINE_SEAT_ROLES = ["brain", "worker"] as const;
+export type CatalogEngineSeatRole = (typeof CATALOG_ENGINE_SEAT_ROLES)[number];
 
 export const CATALOG_SEAT_ROLES: readonly CatalogSeatRole[] = [
   "brain",
@@ -37,6 +42,17 @@ export type CatalogRecentEntry = {
 };
 
 type CatalogSeatSets = [CatalogSeatsState, CatalogSeatsState, CatalogSeatsState];
+type CatalogComboIds = [string | null, string | null, string | null];
+
+type CatalogQuickStoreV3 = {
+  version: 3;
+  pins: string[];
+  recents: CatalogRecentEntry[];
+  activeSeatSet: CatalogSeatSetIndex;
+  seatSets: CatalogSeatSets;
+  /** Linked twin ComboPreset id per set (launchPresets store). */
+  comboIds: CatalogComboIds;
+};
 
 type CatalogQuickStoreV2 = {
   version: 2;
@@ -65,14 +81,46 @@ function emptySeatSets(): CatalogSeatSets {
   return [emptySeats(), emptySeats(), emptySeats()];
 }
 
-function emptyStore(): CatalogQuickStoreV2 {
+function emptyComboIds(): CatalogComboIds {
+  return [null, null, null];
+}
+
+function emptyStore(): CatalogQuickStoreV3 {
   return {
-    version: 2,
+    version: 3,
     pins: [],
     recents: [],
     activeSeatSet: 0,
     seatSets: emptySeatSets(),
+    comboIds: emptyComboIds(),
   };
+}
+
+function sanitizeComboIds(raw: unknown): CatalogComboIds {
+  const out = emptyComboIds();
+  if (!Array.isArray(raw)) return out;
+  for (let i = 0; i < CATALOG_SEAT_SET_COUNT; i++) {
+    const v = raw[i];
+    out[i as CatalogSeatSetIndex] = typeof v === "string" && v.trim() ? v.trim() : null;
+  }
+  return out;
+}
+
+function sanitizePins(raw: unknown): string[] {
+  return Array.isArray(raw)
+    ? raw.filter((p): p is string => typeof p === "string" && p.length > 0).slice(0, PINS_MAX)
+    : [];
+}
+
+function sanitizeRecents(raw: unknown): CatalogRecentEntry[] {
+  return Array.isArray(raw)
+    ? raw
+        .filter(
+          (r): r is CatalogRecentEntry =>
+            !!r && typeof r.path === "string" && typeof r.at === "number",
+        )
+        .slice(0, RECENTS_MAX)
+    : [];
 }
 
 function normalizePath(path: string): string {
@@ -98,66 +146,72 @@ function sanitizeSeats(raw: unknown): CatalogSeatsState {
   return out;
 }
 
-function readStore(): CatalogQuickStoreV2 {
-  const raw = readJsonStorage<CatalogQuickStoreV2 | CatalogQuickStoreV1>(KEYS.catalogQuickAccess);
+function readStore(): CatalogQuickStoreV3 {
+  const raw = readJsonStorage<CatalogQuickStoreV3 | CatalogQuickStoreV2 | CatalogQuickStoreV1>(
+    KEYS.catalogQuickAccess,
+  );
   if (!raw) return emptyStore();
 
-  // v1 → v2 migration (single seats bag → set 0)
+  // v1 → v3 migration (single seats bag → set 0)
   if ((raw as CatalogQuickStoreV1).version === 1) {
     const v1 = raw as CatalogQuickStoreV1;
     const sets = emptySeatSets();
     sets[0] = sanitizeSeats(v1.seats);
     return {
-      version: 2,
-      pins: Array.isArray(v1.pins)
-        ? v1.pins.filter((p): p is string => typeof p === "string" && p.length > 0).slice(0, PINS_MAX)
-        : [],
-      recents: Array.isArray(v1.recents)
-        ? v1.recents
-            .filter(
-              (r): r is CatalogRecentEntry =>
-                !!r && typeof r.path === "string" && typeof r.at === "number",
-            )
-            .slice(0, RECENTS_MAX)
-        : [],
+      version: 3,
+      pins: sanitizePins(v1.pins),
+      recents: sanitizeRecents(v1.recents),
       activeSeatSet: 0,
       seatSets: sets,
+      comboIds: emptyComboIds(),
     };
   }
 
-  if ((raw as CatalogQuickStoreV2).version !== 2) return emptyStore();
-  const v2 = raw as CatalogQuickStoreV2;
+  // v2 → v3 (add comboIds)
+  if ((raw as CatalogQuickStoreV2).version === 2) {
+    const v2 = raw as CatalogQuickStoreV2;
+    const sets = emptySeatSets();
+    if (Array.isArray(v2.seatSets)) {
+      for (let i = 0; i < CATALOG_SEAT_SET_COUNT; i++) {
+        sets[i as CatalogSeatSetIndex] = sanitizeSeats(v2.seatSets[i]);
+      }
+    }
+    return {
+      version: 3,
+      pins: sanitizePins(v2.pins),
+      recents: sanitizeRecents(v2.recents),
+      activeSeatSet: clampSetIndex(v2.activeSeatSet),
+      seatSets: sets,
+      comboIds: emptyComboIds(),
+    };
+  }
+
+  if ((raw as CatalogQuickStoreV3).version !== 3) return emptyStore();
+  const v3 = raw as CatalogQuickStoreV3;
   const sets = emptySeatSets();
-  if (Array.isArray(v2.seatSets)) {
+  if (Array.isArray(v3.seatSets)) {
     for (let i = 0; i < CATALOG_SEAT_SET_COUNT; i++) {
-      sets[i as CatalogSeatSetIndex] = sanitizeSeats(v2.seatSets[i]);
+      sets[i as CatalogSeatSetIndex] = sanitizeSeats(v3.seatSets[i]);
     }
   }
   return {
-    version: 2,
-    pins: Array.isArray(v2.pins)
-      ? v2.pins.filter((p): p is string => typeof p === "string" && p.length > 0).slice(0, PINS_MAX)
-      : [],
-    recents: Array.isArray(v2.recents)
-      ? v2.recents
-          .filter(
-            (r): r is CatalogRecentEntry =>
-              !!r && typeof r.path === "string" && typeof r.at === "number",
-          )
-          .slice(0, RECENTS_MAX)
-      : [],
-    activeSeatSet: clampSetIndex(v2.activeSeatSet),
+    version: 3,
+    pins: sanitizePins(v3.pins),
+    recents: sanitizeRecents(v3.recents),
+    activeSeatSet: clampSetIndex(v3.activeSeatSet),
     seatSets: sets,
+    comboIds: sanitizeComboIds(v3.comboIds),
   };
 }
 
-function writeStore(store: CatalogQuickStoreV2): void {
+function writeStore(store: CatalogQuickStoreV3): void {
   writeJsonStorage(KEYS.catalogQuickAccess, {
-    version: 2,
+    version: 3,
     pins: store.pins.slice(0, PINS_MAX),
     recents: store.recents.slice(0, RECENTS_MAX),
     activeSeatSet: clampSetIndex(store.activeSeatSet),
     seatSets: store.seatSets,
+    comboIds: store.comboIds,
   });
 }
 
@@ -231,13 +285,21 @@ export function setCatalogActiveSeatSet(index: CatalogSeatSetIndex): {
 }
 
 export function assignCatalogSeat(role: CatalogSeatRole, path: string): CatalogSeatsState {
+  return assignCatalogSeatAt(loadCatalogActiveSeatSet(), role, path);
+}
+
+/** Assign path on a specific set (seat-edit write-through). */
+export function assignCatalogSeatAt(
+  index: CatalogSeatSetIndex,
+  role: CatalogSeatRole,
+  path: string,
+): CatalogSeatsState {
   const store = readStore();
-  const i = store.activeSeatSet;
+  const i = clampSetIndex(index);
   const seats: CatalogSeatsState = {
     ...store.seatSets[i],
     [role]: { path, updatedAt: Date.now() },
   };
-  // A path can only occupy one seat role within the active set.
   for (const r of CATALOG_SEAT_ROLES) {
     if (r === role) continue;
     const slot = seats[r];
@@ -260,12 +322,32 @@ export function clearCatalogSeat(role: CatalogSeatRole): CatalogSeatsState {
   return { ...seats };
 }
 
+export function loadCatalogSetComboId(index?: CatalogSeatSetIndex): string | null {
+  const s = readStore();
+  const i = index != null ? clampSetIndex(index) : s.activeSeatSet;
+  return s.comboIds[i];
+}
+
+export function loadCatalogComboIds(): CatalogComboIds {
+  return [...readStore().comboIds] as CatalogComboIds;
+}
+
+export function setCatalogSetComboId(
+  index: CatalogSeatSetIndex,
+  comboId: string | null,
+): void {
+  const store = readStore();
+  const i = clampSetIndex(index);
+  store.comboIds[i] = comboId && comboId.trim() ? comboId.trim() : null;
+  writeStore(store);
+}
+
 export function seatRoleForPath(
   path: string,
   seats: CatalogSeatsState = loadCatalogSeats(),
-): CatalogSeatRole | null {
+): CatalogEngineSeatRole | null {
   const n = normalizePath(path);
-  for (const role of CATALOG_SEAT_ROLES) {
+  for (const role of CATALOG_ENGINE_SEAT_ROLES) {
     const slot = seats[role];
     if (slot && normalizePath(slot.path) === n) return role;
   }

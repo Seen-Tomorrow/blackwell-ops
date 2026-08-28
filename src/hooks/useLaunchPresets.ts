@@ -16,15 +16,15 @@ import {
   captureSeatFromStack,
   deleteCombo,
   duplicateCombo,
-  listCombos,
+  listUserCombos,
   saveCombo,
 } from "../lib/launchPresets";
 
 export function useLaunchPresets() {
-  const [combos, setCombos] = useState<ComboPreset[]>(() => listCombos());
+  const [combos, setCombos] = useState<ComboPreset[]>(() => listUserCombos());
 
   const refresh = useCallback(() => {
-    setCombos(listCombos());
+    setCombos(listUserCombos());
   }, []);
 
   useEffect(() => {
