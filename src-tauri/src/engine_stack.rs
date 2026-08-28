@@ -35,7 +35,7 @@ fn fit_scanner_estimate_vram(config: &EngineConfig) -> f64 {
     if let Some(entry) =
         crate::vram_learn::lookup_learned_vram_for_config(&config.model_path, &provider_id, config)
     {
-        return entry.vram_mib;
+        return entry.paint_vram_mib();
     }
 
     if let Some(full) = crate::fit_scanner::find_existing_scan_in_provider_partition(

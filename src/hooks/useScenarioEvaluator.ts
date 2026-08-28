@@ -749,13 +749,13 @@ export function useScenarioEvaluator({
         const lastAttempt = entry?.fit_attempts?.length
           ? entry.fit_attempts[entry.fit_attempts.length - 1]
           : undefined;
-        learnedVramRef.current = snap?.vram_mib ?? entry?.vram_mib ?? null;
+        learnedVramRef.current = entry?.vram_mib ?? snap?.vram_mib ?? null;
         learnedHostRef.current =
-          snap?.host_mib ?? entry?.host_mib ?? lastAttempt?.host_mib ?? null;
+          entry?.host_mib ?? snap?.host_mib ?? lastAttempt?.host_mib ?? null;
         learnedGpuBreakdownRef.current =
-          snap?.gpu_breakdown_mib ?? entry?.gpu_breakdown_mib ?? lastAttempt?.gpu_breakdown_mib ?? null;
+          entry?.gpu_breakdown_mib ?? snap?.gpu_breakdown_mib ?? lastAttempt?.gpu_breakdown_mib ?? null;
         learnedGpuComponentsRef.current =
-          snap?.gpu_components_mib ?? entry?.gpu_components_mib ?? null;
+          entry?.gpu_components_mib ?? snap?.gpu_components_mib ?? null;
         learnedLaunchProfileRef.current = snap?.reference_profile;
         learnedMeasuredAtRef.current = entry?.measured_at;
         learnedMtpContextRef.current = snap?.mtp_context_mib;
