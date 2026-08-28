@@ -566,6 +566,36 @@ function Invoke-MajesticCheck {
         }
     }
 
+    # pi harness pin. The release binary embeds src-tauri/pi-pinned-version.txt via
+    # pi_code::PINNED_VERSION (include_str!), and pi_code_install falls back to it when
+    # no version is given - so a stale pin makes a fresh REL install download a pi that
+    # was never tested. bump-pi is the only thing that writes this file and nothing else
+    # validated it, so packing straight after a pi update shipped the old pi silently.
+    # Hard gate, both variants. A missing DEV pi is NOT a failure: a clean checkout with
+    # no pi installed cannot be pinned, and that must not block an unrelated pack.
+    $pi_pin_stale = $false
+    $pi_installed = $null
+    try {
+        $pi_installed = Get-DevPiInstalledVersion
+    } catch {
+        Write-Majestic "pi pin: no DEV pi installed - skipping pin check (Harness connect > UPDATE first)" -Color Yellow
+    }
+    if ($pi_installed) {
+        $pi_pin = Read-PiPinnedVersion
+        if (-not $pi_pin) {
+            $pi_pin_stale = $true
+            Write-Majestic "pi pin: pi-pinned-version.txt is EMPTY but DEV runs pi $pi_installed." -Color Red
+            Write-Majestic '  Fix: press BUMP HARNESS (majestic -Mode bump-pi).' -Color Red
+        } elseif ($pi_pin -ne $pi_installed) {
+            $pi_pin_stale = $true
+            Write-Majestic "pi pin: STALE - pin says $pi_pin, DEV-tested pi is $pi_installed." -Color Red
+            Write-Majestic "  A REL install would download $pi_pin, not the pi you tested." -Color Red
+            Write-Majestic '  Fix: press BUMP HARNESS (majestic -Mode bump-pi), then rebuild.' -Color Red
+        } else {
+            Write-Majestic "pi pin: $pi_pin matches DEV-installed pi." -Color Green
+        }
+    }
+
     if ($Variant -eq 'app') {
         $exe = Get-ReleaseExePath
         if (Test-Path -LiteralPath $exe) {
@@ -617,11 +647,13 @@ function Invoke-MajesticCheck {
         Write-Majestic "Ship unlock: OFF - create scripts/majestic/.majestic-enabled before ship" -Color Yellow
     }
 
-    $ready = ($missing_artifacts.Count -eq 0)
+    $ready = ($missing_artifacts.Count -eq 0) -and (-not $pi_pin_stale)
     if ($ready) {
         Write-Majestic "READY TO PACK ($kind_label)." -Color Green
     } else {
-        if ($Variant -eq 'app') {
+        if ($pi_pin_stale) {
+            Write-Majestic "NOT READY - pi pin is stale (see above). BUMP HARNESS, then rebuild." -Color Red
+        } elseif ($Variant -eq 'app') {
             Write-Majestic "NOT READY - fix provider template JSONs under src-tauri/runtime/*/config/." -Color Red
         } else {
             Write-Majestic "NOT READY - finish Foundry builds first." -Color Red
@@ -879,7 +911,11 @@ function Get-PiPinnedVersionPath {
 function Read-PiPinnedVersion {
     $p = Get-PiPinnedVersionPath
     if (-not (Test-Path -LiteralPath $p)) { return '' }
-    (Get-Content -LiteralPath $p -Raw).Trim()
+    # Get-Content -Raw returns $null for a zero-byte file, so .Trim() threw
+    # "cannot call a method on a null-valued expression" and aborted the whole script.
+    $raw = Get-Content -LiteralPath $p -Raw -ErrorAction SilentlyContinue
+    if ($null -eq $raw) { return '' }
+    return ([string]$raw).Trim()
 }
 
 function Get-DevPiInstalledVersion {
