@@ -155,6 +155,106 @@ function Test-RuntimeDistributionFile {
     )
 }
 
+# ── MSVC C runtime (CRT) staging ───────────────────────────────────────
+# Every shipped engine binary imports vcruntime140.dll, vcruntime140_1.dll and
+# msvcp140.dll (verified with `dumpbin //DEPENDENTS` over all 40 .dll/.exe under
+# runtime/ — that is the complete CRT surface; no concrt140, no vccorlib140).
+# On a machine that never had VC++ 2015-2022 x64, LoadLibrary fails before the engine
+# writes a single log line, so the failure looks like an app bug, not a missing runtime.
+# App-local copies win the OS DLL search order, touch no system state, need no admin and
+# no reboot, and keep the offline/flash-disk install working — unlike the 17-25 MB
+# vc_redist.exe (which can also refuse with 1638 when another app already put a different
+# CRT version on the machine).
+$script:MsvcCrtDlls = @('vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll')
+
+function Find-MsvcCrtSourceDir {
+    <#
+    .SYNOPSIS
+        Locates a directory containing all three x64 CRT release DLLs.
+        Prefers the portable toolchain (ships with the app, version-matched to the
+        toolset that built the engines), then a local BuildTools install.
+    #>
+    param(
+        [string]$ToolchainRoot = ''
+    )
+    # Layout is {toolchain}/vs/{vsYear}/VC/Tools/MSVC/{msvcVersion}/bin/Hostx64/x64 — note the
+    # extra `vs` level and that vsYear is a key ('2022'/'2026'), not a version dir. Enumerate
+    # it explicitly: globbing the toolchain root would probe cuda/ and Windows Kits/ instead.
+    # Newest toolset first, so a multi-VS tree prefers the one that built the current engines.
+    $candidates = @()
+    $vs_root = if ($ToolchainRoot) { Join-Path $ToolchainRoot 'vs' } else { '' }
+    if ($vs_root -and (Test-Path -LiteralPath $vs_root)) {
+        $years = Get-ChildItem -LiteralPath $vs_root -Directory -ErrorAction SilentlyContinue |
+            Sort-Object Name -Descending
+        foreach ($year in $years) {
+            $msvc_root = Join-Path $year.FullName 'VC\Tools\MSVC'
+            if (-not (Test-Path -LiteralPath $msvc_root)) { continue }
+            $candidates += Get-ChildItem -LiteralPath $msvc_root -Directory -ErrorAction SilentlyContinue |
+                Sort-Object Name -Descending |
+                ForEach-Object { Join-Path $_.FullName 'bin\Hostx64\x64' }
+        }
+    }
+    foreach ($probe in @(
+        'C:\BuildTools\VC\Tools\MSVC',
+        'C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC',
+        'C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC'
+    )) {
+        if (Test-Path -LiteralPath $probe) {
+            $candidates += Get-ChildItem -LiteralPath $probe -Directory -ErrorAction SilentlyContinue |
+                ForEach-Object { Join-Path $_.FullName 'bin\Hostx64\x64' }
+        }
+    }
+    foreach ($dir in $candidates) {
+        if (-not (Test-Path -LiteralPath $dir -PathType Container)) { continue }
+        $ok = $true
+        foreach ($dll in $script:MsvcCrtDlls) {
+            if (-not (Test-Path -LiteralPath (Join-Path $dir $dll) -PathType Leaf)) { $ok = $false; break }
+        }
+        if ($ok) { return $dir }
+    }
+    return $null
+}
+
+function Install-MsvcCrtIntoDirs {
+    <#
+    .SYNOPSIS
+        Copies the three x64 CRT DLLs into every directory that holds a llama-server.exe.
+        Idempotent; overwrites so a toolset bump refreshes them. Returns files written.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$Root,
+        [string]$ToolchainRoot = '',
+        [switch]$Quiet
+    )
+    if (-not (Test-Path -LiteralPath $Root)) { return 0 }
+    $src = Find-MsvcCrtSourceDir -ToolchainRoot $ToolchainRoot
+    if (-not $src) {
+        throw "MSVC C runtime not found (looked for $($script:MsvcCrtDlls -join ', ') in the portable toolchain and local BuildTools installs). Engines will not start on a machine without VC++ 2015-2022 x64. Install the toolchain or the VC++ redistributable, then re-pack."
+    }
+    $written = 0
+    # Do NOT use -Recurse here: it follows junctions/symlinks (the hazard
+    # sync-dev-runtime.ps1 documents) and can walk into an unrelated tree. Walk two known
+    # levels instead — runtime/{provider}/{profile}/ is the only layout that holds engines.
+    $server_dirs = @()
+    Get-ChildItem -LiteralPath $Root -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+        Get-ChildItem -LiteralPath $_.FullName -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+            if (Test-Path -LiteralPath (Join-Path $_.FullName 'llama-server.exe') -PathType Leaf) {
+                $server_dirs += $_.FullName
+            }
+        }
+    }
+    foreach ($dir in $server_dirs) {
+        foreach ($dll in $script:MsvcCrtDlls) {
+            Copy-Item -LiteralPath (Join-Path $src $dll) -Destination $dir -Force
+            $written++
+        }
+    }
+    if (-not $Quiet) {
+        Write-Host ("[crt] staged {0} DLL(s) into {1} engine dir(s) from {2}" -f $written, @($server_dirs).Count, $src) -ForegroundColor DarkGray
+    }
+    return $written
+}
+
 function Get-RuntimeDistributionFiles {
     param(
         [Parameter(Mandatory = $true)]

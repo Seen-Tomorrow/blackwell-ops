@@ -164,6 +164,18 @@ if (Test-Path -LiteralPath $piext_src) {
     Write-Host '[sync-dev-runtime] WARNING: src-tauri/pi-ext missing (gitignored). DEV pi harness will not sync pi-subagents; REL will fail resource bundle.' -ForegroundColor Yellow
 }
 
+# Stage the x64 MSVC C runtime beside every mirrored llama-server.exe so DEV matches what a
+# user gets. *.dll is gitignored, so this is a build step, not a committed artifact.
+# Runs BEFORE the fingerprint early-exit below: the CRT is not part of the runtime source
+# fingerprint, so a skip-copy day would otherwise leave the debug tree without it. Idempotent
+# and cheap (6 files). Non-fatal: a missing CRT must never block the dev loop - the Rust side
+# still resolves it from the portable toolchain at spawn.
+try {
+    Install-MsvcCrtIntoDirs -Root $dest_root -ToolchainRoot (Join-Path $root 'src-tauri\target\debug\toolchain') -Quiet
+} catch {
+    Write-Host ("[sync-dev-runtime] CRT staging skipped: {0}" -f $_.Exception.Message) -ForegroundColor Yellow
+}
+
 if (-not $Force -and (Test-Path -LiteralPath $fingerprint_path) -and (Test-DestLooksPresent)) {
     $prev = (Get-Content -LiteralPath $fingerprint_path -Raw -ErrorAction SilentlyContinue).Trim()
     if ($prev -eq $fingerprint) {

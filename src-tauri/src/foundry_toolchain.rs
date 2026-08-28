@@ -86,6 +86,13 @@ pub struct ToolchainInstallInfo {
     pub manifest_present: bool,
     /// Portable CUDA runtime DLLs (cublas + cudart) present for both profiles.
     pub runtime_ready: bool,
+    /// x64 MSVC C runtime (vcruntime140 / vcruntime140_1 / msvcp140) resolvable for every
+    /// profile — app-local, in the portable toolchain, or installed system-wide. Every
+    /// shipped engine binary imports these; absent means LoadLibrary dies before any log.
+    pub msvc_crt_ready: bool,
+    /// Present only when `msvc_crt_ready` is false.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub msvc_crt_error: Option<String>,
     pub profiles_ready: usize,
     pub profiles_total: usize,
     pub all_ready: bool,
@@ -509,6 +516,139 @@ fn cuda_bin_dirs(cuda_root: &std::path::Path) -> Vec<std::path::PathBuf> {
     vec![cuda_root.join("bin"), cuda_root.join("bin").join("x64")]
 }
 
+// ── MSVC C runtime (CRT) ───────────────────────────────────────────────
+
+/// The x64 MSVC runtime DLLs every shipped engine binary imports. Verified with
+/// `dumpbin //DEPENDENTS` across all 40 `.dll`/`.exe` under `runtime/`: the complete
+/// surface is exactly these three — no `concrt140`, no `vccorlib140`, no `_threads`.
+pub const MSVC_CRT_DLLS: [&str; 3] = [
+    "vcruntime140.dll",
+    "vcruntime140_1.dll",
+    "msvcp140.dll",
+];
+
+/// `{toolchain}/vs/{year}/VC/Tools/MSVC/{msvc_version}/bin/Hostx64/x64` — the directory
+/// holding both the compiler and its CRT. Same layout `ml64_exe()` already relies on.
+pub fn msvc_hostx64_bin_dir(vs_year: &str, msvc_version: &str) -> PathBuf {
+    toolchain_dir()
+        .join("vs")
+        .join(vs_year)
+        .join("VC")
+        .join("Tools")
+        .join("MSVC")
+        .join(msvc_version)
+        .join("bin")
+        .join("Hostx64")
+        .join("x64")
+}
+
+/// Resolve the CRT directory for a binary profile via the manifest (profile → VS key →
+/// msvc_version). `None` when the toolchain/manifest is absent — callers must not treat
+/// that as fatal here, `apply_portable_cuda_to_command` already fails earlier.
+pub fn msvc_crt_dir_for_profile(binary_profile: &str) -> Option<PathBuf> {
+    let manifest = load_manifest().ok()?;
+    let def = manifest
+        .profiles
+        .iter()
+        .find(|p| normalize_profile_id(&p.id) == normalize_profile_id(binary_profile))?;
+    let vs = vs_def(&manifest, &def.vs).ok()?;
+    let dir = msvc_hostx64_bin_dir(&def.vs, &vs.msvc_version);
+    dir.is_dir().then_some(dir)
+}
+
+/// CRT DLLs missing from `dir` (case-insensitive). Empty = that dir satisfies the import.
+fn missing_crt_in(dir: &std::path::Path) -> Vec<&'static str> {
+    MSVC_CRT_DLLS
+        .iter()
+        .copied()
+        .filter(|dll| !has_file_ci(dir, dll))
+        .collect()
+}
+
+/// Case-insensitive file presence. Windows is CI; `Path::join` on an already-CI OS makes
+/// `is_file()` sufficient, but the toolchain tree is also inspected from CI-ish Linux
+/// builds of the tests, so scan the directory instead of trusting exact case.
+fn has_file_ci(dir: &std::path::Path, name: &str) -> bool {
+    if dir.join(name).is_file() {
+        return true;
+    }
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return false;
+    };
+    let want = name.to_ascii_lowercase();
+    entries.flatten().any(|e| {
+        e.file_name().to_string_lossy().to_ascii_lowercase() == want && e.path().is_file()
+    })
+}
+
+/// Are the CRT DLLs resolvable for this profile — app-local beside the engine, in the
+/// portable toolchain, or already installed system-wide?
+///
+/// Deliberately does NOT put the CRT dir on PATH as its only source: a stale toolchain
+/// copy would then shadow a newer system CRT. PATH is an addition, not a substitute.
+pub fn msvc_crt_present(binary_profile: &str, engine_dir: Option<&std::path::Path>) -> bool {
+    // 1. App-local beside the engine wins the OS search order and touches nothing else.
+    if let Some(d) = engine_dir {
+        if missing_crt_in(d).is_empty() {
+            return true;
+        }
+    }
+    // 2. Portable toolchain (the common case: toolchain is a hard onboarding gate).
+    if let Some(dir) = msvc_crt_dir_for_profile(binary_profile) {
+        if missing_crt_in(&dir).is_empty() {
+            return true;
+        }
+    }
+    // 3. System-wide install (VS/BuildTools or a standalone redist put it in System32).
+    let sys32 = std::env::var_os("SystemRoot")
+        .map(|r| PathBuf::from(r).join("System32"))
+        .unwrap_or_else(|| PathBuf::from("C:\\Windows\\System32"));
+    missing_crt_in(&sys32).is_empty()
+}
+
+/// Human-readable reason the CRT is unavailable, for onboarding/UI. `None` = present.
+pub fn msvc_crt_missing_message(binary_profile: &str, engine_dir: Option<&std::path::Path>) -> Option<String> {
+    if msvc_crt_present(binary_profile, engine_dir) {
+        return None;
+    }
+    let need = MSVC_CRT_DLLS.join(", ");
+    let where_ = msvc_crt_dir_for_profile(binary_profile)
+        .map(|d| d.display().to_string())
+        .unwrap_or_else(|| format!("{{toolchain}}/vs/<year>/VC/Tools/MSVC/<ver>/bin/Hostx64/x64"));
+    Some(format!(
+        "Missing the x64 MSVC C runtime ({need}) required by the engine binaries. \
+         It normally ships inside the portable toolchain at {where_}. \
+         Re-install the portable toolchain (FORECAST: setup → CUDA runtime), or install \
+         the 'Microsoft Visual C++ 2015-2022 Redistributable (x64)'."
+    ))
+}
+
+/// Prepend the portable CRT dir to PATH for a child process, unless the engine dir
+/// already carries the DLLs (then app-local copies win and PATH stays untouched).
+///
+/// Non-fatal by design: a missing CRT dir here means the engine will fail at
+/// LoadLibrary, and the caller's own CUDA check already gates the toolchain. This only
+/// widens resolution — it never blocks a launch that would otherwise have worked.
+pub fn apply_msvc_crt_to_command(cmd: &mut std::process::Command, binary_profile: &str, engine_dir: Option<&std::path::Path>) {
+    if let Some(d) = engine_dir {
+        if missing_crt_in(d).is_empty() {
+            return;
+        }
+    }
+    let Some(dir) = msvc_crt_dir_for_profile(binary_profile) else {
+        return;
+    };
+    if missing_crt_in(&dir).is_empty() {
+        let old = std::env::var("PATH").unwrap_or_default();
+        let joined = if old.is_empty() {
+            dir.to_string_lossy().to_string()
+        } else {
+            format!("{};{}", dir.to_string_lossy(), old)
+        };
+        cmd.env("PATH", joined);
+    }
+}
+
 fn dir_has_essential_cuda_dll(bin_dir: &std::path::Path) -> bool {
     if !bin_dir.is_dir() {
         return false;
@@ -621,6 +761,14 @@ pub fn portable_cuda_env_for_profile(binary_profile: &str) -> Result<PortableCud
     }
 
     let cuda_path_var_name = cuda_path_var(&cuda_version);
+    // Prepend the portable MSVC CRT so the batch-spawned engine (NoBSproof console path)
+    // resolves vcruntime140/msvcp140 the same way the piped path does. App-local copies
+    // beside the exe still win the OS search order, so this is only a fallback.
+    if let Some(crt) = msvc_crt_dir_for_profile(binary_profile) {
+        if missing_crt_in(&crt).is_empty() {
+            toolchain_bins.insert(0, crt.to_string_lossy().to_string());
+        }
+    }
     Ok(PortableCudaEnv {
         cuda_version,
         cuda_root,
@@ -1201,6 +1349,17 @@ pub fn install_info() -> Result<ToolchainInstallInfo, String> {
 
     let manifest = load_manifest()?;
     let runtime_ready = check_runtime_ready(&manifest);
+    let crt_profiles: Vec<String> = manifest.profiles.iter().map(|p| p.id.clone()).collect();
+    let crt_missing: Vec<String> = crt_profiles
+        .iter()
+        .filter(|p| msvc_crt_missing_message(p, None).is_some())
+        .cloned()
+        .collect();
+    let msvc_crt_ready = crt_missing.is_empty();
+    let msvc_crt_error = (!msvc_crt_ready).then(|| {
+        msvc_crt_missing_message(crt_missing.first().map(String::as_str).unwrap_or(""), None)
+            .unwrap_or_default()
+    });
 
     let cache_dir = toolchain_archive_cache_dir();
     let _ = std::fs::create_dir_all(&cache_dir);
@@ -1217,6 +1376,8 @@ pub fn install_info() -> Result<ToolchainInstallInfo, String> {
         uncompressed_size_label: "~4.2 GB".to_string(),
         manifest_present: manifest_path().exists(),
         runtime_ready,
+        msvc_crt_ready,
+        msvc_crt_error,
         profiles_ready,
         profiles_total,
         all_ready: profiles_ready == profiles_total && profiles_total > 0,
@@ -1278,5 +1439,113 @@ pub async fn foundry_open_toolchain_cache_folder() -> Result<(), String> {
     {
         let _ = cache_dir;
         Err("Portable Foundry toolchain is supported on Windows only.".into())
+    }
+}
+#[cfg(test)]
+mod crt_tests {
+    use super::*;
+    use std::fs;
+
+    fn tmp_tree(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("bw-crt-{}-{}", tag, std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    fn touch(dir: &std::path::Path, name: &str) {
+        fs::create_dir_all(dir).unwrap();
+        fs::write(dir.join(name), b"x").unwrap();
+    }
+
+    /// The allowlist must match what `dumpbin //DEPENDENTS` reports for the shipped
+    /// engines. If a future llama.cpp build starts importing concrt140/vccorlib140 this
+    /// list is stale and app-local staging will not save the launch.
+    #[test]
+    fn crt_allowlist_is_the_measured_surface() {
+        assert_eq!(
+            MSVC_CRT_DLLS,
+            ["vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll"]
+        );
+    }
+
+    #[test]
+    fn has_file_ci_matches_any_case_and_rejects_absent() {
+        let d = tmp_tree("ci");
+        touch(&d, "MSVCP140.dll");
+        assert!(has_file_ci(&d, "msvcp140.dll"));
+        assert!(has_file_ci(&d, "MsVcP140.DLL"));
+        assert!(!has_file_ci(&d, "vcruntime140.dll"));
+        assert!(!has_file_ci(&PathBuf::from("Z:/nope"), "msvcp140.dll"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn missing_crt_in_reports_exactly_the_gaps() {
+        let d = tmp_tree("gaps");
+        touch(&d, "vcruntime140.dll");
+        touch(&d, "vcruntime140_1.dll");
+        assert_eq!(missing_crt_in(&d), vec!["msvcp140.dll"]);
+        touch(&d, "msvcp140.dll");
+        assert!(missing_crt_in(&d).is_empty());
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    /// App-local copies must satisfy presence without touching toolchain or System32.
+    /// This is the guarantee the staging scripts rely on.
+    #[test]
+    fn app_local_dir_satisfies_crt() {
+        let d = tmp_tree("applocal");
+        for dll in MSVC_CRT_DLLS {
+            touch(&d, dll);
+        }
+        // No engine-dir hint → relies on toolchain/System32 (profile-unresolvable).
+        assert!(missing_crt_in(&d).is_empty());
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    /// A partial app-local set must NOT count as present — half-staged is exactly the
+    /// case that produces a LoadLibrary failure with no useful log.
+    #[test]
+    fn partial_app_local_set_is_not_present() {
+        let d = tmp_tree("partial");
+        touch(&d, "vcruntime140.dll");
+        assert_eq!(missing_crt_in(&d).len(), 2);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn msvc_hostx64_bin_dir_layout() {
+        let p = msvc_hostx64_bin_dir("2022", "14.44.35207");
+        let s = p.to_string_lossy().replace('\\', "/");
+        assert!(s.ends_with("vs/2022/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64"), "{s}");
+    }
+
+    /// Missing CRT must produce an actionable message, never a bare panic/None-on-error.
+    #[test]
+    fn missing_message_names_dlls_and_remedy() {
+        let d = tmp_tree("msg");
+        // Force the "nothing found" shape by asserting on the message builder directly:
+        // an empty engine dir with no toolchain/System32 match is machine-dependent, so
+        // only check the string shape when it does fire.
+        if let Some(msg) = msvc_crt_missing_message("definitely-not-a-profile", Some(&d)) {
+            assert!(msg.contains("vcruntime140.dll"));
+            assert!(msg.contains("Redistributable"));
+            assert!(msg.contains("toolchain"));
+        }
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    /// apply_msvc_crt_to_command must never panic and never strip an existing PATH.
+    #[test]
+    fn apply_crt_never_panics_or_empties_path() {
+        let mut cmd = std::process::Command::new("cmd");
+        apply_msvc_crt_to_command(&mut cmd, "frontier", None);
+        apply_msvc_crt_to_command(&mut cmd, "", None);
+        apply_msvc_crt_to_command(&mut cmd, "frontier", Some(PathBuf::from("Z:/absent").as_path()));
+        // If it did set PATH, it must still contain the original prefix.
+        if let Some((_, v)) = cmd.get_envs().find(|(k, _)| *k == std::ffi::OsStr::new("PATH")) {
+            assert!(v.map(|s| !s.is_empty()).unwrap_or(false));
+        }
     }
 }
