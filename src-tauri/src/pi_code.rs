@@ -511,15 +511,29 @@ fn refresh_pi_subagents_bundle() -> Result<(), String> {
     }
     copy_dir_all(&installed, &bundle_src)?;
 
-    // Ship the runtime deps so pi can load the package without npm/network.
+    // Ship ONLY pi-subagents' own runtime deps: upstream `dependencies` is exactly
+    // acorn + jiti + typebox + yaml, and all four are dependency-free, so this is the
+    // complete closure (verified with `npm install pi-subagents@latest --omit=dev`).
+    // Everything else in the temp tree is a transitive dep of an OPTIONAL
+    // `@earendil-works/*` peer — pi bundles the core itself, so those must never be
+    // copied (see `strip_shadowed_pi_core_modules`).
     let bnm = bundle_src.join("node_modules");
     std::fs::create_dir_all(&bnm).map_err(|e| format!("bundle node_modules: {e}"))?;
-    for dep in ["jiti", "typebox", "yaml"] {
+    for dep in SUBAGENTS_RUNTIME_DEPS {
         let from = tmp.join("node_modules").join(dep);
         if from.is_dir() {
             copy_dir_all(&from, &bnm.join(dep))?;
         }
     }
+
+    // npm may still have left `@earendil-works/*` (incl. the dangling
+    // pi-coding-agent-shim junction) inside the temp tree copy → scrub it.
+    strip_shadowed_pi_core_modules(&bundle_src);
+
+    // The copy above brought the whole transitive tree in with it. Rebuild
+    // node_modules to the runtime-dep allowlist only.
+    prune_bundle_node_modules(&bundle_src)?;
+    prune_bundle_dead_files(&bundle_src);
 
     let _ = std::fs::remove_dir_all(&tmp);
     emit_dbg(&format!(
@@ -628,6 +642,203 @@ fn bundled_subagents_version() -> Option<String> {
     v.get("version")?.as_str().map(|s| s.to_string())
 }
 
+/// The ONLY third-party modules pi-subagents needs at runtime.
+///
+/// Upstream `dependencies` is exactly these four, and all four are dependency-free, so
+/// this is the complete closure (verified with `npm install pi-subagents@latest
+/// --omit=dev` — it resolves to acorn + jiti + typebox + yaml and nothing else).
+///
+/// Everything else that npm drops into the tree is a transitive dependency of an
+/// OPTIONAL `@earendil-works/*` peer. pi 0.84.x is a compiled bun binary with the
+/// provider SDKs already inlined (`@anthropic-ai/sdk`, `openai`, `@google/genai`,
+/// `@aws-sdk/client-sts` are all embedded strings inside `pi.exe`), so extension-side
+/// copies are unreachable dead weight: ~136 MB of AWS/Google/Anthropic/OpenAI SDKs for
+/// a 4–5 MB app. Blackwell ships lean; users add packages themselves with
+/// `pi install npm:…`, which lands in `{home}/npm/` as its own module root.
+const SUBAGENTS_RUNTIME_DEPS: [&str; 4] = ["acorn", "jiti", "typebox", "yaml"];
+
+/// Build artifacts that are dead weight at runtime inside the bundled deps.
+///
+/// `.d.mts` / `.d.ts` / `.d.cts` are TypeScript declarations, read only by `tsc`. pi
+/// loads the extension through jiti, which strips types and resolves **values**
+/// (`Type`, `Compile`) from the `.mjs` siblings — nothing ever opens a declaration.
+/// `.map` files are debugger-only. `typebox` alone ships 690 declarations against 690
+/// runtime modules, so this removes ~40% of the bundled file count for free.
+const BUNDLE_DEAD_EXTS: [&str; 4] = ["d.mts", "d.ts", "d.cts", "map"];
+
+/// Delete declaration/map files under `root/node_modules` and any empty dirs left behind.
+///
+/// Best-effort by design: a leftover `.d.mts` costs 1 KB and nothing else, so this must
+/// never be able to fail a launch.
+fn prune_bundle_dead_files(root: &Path) {
+    let nm = root.join("node_modules");
+    if !nm.is_dir() {
+        return;
+    }
+    let mut removed = 0usize;
+    let mut walk: Vec<std::path::PathBuf> = Vec::new();
+    let mut stack = vec![nm.clone()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(ft) = entry.file_type() else { continue };
+            if ft.is_dir() {
+                if ft.is_symlink() {
+                    continue; // never follow links out of the bundle
+                }
+                stack.push(path);
+            } else if path
+                .file_name()
+                .map(|n| {
+                    let n = n.to_string_lossy();
+                    BUNDLE_DEAD_EXTS.iter().any(|ext| n.ends_with(ext))
+                })
+                .unwrap_or(false)
+            {
+                if std::fs::remove_file(&path).is_ok() {
+                    removed += 1;
+                }
+            }
+        }
+    }
+    // Second pass, bottom-up: drop dirs the deletions emptied (npm leaves bare
+    // `typebox/build/type/script` style shells otherwise).
+    for _ in 0..12 {
+        let mut pruned_now = 0usize;
+        collect_empty_dirs(&nm, &mut walk);
+        for dir in walk.drain(..) {
+            if std::fs::read_dir(&dir).map(|mut d| d.next().is_none()).unwrap_or(false) {
+                if std::fs::remove_dir(&dir).is_ok() {
+                    pruned_now += 1;
+                }
+            }
+        }
+        if pruned_now == 0 {
+            break;
+        }
+    }
+    if removed > 0 {
+        emit_dbg(&format!(
+            "[Pi] Lean bundle: removed {} declaration/map files from {}",
+            removed,
+            nm.display()
+        ));
+    }
+}
+
+/// Collect every directory beneath `root` (deepest first is not required — the caller
+/// loops until a pass removes nothing).
+fn collect_empty_dirs(root: &Path, out: &mut Vec<std::path::PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() && !path.is_symlink() {
+            out.push(path.clone());
+            collect_empty_dirs(&path, out);
+        }
+    }
+}
+
+/// Drop `node_modules` entries that would shadow pi's own bundled core packages.
+///
+/// pi bundles `@earendil-works/pi-ai`, `pi-agent-core`, `pi-coding-agent`, `pi-tui`
+/// and `typebox` for extensions (see pi `docs/packages.md`): extensions list them as
+/// `peerDependencies: "*"` and must **not** bundle them. When npm materialises a
+/// `@earendil-works/*` entry inside a package's own `node_modules`, Node resolves that
+/// first and pi's bundled core never reaches the extension — the package loads against
+/// the wrong core (or a dead test shim) and reports `Extension error (…index.ts)`.
+///
+/// Upstream `pi-subagents` declares a devDependency
+/// `@earendil-works/pi-coding-agent: file:./test/fixtures/pi-coding-agent-shim`. Even
+/// with `--omit=dev`, npm 12 on Windows can leave a junction to that fixture — which is
+/// never published in the tarball — so the junction dangles. Removing these links is
+/// what restores resolution to pi's bundled core.
+fn strip_shadowed_pi_core_modules(root: &Path) {
+    let nm = root.join("node_modules").join("@earendil-works");
+    let entries = match std::fs::read_dir(&nm) {
+        Ok(entries) => entries,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        // Only touch symlinks/junctions and the shim target itself — real copies of
+        // pi-ai / pi-tui / pi-agent-core left by a full install are harmless to keep.
+        let is_link = std::fs::symlink_metadata(&path)
+            .map(|m| m.file_type().is_symlink())
+            .unwrap_or(false);
+        let is_shim = entry
+            .file_name()
+            .to_string_lossy()
+            .contains("pi-coding-agent-shim");
+        let is_dangling = !path.exists();
+        if is_link || is_shim || is_dangling {
+            let rm = if path.is_dir() && !is_link {
+                std::fs::remove_dir_all(&path)
+            } else {
+                std::fs::remove_file(&path)
+            };
+            match rm {
+                Ok(()) => emit_dbg(&format!(
+                    "[Pi] Removed shadowing pi-core module link → {}",
+                    path.display()
+                )),
+                Err(e) => emit_dbg(&format!(
+                    "[Pi] Could not remove shadowing pi-core module {} : {e}",
+                    path.display()
+                )),
+            }
+        }
+    }
+}
+
+/// Rebuild `node_modules` so only [`SUBAGENTS_RUNTIME_DEPS`] survives.
+///
+/// Runs on the bundle **source** after a refresh (before it is mirrored to
+/// `target/debug/pi-ext` and before NSIS stages it as a Tauri resource), so REL ships
+/// lean. Also runs on the installed tree in the agent home, which repairs installs
+/// that were materialized while the full tree was still being copied.
+fn prune_bundle_node_modules(root: &Path) -> Result<(), String> {
+    let nm = root.join("node_modules");
+    if !nm.is_dir() {
+        return Ok(());
+    }
+    let mut removed = 0usize;
+    for entry in std::fs::read_dir(&nm).map_err(|e| format!("read node_modules: {e}"))? {
+        let entry = entry.map_err(|e| format!("node_modules entry: {e}"))?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        if SUBAGENTS_RUNTIME_DEPS.contains(&name.as_str()) {
+            continue;
+        }
+        let path = entry.path();
+        let is_link = std::fs::symlink_metadata(&path)
+            .map(|m| m.file_type().is_symlink())
+            .unwrap_or(false);
+        let rm = if path.is_dir() && !is_link {
+            std::fs::remove_dir_all(&path)
+        } else {
+            std::fs::remove_file(&path)
+        };
+        match rm {
+            Ok(()) => removed += 1,
+            Err(e) => emit_dbg(&format!(
+                "[Pi] Could not prune non-runtime module {} : {e}",
+                path.display()
+            )),
+        }
+    }
+    if removed > 0 {
+        emit_dbg(&format!(
+            "[Pi] Lean bundle: pruned {} non-runtime module dirs from {}",
+            removed,
+            nm.display()
+        ));
+    }
+    Ok(())
+}
+
 /// Copy the bundled pi-subagents package into the isolated home so pi can resolve
 /// `./pi-subagents` from settings.json.
 ///
@@ -652,6 +863,16 @@ fn sync_bundled_subagents(home: &Path) -> Result<(), String> {
     let stamp = dst.join(".blackwell-version");
     let bundled = bundled_subagents_version();
 
+    // Self-heal the installed tree before any early return: a stale `@earendil-works/*`
+    // link (upstream's unpublished `pi-coding-agent-shim` devDep junction) makes pi
+    // resolve the extension against the wrong core and every session starts with
+    // `Extension error (…pi-subagents\index.ts)` and no `subagent` tool.
+    strip_shadowed_pi_core_modules(&dst);
+    if let Err(e) = prune_bundle_node_modules(&dst) {
+        emit_dbg(&format!("[Pi] subagents lean prune warning: {e}"));
+    }
+    prune_bundle_dead_files(&dst);
+
     // Already installed and matches the shipped version → leave it alone.
     if dst.is_dir() {
         let installed = std::fs::read_to_string(&stamp).ok().map(|s| s.trim().to_string());
@@ -670,6 +891,31 @@ fn sync_bundled_subagents(home: &Path) -> Result<(), String> {
             .map_err(|e| format!("clear pi-subagents in home: {e}"))?;
     }
     copy_dir_all(&src, &dst).map_err(|e| format!("sync pi-subagents: {e}"))?;
+    // Rebuild node_modules to the runtime-dep allowlist: `copy_dir_all` mirrors
+    // whatever the bundle source holds, and a missing module (e.g. `acorn`, needed by
+    // the workflow-script parser) would not be re-added by a version bump alone.
+    strip_shadowed_pi_core_modules(&dst);
+    if let Err(e) = prune_bundle_node_modules(&dst) {
+        emit_dbg(&format!("[Pi] subagents lean prune warning: {e}"));
+    }
+    prune_bundle_dead_files(&dst);
+    // Close the gap where the stamp already matches but the tree is short a runtime
+    // dep (a mirror made before `acorn` entered the allowlist) → backfill it.
+    let src_nm = bundled_subagents_dir().join("node_modules");
+    if src_nm.is_dir() {
+        let dst_nm = dst.join("node_modules");
+        for dep in SUBAGENTS_RUNTIME_DEPS {
+            let to = dst_nm.join(dep);
+            if to.exists() {
+                continue;
+            }
+            let from = src_nm.join(dep);
+            if from.is_dir() {
+                copy_dir_all(&from, &to)?;
+                emit_dbg(&format!("[Pi] Lean bundle: backfilled missing dep {dep}"));
+            }
+        }
+    }
     if let Some(v) = bundled {
         let _ = std::fs::write(&stamp, format!("{v}\n"));
     }
@@ -1559,7 +1805,13 @@ pub async fn pi_code_launch(
         }
 
         // Blackwell-shipped pi-subagents (local-path package) — required for multi-agent.
-        sync_bundled_subagents(&home)?;
+        // The lean prune (delete + backfill across ~1900 files) is housekeeping, not a
+        // launch precondition: a transient FS error must not stop the agent from
+        // starting. Only a genuinely missing/unusable bundle is fatal, and
+        // `sync_bundled_subagents` still returns Err for that case.
+        if let Err(e) = sync_bundled_subagents(&home) {
+            emit_dbg(&format!("[Pi] subagents sync warning: {e}"));
+        }
         // Set the subagent fan-out concurrency to the engine's slot count (both modes).
         if let Err(e) = write_subagents_config(&home, routing_facts.slots) {
             emit_dbg(&format!("[Pi] subagents config warning: {e}"));
