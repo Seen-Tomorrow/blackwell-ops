@@ -18,11 +18,15 @@ type LearnedHit = {
   launch_snapshot?: { vram_mib?: number; host_mib?: number };
 };
 
-export function formatLearnedMemLine(m: LearnedMemGb | null | undefined): string {
-  if (!m) return "—";
-  const v = `${m.vramGb.toFixed(1)}G`;
-  if (m.ramGb > 0.05) return `${v}+${m.ramGb.toFixed(1)}R`;
-  return v;
+/** Numeric part of the VRAM chip; the unit word is rendered in JSX. */
+export function vramValueText(m: LearnedMemGb | null | undefined): string {
+  return m ? m.vramGb.toFixed(1) : "—";
+}
+
+/** Numeric part of the RAM chip; null when host RAM is negligible (chip hidden). */
+export function ramValueText(m: LearnedMemGb | null | undefined): string | null {
+  if (!m || m.ramGb <= 0.05) return null;
+  return m.ramGb.toFixed(1);
 }
 
 export function sumLearnedMem(

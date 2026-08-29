@@ -21,8 +21,9 @@ import {
 import { getCombo, seatOnCombo } from "../lib/launchPresets";
 import {
   fetchLearnedMemForSeat,
-  formatLearnedMemLine,
+  ramValueText,
   sumLearnedMem,
+  vramValueText,
   type LearnedMemGb,
 } from "../lib/catalogSeatLearnedMem";
 
@@ -186,6 +187,7 @@ export default function CatalogQuickStrip({
   const canLaunchTwin = Boolean(seats.brain?.path && seats.worker?.path);
   const canLaunchSolo = Boolean(seats.brain?.path);
   const seatEditing = editingRole != null;
+  const sum = sumLearnedMem(learnedMem.brain, learnedMem.worker);
   const hasSelection = Boolean(selectedPath);
 
   const launchSeats = () => {
@@ -290,7 +292,7 @@ export default function CatalogQuickStrip({
           <span className="catalog-quick-section__title">
             {seatEditing
               ? `EDITING ${CATALOG_SEAT_LABEL[editingRole!]}`
-              : "AGENTIC HARNESS SEATS"}
+              : "HARNESS SEATS"}
           </span>
           <div className="catalog-quick-section__actions">
             {!seatEditing ? (
@@ -326,7 +328,7 @@ export default function CatalogQuickStrip({
                   title="Open harness connect veil"
                   onClick={() => dispatchAppEvent(EVENTS.harnessConnectOpen)}
                 >
-                  HARNESS CONNECT
+                  HARNESS
                 </button>
 
               </>
@@ -334,15 +336,18 @@ export default function CatalogQuickStrip({
           </div>
         </header>
         {(learnedMem.brain || learnedMem.worker) && !seatEditing ? (
-          <div className="catalog-quick-mem" title="LEARNED VRAM+RAM at saved seat knobs (re-read, not stored on the bag)">
-            <span className="catalog-quick-mem__cell catalog-quick-mem__cell--brain">
-              {formatLearnedMemLine(learnedMem.brain)}
+          <div
+            className="catalog-quick-mem"
+            title="LEARNED VRAM+RAM at saved seat knobs (re-read, not stored on the bag)"
+          >
+            <span className="catalog-quick-mem__half catalog-quick-mem__half--vram">
+              <span className="catalog-quick-mem__sigma">Σ</span>
+              {vramValueText(sum)}
+              <span className="catalog-quick-mem__unit">GB VRAM</span>
             </span>
-            <span className="catalog-quick-mem__cell catalog-quick-mem__cell--worker">
-              {formatLearnedMemLine(learnedMem.worker)}
-            </span>
-            <span className="catalog-quick-mem__cell catalog-quick-mem__cell--total">
-              Σ {formatLearnedMemLine(sumLearnedMem(learnedMem.brain, learnedMem.worker))}
+            <span className="catalog-quick-mem__half catalog-quick-mem__half--ram">
+              {ramValueText(sum) ?? "—"}
+              <span className="catalog-quick-mem__unit">GB RAM</span>
             </span>
           </div>
         ) : null}
@@ -386,6 +391,15 @@ export default function CatalogQuickStrip({
                   .join(" ")}
               >
                 {isEditing ? <SeatLiveRim /> : null}
+                {filled && !seatEditing && learnedMem[role] ? (
+                  <span className="catalog-quick-seat__mem">
+                    <span className="catalog-quick-mem__half catalog-quick-mem__half--vram">
+                      {vramValueText(learnedMem[role])}
+                      <span className="catalog-quick-mem__unit">GB VRAM</span>
+                    </span>
+                  </span>
+                ) : null}
+                <div className="catalog-quick-seat__body">
                 <button
                   type="button"
                   className="catalog-quick-seat__main"
@@ -513,6 +527,7 @@ export default function CatalogQuickStrip({
                       ) : null}
                     </>
                   )}
+                </div>
                 </div>
               </div>
             );

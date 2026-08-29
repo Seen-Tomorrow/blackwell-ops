@@ -1108,37 +1108,66 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+/* Σ total — solo row above the seat cards, split 50/50 full width:
+   VRAM half left, RAM half right, painted with the VramBadge "total"
+   label-chip colors (--display-face-fc-label-* tokens). */
 .catalog-quick-mem {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
-  gap: 4px;
-  align-items: baseline;
-  padding: 0 2px 2px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   min-width: 0;
   font-family: ui-monospace, "JetBrains Mono", monospace;
-  font-size: 9px;
+  font-size: 11px;
+  font-weight: 700;
   letter-spacing: 0.04em;
   line-height: 1.2;
 }
 
-.catalog-quick-mem__cell {
+/* Per-seat VRAM bar — in-flow first row of the seat (column flex), full
+   card width. RAM lives in the total row only. */
+.catalog-quick-seat__mem {
+  display: block;
+  min-width: 0;
+  font-family: ui-monospace, "JetBrains Mono", monospace;
+  font-size: 9px;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+}
+
+/* VRAM / RAM halves — 50/50 split. Colors mirror the VramBadge "total"
+   label chips (--display-face-fc-label-* tokens), not the solid bar fills. */
+.catalog-quick-mem__half {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 3px;
+  padding: 2px 4px;
 }
 
-.catalog-quick-mem__cell--brain {
-  color: var(--theme-harness-brain-text, var(--theme-provider-pill-active-text));
+.catalog-quick-mem__half--vram {
+  color: var(--display-face-fc-label-fg, var(--theme-text, #e5e7eb));
+  background: var(--display-face-fc-label-bg, color-mix(in srgb, var(--theme-accent, #76b900) 14%, transparent));
 }
 
-.catalog-quick-mem__cell--worker {
-  color: var(--theme-harness-worker-text, var(--theme-pair-secondary-text));
+.catalog-quick-mem__half--ram {
+  color: var(--display-face-fc-label-ram-fg, #93c5fd);
+  background: var(--display-face-fc-label-ram-bg, color-mix(in srgb, #60a5fa 14%, transparent));
 }
 
-.catalog-quick-mem__cell--total {
-  color: var(--theme-text-muted, #94a3b8);
-  font-weight: 700;
+.catalog-quick-mem__sigma {
+  color: inherit;
+  opacity: 0.75;
+}
+
+/* Unit word — smaller so the chip stays a value-first readout */
+.catalog-quick-mem__unit {
+  margin-left: 0;
+  font-size: 7px;
+  letter-spacing: 0;
+  opacity: 0.82;
 }
 
 
@@ -1159,26 +1188,51 @@
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-accent) 25%, transparent);
 }
 
+/* Seat cards — raised 3d via the VramBadge NEED-frame double-border style:
+   1px border + 3px air gap + 1px outline, inset bevel on the inner plate. */
 .catalog-quick-seat {
+  --need-frame-ring: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 42%, transparent);
+  --need-frame-hi: color-mix(in srgb, #fff 18%, transparent);
+  --need-frame-lo: color-mix(in srgb, #000 48%, transparent);
   position: relative;
   display: flex;
-  align-items: stretch;
+  flex-direction: column;
   min-width: 0;
   min-height: 42px;
-  border-radius: 3px;
-  border: 1px dashed color-mix(in srgb, var(--theme-border) 65%, transparent);
+  border-radius: 4px;
+  border: 1px solid var(--need-frame-ring);
+  outline: 1px solid var(--need-frame-ring);
+  outline-offset: 3px;
   background: color-mix(in srgb, var(--theme-panel) 70%, transparent);
+  box-shadow:
+    0 1px 0 color-mix(in srgb, #000 35%, transparent),
+    0 3px 6px color-mix(in srgb, #000 28%, transparent),
+    inset 1px 1px 0 var(--need-frame-hi),
+    inset -1px -1px 0 var(--need-frame-lo),
+    inset 0 0 0 1px color-mix(in srgb, #000 18%, transparent);
   overflow: hidden;
   isolation: isolate;
 }
 
-/* Match harness connect BRAIN / WORKER identity tokens */
+/* Body row — text + actions, centered as a unit below the VRAM bar. */
+.catalog-quick-seat__body {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: stretch;
+  min-height: 0;
+}
+
+/* Match harness connect BRAIN / WORKER identity tokens — colored ring,
+   keep the NEED-frame bevel + drop shadow. */
 .catalog-quick-seat--brain.catalog-quick-seat--filled {
-  border-style: solid;
   border-color: color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 70%, transparent);
+  outline-color: color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 40%, transparent);
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 40%, transparent),
-    0 0 10px color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 18%, transparent);
+    0 1px 0 color-mix(in srgb, #000 35%, transparent),
+    0 3px 6px color-mix(in srgb, #000 28%, transparent),
+    inset 1px 1px 0 var(--need-frame-hi),
+    inset -1px -1px 0 var(--need-frame-lo),
+    inset 0 0 0 1px color-mix(in srgb, #000 18%, transparent);
   background: color-mix(
     in srgb,
     var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 28%,
@@ -1187,11 +1241,14 @@
 }
 
 .catalog-quick-seat--worker.catalog-quick-seat--filled {
-  border-style: solid;
   border-color: color-mix(in srgb, var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 70%, transparent);
+  outline-color: color-mix(in srgb, var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 40%, transparent);
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 40%, transparent),
-    0 0 10px color-mix(in srgb, var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 16%, transparent);
+    0 1px 0 color-mix(in srgb, #000 35%, transparent),
+    0 3px 6px color-mix(in srgb, #000 28%, transparent),
+    inset 1px 1px 0 var(--need-frame-hi),
+    inset -1px -1px 0 var(--need-frame-lo),
+    inset 0 0 0 1px color-mix(in srgb, #000 18%, transparent);
   background: color-mix(
     in srgb,
     var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 30%,
@@ -1200,8 +1257,13 @@
 }
 
 .catalog-quick-seat--selected {
-  outline: 1px dashed color-mix(in srgb, #ecfeff 45%, transparent);
-  outline-offset: 1px;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, #ecfeff 45%, transparent),
+    0 1px 0 color-mix(in srgb, #000 35%, transparent),
+    0 3px 6px color-mix(in srgb, #000 28%, transparent),
+    inset 1px 1px 0 var(--need-frame-hi),
+    inset -1px -1px 0 var(--need-frame-lo),
+    inset 0 0 0 1px color-mix(in srgb, #000 18%, transparent);
 }
 
 .catalog-quick-seat--brain .catalog-quick-seat__role {
@@ -1220,7 +1282,6 @@
   align-items: flex-start;
   justify-content: center;
   gap: 2px;
-  margin: 0;
   padding: 6px 8px;
   border: 0;
   background: transparent;
