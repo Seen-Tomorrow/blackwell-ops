@@ -282,6 +282,15 @@ export default function CatalogQuickStrip({
                 >
                   ▶
                 </button>
+                <button
+                  type="button"
+                  className="catalog-quick-section__action"
+                  title="Open harness connect veil"
+                  onClick={() => dispatchAppEvent(EVENTS.harnessConnectOpen)}
+                >
+                  CONNECT
+                </button>
+
               </>
             ) : null}
           </div>

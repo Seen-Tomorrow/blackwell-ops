@@ -78,8 +78,11 @@ export const EVENTS = {
   updateOfferingsRefresh: `${STORAGE_PREFIX}update-offerings-refresh`,
   /** Agentic harness open — highlight running engines (brain/worker/solo roles). */
   harnessHighlight: `${STORAGE_PREFIX}harness-highlight`,
-  /** Agentic harness: user clicked a running engine card (twin role cycle). */
-  harnessEngineClick: `${STORAGE_PREFIX}harness-engine-click`,
+  /** Open harness connect glass veil (bezel / catalog CONNECT). */
+  harnessConnectOpen: `${STORAGE_PREFIX}harness-connect-open`,
+  /** Dismiss harness connect glass veil. */
+  harnessConnectDismiss: `${STORAGE_PREFIX}harness-connect-dismiss`,
+
   /**
    * Catalog seats → launch BRAIN+WORKER twin (optional DRAFT path = convenience pin).
    * EngineConfigPanel prefers linked combo when present; else ephemeral.
@@ -155,10 +158,7 @@ export type CatalogSaveEngineToSeatDetail = {
   setIndex?: 0 | 1 | 2;
 };
 
-/** Running-engine card click while harness open (role cycle for twin). */
-export type HarnessEngineClickDetail = {
-  port: number;
-};
+
 
 /** Detail for `EVENTS.ctxSliderDragging`. */
 export type CtxSliderDraggingDetail = {

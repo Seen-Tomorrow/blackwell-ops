@@ -181,12 +181,10 @@ export default function RunningEnginesPanel({
 
   if (instances.length === 0) return null;
 
-  const onEngineActivate = (slotIdx: number, port: number) => {
+  const onEngineActivate = (slotIdx: number, _port: number) => {
     onSelectEngine(slotIdx);
-    if (harnessHl?.open) {
-      dispatchAppEvent(EVENTS.harnessEngineClick, { port, slotIdx });
-    }
   };
+
 
   if (variant === "rail") {
     return (

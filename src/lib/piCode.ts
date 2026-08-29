@@ -17,7 +17,10 @@ export interface PiEngineRef {
   contextWindow?: number;
   /** Engine `--parallel` slot count (concurrent subagent capacity). */
   parallel?: number;
+  /** True when this seat launched with mmproj (vision projector). */
+  vision?: boolean;
 }
+
 
 export interface PiLaunchRequest {
   mode: "solo" | "brain_workers";

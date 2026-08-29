@@ -3110,3 +3110,415 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   outline-offset: 1px;
   box-shadow: 0 0 12px rgba(0, 229, 255, 0.4);
 }
+
+/* ── Harness connect (strip + glass veil) — not a VramBadge face ─────────── */
+
+.harness-connect-strip {
+  border-top: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 88%, transparent);
+  padding: 0.35rem 0.5rem 0.5rem;
+}
+
+.harness-connect-strip__chrome {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+  min-width: 0;
+}
+
+.harness-connect-strip__toggle,
+.harness-connect-strip__veil-btn {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0.15rem 0.45rem;
+  border: 1px solid var(--theme-border);
+  background: color-mix(in srgb, var(--theme-accent) 12%, transparent);
+  color: var(--theme-text);
+  cursor: pointer;
+}
+
+.harness-connect-strip__toggle:hover,
+.harness-connect-strip__veil-btn:hover {
+  border-color: var(--theme-accent);
+}
+
+.harness-connect-strip__surface-toggles {
+  display: flex;
+  gap: 0.55rem;
+  margin-left: auto;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--theme-text-muted);
+}
+
+.harness-connect-strip__surf {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.harness-connect {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-width: 0;
+  color: var(--theme-text);
+}
+
+.harness-connect__header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.harness-connect__title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.harness-connect__title {
+  font-size: 10px;
+  color: var(--theme-accent);
+}
+
+.harness-connect__pi-chip,
+.harness-connect__dev-btn,
+.harness-connect__dismiss {
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.12rem 0.4rem;
+  border: 1px solid var(--theme-border);
+  background: transparent;
+  color: var(--theme-text-muted);
+}
+
+.harness-connect__dev-btn,
+.harness-connect__dismiss {
+  cursor: pointer;
+}
+
+.harness-connect__dev-btn:hover,
+.harness-connect__dismiss:hover {
+  color: var(--theme-text);
+  border-color: var(--theme-accent);
+}
+
+.harness-connect__dismiss {
+  margin-left: auto;
+}
+
+.harness-connect__phase {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.harness-connect__phase-labels {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--theme-text-muted);
+}
+
+.harness-connect__phase-label--on {
+  color: var(--theme-accent);
+}
+
+.harness-connect__phase-bar {
+  height: 3px;
+  background: color-mix(in srgb, var(--theme-border) 80%, transparent);
+  overflow: hidden;
+}
+
+.harness-connect__phase-bar-fill {
+  height: 100%;
+  background: var(--theme-accent);
+  transition: width 0.16s linear;
+}
+
+.harness-connect__phase-msg {
+  font-size: 8px;
+  color: var(--theme-text-muted);
+}
+
+.harness-connect__seats {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.35rem;
+}
+
+.harness-connect--veil .harness-connect__seats {
+  grid-template-columns: 1fr 1fr;
+}
+
+.harness-connect__seat {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto auto;
+  gap: 0.1rem 0.45rem;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid var(--theme-border);
+  min-width: 0;
+}
+
+.harness-connect__seat--brain {
+  border-color: var(--theme-harness-brain-border, var(--theme-provider-pill-active-border));
+  background: color-mix(
+    in srgb,
+    var(--theme-harness-brain-bg, var(--theme-provider-pill-active-bg)) 35%,
+    transparent
+  );
+}
+
+.harness-connect__seat--worker {
+  border-color: var(--theme-harness-worker-border, var(--theme-pair-secondary-bg));
+  background: color-mix(
+    in srgb,
+    var(--theme-harness-worker-bg, var(--theme-pair-secondary-bg)) 35%,
+    transparent
+  );
+}
+
+.harness-connect__seat-role {
+  grid-column: 1;
+  font-size: 8px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.harness-connect__seat--brain .harness-connect__seat-role {
+  color: var(--theme-harness-brain-text, var(--theme-provider-pill-active-text));
+}
+
+.harness-connect__seat--worker .harness-connect__seat-role {
+  color: var(--theme-harness-worker-text, var(--theme-pair-secondary-text));
+}
+
+.harness-connect__seat-id {
+  grid-column: 2;
+  font-size: 10px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.harness-connect__seat-meta {
+  grid-column: 3;
+  font-size: 8px;
+  color: var(--theme-text-muted);
+}
+
+.harness-connect__seat-model {
+  grid-column: 1 / -1;
+  font-size: 8px;
+  color: var(--theme-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.harness-connect__empty {
+  font-size: 9px;
+  color: var(--theme-text-muted);
+}
+
+.harness-connect__project {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.harness-connect__project-btn {
+  flex-shrink: 0;
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.45rem;
+  border: 1px solid var(--theme-border);
+  background: transparent;
+  color: var(--theme-text);
+  cursor: pointer;
+}
+
+.harness-connect__project-btn:hover {
+  border-color: var(--theme-accent);
+}
+
+.harness-connect__project-path {
+  font-size: 9px;
+  color: var(--theme-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.harness-connect__agents {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.harness-connect__agents-label {
+  font-size: 8px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--theme-text-muted);
+  margin-right: 0.15rem;
+}
+
+.harness-connect__agent-chip {
+  font-size: 9px;
+  padding: 0.12rem 0.35rem;
+  border: 1px solid var(--theme-border);
+  background: transparent;
+  color: var(--theme-text-muted);
+  cursor: pointer;
+}
+
+.harness-connect__agent-chip--on {
+  color: var(--theme-text);
+  border-color: var(--theme-accent);
+  background: color-mix(in srgb, var(--theme-accent) 18%, transparent);
+}
+
+.harness-connect__relaunch {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.harness-connect__relaunch-msg {
+  font-size: 8px;
+  color: var(--theme-text-muted);
+}
+
+.harness-connect__relaunch-btn {
+  align-self: flex-start;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--theme-border);
+  background: transparent;
+  color: var(--theme-text);
+  cursor: pointer;
+}
+
+.harness-connect__footer {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.harness-connect__elevated {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 9px;
+  color: var(--theme-text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.harness-connect__go {
+  margin-left: auto;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 0.4rem 0.85rem;
+  border: 1px solid var(--theme-accent);
+  background: color-mix(in srgb, var(--theme-accent) 22%, transparent);
+  color: var(--theme-text);
+  cursor: pointer;
+}
+
+.harness-connect__go:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.harness-connect__go--twin {
+  border-color: var(--theme-harness-worker-border, var(--theme-accent));
+}
+
+.harness-connect__error {
+  font-size: 9px;
+  color: var(--theme-crit, #f87171);
+}
+
+.harness-connect__msg {
+  font-size: 9px;
+  color: var(--theme-text-muted);
+}
+
+.harness-connect__disclaimer {
+  padding: 0.45rem;
+  border: 1px solid var(--theme-border);
+  background: color-mix(in srgb, #000 35%, transparent);
+}
+
+.harness-connect__disclaimer-title {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.harness-connect__disclaimer-body {
+  font-size: 8px;
+  line-height: 1.35;
+  color: var(--theme-text-muted);
+  max-height: 8rem;
+  overflow: auto;
+}
+
+/* Glass veil — sibling overlay inside phosphor; VramBadge face law untouched */
+.harness-connect-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 0.65rem 0.75rem;
+  pointer-events: auto;
+}
+
+.harness-connect-veil--dim {
+  background: color-mix(in srgb, #000 45%, transparent);
+}
+
+.harness-connect-veil--opaque {
+  background: color-mix(in srgb, var(--theme-panel, #0a0c0f) 94%, #000);
+}
+
+.harness-connect-veil .harness-connect {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 35%, var(--theme-border));
+  background: color-mix(in srgb, var(--theme-panel) 92%, transparent);
+  box-shadow: 0 0 24px color-mix(in srgb, #000 55%, transparent);
+}
+
+.phosphor-screen-inner {
+  position: relative;
+}
+

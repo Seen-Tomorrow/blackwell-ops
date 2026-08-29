@@ -29,6 +29,9 @@ import DisplayBezelGridControls from "./DisplayBezelGridControls";
 import VramBadge from "./VramBadge";
 import FitLaunchToggle from "./FitLaunchToggle";
 import RunningEnginesPanel from "./RunningEnginesPanel";
+import { useHarnessConnectHost } from "./HarnessConnectHost";
+
+
 import type { FusionPaneIdentity } from "./FusionDualStage";
 
 /** GPU assignment / forecast data derived from the orchestrator's booter props. */
@@ -105,6 +108,8 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     onSelectEngine,
     isHotSwapStale,
     onHotSwap,
+    onRelaunchSeat: onRelaunchSeatProp,
+
     dualActive = false,
     dualArmed = false,
     canDual = false,
@@ -130,6 +135,32 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
       return next;
     });
   }, []);
+  const onRelaunchSeat = useCallback(
+    async (opts: {
+      slotIdx: number;
+      port: number;
+      alias: string;
+      parallel: number;
+    }) => {
+      if (onRelaunchSeatProp) {
+        await onRelaunchSeatProp(opts);
+        return;
+      }
+      if (!onHotSwap) return;
+      const entry = stack.find((s) => s.idx === opts.slotIdx);
+      if (entry) onHotSwap({ ...entry, parallel: opts.parallel });
+    },
+    [onRelaunchSeatProp, onHotSwap, stack],
+  );
+
+
+  const harness = useHarnessConnectHost({
+    stack,
+    onRelaunchSeat,
+    onSelectEngine,
+  });
+
+
 
   /** Live (RUNNING/LOADING) seats — monitor-mode model switcher (eject + bezel CYCLE). */
   const liveEngineSlots = useMemo(
@@ -346,7 +377,10 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
               dualOrient={dualOrient}
               secondaryPane={secondaryPane}
             />
+            {/* Overlay veil — does not change VramBadge face law */}
+            {harness.veilNode}
           </div>
+
           <DisplayBezelGridControls
             gpuPerRow={gpuPerRow}
             enginesPerRow={enginesPerRow}
@@ -372,9 +406,16 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
             onToggleMonitor={onToggleMonitor}
             liveEngineCount={liveEngineSlots.length}
             onCycleEngine={onCycleLiveEngine}
+            showHarnessConnect={harness.showConnectChip}
+            harnessConnectActive={harness.veilOpen}
+            onHarnessConnect={harness.openVeil}
           />
+
         </div>
       </div>
+
+      {/* Harness connect strip (bake-off surface A) — above Running Engines */}
+      {harness.stripNode}
 
       {/* Running Engines — fusion switcher; below VRAM bezel (outside display area flex) */}
       {showEjectBelowVram && enginesPanelVisible && (
@@ -392,6 +433,7 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
           />
         </div>
       )}
+
     </div>
   );
 }
@@ -453,6 +495,14 @@ export interface EngineGpuForecastProps {
   onSelectEngine?: (slotIdx: number) => void;
   isHotSwapStale?: (entry: StackEntry) => boolean;
   onHotSwap?: (entry: StackEntry) => void;
+  /** Parallel-aware seat relaunch for harness agents mismatch. */
+  onRelaunchSeat?: (opts: {
+    slotIdx: number;
+    port: number;
+    alias: string;
+    parallel: number;
+  }) => Promise<void>;
+
   dualActive?: boolean;
   dualArmed?: boolean;
   canDual?: boolean;

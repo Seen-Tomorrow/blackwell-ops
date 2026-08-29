@@ -437,13 +437,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   } | null>(null);
   /** Blocks cockpit capability re-snap while seat bag is hydrating. */
   const seatHydrateLockRef = useRef(false);
-  const [presetTwinBind, setPresetTwinBind] = useState<{
-    brainPort: number;
-    workerPort: number;
-    agentsN?: number;
-    /** Freeze BRAIN/WORKER tags until both RUNNING or user unlocks. */
-    rolesLocked?: boolean;
-  } | null>(null);
   const launchPresetsApi = useLaunchPresets();
   /** Request apply → compact summary modal (not immediate launch). */
   const requestApplyCombo = useCallback(
@@ -491,7 +484,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   const [enginesInRail, setEnginesInRail] = useState(loadEnginesInRail);
   /** Agentic harness wizard open — full cockpit takeover; skip param dim. */
-  const [harnessWizardOpen, setHarnessWizardOpen] = useState(false);
   /** CTX strip: docked in cockpit vs above-config zone (near VRAM / pin-above groups). */
   const [ctxCockpitDock, setCtxCockpitDock] = useState<CtxCockpitDock>(() => loadCtxCockpitDock());
   const showLaunchRail = launchDockPosition === "right";
@@ -846,7 +838,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   configRef.current = config;
 
   const applyParamsLiveDim = useCallback(() => {
-    if (harnessWizardOpen) return;
     skipNextModelPathUndimRef.current = true;
     liveDimConfigSnapRef.current = JSON.stringify(configRef.current);
     setParamsLiveDimmed(true);
@@ -854,85 +845,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       // Path effect did not run (same model) — drop the one-shot skip
       skipNextModelPathUndimRef.current = false;
     }, 0);
-  }, [harnessWizardOpen]);
-
-  // Harness wizard needs full brightness — clear live dim while open
-  useEffect(() => {
-    if (!harnessWizardOpen) return;
-    setParamsLiveDimmed(false);
-    liveDimConfigSnapRef.current = null;
-    skipNextModelPathUndimRef.current = false;
-  }, [harnessWizardOpen]);
-
-  /**
-   * When the harness wizard opens and the launch dock is docked at the BOTTOM,
-   * the wizard's big "Open {tool}" CTA stacks visually right next to the
-   * "LAUNCH ENGINE" button below — same column, same accent color, both
-   * primary actions. Confusing.
-   *
-   * Behavior:
-   * - Right rail is OPEN (HW monitor / launch rail visible):
-   *     Auto-move the dock to the right rail so the two CTAs are visually
-   *     separated. Restore on close.
-   * - Right rail is CLOSED:
-   *     Don't move the dock (would force the user to discover the right rail
-   *     for no good reason). Instead dim the dock via `data-launch-dock-dim`
-   *     so the user sees one clear CTA — the harness's "Open {tool}" — and
-   *     the launch dock fades behind it. Un-dim on close.
-   */
-  const preHarnessDockPositionRef = useRef<LaunchDockPosition | null>(null);
-  /** Bench tray open/stowed before harness — restore on close (tray tallies VRAM badge height). */
-  const preHarnessBenchTrayRef = useRef<"open" | "stowed" | null>(null);
-
-  // Direct mutators that don't touch the explicit flag (so opening/closing
-  // the harness doesn't mark the user's choice as "explicit"). The "public"
-  // setLaunchDockPositionUser() always sets explicit=true which is wrong for
-  // auto-managed moves.
-  const setLaunchDockPositionAuto = useCallback((position: LaunchDockPosition) => {
-    setLaunchDockPosition(position);
-    saveLaunchDockPosition(position, launchDockPositionExplicit);
-    if (position === "right") {
-      setLaunchDockCollapsed(false);
-      saveLaunchDockCollapsed(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    if (harnessWizardOpen) {
-      // Only auto-move when the right rail is open — otherwise the dock
-      // already has its own column below the wizard and dimming is the
-      // less-invasive fix.
-      if (
-        launchDockPosition === "bottom" &&
-        showRightColumn &&
-        preHarnessDockPositionRef.current == null
-      ) {
-        preHarnessDockPositionRef.current = launchDockPosition;
-        setLaunchDockPositionAuto("right");
-      }
-      // Stow fusion BENCHMARK tray while harness is open — open tray expands the
-      // phosphor/VRAM badge tall enough to collide with Harness Connect (even 4K).
-      if (preHarnessBenchTrayRef.current == null) {
-        preHarnessBenchTrayRef.current = getFusionBenchTrayOpen() ? "open" : "stowed";
-        setFusionBenchTray("stowed");
-      }
-    } else {
-      if (preHarnessDockPositionRef.current != null) {
-        const restore = preHarnessDockPositionRef.current;
-        preHarnessDockPositionRef.current = null;
-        setLaunchDockPositionAuto(restore);
-      }
-      if (preHarnessBenchTrayRef.current != null) {
-        const restoreTray = preHarnessBenchTrayRef.current;
-        preHarnessBenchTrayRef.current = null;
-        setFusionBenchTray(restoreTray);
-      }
-    }
-    // Re-fire when showRightColumn flips mid-session (e.g. user opens HW
-    // monitor while harness is already open). The ref guard prevents a loop.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [harnessWizardOpen, showRightColumn]);
+
 
   // Catalog model cycle → clear live dim (not the path change that follows engine focus/launch)
   useEffect(() => {
@@ -1364,7 +1279,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   // REPLACE mode OR live-dim after launch / focus running engine (visual only — launch stays free).
   // Never dim while the agentic harness wizard is open (user is picking engines).
   const paramsBypassedClass =
-    !harnessWizardOpen && (customFlagsReplaceActive || paramsLiveDimmed)
+    (customFlagsReplaceActive || paramsLiveDimmed)
       ? " config-panel-params--bypassed"
       : "";
 
@@ -2384,26 +2299,15 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         }
       }
 
-      // Twin: open harness only after seats exist; lock roles so boot-time clicks
-      // cannot scramble BRAIN/WORKER (re-apply preset still re-binds if needed).
       if (combo.kind === "twin") {
         const brain = bindByRole.get("brain");
         const worker = bindByRole.get("worker");
-        if (brain && worker && brain.port !== worker.port) {
-          setPresetTwinBind({
-            brainPort: brain.port,
-            workerPort: worker.port,
-            agentsN: plan.agentsN,
-            rolesLocked: true,
-          });
-        } else if (!brain || !worker) {
+        if (!brain || !worker || brain.port === worker.port) {
           dispatchAppEvent(EVENTS.launchError, {
             message: `Twin preset “${combo.name}”: need both BRAIN and WORKER running`,
           });
         }
-      } else if (combo.kind === "solo" && combo.harness) {
-        // Solo harness preset: open wizard in solo mode on the selected seat (optional)
-        // — leave closed unless we later add solo preset open; twin is the conflict case.
+        // Harness connect auto-shows via live engines (HarnessConnectHost).
       }
     },
     [
@@ -3144,6 +3048,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             });
           });
         }}
+        onRelaunchSeat={async ({ slotIdx, port, alias, parallel }) => {
+          await hotSwapEngineSeat({ slotIdx, port, alias, parallel });
+        }}
         dualActive={fusionDisplay.dualActive}
         dualArmed={fusionDisplay.dualArmed}
         canDual={fusionDisplay.canDual}
@@ -3262,7 +3169,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       */}
       <div
         className={`config-params-scroll px-4 py-3 relative flex-1 overflow-y-auto eink-scrollbar eink-panel min-h-0${
-          harnessWizardOpen ? " config-params-scroll--harness-wizard" : ""
+          fullAutoFixed ? " config-params-scroll--full-auto" : ""
         }`}
       >
         {seatEditSession ? (
@@ -3312,11 +3219,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         <EngineBoostSection
           show={Boolean(model && !modelIsDraftOnly && showCockpitSurface)}
           wrapperClass={
-            harnessWizardOpen
-              ? "mb-0 min-h-0 flex-1"
-              : fullAutoFixed
-                ? "mb-3"
-                : "mb-3 pb-3 border-b section-divider"
+            fullAutoFixed
+              ? "mb-3"
+              : "mb-3 pb-3 border-b section-divider"
           }
           codingMode={codingMode}
           speedBoost={speedBoost}
@@ -3340,38 +3245,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           showThink={cockpitShowThink}
           showBoost={cockpitShowBoost}
           flagToggles={cockpitFlagToggles}
-          launchPresets={{
-            combos: launchPresetsApi.combos,
-            onApply: requestApplyCombo,
-            onSaveTwin: handleSaveTwinPreset,
-            onManage: () => setPresetsManageOpen(true),
-            canSaveTwin:
-              stack.filter((s) => s.status === "RUNNING" && s.port > 0).length >= 2,
-          }}
-          presetTwinBind={presetTwinBind}
-          onPresetTwinBindConsumed={() => setPresetTwinBind(null)}
           agentsFromTemplateOnly={isCustomProvider}
-          port={
-            (selectedSlotIdx != null &&
-              stack.find((s) => s.idx === selectedSlotIdx && s.status === "RUNNING")?.port) ||
-            Number(config.base_port) ||
-            9090
-          }
-          modelId={
-            (selectedSlotIdx != null &&
-              stack.find((s) => s.idx === selectedSlotIdx)?.model_name) ||
-            aliasDisplayValue ||
-            autoAlias ||
-            model?.name ||
-            "local-model"
-          }
-          stack={stack}
-          preferredSlotIdx={selectedSlotIdx ?? null}
-          onHarnessOpenChange={setHarnessWizardOpen}
-          onRelaunchSeat={async ({ slotIdx, port, alias, parallel }) => {
-            await hotSwapEngineSeat({ slotIdx, port, alias, parallel });
-          }}
-          onSelectEngine={handleSelectEngine}
           layout={fullAutoFixed ? "hero" : "normal"}
           powerMode={powerCockpitMode}
           rawSpecTypes={factoryRawSpecTypes}
@@ -3407,7 +3281,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           />
         )}
 
-        {!fullAutoFixed && !harnessWizardOpen && (
+        {!fullAutoFixed && (
           <div className="config-detailed-panel mb-1.5 border border-stealth-border/30 rounded-sm">
             <div className="config-detailed-panel__row flex items-center gap-1.5">
               <span className="config-detailed-panel__label text-[8px] font-mono tracking-widest uppercase text-stealth-muted/70 flex-shrink-0">
@@ -3437,7 +3311,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         )}
 
         {/* Engine chips hidden while harness wizard owns the panel */}
-        {!fullAutoFixed && !harnessWizardOpen && (
+        {!fullAutoFixed && (
           <div className={paramsBypassedClass}>
             {allParamsForDisplay.length === 0 ? (
               <div className="text-stealth-muted text-[10px] font-mono opacity-50">NO PARAMS DEFINED</div>
@@ -3471,7 +3345,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       {launchDockPosition === "bottom" && (
         <EngineLaunchDock
           position="bottom"
-          harnessWizardOpen={harnessWizardOpen}
           showRightColumn={showRightColumn}
           launchDockCollapsed={launchDockCollapsed}
           onExpandCollapsedDock={() => {

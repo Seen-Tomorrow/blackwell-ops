@@ -24,8 +24,6 @@ function paramChipClass(active: boolean): string {
 export default function EngineLaunchDock(props: EngineLaunchDockProps) {
   const {
     position,
-    // dim (bottom only)
-    harnessWizardOpen = false,
     showRightColumn = false,
     // flags pill (bottom only)
     launchDockCollapsed = false,
@@ -320,12 +318,7 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
 
   // ── Bottom variant (full-width bottom bar) ──────────────────────────────
   return (
-    <div
-      className="config-launch-dock flex-shrink-0 px-4 flex flex-col"
-      data-launch-dock-dim={
-        harnessWizardOpen && !showRightColumn ? "true" : "false"
-      }
-    >
+    <div className="config-launch-dock flex-shrink-0 px-4 flex flex-col">
       <div className="config-launch-dock__content flex flex-col min-w-0">
         {launchDockCollapsed && customFlagsLaunchActive && configView === "full" && (
           <button
@@ -352,8 +345,6 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
 
 export interface EngineLaunchDockProps {
   position: LaunchDockPosition;
-  /** Bottom dim: harness wizard open with the right rail closed. */
-  harnessWizardOpen?: boolean;
   showRightColumn?: boolean;
   /** Bottom: collapsed flags pill. */
   launchDockCollapsed?: boolean;
@@ -361,6 +352,7 @@ export interface EngineLaunchDockProps {
   /** Warnings. */
   specParallelWarn: boolean;
   mtpParallelSlotCount: number;
+
   fullAutoFixed: boolean;
   modelIsDraftOnly: boolean;
   /** Custom flags block renderer (orchestrator owns editor state + popover). */
