@@ -5579,6 +5579,12 @@ html[data-industrial-bezel="brush"] {
   text-shadow: none;
 }
 
+.display-bezel-fusion-chip--harness-ready {
+  border-color: color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 80%, transparent);
+  color: var(--theme-harness-brain-text, var(--theme-chip-active-text));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 35%, transparent);
+}
+
 .running-engine-card-secondary,
 .launch-rail-engine-chip--secondary {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, #38bdf8 55%, transparent);

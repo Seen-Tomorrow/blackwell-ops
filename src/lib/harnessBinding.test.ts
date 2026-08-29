@@ -40,8 +40,14 @@ describe("deriveHarnessBinding", () => {
     expect(b.mode).toBe("none");
   });
 
-  it("solo from single live", () => {
+  it("untagged single live is not harness", () => {
     const e = eng({ port: 8080, idx: 0, alias: "Qwen" });
+    const b = deriveHarnessBinding([e]);
+    expect(b.mode).toBe("none");
+  });
+
+  it("solo from BRAIN alias", () => {
+    const e = eng({ port: 8080, idx: 0, alias: "BRAIN" });
     const b = deriveHarnessBinding([e]);
     expect(b.mode).toBe("solo");
     expect(b.brain?.port).toBe(8080);
@@ -80,13 +86,11 @@ describe("deriveHarnessBinding", () => {
     expect(b.worker?.port).toBe(2);
   });
 
-  it("two untagged lives → slot-order twin", () => {
+  it("two untagged lives → none", () => {
     const a = eng({ port: 1, idx: 0, alias: "A" });
     const b = eng({ port: 2, idx: 1, alias: "B" });
     const r = deriveHarnessBinding([b, a]);
-    expect(r.mode).toBe("twin");
-    expect(r.brain?.idx).toBe(0);
-    expect(r.worker?.idx).toBe(1);
+    expect(r.mode).toBe("none");
   });
 
   it("three untagged lives → none", () => {

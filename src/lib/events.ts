@@ -91,6 +91,8 @@ export const EVENTS = {
   /** Catalog seats → launch one seat as solo (harness connect). */
   catalogLaunchSeatSolo: `${STORAGE_PREFIX}catalog-launch-seat-solo`,
   catalogSeatEdit: `${STORAGE_PREFIX}catalog-seat-edit`,
+  /** Force cockpit panel onto this model path (seat-edit, no prior catalog click). */
+  catalogFocusModel: `${STORAGE_PREFIX}catalog-focus-model`,
   /** Persist panel config into the active seat-edit bag. */
   catalogSeatSave: `${STORAGE_PREFIX}catalog-seat-save`,
   /** Leave seat-edit without writing. */
@@ -130,12 +132,15 @@ export type CatalogLaunchSeatSoloDetail = {
   modelPath: string;
   setIndex?: 0 | 1 | 2;
 };
-/** Detail for `EVENTS.catalogSeatEdit`. */
 export type CatalogSeatEditDetail = {
   role: "brain" | "worker";
   setIndex: 0 | 1 | 2;
   /** Model path already selected in catalog (required). */
   modelPath: string;
+};
+
+export type CatalogFocusModelDetail = {
+  path: string;
 };
 
 /** Detail for `EVENTS.catalogSeatEditEnded`. */

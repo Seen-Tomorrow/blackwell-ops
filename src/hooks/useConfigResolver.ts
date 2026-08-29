@@ -5,7 +5,7 @@
  * (see launchProfiles). Switching modes loads another profile — no silent leakage.
  */
 
-import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef, type MutableRefObject } from "react";
 import type { ModelEntry, UserEditedTemplateParam } from "../lib/types";
 import { paramsVisibilityFingerprint, resolveParamDefaultValue } from "../lib/paramConfigResolve";
 import {
@@ -61,6 +61,11 @@ interface UseConfigResolverOptions {
   /** Active launch policy — drives which profile is read/written. */
   fullAutoMode: boolean;
   configView: ConfigViewMode;
+  /**
+   * When true, loadConfig is a no-op so FIT probe / param fingerprint
+   * reloads cannot revert knobs during catalog seat-edit.
+   */
+  hydrateLockRef?: MutableRefObject<boolean>;
 }
 
 export function useConfigResolver({
@@ -69,6 +74,7 @@ export function useConfigResolver({
   backendType,
   fullAutoMode,
   configView,
+  hydrateLockRef,
 }: UseConfigResolverOptions) {
   // Heterogeneous param bag — panel treats values as any; pure builder re-types at launch.
   const [config, setConfig] = useState<Record<string, any>>({});
@@ -98,6 +104,7 @@ export function useConfigResolver({
   );
 
   const loadConfig = useCallback(() => {
+    if (hydrateLockRef?.current) return;
     if (!cleanedParams.length) {
       setConfig({});
       return;
@@ -133,7 +140,6 @@ export function useConfigResolver({
         continue;
       }
       if (p.hidden || !p.values?.length) continue;
-      // Prefer merged (factory → Joe → profile) so Full Auto flags are correct even if missing in profile
       resolved[p.key] = baseMerged[p.key] ?? resolveParamDefaultValue(p);
     }
 
@@ -142,7 +148,7 @@ export function useConfigResolver({
     );
 
     setConfig(normalized);
-  }, [cleanedParams, backendType, modelPath, policyId, factoryDefaults]);
+  }, [cleanedParams, backendType, modelPath, policyId, factoryDefaults, hydrateLockRef]);
 
   // Load when model / params / provider change
   useEffect(() => {

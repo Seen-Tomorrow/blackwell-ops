@@ -1,6 +1,6 @@
 /**
- * Harness connect core — pi status, derived seats, project, agents, OPEN.
- * Presentation shells (strip / veil) pass `variant` only; no role assignment.
+ * Harness connect — pi status, project, agents, OPEN.
+ * Catalog assigns seats; this panel only binds and launches pi.
  */
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -69,8 +69,6 @@ function projectBasename(path: string | null | undefined): string {
 
 export type HarnessConnectPanelProps = {
   binding: HarnessBinding;
-  variant: "strip" | "veil";
-  /** Veil: dismiss control. */
   onDismiss?: () => void;
   onRelaunchSeat?: (opts: {
     slotIdx: number;
@@ -79,14 +77,12 @@ export type HarnessConnectPanelProps = {
     parallel: number;
   }) => Promise<void>;
   onSelectEngine?: (slotIdx: number) => void;
-  /** After successful pi_code_launch. */
   onLaunched?: () => void;
   className?: string;
 };
 
 export default function HarnessConnectPanel({
   binding,
-  variant,
   onDismiss,
   onRelaunchSeat,
   onSelectEngine,
@@ -571,8 +567,8 @@ export default function HarnessConnectPanel({
 
   return (
     <div
-      className={`harness-connect harness-connect--${variant} font-mono ${className}`}
-      data-harness-connect={variant}
+      className={`harness-connect harness-connect--veil font-mono ${className}`}
+      data-harness-connect="veil"
       data-harness-mode={binding.mode}
     >
       {confirmPortal}
@@ -599,12 +595,12 @@ export default function HarnessConnectPanel({
               {piUpdating ? "UPDATING…" : "UPDATE"}
             </button>
           ) : null}
-          {variant === "veil" && onDismiss ? (
+          {onDismiss ? (
             <button
               type="button"
-              className="harness-connect__dismiss"
+              className="harness-connect__dismiss harness-connect__dismiss--stop"
               onClick={onDismiss}
-              title="Dismiss veil — fusion glass returns"
+              title="Close harness connect"
             >
               ✕
             </button>
@@ -641,43 +637,9 @@ export default function HarnessConnectPanel({
 
       {disclaimerBlock}
 
-      <div className="harness-connect__seats" aria-label="Derived seats">
-        {binding.mode === "none" ? (
-          <p className="harness-connect__empty m-0">{binding.reason ?? "Launch seats from catalog"}</p>
-        ) : null}
-        {binding.brain ? (
-          <div className="harness-connect__seat harness-connect__seat--brain">
-            <span className="harness-connect__seat-role">
-              {binding.mode === "solo" ? "SOLO · BRAIN" : "BRAIN"}
-            </span>
-            <span className="harness-connect__seat-id">
-              {binding.brain.alias} :{binding.brain.port}
-            </span>
-            <span className="harness-connect__seat-meta">
-              ∥{engineParallel(binding.brain)}
-              {binding.brain.status === "LOADING" ? " · LOADING" : ""}
-            </span>
-            <span className="harness-connect__seat-model" title={binding.brain.model_name}>
-              {binding.brain.model_name}
-            </span>
-          </div>
-        ) : null}
-        {binding.mode === "twin" && binding.worker ? (
-          <div className="harness-connect__seat harness-connect__seat--worker">
-            <span className="harness-connect__seat-role">WORKER</span>
-            <span className="harness-connect__seat-id">
-              {binding.worker.alias} :{binding.worker.port}
-            </span>
-            <span className="harness-connect__seat-meta">
-              ∥{engineParallel(binding.worker)}
-              {binding.worker.status === "LOADING" ? " · LOADING" : ""}
-            </span>
-            <span className="harness-connect__seat-model" title={binding.worker.model_name}>
-              {binding.worker.model_name}
-            </span>
-          </div>
-        ) : null}
-      </div>
+      {binding.mode === "none" ? (
+        <p className="harness-connect__empty m-0">{binding.reason ?? "Launch seats from catalog"}</p>
+      ) : null}
 
       <div className="harness-connect__project">
         <button

@@ -1,19 +1,16 @@
 # Harness Connect — catalog-bound panel plan
 
-Status: **Implemented (bake-off)** — both surfaces live; pick one and delete the other  
+Status: **Implemented** — veil only  
 Date: 2026-08-29  
 
-### Shipped presentation (dual bake-off)
+### Shipped
 
-| Surface | Where | How to open | How to drop later |
-|---|---|---|---|
-| **Strip** | Above Running Engines (below VramBadge bezel) | Auto when ≥1 LOADING/RUNNING; collapsible chrome | Uncheck `strip` in strip chrome, or delete `harness.stripNode` mount + prefs |
-| **Veil** | Overlay inside phosphor (sibling of VramBadge — **not** a face) | Auto once on 0→live; bezel **CONNECT**; catalog strip **CONNECT**; strip **VEIL** btn | Uncheck `veil`, or delete `harness.veilNode` + CONNECT chips |
+**Veil** overlay inside phosphor (sibling of VramBadge — **not** a face). Auto-open when catalog BRAIN/WORKER seats are RUNNING. Bezel / catalog **HARNESS CONNECT**. Dismiss ✕ or after `pi_code_launch`.
 
-Veil opacity: **dim** while any bound seat LOADING; **full opaque** when seats RUNNING. Hides on successful `pi_code_launch` or dismiss.  
-Prefs: `KEYS.harnessConnectSurfaces` `{ strip, veil }` — keep ≥1 enabled during bake-off.  
-Core: `src/lib/harnessBinding.ts`, `src/components/HarnessConnectPanel.tsx`, `src/components/HarnessConnectHost.tsx`.  
+Core: `src/lib/harnessBinding.ts`, `src/components/HarnessConnectPanel.tsx`, `src/components/HarnessConnectHost.tsx`.
 Wizard takeover deleted from `MultiAgentBooster` (launch cockpit only).
+Bake-off strip above Running Engines was dropped.
+
 
 ---
 

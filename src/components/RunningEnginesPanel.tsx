@@ -6,6 +6,7 @@ import {
   EVENTS,
   type HarnessHighlightDetail,
 } from "../lib/events";
+import { aliasRole } from "../lib/harnessBinding";
 
 function runtimeProfileLabel(binaryProfile?: string): string {
   const key = (binaryProfile || DEFAULT_BINARY_PROFILE).toLowerCase() as Env;
@@ -120,7 +121,6 @@ interface RunningEnginesPanelProps {
   /** Below-display cards per row (2 | 3). Ignored for rail. */
   perRow?: 2 | 3;
 }
-
 function harnessRoleForPort(
   port: number,
   hl: HarnessHighlightDetail | null,
@@ -128,12 +128,19 @@ function harnessRoleForPort(
   if (!hl?.open) return null;
   if (hl.brainPort != null && port === hl.brainPort) return "brain";
   if (hl.workerPort != null && port === hl.workerPort) return "worker";
-  // Solo harness mode uses same amber “brain” treatment as twin BRAIN
   if (hl.soloPort != null && port === hl.soloPort && hl.brainPort == null && hl.workerPort == null) {
     return "brain";
   }
-  if (hl.brainPort != null || hl.workerPort != null) return null;
   return null;
+}
+
+function seatRoleForEntry(
+  entry: StackEntry,
+  hl: HarnessHighlightDetail | null,
+): "brain" | "worker" | "solo" | null {
+  const fromAlias = aliasRole(entry.alias);
+  if (fromAlias) return fromAlias;
+  return harnessRoleForPort(entry.port, hl);
 }
 
 function saveEngineToSeat(slotIdx: number, role: "brain" | "worker") {
@@ -195,7 +202,7 @@ export default function RunningEnginesPanel({
         <div className="launch-rail-engines__list flex flex-col gap-1">
           {instances.map((item) => {
             const isThisSelected = selectedSlotIdx === item.entry.idx;
-            const role = harnessRoleForPort(item.entry.port, harnessHl);
+            const role = seatRoleForEntry(item.entry, harnessHl);
             const roleClass =
               role === "brain"
                 ? " harness-engine--brain"
@@ -241,9 +248,11 @@ export default function RunningEnginesPanel({
                   <span className="text-[8px] font-mono text-white/80 shrink-0 tabular-nums">
                     :{item.entry.port}
                   </span>
-                  <span className="text-[8px] font-mono text-nv-green/90 shrink-0 truncate max-w-[3.5rem]" title={item.entry.alias}>
-                    {item.entry.alias}
-                  </span>
+                  {aliasRole(item.entry.alias) ? null : (
+                    <span className="text-[8px] font-mono text-nv-green/90 shrink-0 truncate max-w-[3.5rem]" title={item.entry.alias}>
+                      {item.entry.alias}
+                    </span>
+                  )}
                   <span
                     className="text-[6px] font-mono text-stealth-muted/70 shrink-0 truncate max-w-[5.5rem] uppercase tracking-wide"
                     title={runtimeEngineSourceLabel(item.entry)}
@@ -328,7 +337,7 @@ export default function RunningEnginesPanel({
           const isThisSelected = selectedSlotIdx === item.entry.idx;
           const isNvfp = item.quant.toLowerCase().includes("nvfp");
           const sourceLabel = runtimeEngineSourceLabel(item.entry);
-          const role = harnessRoleForPort(item.entry.port, harnessHl);
+          const role = seatRoleForEntry(item.entry, harnessHl);
           const roleClass =
             role === "brain"
               ? " harness-engine--brain"
@@ -368,15 +377,17 @@ export default function RunningEnginesPanel({
                   <span
                     className={`harness-engine-role-chip harness-engine-role-chip--${role} shrink-0`}
                   >
-                    {role === "brain" ? "1·BRAIN" : "2·WORKER"}
+                    {role === "worker" ? "WORKER" : "BRAIN"}
                   </span>
                 )}
-                <span
-                  className="running-engine-alias font-mono text-[9px] text-white/70 shrink-0 truncate"
-                  title={item.entry.alias}
-                >
-                  {item.entry.alias}
-                </span>
+                {aliasRole(item.entry.alias) ? null : (
+                  <span
+                    className="running-engine-alias font-mono text-[9px] text-white/70 shrink-0 truncate"
+                    title={item.entry.alias}
+                  >
+                    {item.entry.alias}
+                  </span>
+                )}
                 <span
                   className={`text-[10px] font-mono truncate flex-1 min-w-0 ${isThisSelected ? "text-nv-green" : "text-white"}`}
                   title={item.modelName}
@@ -395,7 +406,7 @@ export default function RunningEnginesPanel({
                     {item.vramUsedGb.toFixed(1)} GB
                   </span>
                 )}
-                <span className="text-[7px] font-mono text-stealth-muted/50 shrink-0">
+                <span className="running-engine-port font-mono shrink-0">
                   :{item.entry.port}
                 </span>
                 {onHotSwap && item.entry.status === "RUNNING" && (

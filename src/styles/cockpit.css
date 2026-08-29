@@ -1299,34 +1299,54 @@
   min-width: 8rem;
 }
 
-/* Role chip on engine cards (shown when harness assigns a role class) */
+/* Role chip on engine cards — theme tokens, readable at 1440p */
 .harness-engine-role-chip {
   display: inline-block;
-  font-size: 6px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  padding: 0.1rem 0.28rem;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  padding: 0.12rem 0.4rem;
   border-radius: 2px;
-  line-height: 1.2;
+  line-height: 1.15;
   text-transform: uppercase;
 }
 
-.harness-engine-role-chip--brain {
-  color: #fef3c7;
-  border: 1px solid color-mix(in srgb, #f59e0b 55%, transparent);
-  background: color-mix(in srgb, #b45309 40%, #1a1000 60%);
+.harness-engine-role-chip--brain,
+.harness-engine-role-chip--solo {
+  color: var(--theme-harness-brain-text, #fef3c7);
+  border: 1px solid color-mix(in srgb, var(--theme-harness-brain-raw, #f59e0b) 75%, transparent);
+  background: color-mix(in srgb, var(--theme-harness-brain-raw, #f59e0b) 38%, #1a1000 62%);
 }
 
 .harness-engine-role-chip--worker {
-  color: #ede9fe;
-  border: 1px solid color-mix(in srgb, #a78bfa 50%, transparent);
-  background: color-mix(in srgb, #5b21b6 45%, #0c0618 55%);
+  color: var(--theme-harness-worker-text, #ffedd5);
+  border: 1px solid color-mix(in srgb, var(--theme-harness-worker-raw, #ea580c) 75%, transparent);
+  background: color-mix(in srgb, var(--theme-harness-worker-raw, #ea580c) 36%, #1a0a00 64%);
 }
 
-.harness-engine-role-chip--solo {
-  color: #ecfeff;
-  border: 1px solid color-mix(in srgb, #22d3ee 50%, transparent);
-  background: color-mix(in srgb, #0e7490 45%, #041016 55%);
+.running-engine-port {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--theme-text, #fff);
+}
+
+.running-engine-card.harness-engine--brain,
+.launch-rail-engine-chip.harness-engine--brain {
+  border-color: color-mix(in srgb, var(--theme-harness-brain-raw) 70%, transparent) !important;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--theme-harness-brain-raw) 40%, transparent),
+    0 0 12px color-mix(in srgb, var(--theme-harness-brain-raw) 22%, transparent);
+  background: color-mix(in srgb, var(--theme-harness-brain-raw) 22%, var(--theme-eject-card-bg, #1a1810) 78%);
+}
+
+.running-engine-card.harness-engine--worker,
+.launch-rail-engine-chip.harness-engine--worker {
+  border-color: color-mix(in srgb, var(--theme-harness-worker-raw) 70%, transparent) !important;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--theme-harness-worker-raw) 40%, transparent),
+    0 0 12px color-mix(in srgb, var(--theme-harness-worker-raw) 22%, transparent);
+  background: color-mix(in srgb, var(--theme-harness-worker-raw) 22%, var(--theme-eject-card-bg, #1a1810) 78%);
 }
 
 /* ── Running engines highlight while harness wizard open ─── */
@@ -3111,56 +3131,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   box-shadow: 0 0 12px rgba(0, 229, 255, 0.4);
 }
 
-/* ── Harness connect (strip + glass veil) — not a VramBadge face ─────────── */
-
-.harness-connect-strip {
-  border-top: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
-  background: color-mix(in srgb, var(--theme-panel) 88%, transparent);
-  padding: 0.35rem 0.5rem 0.5rem;
-}
-
-.harness-connect-strip__chrome {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.35rem;
-  min-width: 0;
-}
-
-.harness-connect-strip__toggle,
-.harness-connect-strip__veil-btn {
-  font-size: 9px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  padding: 0.15rem 0.45rem;
-  border: 1px solid var(--theme-border);
-  background: color-mix(in srgb, var(--theme-accent) 12%, transparent);
-  color: var(--theme-text);
-  cursor: pointer;
-}
-
-.harness-connect-strip__toggle:hover,
-.harness-connect-strip__veil-btn:hover {
-  border-color: var(--theme-accent);
-}
-
-.harness-connect-strip__surface-toggles {
-  display: flex;
-  gap: 0.55rem;
-  margin-left: auto;
-  font-size: 8px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--theme-text-muted);
-}
-
-.harness-connect-strip__surf {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  cursor: pointer;
-  user-select: none;
-}
+/* ── Harness connect veil — not a VramBadge face ─────────── */
 
 .harness-connect {
   display: flex;
@@ -3216,6 +3187,21 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   margin-left: auto;
 }
 
+.harness-connect__dismiss--stop {
+  color: #fecaca;
+  border-color: color-mix(in srgb, #ef4444 75%, transparent);
+  background: color-mix(in srgb, #991b1b 55%, #1a0505 45%);
+  font-size: 11px;
+  font-weight: 800;
+  padding: 0.15rem 0.5rem;
+}
+
+.harness-connect__dismiss--stop:hover {
+  color: #fff;
+  border-color: #ef4444;
+  background: color-mix(in srgb, #dc2626 70%, #1a0505 30%);
+}
+
 .harness-connect__phase {
   display: flex;
   flex-direction: column;
@@ -3267,10 +3253,14 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   display: grid;
   grid-template-columns: auto 1fr auto;
   grid-template-rows: auto auto;
-  gap: 0.1rem 0.45rem;
-  padding: 0.35rem 0.45rem;
+  column-gap: 0.4rem;
+  row-gap: 0.08rem;
+  padding: 0.28rem 0.4rem;
   border: 1px solid var(--theme-border);
-  min-width: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
 }
 
 .harness-connect__seat--brain {
@@ -3488,34 +3478,141 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   overflow: auto;
 }
 
-/* Glass veil — sibling overlay inside phosphor; VramBadge face law untouched */
+/* Full-face opaque veil — flush to phosphor inner (no pad; 5px gap was padding) */
 .harness-connect-veil {
   position: absolute;
   inset: 0;
-  z-index: 20;
+  z-index: 30;
   display: flex;
   align-items: stretch;
   justify-content: stretch;
-  padding: 0.65rem 0.75rem;
+  padding: 0;
+  margin: 0;
+  border-radius: inherit;
+  overflow: hidden;
   pointer-events: auto;
 }
 
-.harness-connect-veil--dim {
-  background: color-mix(in srgb, #000 45%, transparent);
+.harness-connect-veil--opaque {
+  background:
+    radial-gradient(120% 80% at 50% -10%, color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 22%, transparent), transparent 55%),
+    radial-gradient(90% 70% at 110% 110%, color-mix(in srgb, var(--theme-harness-worker-raw, #ea580c) 16%, transparent), transparent 50%),
+    color-mix(in srgb, var(--theme-panel, #0a0c0f) 96%, #000);
 }
 
-.harness-connect-veil--opaque {
-  background: color-mix(in srgb, var(--theme-panel, #0a0c0f) 94%, #000);
+.harness-connect-veil__fx {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.harness-connect-veil__grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 12%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 12%, transparent) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: radial-gradient(ellipse at 50% 40%, #000 20%, transparent 75%);
+  animation: harness-veil-grid 18s linear infinite;
+}
+
+.harness-connect-veil__scan {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0 2px,
+    color-mix(in srgb, #000 28%, transparent) 3px
+  );
+  opacity: 0.35;
+}
+
+.harness-connect-veil__sweep {
+  position: absolute;
+  left: -20%;
+  top: 0;
+  width: 40%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 18%, transparent),
+    transparent
+  );
+  animation: harness-veil-sweep 4.8s ease-in-out infinite;
+}
+
+.harness-connect-veil__corners {
+  position: absolute;
+  inset: 10px;
+  border: 1px solid color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 45%, transparent);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, #000 40%, transparent),
+    0 0 24px color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 18%, transparent);
+  animation: harness-veil-pulse 2.8s ease-in-out infinite;
+}
+
+.harness-connect-veil__corners::before,
+.harness-connect-veil__corners::after {
+  content: "";
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border-color: var(--theme-harness-brain-raw, #60a5fa);
+  border-style: solid;
+}
+
+.harness-connect-veil__corners::before {
+  top: -2px;
+  left: -2px;
+  border-width: 2px 0 0 2px;
+}
+
+.harness-connect-veil__corners::after {
+  bottom: -2px;
+  right: -2px;
+  border-width: 0 2px 2px 0;
+}
+
+@keyframes harness-veil-sweep {
+  0% { transform: translateX(0); opacity: 0.2; }
+  50% { opacity: 0.55; }
+  100% { transform: translateX(320%); opacity: 0.15; }
+}
+
+@keyframes harness-veil-grid {
+  0% { background-position: 0 0, 0 0; }
+  100% { background-position: 28px 28px, 28px 28px; }
+}
+
+@keyframes harness-veil-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
 }
 
 .harness-connect-veil .harness-connect {
+  position: relative;
+  z-index: 1;
   flex: 1;
+  width: 100%;
   min-height: 0;
   overflow: auto;
-  padding: 0.5rem 0.65rem;
-  border: 1px solid color-mix(in srgb, var(--theme-accent) 35%, var(--theme-border));
-  background: color-mix(in srgb, var(--theme-panel) 92%, transparent);
-  box-shadow: 0 0 24px color-mix(in srgb, #000 55%, transparent);
+  gap: 0.55rem;
+  padding: 0.85rem 1rem 1rem;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.harness-connect--veil .harness-connect__header {
+  gap: 0.2rem;
+}
+
+.harness-connect--veil .harness-connect__title {
+  font-size: 12px;
+  letter-spacing: 0.22em;
 }
 
 .phosphor-screen-inner {

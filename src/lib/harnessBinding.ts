@@ -55,8 +55,8 @@ function byCatalogPath(
 }
 
 /**
- * Resolution: alias prefix → catalog path → 1-live solo / 2-live slot-order fallback.
- * ≥3 untagged lives without alias/path → none (never silent wrong twin).
+ * Resolution: alias prefix → catalog path. No untagged 1-live/2-live fallback
+ * (regular dock launches must not open harness).
  */
 export function deriveHarnessBinding(
   stack: StackEntry[],
@@ -67,55 +67,10 @@ export function deriveHarnessBinding(
     return { mode: "none", brain: null, worker: null, reason: "Launch seats from catalog" };
   }
 
-  let brain =
+  const brain =
     byAlias(live, "brain") ?? byCatalogPath(live, catalogSeats, "brain");
-  let worker =
+  const worker =
     byAlias(live, "worker") ?? byCatalogPath(live, catalogSeats, "worker");
-
-  // Fallback only when neither side resolved via alias/path.
-  if (!brain && !worker) {
-    if (live.length === 1) {
-      return { mode: "solo", brain: live[0]!, worker: null };
-    }
-    if (live.length === 2) {
-      brain = live[0]!;
-      worker = live[1]!;
-    } else {
-      return {
-        mode: "none",
-        brain: null,
-        worker: null,
-        reason: "Tag seats via catalog ▶ (alias BRAIN/WORKER) or launch SOLO/TWIN",
-      };
-    }
-  } else if (!brain && worker) {
-    // Worker-only: treat as solo on that seat if single live, else incomplete twin.
-    if (live.length === 1) {
-      return { mode: "solo", brain: worker, worker: null };
-    }
-    const other = live.find((e) => e.port !== worker!.port) ?? null;
-    if (other && live.length === 2) {
-      brain = other;
-    } else {
-      return {
-        mode: "none",
-        brain: null,
-        worker,
-        reason: "BRAIN seat missing — launch from catalog",
-      };
-    }
-  } else if (brain && !worker) {
-    if (live.length === 1 || live.every((e) => e.port === brain!.port)) {
-      return { mode: "solo", brain, worker: null };
-    }
-    // Prefer remaining live as worker only when exactly one other.
-    const others = live.filter((e) => e.port !== brain!.port);
-    if (others.length === 1) {
-      worker = others[0]!;
-    } else {
-      return { mode: "solo", brain, worker: null };
-    }
-  }
 
   if (brain && worker && brain.port === worker.port) {
     return {
@@ -132,7 +87,12 @@ export function deriveHarnessBinding(
   if (brain) {
     return { mode: "solo", brain, worker: null };
   }
-  return { mode: "none", brain: null, worker: null, reason: "Launch seats from catalog" };
+  return {
+    mode: "none",
+    brain: null,
+    worker: worker,
+    reason: "Launch seats from catalog ▶",
+  };
 }
 
 /** Bound seats still booting — veil should dim, not go fully opaque. */

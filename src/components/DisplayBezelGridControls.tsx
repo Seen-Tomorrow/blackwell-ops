@@ -31,9 +31,9 @@ export interface DisplayBezelGridControlsProps {
   onToggleMonitor?: () => void;
   /** Forecast GPU-density control — hidden while fusion metrics overlay is on. */
   showGpuDensity?: boolean;
-  /** Open harness connect glass veil. */
   showHarnessConnect?: boolean;
   harnessConnectActive?: boolean;
+  harnessConnectReady?: boolean;
   onHarnessConnect?: () => void;
 }
 
@@ -58,6 +58,7 @@ export default function DisplayBezelGridControls({
   showGpuDensity = true,
   showHarnessConnect = false,
   harnessConnectActive = false,
+  harnessConnectReady = false,
   onHarnessConnect,
 }: DisplayBezelGridControlsProps) {
 
@@ -127,12 +128,12 @@ export default function DisplayBezelGridControls({
             <button
               type="button"
               onClick={onHarnessConnect}
-              title="Open harness connect veil"
+              title="Open harness connect"
               className={`display-bezel-fusion-chip font-mono uppercase tracking-wider${
                 harnessConnectActive ? " display-bezel-fusion-chip--active" : ""
-              }`}
+              }${harnessConnectReady ? " display-bezel-fusion-chip--harness-ready" : ""}`}
             >
-              CONNECT
+              HARNESS CONNECT
             </button>
           </div>
         ) : null}

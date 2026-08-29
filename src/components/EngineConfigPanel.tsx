@@ -435,7 +435,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     modelPath: string;
     applied: boolean;
   } | null>(null);
-  /** Blocks cockpit capability re-snap while seat bag is hydrating. */
+  /** Blocks cockpit capability re-snap and loadConfig while seat-edit is open. */
   const seatHydrateLockRef = useRef(false);
   const launchPresetsApi = useLaunchPresets();
   /** Request apply → compact summary modal (not immediate launch). */
@@ -820,6 +820,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     backendType: effectiveBackendType,
     fullAutoMode,
     configView,
+    hydrateLockRef: seatHydrateLockRef,
   });
 
   /**
@@ -2325,6 +2326,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     const prev = seatEditSession;
     setSeatEditSession(null);
     seatHydrateLockRef.current = false;
+
     dispatchAppEvent(EVENTS.catalogSeatEditEnded, {
       saved,
       role: prev?.role,
@@ -2391,38 +2393,51 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     ],
   );
 
-  // Apply seat bag once per edit session after model path lands — never re-enter.
+  // Apply seat bag once the cockpit model path AND param defs have landed.
+  // Overlay ref is last-wins on every loadConfig so async Boost/profile reloads
+  // cannot clobber the bag (EDIT without a prior catalog click).
   useEffect(() => {
     if (!seatEditSession || seatEditSession.applied) return;
     if (!model?.path) return;
     if (normalizeModelPath(model.path) !== normalizeModelPath(seatEditSession.modelPath)) return;
-
-    // Latch immediately so async Boost profile work cannot re-trigger this effect.
-    setSeatEditSession((prev) => (prev ? { ...prev, applied: true } : prev));
-    seatHydrateLockRef.current = true;
+    if (!allParamsResolved.length) return;
 
     const comboId = loadCatalogSetComboId(seatEditSession.setIndex);
     const combo = comboId ? getCombo(comboId) : null;
     const seat = seatOnCombo(combo, seatEditSession.role);
+
+    const clearStale: Record<string, unknown> = {};
+    for (const k of Object.keys(configRef.current ?? {})) {
+      if (
+        !(
+          k.startsWith("mtp_")
+          || k.startsWith("dflash_")
+          || k === "dflash_draft_model"
+          || k === "spec_draft_model"
+        )
+      ) {
+        continue;
+      }
+      if (!seat || !(k in seat.paramOverrides)) clearStale[k] = "";
+    }
+    const overlay: Record<string, unknown> = {
+      ...clearStale,
+      ...(seat?.paramOverrides ?? {}),
+    };
+    seatHydrateLockRef.current = true;
+    setSeatEditSession((prev) => (prev ? { ...prev, applied: true } : prev));
+
     let cancelled = false;
     void (async () => {
       try {
         if (seat && !cancelled) await applySeatBagToPanel(seat);
         else if (!cancelled) {
-          // No bag yet: do not keep previous SPEC/Boost from another model.
-          setSpeedBoost('off');
-          const clearStale: Record<string, unknown> = {};
-          for (const k of Object.keys(configRef.current ?? {})) {
-            if (k.startsWith('mtp_') || k.startsWith('dflash_') || k === 'dflash_draft_model' || k === 'spec_draft_model') {
-              clearStale[k] = '';
-            }
-          }
-          if (Object.keys(clearStale).length) updateParams(clearStale);
+          setSpeedBoost("off");
+          if (Object.keys(overlay).length) updateParams(overlay);
         }
       } catch (err) {
-        console.error('[seat-edit] hydrate failed:', err);
+        console.error("[seat-edit] hydrate failed:", err);
       }
-      // Lock stays until SAVE/CANCEL (endSeatEdit).
     })();
     return () => {
       cancelled = true;
@@ -2434,6 +2449,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     seatEditSession?.role,
     seatEditSession?.setIndex,
     model?.path,
+    allParamsResolved.length,
     applySeatBagToPanel,
   ]);
 
@@ -2550,7 +2566,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     const onEdit = (e: Event) => {
       const detail = (e as CustomEvent<CatalogSeatEditDetail>).detail;
       if (!detail?.modelPath || (detail.role !== "brain" && detail.role !== "worker")) return;
-      seatHydrateLockRef.current = true;
+      seatHydrateLockRef.current = false;
+      dispatchAppEvent(EVENTS.catalogFocusModel, { path: detail.modelPath });
       setSeatEditSession({
         role: detail.role,
         setIndex: detail.setIndex,

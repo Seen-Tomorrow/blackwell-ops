@@ -790,6 +790,15 @@ export function useModelCatalog({
     [models, handleSelect],
   );
 
+  useEffect(() => {
+    const onFocus = (e: Event) => {
+      const path = (e as CustomEvent<{ path?: string }>).detail?.path;
+      if (path) handleSelectPath(path);
+    };
+    window.addEventListener(EVENTS.catalogFocusModel, onFocus);
+    return () => window.removeEventListener(EVENTS.catalogFocusModel, onFocus);
+  }, [handleSelectPath]);
+
   const getFitScanBadge = useCallback(
     (model: ModelEntry) => {
       const entry = findFitScanEntry(fitScanResults, model.path);

@@ -177,15 +177,17 @@ export default function CatalogQuickStrip({
     const path = seats[role]?.path;
     if (!path) return;
     setPending(null);
-    // Always (re)select so panel path + bag apply race lands on this seat.
     onSelectPath(path);
+    dispatchAppEvent(EVENTS.catalogFocusModel, { path });
     setEditingRole(role);
     const detail: CatalogSeatEditDetail = {
       role,
       setIndex: activeSeatSet,
       modelPath: path,
     };
-    dispatchAppEvent(EVENTS.catalogSeatEdit, detail);
+    window.requestAnimationFrame(() => {
+      dispatchAppEvent(EVENTS.catalogSeatEdit, detail);
+    });
   };
 
   const tryAssignEmpty = (role: CatalogEngineSeatRole) => {
@@ -288,7 +290,7 @@ export default function CatalogQuickStrip({
                   title="Open harness connect veil"
                   onClick={() => dispatchAppEvent(EVENTS.harnessConnectOpen)}
                 >
-                  CONNECT
+                  HARNESS CONNECT
                 </button>
 
               </>

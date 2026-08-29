@@ -408,14 +408,13 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
             onCycleEngine={onCycleLiveEngine}
             showHarnessConnect={harness.showConnectChip}
             harnessConnectActive={harness.veilOpen}
+            harnessConnectReady={harness.connectReady}
             onHarnessConnect={harness.openVeil}
           />
 
         </div>
       </div>
 
-      {/* Harness connect strip (bake-off surface A) — above Running Engines */}
-      {harness.stripNode}
 
       {/* Running Engines — fusion switcher; below VRAM bezel (outside display area flex) */}
       {showEjectBelowVram && enginesPanelVisible && (

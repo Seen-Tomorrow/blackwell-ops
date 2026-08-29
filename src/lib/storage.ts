@@ -155,14 +155,7 @@ export const KEYS = {
   selectedSlotIdx: `${STORAGE_PREFIX}selected-slot-idx`,
   /** Harness: launch pi console elevated via gsudo ("1" = on). */
   piCodeElevated: `${STORAGE_PREFIX}pi-code-elevated`,
-  /**
-   * Harness connect dual presentation (A/B until one wins):
-   * strip under bezel + glass veil. JSON `{ strip: bool, veil: bool }`.
-   * Either surface can be disabled without code delete during bake-off.
-   */
-  harnessConnectSurfaces: `${STORAGE_PREFIX}harness-connect-surfaces`,
-  /** Strip panel collapsed (content hidden, chrome chip remains when live). */
-  harnessConnectStripCollapsed: `${STORAGE_PREFIX}harness-connect-strip-collapsed`,
+
 
   appTheme: `${STORAGE_PREFIX}app-theme`,
   logSearchBySlot: `${STORAGE_PREFIX}log-search-by-slot`,
@@ -1168,41 +1161,7 @@ export function saveEnginesPanelVisible(visible: boolean): void {
   writeStorage(KEYS.enginesPanelVisible, visible ? "1" : "0");
 }
 
-export type HarnessConnectSurfaces = {
-  /** Ambient strip above Running Engines. */
-  strip: boolean;
-  /** Glass veil overlay on phosphor (not a VramBadge face). */
-  veil: boolean;
-};
 
-const HARNESS_CONNECT_SURFACES_DEFAULT: HarnessConnectSurfaces = {
-  strip: true,
-  veil: true,
-};
-
-export function loadHarnessConnectSurfaces(): HarnessConnectSurfaces {
-  const raw = readJsonStorage<Partial<HarnessConnectSurfaces>>(KEYS.harnessConnectSurfaces);
-  if (!raw || typeof raw !== "object") return { ...HARNESS_CONNECT_SURFACES_DEFAULT };
-  return {
-    strip: raw.strip !== false,
-    veil: raw.veil !== false,
-  };
-}
-
-export function saveHarnessConnectSurfaces(next: HarnessConnectSurfaces): void {
-  writeJsonStorage(KEYS.harnessConnectSurfaces, {
-    strip: Boolean(next.strip),
-    veil: Boolean(next.veil),
-  });
-}
-
-export function loadHarnessConnectStripCollapsed(): boolean {
-  return readStorage(KEYS.harnessConnectStripCollapsed) === "1";
-}
-
-export function saveHarnessConnectStripCollapsed(collapsed: boolean): void {
-  writeStorage(KEYS.harnessConnectStripCollapsed, collapsed ? "1" : "0");
-}
 
 
 
