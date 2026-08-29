@@ -1108,6 +1108,40 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.catalog-quick-mem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 4px;
+  align-items: baseline;
+  padding: 0 2px 2px;
+  min-width: 0;
+  font-family: ui-monospace, "JetBrains Mono", monospace;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+}
+
+.catalog-quick-mem__cell {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catalog-quick-mem__cell--brain {
+  color: var(--theme-harness-brain-text, var(--theme-provider-pill-active-text));
+}
+
+.catalog-quick-mem__cell--worker {
+  color: var(--theme-harness-worker-text, var(--theme-pair-secondary-text));
+}
+
+.catalog-quick-mem__cell--total {
+  color: var(--theme-text-muted, #94a3b8);
+  font-weight: 700;
+}
+
+
 .catalog-quick-strip__seats--editing {
   grid-template-columns: minmax(0, 1fr);
 }

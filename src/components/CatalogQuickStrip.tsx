@@ -5,6 +5,7 @@ import {
   CATALOG_SEAT_LABEL,
   CATALOG_SEAT_SET_COUNT,
   catalogPathChipLabel,
+  loadCatalogSetComboId,
   type CatalogEngineSeatRole,
   type CatalogSeatSetIndex,
   type CatalogSeatsState,
@@ -17,6 +18,13 @@ import {
   type CatalogSeatEditDetail,
   type CatalogSeatEditEndedDetail,
 } from "../lib/events";
+import { getCombo, seatOnCombo } from "../lib/launchPresets";
+import {
+  fetchLearnedMemForSeat,
+  formatLearnedMemLine,
+  sumLearnedMem,
+  type LearnedMemGb,
+} from "../lib/catalogSeatLearnedMem";
 
 export type CatalogQuickStripProps = {
   models: ModelEntry[];
@@ -125,6 +133,10 @@ export default function CatalogQuickStrip({
   const [editingRole, setEditingRole] = useState<CatalogEngineSeatRole | null>(null);
   const [pending, setPending] = useState<PendingAction>(null);
   const [launchMode, setLaunchMode] = useState<"solo" | "twin">("twin");
+  const [learnedMem, setLearnedMem] = useState<{
+    brain: LearnedMemGb | null;
+    worker: LearnedMemGb | null;
+  }>({ brain: null, worker: null });
 
   useEffect(() => {
     const onEnded = (e: Event) => {
@@ -137,6 +149,30 @@ export default function CatalogQuickStrip({
     window.addEventListener(EVENTS.catalogSeatEditEnded, onEnded);
     return () => window.removeEventListener(EVENTS.catalogSeatEditEnded, onEnded);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      const comboId = loadCatalogSetComboId(activeSeatSet);
+      const combo = comboId ? getCombo(comboId) : null;
+      const brainSeat = seatOnCombo(combo, "brain");
+      const workerSeat = seatOnCombo(combo, "worker");
+      void Promise.all([
+        brainSeat?.modelPath ? fetchLearnedMemForSeat(brainSeat) : Promise.resolve(null),
+        workerSeat?.modelPath ? fetchLearnedMemForSeat(workerSeat) : Promise.resolve(null),
+      ]).then(([brain, worker]) => {
+        if (!cancelled) setLearnedMem({ brain, worker });
+      });
+    };
+    load();
+    window.addEventListener(EVENTS.catalogSeatsChanged, load);
+    window.addEventListener(EVENTS.launchSuccess, load);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(EVENTS.catalogSeatsChanged, load);
+      window.removeEventListener(EVENTS.launchSuccess, load);
+    };
+  }, [activeSeatSet, seats.brain?.path, seats.worker?.path]);
 
   useEffect(() => {
     setPending(null);
@@ -297,6 +333,19 @@ export default function CatalogQuickStrip({
             ) : null}
           </div>
         </header>
+        {(learnedMem.brain || learnedMem.worker) && !seatEditing ? (
+          <div className="catalog-quick-mem" title="LEARNED VRAM+RAM at saved seat knobs (re-read, not stored on the bag)">
+            <span className="catalog-quick-mem__cell catalog-quick-mem__cell--brain">
+              {formatLearnedMemLine(learnedMem.brain)}
+            </span>
+            <span className="catalog-quick-mem__cell catalog-quick-mem__cell--worker">
+              {formatLearnedMemLine(learnedMem.worker)}
+            </span>
+            <span className="catalog-quick-mem__cell catalog-quick-mem__cell--total">
+              Σ {formatLearnedMemLine(sumLearnedMem(learnedMem.brain, learnedMem.worker))}
+            </span>
+          </div>
+        ) : null}
         <div
           className={[
             "catalog-quick-strip__seats catalog-quick-strip__seats--twin",
