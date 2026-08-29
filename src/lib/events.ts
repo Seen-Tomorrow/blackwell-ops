@@ -80,6 +80,26 @@ export const EVENTS = {
   harnessHighlight: `${STORAGE_PREFIX}harness-highlight`,
   /** Agentic harness: user clicked a running engine card (twin role cycle). */
   harnessEngineClick: `${STORAGE_PREFIX}harness-engine-click`,
+  /**
+   * Catalog seats → launch BRAIN+WORKER twin (optional DRAFT path = convenience pin).
+   * EngineConfigPanel prefers linked combo when present; else ephemeral.
+   */
+  catalogLaunchSeats: `${STORAGE_PREFIX}catalog-launch-seats`,
+  /** Catalog seats → launch one seat as solo (harness connect). */
+  catalogLaunchSeatSolo: `${STORAGE_PREFIX}catalog-launch-seat-solo`,
+  catalogSeatEdit: `${STORAGE_PREFIX}catalog-seat-edit`,
+  /** Persist panel config into the active seat-edit bag. */
+  catalogSeatSave: `${STORAGE_PREFIX}catalog-seat-save`,
+  /** Leave seat-edit without writing. */
+  catalogSeatCancel: `${STORAGE_PREFIX}catalog-seat-cancel`,
+  /** Panel → strip: seat-edit session ended (clear blink chrome). */
+  catalogSeatEditEnded: `${STORAGE_PREFIX}catalog-seat-edit-ended`,
+  /** Save current panel config into a seat (no edit session required). */
+  catalogSavePanelToSeat: `${STORAGE_PREFIX}catalog-save-panel-to-seat`,
+  /** Save a running engine snapshot into a catalog seat bag. */
+  catalogSaveEngineToSeat: `${STORAGE_PREFIX}catalog-save-engine-to-seat`,
+  /** Path pins / combo link changed — catalog strip should reload seats. */
+  catalogSeatsChanged: `${STORAGE_PREFIX}catalog-seats-changed`,
 } as const;
 
 /** Detail for `EVENTS.harnessHighlight`. */
@@ -89,6 +109,50 @@ export type HarnessHighlightDetail = {
   brainPort?: number | null;
   workerPort?: number | null;
   selectedSlotIdx?: number | null;
+};
+
+/** Detail for `EVENTS.catalogLaunchSeats`. */
+export type CatalogLaunchSeatsDetail = {
+  brainPath: string;
+  workerPath: string;
+  /** Speculative draft pack path pin (optional convenience; seat bag wins when linked). */
+  draftPath?: string | null;
+  /** Active seat set index (0–2). */
+  setIndex?: 0 | 1 | 2;
+};
+
+/** Detail for `EVENTS.catalogLaunchSeatSolo`. */
+export type CatalogLaunchSeatSoloDetail = {
+  role: "brain" | "worker";
+  modelPath: string;
+  setIndex?: 0 | 1 | 2;
+};
+/** Detail for `EVENTS.catalogSeatEdit`. */
+export type CatalogSeatEditDetail = {
+  role: "brain" | "worker";
+  setIndex: 0 | 1 | 2;
+  /** Model path already selected in catalog (required). */
+  modelPath: string;
+};
+
+/** Detail for `EVENTS.catalogSeatEditEnded`. */
+export type CatalogSeatEditEndedDetail = {
+  saved: boolean;
+  role?: "brain" | "worker";
+  setIndex?: 0 | 1 | 2;
+};
+
+/** Detail for `EVENTS.catalogSavePanelToSeat`. */
+export type CatalogSavePanelToSeatDetail = {
+  role: "brain" | "worker";
+  setIndex?: 0 | 1 | 2;
+};
+
+/** Detail for `EVENTS.catalogSaveEngineToSeat`. */
+export type CatalogSaveEngineToSeatDetail = {
+  slotIdx: number;
+  role: "brain" | "worker";
+  setIndex?: 0 | 1 | 2;
 };
 
 /** Running-engine card click while harness open (role cycle for twin). */

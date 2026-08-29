@@ -211,29 +211,83 @@ fn parse_sums_expected(sums: &str, archive_name: &str) -> Option<String> {
 fn write_outer_shim(tools: &Path) -> Result<(), String> {
     let bin = tools.join("bin");
     std::fs::create_dir_all(&bin).map_err(|e| format!("bin dir: {e}"))?;
-    // Prefer absolute home when we know it (spaces-safe); fall back to relative
-    // resolution from this shim so portable moves still work.
-    let home_abs = home_dir().to_string_lossy().replace('"', "");
-    let shim = format!(
+    let shim = outer_shim_body(tools, &home_dir());
+    std::fs::write(bin.join("pi.cmd"), shim).map_err(|e| format!("write shim: {e}"))?;
+    Ok(())
+}
+
+/// Batch body for the outer shim. Pure so the spaced-path contract is testable
+/// without touching the real install dir.
+///
+/// Anchor `PKG` and `PI_CODING_AGENT_DIR` on ABSOLUTE paths baked in at write
+/// time. `%~dp0` is NOT reliable as the primary source: under the launch chain
+/// (`cmd /d /s /c ""session.cmd""` → `call "launcher.cmd"`), an outer
+/// `call ""path""` injects a stray `"` into the middle of `%~dp0`, so
+/// `%~dp0..\pi` resolves to `…\Blackwell OPS\"…\pi` and pi.exe is "not found"
+/// (the `'""C:\AI-MASTER\Blackwell' is not recognized` symptom on install dirs
+/// with spaces). The app always knows its own layout, so bake it in; keep the
+/// `%~dp0` form only as a guarded fallback for a moved portable install.
+fn outer_shim_body(tools: &Path, home: &Path) -> String {
+    let home_abs = home.to_string_lossy().replace('"', "");
+    let pkg_abs = tools.join("pi").to_string_lossy().replace('"', "");
+    format!(
         r#"@echo off
 setlocal
 REM Blackwell-isolated pi launcher (package lives in ..\pi)
 REM PI_CODING_AGENT_DIR overrides pi default ~/.pi/agent - never user profile.
+REM Absolute anchors first: %~dp0 is unreliable under the spaced-path launch chain.
+set "PKG={pkg_abs}"
+if not exist "%PKG%\pi.exe" set "PKG=%~dp0..\pi"
 if not defined PI_CODING_AGENT_DIR (
   if exist "{home_abs}\" (
     set "PI_CODING_AGENT_DIR={home_abs}"
   ) else (
-    set "PI_CODING_AGENT_DIR=%~dp0..\..\..\config\external-tools\pi-home"
+    set "PI_CODING_AGENT_DIR=%PKG%\..\..\..\config\external-tools\pi-home"
   )
 )
-set "PKG=%~dp0..\pi"
 if not defined PI_SUBAGENT_PI_BINARY set "PI_SUBAGENT_PI_BINARY=%PKG%\pi.exe"
 "%PKG%\pi.exe" %*
 exit /b %ERRORLEVEL%
 "#
-    );
-    std::fs::write(bin.join("pi.cmd"), shim).map_err(|e| format!("write shim: {e}"))?;
-    Ok(())
+    )
+}
+
+#[cfg(test)]
+mod shim_tests {
+    use super::*;
+
+    /// The outer shim must anchor `PKG` on an ABSOLUTE path baked in at write
+    /// time, never on `%~dp0` as the primary source. Under the spaced-path launch
+    /// chain (`cmd /d /s /c ""session.cmd""` → `call "launcher.cmd"`), an outer
+    /// `call ""path""` injects a stray `"` into `%~dp0`, which previously made
+    /// `%~dp0..\pi` resolve to `…\Blackwell OPS\"…\pi` — the
+    /// `'""C:\AI-MASTER\Blackwell' is not recognized` launch failure.
+    #[test]
+    fn outer_shim_anchors_pkg_on_absolute_path_not_dp0() {
+        let tools = Path::new(r"C:\AI-MASTER\Blackwell OPS portable\external-tools\pi");
+        let home = Path::new(r"C:\AI-MASTER\Blackwell OPS portable\config\external-tools\pi-home");
+        let body = outer_shim_body(tools, home);
+
+        // Primary PKG anchor must be the absolute package dir, not %~dp0.
+        let primary = body
+            .lines()
+            .find(|l| l.starts_with("set \"PKG="))
+            .expect("PKG assignment present");
+        assert!(
+            !primary.contains("%~dp0"),
+            "primary PKG anchor must not use %%~dp0 (polluted by spaced-path launch chain): {primary}"
+        );
+        assert!(
+            primary.contains(&tools.to_string_lossy().replace('"', "")),
+            "primary PKG anchor must be the absolute package dir: {primary}"
+        );
+        // The %~dp0 fallback may still exist (moved portable install), but only
+        // behind an `if not exist` guard.
+        assert!(
+            body.contains("if not exist \"%PKG%\\pi.exe\" set \"PKG=%~dp0..\\pi\""),
+            "%%~dp0 fallback must remain guarded for moved installs"
+        );
+    }
 }
 
 fn extract_zip_windows(zip: &Path, dest: &Path) -> Result<(), String> {
@@ -417,6 +471,58 @@ fn dev_pi_ext_src() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("pi-ext")
 }
 
+/// Running pi console processes whose image lives under our `external-tools/pi` package.
+///
+/// `install_pi_version` replaces that whole directory and `sync_dev_pi_ext` replaces
+/// `target/debug/pi-ext`. Both `remove_dir_all` the tree a **live** session is executing
+/// from: on Windows the running image cannot be deleted, so the update fails with a
+/// sharing violation after the download, and a session that survives the call may be
+/// left with its docs/assets/wasm replaced underneath it. Match on the image path, not
+/// just the name `pi.exe`, so a pi installed elsewhere on the machine is not counted.
+#[cfg(windows)]
+fn running_pi_consoles() -> Vec<u32> {
+    use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
+
+    let pkg = match package_dir().canonicalize() {
+        Ok(p) => p,
+        Err(_) => return Vec::new(),
+    };
+    let pkg_l = pkg.to_string_lossy().to_lowercase();
+
+    let mut sys = System::new();
+    sys.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::nothing().with_exe(sysinfo::UpdateKind::Always),
+    );
+
+    sys.processes()
+        .iter()
+        .filter(|(_, proc)| {
+            proc.name().to_string_lossy().eq_ignore_ascii_case("pi.exe")
+                && proc
+                    .exe()
+                    .map(|exe| exe.to_string_lossy().to_lowercase().starts_with(&pkg_l))
+                    .unwrap_or(false)
+        })
+        .map(|(pid, _)| pid.as_u32())
+        .collect()
+}
+
+#[cfg(not(windows))]
+fn running_pi_consoles() -> Vec<u32> {
+    Vec::new()
+}
+
+/// True when a pi console launched from our package is still running.
+///
+/// Exposed so the UI can block "UPDATE PI" behind a confirm modal instead of letting
+/// the user discover the sharing violation mid-update.
+#[tauri::command]
+pub async fn pi_code_console_running() -> Result<Vec<u32>, String> {
+    Ok(running_pi_consoles())
+}
+
 /// 1-click DEV update: fetch the newest pi release, reinstall the binary, then
 /// refresh the bundled pi-subagents extension from npm and re-sync the DEV tree.
 ///
@@ -438,6 +544,23 @@ pub async fn pi_code_update_latest() -> Result<PiCodeStatus, String> {
                 "pi update-to-latest is DEV-only — release builds ship the pinned, verified pi."
                     .into(),
             );
+        }
+
+        // Hard backend guard. The UI asks for confirmation, but the guard lives here so
+        // no caller (or retry path) can replace a package directory a live pi.exe is
+        // executing from. Err before downloading anything.
+        let live = running_pi_consoles();
+        if !live.is_empty() {
+            let ids = live
+                .iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(format!(
+                "pi console still running (PID {ids}). Close the pi window and retry — \
+                 the update replaces {pkg}, which a running pi.exe cannot survive.",
+                pkg = package_dir().display()
+            ));
         }
 
         let latest = crate::github_releases::fetch_latest_release_tag("earendil-works/pi").await?;
@@ -511,15 +634,29 @@ fn refresh_pi_subagents_bundle() -> Result<(), String> {
     }
     copy_dir_all(&installed, &bundle_src)?;
 
-    // Ship the runtime deps so pi can load the package without npm/network.
+    // Ship ONLY pi-subagents' own runtime deps: upstream `dependencies` is exactly
+    // acorn + jiti + typebox + yaml, and all four are dependency-free, so this is the
+    // complete closure (verified with `npm install pi-subagents@latest --omit=dev`).
+    // Everything else in the temp tree is a transitive dep of an OPTIONAL
+    // `@earendil-works/*` peer — pi bundles the core itself, so those must never be
+    // copied (see `strip_shadowed_pi_core_modules`).
     let bnm = bundle_src.join("node_modules");
     std::fs::create_dir_all(&bnm).map_err(|e| format!("bundle node_modules: {e}"))?;
-    for dep in ["jiti", "typebox", "yaml"] {
+    for dep in SUBAGENTS_RUNTIME_DEPS {
         let from = tmp.join("node_modules").join(dep);
         if from.is_dir() {
             copy_dir_all(&from, &bnm.join(dep))?;
         }
     }
+
+    // npm may still have left `@earendil-works/*` (incl. the dangling
+    // pi-coding-agent-shim junction) inside the temp tree copy → scrub it.
+    strip_shadowed_pi_core_modules(&bundle_src);
+
+    // The copy above brought the whole transitive tree in with it. Rebuild
+    // node_modules to the runtime-dep allowlist only.
+    prune_bundle_node_modules(&bundle_src)?;
+    prune_bundle_dead_files(&bundle_src);
 
     let _ = std::fs::remove_dir_all(&tmp);
     emit_dbg(&format!(
@@ -628,6 +765,203 @@ fn bundled_subagents_version() -> Option<String> {
     v.get("version")?.as_str().map(|s| s.to_string())
 }
 
+/// The ONLY third-party modules pi-subagents needs at runtime.
+///
+/// Upstream `dependencies` is exactly these four, and all four are dependency-free, so
+/// this is the complete closure (verified with `npm install pi-subagents@latest
+/// --omit=dev` — it resolves to acorn + jiti + typebox + yaml and nothing else).
+///
+/// Everything else that npm drops into the tree is a transitive dependency of an
+/// OPTIONAL `@earendil-works/*` peer. pi 0.84.x is a compiled bun binary with the
+/// provider SDKs already inlined (`@anthropic-ai/sdk`, `openai`, `@google/genai`,
+/// `@aws-sdk/client-sts` are all embedded strings inside `pi.exe`), so extension-side
+/// copies are unreachable dead weight: ~136 MB of AWS/Google/Anthropic/OpenAI SDKs for
+/// a 4–5 MB app. Blackwell ships lean; users add packages themselves with
+/// `pi install npm:…`, which lands in `{home}/npm/` as its own module root.
+const SUBAGENTS_RUNTIME_DEPS: [&str; 4] = ["acorn", "jiti", "typebox", "yaml"];
+
+/// Build artifacts that are dead weight at runtime inside the bundled deps.
+///
+/// `.d.mts` / `.d.ts` / `.d.cts` are TypeScript declarations, read only by `tsc`. pi
+/// loads the extension through jiti, which strips types and resolves **values**
+/// (`Type`, `Compile`) from the `.mjs` siblings — nothing ever opens a declaration.
+/// `.map` files are debugger-only. `typebox` alone ships 690 declarations against 690
+/// runtime modules, so this removes ~40% of the bundled file count for free.
+const BUNDLE_DEAD_EXTS: [&str; 4] = ["d.mts", "d.ts", "d.cts", "map"];
+
+/// Delete declaration/map files under `root/node_modules` and any empty dirs left behind.
+///
+/// Best-effort by design: a leftover `.d.mts` costs 1 KB and nothing else, so this must
+/// never be able to fail a launch.
+fn prune_bundle_dead_files(root: &Path) {
+    let nm = root.join("node_modules");
+    if !nm.is_dir() {
+        return;
+    }
+    let mut removed = 0usize;
+    let mut walk: Vec<std::path::PathBuf> = Vec::new();
+    let mut stack = vec![nm.clone()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(ft) = entry.file_type() else { continue };
+            if ft.is_dir() {
+                if ft.is_symlink() {
+                    continue; // never follow links out of the bundle
+                }
+                stack.push(path);
+            } else if path
+                .file_name()
+                .map(|n| {
+                    let n = n.to_string_lossy();
+                    BUNDLE_DEAD_EXTS.iter().any(|ext| n.ends_with(ext))
+                })
+                .unwrap_or(false)
+            {
+                if std::fs::remove_file(&path).is_ok() {
+                    removed += 1;
+                }
+            }
+        }
+    }
+    // Second pass, bottom-up: drop dirs the deletions emptied (npm leaves bare
+    // `typebox/build/type/script` style shells otherwise).
+    for _ in 0..12 {
+        let mut pruned_now = 0usize;
+        collect_empty_dirs(&nm, &mut walk);
+        for dir in walk.drain(..) {
+            if std::fs::read_dir(&dir).map(|mut d| d.next().is_none()).unwrap_or(false) {
+                if std::fs::remove_dir(&dir).is_ok() {
+                    pruned_now += 1;
+                }
+            }
+        }
+        if pruned_now == 0 {
+            break;
+        }
+    }
+    if removed > 0 {
+        emit_dbg(&format!(
+            "[Pi] Lean bundle: removed {} declaration/map files from {}",
+            removed,
+            nm.display()
+        ));
+    }
+}
+
+/// Collect every directory beneath `root` (deepest first is not required — the caller
+/// loops until a pass removes nothing).
+fn collect_empty_dirs(root: &Path, out: &mut Vec<std::path::PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() && !path.is_symlink() {
+            out.push(path.clone());
+            collect_empty_dirs(&path, out);
+        }
+    }
+}
+
+/// Drop `node_modules` entries that would shadow pi's own bundled core packages.
+///
+/// pi bundles `@earendil-works/pi-ai`, `pi-agent-core`, `pi-coding-agent`, `pi-tui`
+/// and `typebox` for extensions (see pi `docs/packages.md`): extensions list them as
+/// `peerDependencies: "*"` and must **not** bundle them. When npm materialises a
+/// `@earendil-works/*` entry inside a package's own `node_modules`, Node resolves that
+/// first and pi's bundled core never reaches the extension — the package loads against
+/// the wrong core (or a dead test shim) and reports `Extension error (…index.ts)`.
+///
+/// Upstream `pi-subagents` declares a devDependency
+/// `@earendil-works/pi-coding-agent: file:./test/fixtures/pi-coding-agent-shim`. Even
+/// with `--omit=dev`, npm 12 on Windows can leave a junction to that fixture — which is
+/// never published in the tarball — so the junction dangles. Removing these links is
+/// what restores resolution to pi's bundled core.
+fn strip_shadowed_pi_core_modules(root: &Path) {
+    let nm = root.join("node_modules").join("@earendil-works");
+    let entries = match std::fs::read_dir(&nm) {
+        Ok(entries) => entries,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        // Only touch symlinks/junctions and the shim target itself — real copies of
+        // pi-ai / pi-tui / pi-agent-core left by a full install are harmless to keep.
+        let is_link = std::fs::symlink_metadata(&path)
+            .map(|m| m.file_type().is_symlink())
+            .unwrap_or(false);
+        let is_shim = entry
+            .file_name()
+            .to_string_lossy()
+            .contains("pi-coding-agent-shim");
+        let is_dangling = !path.exists();
+        if is_link || is_shim || is_dangling {
+            let rm = if path.is_dir() && !is_link {
+                std::fs::remove_dir_all(&path)
+            } else {
+                std::fs::remove_file(&path)
+            };
+            match rm {
+                Ok(()) => emit_dbg(&format!(
+                    "[Pi] Removed shadowing pi-core module link → {}",
+                    path.display()
+                )),
+                Err(e) => emit_dbg(&format!(
+                    "[Pi] Could not remove shadowing pi-core module {} : {e}",
+                    path.display()
+                )),
+            }
+        }
+    }
+}
+
+/// Rebuild `node_modules` so only [`SUBAGENTS_RUNTIME_DEPS`] survives.
+///
+/// Runs on the bundle **source** after a refresh (before it is mirrored to
+/// `target/debug/pi-ext` and before NSIS stages it as a Tauri resource), so REL ships
+/// lean. Also runs on the installed tree in the agent home, which repairs installs
+/// that were materialized while the full tree was still being copied.
+fn prune_bundle_node_modules(root: &Path) -> Result<(), String> {
+    let nm = root.join("node_modules");
+    if !nm.is_dir() {
+        return Ok(());
+    }
+    let mut removed = 0usize;
+    for entry in std::fs::read_dir(&nm).map_err(|e| format!("read node_modules: {e}"))? {
+        let entry = entry.map_err(|e| format!("node_modules entry: {e}"))?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        if SUBAGENTS_RUNTIME_DEPS.contains(&name.as_str()) {
+            continue;
+        }
+        let path = entry.path();
+        let is_link = std::fs::symlink_metadata(&path)
+            .map(|m| m.file_type().is_symlink())
+            .unwrap_or(false);
+        let rm = if path.is_dir() && !is_link {
+            std::fs::remove_dir_all(&path)
+        } else {
+            std::fs::remove_file(&path)
+        };
+        match rm {
+            Ok(()) => removed += 1,
+            Err(e) => emit_dbg(&format!(
+                "[Pi] Could not prune non-runtime module {} : {e}",
+                path.display()
+            )),
+        }
+    }
+    if removed > 0 {
+        emit_dbg(&format!(
+            "[Pi] Lean bundle: pruned {} non-runtime module dirs from {}",
+            removed,
+            nm.display()
+        ));
+    }
+    Ok(())
+}
+
 /// Copy the bundled pi-subagents package into the isolated home so pi can resolve
 /// `./pi-subagents` from settings.json.
 ///
@@ -652,6 +986,16 @@ fn sync_bundled_subagents(home: &Path) -> Result<(), String> {
     let stamp = dst.join(".blackwell-version");
     let bundled = bundled_subagents_version();
 
+    // Self-heal the installed tree before any early return: a stale `@earendil-works/*`
+    // link (upstream's unpublished `pi-coding-agent-shim` devDep junction) makes pi
+    // resolve the extension against the wrong core and every session starts with
+    // `Extension error (…pi-subagents\index.ts)` and no `subagent` tool.
+    strip_shadowed_pi_core_modules(&dst);
+    if let Err(e) = prune_bundle_node_modules(&dst) {
+        emit_dbg(&format!("[Pi] subagents lean prune warning: {e}"));
+    }
+    prune_bundle_dead_files(&dst);
+
     // Already installed and matches the shipped version → leave it alone.
     if dst.is_dir() {
         let installed = std::fs::read_to_string(&stamp).ok().map(|s| s.trim().to_string());
@@ -670,6 +1014,31 @@ fn sync_bundled_subagents(home: &Path) -> Result<(), String> {
             .map_err(|e| format!("clear pi-subagents in home: {e}"))?;
     }
     copy_dir_all(&src, &dst).map_err(|e| format!("sync pi-subagents: {e}"))?;
+    // Rebuild node_modules to the runtime-dep allowlist: `copy_dir_all` mirrors
+    // whatever the bundle source holds, and a missing module (e.g. `acorn`, needed by
+    // the workflow-script parser) would not be re-added by a version bump alone.
+    strip_shadowed_pi_core_modules(&dst);
+    if let Err(e) = prune_bundle_node_modules(&dst) {
+        emit_dbg(&format!("[Pi] subagents lean prune warning: {e}"));
+    }
+    prune_bundle_dead_files(&dst);
+    // Close the gap where the stamp already matches but the tree is short a runtime
+    // dep (a mirror made before `acorn` entered the allowlist) → backfill it.
+    let src_nm = bundled_subagents_dir().join("node_modules");
+    if src_nm.is_dir() {
+        let dst_nm = dst.join("node_modules");
+        for dep in SUBAGENTS_RUNTIME_DEPS {
+            let to = dst_nm.join(dep);
+            if to.exists() {
+                continue;
+            }
+            let from = src_nm.join(dep);
+            if from.is_dir() {
+                copy_dir_all(&from, &to)?;
+                emit_dbg(&format!("[Pi] Lean bundle: backfilled missing dep {dep}"));
+            }
+        }
+    }
     if let Some(v) = bundled {
         let _ = std::fs::write(&stamp, format!("{v}\n"));
     }
@@ -803,8 +1172,18 @@ struct PiRouting {
     worker_target: String,
     /// Engine `--parallel` slot count (concurrent subagent capacity).
     slots: u32,
+    /// Per-slot KV budget advertised to pi for the WORKER seat (`ctx_total / slots`).
+    worker_ctx_per_slot: u64,
     /// True when BRAIN and WORKER are separate engines.
     is_twin: bool,
+}
+
+/// Per-slot KV budget for a fused engine: llama.cpp splits `-c` across `--parallel`
+/// slots (`n_ctx_seq = n_ctx / n_parallel`). A session can never exceed this, so it —
+/// not the engine-level total — is what pi must be told for a shared WORKER seat.
+fn ctx_per_slot(ctx_total: u64, parallel: u32) -> u64 {
+    let slots = parallel.max(1) as u64;
+    ctx_total / slots
 }
 
 /// Build the isolated pi `models.json` (PI_CODING_AGENT_DIR/models.json) so pi
@@ -852,15 +1231,20 @@ fn build_models_and_settings(req: &PiLaunchRequest) -> Result<(String, String, S
             return Err("Brain and worker must use different ports.".into());
         }
         let w_model = openai_model_id(&worker.model);
-        let w_ctx = worker.context_window.unwrap_or(131_072);
+        // Engine-level `-c` total. Output budget ladder keys off THIS, never the
+        // per-slot split — 512K×4 and 1M×8 both land on 128K/slot and must not
+        // silently drop maxTokens to 16384.
+        let w_ctx_total = worker.context_window.unwrap_or(131_072 * 4);
+        let w_slots = worker.parallel.max(1);
         let w_url = format!("http://localhost:{}/v1", worker.port);
-        let w_max = if w_ctx >= 131_072 { 32768 } else { 16384 };
+        let w_max = if w_ctx_total >= 131_072 { 32768 } else { 16384 };
         (
             w_model,
-            w_ctx,
+            // Advertise the PER-SLOT budget: a fused session is capped at n_ctx/slots.
+            ctx_per_slot(w_ctx_total, w_slots),
             w_url,
             w_max,
-            worker.parallel.max(1),
+            w_slots,
             worker.vision,
         )
     } else {
@@ -1065,6 +1449,12 @@ fn build_models_and_settings(req: &PiLaunchRequest) -> Result<(String, String, S
     let routing_facts = PiRouting {
         worker_target: format!("{}/{}", if is_twin { "worker" } else { "local" }, w_model),
         slots: w_slots,
+        // Solo: worker aliases the primary engine, so split the primary's `-c`.
+        worker_ctx_per_slot: if is_twin {
+            w_ctx
+        } else {
+            ctx_per_slot(primary_ctx, primary_slots)
+        },
         is_twin,
     };
 
@@ -1291,11 +1681,15 @@ fn spawn_pi_console_user(launcher: &Path, home: &Path, project: &Path) -> Result
     // Visible console. Prefer Windows Terminal (modern terminal); fall back to
     // Start-Process cmd.exe (legacy conhost) if wt.exe is unavailable.
     if let Some(wt) = crate::sidecar_elevate::wt_exe() {
-        // wt.exe cmd /c call "session.bat"  — session bat sets PI_CODING_AGENT_DIR.
-        let quoted_bat = format!("\"{bat_s}\"");
-        let mut c = std::process::Command::new(&wt);
+        // Pass the bat path BARE — never with baked-in quotes. WT re-serializes
+        // argv for the spawned cmd and DOUBLES any embedded quote, producing
+        // `cmd /c call ""C:\path with space\x.cmd""` → cmd reports
+        // `'""C:\path' is not recognized` (spaced install dirs). Rust's own
+        // argv quoting is the single layer WT's parser strips.
+        let bat_arg = crate::sidecar_elevate::wt_path_arg(&session_bat);
+        let mut c = std::process::Command::new(wt);
         c.arg("cmd")
-            .args(["/c", "call", &quoted_bat])
+            .args(["/c", "call", &bat_arg])
             .current_dir(project)
             .env("PI_CODING_AGENT_DIR", home)
             .stdin(Stdio::null())
@@ -1370,9 +1764,14 @@ fn spawn_pi_console_elevated(
     // Already elevated → new console, no UAC.
     if app_elevated {
         if let Some(wt) = wt.as_ref() {
+            // Same bare-argv rule as spawn_pi_console_user: the cmd-shaped
+            // `/d /s /c ""path""` raw tail is for cmd, NOT for WT — WT parses
+            // it, collapses the doubled quotes, and re-quotes once, so cmd's
+            // /s strip leaves the spaced path unquoted. Pass argv directly.
+            let bat_arg = crate::sidecar_elevate::wt_path_arg(&session_bat);
             let mut c = Command::new(wt);
             c.arg("cmd")
-                .raw_arg(&raw_tail)
+                .args(["/c", "call", &bat_arg])
                 .current_dir(project)
                 .env("PI_CODING_AGENT_DIR", home)
                 .stdin(Stdio::null())
@@ -1559,26 +1958,25 @@ pub async fn pi_code_launch(
         }
 
         // Blackwell-shipped pi-subagents (local-path package) — required for multi-agent.
-        sync_bundled_subagents(&home)?;
+        // The lean prune (delete + backfill across ~1900 files) is housekeeping, not a
+        // launch precondition: a transient FS error must not stop the agent from
+        // starting. Only a genuinely missing/unusable bundle is fatal, and
+        // `sync_bundled_subagents` still returns Err for that case.
+        if let Err(e) = sync_bundled_subagents(&home) {
+            emit_dbg(&format!("[Pi] subagents sync warning: {e}"));
+        }
         // Set the subagent fan-out concurrency to the engine's slot count (both modes).
         if let Err(e) = write_subagents_config(&home, routing_facts.slots) {
             emit_dbg(&format!("[Pi] subagents config warning: {e}"));
         }
         // Write the worker agent in BOTH modes. Twin: worker engine (leaner/faster).
         // Solo: worker aliases the same engine → equal-capability fan-out on shared slots.
-        let w_ctx = if routing_facts.is_twin {
-            request
-                .worker
-                .as_ref()
-                .and_then(|w| w.context_window)
-                .unwrap_or(131_072)
-        } else {
-            request.primary.context_window.unwrap_or(262_144)
-        };
+        // Use the per-slot budget (already split by slot count) so the worker's own
+        // idea of its context matches what models.json advertises to pi.
         if let Err(e) = write_worker_agent(
             &home,
             &routing_facts.worker_target,
-            w_ctx,
+            routing_facts.worker_ctx_per_slot,
             routing_facts.slots,
             routing_facts.is_twin,
         ) {

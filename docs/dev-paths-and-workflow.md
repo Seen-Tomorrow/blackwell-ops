@@ -73,7 +73,17 @@ What: binaries only — config/ is never touched by this script.
 
 Intended flow: src-tauri/runtime/ gets bundled into the installer and ends up as <install_dir>/runtime/ beside the exe. On first REL launch, if runtime/ is missing, the app copies from Tauri resources into app_root/runtime/.
 
-Note: tauri.conf.json currently has "resources": []. For release users to get runtime/ automatically, that should include runtime/**/* (as described in Agents.md). Right now the folder you maintain for shipping is still src-tauri/runtime/ — make sure it ends up next to the release exe one way or another.
+Note (**resolved**): `tauri.conf.json` no longer has `"resources": []`. It now maps generated trees into
+the installer — `runtime-bundle/ → runtime/`, `bin/ → bin/`, `pi-ext/ → pi-ext/`,
+`../foundry/patches/ → foundry/patches/`. `src-tauri/runtime-bundle/` is a **staged build output**
+(gitignored), produced by `prepare-release-runtime.ps1` (NSIS) or `prepare-release-app-only.ps1`
+(config-only, App update) from `src-tauri/runtime/`. So the source of truth you edit is still
+`src-tauri/runtime/`, but the thing that actually ships is `runtime-bundle/` — run the matching
+prepare script or your engine binaries will not be in the installer.
+
+The **App-only update does not carry engine binaries at all** (config + `pi-ext` when its hash
+changed). Engines and the MSVC C runtime arrive via NSIS Full or the toolchain download.
+See `docs/SELF-SUFFICIENT-INSTALL.md` for the full payload table.
 
 ───
 

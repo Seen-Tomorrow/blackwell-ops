@@ -1,6 +1,8 @@
 import type { ModelEntry, ModelMetadata } from "../lib/types";
 import { draftRoleBadge, draftRoleFromModel, isExternalDraftOnly } from "../lib/specDraft";
 import { revealPathInExplorer } from "../lib/utils";
+import { CATALOG_SEAT_LABEL, type CatalogSeatRole } from "../lib/catalogQuickAccess";
+import { fitNowLabel, type FitNowVerdict } from "../lib/catalogFitNow";
 
 /**
  * Compact param-count formatting with T/B/M suffix.
@@ -106,6 +108,10 @@ interface ModelCardProps {
   fitScanning?: boolean;
   fitScanActiveLabel?: string | null;
   onFitScanModel?: (model: ModelEntry) => void;
+  pinned?: boolean;
+  onTogglePin?: (model: ModelEntry) => void;
+  seatRole?: CatalogSeatRole | null;
+  fitNow?: { verdict: FitNowVerdict; title: string } | null;
 }
 
 export default function ModelCard({
@@ -123,6 +129,10 @@ export default function ModelCard({
   fitScanning = false,
   fitScanActiveLabel = null,
   onFitScanModel,
+  pinned = false,
+  onTogglePin,
+  seatRole = null,
+  fitNow = null,
 }: ModelCardProps) {
   const hasMetadata = !!model.metadata;
   const isScanning = scanningPath === model.path;
@@ -210,6 +220,31 @@ export default function ModelCard({
           <span className="text-[8px] font-mono text-stealth-muted truncate">{model.author}</span>
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
+          {onTogglePin && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onTogglePin(model);
+              }}
+              className={`model-card-pin text-[9px] leading-none px-0.5 py-0 border-0 bg-transparent cursor-pointer ${
+                pinned ? "model-card-pin--on" : "model-card-pin--off"
+              }`}
+              title={pinned ? "Unpin from catalog quick strip" : "Pin to catalog quick strip"}
+              aria-label={pinned ? "Unpin model" : "Pin model"}
+              aria-pressed={pinned}
+            >
+              {pinned ? "★" : "☆"}
+            </button>
+          )}
+          {seatRole && (
+            <span
+              className={`model-card-seat model-card-seat--${seatRole} text-[7px] font-mono px-1 py-0.5 rounded-sm`}
+              title={`Sticky seat: ${CATALOG_SEAT_LABEL[seatRole]}`}
+            >
+              {CATALOG_SEAT_LABEL[seatRole]}
+            </span>
+          )}
           <span className="text-[8px] font-mono px-1 py-0.5 rounded-sm border border-gray-500/20 text-gray-500">
             GGUF
           </span>
@@ -252,7 +287,7 @@ export default function ModelCard({
         {model.name}
       </span>
 
-      {(paramsNum || hasMultimodal || (model.metadata?.nextn_predict_layers ?? 0) > 0 || draftBadge) && (
+      {(paramsNum || hasMultimodal || fitNow || (model.metadata?.nextn_predict_layers ?? 0) > 0 || draftBadge) && (
         <div className="flex items-center gap-1 mt-0.5 min-w-0">
           {paramsNum && (
             <span className="text-[8px] font-mono text-white shrink-0">{paramsNum}</span>
@@ -263,6 +298,14 @@ export default function ModelCard({
           {draftBadge && !isDraftOnly && (
             <span className="text-[7px] font-mono bg-black text-white/70 px-1 py-0.5 rounded-sm shrink-0">
               {draftBadge}
+            </span>
+          )}
+          {fitNow && fitNow.verdict !== "draft" && (
+            <span
+              className={`model-card-fitnow model-card-fitnow--${fitNow.verdict} text-[7px] font-mono px-1 py-0.5 rounded-sm shrink-0`}
+              title={fitNow.title}
+            >
+              {fitNowLabel(fitNow.verdict)}
             </span>
           )}
           {hasMultimodal && (

@@ -35,7 +35,7 @@ fn fit_scanner_estimate_vram(config: &EngineConfig) -> f64 {
     if let Some(entry) =
         crate::vram_learn::lookup_learned_vram_for_config(&config.model_path, &provider_id, config)
     {
-        return entry.vram_mib;
+        return entry.paint_vram_mib();
     }
 
     if let Some(full) = crate::fit_scanner::find_existing_scan_in_provider_partition(
@@ -324,14 +324,21 @@ impl EngineStack {
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
-        crate::engine_utils::apply_cuda_toolchain_for_profile(
+        let profile_for_toolchain = if config.binary_profile.is_empty() {
+            crate::config::DEFAULT_BINARY_PROFILE
+        } else {
+            config.binary_profile.as_str()
+        };
+        crate::engine_utils::apply_cuda_toolchain_for_profile(&mut cmd, profile_for_toolchain)?;
+        // MSVC C runtime (vcruntime140 / vcruntime140_1 / msvcp140) — imported by every
+        // engine binary. App-local copies beside the exe win the OS search order; if the
+        // user supplied an external engine that lacks them, resolve from the portable
+        // toolchain instead of failing at LoadLibrary with a raw Windows dialog.
+        crate::foundry_toolchain::apply_msvc_crt_to_command(
             &mut cmd,
-            if config.binary_profile.is_empty() {
-                crate::config::DEFAULT_BINARY_PROFILE
-            } else {
-                config.binary_profile.as_str()
-            },
-        )?;
+            profile_for_toolchain,
+            std::path::Path::new(&binary_path).parent(),
+        );
 
         let mut child = match cmd.spawn() {
             Ok(c) => c,

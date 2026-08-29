@@ -136,6 +136,10 @@ if (-not $?) {
     throw 'generate-plugin-catalog.ps1 failed'
 }
 
+# Stage the x64 MSVC C runtime beside every llama-server.exe in the bundle. Must run
+# after the profile copy so the engine dirs exist, and before the size report.
+Install-MsvcCrtIntoDirs -Root $bundle_root -ToolchainRoot (Join-Path $root 'toolchain')
+
 $bundle_bytes = (Get-ChildItem -LiteralPath $bundle_root -Recurse -File | Measure-Object -Property Length -Sum).Sum
 $bundle_mb = [math]::Round($bundle_bytes / 1MB, 1)
 

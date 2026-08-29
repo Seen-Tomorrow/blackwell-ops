@@ -5,6 +5,8 @@ import { invoke } from "@tauri-apps/api/core";
 import EngineConfigPanel from "./EngineConfigPanel";
 import ModelCard from "./ModelCard";
 import ModelSearchPalette from "./ModelSearchPalette";
+import CatalogQuickStrip from "./CatalogQuickStrip";
+import { type CatalogFitNowFilter } from "../lib/catalogFitNow";
 
 import { useModelCatalog, type SortField } from "../hooks/useModelCatalog";
 import type { SetupGuideState } from "../hooks/useSetupGuide";
@@ -81,7 +83,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
   const [fileEditError, setFileEditError] = useState<string | null>(null);
 
   const catalog = useModelCatalog({
-    models, stack, providers: externalProviders, scanningPath, setScanningPath, batchScanState, setBatchScanState, onReload,
+    models, stack, providers: externalProviders, gpus, scanningPath, setScanningPath, batchScanState, setBatchScanState, onReload,
   });
 
   const {
@@ -149,6 +151,10 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     handleDeleteModel, handleRenameModel,
     fitScanAvailable, isFitScanning, getFitScanActiveLabel, getFitScanBadge, modelNeedsFitScan, handleFitScanModel,
     fitScanningCount,
+    catalogPins, catalogRecents, catalogSeats, activeSeatSet,
+    handleTogglePin, handleTogglePinPath, handleAssignSeat, handleClearSeat, handleSelectSeatSet, handleSelectPath,
+    isPinned, getSeatRole,
+    fitNowFilter, setFitNowFilter, getFitNowMeta,
     zone } = catalog;
 
   const catalogModels = useMemo(
@@ -361,19 +367,26 @@ export default function ModelCatalog(props: ModelCatalogProps) {
   };
 
 
-  // Auto-scroll selected model into view in the catalog scroll container
+  // Auto-scroll selected model into view — pins land at the top of the list body
   const catalogScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!catalogSelectedModel || !catalogScrollRef.current) return;
     const container = catalogScrollRef.current;
+    const selectedPath = catalogSelectedModel.path;
+    const pinFirst = isPinned(selectedPath);
     requestAnimationFrame(() => {
-      const el = container.querySelector(`[data-model-path="${CSS.escape(catalogSelectedModel.path)}"]`);
-      if (el) {
-        el.scrollIntoView({ block: "nearest", behavior: "auto" });
-      }
+      const el = container.querySelector(
+        `[data-model-path="${CSS.escape(selectedPath)}"]`,
+      ) as HTMLElement | null;
+      if (!el) return;
+      // Selected pin is sorted to index 0 — pin it to the top of the scrollport.
+      el.scrollIntoView({
+        block: pinFirst ? "start" : "nearest",
+        behavior: "auto",
+      });
     });
-  }, [catalogSelectedModel?.path]);
+  }, [catalogSelectedModel?.path, isPinned, catalogModels]);
 
 
 
@@ -610,6 +623,32 @@ export default function ModelCatalog(props: ModelCatalogProps) {
               <span className="catalog-sort-arrow" aria-hidden="true">
                 {sortField === field ? (sortDirection === "asc" ? "▲" : "▼") : ""}
               </span>
+            </button>
+          ))}
+          <span className="catalog-sort-sep" aria-hidden />
+          {([
+            ["all", "ALL"],
+            ["fits", "FITS"],
+            ["room", "ROOM"],
+          ] as const satisfies ReadonlyArray<readonly [CatalogFitNowFilter, string]>).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setFitNowFilter(id)}
+              className={`catalog-sort-btn px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-wider transition-colors rounded-sm ${
+                fitNowFilter === id
+                  ? "text-nv-green bg-nv-green/10"
+                  : "text-stealth-muted hover:text-white"
+              }`}
+              title={
+                id === "all"
+                  ? "Show all models (no free-VRAM filter)"
+                  : id === "fits"
+                    ? "Only models that fit free VRAM now (FIT spine @ 32K/64K)"
+                    : "Fits or tight on free VRAM now"
+              }
+            >
+              {label}
             </button>
           ))}
         </div>
@@ -856,6 +895,18 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           </div>
 
           {/* Card list only — dim unselected rows; selected stays full opacity */}
+          <CatalogQuickStrip
+            models={models}
+            seats={catalogSeats}
+            activeSeatSet={activeSeatSet}
+            pins={catalogPins}
+            selectedPath={catalogSelectedModel?.path ?? null}
+            onSelectPath={handleSelectPath}
+            onAssignSeat={(role) => handleAssignSeat(role)}
+            onClearSeat={handleClearSeat}
+            onSelectSeatSet={handleSelectSeatSet}
+            onTogglePinPath={handleTogglePinPath}
+          />
           <div className="catalog-list-panel__body">
           <div
             ref={catalogScrollRef}
@@ -923,6 +974,10 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                         fitScanning={isFitScanning(model.path)}
                         fitScanActiveLabel={getFitScanActiveLabel(model.path)}
                         onFitScanModel={handleFitScanModel}
+                        pinned={isPinned(model.path)}
+                        onTogglePin={handleTogglePin}
+                        seatRole={getSeatRole(model.path)}
+                        fitNow={getFitNowMeta(model)}
                       />
                     </div>
                   );

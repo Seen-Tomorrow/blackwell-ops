@@ -43,6 +43,46 @@ pub struct LearnedVramEntry {
     pub fit_attempts: Vec<LearnedVramFitAttempt>,
 }
 
+impl LearnedVramEntry {
+    /// LEARNED need for forecast. Latest launch wins unless it looks like a
+    /// free-dependent spill (GPU down, host up) — that must not replace a fuller GPU.
+    pub fn paint_vram_mib(&self) -> f64 {
+        let Some(snap) = self.launch_snapshot.as_ref() else {
+            return self.vram_mib;
+        };
+        if snap.vram_mib <= 0.0 {
+            return self.vram_mib;
+        }
+        if is_spill_downgrade(self.vram_mib, self.host_mib, snap.vram_mib, snap.host_mib) {
+            return self.vram_mib;
+        }
+        snap.vram_mib
+    }
+
+    pub fn paint_host_mib(&self) -> Option<f64> {
+        let Some(snap) = self.launch_snapshot.as_ref() else {
+            return self.host_mib;
+        };
+        if is_spill_downgrade(self.vram_mib, self.host_mib, snap.vram_mib, snap.host_mib) {
+            return self.host_mib;
+        }
+        Some(snap.host_mib)
+    }
+
+    pub fn paint_gpu_breakdown_mib(&self) -> Option<&[f64]> {
+        let Some(snap) = self.launch_snapshot.as_ref() else {
+            return self.gpu_breakdown_mib.as_deref();
+        };
+        if snap.gpu_breakdown_mib.is_empty() {
+            return self.gpu_breakdown_mib.as_deref();
+        }
+        if is_spill_downgrade(self.vram_mib, self.host_mib, snap.vram_mib, snap.host_mib) {
+            return self.gpu_breakdown_mib.as_deref();
+        }
+        Some(snap.gpu_breakdown_mib.as_slice())
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct LearnedVramStore {
     #[serde(default)]
@@ -129,11 +169,31 @@ fn normalize_offload_mode(offload_mode: &str) -> String {
 
 fn normalize_spec_type(spec_type: &str) -> String {
     let s = spec_type.trim().to_lowercase();
-    if s.is_empty() || s == "none" {
+    if s.is_empty() || s == "none" || s == "off" {
         "none".to_string()
     } else {
         s
     }
+}
+
+/// Baked-in MTP has no external draft GGUF — leftover DFLASH paths must not
+/// fingerprint or filter LEARNED rows.
+fn spec_uses_external_draft(spec_type: &str) -> bool {
+    let s = normalize_spec_type(spec_type);
+    if s == "none" {
+        return false;
+    }
+    if s.contains("mtp") && !s.contains("dflash") && !s.contains("dspark") && !s.contains("eagle") {
+        return false;
+    }
+    s.contains("dflash") || s.contains("dspark") || s.contains("eagle")
+}
+
+fn draft_key_for_learn(spec_type: &str, draft_key: &str) -> String {
+    if !spec_uses_external_draft(spec_type) {
+        return String::new();
+    }
+    draft_key.trim().to_string()
 }
 
 fn optional_launch_suffix(spec_type: &str, cache_ram: &str, draft_key: &str) -> String {
@@ -142,13 +202,12 @@ fn optional_launch_suffix(spec_type: &str, cache_ram: &str, draft_key: &str) -> 
     if spec != "none" {
         out.push_str(&format!("|spec={spec}"));
     }
-    let draft = draft_key.trim();
+    let draft = draft_key_for_learn(&spec, draft_key);
     if !draft.is_empty() {
-        // Basename only — path moves should not bust learned; same draft GGUF = same key.
-        let base = std::path::Path::new(draft)
+        let base = std::path::Path::new(&draft)
             .file_name()
             .and_then(|s| s.to_str())
-            .unwrap_or(draft);
+            .unwrap_or(draft.as_str());
         out.push_str(&format!("|draft={}", base.to_lowercase()));
     }
     let ram = cache_ram.trim();
@@ -265,6 +324,12 @@ pub fn learned_vram_key_with_draft(
 }
 
 fn draft_path_from_config(config: &EngineConfig) -> String {
+    let spec = config
+        .get_param_str("spec_type")
+        .unwrap_or_else(|| "none".to_string());
+    if !spec_uses_external_draft(&spec) {
+        return String::new();
+    }
     config
         .get_param_str("spec_draft_model")
         .or_else(|| config.get_param_str("dflash_draft_model"))
@@ -597,6 +662,19 @@ fn mib_approx_equal(a: f64, b: f64) -> bool {
     (a - b).abs() < 0.5
 }
 
+/// GPU fell while host rose → stuffed-GPU spill, not an engine memory fix.
+/// Accounting fixes (llama.cpp inventory) drop GPU *and* host together.
+fn is_spill_downgrade(old_gpu: f64, old_host: Option<f64>, new_gpu: f64, new_host: f64) -> bool {
+    if old_gpu <= 0.0 {
+        return false;
+    }
+    if new_gpu + 1.0 >= old_gpu {
+        return false;
+    }
+    let old_h = old_host.unwrap_or(0.0);
+    new_host > old_h + 1.0
+}
+
 fn host_mib_equal(a: Option<f64>, b: Option<f64>) -> bool {
     match (a, b) {
         (None, None) => true,
@@ -629,11 +707,14 @@ fn timestamp_now() -> String {
     chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
-/// Prefer the fuller GPU footprint as primary LEARNED need.
-/// Free VRAM is not in the learn key — a spill launch on a stuffed GPU must not
-/// replace a prior full-GPU measurement (or under-forecast when free opens up).
-fn should_promote_primary_vram(existing_vram_mib: f64, new_vram_mib: f64) -> bool {
-    existing_vram_mib <= 0.0 || new_vram_mib + 1.0 >= existing_vram_mib
+/// FIT-only primary promote when no launch snapshot yet.
+/// Once a launch buffer inventory exists it owns primary; engine memory
+/// regressions/fixes are captured by the next `record_launch_memory_snapshot`.
+fn should_promote_fit_primary(entry: &LearnedVramEntry, new_vram_mib: f64) -> bool {
+    if entry.launch_snapshot.is_some() {
+        return false;
+    }
+    entry.vram_mib <= 0.0 || new_vram_mib + 1.0 >= entry.vram_mib
 }
 
 /// Append newly seen breakdown tables (MoE --fit may emit many per launch).
@@ -664,7 +745,7 @@ pub fn append_fit_breakdown_tables(
         fit_attempts: Vec::new(),
     });
 
-    let mut latest_mib = entry.vram_mib;
+    let mut latest_mib = entry.paint_vram_mib();
     let mut consumed = false;
     let mut dirty = false;
 
@@ -696,21 +777,27 @@ pub fn append_fit_breakdown_tables(
             phase: phase.to_string(),
             measured_at: now.clone(),
         });
-        // Primary need = max GPU footprint. Spill/low-free launches (lower GPU +
-        // weight-class host) must not replace a fuller full-GPU measurement — free
-        // VRAM is not part of the learn key and combinations explode.
-        if should_promote_primary_vram(entry.vram_mib, mib) {
+        // FIT tables seed primary only until a launch inventory exists.
+        // Never let FIT re-inflate over a newer lower launch measurement.
+        if should_promote_fit_primary(entry, mib) {
             latest_mib = mib;
             entry.vram_mib = mib;
             entry.gpu_breakdown_mib = Some(table.gpu_self_mib.clone());
             entry.host_mib = table.host_mib;
         } else {
-            latest_mib = entry.vram_mib;
-            log::info!(
-                "[vram_learn] keep primary {:.1} MiB GPU (new {:.1} lower — likely free-dependent spill)",
-                entry.vram_mib,
-                mib
-            );
+            latest_mib = entry.paint_vram_mib();
+            if entry.launch_snapshot.is_some() {
+                log::info!(
+                    "[vram_learn] FIT table {:.1} MiB ignored for primary (launch inventory owns need)",
+                    mib
+                );
+            } else {
+                log::info!(
+                    "[vram_learn] keep primary {:.1} MiB GPU (new {:.1} lower — likely free-dependent spill)",
+                    entry.vram_mib,
+                    mib
+                );
+            }
         }
         entry.measured_at = now;
         dirty = true;
@@ -780,6 +867,22 @@ mod dedup_tests {
     }
 
     #[test]
+    fn mtp_curve_ignores_leftover_external_draft() {
+        let key = "C:/m.gguf|ggml-master|ctx=65536|kv=q8_0|dev=GPU-0|split=none|mode=full_auto|spec=draft-mtp";
+        assert!(entry_matches_curve_hard_knobs(
+            key,
+            "C:/m.gguf",
+            "ggml-master",
+            "q8_0",
+            "draft-mtp",
+            "leftover-draft.gguf",
+        ));
+        assert!(!spec_uses_external_draft("draft-mtp"));
+        assert!(spec_uses_external_draft("draft-dflash"));
+        assert_eq!(draft_key_for_learn("draft-mtp", "C:/d.gguf"), "");
+    }
+
+    #[test]
     fn append_skips_duplicate_attempt_rows() {
         let tables = vec![MemoryBreakdownTable {
             gpu_self_mib: vec![100.0, 50.0],
@@ -806,10 +909,132 @@ mod dedup_tests {
         store.entries.remove(key);
         let _ = save_store(&store);
     }
+
+    #[test]
+    fn launch_snapshot_replaces_higher_primary() {
+        let key = "__launch_lower_primary_test__";
+        {
+            let _guard = STORE_MUTEX.lock().unwrap();
+            let mut store = load_store();
+            store.entries.insert(
+                key.to_string(),
+                LearnedVramEntry {
+                    vram_mib: 168861.0,
+                    gpu_breakdown_mib: Some(vec![85485.0, 83376.0]),
+                    host_mib: Some(105086.0),
+                    gpu_components_mib: None,
+                    host_components_mib: None,
+                    launch_snapshot: None,
+                    measured_at: "old".into(),
+                    fit_attempts: vec![],
+                },
+            );
+            save_store(&store).unwrap();
+        }
+
+        let snap = LaunchMemorySnapshot {
+            parser_id: "test".into(),
+            reference_profile: None,
+            architecture: None,
+            requested_ctx: None,
+            effective_ctx: None,
+            vram_mib: 98853.84,
+            gpu_breakdown_mib: vec![50481.74, 48372.1],
+            gpu_components_mib: None,
+            host_mib: 32761.79,
+            host_components_mib: None,
+            host_pinned_mib: 0.0,
+            mtp_estimate_mib: None,
+            mtp_context_mib: None,
+            vision_estimate_mib: None,
+            vision_mib: None,
+            prompt_cache_limit_mib: None,
+            buffers: vec![],
+            phase: "loaded".into(),
+            measured_at: "new".into(),
+        };
+        record_launch_memory_snapshot(key, snap).unwrap();
+
+        let _guard = STORE_MUTEX.lock().unwrap();
+        let mut store = load_store();
+        let entry = store.entries.get(key).expect("entry");
+        assert!((entry.vram_mib - 98853.84).abs() < 0.1);
+        assert!((entry.host_mib.unwrap_or(0.0) - 32761.79).abs() < 0.1);
+        assert!((entry.paint_vram_mib() - 98853.84).abs() < 0.1);
+        // FIT must not re-inflate over launch inventory.
+        drop(_guard);
+        let tables = vec![MemoryBreakdownTable {
+            gpu_self_mib: vec![85485.0, 83376.0],
+            host_mib: Some(105086.0),
+        }];
+        append_fit_breakdown_tables(key, &tables, 0, "fit").unwrap();
+        let _guard = STORE_MUTEX.lock().unwrap();
+        let store = load_store();
+        let entry = store.entries.get(key).expect("entry");
+        assert!((entry.paint_vram_mib() - 98853.84).abs() < 0.1);
+        assert!((entry.vram_mib - 98853.84).abs() < 0.1);
+
+        let mut store = store;
+        store.entries.remove(key);
+        let _ = save_store(&store);
+    }
+
+    #[test]
+    fn launch_spill_does_not_replace_fuller_primary() {
+        let key = "__launch_spill_primary_test__";
+        {
+            let _guard = STORE_MUTEX.lock().unwrap();
+            let mut store = load_store();
+            store.entries.insert(
+                key.to_string(),
+                LearnedVramEntry {
+                    vram_mib: 98854.0,
+                    gpu_breakdown_mib: Some(vec![50000.0, 48854.0]),
+                    host_mib: Some(800.0),
+                    gpu_components_mib: None,
+                    host_components_mib: None,
+                    launch_snapshot: None,
+                    measured_at: "full".into(),
+                    fit_attempts: vec![],
+                },
+            );
+            save_store(&store).unwrap();
+        }
+        let snap = LaunchMemorySnapshot {
+            parser_id: "test".into(),
+            reference_profile: None,
+            architecture: None,
+            requested_ctx: None,
+            effective_ctx: None,
+            vram_mib: 40000.0,
+            gpu_breakdown_mib: vec![20000.0, 20000.0],
+            gpu_components_mib: None,
+            host_mib: 50000.0,
+            host_components_mib: None,
+            host_pinned_mib: 0.0,
+            mtp_estimate_mib: None,
+            mtp_context_mib: None,
+            vision_estimate_mib: None,
+            vision_mib: None,
+            prompt_cache_limit_mib: None,
+            buffers: vec![],
+            phase: "loaded".into(),
+            measured_at: "spill".into(),
+        };
+        record_launch_memory_snapshot(key, snap).unwrap();
+        let _guard = STORE_MUTEX.lock().unwrap();
+        let mut store = load_store();
+        let entry = store.entries.get(key).expect("entry");
+        assert!((entry.vram_mib - 98854.0).abs() < 0.1, "spill must not lower LEARNED GPU");
+        assert!((entry.paint_vram_mib() - 98854.0).abs() < 0.1);
+        assert!(entry.launch_snapshot.is_some());
+        store.entries.remove(key);
+        let _ = save_store(&store);
+    }
 }
 
-/// Persist post-load buffer inventory — overrides FIT-era totals for forecast/topo
-/// only when the new GPU footprint is at least as large (fuller need wins).
+/// Persist post-load buffer inventory.
+/// Latest launch updates LEARNED need unless it is a spill (GPU down, host up).
 pub fn record_launch_memory_snapshot(
     key: &str,
     snapshot: LaunchMemorySnapshot,
@@ -831,24 +1056,23 @@ pub fn record_launch_memory_snapshot(
 
     let measured_mib = snapshot.vram_mib;
     let measured_host = snapshot.host_mib;
-    // Always keep latest launch snapshot for diagnostics / topo of what just ran.
-    // Primary forecast vram_mib only promotes upward (fuller GPU need).
-    if should_promote_primary_vram(entry.vram_mib, snapshot.vram_mib) {
-        entry.vram_mib = snapshot.vram_mib;
-        entry.gpu_breakdown_mib = Some(snapshot.gpu_breakdown_mib.clone());
-        entry.host_mib = Some(snapshot.host_mib);
-        entry.gpu_components_mib = snapshot.gpu_components_mib.clone();
-        entry.host_components_mib = snapshot.host_components_mib.clone();
-    } else {
+    let spill = is_spill_downgrade(entry.vram_mib, entry.host_mib, snapshot.vram_mib, snapshot.host_mib);
+    entry.launch_snapshot = Some(snapshot.clone());
+    entry.measured_at = snapshot.measured_at.clone();
+    if spill {
         log::info!(
             "[vram_learn] launch snapshot keep primary {:.1} MiB GPU (new {:.1}, host {:.1}) — spill/low-free not promoted",
             entry.vram_mib,
             snapshot.vram_mib,
             snapshot.host_mib
         );
+    } else {
+        entry.vram_mib = snapshot.vram_mib;
+        entry.gpu_breakdown_mib = Some(snapshot.gpu_breakdown_mib.clone());
+        entry.host_mib = Some(snapshot.host_mib);
+        entry.gpu_components_mib = snapshot.gpu_components_mib.clone();
+        entry.host_components_mib = snapshot.host_components_mib.clone();
     }
-    entry.measured_at = snapshot.measured_at.clone();
-    entry.launch_snapshot = Some(snapshot);
     save_store(&store)?;
     drop(_guard);
     crate::forecast_log::record_measured(key, measured_mib, Some(measured_host), "launch");
@@ -881,19 +1105,15 @@ pub fn get_learned_vram(
         .map(|s| s.trim().to_lowercase())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "regular".to_string());
-    let spec = spec_type
-        .as_deref()
-        .unwrap_or("none");
-    let cache = cache_ram
-        .as_deref()
-        .unwrap_or("0");
-    let draft = draft_model.as_deref().unwrap_or("");
+    let spec = spec_type.as_deref().unwrap_or("none");
+    let cache = cache_ram.as_deref().unwrap_or("0");
+    let draft = draft_key_for_learn(spec, draft_model.as_deref().unwrap_or(""));
     let device_token = vram_topo
         .as_deref()
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .unwrap_or(device.as_str());
-    lookup_learned_vram_fuzzy(
+    let mut entry = lookup_learned_vram_fuzzy(
         &model_path,
         &provider_id,
         &ctx,
@@ -904,8 +1124,17 @@ pub fn get_learned_vram(
         &offload,
         spec,
         cache,
-        draft,
-    )
+        &draft,
+    )?;
+    let painted_v = entry.paint_vram_mib();
+    let painted_h = entry.paint_host_mib();
+    let painted_bd = entry.paint_gpu_breakdown_mib().map(|b| b.to_vec());
+    entry.vram_mib = painted_v;
+    entry.host_mib = painted_h;
+    if let Some(bd) = painted_bd {
+        entry.gpu_breakdown_mib = Some(bd);
+    }
+    Some(entry)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -958,9 +1187,7 @@ fn entry_matches_curve_hard_knobs(
         if !key.contains(&format!("|spec={spec_n}")) {
             return false;
         }
-        // External draft (dflash/dspark): only launches that recorded this draft basename.
-        // Main-only rows must not paint the curve while Boost+draft is on (FIT adds draft).
-        if !draft_base.is_empty() {
+        if spec_uses_external_draft(spec_n) && !draft_base.is_empty() {
             if !key_has_draft || !key.contains(&format!("|draft={draft_base}")) {
                 return false;
             }
@@ -1021,8 +1248,9 @@ pub fn get_learned_vram_curve(
     let path_norm = normalize_model_path_for_key(&model_path);
     let kv_n = kv_quant.trim().to_lowercase();
     let spec_n = normalize_spec_type(spec_type.as_deref().unwrap_or("none"));
+    let draft_raw = draft_key_for_learn(&spec_n, draft_model.as_deref().unwrap_or(""));
     let draft_base = {
-        let d = draft_model.as_deref().unwrap_or("").trim();
+        let d = draft_raw.trim();
         if d.is_empty() {
             String::new()
         } else {
@@ -1058,17 +1286,14 @@ pub fn get_learned_vram_curve(
         let Some(ctx) = ctx_from_learn_key(k) else {
             continue;
         };
-        let vram = if entry.vram_mib > 0.0 {
-            entry.vram_mib
-        } else {
+        let vram = entry.paint_vram_mib();
+        if vram <= 0.0 {
             continue;
-        };
+        }
         let point = LearnedVramCurvePoint {
             ctx,
             vram_mib: vram,
-            host_mib: entry.host_mib.or_else(|| {
-                entry.launch_snapshot.as_ref().map(|s| s.host_mib)
-            }),
+            host_mib: entry.paint_host_mib(),
         };
         match best.get(&ctx) {
             Some((at, _)) if entry.measured_at < *at => {}
@@ -1111,8 +1336,9 @@ pub fn prune_learned_vram_curve(
     let path_norm = normalize_model_path_for_key(&model_path);
     let kv_n = kv_quant.trim().to_lowercase();
     let spec_n = normalize_spec_type(spec_type.as_deref().unwrap_or("none"));
+    let draft_raw = draft_key_for_learn(&spec_n, draft_model.as_deref().unwrap_or(""));
     let draft_base = {
-        let d = draft_model.as_deref().unwrap_or("").trim();
+        let d = draft_raw.trim();
         if d.is_empty() {
             String::new()
         } else {

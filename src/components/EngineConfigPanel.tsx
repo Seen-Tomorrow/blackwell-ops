@@ -79,12 +79,25 @@ import LaunchPresetConfirmModal from "./LaunchPresetConfirmModal";
 import {
   type ComboPreset,
   type LaunchSeat,
+  boostMethodFromSeat,
+  buildSoloCombo,
+  buildTwinCombo,
+  captureSeatFromPanel,
+  captureSeatFromStack,
+  catalogComboReadyForTwin,
+  ensureCatalogSetCombo,
+  getCombo,
   normalizeModelPath,
   orderSeatsForLaunch,
   resolveComboApply,
   resolveSeatLaunchPort,
+  saveCombo,
+  seatHasModelPath,
+  seatOnCombo,
+  syncComboModelPaths,
 } from "../lib/launchPresets";
 import { getLaunchPolicy, resolveLaunchPolicyId } from "../lib/launchPolicy";
+import { applySpecBoostProfiles } from "../lib/applySpecBoost";
 import ParamCatalogSearch from "./ParamCatalogSearch";
 import {
   catalogEntryToParam,
@@ -98,8 +111,24 @@ import { useGroupLayoutControls } from "../hooks/useGroupLayoutControls";
 import { useLaunchDockRailResize } from "../hooks/useCatalogSplitResize";
 import { useFusionDisplayMode } from "../hooks/useFusionDisplayMode";
 import LaunchRailTelemetry from "./LaunchRailTelemetry";
+import {
+  dispatchAppEvent,
+  EVENTS,
+  type CatalogLaunchSeatSoloDetail,
+  type CatalogLaunchSeatsDetail,
+  type CatalogSaveEngineToSeatDetail,
+  type CatalogSavePanelToSeatDetail,
+  type CatalogSeatEditDetail,
+} from "../lib/events";
+import {
+  assignCatalogSeatAt,
+  loadCatalogActiveSeatSet,
+  loadCatalogSeats,
+  loadCatalogSetComboId,
+  setCatalogSetComboId,
+  type CatalogSeatSetIndex,
+} from "../lib/catalogQuickAccess";
 
-import { dispatchAppEvent, EVENTS } from "../lib/events";
 import { tomMtpBlocked, TOM_MTP_SKIP_MESSAGE } from "../lib/tomMtp";
 import {
   type DraftRole,
@@ -399,6 +428,15 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     combo: ComboPreset;
     loadIntoPanel: boolean;
   } | null>(null);
+  /** Catalog seat-edit: panel owns knobs for one BRAIN/WORKER bag seat. */
+  const [seatEditSession, setSeatEditSession] = useState<{
+    role: "brain" | "worker";
+    setIndex: CatalogSeatSetIndex;
+    modelPath: string;
+    applied: boolean;
+  } | null>(null);
+  /** Blocks cockpit capability re-snap while seat bag is hydrating. */
+  const seatHydrateLockRef = useRef(false);
   const [presetTwinBind, setPresetTwinBind] = useState<{
     brainPort: number;
     workerPort: number;
@@ -936,9 +974,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   const handleSelectEngine = useCallback(
     (slotIdx: number) => {
+      if (seatEditSession) return;
       if (fusionDisplay.dualActive) {
-        // Dual panes follow eject/stack order; ownership stays on selection.
-        // Click another live seat to pin dual B (primary unchanged).
         if (slotIdx === selectedSlotIdx) return;
         if (slotIdx === fusionDisplay.secondarySlotIdx) return;
         fusionDisplay.pinSecondaryOrCycle(slotIdx);
@@ -948,6 +985,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       onSelectEngine?.(slotIdx);
     },
     [
+      seatEditSession,
       fusionDisplay.dualActive,
       fusionDisplay.secondarySlotIdx,
       fusionDisplay.pinSecondaryOrCycle,
@@ -1024,10 +1062,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     isCustomProvider,
     specDecodingGroupVisible,
     setResolvedProviders,
+    hydrateLockRef: seatHydrateLockRef,
   });
   const {
     codingMode,
     speedBoost,
+    setSpeedBoost,
     brains,
     think,
     specFlash,
@@ -2211,6 +2251,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         fullAutoMode: seat.policyId === "full_auto",
         configView: seat.policyId === "assisted_full" ? "full" : "essentials",
         essentialFactoryKeys,
+        specMethod: boostMethodFromSeat(seat),
         allParamsResolved,
         gpus,
         runningSlotsForPlan: runningSlots,
@@ -2375,6 +2416,371 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       handleSelectEngine,
     ],
   );
+
+  const endSeatEdit = useCallback((saved: boolean) => {
+    const prev = seatEditSession;
+    setSeatEditSession(null);
+    seatHydrateLockRef.current = false;
+    dispatchAppEvent(EVENTS.catalogSeatEditEnded, {
+      saved,
+      role: prev?.role,
+      setIndex: prev?.setIndex,
+    });
+  }, [seatEditSession]);
+
+  const applySeatBagToPanel = useCallback(
+    async (seat: LaunchSeat) => {
+      const policyId = seat.policyId;
+      if (policyId === "full_auto") {
+        setFullAuto(true);
+      } else {
+        setFullAuto(false);
+        setConfigViewMode(policyId === "assisted_full" ? "full" : "essentials");
+      }
+      if (seat.providerId) setSelectedProvider(seat.providerId);
+      if (seat.binaryProfile) {
+        setSelectedBinaryProfile(seat.binaryProfile as typeof selectedBinaryProfile);
+      }
+
+      const boost = boostMethodFromSeat(seat);
+      const method = boost === "off" ? "off" : boost;
+      // Soft set Boost UI only — do NOT run applyFullAutoCockpit (it replans parallel/kv/draft
+      // and fights the seat bag → endless CTX/SPEC re-eval).
+      setSpeedBoost(method === "off" ? "off" : method);
+
+      try {
+        await applySpecBoostProfiles({
+          providerId: seat.providerId || effectiveBackendType || DEFAULT_PROVIDER_ID,
+          method,
+          setProviders: setResolvedProviders,
+        });
+      } catch (err) {
+        console.error("[seat-edit] applySpecBoostProfiles failed:", err);
+      }
+
+      // Seat bag is source of truth (ctx, batch, mtp_*, dflash_*, draft path, …).
+      const clearStale: Record<string, unknown> = {};
+      for (const k of Object.keys(configRef.current ?? {})) {
+        if (
+          !(
+            k.startsWith("mtp_")
+            || k.startsWith("dflash_")
+            || k === "dflash_draft_model"
+            || k === "spec_draft_model"
+          )
+        ) {
+          continue;
+        }
+        if (!(k in seat.paramOverrides)) clearStale[k] = "";
+      }
+      updateParams({ ...clearStale, ...seat.paramOverrides });
+    },
+    [
+      setFullAuto,
+      setConfigViewMode,
+      setSelectedProvider,
+      setSelectedBinaryProfile,
+      setSpeedBoost,
+      setResolvedProviders,
+      effectiveBackendType,
+      updateParams,
+    ],
+  );
+
+  // Apply seat bag once per edit session after model path lands — never re-enter.
+  useEffect(() => {
+    if (!seatEditSession || seatEditSession.applied) return;
+    if (!model?.path) return;
+    if (normalizeModelPath(model.path) !== normalizeModelPath(seatEditSession.modelPath)) return;
+
+    // Latch immediately so async Boost profile work cannot re-trigger this effect.
+    setSeatEditSession((prev) => (prev ? { ...prev, applied: true } : prev));
+    seatHydrateLockRef.current = true;
+
+    const comboId = loadCatalogSetComboId(seatEditSession.setIndex);
+    const combo = comboId ? getCombo(comboId) : null;
+    const seat = seatOnCombo(combo, seatEditSession.role);
+    let cancelled = false;
+    void (async () => {
+      try {
+        if (seat && !cancelled) await applySeatBagToPanel(seat);
+        else if (!cancelled) {
+          // No bag yet: do not keep previous SPEC/Boost from another model.
+          setSpeedBoost('off');
+          const clearStale: Record<string, unknown> = {};
+          for (const k of Object.keys(configRef.current ?? {})) {
+            if (k.startsWith('mtp_') || k.startsWith('dflash_') || k === 'dflash_draft_model' || k === 'spec_draft_model') {
+              clearStale[k] = '';
+            }
+          }
+          if (Object.keys(clearStale).length) updateParams(clearStale);
+        }
+      } catch (err) {
+        console.error('[seat-edit] hydrate failed:', err);
+      }
+      // Lock stays until SAVE/CANCEL (endSeatEdit).
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- apply once per session/path
+  }, [
+    seatEditSession?.applied,
+    seatEditSession?.modelPath,
+    seatEditSession?.role,
+    seatEditSession?.setIndex,
+    model?.path,
+    applySeatBagToPanel,
+  ]);
+
+  const savePanelConfigToSeat = useCallback(
+    (role: "brain" | "worker", setIndexIn?: CatalogSeatSetIndex, opts?: { endEdit?: boolean }) => {
+      if (!model) {
+        dispatchAppEvent(EVENTS.launchError, { message: "Save to seat: no model loaded" });
+        return;
+      }
+      const setIndex = (setIndexIn ?? loadCatalogActiveSeatSet()) as CatalogSeatSetIndex;
+      const policyId = resolveLaunchPolicyId({ fullAutoMode, configView });
+      const comboId = loadCatalogSetComboId(setIndex);
+      let combo = comboId ? getCombo(comboId) : null;
+      if (comboId && !combo) {
+        setCatalogSetComboId(setIndex, null);
+      }
+      const existing = seatOnCombo(combo, role);
+      const seat = captureSeatFromPanel({
+        model,
+        providerId: effectiveBackendType || DEFAULT_PROVIDER_ID,
+        binaryProfile: selectedBinaryProfile,
+        policyId,
+        config,
+        role,
+        label: role === "brain" ? "BRAIN" : "WORKER",
+        boostMethod: specBoostMethod,
+        seatId: existing?.id,
+      });
+
+      combo = ensureCatalogSetCombo({ existing: combo, setIndex, seat });
+
+
+      const saved = saveCombo(combo);
+      setCatalogSetComboId(setIndex, saved.id);
+      assignCatalogSeatAt(setIndex, role, model.path);
+      launchPresetsApi.refresh();
+      dispatchAppEvent(EVENTS.catalogSeatsChanged);
+      dispatchAppEvent(EVENTS.launchSuccess, {
+        alias: `${role.toUpperCase()} seat saved`,
+        port: 0,
+      });
+      if (opts?.endEdit) endSeatEdit(true);
+    },
+    [
+      model,
+      fullAutoMode,
+      configView,
+      effectiveBackendType,
+      selectedBinaryProfile,
+      config,
+      specBoostMethod,
+      models,
+      launchPresetsApi,
+      endSeatEdit,
+    ],
+  );
+
+  const saveSeatEditFromPanel = useCallback(() => {
+    if (!seatEditSession) {
+      dispatchAppEvent(EVENTS.launchError, { message: "Seat edit: nothing active" });
+      return;
+    }
+    savePanelConfigToSeat(seatEditSession.role, seatEditSession.setIndex, { endEdit: true });
+  }, [seatEditSession, savePanelConfigToSeat]);
+
+  const saveRunningEngineToSeat = useCallback(
+    (slotIdx: number, role: "brain" | "worker", setIndex?: CatalogSeatSetIndex) => {
+      const entry = stack.find((s) => s.idx === slotIdx);
+      if (!entry?.model_path) {
+        dispatchAppEvent(EVENTS.launchError, { message: "Save to seat: engine not found" });
+        return;
+      }
+      const idx = (setIndex ?? loadCatalogActiveSeatSet()) as CatalogSeatSetIndex;
+      const comboId = loadCatalogSetComboId(idx);
+      let combo = comboId ? getCombo(comboId) : null;
+      if (comboId && !combo) setCatalogSetComboId(idx, null);
+      const existing = seatOnCombo(combo, role);
+      const seat = captureSeatFromStack({
+        entry,
+        role,
+        policyId: resolveLaunchPolicyId({ fullAutoMode, configView }),
+        panelConfig: config,
+        panelModelPath: model?.path,
+        boostMethod: specBoostMethod,
+        seatId: existing?.id,
+      });
+
+
+      combo = ensureCatalogSetCombo({ existing: combo, setIndex: idx, seat });
+
+      const saved = saveCombo(combo);
+      setCatalogSetComboId(idx, saved.id);
+      assignCatalogSeatAt(idx, role, entry.model_path);
+      launchPresetsApi.refresh();
+      dispatchAppEvent(EVENTS.catalogSeatsChanged);
+      dispatchAppEvent(EVENTS.launchSuccess, {
+        alias: `${role.toUpperCase()} ← :${entry.port}`,
+        port: entry.port,
+      });
+    },
+    [
+      stack,
+      fullAutoMode,
+      configView,
+      config,
+      model?.path,
+      specBoostMethod,
+      launchPresetsApi,
+    ],
+  );
+
+  // Catalog SEATS: edit / save / cancel + ▶ TWIN (linked combo or ephemeral).
+  useEffect(() => {
+    const onEdit = (e: Event) => {
+      const detail = (e as CustomEvent<CatalogSeatEditDetail>).detail;
+      if (!detail?.modelPath || (detail.role !== "brain" && detail.role !== "worker")) return;
+      seatHydrateLockRef.current = true;
+      setSeatEditSession({
+        role: detail.role,
+        setIndex: detail.setIndex,
+        modelPath: detail.modelPath,
+        applied: false,
+      });
+    };
+    const onSave = () => {
+      saveSeatEditFromPanel();
+    };
+    const onCancel = () => {
+      endSeatEdit(false);
+    };
+    const onSaveEngine = (e: Event) => {
+      const detail = (e as CustomEvent<CatalogSaveEngineToSeatDetail>).detail;
+      if (detail == null || typeof detail.slotIdx !== "number") return;
+      if (detail.role !== "brain" && detail.role !== "worker") return;
+      saveRunningEngineToSeat(detail.slotIdx, detail.role, detail.setIndex);
+    };
+    const onSavePanel = (e: Event) => {
+      const detail = (e as CustomEvent<CatalogSavePanelToSeatDetail>).detail;
+      if (!detail || (detail.role !== "brain" && detail.role !== "worker")) return;
+      savePanelConfigToSeat(detail.role, detail.setIndex);
+    };
+    const onCatalogLaunchSeats = (e: Event) => {
+      const detail = (e as CustomEvent<CatalogLaunchSeatsDetail>).detail;
+      if (!detail?.brainPath || !detail?.workerPath) return;
+      const list = models ?? [];
+      const setIndex = (detail.setIndex ?? loadCatalogActiveSeatSet()) as CatalogSeatSetIndex;
+
+      const comboId = loadCatalogSetComboId(setIndex);
+      let linked = comboId ? getCombo(comboId) : null;
+      if (comboId && !linked) {
+        setCatalogSetComboId(setIndex, null);
+        linked = null;
+      }
+
+      if (linked) {
+        const brainName =
+          list.find((m) => normalizeModelPath(m.path) === normalizeModelPath(detail.brainPath))
+            ?.name;
+        const workerName =
+          list.find((m) => normalizeModelPath(m.path) === normalizeModelPath(detail.workerPath))
+            ?.name;
+        const combo = syncComboModelPaths(
+          linked,
+          { brain: detail.brainPath, worker: detail.workerPath },
+          { brain: brainName, worker: workerName },
+        );
+        if (!catalogComboReadyForTwin(combo)) {
+          dispatchAppEvent(EVENTS.launchError, {
+            message: "TWIN needs BRAIN and WORKER seats with saved configs — use SOLO or SAVE both first",
+          });
+          return;
+        }
+        fusionDisplay.setMode("dual");
+        void applyComboPreset(combo, { loadIntoPanel: false });
+        return;
+      }
+
+      dispatchAppEvent(EVENTS.launchError, {
+        message: "TWIN: SAVE each seat from the panel first (SOLO launches one seat)",
+      });
+    };
+    const onCatalogLaunchSolo = (e: Event) => {
+      const detail = (e as CustomEvent<CatalogLaunchSeatSoloDetail>).detail;
+      if (!detail?.modelPath || (detail.role !== "brain" && detail.role !== "worker")) return;
+      const list = models ?? [];
+      const setIndex = (detail.setIndex ?? loadCatalogActiveSeatSet()) as CatalogSeatSetIndex;
+      const comboId = loadCatalogSetComboId(setIndex);
+      const linked = comboId ? getCombo(comboId) : null;
+      const bag = seatOnCombo(linked, detail.role);
+      const modelEntry =
+        list.find((m) => normalizeModelPath(m.path) === normalizeModelPath(detail.modelPath))
+        ?? null;
+      if (!modelEntry) {
+        dispatchAppEvent(EVENTS.launchError, {
+          message: "SOLO: model not in library",
+        });
+        return;
+      }
+      const policyId = resolveLaunchPolicyId({ fullAutoMode, configView });
+      const providerId = effectiveBackendType || DEFAULT_PROVIDER_ID;
+      const seat = seatHasModelPath(bag)
+        ? { ...bag!, role: "solo" as const, modelPath: detail.modelPath, modelName: modelEntry.name }
+        : captureSeatFromPanel({
+            model: modelEntry,
+            providerId,
+            binaryProfile: selectedBinaryProfile,
+            policyId,
+            config: { ...config },
+            role: "solo",
+            label: detail.role === "brain" ? "BRAIN" : "WORKER",
+            boostMethod: specBoostMethod,
+          });
+      const combo = buildSoloCombo({
+        name: `${detail.role.toUpperCase()} seat`,
+        seat,
+      });
+      fusionDisplay.setMode("single");
+      void applyComboPreset(combo, { loadIntoPanel: false });
+    };
+
+    window.addEventListener(EVENTS.catalogSeatEdit, onEdit);
+    window.addEventListener(EVENTS.catalogSeatSave, onSave);
+    window.addEventListener(EVENTS.catalogSeatCancel, onCancel);
+    window.addEventListener(EVENTS.catalogSaveEngineToSeat, onSaveEngine);
+    window.addEventListener(EVENTS.catalogSavePanelToSeat, onSavePanel);
+    window.addEventListener(EVENTS.catalogLaunchSeats, onCatalogLaunchSeats);
+    window.addEventListener(EVENTS.catalogLaunchSeatSolo, onCatalogLaunchSolo);
+    return () => {
+      window.removeEventListener(EVENTS.catalogSeatEdit, onEdit);
+      window.removeEventListener(EVENTS.catalogSeatSave, onSave);
+      window.removeEventListener(EVENTS.catalogSeatCancel, onCancel);
+      window.removeEventListener(EVENTS.catalogSaveEngineToSeat, onSaveEngine);
+      window.removeEventListener(EVENTS.catalogSavePanelToSeat, onSavePanel);
+      window.removeEventListener(EVENTS.catalogLaunchSeats, onCatalogLaunchSeats);
+      window.removeEventListener(EVENTS.catalogLaunchSeatSolo, onCatalogLaunchSolo);
+    };
+  }, [
+    models,
+    config,
+    effectiveBackendType,
+    selectedBinaryProfile,
+    fullAutoMode,
+    configView,
+    applyComboPreset,
+    fusionDisplay,
+    specBoostMethod,
+    saveSeatEditFromPanel,
+    savePanelConfigToSeat,
+    endSeatEdit,
+    saveRunningEngineToSeat,
+  ]);
 
   const handleSaveSoloPreset = useCallback(() => {
     if (!model) return;
@@ -2789,6 +3195,36 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         onSetColumnCount={setBelowColumnCount}
         layoutModeActive={layoutModeActive}
         onToggleLayoutMode={toggleLayoutMode}
+        seatSaveSlot={
+          model && !modelIsDraftOnly ? (
+            <div
+              className="catalog-seat-toolbar-save flex items-center gap-1 flex-shrink-0"
+              title="Write current panel knobs (incl. Boost/draft) into a seat bag"
+            >
+              <span className="config-panel-toolbar__label">SEAT</span>
+              <button
+                type="button"
+                className="config-panel-toolbar-chip px-1.5 py-0.5 text-[8px] font-mono rounded-sm"
+                title="Save this panel config to BRAIN seat (active set)"
+                onClick={() =>
+                  dispatchAppEvent(EVENTS.catalogSavePanelToSeat, { role: "brain" })
+                }
+              >
+                →B
+              </button>
+              <button
+                type="button"
+                className="config-panel-toolbar-chip px-1.5 py-0.5 text-[8px] font-mono rounded-sm"
+                title="Save this panel config to WORKER seat (active set)"
+                onClick={() =>
+                  dispatchAppEvent(EVENTS.catalogSavePanelToSeat, { role: "worker" })
+                }
+              >
+                →W
+              </button>
+            </div>
+          ) : null
+        }
         presetsSlot={
           <LaunchPresetsMenu
             combos={launchPresetsApi.combos}
@@ -2829,6 +3265,42 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           harnessWizardOpen ? " config-params-scroll--atomcode-wizard" : ""
         }`}
       >
+        {seatEditSession ? (
+          <div
+            className={[
+              "catalog-seat-edit-banner mb-3 flex items-center justify-between gap-2 px-2 py-1.5 font-mono text-[9px] uppercase tracking-wider",
+              `catalog-seat-edit-banner--${seatEditSession.role}`,
+            ].join(" ")}
+            role="status"
+            data-seat-role={seatEditSession.role}
+          >
+            <span className="catalog-seat-edit-banner__live" aria-hidden>
+              <span className="catalog-seat-edit-banner__live-rim" />
+            </span>
+            <span className="catalog-seat-edit-banner__label">
+              Editing {seatEditSession.role} · set {seatEditSession.setIndex + 1}
+            </span>
+            <span className="flex items-center gap-1 relative z-[2]">
+              <button
+                type="button"
+                className="catalog-seat-edit-banner__btn catalog-seat-edit-banner__btn--save"
+                onClick={() => dispatchAppEvent(EVENTS.catalogSeatSave)}
+              >
+                <span className="catalog-seat-edit-banner__save-ico" aria-hidden>
+                  ▣
+                </span>
+                Save
+              </button>
+              <button
+                type="button"
+                className="catalog-seat-edit-banner__btn"
+                onClick={() => dispatchAppEvent(EVENTS.catalogSeatCancel)}
+              >
+                Cancel
+              </button>
+            </span>
+          </div>
+        ) : null}
         {model && !modelIsDraftOnly && !showCockpitSurface && isCustomProvider && (
           <div className="mb-3 pb-3 border-b section-divider px-1">
             <p className="text-[9px] font-mono config-muted leading-relaxed">

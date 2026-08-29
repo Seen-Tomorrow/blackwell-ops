@@ -31,6 +31,7 @@ export default function EngineToolbar(props: EngineToolbarProps) {
     layoutModeActive,
     onToggleLayoutMode,
     presetsSlot,
+    seatSaveSlot,
   } = props;
 
   return (
@@ -47,6 +48,7 @@ export default function EngineToolbar(props: EngineToolbarProps) {
           <span className="config-panel-toolbar__label text-nv-green/70">FULL AUTO</span>
         </div>
       )}
+      {seatSaveSlot}
       {presetsSlot}
       <div className="config-panel-toolbar__chrome flex items-center gap-1.5 min-w-0 ml-auto flex-shrink-0">
         <button
@@ -178,4 +180,6 @@ export interface EngineToolbarProps {
   onToggleLayoutMode: () => void;
   /** Compact PRESETS control (LaunchPresetsMenu). */
   presetsSlot?: ReactNode;
+  /** Save current panel config → BRAIN / WORKER seat (left of presets). */
+  seatSaveSlot?: ReactNode;
 }

@@ -136,6 +136,10 @@ function atomcodeRoleForPort(
   return null;
 }
 
+function saveEngineToSeat(slotIdx: number, role: "brain" | "worker") {
+  dispatchAppEvent(EVENTS.catalogSaveEngineToSeat, { slotIdx, role });
+}
+
 export default function RunningEnginesPanel({
   stack,
   models,
@@ -257,6 +261,32 @@ export default function RunningEnginesPanel({
                     {item.modelName}
                   </span>
                 </button>
+                {item.entry.status === "RUNNING" ? (
+                  <>
+                    <button
+                      type="button"
+                      className="running-engine-hs-btn shrink-0 font-mono"
+                      title="Save this engine config to BRAIN seat (active set)"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        saveEngineToSeat(item.entry.idx, "brain");
+                      }}
+                    >
+                      →B
+                    </button>
+                    <button
+                      type="button"
+                      className="running-engine-hs-btn shrink-0 font-mono"
+                      title="Save this engine config to WORKER seat (active set)"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        saveEngineToSeat(item.entry.idx, "worker");
+                      }}
+                    >
+                      →W
+                    </button>
+                  </>
+                ) : null}
                 {onHotSwap && item.entry.status === "RUNNING" && (
                   <button
                     type="button"

@@ -5,6 +5,8 @@
 
 import type { LaunchPolicyId } from "./launchPolicy";
 import { isLaunchPolicyId } from "./launchPolicy";
+import type { SpecBoostMethod } from "./specProfiles";
+import { SPEC_PROFILE_PARAM_KEYS } from "./specProfiles";
 import type { ModelEntry, StackEntry } from "./types";
 import {
   STORAGE_PREFIX,
@@ -35,6 +37,8 @@ export type LaunchSeat = {
   policyId: LaunchPolicyId;
   /** Sparse param bag (same spirit as mode profiles). */
   paramOverrides: Record<string, string | number>;
+  /** Product Boost method (MTP / DFLASH / DSPARK / off) — not a CLI key. */
+  boostMethod?: SpecBoostMethod;
   modelSpecOverrides?: Record<string, string | number>;
   portPolicy: PortPolicy;
 };
@@ -52,6 +56,8 @@ export function normalizeHarnessTool(_raw: unknown): HarnessToolId {
   return "pi";
 }
 
+export type ComboPresetSource = "user" | "catalog-set";
+
 export type ComboPreset = {
   id: string;
   name: string;
@@ -67,6 +73,10 @@ export type ComboPreset = {
     /** Override WORKER parallel for harness agents N. */
     agentsOverride?: number;
   };
+  /** Catalog seat-set owned combos stay out of the casual PRESETS list. */
+  source?: ComboPresetSource;
+  /** 0–2 when source is catalog-set. */
+  catalogSetIndex?: 0 | 1 | 2;
   createdAt: number;
   updatedAt: number;
   notes?: string;
@@ -110,21 +120,35 @@ function emptyStore(): LaunchPresetsStore {
 export function readLaunchPresetsStore(): LaunchPresetsStore {
   const raw = readJsonStorage<LaunchPresetsStore>(LAUNCH_PRESETS_KEY);
   if (!raw || raw.version !== 1 || !Array.isArray(raw.combos)) return emptyStore();
+  const valid = raw.combos.filter(isComboPreset);
+  const catalog = valid.filter((c) => c.source === "catalog-set");
+  const user = valid.filter((c) => c.source !== "catalog-set").slice(0, LAUNCH_PRESETS_MAX);
   return {
     version: 1,
-    combos: raw.combos.filter(isComboPreset).slice(0, LAUNCH_PRESETS_MAX),
+    combos: [...catalog, ...user],
   };
 }
 
 export function writeLaunchPresetsStore(store: LaunchPresetsStore): void {
+  const catalog = store.combos.filter((c) => c.source === "catalog-set");
+  const user = store.combos.filter((c) => c.source !== "catalog-set").slice(0, LAUNCH_PRESETS_MAX);
   writeJsonStorage(LAUNCH_PRESETS_KEY, {
     version: 1,
-    combos: store.combos.slice(0, LAUNCH_PRESETS_MAX),
+    combos: [...catalog, ...user],
   });
 }
 
 export function listCombos(): ComboPreset[] {
   return readLaunchPresetsStore().combos.slice().sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+/** User-facing presets only (hide catalog seat-set bags). */
+export function listUserCombos(): ComboPreset[] {
+  return listCombos().filter((c) => c.source !== "catalog-set");
+}
+
+export function isCatalogOwnedCombo(c: ComboPreset): boolean {
+  return c.source === "catalog-set";
 }
 
 export function saveCombo(combo: ComboPreset): ComboPreset {
@@ -176,7 +200,28 @@ const CAPTURE_KEYS = [
   "split",
   "offload_mode",
   "base_port",
+  "device",
+  // Boost / speculative pack (natural panel knobs — both BRAIN and WORKER)
+  "dflash_draft_model",
+  "spec_draft_model",
+  ...SPEC_PROFILE_PARAM_KEYS,
 ] as const;
+
+const CAPTURE_KEY_SET = new Set<string>(CAPTURE_KEYS);
+
+function isCapturableParamKey(key: string): boolean {
+  if (CAPTURE_KEY_SET.has(key)) return true;
+  // Profile submenu knobs may gain keys beyond the fixed list.
+  if (key.startsWith("mtp_") || key.startsWith("dflash_")) return true;
+  return false;
+}
+
+function coerceCaptureValue(v: unknown): string | number | undefined {
+  if (v === undefined || v === null || v === "") return undefined;
+  if (typeof v === "string" || typeof v === "number") return v;
+  if (typeof v === "boolean") return v ? "on" : "off";
+  return undefined;
+}
 
 /** Sparse overrides from a live config bag. */
 export function sparseOverridesFromConfig(
@@ -186,21 +231,26 @@ export function sparseOverridesFromConfig(
   const keys = new Set<string>([...CAPTURE_KEYS, ...(extraKeys ?? [])]);
   const out: Record<string, string | number> = {};
   for (const k of keys) {
-    const v = config[k];
-    if (v === undefined || v === null || v === "") continue;
-    if (typeof v === "string" || typeof v === "number") out[k] = v;
-    else if (typeof v === "boolean") out[k] = v ? "on" : "off";
+    const coerced = coerceCaptureValue(config[k]);
+    if (coerced !== undefined) out[k] = coerced;
   }
-  // Also pick known numeric/string leftovers that look like user params
   for (const [k, v] of Object.entries(config)) {
     if (k.startsWith("__")) continue;
     if (k in out) continue;
-    if (typeof v === "string" || typeof v === "number") {
-      // Keep cockpit + common launch knobs only if already listed; skip huge bags
-      if (CAPTURE_KEYS.includes(k as (typeof CAPTURE_KEYS)[number])) out[k] = v;
-    }
+    if (!isCapturableParamKey(k) && !(extraKeys ?? []).includes(k)) continue;
+    const coerced = coerceCaptureValue(v);
+    if (coerced !== undefined) out[k] = coerced;
   }
   return out;
+}
+
+export function normalizeBoostMethod(raw: unknown): SpecBoostMethod {
+  if (raw === "mtp" || raw === "dflash" || raw === "dspark" || raw === "off") return raw;
+  return "off";
+}
+
+export function boostMethodFromSeat(seat: LaunchSeat): SpecBoostMethod {
+  return normalizeBoostMethod(seat.boostMethod);
 }
 
 export function captureSeatFromPanel(opts: {
@@ -212,10 +262,13 @@ export function captureSeatFromPanel(opts: {
   role?: SeatRole;
   label?: string;
   portPolicy?: PortPolicy;
+  boostMethod?: SpecBoostMethod;
   modelSpecOverrides?: Record<string, string | number>;
+  /** Preserve seat id when updating an existing bag seat. */
+  seatId?: string;
 }): LaunchSeat {
   return {
-    id: newSeatId(),
+    id: opts.seatId ?? newSeatId(),
     role: opts.role ?? "solo",
     label: opts.label ?? opts.model.name,
     modelPath: opts.model.path,
@@ -224,6 +277,7 @@ export function captureSeatFromPanel(opts: {
     binaryProfile: opts.binaryProfile,
     policyId: opts.policyId,
     paramOverrides: sparseOverridesFromConfig(opts.config),
+    boostMethod: opts.boostMethod != null ? normalizeBoostMethod(opts.boostMethod) : undefined,
     modelSpecOverrides: opts.modelSpecOverrides,
     portPolicy: opts.portPolicy ?? defaultPortPolicy(),
   };
@@ -240,6 +294,8 @@ export function captureSeatFromStack(opts: {
   panelConfig?: Record<string, unknown>;
   panelModelPath?: string | null;
   portPolicy?: PortPolicy;
+  boostMethod?: SpecBoostMethod;
+  seatId?: string;
 }): LaunchSeat {
   const e = opts.entry;
   const path = e.model_path || "";
@@ -258,7 +314,7 @@ export function captureSeatFromStack(opts: {
   if (e.splitMode) fromStack.split = e.splitMode;
 
   return {
-    id: newSeatId(),
+    id: opts.seatId ?? newSeatId(),
     role: opts.role,
     label: e.alias || e.model_name,
     modelPath: path,
@@ -267,6 +323,7 @@ export function captureSeatFromStack(opts: {
     binaryProfile: e.binaryProfile,
     policyId: opts.policyId ?? "full_auto",
     paramOverrides: { ...fromStack, ...fromPanel },
+    boostMethod: opts.boostMethod != null ? normalizeBoostMethod(opts.boostMethod) : undefined,
     portPolicy: opts.portPolicy ?? defaultPortPolicy(),
   };
 }
@@ -296,19 +353,22 @@ export function buildTwinCombo(opts: {
   worker: LaunchSeat;
   sequenceBrainFirst?: boolean;
   harness?: ComboPreset["harness"];
+  source?: ComboPresetSource;
+  catalogSetIndex?: 0 | 1 | 2;
+  id?: string;
+  createdAt?: number;
 }): ComboPreset {
   const now = Date.now();
   const brain = { ...opts.brain, role: "brain" as const };
   const worker = { ...opts.worker, role: "worker" as const };
   // Agents N default = worker parallel (overridable in editor via harness.agentsOverride)
-  const agentsFromWorker = Math.max(1, Number(worker.paramOverrides.parallel) || 1);
   const harness: ComboPreset["harness"] = opts.harness ?? {
     tool: "pi",
     defaultMode: "twin",
     agentsOverride: undefined,
   };
   return {
-    id: newPresetId(),
+    id: opts.id ?? newPresetId(),
     name: opts.name,
     version: 1,
     kind: "twin",
@@ -317,13 +377,134 @@ export function buildTwinCombo(opts: {
     harness: {
       ...harness,
       defaultMode: "twin",
-      // leave agentsOverride unset so apply uses WORKER parallel unless user set it
       agentsOverride: harness.agentsOverride,
     },
-    createdAt: now,
+    source: opts.source,
+    catalogSetIndex: opts.catalogSetIndex,
+    createdAt: opts.createdAt ?? now,
     updatedAt: now,
-    // stash for docs clarity
   };
+}
+
+export function catalogSetComboName(setIndex: 0 | 1 | 2): string {
+  return `Catalog set ${setIndex + 1}`;
+}
+
+export function seatHasModelPath(seat: LaunchSeat | null | undefined): boolean {
+  return Boolean(seat?.modelPath && seat.modelPath.trim());
+}
+
+export function catalogComboReadyForTwin(combo: ComboPreset | null | undefined): boolean {
+  if (!combo) return false;
+  return seatHasModelPath(seatOnCombo(combo, "brain")) && seatHasModelPath(seatOnCombo(combo, "worker"));
+}
+
+/** One-seat catalog bag — never clone the sibling from the seat being saved. */
+export function ensureCatalogSetCombo(opts: {
+  existing: ComboPreset | null;
+  setIndex: 0 | 1 | 2;
+  seat: LaunchSeat;
+}): ComboPreset {
+  const now = Date.now();
+  if (!opts.existing) {
+    return {
+      id: newPresetId(),
+      name: catalogSetComboName(opts.setIndex),
+      version: 1,
+      kind: "twin",
+      seats: [opts.seat],
+      sequenceBrainFirst: true,
+      harness: { tool: "pi", defaultMode: "twin", agentsOverride: undefined },
+      source: "catalog-set",
+      catalogSetIndex: opts.setIndex,
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+  return {
+    ...upsertSeatOnCombo(opts.existing, opts.seat),
+    source: "catalog-set",
+    catalogSetIndex: opts.setIndex,
+    name: opts.existing.name || catalogSetComboName(opts.setIndex),
+  };
+}
+
+/** Path pin write-through — keep knobs. */
+export function writeComboSeatPath(
+  combo: ComboPreset,
+  role: SeatRole,
+  path: string,
+  name?: string,
+): ComboPreset {
+  const paths =
+    role === "brain"
+      ? { brain: path }
+      : role === "worker"
+        ? { worker: path }
+        : {};
+  const names =
+    role === "brain"
+      ? { brain: name }
+      : role === "worker"
+        ? { worker: name }
+        : {};
+  return syncComboModelPaths(combo, paths, names);
+}
+
+/** Clear path on a bag seat; keep overrides for a later re-pin. */
+export function clearComboSeatPath(combo: ComboPreset, role: SeatRole): ComboPreset {
+  const seats = combo.seats.map((s) =>
+    s.role === role ? { ...s, modelPath: "", modelName: s.modelName } : s,
+  );
+  return { ...combo, seats, updatedAt: Date.now() };
+}
+
+/** Replace or insert a role seat on a twin combo; preserves sibling seat. */
+export function upsertSeatOnCombo(combo: ComboPreset, seat: LaunchSeat): ComboPreset {
+  const role = seat.role;
+  const seats = combo.seats.filter((s) => s.role !== role);
+  seats.push(seat);
+  seats.sort((a, b) => {
+    const rank = (r: SeatRole) => (r === "brain" ? 0 : r === "worker" ? 1 : 2);
+    return rank(a.role) - rank(b.role);
+  });
+  return {
+    ...combo,
+    kind: combo.kind === "solo" && seats.length > 1 ? "twin" : combo.kind,
+    seats,
+    updatedAt: Date.now(),
+  };
+}
+
+export function seatOnCombo(combo: ComboPreset | null | undefined, role: SeatRole): LaunchSeat | null {
+  if (!combo) return null;
+  return combo.seats.find((s) => s.role === role) ?? null;
+}
+
+/** Overlay catalog path pins onto combo seats without wiping overrides. */
+export function syncComboModelPaths(
+  combo: ComboPreset,
+  paths: { brain?: string | null; worker?: string | null },
+  names?: { brain?: string; worker?: string },
+): ComboPreset {
+  const seats = combo.seats.map((s) => {
+    if (s.role === "brain" && paths.brain) {
+      return {
+        ...s,
+        modelPath: paths.brain,
+        modelName: names?.brain ?? s.modelName,
+      };
+    }
+    if (s.role === "worker" && paths.worker) {
+      return {
+        ...s,
+        modelPath: paths.worker,
+        modelName: names?.worker ?? s.modelName,
+      };
+    }
+    return s;
+  });
+  return { ...combo, seats, updatedAt: Date.now() };
 }
 
 export function resolveAgentsN(combo: ComboPreset): number {

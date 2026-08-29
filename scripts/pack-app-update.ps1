@@ -1,5 +1,5 @@
 # Pack lean App update archive: blackwell-ops.exe + factory templates + foundry
-# vendor patches + bundled 7z.
+# vendor patches + bundled 7z + (hash-gated) pi-subagents extension.
 # Target size ~5 MB. Layout (prefixed for safe extract):
 #
 #   app/
@@ -7,17 +7,20 @@
 #     runtime/<provider>/config/*.json
 #     foundry/patches/*.patch   # vendor patches (same as NSIS resource)
 #     bin/7z.exe, bin/7z.dll
+#     pi-ext/pi-subagents/**    # only when the extension changed (see .majestic-out/pi-ext.hash)
 #
 # Usage:
 #   .\scripts\pack-app-update.ps1
 #   .\scripts\pack-app-update.ps1 -Version 1.0.12 -Output .majestic-out\CORE_Blackwell-Ops-App-v1.0.12.7z
 #   .\scripts\pack-app-update.ps1 -ExePath src-tauri\target\release\blackwell-ops.exe
+#   .\scripts\pack-app-update.ps1 -ForcePiExt    # ship pi-ext even if the hash matches
 
 param(
     [string]$Version = '',
     [string]$Output = '',
     [string]$ExePath = '',
-    [string]$BundleRoot = ''
+    [string]$BundleRoot = '',
+    [switch]$ForcePiExt
 )
 
 $ErrorActionPreference = 'Stop'
@@ -116,6 +119,72 @@ $bin_dst = Join-Path $app_stage 'bin'
 New-Item -ItemType Directory -Path $bin_dst -Force | Out-Null
 Copy-Item -LiteralPath $SevenZip -Destination (Join-Path $bin_dst '7z.exe') -Force
 Copy-Item -LiteralPath $SevenZipDll -Destination (Join-Path $bin_dst '7z.dll') -Force
+
+# pi-subagents extension (pi-ext) - hash-gated. Shipping it means App-only updates can
+# move users onto a new extension version, not just a new exe. The whole point of the
+# gate is that the 1171-file tree is staged ONLY when it actually changed: unchanged
+# daily App updates stay a 3-second download/unzip, and the payload appears on the one
+# release where Harness UPDATE bumped pi-ext (which happens with a core pi update).
+# Identity is the upstream package version plus a manifest of every file we ship, so a
+# same-version refresh that changed bundled deps still counts as a change.
+$PiExtSrc = Join-Path $root 'src-tauri\pi-ext\pi-subagents'
+$PiExtPkg = Join-Path $PiExtSrc 'package.json'
+if (-not (Test-Path -LiteralPath $PiExtPkg)) {
+    Write-Host '[pack-app-update] Missing src-tauri\pi-ext\pi-subagents (gitignored).' -ForegroundColor Yellow
+    Write-Host '  App update will NOT carry the pi-subagents extension. Refresh it via Harness UPDATE.' -ForegroundColor Yellow
+} else {
+    # Read the version with PowerShell, not node: node -p with a Windows path needs
+    # hand-quoted require(), and a stray stderr line trips $ErrorActionPreference.
+    $piext_version = $null
+    try {
+        $piext_version = [string]((Get-Content -LiteralPath $PiExtPkg -Raw | ConvertFrom-Json).version)
+    } catch {
+        throw "pack-app-update: could not parse $PiExtPkg : $_"
+    }
+    if (-not $piext_version) {
+        throw "pack-app-update: no version field in $PiExtPkg"
+    }
+    # Manifest: relative path + length for every shipped file, hashed in sorted order.
+    # Path separator is normalised so the same tree hashes identically on any machine.
+    $piext_files = @(Get-ChildItem -LiteralPath $PiExtSrc -File -Recurse -ErrorAction SilentlyContinue)
+    if ($piext_files.Count -lt 100) {
+        throw "pack-app-update: pi-ext tree looks incomplete ($($piext_files.Count) files) at $PiExtSrc"
+    }
+    $sb = New-Object System.Text.StringBuilder
+    [void]$sb.Append("pi-subagents/$piext_version`n")
+    foreach ($f in ($piext_files | Sort-Object { $_.FullName.Substring($PiExtSrc.Length).Replace('\','/').ToLowerInvariant() })) {
+        $rel = $f.FullName.Substring($PiExtSrc.Length).TrimStart('\','/').Replace('\','/').ToLowerInvariant()
+        [void]$sb.Append("$rel|$($f.Length)`n")
+    }
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    $piext_hash = ([BitConverter]::ToString($sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($sb.ToString())))).Replace('-','').Substring(0,16).ToLowerInvariant()
+
+    # Skip staging when the previous pack recorded this exact hash.
+    $hashFile = Join-Path $root '.majestic-out\pi-ext.hash'
+    $prevHash = $null
+    if (Test-Path -LiteralPath $hashFile) {
+        try { $prevHash = (Get-Content -LiteralPath $hashFile -Raw -ErrorAction SilentlyContinue).Trim() } catch { }
+    }
+
+    if ($prevHash -eq $piext_hash -and -not $ForcePiExt) {
+        Write-Host ("[pack-app-update] pi-subagents unchanged (v{0} sha {1}) - SKIPPING pi-ext, update stays small" -f $piext_version, $piext_hash) -ForegroundColor Green
+    } else {
+        $piext_dst = Join-Path $app_stage 'pi-ext\pi-subagents'
+        New-Item -ItemType Directory -Path $piext_dst -Force | Out-Null
+        Copy-Item -Path (Join-Path $PiExtSrc '*') -Destination $piext_dst -Recurse -Force
+        # Never ship a link into pi's own core (see pi_code.rs strip_shadowed_pi_core_modules).
+        Get-ChildItem -LiteralPath $piext_dst -Recurse -Force -ErrorAction SilentlyContinue |
+            Where-Object { $_.Attributes -band [System.IO.FileAttributes]::ReparsePoint } |
+            Remove-Item -Force -ErrorAction SilentlyContinue
+        $stagedCount = @(Get-ChildItem -LiteralPath $piext_dst -File -Recurse -Force -ErrorAction SilentlyContinue).Count
+        $stagedMB = [math]::Round(((Get-ChildItem -LiteralPath $piext_dst -File -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum / 1MB), 2)
+        Write-Host ("[pack-app-update] Staged pi-ext/pi-subagents v{0} sha {1} - {2} files, {3} MB raw" -f $piext_version, $piext_hash, $stagedCount, $stagedMB) -ForegroundColor Cyan
+        # Record the hash only after staging succeeded.
+        $hashDir = Split-Path -Parent $hashFile
+        if (-not (Test-Path -LiteralPath $hashDir)) { New-Item -ItemType Directory -Path $hashDir -Force | Out-Null }
+        Set-Content -LiteralPath $hashFile -Value $piext_hash -NoNewline -Encoding ascii
+    }
+}
 
 # Foundry vendor patches - same product files NSIS gets via tauri.conf resources.
 # Extract lands at {install}/foundry/patches (app_root); Foundry apply reads there.

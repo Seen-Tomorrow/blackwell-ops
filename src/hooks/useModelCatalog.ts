@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { FitScanFull, FitScanProgress, ModelEntry, ProviderConfig, StackEntry } from "../lib/types";
+import type { FitScanFull, FitScanProgress, GpuInfo, ModelEntry, ProviderConfig, StackEntry } from "../lib/types";
 import { DEFAULT_PROVIDER_ID } from "../lib/types";
 import { useKeyboardNav } from "./useKeyboardNav";
 import { useTauriListen } from "./useTauriListen";
@@ -21,6 +21,40 @@ import {
   isLaunchableMain,
   matchesCatalogDraftFilter,
 } from "../lib/specDraft";
+import {
+  assignCatalogSeat,
+  clearCatalogSeat,
+  isCatalogPinned,
+  loadCatalogActiveSeatSet,
+  loadCatalogPins,
+  loadCatalogRecents,
+  loadCatalogSeats,
+  loadCatalogSetComboId,
+  pushCatalogRecent,
+  seatRoleForPath,
+  setCatalogActiveSeatSet,
+  toggleCatalogPin,
+  type CatalogEngineSeatRole,
+  type CatalogRecentEntry,
+  type CatalogSeatRole,
+  type CatalogSeatSetIndex,
+  type CatalogSeatsState,
+} from "../lib/catalogQuickAccess";
+import {
+  clearComboSeatPath,
+  getCombo,
+  saveCombo,
+  writeComboSeatPath,
+} from "../lib/launchPresets";
+import {
+  fitNowNeedMib,
+  fitNowTitle,
+  fitNowVerdict,
+  matchesFitNowFilter,
+  totalFreeVramMib,
+  type CatalogFitNowFilter,
+  type FitNowVerdict,
+} from "../lib/catalogFitNow";
 
 export type SortField = (keyof ModelEntry) | "date";
 export type SortDirection = "asc" | "desc";
@@ -213,6 +247,8 @@ interface UseModelCatalogParams {
   models: ModelEntry[];
   stack: StackEntry[];
   providers?: ProviderConfig[];
+  /** Live GPU free memory for catalog fit-now chips (read-only; no forecast). */
+  gpus?: GpuInfo[];
   scanningPath: string | null;
   setScanningPath: (p: string | null) => void;
   batchScanState: { active: boolean; scanned: number; failed: number; total: number };
@@ -224,6 +260,7 @@ export function useModelCatalog({
   models,
   stack,
   providers,
+  gpus = [],
   scanningPath,
   setScanningPath,
   batchScanState,
@@ -278,6 +315,14 @@ export function useModelCatalog({
     return v === "asc" || v === "desc" ? v : "desc";
   });
 
+  // Pins / recents / sticky seats — path-only, separate from launch presets.
+  const [catalogPins, setCatalogPins] = useState<string[]>(() => loadCatalogPins());
+  const [catalogRecents, setCatalogRecents] = useState<CatalogRecentEntry[]>(() => loadCatalogRecents());
+  const [catalogSeats, setCatalogSeats] = useState<CatalogSeatsState>(() => loadCatalogSeats());
+  const [activeSeatSet, setActiveSeatSetState] = useState<CatalogSeatSetIndex>(() => loadCatalogActiveSeatSet());
+  /** Temporary: only the favorite just clicked sits at catalog top. */
+  const [floatFavoritePath, setFloatFavoritePath] = useState<string | null>(null);
+  const [fitNowFilter, setFitNowFilter] = useState<CatalogFitNowFilter>("all");
   // After onboarding — pick first scannable model when nothing is selected (fresh install has no lastModel).
   useEffect(() => {
     const handler = (e: Event) => {
@@ -352,6 +397,7 @@ export function useModelCatalog({
         setSelectedSlotIdx(detail.slotIdx);
         if (detail.modelPath) {
           saveLastModel(detail.modelPath);
+          setCatalogRecents(pushCatalogRecent(detail.modelPath));
         }
         setPanelActiveModel(findModelByPath(models, detail.modelPath) || null);
       }
@@ -364,17 +410,23 @@ export function useModelCatalog({
       if (payload?.slot !== undefined) {
         try {
           const saved = readStorage(KEYS.selectedSlotIdx);
-          if (saved && parseInt(saved) === payload.slot) setSelectedSlotIdx(null);
+          if (saved != null && Number(saved) === payload.slot) setSelectedSlotIdx(null);
         } catch {}
       }
+    };
+    const onSeatsChanged = () => {
+      setCatalogSeats(loadCatalogSeats());
+      setActiveSeatSetState(loadCatalogActiveSeatSet());
     };
     window.addEventListener(EVENTS.engineLaunched, onLaunch);
     window.addEventListener(EVENTS.stopAll, onStopAll);
     window.addEventListener(EVENTS.slotCleared, onSlotCleared);
+    window.addEventListener(EVENTS.catalogSeatsChanged, onSeatsChanged);
     return () => {
       window.removeEventListener(EVENTS.engineLaunched, onLaunch);
       window.removeEventListener(EVENTS.stopAll, onStopAll);
       window.removeEventListener(EVENTS.slotCleared, onSlotCleared);
+      window.removeEventListener(EVENTS.catalogSeatsChanged, onSeatsChanged);
     };
   }, [models]);
 
@@ -383,7 +435,8 @@ export function useModelCatalog({
     setPanelActiveModel(model);
     setSelectedSlotIdx(null); // Generic selection — clear engine-specific pairing
     saveLastModel(model.path);
-  }, []);
+    setFloatFavoritePath(isCatalogPinned(model.path, catalogPins) ? model.path : null);
+  }, [catalogPins]);
 
   // Select a specific running engine instance by slot index (for mini card clicks)
   const handleSelectBySlot = useCallback((slotIdx: number) => {
@@ -428,6 +481,7 @@ export function useModelCatalog({
   const runningModelPaths = useMemo(() => new Set(runningInstances.keys()), [runningInstances]);
 
   // First engine per model (backward compat for EngineConfigPanel)
+  // First engine per model (backward compat for EngineConfigPanel)
   const activeEngineByModel = useMemo(() => {
     const map = new Map<string, { alias: string; port?: number }>();
     stack.filter(s => s.status === "RUNNING" || s.status === "LOADING").forEach(s => {
@@ -436,44 +490,65 @@ export function useModelCatalog({
     return map;
   }, [stack]);
 
-  // Sorted + filtered model list — flat catalog (running engines shown on right panel only)
-  const catalogModels = useMemo(() => {
-    let sorted = [...models].sort((a, b) => {
-      let comparison = 0;
-      if (sortField === "date") {
-        comparison = (a.metadata?.file_created ?? 0) - (b.metadata?.file_created ?? 0);
-      } else {
-        const aVal = a[sortField];
-        const bVal = b[sortField];
-        if (sortField === "size_str") {
-          const parseGb = (s: string) => parseFloat(String(s).replace(/[^0-9.]/g, "")) || 0;
-          comparison = parseGb(aVal as string) - parseGb(bVal as string);
-        } else if (typeof aVal === "string" && typeof bVal === "string") {
-          comparison = aVal.localeCompare(bVal);
-        } else if (typeof aVal === "boolean" && typeof bVal === "boolean") {
-          comparison = Number(aVal) - Number(bVal);
-        }
-      }
-      return sortDirection === "asc" ? comparison : -comparison;
-    });
-
-    const searchWords = search.trim()
-      ? search.toLowerCase().trim().split(/\s+/)
-      : null;
-
-    sorted = sorted.filter((m) => matchesCatalogDraftFilter(m, draftFilter));
-
-    if (searchWords) {
-      sorted = sorted.filter(m => modelMatchesSearch(m, searchWords));
-    }
-
-    return sorted;
-  }, [models, sortField, sortDirection, search, draftFilter]);
-
-  const setCatalogDraftFilter = useCallback((filter: CatalogDraftFilter) => {
-    setDraftFilter(filter);
-    writeStorage(KEYS.catalogDraftFilter, filter);
+  const handleTogglePin = useCallback((model: ModelEntry) => {
+    setCatalogPins(toggleCatalogPin(model.path));
   }, []);
+
+  const handleTogglePinPath = useCallback((path: string) => {
+    setCatalogPins(toggleCatalogPin(path));
+  }, []);
+
+  const handleAssignSeat = useCallback(
+    (role: CatalogEngineSeatRole | CatalogSeatRole, model?: ModelEntry | null) => {
+      if (role === "draft") return;
+      const target = model ?? catalogSelectedModel ?? panelActiveModel;
+      if (!target) return;
+      const current = catalogSeats[role];
+      if (current?.path
+        && normalizeModelPathKey(current.path) === normalizeModelPathKey(target.path)
+      ) {
+        return;
+      }
+      setCatalogSeats(assignCatalogSeat(role, target.path));
+      const setIndex = loadCatalogActiveSeatSet();
+      const comboId = loadCatalogSetComboId(setIndex);
+      const combo = comboId ? getCombo(comboId) : null;
+      if (combo && (role === "brain" || role === "worker")) {
+        saveCombo(writeComboSeatPath(combo, role, target.path, target.name));
+      }
+      dispatchAppEvent(EVENTS.catalogSeatsChanged);
+    },
+    [catalogSelectedModel, panelActiveModel, catalogSeats],
+  );
+
+  const handleClearSeat = useCallback((role: CatalogEngineSeatRole | CatalogSeatRole) => {
+    if (role === "draft") return;
+    setCatalogSeats(clearCatalogSeat(role));
+    const setIndex = loadCatalogActiveSeatSet();
+    const comboId = loadCatalogSetComboId(setIndex);
+    const combo = comboId ? getCombo(comboId) : null;
+    if (combo && (role === "brain" || role === "worker")) {
+      saveCombo(clearComboSeatPath(combo, role));
+    }
+    dispatchAppEvent(EVENTS.catalogSeatsChanged);
+  }, []);
+
+  const handleSelectSeatSet = useCallback((index: CatalogSeatSetIndex) => {
+    dispatchAppEvent(EVENTS.catalogSeatCancel);
+    const next = setCatalogActiveSeatSet(index);
+    setActiveSeatSetState(next.activeSeatSet);
+    setCatalogSeats(next.seats);
+  }, []);
+
+  const isPinned = useCallback(
+    (path: string) => isCatalogPinned(path, catalogPins),
+    [catalogPins],
+  );
+
+  const getSeatRole = useCallback(
+    (path: string) => seatRoleForPath(path, catalogSeats),
+    [catalogSeats],
+  );
 
   // Scan handlers
   const handleScanModel = useCallback(async (model: ModelEntry) => {
@@ -622,6 +697,99 @@ export function useModelCatalog({
     return Boolean(provider?.enabled);
   }, [fitProviderId, providers]);
 
+  // Fit-now + sorted/filtered list (after FIT cache is available; no forecast calls)
+  const freeVramMib = useMemo(() => totalFreeVramMib(gpus), [gpus]);
+
+  const getFitNowVerdict = useCallback(
+    (model: ModelEntry): FitNowVerdict =>
+      fitNowVerdict({ model, fitResults: fitScanResults, freeVramMib }),
+    [fitScanResults, freeVramMib],
+  );
+
+  const getFitNowMeta = useCallback(
+    (model: ModelEntry) => {
+      const verdict = getFitNowVerdict(model);
+      const need = fitNowNeedMib(model, fitScanResults);
+      return {
+        verdict,
+        title: fitNowTitle(verdict, need, freeVramMib),
+      };
+    },
+    [getFitNowVerdict, fitScanResults, freeVramMib],
+  );
+
+  const catalogModels = useMemo(() => {
+    let sorted = [...models].sort((a, b) => {
+      let comparison = 0;
+      if (sortField === "date") {
+        comparison = (a.metadata?.file_created ?? 0) - (b.metadata?.file_created ?? 0);
+      } else {
+        const aVal = a[sortField];
+        const bVal = b[sortField];
+        if (sortField === "size_str") {
+          const parseGb = (s: string) => parseFloat(String(s).replace(/[^0-9.]/g, "")) || 0;
+          comparison = parseGb(aVal as string) - parseGb(bVal as string);
+        } else if (typeof aVal === "string" && typeof bVal === "string") {
+          comparison = aVal.localeCompare(bVal);
+        } else if (typeof aVal === "boolean" && typeof bVal === "boolean") {
+          comparison = Number(aVal) - Number(bVal);
+        }
+      }
+      return sortDirection === "asc" ? comparison : -comparison;
+    });
+
+    const searchWords = search.trim()
+      ? search.toLowerCase().trim().split(/\s+/)
+      : null;
+
+    sorted = sorted.filter((m) => matchesCatalogDraftFilter(m, draftFilter));
+
+    if (searchWords) {
+      sorted = sorted.filter(m => modelMatchesSearch(m, searchWords));
+    }
+
+    if (fitNowFilter !== "all") {
+      sorted = sorted.filter((m) => matchesFitNowFilter(getFitNowVerdict(m), fitNowFilter));
+    }
+
+    // Clicking a favorite briefly floats *that* card to top — not the whole pin list.
+    if (floatFavoritePath) {
+      const key = normalizeModelPathKey(floatFavoritePath);
+      const hit = sorted.find((m) => normalizeModelPathKey(m.path) === key);
+      if (hit) {
+        sorted = [hit, ...sorted.filter((m) => normalizeModelPathKey(m.path) !== key)];
+      }
+    }
+
+    return sorted;
+  }, [
+    models,
+    sortField,
+    sortDirection,
+    search,
+    draftFilter,
+    fitNowFilter,
+    getFitNowVerdict,
+    floatFavoritePath,
+  ]);
+
+  useEffect(() => {
+    setFloatFavoritePath(null);
+  }, [sortField, sortDirection, search, draftFilter, fitNowFilter]);
+
+  const setCatalogDraftFilter = useCallback((filter: CatalogDraftFilter) => {
+    setDraftFilter(filter);
+    writeStorage(KEYS.catalogDraftFilter, filter);
+  }, []);
+
+  const handleSelectPath = useCallback(
+    (path: string) => {
+      const m = findModelByPath(models, path);
+      if (m) handleSelect(m);
+    },
+    [models, handleSelect],
+  );
+
   const getFitScanBadge = useCallback(
     (model: ModelEntry) => {
       const entry = findFitScanEntry(fitScanResults, model.path);
@@ -711,6 +879,12 @@ export function useModelCatalog({
     handleDeleteModel, handleRenameModel,
     fitScanAvailable, isFitScanning, getFitScanActiveLabel, getFitScanBadge, modelNeedsFitScan, handleFitScanModel,
     fitScanningCount: fitScanningPaths.size,
+    // Quick access (pins / recents / seats)
+    catalogPins, catalogRecents, catalogSeats, activeSeatSet,
+    handleTogglePin, handleTogglePinPath, handleAssignSeat, handleClearSeat, handleSelectSeatSet, handleSelectPath,
+    isPinned, getSeatRole,
+    // Fit-now (FIT cache + free VRAM only — no forecast)
+    fitNowFilter, setFitNowFilter, getFitNowMeta, freeVramMib,
     zone,
   };
 }

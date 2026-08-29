@@ -33,6 +33,9 @@ export interface ToolchainInstallInfo {
   uncompressed_size_label: string;
   manifest_present: boolean;
   runtime_ready: boolean;
+  /** x64 MSVC C runtime resolvable for every profile (app-local, toolchain, or system). */
+  msvc_crt_ready: boolean;
+  msvc_crt_error?: string | null;
   profiles_ready: number;
   profiles_total: number;
   all_ready: boolean;
@@ -224,6 +227,14 @@ export default function FoundryToolchainPanel({
     );
   }
 
+  // CUDA is present but the MSVC C runtime is not: engines would die at LoadLibrary with a
+  // raw Windows "MSVCP140.dll was not found" dialog and no engine log. Say it plainly.
+  // Not gated behind all_ready — this must surface even when everything else is green.
+  const crtError = !info.msvc_crt_ready
+    ? info.msvc_crt_error ??
+      "Missing the x64 Microsoft Visual C++ runtime (vcruntime140, msvcp140) required by the engine binaries. Re-install the portable toolchain, or install the VC++ 2015-2022 Redistributable (x64)."
+    : null;
+
   const cached = info.cached_archives?.find((a) => a.pack === "full");
   const packActive =
     Boolean(busyTask) ||
@@ -290,6 +301,12 @@ export default function FoundryToolchainPanel({
             </button>
           )}
         </div>
+
+        {crtError && (
+          <p className="foundry-toolchain-onboarding__hint font-mono text-[9px] text-yellow-400/90 m-0">
+            {crtError}
+          </p>
+        )}
 
         {!downloading && !cached && (
           <p className="foundry-toolchain-onboarding__hint">
@@ -422,6 +439,12 @@ export default function FoundryToolchainPanel({
           onActionError={setActionError}
           compact
         />
+      )}
+
+      {crtError && (
+        <p className="text-[8px] font-mono text-yellow-400/90 leading-relaxed">
+          {crtError}
+        </p>
       )}
 
       {info.all_ready ? (
