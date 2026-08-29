@@ -1077,8 +1077,8 @@
   background: color-mix(in srgb, #0e7490 28%, transparent);
 }
 
-/* ── AtomCode harness UX ─── */
-.atomcode-launch-btn {
+/* ── Agentic harness UX ─── */
+.harness-launch-btn {
   width: 100%;
   text-align: left;
   font-size: 8px;
@@ -1088,32 +1088,32 @@
   transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
 }
 
-.atomcode-launch-btn:disabled {
+.harness-launch-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
 
-.atomcode-launch-btn--solo {
+.harness-launch-btn--solo {
   color: var(--theme-provider-pill-active-text);
   border-color: var(--theme-provider-pill-active-border);
   background: var(--theme-provider-pill-active-bg);
 }
 
-.atomcode-launch-btn--solo:hover:not(:disabled) {
+.harness-launch-btn--solo:hover:not(:disabled) {
   box-shadow: var(--theme-launch-hover-shadow, none);
 }
 
-.atomcode-launch-btn--twin {
+.harness-launch-btn--twin {
   color: var(--theme-chip-solid-text);
   border-color: var(--theme-chip-solid-bg);
   background: var(--theme-chip-solid-bg);
 }
 
-.atomcode-launch-btn--twin:hover:not(:disabled) {
+.harness-launch-btn--twin:hover:not(:disabled) {
   filter: none;
 }
 
-.atomcode-role-badge {
+.harness-role-badge {
   display: inline-block;
   font-size: 7px;
   font-weight: 600;
@@ -1125,14 +1125,14 @@
   vertical-align: middle;
 }
 
-.atomcode-role-badge--brain,
-.atomcode-role-badge--solo {
+.harness-role-badge--brain,
+.harness-role-badge--solo {
   color: var(--theme-provider-pill-active-text);
   border-color: var(--theme-provider-pill-active-border);
   background: var(--theme-provider-pill-active-bg);
 }
 
-.atomcode-role-badge--worker {
+.harness-role-badge--worker {
   color: var(--theme-pair-secondary-text, var(--theme-chip-solid-text));
   border-color: var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg));
   background: color-mix(
@@ -1142,25 +1142,25 @@
   );
 }
 
-.atomcode-role-badge--solo.atomcode-role-badge--selected,
-.atomcode-role-badge--selected {
+.harness-role-badge--solo.harness-role-badge--selected,
+.harness-role-badge--selected {
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-provider-pill-active-bg) 40%, transparent);
 }
 
-.atomcode-role-badge--agents {
+.harness-role-badge--agents {
   color: var(--theme-chip-text);
   border-color: var(--theme-chip-border);
   background: var(--theme-chip-bg);
 }
 
-.atomcode-role-badge--muted {
+.harness-role-badge--muted {
   color: var(--theme-text-muted);
   border-color: var(--theme-border-subtle);
   background: transparent;
   font-weight: 500;
 }
 
-.atomcode-route-label {
+.harness-route-label {
   font-size: 7px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -1168,26 +1168,26 @@
   min-width: 2.5rem;
 }
 
-.atomcode-route-sep,
-.atomcode-route-arrow {
+.harness-route-sep,
+.harness-route-arrow {
   font-size: 8px;
   opacity: 0.45;
 }
 
-.atomcode-msg-ok {
+.harness-msg-ok {
   color: var(--theme-status-nominal);
 }
 
-.atomcode-msg-err {
+.harness-msg-err {
   color: var(--theme-danger, #f87171);
 }
 
-.atomcode-manual-toggle {
+.harness-manual-toggle {
   font-size: 7px !important;
   opacity: 0.75;
 }
 
-.atomcode-confirm-overlay {
+.harness-confirm-overlay {
   position: fixed;
   inset: 0;
   z-index: 9999;
@@ -1201,7 +1201,7 @@
   -webkit-backdrop-filter: none;
 }
 
-.atomcode-confirm-modal {
+.harness-confirm-modal {
   width: min(36rem, 100%);
   max-height: min(90vh, 28rem);
   overflow: auto;
@@ -1215,7 +1215,7 @@
   color: var(--theme-text);
 }
 
-.atomcode-confirm-title {
+.harness-confirm-title {
   margin: 0 0 0.65rem;
   font-size: 10px;
   font-weight: 600;
@@ -1225,7 +1225,7 @@
 }
 
 /* One large line: BRAIN SOLO/TWIN · engine(s) · AGENTS ×N */
-.atomcode-confirm-summary {
+.harness-confirm-summary {
   margin: 0 0 0.75rem;
   display: flex;
   flex-wrap: wrap;
@@ -1238,17 +1238,17 @@
   color: var(--theme-text);
 }
 
-.atomcode-confirm-summary__mode {
+.harness-confirm-summary__mode {
   color: var(--theme-accent-bright, var(--theme-accent));
   letter-spacing: 0.1em;
 }
 
-.atomcode-confirm-summary__engine {
+.harness-confirm-summary__engine {
   color: var(--theme-text);
   font-variant-numeric: tabular-nums;
 }
 
-.atomcode-confirm-summary__engine--worker {
+.harness-confirm-summary__engine--worker {
   color: var(--theme-secondary-bright, var(--theme-text));
   background: color-mix(in srgb, var(--theme-secondary) 14%, transparent);
   padding: 0.1rem 0.35rem;
@@ -1256,17 +1256,17 @@
   border: 1px solid color-mix(in srgb, var(--theme-secondary) 40%, transparent);
 }
 
-.atomcode-confirm-summary__sep {
+.harness-confirm-summary__sep {
   opacity: 0.4;
   font-weight: 500;
 }
 
-.atomcode-confirm-summary__agents {
+.harness-confirm-summary__agents {
   color: var(--theme-secondary-bright, var(--theme-accent-bright));
   letter-spacing: 0.08em;
 }
 
-.atomcode-confirm-path {
+.harness-confirm-path {
   margin: 0 0 1rem;
   font-size: 9px !important;
   line-height: 1.4;
@@ -1275,7 +1275,7 @@
   opacity: 1;
 }
 
-.atomcode-confirm-path__label {
+.harness-confirm-path__label {
   display: inline-block;
   margin-right: 0.45rem;
   font-size: 7px;
@@ -1286,21 +1286,21 @@
   opacity: 0.75;
 }
 
-.atomcode-confirm-actions {
+.harness-confirm-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.45rem;
   align-items: center;
 }
 
-.atomcode-confirm-actions .atomcode-launch-btn {
+.harness-confirm-actions .harness-launch-btn {
   width: auto;
   flex: 1 1 auto;
   min-width: 8rem;
 }
 
 /* Role chip on engine cards (shown when harness assigns a role class) */
-.atomcode-engine-role-chip {
+.harness-engine-role-chip {
   display: inline-block;
   font-size: 6px;
   font-weight: 700;
@@ -1311,27 +1311,27 @@
   text-transform: uppercase;
 }
 
-.atomcode-engine-role-chip--brain {
+.harness-engine-role-chip--brain {
   color: #fef3c7;
   border: 1px solid color-mix(in srgb, #f59e0b 55%, transparent);
   background: color-mix(in srgb, #b45309 40%, #1a1000 60%);
 }
 
-.atomcode-engine-role-chip--worker {
+.harness-engine-role-chip--worker {
   color: #ede9fe;
   border: 1px solid color-mix(in srgb, #a78bfa 50%, transparent);
   background: color-mix(in srgb, #5b21b6 45%, #0c0618 55%);
 }
 
-.atomcode-engine-role-chip--solo {
+.harness-engine-role-chip--solo {
   color: #ecfeff;
   border: 1px solid color-mix(in srgb, #22d3ee 50%, transparent);
   background: color-mix(in srgb, #0e7490 45%, #041016 55%);
 }
 
-/* ── Running engines highlight while AtomCode harness open ─── */
-html[data-atomcode-harness="1"] .running-engine-card,
-html[data-atomcode-harness="1"] .launch-rail-engine-chip {
+/* ── Running engines highlight while harness wizard open ─── */
+html[data-harness-open="1"] .running-engine-card,
+html[data-harness-open="1"] .launch-rail-engine-chip {
   transition:
     opacity 0.15s ease,
     border-color 0.15s ease,
@@ -1339,102 +1339,102 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip {
     background 0.15s ease;
 }
 
-html[data-atomcode-harness="1"] .running-engine-card.atomcode-engine--live,
-html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--live {
+html[data-harness-open="1"] .running-engine-card.harness-engine--live,
+html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--live {
   opacity: 0.65;
 }
 
-/* Running engine cards — theme-aware (uses --atom-brain/worker vars, not hardcoded colors) */
-/* Running engine cards — theme tokens (--theme-atom-brain/worker-raw) resolve on
+/* Running engine cards — theme-aware (uses --harness-brain/worker vars, not hardcoded colors) */
+/* Running engine cards — theme tokens (--theme-harness-brain/worker-raw) resolve on
    all themes, no [data-theme] fork. Arctic keeps distinct blue (BRAIN/SOLO) vs
    copper (WORKER) even though its pill + pair-secondary both resolve to sky. */
-html[data-atomcode-harness="1"] .running-engine-card.atomcode-engine--brain,
-html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--brain {
+html[data-harness-open="1"] .running-engine-card.harness-engine--brain,
+html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   opacity: 1 !important;
-  border-color: color-mix(in srgb, var(--theme-atom-brain-raw) 70%, transparent) !important;
+  border-color: color-mix(in srgb, var(--theme-harness-brain-raw) 70%, transparent) !important;
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--theme-atom-brain-raw) 40%, transparent),
-    0 0 12px color-mix(in srgb, var(--theme-atom-brain-raw) 22%, transparent) !important;
-  background: color-mix(in srgb, var(--theme-atom-brain-raw) 28%, var(--theme-eject-card-bg, #1a1810) 72%) !important;
+    0 0 0 1px color-mix(in srgb, var(--theme-harness-brain-raw) 40%, transparent),
+    0 0 12px color-mix(in srgb, var(--theme-harness-brain-raw) 22%, transparent) !important;
+  background: color-mix(in srgb, var(--theme-harness-brain-raw) 28%, var(--theme-eject-card-bg, #1a1810) 72%) !important;
 }
 
-html[data-atomcode-harness="1"] .running-engine-card.atomcode-engine--worker,
-html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--worker {
+html[data-harness-open="1"] .running-engine-card.harness-engine--worker,
+html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--worker {
   opacity: 1 !important;
-  border-color: color-mix(in srgb, var(--theme-atom-worker-raw) 70%, transparent) !important;
+  border-color: color-mix(in srgb, var(--theme-harness-worker-raw) 70%, transparent) !important;
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--theme-atom-worker-raw) 40%, transparent),
-    0 0 12px color-mix(in srgb, var(--theme-atom-worker-raw) 20%, transparent) !important;
-  background: color-mix(in srgb, var(--theme-atom-worker-raw) 30%, var(--theme-eject-card-bg, #14101a) 70%) !important;
+    0 0 0 1px color-mix(in srgb, var(--theme-harness-worker-raw) 40%, transparent),
+    0 0 12px color-mix(in srgb, var(--theme-harness-worker-raw) 20%, transparent) !important;
+  background: color-mix(in srgb, var(--theme-harness-worker-raw) 30%, var(--theme-eject-card-bg, #14101a) 70%) !important;
 }
 
-html[data-atomcode-harness="1"] .running-engine-card.atomcode-engine--solo,
-html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--solo {
+html[data-harness-open="1"] .running-engine-card.harness-engine--solo,
+html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--solo {
   opacity: 1 !important;
-  border-color: color-mix(in srgb, var(--theme-atom-brain-raw) 65%, transparent) !important;
+  border-color: color-mix(in srgb, var(--theme-harness-brain-raw) 65%, transparent) !important;
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--theme-atom-brain-raw) 45%, transparent),
-    0 0 12px color-mix(in srgb, var(--theme-atom-brain-raw) 20%, transparent) !important;
-  background: color-mix(in srgb, var(--theme-atom-brain-raw) 25%, var(--theme-eject-card-bg, #0a1416) 75%) !important;
+    0 0 0 1px color-mix(in srgb, var(--theme-harness-brain-raw) 45%, transparent),
+    0 0 12px color-mix(in srgb, var(--theme-harness-brain-raw) 20%, transparent) !important;
+  background: color-mix(in srgb, var(--theme-harness-brain-raw) 25%, var(--theme-eject-card-bg, #0a1416) 75%) !important;
 }
 
-html[data-atomcode-harness="1"] .running-engine-card.atomcode-engine--picked,
-html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked {
+html[data-harness-open="1"] .running-engine-card.harness-engine--picked,
+html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--picked {
   outline: 1px dashed color-mix(in srgb, #ecfeff 55%, transparent);
   outline-offset: 1px;
 }
 
-/* ── AtomCode full cockpit wizard (compact, amber/green) ─── */
-.config-params-scroll--atomcode-wizard {
+/* ── Harness full cockpit wizard (compact, amber/green) ─── */
+.config-params-scroll--harness-wizard {
   display: flex;
   flex-direction: column;
 }
 
-.config-params-scroll--atomcode-wizard > div:first-child {
+.config-params-scroll--harness-wizard > div:first-child {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
 }
 
-.atomcode-wizard {
+.harness-wizard {
   /*
    * Theme-native selected fills (AGENTS.md: tokens only).
-   * BRAIN/SOLO = --theme-atom-brain-raw · WORKER = --theme-atom-worker-raw.
+   * BRAIN/SOLO = --theme-harness-brain-raw · WORKER = --theme-harness-worker-raw.
    * Tokens on all themes (arctic keeps distinct blue vs copper).
    * Soften punchy solids by mixing with panel (~68% solid).
    */
-  --atom-brain-bg-raw: var(--theme-atom-brain-raw, var(--theme-provider-pill-active-bg));
-  --atom-brain-border: var(--theme-provider-pill-active-border);
-  --atom-brain-text: var(--theme-provider-pill-active-text);
-  --atom-brain-bg: color-mix(in srgb, var(--atom-brain-bg-raw) 68%, var(--theme-panel, #111) 32%);
-  --atom-worker-bg-raw: var(--theme-atom-worker-raw, var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg)));
-  --atom-worker-border: var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg));
-  --atom-worker-text: var(--theme-pair-secondary-text, var(--theme-chip-solid-text));
-  --atom-worker-bg: color-mix(in srgb, var(--atom-worker-bg-raw) 68%, var(--theme-panel, #111) 32%);
-  --atom-worker-fg: var(--theme-chip-active-text);
+  --harness-brain-bg-raw: var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg));
+  --harness-brain-border: var(--theme-provider-pill-active-border);
+  --harness-brain-text: var(--theme-provider-pill-active-text);
+  --harness-brain-bg: color-mix(in srgb, var(--harness-brain-bg-raw) 68%, var(--theme-panel, #111) 32%);
+  --harness-worker-bg-raw: var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg)));
+  --harness-worker-border: var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg));
+  --harness-worker-text: var(--theme-pair-secondary-text, var(--theme-chip-solid-text));
+  --harness-worker-bg: color-mix(in srgb, var(--harness-worker-bg-raw) 68%, var(--theme-panel, #111) 32%);
+  --harness-worker-fg: var(--theme-chip-active-text);
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
   padding: 0.5rem 0.7rem 0.55rem !important;
-  border-color: color-mix(in srgb, var(--atom-brain-bg) 45%, transparent) !important;
+  border-color: color-mix(in srgb, var(--harness-brain-bg) 45%, transparent) !important;
 }
 
-.atomcode-wizard__header {
+.harness-wizard__header {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.3rem 0.55rem;
   padding-bottom: 0.35rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--atom-brain-bg) 40%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--harness-brain-bg) 40%, transparent);
 }
 
 /* Inline tool-picker slots into the header next to the title. Replaces the
-   older subtitle slot ("AtomCode · v5.0.2") which is now collapsed into
+   older subtitle slot (tool · version) which is now collapsed into
    the active tool chip itself. */
-.atomcode-wizard__header-tools {
+.harness-wizard__header-tools {
   display: inline-flex;
   flex: 1 1 auto;
   gap: 0.3rem;
@@ -1445,7 +1445,7 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
    other "what is this session pointed at" controls. `flex: 1 1 100%`
    forces it to wrap to its own full-width row below the title + tools.
    2 cols: button on the left, path on the right. */
-.atomcode-wizard__header-project {
+.harness-wizard__header-project {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   min-width: 0;
@@ -1453,15 +1453,15 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   align-items: center;
   padding-top: 0.4rem;
   border-top: 1px dashed
-    color-mix(in srgb, var(--atom-brain-bg) 35%, transparent);
+    color-mix(in srgb, var(--harness-brain-bg) 35%, transparent);
   margin-top: 0.4rem;
 }
 
-.atomcode-wizard__header-project .atomcode-wizard__project-btn {
+.harness-wizard__header-project .harness-wizard__project-btn {
   font-size: 9px;
 }
 
-.atomcode-wizard__header-project .atomcode-wizard__project-path {
+.harness-wizard__header-project .harness-wizard__project-path {
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.01em;
@@ -1472,14 +1472,14 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   text-overflow: ellipsis;
 }
 
-.atomcode-wizard__title {
+.harness-wizard__title {
   font-size: 10px;
   font-weight: 700;
   color: var(--theme-provider-pill-text);
   letter-spacing: 0.16em;
 }
 
-.atomcode-wizard__subtitle {
+.harness-wizard__subtitle {
   flex: 1 1 auto;
   font-size: 7px;
   opacity: 0.65;
@@ -1487,14 +1487,14 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   line-height: 1.3;
 }
 
-.atomcode-wizard__tool-row {
+.harness-wizard__tool-row {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
   margin: 0.15rem 0 0.1rem;
 }
 
-.atomcode-wizard__tool-chip {
+.harness-wizard__tool-chip {
   display: inline-flex;
   flex-direction: column;
   align-items: flex-start;
@@ -1511,18 +1511,18 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   min-width: 6.5rem;
 }
 
-.atomcode-wizard__tool-chip:hover {
+.harness-wizard__tool-chip:hover {
   border-color: color-mix(in srgb, var(--theme-accent, #76b900) 45%, transparent);
 }
 
-.atomcode-wizard__tool-chip--on {
+.harness-wizard__tool-chip--on {
   border-color: color-mix(in srgb, var(--theme-accent, #76b900) 70%, transparent);
   background: color-mix(in srgb, var(--theme-accent, #76b900) 18%, transparent);
   color: var(--theme-text, #f8fafc);
   font-weight: 700;
 }
 
-.atomcode-wizard__tool-meta {
+.harness-wizard__tool-meta {
   font-size: 6px;
   letter-spacing: 0.04em;
   text-transform: none;
@@ -1531,7 +1531,7 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
 }
 
 /* Blocks CONFIG until dismissed — large control, red border only */
-.atomcode-wizard__close {
+.harness-wizard__close {
   flex-shrink: 0;
   font-size: 10px;
   font-weight: 700;
@@ -1544,13 +1544,13 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
 
-.atomcode-wizard__close:hover {
+.harness-wizard__close:hover {
   border-color: #f87171;
   color: #f87171;
   background: color-mix(in srgb, #ef4444 8%, transparent);
 }
 
-.atomcode-wizard__blurb {
+.harness-wizard__blurb {
   /* Lives in the header now — quieter than the body version, no card chrome,
      sits as a single-line subtitle under the title. `flex: 1 1 100%` makes it
      wrap to its own row across the full header width. */
@@ -1562,25 +1562,25 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   min-width: 0;
 }
 
-.atomcode-wizard__blurb-brain {
-  color: var(--theme-atom-brain-text, var(--theme-secondary-bright, var(--theme-provider-pill-hover-text)));
+.harness-wizard__blurb-brain {
+  color: var(--theme-harness-brain-text, var(--theme-secondary-bright, var(--theme-provider-pill-hover-text)));
   font-weight: 700;
 }
 
-.atomcode-wizard__blurb-worker {
-  color: var(--atom-worker-fg, var(--theme-chip-active-text));
+.harness-wizard__blurb-worker {
+  color: var(--harness-worker-fg, var(--theme-chip-active-text));
   font-weight: 700;
 }
 
 /* Full-width stacked SOLO + TWIN */
-.atomcode-wizard__mode-stack {
+.harness-wizard__mode-stack {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
   width: 100%;
 }
 
-.atomcode-wizard__mode-btn {
+.harness-wizard__mode-btn {
   display: block;
   width: 100%;
   border-radius: 4px;
@@ -1592,7 +1592,7 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   overflow: hidden;
 }
 
-.atomcode-wizard__mode-btn-inner {
+.harness-wizard__mode-btn-inner {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1604,28 +1604,28 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   width: 100%;
 }
 
-.atomcode-wizard__mode-btn--disabled {
+.harness-wizard__mode-btn--disabled {
   opacity: 0.45;
   pointer-events: none;
 }
 
 /* SOLO on = softened provider-pill-active */
-.atomcode-wizard__mode-btn--solo.atomcode-wizard__mode-btn--on {
-  border-color: var(--atom-brain-border);
-  background: var(--atom-brain-bg);
-  box-shadow: 0 0 5px color-mix(in srgb, var(--atom-brain-bg-raw) 28%, transparent);
+.harness-wizard__mode-btn--solo.harness-wizard__mode-btn--on {
+  border-color: var(--harness-brain-border);
+  background: var(--harness-brain-bg);
+  box-shadow: 0 0 5px color-mix(in srgb, var(--harness-brain-bg-raw) 28%, transparent);
 }
 
-.atomcode-wizard__mode-btn--solo.atomcode-wizard__mode-btn--on .atomcode-wizard__mode-name,
-.atomcode-wizard__mode-btn--solo.atomcode-wizard__mode-btn--on .atomcode-wizard__mode-desc,
-.atomcode-wizard__mode-btn--solo.atomcode-wizard__mode-btn--on .atomcode-wizard__mode-engine,
-.atomcode-wizard__mode-btn--solo.atomcode-wizard__mode-btn--on .atomcode-wizard__mode-meta {
-  color: var(--atom-brain-text);
+.harness-wizard__mode-btn--solo.harness-wizard__mode-btn--on .harness-wizard__mode-name,
+.harness-wizard__mode-btn--solo.harness-wizard__mode-btn--on .harness-wizard__mode-desc,
+.harness-wizard__mode-btn--solo.harness-wizard__mode-btn--on .harness-wizard__mode-engine,
+.harness-wizard__mode-btn--solo.harness-wizard__mode-btn--on .harness-wizard__mode-meta {
+  color: var(--harness-brain-text);
   opacity: 1;
 }
 
 /* TWIN: two true halves, full width */
-.atomcode-wizard__mode-btn--twin {
+.harness-wizard__mode-btn--twin {
   display: grid;
   grid-template-columns: 1fr 1fr;
   padding: 0;
@@ -1634,12 +1634,12 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   border: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 80%, transparent);
 }
 
-.atomcode-wizard__mode-btn--twin.atomcode-wizard__mode-btn--on {
-  border-color: color-mix(in srgb, var(--atom-brain-border) 55%, var(--atom-worker) 45%);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--atom-brain-bg) 28%, transparent);
+.harness-wizard__mode-btn--twin.harness-wizard__mode-btn--on {
+  border-color: color-mix(in srgb, var(--harness-brain-border) 55%, var(--harness-worker) 45%);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--harness-brain-bg) 28%, transparent);
 }
 
-.atomcode-wizard__twin-half {
+.harness-wizard__twin-half {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -1654,61 +1654,61 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   transition: none;
 }
 
-.atomcode-wizard__twin-half:disabled {
+.harness-wizard__twin-half:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
 
 /* Divider always between halves (order may flip) */
-.atomcode-wizard__mode-btn--twin > .atomcode-wizard__twin-half:first-child {
+.harness-wizard__mode-btn--twin > .harness-wizard__twin-half:first-child {
   border-right: 1px solid color-mix(in srgb, #fff 10%, transparent);
 }
 
-.atomcode-wizard__mode-btn--twin.atomcode-wizard__mode-btn--on .atomcode-wizard__twin-half--brain {
-  background: var(--atom-brain-bg);
-  color: var(--atom-brain-text);
+.harness-wizard__mode-btn--twin.harness-wizard__mode-btn--on .harness-wizard__twin-half--brain {
+  background: var(--harness-brain-bg);
+  color: var(--harness-brain-text);
 }
 
-.atomcode-wizard__mode-btn--twin.atomcode-wizard__mode-btn--on .atomcode-wizard__twin-half--brain .atomcode-wizard__mode-name,
-.atomcode-wizard__mode-btn--twin.atomcode-wizard__mode-btn--on .atomcode-wizard__twin-half--brain .atomcode-wizard__mode-desc,
-.atomcode-wizard__mode-btn--twin.atomcode-wizard__mode-btn--on .atomcode-wizard__twin-half--brain .atomcode-wizard__mode-engine {
-  color: var(--atom-brain-text);
+.harness-wizard__mode-btn--twin.harness-wizard__mode-btn--on .harness-wizard__twin-half--brain .harness-wizard__mode-name,
+.harness-wizard__mode-btn--twin.harness-wizard__mode-btn--on .harness-wizard__twin-half--brain .harness-wizard__mode-desc,
+.harness-wizard__mode-btn--twin.harness-wizard__mode-btn--on .harness-wizard__twin-half--brain .harness-wizard__mode-engine {
+  color: var(--harness-brain-text);
   opacity: 1;
 }
 
-.atomcode-wizard__mode-btn--twin.atomcode-wizard__mode-btn--on .atomcode-wizard__twin-half--worker {
-  background: var(--atom-worker-bg);
-  color: var(--atom-worker-text);
+.harness-wizard__mode-btn--twin.harness-wizard__mode-btn--on .harness-wizard__twin-half--worker {
+  background: var(--harness-worker-bg);
+  color: var(--harness-worker-text);
 }
 
-.atomcode-wizard__mode-btn--twin.atomcode-wizard__mode-btn--on .atomcode-wizard__twin-half--worker .atomcode-wizard__mode-name,
-.atomcode-wizard__mode-btn--twin.atomcode-wizard__mode-btn--on .atomcode-wizard__twin-half--worker .atomcode-wizard__mode-desc,
-.atomcode-wizard__mode-btn--twin.atomcode-wizard__mode-btn--on .atomcode-wizard__twin-half--worker .atomcode-wizard__mode-engine {
-  color: var(--atom-worker-text);
+.harness-wizard__mode-btn--twin.harness-wizard__mode-btn--on .harness-wizard__twin-half--worker .harness-wizard__mode-name,
+.harness-wizard__mode-btn--twin.harness-wizard__mode-btn--on .harness-wizard__twin-half--worker .harness-wizard__mode-desc,
+.harness-wizard__mode-btn--twin.harness-wizard__mode-btn--on .harness-wizard__twin-half--worker .harness-wizard__mode-engine {
+  color: var(--harness-worker-text);
   opacity: 1;
 }
 
-.atomcode-wizard__twin-half:hover:not(:disabled) {
+.harness-wizard__twin-half:hover:not(:disabled) {
   filter: none;
   outline: 1px solid color-mix(in srgb, #fff 25%, transparent);
   outline-offset: -1px;
 }
 
-.atomcode-wizard__mode-name {
+.harness-wizard__mode-name {
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.1em;
   color: var(--theme-industrial-text, var(--theme-text, #e2e8f0));
 }
 
-.atomcode-wizard__mode-desc {
+.harness-wizard__mode-desc {
   font-size: 7px;
   line-height: 1.25;
   opacity: 0.78;
   color: var(--theme-text-muted, #94a3b8);
 }
 
-.atomcode-wizard__mode-engine {
+.harness-wizard__mode-engine {
   margin-top: 0.1rem;
   font-size: 9px;
   font-weight: 600;
@@ -1717,14 +1717,14 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   color: var(--theme-provider-pill-text);
 }
 
-.atomcode-wizard__mode-meta {
+.harness-wizard__mode-meta {
   font-size: 7px;
   opacity: 0.7;
   margin-top: auto;
   color: var(--theme-text-muted, #94a3b8);
 }
 
-.atomcode-wizard__step-label {
+.harness-wizard__step-label {
   margin: 0.1rem 0 0.15rem;
   font-size: 7px;
   letter-spacing: 0.12em;
@@ -1732,13 +1732,13 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   opacity: 0.55;
 }
 
-.atomcode-wizard__agents {
+.harness-wizard__agents {
   display: flex;
   flex-wrap: wrap;
   gap: 0.3rem;
 }
 
-.atomcode-wizard__agent-chip {
+.harness-wizard__agent-chip {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1753,32 +1753,32 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
 }
 
-.atomcode-wizard__agent-chip:hover {
+.harness-wizard__agent-chip:hover {
   border-color: var(--theme-chip-hover-border, var(--theme-chip-border));
   color: var(--theme-chip-hover-text, var(--theme-chip-text));
 }
 
-.atomcode-wizard__agent-chip--on {
-  border-color: var(--atom-worker-border);
-  background: var(--atom-worker-bg);
-  color: var(--atom-worker-text);
+.harness-wizard__agent-chip--on {
+  border-color: var(--harness-worker-border);
+  background: var(--harness-worker-bg);
+  color: var(--harness-worker-text);
   box-shadow: none;
 }
 
-.atomcode-wizard__agent-n {
+.harness-wizard__agent-n {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
 }
 
-.atomcode-wizard__agent-label {
+.harness-wizard__agent-label {
   font-size: 6px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   opacity: 0.8;
 }
 
-.atomcode-wizard__agents-hint {
+.harness-wizard__agents-hint {
   margin: 0;
   font-size: 6.5px;
   line-height: 1.35;
@@ -1786,7 +1786,7 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   color: var(--theme-text-muted, #94a3b8);
 }
 
-.atomcode-wizard__relaunch {
+.harness-wizard__relaunch {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
@@ -1796,17 +1796,17 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   background: color-mix(in srgb, var(--theme-provider-pill-active-bg) 10%, transparent);
 }
 
-.atomcode-wizard__relaunch-msg {
+.harness-wizard__relaunch-msg {
   font-size: 7px;
   line-height: 1.4;
   color: var(--theme-text-muted, #94a3b8);
 }
 
-.atomcode-wizard__relaunch-msg strong {
+.harness-wizard__relaunch-msg strong {
   color: var(--theme-provider-pill-hover-text, var(--theme-provider-pill-text));
 }
 
-.atomcode-wizard__relaunch-btn {
+.harness-wizard__relaunch-btn {
   font-size: 8px;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -1819,17 +1819,17 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   text-align: left;
 }
 
-.atomcode-wizard__relaunch-btn:disabled {
+.harness-wizard__relaunch-btn:disabled {
   opacity: 0.45;
 }
 
-.atomcode-wizard__hotswap {
+.harness-wizard__hotswap {
   align-self: flex-start;
   font-size: 7px !important;
   opacity: 0.85;
 }
 
-.atomcode-wizard__launch-row {
+.harness-wizard__launch-row {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
   gap: 0.45rem;
@@ -1837,14 +1837,14 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   margin-top: 0.25rem;
 }
 
-.atomcode-wizard__project-side {
+.harness-wizard__project-side {
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
   min-width: 0;
 }
 
-.atomcode-wizard__project-btn {
+.harness-wizard__project-btn {
   width: 100%;
   font-size: 9px;
   font-weight: 600;
@@ -1858,17 +1858,17 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   text-align: left;
 }
 
-.atomcode-wizard__project-btn:hover:not(:disabled) {
+.harness-wizard__project-btn:hover:not(:disabled) {
   border-color: var(--theme-chip-hover-border, var(--theme-chip-active-border));
   color: var(--theme-chip-hover-text, var(--theme-chip-active-text));
   background: color-mix(in srgb, var(--theme-chip-active-bg) 70%, var(--theme-panel, #111) 30%);
 }
 
-.atomcode-wizard__project-btn:disabled {
+.harness-wizard__project-btn:disabled {
   opacity: 0.45;
 }
 
-.atomcode-wizard__project-path {
+.harness-wizard__project-path {
   margin: 0;
   font-size: 11px;
   line-height: 1.35;
@@ -1881,7 +1881,7 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   text-overflow: ellipsis;
 }
 
-.atomcode-wizard__go {
+.harness-wizard__go {
   width: 100%;
   font-size: 11px;
   font-weight: 700;
@@ -1894,51 +1894,51 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   background-size: 100% 100%;
 }
 
-.atomcode-wizard__go:disabled {
+.harness-wizard__go:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
 
-.atomcode-wizard__go--solo {
-  color: var(--atom-brain-text);
-  border-color: var(--atom-brain-border);
-  background: var(--atom-brain-bg);
+.harness-wizard__go--solo {
+  color: var(--harness-brain-text);
+  border-color: var(--harness-brain-border);
+  background: var(--harness-brain-bg);
   background-image: none;
   box-shadow: var(--theme-launch-shadow, none);
 }
 
-.atomcode-wizard__go--solo:hover:not(:disabled) {
+.harness-wizard__go--solo:hover:not(:disabled) {
   filter: none;
   box-shadow: var(--theme-launch-hover-shadow, var(--theme-launch-shadow, none));
 }
 
 /* Hard 50/50 split — solid theme fills, no soft midpoint blend */
-.atomcode-wizard__go--twin {
-  color: var(--atom-brain-text);
-  border-color: color-mix(in srgb, var(--atom-brain-border) 50%, var(--atom-worker-border) 50%);
-  background-color: var(--atom-brain-bg);
+.harness-wizard__go--twin {
+  color: var(--harness-brain-text);
+  border-color: color-mix(in srgb, var(--harness-brain-border) 50%, var(--harness-worker-border) 50%);
+  background-color: var(--harness-brain-bg);
   background-image: linear-gradient(
     90deg,
-    var(--atom-brain-bg) 0%,
-    var(--atom-brain-bg) 50%,
-    var(--atom-worker-bg) 50%,
-    var(--atom-worker-bg) 100%
+    var(--harness-brain-bg) 0%,
+    var(--harness-brain-bg) 50%,
+    var(--harness-worker-bg) 50%,
+    var(--harness-worker-bg) 100%
   );
   box-shadow: none;
 }
 
-.atomcode-wizard__go--twin.atomcode-wizard__go--twin-flip {
-  color: var(--atom-worker-text);
+.harness-wizard__go--twin.harness-wizard__go--twin-flip {
+  color: var(--harness-worker-text);
   background-image: linear-gradient(
     90deg,
-    var(--atom-worker-bg) 0%,
-    var(--atom-worker-bg) 50%,
-    var(--atom-brain-bg) 50%,
-    var(--atom-brain-bg) 100%
+    var(--harness-worker-bg) 0%,
+    var(--harness-worker-bg) 50%,
+    var(--harness-brain-bg) 50%,
+    var(--harness-brain-bg) 100%
   );
 }
 
-.atomcode-wizard__go--twin:hover:not(:disabled) {
+.harness-wizard__go--twin:hover:not(:disabled) {
   filter: none;
 }
 
@@ -1947,7 +1947,7 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
    indeterminate bar so the user sees the app is alive during a 30-90s
    blocking download. Colors ride existing theme tokens (--theme-accent
    / --theme-accent-bright / --theme-accent-soft) — no theme forks. */
-.atomcode-wizard__install {
+.harness-wizard__install {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
@@ -1958,21 +1958,21 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   background: var(--theme-accent-soft);
 }
 
-.atomcode-wizard__install-label {
+.harness-wizard__install-label {
   font-size: 10px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--theme-accent-bright);
 }
 
-.atomcode-wizard__install-phases {
+.harness-wizard__install-phases {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
   font-size: 9px;
 }
 
-.atomcode-wizard__install-step {
+.harness-wizard__install-step {
   padding: 0.15rem 0.4rem;
   border-radius: 2px;
   border: 1px solid
@@ -1983,26 +1983,26 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   text-transform: uppercase;
 }
 
-.atomcode-wizard__install-step--reached {
+.harness-wizard__install-step--reached {
   border-color: color-mix(in srgb, var(--theme-accent) 70%, transparent);
   color: var(--theme-accent);
 }
 
-.atomcode-wizard__install-step--active {
+.harness-wizard__install-step--active {
   border-color: var(--theme-accent-bright);
   background: color-mix(in srgb, var(--theme-accent) 22%, transparent);
   color: var(--theme-accent-bright);
   /* Subtle pulse so the active step catches the eye without flashing. */
-  animation: atomcode-install-pulse 1.4s ease-in-out infinite;
+  animation: harness-install-pulse 1.4s ease-in-out infinite;
 }
 
-@keyframes atomcode-install-pulse {
+@keyframes harness-install-pulse {
   0%, 100% { opacity: 1; }
   50%      { opacity: 0.65; }
 }
 
 /* Indeterminate bar — sliding highlight inside a recessed track. */
-.atomcode-wizard__install-bar {
+.harness-wizard__install-bar {
   position: relative;
   height: 4px;
   border-radius: 2px;
@@ -2010,7 +2010,7 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   background: color-mix(in srgb, var(--theme-accent-dim, #4a6a5a) 35%, transparent);
 }
 
-.atomcode-wizard__install-bar-fill {
+.harness-wizard__install-bar-fill {
   position: absolute;
   top: 0;
   left: 0;
@@ -2023,10 +2023,10 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
     var(--theme-accent-bright) 50%,
     transparent 100%
   );
-  animation: atomcode-install-slide 1.28s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  animation: harness-install-slide 1.28s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
-@keyframes atomcode-install-slide {
+@keyframes harness-install-slide {
   0%   { transform: translateX(-110%); }
   100% { transform: translateX(370%); }
 }
@@ -2037,7 +2037,7 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
 
 /* SOLO/TWIN switch — sits directly above the unified mode button.
    Reuses .segment-switch primitives from launch.css. */
-.atomcode-wizard__mode-switch-row {
+.harness-wizard__mode-switch-row {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2045,28 +2045,28 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   margin-top: 0.15rem;
 }
 
-.atomcode-wizard__mode-switch-row .segment-switch {
+.harness-wizard__mode-switch-row .segment-switch {
   min-width: 11rem;
 }
 
 /* Doubled size via real font-size + padding — NOT transform (transform
    grows the visual without growing the layout box, so siblings overlap).
    Doubling the font + padding gives a natural 2x footprint. */
-.atomcode-wizard__mode-switch-row .segment-switch__option {
+.harness-wizard__mode-switch-row .segment-switch__option {
   font-size: 13px;
   padding: 6px 22px;
   letter-spacing: 0.16em;
 }
 
 /* Thumb scales with the larger option. */
-.atomcode-wizard__mode-switch-row .segment-switch__thumb {
+.harness-wizard__mode-switch-row .segment-switch__thumb {
   border-radius: 4px;
   box-shadow:
     0 0 12px color-mix(in srgb, var(--theme-accent-glow) 70%, transparent),
     inset 0 1px 0 color-mix(in srgb, #fff 14%, transparent);
 }
 
-.atomcode-wizard__mode-switch-label {
+.harness-wizard__mode-switch-label {
   font-size: 7px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -2078,7 +2078,7 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
    grid cell so swapping between SOLO and TWIN doesn't reflow the row —
    they have identical outer dimensions by construction. */
 /* SOLO shell bg matches the running engine card: same intensity (25%) + same base (eject-card-bg) */
-.atomcode-wizard__mode-shell {
+.harness-wizard__mode-shell {
   display: grid;
   grid-template-areas: "content";
   width: 100%;
@@ -2088,8 +2088,8 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   min-height: 5.4rem;
   position: relative;
   border-radius: 4px;
-  border: 1px solid color-mix(in srgb, var(--atom-brain-bg) 50%, transparent);
-  background: color-mix(in srgb, var(--atom-brain-bg-raw) 25%, var(--theme-eject-card-bg, #0a1416) 75%);
+  border: 1px solid color-mix(in srgb, var(--harness-brain-bg) 50%, transparent);
+  background: color-mix(in srgb, var(--harness-brain-bg-raw) 25%, var(--theme-eject-card-bg, #0a1416) 75%);
   overflow: hidden;
   cursor: pointer;
   text-align: left;
@@ -2097,8 +2097,8 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
 }
 
 
-.atomcode-wizard__mode-solo,
-.atomcode-wizard__mode-twin {
+.harness-wizard__mode-solo,
+.harness-wizard__mode-twin {
   grid-area: content;
   width: 100%;
   min-height: inherit;
@@ -2106,16 +2106,16 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
 
 /* Hide the inactive face. display:none pulls it from the grid layout so the
    other face fully owns the shared cell (no overlap, no z-index fighting). */
-.atomcode-wizard__mode-shell--solo .atomcode-wizard__mode-twin {
+.harness-wizard__mode-shell--solo .harness-wizard__mode-twin {
   display: none;
 }
 
-.atomcode-wizard__mode-shell--twin .atomcode-wizard__mode-solo {
+.harness-wizard__mode-shell--twin .harness-wizard__mode-solo {
   display: none;
 }
 
 /* SOLO face fills its shell as a single column with the new 2-col top split. */
-.atomcode-wizard__mode-solo {
+.harness-wizard__mode-solo {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -2124,14 +2124,14 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
 }
 
 /* TWIN face is a 50/50 grid filling the same shell — outer box matches SOLO. */
-.atomcode-wizard__mode-twin {
+.harness-wizard__mode-twin {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0;
 }
 
 /* Each TWIN half mirrors the SOLO layout: 2-col top + engine line below. */
-.atomcode-wizard__mode-twin-half {
+.harness-wizard__mode-twin-half {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -2140,17 +2140,17 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   min-width: 0;
 }
 
-.atomcode-wizard__mode-twin-half--brain {
-  background: color-mix(in srgb, var(--atom-brain-bg-raw) 22%, var(--theme-eject-card-bg, #111) 78%);
-  border-right: 1px solid color-mix(in srgb, var(--atom-brain-bg) 35%, transparent);
+.harness-wizard__mode-twin-half--brain {
+  background: color-mix(in srgb, var(--harness-brain-bg-raw) 22%, var(--theme-eject-card-bg, #111) 78%);
+  border-right: 1px solid color-mix(in srgb, var(--harness-brain-bg) 35%, transparent);
 }
 
-.atomcode-wizard__mode-twin-half--worker {
-  background: color-mix(in srgb, var(--atom-worker-bg-raw) 16%, var(--theme-eject-card-bg, #111) 84%);
+.harness-wizard__mode-twin-half--worker {
+  background: color-mix(in srgb, var(--harness-worker-bg-raw) 16%, var(--theme-eject-card-bg, #111) 84%);
 }
 
 /* Top split: BIG label (30%) | HERO title + desc (70%) */
-.atomcode-wizard__mode-half-top {
+.harness-wizard__mode-half-top {
   display: grid;
   grid-template-columns: 30% 1fr;
   gap: 0.5rem;
@@ -2159,22 +2159,22 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
 }
 
 /* "double size" tag on the left — anchors the half visually. */
-.atomcode-wizard__mode-half-tag {
+.harness-wizard__mode-half-tag {
   font-size: 18px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   line-height: 1;
-  color: var(--atom-brain-text);
-  text-shadow: 0 0 8px color-mix(in srgb, var(--atom-brain-bg-raw) 35%, transparent);
+  color: var(--harness-brain-text);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--harness-brain-bg-raw) 35%, transparent);
 }
 
-.atomcode-wizard__mode-half-tag--worker {
-  color: var(--atom-worker-text);
-  text-shadow: 0 0 8px color-mix(in srgb, var(--atom-worker-bg-raw) 35%, transparent);
+.harness-wizard__mode-half-tag--worker {
+  color: var(--harness-worker-text);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--harness-worker-bg-raw) 35%, transparent);
 }
 
-.atomcode-wizard__mode-half-info {
+.harness-wizard__mode-half-info {
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
@@ -2182,19 +2182,19 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
 }
 
 /* "hero size" title on the right — slightly smaller than the tag. */
-.atomcode-wizard__mode-half-title {
+.harness-wizard__mode-half-title {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--atom-brain-text);
+  color: var(--harness-brain-text);
 }
 
-.atomcode-wizard__mode-half-title--worker {
-  color: var(--atom-worker-text);
+.harness-wizard__mode-half-title--worker {
+  color: var(--harness-worker-text);
 }
 
-.atomcode-wizard__mode-half-desc {
+.harness-wizard__mode-half-desc {
   font-size: 8px;
   line-height: 1.3;
   opacity: 0.78;
@@ -2202,7 +2202,7 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
 }
 
 /* Engine line below the 2-col split: alias:port · model_name */
-.atomcode-wizard__mode-half-engine {
+.harness-wizard__mode-half-engine {
   font-size: 10px;
   letter-spacing: 0.02em;
   white-space: nowrap;
@@ -2213,37 +2213,37 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   border-top: 1px dashed color-mix(in srgb, currentColor 22%, transparent);
 }
 
-.atomcode-wizard__mode-half-engine--brain { color: var(--atom-brain-text); }
-.atomcode-wizard__mode-half-engine--worker { color: var(--atom-worker-text); }
+.harness-wizard__mode-half-engine--brain { color: var(--harness-brain-text); }
+.harness-wizard__mode-half-engine--worker { color: var(--harness-worker-text); }
 
 /* Shared SOLO-side type rows */
-.atomcode-wizard__mode-name {
+.harness-wizard__mode-name {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.18em;
-  color: var(--atom-brain-text);
+  color: var(--harness-brain-text);
 }
 
-.atomcode-wizard__mode-desc {
+.harness-wizard__mode-desc {
   font-size: 8px;
   opacity: 0.75;
   text-transform: uppercase;
   letter-spacing: 0.12em;
 }
 
-.atomcode-wizard__mode-engine {
+.harness-wizard__mode-engine {
   font-size: 9px;
   margin-top: 0.15rem;
 }
 
-.atomcode-wizard__mode-meta {
+.harness-wizard__mode-meta {
   font-size: 8px;
   opacity: 0.7;
   margin-top: 0.1rem;
 }
 
 /* ── Wizard bottom row ── concurrency chips (left) + Open CTA (right). */
-.atomcode-wizard__footer {
+.harness-wizard__footer {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
   gap: 0.5rem;
@@ -2253,43 +2253,43 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   margin-top: 1.4rem;
   padding-top: 0.9rem;
   border-top: 1px dashed
-    color-mix(in srgb, var(--atom-brain-bg) 30%, transparent);
+    color-mix(in srgb, var(--harness-brain-bg) 30%, transparent);
 }
 
-.atomcode-wizard__footer-agents {
+.harness-wizard__footer-agents {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
   min-width: 0;
 }
 
-.atomcode-wizard__footer-cta {
+.harness-wizard__footer-cta {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
   min-width: 0;
 }
 
-/* Make the existing atomcode-wizard__go fit the footer height. */
-.atomcode-wizard__footer-cta .atomcode-wizard__go {
+/* Make the existing harness-wizard__go fit the footer height. */
+.harness-wizard__footer-cta .harness-wizard__go {
   flex: 1 1 auto;
   min-height: 2.5rem;
 }
 
 /* Stack header tool chips — same look as the old tool-row but tighter. */
-.atomcode-wizard__header-tools .atomcode-wizard__tool-chip {
+.harness-wizard__header-tools .harness-wizard__tool-chip {
   padding: 3px 8px;
   font-size: 8px;
 }
 
-.atomcode-wizard__header-tools .atomcode-wizard__tool-chip .atomcode-wizard__tool-meta {
+.harness-wizard__header-tools .harness-wizard__tool-chip .harness-wizard__tool-meta {
   font-size: 7px;
   opacity: 0.65;
   margin-top: 1px;
 }
 
 /* DEV-only "update pi to latest" button (hidden outside dev builds). */
-.atomcode-wizard__update {
+.harness-wizard__update {
   align-self: center;
   padding: 4px 9px;
   font-size: 8px;
@@ -2301,11 +2301,11 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   cursor: pointer;
   white-space: nowrap;
 }
-.atomcode-wizard__update:hover:not(:disabled) {
+.harness-wizard__update:hover:not(:disabled) {
   border-color: var(--theme-accent, #76b900);
   background: color-mix(in srgb, var(--theme-accent, #76b900) 20%, transparent);
 }
-.atomcode-wizard__update:disabled {
+.harness-wizard__update:disabled {
   opacity: 0.55;
   cursor: default;
 }
@@ -2329,7 +2329,7 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   transition: opacity 0.22s ease, filter 0.22s ease;
 }
 
-.atomcode-wizard__disclaimer-body {
+.harness-wizard__disclaimer-body {
   margin: 0;
   padding: 0.4rem;
   font-size: 7px;
@@ -2343,8 +2343,8 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
 }
 
 /* Engine cards while harness open — tint from theme solids */
-html[data-atomcode-harness="1"] .running-engine-card.atomcode-engine--worker,
-html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--worker {
+html[data-harness-open="1"] .running-engine-card.harness-engine--worker,
+html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--worker {
   border-color: color-mix(
     in srgb,
     var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg)) 70%,
@@ -2360,8 +2360,8 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--worker
   ) !important;
 }
 
-html[data-atomcode-harness="1"] .running-engine-card.atomcode-engine--brain,
-html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--brain {
+html[data-harness-open="1"] .running-engine-card.harness-engine--brain,
+html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   border-color: var(--theme-provider-pill-active-border) !important;
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--theme-provider-pill-active-bg) 45%, transparent),
@@ -2373,13 +2373,13 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--brain 
   ) !important;
 }
 
-.atomcode-engine-role-chip--brain {
+.harness-engine-role-chip--brain {
   color: var(--theme-provider-pill-active-text);
   border-color: var(--theme-provider-pill-active-border);
   background: var(--theme-provider-pill-active-bg);
 }
 
-.atomcode-engine-role-chip--worker {
+.harness-engine-role-chip--worker {
   color: var(--theme-pair-secondary-text, var(--theme-chip-solid-text));
   border-color: var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg));
   background: var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg));

@@ -3262,7 +3262,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       */}
       <div
         className={`config-params-scroll px-4 py-3 relative flex-1 overflow-y-auto eink-scrollbar eink-panel min-h-0${
-          harnessWizardOpen ? " config-params-scroll--atomcode-wizard" : ""
+          harnessWizardOpen ? " config-params-scroll--harness-wizard" : ""
         }`}
       >
         {seatEditSession ? (

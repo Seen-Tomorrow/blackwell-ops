@@ -62,7 +62,7 @@ ComboPreset = {
   kind: "solo" | "twin" | "multi"   // multi = N seats, general case
   seats: Seat[]                     // twin: exactly 2 with roles brain+worker
   harness?: {
-    tool: "pi" | "atomcode" | "qwen"
+    tool: "pi"  // HarnessToolId; normalizeHarnessTool coerces legacy atomcode|qwen
     defaultMode: "solo" | "twin"
     // agents N usually comes from WORKER parallel — optional override
     agentsOverride?: number
@@ -117,7 +117,7 @@ This is the “unlimited combos” surface.
 
 ### B. Harness connect integration (high leverage)
 
-Inside the AtomCode/pi wizard (Twin / Solo):
+Inside the harness connect wizard (Twin / Solo):
 
 ```text
 Twin mode

@@ -74,11 +74,11 @@ const INSTALL_PHASE_LABEL: Record<InstallPhase, string> = {
  * pi-subagents fan-out; also the only candidate with native llama-server /
  * router-style management later).
  *
- * AtomCode and Qwen Code were **removed** (archived products): their Rust
- * backends (`atomcode.rs`, `qwen_code.rs`), their 11 Tauri commands, and
- * `lib/atomcode.ts` / `lib/qwenCode.ts` are gone. The `atomcode-*` CSS class
- * names and the `EVENTS.atomcode*` DOM bus survive on purpose — they render the
- * harness BRAIN/WORKER role chrome, which is product surface for pi too.
+ * Chrome / DOM / tokens use the neutral **`harness-*`** vocabulary
+ * (`harness-wizard`, `data-harness-open`, `--theme-harness-brain/worker-*`,
+ * `EVENTS.harness*`) so a future second tool can share BRAIN/WORKER role UI
+ * without product-branded class names. Archived AtomCode / Qwen Code backends
+ * and dual-stack routing are gone — do not revive them.
  */
 
 /** Contextual SPECULATIVE-DECODING knobs under Boost (n_max, n_min, …). */
@@ -314,9 +314,9 @@ export default function MultiAgentBooster({
   const [piStatus, setPiStatus] = useState<PiCodeStatus | null>(null);
   /** True while the DEV-only "update pi to latest" command is in flight. */
   const [piUpdating, setPiUpdating] = useState(false);
-  const [atomBusy, setAtomBusy] = useState<"idle" | "install" | "launch">("idle");
-  const [atomError, setAtomError] = useState<string | null>(null);
-  const [atomMsg, setAtomMsg] = useState<string | null>(null);
+  const [harnessBusy, setHarnessBusy] = useState<"idle" | "install" | "launch">("idle");
+  const [harnessError, setHarnessError] = useState<string | null>(null);
+  const [harnessMsg, setHarnessMsg] = useState<string | null>(null);
   /**
    * Install progress: which step the Rust side is in. Drives the phase strip +
    * indeterminate bar so the user knows the app isn't stuck. `null` = no install
@@ -626,7 +626,7 @@ export default function MultiAgentBooster({
       setPiStatus(s);
       return s;
     } catch (e) {
-      setAtomError(normalizeError(e));
+      setHarnessError(normalizeError(e));
       return null;
     }
   }, [normalizeError]);
@@ -649,8 +649,8 @@ export default function MultiAgentBooster({
       // Seed from UI codingMode (not plan — MTP may force plan to Solo)
       setHarnessAgents(Math.max(1, parallelForCodingMode(codingMode)));
       // Drop prior open/install toast so reconnect does not show a stale "Opened pi…"
-      setAtomMsg(null);
-      setAtomError(null);
+      setHarnessMsg(null);
+      setHarnessError(null);
       setRelaunchBusy(false);
       clearPendingRelaunch();
       // Don't reset installPhase here — a user closing the wizard mid-install shouldn't
@@ -662,10 +662,10 @@ export default function MultiAgentBooster({
 
   // Ephemeral success toasts (install / open / relaunch) — auto-clear so they never stick
   useEffect(() => {
-    if (!atomMsg) return;
-    const t = window.setTimeout(() => setAtomMsg(null), 4000);
+    if (!harnessMsg) return;
+    const t = window.setTimeout(() => setHarnessMsg(null), 4000);
     return () => window.clearTimeout(t);
-  }, [atomMsg]);
+  }, [harnessMsg]);
 
   /**
    * Indeterminate progress bar — increments ~6Hz while an install is in flight.
@@ -681,11 +681,11 @@ export default function MultiAgentBooster({
   useEffect(() => {
     if (!confirmMode) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && atomBusy === "idle") setConfirmMode(null);
+      if (e.key === "Escape" && harnessBusy === "idle") setConfirmMode(null);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [confirmMode, atomBusy]);
+  }, [confirmMode, harnessBusy]);
 
   const runningEngines = useMemo(() => {
     return stack
@@ -929,11 +929,11 @@ export default function MultiAgentBooster({
   useEffect(() => {
     const root = document.documentElement;
     if (!harnessOpen) {
-      delete root.dataset.atomcodeHarness;
+      delete root.dataset.harnessOpen;
       dispatchAppEvent(EVENTS.harnessHighlight, { open: false });
       return;
     }
-    root.dataset.atomcodeHarness = "1";
+    root.dataset.harnessOpen = "1";
     if (wizardMode === "twin") {
       dispatchAppEvent(EVENTS.harnessHighlight, {
         open: true,
@@ -952,7 +952,7 @@ export default function MultiAgentBooster({
       });
     }
     return () => {
-      delete root.dataset.atomcodeHarness;
+      delete root.dataset.harnessOpen;
       dispatchAppEvent(EVENTS.harnessHighlight, { open: false });
     };
   }, [
@@ -974,8 +974,8 @@ export default function MultiAgentBooster({
 
 
   const ensurePiInstalled = useCallback(async (): Promise<PiCodeStatus | null> => {
-    setAtomError(null);
-    setAtomMsg(null);
+    setHarnessError(null);
+    setHarnessMsg(null);
     let s = piStatus ?? (await refreshPiStatus());
     if (!s) return null;
     if (!s.disclaimerAccepted) {
@@ -983,22 +983,22 @@ export default function MultiAgentBooster({
       return null;
     }
     if (!s.installed) {
-      setAtomBusy("install");
+      setHarnessBusy("install");
       setInstallPhase("download");
-      setAtomMsg(`Downloading pi ${s.pinnedVersion} (~46 MB standalone)…`);
+      setHarnessMsg(`Downloading pi ${s.pinnedVersion} (~46 MB standalone)…`);
       try {
         setInstallPhase("verify");
         s = await invoke<PiCodeStatus>("pi_code_install", { version: null });
         setInstallPhase("finalize");
         setPiStatus(s);
-        setAtomMsg(`Installed pi ${s.version ?? s.pinnedVersion}`);
+        setHarnessMsg(`Installed pi ${s.version ?? s.pinnedVersion}`);
       } catch (e) {
-        setAtomError(normalizeError(e));
-        setAtomBusy("idle");
+        setHarnessError(normalizeError(e));
+        setHarnessBusy("idle");
         setInstallPhase(null);
         return null;
       }
-      setAtomBusy("idle");
+      setHarnessBusy("idle");
       setInstallPhase(null);
     }
     return s;
@@ -1020,8 +1020,8 @@ export default function MultiAgentBooster({
    */
   const updatePiToLatest = useCallback(async () => {
     if (piUpdating) return;
-    setAtomError(null);
-    setAtomMsg(null);
+    setHarnessError(null);
+    setHarnessMsg(null);
     try {
       const pids = await invoke<number[]>("pi_code_console_running");
       if (pids.length > 0) {
@@ -1039,11 +1039,11 @@ export default function MultiAgentBooster({
       const s = await invoke<PiCodeStatus>("pi_code_update_latest");
       setInstallPhase("finalize");
       setPiStatus(s);
-      setAtomMsg(
+      setHarnessMsg(
         `pi updated to ${s.version ?? s.pinnedVersion} + pi-subagents refreshed`,
       );
     } catch (e) {
-      setAtomError(normalizeError(e));
+      setHarnessError(normalizeError(e));
     } finally {
       setPiUpdating(false);
       setInstallPhase(null);
@@ -1058,19 +1058,19 @@ export default function MultiAgentBooster({
 
   const executeHarnessLaunch = useCallback(
     async (mode: "solo" | "brain_workers") => {
-      setAtomError(null);
-      setAtomMsg(null);
+      setHarnessError(null);
+      setHarnessMsg(null);
 
       if (mode === "solo" && soloTarget.port <= 0) {
-        setAtomError("No port — launch an engine first, or set base port.");
+        setHarnessError("No port — launch an engine first, or set base port.");
         return;
       }
       if (mode === "solo" && !soloTarget.live) {
-        setAtomError("Start an engine (Running) before opening the harness.");
+        setHarnessError("Start an engine (Running) before opening the harness.");
         return;
       }
       if (mode === "brain_workers" && !dualTargets) {
-        setAtomError("Twin needs two Running engines on different ports.");
+        setHarnessError("Twin needs two Running engines on different ports.");
         return;
       }
 
@@ -1084,7 +1084,7 @@ export default function MultiAgentBooster({
       if (!projectDir) {
         projectDir = await pickProjectDir();
         if (!projectDir) {
-          setAtomError("Pick a project folder to continue.");
+          setHarnessError("Pick a project folder to continue.");
           return;
         }
       }
@@ -1116,7 +1116,7 @@ export default function MultiAgentBooster({
               vision: dualTargets!.worker.vision,
             };
 
-      setAtomBusy("launch");
+      setHarnessBusy("launch");
       try {
         const req: PiLaunchRequest = {
           mode,
@@ -1129,7 +1129,7 @@ export default function MultiAgentBooster({
           request: req,
         });
         const elev = result.elevated || piElevated ? " · elevated" : "";
-        setAtomMsg(
+        setHarnessMsg(
           `Opened pi (${result.mode}${elev}) → :${primary.port}` +
             (worker ? ` + worker :${worker.port}` : ""),
         );
@@ -1143,12 +1143,12 @@ export default function MultiAgentBooster({
         }
         setHarnessOpen(false);
       } catch (e) {
-        setAtomError(normalizeError(e));
+        setHarnessError(normalizeError(e));
         // Drop the confirm modal so the user can react to the error (retry install, change
         // project, etc.) without manually closing the dialog first.
         setConfirmMode(null);
       } finally {
-        setAtomBusy("idle");
+        setHarnessBusy("idle");
       }
     },
     [
@@ -1168,14 +1168,14 @@ export default function MultiAgentBooster({
   /** Validate + open confirm modal (or disclaimer first). */
   const requestHarnessOpen = useCallback(
     (mode: "solo" | "brain_workers") => {
-      setAtomError(null);
-      setAtomMsg(null);
+      setHarnessError(null);
+      setHarnessMsg(null);
       if (mode === "solo" && !soloTarget.live) {
-        setAtomError("Start an engine (Running) before opening the harness.");
+        setHarnessError("Start an engine (Running) before opening the harness.");
         return;
       }
       if (mode === "brain_workers" && !dualTargets) {
-        setAtomError("Twin needs two Running engines on different ports.");
+        setHarnessError("Twin needs two Running engines on different ports.");
         return;
       }
       const st = piStatus;
@@ -1190,26 +1190,26 @@ export default function MultiAgentBooster({
   );
 
   const acceptDisclaimerAndInstall = useCallback(async () => {
-    setAtomError(null);
+    setHarnessError(null);
     try {
       await invoke("pi_code_accept_disclaimer");
       setShowDisclaimer(false);
-      setAtomBusy("install");
+      setHarnessBusy("install");
       setInstallPhase("download");
-      setAtomMsg("Downloading pi standalone (~46 MB)…");
+      setHarnessMsg("Downloading pi standalone (~46 MB)…");
       setInstallPhase("verify");
       const s = await invoke<PiCodeStatus>("pi_code_install", { version: null });
       setInstallPhase("finalize");
       setPiStatus(s);
-      setAtomMsg(`Installed pi ${s.version ?? s.pinnedVersion}`);
+      setHarnessMsg(`Installed pi ${s.version ?? s.pinnedVersion}`);
       void refreshPiStatus();
     } catch (e) {
-      setAtomError(normalizeError(e));
+      setHarnessError(normalizeError(e));
       // On install failure, drop the confirm modal but leave showDisclaimer false — the
       // wizard footer's "Install {tool} only" button becomes the retry path.
       setConfirmMode(null);
     } finally {
-      setAtomBusy("idle");
+      setHarnessBusy("idle");
       setInstallPhase(null);
     }
   }, [normalizeError, refreshPiStatus]);
@@ -1222,9 +1222,9 @@ export default function MultiAgentBooster({
         projectDir: picked,
       });
       setPiStatus(s);
-      setAtomMsg(`Project: ${picked}`);
+      setHarnessMsg(`Project: ${picked}`);
     } catch (e) {
-      setAtomError(normalizeError(e));
+      setHarnessError(normalizeError(e));
     }
   }, [pickProjectDir, normalizeError]);
 
@@ -1411,7 +1411,7 @@ export default function MultiAgentBooster({
   const twinReady = Boolean(dualTargets);
   const soloReady = soloTarget.live;
   const canLaunch =
-    atomBusy === "idle" &&
+    harnessBusy === "idle" &&
     !showDisclaimer &&
     (wizardMode === "solo" ? soloReady : twinReady);
 
@@ -1445,8 +1445,8 @@ export default function MultiAgentBooster({
   const doRelaunchSeat = useCallback(async () => {
     if (!onRelaunchSeat || !relaunchTarget) return;
     setRelaunchBusy(true);
-    setAtomError(null);
-    setAtomMsg(null);
+    setHarnessError(null);
+    setHarnessMsg(null);
     // Pin the seat until the engine vacates and returns (or timeout / fail).
     // Twin: rematch WORKER (or BRAIN if that seat was the target). Solo: seat null.
     const seat: "worker" | "brain" | null =
@@ -1469,12 +1469,12 @@ export default function MultiAgentBooster({
         alias: relaunchTarget.alias,
         parallel: agentsN,
       });
-      setAtomMsg(
+      setHarnessMsg(
         `Relaunching ${relaunchTarget.alias} on :${relaunchTarget.port} with parallel ×${agentsN} (panel model/config)…`,
       );
       // Keep pending until prune effect rematches (port may lag invoke resolve).
     } catch (e) {
-      setAtomError(normalizeError(e));
+      setHarnessError(normalizeError(e));
       clearPendingRelaunch();
       setRoleSyncTick((n) => n + 1);
     } finally {
@@ -1496,70 +1496,70 @@ export default function MultiAgentBooster({
     confirmMode && !showDisclaimer && typeof document !== "undefined"
       ? createPortal(
           <div
-            className="atomcode-confirm-overlay"
+            className="harness-confirm-overlay"
             role="dialog"
             aria-modal="true"
-            aria-labelledby="atomcode-confirm-title"
+            aria-labelledby="harness-confirm-title"
             onClick={(e) => {
-              if (e.target === e.currentTarget && atomBusy === "idle") setConfirmMode(null);
+              if (e.target === e.currentTarget && harnessBusy === "idle") setConfirmMode(null);
             }}
           >
-            <div className="atomcode-confirm-modal font-mono">
-              <h3 id="atomcode-confirm-title" className="atomcode-confirm-title">
+            <div className="harness-confirm-modal font-mono">
+              <h3 id="harness-confirm-title" className="harness-confirm-title">
                 {confirmMode === "solo" ? "Open pi — SOLO" : "Open pi — TWIN"}
               </h3>
               {piElevated && (
-                <p className="atomcode-confirm-elevated font-mono text-[9px] text-yellow-400/90 m-0 mb-2">
+                <p className="harness-confirm-elevated font-mono text-[9px] text-yellow-400/90 m-0 mb-2">
                   Elevated (gsudo) — UAC prompt, then admin pi console
                 </p>
               )}
-              <p className="atomcode-confirm-summary" aria-live="polite">
+              <p className="harness-confirm-summary" aria-live="polite">
                 {confirmMode === "solo" ? (
                   <>
-                    <span className="atomcode-confirm-summary__mode">BRAIN SOLO</span>
-                    <span className="atomcode-confirm-summary__engine">{soloTarget.displayId}</span>
-                    <span className="atomcode-confirm-summary__agents">AGENTS ×{agentsN}</span>
+                    <span className="harness-confirm-summary__mode">BRAIN SOLO</span>
+                    <span className="harness-confirm-summary__engine">{soloTarget.displayId}</span>
+                    <span className="harness-confirm-summary__agents">AGENTS ×{agentsN}</span>
                   </>
                 ) : dualTargets ? (
                   <>
-                    <span className="atomcode-confirm-summary__mode">BRAIN TWIN</span>
-                    <span className="atomcode-confirm-summary__engine">
+                    <span className="harness-confirm-summary__mode">BRAIN TWIN</span>
+                    <span className="harness-confirm-summary__engine">
                       {dualTargets.brain.model} : {dualTargets.brain.port}
                     </span>
-                    <span className="atomcode-confirm-summary__sep">·</span>
-                    <span className="atomcode-confirm-summary__engine atomcode-confirm-summary__engine--worker">
+                    <span className="harness-confirm-summary__sep">·</span>
+                    <span className="harness-confirm-summary__engine harness-confirm-summary__engine--worker">
                       WORKER {dualTargets.worker.model} : {dualTargets.worker.port}
                     </span>
-                    <span className="atomcode-confirm-summary__agents">AGENTS ×{agentsN}</span>
+                    <span className="harness-confirm-summary__agents">AGENTS ×{agentsN}</span>
                   </>
                 ) : (
-                  <span className="atomcode-confirm-summary__mode">TWIN — pick engines</span>
+                  <span className="harness-confirm-summary__mode">TWIN — pick engines</span>
                 )}
               </p>
               <p
-                className="atomcode-confirm-path"
+                className="harness-confirm-path"
                 title={activeToolStatus?.lastProject ?? undefined}
               >
-                <span className="atomcode-confirm-path__label">Project</span>
+                <span className="harness-confirm-path__label">Project</span>
                 {activeToolStatus?.lastProject || "(pick on confirm if unset)"}
               </p>
-              <div className="atomcode-confirm-actions">
+              <div className="harness-confirm-actions">
                 <button
                   type="button"
-                  className="atomcode-launch-btn atomcode-launch-btn--solo font-mono tracking-wider uppercase"
-                  disabled={atomBusy !== "idle"}
+                  className="harness-launch-btn harness-launch-btn--solo font-mono tracking-wider uppercase"
+                  disabled={harnessBusy !== "idle"}
                   onClick={() => void executeHarnessLaunch(confirmMode)}
                 >
-                  {atomBusy === "install"
+                  {harnessBusy === "install"
                     ? "Installing…"
-                    : atomBusy === "launch"
+                    : harnessBusy === "launch"
                       ? "Launching…"
                       : "Confirm & open"}
                 </button>
                 <button
                   type="button"
                   className="full-auto-cockpit__copy font-mono"
-                  disabled={atomBusy !== "idle"}
+                  disabled={harnessBusy !== "idle"}
                   onClick={() => setConfirmMode(null)}
                 >
                   Cancel
@@ -1567,7 +1567,7 @@ export default function MultiAgentBooster({
                 <button
                   type="button"
                   className="full-auto-cockpit__copy font-mono"
-                  disabled={atomBusy !== "idle"}
+                  disabled={harnessBusy !== "idle"}
                   onClick={() => void changeProjectDir()}
                 >
                   Change project…
@@ -1588,7 +1588,7 @@ export default function MultiAgentBooster({
     piConsolePids && typeof document !== "undefined"
       ? createPortal(
           <div
-            className="atomcode-confirm-overlay"
+            className="harness-confirm-overlay"
             role="dialog"
             aria-modal="true"
             aria-labelledby="pi-close-first-title"
@@ -1596,17 +1596,17 @@ export default function MultiAgentBooster({
               if (e.target === e.currentTarget) setPiConsolePids(null);
             }}
           >
-            <div className="atomcode-confirm-modal font-mono">
-              <h3 id="pi-close-first-title" className="atomcode-confirm-title">
+            <div className="harness-confirm-modal font-mono">
+              <h3 id="pi-close-first-title" className="harness-confirm-title">
                 Close pi before updating
               </h3>
-              <p className="atomcode-confirm-summary" aria-live="polite">
-                <span className="atomcode-confirm-summary__mode">PI CONSOLE RUNNING</span>
-                <span className="atomcode-confirm-summary__agents">
+              <p className="harness-confirm-summary" aria-live="polite">
+                <span className="harness-confirm-summary__mode">PI CONSOLE RUNNING</span>
+                <span className="harness-confirm-summary__agents">
                   PID {piConsolePids.join(", ")}
                 </span>
               </p>
-              <p className="atomcode-confirm-elevated font-mono text-[9px] text-yellow-400/90 m-0 mb-2">
+              <p className="harness-confirm-elevated font-mono text-[9px] text-yellow-400/90 m-0 mb-2">
                 The update replaces the pi package that the running pi.exe is executing
                 from, and the pi-ext tree its extension loads from. Updating now would
                 fail mid-way or leave the session on a half-replaced install.
@@ -1614,7 +1614,7 @@ export default function MultiAgentBooster({
               <p className="font-mono text-[10px] opacity-80 m-0 mb-2">
                 Close the pi console window. An active agent session will be interrupted.
               </p>
-              <div className="atomcode-confirm-actions">
+              <div className="harness-confirm-actions">
                 <button
                   type="button"
                   className="full-auto-cockpit__copy font-mono"
@@ -1695,27 +1695,26 @@ export default function MultiAgentBooster({
     const twinDisabled = runningEngines.length < 2;
     return (
       <div
-        className={`full-auto-cockpit atomcode-wizard ${className}`}
-        data-atomcode-wizard="1"
+        className={`full-auto-cockpit harness-wizard ${className}`}
+        data-harness-wizard="1"
       >
-        <div className="atomcode-wizard__header">
-          <span className="atomcode-wizard__title font-mono tracking-[0.18em] uppercase">
+        <div className="harness-wizard__header">
+          <span className="harness-wizard__title font-mono tracking-[0.18em] uppercase">
             Harness connect
           </span>
           {/* One-line "what is this" subtitle. Now lives in the header right
               under the title — keeps the wizard body focused on actionable
               choices (mode / project / concurrency / launch). */}
-          <p className="atomcode-wizard__blurb font-mono">
+          <p className="harness-wizard__blurb font-mono">
             pi on your engines · isolated home · BRAIN/WORKER routing · no cloud keys.{" "}
-            <span className="atomcode-wizard__blurb-brain">BRAIN</span> plans ·{" "}
-            <span className="atomcode-wizard__blurb-worker">WORKER</span> swarms.
+            <span className="harness-wizard__blurb-brain">BRAIN</span> plans ·{" "}
+            <span className="harness-wizard__blurb-worker">WORKER</span> swarms.
           </p>
-          {/* Harness tool chip: pi is the only harness (AtomCode / Qwen Code were
-              removed — archived products). The chip stays as the install-status /
-              update affordance. */}
-          <div className="atomcode-wizard__header-tools" role="group" aria-label="Harness tool">
+          {/* Harness tool chip: pi is the only live tool. Chip is install-status /
+              update affordance; keep neutral so a future second tool can share it. */}
+          <div className="harness-wizard__header-tools" role="group" aria-label="Harness tool">
             <span
-              className={`atomcode-wizard__tool-chip font-mono atomcode-wizard__tool-chip--on`}
+              className={`harness-wizard__tool-chip font-mono harness-wizard__tool-chip--on`}
               title={
                 piStatus?.installed
                   ? `pi ${piStatus.version ?? piStatus.pinnedVersion} installed`
@@ -1723,7 +1722,7 @@ export default function MultiAgentBooster({
               }
             >
               pi
-              <span className="atomcode-wizard__tool-meta">
+              <span className="harness-wizard__tool-meta">
                 {piStatus?.installed
                   ? piStatus.version ?? piStatus.pinnedVersion
                   : "~46 MB standalone"}
@@ -1732,9 +1731,9 @@ export default function MultiAgentBooster({
             {isDevBuild() && (
               <button
                 type="button"
-                className="atomcode-wizard__update font-mono"
+                className="harness-wizard__update font-mono"
                 onClick={updatePiToLatest}
-                disabled={piUpdating || atomBusy === "install"}
+                disabled={piUpdating || harnessBusy === "install"}
                 title="DEV: fetch the latest pi release + refresh the bundled pi-subagents extension"
               >
                 {piUpdating ? "UPDATING…" : "UPDATE"}
@@ -1744,7 +1743,7 @@ export default function MultiAgentBooster({
 
           <button
             type="button"
-            className="atomcode-wizard__close font-mono tracking-wider uppercase"
+            className="harness-wizard__close font-mono tracking-wider uppercase"
             onClick={() => setHarnessOpen(false)}
             title="Close harness — unlocks engine config"
           >
@@ -1758,14 +1757,14 @@ export default function MultiAgentBooster({
             (mode/project/concurrency) being interactable during a blocking invoke. */}
         {installPhase != null && (
           <div
-            className="atomcode-wizard__install font-mono"
+            className="harness-wizard__install font-mono"
             role="status"
             aria-live="polite"
           >
-            <div className="atomcode-wizard__install-label">
+            <div className="harness-wizard__install-label">
               {INSTALL_PHASE_LABEL[installPhase]}
             </div>
-            <div className="atomcode-wizard__install-phases">
+            <div className="harness-wizard__install-phases">
               {INSTALL_PHASES.map((p) => {
                 const reached =
                   INSTALL_PHASES.findIndex((x) => x.id === installPhase) >=
@@ -1773,7 +1772,7 @@ export default function MultiAgentBooster({
                 return (
                   <span
                     key={p.id}
-                    className={`atomcode-wizard__install-step${reached ? " atomcode-wizard__install-step--reached" : ""}${p.id === installPhase ? " atomcode-wizard__install-step--active" : ""}`}
+                    className={`harness-wizard__install-step${reached ? " harness-wizard__install-step--reached" : ""}${p.id === installPhase ? " harness-wizard__install-step--active" : ""}`}
                     title={p.label}
                   >
                     {p.label}
@@ -1781,9 +1780,9 @@ export default function MultiAgentBooster({
                 );
               })}
             </div>
-            <div className="atomcode-wizard__install-bar" aria-hidden>
+            <div className="harness-wizard__install-bar" aria-hidden>
               <div
-                className="atomcode-wizard__install-bar-fill"
+                className="harness-wizard__install-bar-fill"
                 style={{ animationDelay: `${(installTick % 8) * 120}ms` }}
               />
             </div>
@@ -1792,7 +1791,7 @@ export default function MultiAgentBooster({
 
         {/* Mode switch — directly above the unified mode button. Uses the same
             .segment-switch styling as the engine config Essentials/FULL toggle. */}
-        <div className="atomcode-wizard__mode-switch-row">
+        <div className="harness-wizard__mode-switch-row">
           <SegmentSwitch
             ariaLabel="Harness mode"
             className="segment-switch--harness"
@@ -1817,22 +1816,22 @@ export default function MultiAgentBooster({
         {twinDisabled && wizardMode === "twin" ? null : (
           <button
             type="button"
-            className={`atomcode-wizard__mode-shell font-mono${wizardMode === "solo" ? " atomcode-wizard__mode-shell--solo" : " atomcode-wizard__mode-shell--twin"}`}
+            className={`harness-wizard__mode-shell font-mono${wizardMode === "solo" ? " harness-wizard__mode-shell--solo" : " harness-wizard__mode-shell--twin"}`}
             aria-label={wizardMode === "solo" ? "Solo mode details" : "Twin mode seat details"}
           >
             {/* SOLO face — full-width single label */}
-            <div className="atomcode-wizard__mode-solo">
-              <div className="atomcode-wizard__mode-half-top">
-                <span className="atomcode-wizard__mode-half-tag">SOLO</span>
-                <div className="atomcode-wizard__mode-half-info">
-                  <span className="atomcode-wizard__mode-half-title">BRAIN</span>
-                  <span className="atomcode-wizard__mode-half-desc">
+            <div className="harness-wizard__mode-solo">
+              <div className="harness-wizard__mode-half-top">
+                <span className="harness-wizard__mode-half-tag">SOLO</span>
+                <div className="harness-wizard__mode-half-info">
+                  <span className="harness-wizard__mode-half-title">BRAIN</span>
+                  <span className="harness-wizard__mode-half-desc">
                     One engine — reads the repo, plans, and acts without delegation.
                   </span>
                 </div>
               </div>
               <div
-                className="atomcode-wizard__mode-half-engine font-mono"
+                className="harness-wizard__mode-half-engine font-mono"
                 title={soloEngineLine}
               >
                 {soloEngineLine}
@@ -1841,41 +1840,41 @@ export default function MultiAgentBooster({
 
             {/* TWIN face — equal-split BRAIN / WORKER halves */}
             <div
-              className={`atomcode-wizard__mode-twin${twinWorkerOnLeft ? " atomcode-wizard__mode-twin--flip" : ""}`}
+              className={`harness-wizard__mode-twin${twinWorkerOnLeft ? " harness-wizard__mode-twin--flip" : ""}`}
             >
               {twinWorkerOnLeft ? (
                 <>
-                  <div className="atomcode-wizard__mode-twin-half atomcode-wizard__mode-twin-half--worker">
-                    <div className="atomcode-wizard__mode-half-top">
-                      <span className="atomcode-wizard__mode-half-tag atomcode-wizard__mode-half-tag--worker">
+                  <div className="harness-wizard__mode-twin-half harness-wizard__mode-twin-half--worker">
+                    <div className="harness-wizard__mode-half-top">
+                      <span className="harness-wizard__mode-half-tag harness-wizard__mode-half-tag--worker">
                         WORKER
                       </span>
-                      <div className="atomcode-wizard__mode-half-info">
-                        <span className="atomcode-wizard__mode-half-title">SUB AGENTS ×{agentsN}</span>
-                        <span className="atomcode-wizard__mode-half-desc">
+                      <div className="harness-wizard__mode-half-info">
+                        <span className="harness-wizard__mode-half-title">SUB AGENTS ×{agentsN}</span>
+                        <span className="harness-wizard__mode-half-desc">
                           Run delegated subtasks in parallel — file edits, tests, repo research.
                         </span>
                       </div>
                     </div>
                     <div
-                      className="atomcode-wizard__mode-half-engine font-mono"
+                      className="harness-wizard__mode-half-engine font-mono"
                       title={twinWorkerLine}
                     >
                       {twinWorkerLine}
                     </div>
                   </div>
-                  <div className="atomcode-wizard__mode-twin-half atomcode-wizard__mode-twin-half--brain">
-                    <div className="atomcode-wizard__mode-half-top">
-                      <span className="atomcode-wizard__mode-half-tag">BRAIN</span>
-                      <div className="atomcode-wizard__mode-half-info">
-                        <span className="atomcode-wizard__mode-half-title">ORCHESTRATOR</span>
-                        <span className="atomcode-wizard__mode-half-desc">
+                  <div className="harness-wizard__mode-twin-half harness-wizard__mode-twin-half--brain">
+                    <div className="harness-wizard__mode-half-top">
+                      <span className="harness-wizard__mode-half-tag">BRAIN</span>
+                      <div className="harness-wizard__mode-half-info">
+                        <span className="harness-wizard__mode-half-title">ORCHESTRATOR</span>
+                        <span className="harness-wizard__mode-half-desc">
                           Reads the repo, plans, and delegates subtasks to the worker.
                         </span>
                       </div>
                     </div>
                     <div
-                      className="atomcode-wizard__mode-half-engine font-mono"
+                      className="harness-wizard__mode-half-engine font-mono"
                       title={twinBrainLine}
                     >
                       {twinBrainLine}
@@ -1884,37 +1883,37 @@ export default function MultiAgentBooster({
                 </>
               ) : (
                 <>
-                  <div className="atomcode-wizard__mode-twin-half atomcode-wizard__mode-twin-half--brain">
-                    <div className="atomcode-wizard__mode-half-top">
-                      <span className="atomcode-wizard__mode-half-tag">BRAIN</span>
-                      <div className="atomcode-wizard__mode-half-info">
-                        <span className="atomcode-wizard__mode-half-title">ORCHESTRATOR</span>
-                        <span className="atomcode-wizard__mode-half-desc">
+                  <div className="harness-wizard__mode-twin-half harness-wizard__mode-twin-half--brain">
+                    <div className="harness-wizard__mode-half-top">
+                      <span className="harness-wizard__mode-half-tag">BRAIN</span>
+                      <div className="harness-wizard__mode-half-info">
+                        <span className="harness-wizard__mode-half-title">ORCHESTRATOR</span>
+                        <span className="harness-wizard__mode-half-desc">
                           Reads the repo, plans, and delegates subtasks to the worker.
                         </span>
                       </div>
                     </div>
                     <div
-                      className="atomcode-wizard__mode-half-engine font-mono"
+                      className="harness-wizard__mode-half-engine font-mono"
                       title={twinBrainLine}
                     >
                       {twinBrainLine}
                     </div>
                   </div>
-                  <div className="atomcode-wizard__mode-twin-half atomcode-wizard__mode-twin-half--worker">
-                    <div className="atomcode-wizard__mode-half-top">
-                      <span className="atomcode-wizard__mode-half-tag atomcode-wizard__mode-half-tag--worker">
+                  <div className="harness-wizard__mode-twin-half harness-wizard__mode-twin-half--worker">
+                    <div className="harness-wizard__mode-half-top">
+                      <span className="harness-wizard__mode-half-tag harness-wizard__mode-half-tag--worker">
                         WORKER
                       </span>
-                      <div className="atomcode-wizard__mode-half-info">
-                        <span className="atomcode-wizard__mode-half-title">SUB AGENTS ×{agentsN}</span>
-                        <span className="atomcode-wizard__mode-half-desc">
+                      <div className="harness-wizard__mode-half-info">
+                        <span className="harness-wizard__mode-half-title">SUB AGENTS ×{agentsN}</span>
+                        <span className="harness-wizard__mode-half-desc">
                           Run delegated subtasks in parallel — file edits, tests, repo research.
                         </span>
                       </div>
                     </div>
                     <div
-                      className="atomcode-wizard__mode-half-engine font-mono"
+                      className="harness-wizard__mode-half-engine font-mono"
                       title={twinWorkerLine}
                     >
                       {twinWorkerLine}
@@ -1926,23 +1925,23 @@ export default function MultiAgentBooster({
           </button>
         )}
         {twinDisabled && wizardMode === "twin" && (
-          <p className="atomcode-wizard__agents-hint font-mono m-0">
+          <p className="harness-wizard__agents-hint font-mono m-0">
             Twin needs 2+ running engines. Start another engine to unlock TWIN.
           </p>
         )}
 
         {/* Project directory + path — below the half-card */}
-        <div className="atomcode-wizard__header-project">
+        <div className="harness-wizard__header-project">
           <button
             type="button"
-            className="atomcode-wizard__project-btn font-mono"
-            disabled={atomBusy !== "idle"}
+            className="harness-wizard__project-btn font-mono"
+            disabled={harnessBusy !== "idle"}
             onClick={() => void changeProjectDir()}
           >
             POINT THE AGENT — SELECT YOUR PROJECT DIRECTORY
           </button>
           <p
-            className="atomcode-wizard__project-path font-mono"
+            className="harness-wizard__project-path font-mono"
             title={activeToolStatus?.lastProject ?? undefined}
           >
             {activeToolStatus?.lastProject || "No folder yet — pick one to continue"}
@@ -1950,15 +1949,15 @@ export default function MultiAgentBooster({
         </div>
 
         {showDisclaimer && (
-          <div className="atomcode-wizard__disclaimer space-y-2">
-            <pre className="atomcode-wizard__disclaimer-body font-mono">
+          <div className="harness-wizard__disclaimer space-y-2">
+            <pre className="harness-wizard__disclaimer-body font-mono">
               {PI_CODE_DISCLAIMER}
             </pre>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                className="atomcode-wizard__project-btn font-mono"
-                disabled={atomBusy !== "idle"}
+                className="harness-wizard__project-btn font-mono"
+                disabled={harnessBusy !== "idle"}
                 onClick={() => void acceptDisclaimerAndInstall()}
               >
                 Accept &amp; install tool
@@ -1980,9 +1979,9 @@ export default function MultiAgentBooster({
         {/* Bottom row — LEFT: concurrency chips + relaunch advice if any.
             RIGHT: Open CTA + quiet secondary actions (WebUI / pre-install). */}
         {!showDisclaimer && (
-          <div className="atomcode-wizard__footer">
+          <div className="harness-wizard__footer">
             {presetRolesLocked && wizardMode === "twin" && (
-              <p className="atomcode-wizard__roles-locked font-mono text-[8px] text-yellow-400/85 m-0 mb-1.5 w-full">
+              <p className="harness-wizard__roles-locked font-mono text-[8px] text-yellow-400/85 m-0 mb-1.5 w-full">
                 BRAIN/WORKER locked from preset until both engines finish loading — clicks ignored
                 {" · "}
                 <button
@@ -1995,7 +1994,7 @@ export default function MultiAgentBooster({
               </p>
             )}
             {launchPresets && (
-              <div className="atomcode-wizard__presets flex flex-wrap items-center gap-1.5 mb-2 w-full">
+              <div className="harness-wizard__presets flex flex-wrap items-center gap-1.5 mb-2 w-full">
                 <span className="text-[8px] uppercase tracking-wider text-stealth-muted/70">Combo</span>
                 <select
                   className="bg-stealth-input border border-stealth-border/50 px-1.5 py-0.5 text-[9px] font-mono max-w-[180px]"
@@ -2036,7 +2035,7 @@ export default function MultiAgentBooster({
               </div>
             )}
             <label
-              className="atomcode-wizard__elevated flex items-center gap-1.5 mb-1.5 w-full cursor-pointer select-none"
+              className="harness-wizard__elevated flex items-center gap-1.5 mb-1.5 w-full cursor-pointer select-none"
               title="Run pi console elevated via bundled gsudo (UAC). Use for system ops (services, hosts, privileged shell)."
             >
               <input
@@ -2054,18 +2053,18 @@ export default function MultiAgentBooster({
               </span>
             </label>
             {/* LEFT — concurrency chips */}
-            <div className="atomcode-wizard__footer-agents">
-              <p className="atomcode-wizard__step-label font-mono m-0">
+            <div className="harness-wizard__footer-agents">
+              <p className="harness-wizard__step-label font-mono m-0">
                 {wizardMode === "twin" ? "Worker concurrency" : "Agent concurrency"}
               </p>
-              <div className="atomcode-wizard__agents" role="group" aria-label="Concurrent agents">
+              <div className="harness-wizard__agents" role="group" aria-label="Concurrent agents">
                 {agentOptions.map((o) => {
                   const active = o.parallel === agentsN;
                   return (
                     <button
                       key={o.id}
                       type="button"
-                      className={`atomcode-wizard__agent-chip font-mono${active ? " atomcode-wizard__agent-chip--on" : ""}`}
+                      className={`harness-wizard__agent-chip font-mono${active ? " harness-wizard__agent-chip--on" : ""}`}
                       title={o.blurb}
                       onClick={() => {
                         setHarnessAgents(o.parallel);
@@ -2073,8 +2072,8 @@ export default function MultiAgentBooster({
                         onCodingMode(o.id);
                       }}
                     >
-                      <span className="atomcode-wizard__agent-n">×{o.parallel}</span>
-                      <span className="atomcode-wizard__agent-label">{o.label}</span>
+                      <span className="harness-wizard__agent-n">×{o.parallel}</span>
+                      <span className="harness-wizard__agent-label">{o.label}</span>
                     </button>
                   );
                 })}
@@ -2084,16 +2083,16 @@ export default function MultiAgentBooster({
                   already conveys the only case where any of that matters. */}
 
               {needsEngineParallelBump && relaunchTarget && onRelaunchSeat && (
-                <div className="atomcode-wizard__relaunch font-mono">
-                  <p className="atomcode-wizard__relaunch-msg m-0">
+                <div className="harness-wizard__relaunch font-mono">
+                  <p className="harness-wizard__relaunch-msg m-0">
                     {wizardMode === "twin"
                       ? "RESTART the WORKER model to match AGENTS concurrency"
                       : "RESTART the BRAIN model to match AGENTS concurrency"}
                   </p>
                   <button
                     type="button"
-                    className="atomcode-wizard__relaunch-btn font-mono"
-                    disabled={relaunchBusy || atomBusy !== "idle"}
+                    className="harness-wizard__relaunch-btn font-mono"
+                    disabled={relaunchBusy || harnessBusy !== "idle"}
                     onClick={() => void doRelaunchSeat()}
                   >
                     {relaunchBusy
@@ -2106,8 +2105,8 @@ export default function MultiAgentBooster({
               {!needsEngineParallelBump && relaunchTarget && onRelaunchSeat && (
                 <button
                   type="button"
-                  className="full-auto-cockpit__copy font-mono atomcode-wizard__hotswap"
-                  disabled={relaunchBusy || atomBusy !== "idle"}
+                  className="full-auto-cockpit__copy font-mono harness-wizard__hotswap"
+                  disabled={relaunchBusy || harnessBusy !== "idle"}
                   title="Stop this seat and launch the catalog/panel model on the same port (keep alias)"
                   onClick={() => void doRelaunchSeat()}
                 >
@@ -2119,22 +2118,22 @@ export default function MultiAgentBooster({
             </div>
 
             {/* RIGHT — Open CTA + secondary */}
-            <div className="atomcode-wizard__footer-cta">
+            <div className="harness-wizard__footer-cta">
               <button
                 type="button"
-                className={`atomcode-wizard__go font-mono tracking-wider uppercase${
+                className={`harness-wizard__go font-mono tracking-wider uppercase${
                   wizardMode === "twin"
-                    ? ` atomcode-wizard__go--twin${twinWorkerOnLeft ? " atomcode-wizard__go--twin-flip" : ""}`
-                    : " atomcode-wizard__go--solo"
+                    ? ` harness-wizard__go--twin${twinWorkerOnLeft ? " harness-wizard__go--twin-flip" : ""}`
+                    : " harness-wizard__go--solo"
                 }`}
                 disabled={!canLaunch}
                 onClick={() =>
                   requestHarnessOpen(wizardMode === "solo" ? "solo" : "brain_workers")
                 }
               >
-                {atomBusy === "install"
+                {harnessBusy === "install"
                   ? "Installing…"
-                  : atomBusy === "launch"
+                  : harnessBusy === "launch"
                     ? "Launching…"
                     : wizardMode === "solo"
                       ? `Open ${toolShort} on this engine`
@@ -2145,7 +2144,7 @@ export default function MultiAgentBooster({
                 <button
                   type="button"
                   className="full-auto-cockpit__copy font-mono"
-                  disabled={atomBusy !== "idle"}
+                  disabled={harnessBusy !== "idle"}
                   onClick={() => {
                     if (!activeToolStatus.disclaimerAccepted) {
                       setShowDisclaimer(true);
@@ -2161,8 +2160,8 @@ export default function MultiAgentBooster({
           </div>
         )}
 
-        {atomMsg && <p className="atomcode-msg-ok font-mono m-0">{atomMsg}</p>}
-        {atomError && <p className="atomcode-msg-err font-mono m-0">{atomError}</p>}
+        {harnessMsg && <p className="harness-msg-ok font-mono m-0">{harnessMsg}</p>}
+        {harnessError && <p className="harness-msg-err font-mono m-0">{harnessError}</p>}
 
         {confirmPortal}
         {closePiFirstPortal}

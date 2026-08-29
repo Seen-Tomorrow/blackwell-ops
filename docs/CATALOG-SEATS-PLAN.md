@@ -105,7 +105,7 @@ Shared helpers: `captureSeatFromPanel`, `captureSeatFromStack`.
 5. **Boost/spec = normal config** — both seats; no DRAFT catalog editor.  
 6. **Twin combined forecast** — **stage 2**.  
 7. **No popup dialogs** for REPLACE / clear / save-overwrite — inline YES/NO on the seat.  
-8. **Harness colors** — seats + edit banner use `--theme-atom-brain-*` / `--theme-atom-worker-*` (same as harness connect).
+8. **Harness colors** — seats + edit banner use `--theme-harness-brain-*` / `--theme-harness-worker-*` (same as harness connect).
 
 ```
 Catalog SEATS (paths + set + TWIN + E/R/SAVE)

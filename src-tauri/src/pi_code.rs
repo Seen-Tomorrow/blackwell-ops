@@ -1465,7 +1465,7 @@ const PI_MD_BEGIN: &str = "<!-- BLACKWELL-PI:BEGIN -->";
 const PI_MD_END: &str = "<!-- BLACKWELL-PI:END -->";
 
 /// Upsert the managed PI.md block (home + project cwd) so the agent knows the
-/// isolated home + routing (mirrors QWEN.md for Qwen Code).
+/// isolated home + routing (project/home PI.md managed block).
 fn upsert_pi_md(path: &Path, block: &str) -> Result<(), String> {
     let existing = std::fs::read_to_string(path).unwrap_or_default();
     let next = if existing.contains(PI_MD_BEGIN) && existing.contains(PI_MD_END) {

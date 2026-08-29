@@ -8,12 +8,13 @@ Written so a later pass can pick these up cold, without re-running the audit.
 findings here have been fixed.**
 
 **Scope of this doc: findings 4, 5, 6, 7 only.** Findings 1–3 are deliberately
-NOT here — 1 (archived Qwen harness still wired into live cockpit UX) and 2
-(`VramFitBadge` formula fit label vs measured-only law) are **product decisions
-for the owner**, not cleanup. 3 (`FIT_SCAN_POINTS_TOTAL` = 10 in
-`src/lib/fitScanTable.ts:4` vs `SCAN_PLAN` = 8 entries in
-`fit_scanner.rs:31`) is a live correctness defect and should be fixed on its
-own, not batched into cleanup.
+NOT here —
+1. **Resolved (2026-08-29):** archived AtomCode/Qwen backends are gone; cockpit chrome
+   renamed to neutral `harness-*` (no dual-stack product path left).
+2. `VramFitBadge` formula fit label vs measured-only law — **product decision**, not cleanup.
+3. `FIT_SCAN_POINTS_TOTAL` = 10 in `src/lib/fitScanTable.ts:4` vs `SCAN_PLAN` = 8 entries in
+   `fit_scanner.rs:31` is a live correctness defect and should be fixed on its own, not
+   batched into cleanup.
 
 Every item below was re-verified against the tree, not just relayed from a
 subagent. Verification commands are inline so claims can be re-checked after

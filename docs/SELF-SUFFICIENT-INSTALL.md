@@ -116,7 +116,7 @@ Two layers now refuse it:
   itself errors we fall through and let the backend guard decide, so a broken probe cannot wedge
   the update permanently.
 
-Reuses `atomcode-confirm-overlay` / `-modal` / `-actions`. **No `backdrop-filter: blur`** — dim
+Reuses `harness-confirm-overlay` / `-modal` / `-actions`. **No `backdrop-filter: blur`** — dim
 only, per the compositor rule in `AGENTS.md`.
 
 After a successful update: `refresh_pi_subagents_bundle()` runs the lean pipeline, then

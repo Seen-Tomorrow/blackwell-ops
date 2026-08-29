@@ -121,7 +121,7 @@ interface RunningEnginesPanelProps {
   perRow?: 2 | 3;
 }
 
-function atomcodeRoleForPort(
+function harnessRoleForPort(
   port: number,
   hl: HarnessHighlightDetail | null,
 ): "brain" | "worker" | "solo" | null {
@@ -152,12 +152,12 @@ export default function RunningEnginesPanel({
   variant = "default",
   perRow = 2,
 }: RunningEnginesPanelProps) {
-  const [atomHl, setAtomHl] = useState<HarnessHighlightDetail | null>(null);
+  const [harnessHl, setHarnessHl] = useState<HarnessHighlightDetail | null>(null);
 
   useEffect(() => {
     const onHl = (e: Event) => {
       const detail = (e as CustomEvent<HarnessHighlightDetail>).detail;
-      setAtomHl(detail?.open ? detail : null);
+      setHarnessHl(detail?.open ? detail : null);
     };
     window.addEventListener(EVENTS.harnessHighlight, onHl);
     return () => window.removeEventListener(EVENTS.harnessHighlight, onHl);
@@ -183,7 +183,7 @@ export default function RunningEnginesPanel({
 
   const onEngineActivate = (slotIdx: number, port: number) => {
     onSelectEngine(slotIdx);
-    if (atomHl?.open) {
+    if (harnessHl?.open) {
       dispatchAppEvent(EVENTS.harnessEngineClick, { port, slotIdx });
     }
   };
@@ -197,21 +197,21 @@ export default function RunningEnginesPanel({
         <div className="launch-rail-engines__list flex flex-col gap-1">
           {instances.map((item) => {
             const isThisSelected = selectedSlotIdx === item.entry.idx;
-            const role = atomcodeRoleForPort(item.entry.port, atomHl);
+            const role = harnessRoleForPort(item.entry.port, harnessHl);
             const roleClass =
               role === "brain"
-                ? " atomcode-engine--brain"
+                ? " harness-engine--brain"
                 : role === "worker"
-                  ? " atomcode-engine--worker"
-                  : atomHl?.open
-                    ? " atomcode-engine--live"
+                  ? " harness-engine--worker"
+                  : harnessHl?.open
+                    ? " harness-engine--live"
                     : "";
             return (
               <div
                 key={`slot-${item.entry.idx}`}
                 className={`launch-rail-engine-chip w-full rounded-sm px-2 py-1 border flex items-center gap-1 min-w-0 transition-colors ${
                   isThisSelected ? "launch-rail-engine-chip--selected" : ""
-                }${secondarySlotIdx === item.entry.idx ? " launch-rail-engine-chip--secondary" : ""}${roleClass}${isThisSelected && atomHl?.open ? " atomcode-engine--picked" : ""}`}
+                }${secondarySlotIdx === item.entry.idx ? " launch-rail-engine-chip--secondary" : ""}${roleClass}${isThisSelected && harnessHl?.open ? " harness-engine--picked" : ""}`}
                 data-engine-port={item.entry.port}
                 data-engine-slot={item.entry.idx}
               >
@@ -235,7 +235,7 @@ export default function RunningEnginesPanel({
                 >
                   {role && (
                     <span
-                      className={`atomcode-engine-role-chip atomcode-engine-role-chip--${role} shrink-0`}
+                      className={`harness-engine-role-chip harness-engine-role-chip--${role} shrink-0`}
                     >
                       {role === "brain" ? "1·B" : "2·W"}
                     </span>
@@ -330,14 +330,14 @@ export default function RunningEnginesPanel({
           const isThisSelected = selectedSlotIdx === item.entry.idx;
           const isNvfp = item.quant.toLowerCase().includes("nvfp");
           const sourceLabel = runtimeEngineSourceLabel(item.entry);
-          const role = atomcodeRoleForPort(item.entry.port, atomHl);
+          const role = harnessRoleForPort(item.entry.port, harnessHl);
           const roleClass =
             role === "brain"
-              ? " atomcode-engine--brain"
+              ? " harness-engine--brain"
               : role === "worker"
-                ? " atomcode-engine--worker"
-                : atomHl?.open
-                  ? " atomcode-engine--live"
+                ? " harness-engine--worker"
+                : harnessHl?.open
+                  ? " harness-engine--live"
                   : "";
           return (
             <div
@@ -362,13 +362,13 @@ export default function RunningEnginesPanel({
                 isThisSelected
                   ? "running-engine-card-selected"
                   : ""
-              }${secondarySlotIdx === item.entry.idx ? " running-engine-card-secondary" : ""}${roleClass}${isThisSelected && atomHl?.open ? " atomcode-engine--picked" : ""}`}
+              }${secondarySlotIdx === item.entry.idx ? " running-engine-card-secondary" : ""}${roleClass}${isThisSelected && harnessHl?.open ? " harness-engine--picked" : ""}`}
             >
               {/* Row 1: fixed-width alias → model names align across cards */}
               <div className="flex items-center gap-2 min-w-0 w-full">
                 {role && (
                   <span
-                    className={`atomcode-engine-role-chip atomcode-engine-role-chip--${role} shrink-0`}
+                    className={`harness-engine-role-chip harness-engine-role-chip--${role} shrink-0`}
                   >
                     {role === "brain" ? "1·BRAIN" : "2·WORKER"}
                   </span>

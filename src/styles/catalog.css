@@ -1118,7 +1118,7 @@
 }
 
 .catalog-quick-section--seats-editing {
-  border-color: color-mix(in srgb, var(--theme-atom-brain-raw, var(--theme-accent)) 40%, transparent);
+  border-color: color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-accent)) 40%, transparent);
 }
 
 .catalog-quick-strip--seat-editing .catalog-quick-section--seats {
@@ -1141,26 +1141,26 @@
 /* Match harness connect BRAIN / WORKER identity tokens */
 .catalog-quick-seat--brain.catalog-quick-seat--filled {
   border-style: solid;
-  border-color: color-mix(in srgb, var(--theme-atom-brain-raw, var(--theme-provider-pill-active-bg)) 70%, transparent);
+  border-color: color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 70%, transparent);
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--theme-atom-brain-raw, var(--theme-provider-pill-active-bg)) 40%, transparent),
-    0 0 10px color-mix(in srgb, var(--theme-atom-brain-raw, var(--theme-provider-pill-active-bg)) 18%, transparent);
+    0 0 0 1px color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 40%, transparent),
+    0 0 10px color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 18%, transparent);
   background: color-mix(
     in srgb,
-    var(--theme-atom-brain-raw, var(--theme-provider-pill-active-bg)) 28%,
+    var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 28%,
     var(--theme-eject-card-bg, var(--theme-panel)) 72%
   );
 }
 
 .catalog-quick-seat--worker.catalog-quick-seat--filled {
   border-style: solid;
-  border-color: color-mix(in srgb, var(--theme-atom-worker-raw, var(--theme-pair-secondary-bg)) 70%, transparent);
+  border-color: color-mix(in srgb, var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 70%, transparent);
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--theme-atom-worker-raw, var(--theme-pair-secondary-bg)) 40%, transparent),
-    0 0 10px color-mix(in srgb, var(--theme-atom-worker-raw, var(--theme-pair-secondary-bg)) 16%, transparent);
+    0 0 0 1px color-mix(in srgb, var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 40%, transparent),
+    0 0 10px color-mix(in srgb, var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 16%, transparent);
   background: color-mix(
     in srgb,
-    var(--theme-atom-worker-raw, var(--theme-pair-secondary-bg)) 30%,
+    var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 30%,
     var(--theme-eject-card-bg, var(--theme-panel)) 70%
   );
 }
@@ -1171,7 +1171,7 @@
 }
 
 .catalog-quick-seat--brain .catalog-quick-seat__role {
-  color: var(--theme-atom-brain-text, var(--theme-provider-pill-active-text, var(--theme-accent-bright)));
+  color: var(--theme-harness-brain-text, var(--theme-provider-pill-active-text, var(--theme-accent-bright)));
 }
 
 .catalog-quick-seat--worker .catalog-quick-seat__role {
@@ -1277,7 +1277,7 @@
 
 .catalog-quick-seat__btn--replace,
 .catalog-quick-seat__btn--yes {
-  color: var(--theme-atom-brain-text, var(--theme-accent-bright, var(--theme-accent)));
+  color: var(--theme-harness-brain-text, var(--theme-accent-bright, var(--theme-accent)));
 }
 
 .catalog-quick-seat__btn--edit {
@@ -1314,17 +1314,17 @@
 }
 
 .catalog-quick-seat--brain.catalog-quick-seat--editing {
-  border-color: color-mix(in srgb, var(--theme-atom-brain-raw, var(--theme-provider-pill-active-bg)) 85%, transparent);
+  border-color: color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 85%, transparent);
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--theme-atom-brain-raw, var(--theme-provider-pill-active-bg)) 50%, transparent),
-    0 0 16px color-mix(in srgb, var(--theme-atom-brain-raw, var(--theme-provider-pill-active-bg)) 28%, transparent);
+    0 0 0 1px color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 50%, transparent),
+    0 0 16px color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 28%, transparent);
 }
 
 .catalog-quick-seat--worker.catalog-quick-seat--editing {
-  border-color: color-mix(in srgb, var(--theme-atom-worker-raw, var(--theme-pair-secondary-bg)) 85%, transparent);
+  border-color: color-mix(in srgb, var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 85%, transparent);
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--theme-atom-worker-raw, var(--theme-pair-secondary-bg)) 50%, transparent),
-    0 0 16px color-mix(in srgb, var(--theme-atom-worker-raw, var(--theme-pair-secondary-bg)) 26%, transparent);
+    0 0 0 1px color-mix(in srgb, var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 50%, transparent),
+    0 0 16px color-mix(in srgb, var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 26%, transparent);
 }
 
 .catalog-quick-seat--editing .catalog-quick-seat__role {
@@ -1389,12 +1389,12 @@
   .catalog-quick-seat__live-rim {
   background: conic-gradient(
     from 0deg,
-    color-mix(in srgb, var(--theme-atom-brain-raw, #60a5fa) 6%, transparent) 0deg,
-    color-mix(in srgb, var(--theme-atom-brain-raw, #60a5fa) 6%, transparent) 200deg,
-    color-mix(in srgb, var(--theme-atom-brain-raw, #60a5fa) 50%, transparent) 250deg,
-    color-mix(in srgb, var(--theme-atom-brain-raw, #60a5fa) 95%, #fff 18%) 280deg,
-    color-mix(in srgb, var(--theme-atom-brain-raw, #60a5fa) 50%, transparent) 310deg,
-    color-mix(in srgb, var(--theme-atom-brain-raw, #60a5fa) 6%, transparent) 360deg
+    color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 6%, transparent) 0deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 6%, transparent) 200deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 50%, transparent) 250deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 95%, #fff 18%) 280deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 50%, transparent) 310deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 6%, transparent) 360deg
   );
 }
 
@@ -1405,12 +1405,12 @@
   .catalog-quick-seat__live-rim {
   background: conic-gradient(
     from 0deg,
-    color-mix(in srgb, var(--theme-atom-worker-raw, #f59e0b) 6%, transparent) 0deg,
-    color-mix(in srgb, var(--theme-atom-worker-raw, #f59e0b) 6%, transparent) 200deg,
-    color-mix(in srgb, var(--theme-atom-worker-raw, #f59e0b) 50%, transparent) 250deg,
-    color-mix(in srgb, var(--theme-atom-worker-raw, #f59e0b) 95%, #fff 14%) 280deg,
-    color-mix(in srgb, var(--theme-atom-worker-raw, #f59e0b) 50%, transparent) 310deg,
-    color-mix(in srgb, var(--theme-atom-worker-raw, #f59e0b) 6%, transparent) 360deg
+    color-mix(in srgb, var(--theme-harness-worker-raw, #f59e0b) 6%, transparent) 0deg,
+    color-mix(in srgb, var(--theme-harness-worker-raw, #f59e0b) 6%, transparent) 200deg,
+    color-mix(in srgb, var(--theme-harness-worker-raw, #f59e0b) 50%, transparent) 250deg,
+    color-mix(in srgb, var(--theme-harness-worker-raw, #f59e0b) 95%, #fff 14%) 280deg,
+    color-mix(in srgb, var(--theme-harness-worker-raw, #f59e0b) 50%, transparent) 310deg,
+    color-mix(in srgb, var(--theme-harness-worker-raw, #f59e0b) 6%, transparent) 360deg
   );
 }
 
@@ -1451,25 +1451,25 @@
 }
 
 .catalog-seat-edit-banner--brain {
-  border-color: color-mix(in srgb, var(--theme-atom-brain-raw, var(--theme-provider-pill-active-bg)) 70%, transparent);
+  border-color: color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 70%, transparent);
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--theme-atom-brain-raw, var(--theme-provider-pill-active-bg)) 35%, transparent),
-    0 0 12px color-mix(in srgb, var(--theme-atom-brain-raw, var(--theme-provider-pill-active-bg)) 18%, transparent);
+    0 0 0 1px color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 35%, transparent),
+    0 0 12px color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 18%, transparent);
   background: color-mix(
     in srgb,
-    var(--theme-atom-brain-raw, var(--theme-provider-pill-active-bg)) 22%,
+    var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 22%,
     var(--theme-panel) 78%
   );
 }
 
 .catalog-seat-edit-banner--worker {
-  border-color: color-mix(in srgb, var(--theme-atom-worker-raw, var(--theme-pair-secondary-bg)) 70%, transparent);
+  border-color: color-mix(in srgb, var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 70%, transparent);
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--theme-atom-worker-raw, var(--theme-pair-secondary-bg)) 35%, transparent),
-    0 0 12px color-mix(in srgb, var(--theme-atom-worker-raw, var(--theme-pair-secondary-bg)) 16%, transparent);
+    0 0 0 1px color-mix(in srgb, var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 35%, transparent),
+    0 0 12px color-mix(in srgb, var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 16%, transparent);
   background: color-mix(
     in srgb,
-    var(--theme-atom-worker-raw, var(--theme-pair-secondary-bg)) 24%,
+    var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 24%,
     var(--theme-panel) 76%
   );
 }
@@ -1483,7 +1483,7 @@
 }
 
 .catalog-seat-edit-banner--brain .catalog-seat-edit-banner__label {
-  color: var(--theme-atom-brain-text, var(--theme-provider-pill-active-text, var(--theme-text)));
+  color: var(--theme-harness-brain-text, var(--theme-provider-pill-active-text, var(--theme-text)));
 }
 
 .catalog-seat-edit-banner--worker .catalog-seat-edit-banner__label {
@@ -1521,24 +1521,24 @@
 .catalog-seat-edit-banner--brain .catalog-seat-edit-banner__live-rim {
   background: conic-gradient(
     from 0deg,
-    color-mix(in srgb, var(--theme-atom-brain-raw, #60a5fa) 6%, transparent) 0deg,
-    color-mix(in srgb, var(--theme-atom-brain-raw, #60a5fa) 6%, transparent) 200deg,
-    color-mix(in srgb, var(--theme-atom-brain-raw, #60a5fa) 50%, transparent) 250deg,
-    color-mix(in srgb, var(--theme-atom-brain-raw, #60a5fa) 95%, #fff 18%) 280deg,
-    color-mix(in srgb, var(--theme-atom-brain-raw, #60a5fa) 50%, transparent) 310deg,
-    color-mix(in srgb, var(--theme-atom-brain-raw, #60a5fa) 6%, transparent) 360deg
+    color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 6%, transparent) 0deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 6%, transparent) 200deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 50%, transparent) 250deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 95%, #fff 18%) 280deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 50%, transparent) 310deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 6%, transparent) 360deg
   );
 }
 
 .catalog-seat-edit-banner--worker .catalog-seat-edit-banner__live-rim {
   background: conic-gradient(
     from 0deg,
-    color-mix(in srgb, var(--theme-atom-worker-raw, #f59e0b) 6%, transparent) 0deg,
-    color-mix(in srgb, var(--theme-atom-worker-raw, #f59e0b) 6%, transparent) 200deg,
-    color-mix(in srgb, var(--theme-atom-worker-raw, #f59e0b) 50%, transparent) 250deg,
-    color-mix(in srgb, var(--theme-atom-worker-raw, #f59e0b) 95%, #fff 14%) 280deg,
-    color-mix(in srgb, var(--theme-atom-worker-raw, #f59e0b) 50%, transparent) 310deg,
-    color-mix(in srgb, var(--theme-atom-worker-raw, #f59e0b) 6%, transparent) 360deg
+    color-mix(in srgb, var(--theme-harness-worker-raw, #f59e0b) 6%, transparent) 0deg,
+    color-mix(in srgb, var(--theme-harness-worker-raw, #f59e0b) 6%, transparent) 200deg,
+    color-mix(in srgb, var(--theme-harness-worker-raw, #f59e0b) 50%, transparent) 250deg,
+    color-mix(in srgb, var(--theme-harness-worker-raw, #f59e0b) 95%, #fff 14%) 280deg,
+    color-mix(in srgb, var(--theme-harness-worker-raw, #f59e0b) 50%, transparent) 310deg,
+    color-mix(in srgb, var(--theme-harness-worker-raw, #f59e0b) 6%, transparent) 360deg
   );
 }
 

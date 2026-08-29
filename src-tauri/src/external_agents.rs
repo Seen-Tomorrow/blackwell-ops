@@ -7,8 +7,9 @@
 //! `config/external-tools/<agent>-home`). The helpers here only take dirs/paths as
 //! parameters, so an agent can never accidentally fall back to a user-installed binary.
 //!
-//! AtomCode and Qwen Code harnesses were removed (archived products); this module
-//! stays because `pi_code.rs` and `download_manager.rs` depend on it.
+//! Shared helpers for external coding agents. Live harness is pi-only
+//! (`pi_code.rs`); this module stays because `pi_code.rs` and `download_manager.rs` depend on it.
+//! (AtomCode / Qwen Code product backends were archived and removed.)
 
 use sha2::Digest;
 use std::path::Path;
