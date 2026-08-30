@@ -178,14 +178,14 @@
   --display-face-light-grain-scan: 6px;
   --display-face-dark-grain-cell: 2.5px;
   --display-face-dark-grain-scan: 5px;
-  /* Phosphor LIGHT — e-ink LCD (fusion overlay) */
+  /* DOTTED (ARCTIC) — e-ink LCD (fusion overlay) */
   --display-face-light-surface: #c8d4b8;
   --display-face-light-dot: rgba(0, 0, 0, 0.025);
   --display-face-light-band: rgba(0, 0, 0, 0.01);
   /* Horizontal LCD scan-strips — 0 keeps only the matrix dot grid. */
   --display-face-light-band-opacity: 0;
   --display-face-light-texture-blend: multiply;
-  /* Phosphor DARK — CRT face: soft phosphor dots, no scan stripes (unify with LIGHT). */
+  /* DOTTED (dark themes) — CRT face: soft phosphor dots, no scan stripes. */
   --display-face-dark-dot: rgba(200, 200, 208, 0.04);
   --display-face-dark-band: rgba(0, 0, 0, 0.06);
   --display-face-dark-band-opacity: 0;
@@ -206,7 +206,7 @@
   --display-face-light-source-kind-bg: color-mix(in srgb, #020617 72%, transparent);
   --display-face-light-source-kind-border: color-mix(in srgb, #94a3b8 32%, transparent);
   /*
-   * Default face plates (CLEAN / DARK textures) — soft wash on dark CRT faces.
+   * Default face plates (CLEAN / DOTTED textures) — soft wash on dark CRT faces.
    * Light-paper themes (ARCTIC) override these to the dark slate wash so CLEAN
    * matches LIGHT without a CSS theme fork.
    */
@@ -268,7 +268,7 @@
   --display-face-light-gpu-selected-bg: rgba(70, 90, 64, 0.45);
   --display-face-light-gpu-selected-shadow: 0 0 0 1px rgba(82, 104, 72, 0.55), 0 2px 5px rgba(40, 50, 36, 0.25);
   --display-face-light-border: rgba(60, 60, 60, 0.25);
-  /* PHOSPHOR LIGHT readout ink — per-theme overrides in app-themes.ts */
+  /* DOTTED (ARCTIC) readout ink — per-theme overrides in app-themes.ts */
   --display-face-light-readout: #1e3a14;
   --display-face-light-readout-divider: #1e3a14;
   --display-face-light-readout-divider-opacity: 0.32;

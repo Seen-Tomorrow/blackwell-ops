@@ -2233,26 +2233,26 @@
   -webkit-text-fill-color: var(--theme-telemetry-red, #ef4444);
 }
 
-[data-display-texture="phosphor-light"] .vram-forecast-bar__inset-label {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-forecast-bar__inset-label {
   text-shadow: none;
   color: var(--display-face-light-plate-ink, #0b1220);
   -webkit-text-fill-color: var(--display-face-light-plate-ink, #0b1220);
 }
 
-[data-display-texture="phosphor-light"] .vram-forecast-bar__inset-label--caution,
-[data-display-texture="phosphor-light"] .vram-forecast-bar__inset-label--ram.vram-forecast-bar__inset-label--caution {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-forecast-bar__inset-label--caution,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-forecast-bar__inset-label--ram.vram-forecast-bar__inset-label--caution {
   color: #b45309;
   -webkit-text-fill-color: #b45309;
 }
 
-[data-display-texture="phosphor-light"] .vram-forecast-bar__inset-label--warn,
-[data-display-texture="phosphor-light"] .vram-forecast-bar__inset-label--ram.vram-forecast-bar__inset-label--warn {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-forecast-bar__inset-label--warn,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-forecast-bar__inset-label--ram.vram-forecast-bar__inset-label--warn {
   color: var(--theme-telemetry-amber, #b45309);
   -webkit-text-fill-color: var(--theme-telemetry-amber, #b45309);
 }
 
-[data-display-texture="phosphor-light"] .vram-forecast-bar__inset-label--hot,
-[data-display-texture="phosphor-light"] .vram-forecast-bar__inset-label--ram.vram-forecast-bar__inset-label--hot {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-forecast-bar__inset-label--hot,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-forecast-bar__inset-label--ram.vram-forecast-bar__inset-label--hot {
   color: var(--theme-telemetry-red, #b91c1c);
   -webkit-text-fill-color: var(--theme-telemetry-red, #b91c1c);
 }
@@ -3248,53 +3248,53 @@
   50% { opacity: 1; }
 }
 
-/* Phosphor light — forecast instrument ink */
-[data-display-texture="phosphor-light"] .vram-fc__title,
-[data-display-texture="phosphor-light"] .vram-fc-need__lab,
-[data-display-texture="phosphor-light"] .vram-fc-source__lab,
-[data-display-texture="phosphor-light"] .vram-fc-need__of,
-[data-display-texture="phosphor-light"] .vram-fc-need__unit--muted {
+/* DOTTED (ARCTIC) — forecast instrument ink */
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc__title,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-need__lab,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-source__lab,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-need__of,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-need__unit--muted {
   color: color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 55%, transparent);
 }
 
-[data-display-texture="phosphor-light"] .vram-fc-need__val,
-[data-display-texture="phosphor-light"] .vram-fc-bar__cap,
-[data-display-texture="phosphor-light"] .vram-fc__scenario-lab {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-need__val,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-bar__cap,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc__scenario-lab {
   color: var(--display-face-light-readout, #1e3a14);
   text-shadow: none;
 }
 
-[data-display-texture="phosphor-light"] .vram-fc-need--ram .vram-fc-need__val,
-[data-display-texture="phosphor-light"] .vram-fc-bar__cap--ram,
-[data-display-texture="phosphor-light"] .vram-fc-need__unit--ram {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-need--ram .vram-fc-need__val,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-bar__cap--ram,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-need__unit--ram {
   color: var(--display-face-light-text-cyan, #0e4a5c);
   text-shadow: none;
 }
 
-[data-display-texture="phosphor-light"] .vram-fc-need__val.vram-forecast-gb-accented--learned,
-[data-display-texture="phosphor-light"] .vram-fc-need__val.vram-forecast-gb-accented--learned_curve,
-[data-display-texture="phosphor-light"] .vram-fc[data-source-kind="learned"] .vram-fc-need:not(.vram-fc-need--ram) .vram-fc-need__val,
-[data-display-texture="phosphor-light"] .vram-fc[data-source-kind="learned_curve"] .vram-fc-need:not(.vram-fc-need--ram) .vram-fc-need__val {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-need__val.vram-forecast-gb-accented--learned,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-need__val.vram-forecast-gb-accented--learned_curve,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc[data-source-kind="learned"] .vram-fc-need:not(.vram-fc-need--ram) .vram-fc-need__val,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc[data-source-kind="learned_curve"] .vram-fc-need:not(.vram-fc-need--ram) .vram-fc-need__val {
   color: var(--display-face-light-text-amber, #7a4a08);
   text-shadow: none;
 }
 
-[data-display-texture="phosphor-light"] .vram-fc-need__val.vram-forecast-gb-accented--fit_probe,
-[data-display-texture="phosphor-light"] .vram-fc[data-source-kind="fit_probe"] .vram-fc-need:not(.vram-fc-need--ram) .vram-fc-need__val {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-need__val.vram-forecast-gb-accented--fit_probe,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc[data-source-kind="fit_probe"] .vram-fc-need:not(.vram-fc-need--ram) .vram-fc-need__val {
   color: var(--display-face-light-text-cyan, #0e4a5c);
   text-shadow: none;
 }
 
 /* SOURCE row — no plate / no grey wash on ARCTIC light paper */
-[data-display-texture="phosphor-light"] .vram-fc-source,
-[data-display-texture="phosphor-light"] .memory-source-strip {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-source,
+[data-theme="arctic"] [data-display-texture="dotted"] .memory-source-strip {
   background: transparent !important;
   border-color: transparent !important;
   box-shadow: none !important;
 }
 
-[data-display-texture="phosphor-light"] .vram-fc-bar__track,
-[data-display-texture="phosphor-light"] .vram-fc-bar--fused .vram-fc-bar__track {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-bar__track,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-bar--fused .vram-fc-bar__track {
   background: color-mix(in srgb, var(--display-face-light-bar-bg, var(--theme-accent, #76b900)) 28%, transparent);
   border-color: color-mix(in srgb, var(--display-face-light-bar-bg, var(--theme-accent, #76b900)) 42%, transparent);
   box-shadow:
@@ -3302,18 +3302,18 @@
     inset 0 -1px 0 color-mix(in srgb, var(--display-face-light-bar-bg, var(--theme-accent, #76b900)) 28%, transparent);
 }
 
-[data-display-texture="phosphor-light"] .vram-fc__src[data-source-kind="learned"],
-[data-display-texture="phosphor-light"] .vram-fc__src[data-source-kind="learned_curve"] {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc__src[data-source-kind="learned"],
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc__src[data-source-kind="learned_curve"] {
   color: var(--display-face-light-text-amber, #7a4a08);
   border-color: color-mix(in srgb, var(--display-face-light-text-amber, #7a4a08) 42%, transparent);
 }
-[data-display-texture="phosphor-light"] .vram-fc-source__prev-lab {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-source__prev-lab {
   color: var(--display-face-light-text-cyan, #0e4a5c);
   opacity: 0.85;
 }
 
 /* SOURCE strip — clear→dark wash on paper (gold/cyan kind readable; all themes) */
-[data-display-texture="phosphor-light"] .vram-fc-measure__source {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-measure__source {
   background: linear-gradient(
     90deg,
     transparent 0%,
@@ -3323,10 +3323,10 @@
   );
   border: none;
 }
-[data-display-texture="phosphor-light"] .vram-fc-measure__source .vram-fc-source__lab {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-measure__source .vram-fc-source__lab {
   color: var(--display-face-light-source-lab, color-mix(in srgb, #e2e8f0 78%, #94a3b8));
 }
-[data-display-texture="phosphor-light"] .vram-fc-measure__source .vram-fc-source__kind {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-measure__source .vram-fc-source__kind {
   background: var(--display-face-light-source-kind-bg, color-mix(in srgb, #020617 72%, transparent));
   border-color: var(
     --display-face-light-source-kind-border,
@@ -3337,11 +3337,11 @@
     0 1px 2px color-mix(in srgb, var(--display-face-light-plate-ink, #0b1220) 35%, transparent);
 }
 
-[data-display-texture="phosphor-light"] .vram-fc-need-frame__status-row {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-need-frame__status-row {
   background: transparent;
 }
 /* NEED frame — bumped plate + reverse dark wash on paper */
-[data-display-texture="phosphor-light"] .vram-fc-need-frame {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-need-frame {
   --need-frame-hi: color-mix(in srgb, #fff 92%, transparent);
   --need-frame-lo: color-mix(in srgb, var(--display-face-light-plate-ink-soft, #0f172a) 38%, transparent);
   --need-frame-ring: color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 48%, transparent);
@@ -3370,75 +3370,75 @@
     inset -1px -1px 0 var(--need-frame-lo),
     inset 0 0 0 1px color-mix(in srgb, var(--display-face-light-text-muted, #64748b) 12%, transparent);
 }
-[data-display-texture="phosphor-light"] .vram-fc-need-frame[data-source-kind="learned"],
-[data-display-texture="phosphor-light"] .vram-fc-need-frame[data-source-kind="learned_curve"] {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-need-frame[data-source-kind="learned"],
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-need-frame[data-source-kind="learned_curve"] {
   --need-frame-accent: color-mix(in srgb, var(--display-face-light-text-amber, #b45309) 62%, #ca8a04 18%);
 }
-[data-display-texture="phosphor-light"] .vram-fc-need-frame[data-source-kind="fit_probe"] {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-need-frame[data-source-kind="fit_probe"] {
   --need-frame-accent: color-mix(in srgb, var(--display-face-light-text-cyan, #0e7490) 65%, transparent);
 }
-[data-display-texture="phosphor-light"] .vram-fc-need-frame:not([data-source-kind]) {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-need-frame:not([data-source-kind]) {
   --need-frame-accent: color-mix(in srgb, var(--display-face-light-fc-label-border, #0284c7) 70%, transparent);
 }
 
 /* (NEED live glass is monochrome + difference — no paper/theme overrides) */
-[data-display-texture="phosphor-light"] .vram-fc-need-frame__status-row {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-need-frame__status-row {
   background: transparent;
 }
-[data-display-texture="phosphor-light"] .vram-fc-need-frame__status {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-need-frame__status {
   text-shadow: 0 1px 0 color-mix(in srgb, #fff 80%, transparent);
 }
-[data-display-texture="phosphor-light"] .vram-fc-need-frame[data-source-kind="learned"] .vram-fc-need-frame__status,
-[data-display-texture="phosphor-light"] .vram-fc-need-frame[data-source-kind="learned_curve"] .vram-fc-need-frame__status {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-need-frame[data-source-kind="learned"] .vram-fc-need-frame__status,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-need-frame[data-source-kind="learned_curve"] .vram-fc-need-frame__status {
   color: var(--display-face-light-text-amber, #7a4a08);
 }
-[data-display-texture="phosphor-light"] .vram-fc-need-frame[data-source-kind="fit_probe"] .vram-fc-need-frame__status {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-need-frame[data-source-kind="fit_probe"] .vram-fc-need-frame__status {
   color: var(--display-face-light-text-cyan, #0e4a5c);
 }
 /* Frame need chips keep dark wells (same as other chips) */
-[data-display-texture="phosphor-light"] .vram-fc-need-frame .vram-fc-bar__need-chip {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-need-frame .vram-fc-bar__need-chip {
   background: var(--display-face-light-fc-label-bg, #0369a1) !important;
   color: var(--display-face-light-fc-label-fg, #e0f2fe) !important;
 }
-[data-display-texture="phosphor-light"] .vram-fc-need-frame .vram-fc-bar__need-chip--ram {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-need-frame .vram-fc-bar__need-chip--ram {
   background: var(--display-face-light-fc-label-ram-bg, #0e7490) !important;
   color: var(--display-face-light-fc-label-ram-fg, #ecfeff) !important;
 }
 
 /* Light texture: swap label chips to light-* tokens (dark wells on paper) */
-[data-display-texture="phosphor-light"] .vram-fc-bar--fused {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-bar--fused {
   border-color: color-mix(in srgb, var(--display-face-light-bar-bg, var(--theme-accent, #76b900)) 40%, transparent);
   background: color-mix(in srgb, var(--display-face-light-bar-bg, var(--theme-accent, #76b900)) 10%, transparent);
 }
-[data-display-texture="phosphor-light"] .vram-fc-bar__name-chip,
-[data-display-texture="phosphor-light"] .vram-fc-bar__cap-chip,
-[data-display-texture="phosphor-light"] .vram-fc-bar__need-chip {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-bar__name-chip,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-bar__cap-chip,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-bar__need-chip {
   background: var(--display-face-light-fc-label-bg, #243818) !important;
   color: var(--display-face-light-fc-label-fg, #d9f99d) !important;
   border-color: var(--display-face-light-fc-label-border, #4d7a00) !important;
   border-right-color: var(--display-face-light-fc-label-border, #4d7a00) !important;
   border-left-color: var(--display-face-light-fc-label-border, #4d7a00) !important;
 }
-[data-display-texture="phosphor-light"] .vram-fc-bar__name-chip--ram,
-[data-display-texture="phosphor-light"] .vram-fc-bar__cap-chip--ram,
-[data-display-texture="phosphor-light"] .vram-fc-bar__need-chip--ram {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-bar__name-chip--ram,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-bar__cap-chip--ram,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-bar__need-chip--ram {
   background: var(--display-face-light-fc-label-ram-bg, #0a2830) !important;
   color: var(--display-face-light-fc-label-ram-fg, #a5f3fc) !important;
   border-color: var(--display-face-light-fc-label-ram-border, #0e7490) !important;
   border-right-color: var(--display-face-light-fc-label-ram-border, #0e7490) !important;
   border-left-color: var(--display-face-light-fc-label-ram-border, #0e7490) !important;
 }
-[data-display-texture="phosphor-light"] .vram-fc-bar__cap-val,
-[data-display-texture="phosphor-light"] .vram-fc-bar__cap-unit,
-[data-display-texture="phosphor-light"] .vram-fc-bar__need-prefix,
-[data-display-texture="phosphor-light"] .vram-fc-bar__need-chip .vram-fc-bar__unit {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-bar__cap-val,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-bar__cap-unit,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-bar__need-prefix,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-bar__need-chip .vram-fc-bar__unit {
   color: inherit !important;
   opacity: 1 !important;
   filter: none !important;
   text-shadow: none !important;
   -webkit-text-fill-color: currentColor !important;
 }
-[data-display-texture="phosphor-light"] .vram-fc-bar__need-chip .vram-fc-bar__need {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-bar__need-chip .vram-fc-bar__need {
   /* ok inherits chip ice/green; warn/hot via data-need-tone below */
   color: inherit;
   opacity: 1 !important;
@@ -3446,31 +3446,31 @@
   text-shadow: none !important;
   -webkit-text-fill-color: currentColor;
 }
-[data-display-texture="phosphor-light"] .vram-fc-bar__need-prefix,
-[data-display-texture="phosphor-light"] .vram-fc-bar__cap-unit,
-[data-display-texture="phosphor-light"] .vram-fc-bar__need-chip .vram-fc-bar__unit {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-bar__need-prefix,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-bar__cap-unit,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-bar__need-chip .vram-fc-bar__unit {
   opacity: 0.88 !important;
 }
 /* Pressure tones — must set text-fill; color-only loses to currentColor fill */
-[data-display-texture="phosphor-light"] .vram-fc-bar__need-chip[data-need-tone="caution"] .vram-fc-bar__need,
-[data-display-texture="phosphor-light"] .vram-fc-bar__need-chip .vram-fc-bar__need--caution {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-bar__need-chip[data-need-tone="caution"] .vram-fc-bar__need,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-bar__need-chip .vram-fc-bar__need--caution {
   color: #b45309 !important;
   -webkit-text-fill-color: #b45309 !important;
 }
-[data-display-texture="phosphor-light"] .vram-fc-bar__need-chip[data-need-tone="warn"] .vram-fc-bar__need,
-[data-display-texture="phosphor-light"] .vram-fc-bar__need-chip .vram-fc-bar__need--warn {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-bar__need-chip[data-need-tone="warn"] .vram-fc-bar__need,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-bar__need-chip .vram-fc-bar__need--warn {
   color: var(--theme-telemetry-amber, #fbbf24) !important;
   -webkit-text-fill-color: var(--theme-telemetry-amber, #fbbf24) !important;
 }
-[data-display-texture="phosphor-light"] .vram-fc-bar__need-chip[data-need-tone="hot"] .vram-fc-bar__need,
-[data-display-texture="phosphor-light"] .vram-fc-bar__need-chip .vram-fc-bar__need--hot {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-bar__need-chip[data-need-tone="hot"] .vram-fc-bar__need,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-bar__need-chip .vram-fc-bar__need--hot {
   color: var(--theme-telemetry-red, #ef4444) !important;
   -webkit-text-fill-color: var(--theme-telemetry-red, #ef4444) !important;
 }
 
 /* GPU troughs — reverse dark wash on paper (all themes; no arctic fork) */
-[data-display-texture="phosphor-light"] .gpu-card__bar,
-[data-display-texture="phosphor-light"] .vram-fc__topo--compact .gpu-card__bar--3d {
+[data-theme="arctic"] [data-display-texture="dotted"] .gpu-card__bar,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc__topo--compact .gpu-card__bar--3d {
   background:
     linear-gradient(
       90deg,
@@ -3489,44 +3489,44 @@
     inset 0 -1px 0 color-mix(in srgb, #fff 45%, transparent);
 }
 
-[data-display-texture="phosphor-light"] .vram-fc__src,
-[data-display-texture="phosphor-light"] .vram-fc__verdict,
-[data-display-texture="phosphor-light"] .vram-fc-probe,
-[data-display-texture="phosphor-light"] .fit-probe-btn {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc__src,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc__verdict,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-probe,
+[data-theme="arctic"] [data-display-texture="dotted"] .fit-probe-btn {
   background: color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 8%, transparent);
   border-color: color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 28%, transparent);
   color: color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 72%, transparent);
   box-shadow: none;
 }
 
-[data-display-texture="phosphor-light"] .vram-fc__src[data-source-kind="learned"],
-[data-display-texture="phosphor-light"] .vram-fc__src[data-source-kind="learned_curve"] {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc__src[data-source-kind="learned"],
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc__src[data-source-kind="learned_curve"] {
   color: var(--display-face-light-text-amber, #7a4a08);
   border-color: color-mix(in srgb, var(--display-face-light-text-amber, #7a4a08) 42%, transparent);
 }
 
-[data-display-texture="phosphor-light"] .vram-fc__src[data-source-kind="fit_probe"] {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc__src[data-source-kind="fit_probe"] {
   color: var(--display-face-light-text-cyan, #0e4a5c);
   border-color: color-mix(in srgb, var(--display-face-light-text-cyan, #0e4a5c) 40%, transparent);
 }
 /* RE-PROBE action stays warm copper so the button still reads as CTA */
-[data-display-texture="phosphor-light"] .vram-fc-probe[data-probe-state="reprobe"],
-[data-display-texture="phosphor-light"] .vram-fc-probe[data-probe-state="probing"] {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-probe[data-probe-state="reprobe"],
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-probe[data-probe-state="probing"] {
   color: var(--display-face-light-text-amber, #7a4a08);
   border-color: color-mix(in srgb, var(--display-face-light-text-amber, #7a4a08) 40%, transparent);
 }
 /* RE-PROBE follows theme provider-pill tokens even on paper faces */
-[data-display-texture="phosphor-light"] .vram-fc-header__reprobe,
-[data-display-texture="phosphor-light"] .vram-fc-source__reprobe {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-header__reprobe,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-source__reprobe {
   background: var(--theme-provider-pill-bg);
   border-color: var(--theme-provider-pill-border);
   color: var(--theme-provider-pill-text);
   -webkit-text-fill-color: currentColor;
 }
-[data-display-texture="phosphor-light"] .vram-fc-header__reprobe[data-probe-state="probing"],
-[data-display-texture="phosphor-light"] .vram-fc-source__reprobe[data-probe-state="probing"],
-[data-display-texture="phosphor-light"] .vram-fc-header__reprobe:disabled,
-[data-display-texture="phosphor-light"] .vram-fc-source__reprobe:disabled {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-header__reprobe[data-probe-state="probing"],
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-source__reprobe[data-probe-state="probing"],
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-header__reprobe:disabled,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-source__reprobe:disabled {
   background: var(--theme-provider-pill-active-bg);
   border-color: var(--theme-provider-pill-active-border);
   color: var(--theme-provider-pill-active-text);
@@ -3536,9 +3536,9 @@
  * OVER FREE flash — paper face must not keep dark-theme white fill on a light
  * pill (ARCTIC + LIGHT was unreadable). Dark red ink + soft red wash + pulse.
  */
-[data-display-texture="phosphor-light"] .vram-fc-header__reprobe--over-free,
-[data-display-texture="phosphor-light"] .vram-fc-source__reprobe[data-probe-state="over-free"],
-[data-display-texture="phosphor-light"] .vram-fc-header__reprobe[data-probe-state="over-free"] {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-header__reprobe--over-free,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-source__reprobe[data-probe-state="over-free"],
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-header__reprobe[data-probe-state="over-free"] {
   color: var(--display-face-light-text-red, #9f1239);
   -webkit-text-fill-color: var(--display-face-light-text-red, #9f1239);
   border-color: color-mix(in srgb, var(--display-face-light-text-red, #9f1239) 72%, transparent);
@@ -3550,9 +3550,9 @@
   animation: vram-fc-over-free-pulse-light 0.9s ease-in-out infinite;
   filter: none;
 }
-[data-display-texture="phosphor-light"] .vram-fc-header__reprobe--over-free:hover:not(:disabled),
-[data-display-texture="phosphor-light"] .vram-fc-source__reprobe[data-probe-state="over-free"]:hover:not(:disabled),
-[data-display-texture="phosphor-light"] .vram-fc-header__reprobe[data-probe-state="over-free"]:hover:not(:disabled) {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-header__reprobe--over-free:hover:not(:disabled),
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-source__reprobe[data-probe-state="over-free"]:hover:not(:disabled),
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-header__reprobe[data-probe-state="over-free"]:hover:not(:disabled) {
   filter: none;
   background: color-mix(
     in srgb,
@@ -3571,30 +3571,30 @@
   }
 }
 
-[data-display-texture="phosphor-light"] .vram-fc__verdict.is-ok {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc__verdict.is-ok {
   color: var(--display-face-light-text-accent, #1e3a14);
   border-color: color-mix(in srgb, var(--display-face-light-text-accent, #1e3a14) 40%, transparent);
 }
-[data-display-texture="phosphor-light"] .vram-fc-source__curve-hint {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc-source__curve-hint {
   color: color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 42%, transparent);
 }
 
 
 
-[data-display-texture="phosphor-light"] .vram-fc__verdict.is-fail {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc__verdict.is-fail {
   color: var(--display-face-light-text-red, #7f1d1d);
   border-color: color-mix(in srgb, var(--display-face-light-text-red, #7f1d1d) 40%, transparent);
 }
 
 /* ASSISTED launch summary — dark ink on paper (bright accent washes out) */
-[data-display-texture="phosphor-light"] .vram-fc__launch-summary {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc__launch-summary {
   color: var(--display-face-light-readout, #1e3a14);
   text-shadow: none;
 }
-[data-display-texture="phosphor-light"] .vram-fc__launch-summary.is-ok {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc__launch-summary.is-ok {
   color: var(--display-face-light-text-accent, #1e3a14);
 }
-[data-display-texture="phosphor-light"] .vram-fc__launch-summary.is-fail {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-fc__launch-summary.is-fail {
   color: var(--display-face-light-text-red, #5a2828);
 }
 
@@ -3974,14 +3974,14 @@
    ARCTIC), NOT to the screen texture — otherwise dark themes lose their 3D drop
    over the eject tray whenever LIGHT is selected. ARCTIC's theme token is already
    the soft DISPLAY_PROFILE_BEZEL_CAST, so it stays soft here. */
-[data-display-texture="phosphor-light"] .industrial-display-frame {
+[data-theme="arctic"] [data-display-texture="dotted"] .industrial-display-frame {
   box-shadow:
     var(--theme-bezel-cast-shadow),
     inset 1px 1px 0 var(--theme-bezel-inset-hi),
     inset -1px -1px 0 var(--theme-bezel-inset-lo);
 }
 
-/* Fusion live stats + bench values — theme phosphor text; dark ink on phosphor-light only */
+/* Fusion live stats + bench values — theme phosphor text; dark ink on DOTTED only */
 .fusion-readout-emphasis {
   color: var(--display-face-text);
 }
@@ -4016,39 +4016,39 @@
   min-width: 11ch;
 }
 
-/* PHOSPHOR LIGHT — TG micro-stats + bench readout (theme tokens via --display-face-light-readout-*) */
-[data-display-texture="phosphor-light"] .phosphor-screen .fusion-readout-emphasis,
-[data-display-texture="phosphor-light"] .phosphor-screen-inner .fusion-readout-emphasis,
-[data-display-texture="phosphor-light"] .bench-widget-panel .fusion-readout-emphasis {
+/* DOTTED (ARCTIC) — TG micro-stats + bench readout (theme tokens via --display-face-light-readout-*) */
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen .fusion-readout-emphasis,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen-inner .fusion-readout-emphasis,
+[data-theme="arctic"] [data-display-texture="dotted"] .bench-widget-panel .fusion-readout-emphasis {
   color: var(--display-face-light-readout);
 }
 
-[data-display-texture="phosphor-light"] .phosphor-screen .fusion-readout-divider,
-[data-display-texture="phosphor-light"] .phosphor-screen-inner .fusion-readout-divider,
-[data-display-texture="phosphor-light"] .bench-widget-panel .fusion-readout-divider {
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen .fusion-readout-divider,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen-inner .fusion-readout-divider,
+[data-theme="arctic"] [data-display-texture="dotted"] .bench-widget-panel .fusion-readout-divider {
   color: var(--display-face-light-readout-divider);
   opacity: var(--display-face-light-readout-divider-opacity);
 }
 
-[data-display-texture="phosphor-light"] .phosphor-screen .fusion-readout-idle {
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen .fusion-readout-idle {
   color: var(--display-face-light-readout-idle) !important;
   opacity: 1 !important;
 }
 
-[data-display-texture="phosphor-light"] .phosphor-screen .fusion-readout-divider-idle {
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen .fusion-readout-divider-idle {
   color: var(--display-face-light-readout-idle-divider) !important;
   opacity: var(--display-face-light-readout-idle-divider-opacity) !important;
 }
 
-/* PHOSPHOR LIGHT — CONCURRENCY label */
-[data-display-texture="phosphor-light"] .bench-widget-panel .bench-concurrency-badge__label {
+/* DOTTED (ARCTIC) — CONCURRENCY label */
+[data-theme="arctic"] [data-display-texture="dotted"] .bench-widget-panel .bench-concurrency-badge__label {
   color: var(--display-face-light-concurrency-label);
   opacity: 1;
 }
 
-/* PHOSPHOR LIGHT — shared ×N multiplier chip (bench TG + ctx compact) */
-[data-display-texture="phosphor-light"] .fusion-mult-chip,
-[data-display-texture="phosphor-light"] .bench-widget-panel .bench-concurrency-badge__mult {
+/* DOTTED (ARCTIC) — shared ×N multiplier chip (bench TG + ctx compact) */
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-mult-chip,
+[data-theme="arctic"] [data-display-texture="dotted"] .bench-widget-panel .bench-concurrency-badge__mult {
   --bench-concurrency-chip-bg: var(--display-face-light-concurrency-chip-bg);
   --bench-concurrency-chip-fg: var(--display-face-light-concurrency-chip-fg);
   --bench-concurrency-chip-border: var(--display-face-light-concurrency-chip-border);
@@ -4082,106 +4082,106 @@
   color: #585858;
 }
 
-/* PHOSPHOR LIGHT — ctx slot bars */
-[data-display-texture="phosphor-light"] .phosphor-screen .ctx-shared-pool-chip,
-[data-display-texture="phosphor-light"] .phosphor-screen-inner .ctx-shared-pool-chip,
-[data-display-texture="phosphor-light"] .phosphor-screen .ctx-bar-capacity-chip,
-[data-display-texture="phosphor-light"] .phosphor-screen-inner .ctx-bar-capacity-chip {
+/* DOTTED (ARCTIC) — ctx slot bars */
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen .ctx-shared-pool-chip,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen-inner .ctx-shared-pool-chip,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen .ctx-bar-capacity-chip,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen-inner .ctx-bar-capacity-chip {
   border-color: var(--display-face-light-ctx-chip-border);
   color: var(--display-face-light-ctx-chip-fg);
 }
 
-[data-display-texture="phosphor-light"] .phosphor-screen .ctx-bar-fill-pct--active,
-[data-display-texture="phosphor-light"] .phosphor-screen-inner .ctx-bar-fill-pct--active {
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen .ctx-bar-fill-pct--active,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen-inner .ctx-bar-fill-pct--active {
   color: var(--display-face-light-ctx-fill-pct);
   text-shadow:
     0 0 3px var(--display-face-light-ctx-fill-pct-shadow),
     0 0 6px color-mix(in srgb, var(--display-face-light-ctx-fill-pct-shadow) 55%, transparent);
 }
 
-[data-display-texture="phosphor-light"] .phosphor-screen .ctx-bar-track--active,
-[data-display-texture="phosphor-light"] .phosphor-screen-inner .ctx-bar-track--active {
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen .ctx-bar-track--active,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen-inner .ctx-bar-track--active {
   background: var(--display-face-light-ctx-track-bg);
   border-color: transparent;
 }
 
-[data-display-texture="phosphor-light"] .phosphor-screen .ctx-bar-track--empty,
-[data-display-texture="phosphor-light"] .phosphor-screen-inner .ctx-bar-track--empty {
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen .ctx-bar-track--empty,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen-inner .ctx-bar-track--empty {
   background: transparent;
   border-color: var(--display-face-light-ctx-track-border);
 }
 
-[data-display-texture="phosphor-light"] .phosphor-screen .ctx-bar-fill--processing,
-[data-display-texture="phosphor-light"] .phosphor-screen-inner .ctx-bar-fill--processing {
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen .ctx-bar-fill--processing,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen-inner .ctx-bar-fill--processing {
   background: var(--display-face-light-ctx-fill-processing);
 }
 
-[data-display-texture="phosphor-light"] .phosphor-screen .ctx-bar-fill--idle,
-[data-display-texture="phosphor-light"] .phosphor-screen-inner .ctx-bar-fill--idle {
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen .ctx-bar-fill--idle,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen-inner .ctx-bar-fill--idle {
   background: var(--display-face-light-ctx-fill-idle);
 }
 
-[data-display-texture="phosphor-light"] .phosphor-screen .ctx-bar-slot-label,
-[data-display-texture="phosphor-light"] .phosphor-screen-inner .ctx-bar-slot-label {
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen .ctx-bar-slot-label,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen-inner .ctx-bar-slot-label {
   background: var(--display-face-light-ctx-slot-bg);
   color: var(--display-face-light-ctx-slot-fg);
 }
 
-/* PHOSPHOR LIGHT — bench GPU name + driver */
-[data-display-texture="phosphor-light"] .bench-widget-panel .bench-hw-topo-label {
+/* DOTTED (ARCTIC) — bench GPU name + driver */
+[data-theme="arctic"] [data-display-texture="dotted"] .bench-widget-panel .bench-hw-topo-label {
   color: var(--display-face-light-hw-label);
 }
 
-[data-display-texture="phosphor-light"] .bench-widget-panel .bench-hw-topo-driver {
+[data-theme="arctic"] [data-display-texture="dotted"] .bench-widget-panel .bench-hw-topo-driver {
   color: var(--display-face-light-hw-driver);
 }
 
 /* LIGHT — GPU names + memory readout (tokenized accent; no glow halo) */
-[data-display-texture="phosphor-light"] .phosphor-display-surface .gpu-card-name,
-[data-display-texture="phosphor-light"] .phosphor-display-surface .gpu-selected .gpu-card-name {
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-display-surface .gpu-card-name,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-display-surface .gpu-selected .gpu-card-name {
   color: var(--display-face-light-gpu-name) !important;
   text-shadow: none !important;
 }
-[data-display-texture="phosphor-light"] .phosphor-display-surface .gpu-card__bar-need:not(.gpu-card__bar-need--caution):not(.gpu-card__bar-need--warn):not(.gpu-card__bar-need--hot),
-[data-display-texture="phosphor-light"] .phosphor-display-surface .gpu-card__pct,
-[data-display-texture="phosphor-light"] .vram-forecast-display .gpu-card__bar-need:not(.gpu-card__bar-need--caution):not(.gpu-card__bar-need--warn):not(.gpu-card__bar-need--hot),
-[data-display-texture="phosphor-light"] .vram-forecast-display .gpu-card__pct {
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-display-surface .gpu-card__bar-need:not(.gpu-card__bar-need--caution):not(.gpu-card__bar-need--warn):not(.gpu-card__bar-need--hot),
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-display-surface .gpu-card__pct,
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-forecast-display .gpu-card__bar-need:not(.gpu-card__bar-need--caution):not(.gpu-card__bar-need--warn):not(.gpu-card__bar-need--hot),
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-forecast-display .gpu-card__pct {
   color: var(--display-face-light-gpu-readout, var(--display-face-light-text-accent, var(--theme-accent))) !important;
   text-shadow: none !important;
   filter: none !important;
 }
-[data-display-texture="phosphor-light"] .vram-forecast-display .gpu-card__bar-need--caution {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-forecast-display .gpu-card__bar-need--caution {
   color: #b45309 !important;
 }
-[data-display-texture="phosphor-light"] .vram-forecast-display .gpu-card__bar-need--warn {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-forecast-display .gpu-card__bar-need--warn {
   color: var(--theme-telemetry-amber, #fb923c) !important;
 }
-[data-display-texture="phosphor-light"] .vram-forecast-display .gpu-card__bar-need--hot {
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-forecast-display .gpu-card__bar-need--hot {
   color: var(--theme-telemetry-red, #ef4444) !important;
 }
 
 /*
- * PHOSPHOR DARK + CLEAN — TG micro-stats, ctx slots, mult chip.
+ * DOTTED + CLEAN — TG micro-stats, ctx slots, mult chip.
  * (Do not chain unfinished selectors — a prior strip accidentally painted
  * box-shadow rings on every listed surface.)
  */
-[data-display-texture="phosphor-dark"] .phosphor-screen .fusion-readout-emphasis,
-[data-display-texture="phosphor-dark"] .phosphor-screen-inner .fusion-readout-emphasis,
+[data-display-texture="dotted"] .phosphor-screen .fusion-readout-emphasis,
+[data-display-texture="dotted"] .phosphor-screen-inner .fusion-readout-emphasis,
 [data-display-texture="clean"] .phosphor-screen .fusion-readout-emphasis,
 [data-display-texture="clean"] .phosphor-screen-inner .fusion-readout-emphasis {
   color: color-mix(in srgb, var(--display-face-text) 72%, #e8edf4);
 }
 
-[data-display-texture="phosphor-dark"] .phosphor-screen .fusion-readout-divider,
-[data-display-texture="phosphor-dark"] .phosphor-screen-inner .fusion-readout-divider,
+[data-display-texture="dotted"] .phosphor-screen .fusion-readout-divider,
+[data-display-texture="dotted"] .phosphor-screen-inner .fusion-readout-divider,
 [data-display-texture="clean"] .phosphor-screen .fusion-readout-divider,
 [data-display-texture="clean"] .phosphor-screen-inner .fusion-readout-divider {
   color: color-mix(in srgb, var(--display-face-text-muted) 48%, #a8b4c4);
   opacity: 0.72;
 }
 
-[data-display-texture="phosphor-dark"] .phosphor-screen .fusion-readout-idle,
-[data-display-texture="phosphor-dark"] .phosphor-screen-inner .fusion-readout-idle,
+[data-display-texture="dotted"] .phosphor-screen .fusion-readout-idle,
+[data-display-texture="dotted"] .phosphor-screen-inner .fusion-readout-idle,
 [data-display-texture="clean"] .phosphor-screen .fusion-readout-idle,
 [data-display-texture="clean"] .phosphor-screen-inner .fusion-readout-idle {
   /* Brightness-clamped control muted — visible on all dark faces (SLATE grey too). */
@@ -4189,79 +4189,79 @@
   opacity: 1 !important;
 }
 
-[data-display-texture="phosphor-dark"] .phosphor-screen .fusion-readout-divider-idle,
-[data-display-texture="phosphor-dark"] .phosphor-screen-inner .fusion-readout-divider-idle,
+[data-display-texture="dotted"] .phosphor-screen .fusion-readout-divider-idle,
+[data-display-texture="dotted"] .phosphor-screen-inner .fusion-readout-divider-idle,
 [data-display-texture="clean"] .phosphor-screen .fusion-readout-divider-idle,
 [data-display-texture="clean"] .phosphor-screen-inner .fusion-readout-divider-idle {
   color: color-mix(in srgb, var(--display-face-text-muted) 70%, #727c8c) !important;
   opacity: 0.72 !important;
 }
 
-[data-display-texture="phosphor-dark"] .phosphor-screen .ctx-shared-pool-chip,
-[data-display-texture="phosphor-dark"] .phosphor-screen-inner .ctx-shared-pool-chip,
+[data-display-texture="dotted"] .phosphor-screen .ctx-shared-pool-chip,
+[data-display-texture="dotted"] .phosphor-screen-inner .ctx-shared-pool-chip,
 [data-display-texture="clean"] .phosphor-screen .ctx-shared-pool-chip,
 [data-display-texture="clean"] .phosphor-screen-inner .ctx-shared-pool-chip {
   border-color: color-mix(in srgb, var(--display-face-text) 45%, transparent);
   color: color-mix(in srgb, var(--display-face-text) 82%, transparent);
 }
 
-[data-display-texture="phosphor-dark"] .phosphor-screen .ctx-bar-capacity-chip,
-[data-display-texture="phosphor-dark"] .phosphor-screen-inner .ctx-bar-capacity-chip,
+[data-display-texture="dotted"] .phosphor-screen .ctx-bar-capacity-chip,
+[data-display-texture="dotted"] .phosphor-screen-inner .ctx-bar-capacity-chip,
 [data-display-texture="clean"] .phosphor-screen .ctx-bar-capacity-chip,
 [data-display-texture="clean"] .phosphor-screen-inner .ctx-bar-capacity-chip {
   border-color: var(--display-face-border);
   color: color-mix(in srgb, var(--display-face-text-muted) 72%, transparent);
 }
 
-[data-display-texture="phosphor-dark"] .phosphor-screen .ctx-bar-fill-pct--active,
-[data-display-texture="phosphor-dark"] .phosphor-screen-inner .ctx-bar-fill-pct--active,
+[data-display-texture="dotted"] .phosphor-screen .ctx-bar-fill-pct--active,
+[data-display-texture="dotted"] .phosphor-screen-inner .ctx-bar-fill-pct--active,
 [data-display-texture="clean"] .phosphor-screen .ctx-bar-fill-pct--active,
 [data-display-texture="clean"] .phosphor-screen-inner .ctx-bar-fill-pct--active {
   color: color-mix(in srgb, var(--display-face-text) 92%, #fff);
   text-shadow: 0 0 4px color-mix(in srgb, var(--theme-bg) 80%, transparent), 0 1px 2px color-mix(in srgb, #000 55%, transparent);
 }
 
-[data-display-texture="phosphor-dark"] .phosphor-screen .ctx-bar-track--active,
-[data-display-texture="phosphor-dark"] .phosphor-screen-inner .ctx-bar-track--active,
+[data-display-texture="dotted"] .phosphor-screen .ctx-bar-track--active,
+[data-display-texture="dotted"] .phosphor-screen-inner .ctx-bar-track--active,
 [data-display-texture="clean"] .phosphor-screen .ctx-bar-track--active,
 [data-display-texture="clean"] .phosphor-screen-inner .ctx-bar-track--active {
   background: color-mix(in srgb, var(--display-face-bar-bg) 65%, transparent);
   border-color: transparent;
 }
 
-[data-display-texture="phosphor-dark"] .phosphor-screen .ctx-bar-track--empty,
-[data-display-texture="phosphor-dark"] .phosphor-screen-inner .ctx-bar-track--empty,
+[data-display-texture="dotted"] .phosphor-screen .ctx-bar-track--empty,
+[data-display-texture="dotted"] .phosphor-screen-inner .ctx-bar-track--empty,
 [data-display-texture="clean"] .phosphor-screen .ctx-bar-track--empty,
 [data-display-texture="clean"] .phosphor-screen-inner .ctx-bar-track--empty {
   background: transparent;
   border-color: color-mix(in srgb, var(--display-face-border) 55%, transparent);
 }
 
-[data-display-texture="phosphor-dark"] .phosphor-screen .ctx-bar-fill--processing,
-[data-display-texture="phosphor-dark"] .phosphor-screen-inner .ctx-bar-fill--processing,
+[data-display-texture="dotted"] .phosphor-screen .ctx-bar-fill--processing,
+[data-display-texture="dotted"] .phosphor-screen-inner .ctx-bar-fill--processing,
 [data-display-texture="clean"] .phosphor-screen .ctx-bar-fill--processing,
 [data-display-texture="clean"] .phosphor-screen-inner .ctx-bar-fill--processing {
   background: #22c55e;
 }
 
-[data-display-texture="phosphor-dark"] .phosphor-screen .ctx-bar-fill--idle,
-[data-display-texture="phosphor-dark"] .phosphor-screen-inner .ctx-bar-fill--idle,
+[data-display-texture="dotted"] .phosphor-screen .ctx-bar-fill--idle,
+[data-display-texture="dotted"] .phosphor-screen-inner .ctx-bar-fill--idle,
 [data-display-texture="clean"] .phosphor-screen .ctx-bar-fill--idle,
 [data-display-texture="clean"] .phosphor-screen-inner .ctx-bar-fill--idle {
   background: color-mix(in srgb, var(--display-face-text) 38%, transparent);
 }
 
-[data-display-texture="phosphor-dark"] .phosphor-screen .ctx-bar-slot-label,
-[data-display-texture="phosphor-dark"] .phosphor-screen-inner .ctx-bar-slot-label,
+[data-display-texture="dotted"] .phosphor-screen .ctx-bar-slot-label,
+[data-display-texture="dotted"] .phosphor-screen-inner .ctx-bar-slot-label,
 [data-display-texture="clean"] .phosphor-screen .ctx-bar-slot-label,
 [data-display-texture="clean"] .phosphor-screen-inner .ctx-bar-slot-label {
   background: color-mix(in srgb, var(--theme-bg) 50%, transparent);
   color: color-mix(in srgb, var(--display-face-text) 78%, transparent);
 }
 
-/* PHOSPHOR DARK + CLEAN — shared ×N multiplier chip only (not ctx / readout) */
-[data-display-texture="phosphor-dark"] .fusion-mult-chip,
-[data-display-texture="phosphor-dark"] .bench-widget-panel .bench-concurrency-badge__mult,
+/* DOTTED + CLEAN — shared ×N multiplier chip only (not ctx / readout) */
+[data-display-texture="dotted"] .fusion-mult-chip,
+[data-display-texture="dotted"] .bench-widget-panel .bench-concurrency-badge__mult,
 [data-display-texture="clean"] .fusion-mult-chip,
 [data-display-texture="clean"] .bench-widget-panel .bench-concurrency-badge__mult {
   --bench-concurrency-chip-bg: color-mix(in srgb, var(--theme-bg) 76%, #000);
@@ -4306,19 +4306,19 @@
   box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.25);
 }
 
-/* PHOSPHOR LIGHT — bench control chips: e-ink active fill */
-[data-display-texture="phosphor-light"] .bench-widget-panel .value-chip-active,
-[data-display-texture="phosphor-light"] .bench-widget-panel .bench-concurrency-chip.value-chip-active {
+/* DOTTED (ARCTIC) — bench control chips: e-ink active fill */
+[data-theme="arctic"] [data-display-texture="dotted"] .bench-widget-panel .value-chip-active,
+[data-theme="arctic"] [data-display-texture="dotted"] .bench-widget-panel .bench-concurrency-chip.value-chip-active {
   background: var(--display-face-light-concurrency-chip-bg) !important;
   border-color: var(--display-face-light-concurrency-chip-border) !important;
   color: var(--display-face-light-concurrency-chip-fg) !important;
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--display-face-light-concurrency-chip-border) 45%, transparent);
 }
 
-/* PHOSPHOR DARK + CLEAN — bench control chips: brightness-clamped control ink
+/* DOTTED + CLEAN — bench control chips: brightness-clamped control ink
    (decouples from workspace --theme-chip-* so SLATE's grey chips stay visible). */
-[data-display-texture="phosphor-dark"] .bench-widget-panel .value-chip,
-[data-display-texture="phosphor-dark"] .bench-widget-panel .bench-concurrency-chip.value-chip,
+[data-display-texture="dotted"] .bench-widget-panel .value-chip,
+[data-display-texture="dotted"] .bench-widget-panel .bench-concurrency-chip.value-chip,
 [data-display-texture="clean"] .bench-widget-panel .value-chip,
 [data-display-texture="clean"] .bench-widget-panel .bench-concurrency-chip.value-chip {
   background: color-mix(in srgb, var(--display-face-control-text) 7%, transparent) !important;
@@ -4326,8 +4326,8 @@
   color: var(--display-face-control-muted) !important;
 }
 
-[data-display-texture="phosphor-dark"] .bench-widget-panel .value-chip-active,
-[data-display-texture="phosphor-dark"] .bench-widget-panel .bench-concurrency-chip.value-chip-active,
+[data-display-texture="dotted"] .bench-widget-panel .value-chip-active,
+[data-display-texture="dotted"] .bench-widget-panel .bench-concurrency-chip.value-chip-active,
 [data-display-texture="clean"] .bench-widget-panel .value-chip-active,
 [data-display-texture="clean"] .bench-widget-panel .bench-concurrency-chip.value-chip-active {
   background: var(--display-face-control-active-bg) !important;
@@ -4391,9 +4391,9 @@
   padding: 0 5px;
 }
 
-/* PHOSPHOR DARK + CLEAN (non-ARCTIC) — bench concurrency label */
+/* DOTTED + CLEAN (non-ARCTIC) — bench concurrency label */
 
-/* ARCTIC — CLEAN texture concurrency label (phosphor-light uses --display-face-light-concurrency-label) */
+/* ARCTIC — CLEAN texture concurrency label (DOTTED uses --display-face-light-concurrency-label) */
 
 
 .bench-widget-panel .bench-concurrency-badge--compact .bench-concurrency-badge__mult {
@@ -4449,12 +4449,12 @@
   white-space: nowrap;
 }
 
-/* PHOSPHOR DARK — hw topo uses phosphor tokens (ARCTIC inherits SLATE vars on display face) */
-[data-display-texture="phosphor-dark"] .bench-widget-panel .bench-hw-topo-label {
+/* DOTTED (dark themes) — hw topo uses phosphor tokens (ARCTIC inherits SLATE vars on display face) */
+[data-display-texture="dotted"] .bench-widget-panel .bench-hw-topo-label {
   color: color-mix(in srgb, var(--display-face-text) 82%, transparent);
 }
 
-[data-display-texture="phosphor-dark"] .bench-widget-panel .bench-hw-topo-driver {
+[data-display-texture="dotted"] .bench-widget-panel .bench-hw-topo-driver {
   color: color-mix(in srgb, var(--display-face-text-muted) 90%, transparent);
 }
 
@@ -4601,8 +4601,8 @@
   color: color-mix(in srgb, var(--theme-text, #e2e8f0) 70%, transparent);
 }
 
-[data-display-texture="phosphor-light"] .fusion-bench-latch__segments > span.is-lit,
-[data-display-texture="phosphor-light"] .fusion-bench-latch--stowed .fusion-bench-latch__segments > span:first-child {
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-bench-latch__segments > span.is-lit,
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-bench-latch--stowed .fusion-bench-latch__segments > span:first-child {
   background: color-mix(in srgb, var(--display-face-light-readout-fg, #1a1a1a) 55%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--display-face-light-readout-fg, #1a1a1a) 25%, transparent);
 }
@@ -4768,11 +4768,11 @@ html[data-industrial-bezel="brush"] {
 }
 
 /*
- * PHOSPHOR DARK — CRT face on glass only (`.phosphor-screen-inner`), full area.
+ * DOTTED (dark themes) — CRT face on glass only (`.phosphor-screen-inner`), full area.
  * Shadow is unified on .phosphor-screen-inner — do not re-chip here.
  */
-[data-display-texture="phosphor-dark"] .phosphor-screen-inner.phosphor-display-surface,
-.launch-rail-tel[data-display-texture="phosphor-dark"] .phosphor-display-surface {
+[data-display-texture="dotted"] .phosphor-screen-inner.phosphor-display-surface,
+.launch-rail-tel[data-display-texture="dotted"] .phosphor-display-surface {
   position: relative;
   /* Per-theme accent-tinted CRT face (SLATE stays neutral grey). Was hardcoded #080808,
      which lost the MATRIX/AMBER/CYAN tint. DARK uses --display-face-bg-dark token. */
@@ -4810,30 +4810,30 @@ html[data-industrial-bezel="brush"] {
 }
 
 /* DARK: texture is on the face, not ::before/::after */
-[data-display-texture="phosphor-dark"] .phosphor-display-surface::before,
-[data-display-texture="phosphor-dark"] .phosphor-display-surface::after,
-.launch-rail-tel[data-display-texture="phosphor-dark"] .phosphor-display-surface::before,
-.launch-rail-tel[data-display-texture="phosphor-dark"] .phosphor-display-surface::after {
+[data-display-texture="dotted"] .phosphor-display-surface::before,
+[data-display-texture="dotted"] .phosphor-display-surface::after,
+.launch-rail-tel[data-display-texture="dotted"] .phosphor-display-surface::before,
+.launch-rail-tel[data-display-texture="dotted"] .phosphor-display-surface::after {
   display: none !important;
   opacity: 0 !important;
 }
 
 /*
- * PHOSPHOR LIGHT — e-ink face + grain.
+ * DOTTED (ARCTIC) — e-ink face + grain.
  * Main glass: `.phosphor-screen-inner` only.
  * HW monitor widgets: `.launch-rail-tel .phosphor-display-surface` (same face recipe;
  * no recess shadow on widgets — launch.css keeps box-shadow: none).
  * Do not paint LIGHT on arbitrary nested content (that caused the “inner pad” bug).
  */
-[data-display-texture="phosphor-light"] .phosphor-screen-inner.phosphor-display-surface,
-.launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface {
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen-inner.phosphor-display-surface,
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .phosphor-display-surface {
   --theme-bench-inset-shadow: var(--display-profile-bench-inset);
   background-color: var(--display-face-light-surface) !important;
   background-image: none !important;
 }
 
 /* LIGHT — sharp depressed inset on light e-ink face (hard edge lines + tight shadow) */
-[data-display-texture="phosphor-light"] .phosphor-screen-inner.phosphor-display-surface {
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen-inner.phosphor-display-surface {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.88),
     inset 0 -1px 0 rgba(255, 255, 255, 0.55),
@@ -4841,8 +4841,8 @@ html[data-industrial-bezel="brush"] {
     inset 0 -8px 16px -6px rgba(15, 40, 70, 0.14) !important;
 }
 
-[data-display-texture="phosphor-light"] .phosphor-screen-inner.phosphor-display-surface::before,
-.launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface::before {
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen-inner.phosphor-display-surface::before,
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .phosphor-display-surface::before {
   content: "" !important;
   display: block !important;
   opacity: var(--display-face-light-band-opacity, 0.55) !important;
@@ -4862,8 +4862,8 @@ html[data-industrial-bezel="brush"] {
   mix-blend-mode: var(--display-face-light-texture-blend, multiply);
 }
 
-[data-display-texture="phosphor-light"] .phosphor-screen-inner.phosphor-display-surface::after,
-.launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface::after {
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen-inner.phosphor-display-surface::after,
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .phosphor-display-surface::after {
   content: "" !important;
   display: block !important;
   opacity: 1 !important;
@@ -4881,8 +4881,8 @@ html[data-industrial-bezel="brush"] {
   mix-blend-mode: var(--display-face-light-texture-blend, multiply);
 }
 
-[data-display-texture="phosphor-light"] .phosphor-screen-inner.phosphor-display-surface > *,
-.launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface > * {
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen-inner.phosphor-display-surface > *,
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .phosphor-display-surface > * {
   position: relative;
   z-index: 1;
 }
@@ -4899,77 +4899,77 @@ html[data-industrial-bezel="brush"] {
   opacity: 0 !important;
 }
 
-/* PHOSPHOR LIGHT — e-ink text palette (VRAM forecast + fusion overlay) */
-[data-display-texture="phosphor-light"] .phosphor-screen-inner .text-stealth-muted,
-[data-display-texture="phosphor-light"] .phosphor-screen-inner .text-stealth-muted\/30,
-[data-display-texture="phosphor-light"] .phosphor-screen-inner .text-stealth-muted\/40,
-[data-display-texture="phosphor-light"] .phosphor-screen-inner .text-stealth-muted\/50,
-[data-display-texture="phosphor-light"] .phosphor-screen-inner .text-stealth-muted\/60,
-[data-display-texture="phosphor-light"] .phosphor-screen .text-stealth-muted,
-[data-display-texture="phosphor-light"] .phosphor-screen .text-stealth-muted\/30,
-[data-display-texture="phosphor-light"] .phosphor-screen .text-stealth-muted\/40,
-[data-display-texture="phosphor-light"] .phosphor-screen .text-stealth-muted\/50,
-[data-display-texture="phosphor-light"] .phosphor-screen .text-stealth-muted\/60 {
+/* DOTTED (ARCTIC) — e-ink text palette (VRAM forecast + fusion overlay) */
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen-inner .text-stealth-muted,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen-inner .text-stealth-muted\/30,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen-inner .text-stealth-muted\/40,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen-inner .text-stealth-muted\/50,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen-inner .text-stealth-muted\/60,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen .text-stealth-muted,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen .text-stealth-muted\/30,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen .text-stealth-muted\/40,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen .text-stealth-muted\/50,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen .text-stealth-muted\/60 {
   color: var(--display-face-light-text-muted) !important;
 }
 
-[data-display-texture="phosphor-light"] .phosphor-screen-inner .text-nv-green,
-[data-display-texture="phosphor-light"] .phosphor-screen .text-nv-green {
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen-inner .text-nv-green,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen .text-nv-green {
   color: var(--display-face-light-text-accent) !important;
 }
 
-[data-display-texture="phosphor-light"] .phosphor-screen-inner .text-electric-blue,
-[data-display-texture="phosphor-light"] .phosphor-screen-inner .text-blue-700,
-[data-display-texture="phosphor-light"] .phosphor-screen .text-telemetry-cyan,
-[data-display-texture="phosphor-light"] .phosphor-screen .text-telemetry-cyan\/70 {
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen-inner .text-electric-blue,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen-inner .text-blue-700,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen .text-telemetry-cyan,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen .text-telemetry-cyan\/70 {
   color: var(--display-face-light-text-cyan) !important;
 }
 
-[data-display-texture="phosphor-light"] .phosphor-screen-inner .text-orange-400,
-[data-display-texture="phosphor-light"] .phosphor-screen-inner .text-telemetry-amber,
-[data-display-texture="phosphor-light"] .phosphor-screen .text-orange-400,
-[data-display-texture="phosphor-light"] .phosphor-screen .text-telemetry-amber,
-[data-display-texture="phosphor-light"] .phosphor-screen .text-telemetry-amber\/80 {
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen-inner .text-orange-400,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen-inner .text-telemetry-amber,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen .text-orange-400,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen .text-telemetry-amber,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen .text-telemetry-amber\/80 {
   color: var(--display-face-light-text-amber) !important;
 }
 
-[data-display-texture="phosphor-light"] .phosphor-screen-inner .bg-stealth-dark,
-[data-display-texture="phosphor-light"] .phosphor-screen .bg-stealth-dark {
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen-inner .bg-stealth-dark,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen .bg-stealth-dark {
   background-color: var(--display-face-light-bar-bg) !important;
 }
 
-[data-display-texture="phosphor-light"] .phosphor-screen-inner .border-stealth-border,
-[data-display-texture="phosphor-light"] .phosphor-screen-inner .border-stealth-border\/30,
-[data-display-texture="phosphor-light"] .phosphor-screen-inner .border-stealth-border\/50,
-[data-display-texture="phosphor-light"] .phosphor-screen .border-stealth-border,
-[data-display-texture="phosphor-light"] .phosphor-screen .border-stealth-border\/30,
-[data-display-texture="phosphor-light"] .phosphor-screen .border-stealth-border\/50 {
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen-inner .border-stealth-border,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen-inner .border-stealth-border\/30,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen-inner .border-stealth-border\/50,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen .border-stealth-border,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen .border-stealth-border\/30,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen .border-stealth-border\/50 {
   border-color: var(--display-face-light-border) !important;
 }
 
-/* PHOSPHOR LIGHT — VRAM forecast bar tracks: darkened theme accent (not neutral pink-beige) */
-[data-display-texture="phosphor-light"] .vram-forecast-display .relative.overflow-hidden.border-stealth-border\/30,
-[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .relative.overflow-hidden.border-stealth-border\/30 {
+/* DOTTED (ARCTIC) — VRAM forecast bar tracks: darkened theme accent (not neutral pink-beige) */
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-forecast-display .relative.overflow-hidden.border-stealth-border\/30,
+[data-theme="arctic"] [data-display-texture="dotted"] .industrial-display-area .vram-forecast-display .relative.overflow-hidden.border-stealth-border\/30 {
   background-color: var(--display-face-light-bar-bg) !important;
 }
 
-/* PHOSPHOR LIGHT — nominal VRAM/GPU bar fills follow per-theme e-ink accent (ARCTIC = glacier blue) */
-[data-display-texture="phosphor-light"] .vram-forecast-display .bg-nv-green,
-[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .bg-nv-green,
-[data-display-texture="phosphor-light"] .industrial-display-area .gpu-bar-fill.bg-nv-green {
+/* DOTTED (ARCTIC) — nominal VRAM/GPU bar fills follow per-theme e-ink accent (ARCTIC = glacier blue) */
+[data-theme="arctic"] [data-display-texture="dotted"] .vram-forecast-display .bg-nv-green,
+[data-theme="arctic"] [data-display-texture="dotted"] .industrial-display-area .vram-forecast-display .bg-nv-green,
+[data-theme="arctic"] [data-display-texture="dotted"] .industrial-display-area .gpu-bar-fill.bg-nv-green {
   background-color: var(--display-face-light-ctx-fill-processing) !important;
   /* Keep bevel bottom in family (dark blue on ARCTIC, not slate grey) */
   color: var(--display-face-light-ctx-fill-processing) !important;
 }
 
-/* PHOSPHOR LIGHT — PREFILL hero TPS: Arctic slate on e-ink (all app themes + share capture) */
-[data-display-texture="phosphor-light"] .phosphor-screen .fusion-prefill-hero-value--active,
-[data-display-texture="phosphor-light"] .phosphor-screen-inner .fusion-prefill-hero-value--active {
+/* DOTTED (ARCTIC) — PREFILL hero TPS: Arctic slate on e-ink (all app themes + share capture) */
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen .fusion-prefill-hero-value--active,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen-inner .fusion-prefill-hero-value--active {
   color: #4a5568;
 }
 
-[data-display-texture="phosphor-light"] .phosphor-screen .fusion-prefill-hero-value--idle,
-[data-display-texture="phosphor-light"] .phosphor-screen-inner .fusion-prefill-hero-value--idle {
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen .fusion-prefill-hero-value--idle,
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen-inner .fusion-prefill-hero-value--idle {
   color: rgba(90, 100, 120, 0.38);
 }
 
@@ -5294,7 +5294,7 @@ html[data-industrial-bezel="brush"] {
   margin: 0;
 }
 
-/* Fusion overlay — PREFILL hero TPS (default slate; phosphor-light + ARCTIC overrides below) */
+/* Fusion overlay — PREFILL hero TPS (default slate; DOTTED + ARCTIC overrides below) */
 .fusion-prefill-hero-value--active {
   color: rgba(148, 163, 184, 0.7);
 }
@@ -5332,8 +5332,8 @@ html[data-industrial-bezel="brush"] {
 }
 
 /* Late cascade — glass face only (phosphor-screen-inner) */
-[data-display-texture="phosphor-dark"] .phosphor-screen-inner.phosphor-display-surface,
-.launch-rail-tel[data-display-texture="phosphor-dark"] .phosphor-display-surface {
+[data-display-texture="dotted"] .phosphor-screen-inner.phosphor-display-surface,
+.launch-rail-tel[data-display-texture="dotted"] .phosphor-display-surface {
   /* Per-theme accent-tinted CRT face (SLATE stays neutral). Matches CLEAN below. */
   background-color: var(--display-face-bg-dark, #080808) !important;
   /* Soft phosphor dots only — scan stripes off via --display-face-dark-band-opacity: 0 */
@@ -5368,8 +5368,8 @@ html[data-industrial-bezel="brush"] {
     100% var(--display-face-dark-grain-scan, 5px) !important;
 }
 
-[data-display-texture="phosphor-light"] .phosphor-screen-inner.phosphor-display-surface,
-.launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface {
+[data-theme="arctic"] [data-display-texture="dotted"] .phosphor-screen-inner.phosphor-display-surface,
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .phosphor-display-surface {
   background-color: var(--display-face-light-surface) !important;
   background-image: none !important;
 }
@@ -6461,8 +6461,8 @@ html[data-industrial-bezel="brush"] {
   }
 }
 
-/* PHOSPHOR LIGHT — instrument wells + heroes on e-ink face */
-[data-display-texture="phosphor-light"] .fusion-instrument {
+/* DOTTED (ARCTIC) — instrument wells + heroes on e-ink face */
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-instrument {
   background:
     linear-gradient(
       180deg,
@@ -6476,45 +6476,45 @@ html[data-industrial-bezel="brush"] {
     inset 0 -1px 0 color-mix(in srgb, #000 8%, transparent);
 }
 
-[data-display-texture="phosphor-light"] .fusion-instrument--live {
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-instrument--live {
   border-color: color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 35%, transparent);
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, #fff 60%, transparent),
     0 0 0 1px color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 12%, transparent);
 }
 
-[data-display-texture="phosphor-light"] .fusion-tg-hero-value.is-hot,
-[data-display-texture="phosphor-light"] .fusion-instrument--tg .fusion-instrument__value.is-hot {
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-tg-hero-value.is-hot,
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-instrument--tg .fusion-instrument__value.is-hot {
   color: var(--display-face-light-readout, #1e3a14);
   text-shadow: none;
 }
 
-[data-display-texture="phosphor-light"] .fusion-prefill-hero-value--active,
-[data-display-texture="phosphor-light"] .fusion-prefill-hero-value.is-hot {
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-prefill-hero-value--active,
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-prefill-hero-value.is-hot {
   color: #4a5568;
   text-shadow: none;
 }
 
-[data-display-texture="phosphor-light"] .fusion-prefill-hero-value--idle,
-[data-display-texture="phosphor-light"] .fusion-prefill-hero-value.is-ghost {
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-prefill-hero-value--idle,
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-prefill-hero-value.is-ghost {
   color: rgba(90, 100, 120, 0.38);
 }
 
-[data-display-texture="phosphor-light"] .fusion-instrument__phase--tg {
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-instrument__phase--tg {
   color: var(--display-face-light-readout, #1e3a14);
   text-shadow: none;
 }
 
-[data-display-texture="phosphor-light"] .fusion-hero-spark--active {
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-hero-spark--active {
   color: var(--display-face-light-readout, #1e3a14);
 }
 
-[data-display-texture="phosphor-light"] .fusion-mode-seg__btn.is-active {
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-mode-seg__btn.is-active {
   background: color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 14%, transparent);
   color: var(--display-face-light-readout, #1e3a14);
 }
 
-[data-display-texture="phosphor-light"] .fusion-pp-progress__fill.is-active {
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-pp-progress__fill.is-active {
   background: color-mix(in srgb, #b45309 70%, #1e3a14);
   box-shadow: none;
 }
@@ -7071,9 +7071,9 @@ html[data-industrial-bezel="brush"] {
 
 /* (bench tray latch keeps .fusion-bench-latch — share-strip + layout margins) */
 
-/* Phosphor light — slot/bench instruments */
-[data-display-texture="phosphor-light"] .fusion-slot-bank__well,
-[data-display-texture="phosphor-light"] .fusion-bench-panel.bench-widget-panel {
+/* DOTTED (ARCTIC) — slot/bench instruments */
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-slot-bank__well,
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-bench-panel.bench-widget-panel {
   background:
     linear-gradient(
       180deg,
@@ -7086,36 +7086,36 @@ html[data-industrial-bezel="brush"] {
     inset 0 -1px 0 color-mix(in srgb, #000 8%, transparent);
 }
 
-[data-display-texture="phosphor-light"] .fusion-slot-bank--live .fusion-slot-bank__well {
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-slot-bank--live .fusion-slot-bank__well {
   border-color: color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 40%, transparent);
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, #fff 70%, transparent),
     0 0 0 1px color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 18%, transparent);
 }
 
-[data-display-texture="phosphor-light"] .fusion-slot-bank__title,
-[data-display-texture="phosphor-light"] .fusion-bench-row-label,
-[data-display-texture="phosphor-light"] .fusion-bench-metric__label {
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-slot-bank__title,
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-bench-row-label,
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-bench-metric__label {
   color: color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 55%, transparent);
 }
 
 /* LIGHT paper — solid dark well + ice ink (same language as concurrency chips) */
-[data-display-texture="phosphor-light"] .fusion-bench-run {
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-bench-run {
   background: var(--display-face-light-concurrency-chip-bg, #243818) !important;
   border-color: var(--display-face-light-concurrency-chip-border, #4d7a00) !important;
   color: var(--display-face-light-concurrency-chip-fg, #d9f99d) !important;
 }
-[data-display-texture="phosphor-light"] .fusion-bench-run:hover:not(:disabled) {
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-bench-run:hover:not(:disabled) {
   filter: brightness(1.08);
 }
-[data-display-texture="phosphor-light"] .fusion-bench-toggle--on {
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-bench-toggle--on {
   background: var(--display-face-light-concurrency-chip-bg, #243818) !important;
   border-color: var(--display-face-light-concurrency-chip-border, #4d7a00) !important;
   color: var(--display-face-light-concurrency-chip-fg, #d9f99d) !important;
   box-shadow: none;
 }
 
-[data-display-texture="phosphor-light"] .ctx-bar-fill--processing {
+[data-theme="arctic"] [data-display-texture="dotted"] .ctx-bar-fill--processing {
   background: var(--display-face-light-ctx-fill-processing, #3f6b2a);
   box-shadow: none;
 }
@@ -7668,10 +7668,10 @@ html[data-industrial-bezel="brush"] {
   color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 70%, transparent);
 }
 
-/* Phosphor light boot */
-[data-display-texture="phosphor-light"] .fusion-boot-gpu-bank__well,
-[data-display-texture="phosphor-light"] .fusion-boot-disk,
-[data-display-texture="phosphor-light"] .fusion-boot-ticker {
+/* DOTTED (ARCTIC) boot */
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-boot-gpu-bank__well,
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-boot-disk,
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-boot-ticker {
   background:
     linear-gradient(
       180deg,
@@ -7684,40 +7684,40 @@ html[data-industrial-bezel="brush"] {
     inset 0 -1px 0 color-mix(in srgb, #000 8%, transparent);
 }
 
-[data-display-texture="phosphor-light"] .fusion-boot__title,
-[data-display-texture="phosphor-light"] .fusion-boot-gpu-bank__title,
-[data-display-texture="phosphor-light"] .fusion-boot-disk__lab,
-[data-display-texture="phosphor-light"] .fusion-boot-phase__lab,
-[data-display-texture="phosphor-light"] .fusion-boot-meta__lab {
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-boot__title,
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-boot-gpu-bank__title,
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-boot-disk__lab,
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-boot-phase__lab,
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-boot-meta__lab {
   color: color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 55%, transparent);
 }
 
-[data-display-texture="phosphor-light"] .fusion-boot__timer,
-[data-display-texture="phosphor-light"] .fusion-boot-gpu-col__val,
-[data-display-texture="phosphor-light"] .fusion-boot-meta__val,
-[data-display-texture="phosphor-light"] .fusion-boot-phase__step.is-done .fusion-boot-phase__lab,
-[data-display-texture="phosphor-light"] .fusion-boot-phase__step.is-active .fusion-boot-phase__lab {
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-boot__timer,
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-boot-gpu-col__val,
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-boot-meta__val,
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-boot-phase__step.is-done .fusion-boot-phase__lab,
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-boot-phase__step.is-active .fusion-boot-phase__lab {
   color: var(--display-face-light-readout, #1e3a14);
   text-shadow: none;
 }
 
-[data-display-texture="phosphor-light"] .fusion-boot-gpu-col__fill {
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-boot-gpu-col__fill {
   background: var(--display-face-light-ctx-fill-processing, #3f6b2a);
   box-shadow: none;
   opacity: 0.85;
 }
 
-[data-display-texture="phosphor-light"] .fusion-boot-disk.is-hot .fusion-boot-disk__value,
-[data-display-texture="phosphor-light"] .fusion-boot-disk.is-warm .fusion-boot-disk__value {
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-boot-disk.is-hot .fusion-boot-disk__value,
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-boot-disk.is-warm .fusion-boot-disk__value {
   color: #0e7490;
   text-shadow: none;
 }
 
-[data-display-texture="phosphor-light"] .fusion-boot-disk__mbit {
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-boot-disk__mbit {
   color: color-mix(in srgb, #0e7490 70%, transparent);
 }
 
-[data-display-texture="phosphor-light"] .fusion-boot-ticker__line {
+[data-theme="arctic"] [data-display-texture="dotted"] .fusion-boot-ticker__line {
   color: color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 78%, transparent);
 }
 

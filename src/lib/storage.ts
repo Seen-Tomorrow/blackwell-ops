@@ -50,7 +50,7 @@ import type {
  * | BlackOps-fusion-log-verbosity | 3 \| 4 | Engine `-lv` at launch (default 3; 4 = full belt debug) |
  * | BlackOps-fusion-bench-tray | (legacy, purged) | Session-only bench tray — key removed, always stowed on load |
  * | BlackOps-config-param-legend | open \| stowed | CONFIG PARAMETERS editor legend panel |
- * | BlackOps-display-texture | clean \| phosphor-dark \| phosphor-light | Display texture cycle (glitch legacy → clean) |
+ * | BlackOps-display-texture | clean \| dotted | Display texture cycle (phosphor legacy → dotted) |
  * | BlackOps-industrial-bezel-texture | sandblast \| diamond \| brush | Dark-theme gunmetal bezel pattern |
  * | BlackOps-catalog-split-width | number string (px) | Model catalog / engine config split |
  * | BlackOps-catalog-list-collapsed | "0" \| "1" | Model catalog list fully collapsed |

@@ -6,6 +6,7 @@
  */
 import { useEffect, useRef } from "react";
 import { useDisplayTexture } from "../context/DisplayTextureContext";
+import { useTheme } from "../context/ThemeContext";
 import type { DisplayTexture } from "../lib/displayTexture";
 
 const CHARACTERS =
@@ -74,8 +75,9 @@ export default function MatrixAsciiRain({
 }: MatrixAsciiRainProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { texture: ctxTexture } = useDisplayTexture();
+  const { theme } = useTheme();
   const texture = textureProp ?? ctxTexture;
-  const light = texture === "phosphor-light" || texture === "clean";
+  const light = texture === "clean" || (texture === "dotted" && theme.id === "arctic");
 
   useEffect(() => {
     const canvas = canvasRef.current;

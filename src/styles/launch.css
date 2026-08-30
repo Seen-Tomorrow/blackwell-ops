@@ -1082,95 +1082,95 @@
 
 
 
-/* PHOSPHOR LIGHT — e-ink label palette on HW monitor widget faces */
-.launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface .launch-rail-tel__total-label,
-.launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface .launch-rail-tel__cpu-meta,
-.launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface .launch-rail-tel__gpu-sub,
-.launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface .launch-rail-tel__metric-label,
-.launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface .launch-rail-tel__cpu-avg-unit,
-.launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface .launch-rail-tel__metric-denom,
-.launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface .launch-rail-tel__total-denom {
+/* DOTTED (ARCTIC) — e-ink label palette on HW monitor widget faces */
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .phosphor-display-surface .launch-rail-tel__total-label,
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .phosphor-display-surface .launch-rail-tel__cpu-meta,
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .phosphor-display-surface .launch-rail-tel__gpu-sub,
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .phosphor-display-surface .launch-rail-tel__metric-label,
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .phosphor-display-surface .launch-rail-tel__cpu-avg-unit,
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .phosphor-display-surface .launch-rail-tel__metric-denom,
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .phosphor-display-surface .launch-rail-tel__total-denom {
   color: var(--display-face-light-text-muted) !important;
   opacity: 1;
 }
 
-.launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface .launch-rail-tel__cpu-name,
-.launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface .launch-rail-tel__gpu-name,
-.launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface .launch-rail-tel__cpu-avg-val,
-.launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface .launch-rail-tel__total-value,
-.launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface .launch-rail-tel__metric-val {
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .phosphor-display-surface .launch-rail-tel__cpu-name,
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .phosphor-display-surface .launch-rail-tel__gpu-name,
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .phosphor-display-surface .launch-rail-tel__cpu-avg-val,
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .phosphor-display-surface .launch-rail-tel__total-value,
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .phosphor-display-surface .launch-rail-tel__metric-val {
   color: var(--display-face-light-readout) !important;
 }
 
 
-/* PHOSPHOR LIGHT — GPU topo cards in HW monitor (e-ink ink tokens) */
-.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__label,
-.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__meta-text,
-.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__power-denom,
-.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__mem-gb-sep,
-.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__mem-gb-unit,
-.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__empty {
+/* DOTTED (ARCTIC) — GPU topo cards in HW monitor (e-ink ink tokens) */
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .gpu-topo-card .gpu-topo-card__label,
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .gpu-topo-card .gpu-topo-card__meta-text,
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .gpu-topo-card .gpu-topo-card__power-denom,
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .gpu-topo-card .gpu-topo-card__mem-gb-sep,
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .gpu-topo-card .gpu-topo-card__mem-gb-unit,
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .gpu-topo-card .gpu-topo-card__empty {
   color: var(--display-face-light-text-muted) !important;
   opacity: 1;
 }
 
-.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__name,
-.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__value--readout,
-.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__power-val {
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .gpu-topo-card .gpu-topo-card__name,
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .gpu-topo-card .gpu-topo-card__value--readout,
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .gpu-topo-card .gpu-topo-card__power-val {
   color: var(--display-face-light-readout) !important;
 }
 
-.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card--selected .gpu-topo-card__name {
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .gpu-topo-card--selected .gpu-topo-card__name {
   color: var(--display-face-light-gpu-name-selected) !important;
 }
 
-.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__value--gpu,
-.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__offset,
-.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__power-target,
-.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__temp--cool {
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .gpu-topo-card .gpu-topo-card__value--gpu,
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .gpu-topo-card .gpu-topo-card__offset,
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .gpu-topo-card .gpu-topo-card__power-target,
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .gpu-topo-card .gpu-topo-card__temp--cool {
   color: var(--display-face-light-text-accent) !important;
   text-shadow: none;
 }
 
-.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__value--mem {
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .gpu-topo-card .gpu-topo-card__value--mem {
   color: var(--display-face-light-text-cyan) !important;
 }
 
-.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__mem-gb {
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .gpu-topo-card .gpu-topo-card__mem-gb {
   color: var(--display-face-light-text-cyan) !important;
 }
 
-.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__vdiv {
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .gpu-topo-card .gpu-topo-card__vdiv {
   background: var(--display-face-light-border) !important;
 }
 
 
-.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__power-watt,
-.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__temp--warm {
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .gpu-topo-card .gpu-topo-card__power-watt,
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .gpu-topo-card .gpu-topo-card__temp--warm {
   color: var(--display-face-light-text-amber) !important;
   text-shadow: none;
 }
 
-.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__temp--hot {
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .gpu-topo-card .gpu-topo-card__temp--hot {
   color: var(--display-face-light-text-red) !important;
   text-shadow: none;
 }
 
 /* Selected GPU topo — border only (no colored drop shadow) */
-.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card--selected {
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .gpu-topo-card--selected {
   border-color: var(--display-face-light-gpu-selected-border, #526848) !important;
 }
 
 .launch-rail-tel[data-display-texture="clean"] .gpu-topo-card--selected,
-.launch-rail-tel[data-display-texture="phosphor-dark"] .gpu-topo-card--selected {
+.launch-rail-tel[data-display-texture="dotted"] .gpu-topo-card--selected {
   border-color: var(--theme-industrial-gpu-selected, rgba(74, 222, 128, 0.7)) !important;
 }
 
-.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card:not(.gpu-topo-card--selected) {
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .gpu-topo-card:not(.gpu-topo-card--selected) {
   border-color: var(--display-face-light-border) !important;
 }
 
-.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card__head {
+[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] .gpu-topo-card__head {
   border-bottom-color: var(--display-face-light-border) !important;
 }
 

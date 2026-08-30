@@ -17,7 +17,7 @@ import type { GpuInfo } from "./types";
 
 export const FUSION_SHARE_FRAME_SELECTOR = "[data-fusion-share-frame]";
 
-/** White = ARCTIC + CLEAN display; black = SLATE + phosphor-dark. */
+/** White = ARCTIC + CLEAN display; black = SLATE + dotted. */
 export type FusionShareVariant = "white" | "black";
 
 const SHARE_VARIANT_CONFIG: Record<
@@ -25,7 +25,7 @@ const SHARE_VARIANT_CONFIG: Record<
   { themeId: string; texture: DisplayTexture }
 > = {
   white: { themeId: "arctic", texture: "clean" },
-  black: { themeId: "slate", texture: "phosphor-dark" },
+  black: { themeId: "slate", texture: "dotted" },
 };
 
 export interface FusionShareLaunchConfig {
