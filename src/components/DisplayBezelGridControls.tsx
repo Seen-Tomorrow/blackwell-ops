@@ -133,7 +133,7 @@ export default function DisplayBezelGridControls({
                 harnessConnectActive ? " display-bezel-fusion-chip--active" : ""
               }${harnessConnectReady ? " display-bezel-fusion-chip--harness-ready" : ""}`}
             >
-              HARNESS
+              HARNESS CONNECT
             </button>
           </div>
         ) : null}

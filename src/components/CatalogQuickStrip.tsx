@@ -263,40 +263,42 @@ export default function CatalogQuickStrip({
       >
         {seatEditing ? <SeatLiveRim /> : null}
         <header
-          className="catalog-quick-section__head"
+          className="catalog-quick-section__head catalog-quick-section__head--seats"
           title="Agentic harness seats — BRAIN / WORKER. SOLO launches one seat; TWIN needs both saved bags."
         >
-          <div className="catalog-quick-section__sets" role="tablist" aria-label="Seat sets">
-            {Array.from({ length: CATALOG_SEAT_SET_COUNT }, (_, i) => {
-              const idx = i as CatalogSeatSetIndex;
-              const active = activeSeatSet === idx;
-              return (
-                <button
-                  key={idx}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  className={`catalog-quick-set-btn${active ? " catalog-quick-set-btn--active" : ""}`}
-                  title={`Seat set ${idx + 1}${active ? " (active)" : ""}`}
-                  disabled={seatEditing}
-                  onClick={() => {
-                    if (seatEditing) dispatchAppEvent(EVENTS.catalogSeatCancel);
-                    onSelectSeatSet(idx);
-                  }}
-                >
-                  {idx + 1}
-                </button>
-              );
-            })}
+          <div className="catalog-quick-section__head-row catalog-quick-section__head-row--label">
+            <div className="catalog-quick-section__sets" role="tablist" aria-label="Seat sets">
+              {Array.from({ length: CATALOG_SEAT_SET_COUNT }, (_, i) => {
+                const idx = i as CatalogSeatSetIndex;
+                const active = activeSeatSet === idx;
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    className={`catalog-quick-set-btn${active ? " catalog-quick-set-btn--active" : ""}`}
+                    title={`Seat set ${idx + 1}${active ? " (active)" : ""}`}
+                    disabled={seatEditing}
+                    onClick={() => {
+                      if (seatEditing) dispatchAppEvent(EVENTS.catalogSeatCancel);
+                      onSelectSeatSet(idx);
+                    }}
+                  >
+                    {idx + 1}
+                  </button>
+                );
+              })}
+            </div>
+            <span className="catalog-quick-section__title">
+              {seatEditing
+                ? `EDITING ${CATALOG_SEAT_LABEL[editingRole!]}`
+                : "HARNESS SEATS"}
+            </span>
           </div>
-          <span className="catalog-quick-section__title">
-            {seatEditing
-              ? `EDITING ${CATALOG_SEAT_LABEL[editingRole!]}`
-              : "HARNESS SEATS"}
-          </span>
-          <div className="catalog-quick-section__actions">
-            {!seatEditing ? (
-              <>
+          {!seatEditing ? (
+            <div className="catalog-quick-section__head-row catalog-quick-section__head-row--actions">
+              <div className="catalog-quick-section__actions">
                 <button
                   type="button"
                   className="catalog-quick-section__action catalog-quick-section__action--mode"
@@ -328,39 +330,21 @@ export default function CatalogQuickStrip({
                   title="Open harness connect veil"
                   onClick={() => dispatchAppEvent(EVENTS.harnessConnectOpen)}
                 >
-                  HARNESS
+                  HARNESS CONNECT
                 </button>
-
-              </>
-            ) : null}
-          </div>
+              </div>
+            </div>
+          ) : null}
         </header>
-        {sum && !seatEditing ? (
-          <div
-            className="catalog-quick-mem"
-            title="LEARNED total for this seat combo at saved knobs (re-read, not stored on the bags)"
-          >
-            <span className="catalog-quick-mem__prefix">
-              THIS COMBO NEEDS <span className="catalog-quick-mem__sigma">Σ</span>
-            </span>
-            <span className="catalog-quick-mem__sum">
-              <span
-                className="catalog-quick-mem__half catalog-quick-mem__half--vram"
-                ref={(el) => {
-                  if (el) (el.closest(".catalog-quick-mem") as HTMLElement | null)?.style.setProperty("--vram-chip-w", `${el.offsetWidth}px`);
-                }}
-              >
-                {vramValueText(sum)}
-                <span className="catalog-quick-mem__unit">GB VRAM</span>
-              </span>
-              <span className="catalog-quick-mem__plus">+</span>
-              <span className="catalog-quick-mem__half catalog-quick-mem__half--ram">
-                {ramValueText(sum) ?? "0.0"}
-                <span className="catalog-quick-mem__unit">GB RAM</span>
-              </span>
-            </span>
-          </div>
-        ) : null}
+        <div
+          className={[
+            "catalog-quick-seat-bank",
+            sum && !seatEditing ? "catalog-quick-seat-bank--with-total" : "",
+            seatEditing ? "catalog-quick-seat-bank--editing" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
         <div
           className={[
             "catalog-quick-strip__seats catalog-quick-strip__seats--twin",
@@ -402,12 +386,15 @@ export default function CatalogQuickStrip({
               >
                 {isEditing ? <SeatLiveRim /> : null}
                 {filled && !seatEditing && learnedMem[role] ? (
-                  <span className="catalog-quick-seat__mem">
-                    <span className="catalog-quick-mem__half catalog-quick-mem__half--vram">
+                  <div
+                    className="catalog-quick-seat__mem catalog-quick-seat__mem--vram"
+                    title={`LEARNED VRAM for ${CATALOG_SEAT_LABEL[role]} at saved knobs`}
+                  >
+                    <span className="catalog-quick-seat__mem-val">
                       {vramValueText(learnedMem[role])}
-                      <span className="catalog-quick-mem__unit">GB VRAM</span>
                     </span>
-                  </span>
+                    <span className="catalog-quick-seat__mem-unit">GB VRAM</span>
+                  </div>
                 ) : null}
                 <div className="catalog-quick-seat__body">
                 <button
@@ -532,7 +519,7 @@ export default function CatalogQuickStrip({
                             setPending({ kind: "clear", role });
                           }}
                         >
-                          ×
+                          X
                         </button>
                       ) : null}
                     </>
@@ -542,6 +529,24 @@ export default function CatalogQuickStrip({
               </div>
             );
           })}
+        </div>
+          {sum && !seatEditing ? (
+            <div
+              className="catalog-quick-mem catalog-quick-mem--combo"
+              title="LEARNED total for both seats at saved knobs (re-read, not stored on the bags)"
+            >
+              <span className="catalog-quick-mem__cell catalog-quick-mem__cell--vram">
+                <span className="catalog-quick-mem__sigma" aria-hidden>Σ</span>
+                <span className="catalog-quick-mem__val">{vramValueText(sum)}</span>
+                <span className="catalog-quick-mem__unit">GB VRAM</span>
+              </span>
+              <span className="catalog-quick-mem__cell catalog-quick-mem__cell--ram">
+                <span className="catalog-quick-mem__sigma" aria-hidden>Σ</span>
+                <span className="catalog-quick-mem__val">{ramValueText(sum) ?? "0.0"}</span>
+                <span className="catalog-quick-mem__unit">GB RAM</span>
+              </span>
+            </div>
+          ) : null}
         </div>
       </section>
 

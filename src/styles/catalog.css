@@ -1108,100 +1108,166 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-/* Σ total — one line above the seat cards:
-   "THIS COMBO NEEDS Σ  [VRAM chip] + [RAM chip]". The prefix is given the
-   EXACT width of the VRAM chip (measured into --vram-chip-w) so the "+"
-   sits at the mathematical row midpoint. Painted with the VramBadge
-   "total" label-chip colors (--display-face-fc-label-* tokens). */
-.catalog-quick-mem {
+/* Unified bank: twin seats + Σ footer so totals read as one combo block. */
+.catalog-quick-seat-bank {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+  border-radius: 5px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 55%, transparent);
+  overflow: hidden;
+}
+
+.catalog-quick-seat-bank--editing {
+  border-color: color-mix(in srgb, var(--theme-accent) 35%, transparent);
+}
+
+.catalog-quick-seat-bank > .catalog-quick-strip__seats {
+  gap: 0;
+  padding: 0;
+}
+
+/* Twin seats share the bank frame — no double outline / drop shadow. */
+.catalog-quick-seat-bank .catalog-quick-seat {
+  border-radius: 0;
+  outline: none;
+  box-shadow: none;
+  border-color: transparent;
+  background: color-mix(in srgb, var(--theme-panel) 70%, transparent);
+}
+
+.catalog-quick-seat-bank .catalog-quick-seat + .catalog-quick-seat {
+  border-left: 1px solid color-mix(in srgb, var(--theme-border) 45%, transparent);
+}
+
+.catalog-quick-seat-bank .catalog-quick-seat--brain.catalog-quick-seat--filled {
+  outline: none;
+  box-shadow: none;
+  border-color: transparent;
+  background: color-mix(
+    in srgb,
+    var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 22%,
+    var(--theme-eject-card-bg, var(--theme-panel)) 78%
+  );
+}
+
+.catalog-quick-seat-bank .catalog-quick-seat--worker.catalog-quick-seat--filled {
+  outline: none;
+  box-shadow: none;
+  border-color: transparent;
+  background: color-mix(
+    in srgb,
+    var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 24%,
+    var(--theme-eject-card-bg, var(--theme-panel)) 76%
+  );
+}
+
+.catalog-quick-seat-bank .catalog-quick-seat--selected {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #ecfeff 40%, transparent);
+}
+
+/* Per-seat VRAM — full-width cell strip (not a badge chip). */
+.catalog-quick-seat__mem {
   display: flex;
   align-items: baseline;
   justify-content: center;
   gap: 4px;
   min-width: 0;
+  padding: 3px 6px;
   font-family: ui-monospace, "JetBrains Mono", monospace;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
   line-height: 1.2;
-  white-space: nowrap;
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-border) 35%, transparent);
 }
 
-.catalog-quick-mem__prefix {
-  /* At least the label's own width (no truncation); when the VRAM chip is
-     wider, the cell widens to match it so the "+" stays dead-center. */
-  min-width: max(var(--vram-chip-w, 0px), max-content);
-  box-sizing: border-box;
-  text-align: center;
-  color: var(--display-face-text-muted, var(--theme-text-muted, #94a3b8));
-  font-size: 9px;
-  letter-spacing: 0.08em;
-  opacity: 0.9;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.catalog-quick-seat__mem--vram {
+  /* Same well as VramBadge VRAM total label chip */
+  color: var(--display-face-fc-label-fg, var(--display-face-text, #e2e8f0));
+  background: var(
+    --display-face-fc-label-bg,
+    color-mix(in srgb, var(--theme-accent, #76b900) 16%, transparent)
+  );
 }
 
-.catalog-quick-mem__plus {
-  color: var(--display-face-text-muted, var(--theme-text-muted, #94a3b8));
-  opacity: 0.7;
+.catalog-quick-seat__mem-val {
+  font-variant-numeric: tabular-nums;
 }
 
-/* Per-seat VRAM bar — in-flow first row of the seat (column flex), full
-   card width, centered text. RAM lives in the total row only. */
-.catalog-quick-seat__mem {
-  display: block;
+.catalog-quick-seat__mem-unit,
+.catalog-quick-mem__unit {
+  font-size: 7px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  opacity: 0.78;
+  text-transform: uppercase;
+}
+/* Σ combo footer — 50:50 VRAM | RAM full cells (same wells as VramBadge totals) */
+.catalog-quick-mem--combo {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: stretch;
   min-width: 0;
+  border-top: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
   font-family: ui-monospace, "JetBrains Mono", monospace;
-  font-size: 9px;
-  letter-spacing: 0.02em;
-  line-height: 1.2;
 }
 
-/* Per-seat bar keeps the old centered full-width look — the chip styling
-   below is scoped to the Σ total row only. */
-.catalog-quick-seat__mem .catalog-quick-mem__half {
+.catalog-quick-mem__cell {
   display: flex;
+  align-items: baseline;
   justify-content: center;
-  padding: 2px 4px;
-  border-radius: 0;
-}
-
-/* VRAM / RAM value chips — colors mirror the VramBadge "total"
-   label chips (--display-face-fc-label-* tokens), not the solid bar fills. */
-.catalog-quick-mem__sum > .catalog-quick-mem__half {
+  gap: 5px;
   min-width: 0;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 1.15;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  display: inline-flex;
-  align-items: baseline;
-  gap: 3px;
-  padding: 2px 5px;
-  border-radius: 3px;
 }
 
-.catalog-quick-mem__half--vram {
-  color: var(--display-face-fc-label-fg, var(--theme-text, #e5e7eb));
-  background: var(--display-face-fc-label-bg, color-mix(in srgb, var(--theme-accent, #76b900) 14%, transparent));
+.catalog-quick-mem__cell + .catalog-quick-mem__cell {
+  border-left: 1px solid var(
+    --display-face-fc-label-border,
+    color-mix(in srgb, var(--theme-accent, #76b900) 28%, transparent)
+  );
 }
 
-.catalog-quick-mem__half--ram {
+.catalog-quick-mem__cell--vram {
+  color: var(--display-face-fc-label-fg, var(--display-face-text, #e2e8f0));
+  background: var(
+    --display-face-fc-label-bg,
+    color-mix(in srgb, var(--theme-accent, #76b900) 16%, transparent)
+  );
+}
+
+.catalog-quick-mem__cell--ram {
   color: var(--display-face-fc-label-ram-fg, #93c5fd);
-  background: var(--display-face-fc-label-ram-bg, color-mix(in srgb, #60a5fa 14%, transparent));
+  background: var(
+    --display-face-fc-label-ram-bg,
+    color-mix(in srgb, #60a5fa 14%, transparent)
+  );
+  border-left-color: var(
+    --display-face-fc-label-ram-border,
+    color-mix(in srgb, #60a5fa 30%, transparent)
+  );
 }
 
 .catalog-quick-mem__sigma {
-  color: inherit;
-  opacity: 0.75;
+  flex: 0 0 auto;
+  font-size: 0.92em;
+  font-weight: 800;
+  opacity: 0.88;
+  letter-spacing: 0;
 }
 
-/* Unit word — smaller so the chip stays a value-first readout */
-.catalog-quick-mem__unit {
-  margin-left: 0;
-  font-size: 7px;
-  letter-spacing: 0;
-  opacity: 0.82;
+.catalog-quick-mem__val {
+  font-variant-numeric: tabular-nums;
 }
 
 
@@ -1390,35 +1456,50 @@
 
 .catalog-quick-seat__btn:hover {
   color: var(--theme-text);
+  background: color-mix(in srgb, var(--theme-text) 8%, transparent);
 }
 
+/* R / E / X — same glyph size; transparent so they share the seat face */
 .catalog-quick-seat__btn--replace,
 .catalog-quick-seat__btn--edit,
+.catalog-quick-seat__btn--clear,
 .catalog-quick-seat__btn--yes,
-.catalog-quick-seat__btn--no,
-.catalog-quick-seat__btn--clear {
-  font-size: 13px;
+.catalog-quick-seat__btn--no {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  padding: 0 8px;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: 0;
-  padding: 0 10px;
-  min-width: 28px;
-}
-
-.catalog-quick-seat__btn--replace,
-.catalog-quick-seat__btn--yes {
-  color: var(--theme-harness-brain-text, var(--theme-accent-bright, var(--theme-accent)));
-}
-
-.catalog-quick-seat__btn--edit {
   color: var(--theme-text-muted);
+  background: transparent;
 }
 
-.catalog-quick-seat__btn--edit:hover {
-  color: var(--theme-accent-bright, var(--theme-accent));
+.catalog-quick-seat__btn--replace:hover,
+.catalog-quick-seat__btn--edit:hover,
+.catalog-quick-seat__btn--yes:hover {
+  color: var(--theme-text);
+  background: color-mix(in srgb, var(--theme-text) 8%, transparent);
+}
+
+.catalog-quick-seat__btn--clear {
+  color: var(--theme-danger, #f87171);
+}
+
+.catalog-quick-seat__btn--clear:hover {
+  color: var(--theme-danger, #f87171);
+  background: color-mix(in srgb, var(--theme-danger, #f87171) 10%, transparent);
 }
 
 .catalog-quick-seat__btn--no {
   color: var(--theme-danger, #f87171);
+}
+
+.catalog-quick-seat__btn--no:hover {
+  color: var(--theme-danger, #f87171);
+  background: color-mix(in srgb, var(--theme-danger, #f87171) 10%, transparent);
 }
 
 
@@ -1549,15 +1630,19 @@
   }
 }
 
+/* Default (non-seats): absolute right — seats override to row 2 flow */
 .catalog-quick-section__actions {
-  position: absolute;
-  right: 6px;
-  top: 50%;
-  transform: translateY(-50%);
   display: flex;
   align-items: center;
   gap: 4px;
   z-index: 2;
+}
+
+.catalog-quick-section__head:not(.catalog-quick-section__head--seats) .catalog-quick-section__actions {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 .catalog-quick-section__head .catalog-quick-section__title {
@@ -1737,9 +1822,60 @@
   z-index: 1;
 }
 
-.catalog-quick-section__head > .catalog-quick-section__actions {
+.catalog-quick-section__head:not(.catalog-quick-section__head--seats) > .catalog-quick-section__actions {
   position: absolute;
   z-index: 2;
+}
+
+/* Seats chrome: label row + actions row — never overlap the title when narrow */
+.catalog-quick-section__head--seats {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 6px;
+  overflow: visible;
+  min-height: 0;
+}
+
+.catalog-quick-section__head-row--label {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 1.15rem;
+  padding: 0 2.6rem; /* keep title clear of absolute set tabs */
+}
+
+.catalog-quick-section__head-row--actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 0;
+}
+
+.catalog-quick-section__head--seats .catalog-quick-section__sets {
+  left: 2px;
+}
+
+.catalog-quick-section__head--seats .catalog-quick-section__actions {
+  position: static;
+  transform: none;
+  right: auto;
+  top: auto;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  width: 100%;
+  max-width: 100%;
+}
+
+.catalog-quick-section__head--seats .catalog-quick-section__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .catalog-quick-section__title {
@@ -1849,7 +1985,7 @@
   color: color-mix(in srgb, var(--theme-accent-bright, var(--theme-accent)) 75%, var(--theme-text-muted));
 }
 
-/* Seat set switcher 1/2/3 — absolute left on chrome head */
+/* Seat set switcher 1/2/3 — absolute left on label row */
 .catalog-quick-section__sets {
   position: absolute;
   left: 4px;
@@ -1890,7 +2026,7 @@
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-accent) 20%, transparent);
 }
 
-/* SEATS chrome head actions — group is absolute; each chip is relative in-row */
+/* SEATS chrome head action chips */
 .catalog-quick-section__action {
   position: relative;
   right: auto;
