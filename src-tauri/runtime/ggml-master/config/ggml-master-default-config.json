@@ -19,11 +19,10 @@
       0.3384311634160352,
       0.6615688365839648
     ],
-    "configColumnCount": 3,
+    "configColumnCount": 2,
     "configColumnWidths": [
-      0.42435513200609815,
-      0.27564486799390187,
-      0.3
+      0.5311905470954017,
+      0.4688094529045983
     ],
     "groupColumn": {
       "ADVANCED": 1,
@@ -294,8 +293,7 @@
       "ui_group": "FEATURE-FLAGS",
       "values": [
         "mmap",
-        "mlock",
-        "dio"
+        "mlock"
       ]
     },
     {
@@ -326,7 +324,7 @@
       ],
       "flag": "--spec-draft-n-max",
       "flag_pair": [],
-      "hidden_default": true,
+      "hidden_default": false,
       "key": "mtp_n_max",
       "label": "DRAFT-N-MAX",
       "note": "MTP: maximum draft tokens per speculative step.",
@@ -354,7 +352,7 @@
       ],
       "flag": "--spec-draft-n-min",
       "flag_pair": [],
-      "hidden_default": true,
+      "hidden_default": false,
       "key": "mtp_n_min",
       "label": "DRAFT-N-MIN",
       "note": "MTP: minimum draft tokens per speculative step.",
@@ -381,7 +379,7 @@
       ],
       "flag": "--spec-draft-p-min",
       "flag_pair": [],
-      "hidden_default": true,
+      "hidden_default": false,
       "key": "mtp_p_min",
       "label": "DRAFT-P-MIN",
       "note": "MTP: minimum speculative decoding probability (greedy).",
@@ -529,6 +527,9 @@
     {
       "default": 32768,
       "dock": "",
+      "essentialsHiddenValues": [
+        1048576
+      ],
       "flag": "--ctx-size",
       "flag_pair": [],
       "hidden_default": false,
@@ -741,6 +742,6 @@
       "4"
     ]
   },
-  "templateVersion": 48,
+  "templateVersion": 49,
   "template_type": "ggml-llama"
 }
