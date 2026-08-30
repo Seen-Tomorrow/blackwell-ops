@@ -5,6 +5,21 @@ export const DISPLAY_TEXTURE_ORDER = ["dotted", "clean"] as const;
 
 export type DisplayTexture = (typeof DISPLAY_TEXTURE_ORDER)[number];
 
+/**
+ * Physical face plate mounted for a (theme, texture) pair — the single key CSS
+ * uses for display-surface styling (`data-display-face`). CSS must not fork on
+ * [data-theme] + [data-display-texture] directly.
+ * - crt:    dark theme + DOTTED (dark CRT dot matrix)
+ * - eink:   ARCTIC + DOTTED (light e-ink LCD)
+ * - paper:  any theme + CLEAN (theme-colored paper face)
+ */
+export type DisplayFace = "crt" | "eink" | "paper";
+
+export function displayFaceFor(themeId: string, texture: string): DisplayFace {
+  if (texture === "clean") return "paper";
+  return themeId === "arctic" ? "eink" : "crt";
+}
+
 export const DISPLAY_TEXTURE_LABELS: Record<DisplayTexture, string> = {
   dotted: "DOTTED",
   clean: "CLEAN",

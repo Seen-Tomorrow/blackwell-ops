@@ -10,6 +10,8 @@ import {
 } from "react";
 import type { CpuInfo, GpuInfo, SystemInfo } from "../lib/types";
 import { useDisplayTexture } from "../context/DisplayTextureContext";
+import { useTheme } from "../context/ThemeContext";
+import { displayFaceFor } from "../lib/displayTexture";
 import { useTelemetry } from "../context/TelemetryContext";
 import { useGpuControl } from "../hooks/useGpuControl";
 import {
@@ -235,6 +237,7 @@ export default function LaunchRailTelemetry({
 } = {}) {
   const { gpus, cpu, systemInfo } = useTelemetry();
   const { texture: displayTexture } = useDisplayTexture();
+  const { theme } = useTheme();
   const below = layout === "below";
   const [cpuCoresOpen, setCpuCoresOpen] = useState(() =>
     loadHwMonitorCpuCoresOpen()
@@ -408,6 +411,7 @@ export default function LaunchRailTelemetry({
         layout === "below" ? " launch-rail-tel--below" : " h-full"
       }`}
       data-display-texture={displayTexture}
+      data-display-face={displayFaceFor(theme.id, displayTexture)}
       data-hw-layout={layout}
       data-oc-expanded={ocExpanded || ocPopoverOpen ? "true" : "false"}
       style={{ "--hw-monitor-dim": hwDim } as CSSProperties}

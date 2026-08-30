@@ -180,6 +180,8 @@ import { useScenarioEvaluator } from "../hooks/useScenarioEvaluator";
 import type { SetupGuideState } from "../hooks/useSetupGuide";
 import { useConfigResolver } from "../hooks/useConfigResolver";
 import { useDisplayTexture } from "../context/DisplayTextureContext";
+import { useTheme } from "../context/ThemeContext";
+import { displayFaceFor } from "../lib/displayTexture";
 
 import { useFoundry } from "../hooks/useBuildDock";
 import { isDevBuild } from "../lib/build";
@@ -513,6 +515,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   }, [enginesInRail]);
 
   const { texture: displayTexture } = useDisplayTexture();
+  const { theme } = useTheme();
 
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
     try {
@@ -2862,6 +2865,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         <div
           className={onboardingDisplay.area}
           data-display-texture={displayTexture}
+          data-display-face={displayFaceFor(theme.id, displayTexture)}
         >
           <div className={onboardingDisplay.frame}>
             <div className="phosphor-screen-inner phosphor-display-surface">

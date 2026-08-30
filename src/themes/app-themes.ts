@@ -9,10 +9,12 @@ export interface AppTheme {
   id: string;
   name: string;
   description: string;
+  /** Native window chrome preference (title bar / caption buttons). */
+  native?: "light" | "dark";
   tokens: Record<string, string>;
 }
 
-/** ARCTIC + LIGHT frame drop shadow (fed to --theme-bezel-cast-shadow). Soft — heavy drop reads as “bottom smear” on short panels. */
+/** ARCTIC + DOTTED frame drop shadow (fed to --theme-bezel-cast-shadow). Soft — heavy drop reads as “bottom smear” on short panels. */
 const DISPLAY_PROFILE_BEZEL_CAST =
   "0 3px 10px rgba(40, 60, 80, 0.14), 0 1px 3px rgba(40, 60, 80, 0.1)";
 
@@ -309,6 +311,7 @@ const ARCTIC: AppTheme = {
   id: "arctic",
   name: "ARCTIC",
   description: "Glacier Dawn — paper white, polar sky, copper signal",
+  native: "light",
   tokens: {
     /* ── Workspace ── pure cool paper, not institutional grey */
     "--theme-bg": "#eef3f8",

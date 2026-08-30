@@ -7,7 +7,7 @@
 import { useEffect, useRef } from "react";
 import { useDisplayTexture } from "../context/DisplayTextureContext";
 import { useTheme } from "../context/ThemeContext";
-import type { DisplayTexture } from "../lib/displayTexture";
+import { displayFaceFor, type DisplayTexture } from "../lib/displayTexture";
 
 const CHARACTERS =
   "!#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~'";
@@ -77,7 +77,7 @@ export default function MatrixAsciiRain({
   const { texture: ctxTexture } = useDisplayTexture();
   const { theme } = useTheme();
   const texture = textureProp ?? ctxTexture;
-  const light = texture === "clean" || (texture === "dotted" && theme.id === "arctic");
+  const light = displayFaceFor(theme.id, texture) !== "crt";
 
   useEffect(() => {
     const canvas = canvasRef.current;

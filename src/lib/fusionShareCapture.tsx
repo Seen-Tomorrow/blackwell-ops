@@ -10,7 +10,7 @@ import {
 } from "./benchPanelLayout";
 import { brandLogoMarkup } from "./brandLogos";
 import { nextFusionShareDailySeq } from "./storage";
-import type { DisplayTexture } from "./displayTexture";
+import { displayFaceFor, type DisplayTexture } from "./displayTexture";
 import { DISPLAY_BEZEL_PADDING_PX } from "./onboardingDisplay";
 import { getThemeById } from "../themes/app-themes";
 import type { GpuInfo } from "./types";
@@ -312,6 +312,7 @@ function applyShareCaptureTheme(host: HTMLElement, variant: FusionShareVariant):
   const { themeId, texture } = SHARE_VARIANT_CONFIG[variant];
   host.setAttribute("data-theme", themeId);
   host.setAttribute("data-display-texture", texture);
+  host.setAttribute("data-display-face", displayFaceFor(themeId, texture));
   host.setAttribute("data-fusion-share-variant", variant);
   const theme = getThemeById(themeId);
   for (const [key, value] of Object.entries(theme.tokens)) {
@@ -329,6 +330,7 @@ function lockDocumentThemeForCapture(variant: FusionShareVariant): DocumentTheme
   const { themeId, texture } = SHARE_VARIANT_CONFIG[variant];
   const theme = getThemeById(themeId);
   const prevTheme = root.getAttribute("data-theme");
+  const prevFace = root.getAttribute("data-display-face");
   const prevTexture = root.getAttribute("data-display-texture");
   const prevInline = new Map<string, string>();
   for (const key of Object.keys(theme.tokens)) {
@@ -337,6 +339,7 @@ function lockDocumentThemeForCapture(variant: FusionShareVariant): DocumentTheme
 
   root.setAttribute("data-theme", themeId);
   root.setAttribute("data-display-texture", texture);
+  root.setAttribute("data-display-face", displayFaceFor(themeId, texture));
   for (const [key, value] of Object.entries(theme.tokens)) {
     root.style.setProperty(key, value);
   }
@@ -345,6 +348,8 @@ function lockDocumentThemeForCapture(variant: FusionShareVariant): DocumentTheme
     restore: () => {
       if (prevTheme != null) root.setAttribute("data-theme", prevTheme);
       else root.removeAttribute("data-theme");
+      if (prevFace != null) root.setAttribute("data-display-face", prevFace);
+      else root.removeAttribute("data-display-face");
       if (prevTexture != null) root.setAttribute("data-display-texture", prevTexture);
       else root.removeAttribute("data-display-texture");
       for (const [key, prev] of prevInline) {

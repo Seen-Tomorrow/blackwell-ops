@@ -798,17 +798,17 @@
 
 /* Selected GPU — card ring/glow only; name color stays with siblings */
 
-/* VRAM/RAM bar tracks on display bg (DARK / CLEAN); DOTTED uses --display-face-light-bar-bg below */
+/* VRAM/RAM bar tracks on display bg (CRT / PAPER); EINK face uses --display-face-light-bar-bg below */
 .industrial-display-area .relative.overflow-hidden.border-stealth-border\/30 {
   background-color: var(--theme-industrial-bar-track) !important;
 }
 
-/* DOTTED (dark themes) — measured GB digits stay flat (no halo). Instrument accents are solid
+/* CRT face — measured GB digits stay flat (no halo). Instrument accents are solid
    color now; still kill any leftover filter/text-shadow from accent classes. */
-[data-display-texture="dotted"] .vram-forecast-display .vram-forecast-gb-accented,
-[data-display-texture="dotted"] .industrial-display-area .vram-forecast-display .vram-forecast-gb-accented,
-[data-display-texture="dotted"] .vram-forecast-display .vram-fc-need__val,
-[data-display-texture="dotted"] .industrial-display-area .vram-forecast-display .vram-fc-need__val {
+[data-display-face="crt"] .vram-forecast-display .vram-forecast-gb-accented,
+[data-display-face="crt"] .industrial-display-area .vram-forecast-display .vram-forecast-gb-accented,
+[data-display-face="crt"] .vram-forecast-display .vram-fc-need__val,
+[data-display-face="crt"] .industrial-display-area .vram-forecast-display .vram-fc-need__val {
   background-image: none !important;
   background-clip: unset !important;
   -webkit-background-clip: unset !important;
@@ -817,57 +817,57 @@
   text-shadow: none !important;
 }
 
-/* DOTTED (dark themes) — selected GPU card: crisp border, no glow halo (glow reads harsh on
+/* CRT face — selected GPU card: crisp border, no glow halo (glow reads harsh on
    the dark face, esp. ARCTIC light theme forced dark). */
-[data-display-texture="dotted"] .vram-forecast-display .gpu-card.gpu-selected,
-[data-display-texture="dotted"] .industrial-display-area .vram-forecast-display .gpu-card.gpu-selected {
+[data-display-face="crt"] .vram-forecast-display .gpu-card.gpu-selected,
+[data-display-face="crt"] .industrial-display-area .vram-forecast-display .gpu-card.gpu-selected {
   box-shadow: none !important;
 }
 
-/* DOTTED (ARCTIC) — VRAM forecast: dark e-ink ink (beats industrial-display-area brights) */
-[data-theme="arctic"] [data-display-texture="dotted"] .vram-forecast-display .text-cyan-400,
-[data-theme="arctic"] [data-display-texture="dotted"] .industrial-display-area .vram-forecast-display .text-cyan-400,
-[data-theme="arctic"] [data-display-texture="dotted"] .vram-forecast-display .text-electric-blue,
-[data-theme="arctic"] [data-display-texture="dotted"] .vram-forecast-display .text-blue-700,
-[data-theme="arctic"] [data-display-texture="dotted"] .industrial-display-area .vram-forecast-display .text-electric-blue,
-[data-theme="arctic"] [data-display-texture="dotted"] .industrial-display-area .vram-forecast-display .text-blue-700 {
+/* EINK face — VRAM forecast: dark e-ink ink (beats industrial-display-area brights) */
+[data-display-face="eink"] .vram-forecast-display .text-cyan-400,
+[data-display-face="eink"] .industrial-display-area .vram-forecast-display .text-cyan-400,
+[data-display-face="eink"] .vram-forecast-display .text-electric-blue,
+[data-display-face="eink"] .vram-forecast-display .text-blue-700,
+[data-display-face="eink"] .industrial-display-area .vram-forecast-display .text-electric-blue,
+[data-display-face="eink"] .industrial-display-area .vram-forecast-display .text-blue-700 {
   color: var(--display-face-light-text-cyan) !important;
 }
 
-[data-theme="arctic"] [data-display-texture="dotted"] .vram-forecast-display .text-nv-green,
-[data-theme="arctic"] [data-display-texture="dotted"] .industrial-display-area .vram-forecast-display .text-nv-green {
+[data-display-face="eink"] .vram-forecast-display .text-nv-green,
+[data-display-face="eink"] .industrial-display-area .vram-forecast-display .text-nv-green {
   color: var(--display-face-light-text-accent) !important;
 }
 
-[data-theme="arctic"] [data-display-texture="dotted"] .vram-forecast-display .text-orange-400,
-[data-theme="arctic"] [data-display-texture="dotted"] .vram-forecast-display .text-telemetry-amber,
-[data-theme="arctic"] [data-display-texture="dotted"] .vram-forecast-display .text-amber-400,
-[data-theme="arctic"] [data-display-texture="dotted"] .industrial-display-area .vram-forecast-display .text-orange-400,
-[data-theme="arctic"] [data-display-texture="dotted"] .industrial-display-area .vram-forecast-display .text-telemetry-amber,
-[data-theme="arctic"] [data-display-texture="dotted"] .industrial-display-area .vram-forecast-display .text-amber-400 {
+[data-display-face="eink"] .vram-forecast-display .text-orange-400,
+[data-display-face="eink"] .vram-forecast-display .text-telemetry-amber,
+[data-display-face="eink"] .vram-forecast-display .text-amber-400,
+[data-display-face="eink"] .industrial-display-area .vram-forecast-display .text-orange-400,
+[data-display-face="eink"] .industrial-display-area .vram-forecast-display .text-telemetry-amber,
+[data-display-face="eink"] .industrial-display-area .vram-forecast-display .text-amber-400 {
   color: var(--display-face-light-text-amber) !important;
 }
 
-[data-theme="arctic"] [data-display-texture="dotted"] .vram-forecast-display .text-red-400,
-[data-theme="arctic"] [data-display-texture="dotted"] .vram-forecast-display .text-telemetry-red,
-[data-theme="arctic"] [data-display-texture="dotted"] .industrial-display-area .vram-forecast-display .text-red-400,
-[data-theme="arctic"] [data-display-texture="dotted"] .industrial-display-area .vram-forecast-display .text-telemetry-red {
+[data-display-face="eink"] .vram-forecast-display .text-red-400,
+[data-display-face="eink"] .vram-forecast-display .text-telemetry-red,
+[data-display-face="eink"] .industrial-display-area .vram-forecast-display .text-red-400,
+[data-display-face="eink"] .industrial-display-area .vram-forecast-display .text-telemetry-red {
   color: var(--display-face-light-text-red) !important;
 }
 
-[data-theme="arctic"] [data-display-texture="dotted"] .vram-forecast-display .text-violet-400,
-[data-theme="arctic"] [data-display-texture="dotted"] .industrial-display-area .vram-forecast-display .text-violet-400 {
+[data-display-face="eink"] .vram-forecast-display .text-violet-400,
+[data-display-face="eink"] .industrial-display-area .vram-forecast-display .text-violet-400 {
   color: var(--display-face-light-text-violet) !important;
 }
 
-[data-theme="arctic"] [data-display-texture="dotted"] .vram-forecast-display .text-gray-500,
-[data-theme="arctic"] [data-display-texture="dotted"] .industrial-display-area .vram-forecast-display .text-gray-500 {
+[data-display-face="eink"] .vram-forecast-display .text-gray-500,
+[data-display-face="eink"] .industrial-display-area .vram-forecast-display .text-gray-500 {
   color: var(--display-face-light-text-muted) !important;
 }
 
-/* DOTTED (ARCTIC) — measured GB digits: drop neon gradients for flat e-ink */
-[data-theme="arctic"] [data-display-texture="dotted"] .vram-forecast-display .vram-forecast-gb-accented,
-[data-theme="arctic"] [data-display-texture="dotted"] .industrial-display-area .vram-forecast-display .vram-forecast-gb-accented {
+/* EINK face — measured GB digits: drop neon gradients for flat e-ink */
+[data-display-face="eink"] .vram-forecast-display .vram-forecast-gb-accented,
+[data-display-face="eink"] .industrial-display-area .vram-forecast-display .vram-forecast-gb-accented {
   background-image: none !important;
   background-clip: unset !important;
   -webkit-background-clip: unset !important;
@@ -876,30 +876,30 @@
   text-shadow: none !important;
 }
 
-[data-theme="arctic"] [data-display-texture="dotted"] .vram-forecast-display .vram-forecast-gb-accented--learned,
-[data-theme="arctic"] [data-display-texture="dotted"] .industrial-display-area .vram-forecast-display .vram-forecast-gb-accented--learned {
+[data-display-face="eink"] .vram-forecast-display .vram-forecast-gb-accented--learned,
+[data-display-face="eink"] .industrial-display-area .vram-forecast-display .vram-forecast-gb-accented--learned {
   color: var(--display-face-light-text-cyan) !important;
 }
 
-[data-theme="arctic"] [data-display-texture="dotted"] .vram-forecast-display .vram-forecast-gb-accented--fit_probe,
-[data-theme="arctic"] [data-display-texture="dotted"] .industrial-display-area .vram-forecast-display .vram-forecast-gb-accented--fit_probe {
+[data-display-face="eink"] .vram-forecast-display .vram-forecast-gb-accented--fit_probe,
+[data-display-face="eink"] .industrial-display-area .vram-forecast-display .vram-forecast-gb-accented--fit_probe {
   color: var(--display-face-light-text-amber) !important;
 }
 
 
-/* DOTTED (ARCTIC) — GPU topo selected: darkened theme-accent ring */
-[data-theme="arctic"] [data-display-texture="dotted"] .vram-forecast-display .gpu-card.gpu-selected,
-[data-theme="arctic"] [data-display-texture="dotted"] .industrial-display-area .vram-forecast-display .gpu-card.gpu-selected {
+/* EINK face — GPU topo selected: darkened theme-accent ring */
+[data-display-face="eink"] .vram-forecast-display .gpu-card.gpu-selected,
+[data-display-face="eink"] .industrial-display-area .vram-forecast-display .gpu-card.gpu-selected {
   border-color: var(--display-face-light-gpu-selected-border) !important;
   background-color: var(--display-face-light-gpu-selected-bg) !important;
   box-shadow: var(--display-face-light-gpu-selected-shadow) !important;
 }
 
 /* selected name = same ink as unselected (selection = card chrome only) */
-[data-theme="arctic"] [data-display-texture="dotted"] .vram-forecast-display .gpu-card-name,
-[data-theme="arctic"] [data-display-texture="dotted"] .industrial-display-area .vram-forecast-display .gpu-card-name,
-[data-theme="arctic"] [data-display-texture="dotted"] .vram-forecast-display .gpu-selected .gpu-card-name,
-[data-theme="arctic"] [data-display-texture="dotted"] .industrial-display-area .vram-forecast-display .gpu-selected .gpu-card-name {
+[data-display-face="eink"] .vram-forecast-display .gpu-card-name,
+[data-display-face="eink"] .industrial-display-area .vram-forecast-display .gpu-card-name,
+[data-display-face="eink"] .vram-forecast-display .gpu-selected .gpu-card-name,
+[data-display-face="eink"] .industrial-display-area .vram-forecast-display .gpu-selected .gpu-card-name {
   color: var(--display-face-light-gpu-name) !important;
 }
 
