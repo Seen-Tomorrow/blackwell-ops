@@ -1,6 +1,6 @@
 import { normalizeAboveColumnWidths } from "./configColumnLayout";
-import { normalizeDisplayTexture, type DisplayTexture } from "./displayTexture";
-import { normalizeIndustrialBezelTexture, type IndustrialBezelTexture } from "./industrialBezelTexture";
+import { isDisplayTexture, type DisplayTexture } from "./displayTexture";
+import { isIndustrialBezelTexture, type IndustrialBezelTexture } from "./industrialBezelTexture";
 import type { LaunchDockPosition } from "./launchDockLayout";
 import {
   clampLaunchDockRailWidth,
@@ -50,7 +50,7 @@ import type {
  * | BlackOps-fusion-log-verbosity | 3 \| 4 | Engine `-lv` at launch (default 3; 4 = full belt debug) |
  * | BlackOps-fusion-bench-tray | (legacy, purged) | Session-only bench tray — key removed, always stowed on load |
  * | BlackOps-config-param-legend | open \| stowed | CONFIG PARAMETERS editor legend panel |
- * | BlackOps-display-texture | clean \| dotted | Display texture cycle (phosphor legacy → dotted) |
+ * | BlackOps-display-texture | clean \| dotted | Display texture cycle |
  * | BlackOps-industrial-bezel-texture | sandblast \| diamond \| brush | Dark-theme gunmetal bezel pattern |
  * | BlackOps-catalog-split-width | number string (px) | Model catalog / engine config split |
  * | BlackOps-catalog-list-collapsed | "0" \| "1" | Model catalog list fully collapsed |
@@ -1179,7 +1179,8 @@ export function saveConfigParamLegend(state: ConfigParamLegendState): void {
 }
 
 export function loadDisplayTexture(): DisplayTexture {
-  return normalizeDisplayTexture(readStorage(KEYS.displayTexture));
+  const v = readStorage(KEYS.displayTexture);
+  return isDisplayTexture(v) ? v : "dotted";
 }
 
 export function saveDisplayTexture(texture: DisplayTexture): void {
@@ -1187,7 +1188,8 @@ export function saveDisplayTexture(texture: DisplayTexture): void {
 }
 
 export function loadIndustrialBezelTexture(): IndustrialBezelTexture {
-  return normalizeIndustrialBezelTexture(readStorage(KEYS.industrialBezelTexture));
+  const v = readStorage(KEYS.industrialBezelTexture);
+  return isIndustrialBezelTexture(v) ? v : "diamond";
 }
 
 export function saveIndustrialBezelTexture(texture: IndustrialBezelTexture): void {

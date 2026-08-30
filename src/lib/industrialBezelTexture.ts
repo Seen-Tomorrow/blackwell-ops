@@ -16,20 +16,10 @@ export const INDUSTRIAL_BEZEL_TEXTURE_SHORT_LABELS: Record<IndustrialBezelTextur
   brush: "BRUSH",
 };
 
-const LEGACY_INDUSTRIAL_BEZEL_TEXTURE: Record<string, IndustrialBezelTexture> = {
-  knurl: "diamond",
-  vent: "brush",
-};
-
 export function isIndustrialBezelTexture(value: string | null | undefined): value is IndustrialBezelTexture {
   return INDUSTRIAL_BEZEL_TEXTURE_ORDER.includes(value as IndustrialBezelTexture);
 }
 
-export function normalizeIndustrialBezelTexture(value: string | null | undefined): IndustrialBezelTexture {
-  if (isIndustrialBezelTexture(value)) return value;
-  if (value && LEGACY_INDUSTRIAL_BEZEL_TEXTURE[value]) return LEGACY_INDUSTRIAL_BEZEL_TEXTURE[value];
-  return "diamond";
-}
 
 export function nextIndustrialBezelTexture(current: IndustrialBezelTexture): IndustrialBezelTexture {
   const idx = INDUSTRIAL_BEZEL_TEXTURE_ORDER.indexOf(current);
