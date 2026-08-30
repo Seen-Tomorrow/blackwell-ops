@@ -69,7 +69,7 @@ function modelQuantLabel(m: ModelEntry): string {
 type QuickChipProps = {
   model: ModelEntry;
   selected: boolean;
-  variant: "pin" | "recent";
+  variant: "pin";
   title: string;
   onSelect: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
@@ -301,7 +301,7 @@ export default function CatalogQuickStrip({
               <div className="catalog-quick-section__actions">
                 <button
                   type="button"
-                  className="catalog-quick-section__action catalog-quick-section__action--mode"
+                  className="catalog-quick-section__action"
                   title="Switch SOLO / TWIN launch"
                   onClick={() => setLaunchMode((m) => (m === "twin" ? "solo" : "twin"))}
                 >
@@ -339,7 +339,6 @@ export default function CatalogQuickStrip({
         <div
           className={[
             "catalog-quick-seat-bank",
-            sum && !seatEditing ? "catalog-quick-seat-bank--with-total" : "",
             seatEditing ? "catalog-quick-seat-bank--editing" : "",
           ]
             .filter(Boolean)
@@ -347,7 +346,7 @@ export default function CatalogQuickStrip({
         >
         <div
           className={[
-            "catalog-quick-strip__seats catalog-quick-strip__seats--twin",
+            "catalog-quick-strip__seats",
             seatEditing ? "catalog-quick-strip__seats--editing" : "",
           ]
             .filter(Boolean)
