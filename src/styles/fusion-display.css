@@ -4486,8 +4486,8 @@ html[data-industrial-bezel="brush"] {
   mix-blend-mode: var(--display-face-light-texture-blend, multiply);
 }
 
-[data-display-face="eink"] .phosphor-screen-inner.phosphor-display-surface > *,
-[data-display-face="eink"] .launch-rail-tel .phosphor-display-surface > * {
+[data-display-face="eink"] .phosphor-screen-inner.phosphor-display-surface > *:not(.harness-connect-veil),
+[data-display-face="eink"] .launch-rail-tel .phosphor-display-surface > *:not(.harness-connect-veil) {
   position: relative;
   z-index: 1;
 }

@@ -77,7 +77,8 @@ export default function MatrixAsciiRain({
   const { texture: ctxTexture } = useDisplayTexture();
   const { theme } = useTheme();
   const texture = textureProp ?? ctxTexture;
-  const light = displayFaceFor(theme.id, texture) !== "crt";
+  const face = displayFaceFor(theme.id, texture);
+  const light = face === "eink" || (face === "paper" && theme.id === "arctic");
 
   useEffect(() => {
     const canvas = canvasRef.current;

@@ -3808,8 +3808,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   background: var(--display-face-bg, var(--theme-panel, #0a0c0f));
 }
 
-[data-display-face="eink"] .harness-connect-veil--opaque,
-[data-display-face="paper"] .harness-connect-veil--opaque {
+[data-display-face="eink"] .harness-connect-veil--opaque {
   background: var(--display-face-light-surface, #c8d4b8);
 }
 
@@ -3850,11 +3849,6 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   border-radius: inherit;
   background: transparent;
   box-shadow: none;
-}
-
-[data-display-face="eink"] .harness-connect-veil .harness-connect,
-[data-display-face="paper"] .harness-connect-veil .harness-connect {
-  background: transparent;
 }
 
 .harness-connect--veil .harness-connect__header {
@@ -3905,10 +3899,8 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   );
 }
 
-/* EINK + PAPER share light face palette */
-.matrix-ascii-rain--light,
-[data-display-face="eink"] .matrix-ascii-rain,
-[data-display-face="paper"] .matrix-ascii-rain {
+/* Light face palette — class is theme-aware (eink, or ARCTIC paper) */
+.matrix-ascii-rain--light {
   --matrix-rain-bg: var(--display-face-light-surface, #c8d4b8);
   --matrix-rain-fg: var(
     --display-face-light-readout,
