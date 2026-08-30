@@ -1,22 +1,21 @@
 import {
   loadFusionBenchTray,
-  saveFusionBenchTray,
   type FusionBenchTrayState,
 } from "./storage";
 
-let trayState: FusionBenchTrayState = loadFusionBenchTray();
+// Purge legacy LS key once; tray is session memory only.
+loadFusionBenchTray();
+
+let trayState: FusionBenchTrayState = "stowed";
 const listeners = new Set<() => void>();
 
 function notifyFusionBenchTrayStore(): void {
   for (const fn of listeners) fn();
 }
 
-/** Re-read persisted tray state (HMR / remount — module singleton can desync from localStorage). */
+/** No-op kept for callers — tray is session memory, not LS-backed. */
 export function refreshFusionBenchTrayFromStorage(): void {
-  const next = loadFusionBenchTray();
-  if (next === trayState) return;
-  trayState = next;
-  notifyFusionBenchTrayStore();
+  loadFusionBenchTray();
 }
 
 export function getFusionBenchTrayOpen(): boolean {
@@ -26,7 +25,6 @@ export function getFusionBenchTrayOpen(): boolean {
 export function setFusionBenchTray(next: FusionBenchTrayState): void {
   if (next === trayState) return;
   trayState = next;
-  saveFusionBenchTray(next);
   notifyFusionBenchTrayStore();
 }
 
@@ -35,7 +33,6 @@ export function toggleFusionBenchTray(): void {
 }
 
 export function subscribeFusionBenchTray(listener: () => void): () => void {
-  refreshFusionBenchTrayFromStorage();
   listeners.add(listener);
   return () => listeners.delete(listener);
 }

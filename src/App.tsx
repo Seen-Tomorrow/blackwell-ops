@@ -42,7 +42,7 @@ import type { ConfigSubTab } from "./lib/appNav";
 import { isSetupNavTabAllowed } from "./lib/setupGuide";
 
 import { BINARY_UPDATES_ENABLED } from "./lib/foundry_constants";
-import { getActiveStackSlots, isActiveEngineSlot } from "./lib/engineStack";
+import { getActiveStackSlots, isActiveEngineSlot, stopAllEngines } from "./lib/engineStack";
 import type { ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, UpdateOfferings } from "./lib/types";
 
 export type Tab = "catalog" | "stack" | "extras" | "modelhub" | "logs" | "config";
@@ -534,9 +534,8 @@ function App() {
 
   const handleStopAll = useCallback(async () => {
     try {
-      await invoke("stop_all_engines");
+      await stopAllEngines();
       releaseSlotLogCaches();
-      dispatchAppEvent(EVENTS.stopAll);
     } catch (err) {
       console.error("Stop all failed:", err);
     }

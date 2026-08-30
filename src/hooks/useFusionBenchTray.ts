@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import {
   getFusionBenchTrayOpen,
-  refreshFusionBenchTrayFromStorage,
   setFusionBenchTray,
   subscribeFusionBenchTray,
   toggleFusionBenchTray,
@@ -10,14 +9,11 @@ import type { FusionBenchTrayState } from "../lib/storage";
 
 export type { FusionBenchTrayState };
 
-/** Fusion overlay benchmark tray — open exposes bench controls + results. */
+/** Fusion overlay benchmark tray — open exposes bench controls + results. Session-only (always starts stowed). */
 export function useFusionBenchTray() {
   const [, bump] = useState(0);
 
-  useEffect(() => {
-    refreshFusionBenchTrayFromStorage();
-    return subscribeFusionBenchTray(() => bump((t) => t + 1));
-  }, []);
+  useEffect(() => subscribeFusionBenchTray(() => bump((t) => t + 1)), []);
 
   return {
     open: getFusionBenchTrayOpen(),

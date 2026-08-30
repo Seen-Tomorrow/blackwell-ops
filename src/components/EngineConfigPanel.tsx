@@ -47,10 +47,6 @@ import CockpitCtxStrip from "./CockpitCtxStrip";
 import {
   FULL_AUTO_COLLAPSE_GROUPS,
 } from "../lib/multiAgentBooster";
-import {
-  getFusionBenchTrayOpen,
-  setFusionBenchTray,
-} from "../lib/fusionBenchTrayStore";
 import type { DflashDraftOffer } from "../lib/dflashGetDraft";
 import DraftPickModal from "./DraftPickModal";
 import {

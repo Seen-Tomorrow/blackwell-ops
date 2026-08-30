@@ -192,7 +192,11 @@ export default function DisplayBezelGridControls({
                     : "Focus HUD — fusion display + HW only"
                 }
                 className={`display-bezel-fusion-chip font-mono uppercase tracking-wider${
-                  monitorFocus ? " display-bezel-fusion-chip--active" : ""
+                  monitorFocus
+                    ? " display-bezel-fusion-chip--active"
+                    : liveEngineCount >= 1
+                      ? " display-bezel-fusion-chip--harness-ready"
+                      : ""
                 }`}
               >
                 FOCUS

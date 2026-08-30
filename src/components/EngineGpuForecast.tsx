@@ -23,6 +23,7 @@ import {
 } from "../lib/benchPanelLayout";
 import { computeForecastPhosphorHeightPx } from "../lib/onboardingDisplay";
 import { useFusionBenchTray } from "../hooks/useFusionBenchTray";
+import { stopAllEngines } from "../lib/engineStack";
 import GpuAssignPanel from "./GpuAssignPanel";
 import DisplayChromeHints from "./DisplayChromeHints";
 import DisplayBezelGridControls from "./DisplayBezelGridControls";
@@ -175,6 +176,17 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     onSelectEngine?.(next.idx);
   }, [liveEngineSlots, selectedSlotIdx, onSelectEngine]);
 
+  const onStopAllEngines = useCallback(async () => {
+    try {
+      await stopAllEngines();
+    } catch (err) {
+      console.error("Stop all failed:", err);
+    }
+  }, []);
+
+  const showStopAll = liveEngineSlots.length > 1;
+  const showTopChrome = showFitOrDeviceChrome || showStopAll;
+
   const onGpuPerRow = useCallback((n: DisplayCardsPerRow) => {
     setGpuPerRow(n);
     saveDisplayGpuPerRow(n);
@@ -293,15 +305,15 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
       >
         <div
           className={`${onboardingFrame}${
-            showFitOrDeviceChrome ? " industrial-display-frame--top-chrome" : ""
+            showTopChrome ? " industrial-display-frame--top-chrome" : ""
           } industrial-display-frame--bottom-chrome`}
           data-fusion-share-frame
         >
           {/*
-            Top bezel chrome: ASSISTED/FULL AUTO + Device/Split (Assisted only).
-            Seated fully in frame pad so thick chrome isn't wasted on one control.
+            Top bezel chrome: ASSISTED/FULL AUTO + Device/Split (Assisted only)
+            + STOP ALL (top-right) when 2+ live engines.
           */}
-          {(fitLaunchSupported || showGpuAssign) && (
+          {(fitLaunchSupported || showGpuAssign || showStopAll) && (
             <div className="industrial-display-frame__top-chrome" data-frame-top-chrome>
               {fitLaunchSupported && (
                 <div className="vram-badge-fit-launch-dock" data-fit-launch-dock>
@@ -329,6 +341,16 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
                   manifest={manifest}
                 />
               )}
+              {showStopAll ? (
+                <button
+                  type="button"
+                  onClick={() => void onStopAllEngines()}
+                  title="Stop all running engines"
+                  className="display-bezel-stop-all font-mono uppercase tracking-wider ml-auto shrink-0"
+                >
+                  STOP ALL
+                </button>
+              ) : null}
             </div>
           )}
           {showChromeHints && (

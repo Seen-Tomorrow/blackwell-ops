@@ -48,7 +48,7 @@ import type {
  * | BlackOps-startup-updates | JSON | Cached startup update check results |
  * | BlackOps-fusion-hero-tps | live \| avg | Fusion hero TPS display mode |
  * | BlackOps-fusion-log-verbosity | 3 \| 4 | Engine `-lv` at launch (default 3; 4 = full belt debug) |
- * | BlackOps-fusion-bench-tray | open \| stowed | Fusion overlay benchmark tray (default: stowed) |
+ * | BlackOps-fusion-bench-tray | (legacy, purged) | Session-only bench tray — key removed, always stowed on load |
  * | BlackOps-config-param-legend | open \| stowed | CONFIG PARAMETERS editor legend panel |
  * | BlackOps-display-texture | clean \| phosphor-dark \| phosphor-light | Display texture cycle (glitch legacy → clean) |
  * | BlackOps-industrial-bezel-texture | sandblast \| diamond \| brush | Dark-theme gunmetal bezel pattern |
@@ -1066,14 +1066,15 @@ export function saveFusionLogVerbosity(level: FusionLogVerbosity): void {
 
 export type FusionBenchTrayState = "open" | "stowed";
 
+/** Bench tray is session-only — always stowed; purges any legacy LS key. */
 export function loadFusionBenchTray(): FusionBenchTrayState {
-  const v = readStorage(KEYS.fusionBenchTray);
-  // Fresh install / missing key → stowed (user prefs always win once set)
-  return v === "open" ? "open" : "stowed";
+  removeStorage(KEYS.fusionBenchTray);
+  return "stowed";
 }
 
-export function saveFusionBenchTray(state: FusionBenchTrayState): void {
-  writeStorage(KEYS.fusionBenchTray, state);
+/** Bench tray is session-only — never persists open/stowed. */
+export function saveFusionBenchTray(_state: FusionBenchTrayState): void {
+  removeStorage(KEYS.fusionBenchTray);
 }
 
 export type FusionDisplayMode = "single" | "dual";
