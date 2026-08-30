@@ -62,5 +62,5 @@ Resulting model: **base = dark defaults, themes = deltas.**
 - **Eink badge/topo overrides** — ✅ DONE (`1663800`): 97 eink rules removed; DOTTED badge/bars/topo now identical to CLEAN (visual pass).
 - **Harness veil bugs** — ✅ DONE (`2ebe1b8`): dark bg on dark-theme CLEAN (old phosphor-light/clean grouping), full-face positioning on ARCTIC DOTTED (eink `> *` lift rule excluded the veil).
 - **Texture legacy maps** — ✅ DONE (`aa0430f`): dropped, pre-user.
-- **Tier 4 — texture-system unification** (~90 lines): still open — only worth it if a third texture axis is planned.
+- **Tier 4 — texture-system unification** (~90 lines): ✅ DECIDED — leave as-is (user, 2026-08-30). Two instances don't justify the abstraction; display texture is per-component while frame texture is html-scoped. Revisit only if a third texture axis appears.
 - **Group-layout legacy paths** (`MULTI-GPU` / `RUNTIME-CONFIG` in `groupLayoutUtils.ts` / `systemParams.ts`): parked — battle-tested, delicate; review with the author agent before touching.
