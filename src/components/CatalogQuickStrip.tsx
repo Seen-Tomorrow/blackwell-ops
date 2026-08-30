@@ -134,6 +134,7 @@ export default function CatalogQuickStrip({
   const [editingRole, setEditingRole] = useState<CatalogEngineSeatRole | null>(null);
   const [pending, setPending] = useState<PendingAction>(null);
   const [launchMode, setLaunchMode] = useState<"solo" | "twin">("twin");
+  const [seatsHelpOpen, setSeatsHelpOpen] = useState(false);
   const [learnedMem, setLearnedMem] = useState<{
     brain: LearnedMemGb | null;
     worker: LearnedMemGb | null;
@@ -178,6 +179,19 @@ export default function CatalogQuickStrip({
   useEffect(() => {
     setPending(null);
   }, [activeSeatSet]);
+
+  useEffect(() => {
+    if (!seatsHelpOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSeatsHelpOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [seatsHelpOpen]);
+
+  useEffect(() => {
+    if (editingRole != null) setSeatsHelpOpen(false);
+  }, [editingRole]);
 
   const pinModels = pins
     .map((p) => findModel(models, p))
@@ -290,11 +304,28 @@ export default function CatalogQuickStrip({
                 );
               })}
             </div>
-            <span className="catalog-quick-section__title">
-              {seatEditing
-                ? `EDITING ${CATALOG_SEAT_LABEL[editingRole!]}`
-                : "HARNESS SEATS"}
-            </span>
+            <div className="catalog-quick-section__title-cluster">
+              <span className="catalog-quick-section__title">
+                {seatEditing
+                  ? `EDITING ${CATALOG_SEAT_LABEL[editingRole!]}`
+                  : "HARNESS SEATS"}
+              </span>
+              {!seatEditing ? (
+                <button
+                  type="button"
+                  className={`catalog-quick-section__help${
+                    seatsHelpOpen ? " catalog-quick-section__help--active" : ""
+                  }`}
+                  title="What are harness seats?"
+                  aria-label="What are harness seats?"
+                  aria-expanded={seatsHelpOpen}
+                  aria-controls="catalog-seats-help"
+                  onClick={() => setSeatsHelpOpen((v) => !v)}
+                >
+                  ?
+                </button>
+              ) : null}
+            </div>
           </div>
           {!seatEditing ? (
             <div className="catalog-quick-section__head-row catalog-quick-section__head-row--actions">
@@ -340,211 +371,273 @@ export default function CatalogQuickStrip({
           className={[
             "catalog-quick-seat-bank",
             seatEditing ? "catalog-quick-seat-bank--editing" : "",
+            seatsHelpOpen ? "catalog-quick-seat-bank--help" : "",
           ]
             .filter(Boolean)
             .join(" ")}
         >
-        <div
-          className={[
-            "catalog-quick-strip__seats",
-            seatEditing ? "catalog-quick-strip__seats--editing" : "",
-          ]
-            .filter(Boolean)
-            .join(" ")}
-        >
-          {rolesToShow.map((role) => {
-            const slot = seats[role];
-            const model = slot ? findModel(models, slot.path) : undefined;
-            const filled = Boolean(slot?.path);
-            const isSelected =
-              filled && selectedKey != null && pathKey(slot!.path) === selectedKey;
-            const isEditing = editingRole === role;
-            const selectionDiffers =
-              filled
-              && selectedPath
-              && pathKey(slot!.path) !== pathKey(selectedPath);
-            const pendingHere =
-              pending && pending.role === role ? pending.kind : null;
-            const label = filled
-              ? catalogPathChipLabel(slot!.path, model?.name)
-              : "— empty";
-
-            return (
+          {seatsHelpOpen ? (
+            <div
+              id="catalog-seats-help"
+              className="catalog-seats-help"
+              role="dialog"
+              aria-label="Harness seats help"
+            >
+              <div className="catalog-seats-help__panel">
+                <div className="catalog-seats-help__top">
+                  <span className="catalog-seats-help__kicker">HARNESS SEATS</span>
+                  <button
+                    type="button"
+                    className="catalog-seats-help__close"
+                    onClick={() => setSeatsHelpOpen(false)}
+                  >
+                    CLOSE
+                  </button>
+                </div>
+                <p className="catalog-seats-help__blurb">
+                  Saved model + knobs bags for the agentic harness — not just favorites.
+                </p>
+                <div className="catalog-seats-help__flow" aria-hidden>
+                  <div className="catalog-seats-help__step">
+                    <span className="catalog-seats-help__n">1</span>
+                    <span className="catalog-seats-help__step-title">ASSIGN</span>
+                    <span className="catalog-seats-help__roles">
+                      <span className="catalog-seats-help__role catalog-seats-help__role--brain">
+                        BRAIN
+                      </span>
+                      <span className="catalog-seats-help__role catalog-seats-help__role--worker">
+                        WORKER
+                      </span>
+                    </span>
+                    <span className="catalog-seats-help__step-copy">pick model · save bag</span>
+                  </div>
+                  <span className="catalog-seats-help__arrow">→</span>
+                  <div className="catalog-seats-help__step">
+                    <span className="catalog-seats-help__n">2</span>
+                    <span className="catalog-seats-help__step-title">LAUNCH</span>
+                    <span className="catalog-seats-help__launch">SOLO / TWIN ▶</span>
+                    <span className="catalog-seats-help__step-copy">start engines from seats</span>
+                  </div>
+                  <span className="catalog-seats-help__arrow">→</span>
+                  <div className="catalog-seats-help__step">
+                    <span className="catalog-seats-help__n">3</span>
+                    <span className="catalog-seats-help__step-title">CONNECT</span>
+                    <span className="catalog-seats-help__connect">HARNESS CONNECT</span>
+                    <span className="catalog-seats-help__step-copy">open pi on those seats</span>
+                  </div>
+                </div>
+                <p className="catalog-seats-help__foot">
+                  Sets <b>1 / 2 / 3</b> store alternate BRAIN+WORKER combos. Σ row is LEARNED
+                  VRAM+RAM for both seats.
+                </p>
+              </div>
+            </div>
+          ) : null}
+          {!seatsHelpOpen ? (
+            <>
               <div
-                key={role}
                 className={[
-                  "catalog-quick-seat",
-                  `catalog-quick-seat--${role}`,
-                  filled ? "catalog-quick-seat--filled" : "catalog-quick-seat--empty",
-                  isSelected ? "catalog-quick-seat--selected" : "",
-                  isEditing ? "catalog-quick-seat--editing" : "",
-                  pendingHere ? "catalog-quick-seat--pending" : "",
+                  "catalog-quick-strip__seats",
+                  seatEditing ? "catalog-quick-strip__seats--editing" : "",
                 ]
                   .filter(Boolean)
                   .join(" ")}
               >
-                {isEditing ? <SeatLiveRim /> : null}
-                {filled && !seatEditing && learnedMem[role] ? (
-                  <div
-                    className="catalog-quick-seat__mem catalog-quick-seat__mem--vram"
-                    title={`LEARNED VRAM for ${CATALOG_SEAT_LABEL[role]} at saved knobs`}
-                  >
-                    <span className="catalog-quick-seat__mem-val">
-                      {vramValueText(learnedMem[role])}
-                    </span>
-                    <span className="catalog-quick-seat__mem-unit">GB VRAM</span>
-                  </div>
-                ) : null}
-                <div className="catalog-quick-seat__body">
-                <button
-                  type="button"
-                  className="catalog-quick-seat__main"
-                  title={
-                    isEditing
-                      ? `Editing ${CATALOG_SEAT_LABEL[role]} — tune panel, then SAVE on this seat`
-                      : filled
-                        ? `${CATALOG_SEAT_LABEL[role]} · ${model?.name || slot!.path}\nClick = select · EDIT = knobs · REPLACE = swap model`
-                        : hasSelection
-                          ? `${CATALOG_SEAT_LABEL[role]} empty — click to seat selected model`
-                          : `${CATALOG_SEAT_LABEL[role]} empty — select a catalog model first`
-                  }
-                  onClick={() => {
-                    if (isEditing) return;
-                    if (filled && slot) {
-                      onSelectPath(slot.path);
-                      return;
-                    }
-                    tryAssignEmpty(role);
-                  }}
-                >
-                  <span className="catalog-quick-seat__role">
-                    {CATALOG_SEAT_LABEL[role]}
-                  </span>
-                  <span className="catalog-quick-seat__name">{label}</span>
-                  {filled && model ? (
-                    <span className="catalog-quick-seat__quant">{modelQuantLabel(model)}</span>
-                  ) : null}
-                </button>
+                {rolesToShow.map((role) => {
+                  const slot = seats[role];
+                  const model = slot ? findModel(models, slot.path) : undefined;
+                  const filled = Boolean(slot?.path);
+                  const isSelected =
+                    filled && selectedKey != null && pathKey(slot!.path) === selectedKey;
+                  const isEditing = editingRole === role;
+                  const selectionDiffers =
+                    filled
+                    && selectedPath
+                    && pathKey(slot!.path) !== pathKey(selectedPath);
+                  const pendingHere =
+                    pending && pending.role === role ? pending.kind : null;
+                  const label = filled
+                    ? catalogPathChipLabel(slot!.path, model?.name)
+                    : "— empty";
 
-                <div className="catalog-quick-seat__actions">
-                  {pendingHere ? (
-                    <>
-                      <button
-                        type="button"
-                        className="catalog-quick-seat__btn catalog-quick-seat__btn--yes"
-                        title="Confirm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          confirmPending();
-                        }}
-                      >
-                        Y
-                      </button>
-                      <button
-                        type="button"
-                        className="catalog-quick-seat__btn catalog-quick-seat__btn--no"
-                        title="Cancel"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setPending(null);
-                        }}
-                      >
-                        N
-                      </button>
-                    </>
-                  ) : isEditing ? (
-                    <>
-                      <button
-                        type="button"
-                        className="catalog-quick-seat__btn catalog-quick-seat__btn--save"
-                        title="Save panel config into this seat"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          dispatchAppEvent(EVENTS.catalogSeatSave);
-                        }}
-                      >
-                        <span className="catalog-quick-seat__save-ico" aria-hidden>
-                          ▣
-                        </span>
-                        SAVE
-                      </button>
-                      <button
-                        type="button"
-                        className="catalog-quick-seat__btn catalog-quick-seat__btn--cancel"
-                        title="Cancel seat edit"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          dispatchAppEvent(EVENTS.catalogSeatCancel);
-                        }}
-                      >
-                        CANCEL
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      {filled && selectionDiffers ? (
+                  return (
+                    <div
+                      key={role}
+                      className={[
+                        "catalog-quick-seat",
+                        `catalog-quick-seat--${role}`,
+                        filled ? "catalog-quick-seat--filled" : "catalog-quick-seat--empty",
+                        isSelected ? "catalog-quick-seat--selected" : "",
+                        isEditing ? "catalog-quick-seat--editing" : "",
+                        pendingHere ? "catalog-quick-seat--pending" : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                    >
+                      {isEditing ? <SeatLiveRim /> : null}
+                      {filled && !seatEditing && learnedMem[role] ? (
+                        <div
+                          className="catalog-quick-seat__mem catalog-quick-seat__mem--vram"
+                          title={`LEARNED VRAM for ${CATALOG_SEAT_LABEL[role]} at saved knobs`}
+                        >
+                          <span className="catalog-quick-seat__mem-val">
+                            {vramValueText(learnedMem[role])}
+                          </span>
+                          <span className="catalog-quick-seat__mem-unit">GB VRAM</span>
+                        </div>
+                      ) : null}
+                      <div className="catalog-quick-seat__body">
                         <button
                           type="button"
-                          className="catalog-quick-seat__btn catalog-quick-seat__btn--replace"
-                          title="Replace this seat’s model with the selected catalog model"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setPending({ kind: "replace", role });
+                          className="catalog-quick-seat__main"
+                          title={
+                            isEditing
+                              ? `Editing ${CATALOG_SEAT_LABEL[role]} — tune panel, then SAVE on this seat`
+                              : filled
+                                ? `${CATALOG_SEAT_LABEL[role]} · ${model?.name || slot!.path}\nClick = select · EDIT = knobs · REPLACE = swap model`
+                                : hasSelection
+                                  ? `${CATALOG_SEAT_LABEL[role]} empty — click to seat selected model`
+                                  : `${CATALOG_SEAT_LABEL[role]} empty — select a catalog model first`
+                          }
+                          onClick={() => {
+                            if (isEditing) return;
+                            if (filled && slot) {
+                              onSelectPath(slot.path);
+                              return;
+                            }
+                            tryAssignEmpty(role);
                           }}
                         >
-                          R
+                          <span className="catalog-quick-seat__role">
+                            {CATALOG_SEAT_LABEL[role]}
+                          </span>
+                          <span className="catalog-quick-seat__name">{label}</span>
+                          {filled && model ? (
+                            <span className="catalog-quick-seat__quant">{modelQuantLabel(model)}</span>
+                          ) : null}
                         </button>
-                      ) : null}
-                      {filled ? (
-                        <button
-                          type="button"
-                          className="catalog-quick-seat__btn catalog-quick-seat__btn--edit"
-                          title={`Edit ${CATALOG_SEAT_LABEL[role]} knobs in the real panel`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            beginSeatEdit(role);
-                          }}
-                        >
-                          E
-                        </button>
-                      ) : null}
-                      {filled ? (
-                        <button
-                          type="button"
-                          className="catalog-quick-seat__btn catalog-quick-seat__btn--clear"
-                          title={`Clear ${CATALOG_SEAT_LABEL[role]} seat`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setPending({ kind: "clear", role });
-                          }}
-                        >
-                          X
-                        </button>
-                      ) : null}
-                    </>
-                  )}
-                </div>
-                </div>
+
+                        <div className="catalog-quick-seat__actions">
+                          {pendingHere ? (
+                            <>
+                              <button
+                                type="button"
+                                className="catalog-quick-seat__btn catalog-quick-seat__btn--yes"
+                                title="Confirm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  confirmPending();
+                                }}
+                              >
+                                Y
+                              </button>
+                              <button
+                                type="button"
+                                className="catalog-quick-seat__btn catalog-quick-seat__btn--no"
+                                title="Cancel"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPending(null);
+                                }}
+                              >
+                                N
+                              </button>
+                            </>
+                          ) : isEditing ? (
+                            <>
+                              <button
+                                type="button"
+                                className="catalog-quick-seat__btn catalog-quick-seat__btn--save"
+                                title="Save panel config into this seat"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  dispatchAppEvent(EVENTS.catalogSeatSave);
+                                }}
+                              >
+                                <span className="catalog-quick-seat__save-ico" aria-hidden>
+                                  ▣
+                                </span>
+                                SAVE
+                              </button>
+                              <button
+                                type="button"
+                                className="catalog-quick-seat__btn catalog-quick-seat__btn--cancel"
+                                title="Cancel seat edit"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  dispatchAppEvent(EVENTS.catalogSeatCancel);
+                                }}
+                              >
+                                CANCEL
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              {filled && selectionDiffers ? (
+                                <button
+                                  type="button"
+                                  className="catalog-quick-seat__btn catalog-quick-seat__btn--replace"
+                                  title="Replace this seat’s model with the selected catalog model"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPending({ kind: "replace", role });
+                                  }}
+                                >
+                                  R
+                                </button>
+                              ) : null}
+                              {filled ? (
+                                <button
+                                  type="button"
+                                  className="catalog-quick-seat__btn catalog-quick-seat__btn--edit"
+                                  title={`Edit ${CATALOG_SEAT_LABEL[role]} knobs in the real panel`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    beginSeatEdit(role);
+                                  }}
+                                >
+                                  E
+                                </button>
+                              ) : null}
+                              {filled ? (
+                                <button
+                                  type="button"
+                                  className="catalog-quick-seat__btn catalog-quick-seat__btn--clear"
+                                  title={`Clear ${CATALOG_SEAT_LABEL[role]} seat`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPending({ kind: "clear", role });
+                                  }}
+                                >
+                                  X
+                                </button>
+                              ) : null}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
-        </div>
-          {sum && !seatEditing ? (
-            <div
-              className="catalog-quick-mem catalog-quick-mem--combo"
-              title="LEARNED total for both seats at saved knobs (re-read, not stored on the bags)"
-            >
-              <span className="catalog-quick-mem__cell catalog-quick-mem__cell--vram">
-                <span className="catalog-quick-mem__sigma" aria-hidden>Σ</span>
-                <span className="catalog-quick-mem__val">{vramValueText(sum)}</span>
-                <span className="catalog-quick-mem__unit">GB VRAM</span>
-              </span>
-              <span className="catalog-quick-mem__cell catalog-quick-mem__cell--ram">
-                <span className="catalog-quick-mem__sigma" aria-hidden>Σ</span>
-                <span className="catalog-quick-mem__val">{ramValueText(sum) ?? "0.0"}</span>
-                <span className="catalog-quick-mem__unit">GB RAM</span>
-              </span>
-            </div>
+              {sum && !seatEditing ? (
+                <div
+                  className="catalog-quick-mem catalog-quick-mem--combo"
+                  title="LEARNED total for both seats at saved knobs (re-read, not stored on the bags)"
+                >
+                  <span className="catalog-quick-mem__cell catalog-quick-mem__cell--vram">
+                    <span className="catalog-quick-mem__sigma" aria-hidden>Σ</span>
+                    <span className="catalog-quick-mem__val">{vramValueText(sum)}</span>
+                    <span className="catalog-quick-mem__unit">GB VRAM</span>
+                  </span>
+                  <span className="catalog-quick-mem__cell catalog-quick-mem__cell--ram">
+                    <span className="catalog-quick-mem__sigma" aria-hidden>Σ</span>
+                    <span className="catalog-quick-mem__val">{ramValueText(sum) ?? "0.0"}</span>
+                    <span className="catalog-quick-mem__unit">GB RAM</span>
+                  </span>
+                </div>
+              ) : null}
+            </>
           ) : null}
         </div>
       </section>
