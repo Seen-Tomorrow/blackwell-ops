@@ -335,19 +335,29 @@ export default function CatalogQuickStrip({
             ) : null}
           </div>
         </header>
-        {(learnedMem.brain || learnedMem.worker) && !seatEditing ? (
+        {sum && !seatEditing ? (
           <div
             className="catalog-quick-mem"
-            title="LEARNED VRAM+RAM at saved seat knobs (re-read, not stored on the bag)"
+            title="LEARNED total for this seat combo at saved knobs (re-read, not stored on the bags)"
           >
-            <span className="catalog-quick-mem__half catalog-quick-mem__half--vram">
-              <span className="catalog-quick-mem__sigma">Σ</span>
-              {vramValueText(sum)}
-              <span className="catalog-quick-mem__unit">GB VRAM</span>
+            <span className="catalog-quick-mem__prefix">
+              THIS COMBO NEEDS <span className="catalog-quick-mem__sigma">Σ</span>
             </span>
-            <span className="catalog-quick-mem__half catalog-quick-mem__half--ram">
-              {ramValueText(sum) ?? "—"}
-              <span className="catalog-quick-mem__unit">GB RAM</span>
+            <span className="catalog-quick-mem__sum">
+              <span
+                className="catalog-quick-mem__half catalog-quick-mem__half--vram"
+                ref={(el) => {
+                  if (el) (el.closest(".catalog-quick-mem") as HTMLElement | null)?.style.setProperty("--vram-chip-w", `${el.offsetWidth}px`);
+                }}
+              >
+                {vramValueText(sum)}
+                <span className="catalog-quick-mem__unit">GB VRAM</span>
+              </span>
+              <span className="catalog-quick-mem__plus">+</span>
+              <span className="catalog-quick-mem__half catalog-quick-mem__half--ram">
+                {ramValueText(sum) ?? "0.0"}
+                <span className="catalog-quick-mem__unit">GB RAM</span>
+              </span>
             </span>
           </div>
         ) : null}

@@ -1108,22 +1108,47 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-/* Σ total — solo row above the seat cards, split 50/50 full width:
-   VRAM half left, RAM half right, painted with the VramBadge "total"
-   label-chip colors (--display-face-fc-label-* tokens). */
+/* Σ total — one line above the seat cards:
+   "THIS COMBO NEEDS Σ  [VRAM chip] + [RAM chip]". The prefix is given the
+   EXACT width of the VRAM chip (measured into --vram-chip-w) so the "+"
+   sits at the mathematical row midpoint. Painted with the VramBadge
+   "total" label-chip colors (--display-face-fc-label-* tokens). */
 .catalog-quick-mem {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px;
   min-width: 0;
   font-family: ui-monospace, "JetBrains Mono", monospace;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
   line-height: 1.2;
+  white-space: nowrap;
+}
+
+.catalog-quick-mem__prefix {
+  /* At least the label's own width (no truncation); when the VRAM chip is
+     wider, the cell widens to match it so the "+" stays dead-center. */
+  min-width: max(var(--vram-chip-w, 0px), max-content);
+  box-sizing: border-box;
+  text-align: center;
+  color: var(--display-face-text-muted, var(--theme-text-muted, #94a3b8));
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  opacity: 0.9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.catalog-quick-mem__plus {
+  color: var(--display-face-text-muted, var(--theme-text-muted, #94a3b8));
+  opacity: 0.7;
 }
 
 /* Per-seat VRAM bar — in-flow first row of the seat (column flex), full
-   card width. RAM lives in the total row only. */
+   card width, centered text. RAM lives in the total row only. */
 .catalog-quick-seat__mem {
   display: block;
   min-width: 0;
@@ -1133,18 +1158,27 @@
   line-height: 1.2;
 }
 
-/* VRAM / RAM halves — 50/50 split. Colors mirror the VramBadge "total"
+/* Per-seat bar keeps the old centered full-width look — the chip styling
+   below is scoped to the Σ total row only. */
+.catalog-quick-seat__mem .catalog-quick-mem__half {
+  display: flex;
+  justify-content: center;
+  padding: 2px 4px;
+  border-radius: 0;
+}
+
+/* VRAM / RAM value chips — colors mirror the VramBadge "total"
    label chips (--display-face-fc-label-* tokens), not the solid bar fills. */
-.catalog-quick-mem__half {
+.catalog-quick-mem__sum > .catalog-quick-mem__half {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  display: flex;
+  display: inline-flex;
   align-items: baseline;
-  justify-content: center;
   gap: 3px;
-  padding: 2px 4px;
+  padding: 2px 5px;
+  border-radius: 3px;
 }
 
 .catalog-quick-mem__half--vram {
