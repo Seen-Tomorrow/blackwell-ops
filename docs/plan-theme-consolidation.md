@@ -54,9 +54,13 @@ Resulting model: **base = dark defaults, themes = deltas.**
    - SLATE + DOTTED → `rgb(12, 12, 12)` (dark neutral)
    - CLEAN + DOTTED cycle works; theme chips = MATRIX/SLATE/ARCTIC
 
-## Deferred (reassess after 1+2+3)
+## Deferred — status (2026-08-30)
 
-- **The 301 `[data-theme="arctic"]` CSS forks** — should not exist in the first place; proper fix is a theme-level face-mode signal (e.g. container style query on a `--display-face-mode` token). Separate pass.
-- **Tier 4 — texture-system unification** (~90 lines): `displayTexture.ts` + `industrialBezelTexture.ts` + both contexts are structural clones. Only worth it if a third texture axis is planned.
-- **`nativeWindowTheme.ts`** hardcoded `LIGHT_APP_THEME_IDS` → `native?: "light"` field on `AppTheme`.
-- **`isLightDisplayFace(themeId, texture)` helper** in `displayTexture.ts` to centralize the ARCTIC+dotted=light-face semantic for TS consumers (CSS keeps its selectors until the fork fix).
+- **The 301 `[data-theme="arctic"]` CSS forks** — ✅ DONE (`65b389d`): resolved via the `data-display-face` attribute (crt/eink/paper) + `displayFaceFor()` — simpler than the container-query option; CSS is now 100% face-keyed.
+- **`nativeWindowTheme.ts`** — ✅ DONE (`65b389d`): `AppTheme.native: "light"` on ARCTIC; hardcoded set removed.
+- **Face helper** — ✅ DONE (`65b389d`): landed as `displayFaceFor(themeId, texture)` (three-valued, not boolean — `crt`/`eink`/`paper` distinguishes the paper face on dark themes, which the boolean could not).
+- **Eink badge/topo overrides** — ✅ DONE (`1663800`): 97 eink rules removed; DOTTED badge/bars/topo now identical to CLEAN (visual pass).
+- **Harness veil bugs** — ✅ DONE (`2ebe1b8`): dark bg on dark-theme CLEAN (old phosphor-light/clean grouping), full-face positioning on ARCTIC DOTTED (eink `> *` lift rule excluded the veil).
+- **Texture legacy maps** — ✅ DONE (`aa0430f`): dropped, pre-user.
+- **Tier 4 — texture-system unification** (~90 lines): still open — only worth it if a third texture axis is planned.
+- **Group-layout legacy paths** (`MULTI-GPU` / `RUNTIME-CONFIG` in `groupLayoutUtils.ts` / `systemParams.ts`): parked — battle-tested, delicate; review with the author agent before touching.

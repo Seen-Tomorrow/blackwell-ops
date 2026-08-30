@@ -72,17 +72,16 @@ VRAM / RAM tracks                |  need GB  (aligned to bars via subgrid)
 - Anchor to the **content-sized** SOURCE cluster (`flex: 0 0 auto`), `right: 0` under the label — not full-strip `left: 0`.  
 - Flat panel: `--display-face-recap-bg` / `-text` / `-text-muted`. ARCTIC reuses **SLATE** panel/text values.  
 
-**DISPLAY LIGHT paper ink**
+**EINK (DOTTED) badge treatment**
 
-- Launch summary ok/fail → `--display-face-light-readout` / `-text-accent` / `-text-red` (not bright accent wash).  
-- NEED / GPU reverse washes on paper: `--display-face-light-plate-ink*` or CLEAN face plate tokens.  
+- Badge / bars / GPU topo on the eink face use the **same base (paper) treatment** — no eink-specific chip wells, need-frame plate, or reverse washes (removed 2026-08; ARCTIC visual pass: paper looked better). Only the general eink face ink (`--display-face-light-text-*` utilities on the phosphor surface) remains eink-specific.
 
 ---
 
 ## Display texture grain
 
-- **LIGHT** and **DARK**: **dots only**. Horizontal scan bands off (`--display-face-*-band-opacity: 0`).  
-- Do not reintroduce harsh CRT stripes on DARK.  
+- **EINK** and **CRT**: **dots only**. Horizontal scan bands off (`--display-face-*-band-opacity: 0`).  
+- Do not reintroduce harsh scan stripes on the CRT face.
 
 ---
 

@@ -30,13 +30,13 @@ different build target. Do not auto-kill. The only exception is a user explicitl
 
 **Domain partials** — Styles live under `src/styles/*.css`; `src/index.css` is Tailwind + `@import` only. Edit the matching partial (chrome, cockpit, fusion-display, config, launch, …).
 
-**No theme forks** — New colors/surfaces: add a token on **all** themes, then use `var(--theme-…)` in one rule. Arctic is not special-cased in CSS.
+**No theme forks** — New colors/surfaces: add a token on **all** themes, then use `var(--theme-…)` in one rule. Arctic is not special-cased in CSS. Display-surface styling keys on **`data-display-face`** (`crt` | `eink` | `paper`) — set by `displayFaceFor(themeId, texture)` in `src/lib/displayTexture.ts` on the display elements (EngineConfigPanel / EngineGpuForecast / LaunchRailTelemetry / share capture). Never fork CSS on `[data-theme=…]` + `[data-display-texture=…]`; if a face needs a new variant, extend `DisplayFace`, not the selectors. Themes = MATRIX / SLATE / ARCTIC (`app-themes.ts`, `native` field drives window chrome); display = DOTTED / CLEAN; dark shared defaults live in `tokens-base.css` (themes are deltas).
 
 **Tailwind** — Prefer layout utilities + semantic theme classes / CSS variables. `stealth` / `nv` utilities resolve to CSS vars (theme-aware). Do not reintroduce hard-coded multi-theme palettes in `tailwind.config.js`.
 
 **Removed modules** — Mobile Sentinel Bridge (`mobile_bridge.rs`, WebSocket `0.0.0.0:3814`, `tokio-tungstenite`) is fully removed — backend and UI. Do not revive it.
 
-**Industrial display (bezel / glass)** — One glass only: frame pad = metal, `.phosphor-screen-inner` = full face + unified recess shadow, children = content (no nested phosphor surface). Display texture also paints HW monitor widget faces (`.launch-rail-tel .phosphor-display-surface`) — not catalog quiet-wing desaturate. Full memo: `docs/display-bezel-glass.md`. Do not revive `DisplayGlitchOverlay` / `.display-glitch-*`.
+**Industrial display (bezel / glass)** — One glass only: frame pad = metal, `.phosphor-screen-inner` = full face + unified recess shadow, children = content (no nested phosphor surface). The face attribute also paints HW monitor widget faces (`.launch-rail-tel .phosphor-display-surface`) — not catalog quiet-wing desaturate. The harness connect veil (`.harness-connect-veil`) is absolute over the face and is excluded from the eink `> *` lift rule — keep it that way. Full memo: `docs/display-bezel-glass.md`. Do not revive `DisplayGlitchOverlay` / `.display-glitch-*`.
 
 **No `backdrop-filter: blur` (or `-webkit-backdrop-filter: blur`)** — Modal/scrim overlays must **dim only** (semi-opaque `background`, e.g. `color-mix(in srgb, #000 60%, transparent)`). Blur forces continuous full-compositor work in WebView2 and pegs the **iGPU at ~100%** for as long as the overlay is open (harness confirm, etc.). Prefer stronger dim over blur. Do not reintroduce blur for “frosted glass” aesthetics without an explicit exception.
 
