@@ -38,6 +38,11 @@ const modeLabel = isDev ? "DEV" : "REL";
 const appVersion = `${modeLabel} ${buildNumber}`;
 
 // https://tauri.app/start
+// NOTE: the dep-optimizer cache key includes the resolved config (plugin list,
+// resolve aliases, define, optimizeDeps). Keep this config STATIC across runs or
+// every dev server start re-bundles node_modules deps ("Re-optimizing dependencies
+// because vite config has changed"). The async factory is fine; just don't inject
+// per-run values (timestamps, counters) into any hashed field.
 export default defineConfig(async () => ({
   plugins: [react()],
   resolve: {
@@ -85,7 +90,10 @@ export default defineConfig(async () => ({
   },
 
   optimizeDeps: {
-    entries: ["./index.html"],
+    // Explicit entry list (instead of the default repo-wide `**/*.html` glob) —
+    // the dep scanner only crawls index.html → main.tsx → the client graph.
+    // Keep it explicit if you ever add other HTML shells.
+    entries: ["index.html"],
     include: [
       "react",
       "react-dom",

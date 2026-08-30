@@ -9,6 +9,8 @@
 import { spawn } from "node:child_process";
 import http from "node:http";
 import net from "node:net";
+import { rmSync, readdirSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
 
 const HOST = process.env.TAURI_DEV_HOST || "127.0.0.1";
 /** Port Tauri probes (devUrl) — bound only after warmup. */
@@ -27,6 +29,47 @@ const WARM_PATHS = [
   "/src/index.css",
   "/index.html",
 ];
+/**
+ * Vite 8's dep-optimizer commits via a 3-way directory swap on Windows:
+ *   deps → deps_temp_<old>, deps_temp_<new> → deps, rm(deps_temp_<old>)
+ * The final rm is fire-and-forget. If WebView2 still holds a file handle,
+ * the rm fails silently and the _temp_ dir lingers (Vite's own cleanup
+ * only removes _temp_ dirs older than 24h). Accumulated _temp_ dirs +
+ * a half-swapped deps/ dir = stale optimized chunks = visuals that don't
+ * match code. Wipe both before every cold start.
+ */
+function cleanViteDepCache() {
+  const viteDir = resolve("node_modules", ".vite");
+  let entries;
+  try {
+    entries = readdirSync(viteDir);
+  } catch {
+    return; // no cache yet
+  }
+  for (const name of entries) {
+    const full = join(viteDir, name);
+    try {
+      // Remove stale _temp_ dirs (any age — we're about to rebuild anyway)
+      if (name.startsWith("deps_temp_")) {
+        rmSync(full, { recursive: true, force: true });
+        console.log(`[vite-warmup] removed stale ${name}`);
+        continue;
+      }
+      // Wipe the deps cache itself — Vite re-bundles on first request.
+      // This is the deterministic fix for half-swapped cache state.
+      if (name === "deps") {
+        const st = statSync(full);
+        if (st.isDirectory()) {
+          rmSync(full, { recursive: true, force: true });
+          console.log(`[vite-warmup] wiped deps cache (clean start)`);
+        }
+      }
+    } catch (err) {
+      // Locked file (WebView2 still open) — non-fatal, Vite will re-optimise.
+      console.warn(`[vite-warmup] could not remove ${name}:`, err.message);
+    }
+  }
+}
 
 function fetchPath(base, path) {
   return new Promise((resolve, reject) => {
@@ -121,6 +164,7 @@ function startProxy() {
 }
 
 async function main() {
+  cleanViteDepCache();
   const vite = spawn(`npx vite --port ${INTERNAL_PORT} --host ${HOST}`, {
     stdio: "inherit",
     shell: true,
