@@ -5,13 +5,7 @@ import { APP_THEMES } from "../themes/app-themes";
 import { DISPLAY_TEXTURE_SHORT_LABELS } from "../lib/displayTexture";
 import { INDUSTRIAL_BEZEL_TEXTURE_SHORT_LABELS } from "../lib/industrialBezelTexture";
 
-interface AppearanceControlsProps {
-  className?: string;
-  /** Inside app-quick-settings — no outer border */
-  embedded?: boolean;
-}
-
-export default function AppearanceControls({ className = "", embedded = false }: AppearanceControlsProps) {
+export default function AppearanceControls() {
   const { theme, setThemeId } = useTheme();
   const { texture: displayTexture, label: displayLabel, cycle: cycleDisplayTexture } = useDisplayTexture();
   const { texture: frameTexture, label: frameLabel, cycle: cycleFrameTexture } = useIndustrialBezelTexture();
@@ -29,7 +23,7 @@ export default function AppearanceControls({ className = "", embedded = false }:
 
   return (
     <div
-      className={`app-appearance-panel ${embedded ? "app-appearance-panel--embedded" : "rounded-sm px-1 py-0.5"} ${className}`}
+      className="app-appearance-panel app-appearance-panel--embedded"
       role="group"
       aria-label="Appearance"
     >

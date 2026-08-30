@@ -452,7 +452,7 @@ export default function Layout({
           {/* Admin lock + zoom + appearance */}
           <div className="app-header-actions gap-1.5 flex-shrink-0">
             <div ref={qsRef} className="app-quick-settings flex flex-col items-end gap-px flex-shrink-0">
-              <AppearanceControls embedded />
+              <AppearanceControls />
               <div className="app-quick-settings__tools app-quick-settings__row flex items-center gap-2">
                 <span className="app-quick-settings__title font-mono tracking-widest uppercase shrink-0">
                   Quick Settings

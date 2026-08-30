@@ -1,7 +1,6 @@
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import {
   DISPLAY_TEXTURE_LABELS,
-  DISPLAY_TEXTURE_ORDER,
   type DisplayTexture,
   nextDisplayTexture,
 } from "../lib/displayTexture";
@@ -10,7 +9,6 @@ import { loadDisplayTexture, saveDisplayTexture } from "../lib/storage";
 interface DisplayTextureContextValue {
   texture: DisplayTexture;
   label: string;
-  position: number;
   setTexture: (texture: DisplayTexture) => void;
   cycle: () => void;
 }
@@ -37,7 +35,6 @@ export function DisplayTextureProvider({ children }: { children: React.ReactNode
     () => ({
       texture,
       label: DISPLAY_TEXTURE_LABELS[texture],
-      position: DISPLAY_TEXTURE_ORDER.indexOf(texture),
       setTexture,
       cycle,
     }),
