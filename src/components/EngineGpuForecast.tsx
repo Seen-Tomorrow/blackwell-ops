@@ -110,6 +110,7 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     isHotSwapStale,
     onHotSwap,
     onRelaunchSeat: onRelaunchSeatProp,
+    parallelValues,
 
     dualActive = false,
     dualArmed = false,
@@ -159,6 +160,7 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     stack,
     onRelaunchSeat,
     onSelectEngine,
+    parallelValues,
   });
 
 
@@ -431,7 +433,7 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
             showHarnessConnect={harness.showConnectChip}
             harnessConnectActive={harness.veilOpen}
             harnessConnectReady={harness.connectReady}
-            onHarnessConnect={harness.openVeil}
+            onHarnessConnect={harness.toggleVeil}
           />
 
         </div>
@@ -523,6 +525,8 @@ export interface EngineGpuForecastProps {
     alias: string;
     parallel: number;
   }) => Promise<void>;
+  /** Cockpit Agents / parallel value marks for harness AGENTS chips. */
+  parallelValues?: (string | number)[];
 
   dualActive?: boolean;
   dualArmed?: boolean;

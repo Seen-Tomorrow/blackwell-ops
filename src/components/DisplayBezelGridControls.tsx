@@ -128,10 +128,11 @@ export default function DisplayBezelGridControls({
             <button
               type="button"
               onClick={onHarnessConnect}
-              title="Open harness connect"
+              title={harnessConnectActive ? "Hide harness connect" : "Show harness connect"}
+              aria-pressed={harnessConnectActive}
               className={`display-bezel-fusion-chip font-mono uppercase tracking-wider${
                 harnessConnectActive ? " display-bezel-fusion-chip--active" : ""
-              }${harnessConnectReady ? " display-bezel-fusion-chip--harness-ready" : ""}`}
+              }${harnessConnectReady && !harnessConnectActive ? " display-bezel-fusion-chip--harness-ready" : ""}`}
             >
               HARNESS CONNECT
             </button>

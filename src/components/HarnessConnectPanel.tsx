@@ -1,6 +1,7 @@
 /**
- * Harness connect — pi status, project, agents, OPEN.
- * Catalog assigns seats; this panel only binds and launches pi.
+ * Harness connect — pi status, seats, project, agents, OPEN.
+ * Catalog assigns seats; this panel only binds and launches the harness tool.
+ * Tool rail reserves a second slot for a future harness (chrome stays neutral).
  */
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -16,7 +17,10 @@ import {
   engineParallel,
   type HarnessBinding,
 } from "../lib/harnessBinding";
-import { CODING_MODE_OPTIONS } from "../lib/multiAgentBooster";
+import {
+  buildAgentOptions,
+  CODING_MODE_OPTIONS,
+} from "../lib/multiAgentBooster";
 import {
   PI_CODE_DISCLAIMER,
   type PiCodeStatus,
@@ -41,6 +45,7 @@ const INSTALL_PHASE_LABEL: Record<InstallPhase, string> = {
   extract: "Extracting archive…",
   finalize: "Finalizing install…",
 };
+
 
 function normalizeError(e: unknown): string {
   const raw = e instanceof Error ? e.message : String(e);
@@ -67,8 +72,12 @@ function projectBasename(path: string | null | undefined): string {
   return parts[parts.length - 1] || path;
 }
 
+
+
 export type HarnessConnectPanelProps = {
   binding: HarnessBinding;
+  /** Cockpit Agents / parallel value set (factory + user). */
+  parallelValues?: (string | number)[];
   onDismiss?: () => void;
   onRelaunchSeat?: (opts: {
     slotIdx: number;
@@ -83,9 +92,10 @@ export type HarnessConnectPanelProps = {
 
 export default function HarnessConnectPanel({
   binding,
+  parallelValues,
   onDismiss,
   onRelaunchSeat,
-  onSelectEngine,
+  onSelectEngine: _onSelectEngine,
   onLaunched,
   className = "",
 }: HarnessConnectPanelProps) {
@@ -116,6 +126,24 @@ export default function HarnessConnectPanel({
   }, [seedParallel]);
 
   const agentsN = Math.max(1, harnessAgents);
+
+  /** Same option set as cockpit Agents — template parallel values (presets fill when empty). */
+  const agentOptions = useMemo(() => {
+    const fromCockpit = buildAgentOptions(parallelValues, {
+      markNonPresetAsCustom: true,
+      onlyTemplateValues: Boolean(parallelValues && parallelValues.length > 0),
+    });
+    if (fromCockpit.length > 0) return fromCockpit;
+    return buildAgentOptions(undefined, { onlyTemplateValues: false });
+  }, [parallelValues]);
+
+  useEffect(() => {
+    if (agentOptions.some((o) => o.parallel === agentsN)) return;
+    const nearest = agentOptions.reduce((best, o) =>
+      Math.abs(o.parallel - agentsN) < Math.abs(best.parallel - agentsN) ? o : best,
+    agentOptions[0] ?? CODING_MODE_OPTIONS[0]);
+    if (nearest) setHarnessAgents(nearest.parallel);
+  }, [agentOptions, agentsN]);
 
   const refreshPiStatus = useCallback(async () => {
     try {
@@ -280,7 +308,8 @@ export default function HarnessConnectPanel({
             port: primary.port,
             model: primary.model,
             contextWindow: primary.contextWindow,
-            parallel: primary.parallel,
+            // Solo: agentsN is BRAIN concurrency. Twin: BRAIN stays lean; WORKER carries agents.
+            parallel: mode === "solo" ? agentsN : Math.max(1, primary.parallel ?? 1),
             vision: primary.vision,
           },
           worker: workerRef
@@ -288,7 +317,7 @@ export default function HarnessConnectPanel({
                 port: workerRef.port,
                 model: workerRef.model,
                 contextWindow: workerRef.contextWindow,
-                parallel: workerRef.parallel,
+                parallel: agentsN,
                 vision: workerRef.vision,
               }
             : undefined,
@@ -298,18 +327,15 @@ export default function HarnessConnectPanel({
         const result = await invoke<PiLaunchResult>("pi_code_launch", {
           request: req,
         });
-        const elev = result.elevated || piElevated ? " · elevated" : "";
         setHarnessMsg(
-          `Opened pi (${result.mode}${elev}) → :${primary.port}` +
-            (workerRef ? ` + worker :${workerRef.port}` : ""),
+          mode === "solo"
+            ? `Opened pi SOLO · AGENTS ×${agentsN} · ${result.projectDir}`
+            : `Opened pi TWIN · AGENTS ×${agentsN} · ${result.projectDir}`,
         );
-        void refreshPiStatus();
         setConfirmMode(null);
-        onSelectEngine?.(brain.idx);
         onLaunched?.();
       } catch (e) {
         setHarnessError(normalizeError(e));
-        setConfirmMode(null);
       } finally {
         setHarnessBusy("idle");
       }
@@ -319,66 +345,42 @@ export default function HarnessConnectPanel({
       piStatus?.lastProject,
       ensurePiInstalled,
       pickProjectDir,
+      agentsN,
       piElevated,
-      refreshPiStatus,
-      onSelectEngine,
       onLaunched,
     ],
   );
 
-  const requestHarnessOpen = useCallback(
-    (mode: "solo" | "brain_workers") => {
-      setHarnessError(null);
-      setHarnessMsg(null);
-      if (!bindingReadyToOpen(binding)) {
-        setHarnessError(
-          mode === "solo"
-            ? "Wait until the engine is Running."
-            : "Wait until BRAIN + WORKER are both Running.",
-        );
-        return;
-      }
-      if (piStatus && !piStatus.disclaimerAccepted) {
-        setShowDisclaimer(true);
-        setConfirmMode(mode);
-        return;
-      }
-      setConfirmMode(mode);
-    },
-    [binding, piStatus],
-  );
+  const requestHarnessOpen = useCallback((mode: "solo" | "brain_workers") => {
+    setConfirmMode(mode);
+  }, []);
 
   const acceptDisclaimerAndInstall = useCallback(async () => {
     setHarnessError(null);
     try {
       await invoke("pi_code_accept_disclaimer");
       setShowDisclaimer(false);
-      setHarnessBusy("install");
-      setInstallPhase("download");
-      setHarnessMsg("Downloading pi standalone (~46 MB)…");
-      setInstallPhase("verify");
-      const s = await invoke<PiCodeStatus>("pi_code_install", { version: null });
-      setInstallPhase("finalize");
-      setPiStatus(s);
-      setHarnessMsg(`Installed pi ${s.version ?? s.pinnedVersion}`);
-      void refreshPiStatus();
+      const s = await ensurePiInstalled();
+      if (s) setPiStatus(s);
     } catch (e) {
       setHarnessError(normalizeError(e));
-    } finally {
-      setHarnessBusy("idle");
-      setInstallPhase(null);
     }
-  }, [refreshPiStatus]);
-
-  const relaunchTarget =
-    binding.mode === "twin" && binding.worker
-      ? binding.worker
-      : binding.brain;
+  }, [ensurePiInstalled]);
 
   const workerEngineParallel = engineParallel(
     binding.mode === "twin" ? binding.worker : binding.brain,
   );
   const needsEngineParallelBump = agentsN > 1 && workerEngineParallel < agentsN;
+
+  const relaunchTarget = useMemo(() => {
+    const entry = binding.mode === "twin" ? binding.worker : binding.brain;
+    if (!entry) return null;
+    return {
+      slotIdx: entry.idx,
+      port: entry.port,
+      alias: (entry.alias || "").trim() || "local-model",
+    };
+  }, [binding]);
 
   const doRelaunchSeat = useCallback(async () => {
     if (!onRelaunchSeat || !relaunchTarget) return;
@@ -386,7 +388,7 @@ export default function HarnessConnectPanel({
     setHarnessError(null);
     try {
       await onRelaunchSeat({
-        slotIdx: relaunchTarget.idx,
+        slotIdx: relaunchTarget.slotIdx,
         port: relaunchTarget.port,
         alias: relaunchTarget.alias,
         parallel: agentsN,
@@ -565,36 +567,31 @@ export default function HarnessConnectPanel({
     </div>
   ) : null;
 
+  const modeLabel =
+    binding.mode === "twin" ? "TWIN" : binding.mode === "solo" ? "SOLO" : "STANDBY";
+
   return (
     <div
       className={`harness-connect harness-connect--veil font-mono ${className}`}
       data-harness-connect="veil"
       data-harness-mode={binding.mode}
+      data-harness-tool="pi"
     >
       {confirmPortal}
       {closePiFirstPortal}
 
       <header className="harness-connect__header">
         <div className="harness-connect__title-row">
-          <span className="harness-connect__title tracking-[0.16em] uppercase">
-            Harness connect
-          </span>
-          <span className="harness-connect__pi-chip" title={piStatus?.launcherPath ?? undefined}>
-            {piStatus?.installed
-              ? `pi ${piStatus.version ?? piStatus.pinnedVersion ?? "ok"}`
-              : "~46 MB on first open"}
-          </span>
-          {isDevBuild() ? (
-            <button
-              type="button"
-              className="harness-connect__dev-btn"
-              disabled={piUpdating || harnessBusy !== "idle"}
-              onClick={() => void updatePiToLatest()}
-              title="DEV: update pi + pi-ext to latest"
+          <div className="harness-connect__brand">
+            <span className="harness-connect__title tracking-[0.18em] uppercase">
+              Harness connect
+            </span>
+            <span
+              className={`harness-connect__mode-pill harness-connect__mode-pill--${binding.mode}`}
             >
-              {piUpdating ? "UPDATING…" : "UPDATE"}
-            </button>
-          ) : null}
+              {modeLabel}
+            </span>
+          </div>
           {onDismiss ? (
             <button
               type="button"
@@ -606,6 +603,7 @@ export default function HarnessConnectPanel({
             </button>
           ) : null}
         </div>
+
         {installPhase != null ? (
           <div className="harness-connect__phase" aria-live="polite">
             <div className="harness-connect__phase-labels">
@@ -638,59 +636,118 @@ export default function HarnessConnectPanel({
       {disclaimerBlock}
 
       {binding.mode === "none" ? (
-        <p className="harness-connect__empty m-0">{binding.reason ?? "Launch seats from catalog"}</p>
-      ) : null}
+        <p className="harness-connect__empty m-0">
+          {binding.reason ?? "Launch seats from catalog"}
+        </p>
+      ) : (
+        <>
+          <div className="harness-connect__pi-project">
+            <section className="harness-connect__tool harness-connect__tool--on" aria-label="pi tool">
+              <div className="harness-connect__tool-top">
+                <span className="harness-connect__tool-label">PI</span>
+                <span className="harness-connect__tool-state">LIVE</span>
+              </div>
+              <div className="harness-connect__tool-meta">
+                <span
+                  className="harness-connect__pi-chip"
+                  title={piStatus?.launcherPath ?? undefined}
+                >
+                  {piStatus?.installed
+                    ? `pi ${piStatus.version ?? piStatus.pinnedVersion ?? "ok"}`
+                    : "~46 MB first open"}
+                </span>
+                {isDevBuild() ? (
+                  <button
+                    type="button"
+                    className="harness-connect__dev-btn"
+                    disabled={piUpdating || harnessBusy !== "idle"}
+                    onClick={() => void updatePiToLatest()}
+                    title="DEV: update pi + pi-ext to latest"
+                  >
+                    {piUpdating ? "UPDATING…" : "UPDATE"}
+                  </button>
+                ) : null}
+              </div>
+            </section>
 
-      <div className="harness-connect__project">
-        <button
-          type="button"
-          className="harness-connect__project-btn"
-          onClick={() => void changeProjectDir()}
-        >
-          POINT THE AGENT
-        </button>
-        <span className="harness-connect__project-path" title={piStatus?.lastProject ?? undefined}>
-          {piStatus?.lastProject
-            ? projectBasename(piStatus.lastProject)
-            : "No project — pick a folder"}
-        </span>
-      </div>
+            <section className="harness-connect__project-card">
+              <div className="harness-connect__project-head">
+                <span className="harness-connect__section-label">PROJECT</span>
+                <button
+                  type="button"
+                  className="harness-connect__project-btn"
+                  onClick={() => void changeProjectDir()}
+                >
+                  {piStatus?.lastProject ? "CHANGE" : "POINT"}
+                </button>
+              </div>
+              <span
+                className="harness-connect__project-path"
+                title={piStatus?.lastProject ?? undefined}
+              >
+                {piStatus?.lastProject
+                  ? piStatus.lastProject
+                  : "Pick folder for pi read/write"}
+              </span>
+            </section>
+          </div>
 
-      <div className="harness-connect__agents" role="group" aria-label="Concurrent agents">
-        <span className="harness-connect__agents-label">AGENTS</span>
-        {CODING_MODE_OPTIONS.map((o) => {
-          const active = o.parallel === agentsN;
-          return (
-            <button
-              key={o.id}
-              type="button"
-              className={`harness-connect__agent-chip${active ? " harness-connect__agent-chip--on" : ""}`}
-              title={o.blurb}
-              onClick={() => setHarnessAgents(o.parallel)}
-            >
-              ×{o.parallel}
-            </button>
-          );
-        })}
-      </div>
-
-      {needsEngineParallelBump && relaunchTarget && onRelaunchSeat ? (
-        <div className="harness-connect__relaunch">
-          <p className="harness-connect__relaunch-msg m-0">
-            RESTART {binding.mode === "twin" ? "WORKER" : "BRAIN"} to match AGENTS ×{agentsN}
-          </p>
-          <button
-            type="button"
-            className="harness-connect__relaunch-btn"
-            disabled={relaunchBusy}
-            onClick={() => void doRelaunchSeat()}
-          >
-            {relaunchBusy
-              ? "Restarting…"
-              : `RESTART ${relaunchTarget.alias} :${relaunchTarget.port} · ×${agentsN}`}
-          </button>
-        </div>
-      ) : null}
+          <section className="harness-connect__agents-card" role="group" aria-label="Concurrent agents">
+            <div className="harness-connect__agents-head">
+              <span className="harness-connect__section-label">AGENTS</span>
+              <span className="harness-connect__agents-live" title="Live engine --parallel on the swarm seat">
+                ENG ×{workerEngineParallel}
+              </span>
+              <span
+                className={`harness-connect__agents-match${
+                  needsEngineParallelBump
+                    ? " harness-connect__agents-match--warn"
+                    : " harness-connect__agents-match--ok"
+                }`}
+              >
+                {needsEngineParallelBump ? "NEEDS RESTART" : "MATCHED"}
+              </span>
+            </div>
+            <div className="harness-connect__agents">
+              {agentOptions.map((o) => {
+                const active = o.parallel === agentsN;
+                const overEngine = o.parallel > workerEngineParallel;
+                return (
+                  <button
+                    key={o.id}
+                    type="button"
+                    className={`harness-connect__agent-chip${
+                      active ? " harness-connect__agent-chip--on" : ""
+                    }${overEngine ? " harness-connect__agent-chip--over" : ""}`}
+                    title={
+                      overEngine
+                        ? `${o.blurb} — engine has ×${workerEngineParallel}; restart seat to raise slots`
+                        : o.blurb
+                    }
+                    onClick={() => setHarnessAgents(o.parallel)}
+                  >
+                    ×{o.parallel}
+                  </button>
+                );
+              })}
+            </div>
+            {needsEngineParallelBump && relaunchTarget && onRelaunchSeat ? (
+              <div className="harness-connect__relaunch">
+                <button
+                  type="button"
+                  className="harness-connect__relaunch-btn"
+                  disabled={relaunchBusy}
+                  onClick={() => void doRelaunchSeat()}
+                >
+                  {relaunchBusy
+                    ? "Restarting…"
+                    : `RESTART ${relaunchTarget.alias} :${relaunchTarget.port} · ×${agentsN}`}
+                </button>
+              </div>
+            ) : null}
+          </section>
+        </>
+      )}
 
       <footer className="harness-connect__footer">
         <label className="harness-connect__elevated">
@@ -716,9 +773,9 @@ export default function HarnessConnectPanel({
             : harnessBusy === "launch"
               ? "Launching…"
               : binding.mode === "twin"
-                ? "Open pi · BRAIN + WORKER"
+                ? `Open pi · TWIN · ×${agentsN}`
                 : binding.mode === "solo"
-                  ? "Open pi · SOLO"
+                  ? `Open pi · SOLO · ×${agentsN}`
                   : "Open pi"}
         </button>
       </footer>

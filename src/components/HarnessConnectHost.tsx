@@ -15,7 +15,7 @@ import {
 import { dispatchAppEvent, EVENTS } from "../lib/events";
 import type { StackEntry } from "../lib/types";
 import HarnessConnectPanel from "./HarnessConnectPanel";
-
+import MatrixAsciiRain from "./MatrixAsciiRain";
 export type HarnessConnectRelaunch = (opts: {
   slotIdx: number;
   port: number;
@@ -26,6 +26,8 @@ export type HarnessConnectRelaunch = (opts: {
 export function useHarnessConnectHost(opts: {
   stack: StackEntry[];
   catalogSeats?: CatalogSeatsState;
+  /** Cockpit Agents / parallel marks for the AGENTS chip row. */
+  parallelValues?: (string | number)[];
   onRelaunchSeat?: HarnessConnectRelaunch;
   onSelectEngine?: (slotIdx: number) => void;
 }): {
@@ -33,11 +35,12 @@ export function useHarnessConnectHost(opts: {
   veilOpen: boolean;
   openVeil: () => void;
   dismissVeil: () => void;
+  toggleVeil: () => void;
   veilNode: React.ReactNode;
   showConnectChip: boolean;
   connectReady: boolean;
 } {
-  const { stack, onRelaunchSeat, onSelectEngine } = opts;
+  const { stack, onRelaunchSeat, onSelectEngine, parallelValues } = opts;
   const [seats, setSeats] = useState<CatalogSeatsState>(
     () => opts.catalogSeats ?? loadCatalogSeats(),
   );
@@ -69,6 +72,12 @@ export function useHarnessConnectHost(opts: {
   const dismissVeil = useCallback(() => {
     setVeilOpen(false);
   }, []);
+
+  /** Bezel chip: show/hide the connect veil. */
+  const toggleVeil = useCallback(() => {
+    if (!ready) return;
+    setVeilOpen((v) => !v);
+  }, [ready]);
 
   useEffect(() => {
     const onOpen = () => openVeil();
@@ -129,14 +138,14 @@ export function useHarnessConnectHost(opts: {
         role="dialog"
         aria-label="Harness connect"
       >
+        {/* Canvas rain — no CSS keyframe loops (those pegged iGPU). */}
         <div className="harness-connect-veil__fx" aria-hidden>
-          <span className="harness-connect-veil__grid" />
-          <span className="harness-connect-veil__scan" />
-          <span className="harness-connect-veil__sweep" />
+          <MatrixAsciiRain className="harness-connect-veil__matrix" opacity={0.55} />
           <span className="harness-connect-veil__corners" />
         </div>
         <HarnessConnectPanel
           binding={binding}
+          parallelValues={parallelValues}
           onRelaunchSeat={onRelaunchSeat}
           onSelectEngine={onSelectEngine}
           onDismiss={dismissVeil}
@@ -150,6 +159,7 @@ export function useHarnessConnectHost(opts: {
     veilOpen,
     openVeil,
     dismissVeil,
+    toggleVeil,
     veilNode,
     showConnectChip: tagged,
     connectReady: ready,

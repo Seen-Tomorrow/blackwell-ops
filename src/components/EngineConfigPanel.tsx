@@ -3064,6 +3064,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         onRelaunchSeat={async ({ slotIdx, port, alias, parallel }) => {
           await hotSwapEngineSeat({ slotIdx, port, alias, parallel });
         }}
+        parallelValues={cockpitParallelValues}
         dualActive={fusionDisplay.dualActive}
         dualArmed={fusionDisplay.dualArmed}
         canDual={fusionDisplay.canDual}
