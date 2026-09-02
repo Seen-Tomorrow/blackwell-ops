@@ -57,7 +57,7 @@ export default function ConfigBelowGroups({
       >
         <div className="config-params-col__stack space-y-3 min-w-0">
           {groups.length === 0 && layoutModeActive && (
-            <div className="config-column-drop-zone text-[7px] font-mono text-stealth-muted/40 uppercase tracking-wider py-8 text-center border border-dashed border-stealth-border/25 rounded-sm">
+            <div className="config-column-drop-zone config-drop-zone type-micro font-mono uppercase tracking-wider py-8 text-center border border-dashed rounded-sm">
               empty column
             </div>
           )}

@@ -243,8 +243,8 @@ export default function BlackwellOutputConsole({
     <div
       className={`blackwell-output-console flex flex-col font-mono ${
         isDetached
-          ? "blackwell-output-console--detached fixed z-[110] rounded overflow-hidden text-[10px]"
-          : `blackwell-output-console--docked fixed left-0 right-0 z-[40]${compact ? " blackwell-output-console--compact" : " text-[10px]"}`
+          ? "blackwell-output-console--detached fixed z-[110] rounded overflow-hidden type-body"
+          : `blackwell-output-console--docked fixed left-0 right-0 z-[40]${compact ? " blackwell-output-console--compact" : " type-body"}`
       } ${isDetached && (isDragging || isResizing) ? "blackwell-output-console--interacting" : ""}`}
       style={{
         ...(isDetached
@@ -279,11 +279,11 @@ export default function BlackwellOutputConsole({
           onDock={() => onDetachedChange(false)}
           onClose={handleClose}
           onMouseDown={isDetached ? startDrag : undefined}
-          className={compact ? "" : "px-4 tracking-[1.5px] text-[9px] py-1"}
+          className={compact ? "" : "px-4 tracking-[1.5px] type-label py-1"}
         />
       )}
 
-      <div className={`blackwell-output-console__body app-console-mono flex-1 overflow-auto custom-scrollbar min-h-0 ${isDetached ? "p-2 pb-4 text-[9.5px] leading-[1.35]" : compact ? "p-1.5 pb-1" : "p-2 pb-1 text-[9.5px] leading-[1.35]"}`}>
+      <div className={`blackwell-output-console__body app-console-mono flex-1 overflow-auto custom-scrollbar min-h-0 ${isDetached ? "p-2 pb-4 type-label leading-[1.35]" : compact ? "p-1.5 pb-1" : "p-2 pb-1 type-label leading-[1.35]"}`}>
         {isLoading && <div className="boc-sync pl-1">SYNCING TELEMETRY...</div>}
 
         {!isLoading && lines.length === 0 && (
@@ -299,7 +299,7 @@ export default function BlackwellOutputConsole({
       </div>
 
       {isDetached && (
-        <div className={`blackwell-output-console__footer px-3 flex items-center justify-between text-[7px] ${compact ? "h-4" : "h-5"}`}>
+        <div className={`blackwell-output-console__footer px-3 flex items-center justify-between type-micro ${compact ? "h-4" : "h-5"}`}>
           <span>{lines.length} LINES • {activeCategory.toUpperCase()}</span>
           <span className="boc-refresh cursor-pointer" onClick={() => fetchBuffer(activeCategory)}>REFRESH</span>
         </div>

@@ -1,8 +1,8 @@
 /* ── Full Auto cockpit — theme tokens (inset well + texture) ─── */
 .full-auto-cockpit {
-  border: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 55%, #000 45%);
+  border: 1px solid color-mix(in srgb, var(--theme-border) 55%, #000 45%);
   border-radius: 5px;
-  background-color: color-mix(in srgb, var(--theme-panel-accent, #040b01) 55%, var(--theme-industrial-bg, #111810) 45%);
+  background-color: color-mix(in srgb, var(--theme-panel-accent) 55%, var(--theme-industrial-bg) 45%);
   background-image: var(--theme-industrial-texture-active, none);
   /* Recess depth — --theme-cockpit-well-shadow (softer on ARCTIC) */
   box-shadow: var(--theme-cockpit-well-shadow);
@@ -20,7 +20,7 @@
   padding: 0.35rem 0.5rem;
   border: 1px solid color-mix(in srgb, var(--theme-border-subtle, rgba(255, 255, 255, 0.08)) 80%, transparent);
   border-radius: 3px;
-  background: color-mix(in srgb, var(--theme-panel, #111810) 88%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 88%, transparent);
 }
 
 /* Spec mode product colors — MTP green, DFlash violet (all themes) */
@@ -29,11 +29,11 @@
   --cockpit-mtp-dim: color-mix(in srgb, #4ade80 55%, transparent);
   --cockpit-dflash: #a78bfa;
   --cockpit-dflash-dim: color-mix(in srgb, #a78bfa 55%, transparent);
-  --cockpit-header-line: color-mix(in srgb, var(--theme-border, #1a2e1a) 55%, transparent);
-  --cockpit-status-fg: color-mix(in srgb, var(--theme-industrial-text, var(--theme-accent-bright, #4ade80)) 92%, #fff 8%);
-  --cockpit-status-note: color-mix(in srgb, #fbbf24 88%, var(--theme-industrial-text, #4ade80) 12%);
-  --cockpit-status-rail: color-mix(in srgb, var(--theme-accent-bright, #4ade80) 22%, transparent);
-  --cockpit-status-bg: color-mix(in srgb, var(--theme-panel-accent, #040b01) 40%, transparent);
+  --cockpit-header-line: color-mix(in srgb, var(--theme-border) 55%, transparent);
+  --cockpit-status-fg: color-mix(in srgb, var(--theme-industrial-text, var(--theme-accent-bright)) 92%, #fff 8%);
+  --cockpit-status-note: color-mix(in srgb, #fbbf24 88%, var(--theme-industrial-text) 12%);
+  --cockpit-status-rail: color-mix(in srgb, var(--theme-accent-bright) 22%, transparent);
+  --cockpit-status-bg: color-mix(in srgb, var(--theme-panel-accent) 40%, transparent);
 }
 
 .full-auto-cockpit__header {
@@ -49,9 +49,9 @@
   background:
     linear-gradient(
       105deg,
-      color-mix(in srgb, var(--theme-panel, #111810) 70%, transparent) 0%,
+      color-mix(in srgb, var(--theme-panel) 70%, transparent) 0%,
       var(--cockpit-status-bg) 55%,
-      color-mix(in srgb, var(--theme-panel, #111810) 55%, transparent) 100%
+      color-mix(in srgb, var(--theme-panel) 55%, transparent) 100%
     );
   box-shadow: var(--theme-cockpit-header-shadow);
 }
@@ -85,7 +85,7 @@
   font-size: 7px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--theme-industrial-muted, var(--theme-text-muted, #6a8a6a)) 92%, transparent);
+  color: color-mix(in srgb, var(--theme-industrial-muted, var(--theme-text-muted)) 92%, transparent);
   white-space: nowrap;
   line-height: 1;
 }
@@ -109,7 +109,7 @@
   display: block;
   font-size: 8px;
   letter-spacing: 0.16em;
-  color: color-mix(in srgb, var(--theme-industrial-muted, var(--theme-text-muted, #6a8a6a)) 90%, transparent);
+  color: color-mix(in srgb, var(--theme-industrial-muted, var(--theme-text-muted)) 90%, transparent);
   margin-bottom: 0;
   white-space: nowrap;
   padding-right: 0.35rem;
@@ -167,12 +167,12 @@
 }
 
 .full-auto-cockpit__boost-seg--mtp {
-  color: var(--cockpit-mtp, #4ade80);
+  color: var(--cockpit-mtp);
   text-shadow: 0 0 8px var(--cockpit-mtp-dim, color-mix(in srgb, #4ade80 40%, transparent));
 }
 
 .full-auto-cockpit__boost-seg--dflash {
-  color: var(--cockpit-dflash, #a78bfa);
+  color: var(--cockpit-dflash);
   text-shadow: 0 0 8px var(--cockpit-dflash-dim, color-mix(in srgb, #a78bfa 40%, transparent));
 }
 
@@ -284,20 +284,20 @@
 /* DFlash strip tones now come from --theme-dflash-strip-* tokens (all themes). */
 
 .full-auto-cockpit__dflash-get--tone-neutral {
-  border-color: color-mix(in srgb, var(--theme-border, #1a2e1a) 60%, transparent);
+  border-color: color-mix(in srgb, var(--theme-border) 60%, transparent);
   background: color-mix(in srgb, #000000 18%, transparent);
-  color: color-mix(in srgb, var(--theme-industrial-text, #4ade80) 85%, #fff 15%);
+  color: color-mix(in srgb, var(--theme-industrial-text) 85%, #fff 15%);
   box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 4%, transparent);
 }
 
 .full-auto-cockpit__dflash-get--tone-neutral .full-auto-cockpit__spec-extra-title,
 .full-auto-cockpit__dflash-get--tone-neutral .full-auto-cockpit__spec-extra-key {
-  color: color-mix(in srgb, var(--theme-industrial-muted, #4ade80) 70%, transparent);
+  color: color-mix(in srgb, var(--theme-industrial-muted) 70%, transparent);
 }
 
 .full-auto-cockpit__dflash-get--tone-neutral .full-auto-cockpit__spec-chip {
   border-color: color-mix(in srgb, var(--theme-chip-border, rgba(74, 222, 128, 0.2)) 90%, transparent);
-  color: var(--theme-chip-text, var(--theme-industrial-muted, #4ade80));
+  color: var(--theme-chip-text, var(--theme-industrial-muted));
   background: transparent;
 }
 
@@ -387,7 +387,7 @@
 /* Param catalog modal — solid panel (engine panel is outside [data-config-page]) */
 .param-catalog-modal.config-form-panel,
 .param-catalog-modal {
-  background: var(--theme-panel, #0b120b);
+  background: var(--theme-panel);
   border: 1px solid var(--theme-border-subtle, color-mix(in srgb, #4ade80 18%, transparent));
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
 }
@@ -428,9 +428,9 @@
   margin-top: 0.2rem;
   padding: 0.4rem 0.55rem;
   border-radius: 3px;
-  border: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 60%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
   background: color-mix(in srgb, #000000 18%, transparent);
-  color: color-mix(in srgb, var(--theme-industrial-text, #4ade80) 85%, #fff 15%);
+  color: color-mix(in srgb, var(--theme-industrial-text) 85%, #fff 15%);
   box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 4%, transparent);
 }
 
@@ -450,9 +450,9 @@
 }
 
 .full-auto-cockpit__dflash-get.full-auto-cockpit__dflash-get--tone-neutral {
-  border-color: color-mix(in srgb, var(--theme-border, #1a2e1a) 60%, transparent);
+  border-color: color-mix(in srgb, var(--theme-border) 60%, transparent);
   background: color-mix(in srgb, #000000 18%, transparent);
-  color: color-mix(in srgb, var(--theme-industrial-text, #4ade80) 85%, #fff 15%);
+  color: color-mix(in srgb, var(--theme-industrial-text) 85%, #fff 15%);
   box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 4%, transparent);
 }
 
@@ -1029,7 +1029,7 @@
   padding: 0.35rem 0.55rem;
   border-radius: 3px;
   border: 1px solid var(--theme-chip-border, rgba(74, 222, 128, 0.15));
-  color: var(--theme-chip-text, var(--theme-industrial-muted, #4ade80));
+  color: var(--theme-chip-text, var(--theme-industrial-muted));
   background: color-mix(in srgb, var(--theme-chip-bg, transparent) 80%, transparent);
   transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
@@ -1051,7 +1051,7 @@
 }
 
 .full-auto-cockpit__connect--accent:hover {
-  color: var(--theme-selection-text, #fff);
+  color: var(--theme-selection-text);
   border-color: var(--theme-accent-bright, var(--theme-accent));
   background: color-mix(in srgb, var(--theme-accent) 42%, transparent);
   box-shadow: 0 0 12px color-mix(in srgb, var(--theme-accent-glow, transparent) 70%, transparent);
@@ -1066,13 +1066,13 @@
 }
 
 .full-auto-cockpit__connect:hover {
-  color: var(--theme-chip-hover-text, var(--theme-accent-bright, #4ade80));
+  color: var(--theme-chip-hover-text, var(--theme-accent-bright));
   border-color: var(--theme-chip-hover-border, rgba(74, 222, 128, 0.35));
   background: var(--theme-chip-active-bg, rgba(74, 222, 128, 0.12));
 }
 
 .full-auto-cockpit__connect--active {
-  color: var(--theme-chip-active-text, #4ade80);
+  color: var(--theme-chip-active-text);
   border-color: color-mix(in srgb, #22d3ee 50%, transparent);
   background: color-mix(in srgb, #0e7490 28%, transparent);
 }
@@ -1138,7 +1138,7 @@
   background: color-mix(
     in srgb,
     var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg)) 75%,
-    var(--theme-panel, #111) 25%
+    var(--theme-panel) 25%
   );
 }
 
@@ -1179,7 +1179,7 @@
 }
 
 .harness-msg-err {
-  color: var(--theme-danger, #f87171);
+  color: var(--theme-danger);
 }
 
 .harness-manual-toggle {
@@ -1207,8 +1207,8 @@
   overflow: auto;
   padding: 1rem 1.15rem 1.1rem;
   border-radius: 4px;
-  border: 1px solid color-mix(in srgb, var(--theme-accent, #22d3ee) 40%, var(--theme-frame-border, transparent));
-  background: var(--theme-panel, #0a1214);
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 40%, var(--theme-frame-border, transparent));
+  background: var(--theme-panel);
   box-shadow:
     0 12px 40px rgba(0, 0, 0, 0.45),
     0 0 0 1px color-mix(in srgb, var(--theme-frame-border, transparent) 50%, transparent);
@@ -1313,22 +1313,22 @@
 
 .harness-engine-role-chip--brain,
 .harness-engine-role-chip--solo {
-  color: var(--theme-harness-brain-text, #fef3c7);
-  border: 1px solid color-mix(in srgb, var(--theme-harness-brain-raw, #f59e0b) 75%, transparent);
-  background: color-mix(in srgb, var(--theme-harness-brain-raw, #f59e0b) 38%, #1a1000 62%);
+  color: var(--theme-harness-brain-text);
+  border: 1px solid color-mix(in srgb, var(--theme-harness-brain-raw) 75%, transparent);
+  background: color-mix(in srgb, var(--theme-harness-brain-raw) 38%, #1a1000 62%);
 }
 
 .harness-engine-role-chip--worker {
-  color: var(--theme-harness-worker-text, #ffedd5);
-  border: 1px solid color-mix(in srgb, var(--theme-harness-worker-raw, #ea580c) 75%, transparent);
-  background: color-mix(in srgb, var(--theme-harness-worker-raw, #ea580c) 36%, #1a0a00 64%);
+  color: var(--theme-harness-worker-text);
+  border: 1px solid color-mix(in srgb, var(--theme-harness-worker-raw) 75%, transparent);
+  background: color-mix(in srgb, var(--theme-harness-worker-raw) 36%, #1a0a00 64%);
 }
 
 .running-engine-port {
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.04em;
-  color: var(--theme-text, #fff);
+  color: var(--theme-text);
 }
 
 .running-engine-card.harness-engine--brain,
@@ -1337,7 +1337,7 @@
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--theme-harness-brain-raw) 40%, transparent),
     0 0 12px color-mix(in srgb, var(--theme-harness-brain-raw) 22%, transparent);
-  background: color-mix(in srgb, var(--theme-harness-brain-raw) 22%, var(--theme-eject-card-bg, #1a1810) 78%);
+  background: color-mix(in srgb, var(--theme-harness-brain-raw) 22%, var(--theme-eject-card-bg) 78%);
 }
 
 .running-engine-card.harness-engine--worker,
@@ -1346,7 +1346,7 @@
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--theme-harness-worker-raw) 40%, transparent),
     0 0 12px color-mix(in srgb, var(--theme-harness-worker-raw) 22%, transparent);
-  background: color-mix(in srgb, var(--theme-harness-worker-raw) 22%, var(--theme-eject-card-bg, #1a1810) 78%);
+  background: color-mix(in srgb, var(--theme-harness-worker-raw) 22%, var(--theme-eject-card-bg) 78%);
 }
 
 /* ── Running engines highlight while harness wizard open ─── */
@@ -1375,7 +1375,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--theme-harness-brain-raw) 40%, transparent),
     0 0 12px color-mix(in srgb, var(--theme-harness-brain-raw) 22%, transparent) !important;
-  background: color-mix(in srgb, var(--theme-harness-brain-raw) 28%, var(--theme-eject-card-bg, #1a1810) 72%) !important;
+  background: color-mix(in srgb, var(--theme-harness-brain-raw) 28%, var(--theme-eject-card-bg) 72%) !important;
 }
 
 html[data-harness-open="1"] .running-engine-card.harness-engine--worker,
@@ -1385,7 +1385,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--worker {
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--theme-harness-worker-raw) 40%, transparent),
     0 0 12px color-mix(in srgb, var(--theme-harness-worker-raw) 20%, transparent) !important;
-  background: color-mix(in srgb, var(--theme-harness-worker-raw) 30%, var(--theme-eject-card-bg, #14101a) 70%) !important;
+  background: color-mix(in srgb, var(--theme-harness-worker-raw) 30%, var(--theme-eject-card-bg) 70%) !important;
 }
 
 html[data-harness-open="1"] .running-engine-card.harness-engine--solo,
@@ -1395,7 +1395,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--solo {
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--theme-harness-brain-raw) 45%, transparent),
     0 0 12px color-mix(in srgb, var(--theme-harness-brain-raw) 20%, transparent) !important;
-  background: color-mix(in srgb, var(--theme-harness-brain-raw) 25%, var(--theme-eject-card-bg, #0a1416) 75%) !important;
+  background: color-mix(in srgb, var(--theme-harness-brain-raw) 25%, var(--theme-eject-card-bg) 75%) !important;
 }
 
 html[data-harness-open="1"] .running-engine-card.harness-engine--picked,
@@ -1427,11 +1427,11 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--picked {
   --harness-brain-bg-raw: var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg));
   --harness-brain-border: var(--theme-provider-pill-active-border);
   --harness-brain-text: var(--theme-provider-pill-active-text);
-  --harness-brain-bg: color-mix(in srgb, var(--harness-brain-bg-raw) 68%, var(--theme-panel, #111) 32%);
+  --harness-brain-bg: color-mix(in srgb, var(--harness-brain-bg-raw) 68%, var(--theme-panel) 32%);
   --harness-worker-bg-raw: var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg)));
   --harness-worker-border: var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg));
   --harness-worker-text: var(--theme-pair-secondary-text, var(--theme-chip-solid-text));
-  --harness-worker-bg: color-mix(in srgb, var(--harness-worker-bg-raw) 68%, var(--theme-panel, #111) 32%);
+  --harness-worker-bg: color-mix(in srgb, var(--harness-worker-bg-raw) 68%, var(--theme-panel) 32%);
   --harness-worker-fg: var(--theme-chip-active-text);
   flex: 1 1 auto;
   min-height: 0;
@@ -1521,9 +1521,9 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--picked {
   gap: 0.1rem;
   padding: 0.35rem 0.6rem;
   border-radius: 3px;
-  border: 1px solid color-mix(in srgb, var(--theme-border, #334155) 70%, transparent);
-  background: color-mix(in srgb, var(--theme-bg, #0f172a) 80%, transparent);
-  color: color-mix(in srgb, var(--theme-text, #e2e8f0) 75%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
+  background: color-mix(in srgb, var(--theme-bg) 80%, transparent);
+  color: color-mix(in srgb, var(--theme-text) 75%, transparent);
   font-size: 8px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1532,13 +1532,13 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--picked {
 }
 
 .harness-wizard__tool-chip:hover {
-  border-color: color-mix(in srgb, var(--theme-accent, #76b900) 45%, transparent);
+  border-color: color-mix(in srgb, var(--theme-accent) 45%, transparent);
 }
 
 .harness-wizard__tool-chip--on {
-  border-color: color-mix(in srgb, var(--theme-accent, #76b900) 70%, transparent);
-  background: color-mix(in srgb, var(--theme-accent, #76b900) 18%, transparent);
-  color: var(--theme-text, #f8fafc);
+  border-color: color-mix(in srgb, var(--theme-accent) 70%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 18%, transparent);
+  color: var(--theme-text);
   font-weight: 700;
 }
 
@@ -1559,7 +1559,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--picked {
   padding: 0.5rem 0.9rem;
   border-radius: 3px;
   border: 1.5px solid color-mix(in srgb, #ef4444 72%, transparent);
-  color: var(--theme-text, #e2e8f0);
+  color: var(--theme-text);
   background: transparent;
   transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
@@ -1604,7 +1604,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--picked {
   display: block;
   width: 100%;
   border-radius: 4px;
-  border: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 80%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-border) 80%, transparent);
   background: color-mix(in srgb, #000 28%, transparent);
   text-align: left;
   /* No background dissolve on mode switch */
@@ -1651,7 +1651,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--picked {
   padding: 0;
   min-height: 4.5rem;
   background: transparent;
-  border: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 80%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-border) 80%, transparent);
 }
 
 .harness-wizard__mode-btn--twin.harness-wizard__mode-btn--on {
@@ -1718,14 +1718,14 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--picked {
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.1em;
-  color: var(--theme-industrial-text, var(--theme-text, #e2e8f0));
+  color: var(--theme-industrial-text, var(--theme-text));
 }
 
 .harness-wizard__mode-desc {
   font-size: 7px;
   line-height: 1.25;
   opacity: 0.78;
-  color: var(--theme-text-muted, #94a3b8);
+  color: var(--theme-text-muted);
 }
 
 .harness-wizard__mode-engine {
@@ -1741,7 +1741,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--picked {
   font-size: 7px;
   opacity: 0.7;
   margin-top: auto;
-  color: var(--theme-text-muted, #94a3b8);
+  color: var(--theme-text-muted);
 }
 
 .harness-wizard__step-label {
@@ -1803,7 +1803,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--picked {
   font-size: 6.5px;
   line-height: 1.35;
   opacity: 0.68;
-  color: var(--theme-text-muted, #94a3b8);
+  color: var(--theme-text-muted);
 }
 
 .harness-wizard__relaunch {
@@ -1819,7 +1819,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--picked {
 .harness-wizard__relaunch-msg {
   font-size: 7px;
   line-height: 1.4;
-  color: var(--theme-text-muted, #94a3b8);
+  color: var(--theme-text-muted);
 }
 
 .harness-wizard__relaunch-msg strong {
@@ -1881,7 +1881,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--picked {
 .harness-wizard__project-btn:hover:not(:disabled) {
   border-color: var(--theme-chip-hover-border, var(--theme-chip-active-border));
   color: var(--theme-chip-hover-text, var(--theme-chip-active-text));
-  background: color-mix(in srgb, var(--theme-chip-active-bg) 70%, var(--theme-panel, #111) 30%);
+  background: color-mix(in srgb, var(--theme-chip-active-bg) 70%, var(--theme-panel) 30%);
 }
 
 .harness-wizard__project-btn:disabled {
@@ -1996,7 +1996,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--picked {
   padding: 0.15rem 0.4rem;
   border-radius: 2px;
   border: 1px solid
-    color-mix(in srgb, var(--theme-accent-dim, #4a6a5a) 60%, transparent);
+    color-mix(in srgb, var(--theme-accent-dim) 60%, transparent);
   background: transparent;
   color: color-mix(in srgb, var(--theme-accent) 55%, transparent);
   letter-spacing: 0.06em;
@@ -2027,7 +2027,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--picked {
   height: 4px;
   border-radius: 2px;
   overflow: hidden;
-  background: color-mix(in srgb, var(--theme-accent-dim, #4a6a5a) 35%, transparent);
+  background: color-mix(in srgb, var(--theme-accent-dim) 35%, transparent);
 }
 
 .harness-wizard__install-bar-fill {
@@ -2090,7 +2090,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--picked {
   font-size: 7px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--theme-text-muted, #4a4a5a);
+  color: var(--theme-text-muted);
 }
 
 /* Unified mode button — same element renders either solo (full-width
@@ -2109,7 +2109,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--picked {
   position: relative;
   border-radius: 4px;
   border: 1px solid color-mix(in srgb, var(--harness-brain-bg) 50%, transparent);
-  background: color-mix(in srgb, var(--harness-brain-bg-raw) 25%, var(--theme-eject-card-bg, #0a1416) 75%);
+  background: color-mix(in srgb, var(--harness-brain-bg-raw) 25%, var(--theme-eject-card-bg) 75%);
   overflow: hidden;
   cursor: pointer;
   text-align: left;
@@ -2161,12 +2161,12 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--picked {
 }
 
 .harness-wizard__mode-twin-half--brain {
-  background: color-mix(in srgb, var(--harness-brain-bg-raw) 22%, var(--theme-eject-card-bg, #111) 78%);
+  background: color-mix(in srgb, var(--harness-brain-bg-raw) 22%, var(--theme-eject-card-bg) 78%);
   border-right: 1px solid color-mix(in srgb, var(--harness-brain-bg) 35%, transparent);
 }
 
 .harness-wizard__mode-twin-half--worker {
-  background: color-mix(in srgb, var(--harness-worker-bg-raw) 16%, var(--theme-eject-card-bg, #111) 84%);
+  background: color-mix(in srgb, var(--harness-worker-bg-raw) 16%, var(--theme-eject-card-bg) 84%);
 }
 
 /* Top split: BIG label (30%) | HERO title + desc (70%) */
@@ -2315,15 +2315,15 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--picked {
   font-size: 8px;
   letter-spacing: 0.14em;
   border-radius: 3px;
-  border: 1px solid color-mix(in srgb, var(--theme-accent, #76b900) 55%, transparent);
-  color: color-mix(in srgb, var(--theme-accent, #76b900) 85%, var(--theme-text, #f8fafc));
-  background: color-mix(in srgb, var(--theme-accent, #76b900) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 55%, transparent);
+  color: color-mix(in srgb, var(--theme-accent) 85%, var(--theme-text));
+  background: color-mix(in srgb, var(--theme-accent) 12%, transparent);
   cursor: pointer;
   white-space: nowrap;
 }
 .harness-wizard__update:hover:not(:disabled) {
-  border-color: var(--theme-accent, #76b900);
-  background: color-mix(in srgb, var(--theme-accent, #76b900) 20%, transparent);
+  border-color: var(--theme-accent);
+  background: color-mix(in srgb, var(--theme-accent) 20%, transparent);
 }
 .harness-wizard__update:disabled {
   opacity: 0.55;
@@ -2408,7 +2408,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 .full-auto-cockpit__row-label {
   width: 4.75rem;
   font-size: 8px;
-  color: color-mix(in srgb, var(--theme-industrial-muted, #4ade80) 55%, transparent);
+  color: color-mix(in srgb, var(--theme-industrial-muted) 55%, transparent);
 }
 
 .full-auto-cockpit__ctx-rail {
@@ -2417,7 +2417,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   gap: 0.35rem;
   padding: 0.35rem 0.45rem 0.45rem;
   border-radius: 3px;
-  border: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
   background: color-mix(in srgb, #000000 18%, transparent);
   box-shadow: inset 0 1px 3px color-mix(in srgb, #000000 35%, transparent);
   justify-content: center;
@@ -2537,7 +2537,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   font-weight: 700;
   letter-spacing: 0.03em;
   white-space: nowrap;
-  color: var(--theme-text, #e2e8f0);
+  color: var(--theme-text);
   background: color-mix(in srgb, #000 72%, transparent);
   border: 1px solid color-mix(in srgb, #fff 12%, transparent);
   pointer-events: none;
@@ -2550,7 +2550,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   font-weight: 700;
   letter-spacing: 0.02em;
   line-height: 1.15;
-  color: color-mix(in srgb, var(--theme-text, #e2e8f0) 72%, transparent);
+  color: color-mix(in srgb, var(--theme-text) 72%, transparent);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2576,7 +2576,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   font-size: 8px;
   font-weight: 700;
   letter-spacing: 0.03em;
-  color: color-mix(in srgb, var(--theme-text, #e2e8f0) 78%, transparent);
+  color: color-mix(in srgb, var(--theme-text) 78%, transparent);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2625,7 +2625,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   font-size: 7px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--theme-industrial-muted, #4ade80) 55%, transparent);
+  color: color-mix(in srgb, var(--theme-industrial-muted) 55%, transparent);
   line-height: 1;
   user-select: none;
 }
@@ -2676,7 +2676,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   text-transform: uppercase;
   color: color-mix(in srgb, #22d3ee 75%, transparent);
   border: 1px solid color-mix(in srgb, #22d3ee 32%, transparent);
-  background: color-mix(in srgb, var(--theme-panel, #0a0a0a) 55%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 55%, transparent);
   border-radius: 2px;
   cursor: pointer;
 }
@@ -2689,13 +2689,13 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 }
 
 .full-auto-cockpit__ctx-marks-toggle--prune {
-  color: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 80%, transparent);
-  border-color: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 38%, transparent);
+  color: color-mix(in srgb, var(--theme-telemetry-amber) 80%, transparent);
+  border-color: color-mix(in srgb, var(--theme-telemetry-amber) 38%, transparent);
 }
 
 .full-auto-cockpit__ctx-marks-toggle--prune:hover {
-  color: var(--theme-telemetry-amber, #fbbf24);
-  border-color: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 60%, transparent);
+  color: var(--theme-telemetry-amber);
+  border-color: color-mix(in srgb, var(--theme-telemetry-amber) 60%, transparent);
 }
 
 .full-auto-cockpit__ctx-marks-toggle--slot {
@@ -2714,7 +2714,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   font-size: 15px;
   font-weight: 700;
   line-height: 1;
-  color: var(--theme-accent-bright, #4ade80);
+  color: var(--theme-accent-bright);
   text-shadow: 0 0 12px color-mix(in srgb, var(--theme-accent-glow, rgba(74, 222, 128, 0.3)) 55%, transparent);
   text-align: right;
   white-space: nowrap;
@@ -2743,7 +2743,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   font-size: 11px;
   line-height: 1;
   text-align: center;
-  color: color-mix(in srgb, var(--theme-accent-bright, #4ade80) 40%, transparent);
+  color: color-mix(in srgb, var(--theme-accent-bright) 40%, transparent);
   white-space: nowrap;
 }
 
@@ -2751,7 +2751,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   display: inline-block;
   font-size: 11px;
   line-height: 1;
-  color: color-mix(in srgb, var(--theme-accent-bright, #4ade80) 65%, transparent);
+  color: color-mix(in srgb, var(--theme-accent-bright) 65%, transparent);
   text-align: left;
   white-space: nowrap;
   width: 11ch; /* reserved — "512K / slot" */
@@ -2778,16 +2778,16 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   font-size: 14px;
   font-weight: 700;
   line-height: 1;
-  color: color-mix(in srgb, var(--theme-accent-bright, #4ade80) 75%, transparent);
-  background: color-mix(in srgb, var(--theme-panel, #0a0a0a) 55%, transparent);
-  border: 1px solid color-mix(in srgb, var(--theme-accent-bright, #4ade80) 28%, transparent);
+  color: color-mix(in srgb, var(--theme-accent-bright) 75%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-accent-bright) 28%, transparent);
   border-radius: 2px;
   cursor: pointer;
 }
 
 .full-auto-cockpit__ctx-chevron:hover:not(:disabled) {
-  color: var(--theme-accent-bright, #4ade80);
-  border-color: color-mix(in srgb, var(--theme-accent-bright, #4ade80) 55%, transparent);
+  color: var(--theme-accent-bright);
+  border-color: color-mix(in srgb, var(--theme-accent-bright) 55%, transparent);
 }
 
 .full-auto-cockpit__ctx-chevron:disabled {
@@ -2809,12 +2809,12 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 /* Center vertical divider */
 .full-auto-cockpit__grid-cell:nth-child(odd) {
-  border-right: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 50%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent);
 }
 
 /* Bottom horizontal divider between rows */
 .full-auto-cockpit__grid-cell:nth-child(-n+2) {
-  border-bottom: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 50%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent);
 }
 
 /* Arctic overrides */
@@ -2823,7 +2823,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 .full-auto-cockpit__ctx-label {
   font-size: 8px;
   letter-spacing: 0.14em;
-  color: color-mix(in srgb, var(--theme-industrial-muted, #4ade80) 55%, transparent);
+  color: color-mix(in srgb, var(--theme-industrial-muted) 55%, transparent);
 }
 
 .full-auto-cockpit__ctx-slider .ctx-slider-row {
@@ -2851,7 +2851,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   font-size: 10px;
   line-height: 1.15;
   border-color: var(--theme-chip-border, rgba(74, 222, 128, 0.15));
-  color: var(--theme-chip-text, var(--theme-industrial-muted, #4ade80));
+  color: var(--theme-chip-text, var(--theme-industrial-muted));
   background: var(--theme-chip-bg, rgba(74, 222, 128, 0.03));
 }
 
@@ -2862,12 +2862,12 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 .full-auto-cockpit__chip:hover:not(:disabled):not(.full-auto-cockpit__chip--disabled) {
   border-color: var(--theme-chip-hover-border, rgba(74, 222, 128, 0.35));
-  color: var(--theme-chip-hover-text, var(--theme-accent-bright, #4ade80));
+  color: var(--theme-chip-hover-text, var(--theme-accent-bright));
 }
 
 .full-auto-cockpit__chip--active {
   border-color: var(--theme-chip-active-border, rgba(74, 222, 128, 0.5));
-  color: var(--theme-chip-active-text, var(--theme-accent-bright, #4ade80));
+  color: var(--theme-chip-active-text, var(--theme-accent-bright));
   background: var(--theme-chip-active-bg, rgba(74, 222, 128, 0.12));
   box-shadow: 0 0 10px color-mix(in srgb, var(--theme-accent-glow, var(--theme-accent)) 22%, transparent);
 }
@@ -2876,7 +2876,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   opacity: 0.35;
   cursor: not-allowed;
   text-decoration: line-through;
-  text-decoration-color: color-mix(in srgb, var(--theme-text-muted, #6a8a6a) 50%, transparent);
+  text-decoration-color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
 }
 
 .full-auto-cockpit__chip-meta {
@@ -2886,7 +2886,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 }
 
 .full-auto-cockpit__sep {
-  color: color-mix(in srgb, var(--theme-text-muted, #6a8a6a) 35%, transparent);
+  color: color-mix(in srgb, var(--theme-text-muted) 35%, transparent);
   padding: 0 0.15rem;
   font-size: 11px;
 }
@@ -2899,20 +2899,20 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 .full-auto-cockpit__harness-hint {
   font-size: 8px;
-  color: color-mix(in srgb, var(--theme-industrial-muted, #4ade80) 50%, transparent);
+  color: color-mix(in srgb, var(--theme-industrial-muted) 50%, transparent);
 }
 
 .full-auto-cockpit__snippet {
   border-radius: 3px;
-  border: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 75%, transparent);
-  background: color-mix(in srgb, #000000 35%, var(--theme-panel, #111810) 65%);
+  border: 1px solid color-mix(in srgb, var(--theme-border) 75%, transparent);
+  background: color-mix(in srgb, #000000 35%, var(--theme-panel) 65%);
 }
 
 .full-auto-cockpit__snippet-bar {
   padding: 0.25rem 0.5rem;
   border-bottom: 1px solid color-mix(in srgb, var(--theme-border-subtle, rgba(255, 255, 255, 0.08)) 70%, transparent);
   font-size: 7px;
-  color: color-mix(in srgb, var(--theme-industrial-muted, #4ade80) 65%, transparent);
+  color: color-mix(in srgb, var(--theme-industrial-muted) 65%, transparent);
 }
 
 .full-auto-cockpit__copy {
@@ -2920,7 +2920,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   padding: 0.15rem 0.45rem;
   border-radius: 2px;
   border: 1px solid var(--theme-chip-border, rgba(74, 222, 128, 0.15));
-  color: var(--theme-chip-active-text, #4ade80);
+  color: var(--theme-chip-active-text);
   background: transparent;
 }
 
@@ -2932,7 +2932,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   margin: 0;
   padding: 0.4rem 0.5rem;
   font-size: 7px;
-  color: color-mix(in srgb, var(--theme-industrial-text, #4ade80) 72%, transparent);
+  color: color-mix(in srgb, var(--theme-industrial-text) 72%, transparent);
 }
 
 /* ARCTIC — same aluminium band + texture scale as provider bar / launch dock */
@@ -2949,36 +2949,36 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 }
 
 .cockpit-slider-track {
-  background: var(--theme-panel-accent, #040b01);
-  border: 1px solid color-mix(in srgb, var(--theme-accent-bright, #4ade80) 30%, transparent);
+  background: var(--theme-panel-accent);
+  border: 1px solid color-mix(in srgb, var(--theme-accent-bright) 30%, transparent);
   box-sizing: border-box;
 }
 
 .cockpit-slider-thumb {
-  background: var(--theme-accent-bright, #4ade80);
+  background: var(--theme-accent-bright);
   box-shadow: 0 0 6px var(--theme-accent-glow, rgba(74, 222, 128, 0.3));
   pointer-events: none;
   transition: box-shadow 0.15s ease;
 }
 
 .cockpit-slider-mark {
-  background: color-mix(in srgb, var(--theme-accent-bright, #4ade80) 35%, transparent);
+  background: color-mix(in srgb, var(--theme-accent-bright) 35%, transparent);
   transition: background 0.15s ease, box-shadow 0.15s ease;
 }
 
 .cockpit-slider-mark--selected {
-  background: var(--theme-accent-bright, #4ade80);
+  background: var(--theme-accent-bright);
   box-shadow: 0 0 4px var(--theme-accent-glow, rgba(74, 222, 128, 0.3));
 }
 
 .cockpit-slider-mark-label {
   font-size: 8px;
-  color: color-mix(in srgb, var(--theme-industrial-muted, #4ade80) 55%, transparent);
+  color: color-mix(in srgb, var(--theme-industrial-muted) 55%, transparent);
   transition: color 0.15s ease, text-shadow 0.15s ease;
 }
 
 .cockpit-slider-mark-label--selected {
-  color: var(--theme-accent-bright, #4ade80);
+  color: var(--theme-accent-bright);
   text-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent-glow, rgba(74, 222, 128, 0.3)) 50%, transparent);
   font-weight: 700;
   font-size: 11px;
@@ -2989,7 +2989,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 .cockpit-slider-badge {
   border: 1px solid var(--theme-chip-border, rgba(74, 222, 128, 0.15));
-  color: var(--theme-chip-active-text, #4ade80);
+  color: var(--theme-chip-active-text);
   background: var(--theme-chip-active-bg, rgba(74, 222, 128, 0.12));
   box-shadow: 0 0 6px color-mix(in srgb, var(--theme-accent-glow, rgba(74, 222, 128, 0.3)) 20%, transparent);
 }
@@ -2997,7 +2997,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 .cockpit-slider-badge--hero {
   font-size: 11px;
   font-weight: 700;
-  color: var(--theme-accent-bright, #4ade80);
+  color: var(--theme-accent-bright);
   text-shadow: 0 0 12px color-mix(in srgb, var(--theme-accent-glow, rgba(74, 222, 128, 0.3)) 55%, transparent);
   text-align: right;
   white-space: nowrap;
@@ -3012,19 +3012,19 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 /* Boost accents — only when emphasize=true (capable). MTP=green, DFlash=violet */
 .cockpit-slider-mark-label--green {
-  color: var(--cockpit-mtp, #4ade80);
+  color: var(--cockpit-mtp);
   text-shadow: 0 0 8px var(--cockpit-mtp-dim, color-mix(in srgb, #4ade80 40%, transparent));
 }
 .cockpit-slider-mark-label--green.cockpit-slider-mark-label--selected {
-  color: var(--cockpit-mtp, #4ade80);
+  color: var(--cockpit-mtp);
   text-shadow: 0 0 10px var(--cockpit-mtp-dim, color-mix(in srgb, #4ade80 55%, transparent));
 }
 .cockpit-slider-mark-label--violet {
-  color: var(--cockpit-dflash, #a78bfa);
+  color: var(--cockpit-dflash);
   text-shadow: 0 0 8px var(--cockpit-dflash-dim, color-mix(in srgb, #a78bfa 40%, transparent));
 }
 .cockpit-slider-mark-label--violet.cockpit-slider-mark-label--selected {
-  color: var(--cockpit-dflash, #a78bfa);
+  color: var(--cockpit-dflash);
   text-shadow: 0 0 10px var(--cockpit-dflash-dim, color-mix(in srgb, #a78bfa 55%, transparent));
 }
 
@@ -3036,7 +3036,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   font-style: italic;
   letter-spacing: 0.02em;
   opacity: 0.92;
-  color: color-mix(in srgb, #fbbf24 75%, var(--theme-industrial-muted, #4ade80) 25%);
+  color: color-mix(in srgb, #fbbf24 75%, var(--theme-industrial-muted) 25%);
 }
 
 .cockpit-slider-mark-label--custom.cockpit-slider-mark-label--selected {
@@ -3052,7 +3052,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 .cockpit-slider-mark-label--strike {
   text-decoration: line-through;
   text-decoration-thickness: 1px;
-  text-decoration-color: color-mix(in srgb, var(--theme-industrial-muted, #4ade80) 55%, transparent);
+  text-decoration-color: color-mix(in srgb, var(--theme-industrial-muted) 55%, transparent);
   opacity: 0.38;
 }
 
@@ -3079,22 +3079,22 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 }
 
 .cockpit-slider-mark--green {
-  background: var(--cockpit-mtp, #4ade80);
+  background: var(--cockpit-mtp);
   box-shadow: 0 0 5px var(--cockpit-mtp-dim, color-mix(in srgb, #4ade80 45%, transparent));
 }
 .cockpit-slider-mark--violet {
-  background: var(--cockpit-dflash, #a78bfa);
+  background: var(--cockpit-dflash);
   box-shadow: 0 0 5px var(--cockpit-dflash-dim, color-mix(in srgb, #a78bfa 45%, transparent));
 }
 
 /* Status above mark (draft ready / downloadable / built-in) */
 /* Family word above track (draft / ngram) — tint with mark color when selected */
 .cockpit-slider-above-label--green {
-  color: var(--cockpit-mtp, #4ade80);
+  color: var(--cockpit-mtp);
 }
 
 .cockpit-slider-above-label--violet {
-  color: var(--cockpit-dflash, #a78bfa);
+  color: var(--cockpit-dflash);
 }
 
 .cockpit-slider-above-label {
@@ -3102,15 +3102,15 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   line-height: 1;
-  color: color-mix(in srgb, var(--theme-industrial-muted, #4ade80) 45%, transparent);
+  color: color-mix(in srgb, var(--theme-industrial-muted) 45%, transparent);
   pointer-events: none;
   white-space: nowrap;
 }
 .cockpit-slider-above-label--green {
-  color: var(--cockpit-mtp, #4ade80);
+  color: var(--cockpit-mtp);
 }
 .cockpit-slider-above-label--violet {
-  color: var(--cockpit-dflash, #a78bfa);
+  color: var(--cockpit-dflash);
 }
 .cockpit-slider-above-label--selected {
   font-weight: 700;
@@ -3173,7 +3173,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   font-weight: 800;
   letter-spacing: 0.2em;
   color: var(--theme-accent-bright, var(--theme-accent));
-  text-shadow: 0 0 18px color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 35%, transparent);
+  text-shadow: 0 0 18px color-mix(in srgb, var(--theme-harness-brain-raw) 35%, transparent);
 }
 
 .harness-connect__dismiss {
@@ -3247,15 +3247,15 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 }
 
 .harness-connect__seat--brain::before {
-  background: var(--theme-harness-brain-raw, #60a5fa);
+  background: var(--theme-harness-brain-raw);
   opacity: 0.9;
-  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 60%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-harness-brain-raw) 60%, transparent);
 }
 
 .harness-connect__seat--worker::before {
-  background: var(--theme-harness-worker-raw, #ea580c);
+  background: var(--theme-harness-worker-raw);
   opacity: 0.9;
-  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-harness-worker-raw, #ea580c) 60%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-harness-worker-raw) 60%, transparent);
 }
 
 .harness-connect__seat-role {
@@ -3269,11 +3269,11 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 }
 
 .harness-connect__seat--brain .harness-connect__seat-role {
-  color: var(--theme-harness-brain-text, var(--theme-provider-pill-active-text, #bfdbfe));
+  color: var(--theme-harness-brain-text, var(--theme-provider-pill-active-text));
 }
 
 .harness-connect__seat--worker .harness-connect__seat-role {
-  color: var(--theme-harness-worker-text, var(--theme-pair-secondary-text, #fdba74));
+  color: var(--theme-harness-worker-text, var(--theme-pair-secondary-text));
 }
 
 .harness-connect__seat-status {
@@ -3305,10 +3305,10 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   border-radius: 999px;
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 70%, transparent),
-    color-mix(in srgb, var(--theme-harness-worker-raw, #ea580c) 70%, transparent)
+    color-mix(in srgb, var(--theme-harness-brain-raw) 70%, transparent),
+    color-mix(in srgb, var(--theme-harness-worker-raw) 70%, transparent)
   );
-  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 30%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-harness-brain-raw) 30%, transparent);
 }
 
 .harness-connect__config {
@@ -3408,7 +3408,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 .harness-connect__agent-chip--on {
   color: var(--theme-accent-bright, var(--theme-accent));
   border-color: color-mix(in srgb, var(--theme-accent) 65%, transparent);
-  text-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent, #76b900) 55%, transparent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent) 55%, transparent);
 }
 
 .harness-connect__agent-chip--over:not(.harness-connect__agent-chip--on) {
@@ -3468,18 +3468,18 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   text-transform: uppercase;
   padding: 0.55rem 1rem;
   border-radius: 3px;
-  border: 1px solid color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 65%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-harness-brain-raw) 65%, transparent);
   background:
     linear-gradient(
       135deg,
-      color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 32%, transparent),
-      color-mix(in srgb, var(--theme-accent, #76b900) 22%, transparent)
+      color-mix(in srgb, var(--theme-harness-brain-raw) 32%, transparent),
+      color-mix(in srgb, var(--theme-accent) 22%, transparent)
     );
   color: var(--theme-text);
   cursor: pointer;
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 18%, transparent),
-    0 0 22px color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 20%, transparent);
+    0 0 0 1px color-mix(in srgb, var(--theme-harness-brain-raw) 18%, transparent),
+    0 0 22px color-mix(in srgb, var(--theme-harness-brain-raw) 20%, transparent);
 }
 
 .harness-connect__go:hover:not(:disabled) {
@@ -3493,21 +3493,21 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 }
 
 .harness-connect__go--twin {
-  border-color: color-mix(in srgb, var(--theme-harness-worker-raw, #ea580c) 60%, transparent);
+  border-color: color-mix(in srgb, var(--theme-harness-worker-raw) 60%, transparent);
   background:
     linear-gradient(
       135deg,
-      color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 28%, transparent),
-      color-mix(in srgb, var(--theme-harness-worker-raw, #ea580c) 26%, transparent)
+      color-mix(in srgb, var(--theme-harness-brain-raw) 28%, transparent),
+      color-mix(in srgb, var(--theme-harness-worker-raw) 26%, transparent)
     );
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--theme-harness-worker-raw, #ea580c) 18%, transparent),
-    0 0 22px color-mix(in srgb, var(--theme-harness-worker-raw, #ea580c) 16%, transparent);
+    0 0 0 1px color-mix(in srgb, var(--theme-harness-worker-raw) 18%, transparent),
+    0 0 22px color-mix(in srgb, var(--theme-harness-worker-raw) 16%, transparent);
 }
 
 .harness-connect__error {
   font-size: 9px;
-  color: var(--theme-crit, #f87171);
+  color: var(--theme-crit);
 }
 
 .harness-connect__msg {
@@ -3553,7 +3553,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 .harness-connect-veil--opaque {
   /* Static fill only — rain paints the motion on canvas */
-  background: var(--display-face-bg, var(--theme-panel, #0a0c0f));
+  background: var(--display-face-bg, var(--theme-panel));
 }
 
 .harness-connect-veil__fx {
@@ -3609,7 +3609,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
    between every line. Only solid element in the whole veil = the GO button. */
 
 .harness-connect-veil {
-  --hcv-ink: var(--display-face-bg, var(--theme-panel, #0a0c0f));
+  --hcv-ink: var(--display-face-bg, var(--theme-panel));
   --hcv-halo:
     0 0 7px var(--hcv-ink),
     0 0 2px var(--hcv-ink),
@@ -3669,23 +3669,23 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 }
 
 .harness-connect--veil .harness-connect__mode--solo {
-  color: var(--theme-harness-brain-text, var(--theme-provider-pill-active-text, #bfdbfe));
+  color: var(--theme-harness-brain-text, var(--theme-provider-pill-active-text));
 }
 
 .harness-connect--veil .harness-connect__mode--solo .harness-connect__mode-dot {
   opacity: 1;
-  background: var(--theme-harness-brain-raw, #60a5fa);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 75%, transparent);
+  background: var(--theme-harness-brain-raw);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--theme-harness-brain-raw) 75%, transparent);
 }
 
 .harness-connect--veil .harness-connect__mode--twin {
-  color: var(--theme-harness-worker-text, var(--theme-pair-secondary-text, #fdba74));
+  color: var(--theme-harness-worker-text, var(--theme-pair-secondary-text));
 }
 
 .harness-connect--veil .harness-connect__mode--twin .harness-connect__mode-dot {
   opacity: 1;
-  background: var(--theme-harness-worker-raw, #ea580c);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--theme-harness-worker-raw, #ea580c) 75%, transparent);
+  background: var(--theme-harness-worker-raw);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--theme-harness-worker-raw) 75%, transparent);
 }
 
 /* GO — the single solid anchor of the whole veil */
@@ -3694,24 +3694,24 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   text-shadow: none;
   background: linear-gradient(
     135deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 82%, #0a0c0f 18%),
-    color-mix(in srgb, var(--theme-accent, #76b900) 72%, #0a0c0f 28%)
+    color-mix(in srgb, var(--theme-harness-brain-raw) 82%, #0a0c0f 18%),
+    color-mix(in srgb, var(--theme-accent) 72%, #0a0c0f 28%)
   );
   color: #07130c;
   box-shadow:
-    0 0 18px color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 40%, transparent),
-    0 0 4px color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 60%, transparent);
+    0 0 18px color-mix(in srgb, var(--theme-harness-brain-raw) 40%, transparent),
+    0 0 4px color-mix(in srgb, var(--theme-harness-brain-raw) 60%, transparent);
 }
 
 .harness-connect--veil .harness-connect__go--twin {
   background: linear-gradient(
     135deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 82%, #0a0c0f 18%),
-    color-mix(in srgb, var(--theme-harness-worker-raw, #ea580c) 80%, #0a0c0f 20%)
+    color-mix(in srgb, var(--theme-harness-brain-raw) 82%, #0a0c0f 18%),
+    color-mix(in srgb, var(--theme-harness-worker-raw) 80%, #0a0c0f 20%)
   );
   box-shadow:
-    0 0 18px color-mix(in srgb, var(--theme-harness-worker-raw, #ea580c) 40%, transparent),
-    0 0 4px color-mix(in srgb, var(--theme-harness-worker-raw, #ea580c) 60%, transparent);
+    0 0 18px color-mix(in srgb, var(--theme-harness-worker-raw) 40%, transparent),
+    0 0 4px color-mix(in srgb, var(--theme-harness-worker-raw) 60%, transparent);
 }
 
 .harness-connect--veil .harness-connect__go:hover:not(:disabled) {
@@ -3756,15 +3756,15 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   display: block;
   pointer-events: none;
   /* CRT face — face bg + accent glyph */
-  --matrix-rain-bg: var(--display-face-bg, #030805);
-  --matrix-rain-fg: var(--display-face-text, var(--theme-accent, #4ade80));
+  --matrix-rain-bg: var(--display-face-bg);
+  --matrix-rain-fg: var(--display-face-text, var(--theme-accent));
 }
 
 .matrix-ascii-rain--dark {
-  --matrix-rain-bg: var(--display-face-bg, #030805);
+  --matrix-rain-bg: var(--display-face-bg);
   --matrix-rain-fg: var(
     --theme-accent-bright,
-    var(--display-face-text, var(--theme-accent, #4ade80))
+    var(--display-face-text, var(--theme-accent))
   );
 }
 
@@ -3774,5 +3774,32 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 .matrix-ascii-rain--light {
   --matrix-rain-bg: var(--display-face-bg, var(--theme-panel-accent));
   --matrix-rain-fg: var(--display-face-text, var(--theme-accent));
+}
+
+/* ── de-Tailwind pass 2 · ErrorBoundary fallback face ─── */
+.err-fallback {
+  background: var(--theme-bg);
+}
+
+.err-title {
+  color: var(--theme-danger);
+}
+
+.err-body {
+  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
+}
+
+.err-detail {
+  color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
+  background: color-mix(in srgb, #000 30%, transparent);
+}
+
+.err-reload {
+  border-color: color-mix(in srgb, var(--theme-accent) 40%, transparent);
+  color: var(--theme-accent);
+}
+
+.err-reload:hover {
+  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
 }
 

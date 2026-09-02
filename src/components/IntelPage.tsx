@@ -75,7 +75,7 @@ export default function IntelPage({ embedded = false }: IntelPageProps) {
       {!embedded && (
         <TabPageHeader title="INTEL" actions={refreshBtn} />
       )}
-      <p className={`flex-shrink-0 py-1 text-[8px] font-mono text-stealth-muted/60 border-b border-stealth-border/30 ${embedded ? "px-3" : "px-4"}`}>
+      <p className={`intel-summary flex-shrink-0 py-1 type-tiny font-mono border-b ${embedded ? "px-3" : "px-4"}`}>
         Multi-provider backend news — discussions, PRs, releases from your enabled provider repos
         {buildSummary && effectiveChannel !== "all" ? ` · Active stack · ${buildSummary}` : ""}
       </p>

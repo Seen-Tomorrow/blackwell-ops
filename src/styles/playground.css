@@ -90,8 +90,8 @@ body[data-onboarding-phase="paths"] [data-onboarding="add-folder"] {
 
 /* GPU overclock — theme tel amber (ARCTIC copper; dark themes classic amber) */
 [data-gpu-overclock] {
-  --gpu-oc-amber: var(--theme-tel-amber, #f59e0b);
-  --gpu-oc-amber-deep: var(--theme-tel-amber-deep, #b45309);
+  --gpu-oc-amber: var(--theme-tel-amber);
+  --gpu-oc-amber-deep: var(--theme-tel-amber-deep);
   --gpu-oc-amber-ink: var(
     --theme-tel-amber-ink,
     color-mix(in srgb, #fbbf24 78%, #fff 22%)
@@ -117,7 +117,7 @@ body[data-onboarding-phase="paths"] [data-onboarding="add-folder"] {
 }
 
 [data-gpu-overclock] .gpu-oc-header--active .gpu-oc-header__feedback--error {
-  color: var(--tel-hot, #ef4444) !important;
+  color: var(--tel-hot) !important;
 }
 
 [data-gpu-overclock] .gpu-oc-header--active .gpu-oc-header__feedback--ok {
@@ -125,7 +125,7 @@ body[data-onboarding-phase="paths"] [data-onboarding="add-folder"] {
 }
 
 [data-gpu-overclock] .gpu-oc-header:not(.gpu-oc-header--active) .gpu-oc-header__feedback--error {
-  color: color-mix(in srgb, var(--tel-hot, #ef4444) 90%, transparent);
+  color: color-mix(in srgb, var(--tel-hot) 90%, transparent);
 }
 
 [data-gpu-overclock] .gpu-oc-header:not(.gpu-oc-header--active) .gpu-oc-header__feedback--ok {
@@ -158,13 +158,13 @@ body[data-onboarding-phase="paths"] [data-onboarding="add-folder"] {
   margin: -2px 0 0;
   font-size: 6px;
   line-height: 1.1;
-  color: color-mix(in srgb, var(--gpu-oc-amber, #f59e0b) 55%, var(--theme-text-muted, #6a8a6a) 45%);
+  color: color-mix(in srgb, var(--gpu-oc-amber) 55%, var(--theme-text-muted) 45%);
   opacity: 0.85;
 }
 
 [data-gpu-overclock] .gpu-oc-header--active + .gpu-oc-rail-body .gpu-oc-rail-target,
 [data-gpu-overclock]:has(.gpu-oc-header--active) .gpu-oc-rail-target {
-  color: color-mix(in srgb, var(--gpu-oc-amber, #f59e0b) 62%, transparent);
+  color: color-mix(in srgb, var(--gpu-oc-amber) 62%, transparent);
   opacity: 0.9;
 }
 
@@ -237,29 +237,29 @@ body[data-onboarding-phase="paths"] [data-onboarding="add-folder"] {
 
 /* Driver model status + toggles */
 [data-gpu-overclock] .gpu-oc-driver-model__label--tcc {
-  color: var(--theme-tel-amber, var(--theme-telemetry-amber, #ffb800));
+  color: var(--theme-tel-amber, var(--theme-telemetry-amber));
   font-weight: 700;
   text-shadow: 0 0 8px color-mix(
     in srgb,
-    var(--theme-tel-amber, var(--theme-telemetry-amber, #ffb800)) 35%,
+    var(--theme-tel-amber, var(--theme-telemetry-amber)) 35%,
     transparent
   );
 }
 
 [data-gpu-overclock] .gpu-oc-driver-model__label--wddm {
-  color: color-mix(in srgb, var(--theme-text-muted, #94a3b8) 88%, transparent);
+  color: color-mix(in srgb, var(--theme-text-muted) 88%, transparent);
   font-weight: 600;
 }
 
 [data-gpu-overclock] .gpu-oc-driver-model__btn--tcc.app-nav-tab {
   color: color-mix(
     in srgb,
-    var(--theme-tel-amber, var(--theme-telemetry-amber, #ffb800)) 75%,
+    var(--theme-tel-amber, var(--theme-telemetry-amber)) 75%,
     transparent
   );
   border-color: color-mix(
     in srgb,
-    var(--theme-tel-amber, var(--theme-telemetry-amber, #ffb800)) 35%,
+    var(--theme-tel-amber, var(--theme-telemetry-amber)) 35%,
     transparent
   );
 }
@@ -269,31 +269,31 @@ body[data-onboarding-phase="paths"] [data-onboarding="add-folder"] {
   color: #1a1400 !important;
   background: color-mix(
     in srgb,
-    var(--theme-tel-amber, var(--theme-telemetry-amber, #ffb800)) 78%,
+    var(--theme-tel-amber, var(--theme-telemetry-amber)) 78%,
     #1a1400
   ) !important;
   border-color: color-mix(
     in srgb,
-    var(--theme-tel-amber, var(--theme-telemetry-amber, #ffb800)) 70%,
+    var(--theme-tel-amber, var(--theme-telemetry-amber)) 70%,
     transparent
   ) !important;
   box-shadow: 0 0 10px color-mix(
     in srgb,
-    var(--theme-tel-amber, var(--theme-telemetry-amber, #ffb800)) 30%,
+    var(--theme-tel-amber, var(--theme-telemetry-amber)) 30%,
     transparent
   );
 }
 
 [data-gpu-overclock] .gpu-oc-driver-model__btn--wddm.app-nav-tab {
-  color: color-mix(in srgb, var(--theme-text-muted, #94a3b8) 90%, transparent);
-  border-color: color-mix(in srgb, var(--theme-border, #64748b) 45%, transparent);
+  color: color-mix(in srgb, var(--theme-text-muted) 90%, transparent);
+  border-color: color-mix(in srgb, var(--theme-border) 45%, transparent);
 }
 
 [data-gpu-overclock] .gpu-oc-driver-model__btn--wddm-active.app-nav-tab,
 [data-gpu-overclock] .gpu-oc-driver-model__btn--wddm.app-nav-tab.app-nav-tab-active {
-  color: color-mix(in srgb, var(--theme-text, #e2e8f0) 92%, transparent) !important;
-  background: color-mix(in srgb, var(--theme-chip-bg, #1e293b) 70%, transparent) !important;
-  border-color: color-mix(in srgb, var(--theme-border, #94a3b8) 55%, transparent) !important;
+  color: color-mix(in srgb, var(--theme-text) 92%, transparent) !important;
+  background: color-mix(in srgb, var(--theme-chip-bg) 70%, transparent) !important;
+  border-color: color-mix(in srgb, var(--theme-border) 55%, transparent) !important;
 }
 
 /* TCC confirm modal */
@@ -314,7 +314,7 @@ body[data-onboarding-phase="paths"] [data-onboarding="add-folder"] {
   border-radius: 4px;
   border: 1px solid color-mix(
     in srgb,
-    var(--theme-tel-amber, var(--theme-telemetry-amber, #ffb800)) 45%,
+    var(--theme-tel-amber, var(--theme-telemetry-amber)) 45%,
     transparent
   );
   background: linear-gradient(180deg, #1a1408 0%, #0a0804 100%);
@@ -327,7 +327,7 @@ body[data-onboarding-phase="paths"] [data-onboarding="add-folder"] {
   font-size: 11px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--theme-telemetry-amber, #ffb800);
+  color: var(--theme-telemetry-amber);
 }
 
 .gpu-oc-tcc-modal__target {
@@ -349,7 +349,7 @@ body[data-onboarding-phase="paths"] [data-onboarding="add-folder"] {
 }
 
 .gpu-oc-tcc-modal__list strong {
-  color: var(--theme-telemetry-amber, #ffb800);
+  color: var(--theme-telemetry-amber);
   font-weight: 700;
 }
 
@@ -384,12 +384,12 @@ body[data-onboarding-phase="paths"] [data-onboarding="add-folder"] {
 
 .gpu-oc-tcc-modal__btn--yes {
   color: #1a1400;
-  border-color: color-mix(in srgb, var(--theme-telemetry-amber, #ffb800) 70%, transparent);
-  background: color-mix(in srgb, var(--theme-telemetry-amber, #ffb800) 85%, #1a1400);
+  border-color: color-mix(in srgb, var(--theme-telemetry-amber) 70%, transparent);
+  background: color-mix(in srgb, var(--theme-telemetry-amber) 85%, #1a1400);
 }
 
 .gpu-oc-tcc-modal__btn--yes:hover {
-  background: var(--theme-telemetry-amber, #ffb800);
+  background: var(--theme-telemetry-amber);
 }
 
 .gpu-oc-tcc-modal__btn:disabled {
@@ -463,4 +463,21 @@ body[data-onboarding-phase="paths"] [data-onboarding="add-folder"] {
 
 .setup-welcome-art {
   animation: setup-welcome-fade 0.6s ease-out both;
+}
+
+/* ── de-Tailwind pass 2 · Playground warning/danger paint ─── */
+.play-warn {
+  color: var(--theme-warn);
+}
+
+.play-warn--dim {
+  color: color-mix(in srgb, var(--theme-warn) 80%, transparent);
+}
+
+.play-danger {
+  color: var(--theme-danger);
+}
+
+.play-stream {
+  color: var(--theme-text-muted);
 }

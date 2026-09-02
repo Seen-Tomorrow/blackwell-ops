@@ -387,23 +387,23 @@ export default function Layout({
     >
       {monitorFocus ? (
         <div className="monitor-focus-exit-bar flex items-center justify-between gap-3 px-4 py-1.5 relative z-40">
-          <span className="font-mono text-[9px] uppercase tracking-wider text-stealth-muted/70">
+          <span className="shell-focus-hud type-label font-mono uppercase tracking-wider">
             Focus HUD · Esc to exit
           </span>
           <div className="flex items-center gap-1 flex-shrink-0" title="Ctrl+scroll to zoom">
-            <span className="font-mono text-[8px] uppercase tracking-wider text-stealth-muted/50">
+            <span className="shell-focus-hud--dim type-tiny font-mono uppercase tracking-wider">
               Ctrl+scroll to zoom
             </span>
             <button
               type="button"
               onClick={() => adjustZoom(-ZOOM_STEP)}
-              className="font-mono text-[9px] leading-none px-1 rounded-sm border border-stealth-border/40 text-stealth-muted/80 hover:text-nv-green"
+              className="shell-focus-btn type-label font-mono leading-none px-1 rounded-sm border"
               title="Decrease zoom (Ctrl+scroll)"
             >
               −
             </button>
             <span
-              className="font-mono text-[9px] leading-none w-9 text-center text-stealth-muted/70"
+              className="shell-focus-readout type-label font-mono leading-none w-9 text-center"
               title="Zoom (Ctrl+scroll)"
             >
               {Math.round(zoom * 100)}%
@@ -411,7 +411,7 @@ export default function Layout({
             <button
               type="button"
               onClick={() => adjustZoom(ZOOM_STEP)}
-              className="font-mono text-[9px] leading-none px-1 rounded-sm border border-stealth-border/40 text-stealth-muted/80 hover:text-nv-green"
+              className="shell-focus-btn type-label font-mono leading-none px-1 rounded-sm border"
               title="Increase zoom (Ctrl+scroll)"
             >
               +
@@ -419,7 +419,7 @@ export default function Layout({
           </div>
           <button
             type="button"
-            className="font-mono text-[9px] uppercase tracking-wider px-2 py-0.5 rounded-sm border border-stealth-border/50 text-nv-green/90 hover:text-nv-green"
+            className="shell-focus-exit type-label font-mono uppercase tracking-wider px-2 py-0.5 rounded-sm border"
             onClick={() => {
               saveMonitorFocusMode(false);
               setMonitorFocus(false);
@@ -459,7 +459,7 @@ export default function Layout({
               <div className="app-quick-settings__tools app-quick-settings__row flex items-center gap-2">
                 {/* Density leads the row (left); zoom / update / recovery stay right-aligned. */}
                 <div className="app-appearance-inline-group flex items-center gap-0.5 flex-shrink-0">
-                  <span className="app-appearance-section__label app-appearance-section__label--compact text-[6px] font-mono tracking-widest uppercase">
+                  <span className="app-appearance-section__label app-appearance-section__label--compact type-hairline font-mono tracking-widest uppercase">
                     Comfort
                   </span>
                   <SegmentSwitch
@@ -485,12 +485,12 @@ export default function Layout({
                  */}
                 <div className="app-quick-settings__tool-group flex items-center gap-1 flex-wrap justify-end min-w-0">
                   <div className="app-appearance-inline-group flex items-center gap-0.5 flex-shrink-0">
-                    <span className="app-appearance-section__label app-appearance-section__label--compact text-[6px] font-mono tracking-widest uppercase">
+                    <span className="app-appearance-section__label app-appearance-section__label--compact type-hairline font-mono tracking-widest uppercase">
                       Zoom
                     </span>
-                    <button onClick={() => adjustZoom(-ZOOM_STEP)} className="app-chrome-control-btn px-1 text-[9px] font-mono transition-colors leading-none" title="Decrease text scale (Ctrl+scroll)">−</button>
-                    <span className="app-chrome-control-btn text-[8px] font-mono opacity-60 w-8 text-center" title="Text scale (Ctrl+scroll)">{Math.round(zoom * 100)}%</span>
-                    <button onClick={() => adjustZoom(ZOOM_STEP)} className="app-chrome-control-btn px-1 text-[9px] font-mono transition-colors leading-none" title="Increase text scale (Ctrl+scroll)">+</button>
+                    <button onClick={() => adjustZoom(-ZOOM_STEP)} className="app-chrome-control-btn shell-scale-btn type-label font-mono transition-colors leading-none" title="Decrease text scale (Ctrl+scroll)">−</button>
+                    <span className="app-chrome-control-btn shell-scale-readout type-tiny font-mono opacity-60 w-8 text-center" title="Text scale (Ctrl+scroll)">{Math.round(zoom * 100)}%</span>
+                    <button onClick={() => adjustZoom(ZOOM_STEP)} className="app-chrome-control-btn shell-scale-btn type-label font-mono transition-colors leading-none" title="Increase text scale (Ctrl+scroll)">+</button>
                   </div>
                   <AppUpdateMenu
                     offerings={updateOfferings ?? null}
@@ -500,7 +500,7 @@ export default function Layout({
                   <button
                     type="button"
                     onClick={dispatchNavigateRecovery}
-                    className="app-quick-settings__recovery app-chrome-control-btn px-1.5 text-[8px] font-mono transition-colors leading-none"
+                    className="app-quick-settings__recovery app-chrome-control-btn shell-scale-btn px-1.5 type-tiny font-mono transition-colors leading-none"
                     title="CONFIG → RECOVERY — clear local UI prefs or reset portable config/"
                   >
                     RECOVERY
@@ -651,12 +651,12 @@ export default function Layout({
                       onClick={onShowAll}
                       onMouseEnter={() => setShowTooltip(true)}
                       onMouseLeave={() => setShowTooltip(false)}
-                      className={`cursor-pointer app-footer-stat-link transition-colors ${hiddenCount > 0 ? "text-yellow-400" : ""}`}
+                      className={`cursor-pointer app-footer-stat-link transition-colors ${hiddenCount > 0 ? "shell-hidden--warn" : ""}`}
                     >
                       HIDDEN: {hiddenCount}
                     </span>
                     {showTooltip && (
-                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-[#1a1a2e] border border-yellow-400/40 text-[9px] font-mono text-yellow-300 whitespace-nowrap rounded-sm pointer-events-none z-[100]">
+                      <div className="shell-hidden-tip absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 border type-label font-mono whitespace-nowrap rounded-sm pointer-events-none z-[100]">
                         Click to show all hidden values
                       </div>
                     )}

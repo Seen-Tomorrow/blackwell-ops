@@ -466,8 +466,8 @@ export default function Playground({ stack, models, embedded = false }: Playgrou
 
   const elapsed = genStartedAt ? Date.now() - genStartedAt : 0;
 
-  const chipBtn = "value-chip text-[8px] font-mono px-1.5 py-0.5 rounded-sm transition-colors disabled:opacity-30 disabled:cursor-not-allowed";
-  const toolbarChip = "value-chip text-[9px] font-mono px-2 py-0.5 rounded-sm transition-colors disabled:opacity-30 disabled:cursor-not-allowed";
+  const chipBtn = "value-chip type-tiny font-mono px-1.5 py-0.5 rounded-sm transition-colors disabled:opacity-30 disabled:cursor-not-allowed";
+  const toolbarChip = "value-chip type-label font-mono px-2 py-0.5 rounded-sm transition-colors disabled:opacity-30 disabled:cursor-not-allowed";
 
   return (
     <div className="h-full flex flex-col font-mono overflow-hidden" data-playground>
@@ -475,20 +475,20 @@ export default function Playground({ stack, models, embedded = false }: Playgrou
         <TabPageHeader
           title="PLAYGROUND"
           meta={
-            <span className="text-[8px] font-mono opacity-50 tracking-[1px]">
+            <span className="type-tiny font-mono opacity-50 tracking-[1px]">
               ISOLATED AGENT SANDBOX — code &amp; previews live only in this tab
             </span>
           }
         />
       )}
 
-      <div className="px-4 py-1.5 text-[9px] theme-surface-header flex items-center gap-2 flex-wrap border-b">
-        <span className="value-chip-active text-[8px] font-mono px-1.5 py-px rounded-sm">SAFE</span>
+      <div className="px-4 py-1.5 type-label theme-surface-header flex items-center gap-2 flex-wrap border-b">
+        <span className="value-chip-active type-tiny font-mono px-1.5 py-px rounded-sm">SAFE</span>
         <span>Generated artifacts never touch app source, config, or other tabs.</span>
         <select
           value={state.activeSessionId}
           onChange={(e) => patchSettings({ activeSessionId: e.target.value })}
-          className="ml-2 theme-input text-[9px] font-mono px-1 py-0.5 rounded-sm"
+          className="ml-2 theme-input type-label font-mono px-1 py-0.5 rounded-sm"
         >
           {state.sessions.map((s) => (
             <option key={s.id} value={s.id}>
@@ -525,7 +525,7 @@ export default function Playground({ stack, models, embedded = false }: Playgrou
       </div>
 
       {!state.hasSeenGuide && session.history.length === 0 && (
-        <div className="px-4 py-2 playground-guide-banner text-[10px] flex flex-wrap gap-x-4 gap-y-1">
+        <div className="px-4 py-2 playground-guide-banner type-body flex flex-wrap gap-x-4 gap-y-1">
           <span>
             <strong className="theme-accent-text">1.</strong> Launch a model on the{" "}
             <button type="button" className="underline theme-accent-text" onClick={dispatchNavigateCatalog}>
@@ -550,10 +550,10 @@ export default function Playground({ stack, models, embedded = false }: Playgrou
       )}
 
       <div className="px-4 py-2 theme-surface-header flex items-center gap-3 flex-wrap border-b">
-        <div className="text-[9px] uppercase tracking-widest theme-accent-text mr-1">ENGINE</div>
+        <div className="type-label uppercase tracking-widest theme-accent-text mr-1">ENGINE</div>
 
         {activeTargets.length === 0 ? (
-          <div className="text-[10px] text-telemetry-amber">
+          <div className="play-warn type-body">
             No running engines.{" "}
             <button type="button" className="underline hover:opacity-80" onClick={dispatchNavigateCatalog}>
               Open OPERATIONS tab
@@ -575,7 +575,7 @@ export default function Playground({ stack, models, embedded = false }: Playgrou
           ))
         )}
 
-        <div className="ml-auto flex items-center gap-2 text-[9px] flex-wrap justify-end">
+        <div className="ml-auto flex items-center gap-2 type-label flex-wrap justify-end">
           {modelLabel && (
             <span className="opacity-50 max-w-[200px] truncate" title={modelLabel}>
               {modelLabel}
@@ -608,7 +608,7 @@ export default function Playground({ stack, models, embedded = false }: Playgrou
             />
             <span>CHAT API</span>
           </label>
-          <button type="button" onClick={loadStarter} className={`${chipBtn} text-[9px]`}>
+          <button type="button" onClick={loadStarter} className={`${chipBtn} type-label`}>
             STARTER
           </button>
         </div>
@@ -621,7 +621,7 @@ export default function Playground({ stack, models, embedded = false }: Playgrou
               key={preset.label}
               type="button"
               onClick={() => setDraftPrompt(preset.prompt)}
-              className={`${chipBtn} text-[8px] px-2 py-1`}
+              className={`${chipBtn} type-tiny px-2 py-1`}
               title={preset.prompt}
             >
               {preset.label}
@@ -635,7 +635,7 @@ export default function Playground({ stack, models, embedded = false }: Playgrou
             onChange={(e) => setDraftPrompt(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Describe the demo… (Ctrl/Cmd+Enter send, Esc cancel)"
-            className="flex-1 min-h-[64px] resize-y theme-input p-2 text-[11px] font-mono rounded-sm"
+            className="flex-1 min-h-[64px] resize-y theme-input p-2 type-sm font-mono rounded-sm"
             disabled={isGenerating}
           />
           <div className="flex flex-col gap-1 w-40">
@@ -643,7 +643,7 @@ export default function Playground({ stack, models, embedded = false }: Playgrou
               type="button"
               onClick={() => handleSend(true)}
               disabled={isGenerating || !currentTarget || !draftPrompt.trim()}
-              className="flex-1 value-chip-active text-[10px] font-mono tracking-wider rounded-sm disabled:opacity-40"
+              className="flex-1 value-chip-active type-body font-mono tracking-wider rounded-sm disabled:opacity-40"
             >
               {isGenerating ? `STREAMING ${formatElapsed(elapsed)}` : "SEND + PREVIEW"}
             </button>
@@ -651,7 +651,7 @@ export default function Playground({ stack, models, embedded = false }: Playgrou
               type="button"
               onClick={() => handleSend(false)}
               disabled={isGenerating || !currentTarget || !draftPrompt.trim()}
-              className="flex-1 value-chip text-[10px] font-mono rounded-sm disabled:opacity-40"
+              className="flex-1 value-chip type-body font-mono rounded-sm disabled:opacity-40"
             >
               SEND ONLY
             </button>
@@ -659,7 +659,7 @@ export default function Playground({ stack, models, embedded = false }: Playgrou
               type="button"
               onClick={() => handleFixErrors()}
               disabled={isGenerating || !currentTarget || !hasCode || !showFixActions}
-              className={`${chipBtn} playground-warn-btn text-[9px]`}
+              className={`${chipBtn} playground-warn-btn type-label`}
               title="Send captured preview errors to the model and regenerate"
             >
               FIX ERRORS
@@ -668,7 +668,7 @@ export default function Playground({ stack, models, embedded = false }: Playgrou
               type="button"
               onClick={cancelGeneration}
               disabled={!isGenerating}
-              className={`${chipBtn} playground-danger-btn text-[9px]`}
+              className={`${chipBtn} playground-danger-btn type-label`}
             >
               CANCEL
             </button>
@@ -676,12 +676,12 @@ export default function Playground({ stack, models, embedded = false }: Playgrou
         </div>
 
         {isGenerating && streamingText && (
-          <div className="mt-2 p-2 theme-surface text-[9px] max-h-24 overflow-auto whitespace-pre-wrap opacity-80 rounded-sm">
+          <div className="play-stream mt-2 p-2 theme-surface type-label max-h-24 overflow-auto whitespace-pre-wrap opacity-80 rounded-sm">
             {streamingText.slice(-1200)}
           </div>
         )}
 
-        <div className="mt-2 flex items-center gap-4 text-[9px] opacity-70 flex-wrap">
+        <div className="mt-2 flex items-center gap-4 type-label opacity-70 flex-wrap">
           <label>
             temp{" "}
             <input
@@ -711,18 +711,18 @@ export default function Playground({ stack, models, embedded = false }: Playgrou
               / {maxGenTokens} (ctx {engineCtx})
             </span>
           </label>
-          {ctxWarn && <span className="text-telemetry-amber">prompt may exceed ctx — history/code will trim</span>}
-          {genError && <span className="text-telemetry-amber">{genError}</span>}
+          {ctxWarn && <span className="play-warn">prompt may exceed ctx — history/code will trim</span>}
+          {genError && <span className="play-warn">{genError}</span>}
         </div>
       </div>
 
       <div className="flex-1 min-h-0 flex overflow-hidden">
         <div className="w-72 theme-surface flex flex-col shrink-0 border-r">
-          <div className="px-3 py-1.5 text-[9px] theme-surface-header flex justify-between items-center border-b">
+          <div className="px-3 py-1.5 type-label theme-surface-header flex justify-between items-center border-b">
             <span>CONVERSATION</span>
             <span className="opacity-40">{session.history.length}</span>
           </div>
-          <div className="flex-1 overflow-y-auto p-2 space-y-2 text-[10px] eink-scrollbar">
+          <div className="flex-1 overflow-y-auto p-2 space-y-2 type-body eink-scrollbar">
             {session.history.length === 0 && (
               <div className="opacity-40 p-3 text-center">Send a prompt to start an isolated session.</div>
             )}
@@ -731,7 +731,7 @@ export default function Playground({ stack, models, embedded = false }: Playgrou
                 key={idx}
                 className={`p-2 ${turn.role === "user" ? "playground-turn--user" : "playground-turn--assistant"}`}
               >
-                <div className="uppercase tracking-[1px] text-[8px] opacity-50 mb-0.5">{turn.role}</div>
+                <div className="uppercase tracking-[1px] type-tiny opacity-50 mb-0.5">{turn.role}</div>
                 <div className="whitespace-pre-wrap break-words leading-snug max-h-40 overflow-auto">
                   {turn.content.length > 1800 ? turn.content.slice(0, 1800) + "…" : turn.content}
                 </div>
@@ -751,7 +751,7 @@ export default function Playground({ stack, models, embedded = false }: Playgrou
         </div>
 
         <div className="flex-1 flex flex-col min-w-0">
-          <div className="playground-view-toolbar flex text-[9px] items-center theme-surface-header border-b shrink-0">
+          <div className="playground-view-toolbar flex type-label items-center theme-surface-header border-b shrink-0">
             {(["split", "preview", "code"] as const).map((mode) => (
               <button
                 key={mode}
@@ -801,11 +801,11 @@ export default function Playground({ stack, models, embedded = false }: Playgrou
                 </button>
               )}
               {hasCode && !currentLooksGood && (
-                <span className="text-[8px] text-telemetry-amber px-1">output may not be clean HTML</span>
+                <span className="play-warn type-tiny px-1">output may not be clean HTML</span>
               )}
               {codeValidation && codeValidation.warnings.length > 0 && (
                 <span
-                  className="text-[8px] text-telemetry-amber/80 px-1"
+                  className="play-warn--dim type-tiny px-1"
                   title={codeValidation.warnings.join("; ")}
                 >
                   {codeValidation.warnings[0]}
@@ -826,10 +826,10 @@ export default function Playground({ stack, models, embedded = false }: Playgrou
                 <textarea
                   value={session.currentCode}
                   onChange={(e) => updateCode(e.target.value)}
-                  className="playground-code-editor flex-1 w-full resize-none border-0 p-3 font-mono text-[11px] leading-relaxed outline-none"
+                  className="playground-code-editor flex-1 w-full resize-none border-0 p-3 font-mono type-sm leading-relaxed outline-none"
                   spellCheck={false}
                 />
-                <div className="text-[8px] opacity-40 px-2 py-1 border-t theme-surface-header">
+                <div className="type-tiny opacity-40 px-2 py-1 border-t theme-surface-header">
                   Live edit • Ctrl+S download • Ctrl+Shift+P refresh
                 </div>
               </div>
@@ -848,7 +848,7 @@ export default function Playground({ stack, models, embedded = false }: Playgrou
               <div className="flex-1 min-w-0 flex flex-col playground-preview-canvas">
                 <div className="flex-1 relative overflow-hidden">
                   {!hasCode && (
-                    <div className="absolute inset-0 flex items-center justify-center text-center text-[10px] opacity-40 p-8 z-10 pointer-events-none">
+                    <div className="absolute inset-0 flex items-center justify-center text-center type-body opacity-40 p-8 z-10 pointer-events-none">
                       Send a prompt or load the starter template.
                     </div>
                   )}
@@ -861,7 +861,7 @@ export default function Playground({ stack, models, embedded = false }: Playgrou
                 </div>
                 {(consoleLines.length > 0 || showFixActions) && (
                   <div className="theme-surface-inset flex flex-col max-h-28 border-t">
-                    <div className="flex items-center gap-2 px-2 py-0.5 text-[8px] theme-surface-header border-b shrink-0">
+                    <div className="flex items-center gap-2 px-2 py-0.5 type-tiny theme-surface-header border-b shrink-0">
                       <span className="opacity-50 uppercase tracking-wider">Preview console</span>
                       {showFixActions && (
                         <button
@@ -891,7 +891,7 @@ export default function Playground({ stack, models, embedded = false }: Playgrou
                         CLEAR
                       </button>
                     </div>
-                    <div className="overflow-y-auto p-1 text-[8px] min-h-0 flex-1 eink-scrollbar">
+                    <div className="overflow-y-auto p-1 type-tiny min-h-0 flex-1 eink-scrollbar">
                       {consoleLines.length === 0 ? (
                         <div className="opacity-40 px-1">No runtime logs yet — static warnings may still apply.</div>
                       ) : (
@@ -900,9 +900,9 @@ export default function Playground({ stack, models, embedded = false }: Playgrou
                             key={i}
                             className={
                               line.level === "error"
-                                ? "text-telemetry-red"
+                                ? "play-danger"
                                 : line.level === "warn"
-                                  ? "text-telemetry-amber/80"
+                                  ? "play-warn--dim"
                                   : "opacity-60"
                             }
                           >
@@ -919,7 +919,7 @@ export default function Playground({ stack, models, embedded = false }: Playgrou
         </div>
       </div>
 
-      <div className="h-6 px-3 text-[8px] theme-surface-header flex items-center gap-3 border-t shrink-0">
+      <div className="h-6 px-3 type-tiny theme-surface-header flex items-center gap-3 border-t shrink-0">
         <span>PLAYGROUND — isolated</span>
         <span className="opacity-40">•</span>
         <span>
@@ -936,10 +936,10 @@ export default function Playground({ stack, models, embedded = false }: Playgrou
 
       {fullscreen && (
         <div className="fixed inset-0 z-[200] playground-fullscreen-overlay flex flex-col">
-          <div className="flex items-center gap-2 px-3 py-2 theme-surface-header text-[9px] border-b">
+          <div className="flex items-center gap-2 px-3 py-2 theme-surface-header type-label border-b">
             <span className="theme-accent-text">FULLSCREEN PREVIEW</span>
             <span className="opacity-40">Esc to exit</span>
-            <button type="button" className={`${chipBtn} ml-auto text-[9px]`} onClick={() => setFullscreen(false)}>
+            <button type="button" className={`${chipBtn} ml-auto type-label`} onClick={() => setFullscreen(false)}>
               CLOSE
             </button>
           </div>

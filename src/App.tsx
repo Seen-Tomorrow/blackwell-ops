@@ -680,14 +680,14 @@ function App() {
           aria-live="assertive"
           aria-busy="true"
         >
-          <p className="text-[18px] md:text-[22px] font-mono font-bold tracking-widest text-nv-green uppercase text-center px-6">
+          <p className="shell-shutdown-title font-mono font-bold tracking-widest uppercase text-center px-6">
             {shutdownMessage}
           </p>
-          <p className="text-[11px] font-mono text-stealth-muted/70 tracking-wider text-center px-6 max-w-md">
+          <p className="shell-shutdown-sub type-sm font-mono tracking-wider text-center px-6 max-w-md">
             Large models can take several seconds to release VRAM. Please wait — do not force-kill.
           </p>
-          <div className="w-48 h-1 rounded-full overflow-hidden bg-stealth-border/40">
-            <div className="h-full w-1/3 bg-nv-green/80 animate-pulse" style={{ animationDuration: "1.2s" }} />
+          <div className="shell-shutdown-track w-48 h-1 rounded-full overflow-hidden">
+            <div className="shell-shutdown-fill h-full w-1/3 animate-pulse" style={{ animationDuration: "1.2s" }} />
           </div>
         </div>
       )}
@@ -781,12 +781,12 @@ function App() {
               onScroll={handleLogsScroll}
             >
               {logs.size === 0 && getActiveStackSlots(stack).length === 0 ? (
-                <p className="text-[10px] font-mono text-stealth-muted/50 italic">NO LOGS YET — LAUNCH AN ENGINE TO SEE OUTPUT</p>
+                <p className="shell-log-empty type-body font-mono italic">NO LOGS YET — LAUNCH AN ENGINE TO SEE OUTPUT</p>
               ) : (() => {
                 const totalLogLines = Array.from(logs.values()).reduce((sum, entries) => sum + entries.length, 0);
                 if (totalLogLines === 0) {
                   return (
-                    <p className="text-[10px] font-mono text-stealth-muted/50 italic">
+                    <p className="shell-log-empty type-body font-mono italic">
                       LOG BUFFER CLEARED — WAITING FOR OUTPUT
                     </p>
                   );
@@ -797,7 +797,7 @@ function App() {
                   const slotKeys = activeLogSlot === "all"
                     ? Array.from(logs.keys()).sort((a, b) => a - b)
                     : logs.has(activeLogSlot) ? [activeLogSlot] : [];
-                  if (slotKeys.length === 0) return <p className="text-[10px] font-mono text-stealth-muted/50 italic">NO LOGS FOR SELECTED SLOT</p>;
+                  if (slotKeys.length === 0) return <p className="shell-log-empty type-body font-mono italic">NO LOGS FOR SELECTED SLOT</p>;
                   return slotKeys.map((slot) => {
                     const entries = flatLogs.get(slot) || [];
                     const stackEntry = stack.find((s) => s.idx === slot);
@@ -806,8 +806,8 @@ function App() {
                       <div key={`slot-${slot}`} className="space-y-0.5">
                         {activeLogSlot === "all" && (
                           <div className="mb-2 mt-2 first:mt-0">
-                            <div className="text-[10px] font-mono text-nv-green/80 border-b border-stealth-border pb-1">
-                              {alias} <span className="text-stealth-muted/40">({entries.length} lines)</span>
+                            <div className="shell-log-header type-body font-mono border-b pb-1">
+                              {alias} <span className="shell-log-count">({entries.length} lines)</span>
                             </div>
                           </div>
                         )}
@@ -815,8 +815,8 @@ function App() {
                           const slotQuery = logSearchBySlot[slot] ?? "";
                           const lineQuery = activeLogSlot === "all" ? slotQuery : (logSearchBySlot[activeLogSlot] ?? "");
                           return (
-                            <p key={i} className="text-[10px] font-mono text-stealth-muted leading-relaxed break-all">
-                              {activeLogSlot === "all" && <span className="text-nv-green/60">[{entry.alias}] </span>}
+                            <p key={i} className="shell-log-line type-body font-mono leading-relaxed break-all">
+                              {activeLogSlot === "all" && <span className="shell-log-alias">[{entry.alias}] </span>}
                               <Suspense fallback={<span>{entry.text}</span>}>
                                 <LogLineText
                                   text={entry.text}
