@@ -165,21 +165,40 @@
   --theme-bench-inset-shadow: rgba(0, 0, 0, 0.22);
   /* Display combo reference — bench tray inset (dark theme+LIGHT). */
   --display-profile-bench-inset: rgba(0, 0, 0, 0.22);
-  /* Display matrix grain size — shared across all color themes, per-texture (tune here).
-     LIGHT + DARK = dot matrix only (horizontal scan bands off — too harsh on DARK).
-     Fixed px scale with app zoom, so values are the ~150% zoom equivalent for visibility at 100%. */
+  /*
+   * DOTTED face grain — ONE face-neutral family (theme-consolidation step 2).
+   *
+   * Previously two families, `--display-face-dark-*` (crt) and
+   * `--display-face-light-*` (eink), which forced CSS to ask "is this ARCTIC?".
+   * Texture now only decides whether the pattern is ON; the pattern's colour and
+   * the surface behind it are theme-owned, exactly like accents. Dark themes get
+   * light dots; ARCTIC overrides to dark dots + `multiply`. Same px scale as
+   * before (fixed, with app zoom) so the dot pitch is unchanged.
+   */
+  --display-face-grain-cell: 2.5px;
+  --display-face-grain-scan: 5px;
+  --display-face-grain-dot: rgba(200, 200, 208, 0.04);
+  --display-face-grain-band: rgba(0, 0, 0, 0.06);
+  /* Scan bands stay off on every theme — dot matrix only. */
+  --display-face-grain-band-opacity: 0;
+  --display-face-grain-blend: normal;
+  /*
+   * Surface the DOTTED grain sits on. Defaults to the theme's own face colour, so a
+   * theme that overrides nothing gets "its own panel, with dots" — no separate
+   * light/dark screen colour. Themes may override; CSS must not special-case a theme.
+   */
+  --display-face-dotted-bg: var(--display-face-bg);
+
+  /* Legacy aliases — still referenced by not-yet-re-keyed rules; retired with step 3. */
   --display-face-light-grain-cell: 3px;
   --display-face-light-grain-scan: 6px;
   --display-face-dark-grain-cell: 2.5px;
   --display-face-dark-grain-scan: 5px;
-  /* EINK face — e-ink LCD (fusion overlay) */
   --display-face-light-surface: #c8d4b8;
   --display-face-light-dot: rgba(0, 0, 0, 0.028);
   --display-face-light-band: rgba(0, 0, 0, 0.014);
-  /* Horizontal LCD scan-strips — 0 keeps only the matrix dot grid. */
   --display-face-light-band-opacity: 0;
   --display-face-light-texture-blend: multiply;
-  /* CRT face — CRT face: soft phosphor dots, no scan stripes. */
   --display-face-dark-dot: rgba(200, 200, 208, 0.04);
   --display-face-dark-band: rgba(0, 0, 0, 0.06);
   --display-face-dark-band-opacity: 0;

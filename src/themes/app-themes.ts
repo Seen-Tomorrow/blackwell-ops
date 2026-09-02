@@ -358,6 +358,18 @@ const ARCTIC: AppTheme = {
     "--display-face-bg": "#f7fafc",
     /* DARK face = neutral like SLATE (light theme forced dark, avoid tinted banding) */
     "--display-face-bg-dark": "#080808",
+    /*
+     * DOTTED face on a light theme: light dots would be invisible on porcelain, so
+     * ARCTIC supplies dark dots + multiply (the recipe the old `eink` rules hardcoded)
+     * and a slightly wider pitch. Surface stays ARCTIC's own face colour — the
+     * separate light-LCD surface (--display-face-light-surface) is gone by decision:
+     * texture decides the pattern, the theme decides the colour.
+     */
+    "--display-face-grain-dot": "rgba(0, 0, 0, 0.028)",
+    "--display-face-grain-band": "rgba(0, 0, 0, 0.014)",
+    "--display-face-grain-cell": "3px",
+    "--display-face-grain-scan": "6px",
+    "--display-face-grain-blend": "multiply",
     "--display-face-glow": "rgba(255, 255, 255, 0.85)",
     "--display-face-text": "#0f2744",
     "--display-face-text-muted": "#5a7088",
