@@ -267,7 +267,8 @@ const ARCTIC: AppTheme = {
     /* Ink-dark enough to read at a glance on white panels (not wash-out grey) */
     "--theme-frame-border": "rgba(15, 40, 70, 0.22)",
     "--theme-frame-border-strong": "rgba(12, 45, 80, 0.4)",
-    "--theme-border-subtle": "var(--theme-frame-border)",
+    /* --theme-border-subtle omitted: tokens-base already sets it to
+       var(--theme-frame-border), so restating it here changed nothing. */
 
     /* ── Accent — polar sky (vivid but professional) ── */
     "--theme-accent": "#0284c7",
@@ -475,7 +476,8 @@ const ARCTIC: AppTheme = {
     "--theme-eject-card-text": "#0b1220",
     "--theme-eject-card-muted": "#5b6b7c",
     "--theme-eject-badge-bg": "rgba(255, 255, 255, 0.9)",
-    "--theme-eject-card-border": "var(--theme-frame-border)",
+    /* --theme-eject-card-border omitted: same — base already equals
+       var(--theme-frame-border). hover/selected borders below DO differ. */
     "--theme-eject-card-hover-border": "var(--theme-frame-border-strong)",
     "--theme-eject-card-selected-bg": "#ffffff",
     "--theme-eject-card-selected-border": "rgba(14, 165, 233, 0.55)",
