@@ -850,26 +850,82 @@ pub fn provider_pack_cache_dir() -> PathBuf {
     crate::config::cache_dir().join("provider-packs")
 }
 
-/// Launch a downloaded NSIS installer for silent in-place upgrade (`/S /UPDATE`).
+/// Launch a downloaded Full Bundle NSIS installer for silent in-place upgrade.
+///
+/// Must NOT spawn the Setup while this process still holds `blackwell-ops.exe` open.
+/// Tauri's CheckIfAppIsRunning kills/aborts under `/S` when the app is live, which is
+/// exactly the race `schedule_app_exit(3)` used to create: download finishes, installer
+/// starts, app still running → silent Abort → user sees "downloaded, never installed".
+///
+/// Pattern matches App `.7z` apply: write a helper that waits for our PID, then runs
+/// Setup with `/S /UPDATE /R` and **`/D=<app_root>` last** (NSIS requires `/D=` last and
+/// unquoted so paths with spaces like `Blackwell OPS portable` still work). Without `/D=`,
+/// a pure portable tree with no registry entry installs to the default folder and the
+/// folder the user is actually running never changes.
 pub fn launch_nsis_installer(installer_path: &Path, app_handle: &tauri::AppHandle) -> Result<(), String> {
-    log::info!(
-        "[app-update] Launching NSIS installer at {}",
-        installer_path.display()
+    if !installer_path.is_file() {
+        return Err(format!(
+            "NSIS installer not found: {}",
+            installer_path.display()
+        ));
+    }
+
+    let app_root = crate::config::app_root_dir();
+    let pid = std::process::id();
+    let cache = app_update_cache_dir();
+    std::fs::create_dir_all(&cache)
+        .map_err(|e| format!("Failed to create app update cache: {e}"))?;
+    let helper = cache.join("apply-full-update.cmd");
+    let log_path = cache.join("apply-full-update.log");
+
+    // NSIS: /D= must be the last argument and must NOT be quoted.
+    // Quote SETUP/LOG/paths that are not /D=.
+    let helper_body = format!(
+        "@echo off\r\n\
+setlocal EnableExtensions\r\n\
+set \"PID={pid}\"\r\n\
+set \"SETUP={setup}\"\r\n\
+set \"LOG={log}\"\r\n\
+set \"DEST={dest}\"\r\n\
+>>\"%LOG%\" echo [%DATE% %TIME%] Full NSIS helper start\r\n\
+>>\"%LOG%\" echo [%DATE% %TIME%] waiting for app PID %PID%\r\n\
+:waitloop\r\n\
+tasklist /FI \"PID eq %PID%\" 2>NUL | find \"%PID%\" >NUL\r\n\
+if not errorlevel 1 (\r\n\
+  timeout /t 1 /nobreak >NUL\r\n\
+  goto waitloop\r\n\
+)\r\n\
+timeout /t 1 /nobreak >NUL\r\n\
+if not exist \"%SETUP%\" (\r\n\
+  >>\"%LOG%\" echo [%DATE% %TIME%] ERROR setup missing: %SETUP%\r\n\
+  exit /b 2\r\n\
+)\r\n\
+>>\"%LOG%\" echo [%DATE% %TIME%] launching NSIS /S /UPDATE /R /D=%DEST%\r\n\
+rem /D= MUST be last and unquoted (NSIS parser). Spaces in DEST are intentional.\r\n\
+rem Do not use `start` — it re-parses args and breaks /D= paths with spaces.\r\n\
+\"%SETUP%\" /S /UPDATE /R /D=%DEST%\r\n\
+set \"EC=%ERRORLEVEL%\"\r\n\
+>>\"%LOG%\" echo [%DATE% %TIME%] NSIS exit code %EC%\r\n\
+if not \"%EC%\"==\"0\" exit /b %EC%\r\n\
+>>\"%LOG%\" echo [%DATE% %TIME%] done\r\n\
+endlocal\r\n\
+exit /b 0\r\n",
+        pid = pid,
+        setup = installer_path.display(),
+        log = log_path.display(),
+        dest = app_root.display(),
     );
+    std::fs::write(&helper, helper_body)
+        .map_err(|e| format!("Failed to write Full install helper: {e}"))?;
 
-    // Launch NSIS with no cmd chrome; /S is silent install UI.
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    std::process::Command::new(installer_path)
-        .args(["/S", "/UPDATE"])
-        .creation_flags(CREATE_NO_WINDOW)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map_err(|e| format!("Failed to launch installer: {e}"))?;
-
-    schedule_app_exit(app_handle, 3);
+    log::info!(
+        "[app-update] Scheduling Full NSIS after exit via {} → {} (log: {})",
+        helper.display(),
+        installer_path.display(),
+        log_path.display()
+    );
+    spawn_silent_cmd_script(&helper)?;
+    schedule_app_exit(app_handle, 1);
     Ok(())
 }
 
