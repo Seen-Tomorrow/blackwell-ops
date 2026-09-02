@@ -17,6 +17,26 @@
   --theme-crit: var(--theme-tel-hot, #ef4444);
   --theme-telemetry-blue: var(--theme-tel-ram, #4da3ff);
   --theme-harness-worker-text: color-mix(in srgb, var(--theme-harness-worker-raw, #ea580c) 22%, #fff 78%);
+  /*
+   * Canonical semantic set (de-Tailwind law). Chrome paints through these only.
+   * Values below are the pre-theme floor; app-themes.ts supplies per-theme deltas.
+   * Retired names on the right must not be used by new code.
+   */
+  --theme-warn: var(--theme-telemetry-amber, #ffb800);
+  --theme-on-warn: #0a0a0f;
+  --theme-info: var(--theme-telemetry-cyan, #00e5ff);
+  --theme-on-accent: var(--theme-chip-solid-text, #0c120a);
+  /* Type scale — sizes are NOT a theme delta; keep them out of app-themes.ts. */
+  --type-hairline: 6px;
+  --type-micro: 7px;
+  --type-tiny: 8px;
+  --type-label: 9px;
+  --type-body: 10px;
+  --type-sm: 11px;
+  --type-md: 12px;
+  --type-lg: 15px;
+  --type-xl: 18px;
+  --type-2xl: 22px;
 
 
   /* App theme tokens — defaults (matrix); overridden by applyAppTheme() */

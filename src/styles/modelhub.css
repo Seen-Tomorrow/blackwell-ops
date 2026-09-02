@@ -1,0 +1,695 @@
+/* ── Config room · Model Hub search / downloads / progress ─────────
+   Paint here, not in TSX. Color = var(--theme-*) only (no #hex, no
+   var(--x,#hex) fallback). Sizes = var(--type-*).
+   Owner: de-Tailwind pass 1B. */
+
+/* ── HeaderDownloadStrip ─────────────────────────────────── */
+
+/* "+N more" counter next to the primary inline download row (stealth-muted/70) */
+.hdr-dl-strip-count {
+  font-size: var(--type-micro);
+  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
+}
+
+/* ── ModelHubDownloadPaths ───────────────────────────────── */
+
+/* LOADING / NO FOLDER placeholder lines (stealth-muted) */
+.dl-paths-state {
+  font-size: var(--type-label);
+  color: var(--theme-text-muted);
+}
+
+/* "Download folder" section heading (stealth-muted) */
+.dl-paths-heading {
+  font-size: var(--type-label);
+  color: var(--theme-text-muted);
+}
+
+/* Path error banner (telemetry-red/30 border, /5 fill, red text) */
+.dl-paths-error {
+  border-color: color-mix(in srgb, var(--theme-danger) 30%, transparent);
+  background: color-mix(in srgb, var(--theme-danger) 5%, transparent);
+  color: var(--theme-danger);
+  font-size: var(--type-tiny);
+}
+
+/* Folder label (theme-text) */
+.dl-paths-label {
+  font-size: var(--type-body);
+  color: var(--theme-text);
+}
+
+/* Folder path sub-line (stealth-muted) */
+.dl-paths-sub {
+  font-size: var(--type-tiny);
+  color: var(--theme-text-muted);
+}
+
+/* "In-progress downloads stay in this folder" note (stealth-muted) */
+.dl-paths-note {
+  font-size: var(--type-micro);
+  color: var(--theme-text-muted);
+}
+
+/* ── ModelHubDownloads ───────────────────────────────────── */
+
+/* Action-error line (red-400/80) */
+.dl-mgr-error {
+  font-size: var(--type-tiny);
+  color: color-mix(in srgb, var(--theme-danger) 80%, transparent);
+}
+
+/* "Download manager" heading (stealth-muted) */
+.dl-mgr-heading {
+  font-size: var(--type-label);
+  color: var(--theme-text-muted);
+}
+
+/* "N active" count (stealth-muted/50) */
+.dl-mgr-active {
+  color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
+}
+
+/* QUEUE / HISTORY / SIZE tabs (micro type) */
+.dl-mgr-tab {
+  font-size: var(--type-micro);
+}
+
+/* Caption line (stealth-muted/50) */
+.dl-mgr-caption {
+  font-size: var(--type-micro);
+  color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
+}
+
+/* Empty-state text (stealth-muted/60) */
+.dl-mgr-empty {
+  font-size: var(--type-label);
+  color: color-mix(in srgb, var(--theme-text-muted) 60%, transparent);
+}
+
+/* History row (stealth-border/40 border) */
+.dl-mgr-history {
+  border-color: color-mix(in srgb, var(--theme-border) 40%, transparent);
+}
+
+/* History model name (white/80) */
+.dl-mgr-history-name {
+  font-size: var(--type-tiny);
+  color: color-mix(in srgb, var(--theme-text) 80%, transparent);
+}
+
+/* History kind badge — HEADER (cyan) / FULL (muted) */
+.dl-mgr-history-kind {
+  font-size: var(--type-micro);
+}
+
+.dl-mgr-history-kind--header {
+  color: var(--theme-info);
+}
+
+.dl-mgr-history-kind--full {
+  color: var(--theme-text-muted);
+}
+
+/* History status/size meta line (stealth-muted/70) */
+.dl-mgr-history-meta {
+  font-size: var(--type-micro);
+  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
+}
+
+/* RECOVER LOST SHARDS button (stealth-muted/30 border, /70 text, hover /60 border) */
+.dl-mgr-recover {
+  border-color: color-mix(in srgb, var(--theme-text-muted) 30%, transparent);
+  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
+  font-size: var(--type-tiny);
+}
+
+.dl-mgr-recover:hover {
+  border-color: color-mix(in srgb, var(--theme-text-muted) 60%, transparent);
+  color: var(--theme-text-muted);
+}
+
+/* ── DownloadProgressRow ─────────────────────────────────── */
+
+/* Inline row name (white/85) */
+.dl-row-name {
+  font-size: var(--type-tiny);
+  color: color-mix(in srgb, var(--theme-text) 85%, transparent);
+}
+
+/* Inline file-name suffix (stealth-muted/50) */
+.dl-row-file {
+  font-size: var(--type-tiny);
+  color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
+}
+
+/* Size readout (stealth-muted/55 inline, /40 card) */
+.dl-row-size {
+  font-size: var(--type-tiny);
+  color: color-mix(in srgb, var(--theme-text-muted) 55%, transparent);
+}
+
+/* Speed readout (nv-green) */
+.dl-row-speed {
+  font-size: var(--type-tiny);
+  color: var(--theme-accent);
+}
+
+/* ETA readout (stealth-muted/45 inline, /40 card) */
+.dl-row-eta {
+  font-size: var(--type-tiny);
+  color: color-mix(in srgb, var(--theme-text-muted) 45%, transparent);
+}
+
+/* Status word (per-status modifier) */
+.dl-row-status {
+  font-size: var(--type-tiny);
+}
+
+.dl-row-status--active {
+  color: var(--theme-accent);
+}
+
+.dl-row-status--warn {
+  color: var(--theme-warn);
+}
+
+.dl-row-status--danger {
+  color: var(--theme-danger);
+}
+
+.dl-row-status--info {
+  color: var(--theme-info);
+}
+
+.dl-row-status--idle {
+  color: color-mix(in srgb, var(--theme-text-muted) 40%, transparent);
+}
+
+/* Progress bar track (stealth-dark) */
+.dl-row-bar {
+  background: var(--theme-panel);
+}
+
+/* Progress bar fill (per-status modifier) */
+.dl-progress-fill--active {
+  background: var(--theme-accent);
+}
+
+.dl-progress-fill--warn {
+  background: var(--theme-warn);
+}
+
+.dl-progress-fill--danger {
+  background: var(--theme-danger);
+}
+
+.dl-progress-fill--info {
+  background: var(--theme-info);
+}
+
+.dl-progress-fill--idle {
+  background: color-mix(in srgb, var(--theme-text-muted) 20%, transparent);
+}
+
+/* Inline error text (red-400/70) */
+.dl-row-error {
+  font-size: var(--type-tiny);
+  color: color-mix(in srgb, var(--theme-danger) 70%, transparent);
+}
+
+/* RETRY×N note (yellow-400/60) */
+.dl-row-retry {
+  font-size: var(--type-micro);
+  color: color-mix(in srgb, var(--theme-warn) 60%, transparent);
+}
+
+/* Card row (stealth-border/60 border, stealth-surface/40 fill) */
+.dl-row-card {
+  border-color: color-mix(in srgb, var(--theme-border) 60%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 40%, transparent);
+}
+
+/* Card header row — compact (8px) / full (9px) */
+.dl-row-head--compact {
+  font-size: var(--type-tiny);
+}
+
+.dl-row-head--full {
+  font-size: var(--type-label);
+}
+
+/* Card title (white/80) */
+.dl-row-title {
+  color: color-mix(in srgb, var(--theme-text) 80%, transparent);
+}
+
+/* Scanning status line (blue-400/80) */
+.dl-row-scan--compact {
+  font-size: var(--type-micro);
+}
+
+.dl-row-scan--full {
+  font-size: var(--type-tiny);
+}
+
+.dl-row-scan {
+  color: color-mix(in srgb, var(--theme-info) 80%, transparent);
+}
+
+/* Status message line (stealth-muted/70) */
+.dl-row-statusmsg--compact {
+  font-size: var(--type-micro);
+}
+
+.dl-row-statusmsg--full {
+  font-size: var(--type-tiny);
+}
+
+.dl-row-statusmsg {
+  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
+}
+
+/* Action buttons — micro type, per-tone border/text/hover */
+.dl-row-btn {
+  font-size: var(--type-tiny);
+}
+
+.dl-row-btn--idle {
+  border-color: color-mix(in srgb, var(--theme-text-muted) 30%, transparent);
+  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
+}
+
+.dl-row-btn--idle:hover {
+  background: color-mix(in srgb, var(--theme-text-muted) 10%, transparent);
+}
+
+.dl-row-btn--warn {
+  border-color: color-mix(in srgb, var(--theme-warn) 30%, transparent);
+  color: var(--theme-warn);
+}
+
+.dl-row-btn--warn:hover {
+  background: color-mix(in srgb, var(--theme-warn) 10%, transparent);
+}
+
+.dl-row-btn--active {
+  border-color: color-mix(in srgb, var(--theme-accent) 30%, transparent);
+  color: var(--theme-accent);
+}
+
+.dl-row-btn--active:hover {
+  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
+}
+
+.dl-row-btn--danger {
+  border-color: color-mix(in srgb, var(--theme-danger) 30%, transparent);
+  color: var(--theme-danger);
+}
+
+.dl-row-btn--danger:hover {
+  background: color-mix(in srgb, var(--theme-danger) 10%, transparent);
+}
+
+/* ── ModelHubSearch ──────────────────────────────────────── */
+
+/* Toast (nv-green/20 fill, /40 border, accent text) */
+.hub-toast {
+  background: color-mix(in srgb, var(--theme-accent) 20%, transparent);
+  border-color: color-mix(in srgb, var(--theme-accent) 40%, transparent);
+  color: var(--theme-accent);
+  font-size: var(--type-body);
+}
+
+/* Confirm modal (yellow-400/30 border) */
+.hub-confirm {
+  border-color: color-mix(in srgb, var(--theme-warn) 30%, transparent);
+}
+
+/* Confirm title (yellow-400) */
+.hub-confirm-title {
+  font-size: var(--type-body);
+  color: var(--theme-warn);
+}
+
+/* Confirm body (white/80) */
+.hub-confirm-body {
+  font-size: var(--type-sm);
+  color: color-mix(in srgb, var(--theme-text) 80%, transparent);
+}
+
+/* Confirm disk/HF comparison block (9px) */
+.hub-confirm-disk {
+  font-size: var(--type-label);
+}
+
+/* DISK / HF row label (stealth-muted) */
+.hub-confirm-disk-label {
+  color: var(--theme-text-muted);
+}
+
+/* Disk author (stealth-muted/70) */
+.hub-confirm-disk-author {
+  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
+}
+
+/* Disk quant type (yellow-400/80) */
+.hub-confirm-disk-type {
+  color: color-mix(in srgb, var(--theme-warn) 80%, transparent);
+}
+
+/* Disk/HF size (stealth-muted/50) */
+.hub-confirm-disk-size {
+  color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
+}
+
+/* HF quant type (nv-green/80) */
+.hub-confirm-hf-type {
+  color: color-mix(in srgb, var(--theme-accent) 80%, transparent);
+}
+
+/* Confirm fallback type line (stealth-muted) */
+.hub-confirm-fallback {
+  font-size: var(--type-body);
+  color: var(--theme-text-muted);
+}
+
+/* Confirm CANCEL button (stealth-border/60 border, muted text, hover /10 fill) */
+.hub-confirm-cancel {
+  border-color: color-mix(in srgb, var(--theme-border) 60%, transparent);
+  color: var(--theme-text-muted);
+  font-size: var(--type-body);
+}
+
+.hub-confirm-cancel:hover {
+  background: color-mix(in srgb, var(--theme-text-muted) 10%, transparent);
+}
+
+/* Confirm UPDATE/REPLACE button (yellow-400/20 fill, /40 border, warn text, hover /30) */
+.hub-confirm-go {
+  background: color-mix(in srgb, var(--theme-warn) 20%, transparent);
+  color: var(--theme-warn);
+  border-color: color-mix(in srgb, var(--theme-warn) 40%, transparent);
+  font-size: var(--type-body);
+}
+
+.hub-confirm-go:hover {
+  background: color-mix(in srgb, var(--theme-warn) 30%, transparent);
+}
+
+/* Search bar header rule (stealth-border/50) */
+.hub-searchbar {
+  border-color: color-mix(in srgb, var(--theme-border) 50%, transparent);
+}
+
+/* Search icon (nv-green) */
+.hub-searchbar-icon {
+  color: var(--theme-accent);
+}
+
+/* SEARCH button (nv-green/20 fill, /40 border, accent text, hover /30) */
+.hub-searchbar-btn {
+  background: color-mix(in srgb, var(--theme-accent) 20%, transparent);
+  color: var(--theme-accent);
+  border-color: color-mix(in srgb, var(--theme-accent) 40%, transparent);
+}
+
+.hub-searchbar-btn:hover {
+  background: color-mix(in srgb, var(--theme-accent) 30%, transparent);
+}
+
+/* VRAM FIT / SORT filter labels (stealth-muted) */
+.hub-filter-label {
+  font-size: var(--type-label);
+  color: var(--theme-text-muted);
+}
+
+/* VRAM / GGUF / sort chips (body type) */
+.hub-filter-chip {
+  font-size: var(--type-body);
+}
+
+/* CLEAR filter button (red-400/30 border, red text, hover /10 fill) */
+.hub-filter-clear {
+  border-color: color-mix(in srgb, var(--theme-danger) 30%, transparent);
+  color: var(--theme-danger);
+  font-size: var(--type-label);
+}
+
+.hub-filter-clear:hover {
+  background: color-mix(in srgb, var(--theme-danger) 10%, transparent);
+}
+
+/* Results panel header rule (stealth-border/40) */
+.hub-results-head {
+  border-color: color-mix(in srgb, var(--theme-border) 40%, transparent);
+}
+
+/* RESULTS (N) count (stealth-muted) */
+.hub-results-count {
+  font-size: var(--type-label);
+  color: var(--theme-text-muted);
+}
+
+/* "NGB FILTER" tag (nv-green/60) */
+.hub-results-filter {
+  font-size: var(--type-tiny);
+  color: color-mix(in srgb, var(--theme-accent) 60%, transparent);
+}
+
+/* Empty-results placeholder (stealth-muted/50) */
+.hub-empty {
+  color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
+}
+
+.hub-empty-text {
+  font-size: var(--type-body);
+}
+
+/* SEARCHING / LOADING busy pulse (nv-green) */
+.hub-busy {
+  color: var(--theme-accent);
+}
+
+/* Result card selected accent bar (nv-green left border) */
+.hub-result--selected {
+  border-left-color: var(--theme-accent);
+}
+
+/* Result author (stealth-muted) */
+.hub-result-author {
+  font-size: var(--type-label);
+  color: var(--theme-text-muted);
+}
+
+/* GGUF badge (nv-green/30 border, /10 fill, /70 text) */
+.hub-result-gguf {
+  border-color: color-mix(in srgb, var(--theme-accent) 30%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
+  color: color-mix(in srgb, var(--theme-accent) 70%, transparent);
+  font-size: var(--type-tiny);
+}
+
+/* Result meta (downloads / likes, stealth-muted) */
+.hub-result-meta {
+  font-size: var(--type-body);
+  color: var(--theme-text-muted);
+}
+
+/* "+N" quant overflow (stealth-muted/40) */
+.hub-result-more {
+  font-size: var(--type-tiny);
+  color: color-mix(in srgb, var(--theme-text-muted) 40%, transparent);
+}
+
+/* Detail header rule (stealth-border/40) */
+.hub-detail-head {
+  border-color: color-mix(in srgb, var(--theme-border) 40%, transparent);
+}
+
+/* Detail author (stealth-muted) */
+.hub-detail-author {
+  font-size: var(--type-label);
+  color: var(--theme-text-muted);
+}
+
+/* CHECK UPDATES button (yellow-400/30 border, /80 text, hover /10 fill + full warn) */
+.hub-detail-check {
+  border-color: color-mix(in srgb, var(--theme-warn) 30%, transparent);
+  color: color-mix(in srgb, var(--theme-warn) 80%, transparent);
+  font-size: var(--type-tiny);
+}
+
+.hub-detail-check:hover {
+  background: color-mix(in srgb, var(--theme-warn) 10%, transparent);
+  color: var(--theme-warn);
+}
+
+/* VIEW ON HF button (telemetry-cyan/30 border, /80 text, hover /10 fill + full info) */
+.hub-detail-hf {
+  border-color: color-mix(in srgb, var(--theme-info) 30%, transparent);
+  color: color-mix(in srgb, var(--theme-info) 80%, transparent);
+  font-size: var(--type-tiny);
+}
+
+.hub-detail-hf:hover {
+  background: color-mix(in srgb, var(--theme-info) 10%, transparent);
+  color: var(--theme-info);
+}
+
+/* Out-of-date banner rule (stealth-border/40) */
+.hub-detail-updates {
+  border-color: color-mix(in srgb, var(--theme-border) 40%, transparent);
+}
+
+/* Out-of-date banner text (yellow-400) */
+.hub-detail-updates-text {
+  font-size: var(--type-label);
+  color: var(--theme-warn);
+}
+
+/* Description block rule (stealth-border/40) */
+.hub-detail-desc {
+  border-color: color-mix(in srgb, var(--theme-border) 40%, transparent);
+}
+
+/* Description text (stealth-muted) */
+.hub-detail-desc-text {
+  font-size: var(--type-body);
+  color: var(--theme-text-muted);
+}
+
+/* QUANTS heading (nv-green) */
+.hub-quant-head {
+  font-size: var(--type-tiny);
+  color: var(--theme-accent);
+}
+
+/* "dates…" loading suffix (stealth-muted/50) */
+.hub-quant-dates {
+  color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
+}
+
+/* Quant file row hover accent (nv-green/20 border) */
+.hub-file:hover {
+  border-color: color-mix(in srgb, var(--theme-accent) 20%, transparent);
+}
+
+/* File size (stealth-muted/60) */
+.hub-file-size {
+  font-size: var(--type-body);
+  color: color-mix(in srgb, var(--theme-text-muted) 60%, transparent);
+}
+
+/* File date (stealth-muted/50) */
+.hub-file-date {
+  font-size: var(--type-tiny);
+  color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
+}
+
+/* File date pending "…" (stealth-muted/30) */
+.hub-file-datespend {
+  font-size: var(--type-tiny);
+  color: color-mix(in srgb, var(--theme-text-muted) 30%, transparent);
+}
+
+/* SHARDS badge (stealth-border/50 border, stealth-surface/60 fill, /70 text) */
+.hub-file-shards {
+  border-color: color-mix(in srgb, var(--theme-border) 50%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 60%, transparent);
+  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
+  font-size: var(--type-tiny);
+}
+
+/* "⚠ UPDATED" tag (yellow-400/70) */
+.hub-file-updated {
+  font-size: var(--type-tiny);
+  color: color-mix(in srgb, var(--theme-warn) 70%, transparent);
+}
+
+/* ✓ IDENTICAL match (nv-green text, /30 border, /10 fill) */
+.hub-file-match {
+  color: var(--theme-accent);
+  border-color: color-mix(in srgb, var(--theme-accent) 30%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
+  font-size: var(--type-label);
+}
+
+/* ✓ ON DISK match (blue-400 text, /30 border, /10 fill) */
+.hub-file-disk {
+  color: var(--theme-info);
+  border-color: color-mix(in srgb, var(--theme-info) 30%, transparent);
+  background: color-mix(in srgb, var(--theme-info) 10%, transparent);
+  font-size: var(--type-label);
+}
+
+/* PATCH button (cyan-400/20 fill, cyan text, /40 border, hover /30) */
+.hub-file-patch {
+  background: color-mix(in srgb, var(--theme-info) 20%, transparent);
+  color: var(--theme-info);
+  border-color: color-mix(in srgb, var(--theme-info) 40%, transparent);
+  font-size: var(--type-label);
+}
+
+.hub-file-patch:hover {
+  background: color-mix(in srgb, var(--theme-info) 30%, transparent);
+}
+
+/* UPDATE button (yellow-400/20 fill, warn text, /40 border, hover /30) */
+.hub-file-update {
+  background: color-mix(in srgb, var(--theme-warn) 20%, transparent);
+  color: var(--theme-warn);
+  border-color: color-mix(in srgb, var(--theme-warn) 40%, transparent);
+  font-size: var(--type-label);
+}
+
+.hub-file-update:hover {
+  background: color-mix(in srgb, var(--theme-warn) 30%, transparent);
+}
+
+/* DOWNLOAD button (nv-green/20 fill, accent text, /40 border, hover /30) */
+.hub-file-download {
+  background: color-mix(in srgb, var(--theme-accent) 20%, transparent);
+  color: var(--theme-accent);
+  border-color: color-mix(in srgb, var(--theme-accent) 40%, transparent);
+  font-size: var(--type-label);
+}
+
+.hub-file-download:hover {
+  background: color-mix(in srgb, var(--theme-accent) 30%, transparent);
+}
+
+/* No-GGUF empty line (stealth-muted/40) */
+.hub-file-empty {
+  font-size: var(--type-body);
+  color: color-mix(in srgb, var(--theme-text-muted) 40%, transparent);
+}
+
+/* Detail placeholder (stealth-muted/30) */
+.hub-detail-empty {
+  color: color-mix(in srgb, var(--theme-text-muted) 30%, transparent);
+}
+
+.hub-detail-empty-text {
+  font-size: var(--type-body);
+}
+
+/* VRAM-fit badge — fits (nv-green) / tight (yellow-500) / over (red-500) / none (muted/30) */
+.hub-vramfit--fits {
+  background: var(--theme-accent);
+  color: var(--theme-on-accent);
+}
+
+.hub-vramfit--tight {
+  background: var(--theme-warn);
+  color: var(--theme-on-warn);
+}
+
+.hub-vramfit--over {
+  background: var(--theme-danger);
+  color: var(--theme-on-danger);
+}
+
+.hub-vramfit--none {
+  background: color-mix(in srgb, var(--theme-text-muted) 30%, transparent);
+}

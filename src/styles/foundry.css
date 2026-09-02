@@ -1,0 +1,732 @@
+/* ── Config room · Foundry toolchain + distribution dev panel ──────
+   Paint here, not in TSX. Color = var(--theme-*) only (no #hex, no
+   var(--x,#hex) fallback). Sizes = var(--type-*).
+   Owner: de-Tailwind pass 1B. */
+
+/* ── FoundryComponents ─────────────────────────────────────── */
+
+/* Origin badge chips (FOUNDRY / CATALOG / BUNDLED) — micro type */
+.fnd-origin-chip {
+  font-size: var(--type-micro);
+}
+
+/* Build-info readout line (engine version / CUDA / build date) */
+.fnd-buildinfo {
+  font-size: var(--type-tiny);
+}
+
+
+/* LATEST badge on the newest source row */
+.fnd-latest-chip {
+  font-size: var(--type-micro);
+}
+
+/* " · shipped <date>" suffix inside the build-info line (stealth-muted/55) */
+.fnd-shipped-note {
+  color: color-mix(in srgb, var(--theme-text-muted) 55%, transparent);
+}
+/* Error state readout + retry chip */
+.fnd-update-state--danger {
+  font-size: var(--type-micro);
+  color: var(--theme-danger);
+}
+
+.fnd-action-chip--danger {
+  font-size: var(--type-micro);
+  color: var(--theme-danger);
+  border-color: var(--theme-danger);
+}
+
+/* Action chips (UPDATE / DOWNLOAD / RETRY / ↻ USE BUNDLED / ↻ RESTORE / ACTIVATE) */
+.fnd-action-chip {
+  font-size: var(--type-micro);
+}
+
+/* "—" placeholder when a source has no active binary */
+.fnd-dash {
+  font-size: var(--type-micro);
+}
+
+/* VS / PR meta chips in the profile header */
+.fnd-meta-chip {
+  font-size: var(--type-micro);
+}
+
+/* Restore-confirm modal rule (stealth-border/30) */
+.fnd-modal-rule {
+  border-color: color-mix(in srgb, var(--theme-border) 30%, transparent);
+}
+
+.fnd-modal-title {
+  color: var(--theme-accent);
+}
+
+.fnd-modal-close {
+  color: var(--theme-text-muted);
+}
+
+.fnd-modal-caption {
+  font-size: var(--type-body);
+}
+
+.fnd-modal-note {
+  font-size: var(--type-label);
+}
+
+/* Confirm buttons */
+.fnd-confirm-btn {
+  font-size: var(--type-label);
+}
+
+.fnd-confirm-btn--danger {
+  font-size: var(--type-label);
+  color: var(--theme-danger);
+  border-color: var(--theme-danger);
+}
+
+/* ── FoundryBuildProgress ──────────────────────────────────── */
+
+/* Footer action buttons — accent (success) + danger variants */
+.fnd-build-btn {
+  font-size: var(--type-label);
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 60%, transparent);
+  color: var(--theme-accent);
+}
+
+.fnd-build-btn:hover {
+  background: color-mix(in srgb, var(--theme-accent) 20%, transparent);
+}
+
+.fnd-build-btn--danger {
+  font-size: var(--type-label);
+  border: 1px solid color-mix(in srgb, var(--theme-danger) 60%, transparent);
+  color: var(--theme-danger);
+}
+
+.fnd-build-btn--danger:hover {
+  background: color-mix(in srgb, var(--theme-danger) 20%, transparent);
+}
+
+/* "Only hides — failed attempt remains." note (red-400/50) */
+.fnd-build-note--danger {
+  color: color-mix(in srgb, var(--theme-danger) 50%, transparent);
+}
+
+/* Provider line: muted base, warn id */
+.fnd-build-provider {
+  color: var(--theme-text-muted);
+}
+
+.fnd-build-provider__id {
+  color: var(--theme-warn);
+}
+
+/* Step label + current step value (telemetry cyan) */
+.fnd-build-step-label {
+  color: var(--theme-text-muted);
+}
+
+.fnd-build-step {
+  color: var(--theme-info);
+}
+
+/* PAUSED — review cmake banner (yellow-400/30 border, /5 bg) */
+.fnd-build-pause {
+  border: 1px solid color-mix(in srgb, var(--theme-warn) 30%, transparent);
+  background: color-mix(in srgb, var(--theme-warn) 5%, transparent);
+}
+
+.fnd-build-pause__text {
+  color: var(--theme-warn);
+}
+
+/* Last-error / ready-to-use footer lines */
+.fnd-build-last-error {
+  color: color-mix(in srgb, var(--theme-danger) 70%, transparent);
+}
+
+.fnd-build-ready {
+  color: color-mix(in srgb, var(--theme-accent) 70%, transparent);
+}
+
+/* ── FoundryConfirmForm ────────────────────────────────────── */
+
+/* Footer buttons (reuse FoundryComponents confirm styles where identical) */
+.fnd-confirm-btn--danger {
+  font-size: var(--type-label);
+  border: 1px solid color-mix(in srgb, var(--theme-danger) 60%, transparent);
+  color: var(--theme-danger);
+}
+
+.fnd-confirm-btn--danger:hover {
+  background: color-mix(in srgb, var(--theme-danger) 20%, transparent);
+}
+
+.fnd-confirm-btn--danger-solid {
+  font-size: var(--type-label);
+  background: color-mix(in srgb, var(--theme-danger) 20%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-danger) 60%, transparent);
+  color: var(--theme-danger);
+}
+
+.fnd-confirm-btn--danger-solid:hover {
+  background: color-mix(in srgb, var(--theme-danger) 30%, transparent);
+}
+
+/* "Ready to build?" lead */
+.fnd-confirm-lead {
+  color: var(--theme-text-muted);
+}
+
+/* Source banner text (banner tone paint lives in .foundry-source-banner--*) */
+.fnd-banner-title {
+  font-size: var(--type-label);
+}
+
+.fnd-banner-msg {
+  font-size: var(--type-label);
+}
+
+.fnd-banner-commits {
+  font-size: var(--type-micro);
+}
+
+/* Provider header line */
+.fnd-confirm-provider__id {
+  color: var(--theme-warn);
+}
+
+.fnd-confirm-provider__dash {
+  color: var(--theme-text-muted);
+}
+
+.fnd-confirm-provider__name {
+  color: var(--theme-text);
+}
+
+/* git url line (telemetry-cyan/70) */
+.fnd-confirm-git {
+  color: color-mix(in srgb, var(--theme-info) 70%, transparent);
+}
+
+.fnd-confirm-field-label {
+  color: var(--theme-text-muted);
+}
+
+/* CMake work cache row (stealth-border/40 border, black/25 fill) */
+.fnd-cache-row {
+  border-color: color-mix(in srgb, var(--theme-border) 40%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 25%, black);
+}
+
+.fnd-cache-title {
+  color: var(--theme-text-muted);
+}
+
+.fnd-cache-body {
+  color: var(--theme-text);
+}
+
+.fnd-cache-state--warm {
+  color: var(--theme-accent);
+}
+
+.fnd-cache-state--cold {
+  color: var(--theme-text-muted);
+}
+
+.fnd-cache-btn {
+  font-size: var(--type-tiny);
+}
+
+.fnd-cache-note {
+  font-size: var(--type-micro);
+}
+
+/* CUDA arch chips */
+.fnd-arch-label {
+  font-size: var(--type-label);
+}
+
+.fnd-arch-hint {
+  font-size: var(--type-micro);
+}
+
+/* "Also build CLI + quantize" checkbox (accent-color → theme accent) */
+.fnd-checkbox {
+  accent-color: var(--theme-accent);
+}
+
+.fnd-extra-label {
+  color: var(--theme-text-muted);
+}
+
+/* Note text (stealth-muted/80) with white/80 binary names */
+.fnd-extra-note {
+  color: color-mix(in srgb, var(--theme-text-muted) 80%, transparent);
+}
+
+.fnd-extra-note__bin {
+  color: color-mix(in srgb, var(--theme-text) 80%, transparent);
+}
+
+/* Max build threads buttons */
+.fnd-cores-btn {
+  font-size: var(--type-label);
+}
+
+.fnd-cores-btn--active {
+  background: color-mix(in srgb, var(--theme-accent) 30%, transparent);
+  border-color: color-mix(in srgb, var(--theme-accent) 60%, transparent);
+  color: var(--theme-accent);
+}
+
+.fnd-cores-btn--idle {
+  border-color: var(--theme-border);
+  color: var(--theme-text-muted);
+}
+
+.fnd-cores-btn--idle:hover {
+  color: var(--theme-text);
+  border-color: color-mix(in srgb, var(--theme-border) 80%, transparent);
+}
+
+/* Engines-on-profile warning (red-400/30 border, /5 fill) */
+.fnd-engine-warn {
+  border: 1px solid color-mix(in srgb, var(--theme-danger) 30%, transparent);
+  background: color-mix(in srgb, var(--theme-danger) 5%, transparent);
+}
+
+.fnd-engine-warn__title {
+  color: var(--theme-danger);
+}
+
+.fnd-engine-warn__list {
+  color: color-mix(in srgb, var(--theme-text) 70%, transparent);
+}
+
+.fnd-engine-warn__note {
+  color: var(--theme-text-muted);
+}
+
+/* Profile-isolated build note (stealth-border/50 border, black/20 fill) */
+.fnd-profile-isolated {
+  border: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 20%, black);
+}
+
+.fnd-profile-isolated__title {
+  color: var(--theme-accent);
+}
+
+.fnd-profile-isolated__body {
+  color: color-mix(in srgb, var(--theme-text) 80%, transparent);
+}
+
+.fnd-profile-isolated__note {
+  color: var(--theme-text-muted);
+}
+
+/* ── FoundryModal ──────────────────────────────────────────── */
+
+/* Backup-locked "YES — STOP ENGINES & PROCEED" (nv-green/20 fill, /60 border) */
+.fnd-confirm-btn--accent {
+  font-size: var(--type-label);
+  background: color-mix(in srgb, var(--theme-accent) 20%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 60%, transparent);
+  color: var(--theme-accent);
+}
+
+/* Stopping-engines screen (white/80 body, warn highlights, muted note) */
+.fnd-stop-body {
+  color: color-mix(in srgb, var(--theme-text) 80%, transparent);
+}
+
+.fnd-stop-body__hl {
+  color: var(--theme-warn);
+}
+
+.fnd-stop-note {
+  color: var(--theme-text-muted);
+}
+
+/* "Build still running — UI reattached" toast (yellow-400/50 border, /10 fill, yellow-300 text) */
+.fnd-reattach-banner {
+  font-size: var(--type-label);
+  border: 1px solid color-mix(in srgb, var(--theme-warn) 50%, transparent);
+  background: color-mix(in srgb, var(--theme-warn) 10%, transparent);
+  color: var(--theme-warn);
+}
+
+/* ── FoundryToolchainPanel ─────────────────────────────────── */
+
+/* Loading / error / ready one-liners */
+.fnd-tc-loading {
+  color: color-mix(in srgb, var(--theme-text-muted) 60%, transparent);
+}
+
+.fnd-tc-error {
+  color: color-mix(in srgb, var(--theme-danger) 80%, transparent);
+}
+
+.fnd-tc-ready {
+  color: var(--theme-accent);
+}
+
+/* Section label */
+.fnd-tc-section-label {
+  color: var(--theme-text-muted);
+}
+
+/* Status badge (READY / PARTIAL / N/M PROFILES) */
+.fnd-tc-status {
+  font-size: var(--type-micro);
+}
+
+.fnd-tc-status--done {
+  color: var(--theme-accent);
+  border-color: color-mix(in srgb, var(--theme-accent) 40%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
+}
+
+.fnd-tc-status--warn {
+  color: var(--theme-warn);
+  border-color: color-mix(in srgb, var(--theme-warn) 40%, transparent);
+  background: color-mix(in srgb, var(--theme-warn) 10%, transparent);
+}
+
+/* Per-env profile badges */
+.fnd-tc-env-badge {
+  font-size: var(--type-micro);
+}
+
+.fnd-tc-env-badge--ready {
+  color: color-mix(in srgb, var(--theme-accent) 90%, transparent);
+  border-color: color-mix(in srgb, var(--theme-accent) 30%, transparent);
+}
+
+.fnd-tc-env-badge--pending {
+  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
+  border-color: color-mix(in srgb, var(--theme-border) 50%, transparent);
+}
+
+/* MSVC C runtime error hint (yellow-400/90) */
+.fnd-tc-crt-hint {
+  font-size: var(--type-label);
+  color: color-mix(in srgb, var(--theme-warn) 90%, transparent);
+}
+
+/* MANUAL button active ring (telemetry-cyan/50) */
+.fnd-tc-btn--manual-active {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-info) 50%, transparent);
+}
+
+/* Manual install guide (stealth-border/40 border, black/25 fill) */
+.fnd-tc-guide {
+  border-color: color-mix(in srgb, var(--theme-border) 40%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 25%, black);
+}
+
+/* Warn guide (yellow-400/30 border, /5 fill) */
+.fnd-tc-guide--warn {
+  border-color: color-mix(in srgb, var(--theme-warn) 30%, transparent);
+  background: color-mix(in srgb, var(--theme-warn) 5%, transparent);
+}
+
+.fnd-tc-guide__title {
+  color: var(--theme-text-muted);
+}
+
+.fnd-tc-guide__title--warn {
+  color: color-mix(in srgb, var(--theme-warn) 90%, transparent);
+}
+
+.fnd-tc-guide__body {
+  color: color-mix(in srgb, var(--theme-text) 65%, transparent);
+}
+
+.fnd-tc-guide__desc {
+  color: color-mix(in srgb, var(--theme-text) 70%, transparent);
+}
+
+.fnd-tc-guide__hl {
+  color: var(--theme-accent);
+}
+
+/* Cache folder box (stealth-border/50 border, black/30 fill) */
+.fnd-tc-cache-box {
+  border: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 30%, black);
+}
+
+.fnd-tc-cache-box__label {
+  color: var(--theme-text-muted);
+}
+
+.fnd-tc-cache-box__path {
+  color: var(--theme-info);
+}
+
+.fnd-tc-cache-box__note {
+  color: color-mix(in srgb, var(--theme-text-muted) 80%, transparent);
+}
+
+/* Profiles-ready box (yellow-400/20 border, black/20 fill) */
+.fnd-tc-profiles-box {
+  border: 1px solid color-mix(in srgb, var(--theme-warn) 20%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 20%, black);
+}
+
+.fnd-tc-profiles-box__title {
+  color: color-mix(in srgb, var(--theme-warn) 80%, transparent);
+}
+
+.fnd-tc-profiles-box__row {
+  color: color-mix(in srgb, var(--theme-text-muted) 80%, transparent);
+}
+
+/* Archive box (nv-green/40 border, /5 fill) */
+.fnd-tc-archive-box {
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 40%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 5%, transparent);
+}
+
+.fnd-tc-archive-box__name {
+  color: color-mix(in srgb, var(--theme-text) 90%, transparent);
+}
+
+.fnd-tc-archive-box__meta {
+  color: var(--theme-text-muted);
+}
+
+.fnd-tc-archive-box__desc {
+  color: color-mix(in srgb, var(--theme-text) 60%, transparent);
+}
+
+/* ── DistributionDevPanel ──────────────────────────────────── */
+
+/* Header rule (white/[0.06]) */
+.fnd-dev-header {
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-text) 6%, transparent);
+}
+
+/* Description highlights (white/70, white/60) */
+.fnd-dev-desc__hl {
+  color: color-mix(in srgb, var(--theme-text) 70%, transparent);
+}
+
+.fnd-dev-desc__hl--dim {
+  color: color-mix(in srgb, var(--theme-text) 60%, transparent);
+}
+
+/* Version line (stealth-muted/50) */
+.fnd-dev-version {
+  color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
+}
+
+/* Job status banners */
+.fnd-dev-job-running {
+  color: color-mix(in srgb, var(--theme-warn) 90%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-warn) 25%, transparent);
+  background: color-mix(in srgb, var(--theme-warn) 6%, transparent);
+}
+
+.fnd-dev-job-ok {
+  color: color-mix(in srgb, var(--theme-accent) 90%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-text) 6%, transparent);
+}
+
+.fnd-dev-job-failed {
+  color: var(--theme-danger);
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-danger) 30%, transparent);
+  background: color-mix(in srgb, var(--theme-danger) 6%, transparent);
+}
+
+.fnd-dev-job-failed__note {
+  color: color-mix(in srgb, var(--theme-text) 50%, transparent);
+}
+
+.fnd-dev-error {
+  color: var(--theme-danger);
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-text) 6%, transparent);
+}
+
+/* Section titles */
+.fnd-dev-section-title {
+  color: var(--theme-accent);
+}
+
+.fnd-dev-section-title--info {
+  color: color-mix(in srgb, var(--theme-info) 90%, transparent);
+}
+
+.fnd-dev-section-title--accent {
+  color: color-mix(in srgb, var(--theme-accent) 90%, transparent);
+}
+
+.fnd-dev-section-title--warn {
+  color: color-mix(in srgb, var(--theme-warn) 90%, transparent);
+}
+
+/* Action buttons — warn (yellow), danger (fuchsia), info (cyan), accent (nv-green) */
+.fnd-dev-btn--warn {
+  border-color: color-mix(in srgb, var(--theme-warn) 50%, transparent);
+  color: var(--theme-warn);
+  background: color-mix(in srgb, var(--theme-warn) 10%, transparent);
+}
+
+.fnd-dev-btn--warn:hover {
+  background: color-mix(in srgb, var(--theme-warn) 15%, transparent);
+}
+
+.fnd-dev-btn--danger {
+  border-color: color-mix(in srgb, var(--theme-danger) 50%, transparent);
+  color: color-mix(in srgb, var(--theme-danger) 70%, transparent);
+  background: color-mix(in srgb, var(--theme-danger) 10%, transparent);
+}
+
+.fnd-dev-btn--danger:hover {
+  background: color-mix(in srgb, var(--theme-danger) 15%, transparent);
+}
+
+.fnd-dev-btn--info {
+  border-color: color-mix(in srgb, var(--theme-info) 50%, transparent);
+  color: color-mix(in srgb, var(--theme-info) 70%, transparent);
+  background: color-mix(in srgb, var(--theme-info) 10%, transparent);
+}
+
+.fnd-dev-btn--info:hover {
+  background: color-mix(in srgb, var(--theme-info) 15%, transparent);
+}
+
+.fnd-dev-btn--info-ghost {
+  border-color: color-mix(in srgb, var(--theme-info) 25%, transparent);
+  color: color-mix(in srgb, var(--theme-info) 70%, transparent);
+}
+
+.fnd-dev-btn--info-ghost:hover {
+  background: color-mix(in srgb, var(--theme-info) 10%, transparent);
+}
+
+.fnd-dev-btn--accent {
+  border-color: color-mix(in srgb, var(--theme-accent) 50%, transparent);
+  color: var(--theme-accent);
+  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
+}
+
+.fnd-dev-btn--accent:hover {
+  background: color-mix(in srgb, var(--theme-accent) 15%, transparent);
+}
+
+.fnd-dev-btn--accent-ghost {
+  border-color: color-mix(in srgb, var(--theme-accent) 30%, transparent);
+  color: color-mix(in srgb, var(--theme-accent) 80%, transparent);
+}
+
+.fnd-dev-btn--accent-ghost:hover {
+  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
+}
+
+/* Current version note (white/80) */
+.fnd-dev-current__v {
+  color: color-mix(in srgb, var(--theme-text) 80%, transparent);
+}
+
+/* Workflow notes */
+.fnd-dev-workflow-notes {
+  color: var(--theme-text-muted);
+}
+
+/* Provider card (white/10 border) */
+.fnd-dev-provider-card {
+  border-color: color-mix(in srgb, var(--theme-text) 10%, transparent);
+}
+
+/* Provider name (white/90) + id (stealth-muted/50) */
+.fnd-dev-provider-name {
+  color: color-mix(in srgb, var(--theme-text) 90%, transparent);
+}
+
+.fnd-dev-provider-id {
+  color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
+}
+
+/* Role badges (core = nv-green/40, plugin = yellow/40, local = white/20) */
+.fnd-dev-role-badge {
+  font-size: var(--type-tiny);
+}
+
+.fnd-dev-role-badge--core {
+  border-color: color-mix(in srgb, var(--theme-accent) 40%, transparent);
+  color: var(--theme-accent);
+}
+
+.fnd-dev-role-badge--plugin {
+  border-color: color-mix(in srgb, var(--theme-warn) 40%, transparent);
+  color: var(--theme-warn);
+}
+
+.fnd-dev-role-badge--local {
+  border-color: color-mix(in srgb, var(--theme-text) 20%, transparent);
+  color: color-mix(in srgb, var(--theme-text) 70%, transparent);
+}
+
+/* Factory / no-factory (nv-green/70, telemetry-red/80) */
+.fnd-dev-factory {
+  color: color-mix(in srgb, var(--theme-accent) 70%, transparent);
+}
+
+.fnd-dev-no-factory {
+  color: color-mix(in srgb, var(--theme-danger) 80%, transparent);
+}
+
+/* Readiness spans (nv-green/80, stealth-muted/50) */
+.fnd-dev-readiness__ready {
+  color: color-mix(in srgb, var(--theme-accent) 80%, transparent);
+}
+
+.fnd-dev-readiness__missing {
+  color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
+}
+
+/* Provider notes (yellow-400/70) */
+.fnd-dev-provider-notes {
+  color: color-mix(in srgb, var(--theme-warn) 70%, transparent);
+}
+
+/* Catalog ON/OFF toggle (yellow/45 on, white/20 off) */
+.fnd-dev-catalog-btn {
+  font-size: var(--type-tiny);
+}
+
+.fnd-dev-catalog-btn--on {
+  border-color: color-mix(in srgb, var(--theme-warn) 45%, transparent);
+  color: var(--theme-warn);
+  background: color-mix(in srgb, var(--theme-warn) 10%, transparent);
+}
+
+.fnd-dev-catalog-btn--off {
+  border-color: color-mix(in srgb, var(--theme-text) 20%, transparent);
+  color: color-mix(in srgb, var(--theme-text) 65%, transparent);
+}
+
+.fnd-dev-catalog-btn--off:hover {
+  border-color: color-mix(in srgb, var(--theme-warn) 30%, transparent);
+}
+
+/* Per-profile Pack+Ship button (yellow/35 border, /90 text) */
+.fnd-dev-pack-btn {
+  font-size: var(--type-tiny);
+  border-color: color-mix(in srgb, var(--theme-warn) 35%, transparent);
+  color: color-mix(in srgb, var(--theme-warn) 90%, transparent);
+}
+
+.fnd-dev-pack-btn:hover {
+  background: color-mix(in srgb, var(--theme-warn) 10%, transparent);
+}
+
+/* Job log (black/30 bg, white/[0.06] border) */
+.fnd-dev-job-log {
+  background: color-mix(in srgb, var(--theme-panel) 30%, black);
+  border: 1px solid color-mix(in srgb, var(--theme-text) 6%, transparent);
+}

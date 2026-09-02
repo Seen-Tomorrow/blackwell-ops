@@ -130,6 +130,13 @@ const MATRIX: AppTheme = {
     /* Fused VRAM/RAM bar label chips (name/cap/need) */
     "--display-face-gpu-readout": "var(--theme-accent-bright, var(--theme-accent))",
     "--display-face-gpu-readout-muted": "var(--display-face-text-muted)",
+    /* Semantic alert set (de-Tailwind law: chrome paints only via these) */
+    "--theme-warn": "#FFB800",
+    "--theme-on-warn": "#0a0a0f",
+    "--theme-danger": "#ff3333",
+    "--theme-on-danger": "#ffffff",
+    "--theme-info": "#00e5ff",
+    "--theme-on-accent": "var(--theme-chip-solid-text)",
   },
 };
 
@@ -243,6 +250,13 @@ const SLATE: AppTheme = {
     "--theme-launch-active-border": "color-mix(in srgb, var(--theme-provider-pill-active-border) 70%, var(--theme-provider-pill-active-text) 30%)",
     "--theme-launch-active-text": "var(--theme-provider-pill-active-text)",
     "--theme-launch-active-shadow": "0 0 4px color-mix(in srgb, var(--theme-provider-pill-active-bg) 28%, transparent)",
+    /* Semantic alert set — neutral terminal keeps dark-surface values */
+    "--theme-warn": "#FFB800",
+    "--theme-on-warn": "#080808",
+    "--theme-danger": "#ff3333",
+    "--theme-on-danger": "#ffffff",
+    "--theme-info": "#00e5ff",
+    "--theme-on-accent": "var(--theme-chip-solid-text)",
   },
 };
 
@@ -535,6 +549,13 @@ const ARCTIC: AppTheme = {
       "inset 0 1px 3px color-mix(in srgb, #64748b 8%, transparent), inset 0 1px 0 color-mix(in srgb, #ffffff 70%, transparent), inset 0 -1px 0 color-mix(in srgb, #ffffff 40%, transparent)",
     "--theme-cockpit-header-shadow":
       "inset 0 1px 0 color-mix(in srgb, #ffffff 75%, transparent), inset 0 -1px 0 color-mix(in srgb, #94a3b8 10%, transparent)",
+    /* Semantic alert set — glacier ink: copper warn / rose danger / teal info */
+    "--theme-warn": "var(--theme-tel-amber)",
+    "--theme-on-warn": "#f8fafc",
+    "--theme-danger": "var(--theme-tel-hot)",
+    "--theme-on-danger": "#f8fafc",
+    "--theme-info": "var(--theme-tel-cyan)",
+    "--theme-on-accent": "var(--theme-chip-solid-text)",
   },
 };
 

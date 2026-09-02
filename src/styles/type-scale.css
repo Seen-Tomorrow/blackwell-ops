@@ -1,0 +1,21 @@
+/* ── Type scale ─────────────────────────────────────────────────────
+   Replaces every Tailwind `text-[Npx]`. Sizes are NOT a theme delta —
+   keep them out of app-themes.ts; color never belongs here.
+
+   IMPORT ORDER IS LOAD-BEARING: this file must stay the LAST @import in
+   index.css. `text-[Npx]` was a Tailwind utility, emitted after every
+   partial, so it won every same-specificity contest. If this file loads
+   with utilities.css (early), later partials (`value-chip`, `fnd-*`,
+   config.css …) silently win and migrated text changes size — 72 sites
+   did exactly that on 2026-09-02. */
+
+.type-hairline { font-size: var(--type-hairline); }
+.type-micro { font-size: var(--type-micro); }
+.type-tiny  { font-size: var(--type-tiny); }
+.type-label { font-size: var(--type-label); }
+.type-body  { font-size: var(--type-body); }
+.type-sm    { font-size: var(--type-sm); }
+.type-md    { font-size: var(--type-md); }
+.type-lg    { font-size: var(--type-lg); }
+.type-xl    { font-size: var(--type-xl); }
+.type-2xl   { font-size: var(--type-2xl); }

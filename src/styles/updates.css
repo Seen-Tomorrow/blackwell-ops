@@ -1,0 +1,213 @@
+/* ── Config room · app/provider updates + update menus ─────────────
+   Paint here, not in TSX. Color = var(--theme-*) only (no #hex, no
+   var(--x,#hex) fallback). Sizes = var(--type-*).
+   Owner: de-Tailwind pass 1E. */
+
+/* Surface-class vocabulary (grep a class → change its color here):
+     card:    upd-card--full / --app / --available / --installable / --plugin / --core
+     chip:    upd-chip-core / --app / --plugin / --upd / --available
+     ink:     upd-title--full / --app / upd-version-note / --latest /
+              upd-profile-name / --shipped / --installed / --not-installed /
+              --pack / --meta / --hint / --no-pack / --cuda /
+              upd-menu-btn--active / --idle / upd-menu-dot /
+              upd-popover-title / --sub / upd-offer-title / --version /
+              --up-to-date / upd-error / --global / --popover
+     action:  upd-act--full / --app / --idle / --update / --install / --both
+     popover: upd-offer--available / --idle / upd-catalog-link
+     rule:    upd-bord--a6 / --warn30 / upd-fill--black15 / --black20
+
+   Alpha parity: a base class paints its token at 100%. A tinted site
+   (originally a Tailwind /NN opacity) uses the matching --aNN class,
+   which mixes the token to NN% over transparent — pixel-identical to the
+   original utility. color-mix(..., transparent) is the required form;
+   no rgba(), no hex. */
+
+/* ══ UpdatesConfig · app channel cards ════════════════════════════ */
+
+/* App card frame (config-form-panel keeps its fill).
+   Full install = accent border; App = warn border. */
+.upd-card--full { border-color: color-mix(in srgb, var(--theme-accent) 30%, transparent); }
+.upd-card--app  { border-color: color-mix(in srgb, var(--theme-warn) 30%, transparent); }
+
+/* Update-available highlight — warn ring + border + faint wash */
+.upd-card--available {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-warn) 40%, transparent);
+  border-color: color-mix(in srgb, var(--theme-warn) 45%, transparent);
+  background: color-mix(in srgb, var(--theme-warn) 6%, transparent);
+}
+
+.upd-card--installable { border-color: color-mix(in srgb, var(--theme-warn) 20%, transparent); }
+.upd-card--plugin { border-color: color-mix(in srgb, var(--theme-text) 12%, transparent); }
+.upd-card--core   { border-color: color-mix(in srgb, var(--theme-accent) 25%, transparent); }
+
+/* Card titles (full = accent, app = warn) */
+.upd-title--full { color: var(--theme-accent); }
+.upd-title--app  { color: var(--theme-warn); }
+
+/* "installed → latest" note (white/60) */
+.upd-version-note { color: color-mix(in srgb, var(--theme-text) 60%, transparent); }
+/* latest when an update is available (yellow-400/90 bold) */
+.upd-version-note--latest { color: color-mix(in srgb, var(--theme-warn) 90%, transparent); }
+
+/* Release-notes summary (stealth-muted/55) */
+.upd-rn-summary { color: color-mix(in srgb, var(--theme-text-muted) 55%, transparent); }
+
+/* Error line under a card (telemetry-red) */
+.upd-error { color: var(--theme-danger); }
+
+/* ══ UpdatesConfig · app install button ═══════════════════════════ */
+
+/* Download <channel> — full install (value-chip-active keeps its fill) */
+.upd-act--full { border-color: color-mix(in srgb, var(--theme-accent) 40%, transparent); }
+/* Download <channel> — app (warn border/ink, warn hover wash) */
+.upd-act--app {
+  border-color: color-mix(in srgb, var(--theme-warn) 40%, transparent);
+  color: var(--theme-warn);
+}
+.upd-act--app:hover { background: color-mix(in srgb, var(--theme-warn) 10%, transparent); }
+/* Up to date — value-chip keeps its fill; faint ink */
+.upd-act--idle { color: color-mix(in srgb, var(--theme-text-muted) 45%, transparent); }
+
+/* ══ UpdatesConfig · engine cards ═════════════════════════════════ */
+
+/* Card label (white/90) */
+.upd-card-label { color: color-mix(in srgb, var(--theme-text) 90%, transparent); }
+
+/* Role chips — CORE / PLUGIN / Update available / upd */
+.upd-chip-core {
+  border-color: color-mix(in srgb, var(--theme-accent) 35%, transparent);
+  color: color-mix(in srgb, var(--theme-accent) 85%, transparent);
+}
+.upd-chip-core--app {
+  border-color: color-mix(in srgb, var(--theme-accent) 30%, transparent);
+  color: color-mix(in srgb, var(--theme-accent) 80%, transparent);
+}
+.upd-chip-plugin {
+  border-color: color-mix(in srgb, var(--theme-text) 15%, transparent);
+  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
+}
+.upd-chip-available {
+  border-color: color-mix(in srgb, var(--theme-warn) 50%, transparent);
+  background: color-mix(in srgb, var(--theme-warn) 15%, transparent);
+  color: var(--theme-warn);
+}
+.upd-chip-upd {
+  border-color: color-mix(in srgb, var(--theme-warn) 50%, transparent);
+  color: var(--theme-warn);
+}
+
+/* Profile pill row — update wash (yellow-400/10) */
+.upd-profile-pill--update { background: color-mix(in srgb, var(--theme-warn) 10%, transparent); }
+
+/* Profile pill ink */
+.upd-profile-name { color: color-mix(in srgb, var(--theme-text) 70%, transparent); }
+.upd-profile-shipped { color: color-mix(in srgb, var(--theme-text-muted) 60%, transparent); }
+/* installed + update available (yellow-300/90) */
+.upd-profile-installed--upd { color: color-mix(in srgb, var(--theme-warn) 90%, transparent); }
+/* installed, current (nv-green/80) */
+.upd-profile-installed { color: color-mix(in srgb, var(--theme-accent) 80%, transparent); }
+/* "not installed" (stealth-muted/55) */
+.upd-profile-not-installed { color: color-mix(in srgb, var(--theme-text-muted) 55%, transparent); }
+/* " → pack <tag>" (yellow-400/90) */
+.upd-profile-pack { color: color-mix(in srgb, var(--theme-warn) 90%, transparent); }
+/* pack/size meta (stealth-muted/45) */
+.upd-profile-meta { color: color-mix(in srgb, var(--theme-text-muted) 45%, transparent); }
+/* arch hint (stealth-muted/50) */
+.upd-profile-hint { color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent); }
+/* "no CORE pack — use Full install" (stealth-muted/45) */
+.upd-profile-no-pack { color: color-mix(in srgb, var(--theme-text-muted) 45%, transparent); }
+/* "CUDA <ver>" (stealth-muted/45) */
+.upd-profile-cuda { color: color-mix(in srgb, var(--theme-text-muted) 45%, transparent); }
+
+/* Profile action buttons — update / install / both / idle */
+.upd-act--update {
+  border-color: color-mix(in srgb, var(--theme-warn) 50%, transparent);
+  color: var(--theme-warn);
+  background: color-mix(in srgb, var(--theme-warn) 10%, transparent);
+}
+.upd-act--update:hover { background: color-mix(in srgb, var(--theme-warn) 15%, transparent); }
+.upd-act--install {
+  border-color: color-mix(in srgb, var(--theme-warn) 30%, transparent);
+  color: color-mix(in srgb, var(--theme-warn) 90%, transparent);
+}
+.upd-act--install:hover { background: color-mix(in srgb, var(--theme-warn) 10%, transparent); }
+.upd-act--both {
+  border-color: color-mix(in srgb, var(--theme-warn) 35%, transparent);
+  color: color-mix(in srgb, var(--theme-warn) 90%, transparent);
+}
+.upd-act--both:hover { background: color-mix(in srgb, var(--theme-warn) 10%, transparent); }
+.upd-act--idle {
+  border-color: color-mix(in srgb, var(--theme-text) 20%, transparent);
+  color: color-mix(in srgb, var(--theme-text) 80%, transparent);
+}
+.upd-act--idle:hover { background: color-mix(in srgb, var(--theme-text) 5%, transparent); }
+
+/* Global error line (telemetry-red) */
+.upd-error--global { color: var(--theme-danger); }
+
+/* ══ AppUpdateMenu ════════════════════════════════════════════════ */
+
+/* Header UPDATE button — highlight (warn) vs idle (muted) */
+.upd-menu-btn--active {
+  color: var(--theme-warn);
+}
+.upd-menu-btn--active:hover { color: var(--theme-warn); }
+.upd-menu-btn--idle {
+  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
+}
+.upd-menu-btn--idle:hover { color: color-mix(in srgb, var(--theme-text) 70%, transparent); }
+
+/* Pulse dot (solid warn) */
+.upd-menu-dot { background: var(--theme-warn); }
+
+/* Popover title (accent) + sub (muted) */
+.upd-popover-title { color: var(--theme-accent); }
+.upd-popover-sub { color: var(--theme-text-muted); }
+
+/* Offering box — available (warn border + faint wash) vs idle (neutral) */
+.upd-offer--available {
+  border-color: color-mix(in srgb, var(--theme-warn) 35%, transparent);
+  background: color-mix(in srgb, var(--theme-warn) 4%, transparent);
+}
+.upd-offer--idle {
+  border-color: color-mix(in srgb, var(--theme-text) 10%, transparent);
+  background: color-mix(in srgb, var(--theme-text) 10%, transparent);
+}
+
+/* Offering title (warn) + version note (warn/85) */
+.upd-offer-title { color: var(--theme-warn); }
+.upd-offer-version { color: color-mix(in srgb, var(--theme-warn) 85%, transparent); }
+
+/* "Up to date on this channel" (muted) */
+.upd-offer-up-to-date { color: var(--theme-text-muted); }
+
+/* Popover release-notes summary (stealth-muted/60, hover white/55) */
+.upd-popover-rn { color: color-mix(in srgb, var(--theme-text-muted) 60%, transparent); }
+.upd-popover-rn:hover { color: color-mix(in srgb, var(--theme-text) 55%, transparent); }
+
+/* "Updates catalog →" link — neutral ink, warn hover */
+.upd-catalog-link {
+  border-color: color-mix(in srgb, var(--theme-text) 12%, transparent);
+  background: color-mix(in srgb, var(--theme-text) 3%, transparent);
+  color: color-mix(in srgb, var(--theme-text) 65%, transparent);
+}
+.upd-catalog-link:hover {
+  border-color: color-mix(in srgb, var(--theme-warn) 30%, transparent);
+  color: color-mix(in srgb, var(--theme-warn) 90%, transparent);
+}
+
+/* Popover error line (telemetry-red) */
+.upd-error--popover { color: var(--theme-danger); }
+
+
+/* ══ UpdatesConfig · hairline rules + dark washes ════════════════ */
+
+/* Release-notes / header / task-strip rule (white/[0.06]) */
+.upd-bord--a6 { border-color: color-mix(in srgb, var(--theme-text) 6%, transparent); }
+
+/* Profile-pill box + task strip (black/20, black/15) */
+.upd-fill--black20 { background: color-mix(in srgb, var(--theme-text) 20%, transparent); }
+.upd-fill--black15 { background: color-mix(in srgb, var(--theme-text) 15%, transparent); }
+
+/* Popover frame (border-yellow-400/30) */
+.upd-bord--warn30 { border-color: color-mix(in srgb, var(--theme-warn) 30%, transparent); }

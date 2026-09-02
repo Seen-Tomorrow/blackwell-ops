@@ -9,10 +9,17 @@
 @import "./styles/fusion-display.css";
 @import "./styles/console.css";
 @import "./styles/config.css";
+@import "./styles/config-params.css";
+@import "./styles/foundry.css";
+@import "./styles/modelhub.css";
+@import "./styles/updates.css";
 @import "./styles/surfaces.css";
 @import "./styles/intel.css";
 @import "./styles/animations.css";
 @import "./styles/playground.css";
+/* Type scale LAST: it replaces Tailwind `text-[Npx]`, which won every
+   same-specificity contest because utilities emit after all partials. */
+@import "./styles/type-scale.css";
 
 @tailwind base;
 @tailwind components;
