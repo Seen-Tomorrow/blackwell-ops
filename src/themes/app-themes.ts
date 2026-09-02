@@ -127,38 +127,9 @@ const MATRIX: AppTheme = {
     "--theme-launch-active-bg": "color-mix(in srgb, var(--theme-chip-solid-bg) 72%, var(--theme-industrial-bg) 28%)",
     "--theme-launch-active-border": "var(--theme-chip-solid-bg)",
     "--theme-launch-active-text": "var(--theme-chip-solid-text)",
-    "--display-face-light-readout-divider-opacity": "0.32",
-    "--display-face-light-readout-idle-divider": "#5a6a52",
-    "--display-face-light-readout-idle-divider-opacity": "0.48",
-    "--display-face-light-concurrency-label": "#4a6a4a",
-    "--display-face-light-concurrency-chip-bg": "#243818",
-    "--display-face-light-concurrency-chip-fg": "#9ed44a",
-    "--display-face-light-concurrency-chip-border": "#4d7a00",
     /* Fused VRAM/RAM bar label chips (name/cap/need) */
-    "--display-face-light-fc-label-bg": "#243818",
-    "--display-face-light-fc-label-fg": "#d9f99d",
-    "--display-face-light-fc-label-border": "#4d7a00",
-    "--display-face-light-fc-label-ram-bg": "#0a2830",
-    "--display-face-light-fc-label-ram-fg": "#a5f3fc",
-    "--display-face-light-fc-label-ram-border": "#0e7490",
     "--display-face-gpu-readout": "var(--theme-accent-bright, var(--theme-accent))",
     "--display-face-gpu-readout-muted": "var(--display-face-text-muted)",
-    "--display-face-light-gpu-readout": "var(--display-face-light-text-accent, var(--theme-accent))",
-    "--display-face-light-gpu-readout-muted": "var(--display-face-light-text-muted)",
-    "--display-face-light-ctx-chip-border": "rgba(77, 122, 0, 0.5)",
-    "--display-face-light-ctx-chip-fg": "#4a6a4a",
-    "--display-face-light-ctx-fill-pct": "#1e3a14",
-    "--display-face-light-ctx-fill-idle": "rgba(74, 222, 128, 0.4)",
-    "--display-face-light-ctx-slot-fg": "#4a6a4a",
-    "--display-face-light-hw-label": "#3a5a32",
-    "--display-face-light-hw-driver": "#5a7050",
-    "--display-face-light-gpu-name": "#4a6a4a",
-    "--display-face-light-gpu-name-selected": "#1e3a14",
-    "--display-face-light-text-red": "#5a2828",
-    "--display-face-light-text-violet": "#4a3858",
-    "--display-face-light-gpu-selected-border": "#526848",
-    "--display-face-light-gpu-selected-bg": "rgba(70, 90, 64, 0.45)",
-    "--display-face-light-gpu-selected-shadow": "0 0 0 1px rgba(82, 104, 72, 0.55), 0 2px 5px rgba(40, 50, 36, 0.25)",
   },
 };
 
@@ -272,33 +243,6 @@ const SLATE: AppTheme = {
     "--theme-launch-active-border": "color-mix(in srgb, var(--theme-provider-pill-active-border) 70%, var(--theme-provider-pill-active-text) 30%)",
     "--theme-launch-active-text": "var(--theme-provider-pill-active-text)",
     "--theme-launch-active-shadow": "0 0 4px color-mix(in srgb, var(--theme-provider-pill-active-bg) 28%, transparent)",
-    "--display-face-light-readout-divider-opacity": "0.28",
-    "--display-face-light-readout-idle-divider": "#6a6a78",
-    "--display-face-light-readout-idle-divider-opacity": "0.44",
-    "--display-face-light-concurrency-label": "#5a5a6a",
-    "--display-face-light-concurrency-chip-bg": "#2a2a32",
-    "--display-face-light-concurrency-chip-fg": "#d0d0d8",
-    "--display-face-light-concurrency-chip-border": "#6a6a7a",
-    "--display-face-light-fc-label-bg": "#2a2a32",
-    "--display-face-light-fc-label-fg": "#e2e8f0",
-    "--display-face-light-fc-label-border": "#6a6a7a",
-    "--display-face-light-fc-label-ram-bg": "#1e3a4a",
-    "--display-face-light-fc-label-ram-fg": "#bae6fd",
-    "--display-face-light-fc-label-ram-border": "#475569",
-    "--display-face-light-ctx-chip-border": "rgba(106, 106, 122, 0.5)",
-    "--display-face-light-ctx-chip-fg": "#5a5a6a",
-    "--display-face-light-ctx-fill-pct": "#2e2e38",
-    "--display-face-light-ctx-fill-idle": "rgba(200, 200, 210, 0.42)",
-    "--display-face-light-ctx-slot-fg": "#5a5a6a",
-    "--display-face-light-hw-label": "#4a4a58",
-    "--display-face-light-hw-driver": "#6a6a78",
-    "--display-face-light-gpu-name": "#5a5a6a",
-    "--display-face-light-gpu-name-selected": "#2e2e38",
-    "--display-face-light-text-red": "#4a3840",
-    "--display-face-light-text-violet": "#484858",
-    "--display-face-light-gpu-selected-border": "#686870",
-    "--display-face-light-gpu-selected-bg": "rgba(90, 90, 96, 0.4)",
-    "--display-face-light-gpu-selected-shadow": "0 0 0 1px rgba(104, 104, 112, 0.5), 0 2px 5px rgba(36, 36, 40, 0.22)",
   },
 };
 
@@ -361,10 +305,16 @@ const ARCTIC: AppTheme = {
     /*
      * DOTTED face on a light theme: light dots would be invisible on porcelain, so
      * ARCTIC supplies dark dots + multiply (the recipe the old `eink` rules hardcoded)
-     * and a slightly wider pitch. Surface stays ARCTIC's own face colour — the
-     * separate light-LCD surface (--display-face-light-surface) is gone by decision:
+     * and a slightly wider pitch. The separate light-LCD surface is gone by decision:
+     * texture decides the pattern, the theme decides the colour.
+     *
+     * --display-face-dotted-bg sits one deliberate step below ARCTIC's CLEAN face
+     * (#f7fafc): a light grey panel instead of pure porcelain, so the dot matrix
+     * registers and the readouts keep the contrast the old darker DOTTED look had.
+     * Still an ARCTIC colour, not a second theme.
      * texture decides the pattern, the theme decides the colour.
      */
+    "--display-face-dotted-bg": "#e9eff6",
     "--display-face-grain-dot": "rgba(0, 0, 0, 0.028)",
     "--display-face-grain-band": "rgba(0, 0, 0, 0.014)",
     "--display-face-grain-cell": "3px",
@@ -404,24 +354,6 @@ const ARCTIC: AppTheme = {
     "--display-face-recap-text-muted": "#5a5a6a",
 
     /* ── PHOSPHOR LIGHT — bright glacier glass (light paper, soft grain) ── */
-    "--display-face-light-surface": "#f4f8fc",
-    "--display-face-light-dot": "rgba(15, 40, 70, 0.02)",
-    "--display-face-light-band": "rgba(15, 40, 70, 0.012)",
-    "--display-face-light-bar-bg": "#0c4a6e",
-    "--display-face-light-text-muted": "#475569",
-    "--display-face-light-text-accent": "#0369a1",
-    "--display-face-light-text-cyan": "#0e7490",
-    "--display-face-light-border": "rgba(3, 105, 161, 0.28)",
-    "--display-face-light-readout": "#0f2744",
-    "--display-face-light-readout-divider": "#0f2744",
-    "--display-face-light-readout-divider-opacity": "0.28",
-    "--display-face-light-readout-idle": "#64748b",
-    "--display-face-light-readout-idle-divider": "#64748b",
-    "--display-face-light-readout-idle-divider-opacity": "0.4",
-    "--display-face-light-concurrency-label": "#475569",
-    "--display-face-light-concurrency-chip-bg": "#0c4a6e",
-    "--display-face-light-concurrency-chip-fg": "#e0f2fe",
-    "--display-face-light-concurrency-chip-border": "#0369a1",
     /*
      * Fused VRAM/RAM label chips — solid wells (not wash).
      * ARCTIC face is paper-light even on CLEAN → dark wells + ice ink
@@ -434,38 +366,9 @@ const ARCTIC: AppTheme = {
     "--display-face-fc-label-ram-bg": "#0e7490",
     "--display-face-fc-label-ram-fg": "#ecfeff",
     "--display-face-fc-label-ram-border": "#0891b2",
-    "--display-face-light-fc-label-bg": "#0369a1",
-    "--display-face-light-fc-label-fg": "#e0f2fe",
-    "--display-face-light-fc-label-border": "#0284c7",
-    "--display-face-light-fc-label-ram-bg": "#0e7490",
-    "--display-face-light-fc-label-ram-fg": "#ecfeff",
-    "--display-face-light-fc-label-ram-border": "#0891b2",
     /* GPU card "38.8/96G 40%" readout — theme accent, no glow */
     "--display-face-gpu-readout": "var(--theme-accent)",
     "--display-face-gpu-readout-muted": "var(--display-face-text-muted)",
-    "--display-face-light-gpu-readout": "var(--display-face-light-text-accent)",
-    "--display-face-light-gpu-readout-muted": "var(--display-face-light-text-muted)",
-    "--display-face-light-ctx-chip-border": "rgba(3, 105, 161, 0.45)",
-    "--display-face-light-ctx-chip-fg": "#0c4a6e",
-    "--display-face-light-ctx-fill-pct": "#0f2744",
-    "--display-face-light-ctx-fill-pct-shadow": "rgba(255, 255, 255, 0.85)",
-    "--display-face-light-ctx-track-bg": "rgba(14, 165, 233, 0.1)",
-    "--display-face-light-ctx-track-border": "rgba(3, 105, 161, 0.22)",
-    "--display-face-light-ctx-fill-processing": "#0ea5e9",
-    "--display-face-light-ctx-fill-idle": "rgba(14, 165, 233, 0.38)",
-    "--display-face-light-ctx-slot-bg": "rgba(14, 165, 233, 0.1)",
-    "--display-face-light-ctx-slot-fg": "#0c4a6e",
-    "--display-face-light-hw-label": "#0369a1",
-    "--display-face-light-hw-driver": "#64748b",
-    "--display-face-light-gpu-name": "#334155",
-    "--display-face-light-gpu-name-selected": "#0c4a6e",
-    "--display-face-light-text-red": "#9f1239",
-    "--display-face-light-text-violet": "#5b21b6",
-    "--display-face-light-text-amber": "#c2410c",
-    "--display-face-light-gpu-selected-border": "#0284c7",
-    "--display-face-light-gpu-selected-bg": "rgba(14, 165, 233, 0.22)",
-    "--display-face-light-gpu-selected-shadow":
-      "0 0 0 1px rgba(14, 165, 233, 0.45), 0 2px 8px rgba(15, 40, 70, 0.12)",
 
     /* HW monitor + OVERCLOCKING — sky VRAM, cool RAM, copper warn */
     "--theme-tel-vram": "#0284c7",

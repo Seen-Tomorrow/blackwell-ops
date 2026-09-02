@@ -189,35 +189,11 @@
    */
   --display-face-dotted-bg: var(--display-face-bg);
 
-  /* Legacy aliases — still referenced by not-yet-re-keyed rules; retired with step 3. */
-  --display-face-light-grain-cell: 3px;
-  --display-face-light-grain-scan: 6px;
-  --display-face-dark-grain-cell: 2.5px;
-  --display-face-dark-grain-scan: 5px;
-  --display-face-light-surface: #c8d4b8;
-  --display-face-light-dot: rgba(0, 0, 0, 0.028);
-  --display-face-light-band: rgba(0, 0, 0, 0.014);
-  --display-face-light-band-opacity: 0;
-  --display-face-light-texture-blend: multiply;
-  --display-face-dark-dot: rgba(200, 200, 208, 0.04);
-  --display-face-dark-band: rgba(0, 0, 0, 0.06);
-  --display-face-dark-band-opacity: 0;
-  --display-face-light-text-muted: #4a6a4a;
-  --display-face-light-text-accent: #4d7a00;
-  --display-face-light-text-cyan: #0088aa;
-  --display-face-light-text-amber: #b87a00;
-  --display-face-light-text-red: #5a2828;
-  --display-face-light-text-violet: #4a3858;
   /*
-   * LIGHT paper plates (SOURCE strip, NEED frame, GPU troughs) — dark wash so
-   * gold LEARNED / cyan PROBE ink stays readable on e-ink faces (all themes).
-   * Themes may override; CSS must not special-case [data-theme=arctic].
+   * Paper plates (SOURCE strip, NEED frame, GPU troughs) — dark wash so
+   * gold LEARNED / cyan PROBE ink stays readable on light faces (all themes).
+   * Themes may override; CSS must not special-case a theme.
    */
-  --display-face-light-plate-ink: #0b1220;
-  --display-face-light-plate-ink-soft: #0f172a;
-  --display-face-light-source-lab: color-mix(in srgb, #e2e8f0 78%, #94a3b8);
-  --display-face-light-source-kind-bg: color-mix(in srgb, #020617 72%, transparent);
-  --display-face-light-source-kind-border: color-mix(in srgb, #94a3b8 32%, transparent);
   /*
    * Default face plates (PAPER / CRT faces) — soft wash on dark CRT faces.
    * Light-paper themes (ARCTIC) override these to the dark slate wash so PAPER
@@ -276,36 +252,7 @@
   --theme-catalog-fit-border: color-mix(in srgb, var(--theme-border) 55%, transparent);
   --theme-catalog-fit-bg: color-mix(in srgb, var(--theme-text) 3%, transparent);
   --theme-catalog-fit-opacity: 0.55;
-  --display-face-light-bar-bg: #465a40;
-  --display-face-light-gpu-selected-border: #526848;
-  --display-face-light-gpu-selected-bg: rgba(70, 90, 64, 0.45);
-  --display-face-light-gpu-selected-shadow: 0 0 0 1px rgba(82, 104, 72, 0.55), 0 2px 5px rgba(40, 50, 36, 0.25);
-  --display-face-light-border: rgba(60, 60, 60, 0.25);
   /* EINK face readout ink — per-theme overrides in app-themes.ts */
-  --display-face-light-readout: #1e3a14;
-  --display-face-light-readout-divider: #1e3a14;
-  --display-face-light-readout-divider-opacity: 0.32;
-  --display-face-light-readout-idle: #5a6a52;
-  --display-face-light-readout-idle-divider: #5a6a52;
-  --display-face-light-readout-idle-divider-opacity: 0.48;
-  --display-face-light-concurrency-label: #4a6a4a;
-  --display-face-light-concurrency-chip-bg: #243818;
-  --display-face-light-concurrency-chip-fg: #9ed44a;
-  --display-face-light-concurrency-chip-border: #4d7a00;
-  --display-face-light-ctx-chip-border: rgba(77, 122, 0, 0.5);
-  --display-face-light-ctx-chip-fg: #4a6a4a;
-  --display-face-light-ctx-fill-pct: #1e3a14;
-  --display-face-light-ctx-fill-pct-shadow: rgba(200, 212, 184, 0.9);
-  --display-face-light-ctx-track-bg: rgba(0, 0, 0, 0.06);
-  --display-face-light-ctx-track-border: rgba(60, 60, 60, 0.2);
-  --display-face-light-ctx-fill-processing: #22c55e;
-  --display-face-light-ctx-fill-idle: rgba(74, 222, 128, 0.4);
-  --display-face-light-ctx-slot-bg: rgba(0, 0, 0, 0.06);
-  --display-face-light-ctx-slot-fg: #4a6a4a;
-  --display-face-light-hw-label: #3a5a32;
-  --display-face-light-hw-driver: #5a7050;
-  --display-face-light-gpu-name: #4a6a4a;
-  --display-face-light-gpu-name-selected: #1e3a14;
   /*
    * Display-face CONTROL ink (fusion/bench buttons, labels, chips) — decoupled
    * from workspace theme tokens so the LCD screen is consistent + visible on
