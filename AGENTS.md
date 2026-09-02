@@ -32,6 +32,18 @@ different build target. Do not auto-kill. The only exception is a user explicitl
 
 **Tailwind** — Layout utilities + `var(--theme-…)` / existing `stealth`/`nv` maps. Do not add palettes in `tailwind.config.js`.
 
+**Type scale is the LAST `@import`** — `src/styles/type-scale.css` must stay last in `src/index.css`
+(immediately before `@tailwind`). `.type-*` replaces Tailwind `text-[Npx]`, which was emitted after
+every partial and therefore won every same-specificity tie; declaring the scale earlier (with
+`utilities.css`) lets later partials (`value-chip`, `fnd-*`, `config.css`) silently resize migrated
+text. Related trap: `chrome.css` keys some font-size overrides on the **literal utility name**
+(`.foundry-window .text-\[9px\] { font-size: var(--foundry-fs-md) !important }`, and a
+compact-density `.config-spec-decoding ~ div.text-\[8px\]` shrink) so Foundry text follows
+`--foundry-scale` instead of fixed CSS px. Swap the class and the override stops matching — text
+shrinks inside that container. When removing a `text-[Npx]`, grep `text-\\[` in `src/styles/` and
+re-key every hit onto the matching `.type-*` selector (keep the utility selector for rooms that are
+not migrated yet).
+
 **Removed modules** — Mobile Sentinel Bridge (`mobile_bridge.rs`, WebSocket `0.0.0.0:3814`, `tokio-tungstenite`) is fully removed — backend and UI. Do not revive it.
 
 **Industrial display (bezel / glass)** — One glass only: frame pad = metal, `.phosphor-screen-inner` = full face + unified recess shadow, children = content (no nested phosphor surface). HW monitor widgets use the same face (`.launch-rail-tel .phosphor-display-surface`). Do not revive `DisplayGlitchOverlay` / `.display-glitch-*`.
