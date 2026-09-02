@@ -312,7 +312,7 @@ function applyShareCaptureTheme(host: HTMLElement, variant: FusionShareVariant):
   const { themeId, texture } = SHARE_VARIANT_CONFIG[variant];
   host.setAttribute("data-theme", themeId);
   host.setAttribute("data-display-texture", texture);
-  host.setAttribute("data-display-face", displayFaceFor(themeId, texture));
+  host.setAttribute("data-display-face", displayFaceFor(texture));
   host.setAttribute("data-fusion-share-variant", variant);
   const theme = getThemeById(themeId);
   for (const [key, value] of Object.entries(theme.tokens)) {
@@ -339,7 +339,7 @@ function lockDocumentThemeForCapture(variant: FusionShareVariant): DocumentTheme
 
   root.setAttribute("data-theme", themeId);
   root.setAttribute("data-display-texture", texture);
-  root.setAttribute("data-display-face", displayFaceFor(themeId, texture));
+  root.setAttribute("data-display-face", displayFaceFor(texture));
   for (const [key, value] of Object.entries(theme.tokens)) {
     root.style.setProperty(key, value);
   }

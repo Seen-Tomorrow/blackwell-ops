@@ -100,8 +100,11 @@ export default function MatrixAsciiRain({
   const { texture: ctxTexture } = useDisplayTexture();
   const { theme } = useTheme();
   const texture = textureProp ?? ctxTexture;
-  const face = displayFaceFor(theme.id, texture);
-  const light = face === "eink" || (face === "paper" && theme.id === "arctic");
+  /*
+   * Palette follows the COLOUR theme's lightness (`AppTheme.native`), never the face.
+   * Texture only adds a pattern, so the rain must not change with CLEAN/DOTTED.
+   */
+  const light = theme.native === "light";
 
   useEffect(() => {
     const canvas = canvasRef.current;

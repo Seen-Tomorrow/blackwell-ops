@@ -13,9 +13,6 @@ import { displayFaceFor } from "./displayTexture";
  * Frame texture already works this way (`IndustrialBezelTextureContext` sets
  * `data-industrial-bezel` on <html>); the display face was the odd one out.
  */
-export function applyDisplayFace(themeId: string, texture: string): void {
-  document.documentElement.setAttribute(
-    "data-display-face",
-    displayFaceFor(themeId, texture),
-  );
+export function applyDisplayFace(texture: string): void {
+  document.documentElement.setAttribute("data-display-face", displayFaceFor(texture));
 }

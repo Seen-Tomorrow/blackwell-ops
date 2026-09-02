@@ -798,17 +798,16 @@
 
 /* Selected GPU — card ring/glow only; name color stays with siblings */
 
-/* VRAM/RAM bar tracks on display bg (CRT / PAPER); EINK face uses --display-face-light-bar-bg below */
+/* VRAM/RAM bar tracks on display bg — colour-theme token only (pattern never changes ink) */
 .industrial-display-area .relative.overflow-hidden.border-stealth-border\/30 {
   background-color: var(--theme-industrial-bar-track) !important;
 }
 
-/* CRT face — measured GB digits stay flat (no halo). Instrument accents are solid
-   color now; still kill any leftover filter/text-shadow from accent classes. */
-[data-display-face="crt"] .vram-forecast-display .vram-forecast-gb-accented,
-[data-display-face="crt"] .industrial-display-area .vram-forecast-display .vram-forecast-gb-accented,
-[data-display-face="crt"] .vram-forecast-display .vram-fc-need__val,
-[data-display-face="crt"] .industrial-display-area .vram-forecast-display .vram-fc-need__val {
+/* Always on (was crt-only): kills halo/filter. Uses no face token, so CLEAN == DOTTED. */
+.vram-forecast-display .vram-forecast-gb-accented,
+.industrial-display-area .vram-forecast-display .vram-forecast-gb-accented,
+.vram-forecast-display .vram-fc-need__val,
+.industrial-display-area .vram-forecast-display .vram-fc-need__val {
   background-image: none !important;
   background-clip: unset !important;
   -webkit-background-clip: unset !important;
@@ -817,10 +816,9 @@
   text-shadow: none !important;
 }
 
-/* CRT face — selected GPU card: crisp border, no glow halo (glow reads harsh on
-   the dark face, esp. ARCTIC light theme forced dark). */
-[data-display-face="crt"] .vram-forecast-display .gpu-card.gpu-selected,
-[data-display-face="crt"] .industrial-display-area .vram-forecast-display .gpu-card.gpu-selected {
+/* Always on (was crt-only): crisp selected border, no glow halo. */
+.vram-forecast-display .gpu-card.gpu-selected,
+.industrial-display-area .vram-forecast-display .gpu-card.gpu-selected {
   box-shadow: none !important;
 }
 

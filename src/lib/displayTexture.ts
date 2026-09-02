@@ -6,18 +6,21 @@ export const DISPLAY_TEXTURE_ORDER = ["dotted", "clean"] as const;
 export type DisplayTexture = (typeof DISPLAY_TEXTURE_ORDER)[number];
 
 /**
- * Physical face plate mounted for a (theme, texture) pair — the single key CSS
- * uses for display-surface styling (`data-display-face`). CSS must not fork on
- * [data-theme] + [data-display-texture] directly.
- * - crt:    dark theme + DOTTED (dark CRT dot matrix)
- * - eink:   ARCTIC + DOTTED (light e-ink LCD)
- * - paper:  any theme + CLEAN (theme-colored paper face)
+ * Display face = the pattern only. `data-display-face` is the single key CSS uses,
+ * and it is derived from the texture alone — never from the colour theme.
+ *
+ * - `dotted` — fake dot-matrix painted on top of the display surfaces.
+ * - `clean`  — no rule at all; surfaces show the theme's own colour.
+ *
+ * Colour, ink, borders and shadows belong to the colour themes (tokens). Texture
+ * adds a pattern and nothing else, so dark themes look identical on CLEAN and
+ * DOTTED apart from the dots. ARCTIC gets a readable pattern by supplying dark
+ * grain tokens, not by having its own face.
  */
-export type DisplayFace = "crt" | "eink" | "paper";
+export type DisplayFace = "dotted" | "clean";
 
-export function displayFaceFor(themeId: string, texture: string): DisplayFace {
-  if (texture === "clean") return "paper";
-  return themeId === "arctic" ? "eink" : "crt";
+export function displayFaceFor(texture: string): DisplayFace {
+  return texture === "dotted" ? "dotted" : "clean";
 }
 
 export const DISPLAY_TEXTURE_LABELS: Record<DisplayTexture, string> = {

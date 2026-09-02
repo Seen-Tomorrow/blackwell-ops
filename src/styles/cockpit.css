@@ -3556,10 +3556,6 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   background: var(--display-face-bg, var(--theme-panel, #0a0c0f));
 }
 
-[data-display-face="eink"] .harness-connect-veil--opaque {
-  background: var(--display-face-light-surface, #c8d4b8);
-}
-
 .harness-connect-veil__fx {
   position: absolute;
   inset: 0;
@@ -3620,14 +3616,6 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
     0 1px 3px rgba(0, 0, 0, 0.55);
   --hcv-strip: color-mix(in srgb, var(--hcv-ink) 88%, transparent);
   --hcv-seam: color-mix(in srgb, var(--theme-border) 55%, transparent);
-}
-
-[data-display-face="eink"] .harness-connect-veil {
-  --hcv-ink: var(--display-face-light-surface, #c8d4b8);
-  --hcv-halo:
-    0 0 7px var(--hcv-ink),
-    0 0 2px var(--hcv-ink),
-    0 1px 2px rgba(60, 52, 30, 0.3);
 }
 
 /* Halo inherits to every text node in the veil (text-shadow is inherited) */
@@ -3749,14 +3737,6 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   );
 }
 
-[data-display-face="eink"] .harness-connect-veil::after {
-  background: radial-gradient(
-    130% 130% at 50% 42%,
-    transparent 58%,
-    rgba(96, 88, 60, 0.2) 100%
-  );
-}
-
 /* DEV preview — standalone full-viewport mount (?harness-veil) */
 .harness-connect-veil--preview {
   position: fixed;
@@ -3788,12 +3768,11 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   );
 }
 
-/* Light face palette — class is theme-aware (eink, or ARCTIC paper) */
+/* Light palette — applied when the COLOUR theme is light (AppTheme.native=light).
+   Read from colour-theme tokens only: the pattern never changes the rain, and the
+   old --display-face-light-* LCD surface is retired. */
 .matrix-ascii-rain--light {
-  --matrix-rain-bg: var(--display-face-light-surface, #c8d4b8);
-  --matrix-rain-fg: var(
-    --display-face-light-readout,
-    var(--theme-accent, #1e3a14)
-  );
+  --matrix-rain-bg: var(--display-face-bg, var(--theme-panel-accent));
+  --matrix-rain-fg: var(--display-face-text, var(--theme-accent));
 }
 

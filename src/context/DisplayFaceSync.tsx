@@ -1,20 +1,18 @@
 import { useEffect, type ReactNode } from "react";
-import { useTheme } from "./ThemeContext";
 import { useDisplayTexture } from "./DisplayTextureContext";
 import { applyDisplayFace } from "../lib/applyDisplayFace";
 
 /**
- * Mount inside ThemeProvider + DisplayTextureProvider. Publishes the derived display
- * face to <html> whenever either input changes. Kept as its own component because the
- * face is a function of BOTH settings, and each provider owns only one.
+ * Mount inside DisplayTextureProvider. Publishes the display face to <html> whenever
+ * the texture changes. The face is derived from texture ALONE — colour is owned by the
+ * colour themes, so a face change never depends on the active theme.
  */
 export default function DisplayFaceSync({ children }: { children: ReactNode }) {
-  const { theme } = useTheme();
   const { texture } = useDisplayTexture();
 
   useEffect(() => {
-    applyDisplayFace(theme.id, texture);
-  }, [theme.id, texture]);
+    applyDisplayFace(texture);
+  }, [texture]);
 
   return <>{children}</>;
 }

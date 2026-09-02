@@ -3596,18 +3596,6 @@
   z-index: 1;
 }
 
-/* LIGHT screen texture — same hard metal edge + theme-driven cast as dark/clean.
-   The bezel drop shadow belongs to the theme (strong on dark gunmetal, soft on
-   ARCTIC), NOT to the screen texture — otherwise dark themes lose their 3D drop
-   over the eject tray whenever LIGHT is selected. ARCTIC's theme token is already
-   the soft DISPLAY_PROFILE_BEZEL_CAST, so it stays soft here. */
-[data-display-face="eink"] .industrial-display-frame {
-  box-shadow:
-    var(--theme-bezel-cast-shadow),
-    inset 1px 1px 0 var(--theme-bezel-inset-hi),
-    inset -1px -1px 0 var(--theme-bezel-inset-lo);
-}
-
 /* Fusion live stats + bench values — theme phosphor text; dark ink on CRT face only */
 .fusion-readout-emphasis {
   color: var(--display-face-text);
@@ -3643,45 +3631,6 @@
   min-width: 11ch;
 }
 
-/* EINK face — TG micro-stats + bench readout (theme tokens via --display-face-light-readout-*) */
-[data-display-face="eink"] .phosphor-screen .fusion-readout-emphasis,
-[data-display-face="eink"] .phosphor-screen-inner .fusion-readout-emphasis,
-[data-display-face="eink"] .bench-widget-panel .fusion-readout-emphasis {
-  color: var(--display-face-light-readout);
-}
-
-[data-display-face="eink"] .phosphor-screen .fusion-readout-divider,
-[data-display-face="eink"] .phosphor-screen-inner .fusion-readout-divider,
-[data-display-face="eink"] .bench-widget-panel .fusion-readout-divider {
-  color: var(--display-face-light-readout-divider);
-  opacity: var(--display-face-light-readout-divider-opacity);
-}
-
-[data-display-face="eink"] .phosphor-screen .fusion-readout-idle {
-  color: var(--display-face-light-readout-idle) !important;
-  opacity: 1 !important;
-}
-
-[data-display-face="eink"] .phosphor-screen .fusion-readout-divider-idle {
-  color: var(--display-face-light-readout-idle-divider) !important;
-  opacity: var(--display-face-light-readout-idle-divider-opacity) !important;
-}
-
-/* EINK face — CONCURRENCY label */
-[data-display-face="eink"] .bench-widget-panel .bench-concurrency-badge__label {
-  color: var(--display-face-light-concurrency-label);
-  opacity: 1;
-}
-
-/* EINK face — shared ×N multiplier chip (bench TG + ctx compact) */
-[data-display-face="eink"] .fusion-mult-chip,
-[data-display-face="eink"] .bench-widget-panel .bench-concurrency-badge__mult {
-  --bench-concurrency-chip-bg: var(--display-face-light-concurrency-chip-bg);
-  --bench-concurrency-chip-fg: var(--display-face-light-concurrency-chip-fg);
-  --bench-concurrency-chip-border: var(--display-face-light-concurrency-chip-border);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--display-face-light-concurrency-chip-border) 35%, transparent);
-}
-
 
 /* Bevel hue source — fill class color (ARCTIC accent = glacier blue, not grey) */
 .vram-fc-bar__fill.bg-nv-green,
@@ -3707,168 +3656,82 @@
 }
 .gpu-card__bar-fill--os {
   color: #585858;
-}
-
-/* EINK face — ctx slot bars */
-[data-display-face="eink"] .phosphor-screen .ctx-shared-pool-chip,
-[data-display-face="eink"] .phosphor-screen-inner .ctx-shared-pool-chip,
-[data-display-face="eink"] .phosphor-screen .ctx-bar-capacity-chip,
-[data-display-face="eink"] .phosphor-screen-inner .ctx-bar-capacity-chip {
-  border-color: var(--display-face-light-ctx-chip-border);
-  color: var(--display-face-light-ctx-chip-fg);
-}
-
-[data-display-face="eink"] .phosphor-screen .ctx-bar-fill-pct--active,
-[data-display-face="eink"] .phosphor-screen-inner .ctx-bar-fill-pct--active {
-  color: var(--display-face-light-ctx-fill-pct);
-  text-shadow:
-    0 0 3px var(--display-face-light-ctx-fill-pct-shadow),
-    0 0 6px color-mix(in srgb, var(--display-face-light-ctx-fill-pct-shadow) 55%, transparent);
-}
-
-[data-display-face="eink"] .phosphor-screen .ctx-bar-track--active,
-[data-display-face="eink"] .phosphor-screen-inner .ctx-bar-track--active {
-  background: var(--display-face-light-ctx-track-bg);
-  border-color: transparent;
-}
-
-[data-display-face="eink"] .phosphor-screen .ctx-bar-track--empty,
-[data-display-face="eink"] .phosphor-screen-inner .ctx-bar-track--empty {
-  background: transparent;
-  border-color: var(--display-face-light-ctx-track-border);
-}
-
-[data-display-face="eink"] .phosphor-screen .ctx-bar-fill--processing,
-[data-display-face="eink"] .phosphor-screen-inner .ctx-bar-fill--processing {
-  background: var(--display-face-light-ctx-fill-processing);
-}
-
-[data-display-face="eink"] .phosphor-screen .ctx-bar-fill--idle,
-[data-display-face="eink"] .phosphor-screen-inner .ctx-bar-fill--idle {
-  background: var(--display-face-light-ctx-fill-idle);
-}
-
-[data-display-face="eink"] .phosphor-screen .ctx-bar-slot-label,
-[data-display-face="eink"] .phosphor-screen-inner .ctx-bar-slot-label {
-  background: var(--display-face-light-ctx-slot-bg);
-  color: var(--display-face-light-ctx-slot-fg);
-}
-
-/* EINK face — bench GPU name + driver */
-[data-display-face="eink"] .bench-widget-panel .bench-hw-topo-label {
-  color: var(--display-face-light-hw-label);
-}
-
-[data-display-face="eink"] .bench-widget-panel .bench-hw-topo-driver {
-  color: var(--display-face-light-hw-driver);
-}
-
-/* LIGHT — GPU names + memory readout (tokenized accent; no glow halo) */
-
-/*
- * EINK + PAPER face — TG micro-stats, ctx slots, mult chip.
- * (Do not chain unfinished selectors — a prior strip accidentally painted
- * box-shadow rings on every listed surface.)
- */
-[data-display-face="crt"] .phosphor-screen .fusion-readout-emphasis,
-[data-display-face="crt"] .phosphor-screen-inner .fusion-readout-emphasis,
-[data-display-face="paper"] .phosphor-screen .fusion-readout-emphasis,
-[data-display-face="paper"] .phosphor-screen-inner .fusion-readout-emphasis {
+}/* LIGHT — GPU names + memory readout (tokenized accent; no glow halo) */ /* * EINK + PAPER face — TG micro-stats,
+ctx slots,
+mult chip. * (Do not chain unfinished selectors — a prior strip accidentally painted * box-shadow rings on every listed surface.) */ .phosphor-screen .fusion-readout-emphasis,
+.phosphor-screen-inner .fusion-readout-emphasis,
+.phosphor-screen .fusion-readout-emphasis,
+.phosphor-screen-inner .fusion-readout-emphasis{
   color: color-mix(in srgb, var(--display-face-text) 72%, #e8edf4);
-}
-
-[data-display-face="crt"] .phosphor-screen .fusion-readout-divider,
-[data-display-face="crt"] .phosphor-screen-inner .fusion-readout-divider,
-[data-display-face="paper"] .phosphor-screen .fusion-readout-divider,
-[data-display-face="paper"] .phosphor-screen-inner .fusion-readout-divider {
+}.phosphor-screen .fusion-readout-divider,
+.phosphor-screen-inner .fusion-readout-divider,
+.phosphor-screen .fusion-readout-divider,
+.phosphor-screen-inner .fusion-readout-divider{
   color: color-mix(in srgb, var(--display-face-text-muted) 48%, #a8b4c4);
   opacity: 0.72;
-}
-
-[data-display-face="crt"] .phosphor-screen .fusion-readout-idle,
-[data-display-face="crt"] .phosphor-screen-inner .fusion-readout-idle,
-[data-display-face="paper"] .phosphor-screen .fusion-readout-idle,
-[data-display-face="paper"] .phosphor-screen-inner .fusion-readout-idle {
+}.phosphor-screen .fusion-readout-idle,
+.phosphor-screen-inner .fusion-readout-idle,
+.phosphor-screen .fusion-readout-idle,
+.phosphor-screen-inner .fusion-readout-idle{
   /* Brightness-clamped control muted — visible on all dark faces (SLATE grey too). */
   color: var(--display-face-control-muted) !important;
   opacity: 1 !important;
-}
-
-[data-display-face="crt"] .phosphor-screen .fusion-readout-divider-idle,
-[data-display-face="crt"] .phosphor-screen-inner .fusion-readout-divider-idle,
-[data-display-face="paper"] .phosphor-screen .fusion-readout-divider-idle,
-[data-display-face="paper"] .phosphor-screen-inner .fusion-readout-divider-idle {
+}.phosphor-screen .fusion-readout-divider-idle,
+.phosphor-screen-inner .fusion-readout-divider-idle,
+.phosphor-screen .fusion-readout-divider-idle,
+.phosphor-screen-inner .fusion-readout-divider-idle{
   color: color-mix(in srgb, var(--display-face-text-muted) 70%, #727c8c) !important;
   opacity: 0.72 !important;
-}
-
-[data-display-face="crt"] .phosphor-screen .ctx-shared-pool-chip,
-[data-display-face="crt"] .phosphor-screen-inner .ctx-shared-pool-chip,
-[data-display-face="paper"] .phosphor-screen .ctx-shared-pool-chip,
-[data-display-face="paper"] .phosphor-screen-inner .ctx-shared-pool-chip {
+}.phosphor-screen .ctx-shared-pool-chip,
+.phosphor-screen-inner .ctx-shared-pool-chip,
+.phosphor-screen .ctx-shared-pool-chip,
+.phosphor-screen-inner .ctx-shared-pool-chip{
   border-color: color-mix(in srgb, var(--display-face-text) 45%, transparent);
   color: color-mix(in srgb, var(--display-face-text) 82%, transparent);
-}
-
-[data-display-face="crt"] .phosphor-screen .ctx-bar-capacity-chip,
-[data-display-face="crt"] .phosphor-screen-inner .ctx-bar-capacity-chip,
-[data-display-face="paper"] .phosphor-screen .ctx-bar-capacity-chip,
-[data-display-face="paper"] .phosphor-screen-inner .ctx-bar-capacity-chip {
+}.phosphor-screen .ctx-bar-capacity-chip,
+.phosphor-screen-inner .ctx-bar-capacity-chip,
+.phosphor-screen .ctx-bar-capacity-chip,
+.phosphor-screen-inner .ctx-bar-capacity-chip{
   border-color: var(--display-face-border);
   color: color-mix(in srgb, var(--display-face-text-muted) 72%, transparent);
-}
-
-[data-display-face="crt"] .phosphor-screen .ctx-bar-fill-pct--active,
-[data-display-face="crt"] .phosphor-screen-inner .ctx-bar-fill-pct--active,
-[data-display-face="paper"] .phosphor-screen .ctx-bar-fill-pct--active,
-[data-display-face="paper"] .phosphor-screen-inner .ctx-bar-fill-pct--active {
+}.phosphor-screen .ctx-bar-fill-pct--active,
+.phosphor-screen-inner .ctx-bar-fill-pct--active,
+.phosphor-screen .ctx-bar-fill-pct--active,
+.phosphor-screen-inner .ctx-bar-fill-pct--active{
   color: color-mix(in srgb, var(--display-face-text) 92%, #fff);
   text-shadow: 0 0 4px color-mix(in srgb, var(--theme-bg) 80%, transparent), 0 1px 2px color-mix(in srgb, #000 55%, transparent);
-}
-
-[data-display-face="crt"] .phosphor-screen .ctx-bar-track--active,
-[data-display-face="crt"] .phosphor-screen-inner .ctx-bar-track--active,
-[data-display-face="paper"] .phosphor-screen .ctx-bar-track--active,
-[data-display-face="paper"] .phosphor-screen-inner .ctx-bar-track--active {
+}.phosphor-screen .ctx-bar-track--active,
+.phosphor-screen-inner .ctx-bar-track--active,
+.phosphor-screen .ctx-bar-track--active,
+.phosphor-screen-inner .ctx-bar-track--active{
   background: color-mix(in srgb, var(--display-face-bar-bg) 65%, transparent);
   border-color: transparent;
-}
-
-[data-display-face="crt"] .phosphor-screen .ctx-bar-track--empty,
-[data-display-face="crt"] .phosphor-screen-inner .ctx-bar-track--empty,
-[data-display-face="paper"] .phosphor-screen .ctx-bar-track--empty,
-[data-display-face="paper"] .phosphor-screen-inner .ctx-bar-track--empty {
+}.phosphor-screen .ctx-bar-track--empty,
+.phosphor-screen-inner .ctx-bar-track--empty,
+.phosphor-screen .ctx-bar-track--empty,
+.phosphor-screen-inner .ctx-bar-track--empty{
   background: transparent;
   border-color: color-mix(in srgb, var(--display-face-border) 55%, transparent);
-}
-
-[data-display-face="crt"] .phosphor-screen .ctx-bar-fill--processing,
-[data-display-face="crt"] .phosphor-screen-inner .ctx-bar-fill--processing,
-[data-display-face="paper"] .phosphor-screen .ctx-bar-fill--processing,
-[data-display-face="paper"] .phosphor-screen-inner .ctx-bar-fill--processing {
+}.phosphor-screen .ctx-bar-fill--processing,
+.phosphor-screen-inner .ctx-bar-fill--processing,
+.phosphor-screen .ctx-bar-fill--processing,
+.phosphor-screen-inner .ctx-bar-fill--processing{
   background: #22c55e;
-}
-
-[data-display-face="crt"] .phosphor-screen .ctx-bar-fill--idle,
-[data-display-face="crt"] .phosphor-screen-inner .ctx-bar-fill--idle,
-[data-display-face="paper"] .phosphor-screen .ctx-bar-fill--idle,
-[data-display-face="paper"] .phosphor-screen-inner .ctx-bar-fill--idle {
+}.phosphor-screen .ctx-bar-fill--idle,
+.phosphor-screen-inner .ctx-bar-fill--idle,
+.phosphor-screen .ctx-bar-fill--idle,
+.phosphor-screen-inner .ctx-bar-fill--idle{
   background: color-mix(in srgb, var(--display-face-text) 38%, transparent);
-}
-
-[data-display-face="crt"] .phosphor-screen .ctx-bar-slot-label,
-[data-display-face="crt"] .phosphor-screen-inner .ctx-bar-slot-label,
-[data-display-face="paper"] .phosphor-screen .ctx-bar-slot-label,
-[data-display-face="paper"] .phosphor-screen-inner .ctx-bar-slot-label {
+}.phosphor-screen .ctx-bar-slot-label,
+.phosphor-screen-inner .ctx-bar-slot-label,
+.phosphor-screen .ctx-bar-slot-label,
+.phosphor-screen-inner .ctx-bar-slot-label{
   background: color-mix(in srgb, var(--theme-bg) 50%, transparent);
   color: color-mix(in srgb, var(--display-face-text) 78%, transparent);
-}
-
-/* EINK + PAPER face — shared ×N multiplier chip only (not ctx / readout) */
-[data-display-face="crt"] .fusion-mult-chip,
-[data-display-face="crt"] .bench-widget-panel .bench-concurrency-badge__mult,
-[data-display-face="paper"] .fusion-mult-chip,
-[data-display-face="paper"] .bench-widget-panel .bench-concurrency-badge__mult {
+}/* EINK + PAPER face — shared ×N multiplier chip only (not ctx / readout) */ .fusion-mult-chip,
+.bench-widget-panel .bench-concurrency-badge__mult,
+.fusion-mult-chip,
+.bench-widget-panel .bench-concurrency-badge__mult{
   --bench-concurrency-chip-bg: color-mix(in srgb, var(--theme-bg) 76%, #000);
   --bench-concurrency-chip-fg: #ffd24a;
   --bench-concurrency-chip-border: #c99700;
@@ -3909,32 +3772,17 @@
 .bench-widget-panel .bench-concurrency-chip.value-chip-active {
   border-color: rgba(248, 113, 113, 0.95);
   box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.25);
-}
-
-/* EINK face — bench control chips: e-ink active fill */
-[data-display-face="eink"] .bench-widget-panel .value-chip-active,
-[data-display-face="eink"] .bench-widget-panel .bench-concurrency-chip.value-chip-active {
-  background: var(--display-face-light-concurrency-chip-bg) !important;
-  border-color: var(--display-face-light-concurrency-chip-border) !important;
-  color: var(--display-face-light-concurrency-chip-fg) !important;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--display-face-light-concurrency-chip-border) 45%, transparent);
-}
-
-/* EINK + PAPER face — bench control chips: brightness-clamped control ink
-   (decouples from workspace --theme-chip-* so SLATE's grey chips stay visible). */
-[data-display-face="crt"] .bench-widget-panel .value-chip,
-[data-display-face="crt"] .bench-widget-panel .bench-concurrency-chip.value-chip,
-[data-display-face="paper"] .bench-widget-panel .value-chip,
-[data-display-face="paper"] .bench-widget-panel .bench-concurrency-chip.value-chip {
+}/* EINK + PAPER face — bench control chips: brightness-clamped control ink (decouples from workspace --theme-chip-* so SLATE's grey chips stay visible). */ .bench-widget-panel .value-chip,
+.bench-widget-panel .bench-concurrency-chip.value-chip,
+.bench-widget-panel .value-chip,
+.bench-widget-panel .bench-concurrency-chip.value-chip{
   background: color-mix(in srgb, var(--display-face-control-text) 7%, transparent) !important;
   border-color: var(--display-face-control-border) !important;
   color: var(--display-face-control-muted) !important;
-}
-
-[data-display-face="crt"] .bench-widget-panel .value-chip-active,
-[data-display-face="crt"] .bench-widget-panel .bench-concurrency-chip.value-chip-active,
-[data-display-face="paper"] .bench-widget-panel .value-chip-active,
-[data-display-face="paper"] .bench-widget-panel .bench-concurrency-chip.value-chip-active {
+}.bench-widget-panel .value-chip-active,
+.bench-widget-panel .bench-concurrency-chip.value-chip-active,
+.bench-widget-panel .value-chip-active,
+.bench-widget-panel .bench-concurrency-chip.value-chip-active{
   background: var(--display-face-control-active-bg) !important;
   border-color: var(--display-face-control-active-border) !important;
   color: var(--display-face-control-active-text) !important;
@@ -3998,7 +3846,7 @@
 
 /* CRT + PAPER face — bench concurrency label */
 
-/* ARCTIC — PAPER face concurrency label (EINK face uses --display-face-light-concurrency-label) */
+/* Concurrency label — colour-theme token only (was ARCTIC/PAPER + EINK variants) */
 
 
 .bench-widget-panel .bench-concurrency-badge--compact .bench-concurrency-badge__mult {
@@ -4054,12 +3902,14 @@
   white-space: nowrap;
 }
 
-/* CRT face — hw topo uses phosphor tokens (ARCTIC inherits SLATE vars on display face) */
-[data-display-face="crt"] .bench-widget-panel .bench-hw-topo-label {
+/* HW topo readout uses the face's phosphor tokens. Unconditional: it reads
+   --display-face-text (a colour-theme token), so CLEAN and DOTTED are identical on
+   dark themes — texture only adds dots, it never changes ink. */
+.bench-widget-panel .bench-hw-topo-label {
   color: color-mix(in srgb, var(--display-face-text) 82%, transparent);
 }
 
-[data-display-face="crt"] .bench-widget-panel .bench-hw-topo-driver {
+.bench-widget-panel .bench-hw-topo-driver {
   color: color-mix(in srgb, var(--display-face-text-muted) 90%, transparent);
 }
 
@@ -4206,12 +4056,6 @@
   color: color-mix(in srgb, var(--theme-text, #e2e8f0) 70%, transparent);
 }
 
-[data-display-face="eink"] .fusion-bench-latch__segments > span.is-lit,
-[data-display-face="eink"] .fusion-bench-latch--stowed .fusion-bench-latch__segments > span:first-child {
-  background: color-mix(in srgb, var(--display-face-light-readout-fg, #1a1a1a) 55%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--display-face-light-readout-fg, #1a1a1a) 25%, transparent);
-}
-
 .bench-widget-panel .bench-results-stack {
   flex-shrink: 0;
   min-height: 0;
@@ -4325,17 +4169,6 @@ html[data-industrial-bezel="brush"] {
   border: none !important;
 }
 
-/* PAPER face — flat face; shadow stays on phosphor-screen-inner (unified above) */
-[data-display-face="paper"] .phosphor-screen-inner.phosphor-display-surface {
-  background-color: var(--display-face-bg, #030801);
-  background-image: none;
-}
-
-[data-display-face="paper"] .phosphor-display-surface::before,
-[data-display-face="paper"] .phosphor-display-surface::after {
-  display: none !important;
-}
-
 .phosphor-display-surface {
   contain: paint;
 }
@@ -4376,193 +4209,59 @@ html[data-industrial-bezel="brush"] {
  * CRT face — CRT face on glass only (`.phosphor-screen-inner`), full area.
  * Shadow is unified on .phosphor-screen-inner — do not re-chip here.
  */
-[data-display-face="crt"] .phosphor-screen-inner.phosphor-display-surface,
-[data-display-face="crt"] .launch-rail-tel .phosphor-display-surface {
+/*
+ * DOTTED — the ONLY face, and it does exactly one thing: fake a dot-matrix pattern
+ * on top of the display surfaces. Ink/colour is never touched here; it comes from
+ * colour-theme tokens, so dark themes look identical on CLEAN and DOTTED apart from
+ * the dots themselves (which is what they already did).
+ *
+ * Grain colour + surface come from one face-neutral family, so a single rule serves
+ * all 3 themes (ARCTIC supplies dark dots + multiply + its wider pitch).
+ * CLEAN emits no rule at all — nothing to switch off, nothing to drift.
+ */
+[data-display-face="dotted"] .phosphor-screen-inner.phosphor-display-surface,
+[data-display-face="dotted"] .launch-rail-tel .phosphor-display-surface {
   position: relative;
-  /* Per-theme accent-tinted CRT face (SLATE stays neutral grey). Was hardcoded #080808,
-     which lost the MATRIX/AMBER/CYAN tint. DARK uses --display-face-bg-dark token. */
-  background-color: var(--display-face-bg-dark, #080808);
-  /* Dots only — horizontal bands gated by --display-face-dark-band-opacity (0 = off, match LIGHT). */
+  background-color: var(--display-face-dotted-bg, var(--display-face-bg-dark, #080808));
+  /* Dots only — scan bands stay gated off via --display-face-grain-band-opacity (0). */
   background-image:
     radial-gradient(
       circle,
-      var(--display-face-dark-dot, rgba(200, 200, 208, 0.04))
-        calc(var(--display-face-dark-grain-cell, 2.5px) / 2),
-      transparent calc(var(--display-face-dark-grain-cell, 2.5px) / 2)
+      var(--display-face-grain-dot, rgba(200, 200, 208, 0.04))
+        calc(var(--display-face-grain-cell, 2.5px) / 2),
+      transparent calc(var(--display-face-grain-cell, 2.5px) / 2)
     ),
     repeating-linear-gradient(
       to bottom,
       transparent 0px,
-      transparent calc(var(--display-face-dark-grain-scan, 5px) / 2),
+      transparent calc(var(--display-face-grain-scan, 5px) / 2),
       color-mix(
         in srgb,
-        var(--display-face-dark-band, rgba(0, 0, 0, 0.06))
-          calc(var(--display-face-dark-band-opacity, 0) * 100%),
+        var(--display-face-grain-band, rgba(0, 0, 0, 0.06))
+          calc(var(--display-face-grain-band-opacity, 0) * 100%),
         transparent
       )
-        calc(var(--display-face-dark-grain-scan, 5px) / 2),
+        calc(var(--display-face-grain-scan, 5px) / 2),
       color-mix(
         in srgb,
-        var(--display-face-dark-band, rgba(0, 0, 0, 0.06))
-          calc(var(--display-face-dark-band-opacity, 0) * 100%),
+        var(--display-face-grain-band, rgba(0, 0, 0, 0.06))
+          calc(var(--display-face-grain-band-opacity, 0) * 100%),
         transparent
       )
-        var(--display-face-dark-grain-scan, 5px)
+        var(--display-face-grain-scan, 5px)
     );
   background-size:
-    var(--display-face-dark-grain-cell, 2.5px) var(--display-face-dark-grain-cell, 2.5px),
-    100% var(--display-face-dark-grain-scan, 5px);
+    var(--display-face-grain-cell, 2.5px) var(--display-face-grain-cell, 2.5px),
+    100% var(--display-face-grain-scan, 5px);
 }
 
-/* DARK: texture is on the face, not ::before/::after */
-[data-display-face="crt"] .phosphor-display-surface::before,
-[data-display-face="crt"] .phosphor-display-surface::after,
-[data-display-face="crt"] .launch-rail-tel .phosphor-display-surface::before,
-[data-display-face="crt"] .launch-rail-tel .phosphor-display-surface::after {
+/* Pattern is painted on the face itself, never on ::before/::after. */
+[data-display-face="dotted"] .phosphor-display-surface::before,
+[data-display-face="dotted"] .phosphor-display-surface::after,
+[data-display-face="dotted"] .launch-rail-tel .phosphor-display-surface::before,
+[data-display-face="dotted"] .launch-rail-tel .phosphor-display-surface::after {
   display: none !important;
   opacity: 0 !important;
-}
-
-/*
- * EINK face — e-ink face + grain.
- * Main glass: `.phosphor-screen-inner` only.
- * HW monitor widgets: `.launch-rail-tel .phosphor-display-surface` (same face recipe;
- * no recess shadow on widgets — launch.css keeps box-shadow: none).
- * Do not paint LIGHT on arbitrary nested content (that caused the “inner pad” bug).
- */
-[data-display-face="eink"] .phosphor-screen-inner.phosphor-display-surface,
-[data-display-face="eink"] .launch-rail-tel .phosphor-display-surface {
-  --theme-bench-inset-shadow: var(--display-profile-bench-inset);
-  background-color: var(--display-face-light-surface) !important;
-  background-image: none !important;
-}
-
-/* LIGHT — sharp depressed inset on light e-ink face (hard edge lines + tight shadow) */
-[data-display-face="eink"] .phosphor-screen-inner.phosphor-display-surface {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.88),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.55),
-    inset 0 8px 16px -6px rgba(15, 40, 70, 0.22),
-    inset 0 -8px 16px -6px rgba(15, 40, 70, 0.14) !important;
-}
-
-[data-display-face="eink"] .phosphor-screen-inner.phosphor-display-surface::before,
-[data-display-face="eink"] .launch-rail-tel .phosphor-display-surface::before {
-  content: "" !important;
-  display: block !important;
-  opacity: var(--display-face-light-band-opacity, 0.55) !important;
-  z-index: 7;
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  border-radius: inherit;
-  background-image: repeating-linear-gradient(
-    to bottom,
-    transparent 0px,
-    transparent calc(var(--display-face-light-grain-scan, 6px) / 2),
-    var(--display-face-light-band, rgba(0, 0, 0, 0.01)) calc(var(--display-face-light-grain-scan, 6px) / 2),
-    var(--display-face-light-band, rgba(0, 0, 0, 0.01)) var(--display-face-light-grain-scan, 6px)
-  );
-  background-size: 100% var(--display-face-light-grain-scan, 6px);
-  mix-blend-mode: var(--display-face-light-texture-blend, multiply);
-}
-
-[data-display-face="eink"] .phosphor-screen-inner.phosphor-display-surface::after,
-[data-display-face="eink"] .launch-rail-tel .phosphor-display-surface::after {
-  content: "" !important;
-  display: block !important;
-  opacity: 1 !important;
-  z-index: 8;
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  border-radius: inherit;
-  background-image: radial-gradient(
-    circle,
-    var(--display-face-light-dot, rgba(0, 0, 0, 0.025)) 1px,
-    transparent 1px
-  );
-  background-size: var(--display-face-light-grain-cell, 3px) var(--display-face-light-grain-cell, 3px);
-  mix-blend-mode: var(--display-face-light-texture-blend, multiply);
-}
-
-[data-display-face="eink"] .phosphor-screen-inner.phosphor-display-surface > *:not(.harness-connect-veil),
-[data-display-face="eink"] .launch-rail-tel .phosphor-display-surface > *:not(.harness-connect-veil) {
-  position: relative;
-  z-index: 1;
-}
-
-/* PAPER face — flat faces on HW widgets too (main glass handled above) */
-[data-display-face="paper"] .launch-rail-tel .phosphor-display-surface {
-  background-color: var(--display-face-bg, #030801) !important;
-  background-image: none !important;
-}
-
-[data-display-face="paper"] .launch-rail-tel .phosphor-display-surface::before,
-[data-display-face="paper"] .launch-rail-tel .phosphor-display-surface::after {
-  display: none !important;
-  opacity: 0 !important;
-}
-
-/* EINK face — e-ink text palette (VRAM forecast + fusion overlay) */
-[data-display-face="eink"] .phosphor-screen-inner .text-stealth-muted,
-[data-display-face="eink"] .phosphor-screen-inner .text-stealth-muted\/30,
-[data-display-face="eink"] .phosphor-screen-inner .text-stealth-muted\/40,
-[data-display-face="eink"] .phosphor-screen-inner .text-stealth-muted\/50,
-[data-display-face="eink"] .phosphor-screen-inner .text-stealth-muted\/60,
-[data-display-face="eink"] .phosphor-screen .text-stealth-muted,
-[data-display-face="eink"] .phosphor-screen .text-stealth-muted\/30,
-[data-display-face="eink"] .phosphor-screen .text-stealth-muted\/40,
-[data-display-face="eink"] .phosphor-screen .text-stealth-muted\/50,
-[data-display-face="eink"] .phosphor-screen .text-stealth-muted\/60 {
-  color: var(--display-face-light-text-muted) !important;
-}
-
-[data-display-face="eink"] .phosphor-screen-inner .text-nv-green,
-[data-display-face="eink"] .phosphor-screen .text-nv-green {
-  color: var(--display-face-light-text-accent) !important;
-}
-
-[data-display-face="eink"] .phosphor-screen-inner .text-electric-blue,
-[data-display-face="eink"] .phosphor-screen-inner .text-blue-700,
-[data-display-face="eink"] .phosphor-screen .text-telemetry-cyan,
-[data-display-face="eink"] .phosphor-screen .text-telemetry-cyan\/70 {
-  color: var(--display-face-light-text-cyan) !important;
-}
-
-[data-display-face="eink"] .phosphor-screen-inner .text-orange-400,
-[data-display-face="eink"] .phosphor-screen-inner .text-telemetry-amber,
-[data-display-face="eink"] .phosphor-screen .text-orange-400,
-[data-display-face="eink"] .phosphor-screen .text-telemetry-amber,
-[data-display-face="eink"] .phosphor-screen .text-telemetry-amber\/80 {
-  color: var(--display-face-light-text-amber) !important;
-}
-
-[data-display-face="eink"] .phosphor-screen-inner .bg-stealth-dark,
-[data-display-face="eink"] .phosphor-screen .bg-stealth-dark {
-  background-color: var(--display-face-light-bar-bg) !important;
-}
-
-[data-display-face="eink"] .phosphor-screen-inner .border-stealth-border,
-[data-display-face="eink"] .phosphor-screen-inner .border-stealth-border\/30,
-[data-display-face="eink"] .phosphor-screen-inner .border-stealth-border\/50,
-[data-display-face="eink"] .phosphor-screen .border-stealth-border,
-[data-display-face="eink"] .phosphor-screen .border-stealth-border\/30,
-[data-display-face="eink"] .phosphor-screen .border-stealth-border\/50 {
-  border-color: var(--display-face-light-border) !important;
-}
-
-/* EINK face — VRAM forecast bar tracks: darkened theme accent (not neutral pink-beige) */
-
-/* EINK face — PREFILL hero TPS: Arctic slate on e-ink (all app themes + share capture) */
-[data-display-face="eink"] .phosphor-screen .fusion-prefill-hero-value--active,
-[data-display-face="eink"] .phosphor-screen-inner .fusion-prefill-hero-value--active {
-  color: #4a5568;
-}
-
-[data-display-face="eink"] .phosphor-screen .fusion-prefill-hero-value--idle,
-[data-display-face="eink"] .phosphor-screen-inner .fusion-prefill-hero-value--idle {
-  color: rgba(90, 100, 120, 0.38);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -4923,53 +4622,22 @@ html[data-industrial-bezel="brush"] {
   border: none;
 }
 
-/* Late cascade — glass face only (phosphor-screen-inner) */
-[data-display-face="crt"] .phosphor-screen-inner.phosphor-display-surface,
-[data-display-face="crt"] .launch-rail-tel .phosphor-display-surface {
-  /* Per-theme accent-tinted CRT face (SLATE stays neutral). Matches PAPER face below. */
-  background-color: var(--display-face-bg-dark, #080808) !important;
-  /* Soft phosphor dots only — scan stripes off via --display-face-dark-band-opacity: 0 */
+/*
+ * Late cascade — DOTTED pattern re-asserted on the glass so nothing later can
+ * flatten it. Same single face-neutral grain family as the primary rule above.
+ */
+[data-display-face="dotted"] .phosphor-screen-inner.phosphor-display-surface,
+[data-display-face="dotted"] .launch-rail-tel .phosphor-display-surface {
+  background-color: var(--display-face-dotted-bg, var(--display-face-bg-dark, #080808)) !important;
   background-image:
     radial-gradient(
       circle,
-      var(--display-face-dark-dot, rgba(200, 200, 208, 0.04))
-        calc(var(--display-face-dark-grain-cell, 2.5px) / 2),
-      transparent calc(var(--display-face-dark-grain-cell, 2.5px) / 2)
-    ),
-    repeating-linear-gradient(
-      to bottom,
-      transparent 0px,
-      transparent calc(var(--display-face-dark-grain-scan, 5px) / 2),
-      color-mix(
-        in srgb,
-        var(--display-face-dark-band, rgba(0, 0, 0, 0.06))
-          calc(var(--display-face-dark-band-opacity, 0) * 100%),
-        transparent
-      )
-        calc(var(--display-face-dark-grain-scan, 5px) / 2),
-      color-mix(
-        in srgb,
-        var(--display-face-dark-band, rgba(0, 0, 0, 0.06))
-          calc(var(--display-face-dark-band-opacity, 0) * 100%),
-        transparent
-      )
-        var(--display-face-dark-grain-scan, 5px)
+      var(--display-face-grain-dot, rgba(200, 200, 208, 0.04))
+        calc(var(--display-face-grain-cell, 2.5px) / 2),
+      transparent calc(var(--display-face-grain-cell, 2.5px) / 2)
     ) !important;
   background-size:
-    var(--display-face-dark-grain-cell, 2.5px) var(--display-face-dark-grain-cell, 2.5px),
-    100% var(--display-face-dark-grain-scan, 5px) !important;
-}
-
-[data-display-face="eink"] .phosphor-screen-inner.phosphor-display-surface,
-[data-display-face="eink"] .launch-rail-tel .phosphor-display-surface {
-  background-color: var(--display-face-light-surface) !important;
-  background-image: none !important;
-}
-
-[data-display-face="paper"] .phosphor-screen-inner.phosphor-display-surface,
-[data-display-face="paper"] .launch-rail-tel .phosphor-display-surface {
-  background-color: var(--display-face-bg, #030801) !important;
-  background-image: none !important;
+    var(--display-face-grain-cell, 2.5px) var(--display-face-grain-cell, 2.5px) !important;
 }
 
 /* Fusion/bench control ink inside glass — routed to brightness-clamped
@@ -6053,64 +5721,6 @@ html[data-industrial-bezel="brush"] {
   }
 }
 
-/* EINK face — instrument wells + heroes on e-ink face */
-[data-display-face="eink"] .fusion-instrument {
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, #000 4%, transparent) 0%,
-      transparent 50%
-    ),
-    color-mix(in srgb, var(--display-face-light-bar-bg, #465a40) 10%, transparent);
-  border-color: color-mix(in srgb, var(--display-face-light-border, rgba(0, 0, 0, 0.18)) 70%, transparent);
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 55%, transparent),
-    inset 0 -1px 0 color-mix(in srgb, #000 8%, transparent);
-}
-
-[data-display-face="eink"] .fusion-instrument--live {
-  border-color: color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 35%, transparent);
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 60%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 12%, transparent);
-}
-
-[data-display-face="eink"] .fusion-tg-hero-value.is-hot,
-[data-display-face="eink"] .fusion-instrument--tg .fusion-instrument__value.is-hot {
-  color: var(--display-face-light-readout, #1e3a14);
-  text-shadow: none;
-}
-
-[data-display-face="eink"] .fusion-prefill-hero-value--active,
-[data-display-face="eink"] .fusion-prefill-hero-value.is-hot {
-  color: #4a5568;
-  text-shadow: none;
-}
-
-[data-display-face="eink"] .fusion-prefill-hero-value--idle,
-[data-display-face="eink"] .fusion-prefill-hero-value.is-ghost {
-  color: rgba(90, 100, 120, 0.38);
-}
-
-[data-display-face="eink"] .fusion-instrument__phase--tg {
-  color: var(--display-face-light-readout, #1e3a14);
-  text-shadow: none;
-}
-
-[data-display-face="eink"] .fusion-hero-spark--active {
-  color: var(--display-face-light-readout, #1e3a14);
-}
-
-[data-display-face="eink"] .fusion-mode-seg__btn.is-active {
-  background: color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 14%, transparent);
-  color: var(--display-face-light-readout, #1e3a14);
-}
-
-[data-display-face="eink"] .fusion-pp-progress__fill.is-active {
-  background: color-mix(in srgb, #b45309 70%, #1e3a14);
-  box-shadow: none;
-}
-
 /* Share capture — keep hero sizes pinned (existing rules); spark can hide for clean PNG */
 .fusion-share-capture-stage[data-fusion-share-capture] .fusion-instrument__spark {
   opacity: 0.55;
@@ -6661,57 +6271,6 @@ html[data-industrial-bezel="brush"] {
   color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 75%, transparent);
 }
 
-/* (bench tray latch keeps .fusion-bench-latch — share-strip + layout margins) */
-
-/* EINK face — slot/bench instruments */
-[data-display-face="eink"] .fusion-slot-bank__well,
-[data-display-face="eink"] .fusion-bench-panel.bench-widget-panel {
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, #fff 55%, transparent) 0%,
-      color-mix(in srgb, var(--display-face-light-surface, #e8e4d8) 70%, transparent) 100%
-    );
-  border-color: color-mix(in srgb, var(--display-face-light-ctx-track-border, #9ca38a) 70%, transparent);
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 70%, transparent),
-    inset 0 -1px 0 color-mix(in srgb, #000 8%, transparent);
-}
-
-[data-display-face="eink"] .fusion-slot-bank--live .fusion-slot-bank__well {
-  border-color: color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 40%, transparent);
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 70%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 18%, transparent);
-}
-
-[data-display-face="eink"] .fusion-slot-bank__title,
-[data-display-face="eink"] .fusion-bench-row-label,
-[data-display-face="eink"] .fusion-bench-metric__label {
-  color: color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 55%, transparent);
-}
-
-/* LIGHT paper — solid dark well + ice ink (same language as concurrency chips) */
-[data-display-face="eink"] .fusion-bench-run {
-  background: var(--display-face-light-concurrency-chip-bg, #243818) !important;
-  border-color: var(--display-face-light-concurrency-chip-border, #4d7a00) !important;
-  color: var(--display-face-light-concurrency-chip-fg, #d9f99d) !important;
-}
-[data-display-face="eink"] .fusion-bench-run:hover:not(:disabled) {
-  filter: brightness(1.08);
-}
-[data-display-face="eink"] .fusion-bench-toggle--on {
-  background: var(--display-face-light-concurrency-chip-bg, #243818) !important;
-  border-color: var(--display-face-light-concurrency-chip-border, #4d7a00) !important;
-  color: var(--display-face-light-concurrency-chip-fg, #d9f99d) !important;
-  box-shadow: none;
-}
-
-[data-display-face="eink"] .ctx-bar-fill--processing {
-  background: var(--display-face-light-ctx-fill-processing, #3f6b2a);
-  box-shadow: none;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .fusion-bench-running__dot {
     animation: none;
@@ -7258,59 +6817,6 @@ html[data-industrial-bezel="brush"] {
   font-size: 7px;
   letter-spacing: 0.06em;
   color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 70%, transparent);
-}
-
-/* EINK face boot */
-[data-display-face="eink"] .fusion-boot-gpu-bank__well,
-[data-display-face="eink"] .fusion-boot-disk,
-[data-display-face="eink"] .fusion-boot-ticker {
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, #fff 55%, transparent) 0%,
-      color-mix(in srgb, var(--display-face-light-surface, #e8e4d8) 70%, transparent) 100%
-    );
-  border-color: color-mix(in srgb, var(--display-face-light-ctx-track-border, #9ca38a) 70%, transparent);
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 70%, transparent),
-    inset 0 -1px 0 color-mix(in srgb, #000 8%, transparent);
-}
-
-[data-display-face="eink"] .fusion-boot__title,
-[data-display-face="eink"] .fusion-boot-gpu-bank__title,
-[data-display-face="eink"] .fusion-boot-disk__lab,
-[data-display-face="eink"] .fusion-boot-phase__lab,
-[data-display-face="eink"] .fusion-boot-meta__lab {
-  color: color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 55%, transparent);
-}
-
-[data-display-face="eink"] .fusion-boot__timer,
-[data-display-face="eink"] .fusion-boot-gpu-col__val,
-[data-display-face="eink"] .fusion-boot-meta__val,
-[data-display-face="eink"] .fusion-boot-phase__step.is-done .fusion-boot-phase__lab,
-[data-display-face="eink"] .fusion-boot-phase__step.is-active .fusion-boot-phase__lab {
-  color: var(--display-face-light-readout, #1e3a14);
-  text-shadow: none;
-}
-
-[data-display-face="eink"] .fusion-boot-gpu-col__fill {
-  background: var(--display-face-light-ctx-fill-processing, #3f6b2a);
-  box-shadow: none;
-  opacity: 0.85;
-}
-
-[data-display-face="eink"] .fusion-boot-disk.is-hot .fusion-boot-disk__value,
-[data-display-face="eink"] .fusion-boot-disk.is-warm .fusion-boot-disk__value {
-  color: #0e7490;
-  text-shadow: none;
-}
-
-[data-display-face="eink"] .fusion-boot-disk__mbit {
-  color: color-mix(in srgb, #0e7490 70%, transparent);
-}
-
-[data-display-face="eink"] .fusion-boot-ticker__line {
-  color: color-mix(in srgb, var(--display-face-light-readout, #1e3a14) 78%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {
