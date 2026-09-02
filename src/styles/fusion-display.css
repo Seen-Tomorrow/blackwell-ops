@@ -4253,6 +4253,7 @@ html[data-industrial-bezel="brush"] {
   background-size:
     var(--display-face-grain-cell, 2.5px) var(--display-face-grain-cell, 2.5px),
     100% var(--display-face-grain-scan, 5px);
+  background-blend-mode: var(--display-face-grain-blend, normal);
 }
 
 /* Pattern is painted on the face itself, never on ::before/::after. */
@@ -4638,6 +4639,7 @@ html[data-industrial-bezel="brush"] {
     ) !important;
   background-size:
     var(--display-face-grain-cell, 2.5px) var(--display-face-grain-cell, 2.5px) !important;
+  background-blend-mode: var(--display-face-grain-blend, normal) !important;
 }
 
 /* Fusion/bench control ink inside glass — routed to brightness-clamped

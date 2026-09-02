@@ -10,6 +10,14 @@
   --theme-telemetry-cyan: #00e5ff;
   --theme-telemetry-red: #ff3333;
   --theme-electric-blue: #4da3ff;
+  /* Semantic aliases consumed by CSS; derived so they survive theme switch. */
+  --theme-bg-elevated: var(--theme-panel);
+  --theme-surface-inset: var(--theme-panel-accent);
+  --theme-danger: var(--theme-tel-hot, #ef4444);
+  --theme-crit: var(--theme-tel-hot, #ef4444);
+  --theme-telemetry-blue: var(--theme-tel-ram, #4da3ff);
+  --theme-harness-worker-text: color-mix(in srgb, var(--theme-harness-worker-raw, #ea580c) 22%, #fff 78%);
+
 
   /* App theme tokens — defaults (matrix); overridden by applyAppTheme() */
   --theme-bg: #000000;
@@ -49,6 +57,8 @@
   --display-face-text-muted: #3a6a4a;
   --display-face-bar-bg: rgba(74, 222, 128, 0.08);
   --display-face-border: rgba(74, 222, 128, 0.12);
+  --display-face-gpu-readout: var(--theme-accent-bright, var(--theme-accent));
+  --display-face-gpu-readout-muted: var(--display-face-text-muted);
   --theme-industrial-bg: #111810;
   --theme-industrial-text: #4ade80;
   --theme-industrial-muted: #4ade80;
@@ -69,6 +79,8 @@
   --theme-launch-active-bg: color-mix(in srgb, var(--theme-chip-solid-bg) 72%, var(--theme-industrial-bg) 28%);
   --theme-launch-active-border: var(--theme-chip-solid-bg);
   --theme-launch-active-text: var(--theme-chip-solid-text);
+  --theme-launch-hover-shadow: none;
+  --theme-launch-active-shadow: none;
   /* Full Auto cockpit wells — dark default; ARCTIC overrides lighter */
   --theme-cockpit-well-shadow: inset 0 3px 8px color-mix(in srgb, #000000 55%, transparent), inset 0 1px 0 color-mix(in srgb, #000000 40%, transparent), inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 35%, transparent), 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 25%, transparent);
   --theme-cockpit-header-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 6%, transparent), inset 0 -1px 0 color-mix(in srgb, #000000 28%, transparent);
@@ -163,18 +175,7 @@
      floating above the toolbar below (dark-theme parity). */
   --theme-eject-cast-shadow: var(--theme-bezel-cast-shadow);
   --theme-bench-inset-shadow: rgba(0, 0, 0, 0.22);
-  /* Display combo reference — bench tray inset (dark theme+LIGHT). */
-  --display-profile-bench-inset: rgba(0, 0, 0, 0.22);
-  /*
-   * DOTTED face grain — ONE face-neutral family (theme-consolidation step 2).
-   *
-   * Previously two families, `--display-face-dark-*` (crt) and
-   * `--display-face-light-*` (eink), which forced CSS to ask "is this ARCTIC?".
-   * Texture now only decides whether the pattern is ON; the pattern's colour and
-   * the surface behind it are theme-owned, exactly like accents. Dark themes get
-   * light dots; ARCTIC overrides to dark dots + `multiply`. Same px scale as
-   * before (fixed, with app zoom) so the dot pitch is unchanged.
-   */
+  /* DOTTED grain — texture on/off only; colour from theme tokens. ARCTIC: dark dots + multiply. */
   --display-face-grain-cell: 2.5px;
   --display-face-grain-scan: 5px;
   --display-face-grain-dot: rgba(200, 200, 208, 0.04);
@@ -368,16 +369,16 @@ html, body, #root {
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--theme-stealth-dark);
+  background: var(--theme-scrollbar-track);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2a2a3e;
+  background: var(--theme-scrollbar-thumb);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a3a4e;
+  background: color-mix(in srgb, var(--theme-scrollbar-thumb) 70%, var(--theme-accent-bright, var(--theme-accent)) 30%);
 }
 
 /* Selection color */

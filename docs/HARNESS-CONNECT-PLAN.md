@@ -363,7 +363,6 @@ Wire `catalogSeats` (or active set seats) + stack into `EngineGpuForecast` for t
 ### Docs touch-ups (same PR or follow-up)
 
 - `docs/CATALOG-SEATS-PLAN.md` — add: connect binds derived seats; panel under bezel above engines; wizard deleted  
-- `docs/DEFERRED-CLEANUP.md` — resolved entry for wizard/rematch/presetTwinBind  
 - `AGENTS.md` harness paragraph — one line: harness UX = catalog seats + HarnessConnectPanel (below VramBadge, above Running Engines)
 
 ---
@@ -413,7 +412,7 @@ Wire `catalogSeats` (or active set seats) + stack into `EngineGpuForecast` for t
 
 ### Phase 4 — docs + verify
 
-1. Update CATALOG-SEATS-PLAN, DEFERRED-CLEANUP, AGENTS.md  
+1. Update CATALOG-SEATS-PLAN, AGENTS.md  
 2. `npx tsc --noEmit`  
 3. Manual acceptance (below)  
 
