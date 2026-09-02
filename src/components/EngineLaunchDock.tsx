@@ -4,10 +4,10 @@ import type { LaunchDockPosition } from "../lib/storage";
 import RunningEnginesPanel from "./RunningEnginesPanel";
 
 const LAUNCH_DOCK_LABEL_CLASS =
-  "config-launch-dock__label font-mono w-11 flex-shrink-0 uppercase tracking-wider truncate text-[9px] text-stealth-muted";
+  "config-launch-dock__label font-mono w-11 flex-shrink-0 uppercase tracking-wider truncate type-label eng-dock-label";
 
 function paramChipClass(active: boolean): string {
-  return `px-2 py-0.5 text-[9px] font-mono rounded-sm focus:outline-none ${
+  return `px-2 py-0.5 type-label font-mono rounded-sm focus:outline-none ${
     active ? "value-chip-active" : "value-chip"
   }`;
 }
@@ -83,7 +83,7 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
     <>
       {specParallelWarn && !fullAutoFixed && (
         <div
-          className={`config-mtp-launch-warn rounded-sm px-2.5 py-1.5 text-[7px] font-mono leading-snug${
+          className={`config-mtp-launch-warn rounded-sm px-2.5 py-1.5 type-micro font-mono leading-snug${
             rail ? " shrink-0" : ""
           }`}
           role="status"
@@ -97,7 +97,7 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
       )}
       {specParallelWarn && fullAutoFixed && (
         <div
-          className={`config-mtp-launch-warn rounded-sm px-2.5 py-1.5 text-[7px] font-mono leading-snug${
+          className={`config-mtp-launch-warn rounded-sm px-2.5 py-1.5 type-micro font-mono leading-snug${
             rail ? " shrink-0" : ""
           }`}
           role="status"
@@ -111,7 +111,7 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
       )}
       {modelIsDraftOnly && (
         <div
-          className={`config-mtp-launch-warn rounded-sm px-2.5 py-1.5 text-[7px] font-mono leading-snug${
+          className={`config-mtp-launch-warn rounded-sm px-2.5 py-1.5 type-micro font-mono leading-snug${
             rail ? " shrink-0" : ""
           }`}
           role="status"
@@ -192,7 +192,7 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
             type="button"
             onClick={onOpenLlamaBenchCmd}
             disabled={launchDisabled}
-            className="config-nobsproof-btn absolute bottom-1 right-10 z-20 px-1.5 py-0.5 text-[7px] font-mono uppercase tracking-wider rounded-sm border disabled:opacity-40 disabled:cursor-not-allowed"
+            className="config-nobsproof-btn absolute bottom-1 right-10 z-20 px-1.5 py-0.5 type-micro font-mono uppercase tracking-wider rounded-sm border disabled:opacity-40 disabled:cursor-not-allowed"
             title="llama-bench — map launch knobs → industry bench in external CMD (DEV). Edit config/llama-bench/defaults.json for -p/-n sweeps."
           >
             BENCH
@@ -201,7 +201,7 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
             type="button"
             onClick={onOpenNobsproofCmd}
             disabled={launchDisabled}
-            className="config-nobsproof-btn absolute bottom-1 right-1 z-20 px-1.5 py-0.5 text-[7px] font-mono uppercase tracking-wider rounded-sm border disabled:opacity-40 disabled:cursor-not-allowed"
+            className="config-nobsproof-btn absolute bottom-1 right-1 z-20 px-1.5 py-0.5 type-micro font-mono uppercase tracking-wider rounded-sm border disabled:opacity-40 disabled:cursor-not-allowed"
             title="NoBSproof — open exact launch CLI in a new CMD window (DEV)"
           >
             CMD
@@ -216,7 +216,7 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
         >
           <p
             id={replaceId}
-            className="text-[7px] font-mono leading-snug text-white/95"
+            className="type-micro font-mono leading-snug eng-replace-note"
           >
             <span className="uppercase tracking-wide font-semibold">Replace mode</span>
             {" — "}
@@ -226,14 +226,14 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
             <button
               type="button"
               onClick={acknowledgeReplaceLaunch}
-              className="config-replace-confirm__launch flex-1 px-2 py-1 text-[7px] font-mono uppercase tracking-wide rounded-sm"
+              className="config-replace-confirm__launch flex-1 px-2 py-1 type-micro font-mono uppercase tracking-wide rounded-sm"
             >
               Launch anyway
             </button>
             <button
               type="button"
               onClick={onCancelReplaceLaunch}
-              className="config-replace-confirm__cancel px-2 py-1 text-[7px] font-mono uppercase tracking-wide rounded-sm"
+              className="config-replace-confirm__cancel px-2 py-1 type-micro font-mono uppercase tracking-wide rounded-sm"
             >
               Cancel
             </button>
@@ -262,7 +262,7 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
                   ? "Custom provider — VRAM forecast does not block launch"
                   : undefined
         }
-        className={`w-full h-full min-h-[2.75rem] min-w-0 ignite-btn config-launch-btn px-2 py-1.5 text-[11px] font-mono tracking-[0.18em] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed flex flex-col items-stretch justify-center gap-0.5 ${customFlagsLaunchActive ? "overflow-visible" : "overflow-hidden"} ${launchAck ? "launch-ack" : ""}${customFlagsLaunchActive ? " config-launch-btn--custom-active" : ""}`}
+        className={`w-full h-full min-h-[2.75rem] min-w-0 ignite-btn config-launch-btn px-2 py-1.5 type-sm font-mono tracking-[0.18em] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed flex flex-col items-stretch justify-center gap-0.5 ${customFlagsLaunchActive ? "overflow-visible" : "overflow-hidden"} ${launchAck ? "launch-ack" : ""}${customFlagsLaunchActive ? " config-launch-btn--custom-active" : ""}`}
       >
         {customFlagsLaunchActive && (
           <span
@@ -274,7 +274,7 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
           </span>
         )}
         <span className="text-center">LAUNCH ENGINE</span>
-        <span className="config-launch-btn__hint text-[7px] font-mono tracking-wider normal-case font-normal text-center">
+        <span className="config-launch-btn__hint type-micro font-mono tracking-wider normal-case font-normal text-center">
           Ctrl+Enter
         </span>
       </button>
@@ -324,7 +324,7 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
           <button
             type="button"
             onClick={onExpandCollapsedDock}
-            className="config-launch-dock__flags-pill w-full text-left rounded-sm px-2 py-1 text-[7px] font-mono border border-amber-500/35 text-amber-300/85 bg-amber-500/10 hover:bg-amber-500/15 transition-colors"
+            className="config-launch-dock__flags-pill w-full text-left rounded-sm px-2 py-1 type-micro font-mono eng-flags-pill transition-colors"
             title="Expand dock to edit custom flags"
           >
             CUSTOM FLAGS {customFlagsReplaceActive ? "REPLACE" : "APPEND"} — click to expand

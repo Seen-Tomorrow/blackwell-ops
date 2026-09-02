@@ -37,25 +37,25 @@ export default function EngineBanner({ slotIndex, alias, providerName, providerT
   const aliasLabel = alias ? sanitizeAlias(alias).toUpperCase() : String(slotIndex + 1).padStart(2, "0");
 
   return (
-    <div className="engine-stack-banner flex items-center gap-2 px-3 py-2 border-b border-stealth-border/30 min-w-0">
+    <div className="engine-stack-banner flex items-center gap-2 px-3 py-2 border-b eng-banner-divider min-w-0">
       <span className={`status-dot shrink-0 ${statusDotClass(status)}`} />
 
       <div className="flex flex-col min-w-0 shrink-0">
-        <span className="text-[8px] font-mono text-stealth-muted tracking-wider uppercase">
+        <span className="type-tiny font-mono eng-banner-slot tracking-wider uppercase">
           SLOT {slotIndex + 1}{gpuMask ? ` · GPU ${gpuMask}` : ""}
         </span>
-        <span className="text-[10px] font-mono tracking-wider truncate" title={aliasLabel}>
+        <span className="type-body font-mono tracking-wider truncate" title={aliasLabel}>
           #{aliasLabel}
         </span>
       </div>
 
       {hasProvider && status !== "IDLE" && (
         <>
-          <span className="provider-pill-active border text-[8px] font-mono px-2 py-0.5 rounded-sm truncate max-w-[140px]" title={displayName}>
+          <span className="provider-pill-active border type-tiny font-mono px-2 py-0.5 rounded-sm truncate max-w-[140px]" title={displayName}>
             {displayName}
           </span>
           <span
-            className="engine-stack-profile-pill border text-[8px] font-mono px-2 py-0.5 rounded-sm shrink-0 tracking-wider"
+            className="engine-stack-profile-pill border type-tiny font-mono px-2 py-0.5 rounded-sm shrink-0 tracking-wider"
             title={runtimeProfileLabel(binaryProfile)}
           >
             {runtimeProfileLabel(binaryProfile)}
@@ -66,7 +66,7 @@ export default function EngineBanner({ slotIndex, alias, providerName, providerT
       <div className="flex-1 min-w-0" />
 
       {hasProvider && status === "RUNNING" && buildInfo && (
-        <span className="text-[7px] font-mono text-stealth-muted whitespace-nowrap shrink-0 hidden sm:inline">
+        <span className="type-micro font-mono eng-banner-build whitespace-nowrap shrink-0 hidden sm:inline">
           build {buildInfo.version}
           {buildInfo.cudaVersion ? ` · CUDA ${buildInfo.cudaVersion}` : ""}
         </span>

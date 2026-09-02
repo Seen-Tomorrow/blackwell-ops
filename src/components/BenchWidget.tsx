@@ -63,11 +63,11 @@ export function BenchHwTopo({ gpus, gpuMask, splitMode, fullWidth = false }: Ben
 
   return (
     <div
-      className={`bench-hw-topo flex-shrink-0 pt-0.5 mt-2.5 border-t border-stealth-border/15 ${
+      className={`bench-hw-topo flex-shrink-0 pt-0.5 mt-2.5 border-t ${
         fullWidth ? "bench-hw-topo--row w-full px-1.5" : "px-1"
       }`}
     >
-      <p className="text-[5px] font-mono text-stealth-muted/45 tracking-wider uppercase leading-none mb-0.5">
+      <p className="type-hairline font-mono bench-hw-headline tracking-wider uppercase leading-none mb-0.5">
         {gpuSplitHeadline}
       </p>
       <div className="bench-hw-topo-grid">
@@ -99,7 +99,7 @@ export function BenchResultsActionsCol({ shareMeta, onClose }: BenchResultsFoote
     >
       {shareMeta && (
         <div className="flex flex-col items-end gap-0.5 w-full">
-          <span className="text-[5px] font-mono text-stealth-muted/45 uppercase tracking-wider leading-none">
+          <span className="type-hairline font-mono bench-hw-headline uppercase tracking-wider leading-none">
             SHARE results
           </span>
           <FusionShareMenu
@@ -122,7 +122,7 @@ export function BenchResultsActionsCol({ shareMeta, onClose }: BenchResultsFoote
       <button
         type="button"
         onClick={onClose}
-        className="bench-results-hide-btn bench-muted-btn text-[6px] font-mono transition-colors px-1.5 py-0.5 rounded-sm leading-none uppercase tracking-wide self-end"
+        className="bench-results-hide-btn bench-muted-btn type-hairline font-mono transition-colors px-1.5 py-0.5 rounded-sm leading-none uppercase tracking-wide self-end"
       >
         HIDE results
       </button>
@@ -156,7 +156,7 @@ export function BenchResultsFooter({ shareMeta, onClose }: BenchResultsFooterPro
       <button
         type="button"
         onClick={onClose}
-        className="bench-muted-btn text-[6px] font-mono transition-colors px-1.5 py-0.5 rounded-sm leading-none uppercase tracking-wide"
+        className="bench-muted-btn type-hairline font-mono transition-colors px-1.5 py-0.5 rounded-sm leading-none uppercase tracking-wide"
       >
         HIDE RESULTS
       </button>
@@ -564,12 +564,12 @@ export default function BenchWidget({
     `bench-concurrency-chip value-chip fusion-bench-chip ${active ? "value-chip-active" : ""} whitespace-nowrap focus:outline-none cursor-pointer select-none disabled:opacity-30`;
 
   const runBtnClass = (_disabled: boolean) =>
-    "fusion-bench-run text-[8px] font-bold tracking-wider px-1.5 py-0.5 rounded cursor-pointer select-none disabled:opacity-30";
+    "fusion-bench-run type-tiny font-bold tracking-wider px-1.5 py-0.5 rounded cursor-pointer select-none disabled:opacity-30";
 
   const stopBtnClass =
-    "fusion-bench-stop text-[7px] font-bold tracking-wider px-1.5 py-0.5 rounded cursor-pointer select-none flex-shrink-0";
+    "fusion-bench-stop type-micro font-bold tracking-wider px-1.5 py-0.5 rounded cursor-pointer select-none flex-shrink-0";
 
-  const chipPadClass = isCompact ? "px-1 py-0 text-[6px]" : "px-1.5 py-0.5 text-[7px]";
+  const chipPadClass = isCompact ? "px-1 py-0 type-hairline" : "px-1.5 py-0.5 type-micro";
 
   const closeResults = () => {
     ps.showResults = false;
@@ -647,11 +647,11 @@ export default function BenchWidget({
       footerDocked,
     ],
   );
-  const benchLabelClass = dualResults ? "text-[5px]" : "text-[6px]";
+  const benchLabelClass = "type-hairline";
   const benchValueClass = dualResults
-    ? (isCompact ? "text-[10px]" : "text-[15px]")
+    ? (isCompact ? "type-body" : "type-lg")
     : (isCompact ? "text-sm" : "text-xl");
-  const benchUnitClass = dualResults ? "text-[5px]" : "text-[6px]";
+  const benchUnitClass = dualResults ? "type-hairline" : "type-hairline";
   const benchRowPadClass = dualResults ? "gap-y-0 py-0" : (isCompact ? "gap-y-0 py-0" : "gap-y-0.5 py-0.5");
   const benchResultGridClass = () =>
     `bench-results-grid grid gap-x-1.5 ${benchRowPadClass}`;
@@ -892,7 +892,7 @@ export default function BenchWidget({
                  <div className="fusion-bench-running flex items-center justify-between gap-1.5 px-1 py-0.5">
                    <div className="flex items-center gap-1.5 min-w-0">
                      <span className="fusion-bench-running__dot" aria-hidden />
-                     <span className="fusion-bench-running__text text-[7px] font-mono truncate">
+                     <span className="fusion-bench-running__text type-micro font-mono truncate">
                        {stopPending
                          ? "Stopping…"
                          : ps.tgRunning
@@ -1046,7 +1046,7 @@ export default function BenchWidget({
                  }}
                >
                  {benchErrorNotice && (
-                   <p className="text-[6px] font-mono text-red-400 text-right leading-snug mb-auto pt-0.5 max-w-[11rem]">
+                   <p className="type-hairline font-mono bench-error text-right leading-snug mb-auto pt-0.5 max-w-[11rem]">
                      {benchErrorNotice}
                    </p>
                  )}
@@ -1057,7 +1057,7 @@ export default function BenchWidget({
                    <button
                      type="button"
                      onClick={dismissResults}
-                     className="bench-muted-btn text-[6px] font-mono transition-colors px-1.5 py-0.5 rounded-sm leading-none uppercase tracking-wide"
+                     className="bench-muted-btn type-hairline font-mono transition-colors px-1.5 py-0.5 rounded-sm leading-none uppercase tracking-wide"
                    >
                      HIDE results
                    </button>

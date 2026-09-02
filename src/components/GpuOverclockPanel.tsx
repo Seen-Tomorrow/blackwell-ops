@@ -34,7 +34,7 @@ const modeBtn =
   "app-nav-tab gpu-oc-mode-btn w-full font-mono tracking-wider rounded-sm";
 
 const actionBtn =
-  "app-nav-tab w-full px-2 text-[9px] font-mono tracking-wider rounded-sm flex items-center justify-center";
+  "app-nav-tab w-full px-2 type-label font-mono tracking-wider rounded-sm flex items-center justify-center";
 
 /** SYNC / PER GPU / TCC / WDDM — size from CSS (rail mode ~25% smaller). */
 const railModeBtn = "app-nav-tab gpu-oc-rail-btn gpu-oc-rail-btn--mode w-full font-mono rounded-sm";
@@ -140,11 +140,11 @@ export default function GpuOverclockPanel({
   const driverModelRow = onSetDriverModel ? (
     <div className="gpu-oc-driver-model space-y-1">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[7px] font-mono tracking-wider uppercase text-stealth-muted">
+        <span className="type-micro font-mono tracking-wider uppercase gpu-oc-muted">
           Driver model
         </span>
         <span
-          className="text-[8px] font-mono truncate"
+          className="type-tiny font-mono truncate"
           title={
             driverPending && driverPending !== driverModel
               ? `current ${driverModel || "?"} · pending ${driverPending}`
@@ -157,11 +157,11 @@ export default function GpuOverclockPanel({
                 {driverModel}
               </span>
               {driverPending && driverPending !== driverModel ? (
-                <span className="text-telemetry-amber/90"> → {driverPending}</span>
+                <span className="gpu-oc-pending"> → {driverPending}</span>
               ) : null}
             </>
           ) : (
-            <span className="text-stealth-muted">{driverActive || "N/A"}</span>
+            <span className="gpu-oc-muted">{driverActive || "N/A"}</span>
           )}
         </span>
       </div>
@@ -185,7 +185,7 @@ export default function GpuOverclockPanel({
           WDDM
         </button>
       </div>
-      <p className="text-[6px] font-mono text-stealth-muted/80 leading-snug">
+      <p className="type-hairline font-mono gpu-oc-muted-80 leading-snug">
         Hot switch · UAC ·  stop engines first
       </p>
       <p> </p>
@@ -258,20 +258,20 @@ export default function GpuOverclockPanel({
       <button
         type="button"
         onClick={() => setExpandedAndNotify((v) => !v)}
-        className={`theme-surface-header gpu-oc-header w-full px-3 py-2 border-b border-stealth-border flex items-center gap-3 text-left transition-colors ${
+        className={`theme-surface-header gpu-oc-header w-full px-3 py-2 border-b flex items-center gap-3 text-left transition-colors ${
           ocActive ? "gpu-oc-header--active" : "hover:bg-white/[0.02]"
         }`}
       >
-        <span className="gpu-oc-header__title text-[10px] font-mono text-white tracking-wider shrink-0">
+        <span className="gpu-oc-header__title type-body font-mono gpu-oc-title tracking-wider shrink-0">
           OVERCLOCKING [at your own risk]
         </span>
         <span
-          className={`gpu-oc-header__feedback flex-1 min-w-0 text-[8px] font-mono truncate text-right leading-none min-h-[0.65rem] ${feedback ? feedbackTone : "text-transparent select-none"}`}
+          className={`gpu-oc-header__feedback flex-1 min-w-0 type-tiny font-mono truncate text-right leading-none min-h-[0.65rem] ${feedback ? feedbackTone : "text-transparent select-none"}`}
           aria-live="polite"
         >
           {feedback ?? "·"}
         </span>
-        <span className="gpu-oc-header__toggle text-[9px] font-mono text-stealth-muted shrink-0 w-3 text-center">
+        <span className="gpu-oc-header__toggle type-label font-mono gpu-oc-muted shrink-0 w-3 text-center">
           {expanded ? "−" : "+"}
         </span>
       </button>
@@ -300,7 +300,7 @@ export default function GpuOverclockPanel({
                   PER GPU
                 </button>
               </div>
-              <p className="gpu-oc-rail-target font-mono text-stealth-muted truncate" title={targetLabel}>
+              <p className="gpu-oc-rail-target font-mono gpu-oc-muted truncate" title={targetLabel}>
                 {targetLabel}
               </p>
 
@@ -347,7 +347,7 @@ export default function GpuOverclockPanel({
                   />
                 </div>
               ) : (
-                <p className="gpu-oc-rail-empty font-mono text-stealth-muted text-center">
+                <p className="gpu-oc-rail-empty font-mono gpu-oc-muted text-center">
                   {initialLoading ? "Loading…" : "Select a GPU block above"}
                 </p>
               )}
@@ -363,7 +363,7 @@ export default function GpuOverclockPanel({
                 >
                   {busy ? "…" : "APPLY"}
                   {elevated !== true && (
-                    <span className="gpu-oc-rail-btn__uac absolute bottom-0 left-0 right-0 text-center font-mono text-telemetry-amber/70 tracking-wide pointer-events-none">
+                    <span className="gpu-oc-rail-btn__uac absolute bottom-0 left-0 right-0 text-center font-mono gpu-oc-uac tracking-wide pointer-events-none">
                       UAC
                     </span>
                   )}
@@ -412,7 +412,7 @@ export default function GpuOverclockPanel({
                   PER GPU
                 </button>
                 <p
-                  className="text-[7px] font-mono text-stealth-muted leading-tight truncate px-0.5"
+                  className="type-micro font-mono gpu-oc-muted leading-tight truncate px-0.5"
                   title={targetLabel}
                 >
                   {targetLabel}
@@ -461,7 +461,7 @@ export default function GpuOverclockPanel({
                   </>
                 ) : (
                   <div className="flex flex-1 items-center justify-center">
-                    <p className="text-[8px] font-mono text-stealth-muted">
+                    <p className="type-tiny font-mono gpu-oc-muted">
                       {initialLoading ? "Loading…" : "Select a GPU block below"}
                     </p>
                   </div>
@@ -476,7 +476,7 @@ export default function GpuOverclockPanel({
               >
                 {busy ? "…" : "APPLY"}
                 {elevated !== true && (
-                  <span className="absolute bottom-2 left-0 right-0 text-center text-[6px] font-mono text-telemetry-amber/70 tracking-wide pointer-events-none">
+                  <span className="absolute bottom-2 left-0 right-0 text-center type-hairline font-mono gpu-oc-uac tracking-wide pointer-events-none">
                     UAC
                   </span>
                 )}
@@ -504,7 +504,7 @@ export default function GpuOverclockPanel({
           )}
 
           {!rail && driverModelRow ? (
-            <div className="pt-1 border-t border-stealth-border/40">{driverModelRow}</div>
+            <div className="pt-1 border-t gpu-oc-divider">{driverModelRow}</div>
           ) : null}
         </div>
       )}
@@ -546,8 +546,8 @@ function OcSlider({
   return (
     <label className={`flex flex-1 items-center min-h-0 py-1 ${compact ? "gap-2" : "gap-3"}`}>
       <span
-        className={`shrink-0 font-mono text-stealth-muted tracking-wider leading-none ${
-          compact ? "w-[2.75rem] text-[7px]" : "w-[3.25rem] text-[8px]"
+        className={`shrink-0 font-mono gpu-oc-muted tracking-wider leading-none ${
+          compact ? "w-[2.75rem] type-micro" : "w-[3.25rem] type-tiny"
         }`}
       >
         {label}
@@ -572,8 +572,8 @@ function OcSlider({
         />
       </div>
       <span
-        className={`shrink-0 text-right font-mono text-white/85 tabular-nums leading-none ${
-          compact ? "w-[4.5rem] text-[10px]" : `${VALUE_W} text-sm`
+        className={`shrink-0 text-right font-mono gpu-oc-value tabular-nums leading-none ${
+          compact ? "w-[4.5rem] type-body" : `${VALUE_W} text-sm`
         }`}
       >
         {display}

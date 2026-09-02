@@ -45,7 +45,7 @@ export default function EngineToolbar(props: EngineToolbarProps) {
       )}
       {fullAutoFixed && (
         <div className="config-panel-toolbar__config flex items-center gap-1.5 flex-shrink-0">
-          <span className="config-panel-toolbar__label text-nv-green/70">FULL AUTO</span>
+          <span className="config-panel-toolbar__label eng-toolbar-label">FULL AUTO</span>
         </div>
       )}
       {seatSaveSlot}
@@ -54,7 +54,7 @@ export default function EngineToolbar(props: EngineToolbarProps) {
         <button
           type="button"
           onClick={onToggleCtxDock}
-          className={`config-panel-toolbar-chip px-1.5 py-0.5 text-[8px] font-mono rounded-sm ${
+          className={`config-panel-toolbar-chip px-1.5 py-0.5 type-tiny font-mono rounded-sm ${
             ctxCockpitDock === "above" ? "config-panel-toolbar-chip--active" : ""
           }`}
           title={
@@ -68,7 +68,7 @@ export default function EngineToolbar(props: EngineToolbarProps) {
         <button
           type="button"
           onClick={onToggleLaunchDockPosition}
-          className={`config-panel-toolbar-chip px-1.5 py-0.5 text-[8px] font-mono rounded-sm ${
+          className={`config-panel-toolbar-chip px-1.5 py-0.5 type-tiny font-mono rounded-sm ${
             launchDockPosition === "right" ? "config-panel-toolbar-chip--active" : ""
           }`}
           title={
@@ -87,7 +87,7 @@ export default function EngineToolbar(props: EngineToolbarProps) {
             <button
               type="button"
               onClick={onToggleEnginesInRail}
-              className={`config-panel-toolbar-chip px-1.5 py-0.5 text-[8px] font-mono rounded-sm ${
+              className={`config-panel-toolbar-chip px-1.5 py-0.5 type-tiny font-mono rounded-sm ${
                 enginesInRail ? "config-panel-toolbar-chip--active" : ""
               }`}
               title={
@@ -102,7 +102,7 @@ export default function EngineToolbar(props: EngineToolbarProps) {
           <button
             type="button"
             onClick={onCycleHwMonitor}
-            className={`config-panel-toolbar-chip px-1.5 py-0.5 text-[8px] font-mono rounded-sm ${
+            className={`config-panel-toolbar-chip px-1.5 py-0.5 type-tiny font-mono rounded-sm ${
               hwMonitorOpen ? "config-panel-toolbar-chip--active" : ""
             }`}
             title={
@@ -125,7 +125,7 @@ export default function EngineToolbar(props: EngineToolbarProps) {
                   key={n}
                   type="button"
                   onClick={() => onSetColumnCount(n)}
-                  className={`config-panel-toolbar-chip config-column-count__btn px-1.5 py-0.5 text-[8px] font-mono rounded-sm ${
+                  className={`config-panel-toolbar-chip config-column-count__btn px-1.5 py-0.5 type-tiny font-mono rounded-sm ${
                     columnCount === n ? "config-panel-toolbar-chip--active" : ""
                   }`}
                   title={`${n} column${n > 1 ? "s" : ""} below display`}
@@ -137,7 +137,7 @@ export default function EngineToolbar(props: EngineToolbarProps) {
             <button
               type="button"
               onClick={onToggleLayoutMode}
-              className={`config-panel-toolbar-chip config-layout-mode-btn px-2 py-0.5 text-[8px] font-mono rounded-sm ${
+              className={`config-panel-toolbar-chip config-layout-mode-btn px-2 py-0.5 type-tiny font-mono rounded-sm ${
                 layoutModeActive ? "config-panel-toolbar-chip--active config-layout-mode-btn--on" : ""
               }`}
               title={

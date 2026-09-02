@@ -2,13 +2,13 @@ import type { GpuInfo, VramManifest } from "../lib/types";
 import SegmentSwitch from "./SegmentSwitch";
 
 const DEVICE_LABEL_CLASS =
-  "gpu-assign-panel__label font-mono w-14 flex-shrink-0 uppercase tracking-wider truncate text-[9px] text-stealth-muted";
+  "gpu-assign-panel__label font-mono w-14 flex-shrink-0 uppercase tracking-wider truncate type-label eng-assign-label";
 
 const SPLIT_LABEL_CLASS =
-  "gpu-assign-panel__label font-mono w-10 flex-shrink-0 uppercase tracking-wider truncate text-[9px] text-stealth-muted text-right";
+  "gpu-assign-panel__label font-mono w-10 flex-shrink-0 uppercase tracking-wider truncate type-label eng-assign-label text-right";
 
 function paramChipClass(active: boolean, disabled?: boolean): string {
-  const base = `px-2 py-0.5 text-[9px] font-mono rounded-sm focus:outline-none ${
+  const base = `px-2 py-0.5 type-label font-mono rounded-sm focus:outline-none ${
     active ? "value-chip-active" : "value-chip"
   }`;
   return disabled ? `${base} gpu-assign-chip--locked` : base;

@@ -2,3 +2,227 @@
    Paint here, not in TSX. Color = var(--theme-*) only (no #hex, no
    var(--x,#hex) fallback). Sizes = var(--type-*); opacity via color-mix.
    Owner: de-Tailwind pass 3. */
+
+/* ── EngineConfigPanel ─────────────────────────────────────────── */
+
+/* Empty state — SELECT A MODEL */
+.eng-empty {
+  color: var(--theme-text-muted);
+}
+.eng-empty__glyph {
+  color: color-mix(in srgb, var(--theme-text-muted) 40%, transparent);
+}
+
+/* Custom flags input — amber-tinted border + placeholder */
+.eng-flags-input {
+  border-color: color-mix(in srgb, var(--theme-warn) 30%, transparent);
+}
+.eng-flags-input:focus {
+  border-color: color-mix(in srgb, var(--theme-warn) 50%, transparent);
+}
+.eng-flags-input::placeholder {
+  color: color-mix(in srgb, var(--theme-text-muted) 40%, transparent);
+}
+
+/* Detailed config panel — hairline border + label + filter */
+.eng-detailed-panel {
+  border-color: color-mix(in srgb, var(--theme-border) 30%, transparent);
+}
+.eng-detailed-panel__label {
+  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
+}
+.eng-param-filter {
+  background: color-mix(in srgb, var(--theme-panel-accent) 88%, transparent);
+  border-color: color-mix(in srgb, var(--theme-border) 30%, transparent);
+  color: color-mix(in srgb, var(--theme-accent) 90%, transparent);
+}
+.eng-param-filter::placeholder {
+  color: color-mix(in srgb, var(--theme-text-muted) 35%, transparent);
+}
+.eng-param-filter:focus {
+  border-color: color-mix(in srgb, var(--theme-accent) 40%, transparent);
+}
+
+/* "Starter pack" emphasis inside the cockpit note */
+.eng-note-emph {
+  color: color-mix(in srgb, var(--theme-text) 70%, transparent);
+}
+
+/* NO PARAMS DEFINED / NO PARAMS MATCH notices */
+.eng-no-params {
+  color: var(--theme-text-muted);
+}
+
+/* ── GpuOverclockPanel ─────────────────────────────────────────── */
+
+.gpu-oc-muted {
+  color: var(--theme-text-muted);
+}
+.gpu-oc-muted-80 {
+  color: color-mix(in srgb, var(--theme-text-muted) 80%, transparent);
+}
+.gpu-oc-title {
+  color: var(--theme-text);
+}
+.gpu-oc-pending {
+  color: color-mix(in srgb, var(--theme-warn) 90%, transparent);
+}
+.gpu-oc-uac {
+  color: color-mix(in srgb, var(--theme-warn) 70%, transparent);
+}
+.gpu-oc-divider {
+  border-color: color-mix(in srgb, var(--theme-border) 40%, transparent);
+}
+.gpu-oc-value {
+  color: color-mix(in srgb, var(--theme-text) 85%, transparent);
+}
+
+/* ── RunningEnginesPanel ───────────────────────────────────────── */
+
+/* Rail variant */
+.eng-rail-label {
+  color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
+}
+.eng-rail-port {
+  color: color-mix(in srgb, var(--theme-text) 80%, transparent);
+}
+.eng-rail-alias {
+  color: color-mix(in srgb, var(--theme-accent) 90%, transparent);
+}
+.eng-rail-source {
+  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
+}
+.eng-rail-model {
+  color: color-mix(in srgb, var(--theme-text-muted) 55%, transparent);
+}
+
+/* Page variant */
+.eng-engines-divider {
+  border-color: color-mix(in srgb, var(--theme-border) 50%, transparent);
+}
+.eng-engines-title {
+  color: color-mix(in srgb, var(--theme-text) 60%, transparent);
+}
+.eng-engine-alias {
+  color: color-mix(in srgb, var(--theme-text) 70%, transparent);
+}
+.eng-engine-model {
+  color: var(--theme-text);
+}
+.eng-engine-model--selected {
+  color: var(--theme-accent);
+}
+.eng-engine-vram {
+  color: var(--theme-text-muted);
+}
+.eng-quant-badge {
+  border-color: color-mix(in srgb, var(--theme-info) 30%, transparent);
+  color: var(--theme-info);
+}
+.eng-quant-badge--nvfp {
+  background: color-mix(in srgb, var(--theme-accent) 20%, transparent);
+  border-color: color-mix(in srgb, var(--theme-accent) 40%, transparent);
+  color: var(--theme-accent);
+}
+
+/* ── GpuTopology ───────────────────────────────────────────────── */
+
+.gpu-card--hoverable:hover {
+  border-color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
+}
+.gpu-ram-divider {
+  border-color: color-mix(in srgb, var(--theme-border) 20%, transparent);
+}
+.gpu-ram-label {
+  color: var(--theme-accent);
+}
+.gpu-ram-note {
+  color: color-mix(in srgb, var(--theme-text-muted) 60%, transparent);
+}
+.gpu-ram-track {
+  border-color: color-mix(in srgb, var(--theme-border) 30%, transparent);
+}
+.gpu-ram-fill {
+  background: var(--theme-accent);
+}
+
+/* ── StackView ─────────────────────────────────────────────────── */
+
+.eng-stack-meta {
+  color: var(--theme-text-muted);
+}
+.eng-stop-all {
+  border-color: color-mix(in srgb, var(--theme-danger) 40%, transparent);
+  color: var(--theme-danger);
+}
+.eng-stop-all:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--theme-danger) 10%, transparent);
+}
+.eng-stack-empty {
+  color: var(--theme-text-muted);
+}
+.eng-stack-empty__note {
+  color: color-mix(in srgb, var(--theme-text-muted) 60%, transparent);
+}
+
+/* ── EngineLaunchDock ──────────────────────────────────────────── */
+
+.eng-dock-label {
+  color: var(--theme-text-muted);
+}
+.eng-replace-note {
+  color: color-mix(in srgb, var(--theme-text) 95%, transparent);
+}
+.eng-flags-pill {
+  border-color: color-mix(in srgb, var(--theme-warn) 35%, transparent);
+  color: color-mix(in srgb, var(--theme-warn) 85%, transparent);
+  background: color-mix(in srgb, var(--theme-warn) 10%, transparent);
+}
+.eng-flags-pill:hover {
+  background: color-mix(in srgb, var(--theme-warn) 15%, transparent);
+}
+
+/* ── BenchWidget ───────────────────────────────────────────────── */
+
+.bench-hw-headline {
+  color: color-mix(in srgb, var(--theme-text-muted) 45%, transparent);
+}
+.bench-error {
+  color: var(--theme-danger);
+}
+
+/* ── EngineBanner ──────────────────────────────────────────────── */
+
+.eng-banner-divider {
+  border-color: color-mix(in srgb, var(--theme-border) 30%, transparent);
+}
+.eng-banner-slot {
+  color: var(--theme-text-muted);
+}
+.eng-banner-build {
+  color: var(--theme-text-muted);
+}
+
+/* ── GpuAssignPanel ────────────────────────────────────────────── */
+
+.eng-assign-label {
+  color: var(--theme-text-muted);
+}
+
+/* ── EngineToolbar ─────────────────────────────────────────────── */
+
+.eng-toolbar-label {
+  color: color-mix(in srgb, var(--theme-accent) 70%, transparent);
+}
+
+/* ── EngineLogsSwitcher ────────────────────────────────────────── */
+
+.eng-logs-hint {
+  color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
+}
+
+/* ── LaunchRailTelemetry ───────────────────────────────────────── */
+
+.eng-rail-empty {
+  color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
+}

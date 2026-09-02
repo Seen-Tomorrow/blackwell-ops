@@ -395,7 +395,7 @@ export default function LaunchRailTelemetry({
   ) : null;
 
   const emptyState = !cpu && gpus.length === 0 ? (
-    <p className="launch-rail-tel__empty text-[8px] font-mono text-stealth-muted/50 px-2 py-4 text-center">
+    <p className="launch-rail-tel__empty type-tiny font-mono eng-rail-empty px-2 py-4 text-center">
       Scanning hardware…
     </p>
   ) : null;

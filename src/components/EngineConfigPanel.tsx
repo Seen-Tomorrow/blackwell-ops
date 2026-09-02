@@ -1437,7 +1437,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         <div ref={customFlagsAnchorRef} className="custom-flags-anchor relative">
           <div className={`custom-flags-block border rounded-sm overflow-hidden ${blockClass}`}>
             <div className="custom-flags-body px-2 py-1 flex items-center gap-1.5 min-h-0">
-              <span className="text-[8px] font-mono uppercase tracking-wider shrink-0 custom-flags-label">
+              <span className="type-tiny font-mono uppercase tracking-wider shrink-0 custom-flags-label">
                 CUSTOM FLAGS
               </span>
               {testFlagsEnabled && (
@@ -1449,7 +1449,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                   onFocus={openCustomFlagsEditor}
                   placeholder="-sm layer -smf32 1 ..."
                   title="Click to open editor"
-                  className="custom-flags-input flex-1 min-w-0 border text-[8px] font-mono px-2 py-0 leading-none focus:outline-none rounded-sm border-amber-600/30 focus:border-amber-600/50 placeholder:text-stealth-muted/40 cursor-text"
+                  className="custom-flags-input flex-1 min-w-0 border type-tiny font-mono px-2 py-0 leading-none focus:outline-none rounded-sm eng-flags-input cursor-text"
                 />
               )}
               <div className="flex items-center gap-1 shrink-0 ml-auto">
@@ -1457,7 +1457,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                   <button
                     type="button"
                     onClick={() => setTestFlagsMode((m) => (m === "add" ? "replace" : "add"))}
-                    className={`px-1.5 py-0 text-[7px] font-mono border rounded-sm transition-all duration-150 cursor-pointer ${
+                    className={`px-1.5 py-0 type-micro font-mono border rounded-sm transition-all duration-150 cursor-pointer ${
                       testFlagsMode === "add" ? "mode-btn-add" : "mode-btn-replace"
                     }`}
                   >
@@ -1470,7 +1470,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                     setCustomFlagsEditorOpen(false);
                     setTestFlagsEnabled((v) => !v);
                   }}
-                  className={`px-1.5 py-0 text-[7px] font-mono border rounded-sm transition-all duration-150 cursor-pointer ${
+                  className={`px-1.5 py-0 type-micro font-mono border rounded-sm transition-all duration-150 cursor-pointer ${
                     testFlagsEnabled ? "mode-btn-add" : "mode-btn-off"
                   }`}
                 >
@@ -2894,11 +2894,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   if (!model) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-stealth-muted font-mono">
+      <div className="flex flex-col items-center justify-center h-full eng-empty font-mono">
         <div className="text-center config-empty-enter">
-          <div className="text-3xl mb-3 text-stealth-muted/40">⬡</div>
+          <div className="text-3xl mb-3 eng-empty__glyph">⬡</div>
           <p className="text-xs tracking-widest uppercase">SELECT A MODEL</p>
-          <p className="text-[9px] mt-1 opacity-50">Choose from the catalog to configure</p>
+          <p className="type-label mt-1 opacity-50">Choose from the catalog to configure</p>
         </div>
       </div>
     );
@@ -3127,7 +3127,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               <span className="config-panel-toolbar__label">SEAT</span>
               <button
                 type="button"
-                className="config-panel-toolbar-chip px-1.5 py-0.5 text-[8px] font-mono rounded-sm"
+                className="config-panel-toolbar-chip px-1.5 py-0.5 type-tiny font-mono rounded-sm"
                 title="Save this panel config to BRAIN seat (active set)"
                 onClick={() =>
                   dispatchAppEvent(EVENTS.catalogSavePanelToSeat, { role: "brain" })
@@ -3137,7 +3137,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               </button>
               <button
                 type="button"
-                className="config-panel-toolbar-chip px-1.5 py-0.5 text-[8px] font-mono rounded-sm"
+                className="config-panel-toolbar-chip px-1.5 py-0.5 type-tiny font-mono rounded-sm"
                 title="Save this panel config to WORKER seat (active set)"
                 onClick={() =>
                   dispatchAppEvent(EVENTS.catalogSavePanelToSeat, { role: "worker" })
@@ -3191,7 +3191,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         {seatEditSession ? (
           <div
             className={[
-              "catalog-seat-edit-banner mb-3 flex items-center justify-between gap-2 px-2 py-1.5 font-mono text-[9px] uppercase tracking-wider",
+              "catalog-seat-edit-banner mb-3 flex items-center justify-between gap-2 px-2 py-1.5 font-mono type-label uppercase tracking-wider",
               `catalog-seat-edit-banner--${seatEditSession.role}`,
             ].join(" ")}
             role="status"
@@ -3226,9 +3226,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         ) : null}
         {model && !modelIsDraftOnly && !showCockpitSurface && isCustomProvider && (
           <div className="mb-3 pb-3 border-b section-divider px-1">
-            <p className="text-[9px] font-mono config-muted leading-relaxed">
+            <p className="type-label font-mono config-muted leading-relaxed">
               Cockpit controls bind to Master param keys (ctx, parallel, kv_quant, reasoning…).
-              Add them via CONFIG catalog or <span className="text-white/70">Starter pack</span>.
+              Add them via CONFIG catalog or <span className="eng-note-emph">Starter pack</span>.
             </p>
           </div>
         )}
@@ -3298,16 +3298,16 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         )}
 
         {!fullAutoFixed && (
-          <div className="config-detailed-panel mb-1.5 border border-stealth-border/30 rounded-sm">
+          <div className="config-detailed-panel mb-1.5 border rounded-sm eng-detailed-panel">
             <div className="config-detailed-panel__row flex items-center gap-1.5">
-              <span className="config-detailed-panel__label text-[8px] font-mono tracking-widest uppercase text-stealth-muted/70 flex-shrink-0">
+              <span className="config-detailed-panel__label type-tiny font-mono tracking-widest uppercase eng-detailed-panel__label flex-shrink-0">
                 DETAILED CONFIG
               </span>
               <span className="config-panel-toolbar__sep mx-1 h-3 w-px flex-shrink-0" />
               <button
                 type="button"
                 onClick={() => setShowEngineCatalogSearch(true)}
-                className="config-panel-toolbar-chip px-1.5 py-0.5 text-[8px] font-mono rounded-sm flex-shrink-0"
+                className="config-panel-toolbar-chip px-1.5 py-0.5 type-tiny font-mono rounded-sm flex-shrink-0"
                 title="Add any parameter from the live catalog"
               >
                 + PARAM CATALOG
@@ -3318,7 +3318,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                   value={paramFilter}
                   onChange={(e) => setParamFilter(e.target.value)}
                   placeholder="Filter…"
-                  className="config-panel-param-filter w-[7.5rem] max-w-[40%] bg-[color-mix(in_srgb,var(--theme-panel-accent,#040b01)_88%,transparent)] border border-stealth-border/30 rounded-sm px-1.5 py-0.5 text-[8px] font-mono text-nv-green/90 placeholder:text-stealth-muted/35 focus:outline-none focus:border-nv-green/40 shadow-sm flex-shrink-0"
+                  className="config-panel-param-filter w-[7.5rem] max-w-[40%] eng-param-filter flex-shrink-0"
                   title="Filter chip groups by name or key (local — not model search)"
                 />
               )}
@@ -3330,9 +3330,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         {!fullAutoFixed && (
           <div className={paramsBypassedClass}>
             {allParamsForDisplay.length === 0 ? (
-              <div className="text-stealth-muted text-[10px] font-mono opacity-50">NO PARAMS DEFINED</div>
+              <div className="eng-no-params type-body font-mono opacity-50">NO PARAMS DEFINED</div>
             ) : belowGroupKeys.length === 0 ? null : !filteredBelowHasAny ? (
-              <div className="text-stealth-muted text-[10px] font-mono opacity-50">
+              <div className="eng-no-params type-body font-mono opacity-50">
                 NO PARAMS MATCH “{paramFilter.trim()}”
               </div>
             ) : (

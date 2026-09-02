@@ -133,7 +133,11 @@ export default function GpuTopology({
           const totalUsedMib = alloc.projectedLoadGb * 1024 + usedMib + reservedMib;
           const totalUsedPct = Math.min(totalMib > 0 ? (totalUsedMib / totalMib) * 100 : 0, 100);
           const barColorHex =
-            gpuBarColor.includes("yellow")
+            gpuBarColor.includes("bar-need--hot")
+              ? "var(--theme-telemetry-red, #EF4444)"
+              : gpuBarColor.includes("bar-need--warn")
+                ? "var(--theme-telemetry-amber, #FB923C)"
+              : gpuBarColor.includes("yellow")
               ? "var(--theme-telemetry-amber, #FBBF24)"
               : gpuBarColor.includes("telemetry-red") || gpuBarColor.includes("red-5")
                 ? "var(--theme-telemetry-red, #EF4444)"
@@ -175,7 +179,7 @@ export default function GpuTopology({
                 isSelected
                   ? " gpu-selected"
                   : onDeviceSelect
-                    ? " cursor-pointer hover:border-stealth-muted/50"
+                    ? " cursor-pointer gpu-card--hoverable"
                     : ""
               }`}
               title={tooltipText}
@@ -246,17 +250,17 @@ export default function GpuTopology({
       </div>
 
       {ramVisible && (
-        <div className="pt-2 border-t border-stealth-border/20 gpu-ram-enter">
+        <div className="pt-2 border-t gpu-ram-enter gpu-ram-divider">
           <div className="flex items-center gap-2 mb-1.5">
-            <span className="text-[9px] font-mono font-semibold text-theme-accent">
+            <span className="type-label font-mono font-semibold gpu-ram-label">
               SYSTEM RAM OFFLOAD
             </span>
             {ramManufacturedGb > 0 ? (
-              <span className="text-[8px] font-mono text-theme-accent">
+              <span className="type-tiny font-mono gpu-ram-label">
                 {ramTotalGb.toFixed(0)} GB spill / {ramManufacturedGb.toFixed(0)} GB ({((ramTotalGb / ramManufacturedGb) * 100).toFixed(0)}%)
               </span>
             ) : (
-              <span className="text-[8px] font-mono text-stealth-muted/60">
+              <span className="type-tiny font-mono gpu-ram-note">
                 RAM offload active — {ramTotalGb.toFixed(1)} GB in system memory
               </span>
             )}
@@ -265,18 +269,18 @@ export default function GpuTopology({
 
           <div
             style={{ backgroundColor: "rgb(20,20,20)" }}
-            className="relative h-4 rounded-sm overflow-hidden border border-stealth-border/30"
+            className="relative h-4 rounded-sm overflow-hidden border gpu-ram-track"
           >
             <div
               style={{
                 width: `${ramManufacturedGb > 0 ? Math.min((ramTotalGb / ramManufacturedGb) * 100, 100) : 0}%`,
               }}
-              className="h-full rounded-sm bg-theme-accent gpu-bar-fill"
+              className="h-full rounded-sm gpu-ram-fill gpu-bar-fill"
             />
           </div>
 
           <div className="flex justify-start mt-1">
-            <span className="text-[8px] font-mono text-theme-accent">
+            <span className="type-tiny font-mono gpu-ram-label">
               {ramTotalGb.toFixed(0)} GB will spill to RAM — expect slower inference
             </span>
           </div>

@@ -286,7 +286,7 @@ export default function CockpitSlider({
 
         {/* Value badge — right side with reserved left padding for growth */}
         <div
-          className="flex-shrink-0 font-mono text-[10px]"
+          className="flex-shrink-0 font-mono type-body"
           style={{ paddingLeft: heroBadge ? "2ch" : "0.4rem", minWidth: badgeWidth }}
         >
           {valueBadge ? (

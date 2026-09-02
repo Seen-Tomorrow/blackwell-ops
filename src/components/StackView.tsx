@@ -36,7 +36,7 @@ export default function StackView({ stack, logs, systemEvents, onStop, onStopAll
       <TabPageHeader
         title="ENGINE STACK"
         meta={(
-          <span className="text-[8px] font-mono opacity-40 shrink-0">
+          <span className="type-tiny font-mono eng-stack-meta opacity-40 shrink-0">
             {onlineCount} RUNNING
             {loadingCount > 0 ? ` · ${loadingCount} LOADING` : ""}
             {errorCount > 0 ? ` · ${errorCount} ERROR` : ""}
@@ -46,7 +46,7 @@ export default function StackView({ stack, logs, systemEvents, onStop, onStopAll
           <button
             onClick={onStopAll}
             disabled={activeSlots.length === 0}
-            className="px-2 py-0.5 text-[8px] font-mono border border-telemetry-red/40 text-telemetry-red hover:bg-telemetry-red/10 transition-colors rounded-sm disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+            className="px-2 py-0.5 type-tiny font-mono eng-stop-all transition-colors rounded-sm disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
           >
             STOP ALL
           </button>
@@ -55,12 +55,12 @@ export default function StackView({ stack, logs, systemEvents, onStop, onStopAll
 
       <div className="flex-1 overflow-y-auto eink-scrollbar p-4 min-h-0">
         {activeSlots.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-stealth-muted fade-in">
+          <div className="flex flex-col items-center justify-center h-full eng-stack-empty fade-in">
             <svg width="48" height="48" viewBox="0 0 28 28" fill="none" className="mb-4 opacity-30 engine-stack-empty-icon">
               <path d="M14 2L6 8v10l8 6 8-6V8L14 2z" stroke="currentColor" strokeWidth="1.5" fill="none" />
             </svg>
             <p className="text-xs font-mono tracking-wider theme-accent-text opacity-60">NO ENGINES DEPLOYED</p>
-            <p className="text-[10px] font-mono mt-1 text-stealth-muted/60">
+            <p className="type-body font-mono mt-1 eng-stack-empty__note">
               PICK A MODEL ON THE OPERATIONS TAB
             </p>
           </div>

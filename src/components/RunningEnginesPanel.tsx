@@ -196,7 +196,7 @@ export default function RunningEnginesPanel({
   if (variant === "rail") {
     return (
       <div className="launch-rail-engines shrink-0">
-        <p className="launch-rail-engines__label text-[7px] font-mono uppercase tracking-wider text-stealth-muted/50 px-0.5 mb-1">
+        <p className="launch-rail-engines__label type-micro font-mono uppercase tracking-wider eng-rail-label px-0.5 mb-1">
           Running · {instances.length}
         </p>
         <div className="launch-rail-engines__list flex flex-col gap-1">
@@ -245,16 +245,16 @@ export default function RunningEnginesPanel({
                       {role === "brain" ? "1·B" : "2·W"}
                     </span>
                   )}
-                  <span className="text-[8px] font-mono text-white/80 shrink-0 tabular-nums">
+                  <span className="type-tiny font-mono eng-rail-port shrink-0 tabular-nums">
                     :{item.entry.port}
                   </span>
                   {aliasRole(item.entry.alias) ? null : (
-                    <span className="text-[8px] font-mono text-nv-green/90 shrink-0 truncate max-w-[3.5rem]" title={item.entry.alias}>
+                    <span className="type-tiny font-mono eng-rail-alias shrink-0 truncate max-w-[3.5rem]" title={item.entry.alias}>
                       {item.entry.alias}
                     </span>
                   )}
                   <span
-                    className="text-[6px] font-mono text-stealth-muted/70 shrink-0 truncate max-w-[5.5rem] uppercase tracking-wide"
+                    className="type-hairline font-mono eng-rail-source shrink-0 truncate max-w-[5.5rem] uppercase tracking-wide"
                     title={runtimeEngineSourceLabel(item.entry)}
                   >
                     {runtimeEngineSourceLabel(item.entry)}
@@ -264,7 +264,7 @@ export default function RunningEnginesPanel({
                     splitMode={item.entry.splitMode}
                     compact
                   />
-                  <span className="text-[7px] font-mono text-stealth-muted/55 truncate flex-1 min-w-0" title={item.modelName}>
+                  <span className="type-micro font-mono eng-rail-model truncate flex-1 min-w-0" title={item.modelName}>
                     {item.modelName}
                   </span>
                 </button>
@@ -322,9 +322,9 @@ export default function RunningEnginesPanel({
   }
 
   return (
-    <div className="border-t border-stealth-border/50">
+    <div className="border-t eng-engines-divider">
       <div className="px-3 py-2.5 running-engines-header-row flex-shrink-0">
-        <h3 className="text-xl font-mono tracking-widest uppercase block text-center text-white/60">
+        <h3 className="text-xl font-mono tracking-widest uppercase block text-center eng-engines-title">
           ▼ RUNNING ENGINES ({instances.length})
         </h3>
       </div>
@@ -382,27 +382,27 @@ export default function RunningEnginesPanel({
                 )}
                 {aliasRole(item.entry.alias) ? null : (
                   <span
-                    className="running-engine-alias font-mono text-[9px] text-white/70 shrink-0 truncate"
+                    className="running-engine-alias font-mono type-label eng-engine-alias shrink-0 truncate"
                     title={item.entry.alias}
                   >
                     {item.entry.alias}
                   </span>
                 )}
                 <span
-                  className={`text-[10px] font-mono truncate flex-1 min-w-0 ${isThisSelected ? "text-nv-green" : "text-white"}`}
+                  className={`type-body font-mono truncate flex-1 min-w-0 ${isThisSelected ? "eng-engine-model--selected" : "eng-engine-model"}`}
                   title={item.modelName}
                 >
                   {item.modelName}
                 </span>
                 {item.quant && (
-                  <span className={`text-[7px] font-mono px-1 py-0.5 rounded-sm shrink-0 ${isNvfp
-                    ? "bg-nv-green/20 border border-nv-green/40 text-nv-green"
-                    : "border border-telemetry-cyan/30 text-telemetry-cyan"}`}>
+                  <span className={`type-micro font-mono px-1 py-0.5 rounded-sm shrink-0 ${isNvfp
+                    ? "eng-quant-badge--nvfp"
+                    : "eng-quant-badge"}`}>
                     {item.quant}
                   </span>
                 )}
                 {item.vramUsedGb != null && (
-                  <span className="text-[8px] font-mono text-stealth-muted shrink-0">
+                  <span className="type-tiny font-mono eng-engine-vram shrink-0">
                     {item.vramUsedGb.toFixed(1)} GB
                   </span>
                 )}

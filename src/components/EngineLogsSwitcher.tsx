@@ -184,7 +184,7 @@ export default function EngineLogsSwitcher({
             className="engine-logs-switcher__search theme-input"
             title="Enter — jump to next match"
           />
-          <span className="engine-logs-switcher__search-hint text-[7px] font-mono text-stealth-muted/50 uppercase tracking-wider">
+          <span className="engine-logs-switcher__search-hint type-micro font-mono eng-logs-hint uppercase tracking-wider">
             Enter = next
           </span>
           <button
