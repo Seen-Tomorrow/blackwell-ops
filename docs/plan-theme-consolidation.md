@@ -64,3 +64,124 @@ Resulting model: **base = dark defaults, themes = deltas.**
 - **Texture legacy maps** — ✅ DONE (`aa0430f`): dropped, pre-user.
 - **Tier 4 — texture-system unification** (~90 lines): ✅ DECIDED — leave as-is (user, 2026-08-30). Two instances don't justify the abstraction; display texture is per-component while frame texture is html-scoped. Revisit only if a third texture axis appears.
 - **Group-layout legacy paths** (`MULTI-GPU` / `RUNTIME-CONFIG` in `groupLayoutUtils.ts` / `systemParams.ts`): parked — battle-tested, delicate; review with the author agent before touching.
+
+---
+
+# Post-consolidation follow-ups (2026-08-31, session 2)
+
+## FIXED: HW monitor ignored the display texture
+
+**Cause (measured on the live dev DOM via CDP + headless Chrome, not inferred).**
+`65b389d` rewrote the 301 forks from
+`[data-theme="arctic"] .launch-rail-tel[data-display-texture="dotted"] …` to
+`[data-display-face="eink"] .launch-rail-tel …`. That moved which element the face
+label is read from: the old form read it off **`.launch-rail-tel` itself**; the new
+form resolves it up the **ancestor chain**.
+
+Served-CSS facts (dev, 3 762 selector rules parsed):
+- `[data-display-texture]` selectors: **0** — that attribute became inert at `65b389d`.
+- Face rules that co-match `.launch-rail-tel` themselves: **none**.
+- Face attribute existed on 3 component subtrees only, so the rail (and any surface
+  without an attributed ancestor) resolved to **no face** on every theme.
+
+The plan's verification matrix checked **face colors only** (3 DOTTED combos), so the
+rail and the CLEAN cycle were never on the checklist — the visual pass passed
+legitimately and the rail fell through the gap.
+
+**Fix (shipped, `DisplayFaceSync`).** The face is now published on `<html>` by a
+provider-mounted effect, mirroring how frame texture already worked
+(`IndustrialBezelTextureContext` → `html[data-industrial-bezel]`). Single source:
+
+| File | Change |
+|---|---|
+| `src/lib/applyDisplayFace.ts` | new — one place that writes `html[data-display-face]` |
+| `src/context/DisplayFaceSync.tsx` | new — effect on `theme.id` + `texture`; mounted in `App.tsx` inside `ThemeProvider` + `DisplayTextureProvider` |
+| `LaunchRailTelemetry.tsx` | dropped the never-consulted per-component attrs + now-unused hooks |
+| `EngineConfigPanel.tsx` / `EngineGpuForecast.tsx` | same; unused `displayFaceFor` imports removed |
+
+Verified face derivation, all 6 combos: `matrix|crt`, `matrix|paper`,
+`slate|crt`, `slate|paper`, `arctic|eink`, `arctic|paper`. Verified the rail's cells
+track the face by toggling `html[data-display-face]` on a probe cell:
+`crt` → `rgb(8,8,8)` + radial dot grain; `eink`/`paper` → `rgb(247,250,252)` flat.
+Confirmed by eye across all 3 themes × both Display settings, rail + `BELOW` grid.
+
+`npx tsc --noEmit` clean.
+
+## DECIDED: drop the third face — 2 faces, texture = grain only
+
+**Decision (user, 2026-08-31):** simplicity wins. `DisplayFace` goes from three
+values to **two**, keyed on **texture alone**, never on theme id:
+
+| Texture | Face | Meaning |
+|---|---|---|
+| `dotted` | **`dotted`** | mesh of dots + scan bands on display surfaces |
+| `clean` | **`flat`** | no pattern; surface is the theme's own colour |
+
+- **Colour comes from theme tokens; texture only decides whether the pattern is on.**
+  Exactly the independence the colour themes already have.
+- `displayFaceFor(themeId, texture)` → `displayFaceFor(texture)`; theme id is not an input.
+- **ARCTIC + DOTTED loses its separate light LCD surface.** It renders as a plain
+  ARCTIC-coloured surface with the light grain on top. Assessment is deliberately
+  **after the fact**: if the final ARCTIC face looks wrong, we tune ARCTIC's tokens
+  (that is a colour fix), we do **not** re-add a face.
+- Supersedes nothing in Tier 1–4. Consistent with Tier 4 ("leave texture libs separate").
+
+### What retiring the theme-derived face means (measured, `git grep`)
+
+Face rules per file (selector occurrences, at `214f1b0d6`):
+`fusion-display.css` 200 · `launch.css` 37 · `config.css` 6 · `cockpit.css` 3.
+
+| Old face | Rules | Becomes |
+|---|---|---|
+| `crt` (dark+DOTTED) | 23 | **`dotted`** — grain + dark tokens |
+| `eink` (ARCTIC+DOTTED) | 72 | **`dotted`** — grain + each theme's own tokens |
+| `paper` (any+CLEAN) | 22 | **`flat`** |
+
+The merge is what collapses the `-light-` fork: `eink` ink rules and `crt` ink rules
+become the *same* `dotted` rule reading `--display-face-*`, and each theme supplies
+its own value. Target = CSS asks only `"is the pattern on?"`, never `"is this ARCTIC?"`.
+
+**Token debt this exposes** (31 `-light-` tokens are referenced from face rules today,
+so they cannot just be deleted): 18 of them are referenced **only** from non-face
+(always-on, theme-driven) rules — `…-grain-cell/-scan`, `…-dot`, `…-band`,
+`…-texture-blend`, `…-plate-ink(-soft)`, `…-source-lab`, `…-source-kind-*`,
+`…-gpu-name(-selected)`, `…-gpu-selected-*`, `…-text-red`, `…-text-violet`. Those need
+to become ordinary theme tokens (or fold into their non-`light` twin) before the face
+attribute can go away, or the merge loses colour.
+
+## Open: `gpu-readout` token gaps (not covered by any tier)
+
+`--display-face-gpu-readout` / `-muted` are defined on **MATRIX + ARCTIC only** —
+**SLATE has none**, so `fusion-display.css` (3 sites) and `GpuTopology.tsx` fall back
+to `var(--theme-accent)` on SLATE. `--display-face-light-gpu-readout` / `-muted` exist
+on MATRIX + ARCTIC but are referenced by **0 rules**. Fold into the face work above.
+
+## Method (do not do it in one pass)
+
+1. ~~**Rail fix**~~ — ✅ DONE. Done by making `<html>` the single face source rather
+   than patching the rail, so every surface benefits and no selector is touched.
+   This also removed the *reason* step 3's `themeId` coupling was load-bearing.
+2. **Rename + merge faces** — `crt`/`eink` → `dotted`, `paper` → `flat`; re-key all
+   246 occurrences; keep every rule's declarations byte-identical, only the selector
+   changes. Now a pure CSS job: `applyDisplayFace()` is the only writer, so the
+   emitted vocabulary changes in exactly one place.
+   Take a screenshot baseline of all 6 combos **before** starting.
+3. **Retire `-light-`** — fold the 49 tokens into theme-owned `--display-face-*`,
+   drop `themeId` from `displayFaceFor`, clean `MatrixAsciiRain` (its
+   `face === "paper" && theme.id === "arctic"` special case) and the
+   `fusionShareCapture` variant face handling.
+
+### Note for step 2 — why merging is now safe
+
+The old blocker for two faces was that `crt` and `eink` were **different surfaces**
+(dark glass vs light LCD) driven by theme. With the face on `<html>` and colour
+already flowing from theme tokens, merging them into `dotted` keeps the grain
+identical and lets each theme supply its own colour — which is exactly the intended
+end state. Expect ARCTIC + DOTTED to change appearance at that step; that is the
+accepted trade, assessed after.
+
+### Verification (extends the matrix above — add the missing axes)
+
+- All **6** theme × texture combos, not 3.
+- **HW monitor rail + `BELOW` grid** in all 6 (the axis that was missed).
+- `npm run build` + `npx tsc --noEmit` clean.
