@@ -142,15 +142,15 @@ export default function ParamCatalogSearch({
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 config-section-bar flex-shrink-0">
           <div className="flex items-center gap-3">
-            <h2 className="text-[11px] font-mono theme-accent-text tracking-widest">PARAMETER CATALOG</h2>
-            <span className="text-[9px] font-mono config-muted">
+            <h2 className="type-sm font-mono theme-accent-text tracking-widest">PARAMETER CATALOG</h2>
+            <span className="type-label font-mono config-muted">
               {loading ? "LOADING..." : `${entries.length} params`}
             </span>
             {!loading && (
-              <span className={`text-[8px] font-mono px-1.5 py-0.5 rounded-sm tracking-wide ${
+              <span className={`type-tiny font-mono px-1.5 py-0.5 rounded-sm tracking-wide ${
                 editorUnlocked
-                  ? "border border-amber-400/50 text-amber-300 bg-amber-400/10"
-                  : "border border-stealth-border/40 config-muted"
+                  ? "border cfg-bord--warn--a50 cfg-warn cfg-fill--warn--a10"
+                  : "border cfg-bord config-muted"
               }`}>
                 {editorUnlocked
                   ? "UNFILTERED list — be reasonable with what you add!"
@@ -174,20 +174,20 @@ export default function ParamCatalogSearch({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search by flag, label, description..."
-            className="config-input w-full text-[11px] font-mono px-3 py-2 rounded-sm"
+            className="config-input w-full type-sm font-mono px-3 py-2 rounded-sm"
           />
         </div>
 
         {/* Results */}
         <div className="flex-1 overflow-y-auto eink-scrollbar p-3 min-h-0 space-y-1.5">
           {loading && (
-            <div className="flex items-center justify-center py-16 config-muted text-[10px] font-mono animate-pulse tracking-wider">
+            <div className="flex items-center justify-center py-16 config-muted type-body font-mono animate-pulse tracking-wider">
               RUNNING {providerId.toUpperCase()} --help...
             </div>
           )}
 
           {error && (
-            <div className="flex items-center justify-center py-12 text-red-400 text-[10px] font-mono">
+            <div className="flex items-center justify-center py-12 cfg-dng type-body font-mono">
               <div className="text-center space-y-1">
                 <div className="font-semibold tracking-wider">CATALOG PARSE FAILED</div>
                 <div className="config-muted">{error}</div>
@@ -196,7 +196,7 @@ export default function ParamCatalogSearch({
           )}
 
           {!loading && !error && filtered.length === 0 && (
-            <div className="flex items-center justify-center py-16 config-muted text-[10px] font-mono tracking-wider">
+            <div className="flex items-center justify-center py-16 config-muted type-body font-mono tracking-wider">
               {query ? "NO MATCHES" : "NO PARAMETERS AVAILABLE"}
             </div>
           )}
@@ -212,17 +212,17 @@ export default function ParamCatalogSearch({
                 }`}
               >
                 <div className="flex items-center gap-2 px-3 pt-2.5 pb-1">
-                  <span className="text-[12px] font-mono font-semibold tracking-tight">
+                  <span className="type-md font-mono font-semibold tracking-tight">
                     {entry.label}
                   </span>
                   <div className="flex-1" />
                   {status === "active" ? (
-                    <span className="value-chip-active text-[8px] font-mono px-2 py-1 rounded-sm tracking-wider">
+                    <span className="value-chip-active type-tiny font-mono px-2 py-1 rounded-sm tracking-wider">
                       ACTIVE
                     </span>
                   ) : status === "system" ? (
                     <span
-                      className="text-[8px] font-mono px-2 py-1 rounded-sm tracking-wider border border-theme-accent/35 text-theme-accent/80"
+                      className="type-tiny font-mono px-2 py-1 rounded-sm tracking-wider border cfg-bord--acc--a35 cfg-acc--a80"
                       title="SYSTEM / cockpit chrome — not addable"
                     >
                       SYSTEM
@@ -231,7 +231,7 @@ export default function ParamCatalogSearch({
                     <button
                       type="button"
                       onClick={() => handleAdd(entry)}
-                      className="value-chip-active text-[9px] font-mono px-3 py-1 rounded-sm tracking-wider"
+                      className="value-chip-active type-label font-mono px-3 py-1 rounded-sm tracking-wider"
                     >
                       ADD
                     </button>
@@ -239,7 +239,7 @@ export default function ParamCatalogSearch({
                 </div>
 
                 <div className="px-3 pb-2.5 flex items-baseline gap-2 min-h-[1.5em]">
-                  <span className="text-[10px] font-mono theme-accent-text opacity-80 shrink-0">
+                  <span className="type-body font-mono theme-accent-text opacity-80 shrink-0">
                     {entry.flag}
                     {entry.short && (
                       <span className="config-muted ml-1">{entry.short}</span>
@@ -248,14 +248,14 @@ export default function ParamCatalogSearch({
 
                   {entry.default_value !== undefined && entry.default_value !== null && (
                     <>
-                      <span className="text-[8px] config-muted opacity-40">·</span>
-                      <span className="text-[9px] font-mono config-muted shrink-0">
+                      <span className="type-tiny config-muted opacity-40">·</span>
+                      <span className="type-label font-mono config-muted shrink-0">
                         default: {String(entry.default_value)}
                       </span>
                     </>
                   )}
 
-                  <span className="flex-1 min-w-0 text-[10px] config-muted leading-relaxed break-words">
+                  <span className="flex-1 min-w-0 type-body config-muted leading-relaxed break-words">
                     {entry.description}
                   </span>
                 </div>
@@ -266,10 +266,10 @@ export default function ParamCatalogSearch({
 
         {/* Footer */}
         <div className="px-4 py-2.5 config-section-bar flex items-center justify-between flex-shrink-0">
-          <span className="text-[9px] font-mono config-muted">
+          <span className="type-label font-mono config-muted">
             {filtered.length} of {entries.length} shown
           </span>
-          <span className="text-[9px] font-mono config-muted tracking-wider">
+          <span className="type-label font-mono config-muted tracking-wider">
             ESC to close
           </span>
         </div>

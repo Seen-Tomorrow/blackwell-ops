@@ -68,26 +68,26 @@ export default function ModelHubDownloads({ downloads }: ModelHubDownloadsProps)
   return (
     <div className="flex h-full min-h-0 flex-col px-3 py-2.5">
       {actionError && (
-        <div className="mb-2 truncate text-[8px] font-mono text-red-400/80">
+        <div className="dl-mgr-error mb-2 truncate font-mono">
           {actionError}
         </div>
       )}
-      <div className="mb-2 flex items-center gap-2 text-[9px] font-mono tracking-wider uppercase text-stealth-muted">
+      <div className="dl-mgr-heading mb-2 flex items-center gap-2 font-mono tracking-wider uppercase">
         <span>Download manager</span>
         {activeDownloads.length > 0 && pane === 'queue' && (
-          <span className="text-stealth-muted/50">{activeDownloads.length} active</span>
+          <span className="dl-mgr-active">{activeDownloads.length} active</span>
         )}
         <button
           type="button"
           onClick={() => setPane('queue')}
-          className={`value-chip px-1.5 py-0 text-[7px] font-mono rounded-sm ${pane === 'queue' ? 'value-chip-active' : ''}`}
+          className={`dl-mgr-tab value-chip px-1.5 py-0 font-mono rounded-sm ${pane === 'queue' ? 'value-chip-active' : ''}`}
         >
           QUEUE
         </button>
         <button
           type="button"
           onClick={() => setPane('history')}
-          className={`value-chip px-1.5 py-0 text-[7px] font-mono rounded-sm ${pane === 'history' ? 'value-chip-active' : ''}`}
+          className={`dl-mgr-tab value-chip px-1.5 py-0 font-mono rounded-sm ${pane === 'history' ? 'value-chip-active' : ''}`}
         >
           HISTORY
         </button>
@@ -95,7 +95,7 @@ export default function ModelHubDownloads({ downloads }: ModelHubDownloadsProps)
           <button
             type="button"
             onClick={cycleSizeSort}
-            className={`ml-auto value-chip px-1.5 py-0 text-[7px] font-mono rounded-sm transition-colors ${
+            className={`dl-mgr-tab ml-auto value-chip px-1.5 py-0 font-mono rounded-sm transition-colors ${
               sizeSort !== 'default' ? 'value-chip-active' : ''
             }`}
             title="Sort by total size — click to cycle: default (newest) → largest → smallest"
@@ -104,30 +104,30 @@ export default function ModelHubDownloads({ downloads }: ModelHubDownloadsProps)
           </button>
         )}
       </div>
-      <p className="mb-2 text-[7px] font-mono text-stealth-muted/50 leading-snug">
+      <p className="dl-mgr-caption mb-2 font-mono leading-snug">
         Models · app updates · engine packs · toolchain
       </p>
 
       <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto">
         {pane === 'history' ? (
           history.length === 0 ? (
-            <div className="py-6 text-center text-[9px] font-mono text-stealth-muted/60">
+            <div className="dl-mgr-empty py-6 text-center font-mono">
               NO DOWNLOAD HISTORY
             </div>
           ) : (
             history.map((row) => (
-              <div key={row.id} className="rounded-sm border border-stealth-border/40 px-2 py-1.5">
+              <div key={row.id} className="dl-mgr-history rounded-sm border px-2 py-1.5">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="truncate text-[8px] font-mono text-white/80">
+                  <span className="dl-mgr-history-name truncate font-mono">
                     {row.hfModelId || row.file_name}
                   </span>
-                  <span className={`shrink-0 text-[7px] font-mono ${
-                    row.kind === 'header' ? 'text-cyan-400' : 'text-stealth-muted'
+                  <span className={`dl-mgr-history-kind shrink-0 font-mono ${
+                    row.kind === 'header' ? 'dl-mgr-history-kind--header' : 'dl-mgr-history-kind--full'
                   }`}>
                     {row.kind === 'header' ? 'HEADER' : 'FULL'}
                   </span>
                 </div>
-                <div className="mt-0.5 flex items-center justify-between text-[7px] font-mono text-stealth-muted/70">
+                <div className="dl-mgr-history-meta mt-0.5 flex items-center justify-between font-mono">
                   <span>{row.status}{row.quantType ? ` · ${row.quantType}` : ''}</span>
                   <span>{row.bytes > 0 ? `${(row.bytes / 1_048_576).toFixed(2)} MB` : ''}</span>
                 </div>
@@ -136,14 +136,14 @@ export default function ModelHubDownloads({ downloads }: ModelHubDownloadsProps)
           )
         ) : sorted.length === 0 ? (
           <div className="py-6 text-center">
-            <div className="mb-3 text-[9px] font-mono text-stealth-muted/60">
+            <div className="dl-mgr-empty mb-3 text-center font-mono">
               NO ACTIVE DOWNLOADS
             </div>
             <button
               type="button"
               onClick={handleRecover}
               disabled={recoveryBusy}
-              className="inline-flex items-center gap-1.5 rounded-sm border border-stealth-muted/30 px-2 py-1 text-[8px] font-mono text-stealth-muted/70 transition-colors hover:border-stealth-muted/60 hover:text-stealth-muted disabled:opacity-50"
+              className="dl-mgr-recover inline-flex items-center gap-1.5 rounded-sm border px-2 py-1 font-mono transition-colors disabled:opacity-50"
               title="Reconcile persisted batch manifests with on-disk .part files. Use if a multi-shard download disappeared from the queue after a restart."
             >
               {recoveryBusy ? 'SCANNING...' : 'RECOVER LOST SHARDS'}

@@ -44,11 +44,11 @@ function isNewestSourceForProfile(provider: ProviderConfig, env: string, source:
 }
 
 function originBadge(origin: string | null): ReactNode {
-  if (origin === "foundry") return <span className="value-chip text-[6px] font-mono px-1 py-0.5 rounded-sm">FOUNDRY</span>;
+  if (origin === "foundry") return <span className="value-chip fnd-origin-chip font-mono px-1 py-0.5 rounded-sm">FOUNDRY</span>;
   if (origin === "catalog" || origin === "downloaded") {
-    return <span className="value-chip text-[6px] font-mono px-1 py-0.5 rounded-sm">CATALOG</span>;
+    return <span className="value-chip fnd-origin-chip font-mono px-1 py-0.5 rounded-sm">CATALOG</span>;
   }
-  if (origin === "bundled") return <span className="value-chip text-[6px] font-mono px-1 py-0.5 rounded-sm">BUNDLED</span>;
+  if (origin === "bundled") return <span className="value-chip fnd-origin-chip font-mono px-1 py-0.5 rounded-sm">BUNDLED</span>;
   return null;
 }
 
@@ -95,7 +95,7 @@ function buildInfoLine(
   source: BinarySourceKind,
 ) {
   if (!buildInfo) {
-    return <span className="text-[8px] font-mono config-muted opacity-60">not available</span>;
+    return <span className="fnd-buildinfo type-tiny font-mono config-muted opacity-60">not available</span>;
   }
   const cudaArchitectures = resolveProfileCudaArchitectures(provider, buildInfo);
   const cudaArchLabel = cudaArchOptimizedLabel(cudaArchitectures);
@@ -118,17 +118,17 @@ function buildInfoLine(
   return (
     <>
       <span
-        className="text-[8px] font-mono config-muted truncate"
+        className="fnd-buildinfo type-tiny font-mono config-muted truncate"
         title={`Engine ${buildInfo.version}${buildInfo.cudaVersion ? ` · CUDA ${buildInfo.cudaVersion}` : ""} · Built: ${buildInfo.buildDate}${shipped ? ` · shipped ${shipped}` : ""}${cudaArchLabel ? ` · ${cudaArchLabel}` : ""}`}
       >
         {engineLabel}
         {buildInfo.cudaVersion ? ` · CUDA ${buildInfo.cudaVersion}` : ""} · {buildInfo.buildDate}
         {shipped ? (
-          <span className="text-stealth-muted/55"> · shipped {shipped}</span>
+          <span className="fnd-shipped-note"> · shipped {shipped}</span>
         ) : null}
       </span>
       {cudaArchLabel && (
-        <span className="foundry-cuda-arch-inline text-[7px] font-mono shrink-0">
+        <span className="foundry-cuda-arch-inline type-micro font-mono shrink-0">
           {cudaArchLabel}
         </span>
       )}
@@ -194,7 +194,7 @@ function BinarySourceRow({
 
   return (
     <div className={`foundry-profile-row flex items-center gap-2 px-3 py-1.5 flex-wrap ${isActive ? "foundry-profile-row--active" : ""}`}>
-      <span className="foundry-source-label text-[8px] font-mono config-muted shrink-0 w-[132px] truncate" title={label}>
+      <span className="foundry-source-label type-tiny font-mono config-muted shrink-0 w-[132px] truncate" title={label}>
         {label}
       </span>
 
@@ -204,7 +204,7 @@ function BinarySourceRow({
 
       <div className="flex-1 min-w-[120px] flex items-center gap-2 flex-wrap">
         {isProbingBuildInfo && (!buildInfo || isPlaceholderBuildInfo(buildInfo)) ? (
-          <span className="foundry-buildinfo-probing text-[8px] font-mono config-muted">
+          <span className="foundry-buildinfo-probing type-tiny font-mono config-muted">
             probing
             <BuildInfoProbingDots />
           </span>
@@ -212,43 +212,43 @@ function BinarySourceRow({
           buildInfoLine(buildInfo, provider, env, source)
         )}
         {isNewestBuild && !!buildInfo && source !== "catalog" && !isProbingBuildInfo && (
-          <span className="value-chip text-[7px] font-mono px-1.5 py-0.5 rounded-sm shrink-0">LATEST</span>
+          <span className="value-chip fnd-latest-chip type-micro font-mono px-1.5 py-0.5 rounded-sm shrink-0">LATEST</span>
         )}
         {showUpdateChrome && !isBuilding && (
           <div className="flex-shrink-0 flex items-center gap-1.5">
             {updateStatus === "idle" && isLatest && (
-              <span className="text-[7px] font-mono theme-accent-text">✓ Latest pack</span>
+              <span className="fnd-update-state type-micro font-mono theme-accent-text">✓ Latest pack</span>
             )}
             {updateStatus === "idle" && binaryUpdate?.available && productTag && (
               <>
-                <span className="text-[7px] font-mono config-muted">→ pack v{latestVersion}</span>
-                <button onClick={onUpdateBinary} className="value-chip text-[7px] font-mono px-2 py-0.5 rounded-sm">
+                <span className="fnd-update-state type-micro font-mono config-muted">→ pack v{latestVersion}</span>
+                <button onClick={onUpdateBinary} className="value-chip fnd-action-chip type-micro font-mono px-2 py-0.5 rounded-sm">
                   UPDATE
                 </button>
               </>
             )}
             {updateStatus === "idle" && needsDownload && (
-              <button onClick={onUpdateBinary} className="value-chip text-[7px] font-mono px-2 py-0.5 rounded-sm">
+              <button onClick={onUpdateBinary} className="value-chip fnd-action-chip type-micro font-mono px-2 py-0.5 rounded-sm">
                 DOWNLOAD v{latestVersion}
               </button>
             )}
             {updateStatus === "checking" && (
-              <span className="text-[7px] font-mono config-muted">Checking...</span>
+              <span className="fnd-update-state type-micro font-mono config-muted">Checking...</span>
             )}
             {(updateStatus === "downloading" || updateStatus === "extracting") && (
-              <span className="text-[7px] font-mono config-muted animate-pulse">
+              <span className="fnd-update-state type-micro font-mono config-muted animate-pulse">
                 {updateStatus === "downloading" ? "Downloading..." : "Extracting..."}
               </span>
             )}
             {updateStatus === "complete" && (
-              <span className="text-[7px] font-mono theme-accent-text">Updated ✓</span>
+              <span className="fnd-update-state type-micro font-mono theme-accent-text">Updated ✓</span>
             )}
             {updateStatus === "error" && (
               <>
-                <span className="text-[7px] font-mono text-red-400 truncate max-w-[120px]" title={updateError}>
+                <span className="fnd-update-state--danger type-micro font-mono truncate max-w-[120px]" title={updateError}>
                   Error: {updateError?.split("\n")[0]}
                 </span>
-                <button onClick={onUpdateBinary} className="value-chip text-[7px] font-mono px-1.5 py-0.5 rounded-sm text-red-400">
+                <button onClick={onUpdateBinary} className="value-chip fnd-action-chip--danger type-micro font-mono px-1.5 py-0.5 rounded-sm">
                   RETRY
                 </button>
               </>
@@ -260,7 +260,7 @@ function BinarySourceRow({
       {showDownloadedRevert && onRevert && source === "catalog" && !provider.optionalDownload && isActive && (
         <button
           onClick={onRevert}
-          className="value-chip text-[7px] font-mono px-2 py-1 shrink-0"
+          className="value-chip fnd-action-chip type-micro font-mono px-2 py-1 shrink-0"
           title="Use NSIS-bundled binary (keeps catalog overlay on disk)"
         >
           ↻ USE BUNDLED
@@ -268,7 +268,7 @@ function BinarySourceRow({
       )}
 
       {source === "foundry" && hasBackup && buildInfo && onRestoreConfirm && (
-        <button onClick={onRestoreConfirm} className="value-chip text-[7px] font-mono px-2 py-1 shrink-0" title={`Restore previous foundry build for ${ENV_META[env].label}`}>
+        <button onClick={onRestoreConfirm} className="value-chip fnd-action-chip type-micro font-mono px-2 py-1 shrink-0" title={`Restore previous foundry build for ${ENV_META[env].label}`}>
           ↻ RESTORE
         </button>
       )}
@@ -293,14 +293,14 @@ function BinarySourceRow({
 
       {available ? (
         isActive ? (
-          <span className="foundry-active-binary-badge text-[7px] font-mono px-2 py-1 shrink-0">ACTIVE BINARY</span>
+          <span className="foundry-active-binary-badge type-micro font-mono px-2 py-1 shrink-0">ACTIVE BINARY</span>
         ) : (
-          <button onClick={onSelect} className="value-chip text-[7px] font-mono px-2 py-1 shrink-0" title={`Use ${label.toLowerCase()} for launch`}>
+          <button onClick={onSelect} className="value-chip fnd-action-chip type-micro font-mono px-2 py-1 shrink-0" title={`Use ${label.toLowerCase()} for launch`}>
             ACTIVATE
           </button>
         )
       ) : (
-        <span className="text-[7px] font-mono config-muted opacity-50 shrink-0">—</span>
+        <span className="fnd-dash type-micro font-mono config-muted opacity-50 shrink-0">—</span>
       )}
     </div>
   );
@@ -359,17 +359,17 @@ export function BuildProfileRow({
   return (
     <div className="foundry-profile-group space-y-1">
       <div className="foundry-profile-header flex items-center gap-2 px-3 pt-1">
-        <span className="foundry-profile-label text-[10px] font-mono tracking-wider shrink-0 w-[76px]">
+        <span className="foundry-profile-label type-body font-mono tracking-wider shrink-0 w-[76px]">
           {meta.label}
         </span>
         <div className="foundry-profile-badges flex items-center gap-1 shrink-0">
           {catalogActive && originBadge("catalog")}
-          <span className="cuda-badge text-[7px] font-mono px-1.5 py-0.5 rounded-sm">CUDA {meta.cuda}</span>
-          <span className="value-chip text-[7px] font-mono px-1.5 py-0.5 rounded-sm opacity-80 max-w-[140px] truncate" title={meta.vs}>
+          <span className="cuda-badge type-micro font-mono px-1.5 py-0.5 rounded-sm">CUDA {meta.cuda}</span>
+          <span className="value-chip fnd-meta-chip type-micro font-mono px-1.5 py-0.5 rounded-sm opacity-80 max-w-[140px] truncate" title={meta.vs}>
             {meta.vs}
           </span>
           {getPrNumberForEnv(provider, env) && (
-            <span className="value-chip text-[7px] font-mono px-1.5 py-0.5 rounded-sm">
+            <span className="value-chip fnd-meta-chip type-micro font-mono px-1.5 py-0.5 rounded-sm">
               PR #{getPrNumberForEnv(provider, env)}
             </span>
           )}
@@ -436,24 +436,24 @@ export function RestoreConfirmModal({ providerId, env, onConfirm, onCancel }: {
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="config-form-panel rounded-sm shadow-2xl w-[45vw] max-w-[480px]">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-stealth-border/30">
-          <h3 className="text-xs font-mono theme-accent-text tracking-wider">↻ RESTORE PREVIOUS BUILD</h3>
-          <button onClick={onCancel} className="config-muted hover:theme-accent-text transition-colors text-sm leading-none">&times;</button>
+        <div className="flex items-center justify-between px-4 py-3 border-b fnd-modal-rule">
+          <h3 className="fnd-modal-title type-md font-mono tracking-wider">↻ RESTORE PREVIOUS BUILD</h3>
+          <button onClick={onCancel} className="fnd-modal-close config-muted hover:theme-accent-text transition-colors text-sm leading-none">&times;</button>
         </div>
         <div className="px-4 py-5 space-y-3">
-          <p className="text-[10px] font-mono config-muted uppercase tracking-wider">Confirm restore action</p>
+          <p className="fnd-modal-caption type-body font-mono config-muted uppercase tracking-wider">Confirm restore action</p>
           <div className="foundry-profile-row rounded-sm p-3 space-y-2">
-            <p className="text-[10px] font-mono leading-relaxed">
+            <p className="fnd-modal-body type-body font-mono leading-relaxed">
               This will restore the previous build for <span className="theme-accent-text">{providerId}</span> ({meta.label.toLowerCase()}).
             </p>
-            <p className="text-[9px] font-mono config-muted">
+            <p className="fnd-modal-note type-label font-mono config-muted">
               Only engines using the {meta.label} profile for this provider will be stopped. The current binary will be replaced with the backup.
             </p>
           </div>
         </div>
-        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-stealth-border/30">
-          <button onClick={onCancel} className="value-chip text-[9px] font-mono px-3 py-1 rounded-sm text-red-400">NO — CANCEL</button>
-          <button onClick={onConfirm} className="value-chip-active text-[9px] font-mono px-4 py-1 rounded-sm">YES — RESTORE</button>
+        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t fnd-modal-rule">
+          <button onClick={onCancel} className="value-chip fnd-confirm-btn--danger type-label font-mono px-3 py-1 rounded-sm">NO — CANCEL</button>
+          <button onClick={onConfirm} className="value-chip-active fnd-confirm-btn type-label font-mono px-4 py-1 rounded-sm">YES — RESTORE</button>
         </div>
       </div>
     </div>

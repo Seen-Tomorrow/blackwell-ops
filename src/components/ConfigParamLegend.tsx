@@ -18,7 +18,7 @@ function LegendChip({
 }) {
   return (
     <span
-      className={`inline-flex items-center justify-center min-w-[2rem] px-1.5 py-0.5 text-[10px] font-mono rounded-sm ${className}`}
+      className={`inline-flex items-center justify-center min-w-[2rem] px-1.5 py-0.5 type-body font-mono rounded-sm ${className}`}
     >
       {children}
     </span>
@@ -29,7 +29,7 @@ function LegendRow({ chip, label }: { chip: ReactNode; label: string }) {
   return (
     <div className="flex items-center gap-2 min-w-0">
       <div className="flex-shrink-0 w-14 flex justify-center">{chip}</div>
-      <span className="text-[8px] font-mono config-muted leading-snug">{label}</span>
+      <span className="type-tiny font-mono config-muted leading-snug">{label}</span>
     </div>
   );
 }
@@ -43,7 +43,7 @@ function LegendSection({
 }) {
   return (
     <div className="min-w-0">
-      <div className="text-[7px] font-mono config-muted uppercase tracking-widest mb-1.5">
+      <div className="type-micro font-mono config-muted uppercase tracking-widest mb-1.5">
         {title}
       </div>
       <div className="space-y-1">{children}</div>
@@ -66,13 +66,13 @@ export default function ConfigParamLegend({ editorUnlocked }: ConfigParamLegendP
   if (!editorUnlocked) {
     return (
       <div className="config-param-legend config-param-legend--locked text-right max-w-[240px]">
-        <p className="text-[8px] font-mono config-muted leading-relaxed">
+        <p className="type-tiny font-mono config-muted leading-relaxed">
           Values shown are your catalog defaults.
-          <span className="block mt-1 text-nv-green/75">
-            Unlock <span className="text-nv-green">EDITOR</span> to add, hide, or remove options.
+          <span className="block mt-1 cfg-acc--a75">
+            Unlock <span className="cfg-acc">EDITOR</span> to add, hide, or remove options.
           </span>
           <span className="block mt-1 opacity-70">
-            Mistake? <span className="text-stealth-muted">RESET TO DEFAULTS</span> restores the shipped preset.
+            Mistake? <span className="cfg-mut">RESET TO DEFAULTS</span> restores the shipped preset.
           </span>
         </p>
       </div>
@@ -84,7 +84,7 @@ export default function ConfigParamLegend({ editorUnlocked }: ConfigParamLegendP
       <button
         type="button"
         onClick={() => setLegendState(true)}
-        className="config-param-legend config-param-legend--collapsed value-chip text-[8px] font-mono px-2 py-1 rounded-sm uppercase tracking-widest transition-colors hover:border-nv-green/40"
+        className="config-param-legend config-param-legend--collapsed value-chip type-tiny font-mono px-2 py-1 rounded-sm uppercase tracking-widest transition-colors hover:cfg-bord--acc--a40"
         title="Show value chip and control legend"
       >
         Legend <span className="ml-1 opacity-60">▶</span>
@@ -97,11 +97,11 @@ export default function ConfigParamLegend({ editorUnlocked }: ConfigParamLegendP
       <button
         type="button"
         onClick={() => setLegendState(false)}
-        className="flex items-center justify-between gap-2 w-full text-[7px] font-mono config-muted uppercase tracking-widest mb-2 hover:text-nv-green/80 transition-colors"
+        className="flex items-center justify-between gap-2 w-full type-micro font-mono config-muted uppercase tracking-widest mb-2 hover:cfg-acc--a80 transition-colors"
         title="Collapse legend"
       >
         <span>Legend</span>
-        <span className="text-[8px] leading-none opacity-60">▼</span>
+        <span className="type-tiny leading-none opacity-60">▼</span>
       </button>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
         <LegendSection title="Value chips">
@@ -148,11 +148,11 @@ export default function ConfigParamLegend({ editorUnlocked }: ConfigParamLegendP
         </LegendSection>
 
         <LegendSection title="Controls">
-          <LegendRow chip={<span className="text-[11px] font-mono text-nv-green/70">*</span>} label="Set as default" />
-          <LegendRow chip={<span className="text-[11px] font-mono text-red-400/70">×</span>} label="Remove from your catalog" />
+          <LegendRow chip={<span className="type-sm font-mono cfg-acc--a70">*</span>} label="Set as default" />
+          <LegendRow chip={<span className="type-sm font-mono cfg-dng">×</span>} label="Remove from your catalog" />
           <LegendRow
             chip={
-              <svg width="12" height="12" viewBox="0 0 24 24" className="text-nv-green/50">
+              <svg width="12" height="12" viewBox="0 0 24 24" className="cfg-acc--a50">
                 <path
                   d="M3 12s4-7 9-7 9 7 9 7-4 7-9 7-9-7-9-7z"
                   fill="none"
@@ -164,31 +164,31 @@ export default function ConfigParamLegend({ editorUnlocked }: ConfigParamLegendP
             }
             label="Hide or show this value"
           />
-          <LegendRow chip={<span className="text-[10px] font-mono text-stealth-muted">◯</span>} label="Hide whole parameter row" />
-          <LegendRow chip={<span className="text-[10px] font-mono text-stealth-muted">☰</span>} label="Drag to reorder" />
+          <LegendRow chip={<span className="type-body font-mono cfg-mut">◯</span>} label="Hide whole parameter row" />
+          <LegendRow chip={<span className="type-body font-mono cfg-mut">☰</span>} label="Drag to reorder" />
           <LegendRow
-            chip={<span className="text-[8px] font-mono text-nv-green/70">ESS</span>}
+            chip={<span className="type-tiny font-mono cfg-acc--a70">ESS</span>}
             label="Include param in engine Essentials (green = on, struck = excluded)"
           />
           <LegendRow
-            chip={<span className="text-[8px] font-mono text-nv-green/70">ESS</span>}
+            chip={<span className="type-tiny font-mono cfg-acc--a70">ESS</span>}
             label="On a value bubble: same ESS toggle — hide that value from Essentials only (Full still shows it)"
           />
-          <LegendRow chip={<span className="text-[12px] font-mono text-nv-green/50">E</span>} label="Edit label, group, flags" />
-          <LegendRow chip={<span className="text-[12px] font-mono text-red-500/50">D</span>} label="Remove parameter" />
-          <LegendRow chip={<span className="text-[12px] font-mono text-blue-500/50">R</span>} label="Restore shipped preset for row" />
-          <LegendRow chip={<span className="text-[7px] font-mono text-stealth-muted/55 px-1 border border-stealth-border/40 rounded-sm">REN</span>} label="Rename group" />
+          <LegendRow chip={<span className="type-md font-mono cfg-acc--a50">E</span>} label="Edit label, group, flags" />
+          <LegendRow chip={<span className="type-md font-mono cfg-dng">D</span>} label="Remove parameter" />
+          <LegendRow chip={<span className="type-md font-mono cfg-inf">R</span>} label="Restore shipped preset for row" />
+          <LegendRow chip={<span className="type-micro font-mono cfg-mut px-1 border cfg-bord rounded-sm">REN</span>} label="Rename group" />
         </LegendSection>
       </div>
-      <p className="mt-2 pt-2 border-t border-stealth-border/25 text-[7px] font-mono config-muted leading-relaxed">
-        <span className="text-theme-accent/80">SYSTEM PARAMS</span> section = protected factory groups (flag, not name).
+      <p className="mt-2 pt-2 border-t cfg-bord--a25 type-micro font-mono config-muted leading-relaxed">
+        <span className="cfg-acc">SYSTEM PARAMS</span> section = protected factory groups (flag, not name).
         Expand values, set defaults, hide options; factory chips cannot be deleted (hide only). Engine chrome
         placement is still fixed for Launch panel keys.
       </p>
-      <p className="mt-1 text-[7px] font-mono config-muted leading-relaxed">
+      <p className="mt-1 type-micro font-mono config-muted leading-relaxed">
         Yellow row border = param you added from catalog. DEV builds can toggle{" "}
-        <span className="text-stealth-muted">DEV EDIT / USER VIEW</span> to preview restrictions.{" "}
-        <span className="text-stealth-muted">RESET TO DEFAULTS</span> undoes everything.
+        <span className="cfg-mut">DEV EDIT / USER VIEW</span> to preview restrictions.{" "}
+        <span className="cfg-mut">RESET TO DEFAULTS</span> undoes everything.
       </p>
     </div>
   );

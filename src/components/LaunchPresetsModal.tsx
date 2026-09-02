@@ -94,27 +94,27 @@ export default function LaunchPresetsModal({
       onClick={onClose}
     >
       <div
-        className="launch-presets-modal border border-stealth-border/60 w-[min(920px,94vw)] max-h-[88vh] flex flex-col font-mono text-[10px] shadow-xl rounded-sm text-stealth-text"
+        className="launch-presets-modal border cfg-bord--a60 w-[min(920px,94vw)] max-h-[88vh] flex flex-col font-mono type-body shadow-xl rounded-sm cfg-text"
         style={{
           // Solid panel — theme-surface-raised alone can be transparent in WebView2
-          backgroundColor: "var(--theme-stealth-panel, #111810)",
-          color: "var(--theme-stealth-text, #c8d4c0)",
+          backgroundColor: "var(--theme-stealth-panel)",
+          color: "var(--theme-stealth-text)",
         }}
         role="dialog"
         aria-labelledby="launch-presets-modal-title"
         onClick={(e) => e.stopPropagation()}
       >
         <header
-          className="flex items-center gap-2 px-3 py-2 border-b border-stealth-border/50 flex-shrink-0"
-          style={{ backgroundColor: "var(--theme-stealth-panel, #111810)" }}
+          className="flex items-center gap-2 px-3 py-2 border-b cfg-bord--a50 flex-shrink-0"
+          style={{ backgroundColor: "var(--theme-stealth-panel)" }}
         >
           <h2
             id="launch-presets-modal-title"
-            className="m-0 text-[11px] tracking-widest uppercase text-nv-green/90"
+            className="m-0 type-sm tracking-widest uppercase cfg-acc--a90"
           >
             Launch presets
           </h2>
-          <span className="text-stealth-muted/50 text-[8px]">solo · twin · manage</span>
+          <span className="cfg-mut--a50 type-tiny">solo · twin · manage</span>
           <button
             type="button"
             className="ml-auto config-panel-toolbar-chip px-2 py-0.5"
@@ -124,25 +124,25 @@ export default function LaunchPresetsModal({
           </button>
         </header>
 
-        <div className="flex flex-1 min-h-0" style={{ backgroundColor: "var(--theme-stealth-panel, #111810)" }}>
+        <div className="flex flex-1 min-h-0" style={{ backgroundColor: "var(--theme-stealth-panel)" }}>
           {/* List */}
           <aside
-            className="w-[200px] flex-shrink-0 border-r border-stealth-border/40 overflow-y-auto"
-            style={{ backgroundColor: "color-mix(in srgb, #000 25%, var(--theme-stealth-panel, #111810))" }}
+            className="w-[200px] flex-shrink-0 border-r cfg-bord--a40 overflow-y-auto"
+            style={{ backgroundColor: "color-mix(in srgb, #000 25%, var(--theme-stealth-panel))" }}
           >
             {combos.length === 0 && (
-              <p className="p-2 text-stealth-muted/60 m-0">No presets saved yet.</p>
+              <p className="p-2 cfg-mut--a60 m-0">No presets saved yet.</p>
             )}
             {combos.map((c) => (
               <button
                 key={c.id}
                 type="button"
-                className={`w-full text-left px-2 py-2 border-b border-stealth-border/20 ${
-                  c.id === selectedId ? "bg-nv-green/15 text-nv-green" : "hover:bg-white/5"
+                className={`w-full text-left px-2 py-2 border-b cfg-bord--a20 ${
+                  c.id === selectedId ? "cfg-fill cfg-acc" : "hover:bg-white/5"
                 }`}
                 onClick={() => setSelectedId(c.id)}
               >
-                <div className="uppercase text-[8px] opacity-70">{c.kind}</div>
+                <div className="uppercase type-tiny opacity-70">{c.kind}</div>
                 <div className="truncate">{c.name}</div>
               </button>
             ))}
@@ -151,27 +151,27 @@ export default function LaunchPresetsModal({
           {/* Editor */}
           <main className="flex-1 min-w-0 overflow-y-auto p-3 space-y-3">
             {!draft && (
-              <p className="text-stealth-muted m-0">
+              <p className="cfg-mut m-0">
                 Save a solo seat or twin from the PRESETS menu, then edit here.
               </p>
             )}
             {draft && (
               <>
                 <label className="flex flex-col gap-0.5">
-                  <span className="text-stealth-muted uppercase text-[8px]">Name</span>
+                  <span className="cfg-mut uppercase type-tiny">Name</span>
                   <input
-                    className="border border-stealth-border/50 px-2 py-1 rounded-sm text-stealth-text"
-                    style={{ backgroundColor: "color-mix(in srgb, #000 35%, var(--theme-stealth-panel, #111810))" }}
+                    className="border cfg-bord--a50 px-2 py-1 rounded-sm cfg-text"
+                    style={{ backgroundColor: "color-mix(in srgb, #000 35%, var(--theme-stealth-panel))" }}
                     value={draft.name}
                     onChange={(e) => setDraft({ ...draft, name: e.target.value })}
                   />
                 </label>
 
                 <label className="flex flex-col gap-0.5">
-                  <span className="text-stealth-muted uppercase text-[8px]">Notes</span>
+                  <span className="cfg-mut uppercase type-tiny">Notes</span>
                   <input
-                    className="border border-stealth-border/50 px-2 py-1 rounded-sm text-stealth-text"
-                    style={{ backgroundColor: "color-mix(in srgb, #000 35%, var(--theme-stealth-panel, #111810))" }}
+                    className="border cfg-bord--a50 px-2 py-1 rounded-sm cfg-text"
+                    style={{ backgroundColor: "color-mix(in srgb, #000 35%, var(--theme-stealth-panel))" }}
                     value={draft.notes ?? ""}
                     onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
                     placeholder="optional"
@@ -185,20 +185,20 @@ export default function LaunchPresetsModal({
                     onChange={(e) =>
                       setDraft({ ...draft, sequenceBrainFirst: e.target.checked })
                     }
-                    className="accent-nv-green"
+                    className="cfg-accent"
                   />
                   <span>Sequence BRAIN first on cold launch (default: parallel)</span>
                 </label>
 
                 {draft.kind === "twin" && (
                   <label className="flex flex-col gap-0.5 max-w-[200px]">
-                    <span className="text-stealth-muted uppercase text-[8px]">
+                    <span className="cfg-mut uppercase type-tiny">
                       Agents N override (empty = WORKER parallel)
                     </span>
                     <input
                       type="number"
                       min={1}
-                      className="bg-stealth-input border border-stealth-border/50 px-2 py-1 rounded-sm"
+                      className="cfg-panel border cfg-bord--a50 px-2 py-1 rounded-sm"
                       value={draft.harness?.agentsOverride ?? ""}
                       placeholder="auto"
                       onChange={(e) => {
@@ -219,10 +219,10 @@ export default function LaunchPresetsModal({
                 {(() => {
                   const mem = estimateComboMemory(draft, models);
                   return (
-                    <div className="text-[9px] text-stealth-muted flex flex-wrap gap-x-3 gap-y-0.5">
+                    <div className="type-label cfg-mut flex flex-wrap gap-x-3 gap-y-0.5">
                       <span>
                         Est. VRAM{" "}
-                        <strong className="text-stealth-text tabular-nums">
+                        <strong className="cfg-text tabular-nums">
                           ~{formatGb(mem.totalVramGb)}
                         </strong>
                       </span>
@@ -232,17 +232,17 @@ export default function LaunchPresetsModal({
                 })()}
 
                 <div className="space-y-2">
-                  <div className="text-stealth-muted uppercase text-[8px] tracking-wider">Seats</div>
+                  <div className="cfg-mut uppercase type-tiny tracking-wider">Seats</div>
                   {draft.seats.map((seat) => (
                     <div
                       key={seat.id}
-                      className="border border-stealth-border/40 rounded-sm p-2 space-y-1.5"
-                      style={{ backgroundColor: "color-mix(in srgb, #000 20%, var(--theme-stealth-panel, #111810))" }}
+                      className="border cfg-bord--a40 rounded-sm p-2 space-y-1.5"
+                      style={{ backgroundColor: "color-mix(in srgb, #000 20%, var(--theme-stealth-panel))" }}
                     >
                       <div className="flex items-center gap-2 flex-wrap">
                         <select
-                          className="border border-stealth-border/50 px-1 py-0.5 text-stealth-text"
-                          style={{ backgroundColor: "color-mix(in srgb, #000 35%, var(--theme-stealth-panel, #111810))" }}
+                          className="border cfg-bord--a50 px-1 py-0.5 cfg-text"
+                          style={{ backgroundColor: "color-mix(in srgb, #000 35%, var(--theme-stealth-panel))" }}
                           value={seat.role}
                           onChange={(e) =>
                             updateSeat(seat.id, { role: e.target.value as SeatRole })
@@ -256,18 +256,18 @@ export default function LaunchPresetsModal({
                         </select>
                         <span className="truncate opacity-80">{seatSummary(seat)}</span>
                         <span
-                          className="ml-auto text-[7px] uppercase tracking-wide px-1.5 py-0.5 rounded-sm border border-stealth-border/40 text-stealth-muted"
+                          className="ml-auto type-micro uppercase tracking-wide px-1.5 py-0.5 rounded-sm border cfg-bord--a40 cfg-mut"
                           title="Launch mode at save — edit by re-saving from Full Auto / Assisted panel"
                         >
                           {POLICY_LABEL[seat.policyId] ?? seat.policyId}
                         </span>
                       </div>
-                      <div className="text-[8px] text-stealth-muted break-all">{seat.modelPath}</div>
+                      <div className="type-tiny cfg-mut break-all">{seat.modelPath}</div>
                       <div className="flex flex-wrap gap-2 items-end">
                         <label className="flex flex-col gap-0.5">
-                          <span className="text-stealth-muted text-[7px] uppercase">Port</span>
+                          <span className="cfg-mut type-micro uppercase">Port</span>
                           <select
-                            className="bg-stealth-input border border-stealth-border/50 px-1 py-0.5"
+                            className="cfg-panel border cfg-bord--a50 px-1 py-0.5"
                             value={seat.portPolicy.mode}
                             onChange={(e) => {
                               const mode = e.target.value as PortPolicyMode;
@@ -286,10 +286,10 @@ export default function LaunchPresetsModal({
                         </label>
                         {(seat.portPolicy.mode === "prefer" || seat.portPolicy.mode === "fixed") && (
                           <label className="flex flex-col gap-0.5">
-                            <span className="text-stealth-muted text-[7px] uppercase">Port #</span>
+                            <span className="cfg-mut type-micro uppercase">Port #</span>
                             <input
                               type="number"
-                              className="bg-stealth-input border border-stealth-border/50 px-1 py-0.5 w-20"
+                              className="cfg-panel border cfg-bord--a50 px-1 py-0.5 w-20"
                               value={seat.portPolicy.port ?? ""}
                               onChange={(e) =>
                                 updatePortPolicy(seat.id, {
@@ -301,11 +301,11 @@ export default function LaunchPresetsModal({
                           </label>
                         )}
                         <label className="flex flex-col gap-0.5">
-                          <span className="text-stealth-muted text-[7px] uppercase">Parallel</span>
+                          <span className="cfg-mut type-micro uppercase">Parallel</span>
                           <input
                             type="number"
                             min={1}
-                            className="bg-stealth-input border border-stealth-border/50 px-1 py-0.5 w-16"
+                            className="cfg-panel border cfg-bord--a50 px-1 py-0.5 w-16"
                             value={seat.paramOverrides.parallel ?? ""}
                             onChange={(e) => {
                               const n = Math.max(1, Number(e.target.value) || 1);
@@ -316,11 +316,11 @@ export default function LaunchPresetsModal({
                           />
                         </label>
                         <label className="flex flex-col gap-0.5">
-                          <span className="text-stealth-muted text-[7px] uppercase">CTX</span>
+                          <span className="cfg-mut type-micro uppercase">CTX</span>
                           <input
                             type="number"
                             min={512}
-                            className="bg-stealth-input border border-stealth-border/50 px-1 py-0.5 w-20"
+                            className="cfg-panel border cfg-bord--a50 px-1 py-0.5 w-20"
                             value={seat.paramOverrides.ctx ?? ""}
                             onChange={(e) => {
                               const n = Number(e.target.value);
@@ -338,13 +338,13 @@ export default function LaunchPresetsModal({
                   ))}
                 </div>
 
-                <div className="flex flex-wrap gap-2 pt-2 border-t border-stealth-border/40">
+                <div className="flex flex-wrap gap-2 pt-2 border-t cfg-bord--a40">
                   <label className="flex items-center gap-1 mr-auto cursor-pointer">
                     <input
                       type="checkbox"
                       checked={loadIntoPanel}
                       onChange={(e) => setLoadIntoPanel(e.target.checked)}
-                      className="accent-nv-green"
+                      className="cfg-accent"
                     />
                     Load into panel on Apply
                   </label>
@@ -373,7 +373,7 @@ export default function LaunchPresetsModal({
                   </button>
                   <button
                     type="button"
-                    className="config-panel-toolbar-chip px-2 py-1 text-red-400/90"
+                    className="config-panel-toolbar-chip px-2 py-1 cfg-dng--a90"
                     onClick={() => {
                       if (window.confirm(`Delete preset “${draft.name}”?`)) {
                         onDelete(draft.id);

@@ -565,13 +565,13 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
         onMinimize={onMinimize}
         footer={(
           <>
-            <button onClick={handleCancel} className="px-3 py-1 text-[9px] font-mono border border-red-400/60 text-red-400">CANCEL BUILD</button>
-            <button onClick={handleBackupLockedYes} className="px-4 py-1 text-[9px] font-mono border rounded-sm bg-nv-green/20 border-nv-green/60 text-nv-green">YES — STOP ENGINES &amp; PROCEED</button>
+            <button onClick={handleCancel} className="fnd-confirm-btn--danger px-3 py-1 font-mono">CANCEL BUILD</button>
+            <button onClick={handleBackupLockedYes} className="fnd-confirm-btn--accent px-4 py-1 font-mono rounded-sm">YES — STOP ENGINES &amp; PROCEED</button>
           </>
         )}
       >
         <div className="px-4 py-5">
-          <p className="text-[10px] font-mono text-stealth-muted uppercase tracking-wider">Engine binary is currently in use</p>
+          <p className="fnd-modal-caption type-body font-mono uppercase tracking-wider">Engine binary is currently in use</p>
         </div>
       </FoundryWindowShell>
     );
@@ -617,18 +617,18 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
         footer={(
           <button
             onClick={handleCancel}
-            className="px-4 py-1 text-[9px] font-mono border border-red-400/60 text-red-400 hover:bg-red-500/20"
+            className="fnd-confirm-btn--danger px-4 py-1 font-mono"
           >
             CANCEL BUILD
           </button>
         )}
       >
         <div className="px-6 py-6 text-center space-y-3">
-          <div className="text-[11px] font-mono text-white/80">
+          <div className="fnd-stop-body type-sm font-mono">
             BUILD needs exclusive access.<br />
-            Automatically stopping engines using <span className="text-yellow-400 font-bold">{provider.display_name}</span> · <span className="text-yellow-400 font-bold">{environment.toUpperCase()}</span> profile...
+            Automatically stopping engines using <span className="fnd-stop-body__hl font-bold">{provider.display_name}</span> · <span className="fnd-stop-body__hl font-bold">{environment.toUpperCase()}</span> profile...
           </div>
-          <div className="text-[9px] font-mono text-stealth-muted">This can take 5–15 seconds. The build will start automatically after engines are stopped.</div>
+          <div className="fnd-stop-note type-label font-mono">This can take 5–15 seconds. The build will start automatically after engines are stopped.</div>
         </div>
       </FoundryWindowShell>
     );
@@ -638,7 +638,7 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
   return (
     <>
       {reattachedFromBackend && (
-        <div className="fixed top-2 left-1/2 -translate-x-1/2 z-[95] px-3 py-1 text-[9px] font-mono border border-yellow-400/50 bg-yellow-400/10 text-yellow-300 rounded-sm pointer-events-none">
+        <div className="fnd-reattach-banner fixed top-2 left-1/2 -translate-x-1/2 z-[95] px-3 py-1 font-mono rounded-sm pointer-events-none">
           Build still running — UI reattached after reload
         </div>
       )}

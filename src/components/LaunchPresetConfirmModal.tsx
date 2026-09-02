@@ -44,24 +44,24 @@ export default function LaunchPresetConfirmModal({
       onClick={onCancel}
     >
       <div
-        className="w-[min(420px,94vw)] border border-stealth-border/60 rounded-sm font-mono text-[10px] shadow-xl text-stealth-text"
-        style={{ backgroundColor: "var(--theme-stealth-panel, #111810)" }}
+        className="w-[min(420px,94vw)] border cfg-bord--a60 rounded-sm font-mono type-body shadow-xl cfg-text"
+        style={{ backgroundColor: "var(--theme-stealth-panel)" }}
         role="dialog"
         aria-labelledby="preset-confirm-title"
         onClick={(e) => e.stopPropagation()}
       >
-        <header className="px-3 py-2 border-b border-stealth-border/50 flex items-center gap-2">
+        <header className="px-3 py-2 border-b cfg-bord--a50 flex items-center gap-2">
           <h2
             id="preset-confirm-title"
-            className="m-0 text-[11px] tracking-widest uppercase text-nv-green/90"
+            className="m-0 type-sm tracking-widest uppercase cfg-acc--a90"
           >
             Apply preset
           </h2>
-          <span className="text-[8px] uppercase text-stealth-muted/60">{combo.kind}</span>
+          <span className="type-tiny uppercase cfg-mut--a60">{combo.kind}</span>
         </header>
 
         <div className="px-3 py-3 space-y-2">
-          <p className="m-0 text-[12px] text-stealth-text font-medium truncate" title={combo.name}>
+          <p className="m-0 type-md cfg-text font-medium truncate" title={combo.name}>
             {combo.name}
           </p>
 
@@ -69,29 +69,29 @@ export default function LaunchPresetConfirmModal({
             {mem.seats.map((s) => (
               <li
                 key={s.seatId}
-                className="flex items-center gap-2 border border-stealth-border/30 rounded-sm px-2 py-1"
-                style={{ backgroundColor: "color-mix(in srgb, #000 20%, var(--theme-stealth-panel, #111810))" }}
+                className="flex items-center gap-2 border cfg-bord--a30 rounded-sm px-2 py-1"
+                style={{ backgroundColor: "color-mix(in srgb, #000 20%, var(--theme-stealth-panel))" }}
               >
-                <span className="text-nv-green/80 uppercase w-14 shrink-0">{s.role}</span>
+                <span className="cfg-acc--a80 uppercase w-14 shrink-0">{s.role}</span>
                 <span className="truncate flex-1 min-w-0">{s.label}</span>
-                <span className="tabular-nums text-stealth-muted shrink-0">
+                <span className="tabular-nums cfg-mut shrink-0">
                   ~{formatGb(s.vramGb)}
                 </span>
               </li>
             ))}
           </ul>
 
-          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[9px] text-stealth-muted pt-1">
+          <div className="flex flex-wrap gap-x-3 gap-y-1 type-label cfg-mut pt-1">
             <span>
               Est. VRAM{" "}
-              <strong className="text-stealth-text tabular-nums">~{formatGb(mem.totalVramGb)}</strong>
+              <strong className="cfg-text tabular-nums">~{formatGb(mem.totalVramGb)}</strong>
               <span className="opacity-50"> (weights×1.12)</span>
             </span>
             <span>
-              Agents <strong className="text-stealth-text">×{agents}</strong>
+              Agents <strong className="cfg-text">×{agents}</strong>
             </span>
             {combo.sequenceBrainFirst && (
-              <span className="text-yellow-400/80">BRAIN first</span>
+              <span className="cfg-warn--a80">BRAIN first</span>
             )}
           </div>
 
@@ -100,13 +100,13 @@ export default function LaunchPresetConfirmModal({
               type="checkbox"
               checked={loadIntoPanel}
               onChange={(e) => onLoadIntoPanelChange(e.target.checked)}
-              className="accent-nv-green"
+              className="cfg-accent"
             />
-            <span className="text-stealth-muted">Also load into Launch panel</span>
+            <span className="cfg-mut">Also load into Launch panel</span>
           </label>
         </div>
 
-        <footer className="px-3 py-2 border-t border-stealth-border/50 flex justify-end gap-2">
+        <footer className="px-3 py-2 border-t cfg-bord--a50 flex justify-end gap-2">
           <button
             type="button"
             className="config-panel-toolbar-chip px-3 py-1"

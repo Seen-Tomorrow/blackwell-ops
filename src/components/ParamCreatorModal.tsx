@@ -154,26 +154,26 @@ export default function ParamCreatorModal({
   return (
     <div className="fixed inset-0 bg-black/70 z-[100] flex items-center justify-center" onClick={onClose}>
       <div
-        className="bg-stealth-panel border border-yellow-400/40 rounded-lg w-full max-w-xl mx-4 max-h-[85vh] overflow-y-auto"
+        className="cfg-panel border cfg-bord--warn--a40 rounded-lg w-full max-w-xl mx-4 max-h-[85vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 pt-4 pb-2 border-b border-stealth-border/30">
-          <h2 className="text-xs font-mono text-yellow-400 tracking-wider">ADD PARAMETER</h2>
-          <button onClick={onClose} className="text-stealth-muted hover:text-white transition-colors leading-none px-1">✕</button>
+        <div className="flex items-center justify-between px-4 pt-4 pb-2 border-b cfg-bord--a30">
+          <h2 className="text-xs font-mono cfg-warn tracking-wider">ADD PARAMETER</h2>
+          <button onClick={onClose} className="cfg-mut hover:text-white transition-colors leading-none px-1">✕</button>
         </div>
 
         {/* Mode toggle */}
-        <div className="px-4 py-2 flex items-center gap-2 border-b border-stealth-border/20">
+        <div className="px-4 py-2 flex items-center gap-2 border-b cfg-bord--a20">
           <button
             onClick={() => { setMode("simple"); saveParamCreatorMode("simple"); }}
-            className={`text-[9px] font-mono px-2 py-0.5 transition-colors ${mode === "simple" ? "bg-yellow-400/20 text-yellow-400 border border-yellow-400/40" : "text-stealth-muted hover:text-white"}`}
+            className={`type-label font-mono px-2 py-0.5 transition-colors ${mode === "simple" ? "cfg-fill--warn--a20 cfg-warn border cfg-bord--warn--a40" : "cfg-mut hover:text-white"}`}
           >
             SIMPLE
           </button>
           <button
             onClick={() => { setMode("advanced"); saveParamCreatorMode("advanced"); }}
-            className={`text-[9px] font-mono px-2 py-0.5 transition-colors ${mode === "advanced" ? "bg-yellow-400/20 text-yellow-400 border border-yellow-400/40" : "text-stealth-muted hover:text-white"}`}
+            className={`type-label font-mono px-2 py-0.5 transition-colors ${mode === "advanced" ? "cfg-fill--warn--a20 cfg-warn border cfg-bord--warn--a40" : "cfg-mut hover:text-white"}`}
           >
             ADVANCED
           </button>
@@ -182,40 +182,40 @@ export default function ParamCreatorModal({
         <div className="p-4 space-y-3">
           {/* Error */}
           {error && (
-            <div className="text-[9px] font-mono text-red-400 bg-red-400/10 border border-red-400/30 px-2 py-1 rounded">{error}</div>
+            <div className="type-label font-mono cfg-dng cfg-fill--dng--a10 border cfg-bord--dng--a30 px-2 py-1 rounded">{error}</div>
           )}
 
           {/* Key + Label row */}
           <div className="flex gap-3">
             <div className="flex flex-col gap-0.5 flex-1">
-              <span className="text-[8px] font-mono text-stealth-muted">key</span>
+              <span className="type-tiny font-mono cfg-mut">key</span>
               <input
                 type="text"
                 value={form.key}
                 onChange={e => updateField("key", e.target.value)}
                 placeholder="MyParamKey"
-                className="bg-transparent border-b border-stealth-border/50 text-[10px] font-mono text-white focus:outline-none px-1 py-0.5 placeholder:text-stealth-muted/50"
+                className="bg-transparent border-b cfg-bord--a50 type-body font-mono text-white focus:outline-none px-1 py-0.5 placeholder:cfg-mut--a50"
               />
             </div>
             <div className="flex flex-col gap-0.5 flex-1">
-              <span className="text-[8px] font-mono text-stealth-muted">label</span>
+              <span className="type-tiny font-mono cfg-mut">label</span>
               <input
                 type="text"
                 value={form.label}
                 onChange={e => updateField("label", e.target.value)}
                 placeholder="Auto from key"
-                className="bg-transparent border-b border-stealth-border/50 text-[10px] font-mono text-white focus:outline-none px-1 py-0.5 placeholder:text-stealth-muted/50"
+                className="bg-transparent border-b cfg-bord--a50 type-body font-mono text-white focus:outline-none px-1 py-0.5 placeholder:cfg-mut--a50"
               />
             </div>
           </div>
 
           {/* Group selector */}
           <div className="flex flex-col gap-0.5">
-            <span className="text-[8px] font-mono text-stealth-muted">group</span>
+            <span className="type-tiny font-mono cfg-mut">group</span>
             <select
               value={form.uiGroup || "__none__"}
               onChange={e => updateField("uiGroup", e.target.value === "__none__" ? "" : e.target.value)}
-              className="bg-[#1a1a2e] border border-stealth-border/50 text-[10px] font-mono text-white px-2 py-1 focus:outline-none rounded"
+              className="cfg-bord--a50 border cfg-bord type-body font-mono text-white px-2 py-1 focus:outline-none rounded"
             >
               <option value="__none__">— No group (Feature Flags) —</option>
               {existingGroups.map(g => (
@@ -229,30 +229,30 @@ export default function ParamCreatorModal({
                 value={form.customGroup}
                 onChange={e => updateField("customGroup", e.target.value)}
                 placeholder="New group name..."
-                className="bg-transparent border-b border-yellow-400/30 text-[10px] font-mono text-white focus:outline-none px-1 py-0.5 mt-1 placeholder:text-stealth-muted/50"
+                className="bg-transparent border-b cfg-bord--warn--a30 type-body font-mono text-white focus:outline-none px-1 py-0.5 mt-1 placeholder:cfg-mut--a50"
               />
             )}
           </div>
 
           {/* Values */}
           <div className="flex flex-col gap-0.5">
-            <span className="text-[8px] font-mono text-stealth-muted">values</span>
+            <span className="type-tiny font-mono cfg-mut">values</span>
             <div className="flex items-center gap-1.5 flex-wrap min-h-[24px] py-1">
               {form.values.map((v, i) => (
                 <span
                   key={i}
-                  className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 border text-[9px] font-mono rounded-sm ${
+                  className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 border type-label font-mono rounded-sm ${
                     String(v) === String(form.defaultValue)
-                      ? "border-nv-green/70 bg-nv-green/20 text-nv-green"
-                      : "border-stealth-border/40 text-white"
+                      ? "cfg-bord--acc--a70 cfg-fill--a20 cfg-acc"
+                      : "cfg-bord text-white"
                   }`}
                 >
                   {String(v)}
-                  <button onClick={() => removeValue(i)} className="text-red-400/50 hover:text-red-400 leading-none ml-0.5">×</button>
+                  <button onClick={() => removeValue(i)} className="cfg-dng--a50 hover:cfg-dng leading-none ml-0.5">×</button>
                   <button
                     onClick={() => setDefaultValue(v)}
                     title="Set as default"
-                    className={`leading-none ${String(v) === String(form.defaultValue) ? "text-nv-green" : "text-stealth-muted/50 hover:text-nv-green"}`}
+                    className={`leading-none ${String(v) === String(form.defaultValue) ? "cfg-acc" : "cfg-mut--a50 hover:cfg-acc"}`}
                   >
                     *
                   </button>
@@ -266,12 +266,12 @@ export default function ParamCreatorModal({
                 onChange={e => setNewValInput(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addValue(); } }}
                 placeholder="+ add value"
-                className="flex-1 bg-transparent border-b border-stealth-border/50 text-[9px] font-mono text-white focus:outline-none px-1 py-0.5 placeholder:text-stealth-muted/50"
+                className="flex-1 bg-transparent border-b cfg-bord--a50 type-label font-mono text-white focus:outline-none px-1 py-0.5 placeholder:cfg-mut--a50"
               />
               <button
                 onClick={addValue}
                 disabled={!newValInput.trim()}
-                className="text-[8px] font-mono text-nv-green/60 hover:text-nv-green transition-colors disabled:opacity-30 px-1"
+                className="type-tiny font-mono cfg-acc--a60 hover:cfg-acc transition-colors disabled:opacity-30 px-1"
               >
                 +VAL
               </button>
@@ -281,15 +281,15 @@ export default function ParamCreatorModal({
           {/* ── Advanced fields ─────────────────────── */}
           {mode === "advanced" && (
             <>
-              <div className="border-t border-stealth-border/30 pt-2 space-y-2">
+              <div className="border-t cfg-bord--a30 pt-2 space-y-2">
                 {/* ptype + flag row */}
                 <div className="flex gap-3">
                   <div className="flex flex-col gap-0.5">
-                    <span className="text-[8px] font-mono text-stealth-muted">ptype</span>
+                    <span className="type-tiny font-mono cfg-mut">ptype</span>
                     <select
                       value={form.ptype}
                       onChange={e => updateField("ptype", e.target.value)}
-                      className="bg-[#1a1a2e] border border-stealth-border/50 text-[10px] font-mono text-white px-1 py-0.5 focus:outline-none rounded"
+                      className="cfg-bord--a50 border cfg-bord type-body font-mono text-white px-1 py-0.5 focus:outline-none rounded"
                     >
                       <option value="arg_select">arg_select</option>
                       <option value="slider">slider</option>
@@ -301,13 +301,13 @@ export default function ParamCreatorModal({
 
                   {form.ptype !== "logic_only" && (
                     <div className="flex flex-col gap-0.5 flex-1">
-                      <span className="text-[8px] font-mono text-stealth-muted">flag</span>
+                      <span className="type-tiny font-mono cfg-mut">flag</span>
                       <input
                         type="text"
                         value={form.flag}
                         onChange={e => updateField("flag", e.target.value)}
                         placeholder="--my-flag"
-                        className="w-full bg-transparent border-b border-stealth-border/50 text-[10px] font-mono text-white focus:outline-none px-1 py-0.5"
+                        className="w-full bg-transparent border-b cfg-bord--a50 type-body font-mono text-white focus:outline-none px-1 py-0.5"
                       />
                     </div>
                   )}
@@ -317,18 +317,18 @@ export default function ParamCreatorModal({
                 {/* Sub-params per value */}
                 {form.values.length > 0 && (
                   <div className="flex flex-col gap-0.5">
-                    <span className="text-[8px] font-mono text-stealth-muted">sub_params</span>
+                    <span className="type-tiny font-mono cfg-mut">sub_params</span>
                     {form.values.map(v => {
                       const k = String(v);
                       return (
                         <div key={k} className="flex items-center gap-1">
-                          <span className="text-[9px] font-mono text-nv-green/60 min-w-[48px]">{k}</span>
+                          <span className="type-label font-mono cfg-acc--a60 min-w-[48px]">{k}</span>
                           <input
                             type="text"
                             value={form.subParams[k] || ""}
                             onChange={e => updateSubParam(k, e.target.value)}
                             placeholder="-flag1 val1 ..."
-                            className="flex-1 bg-transparent border-b border-stealth-border/30 text-[9px] font-mono text-white focus:outline-none px-1 py-0.5"
+                            className="flex-1 bg-transparent border-b cfg-bord--a30 type-label font-mono text-white focus:outline-none px-1 py-0.5"
                           />
                         </div>
                       );
@@ -341,17 +341,17 @@ export default function ParamCreatorModal({
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end gap-2 px-4 py-3 border-t border-stealth-border/30">
+        <div className="flex justify-end gap-2 px-4 py-3 border-t cfg-bord--a30">
           <button
             onClick={onClose}
-            className="px-3 py-1 text-[9px] font-mono border border-stealth-border/40 text-stealth-muted hover:text-white transition-colors"
+            className="px-3 py-1 type-label font-mono border cfg-bord--a40 cfg-mut hover:text-white transition-colors"
           >
             CANCEL
           </button>
           <button
             onClick={handleSubmit}
             disabled={!form.key.trim() || form.values.length === 0}
-            className="px-3 py-1 text-[9px] font-mono border border-yellow-400/60 bg-yellow-400/20 text-yellow-400 hover:bg-yellow-500/30 transition-colors disabled:opacity-30"
+            className="px-3 py-1 type-label font-mono border cfg-bord--warn--a60 cfg-fill--warn--a20 cfg-warn hover:cfg-fill--warn--a30 transition-colors disabled:opacity-30"
           >
             ADD PARAMETER
           </button>

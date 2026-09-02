@@ -34,7 +34,7 @@ function RecoveryModal({
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="text-xs font-mono theme-accent-text mb-3 tracking-widest">{title}</h3>
-        <div className="text-[10px] font-mono config-muted leading-relaxed space-y-2 mb-5">
+        <div className="type-body font-mono config-muted leading-relaxed space-y-2 mb-5">
           {children}
         </div>
         <div className="flex gap-2 justify-end">
@@ -42,7 +42,7 @@ function RecoveryModal({
             type="button"
             onClick={onCancel}
             disabled={busy}
-            className="value-chip text-[9px] font-mono px-3 py-1 rounded-sm disabled:opacity-40"
+            className="value-chip type-label font-mono px-3 py-1 rounded-sm disabled:opacity-40"
           >
             CANCEL
           </button>
@@ -50,7 +50,7 @@ function RecoveryModal({
             type="button"
             onClick={onConfirm}
             disabled={busy}
-            className={`${confirmClassName} text-[9px] font-mono px-3 py-1 rounded-sm disabled:opacity-40`}
+            className={`${confirmClassName} type-label font-mono px-3 py-1 rounded-sm disabled:opacity-40`}
           >
             {busy ? "WORKING…" : confirmLabel}
           </button>
@@ -89,26 +89,26 @@ export default function RecoveryConfig() {
     <div className="flex-1 overflow-y-auto min-h-0 px-4 py-4">
       <div className="max-w-2xl">
         <h2 className="text-xs font-mono theme-accent-text tracking-widest mb-2">RECOVERY</h2>
-        <p className="text-[10px] font-mono config-muted leading-relaxed mb-4">
+        <p className="type-body font-mono config-muted leading-relaxed mb-4">
           Reset UI preferences or portable app data when something is stuck. The header CONFIG tab and
           this page stay available even when other settings are broken.
         </p>
         {configDir && (
-          <p className="text-[9px] font-mono text-stealth-muted mb-6 break-all">
+          <p className="type-label font-mono cfg-mut mb-6 break-all">
             Config folder: <span className="text-white/80">{configDir}</span>
           </p>
         )}
 
         {error && (
-          <p className="text-[9px] font-mono text-telemetry-red mb-4">{error}</p>
+          <p className="type-label font-mono cfg-dng mb-4">{error}</p>
         )}
 
         <div className="space-y-4">
           <section className="config-form-panel rounded-sm p-4">
-            <h3 className="text-[10px] font-mono theme-accent-text tracking-wider mb-2">
+            <h3 className="type-body font-mono theme-accent-text tracking-wider mb-2">
               CLEAR LOCAL STORAGE
             </h3>
-            <p className="text-[9px] font-mono config-muted leading-relaxed mb-3">
+            <p className="type-label font-mono config-muted leading-relaxed mb-3">
               Removes BlackOps UI preferences stored in the webview (theme, zoom, density, bench chips,
               catalog overrides, split widths, log search, onboarding keys, and per-provider localStorage).
               Does not touch files under <span className="text-white/70">config/</span> on disk.
@@ -116,17 +116,17 @@ export default function RecoveryConfig() {
             <button
               type="button"
               onClick={() => setShowClearLs(true)}
-              className="value-chip text-[9px] font-mono px-3 py-1 rounded-sm"
+              className="value-chip type-label font-mono px-3 py-1 rounded-sm"
             >
               CLEAR LOCAL STORAGE…
             </button>
           </section>
 
-          <section className="config-form-panel rounded-sm p-4 border border-yellow-400/20">
-            <h3 className="text-[10px] font-mono text-yellow-400/90 tracking-wider mb-2">
+          <section className="config-form-panel rounded-sm p-4 border cfg-bord--warn--a20">
+            <h3 className="type-body font-mono cfg-warn tracking-wider mb-2">
               RESET CONFIG
             </h3>
-            <p className="text-[9px] font-mono config-muted leading-relaxed mb-3">
+            <p className="type-label font-mono config-muted leading-relaxed mb-3">
               Resets portable app data under <span className="text-white/70">config/</span>: model paths
               (back to factory <span className="text-white/70">models/</span>), GGUF metadata cache,
               VRAM fit scan cache, learned VRAM, download queue state, and per-provider parameter
@@ -134,16 +134,16 @@ export default function RecoveryConfig() {
               LOCAL STORAGE / CLR LS). Optional plugins only reappear if their engines are still on disk.
               Same path as header ↺ SETUP.
             </p>
-            <ul className="text-[9px] font-mono config-muted leading-relaxed mb-3 list-disc pl-4 space-y-1">
-              <li>Does <span className="text-nv-green">not</span> delete GGUF model files on disk</li>
-              <li>Does <span className="text-nv-green">not</span> delete foundry builds or runtime binaries</li>
-              <li>Does <span className="text-nv-green">not</span> remove HuggingFace tokens in the OS keyring</li>
+            <ul className="type-label font-mono config-muted leading-relaxed mb-3 list-disc pl-4 space-y-1">
+              <li>Does <span className="cfg-acc">not</span> delete GGUF model files on disk</li>
+              <li>Does <span className="cfg-acc">not</span> delete foundry builds or runtime binaries</li>
+              <li>Does <span className="cfg-acc">not</span> remove HuggingFace tokens in the OS keyring</li>
               <li>Stop running engines before resetting</li>
             </ul>
             <button
               type="button"
               onClick={() => setShowResetConfig(true)}
-              className="value-chip text-[9px] font-mono px-3 py-1 rounded-sm text-yellow-400/90 border-yellow-400/30"
+              className="value-chip type-label font-mono px-3 py-1 rounded-sm cfg-warn--a90 cfg-bord--warn--a30"
             >
               RESET CONFIG…
             </button>
@@ -167,7 +167,7 @@ export default function RecoveryConfig() {
             <span className="text-white/80">config/</span> on disk is untouched — model paths, metadata
             cache, and provider overrides remain. The app reloads immediately.
           </p>
-          <p className="mt-3 text-stealth-muted">
+          <p className="mt-3 cfg-mut">
             Use this when UI prefs are corrupt. If the catalog or paths are wrong, use RESET CONFIG instead.
           </p>
         </RecoveryModal>
@@ -177,7 +177,7 @@ export default function RecoveryConfig() {
         <RecoveryModal
           title="RESET CONFIG"
           confirmLabel="YES, RESET CONFIG"
-          confirmClassName="value-chip text-yellow-400/90 border-yellow-400/40"
+          confirmClassName="value-chip cfg-warn--a90 cfg-bord--warn--a40"
           busy={resetting}
           onCancel={() => !resetting && setShowResetConfig(false)}
           onConfirm={() => void handleResetConfig()}
@@ -195,7 +195,7 @@ export default function RecoveryConfig() {
             <span className="text-white/80">Kept:</span> GGUF files wherever they live on disk, foundry
             artifacts, runtime binaries, and secrets stored in the OS credential manager.
           </p>
-          <p className="mt-3 text-yellow-400/80">
+          <p className="mt-3 cfg-warn--a80">
             The app reloads and the setup checklist runs again. Stop all engines first.
           </p>
         </RecoveryModal>

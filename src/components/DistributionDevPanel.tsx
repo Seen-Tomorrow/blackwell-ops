@@ -56,10 +56,10 @@ type ReleaseAction =
   | "pack_ship_all_providers";
 
 function roleBadge(role: string): string {
-  if (role === "core") return "border-nv-green/40 text-nv-green";
-  if (role === "plugin") return "border-yellow-400/40 text-yellow-400";
+  if (role === "core") return "fnd-dev-role-badge--core";
+  if (role === "plugin") return "fnd-dev-role-badge--plugin";
   // local = Plugin OFF (shipping), still optional product on disk
-  return "border-white/20 text-white/70";
+  return "fnd-dev-role-badge--local";
 }
 
 function roleLabel(role: string): string {
@@ -249,7 +249,7 @@ export default function DistributionDevPanel() {
 
   if (!isDevBuild()) {
     return (
-      <div className="p-4 text-[10px] font-mono config-muted">
+      <div className="p-4 type-body font-mono config-muted">
         Distribution tools are DEV-only.
       </div>
     );
@@ -257,15 +257,15 @@ export default function DistributionDevPanel() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-      <div className="px-4 py-3 border-b border-white/[0.06] space-y-2">
+      <div className="fnd-dev-header px-4 py-3 space-y-2">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
             <h2 className="text-xs font-mono theme-accent-text tracking-widest">DISTRIBUTION</h2>
-            <p className="text-[10px] font-mono config-muted mt-1 max-w-2xl leading-relaxed">
-              Pack+Ship opens a <span className="text-white/70">visible Majestic console</span>{" "}
+            <p className="fnd-dev-desc type-body font-mono config-muted mt-1 max-w-2xl leading-relaxed">
+              Pack+Ship opens a <span className="fnd-dev-desc__hl">visible Majestic console</span>{" "}
               (survives app restart / version bump). Full pack = multi-minute{" "}
-              <span className="text-white/60">npm run release</span>. Log also in{" "}
-              <span className="text-white/60">.majestic-out/job-log.txt</span>.
+              <span className="fnd-dev-desc__hl--dim">npm run release</span>. Log also in{" "}
+              <span className="fnd-dev-desc__hl--dim">.majestic-out/job-log.txt</span>.
             </p>
           </div>
           <div className="flex gap-2 flex-wrap">
@@ -273,7 +273,7 @@ export default function DistributionDevPanel() {
               type="button"
               disabled={busy}
               onClick={() => void refresh()}
-              className="value-chip text-[9px] font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm disabled:opacity-40"
+              className="value-chip fnd-dev-action type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm disabled:opacity-40"
             >
               Refresh
             </button>
@@ -281,51 +281,51 @@ export default function DistributionDevPanel() {
               type="button"
               disabled={busy}
               onClick={() => void regenCatalog()}
-              className="value-chip text-[9px] font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm disabled:opacity-40"
+              className="value-chip fnd-dev-action type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm disabled:opacity-40"
             >
               Regen catalog
             </button>
           </div>
         </div>
         {dash && (
-          <p className="text-[8px] font-mono text-stealth-muted/50 break-all">
+          <p className="fnd-dev-version type-tiny font-mono break-all">
             v{dash.appVersion} · policy: {dash.policyPath}
           </p>
         )}
       </div>
 
       {job?.running && (
-        <p className="px-4 py-2 text-[10px] font-mono text-yellow-400/90 border-b border-yellow-400/25 bg-yellow-400/[0.06]">
+        <p className="fnd-dev-job-running px-4 py-2 type-body font-mono">
           Job running: {job.chain}
           {job.message ? ` — ${job.message}` : ""} — watch the console window (not stuck on first
           log line).
         </p>
       )}
       {job && !job.running && job.state === "ok" && (
-        <p className="px-4 py-2 text-[10px] font-mono text-nv-green/90 border-b border-white/[0.06]">
+        <p className="fnd-dev-job-ok px-4 py-2 type-body font-mono">
           Last job OK: {job.chain}
         </p>
       )}
       {job && !job.running && job.state === "failed" && (
-        <div className="px-4 py-2 text-[10px] font-mono text-telemetry-red border-b border-telemetry-red/30 bg-telemetry-red/[0.06] space-y-1">
+        <div className="fnd-dev-job-failed px-4 py-2 type-body font-mono space-y-1">
           <p>
             Last job FAILED: {job.chain} — {job.message}
           </p>
-          <p className="text-white/50">
+          <p className="fnd-dev-job-failed__note">
             Scroll the job log below (or open .majestic-out/job-log.txt). Retry after fixing the
             error.
           </p>
         </div>
       )}
       {error && (
-        <p className="px-4 py-2 text-[10px] font-mono text-telemetry-red border-b border-white/[0.06]">
+        <p className="fnd-dev-error px-4 py-2 type-body font-mono">
           {error}
         </p>
       )}
 
       <div className="flex-1 overflow-auto px-4 py-4 space-y-5">
         <section className="space-y-2">
-          <h3 className="text-[10px] font-mono theme-accent-text tracking-wider uppercase">
+          <h3 className="fnd-dev-section-title type-body font-mono tracking-wider uppercase">
             Version
           </h3>
           <div className="flex flex-wrap items-center gap-2">
@@ -333,7 +333,7 @@ export default function DistributionDevPanel() {
               type="button"
               disabled={busy}
               onClick={() => void runAction("bump")}
-              className="text-[10px] font-mono uppercase tracking-wider px-3 py-1.5 rounded-sm border border-yellow-400/50 text-yellow-400 bg-yellow-400/10 hover:bg-yellow-400/15 disabled:opacity-40"
+              className="fnd-dev-btn--warn type-body font-mono uppercase tracking-wider px-3 py-1.5 rounded-sm border disabled:opacity-40"
               title="Bump patch version only (e.g. 1.0.18 → 1.0.19). No pack/ship."
             >
               BUMP
@@ -342,21 +342,21 @@ export default function DistributionDevPanel() {
               type="button"
               disabled={busy}
               onClick={() => void runAction("bump_pi")}
-              className="text-[10px] font-mono uppercase tracking-wider px-3 py-1.5 rounded-sm border border-fuchsia-400/50 text-fuchsia-300 bg-fuchsia-400/10 hover:bg-fuchsia-400/15 disabled:opacity-40"
+              className="fnd-dev-btn--danger type-body font-mono uppercase tracking-wider px-3 py-1.5 rounded-sm border disabled:opacity-40"
               title="Pin the shipped pi to the DEV-installed (tested) version (src-tauri/pi-pinned-version.txt). Release binary embeds it. No pack/ship."
             >
               BUMP HARNESS
             </button>
             {dash && (
-              <span className="text-[9px] font-mono config-muted">
-                current <span className="text-white/80">v{dash.appVersion}</span> → patch only
+              <span className="fnd-dev-current type-label font-mono config-muted">
+                current <span className="fnd-dev-current__v">v{dash.appVersion}</span> → patch only
               </span>
             )}
           </div>
         </section>
 
         <section className="space-y-2">
-          <h3 className="text-[10px] font-mono text-cyan-400/90 tracking-wider uppercase">
+          <h3 className="fnd-dev-section-title--info type-body font-mono tracking-wider uppercase">
             App update
           </h3>
           <div className="flex flex-wrap gap-2 items-center">
@@ -364,19 +364,19 @@ export default function DistributionDevPanel() {
               type="button"
               disabled={busy}
               onClick={() => void runAction("pack_ship_app")}
-              className="text-[9px] font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border border-cyan-400/50 text-cyan-300 bg-cyan-400/10 hover:bg-cyan-400/15 disabled:opacity-40"
+              className="fnd-dev-btn--info type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border disabled:opacity-40"
               title="Bump patch + pack App .7z + ship (no YES prompt)"
             >
               Pack+Ship App
             </button>
-            <span className="text-[9px] font-mono uppercase px-2 py-0.5 rounded-sm border border-cyan-400/25 text-cyan-300/70 disabled:opacity-40">
+            <span className="fnd-dev-btn--info-ghost type-label font-mono uppercase px-2 py-0.5 rounded-sm border disabled:opacity-40">
               <button type="button" disabled={busy} onClick={() => void runAction("check_app")} className="disabled:opacity-40">Check</button>
             </span>
             <button
               type="button"
               disabled={busy}
               onClick={() => void runAction("pack_app")}
-              className="text-[8px] font-mono uppercase px-2 py-0.5 rounded-sm border border-cyan-400/25 text-cyan-300/70 hover:bg-cyan-400/10 disabled:opacity-40"
+              className="fnd-dev-btn--info-ghost type-tiny font-mono uppercase px-2 py-0.5 rounded-sm border disabled:opacity-40"
             >
               Pack only
             </button>
@@ -384,7 +384,7 @@ export default function DistributionDevPanel() {
               type="button"
               disabled={busy}
               onClick={() => void runAction("ship_app")}
-              className="text-[8px] font-mono uppercase px-2 py-0.5 rounded-sm border border-cyan-400/25 text-cyan-300/70 hover:bg-cyan-400/10 disabled:opacity-40"
+              className="fnd-dev-btn--info-ghost type-tiny font-mono uppercase px-2 py-0.5 rounded-sm border disabled:opacity-40"
               title="Ship staged App assets for current version tag (no pack)"
             >
               Ship only
@@ -393,7 +393,7 @@ export default function DistributionDevPanel() {
         </section>
 
         <section className="space-y-2">
-          <h3 className="text-[10px] font-mono text-nv-green/90 tracking-wider uppercase">
+          <h3 className="fnd-dev-section-title--accent type-body font-mono tracking-wider uppercase">
             Full bundle (ggml-master only)
           </h3>
           <div className="flex flex-wrap gap-2 items-center">
@@ -401,7 +401,7 @@ export default function DistributionDevPanel() {
               type="button"
               disabled={busy}
               onClick={() => void runAction("pack_ship_full")}
-              className="text-[9px] font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border border-nv-green/50 text-nv-green bg-nv-green/10 hover:bg-nv-green/15 disabled:opacity-40"
+              className="fnd-dev-btn--accent type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border disabled:opacity-40"
               title="Bump patch + pack Full NSIS (ggml-master) + ship"
             >
               Pack+Ship Full
@@ -410,7 +410,7 @@ export default function DistributionDevPanel() {
               type="button"
               disabled={busy}
               onClick={() => void runAction("check_full")}
-              className="text-[9px] font-mono uppercase tracking-wider px-2 py-1 rounded-sm border border-nv-green/30 text-nv-green/80 hover:bg-nv-green/10 disabled:opacity-40"
+              className="fnd-dev-btn--accent-ghost type-label font-mono uppercase tracking-wider px-2 py-1 rounded-sm border disabled:opacity-40"
             >
               Check
             </button>
@@ -418,7 +418,7 @@ export default function DistributionDevPanel() {
               type="button"
               disabled={busy}
               onClick={() => void runAction("pack_full")}
-              className="text-[8px] font-mono uppercase px-2 py-0.5 rounded-sm border border-nv-green/25 text-nv-green/70 hover:bg-nv-green/10 disabled:opacity-40"
+              className="fnd-dev-btn--accent-ghost type-tiny font-mono uppercase px-2 py-0.5 rounded-sm border disabled:opacity-40"
             >
               Pack only
             </button>
@@ -426,14 +426,14 @@ export default function DistributionDevPanel() {
               type="button"
               disabled={busy}
               onClick={() => void runAction("ship_full")}
-              className="text-[8px] font-mono uppercase px-2 py-0.5 rounded-sm border border-nv-green/25 text-nv-green/70 hover:bg-nv-green/10 disabled:opacity-40"
+              className="fnd-dev-btn--accent-ghost type-tiny font-mono uppercase px-2 py-0.5 rounded-sm border disabled:opacity-40"
               title="Ship staged Full assets for current version tag (no pack)"
             >
               Ship only
             </button>
           </div>
           {dash?.workflowNotes && (
-            <ul className="text-[9px] font-mono config-muted space-y-0.5 list-disc list-inside">
+            <ul className="fnd-dev-workflow-notes type-label font-mono config-muted space-y-0.5 list-disc list-inside">
               {dash.workflowNotes.map((n) => (
                 <li key={n}>{n}</li>
               ))}
@@ -446,14 +446,14 @@ export default function DistributionDevPanel() {
 
         <section className="space-y-2">
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <h3 className="text-[10px] font-mono text-orange-400/90 tracking-wider uppercase">
+            <h3 className="fnd-dev-section-title--warn type-body font-mono tracking-wider uppercase">
               Providers (engine packs)
             </h3>
             <button
               type="button"
               disabled={busy}
               onClick={() => void runAction("pack_ship_all_providers")}
-              className="text-[9px] font-mono uppercase tracking-wider px-3 py-1.5 rounded-sm border border-orange-400/60 text-orange-300 bg-orange-400/10 hover:bg-orange-400/15 disabled:opacity-40"
+              className="fnd-dev-btn--warn type-label font-mono uppercase tracking-wider px-3 py-1.5 rounded-sm border disabled:opacity-40"
               title="Pack + ship EVERY provider/profile in distribution-policy.json in one pass (plugins + core ggml-master), one after another. Uses current version tag (no bump)."
             >
               Pack+Ship All Providers (Plugins + Core GGML)
@@ -463,29 +463,29 @@ export default function DistributionDevPanel() {
             {(dash?.providers ?? []).map((row) => (
               <div
                 key={row.id}
-                className="config-form-panel rounded-sm border border-white/10 p-3 space-y-2"
+                className="fnd-dev-provider-card config-form-panel rounded-sm p-3 space-y-2"
               >
                 <div className="flex items-start justify-between gap-2 flex-wrap">
                   <div className="space-y-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-[10px] font-mono text-white/90">{row.displayName}</span>
-                      <span className="text-[8px] font-mono text-stealth-muted/50">{row.id}</span>
+                      <span className="fnd-dev-provider-name type-body font-mono">{row.displayName}</span>
+                      <span className="fnd-dev-provider-id type-tiny font-mono">{row.id}</span>
                       <span
-                        className={`text-[8px] font-mono px-1.5 py-0.5 rounded-sm border uppercase tracking-wider ${roleBadge(row.role)}`}
+                        className={`fnd-dev-role-badge type-tiny font-mono px-1.5 py-0.5 rounded-sm border uppercase tracking-wider ${roleBadge(row.role)}`}
                       >
                         {roleLabel(row.role)}
                       </span>
                       {row.factoryExists ? (
-                        <span className="text-[8px] font-mono text-nv-green/70">factory</span>
+                        <span className="fnd-dev-factory type-tiny font-mono">factory</span>
                       ) : (
-                        <span className="text-[8px] font-mono text-telemetry-red/80">no factory</span>
+                        <span className="fnd-dev-no-factory type-tiny font-mono">no factory</span>
                       )}
                     </div>
-                    <div className="flex flex-wrap gap-2 text-[8px] font-mono config-muted">
+                    <div className="fnd-dev-readiness flex flex-wrap gap-2 type-tiny font-mono config-muted">
                       {row.readiness.map((r) => (
                         <span
                           key={r.profile}
-                          className={r.ready ? "text-nv-green/80" : "text-stealth-muted/50"}
+                          className={r.ready ? "fnd-dev-readiness__ready" : "fnd-dev-readiness__missing"}
                         >
                           {r.profile}:
                           {r.runtimeBinary ? " runtime" : ""}
@@ -495,7 +495,7 @@ export default function DistributionDevPanel() {
                       ))}
                     </div>
                     {row.notes.length > 0 && (
-                      <ul className="text-[8px] font-mono text-yellow-400/70 space-y-0.5">
+                      <ul className="fnd-dev-provider-notes type-tiny font-mono space-y-0.5">
                         {row.notes.map((n) => (
                           <li key={n}>{n}</li>
                         ))}
@@ -511,10 +511,10 @@ export default function DistributionDevPanel() {
                         onClick={() =>
                           void setRole(row.id, row.role === "plugin" ? "local" : "plugin")
                         }
-                        className={`text-[8px] font-mono uppercase px-2.5 py-1 rounded-sm border disabled:opacity-40 ${
+                        className={`fnd-dev-catalog-btn type-tiny font-mono uppercase px-2.5 py-1 rounded-sm border disabled:opacity-40 ${
                           row.role === "plugin"
-                            ? "border-yellow-400/45 text-yellow-400 bg-yellow-400/10"
-                            : "border-white/20 text-white/65 hover:border-yellow-400/30"
+                            ? "fnd-dev-catalog-btn--on"
+                            : "fnd-dev-catalog-btn--off"
                         }`}
                         title={
                           row.role === "plugin"
@@ -533,7 +533,7 @@ export default function DistributionDevPanel() {
                             type="button"
                             disabled={busy}
                             onClick={() => void runAction("pack_ship_provider", row.id, pr)}
-                            className="text-[8px] font-mono uppercase px-1.5 py-0.5 rounded-sm border border-yellow-400/35 text-yellow-400/90 hover:bg-yellow-400/10 disabled:opacity-40"
+                            className="fnd-dev-pack-btn type-tiny font-mono uppercase px-1.5 py-0.5 rounded-sm border disabled:opacity-40"
                             title={`Pack + ship ${row.id}-${pr}.7z (current tag, no bump). Plugin ON required for catalog.`}
                           >
                             Pack+Ship {pr}
@@ -546,16 +546,16 @@ export default function DistributionDevPanel() {
               </div>
             ))}
             {!dash && (
-              <p className="text-[10px] font-mono config-muted">Loading policy…</p>
+              <p className="type-body font-mono config-muted">Loading policy…</p>
             )}
           </div>
         </section>
 
         <section className="space-y-1">
-          <h3 className="text-[10px] font-mono theme-accent-text tracking-wider uppercase">
+          <h3 className="fnd-dev-section-title type-body font-mono tracking-wider uppercase">
             Job log (also in Tauri console)
           </h3>
-          <pre className="text-[8px] font-mono config-muted bg-black/30 border border-white/[0.06] rounded-sm p-2 max-h-48 overflow-auto whitespace-pre-wrap">
+          <pre className="fnd-dev-job-log type-tiny font-mono config-muted rounded-sm p-2 max-h-48 overflow-auto whitespace-pre-wrap">
             {logLines.length === 0 ? "(empty — watch Tauri console for [majestic] lines)" : logLines.join("\n")}
           </pre>
         </section>

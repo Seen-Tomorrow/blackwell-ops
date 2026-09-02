@@ -83,24 +83,24 @@ export default function SecretsConfig() {
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <span className="text-[10px] font-mono text-stealth-muted animate-pulse">LOADING SECRETS…</span>
+        <span className="type-body font-mono cfg-mut animate-pulse">LOADING SECRETS…</span>
       </div>
     );
   }
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-      <div className="px-4 py-3 config-section-bar border-b border-stealth-border/30 flex-shrink-0">
+      <div className="px-4 py-3 config-section-bar border-b cfg-bord--a30 flex-shrink-0">
         <h2 className="text-xs font-mono theme-accent-text tracking-widest">API TOKENS</h2>
-        <p className="text-[9px] font-mono text-stealth-muted/70 mt-1 max-w-[640px] leading-relaxed">
+        <p className="type-label font-mono cfg-mut--a70 mt-1 max-w-[640px] leading-relaxed">
           Stored in the OS credential manager (Windows Credential Manager). Never written to app_config.json
           or browser storage. Add tokens here for Hugging Face Hub and GitHub — the backend reads them automatically.
         </p>
         {flash && (
-          <p className="text-[9px] font-mono text-nv-green mt-2">{flash}</p>
+          <p className="type-label font-mono cfg-acc mt-2">{flash}</p>
         )}
         {error && (
-          <p className="text-[9px] font-mono text-red-400 mt-2">{error}</p>
+          <p className="type-label font-mono cfg-dng mt-2">{error}</p>
         )}
       </div>
 
@@ -115,14 +115,14 @@ export default function SecretsConfig() {
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="text-[10px] font-mono theme-accent-text tracking-wider">{slot.label}</p>
-                  <p className="text-[8px] font-mono text-stealth-muted/60 mt-0.5">{slot.description}</p>
+                  <p className="type-body font-mono theme-accent-text tracking-wider">{slot.label}</p>
+                  <p className="type-tiny font-mono cfg-mut mt-0.5">{slot.description}</p>
                 </div>
                 <span
-                  className={`text-[7px] font-mono px-1.5 py-0.5 rounded-sm border flex-shrink-0 ${
+                  className={`type-micro font-mono px-1.5 py-0.5 rounded-sm border flex-shrink-0 ${
                     slot.configured
-                      ? "border-nv-green/40 text-nv-green/90 bg-nv-green/10"
-                      : "border-[color:var(--theme-frame-border-strong)] text-stealth-muted/50"
+                      ? "cfg-bord--acc--a40 cfg-acc--a90 cfg-fill--a10"
+                      : "border-[color:var(--theme-frame-border-strong)] cfg-mut"
                   }`}
                 >
                   {slot.configured ? "SET" : "NOT SET"}
@@ -130,8 +130,8 @@ export default function SecretsConfig() {
               </div>
 
               {slot.configured && !isEditing && slot.preview && (
-                <p className="text-[9px] font-mono text-stealth-muted/80">
-                  Saved: <span className="text-stealth-muted">{slot.preview}</span>
+                <p className="type-label font-mono cfg-mut--a80">
+                  Saved: <span className="cfg-mut">{slot.preview}</span>
                 </p>
               )}
 
@@ -144,14 +144,14 @@ export default function SecretsConfig() {
                     placeholder={slot.key === "hf_token" ? "hf_…" : "ghp_…"}
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
-                    className="theme-input w-full px-2 py-1.5 text-[10px] font-mono rounded-sm focus:outline-none focus:border-nv-green/50"
+                    className="theme-input w-full px-2 py-1.5 type-body font-mono rounded-sm focus:outline-none focus:cfg-bord--acc--a50"
                   />
                   <div className="flex items-center gap-2 justify-end">
                     <button
                       type="button"
                       onClick={cancelEdit}
                       disabled={busy}
-                      className="text-[8px] font-mono px-2 py-0.5 rounded-sm border border-stealth-border/50 text-stealth-muted hover:text-white disabled:opacity-40"
+                      className="type-tiny font-mono px-2 py-0.5 rounded-sm border cfg-bord--a50 cfg-mut hover:text-white disabled:opacity-40"
                     >
                       CANCEL
                     </button>
@@ -159,7 +159,7 @@ export default function SecretsConfig() {
                       type="button"
                       onClick={() => void handleSave(slot.key)}
                       disabled={busy}
-                      className="text-[8px] font-mono px-2 py-0.5 rounded-sm bg-nv-green/20 border border-nv-green/50 text-nv-green hover:bg-nv-green/30 disabled:opacity-40"
+                      className="type-tiny font-mono px-2 py-0.5 rounded-sm cfg-fill--a20 border cfg-bord--acc--a50 cfg-acc hover:cfg-fill--a30 disabled:opacity-40"
                     >
                       {busy ? "SAVING…" : slot.configured ? "UPDATE" : "SAVE"}
                     </button>
@@ -172,7 +172,7 @@ export default function SecretsConfig() {
                       type="button"
                       onClick={() => void handleDelete(slot)}
                       disabled={busy}
-                      className="text-[8px] font-mono px-2 py-0.5 rounded-sm border border-red-400/40 text-red-400/80 hover:bg-red-400/10 disabled:opacity-40"
+                      className="type-tiny font-mono px-2 py-0.5 rounded-sm border cfg-bord--dng--a40 cfg-dng--a80 hover:cfg-fill--dng--a10 disabled:opacity-40"
                     >
                       {busy ? "…" : "REMOVE"}
                     </button>
@@ -181,7 +181,7 @@ export default function SecretsConfig() {
                     type="button"
                     onClick={() => startEdit(slot.key)}
                     disabled={busy}
-                    className="text-[8px] font-mono px-2 py-0.5 rounded-sm border border-stealth-border/50 text-stealth-muted hover:text-white hover:border-nv-green/40 disabled:opacity-40"
+                    className="type-tiny font-mono px-2 py-0.5 rounded-sm border cfg-bord--a50 cfg-mut hover:text-white hover:cfg-bord--acc--a40 disabled:opacity-40"
                   >
                     {slot.configured ? "CHANGE" : "ADD TOKEN"}
                   </button>

@@ -1487,7 +1487,7 @@ export default function ParamConfigPanel({
               <div className="flex items-center gap-3">
                 <h2 className="text-xs font-mono theme-accent-text tracking-widest">PARAMETER CONFIGURATION</h2>
                 <button onClick={onEditorToggle}
-                  className={`value-chip text-[9px] font-mono px-2 py-0.5 rounded-sm transition-colors ${
+                  className={`value-chip type-label font-mono px-2 py-0.5 rounded-sm transition-colors ${
                     editorUnlocked ? "value-chip-active" : ""
                   }`}
                   title="Click to toggle editor lock state">
@@ -1503,8 +1503,8 @@ export default function ParamConfigPanel({
                       setDevPreviewAsUser(next);
                       saveConfigDevPreviewAsUser(next);
                     }}
-                    className={`value-chip text-[9px] font-mono px-2 py-0.5 rounded-sm transition-colors ${
-                      devPreviewAsUser ? "border-yellow-400/50 text-yellow-300" : "value-chip-active"
+                    className={`value-chip type-label font-mono px-2 py-0.5 rounded-sm transition-colors ${
+                      devPreviewAsUser ? "cfg-bord--warn cfg-warn" : "value-chip-active"
                     }`}
                     title={
                       devPreviewAsUser
@@ -1519,7 +1519,7 @@ export default function ParamConfigPanel({
                   type="button"
                   onClick={toggleAllParamGroupsCollapsed}
                   disabled={visibleParamGroups.length === 0}
-                  className={`value-chip text-[9px] font-mono px-2 py-0.5 rounded-sm transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+                  className={`value-chip type-label font-mono px-2 py-0.5 rounded-sm transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
                     allParamGroupsCollapsed ? "value-chip-active" : ""
                   }`}
                   title={allParamGroupsCollapsed ? "Expand all parameter groups" : "Collapse all parameter groups"}
@@ -1531,10 +1531,10 @@ export default function ParamConfigPanel({
 
               {enabledProviders.length > 1 && (
                 <div className="flex items-center gap-2 mt-2">
-                  <span className="text-[9px] font-mono config-muted uppercase tracking-wider">Provider:</span>
+                  <span className="type-label font-mono config-muted uppercase tracking-wider">Provider:</span>
                   {enabledProviders.map(p => (
                     <button key={p.id} onClick={() => setSelectedProviderId(p.id)}
-                      className={`px-2 py-0.5 text-[9px] font-mono rounded-sm transition-all ${selectedProviderId === p.id ? "provider-pill-active border" : "provider-pill border"}`}>
+                      className={`px-2 py-0.5 type-label font-mono rounded-sm transition-all ${selectedProviderId === p.id ? "provider-pill-active border" : "provider-pill border"}`}>
                       {p.display_name}
                     </button>
                   ))}
@@ -1549,7 +1549,7 @@ export default function ParamConfigPanel({
                   <button
                     type="button"
                     onClick={() => setShowResetConfirm(true)}
-                    className="value-chip text-[9px] font-mono px-2 py-1 rounded-sm"
+                    className="value-chip type-label font-mono px-2 py-1 rounded-sm"
                     title="Restore this provider from factory template — one-click recovery"
                   >
                     RESET TO DEFAULTS
@@ -1559,7 +1559,7 @@ export default function ParamConfigPanel({
                   <button
                     type="button"
                     onClick={() => setShowExportConfirm(true)}
-                    className="value-chip-active text-[9px] font-mono px-2 py-1 rounded-sm"
+                    className="value-chip-active type-label font-mono px-2 py-1 rounded-sm"
                     title="Admin: write param defaults to factory JSON (dev build only)"
                   >
                     EXPORT FACTORY
@@ -1576,14 +1576,14 @@ export default function ParamConfigPanel({
               <div className="absolute inset-0 bg-black/60 z-50" onClick={() => setShowExportConfirm(false)}>
                 <div className="config-form-panel rounded-sm p-6 max-w-sm absolute top-[85px] right-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
                   <h3 className="text-xs font-mono theme-accent-text mb-3">EXPORT FACTORY TEMPLATE</h3>
-                  <p className="text-[10px] font-mono config-muted mb-4">
+                  <p className="type-body font-mono config-muted mb-4">
                     Writes param defaults, groups, layout, and Essentials list to factory JSON and bumps templateVersion. Dev build also updates src-tauri/runtime. Cannot be undone easily — commit the JSON if you mean it.
                   </p>
                   <div className="flex gap-2 justify-end">
                     <button
                       type="button"
                       onClick={() => setShowExportConfirm(false)}
-                      className="value-chip text-[9px] font-mono px-3 py-1 rounded-sm"
+                      className="value-chip type-label font-mono px-3 py-1 rounded-sm"
                     >
                       CANCEL
                     </button>
@@ -1593,7 +1593,7 @@ export default function ParamConfigPanel({
                         setShowExportConfirm(false);
                         void handleExportFactoryTemplate();
                       }}
-                      className="value-chip-active text-[9px] font-mono px-3 py-1 rounded-sm"
+                      className="value-chip-active type-label font-mono px-3 py-1 rounded-sm"
                     >
                       YES, EXPORT
                     </button>
@@ -1606,14 +1606,14 @@ export default function ParamConfigPanel({
               <div className="absolute inset-0 bg-black/60 z-50" onClick={() => setShowResetConfirm(false)}>
                 <div className="config-form-panel rounded-sm p-6 max-w-sm absolute top-[85px] right-4 shadow-2xl" onClick={e => e.stopPropagation()}>
                   <h3 className="text-xs font-mono theme-accent-text mb-3">CONFIRM RESET TO FACTORY</h3>
-                  <p className="text-[10px] font-mono config-muted mb-4">
+                  <p className="type-body font-mono config-muted mb-4">
                     This is hard factory reset, remove added params and values, restore hidden items. Cannot be undone - but APP will work. APP restart is needed!
                   </p>
                   <div className="flex gap-2 justify-end">
                     <button onClick={() => setShowResetConfirm(false)}
-                      className="value-chip text-[9px] font-mono px-3 py-1 rounded-sm">CANCEL</button>
+                      className="value-chip type-label font-mono px-3 py-1 rounded-sm">CANCEL</button>
                     <button onClick={confirmReset}
-                      className="value-chip-active text-[9px] font-mono px-3 py-1 rounded-sm">YES, RESET</button>
+                      className="value-chip-active type-label font-mono px-3 py-1 rounded-sm">YES, RESET</button>
                   </div>
                 </div>
               </div>
@@ -1621,14 +1621,14 @@ export default function ParamConfigPanel({
 
             {/* Saved flash */}
             {savedFlash && (
-              <div className="absolute top-0 right-0 px-3 py-1 value-chip-active text-[9px] font-mono rounded-sm animate-pulse">{savedFlash}</div>
+              <div className="absolute top-0 right-0 px-3 py-1 value-chip-active type-label font-mono rounded-sm animate-pulse">{savedFlash}</div>
             )}
           </div>
 
           {/* Template update banner — shows when factory template version changed */}
           {currentProvider?.needsTemplateAttention && (
             <div className="mx-4 mt-3 px-3 py-2 foundry-profile-row rounded-sm">
-              <span className="text-[9px] font-mono config-muted leading-tight">
+              <span className="type-label font-mono config-muted leading-tight">
                 ⚠ Factory template updated — new options were merged automatically. Save any change to dismiss.
               </span>
             </div>
@@ -1638,7 +1638,7 @@ export default function ParamConfigPanel({
           <div className="config-params-list flex-1 overflow-y-auto eink-scrollbar p-4 min-h-0">
             {catalogVisibleParams.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full gap-3 px-4 text-center">
-                <p className="text-stealth-muted text-xs font-mono">
+                <p className="cfg-mut text-xs font-mono">
                   {editorUnlocked
                     ? "No parameters yet — add from catalog or seed a starter pack."
                     : "No parameters on this provider. Unlock EDITOR to add from catalog."}
@@ -1648,7 +1648,7 @@ export default function ParamConfigPanel({
                     <button
                       type="button"
                       onClick={() => setShowCatalogSearch(true)}
-                      className="flex-1 py-3 text-sm font-mono bg-nv-green/15 border border-nv-green/40 text-nv-green hover:bg-nv-green/25 transition-colors rounded tracking-wider"
+                      className="flex-1 py-3 text-sm font-mono cfg-fill--a15 border cfg-bord--acc--a40 cfg-acc hover:cfg-fill--a25 transition-colors rounded tracking-wider"
                     >
                       + ADD FROM CATALOG
                     </button>
@@ -1656,7 +1656,7 @@ export default function ParamConfigPanel({
                       <button
                         type="button"
                         onClick={() => { void handleAddEssentialsPack(); }}
-                        className="flex-1 py-3 text-sm font-mono border border-stealth-border/50 text-stealth-muted hover:text-nv-green hover:border-nv-green/40 transition-colors rounded tracking-wider"
+                        className="flex-1 py-3 text-sm font-mono border cfg-bord--a50 cfg-mut hover:cfg-acc hover:cfg-bord--acc--a40 transition-colors rounded tracking-wider"
                         title="Insert Master-aligned ctx/parallel/kv/port/split/… as normal user-editable rows"
                       >
                         + STARTER PACK
@@ -1687,7 +1687,7 @@ export default function ParamConfigPanel({
                         <div className="mb-3 flex flex-col gap-2">
                           <button
                             onClick={() => setShowCatalogSearch(true)}
-                            className="w-full py-3 text-xl font-mono bg-nv-green/15 border border-nv-green/40 text-nv-green hover:bg-nv-green/25 transition-colors rounded tracking-wider"
+                            className="w-full py-3 text-xl font-mono cfg-fill--a15 border cfg-bord--acc--a40 cfg-acc hover:cfg-fill--a25 transition-colors rounded tracking-wider"
                           >
                             + ADD NEW FROM CATALOG
                           </button>
@@ -1695,7 +1695,7 @@ export default function ParamConfigPanel({
                             <button
                               type="button"
                               onClick={() => { void handleAddEssentialsPack(); }}
-                              className="w-full py-2 text-[10px] font-mono border border-stealth-border/40 text-stealth-muted hover:text-nv-green hover:border-nv-green/40 transition-colors rounded tracking-wider"
+                              className="w-full py-2 type-body font-mono border cfg-bord--a40 cfg-mut hover:cfg-acc hover:cfg-bord--acc--a40 transition-colors rounded tracking-wider"
                               title="Insert Master-aligned essentials as editable user rows"
                             >
                               + STARTER PACK (MASTER KEYS)
@@ -1717,27 +1717,27 @@ export default function ParamConfigPanel({
                       return (
                         <div key={groupName} data-group-idx={groupIdx}>
                           {showSystemHeader && (
-                            <div className="mt-4 mb-2 pt-3 border-t border-stealth-border/50">
-                              <div className="text-[9px] font-mono tracking-[0.2em] uppercase text-theme-accent/80">
+                            <div className="mt-4 mb-2 pt-3 border-t cfg-bord--a50">
+                              <div className="type-label font-mono tracking-[0.2em] uppercase cfg-acc">
                                 SYSTEM PARAMS
                               </div>
-                              <p className="text-[7px] font-mono config-muted mt-0.5">
+                              <p className="type-micro font-mono config-muted mt-0.5">
                                 Protected factory groups — expand values and hide options; structure locked for users
                               </p>
                             </div>
                           )}
                           {/* Group header — click to collapse/expand (session only) */}
                           <div
-                            className={`config-param-group-header flex items-center gap-1 text-[8px] font-mono tracking-widest uppercase mb-1.5 pb-1 border-b ${
-                              isEmpty ? "border-dashed border-stealth-border/25" : "border-stealth-border/30"
+                            className={`config-param-group-header flex items-center gap-1 type-tiny font-mono tracking-widest uppercase mb-1.5 pb-1 border-b ${
+                              isEmpty ? "border-dashed cfg-bord" : "cfg-bord"
                             } ${groupProtected ? "config-param-group-header--system" : ""} ${
-                              draggingGroup === groupName ? "text-yellow-400" : groupProtected ? "" : "text-stealth-muted/60"
+                              draggingGroup === groupName ? "cfg-warn" : groupProtected ? "" : "cfg-mut--a60"
                             }`}
                             title={groupProtected ? PROTECTED_GROUP_TOOLTIP : undefined}
                           >
                             {editorUnlocked && gCaps.reorder && (
                               <button onMouseDown={(e) => handleGroupDragStart(e, groupName)}
-                                className="select-none px-1 cursor-grab active:cursor-grabbing hover:text-nv-green transition-colors"
+                                className="select-none px-1 cursor-grab active:cursor-grabbing cfg-acc transition-colors"
                                 title="Click and drag to reorder group">
                                 &#x2630;
                               </button>
@@ -1755,13 +1755,13 @@ export default function ParamConfigPanel({
                                       setRenameGroupDraft("");
                                     }
                                   }}
-                                  className="flex-1 min-w-0 bg-transparent border-b border-yellow-400/40 text-[9px] font-mono text-white focus:outline-none px-1 py-0.5"
+                                  className="flex-1 min-w-0 bg-transparent border-b cfg-bord--warn--a40 type-label font-mono text-white focus:outline-none px-1 py-0.5"
                                   autoFocus
                                 />
                                 <button
                                   type="button"
                                   onClick={() => void renameGroup(groupName, renameGroupDraft)}
-                                  className="px-1.5 py-0 text-[7px] font-mono rounded-sm border border-nv-green/40 text-nv-green/90"
+                                  className="px-1.5 py-0 type-micro font-mono rounded-sm border cfg-bord--acc--a40 cfg-acc--a90"
                                 >
                                   OK
                                 </button>
@@ -1771,7 +1771,7 @@ export default function ParamConfigPanel({
                                     setRenamingGroup(null);
                                     setRenameGroupDraft("");
                                   }}
-                                  className="px-1 py-0 text-[8px] font-mono text-stealth-muted"
+                                  className="px-1 py-0 type-tiny font-mono cfg-mut"
                                 >
                                   ✕
                                 </button>
@@ -1783,7 +1783,7 @@ export default function ParamConfigPanel({
                               className="flex items-center gap-1 flex-1 min-w-0 text-left hover:text-white transition-colors"
                               title={isGroupCollapsed ? "Expand group" : "Collapse group"}
                             >
-                              <span className="text-[7px] flex-shrink-0">{isGroupCollapsed ? "▶" : "▼"}</span>
+                              <span className="type-micro flex-shrink-0">{isGroupCollapsed ? "▶" : "▼"}</span>
                               <span className="truncate">{groupName}</span>
                               <span className="opacity-40 flex-shrink-0">
                                 {isEmpty ? "(empty)" : `(${groupParams.length})`}
@@ -1794,10 +1794,10 @@ export default function ParamConfigPanel({
                               <button
                                 type="button"
                                 onClick={() => { void toggleGroupProtected(groupName); }}
-                                className={`flex-shrink-0 px-1.5 py-0 text-[7px] font-mono rounded-sm border transition-colors ${
+                                className={`flex-shrink-0 px-1.5 py-0 type-micro font-mono rounded-sm border transition-colors ${
                                   groupProtected
-                                    ? "border-theme-accent/50 text-theme-accent/90 bg-theme-accent/10"
-                                    : "border-stealth-border/40 text-stealth-muted/55 hover:text-stealth-muted"
+                                    ? "cfg-bord--acc--a50 cfg-acc--a90 cfg-fill--a10"
+                                    : "cfg-bord cfg-mut hover:cfg-mut"
                                 }`}
                                 title={
                                   groupProtected
@@ -1815,7 +1815,7 @@ export default function ParamConfigPanel({
                                   setRenamingGroup(groupName);
                                   setRenameGroupDraft(groupName);
                                 }}
-                                className="flex-shrink-0 px-1.5 py-0 text-[7px] font-mono rounded-sm border border-stealth-border/40 text-stealth-muted/55 hover:text-stealth-muted transition-colors"
+                                className="flex-shrink-0 px-1.5 py-0 type-micro font-mono rounded-sm border cfg-bord--a40 cfg-mut--a55 hover:cfg-mut transition-colors"
                                 title="Rename group"
                               >
                                 REN
@@ -1825,7 +1825,7 @@ export default function ParamConfigPanel({
                               <button
                                 type="button"
                                 onClick={() => { void deleteEmptyGroup(groupName); }}
-                                className="flex-shrink-0 px-1.5 py-0 text-[7px] font-mono rounded-sm border border-red-400/35 text-red-400/75 hover:text-red-400 hover:border-red-400/55 transition-colors"
+                                className="flex-shrink-0 px-1.5 py-0 type-micro font-mono rounded-sm border cfg-bord--dng--a35 cfg-dng--a75 hover:cfg-dng hover:cfg-bord--dng--a55 transition-colors"
                                 title="Remove empty group"
                               >
                                 DEL
@@ -1835,10 +1835,10 @@ export default function ParamConfigPanel({
                             <button
                               type="button"
                               onClick={() => toggleGroupDisplayZone(groupName)}
-                              className={`flex-shrink-0 px-1.5 py-0 text-[7px] font-mono rounded-sm border transition-colors ${
+                              className={`flex-shrink-0 px-1.5 py-0 type-micro font-mono rounded-sm border transition-colors ${
                                 customGroupDisplayZone[normalizeUiGroup(groupName)] === "above"
-                                  ? "border-nv-green/50 text-nv-green/90 bg-nv-green/10"
-                                  : "border-stealth-border/40 text-stealth-muted/45 hover:text-stealth-muted"
+                                  ? "cfg-bord--acc--a50 cfg-acc--a90 cfg-fill--a10"
+                                  : "cfg-bord cfg-mut hover:cfg-mut"
                               }`}
                               title={
                                 customGroupDisplayZone[normalizeUiGroup(groupName)] === "above"
@@ -1893,34 +1893,34 @@ export default function ParamConfigPanel({
                                         isChromeParam || groupProtected ? "config-param-row--system" : ""
                                       } ${
                                        (dragging && def.key === dragKeyRef.current)
-                                         ? "border-yellow-400/60 bg-yellow-400/10 opacity-70"
+                                         ? "cfg-bord--warn--a60 cfg-fill--warn--a10 opacity-70"
                                          : def.hidden
                                            ? "opacity-30 grayscale"
-                                           : `border ${isUserAdded ? 'border-yellow-400/30' : 'border-stealth-border'} hover:border-stealth-muted ${isUserAdded ? 'bg-yellow-400/3' : ''}`
+                                           : `border ${isUserAdded ? 'cfg-bord--warn--a30' : 'cfg-bord'} hover:cfg-bord ${isUserAdded ? 'cfg-fill--warn--a3' : ''}`
                                      }`}>
 
                                    {/* Drag handle */}
                                    {editorUnlocked && caps.structure && (
                                      <button onMouseDown={(e) => handleDragStart(e, catalogIdx)}
-                                       className="text-[8px] text-stealth-muted select-none px-1 cursor-grab active:cursor-grabbing hover:text-nv-green transition-colors"
+                                       className="type-tiny cfg-mut select-none px-1 cursor-grab active:cursor-grabbing cfg-acc transition-colors"
                                        title="Click and drag to reorder">&#x2630;</button>
                                    )}
                                    {editorUnlocked && !caps.structure && (
-                                     <span className="text-[8px] text-stealth-muted/25 select-none px-1" title={isChromeParam ? SYSTEM_CATALOG_PARAM_TOOLTIP : PROTECTED_GROUP_TOOLTIP}>&#x2630;</span>
+                                     <span className="type-tiny cfg-mut--a25 select-none px-1" title={isChromeParam ? SYSTEM_CATALOG_PARAM_TOOLTIP : PROTECTED_GROUP_TOOLTIP}>&#x2630;</span>
                                    )}
 
                                    {/* Essentials toggle */}
                                    {editorUnlocked && caps.structure && (
                                      <button
                                        onClick={() => toggleParamEssential(def.key)}
-                                       className={`config-param-ess text-[8px] font-mono px-0.5 select-none transition-colors ${
+                                       className={`config-param-ess type-tiny font-mono px-0.5 select-none transition-colors ${
                                          essentialExcluded
-                                           ? "text-stealth-muted/30 line-through"
+                                           ? "cfg-mut--a30 line-through"
                                            : essentialActive
                                              ? essentialForced
-                                               ? "config-param-ess--forced text-nv-green"
-                                               : "text-nv-green/70"
-                                             : "text-stealth-muted/35 hover:text-stealth-muted"
+                                               ? "config-param-ess--forced cfg-acc"
+                                               : "cfg-acc"
+                                             : "cfg-mut hover:cfg-mut"
                                        }`}
                                        title={
                                          essentialActive
@@ -1936,13 +1936,13 @@ export default function ParamConfigPanel({
                                      </button>
                                    )}
                                    {editorUnlocked && !caps.structure && (
-                                     <span className="config-param-ess text-[8px] font-mono px-0.5 text-stealth-muted/20 select-none" title={PROTECTED_GROUP_TOOLTIP}>ESS</span>
+                                     <span className="config-param-ess type-tiny font-mono px-0.5 cfg-mut--a20 select-none" title={PROTECTED_GROUP_TOOLTIP}>ESS</span>
                                    )}
 
                                    {/* Hidden toggle — whole param row (not for protected groups under user/DEV-preview) */}
                                    {editorUnlocked && caps.hideParam && (
                                      <button onClick={() => toggleRowHidden(def.key)}
-                                       className={`text-[10px] select-none transition-colors ${def.hidden ? "text-yellow-400/35" : "text-nv-green/25 hover:text-nv-green"}`}
+                                       className={`type-body select-none transition-colors ${def.hidden ? "cfg-warn--a35" : "cfg-acc--a25 hover:cfg-acc"}`}
                                        title={
                                          isChromeParam
                                            ? def.hidden
@@ -1961,17 +1961,17 @@ export default function ParamConfigPanel({
                                       <div className="flex items-center gap-1 mr-2">
                                         {caps.editMeta && (
                                         <button onClick={() => openParamMetaEditor(def)}
-                                          className="leading-none text-[15px] font-mono text-nv-green/40 hover:text-yellow-400 transition-colors"
+                                          className="leading-none type-lg font-mono cfg-acc--a40 hover:cfg-warn transition-colors"
                                           title="Edit param metadata">E</button>
                                         )}
                                         {caps.restore && !isUserAdded && (
                                           <button onClick={() => handleRestoreParam(def.key)}
-                                            className="leading-none text-[15px] font-mono text-blue-500/50 hover:text-blue-400 transition-colors"
+                                            className="leading-none type-lg font-mono cfg-inf--a50 hover:cfg-inf transition-colors"
                                             title="Restore this parameter row to DEFAULT">R</button>
                                         )}
                                         {((isUserAdded && caps.deleteUserParam) || (!isUserAdded && caps.deleteFactoryParam)) && (
                                         <button onClick={() => handleRemoveParam(def.key)}
-                                          className="leading-none text-[15px] font-mono text-red-500/50 hover:text-red-400 transition-colors"
+                                          className="leading-none type-lg font-mono cfg-dng--a50 hover:cfg-dng transition-colors"
                                           title={isUserAdded ? "Remove this parameter entirely" : "Remove factory param from config (excluded until reset)"}>D</button>
                                         )}
                                       </div>
@@ -1981,11 +1981,11 @@ export default function ParamConfigPanel({
                                    )}
 
 <span className="w-32 flex flex-col gap-0.5 px-1 py-0.5 truncate" title={def.key}>
-                                       <span className={`text-[12px] font-mono leading-tight ${isUserAdded ? 'text-yellow-300' : ''}`}>
+                                       <span className={`type-md font-mono leading-tight ${isUserAdded ? 'cfg-warn' : ''}`}>
                                          {def.label}
                                          
                                        </span>
-                                       <span className="text-[8px] font-mono leading-tight text-stealth-muted">{def.key}</span>
+                                       <span className="type-tiny font-mono leading-tight cfg-mut">{def.key}</span>
                                      </span>
 
                                    {/* Value bubbles */}
@@ -2060,8 +2060,8 @@ export default function ParamConfigPanel({
 
           {/* Status bar footer */}
           <div className="flex-shrink-0 px-4 py-2.5 config-section-bar flex items-center justify-between">
-            <span className="text-[9px] font-mono config-muted">{catalogVisibleParams.length} parameter{catalogVisibleParams.length !== 1 ? "s" : ""}{hiddenCount > 0 ? ` (${hiddenCount} hidden)` : ""}</span>
-            {currentProvider && (<span className="text-[9px] font-mono theme-accent-text">{currentProvider.display_name}</span>)}
+            <span className="type-label font-mono config-muted">{catalogVisibleParams.length} parameter{catalogVisibleParams.length !== 1 ? "s" : ""}{hiddenCount > 0 ? ` (${hiddenCount} hidden)` : ""}</span>
+            {currentProvider && (<span className="type-label font-mono theme-accent-text">{currentProvider.display_name}</span>)}
           </div>
         </div>
 

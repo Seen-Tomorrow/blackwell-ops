@@ -78,10 +78,10 @@ export default function AppUpdateMenu({
           setOpen((v) => !v);
           onRefresh?.();
         }}
-        className={`app-header-update-btn app-chrome-control-btn px-1.5 text-[8px] font-mono tracking-wider uppercase transition-colors leading-none relative ${
+        className={`app-header-update-btn app-chrome-control-btn px-1.5 type-tiny font-mono tracking-wider uppercase transition-colors leading-none relative ${
           highlight
-            ? "text-yellow-400 hover:text-yellow-300"
-            : "text-stealth-muted/70 hover:text-white/70"
+            ? "upd-menu-btn--active"
+            : "upd-menu-btn--idle"
         }`}
         title={
           activeTask
@@ -94,19 +94,19 @@ export default function AppUpdateMenu({
         {activeTask ? "UPDATING…" : "UPDATE"}
         {highlight && (
           <span
-            className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse"
+            className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full upd-menu-dot animate-pulse"
             aria-hidden
           />
         )}
       </button>
 
       {open && (
-        <div className="app-update-menu-popover absolute top-full right-0 mt-1.5 w-[320px] z-[9999] rounded-sm border border-yellow-400/30 shadow-2xl p-3 space-y-3">
+        <div className="app-update-menu-popover absolute top-full right-0 mt-1.5 w-[320px] z-[9999] rounded-sm border upd-bord--warn30 shadow-2xl p-3 space-y-3">
           <div className="space-y-0.5">
-            <div className="text-[10px] font-mono theme-accent-text tracking-wider uppercase">
+            <div className="type-body font-mono upd-popover-title tracking-wider uppercase">
               {anyAppUpdate ? "App update available" : "App update"}
             </div>
-            <p className="text-[9px] font-mono config-muted leading-relaxed">
+            <p className="type-label font-mono upd-popover-sub leading-relaxed">
               {offerings
                 ? `Running v${offerings.currentVersion}${
                     !offerings.enginesAvailable ? " · no engines on disk" : ""
@@ -119,21 +119,21 @@ export default function AppUpdateMenu({
             <div
               className={`rounded-sm border p-2.5 space-y-2 ${
                 appOffering.available
-                  ? "border-yellow-400/35 bg-yellow-400/[0.04]"
-                  : "border-white/10 bg-black/20"
+                  ? "upd-offer--available"
+                  : "upd-offer--idle"
               }`}
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 space-y-0.5">
-                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-yellow-400">
+                  <span className="type-body font-mono font-bold uppercase tracking-wider upd-offer-title">
                     {appOffering.label}
                   </span>
-                  <p className="text-[9px] font-mono config-muted leading-relaxed">
+                  <p className="type-label font-mono upd-popover-sub leading-relaxed">
                     {appOffering.summary}
                   </p>
                 </div>
                 {appOffering.available && (
-                  <span className="shrink-0 text-[9px] font-mono text-yellow-400/85 tabular-nums">
+                  <span className="shrink-0 type-label font-mono upd-offer-version tabular-nums">
                     v{appOffering.version}
                     {appOffering.sizeBytes > 0 ? ` · ${formatSize(appOffering.sizeBytes)}` : ""}
                   </span>
@@ -145,27 +145,27 @@ export default function AppUpdateMenu({
                   type="button"
                   disabled={!!activeTask}
                   onClick={() => void handleInstall()}
-                  className="w-full value-chip-active text-[9px] font-mono uppercase tracking-wider px-2 py-1.5 rounded-sm disabled:opacity-40"
+                  className="w-full value-chip-active type-label font-mono uppercase tracking-wider px-2 py-1.5 rounded-sm disabled:opacity-40"
                 >
                   Download App update
                 </button>
               ) : (
-                <p className="text-[9px] font-mono config-muted">Up to date on this channel</p>
+                <p className="type-label font-mono upd-offer-up-to-date">Up to date on this channel</p>
               )}
 
               {appOffering.releaseNotes && (
                 <details className="group">
-                  <summary className="text-[8px] font-mono text-stealth-muted/60 cursor-pointer hover:text-white/55 uppercase tracking-wider">
+                  <summary className="type-tiny font-mono upd-popover-rn cursor-pointer uppercase tracking-wider">
                     Release notes
                   </summary>
-                  <div className="mt-1.5 pt-1.5 border-t border-white/[0.06] max-h-32 overflow-y-auto">
+                  <div className="mt-1.5 pt-1.5 border-t upd-bord--a6 max-h-32 overflow-y-auto">
                     <ReleaseNotesBody text={appOffering.releaseNotes} />
                   </div>
                 </details>
               )}
             </div>
           ) : (
-            <p className="text-[9px] font-mono config-muted py-1">
+            <p className="type-label font-mono upd-popover-sub py-1">
               No release data yet. Try again when online.
             </p>
           )}
@@ -176,13 +176,13 @@ export default function AppUpdateMenu({
               setOpen(false);
               dispatchNavigateConfig({ subTab: "updates" });
             }}
-            className="w-full text-left rounded-sm border border-white/12 bg-white/[0.03] px-2.5 py-2 text-[9px] font-mono text-white/65 hover:border-yellow-400/30 hover:text-yellow-400/90 transition-colors uppercase tracking-wider"
+            className="w-full text-left rounded-sm upd-catalog-link px-2.5 py-2 type-label font-mono transition-colors uppercase tracking-wider"
             title="Config → UPDATES — Full install, engine packs, full catalog"
           >
             Updates catalog →
           </button>
 
-          {error && <p className="text-[9px] font-mono text-telemetry-red">{error}</p>}
+          {error && <p className="type-label font-mono upd-error--popover">{error}</p>}
         </div>
       )}
     </div>

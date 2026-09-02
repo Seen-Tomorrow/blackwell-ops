@@ -11,7 +11,7 @@ interface TabPageHeaderProps {
 
 export default function TabPageHeader({ title, showIcon = true, meta, actions }: TabPageHeaderProps) {
   return (
-    <div className="tab-page-header px-4 py-1 border-b border-stealth-border/50 flex items-center gap-3 min-w-0 flex-shrink-0">
+    <div className="tab-page-header px-4 py-1 border-b cfg-bord--a50 flex items-center gap-3 min-w-0 flex-shrink-0">
       <div className="flex items-center gap-3 shrink-0 min-w-0">
         <h2 className="text-xs font-mono theme-accent-text tracking-widest whitespace-nowrap">
           {showIcon ? `✦ ${title}` : title}

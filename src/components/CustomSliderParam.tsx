@@ -372,7 +372,7 @@ export default function CustomSliderParam({
             />
             {showLabel ? (
               <span
-                className={`ctx-slider-tick-tooltip absolute left-1/2 text-[7px] font-mono whitespace-nowrap pointer-events-none${hoveredPresetIdx === idx || safeValue === pNum ? " ctx-slider-tick-tooltip--active" : ""}${hero ? " ctx-slider-tick-tooltip--hero" : ""}`}
+                className={`ctx-slider-tick-tooltip absolute left-1/2 type-micro font-mono whitespace-nowrap pointer-events-none${hoveredPresetIdx === idx || safeValue === pNum ? " ctx-slider-tick-tooltip--active" : ""}${hero ? " ctx-slider-tick-tooltip--hero" : ""}`}
                 style={
                   hero
                     ? { top: "0px", transform: "translateX(-50%)" }
@@ -434,7 +434,7 @@ export default function CustomSliderParam({
             />
             {showLearnedLabel ? (
               <span
-                className={`ctx-slider-tick-tooltip ctx-slider-tick-tooltip--learned absolute left-1/2 text-[7px] font-mono whitespace-nowrap pointer-events-none${isActive ? " ctx-slider-tick-tooltip--active" : ""}${isCustom ? " ctx-slider-tick-tooltip--custom" : ""}${hero ? " ctx-slider-tick-tooltip--hero" : ""}`}
+                className={`ctx-slider-tick-tooltip ctx-slider-tick-tooltip--learned absolute left-1/2 type-micro font-mono whitespace-nowrap pointer-events-none${isActive ? " ctx-slider-tick-tooltip--active" : ""}${isCustom ? " ctx-slider-tick-tooltip--custom" : ""}${hero ? " ctx-slider-tick-tooltip--hero" : ""}`}
                 style={{ top: "0px", transform: hero ? "translateX(-50%)" : "translate(-50%, -100%)" }}
               >
                 {formatTokenLabel(mark)}
@@ -450,7 +450,7 @@ export default function CustomSliderParam({
         aria-valuemax={max}
         aria-valuenow={safeValue}
         aria-label="Context length"
-        className={`ctx-slider-thumb absolute z-[3] rounded-[2px] outline-none focus-visible:ring-1 focus-visible:ring-cyan-400/70 ${
+        className={`ctx-slider-thumb absolute z-[3] rounded-[2px] outline-none focus-visible:ring-1 focus-visible:cfg-ring--inf--a70 ${
           dragging ? "cursor-grabbing" : "cursor-grab"
         }`}
         style={{

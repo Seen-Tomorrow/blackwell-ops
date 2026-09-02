@@ -45,7 +45,7 @@ export default function LaunchPresetsMenu({
         type="button"
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}
-        className={`config-panel-toolbar-chip px-1.5 py-0.5 text-[8px] font-mono rounded-sm ${
+        className={`config-panel-toolbar-chip px-1.5 py-0.5 type-tiny font-mono rounded-sm ${
           open ? "config-panel-toolbar-chip--active" : ""
         }`}
         title="Launch combos — solo / twin recipes"
@@ -55,16 +55,16 @@ export default function LaunchPresetsMenu({
 
       {open && (
         <div
-          className="launch-presets-menu__panel absolute top-full left-0 z-50 mt-0.5 min-w-[220px] max-w-[300px] border border-stealth-border/50 bg-stealth-panel shadow-lg font-mono text-[9px]"
+          className="launch-presets-menu__panel absolute top-full left-0 z-50 mt-0.5 min-w-[220px] max-w-[300px] border cfg-bord--a50 cfg-panel shadow-lg font-mono type-label"
           role="menu"
         >
-          <div className="px-2 py-1.5 border-b border-stealth-border/40 flex items-center gap-2">
-            <label className="flex items-center gap-1 text-stealth-muted cursor-pointer select-none">
+          <div className="px-2 py-1.5 border-b cfg-bord--a40 flex items-center gap-2">
+            <label className="flex items-center gap-1 cfg-mut cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={loadIntoPanel}
                 onChange={(e) => setLoadIntoPanel(e.target.checked)}
-                className="accent-nv-green"
+                className="cfg-accent"
               />
               Also load into panel
             </label>
@@ -72,32 +72,32 @@ export default function LaunchPresetsMenu({
 
           <div className="max-h-[200px] overflow-y-auto">
             {combos.length === 0 && (
-              <p className="px-2 py-2 text-stealth-muted/60 m-0">No presets yet — save solo or twin.</p>
+              <p className="px-2 py-2 cfg-mut--a60 m-0">No presets yet — save solo or twin.</p>
             )}
             {combos.map((c) => (
               <button
                 key={c.id}
                 type="button"
                 role="menuitem"
-                className="w-full text-left px-2 py-1.5 hover:bg-nv-green/10 flex items-center gap-2 border-b border-stealth-border/20"
+                className="w-full text-left px-2 py-1.5 hover:cfg-fill--a10 flex items-center gap-2 border-b cfg-bord--a20"
                 onClick={() => {
                   setOpen(false);
                   onApply(c, { loadIntoPanel });
                 }}
               >
-                <span className="text-nv-green/80 uppercase shrink-0 w-8">
+                <span className="cfg-acc--a80 uppercase shrink-0 w-8">
                   {c.kind === "twin" ? "Twin" : c.kind === "multi" ? "Multi" : "Solo"}
                 </span>
-                <span className="truncate text-stealth-text">{c.name}</span>
+                <span className="truncate cfg-text">{c.name}</span>
               </button>
             ))}
           </div>
 
-          <div className="border-t border-stealth-border/40 p-1 flex flex-col gap-0.5">
+          <div className="border-t cfg-bord--a40 p-1 flex flex-col gap-0.5">
             <button
               type="button"
               disabled={!canSaveSolo}
-              className="text-left px-2 py-1 hover:bg-nv-green/10 disabled:opacity-40"
+              className="text-left px-2 py-1 hover:cfg-fill--a10 disabled:opacity-40"
               onClick={() => {
                 setOpen(false);
                 onSaveSolo();
@@ -108,7 +108,7 @@ export default function LaunchPresetsMenu({
             <button
               type="button"
               disabled={!canSaveTwin}
-              className="text-left px-2 py-1 hover:bg-nv-green/10 disabled:opacity-40"
+              className="text-left px-2 py-1 hover:cfg-fill--a10 disabled:opacity-40"
               title={canSaveTwin ? "Save from two Running engines" : "Need ≥2 Running engines"}
               onClick={() => {
                 setOpen(false);
@@ -119,7 +119,7 @@ export default function LaunchPresetsMenu({
             </button>
             <button
               type="button"
-              className="text-left px-2 py-1 hover:bg-nv-green/10 text-nv-green/90"
+              className="text-left px-2 py-1 hover:cfg-fill--a10 cfg-acc--a90"
               onClick={() => {
                 setOpen(false);
                 onManage();

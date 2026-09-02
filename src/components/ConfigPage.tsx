@@ -268,7 +268,7 @@ function ModelPathsPanel() {
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <span className="text-[10px] font-mono text-stealth-muted animate-pulse">LOADING PATHS...</span>
+        <span className="type-body font-mono cfg-mut animate-pulse">LOADING PATHS...</span>
       </div>
     );
   }
@@ -276,19 +276,19 @@ function ModelPathsPanel() {
   return (
     <div className="flex-1 flex flex-col overflow-hidden min-h-0">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-stealth-border flex items-center justify-between">
-        <h2 className="text-xs font-mono text-nv-green tracking-wider">MODEL PATHS</h2>
+      <div className="px-4 py-3 border-b cfg-bord flex items-center justify-between">
+        <h2 className="text-xs font-mono cfg-acc tracking-wider">MODEL PATHS</h2>
         <button
           onClick={handleAddPath}
           data-onboarding="add-folder"
-          className="px-3 py-1 text-[9px] font-mono border border-nv-green/60 text-nv-green hover:bg-nv-green/15 transition-colors"
+          className="px-3 py-1 type-label font-mono border cfg-bord--acc--a60 cfg-acc hover:cfg-fill--a15 transition-colors"
         >
           + ADD FOLDER
         </button>
       </div>
 
       {pathError && (
-        <div className="px-4 py-2 border-b border-telemetry-red/30 bg-telemetry-red/5 text-[9px] font-mono text-telemetry-red">
+        <div className="px-4 py-2 border-b cfg-bord--dng--a30 cfg-fill--dng--a5 type-label font-mono cfg-dng">
           {pathError}
         </div>
       )}
@@ -296,7 +296,7 @@ function ModelPathsPanel() {
       {/* Path list */}
       <div className="flex-1 overflow-y-auto p-4 space-y-2">
         {paths.length === 0 && (
-          <div className="text-center py-8 text-[10px] font-mono text-stealth-muted">
+          <div className="text-center py-8 type-body font-mono cfg-mut">
             NO PATHS CONFIGURED — ADD A FOLDER TO GET STARTED
           </div>
         )}
@@ -305,19 +305,19 @@ function ModelPathsPanel() {
           const usage = getUsage(entry.path);
           return (
             <div key={entry.path}
-              className={`border rounded-sm p-3 transition-colors ${entry.isDefault ? "border-nv-green/40 bg-nv-green/5" : "border-stealth-border bg-stealth-surface/50"}`}>
+              className={`border rounded-sm p-3 transition-colors ${entry.isDefault ? "cfg-bord--acc--a40 cfg-fill--a5" : "cfg-bord cfg-panel--a50"}`}>
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     {entry.isDefault && (
-                      <span className="text-[8px] font-mono text-nv-green bg-nv-green/15 px-1.5 py-0.5 rounded-sm">DEFAULT</span>
+                      <span className="type-tiny font-mono cfg-acc cfg-fill--a15 px-1.5 py-0.5 rounded-sm">DEFAULT</span>
                     )}
-                    <span className="text-[10px] font-mono text-white truncate">{entry.label || entry.path}</span>
+                    <span className="type-body font-mono text-white truncate">{entry.label || entry.path}</span>
                   </div>
-                  <div className="text-[9px] font-mono text-stealth-muted truncate">{displayModelPath(entry.path)}</div>
+                  <div className="type-label font-mono cfg-mut truncate">{displayModelPath(entry.path)}</div>
                   {usage && (
                     <div className="flex items-center gap-3 mt-1.5">
-                      <span className="text-[8px] font-mono text-stealth-muted/70">
+                      <span className="type-tiny font-mono cfg-mut--a70">
                         {usage.fileCount} models · {formatBytes(usage.totalGgufBytes)}
                       </span>
                     </div>
@@ -328,7 +328,7 @@ function ModelPathsPanel() {
                   {!entry.isDefault && (
                     <button onClick={() => handleSetDefault(entry.path)}
                       title="Set as default for download"
-                      className="px-2 py-0.5 text-[8px] font-mono border border-yellow-400/30 text-yellow-400/70 hover:bg-yellow-400/10 transition-colors">
+                      className="px-2 py-0.5 type-tiny font-mono border cfg-bord--warn--a30 cfg-warn--a70 hover:cfg-fill--warn--a10 transition-colors">
                       SET AS DEFAULT FOR DOWNLOAD
                     </button>
                   )}
@@ -340,10 +340,10 @@ function ModelPathsPanel() {
                         ? "Add another folder before removing the last model path"
                         : "Remove this path"
                     }
-                    className={`px-2 py-0.5 text-[8px] font-mono border border-red-400/30 text-red-400/70 transition-colors ${
+                    className={`px-2 py-0.5 type-tiny font-mono border cfg-bord--dng--a30 cfg-dng--a70 transition-colors ${
                       paths.length <= 1
                         ? "opacity-30 cursor-not-allowed"
-                        : "hover:bg-red-400/10"
+                        : "hover:cfg-fill--dng--a10"
                     }`}
                   >
                     REMOVE
@@ -356,7 +356,7 @@ function ModelPathsPanel() {
       </div>
 
       {/* Footer hint */}
-      <div className="px-4 py-2 border-t border-stealth-border text-[8px] font-mono text-stealth-muted/50">
+      <div className="px-4 py-2 border-t cfg-bord type-tiny font-mono cfg-mut--a50">
         {paths.length === 0
           ? "ADD AT LEAST ONE FOLDER — CATALOG STAYS EMPTY UNTIL A PATH IS SET"
           : paths.length === 1

@@ -123,11 +123,11 @@ function formatQuantDate(iso?: string): string {
 }
 
 function getVramFitColor(sizeBytes: number, vramGb: number): string {
-  if (!vramGb || sizeBytes === 0) return 'bg-stealth-muted/30';
+  if (!vramGb || sizeBytes === 0) return 'hub-vramfit--none';
   const sizeGb = sizeBytes / (1024 * 1024 * 1024);
-  if (sizeGb + 2 <= vramGb) return 'bg-nv-green';
-  if (sizeGb + 2 <= vramGb * 1.3) return 'bg-yellow-500';
-  return 'bg-red-500';
+  if (sizeGb + 2 <= vramGb) return 'hub-vramfit--fits';
+  if (sizeGb + 2 <= vramGb * 1.3) return 'hub-vramfit--tight';
+  return 'hub-vramfit--over';
 }
 
 function getVramFitLabel(sizeBytes: number, vramGb: number): string {
@@ -425,18 +425,18 @@ export default function ModelHubSearch() {
   return (
     <div className="flex flex-col h-full">
       {toast && (
-        <div className="absolute top-4 right-4 z-50 px-3 py-1.5 text-[10px] font-mono tracking-wider bg-nv-green/20 border border-nv-green/40 text-nv-green rounded-sm toast-enter">
+        <div className="hub-toast absolute top-4 right-4 z-50 px-3 py-1.5 font-mono tracking-wider rounded-sm toast-enter">
           {toast}
         </div>
       )}
 
       {confirmDownload && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 fade-in">
-          <div className="gunmetal-card p-5 max-w-sm w-full mx-4 border border-yellow-400/30 rounded-sm">
-            <div className="text-[10px] font-mono text-yellow-400 tracking-wider uppercase mb-3">
+          <div className="hub-confirm gunmetal-card p-5 max-w-sm w-full mx-4 border rounded-sm">
+            <div className="hub-confirm-title font-mono tracking-wider uppercase mb-3">
               {confirmDownload.action === 'update' ? '⚠ MODEL UPDATED ON HF' : '⚠ REPLACE EXISTING FILE'}
             </div>
-            <p className="text-[11px] font-mono text-white/80 mb-3">
+            <p className="hub-confirm-body font-mono mb-3">
               {confirmDownload.action === 'update'
                 ? shardCount(confirmDownload.file) > 1
                   ? `A newer version of this quant is available on HuggingFace. All ${shardCount(confirmDownload.file)} shard files will be replaced after download completes.`
@@ -446,21 +446,21 @@ export default function ModelHubSearch() {
                   : 'A file with this name already exists. It will be replaced after download completes.'}
             </p>
             {(confirmDownload.diskFileSize || confirmDownload.diskAuthor) ? (
-              <div className="mb-3 space-y-1.5 text-[9px] font-mono">
+              <div className="hub-confirm-disk mb-3 space-y-1.5 font-mono">
                 <div className="flex items-center gap-2">
-                  <span className="text-stealth-muted w-16">DISK</span>
-                  {confirmDownload.diskAuthor && <span className="text-stealth-muted/70">{confirmDownload.diskAuthor}</span>}
-                  <span className="text-yellow-400/80">{confirmDownload.file.type}</span>
-                  {confirmDownload.diskFileSize && <span className="text-stealth-muted/50">{formatSize(confirmDownload.diskFileSize)}</span>}
+                  <span className="hub-confirm-disk-label">DISK</span>
+                  {confirmDownload.diskAuthor && <span className="hub-confirm-disk-author">{confirmDownload.diskAuthor}</span>}
+                  <span className="hub-confirm-disk-type">{confirmDownload.file.type}</span>
+                  {confirmDownload.diskFileSize && <span className="hub-confirm-disk-size">{formatSize(confirmDownload.diskFileSize)}</span>}
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-stealth-muted w-16">HF</span>
-                  <span className="text-nv-green/80">{confirmDownload.file.type}</span>
-                  <span className="text-stealth-muted/50">{formatSize(confirmDownload.file.size_bytes)}</span>
+                  <span className="hub-confirm-disk-label">HF</span>
+                  <span className="hub-confirm-hf-type">{confirmDownload.file.type}</span>
+                  <span className="hub-confirm-disk-size">{formatSize(confirmDownload.file.size_bytes)}</span>
                 </div>
               </div>
             ) : (
-              <p className="text-[10px] font-mono text-stealth-muted mb-4">
+              <p className="hub-confirm-fallback font-mono mb-4">
                 {confirmDownload.file.type}
               </p>
             )}
@@ -468,14 +468,14 @@ export default function ModelHubSearch() {
               <button
                 type="button"
                 onClick={() => setConfirmDownload(null)}
-                className="px-3 py-1.5 text-[10px] font-mono tracking-wider border border-stealth-border/60 text-stealth-muted rounded-sm hover:bg-stealth-muted/10 transition-all"
+                className="hub-confirm-cancel px-3 py-1.5 font-mono tracking-wider border rounded-sm transition-all"
               >
                 CANCEL
               </button>
               <button
                 type="button"
                 onClick={handleConfirmDownload}
-                className="px-3 py-1.5 text-[10px] font-mono tracking-wider bg-yellow-400/20 text-yellow-400 border border-yellow-400/40 rounded-sm hover:bg-yellow-400/30 transition-all"
+                className="hub-confirm-go px-3 py-1.5 font-mono tracking-wider border rounded-sm transition-all"
               >
                 {confirmDownload.action === 'update' ? 'UPDATE MODEL' : 'REPLACE FILE'}
               </button>
@@ -484,9 +484,9 @@ export default function ModelHubSearch() {
         </div>
       )}
 
-      <div className="px-4 py-3 border-b border-stealth-border/50">
+      <div className="hub-searchbar px-4 py-3 border-b">
         <div className="flex items-center gap-2 mb-2.5">
-          <span className="text-nv-green text-xs select-none">🔍</span>
+          <span className="hub-searchbar-icon select-none">🔍</span>
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -497,19 +497,19 @@ export default function ModelHubSearch() {
           <button
             onClick={doSearch}
             disabled={loading || !query.trim()}
-            className="px-4 py-2 text-xs font-mono tracking-wider bg-nv-green/20 text-nv-green border border-nv-green/40 rounded-sm hover:bg-nv-green/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+            className="hub-searchbar-btn px-4 py-2 font-mono tracking-wider border rounded-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
           >
             {loading ? 'SEARCHING...' : 'SEARCH'}
           </button>
         </div>
 
         <div className="flex items-center gap-3 flex-wrap">
-          <span className="text-[9px] font-mono text-stealth-muted tracking-wider uppercase">VRAM FIT:</span>
+          <span className="hub-filter-label">VRAM FIT:</span>
           {VRAM_TIERS.map(gb => (
             <button
               key={gb}
               onClick={() => handleVramToggle(gb)}
-              className={`px-2 py-0.5 text-[10px] font-mono tracking-wider rounded-sm transition-all ${
+              className={`hub-filter-chip px-2 py-0.5 font-mono tracking-wider rounded-sm transition-all ${
                 vramTier === gb ? 'value-chip-active' : 'value-chip'
               }`}
             >
@@ -519,7 +519,7 @@ export default function ModelHubSearch() {
           {vramTier > 0 && (
             <button
               onClick={() => setVramTier(0)}
-              className="px-2 py-0.5 text-[9px] font-mono tracking-wider border border-red-400/30 text-red-400 hover:bg-red-400/10 rounded-sm transition-all"
+              className="hub-filter-clear px-2 py-0.5 font-mono tracking-wider border rounded-sm transition-all"
             >
               CLEAR
             </button>
@@ -529,19 +529,19 @@ export default function ModelHubSearch() {
 
           <button
             onClick={() => setGgufOnly(prev => !prev)}
-            className={`px-2 py-0.5 text-[10px] font-mono tracking-wider rounded-sm transition-all ${
+            className={`hub-filter-chip px-2 py-0.5 font-mono tracking-wider rounded-sm transition-all ${
               ggufOnly ? 'value-chip-active' : 'value-chip'
             }`}
           >
             {ggufOnly ? 'GGUF ON' : 'ALL'}
           </button>
 
-          <span className="text-[9px] font-mono text-stealth-muted tracking-wider uppercase">SORT:</span>
+          <span className="hub-filter-label">SORT:</span>
           {SORT_OPTIONS.map(opt => (
             <button
               key={opt.key}
               onClick={() => setSortBy(opt.key)}
-              className={`px-2 py-0.5 text-[10px] font-mono tracking-wider rounded-sm transition-all ${
+              className={`hub-filter-chip px-2 py-0.5 font-mono tracking-wider rounded-sm transition-all ${
                 sortBy === opt.key ? 'value-chip-active' : 'value-chip'
               }`}
             >
@@ -556,19 +556,19 @@ export default function ModelHubSearch() {
           className="flex flex-col eink-panel-wrapper flex-shrink-0 min-h-0"
           style={{ width: panelWidth }}
         >
-          <div className="px-3 py-1.5 border-b border-stealth-border/40 flex items-center justify-between flex-shrink-0">
-            <span className="text-[9px] font-mono text-stealth-muted tracking-wider uppercase">
+          <div className="hub-results-head px-3 py-1.5 border-b flex items-center justify-between flex-shrink-0">
+            <span className="hub-results-count font-mono tracking-wider uppercase">
               RESULTS ({filteredResults.length})
             </span>
             {vramTier > 0 && (
-              <span className="text-[8px] font-mono text-nv-green/60">{vramTier}GB FILTER</span>
+              <span className="hub-results-filter font-mono">{vramTier}GB FILTER</span>
             )}
           </div>
 
           <div className="flex-1 overflow-y-auto eink-scrollbar px-3 py-2 space-y-2 min-h-0">
             {!loading && filteredResults.length === 0 && (
-              <div className="flex items-center justify-center h-full text-stealth-muted/50">
-                <p className="text-[10px] font-mono italic text-center py-8 px-4">
+              <div className="hub-empty flex items-center justify-center h-full">
+                <p className="hub-empty-text font-mono italic text-center py-8 px-4">
                   {query ? 'NO RESULTS FOUND' : 'ENTER A QUERY TO SEARCH'}
                 </p>
               </div>
@@ -576,7 +576,7 @@ export default function ModelHubSearch() {
 
             {loading && (
               <div className="flex items-center justify-center h-full">
-                <span className="text-xs font-mono text-nv-green hub-search-pulse">
+                <span className="hub-busy font-mono hub-search-pulse">
                   SEARCHING...
                 </span>
               </div>
@@ -586,14 +586,14 @@ export default function ModelHubSearch() {
               <button
                 key={model.id}
                 onClick={() => setSelectedId(model.id)}
-                className={`w-full text-left p-3 rounded-sm transition-all hub-result-enter ${
-                  selectedId === model.id ? 'gunmetal-card border-l-2 border-l-nv-green' : 'buried-card'
+                className={`hub-result w-full text-left p-3 rounded-sm transition-all hub-result-enter ${
+                  selectedId === model.id ? 'hub-result--selected gunmetal-card border-l-2' : 'buried-card'
                 }`}
               >
                   <div className="flex items-start justify-between gap-2 mb-1.5">
-                    <span className="text-[9px] font-mono text-stealth-muted truncate">{model.author}</span>
+                    <span className="hub-result-author truncate font-mono">{model.author}</span>
                     {model.gguf_files && model.gguf_files.length > 0 && (
-                      <span className="shrink-0 rounded-sm border border-nv-green/30 bg-nv-green/10 px-1 py-0.5 text-[8px] font-mono text-nv-green/70">
+                      <span className="hub-result-gguf shrink-0 rounded-sm border px-1 py-0.5 font-mono">
                         GGUF
                       </span>
                     )}
@@ -601,7 +601,7 @@ export default function ModelHubSearch() {
 
                   <div className="text-xs font-mono model-card-name truncate mb-1.5">{model.id}</div>
 
-                  <div className="flex items-center gap-3 text-[10px] font-mono text-stealth-muted">
+                  <div className="hub-result-meta flex items-center gap-3 font-mono">
                     <span>⬇ {formatNum(model.downloads)}</span>
                     <span>⭐ {formatNum(model.likes_count)}</span>
                   </div>
@@ -612,7 +612,7 @@ export default function ModelHubSearch() {
                         <QuantBadge key={i} type={gf.type} />
                       ))}
                       {model.gguf_files.length > 5 && (
-                        <span className="text-[8px] font-mono text-stealth-muted/40">+{model.gguf_files.length - 5}</span>
+                        <span className="hub-result-more font-mono">+{model.gguf_files.length - 5}</span>
                       )}
                     </div>
                   )}
@@ -638,38 +638,38 @@ export default function ModelHubSearch() {
         <div className="flex-1 min-w-0 min-h-0 eink-panel-wrapper overflow-y-auto eink-scrollbar">
           {loadingDetail ? (
             <div key="loading-detail" className="flex items-center justify-center h-full fade-in">
-              <span className="text-xs font-mono text-nv-green hub-search-pulse">
+              <span className="hub-busy font-mono hub-search-pulse">
                 LOADING MODEL INFO...
               </span>
             </div>
           ) : detailInfo ? (
             <div key={detailInfo.id} className="p-4 fade-in">
-              <div className="flex items-start justify-between gap-3 mb-2 pb-2 border-b border-stealth-border/40">
+              <div className="hub-detail-head flex items-start justify-between gap-3 mb-2 pb-2 border-b">
                 <div className="min-w-0">
                   <h2 className="text-xs font-mono model-card-name tracking-wide truncate">{detailInfo.id}</h2>
-                  <span className="text-[9px] font-mono text-stealth-muted">{detailInfo.author}</span>
+                  <span className="hub-detail-author font-mono">{detailInfo.author}</span>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <button
                     type="button"
                     onClick={checkUpdates}
                     disabled={checkingUpdates}
-                    className="rounded-sm border border-yellow-400/30 px-2 py-1 text-[8px] font-mono text-yellow-400/80 transition-colors whitespace-nowrap hover:bg-yellow-400/10 hover:text-yellow-400 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="hub-detail-check rounded-sm border px-2 py-1 font-mono transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     {checkingUpdates ? 'CHECKING...' : 'CHECK UPDATES'}
                   </button>
                   <button
                     type="button"
                     onClick={() => handleOpenHfPage(detailInfo.id)}
-                    className="rounded-sm border border-telemetry-cyan/30 px-2 py-1 text-[8px] font-mono text-telemetry-cyan/80 transition-colors whitespace-nowrap hover:bg-telemetry-cyan/10 hover:text-telemetry-cyan"
+                    className="hub-detail-hf rounded-sm border px-2 py-1 font-mono transition-colors whitespace-nowrap"
                   >
                     VIEW ON HF ↗
                   </button>
                 </div>
               </div>
               {hfUpdates && hfUpdates.localCopyCount > 0 && hfUpdates.updateCount > 0 && (
-                <div className="mb-2 pb-2 border-b border-stealth-border/40">
-                  <div className="text-[9px] font-mono text-yellow-400 tracking-wider">
+                <div className="hub-detail-updates mb-2 pb-2 border-b">
+                  <div className="hub-detail-updates-text font-mono tracking-wider">
                     ⚠ {hfUpdates.updateCount} OF {hfUpdates.localCopyCount} LOCAL QUANT{hfUpdates.localCopyCount > 1 ? 'S' : ''} OUT OF DATE ON HF
                   </div>
                 </div>
@@ -683,18 +683,18 @@ export default function ModelHubSearch() {
               />
 
               {detailInfo.description && (
-                <div className="mb-3 pb-2 border-b border-stealth-border/40">
-                  <p className="text-[10px] font-mono text-stealth-muted leading-relaxed line-clamp-4">
+                <div className="hub-detail-desc mb-3 pb-2 border-b">
+                  <p className="hub-detail-desc-text font-mono leading-relaxed line-clamp-4">
                     {detailInfo.description.slice(0, 500)}{detailInfo.description.length > 500 ? '...' : ''}
                   </p>
                 </div>
               )}
 
               <div>
-                <h3 className="text-[8px] font-mono text-nv-green tracking-wider uppercase mb-2 flex items-center gap-2">
+                <h3 className="hub-quant-head font-mono tracking-wider uppercase mb-2 flex items-center gap-2">
                   <span>QUANTS ({selectedGgufFiles.length})</span>
                   {loadingQuantDates && (
-                    <span className="text-stealth-muted/50 normal-case tracking-normal">dates…</span>
+                    <span className="hub-quant-dates normal-case tracking-normal">dates…</span>
                   )}
                 </h3>
 
@@ -710,48 +710,48 @@ export default function ModelHubSearch() {
                     return (
                       <div
                         key={`${file.type}-${file.size_bytes}-${file.url}`}
-                        className="theme-surface-row flex items-center justify-between py-2 px-2.5 mb-1 rounded-sm hover:border-nv-green/20 transition-all hub-file-enter"
+                        className="hub-file theme-surface-row flex items-center justify-between py-2 px-2.5 mb-1 rounded-sm transition-all hub-file-enter"
                       >
                         <div className="flex items-center gap-3 min-w-0">
                           <VramFitBadge sizeBytes={file.size_bytes} vramGb={vramGb} />
                           <QuantBadge type={file.type} sizeBytes={file.size_bytes} />
-                          <span className="text-[10px] font-mono text-stealth-muted/60 flex-shrink-0">
+                          <span className="hub-file-size font-mono flex-shrink-0">
                             {formatSize(file.size_bytes)}
                           </span>
                           {file.lastModified ? (
                             <span
-                              className="shrink-0 text-[8px] font-mono text-stealth-muted/50"
+                              className="hub-file-date shrink-0 font-mono"
                               title={file.lastModified}
                             >
                               {formatQuantDate(file.lastModified)}
                             </span>
                           ) : loadingQuantDates ? (
-                            <span className="shrink-0 text-[8px] font-mono text-stealth-muted/30">…</span>
+                            <span className="hub-file-datespend shrink-0 font-mono">…</span>
                           ) : null}
                           {shards > 1 && (
-                            <span className="shrink-0 rounded-sm border border-stealth-border/50 bg-stealth-surface/60 px-1 py-0.5 text-[8px] font-mono text-stealth-muted/70">
+                            <span className="hub-file-shards shrink-0 rounded-sm border px-1 py-0.5 font-mono">
                               {shards} SHARDS
                             </span>
                           )}
                           {hfUpdate?.hasUpdate && (
-                            <span className="shrink-0 text-[8px] font-mono text-yellow-400/70 flex items-center gap-1">
+                            <span className="hub-file-updated shrink-0 font-mono flex items-center gap-1">
                               ⚠ UPDATED
                             </span>
                           )}
                         </div>
 
                         {matchType === 'lfs' ? (
-                          <span className="shrink-0 px-2 py-1 text-[9px] font-mono tracking-wider text-nv-green border border-nv-green/30 rounded-sm bg-nv-green/10">
+                          <span className="hub-file-match shrink-0 px-2 py-1 font-mono tracking-wider border rounded-sm">
                             ✓ IDENTICAL
                           </span>
                         ) : matchType === 'size' ? (
                           <div className="flex items-center gap-1.5 shrink-0">
-                            <span className="px-2 py-1 text-[9px] font-mono tracking-wider text-blue-400 border border-blue-400/30 rounded-sm bg-blue-400/10">
+                            <span className="hub-file-disk px-2 py-1 font-mono tracking-wider border rounded-sm">
                               ✓ ON DISK
                             </span>
                             <button
                               onClick={() => handlePatchMetadata(detailInfo.id, file)}
-                              className="px-2 py-1 text-[9px] font-mono tracking-wider bg-cyan-400/20 text-cyan-400 border border-cyan-400/40 rounded-sm hover:bg-cyan-400/30 transition-all"
+                              className="hub-file-patch px-2 py-1 font-mono tracking-wider border rounded-sm transition-all"
                             >
                               PATCH
                             </button>
@@ -759,14 +759,14 @@ export default function ModelHubSearch() {
                         ) : matchType === 'mismatch' ? (
                           <button
                             onClick={() => handleDownload(detailInfo.id, file)}
-                            className="shrink-0 px-3 py-1 text-[9px] font-mono tracking-wider bg-yellow-400/20 text-yellow-400 border border-yellow-400/40 rounded-sm hover:bg-yellow-400/30 transition-all"
+                            className="hub-file-update shrink-0 px-3 py-1 font-mono tracking-wider border rounded-sm transition-all"
                           >
                             UPDATE
                           </button>
                         ) : (
                           <button
                             onClick={() => handleDownload(detailInfo.id, file)}
-                            className="shrink-0 px-3 py-1 text-[9px] font-mono tracking-wider bg-nv-green/20 text-nv-green border border-nv-green/40 rounded-sm hover:bg-nv-green/30 transition-all"
+                            className="hub-file-download shrink-0 px-3 py-1 font-mono tracking-wider border rounded-sm transition-all"
                           >
                             DOWNLOAD
                           </button>
@@ -776,7 +776,7 @@ export default function ModelHubSearch() {
                   })}
 
                   {selectedGgufFiles.length === 0 && (
-                    <p className="text-[10px] font-mono text-stealth-muted/40 italic py-4 text-center">
+                    <p className="hub-file-empty font-mono italic py-4 text-center">
                       NO GGUF FILES FOUND FOR THIS MODEL
                     </p>
                   )}
@@ -784,12 +784,12 @@ export default function ModelHubSearch() {
               </div>
             </div>
           ) : selectedSearchModel ? (
-            <div key="placeholder-detail" className="flex items-center justify-center h-full text-stealth-muted/30 fade-in">
-              <p className="text-[10px] font-mono italic">CLICK A MODEL TO LOAD DETAILS</p>
+            <div key="placeholder-detail" className="hub-detail-empty flex items-center justify-center h-full fade-in">
+              <p className="hub-detail-empty-text font-mono italic">CLICK A MODEL TO LOAD DETAILS</p>
             </div>
           ) : (
-            <div key="empty-detail" className="flex items-center justify-center h-full text-stealth-muted/30 fade-in">
-              <p className="text-[10px] font-mono italic">SELECT A MODEL TO VIEW DETAILS</p>
+            <div key="empty-detail" className="hub-detail-empty flex items-center justify-center h-full fade-in">
+              <p className="hub-detail-empty-text font-mono italic">SELECT A MODEL TO VIEW DETAILS</p>
             </div>
           )}
         </div>

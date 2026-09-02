@@ -36,7 +36,7 @@ export default function SliderParam({
   const showPerSlotField = perSlotReserve || (perSlotTokens != null && perSlotTokens > 0);
   const perSlotLabel =
     perSlotTokens != null && perSlotTokens > 0 ? formatCtxChipLabel(perSlotTokens) : undefined;
-  const chipBase = "py-0.5 text-[9px] font-mono rounded-sm focus:outline-none";
+  const chipBase = "py-0.5 type-label font-mono rounded-sm focus:outline-none";
 
   return (
     <div className="ctx-slider-row flex items-center gap-1 min-w-0 flex-1">

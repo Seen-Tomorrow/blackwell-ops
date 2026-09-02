@@ -76,7 +76,7 @@ export default function ModelHubDownloadPaths({ downloads }: ModelHubDownloadPat
 
   if (loading) {
     return (
-      <div className="flex h-full min-h-0 flex-col px-3 py-2.5 text-[9px] font-mono text-stealth-muted animate-pulse">
+      <div className="dl-paths-state animate-pulse">
         LOADING DOWNLOAD FOLDER...
       </div>
     );
@@ -84,7 +84,7 @@ export default function ModelHubDownloadPaths({ downloads }: ModelHubDownloadPat
 
   if (paths.length === 0) {
     return (
-      <div className="flex h-full min-h-0 flex-col px-3 py-2.5 text-[9px] font-mono text-stealth-muted">
+      <div className="dl-paths-state">
         NO MODEL FOLDER CONFIGURED — ADD ONE IN CONFIG / PATHS
       </div>
     );
@@ -92,11 +92,11 @@ export default function ModelHubDownloadPaths({ downloads }: ModelHubDownloadPat
 
   return (
     <div className="flex h-full min-h-0 flex-col px-3 py-2.5">
-      <div className="mb-2 text-[9px] font-mono text-stealth-muted tracking-wider uppercase">
+      <div className="dl-paths-heading">
         Download folder
       </div>
       {pathError && (
-        <div className="mb-2 rounded-sm border border-telemetry-red/30 bg-telemetry-red/5 px-2 py-1 text-[8px] font-mono text-telemetry-red">
+        <div className="dl-paths-error mb-2 rounded-sm border px-2 py-1 font-mono">
           {pathError}
         </div>
       )}
@@ -113,24 +113,24 @@ export default function ModelHubDownloadPaths({ downloads }: ModelHubDownloadPat
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               {entry.isDefault && (
-                <span className="value-chip value-chip-active shrink-0 text-[8px] font-mono px-1.5 py-0.5">
+                <span className="value-chip value-chip-active shrink-0 font-mono px-1.5 py-0.5">
                   DEFAULT
                 </span>
               )}
               {activeHere && (
-                <span className="model-hub-badge-download shrink-0 text-[8px] font-mono px-1.5 py-0.5 rounded-sm">
+                <span className="model-hub-badge-download type-tiny shrink-0 font-mono px-1.5 py-0.5 rounded-sm">
                   DOWNLOADING
                 </span>
               )}
-              <span className="truncate text-[10px] font-mono text-theme-text">
+              <span className="dl-paths-label truncate font-mono">
                 {entry.label || entry.path}
               </span>
             </div>
-            <div className="truncate text-[8px] font-mono text-stealth-muted">
+            <div className="dl-paths-sub truncate font-mono">
               {displayModelPath(entry.path)}
             </div>
             {activeHere && !entry.isDefault && (
-              <div className="mt-0.5 text-[7px] font-mono text-stealth-muted">
+              <div className="dl-paths-note mt-0.5 font-mono">
                 In-progress downloads stay in this folder
               </div>
             )}
@@ -140,7 +140,7 @@ export default function ModelHubDownloadPaths({ downloads }: ModelHubDownloadPat
               type="button"
               onClick={() => handleSetDefault(entry.path)}
               title="Set as default for download"
-              className="value-chip shrink-0 px-2 py-0.5 text-[8px] font-mono whitespace-nowrap"
+              className="value-chip shrink-0 px-2 py-0.5 font-mono whitespace-nowrap"
             >
               SET AS DEFAULT FOR DOWNLOAD
             </button>

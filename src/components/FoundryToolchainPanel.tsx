@@ -194,7 +194,7 @@ export default function FoundryToolchainPanel({
 
   if (loading && !info) {
     return (
-      <div className="text-[8px] font-mono text-stealth-muted/60">
+      <div className="fnd-tc-loading type-tiny font-mono">
         Checking portable toolchain…
       </div>
     );
@@ -202,7 +202,7 @@ export default function FoundryToolchainPanel({
 
   if (!info) {
     return (
-      <div className="text-[8px] font-mono text-red-400/80">
+      <div className="fnd-tc-error type-tiny font-mono">
         {actionError ?? "Toolchain status unavailable."}
       </div>
     );
@@ -219,7 +219,7 @@ export default function FoundryToolchainPanel({
 
   if (buildReady && compact) {
     return (
-      <div className="text-[8px] font-mono text-nv-green">
+      <div className="fnd-tc-ready type-tiny font-mono">
         {requiredCheck
           ? `✓ Portable toolchain ready (${requiredCheck.vs_label} + CUDA ${requiredCheck.cuda})`
           : `✓ Portable toolchain ready — all ${info.profiles_total} build profiles`}
@@ -285,7 +285,7 @@ export default function FoundryToolchainPanel({
             type="button"
             onClick={() => setShowManual((v) => !v)}
             className={`foundry-toolchain-btn foundry-toolchain-btn--neutral${
-              showManual ? " ring-1 ring-telemetry-cyan/50" : ""
+              showManual ? " fnd-tc-btn--manual-active" : ""
             }`}
           >
             {showManual ? "HIDE MANUAL" : "MANUAL"}
@@ -303,7 +303,7 @@ export default function FoundryToolchainPanel({
         </div>
 
         {crtError && (
-          <p className="foundry-toolchain-onboarding__hint font-mono text-[9px] text-yellow-400/90 m-0">
+          <p className="foundry-toolchain-onboarding__hint fnd-tc-crt-hint font-mono m-0">
             {crtError}
           </p>
         )}
@@ -321,31 +321,31 @@ export default function FoundryToolchainPanel({
         )}
 
         {showManual && (
-          <div className="foundry-toolchain-install-guide border border-stealth-border/40 bg-black/25 rounded-sm p-2.5 space-y-2">
-            <p className="text-[8px] font-mono text-stealth-muted uppercase tracking-wide">
+          <div className="foundry-toolchain-install-guide fnd-tc-guide border rounded-sm p-2.5 space-y-2">
+            <p className="fnd-tc-guide__title type-tiny font-mono uppercase tracking-wide">
               Manual install
             </p>
-            <ol className="foundry-toolchain-install-guide__body list-decimal list-inside space-y-1 text-[8px] font-mono text-white/65 leading-relaxed">
+            <ol className="foundry-toolchain-install-guide__body fnd-tc-guide__body list-decimal list-inside space-y-1 type-tiny font-mono leading-relaxed">
               <li>
-                Download <span className="text-nv-green">{info.archive_name}</span> from the GitHub
+                Download <span className="fnd-tc-guide__hl">{info.archive_name}</span> from the GitHub
                 release (or use Download above).
               </li>
               <li>
                 Place the file in the cache folder below — do not extract it yourself.
               </li>
               <li>
-                Click <span className="text-nv-green">Install from cache</span> — the app extracts
-                and verifies into <span className="text-nv-green">toolchain\</span> automatically.
+                Click <span className="fnd-tc-guide__hl">Install from cache</span> — the app extracts
+                and verifies into <span className="fnd-tc-guide__hl">toolchain\</span> automatically.
               </li>
             </ol>
 
-            <div className="rounded-sm border border-stealth-border/50 bg-black/30 px-2 py-1.5 space-y-0.5">
-              <div className="text-[7px] font-mono text-stealth-muted uppercase">Cache folder</div>
-              <div className="text-[8px] font-mono text-telemetry-cyan break-all">
+            <div className="fnd-tc-cache-box rounded-sm px-2 py-1.5 space-y-0.5">
+              <div className="fnd-tc-cache-box__label type-micro font-mono uppercase">Cache folder</div>
+              <div className="fnd-tc-cache-box__path type-tiny font-mono break-all">
                 {info.archive_cache_dir}
               </div>
               {!info.manifest_present && (
-                <div className="text-[7px] font-mono text-stealth-muted/80">
+                <div className="fnd-tc-cache-box__note type-micro font-mono">
                   {cached
                     ? `${info.archive_name} found — click Install from cache`
                     : `Waiting for ${info.archive_name} in cache`}
@@ -380,7 +380,7 @@ export default function FoundryToolchainPanel({
         )}
 
         {actionError && (
-          <p className="text-[7px] font-mono text-red-400/80 break-all">{actionError}</p>
+          <p className="fnd-tc-error type-micro font-mono break-all">{actionError}</p>
         )}
       </div>
     );
@@ -393,18 +393,16 @@ export default function FoundryToolchainPanel({
       : `${info.profiles_ready}/${info.profiles_total} PROFILES`;
 
   const statusClass = info.all_ready
-    ? "text-nv-green border-nv-green/40 bg-nv-green/10"
-    : info.runtime_ready
-      ? "text-yellow-400 border-yellow-400/40 bg-yellow-400/10"
-      : "text-yellow-400 border-yellow-400/40 bg-yellow-400/10";
+    ? "fnd-tc-status--done"
+    : "fnd-tc-status--warn";
 
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[8px] font-mono text-stealth-muted uppercase tracking-wider">
+        <span className="fnd-tc-section-label type-tiny font-mono uppercase tracking-wider">
           Foundry Toolchain
         </span>
-        <span className={`text-[7px] font-mono px-1.5 py-0.5 rounded-sm border ${statusClass}`}>
+        <span className={`fnd-tc-status type-micro font-mono px-1.5 py-0.5 rounded-sm border ${statusClass}`}>
           {statusLabel}
         </span>
       </div>
@@ -421,10 +419,10 @@ export default function FoundryToolchainPanel({
                   ? `${check?.label} ready`
                   : check?.missing.join("\n") ?? "Not checked"
               }
-              className={`text-[7px] font-mono px-1.5 py-0.5 rounded-sm border ${
+              className={`fnd-tc-env-badge type-micro font-mono px-1.5 py-0.5 rounded-sm border ${
                 ready
-                  ? "text-nv-green/90 border-nv-green/30"
-                  : "text-stealth-muted/70 border-stealth-border/50"
+                  ? "fnd-tc-env-badge--ready"
+                  : "fnd-tc-env-badge--pending"
               }`}
             >
               {ready ? "✓" : "○"} {check?.label ?? env.toUpperCase()}
@@ -442,29 +440,29 @@ export default function FoundryToolchainPanel({
       )}
 
       {crtError && (
-        <p className="text-[8px] font-mono text-yellow-400/90 leading-relaxed">
+        <p className="fnd-tc-crt-hint type-tiny font-mono leading-relaxed">
           {crtError}
         </p>
       )}
 
       {info.all_ready ? (
-        <p className="text-[8px] font-mono text-nv-green leading-relaxed">
+        <p className="fnd-tc-ready type-tiny font-mono leading-relaxed">
           Portable VS Build Tools, Windows SDK, CUDA, and CMake are installed. Foundry builds and bundled engines are ready.
         </p>
       ) : (
-        <div className="foundry-toolchain-install-guide border border-yellow-400/30 bg-yellow-400/5 rounded-sm p-2.5 space-y-2">
-          <p className="foundry-toolchain-install-guide__title text-[8px] font-mono text-yellow-400/90 font-bold uppercase tracking-wide">
+        <div className="foundry-toolchain-install-guide fnd-tc-guide--warn border rounded-sm p-2.5 space-y-2">
+          <p className="foundry-toolchain-install-guide__title fnd-tc-guide__title--warn type-tiny font-mono font-bold uppercase tracking-wide">
             {onboarding ? "One-click toolchain" : "Install portable toolchain"}
           </p>
 
-          <p className="text-[8px] font-mono text-white/70 leading-relaxed">
+          <p className="fnd-tc-guide__desc type-tiny font-mono leading-relaxed">
             Single download (~{info.compressed_size_label}): VS Build Tools, Windows SDK, both CUDA versions, and CMake.
             Required for Foundry cmake builds and for running bundled CUDA engines.
           </p>
 
           {!info.all_ready && info.profiles_ready < info.profiles_total && (
-            <div className="rounded-sm border border-yellow-400/20 bg-black/20 px-2 py-1.5 space-y-0.5">
-              <p className="text-[7px] font-mono text-yellow-400/80 uppercase tracking-wide">
+            <div className="fnd-tc-profiles-box rounded-sm px-2 py-1.5 space-y-0.5">
+              <p className="fnd-tc-profiles-box__title type-micro font-mono uppercase tracking-wide">
                 {info.profiles_ready}/{info.profiles_total} build profiles ready
               </p>
               {info.profile_checks
@@ -472,7 +470,7 @@ export default function FoundryToolchainPanel({
                 .map((c) => (
                   <p
                     key={c.id}
-                    className="text-[7px] font-mono text-stealth-muted/80 leading-relaxed"
+                    className="fnd-tc-profiles-box__row type-micro font-mono leading-relaxed"
                     title={c.missing.join("\n")}
                   >
                     ○ {c.label}: {c.missing[0] ?? "incomplete"}
@@ -482,16 +480,16 @@ export default function FoundryToolchainPanel({
             </div>
           )}
 
-          <div className="rounded-sm border border-nv-green/40 bg-nv-green/5 px-2 py-2 space-y-1.5">
+          <div className="fnd-tc-archive-box rounded-sm px-2 py-2 space-y-1.5">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[8px] font-mono text-white/90 font-bold uppercase">
+              <span className="fnd-tc-archive-box__name type-tiny font-mono font-bold uppercase">
                 {info.archive_name}
               </span>
-              <span className="text-[7px] font-mono text-stealth-muted">
+              <span className="fnd-tc-archive-box__meta type-micro font-mono">
                 {info.compressed_size_label} download · {info.uncompressed_size_label} installed
               </span>
             </div>
-            <p className="text-[7px] font-mono text-white/60 leading-relaxed">
+            <p className="fnd-tc-archive-box__desc type-micro font-mono leading-relaxed">
               One-click download extracts automatically. Already have the archive? Drop it in the cache
               folder and use Install from cache.
             </p>
@@ -539,7 +537,7 @@ export default function FoundryToolchainPanel({
                 type="button"
                 onClick={() => setShowManual((v) => !v)}
                 className={`foundry-toolchain-btn foundry-toolchain-btn--neutral${
-                  showManual ? " ring-1 ring-telemetry-cyan/50" : ""
+                  showManual ? " fnd-tc-btn--manual-active" : ""
                 }`}
               >
                 {showManual ? "HIDE MANUAL" : "MANUAL"}
@@ -548,31 +546,31 @@ export default function FoundryToolchainPanel({
           </div>
 
           {showManual && (
-            <div className="foundry-toolchain-install-guide border border-stealth-border/40 bg-black/25 rounded-sm p-2.5 space-y-2">
-              <p className="text-[8px] font-mono text-stealth-muted uppercase tracking-wide">
+            <div className="foundry-toolchain-install-guide fnd-tc-guide border rounded-sm p-2.5 space-y-2">
+              <p className="fnd-tc-guide__title type-tiny font-mono uppercase tracking-wide">
                 Manual install
               </p>
-              <ol className="foundry-toolchain-install-guide__body list-decimal list-inside space-y-1 text-[8px] font-mono text-white/65 leading-relaxed">
+              <ol className="foundry-toolchain-install-guide__body fnd-tc-guide__body list-decimal list-inside space-y-1 type-tiny font-mono leading-relaxed">
                 <li>
-                  Download <span className="text-nv-green">{info.archive_name}</span> from the GitHub
+                  Download <span className="fnd-tc-guide__hl">{info.archive_name}</span> from the GitHub
                   release (or use Download above).
                 </li>
                 <li>
                   Place the file in the cache folder below — do not extract it yourself.
                 </li>
                 <li>
-                  Click <span className="text-nv-green">Install from cache</span> — the app extracts
-                  and verifies into <span className="text-nv-green">toolchain\</span> automatically.
+                  Click <span className="fnd-tc-guide__hl">Install from cache</span> — the app extracts
+                  and verifies into <span className="fnd-tc-guide__hl">toolchain\</span> automatically.
                 </li>
               </ol>
 
-              <div className="rounded-sm border border-stealth-border/50 bg-black/30 px-2 py-1.5 space-y-0.5">
-                <div className="text-[7px] font-mono text-stealth-muted uppercase">Cache folder</div>
-                <div className="text-[8px] font-mono text-telemetry-cyan break-all">
+              <div className="fnd-tc-cache-box rounded-sm px-2 py-1.5 space-y-0.5">
+                <div className="fnd-tc-cache-box__label type-micro font-mono uppercase">Cache folder</div>
+                <div className="fnd-tc-cache-box__path type-tiny font-mono break-all">
                   {info.archive_cache_dir}
                 </div>
                 {!info.manifest_present && (
-                  <div className="text-[7px] font-mono text-stealth-muted/80">
+                  <div className="fnd-tc-cache-box__note type-micro font-mono">
                     {cached
                       ? `${info.archive_name} found — click Install from cache`
                       : `Waiting for ${info.archive_name} in cache`}
@@ -617,7 +615,7 @@ export default function FoundryToolchainPanel({
       )}
 
       {actionError && (
-        <p className="text-[7px] font-mono text-red-400/80 break-all">{actionError}</p>
+        <p className="fnd-tc-error type-micro font-mono break-all">{actionError}</p>
       )}
     </div>
   );

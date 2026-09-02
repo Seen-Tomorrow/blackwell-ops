@@ -29,7 +29,7 @@ import SliderParam from "./SliderParam";
 import GroupHeaderControls from "./GroupHeaderControls";
 
 const PARAM_LABEL_CLASS =
-  "font-mono w-24 flex-shrink-0 uppercase tracking-wider truncate text-[9px] text-stealth-muted";
+  "font-mono w-24 flex-shrink-0 uppercase tracking-wider truncate type-label cfg-mut";
 
 function paramChipClass(active: boolean): string {
   // Segment-rail options (config-value-segment) — same language as cockpit flags / VRAM bezel.
@@ -265,10 +265,10 @@ export function renderParamRow(
         data-param-row
         className={`ctx-slider-param-row flex items-start min-h-[22px] ${isLocked ? "opacity-50" : ""}`}
       >
-        {isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 bg-yellow-400/40 mr-1.5 mt-0.5" />}
+        {isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 cfg-fill--warn--a40 mr-1.5 mt-0.5" />}
         {!isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 mr-1.5 mt-0.5" />}
         <span
-          className={`ctx-slider-param-label ${PARAM_LABEL_CLASS} mt-0.5 ${def.key === "ctx" && ctxPerSlot > 0 ? "!w-auto max-w-[40%]" : ""} ${isUserAdded ? "text-yellow-400/80" : ""}`}
+          className={`ctx-slider-param-label ${PARAM_LABEL_CLASS} mt-0.5 ${def.key === "ctx" && ctxPerSlot > 0 ? "!w-auto max-w-[40%]" : ""} ${isUserAdded ? "cfg-warn--a80" : ""}`}
           title={def.key === "ctx" && ctxPerSlot > 0
             ? `${formatCtxChipLabel(ctxNumeric)} (${ctxNumeric}) ÷ ${ctxSlotCount} slots = ${formatCtxChipLabel(ctxPerSlot)} per slot`
             : def.label}
@@ -300,10 +300,10 @@ export function renderParamRow(
 
   return (
     <div key={paramRowKey(def, rowIdx)} data-param-row className={`flex items-start min-h-[22px] ${isLocked ? 'opacity-50' : ''}`}>
-      {isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 bg-yellow-400/40 mr-1.5 mt-0.5" />}
+      {isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 cfg-fill--warn--a40 mr-1.5 mt-0.5" />}
       {!isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 mr-1.5 mt-0.5" />}
       <span
-        className={`${PARAM_LABEL_CLASS} mt-0.5 ${isUserAdded ? 'text-yellow-400/80' : ''}`}
+        className={`${PARAM_LABEL_CLASS} mt-0.5 ${isUserAdded ? 'cfg-warn--a80' : ''}`}
         title={def.label}
       >
         {specSimpleMode && def.key === "spec_type" ? "MODE" : def.label}
@@ -457,7 +457,7 @@ export function renderParamGroup(
       return (
         <div key={group.id} className="config-param-group--empty opacity-70">
           <div
-            className={`config-group-header flex items-center gap-1.5 text-[8px] font-mono tracking-widest uppercase mb-2 pb-1 border-b border-dashed border-stealth-border/35 text-stealth-muted/55 ${draggingGroup === group.id ? "config-group-header--dragging" : ""}`}
+            className={`config-group-header flex items-center gap-1.5 type-tiny font-mono tracking-widest uppercase mb-2 pb-1 border-b border-dashed cfg-bord--a35 cfg-mut--a55 ${draggingGroup === group.id ? "config-group-header--dragging" : ""}`}
           >
             <span className="flex-1 min-w-0 truncate">{group.label}</span>
             <span className="opacity-50 flex-shrink-0">(empty)</span>
@@ -470,7 +470,7 @@ export function renderParamGroup(
     return (
       <div key={group.id} className="config-param-group--hidden opacity-50">
         <div
-          className={`config-group-header flex items-center gap-1.5 text-[8px] font-mono tracking-widest uppercase mb-2 pb-1 border-b border-stealth-border/30 text-stealth-muted/50 ${draggingGroup === group.id ? "config-group-header--dragging" : ""}`}
+          className={`config-group-header flex items-center gap-1.5 type-tiny font-mono tracking-widest uppercase mb-2 pb-1 border-b cfg-bord--a30 cfg-mut--a50 ${draggingGroup === group.id ? "config-group-header--dragging" : ""}`}
         >
           <span>{group.label}</span>
           <span className="opacity-40">(hidden)</span>
@@ -482,7 +482,7 @@ export function renderParamGroup(
 
   const isCollapsed = collapsedGroups.has(group.id);
   const showContent = hideLeadHeader || !isCollapsed;
-  const headerClass = `config-group-header flex items-center gap-1.5 text-[8px] font-mono tracking-widest uppercase mb-2 pb-1 border-b border-stealth-border/30 w-full ${draggingGroup === group.id ? "config-group-header--dragging" : ""}`;
+  const headerClass = `config-group-header flex items-center gap-1.5 type-tiny font-mono tracking-widest uppercase mb-2 pb-1 border-b cfg-bord--a30 w-full ${draggingGroup === group.id ? "config-group-header--dragging" : ""}`;
 
   return (
     <div key={group.id} className={groupHidden ? "config-param-group--hidden opacity-50" : undefined}>
@@ -498,7 +498,7 @@ export function renderParamGroup(
             onClick={() => toggleGroup(group.id)}
             className="flex items-center gap-1.5 flex-1 min-w-0 hover:text-white hover:opacity-100 transition-colors text-left"
           >
-            <span className="text-[7px]">{isCollapsed ? "▶" : "▼"}</span>
+            <span className="type-micro">{isCollapsed ? "▶" : "▼"}</span>
             <span className="truncate">{group.label}</span>
             <span className="opacity-40 flex-shrink-0">({filteredGroupParams.length})</span>
           </button>

@@ -159,18 +159,18 @@ export default function FoundryConfirmForm({
   const footer = showEngineWarning ? (
     <>
       <button onClick={onEngineWarningCancel}
-        className="px-3 py-1 text-[9px] font-mono border border-red-400/60 text-red-400 hover:bg-red-500/20 transition-colors">
+        className="fnd-confirm-btn--danger px-3 py-1 font-mono transition-colors">
         CANCEL — HANDLE MANUALLY
       </button>
       <button onClick={onEngineWarningProceed}
-        className="px-4 py-1 text-[9px] font-mono border rounded-sm bg-red-400/20 border-red-400/60 text-red-400 hover:bg-red-500/30 transition-all">
+        className="fnd-confirm-btn--danger-solid px-4 py-1 font-mono rounded-sm transition-all">
         STOP ENGINES & PROCEED
       </button>
     </>
   ) : (
     <>
       <button onClick={onClose}
-        className="px-3 py-1 text-[9px] font-mono border border-red-400/60 text-red-400 hover:bg-red-500/20 transition-colors">
+        className="fnd-confirm-btn--danger px-3 py-1 font-mono transition-colors">
         CLOSE
       </button>
       <button type="button" onClick={onMinimize} className="foundry-minimize-btn">
@@ -196,24 +196,24 @@ export default function FoundryConfirmForm({
       footer={footer}
     >
       <div className="foundry-confirm-body">
-        <p className="text-[10px] font-mono text-stealth-muted uppercase tracking-wider m-0">
+        <p className="fnd-confirm-lead type-body font-mono uppercase tracking-wider m-0">
           Ready to build?
         </p>
 
         {sourcePreviewLoading ? (
           <div className="foundry-source-banner foundry-source-banner--muted px-3 py-2.5 rounded-sm border animate-pulse">
-            <p className="text-[9px] font-mono tracking-wider uppercase opacity-70 m-0">
+            <p className="fnd-banner-title type-label font-mono tracking-wider uppercase opacity-70 m-0">
               Checking source revision vs installed binary…
             </p>
           </div>
         ) : sourcePreview ? (
           <div className={`foundry-source-banner px-3 py-2.5 rounded-sm border ${previewToneClass}`}>
-            <p className="text-[10px] font-mono font-bold tracking-wider uppercase leading-snug m-0">
+            <p className="fnd-banner-title type-body font-mono font-bold tracking-wider uppercase leading-snug m-0">
               {sourcePreview.status === "up_to_date" ? "Already up to date" : "Source check"}
             </p>
-            <p className="text-[9px] font-mono leading-relaxed mt-1.5 mb-0">{sourcePreview.message}</p>
+            <p className="fnd-banner-msg type-label font-mono leading-relaxed mt-1.5 mb-0">{sourcePreview.message}</p>
             {(sourcePreview.local_commit || sourcePreview.remote_commit || sourcePreview.installed_commit) && (
-              <p className="text-[7px] font-mono opacity-75 mt-2 mb-0 leading-relaxed">
+              <p className="fnd-banner-commits type-micro font-mono opacity-75 mt-2 mb-0 leading-relaxed">
                 {sourcePreview.local_commit ? `local ${sourcePreview.local_commit}` : "local —"}
                 {" · "}
                 {sourcePreview.remote_commit ? `remote ${sourcePreview.remote_commit}` : "remote —"}
@@ -236,24 +236,24 @@ export default function FoundryConfirmForm({
           <div className="foundry-confirm-col">
             <div className="foundry-confirm-panel space-y-2">
               <div className="flex items-center gap-2 min-w-0">
-                <span className="text-[10px] font-mono text-yellow-400 shrink-0">{provider.id}</span>
-                <span className="text-[9px] font-mono text-stealth-muted shrink-0">&mdash;</span>
-                <span className="text-[10px] font-mono text-white truncate">{provider.display_name}</span>
+                <span className="fnd-confirm-provider__id type-body font-mono shrink-0">{provider.id}</span>
+                <span className="fnd-confirm-provider__dash type-label font-mono shrink-0">&mdash;</span>
+                <span className="fnd-confirm-provider__name type-body font-mono truncate">{provider.display_name}</span>
               </div>
 
               {provider.git_url && (
-                <p className="text-[8px] font-mono text-telemetry-cyan/70 break-all m-0">
+                <p className="fnd-confirm-git type-tiny font-mono break-all m-0">
                   {provider.git_url} @{provider.branch || "main"}
                 </p>
               )}
 
               <div className="flex items-center gap-2 pt-1 flex-wrap">
-                <span className="text-[8px] font-mono text-stealth-muted uppercase">Environment:</span>
-                <span className="foundry-env-badge px-2 py-0.5 text-[9px] font-mono rounded-sm">
+                <span className="fnd-confirm-field-label type-tiny font-mono uppercase">Environment:</span>
+                <span className="foundry-env-badge px-2 py-0.5 type-label font-mono rounded-sm">
                   {envMeta.label}
                 </span>
-                <span className="cuda-badge text-[7px] font-mono px-1.5 py-0.5 rounded-sm">CUDA {envMeta.cuda}</span>
-                <span className="value-chip text-[7px] font-mono px-1.5 py-0.5 rounded-sm opacity-80">{envMeta.vs}</span>
+                <span className="cuda-badge type-micro font-mono px-1.5 py-0.5 rounded-sm">CUDA {envMeta.cuda}</span>
+                <span className="value-chip fnd-meta-chip type-micro font-mono px-1.5 py-0.5 rounded-sm opacity-80">{envMeta.vs}</span>
               </div>
 
               <div className="pt-1">
@@ -264,19 +264,19 @@ export default function FoundryConfirmForm({
                 />
               </div>
 
-              <div className="foundry-cmake-cache-row border border-stealth-border/40 rounded-sm px-2 py-1.5 bg-black/25 space-y-1.5">
+              <div className="foundry-cmake-cache-row fnd-cache-row rounded-sm px-2 py-1.5 space-y-1.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="text-[8px] font-mono text-stealth-muted uppercase tracking-wider m-0">
+                    <p className="fnd-cache-title type-tiny font-mono uppercase tracking-wider m-0">
                       CMake work cache
                     </p>
-                    <p className="text-[8px] font-mono leading-relaxed mt-0.5 mb-0">
+                    <p className="fnd-cache-body type-tiny font-mono leading-relaxed mt-0.5 mb-0">
                       {workCache?.cmakeCachePresent ? (
-                        <span className="text-nv-green">
+                        <span className="fnd-cache-state--warm">
                           WARM — build-{environment} (incremental — fastest)
                         </span>
                       ) : (
-                        <span className="text-stealth-muted">
+                        <span className="fnd-cache-state--cold">
                           COLD — full compile (flags/arch changed, or no cache)
                         </span>
                       )}
@@ -291,7 +291,7 @@ export default function FoundryConfirmForm({
                         ? `This profile: ${workCache.sizeLabel} · All profiles for ${provider.id}: ${workCache.workTotalLabel}`
                         : undefined
                     }
-                    className="foundry-clear-cache-btn shrink-0 px-2 py-1 text-[8px] font-mono border rounded-sm transition-colors disabled:opacity-50"
+                    className="foundry-clear-cache-btn fnd-cache-btn shrink-0 px-2 py-1 font-mono border rounded-sm transition-colors disabled:opacity-50"
                   >
                     {workCacheClearing
                       ? "CLEARING…"
@@ -302,7 +302,7 @@ export default function FoundryConfirmForm({
                         }`}
                   </button>
                 </div>
-                <p className="text-[7px] font-mono config-muted leading-snug m-0">
+                <p className="fnd-cache-note type-micro font-mono config-muted leading-snug m-0">
                   On failed config/build, CLEAR CACHE and start over
                 </p>
               </div>
@@ -326,19 +326,19 @@ export default function FoundryConfirmForm({
                       }`}
                     >
                       <div className="flex items-center gap-1.5">
-                        <span className="text-[9px] font-mono font-bold">
+                        <span className="fnd-arch-label type-label font-mono font-bold">
                           {opt.label}
                         </span>
-                        <span className="cuda-badge text-[6px] font-mono px-1 py-0 rounded-sm">sm_{opt.code}</span>
+                        <span className="cuda-badge type-hairline font-mono px-1 py-0 rounded-sm">sm_{opt.code}</span>
                       </div>
-                      <div className="text-[7px] font-mono opacity-75 leading-tight mt-0.5">{opt.hint}</div>
+                      <div className="fnd-arch-hint type-micro font-mono opacity-75 leading-tight mt-0.5">{opt.hint}</div>
                     </button>
                   );
                 })}
                 <button
                   type="button"
                   onClick={() => setSelectedArchs([...DEFAULT_CUDA_ARCH_CODES])}
-                  className={`foundry-arch-chip px-2 py-1 text-[8px] font-mono rounded-sm transition-all self-stretch${
+                  className={`foundry-arch-chip px-2 py-1 type-tiny font-mono rounded-sm transition-all self-stretch${
                     orderedArchs.length === DEFAULT_CUDA_ARCH_CODES.length
                       ? " foundry-arch-chip--active"
                       : ""
@@ -348,7 +348,7 @@ export default function FoundryConfirmForm({
                 </button>
               </div>
               {archCmakePreview && (
-                <p className="text-[7px] font-mono foundry-cuda-arch-inline m-0">{archCmakePreview}</p>
+                <p className="type-micro font-mono foundry-cuda-arch-inline m-0">{archCmakePreview}</p>
               )}
             </div>
 
@@ -374,17 +374,17 @@ export default function FoundryConfirmForm({
                   type="checkbox"
                   checked={includeExtraTools}
                   onChange={(e) => setIncludeExtraTools(e.target.checked)}
-                  className="mt-0.5 accent-[var(--theme-nv-green,#76b900)] shrink-0"
+                  className="fnd-checkbox mt-0.5 shrink-0"
                 />
                 <span className="min-w-0">
-                  <span className="text-[8px] font-mono text-stealth-muted uppercase block">
+                  <span className="fnd-extra-label type-tiny font-mono uppercase block">
                     Also build CLI + quantize
                   </span>
-                  <span className="text-[7px] font-mono text-stealth-muted/80 leading-snug block mt-0.5">
-                    Off by default (faster). Product always builds <span className="text-white/80">llama-server</span>,{" "}
-                    <span className="text-white/80">llama-fit-params</span>, and{" "}
-                    <span className="text-white/80">llama-bench</span>. Enable for offline{" "}
-                    <span className="text-white/80">llama-cli</span> / <span className="text-white/80">llama-quantize</span>{" "}
+                  <span className="fnd-extra-note type-micro font-mono leading-snug block mt-0.5">
+                    Off by default (faster). Product always builds <span className="fnd-extra-note__bin">llama-server</span>,{" "}
+                    <span className="fnd-extra-note__bin">llama-fit-params</span>, and{" "}
+                    <span className="fnd-extra-note__bin">llama-bench</span>. Enable for offline{" "}
+                    <span className="fnd-extra-note__bin">llama-cli</span> / <span className="fnd-extra-note__bin">llama-quantize</span>{" "}
                     (not used by the app runtime).
                   </span>
                 </span>
@@ -430,19 +430,19 @@ export default function FoundryConfirmForm({
                 <div className="flex flex-wrap gap-1.5">
                   {[4, 6, 8, 10, 12, 14, 16].map((n) => (
                     <button key={n} onClick={() => setMaxCores(n)}
-                      className={`px-2 py-0.5 text-[9px] font-mono border rounded-sm transition-all ${
+                      className={`fnd-cores-btn px-2 py-0.5 font-mono border rounded-sm transition-all ${
                         maxCores === n
-                          ? "bg-nv-green/30 border-nv-green/60 text-nv-green"
-                          : "border-stealth-border text-stealth-muted hover:text-white hover:border-stealth-border/80"
+                          ? "fnd-cores-btn--active"
+                          : "fnd-cores-btn--idle"
                       }`}>
                       {n}
                     </button>
                   ))}
                   <button onClick={() => setMaxCores(null)}
-                    className={`px-2 py-0.5 text-[9px] font-mono border rounded-sm transition-all ${
+                    className={`fnd-cores-btn px-2 py-0.5 font-mono border rounded-sm transition-all ${
                       maxCores === null
-                        ? "bg-nv-green/30 border-nv-green/60 text-nv-green"
-                        : "border-stealth-border text-stealth-muted hover:text-white hover:border-stealth-border/80"
+                        ? "fnd-cores-btn--active"
+                        : "fnd-cores-btn--idle"
                     }`}>
                     ALL ({cpuThreads})
                   </button>
@@ -451,23 +451,23 @@ export default function FoundryConfirmForm({
             )}
 
             {showEngineWarning ? (
-              <div className="border border-red-400/30 bg-red-400/[0.05] rounded-sm p-3 space-y-2">
-                <p className="text-[10px] font-mono text-red-400 font-bold m-0">⚠ ENGINES ON THIS PROFILE</p>
-                <pre className="text-[8px] font-mono text-white/70 whitespace-pre-wrap m-0">{engineListText}</pre>
-                <p className="text-[9px] font-mono text-stealth-muted m-0">
+              <div className="fnd-engine-warn rounded-sm p-3 space-y-2">
+                <p className="fnd-engine-warn__title type-body font-mono font-bold m-0">⚠ ENGINES ON THIS PROFILE</p>
+                <pre className="fnd-engine-warn__list type-tiny font-mono whitespace-pre-wrap m-0">{engineListText}</pre>
+                <p className="fnd-engine-warn__note type-label font-mono m-0">
                   BUILD will stop only these <span className="font-bold">{envMeta.label}</span> engines for <span className="font-bold">{provider.display_name}</span>.
                   Engines on other profiles keep running. Click <span className="font-bold">STOP ENGINES &amp; PROCEED</span> or CANCEL to handle manually first.
                 </p>
               </div>
             ) : (
-              <div className="border border-stealth-border/50 bg-black/20 rounded-sm p-3">
-                <p className="text-[10px] font-mono text-nv-green font-bold mb-1 mt-0">
+              <div className="fnd-profile-isolated rounded-sm p-3">
+                <p className="fnd-profile-isolated__title type-body font-mono font-bold mb-1 mt-0">
                   ✓ PROFILE-ISOLATED BUILD
                 </p>
-                <p className="text-[9px] font-mono text-white/80 m-0">
+                <p className="fnd-profile-isolated__body type-label font-mono m-0">
                   Builds are isolated per selected provider &amp; profile — other providers/engines keep running.
                 </p>
-                <p className="text-[8px] font-mono text-stealth-muted mt-1 mb-0">
+                <p className="fnd-profile-isolated__note type-tiny font-mono mt-1 mb-0">
                   Minimize to status bar and continue your usual workflow while the build runs.
                 </p>
               </div>

@@ -1,7 +1,7 @@
 /**
  * ValueBubbles — Render parameter values as clickable bubbles.
  *
- * STYLING (theme value-chip tokens — not Tailwind border-nv-green/N):
+ * STYLING (theme value-chip tokens — not Tailwind cfg-bord--acc/N):
  * - Idle              → .value-chip
  * - Selected          → .value-chip-active
  * - Factory default   → .value-chip--factory-default
@@ -154,11 +154,11 @@ export default function ValueBubbles({
     if (hidden) {
       return (
         <span key={`hidden-${paramKey}-${idx}`}
-          className="value-chip value-chip--hidden inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-mono rounded-sm line-through opacity-40">
+          className="value-chip value-chip--hidden inline-flex items-center gap-1 px-2 py-0.5 type-sm font-mono rounded-sm line-through opacity-40">
           {String(val)}
           {editorUnlocked && toggleHiddenValue && (
             <button onClick={() => toggleHiddenValue(paramKey, val)}
-              className="leading-none text-nv-green/50 hover:text-yellow-400 transition-colors"
+              className="leading-none cfg-acc--a50 hover:cfg-warn transition-colors"
               title="Show value in catalog">
               <svg width="12" height="12" viewBox="0 0 24 24"><path d="M3 12s4-7 9-7 9 7 9 7-4 7-9 7-9-7-9-7z" fill="none" stroke="currentColor" strokeWidth="2"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" strokeWidth="2"/></svg>
             </button>
@@ -168,7 +168,7 @@ export default function ValueBubbles({
     }
 
     /*
-     * Theme chips (value-chip*) — never Tailwind border-nv-green/N (opacity on CSS
+     * Theme chips (value-chip*) — never Tailwind cfg-bord--acc/N (opacity on CSS
      * vars washes to white on dark / vanishes on ARCTIC).
      */
     const isDefault = defaultValue !== undefined && String(val) === String(defaultValue);
@@ -202,7 +202,7 @@ export default function ValueBubbles({
             onOverrideChange(val);
           }
         }}
-        className={`inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-mono rounded-sm transition-all cursor-pointer select-none ${chipClass}${
+        className={`inline-flex items-center gap-1 px-2 py-0.5 type-sm font-mono rounded-sm transition-all cursor-pointer select-none ${chipClass}${
           selected ? " value-chip-active" : ""
         }${essHidden ? " opacity-55" : ""}`}
         data-selected={selected ? "1" : undefined}
@@ -216,7 +216,7 @@ export default function ValueBubbles({
               e.stopPropagation();
               onChangeDefault(val);
             }}
-            className="leading-none font-bold text-[12px] text-nv-green/60 hover:text-yellow-400 transition-colors pl-1"
+            className="leading-none font-bold type-md cfg-acc--a60 hover:cfg-warn transition-colors pl-1"
             title="Set as default value"
           >
             *
@@ -231,10 +231,10 @@ export default function ValueBubbles({
               e.stopPropagation();
               toggleEssentialsHiddenValue(paramKey, val);
             }}
-            className={`config-param-ess text-[8px] font-mono px-0.5 select-none transition-colors ${
+            className={`config-param-ess type-tiny font-mono px-0.5 select-none transition-colors ${
               essHidden
-                ? "text-stealth-muted/30 line-through"
-                : "text-nv-green/70 hover:text-nv-green"
+                ? "cfg-mut--a30 line-through"
+                : "cfg-acc cfg-acc"
             }`}
             title={
               essHidden
@@ -246,7 +246,7 @@ export default function ValueBubbles({
           </button>
         )}
 
-        <span className={essHidden ? "line-through decoration-stealth-muted/40 opacity-70" : undefined}>
+        <span className={essHidden ? "line-through cfg-dec--a40 opacity-70" : undefined}>
           {String(val)}
         </span>
 
@@ -259,14 +259,14 @@ export default function ValueBubbles({
             className="leading-none transition-colors"
             title="Show injected CLI args">
             {expandedSubs[String(val)]
-              ? <span className="text-[11px] text-yellow-400 font-bold">&#x25B2;</span>
-              : <span className="text-[9px] text-yellow-400/50 hover:text-yellow-400">&#x25BC;</span>}
+              ? <span className="type-sm cfg-warn font-bold">&#x25B2;</span>
+              : <span className="type-label cfg-warn hover:cfg-warn">&#x25BC;</span>}
           </button>
         )}
 
         {/* Sub-args disclosure — inline below this bubble */}
         {hasSubArgs(String(val)) && expandedSubs[String(val)] && (
-          <span className="ml-1 px-1 py-0.5 bg-yellow-400 text-black text-[9px] font-mono">
+          <span className="ml-1 px-1 py-0.5 cfg-fill--warn text-black type-label font-mono">
             {(() => {
               const args = getSubArgs(String(val));
               return args.map((arg, i) => {
@@ -285,7 +285,7 @@ export default function ValueBubbles({
         {/* Remove value — admin only; factory chips may be hide-only under protected policy */}
         {editorUnlocked && removeValue && (canRemoveValue ? canRemoveValue(val, isUserAdded) : true) && (
           <button onClick={(e) => { e.stopPropagation(); removeValue(val); }}
-            className="leading-none text-red-400/60 hover:text-red-400 transition-colors"
+            className="leading-none cfg-dng--a60 hover:cfg-dng transition-colors"
             title={isUserAdded ? "Remove user value" : "Remove this value"}>
             ×
           </button>
@@ -294,7 +294,7 @@ export default function ValueBubbles({
         {/* Hide toggle — admin only */}
         {editorUnlocked && (
           <button onClick={() => toggleHiddenValue?.(paramKey, val)}
-            className="leading-none text-nv-green/50 hover:text-yellow-400 transition-colors pr-1"
+            className="leading-none cfg-acc--a50 hover:cfg-warn transition-colors pr-1"
             title="Hide this value (persists)">
             <svg width="12" height="12" viewBox="0 0 24 24"><path d="M3 12s4-7 9-7 9 7 9 7-4 7-9 7-9-7-9-7z" fill="none" stroke="currentColor" strokeWidth="2"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" strokeWidth="2"/></svg>
           </button>
@@ -306,7 +306,7 @@ export default function ValueBubbles({
             e.stopPropagation();
             onEditValue(val);
           }}
-            className="leading-none text-nv-green/50 hover:text-yellow-400 transition-colors pr-1"
+            className="leading-none cfg-acc--a50 hover:cfg-warn transition-colors pr-1"
             title="Edit sub-args for this value">
             E
           </button>
@@ -327,10 +327,10 @@ export default function ValueBubbles({
         {/* Override selector — show current override when not in any list (skip for slider — custom values are normal) */}
         {onOverrideChange && currentValue && ptype !== 'slider' &&
          !allDisplayValues.some(d => String(d.val) === String(currentValue)) && (
-          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 border text-[9px] font-mono rounded-sm bg-yellow-400/25 border-yellow-400/60 text-yellow-300">
+          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 border type-label font-mono rounded-sm cfg-fill--warn--a25 cfg-bord--warn--a60 cfg-warn">
             {String(currentValue)}
             <button onClick={() => onClearOverride?.()}
-              className="ml-0.5 leading-none text-red-400/40 hover:text-red-400 transition-colors"
+              className="ml-0.5 leading-none cfg-dng--a40 hover:cfg-dng transition-colors"
               title="Remove override">×</button>
           </span>
         )}
@@ -340,7 +340,7 @@ export default function ValueBubbles({
           <input type="text" placeholder="+ add" value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); submitValue(); } }}
-            className="config-param-add-input w-12 bg-transparent border-b border-stealth-border/50 text-[9px] font-mono text-nv-green focus:outline-none px-1 py-0.5 placeholder:text-white/40" />
+            className="config-param-add-input w-12 bg-transparent border-b cfg-bord--a50 type-label font-mono cfg-acc focus:outline-none px-1 py-0.5 placeholder:text-white/40" />
         )}
       </div>
     </div>

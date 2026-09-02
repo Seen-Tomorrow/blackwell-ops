@@ -57,7 +57,7 @@ export default function FoundryBuildProgress({
   const footer = waitingForConfirm ? (
     <>
       <button onClick={onCancel}
-        className="px-3 py-1 text-[9px] font-mono border border-red-400/60 text-red-400 hover:bg-red-500/20 transition-colors">
+        className="fnd-build-btn--danger px-3 py-1 font-mono transition-colors">
         REJECT — ABORT
       </button>
       <button
@@ -71,7 +71,7 @@ export default function FoundryBuildProgress({
   ) : !isComplete && !isError ? (
     <>
       <button onClick={onCancel}
-        className="px-3 py-1 text-[9px] font-mono border border-red-400/60 text-red-400 hover:bg-red-500/20 transition-colors">
+        className="fnd-build-btn--danger px-3 py-1 font-mono transition-colors">
         CANCEL BUILD
       </button>
       <button type="button" onClick={onMinimize} className="foundry-minimize-btn">
@@ -80,16 +80,16 @@ export default function FoundryBuildProgress({
     </>
   ) : isComplete ? (
     <button onClick={onClose}
-      className="px-3 py-1 text-[9px] font-mono border border-nv-green/60 text-nv-green hover:bg-nv-green/20 transition-colors">
+      className="fnd-build-btn px-3 py-1 font-mono transition-colors">
       CLOSE
     </button>
   ) : (
     <div className="flex flex-col items-end gap-0.5">
       <button onClick={onClose}
-        className="px-3 py-1 text-[9px] font-mono border border-red-400/60 text-red-400 hover:bg-red-500/20 transition-colors">
+        className="fnd-build-btn--danger px-3 py-1 font-mono transition-colors">
         HIDE WINDOW
       </button>
-      <span className="text-[7px] font-mono text-red-400/50 text-right leading-none">
+      <span className="fnd-build-note--danger type-micro font-mono text-right leading-none">
         Only hides — failed attempt remains.<br />Start a new build to reset.
       </span>
     </div>
@@ -102,29 +102,29 @@ export default function FoundryBuildProgress({
       variant="build"
       onMinimize={onMinimize}
       headerExtra={(
-        <span className="foundry-env-badge px-1.5 py-0.5 text-[8px] font-mono rounded-sm">
+        <span className="foundry-env-badge px-1.5 py-0.5 type-tiny font-mono rounded-sm">
           {environment.toUpperCase()}
         </span>
       )}
       footer={footer}
     >
       <div className="px-4 py-3 space-y-2 flex flex-col h-full min-h-0">
-        <p className="text-[10px] font-mono text-stealth-muted m-0">
-          <span className="text-yellow-400">{provider.id}</span> &mdash; {provider.display_name}
+        <p className="fnd-build-provider type-body font-mono m-0">
+          <span className="fnd-build-provider__id">{provider.id}</span> &mdash; {provider.display_name}
         </p>
 
         {!isComplete && !isError && (
           <div className="flex items-center gap-2">
-            <span className="text-[9px] font-mono text-stealth-muted uppercase tracking-wider">Step:</span>
-            <span className="text-[10px] font-mono text-telemetry-cyan animate-pulse">
+            <span className="fnd-build-step-label type-label font-mono uppercase tracking-wider">Step:</span>
+            <span className="fnd-build-step type-body font-mono animate-pulse">
               {currentStep ? getStepLabel(currentStep) : "INITIALIZING..."}
             </span>
           </div>
         )}
 
         {waitingForConfirm && (
-          <div className="border border-yellow-400/30 bg-yellow-400/[0.05] rounded-sm px-3 py-2 text-center">
-            <span className="text-[10px] font-mono text-yellow-400 animate-pulse">⏸ PAUSED — REVIEW CMAKE OUTPUT ABOVE, THEN CLICK BUILD THE ENGINE</span>
+          <div className="fnd-build-pause rounded-sm px-3 py-2 text-center">
+            <span className="fnd-build-pause__text type-body font-mono animate-pulse">⏸ PAUSED — REVIEW CMAKE OUTPUT ABOVE, THEN CLICK BUILD THE ENGINE</span>
           </div>
         )}
 
@@ -176,13 +176,13 @@ export default function FoundryBuildProgress({
         </div>
 
         {isError && logLines.length > 0 && (
-          <p className="text-[9px] font-mono text-red-400/70 break-all m-0">
+          <p className="fnd-build-last-error type-label font-mono break-all m-0">
             Last error: {logLines[logLines.length - 1].text}
           </p>
         )}
 
         {isComplete && (
-          <p className="text-[9px] font-mono text-nv-green/70 m-0">
+          <p className="fnd-build-ready type-label font-mono m-0">
             Provider binaries build and READY TO USE.
           </p>
         )}

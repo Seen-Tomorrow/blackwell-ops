@@ -330,7 +330,7 @@ export default function UpdatesConfig({
 
   if (!BINARY_UPDATES_ENABLED) {
     return (
-      <div className="flex-1 p-4 text-[10px] font-mono config-muted">
+      <div className="flex-1 p-4 type-body font-mono config-muted">
         Release updates are disabled in this build.
       </div>
     );
@@ -338,12 +338,10 @@ export default function UpdatesConfig({
 
   const renderAppCard = (row: AppRow) => {
     const isFull = row.channel === "full_bundle";
-    const accent = isFull ? "border-nv-green/30" : "border-yellow-400/30";
-    const titleColor = isFull ? "text-nv-green" : "text-yellow-400";
+    const accent = isFull ? "upd-card--full" : "upd-card--app";
+    const titleColor = isFull ? "upd-title--full" : "upd-title--app";
     const rowBusy = activeTasks.some((t) => t.taskKind === "app") || rowStatus[row.id] === "busy";
-    const updateAccent = row.available
-      ? "ring-1 ring-yellow-400/40 border-yellow-400/45 bg-yellow-400/[0.06]"
-      : accent;
+    const updateAccent = row.available ? "upd-card--available" : accent;
 
     return (
       <div
@@ -353,47 +351,47 @@ export default function UpdatesConfig({
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="min-w-0 space-y-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className={`text-[10px] font-mono font-bold uppercase tracking-wider ${titleColor}`}>
+              <span className={`type-body font-mono font-bold uppercase tracking-wider ${titleColor}`}>
                 {row.label}
               </span>
-              <span className="text-[7px] font-mono px-1 py-0.5 rounded-sm border border-nv-green/30 text-nv-green/80 uppercase tracking-wider">
+              <span className="type-micro font-mono px-1 py-0.5 rounded-sm border upd-chip-core--app uppercase tracking-wider">
                 CORE
               </span>
               {row.available && (
-                <span className="text-[7px] font-mono px-1.5 py-0.5 rounded-sm border border-yellow-400/50 bg-yellow-400/15 text-yellow-300 uppercase tracking-wider">
+                <span className="type-micro font-mono px-1.5 py-0.5 rounded-sm border upd-chip-available uppercase tracking-wider">
                   Update available
                 </span>
               )}
             </div>
-            <p className="text-[9px] font-mono config-muted leading-relaxed max-w-xl">{row.summary}</p>
+            <p className="type-label font-mono config-muted leading-relaxed max-w-xl">{row.summary}</p>
           </div>
-          <div className="text-right shrink-0 text-[9px] font-mono config-muted">
+          <div className="text-right shrink-0 type-label font-mono config-muted">
             {row.installed} →{" "}
-            <span className={row.available ? "text-yellow-400/90 font-bold" : "text-white/60"}>{row.latest}</span>
+            <span className={row.available ? "upd-version-note--latest font-bold" : "upd-version-note"}>{row.latest}</span>
             {row.sizeBytes > 0 ? ` · ${formatSize(row.sizeBytes)}` : ""}
           </div>
         </div>
         {row.releaseNotes && (
           <details>
-            <summary className="text-[8px] font-mono text-stealth-muted/55 cursor-pointer uppercase tracking-wider">
+            <summary className="type-tiny font-mono upd-rn-summary cursor-pointer uppercase tracking-wider">
               Release notes
             </summary>
-            <div className="mt-2 pt-2 border-t border-white/[0.06]">
+            <div className="mt-2 pt-2 border-t upd-bord--a6">
               <ReleaseNotesBody text={row.releaseNotes} />
             </div>
           </details>
         )}
-        {rowError[row.id] && <p className="text-[9px] font-mono text-telemetry-red">{rowError[row.id]}</p>}
+        {rowError[row.id] && <p className="type-label font-mono upd-error">{rowError[row.id]}</p>}
         <button
           type="button"
           disabled={rowBusy || !row.available}
           onClick={() => void handleAppInstall(row.channel, row.id)}
-          className={`text-[9px] font-mono uppercase tracking-wider px-3 py-1.5 rounded-sm border disabled:opacity-35 ${
+          className={`type-label font-mono uppercase tracking-wider px-3 py-1.5 rounded-sm border disabled:opacity-35 ${
             row.available
               ? isFull
-                ? "value-chip-active border-nv-green/40"
-                : "border-yellow-400/40 text-yellow-400 hover:bg-yellow-400/10"
-              : "value-chip border-white/10 text-stealth-muted/45"
+                ? "value-chip-active upd-act--full"
+                : "upd-act--app"
+              : "value-chip upd-act--idle"
           }`}
         >
           {row.available ? `Download ${row.label}` : "Up to date"}
@@ -412,12 +410,12 @@ export default function UpdatesConfig({
     const anyUpdate = card.profiles.some((p) => p.updateAvailable);
     const anyInstallable = card.profiles.some((p) => p.packAvailable && !p.installed);
     const cardAccent = anyUpdate
-      ? "border-yellow-400/45 ring-1 ring-yellow-400/35 bg-yellow-400/[0.05]"
+      ? "upd-card--available"
       : anyInstallable
-        ? "border-yellow-400/20"
+        ? "upd-card--installable"
         : card.plugin
-          ? "border-white/12"
-          : "border-nv-green/25";
+          ? "upd-card--plugin"
+          : "upd-card--core";
 
     const renderProfilePill = (row: PluginProfileOffering | undefined) => {
       if (!row) return null;
@@ -427,56 +425,56 @@ export default function UpdatesConfig({
       const arch = archHint(row);
       return (
         <div
-          className={`flex items-start justify-between gap-2 text-[9px] font-mono config-muted rounded-sm px-1 py-0.5 ${
-            row.updateAvailable ? "bg-yellow-400/10" : ""
+          className={`flex items-start justify-between gap-2 type-label font-mono config-muted rounded-sm px-1 py-0.5 ${
+            row.updateAvailable ? "upd-profile-pill--update" : ""
           }`}
         >
-          <span className="text-white/70 shrink-0 flex items-center gap-1.5">
+          <span className="upd-profile-name shrink-0 flex items-center gap-1.5">
             {row.profileLabel}
             {row.updateAvailable && (
-              <span className="text-[7px] font-mono px-1 py-0.5 rounded-sm border border-yellow-400/50 text-yellow-300 uppercase tracking-wider">
+              <span className="type-micro font-mono px-1 py-0.5 rounded-sm border upd-chip-upd uppercase tracking-wider">
                 upd
               </span>
             )}
           </span>
           <span className="text-right leading-relaxed">
             {row.installed ? (
-              <span className={row.updateAvailable ? "text-yellow-300/90" : "text-nv-green/80"}>
+              <span className={row.updateAvailable ? "upd-profile-installed--upd" : "upd-profile-installed"}>
                 installed
                 {instTag ? (
-                  <span className="text-stealth-muted/60"> · shipped {instTag}</span>
+                  <span className="upd-profile-shipped"> · shipped {instTag}</span>
                 ) : null}
                 {row.updateAvailable && packTag ? (
-                  <span className="text-yellow-400/90"> → pack {packTag}</span>
+                  <span className="upd-profile-pack"> → pack {packTag}</span>
                 ) : null}
               </span>
             ) : (
-              <span className="text-stealth-muted/55">not installed</span>
+              <span className="upd-profile-not-installed">not installed</span>
             )}
             {packTag && !row.updateAvailable && !row.installed ? (
-              <span className="text-stealth-muted/45">
+              <span className="upd-profile-meta">
                 {" "}
                 · pack {packTag}
                 {size ? ` · ${size}` : ""}
               </span>
             ) : null}
             {packTag && !row.updateAvailable && row.installed && !instTag ? (
-              <span className="text-stealth-muted/45">
+              <span className="upd-profile-meta">
                 {" "}
                 · pack {packTag}
                 {size ? ` · ${size}` : ""}
               </span>
             ) : null}
             {!row.packAvailable && !card.plugin ? (
-              <span className="block text-[8px] text-stealth-muted/45 mt-0.5">
+              <span className="block type-tiny upd-profile-no-pack mt-0.5">
                 no CORE pack — use Full install
               </span>
             ) : null}
             {arch ? (
-              <span className="block text-[8px] text-stealth-muted/50 mt-0.5">{arch}</span>
+              <span className="block type-tiny upd-profile-hint mt-0.5">{arch}</span>
             ) : null}
             {row.cudaVersion ? (
-              <span className="block text-[8px] text-stealth-muted/45">CUDA {row.cudaVersion}</span>
+              <span className="block type-tiny upd-profile-cuda">CUDA {row.cudaVersion}</span>
             ) : null}
           </span>
         </div>
@@ -485,43 +483,43 @@ export default function UpdatesConfig({
 
     const actionBtnClass = (row: PluginProfileOffering) => {
       if (row.updateAvailable) {
-        return "border-yellow-400/50 text-yellow-300 bg-yellow-400/10 hover:bg-yellow-400/15 disabled:opacity-35";
+        return "upd-act--update disabled:opacity-35";
       }
       if (row.packAvailable && !row.installed) {
-        return "border-yellow-400/30 text-yellow-400/90 hover:bg-yellow-400/10 disabled:opacity-35";
+        return "upd-act--install disabled:opacity-35";
       }
-      return "border-white/20 text-white/80 hover:bg-white/5 disabled:opacity-35";
+      return "upd-act--idle disabled:opacity-35";
     };
 
     return (
       <div key={card.id} className={`config-form-panel rounded-sm border p-4 space-y-3 ${cardAccent}`}>
         <div className="space-y-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] font-mono text-white/90">{card.label}</span>
+            <span className="type-body font-mono upd-card-label">{card.label}</span>
             {card.plugin ? (
-              <span className="text-[8px] font-mono px-1.5 py-0.5 rounded-sm border border-white/15 text-stealth-muted/70 uppercase tracking-wider">
+              <span className="type-tiny font-mono px-1.5 py-0.5 rounded-sm border upd-chip-plugin uppercase tracking-wider">
                 PLUGIN
               </span>
             ) : (
-              <span className="text-[8px] font-mono px-1.5 py-0.5 rounded-sm border border-nv-green/35 text-nv-green/85 uppercase tracking-wider">
+              <span className="type-tiny font-mono px-1.5 py-0.5 rounded-sm border upd-chip-core uppercase tracking-wider">
                 CORE
               </span>
             )}
             {anyUpdate && (
-              <span className="text-[7px] font-mono px-1.5 py-0.5 rounded-sm border border-yellow-400/50 bg-yellow-400/15 text-yellow-300 uppercase tracking-wider">
+              <span className="type-micro font-mono px-1.5 py-0.5 rounded-sm border upd-chip-available uppercase tracking-wider">
                 Update available
               </span>
             )}
           </div>
-          <p className="text-[9px] font-mono config-muted leading-relaxed">{card.summary}</p>
+          <p className="type-label font-mono config-muted leading-relaxed">{card.summary}</p>
         </div>
 
-        <div className="space-y-1 rounded-sm border border-white/[0.06] bg-black/20 px-2.5 py-2">
+        <div className="space-y-1 rounded-sm border upd-bord--a6 upd-fill--black20 px-2.5 py-2">
           {renderProfilePill(frontier)}
           {renderProfilePill(stable)}
         </div>
 
-        {rowError[rowKey] && <p className="text-[9px] font-mono text-telemetry-red">{rowError[rowKey]}</p>}
+        {rowError[rowKey] && <p className="type-label font-mono upd-error">{rowError[rowKey]}</p>}
 
         <div className="flex flex-wrap gap-2">
           {frontier && (
@@ -529,7 +527,7 @@ export default function UpdatesConfig({
               type="button"
               disabled={busy || !profileActionEnabled(frontier)}
               onClick={() => void handleProfilesInstall(card.id, ["frontier"], rowKey)}
-              className={`text-[9px] font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border ${actionBtnClass(frontier)}`}
+              className={`type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border ${actionBtnClass(frontier)}`}
               title={
                 !frontier.packAvailable && !card.plugin
                   ? "Core engines refresh via Full install unless CORE_ggml-master packs are published"
@@ -544,7 +542,7 @@ export default function UpdatesConfig({
               type="button"
               disabled={busy || !profileActionEnabled(stable)}
               onClick={() => void handleProfilesInstall(card.id, ["stable"], rowKey)}
-              className={`text-[9px] font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border ${actionBtnClass(stable)}`}
+              className={`type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border ${actionBtnClass(stable)}`}
               title={
                 !stable.packAvailable && !card.plugin
                   ? "Core engines refresh via Full install unless CORE_ggml-master packs are published"
@@ -559,7 +557,7 @@ export default function UpdatesConfig({
               type="button"
               disabled={busy || !anyAction}
               onClick={() => void handleProfilesInstall(card.id, bothProfiles, rowKey)}
-              className="text-[9px] font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border border-yellow-400/35 text-yellow-400/90 hover:bg-yellow-400/10 disabled:opacity-35"
+              className="type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border upd-act--both disabled:opacity-35"
             >
               {bothProfiles.every((p) => {
                 const row = card.profiles.find((x) => x.profile === p);
@@ -577,10 +575,10 @@ export default function UpdatesConfig({
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-      <div className="px-4 py-3 border-b border-white/[0.06] flex items-center justify-between gap-3 flex-wrap">
+      <div className="px-4 py-3 border-b upd-bord--a6 flex items-center justify-between gap-3 flex-wrap">
         <div className="min-w-0 max-w-2xl">
           <h2 className="text-xs font-mono theme-accent-text tracking-widest">UPDATES</h2>
-          <p className="text-[10px] font-mono config-muted mt-1 leading-relaxed">
+          <p className="type-body font-mono config-muted mt-1 leading-relaxed">
             App refresh updates the plugin catalog. Install engines here — they appear in PROVIDERS after download.
             Foundry build still works for installed plugins.
           </p>
@@ -589,38 +587,38 @@ export default function UpdatesConfig({
           type="button"
           onClick={() => void refreshAll()}
           disabled={loading}
-          className="value-chip text-[9px] font-mono tracking-wider uppercase px-3 py-1 rounded-sm disabled:opacity-40"
+          className="value-chip type-label font-mono tracking-wider uppercase px-3 py-1 rounded-sm disabled:opacity-40"
         >
           {loading ? "Checking…" : "Refresh"}
         </button>
       </div>
 
       {activeTasks.length > 0 && (
-        <div className="px-4 py-2.5 space-y-1.5 border-b border-white/[0.06] bg-black/15">
+        <div className="px-4 py-2.5 space-y-1.5 border-b upd-bord--a6 upd-fill--black15">
           {activeTasks.map((t) => (
             <DownloadProgressRow key={t.id} task={t} compact />
           ))}
         </div>
       )}
 
-      {globalError && <p className="px-4 py-2 text-[10px] font-mono text-telemetry-red">{globalError}</p>}
+      {globalError && <p className="px-4 py-2 type-body font-mono upd-error--global">{globalError}</p>}
 
       <div className="flex-1 overflow-auto px-4 py-4 space-y-6">
         <section className="space-y-3">
-          <h3 className="text-[10px] font-mono theme-accent-text tracking-wider uppercase">Application</h3>
+          <h3 className="type-body font-mono theme-accent-text tracking-wider uppercase">Application</h3>
           {appRows.length > 0 ? (
             <div className="grid gap-3 lg:grid-cols-2">{appRows.map(renderAppCard)}</div>
           ) : (
-            <p className="text-[10px] font-mono config-muted">No app catalog yet.</p>
+            <p className="type-body font-mono config-muted">No app catalog yet.</p>
           )}
         </section>
 
         <section className="space-y-3">
-          <h3 className="text-[10px] font-mono theme-accent-text tracking-wider uppercase">Engine catalog</h3>
+          <h3 className="type-body font-mono theme-accent-text tracking-wider uppercase">Engine catalog</h3>
           {engineCards.length > 0 ? (
             <div className="grid gap-3 lg:grid-cols-2">{engineCards.map(renderEngineCard)}</div>
           ) : (
-            <p className="text-[10px] font-mono config-muted">
+            <p className="type-body font-mono config-muted">
               No plugin catalog yet — ship an App update with runtime/catalog/plugins.json.
             </p>
           )}

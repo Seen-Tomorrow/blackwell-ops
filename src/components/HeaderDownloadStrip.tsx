@@ -54,7 +54,7 @@ export default function HeaderDownloadStrip() {
     >
       <DownloadProgressRow task={primary} inline />
       {activeCount > 1 ? (
-        <span className="text-[7px] font-mono text-stealth-muted/70 whitespace-nowrap flex-shrink-0">
+        <span className="hdr-dl-strip-count whitespace-nowrap flex-shrink-0">
           +{activeCount - 1}
         </span>
       ) : null}

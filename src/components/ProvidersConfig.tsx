@@ -695,12 +695,12 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
       const metrics = fitScanProgressMetrics(state.results?.results ?? {}, state.results?.scan_points_total ?? 32);
       return (
         <div className="config-scan-panel mt-2 p-2 rounded-sm w-full flex items-center justify-between gap-2">
-          <span className="text-[8px] font-mono config-muted">
+          <span className="type-tiny font-mono config-muted">
             Scan running in background — {metrics.pointsDone} pts · {metrics.models} models
           </span>
           <button
             onClick={() => showFitScanPanel(providerId)}
-            className="value-chip text-[8px] font-mono px-2 py-0.5 rounded-sm"
+            className="value-chip type-tiny font-mono px-2 py-0.5 rounded-sm"
           >
             SHOW PROGRESS
           </button>
@@ -716,7 +716,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
       <div className="config-scan-panel mt-2 p-2 rounded-sm w-full">
         {/* Header row */}
         <div className="flex items-center justify-between mb-1.5">
-          <span className={`text-[9px] font-mono tracking-wider ${state.status === "error" ? "text-red-400" : "theme-accent-text"}`}>
+          <span className={`type-label font-mono tracking-wider ${state.status === "error" ? "cfg-dng" : "theme-accent-text"}`}>
             {state.status === "scanning" ? "\u25CF SCANNING..." : 
              state.status === "complete" ? "\uD83C\uDF6C COMPLETE" :
              state.status === "error" ? "\u2716 ERROR" : ""}
@@ -725,7 +725,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
             {state.status === "scanning" && (
               <button
                 onClick={() => handleStopScan(providerId)}
-                className="value-chip text-[9px] font-mono px-2 py-0.5 rounded-sm text-red-400"
+                className="value-chip type-label font-mono px-2 py-0.5 rounded-sm cfg-dng"
               >
                 STOP
               </button>
@@ -744,16 +744,16 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                 : (state.completed / Math.max(state.totalModels, 1)) * 100;
               return (
                 <>
-                  <div className="h-0.5 bg-stealth-border rounded-sm overflow-hidden">
+                  <div className="h-0.5 cfg-panel rounded-sm overflow-hidden">
                     <div
-                      className={`h-full transition-all duration-300 ${state.status === "error" ? "bg-red-400" : ""}`}
+                      className={`h-full transition-all duration-300 ${state.status === "error" ? "cfg-fill--dng" : ""}`}
                       style={{
                         backgroundColor: state.status === "error" ? undefined : "var(--theme-accent)",
                         width: `${Math.min(100, pct)}%`,
                       }}
                     />
                   </div>
-                  <p className="text-[8px] font-mono config-muted mt-0.5">
+                  <p className="type-tiny font-mono config-muted mt-0.5">
                     {state.status === "scanning"
                       ? `${metrics.pointsDone} pts · ${metrics.models} models · ${pointsTotal} pts/model`
                       : `${state.completed} / ${state.totalModels} models`}
@@ -769,14 +769,14 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
 
         {/* Error message */}
         {state.error && (
-          <p className="text-[8px] font-mono text-red-400 mb-1.5 break-all">{state.error}</p>
+          <p className="type-tiny font-mono cfg-dng mb-1.5 break-all">{state.error}</p>
         )}
 
         {/* Results table — CTX spine + split tax (L/T @ 64K/256K) */}
         {state.results && Object.keys(state.results.results).length > 0 && (
           <div className="max-h-48 overflow-auto pr-1">
             <div
-              className="grid items-center gap-1 text-[7px] font-mono py-0.5 config-muted uppercase tracking-wider border-b border-stealth-border/30 mb-0.5 min-w-max"
+              className="grid items-center gap-1 type-micro font-mono py-0.5 config-muted uppercase tracking-wider border-b cfg-bord--a30 mb-0.5 min-w-max"
               style={{
                 gridTemplateColumns: `20px minmax(96px,1.2fr) repeat(${FIT_SCAN_TABLE_COLUMNS.length}, minmax(34px,40px)) 44px`,
               }}
@@ -808,13 +808,13 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
               return (
                 <div
                   key={path}
-                  className={`grid items-center gap-1 text-[8px] font-mono py-0.5 min-w-max ${isActive ? "bg-stealth-border/20 rounded-sm" : ""}`}
+                  className={`grid items-center gap-1 type-tiny font-mono py-0.5 min-w-max ${isActive ? "cfg-panel--a20 rounded-sm" : ""}`}
                   style={{
                     gridTemplateColumns: `20px minmax(96px,1.2fr) repeat(${FIT_SCAN_TABLE_COLUMNS.length}, minmax(34px,40px)) 44px`,
                   }}
                 >
                   <span
-                    className={`${full.error && !isSkipped ? "text-red-400" : isSkipped ? "text-amber-400/80" : isComplete || nPts > 0 ? "theme-accent-text" : "config-muted"}`}
+                    className={`${full.error && !isSkipped ? "cfg-dng" : isSkipped ? "cfg-warn--a80" : isComplete || nPts > 0 ? "theme-accent-text" : "config-muted"}`}
                     title={full.skip_reason}
                   >
                     {isSkipped ? "\u2298" : isComplete ? "\u2713" : isActive ? "\u25CF" : nPts > 0 ? "\u25CB" : full.error ? "\u2716" : "!"}
@@ -822,7 +822,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                   <span className="config-muted truncate" title={rowTitle}>
                     {modelName}
                     {isSkipped ? (
-                      <span className="ml-1 text-amber-400/70 uppercase tracking-wide">mtp</span>
+                      <span className="ml-1 cfg-warn--a70 uppercase tracking-wide">mtp</span>
                     ) : null}
                     {isActive && state.activeLabel ? (
                       <span className="ml-1 opacity-50">{state.activeLabel}</span>
@@ -854,9 +854,9 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                         key={col.label}
                         className={
                           failed
-                            ? "text-red-400"
+                            ? "cfg-dng"
                             : skipped
-                              ? "text-amber-400/70"
+                              ? "cfg-warn--a70"
                               : cell !== "—"
                                 ? "theme-accent-text"
                                 : "config-muted opacity-40"
@@ -867,7 +867,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                       </span>
                     );
                   })}
-                  <span className={isSkipped ? "text-amber-400/70" : isComplete ? "theme-accent-text" : "config-muted"}>
+                  <span className={isSkipped ? "cfg-warn--a70" : isComplete ? "theme-accent-text" : "config-muted"}>
                     {fitScanPointsLabel(full, pointsTotal)}
                   </span>
                 </div>
@@ -877,18 +877,18 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
         )}
 
         {/* Action buttons */}
-        <div className="flex gap-2 mt-2 pt-1.5 border-t border-stealth-border/50">
+        <div className="flex gap-2 mt-2 pt-1.5 border-t cfg-bord--a50">
           {state.status !== "scanning" && (
             <button
               onClick={() => handleScanLibrary(providerId, true)}
-              className="value-chip text-[8px] font-mono px-2 py-0.5 rounded-sm"
+              className="value-chip type-tiny font-mono px-2 py-0.5 rounded-sm"
             >
               {"RESCAN"}
             </button>
           )}
           <button
             onClick={() => handleHideScan(providerId)}
-            className="value-chip text-[7px] font-mono px-2 py-0.5 rounded-sm"
+            className="value-chip type-micro font-mono px-2 py-0.5 rounded-sm"
             title={state.status === "scanning" ? "Dismiss panel — scan keeps running in background" : "Dismiss scan results"}
           >
             {state.status === "scanning" ? "HIDE - will continue in background" : "DISMISS"}
@@ -906,14 +906,14 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
       <div className="px-4 py-2.5 config-section-bar flex items-center justify-between flex-wrap gap-2 relative">
         <div className="flex items-center gap-3">
           <h2 className="text-xs font-mono theme-accent-text tracking-widest">BACKEND PROVIDERS</h2>
-          <span className="text-[8px] font-mono config-muted opacity-60">{providers.length} REGISTERED</span>
+          <span className="type-tiny font-mono config-muted opacity-60">{providers.length} REGISTERED</span>
         </div>
       </div>
 
       {/* Error display */}
       {error && (
-        <div className="mx-4 mt-3 p-2 border border-red-500/30 bg-red-500/5 rounded-sm">
-          <p className="text-[10px] font-mono text-red-400 break-all">{error}</p>
+        <div className="mx-4 mt-3 p-2 border cfg-bord--dng--a30 cfg-fill--dng--a5 rounded-sm">
+          <p className="type-body font-mono cfg-dng break-all">{error}</p>
         </div>
       )}
 
@@ -926,11 +926,11 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                 setEditingId(null);
                 setShowAddForm(!showAddForm);
               }}
-              className={`flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider transition-colors theme-accent-text ${
+              className={`flex items-center gap-1.5 type-body font-mono uppercase tracking-wider transition-colors theme-accent-text ${
                 showAddForm && !editingId ? "opacity-100" : "opacity-60 hover:opacity-100"
               }`}
             >
-              <span className="text-[8px]">{showAddForm && !editingId ? "\u25BC" : "\u25B6"}</span>
+              <span className="type-tiny">{showAddForm && !editingId ? "\u25BC" : "\u25B6"}</span>
               ADD NEW PROVIDER
             </button>
             {showAddForm && !editingId && (
@@ -951,15 +951,15 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
           </div>
 
           <aside className="w-full sm:w-auto sm:max-w-md sm:min-w-[240px] shrink-0">
-            <div className="foundry-build-panel border border-stealth-border/40 rounded-sm overflow-hidden">
+            <div className="foundry-build-panel border cfg-bord--a40 rounded-sm overflow-hidden">
               <div className="foundry-build-header flex items-center gap-2 px-3 py-1.5">
                 <span style={{ fontSize: "11px" }} aria-hidden>
                   ⚒
                 </span>
-                <span className="text-[9px] font-mono theme-accent-text tracking-wider">
+                <span className="type-label font-mono theme-accent-text tracking-wider">
                   FOUNDRY TOOLCHAIN
                 </span>
-                <span className="text-[7px] font-mono config-muted ml-auto truncate">
+                <span className="type-micro font-mono config-muted ml-auto truncate">
                   CUDA + VS
                 </span>
               </div>
@@ -971,17 +971,17 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
         </div>
 
         {providers.length === 0 ? (
-          <div className="flex items-center justify-center py-12 text-stealth-muted text-xs font-mono">
+          <div className="flex items-center justify-center py-12 cfg-mut text-xs font-mono">
             NO PROVIDERS REGISTERED — ADD ONE ABOVE
           </div>
         ) : (
           <div className="mb-6">
             {/* Sort bar */}
             <div className="flex items-center gap-1 px-3 py-2 config-section-bar">
-              <span className="text-[8px] font-mono config-muted uppercase tracking-wider w-6">#</span>
-              <span className="text-[7px] font-mono config-muted uppercase tracking-wider w-12">Order</span>
-              <span className="text-[8px] font-mono config-muted uppercase tracking-wider flex-1">Provider</span>
-              <span className="text-[8px] font-mono config-muted uppercase tracking-wider">Actions</span>
+              <span className="type-tiny font-mono config-muted uppercase tracking-wider w-6">#</span>
+              <span className="type-micro font-mono config-muted uppercase tracking-wider w-12">Order</span>
+              <span className="type-tiny font-mono config-muted uppercase tracking-wider flex-1">Provider</span>
+              <span className="type-tiny font-mono config-muted uppercase tracking-wider">Actions</span>
             </div>
 
             {providers.map((p, idx) => {
@@ -996,17 +996,17 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                 } ${!p.enabled ? "opacity-40" : ""}`}>
                 {/* ── Position number ─────────── */}
                 <div className="flex items-center flex-shrink-0" style={{ minWidth: "16px" }}>
-                  <span className={`text-[9px] font-mono ${isExpanded ? "theme-accent-text" : "config-muted"}`}>{idx + 1}</span>
+                  <span className={`type-label font-mono ${isExpanded ? "theme-accent-text" : "config-muted"}`}>{idx + 1}</span>
                 </div>
 
                 {/* ── Reorder arrows (always visible) ─────────── */}
                 <div className="flex items-center gap-0.5 flex-shrink-0">
                   <button onClick={(e) => { e.stopPropagation(); handleReorder(p.id, -1); }} disabled={idx <= 0}
-                    className="text-[9px] font-mono config-muted hover:theme-accent-text transition-colors disabled:opacity-20 disabled:cursor-not-allowed leading-none" title="Move up">
+                    className="type-label font-mono config-muted hover:theme-accent-text transition-colors disabled:opacity-20 disabled:cursor-not-allowed leading-none" title="Move up">
                     ▲
                   </button>
                   <button onClick={(e) => { e.stopPropagation(); handleReorder(p.id, 1); }} disabled={idx >= providers.length - 1}
-                    className="text-[9px] font-mono config-muted hover:theme-accent-text transition-colors disabled:opacity-20 disabled:cursor-not-allowed leading-none" title="Move down">
+                    className="type-label font-mono config-muted hover:theme-accent-text transition-colors disabled:opacity-20 disabled:cursor-not-allowed leading-none" title="Move down">
                     ▼
                   </button>
                 </div>
@@ -1015,19 +1015,19 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                 <div className="flex items-center gap-6 flex-1 min-w-0">
                   {/* ID + name column */}
                   <div className="flex items-center gap-2.5 flex-shrink-0">
-                    <span className="provider-pill border text-[9px] font-mono px-1.5 py-0.5 rounded-sm shrink-0">
+                    <span className="provider-pill border type-label font-mono px-1.5 py-0.5 rounded-sm shrink-0">
                       {p.id}
                     </span>
-                    <span className={`text-[10px] font-mono truncate max-w-[180px] ${isExpanded ? "theme-accent-text" : ""}`} title={p.display_name}>
+                    <span className={`type-body font-mono truncate max-w-[180px] ${isExpanded ? "theme-accent-text" : ""}`} title={p.display_name}>
                       {p.display_name}
                     </span>
                     {p.id === DEFAULT_PROVIDER_ID && (
-                      <span className="value-chip text-[7px] font-mono px-1.5 py-0.5 rounded-sm shrink-0" title="Core bundled engine">
+                      <span className="value-chip type-micro font-mono px-1.5 py-0.5 rounded-sm shrink-0" title="Core bundled engine">
                         CORE
                       </span>
                     )}
                     {p.optionalDownload && (
-                      <span className="text-[7px] font-mono px-1.5 py-0.5 rounded-sm border border-white/15 text-stealth-muted/60 uppercase shrink-0">
+                      <span className="type-micro font-mono px-1.5 py-0.5 rounded-sm border border-white/15 cfg-mut--a60 uppercase shrink-0">
                         plugin
                       </span>
                     )}
@@ -1035,7 +1035,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
 
                   {/* Params badge */}
                   {p.userEditedTemplateParams && p.userEditedTemplateParams.length > 0 && (
-                    <span className="value-chip text-[9px] font-mono px-2 py-0.5 rounded-sm shrink-0">
+                    <span className="value-chip type-label font-mono px-2 py-0.5 rounded-sm shrink-0">
                       {p.userEditedTemplateParams.length} params
                     </span>
                   )}
@@ -1050,7 +1050,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                           e.stopPropagation();
                           void handleToggleEnabled(p);
                         }}
-                        className={`value-chip text-[8px] font-mono px-2 py-0.5 rounded-sm ${
+                        className={`value-chip type-tiny font-mono px-2 py-0.5 rounded-sm ${
                           p.enabled ? "value-chip-active" : ""
                         }`}
                         title="Enable or disable this provider in the UI"
@@ -1058,7 +1058,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                         {p.enabled ? "ON" : "OFF"}
                       </button>
                       <button onClick={(e) => { e.stopPropagation(); handleEdit(p); }}
-                       className="value-chip text-[9px] font-mono px-2 py-0.5 rounded-sm">
+                       className="value-chip type-label font-mono px-2 py-0.5 rounded-sm">
                        EDIT
                      </button>
                     {/* Core NSIS only: no remove. Everyone else: uninstall engines / drop from list. */}
@@ -1068,7 +1068,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                           e.stopPropagation();
                           void handleDelete(p);
                         }}
-                        className="value-chip text-[9px] font-mono px-2 py-0.5 rounded-sm text-red-400"
+                        className="value-chip type-label font-mono px-2 py-0.5 rounded-sm cfg-dng"
                         title={
                           p.optionalDownload || p.factory_provided
                             ? "Remove engines from this install (runtime/{id}/). Reinstall from UPDATES if still a catalog plugin."
@@ -1080,11 +1080,11 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                     )}
 
                     {/* FULL MODEL LIBRARY FIT SCAN — click to pick parallelism */}
-                    <div className="flex items-center gap-1.5 ml-2 pl-2 border-l border-stealth-border/30">
+                    <div className="flex items-center gap-1.5 ml-2 pl-2 border-l cfg-bord--a30">
                       {scanStates[p.id]?.status === "scanning" ? (
                         <button
                           onClick={(e) => { e.stopPropagation(); handleStopScan(p.id); }}
-                          className="value-chip text-[9px] font-mono px-2 py-0.5 rounded-sm text-telemetry-red"
+                          className="value-chip type-label font-mono px-2 py-0.5 rounded-sm cfg-dng"
                         >
                           ⏹ STOP
                         </button>
@@ -1099,7 +1099,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                                 setScanLibraryMenuId(null);
                                 void handleScanLibrary(p.id);
                               }}
-                              className="px-1.5 py-0.5 text-[9px] font-mono rounded-sm transition-colors value-chip hover:value-chip-active"
+                              className="px-1.5 py-0.5 type-label font-mono rounded-sm transition-colors value-chip hover:value-chip-active"
                               title={`Scan library with ${n}x parallelism`}
                             >
                               {n}×
@@ -1110,7 +1110,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                         <button
                           onClick={(e) => { e.stopPropagation(); setScanLibraryMenuId(p.id); }}
                           data-onboarding="scan-library"
-                          className="value-chip text-[9px] font-mono px-2 py-0.5 rounded-sm"
+                          className="value-chip type-label font-mono px-2 py-0.5 rounded-sm"
                         >
                           FULL MODEL CATALOG FIT SCAN ▾
                         </button>
@@ -1118,7 +1118,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                     </div>
 
                     {/* Expand chevron */}
-                    <span className={`text-[8px] transition-transform ${isExpanded ? "rotate-90" : ""}`}>▶</span>
+                    <span className={`type-tiny transition-transform ${isExpanded ? "rotate-90" : ""}`}>▶</span>
                   </div>
                 </div>
               </div>
@@ -1146,24 +1146,24 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                   <div className="foundry-build-panel">
                     <div className="foundry-build-header flex items-center gap-3 px-3 py-2">
                       <span style={{ fontSize: "12px" }}>⚒</span>
-                      <span className="text-[9px] font-mono theme-accent-text tracking-wider">
+                      <span className="type-label font-mono theme-accent-text tracking-wider">
                         {p.git_url && p.branch ? "FOUNDRY BUILDS" : "BINARY PROFILES"}
                       </span>
                       {p.git_url && p.branch ? (
                         <span
-                          className="text-[8px] font-mono config-muted truncate max-w-[240px]"
+                          className="type-tiny font-mono config-muted truncate max-w-[240px]"
                           title={p.git_url}
                         >
                           {p.git_url.replace(/.*\/\/|\.git$/g, "")} :{p.branch}
                         </span>
                       ) : (
-                        <span className="text-[8px] font-mono config-muted truncate">
+                        <span className="type-tiny font-mono config-muted truncate">
                           Set Git URL + Branch in EDIT for Foundry builds
                         </span>
                       )}
                       {probingBuildInfoIds.has(p.id) && (
                         <span
-                          className="foundry-buildinfo-probing text-[8px] font-mono config-muted ml-auto shrink-0"
+                          className="foundry-buildinfo-probing type-tiny font-mono config-muted ml-auto shrink-0"
                           title="Probing llama-server --version for this provider"
                         >
                           reading build info
@@ -1177,8 +1177,8 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                     </div>
 
                     {!(p.git_url && p.branch) && (
-                      <div className="px-3 py-2 border-b border-stealth-border/25">
-                        <p className="text-[8px] font-mono config-muted leading-relaxed">
+                      <div className="px-3 py-2 border-b cfg-bord--a25">
+                        <p className="type-tiny font-mono config-muted leading-relaxed">
                           Profile rows show inventory / active binary.{" "}
                           <span className="text-white/70">Foundry BUILD</span> needs Git URL + Branch
                           on this provider (EDIT). Binary Path alone is enough to launch and probe
@@ -1238,7 +1238,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
 
       {/* Footer */}
       <div className="px-4 py-2.5 config-section-bar flex items-center justify-between">
-        <span className="text-[9px] font-mono config-muted">
+        <span className="type-label font-mono config-muted">
           {providers.length} provider{providers.length !== 1 ? "s" : ""} registered
         </span>
       </div>
@@ -1287,7 +1287,7 @@ function CustomProviderNoticeModal({
         className="config-form-panel rounded-sm shadow-2xl w-[min(92vw,28rem)] max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-stealth-border/30">
+        <div className="flex items-center justify-between px-4 py-3 border-b cfg-bord--a30">
           <h3
             id="custom-provider-notice-title"
             className="text-xs font-mono theme-accent-text tracking-wider"
@@ -1303,8 +1303,8 @@ function CustomProviderNoticeModal({
             &times;
           </button>
         </div>
-        <div className="px-4 py-4 space-y-3 text-[10px] font-mono leading-relaxed config-muted">
-          <p className="theme-accent-text/90 uppercase tracking-wider text-[9px]">
+        <div className="px-4 py-4 space-y-3 type-body font-mono leading-relaxed config-muted">
+          <p className="theme-accent-text/90 uppercase tracking-wider type-label">
             You are on your own for the param set
           </p>
           <p>
@@ -1316,8 +1316,8 @@ function CustomProviderNoticeModal({
             Add every CLI flag you need in CONFIG (PARAMETERS). Invalid or missing flags are
             between you and the binary — Blackwell will not invent them.
           </p>
-          <div className="foundry-profile-row rounded-sm p-3 space-y-2 border border-stealth-border/35">
-            <p className="text-[9px] font-mono uppercase tracking-wider theme-accent-text/80">
+          <div className="foundry-profile-row rounded-sm p-3 space-y-2 border cfg-bord--a35">
+            <p className="type-label font-mono uppercase tracking-wider theme-accent-text/80">
               Fusion metrics
             </p>
             <p>
@@ -1333,23 +1333,23 @@ function CustomProviderNoticeModal({
               work the same as on Master — there is no separate “custom Fusion off” switch.
             </p>
           </div>
-          <p className="text-[9px] opacity-80">
+          <p className="type-label opacity-80">
             Prefer <span className="text-white/70">GGML-Llama</span> template when the fork is
             Master-compatible. Use Custom only when you know the CLI contract.
           </p>
         </div>
-        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-stealth-border/30">
+        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t cfg-bord--a30">
           <button
             type="button"
             onClick={onCancel}
-            className="value-chip text-[9px] font-mono px-3 py-1 rounded-sm text-red-400/90"
+            className="value-chip type-label font-mono px-3 py-1 rounded-sm cfg-dng--a90"
           >
             NO — CANCEL
           </button>
           <button
             type="button"
             onClick={onConfirm}
-            className="value-chip-active text-[9px] font-mono px-4 py-1 rounded-sm"
+            className="value-chip-active type-label font-mono px-4 py-1 rounded-sm"
           >
             {confirmLabel}
           </button>
@@ -1397,7 +1397,7 @@ function ProviderFormPanel({
       onClick={(e) => e.stopPropagation()}
     >
       <div className="flex items-center justify-between mb-1">
-        <span className="text-[10px] font-mono theme-accent-text tracking-wider">{title}</span>
+        <span className="type-body font-mono theme-accent-text tracking-wider">{title}</span>
         <button
           type="button"
           onClick={onCancel}
@@ -1408,7 +1408,7 @@ function ProviderFormPanel({
         </button>
       </div>
       <div className="flex items-center gap-2">
-        <label className="text-[10px] font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">Type ID</label>
+        <label className="type-body font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">Type ID</label>
         <input
           type="text"
           placeholder={mode === "add" ? "e.g. stable, nightly, my-ik-fork" : undefined}
@@ -1422,11 +1422,11 @@ function ProviderFormPanel({
                 : {}),
             }))
           }
-          className="config-input flex-1 text-[11px] font-mono px-1 py-0.5"
+          className="config-input flex-1 type-sm font-mono px-1 py-0.5"
         />
       </div>
       <div className="flex items-center gap-2">
-        <label className="text-[10px] font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">Template</label>
+        <label className="type-body font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">Template</label>
         <select
           value={form.template_type}
           onChange={(e) => {
@@ -1434,20 +1434,20 @@ function ProviderFormPanel({
             if (onTemplateTypeChange) onTemplateTypeChange(v);
             else setForm((prev) => ({ ...prev, template_type: v }));
           }}
-          className="config-input flex-1 text-[11px] font-mono px-1 py-0.5 appearance-none"
+          className="config-input flex-1 type-sm font-mono px-1 py-0.5 appearance-none"
         >
           <option value="ggml-llama">GGML-Llama (factory params)</option>
           <option value="custom">Custom (manual / bare shell)</option>
         </select>
       </div>
       <div className="flex items-center gap-2">
-        <label className="text-[10px] font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">Name</label>
+        <label className="type-body font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">Name</label>
         <input
           type="text"
           placeholder={mode === "add" ? "e.g. llama.cpp Stable" : undefined}
           value={form.display_name}
           onChange={(e) => setForm((prev) => ({ ...prev, display_name: e.target.value }))}
-          className="config-input flex-1 text-[11px] font-mono px-1 py-0.5"
+          className="config-input flex-1 type-sm font-mono px-1 py-0.5"
         />
       </div>
       <ProviderFormFields form={form} setForm={setForm} handleBrowse={handleBrowse} isFactoryProvided={isFactoryProvided} />
@@ -1459,12 +1459,12 @@ function ProviderFormPanel({
           type="button"
           onClick={onSave}
           disabled={loading || !form.id.trim() || !form.display_name.trim()}
-          className="value-chip-active text-[10px] font-mono px-3 py-1 rounded-sm disabled:opacity-40 disabled:cursor-not-allowed"
+          className="value-chip-active type-body font-mono px-3 py-1 rounded-sm disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {saveLabel}
         </button>
         {mode === "edit" && (
-          <button type="button" onClick={onCancel} className="value-chip text-[10px] font-mono px-3 py-1 rounded-sm">
+          <button type="button" onClick={onCancel} className="value-chip type-body font-mono px-3 py-1 rounded-sm">
             CANCEL
           </button>
         )}
@@ -1493,31 +1493,31 @@ function CustomCapabilitiesFields({
   };
 
   return (
-    <div className="mt-2 pt-2 border-t border-stealth-border/30 space-y-2">
-      <div className="text-[8px] font-mono theme-accent-text tracking-widest uppercase">
+    <div className="mt-2 pt-2 border-t cfg-bord--a30 space-y-2">
+      <div className="type-tiny font-mono theme-accent-text tracking-widest uppercase">
         Custom capabilities
       </div>
-      <p className="text-[8px] font-mono config-muted leading-relaxed">
+      <p className="type-tiny font-mono config-muted leading-relaxed">
         Bare shell by default. Opt in only if this fork supports the feature. Cockpit binds by Master
         param keys after you add them in CONFIG.
       </p>
-      <label className="flex items-center gap-2 text-[10px] font-mono cursor-pointer">
+      <label className="flex items-center gap-2 type-body font-mono cursor-pointer">
         <input
           type="checkbox"
           checked={caps.fusion}
           onChange={(e) => patch({ fusion: e.target.checked })}
-          className="accent-nv-green"
+          className="cfg-accent"
         />
         <span>Fusion telemetry</span>
-        <span className="text-[8px] config-muted">(needs /slots + logs)</span>
+        <span className="type-tiny config-muted">(needs /slots + logs)</span>
       </label>
       {caps.fusion && (
         <div className="flex items-center gap-2 pl-5">
-          <label className="text-[8px] font-mono config-muted shrink-0">Adapter</label>
+          <label className="type-tiny font-mono config-muted shrink-0">Adapter</label>
           <select
             value={caps.fusionAdapter}
             onChange={(e) => patch({ fusionAdapter: e.target.value })}
-            className="config-input flex-1 text-[10px] font-mono px-1 py-0.5"
+            className="config-input flex-1 type-body font-mono px-1 py-0.5"
             title="ggml_master = full stderr log belt; ggml_quiet = silent server (no PP/TG logs), brain derives PP + multi-slot TG from /slots + /metrics"
           >
             <option value="">ggml_master (full logs)</option>
@@ -1526,33 +1526,33 @@ function CustomCapabilitiesFields({
           </select>
         </div>
       )}
-      <label className="flex items-center gap-2 text-[10px] font-mono cursor-pointer">
+      <label className="flex items-center gap-2 type-body font-mono cursor-pointer">
         <input
           type="checkbox"
           checked={caps.metrics}
           onChange={(e) => patch({ metrics: e.target.checked })}
-          className="accent-nv-green"
+          className="cfg-accent"
         />
         <span>Inject --metrics</span>
       </label>
-      <label className="flex items-center gap-2 text-[10px] font-mono cursor-pointer">
+      <label className="flex items-center gap-2 type-body font-mono cursor-pointer">
         <input
           type="checkbox"
           checked={caps.verbose}
           onChange={(e) => patch({ verbose: e.target.checked })}
-          className="accent-nv-green"
+          className="cfg-accent"
         />
         <span>Verbose logs</span>
       </label>
       {caps.verbose && (
         <div className="flex items-center gap-2 pl-5">
-          <label className="text-[8px] font-mono config-muted shrink-0">Flags</label>
+          <label className="type-tiny font-mono config-muted shrink-0">Flags</label>
           <input
             type="text"
             value={caps.verboseArgs}
             onChange={(e) => patch({ verboseArgs: e.target.value })}
             placeholder={DEFAULT_CUSTOM_CAPABILITIES.verboseArgs}
-            className="config-input flex-1 text-[10px] font-mono px-1 py-0.5"
+            className="config-input flex-1 type-body font-mono px-1 py-0.5"
             title='Space-separated CLI tokens, e.g. "-lv 4" or "--verbose"'
           />
         </div>
@@ -1574,54 +1574,54 @@ function ProviderFormFields({ form, setForm, handleBrowse, isFactoryProvided }: 
     <>
       {/* Binary path */}
       <div className="flex items-center gap-2">
-        <label className="text-[10px] font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">
+        <label className="type-body font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">
           Binary Path{isFactoryProvided ? "" : " (opt)"}
         </label>
         {isFactoryProvided ? (
           <>
             <input type="text" value={form.binary_path} disabled
-              className="config-input flex-1 text-[11px] font-mono px-1 py-0.5 cursor-not-allowed opacity-60" />
-            <span className="value-chip text-[8px] font-mono px-1.5 py-0.5 rounded-sm shrink-0">MANAGED</span>
+              className="config-input flex-1 type-sm font-mono px-1 py-0.5 cursor-not-allowed opacity-60" />
+            <span className="value-chip type-tiny font-mono px-1.5 py-0.5 rounded-sm shrink-0">MANAGED</span>
           </>
         ) : (
           <>
             <input type="text" value={form.binary_path} onChange={(e) => setForm((prev) => ({ ...prev, binary_path: e.target.value }))}
-              className="config-input flex-1 text-[11px] font-mono px-1 py-0.5" />
-            <button onClick={handleBrowse} className="value-chip text-[9px] font-mono px-2 py-0.5 rounded-sm shrink-0">BROWSE</button>
+              className="config-input flex-1 type-sm font-mono px-1 py-0.5" />
+            <button onClick={handleBrowse} className="value-chip type-label font-mono px-2 py-0.5 rounded-sm shrink-0">BROWSE</button>
           </>
         )}
       </div>
       {/* Enabled toggle */}
       <div className="flex items-center gap-2">
-        <label className="text-[10px] font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">Active</label>
+        <label className="type-body font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">Active</label>
         <button
           type="button"
           onClick={() => setForm((prev) => ({ ...prev, enabled: !prev.enabled }))}
-          className={`value-chip text-[8px] font-mono px-2 py-0.5 rounded-sm ${form.enabled ? "value-chip-active" : ""}`}
+          className={`value-chip type-tiny font-mono px-2 py-0.5 rounded-sm ${form.enabled ? "value-chip-active" : ""}`}
         >
           {form.enabled ? "ON" : "OFF"}
         </button>
       </div>
       {/* Git URL */}
       <div className="flex items-center gap-2">
-        <label className="text-[10px] font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">Git URL</label>
+        <label className="type-body font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">Git URL</label>
         <input type="text" placeholder="https://github.com/ggml-org/llama.cpp" value={form.git_url}
           onChange={(e) => setForm((prev) => ({ ...prev, git_url: e.target.value }))}
-          className="config-input flex-1 text-[11px] font-mono px-1 py-0.5" />
+          className="config-input flex-1 type-sm font-mono px-1 py-0.5" />
       </div>
       {/* Branch */}
       <div className="flex items-center gap-2">
-        <label className="text-[10px] font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">Branch</label>
+        <label className="type-body font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">Branch</label>
         <input type="text" placeholder="master, main, dev" value={form.branch}
           onChange={(e) => setForm((prev) => ({ ...prev, branch: e.target.value }))}
-          className="config-input flex-1 text-[11px] font-mono px-1 py-0.5" />
+          className="config-input flex-1 type-sm font-mono px-1 py-0.5" />
       </div>
       {/* Build Profile (CMake flags) */}
       <div className="flex items-start gap-2">
-        <label className="text-[10px] font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider mt-1">Build Profile</label>
+        <label className="type-body font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider mt-1">Build Profile</label>
         <textarea rows={3} placeholder="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=&quot;120a&quot;"
           value={form.build_profile} onChange={(e) => setForm((prev) => ({ ...prev, build_profile: e.target.value }))}
-          className="config-textarea flex-1 border rounded-sm px-2 py-1 font-mono text-[9px] resize-y" />
+          className="config-textarea flex-1 border rounded-sm px-2 py-1 font-mono type-label resize-y" />
       </div>
     </>
   );

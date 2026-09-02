@@ -5,30 +5,30 @@ import type { DownloadStatus, DownloadTask } from "@/lib/types";
 function statusColor(status: DownloadStatus): string {
   switch (status) {
     case "downloading":
-      return "text-nv-green";
+      return "dl-row-status--active";
     case "paused":
-      return "text-yellow-400";
+      return "dl-row-status--warn";
     case "failed":
-      return "text-red-400";
+      return "dl-row-status--danger";
     case "scanning":
-      return "text-blue-400";
+      return "dl-row-status--info";
     default:
-      return "text-stealth-muted/40";
+      return "dl-row-status--idle";
   }
 }
 
 function progressColor(status: DownloadStatus): string {
   switch (status) {
     case "downloading":
-      return "bg-nv-green";
+      return "dl-progress-fill--active";
     case "paused":
-      return "bg-yellow-400";
+      return "dl-progress-fill--warn";
     case "failed":
-      return "bg-red-400";
+      return "dl-progress-fill--danger";
     case "scanning":
-      return "bg-blue-400 animate-pulse";
+      return "dl-progress-fill--info animate-pulse";
     default:
-      return "bg-stealth-muted/20";
+      return "dl-progress-fill--idle";
   }
 }
 
@@ -175,7 +175,7 @@ export default function DownloadProgressRow({
         <button
           type="button"
           onClick={(e) => { void handlePriorityUp(e); }}
-          className="rounded-sm border border-stealth-muted/30 px-1 py-0.5 text-[8px] font-mono text-stealth-muted/70 transition-all hover:bg-stealth-muted/10 whitespace-nowrap"
+          className="dl-row-btn dl-row-btn--idle rounded-sm border px-1 py-0.5 font-mono transition-all whitespace-nowrap"
           title="Move up in queue (higher priority)"
         >
           ▲
@@ -185,7 +185,7 @@ export default function DownloadProgressRow({
         <button
           type="button"
           onClick={(e) => { void handlePriorityDown(e); }}
-          className="rounded-sm border border-stealth-muted/30 px-1 py-0.5 text-[8px] font-mono text-stealth-muted/70 transition-all hover:bg-stealth-muted/10 whitespace-nowrap"
+          className="dl-row-btn dl-row-btn--idle rounded-sm border px-1 py-0.5 font-mono transition-all whitespace-nowrap"
           title="Move down in queue (lower priority)"
         >
           ▼
@@ -195,7 +195,7 @@ export default function DownloadProgressRow({
         <button
           type="button"
           onClick={(e) => { void handlePause(e); }}
-          className="rounded-sm border border-yellow-400/30 px-1.5 py-0.5 text-[8px] font-mono text-yellow-400 transition-all hover:bg-yellow-400/10 whitespace-nowrap"
+          className="dl-row-btn dl-row-btn--warn rounded-sm border px-1.5 py-0.5 font-mono transition-all whitespace-nowrap"
         >
           PAUSE
         </button>
@@ -204,7 +204,7 @@ export default function DownloadProgressRow({
         <button
           type="button"
           onClick={(e) => { void handleResume(e); }}
-          className="rounded-sm border border-nv-green/30 px-1.5 py-0.5 text-[8px] font-mono text-nv-green transition-all hover:bg-nv-green/10 whitespace-nowrap"
+          className="dl-row-btn dl-row-btn--active rounded-sm border px-1.5 py-0.5 font-mono transition-all whitespace-nowrap"
         >
           RESUME
         </button>
@@ -215,7 +215,7 @@ export default function DownloadProgressRow({
         <button
           type="button"
           onClick={(e) => { handleCancelClick(e); }}
-          className="rounded-sm border border-red-400/30 px-1.5 py-0.5 text-[8px] font-mono text-red-400 transition-all hover:bg-red-400/10 whitespace-nowrap"
+          className="dl-row-btn dl-row-btn--danger rounded-sm border px-1.5 py-0.5 font-mono transition-all whitespace-nowrap"
         >
           CANCEL
         </button>
@@ -257,28 +257,28 @@ export default function DownloadProgressRow({
   if (inline) {
     return (
       <>
-      <div className="download-progress-inline flex items-center gap-2 min-w-0 font-mono text-[8px]">
-        <span className="download-progress-inline__name text-white/85 whitespace-nowrap">
+      <div className="download-progress-inline flex items-center gap-2 min-w-0 font-mono">
+        <span className="download-progress-inline__name dl-row-name whitespace-nowrap">
           {title}
         </span>
         {task.fileName && task.hfModelId && task.fileName !== task.hfModelId ? (
-          <span className="text-stealth-muted/50 whitespace-nowrap">{task.fileName}</span>
+          <span className="dl-row-file whitespace-nowrap">{task.fileName}</span>
         ) : null}
-        <span className="text-stealth-muted/55 whitespace-nowrap tabular-nums">
+        <span className="dl-row-size whitespace-nowrap tabular-nums">
           {formatSize(task.downloadedBytes)}/{formatSize(task.totalBytes)}
         </span>
         {task.status === "downloading" ? (
           <>
-            <span className="text-nv-green whitespace-nowrap">{speedStr}/s</span>
-            <span className="text-stealth-muted/45 whitespace-nowrap">{etaStr}</span>
+            <span className="dl-row-speed whitespace-nowrap">{speedStr}/s</span>
+            <span className="dl-row-eta whitespace-nowrap">{etaStr}</span>
           </>
         ) : null}
-        <span className={`uppercase whitespace-nowrap ${statusColor(task.status)}`}>
+        <span className={`dl-row-status uppercase whitespace-nowrap ${statusColor(task.status)}`}>
           {statusLabel(task)}
           {task.status !== "scanning" && task.totalBytes > 0 ? ` ${pct}%` : ""}
         </span>
         {showProgress ? (
-          <div className="download-progress-inline__bar overflow-hidden rounded-full bg-stealth-dark h-1.5 flex-shrink-0">
+          <div className="download-progress-inline__bar dl-row-bar overflow-hidden rounded-full h-1.5 flex-shrink-0">
             <div
               className={`h-full transition-all duration-300 ${progressColor(task.status)}`}
               style={{ width: `${task.status === "scanning" ? 100 : pct}%` }}
@@ -287,12 +287,12 @@ export default function DownloadProgressRow({
         ) : null}
         <div className="flex items-center gap-1 flex-shrink-0">{actionBtns}</div>
         {task.status === "failed" && task.error ? (
-          <span className="text-red-400/70 whitespace-nowrap" title={task.error}>
+          <span className="dl-row-error whitespace-nowrap" title={task.error}>
             {task.error}
           </span>
         ) : null}
         {task.retryCount && task.retryCount > 0 && (
-          <span className="text-yellow-400/60 whitespace-nowrap text-[7px]"
+          <span className="dl-row-retry whitespace-nowrap"
             title={`Retried ${task.retryCount} time(s) due to transient network errors`}>
             RETRY×{task.retryCount}
           </span>
@@ -306,31 +306,31 @@ export default function DownloadProgressRow({
   return (
     <>
     <div
-      className={`rounded-sm border border-stealth-border/60 bg-stealth-surface/40 space-y-1.5 ${
+      className={`dl-row-card rounded-sm border ${
         compact ? "p-1.5" : "p-2"
       }`}
     >
-      <div className={`flex items-center justify-between gap-2 font-mono ${compact ? "text-[8px]" : "text-[9px]"}`}>
-        <span className="truncate text-white/80">{title}</span>
+      <div className={`dl-row-head flex items-center justify-between gap-2 font-mono ${compact ? 'dl-row-head--compact' : 'dl-row-head--full'}`}>
+        <span className="dl-row-title truncate">{title}</span>
         {!compact && (
-          <span className="shrink-0 text-stealth-muted/40">
+          <span className="dl-row-size shrink-0">
             {formatSize(task.downloadedBytes)} / {formatSize(task.totalBytes)}
           </span>
         )}
         <div className="flex shrink-0 items-center gap-2">
           {task.status === "downloading" && !compact && (
             <>
-              <span className="text-nv-green">{speedStr}/s</span>
-              <span className="text-stealth-muted/40">{etaStr}</span>
+              <span className="dl-row-speed">{speedStr}/s</span>
+              <span className="dl-row-eta">{etaStr}</span>
             </>
           )}
-          <span className={`uppercase ${statusColor(task.status)}`}>
+          <span className={`dl-row-status uppercase ${statusColor(task.status)}`}>
             {statusLabel(task)}
           </span>
         </div>
       </div>
       {showProgress && (
-        <div className={`overflow-hidden rounded-full bg-stealth-dark ${compact ? "h-1" : "h-1.5"}`}>
+        <div className={`dl-row-bar overflow-hidden rounded-full ${compact ? "h-1" : "h-1.5"}`}>
           <div
             className={`h-full transition-all duration-300 ${progressColor(task.status)}`}
             style={{
@@ -340,17 +340,17 @@ export default function DownloadProgressRow({
         </div>
       )}
       {task.status === "scanning" && task.taskKind === "toolchain" && (
-        <p className={`font-mono text-blue-400/80 ${compact ? "text-[7px]" : "text-[8px]"}`}>
+        <p className={`dl-row-scan font-mono ${compact ? 'dl-row-scan--compact' : 'dl-row-scan--full'}`}>
           {task.statusMessage ?? task.error ?? "Extracting toolchain…"} (~4 GB, may take a few minutes)
         </p>
       )}
       {task.status === "scanning" && task.taskKind === "app" && (
-        <p className={`font-mono text-blue-400/80 ${compact ? "text-[7px]" : "text-[8px]"}`}>
+        <p className={`dl-row-scan font-mono ${compact ? 'dl-row-scan--compact' : 'dl-row-scan--full'}`}>
           {task.statusMessage ?? task.error ?? "Applying app update…"} (app will restart)
         </p>
       )}
       {task.status === "scanning" && task.taskKind === "provider" && (
-        <p className={`font-mono text-blue-400/80 ${compact ? "text-[7px]" : "text-[8px]"}`}>
+        <p className={`dl-row-scan font-mono ${compact ? 'dl-row-scan--compact' : 'dl-row-scan--full'}`}>
           {task.statusMessage ?? task.error ?? "Extracting engine pack…"}
         </p>
       )}
@@ -359,19 +359,19 @@ export default function DownloadProgressRow({
         task.taskKind !== "app" &&
         task.taskKind !== "provider" &&
         (task.statusMessage || task.error) && (
-        <p className={`font-mono text-stealth-muted/70 ${compact ? "text-[7px]" : "text-[8px]"}`}>
+        <p className={`dl-row-statusmsg font-mono ${compact ? 'dl-row-statusmsg--compact' : 'dl-row-statusmsg--full'}`}>
           {task.statusMessage ?? task.error}
         </p>
       )}
       {/* Non-scanning status messages (e.g. "Verifying integrity…", "Retrying…"). */}
       {task.status !== "scanning" && task.statusMessage && (
-        <p className={`font-mono text-stealth-muted/70 ${compact ? "text-[7px]" : "text-[8px]"}`}>
+        <p className={`dl-row-statusmsg font-mono ${compact ? 'dl-row-statusmsg--compact' : 'dl-row-statusmsg--full'}`}>
           {task.statusMessage}
         </p>
       )}
       <div className="flex items-center gap-1.5">{actionBtns}</div>
       {task.status === "failed" && task.error && (
-        <span className="truncate text-[8px] font-mono text-red-400/60">
+        <span className="dl-row-error truncate font-mono">
           {task.error}
         </span>
       )}

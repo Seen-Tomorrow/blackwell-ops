@@ -62,7 +62,7 @@ export default function GroupHeaderControls({
             type="button"
             disabled={columnIdx <= 0}
             onClick={onMoveColumnLeft}
-            className="config-group-layout-controls__col-btn px-1 py-0 text-[8px] font-mono rounded-sm border border-stealth-border/40 text-stealth-muted/55 hover:text-stealth-muted disabled:opacity-25 disabled:cursor-not-allowed"
+            className="config-group-layout-controls__col-btn px-1 py-0 type-tiny font-mono rounded-sm border cfg-bord--a40 cfg-mut--a55 hover:cfg-mut disabled:opacity-25 disabled:cursor-not-allowed"
             title="Move group to column on the left"
           >
             ◀
@@ -71,7 +71,7 @@ export default function GroupHeaderControls({
             type="button"
             disabled={columnIdx >= columnCount - 1}
             onClick={onMoveColumnRight}
-            className="config-group-layout-controls__col-btn px-1 py-0 text-[8px] font-mono rounded-sm border border-stealth-border/40 text-stealth-muted/55 hover:text-stealth-muted disabled:opacity-25 disabled:cursor-not-allowed"
+            className="config-group-layout-controls__col-btn px-1 py-0 type-tiny font-mono rounded-sm border cfg-bord--a40 cfg-mut--a55 hover:cfg-mut disabled:opacity-25 disabled:cursor-not-allowed"
             title="Move group to column on the right"
           >
             ▶
@@ -82,10 +82,10 @@ export default function GroupHeaderControls({
         <button
           type="button"
           onClick={onToggleZone}
-          className={`config-group-layout-controls__zone px-1.5 py-0 text-[7px] font-mono rounded-sm border transition-colors ${
+          className={`config-group-layout-controls__zone px-1.5 py-0 type-micro font-mono rounded-sm border transition-colors ${
             pinnedAbove
-              ? "border-nv-green/50 text-nv-green/90 bg-nv-green/10"
-              : "border-stealth-border/40 text-stealth-muted/45 hover:text-stealth-muted"
+              ? "cfg-bord--acc--a50 cfg-acc--a90 cfg-fill--a10"
+              : "cfg-bord cfg-mut hover:cfg-mut"
           }`}
           title={pinnedAbove ? "Click to move below VRAM display" : "Click to pin above VRAM display"}
         >
@@ -96,10 +96,10 @@ export default function GroupHeaderControls({
         <button
           type="button"
           onClick={onToggleHide}
-          className={`config-group-layout-controls__hide px-1.5 py-0 text-[7px] font-mono rounded-sm border transition-colors ${
+          className={`config-group-layout-controls__hide px-1.5 py-0 type-micro font-mono rounded-sm border transition-colors ${
             isHidden
-              ? "border-yellow-400/40 text-yellow-400/80 bg-yellow-400/8"
-              : "border-stealth-border/40 text-stealth-muted/45 hover:text-stealth-muted"
+              ? "cfg-bord--warn--a40 cfg-warn--a80 cfg-fill--warn--a8"
+              : "cfg-bord cfg-mut hover:cfg-mut"
           }`}
           title={isHidden ? "Show group in engine config" : "Hide group from engine config"}
         >
@@ -110,7 +110,7 @@ export default function GroupHeaderControls({
         <button
           type="button"
           onClick={onDelete}
-          className="config-group-layout-controls__delete px-1.5 py-0 text-[7px] font-mono rounded-sm border border-red-400/35 text-red-400/75 hover:text-red-400 hover:border-red-400/55 transition-colors"
+          className="config-group-layout-controls__delete px-1.5 py-0 type-micro font-mono rounded-sm border cfg-bord--dng--a35 cfg-dng--a75 hover:cfg-dng hover:cfg-bord--dng--a55 transition-colors"
           title="Remove empty group"
         >
           DEL
