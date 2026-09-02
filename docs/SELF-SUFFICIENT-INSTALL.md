@@ -204,7 +204,7 @@ BuildTools) and `Install-MsvcCrtIntoDirs` (copies the 3 DLLs into every dir hold
   runtime source fingerprint, so a skip-copy day would otherwise leave the debug tree without it.
   Non-fatal in DEV; idempotent (18 files = 3 × 6 profiles, stable across runs).
 
-### Two traps when touching this code
+### Three traps when touching this code
 
 1. **Layout is `{toolchain}/vs/{vsYear}/VC/Tools/MSVC/{msvcVersion}/bin/Hostx64/x64`.** Note the
    extra `vs` level, and that `vsYear` is a **key** (`2022` / `2026`), not a version dir. Globbing
@@ -212,6 +212,14 @@ BuildTools) and `Install-MsvcCrtIntoDirs` (copies the 3 DLLs into every dir hold
    like a fallback worked.
 2. **`Get-ChildItem -Recurse` follows junctions.** Same hazard `sync-dev-runtime.ps1` documents for
    pi-ext. Walk the known two levels (`runtime/{provider}/{profile}/`) instead.
+3. **`apply_msvc_crt_to_command` must merge into the command's PATH, never replace from the parent
+   process.** Launch order is `apply_portable_cuda_to_command` (sets child PATH to portable
+   `cublas`/`cudart` bins) then CRT fallback. Reading only `std::env::var("PATH")` and
+   `cmd.env("PATH", …)` wipes those CUDA bins. Symptom on a clean test machine: raw Windows
+   *"cublas64_13.dll was not found"* with no engine log — looks like missing toolchain even when
+   `toolchain/cuda/v13.3/bin/x64` is present. App-local CRT early-return hides the bug on machines
+   where staging worked; the PATH-fallback branch is what breaks isolation. Regression test:
+   `apply_crt_preserves_command_cuda_path`.
 
 ---
 

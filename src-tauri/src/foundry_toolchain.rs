@@ -624,11 +624,17 @@ pub fn msvc_crt_missing_message(binary_profile: &str, engine_dir: Option<&std::p
 }
 
 /// Prepend the portable CRT dir to PATH for a child process, unless the engine dir
-/// already carries the DLLs (then app-local copies win and PATH stays untouched).
+/// already carries the DLLs (then app-local copies win the OS search order and PATH
+/// stays untouched).
 ///
 /// Non-fatal by design: a missing CRT dir here means the engine will fail at
 /// LoadLibrary, and the caller's own CUDA check already gates the toolchain. This only
 /// widens resolution — it never blocks a launch that would otherwise have worked.
+///
+/// **Invariant:** PATH is an addition, never a substitute. If the command already has a
+/// PATH (e.g. portable CUDA bins from `apply_portable_cuda_to_command`), that value is
+/// the base we prepend to. Reading only the parent process PATH and overwriting would
+/// wipe CUDA bins and surface as a raw Windows "cublas64_*.dll was not found" dialog.
 pub fn apply_msvc_crt_to_command(cmd: &mut std::process::Command, binary_profile: &str, engine_dir: Option<&std::path::Path>) {
     if let Some(d) = engine_dir {
         if missing_crt_in(d).is_empty() {
@@ -638,15 +644,34 @@ pub fn apply_msvc_crt_to_command(cmd: &mut std::process::Command, binary_profile
     let Some(dir) = msvc_crt_dir_for_profile(binary_profile) else {
         return;
     };
-    if missing_crt_in(&dir).is_empty() {
-        let old = std::env::var("PATH").unwrap_or_default();
-        let joined = if old.is_empty() {
-            dir.to_string_lossy().to_string()
-        } else {
-            format!("{};{}", dir.to_string_lossy(), old)
-        };
-        cmd.env("PATH", joined);
+    if !missing_crt_in(&dir).is_empty() {
+        return;
     }
+    let dir_s = dir.to_string_lossy();
+    let old = match cmd
+        .get_envs()
+        .find(|(k, _)| k.to_string_lossy().eq_ignore_ascii_case("PATH"))
+    {
+        // Prefer PATH already staged on the command (CUDA isolation runs first).
+        Some((_, Some(v))) => v.to_string_lossy().into_owned(),
+        // Explicitly cleared on the command — do not resurrect the parent PATH.
+        Some((_, None)) => String::new(),
+        None => std::env::var("PATH").unwrap_or_default(),
+    };
+    let dir_norm = dir_s.replace('/', "\\").to_ascii_lowercase();
+    let already = old.split(';').any(|entry| {
+        let e = entry.trim();
+        !e.is_empty() && e.replace('/', "\\").to_ascii_lowercase() == dir_norm
+    });
+    if already {
+        return;
+    }
+    let joined = if old.is_empty() {
+        dir_s.into_owned()
+    } else {
+        format!("{dir_s};{old}")
+    };
+    cmd.env("PATH", joined);
 }
 
 fn dir_has_essential_cuda_dll(bin_dir: &std::path::Path) -> bool {
@@ -1547,5 +1572,33 @@ mod crt_tests {
         if let Some((_, v)) = cmd.get_envs().find(|(k, _)| *k == std::ffi::OsStr::new("PATH")) {
             assert!(v.map(|s| !s.is_empty()).unwrap_or(false));
         }
+    }
+
+    /// Regression: CRT fallback must merge into the command PATH that already carries
+    /// portable CUDA bins. The CRT commit efd5bb2e1 read only the parent process PATH and
+    /// overwrote cmd PATH — wiping cublas/cudart and producing a raw Windows
+    /// "cublas64_13.dll was not found" dialog on machines where CRT was not app-local.
+    #[test]
+    fn apply_crt_preserves_command_cuda_path() {
+        let mut cmd = std::process::Command::new("cmd");
+        let cuda_marker = r"C:\app\toolchain\cuda\v13.3\bin\x64";
+        let seeded = format!("{cuda_marker};C:\\Windows\\System32");
+        cmd.env("PATH", &seeded);
+        // engine_dir absent / incomplete forces the PATH-fallback branch when a portable
+        // CRT dir exists; if no CRT dir resolves, PATH must still stay exactly seeded.
+        apply_msvc_crt_to_command(&mut cmd, "frontier", Some(PathBuf::from("Z:/absent").as_path()));
+        let path = cmd
+            .get_envs()
+            .find(|(k, _)| k.to_string_lossy().eq_ignore_ascii_case("PATH"))
+            .and_then(|(_, v)| v.map(|s| s.to_string_lossy().into_owned()))
+            .expect("PATH must remain set on the command");
+        assert!(
+            path.split(';').any(|e| e.eq_ignore_ascii_case(cuda_marker)),
+            "portable CUDA bin dir must survive CRT PATH merge, got: {path}"
+        );
+        assert!(
+            path.split(';').any(|e| e.eq_ignore_ascii_case(r"C:\Windows\System32")),
+            "remainder of seeded PATH must survive CRT merge, got: {path}"
+        );
     }
 }
