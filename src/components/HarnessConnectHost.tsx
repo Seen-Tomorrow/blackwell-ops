@@ -140,7 +140,7 @@ export function useHarnessConnectHost(opts: {
       >
         {/* Canvas rain — no CSS keyframe loops (those pegged iGPU). */}
         <div className="harness-connect-veil__fx" aria-hidden>
-          <MatrixAsciiRain className="harness-connect-veil__matrix" opacity={0.55} />
+          <MatrixAsciiRain className="harness-connect-veil__matrix" opacity={0.8} />
           <span className="harness-connect-veil__corners" />
         </div>
         <HarnessConnectPanel

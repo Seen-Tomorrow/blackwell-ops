@@ -3131,7 +3131,10 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   box-shadow: 0 0 12px rgba(0, 229, 255, 0.4);
 }
 
-/* ── Harness connect veil — phosphor full-face ───────────────────────────── */
+/* ── Harness connect veil — launch console on the rain ──────────────────── */
+/* Three zones: bound seats (orientation hero) → config readout → agents +
+   launch. No boxes: halos carry legibility, fading seams carry structure,
+   the solid GO button is the single anchor of the face. */
 
 .harness-connect {
   display: flex;
@@ -3165,7 +3168,6 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   flex: 1 1 auto;
 }
 
-
 .harness-connect__title {
   font-size: 11px;
   font-weight: 800;
@@ -3174,73 +3176,19 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   text-shadow: 0 0 18px color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 35%, transparent);
 }
 
-.harness-connect__mode-pill {
-  font-size: 8px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  padding: 0.15rem 0.45rem;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
-  color: var(--theme-text-muted);
-}
-
-.harness-connect__mode-pill--solo {
-  color: var(--theme-harness-brain-text, var(--theme-provider-pill-active-text, #bfdbfe));
-  border-color: color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 55%, transparent);
-  background: color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 18%, transparent);
-}
-
-.harness-connect__mode-pill--twin {
-  color: var(--theme-harness-worker-text, var(--theme-pair-secondary-text, #fdba74));
-  border-color: color-mix(in srgb, var(--theme-harness-worker-raw, #ea580c) 55%, transparent);
-  background: color-mix(in srgb, var(--theme-harness-worker-raw, #ea580c) 16%, transparent);
-}
-
-.harness-connect__mode-pill--none {
-  opacity: 0.7;
-}
-
-.harness-connect__pi-chip,
-.harness-connect__dev-btn,
-.harness-connect__dismiss {
-  font-size: 8px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  padding: 0.14rem 0.45rem;
-  border-radius: 2px;
-  border: 1px solid var(--theme-border);
-  background: transparent;
-  color: var(--theme-text-muted);
-}
-
-.harness-connect__pi-chip {
-  border-color: color-mix(in srgb, var(--theme-accent) 40%, transparent);
-  color: var(--theme-accent-bright, var(--theme-accent));
-  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
-}
-
-.harness-connect__dev-btn,
-.harness-connect__dismiss {
-  cursor: pointer;
-}
-
-.harness-connect__dev-btn:hover,
-.harness-connect__dismiss:hover {
-  color: var(--theme-text);
-  border-color: var(--theme-accent);
-}
-
 .harness-connect__dismiss {
   margin-left: auto;
+  cursor: pointer;
 }
 
 .harness-connect__dismiss--stop {
   color: #fecaca;
-  border-color: color-mix(in srgb, #ef4444 75%, transparent);
+  border: 1px solid color-mix(in srgb, #ef4444 75%, transparent);
   background: color-mix(in srgb, #991b1b 55%, #1a0505 45%);
   font-size: 11px;
   font-weight: 800;
   padding: 0.15rem 0.5rem;
+  border-radius: 2px;
 }
 
 .harness-connect__dismiss--stop:hover {
@@ -3249,134 +3197,97 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   background: color-mix(in srgb, #dc2626 70%, #1a0505 30%);
 }
 
-/* PI tool + PROJECT share one row */
-.harness-connect__pi-project {
+/* ── Zone 1 — bound seats (the orientation hero) ────────────────────────── */
+
+/* Two-column console: seats (left) + config readout (right) */
+.harness-connect__body {
   display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
-  gap: 0.35rem;
-  flex: 0 0 auto;
-  min-width: 0;
-}
-
-.harness-connect__tool {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: center;
-  gap: 0.28rem;
-  min-width: 0;
-  margin: 0;
-  padding: 0.35rem 0.5rem;
-  border-radius: 3px;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
-  background: color-mix(in srgb, var(--theme-panel) 55%, transparent);
-  color: var(--theme-text-muted);
-  text-align: left;
-}
-
-.harness-connect__tool-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.4rem;
-}
-
-.harness-connect__tool-meta {
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  flex-wrap: wrap;
-  min-width: 0;
-}
-
-.harness-connect__tool--on {
-  color: var(--theme-text);
-  border-color: color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 60%, transparent);
-  background:
-    linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 22%, transparent),
-      color-mix(in srgb, var(--theme-panel) 50%, transparent)
-    );
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 25%, transparent);
-}
-
-.harness-connect__tool-label {
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.16em;
-}
-
-.harness-connect__tool-state {
-  font-size: 7px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  opacity: 0.8;
-}
-
-.harness-connect__tool--on .harness-connect__tool-state {
-  color: var(--theme-harness-brain-text, var(--theme-accent-bright, #93c5fd));
-}
-
-.harness-connect__phase {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-}
-
-.harness-connect__phase-labels {
-  display: flex;
-  gap: 0.35rem;
-  flex-wrap: wrap;
-  font-size: 8px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--theme-text-muted);
-}
-
-.harness-connect__phase-label--on {
-  color: var(--theme-accent);
-}
-
-.harness-connect__phase-bar {
-  height: 3px;
-  background: color-mix(in srgb, var(--theme-border) 80%, transparent);
-  overflow: hidden;
-  border-radius: 999px;
-}
-
-.harness-connect__phase-bar-fill {
-  height: 100%;
-  background: linear-gradient(
-    90deg,
-    var(--theme-harness-brain-raw, #60a5fa),
-    var(--theme-accent, #76b900)
-  );
-  transition: width 0.16s linear;
-}
-
-.harness-connect__phase-msg {
-  font-size: 8px;
-  color: var(--theme-text-muted);
-}
-
-.harness-connect__topology {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .harness-connect__seats {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 0.4rem;
+  gap: 0.5rem;
   align-items: stretch;
+  flex: 0 0 auto;
+  min-width: 0;
+  padding: 0.45rem 0.55rem;
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    var(--hcv-ink),
+    color-mix(in srgb, var(--hcv-ink) 25%, transparent)
+  );
 }
 
-.harness-connect--veil[data-harness-mode="twin"] .harness-connect__seats {
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+.harness-connect__seat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  min-width: 0;
+  padding: 0.15rem 0.45rem 0.15rem 0.6rem;
+  position: relative;
+}
+
+/* Status rail — the only "chrome" a seat gets: a 2px role-colored spine */
+.harness-connect__seat::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.15rem;
+  bottom: 0.15rem;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--theme-text-muted);
+  opacity: 0.4;
+}
+
+.harness-connect__seat--brain::before {
+  background: var(--theme-harness-brain-raw, #60a5fa);
+  opacity: 0.9;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 60%, transparent);
+}
+
+.harness-connect__seat--worker::before {
+  background: var(--theme-harness-worker-raw, #ea580c);
+  opacity: 0.9;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-harness-worker-raw, #ea580c) 60%, transparent);
+}
+
+.harness-connect__seat-role {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.harness-connect__seat--brain .harness-connect__seat-role {
+  color: var(--theme-harness-brain-text, var(--theme-provider-pill-active-text, #bfdbfe));
+}
+
+.harness-connect__seat--worker .harness-connect__seat-role {
+  color: var(--theme-harness-worker-text, var(--theme-pair-secondary-text, #fdba74));
+}
+
+.harness-connect__seat-status {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: #f59e0b;
+  opacity: 0.7;
+}
+
+.harness-connect__seat-status--run {
+  background: #4ade80;
+  opacity: 1;
+  box-shadow: 0 0 8px color-mix(in srgb, #4ade80 70%, transparent);
 }
 
 .harness-connect__link {
@@ -3385,282 +3296,125 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   align-items: center;
   justify-content: center;
   gap: 0.15rem;
-  width: 1.1rem;
-  align-self: center;
+  width: 100%;
 }
 
 .harness-connect__link-line {
-  width: 100%;
-  height: 2px;
+  width: 2px;
+  height: 0.6rem;
   border-radius: 999px;
   background: linear-gradient(
-    90deg,
+    180deg,
     color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 70%, transparent),
     color-mix(in srgb, var(--theme-harness-worker-raw, #ea580c) 70%, transparent)
   );
-  box-shadow: 0 0 10px color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 30%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 30%, transparent);
 }
 
-.harness-connect__link-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--theme-text);
-  opacity: 0.55;
-}
-
-.harness-connect__topo-blurb {
-  font-size: 8px;
-  line-height: 1.35;
-  color: var(--theme-text-muted);
-  letter-spacing: 0.02em;
-}
-
-.harness-connect__seat {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  grid-template-rows: auto auto auto;
-  column-gap: 0.45rem;
-  row-gap: 0.12rem;
-  padding: 0.55rem 0.6rem;
-  border-radius: 4px;
-  border: 1px solid var(--theme-border);
-  background: color-mix(in srgb, var(--theme-panel) 50%, transparent);
-  text-align: left;
-  cursor: pointer;
-  width: 100%;
+.harness-connect__config {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  flex: 0 0 auto;
   min-width: 0;
-  transition:
-    border-color 0.15s ease,
-    box-shadow 0.15s ease,
-    background 0.15s ease;
-}
-
-.harness-connect__seat:disabled {
-  cursor: default;
-  opacity: 0.72;
-}
-
-.harness-connect__seat--brain {
-  border-color: color-mix(
-    in srgb,
-    var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 55%,
-    transparent
-  );
-  background:
-    linear-gradient(
-      160deg,
-      color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 22%, transparent),
-      color-mix(in srgb, var(--theme-panel) 55%, transparent) 55%
-    );
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 12%, transparent);
-}
-
-.harness-connect__seat--worker {
-  border-color: color-mix(
-    in srgb,
-    var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 55%,
-    transparent
-  );
-  background:
-    linear-gradient(
-      200deg,
-      color-mix(in srgb, var(--theme-harness-worker-raw, #ea580c) 20%, transparent),
-      color-mix(in srgb, var(--theme-panel) 55%, transparent) 55%
-    );
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-harness-worker-raw, #ea580c) 12%, transparent);
-}
-
-.harness-connect__seat--empty {
-  border-style: dashed;
-  background: color-mix(in srgb, var(--theme-panel) 35%, transparent);
-  box-shadow: none;
-}
-
-.harness-connect__seat:not(:disabled):hover {
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, #ecfeff 25%, transparent),
-    0 0 16px color-mix(in srgb, var(--theme-accent) 12%, transparent);
-}
-
-.harness-connect__seat-role {
-  grid-column: 1;
-  font-size: 8px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  font-weight: 800;
-}
-
-.harness-connect__seat--brain .harness-connect__seat-role {
-  color: var(--theme-harness-brain-text, var(--theme-provider-pill-active-text));
-}
-
-.harness-connect__seat--worker .harness-connect__seat-role {
-  color: var(--theme-harness-worker-text, var(--theme-pair-secondary-text));
-}
-
-.harness-connect__seat-id {
   grid-column: 2;
-  font-size: 12px;
-  font-weight: 700;
+}
+
+.harness-connect__row {
+  display: grid;
+  grid-template-columns: 5.2rem minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 0.6rem;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
 }
 
-.harness-connect__seat-meta {
-  grid-column: 3;
-  font-size: 8px;
-  color: var(--theme-text-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.harness-connect__seat-model {
-  grid-column: 1 / -1;
-  font-size: 9px;
-  color: var(--theme-text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.harness-connect__seat-ctx {
-  grid-column: 1 / -1;
-  font-size: 8px;
-  letter-spacing: 0.08em;
-  color: var(--theme-text-muted);
-}
-
-.harness-connect__empty {
-  font-size: 9px;
-  color: var(--theme-text-muted);
-  padding: 0.6rem 0.2rem;
-}
-
-.harness-connect__section-label {
+.harness-connect__row-label {
   font-size: 8px;
   font-weight: 800;
   letter-spacing: 0.16em;
-  color: var(--theme-text-muted);
-}
-
-.harness-connect__project-card,
-.harness-connect__agents-card {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  min-width: 0;
-  padding: 0.55rem 0.65rem;
-  border-radius: 4px;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
-  background: color-mix(in srgb, var(--theme-panel) 42%, transparent);
-}
-
-.harness-connect__project-head,
-.harness-connect__agents-head {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  min-width: 0;
-}
-
-.harness-connect__project-btn {
-  margin-left: auto;
-  flex-shrink: 0;
-  font-size: 8px;
-  letter-spacing: 0.12em;
   text-transform: uppercase;
-  padding: 0.18rem 0.5rem;
+  color: var(--theme-text);
+}
+
+/* Seat meta and row value — identical readout style (inherited face size) */
+.harness-connect__seat-meta,
+.harness-connect__row-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.harness-connect__row-note {
+  color: var(--theme-text-muted);
+  margin-left: 0.35rem;
+}
+
+.harness-connect__row-note--warn {
+  color: #fde68a;
+}
+
+.harness-connect__row-action {
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.14rem 0.45rem;
   border-radius: 2px;
   border: 1px solid color-mix(in srgb, var(--theme-accent) 45%, transparent);
-  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
+  background: transparent;
   color: var(--theme-accent-bright, var(--theme-accent));
   cursor: pointer;
 }
 
-.harness-connect__project-btn:hover {
-  border-color: color-mix(in srgb, var(--theme-accent) 70%, transparent);
-  background: color-mix(in srgb, var(--theme-accent) 16%, transparent);
-}
-
-.harness-connect__project-path {
-  font-size: 10px;
-  line-height: 1.35;
+.harness-connect__row-action:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--theme-accent) 75%, transparent);
   color: var(--theme-text);
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  word-break: break-all;
 }
 
-.harness-connect__agents-live {
- font-size: 8px;
-  letter-spacing: 0.08em;
-  color: var(--theme-text-muted);
-  font-variant-numeric: tabular-nums;
+.harness-connect__row-action:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
-.harness-connect__agents-match {
-  margin-left: auto;
-  font-size: 7px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  padding: 0.1rem 0.35rem;
-  border-radius: 999px;
-  border: 1px solid transparent;
-}
+/* ── Zone 3 — agent chips + launch row ──────────────────────────────────── */
 
-.harness-connect__agents-match--ok {
- color: color-mix(in srgb, var(--theme-accent, #76b900) 90%, #fff);
-  border-color: color-mix(in srgb, var(--theme-accent, #76b900) 45%, transparent);
-  background: color-mix(in srgb, var(--theme-accent, #76b900) 14%, transparent);
-}
-
-.harness-connect__agents-match--warn {
-  color: #fde68a;
-  border-color: color-mix(in srgb, #f59e0b 50%, transparent);
-  background: color-mix(in srgb, #f59e0b 14%, transparent);
-}
-
-.harness-connect__agents {
+.harness-connect__chips {
   display: flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: 0.15rem;
   flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: 0;
 }
 
 .harness-connect__agent-chip {
-  font-size: 10px;
+  font-size: 8px;
   font-weight: 700;
-  min-width: 2.1rem;
-  padding: 0.28rem 0.45rem;
-  border-radius: 3px;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
-  background: color-mix(in srgb, var(--theme-panel) 40%, transparent);
+  min-width: 1.9rem;
+  padding: 0.12rem 0.35rem;
+  border-radius: 2px;
+  border: 1px solid transparent;
+  background: transparent;
   color: var(--theme-text-muted);
   cursor: pointer;
   font-variant-numeric: tabular-nums;
 }
 
-.harness-connect__agent-chip--on {
+.harness-connect__agent-chip:hover:not(:disabled) {
   color: var(--theme-text);
+}
+
+.harness-connect__agent-chip--on {
+  color: var(--theme-accent-bright, var(--theme-accent));
   border-color: color-mix(in srgb, var(--theme-accent) 65%, transparent);
-  background: color-mix(in srgb, var(--theme-accent) 20%, transparent);
-  box-shadow: 0 0 12px color-mix(in srgb, var(--theme-accent) 18%, transparent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent, #76b900) 55%, transparent);
 }
 
 .harness-connect__agent-chip--over:not(.harness-connect__agent-chip--on) {
   border-style: dashed;
+  border-color: color-mix(in srgb, #f59e0b 50%, transparent);
   color: #fde68a;
-}
-
-.harness-connect__agents-hint {
-  font-size: 8px;
-  line-height: 1.35;
-  color: var(--theme-text-muted);
 }
 
 .harness-connect__relaunch {
@@ -3668,12 +3422,6 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   flex-direction: column;
   gap: 0.3rem;
   padding-top: 0.15rem;
-}
-
-.harness-connect__relaunch-msg {
-  font-size: 8px;
-  line-height: 1.35;
-  color: #fde68a;
 }
 
 .harness-connect__relaunch-btn {
@@ -3684,25 +3432,25 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   padding: 0.3rem 0.55rem;
   border-radius: 2px;
   border: 1px solid color-mix(in srgb, #f59e0b 55%, transparent);
-  background: color-mix(in srgb, #f59e0b 12%, transparent);
+  background: transparent;
   color: #fde68a;
   cursor: pointer;
 }
 
 .harness-connect__relaunch-btn:hover:not(:disabled) {
-  background: color-mix(in srgb, #f59e0b 20%, transparent);
+  background: color-mix(in srgb, #f59e0b 12%, transparent);
 }
 
-.harness-connect__footer {
+.harness-connect__launch-row {
   display: flex;
   align-items: center;
   gap: 0.65rem;
   flex-wrap: wrap;
   margin-top: auto;
-  padding-top: 0.25rem;
 }
 
 .harness-connect__elevated {
+  margin-left: auto;
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
@@ -3712,8 +3460,8 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   user-select: none;
 }
 
+/* GO — the single solid anchor of the whole veil */
 .harness-connect__go {
-  margin-left: auto;
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.14em;
@@ -3841,7 +3589,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   height: 100%;
   min-height: 0;
   overflow: hidden;
-  gap: 0.35rem;
+  gap: 0.25rem;
   /* Content inset L/R only — top/bottom stay tight (bottom was clipping) */
   padding: 0 14px;
   box-sizing: border-box;
@@ -3855,31 +3603,172 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   gap: 0.3rem;
 }
 
-.harness-connect--veil .harness-connect__project-card,
-.harness-connect--veil .harness-connect__agents-card {
-  flex: 0 0 auto;
-  padding: 0.35rem 0.45rem;
-  min-height: 0;
-  background: color-mix(in srgb, var(--theme-panel, #0a0c0f) 82%, transparent);
-}
-
-.harness-connect--veil .harness-connect__pi-project {
-  flex: 0 0 auto;
-}
-
-.harness-connect--veil .harness-connect__tool {
-  padding: 0.35rem 0.45rem;
-  min-height: 0;
-}
-
 .harness-connect--veil .harness-connect__go {
-  padding: 0.4rem 0.85rem;
+  padding: 0.32rem 0.8rem;
   font-size: 10px;
 }
 
-.harness-connect--veil .harness-connect__project-path {
+/* ── Ink on rain — veil content: halos + ink strips, no boxes ───────────── */
+/* Text reads via layered halos in the veil ink color; rain stays visible
+   between every line. Only solid element in the whole veil = the GO button. */
+
+.harness-connect-veil {
+  --hcv-ink: var(--display-face-bg, var(--theme-panel, #0a0c0f));
+  --hcv-halo:
+    0 0 7px var(--hcv-ink),
+    0 0 2px var(--hcv-ink),
+    0 1px 3px rgba(0, 0, 0, 0.55);
+  --hcv-strip: color-mix(in srgb, var(--hcv-ink) 88%, transparent);
+  --hcv-seam: color-mix(in srgb, var(--theme-border) 55%, transparent);
+}
+
+[data-display-face="eink"] .harness-connect-veil {
+  --hcv-ink: var(--display-face-light-surface, #c8d4b8);
+  --hcv-halo:
+    0 0 7px var(--hcv-ink),
+    0 0 2px var(--hcv-ink),
+    0 1px 2px rgba(60, 52, 30, 0.3);
+}
+
+/* Halo inherits to every text node in the veil (text-shadow is inherited) */
+.harness-connect-veil .harness-connect {
+  text-shadow: var(--hcv-halo);
+}
+
+/* Fading seams — structure without boxes (dissolve at both ends) */
+/* Config readout — one semi-transparent block behind all three rows */
+.harness-connect--veil .harness-connect__config {
+  padding: 0.3rem 0.45rem;
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--hcv-ink) 25%, transparent),
+    var(--hcv-ink)
+  );
+}
+
+/* Horizontal seam above the launch row */
+.harness-connect--veil .harness-connect__launch-row {
+  padding-top: 0.35rem;
+  background-image: linear-gradient(
+    90deg,
+    transparent,
+    var(--hcv-seam) 18%,
+    transparent
+  );
+  background-repeat: no-repeat;
+  background-position: top left;
+  background-size: 100% 1px;
+}
+
+/* Mode pill → dot + haloed text (no painted pill area) */
+.harness-connect--veil .harness-connect__mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   font-size: 9px;
-  -webkit-line-clamp: 1;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: var(--theme-text-muted);
+}
+
+.harness-connect--veil .harness-connect__mode-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--theme-text-muted);
+  opacity: 0.55;
+}
+
+.harness-connect--veil .harness-connect__mode--solo {
+  color: var(--theme-harness-brain-text, var(--theme-provider-pill-active-text, #bfdbfe));
+}
+
+.harness-connect--veil .harness-connect__mode--solo .harness-connect__mode-dot {
+  opacity: 1;
+  background: var(--theme-harness-brain-raw, #60a5fa);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 75%, transparent);
+}
+
+.harness-connect--veil .harness-connect__mode--twin {
+  color: var(--theme-harness-worker-text, var(--theme-pair-secondary-text, #fdba74));
+}
+
+.harness-connect--veil .harness-connect__mode--twin .harness-connect__mode-dot {
+  opacity: 1;
+  background: var(--theme-harness-worker-raw, #ea580c);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--theme-harness-worker-raw, #ea580c) 75%, transparent);
+}
+
+/* GO — the single solid anchor of the whole veil */
+.harness-connect--veil .harness-connect__go {
+  border: none;
+  text-shadow: none;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 82%, #0a0c0f 18%),
+    color-mix(in srgb, var(--theme-accent, #76b900) 72%, #0a0c0f 28%)
+  );
+  color: #07130c;
+  box-shadow:
+    0 0 18px color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 40%, transparent),
+    0 0 4px color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 60%, transparent);
+}
+
+.harness-connect--veil .harness-connect__go--twin {
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 82%, #0a0c0f 18%),
+    color-mix(in srgb, var(--theme-harness-worker-raw, #ea580c) 80%, #0a0c0f 20%)
+  );
+  box-shadow:
+    0 0 18px color-mix(in srgb, var(--theme-harness-worker-raw, #ea580c) 40%, transparent),
+    0 0 4px color-mix(in srgb, var(--theme-harness-worker-raw, #ea580c) 60%, transparent);
+}
+
+.harness-connect--veil .harness-connect__go:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.harness-connect--veil .harness-connect__go:disabled {
+  opacity: 0.4;
+  box-shadow: none;
+}
+
+/* Soft vignette — frames the field without a rectangle */
+.harness-connect-veil::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: radial-gradient(
+    130% 130% at 50% 42%,
+    transparent 58%,
+    rgba(0, 0, 0, 0.32) 100%
+  );
+}
+
+[data-display-face="eink"] .harness-connect-veil::after {
+  background: radial-gradient(
+    130% 130% at 50% 42%,
+    transparent 58%,
+    rgba(96, 88, 60, 0.2) 100%
+  );
+}
+
+/* DEV preview — standalone full-viewport mount (?harness-veil) */
+.harness-connect-veil--preview {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  border-radius: 0;
+}
+
+.harness-connect-veil--preview .harness-connect {
+  padding: 1.2rem 2rem;
+  max-width: 46rem;
+  margin: 0 auto;
 }
 
 /* ── Matrix ASCII rain (standalone; used under harness veil) ─────────────── */

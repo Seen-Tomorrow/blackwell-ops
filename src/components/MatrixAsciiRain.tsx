@@ -14,6 +14,9 @@ const CHARACTERS =
 
 const DRAW_MS = 50;
 const FADE_ALPHA = 0.125;
+/** Glyph luminance — mix this fraction toward the face background so the
+    rain stays in darker shades and never fights the content for attention. */
+const RAIN_DIM = 0.45;
 
 function resolveCssColor(el: HTMLElement, cssVar: string, fallback: string): string {
   const probe = document.createElement("span");
@@ -25,9 +28,9 @@ function resolveCssColor(el: HTMLElement, cssVar: string, fallback: string): str
   return color || fallback;
 }
 
-function cssToRgba(cssColor: string, alpha: number): string {
+function parseRgb(cssColor: string): [number, number, number] | null {
   const probe = document.createElement("canvas").getContext("2d");
-  if (!probe) return `rgba(0, 0, 0, ${alpha})`;
+  if (!probe) return null;
   probe.fillStyle = "#000";
   probe.fillStyle = cssColor.trim() || "#000";
   const normalized = probe.fillStyle;
@@ -41,17 +44,37 @@ function cssToRgba(cssColor: string, alpha: number): string {
             .join("")
         : hex;
     const n = parseInt(full, 16);
-    if (!Number.isFinite(n)) return `rgba(0, 0, 0, ${alpha})`;
-    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+    if (!Number.isFinite(n)) return null;
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
   }
   const m = normalized.match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
-  if (!m) return `rgba(0, 0, 0, ${alpha})`;
-  return `rgba(${m[1]}, ${m[2]}, ${m[3]}, ${alpha})`;
+  if (!m) return null;
+  return [Number(m[1]), Number(m[2]), Number(m[3])];
+}
+
+function cssToRgba(cssColor: string, alpha: number): string {
+  const rgb = parseRgb(cssColor);
+  if (!rgb) return `rgba(0, 0, 0, ${alpha})`;
+  return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${alpha})`;
+}
+
+function mixToward(
+  from: [number, number, number],
+  to: [number, number, number],
+  t: number,
+): string {
+  const r = Math.round(from[0] + (to[0] - from[0]) * t);
+  const g = Math.round(from[1] + (to[1] - from[1]) * t);
+  const b = Math.round(from[2] + (to[2] - from[2]) * t);
+  return `rgb(${r}, ${g}, ${b})`;
 }
 
 function readRainPalette(el: HTMLElement): { bg: string; fg: string; fade: string } {
   const bg = resolveCssColor(el, "--matrix-rain-bg", "#030805");
-  const fg = resolveCssColor(el, "--matrix-rain-fg", "#4ade80");
+  const fgRaw = resolveCssColor(el, "--matrix-rain-fg", "#4ade80");
+  const bgRgb = parseRgb(bg);
+  const fgRgb = parseRgb(fgRaw);
+  const fg = bgRgb && fgRgb ? mixToward(fgRgb, bgRgb, RAIN_DIM) : fgRaw;
   const fade = cssToRgba(bg, FADE_ALPHA);
   return { bg, fg, fade };
 }

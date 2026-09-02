@@ -3,6 +3,7 @@ import { unstable_batchedUpdates } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 
 import Layout from "./components/Layout";
+import HarnessVeilPreview from "./components/HarnessVeilPreview";
 import ModelCatalog from "./components/ModelCatalog";
 const StackView = lazy(() => import("./components/StackView"));
 const ConfigPage = lazy(() => import("./components/ConfigPage"));
@@ -695,6 +696,7 @@ function App() {
         <FoundryProvider>
           <TelemetryProvider pollingActive={hwMonitorOpen || activeTab === "catalog" || hasLiveEngines} gpuPollTier={gpuPollTier}>
             <StatusProvider value={{ totalParams, hiddenCount, onShowAll: handleShowAll }}>
+            <HarnessVeilPreview />
             <Layout
               activeTab={activeTab}
               onTabChange={handleTabChange}
