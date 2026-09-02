@@ -444,7 +444,8 @@
   margin-top: 0.25rem !important;
 }
 
-.app-shell[data-ui-density="compact"] [data-config-panel] .config-spec-decoding ~ div.text-\[8px\] {
+.app-shell[data-ui-density="compact"] [data-config-panel] .config-spec-decoding ~ div.text-\[8px\],
+.app-shell[data-ui-density="compact"] [data-config-panel] .config-spec-decoding ~ div.type-tiny {
   font-size: 7px !important;
   margin-top: 0.125rem !important;
   padding-top: 0.125rem !important;
@@ -2022,28 +2023,37 @@
 }
 
 /*
- * Tailwind text-[Npx] inside Foundry is fixed CSS px and ignores app zoom.
- * Remap to --foundry-scale so Ctrl+scroll + large panels stay readable.
- * Bases are bumped ~+1–2px vs the original 6–11 stack.
+ * Fixed CSS px ignores app zoom, so Foundry's micro stack is remapped onto
+ * --foundry-scale (bases bumped ~+1–2px vs the original 6–11 stack).
+ * Hook both spellings: legacy Tailwind `text-[Npx]` (rooms not migrated yet)
+ * and the `.type-*` scale (post-de-Tailwind). Step map:
+ *   hairline/micro (6–7px) -> fs-xs · tiny (8) -> fs-sm · label (9) -> fs-md
+ *   body (10) -> fs-lg · sm (11) -> 14px x scale
  */
 .foundry-window .text-\[6px\],
-.foundry-window .text-\[7px\] {
+.foundry-window .text-\[7px\],
+.foundry-window .type-hairline,
+.foundry-window .type-micro {
   font-size: var(--foundry-fs-xs) !important;
 }
 
-.foundry-window .text-\[8px\] {
+.foundry-window .text-\[8px\],
+.foundry-window .type-tiny {
   font-size: var(--foundry-fs-sm) !important;
 }
 
-.foundry-window .text-\[9px\] {
+.foundry-window .text-\[9px\],
+.foundry-window .type-label {
   font-size: var(--foundry-fs-md) !important;
 }
 
-.foundry-window .text-\[10px\] {
+.foundry-window .text-\[10px\],
+.foundry-window .type-body {
   font-size: var(--foundry-fs-lg) !important;
 }
 
-.foundry-window .text-\[11px\] {
+.foundry-window .text-\[11px\],
+.foundry-window .type-sm {
   font-size: calc(14px * var(--foundry-scale)) !important;
 }
 
