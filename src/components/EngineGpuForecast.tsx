@@ -27,7 +27,6 @@ import { stopAllEngines } from "../lib/engineStack";
 import GpuAssignPanel from "./GpuAssignPanel";
 import DisplayChromeHints from "./DisplayChromeHints";
 import { useTheme } from "../context/ThemeContext";
-import { displayFaceFor } from "../lib/displayTexture";
 import DisplayBezelGridControls from "./DisplayBezelGridControls";
 import VramBadge from "./VramBadge";
 import FitLaunchToggle from "./FitLaunchToggle";
@@ -306,8 +305,7 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     >
       <div
         className={onboardingArea}
-        data-display-texture={displayTexture}
-        data-display-face={displayFaceFor(theme.id, displayTexture)}
+        /* face is published on <html> by DisplayFaceSync */
       >
         <div
           className={`${onboardingFrame}${

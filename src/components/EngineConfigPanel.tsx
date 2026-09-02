@@ -181,7 +181,6 @@ import type { SetupGuideState } from "../hooks/useSetupGuide";
 import { useConfigResolver } from "../hooks/useConfigResolver";
 import { useDisplayTexture } from "../context/DisplayTextureContext";
 import { useTheme } from "../context/ThemeContext";
-import { displayFaceFor } from "../lib/displayTexture";
 
 import { useFoundry } from "../hooks/useBuildDock";
 import { isDevBuild } from "../lib/build";
@@ -2864,8 +2863,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       >
         <div
           className={onboardingDisplay.area}
-          data-display-texture={displayTexture}
-          data-display-face={displayFaceFor(theme.id, displayTexture)}
+          /* face is published on <html> by DisplayFaceSync */
         >
           <div className={onboardingDisplay.frame}>
             <div className="phosphor-screen-inner phosphor-display-surface">

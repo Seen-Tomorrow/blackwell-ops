@@ -21,6 +21,7 @@ import { TelemetryProvider, type GpuPollTier } from "./context/TelemetryContext"
 import { FusionProvider } from "./context/FusionContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import { DisplayTextureProvider } from "./context/DisplayTextureContext";
+import DisplayFaceSync from "./context/DisplayFaceSync";
 import { IndustrialBezelTextureProvider } from "./context/IndustrialBezelTextureContext";
 import { ToastProvider } from "./components/Toast";
 import { FoundryProvider } from "./hooks/useBuildDock";
@@ -692,6 +693,7 @@ function App() {
       )}
       <ThemeProvider>
         <DisplayTextureProvider>
+        <DisplayFaceSync>
         <IndustrialBezelTextureProvider>
         <FoundryProvider>
           <TelemetryProvider pollingActive={hwMonitorOpen || activeTab === "catalog" || hasLiveEngines} gpuPollTier={gpuPollTier}>
@@ -839,6 +841,7 @@ function App() {
         </TelemetryProvider>
       </FoundryProvider>
         </IndustrialBezelTextureProvider>
+        </DisplayFaceSync>
         </DisplayTextureProvider>
     </ThemeProvider>
     </ToastProvider>

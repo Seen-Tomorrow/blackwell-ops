@@ -9,9 +9,6 @@ import {
   type ReactNode,
 } from "react";
 import type { CpuInfo, GpuInfo, SystemInfo } from "../lib/types";
-import { useDisplayTexture } from "../context/DisplayTextureContext";
-import { useTheme } from "../context/ThemeContext";
-import { displayFaceFor } from "../lib/displayTexture";
 import { useTelemetry } from "../context/TelemetryContext";
 import { useGpuControl } from "../hooks/useGpuControl";
 import {
@@ -236,8 +233,6 @@ export default function LaunchRailTelemetry({
   layout?: "rail" | "below";
 } = {}) {
   const { gpus, cpu, systemInfo } = useTelemetry();
-  const { texture: displayTexture } = useDisplayTexture();
-  const { theme } = useTheme();
   const below = layout === "below";
   const [cpuCoresOpen, setCpuCoresOpen] = useState(() =>
     loadHwMonitorCpuCoresOpen()
@@ -410,8 +405,14 @@ export default function LaunchRailTelemetry({
       className={`launch-rail-tel min-h-0 flex flex-col${
         layout === "below" ? " launch-rail-tel--below" : " h-full"
       }`}
-      data-display-texture={displayTexture}
-      data-display-face={displayFaceFor(theme.id, displayTexture)}
+      /*
+       * No face attribute here on purpose. Face-keyed CSS resolves up the ANCESTOR
+       * chain and no rule co-matches `.launch-rail-tel`, so this rail used to resolve
+       * to NO face on every theme (its own attribute was never consulted) and the HW
+       * cells ignored the Display setting. `DisplayFaceSync` now publishes the face on
+       * <html>, which every surface can reach.
+       * Verified via CDP: the rail's cells switch bg + grain across crt/eink/paper.
+       */
       data-hw-layout={layout}
       data-oc-expanded={ocExpanded || ocPopoverOpen ? "true" : "false"}
       style={{ "--hw-monitor-dim": hwDim } as CSSProperties}
