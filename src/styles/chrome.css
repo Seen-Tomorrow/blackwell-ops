@@ -544,16 +544,53 @@
   font-size: var(--chrome-fs-label) !important;
 }
 
-.app-quick-settings .app-appearance-tab,
-.app-quick-settings .app-appearance-cycle,
-.app-quick-settings .app-chrome-control-btn,
-.app-quick-settings .app-quick-settings__sep {
+.app-quick-settings .app-chrome-control-btn {
   font-size: var(--chrome-fs-btn) !important;
   line-height: 1.15 !important;
 }
 
-.app-quick-settings .app-appearance-tab {
-  padding: calc(3px * var(--chrome-scale)) calc(7px * var(--chrome-scale)) !important;
+/*
+ * Quick Settings appearance row — one line only. Below the min supported
+ * width the well is allowed to clip (the header must never grow taller:
+ * --header-qs-h locks the HeaderNav primary rail to this well's height),
+ * so rows never wrap and captions can never land on top of a track.
+ */
+.app-quick-settings__appearance {
+  flex-wrap: nowrap;
+}
+
+/*
+ * Quick Settings segments — same shared SegmentSwitch as the cockpit flags,
+ * but scaled with --chrome-scale (this well sits outside app zoom, so the
+ * fixed 7px compact font would be unreadable on 4K @ DPR 1.0).
+ */
+.app-quick-settings .segment-switch.app-quick-settings__seg {
+  min-height: calc(15px * var(--chrome-scale));
+  padding: calc(2px * var(--chrome-scale));
+  border: 1px solid color-mix(in srgb, var(--theme-bezel-edge-lo) 70%, var(--theme-chrome-control-border) 30%);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--theme-bg) 55%, var(--theme-panel-accent) 45%);
+  box-shadow:
+    inset 0 1px 3px color-mix(in srgb, #000000 40%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 22%, transparent);
+}
+
+.app-quick-settings .segment-switch.app-quick-settings__seg .segment-switch__option {
+  font-size: var(--chrome-fs-btn) !important;
+  line-height: 1.15 !important;
+  letter-spacing: 0.06em;
+  padding: 0 calc(6px * var(--chrome-scale)) !important;
+  white-space: nowrap;
+  /* Switching texture/theme must not resize the track (and twitch the whole
+     well): each option takes the widest intrinsic label in its group. Covers
+     both the 2-option grid track and the multi (inline-flex) track. */
+  width: max-content;
+}
+
+.app-quick-settings
+  .segment-switch.segment-switch--multi.app-quick-settings__seg
+  .segment-switch__option {
+  flex: 0 0 auto;
 }
 
 .app-quick-settings__tools {
@@ -564,17 +601,14 @@
   min-width: 0;
 }
 
-.app-quick-settings__title {
-  font-size: var(--chrome-fs-title);
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  color: var(--theme-chrome-control-text);
-  opacity: 0.72;
-  line-height: 1;
-}
-
+/*
+ * Right-hand group in the tools row. flex-basis 0 (not auto) so it only ever
+ * absorbs free space: with `1 1 auto` the wrap-around remainder gave it a
+ * nonzero base width, which wrapped it onto its own line under the density
+ * control instead of pushing it to the right edge.
+ */
 .app-quick-settings__tool-group {
-  flex: 1 1 auto;
+  flex: 1 1 0;
 }
 
 .app-quick-settings__recovery.app-chrome-control-btn {
@@ -990,10 +1024,6 @@
   color: #67e8f9;
 }
 
-.app-quick-settings__sep {
-  flex-shrink: 0;
-}
-
 .app-update-menu-popover {
   background: var(--theme-panel);
   border-color: color-mix(in srgb, #facc15 30%, var(--theme-chrome-control-border) 70%);
@@ -1044,23 +1074,6 @@
 .app-appearance-section__chips {
   flex: 1 1 auto;
   flex-wrap: nowrap;
-}
-
-.app-appearance-tab {
-  color: var(--theme-nav-text);
-  border: 1px solid transparent;
-  transition: color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
-}
-
-.app-appearance-tab:hover {
-  color: var(--theme-nav-hover-text);
-  background: var(--theme-nav-hover-bg);
-}
-
-.app-appearance-tab--active {
-  background: var(--theme-nav-active-bg) !important;
-  color: var(--theme-nav-active-text) !important;
-  border-color: var(--theme-nav-active-border) !important;
 }
 
 .app-chrome-control {

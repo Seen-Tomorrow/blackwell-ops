@@ -14,6 +14,7 @@ import BlackwellOutputConsole, {
 import OutputConsoleInlineDock from "./OutputConsoleInlineDock";
 import FoundryModal from "./FoundryModal";
 import AppearanceControls from "./AppearanceControls";
+import SegmentSwitch from "./SegmentSwitch";
 import BlackwellBrandMark from "./BlackwellBrandMark";
 import {
   loadMonitorWindow,
@@ -453,25 +454,36 @@ export default function Layout({
           <div className="app-header-actions gap-1.5 flex-shrink-0">
             <div ref={qsRef} className="app-quick-settings flex flex-col items-end gap-px flex-shrink-0">
               <AppearanceControls />
+
+              {/* No "Quick Settings" caption — the recessed well + per-group labels read on their own. */}
               <div className="app-quick-settings__tools app-quick-settings__row flex items-center gap-2">
-                <span className="app-quick-settings__title font-mono tracking-widest uppercase shrink-0">
-                  Quick Settings
-                </span>
+                {/* Density leads the row (left); zoom / update / recovery stay right-aligned. */}
+                <div className="app-appearance-inline-group flex items-center gap-0.5 flex-shrink-0">
+                  <span className="app-appearance-section__label app-appearance-section__label--compact text-[6px] font-mono tracking-widest uppercase">
+                    Comfort
+                  </span>
+                  <SegmentSwitch
+                    ariaLabel="UI density"
+                    size="compact"
+                    tone="accent"
+                    className="app-quick-settings__seg"
+                    options={[
+                      { id: "comfortable", label: "COMFORT", title: "Density: Comfortable" },
+                      { id: "compact", label: "COMPACT", title: "Density: Compact" },
+                    ]}
+                    selectedId={uiDensity === "compact" ? "compact" : "comfortable"}
+                    onSelect={(id) => {
+                      const next = id === "compact" ? "compact" : "comfortable";
+                      if (next !== uiDensity) toggleUiDensity();
+                    }}
+                  />
+                </div>
+                {/*
+                 * Grows to absorb slack only (`flex-basis: 0`) — basis must stay 0 or
+                 * the wrap-around remainder becomes a phantom track that pulls this
+                 * group back under the density control instead of to the right edge.
+                 */}
                 <div className="app-quick-settings__tool-group flex items-center gap-1 flex-wrap justify-end min-w-0">
-                  <div className="app-appearance-inline-group flex items-center gap-0.5 flex-shrink-0">
-                    <span className="app-appearance-section__label app-appearance-section__label--compact text-[6px] font-mono tracking-widest uppercase">
-                      Comfort
-                    </span>
-                    <button
-                      type="button"
-                      onClick={toggleUiDensity}
-                      className={`app-chrome-control-btn px-1.5 text-[8px] font-mono transition-colors leading-none ${uiDensity === "compact" ? "text-yellow-400/90" : ""}`}
-                      title={uiDensity === "compact" ? "Density: Compact (click for Comfortable)" : "Density: Comfortable (click for Compact)"}
-                    >
-                      {uiDensity === "compact" ? "COMPACT" : "COMFORT"}
-                    </button>
-                  </div>
-                  <span className="app-quick-settings__sep app-chrome-control-btn text-[8px] font-mono opacity-40" aria-hidden>|</span>
                   <div className="app-appearance-inline-group flex items-center gap-0.5 flex-shrink-0">
                     <span className="app-appearance-section__label app-appearance-section__label--compact text-[6px] font-mono tracking-widest uppercase">
                       Zoom
@@ -480,13 +492,11 @@ export default function Layout({
                     <span className="app-chrome-control-btn text-[8px] font-mono opacity-60 w-8 text-center" title="Text scale (Ctrl+scroll)">{Math.round(zoom * 100)}%</span>
                     <button onClick={() => adjustZoom(ZOOM_STEP)} className="app-chrome-control-btn px-1 text-[9px] font-mono transition-colors leading-none" title="Increase text scale (Ctrl+scroll)">+</button>
                   </div>
-                  <span className="app-quick-settings__sep app-chrome-control-btn text-[8px] font-mono opacity-40" aria-hidden>|</span>
                   <AppUpdateMenu
                     offerings={updateOfferings ?? null}
                     hasBinaryUpdates={hasBinaryUpdates}
                     onRefresh={onRefreshUpdateOfferings}
                   />
-                  <span className="app-quick-settings__sep app-chrome-control-btn text-[8px] font-mono opacity-40" aria-hidden>|</span>
                   <button
                     type="button"
                     onClick={dispatchNavigateRecovery}
