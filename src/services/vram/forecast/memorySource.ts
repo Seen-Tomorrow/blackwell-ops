@@ -202,25 +202,27 @@ export const MEMORY_SOURCE_LABELS: Record<MemorySource["kind"], string> = {
   learned_curve: "LEARNED",
 };
 
+/** Surface classes for the SOURCE readout (paint in src/styles/badges.css).
+ *  gbGradient is legacy chrome — no consumer reads it; kept empty for shape. */
 export const MEMORY_SOURCE_ACCENT: Record<
   MemorySource["kind"],
   { text: string; border: string; gbGradient: string }
 > = {
   /* Instrument / active measure */
   fit_probe: {
-    text: "text-cyan-400",
-    border: "border-cyan-400/50",
+    text: "src-accent src-accent--probe",
+    border: "src-accent-border src-accent--probe",
     gbGradient: "",
   },
   /* Premium locked / trusted launches */
   learned: {
-    text: "text-yellow-400",
-    border: "border-yellow-400/50",
+    text: "src-accent src-accent--learned",
+    border: "src-accent-border src-accent--learned",
     gbGradient: "",
   },
   learned_curve: {
-    text: "text-yellow-400",
-    border: "border-yellow-400/40",
+    text: "src-accent src-accent--learned",
+    border: "src-accent-border src-accent--curve",
     gbGradient: "",
   },
 };

@@ -181,7 +181,7 @@ function BarTrack({
           title={fillTitle}
         >
           <span
-            className={`inline-block text-[6px] font-mono font-bold leading-none ctx-bar-fill-pct ${
+            className={`inline-block type-hairline font-mono font-bold leading-none ctx-bar-fill-pct ${
               isProcessing ? "ctx-bar-fill-pct--active" : "ctx-bar-fill-pct--idle"
             }`}
           >
@@ -195,7 +195,7 @@ function BarTrack({
           title={fillTitle}
         >
           <span
-            className={`inline-block text-[5px] font-mono font-bold leading-none ctx-bar-fill-pct ${
+            className={`inline-block type-hairline font-mono font-bold leading-none ctx-bar-fill-pct ${
               isProcessing ? "ctx-bar-fill-pct--active" : "ctx-bar-fill-pct--idle"
             }`}
           >
@@ -285,7 +285,7 @@ function SlotCtxBars({ slotCtx, ctxTotal, ctxPerSlot, parallel }: SlotCtxBarsPro
                 style={equalBarStyle}
               >
                 <span
-                  className={`ctx-bar-slot-label text-[7px] font-mono px-1 py-0.5 rounded-sm leading-none${
+                  className={`ctx-bar-slot-label type-micro font-mono px-1 py-0.5 rounded-sm leading-none${
                     slot.isProcessing ? " ctx-bar-slot-label--live" : ""
                   }${slot.speculative ? " ctx-bar-slot-label--spec" : ""}`}
                   title={slotTooltip(slot)}
@@ -372,7 +372,7 @@ function SlotCtxBars({ slotCtx, ctxTotal, ctxPerSlot, parallel }: SlotCtxBarsPro
 
         <div className="flex justify-center mt-0.5 flex-shrink-0 min-w-0">
           <span
-            className="fusion-mult-chip ctx-bar-compact-label text-[7px] font-mono px-1.5 py-0.5 rounded-sm leading-none tracking-wide"
+            className="fusion-mult-chip ctx-bar-compact-label type-micro font-mono px-1.5 py-0.5 rounded-sm leading-none tracking-wide"
             title={compactTitle}
           >
             ×{numSlots}

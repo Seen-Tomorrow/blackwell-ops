@@ -24,7 +24,7 @@ export default function QuantBadge({ type, sizeBytes, isActive = false, onClick 
   return (
     <span
       onClick={onClick}
-      className={`text-[8px] font-mono px-1.5 py-0.5 rounded-sm flex-shrink-0 ${
+      className={`type-tiny font-mono px-1.5 py-0.5 rounded-sm flex-shrink-0 ${
         isActive
           ? 'value-chip-active'
           : 'value-chip'
@@ -32,7 +32,7 @@ export default function QuantBadge({ type, sizeBytes, isActive = false, onClick 
     >
       {name}
       {sizeBytes && (
-        <span className="ml-1 text-stealth-muted/40">{formatSize(sizeBytes)}</span>
+        <span className="badge-quant__size ml-1">{formatSize(sizeBytes)}</span>
       )}
     </span>
   );

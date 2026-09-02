@@ -10,14 +10,13 @@ export default function VramFitBadge({ sizeBytes, vramGb }: VramFitBadgeProps) {
 
   if (!vramGb || sizeBytes === 0) return null;
 
-  const dotColor = fits ? 'bg-nv-green' : tight ? 'bg-yellow-500' : 'bg-red-500';
-  const textColor = fits ? 'text-nv-green/60' : tight ? 'text-yellow-500/60' : 'text-red-400/60';
+  const state = fits ? 'fit--ok' : tight ? 'fit--tight' : 'fit--no';
   const label = fits ? 'FITS' : tight ? 'TIGHT' : 'OVER';
 
   return (
     <span className="flex items-center gap-1 flex-shrink-0">
-      <span className={`w-2 h-2 rounded-full ${dotColor}`} />
-      <span className={`text-[8px] font-mono tracking-wider ${textColor}`}>{label}</span>
+      <span className={`fit-dot w-2 h-2 rounded-full ${state}`} />
+      <span className={`fit-label type-tiny font-mono tracking-wider ${state}`}>{label}</span>
     </span>
   );
 }

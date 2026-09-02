@@ -1,0 +1,166 @@
+/* ── Catalog room · badges, fit verdicts, search palette, harness seats ──
+   Paint here, not in TSX. Color = var(--theme-*) only (no #hex, no
+   var(--x,#hex) fallback). Sizes = var(--type-*); opacity via color-mix.
+   Model cards live in catalog.css — this file is the small states. */
+
+/* ── ModelStatsRow (catalog card stats strip) ─────────────────── */
+
+/* Rule under the strip (was border-stealth-border/40) */
+.stats-row {
+  border-bottom-color: color-mix(in srgb, var(--theme-border) 40%, transparent);
+}
+
+/* Vertical hairline dividers (was bg-stealth-border/40) */
+.stats-row__rule {
+  background: color-mix(in srgb, var(--theme-border) 40%, transparent);
+}
+
+/* Count values (was text-white) */
+.stats-row__num {
+  color: var(--theme-text);
+}
+
+/* Downloads / Likes / Quants labels (was text-stealth-muted) */
+.stats-row__lab {
+  color: var(--theme-text-muted);
+}
+
+/* Tag chips inherit .theme-tag paint (surfaces.css); size only */
+.stats-row__tag {
+  font-size: var(--type-tiny);
+}
+
+/* ── VramFitBadge — fit verdict state ramp ──────────────────────
+   ok = fits · tight = fits with headroom risk · no = over budget.
+   Dot is solid; label rides at 60% (was text-*/60). */
+.fit-dot { background: var(--theme-accent); }
+.fit-label { color: color-mix(in srgb, var(--theme-accent) 60%, transparent); }
+
+.fit--ok { background: var(--theme-accent); }
+.fit--ok.fit-label { color: color-mix(in srgb, var(--theme-accent) 60%, transparent); }
+
+.fit--tight { background: var(--theme-warn); }
+.fit--tight.fit-label { color: color-mix(in srgb, var(--theme-warn) 60%, transparent); }
+
+.fit--no { background: var(--theme-danger); }
+.fit--no.fit-label { color: color-mix(in srgb, var(--theme-danger) 60%, transparent); }
+
+/* ── VramBadge RAM bar fill (tone from ramNeedToneForHost) ──────
+   ok = blue info (was bg-blue-700) · warn/caution = amber 70% (was
+   bg-orange-400/70) · hot = red (was bg-red-500).
+   fusion-display.css keeps its .bg-* bevel hooks for the GPU bar;
+   the RAM bar paints here. */
+.ram-fill--ok { color: var(--theme-info); }
+.ram-fill--warn { color: color-mix(in srgb, var(--theme-warn) 70%, transparent); }
+.ram-fill--hot { color: var(--theme-danger); }
+
+/* ── MoeBadge — MOE_OPTIMAL state ramp ──────────────────────────
+   gold = active (was bg-gold-metallic + #451A03 ink) ·
+   suggest = dashed amber (was border-orange-400/80, hover /30, #FB923C ink) ·
+   idle = grey (was border-gray-500/40, hover /60, #6B7280 ink). */
+.badge-moe { color: var(--theme-text-muted); }
+
+.badge-moe__word { font-size: var(--type-xl); }
+.badge-moe__sub { font-size: var(--type-label); }
+.badge-moe__sub--dim { opacity: 0.7; }
+
+.badge-moe--gold {
+  background: linear-gradient(180deg, #dfc9a8 0%, #FBBF24 40%, #b08700 100%);
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.4), 0 0 12px rgba(251, 191, 36, 0.3);
+  color: #451A03;
+}
+
+.badge-moe--suggest {
+  border: 1px dashed color-mix(in srgb, var(--theme-warn) 80%, transparent);
+  color: var(--theme-warn);
+}
+.badge-moe--suggest:hover {
+  border-color: color-mix(in srgb, var(--theme-warn) 60%, transparent);
+}
+
+.badge-moe--idle {
+  border: 1px solid color-mix(in srgb, var(--theme-text-muted) 40%, transparent);
+}
+.badge-moe--idle:hover {
+  border-color: color-mix(in srgb, var(--theme-text-muted) 60%, transparent);
+}
+
+.badge-quant__size {
+  color: color-mix(in srgb, var(--theme-text-muted) 40%, transparent);
+}
+
+/* ── ModelSearchPalette ───────────────────────────────────────── */
+
+/* Keyboard focus ring (was ring-amber-400/80) */
+.pal-focus {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--theme-warn) 80%, transparent);
+}
+
+/* CURRENT ENGINE caption (was text-amber-400/80) */
+.pal-current {
+  color: color-mix(in srgb, var(--theme-warn) 80%, transparent);
+}
+
+/* CURRENT · focus caption (was text-amber-300/90) */
+.pal-current--focus {
+  color: color-mix(in srgb, var(--theme-warn) 90%, transparent);
+}
+
+/* ── HarnessConnectPanel ──────────────────────────────────────── */
+
+/* UAC / close-first warnings (was text-yellow-400/90) */
+.harness-confirm-elevated {
+  color: color-mix(in srgb, var(--theme-warn) 90%, transparent);
+}
+
+/* ── VRAM forecast NEED tone (barStyleFromNeedTone) ─────────────
+   State decision stays in services/vram/shared.ts; paint here.
+   ok = accent (was nv-green) · caution = amber · warn = orange ·
+   hot = red. Alpha tails keep exact percentages. */
+.bar-need-title { color: var(--theme-accent); }
+.bar-need-fill { background: var(--theme-accent); }
+.bar-need-border { border-color: color-mix(in srgb, var(--theme-accent) 30%, transparent); }
+.bar-need-tint { background: color-mix(in srgb, var(--theme-accent) 5%, transparent); }
+.bar-need-badge { background: color-mix(in srgb, var(--theme-accent) 20%, transparent); }
+
+.bar-need--caution.bar-need-title { color: var(--theme-warn); }
+.bar-need--caution.bar-need-fill { background: color-mix(in srgb, var(--theme-warn) 65%, transparent); }
+.bar-need--caution.bar-need-border { border-color: color-mix(in srgb, var(--theme-warn) 35%, transparent); }
+.bar-need--caution.bar-need-tint { background: color-mix(in srgb, var(--theme-warn) 5%, transparent); }
+.bar-need--caution.bar-need-badge { background: color-mix(in srgb, var(--theme-warn) 20%, transparent); }
+
+.bar-need--warn.bar-need-title { color: var(--theme-warn); }
+.bar-need--warn.bar-need-fill { background: color-mix(in srgb, var(--theme-warn) 70%, transparent); }
+.bar-need--warn.bar-need-border { border-color: color-mix(in srgb, var(--theme-warn) 30%, transparent); }
+.bar-need--warn.bar-need-tint { background: color-mix(in srgb, var(--theme-warn) 5%, transparent); }
+.bar-need--warn.bar-need-badge { background: color-mix(in srgb, var(--theme-warn) 20%, transparent); }
+
+.bar-need--hot.bar-need-title { color: var(--theme-danger); }
+.bar-need--hot.bar-need-fill { background: var(--theme-danger); }
+.bar-need--hot.bar-need-border { border-color: color-mix(in srgb, var(--theme-danger) 30%, transparent); }
+.bar-need--hot.bar-need-tint { background: color-mix(in srgb, var(--theme-danger) 5%, transparent); }
+.bar-need--hot.bar-need-badge { background: color-mix(in srgb, var(--theme-danger) 20%, transparent); }
+
+/* Forecast bar data ramp — exact values the old .vram-fc-bar__fill/.gpu-card__bar-fill
+   bevel hooks produced (fusion-display.css L3636-3653). Data, not chrome: do not
+   tokenize. ok = accent · caution = amber-300 · warn = orange-400 · hot = red-500. */
+.bar-need-fill.bar-need--ok { color: var(--theme-accent); }
+.bar-need-fill.bar-need--caution { color: #fcd34d; }
+.bar-need-fill.bar-need--warn { color: #fb923c; }
+.bar-need-fill.bar-need--hot { color: #ef4444; }
+
+/* ── Memory forecast SOURCE accent (MEMORY_SOURCE_ACCENT) ───────
+   probe = cyan instrument (was cyan-400) · learned = amber premium
+   (was yellow-400). Border alpha tails keep exact percentages. */
+.src-accent--probe { color: var(--theme-info); }
+.src-accent--learned { color: var(--theme-warn); }
+
+.src-accent-border.src-accent--probe {
+  border-color: color-mix(in srgb, var(--theme-info) 50%, transparent);
+}
+.src-accent-border.src-accent--learned {
+  border-color: color-mix(in srgb, var(--theme-warn) 50%, transparent);
+}
+.src-accent-border.src-accent--curve {
+  border-color: color-mix(in srgb, var(--theme-warn) 40%, transparent);
+}

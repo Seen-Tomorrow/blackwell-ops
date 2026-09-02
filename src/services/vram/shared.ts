@@ -625,7 +625,8 @@ export function needToneFromLaunchPaint(
   return "ok";
 }
 
-/** Tailwind chrome for bar fill / borders from NEED tone (bar locked to NEED). */
+/** Surface classes for bar fill / borders from NEED tone (bar locked to NEED).
+ *  Paint lives in src/styles/badges.css — state decision stays here. */
 export function barStyleFromNeedTone(tone: ForecastNeedTone): {
   titleColor: string;
   gpuBarColor: string;
@@ -633,39 +634,13 @@ export function barStyleFromNeedTone(tone: ForecastNeedTone): {
   bgTint: string;
   badgeBg: string;
 } {
-  switch (tone) {
-    case "caution":
-      return {
-        titleColor: "text-amber-300",
-        gpuBarColor: "bg-amber-300/65",
-        borderColor: "border-amber-300/35",
-        bgTint: "bg-amber-300/5",
-        badgeBg: "bg-amber-300/20",
-      };
-    case "warn":
-      return {
-        titleColor: "text-orange-400",
-        gpuBarColor: "bg-orange-400/70",
-        borderColor: "border-orange-400/30",
-        bgTint: "bg-orange-400/5",
-        badgeBg: "bg-orange-400/20",
-      };
-    case "hot":
-      return {
-        titleColor: "text-red-400",
-        gpuBarColor: "bg-red-500",
-        borderColor: "border-red-400/30",
-        bgTint: "bg-red-400/5",
-        badgeBg: "bg-red-400/20",
-      };
-    default:
-      return {
-        titleColor: "text-nv-green",
-        gpuBarColor: "bg-nv-green",
-        borderColor: "border-nv-green/30",
-        bgTint: "bg-nv-green/5",
-        badgeBg: "bg-nv-green/20",
-      };
-  }
+  const m = `bar-need--${tone}`;
+  return {
+    titleColor: `bar-need-title ${m}`,
+    gpuBarColor: `bar-need-fill ${m}`,
+    borderColor: `bar-need-border ${m}`,
+    bgTint: `bar-need-tint ${m}`,
+    badgeBg: `bar-need-badge ${m}`,
+  };
 }
 

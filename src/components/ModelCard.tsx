@@ -166,8 +166,8 @@ export default function ModelCard({
 
   const isNvfp = quantBadge && (quantBadge.toLowerCase().includes('nvfp4') || quantBadge.toLowerCase().includes('mxfp4'));
   const quantBadgeClass = isNvfp
-    ? 'model-card-quant-badge model-card-quant-badge--nvfp bg-nv-green/10 border border-nv-green/20 text-nv-green/50'
-    : 'model-card-quant-badge model-card-quant-badge--cyan border border-telemetry-cyan/15 text-telemetry-cyan/50';
+    ? 'model-card-quant-badge model-card-quant-badge--nvfp mcard-quant--nvfp border'
+    : 'model-card-quant-badge model-card-quant-badge--cyan mcard-quant--cyan border';
 
   const metaTip = [
     model.metadata?.architecture ? `arch ${model.metadata.architecture}` : null,
@@ -211,13 +211,13 @@ export default function ModelCard({
                 e.stopPropagation();
                 void revealPathInExplorer(model.path);
               }}
-              className="model-card-path self-start max-w-full text-left text-[7px] font-mono truncate px-0 py-0 border-0 bg-transparent rounded-none cursor-default hover:text-stealth-muted/80 transition-colors"
+              className="model-card-path self-start max-w-full type-micro font-mono truncate px-0 py-0 border-0 bg-transparent rounded-none cursor-default transition-colors"
               title={`Double-click to open in Explorer:\n${model.path}`}
             >
               {model.sourcePathLabel}
             </button>
           )}
-          <span className="text-[8px] font-mono text-stealth-muted truncate">{model.author}</span>
+          <span className="type-tiny font-mono mcard-author truncate">{model.author}</span>
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
           {onTogglePin && (
@@ -227,7 +227,7 @@ export default function ModelCard({
                 e.stopPropagation();
                 onTogglePin(model);
               }}
-              className={`model-card-pin text-[9px] leading-none px-0.5 py-0 border-0 bg-transparent cursor-pointer ${
+              className={`model-card-pin type-label leading-none px-0.5 py-0 border-0 bg-transparent cursor-pointer ${
                 pinned ? "model-card-pin--on" : "model-card-pin--off"
               }`}
               title={pinned ? "Unpin from catalog quick strip" : "Pin to catalog quick strip"}
@@ -239,13 +239,13 @@ export default function ModelCard({
           )}
           {seatRole && (
             <span
-              className={`model-card-seat model-card-seat--${seatRole} text-[7px] font-mono px-1 py-0.5 rounded-sm`}
+              className={`model-card-seat model-card-seat--${seatRole} type-micro font-mono px-1 py-0.5 rounded-sm`}
               title={`Sticky seat: ${CATALOG_SEAT_LABEL[seatRole]}`}
             >
               {CATALOG_SEAT_LABEL[seatRole]}
             </span>
           )}
-          <span className="text-[8px] font-mono px-1 py-0.5 rounded-sm border border-gray-500/20 text-gray-500">
+          <span className="type-tiny font-mono mcard-gguf px-1 py-0.5 rounded-sm border">
             GGUF
           </span>
           {hfUpdateKind === "header" && (
@@ -256,7 +256,7 @@ export default function ModelCard({
                 onApplyHfUpdate?.();
               }}
               disabled={hfUpdateBusy}
-              className="text-[7px] font-mono px-1 py-0.5 rounded-sm border border-cyan-400/40 text-cyan-400 bg-cyan-400/10 hover:bg-cyan-400/20 disabled:opacity-40"
+              className="mcard-hf type-micro font-mono px-1 py-0.5 rounded-sm border mcard-hf--header disabled:opacity-40"
               title="Metadata / jinja template only — small download"
             >
               {hfUpdateBusy ? "PATCHING…" : "HEADER"}
@@ -270,7 +270,7 @@ export default function ModelCard({
                 onApplyHfUpdate?.();
               }}
               disabled={hfUpdateBusy}
-              className="text-[7px] font-mono px-1 py-0.5 rounded-sm border border-yellow-400/40 text-yellow-400 bg-yellow-400/10 hover:bg-yellow-400/20 disabled:opacity-40"
+              className="mcard-hf type-micro font-mono px-1 py-0.5 rounded-sm border mcard-hf--full disabled:opacity-40"
               title="Weights changed — full re-download (confirmation required)"
             >
               {hfUpdateBusy ? "QUEUING…" : "FULL"}
@@ -281,7 +281,7 @@ export default function ModelCard({
 
       {/* ── Name + params ─── */}
       <span
-        className="text-[11px] font-mono block truncate model-card-name"
+        className="type-sm font-mono block truncate model-card-name"
         title={model.name}
       >
         {model.name}
@@ -290,26 +290,26 @@ export default function ModelCard({
       {(paramsNum || hasMultimodal || fitNow || (model.metadata?.nextn_predict_layers ?? 0) > 0 || draftBadge) && (
         <div className="flex items-center gap-1 mt-0.5 min-w-0">
           {paramsNum && (
-            <span className="text-[8px] font-mono text-white shrink-0">{paramsNum}</span>
+            <span className="type-tiny font-mono mcard-params shrink-0">{paramsNum}</span>
           )}
           {archBadge && (
-            <span className="text-[7px] font-mono bg-black text-white/70 px-1 py-0.5 rounded-sm shrink-0">{archBadge}</span>
+            <span className="type-micro font-mono mcard-inkchip px-1 py-0.5 rounded-sm shrink-0">{archBadge}</span>
           )}
           {draftBadge && !isDraftOnly && (
-            <span className="text-[7px] font-mono bg-black text-white/70 px-1 py-0.5 rounded-sm shrink-0">
+            <span className="type-micro font-mono mcard-inkchip px-1 py-0.5 rounded-sm shrink-0">
               {draftBadge}
             </span>
           )}
           {fitNow && fitNow.verdict !== "draft" && (
             <span
-              className={`model-card-fitnow model-card-fitnow--${fitNow.verdict} text-[7px] font-mono px-1 py-0.5 rounded-sm shrink-0`}
+              className={`model-card-fitnow model-card-fitnow--${fitNow.verdict} type-micro font-mono px-1 py-0.5 rounded-sm shrink-0`}
               title={fitNow.title}
             >
               {fitNowLabel(fitNow.verdict)}
             </span>
           )}
           {hasMultimodal && (
-            <span className="model-card-mm-badge ml-auto text-[7px] font-mono px-1 py-0.5 rounded-sm border border-amber-400/20 text-amber-400/60 shrink-0 whitespace-nowrap">
+            <span className="model-card-mm-badge mcard-mm ml-auto type-micro font-mono px-1 py-0.5 rounded-sm border shrink-0 whitespace-nowrap">
               MULTIMODAL
             </span>
           )}
@@ -318,13 +318,13 @@ export default function ModelCard({
 
       {/* Footer — size/date (left) | stacked badges (right). Arch/KV/FIT in hover tip. */}
       {hasMetadata ? (
-        <div className="model-card-footer mt-1 pt-1 border-t border-stealth-border/30">
+        <div className="model-card-footer mcard-footer mt-1 pt-1 border-t">
           <div
             className={`model-card-meta${metaTip ? " model-card-meta--tip" : ""}`}
             {...(metaTip ? { "data-tip": metaTip } : {})}
           >
-            <span className="model-card-size font-mono text-stealth-muted">{model.size_str}</span>
-            <span className="model-card-date font-mono text-white/60">{dateLabel}</span>
+            <span className="model-card-size font-mono mcard-meta-mut">{model.size_str}</span>
+            <span className="model-card-date font-mono mcard-date">{dateLabel}</span>
           </div>
           <div className="model-card-badges">
             {fitScanAvailable && needsFitScan && (
@@ -335,10 +335,10 @@ export default function ModelCard({
                   onFitScanModel?.(model);
                 }}
                 disabled={fitScanning}
-                className={`model-card-fit-scan text-[7px] font-mono px-1.5 py-0.5 rounded-sm transition-colors whitespace-nowrap ${
+                className={`model-card-fit-scan type-micro font-mono px-1.5 py-0.5 rounded-sm transition-colors whitespace-nowrap ${
                   fitScanning
-                    ? "text-nv-green border border-nv-green/40 bg-nv-green/10"
-                    : "text-stealth-muted border border-stealth-border/60 hover:border-stealth-muted/50 hover:text-white/70 hover:bg-white/[0.04] disabled:opacity-30"
+                    ? "mcard-fit-scan--scanning border"
+                    : "mcard-fit-scan border"
                 }`}
                 title="Run full VRAM fit probe (same 28 points as library FIT scan)"
               >
@@ -350,26 +350,26 @@ export default function ModelCard({
               </button>
             )}
             {draftBadge && isDraftOnly && (
-              <span className="model-card-draft-badge text-[7px] font-mono px-1 py-0.5 rounded-sm">
+              <span className="model-card-draft-badge type-micro font-mono px-1 py-0.5 rounded-sm">
                 {draftBadge}
               </span>
             )}
             {quantBadge && (
-              <span className={`text-[8px] font-mono px-1 py-0.5 rounded-sm whitespace-nowrap ${quantBadgeClass}`}>
+              <span className={`type-tiny font-mono px-1 py-0.5 rounded-sm whitespace-nowrap ${quantBadgeClass}`}>
                 {quantBadge}
               </span>
             )}
           </div>
         </div>
       ) : (
-        <div className="model-card-footer mt-1 pt-1 border-t border-stealth-border/30">
+        <div className="model-card-footer mcard-footer mt-1 pt-1 border-t">
           <div className="model-card-meta">
-            <span className="model-card-size font-mono text-stealth-muted">{model.size_str}</span>
-            <span className="model-card-date font-mono text-white/60">{dateLabel}</span>
+            <span className="model-card-size font-mono mcard-meta-mut">{model.size_str}</span>
+            <span className="model-card-date font-mono mcard-date">{dateLabel}</span>
           </div>
           <div className="model-card-badges">
             {draftBadge && (
-              <span className="model-card-draft-badge text-[7px] font-mono px-1 py-0.5 rounded-sm">
+              <span className="model-card-draft-badge type-micro font-mono px-1 py-0.5 rounded-sm">
                 {draftBadge}
               </span>
             )}
@@ -380,10 +380,10 @@ export default function ModelCard({
                 onScanModel?.(model);
               }}
               disabled={isScanning || scanningPath !== null}
-              className={`text-[7px] font-mono px-1.5 py-0.5 rounded-sm transition-colors ${
+              className={`type-micro font-mono px-1.5 py-0.5 rounded-sm transition-colors ${
                 isScanning
-                  ? "text-telemetry-cyan border border-telemetry-cyan/40 bg-telemetry-cyan/10"
-                  : "text-orange-400 border border-orange-400/30 hover:bg-orange-400/10 disabled:opacity-30"
+                  ? "mcard-scan--scanning border"
+                  : "mcard-scan border"
               }`}
             >
               {isScanning ? "⠋ SCANNING..." : "⚠ SCAN"}

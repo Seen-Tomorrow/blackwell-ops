@@ -21,31 +21,29 @@ export default function MiniModelCard({ entry, modelAuthor, modelName, quant, si
       className={`cursor-pointer rounded-sm p-1.5 border mini-card-enter ${
         isSelected
            ? "gunmetal-card"
-           : isNewLaunch
-             ? "bg-black/40 hover:bg-black/60 mini-card-new-pulse"
-             : "bg-black/40 border-nv-green/40 hover:bg-black/60"
+           : "mcard-mini--new mini-card-new-pulse"
       }`}
     >
       <div className="flex items-center justify-between gap-1 mb-0.5">
         {modelAuthor && (
-          <span className="text-[7px] font-mono text-stealth-muted truncate">{modelAuthor}</span>
+          <span className="type-micro font-mono mcard-mini-author truncate">{modelAuthor}</span>
         )}
-        <span className="text-[6px] font-mono text-nv-green/80 shrink-0">{entry.alias}</span>
+        <span className="type-hairline font-mono mcard-mini-alias shrink-0">{entry.alias}</span>
       </div>
 
       <div className="flex items-center justify-between gap-1">
-        <span className={`text-[9px] font-mono truncate flex-shrink min-w-0 ${isSelected ? "text-nv-green" : "text-white"}`} title={modelName}>
+        <span className={`type-label font-mono truncate flex-shrink min-w-0 ${isSelected ? "mcard-mini-name--selected" : "mcard-mini-name"}`} title={modelName}>
           {modelName}
         </span>
-        <span className={`text-[6px] font-mono px-0.5 py-0 rounded-sm shrink-0 ${isNvfp
-          ? 'bg-nv-green/20 border border-nv-green/40 text-nv-green'
-          : 'border border-telemetry-cyan/30 text-telemetry-cyan'}`}>
+        <span className={`type-hairline font-mono px-0.5 py-0 rounded-sm shrink-0 ${isNvfp
+          ? 'mcard-mini-quant--nvfp border'
+          : 'mcard-mini-quant--cyan border'}`}>
           {quant}
         </span>
       </div>
 
       <div className="flex justify-end mt-0.5">
-        <span className="text-[7px] font-mono text-stealth-muted">{sizeStr}</span>
+        <span className="type-micro font-mono mcard-mini-size">{sizeStr}</span>
       </div>
     </div>
   );

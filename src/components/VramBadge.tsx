@@ -387,10 +387,10 @@ export default function VramBadge({
                           t.moeRamBar || offloadMode === "moe_optimal"
                             ? "bg-orange-hatched"
                             : ramNeedTone === "hot"
-                              ? "bg-red-500"
+                              ? "ram-fill--hot"
                               : ramNeedTone === "warn" || ramNeedTone === "caution"
-                                ? "bg-orange-400/70"
-                                : "bg-blue-700"
+                                ? "ram-fill--warn"
+                                : "ram-fill--ok"
                         }`}
                         style={{ width: `${ramUsagePct}%` }}
                       />

@@ -434,7 +434,7 @@ export default function HarnessConnectPanel({
                 {confirmMode === "solo" ? "Open pi — SOLO" : "Open pi — TWIN"}
               </h3>
               {piElevated && (
-                <p className="harness-confirm-elevated font-mono text-[9px] text-yellow-400/90 m-0 mb-2">
+                <p className="harness-confirm-elevated font-mono type-label m-0 mb-2">
                   UAC prompt — admin pi console after approval
                 </p>
               )}
@@ -525,7 +525,7 @@ export default function HarnessConnectPanel({
                   PID {piConsolePids.join(", ")}
                 </span>
               </p>
-              <p className="harness-confirm-elevated font-mono text-[9px] text-yellow-400/90 m-0 mb-2">
+              <p className="harness-confirm-elevated font-mono type-label m-0 mb-2">
                 Close the pi console window before updating the package tree.
               </p>
               <div className="harness-confirm-actions">

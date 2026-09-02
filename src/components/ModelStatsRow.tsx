@@ -9,27 +9,27 @@ export default function ModelStatsRow({ downloads, likes, quants, tags }: ModelS
   const visibleTags = tags?.slice(0, 12) ?? [];
 
   return (
-    <div className="mb-3 flex flex-wrap items-center gap-3 border-b border-stealth-border/40 pb-2">
+    <div className="stats-row mb-3 flex flex-wrap items-center gap-3 border-b pb-2">
       <div className="text-center">
-        <div className="text-xs font-mono text-white">{formatNum(downloads)}</div>
-        <div className="text-[8px] font-mono text-stealth-muted uppercase tracking-wider">Downloads</div>
+        <div className="stats-row__num text-xs font-mono">{formatNum(downloads)}</div>
+        <div className="stats-row__lab type-tiny font-mono uppercase tracking-wider">Downloads</div>
       </div>
-      <div className="h-6 w-px bg-stealth-border/40" />
+      <div className="stats-row__rule h-6 w-px" />
       <div className="text-center">
-        <div className="text-xs font-mono text-white">{formatNum(likes)}</div>
-        <div className="text-[8px] font-mono text-stealth-muted uppercase tracking-wider">Likes</div>
+        <div className="stats-row__num text-xs font-mono">{formatNum(likes)}</div>
+        <div className="stats-row__lab type-tiny font-mono uppercase tracking-wider">Likes</div>
       </div>
-      <div className="h-6 w-px bg-stealth-border/40" />
+      <div className="stats-row__rule h-6 w-px" />
       <div className="text-center">
-        <div className="text-xs font-mono text-white">{quants}</div>
-        <div className="text-[8px] font-mono text-stealth-muted uppercase tracking-wider">Quants</div>
+        <div className="stats-row__num text-xs font-mono">{quants}</div>
+        <div className="stats-row__lab type-tiny font-mono uppercase tracking-wider">Quants</div>
       </div>
       {visibleTags.length > 0 && (
         <>
-          <div className="h-6 w-px bg-stealth-border/40" />
+          <div className="stats-row__rule h-6 w-px" />
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
             {visibleTags.map((tag) => (
-              <span key={tag} className="theme-tag rounded-sm px-2 py-0.5 text-[8px] font-mono">
+              <span key={tag} className="stats-row__tag theme-tag rounded-sm px-2 py-0.5 type-tiny font-mono">
                 {tag}
               </span>
             ))}

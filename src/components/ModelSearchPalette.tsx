@@ -139,7 +139,7 @@ export default function ModelSearchPalette({
                   key={model.path}
                   className={
                     isFocus
-                      ? "ring-2 ring-amber-400/80 rounded-sm"
+                      ? "pal-focus ring-2 rounded-sm"
                       : "rounded-sm"
                   }
                   data-palette-index={i}
@@ -153,12 +153,12 @@ export default function ModelSearchPalette({
                     onScanModel={onScanModel}
                   />
                   {isEngineCurrent && !isFocus && (
-                    <p className="px-1.5 pb-1 text-[8px] font-mono text-amber-400/80 -mt-0.5">
+                    <p className="pal-current px-1.5 pb-1 type-tiny font-mono -mt-0.5">
                       CURRENT ENGINE
                     </p>
                   )}
                   {isEngineCurrent && isFocus && (
-                    <p className="px-1.5 pb-1 text-[8px] font-mono text-amber-300/90 -mt-0.5">
+                    <p className="pal-current pal-current--focus px-1.5 pb-1 type-tiny font-mono -mt-0.5">
                       CURRENT · ↑↓ to move · ↵ select
                     </p>
                   )}
@@ -168,7 +168,7 @@ export default function ModelSearchPalette({
           )}
         </div>
         <div className="model-search-palette__footer px-3 py-2 flex flex-wrap items-center gap-2 justify-between">
-          <p className="text-[10px] font-mono config-muted">
+          <p className="type-body font-mono config-muted">
             {models.length > PALETTE_LIMIT
               ? `Showing ${hits.length} of ${models.length}`
               : `${hits.length} model${hits.length === 1 ? "" : "s"}`}
@@ -177,7 +177,7 @@ export default function ModelSearchPalette({
             <button
               type="button"
               onClick={onOpenFullCatalog}
-              className="value-chip text-[10px] font-mono px-2 py-1 rounded-sm shrink-0"
+              className="value-chip type-body font-mono px-2 py-1 rounded-sm shrink-0"
               title="Open full model catalog (Ctrl+Shift+F)"
             >
               FULL CATALOG ↗

@@ -18,6 +18,7 @@
 @import "./styles/animations.css";
 @import "./styles/playground.css";
 @import "./styles/engine.css";
+@import "./styles/badges.css";
 /* Type scale LAST: it replaces Tailwind `text-[Npx]`, which won every
    same-specificity contest because utilities emit after all partials. */
 @import "./styles/type-scale.css";

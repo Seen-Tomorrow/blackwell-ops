@@ -408,12 +408,12 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     if (batchScanState.active) {
       return (
         <>
-          <span className="catalog-scan-status text-[7px] font-mono whitespace-nowrap">
+          <span className="catalog-scan-status type-micro font-mono whitespace-nowrap">
             {batchScanState.scanned}/{batchScanState.total}
           </span>
           <button
             onClick={handleCancelScan}
-            className="catalog-scan-btn px-1.5 py-0.5 text-[7px] font-mono border border-telemetry-red/40 text-telemetry-red hover:bg-telemetry-red/10 transition-colors rounded-sm"
+            className="catalog-scan-btn cat-scan-btn--danger type-micro font-mono px-1.5 py-0.5 border transition-colors rounded-sm"
             title="Stop batch scan"
           >
             STOP
@@ -427,7 +427,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           <button
             onClick={() => startScan(4)}
             disabled={scanningPath !== null}
-            className="catalog-scan-btn px-1.5 py-0.5 text-[7px] font-mono transition-colors rounded-sm disabled:opacity-30"
+            className="catalog-scan-btn type-micro font-mono px-1.5 py-0.5 transition-colors rounded-sm disabled:opacity-30"
             title="Scan all models with 4x parallelism (~2GB RAM)"
           >
             4×
@@ -435,14 +435,14 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           <button
             onClick={() => startScan(8)}
             disabled={scanningPath !== null}
-            className="catalog-scan-btn px-1.5 py-0.5 text-[7px] font-mono transition-colors rounded-sm disabled:opacity-30"
+            className="catalog-scan-btn type-micro font-mono px-1.5 py-0.5 transition-colors rounded-sm disabled:opacity-30"
             title="Scan all models with 8x parallelism (~4GB RAM)"
           >
             8×
           </button>
           <button
             onClick={() => setShowScanMenu(false)}
-            className="catalog-scan-btn px-1 py-0.5 text-[7px] font-mono transition-colors rounded-sm opacity-60"
+            className="catalog-scan-btn type-micro font-mono px-1 py-0.5 transition-colors rounded-sm opacity-60"
             title="Close scan menu"
           >
             ✕
@@ -454,7 +454,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
       <button
         onClick={() => setShowScanMenu(true)}
         disabled={scanningPath !== null || scanBlockedByToolchain}
-        className="catalog-scan-btn px-1.5 py-0.5 text-[7px] font-mono transition-colors rounded-sm disabled:opacity-30 whitespace-nowrap"
+        className="catalog-scan-btn type-micro font-mono px-1.5 py-0.5 transition-colors rounded-sm disabled:opacity-30 whitespace-nowrap"
         title={
           scanBlockedByToolchain
             ? "Install the portable toolchain in setup before scanning GGUF metadata"
@@ -474,7 +474,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
             type="button"
             onClick={openRename}
             disabled={editActionsDisabled}
-            className="catalog-scan-btn px-1.5 py-0.5 text-[7px] font-mono transition-colors rounded-sm disabled:opacity-30 whitespace-nowrap"
+            className="catalog-scan-btn type-micro font-mono px-1.5 py-0.5 transition-colors rounded-sm disabled:opacity-30 whitespace-nowrap"
             title={
               editTargetRunning
                 ? "Stop the engine before renaming"
@@ -493,7 +493,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
               setFileEditError(null);
             }}
             disabled={editActionsDisabled}
-            className="catalog-scan-btn px-1.5 py-0.5 text-[7px] font-mono border border-telemetry-red/35 text-telemetry-red hover:bg-telemetry-red/10 transition-colors rounded-sm disabled:opacity-30 whitespace-nowrap"
+            className="catalog-scan-btn cat-scan-btn--danger type-micro font-mono px-1.5 py-0.5 border transition-colors rounded-sm disabled:opacity-30 whitespace-nowrap"
             title={
               editTargetRunning
                 ? "Stop the engine before deleting"
@@ -509,10 +509,10 @@ export default function ModelCatalog(props: ModelCatalogProps) {
               type="button"
               onClick={() => handleScanModel(editTarget)}
               disabled={scanningPath !== null}
-              className={`catalog-scan-btn px-1.5 py-0.5 text-[7px] font-mono transition-colors rounded-sm whitespace-nowrap ${
+              className={`catalog-scan-btn type-micro font-mono px-1.5 py-0.5 transition-colors rounded-sm whitespace-nowrap ${
                 scanningPath === editTarget.path
-                  ? 'text-telemetry-cyan border border-telemetry-cyan/40 bg-telemetry-cyan/10'
-                  : 'text-orange-400 border border-orange-400/30 hover:bg-orange-400/10 disabled:opacity-30'
+                  ? 'cat-scan-btn--scanning border'
+                  : 'cat-scan-btn--rescan border disabled:opacity-30'
               }`}
               title="Re-scan GGUF metadata — updates draft role, architecture, param count, etc."
             >
@@ -522,7 +522,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           <button
             type="button"
             onClick={closeEditMode}
-            className="catalog-scan-btn px-1 py-0.5 text-[7px] font-mono transition-colors rounded-sm opacity-60"
+            className="catalog-scan-btn type-micro font-mono px-1 py-0.5 transition-colors rounded-sm opacity-60"
             title="Close file edit"
           >
             ✕
@@ -538,7 +538,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           setFileEditError(null);
         }}
         disabled={fileEditBusy}
-        className="catalog-scan-btn px-1.5 py-0.5 text-[7px] font-mono transition-colors rounded-sm disabled:opacity-30 whitespace-nowrap"
+        className="catalog-scan-btn type-micro font-mono px-1.5 py-0.5 transition-colors rounded-sm disabled:opacity-30 whitespace-nowrap"
         title="Rename or delete the selected model file"
       >
         EDIT ▾
@@ -570,7 +570,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
       <div className="catalog-chrome-row catalog-chrome-row--filters">
         <div className="catalog-sort-actions">
           {fitScanningCount > 0 && (
-            <span className="catalog-scan-status text-[8px] font-mono text-stealth-muted whitespace-nowrap">
+            <span className="catalog-scan-status type-tiny font-mono cat-mut whitespace-nowrap">
               FIT {fitScanningCount}
             </span>
           )}
@@ -578,7 +578,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
             type="button"
             onClick={() => onCheckCatalogUpdates?.()}
             disabled={catalogUpdatesBusy}
-            className="catalog-cycle-btn value-chip px-1.5 py-0 text-[7px] font-mono uppercase rounded-sm transition-colors disabled:opacity-40"
+            className="catalog-cycle-btn value-chip type-micro font-mono px-1.5 py-0 uppercase rounded-sm transition-colors disabled:opacity-40"
             title="Check every local HF-paired model against the Hub (tree listing only unless size is close)"
           >
             {catalogUpdatesBusy ? "CHECKING…" : "CHECK ALL"}
@@ -590,7 +590,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
               if (path) onCheckCatalogUpdates?.(path);
             }}
             disabled={catalogUpdatesBusy || !(catalogSelectedModel || panelActiveModel)}
-            className="catalog-cycle-btn value-chip px-1.5 py-0 text-[7px] font-mono uppercase rounded-sm transition-colors disabled:opacity-40"
+            className="catalog-cycle-btn value-chip type-micro font-mono px-1.5 py-0 uppercase rounded-sm transition-colors disabled:opacity-40"
             title="Check only the selected model against Hugging Face"
           >
             CHECK SELECTED
@@ -598,7 +598,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           <button
             type="button"
             onClick={() => setUpdatesOnly((v) => !v)}
-            className={`catalog-cycle-btn value-chip px-1.5 py-0 text-[7px] font-mono uppercase rounded-sm transition-colors ${
+            className={`catalog-cycle-btn value-chip type-micro font-mono px-1.5 py-0 uppercase rounded-sm transition-colors ${
               updatesOnly ? "value-chip-active" : ""
             }`}
             title="Show only models with a Hub update"
@@ -613,10 +613,10 @@ export default function ModelCatalog(props: ModelCatalogProps) {
             <button
               key={field}
               onClick={() => handleSort(field)}
-              className={`catalog-sort-btn px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-wider transition-colors rounded-sm ${
+              className={`catalog-sort-btn type-tiny font-mono px-1.5 py-0.5 uppercase tracking-wider transition-colors rounded-sm ${
                 sortField === field
-                  ? "text-nv-green bg-nv-green/10"
-                  : "text-stealth-muted hover:text-white"
+                  ? "cat-sort-btn--active"
+                  : "cat-sort-btn"
               }`}
             >
               <span>{sortLabels[field] || field.replace("_", " ")}</span>
@@ -635,10 +635,10 @@ export default function ModelCatalog(props: ModelCatalogProps) {
               key={id}
               type="button"
               onClick={() => setFitNowFilter(id)}
-              className={`catalog-sort-btn px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-wider transition-colors rounded-sm ${
+              className={`catalog-sort-btn type-tiny font-mono px-1.5 py-0.5 uppercase tracking-wider transition-colors rounded-sm ${
                 fitNowFilter === id
-                  ? "text-nv-green bg-nv-green/10"
-                  : "text-stealth-muted hover:text-white"
+                  ? "cat-sort-btn--active"
+                  : "cat-sort-btn"
               }`}
               title={
                 id === "all"
@@ -686,10 +686,10 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                 if (catalogCollapsed) openSearchPalette();
                 else focusFullCatalogSearch();
               }}
-              className={`text-[8px] font-mono px-1.5 py-0.5 rounded-sm border transition-colors config-catalog-search-hint ${
+              className={`type-tiny font-mono px-1.5 py-0.5 rounded-sm border transition-colors config-catalog-search-hint ${
                 catalogCollapsed
                   ? "config-catalog-search-hint--pulse"
-                  : "border-stealth-border/50 config-muted hover:theme-accent-text"
+                  : "cat-header-btn border"
               }`}
               title={
                 catalogCollapsed
@@ -703,14 +703,14 @@ export default function ModelCatalog(props: ModelCatalogProps) {
               <button
                 type="button"
                 onClick={openFullCatalogFromPalette}
-                className="text-[8px] font-mono px-1.5 py-0.5 rounded-sm border border-stealth-border/50 config-muted hover:theme-accent-text transition-colors"
+                className="type-tiny font-mono px-1.5 py-0.5 rounded-sm border cat-header-btn transition-colors"
                 title="Open full model catalog (Ctrl+Shift+F)"
               >
                 FULL LIST
               </button>
             )}
             {zone === "config" ? (
-              <span className="text-[8px] font-mono px-1.5 py-0.5 rounded-sm border border-telemetry-cyan/40 text-telemetry-cyan bg-telemetry-cyan/10">
+              <span className="type-tiny font-mono px-1.5 py-0.5 rounded-sm border cat-zone-chip">
                 CONFIG [Ctrl+Enter]
               </span>
             ) : null}
@@ -720,11 +720,11 @@ export default function ModelCatalog(props: ModelCatalogProps) {
 
       {/* Error banner */}
       {error && (
-        <div className="px-4 py-3 border-b border-telemetry-red/30 bg-telemetry-red/5">
-          <p className="text-[10px] font-mono text-telemetry-red mb-2 break-all">{error}</p>
+        <div className="cat-error-banner px-4 py-3 border-b">
+          <p className="type-body font-mono cat-dng mb-2 break-all">{error}</p>
           <button
             onClick={onReload}
-            className="px-3 py-1 text-[9px] font-mono border border-telemetry-red/60 text-telemetry-red hover:bg-telemetry-red/20 transition-colors rounded-sm"
+            className="cat-error-reload type-label font-mono px-3 py-1 border transition-colors rounded-sm"
           >
             RELOAD
           </button>
@@ -787,20 +787,20 @@ export default function ModelCatalog(props: ModelCatalogProps) {
             </div>
             {renderChromeTools()}
             {fileEditError && (
-              <p className="catalog-list-panel__chrome-msg text-[7px] font-mono text-telemetry-red/90 break-all">
+              <p className="catalog-list-panel__chrome-msg type-micro font-mono cat-dng--soft break-all">
                 {fileEditError}
               </p>
             )}
             {renameOpen && editTarget && (
               <div
-                className="catalog-list-panel__chrome-dialog rounded-sm border border-stealth-border/60 bg-stealth-panel/90 px-2 py-2 space-y-2"
+                className="catalog-list-panel__chrome-dialog cat-dialog--neutral rounded-sm border px-2 py-2 space-y-2"
                 role="dialog"
                 aria-label="Rename model file"
               >
-                <p className="text-[7px] font-mono text-stealth-muted truncate" title={editTarget.path}>
+                <p className="type-micro font-mono cat-mut truncate" title={editTarget.path}>
                   RENAME — {editTarget.name}
                 </p>
-                <p className="text-[7px] font-mono text-stealth-muted/70 leading-relaxed">
+                <p className="type-micro font-mono cat-mut--soft leading-relaxed">
                   Renames the .gguf filename on disk. The catalog label ({editTarget.name}) is heuristic and updates after rescan.
                 </p>
                 <input
@@ -812,14 +812,14 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                     if (e.key === "Escape") setRenameOpen(false);
                   }}
                   autoFocus
-                  className="theme-input w-full text-[10px] font-mono px-2 py-1 rounded-sm"
+                  className="theme-input w-full type-body font-mono px-2 py-1 rounded-sm"
                 />
                 <div className="flex gap-1.5">
                   <button
                     type="button"
                     onClick={() => void confirmRename()}
                     disabled={fileEditBusy || !renameValue.trim()}
-                    className="value-chip-active text-[7px] font-mono px-2 py-0.5 rounded-sm disabled:opacity-30"
+                    className="value-chip-active type-micro font-mono px-2 py-0.5 rounded-sm disabled:opacity-30"
                   >
                     REN
                   </button>
@@ -827,7 +827,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                     type="button"
                     onClick={() => setRenameOpen(false)}
                     disabled={fileEditBusy}
-                    className="value-chip text-[7px] font-mono px-2 py-0.5 rounded-sm"
+                    className="value-chip type-micro font-mono px-2 py-0.5 rounded-sm"
                   >
                     CANCEL
                   </button>
@@ -836,12 +836,12 @@ export default function ModelCatalog(props: ModelCatalogProps) {
             )}
             {fullConfirm && (
               <div
-                className="catalog-list-panel__chrome-dialog rounded-sm border border-yellow-400/35 bg-yellow-400/5 px-2 py-2 space-y-2"
+                className="catalog-list-panel__chrome-dialog cat-dialog--warn rounded-sm border px-2 py-2 space-y-2"
                 role="alertdialog"
                 aria-label="Confirm full weight re-download"
               >
-                <p className="text-[7px] font-mono text-white/90 leading-relaxed">
-                  FULL update for <span className="text-yellow-400">{fullConfirm.quant}</span> re-downloads weights
+                <p className="type-micro font-mono cat-txt leading-relaxed">
+                  FULL update for <span className="cat-warn">{fullConfirm.quant}</span> re-downloads weights
                   ({fullConfirm.reason || "tensor data changed"}).
                 </p>
                 <div className="flex gap-1.5">
@@ -849,14 +849,14 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                     type="button"
                     onClick={() => void applyFullUpdate(fullConfirm)}
                     disabled={updateBusyPath === fullConfirm.path}
-                    className="value-chip-active text-[7px] font-mono px-2 py-0.5 rounded-sm border border-yellow-400/40 text-yellow-400 disabled:opacity-30"
+                    className="value-chip-active type-micro font-mono px-2 py-0.5 rounded-sm border cat-warn-btn disabled:opacity-30"
                   >
                     DOWNLOAD
                   </button>
                   <button
                     type="button"
                     onClick={() => setFullConfirm(null)}
-                    className="value-chip text-[7px] font-mono px-2 py-0.5 rounded-sm"
+                    className="value-chip type-micro font-mono px-2 py-0.5 rounded-sm"
                   >
                     CANCEL
                   </button>
@@ -865,19 +865,19 @@ export default function ModelCatalog(props: ModelCatalogProps) {
             )}
             {deleteConfirmOpen && editTarget && (
               <div
-                className="catalog-list-panel__chrome-dialog rounded-sm border border-telemetry-red/35 bg-telemetry-red/5 px-2 py-2 space-y-2"
+                className="catalog-list-panel__chrome-dialog cat-dialog--danger rounded-sm border px-2 py-2 space-y-2"
                 role="alertdialog"
                 aria-label="Confirm delete model file"
               >
-                <p className="text-[7px] font-mono text-white/90 leading-relaxed">
-                  Move <span className="text-telemetry-red">{editTarget.name}</span> to Recycle Bin?
+                <p className="type-micro font-mono cat-txt leading-relaxed">
+                  Move <span className="cat-dng">{editTarget.name}</span> to Recycle Bin?
                 </p>
                 <div className="flex gap-1.5">
                   <button
                     type="button"
                     onClick={() => void confirmDelete()}
                     disabled={fileEditBusy}
-                    className="value-chip-active text-[7px] font-mono px-2 py-0.5 rounded-sm border border-telemetry-red/40 text-telemetry-red disabled:opacity-30"
+                    className="value-chip-active type-micro font-mono px-2 py-0.5 rounded-sm border cat-dng-btn disabled:opacity-30"
                   >
                     YES
                   </button>
@@ -885,7 +885,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                     type="button"
                     onClick={() => setDeleteConfirmOpen(false)}
                     disabled={fileEditBusy}
-                    className="value-chip text-[7px] font-mono px-2 py-0.5 rounded-sm"
+                    className="value-chip type-micro font-mono px-2 py-0.5 rounded-sm"
                   >
                     NO
                   </button>
@@ -918,18 +918,18 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                 className="flex flex-col items-center justify-center h-full min-h-[8rem] text-center px-4 py-6 gap-3"
                 style={{ opacity: catalogListDim }}
               >
-                <p className="text-stealth-muted text-xs font-mono opacity-50">
+                <p className="cat-mut text-xs font-mono opacity-50">
                   {models.length > 0 && search.trim() ? "NO MATCHING MODELS" : "NO MODELS FOUND"}
                 </p>
                 {models.length === 0 && !setupGuide.pathsDone && (
                   <>
-                    <p className="text-[10px] font-mono text-stealth-muted/70 leading-relaxed max-w-[220px]">
+                    <p className="type-body font-mono cat-mut--soft leading-relaxed max-w-[220px]">
                       Did you add your model path?
                     </p>
                     <button
                       type="button"
                       onClick={() => dispatchNavigateConfig({ subTab: "paths" })}
-                      className="px-2 py-0.5 text-[8px] font-mono tracking-widest rounded-sm border border-nv-green/50 text-nv-green hover:bg-nv-green/10 transition-colors"
+                      className="cat-paths-btn type-tiny font-mono px-2 py-0.5 tracking-widest rounded-sm border transition-colors"
                     >
                       CONFIG → PATHS
                     </button>
