@@ -1,0 +1,4 @@
+/* ── Engine room · running stack, param rows, GPU panels, launch dock ──
+   Paint here, not in TSX. Color = var(--theme-*) only (no #hex, no
+   var(--x,#hex) fallback). Sizes = var(--type-*); opacity via color-mix.
+   Owner: de-Tailwind pass 3. */
