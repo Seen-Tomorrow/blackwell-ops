@@ -74,7 +74,7 @@ tmp/
 scripts/majestic/.majestic-enabled
 scripts/majestic/.majestic-secrets
 scripts/majestic/majestic.lock
-scripts/majestic/__pycache__/
+__pycache__/
 
 # --- Internal docs (local only — not published) ---
 docs/internal/
