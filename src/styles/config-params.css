@@ -11,6 +11,14 @@
      surface: cfg-panel
      control: cfg-accent / cfg-ring--inf / cfg-dec
 
+   INTENT — room-role classes, not naming drift (owner 2026-09-03). A
+   site resolves to a ROLE, so one edit re-tones the whole Config room
+   coherently. Blast radius is not visible from the rule: cfg-mut ≈ 103
+   sites in 16 files, cfg-bord ≈ 143 in 18, cfg-acc ≈ 71 in 16 — grep the
+   class first and treat any edit here as room-wide. To make ONE element
+   diverge, add a narrow surface class beside the family; never rename the
+   family into per-element names (rejected: 246 sites of churn, no gain).
+
    Alpha parity: a base class paints its token at 100%. A tinted site
    (originally a Tailwind /NN opacity) uses the matching --aNN class,
    which mixes the token to NN% over transparent — pixel-identical to the
