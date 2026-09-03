@@ -933,9 +933,9 @@
   line-height: 1;
   padding: 0.2rem 0.3rem;
   border-radius: 2px;
-  border: 1px solid var(--theme-provider-pill-border, rgba(184, 122, 0, 0.55));
-  color: var(--theme-provider-pill-text, #b87a00);
-  background: color-mix(in srgb, var(--theme-provider-pill-bg, #1a1206) 80%, transparent);
+  border: 1px solid var(--theme-provider-pill-border);
+  color: var(--theme-provider-pill-text);
+  background: color-mix(in srgb, var(--theme-provider-pill-bg) 80%, transparent);
   cursor: pointer;
   transition:
     border-color 0.15s ease,
@@ -946,9 +946,9 @@
 }
 
 .running-engine-hs-btn:hover {
-  border-color: var(--theme-provider-pill-hover-border, #f5971f);
-  color: var(--theme-provider-pill-hover-text, #f5971f);
-  background: color-mix(in srgb, var(--theme-provider-pill-active-bg, #f5971f) 18%, transparent);
+  border-color: var(--theme-provider-pill-hover-border);
+  color: var(--theme-provider-pill-hover-text);
+  background: color-mix(in srgb, var(--theme-provider-pill-active-bg) 18%, transparent);
 }
 
 /* Panel model/CTX/parallel differs from this live seat — invite hot-swap */
@@ -1191,10 +1191,10 @@
   min-height: 22px;
   padding: 2px;
   border-radius: 4px;
-  background: color-mix(in srgb, var(--theme-panel, #111810) 72%, #000 28%);
-  border: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 70%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 72%, #000 28%);
+  border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
   box-shadow:
-    inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi, rgba(255, 255, 255, 0.12)) 16%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 16%, transparent),
     inset 0 -1px 2px color-mix(in srgb, #000 26%, transparent);
 }
 
@@ -1214,7 +1214,7 @@
   background: transparent !important;
   color: color-mix(
     in srgb,
-    var(--theme-industrial-muted, var(--theme-text-muted, #6a8a6a)) 92%,
+    var(--theme-industrial-muted, var(--theme-text-muted)) 92%,
     transparent
   ) !important;
   box-shadow: none !important;
@@ -1229,8 +1229,8 @@
 [data-config-panel] .config-value-segment .config-value-segment__opt:hover,
 [data-config-panel] .config-value-segment .value-chip:hover,
 [data-config-panel] .config-value-segment button.value-chip:hover {
-  color: var(--theme-chip-hover-text, #4ade80) !important;
-  background: color-mix(in srgb, var(--theme-accent-soft, rgba(74, 222, 128, 0.06)) 80%, transparent) !important;
+  color: var(--theme-chip-hover-text) !important;
+  background: color-mix(in srgb, var(--theme-accent-soft) 80%, transparent) !important;
 }
 
 /* Selected option — solid thumb (matches cockpit flag active) */
@@ -1240,24 +1240,24 @@
 [data-config-panel] .config-value-segment .config-value-segment__opt.value-chip-active {
   background: color-mix(
     in srgb,
-    var(--theme-chip-solid-bg, #4ade80) 88%,
-    var(--theme-panel, #111810) 12%
+    var(--theme-chip-solid-bg) 88%,
+    var(--theme-panel) 12%
   ) !important;
   border-color: color-mix(
     in srgb,
-    var(--theme-chip-active-border, rgba(74, 222, 128, 0.5)) 70%,
+    var(--theme-chip-active-border) 70%,
     transparent
   ) !important;
-  color: var(--theme-chip-solid-text, #0c120a) !important;
+  color: var(--theme-chip-solid-text) !important;
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, #fff 12%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--theme-chip-solid-bg, #4ade80) 25%, transparent) !important;
+    0 0 0 1px color-mix(in srgb, var(--theme-chip-solid-bg) 25%, transparent) !important;
 }
 
 /* Default / user-added still readable inside the rail (ENGINE CONFIG panel) */
 [data-config-panel] .config-value-segment .value-chip--factory-default:not(.value-chip-active) {
-  color: var(--theme-chip-hover-text, #4ade80) !important;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-accent-bright, #4ade80) 28%, transparent) !important;
+  color: var(--theme-chip-hover-text) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-accent-bright) 28%, transparent) !important;
 }
 
 [data-config-panel] .config-value-segment .value-chip--user-default:not(.value-chip-active) {
@@ -1314,12 +1314,12 @@
   border-radius: 3px;
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--theme-accent-bright, #4ade80) 22%, var(--theme-panel, #111810)) 0%,
-    color-mix(in srgb, var(--theme-accent, #4ade80) 14%, var(--theme-panel-accent, #0b120b)) 100%
+    color-mix(in srgb, var(--theme-accent-bright) 22%, var(--theme-panel)) 0%,
+    color-mix(in srgb, var(--theme-accent) 14%, var(--theme-panel-accent)) 100%
   );
-  border: 1px solid color-mix(in srgb, var(--theme-accent, #4ade80) 42%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 42%, transparent);
   box-shadow:
-    0 0 8px color-mix(in srgb, var(--theme-accent-glow, rgba(74, 222, 128, 0.5)) 55%, transparent),
+    0 0 8px color-mix(in srgb, var(--theme-accent-glow) 55%, transparent),
     inset 0 1px 0 color-mix(in srgb, #fff 12%, transparent);
   transition:
     left 0.22s cubic-bezier(0.22, 1, 0.36, 1),
@@ -1351,8 +1351,8 @@
   background: transparent !important;
   border-color: transparent !important;
   box-shadow: none !important;
-  color: var(--theme-accent-bright, #4ade80) !important;
-  text-shadow: 0 0 10px color-mix(in srgb, var(--theme-accent-glow, rgba(74, 222, 128, 0.5)) 65%, transparent) !important;
+  color: var(--theme-accent-bright) !important;
+  text-shadow: 0 0 10px color-mix(in srgb, var(--theme-accent-glow) 65%, transparent) !important;
 }
 
 /* Keep default / user-added / hidden markers readable on the rail */
@@ -1681,7 +1681,7 @@
   z-index: 220;
   transform: translateY(calc(-100% - 8px));
   padding: 8px;
-  background: var(--theme-surface-inset, #0a0a0c);
+  background: var(--theme-surface-inset);
   border-color: rgba(184, 122, 0, 0.45);
   box-shadow:
     0 10px 28px rgba(0, 0, 0, 0.55),
@@ -1740,7 +1740,7 @@
   max-height: 140px;
   background: rgba(0, 0, 0, 0.35);
   border-color: rgba(184, 122, 0, 0.35);
-  color: var(--theme-text, #e8e8ec);
+  color: var(--theme-text);
 }
 
 .custom-flags-popover--append .custom-flags-popover__input {
@@ -1757,7 +1757,7 @@
 
 .custom-flags-popover__hint {
   font-size: 13px;
-  color: var(--theme-text-muted, #9ca3af);
+  color: var(--theme-text-muted);
 }
 
 .custom-flags-popover--append .custom-flags-popover__hint {
@@ -2269,7 +2269,7 @@ select option {
   letter-spacing: 0.02em;
   white-space: nowrap;
   color: #fbbf24;
-  background: color-mix(in srgb, var(--theme-panel, #0a0a0a) 88%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 88%, transparent);
   border: 1px solid color-mix(in srgb, #fbbf24 50%, transparent);
   border-radius: 2px;
   text-shadow: 0 0 6px color-mix(in srgb, #fbbf24 40%, transparent);
@@ -2480,16 +2480,16 @@ select option {
 
 [data-config-panel] .value-chip--user-default,
 [data-config-page] .value-chip--user-default {
-  background: color-mix(in srgb, var(--theme-secondary, #b87a00) 18%, var(--theme-chip-bg)) !important;
-  border: 2px double color-mix(in srgb, var(--theme-secondary-bright, #f5971f) 75%, transparent) !important;
-  color: var(--theme-secondary-bright, #f5971f) !important;
+  background: color-mix(in srgb, var(--theme-secondary) 18%, var(--theme-chip-bg)) !important;
+  border: 2px double color-mix(in srgb, var(--theme-secondary-bright) 75%, transparent) !important;
+  color: var(--theme-secondary-bright) !important;
 }
 
 [data-config-panel] .value-chip--user-added,
 [data-config-page] .value-chip--user-added {
-  background: color-mix(in srgb, var(--theme-secondary, #b87a00) 10%, var(--theme-chip-bg)) !important;
-  border: 1px solid color-mix(in srgb, var(--theme-secondary, #b87a00) 45%, transparent) !important;
-  color: var(--theme-secondary-bright, #f5d080) !important;
+  background: color-mix(in srgb, var(--theme-secondary) 10%, var(--theme-chip-bg)) !important;
+  border: 1px solid color-mix(in srgb, var(--theme-secondary) 45%, transparent) !important;
+  color: var(--theme-secondary-bright) !important;
 }
 
 [data-config-panel] .value-chip--hidden,
