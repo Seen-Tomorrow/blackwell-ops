@@ -32,7 +32,7 @@
 
 /* ── VramFitBadge — fit verdict state ramp ──────────────────────
    ok = fits · tight = fits with headroom risk · no = over budget.
-   Dot is solid; label rides at 60% (was text-*/60). */
+   Dot is solid; label rides at 60% (utility alpha tail before). */
 .fit-dot { background: var(--theme-accent); }
 .fit-label { color: color-mix(in srgb, var(--theme-accent) 60%, transparent); }
 

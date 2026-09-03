@@ -38,6 +38,12 @@ different build target. Do not auto-kill. The only exception is a user explicitl
 
 **`/NN` alpha tails never fold onto the plain token** — write `color-mix(in srgb, var(--x) NN%, transparent)` with the exact percentage (no `rgba()`, no hex). Folding turned hairlines into hard borders once already. Literal hex stays legal for **data**, not chrome: ANSI terminal output, GPU swatches, the VRAM forecast bar ramp (`badges.css` `.bar-need--*`), MoE gold.
 
+**CSS comment must never contain `*/`** — writing a class glob in prose (`text-*/60`, `cat-*/hub-*`)
+terminates the comment early; the leftover `60). */` parses as a selector. **postcss accepts it**, so
+`tmp/css-parse.mjs` and DEV both look fine, and only `vite build` fails: `[plugin vite:css-post] …
+[lightningcss minify] Invalid empty selector`. Build gate: `node scripts/css-minify-gate.mjs`
+(lightningcss per file + on the inlined `index.css` bundle — the same input `vite:css-post` feeds it).
+
 **Type scale is the LAST `@import`** — `src/styles/type-scale.css` must stay last in `src/index.css`
 (immediately before `@tailwind`). `.type-*` replaces Tailwind `text-[Npx]`, which was emitted after
 every partial and therefore won every same-specificity tie; declaring the scale earlier (with
