@@ -260,6 +260,10 @@
   --theme-catalog-card-hover-bg: color-mix(in srgb, var(--theme-text) 4%, transparent);
   --theme-catalog-card-hover-border: color-mix(in srgb, var(--theme-border) 50%, var(--theme-accent) 50%);
   --theme-catalog-card-hover-shadow: none;
+  /* Catalog quick-strip section labels (HARNESS SEATS / FAVORITE) — two-tone emboss.
+     Dark themes: none (a hard offset dark shadow only ghosts; black-on-black is inert).
+     ARCTIC overrides in app-themes.ts with a face-correct engraved bevel. */
+  --theme-catalog-label-shadow: none;
   --theme-catalog-card-selected-bg: color-mix(in srgb, var(--theme-accent) 14%, var(--theme-panel-accent) 86%);
   --theme-catalog-card-selected-bg-image: none;
   --theme-catalog-card-selected-border: color-mix(in srgb, var(--theme-accent) 72%, var(--theme-border));

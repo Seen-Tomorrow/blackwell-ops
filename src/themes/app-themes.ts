@@ -424,6 +424,11 @@ const ARCTIC: AppTheme = {
     /* ── Industrial metal — bright brushed aluminium ── */
     "--theme-industrial-bg": "#c8d4e0",
     "--theme-industrial-text": "#0c4a6e",
+    /* Quick-strip section labels — ENGRAVED (stamped into the aluminium), zero blur.
+       Dark-navy ink on a light face can't drop-shadow: any visible dark base just reads
+       as a doubled ghost and lopsides the bold text. So invert the bevel — a crisp light
+       lip catches below the glyph, a faint navy shade sits above the recess. */
+    "--theme-catalog-label-shadow": "0 1px 0 rgba(255, 255, 255, 0.7), 0 -1px 0 rgba(2, 44, 68, 0.12)",
     /* DFlash / DSPARK spec strip — violet surface, clearly visible on paper */
     "--theme-dflash-strip-bg": "#ddd6fe",
     "--theme-dflash-strip-border": "#a78bfa",

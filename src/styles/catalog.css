@@ -1996,7 +1996,10 @@
   letter-spacing: 0.2em;
   text-align: center;
   color: var(--theme-industrial-text, var(--theme-text-muted));
-  text-shadow: 0 1px 0 color-mix(in srgb, #000 35%, transparent);
+  /* Two-tone label bevel via per-theme token (see app-themes.ts). Zero blur, so it is a
+     crisp edge, never a blurred ghost. Dark themes resolve to none; ARCTIC gets a
+     face-correct engraved bevel tuned for dark ink on the light aluminium bezel. */
+  text-shadow: var(--theme-catalog-label-shadow);
 }
 
 .catalog-quick-section__head .catalog-quick-section__title {
