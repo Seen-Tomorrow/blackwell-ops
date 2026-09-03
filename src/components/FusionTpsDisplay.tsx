@@ -34,10 +34,10 @@ export default function FusionTpsDisplay({ tps, smoothedTps, history }: { tps: n
 
   // Color tiers
   let colorClass: string;
-  if (display >= 80) colorClass = "text-telemetry-cyan";
-  else if (display >= 50) colorClass = "text-nv-green";
-  else if (display > 0) colorClass = "text-orange-400";
-  else colorClass = "text-stealth-muted/60";
+  if (display >= 80) colorClass = "fusion-tps-value fusion-tps-value--info";
+  else if (display >= 50) colorClass = "fusion-tps-value fusion-tps-value--accent";
+  else if (display > 0) colorClass = "fusion-tps-value fusion-tps-value--warn";
+  else colorClass = "fusion-tps-value fusion-tps-value--ghost";
 
   return (
     <div className="flex flex-col items-center gap-1">
@@ -45,7 +45,7 @@ export default function FusionTpsDisplay({ tps, smoothedTps, history }: { tps: n
       <span className={`font-mono font-bold tracking-tight ${colorClass}`} style={{ fontSize: 'clamp(1.2rem, 5vh, 2.5rem)' }}>
         {display > 0 ? display.toFixed(0) : "--"}
       </span>
-      <span className="text-[8px] font-mono text-stealth-muted/60 tracking-widest">TOKENS / SEC</span>
+      <span className="type-tiny font-mono fusion-tps-caption tracking-widest">TOKENS / SEC</span>
 
       {/* Sparkline */}
       <svg width="100%" height={HEIGHT} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} preserveAspectRatio="none" className="opacity-80 mt-0.5">

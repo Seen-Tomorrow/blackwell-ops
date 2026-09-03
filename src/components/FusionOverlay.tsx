@@ -396,29 +396,29 @@ export default function FusionOverlay({
     return (
       <div className="relative flex flex-col w-full h-full px-2 py-1 gap-2 overflow-hidden">
         <div className="flex items-center flex-shrink-0 gap-2">
-          <span className="text-[9px] font-mono text-stealth-muted/50 tracking-widest flex-1 truncate">
+          <span className="type-label font-mono fusion-overlay-status tracking-widest flex-1 truncate">
             {statusLabel}
           </span>
-          <span className="text-[12px] font-mono text-stealth-muted/50 tracking-wider truncate" title={displayAlias}>
+          <span className="type-md font-mono fusion-overlay-status tracking-wider truncate" title={displayAlias}>
             {displayAlias.toUpperCase()}
           </span>
-          <span className="text-[10px] font-mono text-stealth-muted/35">:{displayPort}</span>
+          <span className="type-body font-mono fusion-overlay-port">:{displayPort}</span>
           <button
             type="button"
             onClick={handleStopEngine}
             disabled={isStopping}
-            className={`text-[7px] font-bold tracking-wider px-1.5 py-0.5 rounded text-white select-none ${
+            className={`type-micro font-bold tracking-wider px-1.5 py-0.5 rounded fusion-overlay-stop select-none ${
               isStopping
-                ? "bg-red-600/50 cursor-wait animate-pulse"
-                : "bg-red-600/80 hover:bg-red-500 active:bg-red-700 cursor-pointer"
+                ? "fusion-overlay-stop--stopping cursor-wait animate-pulse"
+                : "fusion-overlay-stop--idle cursor-pointer"
             }`}
           >
             {isStopping ? "STOPPING…" : "STOP"}
           </button>
         </div>
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 text-center min-h-0">
-          <span className="text-[9px] font-mono text-stealth-muted/55 tracking-wider">FUSION MONITORING OFF</span>
-          <span className="text-[8px] font-mono text-stealth-muted/40 leading-relaxed max-w-[280px]">
+          <span className="type-label font-mono fusion-overlay-note tracking-wider">FUSION MONITORING OFF</span>
+          <span className="type-tiny font-mono fusion-overlay-detail leading-relaxed max-w-[280px]">
             Live /slots telemetry is not enabled for this provider. Engine stop is still available here.
           </span>
         </div>
@@ -429,14 +429,14 @@ export default function FusionOverlay({
   if (!fusion) {
     return (
       <div className="flex flex-col items-center justify-center gap-2 w-full h-full px-4 text-center">
-        <span className="text-[16px] font-mono text-stealth-muted/40 tracking-widest">{displayAlias}</span>
-        <span className="text-[9px] font-mono text-nv-green/70 tracking-wider animate-pulse">
+        <span className="type-xl font-mono fusion-overlay-detail tracking-widest">{displayAlias}</span>
+        <span className="type-label font-mono fusion-overlay-sync tracking-wider animate-pulse">
           SYNCING FUSION…
         </span>
-        <span className="text-[8px] font-mono text-stealth-muted/40 leading-relaxed">
+        <span className="type-tiny font-mono fusion-overlay-detail leading-relaxed">
           Telemetry link lost (remount or idle dedup). Restores within a few seconds.
         </span>
-        <span className="text-[8px] font-mono text-stealth-muted/30">PORT {displayPort}</span>
+        <span className="type-tiny font-mono fusion-overlay-port">PORT {displayPort}</span>
       </div>
     );
   }
@@ -589,8 +589,8 @@ export default function FusionOverlay({
           key="launching-fallback"
           className="flex flex-col items-center justify-center gap-2 w-full h-full absolute inset-0"
         >
-          <span className="text-[10px] font-mono text-nv-green tracking-widest animate-pulse">FUSION BOOT</span>
-          <span className="text-[8px] font-mono text-stealth-muted/40">{displayAlias} : {displayPort}</span>
+          <span className="type-body font-mono fusion-overlay-boot tracking-widest animate-pulse">FUSION BOOT</span>
+          <span className="type-tiny font-mono fusion-overlay-detail">{displayAlias} : {displayPort}</span>
         </div>
       ) : (
         <div

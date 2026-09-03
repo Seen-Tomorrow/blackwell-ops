@@ -20,8 +20,8 @@ function StatBlock({ label, value, highlight }: {
 }) {
   return (
     <div>
-      <p className="text-[9px] font-mono text-stealth-muted tracking-wider">{label}</p>
-      <p className={`text-xs font-mono mt-0.5 ${highlight ? "text-nv-green" : "text-white/80"}`}>
+      <p className="type-label font-mono slot-log-stat-label tracking-wider">{label}</p>
+      <p className={`text-xs font-mono mt-0.5 ${highlight ? "slot-log-stat-value--accent" : "slot-log-stat-value"}`}>
         {value}
       </p>
     </div>
@@ -71,10 +71,10 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, n_ctx = 3
 
   // Phase-specific styling
   const phaseColor = displayPhase === "PP"
-    ? "text-telemetry-amber"
+    ? "slot-log-phase--pp"
     : displayPhase === "GENERATING"
-      ? "text-nv-green"
-      : "text-stealth-muted";
+      ? "slot-log-phase--tg"
+      : "slot-log-phase";
 
   const phaseBg = displayPhase === "PP"
     ? "engine-stack-phase-pp"
@@ -94,10 +94,10 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, n_ctx = 3
     return (
       <div className="engine-stack-body" style={{ animation: 'fadeIn 0.3s ease' }}>
       {/* Card header with model name + stop */}
-      <div className="engine-stack-header flex items-center justify-between px-3 py-2 border-b border-stealth-border/30">
+      <div className="engine-stack-header flex items-center justify-between px-3 py-2 border-b slot-log-header-rule">
         <div className="flex items-center gap-2 min-w-0 flex-1">
           {entry.model_name && entry.model_name !== "none" && (
-            <span className="text-[10px] font-mono text-nv-green/60 truncate min-w-0" title={entry.model_name}>
+            <span className="type-body font-mono slot-log-model truncate min-w-0" title={entry.model_name}>
               {entry.model_name}
             </span>
           )}
@@ -105,7 +105,7 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, n_ctx = 3
         <button
           onClick={() => onStop(entry.idx)}
           disabled={entry.status === "IDLE" || entry.status === "ERROR"}
-          className="text-[10px] font-mono text-red-400/70 hover:text-red-400 transition-colors disabled:opacity-20 disabled:cursor-not-allowed px-2 py-0.5 border border-transparent hover:border-red-500/30"
+          className="type-body font-mono slot-log-stop transition-colors disabled:opacity-20 disabled:cursor-not-allowed px-2 py-0.5 border"
         >
           STOP
         </button>
@@ -119,21 +119,21 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, n_ctx = 3
               phaseBarVisible ? `${phaseBg} opacity-100` : "opacity-0 pointer-events-none border-transparent"
             }`}
           >
-            <span className="text-[9px] font-mono tracking-wider">
+            <span className="type-label font-mono tracking-wider">
               {displayPhase === "PP" && "\u{25C7}"}
               {displayPhase === "GENERATING" && "\u{25CF}"}
               {" "}
               {displayPhase === "PP" ? "PROMPT PROCESSING" : displayPhase === "GENERATING" ? "TOKEN GENERATION" : "\u00A0"}
             </span>
             {fusionUpdate?.prefillMs != null && fusionUpdate.prefillMs > 0 ? (
-              <span className="text-[9px] font-mono text-telemetry-amber">
+              <span className="type-label font-mono slot-log-phase--pp">
                 PP: {fusionUpdate.prefillMs.toFixed(0)}ms
                 {fusionUpdate.decodeTtftMs != null
                   ? ` · +1st: ${fusionUpdate.decodeTtftMs < 1 ? "<1" : fusionUpdate.decodeTtftMs.toFixed(0)}ms`
                   : ""}
               </span>
             ) : (
-              <span className="text-[9px] font-mono opacity-0 select-none" aria-hidden="true">{"\u00A0"}</span>
+              <span className="type-label font-mono opacity-0 select-none" aria-hidden="true">{"\u00A0"}</span>
             )}
           </div>
         </div>
@@ -146,20 +146,20 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, n_ctx = 3
 
         {/* TPS — fusion /slots source of truth */}
         <div className="flex flex-col items-center justify-center">
-          <span className="text-[9px] font-mono text-stealth-muted tracking-wider">TPS</span>
+          <span className="type-label font-mono slot-log-stat-label tracking-wider">TPS</span>
           {tps > 0 ? (
             <span className={`text-lg font-mono font-bold ${phaseColor}`}>
               {tps.toFixed(1)}
             </span>
           ) : (
-            <span className="text-lg font-mono text-stealth-muted">--</span>
+            <span className="text-lg font-mono slot-log-phase">--</span>
           )}
         </div>
       </div>
 
       {/* Benchmark — same per-port store as Fusion overlay; stack UI is controls + results only */}
       {entry.status === "RUNNING" && (
-        <div className="engine-stack-bench border-t border-stealth-border/30">
+        <div className="engine-stack-bench border-t slot-log-header-rule">
           <button
             type="button"
             className="engine-stack-bench-toggle w-full flex items-center justify-between gap-2 px-3 py-1.5 text-left"
@@ -167,16 +167,16 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, n_ctx = 3
             aria-expanded={benchExpanded}
             aria-controls={`engine-stack-bench-${entry.idx}`}
           >
-            <span className="text-[8px] font-mono tracking-wider text-stealth-muted/60 uppercase">
+            <span className="type-tiny font-mono slot-log-caption tracking-wider uppercase">
               Benchmark
             </span>
             <span className="flex items-center gap-2 min-w-0">
               {!benchExpanded && (
-                <span className="text-[8px] font-mono text-nv-green/75 truncate">
+                <span className="type-tiny font-mono slot-log-bench-summary truncate">
                   {benchStackSummary(entry.port) ?? ""}
                 </span>
               )}
-              <span className="text-[18px] leading-none font-mono text-stealth-muted/45 flex-shrink-0" aria-hidden>
+              <span className="type-xl leading-none font-mono slot-log-caret flex-shrink-0" aria-hidden>
                 {benchExpanded ? "▾" : "▸"}
               </span>
             </span>
@@ -190,9 +190,9 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, n_ctx = 3
       )}
 
       {/* Live log stream from LogHub (stderr only, batched ~25ms) */}
-      <div ref={logRef} className="engine-stack-log px-3 py-2 border-t border-stealth-border/30 h-[90px] overflow-y-auto overflow-x-hidden eink-scrollbar">
+      <div ref={logRef} className="engine-stack-log px-3 py-2 border-t slot-log-header-rule h-[90px] overflow-y-auto overflow-x-hidden eink-scrollbar">
         {visibleLogs.length === 0 && systemEvents.length === 0 ? (
-          <p className="text-[10px] font-mono text-stealth-muted/50 italic">
+          <p className="type-body font-mono slot-log-empty italic">
             {entry.status === "LOADING" 
               ? "WAITING FOR READY..." 
               : entry.status === "RUNNING" && displayPhase === "IDLE"
@@ -202,17 +202,17 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, n_ctx = 3
         ) : (
           <>
             {systemEvents.map((evt, i) => (
-                <p key={`sys-${i}`} className="text-[10px] font-mono leading-relaxed text-yellow-400/70">
+                <p key={`sys-${i}`} className="type-body font-mono leading-relaxed slot-log-sys">
                 {evt.text}
               </p>
             ))}
             {visibleLogs.map((log, i) => {
               const isPhase = log.text.includes("PHASE") || log.text.includes("READY") || log.text.includes("LAUNCHED");
               return (
-                <p key={i} className={`text-[10px] font-mono leading-relaxed ${
+                <p key={i} className={`type-body font-mono leading-relaxed ${
                     isPhase 
-                        ? phaseColor === "text-nv-green" ? "text-nv-green/80" : "text-telemetry-amber/80"
-                        : "text-stealth-muted"
+                        ? phaseColor === "slot-log-phase--tg" ? "slot-log-line--tg" : "slot-log-line--pp"
+                        : "slot-log-line"
                 }`}>
                   <AnsiText text={log.text} />
                 </p>
@@ -224,9 +224,9 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, n_ctx = 3
 
       {/* Ready timestamp */}
       {entry.status === "RUNNING" && (
-        <div className="px-3 py-1 border-t border-stealth-border/30 flex items-center justify-between engine-stack-footer">
-          <span className="text-[9px] font-mono text-stealth-muted">SLOT {entry.idx + 1}</span>
-          <span className="text-[9px] font-mono">{entry.ready_at || "RUNNING"}</span>
+        <div className="px-3 py-1 border-t slot-log-header-rule flex items-center justify-between engine-stack-footer">
+          <span className="type-label font-mono slot-log-stat-label">SLOT {entry.idx + 1}</span>
+          <span className="type-label font-mono slot-log-stat-label">{entry.ready_at || "RUNNING"}</span>
         </div>
       )}
     </div>

@@ -363,8 +363,11 @@
     0 0 10px color-mix(in srgb, var(--theme-accent-glow) 55%, transparent) !important;
 }
 
-.foundry-arch-chip--active .foundry-arch-chip__code,
-.foundry-arch-chip--active .text-nv-green,
-.foundry-arch-chip--active .text-stealth-muted {
+.foundry-arch-chip--active .foundry-arch-chip__code {
   color: inherit !important;
 }
+
+/* (Also covered before: the nv-green and stealth-muted text utilities died with
+   the paint migration — the active chip's label/hint now paint through
+   .fnd-arch-label / .fnd-arch-hint, which inherit the chip's own
+   --theme-chip-active-text, so the name hooks had no live target.) */

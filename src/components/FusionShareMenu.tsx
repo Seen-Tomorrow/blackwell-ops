@@ -237,8 +237,8 @@ export default function FusionShareMenu({
     >
       {labeled && (
         <>
-          <ShareGlyph className="w-3 h-3 text-stealth-muted/55 flex-shrink-0" />
-          <span className="text-[6px] font-mono text-stealth-muted/50 tracking-wider uppercase whitespace-nowrap">
+          <ShareGlyph className="w-3 h-3 fusion-share-glyph flex-shrink-0" />
+          <span className="type-hairline font-mono fusion-share-label tracking-wider uppercase whitespace-nowrap">
             SHARE RESULTS
           </span>
         </>
@@ -267,8 +267,8 @@ export default function FusionShareMenu({
                       isOpen ? "fusion-share-variant-btn--open" : ""
                     }`
                   : isOpen
-                    ? "border-stealth-muted/50 text-stealth-muted/80 bg-black/10"
-                    : "border-stealth-border/50 text-stealth-muted/55 hover:text-stealth-muted/80 hover:border-stealth-muted/40 bg-transparent"
+                    ? "fusion-share-variant-btn--swatch fusion-share-variant-btn--swatch--open"
+                    : "fusion-share-variant-btn--swatch"
               } ${busy ? "opacity-50 cursor-wait" : "cursor-pointer"}`}
             >
               {triggerStyle === "share-icon" ? (

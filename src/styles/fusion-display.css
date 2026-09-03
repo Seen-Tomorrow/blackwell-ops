@@ -103,21 +103,21 @@
   gap: 0.75rem;
   flex-wrap: wrap;
   padding-bottom: calc(6px * var(--setup-scale));
-  border-bottom: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 60%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
 }
 
 .setup-guide__title {
   font-size: var(--setup-fs-title);
   font-weight: 700;
   letter-spacing: 0.06em;
-  color: var(--theme-accent-bright, #4ade80);
+  color: var(--theme-accent-bright);
 }
 
 .setup-guide__eyebrow {
   font-size: var(--setup-fs-eyebrow);
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--theme-text-muted, #6b7280);
+  color: var(--theme-text-muted);
 }
 
 /* Checklist */
@@ -139,24 +139,24 @@
   gap: 1rem; /* fixed 1rem between mark and text, per design */
   font-size: var(--setup-fs-item);
   font-family: inherit;
-  color: var(--theme-text-muted, #6b7280);
+  color: var(--theme-text-muted);
   transition: color 0.15s ease;
 }
 
 .setup-checklist__item--current {
-  color: var(--theme-accent-bright, #76b900);
+  color: var(--theme-accent-bright);
 }
 
 .setup-checklist__item--done {
-  color: color-mix(in srgb, var(--theme-accent-bright, #4ade80) 78%, transparent);
+  color: color-mix(in srgb, var(--theme-accent-bright) 78%, transparent);
 }
 
 .setup-checklist__item--accent-cyan.setup-checklist__item--current {
-  color: var(--theme-tel-cyan, #22d3ee);
+  color: var(--theme-tel-cyan);
 }
 
 .setup-checklist__item--accent-amber.setup-checklist__item--current {
-  color: var(--theme-tel-amber, #f59e0b);
+  color: var(--theme-tel-amber);
 }
 
 .setup-checklist__mark {
@@ -165,23 +165,23 @@
   text-align: center;
   font-weight: 700;
   line-height: 1.35;
-  color: color-mix(in srgb, var(--theme-text-muted, #6b7280) 45%, transparent);
+  color: color-mix(in srgb, var(--theme-text-muted) 45%, transparent);
 }
 
 .setup-checklist__item--done .setup-checklist__mark {
-  color: var(--theme-accent-bright, #4ade80);
+  color: var(--theme-accent-bright);
 }
 
 .setup-checklist__item--current .setup-checklist__mark {
-  color: var(--theme-accent-bright, #76b900);
+  color: var(--theme-accent-bright);
 }
 
 .setup-checklist__item--accent-cyan.setup-checklist__item--current .setup-checklist__mark {
-  color: var(--theme-tel-cyan, #22d3ee);
+  color: var(--theme-tel-cyan);
 }
 
 .setup-checklist__item--accent-amber.setup-checklist__item--current .setup-checklist__mark {
-  color: var(--theme-tel-amber, #f59e0b);
+  color: var(--theme-tel-amber);
 }
 
 .setup-checklist__body {
@@ -211,7 +211,7 @@
 }
 
 .setup-checklist__checkbox {
-  accent-color: var(--theme-accent-bright, #76b900);
+  accent-color: var(--theme-accent-bright);
 }
 
 /* Notes */
@@ -221,10 +221,10 @@
   margin: 0;
 }
 
-.setup-guide__note--muted { color: var(--theme-text-muted, #6b7280); }
-.setup-guide__note--cyan { color: var(--theme-tel-cyan, #22d3ee); }
-.setup-guide__note--amber { color: var(--theme-tel-amber, #f59e0b); }
-.setup-guide__note--error { color: var(--theme-tel-hot, #ef4444); }
+.setup-guide__note--muted { color: var(--theme-text-muted); }
+.setup-guide__note--cyan { color: var(--theme-tel-cyan); }
+.setup-guide__note--amber { color: var(--theme-tel-amber); }
+.setup-guide__note--error { color: var(--theme-tel-hot); }
 
 .setup-guide__note--scan-hint {
   display: inline-flex;
@@ -235,7 +235,7 @@
 .setup-guide__btn-inline-label {
   font-weight: 700;
   letter-spacing: 0.05em;
-  color: var(--theme-tel-cyan, #22d3ee);
+  color: var(--theme-tel-cyan);
 }
 
 /* Action row */
@@ -279,56 +279,56 @@
 }
 
 .setup-guide__btn--primary {
-  color: var(--theme-chip-solid-text, #0c120a);
-  border-color: var(--theme-chip-solid-bg, #4ade80);
-  background: var(--theme-chip-solid-bg, #4ade80);
+  color: var(--theme-chip-solid-text);
+  border-color: var(--theme-chip-solid-bg);
+  background: var(--theme-chip-solid-bg);
   font-weight: 700;
 }
 
 .setup-guide__btn--primary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--theme-chip-solid-bg, #4ade80) 88%, #fff);
+  background: color-mix(in srgb, var(--theme-chip-solid-bg) 88%, #fff);
 }
 
 .setup-guide__btn--green {
-  color: var(--theme-accent-bright, #4ade80);
-  border-color: color-mix(in srgb, var(--theme-accent-bright, #4ade80) 45%, transparent);
+  color: var(--theme-accent-bright);
+  border-color: color-mix(in srgb, var(--theme-accent-bright) 45%, transparent);
   background: transparent;
 }
 
 .setup-guide__btn--green:hover:not(:disabled) {
   background: var(--theme-accent-soft, rgba(74, 222, 128, 0.06));
-  border-color: color-mix(in srgb, var(--theme-accent-bright, #4ade80) 70%, transparent);
+  border-color: color-mix(in srgb, var(--theme-accent-bright) 70%, transparent);
 }
 
 .setup-guide__btn--cyan {
-  color: var(--theme-tel-cyan, #22d3ee);
-  border-color: color-mix(in srgb, var(--theme-tel-cyan, #22d3ee) 45%, transparent);
+  color: var(--theme-tel-cyan);
+  border-color: color-mix(in srgb, var(--theme-tel-cyan) 45%, transparent);
   background: transparent;
 }
 
 .setup-guide__btn--cyan:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--theme-tel-cyan, #22d3ee) 10%, transparent);
+  background: color-mix(in srgb, var(--theme-tel-cyan) 10%, transparent);
 }
 
 .setup-guide__btn--neutral {
-  color: var(--theme-text-muted, #6b7280);
-  border-color: var(--theme-border-subtle, #2a3a2a);
+  color: var(--theme-text-muted);
+  border-color: var(--theme-border-subtle);
   background: transparent;
 }
 
 .setup-guide__btn--neutral:hover:not(:disabled) {
-  color: var(--theme-text, #e0e0e0);
-  border-color: color-mix(in srgb, var(--theme-text-muted, #6b7280) 50%, transparent);
+  color: var(--theme-text);
+  border-color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
 }
 
 .setup-guide__btn--danger {
-  color: var(--theme-tel-hot, #ef4444);
-  border-color: color-mix(in srgb, var(--theme-tel-hot, #ef4444) 50%, transparent);
+  color: var(--theme-tel-hot);
+  border-color: color-mix(in srgb, var(--theme-tel-hot) 50%, transparent);
   background: transparent;
 }
 
 .setup-guide__btn--danger:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--theme-tel-hot, #ef4444) 12%, transparent);
+  background: color-mix(in srgb, var(--theme-tel-hot) 12%, transparent);
 }
 
 .setup-guide__btn--running {
@@ -346,7 +346,7 @@
 .setup-guide__link {
   font-size: var(--setup-fs-btn);
   font-family: inherit;
-  color: var(--theme-tel-cyan, #22d3ee);
+  color: var(--theme-tel-cyan);
   text-decoration: underline;
   text-underline-offset: 2px;
   background: none;
@@ -379,16 +379,16 @@
   line-height: 1.5;
 }
 
-.setup-driver-check__ok { color: var(--theme-accent-bright, #4ade80); }
-.setup-driver-check__bad { color: var(--theme-tel-hot, #ef4444); }
-.setup-driver-check__warn { color: var(--theme-tel-amber, #f59e0b); }
+.setup-driver-check__ok { color: var(--theme-accent-bright); }
+.setup-driver-check__bad { color: var(--theme-tel-hot); }
+.setup-driver-check__warn { color: var(--theme-tel-amber); }
 
 .setup-driver-check__ack {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   font-size: var(--setup-fs-detail);
-  color: var(--theme-text-muted, #6b7280);
+  color: var(--theme-text-muted);
   cursor: pointer;
   user-select: none;
 }
@@ -494,14 +494,14 @@
 .vram-forecast-measuring__flank-label {
   font-size: 8px;
   letter-spacing: 0.18em;
-  color: color-mix(in srgb, var(--theme-accent, #76B900) 75%, transparent);
-  text-shadow: 0 0 6px color-mix(in srgb, var(--theme-accent, #76B900) 30%, transparent);
+  color: color-mix(in srgb, var(--theme-accent) 75%, transparent);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--theme-accent) 30%, transparent);
 }
 
 .vram-forecast-measuring__flank-readout {
   font-size: 8px;
   letter-spacing: 0.14em;
-  color: color-mix(in srgb, var(--theme-text-muted, #9ca3af) 80%, transparent);
+  color: color-mix(in srgb, var(--theme-text-muted) 80%, transparent);
   animation: vram-forecast-title-pulse 1.6s ease-in-out infinite;
 }
 
@@ -521,7 +521,7 @@
   width: 22px;
   height: 2px;
   border-radius: 1px;
-  background: color-mix(in srgb, var(--theme-accent, #76B900) 28%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 28%, transparent);
   animation: vram-forecast-ladder-tick 1.2s ease-in-out infinite;
 }
 
@@ -549,8 +549,8 @@
   height: 56px;
   border-radius: 2px;
   overflow: hidden;
-  background: color-mix(in srgb, var(--theme-panel-accent, #1f2937) 65%, transparent);
-  border: 1px solid color-mix(in srgb, var(--theme-border, #374151) 35%, transparent);
+  background: color-mix(in srgb, var(--theme-panel-accent) 65%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-border) 35%, transparent);
 }
 
 .vram-forecast-measuring__flank-meter-fill {
@@ -561,11 +561,11 @@
   height: 55%;
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--theme-accent-bright, #a3e635) 70%, transparent),
-    color-mix(in srgb, var(--theme-accent, #76B900) 35%, transparent)
+    color-mix(in srgb, var(--theme-accent-bright) 70%, transparent),
+    color-mix(in srgb, var(--theme-accent) 35%, transparent)
   );
   animation: vram-forecast-flank-level 1.5s ease-in-out infinite;
-  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-accent, #76B900) 40%, transparent);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-accent) 40%, transparent);
 }
 
 .vram-forecast-measuring__flank-meter-fill--rev {
@@ -586,14 +586,14 @@
   position: absolute;
   inset: 8px;
   border-radius: 50%;
-  border: 1px solid color-mix(in srgb, var(--theme-accent, #76B900) 45%, transparent);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--theme-accent, #76B900) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 45%, transparent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--theme-accent) 18%, transparent);
   animation: vram-forecast-ring-breathe 1.8s ease-in-out infinite;
 }
 
 .vram-forecast-measuring__ring--delay {
   inset: 0;
-  border-color: color-mix(in srgb, var(--theme-accent, #76B900) 22%, transparent);
+  border-color: color-mix(in srgb, var(--theme-accent) 22%, transparent);
   box-shadow: none;
   animation-delay: 0.35s;
   animation-duration: 2.2s;
@@ -609,10 +609,10 @@
   transform-origin: 0 50%;
   background: linear-gradient(
     90deg,
-    color-mix(in srgb, var(--theme-accent, #76B900) 85%, #fff),
+    color-mix(in srgb, var(--theme-accent) 85%, #fff),
     transparent
   );
-  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-accent, #76B900) 55%, transparent);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-accent) 55%, transparent);
   animation: vram-forecast-beam-spin 1.35s linear infinite;
   pointer-events: none;
 }
@@ -622,8 +622,8 @@
   z-index: 1;
   font-size: 11px;
   letter-spacing: 0.16em;
-  color: color-mix(in srgb, var(--theme-accent-bright, var(--theme-accent, #76B900)) 90%, #fff);
-  text-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent, #76B900) 45%, transparent);
+  color: color-mix(in srgb, var(--theme-accent-bright, var(--theme-accent)) 90%, #fff);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent) 45%, transparent);
   opacity: 0.9;
 }
 
@@ -639,7 +639,7 @@
 .vram-forecast-measuring__title {
   font-size: 13px;
   letter-spacing: 0.24em;
-  color: color-mix(in srgb, var(--theme-text, #e5e7eb) 88%, transparent);
+  color: color-mix(in srgb, var(--theme-text) 88%, transparent);
   animation: vram-forecast-title-pulse 1.4s ease-in-out infinite;
 }
 
@@ -647,7 +647,7 @@
   font-size: 9px;
   letter-spacing: 0.1em;
   text-transform: lowercase;
-  color: color-mix(in srgb, var(--theme-text-muted, #9ca3af) 75%, transparent);
+  color: color-mix(in srgb, var(--theme-text-muted) 75%, transparent);
 }
 
 .vram-forecast-measuring__bar {
@@ -657,8 +657,8 @@
   margin-top: 0.45rem;
   border-radius: 2px;
   overflow: hidden;
-  background: color-mix(in srgb, var(--theme-panel-accent, #1f2937) 70%, transparent);
-  border: 1px solid color-mix(in srgb, var(--theme-border, #374151) 40%, transparent);
+  background: color-mix(in srgb, var(--theme-panel-accent) 70%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-border) 40%, transparent);
 }
 
 .vram-forecast-measuring__bar-fill {
@@ -669,8 +669,8 @@
   background: linear-gradient(
     90deg,
     transparent,
-    color-mix(in srgb, var(--theme-accent, #76B900) 75%, transparent),
-    color-mix(in srgb, var(--theme-accent-bright, #a3e635) 55%, transparent),
+    color-mix(in srgb, var(--theme-accent) 75%, transparent),
+    color-mix(in srgb, var(--theme-accent-bright) 55%, transparent),
     transparent
   );
   animation: vram-forecast-bar-sweep 1.15s ease-in-out infinite;
@@ -718,8 +718,8 @@
 
 /* ── Draft-only full glass face (no FIT / LEARNED) ───────────────────────── */
 .vram-badge-forecast--draft {
-  --vram-draft-ink: var(--theme-dflash-strip-text, #ddd6fe);
-  --vram-draft-edge: var(--theme-dflash-strip-border, #a78bfa);
+  --vram-draft-ink: var(--theme-dflash-strip-text);
+  --vram-draft-edge: var(--theme-dflash-strip-border);
   --vram-draft-wash: var(--theme-dflash-strip-bg, color-mix(in srgb, #2e1065 70%, transparent));
 }
 
@@ -888,14 +888,14 @@
   font-size: 9px;
   line-height: 1.45;
   letter-spacing: 0.04em;
-  color: color-mix(in srgb, var(--theme-text, #e5e7eb) 82%, var(--vram-draft-ink) 18%);
+  color: color-mix(in srgb, var(--theme-text) 82%, var(--vram-draft-ink) 18%);
 }
 
 .vram-forecast-draft__hint {
   font-size: 8px;
   letter-spacing: 0.08em;
   line-height: 1.35;
-  color: color-mix(in srgb, var(--theme-text-muted, #9ca3af) 80%, var(--vram-draft-ink) 20%);
+  color: color-mix(in srgb, var(--theme-text-muted) 80%, var(--vram-draft-ink) 20%);
 }
 
 .vram-forecast-draft__meta {
@@ -1019,7 +1019,7 @@
   font-weight: 700;
   letter-spacing: 0.015em;
   line-height: 1.2;
-  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 92%, transparent);
+  color: color-mix(in srgb, var(--display-face-text) 92%, transparent);
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -1038,13 +1038,13 @@
   letter-spacing: 0.04em;
   line-height: 1.15;
   white-space: nowrap;
-  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 42%, transparent);
+  color: color-mix(in srgb, var(--display-face-text) 42%, transparent);
 }
 .vram-fc__launch-summary.is-ok {
-  color: color-mix(in srgb, var(--theme-accent-bright, #a3e635) 82%, var(--display-face-text, #e2e8f0));
+  color: color-mix(in srgb, var(--theme-accent-bright) 82%, var(--display-face-text));
 }
 .vram-fc__launch-summary.is-fail {
-  color: color-mix(in srgb, #f87171 88%, var(--display-face-text, #e2e8f0));
+  color: color-mix(in srgb, #f87171 88%, var(--display-face-text));
 }
 .vram-forecast-header--assisted .vram-fc-header__reprobe,
 .vram-forecast-header--assisted .vram-fc-source__reprobe {
@@ -1060,7 +1060,7 @@
   letter-spacing: 0.16em;
   line-height: 1;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 78%, transparent);
+  color: color-mix(in srgb, var(--display-face-text) 78%, transparent);
   flex-shrink: 0;
 }
 
@@ -1074,7 +1074,7 @@
   border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.4)) 48%, transparent);
   letter-spacing: 0.1em;
   line-height: 1.15;
-  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 90%, transparent);
+  color: color-mix(in srgb, var(--display-face-text) 90%, transparent);
   background: color-mix(in srgb, var(--display-face-bar-bg, rgba(0, 0, 0, 0.4)) 50%, transparent);
 }
 
@@ -1094,22 +1094,22 @@
   font-weight: 700;
   letter-spacing: 0.1em;
   line-height: 1.2;
-  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 78%, transparent);
+  color: color-mix(in srgb, var(--display-face-text-muted) 78%, transparent);
   background: color-mix(in srgb, var(--display-face-bar-bg, rgba(0, 0, 0, 0.4)) 55%, transparent);
   white-space: nowrap;
 }
 
 .vram-fc__src[data-source-kind="learned"],
 .vram-fc__src[data-source-kind="learned_curve"] {
-  color: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 92%, #fde68a 18%);
-  border-color: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 48%, transparent);
-  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 20%, transparent);
+  color: color-mix(in srgb, var(--theme-telemetry-amber) 92%, #fde68a 18%);
+  border-color: color-mix(in srgb, var(--theme-telemetry-amber) 48%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-telemetry-amber) 20%, transparent);
 }
 
 .vram-fc__src[data-source-kind="fit_probe"] {
-  color: color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 90%, transparent);
-  border-color: color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 42%, transparent);
-  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 18%, transparent);
+  color: color-mix(in srgb, var(--theme-telemetry-cyan) 90%, transparent);
+  border-color: color-mix(in srgb, var(--theme-telemetry-cyan) 42%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-telemetry-cyan) 18%, transparent);
 }
 
 .vram-fc__verdict {
@@ -1122,13 +1122,13 @@
   font-weight: 700;
   letter-spacing: 0.12em;
   line-height: 1.2;
-  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 80%, transparent);
+  color: color-mix(in srgb, var(--display-face-text-muted) 80%, transparent);
   background: color-mix(in srgb, var(--display-face-bar-bg, rgba(0, 0, 0, 0.4)) 45%, transparent);
 }
 
 .vram-fc__verdict.is-ok {
-  color: color-mix(in srgb, var(--theme-nv-green, #76b900) 92%, transparent);
-  border-color: color-mix(in srgb, var(--theme-nv-green, #76b900) 40%, transparent);
+  color: color-mix(in srgb, var(--theme-nv-green) 92%, transparent);
+  border-color: color-mix(in srgb, var(--theme-nv-green) 40%, transparent);
 }
 
 .vram-fc__verdict.is-fail {
@@ -1167,7 +1167,7 @@
   letter-spacing: 0.1em;
   line-height: 1;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 82%, transparent);
+  color: color-mix(in srgb, var(--display-face-text) 82%, transparent);
 }
 
 /* Need instruments */
@@ -1192,7 +1192,7 @@
   font-size: var(--vram-fc-fs-micro);
   font-weight: 700;
   letter-spacing: 0.12em;
-  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 72%, transparent);
+  color: color-mix(in srgb, var(--display-face-text-muted) 72%, transparent);
 }
 
 .vram-fc-need__val {
@@ -1202,8 +1202,8 @@
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
   line-height: 1;
-  color: var(--display-face-text, #e2e8f0);
-  text-shadow: 0 0 8px color-mix(in srgb, var(--display-face-text, #e2e8f0) 18%, transparent);
+  color: var(--display-face-text);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--display-face-text) 18%, transparent);
 }
 
 .vram-fc-need__cap {
@@ -1212,7 +1212,7 @@
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   line-height: 1;
-  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 88%, transparent);
+  color: color-mix(in srgb, var(--display-face-text-muted) 88%, transparent);
 }
 
 .vram-fc-need__unit {
@@ -1220,7 +1220,7 @@
   font-size: var(--vram-fc-fs-sm);
   font-weight: 700;
   letter-spacing: 0.04em;
-  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 78%, transparent);
+  color: color-mix(in srgb, var(--display-face-text) 78%, transparent);
 }
 
 .vram-fc-need__unit--muted,
@@ -1229,16 +1229,16 @@
   font-size: var(--vram-fc-fs-micro);
   font-weight: 600;
   letter-spacing: 0.05em;
-  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 70%, transparent);
+  color: color-mix(in srgb, var(--display-face-text-muted) 70%, transparent);
 }
 
 .vram-fc-need__unit--ram {
-  color: color-mix(in srgb, var(--theme-telemetry-blue, #60a5fa) 88%, transparent);
+  color: color-mix(in srgb, var(--theme-telemetry-blue) 88%, transparent);
 }
 
 .vram-fc-need--ram .vram-fc-need__val {
-  color: color-mix(in srgb, var(--theme-telemetry-blue, #60a5fa) 92%, transparent);
-  text-shadow: 0 0 8px color-mix(in srgb, var(--theme-telemetry-blue, #60a5fa) 20%, transparent);
+  color: color-mix(in srgb, var(--theme-telemetry-blue) 92%, transparent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--theme-telemetry-blue) 20%, transparent);
 }
 
 .vram-fc-need__sep {
@@ -1246,21 +1246,21 @@
   letter-spacing: -0.05em;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: var(--vram-fc-fs-sm);
-  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 45%, transparent);
+  color: color-mix(in srgb, var(--display-face-text-muted) 45%, transparent);
 }
 
 .vram-fc-need__val.vram-forecast-gb-accented--learned,
 .vram-fc-need__val.vram-forecast-gb-accented--learned_curve,
 .vram-fc[data-source-kind="learned"] .vram-fc-need:not(.vram-fc-need--ram) .vram-fc-need__val,
 .vram-fc[data-source-kind="learned_curve"] .vram-fc-need:not(.vram-fc-need--ram) .vram-fc-need__val {
-  color: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 88%, #fde68a 22%);
-  text-shadow: 0 0 8px color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 28%, transparent);
+  color: color-mix(in srgb, var(--theme-telemetry-amber) 88%, #fde68a 22%);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--theme-telemetry-amber) 28%, transparent);
 }
 
 .vram-fc-need__val.vram-forecast-gb-accented--fit_probe,
 .vram-fc[data-source-kind="fit_probe"] .vram-fc-need:not(.vram-fc-need--ram) .vram-fc-need__val {
-  color: color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 94%, transparent);
-  text-shadow: 0 0 8px color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 24%, transparent);
+  color: color-mix(in srgb, var(--theme-telemetry-cyan) 94%, transparent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--theme-telemetry-cyan) 24%, transparent);
 }
 
 .vram-forecast-header__fit-row,
@@ -1471,13 +1471,13 @@
  * Status sits in row 1 (beside SOURCE strip).
  */
 .vram-fc-need-frame {
-  --need-frame-accent: color-mix(in srgb, var(--theme-accent, #76b900) 55%, transparent);
+  --need-frame-accent: color-mix(in srgb, var(--theme-accent) 55%, transparent);
   --need-frame-hi: color-mix(in srgb, #fff 18%, transparent);
   --need-frame-lo: color-mix(in srgb, #000 48%, transparent);
-  --need-frame-ring: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 42%, transparent);
+  --need-frame-ring: color-mix(in srgb, var(--display-face-text-muted) 42%, transparent);
   --need-frame-face: color-mix(
     in srgb,
-    var(--display-face-bar-bg, color-mix(in srgb, var(--theme-accent, #76b900) 12%, transparent)) 78%,
+    var(--display-face-bar-bg, color-mix(in srgb, var(--theme-accent) 12%, transparent)) 78%,
     transparent
   );
   grid-column: 2;
@@ -1530,11 +1530,11 @@
 .vram-fc-need-frame[data-source-kind="learned"],
 .vram-fc-need-frame[data-source-kind="learned_curve"] {
   /* Premium gold */
-  --need-frame-accent: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 52%, #fde68a 18%);
+  --need-frame-accent: color-mix(in srgb, var(--theme-telemetry-amber) 52%, #fde68a 18%);
 }
 .vram-fc-need-frame[data-source-kind="fit_probe"] {
   /* Instrument cyan */
-  --need-frame-accent: color-mix(in srgb, var(--theme-telemetry-cyan, #22d3ee) 55%, transparent);
+  --need-frame-accent: color-mix(in srgb, var(--theme-telemetry-cyan) 55%, transparent);
 }
 
 /*
@@ -1671,19 +1671,19 @@
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 48%, transparent);
+  color: color-mix(in srgb, var(--display-face-text) 48%, transparent);
 }
 .vram-fc-need-frame__pip {
   width: 5px;
   height: 5px;
-  border: 1px solid color-mix(in srgb, var(--display-face-text, #e2e8f0) 38%, transparent);
+  border: 1px solid color-mix(in srgb, var(--display-face-text) 38%, transparent);
   background: transparent;
   opacity: 0.32;
 }
 .vram-fc-need-frame__pip.is-on {
   opacity: 1;
-  background: color-mix(in srgb, var(--display-face-text, #e2e8f0) 72%, transparent);
-  border-color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 55%, transparent);
+  background: color-mix(in srgb, var(--display-face-text) 72%, transparent);
+  border-color: color-mix(in srgb, var(--display-face-text) 55%, transparent);
 }
 
 .vram-fc-need-frame__status-row--empty {
@@ -1705,7 +1705,7 @@
   text-transform: uppercase;
   line-height: 1;
   white-space: nowrap;
-  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 94%, transparent);
+  color: color-mix(in srgb, var(--display-face-text) 94%, transparent);
   text-shadow:
     0 1px 0 color-mix(in srgb, #000 45%, transparent),
     0 0 10px color-mix(in srgb, var(--need-frame-accent) 40%, transparent);
@@ -1723,10 +1723,10 @@
 }
 .vram-fc-need-frame[data-source-kind="learned"] .vram-fc-need-frame__status,
 .vram-fc-need-frame[data-source-kind="learned_curve"] .vram-fc-need-frame__status {
-  color: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 82%, #fde68a 28%);
+  color: color-mix(in srgb, var(--theme-telemetry-amber) 82%, #fde68a 28%);
 }
 .vram-fc-need-frame[data-source-kind="fit_probe"] .vram-fc-need-frame__status {
-  color: var(--theme-telemetry-cyan, #22d3ee);
+  color: var(--theme-telemetry-cyan);
 }
 
 /* legacy measure RE-PROBE absolute — unused; header owns RE-PROBE now */
@@ -1821,11 +1821,11 @@
   gap: 0;
   border-radius: 4px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--theme-accent, #76b900) 28%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 28%, transparent);
   background: color-mix(
     in srgb,
-    var(--display-face-bar-bg, color-mix(in srgb, var(--theme-accent, #76b900) 10%, transparent)) 85%,
-    var(--display-face-bg, #0a0a0a)
+    var(--display-face-bar-bg, color-mix(in srgb, var(--theme-accent) 10%, transparent)) 85%,
+    var(--display-face-bg)
   );
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, #fff 5%, transparent),
@@ -1845,9 +1845,9 @@
   gap: 2px;
   padding: 2px 3px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  color: var(--display-face-fc-label-fg, var(--display-face-text, #e2e8f0));
-  background: var(--display-face-fc-label-bg, color-mix(in srgb, var(--theme-accent, #76b900) 14%, transparent));
-  border-right: 1px solid var(--display-face-fc-label-border, color-mix(in srgb, var(--theme-accent, #76b900) 26%, transparent));
+  color: var(--display-face-fc-label-fg, var(--display-face-text));
+  background: var(--display-face-fc-label-bg, color-mix(in srgb, var(--theme-accent) 14%, transparent));
+  border-right: 1px solid var(--display-face-fc-label-border, color-mix(in srgb, var(--theme-accent) 26%, transparent));
   user-select: none;
   line-height: 1;
 }
@@ -1870,7 +1870,7 @@
   letter-spacing: 0.02em;
 }
 .vram-fc-bar__name-chip--ram {
-  color: var(--display-face-fc-label-ram-fg, #93c5fd);
+  color: var(--display-face-fc-label-ram-fg);
   background: var(--display-face-fc-label-ram-bg, color-mix(in srgb, #60a5fa 14%, transparent));
   border-right-color: var(--display-face-fc-label-ram-border, color-mix(in srgb, #60a5fa 30%, transparent));
 }
@@ -1886,10 +1886,10 @@
   border: none;
   border-radius: 0;
   overflow: hidden;
-  background: var(--display-face-bar-bg, color-mix(in srgb, var(--theme-accent, #76b900) 12%, transparent));
+  background: var(--display-face-bar-bg, color-mix(in srgb, var(--theme-accent) 12%, transparent));
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, #fff 10%, transparent),
-    inset 0 -1px 0 color-mix(in srgb, var(--theme-accent, #76b900) 18%, transparent);
+    inset 0 -1px 0 color-mix(in srgb, var(--theme-accent) 18%, transparent);
 }
 
 /* MUST stay absolute — relative + min-height left horizontal grey lips on ARCTIC */
@@ -1930,9 +1930,9 @@
   justify-content: center;
   gap: 0.25em;
   padding: 0 6px;
-  background: var(--display-face-fc-label-bg, color-mix(in srgb, var(--theme-accent, #76b900) 14%, transparent));
-  border-right: 1px solid var(--display-face-fc-label-border, color-mix(in srgb, var(--theme-accent, #76b900) 26%, transparent));
-  color: var(--display-face-fc-label-fg, var(--display-face-text, #e2e8f0));
+  background: var(--display-face-fc-label-bg, color-mix(in srgb, var(--theme-accent) 14%, transparent));
+  border-right: 1px solid var(--display-face-fc-label-border, color-mix(in srgb, var(--theme-accent) 26%, transparent));
+  color: var(--display-face-fc-label-fg, var(--display-face-text));
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   line-height: 1;
   user-select: none;
@@ -1941,7 +1941,7 @@
 .vram-fc-bar__cap-chip--ram {
   background: var(--display-face-fc-label-ram-bg, color-mix(in srgb, #60a5fa 14%, transparent));
   border-right-color: var(--display-face-fc-label-ram-border, color-mix(in srgb, #60a5fa 30%, transparent));
-  color: var(--display-face-fc-label-ram-fg, #93c5fd);
+  color: var(--display-face-fc-label-ram-fg);
 }
 .vram-fc-bar__cap-val {
   font-size: calc(11px * var(--vram-fc-scale, 1.12));
@@ -1971,17 +1971,17 @@
   justify-content: flex-start;
   gap: 0.35em;
   padding: 0 6px;
-  background: var(--display-face-fc-label-bg, color-mix(in srgb, var(--theme-accent, #76b900) 14%, transparent));
-  border-left: 1px solid var(--display-face-fc-label-border, color-mix(in srgb, var(--theme-accent, #76b900) 26%, transparent));
+  background: var(--display-face-fc-label-bg, color-mix(in srgb, var(--theme-accent) 14%, transparent));
+  border-left: 1px solid var(--display-face-fc-label-border, color-mix(in srgb, var(--theme-accent) 26%, transparent));
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   line-height: 1;
   white-space: nowrap;
-  color: var(--display-face-fc-label-fg, var(--display-face-text, #e2e8f0));
+  color: var(--display-face-fc-label-fg, var(--display-face-text));
 }
 .vram-fc-bar__need-chip--ram {
   background: var(--display-face-fc-label-ram-bg, color-mix(in srgb, #60a5fa 14%, transparent));
   border-left-color: var(--display-face-fc-label-ram-border, color-mix(in srgb, #60a5fa 30%, transparent));
-  color: var(--display-face-fc-label-ram-fg, #93c5fd);
+  color: var(--display-face-fc-label-ram-fg);
 }
 /*
  * RAM breakdown of the NEED hero — one row with the hero, stack inside a
@@ -2053,13 +2053,13 @@
 }
 .vram-fc-bar__need-chip[data-need-tone="warn"] .vram-fc-bar__need,
 .vram-fc-bar__need-chip .vram-fc-bar__need--warn {
-  color: var(--theme-telemetry-amber, #fbbf24) !important;
-  -webkit-text-fill-color: var(--theme-telemetry-amber, #fbbf24) !important;
+  color: var(--theme-telemetry-amber) !important;
+  -webkit-text-fill-color: var(--theme-telemetry-amber) !important;
 }
 .vram-fc-bar__need-chip[data-need-tone="hot"] .vram-fc-bar__need,
 .vram-fc-bar__need-chip .vram-fc-bar__need--hot {
-  color: var(--theme-telemetry-red, #ef4444) !important;
-  -webkit-text-fill-color: var(--theme-telemetry-red, #ef4444) !important;
+  color: var(--theme-telemetry-red) !important;
+  -webkit-text-fill-color: var(--theme-telemetry-red) !important;
 }
 .vram-fc-bar__need-chip .vram-fc-bar__unit {
   font-size: calc(9px * var(--vram-fc-scale, 1.12));
@@ -2109,11 +2109,11 @@
   font-weight: 700;
   letter-spacing: 0.12em;
   line-height: 1;
-  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 72%, transparent);
+  color: color-mix(in srgb, var(--display-face-text-muted) 72%, transparent);
 }
 
 .vram-fc-bar__lab--ram {
-  color: color-mix(in srgb, var(--theme-telemetry-blue, #60a5fa) 78%, transparent);
+  color: color-mix(in srgb, var(--theme-telemetry-blue) 78%, transparent);
 }
 
 .vram-fc-bar {
@@ -2133,13 +2133,13 @@
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--display-face-text, #e2e8f0) 5%, transparent),
+      color-mix(in srgb, var(--display-face-text) 5%, transparent),
       transparent 42%
     ),
     color-mix(in srgb, var(--display-face-bar-bg, rgba(0, 0, 0, 0.45)) 90%, transparent);
   box-shadow:
     inset 0 1px 3px color-mix(in srgb, #000 40%, transparent),
-    inset 0 -1px 0 color-mix(in srgb, var(--display-face-text, #e2e8f0) 7%, transparent);
+    inset 0 -1px 0 color-mix(in srgb, var(--display-face-text) 7%, transparent);
 }
 
 .vram-fc-bar__fill {
@@ -2150,7 +2150,7 @@
   border-radius: 2px;
   transition: width 0.18s ease-out;
   /* Hue source for bevel bottom shade */
-  color: var(--theme-accent, #76b900);
+  color: var(--theme-accent);
 }
 
 .vram-fc-bar__cap {
@@ -2160,14 +2160,14 @@
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
-  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 86%, transparent);
+  color: color-mix(in srgb, var(--display-face-text) 86%, transparent);
   white-space: nowrap;
   min-width: 4.5ch;
   text-align: right;
 }
 
 .vram-fc-bar__cap--ram {
-  color: color-mix(in srgb, var(--theme-telemetry-blue, #60a5fa) 90%, transparent);
+  color: color-mix(in srgb, var(--theme-telemetry-blue) 90%, transparent);
 }
 
 /* VRAM / RAM inset warnings — right end of track, need-hero type scale */
@@ -2204,13 +2204,13 @@
 }
 
 .vram-forecast-bar__inset-label--warn {
-  color: var(--theme-telemetry-amber, #fbbf24);
-  -webkit-text-fill-color: var(--theme-telemetry-amber, #fbbf24);
+  color: var(--theme-telemetry-amber);
+  -webkit-text-fill-color: var(--theme-telemetry-amber);
 }
 
 .vram-forecast-bar__inset-label--hot {
-  color: var(--theme-telemetry-red, #ef4444);
-  -webkit-text-fill-color: var(--theme-telemetry-red, #ef4444);
+  color: var(--theme-telemetry-red);
+  -webkit-text-fill-color: var(--theme-telemetry-red);
 }
 
 .vram-forecast-bar__inset-label--ram {
@@ -2224,13 +2224,13 @@
 }
 
 .vram-forecast-bar__inset-label--ram.vram-forecast-bar__inset-label--warn {
-  color: var(--theme-telemetry-amber, #fbbf24);
-  -webkit-text-fill-color: var(--theme-telemetry-amber, #fbbf24);
+  color: var(--theme-telemetry-amber);
+  -webkit-text-fill-color: var(--theme-telemetry-amber);
 }
 
 .vram-forecast-bar__inset-label--ram.vram-forecast-bar__inset-label--hot {
-  color: var(--theme-telemetry-red, #ef4444);
-  -webkit-text-fill-color: var(--theme-telemetry-red, #ef4444);
+  color: var(--theme-telemetry-red);
+  -webkit-text-fill-color: var(--theme-telemetry-red);
 }
 
 
@@ -2326,9 +2326,9 @@
   margin: 0;
   padding: 2px 8px;
   border-radius: 0.125rem;
-  border: 1px solid var(--theme-provider-pill-border, #b87a00);
-  background: var(--theme-provider-pill-bg, #1a1206);
-  color: var(--theme-provider-pill-text, #b87a00);
+  border: 1px solid var(--theme-provider-pill-border);
+  background: var(--theme-provider-pill-bg);
+  color: var(--theme-provider-pill-text);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 9px;
   font-weight: 600;
@@ -2342,17 +2342,17 @@
 }
 .vram-fc-source__reprobe:hover:not(:disabled),
 .vram-fc-header__reprobe:hover:not(:disabled) {
-  border-color: var(--theme-provider-pill-hover-border, #f5971f);
-  color: var(--theme-provider-pill-hover-text, #f5971f);
+  border-color: var(--theme-provider-pill-hover-border);
+  color: var(--theme-provider-pill-hover-text);
   background: color-mix(
     in srgb,
-    var(--theme-provider-pill-active-bg, #f5971f) 14%,
-    var(--theme-provider-pill-bg, #1a1206)
+    var(--theme-provider-pill-active-bg) 14%,
+    var(--theme-provider-pill-bg)
   );
 }
 .vram-fc-source__reprobe:focus-visible,
 .vram-fc-header__reprobe:focus-visible {
-  outline: 1px solid var(--theme-provider-pill-hover-border, #f5971f);
+  outline: 1px solid var(--theme-provider-pill-hover-border);
   outline-offset: 1px;
 }
 .vram-fc-source__reprobe[data-probe-state="probing"],
@@ -2361,9 +2361,9 @@
 .vram-fc-header__reprobe:disabled {
   cursor: wait;
   font-weight: 600;
-  color: var(--theme-provider-pill-active-text, #0a0804);
-  background: var(--theme-provider-pill-active-bg, #f5971f);
-  border-color: var(--theme-provider-pill-active-border, #f5971f);
+  color: var(--theme-provider-pill-active-text);
+  background: var(--theme-provider-pill-active-bg);
+  border-color: var(--theme-provider-pill-active-border);
 }
 
 .vram-fc-header__reprobe--over-free,
@@ -2371,8 +2371,8 @@
 .vram-fc-header__reprobe[data-probe-state="over-free"] {
   color: #fff;
   -webkit-text-fill-color: #fff;
-  border-color: var(--theme-telemetry-red, #ef4444);
-  background: color-mix(in srgb, var(--theme-telemetry-red, #ef4444) 82%, #000);
+  border-color: var(--theme-telemetry-red);
+  background: color-mix(in srgb, var(--theme-telemetry-red) 82%, #000);
   animation: vram-fc-over-free-pulse 0.9s ease-in-out infinite;
 }
 
@@ -2385,21 +2385,21 @@
 @keyframes vram-fc-over-free-pulse {
   0%,
   100% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--theme-telemetry-red, #ef4444) 0%, transparent);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--theme-telemetry-red) 0%, transparent);
   }
   50% {
-    box-shadow: 0 0 12px 2px color-mix(in srgb, var(--theme-telemetry-red, #ef4444) 65%, transparent);
+    box-shadow: 0 0 12px 2px color-mix(in srgb, var(--theme-telemetry-red) 65%, transparent);
   }
 }
 
 @keyframes vram-fc-low-vram-pulse {
   0%,
   100% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 0%, transparent);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--theme-telemetry-amber) 0%, transparent);
     filter: brightness(1);
   }
   50% {
-    box-shadow: 0 0 10px 1px color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 45%, transparent);
+    box-shadow: 0 0 10px 1px color-mix(in srgb, var(--theme-telemetry-amber) 45%, transparent);
     filter: brightness(1.15);
   }
 }
@@ -2413,11 +2413,11 @@
   max-width: min(340px, 90vw);
   padding: 8px 10px 7px;
   border-radius: 4px;
-  border: 1px solid color-mix(in srgb, var(--theme-accent, #76B900) 28%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 28%, transparent);
   /* Flat panel face — no accent gradient wash */
   background: var(
     --display-face-recap-bg,
-    color-mix(in srgb, var(--theme-panel, #0c0c0c) 96%, var(--theme-accent, #76B900) 4%)
+    color-mix(in srgb, var(--theme-panel) 96%, var(--theme-accent) 4%)
   );
   box-shadow:
     0 8px 28px rgba(0, 0, 0, 0.55),
@@ -2429,13 +2429,13 @@
 .vram-fc-recap__summary {
   margin: 0 0 7px;
   padding-bottom: 6px;
-  border-bottom: 1px solid color-mix(in srgb, var(--display-face-recap-text, #e2e8f0) 12%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--display-face-recap-text) 12%, transparent);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 10px;
   font-weight: 600;
   line-height: 1.35;
   letter-spacing: 0.02em;
-  color: color-mix(in srgb, var(--display-face-recap-text, #e2e8f0) 92%, transparent);
+  color: color-mix(in srgb, var(--display-face-recap-text) 92%, transparent);
 }
 .vram-fc-recap__row,
 .vram-fc-recap__block {
@@ -2450,7 +2450,7 @@
   font-size: 7px;
   font-weight: 800;
   letter-spacing: 0.14em;
-  color: color-mix(in srgb, var(--display-face-recap-text-muted, #94a3b8) 85%, transparent);
+  color: color-mix(in srgb, var(--display-face-recap-text-muted) 85%, transparent);
   padding-top: 2px;
 }
 .vram-fc-recap__v {
@@ -2458,7 +2458,7 @@
   font-size: 10px;
   font-weight: 600;
   line-height: 1.35;
-  color: color-mix(in srgb, var(--display-face-recap-text, #e2e8f0) 90%, transparent);
+  color: color-mix(in srgb, var(--display-face-recap-text) 90%, transparent);
   min-width: 0;
 }
 .vram-fc-recap__v--kind {
@@ -2486,11 +2486,11 @@
 .vram-fc-recap__foot {
   margin-top: 7px;
   padding-top: 5px;
-  border-top: 1px solid color-mix(in srgb, var(--display-face-recap-text, #e2e8f0) 10%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--display-face-recap-text) 10%, transparent);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 7px;
   letter-spacing: 0.08em;
-  color: color-mix(in srgb, var(--display-face-recap-text-muted, #94a3b8) 70%, transparent);
+  color: color-mix(in srgb, var(--display-face-recap-text-muted) 70%, transparent);
 }
 .vram-fc-source[data-source-kind="fit_probe"] .vram-fc-recap {
   border-color: color-mix(in srgb, #22d3ee 35%, transparent);
@@ -2537,7 +2537,7 @@
   letter-spacing: 0.04em;
   line-height: 1.15;
   white-space: nowrap;
-  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 48%, transparent);
+  color: color-mix(in srgb, var(--display-face-text) 48%, transparent);
 }
 .vram-fc-source__curve-hint--slot {
   visibility: hidden;
@@ -2607,7 +2607,7 @@
   letter-spacing: 0.14em;
   line-height: 1;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 68%, transparent);
+  color: color-mix(in srgb, var(--display-face-text-muted) 68%, transparent);
   flex-shrink: 0;
 }
 
@@ -2626,7 +2626,7 @@
 
 .vram-fc-source__dot {
   flex-shrink: 0;
-  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 45%, transparent);
+  color: color-mix(in srgb, var(--display-face-text-muted) 45%, transparent);
   font-size: var(--vram-fc-fs-sm);
   line-height: 1;
 }
@@ -2639,7 +2639,7 @@
   font-weight: 500;
   letter-spacing: 0.02em;
   line-height: 1.2;
-  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 90%, transparent);
+  color: color-mix(in srgb, var(--display-face-text-muted) 90%, transparent);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2673,7 +2673,7 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: calc(7.5px * var(--vram-fc-scale));
   line-height: 1.25;
-  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 88%, transparent);
+  color: color-mix(in srgb, var(--display-face-text-muted) 88%, transparent);
 }
 
 /* Stacked breakdown: allow wrap so model/ctx lines stay readable */
@@ -2696,11 +2696,11 @@
 }
 
 .memory-source-body__line--breakdown {
-  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 78%, transparent);
+  color: color-mix(in srgb, var(--display-face-text-muted) 78%, transparent);
 }
 
 .memory-source-body__line--secondary {
-  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 62%, transparent);
+  color: color-mix(in srgb, var(--display-face-text-muted) 62%, transparent);
 }
 
 .memory-source-body__line--empty {
@@ -2731,7 +2731,7 @@
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--display-face-text, #e2e8f0) 7%, transparent),
+      color-mix(in srgb, var(--display-face-text) 7%, transparent),
       color-mix(in srgb, #000 22%, transparent)
     );
   box-shadow:
@@ -2788,10 +2788,10 @@
 }
 .vram-fc__topo--compact .gpu-card__bar-need,
 .vram-fc__topo--compact .gpu-card__pct {
-  color: var(--display-face-gpu-readout, var(--theme-accent, #76b900));
+  color: var(--display-face-gpu-readout, var(--theme-accent));
 }
 .vram-fc__topo--compact .gpu-card__bar-cap {
-  color: var(--display-face-gpu-readout-muted, var(--display-face-text-muted, #94a3b8));
+  color: var(--display-face-gpu-readout-muted, var(--display-face-text-muted));
   opacity: 0.9;
 }
 /* Projected load G only — manufactured % stays uncolored capacity context */
@@ -2799,10 +2799,10 @@
   color: #fcd34d;
 }
 .vram-fc__topo--compact .gpu-card__bar-need--warn {
-  color: var(--theme-telemetry-amber, #fb923c);
+  color: var(--theme-telemetry-amber);
 }
 .vram-fc__topo--compact .gpu-card__bar-need--hot {
-  color: var(--theme-telemetry-red, #ef4444);
+  color: var(--theme-telemetry-red);
 }
 /*
  * GPU trough — depressed carve from the TOTAL pool.
@@ -2815,9 +2815,9 @@
   min-height: calc(10px * var(--vram-fc-scale, 1.12));
   border-radius: 2px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--theme-accent, #76b900) 28%, transparent);
-  border-top-color: color-mix(in srgb, #000 45%, var(--theme-accent, #76b900));
-  border-bottom-color: color-mix(in srgb, var(--theme-accent, #76b900) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 28%, transparent);
+  border-top-color: color-mix(in srgb, #000 45%, var(--theme-accent));
+  border-bottom-color: color-mix(in srgb, var(--theme-accent) 18%, transparent);
   background:
     linear-gradient(
       90deg,
@@ -2827,13 +2827,13 @@
     ),
     color-mix(
       in srgb,
-      var(--display-face-bar-bg, color-mix(in srgb, var(--theme-accent, #76b900) 12%, transparent)) 70%,
+      var(--display-face-bar-bg, color-mix(in srgb, var(--theme-accent) 12%, transparent)) 70%,
       #000
     );
   box-shadow:
     inset 0 2px 5px color-mix(in srgb, #000 55%, transparent),
     inset 0 1px 0 color-mix(in srgb, #000 40%, transparent),
-    inset 0 -1px 0 color-mix(in srgb, var(--theme-accent, #76b900) 12%, transparent);
+    inset 0 -1px 0 color-mix(in srgb, var(--theme-accent) 12%, transparent);
 }
 .vram-fc__topo--compact .gpu-card__bar--3d .gpu-card__bar-fill {
   top: 0;
@@ -2932,7 +2932,7 @@
   container-type: size;
   container-name: vram-topo;
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 18%, transparent) transparent;
+  scrollbar-color: color-mix(in srgb, var(--display-face-text) 18%, transparent) transparent;
 }
 
 .gpu-topology-root {
@@ -2991,7 +2991,7 @@
   font-size: calc(7px * var(--vram-fc-scale, 1.12));
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 70%, transparent);
+  color: color-mix(in srgb, var(--display-face-text-muted) 70%, transparent);
 }
 
 .gpu-card {
@@ -3036,7 +3036,7 @@
   font-size: calc(8px * var(--vram-fc-scale, 1.12));
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  color: var(--display-face-gpu-readout, var(--theme-accent, #76b900));
+  color: var(--display-face-gpu-readout, var(--theme-accent));
   text-shadow: none;
 }
 
@@ -3047,9 +3047,9 @@
   min-height: calc(14px * var(--vram-fc-scale, 1.12));
   border-radius: 3px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--theme-accent, #76b900) 26%, transparent);
-  border-top-color: color-mix(in srgb, #000 42%, var(--theme-accent, #76b900));
-  border-bottom-color: color-mix(in srgb, var(--theme-accent, #76b900) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 26%, transparent);
+  border-top-color: color-mix(in srgb, #000 42%, var(--theme-accent));
+  border-bottom-color: color-mix(in srgb, var(--theme-accent) 16%, transparent);
   background:
     linear-gradient(
       90deg,
@@ -3059,13 +3059,13 @@
     ),
     color-mix(
       in srgb,
-      var(--display-face-bar-bg, color-mix(in srgb, var(--theme-accent, #76b900) 12%, transparent)) 68%,
+      var(--display-face-bar-bg, color-mix(in srgb, var(--theme-accent) 12%, transparent)) 68%,
       #000
     );
   box-shadow:
     inset 0 2px 5px color-mix(in srgb, #000 52%, transparent),
     inset 0 1px 0 color-mix(in srgb, #000 38%, transparent),
-    inset 0 -1px 0 color-mix(in srgb, var(--theme-accent, #76b900) 12%, transparent);
+    inset 0 -1px 0 color-mix(in srgb, var(--theme-accent) 12%, transparent);
 }
 .gpu-card__bar .gpu-card__bar-fill {
   top: 0;
@@ -3079,7 +3079,7 @@
   left: 0;
   height: 100%;
   /* Hue source for --bevel bottom shade (overridden per fill class below) */
-  color: var(--theme-accent, #76b900);
+  color: var(--theme-accent);
 }
 
 .gpu-card__bar-fill--hw-reserved {
@@ -3129,12 +3129,12 @@
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--display-face-gpu-readout, var(--theme-accent, #76b900));
+  color: var(--display-face-gpu-readout, var(--theme-accent));
 }
 
 .gpu-card__bar-cap {
   flex-shrink: 0;
-  color: var(--display-face-gpu-readout-muted, var(--display-face-text-muted, #94a3b8));
+  color: var(--display-face-gpu-readout-muted, var(--display-face-text-muted));
   opacity: 0.85;
 }
 
@@ -3188,7 +3188,7 @@
   line-height: 1.2;
   text-align: center;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 88%, transparent);
+  color: color-mix(in srgb, var(--display-face-text-muted) 88%, transparent);
   cursor: pointer;
   transition: color 0.12s ease, border-color 0.12s ease, background-color 0.12s ease;
   white-space: nowrap;
@@ -3196,22 +3196,22 @@
 
 .vram-fc-probe:hover:not(:disabled),
 .fit-probe-btn:hover:not(:disabled) {
-  color: var(--display-face-text, #e2e8f0);
-  border-color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 35%, transparent);
+  color: var(--display-face-text);
+  border-color: color-mix(in srgb, var(--display-face-text) 35%, transparent);
 }
 
 .vram-fc-probe[data-probe-state="probing"],
 .fit-probe-btn[data-probe-state="probing"] {
-  color: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 92%, transparent);
-  border-color: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 42%, transparent);
+  color: color-mix(in srgb, var(--theme-telemetry-amber) 92%, transparent);
+  border-color: color-mix(in srgb, var(--theme-telemetry-amber) 42%, transparent);
   cursor: wait;
   animation: vram-fc-probe-pulse 1.1s ease-in-out infinite;
 }
 
 .vram-fc-probe[data-probe-state="reprobe"],
 .fit-probe-btn[data-probe-state="reprobe"] {
-  color: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 88%, transparent);
-  border-color: color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 38%, transparent);
+  color: color-mix(in srgb, var(--theme-telemetry-amber) 88%, transparent);
+  border-color: color-mix(in srgb, var(--theme-telemetry-amber) 38%, transparent);
 }
 
 .vram-fc-probe:disabled,
@@ -3291,7 +3291,7 @@
 .display-bezel-grid-controls__label {
   font-size: 7px;
   letter-spacing: 0.1em;
-  color: color-mix(in srgb, var(--theme-chrome-control-text, #ccc) 55%, transparent);
+  color: color-mix(in srgb, var(--theme-chrome-control-text) 55%, transparent);
   flex-shrink: 0;
 }
 
@@ -3352,7 +3352,7 @@
   width: 1px;
   height: 22px;
   flex-shrink: 0;
-  background: color-mix(in srgb, var(--theme-bezel-edge-lo, #1a2e1a) 75%, transparent);
+  background: color-mix(in srgb, var(--theme-bezel-edge-lo) 75%, transparent);
   box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--theme-bezel-edge-hi) 25%, transparent);
 }
 
@@ -3468,7 +3468,7 @@
   text-transform: uppercase;
   line-height: 1;
   opacity: 0.7;
-  color: var(--theme-text-muted, #8a9a8a);
+  color: var(--theme-text-muted);
 }
 
 /*
@@ -3632,25 +3632,8 @@
 }
 
 
-/* Bevel hue source — fill class color (ARCTIC accent = glacier blue, not grey) */
-.vram-fc-bar__fill.bg-nv-green,
-.gpu-card__bar-fill.bg-nv-green,
-.vram-forecast-display .bg-nv-green.gpu-bar-fill {
-  color: var(--theme-accent, #76b900);
-}
-.vram-fc-bar__fill.bg-red-500,
-.gpu-card__bar-fill.bg-red-500 {
-  color: #ef4444;
-}
-.vram-fc-bar__fill.bg-orange-400\/70,
-.gpu-card__bar-fill.bg-orange-400\/70,
-.vram-fc-bar__fill.bg-orange-400,
-.gpu-card__bar-fill.bg-orange-400 {
-  color: #fb923c;
-}
-.vram-fc-bar__fill.bg-blue-700 {
-  color: #1d4ed8;
-}
+/* Bar ramp hues now live in badges.css (bar-need-fill bar-need--* / ram-fill--*) —
+   the name-keyed utility hooks below were dead and removed (de-Tailwind pass 5a). */
 .vram-fc-bar__fill.bg-orange-hatched {
   color: #fb923c;
 }
@@ -3834,9 +3817,9 @@ mult chip. * (Do not chain unfinished selectors — a prior strip accidentally p
   line-height: 1;
   letter-spacing: 0.02em;
   border-radius: 3px;
-  background: var(--bench-concurrency-chip-bg, #f5c400);
-  color: var(--bench-concurrency-chip-fg, #0a0c10);
-  border: 1px solid var(--bench-concurrency-chip-border, #b89200);
+  background: var(--bench-concurrency-chip-bg);
+  color: var(--bench-concurrency-chip-fg);
+  border: 1px solid var(--bench-concurrency-chip-border);
 }
 
 .bench-widget-panel .bench-concurrency-badge__mult {
@@ -3975,8 +3958,8 @@ mult chip. * (Do not chain unfinished selectors — a prior strip accidentally p
   background: linear-gradient(
     90deg,
     transparent,
-    color-mix(in srgb, var(--theme-text-muted, #64748b) 28%, transparent) 18%,
-    color-mix(in srgb, var(--theme-text-muted, #64748b) 28%, transparent) 82%,
+    color-mix(in srgb, var(--theme-text-muted) 28%, transparent) 18%,
+    color-mix(in srgb, var(--theme-text-muted) 28%, transparent) 82%,
     transparent
   );
 }
@@ -3995,15 +3978,15 @@ mult chip. * (Do not chain unfinished selectors — a prior strip accidentally p
       color-mix(in srgb, #fff 5%, transparent) 0%,
       transparent 70%
     ),
-    color-mix(in srgb, var(--theme-bg, #000) 55%, transparent);
+    color-mix(in srgb, var(--theme-bg) 55%, transparent);
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, #fff 6%, transparent),
     inset 0 1px 3px var(--theme-bench-inset-shadow, rgba(0, 0, 0, 0.35));
 }
 
 .fusion-bench-latch:hover .fusion-bench-latch__core {
-  border-color: color-mix(in srgb, var(--theme-text-muted, #64748b) 45%, transparent);
-  background: color-mix(in srgb, var(--theme-bg, #000) 40%, transparent);
+  border-color: color-mix(in srgb, var(--theme-text-muted) 45%, transparent);
+  background: color-mix(in srgb, var(--theme-bg) 40%, transparent);
 }
 
 .fusion-bench-latch__segments {
@@ -4017,7 +4000,7 @@ mult chip. * (Do not chain unfinished selectors — a prior strip accidentally p
   width: 4px;
   height: 7px;
   border-radius: 1px;
-  background: color-mix(in srgb, var(--theme-text-muted, #64748b) 18%, transparent);
+  background: color-mix(in srgb, var(--theme-text-muted) 18%, transparent);
   box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.45);
   transition: background 0.2s ease, box-shadow 0.2s ease;
 }
@@ -4039,7 +4022,7 @@ mult chip. * (Do not chain unfinished selectors — a prior strip accidentally p
   font-family: ui-monospace, monospace;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--theme-text-muted, #64748b) 75%, transparent);
+  color: color-mix(in srgb, var(--theme-text-muted) 75%, transparent);
 }
 
 .fusion-bench-latch__action {
@@ -4047,13 +4030,13 @@ mult chip. * (Do not chain unfinished selectors — a prior strip accidentally p
   font-family: ui-monospace, monospace;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--theme-text-muted, #64748b) 55%, transparent);
+  color: color-mix(in srgb, var(--theme-text-muted) 55%, transparent);
   padding-left: 4px;
   border-left: 1px solid color-mix(in srgb, var(--theme-border-subtle, rgba(120, 113, 108, 0.2)) 90%, transparent);
 }
 
 .fusion-bench-latch:hover .fusion-bench-latch__action {
-  color: color-mix(in srgb, var(--theme-text, #e2e8f0) 70%, transparent);
+  color: color-mix(in srgb, var(--theme-text) 70%, transparent);
 }
 
 .bench-widget-panel .bench-results-stack {
@@ -4146,7 +4129,7 @@ html[data-industrial-bezel="brush"] {
   position: relative;
   border-radius: 4px;
   border: none;
-  background-color: var(--display-face-bg, #030801);
+  background-color: var(--display-face-bg);
   background-image:
     radial-gradient(ellipse at center, var(--display-face-glow, rgba(74,222,128,.04)) 0%, transparent 70%);
   /* Unified bezel-edge glass recess — crisp 1px edge lines, no blur (fuzzy on light themes). */
@@ -4222,7 +4205,7 @@ html[data-industrial-bezel="brush"] {
 [data-display-face="dotted"] .phosphor-screen-inner.phosphor-display-surface,
 [data-display-face="dotted"] .launch-rail-tel .phosphor-display-surface {
   position: relative;
-  background-color: var(--display-face-dotted-bg, var(--display-face-bg-dark, #080808));
+  background-color: var(--display-face-dotted-bg, var(--display-face-bg-dark));
   /* Dots only — scan bands stay gated off via --display-face-grain-band-opacity (0). */
   background-image:
     radial-gradient(
@@ -4378,7 +4361,7 @@ html[data-industrial-bezel="brush"] {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   line-height: 1.1;
-  color: color-mix(in srgb, var(--theme-text-muted, #64748b) 82%, transparent);
+  color: color-mix(in srgb, var(--theme-text-muted) 82%, transparent);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4402,7 +4385,7 @@ html[data-industrial-bezel="brush"] {
   font-family: ui-monospace, monospace;
   font-size: 9px;
   line-height: 1.15;
-  color: color-mix(in srgb, var(--theme-text, #e2e8f0) 78%, transparent);
+  color: color-mix(in srgb, var(--theme-text) 78%, transparent);
 }
 
 .fusion-share-hw-band__swatch {
@@ -4629,7 +4612,7 @@ html[data-industrial-bezel="brush"] {
  */
 [data-display-face="dotted"] .phosphor-screen-inner.phosphor-display-surface,
 [data-display-face="dotted"] .launch-rail-tel .phosphor-display-surface {
-  background-color: var(--display-face-dotted-bg, var(--display-face-bg-dark, #080808)) !important;
+  background-color: var(--display-face-dotted-bg, var(--display-face-bg-dark)) !important;
   background-image:
     radial-gradient(
       circle,
@@ -4642,58 +4625,86 @@ html[data-industrial-bezel="brush"] {
   background-blend-mode: var(--display-face-grain-blend, normal) !important;
 }
 
-/* Fusion/bench control ink inside glass — routed to brightness-clamped
-   --display-face-control-* so the LCD screen reads consistently + visibly on
-   every dark theme (SLATE's grey muted otherwise renders labels invisible). */
-.phosphor-screen-inner .text-stealth-muted,
-.phosphor-screen-inner .text-stealth-muted\/25,
-.phosphor-screen-inner .text-stealth-muted\/30,
-.phosphor-screen-inner .text-stealth-muted\/35,
-.phosphor-screen-inner .text-stealth-muted\/40,
-.phosphor-screen-inner .text-stealth-muted\/45,
-.phosphor-screen-inner .text-stealth-muted\/50,
-.phosphor-screen-inner .text-stealth-muted\/55,
-.phosphor-screen-inner .text-stealth-muted\/60,
-.phosphor-screen-inner .text-stealth-muted\/70,
-.phosphor-screen-inner .text-stealth-muted\/80 {
+/*
+ * Phosphor face inks — property-scoped class rules.
+ *
+ * These used to match the literal Tailwind utility names, so deleting the
+ * utilities silently killed them. They cannot be token scopes on
+ * .phosphor-screen-inner: a container token scope changes EVERY use of that
+ * token inside the subtree, but the old hooks corrected ONE property on ONE
+ * family. Inside the glass, --theme-accent also paints forecast bar fills
+ * (.vram-fc-bar__fill, the bar-need-fill ramp), accent chip borders and glows;
+ * --theme-panel paints every panel/surface background; --theme-warn and
+ * --theme-info fill fuel bars, phase badges and ctx bars. Re-scoping those
+ * tokens would move all of those paints, not just the ink the old hook fixed.
+ *
+ * So the correction is keyed to the surface class that replaced each utility,
+ * grouped by property. Values are verbatim from the old hooks.
+ *
+ *   color: control-muted   (was text-stealth-muted[/25..80])
+ *   color: control-text    (was text-nv-green[/70])
+ *   color: #0088aa         (was text-telemetry-cyan[/70])
+ *   color: #b87a00         (was text-orange-400 / text-telemetry-amber[/80])
+ *   background: bar-bg     (was bg-stealth-dark)
+ *   border-color: control-border (was border-stealth-border[/15..70] +
+ *                              border-stealth-muted[/30,60])
+ *
+ * Accepted micro-delta: alpha tails no longer flatten to 100% — each class
+ * keeps its own color-mix step over the same clamped ink.
+ *
+ * The hover:utility rules are gone with the utilities: the only pre-migration
+ * hover site (EngineConfigPanel's "Starter pack" span) was migrated to
+ * .eng-note-emph outside the glass; no current element inside
+ * .phosphor-screen-inner carries a hover ink utility.
+ */
+
+/* Muted ink (was text-stealth-muted[/25..80] -> --display-face-control-muted) */
+.phosphor-screen-inner .fusion-overlay-status,
+.phosphor-screen-inner .fusion-overlay-port,
+.phosphor-screen-inner .fusion-overlay-note,
+.phosphor-screen-inner .fusion-overlay-detail,
+.phosphor-screen-inner .fusion-fuel-label,
+.phosphor-screen-inner .fusion-tps-caption,
+.phosphor-screen-inner .fusion-slotctx-id,
+.phosphor-screen-inner .fusion-tps-value--ghost {
   color: var(--display-face-control-muted) !important;
 }
 
-.phosphor-screen-inner .text-nv-green,
-.phosphor-screen-inner .text-nv-green\/70 {
+/* Accent ink (was text-nv-green[/70] -> --display-face-control-text) */
+.phosphor-screen-inner .fusion-overlay-sync,
+.phosphor-screen-inner .fusion-overlay-boot,
+.phosphor-screen-inner .fusion-fuel-readout--accent,
+.phosphor-screen-inner .fusion-tps-value--accent,
+.phosphor-screen-inner .fusion-slotctx-id--active,
+.phosphor-screen-inner .fusion-phase-badge--tg {
   color: var(--display-face-control-text) !important;
 }
 
-.phosphor-screen-inner .text-telemetry-cyan,
-.phosphor-screen-inner .text-telemetry-cyan\/70 {
+/* Telemetry cyan (was text-telemetry-cyan[/70] -> #0088aa) */
+.phosphor-screen-inner .fusion-tps-value--info {
   color: #0088aa !important;
 }
 
-.phosphor-screen-inner .text-orange-400,
-.phosphor-screen-inner .text-telemetry-amber,
-.phosphor-screen-inner .text-telemetry-amber\/80 {
+/* Orange/amber (was text-orange-400 / text-telemetry-amber[/80] -> #b87a00) */
+.phosphor-screen-inner .fusion-fuel-readout--warn,
+.phosphor-screen-inner .fusion-tps-value--warn,
+.phosphor-screen-inner .fusion-phase-badge--pp {
   color: #b87a00 !important;
 }
 
-.phosphor-screen-inner .bg-stealth-dark {
-  background-color: var(--display-face-bar-bg) !important;
+/* Dark fill (was bg-stealth-dark -> --display-face-bar-bg) */
+.phosphor-screen-inner .fusion-fuel-track {
+  background: var(--display-face-bar-bg) !important;
 }
 
-.phosphor-screen-inner .border-stealth-border,
-.phosphor-screen-inner .border-stealth-border\/15,
-.phosphor-screen-inner .border-stealth-border\/30,
-.phosphor-screen-inner .border-stealth-border\/50,
-.phosphor-screen-inner .border-stealth-muted\/30,
-.phosphor-screen-inner .border-stealth-muted\/60 {
+/* Hairline borders (was border-stealth-border[/15..70] + border-stealth-muted[/30,60]
+   -> --display-face-control-border) */
+.phosphor-screen-inner .fusion-fuel-track,
+.phosphor-screen-inner .fusion-slotctx-track,
+.phosphor-screen-inner .fusion-phase-badge--idle,
+.phosphor-screen-inner .fusion-phase-badge--pp,
+.phosphor-screen-inner .fusion-phase-badge--tg {
   border-color: var(--display-face-control-border) !important;
-}
-
-/* Hover accents — keep the same control ink, just brightened */
-.phosphor-screen-inner .hover\:text-stealth-muted\/70:hover,
-.phosphor-screen-inner .hover\:text-stealth-muted\/80:hover,
-.phosphor-screen-inner .hover\:border-stealth-muted\/60:hover {
-  color: var(--display-face-control-text) !important;
-  border-color: var(--display-face-control-active-border) !important;
 }
 
 /* CTX bar inline text — dark with e-ink shadow for readability on colored fill */
@@ -4793,7 +4804,7 @@ html[data-industrial-bezel="brush"] {
 
 .fusion-dual-stage__divider {
   flex: 0 0 1px;
-  background: color-mix(in srgb, var(--theme-border, #334155) 70%, transparent);
+  background: color-mix(in srgb, var(--theme-border) 70%, transparent);
 }
 
 .fusion-dual-stage--side > .fusion-dual-stage__divider {
@@ -4815,9 +4826,9 @@ html[data-industrial-bezel="brush"] {
   line-height: 1;
   padding: 3px 6px;
   border-radius: 2px;
-  border: 1px solid color-mix(in srgb, var(--theme-border, #475569) 80%, transparent);
-  background: color-mix(in srgb, var(--theme-panel-accent, #111) 82%, #000 18%);
-  color: var(--theme-chrome-control-text, var(--theme-chip-text, var(--theme-text-muted, #94a3b8)));
+  border: 1px solid color-mix(in srgb, var(--theme-border) 80%, transparent);
+  background: color-mix(in srgb, var(--theme-panel-accent) 82%, #000 18%);
+  color: var(--theme-chrome-control-text, var(--theme-chip-text, var(--theme-text-muted)));
   cursor: pointer;
   flex-shrink: 0;
 }
@@ -4828,23 +4839,23 @@ html[data-industrial-bezel="brush"] {
 }
 
 .display-bezel-fusion-chip--armed {
-  border-color: color-mix(in srgb, var(--theme-accent, #76b900) 55%, transparent);
-  color: var(--theme-chip-active-text, var(--theme-accent-bright, #4ade80));
-  background: color-mix(in srgb, var(--theme-accent, #76b900) 12%, transparent);
+  border-color: color-mix(in srgb, var(--theme-accent) 55%, transparent);
+  color: var(--theme-chip-active-text, var(--theme-accent-bright));
+  background: color-mix(in srgb, var(--theme-accent) 12%, transparent);
 }
 
 /* Active ON / FOCUS — solid theme chip tokens (readable on ARCTIC aluminium) */
 .display-bezel-fusion-chip--active {
   border-color: var(--theme-chip-active-border, color-mix(in srgb, var(--theme-accent) 65%, transparent));
-  color: var(--theme-chip-active-text, var(--theme-accent-bright, #4ade80));
+  color: var(--theme-chip-active-text, var(--theme-accent-bright));
   background: var(--theme-chip-active-bg, color-mix(in srgb, var(--theme-accent) 18%, transparent));
   text-shadow: none;
 }
 
 .display-bezel-fusion-chip--harness-ready {
-  border-color: color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 80%, transparent);
+  border-color: color-mix(in srgb, var(--theme-harness-brain-raw) 80%, transparent);
   color: var(--theme-harness-brain-text, var(--theme-chip-active-text));
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 35%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-harness-brain-raw) 35%, transparent);
 }
 
 /* VRAM bezel top-right — multi-engine kill (same intent as ENGINE STACK STOP ALL) */
@@ -4853,15 +4864,15 @@ html[data-industrial-bezel="brush"] {
   line-height: 1;
   padding: 3px 7px;
   border-radius: 2px;
-  border: 1px solid color-mix(in srgb, var(--theme-telemetry-red, #f87171) 45%, transparent);
-  background: color-mix(in srgb, var(--theme-telemetry-red, #f87171) 10%, transparent);
-  color: var(--theme-telemetry-red, #f87171);
+  border: 1px solid color-mix(in srgb, var(--theme-telemetry-red) 45%, transparent);
+  background: color-mix(in srgb, var(--theme-telemetry-red) 10%, transparent);
+  color: var(--theme-telemetry-red);
   cursor: pointer;
 }
 
 .display-bezel-stop-all:hover {
-  background: color-mix(in srgb, var(--theme-telemetry-red, #f87171) 18%, transparent);
-  border-color: color-mix(in srgb, var(--theme-telemetry-red, #f87171) 65%, transparent);
+  background: color-mix(in srgb, var(--theme-telemetry-red) 18%, transparent);
+  border-color: color-mix(in srgb, var(--theme-telemetry-red) 65%, transparent);
 }
 
 .running-engine-card-secondary,
@@ -4999,7 +5010,7 @@ html[data-industrial-bezel="brush"] {
 .config-hw-below-display {
   min-height: 0;
   overflow: hidden;
-  border-top: 1px solid color-mix(in srgb, var(--theme-border, #334155) 55%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
 }
 
 .app-shell[data-monitor-focus="1"] .config-hw-below-display {
@@ -5168,8 +5179,8 @@ html[data-industrial-bezel="brush"] {
   max-height: min(62vh, 560px);
   overflow: auto;
   border-radius: 4px;
-  border: 1px solid color-mix(in srgb, var(--theme-border, #334155) 60%, transparent);
-  background: var(--theme-panel, #0a0c10);
+  border: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
+  background: var(--theme-panel);
   box-shadow: 0 10px 28px color-mix(in srgb, #000 48%, transparent);
 }
 
@@ -5200,8 +5211,8 @@ html[data-industrial-bezel="brush"] {
 }
 
 .launch-rail-tel__oc-badge--open {
-  border-color: color-mix(in srgb, var(--tel-amber, #f59e0b) 70%, transparent);
-  background: color-mix(in srgb, var(--tel-amber, #f59e0b) 20%, transparent);
+  border-color: color-mix(in srgb, var(--tel-amber) 70%, transparent);
+  background: color-mix(in srgb, var(--tel-amber) 20%, transparent);
 }
 .launch-rail-tel__oc-badge-hint {
   font-size: 5.5px;
@@ -5211,12 +5222,12 @@ html[data-industrial-bezel="brush"] {
 }
 
 .launch-rail-tel__oc-badge:hover {
-  border-color: color-mix(in srgb, var(--tel-amber, #f59e0b) 55%, transparent);
+  border-color: color-mix(in srgb, var(--tel-amber) 55%, transparent);
 }
 
 .launch-rail-tel__oc-badge--active {
-  border-color: color-mix(in srgb, var(--tel-amber, #f59e0b) 60%, transparent);
-  background: color-mix(in srgb, var(--tel-amber, #f59e0b) 14%, transparent);
+  border-color: color-mix(in srgb, var(--tel-amber) 60%, transparent);
+  background: color-mix(in srgb, var(--tel-amber) 14%, transparent);
 }
 
 .launch-rail-tel__oc-badge--active .launch-rail-tel__oc-badge-label {
@@ -5230,7 +5241,7 @@ html[data-industrial-bezel="brush"] {
 
 .monitor-focus-exit-bar {
   background: color-mix(in srgb, #000 55%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--theme-border, #334155) 70%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -5315,9 +5326,9 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-ops-chip--lv {
-  background: color-mix(in srgb, var(--theme-dist-cyan, #22d3ee) 14%, transparent);
-  border-color: color-mix(in srgb, var(--theme-dist-cyan, #22d3ee) 40%, transparent);
-  color: var(--theme-dist-cyan, #22d3ee);
+  background: color-mix(in srgb, var(--theme-dist-cyan) 14%, transparent);
+  border-color: color-mix(in srgb, var(--theme-dist-cyan) 40%, transparent);
+  color: var(--theme-dist-cyan);
 }
 
 .fusion-ops-chip--stop {
@@ -5782,7 +5793,7 @@ html[data-industrial-bezel="brush"] {
   font-weight: 700;
   letter-spacing: 0.16em;
   line-height: 1;
-  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 88%, transparent);
+  color: color-mix(in srgb, var(--display-face-text-muted) 88%, transparent);
 }
 
 .fusion-slot-bank__meta {
@@ -5791,7 +5802,7 @@ html[data-industrial-bezel="brush"] {
   letter-spacing: 0.04em;
   line-height: 1;
   font-variant-numeric: tabular-nums;
-  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 72%, transparent);
+  color: color-mix(in srgb, var(--display-face-text-muted) 72%, transparent);
 }
 
 .fusion-slot-bank__body {
@@ -5851,7 +5862,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .ctx-bar-slot-label--spec {
-  color: color-mix(in srgb, #fbbf24 90%, var(--display-face-text, #e2e8f0));
+  color: color-mix(in srgb, #fbbf24 90%, var(--display-face-text));
 }
 
 .ctx-bar-slot-label--live.ctx-bar-slot-label--spec {
@@ -5866,7 +5877,7 @@ html[data-industrial-bezel="brush"] {
   line-height: 1.1;
   padding: 1px 2px;
   border-radius: 2px;
-  background: color-mix(in srgb, var(--theme-bg, #0b1220) 40%, transparent);
+  background: color-mix(in srgb, var(--theme-bg) 40%, transparent);
 }
 
 /* ══ Bench instrument tray ══════════════════════════════════════════════════ */
@@ -5909,7 +5920,7 @@ html[data-industrial-bezel="brush"] {
   padding: 3px 4px 3px 3px;
   border-radius: 3px;
   border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.35)) 50%, transparent);
-  background: color-mix(in srgb, var(--theme-bg, #0b1220) 22%, transparent);
+  background: color-mix(in srgb, var(--theme-bg) 22%, transparent);
   box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 4%, transparent);
 }
 
@@ -5927,7 +5938,7 @@ html[data-industrial-bezel="brush"] {
   font-weight: 700;
   letter-spacing: 0.14em;
   line-height: 1;
-  color: color-mix(in srgb, var(--display-face-control-muted, #94a3b8) 80%, transparent);
+  color: color-mix(in srgb, var(--display-face-control-muted) 80%, transparent);
 }
 
 .fusion-bench-bay__armed-line {
@@ -5937,7 +5948,7 @@ html[data-industrial-bezel="brush"] {
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
   line-height: 1.15;
-  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 88%, transparent);
+  color: color-mix(in srgb, var(--display-face-text) 88%, transparent);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5959,7 +5970,7 @@ html[data-industrial-bezel="brush"] {
   font-size: 6.5px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 92%, transparent);
+  color: color-mix(in srgb, var(--display-face-text-muted) 92%, transparent);
   white-space: nowrap;
   overflow: hidden;
 }
@@ -5971,7 +5982,7 @@ html[data-industrial-bezel="brush"] {
 .fusion-bench-bay__last-empty {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 7px;
-  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 45%, transparent);
+  color: color-mix(in srgb, var(--display-face-text-muted) 45%, transparent);
 }
 
 
@@ -6047,7 +6058,7 @@ html[data-industrial-bezel="brush"] {
   font-weight: 700;
   letter-spacing: 0.1em;
   line-height: 1;
-  color: color-mix(in srgb, var(--display-face-control-muted, var(--display-face-text-muted, #94a3b8)) 92%, transparent);
+  color: color-mix(in srgb, var(--display-face-control-muted, var(--display-face-text-muted)) 92%, transparent);
 }
 
 .fusion-bench-chip {
@@ -6063,9 +6074,9 @@ html[data-industrial-bezel="brush"] {
 
 /* RUN BOTH / RUN — theme control tokens (never hard #22c55e green wash) */
 .fusion-bench-run {
-  border: 1px solid var(--display-face-control-active-border, color-mix(in srgb, var(--theme-accent, #22c55e) 48%, transparent));
-  background: var(--display-face-control-active-bg, color-mix(in srgb, var(--theme-accent, #22c55e) 18%, transparent));
-  color: var(--display-face-control-active-text, var(--theme-accent-bright, #86efac));
+  border: 1px solid var(--display-face-control-active-border, color-mix(in srgb, var(--theme-accent) 48%, transparent));
+  background: var(--display-face-control-active-bg, color-mix(in srgb, var(--theme-accent) 18%, transparent));
+  color: var(--display-face-control-active-text, var(--theme-accent-bright));
   letter-spacing: 0.12em;
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
@@ -6073,11 +6084,11 @@ html[data-industrial-bezel="brush"] {
 .fusion-bench-run:hover:not(:disabled) {
   background: color-mix(
     in srgb,
-    var(--display-face-control-active-bg, var(--theme-accent, #22c55e)) 88%,
+    var(--display-face-control-active-bg, var(--theme-accent)) 88%,
     #fff 12%
   );
-  border-color: var(--display-face-control-active-border, color-mix(in srgb, var(--theme-accent, #4ade80) 60%, transparent));
-  color: var(--display-face-control-active-text, var(--theme-accent-bright, #bbf7d0));
+  border-color: var(--display-face-control-active-border, color-mix(in srgb, var(--theme-accent) 60%, transparent));
+  color: var(--display-face-control-active-text, var(--theme-accent-bright));
 }
 
 .fusion-bench-stop {
@@ -6101,10 +6112,10 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-bench-toggle--on {
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-accent, #22c55e) 40%, transparent);
-  border-color: var(--display-face-control-active-border, color-mix(in srgb, var(--theme-accent, #22c55e) 55%, transparent));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-accent) 40%, transparent);
+  border-color: var(--display-face-control-active-border, color-mix(in srgb, var(--theme-accent) 55%, transparent));
   color: var(--display-face-control-active-text, var(--theme-chip-active-text, var(--theme-accent-bright)));
-  background: var(--display-face-control-active-bg, color-mix(in srgb, var(--theme-accent, #22c55e) 14%, transparent));
+  background: var(--display-face-control-active-bg, color-mix(in srgb, var(--theme-accent) 14%, transparent));
 }
 
 .fusion-bench-field {
@@ -6127,7 +6138,7 @@ html[data-industrial-bezel="brush"] {
   font-weight: 700;
   letter-spacing: 0.1em;
   line-height: 1;
-  color: color-mix(in srgb, var(--display-face-control-muted, var(--display-face-text-muted, #94a3b8)) 78%, transparent);
+  color: color-mix(in srgb, var(--display-face-control-muted, var(--display-face-text-muted)) 78%, transparent);
   white-space: nowrap;
   user-select: none;
 }
@@ -6182,7 +6193,7 @@ html[data-industrial-bezel="brush"] {
 .fusion-bench-running__text {
   font-weight: 600;
   letter-spacing: 0.04em;
-  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 88%, transparent);
+  color: color-mix(in srgb, var(--display-face-text) 88%, transparent);
 }
 
 .fusion-bench-result {
@@ -6225,7 +6236,7 @@ html[data-industrial-bezel="brush"] {
   font-weight: 700;
   letter-spacing: 0.14em;
   line-height: 1;
-  color: color-mix(in srgb, var(--display-face-control-muted, var(--display-face-text-muted, #94a3b8)) 72%, transparent);
+  color: color-mix(in srgb, var(--display-face-control-muted, var(--display-face-text-muted)) 72%, transparent);
 }
 
 .fusion-bench-ghost__value {
@@ -6244,7 +6255,7 @@ html[data-industrial-bezel="brush"] {
   font-size: 6px;
   font-weight: 600;
   letter-spacing: 0.06em;
-  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 58%, transparent);
+  color: color-mix(in srgb, var(--display-face-text-muted) 58%, transparent);
 }
 
 
@@ -6259,7 +6270,7 @@ html[data-industrial-bezel="brush"] {
   font-weight: 700;
   letter-spacing: 0.12em;
   line-height: 1;
-  color: color-mix(in srgb, var(--display-face-control-muted, var(--display-face-text-muted, #94a3b8)) 90%, transparent);
+  color: color-mix(in srgb, var(--display-face-control-muted, var(--display-face-text-muted)) 90%, transparent);
   margin-bottom: 1px;
 }
 
@@ -6270,7 +6281,7 @@ html[data-industrial-bezel="brush"] {
 .fusion-bench-metric__unit {
   margin-top: 1px;
   letter-spacing: 0.04em;
-  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 75%, transparent);
+  color: color-mix(in srgb, var(--display-face-text-muted) 75%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -6309,7 +6320,7 @@ html[data-industrial-bezel="brush"] {
   font-weight: 700;
   letter-spacing: 0.16em;
   line-height: 1;
-  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 78%, transparent);
+  color: color-mix(in srgb, var(--display-face-text) 78%, transparent);
   flex-shrink: 0;
 }
 
@@ -6327,19 +6338,19 @@ html[data-industrial-bezel="brush"] {
   font-weight: 700;
   letter-spacing: 0.1em;
   line-height: 1.2;
-  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 70%, transparent);
+  color: color-mix(in srgb, var(--display-face-text-muted) 70%, transparent);
   background: color-mix(in srgb, var(--display-face-bar-bg, rgba(0, 0, 0, 0.4)) 55%, transparent);
 }
 
 .fusion-boot__src--sse {
-  color: color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 88%, transparent);
-  border-color: color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 40%, transparent);
-  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 22%, transparent);
+  color: color-mix(in srgb, var(--theme-telemetry-cyan) 88%, transparent);
+  border-color: color-mix(in srgb, var(--theme-telemetry-cyan) 40%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-telemetry-cyan) 22%, transparent);
 }
 
 .fusion-boot__src--logs {
-  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 78%, transparent);
-  border-color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 28%, transparent);
+  color: color-mix(in srgb, var(--display-face-text) 78%, transparent);
+  border-color: color-mix(in srgb, var(--display-face-text) 28%, transparent);
 }
 
 .fusion-boot__src--none {
@@ -6353,8 +6364,8 @@ html[data-industrial-bezel="brush"] {
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.06em;
   line-height: 1;
-  color: var(--display-face-text, #e2e8f0);
-  text-shadow: 0 0 10px color-mix(in srgb, var(--display-face-text, #e2e8f0) 28%, transparent);
+  color: var(--display-face-text);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--display-face-text) 28%, transparent);
   flex-shrink: 0;
 }
 
@@ -6365,7 +6376,7 @@ html[data-industrial-bezel="brush"] {
   font-size: 8px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 78%, transparent);
+  color: color-mix(in srgb, var(--display-face-text-muted) 78%, transparent);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -6423,7 +6434,7 @@ html[data-industrial-bezel="brush"] {
   letter-spacing: 0.14em;
   line-height: 1;
   text-align: center;
-  color: color-mix(in srgb, var(--display-face-control-muted, var(--display-face-text-muted, #94a3b8)) 88%, transparent);
+  color: color-mix(in srgb, var(--display-face-control-muted, var(--display-face-text-muted)) 88%, transparent);
 }
 
 .fusion-boot-gpu-bank__bars {
@@ -6455,8 +6466,8 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-boot-gpu-col.is-active .fusion-boot-gpu-col__track {
-  border-color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 28%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--display-face-text, #e2e8f0) 10%, transparent);
+  border-color: color-mix(in srgb, var(--display-face-text) 28%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--display-face-text) 10%, transparent);
 }
 
 .fusion-boot-gpu-col__fill {
@@ -6464,8 +6475,8 @@ html[data-industrial-bezel="brush"] {
   left: 0;
   right: 0;
   bottom: 0;
-  background: color-mix(in srgb, var(--display-face-text, #e2e8f0) 55%, transparent);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--display-face-text, #e2e8f0) 22%, transparent);
+  background: color-mix(in srgb, var(--display-face-text) 55%, transparent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--display-face-text) 22%, transparent);
   transition: height 280ms ease-out, opacity 200ms ease;
   opacity: 0.72;
   z-index: 0;
@@ -6493,7 +6504,7 @@ html[data-industrial-bezel="brush"] {
   font-weight: 700;
   letter-spacing: 0.1em;
   line-height: 1;
-  color: color-mix(in srgb, var(--display-face-control-muted, #94a3b8) 90%, transparent);
+  color: color-mix(in srgb, var(--display-face-control-muted) 90%, transparent);
 }
 
 .fusion-boot-gpu-col__val {
@@ -6503,11 +6514,11 @@ html[data-industrial-bezel="brush"] {
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
   line-height: 1;
-  color: var(--display-face-text, #e2e8f0);
+  color: var(--display-face-text);
 }
 
 .fusion-boot-gpu-col.is-idle .fusion-boot-gpu-col__val {
-  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 70%, transparent);
+  color: color-mix(in srgb, var(--display-face-text-muted) 70%, transparent);
 }
 
 .fusion-boot-gpu-col__unit {
@@ -6515,7 +6526,7 @@ html[data-industrial-bezel="brush"] {
   font-size: 5.5px;
   font-weight: 600;
   letter-spacing: 0.06em;
-  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 62%, transparent);
+  color: color-mix(in srgb, var(--display-face-text-muted) 62%, transparent);
 }
 
 /* NVMe disk hero */
@@ -6542,15 +6553,15 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-boot-disk.is-hot {
-  border-color: color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 45%, transparent);
+  border-color: color-mix(in srgb, var(--theme-telemetry-cyan) 45%, transparent);
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, #fff 6%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 18%, transparent),
-    0 0 18px color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 14%, transparent);
+    0 0 0 1px color-mix(in srgb, var(--theme-telemetry-cyan) 18%, transparent),
+    0 0 18px color-mix(in srgb, var(--theme-telemetry-cyan) 14%, transparent);
 }
 
 .fusion-boot-disk.is-warm {
-  border-color: color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 28%, transparent);
+  border-color: color-mix(in srgb, var(--theme-telemetry-cyan) 28%, transparent);
 }
 
 .fusion-boot-disk__lab {
@@ -6560,7 +6571,7 @@ html[data-industrial-bezel="brush"] {
   letter-spacing: 0.14em;
   line-height: 1;
   margin-bottom: 3px;
-  color: color-mix(in srgb, var(--display-face-control-muted, var(--display-face-text-muted, #94a3b8)) 85%, transparent);
+  color: color-mix(in srgb, var(--display-face-control-muted, var(--display-face-text-muted)) 85%, transparent);
 }
 
 .fusion-boot-disk__value {
@@ -6568,21 +6579,21 @@ html[data-industrial-bezel="brush"] {
   line-height: 0.92 !important;
   min-width: 7ch;
   text-align: center;
-  color: color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 42%, transparent);
+  color: color-mix(in srgb, var(--theme-telemetry-cyan) 42%, transparent);
   text-shadow: none;
   transition: color 180ms ease, text-shadow 220ms ease;
 }
 
 .fusion-boot-disk.is-warm .fusion-boot-disk__value {
-  color: color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 78%, transparent);
-  text-shadow: 0 0 12px color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 28%, transparent);
+  color: color-mix(in srgb, var(--theme-telemetry-cyan) 78%, transparent);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--theme-telemetry-cyan) 28%, transparent);
 }
 
 .fusion-boot-disk.is-hot .fusion-boot-disk__value {
-  color: var(--theme-telemetry-cyan, #00e5ff);
+  color: var(--theme-telemetry-cyan);
   text-shadow:
-    0 0 12px color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 45%, transparent),
-    0 0 28px color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 18%, transparent);
+    0 0 12px color-mix(in srgb, var(--theme-telemetry-cyan) 45%, transparent),
+    0 0 28px color-mix(in srgb, var(--theme-telemetry-cyan) 18%, transparent);
 }
 
 .fusion-boot-disk__unit {
@@ -6591,7 +6602,7 @@ html[data-industrial-bezel="brush"] {
   font-size: 7px;
   font-weight: 600;
   letter-spacing: 0.1em;
-  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 70%, transparent);
+  color: color-mix(in srgb, var(--display-face-text-muted) 70%, transparent);
 }
 
 .fusion-boot-disk__mbit {
@@ -6602,7 +6613,7 @@ html[data-industrial-bezel="brush"] {
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
   text-align: center;
-  color: color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 55%, transparent);
+  color: color-mix(in srgb, var(--theme-telemetry-cyan) 55%, transparent);
 }
 
 /* Phase rail */
@@ -6640,12 +6651,12 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-boot-phase__step.is-done .fusion-boot-phase__bar {
-  background: color-mix(in srgb, var(--display-face-text, #e2e8f0) 72%, transparent);
+  background: color-mix(in srgb, var(--display-face-text) 72%, transparent);
 }
 
 .fusion-boot-phase__step.is-active .fusion-boot-phase__bar {
-  background: color-mix(in srgb, var(--display-face-text, #e2e8f0) 88%, transparent);
-  box-shadow: 0 0 8px color-mix(in srgb, var(--display-face-text, #e2e8f0) 35%, transparent);
+  background: color-mix(in srgb, var(--display-face-text) 88%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--display-face-text) 35%, transparent);
   animation: fusion-instrument-pulse 1.15s ease-in-out infinite;
 }
 
@@ -6660,12 +6671,12 @@ html[data-industrial-bezel="brush"] {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 48%, transparent);
+  color: color-mix(in srgb, var(--display-face-text-muted) 48%, transparent);
 }
 
 .fusion-boot-phase__step.is-done .fusion-boot-phase__lab,
 .fusion-boot-phase__step.is-active .fusion-boot-phase__lab {
-  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 82%, transparent);
+  color: color-mix(in srgb, var(--display-face-text) 82%, transparent);
 }
 
 .fusion-boot-phase__progress {
@@ -6690,8 +6701,8 @@ html[data-industrial-bezel="brush"] {
 .fusion-boot-phase__progress-fill {
   height: 100%;
   border-radius: 1px;
-  background: color-mix(in srgb, var(--display-face-text, #e2e8f0) 78%, transparent);
-  box-shadow: 0 0 8px color-mix(in srgb, var(--display-face-text, #e2e8f0) 28%, transparent);
+  background: color-mix(in srgb, var(--display-face-text) 78%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--display-face-text) 28%, transparent);
   transition: width 180ms linear;
 }
 
@@ -6702,7 +6713,7 @@ html[data-industrial-bezel="brush"] {
   font-size: 7px;
   font-weight: 700;
   letter-spacing: 0.04em;
-  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 82%, transparent);
+  color: color-mix(in srgb, var(--display-face-text) 82%, transparent);
   text-align: right;
 }
 
@@ -6731,7 +6742,7 @@ html[data-industrial-bezel="brush"] {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 7.5px;
   font-style: italic;
-  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 45%, transparent);
+  color: color-mix(in srgb, var(--display-face-text-muted) 45%, transparent);
 }
 
 .fusion-boot-ticker__line {
@@ -6742,7 +6753,7 @@ html[data-industrial-bezel="brush"] {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 72%, transparent);
+  color: color-mix(in srgb, var(--display-face-text) 72%, transparent);
 }
 
 .fusion-boot-meta {
@@ -6765,7 +6776,7 @@ html[data-industrial-bezel="brush"] {
   font-size: 5.5px;
   font-weight: 700;
   letter-spacing: 0.12em;
-  color: color-mix(in srgb, var(--display-face-control-muted, var(--display-face-text-muted, #94a3b8)) 80%, transparent);
+  color: color-mix(in srgb, var(--display-face-control-muted, var(--display-face-text-muted)) 80%, transparent);
 }
 
 .fusion-boot-meta__val {
@@ -6774,14 +6785,14 @@ html[data-industrial-bezel="brush"] {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
-  color: color-mix(in srgb, var(--display-face-text, #e2e8f0) 88%, transparent);
+  color: color-mix(in srgb, var(--display-face-text) 88%, transparent);
 }
 
 .fusion-boot-meta__unit {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 6.5px;
   font-weight: 600;
-  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 70%, transparent);
+  color: color-mix(in srgb, var(--display-face-text-muted) 70%, transparent);
 }
 
 /* Fail state */
@@ -6818,7 +6829,7 @@ html[data-industrial-bezel="brush"] {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 7px;
   letter-spacing: 0.06em;
-  color: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 70%, transparent);
+  color: color-mix(in srgb, var(--display-face-text-muted) 70%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -6829,4 +6840,144 @@ html[data-industrial-bezel="brush"] {
     transition: none;
   }
 }
+
+/* ══ Pass 5a — fusion glass paint (de-Tailwind) ═══════════════════════════
+   Paint for the 7 fusion TSX components; var(--theme-*) only. */
+
+/* Phase badges (FusionPhaseBadge) — label type */
+.fusion-phase-badge {
+  font-size: var(--type-label);
+}
+
+.fusion-phase-badge--idle {
+  background: color-mix(in srgb, var(--theme-text-muted) 10%, transparent);
+  color: color-mix(in srgb, var(--theme-text-muted) 60%, transparent);
+  border-color: color-mix(in srgb, var(--theme-text-muted) 20%, transparent);
+}
+
+.fusion-phase-badge--pp {
+  background: color-mix(in srgb, var(--theme-warn) 20%, transparent);
+  color: var(--theme-warn);
+  border-color: color-mix(in srgb, var(--theme-warn) 40%, transparent);
+}
+
+.fusion-phase-badge--tg {
+  background: color-mix(in srgb, var(--theme-accent) 20%, transparent);
+  color: var(--theme-accent);
+  border-color: color-mix(in srgb, var(--theme-accent) 40%, transparent);
+}
+
+/* TPS readout (FusionTpsDisplay) — tiers + caption */
+.fusion-tps-value--info { color: var(--theme-info); }
+.fusion-tps-value--accent { color: var(--theme-accent); }
+.fusion-tps-value--warn { color: var(--theme-warn); }
+.fusion-tps-value--ghost { color: color-mix(in srgb, var(--theme-text-muted) 60%, transparent); }
+.fusion-tps-caption {
+  font-size: var(--type-tiny);
+  color: color-mix(in srgb, var(--theme-text-muted) 60%, transparent);
+}
+
+/* Fuel tank (FusionFuelTank) — label, readout, track, bar tiers */
+.fusion-fuel-label {
+  font-size: var(--type-micro);
+  color: color-mix(in srgb, var(--theme-text-muted) 60%, transparent);
+}
+
+.fusion-fuel-readout--danger { color: var(--theme-danger); }
+.fusion-fuel-readout--warn { color: var(--theme-warn); }
+.fusion-fuel-readout--accent { color: var(--theme-accent); }
+
+.fusion-fuel-track {
+  background: var(--theme-panel);
+  border-color: var(--theme-border);
+}
+
+.fusion-fuel-bar--danger { background: var(--theme-danger); }
+.fusion-fuel-bar--warn { background: var(--theme-warn); }
+.fusion-fuel-bar--accent { background: var(--theme-accent); }
+
+/* Slot context bar (FusionSlotCtxBar) — id, track; bar tiers reuse fusion-fuel-bar */
+.fusion-slotctx-id { color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent); }
+.fusion-slotctx-id--active { color: var(--theme-accent); }
+
+.fusion-slotctx-track {
+  background: color-mix(in srgb, var(--theme-bg) 20%, transparent);
+  border-color: color-mix(in srgb, var(--theme-bg) 10%, transparent);
+}
+
+/* Share menu (FusionShareMenu) — glyph, label, swatch trigger */
+.fusion-share-glyph { color: color-mix(in srgb, var(--theme-text-muted) 55%, transparent); }
+
+.fusion-share-label {
+  font-size: var(--type-hairline);
+  color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
+}
+
+.fusion-share-variant-btn--swatch {
+  border-color: color-mix(in srgb, var(--theme-border) 50%, transparent);
+  color: color-mix(in srgb, var(--theme-text-muted) 55%, transparent);
+  background: transparent;
+}
+
+.fusion-share-variant-btn--swatch:hover {
+  color: color-mix(in srgb, var(--theme-text-muted) 80%, transparent);
+  border-color: color-mix(in srgb, var(--theme-text-muted) 40%, transparent);
+}
+
+.fusion-share-variant-btn--swatch--open {
+  border-color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
+  color: color-mix(in srgb, var(--theme-text-muted) 80%, transparent);
+  background: color-mix(in srgb, var(--theme-bg) 10%, transparent);
+}
+
+/* Fusion overlay (FusionOverlay) — status rail, stop chip, empty states */
+.fusion-overlay-status { color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent); }
+.fusion-overlay-port { color: color-mix(in srgb, var(--theme-text-muted) 35%, transparent); }
+
+.fusion-overlay-stop { color: #fff; }
+.fusion-overlay-stop--stopping { background: color-mix(in srgb, var(--theme-danger) 50%, transparent); }
+.fusion-overlay-stop--idle {
+  background: color-mix(in srgb, var(--theme-danger) 80%, transparent);
+}
+.fusion-overlay-stop--idle:hover { background: var(--theme-danger); }
+.fusion-overlay-stop--idle:active { background: color-mix(in srgb, var(--theme-danger) 88%, transparent); }
+
+.fusion-overlay-note { color: color-mix(in srgb, var(--theme-text-muted) 55%, transparent); }
+.fusion-overlay-detail { color: color-mix(in srgb, var(--theme-text-muted) 40%, transparent); }
+.fusion-overlay-sync { color: color-mix(in srgb, var(--theme-accent) 70%, transparent); }
+.fusion-overlay-boot { color: var(--theme-accent); }
+
+/* Slot log panel (SlotLogPanel) — chrome: rules, labels, stop, lines */
+.slot-log-header-rule { border-color: color-mix(in srgb, var(--theme-border) 30%, transparent); }
+
+.slot-log-model { color: color-mix(in srgb, var(--theme-accent) 60%, transparent); }
+
+.slot-log-stop {
+  color: color-mix(in srgb, var(--theme-danger) 70%, transparent);
+  border-color: transparent;
+}
+.slot-log-stop:hover:not(:disabled) {
+  color: var(--theme-danger);
+  border-color: color-mix(in srgb, var(--theme-danger) 30%, transparent);
+}
+
+.slot-log-stat-label { color: var(--theme-text-muted); }
+.slot-log-stat-value { color: color-mix(in srgb, var(--theme-text) 80%, transparent); }
+.slot-log-stat-value--accent { color: var(--theme-accent); }
+
+/* Phase color family — TPS value, phase bar text, log phase lines */
+.slot-log-phase { color: var(--theme-text-muted); }
+.slot-log-phase--pp { color: var(--theme-warn); }
+.slot-log-phase--tg { color: var(--theme-accent); }
+
+.slot-log-caption { color: color-mix(in srgb, var(--theme-text-muted) 60%, transparent); }
+.slot-log-bench-summary { color: color-mix(in srgb, var(--theme-accent) 75%, transparent); }
+.slot-log-caret { color: color-mix(in srgb, var(--theme-text-muted) 45%, transparent); }
+
+.slot-log-empty { color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent); }
+.slot-log-sys { color: color-mix(in srgb, var(--theme-warn) 70%, transparent); }
+
+.slot-log-line { color: var(--theme-text-muted); }
+.slot-log-line--tg { color: color-mix(in srgb, var(--theme-accent) 80%, transparent); }
+.slot-log-line--pp { color: color-mix(in srgb, var(--theme-warn) 80%, transparent); }
 
