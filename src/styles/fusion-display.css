@@ -4005,16 +4005,21 @@ mult chip. * (Do not chain unfinished selectors — a prior strip accidentally p
   transition: background 0.2s ease, box-shadow 0.2s ease;
 }
 
+/* Lit bench segments. Was var(--fusion-readout-accent, hash-94a3b8) — a token defined
+   nowhere, so the literal painted identically on every face and the bar was a flat
+   slate wash on ARCTIC paper. Driven by the accent now: bright enough to read as
+   "lit" on the dark bezel (theme-text-muted is dark ink and would disappear here),
+   and sky-on-paper on the light face. */
 .fusion-bench-latch__segments > span.is-lit {
-  background: color-mix(in srgb, var(--fusion-readout-accent, #94a3b8) 72%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 72%, transparent);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    0 0 4px color-mix(in srgb, var(--fusion-readout-accent, #94a3b8) 35%, transparent);
+    0 0 4px color-mix(in srgb, var(--theme-accent) 35%, transparent);
 }
 
 .fusion-bench-latch--stowed .fusion-bench-latch__segments > span:first-child {
-  background: color-mix(in srgb, var(--fusion-readout-accent, #94a3b8) 55%, transparent);
-  box-shadow: 0 0 3px color-mix(in srgb, var(--fusion-readout-accent, #94a3b8) 28%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 55%, transparent);
+  box-shadow: 0 0 3px color-mix(in srgb, var(--theme-accent) 28%, transparent);
 }
 
 .fusion-bench-latch__label {
