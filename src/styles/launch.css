@@ -422,7 +422,7 @@
 /* ── Launch rail — HW telemetry HUD ─── */
 .launch-rail-tel {
   /* Signal colors from theme tokens (ARCTIC = sky + copper, dark = classic HUD) */
-  --tel-vram: var(--theme-tel-vram, var(--theme-accent-bright, #76b900));
+  --tel-vram: var(--theme-tel-vram, var(--theme-accent-bright));
   --tel-ram: var(--theme-tel-ram, #4da3ff);
   --tel-amber: var(--theme-tel-amber, #f59e0b);
   --tel-cyan: var(--theme-tel-cyan, #22d3ee);
@@ -500,7 +500,7 @@
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: var(--theme-accent-bright, #76b900);
+  background: var(--theme-accent-bright);
   border: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 40%, transparent);
   box-shadow: 0 0 4px color-mix(in srgb, var(--theme-accent-glow) 45%, transparent);
   cursor: pointer;
@@ -511,7 +511,7 @@
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: var(--theme-accent-bright, #76b900);
+  background: var(--theme-accent-bright);
   border: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 40%, transparent);
   cursor: pointer;
 }
@@ -607,7 +607,7 @@
   flex-shrink: 0;
   border-top: 1px solid color-mix(in srgb, var(--theme-bezel-edge-lo) 50%, transparent);
   padding: 6px 8px 8px;
-  background: color-mix(in srgb, var(--theme-panel, #0a0c10) 55%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 55%, transparent);
 }
 
 .launch-rail-tel__gpu-stack {
@@ -704,9 +704,9 @@
 
 /* Reset / default profile — neutral chip */
 .gpu-topo-card__oc-badge--idle {
-  color: color-mix(in srgb, var(--theme-text-muted, #6a8a6a) 88%, transparent);
-  background: color-mix(in srgb, var(--theme-text-muted, #6a8a6a) 10%, transparent);
-  border: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 70%, transparent);
+  color: color-mix(in srgb, var(--theme-text-muted) 88%, transparent);
+  background: color-mix(in srgb, var(--theme-text-muted) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
 }
 
 /* Non-default OC applied — soft amber/copper (same treatment as OVERCLOCKING header) */
@@ -1007,7 +1007,7 @@
 /* Selection ring only when selected — no colored drop glow on every card */
 .launch-rail-tel .gpu-topo-card--selected {
   box-shadow: none !important;
-  border-color: var(--theme-industrial-gpu-selected, rgba(74, 222, 128, 0.7)) !important;
+  border-color: var(--theme-industrial-gpu-selected) !important;
 }
 
 .launch-rail-tel__total-label {
@@ -1081,7 +1081,7 @@
   overflow: hidden;
 }.launch-rail-tel .gpu-topo-card--selected,
 .launch-rail-tel .gpu-topo-card--selected{
-  border-color: var(--theme-industrial-gpu-selected, rgba(74, 222, 128, 0.7)) !important;
+  border-color: var(--theme-industrial-gpu-selected) !important;
 }
 
 .launch-rail-tel__cpu-head,
