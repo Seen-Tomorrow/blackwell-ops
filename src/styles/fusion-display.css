@@ -4282,29 +4282,11 @@ html[data-industrial-bezel="brush"] {
   overflow: visible;
 }
 
-.fusion-share-capture-stage[data-fusion-share-capture] > .industrial-display-frame {
+.fusion-share-capture-stage[data-fusion-share-capture] .industrial-display-frame {
   overflow: visible;
   box-shadow: var(--theme-bezel-cast-shadow),
     inset 1px 1px 0 var(--theme-bezel-inset-hi),
     inset -1px -1px 0 var(--theme-bezel-inset-lo);
-}
-
-/* Offscreen clone — unified geometry for white + black (palette swaps below). */
-.fusion-share-capture-stage[data-fusion-share-capture] > .industrial-display-frame {
-  padding: 18px !important;
-  box-sizing: border-box !important;
-}
-
-.fusion-share-capture-stage[data-fusion-share-capture] .vram-forecast-display,
-.fusion-share-capture-stage[data-fusion-share-capture] .vram-badge-forecast {
-  height: var(--fusion-share-phosphor-h, 264px) !important;
-  min-height: var(--fusion-share-phosphor-h, 264px) !important;
-  max-height: var(--fusion-share-phosphor-h, 264px) !important;
-}
-
-.fusion-share-capture-stage[data-fusion-share-capture] .vram-badge-forecast > .fusion-overlay-fill {
-  height: 100% !important;
-  min-height: 0 !important;
 }
 
 .fusion-share-capture-stage[data-fusion-share-capture] .fusion-share-bezel-brand {

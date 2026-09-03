@@ -4,14 +4,12 @@ import {
   formatFusionShareSplitHeadline,
 } from "./benchHwTopo";
 import {
-  computeFusionShareCapturePhosphorHeightPx,
   computeFusionShareHwBandHeightPx,
   FUSION_SHARE_BRAND_LOGO_PX,
 } from "./benchPanelLayout";
 import { brandLogoMarkup } from "./brandLogos";
 import { nextFusionShareDailySeq } from "./storage";
 import { displayFaceFor, type DisplayTexture } from "./displayTexture";
-import { DISPLAY_BEZEL_PADDING_PX } from "./onboardingDisplay";
 import { getThemeById } from "../themes/app-themes";
 import type { GpuInfo } from "./types";
 
@@ -93,9 +91,6 @@ export function buildFusionShareFilename(meta: FusionShareDownloadMeta = {}): st
   return `Blackwell-OPS-${versionTag}_model_${modelSlug}--${tps}tps--${datePart}--${seq}.png`;
 }
 
-/** Default share phosphor budget — synced with benchPanelLayout (no latch / in-panel topo). */
-export const FUSION_SHARE_CAPTURE_PHOSPHOR_HEIGHT_PX = computeFusionShareCapturePhosphorHeightPx();
-
 const NV_GREEN = "#76B900";
 
 /** Hidden in place (keeps flow) — only safe for chrome that does not reserve height. */
@@ -118,13 +113,13 @@ const CAPTURE_STRIP_SELECTORS = [
 const CAPTURE_REMOVE_SELECTORS = [".fusion-bench-latch"].join(",");
 
 /**
- * Export layout budget (CSS px):
- * 1. Dark header (provider · profile · model · params).
- * 2. Gap + mat (bezel phosphor + GPU topo + corner brand).
- * 3. Width derived from total height so the full card stays 16:9.
+ * The card canvas is a FIXED CSS size and always 16:9, so PNG dimensions never change
+ * with GPU count or bench state. The live glass is *measured* (mounted clone) and
+ * scaled uniformly into its area — no content height is hand-summed anywhere here.
  */
 const SHARE_ASPECT_W = 16;
 const SHARE_ASPECT_H = 9;
+export const FUSION_SHARE_EXPORT_CARD_WIDTH = 900;
 export const FUSION_SHARE_EXPORT_GAP = 8;
 /** Panel-accent mat around the bezel in share captures (CSS px). */
 export const FUSION_SHARE_EXPORT_FRAME_PAD_TOP = 0;
@@ -132,120 +127,93 @@ export const FUSION_SHARE_EXPORT_FRAME_PAD_X = 20;
 export const FUSION_SHARE_EXPORT_FRAME_PAD_BOTTOM = 14;
 /** Identity row + up to two params chip rows. */
 export const FUSION_SHARE_EXPORT_HEADER_HEIGHT = 94;
-/** @deprecated Use FUSION_SHARE_EXPORT_HEADER_HEIGHT — kept for callers expecting brand height. */
-export const FUSION_SHARE_EXPORT_BRAND_HEIGHT = FUSION_SHARE_EXPORT_HEADER_HEIGHT;
-/** @deprecated Footer removed — logo + version live in bottom-right bezel corner. */
-export const FUSION_SHARE_EXPORT_FOOTER_HEIGHT = 0;
 
 export interface FusionShareExportLayout {
-  phosphorHeightPx: number;
-  bezelHeightPx: number;
-  hwBandHeightPx: number;
+  cardWidthPx: number;
+  cardHeightPx: number;
+  headerHeightPx: number;
+  /** Card below the header: glass area + HW band + pads. */
   frameHeightPx: number;
-  totalHeightPx: number;
-  widthPx: number;
-}
-
-/**
- * Top bezel chrome band (ASSISTED/FULL AUTO + Device/Split) in captures.
- * Larger than the live 36px band so the buttons get clear clearance above the
- * phosphor. Kept as a fixed constant (the app's own transform zoom does not affect
- * the offscreen capture, which is mounted at scale 1).
- */
-const CAPTURE_TOP_CHROME_BAND_PX = 36;
-
-/**
- * Share bezel height = phosphor + metal pad. When the live frame renders the top
- * chrome (ASSISTED/FULL AUTO + Device/Split), the top pad is the chrome band;
- * otherwise it falls back to the standard bezel pad. Bottom chrome (GPU/ENG density)
- * is hidden from captures, so the bottom always uses the standard bezel pad.
- */
-function computeShareBezelHeightPx(phosphorHeightPx: number, topBandPx: number): number {
-  return phosphorHeightPx + topBandPx + DISPLAY_BEZEL_PADDING_PX;
+  /** The clone re-flows to this width, then scales to fit this box. */
+  glassAreaWidthPx: number;
+  glassAreaHeightPx: number;
+  hwBandHeightPx: number;
 }
 
 export function computeFusionShareExportLayout(
   meta: FusionShareMeta = {},
-  topBandPx = DISPLAY_BEZEL_PADDING_PX,
 ): FusionShareExportLayout {
-  const phosphorHeightPx = computeFusionShareCapturePhosphorHeightPx({
-    gpus: meta.shareGpus,
-    gpuMask: meta.shareGpuMask,
-  });
-  let hwBandHeightPx = computeFusionShareHwBandHeightPx(
+  const cardWidthPx = FUSION_SHARE_EXPORT_CARD_WIDTH;
+  const cardHeightPx = Math.round((cardWidthPx * SHARE_ASPECT_H) / SHARE_ASPECT_W);
+  const headerHeightPx = FUSION_SHARE_EXPORT_HEADER_HEIGHT;
+  const frameHeightPx = cardHeightPx - headerHeightPx - FUSION_SHARE_EXPORT_GAP;
+  const glassAreaWidthPx = cardWidthPx - FUSION_SHARE_EXPORT_FRAME_PAD_X * 2;
+  const hwBandHeightPx = computeFusionShareHwBandHeightPx(
     meta.shareGpus,
     meta.shareGpuMask,
     meta.hwTopo,
+    glassAreaWidthPx,
   );
-  const bezelHeightPx = computeShareBezelHeightPx(phosphorHeightPx, topBandPx);
-  let frameHeightPx =
-    bezelHeightPx
-    + hwBandHeightPx
-    + FUSION_SHARE_EXPORT_FRAME_PAD_TOP
-    + FUSION_SHARE_EXPORT_FRAME_PAD_BOTTOM;
-  let totalHeightPx =
-    FUSION_SHARE_EXPORT_HEADER_HEIGHT + FUSION_SHARE_EXPORT_GAP + frameHeightPx;
-  let widthPx = Math.round((totalHeightPx * SHARE_ASPECT_W) / SHARE_ASPECT_H);
-  const innerWidth = widthPx - FUSION_SHARE_EXPORT_FRAME_PAD_X * 2;
-  const refinedHwBandHeightPx = computeFusionShareHwBandHeightPx(
-    meta.shareGpus,
-    meta.shareGpuMask,
-    meta.hwTopo,
-    innerWidth,
+  const glassAreaHeightPx = Math.max(
+    0,
+    frameHeightPx
+      - hwBandHeightPx
+      - FUSION_SHARE_EXPORT_FRAME_PAD_TOP
+      - FUSION_SHARE_EXPORT_FRAME_PAD_BOTTOM,
   );
-  if (refinedHwBandHeightPx !== hwBandHeightPx) {
-    hwBandHeightPx = refinedHwBandHeightPx;
-    frameHeightPx =
-      bezelHeightPx
-      + hwBandHeightPx
-      + FUSION_SHARE_EXPORT_FRAME_PAD_TOP
-      + FUSION_SHARE_EXPORT_FRAME_PAD_BOTTOM;
-    totalHeightPx =
-      FUSION_SHARE_EXPORT_HEADER_HEIGHT + FUSION_SHARE_EXPORT_GAP + frameHeightPx;
-    widthPx = Math.round((totalHeightPx * SHARE_ASPECT_W) / SHARE_ASPECT_H);
-  }
   return {
-    phosphorHeightPx,
-    bezelHeightPx,
-    hwBandHeightPx,
+    cardWidthPx,
+    cardHeightPx,
+    headerHeightPx,
     frameHeightPx,
-    totalHeightPx,
-    widthPx,
+    glassAreaWidthPx,
+    glassAreaHeightPx,
+    hwBandHeightPx,
   };
 }
 
-const DEFAULT_FUSION_SHARE_LAYOUT = computeFusionShareExportLayout();
+export interface FusionShareGlassFit {
+  scale: number;
+  widthPx: number;
+  heightPx: number;
+}
 
-/** Gunmetal bezel block height (capture phosphor + frame padding) — default budget. */
-export const FUSION_SHARE_EXPORT_BEZEL_HEIGHT_PX = DEFAULT_FUSION_SHARE_LAYOUT.bezelHeightPx;
-/** Middle card section — bezel + HW band inside panel-accent mat. */
-export const FUSION_SHARE_EXPORT_FRAME_HEIGHT = DEFAULT_FUSION_SHARE_LAYOUT.frameHeightPx;
-export const FUSION_SHARE_EXPORT_TOTAL_HEIGHT = DEFAULT_FUSION_SHARE_LAYOUT.totalHeightPx;
-export const FUSION_SHARE_EXPORT_WIDTH = DEFAULT_FUSION_SHARE_LAYOUT.widthPx;
+/**
+ * Uniform fit of the measured glass into the card's glass area. Measured, never
+ * budgeted: whatever the live CSS produces at the reference width is what scales, so
+ * a live fusion-display change needs no mirror correction in the card.
+ */
+export function computeFusionShareGlassFit(
+  layout: FusionShareExportLayout,
+  measured: { widthPx: number; heightPx: number },
+): FusionShareGlassFit {
+  const rawScale = Math.min(
+    layout.glassAreaWidthPx / Math.max(1, measured.widthPx),
+    layout.glassAreaHeightPx / Math.max(1, measured.heightPx),
+  );
+  /* Fit wins over legibility: clamping a scale up would clip the glass (the fit box
+     has overflow hidden). A 2× stacked display shrinking to ~0.6 is the worst real case. */
+  const scale = Math.min(1, rawScale);
+  return {
+    scale,
+    widthPx: Math.round(measured.widthPx * scale),
+    heightPx: Math.round(measured.heightPx * scale),
+  };
+}
+
 /** Identity row only — params row uses industrial panel-accent band. */
 const FUSION_SHARE_IDENTITY_BG = "#0a0c10";
 const FUSION_SHARE_IDENTITY_TEXT = "#f4f6f8";
 const FUSION_SHARE_IDENTITY_MUTED = "rgba(244, 246, 248, 0.42)";
 const FUSION_SHARE_IDENTITY_DIVIDER = "rgba(244, 246, 248, 0.28)";
 const FUSION_SHARE_CYAN = "#00e5ff";
-/** CSS card × FUSION_SHARE_EXPORT_PIXEL_RATIO → PNG (e.g. ~707×398 → ~2828×1592). */
-export const FUSION_SHARE_EXPORT_PIXEL_RATIO = 4;
-
-export function fusionShareExportPixelSize(meta: FusionShareMeta = {}): {
-  width: number;
-  height: number;
-  brandHeight: number;
-  frameHeight: number;
-} {
-  const layout = computeFusionShareExportLayout(meta);
-  const scale = FUSION_SHARE_EXPORT_PIXEL_RATIO;
-  return {
-    width: layout.widthPx * scale,
-    height: layout.totalHeightPx * scale,
-    brandHeight: FUSION_SHARE_EXPORT_HEADER_HEIGHT * scale,
-    frameHeight: layout.frameHeightPx * scale,
-  };
-}
+/**
+ * CSS card × ratio → PNG (900×506 → 1800×1012). Under uniform scale the content is
+ * vector-rasterized into the canvas, so crispness follows this number — not the
+ * clone's font sizes. 4× bought nothing for social (X serves ≤ ~1600px) and quadrupled
+ * html-to-image work on every attempt.
+ */
+export const FUSION_SHARE_EXPORT_PIXEL_RATIO = 2;
 
 interface HiddenNode {
   el: HTMLElement;
@@ -691,6 +659,8 @@ function createLaunchParamsSection(
 
 interface FrameCaptureStage {
   stage: HTMLElement;
+  /** Sized to the scaled glass after the measure pass. */
+  glassFit: HTMLElement;
   frame: HTMLElement;
 }
 
@@ -849,7 +819,11 @@ function createShareHwBand(
   return band;
 }
 
-/** Offscreen clone at fixed CSS px — avoids mutating the live panel and ignores UI zoom. */
+/**
+ * Clone of the live frame at the card's glass reference width, wrapped in a fit box.
+ * Nothing is height-pinned: the clone lays out with live CSS, the measure pass reads
+ * its natural box, and `applyGlassFit` scales it into the glass area.
+ */
 function createFrameCaptureStage(
   source: HTMLElement,
   colors: CaptureColors,
@@ -857,79 +831,89 @@ function createFrameCaptureStage(
   layout: FusionShareExportLayout,
   meta: FusionShareMeta,
 ): FrameCaptureStage {
-  const padTop = FUSION_SHARE_EXPORT_FRAME_PAD_TOP;
-  const padX = FUSION_SHARE_EXPORT_FRAME_PAD_X;
-  const padBottom = FUSION_SHARE_EXPORT_FRAME_PAD_BOTTOM;
-  const innerWidth = layout.widthPx - padX * 2;
-
   const stage = document.createElement("div");
   stage.className = "fusion-share-capture-stage";
   stage.setAttribute("data-fusion-share-capture", "");
   stage.setAttribute("data-fusion-share-exclude", "");
   applyShareCaptureTheme(stage, variant);
+  /* UI zoom is a live-app preference; the card renders at scale 1 deterministically. */
   stage.style.setProperty("--ui-text-scale", "1");
-  stage.style.setProperty("--fusion-share-phosphor-h", `${layout.phosphorHeightPx}px`);
-  stage.style.width = `${layout.widthPx}px`;
+  stage.style.width = `${layout.cardWidthPx}px`;
   stage.style.height = `${layout.frameHeightPx}px`;
-  stage.style.padding = `${padTop}px ${padX}px ${padBottom}px ${padX}px`;
+  stage.style.padding = `${FUSION_SHARE_EXPORT_FRAME_PAD_TOP}px ${FUSION_SHARE_EXPORT_FRAME_PAD_X}px ${FUSION_SHARE_EXPORT_FRAME_PAD_BOTTOM}px ${FUSION_SHARE_EXPORT_FRAME_PAD_X}px`;
   stage.style.background = colors.panelAccent;
   stage.style.display = "flex";
   stage.style.flexDirection = "column";
-  stage.style.alignItems = "stretch";
-  stage.style.overflow = "visible";
+  stage.style.alignItems = "center";
+  stage.style.overflow = "hidden";
   stage.style.boxSizing = "border-box";
+
+  const glassArea = document.createElement("div");
+  glassArea.className = "fusion-share-glass-area";
+  glassArea.style.width = `${layout.glassAreaWidthPx}px`;
+  glassArea.style.height = `${layout.glassAreaHeightPx}px`;
+  glassArea.style.display = "flex";
+  glassArea.style.alignItems = "center";
+  glassArea.style.justifyContent = "center";
+  glassArea.style.flexShrink = "0";
+  glassArea.style.overflow = "hidden";
+
+  const glassFit = document.createElement("div");
+  glassFit.className = "fusion-share-glass-fit";
+  glassFit.style.position = "relative";
+  glassFit.style.overflow = "hidden";
+  glassFit.style.flexShrink = "0";
 
   const frame = source.cloneNode(true) as HTMLElement;
   applyShareCaptureTheme(frame, variant);
   /*
-   * Strip the live chrome classes from the clone. Their `padding-top: 36px` /
-   * `padding-bottom: 32px` rules (via `.industrial-display-frame--top-chrome` /
-   * `--bottom-chrome`) would otherwise be baked by html-to-image and squeeze the
-   * phosphor. The chrome child elements themselves stay (they are absolute), so the
-   * buttons remain visible — only the frame's metal pad is re-tuned below.
+   * Bezel metal pads come from live CSS — including the taller top band when frame
+   * chrome is present — so they are measured with the glass instead of re-added by a
+   * constant. Bottom chrome is hidden from captures, so only its class drops and the
+   * standard pad applies.
    */
-  frame.classList.remove(
-    "industrial-display-frame--top-chrome",
-    "industrial-display-frame--bottom-chrome",
-  );
-  frame.style.width = `${innerWidth}px`;
-  frame.style.height = `${layout.bezelHeightPx}px`;
-  frame.style.minHeight = `${layout.bezelHeightPx}px`;
-  frame.style.maxHeight = `${layout.bezelHeightPx}px`;
-  frame.style.maxWidth = `${innerWidth}px`;
-  frame.style.minWidth = "0";
-  frame.style.display = "block";
+  frame.classList.remove("industrial-display-frame--bottom-chrome");
+  frame.style.width = `${layout.glassAreaWidthPx}px`;
   frame.style.flexShrink = "0";
   frame.style.boxSizing = "border-box";
   frame.style.overflow = "hidden";
   frame.style.margin = "0";
   frame.style.position = "relative";
-  /*
-   * Force the bezel metal pad to match the share layout. Without this the live
-   * `:has(.top-chrome)` / `:has(.bottom-chrome)` rules inflate the pad (36px /
-   * 32px) and squeeze the phosphor — the top chrome band then overlaps the glass.
-   * Bottom chrome is hidden from captures, so the bottom stays the standard pad.
-   */
-  const topPad =
-    layout.bezelHeightPx - layout.phosphorHeightPx - DISPLAY_BEZEL_PADDING_PX;
-  /*
-   * html-to-image bakes the clone's computed styles from the stage, and the live
-   * `--top-chrome` / `--bottom-chrome` classes inflate the pad. Force the capture
-   * pad with `!important` so the top chrome band has real headroom and the bottom
-   * stays the standard bezel pad (bottom chrome is hidden from captures).
-   */
-  frame.style.setProperty("padding-top", `${topPad}px`, "important");
-  frame.style.setProperty("padding-right", `${DISPLAY_BEZEL_PADDING_PX}px`, "important");
-  frame.style.setProperty("padding-bottom", `${DISPLAY_BEZEL_PADDING_PX}px`, "important");
-  frame.style.setProperty("padding-left", `${DISPLAY_BEZEL_PADDING_PX}px`, "important");
+  frame.style.transformOrigin = "0 0";
 
-  normalizeFusionCaptureLayout(frame, layout.phosphorHeightPx);
+  glassFit.appendChild(frame);
+  glassArea.appendChild(glassFit);
   injectShareBezelBrand(frame);
+  stage.appendChild(glassArea);
 
-  stage.appendChild(frame);
   const hwBand = createShareHwBand(meta, layout);
   if (hwBand) stage.appendChild(hwBand);
-  return { stage, frame };
+  return { stage, glassFit, frame };
+}
+
+/**
+ * Measure pass: read the mounted clone's natural box, then scale it uniformly into
+ * the glass area. Freeze the measured size so nothing re-flows between measurement
+ * and rasterize.
+ */
+function applyGlassFit(
+  glassFit: HTMLElement,
+  frame: HTMLElement,
+  layout: FusionShareExportLayout,
+): void {
+  const rect = frame.getBoundingClientRect();
+  if (rect.width < 1 || rect.height < 1) {
+    throw new Error("Share glass measured empty — the clone did not lay out");
+  }
+  const fit = computeFusionShareGlassFit(layout, {
+    widthPx: rect.width,
+    heightPx: rect.height,
+  });
+  frame.style.width = `${rect.width}px`;
+  frame.style.height = `${rect.height}px`;
+  frame.style.transform = fit.scale === 1 ? "none" : `scale(${fit.scale})`;
+  glassFit.style.width = `${fit.widthPx}px`;
+  glassFit.style.height = `${fit.heightPx}px`;
 }
 
 /** Clone restarts fadeIn at opacity 0 — force fusion phosphor + overlay fully painted before snapshot. */
@@ -1018,33 +1002,13 @@ function restoreForecastPadding(restores: PaddingRestore[]): void {
   });
 }
 
-function normalizeFusionCaptureLayout(frame: HTMLElement, phosphorHeightPx: number): void {
-  const phosphorH = `${phosphorHeightPx}px`;
-  frame.style.setProperty("--fusion-share-phosphor-h", phosphorH);
-
-  const display = frame.querySelector(".vram-forecast-display");
-  if (display instanceof HTMLElement) {
-    display.style.height = phosphorH;
-    display.style.minHeight = phosphorH;
-    display.style.maxHeight = phosphorH;
-  }
-
-  const forecast = frame.querySelector(".vram-badge-forecast");
-  if (forecast instanceof HTMLElement) {
-    forecast.style.height = phosphorH;
-    forecast.style.minHeight = phosphorH;
-    forecast.style.maxHeight = phosphorH;
-  }
-
-  const fusionPanel = frame.querySelector(".vram-badge-forecast > .fusion-overlay-fill");
-  if (fusionPanel instanceof HTMLElement) {
-    fusionPanel.style.inset = "0";
-    fusionPanel.style.width = "100%";
-    fusionPanel.style.height = "100%";
-    fusionPanel.style.minHeight = "0";
-  }
-
-  // Hero TG / PP only — never blanket-match style*="6vh" (hits 2.6vh per-slot too).
+/**
+ * The only sizes the card pins. The mounted stage resolves `vh` against the real
+ * window, so the hero pair would otherwise differ between a 1080p and a 4K session;
+ * pinning keeps card proportions window-independent. Everything else is live CSS.
+ * (Hero TG / PP only — a blanket `style*="6vh"` match also hits the 2.6vh per-slot.)
+ */
+function pinFusionCaptureFonts(frame: HTMLElement): void {
   frame
     .querySelectorAll<HTMLElement>(".fusion-prefill-hero-value, .fusion-tg-hero-value")
     .forEach((el) => {
@@ -1107,7 +1071,7 @@ function createHeaderShell(meta: FusionShareMeta, variant: FusionShareVariant, l
 
   shell.style.top = "0";
   shell.style.left = "0";
-  shell.style.width = `${layout.widthPx}px`;
+  shell.style.width = `${layout.cardWidthPx}px`;
   shell.style.height = `${FUSION_SHARE_EXPORT_HEADER_HEIGHT}px`;
   shell.style.zIndex = "2147483647";
   shell.style.pointerEvents = "none";
@@ -1459,26 +1423,6 @@ async function captureMountedShell(
   }
 }
 
-function compositeFrameWithMat(
-  frameCanvas: HTMLCanvasElement,
-  pixelRatio: number,
-  matColor: string,
-  layout: FusionShareExportLayout,
-): HTMLCanvasElement {
-  const out = document.createElement("canvas");
-  out.width = layout.widthPx * pixelRatio;
-  out.height = layout.frameHeightPx * pixelRatio;
-  const ctx = out.getContext("2d");
-  if (!ctx) return frameCanvas;
-
-  const padTop = FUSION_SHARE_EXPORT_FRAME_PAD_TOP * pixelRatio;
-  const padX = FUSION_SHARE_EXPORT_FRAME_PAD_X * pixelRatio;
-  ctx.fillStyle = matColor;
-  ctx.fillRect(0, 0, out.width, out.height);
-  ctx.drawImage(frameCanvas, padX, padTop);
-  return out;
-}
-
 function cropCanvas(
   source: HTMLCanvasElement,
   targetWidth: number,
@@ -1559,17 +1503,21 @@ async function renderFusionSharePngOnce(
   }
 
   const colors = resolveCaptureColors(variant);
-  const hasTopChrome = sourceFrame.querySelector("[data-frame-top-chrome]") != null;
-  const topBandPx = hasTopChrome ? CAPTURE_TOP_CHROME_BAND_PX : DISPLAY_BEZEL_PADDING_PX;
-  const layout = computeFusionShareExportLayout(meta, topBandPx);
+  const layout = computeFusionShareExportLayout(meta);
   const pixelRatio = FUSION_SHARE_EXPORT_PIXEL_RATIO;
-  const targetFrameW = layout.widthPx * pixelRatio;
+  const targetFrameW = layout.cardWidthPx * pixelRatio;
   const targetFrameH = layout.frameHeightPx * pixelRatio;
-  const targetHeaderW = layout.widthPx * pixelRatio;
-  const targetHeaderH = FUSION_SHARE_EXPORT_HEADER_HEIGHT * pixelRatio;
+  const targetHeaderW = layout.cardWidthPx * pixelRatio;
+  const targetHeaderH = layout.headerHeightPx * pixelRatio;
 
   const themeLock = lockDocumentThemeForCapture(variant);
-  const { stage, frame } = createFrameCaptureStage(sourceFrame, colors, variant, layout, meta);
+  const { stage, glassFit, frame } = createFrameCaptureStage(
+    sourceFrame,
+    colors,
+    variant,
+    layout,
+    meta,
+  );
   const headerShell = createHeaderShell(meta, variant, layout);
 
   const hidden = [
@@ -1580,10 +1528,8 @@ async function renderFusionSharePngOnce(
   const primedSurfaces = primeFrameBezel(frame, colors);
   const paddingRestore = stripForecastPaddingForCapture(frame);
   const removedChrome = removeCaptureChrome(frame);
+  pinFusionCaptureFonts(frame);
   forceFusionCapturePaint(frame);
-
-  const targetBezelW = (layout.widthPx - FUSION_SHARE_EXPORT_FRAME_PAD_X * 2) * pixelRatio;
-  const targetBezelH = layout.bezelHeightPx * pixelRatio;
 
   try {
     let headerCanvas = await captureMountedShell(headerShell, {
@@ -1599,7 +1545,9 @@ async function renderFusionSharePngOnce(
     }
 
     mountCaptureShell(stage);
-    await waitForPaint(6);
+    await waitForPaint(4);
+    applyGlassFit(glassFit, frame, layout);
+    await waitForPaint(4);
 
     let frameCanvas = await captureNode(stage, {
       backgroundColor: colors.panelAccent,
@@ -1607,34 +1555,24 @@ async function renderFusionSharePngOnce(
       canvasHeight: targetFrameH,
     });
 
+    /*
+     * A blank canvas here is the WebView2 focus/paint gate, not a layout bug: the glass
+     * is measured, so it cannot be mis-sized. Focus, re-mount, retry once, then throw
+     * so renderFusionSharePng's second pass runs.
+     */
     if (!canvasHasBezelContent(frameCanvas, pixelRatio, colors.industrialBg)) {
-      let bezelCanvas = await captureNode(frame, {
-        backgroundColor: colors.industrialBg,
-        canvasWidth: targetBezelW,
-        canvasHeight: targetBezelH,
+      unmountCaptureShell(stage);
+      await ensureWindowFocused();
+      mountCaptureShell(stage);
+      await waitForPaint(6);
+      frameCanvas = await captureNode(stage, {
+        backgroundColor: colors.panelAccent,
+        canvasWidth: targetFrameW,
+        canvasHeight: targetFrameH,
       });
-      if (bezelCanvas.width !== targetBezelW || bezelCanvas.height !== targetBezelH) {
-        bezelCanvas = cropCanvas(bezelCanvas, targetBezelW, targetBezelH, colors.industrialBg);
+      if (!canvasHasBezelContent(frameCanvas, pixelRatio, colors.industrialBg)) {
+        throw new Error("Share card rasterized blank (WebView2 paint gate)");
       }
-
-      const cloneMat = compositeFrameWithMat(bezelCanvas, pixelRatio, colors.panelAccent, layout);
-      if (!canvasHasBezelContent(cloneMat, pixelRatio, colors.industrialBg)) {
-        unmountCaptureShell(stage);
-        await waitForPaint(2);
-        let liveCanvas = await captureNode(sourceFrame, {
-          backgroundColor: colors.industrialBg,
-          canvasWidth: targetBezelW,
-          canvasHeight: targetBezelH,
-        });
-        if (liveCanvas.width !== targetBezelW || liveCanvas.height !== targetBezelH) {
-          liveCanvas = cropCanvas(liveCanvas, targetBezelW, targetBezelH, colors.industrialBg);
-        }
-        bezelCanvas = liveCanvas;
-        mountCaptureShell(stage);
-        await waitForPaint(2);
-      }
-
-      frameCanvas = compositeFrameWithMat(bezelCanvas, pixelRatio, colors.panelAccent, layout);
     }
 
     unmountCaptureShell(stage);

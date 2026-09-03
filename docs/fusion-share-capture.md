@@ -5,20 +5,27 @@ glass, the bezel too tall/short, a missing per-slot `xxx /slot` meter, or the sm
 under the TG number showing stale values — read this before touching layout math or capture
 styling.
 
+**Layout was rewritten 2026-09-03** from hand-summed content budgets to *measure + uniform
+scale*. Sections marked **(legacy)** describe the deleted design only so nobody rebuilds it.
+
 Primary: `src/lib/fusionShareCapture.tsx` (capture pipeline) · `src/components/FusionOverlay.tsx`
 (live micro-stats) · `src/components/BenchWidget.tsx` (bench ordering) · `src/styles/fusion-display.css`
 (capture-stage CSS).
 
-**Last aligned with code:** 2026-09-03 (share SPEC row re-derived from Boost state)
+**Last aligned with code:** 2026-09-03 (measured glass + fixed 16:9 canvas + 2× raster)
 
 ---
 
 ## One-line model
 
-The share capture is **not** a screenshot of the live DOM — it is a **rebuilt offscreen stage**
-(`fusion-share-capture-stage`) that clones the live frame, strips live-only chrome, and re-tunes
-sizes/positions so the result is a clean 16:9 card. The live CSS (bezel pads, chrome bands, zoom)
-is the enemy; the stage must override it.
+The share capture is a **photograph of the live glass**, not a re-typeset copy. It clones the live
+frame, drops card-only chrome, lays the clone out at **one reference width**, **measures** it, and
+scales it uniformly into a **fixed 16:9 card**. Live CSS owns the glass; the card owns the mat.
+
+Consequence: a fusion-display change needs **no mirror correction in the card** — if it fits live,
+it fits the card, because the fit comes from a measurement. The deleted design did the opposite
+(fixed content budgets + a ladder of size pins) and every live change had to be re-tuned twice,
+which is why the card kept clipping.
 
 ---
 
@@ -26,21 +33,22 @@ is the enemy; the stage must override it.
 
 ```
 renderFusionSharePngOnce(meta, variant)
-  ├─ hasTopChrome = sourceFrame.querySelector("[data-frame-top-chrome]") != null
-  ├─ topBandPx  = hasTopChrome ? CAPTURE_TOP_CHROME_BAND_PX(36) : DISPLAY_BEZEL_PADDING_PX(18)
-  ├─ layout     = computeFusionShareExportLayout(meta, topBandPx)
-  ├─ createFrameCaptureStage(sourceFrame, …)   // clone + strip chrome classes + force pad
-  │    ├─ normalizeFusionCaptureLayout(frame, phosphorH)   // pin heights, hero fonts
-  │    ├─ injectShareBezelBrand(frame)                     // bottom-right logo/version
-  │    └─ createShareHwBand(meta, layout)                  // GPU topo band below bezel
-  ├─ hideCaptureChrome(frame)          // CAPTURE_STRIP_SELECTORS → visibility:hidden
-  ├─ prepareFusionOverlayForCapture(frame)  // hide forecast underlay, force fusion paint
-  ├─ stripForecastPaddingForCapture(frame)  // zero padding, hide header
-  └─ captureMountedShell(headerShell) + html-to-image toCanvas(stage)
+  ├─ layout = computeFusionShareExportLayout(meta)      // fixed 900×506 CSS card, 16:9
+  ├─ createFrameCaptureStage(sourceFrame, …)
+  │    ├─ clone live frame; drop only industrial-display-frame--bottom-chrome
+  │    ├─ clone width = layout.glassAreaWidthPx          // the one reference width
+  │    ├─ stage ▸ glass-area ▸ glass-fit ▸ clone         // glass-fit is the scaled box
+  │    ├─ injectShareBezelBrand(frame)                   // bottom-right logo, inside the glass
+  │    └─ createShareHwBand(meta, layout)                // GPU topo band below the glass
+  ├─ hideCaptureChrome(frame)              // CAPTURE_STRIP_SELECTORS → visibility:hidden
+  ├─ removeCaptureChrome(frame)            // CAPTURE_REMOVE_SELECTORS → display:none
+  ├─ prepareFusionOverlayForCapture / stripForecastPaddingForCapture / pinFusionCaptureFonts
+  ├─ mountCaptureShell(stage) → measure → applyGlassFit()   // transform: scale(s)
+  └─ captureMountedShell(headerShell) + html-to-image toCanvas(stage) @ PIXEL_RATIO
 ```
 
-Stage is mounted at `document.body` at `--ui-text-scale: 1`. **The user's 120% app zoom does not
-affect the capture** — the stage is at scale 1 regardless.
+Stage mounts on `document.body` (WebView2 rasterizes on-screen nodes only) with
+`--ui-text-scale: 1`, so **the user's app zoom never leaks into the card**.
 
 ---
 
@@ -48,49 +56,57 @@ affect the capture** — the stage is at scale 1 regardless.
 
 | Constant | Value | Meaning |
 |----------|-------|---------|
-| `CAPTURE_TOP_CHROME_BAND_PX` | **36** | Top bezel band (ASSISTED/FULL AUTO + Device/Split). Tuned live by hand; do not re-measure from the DOM. |
-| `DISPLAY_BEZEL_PADDING_PX` | **18** | Standard metal pad (bottom always uses this; bottom chrome is hidden from captures). |
-| `FUSION_SHARE_EXPORT_PIXEL_RATIO` | **4** | CSS→PNG scale (~707×398 → ~2828×1592). |
-| `FUSION_SHARE_CAPTURE_PHOSPHOR_HEIGHT_PX` | from `computeFusionShareCapturePhosphorHeightPx()` | Phosphor budget, synced with `benchPanelLayout`. |
-| `SHARE_ASPECT_W/H` | 16/9 | Total card aspect. |
-| `FUSION_CAPTURE_HERO_FONT_PX` / `FUSION_CAPTURE_PER_SLOT_FONT_PX` | 40 / 20 | Hero & per-slot meter font sizes forced in capture. |
+| `FUSION_SHARE_EXPORT_CARD_WIDTH` | **900** | Card CSS width; height = 9/16 → 506. PNG 1800×1012. |
+| `FUSION_SHARE_EXPORT_PIXEL_RATIO` | **2** | CSS→PNG. Under uniform scale the content is vector-rasterized, so crispness follows this number, not the clone's font sizes. X/Reddit serve ≤ ~1600px; 4× bought nothing and quadrupled html-to-image work per attempt. |
+| `FUSION_SHARE_EXPORT_HEADER_HEIGHT` | **94** | Card header: identity row + up to two chip rows (card-only UI, hand-built). |
+| `FUSION_SHARE_EXPORT_FRAME_PAD_X` / `_BOTTOM` / `_TOP` | 20 / 14 / 0 | Panel-accent mat around the bezel. |
+| `SHARE_ASPECT_W` / `_H` | 16 / 9 | **Card** aspect. The glass keeps whatever aspect live gives it. |
+| `FUSION_CAPTURE_HERO_FONT_PX` / `_PER_SLOT_FONT_PX` | 40 / 20 | **The only pinned sizes.** `vh` inside the mounted stage resolves against the real window, so without these the card's proportions would differ between a 1080p and a 4K session. |
 
-`computeShareBezelHeightPx(phosphorH, topBandPx) = phosphorH + topBandPx + 18`.
-`computeFusionShareExportLayout(meta, topBandPx = 18)` — the no-arg default (18) reproduces the
-original no-top-chrome layout (`phosphorH + 36`).
+`computeFusionShareGlassFit(layout, measured)` → `scale = min(1, min(areaW/w, areaH/h))`.
+It never upscales and never clamps *up*: a "legibility floor" would clip, because the fit box is
+`overflow: hidden`. Worst real case is a 2× stacked display shrinking to ~0.6.
+
+Glass area = `cardWidth − 2·PAD_X` × (`frameHeight − hwBand − pads`). A tall glass shrinks and
+centers; the leftover is mat. PNG dimensions never change with GPU count or bench state.
 
 ---
 
-## The top-chrome pad bug (root cause, do not reintroduce)
+## Why the glass is measured, not budgeted
 
-**Symptom:** top bezel buttons rendered over/overlapping the phosphor glass in screenshots.
+Two facts about this pipeline are still true, and they are why the old design hurt:
 
-**Root cause (two parts):**
 1. `html-to-image`'s `cloneCSSStyle` does `targetStyle.cssText = sourceStyle.cssText`, which
-   **clobbers inline styles** (including an inline `padding`) with the computed style from the
-   source. So a plain inline `padding` override was silently discarded.
-2. The live `:has(.top-chrome)` / `:has(.bottom-chrome)` rules inflate the frame's `padding-top`
-   (36px) / `padding-bottom` (32px), squeezing the phosphor when the clone inherits them.
+   **clobbers inline styles** with the source's computed style. A plain inline override can be
+   silently discarded; `!important` survives.
+2. The frame's metal pads come from `.industrial-display-frame--top-chrome` and
+   `.industrial-display-frame:has(> .industrial-display-frame__top-chrome)` → `padding-top: 36px`
+   (bottom 32px). Removing the class does **not** remove the pad, because `:has()` re-applies it.
 
-**Fix (in `createFrameCaptureStage`):**
-- `frame.classList.remove("industrial-display-frame--top-chrome", "…--bottom-chrome")` on the clone.
-- Force the pad with `!important` inline styles:
-  `frame.style.setProperty("padding-top", `${topPad}px`, "important")` (and right/bottom/left = 18).
-- `topPad = layout.bezelHeightPx - layout.phosphorHeightPx - DISPLAY_BEZEL_PADDING_PX`.
+**(legacy)** The old pipeline fought (2) three ways at once: remove the classes, force pads with
+`!important`, and re-add the band height from `CAPTURE_TOP_CHROME_BAND_PX = 36` — three
+hand-tuned numbers for one pad, the band iterated 72 → 44 → 36 by eye, plus
+`computeFusionShareCapturePhosphorHeightPx()` summing dashboard chrome + max bench slot for the
+glass height.
 
-**Tuning knob:** only `CAPTURE_TOP_CHROME_BAND_PX` (36). It was iterated 72 → 44 → **36**; 72 was
-3× too tall, 44 still a bit high. Do **not** "measure" the band from the live DOM — the old
-`readCaptureTopChromeBandPx` helper scanned all descendants and overshot to ~108px (3×). Use the
-fixed constant + `hasTopChrome` boolean detection.
+**Now:** pads apply from live CSS and are measured with the glass. Only `--bottom-chrome` drops
+(its buttons are hidden, so its pad would read as dead metal). There is no band constant, no
+phosphor budget, and no height pin left to keep in sync.
 
 ---
 
 ## What gets hidden from captures
 
-`CAPTURE_STRIP_SELECTORS` (visibility:hidden):
-- `[data-fusion-share-exclude]`, `[data-frame-bottom-chrome]` (bottom GPU/ENG density buttons),
-  `.display-texture-toggle`, `.industrial-bezel-texture-toggle`, `.vram-forecast-scenario-badge`,
-  `.fusion-bench-latch`, `.bench-hw-topo`, `.display-chrome-hints` ("MODEL NEEDS MULTIPLE GPUS…").
+Two lists, and the difference matters:
+
+- `CAPTURE_STRIP_SELECTORS` → `visibility:hidden`, safe only for chrome that reserves **no** flow
+  height (absolute buttons, toggles, hints): `[data-fusion-share-exclude]`,
+  `[data-frame-bottom-chrome]`, `.display-texture-toggle`, `.industrial-bezel-texture-toggle`,
+  `.vram-forecast-scenario-badge`, `.bench-hw-topo`, `.display-chrome-hints`.
+- `CAPTURE_REMOVE_SELECTORS` → `display:none`, for anything that owns a row: `.fusion-bench-latch`.
+  `visibility:hidden` **still occupies layout** — hiding the latch that way pushed the results
+  block down by a latch row and clipped its unit line at the bezel edge. Anything with height
+  belongs in the remove list.
 
 `prepareFusionOverlayForCapture` hides every child of `.vram-badge-forecast` **except**
 `.fusion-overlay-fill`, and forces the fusion panel to `opacity:1` + `animation:none` (the clone
@@ -104,7 +120,7 @@ Removed earlier: the "single session" banner (`injectCaptureBezelModeBanner`) an
 
 - Rendered live in `FusionOverlay.tsx` (`.fusion-per-slot-meter`, `top-1.5 right-2` in the TG hero).
   Shows when `!suppressTgHero && concurrentSlots > 1`.
-- Capture forces its font to `FUSION_CAPTURE_PER_SLOT_FONT_PX` (20) and repositions it
+- Capture pins its font to `FUSION_CAPTURE_PER_SLOT_FONT_PX` (20) and repositions it
   (`top:6px; right:8px`) via `.fusion-share-capture-stage[data-fusion-share-capture]` rules.
 - **It depends on the engine being in a concurrent TG state.** A solo TG bench leaves the slots
   concurrent → meter shows. A combined bench that *ends in PP* leaves the slots non-concurrent →
@@ -165,11 +181,20 @@ instead of top-pinning it into the empty band.
 
 ## Traps (do not repeat)
 
-- **Never** set the frame pad as a plain inline `padding` — html-to-image clobbers it. Use
-  `setProperty(..., "important")` or strip the live chrome classes.
-- **Never** measure the top chrome band from the DOM — use `CAPTURE_TOP_CHROME_BAND_PX` (36).
-- **Do not** add `[data-theme="…"]` / `html:not([data-theme=…])` capture rules in CSS; theme is
-  applied via tokens and `applyShareCaptureTheme`.
+- **Never reintroduce a content height budget in the card.** Measured fit replaced it; a budget
+  is what made the card need re-tuning on every live change.
+- **Never add `min-width` floors or fixed sizes to capture CSS to "fix" fitting.** Shrink the
+  reference width or let the fit scale; floors that exist to stop live jitter (`.fusion-micro-cell`
+  `ch` floors) are pointless on a static card and were dropped there.
+- The clone must be **mounted** before `applyGlassFit` — a detached node measures 0×0 and throws
+  `Share glass measured empty`, which the retry ladder then re-runs.
+- `transform: scale()` inside html-to-image's foreignObject raster is **verified** (probe: content
+  lands at the scaled corner, sibling bands composite correctly). Chromium `zoom` behaves the same
+  if transform ever regresses.
+- **Never** set the frame pad as a plain inline `padding` — html-to-image clobbers it (use
+  `setProperty(..., "important")` if you ever must).
+- **Do not** add `[data-theme="…"]` / `html:not([data-theme=…])` capture rules; theme is applied
+  via tokens and `applyShareCaptureTheme`.
 - **Do not** blanket-match `style*="6vh"` for hero fonts — it also hits the 2.6vh per-slot meter.
   Select `.fusion-tg-hero-value` / `.fusion-prefill-hero-value` explicitly.
 - **Do not** reorder the combined bench back to TG→PP — the share card loses the per-slot meter.
@@ -189,8 +214,8 @@ instead of top-pinning it into the empty band.
 | `src/components/FusionOverlay.tsx` | Live micro-stats latch + per-slot meter + hero render |
 | `src/components/BenchWidget.tsx` | Bench ordering (`runBenchBoth`) + hero pinning |
 | `src/styles/fusion-display.css` | `.fusion-share-capture-stage[data-fusion-share-capture]` rules |
-| `src/lib/benchPanelLayout.ts` | Phosphor/slot height budget (`computeFusionShareCapturePhosphorHeightPx`) |
-| `src/lib/onboardingDisplay.ts` | `DISPLAY_BEZEL_PADDING_PX` (18) |
+| `src/lib/benchPanelLayout.ts` | **Live** glass height budget (`computeDualStackPhosphorHeightForTray`); the card no longer reads it — it measures the clone |
+| `src/lib/onboardingDisplay.ts` | `DISPLAY_BEZEL_PADDING_PX` (18) — live bezel pad |
 
 ---
 

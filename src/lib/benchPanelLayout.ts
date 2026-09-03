@@ -140,18 +140,6 @@ export function shouldShowBenchGpuTopo(opts: BenchPanelLayoutOpts): boolean {
   );
 }
 
-/** Share PNG phosphor — dashboard chrome + max bench slot; no tray latch or in-panel GPU topo. */
-export function computeFusionShareCapturePhosphorHeightPx(
-  opts: Pick<BenchPanelLayoutOpts, "gpus" | "gpuMask"> = {},
-): number {
-  const slotH = computeFusionBenchSlotHeight({
-    gpus: opts.gpus,
-    gpuMask: opts.gpuMask,
-    inlineActions: true,
-  });
-  return FUSION_DASHBOARD_TIGHT_CHROME_PX + slotH;
-}
-
 /** Share capture logo lockup in bottom-right bezel corner. */
 export const FUSION_SHARE_BRAND_LOGO_PX = 30;
 
