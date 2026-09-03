@@ -1281,7 +1281,7 @@
   color: color-mix(
     in srgb,
     var(--boc-sync, rgba(34, 211, 238, 0.5)) 78%,
-    var(--theme-accent, rgba(34, 211, 238, 0.5)) 22%
+    var(--theme-accent) 22%
   );
 }
 
@@ -2106,7 +2106,7 @@
 }
 
 .foundry-confirm-panel {
-  border: 1px solid color-mix(in srgb, var(--theme-border-subtle, rgba(255, 255, 255, 0.12)) 80%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-border-subtle) 80%, transparent);
   background: color-mix(in srgb, var(--theme-text) 6%, var(--theme-panel-accent, var(--theme-panel)));
   border-radius: 2px;
   padding: calc(0.7rem * var(--foundry-scale));
@@ -2296,7 +2296,7 @@
   flex-wrap: wrap;
   gap: calc(0.5rem * var(--foundry-scale));
   padding: calc(0.7rem * var(--foundry-scale)) calc(1.1rem * var(--foundry-scale));
-  border-top: 1px solid var(--theme-border-subtle, rgba(255, 255, 255, 0.08));
+  border-top: 1px solid var(--theme-border-subtle);
 }
 
 
@@ -2306,7 +2306,7 @@
   line-height: 1.45;
   color: #e8e8e8;
   background: color-mix(in srgb, #000000 55%, transparent);
-  border: 1px solid var(--theme-border-subtle, rgba(255, 255, 255, 0.12));
+  border: 1px solid var(--theme-border-subtle);
   border-radius: 2px;
   resize: vertical;
 }

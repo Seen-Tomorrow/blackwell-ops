@@ -16,7 +16,7 @@
   --theme-danger: var(--theme-tel-hot, #ef4444);
   --theme-crit: var(--theme-tel-hot, #ef4444);
   --theme-telemetry-blue: var(--theme-tel-ram, #4da3ff);
-  --theme-harness-worker-text: color-mix(in srgb, var(--theme-harness-worker-raw, #ea580c) 22%, #fff 78%);
+  --theme-harness-worker-text: color-mix(in srgb, var(--theme-harness-worker-raw) 22%, #fff 78%);
   /*
    * Canonical semantic set (de-Tailwind law). Chrome paints through these only.
    * Values below are the pre-theme floor; app-themes.ts supplies per-theme deltas.
@@ -25,7 +25,7 @@
   --theme-warn: var(--theme-telemetry-amber, #ffb800);
   --theme-on-warn: #0a0a0f;
   --theme-info: var(--theme-telemetry-cyan, #00e5ff);
-  --theme-on-accent: var(--theme-chip-solid-text, #0c120a);
+  --theme-on-accent: var(--theme-chip-solid-text);
   /* Type scale — sizes are NOT a theme delta; keep them out of app-themes.ts. */
   --type-hairline: 6px;
   --type-micro: 7px;
@@ -220,28 +220,28 @@
    * Light-paper themes (ARCTIC) override these to the dark slate wash so PAPER
    * matches EINK without a CSS theme fork.
    */
-  --display-face-source-wash-mid: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 6%, transparent);
-  --display-face-source-wash-end: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 14%, transparent);
+  --display-face-source-wash-mid: color-mix(in srgb, var(--display-face-text-muted) 6%, transparent);
+  --display-face-source-wash-end: color-mix(in srgb, var(--display-face-text-muted) 14%, transparent);
   --display-face-source-lab: color-mix(
     in srgb,
-    var(--display-face-text, #e2e8f0) 68%,
-    var(--display-face-text-muted, #94a3b8)
+    var(--display-face-text) 68%,
+    var(--display-face-text-muted)
   );
-  --display-face-source-kind-bg: var(--theme-chip-bg, color-mix(in srgb, var(--theme-panel, #111) 70%, transparent));
-  --display-face-source-kind-border: var(--theme-chip-border, color-mix(in srgb, var(--theme-border, #333) 80%, transparent));
-  --display-face-plate-wash-start: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 16%, transparent);
-  --display-face-plate-wash-mid: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 7%, transparent);
-  --display-face-gpu-trough-wash-start: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 14%, transparent);
-  --display-face-gpu-trough-wash-mid: color-mix(in srgb, var(--display-face-text-muted, #94a3b8) 5%, transparent);
+  --display-face-source-kind-bg: var(--theme-chip-bg, color-mix(in srgb, var(--theme-panel) 70%, transparent));
+  --display-face-source-kind-border: var(--theme-chip-border, color-mix(in srgb, var(--theme-border) 80%, transparent));
+  --display-face-plate-wash-start: color-mix(in srgb, var(--display-face-text-muted) 16%, transparent);
+  --display-face-plate-wash-mid: color-mix(in srgb, var(--display-face-text-muted) 7%, transparent);
+  --display-face-gpu-trough-wash-start: color-mix(in srgb, var(--display-face-text-muted) 14%, transparent);
+  --display-face-gpu-trough-wash-mid: color-mix(in srgb, var(--display-face-text-muted) 5%, transparent);
   /* SOURCE hover recap — flat face (themes may override; ARCTIC reuses SLATE panel/text) */
-  --display-face-recap-bg: color-mix(in srgb, var(--theme-panel, #0c0c0c) 96%, var(--theme-accent, #76B900) 4%);
-  --display-face-recap-text: var(--display-face-text, #e2e8f0);
-  --display-face-recap-text-muted: var(--display-face-text-muted, #94a3b8);
+  --display-face-recap-bg: color-mix(in srgb, var(--theme-panel) 96%, var(--theme-accent) 4%);
+  --display-face-recap-text: var(--display-face-text);
+  --display-face-recap-text-muted: var(--display-face-text-muted);
   /*
    * HW monitor + OVERCLOCKING signal colors (launch-rail-tel / gpu-oc).
    * Themes override for palette cohesion; CSS falls back to these.
    */
-  --theme-tel-vram: var(--theme-accent-bright, #76b900);
+  --theme-tel-vram: var(--theme-accent-bright);
   --theme-tel-ram: #4da3ff;
   --theme-tel-amber: #f59e0b;
   --theme-tel-amber-deep: #b45309;
