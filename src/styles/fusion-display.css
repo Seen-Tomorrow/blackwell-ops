@@ -4439,6 +4439,17 @@ html[data-industrial-bezel="brush"] {
   right: 8px !important;
 }
 
+/* Share card is static: the anti-jitter `ch` floors exist so the live strip does not
+   shift between requests, but they are wider than the card's TG panel and pushed the
+   ACC cell past its edge. Size cells to content and tighten the separators. */
+.fusion-share-capture-stage[data-fusion-share-capture] .fusion-micro-readout--instrument .fusion-micro-cell {
+  min-width: 0;
+}
+
+.fusion-share-capture-stage[data-fusion-share-capture] .fusion-micro-readout--instrument {
+  gap: 2px;
+}
+
 .fusion-share-capture-stage[data-fusion-share-capture] .bench-concurrency-badge {
   bottom: -10px !important;
   font-size: 7px !important;

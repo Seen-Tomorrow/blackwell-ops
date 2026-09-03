@@ -98,16 +98,24 @@ export const FUSION_SHARE_CAPTURE_PHOSPHOR_HEIGHT_PX = computeFusionShareCapture
 
 const NV_GREEN = "#76B900";
 
+/** Hidden in place (keeps flow) — only safe for chrome that does not reserve height. */
 const CAPTURE_STRIP_SELECTORS = [
   "[data-fusion-share-exclude]",
   "[data-frame-bottom-chrome]",
   ".display-texture-toggle",
   ".industrial-bezel-texture-toggle",
   ".vram-forecast-scenario-badge",
-  ".fusion-bench-latch",
   ".bench-hw-topo",
   ".display-chrome-hints",
 ].join(",");
+
+/**
+ * Removed from flow. `visibility: hidden` would still reserve the row: the share
+ * phosphor budget (computeFusionShareCapturePhosphorHeightPx) deliberately excludes
+ * the bench tray latch, so leaving it in flow pushed the results block past the
+ * pinned glass height and clipped its unit line at the bezel edge.
+ */
+const CAPTURE_REMOVE_SELECTORS = [".fusion-bench-latch"].join(",");
 
 /**
  * Export layout budget (CSS px):
@@ -1187,7 +1195,9 @@ function createHeaderShell(meta: FusionShareMeta, variant: FusionShareVariant, l
     const paramsRow = document.createElement("div");
     paramsRow.style.flex = "1";
     paramsRow.style.display = "flex";
-    paramsRow.style.alignItems = "flex-start";
+    // Boost off leaves one chip row: center it, otherwise the reserved two-row
+    // header band shows a dead strip under the config chips.
+    paramsRow.style.alignItems = paramsSection.childElementCount > 1 ? "flex-start" : "center";
     paramsRow.style.minWidth = "0";
     paramsRow.style.width = "100%";
     paramsRow.style.padding = "4px 12px 5px";
@@ -1212,6 +1222,28 @@ function hideCaptureChrome(frame: HTMLElement): HiddenNode[] {
     node.style.visibility = "hidden";
   });
   return hidden;
+}
+
+interface DisplayRestore {
+  el: HTMLElement;
+  display: string;
+}
+
+/** Take chrome out of flow entirely (see CAPTURE_REMOVE_SELECTORS). */
+function removeCaptureChrome(frame: HTMLElement): DisplayRestore[] {
+  const removed: DisplayRestore[] = [];
+  frame.querySelectorAll(CAPTURE_REMOVE_SELECTORS).forEach((node) => {
+    if (!(node instanceof HTMLElement)) return;
+    removed.push({ el: node, display: node.style.display });
+    node.style.display = "none";
+  });
+  return removed;
+}
+
+function restoreCaptureRemoved(removed: DisplayRestore[]): void {
+  removed.forEach(({ el, display }) => {
+    el.style.display = display;
+  });
 }
 
 /**
@@ -1547,6 +1579,7 @@ async function renderFusionSharePngOnce(
   const overflowRestore = clampFrameOverflow(frame);
   const primedSurfaces = primeFrameBezel(frame, colors);
   const paddingRestore = stripForecastPaddingForCapture(frame);
+  const removedChrome = removeCaptureChrome(frame);
   forceFusionCapturePaint(frame);
 
   const targetBezelW = (layout.widthPx - FUSION_SHARE_EXPORT_FRAME_PAD_X * 2) * pixelRatio;
@@ -1614,6 +1647,7 @@ async function renderFusionSharePngOnce(
     return await canvasToBlob(merged);
   } finally {
     themeLock.restore();
+    restoreCaptureRemoved(removedChrome);
     restoreForecastPadding(paddingRestore);
     restorePrimedSurfaces(primedSurfaces);
     restoreCaptureChrome(hidden);
