@@ -146,7 +146,7 @@ const SLATE: AppTheme = {
   description: "Neutral phosphor — grey terminal, low saturation",
   tokens: {
     "--theme-bg": "#080808",
-    "--theme-text": "#d0d0d8",
+    "--theme-text": "#d8d0d0",
     "--theme-text-muted": "#5a5a6a",
     "--theme-panel": "#121218",
     "--theme-panel-accent": "#0c0c0c",
