@@ -296,7 +296,7 @@
 }
 
 .setup-guide__btn--green:hover:not(:disabled) {
-  background: var(--theme-accent-soft, rgba(74, 222, 128, 0.06));
+  background: var(--theme-accent-soft);
   border-color: color-mix(in srgb, var(--theme-accent-bright) 70%, transparent);
 }
 
@@ -1071,11 +1071,11 @@
   justify-content: center;
   padding: 2px 7px;
   border-radius: 2px;
-  border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.4)) 48%, transparent);
+  border: 1px solid color-mix(in srgb, var(--display-face-border) 48%, transparent);
   letter-spacing: 0.1em;
   line-height: 1.15;
   color: color-mix(in srgb, var(--display-face-text) 90%, transparent);
-  background: color-mix(in srgb, var(--display-face-bar-bg, rgba(0, 0, 0, 0.4)) 50%, transparent);
+  background: color-mix(in srgb, var(--display-face-bar-bg) 50%, transparent);
 }
 
 .vram-fc__title--scenario .vram-fc__scenario-lab {
@@ -1088,14 +1088,14 @@
   flex: 0 0 auto;
   padding: 1px 5px;
   border-radius: 2px;
-  border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.4)) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--display-face-border) 55%, transparent);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: var(--vram-fc-fs-micro);
   font-weight: 700;
   letter-spacing: 0.1em;
   line-height: 1.2;
   color: color-mix(in srgb, var(--display-face-text-muted) 78%, transparent);
-  background: color-mix(in srgb, var(--display-face-bar-bg, rgba(0, 0, 0, 0.4)) 55%, transparent);
+  background: color-mix(in srgb, var(--display-face-bar-bg) 55%, transparent);
   white-space: nowrap;
 }
 
@@ -1116,14 +1116,14 @@
   flex: 0 0 auto;
   padding: 1px 5px;
   border-radius: 2px;
-  border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.4)) 50%, transparent);
+  border: 1px solid color-mix(in srgb, var(--display-face-border) 50%, transparent);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: var(--vram-fc-fs-micro);
   font-weight: 700;
   letter-spacing: 0.12em;
   line-height: 1.2;
   color: color-mix(in srgb, var(--display-face-text-muted) 80%, transparent);
-  background: color-mix(in srgb, var(--display-face-bar-bg, rgba(0, 0, 0, 0.4)) 45%, transparent);
+  background: color-mix(in srgb, var(--display-face-bar-bg) 45%, transparent);
 }
 
 .vram-fc__verdict.is-ok {
@@ -1157,7 +1157,7 @@
   min-width: 3.5rem;
   padding: 1px 5px;
   border-radius: 2px;
-  border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.4)) 40%, transparent);
+  border: 1px solid color-mix(in srgb, var(--display-face-border) 40%, transparent);
 }
 
 .vram-fc__scenario-lab {
@@ -2129,14 +2129,14 @@
   height: var(--vram-fc-bar-h);
   border-radius: 3px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.4)) 48%, transparent);
+  border: 1px solid color-mix(in srgb, var(--display-face-border) 48%, transparent);
   background:
     linear-gradient(
       180deg,
       color-mix(in srgb, var(--display-face-text) 5%, transparent),
       transparent 42%
     ),
-    color-mix(in srgb, var(--display-face-bar-bg, rgba(0, 0, 0, 0.45)) 90%, transparent);
+    color-mix(in srgb, var(--display-face-bar-bg) 90%, transparent);
   box-shadow:
     inset 0 1px 3px color-mix(in srgb, #000 40%, transparent),
     inset 0 -1px 0 color-mix(in srgb, var(--display-face-text) 7%, transparent);
@@ -3001,7 +3001,7 @@
   min-height: 0;
   padding: calc(6px * var(--vram-fc-scale, 1.12)) calc(7px * var(--vram-fc-scale, 1.12));
   border-radius: 3px;
-  background: color-mix(in srgb, var(--theme-industrial-gpu-card-bg, rgba(74, 222, 128, 0.04)) 100%, transparent);
+  background: color-mix(in srgb, var(--theme-industrial-gpu-card-bg) 100%, transparent);
   box-sizing: border-box;
 }
 
@@ -3179,8 +3179,8 @@
   min-width: 5.25rem;
   padding: 2px 6px;
   border-radius: 2px;
-  border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.4)) 55%, transparent);
-  background: color-mix(in srgb, var(--display-face-bar-bg, rgba(0, 0, 0, 0.4)) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--display-face-border) 55%, transparent);
+  background: color-mix(in srgb, var(--display-face-bar-bg) 55%, transparent);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 6.5px;
   font-weight: 700;
@@ -3971,7 +3971,7 @@ mult chip. * (Do not chain unfinished selectors — a prior strip accidentally p
   flex-shrink: 0;
   padding: 3px 8px 3px 6px;
   border-radius: 3px;
-  border: 1px solid color-mix(in srgb, var(--display-face-border, var(--theme-border-subtle, rgba(120, 113, 108, 0.2))) 80%, transparent);
+  border: 1px solid color-mix(in srgb, var(--display-face-border, var(--theme-border-subtle)) 80%, transparent);
   background:
     linear-gradient(
       180deg,
@@ -4037,7 +4037,7 @@ mult chip. * (Do not chain unfinished selectors — a prior strip accidentally p
   text-transform: uppercase;
   color: color-mix(in srgb, var(--theme-text-muted) 55%, transparent);
   padding-left: 4px;
-  border-left: 1px solid color-mix(in srgb, var(--theme-border-subtle, rgba(120, 113, 108, 0.2)) 90%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--theme-border-subtle) 90%, transparent);
 }
 
 .fusion-bench-latch:hover .fusion-bench-latch__action {
@@ -4136,7 +4136,7 @@ html[data-industrial-bezel="brush"] {
   border: none;
   background-color: var(--display-face-bg);
   background-image:
-    radial-gradient(ellipse at center, var(--display-face-glow, rgba(74,222,128,.04)) 0%, transparent 70%);
+    radial-gradient(ellipse at center, var(--display-face-glow) 0%, transparent 70%);
   /* Unified bezel-edge glass recess — crisp 1px edge lines, no blur (fuzzy on light themes). */
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 65%, transparent),
@@ -4731,7 +4731,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .ctx-bar-capacity-chip {
-  border-color: var(--display-face-border, rgba(148, 163, 184, 0.45));
+  border-color: var(--display-face-border);
   color: rgba(148, 163, 184, 0.72);
 }
 
@@ -5756,14 +5756,14 @@ html[data-industrial-bezel="brush"] {
 
 .fusion-slot-bank__well {
   border-radius: 4px;
-  border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.35)) 70%, transparent);
+  border: 1px solid color-mix(in srgb, var(--display-face-border) 70%, transparent);
   background:
     linear-gradient(
       180deg,
       color-mix(in srgb, #fff 4%, transparent) 0%,
       transparent 28%
     ),
-    color-mix(in srgb, var(--display-face-bar-bg, rgba(0, 0, 0, 0.35)) 55%, transparent);
+    color-mix(in srgb, var(--display-face-bar-bg) 55%, transparent);
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, #fff 6%, transparent),
     inset 0 -1px 0 color-mix(in srgb, #000 35%, transparent);
@@ -5771,7 +5771,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-slot-bank--live .fusion-slot-bank__well {
-  border-color: color-mix(in srgb, #22c55e 38%, var(--display-face-border, rgba(148, 163, 184, 0.35)));
+  border-color: color-mix(in srgb, #22c55e 38%, var(--display-face-border));
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, #fff 7%, transparent),
     inset 0 -1px 0 color-mix(in srgb, #000 30%, transparent),
@@ -5888,14 +5888,14 @@ html[data-industrial-bezel="brush"] {
 /* ══ Bench instrument tray ══════════════════════════════════════════════════ */
 
 .fusion-bench-panel.bench-widget-panel {
-  border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.35)) 65%, transparent);
+  border: 1px solid color-mix(in srgb, var(--display-face-border) 65%, transparent);
   background:
     linear-gradient(
       180deg,
       color-mix(in srgb, #fff 3.5%, transparent) 0%,
       transparent 40%
     ),
-    color-mix(in srgb, var(--display-face-bar-bg, rgba(0, 0, 0, 0.28)) 48%, transparent);
+    color-mix(in srgb, var(--display-face-bar-bg) 48%, transparent);
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, #fff 5%, transparent),
     inset 0 -1px 2px color-mix(in srgb, #000 28%, transparent);
@@ -5924,7 +5924,7 @@ html[data-industrial-bezel="brush"] {
   min-height: 0;
   padding: 3px 4px 3px 3px;
   border-radius: 3px;
-  border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.35)) 50%, transparent);
+  border: 1px solid color-mix(in srgb, var(--display-face-border) 50%, transparent);
   background: color-mix(in srgb, var(--theme-bg) 22%, transparent);
   box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 4%, transparent);
 }
@@ -6134,7 +6134,7 @@ html[data-industrial-bezel="brush"] {
 .fusion-bench-field + .fusion-bench-field {
   margin-left: 4px;
   padding-left: 5px;
-  border-left: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.35)) 70%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--display-face-border) 70%, transparent);
 }
 
 .fusion-bench-field__lab {
@@ -6180,8 +6180,8 @@ html[data-industrial-bezel="brush"] {
 
 .fusion-bench-running {
   border-radius: 3px;
-  border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.4)) 70%, transparent);
-  background: color-mix(in srgb, var(--display-face-bar-bg, rgba(0, 0, 0, 0.4)) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--display-face-border) 70%, transparent);
+  background: color-mix(in srgb, var(--display-face-bar-bg) 55%, transparent);
   margin-bottom: 2px;
 }
 
@@ -6337,14 +6337,14 @@ html[data-industrial-bezel="brush"] {
   flex: 0 0 auto;
   padding: 1px 5px;
   border-radius: 2px;
-  border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.4)) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--display-face-border) 55%, transparent);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 6.5px;
   font-weight: 700;
   letter-spacing: 0.1em;
   line-height: 1.2;
   color: color-mix(in srgb, var(--display-face-text-muted) 70%, transparent);
-  background: color-mix(in srgb, var(--display-face-bar-bg, rgba(0, 0, 0, 0.4)) 55%, transparent);
+  background: color-mix(in srgb, var(--display-face-bar-bg) 55%, transparent);
 }
 
 .fusion-boot__src--sse {
@@ -6419,8 +6419,8 @@ html[data-industrial-bezel="brush"] {
   min-height: 0;
   height: 100%;
   border-radius: 3px;
-  border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.35)) 55%, transparent);
-  background: color-mix(in srgb, var(--display-face-bar-bg, rgba(0, 0, 0, 0.35)) 62%, transparent);
+  border: 1px solid color-mix(in srgb, var(--display-face-border) 55%, transparent);
+  background: color-mix(in srgb, var(--display-face-bar-bg) 62%, transparent);
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, #fff 5%, transparent),
     inset 0 -1px 2px color-mix(in srgb, #000 30%, transparent);
@@ -6466,7 +6466,7 @@ html[data-industrial-bezel="brush"] {
   min-height: 48px;
   border-radius: 2px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.4)) 45%, transparent);
+  border: 1px solid color-mix(in srgb, var(--display-face-border) 45%, transparent);
   background: color-mix(in srgb, #000 28%, transparent);
 }
 
@@ -6547,8 +6547,8 @@ html[data-industrial-bezel="brush"] {
   max-width: 152px;
   padding: 6px 8px 5px;
   border-radius: 3px;
-  border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.35)) 50%, transparent);
-  background: color-mix(in srgb, var(--display-face-bar-bg, rgba(0, 0, 0, 0.35)) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--display-face-border) 50%, transparent);
+  background: color-mix(in srgb, var(--display-face-bar-bg) 55%, transparent);
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, #fff 5%, transparent),
     inset 0 -1px 2px color-mix(in srgb, #000 28%, transparent);
@@ -6651,7 +6651,7 @@ html[data-industrial-bezel="brush"] {
   width: 100%;
   height: 3px;
   border-radius: 1px;
-  background: color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.4)) 55%, transparent);
+  background: color-mix(in srgb, var(--display-face-border) 55%, transparent);
   transition: background 200ms ease, box-shadow 220ms ease;
 }
 
@@ -6699,8 +6699,8 @@ html[data-industrial-bezel="brush"] {
   height: 4px;
   border-radius: 2px;
   overflow: hidden;
-  background: color-mix(in srgb, var(--display-face-bar-bg, rgba(0, 0, 0, 0.45)) 70%, transparent);
-  border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.35)) 50%, transparent);
+  background: color-mix(in srgb, var(--display-face-bar-bg) 70%, transparent);
+  border: 1px solid color-mix(in srgb, var(--display-face-border) 50%, transparent);
 }
 
 .fusion-boot-phase__progress-fill {
@@ -6733,8 +6733,8 @@ html[data-industrial-bezel="brush"] {
 
 .fusion-boot-ticker {
   border-radius: 3px;
-  border: 1px solid color-mix(in srgb, var(--display-face-border, rgba(148, 163, 184, 0.35)) 48%, transparent);
-  background: color-mix(in srgb, var(--display-face-bar-bg, rgba(0, 0, 0, 0.4)) 58%, transparent);
+  border: 1px solid color-mix(in srgb, var(--display-face-border) 48%, transparent);
+  background: color-mix(in srgb, var(--display-face-bar-bg) 58%, transparent);
   box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 4%, transparent);
   padding: 4px 6px;
   min-height: 32px;
