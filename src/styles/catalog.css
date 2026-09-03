@@ -39,7 +39,7 @@
   transform: translateX(-50%);
   width: 2px;
   border-radius: 1px;
-  background: color-mix(in srgb, var(--theme-accent, #76b900) 35%, #808080 65%);
+  background: color-mix(in srgb, var(--theme-accent) 35%, #808080 65%);
   opacity: 0.65;
   transition: opacity 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
 }
@@ -54,7 +54,7 @@
   height: 28px;
   border-radius: 2px;
   background:
-    radial-gradient(circle, color-mix(in srgb, var(--theme-text-muted, #909090) 90%, #fff) 0.75px, transparent 0.8px)
+    radial-gradient(circle, color-mix(in srgb, var(--theme-text-muted) 90%, #fff) 0.75px, transparent 0.8px)
       center 2px / 4px 6px repeat-y;
   opacity: 0.75;
   transition: opacity 0.15s ease;
@@ -62,14 +62,14 @@
 
 .catalog-split-handle:hover,
 .catalog-split-handle.is-dragging {
-  background: color-mix(in srgb, var(--theme-accent, #76b900) 8%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-accent, #76b900) 22%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 8%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-accent) 22%, transparent);
 }
 
 .catalog-split-handle:hover::before,
 .catalog-split-handle.is-dragging::before {
   opacity: 1;
-  background: var(--theme-accent, #76b900);
+  background: var(--theme-accent);
   box-shadow: 0 0 6px color-mix(in srgb, var(--theme-accent-glow, var(--theme-accent)) 50%, transparent);
 }
 
@@ -195,7 +195,7 @@
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.04em;
   line-height: 1;
-  color: var(--theme-text-muted, var(--theme-text, #e5e7eb));
+  color: var(--theme-text-muted, var(--theme-text));
   opacity: 0.85;
   white-space: nowrap;
   user-select: none;
@@ -440,7 +440,7 @@
   padding: 0;
   /* Center the chevron on the chrome/list seam */
   transform: translate(-50%, -50%);
-  border: 1px solid color-mix(in srgb, var(--theme-accent, #76b900) 40%, var(--theme-border));
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 40%, var(--theme-border));
   border-radius: 4px;
   background: var(--theme-bg-elevated, var(--theme-bg));
   color: var(--theme-accent, var(--theme-text-muted));
@@ -527,7 +527,7 @@
 
 .catalog-split-toggle--collapsed-hint {
   border-color: color-mix(in srgb, #d97706 45%, var(--theme-border)) !important;
-  color: color-mix(in srgb, #f59e0b 70%, var(--theme-text-muted, #aaa)) !important;
+  color: color-mix(in srgb, #f59e0b 70%, var(--theme-text-muted)) !important;
 }
 
 .catalog-split-workspace--collapsed .catalog-list-panel {
@@ -1092,12 +1092,12 @@
   background:
     radial-gradient(
       120% 90% at 0% 0%,
-      color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 14%, transparent),
+      color-mix(in srgb, var(--theme-harness-brain-raw) 14%, transparent),
       transparent 55%
     ),
     radial-gradient(
       100% 80% at 100% 100%,
-      color-mix(in srgb, var(--theme-harness-worker-raw, #ea580c) 12%, transparent),
+      color-mix(in srgb, var(--theme-harness-worker-raw) 12%, transparent),
       transparent 50%
     ),
     color-mix(in srgb, var(--theme-panel) 70%, #000 30%);
@@ -1213,7 +1213,7 @@
 }
 
 .catalog-seats-help__role--brain {
-  color: var(--theme-harness-brain-text, var(--theme-provider-pill-active-text, #bfdbfe));
+  color: var(--theme-harness-brain-text, var(--theme-provider-pill-active-text));
   background: color-mix(
     in srgb,
     var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 28%,
@@ -1227,7 +1227,7 @@
 }
 
 .catalog-seats-help__role--worker {
-  color: var(--theme-pair-secondary-text, var(--theme-chip-solid-text, #fdba74));
+  color: var(--theme-pair-secondary-text, var(--theme-chip-solid-text));
   background: color-mix(
     in srgb,
     var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 28%,
@@ -1373,10 +1373,10 @@
 }
 
 .catalog-quick-seat__mem--vram {
-  color: var(--display-face-fc-label-fg, var(--display-face-text, #e2e8f0));
+  color: var(--display-face-fc-label-fg, var(--display-face-text));
   background: var(
     --display-face-fc-label-bg,
-    color-mix(in srgb, var(--theme-accent, #76b900) 16%, transparent)
+    color-mix(in srgb, var(--theme-accent) 16%, transparent)
   );
 }
 
@@ -1422,15 +1422,15 @@
 .catalog-quick-mem__cell + .catalog-quick-mem__cell {
   border-left: 1px solid var(
     --display-face-fc-label-border,
-    color-mix(in srgb, var(--theme-accent, #76b900) 28%, transparent)
+    color-mix(in srgb, var(--theme-accent) 28%, transparent)
   );
 }
 
 .catalog-quick-mem__cell--vram {
-  color: var(--display-face-fc-label-fg, var(--display-face-text, #e2e8f0));
+  color: var(--display-face-fc-label-fg, var(--display-face-text));
   background: var(
     --display-face-fc-label-bg,
-    color-mix(in srgb, var(--theme-accent, #76b900) 16%, transparent)
+    color-mix(in srgb, var(--theme-accent) 16%, transparent)
   );
 }
 
@@ -1593,13 +1593,13 @@
 
 .catalog-quick-seat__btn--clear,
 .catalog-quick-seat__btn--no {
-  color: var(--theme-danger, #f87171);
+  color: var(--theme-danger);
 }
 
 .catalog-quick-seat__btn--clear:hover,
 .catalog-quick-seat__btn--no:hover {
-  color: var(--theme-danger, #f87171);
-  background: color-mix(in srgb, var(--theme-danger, #f87171) 10%, transparent);
+  color: var(--theme-danger);
+  background: color-mix(in srgb, var(--theme-danger) 10%, transparent);
 }
 
 .catalog-quick-seat__btn--save {
@@ -1667,12 +1667,12 @@
   .catalog-quick-seat__live-rim {
   background: conic-gradient(
     from 0deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 6%, transparent) 0deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 6%, transparent) 200deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 50%, transparent) 250deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 95%, #fff 18%) 280deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 50%, transparent) 310deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 6%, transparent) 360deg
+    color-mix(in srgb, var(--theme-harness-brain-raw) 6%, transparent) 0deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw) 6%, transparent) 200deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw) 50%, transparent) 250deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw) 95%, #fff 18%) 280deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw) 50%, transparent) 310deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw) 6%, transparent) 360deg
   );
 }
 
@@ -1683,12 +1683,12 @@
   .catalog-quick-seat__live-rim {
   background: conic-gradient(
     from 0deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw, #f59e0b) 6%, transparent) 0deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw, #f59e0b) 6%, transparent) 200deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw, #f59e0b) 50%, transparent) 250deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw, #f59e0b) 95%, #fff 14%) 280deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw, #f59e0b) 50%, transparent) 310deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw, #f59e0b) 6%, transparent) 360deg
+    color-mix(in srgb, var(--theme-harness-worker-raw) 6%, transparent) 0deg,
+    color-mix(in srgb, var(--theme-harness-worker-raw) 6%, transparent) 200deg,
+    color-mix(in srgb, var(--theme-harness-worker-raw) 50%, transparent) 250deg,
+    color-mix(in srgb, var(--theme-harness-worker-raw) 95%, #fff 14%) 280deg,
+    color-mix(in srgb, var(--theme-harness-worker-raw) 50%, transparent) 310deg,
+    color-mix(in srgb, var(--theme-harness-worker-raw) 6%, transparent) 360deg
   );
 }
 
@@ -1779,24 +1779,24 @@
 .catalog-seat-edit-banner--brain .catalog-seat-edit-banner__live-rim {
   background: conic-gradient(
     from 0deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 6%, transparent) 0deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 6%, transparent) 200deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 50%, transparent) 250deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 95%, #fff 18%) 280deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 50%, transparent) 310deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw, #60a5fa) 6%, transparent) 360deg
+    color-mix(in srgb, var(--theme-harness-brain-raw) 6%, transparent) 0deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw) 6%, transparent) 200deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw) 50%, transparent) 250deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw) 95%, #fff 18%) 280deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw) 50%, transparent) 310deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw) 6%, transparent) 360deg
   );
 }
 
 .catalog-seat-edit-banner--worker .catalog-seat-edit-banner__live-rim {
   background: conic-gradient(
     from 0deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw, #f59e0b) 6%, transparent) 0deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw, #f59e0b) 6%, transparent) 200deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw, #f59e0b) 50%, transparent) 250deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw, #f59e0b) 95%, #fff 14%) 280deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw, #f59e0b) 50%, transparent) 310deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw, #f59e0b) 6%, transparent) 360deg
+    color-mix(in srgb, var(--theme-harness-worker-raw) 6%, transparent) 0deg,
+    color-mix(in srgb, var(--theme-harness-worker-raw) 6%, transparent) 200deg,
+    color-mix(in srgb, var(--theme-harness-worker-raw) 50%, transparent) 250deg,
+    color-mix(in srgb, var(--theme-harness-worker-raw) 95%, #fff 14%) 280deg,
+    color-mix(in srgb, var(--theme-harness-worker-raw) 50%, transparent) 310deg,
+    color-mix(in srgb, var(--theme-harness-worker-raw) 6%, transparent) 360deg
   );
 }
 
