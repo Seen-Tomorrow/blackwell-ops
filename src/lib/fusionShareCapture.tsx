@@ -713,8 +713,26 @@ function resolveSharePhosphorHost(frame: HTMLElement): HTMLElement | null {
   return null;
 }
 
-/** Corner badge on the phosphor face — does not affect layout flow. */
+/**
+ * Brand badge. Prefer the bench result block: center the logo vertically on it,
+ * right-aligned, so it reads as part of the bench area. Fall back to the phosphor
+ * host bottom-right when there is no bench block.
+ */
 function injectShareBezelBrand(frame: HTMLElement): void {
+  const bench = frame.querySelector<HTMLElement>(".bench-widget-panel");
+  if (bench) {
+    if (!bench.style.position || bench.style.position === "static") {
+      bench.style.position = "relative";
+    }
+    const brand = createShareBezelBrand();
+    brand.style.position = "absolute";
+    brand.style.right = "6px";
+    brand.style.top = "50%";
+    brand.style.bottom = "auto";
+    brand.style.transform = "translateY(-50%)";
+    bench.appendChild(brand);
+    return;
+  }
   const host = resolveSharePhosphorHost(frame);
   if (!host) {
     frame.appendChild(createShareBezelBrand());

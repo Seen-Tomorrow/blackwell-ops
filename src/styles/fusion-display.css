@@ -4332,6 +4332,11 @@ html[data-industrial-bezel="brush"] {
   margin-top: 1px;
 }
 
+/* Bench result block: 5px of air above it so it does not sit flush under the meters. */
+.fusion-share-capture-stage[data-fusion-share-capture] .bench-widget-panel {
+  margin-top: 5px;
+}
+
 .fusion-share-hw-band__chip {
   display: inline-flex;
   align-items: center;
