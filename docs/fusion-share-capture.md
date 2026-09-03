@@ -56,7 +56,7 @@ Stage mounts on `document.body` (WebView2 rasterizes on-screen nodes only) with
 |----------|-------|---------|
 | `FUSION_SHARE_EXPORT_CARD_WIDTH` | **900** | Card CSS width; height = 9/16 → 506. PNG 1800×1012. |
 | `FUSION_SHARE_EXPORT_PIXEL_RATIO` | **2** | CSS→PNG. Under uniform scale the content is vector-rasterized, so crispness follows this number, not the clone's font sizes. X/Reddit serve ≤ ~1600px; 4× bought nothing and quadrupled html-to-image work per attempt. |
-| `FUSION_SHARE_EXPORT_HEADER_HEIGHT` | **94** | Card header: identity row + config chip row + GPU identity row (card-only UI, hand-built). |
+| `FUSION_SHARE_EXPORT_HEADER_HEIGHT` | **54** | Card header: identity row + config chip row (card-only UI, hand-built). The GPU identity lives in the glass top bezel, not the header. |
 | `FUSION_SHARE_EXPORT_FRAME_PAD_X` / `_BOTTOM` / `_TOP` | **5** / 14 / 0 | Panel-accent mat. X is deliberately small — the bezel reads as full-bleed and 5px only keeps its cast shadow from being sawn off at the card edge. |
 | `SHARE_ASPECT_W` / `_H` | 16 / 9 | **Card** aspect. The glass keeps whatever aspect live gives it. |
 | `FUSION_CAPTURE_HERO_FONT_PX` / `_PER_SLOT_FONT_PX` | 40 / 20 | **The only pinned sizes.** `vh` inside the mounted stage resolves against the real window, so without these the card's proportions would differ between a 1080p and a 4K session. |
@@ -127,19 +127,24 @@ Removed earlier: the "single session" banner (`injectCaptureBezelModeBanner`) an
 
 ---
 
-## Header anatomy (three rows)
+## Header anatomy (two rows) + GPU identity in the top bezel
 
 `createHeaderShell` builds **identity** (provider · build · profile · CUDA · model · quant) →
 **config chips** (`KV` → `CTX` → `batch/ubatch` → `flash-att` → **split** (amber) → `SPEC-TYPE` →
-`DRAFT-N-MAX` → `DRAFT-N-MIN`) → **GPU identity** (`● 2× RTX PRO 6000 … 96GB drv 610.x`), hugging
-the right edge so it reads as the label of the glass's **DEVICE** cluster directly below it. Chip
-rows are `flex: 1` inside the fixed 94px header, so slack splits evenly instead of pooling.
+`DRAFT-N-MAX` → `DRAFT-N-MIN`). The header is a fixed 54px (identity + one chip row); the config
+row is `flex: 1` and centered.
 
-The GPU line used to be a band *below* the bezel carrying a `2 GPUs · TENSOR SPLIT` headline. That
-headline was redundant — the count is in `2×` and the split mode is a chip above — and the band
-cost a row of card height under the glass. Both are gone: `createShareHwChipRow` lives in the
-header, and `createShareHwBand` + its wrap estimate (`computeFusionShareHwBandHeightPx`) were
-deleted along with the `.fusion-share-hw-band__topo|__headline|__chips` CSS.
+The **GPU identity** (`● 2× RTX PRO 6000 … 96GB drv 610.x`) is *not* in the header — it is injected
+into the glass's **top bezel band** by `injectShareGpuIdentity`: a card-only `position: absolute`
+overlay (`top: 0; right: 18px; height: 36px`) on the frame, vertically centered on the 36px top pad
+so it reads as the label of the **DEVICE** cluster directly below it. Because it is a child of the
+frame it scales with the fit, so it stays aligned with DEVICE at any scale. It reuses the
+`.fusion-share-hw-band__chip|__swatch|__driver` classes (theme-token colored), so no new CSS.
+
+The old bottom band and its `2 GPUs · TENSOR SPLIT` headline are gone — the count is in `2×`, the
+split mode is a chip on the config row, and the band cost a row of card height under the glass.
+`createShareHwBand` + its wrap estimate (`computeFusionShareHwBandHeightPx`) and the
+`.fusion-share-hw-band__topo|__headline|__chips` CSS were deleted.
 
 ## SPEC chips ride the config row (Boost-derived, not the legacy `spec_type` key)
 

@@ -124,8 +124,8 @@ export const FUSION_SHARE_EXPORT_FRAME_PAD_TOP = 0;
 export const FUSION_SHARE_EXPORT_FRAME_PAD_X = 5;
 export const FUSION_SHARE_EXPORT_FRAME_PAD_BOTTOM = 14;
 
-/** Identity row + config chip row + GPU identity row. */
-export const FUSION_SHARE_EXPORT_HEADER_HEIGHT = 94;
+/** Identity row + config chip row. The GPU identity moved into the glass top bezel. */
+export const FUSION_SHARE_EXPORT_HEADER_HEIGHT = 54;
 
 export interface FusionShareExportLayout {
   cardWidthPx: number;
@@ -727,52 +727,65 @@ function injectShareBezelBrand(frame: HTMLElement): void {
 }
 
 /**
- * Header row 3: GPU identity (swatch + `2× name VRAM drv X`), one chip per entry.
- * The old band headline ("2 GPUs · TENSOR SPLIT") is gone — the split mode and the
- * engine count are both already on the config row above it.
+ * GPU identity injected into the frame's top bezel band — right-aligned and vertically
+ * centered on the 36px top pad, so it reads as the label of the DEVICE cluster below it.
+ * Card-only overlay (`position: absolute`); does not affect layout flow and scales with
+ * the frame, so it stays aligned with DEVICE through the fit scale.
  */
-function createShareHwChipRow(
+function injectShareGpuIdentity(
+  frame: HTMLElement,
   meta: FusionShareMeta,
-  palette: ParamsRowPalette,
-): HTMLElement | null {
+  colors: CaptureColors,
+): void {
   const entries = meta.shareGpus
     ? buildFusionShareGpuTopoEntries(meta.shareGpus, meta.shareGpuMask)
     : [];
+  const fallback = meta.hwTopo?.trim();
+  if (entries.length === 0 && !fallback) return;
 
-  const box = createChipBox(palette);
+  const host = document.createElement("div");
+  host.className = "fusion-share-gpu-identity";
+  host.style.position = "absolute";
+  host.style.top = "0";
+  host.style.right = "18px";
+  host.style.height = "36px";
+  host.style.display = "flex";
+  host.style.alignItems = "center";
+  host.style.justifyContent = "flex-end";
+  host.style.gap = "6px";
+  host.style.zIndex = "45";
+  host.style.pointerEvents = "none";
 
   if (entries.length === 0) {
-    const fallback = meta.hwTopo?.trim();
-    if (!fallback) return null;
-    box.appendChild(brandConfigLabel(fallback.toUpperCase(), palette.muted));
-    return box;
+    host.appendChild(brandConfigLabel(fallback!.toUpperCase(), colors.subtitle));
+  } else {
+    entries.forEach((entry, index) => {
+      if (index > 0) host.appendChild(brandDivider(colors.divider));
+
+      const chip = document.createElement("span");
+      chip.className = "fusion-share-hw-band__chip";
+
+      const swatch = document.createElement("span");
+      swatch.className = "fusion-share-hw-band__swatch";
+      swatch.style.backgroundColor = entry.color;
+      swatch.setAttribute("aria-hidden", "true");
+
+      const label = document.createElement("span");
+      label.textContent = `${entry.count}× ${entry.label}`;
+      if (entry.driverVersion) {
+        label.appendChild(document.createElement("wbr"));
+        const drv = document.createElement("span");
+        drv.className = "fusion-share-hw-band__driver";
+        drv.textContent = ` drv ${entry.driverVersion}`;
+        label.appendChild(drv);
+      }
+
+      chip.append(swatch, label);
+      host.appendChild(chip);
+    });
   }
 
-  entries.forEach((entry, index) => {
-    if (index > 0) box.appendChild(brandDivider(palette.divider));
-
-    const chip = document.createElement("span");
-    chip.className = "fusion-share-hw-band__chip";
-
-    const swatch = document.createElement("span");
-    swatch.className = "fusion-share-hw-band__swatch";
-    swatch.style.backgroundColor = entry.color;
-    swatch.setAttribute("aria-hidden", "true");
-
-    const label = document.createElement("span");
-    label.textContent = `${entry.count}× ${entry.label}`;
-    if (entry.driverVersion) {
-      label.appendChild(document.createElement("wbr"));
-      const drv = document.createElement("span");
-      drv.className = "fusion-share-hw-band__driver";
-      drv.textContent = ` drv ${entry.driverVersion}`;
-      label.appendChild(drv);
-    }
-
-    chip.append(swatch, label);
-    box.appendChild(chip);
-  });
-  return box;
+  frame.appendChild(host);
 }
 
 /**
@@ -785,6 +798,7 @@ function createFrameCaptureStage(
   colors: CaptureColors,
   variant: FusionShareVariant,
   layout: FusionShareExportLayout,
+  meta: FusionShareMeta,
 ): FrameCaptureStage {
   const stage = document.createElement("div");
   stage.className = "fusion-share-capture-stage";
@@ -839,6 +853,7 @@ function createFrameCaptureStage(
   glassFit.appendChild(frame);
   glassArea.appendChild(glassFit);
   injectShareBezelBrand(frame);
+  injectShareGpuIdentity(frame, meta, colors);
   stage.appendChild(glassArea);
   return { stage, glassFit, frame };
 }
@@ -1013,15 +1028,6 @@ function createHeaderShell(meta: FusionShareMeta, variant: FusionShareVariant, l
     boxBg: variant === "white" ? "rgba(255, 255, 255, 0.28)" : "rgba(255, 255, 255, 0.06)",
   };
   const configRow = createLaunchConfigChipRow(meta.launchConfig, paramsPalette, variant);
-  const hwRow = createShareHwChipRow(meta, paramsPalette);
-  /*
-   * The GPU line hugs the right edge so it reads as the label of the glass's DEVICE
-   * cluster directly below it; the config chips stay left-aligned under the identity.
-   */
-  const chipRows: Array<{ el: HTMLElement; align: "flex-start" | "flex-end" }> = [
-    configRow ? { el: configRow, align: "flex-start" } : null,
-    hwRow ? { el: hwRow, align: "flex-end" } : null,
-  ].filter((row): row is { el: HTMLElement; align: "flex-start" | "flex-end" } => row !== null);
 
   const shell = document.createElement("div");
   shell.className = "fusion-share-capture-brand-shell";
@@ -1040,7 +1046,7 @@ function createHeaderShell(meta: FusionShareMeta, variant: FusionShareVariant, l
   shell.style.position = "fixed";
   shell.style.display = "flex";
   shell.style.flexDirection = "column";
-  shell.style.background = chipRows.length > 0 ? colors.panelAccent : FUSION_SHARE_IDENTITY_BG;
+  shell.style.background = configRow ? colors.panelAccent : FUSION_SHARE_IDENTITY_BG;
   shell.style.overflow = "hidden";
   shell.style.borderBottom = `1px solid ${colors.border}`;
 
@@ -1064,8 +1070,8 @@ function createHeaderShell(meta: FusionShareMeta, variant: FusionShareVariant, l
     identityRow.style.whiteSpace = "nowrap";
     identityRow.style.background = FUSION_SHARE_IDENTITY_BG;
     identityRow.style.color = FUSION_SHARE_IDENTITY_TEXT;
-    identityRow.style.flex = chipRows.length > 0 ? "0 0 auto" : "1";
-    identityRow.style.padding = chipRows.length > 0 ? "6px 12px 5px" : "6px 12px";
+    identityRow.style.flex = configRow ? "0 0 auto" : "1";
+    identityRow.style.padding = configRow ? "6px 12px 5px" : "6px 12px";
     identityRow.style.boxSizing = "border-box";
 
     if (providerName) {
@@ -1116,22 +1122,22 @@ function createHeaderShell(meta: FusionShareMeta, variant: FusionShareVariant, l
     shell.appendChild(identityRow);
   }
 
-  /* Two flexed rows inside the fixed header, so slack splits evenly between them. */
-  for (const { el, align } of chipRows) {
+  /* Config chips fill the remaining header space, centered. The GPU identity lives in
+     the glass top bezel now, so the header is identity + config row only. */
+  if (configRow) {
     const rowHost = document.createElement("div");
     rowHost.style.flex = "1";
     rowHost.style.display = "flex";
     rowHost.style.alignItems = "center";
-    rowHost.style.justifyContent = align;
     rowHost.style.minWidth = "0";
     rowHost.style.width = "100%";
     rowHost.style.padding = "0 12px";
     rowHost.style.boxSizing = "border-box";
     rowHost.style.overflow = "hidden";
     rowHost.style.background = colors.paramsBandBg;
-    el.style.maxWidth = "100%";
-    el.style.minWidth = "0";
-    rowHost.appendChild(el);
+    configRow.style.maxWidth = "100%";
+    configRow.style.minWidth = "0";
+    rowHost.appendChild(configRow);
     shell.appendChild(rowHost);
   }
 
@@ -1476,6 +1482,7 @@ async function renderFusionSharePngOnce(
     colors,
     variant,
     layout,
+    meta,
   );
   const headerShell = createHeaderShell(meta, variant, layout);
 
