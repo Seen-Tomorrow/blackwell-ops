@@ -56,6 +56,21 @@ def css_defs(root):
             out[m.group(1)].add(path.replace("\\", "/"))
     return out
 
+def scan_files(root):
+    """Every file that can carry a var() fallback: the CSS partials plus TS/TSX.
+
+    Inline styles in components carry the same var(--x, #hex) decoy. Walking only
+    src/styles reports a false zero while those sites still paint, so the gate has
+    to cover them. Definitions stay CSS-only (see css_defs): a token is defined by
+    the theme layer, never by a component.
+    """
+    return sorted(
+        glob.glob(root + "/styles/*.css")
+        + [root + "/index.css", root + "/controls.css"]
+        + glob.glob(root + "/**/*.tsx", recursive=True)
+        + glob.glob(root + "/**/*.ts", recursive=True)
+    )
+
 
 def classify(tok, faces, defs):
     """Is the fallback ever reachable, and does the token theme-switch?"""
@@ -82,7 +97,7 @@ def main():
     root = sys.argv[2] if len(sys.argv) > 2 else "src"
     faces, defs = face_keys(), css_defs(root)
     rows = []
-    for path in sorted(glob.glob(root + "/styles/*.css") + [root + "/index.css", root + "/controls.css"]):
+    for path in scan_files(root):
         for i, line in enumerate(open(path, encoding="utf-8").read().split("\n"), 1):
             for m in USE.finditer(line):
                 tok, lit = m.group(1), m.group(2)
