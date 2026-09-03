@@ -323,13 +323,13 @@ const ARCTIC: AppTheme = {
      * and a slightly wider pitch. The separate light-LCD surface is gone by decision:
      * texture decides the pattern, the theme decides the colour.
      *
-     * --display-face-dotted-bg sits one deliberate step below ARCTIC's CLEAN face
-     * (#f7fafc): a light grey panel instead of pure porcelain, so the dot matrix
-     * registers and the readouts keep the contrast the old darker DOTTED look had.
-     * Still an ARCTIC colour, not a second theme.
-     * texture decides the pattern, the theme decides the colour.
+     * --display-face-dotted-bg stays WHITE. The dark-dot matrix covers most of each
+     * tile and multiply-darkens it, so a porcelain (#f7fafc) base greys the whole face
+     * (DOTTED looked visibly darker than CLEAN). Starting from pure white lets the
+     * multiply land back at porcelain brightness: the face reads white with a faint
+     * dot grid, not a grey panel. texture decides the pattern, theme decides colour.
      */
-    "--display-face-dotted-bg": "#e9eff6",
+    "--display-face-dotted-bg": "#ffffff",
     "--display-face-grain-dot": "rgba(0, 0, 0, 0.028)",
     "--display-face-grain-band": "rgba(0, 0, 0, 0.014)",
     "--display-face-grain-cell": "3px",
