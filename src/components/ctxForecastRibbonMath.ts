@@ -63,7 +63,7 @@ export function ribbonCssGradient(stops: RibbonStop[]): string {
       case "caution":
         return "#fcd34d";
       default:
-        return "var(--theme-accent, #76b900)";
+        return "var(--theme-accent)";
     }
   };
   const parts = stops.map((s, i) => {
