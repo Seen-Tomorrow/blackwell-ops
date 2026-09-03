@@ -94,17 +94,6 @@ export function buildFusionShareGpuTopoEntries(
   return buildBenchGpuTopoEntries(gpus, gpus.map((g) => String(g.index)).join(","));
 }
 
-export function formatFusionShareSplitHeadline(
-  gpus: GpuInfo[],
-  gpuMask: string | undefined,
-  splitMode: string | undefined,
-): string | null {
-  const entries = buildFusionShareGpuTopoEntries(gpus, gpuMask);
-  if (entries.length === 0) return null;
-  const indices = entries.flatMap((e) => e.indices);
-  return formatBenchSplitHeadlineFromIndices(indices, splitMode);
-}
-
 function formatBenchSplitHeadlineFromIndices(
   indices: number[],
   splitMode: string | undefined,

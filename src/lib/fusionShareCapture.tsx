@@ -1,12 +1,6 @@
 import { toCanvas } from "html-to-image";
-import {
-  buildFusionShareGpuTopoEntries,
-  formatFusionShareSplitHeadline,
-} from "./benchHwTopo";
-import {
-  computeFusionShareHwBandHeightPx,
-  FUSION_SHARE_BRAND_LOGO_PX,
-} from "./benchPanelLayout";
+import { buildFusionShareGpuTopoEntries } from "./benchHwTopo";
+import { FUSION_SHARE_BRAND_LOGO_PX } from "./benchPanelLayout";
 import { brandLogoMarkup } from "./brandLogos";
 import { nextFusionShareDailySeq } from "./storage";
 import { displayFaceFor, type DisplayTexture } from "./displayTexture";
@@ -122,29 +116,26 @@ const SHARE_ASPECT_H = 9;
 export const FUSION_SHARE_EXPORT_CARD_WIDTH = 900;
 export const FUSION_SHARE_EXPORT_GAP = 8;
 /**
- * Panel-accent mat in share captures (CSS px). X is 0: the bezel runs edge to edge
- * (the top already sat flush). Its cast shadow clips at the card edge by the same
- * trade — the mat on the sides bought nothing the bezel did not already cover.
+ * Panel-accent mat in share captures (CSS px). X is deliberately small: the bezel is
+ * meant to read as full-bleed, and 5px only keeps its cast shadow from being sawn off
+ * at the card edge.
  */
 export const FUSION_SHARE_EXPORT_FRAME_PAD_TOP = 0;
-export const FUSION_SHARE_EXPORT_FRAME_PAD_X = 0;
+export const FUSION_SHARE_EXPORT_FRAME_PAD_X = 5;
 export const FUSION_SHARE_EXPORT_FRAME_PAD_BOTTOM = 14;
-/** The HW band is text, so it keeps an inset even though the bezel is full-bleed. */
-const SHARE_HW_BAND_INSET_X_PX = 12;
 
-/** Identity row + up to two params chip rows. */
+/** Identity row + config chip row + GPU identity row. */
 export const FUSION_SHARE_EXPORT_HEADER_HEIGHT = 94;
 
 export interface FusionShareExportLayout {
   cardWidthPx: number;
   cardHeightPx: number;
   headerHeightPx: number;
-  /** Card below the header: glass area + HW band + pads. */
+  /** Card below the header: glass area + pads. */
   frameHeightPx: number;
   /** The clone re-flows to this width, then scales to fit this box. */
   glassAreaWidthPx: number;
   glassAreaHeightPx: number;
-  hwBandHeightPx: number;
 }
 
 export function computeFusionShareExportLayout(
@@ -155,18 +146,9 @@ export function computeFusionShareExportLayout(
   const headerHeightPx = FUSION_SHARE_EXPORT_HEADER_HEIGHT;
   const frameHeightPx = cardHeightPx - headerHeightPx - FUSION_SHARE_EXPORT_GAP;
   const glassAreaWidthPx = cardWidthPx - FUSION_SHARE_EXPORT_FRAME_PAD_X * 2;
-  const hwBandHeightPx = computeFusionShareHwBandHeightPx(
-    meta.shareGpus,
-    meta.shareGpuMask,
-    meta.hwTopo,
-    glassAreaWidthPx - SHARE_HW_BAND_INSET_X_PX * 2,
-  );
   const glassAreaHeightPx = Math.max(
     0,
-    frameHeightPx
-      - hwBandHeightPx
-      - FUSION_SHARE_EXPORT_FRAME_PAD_TOP
-      - FUSION_SHARE_EXPORT_FRAME_PAD_BOTTOM,
+    frameHeightPx - FUSION_SHARE_EXPORT_FRAME_PAD_TOP - FUSION_SHARE_EXPORT_FRAME_PAD_BOTTOM,
   );
   return {
     cardWidthPx,
@@ -175,7 +157,6 @@ export function computeFusionShareExportLayout(
     frameHeightPx,
     glassAreaWidthPx,
     glassAreaHeightPx,
-    hwBandHeightPx,
   };
 }
 
@@ -543,7 +524,7 @@ function brandSplitLabel(text: string, _variant: FusionShareVariant): HTMLSpanEl
   return brandAmberChipLabel(text);
 }
 
-function collectShareLaunchConfigRow1(launchConfig: FusionShareLaunchConfig | undefined): ParamChip[] {
+function collectShareConfigChips(launchConfig: FusionShareLaunchConfig | undefined): ParamChip[] {
   if (!launchConfig) return [];
 
   const chips: ParamChip[] = [];
@@ -562,7 +543,8 @@ function collectShareLaunchConfigRow1(launchConfig: FusionShareLaunchConfig | un
   return chips;
 }
 
-function collectShareLaunchConfigRow2(launchConfig: FusionShareLaunchConfig | undefined): ParamChip[] {
+/** Spec chips ride the config row (after the split chip); they no longer own a row. */
+function collectShareSpecChips(launchConfig: FusionShareLaunchConfig | undefined): ParamChip[] {
   if (!launchConfig) return [];
 
   const chips: ParamChip[] = [];
@@ -618,14 +600,8 @@ function appendParamChips(
   });
 }
 
-function createParamsChipRow(
-  chips: ParamChip[],
-  palette: ParamsRowPalette,
-  variant: FusionShareVariant,
-  kvQuant?: string | null,
-): HTMLElement | null {
-  if (!kvQuant && chips.length === 0) return null;
-
+/** Shared bordered row shell for the header's chip rows. */
+function createChipBox(palette: ParamsRowPalette): HTMLElement {
   const box = document.createElement("div");
   box.style.display = "inline-flex";
   box.style.alignItems = "center";
@@ -637,31 +613,35 @@ function createParamsChipRow(
   box.style.maxWidth = "100%";
   box.style.overflow = "hidden";
   box.style.background = palette.boxBg;
+  return box;
+}
+
+function createParamsChipRow(
+  chips: ParamChip[],
+  palette: ParamsRowPalette,
+  variant: FusionShareVariant,
+  kvQuant?: string | null,
+): HTMLElement | null {
+  if (!kvQuant && chips.length === 0) return null;
+  const box = createChipBox(palette);
   appendParamChips(box, chips, palette, variant, kvQuant);
   return box;
 }
 
-function createLaunchParamsSection(
+/**
+ * Header row 2: KV → CTX → batch/ubatch → flash-attn → split (highlighted) → SPEC.
+ * One row, so the header's third row is free for the GPU identity.
+ */
+function createLaunchConfigChipRow(
   launchConfig: FusionShareLaunchConfig | undefined,
   palette: ParamsRowPalette,
   variant: FusionShareVariant,
 ): HTMLElement | null {
-  const kvQuant = formatShareKvQuant(launchConfig?.kvQuant);
-  const row1Chips = collectShareLaunchConfigRow1(launchConfig);
-  const row2Chips = collectShareLaunchConfigRow2(launchConfig);
-  const row1 = createParamsChipRow(row1Chips, palette, variant, kvQuant);
-  const row2 = row2Chips.length > 0 ? createParamsChipRow(row2Chips, palette, variant) : null;
-  if (!row1 && !row2) return null;
-
-  const section = document.createElement("div");
-  section.style.display = "flex";
-  section.style.flexDirection = "column";
-  section.style.gap = "3px";
-  section.style.width = "100%";
-  section.style.minWidth = "0";
-  if (row1) section.appendChild(row1);
-  if (row2) section.appendChild(row2);
-  return section;
+  const chips = [
+    ...collectShareConfigChips(launchConfig),
+    ...collectShareSpecChips(launchConfig),
+  ];
+  return createParamsChipRow(chips, palette, variant, formatShareKvQuant(launchConfig?.kvQuant));
 }
 
 interface FrameCaptureStage {
@@ -746,84 +726,53 @@ function injectShareBezelBrand(frame: HTMLElement): void {
   host.appendChild(createShareBezelBrand());
 }
 
-function createShareHwBand(
+/**
+ * Header row 3: GPU identity (swatch + `2× name VRAM drv X`), one chip per entry.
+ * The old band headline ("2 GPUs · TENSOR SPLIT") is gone — the split mode and the
+ * engine count are both already on the config row above it.
+ */
+function createShareHwChipRow(
   meta: FusionShareMeta,
-  layout: FusionShareExportLayout,
+  palette: ParamsRowPalette,
 ): HTMLElement | null {
-  if (layout.hwBandHeightPx <= 0) return null;
+  const entries = meta.shareGpus
+    ? buildFusionShareGpuTopoEntries(meta.shareGpus, meta.shareGpuMask)
+    : [];
 
-  const band = document.createElement("div");
-  band.className = "fusion-share-hw-band";
-  band.style.height = `${layout.hwBandHeightPx}px`;
-  band.style.minHeight = `${layout.hwBandHeightPx}px`;
-  band.style.maxHeight = `${layout.hwBandHeightPx}px`;
-  band.style.display = "flex";
-  band.style.alignItems = "center";
-  band.style.padding = `0 ${SHARE_HW_BAND_INSET_X_PX}px`;
-  band.style.boxSizing = "border-box";
-  band.style.overflow = "visible";
-  band.style.width = "100%";
+  const box = createChipBox(palette);
 
-  const topoCol = document.createElement("div");
-  topoCol.className = "fusion-share-hw-band__topo";
-
-  const gpus = meta.shareGpus;
-  let hasTopo = false;
-  if (gpus && gpus.length > 0) {
-    const entries = buildFusionShareGpuTopoEntries(gpus, meta.shareGpuMask);
-    if (entries.length > 0) {
-      hasTopo = true;
-      const headline = formatFusionShareSplitHeadline(
-        gpus,
-        meta.shareGpuMask,
-        meta.shareSplitMode ?? meta.launchConfig?.splitMode,
-      );
-      if (headline) {
-        const headlineEl = document.createElement("span");
-        headlineEl.className = "fusion-share-hw-band__headline";
-        headlineEl.textContent = headline;
-        topoCol.appendChild(headlineEl);
-      }
-
-      const chips = document.createElement("div");
-      chips.className = "fusion-share-hw-band__chips";
-      for (const entry of entries) {
-        const chip = document.createElement("span");
-        chip.className = "fusion-share-hw-band__chip";
-
-        const swatch = document.createElement("span");
-        swatch.className = "fusion-share-hw-band__swatch";
-        swatch.style.backgroundColor = entry.color;
-        swatch.setAttribute("aria-hidden", "true");
-
-        const label = document.createElement("span");
-        label.className = "fusion-share-hw-band__label";
-        label.textContent = `${entry.count}× ${entry.label}`;
-        if (entry.driverVersion) {
-          label.appendChild(document.createElement("wbr"));
-          const drv = document.createElement("span");
-          drv.className = "fusion-share-hw-band__driver";
-          drv.textContent = ` drv ${entry.driverVersion}`;
-          label.appendChild(drv);
-        }
-
-        chip.append(swatch, label);
-        chips.appendChild(chip);
-      }
-      topoCol.appendChild(chips);
-    }
-  } else if (meta.hwTopo?.trim()) {
-    hasTopo = true;
-    const fallback = document.createElement("span");
-    fallback.className = "fusion-share-hw-band__headline";
-    fallback.textContent = meta.hwTopo.trim();
-    topoCol.appendChild(fallback);
+  if (entries.length === 0) {
+    const fallback = meta.hwTopo?.trim();
+    if (!fallback) return null;
+    box.appendChild(brandConfigLabel(fallback.toUpperCase(), palette.muted));
+    return box;
   }
 
-  if (!hasTopo) return null;
+  entries.forEach((entry, index) => {
+    if (index > 0) box.appendChild(brandDivider(palette.divider));
 
-  band.appendChild(topoCol);
-  return band;
+    const chip = document.createElement("span");
+    chip.className = "fusion-share-hw-band__chip";
+
+    const swatch = document.createElement("span");
+    swatch.className = "fusion-share-hw-band__swatch";
+    swatch.style.backgroundColor = entry.color;
+    swatch.setAttribute("aria-hidden", "true");
+
+    const label = document.createElement("span");
+    label.textContent = `${entry.count}× ${entry.label}`;
+    if (entry.driverVersion) {
+      label.appendChild(document.createElement("wbr"));
+      const drv = document.createElement("span");
+      drv.className = "fusion-share-hw-band__driver";
+      drv.textContent = ` drv ${entry.driverVersion}`;
+      label.appendChild(drv);
+    }
+
+    chip.append(swatch, label);
+    box.appendChild(chip);
+  });
+  return box;
 }
 
 /**
@@ -836,7 +785,6 @@ function createFrameCaptureStage(
   colors: CaptureColors,
   variant: FusionShareVariant,
   layout: FusionShareExportLayout,
-  meta: FusionShareMeta,
 ): FrameCaptureStage {
   const stage = document.createElement("div");
   stage.className = "fusion-share-capture-stage";
@@ -892,9 +840,6 @@ function createFrameCaptureStage(
   glassArea.appendChild(glassFit);
   injectShareBezelBrand(frame);
   stage.appendChild(glassArea);
-
-  const hwBand = createShareHwBand(meta, layout);
-  if (hwBand) stage.appendChild(hwBand);
   return { stage, glassFit, frame };
 }
 
@@ -1067,7 +1012,9 @@ function createHeaderShell(meta: FusionShareMeta, variant: FusionShareVariant, l
     border: colors.border,
     boxBg: variant === "white" ? "rgba(255, 255, 255, 0.28)" : "rgba(255, 255, 255, 0.06)",
   };
-  const paramsSection = createLaunchParamsSection(meta.launchConfig, paramsPalette, variant);
+  const configRow = createLaunchConfigChipRow(meta.launchConfig, paramsPalette, variant);
+  const hwRow = createShareHwChipRow(meta, paramsPalette);
+  const chipRows = [configRow, hwRow].filter((row): row is HTMLElement => row !== null);
 
   const shell = document.createElement("div");
   shell.className = "fusion-share-capture-brand-shell";
@@ -1086,7 +1033,7 @@ function createHeaderShell(meta: FusionShareMeta, variant: FusionShareVariant, l
   shell.style.position = "fixed";
   shell.style.display = "flex";
   shell.style.flexDirection = "column";
-  shell.style.background = paramsSection ? colors.panelAccent : FUSION_SHARE_IDENTITY_BG;
+  shell.style.background = chipRows.length > 0 ? colors.panelAccent : FUSION_SHARE_IDENTITY_BG;
   shell.style.overflow = "hidden";
   shell.style.borderBottom = `1px solid ${colors.border}`;
 
@@ -1110,8 +1057,8 @@ function createHeaderShell(meta: FusionShareMeta, variant: FusionShareVariant, l
     identityRow.style.whiteSpace = "nowrap";
     identityRow.style.background = FUSION_SHARE_IDENTITY_BG;
     identityRow.style.color = FUSION_SHARE_IDENTITY_TEXT;
-    identityRow.style.flex = paramsSection ? "0 0 auto" : "1";
-    identityRow.style.padding = paramsSection ? "6px 12px 5px" : "6px 12px";
+    identityRow.style.flex = chipRows.length > 0 ? "0 0 auto" : "1";
+    identityRow.style.padding = chipRows.length > 0 ? "6px 12px 5px" : "6px 12px";
     identityRow.style.boxSizing = "border-box";
 
     if (providerName) {
@@ -1162,24 +1109,25 @@ function createHeaderShell(meta: FusionShareMeta, variant: FusionShareVariant, l
     shell.appendChild(identityRow);
   }
 
-  if (paramsSection) {
-    const paramsRow = document.createElement("div");
-    paramsRow.style.flex = "1";
-    paramsRow.style.display = "flex";
-    // Boost off leaves one chip row: center it, otherwise the reserved two-row
-    // header band shows a dead strip under the config chips.
-    paramsRow.style.alignItems = paramsSection.childElementCount > 1 ? "flex-start" : "center";
-    paramsRow.style.minWidth = "0";
-    paramsRow.style.width = "100%";
-    paramsRow.style.padding = "4px 12px 5px";
-    paramsRow.style.boxSizing = "border-box";
-    paramsRow.style.overflow = "hidden";
-    paramsRow.style.background = colors.paramsBandBg;
-    paramsSection.style.maxWidth = "100%";
-    paramsSection.style.flexShrink = "1";
-    paramsSection.style.minWidth = "0";
-    paramsRow.appendChild(paramsSection);
-    shell.appendChild(paramsRow);
+  /*
+   * Config chips and GPU identity stack as two flexed rows, so any slack in the fixed
+   * header splits evenly between them instead of pooling under one row.
+   */
+  for (const row of chipRows) {
+    const rowHost = document.createElement("div");
+    rowHost.style.flex = "1";
+    rowHost.style.display = "flex";
+    rowHost.style.alignItems = "center";
+    rowHost.style.minWidth = "0";
+    rowHost.style.width = "100%";
+    rowHost.style.padding = "0 12px";
+    rowHost.style.boxSizing = "border-box";
+    rowHost.style.overflow = "hidden";
+    rowHost.style.background = colors.paramsBandBg;
+    row.style.maxWidth = "100%";
+    row.style.minWidth = "0";
+    rowHost.appendChild(row);
+    shell.appendChild(rowHost);
   }
 
   return shell;
@@ -1523,7 +1471,6 @@ async function renderFusionSharePngOnce(
     colors,
     variant,
     layout,
-    meta,
   );
   const headerShell = createHeaderShell(meta, variant, layout);
 

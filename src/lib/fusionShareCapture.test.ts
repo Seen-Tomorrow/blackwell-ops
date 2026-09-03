@@ -4,6 +4,7 @@ import {
   computeFusionShareGlassFit,
   FUSION_SHARE_EXPORT_CARD_WIDTH,
   FUSION_SHARE_EXPORT_FRAME_PAD_BOTTOM,
+  FUSION_SHARE_EXPORT_FRAME_PAD_TOP,
   FUSION_SHARE_EXPORT_FRAME_PAD_X,
   FUSION_SHARE_EXPORT_GAP,
   FUSION_SHARE_EXPORT_HEADER_HEIGHT,
@@ -62,7 +63,7 @@ describe("computeFusionShareExportLayout", () => {
     );
     expect(layout.glassAreaHeightPx).toBe(
       layout.frameHeightPx
-        - layout.hwBandHeightPx
+        - FUSION_SHARE_EXPORT_FRAME_PAD_TOP
         - FUSION_SHARE_EXPORT_FRAME_PAD_BOTTOM,
     );
   });

@@ -4332,38 +4332,6 @@ html[data-industrial-bezel="brush"] {
   margin-top: 1px;
 }
 
-.fusion-share-hw-band__topo {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  min-width: 0;
-  gap: 3px;
-  justify-content: center;
-}
-
-.fusion-share-hw-band__headline {
-  font-family: ui-monospace, monospace;
-  font-size: 8px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  line-height: 1.1;
-  color: color-mix(in srgb, var(--theme-text-muted) 82%, transparent);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.fusion-share-hw-band__chips {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  align-content: flex-start;
-  gap: 6px;
-  width: 100%;
-  min-width: 0;
-}
-
 .fusion-share-hw-band__chip {
   display: inline-flex;
   align-items: center;

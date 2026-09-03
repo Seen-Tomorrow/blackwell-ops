@@ -37,9 +37,7 @@ renderFusionSharePngOnce(meta, variant)
   ├─ createFrameCaptureStage(sourceFrame, …)
   │    ├─ clone live frame; drop only industrial-display-frame--bottom-chrome
   │    ├─ clone width = layout.glassAreaWidthPx          // the one reference width
-  │    ├─ stage ▸ glass-area ▸ glass-fit ▸ clone         // glass-fit is the scaled box
-  │    ├─ injectShareBezelBrand(frame)                   // bottom-right logo, inside the glass
-  │    └─ createShareHwBand(meta, layout)                // GPU topo band below the glass
+  │    └─ injectShareBezelBrand(frame)                   // bottom-right logo, inside the glass
   ├─ hideCaptureChrome(frame)              // CAPTURE_STRIP_SELECTORS → visibility:hidden
   ├─ removeCaptureChrome(frame)            // CAPTURE_REMOVE_SELECTORS → display:none
   ├─ prepareFusionOverlayForCapture / stripForecastPaddingForCapture / pinFusionCaptureFonts
@@ -58,8 +56,8 @@ Stage mounts on `document.body` (WebView2 rasterizes on-screen nodes only) with
 |----------|-------|---------|
 | `FUSION_SHARE_EXPORT_CARD_WIDTH` | **900** | Card CSS width; height = 9/16 → 506. PNG 1800×1012. |
 | `FUSION_SHARE_EXPORT_PIXEL_RATIO` | **2** | CSS→PNG. Under uniform scale the content is vector-rasterized, so crispness follows this number, not the clone's font sizes. X/Reddit serve ≤ ~1600px; 4× bought nothing and quadrupled html-to-image work per attempt. |
-| `FUSION_SHARE_EXPORT_HEADER_HEIGHT` | **94** | Card header: identity row + up to two chip rows (card-only UI, hand-built). |
-| `FUSION_SHARE_EXPORT_FRAME_PAD_X` / `_BOTTOM` / `_TOP` | **0** / 14 / 0 | Panel-accent mat. X is 0 — the bezel runs edge to edge and its side cast shadow clips there; that is the trade. The HW band is text, so it keeps `SHARE_HW_BAND_INSET_X_PX` (12). |
+| `FUSION_SHARE_EXPORT_HEADER_HEIGHT` | **94** | Card header: identity row + config chip row + GPU identity row (card-only UI, hand-built). |
+| `FUSION_SHARE_EXPORT_FRAME_PAD_X` / `_BOTTOM` / `_TOP` | **5** / 14 / 0 | Panel-accent mat. X is deliberately small — the bezel reads as full-bleed and 5px only keeps its cast shadow from being sawn off at the card edge. |
 | `SHARE_ASPECT_W` / `_H` | 16 / 9 | **Card** aspect. The glass keeps whatever aspect live gives it. |
 | `FUSION_CAPTURE_HERO_FONT_PX` / `_PER_SLOT_FONT_PX` | 40 / 20 | **The only pinned sizes.** `vh` inside the mounted stage resolves against the real window, so without these the card's proportions would differ between a 1080p and a 4K session. |
 
@@ -67,8 +65,8 @@ Stage mounts on `document.body` (WebView2 rasterizes on-screen nodes only) with
 It never upscales and never clamps *up*: a "legibility floor" would clip, because the fit box is
 `overflow: hidden`. Worst real case is a 2× stacked display shrinking to ~0.6.
 
-Glass area = `cardWidth − 2·PAD_X` × (`frameHeight − hwBand − pads`). A tall glass shrinks and
-centers; the leftover is mat. PNG dimensions never change with GPU count or bench state.
+Glass area = `cardWidth − 2·PAD_X` × (`frameHeight − pads`). A tall glass shrinks and centers; the
+leftover is mat. PNG dimensions never change with GPU count or bench state.
 
 ---
 
@@ -129,23 +127,35 @@ Removed earlier: the "single session" banner (`injectCaptureBezelModeBanner`) an
 
 ---
 
-## SPEC chip row (Boost-derived, not the legacy `spec_type` key)
+## Header anatomy (three rows)
 
-Header row 2 (`SPEC-TYPE …`, `DRAFT-N-MAX …`, `DRAFT-N-MIN …`) comes from
-`collectShareLaunchConfigRow2` ← `FusionShareLaunchConfig.specType / specDraftNMax / specDraftNMin`,
-filled by `specShareFields()` (`src/lib/specProfiles.ts`) — the same `buildSpecCliExtraParams`
-flattening launch emits, keyed off Boost (`specBoostMethod`: mtp → `draft-mtp`, dflash →
-`draft-dflash`, dspark → `draft-dspark` with the shared DFlash knobs).
+`createHeaderShell` builds **identity** (provider · build · profile · CUDA · model · quant) →
+**config chips** (`KV` → `CTX` → `batch/ubatch` → `flash-att` → **split** (amber) → `SPEC-TYPE` →
+`DRAFT-N-MAX` → `DRAFT-N-MIN`) → **GPU identity** (`● 2× RTX PRO 6000 … 96GB drv 610.x`). Each chip
+row is `flex: 1` inside the fixed 94px header, so slack splits evenly instead of pooling under one
+row.
 
-**Do not** read `config.spec_type` / `spec_draft_n_max` / `spec_draft_n_min` for it. Those are
-`OBSOLETE_SPEC_PARAM_KEYS`: stripped from the param list on load, therefore always `undefined` →
-row 2 disappears and the fixed-height header (`FUSION_SHARE_EXPORT_HEADER_HEIGHT` = 94, budgeted
-for identity + **two** chip rows) shows a dead band under the ctx/batch chips. The spec-profile
-refactor (`a54044a29`) caused exactly that; `src/lib/specProfiles.test.ts` guards it.
+The GPU line used to be a band *below* the bezel carrying a `2 GPUs · TENSOR SPLIT` headline. That
+headline was redundant — the count is in `2×` and the split mode is a chip above — and the band
+cost a row of card height under the glass. Both are gone: `createShareHwChipRow` lives in the
+header, and `createShareHwBand` + its wrap estimate (`computeFusionShareHwBandHeightPx`) were
+deleted along with the `.fusion-share-hw-band__topo|__headline|__chips` CSS.
+
+## SPEC chips ride the config row (Boost-derived, not the legacy `spec_type` key)
+
+`SPEC-TYPE …`, `DRAFT-N-MAX …`, `DRAFT-N-MIN …` come from `collectShareSpecChips` ←
+`FusionShareLaunchConfig.specType / specDraftNMax / specDraftNMin`, filled by `specShareFields()`
+(`src/lib/specProfiles.ts`) — the same `buildSpecCliExtraParams` flattening launch emits, keyed off
+Boost (`specBoostMethod`: mtp → `draft-mtp`, dflash → `draft-dflash`, dspark → `draft-dspark` with
+the shared DFlash knobs).
+
+**Do not** read `config.spec_type` / `spec_draft_n_max` / `spec_draft_n_min` for them. Those are
+`OBSOLETE_SPEC_PARAM_KEYS`: stripped from the param list on load, therefore always `undefined`, and
+the SPEC chips vanish silently — that was the empty-row bug; the spec-profile refactor
+(`a54044a29`) caused it and `src/lib/specProfiles.test.ts` guards it.
 
 Knobs hidden in Config are dropped as well — the CLI never receives them, so the card must not
-claim them. With Boost off there is no second row and `createHeaderShell` centers the single row
-instead of top-pinning it into the empty band.
+claim them.
 
 ---
 
