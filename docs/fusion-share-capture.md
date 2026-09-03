@@ -59,7 +59,7 @@ Stage mounts on `document.body` (WebView2 rasterizes on-screen nodes only) with
 | `FUSION_SHARE_EXPORT_CARD_WIDTH` | **900** | Card CSS width; height = 9/16 → 506. PNG 1800×1012. |
 | `FUSION_SHARE_EXPORT_PIXEL_RATIO` | **2** | CSS→PNG. Under uniform scale the content is vector-rasterized, so crispness follows this number, not the clone's font sizes. X/Reddit serve ≤ ~1600px; 4× bought nothing and quadrupled html-to-image work per attempt. |
 | `FUSION_SHARE_EXPORT_HEADER_HEIGHT` | **94** | Card header: identity row + up to two chip rows (card-only UI, hand-built). |
-| `FUSION_SHARE_EXPORT_FRAME_PAD_X` / `_BOTTOM` / `_TOP` | 20 / 14 / 0 | Panel-accent mat around the bezel. |
+| `FUSION_SHARE_EXPORT_FRAME_PAD_X` / `_BOTTOM` / `_TOP` | **0** / 14 / 0 | Panel-accent mat. X is 0 — the bezel runs edge to edge and its side cast shadow clips there; that is the trade. The HW band is text, so it keeps `SHARE_HW_BAND_INSET_X_PX` (12). |
 | `SHARE_ASPECT_W` / `_H` | 16 / 9 | **Card** aspect. The glass keeps whatever aspect live gives it. |
 | `FUSION_CAPTURE_HERO_FONT_PX` / `_PER_SLOT_FONT_PX` | 40 / 20 | **The only pinned sizes.** `vh` inside the mounted stage resolves against the real window, so without these the card's proportions would differ between a 1080p and a 4K session. |
 

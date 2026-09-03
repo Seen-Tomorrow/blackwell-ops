@@ -121,10 +121,17 @@ const SHARE_ASPECT_W = 16;
 const SHARE_ASPECT_H = 9;
 export const FUSION_SHARE_EXPORT_CARD_WIDTH = 900;
 export const FUSION_SHARE_EXPORT_GAP = 8;
-/** Panel-accent mat around the bezel in share captures (CSS px). */
+/**
+ * Panel-accent mat in share captures (CSS px). X is 0: the bezel runs edge to edge
+ * (the top already sat flush). Its cast shadow clips at the card edge by the same
+ * trade — the mat on the sides bought nothing the bezel did not already cover.
+ */
 export const FUSION_SHARE_EXPORT_FRAME_PAD_TOP = 0;
-export const FUSION_SHARE_EXPORT_FRAME_PAD_X = 20;
+export const FUSION_SHARE_EXPORT_FRAME_PAD_X = 0;
 export const FUSION_SHARE_EXPORT_FRAME_PAD_BOTTOM = 14;
+/** The HW band is text, so it keeps an inset even though the bezel is full-bleed. */
+const SHARE_HW_BAND_INSET_X_PX = 12;
+
 /** Identity row + up to two params chip rows. */
 export const FUSION_SHARE_EXPORT_HEADER_HEIGHT = 94;
 
@@ -152,7 +159,7 @@ export function computeFusionShareExportLayout(
     meta.shareGpus,
     meta.shareGpuMask,
     meta.hwTopo,
-    glassAreaWidthPx,
+    glassAreaWidthPx - SHARE_HW_BAND_INSET_X_PX * 2,
   );
   const glassAreaHeightPx = Math.max(
     0,
@@ -752,7 +759,7 @@ function createShareHwBand(
   band.style.maxHeight = `${layout.hwBandHeightPx}px`;
   band.style.display = "flex";
   band.style.alignItems = "center";
-  band.style.padding = "0 2px";
+  band.style.padding = `0 ${SHARE_HW_BAND_INSET_X_PX}px`;
   band.style.boxSizing = "border-box";
   band.style.overflow = "visible";
   band.style.width = "100%";
