@@ -213,10 +213,13 @@
   color: var(--theme-text-muted);
 }
 
-/* CMake work cache row (stealth-border/40 border, black/25 fill) */
+/* CMake work cache row (stealth-border/40 border, black/25 fill).
+   The fill is the value chrome.css's `.foundry-window .bg-black\/*` correction used
+   to force: dark ink 6% over the accent panel. A literal black mix would render
+   charcoal on ARCTIC paper (--theme-panel is #ffffff there). */
 .fnd-cache-row {
   border-color: color-mix(in srgb, var(--theme-border) 40%, transparent);
-  background: color-mix(in srgb, var(--theme-panel) 25%, black);
+  background: color-mix(in srgb, var(--theme-text) 6%, var(--theme-panel-accent));
 }
 
 .fnd-cache-title {
@@ -421,10 +424,10 @@
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-info) 50%, transparent);
 }
 
-/* Manual install guide (stealth-border/40 border, black/25 fill) */
+/* Manual install guide (stealth-border/40 border, black/25 fill — see .fnd-cache-row) */
 .fnd-tc-guide {
   border-color: color-mix(in srgb, var(--theme-border) 40%, transparent);
-  background: color-mix(in srgb, var(--theme-panel) 25%, black);
+  background: color-mix(in srgb, var(--theme-text) 6%, var(--theme-panel-accent));
 }
 
 /* Warn guide (yellow-400/30 border, /5 fill) */
@@ -453,10 +456,10 @@
   color: var(--theme-accent);
 }
 
-/* Cache folder box (stealth-border/50 border, black/30 fill) */
+/* Cache folder box (stealth-border/50 border, black/30 fill — face-correct, see .fnd-cache-row) */
 .fnd-tc-cache-box {
   border: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent);
-  background: color-mix(in srgb, var(--theme-panel) 30%, black);
+  background: color-mix(in srgb, var(--theme-text) 6%, var(--theme-panel-accent));
 }
 
 .fnd-tc-cache-box__label {
@@ -471,10 +474,10 @@
   color: color-mix(in srgb, var(--theme-text-muted) 80%, transparent);
 }
 
-/* Profiles-ready box (yellow-400/20 border, black/20 fill) */
+/* Profiles-ready box (yellow-400/20 border, black/20 fill — face-correct, see .fnd-cache-row) */
 .fnd-tc-profiles-box {
   border: 1px solid color-mix(in srgb, var(--theme-warn) 20%, transparent);
-  background: color-mix(in srgb, var(--theme-panel) 20%, black);
+  background: color-mix(in srgb, var(--theme-text) 6%, var(--theme-panel-accent));
 }
 
 .fnd-tc-profiles-box__title {
