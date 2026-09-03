@@ -32,7 +32,7 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
       parts.push(
         <code
           key={`${keyPrefix}-c-${i}`}
-          className="text-[9px] px-0.5 rounded-sm bg-white/[0.06] text-white/70"
+          className="notes-code type-label px-0.5 rounded-sm"
         >
           {m[2]}
         </code>,
@@ -62,7 +62,7 @@ export function ReleaseNotesBody({ text, className = "" }: { text: string; class
     blocks.push(
       <ul
         key={`list-${blockIdx++}`}
-        className="list-disc list-outside ml-4 space-y-1 text-[9px] font-mono config-muted leading-relaxed"
+        className="notes-list list-disc list-outside ml-4 space-y-1 type-label font-mono config-muted leading-relaxed"
       >
         {listItems.map((item, li) => (
           <li key={li}>{renderInline(item, `li-${li}`)}</li>
@@ -86,7 +86,7 @@ export function ReleaseNotesBody({ text, className = "" }: { text: string; class
       blocks.push(
         <h4
           key={`h-${blockIdx++}`}
-          className="text-[10px] font-mono theme-accent-text tracking-wider mt-2 first:mt-0"
+          className="notes-heading type-body font-mono tracking-wider mt-2 first:mt-0"
         >
           {trimmed.slice(4)}
         </h4>,
@@ -99,7 +99,7 @@ export function ReleaseNotesBody({ text, className = "" }: { text: string; class
       blocks.push(
         <h3
           key={`h2-${blockIdx++}`}
-          className="text-[10px] font-mono theme-accent-text tracking-widest mt-2 first:mt-0"
+          className="notes-heading type-body font-mono tracking-widest mt-2 first:mt-0"
         >
           {trimmed.slice(3)}
         </h3>,
@@ -112,7 +112,7 @@ export function ReleaseNotesBody({ text, className = "" }: { text: string; class
       blocks.push(
         <blockquote
           key={`q-${blockIdx++}`}
-          className="border-l-2 border-white/15 pl-2.5 text-[9px] font-mono text-stealth-muted/80 leading-relaxed"
+        className="notes-quote border-l-2 pl-2.5 type-label font-mono leading-relaxed"
         >
           {renderInline(trimmed.replace(/^>\s?/, ""), `q-${i}`)}
         </blockquote>,
@@ -127,7 +127,7 @@ export function ReleaseNotesBody({ text, className = "" }: { text: string; class
 
     flushList();
     blocks.push(
-      <p key={`p-${blockIdx++}`} className="text-[9px] font-mono config-muted leading-relaxed">
+      <p key={`p-${blockIdx++}`} className="notes-para type-label font-mono config-muted leading-relaxed">
         {renderInline(trimmed, `p-${i}`)}
       </p>,
     );

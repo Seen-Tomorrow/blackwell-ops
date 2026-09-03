@@ -39,9 +39,6 @@
   position: relative;
 }
 
-.mono-panel * {
-  color: var(--theme-accent-bright) !important;
-}
 
 /* Group labels on mono */
 .mono-label {
@@ -731,75 +728,26 @@
   box-shadow: var(--theme-eject-cast-shadow, var(--theme-bezel-cast-shadow));
 }
 
-/* Themed text on industrial display frame */
-.industrial-display-area .text-stealth-muted,
-.industrial-display-area .text-stealth-muted\/30,
-.industrial-display-area .text-stealth-muted\/40,
-.industrial-display-area .text-stealth-muted\/50,
-.industrial-display-area .text-stealth-muted\/60 {
+/* Themed text on industrial display frame — re-keyed to the surface classes that
+   replaced the dead Tailwind utilities (no element in the display area carries a
+   text-utility or border-utility name anymore; the old hooks matched literal names).
+   Values verbatim: these are FACE corrections, not theme corrections — the display
+   face keeps its fixed phosphor palette (cyan #22d3ee, blue #3b82f6, amber
+   #f59e0b, red #f87171, yellow #facc15) on every theme, and the ink/border tokens
+   (--theme-industrial-*) are the face tokens that already own the muted/green/border
+   paint. */
+.industrial-display-area .gpu-ram-note {
   color: var(--theme-industrial-muted) !important;
 }
 
-.industrial-display-area .text-nv-green {
+.industrial-display-area .gpu-ram-label {
   color: var(--theme-industrial-text) !important;
 }
 
-.industrial-display-area .text-cyan-400 {
-  color: #22d3ee !important;
-}
-
-.industrial-display-area .text-electric-blue,
-.industrial-display-area .text-blue-700 {
-  color: #3b82f6 !important;
-}
-
-.industrial-display-area .text-orange-400,
-.industrial-display-area .text-telemetry-amber {
-  color: #f59e0b !important;
-}
-
-.industrial-display-area .text-red-400,
-.industrial-display-area .text-telemetry-red {
-  color: #f87171 !important;
-}
-
-.industrial-display-area .text-yellow-400 {
-  color: #facc15 !important;
-}
-
-.industrial-display-area .bg-stealth-dark {
-  background-color: var(--theme-accent-soft) !important;
-}
-
-.industrial-display-area .border-stealth-border,
-.industrial-display-area .border-stealth-border\/30,
-.industrial-display-area .border-stealth-border\/50 {
+/* VRAM/RAM bar tracks on display bg — colour-theme token only (pattern never changes ink).
+   Re-keyed to .gpu-ram-track, the class that replaced the old utility on GpuTopology's RAM bar. */
+.industrial-display-area .gpu-ram-track {
   border-color: var(--theme-industrial-gpu-border) !important;
-}
-
-/* GPU topology cards on industrial display */
-.industrial-display-area .gpu-card {
-  background-color: var(--theme-industrial-gpu-card-bg) !important;
-  border-color: var(--theme-industrial-gpu-border) !important;
-}
-
-/* Forecast phosphor — no bar width / card fade animations on param-driven updates */
-.industrial-display-area .gpu-bar-fill {
-  transition: none !important;
-}
-
-.industrial-display-area .gpu-card-enter {
-  animation: none !important;
-}
-
-.industrial-display-area .gpu-ram-enter {
-  animation: none !important;
-}
-
-/* Selected GPU — card ring/glow only; name color stays with siblings */
-
-/* VRAM/RAM bar tracks on display bg — colour-theme token only (pattern never changes ink) */
-.industrial-display-area .relative.overflow-hidden.border-stealth-border\/30 {
   background-color: var(--theme-industrial-bar-track) !important;
 }
 
@@ -1056,34 +1004,37 @@
   50% { opacity: 0.6; box-shadow: 0 0 0 3px transparent; }
 }
 
-/* Text inside running engine cards */
-[data-config-panel] .running-engine-card .text-white\/70,
-[data-config-panel] .running-engine-card .text-white {
-  color: var(--theme-eject-card-text) !important;
+/* Text inside running engine cards — re-keyed to the eng-* surface classes that
+   replaced the dead utilities (text-white/70 -> eng-engine-alias,
+   text-stealth-muted -> eng-engine-vram, text-nv-green -> eng-engine-model--selected,
+   text-telemetry-cyan -> eng-quant-badge). The eng-* classes already paint the same
+   eject-card tokens (text / muted / accent) in all three faces, so the dead utility
+   selectors are dropped; the alias keeps its explicit 70% color-mix (accepted
+   micro-delta: old flat white/70 vs the class's 70% mix over transparent). */
+[data-config-panel] .running-engine-card .eng-engine-alias {
+  color: color-mix(in srgb, var(--theme-eject-card-text) 70%, transparent) !important;
 }
 
-[data-config-panel] .running-engine-card .text-stealth-muted {
+[data-config-panel] .running-engine-card .eng-engine-vram {
   color: var(--theme-eject-card-muted) !important;
 }
 
-[data-config-panel] .running-engine-card .text-stealth-muted\/50 {
-  color: color-mix(in srgb, var(--theme-eject-card-muted) 50%, transparent) !important;
+[data-config-panel] .running-engine-card .eng-engine-model--selected {
+  color: var(--theme-eject-card-text) !important;
 }
 
-/* GPU + quant badges inside engine cards */
-[data-config-panel] .running-engine-card .bg-telemetry-cyan\/10,
-[data-config-panel] .running-engine-card .bg-nv-green\/20 {
+/* GPU + quant badges inside engine cards — re-keyed to eng-quant-badge(--nvfp);
+   the classes paint the same accent/info alpha fills the old utility hooks
+   forced to eject tokens. */
+[data-config-panel] .running-engine-card .eng-quant-badge {
   background: var(--theme-eject-badge-bg) !important;
-}
-
-[data-config-panel] .running-engine-card .border-telemetry-cyan\/20,
-[data-config-panel] .running-engine-card .border-telemetry-cyan\/30,
-[data-config-panel] .running-engine-card .border-nv-green\/40 {
   border-color: var(--theme-eject-card-border) !important;
+  color: var(--theme-eject-card-text) !important;
 }
 
-[data-config-panel] .running-engine-card .text-telemetry-cyan,
-[data-config-panel] .running-engine-card .text-nv-green {
+[data-config-panel] .running-engine-card .eng-quant-badge--nvfp {
+  background: var(--theme-eject-badge-bg) !important;
+  border-color: var(--theme-eject-card-border) !important;
   color: var(--theme-eject-card-text) !important;
 }
 
@@ -1120,17 +1071,22 @@
   box-shadow: 0 0 3px color-mix(in srgb, var(--theme-card-selected-accent) 30%, transparent);
 }
 
-/* Selected model card text — keep readable on gunmetal bg */
-.gunmetal-card .text-white {
+/* Selected model card text — keep readable on gunmetal bg. Re-keyed to the mcard-*
+   surface classes that replaced the dead utilities (text-white -> mcard-params,
+   text-stealth-muted -> mcard-meta-mut, border-stealth-border/30 -> mcard-footer).
+   The mcard-* classes already paint the same values in all three faces
+   (--theme-text / --theme-text-muted / border 30% mix), so the dead utility
+   selectors are dropped. */
+.gunmetal-card .mcard-params {
   color: #e0e0e0 !important;
 }
 
-.gunmetal-card .text-stealth-muted {
+.gunmetal-card .mcard-meta-mut {
   color: #9a9488 !important;
 }
 
-.gunmetal-card .border-stealth-border\/30 {
-  border-color: rgba(154, 148, 136, 0.25) !important;
+.gunmetal-card .mcard-footer {
+  border-top-color: rgba(154, 148, 136, 0.25) !important;
 }
 
 /* Brushed steel — narrow variant for model cards (vertical grain, stretched pattern) */
@@ -1146,12 +1102,40 @@
   background: var(--theme-panel-accent);
 }
 
-.eink-panel * {
+/* Phosphor ink — explicit child rules (was: `.eink-panel *` wildcard bomb).
+   Children that own their ink (value-chip, config-value-segment, err-*,
+   engine-stack-profile-pill, provider-pill-active, catalog-seat-edit-banner,
+   full-auto-cockpit, config-spec-mode-badge, ctx-slider-*) are excluded. */
+.eink-panel > *,
+.eink-panel > * > *,
+.eink-panel > * > * > * {
   color: var(--theme-accent-bright) !important;
 }
+.eink-panel .value-chip,
+.eink-panel .value-chip-active,
+.eink-panel .config-value-segment,
+.eink-panel .config-value-segment *,
+.eink-panel .err-title,
+.eink-panel .err-body,
+.eink-panel .err-detail,
+.eink-panel .err-reload,
+.eink-panel .engine-stack-profile-pill,
+.eink-panel .provider-pill-active,
+.eink-panel .catalog-seat-edit-banner,
+.eink-panel .catalog-seat-edit-banner *,
+.eink-panel .full-auto-cockpit,
+.eink-panel .full-auto-cockpit *,
+.eink-panel .config-spec-mode-badge,
+.eink-panel .config-spec-mode-badge *,
+.eink-panel .ctx-slider-ghost,
+.eink-panel .ctx-slider-ghost * {
+  color: inherit;
+}
 
-/* Group headers on e-ink */
-.eink-panel .border-stealth-border\/30 {
+/* Group headers on e-ink — re-keyed to .config-group-header, the class that owns the
+   group-header border (the old utility died in the paint migration; the header now
+   paints its border through cfg-bord--a30). */
+.eink-panel .config-group-header {
   border-color: var(--theme-accent-soft) !important;
 }
 
@@ -1373,7 +1357,7 @@
 
 /* Keep default / user-added / hidden markers readable on the rail */
 [data-config-panel] .config-value-segment.config-value-segment--rail .value-chip--factory-default:not(.value-chip-active) {
-  color: var(--theme-chip-hover-text, #4ade80) !important;
+  color: var(--theme-chip-hover-text) !important;
 }
 [data-config-panel] .config-value-segment.config-value-segment--rail .value-chip--user-default:not(.value-chip-active) {
   color: #fbbf24 !important;
@@ -1387,14 +1371,14 @@
 [data-config-panel] .eink-panel .config-value-segment button.value-chip:not(.value-chip-active) {
   color: color-mix(
     in srgb,
-    var(--theme-industrial-muted, var(--theme-text-muted, #6a8a6a)) 92%,
+    var(--theme-industrial-muted) 92%,
     transparent
   ) !important;
 }
 
 [data-config-panel] .eink-panel .config-value-segment,
 [data-config-panel] .mono-panel .config-value-segment {
-  background: color-mix(in srgb, var(--theme-panel-accent, #040b01) 80%, #000 20%);
+  background: color-mix(in srgb, var(--theme-panel-accent) 80%, #000 20%);
 }
 
 
@@ -1482,52 +1466,44 @@
   background: var(--theme-accent-soft) !important;
 }
 
-/* Engine card exceptions — preserve non-green colors in eink context */
+/* Engine card exceptions — preserve non-green colors in eink context.
+   Log-channel exceptions (SlotLogPanel): re-key these selectors if the
+   .slot-log-* classes change — the .eink-panel accent wildcard otherwise
+   forces every line to accent-bright. */
 
 /* Red: STOP button */
-.eink-panel .text-red-400\/70 {
+.eink-panel .slot-log-stop {
   color: rgba(248, 113, 113, 0.7) !important;
-}
-.eink-panel .text-red-400 {
-  color: rgb(248, 113, 113) !important;
 }
 
 /* Yellow/amber: system events, phase bar, TTFT, prefill bench */
-.eink-panel .text-yellow-400\/70 {
+.eink-panel .slot-log-sys {
   color: rgba(250, 204, 21, 0.7) !important;
 }
-.eink-panel .text-yellow-400 {
-  color: rgb(250, 204, 21) !important;
-}
-.eink-panel .text-telemetry-amber\/80 {
+.eink-panel .slot-log-line--pp {
   color: rgba(245, 167, 39, 0.8) !important;
 }
-.eink-panel .text-telemetry-amber {
+.eink-panel .slot-log-phase--pp {
   color: rgb(245, 167, 39) !important;
 }
 
 /* White: bench ITL/tokens values */
-.eink-panel .text-white {
-  color: rgb(255, 255, 255) !important;
-}
-.eink-panel .text-white\/80 {
+.eink-panel .slot-log-stat-value {
   color: rgba(255, 255, 255, 0.8) !important;
 }
 
 /* Stealth muted: placeholders, secondary labels */
-.eink-panel .text-stealth-muted {
+.eink-panel .slot-log-line,
+.eink-panel .slot-log-stat-label,
+.eink-panel .slot-log-phase {
   color: rgb(100, 100, 116) !important;
 }
-.eink-panel .text-stealth-muted\/50 {
+.eink-panel .slot-log-empty {
   color: rgba(100, 100, 116, 0.5) !important;
 }
-.eink-panel .text-stealth-muted\/60 {
+.eink-panel .slot-log-caption,
+.eink-panel .slot-log-bench-summary {
   color: rgba(100, 100, 116, 0.6) !important;
-}
-
-/* Electric blue: RAM bar labels */
-.eink-panel .text-electric-blue {
-  color: rgb(59, 130, 246) !important;
 }
 
 /* ── Amber label — ENGINE PROVIDER, RUNTIME PROFILE, etc. ─── */
@@ -1841,20 +1817,53 @@
 [data-config-page] {
   background: var(--theme-bg);
   color: var(--theme-text);
+  /* Re-scoped warn (replaces the dead yellow-utility hooks). The pre-migration
+     correction covered warn on ALL FOUR properties, so a token scope is faithful:
+     text (text-yellow-400[/60-90], text-yellow-300[/90] -> secondary-bright),
+     border (border-yellow-400/20-50 -> secondary 48%), background
+     (bg-yellow-400/[0.05-0.06]/5/10/15 + hover -> secondary 12-16%), ring
+     (ring-yellow-400/35,40 -> secondary 40%). Migrated cfg-warn / cfg-warn--a*
+     classes now pick up --theme-warn here. MATRIX #ffb800->#f5971f, SLATE
+     #ffb800->#a0a0b0, ARCTIC #ffb800->#ea580c. Alpha tails: the class's own
+     color-mix percentage now governs (accepted micro-delta vs the old flat 100%). */
+  --theme-warn: var(--theme-secondary-bright);
 }
 
-[data-config-page] .config-muted,
-[data-config-page] .text-stealth-muted {
-  color: var(--theme-text-muted) !important;
+/* Accent TEXT on the CONFIG page rendered one step brighter (the nv-green text
+   utility and its /60 /80 /85 /90 variants -> var(--theme-accent-bright)). Kept as
+   an explicit list instead of re-scoping --theme-accent: the pre-migration hook
+   corrected TEXT only, while this page's accent SOLIDs and BORDERS (launch CTA
+   fill, selected chips, slider tracks, cfg-fill--a* accents, focus rings) were
+   never corrected and must keep the base accent. Every cfg-acc / cfg-acc--a*
+   class in the Config room (ConfigPage, ConfigParamLegend, GroupHeaderControls,
+   LaunchPreset* / LaunchPresets*, Param* / SubParamsEditor, ProvidersConfig,
+   RecoveryConfig, SecretsConfig, ValueBubbles) inherits it. Update this list when
+   a Config-room class starts or stops painting accent ink. */
+[data-config-page] .cfg-acc,
+[data-config-page] .cfg-acc--a25,
+[data-config-page] .cfg-acc--a40,
+[data-config-page] .cfg-acc--a50,
+[data-config-page] .cfg-acc--a60,
+[data-config-page] .cfg-acc--a70,
+[data-config-page] .cfg-acc--a75,
+[data-config-page] .cfg-acc--a80,
+[data-config-page] .cfg-acc--a90 {
+  color: var(--theme-accent-bright) !important;
 }
 
-[data-config-page] .text-white,
-[data-config-page] .text-white\/80,
-[data-config-page] .text-white\/90 {
-  color: var(--theme-text) !important;
+/* Telemetry-cyan TEXT on the CONFIG page (the telemetry-cyan text utility and its
+   /70 /80 variants -> var(--theme-accent-bright)). The cyan-400/300 family was a
+   SEPARATE pre-migration hook mapped to --theme-dist-cyan (not accent-bright), so
+   --theme-info is NOT re-scoped here: the info classes (fnd-build-step,
+   fnd-tc-cache-box__path, fnd-tc-btn--manual-active) keep the base info token.
+   The migrated cfg-inf / cfg-inf--a* classes carry the old telemetry-cyan text.
+   Update this list when a Config-room class starts or stops painting info ink. */
+[data-config-page] .cfg-inf,
+[data-config-page] .cfg-inf--a50 {
+  color: var(--theme-accent-bright) !important;
 }
 
-[data-config-page] .text-white\/75 {
+[data-config-page] .config-muted {
   color: var(--theme-text-muted) !important;
 }
 
@@ -1866,107 +1875,15 @@
   color: var(--theme-text) !important;
 }
 
-[data-config-page] .text-nv-green,
-[data-config-page] .text-nv-green\/60,
-[data-config-page] .text-nv-green\/80,
-[data-config-page] .text-nv-green\/85,
-[data-config-page] .text-nv-green\/90 {
-  color: var(--theme-accent-bright) !important;
-}
-
-[data-config-page] .text-telemetry-cyan,
-[data-config-page] .text-telemetry-cyan\/70,
-[data-config-page] .text-telemetry-cyan\/80 {
-  color: var(--theme-accent-bright) !important;
-}
-
-/* Distribution / App-update cyan — theme-aware via --theme-dist-cyan.
-   Dark themes keep cyan; arctic resolves to a readable teal on light paper. */
-[data-config-page] .text-cyan-400,
-[data-config-page] .text-cyan-400\/90,
-[data-config-page] .text-cyan-300,
-[data-config-page] .text-cyan-300\/70,
-[data-config-page] .text-cyan-300\/80 {
-  color: var(--theme-dist-cyan) !important;
-}
-
-[data-config-page] .border-cyan-400\/25,
-[data-config-page] .border-cyan-400\/50 {
-  border-color: color-mix(in srgb, var(--theme-dist-cyan) 45%, transparent) !important;
-}
-
-[data-config-page] .bg-cyan-400\/10,
-[data-config-page] .hover\:bg-cyan-400\/10:hover,
-[data-config-page] .hover\:bg-cyan-400\/15:hover {
-  background: color-mix(in srgb, var(--theme-dist-cyan) 14%, var(--theme-panel)) !important;
-}
-
-/*
- * UPDATES / Providers / Foundry on CONFIG page — map hard-coded yellow & white
- * Tailwind utilities to theme secondary/text so ARCTIC (light grey panels) stays readable.
- * Dark themes: secondary is still gold/amber; accent-bright still green/cyan.
- */
-[data-config-page] .text-yellow-400,
-[data-config-page] .text-yellow-400\/60,
-[data-config-page] .text-yellow-400\/70,
-[data-config-page] .text-yellow-400\/80,
-[data-config-page] .text-yellow-400\/90,
-[data-config-page] .text-yellow-300,
-[data-config-page] .text-yellow-300\/90 {
-  color: var(--theme-secondary-bright) !important;
-}
 
 [data-config-page] .text-white,
-[data-config-page] .text-white\/90,
 [data-config-page] .text-white\/80,
-[data-config-page] .text-white\/70,
-[data-config-page] .text-white\/60 {
+[data-config-page] .text-white\/70 {
   color: var(--theme-text) !important;
 }
 
-[data-config-page] .border-yellow-400\/20,
-[data-config-page] .border-yellow-400\/30,
-[data-config-page] .border-yellow-400\/35,
-[data-config-page] .border-yellow-400\/40,
-[data-config-page] .border-yellow-400\/45,
-[data-config-page] .border-yellow-400\/50 {
-  border-color: color-mix(in srgb, var(--theme-secondary) 48%, transparent) !important;
-}
 
-[data-config-page] .border-white\/10,
-[data-config-page] .border-white\/15,
-[data-config-page] .border-white\/20,
-[data-config-page] .border-white\/\[0\.06\] {
-  border-color: var(--theme-frame-border, var(--theme-border-subtle)) !important;
-}
 
-[data-config-page] .bg-yellow-400\/\[0\.05\],
-[data-config-page] .bg-yellow-400\/\[0\.06\],
-[data-config-page] .bg-yellow-400\/5,
-[data-config-page] .bg-yellow-400\/10,
-[data-config-page] .bg-yellow-400\/15 {
-  background: color-mix(in srgb, var(--theme-secondary) 12%, var(--theme-panel)) !important;
-}
-
-[data-config-page] .bg-black\/15,
-[data-config-page] .bg-black\/20 {
-  background: color-mix(in srgb, var(--theme-text) 6%, var(--theme-panel-accent)) !important;
-}
-
-[data-config-page] .ring-yellow-400\/35,
-[data-config-page] .ring-yellow-400\/40 {
-  --tw-ring-color: color-mix(in srgb, var(--theme-secondary) 40%, transparent) !important;
-}
-
-[data-config-page] .hover\:bg-yellow-400\/10:hover,
-[data-config-page] .hover\:bg-yellow-400\/15:hover {
-  background: color-mix(in srgb, var(--theme-secondary) 16%, var(--theme-panel)) !important;
-}
-
-[data-config-page] .bg-\[\#0a0a1a\],
-[data-config-page] .bg-\[\#1a1a2e\] {
-  background: var(--theme-panel) !important;
-}
 
 [data-config-page] .config-section-bar {
   border-bottom: 1px solid var(--theme-border-subtle);

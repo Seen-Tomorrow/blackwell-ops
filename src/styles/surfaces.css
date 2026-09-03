@@ -1,22 +1,11 @@
 /*
- * Remap Tailwind border-stealth-border/* → theme frame tokens.
- * Opacity modifiers on CSS-var colors are unreliable (often read as harsh grey/white
- * on dark, or vanish on ARCTIC). One remap = CONFIG secrets, MODEL HUB, Foundry, …
+ * border-stealth-border/* remap — REMOVED with the de-Tailwind paint migration.
+ * The utilities no longer exist anywhere under src/, so these name hooks had no
+ * live target. Every migrated border site now paints through its own surface
+ * class at its exact color-mix step (e.g. GpuTopology's RAM divider paints
+ * through .gpu-ram-divider at its own 20% color-mix), and the .divide-*
+ * selectors below keep their own live utilities.
  */
-.border-stealth-border {
-  border-color: var(--theme-frame-border-strong, var(--theme-border)) !important;
-}
-.border-stealth-border\/20,
-.border-stealth-border\/25,
-.border-stealth-border\/30 {
-  border-color: var(--theme-frame-border, var(--theme-border-subtle)) !important;
-}
-.border-stealth-border\/40,
-.border-stealth-border\/50,
-.border-stealth-border\/60,
-.border-stealth-border\/70 {
-  border-color: var(--theme-frame-border-strong, var(--theme-border-subtle)) !important;
-}
 
 .divide-stealth-border > :not([hidden]) ~ :not([hidden]),
 .divide-stealth-border\/30 > :not([hidden]) ~ :not([hidden]),
@@ -388,35 +377,22 @@ button.engine-logs-slot-chip.engine-logs-slot-chip--active .engine-logs-slot-chi
 }
 
 [data-engine-logs] .text-white,
-[data-engine-logs] .text-white\/80,
-[data-engine-logs] .text-white\/90 {
+[data-engine-logs] .text-white\/80 {
   color: var(--theme-text) !important;
 }
 
-[data-engine-logs] .text-stealth-muted {
-  color: var(--theme-text-muted) !important;
-}
+/* (Also covered before: the 100% stealth-muted utility died with the paint
+   migration — the logs tab's lines now paint through .shell-log-line /
+   .shell-log-empty / .shell-log-count at their own text-muted color-mix steps.) */
+
 
 .launch-rail-tel .theme-surface .text-white,
-.launch-rail-tel .theme-surface .text-white\/80,
-.launch-rail-tel .theme-surface .text-white\/85 {
+.launch-rail-tel .theme-surface .text-white\/80 {
   color: var(--theme-text) !important;
 }
 
-.launch-rail-tel .theme-surface .text-stealth-muted,
-.launch-rail-tel .theme-surface .text-stealth-muted\/45,
-.launch-rail-tel .theme-surface .text-stealth-muted\/60,
-.launch-rail-tel .theme-surface .text-stealth-muted\/70,
-.launch-rail-tel .theme-surface .text-stealth-muted\/80 {
-  color: var(--theme-text-muted) !important;
-}
-
-[data-intel-page] .theme-surface .text-white\/90 {
-  color: var(--theme-text) !important;
-}
-
-[data-intel-page] .theme-surface .text-stealth-muted,
-[data-intel-page] .theme-surface .text-stealth-muted\/50,
-[data-intel-page] .theme-surface .text-stealth-muted\/60 {
-  color: var(--theme-text-muted) !important;
-}
+/* (Also covered before: the /90 white and 100% stealth-muted utilities died
+   with the paint migration — IntelPage's summary line now paints through
+   .intel-summary at its own 60% color-mix, which reads as text-muted at 60%
+   in every face; no element under [data-intel-page] .theme-surface carries a
+   white-ink utility anymore.) */

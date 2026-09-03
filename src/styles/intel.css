@@ -218,54 +218,51 @@
   font-weight: 700;
 }
 
-[data-model-hub] .theme-surface .text-white\/90,
-[data-model-hub] .theme-surface-row .text-white\/90,
-[data-model-hub] .buried-card .text-white\/90,
-[data-model-hub] .eink-panel-wrapper .text-white,
-[data-model-hub] .eink-panel-wrapper .text-white\/90,
+/* White ink on hub surfaces. Only selectors whose utility still exists are kept;
+   the /90 and theme-text variants died with the paint migration (their
+   replacements already paint var(--theme-text)). The 100% white-ink utility is
+   also gone repo-wide — the hub's ink now paints through its own mcard / hub /
+   cat / dl classes, so those selectors are dropped too. */
 [data-model-hub] .eink-panel-wrapper .text-white\/80,
-[data-model-hub] .text-white,
-[data-model-hub] .text-white\/90,
-[data-model-hub] .text-white\/80,
-[data-model-hub] .text-theme-text {
+[data-model-hub] .text-white\/80 {
   color: var(--theme-text) !important;
 }
 
-[data-model-hub] .theme-surface .text-stealth-muted,
-[data-model-hub] .theme-surface .text-stealth-muted\/60,
-[data-model-hub] .theme-surface-row .text-stealth-muted,
-[data-model-hub] .theme-surface-row .text-stealth-muted\/60,
-[data-model-hub] .buried-card .text-stealth-muted,
-[data-model-hub] .buried-card .text-stealth-muted\/60,
-[data-model-hub] .eink-panel-wrapper .text-stealth-muted,
-[data-model-hub] .eink-panel-wrapper .text-stealth-muted\/60,
-[data-model-hub] .eink-panel-wrapper .text-white\/60 {
-  color: var(--theme-text-muted) !important;
+/* Gold/yellow badges & CTAs — theme secondary (readable on ARCTIC grey panels).
+   Re-scoped to a TOKEN instead of matching literal utility names (the yellow
+   text utility and its /70 /80 /90 variants, plus the yellow-300 variant, mapped
+   to var(--theme-secondary-bright)). Every cat / hub / upd / dl class painting
+   var(--theme-warn) inside the hub inherits it. warn MATRIX/SLATE #FFB800 vs
+   secondary-bright #f5971f; ARCTIC both #ea580c. The old border-yellow and
+   bg-yellow corrections are gone: those fills and borders now keep each class's own
+   color-mix step over the same hue instead of flattening to secondary 48% / 12%. */
+[data-model-hub] {
+  --theme-warn: var(--theme-secondary-bright);
 }
 
-/* Gold/yellow badges & CTAs — theme secondary (readable on ARCTIC grey panels) */
-[data-model-hub] .text-yellow-400,
-[data-model-hub] .text-yellow-400\/70,
-[data-model-hub] .text-yellow-400\/80,
-[data-model-hub] .text-yellow-400\/90,
-[data-model-hub] .text-yellow-300 {
-  color: var(--theme-secondary-bright) !important;
-}
-
-[data-model-hub] .border-yellow-400\/30,
-[data-model-hub] .border-yellow-400\/40,
-[data-model-hub] .border-yellow-400\/50 {
-  border-color: color-mix(in srgb, var(--theme-secondary) 48%, transparent) !important;
-}
-
-[data-model-hub] .bg-yellow-400\/10,
-[data-model-hub] .bg-yellow-400\/15 {
-  background: color-mix(in srgb, var(--theme-secondary) 12%, var(--theme-panel)) !important;
-}
-
-[data-model-hub] .text-nv-green,
-[data-model-hub] .text-nv-green\/80,
-[data-model-hub] .text-nv-green\/85 {
+/* Accent TEXT inside the hub rendered one step brighter (the nv-green text
+   utility and its /80, /85 variants -> var(--theme-accent-bright)). Kept as an
+   explicit list because --theme-accent itself must NOT be re-scoped here: hub
+   chip fills and selection borders still want the base accent. Update this list
+   when a hub class starts or stops painting accent ink. */
+[data-model-hub] .cat-header-btn,
+[data-model-hub] .cat-paths-btn,
+[data-model-hub] .cat-sort-btn--active,
+[data-model-hub] .dl-row-btn--active,
+[data-model-hub] .dl-row-speed,
+[data-model-hub] .dl-row-status--active,
+[data-model-hub] .hub-busy,
+[data-model-hub] .hub-file-download,
+[data-model-hub] .hub-file-match,
+[data-model-hub] .hub-quant-head,
+[data-model-hub] .hub-searchbar-btn,
+[data-model-hub] .hub-searchbar-icon,
+[data-model-hub] .hub-toast,
+[data-model-hub] .mcard-fit-scan--scanning,
+[data-model-hub] .mcard-mini-name--selected,
+[data-model-hub] .mcard-mini-quant--nvfp,
+[data-model-hub] .upd-popover-title,
+[data-model-hub] .upd-title--full {
   color: var(--theme-accent-bright) !important;
 }
 
@@ -314,4 +311,15 @@
 }
 .catalog-scan-status {
   color: var(--theme-accent-bright);
+}
+
+/* ── de-Tailwind pass 2 · intel summary line + config drop zone ─── */
+.intel-summary {
+  color: color-mix(in srgb, var(--theme-text-muted) 60%, transparent);
+  border-color: color-mix(in srgb, var(--theme-border) 30%, transparent);
+}
+
+.config-drop-zone {
+  color: color-mix(in srgb, var(--theme-text-muted) 40%, transparent);
+  border-color: color-mix(in srgb, var(--theme-border) 25%, transparent);
 }

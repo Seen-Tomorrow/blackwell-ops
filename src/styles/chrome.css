@@ -711,7 +711,7 @@
   max-height: min(70vh, 28rem);
   overflow-y: auto;
   padding: 0.4rem 0.45rem 0.45rem;
-  background: var(--theme-panel, #12141a);
+  background: var(--theme-panel);
   border: 1px solid color-mix(in srgb, #22d3ee 35%, var(--theme-chrome-control-border) 65%);
   border-radius: 4px;
   box-shadow:
@@ -851,7 +851,7 @@
   max-height: min(85vh, 40rem);
   overflow: auto;
   padding: 0.65rem 0.75rem 0.7rem;
-  background: var(--theme-panel, #12141a);
+  background: var(--theme-panel);
   border: 1px solid color-mix(in srgb, #22d3ee 40%, var(--theme-chrome-control-border) 60%);
   border-radius: 5px;
   box-shadow:
@@ -1264,14 +1264,14 @@
   /* Amber stays primary; accent only tints the ring */
   border-color: color-mix(
     in srgb,
-    color-mix(in srgb, var(--boc-amber, #b87a00) 70%, var(--theme-accent, #b87a00) 30%) 42%,
+    color-mix(in srgb, var(--boc-amber) 70%, var(--theme-accent) 30%) 42%,
     transparent 58%
   );
   box-shadow:
     inset 0 1px 3px color-mix(in srgb, #000000 35%, transparent),
     0 0 0 1px color-mix(
       in srgb,
-      color-mix(in srgb, var(--boc-amber, #b87a00) 65%, var(--theme-accent, #b87a00) 35%) 22%,
+      color-mix(in srgb, var(--boc-amber) 65%, var(--theme-accent) 35%) 22%,
       transparent 78%
     );
 }
@@ -1453,13 +1453,13 @@
 
 
 .model-search-palette__header {
-  border-bottom: 1px solid color-mix(in srgb, var(--theme-border, #333) 55%, transparent);
-  background: color-mix(in srgb, var(--theme-industrial-bg, #0a0c0e) 40%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
+  background: color-mix(in srgb, var(--theme-industrial-bg) 40%, transparent);
 }
 
 .model-search-palette__footer {
-  border-top: 1px solid color-mix(in srgb, var(--theme-border, #333) 55%, transparent);
-  background: color-mix(in srgb, var(--theme-industrial-bg, #0a0c0e) 40%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
+  background: color-mix(in srgb, var(--theme-industrial-bg) 40%, transparent);
 }
 
 .model-search-palette__list {
@@ -1897,7 +1897,7 @@
   text-transform: uppercase;
   border-radius: 4px;
   border: 1px solid var(--theme-chip-solid-bg, var(--theme-accent-bright));
-  color: var(--theme-chip-solid-text, #0c120a);
+  color: var(--theme-chip-solid-text);
   background: var(--theme-chip-solid-bg, var(--theme-accent-bright));
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
@@ -1906,7 +1906,7 @@
 }
 
 .foundry-toolchain-onboarding__download:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--theme-chip-solid-bg, #4ade80) 88%, #fff);
+  background: color-mix(in srgb, var(--theme-chip-solid-bg) 88%, #fff);
   transform: scale(1.03);
 }
 
@@ -1929,27 +1929,27 @@
   font-size: var(--foundry-fs-sm);
   line-height: 1.5;
   font-family: ui-monospace, monospace;
-  color: var(--theme-tel-amber, #f59e0b);
+  color: var(--theme-tel-amber);
 }
 
 .foundry-toolchain-btn--cancel {
-  color: var(--theme-tel-hot, #ef4444);
-  border-color: color-mix(in srgb, var(--theme-tel-hot, #ef4444) 55%, transparent);
-  background: color-mix(in srgb, var(--theme-tel-hot, #ef4444) 8%, transparent);
+  color: var(--theme-tel-hot);
+  border-color: color-mix(in srgb, var(--theme-tel-hot) 55%, transparent);
+  background: color-mix(in srgb, var(--theme-tel-hot) 8%, transparent);
 }
 
 .foundry-toolchain-btn--cancel:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--theme-tel-hot, #ef4444) 16%, transparent);
-  border-color: color-mix(in srgb, var(--theme-tel-hot, #ef4444) 80%, transparent);
+  background: color-mix(in srgb, var(--theme-tel-hot) 16%, transparent);
+  border-color: color-mix(in srgb, var(--theme-tel-hot) 80%, transparent);
 }
 
 @keyframes onboarding-pulse-grow {
   0%, 100% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--theme-accent-bright, #76b900) 0%, transparent);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--theme-accent-bright) 0%, transparent);
     transform: scale(1);
   }
   50% {
-    box-shadow: 0 0 0 4px color-mix(in srgb, var(--theme-accent-bright, #76b900) 40%, transparent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--theme-accent-bright) 40%, transparent);
     transform: scale(1.04);
   }
 }
@@ -1985,7 +1985,7 @@
   min-height: 0;
   border: 2px solid color-mix(in srgb, var(--foundry-window-amber) 82%, transparent);
   border-radius: 4px;
-  background: var(--theme-panel, #111810);
+  background: var(--theme-panel);
   box-shadow:
     0 10px 28px color-mix(in srgb, #000000 55%, transparent),
     0 4px 10px color-mix(in srgb, #000000 35%, transparent);
@@ -2117,7 +2117,7 @@
   font-size: var(--foundry-fs-sm);
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--theme-text-muted, #6b7280);
+  color: var(--theme-text-muted);
   margin: 0 0 calc(0.35rem * var(--foundry-scale));
 }
 
@@ -2125,7 +2125,7 @@
   font-family: ui-monospace, monospace;
   font-size: var(--foundry-fs-xs);
   line-height: 1.4;
-  color: color-mix(in srgb, var(--theme-text-muted, #6b7280) 88%, transparent);
+  color: color-mix(in srgb, var(--theme-text-muted) 88%, transparent);
   margin: 0 0 calc(0.4rem * var(--foundry-scale));
 }
 
@@ -2137,47 +2137,27 @@
 }
 
 /*
- * Foundry window body — remap neon Tailwind ink for light panels (ARCTIC).
- * Dark themes keep gold/cyan via secondary/accent tokens.
+ * Foundry window ink corrections — re-scoped to TOKENS.
+ * These used to match the literal Tailwind utility names (the yellow text
+ * utility and its /60, /70, /90 variants plus yellow-300 -> var(--theme-secondary-bright);
+ * the telemetry-cyan text utility and its /70, /80 variants -> var(--theme-accent-bright)),
+ * so deleting the utilities silently killed them. Paint is token-driven now: the
+ * container re-scopes the semantic tokens and every fnd-* class inherits them, in
+ * all three faces, with no name coupling.
+ *   warn  MATRIX/SLATE #FFB800 vs secondary-bright #f5971f; ARCTIC both #ea580c
+ *   info  MATRIX #00e5ff vs accent-bright #4ade80; ARCTIC #0891b2 vs #075985
+ * Accepted micro-delta: alpha variants no longer flatten to 100% — each class
+ * keeps its own color-mix step.
  */
-.foundry-window .text-yellow-400,
-.foundry-window .text-yellow-400\/60,
-.foundry-window .text-yellow-400\/70,
-.foundry-window .text-yellow-400\/90,
-.foundry-window .text-yellow-300 {
-  color: var(--theme-secondary-bright) !important;
-}
-
-.foundry-window .text-telemetry-cyan,
-.foundry-window .text-telemetry-cyan\/70,
-.foundry-window .text-telemetry-cyan\/80 {
-  color: var(--theme-accent-bright) !important;
+.foundry-window {
+  --theme-warn: var(--theme-secondary-bright);
+  --theme-info: var(--theme-accent-bright);
 }
 
 .foundry-window .text-white,
-.foundry-window .text-white\/90,
 .foundry-window .text-white\/80,
 .foundry-window .text-white\/70 {
   color: var(--theme-text) !important;
-}
-
-.foundry-window .border-yellow-400\/30,
-.foundry-window .border-yellow-400\/40,
-.foundry-window .border-yellow-400\/50 {
-  border-color: color-mix(in srgb, var(--theme-secondary) 48%, transparent) !important;
-}
-
-.foundry-window .bg-yellow-400\/5,
-.foundry-window .bg-yellow-400\/10,
-.foundry-window .bg-yellow-400\/\[0\.05\] {
-  background: color-mix(in srgb, var(--theme-secondary) 12%, var(--theme-panel)) !important;
-}
-
-/* Soft fills outside the log terminal (not the build log — that stays dark) */
-.foundry-window .bg-black\/20,
-.foundry-window .bg-black\/25,
-.foundry-window .bg-black\/30 {
-  background: color-mix(in srgb, var(--theme-text) 6%, var(--theme-panel-accent)) !important;
 }
 
 /*
@@ -2186,7 +2166,7 @@
  */
 .foundry-build-log {
   background: #0a0c10 !important;
-  border: 1px solid color-mix(in srgb, #000 70%, var(--theme-frame-border, #333)) !important;
+  border: 1px solid color-mix(in srgb, #000 70%, var(--theme-frame-border)) !important;
   color: rgba(220, 228, 236, 0.72);
   box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.55);
   /* Logs were text-[8px] — unreadable on laptop CSS viewports; track foundry scale. */
@@ -2237,15 +2217,9 @@
   color: rgba(250, 204, 21, 0.78);
 }
 
-/* Keep log ink fixed — ignore foundry-window yellow/cyan/white remaps inside terminal */
-.foundry-window .foundry-build-log .text-yellow-400,
-.foundry-window .foundry-build-log .text-yellow-400\/70,
-.foundry-window .foundry-build-log .text-telemetry-cyan,
-.foundry-window .foundry-build-log .text-telemetry-cyan\/80,
-.foundry-window .foundry-build-log .text-white\/60,
-.foundry-window .foundry-build-log .text-nv-green {
-  color: inherit !important;
-}
+/* Build-log ink is owned by .foundry-build-log__line--* (explicit hex per phase).
+   The old "ignore the yellow/cyan/white remap inside the terminal" guard matched
+   literal Tailwind utilities that no longer exist and was removed. */
 
 .foundry-window--compact .foundry-window__chrome {
   max-width: min(720px, 94vw);
@@ -2542,9 +2516,9 @@
 .download-confirm {
   width: min(360px, 90vw);
   padding: 1rem 1.1rem;
-  border: 1px solid color-mix(in srgb, var(--theme-tel-hot, #ef4444) 40%, var(--theme-border, #1a2e1a));
+  border: 1px solid color-mix(in srgb, var(--theme-tel-hot) 40%, var(--theme-border));
   border-radius: 6px;
-  background: var(--theme-panel, #111810);
+  background: var(--theme-panel);
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
   font-family: ui-monospace, monospace;
 }
@@ -2554,14 +2528,14 @@
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.04em;
-  color: var(--theme-tel-hot, #ef4444);
+  color: var(--theme-tel-hot);
 }
 
 .download-confirm__body {
   margin: 0 0 0.9rem;
   font-size: 11px;
   line-height: 1.5;
-  color: var(--theme-text-muted, #6b7280);
+  color: var(--theme-text-muted);
 }
 
 .download-confirm__actions {
@@ -2584,24 +2558,24 @@
 }
 
 .download-confirm__btn--no {
-  color: var(--theme-text-muted, #6b7280);
-  border-color: var(--theme-border-subtle, #2a3a2a);
+  color: var(--theme-text-muted);
+  border-color: var(--theme-border-subtle);
   background: transparent;
 }
 
 .download-confirm__btn--no:hover {
-  color: var(--theme-text, #e0e0e0);
+  color: var(--theme-text);
   border-color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
 }
 
 .download-confirm__btn--yes {
   color: #fff;
-  border-color: var(--theme-tel-hot, #ef4444);
-  background: var(--theme-tel-hot, #ef4444);
+  border-color: var(--theme-tel-hot);
+  background: var(--theme-tel-hot);
 }
 
 .download-confirm__btn--yes:hover {
-  background: color-mix(in srgb, var(--theme-tel-hot, #ef4444) 82%, #000);
+  background: color-mix(in srgb, var(--theme-tel-hot) 82%, #000);
 }
 
 .toast-container--inline {
@@ -2766,3 +2740,117 @@
 
 
 /* ARCTIC — launch: glacier steel on light brushed bezel */
+
+/* ── de-Tailwind pass 2 · app shell surfaces (App.tsx + Layout.tsx) ───
+   Paint here, not in TSX. Color = var(--theme-*) only. Sizes = .type-*
+   utilities (type-scale.css, imported last). */
+
+/* Shutdown overlay (App.tsx) */
+.shell-shutdown-title {
+  color: var(--theme-accent);
+  /* was text-[18px] md:text-[22px] — .type-* has no responsive variants,
+     so the md step lives here. Tailwind md = 768px. */
+  font-size: var(--type-xl);
+}
+
+@media (min-width: 768px) {
+  .shell-shutdown-title {
+    font-size: var(--type-2xl);
+  }
+}
+
+.shell-shutdown-sub {
+  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
+}
+
+.shell-shutdown-track {
+  background: color-mix(in srgb, var(--theme-border) 40%, transparent);
+}
+
+.shell-shutdown-fill {
+  background: color-mix(in srgb, var(--theme-accent) 80%, transparent);
+}
+
+/* Engine logs panel (App.tsx) */
+.shell-log-empty {
+  color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
+}
+
+.shell-log-header {
+  color: color-mix(in srgb, var(--theme-accent) 80%, transparent);
+  border-color: var(--theme-border);
+}
+
+.shell-log-count {
+  color: color-mix(in srgb, var(--theme-text-muted) 40%, transparent);
+}
+
+.shell-log-line {
+  color: var(--theme-text-muted);
+}
+
+.shell-log-alias {
+  color: color-mix(in srgb, var(--theme-accent) 60%, transparent);
+}
+
+/* Focus HUD exit bar (Layout.tsx) — bar surface lives in fusion-display.css */
+.shell-focus-hud {
+  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
+}
+
+.shell-focus-hud--dim {
+  color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
+}
+
+.shell-focus-btn {
+  border-color: color-mix(in srgb, var(--theme-border) 40%, transparent);
+  color: color-mix(in srgb, var(--theme-text-muted) 80%, transparent);
+}
+
+.shell-focus-btn:hover {
+  color: var(--theme-accent);
+}
+
+.shell-focus-readout {
+  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
+}
+
+.shell-focus-exit {
+  border-color: color-mix(in srgb, var(--theme-border) 50%, transparent);
+  color: color-mix(in srgb, var(--theme-accent) 90%, transparent);
+}
+
+.shell-focus-exit:hover {
+  color: var(--theme-accent);
+}
+
+/* Quick-settings zoom scale (Layout.tsx) — colors inherit .app-chrome-control-btn */
+.shell-scale-readout {
+  color: var(--theme-chrome-control-text);
+}
+
+/* Footer HIDDEN counter + tooltip (Layout.tsx) */
+.shell-hidden--warn {
+  color: var(--theme-warn);
+}
+
+.shell-hidden-tip {
+  background: var(--theme-panel);
+  border-color: color-mix(in srgb, var(--theme-warn) 40%, transparent);
+  color: var(--theme-warn);
+}
+
+/* Release notes body (releaseNotes.tsx) — shared by AppUpdateMenu + UpdatesConfig */
+.notes-code {
+  background: color-mix(in srgb, #fff 6%, transparent);
+  color: color-mix(in srgb, var(--theme-text) 70%, transparent);
+}
+
+.notes-heading {
+  color: var(--theme-accent);
+}
+
+.notes-quote {
+  border-color: color-mix(in srgb, #fff 15%, transparent);
+  color: color-mix(in srgb, var(--theme-text-muted) 80%, transparent);
+}
