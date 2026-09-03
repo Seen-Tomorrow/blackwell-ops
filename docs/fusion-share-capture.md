@@ -9,7 +9,7 @@ Primary: `src/lib/fusionShareCapture.tsx` (capture pipeline) · `src/components/
 (live micro-stats) · `src/components/BenchWidget.tsx` (bench ordering) · `src/styles/fusion-display.css`
 (capture-stage CSS).
 
-**Last aligned with code:** 2026-08-11 (v1.0.43-era share + bench work)
+**Last aligned with code:** 2026-09-03 (share SPEC row re-derived from Boost state)
 
 ---
 
@@ -113,6 +113,26 @@ Removed earlier: the "single session" banner (`injectCaptureBezelModeBanner`) an
 
 ---
 
+## SPEC chip row (Boost-derived, not the legacy `spec_type` key)
+
+Header row 2 (`SPEC-TYPE …`, `DRAFT-N-MAX …`, `DRAFT-N-MIN …`) comes from
+`collectShareLaunchConfigRow2` ← `FusionShareLaunchConfig.specType / specDraftNMax / specDraftNMin`,
+filled by `specShareFields()` (`src/lib/specProfiles.ts`) — the same `buildSpecCliExtraParams`
+flattening launch emits, keyed off Boost (`specBoostMethod`: mtp → `draft-mtp`, dflash →
+`draft-dflash`, dspark → `draft-dspark` with the shared DFlash knobs).
+
+**Do not** read `config.spec_type` / `spec_draft_n_max` / `spec_draft_n_min` for it. Those are
+`OBSOLETE_SPEC_PARAM_KEYS`: stripped from the param list on load, therefore always `undefined` →
+row 2 disappears and the fixed-height header (`FUSION_SHARE_EXPORT_HEADER_HEIGHT` = 94, budgeted
+for identity + **two** chip rows) shows a dead band under the ctx/batch chips. The spec-profile
+refactor (`a54044a29`) caused exactly that; `src/lib/specProfiles.test.ts` guards it.
+
+Knobs hidden in Config are dropped as well — the CLI never receives them, so the card must not
+claim them. With Boost off there is no second row and `createHeaderShell` centers the single row
+instead of top-pinning it into the empty band.
+
+---
+
 ## Bench ordering + hero pinning (`BenchWidget.runBenchBoth`)
 
 - Order is **PP first, then TG** (was TG→PP). Rationale above (per-slot meter / share card).
@@ -153,6 +173,9 @@ Removed earlier: the "single session" banner (`injectCaptureBezelModeBanner`) an
 - **Do not** blanket-match `style*="6vh"` for hero fonts — it also hits the 2.6vh per-slot meter.
   Select `.fusion-tg-hero-value` / `.fusion-prefill-hero-value` explicitly.
 - **Do not** reorder the combined bench back to TG→PP — the share card loses the per-slot meter.
+- **Do not** source the SPEC chips from `config.spec_type` / `spec_draft_n_*` — use
+  `specShareFields(boostMethod, config, params)`. The legacy bag keys are stripped on load, so the
+  row dies silently and only an empty band remains under the config chips.
 - **Do not** reuse `AppHandle::exit` / webview-destroy shutdown patterns here (unrelated, but this
   repo's shutdown is PID-only via `app_lifecycle`).
 

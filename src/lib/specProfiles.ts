@@ -214,6 +214,39 @@ export function buildSpecCliExtraParams(
   return out;
 }
 
+/**
+ * Share-card view of the active Boost profile — CLI truth, hidden-aware.
+ *
+ * Reads through `buildSpecCliExtraParams`, the same flattening launch emits, so the
+ * card prints what the engine actually gets (hidden knobs dropped, factory defaults
+ * filled). Reading the legacy `spec_type` / `spec_draft_n_*` bag keys directly is a
+ * dead end: they are `OBSOLETE_SPEC_PARAM_KEYS`, stripped on load, so the share
+ * header silently loses its whole SPEC row.
+ */
+export function specShareFields(
+  method: SpecBoostMethod,
+  config: Record<string, unknown>,
+  params: UserEditedTemplateParam[],
+): { specType?: string; nMax?: string | number; nMin?: string | number } {
+  const cli = buildSpecCliExtraParams(method, config, params);
+  const specType = cli[SPEC_CLI_TYPE];
+  if (typeof specType !== "string" || !specType.trim()) return {};
+
+  const pick = (key: string): string | number | undefined => {
+    const raw = cli[key];
+    if (typeof raw === "number") return raw;
+    if (typeof raw === "string" && raw.trim()) return raw.trim();
+    return undefined;
+  };
+
+  const mtp = method === "mtp";
+  return {
+    specType: specType.trim(),
+    nMax: pick(mtp ? MTP_N_MAX : DFLASH_N_MAX),
+    nMin: pick(mtp ? MTP_N_MIN : DFLASH_N_MIN),
+  };
+}
+
 export type ProfileKnobRow = {
   key: string;
   label: string;

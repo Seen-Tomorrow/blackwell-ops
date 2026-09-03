@@ -155,6 +155,7 @@ import {
   stripObsoleteSpecParams,
   activeBoostMethodFromParams,
   cliSpecTypeForMethod,
+  specShareFields,
 } from "../lib/specProfiles";
 import { migrateCatalogParams } from "../lib/systemParams";
 import { DEFAULT_BINARY_PROFILE, ENV_META, ENV_ORDER, normalizeBinaryProfile, type Env } from "../lib/foundry_constants";
@@ -1496,6 +1497,14 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     launchDockPosition,
   ]);
 
+  // Boost is cockpit state + mtp_*/dflash_* knobs; CLI keys (spec_type,
+  // spec_draft_n_max/min) only exist after launch flattening. Derive the share row
+  // from the live profile — the legacy bag keys are stripped on load.
+  const shareSpecFields = useMemo(
+    () => specShareFields(specBoostMethod, config, allParamsResolved),
+    [specBoostMethod, config, allParamsResolved],
+  );
+
   const shareLaunchConfig = useMemo((): FusionShareLaunchConfig => ({
     ctx: config.ctx,
     batch: config.batch,
@@ -1503,9 +1512,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     flashAttn: config.flash_attn != null ? String(config.flash_attn) : undefined,
     splitMode: config.split != null ? String(config.split) : undefined,
     kvQuant: config.kv_quant != null ? String(config.kv_quant) : undefined,
-    specType: config.spec_type != null ? String(config.spec_type) : undefined,
-    specDraftNMax: config.spec_draft_n_max != null ? config.spec_draft_n_max : undefined,
-    specDraftNMin: config.spec_draft_n_min != null ? config.spec_draft_n_min : undefined,
+    specType: shareSpecFields.specType,
+    specDraftNMax: shareSpecFields.nMax,
+    specDraftNMin: shareSpecFields.nMin,
   }), [
     config.ctx,
     config.batch,
@@ -1513,9 +1522,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     config.flash_attn,
     config.split,
     config.kv_quant,
-    config.spec_type,
-    config.spec_draft_n_max,
-    config.spec_draft_n_min,
+    shareSpecFields,
   ]);
 
   const shareProfileMeta = useMemo(() => {
