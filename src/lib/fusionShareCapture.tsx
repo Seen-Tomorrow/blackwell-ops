@@ -1014,7 +1014,14 @@ function createHeaderShell(meta: FusionShareMeta, variant: FusionShareVariant, l
   };
   const configRow = createLaunchConfigChipRow(meta.launchConfig, paramsPalette, variant);
   const hwRow = createShareHwChipRow(meta, paramsPalette);
-  const chipRows = [configRow, hwRow].filter((row): row is HTMLElement => row !== null);
+  /*
+   * The GPU line hugs the right edge so it reads as the label of the glass's DEVICE
+   * cluster directly below it; the config chips stay left-aligned under the identity.
+   */
+  const chipRows: Array<{ el: HTMLElement; align: "flex-start" | "flex-end" }> = [
+    configRow ? { el: configRow, align: "flex-start" } : null,
+    hwRow ? { el: hwRow, align: "flex-end" } : null,
+  ].filter((row): row is { el: HTMLElement; align: "flex-start" | "flex-end" } => row !== null);
 
   const shell = document.createElement("div");
   shell.className = "fusion-share-capture-brand-shell";
@@ -1109,24 +1116,22 @@ function createHeaderShell(meta: FusionShareMeta, variant: FusionShareVariant, l
     shell.appendChild(identityRow);
   }
 
-  /*
-   * Config chips and GPU identity stack as two flexed rows, so any slack in the fixed
-   * header splits evenly between them instead of pooling under one row.
-   */
-  for (const row of chipRows) {
+  /* Two flexed rows inside the fixed header, so slack splits evenly between them. */
+  for (const { el, align } of chipRows) {
     const rowHost = document.createElement("div");
     rowHost.style.flex = "1";
     rowHost.style.display = "flex";
     rowHost.style.alignItems = "center";
+    rowHost.style.justifyContent = align;
     rowHost.style.minWidth = "0";
     rowHost.style.width = "100%";
     rowHost.style.padding = "0 12px";
     rowHost.style.boxSizing = "border-box";
     rowHost.style.overflow = "hidden";
     rowHost.style.background = colors.paramsBandBg;
-    row.style.maxWidth = "100%";
-    row.style.minWidth = "0";
-    rowHost.appendChild(row);
+    el.style.maxWidth = "100%";
+    el.style.minWidth = "0";
+    rowHost.appendChild(el);
     shell.appendChild(rowHost);
   }
 

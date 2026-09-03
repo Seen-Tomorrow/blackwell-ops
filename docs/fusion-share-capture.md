@@ -131,9 +131,9 @@ Removed earlier: the "single session" banner (`injectCaptureBezelModeBanner`) an
 
 `createHeaderShell` builds **identity** (provider · build · profile · CUDA · model · quant) →
 **config chips** (`KV` → `CTX` → `batch/ubatch` → `flash-att` → **split** (amber) → `SPEC-TYPE` →
-`DRAFT-N-MAX` → `DRAFT-N-MIN`) → **GPU identity** (`● 2× RTX PRO 6000 … 96GB drv 610.x`). Each chip
-row is `flex: 1` inside the fixed 94px header, so slack splits evenly instead of pooling under one
-row.
+`DRAFT-N-MAX` → `DRAFT-N-MIN`) → **GPU identity** (`● 2× RTX PRO 6000 … 96GB drv 610.x`), hugging
+the right edge so it reads as the label of the glass's **DEVICE** cluster directly below it. Chip
+rows are `flex: 1` inside the fixed 94px header, so slack splits evenly instead of pooling.
 
 The GPU line used to be a band *below* the bezel carrying a `2 GPUs · TENSOR SPLIT` headline. That
 headline was redundant — the count is in `2×` and the split mode is a chip above — and the band
