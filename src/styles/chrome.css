@@ -1247,7 +1247,7 @@
   padding: 2px 10px;
   gap: 6px;
   border-radius: 2px;
-  background: var(--boc-body-bg, rgba(0, 0, 0, 0.55));
+  background: var(--boc-body-bg);
   border: 1px solid color-mix(
     in srgb,
     color-mix(in srgb, var(--theme-footer-border) 72%, var(--theme-accent, var(--theme-footer-border)) 28%)
@@ -1255,7 +1255,7 @@
     transparent 50%
   );
   box-shadow: inset 0 1px 3px color-mix(in srgb, #000000 35%, transparent);
-  color: var(--boc-text, rgba(255, 255, 255, 0.85));
+  color: var(--boc-text);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
   cursor: pointer;
 }
@@ -1280,7 +1280,7 @@
   font-size: 7px;
   color: color-mix(
     in srgb,
-    var(--boc-sync, rgba(34, 211, 238, 0.5)) 78%,
+    var(--boc-sync) 78%,
     var(--theme-accent) 22%
   );
 }
@@ -1297,7 +1297,7 @@
 
 .app-footer-console__live-text {
   font-size: 10.5px;
-  color: var(--boc-text, rgba(255, 255, 255, 0.85));
+  color: var(--boc-text);
 }
 
 

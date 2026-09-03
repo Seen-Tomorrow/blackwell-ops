@@ -134,19 +134,19 @@ export default function GpuTopology({
           const totalUsedPct = Math.min(totalMib > 0 ? (totalUsedMib / totalMib) * 100 : 0, 100);
           const barColorHex =
             gpuBarColor.includes("bar-need--hot")
-              ? "var(--theme-telemetry-red, #EF4444)"
+              ? "var(--theme-telemetry-red)"
               : gpuBarColor.includes("bar-need--warn")
-                ? "var(--theme-telemetry-amber, #FB923C)"
+                ? "var(--theme-telemetry-amber)"
               : gpuBarColor.includes("yellow")
-              ? "var(--theme-telemetry-amber, #FBBF24)"
+              ? "var(--theme-telemetry-amber)"
               : gpuBarColor.includes("telemetry-red") || gpuBarColor.includes("red-5")
-                ? "var(--theme-telemetry-red, #EF4444)"
+                ? "var(--theme-telemetry-red)"
                 : gpuBarColor.includes("red-6") || gpuBarColor.includes("red-7")
                   ? "#B91C1C"
                   : gpuBarColor.includes("orange")
-                    ? "var(--theme-telemetry-amber, #FB923C)"
+                    ? "var(--theme-telemetry-amber)"
                     : gpuBarColor.includes("cyan")
-                      ? "var(--theme-telemetry-cyan, #22D3EE)"
+                      ? "var(--theme-telemetry-cyan)"
                       : gpuBarColor.includes("gray")
                         ? "#4B5563"
                         : "var(--display-face-gpu-readout, var(--theme-accent))";
@@ -155,9 +155,9 @@ export default function GpuTopology({
           const existingOnlyPct = totalMib > 0 ? (usedMib / totalMib) * 100 : 0;
           const existingBarColor =
             existingOnlyPct > 95
-              ? "var(--theme-telemetry-red, #ff3333)"
+              ? "var(--theme-telemetry-red)"
               : existingOnlyPct > 85
-                ? "var(--theme-telemetry-amber, #FB923C)"
+                ? "var(--theme-telemetry-amber)"
                 : barColorHex;
 
           const isSelected = selectedGpuIndices?.includes(alloc.gpuIndex) ?? false;

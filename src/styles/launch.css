@@ -423,10 +423,10 @@
 .launch-rail-tel {
   /* Signal colors from theme tokens (ARCTIC = sky + copper, dark = classic HUD) */
   --tel-vram: var(--theme-tel-vram, var(--theme-accent-bright));
-  --tel-ram: var(--theme-tel-ram, #4da3ff);
-  --tel-amber: var(--theme-tel-amber, #f59e0b);
-  --tel-cyan: var(--theme-tel-cyan, #22d3ee);
-  --tel-hot: var(--theme-tel-hot, #ef4444);
+  --tel-ram: var(--theme-tel-ram);
+  --tel-amber: var(--theme-tel-amber);
+  --tel-cyan: var(--theme-tel-cyan);
+  --tel-hot: var(--theme-tel-hot);
   padding: 0;
 }
 
@@ -712,8 +712,8 @@
 /* Non-default OC applied — soft amber/copper (same treatment as OVERCLOCKING header) */
 .gpu-topo-card__oc-badge--active {
   color: var(--theme-tel-amber-ink, color-mix(in srgb, #fbbf24 78%, #fff 22%));
-  background: color-mix(in srgb, var(--tel-amber, #f59e0b) 22%, transparent);
-  border: 1px solid color-mix(in srgb, var(--tel-amber, #f59e0b) 38%, transparent);
+  background: color-mix(in srgb, var(--tel-amber) 22%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tel-amber) 38%, transparent);
 }
 
 
@@ -1128,12 +1128,12 @@
 .launch-rail-tel__cpu-avg--mhz .launch-rail-tel__cpu-avg-val {
   font-size: 13px;
   letter-spacing: -0.02em;
-  color: var(--tel-cyan, #22d3ee);
+  color: var(--tel-cyan);
 }
 
 .launch-rail-tel__cpu-avg--mhz .launch-rail-tel__cpu-avg-unit {
   font-size: 7px;
-  color: var(--tel-cyan, #22d3ee);
+  color: var(--tel-cyan);
   opacity: 0.85;
 }
 
@@ -1501,14 +1501,14 @@
 }
 
 .config-nobsproof-btn {
-  border-color: color-mix(in srgb, var(--dev-danger, #c41e3a) 55%, transparent);
-  background: color-mix(in srgb, var(--dev-danger, #c41e3a) 12%, transparent);
-  color: color-mix(in srgb, var(--dev-danger, #c41e3a) 88%, #fff 12%);
+  border-color: color-mix(in srgb, var(--dev-danger) 55%, transparent);
+  background: color-mix(in srgb, var(--dev-danger) 12%, transparent);
+  color: color-mix(in srgb, var(--dev-danger) 88%, #fff 12%);
 }
 
 .config-nobsproof-btn:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--dev-danger, #c41e3a) 75%, transparent);
-  background: color-mix(in srgb, var(--dev-danger, #c41e3a) 22%, transparent);
+  border-color: color-mix(in srgb, var(--dev-danger) 75%, transparent);
+  background: color-mix(in srgb, var(--dev-danger) 22%, transparent);
   color: #fff;
 }
 

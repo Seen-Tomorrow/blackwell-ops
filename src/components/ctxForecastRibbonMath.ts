@@ -57,9 +57,9 @@ export function ribbonCssGradient(stops: RibbonStop[]): string {
   const color = (tone: RibbonTone): string => {
     switch (tone) {
       case "hot":
-        return "var(--theme-telemetry-red, #ef4444)";
+        return "var(--theme-telemetry-red)";
       case "warn":
-        return "var(--theme-telemetry-amber, #fbbf24)";
+        return "var(--theme-telemetry-amber)";
       case "caution":
         return "#fcd34d";
       default:

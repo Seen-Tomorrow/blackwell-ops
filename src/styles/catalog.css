@@ -294,26 +294,26 @@
 /* State-aware accent — border + text (+ light wash for DRAFT) */
 .catalog-kind-cycler[data-kind="draft"] {
   border-color: var(--theme-dflash-strip-border, color-mix(in srgb, #8b5cf6 60%, transparent));
-  color: var(--theme-dflash-strip-text, #ddd6fe);
+  color: var(--theme-dflash-strip-text);
   background: color-mix(
     in srgb,
-    var(--theme-dflash-strip-bg, #2e1065) 38%,
+    var(--theme-dflash-strip-bg) 38%,
     var(--theme-panel-accent, var(--theme-panel)) 62%
   );
 }
 
 .catalog-kind-cycler[data-kind="draft"]:hover {
-  border-color: color-mix(in srgb, var(--theme-dflash-strip-border, #a78bfa) 85%, transparent);
+  border-color: color-mix(in srgb, var(--theme-dflash-strip-border) 85%, transparent);
   filter: brightness(1.08);
 }
 
 .catalog-kind-cycler[data-kind="all"] {
-  border-color: color-mix(in srgb, var(--theme-nv-green, #76b900) 60%, transparent);
-  color: var(--theme-nv-green, #76b900);
+  border-color: color-mix(in srgb, var(--theme-nv-green) 60%, transparent);
+  color: var(--theme-nv-green);
 }
 
 .catalog-kind-cycler[data-kind="all"]:hover {
-  border-color: color-mix(in srgb, var(--theme-nv-green, #76b900) 85%, transparent);
+  border-color: color-mix(in srgb, var(--theme-nv-green) 85%, transparent);
 }
 
 .catalog-list-panel__chrome-msg {
@@ -577,10 +577,10 @@
   background:
     repeating-linear-gradient(
       -52deg,
-      color-mix(in srgb, var(--theme-dflash-strip-border, #a78bfa) 22%, transparent) 0 5px,
+      color-mix(in srgb, var(--theme-dflash-strip-border) 22%, transparent) 0 5px,
       transparent 5px 11px
     ),
-    color-mix(in srgb, var(--theme-dflash-strip-bg, #2e1065) 18%, transparent);
+    color-mix(in srgb, var(--theme-dflash-strip-bg) 18%, transparent);
   opacity: 0.9;
 }
 
@@ -590,9 +590,9 @@
 }
 
 .model-catalog-card--draft .model-card-draft-badge {
-  color: var(--theme-dflash-strip-text, #ddd6fe);
+  color: var(--theme-dflash-strip-text);
   border: 1px solid var(--theme-dflash-strip-border, color-mix(in srgb, #a78bfa 50%, transparent));
-  background: color-mix(in srgb, var(--theme-dflash-strip-bg, #2e1065) 55%, transparent);
+  background: color-mix(in srgb, var(--theme-dflash-strip-bg) 55%, transparent);
 }
 
 .catalog-sort-bar {
@@ -1337,7 +1337,7 @@
 }
 
 .catalog-quick-seat--pending {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-telemetry-amber, #fbbf24) 55%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-telemetry-amber) 55%, transparent);
 }
 
 .catalog-quick-seat--editing {
@@ -1435,7 +1435,7 @@
 }
 
 .catalog-quick-mem__cell--ram {
-  color: var(--display-face-fc-label-ram-fg, #93c5fd);
+  color: var(--display-face-fc-label-ram-fg);
   background: var(
     --display-face-fc-label-ram-bg,
     color-mix(in srgb, #60a5fa 14%, transparent)
@@ -1470,7 +1470,7 @@
 }
 
 .catalog-quick-seat--worker .catalog-quick-seat__role {
-  color: var(--theme-pair-secondary-text, var(--theme-chip-solid-text, var(--theme-nv-green, #76b900)));
+  color: var(--theme-pair-secondary-text, var(--theme-chip-solid-text, var(--theme-nv-green)));
 }
 
 .catalog-quick-seat__main {
@@ -2162,15 +2162,15 @@
 }
 
 [data-model-catalog] .model-card-seat--worker {
-  border-color: color-mix(in srgb, var(--theme-nv-green, #76b900) 45%, transparent);
-  color: var(--theme-nv-green, #76b900);
-  background: color-mix(in srgb, var(--theme-nv-green, #76b900) 10%, transparent);
+  border-color: color-mix(in srgb, var(--theme-nv-green) 45%, transparent);
+  color: var(--theme-nv-green);
+  background: color-mix(in srgb, var(--theme-nv-green) 10%, transparent);
 }
 
 [data-model-catalog] .model-card-seat--draft {
-  border-color: color-mix(in srgb, var(--theme-dflash-strip-border, #a78bfa) 50%, transparent);
-  color: var(--theme-dflash-strip-text, #ddd6fe);
-  background: color-mix(in srgb, var(--theme-dflash-strip-bg, #2e1065) 35%, transparent);
+  border-color: color-mix(in srgb, var(--theme-dflash-strip-border) 50%, transparent);
+  color: var(--theme-dflash-strip-text);
+  background: color-mix(in srgb, var(--theme-dflash-strip-bg) 35%, transparent);
 }
 
 [data-model-catalog] .model-card-fitnow {
@@ -2181,8 +2181,8 @@
 }
 
 [data-model-catalog] .model-card-fitnow--fits {
-  border-color: color-mix(in srgb, var(--theme-nv-green, #76b900) 45%, transparent);
-  color: var(--theme-nv-green, #76b900);
+  border-color: color-mix(in srgb, var(--theme-nv-green) 45%, transparent);
+  color: var(--theme-nv-green);
 }
 
 [data-model-catalog] .model-card-fitnow--tight {

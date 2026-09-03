@@ -3981,7 +3981,7 @@ mult chip. * (Do not chain unfinished selectors — a prior strip accidentally p
     color-mix(in srgb, var(--theme-bg) 55%, transparent);
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, #fff 6%, transparent),
-    inset 0 1px 3px var(--theme-bench-inset-shadow, rgba(0, 0, 0, 0.35));
+    inset 0 1px 3px var(--theme-bench-inset-shadow);
 }
 
 .fusion-bench-latch:hover .fusion-bench-latch__core {
@@ -4005,11 +4005,11 @@ mult chip. * (Do not chain unfinished selectors — a prior strip accidentally p
   transition: background 0.2s ease, box-shadow 0.2s ease;
 }
 
-/* Lit bench segments. Was var(--fusion-readout-accent, hash-94a3b8) — a token defined
-   nowhere, so the literal painted identically on every face and the bar was a flat
-   slate wash on ARCTIC paper. Driven by the accent now: bright enough to read as
-   "lit" on the dark bezel (theme-text-muted is dark ink and would disappear here),
-   and sky-on-paper on the light face. */
+/* Lit bench segments. Was the --fusion-readout-accent token carrying an inline
+   94a3b8 fallback; the token is defined nowhere, so that literal painted
+   identically on every face and the bar was a flat slate wash on ARCTIC paper.
+   Driven by the accent now: bright enough to read as "lit" on the dark bezel
+   (theme-text-muted is dark ink and would disappear here), sky on the light face. */
 .fusion-bench-latch__segments > span.is-lit {
   background: color-mix(in srgb, var(--theme-accent) 72%, transparent);
   box-shadow:
@@ -4215,7 +4215,7 @@ html[data-industrial-bezel="brush"] {
   background-image:
     radial-gradient(
       circle,
-      var(--display-face-grain-dot, rgba(200, 200, 208, 0.04))
+      var(--display-face-grain-dot)
         calc(var(--display-face-grain-cell, 2.5px) / 2),
       transparent calc(var(--display-face-grain-cell, 2.5px) / 2)
     ),
@@ -4225,14 +4225,14 @@ html[data-industrial-bezel="brush"] {
       transparent calc(var(--display-face-grain-scan, 5px) / 2),
       color-mix(
         in srgb,
-        var(--display-face-grain-band, rgba(0, 0, 0, 0.06))
+        var(--display-face-grain-band)
           calc(var(--display-face-grain-band-opacity, 0) * 100%),
         transparent
       )
         calc(var(--display-face-grain-scan, 5px) / 2),
       color-mix(
         in srgb,
-        var(--display-face-grain-band, rgba(0, 0, 0, 0.06))
+        var(--display-face-grain-band)
           calc(var(--display-face-grain-band-opacity, 0) * 100%),
         transparent
       )
@@ -4621,7 +4621,7 @@ html[data-industrial-bezel="brush"] {
   background-image:
     radial-gradient(
       circle,
-      var(--display-face-grain-dot, rgba(200, 200, 208, 0.04))
+      var(--display-face-grain-dot)
         calc(var(--display-face-grain-cell, 2.5px) / 2),
       transparent calc(var(--display-face-grain-cell, 2.5px) / 2)
     ) !important;
