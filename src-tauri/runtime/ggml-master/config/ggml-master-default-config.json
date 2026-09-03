@@ -9,6 +9,7 @@
     "PERFORMANCE",
     "DEV-WORKFLOW",
     "FEATURE-FLAGS",
+    "SAMPLER",
     "SPECULATIVE-MTP",
     "SPECULATIVE-DFLASH",
     "SYSTEM"
@@ -37,7 +38,7 @@
   },
   "params": [
     {
-      "default": 4096,
+      "default": 3072,
       "dock": "",
       "essentialsHiddenValues": [
         8192,
@@ -68,12 +69,13 @@
       ]
     },
     {
-      "default": 1024,
+      "default": 1536,
       "dock": "",
       "essentialsHiddenValues": [
         64,
         128,
-        8192
+        8192,
+        4096
       ],
       "flag": "--ubatch-size",
       "flag_pair": [],
@@ -135,50 +137,6 @@
       "values": [
         "on",
         "off"
-      ]
-    },
-    {
-      "default": 0.7,
-      "dock": "",
-      "essentialsHiddenValues": [
-        0.8,
-        0.9
-      ],
-      "flag": "--temp",
-      "flag_pair": [],
-      "hidden_default": false,
-      "key": "temp",
-      "label": "Temp",
-      "note": "erature N                 temperature (default: 0.80)",
-      "pattern": "",
-      "ptype": "arg_select",
-      "step": null,
-      "sub_params": null,
-      "ui_group": "DEV-WORKFLOW",
-      "values": [
-        0.7,
-        0.8,
-        0.9,
-        1
-      ]
-    },
-    {
-      "default": 0.95,
-      "dock": "",
-      "flag": "--top-p",
-      "flag_pair": [],
-      "hidden_default": false,
-      "key": "top_p",
-      "label": "Top P",
-      "note": "N                               top-p sampling (default: 0.95, 1.0 = disabled)",
-      "pattern": "",
-      "ptype": "arg_select",
-      "step": null,
-      "sub_params": null,
-      "ui_group": "DEV-WORKFLOW",
-      "values": [
-        0.95,
-        1
       ]
     },
     {
@@ -316,6 +274,138 @@
       ]
     },
     {
+      "default": 0.7,
+      "dock": "",
+      "essentialsHiddenValues": [
+        0.9,
+        0.8
+      ],
+      "flag": "--temp",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "temp",
+      "label": "Temp",
+      "note": "erature N                 temperature (default: 0.80)",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SAMPLER",
+      "values": [
+        0.7,
+        0.8,
+        0.9,
+        1
+      ]
+    },
+    {
+      "default": 0.95,
+      "dock": "",
+      "flag": "--top-p",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "top_p",
+      "label": "Top P",
+      "note": "N                               top-p sampling (default: 0.95, 1.0 = disabled)",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SAMPLER",
+      "values": [
+        0.8,
+        0.95,
+        1
+      ]
+    },
+    {
+      "default": 20,
+      "dock": "",
+      "essentialsHiddenValues": [
+        20
+      ],
+      "flag": "--top-k",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "top_k",
+      "label": "Top K",
+      "note": "N                               top-k sampling (default: 40, 0 = disabled)",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SAMPLER",
+      "values": [
+        20,
+        40
+      ]
+    },
+    {
+      "default": 0.05,
+      "dock": "",
+      "essentialsHiddenValues": [
+        0.05,
+        0
+      ],
+      "flag": "--min-p",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "min_p",
+      "label": "Min P",
+      "note": "N                               min-p sampling (default: 0.05, 0.0 = disabled)",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SAMPLER",
+      "values": [
+        0,
+        0.05
+      ]
+    },
+    {
+      "default": 1.5,
+      "dock": "",
+      "essentialsHiddenValues": [
+        1,
+        1.5
+      ],
+      "flag": "--presence-penalty",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "presence_penalty",
+      "label": "Presence Penalty",
+      "note": "ce-penalty N                    repeat alpha presence penalty (default: 0.00, 0.0 = disabled)",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SAMPLER",
+      "values": [
+        0,
+        1,
+        1.5
+      ]
+    },
+    {
+      "default": 1,
+      "dock": "",
+      "flag": "--repeat-penalty",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "repeat_penalty",
+      "label": "Repeat Penalty",
+      "note": "enalty N                      penalize repeat sequence of tokens (default: 1.00, 1.0 = disabled)",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SAMPLER",
+      "values": [
+        1
+      ]
+    },
+    {
       "default": 3,
       "dock": "",
       "essentialsHiddenValues": [
@@ -324,7 +414,7 @@
       ],
       "flag": "--spec-draft-n-max",
       "flag_pair": [],
-      "hidden_default": false,
+      "hidden_default": true,
       "key": "mtp_n_max",
       "label": "DRAFT-N-MAX",
       "note": "MTP: maximum draft tokens per speculative step.",
@@ -352,7 +442,7 @@
       ],
       "flag": "--spec-draft-n-min",
       "flag_pair": [],
-      "hidden_default": false,
+      "hidden_default": true,
       "key": "mtp_n_min",
       "label": "DRAFT-N-MIN",
       "note": "MTP: minimum draft tokens per speculative step.",
@@ -379,7 +469,7 @@
       ],
       "flag": "--spec-draft-p-min",
       "flag_pair": [],
-      "hidden_default": false,
+      "hidden_default": true,
       "key": "mtp_p_min",
       "label": "DRAFT-P-MIN",
       "note": "MTP: minimum speculative decoding probability (greedy).",
@@ -742,6 +832,6 @@
       "4"
     ]
   },
-  "templateVersion": 49,
+  "templateVersion": 50,
   "template_type": "ggml-llama"
 }
