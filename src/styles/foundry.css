@@ -294,6 +294,92 @@
   border-color: color-mix(in srgb, var(--theme-border) 80%, transparent);
 }
 
+/* PR history row — one line of reuse chips under the PR input */
+.fnd-pr-hint {
+  color: color-mix(in srgb, var(--theme-text-muted) 80%, transparent);
+}
+
+.fnd-pr-history {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.fnd-pr-history__label {
+  color: color-mix(in srgb, var(--theme-text-muted) 60%, transparent);
+  letter-spacing: 0.08em;
+  flex-shrink: 0;
+}
+
+.fnd-pr-history__chips {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.375rem;
+  /* overflow: visible — a clipped row would cut off the hover tip below */
+}
+
+/*
+ * HISTORY chip hover tip — native title= is delayed/suppressed in WebView2,
+ * so paint the tip as a CSS ::after (same idiom as the model-catalog data-tip).
+ * Multi-PR refs stack one line per PR via white-space: pre-line.
+ */
+.fnd-pr-history__chip {
+  position: relative;
+  cursor: help;
+  border-color: var(--theme-border);
+  color: var(--theme-text-muted);
+}
+
+/* Visible number truncates inside the overflow-visible chip host */
+.fnd-pr-history__chip-label {
+  max-width: 10rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fnd-pr-history__tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 0;
+  top: 100%;
+  z-index: 1000;
+  margin-top: 4px;
+  max-width: 40ch;
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  font-family: ui-monospace, monospace;
+  font-size: 13px !important;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  color: var(--theme-text);
+  background: var(--theme-panel);
+  border: 1px solid var(--theme-border);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--theme-text) 25%, transparent);
+  opacity: 0;
+  transform: translateY(-2px);
+  pointer-events: none;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+.fnd-pr-history__tip:hover::after,
+.fnd-pr-history__tip:focus-visible::after {
+  opacity: 1;
+  transform: translateY(0);
+}
+.fnd-pr-history__chip:hover {
+  color: var(--theme-text);
+  border-color: color-mix(in srgb, var(--theme-border) 80%, transparent);
+}
+
+.fnd-pr-history__chip--active {
+  background: color-mix(in srgb, var(--theme-accent) 30%, transparent);
+  border-color: color-mix(in srgb, var(--theme-accent) 60%, transparent);
+  color: var(--theme-accent);
+}
+
 /* Engines-on-profile warning (red-400/30 border, /5 fill) */
 .fnd-engine-warn {
   border: 1px solid color-mix(in srgb, var(--theme-danger) 30%, transparent);

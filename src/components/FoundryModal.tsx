@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef, type MutableRefObject } from 
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { ProviderConfig } from "../lib/types";
+import { profileEnvLookup } from "../lib/types";
 import { useFoundry, type FoundryStatusPayload } from "../hooks/useBuildDock";
 import { dispatchAppEvent, EVENTS } from "../lib/events";
 
@@ -28,6 +29,13 @@ function splitFoundryBuildProfile(raw: string): { base: string; archCodes: strin
   const archCodes = resolveSelectedCudaArchitectures(trimmed);
   const base = stripCudaArchitecturesFromCmake(trimmed) || DEFAULT_FOUNDRY_CMAKE_BASE;
   return { base, archCodes };
+}
+
+/** Newest PR ref for a provider+env: prHistoryPerEnv first, lastPrPerEnv fallback. */
+function seedPrUrl(provider: ProviderConfig, environment: string): string {
+  const history = profileEnvLookup(provider.prHistoryPerEnv, environment);
+  if (history && history.length > 0) return history[0];
+  return profileEnvLookup(provider.lastPrPerEnv, environment) ?? "";
 }
 
 interface FoundryModalProps {
@@ -161,7 +169,7 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
   );
 
   // Confirm form state (only relevant before build starts)
-  const [prUrl, setPrUrl] = useState("");
+  const [prUrl, setPrUrl] = useState(() => seedPrUrl(provider, environment));
   const [maxCores, setMaxCores] = useState<number | null>(null);
   const [buildProfile, setBuildProfile] = useState(() => splitFoundryBuildProfile(provider.build_profile ?? "").base);
   const [selectedArchs, setSelectedArchs] = useState<string[]>(
@@ -209,7 +217,7 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
       setWaitingForConfirm(false);
       setStoppingEngines(false);
       buildIdRef.current = null;
-      setPrUrl("");
+      setPrUrl(seedPrUrl(provider, environment));
       setMaxCores(null);
       setIncludeExtraTools(false);
       setBackupRetryCount(0);
@@ -253,6 +261,9 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
         setBuildProfile(split.base);
         setSelectedArchs(split.archCodes);
         setGenerator(live.foundry_generator ?? "");
+        // Re-seed PR from the live provider only if the field is still empty —
+        // covers provider object lag without clobbering an in-progress edit.
+        setPrUrl((prev) => (prev.trim() ? prev : seedPrUrl(live, environment)));
         prevBuildProfileRef.current = live.build_profile ?? "";
         prevGeneratorRef.current = live.foundry_generator ?? "";
       } catch (err) {

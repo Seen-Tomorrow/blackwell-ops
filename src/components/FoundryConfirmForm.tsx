@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { FoundrySourcePreview, FoundryWorkCacheStatus, ProviderConfig } from "../lib/types";
+import { profileEnvLookup } from "../lib/types";
 import { useTelemetry } from "../context/TelemetryContext";
 import { ENV_META, type Env } from "../lib/foundry_constants";
 import FoundryToolchainPanel from "./FoundryToolchainPanel";
@@ -12,6 +13,34 @@ import {
   orderCudaArchCodes,
 } from "../lib/cudaArchUtils";
 
+/** "owner/repo" from https://github.com/owner/repo(.git) or git@github.com:owner/repo(.git). */
+function extractOwnerRepo(gitUrl: string): string | null {
+  const url = gitUrl.trim().replace(/\.git$/, "");
+  const m =
+    url.match(/^https?:\/\/github\.com\/([^/]+)\/([^/]+)/) ??
+    url.match(/^git@github\.com:([^/]+)\/([^/]+)/);
+  return m ? `${m[1]}/${m[2]}` : null;
+}
+
+/** (owner/repo, pr number) from a GitHub PR URL; null when not a PR URL. */
+function parsePrUrl(token: string): { ownerRepo: string; num: string } | null {
+  const m = token.match(/(?:https?:\/\/)?github\.com\/([^/]+)\/([^/?#]+)\/pull\/(\d+)/);
+  return m ? { ownerRepo: `${m[1]}/${m[2]}`, num: m[3] } : null;
+}
+
+/** PR numbers in a history ref, same tokenization as the backend (comma/semicolon/whitespace). */
+function prNumbers(ref: string): string[] {
+  const out: string[] = [];
+  for (const token of ref.split(/[\s,;]+/).map((t) => t.trim()).filter(Boolean)) {
+    const pr = parsePrUrl(token);
+    if (pr) {
+      out.push(pr.num);
+    } else if (/^\d+$/.test(token)) {
+      out.push(token);
+    }
+  }
+  return out;
+}
 interface FoundryConfirmFormProps {
   provider: ProviderConfig;
   environment: Env;
@@ -72,6 +101,94 @@ export default function FoundryConfirmForm({
   const envMeta = ENV_META[environment];
   const orderedArchs = orderCudaArchCodes(selectedArchs);
   const archCmakePreview = formatCudaArchitecturesCmakeLine(orderedArchs);
+  // Last 3 PR refs for this env; fall back to lastPrPerEnv as a single chip.
+  // Memoized: the ternary/slice below would otherwise yield a fresh array each render
+  // and re-trigger the title-fetch effect.
+  const prHistory = useMemo(
+    () =>
+      profileEnvLookup(provider.prHistoryPerEnv, environment)?.slice(0, 3) ??
+      (profileEnvLookup(provider.lastPrPerEnv, environment)
+        ? [profileEnvLookup(provider.lastPrPerEnv, environment) as string]
+        : []),
+    [provider.prHistoryPerEnv, provider.lastPrPerEnv, environment],
+  );
+  // Session cache of PR titles keyed "owner/repo#N" — fetched once per chip set, never on hover.
+  const [prTitles, setPrTitles] = useState<Record<string, string>>({});
+  // In-flight/done keys so a title is fetched at most once per session, without
+  // depending on prTitles (which would be stale in the effect closure).
+  const prTitleFetched = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    let cancelled = false;
+    const ownerRepo = provider.git_url ? extractOwnerRepo(provider.git_url) : null;
+    // Group PR numbers by owner/repo so each invoke carries a single repo + its numbers.
+    const byRepo = new Map<string, string[]>();
+    for (const ref of prHistory) {
+      for (const token of ref.split(/[\s,;]+/).map((t) => t.trim()).filter(Boolean)) {
+        const url = parsePrUrl(token);
+        const num = url ? url.num : /^\d+$/.test(token) ? token : null;
+        if (!num) continue;
+        const repo = url ? url.ownerRepo : ownerRepo;
+        if (!repo) continue;
+        // Only fetch keys not yet resolved (a failed invoke leaves the key unfetched,
+        // so the next effect run retries it).
+        if (prTitleFetched.current.has(`${repo}#${num}`)) continue;
+        const list = byRepo.get(repo);
+        if (list) {
+          if (!list.includes(num)) list.push(num);
+        } else {
+          byRepo.set(repo, [num]);
+        }
+      }
+    }
+    if (byRepo.size === 0) return;
+    void Promise.all(
+      [...byRepo.entries()].map(async ([repo, nums]) => {
+        const titles = await invoke<Record<string, string>>("foundry_pr_titles", {
+          ownerRepo: repo,
+          prNums: nums,
+        });
+        if (cancelled) return;
+        // Mark keys fetched only for titles that actually arrived; a missing title
+        // stays unfetched so a later effect run can retry it.
+        const arrived: string[] = [];
+        for (const [num, title] of Object.entries(titles)) {
+          const key = `${repo}#${num}`;
+          if (title && !prTitleFetched.current.has(key)) {
+            prTitleFetched.current.add(key);
+            arrived.push(key);
+          }
+        }
+        if (arrived.length === 0) return;
+        setPrTitles((prev) => {
+          const next = { ...prev };
+          for (const [num, title] of Object.entries(titles)) {
+            const key = `${repo}#${num}`;
+            if (title && !(key in next)) next[key] = title;
+          }
+          return next;
+        });
+      }),
+    ).catch(() => {
+      /* soft-fail (incl. unmount) — keys stay unfetched, tooltip falls back to the raw ref */
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [prHistory, provider.git_url]);
+
+  const prChipTitle = (ref: string): string => {
+    const ownerRepo = provider.git_url ? extractOwnerRepo(provider.git_url) : null;
+    const lines: string[] = [];
+    for (const token of ref.split(/[\s,;]+/).map((t) => t.trim()).filter(Boolean)) {
+      const url = parsePrUrl(token);
+      const num = url ? url.num : /^\d+$/.test(token) ? token : null;
+      const repo = url ? url.ownerRepo : ownerRepo;
+      const title = num && repo ? prTitles[`${repo}#${num}`] : undefined;
+      lines.push(title ? `#${num} ${title}` : token);
+    }
+    return lines.join("\n");
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -410,15 +527,40 @@ export default function FoundryConfirmForm({
 
             <div className="foundry-confirm-panel">
               <label className="foundry-pr-label block mb-1.5">
-                Apply PR patch (optional)
+                Apply PR(s) (optional)
               </label>
               <input
                 type="text"
-                placeholder="https://github.com/owner/repo/pull/N"
+                placeholder="1234, 1299 or https://github.com/owner/repo/pull/N"
                 className="foundry-pr-input w-full px-2 py-1.5 outline-none transition-colors"
                 value={prUrl}
                 onChange={(e) => setPrUrl(e.target.value)}
               />
+              <p className="fnd-pr-hint type-micro font-mono mt-1 mb-0 leading-snug">
+                Multiple PRs space/comma-separated — applied in order; any failure aborts the build.
+              </p>
+              {prHistory.length > 0 && (
+                <div className="fnd-pr-history mt-1.5">
+                  <span className="fnd-pr-history__label type-micro font-mono uppercase">HISTORY</span>
+                  <div className="fnd-pr-history__chips">
+                    {prHistory.map((ref) => (
+                      <button
+                        key={ref}
+                        type="button"
+                        onClick={() => setPrUrl(ref)}
+                        data-tip={prChipTitle(ref)}
+                        className={`value-chip fnd-pr-history__chip fnd-pr-history__tip type-micro font-mono px-1.5 py-0.5 rounded-sm transition-colors${
+                          prUrl.trim() === ref ? " fnd-pr-history__chip--active" : ""
+                        }`}
+                      >
+                        <span className="fnd-pr-history__chip-label block max-w-[10rem] truncate">
+                          {ref}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {cpuThreads > 0 && (

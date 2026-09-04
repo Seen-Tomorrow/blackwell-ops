@@ -189,6 +189,7 @@ export interface ProviderConfig {
   /** Product release tag that shipped the pack (e.g. "v1.0.18") — not engine build-info. */
   downloadedVersionPerEnv?: Record<string, string>;
   lastPrPerEnv?: Record<string, string>; // env -> PR number (e.g. "stable" -> "21293")
+  prHistoryPerEnv?: Record<string, string[]>; // env -> last 3 PR refs, newest first
   factory_provided?: boolean; // true = bundled in runtime/ or downloaded from GitHub releases
   /** Optional fork — template via App update; engine via provider pack (not NSIS core). */
   optionalDownload?: boolean;
