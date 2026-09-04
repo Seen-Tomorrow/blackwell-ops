@@ -31,13 +31,6 @@ function splitFoundryBuildProfile(raw: string): { base: string; archCodes: strin
   return { base, archCodes };
 }
 
-/** Newest PR ref for a provider+env: prHistoryPerEnv first, lastPrPerEnv fallback. */
-function seedPrUrl(provider: ProviderConfig, environment: string): string {
-  const history = profileEnvLookup(provider.prHistoryPerEnv, environment);
-  if (history && history.length > 0) return history[0];
-  return profileEnvLookup(provider.lastPrPerEnv, environment) ?? "";
-}
-
 interface FoundryModalProps {
   provider: ProviderConfig;
   environment: "frontier" | "stable";
@@ -169,7 +162,8 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
   );
 
   // Confirm form state (only relevant before build starts)
-  const [prUrl, setPrUrl] = useState(() => seedPrUrl(provider, environment));
+  // PR field starts EMPTY by design: history is opt-in via the HISTORY chips.
+  const [prUrl, setPrUrl] = useState("");
   const [maxCores, setMaxCores] = useState<number | null>(null);
   const [buildProfile, setBuildProfile] = useState(() => splitFoundryBuildProfile(provider.build_profile ?? "").base);
   const [selectedArchs, setSelectedArchs] = useState<string[]>(
@@ -217,7 +211,7 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
       setWaitingForConfirm(false);
       setStoppingEngines(false);
       buildIdRef.current = null;
-      setPrUrl(seedPrUrl(provider, environment));
+      setPrUrl("");
       setMaxCores(null);
       setIncludeExtraTools(false);
       setBackupRetryCount(0);
@@ -261,9 +255,6 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
         setBuildProfile(split.base);
         setSelectedArchs(split.archCodes);
         setGenerator(live.foundry_generator ?? "");
-        // Re-seed PR from the live provider only if the field is still empty —
-        // covers provider object lag without clobbering an in-progress edit.
-        setPrUrl((prev) => (prev.trim() ? prev : seedPrUrl(live, environment)));
         prevBuildProfileRef.current = live.build_profile ?? "";
         prevGeneratorRef.current = live.foundry_generator ?? "";
       } catch (err) {
