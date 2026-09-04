@@ -11,6 +11,34 @@
 //! flag change, configure fail (cold path), or explicit CLEAR CACHE. Never use work/ as a runtime binary path.
 //! No build-* directories are ever created inside llama.cpp anymore.
 
+
+mod artifacts;
+mod batch;
+mod cmake;
+mod git;
+
+pub use batch::foundry_kill_all_children;
+pub(crate) use artifacts::{copy_dir_contents, publish_artifacts_to_sacred};
+pub(crate) use batch::{
+    clear_pids, kill_all_children, run_foundry_batch_streaming, track_pid, with_child_pids,
+};
+pub(crate) use cmake::{
+    check_foundry_core_binaries, cmd_escape_batch, dir_size_bytes, format_bytes_label,
+    foundry_batch_script_paths, foundry_cache_fingerprint, foundry_cmake_build_target_args,
+    foundry_cmake_build_targets, foundry_keep_work_cache, foundry_release_candidate_dirs,
+    get_default_cmake_flags, is_windows_vs_tail_batch_flake, merge_mandatory_cmake_flags,
+    nuke_foundry_build_dir_on_configure_fail, nuke_foundry_work_tree, nuke_foundry_work_tree_on_exit,
+    prepare_foundry_build_dir, read_foundry_cache_key, resolve_template_type, write_foundry_cache_key,
+    FOUNDRY_EXTRA_BINARIES,
+};
+pub use git::FoundrySourcePreview;
+pub(crate) use git::{
+    apply_foundry_github_pr, apply_foundry_vendor_patches, backup_foundry_src_dirty_diff,
+    commits_match, ensure_git_available, extract_commit_from_build_version, extract_github_owner_repo,
+    foundry_src_dir, git_hidden_output, git_hard_sync_branch, git_ls_remote_short, git_output_text,
+    git_rev_parse_short, parse_github_pr, parse_pr_input, short_commit_hash,
+};
+
 use serde::{Deserialize, Serialize};
 use std::os::windows::process::CommandExt;
 use std::path::PathBuf;
@@ -26,7 +54,7 @@ use crate::output_console::{
 };
 
 /// Global cancellation flag — set by foundry_cancel, polled during all long-running waits.
-static BUILD_CANCELLED: AtomicBool = AtomicBool::new(false);
+pub(crate) static BUILD_CANCELLED: AtomicBool = AtomicBool::new(false);
 
 /// Wakes the configure→compile gate immediately when the user clicks PROCEED.
 static BUILD_CONFIRM_NOTIFY: StdLazyLock<Notify> = StdLazyLock::new(Notify::new);
@@ -69,865 +97,10 @@ fn foundry_console_emit(
 }
 
 /// Tracked child process PIDs for cleanup on cancel. Protected by Mutex for cross-thread access.
-static CHILD_PIDS: std::sync::LazyLock<std::sync::Mutex<Vec<u32>>> =
+pub(crate) static CHILD_PIDS: std::sync::LazyLock<std::sync::Mutex<Vec<u32>>> =
     std::sync::LazyLock::new(|| std::sync::Mutex::new(Vec::new()));
 
-const DEFAULT_CMAKE_FLAGS: &[(&str, &str)] = &[
-    (
-        "ggml-llama",
-        concat!(
-            "-DLLAMA_CURL=OFF ",
-            "-DGGML_CUDA=ON ",
-            "-DGGML_AVX512=ON ",
-            // Portable CPU + CUDA (not host-only); GPU SMs still set via CMAKE_CUDA_ARCHITECTURES.
-            "-DGGML_NATIVE=OFF ",
-            // Ship llama-server (HTTP API engine) — not a separate "web UI" product.
-            "-DLLAMA_BUILD_SERVER=ON ",
-            // llama-bench lives under tools/ (not examples/).
-            "-DLLAMA_BUILD_TOOLS=ON ",
-            "-DLLAMA_BUILD_TESTS=OFF ",
-            "-DLLAMA_BUILD_EXAMPLES=OFF",
-        ),
-    ),
-];
-
-/// Always merge these into configure so provider build_profile cannot re-enable tests/examples,
-/// drop the server/tools targets, or leave host-native CPU/CUDA defaults that break ship portability.
-const FOUNDRY_MANDATORY_CMAKE_FLAGS: &str = concat!(
-    "-DGGML_NATIVE=OFF ",
-    "-DLLAMA_BUILD_SERVER=ON ",
-    "-DLLAMA_BUILD_TOOLS=ON ",
-    "-DLLAMA_BUILD_TESTS=OFF ",
-    "-DLLAMA_BUILD_EXAMPLES=OFF",
-);
-
-fn get_default_cmake_flags(template_type: &str) -> &'static str {
-    DEFAULT_CMAKE_FLAGS
-        .iter()
-        .find(|(key, _)| *key == template_type)
-        .map(|(_, flags)| *flags)
-        .unwrap_or("")
-}
-
-/// Fingerprint file written after successful configure — gates warm reuse of `work/build-{profile}/`.
-const FOUNDRY_CACHE_KEY_FILE: &str = ".blackwell-foundry-cache-key";
-
-/// Retain CMake work trees between Foundry runs (all users). Fingerprint miss / CLEAR CACHE → cold tree.
-fn foundry_keep_work_cache() -> bool {
-    true
-}
-
-fn dir_size_bytes(path: &std::path::Path) -> u64 {
-    if !path.exists() {
-        return 0;
-    }
-    let mut total = 0u64;
-    let mut stack = vec![path.to_path_buf()];
-    while let Some(dir) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&dir) else {
-            continue;
-        };
-        for entry in entries.flatten() {
-            let p = entry.path();
-            let Ok(meta) = entry.metadata() else {
-                continue;
-            };
-            if meta.is_dir() {
-                stack.push(p);
-            } else if meta.is_file() {
-                total = total.saturating_add(meta.len());
-            }
-        }
-    }
-    total
-}
-
-fn format_bytes_label(bytes: u64) -> String {
-    const KIB: f64 = 1024.0;
-    const MIB: f64 = KIB * 1024.0;
-    const GIB: f64 = MIB * 1024.0;
-    let b = bytes as f64;
-    if b >= GIB {
-        format!("{:.2} GiB", b / GIB)
-    } else if b >= MIB {
-        format!("{:.1} MiB", b / MIB)
-    } else if b >= KIB {
-        format!("{:.0} KiB", b / KIB)
-    } else {
-        format!("{bytes} B")
-    }
-}
-
-fn foundry_cache_fingerprint(
-    profile_id: &str,
-    cmake_configure_line: &str,
-    toolchain_id: &str,
-) -> String {
-    use sha2::{Digest, Sha256};
-    let mut hasher = Sha256::new();
-    hasher.update(profile_id.as_bytes());
-    hasher.update(b"\0");
-    hasher.update(cmake_configure_line.as_bytes());
-    hasher.update(b"\0");
-    // Toolchain swaps (VS/CUDA/version) must cold-start even if the configure line is unchanged.
-    hasher.update(toolchain_id.as_bytes());
-    format!("{:x}", hasher.finalize())
-}
-
-async fn read_foundry_cache_key(build_dir: &std::path::Path) -> Option<String> {
-    let path = build_dir.join(FOUNDRY_CACHE_KEY_FILE);
-    let content = tokio::fs::read_to_string(&path).await.ok()?;
-    let trimmed = content.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
-}
-
-async fn write_foundry_cache_key(build_dir: &std::path::Path, key: &str) -> Result<(), String> {
-    tokio::fs::write(build_dir.join(FOUNDRY_CACHE_KEY_FILE), format!("{key}\n"))
-        .await
-        .map_err(|e| format!("Failed to write Foundry cache key: {e}"))
-}
-
-/// Prepare `work/build-{profile}/` — reuse when cache fingerprint matches, else fresh tree.
-async fn prepare_foundry_build_dir(
-    build_dir: &std::path::Path,
-    cache_fingerprint: &str,
-) -> Result<bool, String> {
-    let cache_hit = if foundry_keep_work_cache()
-        && build_dir.join("CMakeCache.txt").is_file()
-        && read_foundry_cache_key(build_dir).await.as_deref() == Some(cache_fingerprint)
-    {
-        true
-    } else {
-        false
-    };
-
-    if cache_hit {
-        return Ok(true);
-    }
-
-    if build_dir.exists() {
-        tokio::fs::remove_dir_all(build_dir)
-            .await
-            .map_err(|e| format!("Failed to reset Foundry build dir: {e}"))?;
-    }
-    tokio::fs::create_dir_all(build_dir)
-        .await
-        .map_err(|e| format!("Failed to create Foundry build dir: {e}"))?;
-    Ok(false)
-}
-
-async fn nuke_foundry_work_tree(provider_id: &str) {
-    let work_root = crate::config::foundry_work_dir(provider_id);
-    let _ = tokio::fs::remove_dir_all(&work_root).await;
-}
-
-async fn nuke_foundry_work_tree_on_exit(provider_id: &str) {
-    if foundry_keep_work_cache() {
-        return;
-    }
-    nuke_foundry_work_tree(provider_id).await;
-}
-
-/// Product build targets (always).
-/// `llama-server` = HTTP API engine (OpenAI-compatible). Not a separate WebUI package —
-/// any browser UI is served by this binary when you open its port.
-/// `llama-bench` = industry-standard offline PP/TG reference (secondary to fusion bench).
-const FOUNDRY_CMAKE_CORE_TARGETS: &[&str] = &["llama-server", "llama-fit-params", "llama-bench"];
-
-/// Optional offline tools (Foundry modal toggle) — not used by the app runtime.
-const FOUNDRY_CMAKE_EXTRA_TARGETS: &[&str] = &["llama-cli", "llama-quantize"];
-
-const FOUNDRY_CORE_BINARIES: &[&str] = &[
-    "llama-server.exe",
-    "llama-fit-params.exe",
-    "llama-bench.exe",
-];
-
-const FOUNDRY_EXTRA_BINARIES: &[&str] = &["llama-cli.exe", "llama-quantize.exe"];
-
-struct FoundryCoreBinaryCheck {
-    all_present: bool,
-    missing: Vec<String>,
-    binary_dir: Option<PathBuf>,
-}
-
-fn foundry_batch_script_paths(work_root: &std::path::Path, profile_id: &str) -> (PathBuf, PathBuf) {
-    let pid = foundry_toolchain::normalize_profile_id(profile_id);
-    (
-        work_root.join(format!("_build_cfg_{pid}.bat")),
-        work_root.join(format!("_build_run_{pid}.bat")),
-    )
-}
-
-fn foundry_cmake_build_targets(include_extra_tools: bool) -> Vec<&'static str> {
-    let mut t: Vec<&'static str> = FOUNDRY_CMAKE_CORE_TARGETS.to_vec();
-    if include_extra_tools {
-        t.extend_from_slice(FOUNDRY_CMAKE_EXTRA_TARGETS);
-    }
-    t
-}
-
-fn foundry_cmake_build_target_args(include_extra_tools: bool) -> String {
-    foundry_cmake_build_targets(include_extra_tools)
-        .iter()
-        .map(|t| format!(" --target {t}"))
-        .collect()
-}
-
-/// Ensure mandatory -D flags are present (provider build_profile may omit them).
-fn merge_mandatory_cmake_flags(extra: &str) -> String {
-    let mut out = extra.trim().to_string();
-    for flag in FOUNDRY_MANDATORY_CMAKE_FLAGS.split_whitespace() {
-        let key = flag.split('=').next().unwrap_or(flag);
-        let already = out
-            .split_whitespace()
-            .any(|t| t == flag || t.starts_with(&format!("{key}=")));
-        if !already {
-            if !out.is_empty() {
-                out.push(' ');
-            }
-            out.push_str(flag);
-        }
-    }
-    out
-}
-
-fn foundry_release_candidate_dirs(build_dir: &std::path::Path, src_dir: &std::path::Path) -> Vec<PathBuf> {
-    vec![
-        build_dir.join("bin").join("Release"),
-        src_dir.join("bin").join("Release"),
-        src_dir.join("build").join("Release"),
-    ]
-}
-
-fn check_foundry_core_binaries(candidate_dirs: &[PathBuf]) -> FoundryCoreBinaryCheck {
-    let mut missing = Vec::new();
-    let mut binary_dir = None;
-
-    for bin in FOUNDRY_CORE_BINARIES {
-        let mut found = false;
-        for dir in candidate_dirs {
-            if dir.join(bin).is_file() {
-                found = true;
-                if binary_dir.is_none() {
-                    binary_dir = Some(dir.clone());
-                }
-                break;
-            }
-        }
-        if !found {
-            missing.push((*bin).to_string());
-        }
-    }
-
-    FoundryCoreBinaryCheck {
-        all_present: missing.is_empty(),
-        missing,
-        binary_dir,
-    }
-}
-
-fn is_windows_vs_tail_batch_flake(stderr: &str) -> bool {
-    stderr.to_ascii_lowercase().contains("the batch file cannot be found")
-}
-
-/// Escape cmd batch metacharacters in user-supplied CMake flags so a `%`, `&`, `|`, `^`, `(`, `)`
-/// or redirection char cannot split/corrupt the generated `.bat` command line. `%`→`%%` (var
-/// expansion), the rest are caret-escaped. Applied only to the batch-embedded copy; the display
-/// message keeps the raw flags for readability.
-fn cmd_escape_batch(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '%' => out.push_str("%%"),
-            '&' | '|' | '<' | '>' | '^' | '(' | ')' => {
-                out.push('^');
-                out.push(c);
-            }
-            _ => out.push(c),
-        }
-    }
-    out
-}
-
-async fn nuke_foundry_build_dir_on_configure_fail(
-    provider_id: &str,
-    profile_id: &str,
-) {
-    if foundry_keep_work_cache() {
-        let build_dir = crate::config::foundry_work_dir(provider_id)
-            .join(format!("build-{profile_id}"));
-        let _ = tokio::fs::remove_dir_all(&build_dir).await;
-        return;
-    }
-    nuke_foundry_work_tree(provider_id).await;
-}
-
-fn resolve_template_type(_provider_id: &str) -> &'static str {
-    "ggml-llama"
-}
-
-// ── PID Tracking ─────────────────────────────────────────────────────
-
-fn with_child_pids<F, R>(f: F) -> Option<R>
-where
-    F: FnOnce(&mut Vec<u32>) -> R,
-{
-    match CHILD_PIDS.lock() {
-        Ok(mut guard) => Some(f(&mut *guard)),
-        Err(e) => {
-            log::error!("[foundry] child PID registry poisoned: {e}");
-            None
-        }
-    }
-}
-
-fn try_lock_log_buf(buf: &std::sync::Mutex<Vec<String>>) -> Option<std::sync::MutexGuard<'_, Vec<String>>> {
-    buf.lock()
-        .map_err(|e| {
-            log::error!("[foundry] log buffer mutex poisoned: {e}");
-            e
-        })
-        .ok()
-}
-
-/// OS-thread line drain for one pipe (stdout or stderr).
-/// Must not use `tokio::process` + CREATE_NO_WINDOW on Windows release — that path
-/// intermittently wedges (os error 6 / silent pipes). Same pattern as `fit_scanner`.
-fn drain_pipe_lines_blocking(
-    pipe: impl std::io::Read + Send + 'static,
-    log_buffer: Arc<Mutex<Vec<String>>>,
-    stderr_capture: Option<Arc<Mutex<Vec<String>>>>,
-    as_err: bool,
-) {
-    use std::io::{BufRead, BufReader};
-    let reader = BufReader::new(pipe);
-    for line in reader.lines().flatten() {
-        if line.trim().is_empty() {
-            continue;
-        }
-        if let Some(mut buf) = try_lock_log_buf(&log_buffer) {
-            if as_err {
-                buf.push(format!("[ERR] {line}"));
-            } else {
-                buf.push(line.clone());
-            }
-        }
-        if as_err {
-            if let Some(ref cap) = stderr_capture {
-                if let Some(mut err_buf) = try_lock_log_buf(cap) {
-                    err_buf.push(line);
-                }
-            }
-        }
-    }
-}
-
-/// Spawn Foundry batch (`cmd /c …`) with CREATE_NO_WINDOW, stream logs, honour cancel.
-///
-/// Uses **std::process** + dedicated OS threads for pipes — not `tokio::process`.
-/// Project history: tokio + CREATE_NO_WINDOW is intermittent on Windows **release**
-/// (FIT/gguf/taskkill already moved off it). Symptom: child PID exists, zero output forever.
-///
-/// `raw_cmd_tail` is the full `/d /s /c ""batch""` string from
-/// [`crate::sidecar_elevate::cmd_script_launch`] — attached via `raw_arg` so install
-/// paths with spaces are not destroyed by `cmd /s` quote stripping.
-async fn run_foundry_batch_streaming(
-    program: &std::path::Path,
-    raw_cmd_tail: &str,
-    cwd: &std::path::Path,
-    app_handle: &tauri::AppHandle,
-    state: &BuildState,
-    timeout: Option<std::time::Duration>,
-) -> Result<(Option<std::process::ExitStatus>, Vec<String>), String> {
-    use std::os::windows::process::CommandExt;
-    use std::process::{Command, Stdio};
-
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-
-    let mut child_cmd = Command::new(program);
-    child_cmd
-        .raw_arg(raw_cmd_tail)
-        .current_dir(cwd)
-        .creation_flags(CREATE_NO_WINDOW)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    let mut child = child_cmd
-        .spawn()
-        .map_err(|e| format!("Failed to start foundry batch ({}): {e}", program.display()))?;
-
-    let pid = child.id();
-    track_pid(pid);
-
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| "Failed to capture foundry batch stdout".to_string())?;
-    let stderr = child
-        .stderr
-        .take()
-        .ok_or_else(|| "Failed to capture foundry batch stderr".to_string())?;
-
-    let log_buffer: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-    let log_buffer_flush = log_buffer.clone();
-    let stderr_capture: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-    let stderr_for_stream = stderr_capture.clone();
-
-    let out_thread = std::thread::spawn({
-        let log_buffer = log_buffer.clone();
-        move || drain_pipe_lines_blocking(stdout, log_buffer, None, false)
-    });
-    let err_thread = std::thread::spawn({
-        let log_buffer = log_buffer.clone();
-        move || drain_pipe_lines_blocking(stderr, log_buffer, Some(stderr_for_stream), true)
-    });
-
-    let flush_done = Arc::new(AtomicBool::new(false));
-    let flush_done_inner = flush_done.clone();
-    let app_handle_flush = app_handle.clone();
-    let state_flush = state.clone();
-    let _flush_handle = tauri::async_runtime::spawn(async move {
-        let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(250));
-        loop {
-            if flush_done_inner.load(Ordering::SeqCst) {
-                break;
-            }
-            interval.tick().await;
-            if let Some(mut buf) = try_lock_log_buf(&log_buffer_flush) {
-                let batch = buf.drain(..).collect::<Vec<String>>();
-                if !batch.is_empty() {
-                    emit_build_batch(&app_handle_flush, &state_flush, batch);
-                }
-            }
-        }
-    });
-
-    let deadline = timeout.map(|t| std::time::Instant::now() + t);
-    let status = tokio::task::spawn_blocking(move || {
-        loop {
-            if BUILD_CANCELLED.load(Ordering::SeqCst) {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Ok(None);
-            }
-            if let Some(deadline) = deadline {
-                if std::time::Instant::now() >= deadline {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    return Err(format!(
-                        "Foundry batch timed out after {}s — killed.",
-                        timeout.map(|t| t.as_secs()).unwrap_or(0)
-                    ));
-                }
-            }
-            match child.try_wait() {
-                Ok(Some(status)) => return Ok(Some(status)),
-                Ok(None) => std::thread::sleep(std::time::Duration::from_millis(100)),
-                Err(_) => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    return Err("Foundry batch wait failed (child error).".to_string());
-                }
-            }
-        }
-    })
-    .await
-    .map_err(|e| format!("foundry batch wait task failed: {e}"))??;
-
-    flush_done.store(true, Ordering::SeqCst);
-    let _ = out_thread.join();
-    let _ = err_thread.join();
-
-    // Final flush of any remaining lines
-    if let Some(mut buf) = try_lock_log_buf(&log_buffer) {
-        let batch = buf.drain(..).collect::<Vec<String>>();
-        if !batch.is_empty() {
-            emit_build_batch(app_handle, state, batch);
-        }
-    }
-
-    let stderr_lines = try_lock_log_buf(&stderr_capture)
-        .map(|mut buf| buf.drain(..).collect::<Vec<String>>())
-        .unwrap_or_default();
-
-    Ok((status, stderr_lines))
-}
-
-fn track_pid(pid: u32) {
-    with_child_pids(|pids| pids.push(pid));
-}
-
-async fn git_hidden_output(
-    git_exe: std::path::PathBuf,
-    current_dir: PathBuf,
-    args: Vec<String>,
-) -> Result<std::process::Output, String> {
-    crate::engine_utils::run_hidden_output_async(move || {
-        let mut cmd = std::process::Command::new(&git_exe);
-        crate::sidecar_elevate::apply_portable_git_env(&mut cmd, &git_exe);
-        cmd.args(&args).current_dir(&current_dir);
-        cmd
-    })
-    .await
-}
-
-async fn ensure_git_available(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
-    let git_exe = crate::sidecar_elevate::resolve_git_exe(app)?;
-    match git_hidden_output(git_exe.clone(), std::env::temp_dir(), vec!["--version".into()]).await
-    {
-        Ok(output) if output.status.success() => Ok(git_exe),
-        Ok(output) => {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            Err(format!(
-                "Bundled Git check failed ({}): {}",
-                git_exe.display(),
-                if !stderr.trim().is_empty() {
-                    stderr.trim()
-                } else {
-                    stdout.trim()
-                }
-            ))
-        }
-        Err(e) => Err(format!(
-            "Bundled Git failed to run ({}): {}",
-            git_exe.display(),
-            e
-        )),
-    }
-}
-
-/// Kill any in-flight Foundry child processes (cmake, ninja, git, etc.).
-pub fn foundry_kill_all_children() {
-    kill_all_children();
-}
-
-fn kill_all_children() {
-    let pids = with_child_pids(|pids| std::mem::take(pids)).unwrap_or_default();
-    for pid in pids {
-        let _ = std::process::Command::new("taskkill")
-            .args(&["/T", "/F", "/PID", &pid.to_string()])
-            .creation_flags(0x08000000)
-            .status();
-    }
-}
-
-fn clear_pids() {
-    let _ = with_child_pids(|pids| pids.clear());
-}
-
 // ── Foundry Directory Helpers ───────────────────────────────────────
-
-fn foundry_src_dir(provider_id: &str) -> PathBuf {
-    crate::config::foundry_dir(provider_id).join("llama.cpp")
-}
-
-/// Resolve product vendor patches for a provider (`foundry/patches/<id>-*.patch`).
-fn foundry_vendor_patch_files(provider_id: &str) -> Vec<PathBuf> {
-    let dir = crate::config::foundry_patches_dir();
-    let mut out = Vec::new();
-    let Ok(rd) = std::fs::read_dir(&dir) else {
-        return out;
-    };
-    let prefix = format!("{provider_id}-");
-    for ent in rd.flatten() {
-        let path = ent.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("patch") {
-            continue;
-        }
-        let name = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or_default();
-        if name.starts_with(&prefix) || name.starts_with("all-") {
-            out.push(path);
-        }
-    }
-    out.sort();
-    out
-}
-
-fn git_output_text(output: &std::process::Output) -> String {
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let s = if !stderr.trim().is_empty() {
-        stderr.trim()
-    } else {
-        stdout.trim()
-    };
-    s.lines()
-        .take(8)
-        .map(str::trim)
-        .filter(|l| !l.is_empty())
-        .collect::<Vec<_>>()
-        .join(" | ")
-}
-
-/// Snapshot dirty source tree before hard-reset so hand-edits are not silently lost.
-async fn backup_foundry_src_dirty_diff(
-    git_exe: &std::path::Path,
-    src_dir: &std::path::Path,
-    provider_id: &str,
-) {
-    let diff = match git_hidden_output(
-        git_exe.to_path_buf(),
-        src_dir.to_path_buf(),
-        vec!["diff".into(), "--binary".into()],
-    )
-    .await
-    {
-        Ok(o) if !o.stdout.is_empty() => o.stdout,
-        _ => return,
-    };
-    let backup_dir = crate::config::cache_dir().join("foundry-src-backups");
-    if tokio::fs::create_dir_all(&backup_dir).await.is_err() {
-        return;
-    }
-    let ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let path = backup_dir.join(format!("{provider_id}-{ts}.patch"));
-    let _ = tokio::fs::write(&path, diff).await;
-    log::info!(
-        "[foundry] Backed up dirty llama.cpp diff → {}",
-        path.display()
-    );
-}
-
-/// Fast-forward source to origin/<branch> (hard reset). Local dirt never blocks Foundry.
-async fn git_hard_sync_branch(
-    git_exe: &std::path::Path,
-    src_dir: &std::path::Path,
-    branch: &str,
-) -> Result<(), String> {
-    let remote_ref = format!("origin/{branch}");
-    // Explicit refspec: a bare `git fetch origin <branch>` only updates FETCH_HEAD —
-    // the remote-tracking ref is created only when it is already known, so a branch
-    // switch on an existing (shallow) clone would leave `origin/<branch>` absent and
-    // the checkout below would fail with "is not a commit".
-    let fetch_refspec = format!("refs/heads/{branch}:refs/remotes/origin/{branch}");
-    let fetch = git_hidden_output(
-        git_exe.to_path_buf(),
-        src_dir.to_path_buf(),
-        vec![
-            "fetch".into(),
-            "origin".into(),
-            fetch_refspec,
-            "--recurse-submodules".into(),
-        ],
-    )
-    .await
-    .map_err(|e| format!("Git fetch failed: {e}"))?;
-    if !fetch.status.success() {
-        return Err(format!("Git fetch failed: {}", git_output_text(&fetch)));
-    }
-
-    let checkout = git_hidden_output(
-        git_exe.to_path_buf(),
-        src_dir.to_path_buf(),
-        vec![
-            "checkout".into(),
-            "-f".into(),
-            "-B".into(),
-            branch.to_string(),
-            remote_ref.clone(),
-        ],
-    )
-
-    .await
-    .map_err(|e| format!("Git checkout failed: {e}"))?;
-    if !checkout.status.success() {
-        return Err(format!(
-            "Git checkout failed: {}",
-            git_output_text(&checkout)
-        ));
-    }
-
-    let reset = git_hidden_output(
-        git_exe.to_path_buf(),
-        src_dir.to_path_buf(),
-        vec!["reset".into(), "--hard".into(), remote_ref],
-    )
-    .await
-    .map_err(|e| format!("Git reset failed: {e}"))?;
-    if !reset.status.success() {
-        return Err(format!("Git reset failed: {}", git_output_text(&reset)));
-    }
-
-    let _ = git_hidden_output(
-        git_exe.to_path_buf(),
-        src_dir.to_path_buf(),
-        vec![
-            "submodule".into(),
-            "update".into(),
-            "--init".into(),
-            "--recursive".into(),
-        ],
-    )
-    .await;
-    Ok(())
-}
-
-/// Apply durable product patches after clean clone/sync. Idempotent when already applied.
-/// Never hard-fails the build: a broken/outdated patch is reported and skipped so the
-/// battle-tested cmake/ninja path still runs (product has a fallback boot path without SSE).
-async fn apply_foundry_vendor_patches(
-    git_exe: &std::path::Path,
-    src_dir: &std::path::Path,
-    provider_id: &str,
-) -> (Vec<String>, Vec<String>) {
-    let patches = foundry_vendor_patch_files(provider_id);
-    if patches.is_empty() {
-        return (vec![], vec![]);
-    }
-
-    let mut applied = Vec::new();
-    let mut failed = Vec::new();
-    for patch in patches {
-        let Some(patch_str) = patch.to_str().map(|s| s.to_string()) else {
-            failed.push(format!(
-                "patch path is not valid UTF-8: {}",
-                patch.display()
-            ));
-            continue;
-        };
-        let name = patch
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("patch")
-            .to_string();
-
-        // Already applied? reverse --check succeeds only when the forward diff is present.
-        let reverse_ok = git_hidden_output(
-            git_exe.to_path_buf(),
-            src_dir.to_path_buf(),
-            vec![
-                "apply".into(),
-                "--reverse".into(),
-                "--check".into(),
-                patch_str.clone(),
-            ],
-        )
-        .await
-        .map(|o| o.status.success())
-        .unwrap_or(false);
-        if reverse_ok {
-            applied.push(format!("{name} (already applied)"));
-            continue;
-        }
-
-        let check = match git_hidden_output(
-            git_exe.to_path_buf(),
-            src_dir.to_path_buf(),
-            vec![
-                "apply".into(),
-                "--check".into(),
-                "--whitespace=nowarn".into(),
-                patch_str.clone(),
-            ],
-        )
-        .await
-        {
-            Ok(o) => o,
-            Err(e) => {
-                failed.push(format!("{name}: git apply --check spawn failed: {e}"));
-                continue;
-            }
-        };
-
-        if !check.status.success() {
-            // 3-way can still land on drifted upstream context.
-            let check3 = match git_hidden_output(
-                git_exe.to_path_buf(),
-                src_dir.to_path_buf(),
-                vec![
-                    "apply".into(),
-                    "--3way".into(),
-                    "--check".into(),
-                    "--whitespace=nowarn".into(),
-                    patch_str.clone(),
-                ],
-            )
-            .await
-            {
-                Ok(o) => o,
-                Err(e) => {
-                    failed.push(format!("{name}: git apply --3way --check spawn failed: {e}"));
-                    continue;
-                }
-            };
-            if !check3.status.success() {
-                failed.push(format!(
-                    "{name}: does not apply on this upstream tree — {}",
-                    git_output_text(&check3)
-                ));
-                continue;
-            }
-            let apply3 = match git_hidden_output(
-                git_exe.to_path_buf(),
-                src_dir.to_path_buf(),
-                vec![
-                    "apply".into(),
-                    "--3way".into(),
-                    "--whitespace=nowarn".into(),
-                    patch_str.clone(),
-                ],
-            )
-            .await
-            {
-                Ok(o) => o,
-                Err(e) => {
-                    failed.push(format!("{name}: git apply --3way spawn failed: {e}"));
-                    continue;
-                }
-            };
-            if !apply3.status.success() {
-                failed.push(format!(
-                    "{name}: 3-way apply failed — {}",
-                    git_output_text(&apply3)
-                ));
-                continue;
-            }
-            applied.push(format!("{name} (3-way)"));
-            continue;
-        }
-
-        let apply = match git_hidden_output(
-            git_exe.to_path_buf(),
-            src_dir.to_path_buf(),
-            vec![
-                "apply".into(),
-                "--whitespace=nowarn".into(),
-                patch_str,
-            ],
-        )
-        .await
-        {
-            Ok(o) => o,
-            Err(e) => {
-                failed.push(format!("{name}: git apply spawn failed: {e}"));
-                continue;
-            }
-        };
-        if !apply.status.success() {
-            failed.push(format!(
-                "{name}: apply failed — {}",
-                git_output_text(&apply)
-            ));
-            continue;
-        }
-        applied.push(name);
-    }
-    (applied, failed)
-}
-
-
 
 // ── State Machine ────────────────────────────────────────────────────
 
@@ -1032,7 +205,7 @@ fn spawn_build_heartbeat(app_handle: tauri::AppHandle) -> tokio::task::JoinHandl
                 Some(s) if s.phase == BuildPhase::Building => s,
                 _ => break,
             };
-            let child_pid = with_child_pids(|pids| pids.last().copied()).flatten();
+            let child_pid = with_child_pids(|pids: &mut Vec<u32>| pids.last().copied()).flatten();
             let alive = child_pid
                 .map(crate::engine_utils::is_process_alive)
                 .unwrap_or(false);
@@ -1065,7 +238,7 @@ fn spawn_configure_heartbeat(app_handle: tauri::AppHandle) -> tokio::task::JoinH
                 Some(s) if s.phase == BuildPhase::Configuring => s,
                 _ => break,
             };
-            let child_pid = with_child_pids(|pids| pids.last().copied()).flatten();
+            let child_pid = with_child_pids(|pids: &mut Vec<u32>| pids.last().copied()).flatten();
             let alive = child_pid
                 .map(crate::engine_utils::is_process_alive)
                 .unwrap_or(false);
@@ -1205,245 +378,6 @@ async fn clear_build_slot_if_matches(
     }
 }
 
-// ── PR Parsing (URL or number) ───────────────────────────────────────
-
-/// Extract owner/repo and PR number from a GitHub PR URL.
-fn parse_github_pr(url: &str) -> Option<(String, String)> {
-    let u = url.trim();
-    if let Some(idx) = u.find("/pull/") {
-        let before = &u[..idx];
-        let after = &u[idx + 6..];
-        let pr_num = after.split('/').next().unwrap_or(after).trim().to_string();
-        if let Some(re) = regex::Regex::new(r"(?:https?://)?github\.com/([^/]+)/([^/?#]+)").ok() {
-            if let Some(caps) = re.captures(before) {
-                let owner = caps.get(1)?.as_str();
-                let repo = caps.get(2)?.as_str();
-                return Some((format!("{}/{}", owner, repo), pr_num));
-            }
-        }
-    }
-    None
-}
-
-/// Try to extract "owner/repo" from common GitHub git URL formats.
-/// Used to enable number-only PR cherry-picks by guessing the repo from the provider.
-fn extract_github_owner_repo(git_url: &str) -> Option<String> {
-    let url = git_url.trim().trim_end_matches(".git");
-
-    // https://github.com/owner/repo or git@github.com:owner/repo
-    if let Some(rest) = url.strip_prefix("https://github.com/") {
-        let parts: Vec<&str> = rest.split('/').collect();
-        if parts.len() >= 2 {
-            return Some(format!("{}/{}", parts[0], parts[1]));
-        }
-    } else if let Some(rest) = url.strip_prefix("git@github.com:") {
-        let parts: Vec<&str> = rest.split('/').collect();
-        if parts.len() >= 2 {
-            return Some(format!("{}/{}", parts[0], parts[1]));
-        }
-    }
-
-    None
-}
-
-/// Parse PR input: supports full URL or plain number.
-/// Returns (owner_repo, pr_number) for URLs, or (None, number) for plain numbers.
-fn parse_pr_input(pr_input: &str) -> Option<(Option<String>, String)> {
-    let trimmed = pr_input.trim();
-    
-    // Try as plain number first
-    if trimmed.chars().all(|c| c.is_ascii_digit()) {
-        return Some((None, trimmed.to_string()));
-    }
-
-    // Try as GitHub PR URL
-    if let Some((owner_repo, pr_num)) = parse_github_pr(trimmed) {
-        return Some((Some(owner_repo), pr_num));
-    }
-
-    None
-}
-
-/// Apply a GitHub PR onto a clean foundry source tree (hard-synced branch, no local dirty).
-///
-/// Prefers `git fetch … pull/<n>/head` + merge so already-landed hunks (common when master
-/// moved under an open PR) resolve via real merge instead of brittle `git apply` context.
-/// Falls back to the PR `.diff` with plain apply then `--3way`.
-///
-/// Returns a short method tag on success (`"merged"` / `"patch"` / `"patch-3way"`).
-async fn apply_foundry_github_pr(
-    git_exe: &std::path::Path,
-    src_dir: &std::path::Path,
-    owner_repo: &str,
-    pr_num: &str,
-) -> Result<&'static str, String> {
-    let local_ref = format!("refs/foundry/pr-{pr_num}");
-    let pull_refspec = format!("pull/{pr_num}/head:{local_ref}");
-
-    // 1) Fetch PR head — origin first (provider clone), then explicit base-repo URL.
-    let mut fetch = git_hidden_output(
-        git_exe.to_path_buf(),
-        src_dir.to_path_buf(),
-        vec![
-            "fetch".into(),
-            "origin".into(),
-            pull_refspec.clone(),
-            "--force".into(),
-        ],
-    )
-    .await;
-
-    if !fetch.as_ref().map(|o| o.status.success()).unwrap_or(false) {
-        let url = format!("https://github.com/{owner_repo}.git");
-        fetch = git_hidden_output(
-            git_exe.to_path_buf(),
-            src_dir.to_path_buf(),
-            vec![
-                "fetch".into(),
-                url,
-                format!("pull/{pr_num}/head:{local_ref}"),
-                "--force".into(),
-            ],
-        )
-        .await;
-    }
-
-    if let Ok(out) = &fetch {
-        if out.status.success() {
-            let merge = git_hidden_output(
-                git_exe.to_path_buf(),
-                src_dir.to_path_buf(),
-                vec!["merge".into(), "--no-edit".into(), local_ref.clone()],
-            )
-            .await;
-            match merge {
-                Ok(mout) if mout.status.success() => return Ok("merged"),
-                Ok(mout) => {
-                    let _ = git_hidden_output(
-                        git_exe.to_path_buf(),
-                        src_dir.to_path_buf(),
-                        vec!["merge".into(), "--abort".into()],
-                    )
-                    .await;
-                    // Fall through to patch apply — merge conflicts on drifted trees still happen.
-                    log::warn!(
-                        "[foundry] PR #{pr_num} merge failed, trying patch apply: {}",
-                        git_output_text(&mout)
-                    );
-                }
-                Err(e) => {
-                    log::warn!("[foundry] PR #{pr_num} merge spawn failed, trying patch apply: {e}");
-                }
-            }
-        } else {
-            log::warn!(
-                "[foundry] PR #{pr_num} fetch failed, trying patch apply: {}",
-                git_output_text(out)
-            );
-        }
-    } else if let Err(e) = &fetch {
-        log::warn!("[foundry] PR #{pr_num} fetch spawn failed, trying patch apply: {e}");
-    }
-
-    // 2) Fallback: raw .diff (same source Foundry used historically).
-    let patch_url = format!(
-        "https://patch-diff.githubusercontent.com/raw/{owner_repo}/pull/{pr_num}.diff"
-    );
-    let patch_resp = reqwest::get(&patch_url)
-        .await
-        .map_err(|e| format!("HTTP fetch failed: {e}"))?;
-    if !patch_resp.status().is_success() {
-        return Err(format!(
-            "PR not found or inaccessible (HTTP {})",
-            patch_resp.status()
-        ));
-    }
-    let patch = String::from_utf8_lossy(&patch_resp.bytes().await.unwrap_or_default()).to_string();
-    if patch.trim().is_empty() {
-        return Ok("merged"); // empty diff == already on tree
-    }
-
-    let patch_parent = src_dir
-        .parent()
-        .ok_or_else(|| "Cannot resolve patch path".to_string())?;
-    let patch_path = patch_parent.join("pr-patch.diff");
-    tokio::fs::write(&patch_path, &patch)
-        .await
-        .map_err(|e| format!("could not write patch file: {e}"))?;
-    let patch_path_str = patch_path
-        .to_str()
-        .ok_or_else(|| "Patch path is not valid UTF-8".to_string())?
-        .to_string();
-
-    let mut apply_output = git_hidden_output(
-        git_exe.to_path_buf(),
-        src_dir.to_path_buf(),
-        vec![
-            "apply".into(),
-            "--whitespace=nowarn".into(),
-            patch_path_str.clone(),
-        ],
-    )
-    .await;
-
-    let mut method = "patch";
-    if apply_output.as_ref().map_or(true, |o| !o.status.success()) {
-        method = "patch-3way";
-        apply_output = git_hidden_output(
-            git_exe.to_path_buf(),
-            src_dir.to_path_buf(),
-            vec![
-                "apply".into(),
-                "--3way".into(),
-                "--whitespace=nowarn".into(),
-                patch_path_str,
-            ],
-        )
-        .await;
-    }
-
-    let _ = tokio::fs::remove_file(&patch_path).await;
-
-    match &apply_output {
-        Ok(out) if out.status.success() => Ok(method),
-        Ok(out) => {
-            let _ = git_hidden_output(
-                git_exe.to_path_buf(),
-                src_dir.to_path_buf(),
-                vec!["merge".into(), "--abort".into()],
-            )
-            .await;
-            // Prefer real failure lines (error:/fatal:/conflict) over "Applied … cleanly".
-            let raw = {
-                let stderr = String::from_utf8_lossy(&out.stderr);
-                let stdout = String::from_utf8_lossy(&out.stdout);
-                format!("{stderr}\n{stdout}")
-            };
-            let interesting = raw
-                .lines()
-                .map(str::trim)
-                .filter(|l| !l.is_empty())
-                .find(|l| {
-                    let lower = l.to_ascii_lowercase();
-                    lower.contains("error:")
-                        || lower.contains("fatal:")
-                        || lower.contains("conflict")
-                        || lower.contains("does not apply")
-                        || lower.contains("failed")
-                })
-                .unwrap_or_else(|| {
-                    raw.lines()
-                        .map(str::trim)
-                        .find(|l| !l.is_empty())
-                        .unwrap_or("unknown error")
-                });
-            Err(interesting.to_string())
-        }
-        Err(e) => Err(format!("git apply spawn failed: {e}")),
-    }
-}
-
-
 // ── Core Build Service ───────────────────────────────────────────────
 
 #[tauri::command]
@@ -1518,6 +452,1035 @@ pub async fn foundry_build(
     Ok(())
 }
 
+/// Shared context passed to each build stage — holds the handles/ids the stages
+/// already close over so no stage needs 20 positional arguments.
+struct BuildCtx<'a> {
+    worker: &'a FoundryWorkerApp,
+    app_handle: &'a tauri::AppHandle,
+    provider_id: &'a str,
+    environment: &'a str,
+    profile_id: &'a str,
+    build_id: u64,
+    manifest: &'a foundry_toolchain::ToolchainManifest,
+    profile: &'a foundry_toolchain::ResolvedProfile,
+    all_cuda_vars: &'a [String],
+    pr_url: Option<&'a str>,
+    max_cores: Option<u32>,
+    cmake_flags: Option<&'a str>,
+    generator: Option<&'a str>,
+    include_extra_tools: bool,
+    /// Computed in the sequencer: cores available for -j.
+    num_cpus: usize,
+    /// Computed in the sequencer: the cmake command path (forward-slash).
+    cmake_cmd: String,
+    /// Computed in the sequencer: git exe parent dir (for batch PATH).
+    git_cmd_bin: Option<String>,
+    /// Computed in the sequencer: ml64 parent dir (for batch PATH).
+    ml64_bin: Option<String>,
+    /// Computed in the sequencer: vs_devcmd path.
+    vs_devcmd: String,
+    /// Computed in the sequencer: forced CUDA path.
+    cuda_path_forced: String,
+}
+
+impl<'a> BuildCtx<'a> {
+    fn rollback(&self) -> RollbackBuilder<'a> {
+        rollback_build(self.app_handle, self.provider_id, self.profile_id, self.build_id)
+    }
+}
+
+/// Stage 1 — git clone/pull, vendor patches, optional GitHub PR.
+/// Returns the resolved git executable path on success.
+async fn stage_git_ops<'a>(ctx: &BuildCtx<'a>) -> Result<std::path::PathBuf, String> {
+    let app_handle = ctx.app_handle;
+    let provider_id = ctx.provider_id;
+    let profile_id = ctx.profile_id;
+    let build_id = ctx.build_id;
+    let engine_root = crate::config::foundry_dir(provider_id);
+    let src_dir = engine_root.join("llama.cpp");
+
+    // ── Git Operations ───────────────────────────────────────────────
+
+    let git_exe = match ensure_git_available(app_handle).await {
+        Ok(exe) => exe,
+        Err(e) => {
+            ctx.rollback().with_message(e.clone()).execute().await;
+            return Err(e);
+        }
+    };
+
+    let (git_url, branch) = {
+        let cfg = ctx.worker.config.lock().map_err(|e| e.to_string())?;
+        let p = cfg.providers.iter()
+            .find(|p| p.id == provider_id);
+        (
+            p.map(|p| p.git_url.clone()).unwrap_or_default(),
+            p.map(|p| p.branch.clone()).unwrap_or_else(|| "main".to_string()),
+        )
+    };
+
+    if git_url.is_empty() {
+            ctx.rollback().execute().await;
+            return Err(format!("Provider '{}' has no git_url configured.", provider_id));
+    }
+
+    let is_existing = src_dir.join(".git").exists();
+
+    if !is_existing {
+        if src_dir.exists() {
+            let _ = tokio::fs::remove_dir_all(&src_dir).await;
+        }
+
+        set_build_phase(BuildPhase::GitClone).await;
+        if let Some(state) = snapshot_build_state().await {
+            emit_build_event(
+                app_handle,
+                &state,
+                Some(format!(
+                    "[STAGE 1/4] REPOSITORY — Cloning {} (branch {})… First download can take several minutes on slow internet.",
+                    git_url, branch
+                )),
+            );
+        }
+
+        let clone_parent = engine_root.parent().ok_or_else(|| {
+            format!("Invalid engine root (no parent): {}", engine_root.display())
+        })?;
+        let heartbeat = spawn_repo_heartbeat(app_handle.clone(), "cloning repository", BuildPhase::GitClone);
+        let clone_output = git_hidden_output(
+            git_exe.clone(),
+            clone_parent.to_path_buf(),
+            vec![
+                "clone".into(),
+                "--depth".into(),
+                "1".into(),
+                "--recursive".into(),
+                git_url.clone(),
+                "-b".into(),
+                branch.to_string(),
+                src_dir.to_string_lossy().into_owned(),
+            ],
+        )
+        .await
+        .map_err(|e| format!("Git clone failed: {}", e))?;
+        heartbeat.abort();
+
+        if !clone_output.status.success() {
+            let stderr = String::from_utf8_lossy(&clone_output.stderr).to_string();
+            let msg = format!("Git clone failed: {}", stderr.trim());
+            ctx.rollback().with_message(msg.clone()).execute().await;
+            return Err(msg);
+        }
+
+        set_build_phase(BuildPhase::Configuring).await;
+        emit_config_event(
+            app_handle,
+            provider_id,
+            profile_id,
+            build_id,
+            Some("[STAGE 1/4] REPOSITORY — Clone complete.".into()),
+        );
+    } else {
+        set_build_phase(BuildPhase::GitPull).await;
+        if let Some(state) = snapshot_build_state().await {
+            emit_build_event(
+                app_handle,
+                &state,
+                Some(format!(
+                    "[STAGE 1/4] REPOSITORY — Syncing branch '{}' (fetch + hard reset)…",
+                    branch
+                )),
+            );
+        }
+
+        // Product trees are build inputs, not hand-edit workspaces. Backup any dirt,
+        // then hard-sync so local patches never block the build (re-applied below).
+        let heartbeat =
+            spawn_repo_heartbeat(app_handle.clone(), "updating repository", BuildPhase::GitPull);
+        backup_foundry_src_dirty_diff(&git_exe, &src_dir, provider_id).await;
+        let sync_result = git_hard_sync_branch(&git_exe, &src_dir, &branch).await;
+        heartbeat.abort();
+
+        if let Err(e) = sync_result {
+            ctx.rollback().with_message(e.clone()).execute().await;
+            return Err(e);
+        }
+
+        set_build_phase(BuildPhase::Configuring).await;
+        emit_config_event(
+            app_handle,
+            provider_id,
+            profile_id,
+            build_id,
+            Some("[STAGE 1/4] REPOSITORY — Repository synced to origin.".into()),
+        );
+    }
+
+    // Refresh app_root/foundry/patches from repo/resource so DEV edits ship immediately.
+    if let Err(e) = crate::config::ensure_foundry_patches_materialized(app_handle) {
+        log::warn!("[foundry] patch materialize: {e}");
+    }
+
+    // ── Optional GitHub PR (fetch+merge on clean tree) ───────────────
+    // Must run BEFORE vendor patches: merge needs a clean worktree, and
+    // product overlays should sit on top of upstream+PR.
+    if let Some(pr_input_str) = ctx.pr_url {
+        match parse_pr_input(pr_input_str) {
+            Some((owner_repo_opt, pr_num)) => {
+                let resolved_owner_repo = owner_repo_opt.clone().or_else(|| {
+                    if let Ok(cfg) = ctx.worker.config.lock() {
+                        if let Some(p) = cfg.providers.iter().find(|p| p.id == provider_id) {
+                            if !p.git_url.trim().is_empty() {
+                                return extract_github_owner_repo(&p.git_url);
+                            }
+                        }
+                    }
+                    None
+                });
+
+                let log_msg = if let Some(owner_repo) = resolved_owner_repo.as_deref() {
+                    if owner_repo_opt.is_none() {
+                        format!(
+                            "[PR] Guessed repo {owner_repo} from provider git_url — fetching PR #{pr_num}..."
+                        )
+                    } else {
+                        format!("[PR] Fetching PR #{pr_num} from {owner_repo}...")
+                    }
+                } else {
+                    format!(
+                        "[PR] PR #{pr_num} (number only, no repo detected — informational only)"
+                    )
+                };
+                emit_config_event(
+                    app_handle,
+                    provider_id,
+                    profile_id,
+                    build_id,
+                    Some(log_msg),
+                );
+
+                if let Some(owner_repo) = resolved_owner_repo.as_deref() {
+                    match apply_foundry_github_pr(&git_exe, &src_dir, owner_repo, &pr_num).await {
+                        Ok(method) => {
+                            let how = match method {
+                                "merged" => "merged (pull head)",
+                                "patch" => "applied (patch)",
+                                "patch-3way" => "applied (patch 3-way)",
+                                other => other,
+                            };
+                            emit_config_event(
+                                app_handle,
+                                provider_id,
+                                profile_id,
+                                build_id,
+                                Some(format!("[PR] #{pr_num} {how}")),
+                            );
+
+                            let env_key = profile_id.to_string();
+                            if let Ok(mut cfg) = ctx.worker.config.lock() {
+                                if let Some(p) =
+                                    cfg.providers.iter_mut().find(|p| p.id == provider_id)
+                                {
+                                    p.last_pr_per_env.insert(env_key, pr_num.clone());
+                                }
+                            }
+                        }
+                        Err(err) => {
+                            emit_config_event(
+                                app_handle,
+                                provider_id,
+                                profile_id,
+                                build_id,
+                                Some(format!(
+                                    "[WARN] PR #{pr_num} apply failed: {err} — continuing build"
+                                )),
+                            );
+                        }
+                    }
+                }
+            }
+            None => {
+                emit_config_event(
+                    app_handle,
+                    provider_id,
+                    profile_id,
+                    build_id,
+                    Some(format!(
+                        "[WARN] Invalid PR input: '{pr_input_str}' — must be a GitHub PR URL or plain number"
+                    )),
+                );
+            }
+        }
+    }
+
+    // Product vendor patches (e.g. single-model /models/sse cold-boot). Soft-fail:
+    // a drifted upstream must not kill the 1-click newest-engine path.
+    // Applied AFTER PR so overlays always win on product paths.
+    let (applied_patches, failed_patches) =
+        apply_foundry_vendor_patches(&git_exe, &src_dir, provider_id).await;
+    if !applied_patches.is_empty() {
+        emit_config_event(
+            app_handle,
+            provider_id,
+            profile_id,
+            build_id,
+            Some(format!(
+                "[STAGE 1/4] REPOSITORY — Applied vendor patch(es): {}",
+                applied_patches.join(", ")
+            )),
+        );
+    }
+    for fail in &failed_patches {
+        let msg = format!(
+            "[WARN] PATCH FAIL — {fail}. Continuing without this patch (fallback boot path)."
+        );
+        log::warn!("[foundry] {msg}");
+        emit_config_event(
+            app_handle,
+            provider_id,
+            profile_id,
+            build_id,
+            Some(msg.clone()),
+        );
+        foundry_console_emit(
+            app_handle,
+            msg,
+            BlackwellOutputConsoleLineStyle::Error,
+        );
+    }
+
+    Ok(git_exe)
+}
+
+/// Stage 2 — CMake configure chain. Returns the cmake_extra flags string.
+async fn stage_cmake_configure<'a>(ctx: &BuildCtx<'a>, git_exe: &std::path::Path) -> Result<String, String> {
+    let app_handle = ctx.app_handle;
+    let provider_id = ctx.provider_id;
+    let profile_id = ctx.profile_id;
+    let build_id = ctx.build_id;
+    let profile = ctx.profile;
+    let manifest = ctx.manifest;
+    let all_cuda_vars = ctx.all_cuda_vars;
+    let work_root = crate::config::foundry_work_dir(provider_id);
+    let build_dir = work_root.join(format!("build-{profile_id}"));
+    let src_dir = crate::config::foundry_dir(provider_id).join("llama.cpp");
+
+    // ── CMake Build Chain ────────────────────────────────────────────
+
+    let template_type = resolve_template_type(provider_id);
+
+    let cmake_extra = {
+        let cfg = ctx.worker.config.lock().map_err(|e| e.to_string())?;
+        let p = cfg.providers.iter()
+            .find(|p| p.id == provider_id);
+        let build_profile = p.map(|p| p.build_profile.clone()).unwrap_or_default();
+
+        // Foundry confirm modal loads provider build_profile for edit; persisted on build start.
+        // cmake_flags from the invoke carries the edited profile for this configure attempt.
+        let raw = if let Some(flags) = ctx.cmake_flags {
+            if !flags.trim().is_empty() {
+                flags.trim().to_string()
+            } else if !build_profile.trim().is_empty() {
+                build_profile.trim().to_string()
+            } else {
+                get_default_cmake_flags(template_type).to_string()
+            }
+        } else if !build_profile.trim().is_empty() {
+            build_profile.trim().to_string()
+        } else {
+            get_default_cmake_flags(template_type).to_string()
+        };
+        // Always pin server on, tests/examples off, native off (portable ship).
+        merge_mandatory_cmake_flags(&raw)
+    };
+
+    let available: usize = std::thread::available_parallelism()
+        .map(|p| p.get())
+        .unwrap_or(8);
+    let max_cores_usize: Option<usize> = ctx.max_cores.map(|n| n as usize);
+    let num_cpus = max_cores_usize.unwrap_or(available).min(available).max(2);
+
+    emit_config_event(app_handle, provider_id, profile_id, build_id, Some(format!(
+        "[STAGE 2/4] CMAKE CONFIGURE — {} cores detected", num_cpus
+    )));
+
+    emit_config_event(app_handle, provider_id, profile_id, build_id, Some(format!(
+        "[TOOLCHAIN] {} / CUDA {} / NVCC {}",
+        profile.display_label(),
+        profile.cuda_version_short(),
+        profile.nvcc.display()
+    )));
+
+    emit_config_event(app_handle, provider_id, profile_id, build_id, Some("[STAGE 2/4] CMAKE CONFIGURE — Reviewing flags below. Click PROCEED to start compilation.".into()));
+
+    // Effective generator: provider override wins, else the manifest profile's `ninja` flag.
+    // VS-only vs Ninja: Ninja drops `-T`, `-A` and the VS toolset CUDA var; it picks the host
+    // compiler from the devcmd environment (sourced earlier in the batch).
+    let use_ninja = {
+        let saved_generator = {
+            let cfg = ctx.worker.config.lock().map_err(|e| e.to_string())?;
+            cfg.providers
+                .iter()
+                .find(|p| p.id == provider_id)
+                .map(|p| p.foundry_generator.clone())
+                .unwrap_or_default()
+        };
+        // Per-build override (from the confirm modal) wins, else the provider's saved choice.
+        let override_str = ctx.generator
+            .filter(|s| !s.trim().is_empty())
+            .map(|s| s.to_string())
+            .unwrap_or(saved_generator);
+        foundry_toolchain::ResolvedProfile::effective_use_ninja(profile.def.ninja, &override_str)
+    };
+    let toolset_flag = profile.vs_cuda_toolset_flag(profile.cuda_version_short(), use_ninja);
+    let forced_cuda_flags = profile.forced_cuda_flags(use_ninja);
+
+    let asm_flag = profile.cmake_asm_compiler_flag(manifest)?;
+
+    let joined_extra = if cmake_extra.is_empty() {
+        String::new()
+    } else {
+        cmake_extra.lines().map(|l| l.trim()).filter(|l| !l.is_empty()).collect::<Vec<_>>().join(" ")
+    };
+    // Batch-safe copy (escapes cmd metachars) used only inside the generated .bat; the raw
+    // flags are kept for the display message and the cache fingerprint stays deterministic.
+    let joined_extra_batch = cmd_escape_batch(&joined_extra);
+
+    let vs_def = foundry_toolchain::vs_def(manifest, &profile.def.vs)?;
+    let gen_flag = profile.cmake_generator_flag(vs_def, use_ninja);
+    let nvcc_bin = profile.cuda_root.join("bin").to_string_lossy().to_string();
+    let versioned_var = profile.cuda_path_var();
+
+    // Ninja generator requires ninja.exe beside cmake.exe. Ensure it's present before we
+    // write/run the configure batch (downloads it on demand if the stripped-down pack lacks it).
+    if use_ninja {
+        if let Err(e) = foundry_toolchain::ensure_ninja_available().await {
+            ctx.rollback().execute().await;
+            return Err(format!(
+                "Profile '{}' uses the Ninja generator but ninja.exe is unavailable: {}",
+                profile_id, e
+            ));
+        }
+    }
+    emit_config_event(app_handle, provider_id, profile_id, build_id, Some(if use_ninja {
+        "[GENERATOR] Ninja Multi-Config — VS-only flags (-T/-A/toolset-CUDA) omitted".to_string()
+    } else {
+        format!(
+            "[GENERATOR] {} — VS toolset flags applied",
+            profile.def.generator
+        )
+    }));
+
+    // Absolute out-of-source configure (build tree lives in disposable work/ — never inside source)
+    let build_dir_str = build_dir.to_string_lossy().replace('\\', "/");
+    let src_dir_str   = src_dir.to_string_lossy().replace('\\', "/");
+    let cmake_configure_line = if joined_extra_batch.is_empty() {
+        format!(
+            r#""{}" -B "{}" -S "{}" {} {} {} {}"#,
+            ctx.cmake_cmd, build_dir_str, src_dir_str, gen_flag, toolset_flag, forced_cuda_flags, asm_flag
+        )
+    } else {
+        format!(
+            r#""{}" -B "{}" -S "{}" {} {} {} {} {}"#,
+            ctx.cmake_cmd, build_dir_str, src_dir_str, gen_flag, toolset_flag, forced_cuda_flags, asm_flag, joined_extra_batch
+        )
+    };
+
+    let toolchain_id = profile.toolchain_id(manifest);
+    let cache_fingerprint = foundry_cache_fingerprint(profile_id, &cmake_configure_line, &toolchain_id);
+    let cache_reused = match prepare_foundry_build_dir(&build_dir, &cache_fingerprint).await {
+        Ok(reused) => reused,
+        Err(e) => {
+            ctx.rollback().execute().await;
+            return Err(e);
+        }
+    };
+    if cache_reused {
+        emit_config_event(
+            app_handle,
+            provider_id,
+            profile_id,
+            build_id,
+            Some(format!(
+                "[CACHE] Reusing CMake build tree for build-{profile_id} (incremental — flags unchanged)"
+            )),
+        );
+    } else {
+        emit_config_event(
+            app_handle,
+            provider_id,
+            profile_id,
+            build_id,
+            Some(format!(
+                "[CACHE] Cold CMake tree for build-{profile_id} (new profile, flag change, or manual clear)"
+            )),
+        );
+    }
+
+    emit_config_event(app_handle, provider_id, profile_id, build_id, Some(format!(
+        "cmake -B work/build-{} -S llama.cpp {} {} {} {}{}",
+        profile_id,
+        gen_flag,
+        toolset_flag,
+        asm_flag,
+        forced_cuda_flags,
+        if !joined_extra.is_empty() { format!(" {}", joined_extra) } else { String::new() }
+    )));
+
+    let cfg_batch_lines = build_isolated_batch_script(
+        &ctx.vs_devcmd,
+        &ctx.cuda_path_forced,
+        &nvcc_bin,
+        &versioned_var,
+        all_cuda_vars,
+        ctx.ml64_bin.as_deref(),
+        ctx.git_cmd_bin.as_deref(),
+        cmake_configure_line,
+    );
+    let cfg_batch_content = cfg_batch_lines.join("\n");
+    let (cfg_batch_path, _) = foundry_batch_script_paths(&work_root, profile_id);
+    if let Err(e) = tokio::fs::write(&cfg_batch_path, &cfg_batch_content).await {
+        clear_build_slot_if_matches(build_id, provider_id, app_handle).await;
+        return Err(format!("Failed to write build script: {}", e));
+    }
+
+    // Non-elevated. Spawn via std::process (not tokio) — see run_foundry_batch_streaming.
+    let (cfg_program, cfg_raw_tail) =
+        crate::sidecar_elevate::cmd_script_launch(&cfg_batch_path);
+    let state_cfg = require_build_state("cmake configure").await?;
+
+    emit_config_event(
+        app_handle,
+        provider_id,
+        profile_id,
+        build_id,
+        Some(
+            "[FOUNDRY] starting configure batch (std::process + OS pipe threads) — expect [FOUNDRY-ENV] next…"
+                .into(),
+        ),
+    );
+
+    let configure_heartbeat = spawn_configure_heartbeat(app_handle.clone());
+
+    let (cfg_status, cfg_stderr_lines) = match run_foundry_batch_streaming(
+        &cfg_program,
+        &cfg_raw_tail,
+        &src_dir,
+        app_handle,
+        &state_cfg,
+        Some(std::time::Duration::from_secs(20 * 60)), // configure guard
+    )
+    .await
+    {
+        Ok(v) => v,
+        Err(e) => {
+            configure_heartbeat.abort();
+            clear_pids();
+            clear_build_slot_if_matches(build_id, provider_id, app_handle).await;
+            return Err(e);
+        }
+    };
+    configure_heartbeat.abort();
+
+    let Some(cfg_status) = cfg_status else {
+        clear_pids();
+        clear_build_slot_if_matches(build_id, provider_id, app_handle).await;
+        return Err("Build cancelled by user.".to_string());
+    };
+
+    if !cfg_status.success() {
+        let stderr_text = cfg_stderr_lines.join("\n");
+        ctx.rollback()
+            .with_message(if stderr_text.is_empty() { "CMake configure failed.".into() } else { format!("CMake configure failed:\n{}", stderr_text) })
+            .execute().await;
+
+        clear_pids();
+
+        nuke_foundry_build_dir_on_configure_fail(provider_id, profile_id).await;
+        // rollback_build(...).execute() already ended the console session above.
+        return Err("CMake configure failed. Check the log above for details.".to_string());
+    }
+
+    if let Err(e) = write_foundry_cache_key(&build_dir, &cache_fingerprint).await {
+        log::warn!("[foundry] Failed to persist cache fingerprint: {e}");
+    }
+
+    Ok(cmake_extra)
+}
+
+/// Stage 3 — wait for user confirmation (PROCEED).
+async fn stage_wait_for_confirm<'a>(ctx: &BuildCtx<'a>, cmake_extra: &str) -> Result<(), String> {
+    let app_handle = ctx.app_handle;
+    let provider_id = ctx.provider_id;
+    let profile_id = ctx.profile_id;
+    let build_id = ctx.build_id;
+
+    // ── Check cancellation before showing PROCEED prompt ─────────────
+    if is_cancelled() {
+        clear_pids();
+        clear_build_slot_if_matches(build_id, provider_id, app_handle).await;
+        return Err("Build cancelled by user.".to_string());
+    }
+
+    // ── Wait for user confirmation via state machine ─────────────────
+
+    {
+        let mut current = CURRENT_BUILD.lock().await;
+        if let Some(ref mut s) = *current {
+            s.phase = BuildPhase::WaitingForConfirm;
+        }
+    }
+    if let Some(state) = snapshot_build_state().await {
+        emit_build_event(app_handle, &state, Some(format!(
+            "[WAIT-CONFIRM] CMake configure complete. {} targets detected.\nReview the log above — click PROCEED to start compilation (may take 10+ minutes).",
+            if cmake_extra.is_empty() { "Default" } else { "Custom" }
+        )));
+    }
+
+    let timeout_dur = std::time::Duration::from_secs(600);
+    let start = std::time::Instant::now();
+    loop {
+        if is_cancelled() || CURRENT_BUILD.lock().await.is_none() {
+            clear_pids();
+
+            nuke_foundry_work_tree_on_exit(provider_id).await;
+            foundry_console_end_session(app_handle, build_id);
+
+            emit_build_event(app_handle, &BuildState {
+                build_id,
+                provider_id: provider_id.to_string(),
+                profile_id: profile_id.to_string(),
+                phase: BuildPhase::Failed("Build cancelled.".into()),
+            }, Some("Build cancelled.".into()));
+
+            return Err("Build cancelled by user.".to_string());
+        }
+        // Check if phase has been transitioned from WaitingForConfirm to Building
+        {
+            let current = CURRENT_BUILD.lock().await;
+            if let Some(ref s) = *current {
+                if matches!(s.phase, BuildPhase::Building) {
+                    break;
+                }
+            }
+        }
+        if start.elapsed() > timeout_dur {
+            let mut current = CURRENT_BUILD.lock().await;
+            if let Some(ref mut s) = *current {
+                s.phase = BuildPhase::Failed("Build cancelled: no confirmation within 10 minutes.".into());
+            }
+            if let Some(state) = snapshot_build_state().await {
+                emit_build_event(app_handle, &state, None);
+            }
+            foundry_console_end_session(app_handle, build_id);
+            *CURRENT_BUILD.lock().await = None;
+            return Err("Build cancelled: user did not confirm.".to_string());
+        }
+        tokio::select! {
+            _ = BUILD_CONFIRM_NOTIFY.notified() => {}
+            _ = tokio::time::sleep(tokio::time::Duration::from_millis(200)) => {}
+        }
+    }
+
+    log::info!("User approved build, starting compilation...");
+
+    foundry_console_emit(
+        app_handle,
+        "Phase: Compilation started...".to_string(),
+        BlackwellOutputConsoleLineStyle::Highlight,
+    );
+
+    Ok(())
+}
+
+/// Stage 4 — CMake compile. Returns true if a tail-rule flake was recovered.
+async fn stage_compile<'a>(ctx: &BuildCtx<'a>, cmake_extra: &str) -> Result<bool, String> {
+    let app_handle = ctx.app_handle;
+    let provider_id = ctx.provider_id;
+    let profile_id = ctx.profile_id;
+    let build_id = ctx.build_id;
+    let profile = ctx.profile;
+    let manifest = ctx.manifest;
+    let all_cuda_vars = ctx.all_cuda_vars;
+    let work_root = crate::config::foundry_work_dir(provider_id);
+    let build_dir = work_root.join(format!("build-{profile_id}"));
+    let src_dir = crate::config::foundry_dir(provider_id).join("llama.cpp");
+    let cmake_build_output_dir = build_dir.join("bin").join("Release");
+
+    // ── PHASE 2: CMake Build (after user approval) ───────────────────
+
+    let build_targets = foundry_cmake_build_targets(ctx.include_extra_tools);
+    if let Some(state) = snapshot_build_state().await {
+        emit_build_event(app_handle, &state, Some(format!(
+            "[STAGE 3/4] BUILD — {} target(s) [{}], {} cores...",
+            build_targets.len(),
+            build_targets.join(", "),
+            ctx.num_cpus
+        )));
+    }
+
+    let nvcc_bin = profile.cuda_root.join("bin").to_string_lossy().to_string();
+    let versioned_var = profile.cuda_path_var();
+
+    // Absolute --build (no cd, no reliance on relative layout)
+    let build_dir_str = build_dir.to_string_lossy().replace('\\', "/");
+    let build_target_args = foundry_cmake_build_target_args(ctx.include_extra_tools);
+    let build_batch_lines = build_isolated_batch_script(
+        &ctx.vs_devcmd,
+        &ctx.cuda_path_forced,
+        &nvcc_bin,
+        &versioned_var,
+        all_cuda_vars,
+        ctx.ml64_bin.as_deref(),
+        ctx.git_cmd_bin.as_deref(),
+        format!(
+            r#""{}" --build "{}" --config Release{build_target_args} -j {}"#,
+            ctx.cmake_cmd, build_dir_str, ctx.num_cpus
+        ),
+    );
+    let build_batch_content = build_batch_lines.join("\n");
+    let (_, build_batch_path) = foundry_batch_script_paths(&work_root, profile_id);
+    if let Err(e) = tokio::fs::write(&build_batch_path, &build_batch_content).await {
+        return Err(format!("Failed to write build script: {}", e));
+    }
+
+    // Non-elevated — same std::process path as configure.
+    let (build_program, build_raw_tail) =
+        crate::sidecar_elevate::cmd_script_launch(&build_batch_path);
+    let state_for_stream = require_build_state("compilation").await?;
+
+    // Compile is the longest phase with no liveness signal — add a heartbeat so a wedged
+    // MSBuild/Ninja child (silent, still alive) is surfaced instead of hanging forever.
+    let build_heartbeat = spawn_build_heartbeat(app_handle.clone());
+
+    let (build_status, stderr_text) = match run_foundry_batch_streaming(
+        &build_program,
+        &build_raw_tail,
+        &src_dir,
+        app_handle,
+        &state_for_stream,
+        Some(std::time::Duration::from_secs(120 * 60)), // 2h guard for large CUDA builds
+    )
+    .await
+    {
+        Ok(v) => v,
+        Err(e) => {
+            build_heartbeat.abort();
+            clear_pids();
+            foundry_console_end_session(app_handle, build_id);
+            do_rollback(&cmake_build_output_dir).await;
+            return Err(e);
+        }
+    };
+    build_heartbeat.abort();
+
+    let Some(build_status) = build_status else {
+        clear_pids();
+        foundry_console_end_session(app_handle, build_id);
+        do_rollback(&cmake_build_output_dir).await;
+        return Err("Build cancelled by user.".to_string());
+    };
+
+    let stderr_joined = stderr_text.join("\n");
+    let mut recovered_tail_flake = false;
+    if !build_status.success() {
+        let precheck = check_foundry_core_binaries(&foundry_release_candidate_dirs(
+            &build_dir,
+            &src_dir,
+        ));
+        if precheck.all_present && is_windows_vs_tail_batch_flake(&stderr_joined) {
+            recovered_tail_flake = true;
+            if let Some(state) = snapshot_build_state().await {
+                emit_build_event(
+                    app_handle,
+                    &state,
+                    Some(
+                        "[WARN] MSBuild exited non-zero after shipping targets linked \
+                         (Windows VS tail rule: batch file cannot be found). \
+                         Core binaries present — continuing validation."
+                            .into(),
+                    ),
+                );
+            }
+        } else {
+            ctx.rollback()
+                .with_message(if stderr_joined.is_empty() {
+                    "Build failed.".into()
+                } else {
+                    format!("Build failed:\n{stderr_joined}")
+                })
+                .execute()
+                .await;
+
+            clear_pids();
+            *CURRENT_BUILD.lock().await = None;
+            return Err(format!("Build failed.\nSTDERR: {stderr_joined}"));
+        }
+    }
+
+    clear_pids();
+
+    if is_cancelled() {
+        // work/ nuked on exit
+        return Err("Build cancelled by user.".to_string());
+    }
+
+    Ok(recovered_tail_flake)
+}
+
+/// Stage 5 — integrity validation of core binaries.
+async fn stage_validate<'a>(ctx: &BuildCtx<'a>, recovered_tail_flake: bool) -> Result<(), String> {
+    let app_handle = ctx.app_handle;
+    let provider_id = ctx.provider_id;
+    let profile_id = ctx.profile_id;
+    let build_id = ctx.build_id;
+    let work_root = crate::config::foundry_work_dir(provider_id);
+    let build_dir = work_root.join(format!("build-{profile_id}"));
+    let src_dir = crate::config::foundry_dir(provider_id).join("llama.cpp");
+    let cmake_build_output_dir = build_dir.join("bin").join("Release");
+
+    // ── Integrity Validation ─────────────────────────────────────────
+
+    {
+        let mut current = CURRENT_BUILD.lock().await;
+        if let Some(ref mut s) = *current {
+            s.phase = BuildPhase::Validating;
+        }
+    }
+    if let Some(state) = snapshot_build_state().await {
+        emit_build_event(app_handle, &state, Some("[STAGE 4/4] VALIDATE — Checking core binaries...".into()));
+    }
+
+    let candidate_dirs = foundry_release_candidate_dirs(&build_dir, &src_dir);
+    let binary_check = check_foundry_core_binaries(&candidate_dirs);
+    let all_present = binary_check.all_present;
+    let missing = binary_check.missing;
+    let validated_binary_dir = binary_check.binary_dir;
+
+    if let Some(found_dir) = &validated_binary_dir {
+        if *found_dir != cmake_build_output_dir {
+            log::info!("Binaries found at {:?}, updating provider path", found_dir);
+            let mut cfg = ctx.worker.config.lock().map_err(|e| e.to_string())?;
+            if let Some(p) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
+                let _ = found_dir.join("llama-server.exe");
+                if let Err(e) = crate::profile_binaries::activate_profile_source(
+                    p,
+                    profile_id,
+                    crate::profile_binaries::SOURCE_FOUNDRY,
+                ) {
+                    log::warn!("[foundry] path-correction activate failed: {e}");
+                }
+            }
+            drop(cfg);
+            if let Err(e) = persist_providers_atomic(&ctx.worker.config) {
+                log::error!(
+                    "[foundry] Failed to persist provider config after path correction: {}",
+                    e
+                );
+            }
+        }
+    }
+
+    if !all_present {
+        ctx.rollback()
+            .with_message(format!("Missing core binaries: {}", missing.join(", ")))
+            .execute().await;
+
+        *CURRENT_BUILD.lock().await = None;
+        return Err(format!("Build completed but core binaries missing: {}", missing.join(", ")));
+    }
+
+    if ctx.include_extra_tools {
+        let mut missing_extras = Vec::new();
+        for bin in FOUNDRY_EXTRA_BINARIES {
+            let found = candidate_dirs.iter().any(|dir| dir.join(bin).is_file());
+            if !found {
+                missing_extras.push(*bin);
+            }
+        }
+        if !missing_extras.is_empty() {
+            let msg = format!(
+                "[WARN] Optional tools were requested but missing after build: {}. Core server/fit-params/llama-bench are OK.",
+                missing_extras.join(", ")
+            );
+            log::warn!("[foundry] {msg}");
+            if let Some(state) = snapshot_build_state().await {
+                emit_build_event(app_handle, &state, Some(msg));
+            }
+        }
+    }
+
+    if recovered_tail_flake {
+        log::warn!(
+            "[foundry] Recovered Windows VS tail-rule flake for {provider_id}/{profile_id}"
+        );
+    }
+
+    Ok(())
+}
+
+/// Stage 6 — publish sacred artifacts, activate foundry as ACTIVE, then Complete.
+async fn stage_publish_activate<'a>(ctx: &BuildCtx<'a>, cmake_extra: &str) -> Result<(), String> {
+    let app_handle = ctx.app_handle;
+    let provider_id = ctx.provider_id;
+    let profile_id = ctx.profile_id;
+    let build_id = ctx.build_id;
+    let work_root = crate::config::foundry_work_dir(provider_id);
+    let build_dir = work_root.join(format!("build-{profile_id}"));
+    let src_dir = crate::config::foundry_dir(provider_id).join("llama.cpp");
+
+    // ── Success: publish artifacts, activate foundry as ACTIVE, THEN Complete ─
+    // Do NOT emit Complete before path/source update — frontend refresh_build_info
+    // on early Complete races and can pin binary_source_per_env back to bundled.
+
+    if let Some(state) = snapshot_build_state().await {
+        emit_build_event(
+            app_handle,
+            &state,
+            Some("Build successful. Publishing artifacts + activating Foundry binary...".into()),
+        );
+    }
+
+    // Publish sacred artifacts (copy from disposable work tree into artifacts/<id>/<env>/Release)
+    // This is the ONLY place the sacred tree is written during a normal build.
+    let sacred_binary_path = match publish_artifacts_to_sacred(provider_id, profile_id, &build_dir, &src_dir).await {
+        Ok(p) => p,
+        Err(e) => {
+            foundry_console_end_session(app_handle, build_id);
+            *CURRENT_BUILD.lock().await = None;
+            return Err(format!("Build succeeded but failed to publish sacred artifacts: {}", e));
+        }
+    };
+
+    // Always force ACTIVE → foundry for this profile (even if --version probe fails).
+    // Probe outside the config lock — never hold Mutex across await.
+    let probed = crate::engine::get_binary_build_info(sacred_binary_path.clone()).await;
+    {
+        let mut cfg = ctx.worker.config.lock().map_err(|e| e.to_string())?;
+        if let Some(provider) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
+            provider.downloaded_version_per_env.remove(profile_id);
+            if let Err(e) = crate::profile_binaries::activate_profile_source(
+                provider,
+                profile_id,
+                crate::profile_binaries::SOURCE_FOUNDRY,
+            ) {
+                log::error!("[foundry] activate foundry source failed: {e}");
+            }
+
+            let foundry_path = provider
+                .binary_path_per_env
+                .get(profile_id)
+                .cloned()
+                .unwrap_or_else(|| {
+                    crate::config::to_relative_path(&std::path::PathBuf::from(&sacred_binary_path))
+                });
+
+            match probed {
+                Ok(build_info_raw) => {
+                    log::info!(
+                        "[foundry] Captured build info for provider '{}' profile '{}': {} built {}",
+                        provider_id,
+                        profile_id,
+                        build_info_raw.version,
+                        build_info_raw.build_date
+                    );
+                    let arches =
+                        crate::engine_utils::parse_cuda_architectures_from_cmake(cmake_extra);
+                    let build_info = crate::types::BuildInfo {
+                        version: build_info_raw.version,
+                        build_date: build_info_raw.build_date,
+                        cuda_version: build_info_raw.cuda_version.clone(),
+                        cuda_architectures: if arches.is_empty() {
+                            None
+                        } else {
+                            Some(arches)
+                        },
+                    };
+                    provider
+                        .build_info_per_env
+                        .insert(profile_id.to_string(), build_info.clone());
+                    let inv = provider
+                        .inventory_per_env
+                        .entry(profile_id.to_string())
+                        .or_default();
+                    inv.foundry = Some(crate::types::BinaryEntry {
+                        path: foundry_path,
+                        info: Some(build_info),
+                    });
+                }
+                Err(e) => {
+                    log::warn!(
+                        "[foundry] Failed to capture build info for provider '{}': {} — Foundry still ACTIVE",
+                        provider_id,
+                        e
+                    );
+                    let inv = provider
+                        .inventory_per_env
+                        .entry(profile_id.to_string())
+                        .or_default();
+                    if inv.foundry.is_none() {
+                        inv.foundry = Some(crate::types::BinaryEntry {
+                            path: foundry_path,
+                            info: None,
+                        });
+                    }
+                }
+            }
+        }
+        drop(cfg);
+        if let Err(e) = persist_providers_atomic(&ctx.worker.config) {
+            log::error!("[foundry] Failed to persist provider config: {}", e);
+        }
+    }
+
+    {
+        let mut current = CURRENT_BUILD.lock().await;
+        if let Some(ref mut s) = *current {
+            s.phase = BuildPhase::Complete;
+        }
+    }
+    if let Some(state) = snapshot_build_state().await {
+        emit_build_event(
+            app_handle,
+            &state,
+            Some("Foundry build complete — ACTIVE binary source: foundry.".into()),
+        );
+    }
+
+    // Feed final success message into the Blackwell Output Console
+    foundry_console_emit(
+        app_handle,
+        crate::output_console::format_console_banner("Foundry build completed successfully"),
+        BlackwellOutputConsoleLineStyle::Success,
+    );
+
+    // End the session and clear its buffer (per design: clear on successful close)
+    foundry_console_end_session(app_handle, build_id);
+
+    // On a clean successful build, let the tracked child (cmake --build) + its subtree terminate naturally.
+    // This restores the reliable behavior that existed before the directory redesign work.
+    // We only do aggressive killing on explicit cancel and hard failure paths.
+    //
+    // Give the process tree a tiny moment to unwind before we nuke the (still disposable) work/ dir.
+    // Any stubborn residue will be cleaned on the next build entry anyway.
+    tokio::time::sleep(std::time::Duration::from_millis(750)).await;
+
+    nuke_foundry_work_tree_on_exit(provider_id).await;
+
+    // Just tidy the PID list. Do not kill on success — children are expected to die naturally
+    // once the tracked cmake --build child has exited (pre-refactor behavior).
+    let remaining = with_child_pids(|pids: &mut Vec<u32>| std::mem::take(pids)).unwrap_or_default();
+    if !remaining.is_empty() {
+        log::info!("[foundry] Success path: {} tracked PIDs left (expected to have exited naturally)", remaining.len());
+    }
+
+    *CURRENT_BUILD.lock().await = None;
+
+    Ok(())
+}
+
+/// Sequencer — calls each stage in order. Control flow, error strings, cancel checks,
+/// rollback, and emit text stay identical to the pre-decomposition single body.
 async fn run_foundry_build_worker(
     worker: FoundryWorkerApp,
     provider_id: String,
@@ -1651,948 +1614,70 @@ async fn run_foundry_build_worker(
         return Err(format!("Failed to create work directory: {}", e));
     }
 
-    // ── Git Operations ───────────────────────────────────────────────
-
-    let git_exe = match ensure_git_available(app_handle).await {
-        Ok(exe) => exe,
-        Err(e) => {
-            rollback_build(app_handle, &provider_id, &profile_id, build_id)
-                .with_message(e.clone())
-                .execute()
-                .await;
-            return Err(e);
-        }
-    };
-
-
-    let (git_url, branch) = {
-        let cfg = worker.config.lock().map_err(|e| e.to_string())?;
-        let p = cfg.providers.iter()
-            .find(|p| p.id == provider_id);
-        (
-            p.map(|p| p.git_url.clone()).unwrap_or_default(),
-            p.map(|p| p.branch.clone()).unwrap_or_else(|| "main".to_string()),
-        )
-    };
-
-    if git_url.is_empty() {
-            rollback_build(app_handle, &provider_id, &profile_id, build_id).execute().await;
-            return Err(format!("Provider '{}' has no git_url configured.", provider_id));
-    }
-
-    let is_existing = src_dir.join(".git").exists();
-
-    if !is_existing {
-        if src_dir.exists() {
-            let _ = tokio::fs::remove_dir_all(&src_dir).await;
-        }
-
-        set_build_phase(BuildPhase::GitClone).await;
-        if let Some(state) = snapshot_build_state().await {
-            emit_build_event(
-                app_handle,
-                &state,
-                Some(format!(
-                    "[STAGE 1/4] REPOSITORY — Cloning {} (branch {})… First download can take several minutes on slow internet.",
-                    git_url, branch
-                )),
-            );
-        }
-
-        let clone_parent = engine_root.parent().ok_or_else(|| {
-            format!("Invalid engine root (no parent): {}", engine_root.display())
-        })?;
-        let heartbeat = spawn_repo_heartbeat(app_handle.clone(), "cloning repository", BuildPhase::GitClone);
-        let clone_output = git_hidden_output(
-            git_exe.clone(),
-            clone_parent.to_path_buf(),
-            vec![
-                "clone".into(),
-                "--depth".into(),
-                "1".into(),
-                "--recursive".into(),
-                git_url.clone(),
-                "-b".into(),
-                branch.to_string(),
-                src_dir.to_string_lossy().into_owned(),
-            ],
-        )
-        .await
-        .map_err(|e| format!("Git clone failed: {}", e))?;
-        heartbeat.abort();
-
-        if !clone_output.status.success() {
-            let stderr = String::from_utf8_lossy(&clone_output.stderr).to_string();
-            let msg = format!("Git clone failed: {}", stderr.trim());
-            rollback_build(app_handle, &provider_id, &profile_id, build_id)
-                .with_message(msg.clone())
-                .execute()
-                .await;
-            return Err(msg);
-        }
-
-        set_build_phase(BuildPhase::Configuring).await;
-        emit_config_event(
-            app_handle,
-            &provider_id,
-            &profile_id,
-            build_id,
-            Some("[STAGE 1/4] REPOSITORY — Clone complete.".into()),
-        );
-    } else {
-        set_build_phase(BuildPhase::GitPull).await;
-        if let Some(state) = snapshot_build_state().await {
-            emit_build_event(
-                app_handle,
-                &state,
-                Some(format!(
-                    "[STAGE 1/4] REPOSITORY — Syncing branch '{}' (fetch + hard reset)…",
-                    branch
-                )),
-            );
-        }
-
-        // Product trees are build inputs, not hand-edit workspaces. Backup any dirt,
-        // then hard-sync so local patches never block the build (re-applied below).
-        let heartbeat =
-            spawn_repo_heartbeat(app_handle.clone(), "updating repository", BuildPhase::GitPull);
-        backup_foundry_src_dirty_diff(&git_exe, &src_dir, &provider_id).await;
-        let sync_result = git_hard_sync_branch(&git_exe, &src_dir, &branch).await;
-        heartbeat.abort();
-
-        if let Err(e) = sync_result {
-            rollback_build(app_handle, &provider_id, &profile_id, build_id)
-                .with_message(e.clone())
-                .execute()
-                .await;
-            return Err(e);
-        }
-
-        set_build_phase(BuildPhase::Configuring).await;
-        emit_config_event(
-            app_handle,
-            &provider_id,
-            &profile_id,
-            build_id,
-            Some("[STAGE 1/4] REPOSITORY — Repository synced to origin.".into()),
-        );
-    }
-
-
-    // Refresh app_root/foundry/patches from repo/resource so DEV edits ship immediately.
-    if let Err(e) = crate::config::ensure_foundry_patches_materialized(app_handle) {
-        log::warn!("[foundry] patch materialize: {e}");
-    }
-
-    // ── Optional GitHub PR (fetch+merge on clean tree) ───────────────
-    // Must run BEFORE vendor patches: merge needs a clean worktree, and
-    // product overlays should sit on top of upstream+PR.
-    if let Some(pr_input_str) = pr_url.as_deref() {
-        match parse_pr_input(pr_input_str) {
-            Some((owner_repo_opt, pr_num)) => {
-                let resolved_owner_repo = owner_repo_opt.clone().or_else(|| {
-                    if let Ok(cfg) = worker.config.lock() {
-                        if let Some(p) = cfg.providers.iter().find(|p| p.id == provider_id) {
-                            if !p.git_url.trim().is_empty() {
-                                return extract_github_owner_repo(&p.git_url);
-                            }
-                        }
-                    }
-                    None
-                });
-
-                let log_msg = if let Some(owner_repo) = resolved_owner_repo.as_deref() {
-                    if owner_repo_opt.is_none() {
-                        format!(
-                            "[PR] Guessed repo {owner_repo} from provider git_url — fetching PR #{pr_num}..."
-                        )
-                    } else {
-                        format!("[PR] Fetching PR #{pr_num} from {owner_repo}...")
-                    }
-                } else {
-                    format!(
-                        "[PR] PR #{pr_num} (number only, no repo detected — informational only)"
-                    )
-                };
-                emit_config_event(
-                    app_handle,
-                    &provider_id,
-                    &profile_id,
-                    build_id,
-                    Some(log_msg),
-                );
-
-                if let Some(owner_repo) = resolved_owner_repo.as_deref() {
-                    match apply_foundry_github_pr(&git_exe, &src_dir, owner_repo, &pr_num).await {
-                        Ok(method) => {
-                            let how = match method {
-                                "merged" => "merged (pull head)",
-                                "patch" => "applied (patch)",
-                                "patch-3way" => "applied (patch 3-way)",
-                                other => other,
-                            };
-                            emit_config_event(
-                                app_handle,
-                                &provider_id,
-                                &profile_id,
-                                build_id,
-                                Some(format!("[PR] #{pr_num} {how}")),
-                            );
-
-                            let env_key = profile_id.clone();
-                            if let Ok(mut cfg) = worker.config.lock() {
-                                if let Some(p) =
-                                    cfg.providers.iter_mut().find(|p| p.id == provider_id)
-                                {
-                                    p.last_pr_per_env.insert(env_key, pr_num.clone());
-                                }
-                            }
-                        }
-                        Err(err) => {
-                            emit_config_event(
-                                app_handle,
-                                &provider_id,
-                                &profile_id,
-                                build_id,
-                                Some(format!(
-                                    "[WARN] PR #{pr_num} apply failed: {err} — continuing build"
-                                )),
-                            );
-                        }
-                    }
-                }
-            }
-            None => {
-                emit_config_event(
-                    app_handle,
-                    &provider_id,
-                    &profile_id,
-                    build_id,
-                    Some(format!(
-                        "[WARN] Invalid PR input: '{pr_input_str}' — must be a GitHub PR URL or plain number"
-                    )),
-                );
-            }
-        }
-    }
-
-    // Product vendor patches (e.g. single-model /models/sse cold-boot). Soft-fail:
-    // a drifted upstream must not kill the 1-click newest-engine path.
-    // Applied AFTER PR so overlays always win on product paths.
-    let (applied_patches, failed_patches) =
-        apply_foundry_vendor_patches(&git_exe, &src_dir, &provider_id).await;
-    if !applied_patches.is_empty() {
-        emit_config_event(
-            app_handle,
-            &provider_id,
-            &profile_id,
-            build_id,
-            Some(format!(
-                "[STAGE 1/4] REPOSITORY — Applied vendor patch(es): {}",
-                applied_patches.join(", ")
-            )),
-        );
-    }
-    for fail in &failed_patches {
-        let msg = format!(
-            "[WARN] PATCH FAIL — {fail}. Continuing without this patch (fallback boot path)."
-        );
-        log::warn!("[foundry] {msg}");
-        emit_config_event(
-            app_handle,
-            &provider_id,
-            &profile_id,
-            build_id,
-            Some(msg.clone()),
-        );
-        foundry_console_emit(
-            app_handle,
-            msg,
-            BlackwellOutputConsoleLineStyle::Error,
-        );
-    }
-
-    // ── Provider display name (used in messages) ─────────────────────
-    // The old pre-redesign "Atomic Bin Prep + BackupLocked rename dance" has been removed.
-    // In the new model we build into a completely separate disposable work/ tree.
-    // Sacred artifacts/<id>/<env>/Release is only written (by copy) on successful validation.
-    // Therefore no pre-build backup/rename of a live binary is required.
-    let _provider_display_name = {
-        let cfg = worker.config.lock().map_err(|e| e.to_string())?;
-        cfg.providers.iter()
-            .find(|p| p.id == provider_id)
-            .map(|p| p.display_name.clone())
-            .unwrap_or_else(|| provider_id.clone())
-    };
-
-    // ── CMake Build Chain ────────────────────────────────────────────
-
-    let template_type = resolve_template_type(&provider_id);
-
-    let cmake_extra = {
-        let cfg = worker.config.lock().map_err(|e| e.to_string())?;
-        let p = cfg.providers.iter()
-            .find(|p| p.id == provider_id);
-        let build_profile = p.map(|p| p.build_profile.clone()).unwrap_or_default();
-
-        // Foundry confirm modal loads provider build_profile for edit; persisted on build start.
-        // cmake_flags from the invoke carries the edited profile for this configure attempt.
-        let raw = if let Some(ref flags) = cmake_flags {
-            if !flags.trim().is_empty() {
-                flags.trim().to_string()
-            } else if !build_profile.trim().is_empty() {
-                build_profile.trim().to_string()
-            } else {
-                get_default_cmake_flags(template_type).to_string()
-            }
-        } else if !build_profile.trim().is_empty() {
-            build_profile.trim().to_string()
-        } else {
-            get_default_cmake_flags(template_type).to_string()
-        };
-        // Always pin server on, tests/examples off, native off (portable ship).
-        merge_mandatory_cmake_flags(&raw)
-    };
-
-    let vs_devcmd = profile.vs_devcmd.to_string_lossy().to_string();
-    let cuda_path_forced = profile.cuda_root.to_string_lossy().to_string();
-
+    // Pre-compute values shared across stages (avoids re-deriving in each stage).
     let available: usize = std::thread::available_parallelism()
         .map(|p| p.get())
         .unwrap_or(8);
     let max_cores_usize: Option<usize> = max_cores.map(|n| n as usize);
     let num_cpus = max_cores_usize.unwrap_or(available).min(available).max(2);
-
-    emit_config_event(app_handle, &provider_id, &profile_id, build_id, Some(format!(
-        "[STAGE 2/4] CMAKE CONFIGURE — {} cores detected", num_cpus
-    )));
-
-    emit_config_event(app_handle, &provider_id, &profile_id, build_id, Some(format!(
-        "[TOOLCHAIN] {} / CUDA {} / NVCC {}",
-        profile.display_label(),
-        profile.cuda_version_short(),
-        profile.nvcc.display()
-    )));
-
-    emit_config_event(app_handle, &provider_id, &profile_id, build_id, Some("[STAGE 2/4] CMAKE CONFIGURE — Reviewing flags below. Click PROCEED to start compilation.".into()));
-
-    // Effective generator: provider override wins, else the manifest profile's `ninja` flag.
-    // VS-only vs Ninja: Ninja drops `-T`, `-A` and the VS toolset CUDA var; it picks the host
-    // compiler from the devcmd environment (sourced earlier in the batch).
-    let use_ninja = {
-        let cfg = worker.config.lock().map_err(|e| e.to_string())?;
-        // Per-build override (from the confirm modal) wins, else the provider's saved choice.
-        let override_str = generator
-            .filter(|s| !s.trim().is_empty())
-            .or_else(|| {
-                cfg.providers
-                    .iter()
-                    .find(|p| p.id == provider_id)
-                    .map(|p| p.foundry_generator.clone())
-            })
-            .unwrap_or_default();
-        foundry_toolchain::ResolvedProfile::effective_use_ninja(profile.def.ninja, &override_str)
-    };
-    let toolset_flag = profile.vs_cuda_toolset_flag(profile.cuda_version_short(), use_ninja);
-    let forced_cuda_flags = profile.forced_cuda_flags(use_ninja);
-
-    let asm_flag = profile.cmake_asm_compiler_flag(&manifest)?;
+    let cmake_exe = foundry_toolchain::resolve_cmake_exe()?;
+    let cmake_cmd = cmake_exe.to_string_lossy().replace('\\', "/");
+    let vs_devcmd = profile.vs_devcmd.to_string_lossy().to_string();
+    let cuda_path_forced = profile.cuda_root.to_string_lossy().to_string();
     let ml64_bin = profile
         .ml64_exe(&manifest)
         .parent()
         .map(|p| p.to_string_lossy().to_string());
 
-    let joined_extra = if cmake_extra.is_empty() {
-        String::new()
-    } else {
-        cmake_extra.lines().map(|l| l.trim()).filter(|l| !l.is_empty()).collect::<Vec<_>>().join(" ")
-    };
-    // Batch-safe copy (escapes cmd metachars) used only inside the generated .bat; the raw
-    // flags are kept for the display message and the cache fingerprint stays deterministic.
-    let joined_extra_batch = cmd_escape_batch(&joined_extra);
-
-    let vs_def = foundry_toolchain::vs_def(&manifest, &profile.def.vs)?;
-    let gen_flag = profile.cmake_generator_flag(vs_def, use_ninja);
-    let nvcc_bin = profile.cuda_root.join("bin").to_string_lossy().to_string();
-    let versioned_var = profile.cuda_path_var();
-
-    // Ninja generator requires ninja.exe beside cmake.exe. Ensure it's present before we
-    // write/run the configure batch (downloads it on demand if the stripped-down pack lacks it).
-    if use_ninja {
-        if let Err(e) = foundry_toolchain::ensure_ninja_available().await {
-            rollback_build(app_handle, &provider_id, &profile_id, build_id).execute().await;
-            return Err(format!(
-                "Profile '{}' uses the Ninja generator but ninja.exe is unavailable: {}",
-                profile_id, e
-            ));
-        }
-    }
-    emit_config_event(app_handle, &provider_id, &profile_id, build_id, Some(if use_ninja {
-        "[GENERATOR] Ninja Multi-Config — VS-only flags (-T/-A/toolset-CUDA) omitted".to_string()
-    } else {
-        format!(
-            "[GENERATOR] {} — VS toolset flags applied",
-            profile.def.generator
-        )
-    }));
-
-    let cmake_exe = foundry_toolchain::resolve_cmake_exe()?;
-    let cmake_cmd = cmake_exe.to_string_lossy().replace('\\', "/");
-
-    // Absolute out-of-source configure (build tree lives in disposable work/ — never inside source)
-    let build_dir_str = build_dir.to_string_lossy().replace('\\', "/");
-    let src_dir_str   = src_dir.to_string_lossy().replace('\\', "/");
-    let cmake_configure_line = if joined_extra_batch.is_empty() {
-        format!(
-            r#""{}" -B "{}" -S "{}" {} {} {} {}"#,
-            cmake_cmd, build_dir_str, src_dir_str, gen_flag, toolset_flag, forced_cuda_flags, asm_flag
-        )
-    } else {
-        format!(
-            r#""{}" -B "{}" -S "{}" {} {} {} {} {}"#,
-            cmake_cmd, build_dir_str, src_dir_str, gen_flag, toolset_flag, forced_cuda_flags, asm_flag, joined_extra_batch
-        )
-    };
-
-    let toolchain_id = profile.toolchain_id(&manifest);
-    let cache_fingerprint = foundry_cache_fingerprint(&profile_id, &cmake_configure_line, &toolchain_id);
-    let cache_reused = match prepare_foundry_build_dir(&build_dir, &cache_fingerprint).await {
-        Ok(reused) => reused,
-        Err(e) => {
-            rollback_build(app_handle, &provider_id, &profile_id, build_id).execute().await;
-            return Err(e);
-        }
-    };
-    if cache_reused {
-        emit_config_event(
-            app_handle,
-            &provider_id,
-            &profile_id,
-            build_id,
-            Some(format!(
-                "[CACHE] Reusing CMake build tree for build-{profile_id} (incremental — flags unchanged)"
-            )),
-        );
-    } else {
-        emit_config_event(
-            app_handle,
-            &provider_id,
-            &profile_id,
-            build_id,
-            Some(format!(
-                "[CACHE] Cold CMake tree for build-{profile_id} (new profile, flag change, or manual clear)"
-            )),
-        );
-    }
-
-    emit_config_event(app_handle, &provider_id, &profile_id, build_id, Some(format!(
-        "cmake -B work/build-{} -S llama.cpp {} {} {} {}{}",
-        profile_id,
-        gen_flag,
-        toolset_flag,
-        asm_flag,
-        forced_cuda_flags,
-        if !joined_extra.is_empty() { format!(" {}", joined_extra) } else { String::new() }
-    )));
-
-    let git_cmd_bin = git_exe.parent().map(|p| p.to_string_lossy().to_string());
-    let cfg_batch_lines = build_isolated_batch_script(
-        &vs_devcmd,
-        &cuda_path_forced,
-        &nvcc_bin,
-        &versioned_var,
-        &all_cuda_vars,
-        ml64_bin.as_deref(),
-        git_cmd_bin.as_deref(),
-        cmake_configure_line,
-    );
-    let cfg_batch_content = cfg_batch_lines.join("\n");
-    let (cfg_batch_path, _) = foundry_batch_script_paths(&work_root, &profile_id);
-    if let Err(e) = tokio::fs::write(&cfg_batch_path, &cfg_batch_content).await {
-        clear_build_slot_if_matches(build_id, &provider_id, app_handle).await;
-        return Err(format!("Failed to write build script: {}", e));
-    }
-
-    // Non-elevated. Spawn via std::process (not tokio) — see run_foundry_batch_streaming.
-    let (cfg_program, cfg_raw_tail) =
-        crate::sidecar_elevate::cmd_script_launch(&cfg_batch_path);
-    let state_cfg = require_build_state("cmake configure").await?;
-
-    emit_config_event(
+    let ctx = BuildCtx {
+        worker: &worker,
         app_handle,
-        &provider_id,
-        &profile_id,
+        provider_id: &provider_id,
+        environment: &environment,
+        profile_id: &profile_id,
         build_id,
-        Some(
-            "[FOUNDRY] starting configure batch (std::process + OS pipe threads) — expect [FOUNDRY-ENV] next…"
-                .into(),
-        ),
-    );
-
-    let configure_heartbeat = spawn_configure_heartbeat(app_handle.clone());
-
-    let (cfg_status, cfg_stderr_lines) = match run_foundry_batch_streaming(
-        &cfg_program,
-        &cfg_raw_tail,
-        &src_dir,
-        app_handle,
-        &state_cfg,
-        Some(std::time::Duration::from_secs(20 * 60)), // configure guard
-    )
-    .await
-    {
-        Ok(v) => v,
-        Err(e) => {
-            configure_heartbeat.abort();
-            clear_pids();
-            clear_build_slot_if_matches(build_id, &provider_id, app_handle).await;
-            return Err(e);
-        }
-    };
-    configure_heartbeat.abort();
-
-    let Some(cfg_status) = cfg_status else {
-        clear_pids();
-        clear_build_slot_if_matches(build_id, &provider_id, app_handle).await;
-        return Err("Build cancelled by user.".to_string());
+        manifest: &manifest,
+        profile: &profile,
+        all_cuda_vars: &all_cuda_vars,
+        pr_url: pr_url.as_deref(),
+        max_cores,
+        cmake_flags: cmake_flags.as_deref(),
+        generator: generator.as_deref(),
+        include_extra_tools,
+        num_cpus,
+        cmake_cmd,
+        git_cmd_bin: None, // set after git_exe is resolved in stage_git_ops
+        ml64_bin,
+        vs_devcmd,
+        cuda_path_forced,
     };
 
-    if !cfg_status.success() {
-        let stderr_text = cfg_stderr_lines.join("\n");
-        rollback_build(app_handle, &provider_id, &profile_id, build_id)
-            .with_message(if stderr_text.is_empty() { "CMake configure failed.".into() } else { format!("CMake configure failed:\n{}", stderr_text) })
-            .execute().await;
+    // Stage 1: git clone/pull, vendor patches, optional GitHub PR
+    let git_exe = stage_git_ops(&ctx).await?;
 
-        clear_pids();
-
-        nuke_foundry_build_dir_on_configure_fail(&provider_id, &profile_id).await;
-        // rollback_build(...).execute() already ended the console session above.
-        return Err("CMake configure failed. Check the log above for details.".to_string());
-    }
-
-    if let Err(e) = write_foundry_cache_key(&build_dir, &cache_fingerprint).await {
-        log::warn!("[foundry] Failed to persist cache fingerprint: {e}");
-    }
-
-    // ── Check cancellation before showing PROCEED prompt ─────────────
-    if is_cancelled() {
-        clear_pids();
-        clear_build_slot_if_matches(build_id, &provider_id, app_handle).await;
-        return Err("Build cancelled by user.".to_string());
-    }
-
-    // ── Wait for user confirmation via state machine ─────────────────
-
-    {
-        let mut current = CURRENT_BUILD.lock().await;
-        if let Some(ref mut s) = *current {
-            s.phase = BuildPhase::WaitingForConfirm;
-        }
-    }
-    if let Some(state) = snapshot_build_state().await {
-        emit_build_event(app_handle, &state, Some(format!(
-            "[WAIT-CONFIRM] CMake configure complete. {} targets detected.\nReview the log above — click PROCEED to start compilation (may take 10+ minutes).",
-            if cmake_extra.is_empty() { "Default" } else { "Custom" }
-        )));
-    }
-
-    let timeout_dur = std::time::Duration::from_secs(600);
-    let start = std::time::Instant::now();
-    loop {
-        if is_cancelled() || CURRENT_BUILD.lock().await.is_none() {
-            clear_pids();
-
-            nuke_foundry_work_tree_on_exit(&provider_id).await;
-            foundry_console_end_session(app_handle, build_id);
-
-            emit_build_event(app_handle, &BuildState {
-                build_id,
-                provider_id: provider_id.clone(),
-                profile_id: profile_id.clone(),
-                phase: BuildPhase::Failed("Build cancelled.".into()),
-            }, Some("Build cancelled.".into()));
-
-            return Err("Build cancelled by user.".to_string());
-        }
-        // Check if phase has been transitioned from WaitingForConfirm to Building
-        {
-            let current = CURRENT_BUILD.lock().await;
-            if let Some(ref s) = *current {
-                if matches!(s.phase, BuildPhase::Building) {
-                    break;
-                }
-            }
-        }
-        if start.elapsed() > timeout_dur {
-            let mut current = CURRENT_BUILD.lock().await;
-            if let Some(ref mut s) = *current {
-                s.phase = BuildPhase::Failed("Build cancelled: no confirmation within 10 minutes.".into());
-            }
-            if let Some(state) = snapshot_build_state().await {
-                emit_build_event(app_handle, &state, None);
-            }
-            foundry_console_end_session(app_handle, build_id);
-            *CURRENT_BUILD.lock().await = None;
-            return Err("Build cancelled: user did not confirm.".to_string());
-        }
-        tokio::select! {
-            _ = BUILD_CONFIRM_NOTIFY.notified() => {}
-            _ = tokio::time::sleep(tokio::time::Duration::from_millis(200)) => {}
-        }
-    }
-
-    log::info!("User approved build, starting compilation...");
-
-    foundry_console_emit(
-        app_handle,
-        "Phase: Compilation started...".to_string(),
-        BlackwellOutputConsoleLineStyle::Highlight,
-    );
-
-    // ── PHASE 2: CMake Build (after user approval) ───────────────────
-
-    let build_targets = foundry_cmake_build_targets(include_extra_tools);
-    if let Some(state) = snapshot_build_state().await {
-        emit_build_event(app_handle, &state, Some(format!(
-            "[STAGE 3/4] BUILD — {} target(s) [{}], {} cores...",
-            build_targets.len(),
-            build_targets.join(", "),
-            num_cpus
-        )));
-    }
-
-    let nvcc_bin = profile.cuda_root.join("bin").to_string_lossy().to_string();
-    let versioned_var = profile.cuda_path_var();
-
-    // Absolute --build (no cd, no reliance on relative layout)
-    let build_dir_str = build_dir.to_string_lossy().replace('\\', "/");
-    let build_target_args = foundry_cmake_build_target_args(include_extra_tools);
-    let build_batch_lines = build_isolated_batch_script(
-        &vs_devcmd,
-        &cuda_path_forced,
-        &nvcc_bin,
-        &versioned_var,
-        &all_cuda_vars,
-        ml64_bin.as_deref(),
-        git_cmd_bin.as_deref(),
-        format!(
-            r#""{}" --build "{}" --config Release{build_target_args} -j {num_cpus}"#,
-            cmake_cmd, build_dir_str
-        ),
-    );
-    let build_batch_content = build_batch_lines.join("\n");
-    let (_, build_batch_path) = foundry_batch_script_paths(&work_root, &profile_id);
-    if let Err(e) = tokio::fs::write(&build_batch_path, &build_batch_content).await {
-        return Err(format!("Failed to write build script: {}", e));
-    }
-
-    // Non-elevated — same std::process path as configure.
-    let (build_program, build_raw_tail) =
-        crate::sidecar_elevate::cmd_script_launch(&build_batch_path);
-    let state_for_stream = require_build_state("compilation").await?;
-
-    // Compile is the longest phase with no liveness signal — add a heartbeat so a wedged
-    // MSBuild/Ninja child (silent, still alive) is surfaced instead of hanging forever.
-    let build_heartbeat = spawn_build_heartbeat(app_handle.clone());
-
-    let (build_status, stderr_text) = match run_foundry_batch_streaming(
-        &build_program,
-        &build_raw_tail,
-        &src_dir,
-        app_handle,
-        &state_for_stream,
-        Some(std::time::Duration::from_secs(120 * 60)), // 2h guard for large CUDA builds
-    )
-    .await
-    {
-        Ok(v) => v,
-        Err(e) => {
-            build_heartbeat.abort();
-            clear_pids();
-            foundry_console_end_session(app_handle, build_id);
-            do_rollback(&cmake_build_output_dir).await;
-            return Err(e);
-        }
-    };
-    build_heartbeat.abort();
-
-    let Some(build_status) = build_status else {
-        clear_pids();
-        foundry_console_end_session(app_handle, build_id);
-        do_rollback(&cmake_build_output_dir).await;
-        return Err("Build cancelled by user.".to_string());
+    // Update git_cmd_bin now that we have the git exe path
+    let git_cmd_bin = git_exe.parent().map(|p| p.to_string_lossy().to_string());
+    let ctx = BuildCtx {
+        git_cmd_bin,
+        ..ctx
     };
 
-    let stderr_joined = stderr_text.join("\n");
-    let mut recovered_tail_flake = false;
-    if !build_status.success() {
-        let precheck = check_foundry_core_binaries(&foundry_release_candidate_dirs(
-            &build_dir,
-            &src_dir,
-        ));
-        if precheck.all_present && is_windows_vs_tail_batch_flake(&stderr_joined) {
-            recovered_tail_flake = true;
-            if let Some(state) = snapshot_build_state().await {
-                emit_build_event(
-                    app_handle,
-                    &state,
-                    Some(
-                        "[WARN] MSBuild exited non-zero after shipping targets linked \
-                         (Windows VS tail rule: batch file cannot be found). \
-                         Core binaries present — continuing validation."
-                            .into(),
-                    ),
-                );
-            }
-        } else {
-            rollback_build(app_handle, &provider_id, &profile_id, build_id)
-                .with_message(if stderr_joined.is_empty() {
-                    "Build failed.".into()
-                } else {
-                    format!("Build failed:\n{stderr_joined}")
-                })
-                .execute()
-                .await;
+    // Stage 2: CMake configure
+    let cmake_extra = stage_cmake_configure(&ctx, &git_exe).await?;
 
-            clear_pids();
-            *CURRENT_BUILD.lock().await = None;
-            return Err(format!("Build failed.\nSTDERR: {stderr_joined}"));
-        }
-    }
+    // Stage 3: wait for user confirmation
+    stage_wait_for_confirm(&ctx, &cmake_extra).await?;
 
-    clear_pids();
+    // Stage 4: compile
+    let recovered_tail_flake = stage_compile(&ctx, &cmake_extra).await?;
 
-    if is_cancelled() {
-        // work/ nuked on exit
-        return Err("Build cancelled by user.".to_string());
-    }
+    // Stage 5: integrity validation
+    stage_validate(&ctx, recovered_tail_flake).await?;
 
-    // ── Integrity Validation ─────────────────────────────────────────
-
-    {
-        let mut current = CURRENT_BUILD.lock().await;
-        if let Some(ref mut s) = *current {
-            s.phase = BuildPhase::Validating;
-        }
-    }
-    if let Some(state) = snapshot_build_state().await {
-        emit_build_event(app_handle, &state, Some("[STAGE 4/4] VALIDATE — Checking core binaries...".into()));
-    }
-
-    let candidate_dirs = foundry_release_candidate_dirs(&build_dir, &src_dir);
-    let binary_check = check_foundry_core_binaries(&candidate_dirs);
-    let all_present = binary_check.all_present;
-    let missing = binary_check.missing;
-    let validated_binary_dir = binary_check.binary_dir;
-
-    if let Some(found_dir) = &validated_binary_dir {
-        if *found_dir != cmake_build_output_dir {
-            log::info!("Binaries found at {:?}, updating provider path", found_dir);
-            let mut cfg = worker.config.lock().map_err(|e| e.to_string())?;
-            if let Some(p) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
-                let _ = found_dir.join("llama-server.exe");
-                if let Err(e) = crate::profile_binaries::activate_profile_source(
-                    p,
-                    &profile_id,
-                    crate::profile_binaries::SOURCE_FOUNDRY,
-                ) {
-                    log::warn!("[foundry] path-correction activate failed: {e}");
-                }
-            }
-            drop(cfg);
-            if let Err(e) = persist_providers_atomic(&worker.config) {
-                log::error!(
-                    "[foundry] Failed to persist provider config after path correction: {}",
-                    e
-                );
-            }
-        }
-    }
-
-    if !all_present {
-        rollback_build(app_handle, &provider_id, &profile_id, build_id)
-            .with_message(format!("Missing core binaries: {}", missing.join(", ")))
-            .execute().await;
-
-        *CURRENT_BUILD.lock().await = None;
-        return Err(format!("Build completed but core binaries missing: {}", missing.join(", ")));
-    }
-
-    if include_extra_tools {
-        let mut missing_extras = Vec::new();
-        for bin in FOUNDRY_EXTRA_BINARIES {
-            let found = candidate_dirs.iter().any(|dir| dir.join(bin).is_file());
-            if !found {
-                missing_extras.push(*bin);
-            }
-        }
-        if !missing_extras.is_empty() {
-            let msg = format!(
-                "[WARN] Optional tools were requested but missing after build: {}. Core server/fit-params/llama-bench are OK.",
-                missing_extras.join(", ")
-            );
-            log::warn!("[foundry] {msg}");
-            if let Some(state) = snapshot_build_state().await {
-                emit_build_event(app_handle, &state, Some(msg));
-            }
-        }
-    }
-
-    if recovered_tail_flake {
-        log::warn!(
-            "[foundry] Recovered Windows VS tail-rule flake for {provider_id}/{profile_id}"
-        );
-    }
-
-    // ── Success: publish artifacts, activate foundry as ACTIVE, THEN Complete ─
-    // Do NOT emit Complete before path/source update — frontend refresh_build_info
-    // on early Complete races and can pin binary_source_per_env back to bundled.
-
-    if let Some(state) = snapshot_build_state().await {
-        emit_build_event(
-            app_handle,
-            &state,
-            Some("Build successful. Publishing artifacts + activating Foundry binary...".into()),
-        );
-    }
-
-    // Publish sacred artifacts (copy from disposable work tree into artifacts/<id>/<env>/Release)
-    // This is the ONLY place the sacred tree is written during a normal build.
-    let sacred_binary_path = match publish_artifacts_to_sacred(&provider_id, &profile_id, &build_dir, &src_dir).await {
-        Ok(p) => p,
-        Err(e) => {
-            foundry_console_end_session(app_handle, build_id);
-            *CURRENT_BUILD.lock().await = None;
-            return Err(format!("Build succeeded but failed to publish sacred artifacts: {}", e));
-        }
-    };
-
-    // Always force ACTIVE → foundry for this profile (even if --version probe fails).
-    // Probe outside the config lock — never hold Mutex across await.
-    let probed = crate::engine::get_binary_build_info(sacred_binary_path.clone()).await;
-    {
-        let mut cfg = worker.config.lock().map_err(|e| e.to_string())?;
-        if let Some(provider) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
-            provider.downloaded_version_per_env.remove(&profile_id);
-            if let Err(e) = crate::profile_binaries::activate_profile_source(
-                provider,
-                &profile_id,
-                crate::profile_binaries::SOURCE_FOUNDRY,
-            ) {
-                log::error!("[foundry] activate foundry source failed: {e}");
-            }
-
-            let foundry_path = provider
-                .binary_path_per_env
-                .get(&profile_id)
-                .cloned()
-                .unwrap_or_else(|| {
-                    crate::config::to_relative_path(&std::path::PathBuf::from(&sacred_binary_path))
-                });
-
-            match probed {
-                Ok(build_info_raw) => {
-                    log::info!(
-                        "[foundry] Captured build info for provider '{}' profile '{}': {} built {}",
-                        provider_id,
-                        profile_id,
-                        build_info_raw.version,
-                        build_info_raw.build_date
-                    );
-                    let arches =
-                        crate::engine_utils::parse_cuda_architectures_from_cmake(&cmake_extra);
-                    let build_info = crate::types::BuildInfo {
-                        version: build_info_raw.version,
-                        build_date: build_info_raw.build_date,
-                        cuda_version: build_info_raw.cuda_version.clone(),
-                        cuda_architectures: if arches.is_empty() {
-                            None
-                        } else {
-                            Some(arches)
-                        },
-                    };
-                    provider
-                        .build_info_per_env
-                        .insert(profile_id.clone(), build_info.clone());
-                    let inv = provider
-                        .inventory_per_env
-                        .entry(profile_id.clone())
-                        .or_default();
-                    inv.foundry = Some(crate::types::BinaryEntry {
-                        path: foundry_path,
-                        info: Some(build_info),
-                    });
-                }
-                Err(e) => {
-                    log::warn!(
-                        "[foundry] Failed to capture build info for provider '{}': {} — Foundry still ACTIVE",
-                        provider_id,
-                        e
-                    );
-                    let inv = provider
-                        .inventory_per_env
-                        .entry(profile_id.clone())
-                        .or_default();
-                    if inv.foundry.is_none() {
-                        inv.foundry = Some(crate::types::BinaryEntry {
-                            path: foundry_path,
-                            info: None,
-                        });
-                    }
-                }
-            }
-        }
-        drop(cfg);
-        if let Err(e) = persist_providers_atomic(&worker.config) {
-            log::error!("[foundry] Failed to persist provider config: {}", e);
-        }
-    }
-
-    {
-        let mut current = CURRENT_BUILD.lock().await;
-        if let Some(ref mut s) = *current {
-            s.phase = BuildPhase::Complete;
-        }
-    }
-    if let Some(state) = snapshot_build_state().await {
-        emit_build_event(
-            app_handle,
-            &state,
-            Some("Foundry build complete — ACTIVE binary source: foundry.".into()),
-        );
-    }
-
-    // Feed final success message into the Blackwell Output Console
-    foundry_console_emit(
-        app_handle,
-        crate::output_console::format_console_banner("Foundry build completed successfully"),
-        BlackwellOutputConsoleLineStyle::Success,
-    );
-
-    // End the session and clear its buffer (per design: clear on successful close)
-    foundry_console_end_session(app_handle, build_id);
-
-    // On a clean successful build, let the tracked child (cmake --build) + its subtree terminate naturally.
-    // This restores the reliable behavior that existed before the directory redesign work.
-    // We only do aggressive killing on explicit cancel and hard failure paths.
-    //
-    // Give the process tree a tiny moment to unwind before we nuke the (still disposable) work/ dir.
-    // Any stubborn residue will be cleaned on the next build entry anyway.
-    tokio::time::sleep(std::time::Duration::from_millis(750)).await;
-
-    nuke_foundry_work_tree_on_exit(&provider_id).await;
-
-    // Just tidy the PID list. Do not kill on success — children are expected to die naturally
-    // once the tracked cmake --build child has exited (pre-refactor behavior).
-    let remaining = with_child_pids(|pids| std::mem::take(pids)).unwrap_or_default();
-    if !remaining.is_empty() {
-        log::info!("[foundry] Success path: {} tracked PIDs left (expected to have exited naturally)", remaining.len());
-    }
-
-    *CURRENT_BUILD.lock().await = None;
-
-    Ok(())
+    // Stage 6: publish + activate
+    stage_publish_activate(&ctx, &cmake_extra).await
 }
+
 
 #[tauri::command]
 pub async fn foundry_cancel(
@@ -2632,112 +1717,6 @@ pub async fn foundry_cancel(
     }
 
     Ok(())
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct FoundrySourcePreview {
-    pub status: String,
-    pub branch: String,
-    pub local_commit: Option<String>,
-    pub remote_commit: Option<String>,
-    pub installed_version: Option<String>,
-    pub installed_commit: Option<String>,
-    pub message: String,
-    pub banner_tone: String,
-}
-
-fn short_commit_hash(hash: &str) -> String {
-    hash.trim().chars().take(8).collect()
-}
-
-fn extract_commit_from_build_version(version: &str) -> Option<String> {
-    let v = version.trim();
-    if v.is_empty() || crate::engine::is_placeholder_build_version(v) {
-        return None;
-    }
-    // Prefer explicit "commit <hash>" (new llama.cpp) or bare "(deadbeef)".
-    use std::sync::LazyLock;
-    static COMMIT_WORD: LazyLock<regex::Regex> = LazyLock::new(|| {
-        regex::Regex::new(r"(?i)commit\s+([0-9a-f]{7,40})").expect("commit word")
-    });
-    static BARE_PAREN_HASH: LazyLock<regex::Regex> = LazyLock::new(|| {
-        regex::Regex::new(r"\(([0-9a-fA-F]{7,40})\)").expect("bare paren hash")
-    });
-    static ANY_HEX: LazyLock<regex::Regex> = LazyLock::new(|| {
-        regex::Regex::new(r"(?i)\b([0-9a-f]{7,40})\b").expect("any hex")
-    });
-
-    if let Some(caps) = COMMIT_WORD.captures(v) {
-        return Some(short_commit_hash(&caps[1]));
-    }
-    if let Some(caps) = BARE_PAREN_HASH.captures(v) {
-        return Some(short_commit_hash(&caps[1]));
-    }
-    // Last resort: first hex token that isn't a tiny number.
-    ANY_HEX
-        .captures_iter(v)
-        .map(|c| c[1].to_string())
-        .find(|h| h.len() >= 7)
-        .map(|h| short_commit_hash(&h))
-}
-
-
-fn commits_match(a: &str, b: &str) -> bool {
-    let a = a.trim().to_lowercase();
-    let b = b.trim().to_lowercase();
-    if a.is_empty() || b.is_empty() {
-        return false;
-    }
-    a == b || a.starts_with(&b) || b.starts_with(&a)
-}
-
-async fn git_rev_parse_short(git_exe: &std::path::Path, repo_dir: &std::path::Path) -> Option<String> {
-    let output = git_hidden_output(
-        git_exe.to_path_buf(),
-        repo_dir.to_path_buf(),
-        vec!["rev-parse".into(), "--short=8".into(), "HEAD".into()],
-    )
-    .await
-    .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let hash = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if hash.is_empty() {
-        None
-    } else {
-        Some(hash)
-    }
-}
-
-async fn git_ls_remote_short(
-    git_exe: &std::path::Path,
-    git_url: &str,
-    branch: &str,
-) -> Option<String> {
-    let output = git_hidden_output(
-        git_exe.to_path_buf(),
-        std::env::temp_dir(),
-        vec![
-            "ls-remote".into(),
-            "--heads".into(),
-            git_url.into(),
-            branch.into(),
-        ],
-    )
-    .await
-    .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let line = stdout.lines().next()?.trim();
-    let hash = line.split_whitespace().next()?.trim();
-    if hash.is_empty() {
-        None
-    } else {
-        Some(short_commit_hash(hash))
-    }
 }
 
 #[tauri::command]
@@ -2879,8 +1858,6 @@ pub async fn foundry_preview_source(
     } else {
         (installed_version, installed_commit, installed_build_date)
     };
-
-
 
     if git_url.trim().is_empty() {
         return Ok(FoundrySourcePreview {
@@ -3619,76 +2596,6 @@ fn rollback_build<'a>(
     /// In the new directory model this is a no-op (work/ is nuked on exit).
     async fn do_rollback(_cmake_build_output_dir: &PathBuf) {
     // Sacred artifacts untouched on failure. Disposable work tree cleaned by caller exit paths.
-}
-
-// ── Sacred Artifacts Publish (new directory model) ──────────────────
-
-/// Copy the contents of the just-built Release dir (inside the disposable work tree)
-/// into the sacred artifacts/<provider>/<env>/Release location.
-/// Returns the absolute path to the published llama-server.exe on success.
-async fn publish_artifacts_to_sacred(
-    provider_id: &str,
-    profile_id: &str,
-    build_dir: &PathBuf,   // the temp work/build-xxx
-    _src_dir: &PathBuf,    // unused in new model but kept for signature compat during transition
-) -> Result<String, String> {
-    let temp_release = build_dir.join("bin").join("Release");
-    if !temp_release.exists() {
-        return Err("Build produced no Release directory under bin/".into());
-    }
-
-    let sacred = crate::config::foundry_artifact_release_dir(provider_id, profile_id);
-    if let Err(e) = tokio::fs::create_dir_all(&sacred).await {
-        return Err(format!("Failed to create sacred artifacts dir: {}", e));
-    }
-
-    // Keep one previous artifact for the "Restore Previous Build" button (user request).
-    // Before overwriting, move the current Release to Release.prev (deleting old .prev if present).
-    let prev_dir = sacred
-        .parent()
-        .ok_or_else(|| format!("Invalid sacred artifact path: {}", sacred.display()))?
-        .join("Release.prev");
-    if sacred.exists() {
-        // Remove any previous .prev
-        if prev_dir.exists() {
-            let _ = tokio::fs::remove_dir_all(&prev_dir).await;
-        }
-        // Move current sacred -> .prev
-        let _ = tokio::fs::rename(&sacred, &prev_dir).await;
-        // Recreate the target dir for the new copy
-        let _ = tokio::fs::create_dir_all(&sacred).await;
-    }
-
-    // Simple recursive copy (small tree: a few exes + dlls + pdbs at most)
-    copy_dir_contents(&temp_release, &sacred).await
-        .map_err(|e| format!("Copy to sacred artifacts failed: {}", e))?;
-
-    let exe = sacred.join("llama-server.exe");
-    if !exe.exists() {
-        return Err("Published directory missing llama-server.exe".into());
-    }
-
-    log::info!("[foundry] Published sacred artifacts for {} {} -> {}", provider_id, profile_id, sacred.display());
-    Ok(exe.to_string_lossy().to_string())
-}
-
-/// Recursively copy *contents* of src_dir into dst_dir (dst must already exist).
-async fn copy_dir_contents(src_dir: &PathBuf, dst_dir: &PathBuf) -> std::io::Result<()> {
-    let mut rd = tokio::fs::read_dir(src_dir).await?;
-    while let Some(entry) = rd.next_entry().await? {
-        let src_path = entry.path();
-        let dst_path = dst_dir.join(entry.file_name());
-
-        let ft = entry.file_type().await?;
-        if ft.is_dir() {
-            tokio::fs::create_dir_all(&dst_path).await?;
-            Box::pin(copy_dir_contents(&src_path, &dst_path)).await?;
-        } else {
-            // Overwrite if exists (normal case when re-building a profile)
-            let _ = tokio::fs::copy(&src_path, &dst_path).await?;
-        }
-    }
-    Ok(())
 }
 
 #[tauri::command]
