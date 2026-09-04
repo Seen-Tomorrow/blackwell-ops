@@ -52,6 +52,7 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
     isDev,
     onOpenNobsproofCmd,
     onOpenLlamaBenchCmd,
+    onOpenNsysProfileCmd,
     launchDisabled,
     replaceLaunchConfirmOpen,
     onCancelReplaceLaunch,
@@ -192,10 +193,19 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
             type="button"
             onClick={onOpenLlamaBenchCmd}
             disabled={launchDisabled}
-            className="config-nobsproof-btn absolute bottom-1 right-10 z-20 px-1.5 py-0.5 type-micro font-mono uppercase tracking-wider rounded-sm border disabled:opacity-40 disabled:cursor-not-allowed"
+            className="config-nobsproof-btn absolute bottom-1 right-[10.5rem] z-20 px-1.5 py-0.5 type-micro font-mono uppercase tracking-wider rounded-sm border disabled:opacity-40 disabled:cursor-not-allowed"
             title="llama-bench — map launch knobs → industry bench in external CMD (DEV). Edit config/llama-bench/defaults.json for -p/-n sweeps."
           >
             BENCH
+          </button>
+          <button
+            type="button"
+            onClick={onOpenNsysProfileCmd}
+            disabled={launchDisabled}
+            className="config-nobsproof-btn absolute bottom-1 right-[7rem] z-20 px-1.5 py-0.5 type-micro font-mono uppercase tracking-wider rounded-sm border disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Nsight Systems — launch a FRESH engine under nsys with the exact app config + portable CUDA env (DEV). Nsight cannot attach to a running PID; stop the app engine first if VRAM is tight. Edit config/nsys/defaults.json for duration/traces."
+          >
+            NSYS
           </button>
           <button
             type="button"
@@ -374,6 +384,7 @@ export interface EngineLaunchDockProps {
   isDev: boolean;
   onOpenNobsproofCmd: () => void;
   onOpenLlamaBenchCmd: () => void;
+  onOpenNsysProfileCmd: () => void;
   launchDisabled: boolean;
   replaceLaunchConfirmOpen: boolean;
   onCancelReplaceLaunch: () => void;

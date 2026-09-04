@@ -981,7 +981,7 @@ pub(crate) fn assemble_launch_command(
     })
 }
 
-async fn peek_next_launch_port(
+pub(crate) async fn peek_next_launch_port(
     app: &tauri::State<'_, AppContext>,
     config: &EngineConfig,
 ) -> Result<u16, String> {

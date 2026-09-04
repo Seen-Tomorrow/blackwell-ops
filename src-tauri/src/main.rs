@@ -19,6 +19,7 @@ mod types;
 
 mod templates;
 mod nvml_probe;
+mod nsys_profile_cmd;
 mod fit_adapters;
 mod fit_scanner;
 mod fit_low_vram;
@@ -334,6 +335,8 @@ async fn main() {
             engine::preview_launch_command,
             engine::open_nobsproof_cmd,
             llama_bench_cmd::open_llama_bench_cmd,
+            nsys_profile_cmd::open_nsys_profile_cmd,
+            nsys_profile_cmd::nsys_profile_status,
             pi_code::pi_code_status,
             pi_code::pi_code_accept_disclaimer,
             pi_code::pi_code_set_project,

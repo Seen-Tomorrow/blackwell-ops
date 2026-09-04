@@ -2081,6 +2081,18 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       dispatchAppEvent(EVENTS.launchError, { message: `llama-bench CMD: ${msg}` });
     });
   }, [buildCurrentLaunchConfig, effectiveBackendType]);
+
+  const handleOpenNsysProfileCmd = useCallback(() => {
+    const fullConfig = buildCurrentLaunchConfig();
+    if (!fullConfig) return;
+    void invoke<string>("open_nsys_profile_cmd", {
+      config: fullConfig,
+      providerId: effectiveBackendType,
+    }).catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      dispatchAppEvent(EVENTS.launchError, { message: `Nsight profile: ${msg}` });
+    });
+  }, [buildCurrentLaunchConfig, effectiveBackendType]);
   const findModelForSeat = useCallback(
     (seat: LaunchSeat): ModelEntry | null => {
       const want = normalizeModelPath(seat.modelPath);
@@ -3393,6 +3405,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           isDev={isDevBuild()}
           onOpenNobsproofCmd={handleOpenNobsproofCmd}
           onOpenLlamaBenchCmd={handleOpenLlamaBenchCmd}
+          onOpenNsysProfileCmd={handleOpenNsysProfileCmd}
           launchDisabled={launchDisabled}
           replaceLaunchConfirmOpen={replaceLaunchConfirmOpen}
           onCancelReplaceLaunch={() => setReplaceLaunchConfirmOpen(false)}
@@ -3495,6 +3508,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 isDev={isDevBuild()}
                 onOpenNobsproofCmd={handleOpenNobsproofCmd}
                 onOpenLlamaBenchCmd={handleOpenLlamaBenchCmd}
+                onOpenNsysProfileCmd={handleOpenNsysProfileCmd}
                 launchDisabled={launchDisabled}
                 replaceLaunchConfirmOpen={replaceLaunchConfirmOpen}
                 onCancelReplaceLaunch={() => setReplaceLaunchConfirmOpen(false)}
