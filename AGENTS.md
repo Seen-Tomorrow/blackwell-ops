@@ -7,20 +7,15 @@ Traps and invariants only — not a code map. Read the source for flows, schemas
 ## CRITICAL: never kill the running app
 
 **NEVER `Stop-Process` / kill `blackwell-ops` without explicitly asking the user first.**
-The running instance is frequently the REL build that is actively serving the LLM engine
-(and thus the very agent session doing the work). Killing it kills the session/engine.
-If a build fails because the exe is locked (`Access is denied (os error 5)` / cannot remove
-`target\...\blackwell-ops.exe`), that is normal — ASK the user to close the app, or use a
-different build target. Do not auto-kill. The only exception is a user explicitly instructing
-`npm run tauri` full-restart flow, and even then confirm before stopping a REL-served session.
+The running instance is frequently the REL build serving the LLM engine that runs the agent
+session itself — killing it kills the session. A locked `blackwell-ops.exe` during `cargo build`
+(`Access is denied (os error 5)`) means REL is up: ask the user to close it, or build to a
+separate target. A full app restart is the only exception — still confirm first.
+(There is **no** `npm run tauri` script; the app runs via `npm run dev`.)
 
-**How to tell REL vs DEV before touching anything** — by executable path (use
-`scripts/identify-app-processes.ps1`):
-- **REL** = path contains `Blackwell OPS portable` (e.g. `C:\AI-MASTER\Blackwell OPS portable\blackwell-ops.exe`)
-  → serves the engine/session; **never kill**.
-- **DEV** = path contains `target\debug` (e.g. `...\src-tauri\target\debug\blackwell-ops.exe`).
-- If a `cargo build` fails with a locked exe, the REL app is running — ASK the user to close
-  it or build to a separate target.
+**REL vs DEV, by exe path** (`scripts/identify-app-processes.ps1`):
+- **REL** = path contains `Blackwell OPS portable` → serves the engine/session; **never kill**.
+- **DEV** = path contains `target\debug`.
 
 ---
 
@@ -28,41 +23,61 @@ different build target. Do not auto-kill. The only exception is a user explicitl
 
 **Themes law** — Color lives in `src/themes/app-themes.ts` + `src/styles/tokens-base.css`. CSS/TSX only *name* tokens. To recolor an element: grep the class → if it’s a `var(--token)`, edit the token (all three themes, or base if shared); if it’s a hex, that site is the source of truth until someone wires a token. Frozen set: MATRIX / SLATE / ARCTIC × DOTTED / CLEAN. Do not add themes, faces, `[data-theme="…"]` forks, or `var(--x, #hex)` “just in case.”
 
-**`var(--x, <literal>)` fallbacks are a decoy, not defense** — if the token is undefined at that element the literal *is* the paint and the theme switch silently does nothing; if it is defined the literal is never read and only pollutes a hex grep. Meter: `python scripts/fb-triage.py` classifies every site — `DEAD` / `DEAD-CHAIN` are unreachable (strip to `var(--x)`), `DEAD-FLAT` is a base literal that never switches, `LIVE-LITERAL` means the token is undefined and the literal paints on **every** face (always fix). Face presence is read off `app-themes.ts` only, so a token themed via a `[data-theme]` CSS block is mislabelled; `LIVE-LITERAL` is the only category whose conclusion does not depend on that.
+**`var(--x, <literal>)` fallbacks are a decoy, not defense** — if the token is undefined there the
+literal *is* the paint and the theme switch silently does nothing; if defined it is never read and only
+pollutes a hex grep. Meter: `python scripts/fb-triage.py` (`DEAD` / `DEAD-CHAIN` unreachable → strip to
+`var(--x)`; `DEAD-FLAT` base literal never switches; `LIVE-LITERAL` = token undefined, the literal
+paints on **every** face → always fix). Face presence is read off `app-themes.ts` only, so a token
+themed via a `[data-theme]` CSS block is mislabelled — `LIVE-LITERAL` is the one category whose
+conclusion does not depend on that.
 
 **Non-color fallbacks are the JS-runtime idiom — do NOT strip them** — `var(--seg-thumb-width, 0px)`, `var(--device-pixel-ratio, 1)`, `var(--bench-control-row-h, 18px)` and ~143 siblings are not decoys: the token is written at runtime by JS (`style.setProperty`) and the CSS literal is the documented pre-JS default, so removing it would break layout before the first measurement, not "clean a shadow". `scripts/fb-triage.py` matches hex / `rgba()` only and therefore ignores these, plus nested `var(--a, var(--b))` (184 sites, which still theme-switch). Target state is zero hex/`rgba()` fallbacks; a non-zero count of these two families is expected forever.
 
-**Deliberately off-theme — do NOT theme these three ways** — owner verdict 2026-09-03, recorded so nobody re-litigates: `--boc-*` is the ops output console and stays fixed; `--dev-danger*` is DEV-only chrome and stays fixed; `--theme-nv-green` and `--theme-telemetry-*` are legacy **aliases**, not a third palette — point them at `--theme-accent` / `--theme-tel-*` / `--theme-secondary-bright` rather than adding three theme copies of NVIDIA green; `--custom-flags-amber*` is fixed product amber (`--theme-tel-amber` exists for the themed variant — do not invent another). ARCTIC-only tokens are not a bug either: dark defaults live in `tokens-base.css` and ARCTIC overrides them. Never copy ARCTIC ice onto MATRIX/SLATE; if a token is missing from base, add the **dark** default, not the light one.
+**Deliberately off-theme — do NOT theme these** — owner verdict 2026-09-03, recorded so nobody
+re-litigates: `--boc-*` (ops output console) and `--dev-danger*` (DEV-only chrome) stay fixed;
+`--theme-nv-green` and `--theme-telemetry-*` are legacy **aliases**, not a third palette — point them at
+`--theme-accent` / `--theme-tel-*` / `--theme-secondary-bright`; `--custom-flags-amber*` is fixed
+product amber (`--theme-tel-amber` is the themed variant — do not invent another). ARCTIC-only tokens
+are not a bug: dark defaults live in `tokens-base.css`, ARCTIC overrides them. Never copy ARCTIC ice
+onto MATRIX/SLATE; a token missing from base needs the **dark** default, not the light one.
 
 **Domain partials** — Styles live under `src/styles/*.css`; `src/index.css` is Tailwind + `@import` only. Edit the matching partial (chrome, cockpit, fusion-display, config, launch, …).
 
-**`cfg-mut` / `cfg-bord` / `cfg-acc` are room-role vocabulary, not drift** — owner decision 2026-09-03; do NOT "fix" them into per-element surface classes (rejected: 246 sites of churn, zero gain). A site resolves to a ROLE — muted ink, hairline border, accent text — inside the Config room, all defined in `src/styles/config-params.css`, so one edit re-tones the whole room coherently. That is the trade being made: the blast radius is **not** readable from the rule (`cfg-mut` ≈ 103 sites / 16 files, `cfg-bord` ≈ 143 / 18, `cfg-acc` ≈ 71 / 16), so grep the class before editing and treat it as a room-wide change. When a single element must diverge, add a narrow surface class beside the family.
+**`cfg-mut` / `cfg-bord` / `cfg-acc` are room-role vocabulary, not drift** — owner decision 2026-09-03; do NOT "fix" them into per-element surface classes (rejected: churn across hundreds of sites, zero gain). A site resolves to a ROLE — muted ink, hairline border, accent text — inside the Config room, all defined in `src/styles/config-params.css`, so one edit re-tones the whole room coherently. That is the trade being made: the blast radius spans many files and is **not** readable from the rule, so grep the class before editing and treat it as a room-wide change. When a single element must diverge, add a narrow surface class beside the family.
 
-**Tailwind = layout only** — no Tailwind **color** utility and no arbitrary `text-[Npx]` remains in TSX/TS (migration closed 2026-09-03; meter: `python scripts/tw-census.py` → paint 0 / px 0). Paint lives in named surface classes inside the partials, so “grep the class → change the color without opening TSX” keeps working. Adding a Tailwind palette class to TSX is a law break, not a shortcut. Named sizes (`text-xs` … `text-2xl`) stay — they carry `line-height`. The `stealth` / `nv` / `telemetry` / `theme` color maps are now physically **gone** from `tailwind.config.js` (law lock, 2026-09-03): a new color utility compiles to nothing instead of painting, and `theme.extend` carries only `fontFamily` + `animation`. Census keeps its own hardcoded nickname/palette lists, so `paint 0` stays a real check after the removal — it does not read the config.
+**Tailwind = layout only** — no Tailwind **color** utility and no arbitrary `text-[Npx]` in TSX/TS
+(migration closed 2026-09-03; meter: `python scripts/tw-census.py` → paint 0 / px 0). Paint lives in
+named surface classes inside the partials, so "grep the class → change the color without opening TSX"
+keeps working. Named sizes (`text-xs` … `text-2xl`) stay — they carry `line-height`. The `stealth` /
+`nv` / `telemetry` / `theme` color maps are physically **gone** from `tailwind.config.js`: a new color
+utility compiles to nothing instead of painting.
 
-**Container corrections must not match utility names** — the pre-migration CSS repaired bad hues with selectors like `[data-config-page] .text-yellow-400\/70` and `.phosphor-screen-inner .text-stealth-muted\/45`. Deleting the utility kills the correction **silently**: no build error, one wrong color on one face. Correct shape is either (a) re-scope the semantic token on the container — valid ONLY when the old hooks corrected *every* property that token drives in that subtree (`[data-config-page]` warn qualified: text + border + background + ring) — or (b) a **property-scoped class list** (`[data-model-hub] .cfg-acc… { color: … }`) when the old hook was text-only and the token also paints fills/borders there. “The scoped value equals the old hook value” is NOT the test; the test is whether the token’s *other* uses inside the container were corrected. Detector: `python scripts/hook-check.py` (diffs hook lists against `a38f23abf`; require `broken=0`).
+**Container corrections must not match utility names** — pre-migration CSS repaired bad hues with
+selectors like `[data-config-page] .text-yellow-400\/70`. Deleting the utility kills the correction
+**silently**: no build error, one wrong color on one face. Correct shape: (a) re-scope the semantic
+token on the container — valid ONLY when the old hook corrected *every* property that token drives in
+that subtree — or (b) a **property-scoped class list** (`[data-model-hub] .cfg-acc… { color: … }`) when
+the hook was text-only and the token also paints fills/borders there. Detector:
+`python scripts/hook-check.py` (diffs hook lists against `a38f23abf`; require `broken=0`).
 
 **`bg-black/NN` reproductions are face-unsafe** — `color-mix(in srgb, var(--theme-panel) 25%, black)` renders **charcoal on ARCTIC paper** (`--theme-panel` is `#ffffff` there). Face-correct inset fill: `color-mix(in srgb, var(--theme-text) 6%, var(--theme-panel-accent))` — see `.fnd-cache-row`.
 
 **`/NN` alpha tails never fold onto the plain token** — write `color-mix(in srgb, var(--x) NN%, transparent)` with the exact percentage (no `rgba()`, no hex). Folding turned hairlines into hard borders once already. Literal hex stays legal for **data**, not chrome: ANSI terminal output, GPU swatches, the VRAM forecast bar ramp (`badges.css` `.bar-need--*`), MoE gold.
 
-**CSS comment must never contain `*/`** — writing a class glob in prose (`text-*/60`, `cat-*/hub-*`)
-terminates the comment early; the leftover `60). */` parses as a selector. **postcss accepts it**, so
-`tmp/css-parse.mjs` (scratch) and DEV both look fine, and only `vite build` fails: `[plugin vite:css-post] …
-[lightningcss minify] Invalid empty selector`. Build gate: `node scripts/css-minify-gate.mjs`
-(lightningcss per file + on the inlined `index.css` bundle — the same input `vite:css-post` feeds it).
+**CSS comment must never contain `*/`** — a class glob in prose (`text-*/60`) terminates the comment
+early and the leftover parses as a selector. **postcss accepts it**, so DEV and scratch parsers look
+fine and only `vite build` fails (`[lightningcss minify] Invalid empty selector`). Gate:
+`node scripts/css-minify-gate.mjs`.
 
 **Type scale is the LAST `@import`** — `src/styles/type-scale.css` must stay last in `src/index.css`
-(immediately before `@tailwind`). `.type-*` replaces Tailwind `text-[Npx]`, which was emitted after
-every partial and therefore won every same-specificity tie; declaring the scale earlier (with
-`utilities.css`) lets later partials (`value-chip`, `fnd-*`, `config.css`) silently resize migrated
-text. Related trap: `chrome.css` keys some font-size overrides on the **literal utility name**
-(`.foundry-window .text-\[9px\] { font-size: var(--foundry-fs-md) !important }`, and a
-compact-density `.config-spec-decoding ~ div.text-\[8px\]` shrink) so Foundry text follows
-`--foundry-scale` instead of fixed CSS px. Swap the class and the override stops matching — text
-shrinks inside that container. When removing a `text-[Npx]`, grep `text-\\[` in `src/styles/` and
-re-key every hit onto the matching `.type-*` selector (keep the utility selector for rooms that are
-not migrated yet).
+(immediately before `@tailwind`): `.type-*` replaces Tailwind `text-[Npx]`, which was emitted after
+every partial and therefore won every same-specificity tie; declaring the scale earlier lets later
+partials (`value-chip`, `fnd-*`, `config.css`) silently resize migrated text. Related trap: `chrome.css`
+keys some font-size overrides on the **literal utility name** (`.foundry-window .text-\[9px\]`, a
+compact-density `.config-spec-decoding ~ div.text-\[8px\]`) so Foundry text follows `--foundry-scale`.
+Swap the class and the override stops matching — text shrinks in that container. When removing a
+`text-[Npx]`, grep `text-\\[` in `src/styles/` and re-key every hit onto the matching `.type-*` selector
+(keep the utility selector for unmigrated rooms).
 
 **Removed modules** — Mobile Sentinel Bridge (`mobile_bridge.rs`, WebSocket `0.0.0.0:3814`, `tokio-tungstenite`) is fully removed — backend and UI. Do not revive it.
 
@@ -71,32 +86,34 @@ not migrated yet).
 **No `backdrop-filter: blur` (or `-webkit-backdrop-filter: blur`)** — Modal/scrim overlays must **dim only** (semi-opaque `background`, e.g. `color-mix(in srgb, #000 60%, transparent)`). Blur forces continuous full-compositor work in WebView2 and pegs the **iGPU at ~100%** for as long as the overlay is open (harness confirm, etc.). Prefer stronger dim over blur. Do not reintroduce blur for “frosted glass” aesthetics without an explicit exception.
 
 **Vite/Rolldown barrel re-exports** — Never mix `type` into a value re-export list:
-`export { type Foo, bar } from "./x"`. Vite 8 / Rolldown can emit an **empty module**
-(only a sourcemap). Symptom: black WebView, DevTools `Uncaught SyntaxError: Invalid or
-unexpected token`, while `tsc` / `npm run build` stay clean. Split them:
-`export { bar } from "./x"` + `export type { Foo } from "./x"`. Sanity-check a suspect
-URL: `curl http://127.0.0.1:1420/src/.../file.ts` must show real `export { ... }`, not
-solely `//# sourceMappingURL=...`.
+`export { type Foo, bar } from "./x"`. Vite 8 / Rolldown can emit an **empty module** (only a sourcemap):
+black WebView, DevTools `Uncaught SyntaxError`, while `tsc` / `npm run build` stay clean. Split:
+`export { bar } from "./x"` + `export type { Foo } from "./x"`. Sanity-check a suspect URL:
+`curl http://127.0.0.1:1420/src/.../file.ts` must show real `export { ... }`.
 
-**WebView2 module cache** — After a bad transform (empty barrel, half-HMR), F5 / Vite
-restart / rebuild may still black-screen: Chromium caches the broken JS under
-`%LOCALAPPDATA%\com.blackwell-ops.app.dev\EBWebView\Default\` (`Cache`, `Code Cache`,
-`GPUCache`, `Service Worker`). Clear those folders (app may lock files — close DEV
-window first if needed), then reload. REL profile is `com.blackwell-ops.app`. This is
-**not** localStorage; wiping storage keys will not fix a cached empty module.
+**WebView2 module cache** — After a bad transform (empty barrel, half-HMR), F5 / Vite restart / rebuild
+may still black-screen: Chromium caches the broken JS under
+`%LOCALAPPDATA%\com.blackwell-ops.app.dev\EBWebView\Default\` (`Cache`, `Code Cache`, `GPUCache`,
+`Service Worker`). Clear those folders (close the DEV window first if locked), then reload. REL profile
+is `com.blackwell-ops.app`. **Not** localStorage — wiping storage keys will not fix a cached module.
 
-**VRAM forecast is measured-only** — No GGUF formula path. Paint sources:
-`LEARNED` / `LEARNED≈` / `FIT PROBE` only (`src/services/vram/forecast/`, default adapter
-`ggml_master`). `evaluate()` returns `null` → skeleton until probe/learned lands. Old
-formula scenarios live under `tmp/archive_vram_formula/` (gitignored scratch), not in
-the live graph.
-
+**VRAM forecast is measured-only** — No GGUF formula path. Paint sources `LEARNED` / `LEARNED≈` /
+`FIT PROBE` only (`src/services/vram/forecast/`, default adapter `ggml_master`); `evaluate()` returns
+`null` → skeleton until probe/learned lands. `scenarios/scenarios_factory.ts` is a thin compat re-export
+only. Formula evaluators (`auto_fit` / `hw_locked`) and old scenarios live under gitignored
+`tmp/archive_vram_formula/`, never imported. **One** ASSISTED forecast glass: `VramBadge` is the shell
+(ASSISTED cluster or fusion fill), height lives in `EngineGpuForecast` — no second FULL AUTO UI;
+`EVALUATING` copy is pre-manifest only. Library FIT tensor is usually noΔ (`Meta` ≈ none): do not
+`Meta`×N fit-print; the layer tax from a library Δ is real. Law: `docs/VRAM-FORECAST.md`.
 
 ---
 
 ## Product floor / layout density
 
-**Supported viewports** — **1080p minimum (marginal)**, **1440p+ recommended**, **4K optimal**. Below 1080 is out of scope (no layout redesign). Vertical space is the constraint; horizontal is fine. Prefer **manual** density (display bezel **GPU 2|3** / **ENG 2|3** cards-per-row) over auto viewport policies. HW monitor: GPU stack scrolls; OC panel stays pinned above launch dock.
+**Supported viewports** — **1080p minimum (marginal)**, **1440p+ recommended**, **4K optimal**; below
+1080 is out of scope. Vertical space is the constraint; horizontal is fine. Prefer **manual** density
+(display bezel **GPU 2|3** / **ENG 2|3** cards-per-row) over auto viewport policies. HW monitor: GPU
+stack scrolls; OC panel stays pinned above launch dock.
 
 **DEV tools (header)** — `VIEW` = physical panel presets + live Windows scale (app zoom 100% when testing). `GPU+` = fake multi-GPU topo (real SKU names/VRAM) for layout + forecast stress — session only. Do not ship these in REL UX.
 
@@ -104,15 +121,22 @@ the live graph.
 
 ## Agent harness
 
-**Supported harness = pi only** (`pi_code`). Live product surface is the agentic harness framework: `harness-*` CSS, `html[data-harness-open]` / `data-harness-wizard`, `--theme-harness-brain-*` / `--theme-harness-worker-*`, and `EVENTS.harness*`. Tool id is `HarnessToolId = "pi"`; `normalizeHarnessTool()` coerces any legacy localStorage `"atomcode"` / `"qwen"` to pi. **AtomCode and Qwen Code are archived** — their backends, Tauri commands, `lib/atomcode.ts` / `lib/qwenCode.ts`, and root docs are gone. Do not revive product UX, install paths, or dual-stack routing for them. `external_agents.rs` **stays** (`pi_code.rs` + `download_manager.rs` depend on it). Future extra harness tools should plug into the same neutral `harness-*` chrome + `HarnessToolId`, not reintroduce product-branded class names. pi models.json: per-seat **`input: text|image`** only when that engine launched with **`--mmproj`** (`stack.vision`); BRAIN and WORKER are independent.
+**Supported harness = pi only** (`pi_code`). Product surface is the neutral agentic harness framework:
+`harness-*` CSS, `html[data-harness-open]` / `data-harness-wizard`, `--theme-harness-brain-*` /
+`--theme-harness-worker-*`, `EVENTS.harness*`, `HarnessToolId = "pi"`. `external_agents.rs` **stays**
+(`pi_code.rs` + `download_manager.rs` depend on it). Future harness tools plug into the same chrome +
+`HarnessToolId`, never product-branded class names. pi models.json: per-seat **`input: text|image`**
+only when that engine launched with **`--mmproj`** (`stack.vision`); BRAIN and WORKER are independent.
 
-**Session roles (local stack)** — This seat is the **designer/planner mastermind**. Local engines:
-- **BRAIN** — capable thinking model (design, planning, hard reasoning)
-- **WORKER** — fast non-thinking grunt (mechanical edits, lookups, bulk work)
-- **Adviser** — Claude / Grok 4.6 when stuck on a difficult task (external escalate)
-Route grunt work to WORKER; keep design/plan/judgment here; escalate only when blocked.
+**Session roles (local stack)** — this seat is the **designer/planner**. **BRAIN** = thinking model
+(design, planning, hard reasoning); **WORKER** = fast non-thinking grunt (mechanical edits, lookups,
+bulk work); **Adviser** = external Claude / Grok escalate. Route grunt work to WORKER, keep
+design/judgment here, escalate only when blocked.
 
-**Temp / debug / scratch files → `tmp/`** — Any throwaway agent work (test scripts, probe outputs, `nul`, `*.py`, `*results.json`, one-off experiments) must be written under the **gitignored `tmp/` directory** (repo root), never at the repo root or anywhere tracked. Do not `git add` them; do not leave them in the working tree where they show up as untracked. If you need a scratch area, use `tmp/` (already in `.gitignore`) or a subdir under it. Clean up after yourself; a dirty `git status` from agent junk is a review failure. **Commit only real source changes**, categorized logically (feature / fix / theme, separate commits per concern).
+**Temp / debug / scratch files → gitignored `tmp/`** (repo root), never the repo root or a tracked
+path; clean up afterwards. **Commit only real source changes**, split per concern (feature / fix /
+theme).
+
 **Orphaned headless Chrome (visual checks)** — The agent browser tool (puppeteer) runs its own headless Chromium under `C:\Users\<user>\.omp\puppeteer\chrome\win64-<ver>\chrome-win64\chrome.exe`. Sessions/tabs that close (or error mid-run) **orphan the process tree** — invisible (no window) but ~85 MB each, accumulating until the user Task Manager-hunts them. **Reap them in the same step as closing the browser session.** Kill by path filter ONLY — the user's real Chrome/Edge share the `chrome.exe` name, so a bare `Stop-Process -Name chrome` is forbidden:
 ```powershell
 Get-Process -Name chrome -ErrorAction SilentlyContinue |
@@ -210,72 +234,32 @@ Native crashes also append `%TEMP%\blackwell-crash.log` (heap `0xC0000374`, ille
 
 ## npm scripts (dev / release)
 
-`tauri.conf.dev.json` has **no** `beforeDevCommand` — Vite and Tauri are separate. Do not re-couple them without an explicit reason.
+**Only facts `package.json` cannot tell you** (do not restate the script table — it rots):
 
-### Dev
-
-| Command | What it does |
-|---------|----------------|
-| `npm run vite` | Plain Vite on `127.0.0.1:1420` — browser/UI only (no Tauri IPC) |
-| `npm run server` | Warm Vite (`:1421` internal → `:1420` proxy) — start before the app for fast WebView load |
-| `npm run dev` | Tauri + Rust — **`--no-watch`** (manual Rust rebuild / restart after `.rs` edits) |
-| `npm run dev:watch` | Same as old auto-rebuild on Rust file changes |
-
-`npm run dev` still runs `predev` (`sync-dev-runtime.ps1`) — mirrors `src-tauri/runtime` → `target/debug/runtime` only when the source fingerprint changes (path/size/mtime). Use `npm run sync:dev-runtime:force` after foundry installs if the stamp is wrong.
-
-**Typical workflow** — two terminals:
-
-```bash
-# Terminal 1
-npm run server
-
-# Terminal 2 (after server is up)
-npm run dev
-```
-
-### Release
-
-| Command | Frontend | Rust | Prerelease scripts | NSIS installer |
-|---------|----------|------|-------------------|----------------|
-| `npm run release` | ✓ | ✓ release | ✓ mirror + prepare runtime | ✓ |
-| `npm run release:exe` | ✓ | ✓ release | ✗ | ✗ |
-| `npm run build:exe` | ✓ | ✓ release | ✗ | ✗ (alias of `release:exe`) |
-| `npm run build:rust` | ✗ (needs existing `dist/`) | ✓ release | ✗ | ✗ |
-
-Release exe: `src-tauri/target/release/blackwell-ops.exe`. Run `npm run build` first if `dist/` is stale before `build:rust`.
+- `tauri.conf.dev.json` has **no** `beforeDevCommand` — Vite and Tauri are deliberately separate. Do not re-couple them without an explicit reason.
+- `npm run dev` is `--no-watch`: after a `.rs` edit you rebuild/restart manually. `dev:watch` is the auto-rebuild variant.
+- **`npm run dev` MUST run in the foreground** (two terminals: `server`, then `dev`).
+  Launched via `Start-Process -WindowStyle Hidden` the app fails to initialize correctly —
+  observed, mechanism not identified in this app (registered Tauri plugins are only
+  `shell` + `updater`; there is no MCP/WebSocket bridge plugin to blame).
 
 ---
 
 ## Tests (Rust)
 
-`cargo test` → **110 pass / 0 fail** (all green). Note: two earlier failures were fixed by
-making `model_file_cache_key` slash-normalize (`\`→`/`, key-only) and completing the qwen36
-fixture's architecture line — see commit `125706b`.
-
-**What the tests cover** (each lives in `#[cfg(test)] mod …` next to its code):
-- `config.rs::merge_tests` — template↔user param merge, validation, dedup (the **largest**; validates live merge logic)
-- `templates.rs::build_cmd_tests` — launch CLI assembly
-- `provider_mgmt.rs`, `log_hub.rs`, `engine_stack.rs`, `model_catalog.rs`, `llama_catalog.rs`, `gguf_scan.rs`, `hf_api.rs`, `download_manager.rs`, `github_releases.rs`, `bench_cancel.rs`, `bench_prompts.rs`, `vram_learn.rs::dedup_tests`, `fit_scanner.rs::memory_breakdown_tests`/`cache_key_tests`, `launch_memory_parse.rs`, `spec_draft.rs`, `sidecar_elevate.rs`
-
-**Stale / low-value (TO-DO: update later to be useful):** several of these modules were written by an agent and never requested — they may not reflect current behavior. In particular `config.rs::merge_tests` and `fit_scanner.rs::memory_breakdown_tests` exercise some helper-only code. Both are `#[cfg(test)]`-gated so they add **zero** warnings to `cargo build`. Keep them for now; a future pass should refresh them to assert real current behavior (or drop the ones with no value). Tests are **not** a gate for releases.
+Run `cargo test` from `src-tauri/`; each module's tests live in `#[cfg(test)] mod …` beside its code.
+`config.rs::merge_tests` (template↔user merge) is by far the largest — run it after any
+`merge_template_for_provider` change.
 
 ---
 
-## Optional reference
+## Release-build process spawn (CRITICAL)
 
-`docs/FUSION-metrics.md` — fusion poller field names when working on metrics/TG-PP, if that file is still current.
+Windows **release** builds wedge on `tokio::process` + `CREATE_NO_WINDOW`: `ERROR_INVALID_HANDLE`
+(os error 6), or a child that exists with zero output forever. Short-lived hidden subprocesses use
+**`std::process`** with explicit stdio (`Stdio::null()` / `piped()`) + `creation_flags(CREATE_NO_WINDOW)`
+— see `engine_utils::apply_create_no_window`, `fit_scanner::run_fit_process_blocking`,
+`reactor_foundry.rs:433`, and `telemetry.rs:511` (nvidia-smi needs `piped()`, `null()` returns fallback).
+Engines are the exception: `engine_stack.rs` pipes stdout/stderr into `log_hub`.
 
-`docs/VRAM-FORECAST-UI.md` — ASSISTED forecast / fusion overlay height traps, SOURCE+NEED chrome, GPU bank rows, config chip thumb wrap (gotchas only).
-
-`docs/VRAM-FORECAST.md` — measured SOURCE model / probe law (backend product).
-
-`docs/display-bezel-glass.md` — one glass bezel stack; fusion is not a second glass.
-
-`docs/SELF-SUFFICIENT-INSTALL.md` — **read before touching `pi_code.rs`, `foundry_toolchain.rs`,
-`runtime-distribution.ps1`, `pack-app-update.ps1`, or `majestic.ps1`.** What ships vs downloads
-(App `.7z` ~5 MB / NSIS ~274 MB / toolchain ~1.15 GB), the lean pi-ext pipeline and the
-`pi-coding-agent-shim` junction that broke extension resolution, why UPDATE PI is unsafe while a
-session is live (it `remove_dir_all`s the running `pi.exe`'s own directory), the hash gate that
-keeps daily app updates at 3 s, the pi pin gate, and the x64 MSVC CRT (`vcruntime140`,
-`vcruntime140_1`, `msvcp140`) that every engine imports and that onboarding used to report green
-without.
+**No lint/CI configured** — `npm run build` is `tsc && vite build`; Rust tests via `cargo test`.
