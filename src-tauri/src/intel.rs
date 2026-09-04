@@ -71,21 +71,23 @@ struct IntelChannel {
 }
 
 fn build_client() -> reqwest::Client {
-    let mut builder = reqwest::Client::builder()
-        .user_agent("blackwell-ops-intel/1.0");
+    let mut builder = reqwest::Client::builder().user_agent("blackwell-ops-intel/1.0");
 
-    match std::env::var("GITHUB_TOKEN") {
-        Ok(ref token) if !token.is_empty() => {
-            log::debug!("[intel] GITHUB_TOKEN configured");
+    // Canonical token source (Settings secret `github_pat`, then GITHUB_TOKEN env).
+    // The old direct env::var("GITHUB_TOKEN") lookup never saw the Settings PAT, so the
+    // whole Intel feed ran unauthenticated and drained the shared 60/hr IP bucket that
+    // every other GitHub call (Foundry PR tooltips, updates) competes for.
+    match crate::secrets::github_token() {
+        Some(token) => {
+            log::debug!("[intel] GitHub token configured — 5000/hr");
             let mut headers = HeaderMap::new();
-            headers.insert(
-                AUTHORIZATION,
-                reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token)).unwrap(),
-            );
-            builder = builder.default_headers(headers);
+            if let Ok(v) = reqwest::header::HeaderValue::from_str(&format!("Bearer {token}")) {
+                headers.insert(AUTHORIZATION, v);
+                builder = builder.default_headers(headers);
+            }
         }
-        _ => {
-            log::debug!("[intel] GITHUB_TOKEN not set — rate limited to 60/hr");
+        None => {
+            log::debug!("[intel] GitHub token not set — rate limited to 60/hr per IP");
         }
     }
 

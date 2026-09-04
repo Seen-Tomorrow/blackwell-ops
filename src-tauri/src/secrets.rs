@@ -96,6 +96,23 @@ pub fn delete_secret(key: &str) -> Result<(), String> {
     }
 }
 
+/// Canonical GitHub API token for ALL api.github.com calls. Single source of truth:
+/// the Settings secret `github_pat`, then the `GITHUB_TOKEN` env var (DEV / CI). Returns
+/// `None` when neither is set — callers fall back to unauthenticated (60/hr per IP).
+/// Every GitHub consumer MUST read the token through here, never a private env lookup.
+pub fn github_token() -> Option<String> {
+    if let Some(pat) = get_secret("github_pat").ok().flatten() {
+        let trimmed = pat.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    match std::env::var("GITHUB_TOKEN") {
+        Ok(v) if !v.trim().is_empty() => Some(v.trim().to_string()),
+        _ => None,
+    }
+}
+
 pub fn list_secret_status() -> Result<Vec<SecretStatus>, String> {
     let mut out = Vec::with_capacity(SECRET_DEFINITIONS.len());
     for def in SECRET_DEFINITIONS {
