@@ -130,9 +130,12 @@ export default function FoundryConfirmForm({
         if (!num) continue;
         const repo = url ? url.ownerRepo : ownerRepo;
         if (!repo) continue;
-        // Only fetch keys not yet resolved (a failed invoke leaves the key unfetched,
-        // so the next effect run retries it).
-        if (prTitleFetched.current.has(`${repo}#${num}`)) continue;
+        // Only fetch keys not yet resolved. A failed invoke (e.g. GitHub 403 rate limit)
+        // marks the key attempted so we don't re-burn quota on every render; the next time
+        // the chip set actually changes (new provider/env/stack) it's re-attempted.
+        const key = `${repo}#${num}`;
+        if (prTitleFetched.current.has(key)) continue;
+        prTitleFetched.current.add(key);
         const list = byRepo.get(repo);
         if (list) {
           if (!list.includes(num)) list.push(num);
@@ -149,12 +152,16 @@ export default function FoundryConfirmForm({
           prNums: nums,
         });
         if (cancelled) return;
-        // Mark keys fetched only for titles that actually arrived; a missing title
-        // stays unfetched so a later effect run can retry it.
+        // Un-stick keys whose title did NOT arrive (403 rate limit / missing), so the
+        // next chip-set change can retry them. Keys that arrived stay marked.
+        const got = new Set(Object.keys(titles));
+        for (const n of nums) {
+          if (!got.has(n)) prTitleFetched.current.delete(`${repo}#${n}`);
+        }
         const arrived: string[] = [];
         for (const [num, title] of Object.entries(titles)) {
           const key = `${repo}#${num}`;
-          if (title && !prTitleFetched.current.has(key)) {
+          if (title) {
             prTitleFetched.current.add(key);
             arrived.push(key);
           }

@@ -481,7 +481,11 @@ pub(crate) async fn fetch_pr_merge_state(owner_repo: &str, pr_num: &str) -> PrMe
         .user_agent("Blackwell-Ops")
         .build()
         .unwrap_or_default();
-    let resp = match client.get(&url).send().await {
+    // Authenticated when a github_pat is configured (5000/hr, per-user). Unauthenticated
+    // is only 60/hr per IP — a handful of tooltip lookups can exhaust it and 403, which
+    // silently drops titles. apply_github_auth attaches the Bearer token from secrets.
+    let req = crate::github_releases::apply_github_auth(client.get(&url));
+    let resp = match req.send().await {
         Ok(r) if r.status().is_success() => r,
         _ => return PrMergeState::default(),
     };
