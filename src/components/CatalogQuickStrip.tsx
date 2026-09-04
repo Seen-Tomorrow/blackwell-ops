@@ -72,6 +72,7 @@ type QuickChipProps = {
   variant: "pin";
   title: string;
   onSelect: () => void;
+  onUnpin?: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
 };
 
@@ -81,11 +82,11 @@ function QuickModelChip({
   variant,
   title,
   onSelect,
+  onUnpin,
   onContextMenu,
 }: QuickChipProps) {
   return (
-    <button
-      type="button"
+    <div
       className={[
         "catalog-quick-chip",
         `catalog-quick-chip--${variant}`,
@@ -101,7 +102,21 @@ function QuickModelChip({
         {catalogPathChipLabel(model.path, model.name)}
       </span>
       <span className="catalog-quick-chip__quant">{modelQuantLabel(model)}</span>
-    </button>
+      {onUnpin && (
+        <button
+          type="button"
+          className="catalog-quick-chip__unpin"
+          title="Unpin from FAVORITE"
+          aria-label={`Unpin ${model.name}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onUnpin();
+          }}
+        >
+          ★
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -646,7 +661,7 @@ export default function CatalogQuickStrip({
         <section className="catalog-quick-section catalog-quick-section--pins">
           <header className="catalog-quick-section__head">
             <span className="catalog-quick-section__title">FAVORITE</span>
-            <span className="catalog-quick-section__count">{pinModels.length}</span>
+            <span className="catalog-quick-section__count">MAX 6</span>
           </header>
           <div className="catalog-quick-section__grid">
             {pinModels.map((m) => (
@@ -655,8 +670,9 @@ export default function CatalogQuickStrip({
                 model={m}
                 variant="pin"
                 selected={selectedKey != null && pathKey(m.path) === selectedKey}
-                title={`${m.name}\n${modelQuantLabel(m)}\nClick select · right-click unpin`}
+                title={`${m.name}\n${modelQuantLabel(m)}\nClick select · ★ unpin`}
                 onSelect={() => onSelectPath(m.path)}
+                onUnpin={() => onTogglePinPath(m.path)}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   onTogglePinPath(m.path);

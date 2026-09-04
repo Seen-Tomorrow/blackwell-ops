@@ -70,7 +70,7 @@ type CatalogQuickStoreV1 = {
   seats: CatalogSeatsState;
 };
 
-const PINS_MAX = 12;
+const PINS_MAX = 6;
 const RECENTS_MAX = 8;
 
 function emptySeats(): CatalogSeatsState {
@@ -251,8 +251,13 @@ export function toggleCatalogPin(path: string): string[] {
   const store = readStore();
   const n = normalizePath(path);
   const idx = store.pins.findIndex((p) => normalizePath(p) === n);
-  if (idx >= 0) store.pins.splice(idx, 1);
-  else store.pins = [path, ...store.pins.filter((p) => normalizePath(p) !== n)].slice(0, PINS_MAX);
+  if (idx >= 0) {
+    store.pins.splice(idx, 1);
+  } else {
+    // Full — cannot pin more until the user unpins an existing one (no silent eviction).
+    if (store.pins.length >= PINS_MAX) return store.pins.slice();
+    store.pins = [path, ...store.pins.filter((p) => normalizePath(p) !== n)].slice(0, PINS_MAX);
+  }
   writeStore(store);
   return store.pins.slice();
 }

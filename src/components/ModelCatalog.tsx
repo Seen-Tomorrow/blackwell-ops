@@ -564,8 +564,8 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     </button>
   );
 
-  // ── Chrome tools row: sort + MAIN/MAX + dim (always full opacity) ────────────────
-  const renderChromeTools = () => (
+  // ── Filter/sort bar — sits above the card list (between favorites and list). ──
+  const renderToolsBar = () => (
     <div className="catalog-list-panel__chrome-tools">
       <div className="catalog-chrome-row catalog-chrome-row--filters">
         <div className="catalog-sort-actions">
@@ -578,7 +578,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
             type="button"
             onClick={() => onCheckCatalogUpdates?.()}
             disabled={catalogUpdatesBusy}
-            className="catalog-cycle-btn value-chip type-micro font-mono px-1.5 py-0 uppercase rounded-sm transition-colors disabled:opacity-40"
+            className="catalog-cycle-btn value-chip type-micro font-mono px-1.5 py-0 uppercase rounded-sm transition-colors disabled:opacity-40 catalog-tools-hidden"
             title="Check every local HF-paired model against the Hub (tree listing only unless size is close)"
           >
             {catalogUpdatesBusy ? "CHECKING…" : "CHECK ALL"}
@@ -593,18 +593,22 @@ export default function ModelCatalog(props: ModelCatalogProps) {
             className="catalog-cycle-btn value-chip type-micro font-mono px-1.5 py-0 uppercase rounded-sm transition-colors disabled:opacity-40"
             title="Check only the selected model against Hugging Face"
           >
-            CHECK SELECTED
+            UPDATE CHECK FOR SELECTED
           </button>
           <button
             type="button"
             onClick={() => setUpdatesOnly((v) => !v)}
-            className={`catalog-cycle-btn value-chip type-micro font-mono px-1.5 py-0 uppercase rounded-sm transition-colors ${
+            className={`catalog-cycle-btn value-chip type-micro font-mono px-1.5 py-0 uppercase rounded-sm transition-colors catalog-tools-hidden ${
               updatesOnly ? "value-chip-active" : ""
             }`}
             title="Show only models with a Hub update"
           >
             UPDATES{updateByPath.size > 0 ? ` ${updateByPath.size}` : ""}
           </button>
+        </div>
+        <div className="catalog-tools-right">
+          {renderScanMetaControl()}
+          {renderEditControl()}
         </div>
       </div>
       <div className="catalog-chrome-row catalog-chrome-row--sort">
@@ -731,6 +735,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
         </div>
       )}
 
+
       {/* Split panels — drag handle resets to default on double-click */}
       <div
         ref={splitContainerRef}
@@ -744,11 +749,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           className="catalog-list-panel flex flex-col eink-panel-wrapper flex-shrink-0 min-h-0 min-w-0 overflow-hidden"
           style={{ width: catalogWidth }}
         >
-
-          {/*
-            Chrome header — full opacity always (search, sort, MAIN/MAX, dim).
-            Only unselected cards dim; selected card stays full strength.
-          */}
+          {/* Chrome header — search (row 1) + filter/sort (row 2) + dialogs. Full opacity. */}
           <div className="catalog-list-panel__chrome">
             <div className="catalog-list-panel__chrome-search">
               <div className="catalog-search-wrap min-w-0">
@@ -780,12 +781,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                   </div>
                 </div>
               </div>
-              <div className="catalog-search-tools">
-                {renderScanMetaControl()}
-                {renderEditControl()}
-              </div>
             </div>
-            {renderChromeTools()}
             {fileEditError && (
               <p className="catalog-list-panel__chrome-msg type-micro font-mono cat-dng--soft break-all">
                 {fileEditError}
@@ -894,7 +890,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
             )}
           </div>
 
-          {/* Card list only — dim unselected rows; selected stays full opacity */}
+          {/* Quick access — HARNESS SEATS then FAVORITE (favorites below seats). */}
           <CatalogQuickStrip
             models={models}
             seats={catalogSeats}
@@ -907,6 +903,10 @@ export default function ModelCatalog(props: ModelCatalogProps) {
             onSelectSeatSet={handleSelectSeatSet}
             onTogglePinPath={handleTogglePinPath}
           />
+
+
+          {/* Filter/sort bar — above the card list (seats · favorites above it). */}
+          {renderToolsBar()}
           <div className="catalog-list-panel__body">
           <div
             ref={catalogScrollRef}
