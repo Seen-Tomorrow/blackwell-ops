@@ -402,7 +402,126 @@ pub(crate) fn parse_pr_input(pr_input: &str) -> Option<(Option<String>, String)>
     None
 }
 
+/// Parse a PR list string into an ordered, deduped vector of (owner_repo_opt, pr_num).
+///
+/// Tokens are separated by comma, semicolon, and any whitespace (space/tab/newline).
+/// Empty tokens are skipped. Each token is parsed with [`parse_pr_input`]; a token that
+/// fails to parse yields `Err` naming the offending token. Deduplication is by
+/// (owner_repo_opt, pr_num) preserving first-seen order.
+pub(crate) fn parse_pr_list(input: &str) -> Result<Vec<(Option<String>, String)>, String> {
+    let tokens: Vec<&str> = input
+        .split(|c: char| c.is_whitespace() || c == ',' || c == ';')
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .collect();
+
+    let mut seen: Vec<(Option<String>, String)> = Vec::new();
+    for token in tokens {
+        match parse_pr_input(token) {
+            Some(entry) => {
+                if !seen.contains(&entry) {
+                    seen.push(entry);
+                }
+            }
+            None => {
+                return Err(format!(
+                    "Invalid PR token: '{token}' — must be a GitHub PR URL or plain number"
+                ));
+            }
+        }
+    }
+    Ok(seen)
+}
+
+/// Push a normalized PR-stack string into an MRU history vec (cap 3, newest first).
+/// Reusing an existing entry moves it to the front; a new entry is inserted at 0 and
+/// the vec is truncated to 3.
+pub(crate) fn push_pr_history(history: &mut Vec<String>, entry: String) {
+    history.retain(|h| h != &entry);
+    history.insert(0, entry);
+    history.truncate(3);
+}
+/// True when the repository at `src_dir` is a shallow clone.
+///
+/// Shallow clones lack the full commit history, so a `git merge` of a fetched PR head
+/// cannot find its merge-base and fails. We check the `.git/shallow` marker file first
+/// (no subprocess), then fall back to `git rev-parse --is-shallow-repository`.
+pub(crate) async fn is_shallow_repo(git_exe: &std::path::Path, src_dir: &std::path::Path) -> bool {
+    // Fast path: the shallow marker file exists.
+    if src_dir.join(".git").join("shallow").exists() {
+        return true;
+    }
+    // Authoritative check (works even if the marker was removed).
+    match git_hidden_output(git_exe.to_path_buf(), src_dir.to_path_buf(), vec!["rev-parse".into(), "--is-shallow-repository".into()]).await {
+        Ok(out) if out.status.success() => {
+            String::from_utf8_lossy(&out.stdout).trim() == "true"
+        }
+        _ => false,
+    }
+}
+
+/// GitHub PR merge state fetched from the REST API (soft-fail; fields may be absent).
+#[derive(Debug, Clone, Default)]
+pub(crate) struct PrMergeState {
+    pub mergeable: Option<bool>,
+    pub mergeable_state: Option<String>,
+    pub title: Option<String>,
+}
+
+/// Query GitHub for the PR's mergeability. Soft-fails: any HTTP/parse error yields
+/// `Default` (all `None`) so the build never blocks on GitHub API availability.
+pub(crate) async fn fetch_pr_merge_state(owner_repo: &str, pr_num: &str) -> PrMergeState {
+    let url = format!(
+        "https://api.github.com/repos/{owner_repo}/pulls/{pr_num}"
+    );
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        // GitHub's REST API rejects the default reqwest User-Agent (403 / rate-limit),
+        // so set an explicit one.
+        .user_agent("Blackwell-Ops")
+        .build()
+        .unwrap_or_default();
+    let resp = match client.get(&url).send().await {
+        Ok(r) if r.status().is_success() => r,
+        _ => return PrMergeState::default(),
+    };
+    let json: serde_json::Value = match resp.json().await {
+        Ok(j) => j,
+        Err(_) => return PrMergeState::default(),
+    };
+    PrMergeState {
+        mergeable: json["mergeable"].as_bool(),
+        mergeable_state: json["mergeable_state"].as_str().map(String::from),
+        title: json["title"].as_str().map(String::from),
+    }
+}
+
+/// Compose a user-facing error message for a failed PR apply, incorporating GitHub's
+/// mergeability verdict when available.
+pub(crate) fn format_pr_apply_failure(
+    pr_num: &str,
+    gh: &PrMergeState,
+    local_line: &str,
+) -> String {
+    let title = gh.title.as_deref().unwrap_or("untitled");
+    let gh_note = match (&gh.mergeable, &gh.mergeable_state) {
+        (Some(false), Some(state)) => format!("GitHub: {state}"),
+        (Some(false), None) => "GitHub: not mergeable".to_string(),
+        (Some(true), Some(state)) if state != "clean" => format!("GitHub: {state}"),
+        _ => "local conflict detected".to_string(),
+    };
+    format!(
+        "PR #{pr_num} ({title}) conflicts with current branch ({gh_note}). Local: {local_line}. Rebase the PR or wait for the author — Foundry will not auto-resolve."
+    )
+}
+
 /// Apply a GitHub PR onto a clean foundry source tree (hard-synced branch, no local dirty).
+///
+/// If the tree is a shallow clone (Foundry clones with `--depth 1`), the full history is
+/// fetched first (`git fetch --unshallow`, falling back to `--deepen=512`) so the PR merge
+/// can find its merge-base. A shallow tree cannot merge a PR head — the merge-base commit
+/// is missing — and the `--3way` patch fallback then fails with "Applied patch … with
+/// conflicts" because the needed blobs are absent.
 ///
 /// Prefers `git fetch … pull/<n>/head` + merge so already-landed hunks (common when master
 /// moved under an open PR) resolve via real merge instead of brittle `git apply` context.
@@ -417,6 +536,45 @@ pub(crate) async fn apply_foundry_github_pr(
 ) -> Result<&'static str, String> {
     let local_ref = format!("refs/foundry/pr-{pr_num}");
     let pull_refspec = format!("pull/{pr_num}/head:{local_ref}");
+
+    // 0) Unshallow before fetching the PR. Foundry clones with `--depth 1`, so a shallow
+    // tree has no merge-base for the PR head and the merge below fails. `git fetch
+    // --unshallow` restores full history; if that fails (e.g. origin is a partial mirror),
+    // deepen by 512 and continue — the merge may still succeed, and the patch fallback
+    // remains available. Non-PR builds never reach here.
+    if is_shallow_repo(git_exe, src_dir).await {
+        let unshallow = git_hidden_output(
+            git_exe.to_path_buf(),
+            src_dir.to_path_buf(),
+            vec!["fetch".into(), "--unshallow".into()],
+        )
+        .await;
+        match &unshallow {
+            Ok(o) if o.status.success() => {
+                log::info!("[foundry] PR #{pr_num} unshallowed repository before merge");
+            }
+            Ok(o) => {
+                log::warn!(
+                    "[foundry] PR #{pr_num} unshallow failed, deepening by 512: {}",
+                    git_output_text(o)
+                );
+                let _ = git_hidden_output(
+                    git_exe.to_path_buf(),
+                    src_dir.to_path_buf(),
+                    vec!["fetch".into(), "--deepen=512".into()],
+                )
+                .await;
+                if is_shallow_repo(git_exe, src_dir).await {
+                    log::warn!(
+                        "[foundry] PR #{pr_num} still shallow after deepen — merge may fail, falling back to patch apply"
+                    );
+                }
+            }
+            Err(e) => {
+                log::warn!("[foundry] PR #{pr_num} unshallow spawn failed: {e}");
+            }
+        }
+    }
 
     // 1) Fetch PR head — origin first (provider clone), then explicit base-repo URL.
     let mut fetch = git_hidden_output(
@@ -461,6 +619,14 @@ pub(crate) async fn apply_foundry_github_pr(
                         git_exe.to_path_buf(),
                         src_dir.to_path_buf(),
                         vec!["merge".into(), "--abort".into()],
+                    )
+                    .await;
+                    // Ensure the tree is clean before the patch fallback — merge --abort
+                    // can leave a partially-merged index behind.
+                    let _ = git_hidden_output(
+                        git_exe.to_path_buf(),
+                        src_dir.to_path_buf(),
+                        vec!["reset".into(), "--hard".into(), "HEAD".into()],
                     )
                     .await;
                     // Fall through to patch apply — merge conflicts on drifted trees still happen.
@@ -545,10 +711,13 @@ pub(crate) async fn apply_foundry_github_pr(
     match &apply_output {
         Ok(out) if out.status.success() => Ok(method),
         Ok(out) => {
+            // `git apply --3way` leaves conflict markers in the worktree; `merge --abort`
+            // is the wrong tool (no merge in progress). Hard-reset to clean the tree so
+            // the next build starts from a known-good state.
             let _ = git_hidden_output(
                 git_exe.to_path_buf(),
                 src_dir.to_path_buf(),
-                vec!["merge".into(), "--abort".into()],
+                vec!["reset".into(), "--hard".into(), "HEAD".into()],
             )
             .await;
             // Prefer real failure lines (error:/fatal:/conflict) over "Applied … cleanly".
@@ -575,7 +744,8 @@ pub(crate) async fn apply_foundry_github_pr(
                         .find(|l| !l.is_empty())
                         .unwrap_or("unknown error")
                 });
-            Err(interesting.to_string())
+            let gh = fetch_pr_merge_state(owner_repo, pr_num).await;
+            Err(format_pr_apply_failure(pr_num, &gh, interesting))
         }
         Err(e) => Err(format!("git apply spawn failed: {e}")),
     }
@@ -690,6 +860,32 @@ pub(crate) async fn git_ls_remote_short(
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    async fn is_shallow_repo_marker_file() {
+        // Fast path: a `.git/shallow` marker file means shallow, no subprocess needed.
+        let tmp = std::env::temp_dir().join("foundry-test-shallow-marker");
+        let git_dir = tmp.join(".git");
+        let _ = std::fs::create_dir_all(&git_dir);
+        let marker = git_dir.join("shallow");
+        std::fs::write(&marker, b"").unwrap();
+        // git_exe is irrelevant on the fast path (marker exists → true before any spawn).
+        assert!(is_shallow_repo(&std::path::PathBuf::from("git"), &tmp).await);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[tokio::test]
+    async fn is_shallow_repo_no_marker_non_repo() {
+        // No marker file and no real repo → rev-parse fails → not shallow.
+        let tmp = std::env::temp_dir().join("foundry-test-shallow-none");
+        let _ = std::fs::create_dir_all(&tmp);
+        // Use a non-existent git exe so the rev-parse spawn fails → false (no marker).
+        assert!(!is_shallow_repo(
+            &std::path::PathBuf::from("definitely-not-a-real-git-exe-xyz"),
+            &tmp
+        )
+        .await);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
     #[test]
     fn parse_github_pr_with_scheme() {
         let (repo, num) = parse_github_pr("https://github.com/ggml-org/llama.cpp/pull/1234").unwrap();
@@ -757,6 +953,87 @@ mod tests {
     }
 
     #[test]
+    fn parse_pr_list_single_number() {
+        let v = parse_pr_list("1234").unwrap();
+        assert_eq!(v, vec![(None, "1234".to_string())]);
+    }
+
+    #[test]
+    fn parse_pr_list_single_url() {
+        let v = parse_pr_list("https://github.com/ggml-org/llama.cpp/pull/999").unwrap();
+        assert_eq!(v, vec![(Some("ggml-org/llama.cpp".to_string()), "999".to_string())]);
+    }
+
+    #[test]
+    fn parse_pr_list_comma_space_mix() {
+        let v = parse_pr_list("1234, 5678 ; 9012").unwrap();
+        assert_eq!(
+            v,
+            vec![
+                (None, "1234".to_string()),
+                (None, "5678".to_string()),
+                (None, "9012".to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_pr_list_newlines() {
+        let v = parse_pr_list("111\n222\t333").unwrap();
+        assert_eq!(
+            v,
+            vec![
+                (None, "111".to_string()),
+                (None, "222".to_string()),
+                (None, "333".to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_pr_list_dedupe_preserves_first() {
+        let v = parse_pr_list("1234, 1234, 5678, 1234").unwrap();
+        assert_eq!(
+            v,
+            vec![(None, "1234".to_string()), (None, "5678".to_string())]
+        );
+    }
+
+    #[test]
+    fn parse_pr_list_garbage_token_errors() {
+        let r = parse_pr_list("1234, hello world");
+        assert!(r.is_err());
+        assert!(r.unwrap_err().contains("hello"));
+    }
+
+    #[test]
+    fn parse_pr_list_empty_and_whitespace() {
+        assert_eq!(parse_pr_list("").unwrap(), Vec::<(Option<String>, String)>::new());
+        assert_eq!(
+            parse_pr_list("   \t\n  ").unwrap(),
+            Vec::<(Option<String>, String)>::new()
+        );
+    }
+
+    #[test]
+    fn push_pr_history_cap_three() {
+        let mut h: Vec<String> = Vec::new();
+        push_pr_history(&mut h, "a".into());
+        push_pr_history(&mut h, "b".into());
+        push_pr_history(&mut h, "c".into());
+        push_pr_history(&mut h, "d".into());
+        assert_eq!(h, vec!["d", "c", "b"]);
+    }
+
+    #[test]
+    fn push_pr_history_reuse_moves_to_front() {
+        let mut h: Vec<String> = Vec::new();
+        push_pr_history(&mut h, "a".into());
+        push_pr_history(&mut h, "b".into());
+        push_pr_history(&mut h, "a".into());
+        assert_eq!(h, vec!["a", "b"]);
+    }
+    #[test]
     fn short_commit_hash_first_8_trimmed() {
         assert_eq!(short_commit_hash("abcdef1234567890"), "abcdef12");
         assert_eq!(short_commit_hash("  abcdef1234567890  "), "abcdef12");
@@ -823,5 +1100,62 @@ mod tests {
     #[test]
     fn commits_match_case_insensitive() {
         assert!(commits_match("ABCDEF12", "abcdef12"));
+    }
+
+    #[test]
+    fn format_pr_apply_failure_dirty_with_title() {
+        let gh = PrMergeState {
+            mergeable: Some(false),
+            mergeable_state: Some("dirty".into()),
+            title: Some("model: add GLM-5-Next".into()),
+        };
+        let msg = format_pr_apply_failure(
+            "27754",
+            &gh,
+            "Applied patch to 'src/llama-graph.cpp' with conflicts.",
+        );
+        assert!(msg.contains("PR #27754"));
+        assert!(msg.contains("model: add GLM-5-Next"));
+        assert!(msg.contains("GitHub: dirty"));
+        assert!(msg.contains("Applied patch to 'src/llama-graph.cpp' with conflicts."));
+        assert!(msg.contains("Foundry will not auto-resolve"));
+    }
+
+    #[test]
+    fn format_pr_apply_failure_not_mergeable_no_state() {
+        let gh = PrMergeState {
+            mergeable: Some(false),
+            mergeable_state: None,
+            title: None,
+        };
+        let msg = format_pr_apply_failure("999", &gh, "error: patch does not apply");
+        assert!(msg.contains("PR #999"));
+        assert!(msg.contains("untitled"));
+        assert!(msg.contains("GitHub: not mergeable"));
+        assert!(msg.contains("error: patch does not apply"));
+    }
+
+    #[test]
+    fn format_pr_apply_failure_github_unreachable() {
+        // All None = API was down or timed out.
+        let gh = PrMergeState::default();
+        let msg = format_pr_apply_failure("123", &gh, "conflict in main.cpp");
+        assert!(msg.contains("PR #123"));
+        assert!(msg.contains("untitled"));
+        assert!(msg.contains("local conflict detected"));
+        assert!(msg.contains("conflict in main.cpp"));
+    }
+
+    #[test]
+    fn format_pr_apply_failure_mergeable_true_but_being_built() {
+        // GitHub says mergeable=true but state is "behind" (stale check).
+        let gh = PrMergeState {
+            mergeable: Some(true),
+            mergeable_state: Some("behind".into()),
+            title: Some("fix: typo".into()),
+        };
+        let msg = format_pr_apply_failure("42", &gh, "does not apply");
+        assert!(msg.contains("GitHub: behind"));
+        assert!(msg.contains("fix: typo"));
     }
 }

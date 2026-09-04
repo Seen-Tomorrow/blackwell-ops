@@ -405,6 +405,7 @@ async fn main() {
             reactor_foundry::foundry_get_profiles,
             reactor_foundry::foundry_work_cache_status,
             reactor_foundry::foundry_clear_work_cache,
+            reactor_foundry::foundry_pr_titles,
             foundry_toolchain::foundry_get_toolchain_install_info,
             foundry_toolchain::foundry_open_toolchain_install_folder,
             foundry_toolchain::foundry_open_toolchain_cache_folder,

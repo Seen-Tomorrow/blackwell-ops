@@ -177,6 +177,7 @@ fn discover_providers() -> Vec<crate::types::ProviderConfig> {
                     inventory_per_env: HashMap::new(),
                     downloaded_version_per_env: std::collections::HashMap::new(),
                     last_pr_per_env: std::collections::HashMap::new(),
+                    pr_history_per_env: std::collections::HashMap::new(),
                     display_order: providers.len() as i32,
                     factory_provided: true,
                     optional_download: identity.optional_download,
@@ -295,6 +296,15 @@ pub fn build_config_with_providers_full(mut config: AppConfig) -> AppConfig {
             if !meta.last_pr_per_env.is_empty() {
                 p.last_pr_per_env = meta.last_pr_per_env.clone();
             }
+            if !meta.pr_history_per_env.is_empty() {
+                p.pr_history_per_env = meta.pr_history_per_env.clone();
+            }
+            // Migration: seed history from last_pr when history is empty for an env.
+            for (env, pr) in &p.last_pr_per_env {
+                if p.pr_history_per_env.get(env).map(Vec::is_empty).unwrap_or(true) {
+                    p.pr_history_per_env.insert(env.clone(), vec![pr.clone()]);
+                }
+            }
             // Always override — user's explicit choice survives restart
             p.enabled = meta.enabled;
             p.display_order = meta.display_order;
@@ -373,6 +383,7 @@ pub fn build_config_with_providers_full(mut config: AppConfig) -> AppConfig {
                 inventory_per_env: HashMap::new(),
                 downloaded_version_per_env: meta.downloaded_version_per_env.clone(),
                 last_pr_per_env: meta.last_pr_per_env.clone(),
+                pr_history_per_env: meta.pr_history_per_env.clone(),
                 display_order: meta.display_order,
                 factory_provided: false,
                 optional_download: false,
@@ -385,6 +396,12 @@ pub fn build_config_with_providers_full(mut config: AppConfig) -> AppConfig {
                     .unwrap_or_default(),
             };
             apply_meta_layout_overrides(&mut custom, &meta, &factory_key);
+            // Migration: seed history from last_pr when history is empty for an env.
+            for (env, pr) in &custom.last_pr_per_env {
+                if custom.pr_history_per_env.get(env).map(Vec::is_empty).unwrap_or(true) {
+                    custom.pr_history_per_env.insert(env.clone(), vec![pr.clone()]);
+                }
+            }
             resolve_provider_binaries_from_meta(&mut custom, Some(&meta));
             // Custom: spawn_profile stays empty (no Full Auto); caps live on custom_capabilities.
             if is_custom_template_type(&custom.template_type) {

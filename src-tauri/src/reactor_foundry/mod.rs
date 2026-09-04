@@ -36,7 +36,8 @@ pub(crate) use git::{
     apply_foundry_github_pr, apply_foundry_vendor_patches, backup_foundry_src_dirty_diff,
     commits_match, ensure_git_available, extract_commit_from_build_version, extract_github_owner_repo,
     foundry_src_dir, git_hidden_output, git_hard_sync_branch, git_ls_remote_short, git_output_text,
-    git_rev_parse_short, parse_github_pr, parse_pr_input, short_commit_hash,
+    git_rev_parse_short, parse_github_pr, parse_pr_input, parse_pr_list, push_pr_history,
+    short_commit_hash,
 };
 
 use serde::{Deserialize, Serialize};
@@ -621,46 +622,70 @@ async fn stage_git_ops<'a>(ctx: &BuildCtx<'a>) -> Result<std::path::PathBuf, Str
         log::warn!("[foundry] patch materialize: {e}");
     }
 
-    // ── Optional GitHub PR (fetch+merge on clean tree) ───────────────
+    // ── Optional GitHub PR stack (fetch+merge on clean tree) ─────────
     // Must run BEFORE vendor patches: merge needs a clean worktree, and
     // product overlays should sit on top of upstream+PR.
+    // Hard-fails on the first parse or apply failure (no warn-and-continue).
     if let Some(pr_input_str) = ctx.pr_url {
-        match parse_pr_input(pr_input_str) {
-            Some((owner_repo_opt, pr_num)) => {
-                let resolved_owner_repo = owner_repo_opt.clone().or_else(|| {
-                    if let Ok(cfg) = ctx.worker.config.lock() {
-                        if let Some(p) = cfg.providers.iter().find(|p| p.id == provider_id) {
-                            if !p.git_url.trim().is_empty() {
-                                return extract_github_owner_repo(&p.git_url);
-                            }
-                        }
-                    }
-                    None
-                });
+        if !pr_input_str.trim().is_empty() {
+            let pr_stack = match parse_pr_list(pr_input_str) {
+                Ok(stack) => stack,
+                Err(e) => {
+                    ctx.rollback().with_message(e.clone()).execute().await;
+                    return Err(e);
+                }
+            };
 
-                let log_msg = if let Some(owner_repo) = resolved_owner_repo.as_deref() {
-                    if owner_repo_opt.is_none() {
+            if !pr_stack.is_empty() {
+                // Resolve the provider git_url once for number-only repo guessing.
+                let provider_git_url = {
+                    if let Ok(cfg) = ctx.worker.config.lock() {
+                        cfg.providers.iter().find(|p| p.id == provider_id)
+                            .map(|p| p.git_url.clone())
+                            .unwrap_or_default()
+                    } else {
+                        String::new()
+                    }
+                };
+
+                let mut applied_nums: Vec<String> = Vec::new();
+                for (owner_repo_opt, pr_num) in &pr_stack {
+                    let resolved_owner_repo = owner_repo_opt.clone().or_else(|| {
+                        if !provider_git_url.trim().is_empty() {
+                            extract_github_owner_repo(&provider_git_url)
+                        } else {
+                            None
+                        }
+                    });
+
+                    // Number-only PR with no resolvable owner/repo → hard-fail.
+                    let owner_repo = match resolved_owner_repo {
+                        Some(r) => r,
+                        None => {
+                            let msg = format!(
+                                "PR #{pr_num} (number only) has no resolvable owner/repo — cannot fetch"
+                            );
+                            ctx.rollback().with_message(msg.clone()).execute().await;
+                            return Err(msg);
+                        }
+                    };
+
+                    let fetch_msg = if owner_repo_opt.is_none() {
                         format!(
                             "[PR] Guessed repo {owner_repo} from provider git_url — fetching PR #{pr_num}..."
                         )
                     } else {
                         format!("[PR] Fetching PR #{pr_num} from {owner_repo}...")
-                    }
-                } else {
-                    format!(
-                        "[PR] PR #{pr_num} (number only, no repo detected — informational only)"
-                    )
-                };
-                emit_config_event(
-                    app_handle,
-                    provider_id,
-                    profile_id,
-                    build_id,
-                    Some(log_msg),
-                );
+                    };
+                    emit_config_event(
+                        app_handle,
+                        provider_id,
+                        profile_id,
+                        build_id,
+                        Some(fetch_msg),
+                    );
 
-                if let Some(owner_repo) = resolved_owner_repo.as_deref() {
-                    match apply_foundry_github_pr(&git_exe, &src_dir, owner_repo, &pr_num).await {
+                    match apply_foundry_github_pr(&git_exe, &src_dir, &owner_repo, pr_num).await {
                         Ok(method) => {
                             let how = match method {
                                 "merged" => "merged (pull head)",
@@ -675,38 +700,41 @@ async fn stage_git_ops<'a>(ctx: &BuildCtx<'a>) -> Result<std::path::PathBuf, Str
                                 build_id,
                                 Some(format!("[PR] #{pr_num} {how}")),
                             );
-
-                            let env_key = profile_id.to_string();
-                            if let Ok(mut cfg) = ctx.worker.config.lock() {
-                                if let Some(p) =
-                                    cfg.providers.iter_mut().find(|p| p.id == provider_id)
-                                {
-                                    p.last_pr_per_env.insert(env_key, pr_num.clone());
-                                }
-                            }
+                            applied_nums.push(pr_num.clone());
                         }
                         Err(err) => {
-                            emit_config_event(
-                                app_handle,
-                                provider_id,
-                                profile_id,
-                                build_id,
-                                Some(format!(
-                                    "[WARN] PR #{pr_num} apply failed: {err} — continuing build"
-                                )),
-                            );
+                            let msg = format!("PR #{pr_num} apply failed: {err}");
+                            ctx.rollback().with_message(msg.clone()).execute().await;
+                            return Err(msg);
                         }
                     }
                 }
-            }
-            None => {
+
+                // ── Entire stack succeeded: persist last_pr + history ──
+                let env_key = profile_id.to_string();
+                let last_pr = applied_nums.join(",");
+                let stack_str = pr_input_str.split_whitespace().collect::<Vec<_>>().join(" ");
+
+                if let Ok(mut cfg) = ctx.worker.config.lock() {
+                    if let Some(p) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
+                        p.last_pr_per_env.insert(env_key.clone(), last_pr);
+                        let history = p.pr_history_per_env.entry(env_key).or_default();
+                        push_pr_history(history, stack_str);
+                    }
+                }
+                // HISTORY must survive cancel-at-PROCEED — persist immediately.
+                if let Err(e) = persist_providers_atomic(&ctx.worker.config) {
+                    log::warn!("[foundry] persist after PR stack: {e}");
+                }
+
                 emit_config_event(
                     app_handle,
                     provider_id,
                     profile_id,
                     build_id,
                     Some(format!(
-                        "[WARN] Invalid PR input: '{pr_input_str}' — must be a GitHub PR URL or plain number"
+                        "[PR] stack applied: {}",
+                        applied_nums.iter().map(|n| format!("#{n}")).collect::<Vec<_>>().join(" ")
                     )),
                 );
             }
@@ -2679,4 +2707,29 @@ pub async fn foundry_clear_work_cache(
             .map_err(|e| format!("Failed to clear Foundry work directory: {e}"))?;
     }
     Ok(())
+}
+
+/// Fetch PR titles for HISTORY chip tooltips (confirm modal).
+///
+/// Calls the GitHub REST API via the Rust reqwest client (the browser `fetch` from the
+/// Vite origin is CORS/UA-flaky in WebView2). Soft-fails per PR: a missing title is
+/// simply omitted from the map, so one bad number never poisons the others.
+#[tauri::command]
+pub async fn foundry_pr_titles(
+    owner_repo: String,
+    pr_nums: Vec<String>,
+) -> Result<std::collections::HashMap<String, String>, String> {
+    let mut titles = std::collections::HashMap::new();
+    for pr_num in pr_nums {
+        if pr_num.trim().is_empty() {
+            continue;
+        }
+        let state = git::fetch_pr_merge_state(&owner_repo, &pr_num).await;
+        if let Some(title) = state.title {
+            if !title.trim().is_empty() {
+                titles.insert(pr_num, title);
+            }
+        }
+    }
+    Ok(titles)
 }

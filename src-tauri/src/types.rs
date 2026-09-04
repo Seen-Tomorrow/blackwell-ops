@@ -464,6 +464,9 @@ pub struct ProviderConfig {
     /// Last cherry-picked PR number per environment (for badge display)
     #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "lastPrPerEnv")]
     pub last_pr_per_env: HashMap<String, String>,
+    /// MRU of up to 3 normalized PR-stack strings per environment (newest first).
+    #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "prHistoryPerEnv")]
+    pub pr_history_per_env: HashMap<String, Vec<String>>,
     /// Display order in provider list (0 = first). Auto-assigned on save if not set.
     #[serde(default)]
     pub display_order: i32,
