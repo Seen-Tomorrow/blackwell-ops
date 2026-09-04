@@ -4,12 +4,12 @@ import {
   setFusionBenchTray,
   subscribeFusionBenchTray,
   toggleFusionBenchTray,
+  type FusionBenchTrayState,
 } from "../lib/fusionBenchTrayStore";
-import type { FusionBenchTrayState } from "../lib/storage";
 
 export type { FusionBenchTrayState };
 
-/** Fusion overlay benchmark tray — open exposes bench controls + results. Session-only (always starts stowed). */
+/** Fusion overlay benchmark tray — session memory, always starts stowed. Control knobs persist separately. */
 export function useFusionBenchTray() {
   const [, bump] = useState(0);
 

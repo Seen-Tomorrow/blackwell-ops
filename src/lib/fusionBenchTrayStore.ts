@@ -1,21 +1,10 @@
-import {
-  loadFusionBenchTray,
-  type FusionBenchTrayState,
-} from "./storage";
-
-// Purge legacy LS key once; tray is session memory only.
-loadFusionBenchTray();
+export type FusionBenchTrayState = "open" | "stowed";
 
 let trayState: FusionBenchTrayState = "stowed";
 const listeners = new Set<() => void>();
 
 function notifyFusionBenchTrayStore(): void {
   for (const fn of listeners) fn();
-}
-
-/** No-op kept for callers — tray is session memory, not LS-backed. */
-export function refreshFusionBenchTrayFromStorage(): void {
-  loadFusionBenchTray();
 }
 
 export function getFusionBenchTrayOpen(): boolean {

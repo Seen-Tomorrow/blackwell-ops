@@ -854,7 +854,7 @@ export default function FusionOverlay({
 
           {!benchTrayOpen && <div className="flex-1 min-h-0" aria-hidden />}
 
-          {/* ═══ BENCHMARK TRAY — stowable bench + results (persisted) ═══ */}
+          {/* ═══ BENCHMARK TRAY — session-only open/stowed; knobs persist ═══ */}
           {!hideBenchTray && fusion.engine_state !== "LOADING" && (
             <div className="flex-shrink-0 flex flex-col">
               <FusionBenchTrayLatch open={benchTrayOpen} onToggle={toggleBenchTray} />
