@@ -92,5 +92,8 @@ log/
 # Blackwell-managed pi routing doc written into the project cwd on each launch
 PI.md
 
+# --- zvec-grep (zg) workspace index — local binary state, live LOCK files ---
+.zvec-grep/
+
 # --- generic ---
 VLLM/
