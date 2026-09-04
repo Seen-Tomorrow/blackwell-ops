@@ -21,7 +21,12 @@ const DEFAULT_CMAKE_FLAGS: &[(&str, &str)] = &[
             // llama-bench lives under tools/ (not examples/).
             "-DLLAMA_BUILD_TOOLS=ON ",
             "-DLLAMA_BUILD_TESTS=OFF ",
-            "-DLLAMA_BUILD_EXAMPLES=OFF",
+            "-DLLAMA_BUILD_EXAMPLES=OFF ",
+            // NCCL: llama.cpp guards the find_package probe with GGML_CUDA_NCCL
+            // (ggml/src/ggml-cuda/CMakeLists.txt). Not shipped on Windows; OFF skips the probe.
+            "-DGGML_CUDA_NCCL=OFF ",
+            // OpenSSL not needed for local HTTP; skip probe.
+            "-DLLAMA_OPENSSL=OFF",
         ),
     ),
 ];
@@ -29,11 +34,15 @@ const DEFAULT_CMAKE_FLAGS: &[(&str, &str)] = &[
 /// Always merge these into configure so provider build_profile cannot re-enable tests/examples,
 /// drop the server/tools targets, or leave host-native CPU/CUDA defaults that break ship portability.
 const FOUNDRY_MANDATORY_CMAKE_FLAGS: &str = concat!(
+    // Release is selected at compile time via `cmake --build --config Release`
+    // (mod.rs stage_compile). CMAKE_BUILD_TYPE is ignored by multi-config generators
+    // (Ninja Multi-Config), so it is deliberately NOT forced here.
     "-DGGML_NATIVE=OFF ",
     "-DLLAMA_BUILD_SERVER=ON ",
     "-DLLAMA_BUILD_TOOLS=ON ",
     "-DLLAMA_BUILD_TESTS=OFF ",
-    "-DLLAMA_BUILD_EXAMPLES=OFF",
+    "-DLLAMA_BUILD_EXAMPLES=OFF ",
+    "-DGGML_CUDA_NCCL=OFF",
 );
 
 pub(crate) fn get_default_cmake_flags(template_type: &str) -> &'static str {

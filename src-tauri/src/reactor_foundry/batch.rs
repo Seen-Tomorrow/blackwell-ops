@@ -33,6 +33,72 @@ pub(crate) fn try_lock_log_buf(buf: &std::sync::Mutex<Vec<String>>) -> Option<st
         })
         .ok()
 }
+/// Returns `true` if a stderr line is genuinely an error worth tagging `[ERR]`.
+/// CMake and other build tools print informational lines to stderr (configure
+/// command echoes, progress, etc.) that must NOT be styled as errors.
+fn is_genuine_error_line(line: &str) -> bool {
+    let lower = line.to_ascii_lowercase();
+    // Known-benign vendor probe lines — suppress entirely (Issue 2).
+    if lower.contains("could not find openssl")
+        || (lower.contains("openssl not found") && lower.contains("https support disabled"))
+    {
+        return false; // filtered out
+    }
+    // CMake configure command echo (starts with "cmake" and contains -D flags).
+    if lower.starts_with("cmake") && lower.contains("-d") {
+        return false;
+    }
+    // CMake "The following … were found" / "were NOT found" summary lines are
+    // informational, not errors.
+    if lower.starts_with("the following") {
+        return false;
+    }
+    // CMake warning lines — warn, not error.
+    if lower.contains("cmake warning") || lower.starts_with("warning:") {
+        return false;
+    }
+    // CMake "Could NOT find" lines for optional deps are warnings, not errors.
+    if lower.contains("could not find") {
+        return false;
+    }
+    // Lines that explicitly say "error" or "failed" or "fatal" are real errors.
+    lower.contains("error")
+        || lower.contains("fatal")
+        || lower.contains("failed")
+        || lower.contains("exception")
+}
+
+/// Returns `true` if the line should be suppressed entirely (not shown in the log).
+fn is_suppressed_vendor_noise(line: &str) -> bool {
+    let lower = line.to_ascii_lowercase();
+    // cpp-httplib probes OpenSSL unconditionally, even when LLAMA_OPENSSL=OFF. Its
+    // warning header prints to stderr; the useful child line is filtered below too.
+    lower.contains("could not find openssl")
+        || (lower.contains("openssl not found") && lower.contains("https support disabled"))
+        || (lower.contains("cmake warning") && lower.contains("cpp-httplib"))
+        // Upstream echo prints CMAKE_BUILD_TYPE=<val> via message() → stderr.
+        // Empty for MSVC + multi-config (Ninja Multi-Config), where the real build
+        // type comes from `cmake --build --config Release`, not this cache var.
+        || lower.trim() == "cmake_build_type=release"
+        || lower.trim() == "cmake_build_type="
+}
+
+#[cfg(test)]
+mod noise_tests {
+    use super::is_suppressed_vendor_noise;
+
+    #[test]
+    fn suppresses_build_type_and_httplib_noise() {
+        assert!(is_suppressed_vendor_noise("CMAKE_BUILD_TYPE=Release"));
+        assert!(is_suppressed_vendor_noise("CMAKE_BUILD_TYPE="));
+        assert!(is_suppressed_vendor_noise(
+            "CMake Warning at vendor/cpp-httplib/CMakeLists.txt:154 (message):"
+        ));
+        assert!(!is_suppressed_vendor_noise("CMAKE_BUILD_TYPE=Release is required"));
+        assert!(!is_suppressed_vendor_noise("error: cpp-httplib failed to build"));
+    }
+}
+
 /// OS-thread line drain for one pipe (stdout or stderr).
 /// Must not use `tokio::process` + CREATE_NO_WINDOW on Windows release — that path
 /// intermittently wedges (os error 6 / silent pipes). Same pattern as `fit_scanner`.
@@ -48,9 +114,17 @@ pub(crate) fn drain_pipe_lines_blocking(
         if line.trim().is_empty() {
             continue;
         }
+        // Suppress known-benign vendor probe noise (OpenSSL probe from cpp-httplib).
+        if is_suppressed_vendor_noise(&line) {
+            continue;
+        }
         if let Some(mut buf) = try_lock_log_buf(&log_buffer) {
             if as_err {
-                buf.push(format!("[ERR] {line}"));
+                if is_genuine_error_line(&line) {
+                    buf.push(format!("[ERR] {line}"));
+                } else {
+                    buf.push(line.clone());
+                }
             } else {
                 buf.push(line.clone());
             }

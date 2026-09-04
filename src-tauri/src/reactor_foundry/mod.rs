@@ -904,12 +904,12 @@ async fn stage_cmake_configure<'a>(ctx: &BuildCtx<'a>, git_exe: &std::path::Path
     let src_dir_str   = src_dir.to_string_lossy().replace('\\', "/");
     let cmake_configure_line = if joined_extra_batch.is_empty() {
         format!(
-            r#""{}" -B "{}" -S "{}" {} {} {} {}"#,
+            r#""{}" -B "{}" -S "{}" {} {} {} {} -Wno-dev"#,
             ctx.cmake_cmd, build_dir_str, src_dir_str, gen_flag, toolset_flag, forced_cuda_flags, asm_flag
         )
     } else {
         format!(
-            r#""{}" -B "{}" -S "{}" {} {} {} {} {}"#,
+            r#""{}" -B "{}" -S "{}" {} {} {} {} {} -Wno-dev"#,
             ctx.cmake_cmd, build_dir_str, src_dir_str, gen_flag, toolset_flag, forced_cuda_flags, asm_flag, joined_extra_batch
         )
     };
