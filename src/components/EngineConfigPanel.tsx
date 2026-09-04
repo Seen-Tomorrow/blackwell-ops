@@ -460,7 +460,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const applyHwPlacement = useCallback((open: boolean, dock: HwMonitorDock) => {
     setHwMonitorOpen(open);
     saveHwMonitorOpen(open);
-    dispatchAppEvent(EVENTS.hwMonitorOpenChanged, { open });
     if (dock !== hwMonitorDock) {
       setHwMonitorDock(dock);
       saveHwMonitorDock(dock);
@@ -2949,7 +2948,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           onSelectProvider={(id) => {
             setSelectedProvider(id);
             writeStorage(KEYS.lastProvider, id);
-            dispatchAppEvent(EVENTS.providerChanged, { providerId: id });
           }}
           builtProfiles={builtProfiles}
           selectedBinaryProfile={selectedBinaryProfile}

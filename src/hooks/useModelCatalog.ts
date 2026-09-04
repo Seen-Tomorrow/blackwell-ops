@@ -4,7 +4,7 @@ import type { FitScanFull, FitScanProgress, GpuInfo, ModelEntry, ProviderConfig,
 import { DEFAULT_PROVIDER_ID } from "../lib/types";
 import { useKeyboardNav } from "./useKeyboardNav";
 import { useTauriListen } from "./useTauriListen";
-import { KEYS, loadLastModel, normalizeModelPathKey, readStorage, saveLastModel, writeStorage } from "../lib/storage";
+import { KEYS, loadLastModel, normalizeModelPathKey, readStorage, saveLastModel, subscribeStorage, writeStorage } from "../lib/storage";
 import { dispatchAppEvent, EVENTS } from "../lib/events";
 import { bootstrapFitScanCache } from "../lib/fitScanSessionStore";
 import {
@@ -629,19 +629,18 @@ export function useModelCatalog({
   }, [fitProviderId, reloadFitScanCache]);
 
   useEffect(() => {
-    const onProviderChanged = (e: Event) => {
-      const detail = (e as CustomEvent<{ providerId?: string }>).detail;
-      const next = detail?.providerId || readStorage(KEYS.lastProvider) || DEFAULT_PROVIDER_ID;
+    const onProviderChanged = () => {
+      const next = readStorage(KEYS.lastProvider) || DEFAULT_PROVIDER_ID;
       setFitProviderId(next);
     };
     const onFitCacheChanged = () => {
       const pid = readStorage(KEYS.lastProvider) || DEFAULT_PROVIDER_ID;
       void reloadFitScanCache(pid);
     };
-    window.addEventListener(EVENTS.providerChanged, onProviderChanged);
+    const unsubProvider = subscribeStorage(KEYS.lastProvider, onProviderChanged);
     window.addEventListener(EVENTS.fitScanCacheChanged, onFitCacheChanged);
     return () => {
-      window.removeEventListener(EVENTS.providerChanged, onProviderChanged);
+      unsubProvider();
       window.removeEventListener(EVENTS.fitScanCacheChanged, onFitCacheChanged);
     };
   }, [reloadFitScanCache]);

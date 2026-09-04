@@ -18,11 +18,12 @@ import {
   loadPowerUserState,
   savePowerUserState,
   loadConfigDevPreviewAsUser,
+  KEYS,
+  subscribeStorage,
   type PowerUserState,
 } from "../lib/storage";
 import {
   dispatchAppEvent,
-  dispatchPowerUserChanged,
   EVENTS,
 } from "../lib/events";
 import type { SetupGuideState } from "../hooks/useSetupGuide";
@@ -79,9 +80,7 @@ export default function ConfigPage({
   }, [externalProviders]);
 
   useEffect(() => {
-    const handler = () => setPowerUserState(loadPowerUserState());
-    window.addEventListener(EVENTS.powerUserChanged, handler);
-    return () => window.removeEventListener(EVENTS.powerUserChanged, handler);
+    return subscribeStorage(KEYS.powerUser, () => setPowerUserState(loadPowerUserState()));
   }, []);
 
   useEffect(() => {
@@ -101,7 +100,6 @@ export default function ConfigPage({
     setPowerUserState(prev => {
       const next = cyclePowerUserState(prev);
       savePowerUserState(next);
-      dispatchPowerUserChanged();
       return next;
     });
   }, []);

@@ -37,6 +37,8 @@ import {
   saveStartupUpdatesCache,
   loadHwMonitorOpen,
   loadExtrasSubTab,
+  KEYS,
+  subscribeStorage,
   type ExtrasSubTab,
 } from "./lib/storage";
 import { dispatchAppEvent, EVENTS, consumePendingConfigSubTab, consumePendingExtrasSubTab, type NavigateConfigDetail, type NavigateExtrasDetail } from "./lib/events";
@@ -159,12 +161,9 @@ function App() {
   const [hwMonitorOpen, setHwMonitorOpen] = useState(() => loadHwMonitorOpen());
 
   useEffect(() => {
-    const onHwMonitor = (e: Event) => {
-      const open = (e as CustomEvent<{ open?: boolean }>).detail?.open;
-      setHwMonitorOpen(typeof open === "boolean" ? open : loadHwMonitorOpen());
-    };
-    window.addEventListener(EVENTS.hwMonitorOpenChanged, onHwMonitor);
-    return () => window.removeEventListener(EVENTS.hwMonitorOpenChanged, onHwMonitor);
+    return subscribeStorage(KEYS.hwMonitorOpen, () => {
+      setHwMonitorOpen(loadHwMonitorOpen());
+    });
   }, []);
   const setupGuide = useSetupGuide({ models, catalogLoaded, batchScanState });
   const setupActiveRef = useRef(setupGuide.active);
@@ -184,9 +183,6 @@ function App() {
 
   useEffect(() => {
     const handler = () => setIsPowerUser(isPowerUserActive(loadPowerUserState()));
-    window.addEventListener("storage", handler);
-    const powerUserHandler = () => requestAnimationFrame(handler);
-    window.addEventListener(EVENTS.powerUserChanged, powerUserHandler);
     const navHandler = () => {
       if (setupActiveRef.current) return;
       setActiveTab("stack");
@@ -201,13 +197,13 @@ function App() {
       if (sub) setExtrasSubTab(sub);
     };
     const modelHubNavHandler = () => setActiveTab("modelhub");
+    const unsubPowerUser = subscribeStorage(KEYS.powerUser, () => requestAnimationFrame(handler));
     window.addEventListener(EVENTS.navigateStack, navHandler);
     window.addEventListener(EVENTS.navigateCatalog, catalogNavHandler);
     window.addEventListener(EVENTS.navigateExtras, extrasNavHandler);
     window.addEventListener(EVENTS.navigateModelHub, modelHubNavHandler);
     return () => {
-      window.removeEventListener("storage", handler);
-      window.removeEventListener(EVENTS.powerUserChanged, powerUserHandler);
+      unsubPowerUser();
       window.removeEventListener(EVENTS.navigateStack, navHandler);
       window.removeEventListener(EVENTS.navigateCatalog, catalogNavHandler);
       window.removeEventListener(EVENTS.navigateExtras, extrasNavHandler);

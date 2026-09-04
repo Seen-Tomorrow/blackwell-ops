@@ -3,7 +3,6 @@
  *
  * | Event | Purpose |
  * |-------|---------|
- * | BlackOps-power-user-changed | POWER USER toggle synced across Layout / Config / App |
  * | BlackOps-reload-providers | Refetch provider list from Rust after config save |
  * | BlackOps-param-config-changed | Param catalog/count changed; reload overrides |
  * | BlackOps-navigate-stack | Switch to ENGINES tab (GPU topo click-through) |
@@ -24,7 +23,6 @@
  * | BlackOps-reset-setup-guide | Clear onboarding keys and replay welcome/guide in-app |
  * | BlackOps-show-all-hidden-params | CONFIG footer — unhide all hidden param rows (current provider) |
  * | BlackOps-local-storage-cleared | All `BlackOps-*` keys removed (before optional reload) |
- * | BlackOps-provider-changed | Engine panel provider pill changed — catalog FIT cache refresh |
  * | BlackOps-fit-scan-cache-changed | FIT library partition updated — refresh forecast points |
  */
 
@@ -44,7 +42,6 @@ export type NavigateConfigDetail = {
 };
 
 export const EVENTS = {
-  powerUserChanged: `${STORAGE_PREFIX}power-user-changed`,
   reloadProviders: `${STORAGE_PREFIX}reload-providers`,
   paramConfigChanged: `${STORAGE_PREFIX}param-config-changed`,
   navigateStack: `${STORAGE_PREFIX}navigate-stack`,
@@ -64,10 +61,7 @@ export const EVENTS = {
   resetSetupGuide: `${STORAGE_PREFIX}reset-setup-guide`,
   showAllHiddenParams: `${STORAGE_PREFIX}show-all-hidden-params`,
   localStorageCleared: `${STORAGE_PREFIX}local-storage-cleared`,
-  providerChanged: `${STORAGE_PREFIX}provider-changed`,
   fitScanCacheChanged: `${STORAGE_PREFIX}fit-scan-cache-changed`,
-  /** Config panel HW monitor open — enables CPU live polling outside TELEMETRY tab. */
-  hwMonitorOpenChanged: `${STORAGE_PREFIX}hw-monitor-open-changed`,
   /** Monitor focus mode — fusion + HW only chrome hide. */
   monitorFocusChanged: `${STORAGE_PREFIX}monitor-focus-changed`,
 
@@ -217,9 +211,6 @@ export function dispatchNavigateModelHub(): void {
   dispatchAppEvent(EVENTS.navigateModelHub);
 }
 
-export function dispatchPowerUserChanged(): void {
-  dispatchAppEvent(EVENTS.powerUserChanged);
-}
 
 /**
  * Full first-run replay — same as CONFIG → RECOVERY → RESET CONFIG.

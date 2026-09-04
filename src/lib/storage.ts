@@ -48,7 +48,6 @@ import type {
  * | BlackOps-startup-updates | JSON | Cached startup update check results |
  * | BlackOps-fusion-hero-tps | live \| avg | Fusion hero TPS display mode |
  * | BlackOps-fusion-log-verbosity | 3 \| 4 | Engine `-lv` at launch (default 3; 4 = full belt debug) |
- * | BlackOps-fusion-bench-tray | (legacy, purged) | Session-only bench tray — key removed, always stowed on load |
  * | BlackOps-config-param-legend | open \| stowed | CONFIG PARAMETERS editor legend panel |
  * | BlackOps-display-texture | clean \| dotted | Display texture cycle |
  * | BlackOps-industrial-bezel-texture | sandblast \| diamond \| brush | Dark-theme gunmetal bezel pattern |
@@ -77,6 +76,7 @@ import type {
  * | Key | Notes |
  * |-----|-------|
  * | blackops-phosphor-theme | Superseded by BlackOps-app-theme |
+ * | BlackOps-fusion-bench-tray | Tray open/stowed is session memory; knobs stay in BlackOps-bench-controls |
  */
 
 export const STORAGE_PREFIX = "BlackOps-" as const;
@@ -168,7 +168,6 @@ export const KEYS = {
   fusionHeroTpsMode: `${STORAGE_PREFIX}fusion-hero-tps`,
   /** Engine launch `-lv` (3 = product timing belt, 4 = full metadata belt). */
   fusionLogVerbosity: `${STORAGE_PREFIX}fusion-log-verbosity`,
-  fusionBenchTray: `${STORAGE_PREFIX}fusion-bench-tray`,
   /** Fusion display: single pane vs dual BRAIN+WORKER panes. */
   fusionDisplayMode: `${STORAGE_PREFIX}fusion-display-mode`,
   /** Dual fusion pane orientation: side | stack. */
@@ -875,11 +874,11 @@ export function foundryLastRefreshKey(providerSignature: string): string {
   return `${STORAGE_PREFIX}foundry-last-refresh:${providerSignature}`;
 }
 
-/** Keys removed on boot — superseded or abandoned. */
 const STALE_STORAGE_KEYS = [
   "blackops-phosphor-theme",
   `${STORAGE_PREFIX}ctx-slider-variant`,
   `${STORAGE_PREFIX}brand-logo`,
+  `${STORAGE_PREFIX}fusion-bench-tray`,
 ] as const;
 
 // ── Low-level IO ───────────────────────────────────────────────────────────
@@ -892,9 +891,32 @@ export function readStorage(key: string): string | null {
   }
 }
 
+const storageListeners = new Map<string, Set<() => void>>();
+
+function notifyStorage(key: string): void {
+  const set = storageListeners.get(key);
+  if (!set || set.size === 0) return;
+  for (const cb of [...set]) cb();
+}
+
+/** Same-window subscription after `writeStorage` / `removeStorage` / `writeJsonStorage`. */
+export function subscribeStorage(key: string, listener: () => void): () => void {
+  let set = storageListeners.get(key);
+  if (!set) {
+    set = new Set();
+    storageListeners.set(key, set);
+  }
+  set.add(listener);
+  return () => {
+    set!.delete(listener);
+    if (set!.size === 0) storageListeners.delete(key);
+  };
+}
+
 export function writeStorage(key: string, value: string): void {
   try {
     localStorage.setItem(key, value);
+    notifyStorage(key);
   } catch {
     // ignore quota errors
   }
@@ -906,6 +928,7 @@ export function removeStorage(key: string): void {
   } catch {
     // ignore
   }
+  notifyStorage(key);
 }
 
 /** All registry keys currently in localStorage (static + dynamic `BlackOps-*` namespaces). */
@@ -939,9 +962,9 @@ export function readJsonStorage<T>(key: string): T | null {
 
 export function writeJsonStorage(key: string, value: unknown): void {
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    writeStorage(key, JSON.stringify(value));
   } catch {
-    // ignore quota errors
+    // ignore
   }
 }
 
@@ -1064,18 +1087,6 @@ export function saveFusionLogVerbosity(level: FusionLogVerbosity): void {
   writeStorage(KEYS.fusionLogVerbosity, String(level === 4 ? 4 : 3));
 }
 
-export type FusionBenchTrayState = "open" | "stowed";
-
-/** Bench tray is session-only — always stowed; purges any legacy LS key. */
-export function loadFusionBenchTray(): FusionBenchTrayState {
-  removeStorage(KEYS.fusionBenchTray);
-  return "stowed";
-}
-
-/** Bench tray is session-only — never persists open/stowed. */
-export function saveFusionBenchTray(_state: FusionBenchTrayState): void {
-  removeStorage(KEYS.fusionBenchTray);
-}
 
 export type FusionDisplayMode = "single" | "dual";
 export type FusionDualOrient = "side" | "stack";

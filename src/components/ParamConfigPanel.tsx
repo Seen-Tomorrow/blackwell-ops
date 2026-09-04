@@ -36,6 +36,8 @@ import {
   resolveGroupOrder,
   removeStorage,
   writeJsonStorage,
+  KEYS,
+  subscribeStorage,
   type PowerUserState,
 } from "../lib/storage";
 import {
@@ -117,9 +119,7 @@ export default function ParamConfigPanel({
   const isDevActor = configActor === "dev";
 
   useEffect(() => {
-    const handler = () => setPowerUserState(loadPowerUserState());
-    window.addEventListener(EVENTS.powerUserChanged, handler);
-    return () => window.removeEventListener(EVENTS.powerUserChanged, handler);
+    return subscribeStorage(KEYS.powerUser, () => setPowerUserState(loadPowerUserState()));
   }, [setPowerUserState]);
 
   // ── Refresh providers from Rust after provider switch ──────────────
