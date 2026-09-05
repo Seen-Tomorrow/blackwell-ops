@@ -135,11 +135,20 @@ function startProxy() {
 
     proxy.on("upgrade", (req, clientSocket, head) => {
       clientSocket.on("error", () => clientSocket.destroy());
-      const upstream = net.connect({ host: HOST, port: INTERNAL_PORT }, () => {
-        upstream.on("error", () => {
+      const upstream = net.connect({ host: HOST, port: INTERNAL_PORT });
+      // Attach before connect: ECONNREFUSED fires before the connect callback
+      // runs, so a handler attached inside it would never see the error and the
+      // unhandled 'error' event would kill the whole warmup process.
+      upstream.on("error", (err) => {
+        if (!clientSocket.destroyed) {
+          try {
+            clientSocket.write("HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+          } catch {}
           clientSocket.destroy();
-          upstream.destroy();
-        });
+        }
+        upstream.destroy();
+      });
+      upstream.on("connect", () => {
         const reqLine = `${req.method} ${req.url} HTTP/1.1\r\n`;
         upstream.write(`${reqLine}${formatHeaders(req.headers)}\r\n\r\n`);
         upstream.pipe(clientSocket);

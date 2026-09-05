@@ -80,6 +80,10 @@ export default defineConfig(async () => ({
         "**/llama.cpp/**",
         "**/node_modules/**",
         "**/.majestic-out/**",
+        // zg (zvec-grep) daemon holds RocksDB LOCK files here with a share mode
+        // that makes fs.watch fail with EBUSY on Windows. chokidar only
+        // suppresses EPERM/EACCES — an EBUSY watcher error kills the dev server.
+        "**/.zvec-grep/**",
         "**/*.exe",
         "**/*.dll",
         "**/*.7z",
