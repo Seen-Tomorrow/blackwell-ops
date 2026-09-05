@@ -397,6 +397,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const aliasInitializedRef = useRef<{ modelPath: string; done: boolean }>({ modelPath: "", done: false });
   const lastLaunchAtRef = useRef(0);
   const [launchAck, setLaunchAck] = useState(false);
+  const [nsysProfileArmed, setNsysProfileArmed] = useState(false);
   const launchAckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [selectedBinaryProfile, setSelectedBinaryProfile] = useState<EnvProfile>(DEFAULT_BINARY_PROFILE);
@@ -415,6 +416,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       }
     })();
     return () => { mounted = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!isDevBuild()) return;
+    void invoke<{ armed?: boolean }>("nsys_profile_status")
+      .then((s) => setNsysProfileArmed(Boolean(s.armed)))
+      .catch(() => {});
   }, []);
 
   const [showEngineCatalogSearch, setShowEngineCatalogSearch] = useState(false);
@@ -2081,17 +2089,15 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     });
   }, [buildCurrentLaunchConfig, effectiveBackendType]);
 
-  const handleOpenNsysProfileCmd = useCallback(() => {
-    const fullConfig = buildCurrentLaunchConfig();
-    if (!fullConfig) return;
-    void invoke<string>("open_nsys_profile_cmd", {
-      config: fullConfig,
-      providerId: effectiveBackendType,
-    }).catch((err: unknown) => {
-      const msg = err instanceof Error ? err.message : String(err);
-      dispatchAppEvent(EVENTS.launchError, { message: `Nsight profile: ${msg}` });
-    });
-  }, [buildCurrentLaunchConfig, effectiveBackendType]);
+  const handleToggleNsysProfile = useCallback(() => {
+    const next = !nsysProfileArmed;
+    void invoke<boolean>("set_nsys_profile_armed", { armed: next })
+      .then((armed) => setNsysProfileArmed(armed))
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        dispatchAppEvent(EVENTS.launchError, { message: `Nsight profile: ${msg}` });
+      });
+  }, [nsysProfileArmed]);
   const findModelForSeat = useCallback(
     (seat: LaunchSeat): ModelEntry | null => {
       const want = normalizeModelPath(seat.modelPath);
@@ -3403,7 +3409,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           isDev={isDevBuild()}
           onOpenNobsproofCmd={handleOpenNobsproofCmd}
           onOpenLlamaBenchCmd={handleOpenLlamaBenchCmd}
-          onOpenNsysProfileCmd={handleOpenNsysProfileCmd}
+          onToggleNsysProfile={handleToggleNsysProfile}
+          nsysProfileArmed={nsysProfileArmed}
           launchDisabled={launchDisabled}
           replaceLaunchConfirmOpen={replaceLaunchConfirmOpen}
           onCancelReplaceLaunch={() => setReplaceLaunchConfirmOpen(false)}
@@ -3506,7 +3513,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 isDev={isDevBuild()}
                 onOpenNobsproofCmd={handleOpenNobsproofCmd}
                 onOpenLlamaBenchCmd={handleOpenLlamaBenchCmd}
-                onOpenNsysProfileCmd={handleOpenNsysProfileCmd}
+                onToggleNsysProfile={handleToggleNsysProfile}
+                nsysProfileArmed={nsysProfileArmed}
                 launchDisabled={launchDisabled}
                 replaceLaunchConfirmOpen={replaceLaunchConfirmOpen}
                 onCancelReplaceLaunch={() => setReplaceLaunchConfirmOpen(false)}

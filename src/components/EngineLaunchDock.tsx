@@ -52,7 +52,8 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
     isDev,
     onOpenNobsproofCmd,
     onOpenLlamaBenchCmd,
-    onOpenNsysProfileCmd,
+    onToggleNsysProfile,
+    nsysProfileArmed = false,
     launchDisabled,
     replaceLaunchConfirmOpen,
     onCancelReplaceLaunch,
@@ -200,10 +201,13 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
           </button>
           <button
             type="button"
-            onClick={onOpenNsysProfileCmd}
-            disabled={launchDisabled}
-            className="config-nobsproof-btn absolute bottom-1 right-[7rem] z-20 px-1.5 py-0.5 type-micro font-mono uppercase tracking-wider rounded-sm border disabled:opacity-40 disabled:cursor-not-allowed"
-            title="Nsight Systems — launch a FRESH engine under nsys with the exact app config + portable CUDA env (DEV). Nsight cannot attach to a running PID; stop the app engine first if VRAM is tight. Edit config/nsys/defaults.json for duration/traces."
+            onClick={onToggleNsysProfile}
+            className={`config-nobsproof-btn absolute bottom-1 right-[7rem] z-20 px-1.5 py-0.5 type-micro font-mono uppercase tracking-wider rounded-sm border disabled:opacity-40 disabled:cursor-not-allowed${nsysProfileArmed ? " config-nobsproof-btn--on" : ""}`}
+            title={
+              nsysProfileArmed
+                ? "Nsight ON — next Launch wraps llama-server in nsys. Fusion/bench/stop stay in-app. Stop finalizes config/nsys/*.nsys-rep. Click to disarm."
+                : "Nsight OFF — click to arm. Next Launch wraps the engine in nsys (same slot, not an external CMD). Edit config/nsys/defaults.json for trace flags."
+            }
           >
             NSYS
           </button>
@@ -384,7 +388,8 @@ export interface EngineLaunchDockProps {
   isDev: boolean;
   onOpenNobsproofCmd: () => void;
   onOpenLlamaBenchCmd: () => void;
-  onOpenNsysProfileCmd: () => void;
+  onToggleNsysProfile: () => void;
+  nsysProfileArmed?: boolean;
   launchDisabled: boolean;
   replaceLaunchConfirmOpen: boolean;
   onCancelReplaceLaunch: () => void;

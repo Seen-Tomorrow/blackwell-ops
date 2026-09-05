@@ -1512,6 +1512,12 @@
   color: #fff;
 }
 
+.config-nobsproof-btn--on {
+  border-color: color-mix(in srgb, var(--dev-danger) 90%, transparent);
+  background: color-mix(in srgb, var(--dev-danger) 38%, transparent);
+  color: #fff;
+}
+
 .config-mtp-launch-warn {
   border: 1px solid color-mix(in srgb, #ffb800 30%, transparent);
   background: color-mix(in srgb, #ffb800 8%, transparent);

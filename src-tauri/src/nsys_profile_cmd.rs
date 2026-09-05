@@ -1,14 +1,13 @@
-//! External `nsys profile` launcher — NoBSproof-style, isolated from fusion core.
+//! Nsight Systems wrap for engine launches.
 //!
-//! Reproduces the *exact* engine launch argv (same `assemble_launch_command` path as the
-//! real spawn) under Nsight Systems, inside the isolated portable-CUDA env from
-//! `/toolchain`, and opens an external CMD window. This is the profiling counterpart to
-//! the NoBSproof CMD button: if it profiles, the app's flags and env are real.
+//! Primary path (DEV): NSYS dock toggle arms the next in-app `load_slot` spawn so
+//! `nsys profile -- <engine>` is the process we create. Fusion, bench, logs, and
+//! Stop stay on the same slot. `assemble_launch_command` is untouched.
+//!
+//! `open_nsys_profile_cmd` remains a NoBSproof-style CMD dump for argv inspection.
 //!
 //! Flags below were validated against the installed `nsys profile --help` (2026.1.3):
-//!   * **No `--attach`.** Nsight profiles a process tree it starts itself, so there is no
-//!     attach-to-running-PID path — the engine reloads (which also puts model load in the
-//!     timeline).
+//!   * **No `--attach`.** Nsight profiles a process tree it starts itself.
 //!   * **No `--cuda-api`, no `--nvtx` boolean**; NVTX is a `--trace=` value.
 //!   * **`osrt` is rejected** on this Windows build (Linux-only).
 //!   * **`--gpu-metrics-devices` needs elevation** on GB202 (`ERR_NVGPUCTRPERM`), so it is
@@ -18,6 +17,7 @@
 //! located from the host install, independent of the engine's isolated env.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::{Deserialize, Serialize};
 
@@ -28,6 +28,8 @@ use crate::output_console::{
     BlackwellOutputConsoleCategory, BlackwellOutputConsoleLineStyle,
 };
 use crate::types::EngineConfig;
+
+static NSYS_IN_APP_ARMED: AtomicBool = AtomicBool::new(false);
 
 /// User-editable capture knobs — mirrors the `llama-bench` `defaults.json` convention.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,6 +45,14 @@ pub struct NsysDefaults {
     /// Value for `--gpu-metrics-devices=`: `none` | `cuda-visible` | `all` | GPU id list.
     /// Requires elevation on Blackwell; `none` keeps the run unprivileged.
     pub gpu_metrics: String,
+    /// `--sample=`: `none` | `process-tree` | `system-wide`.
+    /// This Windows nsys requires admin for anything other than `none`.
+    pub sample: String,
+    /// `--backtrace=`: this Windows nsys only accepts `auto` | `none`.
+    pub backtrace: String,
+    /// `--cpuctxsw=`: `none` | `process-tree` | `system-wide`. Thread scheduling.
+    /// Same admin requirement as `--sample` on this Windows nsys.
+    pub cpu_ctxsw: String,
     /// Terminate the engine when the profiling session ends. nsys defaults this to `true`,
     /// which kills the server the moment recording stops.
     pub kill_on_exit: bool,
@@ -57,12 +67,16 @@ impl Default for NsysDefaults {
             // real bench against it. Recording is bounded by how long you let it run.
             duration_seconds: 0,
             extra_nsys_args: Vec::new(),
-            // Proven to collect without elevation. `wddm` and context-switch tracing exist
-            // but are dropped by nsys unless the CMD is elevated.
-            trace: "cuda,nvtx".to_string(),
+            // cuda only: llama NVTX floods the collector and CUDA events get dropped.
+            trace: "cuda".to_string(),
             // Rejected with ERR_NVGPUCTRPERM on GB202 unless elevated. Set to
             // "cuda-visible" and re-run from an admin CMD for the power/SM/DRAM timeline.
             gpu_metrics: "none".to_string(),
+            // CPU IP/ctxsw need admin on this Windows nsys. Elevating DEV produces
+            // 0-byte reports (nsys+ETW+CREATE_NO_WINDOW). Keep CUDA-only unprivileged.
+            sample: "none".to_string(),
+            backtrace: "auto".to_string(),
+            cpu_ctxsw: "none".to_string(),
             // Keep the profiled engine alive so the trace can be stopped on demand.
             kill_on_exit: false,
             output_dir: String::new(),
@@ -181,6 +195,138 @@ pub fn find_cupti_lib_dir() -> Option<PathBuf> {
     found.into_iter().rev().next()
 }
 
+pub fn nsys_in_app_armed() -> bool {
+    cfg!(debug_assertions) && NSYS_IN_APP_ARMED.load(Ordering::Relaxed)
+}
+
+/// DEV: arm/disarm in-app nsys wrap for subsequent `load_slot` spawns.
+#[tauri::command]
+pub fn set_nsys_profile_armed(armed: bool) -> Result<bool, String> {
+    if !cfg!(debug_assertions) {
+        return Err("Nsight in-app wrap is available in DEV builds only.".into());
+    }
+    NSYS_IN_APP_ARMED.store(armed, Ordering::Relaxed);
+    Ok(armed)
+}
+
+/// Prepared `nsys profile -- <engine>` spawn. `None` when the dock toggle is off.
+pub struct InAppWrap {
+    pub nsys_exe: PathBuf,
+    pub args: Vec<String>,
+    pub cupti_dir: Option<PathBuf>,
+    path_override: Option<String>,
+    pub output_stem: PathBuf,
+}
+
+impl InAppWrap {
+    pub fn apply_env(&self, cmd: &mut std::process::Command) {
+        cmd.env("BLACKWELL_NSYS", "1");
+        if let Some(path) = &self.path_override {
+            cmd.env("PATH", path);
+        }
+    }
+}
+
+pub fn maybe_in_app_wrap(
+    engine_exe: &Path,
+    engine_args: &[String],
+    binary_profile: &str,
+    alias: &str,
+) -> Result<Option<InAppWrap>, String> {
+    if !nsys_in_app_armed() {
+        return Ok(None);
+    }
+
+    let defaults = load_or_seed_defaults()?;
+    let nsys_exe = find_nsys_exe()?;
+    let cupti_dir = find_cupti_lib_dir();
+
+    let out_root = if defaults.output_dir.trim().is_empty() {
+        nsys_dir()
+    } else {
+        PathBuf::from(defaults.output_dir.trim())
+    };
+    std::fs::create_dir_all(&out_root)
+        .map_err(|e| format!("Failed to create {}: {e}", out_root.display()))?;
+    let output_stem = out_root.join(rep_stem(alias));
+
+    let args = build_profile_args(&defaults, &output_stem, engine_exe, engine_args);
+    let trace_cmd = engine_utils::format_cmd_line(&nsys_exe, &args);
+    let _ = write_latest_meta(
+        &nsys_exe,
+        &trace_cmd,
+        engine_args,
+        &defaults,
+        cupti_dir.as_deref(),
+    );
+
+    let path_override = if let Some(dir) = cupti_dir.as_ref() {
+        let cuda = foundry_toolchain::portable_cuda_env_for_profile(binary_profile)?;
+        let scrubbed = foundry_toolchain::scrub_foreign_cuda_from_path(
+            &std::env::var("PATH").unwrap_or_default(),
+        );
+        let mut path = if scrubbed.is_empty() {
+            cuda.path_prefix
+        } else {
+            format!("{};{}", cuda.path_prefix, scrubbed)
+        };
+        path = format!("{path};{}", dir.to_string_lossy());
+        Some(path)
+    } else {
+        None
+    };
+
+    Ok(Some(InAppWrap {
+        nsys_exe,
+        args,
+        cupti_dir,
+        path_override,
+        output_stem,
+    }))
+}
+
+/// First descendant of `root_pid` whose image name matches `exe_name` (case-insensitive).
+pub fn find_descendant_named(root_pid: u32, exe_name: &str) -> Option<u32> {
+    #[cfg(not(windows))]
+    {
+        let _ = (root_pid, exe_name);
+        None
+    }
+    #[cfg(windows)]
+    {
+        use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
+
+        let mut sys = System::new();
+        sys.refresh_processes_specifics(
+            ProcessesToUpdate::All,
+            true,
+            ProcessRefreshKind::nothing().with_exe(sysinfo::UpdateKind::OnlyIfNotSet),
+        );
+        let want = exe_name.to_ascii_lowercase();
+        let mut stack = vec![root_pid];
+        let mut seen = std::collections::HashSet::new();
+        while let Some(pid) = stack.pop() {
+            if !seen.insert(pid) {
+                continue;
+            }
+            for (child_pid, proc) in sys.processes() {
+                let Some(parent) = proc.parent() else {
+                    continue;
+                };
+                if parent.as_u32() != pid {
+                    continue;
+                }
+                let c = child_pid.as_u32();
+                if proc.name().to_string_lossy().eq_ignore_ascii_case(&want) {
+                    return Some(c);
+                }
+                stack.push(c);
+            }
+        }
+        None
+    }
+}
+
 #[cfg(windows)]
 fn batch_quote(value: &str) -> String {
     format!("\"{}\"", value.replace('"', "\"\""))
@@ -206,8 +352,30 @@ fn nsys_common_args(defaults: &NsysDefaults, rep_stem: &Path) -> Vec<String> {
         a.push(format!("--gpu-metrics-devices={gpu_metrics}"));
     }
 
-    // CPU sampling off: chasing GPU idle gaps; sampling inflates the rep and wants admin.
-    a.push("--sample=none".to_string());
+    // CPU IP samples + ctxsw: the host side of GPU-idle gaps. This Windows nsys
+    // (2026.1.3) requires admin for process-tree / system-wide; `none` is the
+    // unprivileged fallback. `--backtrace=` only accepts auto|none here (no fp/lbr).
+    let sample = defaults.sample.trim();
+    a.push(format!(
+        "--sample={}",
+        if sample.is_empty() { "process-tree" } else { sample }
+    ));
+    let backtrace = defaults.backtrace.trim();
+    if !sample.eq_ignore_ascii_case("none") {
+        a.push(format!(
+            "--backtrace={}",
+            if backtrace.is_empty() { "auto" } else { backtrace }
+        ));
+    }
+    let cpu_ctxsw = defaults.cpu_ctxsw.trim();
+    a.push(format!(
+        "--cpuctxsw={}",
+        if cpu_ctxsw.is_empty() {
+            "process-tree"
+        } else {
+            cpu_ctxsw
+        }
+    ));
     a.push("--stats=false".to_string());
 
     // 0 keeps the flag out entirely: nsys' own default is 0 = "until the target exits".
@@ -393,12 +561,21 @@ fn write_latest_meta(
     Ok(path)
 }
 
-fn rep_stem() -> String {
+fn rep_stem(alias: &str) -> String {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    format!("blackwell-{now}")
+    let slug: String = alias
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+        .take(40)
+        .collect();
+    if slug.is_empty() {
+        format!("blackwell-{now}")
+    } else {
+        format!("blackwell-{now}-{slug}")
+    }
 }
 
 /// DEV: launch a *fresh* engine under Nsight Systems with the exact app launch config.
@@ -442,7 +619,7 @@ pub async fn open_nsys_profile_cmd(
     };
     std::fs::create_dir_all(&out_root)
         .map_err(|e| format!("Failed to create {}: {e}", out_root.display()))?;
-    let rep = out_root.join(rep_stem());
+    let rep = out_root.join(rep_stem(&config.alias));
 
     let nsys_args =
         build_profile_args(&defaults, &rep, &assembled.binary_path, &assembled.cmd_args);
@@ -511,6 +688,7 @@ pub fn nsys_profile_status() -> Result<serde_json::Value, String> {
     let nsys = find_nsys_exe();
     let cupti = find_cupti_lib_dir();
     Ok(serde_json::json!({
+        "armed": nsys_in_app_armed(),
         "nsys_exe": nsys.as_ref().ok().map(|p| p.to_string_lossy().to_string()),
         "nsys_error": nsys.as_ref().err().cloned(),
         "cupti_dir": cupti.map(|p| p.to_string_lossy().to_string()),
@@ -562,17 +740,32 @@ mod tests {
     fn default_flags_are_elevation_free() {
         let d = NsysDefaults::default();
         let joined = build_profile_args(&d, &stem(), &exe(), &[]).join(" ");
-        assert!(joined.contains("--trace=cuda,nvtx"), "{joined}");
-        assert!(joined.contains("--sample=none"));
+        assert!(joined.contains("--trace=cuda"), "{joined}");
+        assert!(!joined.contains("nvtx"), "{joined}");
         assert!(joined.contains("--kill=false"), "{joined}");
-        // Default is open-ended: no timer, so the engine stays up until manually stopped.
         assert!(!joined.contains("--duration"), "{joined}");
-        // osrt is rejected on Windows builds; attach/--cuda-api do not exist.
         assert!(!joined.contains("osrt"), "{joined}");
         assert!(!joined.contains("--attach"), "{joined}");
         assert!(!joined.contains("--cuda-api"), "{joined}");
-        // gpu metrics off by default (needs admin on GB202).
         assert!(!joined.contains("--gpu-metrics-devices"), "{joined}");
+        // CPU rows need admin on this nsys; elevating the app yields 0-byte reports.
+        assert!(joined.contains("--sample=none"), "{joined}");
+        assert!(!joined.contains("--backtrace="), "{joined}");
+        assert!(joined.contains("--cpuctxsw=none"), "{joined}");
+    }
+
+    #[test]
+    fn cpu_sample_can_be_opted_in() {
+        let d = NsysDefaults {
+            sample: "process-tree".into(),
+            backtrace: "auto".into(),
+            cpu_ctxsw: "process-tree".into(),
+            ..Default::default()
+        };
+        let joined = build_profile_args(&d, &stem(), &exe(), &[]).join(" ");
+        assert!(joined.contains("--sample=process-tree"), "{joined}");
+        assert!(joined.contains("--backtrace=auto"), "{joined}");
+        assert!(joined.contains("--cpuctxsw=process-tree"), "{joined}");
     }
 
     #[test]
@@ -652,5 +845,12 @@ mod tests {
         assert!(line.contains("\"profile\""), "{line}");
         // Target clause in order, exe first after the separator, spaced model path quoted.
         assert!(line.contains(r#""--" "C:\eng\llama-server.exe" "--model" "C:\My Models\UD-Q4_K_XL.gguf" "--port" "8080""#), "{line}");
+    }
+
+    #[test]
+    fn in_app_wrap_stays_off_until_armed() {
+        NSYS_IN_APP_ARMED.store(false, Ordering::Relaxed);
+        let got = maybe_in_app_wrap(&exe(), &[], "frontier", "test").unwrap();
+        assert!(got.is_none());
     }
 }

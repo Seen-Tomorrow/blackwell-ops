@@ -304,7 +304,27 @@ impl EngineStack {
             arc
         };
 
-        let mut cmd = std::process::Command::new(binary_path);
+        let profile_for_toolchain = if config.binary_profile.is_empty() {
+            crate::config::DEFAULT_BINARY_PROFILE
+        } else {
+            config.binary_profile.as_str()
+        };
+        let nsys_wrap = crate::nsys_profile_cmd::maybe_in_app_wrap(
+            binary_path,
+            &cmd_args,
+            profile_for_toolchain,
+            &config.alias,
+        )?;
+
+        let mut cmd = if let Some(wrap) = &nsys_wrap {
+            let mut c = std::process::Command::new(&wrap.nsys_exe);
+            c.args(&wrap.args);
+            c
+        } else {
+            let mut c = std::process::Command::new(binary_path);
+            c.args(&cmd_args);
+            c
+        };
 
         // Set CWD to model directory so bare filenames (mmproj, etc.) resolve correctly
         if let Some(model_dir) = std::path::Path::new(&config.model_path).parent() {
@@ -316,7 +336,6 @@ impl EngineStack {
         // Do not CREATE_NEW_PROCESS_GROUP; engines join our kill-on-close job instead.
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         cmd.creation_flags(CREATE_NO_WINDOW)
-            .args(&cmd_args)
             .env("CUDA_VISIBLE_DEVICES", &gpu_mask)
             // Off when piped: ANSI colors add no value for log_hub and can confuse parsers.
             // (Console CMD can re-enable visually; we never attach a console.)
@@ -324,11 +343,6 @@ impl EngineStack {
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
-        let profile_for_toolchain = if config.binary_profile.is_empty() {
-            crate::config::DEFAULT_BINARY_PROFILE
-        } else {
-            config.binary_profile.as_str()
-        };
         crate::engine_utils::apply_cuda_toolchain_for_profile(&mut cmd, profile_for_toolchain)?;
         // MSVC C runtime (vcruntime140 / vcruntime140_1 / msvcp140) — imported by every
         // engine binary. App-local copies beside the exe win the OS search order; if the
@@ -339,17 +353,35 @@ impl EngineStack {
             profile_for_toolchain,
             std::path::Path::new(&binary_path).parent(),
         );
+        if let Some(wrap) = &nsys_wrap {
+            wrap.apply_env(&mut cmd);
+        }
 
+        let spawn_label = nsys_wrap
+            .as_ref()
+            .map(|w| w.nsys_exe.display().to_string())
+            .unwrap_or_else(|| binary_path.display().to_string());
         let mut child = match cmd.spawn() {
             Ok(c) => c,
-            Err(e) => return Err(format!("Failed to spawn {}: {}", binary_path.display(), e)),
+            Err(e) => return Err(format!("Failed to spawn {spawn_label}: {e}")),
         };
 
-        let pid = child.id();
-        // OS process affinity (Task Manager / PPM). llama --cpu-mask only pins ggml workers.
-        crate::cpu_topology::apply_process_affinity_from_args(pid, &cmd_args);
-        // OS safety net: job close on app death kills this engine even if we skip explicit teardown.
-        crate::engine_job::assign_engine_to_job(pid, &config.alias, slot_idx, config.port);
+        let spawned_pid = child.id();
+        let wrapping = nsys_wrap.is_some();
+        let mut pid = spawned_pid;
+        if !wrapping {
+            // OS process affinity (Task Manager / PPM). llama --cpu-mask only pins ggml workers.
+            crate::cpu_topology::apply_process_affinity_from_args(pid, &cmd_args);
+            // OS safety net: job close on app death kills this engine even if we skip explicit teardown.
+            crate::engine_job::assign_engine_to_job(pid, &config.alias, slot_idx, config.port);
+        } else {
+            crate::engine_job::assign_engine_to_job(
+                spawned_pid,
+                &config.alias,
+                slot_idx,
+                config.port,
+            );
+        }
         let launch_cmd = crate::engine_utils::format_cmd_line(binary_path, &cmd_args);
         crate::session_log::record_launch(
             slot_idx,
@@ -358,6 +390,22 @@ impl EngineStack {
             config.port,
             &launch_cmd,
         );
+        if let Some(wrap) = &nsys_wrap {
+            crate::output_console::emit_blackwell_output_console_engines_line(
+                &format!(
+                    "[{}] Nsight wrap pid={} → {}.nsys-rep (stop the engine to finalize)",
+                    config.alias,
+                    spawned_pid,
+                    wrap.output_stem.display()
+                ),
+                crate::output_console::BlackwellOutputConsoleLineStyle::Command,
+            );
+            if wrap.cupti_dir.is_none() {
+                crate::output_console::emit_blackwell_output_console_debug_line(
+                    "[nsys] CUPTI lib64 not found — trace may contain no CUDA activity".to_string(),
+                );
+            }
+        }
         crate::fusion::registry::register_slot_adapter(slot_idx, fusion_adapter);
 
         let stderr = child.stderr.take().ok_or_else(|| {
@@ -443,6 +491,30 @@ impl EngineStack {
                 return Err(format!(
                     "Engine crashed immediately with exit code {}",
                     crate::engine_utils::describe_process_exit_code(exit_code)
+                ));
+            }
+        }
+
+        if wrapping {
+            let exe_name = binary_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("llama-server.exe");
+            let mut found = None;
+            for _ in 0..20 {
+                found = crate::nsys_profile_cmd::find_descendant_named(spawned_pid, exe_name);
+                if found.is_some() {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+            if let Some(engine_pid) = found {
+                pid = engine_pid;
+                crate::cpu_topology::apply_process_affinity_from_args(pid, &cmd_args);
+                crate::engine_job::assign_engine_to_job(pid, &config.alias, slot_idx, config.port);
+            } else {
+                crate::output_console::emit_blackwell_output_console_debug_line(format!(
+                    "[nsys] engine PID not found under nsys pid={spawned_pid}; stop will target nsys"
                 ));
             }
         }

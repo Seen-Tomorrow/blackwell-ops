@@ -337,6 +337,7 @@ async fn main() {
             llama_bench_cmd::open_llama_bench_cmd,
             nsys_profile_cmd::open_nsys_profile_cmd,
             nsys_profile_cmd::nsys_profile_status,
+            nsys_profile_cmd::set_nsys_profile_armed,
             pi_code::pi_code_status,
             pi_code::pi_code_accept_disclaimer,
             pi_code::pi_code_set_project,
