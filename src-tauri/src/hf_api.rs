@@ -700,6 +700,9 @@ pub async fn check_catalog_hf_updates(
     let client = build_client(hf_token);
 
     let mut by_repo: HashMap<String, Vec<&ModelEntry>> = HashMap::new();
+    // The selected file even if it has no resolvable repo pairing (LM Studio /
+    // manual download) — so a single-model check still returns a verdict bubble.
+    let mut selected_unpaired: Option<&ModelEntry> = None;
     for entry in &catalog {
         if let Some(want) = only_path {
             if entry.path != want {
@@ -711,8 +714,16 @@ pub async fn check_catalog_hf_updates(
             .as_ref()
             .map(|h| h.hf_model_id.clone())
             .or_else(|| entry.hf_model_id.clone());
-        let Some(repo_id) = repo_id else { continue };
+        let Some(repo_id) = repo_id else {
+            if only_path == Some(entry.path.as_str()) {
+                selected_unpaired = Some(entry);
+            }
+            continue;
+        };
         if !repo_id.contains('/') {
+            if only_path == Some(entry.path.as_str()) {
+                selected_unpaired = Some(entry);
+            }
             continue;
         }
         by_repo.entry(repo_id).or_default().push(entry);
@@ -761,10 +772,61 @@ pub async fn check_catalog_hf_updates(
         );
 
         for entry in entries {
+            let is_selected = only_path == Some(entry.path.as_str());
+            let push_verdict = |results: &mut Vec<CatalogUpdateEntry>,
+                                kind: QuantUpdateKind,
+                                remote_url: String,
+                                remote_total_size: u64,
+                                reason: String,
+                                no_remote: bool| {
+                results.push(CatalogUpdateEntry {
+                    path: entry.path.clone(),
+                    hf_model_id: repo_id.clone(),
+                    quant: entry.quant.clone(),
+                    has_update: kind != QuantUpdateKind::Current,
+                    kind,
+                    remote_url,
+                    remote_total_size,
+                    reason,
+                    no_remote,
+                });
+            };
+
             let Some(disk) = disk_results.iter().find(|d| d.quant_type == entry.quant) else {
+                if is_selected {
+                    push_verdict(
+                        &mut results,
+                        QuantUpdateKind::Current,
+                        String::new(),
+                        0,
+                        "Not paired — no Hub match for this quant".to_string(),
+                        true,
+                    );
+                    crate::output_console::emit_blackwell_output_console_utils_line(
+                        format!("[catalog-updates] {} {} → no-match", repo_id, entry.quant),
+                        crate::output_console::BlackwellOutputConsoleLineStyle::Warning,
+                    );
+                }
                 continue;
             };
             if disk.match_type == "none" || disk.match_type == "lfs" {
+                if is_selected {
+                    push_verdict(
+                        &mut results,
+                        QuantUpdateKind::Current,
+                        String::new(),
+                        0,
+                        "Not paired — no Hub match for this quant".to_string(),
+                        true,
+                    );
+                    crate::output_console::emit_blackwell_output_console_utils_line(
+                        format!(
+                            "[catalog-updates] {} {} → not paired ({})",
+                            repo_id, entry.quant, disk.match_type
+                        ),
+                        crate::output_console::BlackwellOutputConsoleLineStyle::Warning,
+                    );
+                }
                 continue;
             }
             let hf = hf_ggufs.iter().find(|g| g.r#type == entry.quant);
@@ -802,8 +864,23 @@ pub async fn check_catalog_hf_updates(
                 }
             };
             if kind == QuantUpdateKind::Current {
+                if is_selected {
+                    push_verdict(
+                        &mut results,
+                        QuantUpdateKind::Current,
+                        remote_url,
+                        remote_size,
+                        "Up to date — matches the Hub file".to_string(),
+                        false,
+                    );
+                    crate::output_console::emit_blackwell_output_console_utils_line(
+                        format!("[catalog-updates] {} {} → Current", repo_id, entry.quant),
+                        crate::output_console::BlackwellOutputConsoleLineStyle::Success,
+                    );
+                }
                 continue;
             }
+
             let reason = match kind {
                 QuantUpdateKind::Header => "Metadata / template only — small download".to_string(),
                 QuantUpdateKind::Full => "Weights differ — full re-download".to_string(),
@@ -825,7 +902,30 @@ pub async fn check_catalog_hf_updates(
                 remote_url,
                 remote_total_size: remote_size,
                 reason,
+                no_remote: false,
             });
+        }
+    }
+
+    // Selected file with no resolvable Hub pairing → explicit NOT PAIRED verdict
+    // (LM Studio / manual downloads have no hf_meta). Never leave the check silent.
+    if let Some(e) = selected_unpaired {
+        if !results.iter().any(|r| r.path == e.path) {
+            results.push(CatalogUpdateEntry {
+                path: e.path.clone(),
+                hf_model_id: String::new(),
+                quant: e.quant.clone(),
+                has_update: false,
+                kind: QuantUpdateKind::Current,
+                remote_url: String::new(),
+                remote_total_size: 0,
+                reason: "No Hugging Face pairing on this file".to_string(),
+                no_remote: true,
+            });
+            crate::output_console::emit_blackwell_output_console_utils_line(
+                format!("[catalog-updates] {} → not paired", e.quant),
+                crate::output_console::BlackwellOutputConsoleLineStyle::Warning,
+            );
         }
     }
 

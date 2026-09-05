@@ -594,7 +594,7 @@
   overflow: hidden;
 }
 
-.model-catalog-card > *:not(.model-card-draft-hatch) {
+.model-catalog-card > *:not(.model-card-draft-hatch):not(.model-card-check-bubble) {
   position: relative;
   z-index: 1;
 }
@@ -2423,6 +2423,105 @@
 
 .mcard-hf--full:hover {
   background: color-mix(in srgb, var(--theme-warn) 20%, transparent);
+}
+
+/* Transient update-check result bubble — floats over the card (never in flow).
+   Verdict-only bubbles fade after ~6s; actionable (update-available) bubbles stay
+   and expose an UPDATE button. */
+.model-card-check-bubble {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid;
+  font-family: ui-monospace, monospace;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px color-mix(in srgb, #000 40%, transparent);
+  pointer-events: none;
+  animation: model-card-check-bubble-fade 6s ease forwards;
+}
+
+.model-card-check-bubble__icon {
+  font-size: 9px;
+  line-height: 1;
+}
+
+/* Actionable bubble has an UPDATE button — keep it interactive and on-screen. */
+.model-card-check-bubble--actionable {
+  pointer-events: auto;
+  gap: 5px;
+  padding-right: 3px;
+  animation: model-card-check-bubble-in 0.18s ease both;
+}
+
+.model-card-check-bubble__btn {
+  font-family: ui-monospace, monospace;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 1px 5px;
+  border-radius: 2px;
+  border: 1px solid currentColor;
+  background: color-mix(in srgb, var(--theme-panel) 70%, transparent);
+  color: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.model-card-check-bubble__btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.model-card-check-bubble--current {
+  border-color: color-mix(in srgb, var(--theme-accent) 55%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 92%, var(--theme-accent));
+  color: var(--theme-accent-bright, var(--theme-accent));
+}
+
+.model-card-check-bubble--header {
+  border-color: color-mix(in srgb, var(--theme-info) 60%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 90%, var(--theme-info));
+  color: var(--theme-info);
+}
+
+.model-card-check-bubble--full {
+  border-color: color-mix(in srgb, var(--theme-warn) 60%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 90%, var(--theme-warn));
+  color: var(--theme-warn);
+}
+
+.model-card-check-bubble--none {
+  border-color: color-mix(in srgb, var(--theme-text-muted) 45%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 92%, transparent);
+  color: var(--theme-text-muted);
+}
+
+@keyframes model-card-check-bubble-fade {
+  0% { opacity: 0; transform: translateY(-3px); }
+  8% { opacity: 1; transform: translateY(0); }
+  80% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-2px); }
+}
+
+@keyframes model-card-check-bubble-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .model-card-check-bubble,
+  .model-card-check-bubble--actionable {
+    animation: none;
+  }
 }
 
 .mcard-params {

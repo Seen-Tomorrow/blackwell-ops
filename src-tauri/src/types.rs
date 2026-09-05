@@ -1045,5 +1045,12 @@ pub struct CatalogUpdateEntry {
     pub remote_total_size: u64,
     #[serde(default)]
     pub reason: String,
+
+    /// Set on a `Current` verdict that came from *no resolvable remote match*
+    /// (file not paired with a Hub repo / quant) — not a verified up-to-date.
+    /// Drives the card bubble: `false` → "UP TO DATE", `true` → "NOT PAIRED".
+    /// Omitted (undefined on the frontend) for Header/Full rows.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not", rename = "noRemote")]
+    pub no_remote: bool,
 }
 

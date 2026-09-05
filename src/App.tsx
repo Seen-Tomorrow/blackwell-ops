@@ -47,7 +47,7 @@ import { isSetupNavTabAllowed } from "./lib/setupGuide";
 
 import { BINARY_UPDATES_ENABLED } from "./lib/foundry_constants";
 import { getActiveStackSlots, isActiveEngineSlot, stopAllEngines } from "./lib/engineStack";
-import type { ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, UpdateOfferings } from "./lib/types";
+import type { ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, UpdateOfferings, CatalogUpdateEntry } from "./lib/types";
 
 export type Tab = "catalog" | "stack" | "extras" | "modelhub" | "logs" | "config";
 
@@ -77,8 +77,12 @@ function App() {
   const logSearchHitIndexRef = useRef(0);
 
   const [catalogError, setCatalogError] = useState<string | null>(null);
-  const [catalogHfUpdates, setCatalogHfUpdates] = useState<import("./lib/types").CatalogUpdateEntry[]>([]);
+  const [catalogHfUpdates, setCatalogHfUpdates] = useState<CatalogUpdateEntry[]>([]);
   const [catalogUpdatesBusy, setCatalogUpdatesBusy] = useState(false);
+  // Transient per-path result of the most recent check — drives the card bubble
+  // (UP TO DATE / NOT PAIRED / update found). Expires so it isn't sticky forever.
+  const [catalogCheckVerdicts, setCatalogCheckVerdicts] = useState<Record<string, CatalogUpdateEntry>>({});
+  const checkVerdictTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
   const [scanningPath, setScanningPath] = useState<string | null>(null);
   const [batchScanState, setBatchScanState] = useState<{active: boolean; scanned: number; failed: number; total: number}>({ active: false, scanned: 0, failed: 0, total: 0 });
@@ -323,10 +327,11 @@ function App() {
   const checkCatalogHfUpdates = useCallback(async (onlyPath?: string) => {
     setCatalogUpdatesBusy(true);
     try {
-      const rows = await invoke<import("./lib/types").CatalogUpdateEntry[]>("check_catalog_hf_updates", {
+      const rows = await invoke<CatalogUpdateEntry[]>("check_catalog_hf_updates", {
         onlyPath: onlyPath ?? null,
       });
-      const fresh = (rows || []).filter((r) => r.hasUpdate && r.kind !== "current");
+      const list = rows || [];
+      const fresh = list.filter((r) => r.hasUpdate && r.kind !== "current");
       if (onlyPath) {
         setCatalogHfUpdates((prev) => {
           const rest = prev.filter((r) => r.path !== onlyPath);
@@ -335,11 +340,41 @@ function App() {
       } else {
         setCatalogHfUpdates(fresh);
       }
+      // Bubble: every checked path gets a transient verdict for a few seconds.
+      const BUBBLE_MS = 6000;
+      setCatalogCheckVerdicts((prev) => {
+        const next = { ...prev };
+        for (const r of list) {
+          next[r.path] = r;
+          clearTimeout(checkVerdictTimers.current[r.path]);
+          checkVerdictTimers.current[r.path] = setTimeout(() => {
+            setCatalogCheckVerdicts((cur) => {
+              if (!cur[r.path]) return cur;
+              const cleared = { ...cur };
+              delete cleared[r.path];
+              return cleared;
+            });
+            delete checkVerdictTimers.current[r.path];
+          }, BUBBLE_MS);
+        }
+        return next;
+      });
     } catch (err) {
       console.error("Catalog HF update check failed:", err);
     } finally {
       setCatalogUpdatesBusy(false);
     }
+  }, []);
+
+  const dismissCatalogCheckVerdict = useCallback((path: string) => {
+    clearTimeout(checkVerdictTimers.current[path]);
+    delete checkVerdictTimers.current[path];
+    setCatalogCheckVerdicts((cur) => {
+      if (!cur[path]) return cur;
+      const cleared = { ...cur };
+      delete cleared[path];
+      return cleared;
+    });
   }, []);
 
   const reloadModels = useCallback(async () => {
@@ -714,7 +749,7 @@ function App() {
             aria-hidden={activeTab !== "catalog"}
             inert={activeTab !== "catalog" ? true : undefined}
           >
-            <ModelCatalog models={models} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} setupGuide={setupGuide} catalogHfUpdates={catalogHfUpdates} catalogUpdatesBusy={catalogUpdatesBusy} onCheckCatalogUpdates={checkCatalogHfUpdates} onClearCatalogUpdate={(path) => setCatalogHfUpdates((prev) => prev.filter((r) => r.path !== path))} />
+            <ModelCatalog models={models} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} setupGuide={setupGuide} catalogHfUpdates={catalogHfUpdates} catalogUpdatesBusy={catalogUpdatesBusy} onCheckCatalogUpdates={checkCatalogHfUpdates} onClearCatalogUpdate={(path) => setCatalogHfUpdates((prev) => prev.filter((r) => r.path !== path))} catalogCheckVerdicts={catalogCheckVerdicts} onDismissCheckVerdict={dismissCatalogCheckVerdict} />
           </div>
         )}
 

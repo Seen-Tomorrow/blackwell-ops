@@ -35,6 +35,8 @@ interface ModelCatalogProps {
   catalogUpdatesBusy?: boolean;
   onCheckCatalogUpdates?: (onlyPath?: string) => void;
   onClearCatalogUpdate?: (path: string) => void;
+  catalogCheckVerdicts?: Record<string, CatalogUpdateEntry>;
+  onDismissCheckVerdict?: (path: string) => void;
 }
 
 /** Sort chips — no NAME (search covers free-text); keep one row when rail is narrow. */
@@ -54,7 +56,7 @@ const draftFilterLabels: Record<CatalogDraftFilter, string> = {
 };
 
 export default function ModelCatalog(props: ModelCatalogProps) {
-  const { models, onLaunch, error, onReload, providers: externalProviders, committedVramMib, scanningPath, setScanningPath, batchScanState, setBatchScanState, stack, setupGuide, catalogHfUpdates, catalogUpdatesBusy, onCheckCatalogUpdates, onClearCatalogUpdate } = props;
+  const { models, onLaunch, error, onReload, providers: externalProviders, committedVramMib, scanningPath, setScanningPath, batchScanState, setBatchScanState, stack, setupGuide, catalogHfUpdates, catalogUpdatesBusy, onCheckCatalogUpdates, onClearCatalogUpdate, catalogCheckVerdicts, onDismissCheckVerdict } = props;
   const [updatesOnly, setUpdatesOnly] = useState(false);
   const [fullConfirm, setFullConfirm] = useState<CatalogUpdateEntry | null>(null);
   const [updateBusyPath, setUpdateBusyPath] = useState<string | null>(null);
@@ -115,12 +117,13 @@ export default function ModelCatalog(props: ModelCatalogProps) {
         remoteTotalSize: row.remoteTotalSize ?? 0,
       });
       onClearCatalogUpdate?.(row.path);
+      onDismissCheckVerdict?.(row.path);
     } catch (e) {
       console.error("Header patch failed:", e);
     } finally {
       setUpdateBusyPath(null);
     }
-  }, [onClearCatalogUpdate]);
+  }, [onClearCatalogUpdate, onDismissCheckVerdict]);
 
   const applyFullUpdate = useCallback(async (row: CatalogUpdateEntry) => {
     setUpdateBusyPath(row.path);
@@ -137,13 +140,14 @@ export default function ModelCatalog(props: ModelCatalogProps) {
         ggufFile: file,
       });
       onClearCatalogUpdate?.(row.path);
+      onDismissCheckVerdict?.(row.path);
       setFullConfirm(null);
     } catch (e) {
       console.error("Full update failed:", e);
     } finally {
       setUpdateBusyPath(null);
     }
-  }, [onClearCatalogUpdate]);
+  }, [onClearCatalogUpdate, onDismissCheckVerdict]);
 
   const { search, setSearch, draftFilter, setCatalogDraftFilter, catalogSelectedModel, panelActiveModel, handleSelect, handleSelectBySlot, selectedSlotIdx, sortField, sortDirection, handleSort,
     catalogModels: catalogModelsRaw, runningModelPaths,
@@ -593,7 +597,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
             className="catalog-cycle-btn value-chip type-micro font-mono px-1.5 py-0 uppercase rounded-sm transition-colors disabled:opacity-40"
             title="Check only the selected model against Hugging Face"
           >
-            UPDATE CHECK FOR SELECTED
+            CHECK SELECTED MODEL UPDATES
           </button>
           <button
             type="button"
@@ -960,14 +964,16 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                         onSelect={handleSelect}
                         onScanModel={handleScanModel}
                         scanningPath={scanningPath}
-                        hfUpdateKind={updateByPath.get(model.path)?.kind ?? null}
                         hfUpdateBusy={updateBusyPath === model.path}
+                        checkVerdict={catalogCheckVerdicts?.[model.path] ?? null}
                         onApplyHfUpdate={() => {
-                          const row = updateByPath.get(model.path);
+                          // Prefer the in-hand check verdict (may be fresher than updateByPath).
+                          const row = catalogCheckVerdicts?.[model.path] ?? updateByPath.get(model.path);
                           if (!row) return;
                           if (row.kind === "full") setFullConfirm(row);
                           else void applyHeaderUpdate(row);
                         }}
+                        onBubbleDismiss={() => onDismissCheckVerdict?.(model.path)}
                         fitScanBadge={getFitScanBadge(model)}
                         fitScanAvailable={fitScanAvailable}
                         needsFitScan={modelNeedsFitScan(model)}

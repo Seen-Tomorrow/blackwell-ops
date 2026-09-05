@@ -1,4 +1,4 @@
-import type { ModelEntry, ModelMetadata } from "../lib/types";
+import type { ModelEntry, ModelMetadata, CatalogUpdateEntry } from "../lib/types";
 import { draftRoleBadge, draftRoleFromModel, isExternalDraftOnly } from "../lib/specDraft";
 import { revealPathInExplorer } from "../lib/utils";
 import { CATALOG_SEAT_LABEL, type CatalogSeatRole } from "../lib/catalogQuickAccess";
@@ -112,6 +112,10 @@ interface ModelCardProps {
   onTogglePin?: (model: ModelEntry) => void;
   seatRole?: CatalogSeatRole | null;
   fitNow?: { verdict: FitNowVerdict; title: string } | null;
+  /** Transient result of the most recent update check — renders a fading bubble. */
+  checkVerdict?: CatalogUpdateEntry | null;
+  /** Click-to-dismiss the verdict-only bubble (UP TO DATE / NOT PAIRED). */
+  onBubbleDismiss?: () => void;
 }
 
 export default function ModelCard({
@@ -133,6 +137,8 @@ export default function ModelCard({
   onTogglePin,
   seatRole = null,
   fitNow = null,
+  checkVerdict = null,
+  onBubbleDismiss,
 }: ModelCardProps) {
   const hasMetadata = !!model.metadata;
   const isScanning = scanningPath === model.path;
@@ -185,6 +191,23 @@ export default function ModelCard({
       })
     : "--";
 
+  // Transient update-check bubble: UP TO DATE / NOT PAIRED / HEADER / FULL.
+  const checkBubble = (() => {
+    if (!checkVerdict) return null;
+    if (checkVerdict.kind === "full") {
+      return { text: "UPDATE · FULL", variant: "full" as const, icon: "▲", actionable: true, btnLabel: hfUpdateBusy ? "QUEUING…" : "DOWNLOAD" };
+    }
+    if (checkVerdict.kind === "header") {
+      return { text: "UPDATE · METADATA", variant: "header" as const, icon: "◆", actionable: true, btnLabel: hfUpdateBusy ? "PATCHING…" : "PATCH" };
+    }
+    // kind === "current"
+    if (checkVerdict.noRemote) {
+      return { text: "NOT PAIRED", variant: "none" as const, icon: "∅", actionable: false, btnLabel: "" };
+    }
+    return { text: "UP TO DATE", variant: "current" as const, icon: "✓", actionable: false, btnLabel: "" };
+  })();
+
+
   return (
     <div
       onClick={() => onSelect(model)}
@@ -197,6 +220,40 @@ export default function ModelCard({
       }`}
       title={isDraftOnly ? "Draft model — cannot launch as main (use as speculative draft)" : undefined}
     >
+      {checkBubble && (
+        <div
+          className={`model-card-check-bubble model-card-check-bubble--${checkBubble.variant}${
+            checkBubble.actionable ? " model-card-check-bubble--actionable" : ""
+          }`}
+          role="status"
+          aria-live="polite"
+          title={checkVerdict?.reason || undefined}
+          onClick={
+            checkBubble.actionable
+              ? undefined
+              : (e) => {
+                  e.stopPropagation();
+                  onBubbleDismiss?.();
+                }
+          }
+        >
+          <span className="model-card-check-bubble__icon" aria-hidden>{checkBubble.icon}</span>
+          {checkBubble.text}
+          {checkBubble.actionable && onApplyHfUpdate && (
+            <button
+              type="button"
+              className="model-card-check-bubble__btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                onApplyHfUpdate();
+              }}
+              disabled={hfUpdateBusy}
+            >
+              {checkBubble.btnLabel}
+            </button>
+          )}
+        </div>
+      )}
       {isDraftOnly && (
         <div className="model-card-draft-hatch" aria-hidden="true" />
       )}

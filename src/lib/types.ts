@@ -1118,6 +1118,8 @@ export interface CatalogUpdateEntry {
   remoteUrl?: string;
   remoteTotalSize?: number;
   reason?: string;
+  /** Current verdict from *no remote match* — bubble shows NOT PAIRED vs UP TO DATE. */
+  noRemote?: boolean;
 }
 
 export interface DownloadHistoryEntry {
