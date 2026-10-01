@@ -2,6 +2,7 @@
 
 mod crash_log;
 mod session_log;
+mod runtime_settings;
 mod debug_flags;
 mod ipc_meter;
 mod engine;
@@ -195,7 +196,7 @@ async fn main() {
                     log::warn!("[secrets] Failed to clear legacy hf_token from config: {e}");
                 }
             }
-
+            runtime_settings::apply_saved_session_log();
             // Private job: engines die with the app process (KILL_ON_JOB_CLOSE).
             crate::engine_job::init_engine_job();
 
@@ -385,6 +386,8 @@ async fn main() {
             debug_flags::get_debug_flags,
             session_log::get_session_log_status,
             session_log::set_session_log_enabled,
+            runtime_settings::get_runtime_settings,
+            runtime_settings::set_runtime_settings,
             startup_frontend_ping,
             frontend_will_unload,
             ipc_meter::get_ipc_meter_stats,

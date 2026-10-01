@@ -10,6 +10,7 @@ export type ConfigSubTab =
   | "providers"
   | "params"
   | "paths"
+  | "runtime"
   | "secrets"
   | "recovery"
   | "updates"
@@ -46,6 +47,7 @@ const CONFIG_SUB_NAV_ALL: {
   { id: "providers", label: "PROVIDERS" },
   { id: "params", label: "PARAMETERS" },
   { id: "paths", label: "PATHS", dataOnboarding: "paths-tab" },
+  { id: "runtime", label: "RUNTIME" },
   { id: "updates", label: "UPDATES" },
   { id: "distribution", label: "DISTRIBUTION", devOnly: true },
   { id: "secrets", label: "SECRETS" },

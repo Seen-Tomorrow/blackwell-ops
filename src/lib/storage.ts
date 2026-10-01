@@ -160,7 +160,7 @@ export const KEYS = {
   appTheme: `${STORAGE_PREFIX}app-theme`,
   logSearchBySlot: `${STORAGE_PREFIX}log-search-by-slot`,
   logsAnsiEnabled: `${STORAGE_PREFIX}logs-ansi-enabled`,
-  /** Legacy DEV session log pref (UI removed — session log stays ON in debug; env BLACKWELL_SESSION_LOG still works). */
+  /** Legacy session-log pref (UI removed — capture is on unless BLACKWELL_SESSION_LOG=0). */
   sessionLogEnabled: `${STORAGE_PREFIX}session-log-enabled`,
   startupUpdates: `${STORAGE_PREFIX}startup-updates`,
   /** Dev: fake installed version for in-app updater testing (e.g. "1.0.9"). */

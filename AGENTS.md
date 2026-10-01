@@ -190,7 +190,7 @@ The bash tool mangles `$_`/`$p` in inline `powershell -Command` strings (eats th
 ## APP/engine logs
 DEV session files (engine stderr/stdout + launch): `{exe_dir}/config/logs/sessions/`  
 → typically `src-tauri/target/debug/config/logs/sessions/session-*/`  
-Always ON in debug builds; `BLACKWELL_SESSION_LOG=0` off, `=1` force-on (incl. REL). Last **25** sessions kept.  
+Always ON in DEV and REL (CONFIG → RUNTIME). `BLACKWELL_SESSION_LOG=0` off, `=1` force-on. Last **25** sessions kept.
 Native crashes also append `%TEMP%\blackwell-crash.log` (heap `0xC0000374`, illegal insn `0xC000001D`).
 ---
 

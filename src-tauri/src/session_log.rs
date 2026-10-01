@@ -1,8 +1,8 @@
-//! DEV session file log — engine stderr/stdout + launch metadata under `config/logs/sessions/`.
+//! Engine session files — stderr/stdout + launch metadata under `config/logs/sessions/`.
 //!
-//! **Always ON in debug builds** (`cfg!(debug_assertions)`). Not active in release/REL unless
-//! `BLACKWELL_SESSION_LOG=1` (escape hatch). Disable in DEV with `BLACKWELL_SESSION_LOG=0`.
-//! IPC `set_session_log_enabled` remains for tools.
+//! **On by default in DEV and REL.** `BLACKWELL_SESSION_LOG=0` forces off;
+//! `=1` forces on (wins over the runtime toggle). IPC `set_session_log_enabled`
+//! remains for tools. Last 25 sessions; each stream caps at 50 MiB.
 //!
 //! Path: `{exe_dir}/config/logs/sessions/session-YYYY-MM-DD_HHMMSS/`
 //! (DEV → `src-tauri/target/debug/config/logs/sessions/`).
@@ -21,7 +21,7 @@ const SESSION_LOG_ENV: &str = "BLACKWELL_SESSION_LOG";
 const MAX_SESSIONS: usize = 25;
 const MAX_STREAM_BYTES: u64 = 50 * 1024 * 1024;
 
-static RUNTIME_ENABLED: AtomicBool = AtomicBool::new(cfg!(debug_assertions));
+static RUNTIME_ENABLED: AtomicBool = AtomicBool::new(true);
 static STATE: OnceLock<Mutex<SessionState>> = OnceLock::new();
 
 #[derive(Default)]
@@ -60,6 +60,17 @@ fn env_enabled() -> bool {
         .unwrap_or(false)
 }
 
+/// `Some(false)` env forces off, `Some(true)` forces on, else unset.
+pub fn env_lock() -> Option<bool> {
+    if env_disabled() {
+        Some(false)
+    } else if env_enabled() {
+        Some(true)
+    } else {
+        None
+    }
+}
+
 fn env_disabled() -> bool {
     std::env::var(SESSION_LOG_ENV)
         .map(|v| matches!(v.as_str(), "0" | "false" | "FALSE" | "no" | "NO"))
@@ -67,21 +78,19 @@ fn env_disabled() -> bool {
 }
 
 /// True when file capture should run.
-/// DEV default ON; `BLACKWELL_SESSION_LOG=0` forces off; REL only if env forces on.
+/// Default ON (DEV and REL). `BLACKWELL_SESSION_LOG=0` forces off; `=1` forces on.
 pub fn is_active() -> bool {
     if env_disabled() {
         return false;
     }
     if env_enabled() {
-        // Explicit force-on works in REL too (crash forensics escape hatch).
         return true;
     }
-    // Default: debug builds only, unless runtime toggle disabled.
-    dev_build() && RUNTIME_ENABLED.load(Ordering::Relaxed)
+    RUNTIME_ENABLED.load(Ordering::Relaxed)
 }
 
 pub fn set_runtime_enabled(enabled: bool) {
-    // Allow tools to toggle in DEV; env force-off still wins via is_active().
+    // Env force-off still wins via is_active().
     if !enabled {
         if let Some(dir) = current_dir() {
             write_session_log_file(&dir, "[session_log] runtime disabled — file capture paused");

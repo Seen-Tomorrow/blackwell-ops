@@ -214,6 +214,35 @@ pub fn apply_to_launch_args(
     args: &mut Vec<String>,
     config: &EngineConfig,
 ) -> Option<AffinityPlan> {
+    if crate::runtime_settings::affinity_bypassed() {
+        // Live spawn calls build_command directly — it never sees the
+        // assemble_launch_command extra_params insert. Strip here so OFF wins
+        // even if a template already emitted the pin.
+        remove_flag_pairs(
+            args,
+            &[
+                "-t",
+                "--threads",
+                "-tb",
+                "--threads-batch",
+                "-C",
+                "--cpu-mask",
+                "-Cr",
+                "--cpu-range",
+                "--cpu-strict",
+                "-Cb",
+                "--cpu-mask-batch",
+                "-Crb",
+                "--cpu-range-batch",
+                "--cpu-strict-batch",
+            ],
+        );
+        log::info!("[cpu-affinity] bypass — runtime setting off, pin flags stripped");
+        crate::session_log::append_session_line(
+            "[cpu-affinity] bypass — runtime setting off, pin flags stripped",
+        );
+        return None;
+    }
     if user_owns_cpu_affinity(args) {
         log::debug!("[cpu-affinity] skip inject — user already set cpu-mask/range/strict");
         return plan_from_existing_args(args);

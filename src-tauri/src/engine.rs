@@ -936,6 +936,12 @@ pub(crate) fn assemble_launch_command(
         .unwrap_or_default();
 
     let mut config = config.clone();
+    if crate::runtime_settings::affinity_bypassed() {
+        config.extra_params.insert(
+            "__cpu_affinity".into(),
+            serde_json::Value::String("off".into()),
+        );
+    }
     sanitize_spec_extra_params(&mut config, &user_params);
 
     let test_has_split = config
