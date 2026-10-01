@@ -579,7 +579,7 @@ pub fn strip_ansi(s: &str) -> String {
         if *in_esc {
             if ch == 'm' { *in_esc = false; }
             None
-        } else if ch == '\x1b' || ch == '\u{001B}' {
+        } else if ch == '\x1b' {
             *in_esc = true;
             None
         } else {

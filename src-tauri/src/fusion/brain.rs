@@ -42,8 +42,9 @@ const WARM_IDLE_POLL_MS: u64 = 250;
 const WARM_IDLE_WINDOW_MS: u64 = 60_000;
 /// Re-emit idle snapshots periodically so frontend can rehydrate after HMR/remount.
 const IDLE_HEARTBEAT_MS: u64 = 10_000;
-/// Consecutive /health-only cold-idle ticks before a full /slots sample (0 = always /slots).
-const IDLE_CHEAP_HEALTH_STREAK_MAX: u32 = 0;
+/// Consecutive /health-only cold-idle ticks before a full /slots sample.
+/// `None` disables the cheap tier — every cold-idle tick takes the full /slots sample.
+const IDLE_CHEAP_HEALTH_STREAK_MAX: Option<u32> = None;
 /// Hold sparse `print_timing` PP TPS — poll deltas must exceed this fraction to replace LIVE.
 const PP_LOG_INSTANT_HOLD_MS: u64 = 1500;
 /// DEV fusion-stats sample cadence (session.log) — live TG/PP only.
@@ -594,18 +595,21 @@ impl FusionBrain {
         let now = Instant::now();
         let cold_idle = self.is_idle_ready() && !self.is_warm_idle(now);
 
-        if cold_idle && !self.emit_dirty && *idle_cheap_streak < IDLE_CHEAP_HEALTH_STREAK_MAX {
-            if crate::fusion::poller::poll_health_ok(client, self.port).await {
-                *idle_cheap_streak += 1;
-                let heartbeat_due =
-                    last_idle_heartbeat.elapsed() >= std::time::Duration::from_millis(IDLE_HEARTBEAT_MS);
-                if heartbeat_due {
-                    let update = self.build_update(&[], None);
-                    self.try_emit(log_hub, update);
-                    *last_idle_heartbeat = Instant::now();
-                }
-                return false;
+        let cheap_health_allowed = IDLE_CHEAP_HEALTH_STREAK_MAX.is_some_and(|max| *idle_cheap_streak < max);
+        if cold_idle
+            && !self.emit_dirty
+            && cheap_health_allowed
+            && crate::fusion::poller::poll_health_ok(client, self.port).await
+        {
+            *idle_cheap_streak += 1;
+            let heartbeat_due =
+                last_idle_heartbeat.elapsed() >= std::time::Duration::from_millis(IDLE_HEARTBEAT_MS);
+            if heartbeat_due {
+                let update = self.build_update(&[], None);
+                self.try_emit(log_hub, update);
+                *last_idle_heartbeat = Instant::now();
             }
+            return false;
         }
         *idle_cheap_streak = 0;
 
