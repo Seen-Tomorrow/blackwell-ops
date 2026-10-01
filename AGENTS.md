@@ -247,9 +247,12 @@ Native crashes also append `%TEMP%\blackwell-crash.log` (heap `0xC0000374`, ille
 
 ## Tests
 
-`cargo test` from `src-tauri/` (282) and `npm test` from the repo root (vitest, 54).
-Both are sub-second; `.github/workflows/test.yml` runs both on every push to `main` and
-every PR. Rust tests live in `#[cfg(test)] mod …` beside their code —
+**`npm run check` is the one command** — `tsc --noEmit` → vitest (56) → `cargo test` (282),
+about 12 s warm. Run it instead of the three separately. `lint:dead` (knip) and
+`lint:dead:rust` (cargo machete) are deliberately NOT in it: they report real but accepted
+debt today, so they stay opt-in and never gate. `.github/workflows/test.yml` runs both
+suites on every push to `main` and every PR; `majestic ship` runs them too. Rust tests live
+in `#[cfg(test)] mod …` beside their code —
 `config.rs::merge_tests` is by far the largest, run it after any
 `merge_template_for_provider` change.
 
@@ -261,6 +264,15 @@ tooltips or wording, or tests that mirror a function’s implementation. A test 
 needs editing because the UI legitimately changed is the wrong test — delete it, do
 not update it. Model: `src/lib/tauriCommandParity.test.ts` hard-codes no command
 names, ordering or wording, so adding a command the normal way never touches it.
+
+**Repo-wide invariants live in `src/lib/repoInvariants.test.ts`** and scan tracked files:
+every tracked text file must be valid UTF-8 with no CP1252 mojibake (the corruption
+`majestic:bump` used to cause — `src/lib/releaseNotes.tsx` is allow-listed because it is the
+runtime *sanitizer* for that exact byte family), and no `.rs` file may subtract from an
+`Instant` outside `#[cfg(test)]` (the `0xC0000409` blink-close crash above). Fix a violation
+in the source; NEVER widen the allow-list or relax the pattern to get green. Related trap:
+these tests read `git ls-files`, so a filter bug makes them scan nothing and pass vacuously —
+when adding a scanner-style test, plant a deliberate violation and watch it fail first.
 
 **Rust↔TS name matching is NOT testable by regex** — a cross-language argument/field
 parity check was attempted and rejected: helper functions share command names
