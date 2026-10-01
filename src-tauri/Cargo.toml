@@ -11,8 +11,11 @@ path = "src/main.rs"
 default = []
 
 [dependencies]
-tauri = { version = "2.11.5", features = [] }
-tauri-plugin-shell = "2"
+# Floor = the version this app is actually built and tested against, so a deleted
+# Cargo.lock cannot silently drop below the Tauri pair that package.json pins
+# (`tauri build` gates crate vs @tauri-apps/* major/minor — keep the two in step).
+tauri = { version = "2.12.1", features = [] }
+tauri-plugin-shell = "2.4.0"
 tauri-plugin-updater = "2"
 tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["rt"] }
