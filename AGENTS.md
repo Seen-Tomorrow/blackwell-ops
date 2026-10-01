@@ -285,7 +285,20 @@ Windows **release** builds wedge on `tokio::process` + `CREATE_NO_WINDOW`: `ERRO
 `reactor_foundry.rs:433`, and `telemetry.rs:511` (nvidia-smi needs `piped()`, `null()` returns fallback).
 Engines are the exception: `engine_stack.rs` pipes stdout/stderr into `log_hub`.
 
-**Lint/CI** — `npm run build` is `tsc && vite build`; Rust tests via `cargo test`;
-clippy is clean and configured by `src-tauri/clippy.toml` (see commit history for the
-`too_many_arguments` threshold decision). `release.yml` runs both suites, but only on
-tag push / manual dispatch — there is no PR-time check.
+**Lint/CI** — `npm run build` is `tsc && vite build`; clippy is clean and configured by
+`src-tauri/clippy.toml` (see commit history for the `too_many_arguments` threshold).
+Both suites run in `.github/workflows/test.yml` on every push to `main` and every PR.
+
+**`cargo test` cannot build on a clean checkout** — `tauri.conf.json` bundles four
+resource dirs and two are gitignored by design: `src-tauri/runtime-bundle/` (engine
+binaries) and `src-tauri/pi-ext/` (the 1171-file pi-subagents tree, vendored locally via
+Harness UPDATE). `tauri-build` validates every resource path *before* compiling, so a
+fresh clone dies in the build script — `resource path \`runtime-bundle\` doesn't exist` —
+without reaching a single test. `test.yml` fabricates both as empty trees; no test reads
+them, and `scripts/prepare-release-*.ps1` still hard-exits when the real trees are
+missing, so a stub can never reach an installer. This is also why `release.yml`’s build
+job cannot pass on a hosted runner.
+
+**`CARGO_NET_GIT_FETCH_WITH_CLI` must be `true`, never `1`** — cargo rejects any other
+value and every registry lookup then fails with “provided string was not `true` or
+`false`”. `release.yml` still ships `1`.
