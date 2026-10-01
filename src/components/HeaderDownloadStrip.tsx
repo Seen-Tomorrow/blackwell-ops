@@ -46,9 +46,13 @@ export default function HeaderDownloadStrip() {
   const activeCount = downloads.filter(isActiveTask).length;
 
   return (
-    <button
-      type="button"
-      className="tab-page-header__downloads flex items-center gap-2 flex-shrink-0 justify-end cursor-pointer hover:opacity-95 text-left"
+    // Plain container, not a <button>: the inline row renders its own controls
+    // (priority / pause / resume / cancel), and a <button> cannot contain a
+    // <button>. Every row handler already calls stopPropagation(), so clicking a
+    // control still acts on that control while the rest of the strip navigates.
+    // Keyboard users reach the same view through the tab bar.
+    <div
+      className="tab-page-header__downloads flex items-center gap-2 flex-shrink-0 justify-end cursor-pointer hover:opacity-95"
       title="Open download manager (DOWNLOADS)"
       onClick={() => dispatchNavigateModelHub()}
     >
@@ -58,6 +62,6 @@ export default function HeaderDownloadStrip() {
           +{activeCount - 1}
         </span>
       ) : null}
-    </button>
+    </div>
   );
 }
