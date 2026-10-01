@@ -114,9 +114,7 @@ pub async fn probe_junction_temps_nvml() -> HashMap<u32, u32> {
                     
                     // Only set if we don't already have a value (prefer lower index = more standard)
                     // Filter out 255 — NVIDIA sentinel for "sensor not available / redacted"
-                    if !map.contains_key(&idx) {
-                        map.insert(idx, temp);
-                    }
+                    map.entry(idx).or_insert(temp);
                 }
             }
         }

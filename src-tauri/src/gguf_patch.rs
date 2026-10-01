@@ -115,7 +115,7 @@ fn parse_header_end<R: Read>(reader: R) -> Result<u64, String> {
     }
 
     let version = r.read_u32()?;
-    if version < 2 || version > 3 {
+    if !(2..=3).contains(&version) {
         return Err(format!(
             "Unsupported GGUF version {} (need v2 or v3; v1 uses u32 counts)",
             version
@@ -208,7 +208,7 @@ fn skip_value<R: Read>(r: &mut GgufReader<R>, value_type: u32) -> Result<(), Str
             r.read_exact(2)?;
             Ok(())
         }
-        4 | 5 | 6 => {
+        4..=6 => {
             r.read_exact(4)?;
             Ok(())
         }
@@ -231,7 +231,7 @@ fn skip_value<R: Read>(r: &mut GgufReader<R>, value_type: u32) -> Result<(), Str
             }
             Ok(())
         }
-        10 | 11 | 12 => {
+        10..=12 => {
             r.read_exact(8)?;
             Ok(())
         }

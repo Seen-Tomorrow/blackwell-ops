@@ -30,7 +30,7 @@ pub fn write_lock(port: u16, engine_pid: u32, binary_path: &Path) -> Result<(), 
     let lock = EnginePortLock {
         engine_pid,
         owner_app_pid: std::process::id(),
-        binary_path: crate::config::to_relative_path(&binary_path.to_path_buf()),
+        binary_path: crate::config::to_relative_path(binary_path),
         reserved_at: chrono::Utc::now().to_rfc3339(),
     };
     let json = serde_json::to_string_pretty(&lock).map_err(|e| e.to_string())?;

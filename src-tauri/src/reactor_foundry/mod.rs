@@ -2021,7 +2021,7 @@ pub async fn foundry_preview_source(
         remote_commit,
         installed_version,
         installed_commit,
-        message: message.into(),
+        message,
         banner_tone: banner_tone.into(),
     })
 }
@@ -2096,7 +2096,7 @@ pub async fn refresh_build_info(
                             .join("llama-server.exe");
                         if let Some(sacred_dir) = sacred_exe.parent() {
                             let _ = tokio::fs::create_dir_all(sacred_dir).await;
-                            if copy_dir_contents(&new_bin, &sacred_dir.to_path_buf())
+                            if copy_dir_contents(&new_bin, sacred_dir)
                                 .await
                                 .is_ok()
                                 && sacred_exe.exists()
@@ -2587,10 +2587,10 @@ impl<'a> RollbackBuilder<'a> {
             "log_line": Some(msg),
         });
 
-        crate::ipc_meter::emit_tracked(&app_handle, "foundry-progress", &event);
+        crate::ipc_meter::emit_tracked(app_handle, "foundry-progress", &event);
         // Central cleanup — every rollback path ends the output-console session so its buffer
         // is released instead of leaking until the next build.
-        foundry_console_end_session(&app_handle, build_id);
+        foundry_console_end_session(app_handle, build_id);
         *CURRENT_BUILD.lock().await = None;
     }
 }

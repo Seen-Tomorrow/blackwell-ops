@@ -57,7 +57,7 @@ fn fit_scanner_estimate_vram(config: &EngineConfig) -> f64 {
     }
 }
 
-pub async fn validate_binary_path(binary_path: &std::path::PathBuf) -> Result<(), String> {
+pub async fn validate_binary_path(binary_path: &std::path::Path) -> Result<(), String> {
     if !binary_path.exists() {
         return Err(format!(
             "Binary not found at: {}\nPlease update the path in Settings.",
@@ -205,7 +205,7 @@ impl EngineStack {
     /// True if any non-idle slot already uses this alias.
     pub fn alias_in_use(&self, alias: &str) -> bool {
         self.slots.iter().any(|slot_opt| {
-            slot_opt.as_ref().map_or(false, |arc| {
+            slot_opt.as_ref().is_some_and(|arc| {
                 let slot = arc.lock();
                 slot.alias == alias && !matches!(slot.status, SlotStatus::Idle)
             })
@@ -215,7 +215,7 @@ impl EngineStack {
     /// True when any Loading/Running slot uses this provider backend id.
     pub fn provider_has_active_engine(&self, provider_id: &str) -> bool {
         self.slots.iter().any(|slot_opt| {
-            slot_opt.as_ref().map_or(false, |arc| {
+            slot_opt.as_ref().is_some_and(|arc| {
                 let slot = arc.lock();
                 !matches!(slot.status, SlotStatus::Idle)
                     && slot.backend_type.eq_ignore_ascii_case(provider_id)
@@ -230,7 +230,7 @@ impl EngineStack {
             return false;
         }
         self.slots.iter().any(|slot_opt| {
-            slot_opt.as_ref().map_or(false, |arc| {
+            slot_opt.as_ref().is_some_and(|arc| {
                 let slot = arc.lock();
                 matches!(slot.status, SlotStatus::Loading | SlotStatus::Running)
                     && !slot.model_path.is_empty()
@@ -392,7 +392,7 @@ impl EngineStack {
         );
         if let Some(wrap) = &nsys_wrap {
             crate::output_console::emit_blackwell_output_console_engines_line(
-                &format!(
+                format!(
                     "[{}] Nsight wrap pid={} → {}.nsys-rep (stop the engine to finalize)",
                     config.alias,
                     spawned_pid,
@@ -470,29 +470,27 @@ impl EngineStack {
 
         // Quick alive check — give process 500ms to initialize (async — do not block tokio worker)
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        if let Ok(status) = child.try_wait() {
-            if let Some(code) = status {
-                let exit_code = code.code().unwrap_or(-1);
-                let already_reported = {
-                    let stack = stack_ref.lock().await;
-                    stack.get_slot(slot_idx).map_or(true, |slot| {
-                        slot.load_fail_claimed.load(Ordering::Acquire)
-                            || matches!(slot.status, SlotStatus::Idle)
-                    })
-                };
-                if !already_reported {
-                    let stack = stack_ref.lock().await;
-                    stack.clear_slot(slot_idx);
-                    stack.emit_stack_changed();
-                }
-                if already_reported {
-                    return Err(LOAD_FAILURE_ALREADY_REPORTED.to_string());
-                }
-                return Err(format!(
-                    "Engine crashed immediately with exit code {}",
-                    crate::engine_utils::describe_process_exit_code(exit_code)
-                ));
+        if let Ok(Some(code)) = child.try_wait() {
+            let exit_code = code.code().unwrap_or(-1);
+            let already_reported = {
+                let stack = stack_ref.lock().await;
+                stack.get_slot(slot_idx).is_none_or(|slot| {
+                    slot.load_fail_claimed.load(Ordering::Acquire)
+                        || matches!(slot.status, SlotStatus::Idle)
+                })
+            };
+            if !already_reported {
+                let stack = stack_ref.lock().await;
+                stack.clear_slot(slot_idx);
+                stack.emit_stack_changed();
             }
+            if already_reported {
+                return Err(LOAD_FAILURE_ALREADY_REPORTED.to_string());
+            }
+            return Err(format!(
+                "Engine crashed immediately with exit code {}",
+                crate::engine_utils::describe_process_exit_code(exit_code)
+            ));
         }
 
         if wrapping {
@@ -548,7 +546,7 @@ impl EngineStack {
             slot.alias = config.alias.clone();
             slot.model_path = config.model_path.clone();
             slot.gpu_mask = gpu_mask;
-            slot.vram_mib = fit_scanner_estimate_vram(&config);
+            slot.vram_mib = fit_scanner_estimate_vram(config);
             slot.n_ctx = config.get_param_str("ctx")
                 .and_then(|v| v.parse::<usize>().ok())
                 .unwrap_or(32768);
@@ -886,11 +884,10 @@ impl EngineStack {
                 .slots
                 .get(slot_idx)
                 .and_then(|s| s.as_ref())
-                .map(|slot_arc| {
+                .and_then(|slot_arc| {
                     let mut slot = slot_arc.lock();
                     slot.child_proc.take()
                 })
-                .flatten()
         };
 
         {
@@ -970,11 +967,10 @@ impl EngineStack {
                 .slots
                 .get(slot_idx)
                 .and_then(|s| s.as_ref())
-                .map(|slot_arc| {
+                .and_then(|slot_arc| {
                     let mut slot = slot_arc.lock();
                     slot.child_proc.take()
                 })
-                .flatten()
         };
 
         {
@@ -1072,7 +1068,7 @@ impl EngineStack {
             let alias = slot.alias.clone();
             let pid = slot.pid;
             let proc_to_stop = slot.child_proc.take();
-            let hub_opt = stack.log_hub.as_ref().map(|h| h.clone());
+            let hub_opt = stack.log_hub.clone();
             (alias, pid, proc_to_stop, hub_opt)
         };
 
@@ -1125,7 +1121,7 @@ impl EngineStack {
                     }
                 }
             }
-            stack.log_hub.as_ref().map(|h| h.clone())
+            stack.log_hub.clone()
         };
 
         let stopped: Vec<usize> = targets.iter().map(|(i, _, _, _)| *i).collect();

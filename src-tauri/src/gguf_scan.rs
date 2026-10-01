@@ -251,8 +251,7 @@ fn file_type_matches_bpw(file_type: &str, bpw: f32) -> bool {
     let n = file_type
         .to_lowercase()
         .replace(" - ", "_")
-        .replace('-', "_")
-        .replace(' ', "_");
+        .replace(['-', ' '], "_");
     let (lo, hi) = if n.contains("iq1") {
         (1.5_f32, 2.6)
     } else if n.contains("iq2") {
@@ -446,7 +445,7 @@ fn parse_print_info(line: &str, m: &mut ModelMetadata) {
     if key == "file size" {
         if let Some(bpw_part) = bpw_str {
             if let Some(bpw_end) = bpw_part.find("BPW") {
-                parse_f32(&bpw_part[..bpw_end].trim(), &mut m.bpw);
+                parse_f32(bpw_part[..bpw_end].trim(), &mut m.bpw);
             }
         }
     }
@@ -552,6 +551,17 @@ fn push_base_model_field(key: &str, value: &str, field: &str, m: &mut ModelMetad
     }
 }
 
+/// Parse a JSON-like string array: '["unsloth", "image-text-to-text"]' → Vec<String>
+fn parse_json_array(raw: &str) -> Vec<String> {
+    let trimmed = raw.trim();
+    if !trimmed.starts_with('[') || !trimmed.ends_with(']') { return vec![]; }
+    let inner = &trimmed[1..trimmed.len()-1];
+    inner.split(',')
+        .map(|s| s.trim().trim_matches('"').to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::{parse_line, scan_model_metadata};
@@ -622,15 +632,4 @@ mod tests {
         let err = scan_model_metadata("Z:\\no-such-model.gguf", "llama-server.exe").unwrap_err();
         assert!(err.contains("not found"));
     }
-}
-
-/// Parse a JSON-like string array: '["unsloth", "image-text-to-text"]' → Vec<String>
-fn parse_json_array(raw: &str) -> Vec<String> {
-    let trimmed = raw.trim();
-    if !trimmed.starts_with('[') || !trimmed.ends_with(']') { return vec![]; }
-    let inner = &trimmed[1..trimmed.len()-1];
-    inner.split(',')
-        .map(|s| s.trim().trim_matches('"').to_string())
-        .filter(|s| !s.is_empty())
-        .collect()
 }

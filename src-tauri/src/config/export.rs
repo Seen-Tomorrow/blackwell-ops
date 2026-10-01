@@ -30,7 +30,7 @@ pub struct ExportFactoryTemplateResult {
 
 fn user_param_to_factory_param(p: &crate::types::UserEditedTemplateParam) -> crate::templates::ProviderDefaultParam {
     let mut values = p.values.clone();
-    let existing: std::collections::HashSet<String> = values.iter().map(|v| json_val_key(v)).collect();
+    let existing: std::collections::HashSet<String> = values.iter().map(json_val_key).collect();
     for uv in &p.user_added_values {
         let k = json_val_key(uv);
         if !k.is_empty() && !existing.contains(&k) {

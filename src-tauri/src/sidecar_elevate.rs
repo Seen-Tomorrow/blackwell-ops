@@ -174,7 +174,7 @@ fn resolve_bundle_git_root(app: &AppHandle) -> Result<PathBuf, String> {
     let marker = GIT_EXE_REL;
     if let Ok(p) = app
         .path()
-        .resolve(&format!("bin/{marker}"), tauri::path::BaseDirectory::Resource)
+        .resolve(format!("bin/{marker}"), tauri::path::BaseDirectory::Resource)
     {
         if p.is_file() {
             return p.parent()

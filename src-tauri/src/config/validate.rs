@@ -61,7 +61,7 @@ fn validate_user_edited_param(ep: &crate::types::UserEditedTemplateParam) -> Vec
     if !ep.default_value.is_null() && !ep.values.is_empty() {
         let mut found = false;
         for v in &ep.values {
-            if json_val_eq(&v, &ep.default_value) {
+            if json_val_eq(v, &ep.default_value) {
                 found = true;
                 break;
             }
@@ -81,11 +81,11 @@ fn validate_user_edited_param(ep: &crate::types::UserEditedTemplateParam) -> Vec
 
     // flag required for arg_select/slider, flag_pair for arg_select_double
     let needs_flag = ep.ptype == "arg_select" || ep.ptype == "slider";
-    if needs_flag && ep.flag.as_deref().map_or(true, |s| s.is_empty()) {
+    if needs_flag && ep.flag.as_deref().is_none_or(|s| s.is_empty()) {
         errors.push(format!("ptype '{}' requires a non-empty flag", ep.ptype));
     }
     if ep.ptype == "arg_select_double" && ep.flag_pair.len() != 2 {
-        errors.push(format!("ptype 'arg_select_double' requires exactly 2 entries in flag_pair"));
+        errors.push("ptype 'arg_select_double' requires exactly 2 entries in flag_pair".to_string());
     }
 
     // hiddenValues must be subset of values

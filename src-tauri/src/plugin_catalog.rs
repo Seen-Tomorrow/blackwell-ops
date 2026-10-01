@@ -219,7 +219,7 @@ pub async fn build_plugin_catalog(
             // Update = installed with a known release tag that differs from pack tag.
             let update_available = pack_available
                 && installed
-                && installed_version.as_ref().map_or(false, |inst| {
+                && installed_version.as_ref().is_some_and(|inst| {
                     norm_version(&pack_version) != norm_version(inst)
                 });
             if update_available {

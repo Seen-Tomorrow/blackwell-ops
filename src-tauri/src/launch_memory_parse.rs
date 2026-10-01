@@ -378,7 +378,7 @@ pub fn parse_launch_memory_snapshot(output: &str) -> Option<LaunchMemorySnapshot
             }
         }
         if lower.contains("load_hparams: model size:") {
-            vision_mib = extract_number(line.split(':').last()?);
+            vision_mib = extract_number(line.split(':').next_back()?);
         }
         if lower.contains("prompt cache is enabled") && lower.contains("size limit:") {
             if let Some(pos) = lower.find("size limit:") {
@@ -520,7 +520,7 @@ fn parse_host_components_from_table(output: &str) -> Option<GpuComponentMib> {
             let tail = &line[pos..];
             let parts: Vec<&str> = tail.split('+').map(|s| s.trim()).collect();
             if parts.len() >= 3 {
-                let model_mib = extract_number(parts[0].split('=').last()?)?;
+                let model_mib = extract_number(parts[0].split('=').next_back()?)?;
                 let ctx_mib = extract_number(parts[1])?;
                 let compute_mib = extract_number(parts[2])?;
                 let _ = host_self;

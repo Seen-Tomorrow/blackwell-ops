@@ -155,7 +155,7 @@ fn collect_gguf_files(dir: &Path, out: &mut Vec<PathBuf>) {
             if !SKIP_DIRS.contains(&name) {
                 collect_gguf_files(&path, out);
             }
-        } else if path.extension().map_or(false, |e| e == "gguf") {
+        } else if path.extension().is_some_and(|e| e == "gguf") {
             let Some(fname) = path.file_name() else { continue; };
             let fname = fname.to_string_lossy();
             if fname.to_lowercase().contains("mmproj") {
@@ -557,25 +557,26 @@ pub fn merge_catalogs(
     // Persist discovered HF pairings to model_cache.json — saves pairing for future updates
     let mut paired_count: usize = 0;
     for entry in &final_catalog {
-        if entry.hf_meta.is_none() && entry.hf_model_id.is_some() {
-            let hf_model_id = entry.hf_model_id.as_ref().unwrap();
-            let hf_meta = crate::types::HfMetadata {
-                hf_model_id: hf_model_id.clone(),
-                author: entry.author.clone(),
-                repo_name: entry.name.clone(),
-                tags: Vec::new(),
-                downloads: 0,
-                likes_count: 0,
-                quant_type: entry.quant.clone(),
-                file_size_bytes: entry.metadata.as_ref().map(|m| m.file_size_bytes).unwrap_or(0),
-                last_modified: String::new(),
-                lfs_oid: String::new(),
-            };
-            if let Err(e) = crate::model_cache::set_hf_metadata(&entry.path, hf_meta) {
-                log::warn!("[catalog] Failed to persist HF pairing for {}: {}", entry.path, e);
-            } else {
-                paired_count += 1;
-            }
+        let Some(hf_model_id) = entry.hf_model_id.as_ref() else { continue };
+        if entry.hf_meta.is_some() {
+            continue;
+        }
+        let hf_meta = crate::types::HfMetadata {
+            hf_model_id: hf_model_id.clone(),
+            author: entry.author.clone(),
+            repo_name: entry.name.clone(),
+            tags: Vec::new(),
+            downloads: 0,
+            likes_count: 0,
+            quant_type: entry.quant.clone(),
+            file_size_bytes: entry.metadata.as_ref().map(|m| m.file_size_bytes).unwrap_or(0),
+            last_modified: String::new(),
+            lfs_oid: String::new(),
+        };
+        if let Err(e) = crate::model_cache::set_hf_metadata(&entry.path, hf_meta) {
+            log::warn!("[catalog] Failed to persist HF pairing for {}: {}", entry.path, e);
+        } else {
+            paired_count += 1;
         }
     }
     if paired_count > 0 {
@@ -643,7 +644,7 @@ fn find_case_insensitive_rfind(s: &str, pattern: &str) -> Option<usize> {
         return None;
     }
     for i in (0..=s_lower.len() - pattern.len()).rev() {
-        if &s_lower[i..i + pattern.len()] == p_lower {
+        if s_lower[i..i + pattern.len()] == p_lower {
             return Some(i);
         }
     }
@@ -722,7 +723,7 @@ fn match_known_quant_in(s: &str) -> Option<String> {
 
 fn find_best_segment_match(filename: &str) -> Option<String> {
     let without_ext = filename.trim_end_matches(".gguf");
-    let segments: Vec<&str> = without_ext.split(|c: char| c == '-' || c == '.').collect();
+    let segments: Vec<&str> = without_ext.split(['-', '.']).collect();
 
     let mut best_known: Option<&str> = None;
     let mut best_known_len = 0;
@@ -752,7 +753,7 @@ fn find_best_segment_match(filename: &str) -> Option<String> {
 fn find_quant_segment_reverse(filename: &str) -> Option<String> {
     let stripped = strip_shard_pattern(filename);
     let without_ext = stripped.trim_end_matches(".gguf");
-    let segments: Vec<&str> = without_ext.split(|c: char| c == '-' || c == '.').collect();
+    let segments: Vec<&str> = without_ext.split(['-', '.']).collect();
 
     for seg in segments.iter().rev() {
         if seg.is_empty() || is_shard_noise_segment(seg) {
@@ -790,20 +791,21 @@ pub fn extract_quant(filename: &str) -> String {
     // Look for "27B-Q8_0" pattern — quant after size suffix
     let chars: Vec<char> = without_ext.chars().collect();
     for i in (1..chars.len()).rev() {
-        if chars[i] == 'B' || chars[i] == 'b' {
-            if i > 0 && chars[i - 1].is_ascii_digit() {
-                if i + 1 < chars.len() && (chars[i + 1] == '-' || chars[i + 1] == '.') {
-                    let suffix = &without_ext[i + 2..];
-                    if !suffix.is_empty() {
-                        if let Some(q) = match_known_quant_in(suffix) {
-                            return q;
-                        }
-                        if let Some(q) = find_quant_segment_reverse(&normalized) {
-                            return q;
-                        }
-                        return fallback_quant(&normalized);
-                    }
+        if (chars[i] == 'B' || chars[i] == 'b')
+            && i > 0
+            && chars[i - 1].is_ascii_digit()
+            && i + 1 < chars.len()
+            && (chars[i + 1] == '-' || chars[i + 1] == '.')
+        {
+            let suffix = &without_ext[i + 2..];
+            if !suffix.is_empty() {
+                if let Some(q) = match_known_quant_in(suffix) {
+                    return q;
                 }
+                if let Some(q) = find_quant_segment_reverse(&normalized) {
+                    return q;
+                }
+                return fallback_quant(&normalized);
             }
         }
     }
@@ -908,13 +910,9 @@ pub fn check_hf_files_against_disk(
         let quant_key = entry.quant.clone();
         // Index by (quant, size) for exact match
         let size_key = (quant_key.clone(), entry.model_bytes);
-        if !size_index.contains_key(&size_key) {
-            size_index.insert(size_key, *entry);
-        }
+        size_index.entry(size_key).or_insert(*entry);
         // Index by quant alone for mismatch detection
-        if !quant_index.contains_key(&quant_key) {
-            quant_index.insert(quant_key, *entry);
-        }
+        quant_index.entry(quant_key).or_insert(*entry);
     }
 
     // LOG: disk check start

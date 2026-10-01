@@ -241,7 +241,7 @@ fn slot_dir(session_dir: &std::path::Path, slot_idx: usize, alias: &str) -> Path
     session_dir.join(format!("slot-{slot_idx}_{safe_alias}"))
 }
 
-fn ensure_slot_writers(guard: &mut SessionState, session_dir: &PathBuf, slot_idx: usize, alias: &str) {
+fn ensure_slot_writers(guard: &mut SessionState, session_dir: &std::path::Path, slot_idx: usize, alias: &str) {
     if guard.slots.contains_key(&slot_idx) {
         return;
     }

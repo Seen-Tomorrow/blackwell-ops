@@ -69,7 +69,7 @@ fn wmi_base_clock_mhz() -> Option<u32> {
         .ok()?;
     let text = String::from_utf8_lossy(&output.stdout);
     let v: u32 = text.trim().parse().ok()?;
-    if v >= 400 && v <= 10_000 {
+    if (400..=10_000).contains(&v) {
         Some(v)
     } else {
         None
@@ -114,7 +114,7 @@ fn live_cpu_clock_mhz(base_mhz: u32) -> Option<u32> {
     let pct = guard.as_mut()?.sample_performance_pct()?;
     // 100% = base; turbo often 110–160% (e.g. 4300 × 1.24 ≈ 5330).
     let live = (base_mhz as f64 * (pct / 100.0)).round() as u32;
-    if live >= 400 && live <= 12_000 {
+    if (400..=12_000).contains(&live) {
         Some(live)
     } else {
         None
@@ -137,7 +137,7 @@ pub struct SystemInfo {
 #[cfg(windows)]
 fn get_physical_ram_bytes() -> Result<u64, String> {
     let output = std::process::Command::new("powershell")
-        .args(&[
+        .args([
             "-NoProfile", "-NonInteractive", "-Command",
             "(Get-CimInstance Win32_PhysicalMemory | Measure-Object Capacity -Sum).Sum",
         ])
@@ -301,7 +301,7 @@ pub async fn scan_cpu() -> Result<CpuInfo, String> {
     for cpu in cpus {
         core_usages.push(cpu.cpu_usage());
         let f = cpu.frequency() as u32;
-        if f >= 400 && f <= 10_000 {
+        if (400..=10_000).contains(&f) {
             freq_sum += f as u64;
             freq_n += 1;
         }
@@ -348,14 +348,13 @@ fn manufactured_vram(name: &str) -> u64 {
     else if lower.contains("a100") && lower.contains("80") { 81920 }                          // 80 GB
     else if lower.contains("a100") { 40960 }                                                   // 40 GB
     else if lower.contains("h100") || lower.contains("h200") { 81920 }                       // 80 GB
-    else if lower.contains("l40") || lower.contains("l40s") { 49152 }                        // 48 GB
-    else if lower.contains("a6000") { 49152 }                                                 // 48 GB
+    else if lower.contains("l40") || lower.contains("a6000") { 49152 }                   // 48 GB (L4/L40/L40S, RTX A6000)
     else if lower.contains("v100") && lower.contains("32") { 32768 }                          // 32 GB
     else if lower.contains("v100") { 16384 }                                                  // 16 GB
     else if lower.contains("rtx 4090") { 25600 }                                              // 24 GB
-    else if lower.contains("rtx 4080 super") || lower.contains("rtx 4080") { 16384 }          // 16 GB
+    else if lower.contains("rtx 4080") { 16384 }                                          // 16 GB (incl. Super)
     else if lower.contains("rtx 4070") { 12288 }                                              // 12 GB
-    else if lower.contains("rtx 3090") || lower.contains("rtx 3090 ti") { 24576 }            // 24 GB
+    else if lower.contains("rtx 3090") { 24576 }                                          // 24 GB (incl. Ti)
     else if lower.contains("rtx 3080") && lower.contains("12") { 12288 }                     // 12 GB
     else if lower.contains("rtx 3080") { 10240 }                                              // 10 GB
     else if lower.contains("rtx 2080 ti") { 11264 }                                           // 11 GB
@@ -519,7 +518,7 @@ fn detect_gpu_count_uncached() -> usize {
     let fallback = 1;
     let smi = crate::engine_utils::resolve_nvidia_smi_path();
     if let Ok(output) = std::process::Command::new(&smi)
-        .args(&["--query-gpu=index", "--format=csv,noheader"])
+        .args(["--query-gpu=index", "--format=csv,noheader"])
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .creation_flags(0x08000000)

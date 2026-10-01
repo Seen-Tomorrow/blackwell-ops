@@ -110,7 +110,7 @@ fn parse_tom_projected_total_mib(output: &str) -> Option<f64> {
     output
         .lines()
         .filter_map(parse_tom_projected_line_mib)
-        .last()
+        .next_back()
 }
 
 /// `llama_params_fit_impl` device-memory total only — never CUDA init / GPU capacity lines.

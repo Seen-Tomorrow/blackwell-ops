@@ -252,7 +252,7 @@ pub fn run_hidden_output(
     }
 
     Err(last_err.unwrap_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::Other, "hidden command failed")
+        std::io::Error::other("hidden command failed")
     }))
 }
 

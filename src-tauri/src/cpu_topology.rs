@@ -147,7 +147,7 @@ pub fn plan_affinity_with(
         1usize
     };
     let max_cores = ccd.physical_lps.len();
-    let want_cores = ((target_lps + lps_per_core - 1) / lps_per_core)
+    let want_cores = target_lps.div_ceil(lps_per_core)
         .clamp(1, max_cores)
         .min(DEFAULT_AFFINITY_THREADS);
 
@@ -169,7 +169,7 @@ pub fn plan_affinity_with(
         return None;
     }
 
-    let threads = lps.len().min(DEFAULT_AFFINITY_THREADS).max(1);
+    let threads = lps.len().clamp(1, DEFAULT_AFFINITY_THREADS);
     let label = match mode {
         AffinityMode::Vcache => "vcache",
         AffinityMode::Compute => "compute",
@@ -426,7 +426,7 @@ fn ngl_is_partial(raw: Option<&str>) -> bool {
     let Ok(n) = s.trim().parse::<i32>() else {
         return false;
     };
-    n >= 0 && n < 900
+    (0..900).contains(&n)
 }
 
 fn read_flag_value<'a>(args: &'a [String], flags: &[&str]) -> Option<&'a str> {

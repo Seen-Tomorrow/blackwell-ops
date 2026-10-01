@@ -360,15 +360,14 @@ pub fn build_fit_command_base(
         ]);
     }
 
-    let mut args = args;
     args.extend([
         // Force all layers onto GPU — prevents llama-fit-params from auto-calculating ngl
         // and offloading layers. We need the TRUE total VRAM requirement per scan point,
         // not a "fitted" result after internal layer reduction.
         "--n-gpu-layers".into(), "999".into(),
         // KV quant (both K and V for accurate estimation)
-        "--cache-type-k".into(), kv_quant.to_lowercase().into(),
-        "--cache-type-v".into(), kv_quant.to_lowercase().into(),
+        "--cache-type-k".into(), kv_quant.to_lowercase(),
+        "--cache-type-v".into(), kv_quant.to_lowercase(),
         // Context size
         "--ctx-size".into(), ctx_tokens.to_string(),
         // Batch sizes
@@ -1109,16 +1108,14 @@ fn parse_host_components_from_breakdown_line(line: &str) -> Option<GpuComponentM
     if !lower.contains("host") || lower.contains("cuda") || !line.contains('|') {
         return None;
     }
-    let host_pos = line.find("Host").or_else(|| {
-        lower.find("host").map(|i| i)
-    })?;
+    let host_pos = line.find("Host").or_else(|| lower.find("host"))?;
     let after = line.get(host_pos..)?;
     let cell = after.split('|').nth(1).unwrap_or(after);
     let eq = cell.find('=')?;
     let rhs = &cell[eq + 1..];
     let parts: Vec<f64> = rhs
         .split('+')
-        .filter_map(|s| extract_number(s))
+        .filter_map(extract_number)
         .collect();
     if parts.len() < 3 {
         return None;

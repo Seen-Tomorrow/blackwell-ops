@@ -303,7 +303,7 @@ pub async fn check_binary_updates(
                 .as_ref()
                 .map(|v| !is_placeholder_install_version(v))
                 .unwrap_or(false)
-            && installed_version.as_ref().map_or(false, |inst| {
+            && installed_version.as_ref().is_some_and(|inst| {
                 norm_release_version(inst) != norm_release_version(&latest_version)
             });
 

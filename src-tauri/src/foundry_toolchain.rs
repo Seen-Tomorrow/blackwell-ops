@@ -614,7 +614,7 @@ pub fn msvc_crt_missing_message(binary_profile: &str, engine_dir: Option<&std::p
     let need = MSVC_CRT_DLLS.join(", ");
     let where_ = msvc_crt_dir_for_profile(binary_profile)
         .map(|d| d.display().to_string())
-        .unwrap_or_else(|| format!("{{toolchain}}/vs/<year>/VC/Tools/MSVC/<ver>/bin/Hostx64/x64"));
+        .unwrap_or_else(|| "{toolchain}/vs/<year>/VC/Tools/MSVC/<ver>/bin/Hostx64/x64".to_string());
     Some(format!(
         "Missing the x64 MSVC C runtime ({need}) required by the engine binaries. \
          It normally ships inside the portable toolchain at {where_}. \
@@ -748,7 +748,7 @@ pub fn scrub_foreign_cuda_from_path(path: &str) -> String {
 
 /// App-root-relative path for debug console (`\toolchain\cuda\...`).
 fn toolchain_console_path(path: &std::path::Path) -> String {
-    let rel = crate::config::to_relative_path(&path.to_path_buf());
+    let rel = crate::config::to_relative_path(path);
     format!("\\{}", rel.replace('/', "\\"))
 }
 

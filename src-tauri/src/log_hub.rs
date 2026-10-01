@@ -167,9 +167,7 @@ impl LogHub {
     }
 
     pub fn stderr_tail_line(&self, slot_idx: usize) -> Option<String> {
-        let Some(ctx) = self.app_handle.try_state::<crate::engine::AppContext>() else {
-            return None;
-        };
+        let ctx = self.app_handle.try_state::<crate::engine::AppContext>()?;
         let tails = ctx.slot_stderr_tails.lock();
         tails
             .get(&slot_idx)
@@ -415,66 +413,66 @@ impl LogHub {
                     }
 
                     // ── Readiness check (one-shot) — before fatal heuristics ──────────────
-                    if !model_ready.load(Ordering::Acquire) {
-                        if Self::is_engine_ready_log_line(&cleaned) {
-                            let source = if stdout_only { "stdout log pattern" } else { "stderr log pattern" };
-                            Self::emit_readiness_debug(&app_handle, &alias, source, &cleaned);
-                            fire_ready();
-                            if let Some(ctx) = app_handle.try_state::<crate::engine::AppContext>() {
-                                ctx.blackwell_output_console_manager.emit_line_to_category(
-                                    BlackwellOutputConsoleCategory::Engines,
-                                    format!("[{}] Engine ready", alias),
-                                    BlackwellOutputConsoleLineStyle::Normal,
-                                );
-                            }
-                            if !launch_snapshot_persisted {
-                                if let Some((mib, gpu_breakdown, profile, host_mib)) =
-                                    Self::persist_launch_memory_snapshot(
-                                        &app_handle,
-                                        slot_idx,
-                                        &alias,
-                                        &learn_snapshot,
-                                        &vram_learn_buf,
-                                    )
-                                    .await
-                                {
-                                    launch_snapshot_persisted = true;
-                                    Self::emit_launch_memory_learn_progress(
-                                        &app_handle,
-                                        &alias,
-                                        mib,
-                                        profile.as_deref(),
-                                        gpu_breakdown.as_deref(),
-                                        host_mib,
-                                    );
-                                }
-                            }
-                            if tables_seen > tables_persisted {
-                                let prev = tables_persisted;
-                                if let Some((mib, total, gpu_breakdown, host_mib)) = Self::persist_pending_fit_tables(
+                    if !model_ready.load(Ordering::Acquire)
+                        && Self::is_engine_ready_log_line(&cleaned)
+                    {
+                        let source = if stdout_only { "stdout log pattern" } else { "stderr log pattern" };
+                        Self::emit_readiness_debug(&app_handle, &alias, source, &cleaned);
+                        fire_ready();
+                        if let Some(ctx) = app_handle.try_state::<crate::engine::AppContext>() {
+                            ctx.blackwell_output_console_manager.emit_line_to_category(
+                                BlackwellOutputConsoleCategory::Engines,
+                                format!("[{}] Engine ready", alias),
+                                BlackwellOutputConsoleLineStyle::Normal,
+                            );
+                        }
+                        if !launch_snapshot_persisted {
+                            if let Some((mib, gpu_breakdown, profile, host_mib)) =
+                                Self::persist_launch_memory_snapshot(
                                     &app_handle,
+                                    slot_idx,
                                     &alias,
                                     &learn_snapshot,
                                     &vram_learn_buf,
-                                    tables_persisted,
-                                    "fit",
-                                    fit_adapter,
                                 )
                                 .await
-                                {
-                                    tables_persisted = total;
-                                    let added = total.saturating_sub(prev);
-                                    if added > 0 {
-                                        Self::emit_vram_learn_progress(
-                                            &app_handle,
-                                            &alias,
-                                            mib,
-                                            total,
-                                            added,
-                                            gpu_breakdown.as_deref(),
-                                            host_mib,
-                                        );
-                                    }
+                            {
+                                launch_snapshot_persisted = true;
+                                Self::emit_launch_memory_learn_progress(
+                                    &app_handle,
+                                    &alias,
+                                    mib,
+                                    profile.as_deref(),
+                                    gpu_breakdown.as_deref(),
+                                    host_mib,
+                                );
+                            }
+                        }
+                        if tables_seen > tables_persisted {
+                            let prev = tables_persisted;
+                            if let Some((mib, total, gpu_breakdown, host_mib)) = Self::persist_pending_fit_tables(
+                                &app_handle,
+                                &alias,
+                                &learn_snapshot,
+                                &vram_learn_buf,
+                                tables_persisted,
+                                "fit",
+                                fit_adapter,
+                            )
+                            .await
+                            {
+                                tables_persisted = total;
+                                let added = total.saturating_sub(prev);
+                                if added > 0 {
+                                    Self::emit_vram_learn_progress(
+                                        &app_handle,
+                                        &alias,
+                                        mib,
+                                        total,
+                                        added,
+                                        gpu_breakdown.as_deref(),
+                                        host_mib,
+                                    );
                                 }
                             }
                         }
@@ -1032,7 +1030,7 @@ impl LogHub {
             let stack = ctx.stack.lock().await;
             stack
                 .get_slot(slot_idx)
-                .map_or(false, |s| !matches!(s.status, crate::engine_stack::SlotStatus::Idle))
+                .is_some_and(|s| !matches!(s.status, crate::engine_stack::SlotStatus::Idle))
         };
         if !still_active {
             return;

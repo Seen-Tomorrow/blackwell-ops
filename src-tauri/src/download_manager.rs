@@ -2557,7 +2557,7 @@ mod tests {
         );
 
         let parts = dm.cancel_task("s1").expect("cancel");
-        assert!(dm.quant_batches.get(&batch_id).is_none());
+        assert!(!dm.quant_batches.contains_key(&batch_id));
         assert_eq!(dm.tasks.get("s1").unwrap().status, DownloadStatus::Failed);
         assert_eq!(dm.tasks.get("s2").unwrap().status, DownloadStatus::Failed);
         assert!(parts.iter().any(|p| p.ends_with("a-00001-of-00002.gguf.part")));

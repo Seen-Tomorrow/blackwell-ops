@@ -39,33 +39,30 @@ pub fn load_cache() -> HashMap<String, CachedEntry> {
     }
 
     // Try new format first
-    match std::fs::read_to_string(&path) {
-        Ok(content) => {
-            if let Ok(cache) = serde_json::from_str::<HashMap<String, CachedEntry>>(&content) {
-                return cache;
-            }
-            // New format failed — try legacy format and migrate
-            if let Ok(legacy_cache) = serde_json::from_str::<HashMap<String, LegacyCachedEntry>>(&content) {
-                log::info!("[Cache] Migrating {} legacy entries to unified format", legacy_cache.len());
-                let migrated: HashMap<String, CachedEntry> = legacy_cache
-                    .into_iter()
-                    .map(|(k, v)| {
-                        (
-                            k,
-                            CachedEntry {
-                                hf_meta: None,
-                                gguf_meta: Some(v.metadata),
-                                file_mtime_ms: v.file_mtime_ms,
-                            },
-                        )
-                    })
-                    .collect();
-                // Save in new format immediately so we don't re-migrate next load
-                let _ = save_cache(&migrated);
-                return migrated;
-            }
+    if let Ok(content) = std::fs::read_to_string(&path) {
+        if let Ok(cache) = serde_json::from_str::<HashMap<String, CachedEntry>>(&content) {
+            return cache;
         }
-        Err(_) => {}
+        // New format failed — try legacy format and migrate
+        if let Ok(legacy_cache) = serde_json::from_str::<HashMap<String, LegacyCachedEntry>>(&content) {
+            log::info!("[Cache] Migrating {} legacy entries to unified format", legacy_cache.len());
+            let migrated: HashMap<String, CachedEntry> = legacy_cache
+                .into_iter()
+                .map(|(k, v)| {
+                    (
+                        k,
+                        CachedEntry {
+                            hf_meta: None,
+                            gguf_meta: Some(v.metadata),
+                            file_mtime_ms: v.file_mtime_ms,
+                        },
+                    )
+                })
+                .collect();
+            // Save in new format immediately so we don't re-migrate next load
+            let _ = save_cache(&migrated);
+            return migrated;
+        }
     }
 
     HashMap::new()

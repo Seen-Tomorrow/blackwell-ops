@@ -140,14 +140,9 @@ pub(crate) async fn prepare_foundry_build_dir(
     build_dir: &std::path::Path,
     cache_fingerprint: &str,
 ) -> Result<bool, String> {
-    let cache_hit = if foundry_keep_work_cache()
+    let cache_hit = foundry_keep_work_cache()
         && build_dir.join("CMakeCache.txt").is_file()
-        && read_foundry_cache_key(build_dir).await.as_deref() == Some(cache_fingerprint)
-    {
-        true
-    } else {
-        false
-    };
+        && read_foundry_cache_key(build_dir).await.as_deref() == Some(cache_fingerprint);
 
     if cache_hit {
         return Ok(true);

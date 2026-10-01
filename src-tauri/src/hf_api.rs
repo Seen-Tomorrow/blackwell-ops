@@ -407,7 +407,7 @@ async fn fetch_repo_gguf_files(
 
         for entry in &entries {
             if entry.r#type == "file" && entry.path.ends_with(".gguf") {
-                let filename = entry.path.split('/').last().unwrap_or(&entry.path);
+                let filename = entry.path.split('/').next_back().unwrap_or(&entry.path);
                 if filename.to_lowercase().contains("mmproj") {
                     continue;
                 }

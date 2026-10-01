@@ -451,7 +451,7 @@ pub async fn launch_engine(
     // Quoted for console + session logs when install/model dirs contain spaces.
     let launch_cmd = engine_utils::format_cmd_line(&binary_path, &cmd_args);
 
-    if config.extra_params.get("__test_args").is_some() {
+    if config.extra_params.contains_key("__test_args") {
         app.blackwell_output_console_manager.emit_line_to_category(
             crate::output_console::BlackwellOutputConsoleCategory::Engines,
             format!(
@@ -656,7 +656,7 @@ pub async fn stop_engine(alias: String, app: tauri::State<'_, AppContext>) -> Re
         let slot_count = stack.slots.len();
         (0..slot_count)
             .filter(|&i| {
-                stack.get_slot(i).map_or(false, |s| {
+                stack.get_slot(i).is_some_and(|s| {
                     s.alias == alias && !matches!(s.status, SlotStatus::Idle)
                 })
             })

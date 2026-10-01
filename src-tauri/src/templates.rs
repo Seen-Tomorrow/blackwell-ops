@@ -569,7 +569,7 @@ impl ProviderTemplate {
         }
 
         // Alias for server API identification — sanitize spaces/commas
-        let cli_alias = config.alias.replace(' ', "-").replace(',', "-");
+        let cli_alias = config.alias.replace([' ', ','], "-");
         if !cli_alias.is_empty() {
             if let Some(flag) = sp.alias_flag.first() {
                 args.extend([flag.clone(), cli_alias]);
@@ -678,10 +678,10 @@ impl ProviderTemplate {
 
             // Whitelist launch — AUTO_FIT always; MANUAL when frontend sent a filtered extra_params
             // set (Essentials vs Full). Without user keys in extra_params, emit all visible params.
-            if launch_uses_extra_params_whitelist(config) {
-                if !key_in_extra {
-                    continue;
-                }
+            if launch_uses_extra_params_whitelist(config)
+                && !key_in_extra
+            {
+                continue;
             }
 
             // Resolve value: extra_params override > saved default_value
@@ -1305,8 +1305,10 @@ mod build_cmd_tests {
 
     #[test]
     fn external_draft_dflash_forces_fit_off() {
-        let mut sp = SpawnProfile::default();
-        sp.fit_style = "ggml_fit_params".to_string();
+        let sp = SpawnProfile {
+            fit_style: "ggml_fit_params".to_string(),
+            ..SpawnProfile::default()
+        };
 
         let template = ProviderTemplate {
             binary_name: "llama-server.exe".to_string(),
@@ -1345,8 +1347,10 @@ mod build_cmd_tests {
 
     #[test]
     fn custom_fit_off_overrides_auto_vram_fit_on() {
-        let mut sp = SpawnProfile::default();
-        sp.fit_style = "ggml_fit_params".to_string();
+        let sp = SpawnProfile {
+            fit_style: "ggml_fit_params".to_string(),
+            ..SpawnProfile::default()
+        };
 
         let template = ProviderTemplate {
             binary_name: "llama-server.exe".to_string(),
@@ -1390,8 +1394,10 @@ mod build_cmd_tests {
 
     #[test]
     fn auto_vram_moe_optimal_uses_fit_off_not_fit_on() {
-        let mut sp = SpawnProfile::default();
-        sp.fit_style = "ggml_fit_params".to_string();
+        let sp = SpawnProfile {
+            fit_style: "ggml_fit_params".to_string(),
+            ..SpawnProfile::default()
+        };
 
         let template = ProviderTemplate {
             binary_name: "llama-server.exe".to_string(),

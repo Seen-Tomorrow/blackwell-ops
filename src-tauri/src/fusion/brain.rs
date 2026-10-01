@@ -327,7 +327,7 @@ impl FusionBrain {
     fn metrics_requests_processing(&self) -> usize {
         self.prev_metrics
             .as_ref()
-            .map(|m| m.requests_processing as usize)
+            .map(|m| m.requests_processing)
             .unwrap_or(0)
     }
 
@@ -1446,8 +1446,8 @@ impl FusionBrain {
 
                             let mut promote_active = wakes;
                             // Belt wake: merge /slots on activity logs (not only cold-idle path).
-                            if wakes || brain.is_idle_ready() {
-                                if brain
+                            if (wakes || brain.is_idle_ready())
+                                && brain
                                     .fusion_poll_cycle(
                                         &client,
                                         &log_hub,
@@ -1455,9 +1455,8 @@ impl FusionBrain {
                                         &mut last_idle_heartbeat,
                                     )
                                     .await
-                                {
-                                    promote_active = true;
-                                }
+                            {
+                                promote_active = true;
                             }
 
                             let now = std::time::Instant::now();
@@ -1661,7 +1660,7 @@ impl FusionBrain {
                 self.prefill_tokens_total = total;
             }
         }
-        if self.slot_bank.states.get(&slot_id).map(|s| s.current_task_id).flatten().is_none() {
+        if self.slot_bank.states.get(&slot_id).and_then(|s| s.current_task_id).is_none() {
             self.begin_request_on_slot(slot_id, Some(task_id), None);
         }
         self.restart_request_clock();
@@ -2191,7 +2190,7 @@ impl FusionBrain {
         }
         if sum == 0 {
             // Fall back to the single highest peak so a lone slot still yields progress.
-            for (_id, st) in &self.slot_bank.states {
+            for st in self.slot_bank.states.values() {
                 if st.peak_prompt_tokens > sum {
                     sum = st.peak_prompt_tokens;
                 }
@@ -2351,15 +2350,14 @@ impl FusionBrain {
                 }
             }
 
-            if d.is_proc {
-                if self
+            if d.is_proc
+                && self
                     .slot_bank.states
                     .get(&d.id)
                     .map(|s| d.n_decoded > s.request_start_n_decoded)
                     .unwrap_or(false)
-                {
-                    saw_first_decode = true;
-                }
+            {
+                saw_first_decode = true;
             }
 
             // Update slot state from live /slots data.
@@ -2608,7 +2606,7 @@ impl FusionBrain {
         let mut ctx_per_slot = fallback_per_slot;
         let mut peak_slot_used: usize = 0;
         let mut ctx_fill_pct = 0.0_f64;
-        for (_id, s) in &self.slot_bank.states {
+        for s in self.slot_bank.states.values() {
             if s.n_ctx_slot > 0 {
                 ctx_per_slot = s.n_ctx_slot;
             }
@@ -2791,7 +2789,7 @@ impl FusionBrain {
             gen_tps_instant: gen_tps_instant_out,
             gen_tokens_per_request_slots: gen_tokens_request_slots,
             gen_tokens_per_session: self.session_tokens_generated,
-            ctx_used_session: ctx_used_session,
+            ctx_used_session,
             ctx_fill_pct,
             ctx_total: self.ctx_total,
             ctx_per_slot,
@@ -2880,9 +2878,11 @@ pub enum BrainInbound {
     SetQuietMode(bool),
 }
 
-static BRAIN_REGISTRY: std::sync::LazyLock<
-    TokioMutex<HashMap<usize, (tokio::task::JoinHandle<()>, tokio_util::sync::CancellationToken)>>,
-> = std::sync::LazyLock::new(|| TokioMutex::new(HashMap::new()));
+/// One running brain task: join handle + its cancellation token.
+type BrainTask = (tokio::task::JoinHandle<()>, tokio_util::sync::CancellationToken);
+
+static BRAIN_REGISTRY: std::sync::LazyLock<TokioMutex<HashMap<usize, BrainTask>>> =
+    std::sync::LazyLock::new(|| TokioMutex::new(HashMap::new()));
 
 /// Set by [`stop_all_brains`] so cancel paths skip WebView IPC during process exit.
 static FUSION_SHUTTING_DOWN: std::sync::atomic::AtomicBool =

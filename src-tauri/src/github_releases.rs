@@ -3,6 +3,7 @@
 //! Asset naming (GitHub release files):
 //! - Core: `CORE_*` — App `.7z`, Full NSIS Setup, optional `CORE_ggml-master-{profile}.7z`
 //! - Plugins: `PLUGIN_{provider}-{profile}.7z`
+//!
 //! Legacy names without prefix are still accepted for older releases.
 //!
 //! Full pack embeds NSIS core engines (ggml-master) inside Setup only — it does **not**

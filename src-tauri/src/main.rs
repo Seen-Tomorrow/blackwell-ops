@@ -117,7 +117,7 @@ async fn main() {
             .or_else(|| {
                 info.payload()
                     .downcast_ref::<String>()
-                    .map(|s| s.clone())
+                    .cloned()
             })
             .unwrap_or_else(|| "<non-string payload>".to_string());
         let backtrace = std::backtrace::Backtrace::force_capture();

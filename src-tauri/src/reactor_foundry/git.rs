@@ -352,7 +352,7 @@ pub(crate) fn parse_github_pr(url: &str) -> Option<(String, String)> {
         let before = &u[..idx];
         let after = &u[idx + 6..];
         let pr_num = after.split('/').next().unwrap_or(after).trim().to_string();
-        if let Some(re) = regex::Regex::new(r"(?:https?://)?github\.com/([^/]+)/([^/?#]+)").ok() {
+        if let Ok(re) = regex::Regex::new(r"(?:https?://)?github\.com/([^/]+)/([^/?#]+)") {
             if let Some(caps) = re.captures(before) {
                 let owner = caps.get(1)?.as_str();
                 let repo = caps.get(2)?.as_str();

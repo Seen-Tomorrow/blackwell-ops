@@ -164,8 +164,7 @@ pub fn find_nsys_exe() -> Result<PathBuf, String> {
     candidates.sort();
     candidates
         .into_iter()
-        .rev()
-        .next()
+        .next_back()
         .ok_or_else(|| String::from(
             "nsys.exe not found under C:\\Program Files\\NVIDIA Corporation\\Nsight Systems*. \
              Install Nsight Systems, or set BLACKWELL_NSYS_EXE to the full path of nsys.exe \
@@ -192,7 +191,7 @@ pub fn find_cupti_lib_dir() -> Option<PathBuf> {
         found.push(direct);
     }
     found.sort();
-    found.into_iter().rev().next()
+    found.into_iter().next_back()
 }
 
 pub fn nsys_in_app_armed() -> bool {

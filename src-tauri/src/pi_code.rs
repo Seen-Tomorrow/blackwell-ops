@@ -818,10 +818,9 @@ fn prune_bundle_dead_files(root: &Path) {
                     BUNDLE_DEAD_EXTS.iter().any(|ext| n.ends_with(ext))
                 })
                 .unwrap_or(false)
+                && std::fs::remove_file(&path).is_ok()
             {
-                if std::fs::remove_file(&path).is_ok() {
-                    removed += 1;
-                }
+                removed += 1;
             }
         }
     }
@@ -831,10 +830,10 @@ fn prune_bundle_dead_files(root: &Path) {
         let mut pruned_now = 0usize;
         collect_empty_dirs(&nm, &mut walk);
         for dir in walk.drain(..) {
-            if std::fs::read_dir(&dir).map(|mut d| d.next().is_none()).unwrap_or(false) {
-                if std::fs::remove_dir(&dir).is_ok() {
-                    pruned_now += 1;
-                }
+            if std::fs::read_dir(&dir).map(|mut d| d.next().is_none()).unwrap_or(false)
+                && std::fs::remove_dir(&dir).is_ok()
+            {
+                pruned_now += 1;
             }
         }
         if pruned_now == 0 {

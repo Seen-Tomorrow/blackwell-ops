@@ -110,7 +110,7 @@ pub fn resolve_path(path_str: &str) -> PathBuf {
 }
 
 /// Convert an absolute path to a relative path from app_root (if possible).
-pub fn to_relative_path(abs: &PathBuf) -> String {
+pub fn to_relative_path(abs: &std::path::Path) -> String {
     let root = app_root_dir();
     if let Ok(rel) = abs.strip_prefix(&root) {
         rel.to_string_lossy().to_string()
@@ -253,10 +253,10 @@ fn sync_dev_plugin_catalog(app_root: &std::path::Path) {
     // Prefer repo runtime-catalog/, then legacy runtime/catalog/
     let repo_runtime = app_root.join("../../runtime");
     let preferred = app_root.join("../../runtime-catalog");
-    if preferred.join("plugins.json").is_file() || preferred.is_dir() {
-        if sync_plugin_catalog_tree(&preferred, app_root, "dev-runtime-catalog") {
-            return;
-        }
+    if (preferred.join("plugins.json").is_file() || preferred.is_dir())
+        && sync_plugin_catalog_tree(&preferred, app_root, "dev-runtime-catalog")
+    {
+        return;
     }
     if repo_runtime.is_dir() {
         let _ = sync_plugin_catalog_tree(&repo_runtime, app_root, "dev");

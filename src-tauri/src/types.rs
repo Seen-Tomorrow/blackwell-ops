@@ -640,7 +640,9 @@ fn json_value_matches_str(v: &serde_json::Value, key: &str) -> bool {
         }
         return n.to_string() == key || (n as i64).to_string() == key;
     }
-    v.to_string() == key || v.to_string().trim_matches('"') == key
+    // Only Null / Bool / Array / Object reach here (String and numbers returned above),
+    // so the serialized form — minus any JSON quoting — is the only comparison that can hold.
+    v.to_string().trim_matches('"') == key
 }
 
 // ── Hugging Face Hub Types ───────────────────────────────────────────────

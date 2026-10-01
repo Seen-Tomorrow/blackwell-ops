@@ -11,9 +11,7 @@ pub fn user_edited_param_from_template(tp: &crate::templates::ProviderDefaultPar
         sp.as_object().map(|obj| {
             obj.iter()
                 .filter_map(|(k, v)| {
-                    v.as_array().and_then(|arr| {
-                        Some((k.clone(), arr.iter().filter_map(|el| el.as_str().map(String::from)).collect()))
-                    })
+                    v.as_array().map(|arr| (k.clone(), arr.iter().filter_map(|el| el.as_str().map(String::from)).collect()))
                 })
                 .collect::<std::collections::HashMap<_, _>>()
         })

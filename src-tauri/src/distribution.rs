@@ -905,7 +905,7 @@ fn run_majestic_step(app: &tauri::AppHandle, mode_args: &[&str]) -> Result<(), S
     for a in mode_args {
         args.push((*a).into());
     }
-    if !mode_args.iter().any(|a| *a == "-Force") {
+    if !mode_args.contains(&"-Force") {
         args.push("-Force".into());
     }
 

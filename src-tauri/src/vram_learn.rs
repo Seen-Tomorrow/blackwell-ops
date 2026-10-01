@@ -575,10 +575,10 @@ fn lookup_learned_vram_fuzzy(
                 continue;
             }
             // External draft path set → only rows that launched with that draft GGUF.
-            if !draft_base.is_empty() {
-                if !key_has_draft || !k.contains(&format!("|draft={draft_base}")) {
-                    continue;
-                }
+            if !draft_base.is_empty()
+                && (!key_has_draft || !k.contains(&format!("|draft={draft_base}")))
+            {
+                continue;
             }
         }
 
@@ -1187,10 +1187,11 @@ fn entry_matches_curve_hard_knobs(
         if !key.contains(&format!("|spec={spec_n}")) {
             return false;
         }
-        if spec_uses_external_draft(spec_n) && !draft_base.is_empty() {
-            if !key_has_draft || !key.contains(&format!("|draft={draft_base}")) {
-                return false;
-            }
+        if spec_uses_external_draft(spec_n)
+            && !draft_base.is_empty()
+            && (!key_has_draft || !key.contains(&format!("|draft={draft_base}")))
+        {
+            return false;
         }
     }
     true

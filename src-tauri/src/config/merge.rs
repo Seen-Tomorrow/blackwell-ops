@@ -81,14 +81,12 @@ fn template_sub_params_to_map(
     sp.as_object().map(|obj| {
         obj.iter()
             .filter_map(|(k, v)| {
-                v.as_array().and_then(|arr| {
-                    Some((
+                v.as_array().map(|arr| (
                         k.clone(),
                         arr.iter()
                             .filter_map(|el| el.as_str().map(String::from))
                             .collect(),
                     ))
-                })
             })
             .collect()
     })
@@ -177,7 +175,7 @@ pub fn merge_user_params_with_template(
             if m.label.is_empty() {
                 m.label = tmpl.label.clone();
             }
-            if m.flag.is_none() || m.flag.as_deref().map_or(false, |s| s.is_empty()) {
+            if m.flag.is_none() || m.flag.as_deref().is_some_and(|s| s.is_empty()) {
                 m.flag = tmpl.flag.clone();
             }
             if m.flag_pair.is_empty() && !tmpl.flag_pair.is_empty() {
@@ -267,7 +265,7 @@ pub fn merge_user_params_with_template(
                 key: tmpl.key.clone(),
                 label: tmpl.label.clone(),
                 values: tmpl.values.clone(),
-                order: (user_edited.len() + i as usize) as i32,
+                order: (user_edited.len() + i) as i32,
                 hidden: tmpl.hidden_default,
                 user_hidden: false,
                 hidden_values: Vec::new(),
@@ -286,9 +284,7 @@ pub fn merge_user_params_with_template(
                     sp.as_object().map(|obj| {
                         obj.iter()
                             .filter_map(|(k, v)| {
-                                v.as_array().and_then(|arr| {
-                                    Some((k.clone(), arr.iter().filter_map(|el| el.as_str().map(String::from)).collect()))
-                                })
+                                v.as_array().map(|arr| (k.clone(), arr.iter().filter_map(|el| el.as_str().map(String::from)).collect()))
                             })
                             .collect::<std::collections::HashMap<_, _>>()
                     })

@@ -40,7 +40,7 @@ pub async fn save_provider(provider: crate::types::ProviderConfig, app: tauri::S
     for ep in &mut save_provider.user_edited_template_params {
         ep.ui_group = crate::config::normalize_ui_group(&ep.ui_group);
         let existing_keys: std::collections::HashSet<String> = ep.values.iter()
-            .map(|v| crate::config::json_val_key(v))
+            .map(crate::config::json_val_key)
             .collect();
         for uv in ep.user_added_values.clone().iter() {
             let uv_key = crate::config::json_val_key(uv);
@@ -231,11 +231,11 @@ pub fn apply_group_hidden_toggle(
 ) -> bool {
     let mut group_off = true;
     for ep in params.iter() {
-        if crate::config::normalize_ui_group(&ep.ui_group) == norm_group {
-            if !ep.hidden {
-                group_off = false;
-                break;
-            }
+        if crate::config::normalize_ui_group(&ep.ui_group) == norm_group
+            && !ep.hidden
+        {
+            group_off = false;
+            break;
         }
     }
 

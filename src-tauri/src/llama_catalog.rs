@@ -184,7 +184,7 @@ fn parse_flag_line(lines: &[&str], idx: &mut usize) -> Option<LlamaCatalogEntry>
     }
 
     // Build description: everything after the flags (and arg token if present)
-    let desc = extract_description(&lines, idx, &flags, arg_token.as_deref());
+    let desc = extract_description(lines, idx, &flags, arg_token.as_deref());
 
     // Collect continuation lines for env var
     let mut continuation = String::new();
@@ -297,7 +297,7 @@ fn extract_description(lines: &[&str], idx: &usize, _flags: &[String], _arg_toke
     }
 
     // Reconstruct description from the remaining part of the line
-    let desc = line[words[desc_start].as_bytes().len()
+    let desc = line[words[desc_start].len()
         + (" ".repeat(desc_start).len())..]
         .trim();
 
@@ -305,8 +305,8 @@ fn extract_description(lines: &[&str], idx: &usize, _flags: &[String], _arg_toke
     if desc.is_empty() || desc.starts_with('-') || is_arg_token(desc) {
         // Find the byte offset of the first descriptive word
         let mut byte_offset = 0;
-        for wi in 0..desc_start {
-            byte_offset += words[wi].len() + 1; // +1 for space
+        for w in &words[..desc_start] {
+            byte_offset += w.len() + 1; // +1 for space
         }
         if byte_offset < line.len() {
             return line[byte_offset..].trim().to_string();
@@ -413,15 +413,15 @@ fn extract_default_value(rest: &str) -> Option<serde_json::Value> {
         }
     }
     // "false" → false
-    if trimmed.starts_with("false") {
-        let after = trimmed[5..].chars().next();
+    if let Some(rest) = trimmed.strip_prefix("false") {
+        let after = rest.chars().next();
         if after.map(|c| c.is_whitespace() || c == ')' || c == ',' || c == ';').unwrap_or(true) {
             return Some(serde_json::json!(false));
         }
     }
     // "true" → true
-    if trimmed.starts_with("true") {
-        let after = trimmed[4..].chars().next();
+    if let Some(rest) = trimmed.strip_prefix("true") {
+        let after = rest.chars().next();
         if after.map(|c| c.is_whitespace() || c == ')' || c == ',' || c == ';').unwrap_or(true) {
             return Some(serde_json::json!(true));
         }

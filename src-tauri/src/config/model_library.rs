@@ -110,8 +110,7 @@ pub fn expand_path_placeholders(path: &str) -> String {
         }
     }
 
-    loop {
-        let Some(start) = expanded.find('%') else { break };
+    while let Some(start) = expanded.find('%') {
         let rest = &expanded[start + 1..];
         let Some(end) = rest.find('%') else { break };
         let var_name = &rest[..end];

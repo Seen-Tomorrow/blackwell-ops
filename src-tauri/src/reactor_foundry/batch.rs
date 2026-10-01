@@ -18,7 +18,7 @@ where
     F: FnOnce(&mut Vec<u32>) -> R,
 {
     match CHILD_PIDS.lock() {
-        Ok(mut guard) => Some(f(&mut *guard)),
+        Ok(mut guard) => Some(f(&mut guard)),
         Err(e) => {
             log::error!("[foundry] child PID registry poisoned: {e}");
             None
@@ -83,22 +83,6 @@ fn is_suppressed_vendor_noise(line: &str) -> bool {
         || lower.trim() == "cmake_build_type="
 }
 
-#[cfg(test)]
-mod noise_tests {
-    use super::is_suppressed_vendor_noise;
-
-    #[test]
-    fn suppresses_build_type_and_httplib_noise() {
-        assert!(is_suppressed_vendor_noise("CMAKE_BUILD_TYPE=Release"));
-        assert!(is_suppressed_vendor_noise("CMAKE_BUILD_TYPE="));
-        assert!(is_suppressed_vendor_noise(
-            "CMake Warning at vendor/cpp-httplib/CMakeLists.txt:154 (message):"
-        ));
-        assert!(!is_suppressed_vendor_noise("CMAKE_BUILD_TYPE=Release is required"));
-        assert!(!is_suppressed_vendor_noise("error: cpp-httplib failed to build"));
-    }
-}
-
 /// OS-thread line drain for one pipe (stdout or stderr).
 /// Must not use `tokio::process` + CREATE_NO_WINDOW on Windows release — that path
 /// intermittently wedges (os error 6 / silent pipes). Same pattern as `fit_scanner`.
@@ -110,7 +94,7 @@ pub(crate) fn drain_pipe_lines_blocking(
 ) {
     use std::io::{BufRead, BufReader};
     let reader = BufReader::new(pipe);
-    for line in reader.lines().flatten() {
+    for line in reader.lines().map_while(Result::ok) {
         if line.trim().is_empty() {
             continue;
         }
@@ -276,14 +260,30 @@ pub fn foundry_kill_all_children() {
     kill_all_children();
 }
 pub(crate) fn kill_all_children() {
-    let pids = with_child_pids(|pids| std::mem::take(pids)).unwrap_or_default();
+    let pids = with_child_pids(std::mem::take).unwrap_or_default();
     for pid in pids {
         let _ = std::process::Command::new("taskkill")
-            .args(&["/T", "/F", "/PID", &pid.to_string()])
+            .args(["/T", "/F", "/PID", &pid.to_string()])
             .creation_flags(0x08000000)
             .status();
     }
 }
 pub(crate) fn clear_pids() {
     let _ = with_child_pids(|pids| pids.clear());
+}
+
+#[cfg(test)]
+mod noise_tests {
+    use super::is_suppressed_vendor_noise;
+
+    #[test]
+    fn suppresses_build_type_and_httplib_noise() {
+        assert!(is_suppressed_vendor_noise("CMAKE_BUILD_TYPE=Release"));
+        assert!(is_suppressed_vendor_noise("CMAKE_BUILD_TYPE="));
+        assert!(is_suppressed_vendor_noise(
+            "CMake Warning at vendor/cpp-httplib/CMakeLists.txt:154 (message):"
+        ));
+        assert!(!is_suppressed_vendor_noise("CMAKE_BUILD_TYPE=Release is required"));
+        assert!(!is_suppressed_vendor_noise("error: cpp-httplib failed to build"));
+    }
 }

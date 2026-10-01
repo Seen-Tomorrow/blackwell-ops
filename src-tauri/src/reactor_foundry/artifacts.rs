@@ -4,7 +4,7 @@
 //! `artifacts/<provider>/<env>/Release` tree is written during a normal build,
 //! plus the one-previous-artifact (Release.prev) rotation for the restore button.
 
-use std::path::PathBuf;
+use std::path::Path;
 
 // ── Sacred Artifacts Publish (new directory model) ──────────────────
 
@@ -14,8 +14,8 @@ use std::path::PathBuf;
 pub(crate) async fn publish_artifacts_to_sacred(
     provider_id: &str,
     profile_id: &str,
-    build_dir: &PathBuf,   // the temp work/build-xxx
-    _src_dir: &PathBuf,    // unused in new model but kept for signature compat during transition
+    build_dir: &Path,   // the temp work/build-xxx
+    _src_dir: &Path,    // unused in new model but kept for signature compat during transition
 ) -> Result<String, String> {
     let temp_release = build_dir.join("bin").join("Release");
     if !temp_release.exists() {
@@ -58,7 +58,7 @@ pub(crate) async fn publish_artifacts_to_sacred(
 }
 
 /// Recursively copy *contents* of src_dir into dst_dir (dst must already exist).
-pub(crate) async fn copy_dir_contents(src_dir: &PathBuf, dst_dir: &PathBuf) -> std::io::Result<()> {
+pub(crate) async fn copy_dir_contents(src_dir: &Path, dst_dir: &Path) -> std::io::Result<()> {
     let mut rd = tokio::fs::read_dir(src_dir).await?;
     while let Some(entry) = rd.next_entry().await? {
         let src_path = entry.path();
