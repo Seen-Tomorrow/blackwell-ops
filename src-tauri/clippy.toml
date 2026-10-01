@@ -1,0 +1,17 @@
+# Clippy policy for the `blackwell-ops` crate.
+#
+# Clippy resolves this file from the package root (cargo sets CLIPPY_CONF_DIR to
+# the workspace root, which is `src-tauri/` — the directory `cargo clippy` /
+# `cargo test` are run from).
+
+# Default is 7. This crate's surface is Tauri IPC commands plus engine/FIT
+# spawn-and-scan builders, where every parameter is a distinct launch input
+# (model, port, gpu mask, ctx, quant, batch, parallel, split, adapter, …) and
+# the callers are single, named call sites. The default threshold fired 27× with
+# no defect signal, so it is raised to the current worst case rather than
+# switched off: a new signature past 13 arguments still trips the lint.
+#
+# Where a long parameter list was actually hurting (the Foundry build stages)
+# the fix was a context struct — see `BuildCtx` in `reactor_foundry/mod.rs`.
+# Prefer that over growing a signature further.
+too-many-arguments-threshold = 13

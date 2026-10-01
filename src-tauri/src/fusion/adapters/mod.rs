@@ -22,6 +22,11 @@ use crate::fusion::log::LogEvent;
 use crate::fusion::poller::SlotData;
 
 /// Stable adapter id — factory `spawn_profile.fusion_adapter` or registry fallback.
+// The `Ggml` prefix is deliberate: it mirrors the `ggml_master` / `ggml_tom` /
+// `ggml_quiet` modules in this directory and the `spawn_profile.fusion_adapter`
+// ids shipped in factory JSON. Stripping it would desync the variants from both
+// and make a future non-ggml backend look like a rename instead of a new family.
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FusionAdapterId {
     GgmlMaster,
