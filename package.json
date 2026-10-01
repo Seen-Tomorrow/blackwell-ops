@@ -39,7 +39,8 @@
     "promote:provider": "node scripts/promote-user-provider-to-runtime.mjs",
     "pack:provider": "powershell -ExecutionPolicy Bypass -File scripts/pack-provider-runtime.ps1",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "check": "tsc --noEmit && vitest run && cargo test --manifest-path src-tauri/Cargo.toml"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.1",
