@@ -20,15 +20,35 @@ function matchesKind(task: DownloadTask, kind?: DownloadTaskKind): boolean {
 export function useDownloadTasks(kind?: DownloadTaskKind) {
   const [downloads, setDownloads] = useState<DownloadTask[]>([]);
   const pollRef = useRef<(() => void) | null>(null);
+  const timerRef = useRef<number | null>(null);
+
+  const stopPolling = useCallback(() => {
+    if (timerRef.current) {
+      window.clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
 
   const pollDownloads = useCallback(async () => {
     try {
       const tasks = await invoke<DownloadTask[]>("get_download_tasks");
-      setDownloads(tasks.filter((t) => matchesKind(t, kind)));
+      const visible = tasks.filter((t) => matchesKind(t, kind));
+      setDownloads(visible);
+      // Byte progress is not event-pushed by the backend, so keep the 500ms poll
+      // alive ONLY while a task of this kind is in flight. When idle, stop polling
+      // and let the `download-event` listener (queued/paused/...) wake us back up.
+      const active = visible.some(
+        (t) => t.status === "queued" || t.status === "downloading" || t.status === "scanning",
+      );
+      if (active && timerRef.current == null) {
+        timerRef.current = window.setInterval(() => void pollRef.current?.(), 500);
+      } else if (!active) {
+        stopPolling();
+      }
     } catch {
       console.error("Failed to poll download tasks");
     }
-  }, [kind]);
+  }, [kind, stopPolling]);
 
   useEffect(() => {
     pollRef.current = () => {
@@ -36,13 +56,11 @@ export function useDownloadTasks(kind?: DownloadTaskKind) {
     };
   }, [pollDownloads]);
 
+  // One poll on mount; the interval is armed on-demand inside pollDownloads.
   useEffect(() => {
     void pollDownloads();
-    const interval = setInterval(() => {
-      void pollDownloads();
-    }, 500);
-    return () => clearInterval(interval);
-  }, [pollDownloads]);
+    return stopPolling;
+  }, [pollDownloads, stopPolling]);
 
   useTauriListen<{ type?: string }>("download-event", () => {
     pollRef.current?.();
