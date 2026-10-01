@@ -296,8 +296,12 @@ Engines are the exception: `engine_stack.rs` pipes stdout/stderr into `log_hub`.
 build`; clippy is clean and configured by `src-tauri/clippy.toml` (see commit history for
 the `too_many_arguments` threshold). `test.yml` is the **only** workflow. Packaging and
 publishing stay local: `majestic` owns bump → pack → ship, including `gh release create
-<tag> <assets…>`, the PE identity gate, and release notes. NEVER add a build/publish
-workflow back without solving `pi-ext` first (below). The previous `release.yml` failed in
+<tag> <assets…>`, the PE identity gate, and release notes. **`ship` runs both suites**
+(`Invoke-ReleaseTestGate`) after the YES confirm and before the lock, tag, or upload — a red
+suite throws and GitHub is never touched. `pack` stays ungated on purpose: it is run
+repeatedly while iterating. `ship-provider` / `ship-toolchain` are also ungated — they upload
+engine and toolchain archives, not the app. NEVER add a build/publish workflow back without
+solving `pi-ext` first (below). The previous `release.yml` failed in
 ~2 s on every tag push — its `Setup Rust` step named `dbushe/rust-musl-toolchain`, an
 action that does not exist, so the job died in “Set up job” before any step ran.
 

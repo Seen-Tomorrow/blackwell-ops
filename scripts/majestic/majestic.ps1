@@ -1078,6 +1078,34 @@ Future ships use 'gh release create <tag> <assets...>' so assets attach before p
 "@
 }
 
+function Invoke-ReleaseTestGate {
+    # Ship is the one-way door: whatever goes up here reaches every installed app
+    # through the in-app updater. PACK is deliberately NOT gated - it is run over and
+    # over while iterating and must stay fast. This runs only after the YES confirm,
+    # before the lock, the git tag, and any upload, so a red suite leaves GitHub
+    # completely untouched.
+    # Both suites: the Rust suite guards engine / IPC / config-merge logic, the
+    # frontend suite guards the IPC command contract. Neither is covered by the PE
+    # identity asserts, which only prove the binary is a REL build of the right version.
+    Push-Location $root
+    try {
+        Write-Majestic "Release gate: frontend suite (npm test)..." -Color Cyan
+        npm test
+        if ($LASTEXITCODE -ne 0) {
+            throw "SHIP BLOCKED: frontend tests failed (exit $LASTEXITCODE). Nothing was tagged or uploaded."
+        }
+
+        Write-Majestic "Release gate: Rust suite (cargo test) - builds the test profile, expect a few minutes..." -Color Cyan
+        cargo test --manifest-path (Join-Path $root 'src-tauri\Cargo.toml')
+        if ($LASTEXITCODE -ne 0) {
+            throw "SHIP BLOCKED: Rust tests failed (exit $LASTEXITCODE). Nothing was tagged or uploaded."
+        }
+    } finally {
+        Pop-Location
+    }
+    Write-Majestic "Release gate: both suites green." -Color Green
+}
+
 function Invoke-MajesticShip {
     param($Config)
 
@@ -1170,6 +1198,8 @@ function Invoke-MajesticShip {
     if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
         throw "GitHub CLI (gh) is required for ship. Install: https://cli.github.com/"
     }
+
+    Invoke-ReleaseTestGate
 
     New-Item -ItemType File -Path $lock_path -Force | Out-Null
     try {
