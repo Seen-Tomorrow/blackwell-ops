@@ -5,6 +5,7 @@ import type { ProviderConfig } from "../lib/types";
 import { profileEnvLookup } from "../lib/types";
 import { useFoundry, type FoundryStatusPayload } from "../hooks/useBuildDock";
 import { dispatchAppEvent, EVENTS } from "../lib/events";
+import type { Env } from "../lib/foundry_constants";
 
 interface StackEngineStatus {
   alias: string;
@@ -33,7 +34,7 @@ function splitFoundryBuildProfile(raw: string): { base: string; archCodes: strin
 
 interface FoundryModalProps {
   provider: ProviderConfig;
-  environment: "frontier" | "stable";
+  environment: Env;
   onClose: () => void;
   onComplete?: (providerId: string) => void;
   visible: boolean;
@@ -170,7 +171,7 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
     () => splitFoundryBuildProfile(provider.build_profile ?? "").archCodes,
   );
   const [generator, setGenerator] = useState(provider.foundry_generator ?? "");
-  /** Offline llama-cli + llama-quantize; product needs server + fit-params + llama-bench. */
+  /** Offline llama-cli + llama-quantize + llama-tts; product needs server + fit-params + llama-bench. */
   const [includeExtraTools, setIncludeExtraTools] = useState(false);
   const [backupRetryCount, setBackupRetryCount] = useState(0);
   const [showEngineWarning, setShowEngineWarning] = useState(false);

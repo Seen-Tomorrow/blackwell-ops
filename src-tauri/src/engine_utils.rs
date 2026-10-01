@@ -24,7 +24,7 @@ pub fn binary_profile_from_path(path: &Path) -> Option<String> {
     for comp in path.components() {
         if let std::path::Component::Normal(os) = comp {
             let s = os.to_string_lossy().to_lowercase();
-            if s == "frontier" || s == "stable" {
+            if s == "frontier" || s == "stable" || s == "edge" {
                 return Some(s);
             }
         }

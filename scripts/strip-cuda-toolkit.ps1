@@ -92,5 +92,15 @@ foreach ($binDir in $binDirs) {
     }
 }
 
+# Architecture bloat — product ships x64-only. CUDA drops arm64/aarch64/SBSA per-arch trees
+# (bin/arm64, lib/arm64, …); they are dead weight here and ~3.4 GB on a 13.x toolkit.
+$archDirs = Get-ChildItem $Destination -Recurse -Directory -EA SilentlyContinue | Where-Object { $_.Name -match '^(arm64|aarch64|sbsa)$' }
+foreach ($d in $archDirs) {
+    if (Test-Path $d.FullName) {
+        Write-Host "  remove arch $($_.FullName.Replace($Destination + '\',''))/"
+        Remove-Item $d.FullName -Recurse -Force
+    }
+}
+
 $sizeMb = [math]::Round((Get-ChildItem $Destination -Recurse -File | Measure-Object Length -Sum).Sum / 1MB)
 Write-Host "  => $sizeMb MB"

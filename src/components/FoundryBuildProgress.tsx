@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import type { ProviderConfig } from "../lib/types";
 import FoundryWindowShell, { type FoundryWindowTone } from "./FoundryWindowShell";
-import { getStepLabel } from "../lib/foundry_constants";
+import { getStepLabel, type Env } from "../lib/foundry_constants";
 
 interface BuildLogEntry {
   step: string;
@@ -11,7 +11,7 @@ interface BuildLogEntry {
 
 interface FoundryBuildProgressProps {
   provider: ProviderConfig;
-  environment: "frontier" | "stable";
+  environment: Env;
   logLines: BuildLogEntry[];
   currentStep: string;
   waitingForConfirm: boolean;

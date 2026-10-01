@@ -1,5 +1,5 @@
 // ── Env Type ─────────────────────────────────────────────────────────
-export type Env = "frontier" | "stable";
+export type Env = "frontier" | "edge" | "stable";
 
 // ── Build Phases (single source of truth) ────────────────────────────
 // These match the phases emitted by the Rust backend (reactor_foundry.rs)
@@ -106,13 +106,14 @@ export const RETIRED_ENVS = ["vanguard", "fresh"] as const;
 export function normalizeBinaryProfile(profile: string | null | undefined): Env {
   const key = (profile || DEFAULT_BINARY_PROFILE).toLowerCase();
   if (key === "stable") return "stable";
+  if (key === "edge") return "edge";
   if (RETIRED_ENVS.includes(key as (typeof RETIRED_ENVS)[number])) return "frontier";
   if (key === "frontier") return "frontier";
   return DEFAULT_BINARY_PROFILE;
 }
 
 /** UI + selection order (mirrors toolchain/manifest.json). */
-export const ENV_ORDER: Env[] = ["frontier", "stable"];
+export const ENV_ORDER: Env[] = ["frontier", "edge", "stable"];
 
 export interface EnvMeta {
   label: string;
@@ -124,6 +125,7 @@ export interface EnvMeta {
 
 export const ENV_META: Record<Env, EnvMeta> = {
   frontier: { label: "FRONTIER", cuda: "13.3", vs: "VS Build Tools 2026 (v18)", color: "frontier", description: "Bleeding-edge CUDA 13.3" },
+  edge: { label: "EDGE", cuda: "13.4", vs: "VS Build Tools 2026 (v18)", color: "frontier", description: "DEV test profile - CUDA 13.4" },
   stable:   { label: "STABLE",   cuda: "12.8", vs: "VS Build Tools 2022",        color: "stable",   description: "Long-lived compatibility profile" },
 };
 

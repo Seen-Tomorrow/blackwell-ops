@@ -27,6 +27,16 @@
       "description": "Bleeding-edge CUDA 13.3 on VS2026 (Ninja Multi-Config)"
     },
     {
+      "id": "edge",
+      "label": "EDGE",
+      "vs": "2026",
+      "cuda": "13.4",
+      "generator": "Visual Studio 18 2026",
+      "arch": "x64",
+      "ninja": true,
+      "description": "DEV test profile - CUDA 13.4 on VS2026 (Ninja Multi-Config); NOT distributed"
+    },
+    {
       "id": "stable",
       "label": "STABLE",
       "vs": "2022",
