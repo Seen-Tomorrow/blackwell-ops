@@ -248,8 +248,8 @@ Native crashes also append `%TEMP%\blackwell-crash.log` (heap `0xC0000374`, ille
 ## Tests
 
 `cargo test` from `src-tauri/` (282) and `npm test` from the repo root (vitest, 54).
-Both are sub-second; `release.yml` runs both before the release build, so a red suite
-no longer ships. Rust tests live in `#[cfg(test)] mod …` beside their code —
+Both are sub-second; `.github/workflows/test.yml` runs both on every push to `main` and
+every PR. Rust tests live in `#[cfg(test)] mod …` beside their code —
 `config.rs::merge_tests` is by far the largest, run it after any
 `merge_template_for_provider` change.
 
@@ -285,9 +285,14 @@ Windows **release** builds wedge on `tokio::process` + `CREATE_NO_WINDOW`: `ERRO
 `reactor_foundry.rs:433`, and `telemetry.rs:511` (nvidia-smi needs `piped()`, `null()` returns fallback).
 Engines are the exception: `engine_stack.rs` pipes stdout/stderr into `log_hub`.
 
-**Lint/CI** — `npm run build` is `tsc && vite build`; clippy is clean and configured by
-`src-tauri/clippy.toml` (see commit history for the `too_many_arguments` threshold).
-Both suites run in `.github/workflows/test.yml` on every push to `main` and every PR.
+**CI is tests only — releases ship from your machine** — `npm run build` is `tsc && vite
+build`; clippy is clean and configured by `src-tauri/clippy.toml` (see commit history for
+the `too_many_arguments` threshold). `test.yml` is the **only** workflow. Packaging and
+publishing stay local: `majestic` owns bump → pack → ship, including `gh release create
+<tag> <assets…>`, the PE identity gate, and release notes. NEVER add a build/publish
+workflow back without solving `pi-ext` first (below). The previous `release.yml` failed in
+~2 s on every tag push — its `Setup Rust` step named `dbushe/rust-musl-toolchain`, an
+action that does not exist, so the job died in “Set up job” before any step ran.
 
 **`cargo test` cannot build on a clean checkout** — `tauri.conf.json` bundles four
 resource dirs and two are gitignored by design: `src-tauri/runtime-bundle/` (engine
@@ -296,9 +301,9 @@ Harness UPDATE). `tauri-build` validates every resource path *before* compiling,
 fresh clone dies in the build script — `resource path \`runtime-bundle\` doesn't exist` —
 without reaching a single test. `test.yml` fabricates both as empty trees; no test reads
 them, and `scripts/prepare-release-*.ps1` still hard-exits when the real trees are
-missing, so a stub can never reach an installer. This is also why `release.yml`’s build
-job cannot pass on a hosted runner.
+missing, so a stub can never reach an installer. That is the structural reason no hosted
+runner can build the REL installer, and why releases are built and shipped locally.
 
 **`CARGO_NET_GIT_FETCH_WITH_CLI` must be `true`, never `1`** — cargo rejects any other
 value and every registry lookup then fails with “provided string was not `true` or
-`false`”. `release.yml` still ships `1`.
+`false`”. Caught by CI in 79 s; the removed `release.yml` shipped `1` and would have hit it.
