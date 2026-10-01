@@ -175,8 +175,9 @@ export default function DownloadProgressRow({
         <button
           type="button"
           onClick={(e) => { void handlePriorityUp(e); }}
-          className="dl-row-btn dl-row-btn--idle rounded-sm border px-1 py-0.5 font-mono transition-all whitespace-nowrap"
-          title="Move up in queue (higher priority)"
+          disabled={priority <= 0}
+          className="dl-row-btn dl-row-btn--idle rounded-sm border px-1 py-0.5 font-mono transition-all whitespace-nowrap disabled:opacity-25 disabled:cursor-not-allowed"
+          title={`Move up in queue (higher priority) — current priority ${priority}`}
         >
           ▲
         </button>
@@ -185,8 +186,9 @@ export default function DownloadProgressRow({
         <button
           type="button"
           onClick={(e) => { void handlePriorityDown(e); }}
-          className="dl-row-btn dl-row-btn--idle rounded-sm border px-1 py-0.5 font-mono transition-all whitespace-nowrap"
-          title="Move down in queue (lower priority)"
+          disabled={priority >= 1000}
+          className="dl-row-btn dl-row-btn--idle rounded-sm border px-1 py-0.5 font-mono transition-all whitespace-nowrap disabled:opacity-25 disabled:cursor-not-allowed"
+          title={`Move down in queue (lower priority) — current priority ${priority}`}
         >
           ▼
         </button>

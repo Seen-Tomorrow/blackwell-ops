@@ -44,8 +44,15 @@ export default function ModelHubDownloads({ downloads }: ModelHubDownloadsProps)
 
   const sorted = useMemo(() => {
     if (sizeSort === 'default') {
-      // Newest first (task ids are UTC micros)
-      return [...activeDownloads].sort((a, b) => (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
+      // Queue order: higher priority first (lower number), then newest-first
+      // (task ids are UTC micros). With every task at the default priority this
+      // is identical to newest-first; promoting a task moves it up the list.
+      return [...activeDownloads].sort((a, b) => {
+        const pa = a.priority ?? 100;
+        const pb = b.priority ?? 100;
+        if (pa !== pb) return pa - pb;
+        return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
+      });
     }
     const mul = sizeSort === 'size-desc' ? -1 : 1;
     return [...activeDownloads].sort((a, b) => {
