@@ -54,7 +54,7 @@ interface FoundryConfirmFormProps {
   setSelectedArchs: Dispatch<SetStateAction<string[]>>;
   maxCores: number | null;
   setMaxCores: (v: number | null) => void;
-  /** Also cmake --target llama-cli + llama-quantize (offline tools; not used by the app). */
+  /** Also cmake --target llama-cli + llama-quantize + llama-tts (offline tools; not used by the app). */
   includeExtraTools: boolean;
   setIncludeExtraTools: (v: boolean) => void;
   showEngineWarning: boolean;
@@ -502,14 +502,15 @@ export default function FoundryConfirmForm({
                 />
                 <span className="min-w-0">
                   <span className="fnd-extra-label type-tiny font-mono uppercase block">
-                    Also build CLI + quantize
+                    Also build CLI + quantize + TTS
                   </span>
                   <span className="fnd-extra-note type-micro font-mono leading-snug block mt-0.5">
                     Off by default (faster). Product always builds <span className="fnd-extra-note__bin">llama-server</span>,{" "}
                     <span className="fnd-extra-note__bin">llama-fit-params</span>, and{" "}
                     <span className="fnd-extra-note__bin">llama-bench</span>. Enable for offline{" "}
-                    <span className="fnd-extra-note__bin">llama-cli</span> / <span className="fnd-extra-note__bin">llama-quantize</span>{" "}
-                    (not used by the app runtime).
+                    <span className="fnd-extra-note__bin">llama-cli</span> /{" "}
+                    <span className="fnd-extra-note__bin">llama-quantize</span> /{" "}
+                    <span className="fnd-extra-note__bin">llama-tts</span> (not used by the app runtime).
                   </span>
                 </span>
               </label>

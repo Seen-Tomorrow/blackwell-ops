@@ -182,8 +182,12 @@ pub(crate) async fn nuke_foundry_work_tree_on_exit(provider_id: &str) {
 /// `llama-bench` = industry-standard offline PP/TG reference (secondary to fusion bench).
 const FOUNDRY_CMAKE_CORE_TARGETS: &[&str] = &["llama-server", "llama-fit-params", "llama-bench"];
 
-/// Optional offline tools (Foundry modal toggle) — not used by the app runtime.
-const FOUNDRY_CMAKE_EXTRA_TARGETS: &[&str] = &["llama-cli", "llama-quantize"];
+/// Optional offline tools (Foundry modal toggle) — not built unless the toggle is on.
+/// `llama-tts` = Qwen3-TTS voice synthesis (links `mtmd`). Upstream adds `tools/tts`
+/// unconditionally under `LLAMA_BUILD_TOOLS`, and `LLAMA_BUILD_MTMD` must stay OFF: the root
+/// guard builds mtmd standalone only when tools are OFF, so ON would double-add the target.
+/// Promote to CORE when `llama-server` gains TTS (llama.cpp PR #26254 follow-up).
+const FOUNDRY_CMAKE_EXTRA_TARGETS: &[&str] = &["llama-cli", "llama-quantize", "llama-tts"];
 
 const FOUNDRY_CORE_BINARIES: &[&str] = &[
     "llama-server.exe",
@@ -191,7 +195,9 @@ const FOUNDRY_CORE_BINARIES: &[&str] = &[
     "llama-bench.exe",
 ];
 
-pub(crate) const FOUNDRY_EXTRA_BINARIES: &[&str] = &["llama-cli.exe", "llama-quantize.exe"];
+/// Checked only when the extra-tools toggle is on (`mod.rs` stage_compile).
+pub(crate) const FOUNDRY_EXTRA_BINARIES: &[&str] =
+    &["llama-cli.exe", "llama-quantize.exe", "llama-tts.exe"];
 
 pub(crate) struct FoundryCoreBinaryCheck {
     pub(crate) all_present: bool,
