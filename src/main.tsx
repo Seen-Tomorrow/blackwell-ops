@@ -20,6 +20,8 @@ import {
   resetSetupGuideState,
 } from "./lib/storage";
 
+import { installIpcFailureLog } from "./lib/ipcDevLog";
+
 // Signal Rust to suppress WebView IPC before JS context dies (F5 / page reload).
 // Fire-and-forget: the beforeunload handler must be synchronous.
 window.addEventListener("beforeunload", () => {
@@ -38,6 +40,9 @@ migrateLegacyStorageKeys();
 
 if (__BUILD_MODE__ === "dev") {
   document.documentElement.classList.add("app-build--dev");
+  // Before the first invoke(): a rejected call keeps its real reason instead of
+  // being flattened to "unknown error" by a call-site catch.
+  installIpcFailureLog();
   interface BlackOpsDevTools {
     /** Replay welcome (3s) + setup guide in the VRAM display, then reload. */
     previewSetupWelcome: () => void;
