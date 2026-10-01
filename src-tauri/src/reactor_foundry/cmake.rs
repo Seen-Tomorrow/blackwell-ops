@@ -115,7 +115,7 @@ pub(crate) fn foundry_cache_fingerprint(
     hasher.update(b"\0");
     // Toolchain swaps (VS/CUDA/version) must cold-start even if the configure line is unchanged.
     hasher.update(toolchain_id.as_bytes());
-    format!("{:x}", hasher.finalize())
+    hex::encode(hasher.finalize())
 }
 
 pub(crate) async fn read_foundry_cache_key(build_dir: &std::path::Path) -> Option<String> {

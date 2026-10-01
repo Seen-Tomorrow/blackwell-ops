@@ -85,7 +85,7 @@ pub async fn download_bytes(url: &str) -> Result<Vec<u8>, String> {
 pub fn sha256_hex(data: &[u8]) -> String {
     let mut h = sha2::Sha256::new();
     h.update(data);
-    format!("{:x}", h.finalize())
+    hex::encode(h.finalize())
 }
 
 /// Write downloaded bytes to `dest`, creating parent dirs.
