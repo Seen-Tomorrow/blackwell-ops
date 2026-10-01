@@ -1,0 +1,67 @@
+name: test
+
+# Both suites in one job: a Windows runner costs more to boot than the suites take
+# to run, and `cargo test` needs the frontend build anyway — tauri's
+# `generate_context!` reads `build.frontendDist` at compile time.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  npm_config_cache: .npm
+  # Must be `true`, not `1` — cargo rejects any other value, and then every
+  # registry lookup dies with "provided string was not `true` or `false`".
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+
+jobs:
+  test:
+    name: Frontend + Rust
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # First, so a broken frontend test fails in ~1 minute instead of ~15.
+      - name: Frontend suite
+        run: npm test
+
+      - name: Build frontend
+        run: npm run build:frontend
+
+      # tauri.conf.json bundles four directories and two are gitignored by design:
+      # `runtime-bundle/` (engine binaries) and `pi-ext/` (the 1171-file
+      # pi-subagents tree, vendored by Harness UPDATE). tauri-build validates every
+      # resource path before compiling, so without them the crate cannot build at
+      # all — `cargo test` dies in the build script, never reaching a test.
+      # No test reads these trees, so fabricate them. This workflow publishes
+      # nothing, and the real release path (scripts/prepare-release-*.ps1) still
+      # hard-exits when the real trees are missing, so a stub can never reach an
+      # installer.
+      - name: Fabricate gitignored bundle resources
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force src-tauri/runtime-bundle, src-tauri/pi-ext/pi-subagents | Out-Null
+          Set-Content src-tauri/runtime-bundle/.ci-placeholder "placeholder"
+          Set-Content src-tauri/pi-ext/pi-subagents/package.json '{"name":"pi-subagents","version":"0.0.0-ci"}'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Rust suite
+        run: cargo test --manifest-path src-tauri/Cargo.toml
