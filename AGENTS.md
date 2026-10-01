@@ -267,12 +267,19 @@ parity check was attempted and rejected: helper functions share command names
 (`add_model_path`), Tauri injects `AppHandle`/`State`/`Arc<RwLock<…>>` params that are
 never sent from JS, and nested arg objects (`config: { … }`) break brace matching. It
 produced false positives, which is exactly the failure mode this section exists to
-prevent. Cross-language renames are surfaced at runtime instead — see below.
+prevent.
 
-**Renamed a command or param and the UI just silently fails?** `src/lib/ipcDevLog.ts`
-wraps `window.__TAURI_INTERNALS__.invoke` in DEV and logs
-`[IPC] "cmd" rejected — sent args: […] — reason: …` before any call-site `catch`
-flattens the error to “unknown error”. Add nothing; it already covers every `invoke()`.
+**There is no runtime seam to intercept `invoke()`** — a DEV wrapper around
+`window.__TAURI_INTERNALS__.invoke` was built, reached DEV, and was removed: it threw
+`TypeError: Cannot assign to read only property 'invoke'` and killed startup. Tauri installs
+that method with `Object.defineProperty(window.__TAURI_INTERNALS__, 'invoke', { value })`
+(`tauri-2.12.1/scripts/core.js:81`), and `writable` / `configurable` both default to **false**;
+`__TAURI_INTERNALS__` itself is defined the same way on `window` (`manager/webview.rs:175`).
+So neither the method nor the object can be reassigned, redefined, or swapped for a Proxy from
+JS. The only seam left is **build-time**: alias `@tauri-apps/api/core` in `vite.config.ts` to a
+local module that re-exports the package and overrides `invoke`. That changes resolution for
+every call site *and* for plugins that import core internally, so it needs an explicit
+decision — never a quiet patch.
 
 ---
 
