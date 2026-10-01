@@ -367,7 +367,7 @@ dependencies = [
 
 [[package]]
 name = "blackwell-ops"
-version = "1.0.71"
+version = "1.0.72"
 dependencies = [
  "chrono",
  "env_logger",
