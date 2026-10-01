@@ -161,7 +161,6 @@ pub fn spawn_models_sse_progress(
 
         let url = format!("http://127.0.0.1:{port}/models/sse");
         let started = std::time::Instant::now();
-        let mut warned_404 = false;
         let mut warned_503 = false;
 
         while still_loading(&slot_arc)
@@ -189,12 +188,9 @@ pub fn spawn_models_sse_progress(
             let status = resp.status();
             if status.as_u16() == 404 {
                 // Upstream single-model without foundry patch — quiet exit.
-                if !warned_404 {
-                    warned_404 = true;
-                    log::info!(
-                        "[load-sse] /models/sse 404 on :{port} (single-model without progress route) — stderr fallback"
-                    );
-                }
+                log::info!(
+                    "[load-sse] /models/sse 404 on :{port} (single-model without progress route) — stderr fallback"
+                );
                 return;
             }
             if status.as_u16() == 503 {

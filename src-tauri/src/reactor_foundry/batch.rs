@@ -7,7 +7,7 @@
 
 use std::os::windows::process::CommandExt;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, LazyLock as StdLazyLock, Mutex};
+use std::sync::{Arc, Mutex};
 
 use super::{BUILD_CANCELLED, CHILD_PIDS, BuildState, emit_build_batch};
 

@@ -20,31 +20,29 @@ mod git;
 pub use batch::foundry_kill_all_children;
 pub(crate) use artifacts::{copy_dir_contents, publish_artifacts_to_sacred};
 pub(crate) use batch::{
-    clear_pids, kill_all_children, run_foundry_batch_streaming, track_pid, with_child_pids,
+    clear_pids, kill_all_children, run_foundry_batch_streaming, with_child_pids,
 };
 pub(crate) use cmake::{
     check_foundry_core_binaries, cmd_escape_batch, dir_size_bytes, format_bytes_label,
     foundry_batch_script_paths, foundry_cache_fingerprint, foundry_cmake_build_target_args,
     foundry_cmake_build_targets, foundry_keep_work_cache, foundry_release_candidate_dirs,
     get_default_cmake_flags, is_windows_vs_tail_batch_flake, merge_mandatory_cmake_flags,
-    nuke_foundry_build_dir_on_configure_fail, nuke_foundry_work_tree, nuke_foundry_work_tree_on_exit,
-    prepare_foundry_build_dir, read_foundry_cache_key, resolve_template_type, write_foundry_cache_key,
+    nuke_foundry_build_dir_on_configure_fail, nuke_foundry_work_tree_on_exit,
+    prepare_foundry_build_dir, resolve_template_type, write_foundry_cache_key,
     FOUNDRY_EXTRA_BINARIES,
 };
 pub use git::FoundrySourcePreview;
 pub(crate) use git::{
     apply_foundry_github_pr, apply_foundry_vendor_patches, backup_foundry_src_dirty_diff,
     commits_match, ensure_git_available, extract_commit_from_build_version, extract_github_owner_repo,
-    foundry_src_dir, git_hidden_output, git_hard_sync_branch, git_ls_remote_short, git_output_text,
-    git_rev_parse_short, parse_github_pr, parse_pr_input, parse_pr_list, push_pr_history,
-    short_commit_hash,
+    foundry_src_dir, git_hidden_output, git_hard_sync_branch, git_ls_remote_short,
+    git_rev_parse_short, parse_pr_list, push_pr_history,
 };
 
 use serde::{Deserialize, Serialize};
-use std::os::windows::process::CommandExt;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, LazyLock as StdLazyLock, Mutex};
+use std::sync::{Arc, LazyLock as StdLazyLock};
 use tokio::sync::{Mutex as TokioMutex, Notify};
 use tauri::Manager;
 
@@ -137,7 +135,7 @@ impl BuildPhase {
 }
 
 #[derive(Debug, Clone)]
-struct BuildState {
+pub(crate) struct BuildState {
     build_id: u64,
     provider_id: String,
     profile_id: String,
@@ -459,7 +457,6 @@ struct BuildCtx<'a> {
     worker: &'a FoundryWorkerApp,
     app_handle: &'a tauri::AppHandle,
     provider_id: &'a str,
-    environment: &'a str,
     profile_id: &'a str,
     build_id: u64,
     manifest: &'a foundry_toolchain::ToolchainManifest,
@@ -781,7 +778,7 @@ async fn stage_git_ops<'a>(ctx: &BuildCtx<'a>) -> Result<std::path::PathBuf, Str
 }
 
 /// Stage 2 — CMake configure chain. Returns the cmake_extra flags string.
-async fn stage_cmake_configure<'a>(ctx: &BuildCtx<'a>, git_exe: &std::path::Path) -> Result<String, String> {
+async fn stage_cmake_configure<'a>(ctx: &BuildCtx<'a>) -> Result<String, String> {
     let app_handle = ctx.app_handle;
     let provider_id = ctx.provider_id;
     let profile_id = ctx.profile_id;
@@ -1122,13 +1119,12 @@ async fn stage_wait_for_confirm<'a>(ctx: &BuildCtx<'a>, cmake_extra: &str) -> Re
 }
 
 /// Stage 4 — CMake compile. Returns true if a tail-rule flake was recovered.
-async fn stage_compile<'a>(ctx: &BuildCtx<'a>, cmake_extra: &str) -> Result<bool, String> {
+async fn stage_compile<'a>(ctx: &BuildCtx<'a>) -> Result<bool, String> {
     let app_handle = ctx.app_handle;
     let provider_id = ctx.provider_id;
     let profile_id = ctx.profile_id;
     let build_id = ctx.build_id;
     let profile = ctx.profile;
-    let manifest = ctx.manifest;
     let all_cuda_vars = ctx.all_cuda_vars;
     let work_root = crate::config::foundry_work_dir(provider_id);
     let build_dir = work_root.join(format!("build-{profile_id}"));
@@ -1261,7 +1257,6 @@ async fn stage_validate<'a>(ctx: &BuildCtx<'a>, recovered_tail_flake: bool) -> R
     let app_handle = ctx.app_handle;
     let provider_id = ctx.provider_id;
     let profile_id = ctx.profile_id;
-    let build_id = ctx.build_id;
     let work_root = crate::config::foundry_work_dir(provider_id);
     let build_dir = work_root.join(format!("build-{profile_id}"));
     let src_dir = crate::config::foundry_dir(provider_id).join("llama.cpp");
@@ -1627,11 +1622,7 @@ async fn run_foundry_build_worker(
     // sacred_binary_path     = foundry/artifacts/<provider>/<env>/Release  ← permanent, never nuked
     //
     // Flow: cmake builds into work/build-{env}/bin/Release → validated → copied to sacred artifacts
-    let engine_root            = crate::config::foundry_dir(&provider_id);
-    let src_dir                = engine_root.join("llama.cpp");
-    let work_root              = crate::config::foundry_work_dir(&provider_id);
-    let build_dir              = work_root.join(format!("build-{}", profile_id));
-    let cmake_build_output_dir = build_dir.join("bin").join("Release");
+    let work_root = crate::config::foundry_work_dir(&provider_id);
     // NOTE: bin_bak / rename dance removed entirely from normal build flow. Sacred artifacts are never touched during a build attempt.
 
     // Keep work/ between builds (fingerprint decides reuse of build-{profile}/). Ensure root exists.
@@ -1661,7 +1652,6 @@ async fn run_foundry_build_worker(
         worker: &worker,
         app_handle,
         provider_id: &provider_id,
-        environment: &environment,
         profile_id: &profile_id,
         build_id,
         manifest: &manifest,
@@ -1691,13 +1681,13 @@ async fn run_foundry_build_worker(
     };
 
     // Stage 2: CMake configure
-    let cmake_extra = stage_cmake_configure(&ctx, &git_exe).await?;
+    let cmake_extra = stage_cmake_configure(&ctx).await?;
 
     // Stage 3: wait for user confirmation
     stage_wait_for_confirm(&ctx, &cmake_extra).await?;
 
     // Stage 4: compile
-    let recovered_tail_flake = stage_compile(&ctx, &cmake_extra).await?;
+    let recovered_tail_flake = stage_compile(&ctx).await?;
 
     // Stage 5: integrity validation
     stage_validate(&ctx, recovered_tail_flake).await?;

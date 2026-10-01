@@ -87,11 +87,3 @@ pub fn sha256_hex(data: &[u8]) -> String {
     h.update(data);
     hex::encode(h.finalize())
 }
-
-/// Write downloaded bytes to `dest`, creating parent dirs.
-pub fn write_binary(dest: &Path, bytes: &[u8]) -> Result<(), String> {
-    if let Some(parent) = dest.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("create parent: {e}"))?;
-    }
-    std::fs::write(dest, bytes).map_err(|e| format!("write download: {e}"))
-}

@@ -6,9 +6,6 @@ use regex::Regex;
 use std::sync::LazyLock;
 use std::time::Duration;
 
-/// Host self MiB above this is treated as weight-class spill (not fit-print buffer).
-pub const HOST_BUFFER_CEILING_MIB: f64 = 2.5 * 1024.0;
-
 static LIST_DEVICES_FREE_RE: LazyLock<Regex> = LazyLock::new(|| {
     // CUDA0: NVIDIA … (97886 MiB, 95357 MiB free)
     Regex::new(r"(?i)CUDA\d+[^:]*:\s*.*?\(\s*([\d.]+)\s*MiB\s*,\s*([\d.]+)\s*MiB\s+free\s*\)")
@@ -107,11 +104,6 @@ pub fn list_devices_free_mib(
         return Err("low-vram: --list-devices returned no CUDA free lines".into());
     }
     Ok(frees)
-}
-
-/// Whether host_mib looks like weight spill vs fit-print buffer.
-pub fn host_is_weight_class(host_mib: Option<f64>) -> bool {
-    host_mib.map(|h| h > HOST_BUFFER_CEILING_MIB).unwrap_or(false)
 }
 
 /// Attach fitted ngl onto a raw scan result when present in logs.

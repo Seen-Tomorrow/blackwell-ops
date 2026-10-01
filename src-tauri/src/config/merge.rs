@@ -1,6 +1,5 @@
 //! Factory-template <-> user-param merge logic.
 
-use std::collections::HashMap;
 use crate::config::*;
 
 

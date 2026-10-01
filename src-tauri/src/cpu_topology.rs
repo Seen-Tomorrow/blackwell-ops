@@ -47,12 +47,6 @@ pub struct CcdInfo {
 }
 
 impl CcdInfo {
-    pub fn physical_mask(&self) -> u64 {
-        self.physical_lps
-            .iter()
-            .fold(0u64, |acc, &lp| acc | (1u64 << lp))
-    }
-
     pub fn l3_mib(&self) -> u64 {
         self.l3_bytes / (1024 * 1024)
     }
@@ -79,11 +73,9 @@ impl CpuTopology {
 
 #[derive(Debug, Clone)]
 pub struct AffinityPlan {
-    pub mode: AffinityMode,
     pub label: String,
     /// All logical processors in the mask (includes SMT siblings).
     pub lps: Vec<u32>,
-    pub cpu_mask: u64,
     pub cpu_mask_hex: String,
     pub threads: usize,
     pub l3_mib: u64,
@@ -186,10 +178,8 @@ pub fn plan_affinity_with(
     };
 
     Some(AffinityPlan {
-        mode,
         label: label.into(),
         lps,
-        cpu_mask: mask,
         cpu_mask_hex: format!("{mask:x}"),
         threads,
         l3_mib: ccd.l3_mib(),
@@ -324,10 +314,8 @@ fn plan_from_existing_args(args: &[String]) -> Option<AffinityPlan> {
     }
     let threads = read_thread_count(args, &["-t", "--threads"]).unwrap_or(lps.len());
     Some(AffinityPlan {
-        mode: AffinityMode::Auto,
         label: "user-mask".into(),
         lps,
-        cpu_mask: mask,
         cpu_mask_hex: format!("{mask:x}"),
         threads: threads.max(1),
         l3_mib: 0,
@@ -773,7 +761,6 @@ mod tests {
         let t = x3d_topo();
         let plan = plan_affinity_with(&t, AffinityMode::Auto, None).expect("plan");
         assert_eq!(plan.threads, 8);
-        assert_eq!(plan.cpu_mask, 0xff00);
         assert_eq!(plan.cpu_mask_hex, "ff00");
         assert_eq!(plan.lps, vec![8, 9, 10, 11, 12, 13, 14, 15]);
         assert_eq!(plan.l3_mib, 96);

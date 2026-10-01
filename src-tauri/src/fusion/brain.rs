@@ -399,10 +399,6 @@ impl FusionBrain {
         )
     }
 
-    fn pp_burst_active(&self, slots: &[crate::fusion::poller::SlotData]) -> bool {
-        self.pp_prefill_active(slots) && self.parallel_wave_ready(slots)
-    }
-
     fn pp_prefill_active(&self, slots: &[crate::fusion::poller::SlotData]) -> bool {
         self.any_busy_slot_prefilling(slots)
             || self.phase == InferencePhase::PP

@@ -722,10 +722,6 @@ pub fn decode_fit_exit(exit_code: Option<i32>) -> String {
     }
 }
 
-pub fn fit_stderr_reason_pub(stderr: &str) -> String {
-    fit_stderr_reason(stderr)
-}
-
 fn fit_process_error_message(
     model_path: &str,
     adapter: crate::fit_adapters::FitAdapterId,

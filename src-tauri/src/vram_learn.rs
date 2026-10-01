@@ -956,7 +956,7 @@ mod dedup_tests {
         record_launch_memory_snapshot(key, snap).unwrap();
 
         let _guard = STORE_MUTEX.lock().unwrap();
-        let mut store = load_store();
+        let store = load_store();
         let entry = store.entries.get(key).expect("entry");
         assert!((entry.vram_mib - 98853.84).abs() < 0.1);
         assert!((entry.host_mib.unwrap_or(0.0) - 32761.79).abs() < 0.1);
