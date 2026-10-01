@@ -42,15 +42,15 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.11.1",
-    "@tauri-apps/plugin-shell": "^2",
+    "@tauri-apps/api": "^2.12.1",
+    "@tauri-apps/plugin-shell": "^2.4.0",
     "ansi-to-html": "^0.7.2",
     "html-to-image": "^1.11.13",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.11.4",
+    "@tauri-apps/cli": "^2.12.1",
     "@types/node": "^25.9.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
