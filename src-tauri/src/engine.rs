@@ -76,9 +76,14 @@ fn is_spec_decoding_group_active(user_params: &[crate::types::UserEditedTemplate
 }
 
 fn model_has_embedded_mtp(model_path: &str) -> bool {
-    model_cache::get_cached(model_path)
+    if model_cache::get_cached(model_path)
         .map(|m| m.nextn_predict_layers > 0)
         .unwrap_or(false)
+    {
+        return true;
+    }
+    // Header often omits nextn on publisher `-mtp.gguf` builds (ISTA-DASLab).
+    crate::spec_draft::signal_contains_embedded_mtp(model_path)
 }
 
 fn strip_spec_extra_params(config: &mut crate::types::EngineConfig) {
@@ -157,12 +162,9 @@ fn validate_spec_launch(config: &crate::types::EngineConfig) -> Result<(), Strin
     }
 
     if spec_type.eq_ignore_ascii_case("draft-mtp") {
-        let has_mtp = model_cache::get_cached(&config.model_path)
-            .map(|m| m.nextn_predict_layers > 0)
-            .unwrap_or(false);
-        if !has_mtp {
+        if !model_has_embedded_mtp(&config.model_path) {
             return Err(
-                "MTP speculative decoding requires a model with nextn_predict_layers — use DFlash or turn spec off."
+                "MTP speculative decoding requires a baked-in MTP model — use DFlash or turn spec off."
                     .into(),
             );
         }

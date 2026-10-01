@@ -163,25 +163,65 @@ fn signal_contains_eagle3(signal: &str) -> bool {
 
 /// Detect standalone MTP head signals — explicit "head" tokens only.
 ///
-/// Deliberately NOT matching bare "-MTP-" or "MTP-GGUF": MTP-enabled *main* models use
-/// those in their folder/file names (e.g. "Qwen3.6-27B-MTP-GGUF/..."), which are baked-in
-/// MTP, not separate head files. Standalone heads are caught reliably by the
-/// vocab_size==0 / tiny-file metadata heuristics in `classify_draft_role` — the path signal
-/// is only a pre-scan convenience for names that explicitly say "head".
+/// Deliberately NOT matching `-mtp.gguf` or `MTP-GGUF`: those are baked-in MTP *mains*
+/// (ISTA-DASLab `IQ3_S-mtp.gguf`, Unsloth `Qwen3.6-27B-MTP-GGUF`). The GGUF header has no
+/// role field that distinguishes them from a sibling quant or from an external head.
 fn signal_contains_mtp_head(signal: &str) -> bool {
     let lower = signal.to_lowercase();
     let alnum = compact_alnum_lower(signal);
-    // Exact mtp-head / mtp_head / mtphead tokens
     if lower.contains("mtp-head") || lower.contains("mtp_head") || alnum.contains("mtphead") {
         return true;
     }
-    // head-mtp / head_mtp / headmtp
     if lower.contains("head-mtp") || lower.contains("head_mtp") || alnum.contains("headmtp") {
         return true;
     }
-    // File literally named "X.mtp.gguf" (literal dot before mtp, not a dash) — a clear
-    // head-export naming. "-mtp.gguf" is ambiguous and intentionally not matched.
+    // "X.mtp.gguf" (dot before mtp) is a head export. "-mtp.gguf" is a baked-in main.
     lower.ends_with(".mtp.gguf")
+}
+
+fn gguf_file_is_embedded_mtp(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    if !lower.ends_with(".gguf") {
+        return false;
+    }
+    if lower.ends_with("-mtp.gguf") || lower.ends_with("_mtp.gguf") {
+        return true;
+    }
+    let stem = &lower[..lower.len() - 5];
+    let Some(of_at) = stem.rfind("-of-") else {
+        return false;
+    };
+    let total = &stem[of_at + 4..];
+    if total.len() != 5 || !total.bytes().all(|b| b.is_ascii_digit()) {
+        return false;
+    }
+    let before = &stem[..of_at];
+    let Some(dash) = before.rfind('-') else {
+        return false;
+    };
+    let idx = &before[dash + 1..];
+    if idx.len() != 5 || !idx.bytes().all(|b| b.is_ascii_digit()) {
+        return false;
+    }
+    let stem_before_shard = &before[..dash];
+    stem_before_shard.ends_with("-mtp") || stem_before_shard.ends_with("_mtp")
+}
+
+/// Baked-in MTP main from publisher naming. Not a GGUF KV — the header does not carry a
+/// reliable MTP/draft role. ISTA-DASLab uses a `-mtp.gguf` suffix inside a repo that has
+/// no MTP token; Unsloth uses an `MTP-GGUF` folder.
+pub fn signal_contains_embedded_mtp(signal: &str) -> bool {
+    for part in signal.split(['/', '\\']).filter(|s| !s.is_empty()) {
+        let lower = part.to_lowercase();
+        if lower.ends_with(".gguf") {
+            if gguf_file_is_embedded_mtp(&lower) {
+                return true;
+            }
+        } else if lower.contains("mtp-gguf") {
+            return true;
+        }
+    }
+    false
 }
 
 fn path_segment_signals(model_path: &str) -> impl Iterator<Item = &str> {
@@ -209,6 +249,9 @@ fn draft_role_from_path_heuristics(model_path: &str) -> DraftRole {
     if signal_contains_mtp_head(model_path) {
         return DraftRole::ExternalMtp;
     }
+    if signal_contains_embedded_mtp(model_path) {
+        return DraftRole::MtpEmbedded;
+    }
     DraftRole::None
 }
 
@@ -232,7 +275,7 @@ pub fn draft_identity_from_catalog_signals(
         signals.push(hf);
     }
 
-    for signal in signals {
+    for signal in &signals {
         if signal_contains_dflash(signal) {
             return Some(DraftRole::ExternalDflash);
         }
@@ -241,6 +284,11 @@ pub fn draft_identity_from_catalog_signals(
         }
         if signal_contains_mtp_head(signal) {
             return Some(DraftRole::ExternalMtp);
+        }
+    }
+    for signal in &signals {
+        if signal_contains_embedded_mtp(signal) {
+            return Some(DraftRole::MtpEmbedded);
         }
     }
     None
@@ -638,5 +686,33 @@ mod tests {
         let path = r"C:\models\ddh0\DeepSeek-V4-Flash-GGUF\DeepSeek-V4-Flash-MTP-Q8_0.gguf";
         assert_eq!(classify_draft_role(&meta, path), DraftRole::ExternalMtp);
         assert!(!is_launchable_target(Some(&meta), path));
+        assert!(!signal_contains_embedded_mtp(path));
+    }
+
+    #[test]
+    fn ista_mtp_suffix_is_embedded_main_not_external_head() {
+        let path = r"C:\models\ISTA-DASLab\Qwen3.8-27B-GSQ-RCO-GGUF\Qwen3.8-27B-GSQ-RCO-IQ2_XS-mtp.gguf";
+        let hf = "ISTA-DASLab/Qwen3.8-27B-GSQ-RCO-GGUF";
+        assert_eq!(
+            draft_identity_from_catalog_signals(path, "Qwen3.8-27B-GSQ-RCO", Some(hf), None),
+            Some(DraftRole::MtpEmbedded)
+        );
+        let plain = r"C:\models\ISTA-DASLab\Qwen3.8-27B-GSQ-RCO-GGUF\Qwen3.8-27B-GSQ-RCO-IQ2_XS.gguf";
+        assert_eq!(
+            draft_identity_from_catalog_signals(plain, "Qwen3.8-27B-GSQ-RCO", Some(hf), None),
+            None
+        );
+        // Sub-10 GiB + missing vocab must not hide the -mtp build as an external head.
+        let meta = ModelMetadata {
+            architecture: "qwen35".into(),
+            nextn_predict_layers: 0,
+            vocab_size: 0,
+            file_size_bytes: 8_800_000_000,
+            ..empty_meta()
+        };
+        assert_eq!(classify_draft_role(&meta, path), DraftRole::MtpEmbedded);
+        assert!(is_launchable_target(Some(&meta), path));
+        assert!(is_launchable_target(None, path));
+        assert!(is_launchable_target(None, plain));
     }
 }

@@ -121,21 +121,32 @@ export function signalContainsEagle3(signal: string): boolean {
 /**
  * Detect standalone MTP head signals — explicit "head" tokens only.
  *
- * Deliberately NOT matching bare "-MTP-" or "MTP-GGUF": MTP-enabled *main* models use those
- * in their folder/file names (e.g. "Qwen3.6-27B-MTP-GGUF/..."), which are baked-in MTP, not
- * separate head files. Standalone heads are caught reliably by the vocab_size==0 / tiny-file
- * metadata heuristics in `draftRoleFromModel` — the path signal is only a pre-scan convenience
- * for names that explicitly say "head".
+ * Deliberately NOT matching `-mtp.gguf` or `MTP-GGUF`: those are baked-in MTP mains
+ * (ISTA-DASLab `IQ3_S-mtp.gguf`, Unsloth `Qwen3.6-27B-MTP-GGUF`). The GGUF header has
+ * no role field that distinguishes them from a sibling quant or from an external head.
  */
 export function signalContainsMtpHead(signal: string): boolean {
   const lower = signal.toLowerCase();
-  // mtp-head, mtp_head, mtphead
   if (lower.includes("mtp-head") || lower.includes("mtp_head") || compactAlnumLower(signal).includes("mtphead")) return true;
-  // head-mtp, head_mtp, headmtp
   if (lower.includes("head-mtp") || lower.includes("head_mtp") || compactAlnumLower(signal).includes("headmtp")) return true;
-  // File literally named "X.mtp.gguf" (literal dot before mtp, not a dash) — a clear
-  // head-export naming. "-mtp.gguf" is ambiguous and intentionally not matched.
+  // "X.mtp.gguf" (dot before mtp) is a head export. "-mtp.gguf" is a baked-in main.
   if (lower.endsWith(".mtp.gguf")) return true;
+  return false;
+}
+
+/** Baked-in MTP main from publisher naming. Not a GGUF KV. */
+export function signalContainsEmbeddedMtp(signal: string): boolean {
+  for (const part of signal.replace(/\\/g, "/").split("/")) {
+    if (!part) continue;
+    const lower = part.toLowerCase();
+    if (lower.endsWith(".gguf")) {
+      if (lower.endsWith("-mtp.gguf") || lower.endsWith("_mtp.gguf") || /[-_]mtp-\d{5}-of-\d{5}\.gguf$/i.test(lower)) {
+        return true;
+      }
+    } else if (lower.includes("mtp-gguf")) {
+      return true;
+    }
+  }
   return false;
 }
 
@@ -195,6 +206,7 @@ function pathIdentityDraftRole(
     if (signalContainsEagle3(signal)) return "external_eagle3";
     if (signalContainsMtpHead(signal)) return "external_mtp";
   }
+  if (catalogDraftSignals(model).some(signalContainsEmbeddedMtp)) return "mtp_embedded";
   return null;
 }
 
@@ -517,7 +529,8 @@ export function specCapabilitiesForMain(
     }
   }
   // Baked-in MTP does not exclude external DFlash — user picks spec_type at launch.
-  if ((main.metadata?.nextn_predict_layers ?? 0) > 0) {
+  // Filename suffix counts: ISTA `-mtp.gguf` often has no nextn KV.
+  if (draftRoleFromModel(main) === "mtp_embedded") {
     caps.push("mtp");
   }
   return caps;

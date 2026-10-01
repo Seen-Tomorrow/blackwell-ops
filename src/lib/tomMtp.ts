@@ -17,6 +17,10 @@ export function isMtpModel(model: Pick<ModelEntry, "path" | "metadata" | "hfMeta
   if (hfId.includes("mtp") || repo.includes("mtp")) return true;
 
   const path = model.path.replace(/\\/g, "/").toLowerCase();
+  const file = path.split("/").pop() ?? path;
+  if (file.endsWith("-mtp.gguf") || file.endsWith("_mtp.gguf") || /[-_]mtp-\d{5}-of-\d{5}\.gguf$/i.test(file)) {
+    return true;
+  }
   return path.includes("mtp-gguf") || path.includes("-mtp-");
 }
 

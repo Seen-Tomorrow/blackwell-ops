@@ -30,6 +30,9 @@ pub fn is_mtp_model(model_path: &str) -> bool {
     }
 
     let path_lower = model_path.replace('\\', "/").to_lowercase();
+    if crate::spec_draft::signal_contains_embedded_mtp(&path_lower) {
+        return true;
+    }
     path_lower.contains("mtp-gguf") || path_lower.contains("-mtp-")
 }
 
@@ -193,6 +196,16 @@ llama_params_fit_impl: projected to use 15480 MiB of device memory vs. 190564 Mi
     fn is_mtp_model_detects_mtp_gguf_path() {
         assert!(is_mtp_model(
             r"C:\models\unsloth\Qwen3.6-27B-MTP-GGUF\Qwen3.6-27B-UD-IQ2_XXS.gguf"
+        ));
+    }
+
+    #[test]
+    fn is_mtp_model_detects_ista_mtp_suffix() {
+        assert!(is_mtp_model(
+            r"C:\models\ISTA-DASLab\Qwen3.8-27B-GSQ-RCO-GGUF\Qwen3.8-27B-GSQ-RCO-IQ3_S-mtp.gguf"
+        ));
+        assert!(!is_mtp_model(
+            r"C:\models\ISTA-DASLab\Qwen3.8-27B-GSQ-RCO-GGUF\Qwen3.8-27B-GSQ-RCO-IQ3_S.gguf"
         ));
     }
 }
