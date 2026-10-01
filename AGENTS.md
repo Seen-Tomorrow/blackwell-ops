@@ -245,11 +245,34 @@ Native crashes also append `%TEMP%\blackwell-crash.log` (heap `0xC0000374`, ille
 
 ---
 
-## Tests (Rust)
+## Tests
 
-Run `cargo test` from `src-tauri/`; each module's tests live in `#[cfg(test)] mod …` beside its code.
-`config.rs::merge_tests` (template↔user merge) is by far the largest — run it after any
+`cargo test` from `src-tauri/` (282) and `npm test` from the repo root (vitest, 54).
+Both are sub-second; `release.yml` runs both before the release build, so a red suite
+no longer ships. Rust tests live in `#[cfg(test)] mod …` beside their code —
+`config.rs::merge_tests` is by far the largest, run it after any
 `merge_template_for_provider` change.
+
+**Invariants only, never snapshots** — this app is iterated daily, mostly chrome /
+theme / CSS and copy. A test asserts a relationship that must hold (IPC command
+parity, parser input→output, config merge rules), never “output looks like this”.
+NEVER add: snapshot tests or `.snap` files, assertions on exact user-visible strings,
+tooltips or wording, or tests that mirror a function’s implementation. A test that
+needs editing because the UI legitimately changed is the wrong test — delete it, do
+not update it. Model: `src/lib/tauriCommandParity.test.ts` hard-codes no command
+names, ordering or wording, so adding a command the normal way never touches it.
+
+**Rust↔TS name matching is NOT testable by regex** — a cross-language argument/field
+parity check was attempted and rejected: helper functions share command names
+(`add_model_path`), Tauri injects `AppHandle`/`State`/`Arc<RwLock<…>>` params that are
+never sent from JS, and nested arg objects (`config: { … }`) break brace matching. It
+produced false positives, which is exactly the failure mode this section exists to
+prevent. Cross-language renames are surfaced at runtime instead — see below.
+
+**Renamed a command or param and the UI just silently fails?** `src/lib/ipcDevLog.ts`
+wraps `window.__TAURI_INTERNALS__.invoke` in DEV and logs
+`[IPC] "cmd" rejected — sent args: […] — reason: …` before any call-site `catch`
+flattens the error to “unknown error”. Add nothing; it already covers every `invoke()`.
 
 ---
 
@@ -262,4 +285,7 @@ Windows **release** builds wedge on `tokio::process` + `CREATE_NO_WINDOW`: `ERRO
 `reactor_foundry.rs:433`, and `telemetry.rs:511` (nvidia-smi needs `piped()`, `null()` returns fallback).
 Engines are the exception: `engine_stack.rs` pipes stdout/stderr into `log_hub`.
 
-**No lint/CI configured** — `npm run build` is `tsc && vite build`; Rust tests via `cargo test`.
+**Lint/CI** — `npm run build` is `tsc && vite build`; Rust tests via `cargo test`;
+clippy is clean and configured by `src-tauri/clippy.toml` (see commit history for the
+`too_many_arguments` threshold decision). `release.yml` runs both suites, but only on
+tag push / manual dispatch — there is no PR-time check.
