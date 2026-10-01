@@ -106,7 +106,9 @@ function Set-JsonFileVersion {
     if (-not (Test-Path -LiteralPath $Path)) {
         throw "Missing file: $Path"
     }
-    $content = Get-Content -LiteralPath $Path -Raw
+    # -Encoding UTF8 is mandatory: Windows PowerShell 5.1 decodes as ANSI, so a UTF-8
+    # em-dash in the file arrives as three characters and is re-written as mojibake.
+    $content = Get-Content -LiteralPath $Path -Raw -Encoding UTF8
     $pattern = '("version"\s*:\s*")[^"]+(")'
     $match = [regex]::Match($content, $pattern)
     if (-not $match.Success) {
@@ -115,7 +117,9 @@ function Set-JsonFileVersion {
     $updated = $content.Substring(0, $match.Index) +
         $match.Groups[1].Value + $NewVersion + $match.Groups[2].Value +
         $content.Substring($match.Index + $match.Length)
-    [System.IO.File]::WriteAllText($Path, $updated)
+    # Explicit UTF-8 without BOM — same bytes File.WriteAllText emits by default,
+    # stated so the round-trip cannot silently depend on a default.
+    [System.IO.File]::WriteAllText($Path, $updated, (New-Object System.Text.UTF8Encoding $false))
 }
 
 function Set-CargoTomlVersion {
@@ -126,7 +130,8 @@ function Set-CargoTomlVersion {
     if (-not (Test-Path -LiteralPath $Path)) {
         throw "Missing file: $Path"
     }
-    $content = Get-Content -LiteralPath $Path -Raw
+    # -Encoding UTF8 is mandatory (see Set-JsonFileVersion): ANSI decode mangles non-ASCII.
+    $content = Get-Content -LiteralPath $Path -Raw -Encoding UTF8
     $pattern = '(?m)^(version\s*=\s*")[^"]+(")'
     $match = [regex]::Match($content, $pattern)
     if (-not $match.Success) {
@@ -135,7 +140,7 @@ function Set-CargoTomlVersion {
     $updated = $content.Substring(0, $match.Index) +
         $match.Groups[1].Value + $NewVersion + $match.Groups[2].Value +
         $content.Substring($match.Index + $match.Length)
-    [System.IO.File]::WriteAllText($Path, $updated)
+    [System.IO.File]::WriteAllText($Path, $updated, (New-Object System.Text.UTF8Encoding $false))
 }
 
 function Get-TagName {
