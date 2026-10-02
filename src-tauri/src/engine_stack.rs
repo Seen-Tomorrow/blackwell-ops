@@ -939,10 +939,11 @@ impl EngineStack {
                 slot.alias.clone(),
                 slot.pid,
                 slot.split_mode.clone(),
+                slot.port,
             )
         };
 
-        let (alias, pid, split_mode) = snapshot;
+        let (alias, pid, split_mode, port) = snapshot;
 
         crate::fusion::stop_brain(slot_idx).await;
 
@@ -997,7 +998,25 @@ impl EngineStack {
                 false,
             ));
         } else if let Some(p) = pid {
-            let _ = crate::engine_utils::kill_process_by_pid(p).await;
+            // No child handle survived, so this taskkill-by-PID is the last thing
+            // standing between the engine and a leaked process. `clear_slot` above has
+            // already dropped the port lock, so the startup reaper has no record of this
+            // PID and will never find the orphan. Discarding this error (`let _ =`) meant
+            // the only symptom was "port busy" on the next launch, with nothing on screen
+            // saying which process to clear or that it was ours.
+            if let Err(e) = crate::engine_utils::kill_process_by_pid(p).await {
+                log::error!(
+                    "[engine] Could not kill orphaned engine pid {p} on port {port}: {e}"
+                );
+                log_hub.emit_console_line(
+                    crate::output_console::BlackwellOutputConsoleCategory::Error,
+                    &format!(
+                        "[{alias}] Engine process {p} could not be stopped ({e}) — \
+                         port {port} may stay busy until that process exits."
+                    ),
+                    crate::output_console::BlackwellOutputConsoleLineStyle::Error,
+                );
+            }
         }
     }
 
