@@ -26,7 +26,12 @@ chrono = "0.4"
 log = "0.4"
 env_logger = "0.11"
 rfd = "0.17"
-sysinfo = { version = "0.38", features = ["multithread"] }
+# No `multithread`: every one of its 13 cfg sites in sysinfo 0.38 lives under
+# src/unix/ (linux, apple, bsd). The Windows backend has zero — CPU sampling goes
+# through PDH single-threaded regardless. It was enabled on 2026-10-01 to "preserve
+# HW-monitor refresh behavior on the 32-core box", but on Windows there is no parallel
+# refresh to preserve; the feature only pulls rayon into the graph.
+sysinfo = "0.38"
 sha2 = "0.11"
 libloading = "0.9"
 regex = "1.10"
