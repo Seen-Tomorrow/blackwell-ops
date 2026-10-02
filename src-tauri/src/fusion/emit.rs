@@ -244,7 +244,20 @@ impl FusionEmitFingerprint {
             gen_tokens_session: u.gen_tokens_per_session.min(u32::MAX as usize) as u32,
             ctx_used: u.ctx_used_session.min(u32::MAX as usize) as u32,
             ctx_fill_centi: (u.ctx_fill_pct * 100.0).round() as u32,
-            request_elapsed_ms: u.request_elapsed_ms,
+            // Bucketed only above 1 s, which is exactly where `formatMs` switches to
+            // 0.1 s resolution — so this is invisible, and it stops a long or stalled
+            // request (no tokens, only the clock moving) from emitting every tick.
+            // Below 1 s the display shows whole ms, so the raw value is kept.
+            //
+            // This is NOT a fix for emit rate during active generation: gen_tokens and
+            // gen_tps_instant change every tick anyway, so the fingerprint legitimately
+            // differs. Idle is already covered — request_elapsed_ms freezes when
+            // request_start is None.
+            request_elapsed_ms: if u.request_elapsed_ms >= 1000 {
+                u.request_elapsed_ms / 100 * 100
+            } else {
+                u.request_elapsed_ms
+            },
             ttft_ms: u.ttft_ms.map(|v| v.round() as u64).unwrap_or(0),
             prefill_ms: u.prefill_ms.map(|v| v.round() as u64).unwrap_or(0),
             decode_ttft_ms: u.decode_ttft_ms.map(|v| v.round() as u64).unwrap_or(0),

@@ -1,6 +1,20 @@
 import { useEffect, useState } from "react";
 import type { FusionUpdate } from "./types";
 
+/**
+ * Mirror of the elapsed bucket in the Rust emit fingerprint (`fusion/emit.rs`).
+ * Both sides must agree: the Rust side suppresses the emit when the fingerprint is
+ * unchanged, but if this gate compared the raw clock it would treat a moved clock as
+ * a new payload and re-render anyway, undoing the emit-side dedup.
+ *
+ * Bucketed only above 1 s — the same threshold `formatMs` uses to switch to 0.1 s
+ * resolution, so the displayed value never changes because of this.
+ */
+function elapsedEqual(a: number, b: number): boolean {
+  const bucket = (v: number) => (v >= 1000 ? Math.floor(v / 100) * 100 : v);
+  return bucket(a) === bucket(b);
+}
+
 /** Shallow compare hero + progress fields — skip churn when IPC payload unchanged. */
 export function fusionPayloadEqual(a: FusionUpdate, b: FusionUpdate): boolean {
   return (
@@ -26,7 +40,7 @@ export function fusionPayloadEqual(a: FusionUpdate, b: FusionUpdate): boolean {
     && a.ctxUsedSession === b.ctxUsedSession
     && a.ctxFillPct === b.ctxFillPct
     && (a.ctxPerSlot ?? 0) === (b.ctxPerSlot ?? 0)
-    && a.requestElapsedMs === b.requestElapsedMs
+    && elapsedEqual(a.requestElapsedMs, b.requestElapsedMs)
     && (a.requestClosed ?? false) === (b.requestClosed ?? false)
     && (a.ttftMs ?? null) === (b.ttftMs ?? null)
     && (a.prefillMs ?? null) === (b.prefillMs ?? null)
