@@ -270,7 +270,13 @@ pub async fn scan_gpus() -> Result<Vec<GpuInfo>, String> {
 /// Reuses a single System instance across polls so cpu_usage() has proper baseline deltas.
 #[tauri::command]
 pub async fn scan_cpu() -> Result<CpuInfo, String> {
-    let mut system_guard = CPU_SYSTEM.lock().unwrap();
+    // Poison-tolerant on purpose. With `.unwrap()`, one panic anywhere while this lock
+    // is held poisons it permanently, and every later poll then panics on "mutex
+    // poisoned" — turning one fault into a repeating one. Recovering the guard keeps a
+    // stale System handle recoverable instead of killing telemetry for the session.
+    let mut system_guard = CPU_SYSTEM
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
 
     // Initialize on first call — fresh snapshot captures initial state
     if system_guard.is_none() {
@@ -485,7 +491,11 @@ pub async fn scan_disk_io(_slot_idx: Option<i32>) -> Result<DiskIoInfo, String> 
 /// Scan system memory info — total and available RAM in MiB.
 #[tauri::command]
 pub async fn scan_system_info() -> Result<SystemInfo, String> {
-    let mut sys = System::new_all();
+    // Memory only. `System::new_all()` additionally snapshots EVERY process on the
+    // machine, opening each one — data this command never reads. It ran while engine
+    // processes were spawning and dying around it, walking a process list that was
+    // changing underneath, to produce a number that needs no process data at all.
+    let mut sys = System::new();
     sys.refresh_memory();
 
     let total = sys.total_memory() / (1024 * 1024);   // bytes → MiB, usable by OS
