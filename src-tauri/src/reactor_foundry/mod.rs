@@ -2531,6 +2531,12 @@ async fn enrich_provider_binary_info(
     changed
 }
 
+/// Persist provider config through the per-provider user-config files.
+///
+/// "Atomic" is now literal: this reaches `save_provider_user_config`, which writes
+/// temp → flush → rename. It previously called a plain `std::fs::write`, so the
+/// name promised a guarantee the code did not provide — and a build that failed
+/// part-way could leave a torn provider config behind.
 fn persist_providers_atomic(config: &Arc<std::sync::Mutex<crate::config::AppConfig>>) -> Result<(), String> {
     let providers = {
         let cfg = config.lock().map_err(|e| e.to_string())?;

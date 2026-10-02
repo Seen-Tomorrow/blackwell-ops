@@ -42,6 +42,7 @@ mod engine_utils;
 mod engine_job;
 mod app_lifecycle;
 mod trash_util;
+mod fs_util;
 mod engine_port_lock;
 mod fusion;
 mod provider_mgmt;

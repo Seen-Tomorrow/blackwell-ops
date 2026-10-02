@@ -194,8 +194,10 @@ pub fn save_provider_user_config(provider: &crate::types::ProviderConfig) -> Res
     std::fs::create_dir_all(config_dir()).map_err(|e| format!("Failed to create config dir: {}", e))?;
 
     let path = provider_user_config_path(&provider.id);
-    let json = serde_json::to_string_pretty(provider).map_err(|e| format!("Serialization failed: {}", e))?;
-    std::fs::write(&path, &json).map_err(|e| format!("Failed to write {}: {}", path.display(), e))?;
+    // Atomic — this file holds hand-curated hidden/order/userAddedValues edits that
+    // cannot be rebuilt from the factory template, so a torn write here is real loss.
+    crate::fs_util::write_json_atomic(&path, provider)
+        .map_err(|e| format!("Failed to write {}: {}", path.display(), e))?;
 
     log::info!("[config] Saved user config for {} -> {}", provider.id, path.display());
     Ok(())

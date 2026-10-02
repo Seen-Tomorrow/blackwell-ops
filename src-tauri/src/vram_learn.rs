@@ -134,11 +134,10 @@ fn load_store() -> LearnedVramStore {
 
 fn save_store(store: &LearnedVramStore) -> Result<(), String> {
     let path = store_path();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    let json = serde_json::to_string_pretty(store).map_err(|e| e.to_string())?;
-    std::fs::write(&path, json).map_err(|e| e.to_string())
+    // Atomic, and it creates the parent dir. These are *learned* curves — the
+    // measurements only exist because engines have already run, so losing them
+    // costs real GPU time to rebuild.
+    crate::fs_util::write_json_atomic(&path, store)
 }
 
 fn normalize_ctx_key(ctx: &str) -> String {

@@ -215,13 +215,14 @@ pub fn reset_app_config(
 pub fn save_config(config: &mut AppConfig) -> Result<(), String> {
     sanitize_model_paths(config);
     let config_directory = config_dir();
-    std::fs::create_dir_all(&config_directory).map_err(|e| format!("Failed to create config dir: {}", e))?;
+    std::fs::create_dir_all(&config_directory)
+        .map_err(|e| format!("Failed to create config dir: {}", e))?;
 
     let config_path = config_directory.join("app_config.json");
-    let json = serde_json::to_string_pretty(config)
-        .map_err(|e| format!("Failed to serialize app config: {}", e))?;
-
-    std::fs::write(&config_path, json).map_err(|e| format!("Failed to write app config: {}", e))?;
+    // Atomic: `std::fs::write` truncates first, so a death mid-write left an empty
+    // or half-written config that the next launch read as "no config" and replaced.
+    crate::fs_util::write_json_atomic(&config_path, config)
+        .map_err(|e| format!("Failed to write app config: {}", e))?;
     log::debug!("Saved app_config.json to {}", config_path.display());
     Ok(())
 }
@@ -230,26 +231,58 @@ fn build_fresh_config() -> AppConfig {
     AppConfig::default()
 }
 
+/// Read `app_config.json`.
+///
+/// `None` means **absent** — a genuine first run, safe to seed with defaults.
+///
+/// A file that exists but cannot be read or parsed is quarantined to
+/// `app_config.json.corrupt-<unix>` and *still* returns `None`. That distinction
+/// is the whole point: previously a parse failure fell through to the same `None`
+/// as a first run, the caller built fresh defaults, and `save_config` wrote them
+/// over the last known-good bytes — permanent, unreported loss of every model
+/// path and provider edit. Absent and corrupt are different facts; they no longer
+/// share a code path, and the unreadable file survives for manual recovery.
 fn load_saved_config() -> Option<AppConfig> {
     let config_path = config_dir().join("app_config.json");
-    if config_path.exists() {
-        if let Ok(content) = std::fs::read_to_string(&config_path) {
-            if let Ok(mut config) = serde_json::from_str::<AppConfig>(&content) {
-                // Sanitize: dedupe paths, ensure at most one default, sync default_download_path
-                let dirty = sanitize_model_paths(&mut config);
-                if dirty {
-                    if let Err(e) = save_config(&mut config) {
-                        log::warn!("[config] Failed to auto-save deduped model paths: {}", e);
-                    } else {
-                        log::info!("[config] Auto-saved deduped model paths");
-                    }
+    if !config_path.exists() {
+        return None;
+    }
+
+    let content = match std::fs::read_to_string(&config_path) {
+        Ok(c) => c,
+        Err(e) => {
+            log::error!(
+                "[config] Cannot read {}: {e} — quarantining, not resetting",
+                config_path.display()
+            );
+            crate::fs_util::quarantine(&config_path);
+            return None;
+        }
+    };
+
+    match serde_json::from_str::<AppConfig>(&content) {
+        Ok(mut config) => {
+            // Sanitize: dedupe paths, ensure at most one default, sync default_download_path
+            let dirty = sanitize_model_paths(&mut config);
+            if dirty {
+                if let Err(e) = save_config(&mut config) {
+                    log::warn!("[config] Failed to auto-save deduped model paths: {}", e);
+                } else {
+                    log::info!("[config] Auto-saved deduped model paths");
                 }
-                log::info!("Loaded app_config.json from {}", config_path.display());
-                return Some(config);
             }
+            log::info!("Loaded app_config.json from {}", config_path.display());
+            Some(config)
+        }
+        Err(e) => {
+            log::error!(
+                "[config] {} is corrupt: {e} — quarantining instead of resetting to defaults",
+                config_path.display()
+            );
+            crate::fs_util::quarantine(&config_path);
+            None
         }
     }
-    None
 }
 
 /// Ensure model paths are consistent: deduped, at most one default, default_download_path synced.
