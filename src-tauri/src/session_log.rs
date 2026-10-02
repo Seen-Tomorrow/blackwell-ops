@@ -308,8 +308,29 @@ fn write_stream(
     }
 }
 
+/// Serializes appends to `session.log`.
+///
+/// Each append opened its own handle with nothing locking the open-write-flush triple,
+/// so two threads logging in the same millisecond could interleave. Observed in a real
+/// session log during a concurrent two-slot teardown:
+///
+/// ```text
+/// [[11:12:22.304] [pipe_eof] slot=4 alias=ENGINE_3 ...
+///  11:12:22.304] [pipe_eof] slot=5 alias=ENGINE_3_2 ...
+/// ```
+///
+/// An extra `[` on one line and a missing one on the other. Harmless in itself, but it
+/// is the fingerprint of unsynchronized concurrent writes — and the crash log is the
+/// one artifact you consult *after* something already went wrong.
+static SESSION_LOG_APPEND: Mutex<()> = Mutex::new(());
+
 fn write_session_log_file(session_dir: &std::path::Path, line: &str) -> bool {
     let path = session_dir.join("session.log");
+    // Poison-tolerant: a panic in one writer must not silence the log for the rest of
+    // the session, which is exactly when it is needed.
+    let _append_guard = SESSION_LOG_APPEND
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     match OpenOptions::new().create(true).append(true).open(&path) {
         Ok(mut f) => {
             let ts = chrono::Local::now().format("%H:%M:%S%.3f");
@@ -342,6 +363,9 @@ pub fn append_crash_line(line: &str) {
         return;
     };
     let path = session_dir.join("app-crash.log");
+    let _append_guard = SESSION_LOG_APPEND
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(&path) {
         let _ = writeln!(f, "{line}");
         let _ = f.flush();

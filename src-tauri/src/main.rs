@@ -134,6 +134,13 @@ async fn main() {
             let _ = writeln!(f, "{}\n", msg);
             let _ = f.flush();
         }
+        // Also to stderr, always. This hook REPLACES Rust's default hook, so without
+        // this line a panic is invisible in the terminal — and a fastfail abort
+        // (0xC0000409) additionally bypasses the vectored handler in crash_log.rs by
+        // design. A DEV crash then leaves no record anywhere: that is exactly what
+        // happened on 2026-10-02, where the terminal showed a backtrace while
+        // blackwell-panic.log stayed stale, and the two disagreed.
+        eprintln!("{msg}\n");
     }));
 
     #[cfg(debug_assertions)]
