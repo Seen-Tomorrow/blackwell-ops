@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import type { LogEntry, StackEntry } from "../lib/types";
+import type { StackEntry } from "../lib/types";
+import type { SlotLogSummary } from "../lib/logSlotStore";
 import { getActiveStackSlots, isActiveEngineSlot } from "../lib/engineStack";
 import TabPageHeader from "./TabPageHeader";
 
@@ -8,7 +9,7 @@ export type ActiveLogSlot = number | "all";
 interface EngineLogsSwitcherProps {
   activeLogSlot: ActiveLogSlot;
   onActiveLogSlotChange: (slot: ActiveLogSlot) => void;
-  logs: Map<number, LogEntry[]>;
+  slotSummaries: Map<number, SlotLogSummary>;
   stack: StackEntry[];
   logSearchBySlot: Record<number, string>;
   onSlotLogSearchChange: (slot: number, query: string) => void;
@@ -32,7 +33,7 @@ interface SlotMeta {
 export default function EngineLogsSwitcher({
   activeLogSlot,
   onActiveLogSlotChange,
-  logs,
+  slotSummaries,
   stack,
   logSearchBySlot,
   onSlotLogSearchChange,
@@ -47,7 +48,7 @@ export default function EngineLogsSwitcher({
 
   const slots = useMemo<SlotMeta[]>(() => {
     const slotIds = new Set<number>();
-    for (const slot of logs.keys()) slotIds.add(slot);
+    for (const slot of slotSummaries.keys()) slotIds.add(slot);
     for (const entry of stack) {
       if (isActiveEngineSlot(entry)) slotIds.add(entry.idx);
     }
@@ -55,19 +56,19 @@ export default function EngineLogsSwitcher({
     return Array.from(slotIds)
       .sort((a, b) => a - b)
       .map((slot) => {
-        const entries = logs.get(slot) ?? [];
+        const summary = slotSummaries.get(slot);
         const stackEntry = stack.find((s) => s.idx === slot);
         const status = stackEntry?.status;
         return {
           slot,
-          label: stackEntry?.alias || entries[0]?.alias || `SLOT ${slot + 1}`,
-          lineCount: entries.length,
+          label: stackEntry?.alias || summary?.firstAlias || `SLOT ${slot + 1}`,
+          lineCount: summary?.lineCount ?? 0,
           status,
           isRunning: status === "RUNNING" || status === "LOADING",
           hasSearch: Boolean(logSearchBySlot[slot]?.trim()),
         };
       });
-  }, [logs, stack, logSearchBySlot]);
+  }, [slotSummaries, stack, logSearchBySlot]);
 
   const filterNorm = slotFilter.trim().toLowerCase();
 
@@ -115,7 +116,7 @@ export default function EngineLogsSwitcher({
         <button
           type="button"
           onClick={onClearAllLogs}
-          disabled={logs.size === 0 && activeEngineCount === 0}
+          disabled={slotSummaries.size === 0 && activeEngineCount === 0}
           className="engine-logs-switcher__clear-all"
         >
           CLEAR ALL

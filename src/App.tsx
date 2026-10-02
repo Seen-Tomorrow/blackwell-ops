@@ -9,8 +9,7 @@ const StackView = lazy(() => import("./components/StackView"));
 const ConfigPage = lazy(() => import("./components/ConfigPage"));
 const ExtrasPage = lazy(() => import("./components/ExtrasPage"));
 const ModelHub = lazy(() => import("./components/ModelHub"));
-const LogLineText = lazy(() => import("./components/LogLineText"));
-const EngineLogsSwitcher = lazy(() => import("./components/EngineLogsSwitcher"));
+const LogsPanel = lazy(() => import("./components/LogsPanel"));
 
 function TabFallback() {
   return <div className="flex-1 min-h-0" aria-hidden />;
@@ -30,10 +29,6 @@ import { useTauriListen } from "./hooks/useTauriListen";
 import {
   isPowerUserActive,
   loadPowerUserState,
-  loadLogSearchBySlot,
-  saveLogSearchBySlot,
-  loadLogsAnsiEnabled,
-  saveLogsAnsiEnabled,
   saveStartupUpdatesCache,
   loadHwMonitorOpen,
   loadExtrasSubTab,
@@ -46,8 +41,14 @@ import type { ConfigSubTab } from "./lib/appNav";
 import { isSetupNavTabAllowed } from "./lib/setupGuide";
 
 import { BINARY_UPDATES_ENABLED } from "./lib/foundry_constants";
-import { getActiveStackSlots, isActiveEngineSlot, stopAllEngines } from "./lib/engineStack";
-import type { ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, UpdateOfferings, CatalogUpdateEntry } from "./lib/types";
+import { isActiveEngineSlot, stopAllEngines } from "./lib/engineStack";
+import type { ModelEntry, StackEntry, LogBatch, SystemEvent, ProviderConfig, UpdateOfferings, CatalogUpdateEntry } from "./lib/types";
+import {
+  appendLogBatch,
+  appendSystemEvent,
+  releaseAllLogs,
+  releaseSlotLogs,
+} from "./lib/logSlotStore";
 
 export type Tab = "catalog" | "stack" | "extras" | "modelhub" | "logs" | "config";
 
@@ -62,19 +63,10 @@ function App() {
   const [models, setModels] = useState<ModelEntry[]>([]);
   const [catalogLoaded, setCatalogLoaded] = useState(false);
   const [stack, setStack] = useState<StackEntry[]>([]);
-  const [logs, setLogs] = useState<Map<number, LogEntry[]>>(new Map());
-  const [systemEvents, setSystemEvents] = useState<Map<number, Array<{ text: string; timestamp: string }>>>(new Map());
+  // Engine logs live in `logSlotStore`, not in App state. They used to be held here,
+  // which meant every 25 ms `engine-log-batch` created a new Map, re-rendered App, and
+  // reconciled the entire mounted tree — with the LOGS tab closed. See logSlotStore.ts.
   // fusionUpdates removed — managed by useFusionData hook (single listener)
-
-  const [activeLogSlot, setActiveLogSlot] = useState<number | "all">("all");
-  const [logSearchBySlot, setLogSearchBySlot] = useState<Record<number, string>>(() => loadLogSearchBySlot());
-  const [logsAnsiEnabled, setLogsAnsiEnabled] = useState(() => loadLogsAnsiEnabled());
-
-  const logsScrollRef = useRef<HTMLDivElement>(null);
-  const autoScrollRef = useRef(true);
-  const flatLogsRef = useRef<Map<number, Array<{ text: string; alias: string }>>>(new Map());
-  const logsLengthsRef = useRef<Record<number, number>>({});
-  const logSearchHitIndexRef = useRef(0);
 
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [catalogHfUpdates, setCatalogHfUpdates] = useState<CatalogUpdateEntry[]>([]);
@@ -87,78 +79,10 @@ function App() {
   const [scanningPath, setScanningPath] = useState<string | null>(null);
   const [batchScanState, setBatchScanState] = useState<{active: boolean; scanned: number; failed: number; total: number}>({ active: false, scanned: 0, failed: 0, total: 0 });
 
-  const clearSlotLogSearch = useCallback((slot: number) => {
-    logSearchHitIndexRef.current = 0;
-    setLogSearchBySlot((prev) => {
-      if (!(slot in prev)) return prev;
-      const next = { ...prev };
-      delete next[slot];
-      saveLogSearchBySlot(next);
-      return next;
-    });
-  }, []);
-
-  const setSlotLogSearch = useCallback((slot: number, query: string) => {
-    logSearchHitIndexRef.current = 0;
-    setLogSearchBySlot((prev) => {
-      const next = { ...prev };
-      if (!query.trim()) {
-        delete next[slot];
-      } else {
-        next[slot] = query;
-      }
-      saveLogSearchBySlot(next);
-      return next;
-    });
-  }, []);
-
-  const scrollToLogSearchHit = useCallback((hitIndex: number, behavior: ScrollBehavior = "smooth") => {
-    const root = logsScrollRef.current;
-    if (!root) return 0;
-    const hits = root.querySelectorAll<HTMLElement>(".log-search-hit");
-    if (hits.length === 0) return 0;
-    const idx = ((hitIndex % hits.length) + hits.length) % hits.length;
-    hits.forEach((el, i) => {
-      el.classList.toggle("log-search-hit--current", i === idx);
-    });
-    hits[idx]?.scrollIntoView({ block: "center", behavior });
-    return hits.length;
-  }, []);
-
-  const stepLogSearchHit = useCallback(() => {
-    const count = scrollToLogSearchHit(logSearchHitIndexRef.current + 1);
-    if (count > 0) {
-      logSearchHitIndexRef.current = (logSearchHitIndexRef.current + 1) % count;
-    }
-  }, [scrollToLogSearchHit]);
-
   const releaseSlotLogCaches = useCallback((slot?: number) => {
-    if (slot === undefined) {
-      setLogs(new Map());
-      setSystemEvents(new Map());
-      flatLogsRef.current.clear();
-      logsLengthsRef.current = {};
-      setLogSearchBySlot({});
-
-      saveLogSearchBySlot({});
-      return;
-    }
-    setLogs((prev) => {
-      if (!prev.has(slot)) return prev;
-      const next = new Map(prev);
-      next.delete(slot);
-      return next;
-    });
-    setSystemEvents((prev) => {
-      if (!prev.has(slot)) return prev;
-      const next = new Map(prev);
-      next.delete(slot);
-      return next;
-    });
-    flatLogsRef.current.delete(slot);
-    delete logsLengthsRef.current[slot];
-    clearSlotLogSearch(slot);
-  }, [clearSlotLogSearch]);
+    if (slot === undefined) releaseAllLogs();
+    else releaseSlotLogs(slot);
+  }, []);
   const [totalParams, setTotalParams] = useState(0);
   const [hiddenCount, setHiddenCount] = useState(0);
   const [isPowerUser, setIsPowerUser] = useState(() => isPowerUserActive(loadPowerUserState()));
@@ -429,39 +353,18 @@ function App() {
     return () => window.removeEventListener(EVENTS.navigateConfig, handler);
   }, []);
 
+  // Both handlers write straight to the store — no setState here, so a log burst
+  // never re-renders the shell. LogsPanel / SlotLogPanel subscribe per slot.
   useTauriListen<LogBatch>("engine-log-batch", (payload) => {
     if (payload?.slot !== undefined && payload.entries?.length > 0) {
-      unstable_batchedUpdates(() => {
-        try {
-          setLogs((prev) => {
-            const next = new Map(prev);
-            const existing = next.get(payload.slot) || [];
-            const updated = [...existing, ...payload.entries].slice(-5000);
-            next.set(payload.slot, updated);
-            if (!prev.has(payload.slot)) {
-              setActiveLogSlot(payload.slot);
-            }
-            return next;
-          });
-        } catch {}
-      });
+      appendLogBatch(payload.slot, payload.entries);
     }
   });
 
   useTauriListen<SystemEvent>("engine-system", (payload) => {
-    try {
-      if (payload?.slot !== undefined && payload.text) {
-        unstable_batchedUpdates(() => {
-          setSystemEvents((prev) => {
-            const next = new Map(prev);
-            const existing = next.get(payload.slot) || [];
-            const updated = [...existing, { text: payload.text, timestamp: payload.timestamp }].slice(-50);
-            next.set(payload.slot, updated);
-            return next;
-          });
-        });
-      }
-    } catch {}
+    if (payload?.slot !== undefined && payload.text) {
+      appendSystemEvent(payload.slot, payload);
+    }
   });
 
   useTauriListen<{ slot?: number; alias?: string; reason?: string }>("engine-load-failed", (payload) => {
@@ -495,7 +398,6 @@ function App() {
       try {
         if (payload?.slot !== undefined) {
           releaseSlotLogCaches(payload.slot);
-          setActiveLogSlot((prev) => (prev === payload.slot ? "all" : prev));
           dispatchAppEvent(EVENTS.slotCleared, payload);
           void invoke("emit_to_blackwell_console", {
             category: "engines",
@@ -573,103 +475,6 @@ function App() {
       console.error("Stop all failed:", err);
     }
   }, [releaseSlotLogCaches]);
-
-  // Auto-scroll logs to bottom on new entries
-  const prevLogCountRef = useRef(0);
-  useEffect(() => {
-    if (activeTab !== "logs" || !logsScrollRef.current) return;
-    const totalLines = Array.from(logs.values()).reduce((s, e) => s + e.length, 0);
-    if (totalLines > prevLogCountRef.current && autoScrollRef.current) {
-      logsScrollRef.current.scrollTo({ top: logsScrollRef.current.scrollHeight });
-    }
-    prevLogCountRef.current = totalLines;
-  }, [logs, activeTab]);
-
-  // Track manual scroll to toggle auto-scroll
-  const handleLogsScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    const el = e.currentTarget;
-    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    autoScrollRef.current = distFromBottom < 80;
-  }, []);
-
-  // Clear logs for selected slot
-  const handleClearSlotLogs = useCallback((slot: number) => {
-    setLogs((prev) => {
-      const next = new Map(prev);
-      next.set(slot, []);
-      return next;
-    });
-    clearSlotLogSearch(slot);
-  }, [clearSlotLogSearch]);
-
-  const handleClearAllLogs = useCallback(() => {
-    setLogs((prev) => {
-      const next = new Map<number, LogEntry[]>();
-      for (const slot of prev.keys()) {
-        next.set(slot, []);
-      }
-      for (const entry of stack) {
-        if (isActiveEngineSlot(entry) && !next.has(entry.idx)) {
-          next.set(entry.idx, []);
-        }
-      }
-      return next;
-    });
-    setSystemEvents((prev) => {
-      const next = new Map(prev);
-      for (const slot of next.keys()) {
-        next.set(slot, []);
-      }
-      for (const entry of stack) {
-        if (isActiveEngineSlot(entry) && !next.has(entry.idx)) {
-          next.set(entry.idx, []);
-        }
-      }
-      return next;
-    });
-    flatLogsRef.current.clear();
-    logsLengthsRef.current = {};
-    setLogSearchBySlot({});
-    saveLogSearchBySlot({});
-  }, [stack]);
-
-  const flatLogs = useMemo(() => {
-    const result = new Map();
-    for (const [slot, entries] of logs.entries()) {
-      const len = entries.length;
-      // Only recompute slice+map when entry count changed by 10+ — avoids expensive allocation on every log append.
-      if (logsLengthsRef.current[slot] !== undefined && Math.abs(len - logsLengthsRef.current[slot]) < 1) {
-        result.set(slot, flatLogsRef.current.get(slot) || []);
-      } else {
-        const sliced = entries.slice(-500).map((e) => ({ text: e.text, alias: e.alias }));
-        result.set(slot, sliced);
-        flatLogsRef.current.set(slot, sliced);
-      }
-      logsLengthsRef.current[slot] = len;
-    }
-    return result;
-  }, [logs]);
-
-  const activeLogSearchQuery = useMemo(() => {
-    if (typeof activeLogSlot !== "number") return "";
-    return logSearchBySlot[activeLogSlot]?.trim() ?? "";
-  }, [activeLogSlot, logSearchBySlot]);
-
-  useEffect(() => {
-    if (activeTab !== "logs") return;
-    logSearchHitIndexRef.current = 0;
-    if (!activeLogSearchQuery) {
-      logsScrollRef.current
-        ?.querySelectorAll(".log-search-hit--current")
-        .forEach((el) => el.classList.remove("log-search-hit--current"));
-      return;
-    }
-    autoScrollRef.current = false;
-    const frame = requestAnimationFrame(() => {
-      scrollToLogSearchHit(0, "auto");
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [activeTab, activeLogSearchQuery, activeLogSlot, flatLogs, scrollToLogSearchHit]);
 
   const committedVramMib = useMemo(() => {
     return stack.reduce((sum, s) => {
@@ -768,7 +573,7 @@ function App() {
         )}
         {activeTab === "stack" && (
           <Suspense fallback={<TabFallback />}>
-            <StackView stack={stack} logs={logs} systemEvents={systemEvents} onStop={handleStopEngine} onStopAll={handleStopAll} />
+            <StackView stack={stack} onStop={handleStopEngine} onStopAll={handleStopAll} />
           </Suspense>
         )}
         {activeTab === "modelhub" && (
@@ -786,85 +591,9 @@ function App() {
           </Suspense>
         )}
         {activeTab === "logs" && (
-          <div className="h-full flex flex-col min-h-0 overflow-hidden" data-engine-logs>
-            <Suspense fallback={<TabFallback />}>
-            <EngineLogsSwitcher
-              activeLogSlot={activeLogSlot}
-              onActiveLogSlotChange={setActiveLogSlot}
-              logs={logs}
-              stack={stack}
-              logSearchBySlot={logSearchBySlot}
-              onSlotLogSearchChange={setSlotLogSearch}
-              onClearSlotLogSearch={clearSlotLogSearch}
-              onLogSearchStep={stepLogSearchHit}
-              onClearSlotLogs={handleClearSlotLogs}
-              onClearAllLogs={handleClearAllLogs}
-              ansiEnabled={logsAnsiEnabled}
-              onAnsiEnabledChange={(enabled) => {
-                setLogsAnsiEnabled(enabled);
-                saveLogsAnsiEnabled(enabled);
-              }}
-            />
-            </Suspense>
-            <div
-              ref={logsScrollRef}
-              className="engine-logs-scroll theme-surface-inset flex-1 overflow-x-hidden overflow-y-auto rounded-sm p-3 min-h-0 mx-4 mb-4"
-              onScroll={handleLogsScroll}
-            >
-              {logs.size === 0 && getActiveStackSlots(stack).length === 0 ? (
-                <p className="shell-log-empty type-body font-mono italic">NO LOGS YET — LAUNCH AN ENGINE TO SEE OUTPUT</p>
-              ) : (() => {
-                const totalLogLines = Array.from(logs.values()).reduce((sum, entries) => sum + entries.length, 0);
-                if (totalLogLines === 0) {
-                  return (
-                    <p className="shell-log-empty type-body font-mono italic">
-                      LOG BUFFER CLEARED — WAITING FOR OUTPUT
-                    </p>
-                  );
-                }
-                return null;
-              })() ?? (
-                (() => {
-                  const slotKeys = activeLogSlot === "all"
-                    ? Array.from(logs.keys()).sort((a, b) => a - b)
-                    : logs.has(activeLogSlot) ? [activeLogSlot] : [];
-                  if (slotKeys.length === 0) return <p className="shell-log-empty type-body font-mono italic">NO LOGS FOR SELECTED SLOT</p>;
-                  return slotKeys.map((slot) => {
-                    const entries = flatLogs.get(slot) || [];
-                    const stackEntry = stack.find((s) => s.idx === slot);
-                    const alias = stackEntry?.alias || entries[0]?.alias || `SLOT ${slot}`;
-                    return (
-                      <div key={`slot-${slot}`} className="space-y-0.5">
-                        {activeLogSlot === "all" && (
-                          <div className="mb-2 mt-2 first:mt-0">
-                            <div className="shell-log-header type-body font-mono border-b pb-1">
-                              {alias} <span className="shell-log-count">({entries.length} lines)</span>
-                            </div>
-                          </div>
-                        )}
-                        {entries.map((entry, i) => {
-                          const slotQuery = logSearchBySlot[slot] ?? "";
-                          const lineQuery = activeLogSlot === "all" ? slotQuery : (logSearchBySlot[activeLogSlot] ?? "");
-                          return (
-                            <p key={i} className="shell-log-line type-body font-mono leading-relaxed break-all">
-                              {activeLogSlot === "all" && <span className="shell-log-alias">[{entry.alias}] </span>}
-                              <Suspense fallback={<span>{entry.text}</span>}>
-                                <LogLineText
-                                  text={entry.text}
-                                  highlightQuery={lineQuery}
-                                  ansiEnabled={logsAnsiEnabled}
-                                />
-                              </Suspense>
-                            </p>
-                          );
-                        })}
-                      </div>
-                    );
-                  });
-                })()
-              )}
-            </div>
-          </div>
+          <Suspense fallback={<TabFallback />}>
+            <LogsPanel stack={stack} />
+          </Suspense>
         )}
 
             </Layout>

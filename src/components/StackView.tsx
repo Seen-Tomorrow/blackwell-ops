@@ -2,16 +2,11 @@ import SlotLogPanel from "./SlotLogPanel";
 import EngineBanner from "./EngineBanner";
 import TabPageHeader from "./TabPageHeader";
 
-import type { StackEntry, LogEntry } from "../lib/types";
+import type { StackEntry } from "../lib/types";
 import { getActiveStackSlots } from "../lib/engineStack";
-
-const EMPTY_LOGS: LogEntry[] = [];
-const EMPTY_EVENTS: Array<{ text: string; timestamp: string }> = [];
 
 interface StackViewProps {
   stack: StackEntry[];
-  logs: Map<number, LogEntry[]>;
-  systemEvents: Map<number, Array<{ text: string; timestamp: string }>>;
   onStop: (slotIdx: number) => void;
   onStopAll: () => void;
 }
@@ -25,7 +20,7 @@ function cardGlowClass(status: string): string {
   }
 }
 
-export default function StackView({ stack, logs, systemEvents, onStop, onStopAll }: StackViewProps) {
+export default function StackView({ stack, onStop, onStopAll }: StackViewProps) {
   const activeSlots = getActiveStackSlots(stack);
   const onlineCount = activeSlots.filter((e) => e.status === "RUNNING").length;
   const loadingCount = activeSlots.filter((e) => e.status === "LOADING").length;
@@ -83,8 +78,6 @@ export default function StackView({ stack, logs, systemEvents, onStop, onStopAll
                 />
                 <SlotLogPanel
                   entry={entry}
-                  logs={logs.get(entry.idx) ?? EMPTY_LOGS}
-                  systemEvents={systemEvents.get(entry.idx) ?? EMPTY_EVENTS}
                   n_ctx={entry.n_ctx || 32768}
                   onStop={onStop}
                 />

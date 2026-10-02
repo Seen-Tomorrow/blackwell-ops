@@ -1,14 +1,13 @@
 import { useEffect, useRef, useState, memo } from "react";
-import type { StackEntry, LogEntry } from "../lib/types";
+import type { StackEntry } from "../lib/types";
 import AnsiText from "./AnsiText";
 import BenchWidget from "./BenchWidget";
 import { useFusionSlot } from "../hooks/useFusionData";
 import { getBenchPortState, subscribeBenchPortStore } from "../lib/benchPortStore";
+import { useSlotLogStore } from "../lib/logSlotStore";
 
 interface SlotLogPanelProps {
   entry: StackEntry;
-  logs: LogEntry[];
-  systemEvents: Array<{ text: string; timestamp: string }>;
   n_ctx?: number;
   onStop: (slotIdx: number) => void;
 }
@@ -27,7 +26,8 @@ function StatBlock({ label, value, highlight }: {
     </div>
   );
 }
-// Memoized SlotLogPanel — only re-renders when entry, logs, or onStop change
+// Memoized — and it now reads its own slot from logSlotStore, so a log burst on
+// another engine no longer reaches this panel at all.
 
 function benchStackSummary(port: number): string | null {
   const ps = getBenchPortState(port);
@@ -41,7 +41,8 @@ function benchStackSummary(port: number): string | null {
   return null;
 }
 
-export default memo(function SlotLogPanel({ entry, logs, systemEvents, n_ctx = 32768, onStop }: SlotLogPanelProps) {
+export default memo(function SlotLogPanel({ entry, n_ctx = 32768, onStop }: SlotLogPanelProps) {
+  const { logs, events: systemEvents } = useSlotLogStore(entry.idx);
   const fusionUpdate = useFusionSlot(entry.idx);
   const logRef = useRef<HTMLDivElement>(null);
   const [benchExpanded, setBenchExpanded] = useState(false);
