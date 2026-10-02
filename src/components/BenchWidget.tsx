@@ -263,20 +263,21 @@ export default function BenchWidget({
     maxPpTokens == null || maxPpTokens <= 0 || tok < maxPpTokens;
 
   const [, setTick] = useState(0);
-  const bump = () => {
-    notifyBenchPortStore();
-    setTick((t) => t + 1);
-  };
+  // Notifying the port wakes this widget too — it subscribes to `port` below — so
+  // there is no separate local bump.
+  const bump = () => notifyBenchPortStore(port);
   const bumpControls = () => {
+    // Control chips are global: persistBenchControls mirrors them onto every cached
+    // port state, so every mounted widget must repaint, not just this port's.
     persistBenchControls(ps);
-    bump();
+    notifyBenchPortStore();
   };
   const benchAbortRef = useRef(false);
   const [stopPending, setStopPending] = useState(false);
 
   const isBenchStopped = (error?: string) => error === "Cancelled" || error === "Stopped";
 
-  useEffect(() => subscribeBenchPortStore(() => setTick((t) => t + 1)), []);
+  useEffect(() => subscribeBenchPortStore(port, () => setTick((t) => t + 1)), [port]);
 
   const [lastRun, setLastRun] = useState<BenchLastRunGhost | null>(null);
 

@@ -231,7 +231,7 @@ export default function FusionOverlay({
   });
   const [benchSessionMode, setBenchSessionMode] = useState<BenchSessionMode>("idle");
   const [, setBenchPortTick] = useState(0);
-  useEffect(() => subscribeBenchPortStore(() => setBenchPortTick((n) => n + 1)), []);
+  useEffect(() => subscribeBenchPortStore(displayPort, () => setBenchPortTick((n) => n + 1)), [displayPort]);
   const benchPort = getBenchPortState(displayPort);
   const { mode: heroTpsMode, setMode: setHeroTpsMode } = useFusionHeroTpsMode();
   const { open: benchTrayOpen, toggle: toggleBenchTray } = useFusionBenchTray();
@@ -243,7 +243,7 @@ export default function FusionOverlay({
     ps.ppResult = null;
     setBenchSessionMode("idle");
     setBenchHero({ tg: null, pp: null });
-    notifyBenchPortStore();
+    notifyBenchPortStore(displayPort);
   }, [displayPort]);
 
   useTauriListen<{ slot: number }>("slot-cleared", ({ slot }) => {

@@ -60,11 +60,27 @@ function defaultBenchState(): BenchPortState {
 }
 
 const portStates = new Map<number, BenchPortState>();
-const listeners = new Set<() => void>();
 
-/** Wake every mounted BenchWidget (fusion overlay + engine stack share per-port state). */
-export function notifyBenchPortStore(): void {
-  for (const fn of listeners) fn();
+/**
+ * Per-port subscription sets, mirroring `fusionSlotStore`.
+ *
+ * State was always per-port, but notification was not: a single global listener set
+ * meant every bench tick on any port woke every mounted BenchWidget, every
+ * FusionOverlay and every SlotLogPanel. With several engines up, one benchmark made
+ * unrelated widgets re-render 40×/s.
+ */
+const portSubs = new Map<number, Set<() => void>>();
+
+/**
+ * Wake subscribers of `port`. Omit `port` only for a whole-store change
+ * (`resetAllBenchPortStates`, `persistBenchControls`), which genuinely is global.
+ */
+export function notifyBenchPortStore(port?: number): void {
+  if (port == null) {
+    for (const set of portSubs.values()) set.forEach((cb) => cb());
+    return;
+  }
+  portSubs.get(port)?.forEach((cb) => cb());
 }
 
 /** Per-port bench state — survives engine switches while the widget is mounted. */
@@ -77,9 +93,18 @@ export function getBenchPortState(port: number): BenchPortState {
   return ps;
 }
 
-export function subscribeBenchPortStore(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
+export function subscribeBenchPortStore(port: number, listener: () => void): () => void {
+  let set = portSubs.get(port);
+  if (!set) {
+    set = new Set();
+    portSubs.set(port, set);
+  }
+  const bucket = set;
+  bucket.add(listener);
+  return () => {
+    bucket.delete(listener);
+    if (bucket.size === 0) portSubs.delete(port);
+  };
 }
 
 /** TG warmup runs when the user toggle is ON (always 512-tok decode, then measured at n_predict). */

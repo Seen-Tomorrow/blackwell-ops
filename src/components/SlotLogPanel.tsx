@@ -47,7 +47,7 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, n_ctx = 3
   const [benchExpanded, setBenchExpanded] = useState(false);
   const [, setBenchTick] = useState(0);
 
-  useEffect(() => subscribeBenchPortStore(() => setBenchTick((t) => t + 1)), []);
+  useEffect(() => subscribeBenchPortStore(entry.port, () => setBenchTick((t) => t + 1)), [entry.port]);
 
   const benchPs = getBenchPortState(entry.port);
   const benchBusy = benchPs.tgRunning || benchPs.ppRunning;
