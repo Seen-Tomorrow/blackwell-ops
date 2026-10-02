@@ -416,9 +416,10 @@ pub async fn launch_engine(
             pick_next_engine_port(provider_base_port, &used_ports, &live_pids).await
         };
         stack.reserve_slot(slot_idx, &config.alias, slot_port)?;
-        stack.emit_stack_changed();
         (slot_idx, slot_port, live_pids)
     };
+    // Emit with the stack lock released — see EngineStack::emit_stack_changed_unlocked.
+    EngineStack::emit_stack_changed_unlocked(&app.stack).await;
 
     config.port = slot_port;
 
@@ -429,8 +430,8 @@ pub async fn launch_engine(
         {
             let stack = app.stack.lock().await;
             stack.release_reserved_slot(slot_idx);
-            stack.emit_stack_changed();
         }
+        EngineStack::emit_stack_changed_unlocked(&app.stack).await;
         return Err(e);
     }
 
@@ -515,8 +516,7 @@ pub async fn launch_engine(
                     promote
                 };
                 if should_emit {
-                    let s = s_clone.lock().await;
-                    s.emit_stack_changed();
+                    EngineStack::emit_stack_changed_unlocked(&s_clone).await;
                 }
             });
         })
@@ -562,8 +562,8 @@ pub async fn launch_engine(
         {
             let stack = app.stack.lock().await;
             stack.release_reserved_slot(slot_idx);
-            stack.emit_stack_changed();
         }
+        EngineStack::emit_stack_changed_unlocked(&app.stack).await;
         return Err(e);
     }
 
@@ -596,11 +596,10 @@ pub async fn launch_engine(
 
     let model_name = engine_utils::extract_model_name(&config.model_path);
 
-    // Emit stack-changed push event so frontend gets instant update without polling
-    {
-        let stack = app.stack.lock().await;
-        stack.emit_stack_changed();
-    }
+    // Emit stack-changed push event so frontend gets instant update without polling.
+    // Lock released first: this fires on every successful launch, and a frontend that
+    // is mid-render must never be able to hold up the engine that just started.
+    EngineStack::emit_stack_changed_unlocked(&app.stack).await;
 
     Ok(StackEntry {
         idx: slot_idx,

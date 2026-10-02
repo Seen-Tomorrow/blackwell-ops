@@ -705,8 +705,10 @@ impl LogHub {
         {
             let stack = ctx.stack.lock().await;
             stack.update_slot_vram(slot_idx, latest_mib, gpu_breakdown.clone());
-            stack.emit_stack_changed();
         }
+        // VRAM updates land on every fit-print line — emitting while holding the stack
+        // lock let a slow frontend stall the very engine being measured.
+        crate::engine_stack::EngineStack::emit_stack_changed_unlocked(&ctx.stack).await;
 
         if persist && tables.len() > already_persisted {
             let learn_key = &learn_snapshot.learn_key;
@@ -776,9 +778,11 @@ impl LogHub {
         let profile = snapshot.reference_profile.clone();
 
         if let Some(ctx) = app_handle.try_state::<crate::engine::AppContext>() {
-            let stack = ctx.stack.lock().await;
-            stack.update_slot_vram(slot_idx, mib, gpu_breakdown.clone());
-            stack.emit_stack_changed();
+            {
+                let stack = ctx.stack.lock().await;
+                stack.update_slot_vram(slot_idx, mib, gpu_breakdown.clone());
+            }
+            crate::engine_stack::EngineStack::emit_stack_changed_unlocked(&ctx.stack).await;
         }
 
         match crate::vram_learn::record_launch_memory_snapshot(

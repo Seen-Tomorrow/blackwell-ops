@@ -485,9 +485,11 @@ impl EngineStack {
                 })
             };
             if !already_reported {
-                let stack = stack_ref.lock().await;
-                stack.clear_slot(slot_idx);
-                stack.emit_stack_changed();
+                {
+                    let stack = stack_ref.lock().await;
+                    stack.clear_slot(slot_idx);
+                }
+                EngineStack::emit_stack_changed_unlocked(stack_ref).await;
             }
             if already_reported {
                 return Err(LOAD_FAILURE_ALREADY_REPORTED.to_string());
@@ -898,8 +900,8 @@ impl EngineStack {
         {
             let stack = stack_ref.lock().await;
             stack.clear_slot(slot_idx);
-            stack.emit_stack_changed();
         }
+        EngineStack::emit_stack_changed_unlocked(stack_ref).await;
         log_hub.emit("slot-cleared", &serde_json::json!({ "slot": slot_idx }));
 
         if let Some(proc) = proc_to_stop {
@@ -981,8 +983,8 @@ impl EngineStack {
         {
             let stack = stack_ref.lock().await;
             stack.clear_slot(slot_idx);
-            stack.emit_stack_changed();
         }
+        EngineStack::emit_stack_changed_unlocked(stack_ref).await;
         log_hub.emit("slot-cleared", &serde_json::json!({ "slot": slot_idx }));
 
         if let Some(proc) = proc_to_stop {
@@ -1052,9 +1054,26 @@ impl EngineStack {
         }
     }
 
-    pub fn emit_stack_changed(&self) {
-        if let Some(hub) = self.log_hub.as_ref() {
-            let status = self.get_status();
+    /// Emit `stack-changed` **without** holding the tokio stack lock across WebView IPC.
+    ///
+    /// This is the only way to emit the event. The earlier `emit_stack_changed(&self)`
+    /// was deleted rather than left as a "careful" alternative: it took every per-slot
+    /// lock in `get_status()` and then serialized and pushed into a bounded IPC channel,
+    /// so calling it while holding the stack mutex let a stalled frontend (slow render,
+    /// hidden tab, full mpsc queue) park the lock holder — and every other engine
+    /// operation queued behind it: launch, stop, health polls, and the stderr readers.
+    /// Once those stop draining, the OS pipe fills and `llama-server` blocks in
+    /// `write()`, turning a frozen UI into a frozen engine. A doc comment warning about
+    /// that was violated at 12 call sites, so the method is gone instead.
+    ///
+    /// Snapshot under the lock, emit after releasing it. `stack-changed` carries whole
+    /// state rather than a delta, so a mutation landing between the two is harmless.
+    pub async fn emit_stack_changed_unlocked(stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>) {
+        let emitted = {
+            let stack = stack_ref.lock().await;
+            stack.log_hub.as_ref().map(|hub| (hub.clone(), stack.get_status()))
+        };
+        if let Some((hub, status)) = emitted {
             hub.emit("stack-changed", &status);
         }
     }
@@ -1086,10 +1105,10 @@ impl EngineStack {
         {
             let stack = stack_ref.lock().await;
             stack.clear_slot(slot_idx);
-            stack.emit_stack_changed();
-            if let Some(hub) = hub_opt.as_ref() {
-                hub.emit("slot-cleared", &serde_json::json!({ "slot": slot_idx }));
-            }
+        }
+        EngineStack::emit_stack_changed_unlocked(stack_ref).await;
+        if let Some(hub) = hub_opt.as_ref() {
+            hub.emit("slot-cleared", &serde_json::json!({ "slot": slot_idx }));
         }
 
         if let Some(proc) = proc_to_stop {
@@ -1151,8 +1170,8 @@ impl EngineStack {
                     }
                 }
             }
-            stack.emit_stack_changed();
         }
+        EngineStack::emit_stack_changed_unlocked(stack_ref).await;
 
         let mut kill_handles = Vec::new();
         for (i, pid, alias, proc_to_stop) in targets {
