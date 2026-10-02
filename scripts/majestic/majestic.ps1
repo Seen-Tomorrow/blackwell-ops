@@ -886,16 +886,26 @@ function Invoke-MajesticBump {
     $old_tag = Get-TagName -Version $current -Prefix (Read-MajesticConfig).tagPrefix
     Push-Location $root
     try {
-        # Optional cleanup only. Missing tag must NOT fail the chain: PowerShell
-        # keeps native LASTEXITCODE, and run-detached-chain treats it as bump fail
-        # *after* version files were already written (→ skipped pack + ghost bumps).
+        # Provenance check — deliberately NON-destructive.
+        #
+        # This used to run `git tag -d $old_tag` on every bump, deleting the local tag for
+        # the version that had just shipped. A tag is the only record of which commit
+        # produced a release, and once the working tree moves on it cannot be rebuilt.
+        # That is how v1.0.66/v1.0.68 and v1.0.69/v1.0.70 came to resolve to the same
+        # commits with nothing left to explain it. A bump now only *reports* on tags;
+        # deleting one stays an explicit human decision.
+        #
+        # A missing tag must still NOT fail the chain: PowerShell keeps native
+        # LASTEXITCODE, and run-detached-chain treats it as bump fail *after* version
+        # files were already written (→ skipped pack + ghost bumps).
         $prev_eap = $ErrorActionPreference
         $ErrorActionPreference = 'SilentlyContinue'
-        git tag -d $old_tag 2>$null | Out-Null
-        $tag_del_code = if ($null -ne $LASTEXITCODE) { [int]$LASTEXITCODE } else { 1 }
+        $old_tag_sha = (git rev-parse --verify --quiet "refs/tags/$old_tag" 2>$null | Select-Object -First 1)
         $ErrorActionPreference = $prev_eap
-        if ($tag_del_code -eq 0) {
-            Write-Majestic "Removed stale local tag $old_tag" -Color DarkGray
+        if ($old_tag_sha) {
+            Write-Majestic "Keeping tag $old_tag -> $old_tag_sha" -Color DarkGray
+        } else {
+            Write-Majestic "WARNING: no local tag $old_tag — release $current has no recorded commit." -Color Yellow
         }
         # Clear native exit so successful bump never reports fail to the chain.
         $global:LASTEXITCODE = 0

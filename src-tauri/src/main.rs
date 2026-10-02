@@ -155,6 +155,17 @@ async fn main() {
     builder
         .setup(move |app| {
             let startup_t0 = std::time::Instant::now();
+            // First line of every session log: which source produced this binary.
+            // The version string cannot answer that — `majestic bump` rewrites it across
+            // four files without necessarily making a commit — and `tree=dirty` means no
+            // commit describes these bytes at all. Baked by build.rs.
+            log::info!(
+                "[startup] build provenance: app={} sha={} branch={} tree={}",
+                app.handle().package_info().version,
+                env!("BLACKWELL_GIT_SHA"),
+                env!("BLACKWELL_GIT_BRANCH"),
+                env!("BLACKWELL_GIT_DIRTY"),
+            );
             // Ensure portable directory structure exists, copy bundled binaries on first run
             let t_structure = std::time::Instant::now();
             config::ensure_portable_structure(app.handle());
@@ -465,6 +476,7 @@ async fn main() {
             llama_catalog::get_llama_catalog,
             // Binary update commands
             binary_update::get_app_package_version,
+            binary_update::get_build_provenance,
             binary_update::check_binary_updates,
             binary_update::get_pack_update_provider_ids,
             binary_update::download_binary_update,

@@ -123,6 +123,30 @@ pub fn get_app_package_version(app_handle: tauri::AppHandle) -> String {
     app_handle.package_info().version.to_string()
 }
 
+/// Which source this binary was actually built from.
+///
+/// The version string cannot answer that: `majestic bump` rewrites the version in four
+/// files without necessarily making a commit, so two different builds can legitimately
+/// share a version. Baked by `build.rs` at compile time.
+#[derive(Debug, Clone, Serialize)]
+pub struct BuildProvenance {
+    pub git_sha: String,
+    pub git_branch: String,
+    /// True when the bytes came from a working tree no commit describes.
+    pub git_dirty: bool,
+    pub app_version: String,
+}
+
+#[tauri::command]
+pub fn get_build_provenance(app_handle: tauri::AppHandle) -> BuildProvenance {
+    BuildProvenance {
+        git_sha: env!("BLACKWELL_GIT_SHA").to_string(),
+        git_branch: env!("BLACKWELL_GIT_BRANCH").to_string(),
+        git_dirty: env!("BLACKWELL_GIT_DIRTY") == "dirty",
+        app_version: app_handle.package_info().version.to_string(),
+    }
+}
+
 /// Feature flag: set to true to enable binary update checks via GitHub API.
 /// Keep in sync with `BINARY_UPDATES_ENABLED` in `src/lib/foundry_constants.ts`.
 pub const BINARY_UPDATES_ENABLED: bool = true;
