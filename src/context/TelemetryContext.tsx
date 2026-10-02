@@ -49,6 +49,34 @@ function gpuVramBucketMib(tier: GpuPollTier): number {
   return 256;
 }
 
+/**
+ * CPU snapshot equality, mirroring `gpuScanSnapshotEqual`.
+ *
+ * `pollCpu` used to call `setCpu(data)` unconditionally. `scan_cpu` hands back a fresh
+ * object every poll, so identity always changed and every `useTelemetry()` consumer —
+ * ModelCatalog and, through it, EngineConfigPanel — re-rendered at the poll rate even
+ * when every value was identical. GPU polling already dedups; this is the same gate,
+ * with no bucketing so no displayed number can go stale.
+ */
+function cpuSnapshotEqual(a: CpuInfo | null, b: CpuInfo): boolean {
+  if (a === null) return false;
+  if (
+    a.name !== b.name
+    || a.cores !== b.cores
+    || a.threads !== b.threads
+    || a.max_clock_mhz !== b.max_clock_mhz
+    || (a.current_clock_mhz ?? null) !== (b.current_clock_mhz ?? null)
+    || a.avg_usage_percent !== b.avg_usage_percent
+  ) {
+    return false;
+  }
+  if (a.core_usages.length !== b.core_usages.length) return false;
+  for (let i = 0; i < a.core_usages.length; i++) {
+    if (a.core_usages[i] !== b.core_usages[i]) return false;
+  }
+  return true;
+}
+
 export function TelemetryProvider({
   children,
   pollingActive,
@@ -83,10 +111,13 @@ export function TelemetryProvider({
     } catch {}
   }, []);
 
+  const cpuRef = useRef<CpuInfo | null>(null);
   const pollCpu = useCallback(async () => {
     if (!frontendPollEnabled()) return;
     try {
       const data = await invoke<CpuInfo>("scan_cpu");
+      if (cpuSnapshotEqual(cpuRef.current, data)) return;
+      cpuRef.current = data;
       setCpu(data);
     } catch {}
   }, []);

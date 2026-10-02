@@ -502,6 +502,13 @@ function App() {
     return "idle";
   }, [activeTab, hasLiveEngines, hwMonitorOpen]);
 
+  // Stable context value: a fresh object literal here re-rendered every useTelemetry()
+  // / status-bar consumer on each App render, twice a second from the CPU poll alone.
+  const statusValue = useMemo(
+    () => ({ totalParams, hiddenCount, onShowAll: handleShowAll }),
+    [totalParams, hiddenCount, handleShowAll],
+  );
+
   return (
     <FusionProvider stack={stack}>
     <ToastProvider>
@@ -533,7 +540,7 @@ function App() {
         <IndustrialBezelTextureProvider>
         <FoundryProvider>
           <TelemetryProvider pollingActive={hwMonitorOpen || activeTab === "catalog" || hasLiveEngines} gpuPollTier={gpuPollTier}>
-            <StatusProvider value={{ totalParams, hiddenCount, onShowAll: handleShowAll }}>
+            <StatusProvider value={statusValue}>
             <HarnessVeilPreview />
             <Layout
               activeTab={activeTab}
