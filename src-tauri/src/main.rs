@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod crash_log;
+mod runtime_log;
 mod session_log;
 mod runtime_settings;
 mod debug_flags;
@@ -143,12 +144,11 @@ async fn main() {
         eprintln!("{msg}\n");
     }));
 
-    #[cfg(debug_assertions)]
-    {
-        let mut builder = env_logger::Builder::from_default_env();
-        builder.filter_level(log::LevelFilter::Info);
-        builder.init();
-    }
+    // Installed in EVERY build profile. This used to sit inside
+    // `#[cfg(debug_assertions)]`, so REL registered no `log` backend at all and every
+    // `log::info!/warn!/error!` in the crate was a no-op that never formatted its
+    // arguments — REL was blind, not merely quiet.
+    runtime_log::init();
 
     let _ = debug_flags::flags();
 
