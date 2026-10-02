@@ -42,8 +42,8 @@ const CONSOLE_WINDOW: Duration = Duration::from_secs(1);
 
 thread_local! {
     /// `emit_blackwell_output_console_line` calls `log::info!` on both of its
-    /// no-app-handle paths (`output_console.rs:423` and `:430`). Without this guard the
-    /// console sink re-enters this logger and the two recurse until the stack dies.
+    /// no-app-handle paths (`output_console.rs:423` and `:430`). `log` reads this and
+    /// drops the echo — see the check at the top of `RuntimeLog::log`.
     static IN_LOGGER: Cell<bool> = const { Cell::new(false) };
 }
 
@@ -208,6 +208,15 @@ impl Log for RuntimeLog {
         if !self.enabled(record.metadata()) {
             return;
         }
+        // Drop the console sink's own echo. Before the app handle is registered,
+        // `emit_blackwell_output_console_line` logs `[console-early] <content>` instead
+        // of emitting; that call lands back here, and without this check it re-emits to
+        // the console, which logs again — every pass prefixing another `[console-early]`
+        // onto the same line, to stdout and to the file as well. The outer call already
+        // wrote this record to all three sinks; the echo carries nothing new.
+        if IN_LOGGER.with(|cell| cell.get()) {
+            return;
+        }
         let line = format_line(record);
         if cfg!(debug_assertions) {
             // Not `println!` — that panics when stdout is closed, which a detached or
@@ -266,6 +275,53 @@ mod tests {
 
         assert!(caught.is_err());
         assert!(!IN_LOGGER.with(|c| c.get()));
+    }
+
+    /// The guard is only a guard if `log` consults it. Setting the flag and forgetting
+    /// the check is the exact bug this covers: the console sink's `[console-early]`
+    /// echo re-entered `log`, re-emitted, and prefixed another `[console-early]` on
+    /// every pass — the startup flood this module shipped with. The test above passes
+    /// either way, which is precisely how that got through.
+    #[test]
+    fn log_drops_the_console_sinks_own_echo() {
+        // `enabled()` reads the global filter, which is `Off` until someone sets it;
+        // without this the whole test would pass vacuously with everything filtered out.
+        let prior = log::max_level();
+        log::set_max_level(LevelFilter::Info);
+        // Fresh window at zero, so the guarded step cannot be sitting at the budget cap
+        // (at the cap `console_budget_spent` returns early without counting, which would
+        // let an unfixed `log` slip through the assertion below).
+        {
+            let mut state = STATE.lock().unwrap();
+            state.console_window_start = Some(Instant::now());
+            state.console_lines_in_window = 0;
+        }
+        let probe = || {
+            log::Record::builder()
+                .args(format_args!("echo probe"))
+                .level(Level::Info)
+                .target("runtime_log_echo_test")
+                .build()
+        };
+
+        RuntimeLog.log(&probe());
+        assert!(
+            STATE.lock().unwrap().console_lines_in_window >= 1,
+            "control: a normal record must reach the console sink"
+        );
+
+        let before = STATE.lock().unwrap().console_lines_in_window;
+        {
+            let _entered = EnterGuard::new();
+            RuntimeLog.log(&probe());
+        }
+        let after = STATE.lock().unwrap().console_lines_in_window;
+        log::set_max_level(prior);
+
+        assert_eq!(
+            after, before,
+            "a record raised inside the console sink must not re-enter the sinks"
+        );
     }
 
     /// The release default must not be `Off`: "REL registers no backend" is exactly
