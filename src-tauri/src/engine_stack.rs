@@ -289,7 +289,12 @@ impl EngineStack {
 
         let slot_arc = {
             let stack = stack_ref.lock().await;
-            let arc = stack.slots[slot_idx].as_ref().ok_or("Slot not found")?.clone();
+            let arc = stack
+                .slots
+                .get(slot_idx)
+                .and_then(|s| s.as_ref())
+                .ok_or("Slot not found")?
+                .clone();
             // Accept idle slots or slots reserved by launch_engine (LOADING, no child yet).
             {
                 let slot = arc.lock();
@@ -996,7 +1001,7 @@ impl EngineStack {
 
     /// Reset a slot to factory defaults.
     fn clear_slot(&self, idx: usize) {
-        if let Some(slot_arc) = &self.slots[idx] {
+        if let Some(slot_arc) = self.slots.get(idx).and_then(|s| s.as_ref()) {
             let mut slot = slot_arc.lock();
             let cleared_alias = slot.alias.clone();
             let port = slot.port;
@@ -1064,7 +1069,12 @@ impl EngineStack {
         // Extract process handle under per-slot lock only
         let (alias, pid, proc_to_stop, hub_opt) = {
             let stack = stack_ref.lock().await;
-            let mut slot = stack.slots[slot_idx].as_ref().ok_or("Slot not found")?.lock();
+            let mut slot = stack
+                .slots
+                .get(slot_idx)
+                .and_then(|s| s.as_ref())
+                .ok_or("Slot not found")?
+                .lock();
             let alias = slot.alias.clone();
             let pid = slot.pid;
             let proc_to_stop = slot.child_proc.take();
@@ -1319,14 +1329,20 @@ impl EngineStack {
         entries
     }
 
+    /// Slot handle, or `None` for an index outside the stack.
+    ///
+    /// `.get()` is load-bearing, not tidiness: `idx` arrives from `invoke()` as a raw
+    /// `usize` (`stop_engine_slot` et al.), slot count is data-driven per install, and
+    /// REL builds set `panic = "abort"` — so a bare `self.slots[idx]` out-of-range
+    /// would abort the whole process instead of returning an error to the caller.
     pub fn get_slot(&self, idx: usize) -> Option<parking_lot::MutexGuard<'_, EngineSlot>> {
-        self.slots[idx].as_ref().map(|arc| arc.lock())
+        self.slots.get(idx)?.as_ref().map(|arc| arc.lock())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::format_load_failure_reason;
+    use super::{format_load_failure_reason, EngineStack};
 
     #[test]
     fn tensor_split_appends_layer_none_hint() {
@@ -1345,5 +1361,37 @@ mod tests {
             "layer",
         );
         assert_eq!(msg, "Engine process exited during model load");
+    }
+
+    // ── IPC index surface ───────────────────────────────────────────────
+    // Invariant, not implementation: an index arriving from `invoke()` must
+    // never abort the process. REL builds use `panic = "abort"`, so before
+    // `get_slot` moved to `.get()` these same inputs killed the app — which
+    // also took down any running engine and the GPU allocation with it.
+    // Slot count is data-driven per install (provider spawn_profile), so the
+    // frontend can legitimately hold an index from a previous, larger stack.
+
+    #[test]
+    fn out_of_range_slot_index_is_none_not_panic() {
+        let stack = EngineStack::new(2);
+        assert!(stack.get_slot(2).is_none());
+        assert!(stack.get_slot(99).is_none());
+        assert!(stack.get_slot(usize::MAX).is_none());
+    }
+
+    #[test]
+    fn in_range_slot_index_resolves() {
+        // Guards the other direction: a bounds fix that over-rejected would
+        // silently make every engine uncontrollable.
+        let stack = EngineStack::new(2);
+        assert!(stack.get_slot(0).is_some());
+        assert!(stack.get_slot(1).is_some());
+    }
+
+    #[test]
+    fn clear_slot_tolerates_out_of_range_index() {
+        let stack = EngineStack::new(1);
+        stack.clear_slot(0);
+        stack.clear_slot(7);
     }
 }
