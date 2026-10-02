@@ -20,13 +20,20 @@ const TEXT_EXTENSIONS = new Set([
 
 /**
  * UTF-8 bytes decoded as CP1252. Each entry is what a real character turns into:
- * `â€` is an em/en dash or smart quote, `Ã©` is é, `Â°` is a degree sign.
+ * U+00E2 U+20AC is an em/en dash or smart quote, U+00C3 U+00A9 is é, U+00C2 U+00B0
+ * is a degree sign.
+ *
+ * Named by codepoint, never shown literally: **this file is itself scanned**, so
+ * writing an example signature in a comment here fails the very test that forbids
+ * it — which is exactly what happened, silently reddening `npm run check` and
+ * therefore the `majestic ship` gate. Keep the prose in escape form.
+ *
  * An explicit list rather than a broad class so the test cannot fire on legitimate
  * accented text.
  */
 const MOJIBAKE_SIGNATURES = [
-  "\u00E2\u20AC", // â€  em/en dash, single and double quotes, bullet, ellipsis, arrow
-  "\u00E2\u0080", // â€  remaining CP1252 continuations of the same family
+  "\u00E2\u20AC", // U+00E2 U+20AC — em/en dash, single and double quotes, bullet, ellipsis, arrow
+  "\u00E2\u0080", // U+00E2 U+0080 — remaining CP1252 continuations of the same family
   "\u00C3\u00A9", "\u00C3\u00A8", "\u00C3\u00A4", "\u00C3\u00B6", "\u00C3\u00BC", // é è ä ö ü
   "\u00C3\u00A1", "\u00C3\u00B3", "\u00C3\u00BA", // á ó ú
   "\u00C2\u00A0", "\u00C2\u00B0", "\u00C2\u00A9", // nbsp, degree, copyright
