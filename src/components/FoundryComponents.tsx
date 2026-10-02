@@ -434,7 +434,7 @@ export function RestoreConfirmModal({ providerId, env, onConfirm, onCancel }: {
 }) {
   const meta = ENV_META[env];
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70">
       <div className="config-form-panel rounded-sm shadow-2xl w-[45vw] max-w-[480px]">
         <div className="flex items-center justify-between px-4 py-3 border-b fnd-modal-rule">
           <h3 className="fnd-modal-title text-xs font-mono tracking-wider">↻ RESTORE PREVIOUS BUILD</h3>
