@@ -1882,7 +1882,7 @@ async fn mark_completed_worker(
 
     if let Some((hf_model_id, hf_author, quant_type, total_bytes, lfs_oid)) = cache_data {
         // Integrity verification: compare SHA256 of final file against HF LFS OID.
-        let _expected_hash = if let Some(expected) = lfs_oid.strip_prefix("sha256:") {
+        if let Some(expected) = lfs_oid.strip_prefix("sha256:") {
             // Set status message so the UI shows we're verifying before declaring complete.
             {
                 let mut dm = manager.write().await;
@@ -1891,18 +1891,30 @@ async fn mark_completed_worker(
                 }
             }
             let verify_path = dest_to_rename.clone();
-            let verify_tid = task_id_for_finalization.clone();
-            let manager_verify = Arc::clone(manager);
             let expected_owned = expected.to_string();
-            tokio::task::spawn_blocking(move || {
-                verify_file_integrity(&manager_verify, &verify_tid, &verify_path, &expected_owned)
+            let outcome = tokio::task::spawn_blocking(move || {
+                verify_file_integrity(&verify_path, &expected_owned)
             })
-            .await
-            .ok();
-            Some(true)
-        } else {
-            None
-        };
+            .await;
+
+            let failure = match outcome {
+                Ok(Ok(())) => None,
+                Ok(Err(reason)) => Some(reason),
+                // The blocking task panicked or was cancelled: the file is *unverified*,
+                // which must not be reported as success.
+                Err(join_err) => Some(format!("Integrity check did not complete: {join_err}")),
+            };
+
+            if let Some(reason) = failure {
+                // This digest gate is the only thing between a corrupt shard and the
+                // model library. `Completed` was set earlier in this function, so it has
+                // to be overridden here — and no HF metadata may be written for a file
+                // the verifier may already have deleted.
+                log::error!("[download] Rejecting {} — {reason}", dest_to_rename);
+                mark_failed(manager, &task_id_for_finalization, reason).await;
+                return;
+            }
+        }
         save_hf_metadata_for_part(
             &dest_to_rename,
             &hf_model_id,
@@ -2116,70 +2128,50 @@ async fn finalize_toolchain_extract_worker(
 }
 
 /// Verify a downloaded file's SHA256 matches the expected LFS OID.
-/// HF LFS OIDs are formatted as "sha256:<hex>"; we strip the prefix before comparing.
-/// On mismatch, marks the task failed and removes the corrupt file.
-fn verify_file_integrity(
-    manager: &Arc<RwLock<DownloadManager>>,
-    task_id: &str,
-    file_path: &str,
-    expected_hex: &str,
-) {
+/// HF LFS OIDs are formatted as "sha256:<hex>"; the caller strips the prefix.
+///
+/// Returns `Err(reason)` on any failure — unreadable file, read error, or digest
+/// mismatch (the corrupt file is deleted in the mismatch case). Reporting is the
+/// caller's job: this runs on the blocking pool, which has **no runtime context**,
+/// so reaching for `Handle::current()` here (directly or from a spawned
+/// `std::thread`, which never inherits the context) panics with "there is no
+/// reactor running". Under REL's `panic = "abort"` that turned a merely corrupt
+/// download — or Defender holding the file we just wrote — into a dead app.
+fn verify_file_integrity(file_path: &str, expected_hex: &str) -> Result<(), String> {
     use std::io::Read;
 
     let mut hasher = Sha256::new();
-    let mut file = match std::fs::File::open(file_path) {
-        Ok(f) => f,
-        Err(e) => {
-            let err = format!("Failed to open file for integrity check: {e}");
-            let manager = Arc::clone(manager);
-            let tid = task_id.to_string();
-            std::thread::spawn(move || {
-                let rt = tokio::runtime::Handle::current();
-                rt.block_on(async { mark_failed(&manager, &tid, err).await });
-            });
-            return;
-        }
-    };
+    let mut file = std::fs::File::open(file_path)
+        .map_err(|e| format!("Failed to open file for integrity check: {e}"))?;
+
     let mut buf = [0u8; 1024 * 1024]; // 1 MiB buffer for throughput
     loop {
-        let n = match file.read(&mut buf) {
+        match file.read(&mut buf) {
             Ok(0) => break,
-            Ok(n) => n,
-            Err(e) => {
-                let err = format!("Read error during integrity check: {e}");
-                let manager = Arc::clone(manager);
-                let tid = task_id.to_string();
-                std::thread::spawn(move || {
-                    let rt = tokio::runtime::Handle::current();
-                    rt.block_on(async { mark_failed(&manager, &tid, err).await });
-                });
-                return;
-            }
-        };
-        hasher.update(&buf[..n]);
+            Ok(n) => hasher.update(&buf[..n]),
+            Err(e) => return Err(format!("Read error during integrity check: {e}")),
+        }
     }
-    let result = hasher.finalize();
-    let actual_hex = hex::encode(result);
 
+    let actual_hex = hex::encode(hasher.finalize());
     if actual_hex.eq_ignore_ascii_case(expected_hex) {
         log::info!("[download] Integrity OK: {} matches LFS OID", file_path);
-        return;
+        return Ok(());
     }
 
-    // Mismatch — mark failed and remove the corrupt file.
+    // Mismatch — remove the corrupt file, then let the caller mark the task failed.
     let err = format!(
         "Integrity check failed: expected sha256:{}, got sha256:{}",
         expected_hex, actual_hex
     );
     log::error!("[download] {}", err);
-    let _ = std::fs::remove_file(file_path);
-    let manager = Arc::clone(manager);
-    let tid = task_id.to_string();
-    let err_clone = err.clone();
-    std::thread::spawn(move || {
-        let rt = tokio::runtime::Handle::current();
-        rt.block_on(async { mark_failed(&manager, &tid, err_clone).await });
-    });
+    if let Err(rm) = std::fs::remove_file(file_path) {
+        log::warn!(
+            "[download] Could not remove corrupt file {}: {rm}",
+            file_path
+        );
+    }
+    Err(err)
 }
 
 /// Mark a task as failed with an error message.
