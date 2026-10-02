@@ -223,7 +223,6 @@ export default function FusionOverlay({
     microLatch: MicroStatsLatch;
   }
   const engineStates = useRef<Map<number, EngineStateData>>(new Map());
-  const [, setMicroLatchTick] = useState(0);
   const [isStopping, setIsStopping] = useState(false);
   const stoppingRef = useRef(false);
   const [benchHero, setBenchHero] = useState<{ tg: number | null; pp: number | null }>({
@@ -284,43 +283,6 @@ export default function FusionOverlay({
 
   const isActive =
     fusion != null && fusion.phase !== "IDLE" && fusion.requestClosed !== true;
-
-  useEffect(() => {
-    if (!fusion || fusion.slotIdx < 0) return;
-
-    let engState = engineStates.current.get(fusion.slotIdx);
-    if (!engState) {
-      engState = { microLatch: freshMicroLatch() };
-      engineStates.current.set(fusion.slotIdx, engState);
-    }
-
-    const before = { ...engState.microLatch };
-    updateMicroLatch(engState.microLatch, fusion);
-    const after = engState.microLatch;
-    if (
-      before.genTokens !== after.genTokens
-      || before.prefillMs !== after.prefillMs
-      || before.decodeTtftMs !== after.decodeTtftMs
-      || before.elapsedMs !== after.elapsedMs
-      || before.sessionOpen !== after.sessionOpen
-    ) {
-      setMicroLatchTick((t) => t + 1);
-    }
-  }, [
-    fusion?.slotIdx,
-    fusion?.phase,
-    fusion?.engine_state,
-    fusion?.genTokensPerRequestSlots,
-    fusion?.prefillMs,
-    fusion?.decodeTtftMs,
-    fusion?.requestElapsedMs,
-    fusion?.requestClosed,
-    fusion?.logPhase,
-    fusion?.busySlotCount,
-    fusion?.prefillProgress,
-    fusion?.phaseResetSource,
-    fusion?.meterSeq,
-  ]);
 
   const handleBenchHeroPatch = useCallback((patch: BenchHeroPatch) => {
     setBenchHero((prev) => ({
@@ -526,8 +488,24 @@ export default function FusionOverlay({
         : perSlotTps.toFixed(1)
       : null;
 
-  const microLatch =
-    engineStates.current.get(fusion.slotIdx)?.microLatch ?? freshMicroLatch();
+  // Micro-stats latch, updated during render.
+  //
+  // This used to run in a useEffect that mutated the latch and then called
+  // setMicroLatchTick to force a second pass. The latch lives in a ref and is read
+  // below in this same render, so the effect existed only to make the new values
+  // visible — one wasted render per 25 ms tick, per engine. `updateMicroLatch` is a
+  // pure function of `fusion`, so a render React later discards just leaves the latch
+  // at a value the next committed render reproduces.
+  const microLatch = (() => {
+    if (fusion.slotIdx < 0) return freshMicroLatch();
+    let engState = engineStates.current.get(fusion.slotIdx);
+    if (!engState) {
+      engState = { microLatch: freshMicroLatch() };
+      engineStates.current.set(fusion.slotIdx, engState);
+    }
+    updateMicroLatch(engState.microLatch, fusion);
+    return engState.microLatch;
+  })();
   const microReadoutLive = microLatch.sessionOpen || isActive;
   const microTokenText = microLatch.genTokens > 0 ? `${microLatch.genTokens} tok` : "--";
 
