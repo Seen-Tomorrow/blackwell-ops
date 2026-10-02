@@ -3,7 +3,7 @@ use std::os::windows::process::CommandExt;
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{LazyLock, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use sysinfo::System;
 
 static CPU_SYSTEM: Mutex<Option<System>> = Mutex::new(None);
@@ -163,9 +163,104 @@ fn get_physical_ram_bytes() -> Result<u64, String> {
     Err("Not on Windows".into())
 }
 
-/// Scan GPUs using nvidia-smi — returns real metrics from NVIDIA drivers
+/// How long spawning stops after nvidia-smi fails.
+const SMI_COOLDOWN: Duration = Duration::from_secs(5);
+
+/// What this poll is allowed to do, decided by [`smi_gate`].
+#[derive(Debug)]
+enum SmiGate {
+    /// Spawn nvidia-smi.
+    Proceed,
+    /// Cooling down — serve the previous snapshot instead of spawning.
+    Cached(Vec<GpuInfo>),
+    /// Cooling down with nothing ever cached — fail without spawning.
+    Wait,
+}
+
+/// Failure backoff for `scan_gpus`.
+///
+/// This command is polled continuously, and until now every poll spawned
+/// `nvidia-smi.exe` unconditionally and returned `Err` when the spawn was refused. A
+/// driver that stops answering therefore turned every poll into another doomed
+/// `CreateProcess`, forever, with no backoff and a `log::warn` per attempt — which in
+/// REL surfaced as a popup storm stacked on top of the stall that caused it.
+///
+/// After a failure, spawning stops for [`SMI_COOLDOWN`] and the last good snapshot is
+/// served instead. Serving stale values is deliberate: the alternative is a blank GPU
+/// view for the duration of a transient stall, and these numbers are a monitor.
+struct SmiState {
+    last_good: Option<Vec<GpuInfo>>,
+    /// `None` = healthy. `Some(t)` = do not spawn before `t`.
+    retry_after: Option<Instant>,
+}
+
+static SMI_STATE: Mutex<SmiState> = Mutex::new(SmiState {
+    last_good: None,
+    retry_after: None,
+});
+
+fn smi_gate() -> SmiGate {
+    // Poison-tolerant: a panic elsewhere must not switch GPU telemetry off for the
+    // rest of the session.
+    let mut state = SMI_STATE.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    // Compare the Instants instead of subtracting a Duration from one — a bare
+    // `Instant - Duration` panics when the result would precede boot.
+    if state.retry_after.is_some_and(|until| Instant::now() < until) {
+        return match state.last_good.clone() {
+            Some(cached) => SmiGate::Cached(cached),
+            None => SmiGate::Wait,
+        };
+    }
+    state.retry_after = None;
+    SmiGate::Proceed
+}
+
+fn smi_record_success(gpus: &[GpuInfo]) {
+    let mut state = SMI_STATE.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    state.last_good = Some(gpus.to_vec());
+    state.retry_after = None;
+}
+
+fn smi_record_failure(error: &str) {
+    let mut state = SMI_STATE.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    // Only the first failure of a streak logs. The retry attempts are silent, because
+    // one line per poll is exactly the flood this replaces.
+    let streak_started = state.retry_after.is_none();
+    state.retry_after = Some(Instant::now() + SMI_COOLDOWN);
+    if streak_started {
+        log::warn!(
+            "nvidia-smi failed; GPU polling pauses for {}s: {}",
+            SMI_COOLDOWN.as_secs(),
+            error
+        );
+    }
+}
+
+/// Scan GPUs using nvidia-smi — real metrics from the NVIDIA driver.
+///
+/// A failure backs off for [`SMI_COOLDOWN`] instead of being retried every poll; see
+/// [`SmiState`] for why that mattered.
 #[tauri::command]
 pub async fn scan_gpus() -> Result<Vec<GpuInfo>, String> {
+    match smi_gate() {
+        SmiGate::Cached(cached) => return Ok(cached),
+        SmiGate::Wait => return Err("nvidia-smi unavailable (cooling down)".to_string()),
+        SmiGate::Proceed => {}
+    }
+
+    match run_nvidia_smi().await {
+        Ok(gpus) => {
+            smi_record_success(&gpus);
+            Ok(gpus)
+        }
+        Err(error) => {
+            smi_record_failure(&error);
+            Err(error)
+        }
+    }
+}
+
+async fn run_nvidia_smi() -> Result<Vec<GpuInfo>, String> {
     let smi = crate::engine_utils::resolve_nvidia_smi_path();
     let output = crate::engine_utils::run_hidden_output_async(move || {
         let mut cmd = std::process::Command::new(&smi);
@@ -554,4 +649,55 @@ pub async fn get_nvidia_driver_version() -> Result<Option<String>, String> {
         .into_iter()
         .filter_map(|g| g.driver_version)
         .next())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn probe_gpu() -> GpuInfo {
+        GpuInfo {
+            index: 0,
+            name: "Test GPU".to_string(),
+            memory_total: 98_304,
+            memory_used: 1_024,
+            memory_free: 97_280,
+            memory_total_manufactured: 98_304,
+            temperature_gpu: 40,
+            temperature_hot_spot: None,
+            temperature_memory: None,
+            power_draw: 1.0,
+            power_limit: 2.0,
+            utilization_gpu: 0,
+            utilization_memory: 0,
+            driver_version: Some("610.47".to_string()),
+            driver_model: String::new(),
+        }
+    }
+
+    /// The two halves of the backoff: a failing nvidia-smi must stop being spawned,
+    /// and the GPU view must not blank while it is cooling down. Before this, a
+    /// refusal was retried on every single poll with no cooldown at all.
+    #[test]
+    fn nvidia_smi_backoff_serves_the_last_snapshot_and_recovers() {
+        // Nothing cached yet: refuse to spawn, but never invent a GPU list.
+        smi_record_failure("simulated refusal");
+        assert!(matches!(smi_gate(), SmiGate::Wait));
+
+        // A success clears the backoff and becomes the snapshot to fall back on.
+        let probe = vec![probe_gpu()];
+        smi_record_success(&probe);
+        assert!(matches!(smi_gate(), SmiGate::Proceed));
+
+        // Failing again now serves the snapshot instead of blanking the view.
+        smi_record_failure("simulated refusal again");
+        match smi_gate() {
+            SmiGate::Cached(cached) => assert_eq!(cached.len(), 1),
+            other => panic!("expected the cached snapshot, got {other:?}"),
+        }
+
+        // Recovery clears the cooldown, so a healthy driver is still polled every tick.
+        smi_record_success(&probe);
+        assert!(matches!(smi_gate(), SmiGate::Proceed));
+    }
 }
