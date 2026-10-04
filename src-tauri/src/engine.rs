@@ -108,6 +108,31 @@ fn spec_draft_model_is_set(config: &crate::types::EngineConfig) -> bool {
         })
 }
 
+/// The draft path for THIS spec type, method-first.
+///
+/// `mtp_draft_model` is the MTP lane's key; `spec_draft_model` is the CLI alias
+/// `buildSpecCliExtraParams` writes. The old code read only `spec_draft_model`, so
+/// `mtp_draft_model=auto` (a value the shipped row's `values` list offers) read as
+/// "no draft" and the launch died on the baked-in error even with a head configured.
+/// The cross-key fallback is the cockpit's own pattern (`useCockpit.activeDraftPath`):
+/// a path under any key is a configured draft — the footgun of a stale other-lane
+/// path was accepted there, and launch validation is the worse place to be strict.
+fn draft_model_value_for_spec(config: &crate::types::EngineConfig, spec_type: &str) -> String {
+    let meaningful = |v: Option<String>| {
+        v.map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty() && !s.eq_ignore_ascii_case("off"))
+    };
+    let primary = if spec_type.eq_ignore_ascii_case("draft-mtp") {
+        "mtp_draft_model"
+    } else {
+        "dflash_draft_model"
+    };
+    meaningful(config.get_param_str(primary))
+        .or_else(|| meaningful(config.get_param_str("spec_draft_model")))
+        .or_else(|| meaningful(config.get_param_str(primary)))
+        .unwrap_or_default()
+}
+
 fn strip_spec_extra_params(config: &mut crate::types::EngineConfig) {
     config.extra_params.retain(|k, _| {
         !SPEC_EXTRA_PARAM_KEYS
@@ -175,11 +200,7 @@ fn validate_spec_launch(config: &crate::types::EngineConfig) -> Result<(), Strin
         return Ok(());
     }
 
-    let draft_value = config
-        .get_param_str("spec_draft_model")
-        .unwrap_or_default()
-        .trim()
-        .to_string();
+    let draft_value = draft_model_value_for_spec(config, &spec_type);
     let draft_set = !draft_value.is_empty()
         && !draft_value.eq_ignore_ascii_case("off")
         && !draft_value.eq_ignore_ascii_case("none");
@@ -2360,6 +2381,26 @@ mod spec_guard_tests {
     fn non_mtp_spec_types_are_never_mtp_stale() {
         let config = config_with(&[("spec_type", "draft-dflash")]);
         assert!(!mtp_spec_is_stale(&config, &config.model_path));
+    }
+
+    /// The shipped row's `values` list offers `auto`, so `mtp_draft_model=auto` is a
+    /// configured draft. Reading only `spec_draft_model` made it look unset and the
+    /// launch died on the baked-in error with a head in the library (owner-reported
+    /// 2026-10-04).
+    #[test]
+    fn draft_value_reads_the_mtp_lane_key() {
+        let config = config_with(&[("spec_type", "draft-mtp"), ("mtp_draft_model", "auto")]);
+        assert_eq!(draft_model_value_for_spec(&config, "draft-mtp"), "auto");
+
+        let config = config_with(&[("spec_type", "draft-dflash"), ("dflash_draft_model", "C:\\m\\d.gguf")]);
+        assert_eq!(
+            draft_model_value_for_spec(&config, "draft-dflash"),
+            "C:\\m\\d.gguf"
+        );
+
+        // off/empty are not a path.
+        let config = config_with(&[("spec_type", "draft-mtp"), ("mtp_draft_model", "off")]);
+        assert!(draft_model_value_for_spec(&config, "draft-mtp").is_empty());
     }
 }
 

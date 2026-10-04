@@ -664,7 +664,8 @@ impl ProviderTemplate {
             // (e.g. cockpit parallel). Profile knobs (mtp_*/dflash_*) that the user hid must
             // never re-enter CLI just because Boost put a stale value in extra_params.
             let is_draft_key = param.key.eq_ignore_ascii_case("spec_draft_model")
-                || param.key.eq_ignore_ascii_case("dflash_draft_model");
+                || param.key.eq_ignore_ascii_case("dflash_draft_model")
+                || param.key.eq_ignore_ascii_case("mtp_draft_model");
             let is_spec_profile_knob = param.key.starts_with("mtp_")
                 || param.key.starts_with("dflash_");
             if param.hidden {
@@ -700,8 +701,17 @@ impl ProviderTemplate {
 
             let value_str = value.as_str().map(String::from).unwrap_or(value.to_string());
 
-            // Resolve "auto" from GGUF metadata cache — llama.cpp needs numbers, not "auto"
-            let final_value_str = if value_str == "auto" && param.ptype != "path_scanner" {
+            // Resolve "auto" from GGUF metadata cache — llama.cpp needs numbers, not "auto".
+            // Draft-path rows resolve "auto" via the sibling-draft scan below, NOT the
+            // numeric resolver — same exclusion as path_scanner.
+            let is_draft_path_key = matches!(
+                param.key.as_str(),
+                "spec_draft_model" | "dflash_draft_model" | "mtp_draft_model"
+            );
+            let final_value_str = if value_str == "auto"
+                && param.ptype != "path_scanner"
+                && !is_draft_path_key
+            {
                 match resolve_auto_value(&param.key, &config.model_path) {
                     Some(resolved) => {
                         log::debug!("[build_cmd] resolved auto for '{}': '{}' -> '{}'", param.key, value_str, resolved);
@@ -771,6 +781,7 @@ impl ProviderTemplate {
         {
             let draft_val = config
                 .get_param_str("dflash_draft_model")
+                .or_else(|| config.get_param_str("mtp_draft_model"))
                 .or_else(|| config.get_param_str("spec_draft_model"));
             if let Some(draft_val) = draft_val {
                 let spec_lower = config
@@ -781,6 +792,10 @@ impl ProviderTemplate {
                     "*eagle3*"
                 } else if spec_lower.contains("dspark") {
                     "*dspark*"
+                } else if spec_lower == "draft-mtp" {
+                    // The MTP lane: unsloth heads are `mtp-<target>.gguf` — a *dflash*
+                    // pattern matches none of them, so an auto value resolved to nothing.
+                    "*mtp*"
                 } else {
                     "*dflash*"
                 };
