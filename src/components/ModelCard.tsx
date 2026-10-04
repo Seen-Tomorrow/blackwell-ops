@@ -1,5 +1,5 @@
 import type { ModelEntry, ModelMetadata, CatalogUpdateEntry } from "../lib/types";
-import { draftRoleBadge, draftRoleFromModel, hasBakedMtp, isExternalDraftOnly } from "../lib/specDraft";
+import { BAKED_MTP_BADGE, draftRoleBadge, draftRoleFromModel, hasBakedMtp, isExternalDraftOnly } from "../lib/specDraft";
 import { revealPathInExplorer } from "../lib/utils";
 import { CATALOG_SEAT_LABEL, type CatalogSeatRole } from "../lib/catalogQuickAccess";
 import { fitNowLabel, type FitNowVerdict } from "../lib/catalogFitNow";
@@ -143,7 +143,7 @@ export default function ModelCard({
   const hasMetadata = !!model.metadata;
   const isScanning = scanningPath === model.path;
   const draftRole = draftRoleFromModel(model);
-  const draftBadge = draftRoleBadge(draftRole, model) ?? (hasBakedMtp(model) ? "MTP" : null);
+  const draftBadge = draftRoleBadge(draftRole, model) ?? (hasBakedMtp(model) ? BAKED_MTP_BADGE : null);
   const isDraftOnly = isExternalDraftOnly(model);
 
   const isShardNoiseQuant = (label: string) => /^\d{3,}$/.test(label.trim());

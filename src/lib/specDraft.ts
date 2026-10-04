@@ -341,11 +341,16 @@ export function draftRoleBadge(
     case "external_eagle3":
       return "EAGLE3";
     case "external_mtp":
-      return "MTP";
+      return "MTP-HEAD";
     default:
       return null;
   }
 }
+
+/** Baked-in MTP badge — a TARGET capability, deliberately distinct from the
+ *  external head's MTP-HEAD: same CLI string, different VRAM footprint and a
+ *  different way to select it. */
+export const BAKED_MTP_BADGE = "MTP-BAKED";
 
 function stripShardSuffix(name: string): string {
   return name.replace(/-\d{5}-of-\d{5}(?:\.gguf)?$/i, "").replace(/\.gguf$/i, "");
