@@ -262,11 +262,17 @@ No data migration anywhere — see AGENTS.md. Each step is independently shippab
 3. **Registry** in TS; existing exported functions delegate to it; public names stay stable so the
    16 coupled files do not churn in one commit.
 4. **`draft-mtp` external lane**: `draftModel` knob on the MTP adapter, `DRAFT_ARCH_FOR_SPEC`
-   entry, `specCapabilitiesForMain` stops coercing MTP drafts to `dflash`. Template knob is added
-   in-app by the owner, not in code.
+   entry, `specCapabilitiesForMain` stops coercing MTP drafts to `dflash`. **Shipped differently:**
+   the knob is in the factory template (`mtp_draft_model`, `templateVersion` 51), not added in-app.
+   Two gaps found during implementation and fixed: `stale_mtp` in `engine.rs` stripped the whole
+   spec group before `validate_spec_launch` could see it, and `DRAFT_ARCH_FOR_SPEC` had no
+   `draft-mtp` key so the lane's own CLI type resolved to no role.
 5. **Forecast hooks** per 2.4.
 6. **Rename** `useDflashDraft` → `useSpecDraft`, `dflashGetDraft` → `specGetDraft`. Last, because
-   it is pure churn and should not ride with behaviour changes.
+   it is pure churn and should not ride with behaviour changes. **Scoped down:** only the hook, its
+   file and its import rename. The `dflash*` locals inside the hook and in `EngineConfigPanel` stay
+   — sweeping them is chrome churn across hundreds of lines and would bury the behaviour change
+   that is the actual point of the step.
 7. **Delete** `OBSOLETE_SPEC_PARAM_KEYS`, the `Repair mtp_*/dflash_*` branch, and the `systemParams`
    migrate path.
 
@@ -299,3 +305,16 @@ rule table, "baked MTP" is a property of a target, not a draft role. Cleaner as
 **Q5 — DSpark's real distinction.** Today DSpark is a CLI type sharing DFlash's knobs and group,
 identified by a path substring, and validated by the draft *path* containing "dspark". With
 `markov_w1.weight` available it can be a header fact instead.
+
+**Q6 — the remote draft search returns heads for the wrong model.** Owner-reported 2026-10. The HF
+"Get draft" path (`specGetDraft` / `handleGetDflashDraft` in `useSpecDraft.ts`) surfaces results for
+different architectures and quantisations than the selected main model, and confirming one of those
+writes a pairing the engine will reject or load badly. Local library pairing is stem-scored
+(`scoreDraftPair`, `familiesCompatible`, `MIN_DRAFT_PAIR_SCORE`); the remote lane has no equivalent
+gate, so the two lanes apply different standards to the same decision.
+
+The adapter makes the fix expressible: an adapter can declare which architectures and quantisations
+its drafts must match, and the remote result set can be filtered by the same rule the library lane
+already applies rather than by a second, weaker one. Needs a decision on how strict to be — reject
+outright, or list with a warning and let the owner confirm. A silent mismatch is the worst outcome,
+since the failure surfaces later as a GGML assert at load or as a spec that never accepts.

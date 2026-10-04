@@ -38,9 +38,16 @@ import {
 import {
   type SpecBoostMethod,
   DFLASH_DRAFT_MODEL,
+  MTP_DRAFT_MODEL,
   activeBoostMethodFromParams,
   cockpitProfileKnobRows,
 } from "../lib/specProfiles";
+import {
+  adapterForMethod,
+  cliTypeForMethod,
+  normalizeDraftPath,
+} from "../lib/spec/adapters";
+import type { DraftRole } from "../lib/specDraft";
 import { applySpecBoostProfiles } from "../lib/applySpecBoost";
 import {
   hasReadyDflashDraft,
@@ -267,30 +274,43 @@ export function useCockpit({
     );
   }, [specBoostMethod, allParamsResolved, config, cockpitValueView, updateParam]);
 
+  /**
+   * The draft path for the active Boost method — `mtp_draft_model` for MTP,
+   * `dflash_draft_model` for DFlash/DSpark. Falls back to the other key only when
+   * the active one is unset. `normalizeDraftPath` absorbs the `off`/`none` defaults.
+   */
+  const activeDraftPath = useMemo(() => {
+    const adapter = adapterForMethod(specBoostMethod);
+    const activeKey = adapter?.knobs.draftModel;
+    const fromActive = activeKey ? normalizeDraftPath(config[activeKey]) : null;
+    if (fromActive) return fromActive;
+    if (!activeKey) return null;
+    const otherKey = activeKey === MTP_DRAFT_MODEL ? DFLASH_DRAFT_MODEL : MTP_DRAFT_MODEL;
+    return normalizeDraftPath(config[otherKey]);
+  }, [specBoostMethod, config]);
+
   const dflashLibraryReady = useMemo(() => {
     if (!model || !models?.length) return false;
-    const cur =
-      config[DFLASH_DRAFT_MODEL] != null ? String(config[DFLASH_DRAFT_MODEL]) : null;
-    return hasReadyDflashDraft(model, models, cur);
-  }, [model, models, config]);
+    return hasReadyDflashDraft(model, models, activeDraftPath);
+  }, [model, models, activeDraftPath]);
 
   const dflashGettable = useMemo(() => mainMaySupportDflash(model), [model]);
 
   const dflashDraftLabel = useMemo(() => {
-    const cur =
-      config[DFLASH_DRAFT_MODEL] != null ? String(config[DFLASH_DRAFT_MODEL]) : "";
-    if (cur.trim() && /\.gguf$/i.test(cur.trim())) {
-      return resolveDraftPathLabel(cur.trim());
+    const cur = activeDraftPath;
+    if (cur && /\.gguf$/i.test(cur)) {
+      return resolveDraftPathLabel(cur);
     }
     if (!model || !models?.length || !dflashLibraryReady) return null;
-    const cliType =
-      speedBoost === "dspark" ? "draft-dspark" : "draft-dflash";
-    const path = resolveExternalDraftPath(model, models, "external_dflash", {
-      currentPath: cur || null,
-      specType: cliType,
+    const adapter = adapterForMethod(specBoostMethod);
+    const draftRole = adapter?.draftRoles.find((r): r is DraftRole => r !== "none");
+    if (!adapter || !draftRole) return null;
+    const path = resolveExternalDraftPath(model, models, draftRole, {
+      currentPath: cur,
+      specType: cliTypeForMethod(specBoostMethod) ?? adapter.cliType,
     });
     return path ? resolveDraftPathLabel(path) : null;
-  }, [model, models, dflashLibraryReady, config, speedBoost]);
+  }, [model, models, dflashLibraryReady, activeDraftPath, specBoostMethod]);
 
   const applyFullAutoCockpit = useCallback(
     async (
@@ -306,15 +326,23 @@ export function useCockpit({
       setBrains(brainsPick);
       setThink(thinkPick);
 
+      const draftReadyMethod: SpecBoostMethod =
+        speed === "mtp" || speed === "dflash" || speed === "dspark" ? speed : "off";
+      const draftReadyAdapter = adapterForMethod(draftReadyMethod);
+      const draftReadyRole = draftReadyAdapter?.draftRoles.find(
+        (r): r is DraftRole => r !== "none",
+      );
       const draftReadyNow =
         dflashLibraryReady
         || Boolean(
           opts?.preferredDraftPath
           && model
           && models?.length
-          && resolveExternalDraftPath(model, models, "external_dflash", {
+          && draftReadyRole
+          && resolveExternalDraftPath(model, models, draftReadyRole, {
             preferredPath: opts.preferredDraftPath,
-            specType: "draft-dflash",
+            specType:
+              cliTypeForMethod(draftReadyMethod) ?? draftReadyAdapter?.cliType,
           }),
         );
 
@@ -357,26 +385,28 @@ export function useCockpit({
         console.error("[cockpit] applySpecBoostProfiles failed:", err);
       }
 
-      // External draft path (DFlash + DSpark share dflash_draft_model key → --spec-draft-model)
-      if ((method === "dflash" || method === "dspark") && model && models?.length) {
-        const cliType = method === "dspark" ? "draft-dspark" : "draft-dflash";
+      // External draft path — the active method's own key (mtp_draft_model vs
+      // dflash_draft_model) → --spec-draft-model.
+      const applyAdapter = adapterForMethod(method);
+      const applyDraftKey = applyAdapter?.knobs.draftModel;
+      if (applyAdapter && applyDraftKey && model && models?.length) {
+        const cliType = cliTypeForMethod(method) ?? applyAdapter.cliType;
+        const draftRole = applyAdapter.draftRoles.find((r): r is DraftRole => r !== "none");
         const resolved =
           opts?.preferredDraftPath
-          || resolveExternalDraftPath(model, models, "external_dflash", {
-            preferredPath: opts?.preferredDraftPath,
-            currentPath:
-              config[DFLASH_DRAFT_MODEL] != null
-              && String(config[DFLASH_DRAFT_MODEL]).toLowerCase() !== "off"
-                ? String(config[DFLASH_DRAFT_MODEL])
-                : null,
-            specType: cliType,
-          });
+          || (draftRole
+            ? resolveExternalDraftPath(model, models, draftRole, {
+                preferredPath: opts?.preferredDraftPath,
+                currentPath: normalizeDraftPath(config[applyDraftKey]),
+                specType: cliType,
+              })
+            : null);
         if (resolved) {
-          updateParam(DFLASH_DRAFT_MODEL, resolved);
+          updateParam(applyDraftKey, resolved);
           saveDraftPairing(model.path, cliType, resolved);
         } else if (opts?.preferredDraftPath) {
-          // Explicit path (Change draft) even if not scored as dflash role
-          updateParam(DFLASH_DRAFT_MODEL, opts.preferredDraftPath);
+          // Explicit path (Change draft) even if not scored as the method's draft role
+          updateParam(applyDraftKey, opts.preferredDraftPath);
           saveDraftPairing(model.path, cliType, opts.preferredDraftPath);
         }
       }

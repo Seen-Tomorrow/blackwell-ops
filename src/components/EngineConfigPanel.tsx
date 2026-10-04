@@ -67,7 +67,7 @@ import {
 } from "../lib/customProvider";
 import { useLaunchMode } from "../hooks/useLaunchMode";
 import { useCockpit } from "../hooks/useCockpit";
-import { useDflashDraft } from "../hooks/useDflashDraft";
+import { useSpecDraft } from "../hooks/useSpecDraft";
 import { useLaunchPresets } from "../hooks/useLaunchPresets";
 import LaunchPresetsMenu from "./LaunchPresetsMenu";
 import LaunchPresetsModal from "./LaunchPresetsModal";
@@ -157,6 +157,7 @@ import {
   cliSpecTypeForMethod,
   specShareFields,
 } from "../lib/specProfiles";
+import { adapterForMethod, cliTypeForMethod, normalizeDraftPath } from "../lib/spec/adapters";
 import { migrateCatalogParams } from "../lib/systemParams";
 import { DEFAULT_BINARY_PROFILE, ENV_META, ENV_ORDER, normalizeBinaryProfile, type Env } from "../lib/foundry_constants";
 import { invoke } from "@tauri-apps/api/core";
@@ -1014,7 +1015,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     dflashDraftLabel,
   } = cockpit;
 
-  const dflash = useDflashDraft({
+  const dflash = useSpecDraft({
     model,
     models,
     config,
@@ -1260,26 +1261,23 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     migrateGlobalSpecOutOfCatalogOverrides(effectiveBackendType);
   }, [effectiveBackendType]);
 
-  // HIGH auto-pair into dflash_draft_model when Boost is DFlash and path is auto/empty.
+  // HIGH auto-pair into the active method's draft key when Boost is DFlash, DSpark
+  // or MTP and the path is auto/empty.
   useEffect(() => {
-    if (
-      (specBoostMethod !== "dflash" && specBoostMethod !== "dspark")
-      || !model
-      || !models?.length
-    ) {
+    const adapter = adapterForMethod(specBoostMethod);
+    const draftKey = adapter?.knobs.draftModel;
+    if (!adapter || !draftKey || !model || !models?.length) {
       return;
     }
-    const cur = currentDraftPath.trim().toLowerCase();
-    if (cur && cur !== "auto" && cur !== "on" && cur !== "off") return;
-    const best = pickBestDraftPair(model, models, "external_dflash", HIGH_DRAFT_PAIR_SCORE);
+    const draftRole = adapter.draftRoles.find((r) => r !== "none");
+    if (!draftRole) return;
+    const cur = normalizeDraftPath(config[draftKey]);
+    if (cur && cur.trim().toLowerCase() !== "auto" && cur.trim().toLowerCase() !== "on") return;
+    const best = pickBestDraftPair(model, models, draftRole, HIGH_DRAFT_PAIR_SCORE);
     if (!best) return;
-    updateParam(DFLASH_DRAFT_MODEL, best.path);
-    saveDraftPairing(
-      model.path,
-      specBoostMethod === "dspark" ? "draft-dspark" : "draft-dflash",
-      best.path,
-    );
-  }, [specBoostMethod, model, models, currentDraftPath, updateParam]);
+    updateParam(draftKey, best.path);
+    saveDraftPairing(model.path, cliTypeForMethod(specBoostMethod) ?? adapter.cliType, best.path);
+  }, [specBoostMethod, model, models, config, updateParam]);
 
   const customFlagsReplaceActive = testFlagsEnabled && testFlagsMode === "replace";
   const customFlagsLaunchActive = testFlagsEnabled;

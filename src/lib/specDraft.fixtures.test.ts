@@ -31,7 +31,7 @@ interface Fixture {
  * whole point of the fixture. Without it a folder token would fire the naming tier and the
  * test would prove nothing about the header dependency.
  */
-const RUST_ONLY_FIXTURES: Record<string, { nameOnly?: boolean }> = {
+const RUST_ONLY_FIXTURES: Record<string, { nameOnly?: boolean; agreesWithRust?: boolean }> = {
   // `sidecar-00001.gguf` — no mtp token anywhere; block_count 1 + nextn is the whole case.
   "external-mtp-head-header-only-no-naming": {},
   // `draft-00001-of-00002.gguf` — the nextn tensor lived in the other split; only the merged
@@ -48,11 +48,15 @@ const RUST_ONLY_FIXTURES: Record<string, { nameOnly?: boolean }> = {
   "dflash-folder-cannot-condemn-a-main": { nameOnly: true },
   // nextn present in the header; the path is an ordinary quant name.
   "target-with-vocab-zero-scrape": {},
-  // `dspark-draft-q8.gguf` — the file name carries no `dflash` token, so the naming tier
-  // cannot reach this verdict at all. Rust gets there from arch `dflash` + `markov_w1.weight`:
-  // DSpark is a CLI type, not a role, and the Markov tensor is what separates it from plain
-  // DFlash. Checked on the file name alone so the `dspark` folder token cannot do the work.
-  "dspark-draft": { nameOnly: true },
+  // `dspark-draft-q8.gguf` — Rust gets there from arch `dflash` + `markov_w1.weight`: DSpark is
+  // a CLI type, not a role, and the Markov tensor is what separates it from plain DFlash.
+  //
+  // NOT a header-only case, contrary to how this fixture was first written. The name carries a
+  // loud draft token — `DSPARK_SIGNAL_RE` is `/d[-_.\s]?spark/i` with an optional separator, so
+  // `dspark` matches and the naming tier reaches `external_dflash` on its own. `agreesWithRust`
+  // pins that the fallback tier agrees here; the header is still what distinguishes DSpark from
+  // DFlash, but both answers are the same role, so the tier is not wrong — only less specific.
+  "dspark-draft": { nameOnly: true, agreesWithRust: true },
 };
 
 type NamingInput = Pick<ModelEntry, "path" | "name" | "hfModelId" | "sourcePathLabel">;
@@ -99,9 +103,15 @@ describe("spec_draft fixture table (shared with cargo)", () => {
     if (rustOnly) {
       it(`${f.id}: Rust-only — naming tier cannot reach the verdict`, () => {
         const model = fixtureCase(f, rustOnly);
-        // No invented role and no invented baked-MTP from naming alone.
-        expect(draftRoleFromPathHints(model)).toBeNull();
-        expect(hasBakedMtp(model)).toBe(false);
+        if (rustOnly.agreesWithRust) {
+          // The naming tier does reach this one, and must reach the same verdict Rust does.
+          expect(draftRoleFromPathHints(model)).toBe(f.expected_role);
+          expect(hasBakedMtp(model)).toBe(f.expected_baked_mtp);
+        } else {
+          // No invented role and no invented baked-MTP from naming alone.
+          expect(draftRoleFromPathHints(model)).toBeNull();
+          expect(hasBakedMtp(model)).toBe(false);
+        }
         // The authoritative Rust verdict is consumed untouched.
         expect(draftRoleFromModel({ ...model, draftRoleHint: f.expected_role })).toBe(f.expected_role);
         // And on the full path the tier may at most agree with Rust — never contradict it.

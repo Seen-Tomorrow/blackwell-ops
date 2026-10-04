@@ -24,6 +24,7 @@ import {
   signalContainsDspark,
 } from "../lib/specDraft";
 import { DFLASH_DRAFT_MODEL } from "../lib/specProfiles";
+import { adapterForMethod, cliTypeForMethod } from "../lib/spec/adapters";
 import { dispatchAppEvent, EVENTS } from "../lib/events";
 import { useDownloadTasks } from "./useDownloadTasks";
 import type {
@@ -34,7 +35,7 @@ import type {
 } from "../lib/multiAgentBooster";
 import type { ApplyCockpitOpts } from "./useCockpit";
 
-export type UseDflashDraftOptions = {
+export type UseSpecDraftOptions = {
   model: ModelEntry | null;
   models: ModelEntry[] | undefined;
   config: Record<string, any>;
@@ -54,7 +55,7 @@ export type UseDflashDraftOptions = {
   ) => Promise<void>;
 };
 
-export function useDflashDraft({
+export function useSpecDraft({
   model,
   models,
   config,
@@ -66,7 +67,7 @@ export function useDflashDraft({
   think,
   powerCockpitMode,
   applyFullAutoCockpit,
-}: UseDflashDraftOptions) {
+}: UseSpecDraftOptions) {
   const [dflashGetState, setDflashGetState] = useState<DflashGetUiState>("idle");
   const [dflashGetError, setDflashGetError] = useState<string | null>(null);
   const [dflashGetOfferLabel, setDflashGetOfferLabel] = useState<string | null>(null);
@@ -231,18 +232,22 @@ export function useDflashDraft({
   const handleConfirmLibraryDraft = useCallback(
     (path: string) => {
       if (!model) return;
-      const speed =
-        speedBoost === "dspark" || speedBoost === "dflash" ? speedBoost : "dflash";
-      const pairType = speed === "dspark" ? "draft-dspark" : "draft-dflash";
-      updateParam(DFLASH_DRAFT_MODEL, path);
-      saveDraftPairing(model.path, pairType, path);
+      const method =
+        speedBoost === "mtp" || speedBoost === "dflash" || speedBoost === "dspark"
+          ? speedBoost
+          : "off";
+      const adapter = adapterForMethod(method);
+      const draftKey = adapter?.knobs.draftModel;
+      if (!adapter || !draftKey) return;
+      updateParam(draftKey, path);
+      saveDraftPairing(model.path, cliTypeForMethod(method) ?? adapter.cliType, path);
       setDflashPickOpen(false);
       setLibraryPickItems([]);
       setDflashResolveError(null);
       setDflashGetState("idle");
       setDflashGetError(null);
-      // Keep current Boost method (dflash or dspark) when confirming a path
-      void applyFullAutoCockpit(codingMode, speed, brains, think, {
+      // Keep current Boost method (mtp, dflash or dspark) when confirming a path
+      void applyFullAutoCockpit(codingMode, speedBoost, brains, think, {
         powerUser: powerCockpitMode,
         preferredDraftPath: path,
       });
