@@ -90,6 +90,30 @@ export interface ModelMetadata {
   rawKvs?: Record<string, string>;
 }
 
+/**
+ * Header-only GGUF facts — read from the tensor-info table (name/dims/type/offset records).
+ * No tensor data touched, no engine spawned. Mirror of the Rust `gguf_shape::GgufShape`;
+ * serde renames multi-word fields to camelCase, so the wire shape mixes both cases.
+ * Every field is optional: the shape exists only for files the new reader has scanned —
+ * absent means "not scanned yet", same reason `nextn_predict_layers` / `draft_role` are optional.
+ */
+export interface GgufShape {
+  architecture?: string;
+  block_count?: number;
+  /** MTP evidence — max N over `blk.N.nextn.*` tensor names. */
+  nextnLayers?: number;
+  /** DSpark sentinel — `markov_w1.weight` present. */
+  hasMarkovW1?: boolean;
+  /** Full layer stack present. An external MTP draft is a truncated copy, so blockCount/trunk is the discriminator, not architecture. */
+  hasTrunk?: boolean;
+  /** Embedding/output tensor present. */
+  hasVocab?: boolean;
+  shard_count?: number;
+  tensor_count?: number;
+  alignment?: number;
+  header_end?: number;
+}
+
 export interface EngineConfig {
   alias: string;
   model_path: string;

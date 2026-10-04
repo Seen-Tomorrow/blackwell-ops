@@ -9,6 +9,7 @@
 //!   name (u64 len + bytes) + n_dims (u32) + dims[n_dims] (u64) + type (u32) + offset (u64)
 //! Tensor data then starts at `align(end_of_tensor_infos, general.alignment)` (default 32).
 
+use std::collections::HashMap;
 use std::io::{Cursor, Read, Seek, SeekFrom};
 use std::path::Path;
 
@@ -32,7 +33,7 @@ fn fmt_bytes(n: u64) -> String {
     }
 }
 
-const GGUF_DEFAULT_ALIGNMENT: u64 = 32;
+pub(crate) const GGUF_DEFAULT_ALIGNMENT: u64 = 32;
 const MAX_METADATA_STRING: u64 = 10_000_000;
 const MAX_TENSOR_NAME: u64 = 10_000;
 const MAX_DIMS: u32 = 8;
@@ -79,6 +80,11 @@ impl<R: Read> GgufReader<R> {
         Ok(u64::from_le_bytes(buf.try_into().unwrap()))
     }
 
+    fn read_string(&mut self, what: &str, max_len: u64) -> Result<String, String> {
+        let bytes = self.skip_string(what, max_len)?;
+        Ok(String::from_utf8_lossy(&bytes).into_owned())
+    }
+
     /// GGUF v2/v3 string: u64 length + UTF-8 bytes (not required to be valid UTF-8 to skip).
     fn skip_string(&mut self, what: &str, max_len: u64) -> Result<Vec<u8>, String> {
         let len = self.read_u64()?;
@@ -92,7 +98,7 @@ impl<R: Read> GgufReader<R> {
     }
 }
 
-fn align_offset(offset: u64, alignment: u64) -> u64 {
+pub(crate) fn align_offset(offset: u64, alignment: u64) -> u64 {
     if alignment == 0 {
         return offset;
     }
@@ -104,9 +110,40 @@ fn align_offset(offset: u64, alignment: u64) -> u64 {
     }
 }
 
-/// Parse a GGUF header from any reader and return the file offset where tensor
-/// data starts (after alignment padding).
-fn parse_header_end<R: Read>(reader: R) -> Result<u64, String> {
+/// One tensor-info record from the header table. No tensor data is touched —
+/// `data_offset` is relative to `header_end`, and GGUF stores no tensor size.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TensorInfo {
+    pub(crate) name: String,
+    pub(crate) dims: Vec<u64>,
+    /// `ggml_type` discriminant.
+    pub(crate) ggml_type: u32,
+    pub(crate) data_offset: u64,
+}
+
+/// What a GGUF header walk yields. `gguf_shape` consumes this; the patcher only
+/// needs `header_end`, so it reads nothing beyond the KVs it must honour.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct HeaderFacts {
+    pub(crate) tensor_count: u64,
+    pub(crate) alignment: u64,
+    /// Offset where tensor data starts (after alignment padding).
+    pub(crate) header_end: u64,
+    /// `general.architecture`, when present.
+    pub(crate) architecture: Option<String>,
+    /// `<arch>.block_count`, when present.
+    pub(crate) block_count: Option<i64>,
+    /// String KVs for the two keys above only — everything else is skipped, not
+    /// materialised.
+    pub(crate) kv_strings: HashMap<String, String>,
+    /// Integer KVs for the two keys above only.
+    pub(crate) kv_ints: HashMap<String, i64>,
+    pub(crate) tensors: Vec<TensorInfo>,
+}
+
+/// Parse a GGUF header from any reader: the metadata KVs of interest plus every
+/// tensor-info record, and the offset where tensor data starts.
+pub(crate) fn parse_header<R: Read>(reader: R) -> Result<HeaderFacts, String> {
     let mut r = GgufReader::new(reader);
 
     let magic = r.read_exact(4)?;
@@ -131,19 +168,39 @@ fn parse_header_end<R: Read>(reader: R) -> Result<u64, String> {
         return Err(format!("Metadata count {} exceeds sanity limit", metadata_count));
     }
 
-    let mut alignment = GGUF_DEFAULT_ALIGNMENT;
+    let mut facts = HeaderFacts {
+        tensor_count,
+        alignment: GGUF_DEFAULT_ALIGNMENT,
+        ..HeaderFacts::default()
+    };
 
     for i in 0..metadata_count {
-        let key_bytes = r.skip_string(&format!("Metadata[{}] key", i), MAX_METADATA_STRING)?;
-        let key = String::from_utf8_lossy(&key_bytes);
+        let key = r.read_string(&format!("Metadata[{}] key", i), MAX_METADATA_STRING)?;
         let value_type = r.read_u32()?;
         if key == "general.alignment" {
-            alignment = read_alignment_value(&mut r, value_type)?;
+            facts.alignment = read_alignment_value(&mut r, value_type)?;
+        } else if key == "general.architecture" && value_type == 8 {
+            let value = r.read_string(&format!("Metadata[{i}] value"), MAX_METADATA_STRING)?;
+            facts.architecture = Some(value.clone());
+            facts.kv_strings.insert(key, value);
+        } else if key.ends_with(".block_count") && matches!(value_type, 4 | 5 | 10 | 11) {
+            let value = read_int_value(&mut r, value_type)?;
+            facts.block_count = Some(value);
+            facts.kv_ints.insert(key, value);
         } else {
             skip_value(&mut r, value_type)?;
         }
     }
 
+    // The arch KV may be absent or unreadable; fall back to the first
+    // `<arch>.block_count` key seen.
+    if facts.architecture.is_none() {
+        if let Some(key) = facts.kv_ints.keys().find(|k| k.ends_with(".block_count")) {
+            facts.architecture = Some(key[..key.len() - ".block_count".len()].to_string());
+        }
+    }
+
+    facts.tensors.reserve(facts.tensor_count.min(4096) as usize);
     for i in 0..tensor_count {
         let name_len = r.read_u64()?;
         if name_len > MAX_TENSOR_NAME {
@@ -152,7 +209,8 @@ fn parse_header_end<R: Read>(reader: R) -> Result<u64, String> {
                 i, name_len
             ));
         }
-        r.read_exact(name_len as usize)?;
+        let name_bytes = r.read_exact(name_len as usize)?;
+        let name = String::from_utf8_lossy(&name_bytes).into_owned();
 
         let n_dims = r.read_u32()?;
         if n_dims > MAX_DIMS {
@@ -161,16 +219,31 @@ fn parse_header_end<R: Read>(reader: R) -> Result<u64, String> {
                 i, n_dims, MAX_DIMS
             ));
         }
+        let mut dims = Vec::with_capacity(n_dims as usize);
         for _ in 0..n_dims {
-            let _dim = r.read_u64()?;
+            dims.push(r.read_u64()?);
         }
         // ggml_type — uint32. Previous parser skipped this and then read a
         // non-existent u64 "size", which desynced at Tensor[1].
-        let _ggml_type = r.read_u32()?;
-        let _data_offset = r.read_u64()?;
+        let ggml_type = r.read_u32()?;
+        let data_offset = r.read_u64()?;
+
+        facts.tensors.push(TensorInfo {
+            name,
+            dims,
+            ggml_type,
+            data_offset,
+        });
     }
 
-    Ok(align_offset(r.offset, alignment))
+    facts.header_end = align_offset(r.offset, facts.alignment);
+    Ok(facts)
+}
+
+/// Parse a GGUF header from any reader and return the file offset where tensor
+/// data starts (after alignment padding).
+fn parse_header_end<R: Read>(reader: R) -> Result<u64, String> {
+    parse_header(reader).map(|facts| facts.header_end)
 }
 
 fn find_header_end_from_file(model_path: &str) -> Result<u64, String> {
@@ -181,8 +254,31 @@ fn find_header_end_from_file(model_path: &str) -> Result<u64, String> {
     parse_header_end(f)
 }
 
-fn find_header_end_from_bytes(bytes: &[u8]) -> Result<u64, String> {
+/// Open a file and walk its header, returning the facts `gguf_shape` needs.
+#[allow(dead_code)] // Consumed by `gguf_shape`; the patcher itself only needs header_end.
+pub(crate) fn parse_header_from_file(path: &Path) -> Result<HeaderFacts, String> {
+    if !path.exists() {
+        return Err(format!("Model file not found: {}", path.display()));
+    }
+    let f = std::fs::File::open(path).map_err(|e| format!("Failed to open file: {}", e))?;
+    parse_header(f)
+}
+
+pub(crate) fn find_header_end_from_bytes(bytes: &[u8]) -> Result<u64, String> {
     parse_header_end(Cursor::new(bytes))
+}
+
+fn read_int_value<R: Read>(r: &mut GgufReader<R>, value_type: u32) -> Result<i64, String> {
+    match value_type {
+        4 => Ok(r.read_u32()? as i64), // UINT32
+        5 => Ok(r.read_u32()? as i32 as i64), // INT32
+        10 => Ok(r.read_u64()? as i64), // UINT64
+        11 => r.read_u64().map(|v| v as i64), // INT64
+        other => Err(format!(
+            "Unexpected value type {other} for integer KV at offset {}",
+            r.offset
+        )),
+    }
 }
 
 fn read_alignment_value<R: Read>(r: &mut GgufReader<R>, value_type: u32) -> Result<u64, String> {
