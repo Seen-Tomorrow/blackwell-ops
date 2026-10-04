@@ -108,6 +108,26 @@ fn spec_draft_model_is_set(config: &crate::types::EngineConfig) -> bool {
         })
 }
 
+/// A draft path, or `None` for off/none/empty. `auto` IS a configured draft — the
+/// row's `values` list ships it, and the picker writes it — so it must never reach
+/// the `.gguf` error verbatim.
+fn meaningful_draft_value(raw: Option<String>) -> Option<String> {
+    raw.map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty() && !s.eq_ignore_ascii_case("off") && !s.eq_ignore_ascii_case("none"))
+}
+
+/// Whether launch must merge the catalog to answer the draft row (`auto`/`on` with
+/// no sibling in the main's own folder is the only case). Keeps the catalog walk off
+/// every ordinary launch.
+fn draft_needs_catalog(config: &crate::types::EngineConfig) -> bool {
+    let spec_type = config.get_param_str("spec_type").unwrap_or_default();
+    if spec_type.is_empty() || spec_type.eq_ignore_ascii_case("none") {
+        return false;
+    }
+    let draft = draft_model_value_for_spec(config, &spec_type);
+    draft.eq_ignore_ascii_case("auto") || draft.eq_ignore_ascii_case("on")
+}
+
 /// The draft path for THIS spec type, method-first.
 ///
 /// `mtp_draft_model` is the MTP lane's key; `spec_draft_model` is the CLI alias
@@ -118,18 +138,14 @@ fn spec_draft_model_is_set(config: &crate::types::EngineConfig) -> bool {
 /// a path under any key is a configured draft — the footgun of a stale other-lane
 /// path was accepted there, and launch validation is the worse place to be strict.
 fn draft_model_value_for_spec(config: &crate::types::EngineConfig, spec_type: &str) -> String {
-    let meaningful = |v: Option<String>| {
-        v.map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty() && !s.eq_ignore_ascii_case("off"))
-    };
     let primary = if spec_type.eq_ignore_ascii_case("draft-mtp") {
         "mtp_draft_model"
     } else {
         "dflash_draft_model"
     };
-    meaningful(config.get_param_str(primary))
-        .or_else(|| meaningful(config.get_param_str("spec_draft_model")))
-        .or_else(|| meaningful(config.get_param_str(primary)))
+    meaningful_draft_value(config.get_param_str(primary))
+        .or_else(|| meaningful_draft_value(config.get_param_str("spec_draft_model")))
+        .or_else(|| meaningful_draft_value(config.get_param_str(primary)))
         .unwrap_or_default()
 }
 
@@ -186,7 +202,15 @@ fn guard_speculative_decoding(
     filtered
 }
 
-fn validate_spec_launch(config: &crate::types::EngineConfig) -> Result<(), String> {
+/// `catalog` is the merged model library, when the caller has it (launch does).
+/// `auto` resolves via the main's folder first, then the catalog — a head in a
+/// `…/MTP/` sidecar is not a sibling of a main in `…/UD-Q4_K_XL/`, and without the
+/// catalog fallback the raw "auto" string reached the user as
+/// `Draft model path must be a .gguf file (got "auto")`.
+fn validate_spec_launch_with_catalog(
+    config: &crate::types::EngineConfig,
+    catalog: Option<&[crate::types::ModelEntry]>,
+) -> Result<(), String> {
     let (_, shape) = model_cache::get_cached_with_shape(&config.model_path);
     if !crate::spec_draft::is_launchable_target(shape.as_ref(), &config.model_path) {
         return Err(
@@ -249,9 +273,25 @@ fn validate_spec_launch(config: &crate::types::EngineConfig) -> Result<(), Strin
         } else {
             None
         }
+    })
+    .or_else(|| {
+        // `auto`/`on` that the sibling scan could not answer: search the catalog.
+        let is_auto = draft_value.eq_ignore_ascii_case("auto")
+            || draft_value.eq_ignore_ascii_case("on");
+        match (is_auto, catalog) {
+            (true, Some(entries)) => {
+                crate::spec_draft::resolve_auto_draft_from_catalog(&config.model_path, pattern, entries)
+            }
+            _ => None,
+        }
     });
 
     let Some(path) = resolved else {
+        if draft_value.eq_ignore_ascii_case("auto") || draft_value.eq_ignore_ascii_case("on") {
+            return Err(format!(
+                "No draft model found for \"{spec_type}\" — auto-search found no match. Set DRAFT-MODEL to a .gguf file or use the picker."
+            ));
+        }
         return Err(format!(
             "Draft model path must be a .gguf file (got \"{draft_value}\")"
         ));
@@ -388,7 +428,21 @@ pub async fn launch_engine(
     crate::config::validate_provider_binary(binary_path.to_str().unwrap_or(""))?;
     crate::config::validate_model_path(&config.model_path)?;
     sanitize_spec_extra_params(&mut config, &user_params);
-    validate_spec_launch(&config)?;
+    // Catalog for `auto` draft resolution — the same merge `list_models` does, from
+    // the config clone already held. Only paid when a draft row says `auto`.
+    let draft_catalog = if draft_needs_catalog(&config) {
+        let paths = crate::config::get_model_paths(&cfg);
+        if paths.is_empty() {
+            None
+        } else {
+            model_catalog::merge_catalogs(&paths, None, None)
+                .ok()
+                .map(|(entries, _)| entries)
+        }
+    } else {
+        None
+    };
+    validate_spec_launch_with_catalog(&config, draft_catalog.as_deref())?;
 
     if let Some(note) = fit_scanner::model_fit_skip_note(&backend_type, &config.model_path) {
         app.blackwell_output_console_manager.emit_line_to_category(

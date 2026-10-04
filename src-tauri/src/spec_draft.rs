@@ -311,6 +311,10 @@ pub fn resolve_spec_draft_model_path(
     }
 
     if trimmed.eq_ignore_ascii_case("auto") || trimmed.eq_ignore_ascii_case("on") {
+        // The main's own folder first — the classic sidecar layout. The catalog
+        // fallback lives in the launch path (`resolve_auto_draft_from_catalog`):
+        // a head in a `…/MTP/` sidecar is not a sibling of a main in `…/UD-Q4_K_XL/`,
+        // and the catalog needs AppConfig, which this module does not hold.
         return scan_sibling_draft(model_path, pattern);
     }
 
@@ -350,6 +354,72 @@ fn scan_sibling_draft(model_path: &str, pattern: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// `auto` fallback: pick a pattern-matching draft from the catalog, scored against
+/// the main (stem overlap + same-parent bonus, same rules as the ★ picker). The
+/// catalog is the only place that knows where heads live outside the main's folder
+/// (`…/MTP/` sidecars). Falls back to the first pattern match when nothing scores.
+///
+/// `catalog` is passed in, not fetched: the catalog is a filesystem walk with no
+/// global cache (the `list_models` command builds it per call from `AppConfig`), so
+/// the launch path hands down the paths it already holds under its config lock.
+pub fn resolve_auto_draft_from_catalog(
+    model_path: &str,
+    pattern: &str,
+    catalog: &[crate::types::ModelEntry],
+) -> Option<String> {
+    let pattern_lower = pattern.trim().to_lowercase();
+    let main_stem = Path::new(model_path)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_lowercase()
+        .replace(".gguf", "");
+
+    let mut best: Option<(i32, String)> = None;
+    let mut first_match: Option<String> = None;
+    for entry in catalog {
+        if entry.path == model_path {
+            continue;
+        }
+        if !is_external_draft_role_hint(&entry.draft_role_hint) {
+            continue;
+        }
+        let file_lower = entry
+            .path
+            .rsplit(['/', '\\'])
+            .next()
+            .unwrap_or("")
+            .to_lowercase();
+        if !file_lower.ends_with(".gguf") || !matches_glob_pattern(&file_lower, &pattern_lower) {
+            continue;
+        }
+        if first_match.is_none() {
+            first_match = Some(entry.path.clone());
+        }
+        let mut score = 0i32;
+        if !main_stem.is_empty() && file_lower.contains(&main_stem) {
+            score += 10;
+        }
+        if same_parent_dir(&entry.path, model_path) {
+            score += 5;
+        }
+        if best.as_ref().is_none_or(|(s, _)| score > *s) {
+            best = Some((score, entry.path.clone()));
+        }
+    }
+    best.map(|(_, path)| path).or(first_match)
+}
+
+fn same_parent_dir(a: &str, b: &str) -> bool {
+    let norm = |p: &str| {
+        Path::new(p)
+            .parent()
+            .map(|d| d.to_string_lossy().to_lowercase())
+            .unwrap_or_default()
+    };
+    norm(a) == norm(b)
 }
 
 fn matches_glob_pattern(name: &str, pattern: &str) -> bool {

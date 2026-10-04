@@ -242,6 +242,13 @@ fn build_fresh_config() -> AppConfig {
 /// over the last known-good bytes — permanent, unreported loss of every model
 /// path and provider edit. Absent and corrupt are different facts; they no longer
 /// share a code path, and the unreadable file survives for manual recovery.
+/// Model-library paths from the persisted `app_config.json`, for callers outside the
+/// Tauri command layer (the CLI builder resolving `auto` drafts mid-`build_cmd`).
+/// Returns empty when nothing is saved — callers treat that as "no catalog".
+pub fn model_paths_from_saved_config() -> Vec<ModelPathEntry> {
+    load_saved_config().map(|cfg| get_model_paths(&cfg)).unwrap_or_default()
+}
+
 fn load_saved_config() -> Option<AppConfig> {
     let config_path = config_dir().join("app_config.json");
     if !config_path.exists() {

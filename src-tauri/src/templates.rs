@@ -808,7 +808,20 @@ impl ProviderTemplate {
                 } else if draft_val.to_lowercase().ends_with(".gguf")
                     && std::path::Path::new(&draft_val).is_file()
                 {
-                    args.extend(["--spec-draft-model".into(), draft_val]);
+                    args.extend(["--spec-draft-model".into(), draft_val.clone()]);
+                } else if matches!(draft_val.trim().to_lowercase().as_str(), "auto" | "on") {
+                    // Same catalog fallback the launch validation uses — without it,
+                    // `auto` passes validation and then silently drops -md.
+                    let paths = crate::config::model_paths_from_saved_config();
+                    if let Ok((entries, _)) = crate::model_catalog::merge_catalogs(&paths, None, None) {
+                        if let Some(path) = crate::spec_draft::resolve_auto_draft_from_catalog(
+                            &config.model_path,
+                            pattern,
+                            &entries,
+                        ) {
+                            args.extend(["--spec-draft-model".into(), path]);
+                        }
+                    }
                 }
             }
         }
