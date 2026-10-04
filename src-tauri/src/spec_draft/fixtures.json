@@ -56,6 +56,22 @@
     "note": "Merged shape across splits — the nextn tensor lived in split 2. Upstream #26814 skips sharded drafts; we do not."
   },
   {
+    "id": "external-mtp-head-full-copy-named",
+    "path": "C:\\AI-MASTER\\models\\unsloth\\Qwen3.8-Flash-Next-GGUF\\MTP\\mtp-Qwen3.8-Flash-Next-Q8_0.gguf",
+    "shape": { "architecture": "qwen4exp", "block_count": 49, "nextnLayers": 49, "hasMarkovW1": false, "hasTrunk": true, "hasVocab": true, "shard_count": 1 },
+    "expected_role": "external_mtp",
+    "expected_baked_mtp": false,
+    "note": "Full-copy head export (owner-reported 2026-10-04): the whole target stack PLUS nextn layers, so the truncated-copy rule misses it. The mtp- file prefix and the bare MTP/ folder segment are the only discriminators a header cannot supply."
+  },
+  {
+    "id": "baked-mtp-full-copy-named-suffix",
+    "path": "C:\\models\\unsloth\\Qwen3.6-27B-MTP-GGUF\\Qwen3.6-27B-UD-Q4_K_XL-MTP.gguf",
+    "shape": { "architecture": "qwen35", "block_count": 65, "nextnLayers": 65, "hasMarkovW1": false, "hasTrunk": true, "hasVocab": true, "shard_count": 1 },
+    "expected_role": "none",
+    "expected_baked_mtp": true,
+    "note": "Negative guard for the full-copy rule: a baked-in main with the SAME header shape as a full-copy head. X-MTP.gguf is a suffix (not an mtp- prefix) and Qwen3.6-27B-MTP-GGUF embeds the token (not a bare MTP segment) — no head marker, stays a launchable target."
+  },
+  {
     "id": "dspark-draft",
     "path": "C:\\models\\dspark\\Qwen3.8-27B\\dspark-draft-q8.gguf",
     "shape": { "architecture": "dflash", "block_count": 1, "nextnLayers": 0, "hasMarkovW1": true, "hasTrunk": false, "hasVocab": false, "shard_count": 1 },

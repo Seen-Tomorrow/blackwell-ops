@@ -77,9 +77,19 @@ pub fn classify_draft_role(
             return (DraftRole::ExternalEagle3, facts);
         }
         if shape.nextn_layers > 0 {
-            // A draft is a truncated copy of the target: it keeps the target arch, so
-            // block_count + trunk — not architecture — is what separates it from a main.
+            // A draft is usually a truncated copy of the target: it keeps the target
+            // arch, so block_count + trunk — not architecture — is what separates it
+            // from a main.
             if shape.block_count <= 1 && !shape.has_trunk {
+                return (DraftRole::ExternalMtp, facts);
+            }
+            // Full-copy head exports exist (unsloth `mtp-<target>-Q8_0.gguf`): the
+            // whole target tensor stack plus nextn layers. The header cannot separate
+            // them from a baked-in main — both carry the full stack — so explicit
+            // head naming is the only discriminator. Scoped to this branch: a naming
+            // token can never condemn a file WITHOUT nextn (the
+            // dflash-folder-cannot-condemn-a-main invariant).
+            if full_copy_head_naming(path, name, hf_model_id, source_path_label) {
                 return (DraftRole::ExternalMtp, facts);
             }
             // Q4: nextn with a full stack is a baked-in MTP target.
@@ -177,6 +187,42 @@ fn signal_contains_mtp_head(signal: &str) -> bool {
     }
     // "X.mtp.gguf" (dot) is a head export. "-mtp.gguf" is a baked-in main.
     lower.ends_with(".mtp.gguf")
+}
+
+/// Explicit external-head naming: `mtp-head` / `head-mtp` tokens, the `.mtp.gguf`
+/// suffix, an `mtp-` **file-name prefix** (unsloth `mtp-Qwen3.8-Flash-Next-Q8_0`),
+/// or a bare `mtp` path segment (an `MTP/` sidecar folder).
+///
+/// Deliberately narrower than `signal_contains_dflash`: a baked-in main lives in a
+/// `Qwen3.6-27B-MTP-GGUF` repo folder (embedded token, not a bare segment) and is
+/// named `X-MTP.gguf` (suffix, not prefix) — neither matches.
+fn is_explicit_mtp_head_signal(signal: &str) -> bool {
+    if signal_contains_mtp_head(signal) {
+        return true;
+    }
+    for part in signal.split(['/', '\\']).filter(|s| !s.is_empty()) {
+        let lower = part.to_lowercase();
+        if lower == "mtp" {
+            return true;
+        }
+        if lower.starts_with("mtp-") || lower.starts_with("mtp_") {
+            return true;
+        }
+    }
+    false
+}
+
+/// Full-copy head naming over all catalog signals. Only ever consulted when the
+/// header already proved nextn layers exist on a full stack.
+fn full_copy_head_naming(
+    path: &str,
+    name: &str,
+    hf_model_id: Option<&str>,
+    source_path_label: Option<&str>,
+) -> bool {
+    catalog_signals(path, name, hf_model_id, source_path_label)
+        .iter()
+        .any(|signal| is_explicit_mtp_head_signal(signal))
 }
 
 fn gguf_file_is_embedded_mtp(name: &str) -> bool {
@@ -353,7 +399,7 @@ mod tests {
     fn fixture_table_classifies_every_case() {
         let cases: Vec<Fixture> =
             serde_json::from_str(FIXTURES_JSON).expect("fixtures.json parses");
-        assert_eq!(cases.len(), 19, "fixture table case count drifted");
+        assert_eq!(cases.len(), 21, "fixture table case count drifted");
 
         for case in &cases {
             let (role, facts) = classify_draft_role(case.shape.as_ref(), &case.path, "", None, None);

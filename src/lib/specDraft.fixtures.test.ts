@@ -25,6 +25,18 @@ interface Fixture {
 }
 
 /**
+ * Shape-aware tier: the fixture's `ggufShape` feeds `draftRoleFromModel` / `hasBakedMtp`
+ * directly, mirroring Rust's full-copy-head branch (nextn + full stack + explicit head
+ * naming ⇒ head). The naming tier alone cannot carry these — without the shape the
+ * `MTP/` folder token reads as baked-in naming — so they are neither naming-tier nor
+ * Rust-only cases.
+ */
+const SHAPE_AWARE_FIXTURES = new Set([
+  "external-mtp-head-full-copy-named",
+  "baked-mtp-full-copy-named-suffix",
+]);
+
+/**
  * Rust-only: header evidence, invisible to the TS fallback tier.
  *
  * `nameOnly` narrows the case to path tokens that carry **no** draft token — which is the
@@ -89,13 +101,18 @@ describe("spec_draft fixture table (shared with cargo)", () => {
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids, "fixture ids drifted from the JSON").toEqual(onDisk.map((f) => f.id));
 
-    // Every fixture lands in exactly one of the two groups — no silent gaps, no invented ids.
+    // Every fixture lands in exactly one of the three groups — no silent gaps, no invented ids.
     const rustOnlyIds = Object.keys(RUST_ONLY_FIXTURES);
     for (const id of rustOnlyIds) {
       expect(ids, `Rust-only list names a fixture that is gone: ${id}`).toContain(id);
     }
-    const namingTier = ids.filter((id) => !rustOnlyIds.includes(id));
-    expect(namingTier.length + rustOnlyIds.length).toBe(ids.length);
+    for (const id of SHAPE_AWARE_FIXTURES) {
+      expect(ids, `Shape-aware list names a fixture that is gone: ${id}`).toContain(id);
+    }
+    const namingTier = ids.filter(
+      (id) => !rustOnlyIds.includes(id) && !SHAPE_AWARE_FIXTURES.has(id),
+    );
+    expect(namingTier.length + rustOnlyIds.length + SHAPE_AWARE_FIXTURES.size).toBe(ids.length);
   });
 
   for (const f of cases) {
@@ -122,6 +139,18 @@ describe("spec_draft fixture table (shared with cargo)", () => {
           const fullFallback = draftRoleFromPathHints(full);
           expect(fullFallback === null || fullFallback === f.expected_role).toBe(true);
         }
+      });
+      continue;
+    }
+
+    if (SHAPE_AWARE_FIXTURES.has(f.id)) {
+      it(`${f.id}: shape + naming tier reproduces the verdict`, () => {
+        const model = { ...fixtureCase(f), ggufShape: f.shape ?? undefined };
+        // No Rust hint — the TS mirror must reach the verdict on its own.
+        expect(draftRoleFromModel(model)).toBe(f.expected_role);
+        expect(hasBakedMtp(model)).toBe(f.expected_baked_mtp);
+        // With the Rust hint present it must agree, never override.
+        expect(draftRoleFromModel({ ...model, draftRoleHint: f.expected_role })).toBe(f.expected_role);
       });
       continue;
     }

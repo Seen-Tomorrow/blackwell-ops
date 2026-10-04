@@ -154,6 +154,26 @@ export function signalContainsMtpHead(signal: string): boolean {
   return false;
 }
 
+/**
+ * Explicit external-head naming: the tokens above, an `mtp-` **file-name prefix**
+ * (unsloth `mtp-Qwen3.8-Flash-Next-Q8_0`), or a bare `mtp` path segment (an `MTP/`
+ * sidecar folder). Mirrors Rust `is_explicit_mtp_head_signal`.
+ *
+ * Narrower than a "contains mtp" test on purpose: a baked-in main lives in a
+ * `Qwen3.6-27B-MTP-GGUF` repo folder (embedded token) and is named `X-MTP.gguf`
+ * (suffix) — neither matches.
+ */
+export function isExplicitMtpHeadSignal(signal: string): boolean {
+  if (signalContainsMtpHead(signal)) return true;
+  for (const part of signal.replace(/\\/g, "/").split("/")) {
+    if (!part) continue;
+    const lower = part.toLowerCase();
+    if (lower === "mtp") return true;
+    if (lower.startsWith("mtp-") || lower.startsWith("mtp_")) return true;
+  }
+  return false;
+}
+
 /** Baked-in MTP main from publisher naming. Not a GGUF KV. */
 export function signalContainsEmbeddedMtp(signal: string): boolean {
   for (const part of signal.replace(/\\/g, "/").split("/")) {
@@ -233,12 +253,26 @@ export function draftRoleFromPathHints(
 
 /** Baked-in MTP — a property of a TARGET, not a draft role.
  *  Header `nextnLayers` is authoritative; publisher naming only speaks when no shape has
- *  been scanned yet, because a baked-in main often omits the nextn KV entirely. */
+ *  been scanned yet, because a baked-in main often omits the nextn KV entirely.
+ *  A scanned shape with explicit head naming (`mtp-` prefix, `MTP/` folder) is a
+ *  full-copy HEAD, not a baked-in target — mirrors the Rust classifier's full-copy branch. */
 export function hasBakedMtp(
   model: Pick<ModelEntry, "path" | "name" | "hfModelId" | "sourcePathLabel" | "ggufShape">,
 ): boolean {
-  if (model.ggufShape) return (model.ggufShape.nextnLayers ?? 0) > 0;
+  if (model.ggufShape) {
+    if ((model.ggufShape.nextnLayers ?? 0) <= 0) return false;
+    if (isFullCopyHeadNaming(model)) return false;
+    return true;
+  }
   return catalogDraftSignals(model).some(signalContainsEmbeddedMtp);
+}
+
+/** Full-copy head export (whole target stack + nextn): the header cannot separate it
+ *  from a baked-in main, so explicit head naming decides. Rust: `full_copy_head_naming`. */
+function isFullCopyHeadNaming(
+  model: Pick<ModelEntry, "path" | "name" | "hfModelId" | "sourcePathLabel">,
+): boolean {
+  return catalogDraftSignals(model).some(isExplicitMtpHeadSignal);
 }
 
 /**
@@ -248,11 +282,19 @@ export function hasBakedMtp(
  * calls a bug.
  */
 export function draftRoleFromModel(
-  model: Pick<ModelEntry, "path" | "name" | "hfModelId" | "sourcePathLabel" | "draftRoleHint">,
+  model: Pick<ModelEntry, "path" | "name" | "hfModelId" | "sourcePathLabel" | "draftRoleHint" | "ggufShape">,
 ): DraftRole {
   const hint = model.draftRoleHint;
   if (hint === "external_dflash" || hint === "external_eagle3" || hint === "external_mtp") {
     return hint;
+  }
+  // A scanned header is CONCLUSIVE for the truncated-copy rules, but a full-copy head
+  // export (whole stack + nextn, named `mtp-*` / `MTP/`) is exactly the case the header
+  // cannot separate from a baked-in main — Rust's classifier demotes it via naming and
+  // this mirror must agree, or the two sides split on the same file.
+  const shape = model.ggufShape;
+  if (shape && (shape.nextnLayers ?? 0) > 0 && isFullCopyHeadNaming(model)) {
+    return "external_mtp";
   }
   return draftRoleFromPathHints(model) ?? "none";
 }
