@@ -98,6 +98,8 @@ Consequences:
   `markov_w1.weight`, trunk tensors — is invisible.
 - `vocab_size` is scraped from a printed token-array length, not read. A head carrying
   `added_tokens` but no `tokens` array yields `vocab_size == 0` and is classified a standalone head.
+  The header fact that replaces it is a **tensor-name** check — `token_embd.weight` /
+  `token_embd_nosp.weight` / `output.weight` present or not — never a scraped count.
 - KV values are clamped to 40 chars by the loader itself, so long values are unrecoverable at source.
 - `file_size_bytes` is overwritten with the shard total before classification for sharded entries,
   so the size heuristic runs on a number that is not the scanned file.
@@ -178,16 +180,24 @@ New Rust reader over the GGUF **tensor-info table** — name, n_dims, dims, type
 Header only; no tensor data touched; no engine spawned. Emits:
 
 ```rust
-struct GgufShape {
-    arch: String,
-    block_count: u32,
-    nextn_layers: u32,
+pub struct GgufShape {
+    architecture: String,     // general.architecture KV
+    block_count: u32,         // <arch>.block_count KV
+    nextn_layers: u32,        // max N over `blk.N.nextn.*` tensor names
     has_markov_w1: bool,      // DSpark sentinel
-    has_trunk: bool,          // hc_attn_norm / full layer stack
-    has_vocab: bool,
+    has_trunk: bool,          // full layer stack present
+    has_vocab: bool,          // embedding/output tensor present
     shard_count: u32,
+    tensor_count: u64,        // from the header
+    alignment: u64,
+    header_end: u64,          // offset where tensor data starts
 }
 ```
+
+`tensor_count` / `alignment` / `header_end` are free from the walk and pin the reader against
+`gguf_patch::find_header_end_from_bytes` — the two must agree on the same bytes. Serde renames the
+multi-word fields to camelCase (`nextnLayers`, `hasMarkovW1`, `hasTrunk`, `hasVocab`); the TS mirror
+is `GgufShape` in `src/lib/types.ts`, all fields optional because absent means *not scanned yet*.
 
 This is strictly cheaper and safer than the current engine-spawn scan, and it removes the
 `vocab_size`-scraping and 40-char-truncation problems for the fields that matter.
