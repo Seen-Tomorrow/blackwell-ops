@@ -14,6 +14,7 @@ import { filterParamValuesForConfigView } from "./launchProfile";
 import type { ConfigViewMode } from "./types";
 import { normalizeUiGroup, paramUiGroup } from "./storage";
 import { SPEC_PROFILE_DFLASH_GROUP, SPEC_PROFILE_MTP_GROUP } from "./systemParams";
+import { adapterForMethod, cliTypeForMethod } from "./spec/adapters";
 
 export const SPEC_PROFILE_MTP = SPEC_PROFILE_MTP_GROUP;
 export const SPEC_PROFILE_DFLASH = SPEC_PROFILE_DFLASH_GROUP;
@@ -83,10 +84,7 @@ export function isObsoleteSpecParamKey(key: string): boolean {
 }
 
 export function groupForBoostMethod(method: SpecBoostMethod): SpecProfileGroup | null {
-  if (method === "mtp") return SPEC_PROFILE_MTP;
-  // DFlash + DSpark share SPECULATIVE-DFLASH knobs / draft path chip
-  if (method === "dflash" || method === "dspark") return SPEC_PROFILE_DFLASH;
-  return null;
+  return adapterForMethod(method)?.group ?? null;
 }
 
 export function boostMethodForGroup(group: string): SpecBoostMethod | null {
@@ -98,10 +96,7 @@ export function boostMethodForGroup(group: string): SpecBoostMethod | null {
 }
 
 export function cliSpecTypeForMethod(method: SpecBoostMethod): string | null {
-  if (method === "mtp") return "draft-mtp";
-  if (method === "dflash") return "draft-dflash";
-  if (method === "dspark") return "draft-dspark";
-  return null;
+  return cliTypeForMethod(method) ?? null;
 }
 
 /** True if any param in either profile group is visible (spec product mode on). */
@@ -191,18 +186,18 @@ export function buildSpecCliExtraParams(
     }
   };
 
-  if (method === "mtp") {
-    pickProfileKey(MTP_N_MAX);
-    pickProfileKey(MTP_N_MIN);
-    pickProfileKey(MTP_P_MIN);
-  } else if (method === "dflash" || method === "dspark") {
-    // Shared external-draft knobs (template SPECULATIVE-DFLASH)
-    pickProfileKey(DFLASH_N_MAX);
-    pickProfileKey(DFLASH_N_MIN);
-    pickProfileKey(DFLASH_P_MIN);
-    const draft = config[DFLASH_DRAFT_MODEL];
+  const adapter = adapterForMethod(method);
+  if (!adapter) return {};
+
+  pickProfileKey(adapter.knobs.nMax);
+  pickProfileKey(adapter.knobs.nMin);
+  pickProfileKey(adapter.knobs.pMin);
+
+  const draftKey = adapter.knobs.draftModel;
+  if (draftKey) {
+    const draft = config[draftKey];
     if (draft != null && String(draft).trim() !== "") {
-      out[DFLASH_DRAFT_MODEL] = draft;
+      out[draftKey] = draft;
       // Alias for post-loop draft inject / validate_spec_launch
       // CLI: --spec-draft-model / -md (same flag)
       if (String(draft).toLowerCase() !== "auto") {
