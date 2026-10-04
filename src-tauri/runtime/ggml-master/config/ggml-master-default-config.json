@@ -588,6 +588,25 @@
       ]
     },
     {
+      "default": "off",
+      "dock": "",
+      "flag": "--spec-draft-model",
+      "flag_pair": [],
+      "hidden_default": true,
+      "key": "mtp_draft_model",
+      "label": "DRAFT-MODEL",
+      "note": "External MTP head GGUF. With a path set, Boost emits --spec-type draft-mtp plus -md; left off, MTP uses the target's baked-in nextn layers.",
+      "pattern": "*mtp*",
+      "ptype": "logic_only",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SPECULATIVE-MTP",
+      "values": [
+        "off",
+        "auto"
+      ]
+    },
+    {
       "default": "q4_0",
       "dock": "",
       "essentialsHiddenValues": [
@@ -832,6 +851,6 @@
       "4"
     ]
   },
-  "templateVersion": 50,
+  "templateVersion": 51,
   "template_type": "ggml-llama"
 }
