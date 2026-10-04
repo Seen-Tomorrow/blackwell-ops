@@ -579,8 +579,18 @@ export function specTypeNeedsExternalDraft(specType: string): boolean {
   return lower.startsWith("draft-") && lower !== "draft-mtp" && lower !== "draft-simple";
 }
 
+/**
+ * Spec types known NOT to support multiple slots (`-np > 1`).
+ *
+ * `draft-mtp` used to be listed here on assumption and was never measured — both shipped
+ * seats run `total_slots: 1`, so the constraint was never actually exercised. Cleared so
+ * `-np 2 --spec-type draft-mtp` can be benchmarked. Re-add only against a measured engine
+ * failure, never a guess.
+ */
+const SPEC_TYPES_BLOCKING_PARALLEL = new Set<string>([]);
+
 export function specTypeAllowsParallel(specType: string): boolean {
-  return specType.trim().toLowerCase() !== "draft-mtp";
+  return !SPEC_TYPES_BLOCKING_PARALLEL.has(specType.trim().toLowerCase());
 }
 
 export function draftRoleForSpecType(specType: string): DraftRole | null {
