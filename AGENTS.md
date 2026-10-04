@@ -157,10 +157,30 @@ design/judgment here, escalate only when blocked.
 path; clean up afterwards. **Commit only real source changes**, split per concern (feature / fix /
 theme).
 
-**Agent-built binaries may be Low-integrity — the owner must not run them** — *suspected DSH-only,
-verify OMP.* Observed 2026-10 under **DSH** (`dsh web`): the agent session runs at **Low** integrity,
-and Windows stamps new files with the creating process's label, so every `cargo build` / `rustc`
-output inherits `Mandatory Label\Low`. Run from the owner's Medium-IL shell, effective IL =
+**Agent-built binaries may be Low-integrity — the owner must not run them** — **cause confirmed
+2026-10-04**, was *suspected DSH-only*. The trigger is the **sandbox mode of the session that last
+touched the folder**, not the agent's own token: `workspace-write` calls `grantWrite` on Windows,
+which stamps the folder **Low and leaves the stamp after the session ends**. `danger-full-access`
+does not stamp — which is why days of builds with DSH open were fine, and why flipping modes
+back and forth "fixed then broke" it. Inheritance is applied **at creation time**, so a folder
+stamped Low makes every PE built afterwards Low, and switching the mode back does NOT remove it.
+
+**Fix: raise the folder back to Medium** (`icacls <root> /setintegritylevel Medium`), then build
+from a normal shell. Do NOT run `icacls` before every build — that treats the symptom. To keep it
+clean, keep this workspace's DSH sandbox on **full access**; the next `workspace-write` session
+will stamp it again. Filed upstream as
+[dsh-desktop#1302](https://github.com/anywhere-labs/dsh-desktop/issues/1302) (2026-10-03).
+
+**Second symptom of the same root cause, easy to misdiagnose:** a DEV launch dying in
+`tauri::Builder` setup with `Failed to setup app: failed to create webview: WebView2 error:
+0x800700AA "The requested resource is in use."` The build is fine — the exe links and is stamped
+at the same second as the panic. A Low PE cannot complete the broker handshake with the
+Medium-IL WebView2 runtime, and `OLE_E_INUSE` is a misleading message for an integrity denial.
+Rule out commit exhaustion first (`handle_alloc_error` also aborts, see above), then check the
+label. An **already-Medium** exe still runs, so "it worked an hour ago" is consistent with a
+folder that got stamped in between.
+
+Run from the owner's Medium-IL shell, effective IL =
 `min(parent, file label)` = Low, and a Low process cannot write `%TEMP%`, `C:\`, or the profile —
 silent `os error 5` in any code path touching files outside the workspace.
 
@@ -171,13 +191,18 @@ Symptom signature: ~15 `cargo test` failures that are all `std::env::temp_dir()`
 Redirecting `TEMP` into the workspace also makes the suite green, which is a misleading "fix".
 A Low process cannot relabel its own output (`icacls /setintegritylevel` → Access denied).
 
-**The ACEs are DSH's confinement design, not damage — do NOT "repair" them.** On the workspace root
-they read as `Mandatory Label\Low Mandatory Level:(OI)(CI)(NW)`, `Everyone:(CI)(DENY)(DC)` and a
-`S-1-4-*` grant. The `diagnose-windows-sandbox-acl` skill names the deny and the `S-1-4-*` grant as
-*expected, not conflicts*, and the Low label is what lets the Low-IL sandbox write into the workspace
-at all. Never hand-edit them, never `icacls /T` over the tree, never run that skill elevated or via
-`runas` — **unconfined does not elevate the token**, and nothing here needs elevation. Writes outside
-the workspace are an *expected* denial the skill says to explain, not fix.
+**The ACEs are DSH's confinement design while a `workspace-write` session is live — do NOT "repair"
+them mid-session.** On the workspace root they read as `Mandatory Label\Low Mandatory Level:(OI)(CI)(NW)`,
+`Everyone:(CI)(DENY)(DC)` and a `S-1-4-*` grant. The `diagnose-windows-sandbox-acl` skill names the deny
+and the `S-1-4-*` grant as *expected, not conflicts*, and the Low label is what lets the Low-IL sandbox
+write into the workspace at all. Never hand-edit them **during** such a session, never `icacls /T` over
+the tree, never run that skill elevated or via `runas` — **unconfined does not elevate the token**, and
+nothing here needs elevation. Writes outside the workspace are an *expected* denial the skill says to
+explain, not fix.
+
+**After the session ends, the leftover Low stamp is the bug, not the design** — raising the root back to
+Medium is correct then (see above). The two rules are not in conflict: leave a live session's ACEs alone;
+clear the orphaned stamp once nothing needs it.
 
 **Rule: never ship or launch a PE built inside a DSH workspace.** Not just agent-built ones — while
 the root carries the label, *every* PE under `target\` is Low: app and test binaries **and** the
@@ -189,9 +214,10 @@ fix children already stamped; a rebuild into the still-labelled tree comes out L
 7z / NSIS do not carry SACLs, and extraction into `C:\AI-MASTER\…` (an unlabelled parent) yields the
 default Medium. Pack+Ship stays correct; only PEs run *in place from `target\`* are Low, which is why
 DEV builds silently lose `%TEMP%\blackwell-crash.log` and `-panic.log`.
-Open question to check from a normal terminal after the session closes: does DSH lift the root label
-on exit? `icacls <repo root>` answers it. If it persists, that is a DSH bug to report upstream, not
-something to work around locally.
+**Answered 2026-10-04: DSH does NOT lift the root label on exit** — that was the open question here,
+and it is the bug ([dsh-desktop#1302](https://github.com/anywhere-labs/dsh-desktop/issues/1302)).
+Switching the workspace's sandbox mode back to full access does not remove the stamp either. Raise
+the root to Medium manually once, then keep this workspace on full access.
 
 **Orphaned headless Chrome (visual checks)** — The agent browser tool (puppeteer) runs its own headless Chromium under `C:\Users\<user>\.omp\puppeteer\chrome\win64-<ver>\chrome-win64\chrome.exe`. Sessions/tabs that close (or error mid-run) **orphan the process tree** — invisible (no window) but ~85 MB each, accumulating until the user Task Manager-hunts them. **Reap them in the same step as closing the browser session.** Kill by path filter ONLY — the user's real Chrome/Edge share the `chrome.exe` name, so a bare `Stop-Process -Name chrome` is forbidden:
 ```powershell
