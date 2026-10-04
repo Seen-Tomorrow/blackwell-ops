@@ -91,8 +91,8 @@ const DFLASH: SpecAdapter = {
     pMin: "dflash_p_min",
     draftModel: "dflash_draft_model",
   },
-  // external_mtp is listed because MTP heads still ride the DFlash lane until step 4
-  // gives them a CLI lane of their own.
+  // external_mtp stays listed: an MTP head is a valid external draft for the DFlash
+  // lane too (draftRolesMatch), even though the MTP adapter now has its own lane.
   draftRoles: ["external_dflash", "external_mtp"],
   variants: { dspark: "draft-dspark" },
   memory: { learnedIncludesDraft: (p) => p },
