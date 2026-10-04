@@ -171,6 +171,15 @@ clean, keep this workspace's DSH sandbox on **full access**; the next `workspace
 will stamp it again. Filed upstream as
 [dsh-desktop#1302](https://github.com/anywhere-labs/dsh-desktop/issues/1302) (2026-10-03).
 
+**Do NOT commit TEMP-redirect or `/Z7` workarounds for this** — while the folder was Low, two
+patches were tried: `TEMP`/`TMP = tmp/rust-temp` in `.cargo/config.toml` (to dodge `LNK1104` on
+`lnk*.tmp`) and `debug = false` for `aws-lc-sys` / `ring` (to dodge `D8050` from cl.exe's `/Z7`
+debug-record writer). Both are **symptom patches on a build that was only broken by the stamp**.
+Verified 2026-10-04: with the root back at Medium, both reverted, `cargo test` 303, vitest 98,
+clippy and `tsc` clean. They are recoverable from `git stash list` →
+`grok-lowil-workarounds` if a future `workspace-write` session re-stamps the tree and a rebuild
+is impossible — but the fix is the label, not the config.
+
 **Second symptom of the same root cause, easy to misdiagnose:** a DEV launch dying in
 `tauri::Builder` setup with `Failed to setup app: failed to create webview: WebView2 error:
 0x800700AA "The requested resource is in use."` The build is fine — the exe links and is stamped
