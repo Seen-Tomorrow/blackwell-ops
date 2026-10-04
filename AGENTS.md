@@ -4,6 +4,26 @@ Traps and invariants only — not a code map. Read the source for flows, schemas
 
 ---
 
+## No real users yet — never write migration code
+
+**There is no installed base. Backward compatibility is not a requirement — delete the old shape.**
+
+Do not write: persisted-state shims, legacy-key repair, `OBSOLETE_*` stripping, "if an older
+version wrote X" branches, versioned up-converters, dual-read fallbacks, or deprecation aliases —
+for configs, localStorage keys, catalog/learned-memory files, templates, or any on-disk format.
+Change the shape and let stale data be wrong; the owner resets config / cache locally, which is
+free. Carrying a field forward "just in case" is pure debt.
+
+Existing shims and repair passes (obsolete spec-key stripping, `Repair mtp_*/dflash_* …`, migrate
+branches in `systemParams` / `EngineConfigPanel`) are **legacy debt, not contracts** — delete them
+when you touch that area rather than extending them. This also removes the usual reason to keep two
+implementations of one rule in sync: prefer one authoritative side (Rust or TS) and let the other
+consume it.
+
+Revisit this section only when the first real install ships.
+
+---
+
 ## CRITICAL: never kill the running app
 
 **NEVER `Stop-Process` / kill `blackwell-ops` without explicitly asking the user first.**
@@ -136,6 +156,42 @@ design/judgment here, escalate only when blocked.
 **Temp / debug / scratch files → gitignored `tmp/`** (repo root), never the repo root or a tracked
 path; clean up afterwards. **Commit only real source changes**, split per concern (feature / fix /
 theme).
+
+**Agent-built binaries may be Low-integrity — the owner must not run them** — *suspected DSH-only,
+verify OMP.* Observed 2026-10 under **DSH** (`dsh web`): the agent session runs at **Low** integrity,
+and Windows stamps new files with the creating process's label, so every `cargo build` / `rustc`
+output inherits `Mandatory Label\Low`. Run from the owner's Medium-IL shell, effective IL =
+`min(parent, file label)` = Low, and a Low process cannot write `%TEMP%`, `C:\`, or the profile —
+silent `os error 5` in any code path touching files outside the workspace.
+
+Symptom signature: ~15 `cargo test` failures that are all `std::env::temp_dir()` (`fs_util`,
+`config::merge_tests`, `foundry_toolchain::crt_tests`, `gguf_patch`, `reactor_foundry::git`) while
+`tsc` and vitest stay green. **Not** Bitdefender, **not** an ACL, **not** an MIC policy — signed
+`cmd.exe` writes to `%TEMP%` fine in the very same shell, only the Low-labeled exe is denied.
+Redirecting `TEMP` into the workspace also makes the suite green, which is a misleading "fix".
+A Low process cannot relabel its own output (`icacls /setintegritylevel` → Access denied).
+
+**The ACEs are DSH's confinement design, not damage — do NOT "repair" them.** On the workspace root
+they read as `Mandatory Label\Low Mandatory Level:(OI)(CI)(NW)`, `Everyone:(CI)(DENY)(DC)` and a
+`S-1-4-*` grant. The `diagnose-windows-sandbox-acl` skill names the deny and the `S-1-4-*` grant as
+*expected, not conflicts*, and the Low label is what lets the Low-IL sandbox write into the workspace
+at all. Never hand-edit them, never `icacls /T` over the tree, never run that skill elevated or via
+`runas` — **unconfined does not elevate the token**, and nothing here needs elevation. Writes outside
+the workspace are an *expected* denial the skill says to explain, not fix.
+
+**Rule: never ship or launch a PE built inside a DSH workspace.** Not just agent-built ones — while
+the root carries the label, *every* PE under `target\` is Low: app and test binaries **and** the
+copied engine binaries (`target\release\runtime\ggml-master\*\llama-server.exe`), ~1800 files.
+Inheritance is applied **at creation time**, so lifting the root label later does NOT retroactively
+fix children already stamped; a rebuild into the still-labelled tree comes out Low again too.
+
+**Shipping is NOT affected** — confirmed 2026-10: the installed REL app has no label ACE at all.
+7z / NSIS do not carry SACLs, and extraction into `C:\AI-MASTER\…` (an unlabelled parent) yields the
+default Medium. Pack+Ship stays correct; only PEs run *in place from `target\`* are Low, which is why
+DEV builds silently lose `%TEMP%\blackwell-crash.log` and `-panic.log`.
+Open question to check from a normal terminal after the session closes: does DSH lift the root label
+on exit? `icacls <repo root>` answers it. If it persists, that is a DSH bug to report upstream, not
+something to work around locally.
 
 **Orphaned headless Chrome (visual checks)** — The agent browser tool (puppeteer) runs its own headless Chromium under `C:\Users\<user>\.omp\puppeteer\chrome\win64-<ver>\chrome-win64\chrome.exe`. Sessions/tabs that close (or error mid-run) **orphan the process tree** — invisible (no window) but ~85 MB each, accumulating until the user Task Manager-hunts them. **Reap them in the same step as closing the browser session.** Kill by path filter ONLY — the user's real Chrome/Edge share the `chrome.exe` name, so a bare `Stop-Process -Name chrome` is forbidden:
 ```powershell
