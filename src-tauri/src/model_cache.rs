@@ -496,6 +496,7 @@ mod tests {
 
         let shape = GgufShape {
             architecture: "llama".into(),
+            ple_layers: 0,
             block_count: 1,
             nextn_layers: 0,
             has_markov_w1: false,

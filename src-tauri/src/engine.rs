@@ -301,6 +301,22 @@ fn validate_spec_launch_with_catalog(
         return Err("Draft model path must end with .gguf".into());
     }
 
+    // External MTP heads are the one draft lane with a known-incompatible file
+    // shape on the current engine (pre-#29761 exports die in sched_reserve with
+    // GGML_ASSERT(buffer) — see spec_draft::mtp_head_incompatibility). The engine
+    // crash is opaque and identical on every split mode / GPU count, so refuse the
+    // launch with the reason instead of letting it die after minutes of loading.
+    if spec_type.eq_ignore_ascii_case("draft-mtp") {
+        let (_, head_shape) = model_cache::get_cached_with_shape(&path);
+        if let Some(reason) = crate::spec_draft::mtp_head_incompatibility(head_shape.as_ref()) {
+            let file = std::path::Path::new(&path)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or(&path);
+            return Err(format!("MTP head \"{file}\": {reason}"));
+        }
+    }
+
     Ok(())
 }
 

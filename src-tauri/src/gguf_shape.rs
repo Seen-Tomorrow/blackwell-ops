@@ -29,6 +29,13 @@ pub struct GgufShape {
     /// max N over `blk.N.nextn.*` tensor names; 0 = no nextn tensors seen.
     #[serde(default, rename = "nextnLayers")]
     pub nextn_layers: u32,
+    /// `<arch>.ple.layers` KV — the per-layer-embedding (PLE) layer list. 0 = the
+    /// file declares no PLE. The merged `graph_mtp` (upstream #29761) builds PLE
+    /// ops from this; a head exported for the abandoned #28243 graph lacks the KV
+    /// and its weights end up null in the draft graph. See
+    /// `spec_draft::mtp_head_incompatibility`.
+    #[serde(default, rename = "pleLayers")]
+    pub ple_layers: u32,
     /// DSpark sentinel — a tensor name contains "markov_w1".
     #[serde(default, rename = "hasMarkovW1")]
     pub has_markov_w1: bool,
@@ -119,6 +126,16 @@ fn shape_from_facts(facts: &gguf_patch::HeaderFacts, shard_count: u32) -> GgufSh
     let mut has_trunk = false;
     let mut has_vocab = false;
 
+    // `<arch>.ple.layers` is an ARRAY KV (int elements) — `kv_ints` only ever holds
+    // scalars, so the count is taken from the array's element count. The merged
+    // graph_mtp builds PLE ops from this KV; its absence marks a pre-#29761 head.
+    let mut ple_layers = 0u32;
+    for (key, value) in &facts.kv_int_arrays {
+        if key.ends_with(".ple.layers") {
+            ple_layers = ple_layers.max(value.len() as u32);
+        }
+    }
+
     for tensor in &facts.tensors {
         let name = tensor.name.as_str();
 
@@ -160,6 +177,7 @@ fn shape_from_facts(facts: &gguf_patch::HeaderFacts, shard_count: u32) -> GgufSh
         architecture,
         block_count,
         nextn_layers,
+        ple_layers,
         has_markov_w1,
         has_trunk,
         has_vocab,
@@ -179,6 +197,7 @@ fn merge_into(base: &mut GgufShape, split: GgufShape) {
         base.block_count = split.block_count;
     }
     base.nextn_layers = base.nextn_layers.max(split.nextn_layers);
+    base.ple_layers = base.ple_layers.max(split.ple_layers);
     base.has_markov_w1 |= split.has_markov_w1;
     base.has_trunk |= split.has_trunk;
     base.has_vocab |= split.has_vocab;
@@ -221,6 +240,16 @@ pub(crate) mod tests {
         push_str(buf, key);
         push_u32(buf, 4); // UINT32
         push_u32(buf, value);
+    }
+
+    fn kv_int_array(buf: &mut Vec<u8>, key: &str, values: &[u32]) {
+        push_str(buf, key);
+        push_u32(buf, 9); // ARRAY
+        push_u32(buf, 4); // element type: UINT32
+        push_u64(buf, values.len() as u64);
+        for v in values {
+            push_u32(buf, *v);
+        }
     }
 
     /// One tensor-info record: name + n_dims + dims + type + offset.
@@ -508,11 +537,42 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn ple_layers_kv_is_read_from_the_array_element_count() {
+        let dir = scratch_dir("ple");
+        let mut buf = Vec::new();
+        buf.extend_from_slice(b"GGUF");
+        push_u32(&mut buf, 3);
+        push_u64(&mut buf, 0); // no tensors
+        push_u64(&mut buf, 3); // three KVs
+        kv_str(&mut buf, "general.architecture", "qwen4exp");
+        kv_u32(&mut buf, "qwen4exp.block_count", 48);
+        kv_int_array(&mut buf, "qwen4exp.ple.layers", &[1, 2, 3]);
+
+        let path = write_gguf(&dir, "ple.gguf", &buf);
+        let shape = read_shape(&path).expect("shape");
+        assert_eq!(shape.ple_layers, 3, "element count is the layer count");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ple_layers_absent_is_zero() {
+        let dir = scratch_dir("ple-absent");
+        let bytes = build_gguf("qwen4exp", 49, &["blk.48.nextn.eh_proj.weight"]);
+        let path = write_gguf(&dir, "no-ple.gguf", &bytes);
+        let shape = read_shape(&path).expect("shape");
+        assert_eq!(shape.ple_layers, 0);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn serde_uses_camel_case_for_multi_word_fields() {
         let shape = GgufShape {
             architecture: "qwen35".into(),
             block_count: 48,
             nextn_layers: 2,
+            ple_layers: 3,
             has_markov_w1: false,
             has_trunk: true,
             has_vocab: true,
@@ -524,6 +584,7 @@ pub(crate) mod tests {
         let json = serde_json::to_string(&shape).expect("serialize");
         for key in [
             "\"nextnLayers\":2",
+            "\"pleLayers\":3",
             "\"hasMarkovW1\":false",
             "\"hasTrunk\":true",
             "\"hasVocab\":true",
@@ -541,6 +602,7 @@ pub(crate) mod tests {
         assert_eq!(partial.architecture, "qwen35");
         assert_eq!(partial.block_count, 0);
         assert_eq!(partial.nextn_layers, 0);
+        assert_eq!(partial.ple_layers, 0);
         assert!(!partial.has_trunk);
     }
 }

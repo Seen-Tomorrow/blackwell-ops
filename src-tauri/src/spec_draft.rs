@@ -458,6 +458,41 @@ pub fn baked_mtp_for_path(shape: Option<&GgufShape>, path: &str) -> bool {
     classify_draft_role(shape, path, "", None, None).1.baked_mtp
 }
 
+/// Why an external MTP head cannot run on the current engine, `None` when it can.
+///
+/// Upstream #29761 (merged) builds the qwen4exp MTP graph from the PLE machinery:
+/// the draft's `graph_mtp` consumes `per_layer_token_embd` and the `blk.N.ple_*`
+/// weights, which the loader only creates when the file declares `<arch>.ple.layers`.
+/// A head exported for the abandoned #28243 graph (unsloth `MTP/mtp-*-Q8_0.gguf`
+/// and friends) carries nextn tensors but no PLE metadata — the weights stay null,
+/// the graph gets a null-buffer node, and the meta backend asserts
+/// (`GGML_ASSERT(buffer)` in `ggml_backend_buffer_get_type`) during the draft's
+/// `sched_reserve`. It dies identically on every split mode and GPU count, so
+/// nothing the user can configure dodges it.
+///
+/// Scoped to `qwen4exp` on purpose: other architectures have no PLE, and their
+/// heads must not be condemned by a qwen4exp rule. An unscanned head (`shape`
+/// `None`) passes — never block on missing evidence.
+pub fn mtp_head_incompatibility(head_shape: Option<&GgufShape>) -> Option<&'static str> {
+    let shape = head_shape?;
+    if !shape.architecture.eq_ignore_ascii_case("qwen4exp") {
+        return None;
+    }
+    if shape.nextn_layers == 0 {
+        // Not an MTP head — nothing to say about it here.
+        return None;
+    }
+    if shape.ple_layers == 0 {
+        return Some(
+            "MTP head is incompatible with the current engine: it predates upstream #29761 \
+             (no PLE metadata), so the draft graph gets null weights and the engine dies with \
+             GGML_ASSERT(buffer) during reserve. Needs a requant from current master \
+             (convert_hf_to_gguf.py --mtp) — launch without the head until one exists.",
+        );
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -539,6 +574,7 @@ mod tests {
         // The inversion this step exists for: today's code ran path heuristics first.
         let shape = GgufShape {
             architecture: "qwen36".into(),
+            ple_layers: 0,
             block_count: 64,
             nextn_layers: 0,
             has_markov_w1: false,
@@ -587,6 +623,51 @@ mod tests {
         assert_eq!(role, DraftRole::ExternalMtp);
     }
 
+    fn qwen4exp_head(nextn: u32, ple: u32) -> GgufShape {
+        GgufShape {
+            architecture: "qwen4exp".into(),
+            ple_layers: ple,
+            block_count: 49,
+            nextn_layers: nextn,
+            has_markov_w1: false,
+            has_trunk: true,
+            has_vocab: true,
+            shard_count: 1,
+            tensor_count: 34,
+            alignment: 32,
+            header_end: 4096,
+        }
+    }
+
+    /// The unsloth `MTP/mtp-*-Q8_0.gguf` shape: nextn tensors, no `ple.layers` KV.
+    /// Launching it on the current engine dies with GGML_ASSERT(buffer).
+    #[test]
+    fn pre_29761_qwen4exp_head_is_incompatible() {
+        let reason = mtp_head_incompatibility(Some(&qwen4exp_head(1, 0)));
+        assert!(reason.is_some(), "a head without PLE metadata must be flagged");
+    }
+
+    /// A head requantized from current master declares its PLE layers — it runs.
+    #[test]
+    fn qwen4exp_head_with_ple_metadata_is_compatible() {
+        assert!(mtp_head_incompatibility(Some(&qwen4exp_head(1, 3))).is_none());
+    }
+
+    /// The rule is qwen4exp-only and nextn-only: other-arch heads and unscanned
+    /// files are never condemned by it.
+    #[test]
+    fn incompatibility_rule_stays_scoped() {
+        // Unscanned — no evidence, no block.
+        assert!(mtp_head_incompatibility(None).is_none());
+        // qwen35 MTP head — no PLE concept there.
+        let mut other = qwen4exp_head(1, 0);
+        other.architecture = "qwen35".into();
+        assert!(mtp_head_incompatibility(Some(&other)).is_none());
+        // qwen4exp without nextn is a main, not a head.
+        let main = qwen4exp_head(0, 0);
+        assert!(mtp_head_incompatibility(Some(&main)).is_none());
+    }
+
     /// The full-copy branch reads FILE-LOCAL naming only. A baked-in repo named
     /// `*-MTP-GGUF` (unsloth Qwen3.6-27B-MTP-GGUF) carries the mtp token in the repo
     /// folder and the hf_model_id — if the branch consulted those, every quant in
@@ -595,6 +676,7 @@ mod tests {
     fn full_copy_branch_ignores_repo_naming() {
         let full_stack = GgufShape {
             architecture: "qwen35".into(),
+            ple_layers: 0,
             block_count: 65,
             nextn_layers: 65,
             has_markov_w1: false,

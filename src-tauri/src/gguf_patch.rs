@@ -138,6 +138,9 @@ pub(crate) struct HeaderFacts {
     pub(crate) kv_strings: HashMap<String, String>,
     /// Integer KVs for the two keys above only.
     pub(crate) kv_ints: HashMap<String, i64>,
+    /// `<arch>.ple.layers` array KVs (int elements) — the PLE layer list. Captured
+    /// because `gguf_shape` needs the element count; every other array KV is skipped.
+    pub(crate) kv_int_arrays: HashMap<String, Vec<i64>>,
     pub(crate) tensors: Vec<TensorInfo>,
 }
 
@@ -187,6 +190,9 @@ pub(crate) fn parse_header<R: Read>(reader: R) -> Result<HeaderFacts, String> {
             let value = read_int_value(&mut r, value_type)?;
             facts.block_count = Some(value);
             facts.kv_ints.insert(key, value);
+        } else if key.ends_with(".ple.layers") && value_type == 9 {
+            let values = read_int_array_value(&mut r)?;
+            facts.kv_int_arrays.insert(key, values);
         } else {
             skip_value(&mut r, value_type)?;
         }
@@ -279,6 +285,31 @@ fn read_int_value<R: Read>(r: &mut GgufReader<R>, value_type: u32) -> Result<i64
             r.offset
         )),
     }
+}
+
+/// GGUF v2/v3 array of integer elements (type 9 whose element type is 4/5/10/11).
+/// A non-integer element type is a parse error — the caller only routes
+/// `.ple.layers` here, which is an int array in every real file.
+fn read_int_array_value<R: Read>(r: &mut GgufReader<R>) -> Result<Vec<i64>, String> {
+    let elem_type = r.read_u32()?;
+    if !matches!(elem_type, 4 | 5 | 10 | 11) {
+        return Err(format!(
+            "Array element type {elem_type} at offset {} is not an integer type",
+            r.offset
+        ));
+    }
+    let count = r.read_u64()?;
+    if count > 1_000_000 {
+        return Err(format!(
+            "Array count {count} at offset {} exceeds sanity limit",
+            r.offset
+        ));
+    }
+    let mut values = Vec::with_capacity(count.min(4096) as usize);
+    for _ in 0..count {
+        values.push(read_int_value(r, elem_type)?);
+    }
+    Ok(values)
 }
 
 fn read_alignment_value<R: Read>(r: &mut GgufReader<R>, value_type: u32) -> Result<u64, String> {
