@@ -176,20 +176,22 @@ fn normalize_spec_type(spec_type: &str) -> String {
 }
 
 /// Baked-in MTP has no external draft GGUF — leftover DFLASH paths must not
-/// fingerprint or filter LEARNED rows.
-fn spec_uses_external_draft(spec_type: &str) -> bool {
+/// fingerprint or filter LEARNED rows. `draft-mtp` **with** a draft path is an
+/// external MTP head: a different launch with a different VRAM footprint, so it
+/// must carry its own draft in the identity key.
+fn spec_uses_external_draft(spec_type: &str, draft_key: &str) -> bool {
     let s = normalize_spec_type(spec_type);
     if s == "none" {
         return false;
     }
     if s.contains("mtp") && !s.contains("dflash") && !s.contains("dspark") && !s.contains("eagle") {
-        return false;
+        return s == "draft-mtp" && !draft_key.trim().is_empty();
     }
     s.contains("dflash") || s.contains("dspark") || s.contains("eagle")
 }
 
 fn draft_key_for_learn(spec_type: &str, draft_key: &str) -> String {
-    if !spec_uses_external_draft(spec_type) {
+    if !spec_uses_external_draft(spec_type, draft_key) {
         return String::new();
     }
     draft_key.trim().to_string()
@@ -326,13 +328,15 @@ fn draft_path_from_config(config: &EngineConfig) -> String {
     let spec = config
         .get_param_str("spec_type")
         .unwrap_or_else(|| "none".to_string());
-    if !spec_uses_external_draft(&spec) {
-        return String::new();
-    }
-    config
+    let draft = config
         .get_param_str("spec_draft_model")
         .or_else(|| config.get_param_str("dflash_draft_model"))
-        .unwrap_or_default()
+        .or_else(|| config.get_param_str("mtp_draft_model"))
+        .unwrap_or_default();
+    if !spec_uses_external_draft(&spec, &draft) {
+        return String::new();
+    }
+    draft
 }
 
 /// Launch-time fingerprint — survives slot clear on stop (memory breakdown prints at exit).
@@ -867,6 +871,7 @@ mod dedup_tests {
 
     #[test]
     fn mtp_curve_ignores_leftover_external_draft() {
+        // Baked-in MTP: no draft in the key, so a leftover draft path must not filter it out.
         let key = "C:/m.gguf|ggml-master|ctx=65536|kv=q8_0|dev=GPU-0|split=none|mode=full_auto|spec=draft-mtp";
         assert!(entry_matches_curve_hard_knobs(
             key,
@@ -874,11 +879,38 @@ mod dedup_tests {
             "ggml-master",
             "q8_0",
             "draft-mtp",
-            "leftover-draft.gguf",
+            "",
         ));
-        assert!(!spec_uses_external_draft("draft-mtp"));
-        assert!(spec_uses_external_draft("draft-dflash"));
-        assert_eq!(draft_key_for_learn("draft-mtp", "C:/d.gguf"), "");
+        assert!(!spec_uses_external_draft("draft-mtp", ""));
+        assert!(spec_uses_external_draft("draft-mtp", "C:/d.gguf"));
+        assert!(spec_uses_external_draft("draft-dflash", ""));
+        assert_eq!(draft_key_for_learn("draft-mtp", ""), "");
+        assert_eq!(draft_key_for_learn("draft-mtp", "C:/d.gguf"), "C:/d.gguf");
+    }
+
+    #[test]
+    fn external_mtp_curve_requires_its_own_draft_row() {
+        // External MTP head: different VRAM footprint than baked-in MTP, so the
+        // baked-in row (no |draft=) must not answer an external-head curve query.
+        let baked = "C:/m.gguf|ggml-master|ctx=65536|kv=q8_0|dev=GPU-0|split=none|mode=full_auto|spec=draft-mtp";
+        assert!(!entry_matches_curve_hard_knobs(
+            baked,
+            "C:/m.gguf",
+            "ggml-master",
+            "q8_0",
+            "draft-mtp",
+            "head.gguf",
+        ));
+        let with_draft =
+            "C:/m.gguf|ggml-master|ctx=65536|kv=q8_0|dev=GPU-0|split=none|mode=full_auto|spec=draft-mtp|draft=head.gguf";
+        assert!(entry_matches_curve_hard_knobs(
+            with_draft,
+            "C:/m.gguf",
+            "ggml-master",
+            "q8_0",
+            "draft-mtp",
+            "head.gguf",
+        ));
     }
 
     #[test]
@@ -1186,7 +1218,7 @@ fn entry_matches_curve_hard_knobs(
         if !key.contains(&format!("|spec={spec_n}")) {
             return false;
         }
-        if spec_uses_external_draft(spec_n)
+        if spec_uses_external_draft(spec_n, draft_base)
             && !draft_base.is_empty()
             && (!key_has_draft || !key.contains(&format!("|draft={draft_base}")))
         {

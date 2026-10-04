@@ -80,6 +80,34 @@ fn model_has_embedded_mtp(model_path: &str) -> bool {
     crate::spec_draft::baked_mtp_for_path(shape.as_ref(), model_path)
 }
 
+/// `draft-mtp` is stale only when the target has no baked-in MTP **and** no external
+/// MTP head is configured. With a head, `draft-mtp` is a valid launch on a target that
+/// has no nextn layers of its own — stripping the group here would hide the lane before
+/// `validate_spec_launch` ever saw it.
+fn mtp_spec_is_stale(config: &crate::types::EngineConfig, model_path: &str) -> bool {
+    if !config
+        .get_param_str("spec_type")
+        .is_some_and(|t| t.eq_ignore_ascii_case("draft-mtp"))
+    {
+        return false;
+    }
+    if model_has_embedded_mtp(model_path) {
+        return false;
+    }
+    !spec_draft_model_is_set(config)
+}
+
+/// Any draft path configured, under any of the three profile keys.
+fn spec_draft_model_is_set(config: &crate::types::EngineConfig) -> bool {
+    ["spec_draft_model", "dflash_draft_model", "mtp_draft_model"]
+        .iter()
+        .any(|key| {
+            config
+                .get_param_str(key)
+                .is_some_and(|v| !v.trim().is_empty() && !v.eq_ignore_ascii_case("off"))
+        })
+}
+
 fn strip_spec_extra_params(config: &mut crate::types::EngineConfig) {
     config.extra_params.retain(|k, _| {
         !SPEC_EXTRA_PARAM_KEYS
@@ -98,10 +126,7 @@ fn sanitize_spec_extra_params(
     let has_spec_type = config
         .get_param_str("spec_type")
         .is_some_and(|t| !t.trim().is_empty() && !t.eq_ignore_ascii_case("none"));
-    let stale_mtp = config
-        .get_param_str("spec_type")
-        .is_some_and(|t| t.eq_ignore_ascii_case("draft-mtp"))
-        && !model_has_embedded_mtp(&config.model_path);
+    let stale_mtp = mtp_spec_is_stale(config, &config.model_path);
 
     if stale_mtp || (!group_active && !has_spec_type) {
         strip_spec_extra_params(config);
@@ -119,10 +144,7 @@ fn guard_speculative_decoding(
 
     let mut filtered = user_params;
     let group_active = is_spec_decoding_group_active(&filtered);
-    let stale_mtp = config
-        .get_param_str("spec_type")
-        .is_some_and(|t| t.eq_ignore_ascii_case("draft-mtp"))
-        && !model_has_embedded_mtp(model_path);
+    let stale_mtp = mtp_spec_is_stale(config, model_path);
 
     if !launchable || !group_active || stale_mtp {
         for p in &mut filtered {
@@ -153,7 +175,17 @@ fn validate_spec_launch(config: &crate::types::EngineConfig) -> Result<(), Strin
         return Ok(());
     }
 
-    if spec_type.eq_ignore_ascii_case("draft-mtp") {
+    let draft_value = config
+        .get_param_str("spec_draft_model")
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    let draft_set = !draft_value.is_empty()
+        && !draft_value.eq_ignore_ascii_case("off")
+        && !draft_value.eq_ignore_ascii_case("none");
+
+    // draft-mtp + a draft path is an external MTP head — no baked-in MTP required.
+    if spec_type.eq_ignore_ascii_case("draft-mtp") && !draft_set {
         if !model_has_embedded_mtp(&config.model_path) {
             return Err(
                 "MTP speculative decoding requires a baked-in MTP model — use DFlash or turn spec off."
@@ -163,17 +195,11 @@ fn validate_spec_launch(config: &crate::types::EngineConfig) -> Result<(), Strin
         return Ok(());
     }
 
-    if !crate::spec_draft::spec_type_needs_external_draft(&spec_type) {
+    if !crate::spec_draft::spec_type_needs_external_draft(&spec_type, &draft_value) {
         return Ok(());
     }
 
-    let draft_value = config
-        .get_param_str("spec_draft_model")
-        .unwrap_or_default()
-        .trim()
-        .to_string();
-
-    if draft_value.is_empty() || draft_value.eq_ignore_ascii_case("off") {
+    if !draft_set {
         return Err(format!(
             "Speculative decoding ({spec_type}) requires a draft model — set DRAFT-MODEL to a .gguf file."
         ));
@@ -185,6 +211,8 @@ fn validate_spec_launch(config: &crate::types::EngineConfig) -> Result<(), Strin
             "*eagle3*"
         } else if lower.contains("dspark") {
             "*dspark*"
+        } else if lower == "draft-mtp" {
+            "*mtp*"
         } else {
             "*dflash*"
         }
@@ -2277,5 +2305,61 @@ pub fn cancel_gguf_scan_cmd() {
 #[tauri::command]
 pub async fn clear_model_cache_cmd() -> Result<(), String> {
     crate::model_cache::clear_cache()
+}
+
+#[cfg(test)]
+mod spec_guard_tests {
+    use super::*;
+    use crate::types::EngineConfig;
+
+    fn config_with(extra: &[(&str, &str)]) -> EngineConfig {
+        let mut extra_params = std::collections::HashMap::new();
+        for (k, v) in extra {
+            extra_params.insert((*k).to_string(), serde_json::json!(*v));
+        }
+        EngineConfig {
+            alias: "test".to_string(),
+            model_path: "C:\\models\\plain.gguf".to_string(),
+            port: 8080,
+            backend_type: "ggml-master".to_string(),
+            binary_profile: String::new(),
+            extra_params,
+        }
+    }
+
+    /// `draft-mtp` with no head on a target with no nextn layers is genuinely stale.
+    #[test]
+    fn baked_mtp_without_a_head_is_stale() {
+        let config = config_with(&[("spec_type", "draft-mtp")]);
+        assert!(mtp_spec_is_stale(&config, &config.model_path));
+    }
+
+    /// The lane step 4 opens: an external MTP head makes `draft-mtp` valid on a
+    /// target that has no baked-in MTP. Stripping the group here hid the lane before
+    /// `validate_spec_launch` could ever see it.
+    #[test]
+    fn external_mtp_head_makes_draft_mtp_valid() {
+        for key in ["mtp_draft_model", "dflash_draft_model", "spec_draft_model"] {
+            let config = config_with(&[("spec_type", "draft-mtp"), (key, "C:\\models\\head.mtp.gguf")]);
+            assert!(
+                !mtp_spec_is_stale(&config, &config.model_path),
+                "{key} should open the external-MTP lane"
+            );
+        }
+    }
+
+    /// `off` is not a path — it must not look like a configured head.
+    #[test]
+    fn draft_off_does_not_open_the_lane() {
+        let config = config_with(&[("spec_type", "draft-mtp"), ("mtp_draft_model", "off")]);
+        assert!(mtp_spec_is_stale(&config, &config.model_path));
+    }
+
+    /// Only `draft-mtp` is subject to the baked-in check.
+    #[test]
+    fn non_mtp_spec_types_are_never_mtp_stale() {
+        let config = config_with(&[("spec_type", "draft-dflash")]);
+        assert!(!mtp_spec_is_stale(&config, &config.model_path));
+    }
 }
 

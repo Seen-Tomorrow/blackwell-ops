@@ -732,12 +732,13 @@ impl ProviderTemplate {
                     }
                 },
                 "logic_only" => {
-                    // Draft path: legacy key or profile key `dflash_draft_model`
+                    // Draft path: legacy key or profile key `dflash_draft_model` / `mtp_draft_model`
                     let is_draft_key = param.key.eq_ignore_ascii_case("spec_draft_model")
-                        || param.key.eq_ignore_ascii_case("dflash_draft_model");
+                        || param.key.eq_ignore_ascii_case("dflash_draft_model")
+                        || param.key.eq_ignore_ascii_case("mtp_draft_model");
                     if is_draft_key {
                         let st = config.get_param_str("spec_type").unwrap_or_default();
-                        if crate::spec_draft::spec_type_needs_external_draft(&st) {
+                        if crate::spec_draft::spec_type_needs_external_draft(&st, &final_value_str) {
                             Self::inject_spec_draft_model_user(
                                 &mut args,
                                 param,
@@ -1177,8 +1178,11 @@ fn external_draft_spec_needs_fit_off(config: &EngineConfig) -> bool {
     let has_draft_model_flag = config
         .extra_params
         .keys()
-        .any(|k| k.eq_ignore_ascii_case("spec_draft_model"))
+        .any(|k| {
+            k.eq_ignore_ascii_case("spec_draft_model") || k.eq_ignore_ascii_case("mtp_draft_model")
+        })
         || config.get_param_str("spec_draft_model").is_some_and(|s| !s.trim().is_empty())
+        || config.get_param_str("mtp_draft_model").is_some_and(|s| !s.trim().is_empty())
         || launch_args_contain_flag(config, "--spec-draft-model")
         || launch_args_contain_flag(config, "--model-draft");
 
@@ -1187,8 +1191,10 @@ fn external_draft_spec_needs_fit_off(config: &EngineConfig) -> bool {
         if lower.contains("dflash") || lower.contains("eagle3") || lower.contains("dspark") {
             return true;
         }
-        // MTP reuses the target weights — fit probe skips full draft-model load.
-        if lower == "draft-mtp" {
+        // Baked-in MTP reuses the target weights — fit probe skips full draft-model load.
+        // draft-mtp with a configured draft model is an external MTP head: it really is
+        // loaded, so the probe must account for it.
+        if lower == "draft-mtp" && !has_draft_model_flag {
             continue;
         }
         if lower.starts_with("draft-") && has_draft_model_flag {

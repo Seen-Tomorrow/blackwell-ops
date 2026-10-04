@@ -222,14 +222,21 @@ pub fn is_external_draft_role_hint(hint: &str) -> bool {
     )
 }
 
-pub fn spec_type_needs_external_draft(spec_type: &str) -> bool {
+/// Does this spec type launch with an external draft GGUF?
+/// `draft-mtp` is the split case: **with** a draft path it is an external MTP head
+/// loaded via `--spec-draft-model`; **without** one it is baked-in MTP and takes no
+/// draft path. Never conflate the two — their VRAM footprints differ.
+pub fn spec_type_needs_external_draft(spec_type: &str, draft_value: &str) -> bool {
     let lower = spec_type.trim().to_lowercase();
+    let draft = draft_value.trim();
+    let draft_set = !draft.is_empty()
+        && !draft.eq_ignore_ascii_case("off")
+        && !draft.eq_ignore_ascii_case("none");
     // External MTP heads are loaded via --spec-draft-model, same as DFlash.
-    lower.contains("dflash") || lower.contains("eagle3") || lower.contains("external-mtp") || {
-        lower.starts_with("draft-")
-            && lower != "draft-mtp"
-            && lower != "draft-simple"
-    }
+    lower.contains("dflash")
+        || lower.contains("eagle3")
+        || lower.contains("external-mtp")
+        || (lower.starts_with("draft-") && lower != "draft-simple" && (lower != "draft-mtp" || draft_set))
 }
 
 pub fn resolve_spec_draft_model_path(
@@ -459,9 +466,14 @@ mod tests {
 
     #[test]
     fn spec_type_needs_external_draft_detects_dflash() {
-        assert!(spec_type_needs_external_draft("draft-dflash"));
-        assert!(spec_type_needs_external_draft("external-mtp"));
-        assert!(!spec_type_needs_external_draft("draft-mtp"));
+        assert!(spec_type_needs_external_draft("draft-dflash", ""));
+        assert!(spec_type_needs_external_draft("external-mtp", ""));
+        // draft-mtp without a draft path is baked-in MTP — no draft lane.
+        assert!(!spec_type_needs_external_draft("draft-mtp", ""));
+        assert!(!spec_type_needs_external_draft("draft-mtp", "off"));
+        // draft-mtp with a draft path is an external MTP head.
+        assert!(spec_type_needs_external_draft("draft-mtp", r"C:\m\head.gguf"));
+        assert!(!spec_type_needs_external_draft("draft-simple", r"C:\m\head.gguf"));
     }
 
     #[test]
