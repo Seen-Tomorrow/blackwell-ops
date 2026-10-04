@@ -1,6 +1,8 @@
 import type { EngineConfig, MemorySource, VramManifest } from "../../../lib/types";
 import type { ForecastInput } from "./types";
 import { cfgStr, parseCtx, resolveSplitTax } from "../shared";
+import { resolveSpecAdapter } from "../../../lib/spec/adapters";
+import { specDraftPathConfigured } from "./draftPath";
 
 function formatPerGpuVram(gpuMib: number[]): string {
   return gpuMib
@@ -86,6 +88,15 @@ function formatMeasuredAt(iso?: string): string {
   });
 }
 
+/** Wording for the learned snapshot's spec-method buffer: baked-in MTP is not a draft. */
+function draftLabel(input: ForecastInput): string {
+  const adapter = resolveSpecAdapter(
+    cfgStr(input.engineConfig, "spec_type", "") || null,
+    specDraftPathConfigured(input),
+  );
+  return adapter?.id === "mtp" ? "mtp" : "draft/spec";
+}
+
 /** Resolve SOURCE for measured manifests only. Returns null if nothing measured. */
 export function resolveMemorySource(
   manifest: VramManifest,
@@ -96,10 +107,11 @@ export function resolveMemorySource(
   const weightFileBytes = input.modelMeta.file_size_bytes;
 
   if (manifest.learnedFromPreviousRun) {
-    const draftCtx = input.learnedMtpContextMib;
+    const draftCtx = input.learnedSpecContextMib;
+    // Display note only — the decision lives in the adapter (ggml_master).
     const draftNote =
-      draftCtx != null && draftCtx > 64
-        ? ` · draft/spec ~${(draftCtx / 1024).toFixed(1)} GB`
+      draftCtx != null && draftCtx > 0
+        ? ` · ${draftLabel(input)} ~${(draftCtx / 1024).toFixed(1)} GB`
         : "";
     return {
       kind: "learned",

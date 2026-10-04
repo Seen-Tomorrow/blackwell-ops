@@ -45,6 +45,8 @@ import {
   splitHostRamGb,
 } from "../../lowVramProbe";
 import { attachMemorySource } from "../memorySource";
+import { specDraftPathConfigured } from "../draftPath";
+import { resolveSpecAdapter } from "../../../../lib/spec/adapters";
 import { isDevBuild } from "../../../../lib/build";
 import type { ForecastAdapter, ForecastInput } from "../types";
 
@@ -81,8 +83,14 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   const tgt = targetGpuIdx(input, gpuAvailable);
   const userSplitMultiGpu = splitActive(input) && input.gpus.length > 1;
   const draftAddon = draftAddonGb(input);
-  // Launch snapshot mtp_context > 64 MiB ⇒ measurement already includes draft/spec buffers.
-  const learnedHasDraft = (input.learnedMtpContextMib ?? 0) > 64;
+  // The configured path, not the draft size, decides which adapter owns the memory
+  // semantics — a size of 0 must not silently reclassify an external head as baked-in.
+  const draftPathConfigured = specDraftPathConfigured(input);
+  const adapter = resolveSpecAdapter(
+    cfgStr(input.engineConfig, "spec_type", "") || null,
+    draftPathConfigured,
+  );
+  const learnedHasDraft = adapter ? adapter.memory.learnedIncludesDraft(draftPathConfigured) : false;
   const needsDraftAdd = draftAddon > 0 && !learnedHasDraft;
   const withDraft = (gb: number | null): number | null =>
     gb == null ? null : needsDraftAdd ? gb + draftAddon : gb;

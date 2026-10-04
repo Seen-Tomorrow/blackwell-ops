@@ -31,7 +31,7 @@ export interface ForecastInput {
   learnedGpuComponentsMib?: Array<{ model_mib: number; ctx_mib: number; compute_mib: number }>;
   learnedLaunchProfile?: string;
   learnedMeasuredAt?: string;
-  learnedMtpContextMib?: number;
+  learnedSpecContextMib?: number;
   learnedAnchorCtx?: number;
   learnedCurve?: Array<{ ctx: number; vramMib: number; hostMib?: number }>;
 

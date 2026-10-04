@@ -57,6 +57,15 @@ export interface SpecAdapter {
    * assumption and never measured. Re-add only against a measured engine failure.
    */
   blocksParallel?: boolean;
+  memory: {
+    /**
+     * A learned launch snapshot already contains this method's own buffers, so the
+     * forecast must not add the draft term on top. Baked-in MTP is always true —
+     * its nextn layers load with the target. An external head is true only when a
+     * draft path is configured: same CLI string, different footprint.
+     */
+    learnedIncludesDraft: (draftPathConfigured: boolean) => boolean;
+  };
 }
 
 const MTP: SpecAdapter = {
@@ -67,6 +76,7 @@ const MTP: SpecAdapter = {
   capability: "mtp",
   knobs: { nMax: "mtp_n_max", nMin: "mtp_n_min", pMin: "mtp_p_min", draftModel: "mtp_draft_model" },
   draftRoles: ["none", "external_mtp"],
+  memory: { learnedIncludesDraft: () => true },
 };
 
 const DFLASH: SpecAdapter = {
@@ -85,6 +95,7 @@ const DFLASH: SpecAdapter = {
   // gives them a CLI lane of their own.
   draftRoles: ["external_dflash", "external_mtp"],
   variants: { dspark: "draft-dspark" },
+  memory: { learnedIncludesDraft: (p) => p },
 };
 
 const EAGLE3: SpecAdapter = {
@@ -100,6 +111,7 @@ const EAGLE3: SpecAdapter = {
     draftModel: "dflash_draft_model",
   },
   draftRoles: ["external_eagle3"],
+  memory: { learnedIncludesDraft: (p) => p },
 };
 
 /** Registry keyed by adapter id. */
@@ -141,6 +153,26 @@ export function adapterForCliType(cliType: string): SpecAdapter | null {
 }
 
 /**
+ * Resolve the adapter for an **actual launch**, not for the Boost chip.
+ *
+ * `draft-mtp` is one CLI string with two memory footprints: baked-in nextn layers
+ * load with the target (no separate draft buffers in a launch snapshot), while an
+ * external MTP head rides the draft path and its buffers are separate. The draft
+ * path is the disambiguator, so with a path configured `draft-mtp` resolves to the
+ * DFlash adapter — external-draft memory semantics, path-dependent — and without a
+ * path it resolves to MTP. Every other string is a plain reverse lookup.
+ */
+export function resolveSpecAdapter(
+  cliType: string | null | undefined,
+  draftPathConfigured: boolean,
+): SpecAdapter | null {
+  if (cliType == null) return null;
+  const lower = cliType.trim().toLowerCase();
+  if (lower === MTP.cliType) return draftPathConfigured ? DFLASH : MTP;
+  return adapterForCliType(lower);
+}
+
+/**
  * The `--spec-type` a selection emits.
  *
  * A variant's own id selects its own CLI string: `cliTypeForMethod("dspark")` is
@@ -165,4 +197,19 @@ export function adaptersForCapabilities(
   capabilities: readonly SpecCapability[],
 ): SpecAdapter[] {
   return ALL.filter((a) => capabilities.includes(a.capability));
+}
+
+/**
+ * A configured draft path, or `null`.
+ *
+ * `off` and `none` are the template defaults, not paths. Treating them as set would make
+ * baked-in MTP look like an external head everywhere the answer matters: the forecast
+ * draft term, the learned-VRAM identity key, and launch validation.
+ */
+export function normalizeDraftPath(raw: unknown): string | null {
+  const s = String(raw ?? "").trim();
+  if (!s) return null;
+  const lower = s.toLowerCase();
+  if (lower === "off" || lower === "none") return null;
+  return s;
 }
