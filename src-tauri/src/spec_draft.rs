@@ -89,7 +89,7 @@ pub fn classify_draft_role(
             // head naming is the only discriminator. Scoped to this branch: a naming
             // token can never condemn a file WITHOUT nextn (the
             // dflash-folder-cannot-condemn-a-main invariant).
-            if full_copy_head_naming(path, name, hf_model_id, source_path_label) {
+            if full_copy_head_naming(path, name) {
                 return (DraftRole::ExternalMtp, facts);
             }
             // Q4: nextn with a full stack is a baked-in MTP target.
@@ -212,17 +212,32 @@ fn is_explicit_mtp_head_signal(signal: &str) -> bool {
     false
 }
 
-/// Full-copy head naming over all catalog signals. Only ever consulted when the
-/// header already proved nextn layers exist on a full stack.
-fn full_copy_head_naming(
-    path: &str,
-    name: &str,
-    hf_model_id: Option<&str>,
-    source_path_label: Option<&str>,
-) -> bool {
-    catalog_signals(path, name, hf_model_id, source_path_label)
-        .iter()
-        .any(|signal| is_explicit_mtp_head_signal(signal))
+/// Full-copy head naming. Only ever consulted when the header already proved nextn
+/// layers exist on a full stack.
+///
+/// Deliberately NOT `catalog_signals`: that list includes the HF repo id, and a repo
+/// named `*-MTP-GGUF` (unsloth `Qwen3.6-27B-MTP-GGUF`) is a BAKED-IN main convention.
+/// A substring test on the repo id would condemn every quant in such a repo to
+/// head-only. The markers here are file-local: an `mtp-`/`mtp_` file-name prefix, a
+/// bare `MTP` folder segment, and the explicit head tokens of
+/// `is_explicit_mtp_head_signal` applied to the file name.
+fn full_copy_head_naming(path: &str, name: &str) -> bool {
+    let file_name = path
+        .rsplit(['/', '\\'])
+        .next()
+        .filter(|s| !s.is_empty())
+        .unwrap_or(name);
+    let file_lower = file_name.to_lowercase();
+    if file_lower.starts_with("mtp-") || file_lower.starts_with("mtp_") {
+        return true;
+    }
+    if path
+        .split(['/', '\\'])
+        .any(|seg| seg.to_lowercase() == "mtp")
+    {
+        return true;
+    }
+    is_explicit_mtp_head_signal(file_name)
 }
 
 fn gguf_file_is_embedded_mtp(name: &str) -> bool {
@@ -499,6 +514,45 @@ mod tests {
         let (role, _) = classify_draft_role(None, r"C:\models\mtp-head.gguf", "", None, None);
         assert_eq!(role, DraftRole::ExternalMtp);
         let (role, _) = classify_draft_role(None, r"C:\models\mtp_head\draft.bin", "", None, None);
+        assert_eq!(role, DraftRole::ExternalMtp);
+    }
+
+    /// The full-copy branch reads FILE-LOCAL naming only. A baked-in repo named
+    /// `*-MTP-GGUF` (unsloth Qwen3.6-27B-MTP-GGUF) carries the mtp token in the repo
+    /// folder and the hf_model_id — if the branch consulted those, every quant in
+    /// the repo would flip to head-only and stop launching as `-m`.
+    #[test]
+    fn full_copy_branch_ignores_repo_naming() {
+        let full_stack = GgufShape {
+            architecture: "qwen35".into(),
+            block_count: 65,
+            nextn_layers: 65,
+            has_markov_w1: false,
+            has_trunk: true,
+            has_vocab: true,
+            shard_count: 1,
+            tensor_count: 0,
+            alignment: 32,
+            header_end: 0,
+        };
+        let (role, facts) = classify_draft_role(
+            Some(&full_stack),
+            r"C:\models\unsloth\Qwen3.6-27B-MTP-GGUF\Qwen3.6-27B-UD-Q4_K_XL.gguf",
+            "Qwen3.6-27B",
+            Some("unsloth/Qwen3.6-27B-MTP-GGUF"),
+            None,
+        );
+        assert_eq!(role, DraftRole::None, "repo naming must not condemn a baked-in main");
+        assert!(facts.baked_mtp);
+
+        // Same repo, but the FILE is a head export — file-local naming still fires.
+        let (role, _) = classify_draft_role(
+            Some(&full_stack),
+            r"C:\models\unsloth\Qwen3.6-27B-MTP-GGUF\mtp-Qwen3.6-27B-Q8_0.gguf",
+            "Qwen3.6-27B",
+            Some("unsloth/Qwen3.6-27B-MTP-GGUF"),
+            None,
+        );
         assert_eq!(role, DraftRole::ExternalMtp);
     }
 

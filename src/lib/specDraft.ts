@@ -268,11 +268,19 @@ export function hasBakedMtp(
 }
 
 /** Full-copy head export (whole target stack + nextn): the header cannot separate it
- *  from a baked-in main, so explicit head naming decides. Rust: `full_copy_head_naming`. */
+ *  from a baked-in main, so explicit head naming decides. Rust: `full_copy_head_naming`.
+ *
+ *  Deliberately file-local — NOT `catalogDraftSignals`, which includes the HF repo id.
+ *  A repo named `*-MTP-GGUF` is a BAKED-IN main convention; a substring test on it
+ *  would condemn every quant in such a repo to head-only. */
 function isFullCopyHeadNaming(
-  model: Pick<ModelEntry, "path" | "name" | "hfModelId" | "sourcePathLabel">,
+  model: Pick<ModelEntry, "path" | "name">,
 ): boolean {
-  return catalogDraftSignals(model).some(isExplicitMtpHeadSignal);
+  const normalized = model.path.replace(/\\/g, "/");
+  const fileName = (normalized.split("/").pop() ?? model.name).toLowerCase();
+  if (fileName.startsWith("mtp-") || fileName.startsWith("mtp_")) return true;
+  if (normalized.split("/").some((seg) => seg.toLowerCase() === "mtp")) return true;
+  return signalContainsMtpHead(fileName);
 }
 
 /**
