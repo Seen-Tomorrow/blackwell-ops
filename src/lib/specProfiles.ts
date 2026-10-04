@@ -58,14 +58,17 @@ export const SPEC_PROFILE_PARAM_KEYS = [
   MTP_DRAFT_MODEL,
 ] as const;
 
-/** Legacy single-group keys — stripped on load; not used by new profiles. */
+/**
+ * Bag keys no template row defines, stripped on load so a stale chip cannot reach the CLI.
+ *
+ * `spec_draft_model` is deliberately NOT here. It is the CLI alias the launch writes
+ * (`SPEC_CLI_DRAFT`) and what Rust reads for `-md` — a live key, not a legacy one.
+ */
 export const OBSOLETE_SPEC_PARAM_KEYS = [
   "spec_type",
   "spec_draft_n_max",
   "spec_draft_n_min",
   "spec_draft_p_min",
-  // spec_draft_model moved to dflash_draft_model; strip old SYSTEM chip if present
-  "spec_draft_model",
 ] as const;
 
 const OBSOLETE_SET = new Set<string>(OBSOLETE_SPEC_PARAM_KEYS);
@@ -294,13 +297,7 @@ export function cockpitProfileKnobRows(
     .filter((r) => r.values.length > 0);
 }
 
-/** Drop obsolete single-group params from a provider param list (no migration of values). */
-export function stripObsoleteSpecParams<T extends { key: string; ui_group?: string }>(
-  params: T[],
-): T[] {
-  return params.filter(
-    (p) =>
-      !isObsoleteSpecParamKey(p.key)
-      && normalizeUiGroup(p.ui_group || "") !== "SPECULATIVE-DECODING",
-  );
+/** Drop bag keys no template row defines, so a stale chip cannot reach the CLI. */
+export function stripObsoleteSpecParams<T extends { key: string }>(params: T[]): T[] {
+  return params.filter((p) => !isObsoleteSpecParamKey(p.key));
 }

@@ -377,15 +377,6 @@ export function migrateCatalogParams<T extends MigratableParam>(
       changed = true;
     }
 
-    // Repair: reasoning_preserve was briefly cockpit/SYSTEM chrome — free FEATURE-FLAGS chip.
-    if (p.key === "reasoning_preserve") {
-      const gPreserve = paramUiGroup(p.ui_group);
-      if (gPreserve === SYSTEM_UI_GROUP || gPreserve === "" || Boolean(p.dock && String(p.dock).trim())) {
-        row = { ...row, ui_group: "FEATURE-FLAGS", dock: "" };
-        changed = true;
-      }
-    }
-
     // SYSTEM chrome / cockpit: only re-pin when already in chrome bucket (or empty/legacy).
     // Do NOT steal PERFORMANCE / user groups (custom essentials pack stays editable).
     const gNow = paramUiGroup(p.ui_group);
