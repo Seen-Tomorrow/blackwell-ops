@@ -107,7 +107,6 @@ export function useDflashDraft({
           title: label,
           meta: [author, quant, tag, m.size_str].filter(Boolean).join(" · "),
           score,
-          draftRole: draftRoleFromModel(m),
         };
       })
       .sort((a, b) => (b.score ?? -999) - (a.score ?? -999));

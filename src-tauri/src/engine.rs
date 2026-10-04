@@ -76,14 +76,8 @@ fn is_spec_decoding_group_active(user_params: &[crate::types::UserEditedTemplate
 }
 
 fn model_has_embedded_mtp(model_path: &str) -> bool {
-    if model_cache::get_cached(model_path)
-        .map(|m| m.nextn_predict_layers > 0)
-        .unwrap_or(false)
-    {
-        return true;
-    }
-    // Header often omits nextn on publisher `-mtp.gguf` builds (ISTA-DASLab).
-    crate::spec_draft::signal_contains_embedded_mtp(model_path)
+    let (_, shape) = model_cache::get_cached_with_shape(model_path);
+    crate::spec_draft::baked_mtp_for_path(shape.as_ref(), model_path)
 }
 
 fn strip_spec_extra_params(config: &mut crate::types::EngineConfig) {
@@ -120,8 +114,8 @@ fn guard_speculative_decoding(
     model_path: &str,
     config: &crate::types::EngineConfig,
 ) -> Vec<crate::types::UserEditedTemplateParam> {
-    let cached = model_cache::get_cached(model_path);
-    let launchable = crate::spec_draft::is_launchable_target(cached.as_ref(), model_path);
+    let (_, shape) = model_cache::get_cached_with_shape(model_path);
+    let launchable = crate::spec_draft::is_launchable_target(shape.as_ref(), model_path);
 
     let mut filtered = user_params;
     let group_active = is_spec_decoding_group_active(&filtered);
@@ -146,10 +140,8 @@ fn guard_speculative_decoding(
 }
 
 fn validate_spec_launch(config: &crate::types::EngineConfig) -> Result<(), String> {
-    if !crate::spec_draft::is_launchable_target(
-        model_cache::get_cached(&config.model_path).as_ref(),
-        &config.model_path,
-    ) {
+    let (_, shape) = model_cache::get_cached_with_shape(&config.model_path);
+    if !crate::spec_draft::is_launchable_target(shape.as_ref(), &config.model_path) {
         return Err(
             "Selected file is a draft model — pick a main model to launch, then assign this as the draft."
                 .into(),
@@ -2055,12 +2047,15 @@ pub async fn scan_model_metadata_cmd(
     } else {
         metadata.file_type_str.clone()
     };
-    let draft_role_hint = crate::spec_draft::resolve_catalog_draft_role(
+    // The scan just wrote metadata to the cache; read the shape back through the same
+    // self-healing path so this row carries header evidence, not a filename guess.
+    let shape = crate::model_cache::get_cached_with_shape(&model_path).1;
+    let draft_role_hint = crate::spec_draft::catalog_draft_role_hint(
+        shape.as_ref(),
         &model_path,
         "scanning",
         hf_id.as_deref(),
         None,
-        Some(&metadata),
     );
     Ok(crate::types::ModelEntry {
         path: model_path,
@@ -2074,6 +2069,7 @@ pub async fn scan_model_metadata_cmd(
         backend_type: pid,
         source_path_label: String::new(),
         metadata: Some(metadata),
+        gguf_shape: shape,
         hf_meta: hf_meta_for_entry,
         hf_model_id: hf_id,
         draft_role_hint,

@@ -119,6 +119,10 @@ pub struct ModelEntry {
     pub source_path_label: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<ModelMetadata>,
+    /// Header tensor-table facts for this file — the classifier's tier-1 evidence.
+    /// A sibling of `metadata`, not a field inside it, so mtime invalidation covers it.
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "ggufShape")]
+    pub gguf_shape: Option<crate::gguf_shape::GgufShape>,
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "hfMeta")]
     pub hf_meta: Option<HfMetadata>,
     /// Discovered HF repo ID from directory structure or cache (e.g. "unsloth/Qwen3.5-4B-GGUF"). Present even when hf_meta is None.
@@ -230,9 +234,6 @@ pub struct ModelMetadata {
     /// Number of nextn prediction layers (>0 means MTP model)
     #[serde(default, rename = "nextn_predict_layers")]
     pub nextn_predict_layers: u32,
-    /// Draft role: none | mtp_embedded | external_dflash | external_eagle3
-    #[serde(default, rename = "draft_role")]
-    pub draft_role: String,
 
     // ── Raw KV dumps (full GGUF header for future use) ────────────────
     /// All KV pairs from GGUF header — key → stringified value. Skips tokenizer arrays.

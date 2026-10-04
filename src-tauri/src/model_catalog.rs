@@ -341,7 +341,7 @@ pub fn is_launchable_main_model(entry: &ModelEntry) -> bool {
     if crate::spec_draft::is_external_draft_role_hint(&entry.draft_role_hint) {
         return false;
     }
-    crate::spec_draft::is_launchable_target(entry.metadata.as_ref(), &entry.path)
+    crate::spec_draft::is_launchable_target(entry.gguf_shape.as_ref(), &entry.path)
 }
 
 pub fn merge_catalogs(
@@ -459,8 +459,10 @@ pub fn merge_catalogs(
         }
     }
 
-    let model_cache = crate::model_cache::load_cache();
+    let mut model_cache = crate::model_cache::load_cache();
     log::info!("[catalog] Loaded model cache: {} entries", model_cache.len());
+    // Shapes read during this merge that were not already on disk.
+    let mut shapes_healed: usize = 0;
 
     let final_catalog: Vec<ModelEntry> = deduped.into_values()
         .map(|internal| {
@@ -471,6 +473,20 @@ pub fn merge_catalogs(
             let mut cached_meta = crate::model_cache::get_cached_with_cache(&model_cache, lookup_path);
             if cached_meta.is_none() {
                 log::debug!("[catalog] ❌ No cached metadata for {} (path: {})", internal.name, lookup_path);
+            }
+
+            // Header evidence for classification. Reading a GGUF header is cheap and
+            // spawns no engine, so an entry scanned before ggufShape existed is healed
+            // here and written back once at the end of the merge.
+            let cached_shape = crate::model_cache::ensure_shape_in_cache(
+                &mut model_cache,
+                lookup_path,
+            );
+            if cached_shape.is_some() && cached_meta.is_some() {
+                shapes_healed += 1;
+            } else if cached_meta.is_some() {
+                // Header unreadable (not a GGUF, truncated, permission) — naming tier only.
+                log::debug!("[catalog] No ggufShape for {} — naming fallback", internal.name);
             }
 
             // Override file_size_bytes with accumulated shard total — scanner only reads first shard's size
@@ -527,12 +543,12 @@ pub fn merge_catalogs(
                 .map(|h| h.hf_model_id.clone())
                 .or_else(|| internal.hf_model_id.clone());
 
-            let draft_role_hint = crate::spec_draft::resolve_catalog_draft_role(
+            let draft_role_hint = crate::spec_draft::catalog_draft_role_hint(
+                cached_shape.as_ref(),
                 &internal.path,
                 &name,
                 resolved_hf_model_id.as_deref(),
                 Some(internal.source_path_label.as_str()).filter(|s| !s.is_empty()),
-                cached_meta.as_ref(),
             );
 
             ModelEntry {
@@ -547,12 +563,22 @@ pub fn merge_catalogs(
                 backend_type: String::new(),
                 source_path_label: internal.source_path_label,
                 metadata: cached_meta,
+                gguf_shape: cached_shape,
                 hf_meta,
                 hf_model_id: resolved_hf_model_id,
                 draft_role_hint,
             }
         })
         .collect();
+
+    // Persist shapes healed during this merge — one write, not one per model.
+    if shapes_healed > 0 {
+        if let Err(e) = crate::model_cache::save_cache(&model_cache) {
+            log::warn!("[catalog] Failed to persist ggufShape cache: {}", e);
+        } else {
+            log::info!("[catalog] Read {} GGUF header shapes into the cache", shapes_healed);
+        }
+    }
 
     // Persist discovered HF pairings to model_cache.json — saves pairing for future updates
     let mut paired_count: usize = 0;
@@ -835,8 +861,45 @@ pub fn calc_size_str_from_bytes(total_bytes: u64) -> String {
     format!("{:.1}GB", total_bytes as f64 / (1024.0_f64.powi(3)))
 }
 
-pub fn get_total_model_size(model_path: &str) -> u64 {
-    let path = std::path::Path::new(model_path);
+/// Every split of a split (sharded) GGUF set, sorted, this file first.
+/// Returns just the file itself when it is not part of a shard set.
+///
+/// Each split carries **only its own tensor-info list**, so a complete `GgufShape`
+/// needs every split's header — a nextn tensor may live in split 3 of 5.
+pub fn shard_sibling_paths(model_path: &str) -> Vec<PathBuf> {
+    let path = Path::new(model_path);
+    let Some(parent) = path.parent() else {
+        return vec![path.to_path_buf()];
+    };
+    let filename = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+    let base_name = strip_shard_pattern(filename);
+    // Not sharded — the base name is the file's own name.
+    if base_name == filename || !parent.exists() {
+        return vec![path.to_path_buf()];
+    }
+
+    let base_without_ext = &base_name[..base_name.len().saturating_sub(5)];
+    let mut siblings: Vec<PathBuf> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(parent) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            let lower = name.to_lowercase();
+            if !lower.ends_with(".gguf") || lower.contains("mmproj") {
+                continue;
+            }
+            if name.starts_with(base_without_ext) {
+                siblings.push(entry.path());
+            }
+        }
+    }
+    if siblings.is_empty() {
+        return vec![path.to_path_buf()];
+    }
+    siblings.sort();
+    siblings
+}
+
+pub fn get_total_model_size(model_path: &str) -> u64 {    let path = std::path::Path::new(model_path);
     if let Some(parent) = path.parent() {
         let filename = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
         let base_name = strip_shard_pattern(filename);

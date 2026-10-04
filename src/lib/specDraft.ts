@@ -16,7 +16,7 @@ import {
   SPEC_PROFILE_PARAM_KEYS,
 } from "./specProfiles";
 
-export type DraftRole = "none" | "mtp_embedded" | "external_dflash" | "external_eagle3" | "external_mtp";
+export type DraftRole = "none" | "external_dflash" | "external_eagle3" | "external_mtp";
 export type CatalogDraftFilter = "regular" | "draft" | "all";
 export type SpecCapability = "mtp" | "dflash" | "eagle3";
 
@@ -172,10 +172,9 @@ export function catalogDraftSignals(
   ].filter((s): s is string => Boolean(s && s.trim()));
 }
 
-function modelHaystack(model: Pick<ModelEntry, "path" | "name" | "metadata" | "hfMeta" | "hfModelId" | "sourcePathLabel" | "draftRoleHint">): string {
+function modelHaystack(model: Pick<ModelEntry, "path" | "name" | "metadata" | "hfMeta" | "hfModelId" | "sourcePathLabel">): string {
   const meta = model.metadata;
   return [
-    model.draftRoleHint,
     ...catalogDraftSignals(model),
     meta?.general_basename,
     meta?.generalName,
@@ -196,8 +195,10 @@ export function extractModelFamily(
   return null;
 }
 
-function pathIdentityDraftRole(
-  model: Pick<ModelEntry, "path" | "name" | "metadata" | "hfMeta" | "hfModelId" | "sourcePathLabel" | "draftRoleHint">,
+/** Path-hint role guess for files the Rust scanner has not classified yet.
+ *  Lower confidence by construction — Rust's `draftRoleHint` always wins. */
+export function draftRoleFromPathHints(
+  model: Pick<ModelEntry, "path" | "name" | "hfModelId" | "sourcePathLabel">,
 ): DraftRole | null {
   for (const signal of catalogDraftSignals(model)) {
     // DSpark heads before generic DFlash (path may contain both "dspark" and "Flash")
@@ -206,147 +207,51 @@ function pathIdentityDraftRole(
     if (signalContainsEagle3(signal)) return "external_eagle3";
     if (signalContainsMtpHead(signal)) return "external_mtp";
   }
-  if (catalogDraftSignals(model).some(signalContainsEmbeddedMtp)) return "mtp_embedded";
+  // Baked-in MTP naming is a capability, not a role — see `hasBakedMtp`.
   return null;
 }
 
-function metadataSuggestsDflash(
-  model: Pick<ModelEntry, "path" | "name" | "metadata" | "hfMeta" | "hfModelId" | "sourcePathLabel" | "draftRoleHint">,
+/** Baked-in MTP — a property of a TARGET, not a draft role.
+ *  Header `nextnLayers` is authoritative; publisher naming only speaks when no shape has
+ *  been scanned yet, because a baked-in main often omits the nextn KV entirely. */
+export function hasBakedMtp(
+  model: Pick<ModelEntry, "path" | "name" | "hfModelId" | "sourcePathLabel" | "ggufShape">,
 ): boolean {
-  const meta = model.metadata;
-  if (!meta) return false;
-  const arch = (meta.architecture ?? "").trim().toLowerCase();
-  if (arch === "dflash") return true;
-
-  if (meta.rawKvs) {
-    for (const key of Object.keys(meta.rawKvs)) {
-      const k = key.toLowerCase();
-      if ((k.includes("target_layers") || k.includes("target_layer_ids")) && arch !== "eagle3") {
-        return true;
-      }
-    }
-  }
-
-  const hay = modelHaystack(model);
-  if (signalContainsDflash(hay)) return true;
-
-  if (meta.n_layer > 0 && meta.n_layer <= 12 && arch !== "eagle3") {
-    if (hay.includes("draft")) return true;
-  }
-  return false;
+  if (model.ggufShape) return (model.ggufShape.nextnLayers ?? 0) > 0;
+  return catalogDraftSignals(model).some(signalContainsEmbeddedMtp);
 }
 
-function parseDraftRoleHint(hint: string | undefined): DraftRole | null {
-  if (!hint || hint === "none") return null;
-  if (hint === "external_dflash" || hint === "external_eagle3" || hint === "mtp_embedded" || hint === "external_mtp") {
+/**
+ * Rust owns classification (`spec_draft::classify_draft_role`). TS consumes the answer and
+ * only falls back to path hints for files the scanner has not reached. `draftRoleHint` is
+ * read exactly once, here — feeding it back into a classifier is the loop SPEC-ADAPTERS §1.5
+ * calls a bug.
+ */
+export function draftRoleFromModel(
+  model: Pick<ModelEntry, "path" | "name" | "hfModelId" | "sourcePathLabel" | "draftRoleHint">,
+): DraftRole {
+  const hint = model.draftRoleHint;
+  if (hint === "external_dflash" || hint === "external_eagle3" || hint === "external_mtp") {
     return hint;
   }
-  return null;
-}
-
-/**
- * Parse a declared total-parameter count in billions from `totalParamsStr`
- * (e.g. "4.33 B", "27.32 B", "309.77 B", "256x1.3B") or `modelTypeLabel`.
- * Returns null when no usable parameter count is present.
- */
-function totalParamsBillions(meta: ModelEntry["metadata"]): number | null {
-  for (const src of [meta?.total_params_str ?? "", meta?.modelTypeLabel ?? ""]) {
-    if (!src.trim()) continue;
-    const m = src.trim().match(/\d+(\.\d+)?/);
-    if (m) {
-      let v = parseFloat(m[0]);
-      const lower = src.toLowerCase();
-      if (lower.includes("m")) v = v / 1000; // "1.3M" → billions
-      return v;
-    }
-  }
-  return null;
-}
-
-/**
- * True when the file size is plausibly a FULL main model for the model's declared
- * parameter count. Stops the "small-file MTP head" heuristic from misfiring on
- * legitimately small main models (e.g. a 4B model at IQ4_XS is ~2.6 GiB).
- * When no param count is known, fall back to treating sub-10 GiB as implausible (head),
- * preserving the previous behavior for unknown-param models.
- */
-function isPlausibleFullModelSize(meta: ModelEntry["metadata"]): boolean {
-  const paramsB = totalParamsBillions(meta);
-  if (paramsB === null) return false;
-  // Small main models (<= ~10B params) routinely produce files well under 10 GiB at
-  // low quants, so a sub-10 GiB file is expected — NOT a standalone head.
-  if (paramsB <= 10) return true;
-  // For larger models, a full main model at even the lowest practical quant (Q2 ~2.5
-  // bpw ≈ 0.31 B/GB-per-param) still needs paramsB * ~0.31 GiB. If the file is far
-  // smaller than that floor, it carries only MTP head layers -> treat as a head.
-  const minFullGib = paramsB * 0.31;
-  const fileGib = (meta?.file_size_bytes ?? 0) / (1024 * 1024 * 1024);
-  return fileGib >= minFullGib * 0.5;
-}
-
-export function draftRoleFromModel(
-  model: Pick<ModelEntry, "path" | "name" | "metadata" | "hfMeta" | "hfModelId" | "sourcePathLabel" | "draftRoleHint">,
-): DraftRole {
-  const pathRole = pathIdentityDraftRole(model);
-  if (pathRole) return pathRole;
-
-  const meta = model.metadata;
-  const arch = (meta?.architecture ?? "").trim().toLowerCase();
-  if (arch === "dflash") return "external_dflash";
-  if (arch === "eagle3") return "external_eagle3";
-  if (metadataSuggestsDflash(model)) return "external_dflash";
-
-  const hinted = parseDraftRoleHint(model.draftRoleHint);
-  if (hinted) return hinted;
-
-  if (meta?.draft_role) {
-    const role = meta.draft_role as DraftRole;
-    if (role !== "none") return role;
-  }
-
-  // Standalone MTP head: has nextn layers AND path signals a separate head file.
-  if ((meta?.nextn_predict_layers ?? 0) > 0 && signalContainsMtpHead(modelHaystack(model))) {
-    return "external_mtp";
-  }
-  // Head-only GGUF: has nextn layers but no vocabulary (embedding-free head file).
-  // Full models always carry a tokenizer + vocab; standalone heads don't.
-  if ((meta?.nextn_predict_layers ?? 0) > 0 && (meta?.vocab_size ?? 0) === 0 && meta?.architecture) {
-    return "external_mtp";
-  }
-  // Small-file MTP head: has nextn layers AND the file is tiny (<10 GiB) compared to a full model
-  // of the same architecture. Catches head exports that carry a full tokenizer.
-  // Size-class aware: a sub-10 GiB file is a NORMAL full main model when the declared total
-  // params are small (e.g. a 4B coder at IQ4_XS is ~2.6 GiB). Only treat a small file as a
-  // standalone head when it is implausibly small for its declared parameter count.
-  if (
-    (meta?.nextn_predict_layers ?? 0) > 0 &&
-    (meta?.file_size_bytes ?? 0) > 0 &&
-    (meta?.file_size_bytes ?? 0) < 10_737_418_240 &&
-    !isPlausibleFullModelSize(meta)
-  ) {
-    return "external_mtp";
-  }
-
-  if ((meta?.nextn_predict_layers ?? 0) > 0) return "mtp_embedded";
-
-  return "none";
+  return draftRoleFromPathHints(model) ?? "none";
 }
 
 export function isExternalDraftOnly(
-  model: Pick<ModelEntry, "path" | "name" | "metadata" | "hfMeta" | "hfModelId" | "sourcePathLabel" | "draftRoleHint">,
+  model: Pick<ModelEntry, "path" | "name" | "hfModelId" | "sourcePathLabel" | "draftRoleHint">,
 ): boolean {
   const role = draftRoleFromModel(model);
   return role === "external_dflash" || role === "external_eagle3" || role === "external_mtp";
 }
 
 export function isLaunchableMain(
-  model: Pick<ModelEntry, "path" | "name" | "metadata" | "hfMeta" | "hfModelId" | "sourcePathLabel" | "draftRoleHint">,
+  model: Pick<ModelEntry, "path" | "name" | "hfModelId" | "sourcePathLabel" | "draftRoleHint">,
 ): boolean {
   return !isExternalDraftOnly(model);
 }
 
 export function matchesCatalogDraftFilter(
-  model: Pick<ModelEntry, "path" | "name" | "metadata" | "hfMeta" | "hfModelId" | "sourcePathLabel" | "draftRoleHint">,
+  model: Pick<ModelEntry, "path" | "name" | "hfModelId" | "sourcePathLabel" | "draftRoleHint">,
   filter: CatalogDraftFilter,
 ): boolean {
   const external = isExternalDraftOnly(model);
@@ -357,7 +262,7 @@ export function matchesCatalogDraftFilter(
 
 export function draftRoleBadge(
   role: DraftRole,
-  model?: Pick<ModelEntry, "path" | "name" | "metadata" | "hfMeta" | "hfModelId" | "sourcePathLabel" | "draftRoleHint">,
+  model?: Pick<ModelEntry, "path" | "name" | "hfModelId" | "sourcePathLabel">,
 ): string | null {
   switch (role) {
     case "external_dflash":
@@ -366,8 +271,6 @@ export function draftRoleBadge(
     case "external_eagle3":
       return "EAGLE3";
     case "external_mtp":
-      return "MTP";
-    case "mtp_embedded":
       return "MTP";
     default:
       return null;
@@ -447,7 +350,7 @@ function stemOverlapScore(mainStem: string, draftStem: string): number {
 /// Roles that are interchangeable for pairing (e.g. external_mtp pairs with external_dflash).
 function draftRolesMatch(asked: DraftRole, actual: DraftRole): boolean {
   if (actual === asked) return true;
-  // External MTP heads are loaded via DFlash mechanism — compatible for pairing.
+  // External MTP heads are loaded via DFlash mechanism — compatible for pairing. step 4.
   if (asked === "external_dflash" && actual === "external_mtp") return true;
   return false;
 }
@@ -524,13 +427,14 @@ export function specCapabilitiesForMain(
       caps.push("eagle3");
     }
     // External MTP heads are loaded via DFlash mechanism — same Boost profile.
+    // The external-MTP CLI lane (`draft-mtp` + `-md`) lands in step 4.
     if (findDraftCandidates(main, models, "external_mtp").length > 0) {
-      caps.push("dflash");
+      caps.push("mtp");
     }
   }
   // Baked-in MTP does not exclude external DFlash — user picks spec_type at launch.
-  // Filename suffix counts: ISTA `-mtp.gguf` often has no nextn KV.
-  if (draftRoleFromModel(main) === "mtp_embedded") {
+  // Outside the Tom lane this is the same cap the external-MTP branch just pushed.
+  if (hasBakedMtp(main) && !caps.includes("mtp")) {
     caps.push("mtp");
   }
   return caps;
@@ -546,15 +450,6 @@ export function defaultSpecTypeForMain(
   if (caps.includes("mtp")) return "draft-mtp";
   if (caps.includes("eagle3")) return "draft-eagle3";
   return null;
-}
-
-/** Whether external MTP candidates are available for a main model. */
-export function hasExternalMtpDraft(
-  main: ModelEntry | null | undefined,
-  models: ModelEntry[] | null | undefined,
-): boolean {
-  if (!main || !models?.length || isExternalDraftOnly(main)) return false;
-  return findDraftCandidates(main, models, "external_mtp").length > 0;
 }
 
 /** Whether the chosen spec mode is supported by this main model (e.g. MTP needs nextn layers). */

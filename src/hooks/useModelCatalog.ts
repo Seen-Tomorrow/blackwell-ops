@@ -17,6 +17,7 @@ import {
 import {
   type CatalogDraftFilter,
   draftRoleFromModel,
+  hasBakedMtp,
   isExternalDraftOnly,
   isLaunchableMain,
   matchesCatalogDraftFilter,
@@ -77,7 +78,7 @@ function modelGeneralSearchText(m: ModelEntry): string {
     if ((meta.nextn_predict_layers ?? 0) > 0) parts.push("mtp");
   }
   const draftRole = draftRoleFromModel(m);
-  if (draftRole === "mtp_embedded") parts.push("mtp");
+  if (hasBakedMtp(m)) parts.push("mtp");
   if (draftRole === "external_dflash") parts.push("dflash", "draft");
   if (draftRole === "external_eagle3") parts.push("eagle3", "draft");
   if (draftRole === "external_mtp") parts.push("mtp", "draft");

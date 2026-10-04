@@ -1,5 +1,5 @@
 import type { ModelEntry, ModelMetadata, CatalogUpdateEntry } from "../lib/types";
-import { draftRoleBadge, draftRoleFromModel, isExternalDraftOnly } from "../lib/specDraft";
+import { draftRoleBadge, draftRoleFromModel, hasBakedMtp, isExternalDraftOnly } from "../lib/specDraft";
 import { revealPathInExplorer } from "../lib/utils";
 import { CATALOG_SEAT_LABEL, type CatalogSeatRole } from "../lib/catalogQuickAccess";
 import { fitNowLabel, type FitNowVerdict } from "../lib/catalogFitNow";
@@ -143,7 +143,7 @@ export default function ModelCard({
   const hasMetadata = !!model.metadata;
   const isScanning = scanningPath === model.path;
   const draftRole = draftRoleFromModel(model);
-  const draftBadge = draftRoleBadge(draftRole, model);
+  const draftBadge = draftRoleBadge(draftRole, model) ?? (hasBakedMtp(model) ? "MTP" : null);
   const isDraftOnly = isExternalDraftOnly(model);
 
   const isShardNoiseQuant = (label: string) => /^\d{3,}$/.test(label.trim());
@@ -344,7 +344,7 @@ export default function ModelCard({
         {model.name}
       </span>
 
-      {(paramsNum || hasMultimodal || fitNow || (model.metadata?.nextn_predict_layers ?? 0) > 0 || draftBadge) && (
+      {(paramsNum || hasMultimodal || fitNow || hasBakedMtp(model) || draftBadge) && (
         <div className="flex items-center gap-1 mt-0.5 min-w-0">
           {paramsNum && (
             <span className="type-tiny font-mono mcard-params shrink-0">{paramsNum}</span>

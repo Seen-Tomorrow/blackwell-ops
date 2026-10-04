@@ -196,7 +196,7 @@ fn blk_index(name: &str) -> Option<u32> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::io::Write;
 
@@ -259,7 +259,7 @@ mod tests {
 
     /// Scratch under `target/debug` — the workspace is writable from this session's
     /// integrity level, `std::env::temp_dir()` is not guaranteed to be.
-    fn scratch_dir(tag: &str) -> PathBuf {
+    pub(crate) fn scratch_dir(tag: &str) -> PathBuf {
         let dir = crate::config::app_root_dir().join(format!(
             "gguf-shape-test-{tag}-{}",
             std::process::id()
@@ -267,6 +267,11 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("scratch dir");
         dir
+    }
+
+    /// Write a minimal GGUF v3 for other modules' tests (see `build_gguf`).
+    pub(crate) fn write_minimal_gguf(dir: &Path, name: &str, arch: &str, block_count: u32, tensor_names: &[&str]) -> PathBuf {
+        write_gguf(dir, name, &build_gguf(arch, block_count, tensor_names))
     }
 
     fn write_gguf(dir: &Path, name: &str, bytes: &[u8]) -> PathBuf {

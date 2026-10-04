@@ -1,0 +1,154 @@
+[
+  {
+    "id": "baked-mtp-ista-suffix",
+    "path": "C:\\models\\ISTA-DASLab\\Qwen3.8-27B-GSQ-RCO-GGUF\\Qwen3.8-27B-GSQ-RCO-IQ3_S-mtp.gguf",
+    "shape": null,
+    "expected_role": "none",
+    "expected_baked_mtp": true,
+    "note": "Publisher -mtp.gguf suffix is a baked-in MAIN, not a head. Header often omits nextn, so naming is the only signal."
+  },
+  {
+    "id": "baked-mtp-unsloth-folder",
+    "path": "C:\\models\\unsloth\\Qwen3.6-27B-MTP-GGUF\\Qwen3.6-27B-UD-IQ2_XXS.gguf",
+    "shape": null,
+    "expected_role": "none",
+    "expected_baked_mtp": true,
+    "note": "MTP-GGUF folder convention. The quant file itself carries no mtp token."
+  },
+  {
+    "id": "baked-mtp-header-nextn-full-stack",
+    "path": "C:\\models\\vendor\\Qwen3.8-27B\\Qwen3.8-27B-Q4_K_M.gguf",
+    "shape": { "architecture": "qwen35", "block_count": 48, "nextnLayers": 1, "hasMarkovW1": false, "hasTrunk": true, "hasVocab": true, "shard_count": 1 },
+    "expected_role": "none",
+    "expected_baked_mtp": true,
+    "note": "Q4 — nextn present with a full block_count and a trunk. Baked MTP is a property of the target, not a draft role."
+  },
+  {
+    "id": "external-mtp-head-dot-suffix",
+    "path": "C:\\models\\vendor\\Qwen3.8-27B\\Qwen3.8-27B-Q4_K_M.mtp.gguf",
+    "shape": { "architecture": "qwen35", "block_count": 1, "nextnLayers": 1, "hasMarkovW1": false, "hasTrunk": false, "hasVocab": false, "shard_count": 1 },
+    "expected_role": "external_mtp",
+    "expected_baked_mtp": false,
+    "note": "X.mtp.gguf (dot) is a head export; -mtp.gguf (hyphen) is a baked-in main. Header agrees: block_count 1, no trunk."
+  },
+  {
+    "id": "external-mtp-head-token-named",
+    "path": "C:\\models\\vendor\\Qwen3.8-27B\\mtp-head\\qwen35-mtp-head-q4.gguf",
+    "shape": { "architecture": "qwen35", "block_count": 1, "nextnLayers": 2, "hasMarkovW1": false, "hasTrunk": false, "hasVocab": false, "shard_count": 1 },
+    "expected_role": "external_mtp",
+    "expected_baked_mtp": false,
+    "note": "Explicit head token in the name AND truncated header — both tiers agree."
+  },
+  {
+    "id": "external-mtp-head-header-only-no-naming",
+    "path": "C:\\models\\vendor\\Qwen3.8-27B\\sidecar-00001.gguf",
+    "shape": { "architecture": "qwen35", "block_count": 1, "nextnLayers": 1, "hasMarkovW1": false, "hasTrunk": false, "hasVocab": false, "shard_count": 1 },
+    "expected_role": "external_mtp",
+    "expected_baked_mtp": false,
+    "note": "The case naming archaeology cannot see at all: no mtp token anywhere, header evidence alone. This is what the tensor reader buys."
+  },
+  {
+    "id": "external-mtp-sharded-nextn-in-later-split",
+    "path": "C:\\models\\vendor\\Qwen3.8-27B\\draft-00001-of-00002.gguf",
+    "shape": { "architecture": "qwen35", "block_count": 1, "nextnLayers": 1, "hasMarkovW1": false, "hasTrunk": false, "hasVocab": false, "shard_count": 2 },
+    "expected_role": "external_mtp",
+    "expected_baked_mtp": false,
+    "note": "Merged shape across splits — the nextn tensor lived in split 2. Upstream #26814 skips sharded drafts; we do not."
+  },
+  {
+    "id": "dspark-draft",
+    "path": "C:\\models\\dspark\\Qwen3.8-27B\\dspark-draft-q8.gguf",
+    "shape": { "architecture": "dflash", "block_count": 1, "nextnLayers": 0, "hasMarkovW1": true, "hasTrunk": false, "hasVocab": false, "shard_count": 1 },
+    "expected_role": "external_dflash",
+    "expected_baked_mtp": false,
+    "note": "Q5 — DSpark is a CLI type, not a DraftRole. markov_w1 is the header fact that distinguishes it from plain DFlash."
+  },
+  {
+    "id": "dflash-draft-arch",
+    "path": "C:\\models\\dflash\\Qwen3.6-27B\\dflash-draft-q8_0.gguf",
+    "shape": { "architecture": "dflash", "block_count": 1, "nextnLayers": 0, "hasMarkovW1": false, "hasTrunk": false, "hasVocab": false, "shard_count": 1 },
+    "expected_role": "external_dflash",
+    "expected_baked_mtp": false,
+    "note": "Canonical DFlash draft: arch dflash, no Markov tensor."
+  },
+  {
+    "id": "dflash-draft-arch-alias",
+    "path": "C:\\models\\vendor\\Qwen3.6-27B\\draft-q8_0.gguf",
+    "shape": { "architecture": "dflash-draft", "block_count": 1, "nextnLayers": 0, "hasMarkovW1": false, "hasTrunk": false, "hasVocab": false, "shard_count": 1 },
+    "expected_role": "external_dflash",
+    "expected_baked_mtp": false,
+    "note": "dflash-draft is a real-world arch string upstream's registry rejects. Accept as an alias."
+  },
+  {
+    "id": "dflash-draft-header-only",
+    "path": "C:\\models\\vendor\\Qwen3.6-27B\\aux-q8_0.gguf",
+    "shape": { "architecture": "dflash", "block_count": 1, "nextnLayers": 0, "hasMarkovW1": false, "hasTrunk": false, "hasVocab": false, "shard_count": 1 },
+    "expected_role": "external_dflash",
+    "expected_baked_mtp": false,
+    "note": "No dflash token in the path — header arch is the only signal."
+  },
+  {
+    "id": "eagle3-draft",
+    "path": "C:\\models\\eagle3\\Llama-3.1-8B\\eagle3-draft-f16.gguf",
+    "shape": { "architecture": "eagle3", "block_count": 1, "nextnLayers": 0, "hasMarkovW1": false, "hasTrunk": false, "hasVocab": false, "shard_count": 1 },
+    "expected_role": "external_eagle3",
+    "expected_baked_mtp": false,
+    "note": "EAGLE3 finally has a reachable path: role + capability, no longer half-present in four of five axes."
+  },
+  {
+    "id": "plain-target-no-spec",
+    "path": "C:\\models\\bartowski\\Llama-3.1-8B\\Llama-3.1-8B-Q4_K_M.gguf",
+    "shape": { "architecture": "llama", "block_count": 32, "nextnLayers": 0, "hasMarkovW1": false, "hasTrunk": true, "hasVocab": true, "shard_count": 1 },
+    "expected_role": "none",
+    "expected_baked_mtp": false,
+    "note": "Ordinary launchable main."
+  },
+  {
+    "id": "small-target-not-a-head",
+    "path": "C:\\models\\vendor\\Qwen3.5-4B\\Qwen3.5-4B-IQ4_XS.gguf",
+    "shape": { "architecture": "qwen35", "block_count": 40, "nextnLayers": 0, "hasMarkovW1": false, "hasTrunk": true, "hasVocab": true, "shard_count": 1 },
+    "expected_role": "none",
+    "expected_baked_mtp": false,
+    "note": "Regression guard for the old 10 GiB size rule: a small main model is a MAIN. Header says full stack, so size never enters."
+  },
+  {
+    "id": "target-with-vocab-zero-scrape",
+    "path": "C:\\models\\vendor\\Qwen3.6-27B\\Qwen3.6-27B-Q4_K_M.gguf",
+    "shape": { "architecture": "qwen36", "block_count": 64, "nextnLayers": 1, "hasMarkovW1": false, "hasTrunk": true, "hasVocab": true, "shard_count": 1 },
+    "expected_role": "none",
+    "expected_baked_mtp": true,
+    "note": "Regression guard for the vocab_size == 0 heuristic. A head carrying added_tokens but no tokens array scraped as vocab 0; the tensor-name check says the embedding is present."
+  },
+  {
+    "id": "dflash-folder-cannot-condemn-a-main",
+    "path": "C:\\models\\DFlash\\Qwen3.6-27B\\Qwen3.6-27B-UD-Q4_K_XL.gguf",
+    "shape": { "architecture": "qwen36", "block_count": 64, "nextnLayers": 0, "hasMarkovW1": false, "hasTrunk": true, "hasVocab": true, "shard_count": 1 },
+    "expected_role": "none",
+    "expected_baked_mtp": false,
+    "note": "The path-segment trap: a folder named DFlash marked every gguf beneath it, including full main models. Header evidence outranks a folder name."
+  },
+  {
+    "id": "deepseek-flash-name-is-not-dflash",
+    "path": "C:\\models\\vendor\\DeepSeek-V4-Flash\\DeepSeek-V4-Flash-Q4_K_M.gguf",
+    "shape": { "architecture": "deepseek2", "block_count": 61, "nextnLayers": 0, "hasMarkovW1": false, "hasTrunk": true, "hasVocab": true, "shard_count": 1 },
+    "expected_role": "none",
+    "expected_baked_mtp": false,
+    "note": "\"Flash\" in a product name is not DFlash. Full block_count and a trunk keep it launchable."
+  },
+  {
+    "id": "unscanned-fallback-path-only",
+    "path": "C:\\models\\dflash\\Qwen3.6-27B\\dflash-draft-q8_0.gguf",
+    "shape": null,
+    "expected_role": "external_dflash",
+    "expected_baked_mtp": false,
+    "note": "No shape yet (unscanned / cache lag). Path-hint fallback tier, lower confidence by construction."
+  },
+  {
+    "id": "unscanned-plain-target",
+    "path": "C:\\models\\bartowski\\Llama-3.1-8B\\Llama-3.1-8B-Q4_K_M.gguf",
+    "shape": null,
+    "expected_role": "none",
+    "expected_baked_mtp": false,
+    "note": "No shape and no draft token — the fallback must not invent a role."
+  }
+]

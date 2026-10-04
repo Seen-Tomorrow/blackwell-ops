@@ -17,6 +17,8 @@ export interface ModelEntry {
   hfModelId?: string;
   /** Path/name-derived draft role from catalog scan — works without GGUF metadata. */
   draftRoleHint?: string;
+  /** Header-only GGUF facts from the tensor-info walk. Absent means "not scanned yet". */
+  ggufShape?: GgufShape;
 }
 
 export interface ModelPathEntry {
@@ -85,7 +87,7 @@ export interface ModelMetadata {
   scan_timestamp: number;
   file_created?: number;
   nextn_predict_layers?: number;
-  /** none | mtp_embedded | external_dflash | external_eagle3 | external_mtp */
+  /** none | external_dflash | external_eagle3 | external_mtp */
   draft_role?: string;
   rawKvs?: Record<string, string>;
 }

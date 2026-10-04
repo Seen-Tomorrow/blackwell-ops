@@ -501,6 +501,7 @@ export function useScenarioEvaluator({
     }
 
     // Draft packs are not mains — no LEARNED/FIT glass, no auto probe.
+    // Rust's draftRoleHint is authoritative; TS path hints cover unscanned files.
     if (isExternalDraftOnly(model)) {
       commitManifest(null);
       return;

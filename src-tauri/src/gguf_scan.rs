@@ -139,7 +139,6 @@ pub fn scan_model_metadata(model_path: &str, binary_path: &str) -> Result<ModelM
             .map(|t| t.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs())
             .unwrap_or(0),
         nextn_predict_layers: 0,
-        draft_role: String::new(),
         raw_kvs: HashMap::new(),
         raw_print_info: HashMap::new(),
         general_author: String::new(),
@@ -161,8 +160,6 @@ pub fn scan_model_metadata(model_path: &str, binary_path: &str) -> Result<ModelM
     }
 
     refine_file_type_str(&mut metadata, model_path);
-
-    crate::spec_draft::finalize_draft_role(&mut metadata, model_path);
 
     Ok(metadata)
 }
@@ -595,7 +592,6 @@ mod tests {
             scan_timestamp: 0,
             file_created: 0,
             nextn_predict_layers: 0,
-            draft_role: String::new(),
             raw_kvs: std::collections::HashMap::new(),
             raw_print_info: std::collections::HashMap::new(),
             general_author: String::new(),
