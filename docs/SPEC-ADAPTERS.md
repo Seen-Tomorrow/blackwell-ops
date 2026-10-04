@@ -274,7 +274,26 @@ No data migration anywhere — see AGENTS.md. Each step is independently shippab
    — sweeping them is chrome churn across hundreds of lines and would bury the behaviour change
    that is the actual point of the step.
 7. **Delete** `OBSOLETE_SPEC_PARAM_KEYS`, the `Repair mtp_*/dflash_*` branch, and the `systemParams`
-   migrate path.
+   migrate path. **Half done (`05d69f62d`); the plan was wrong about the other half.**
+
+   Shipped: `spec_draft_model` removed from `OBSOLETE_SPEC_PARAM_KEYS`, the `SPECULATIVE-DECODING`
+   filter dropped from `stripObsoleteSpecParams`, and the `reasoning_preserve` repair branch deleted.
+
+   **`spec_draft_model` is not a legacy key and must never be stripped.** `buildSpecCliExtraParams`
+   writes it as `SPEC_CLI_DRAFT`, and `engine.rs`, `templates.rs` and `vram_learn.rs` read it for
+   `-md`. It is the live CLI alias — and it was sitting in the obsolete list.
+
+   **`profileGroupForParamKey` / the `Repair mtp_*/dflash_*` branch is load-bearing, not migration.**
+   `mtp_*` and `dflash_*` are profile rows with no `flag`, so `buildSpecCliExtraParams` flattens them
+   to CLI keys. A row in the wrong group is treated as a regular param and emitted raw —
+   `--mtp_n_max 3`, a key llama.cpp does not know. The repair keeps flattening correct for *new* bad
+   states, not only old ones. Removing it needs a different guard first (refuse to emit a
+   profile-keyed row outside its group), which is a behaviour change, not a deletion.
+
+   **`migrateCatalogParams` is not a migrate path in the forbidden sense.** It also drops
+   `ENGINE_ONLY_PARAM_KEYS`, un-hides SYSTEM chrome rows and sorts numeric values — normalisation on
+   every load, not an up-converter for a previous version's data. Only `reasoning_preserve` was
+   genuinely a "was briefly pinned wrong" repair, and that one went.
 
 ---
 
