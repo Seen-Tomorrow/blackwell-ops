@@ -40,7 +40,7 @@ function placementConfigKey(config: Record<string, unknown>): string {
 }
 
 function draftBaseName(config: Record<string, unknown>): string {
-  const draft = String(config.dflash_draft_model ?? config.spec_draft_model ?? "");
+  const draft = String(config.dflash_draft_model ?? config.mtp_draft_model ?? config.spec_draft_model ?? "");
   return draft.split(/[/\\]/).pop() || draft;
 }
 
@@ -215,7 +215,7 @@ function externalDraftWanted(config: Record<string, unknown>): boolean {
   }
   if (st.includes("dflash") || st.includes("dspark") || st.includes("eagle")) return true;
   // Draft path alone (Boost on, spec_type not yet flattened into config row).
-  const draft = String(config.dflash_draft_model ?? config.spec_draft_model ?? "").trim();
+  const draft = String(config.dflash_draft_model ?? config.mtp_draft_model ?? config.spec_draft_model ?? "").trim();
   if (draft && draft.toLowerCase() !== "auto" && draft.toLowerCase() !== "off" && /\.gguf$/i.test(draft)) {
     return true;
   }
@@ -229,7 +229,7 @@ function resolveDraftSizeMib(
 ): number | undefined {
   if (!externalDraftWanted(config)) return undefined;
   const draftRaw = String(
-    config.dflash_draft_model ?? config.spec_draft_model ?? "",
+    config.dflash_draft_model ?? config.mtp_draft_model ?? config.spec_draft_model ?? "",
   ).trim();
   if (!draftRaw || draftRaw.toLowerCase() === "auto" || draftRaw.toLowerCase() === "off") {
     return undefined;
@@ -247,7 +247,7 @@ function resolveDraftSizeMib(
 
 function draftPathForLearned(config: Record<string, unknown>): string {
   if (!externalDraftWanted(config)) return "";
-  return String(config.dflash_draft_model ?? config.spec_draft_model ?? "").trim();
+  return String(config.dflash_draft_model ?? config.mtp_draft_model ?? config.spec_draft_model ?? "").trim();
 }
 
 // Shared scenarios-tab emission helper to avoid duplicating IPC calls to Blackwell Output Console

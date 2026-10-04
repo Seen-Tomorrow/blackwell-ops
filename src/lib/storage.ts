@@ -653,6 +653,7 @@ export function migrateGlobalSpecOutOfCatalogOverrides(providerId: string): void
     "dflash_n_min",
     "dflash_p_min",
     "dflash_draft_model",
+    "mtp_draft_model",
   ];
 
   // v2 nested profiles

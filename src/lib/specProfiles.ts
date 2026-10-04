@@ -45,6 +45,7 @@ export const DFLASH_N_MAX = "dflash_n_max";
 export const DFLASH_N_MIN = "dflash_n_min";
 export const DFLASH_P_MIN = "dflash_p_min";
 export const DFLASH_DRAFT_MODEL = "dflash_draft_model";
+export const MTP_DRAFT_MODEL = "mtp_draft_model";
 
 export const SPEC_PROFILE_PARAM_KEYS = [
   MTP_N_MAX,
@@ -54,6 +55,7 @@ export const SPEC_PROFILE_PARAM_KEYS = [
   DFLASH_N_MIN,
   DFLASH_P_MIN,
   DFLASH_DRAFT_MODEL,
+  MTP_DRAFT_MODEL,
 ] as const;
 
 /** Legacy single-group keys — stripped on load; not used by new profiles. */

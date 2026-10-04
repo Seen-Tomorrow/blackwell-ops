@@ -65,9 +65,8 @@ const MTP: SpecAdapter = {
   label: "MTP",
   group: SPEC_PROFILE_MTP_GROUP,
   capability: "mtp",
-  knobs: { nMax: "mtp_n_max", nMin: "mtp_n_min", pMin: "mtp_p_min" },
-  // draftModel arrives in step 4 — the external-MTP lane (`draft-mtp` + `-md`).
-  draftRoles: ["none"],
+  knobs: { nMax: "mtp_n_max", nMin: "mtp_n_min", pMin: "mtp_p_min", draftModel: "mtp_draft_model" },
+  draftRoles: ["none", "external_mtp"],
 };
 
 const DFLASH: SpecAdapter = {

@@ -59,8 +59,28 @@ const DRAFT_ARCH_FOR_SPEC: Record<string, DraftRole> = {
   // DSpark reuses external-draft pairing slot; path must contain dspark for engine validate.
   "draft-dspark": "external_dflash",
   "draft-eagle3": "external_eagle3",
-  "draft-external-mtp": "external_mtp",
+  // Baked-in MTP has no draft file to pair. The role is resolved from the configured
+  // draft path, not from this string — see draftRoleForSpecType.
+  "draft-mtp": "external_mtp",
 };
+
+/**
+ * CLI spec type → the catalog draft role it pairs against.
+ *
+ * `draft-mtp` is the one ambiguous string: it means baked-in MTP with no draft path, and
+ * external MTP with one. With no path there is nothing to pair, so it resolves to null.
+ */
+export function draftRoleForSpecType(
+  specType: string,
+  draftPath?: string,
+): DraftRole | null {
+  const role = DRAFT_ARCH_FOR_SPEC[specType.trim().toLowerCase()] ?? null;
+  if (role === "external_mtp" && specType.trim().toLowerCase() === "draft-mtp") {
+    const path = draftPath?.trim() ?? "";
+    if (!path || path.toLowerCase() === "off") return null;
+  }
+  return role;
+}
 
 /**
  * Minimum library pairing score (0–100).
@@ -350,7 +370,8 @@ function stemOverlapScore(mainStem: string, draftStem: string): number {
 /// Roles that are interchangeable for pairing (e.g. external_mtp pairs with external_dflash).
 function draftRolesMatch(asked: DraftRole, actual: DraftRole): boolean {
   if (actual === asked) return true;
-  // External MTP heads are loaded via DFlash mechanism — compatible for pairing. step 4.
+  // A DFlash picker still accepts an MTP head: the head is a valid external draft for the
+  // DFlash lane, and the reverse direction is what step 4's own lane now uses.
   if (asked === "external_dflash" && actual === "external_mtp") return true;
   return false;
 }
@@ -426,8 +447,7 @@ export function specCapabilitiesForMain(
     if (findDraftCandidates(main, models, "external_eagle3").length > 0) {
       caps.push("eagle3");
     }
-    // External MTP heads are loaded via DFlash mechanism — same Boost profile.
-    // The external-MTP CLI lane (`draft-mtp` + `-md`) lands in step 4.
+    // External MTP heads ride the MTP lane: `draft-mtp` + `-md` (mtp_draft_model).
     if (findDraftCandidates(main, models, "external_mtp").length > 0) {
       caps.push("mtp");
     }
@@ -446,6 +466,10 @@ export function defaultSpecTypeForMain(
   providerId: string,
 ): string | null {
   const caps = specCapabilitiesForMain(main, models, providerId);
+  // An external MTP head with no DFlash candidate rides its own lane: draft-mtp + -md.
+  if (caps.includes("mtp") && findDraftCandidates(main, models, "external_mtp").length > 0) {
+    return "draft-mtp";
+  }
   if (caps.includes("dflash")) return "draft-dflash";
   if (caps.includes("mtp")) return "draft-mtp";
   if (caps.includes("eagle3")) return "draft-eagle3";
@@ -462,6 +486,7 @@ export function isSpecTypeValidForMain(
   const normalized = specType.trim().toLowerCase();
   if (!normalized || normalized === "none") return true;
   const caps = specCapabilitiesForMain(main, models, providerId);
+  // draft-mtp covers both baked-in nextn and an external MTP head (`draft-mtp` + `-md`).
   if (normalized === "draft-mtp") return caps.includes("mtp");
   if (normalized === "draft-dflash") return caps.includes("dflash");
   if (normalized.includes("eagle3") || normalized === "draft-eagle3") return caps.includes("eagle3");
@@ -486,10 +511,6 @@ const SPEC_TYPES_BLOCKING_PARALLEL = new Set<string>([]);
 
 export function specTypeAllowsParallel(specType: string): boolean {
   return !SPEC_TYPES_BLOCKING_PARALLEL.has(specType.trim().toLowerCase());
-}
-
-export function draftRoleForSpecType(specType: string): DraftRole | null {
-  return DRAFT_ARCH_FOR_SPEC[specType.trim().toLowerCase()] ?? null;
 }
 
 export function isValidGgufDraftPath(path: string): boolean {
@@ -537,7 +558,7 @@ export function isDraftPairingValid(
   main: ModelEntry,
   models: ModelEntry[],
 ): boolean {
-  const role = draftRoleForSpecType(pairing.specType);
+  const role = draftRoleForSpecType(pairing.specType, pairing.draftPath);
   if (!role) return false;
   const draft = models.find((m) => normalizeModelPathKey(m.path) === normalizeModelPathKey(pairing.draftPath));
   if (!draft) return false;
@@ -555,7 +576,7 @@ export function isUsableDraftPairing(
   main: ModelEntry,
   models: ModelEntry[],
 ): boolean {
-  const role = draftRoleForSpecType(pairing.specType);
+  const role = draftRoleForSpecType(pairing.specType, pairing.draftPath);
   if (!role) return false;
   const draft = models.find(
     (m) => normalizeModelPathKey(m.path) === normalizeModelPathKey(pairing.draftPath),
@@ -616,7 +637,7 @@ export function resolveExternalDraftPath(
 
   const pairing = loadDraftPairing(main.path);
   if (pairing) {
-    const pairingRole = draftRoleForSpecType(pairing.specType);
+    const pairingRole = draftRoleForSpecType(pairing.specType, pairing.draftPath);
     // Accept saved pair when roles match, or when saved under draft-dflash / draft-eagle3 alias.
     const st = String(pairing.specType).toLowerCase();
     const roleOk =

@@ -49,7 +49,7 @@ function specTypeForSeat(seat: LaunchSeat): string {
 export async function fetchLearnedMemForSeat(seat: LaunchSeat): Promise<LearnedMemGb | null> {
   const o = seat.paramOverrides ?? {};
   const specType = specTypeForSeat(seat);
-  const draft = String(o.dflash_draft_model || o.spec_draft_model || "").trim() || null;
+  const draft = String(o.dflash_draft_model || o.mtp_draft_model || o.spec_draft_model || "").trim() || null;
   try {
     const entry = await invoke<LearnedHit | null>("get_learned_vram", {
       modelPath: seat.modelPath,

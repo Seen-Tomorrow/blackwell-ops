@@ -203,6 +203,7 @@ const CAPTURE_KEYS = [
   "device",
   // Boost / speculative pack (natural panel knobs — both BRAIN and WORKER)
   "dflash_draft_model",
+  "mtp_draft_model",
   "spec_draft_model",
   ...SPEC_PROFILE_PARAM_KEYS,
 ] as const;
