@@ -55,6 +55,13 @@ pub struct GgufShape {
     /// `general.alignment`, or the GGUF default of 32.
     #[serde(default)]
     pub alignment: u64,
+    /// The header declares an architecture the llama.cpp registry does not know —
+    /// `general.architecture` and every `<arch>.block_count` prefix disagree (e.g.
+    /// Strata's `mtp-q2_0.gguf`: `general.architecture = qwen4exp-mtp`, KVs under
+    /// `qwen4exp.*`). Such a file is private-format material: no engine load, no
+    /// draft role. See `spec_draft::classify_draft_role` tier 0.
+    #[serde(default, rename = "archMismatch")]
+    pub arch_mismatch: bool,
     /// Offset where tensor data starts (alignment-padded).
     #[serde(default)]
     pub header_end: u64,
@@ -173,6 +180,20 @@ fn shape_from_facts(facts: &gguf_patch::HeaderFacts, shard_count: u32) -> GgufSh
         nextn_layers = 1;
     }
 
+    // A registry-known arch has ONE name: `general.architecture` and every
+    // `<arch>.block_count` prefix agree. They disagree only for private formats —
+    // Strata's MTP material declares `general.architecture = qwen4exp-mtp` while
+    // its KVs sit under `qwen4exp.` (the converter reuses the base arch's keys).
+    // A file with no `general.architecture` at all is not judged here — the
+    // block_count fallback already names it.
+    let arch_mismatch = !architecture.is_empty()
+        && facts.arch_keys.iter().any(|key| {
+            key != "general.architecture"
+                && key
+                    .strip_suffix(".block_count")
+                    .is_some_and(|a| a != architecture)
+        });
+
     GgufShape {
         architecture,
         block_count,
@@ -184,6 +205,7 @@ fn shape_from_facts(facts: &gguf_patch::HeaderFacts, shard_count: u32) -> GgufSh
         shard_count,
         tensor_count: facts.tensor_count,
         alignment: facts.alignment,
+        arch_mismatch,
         header_end: facts.header_end,
     }
 }
@@ -201,6 +223,7 @@ fn merge_into(base: &mut GgufShape, split: GgufShape) {
     base.has_markov_w1 |= split.has_markov_w1;
     base.has_trunk |= split.has_trunk;
     base.has_vocab |= split.has_vocab;
+    base.arch_mismatch |= split.arch_mismatch;
     base.tensor_count = base.tensor_count.saturating_add(split.tensor_count);
 }
 
@@ -566,6 +589,31 @@ pub(crate) mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// Strata's MTP material: `general.architecture = qwen4exp-mtp`, KVs under
+    /// `qwen4exp.`. The arch strings disagree — a private format, flagged.
+    #[test]
+    fn arch_mismatch_flags_private_formats() {
+        let dir = scratch_dir("arch-mismatch");
+        let mut buf = Vec::new();
+        buf.extend_from_slice(b"GGUF");
+        push_u32(&mut buf, 3);
+        push_u64(&mut buf, 0);
+        push_u64(&mut buf, 2);
+        kv_str(&mut buf, "general.architecture", "qwen4exp-mtp");
+        kv_u32(&mut buf, "qwen4exp.block_count", 1);
+
+        let path = write_gguf(&dir, "strata-mtp.gguf", &buf);
+        let shape = read_shape(&path).expect("shape");
+        assert!(shape.arch_mismatch, "general.architecture != KV prefix");
+
+        // A normal file (build_gguf: both sides = arch) is never flagged.
+        let bytes = build_gguf("qwen4exp", 48, &["token_embd.weight"]);
+        let path = write_gguf(&dir, "normal.gguf", &bytes);
+        assert!(!read_shape(&path).expect("shape").arch_mismatch);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn serde_uses_camel_case_for_multi_word_fields() {
         let shape = GgufShape {
@@ -579,12 +627,14 @@ pub(crate) mod tests {
             shard_count: 1,
             tensor_count: 7,
             alignment: 32,
+            arch_mismatch: false,
             header_end: 1024,
         };
         let json = serde_json::to_string(&shape).expect("serialize");
         for key in [
             "\"nextnLayers\":2",
             "\"pleLayers\":3",
+            "\"archMismatch\":false",
             "\"hasMarkovW1\":false",
             "\"hasTrunk\":true",
             "\"hasVocab\":true",

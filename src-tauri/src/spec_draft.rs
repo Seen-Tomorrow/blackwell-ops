@@ -61,6 +61,16 @@ pub fn classify_draft_role(
 ) -> (DraftRole, SpecFacts) {
     let mut facts = SpecFacts::default();
 
+    // ── Tier 0: private formats ─────────────────────────────────────────────
+    // A header whose `general.architecture` disagrees with its `<arch>.block_count`
+    // prefix is not a llama.cpp model at all — Strata's MTP material declares
+    // `qwen4exp-mtp` over `qwen4exp.*` KVs and is consumed by Strata's own runtime
+    // (tools/mtp_rt.py -> rt/), never by an engine. Conclusive like any readable
+    // header: no role, no naming tier, launchable only as inert library material.
+    if shape.is_some_and(|s| s.arch_mismatch) {
+        return (DraftRole::None, facts);
+    }
+
     // ── Tier 1: header evidence ───────────────────────────────────────────
     if let Some(shape) = shape {
         let arch = shape.architecture.trim().to_lowercase();
@@ -583,6 +593,7 @@ mod tests {
             shard_count: 1,
             tensor_count: 0,
             alignment: crate::gguf_patch::GGUF_DEFAULT_ALIGNMENT,
+            arch_mismatch: false,
             header_end: 0,
         };
         let path = r"C:\models\DFlash\Qwen3.6-27B\Qwen3.6-27B-UD-Q4_K_XL.gguf";
@@ -623,6 +634,44 @@ mod tests {
         assert_eq!(role, DraftRole::ExternalMtp);
     }
 
+    /// A private-format file (Strata's `qwen4exp-mtp` material) gets no draft role
+    /// even when its path screams `mtp-` — the naming tier must not run on a
+    /// conclusive header.
+    #[test]
+    fn arch_mismatch_is_inert_material() {
+        let mut shape = GgufShape {
+            architecture: "qwen4exp-mtp".into(),
+            block_count: 1,
+            nextn_layers: 0,
+            ple_layers: 0,
+            has_markov_w1: false,
+            has_trunk: false,
+            has_vocab: false,
+            shard_count: 1,
+            tensor_count: 31,
+            alignment: 32,
+            arch_mismatch: true,
+            header_end: 4096,
+        };
+        let (role, facts) = classify_draft_role(
+            Some(&shape),
+            r"C:\infra\Strata-data\mtp\mtp-q2_0.gguf",
+            "mtp-q2_0",
+            None,
+            None,
+        );
+        assert_eq!(role, DraftRole::None, "private format is not a draft");
+        assert!(!facts.baked_mtp);
+        assert!(is_launchable_target(Some(&shape), r"C:\infra\Strata-data\mtp\mtp-q2_0.gguf"));
+
+        // The same file WITHOUT the mismatch flag is a naming-tier head again —
+        // tier 0 fires on the header, not on the folder name. The explicit head
+        // token goes in the FILE NAME (`mtp-head-…`): a bare `mtp-` prefix only
+        // classifies as a head inside the full-copy branch, which needs nextn.
+        let (role, _) = classify_draft_role(None, r"C:\x\mtp-head-q2_0.gguf", "", None, None);
+        assert_eq!(role, DraftRole::ExternalMtp);
+    }
+
     fn qwen4exp_head(nextn: u32, ple: u32) -> GgufShape {
         GgufShape {
             architecture: "qwen4exp".into(),
@@ -635,6 +684,7 @@ mod tests {
             shard_count: 1,
             tensor_count: 34,
             alignment: 32,
+            arch_mismatch: false,
             header_end: 4096,
         }
     }
@@ -685,6 +735,7 @@ mod tests {
             shard_count: 1,
             tensor_count: 0,
             alignment: 32,
+            arch_mismatch: false,
             header_end: 0,
         };
         let (role, facts) = classify_draft_role(

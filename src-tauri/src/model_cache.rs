@@ -505,6 +505,7 @@ mod tests {
             shard_count: 1,
             tensor_count: 1,
             alignment: 32,
+            arch_mismatch: false,
             header_end: 0,
         };
 

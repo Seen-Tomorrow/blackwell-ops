@@ -141,6 +141,10 @@ pub(crate) struct HeaderFacts {
     /// `<arch>.ple.layers` array KVs (int elements) — the PLE layer list. Captured
     /// because `gguf_shape` needs the element count; every other array KV is skipped.
     pub(crate) kv_int_arrays: HashMap<String, Vec<i64>>,
+    /// `general.architecture` plus every `<arch>.block_count` key seen. `gguf_shape`
+    /// uses it to detect a non-registry architecture (e.g. Strata's `qwen4exp-mtp`,
+    /// which shares the `qwen4exp` KV prefix but is not the `qwen4exp` arch).
+    pub(crate) arch_keys: Vec<String>,
     pub(crate) tensors: Vec<TensorInfo>,
 }
 
@@ -185,11 +189,13 @@ pub(crate) fn parse_header<R: Read>(reader: R) -> Result<HeaderFacts, String> {
         } else if key == "general.architecture" && value_type == 8 {
             let value = r.read_string(&format!("Metadata[{i}] value"), MAX_METADATA_STRING)?;
             facts.architecture = Some(value.clone());
-            facts.kv_strings.insert(key, value);
+            facts.kv_strings.insert(key, value.clone());
+            facts.arch_keys.push(value);
         } else if key.ends_with(".block_count") && matches!(value_type, 4 | 5 | 10 | 11) {
             let value = read_int_value(&mut r, value_type)?;
             facts.block_count = Some(value);
-            facts.kv_ints.insert(key, value);
+            facts.kv_ints.insert(key.clone(), value);
+            facts.arch_keys.push(key);
         } else if key.ends_with(".ple.layers") && value_type == 9 {
             let values = read_int_array_value(&mut r)?;
             facts.kv_int_arrays.insert(key, values);

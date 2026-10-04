@@ -104,6 +104,11 @@ export interface GgufShape {
   block_count?: number;
   /** MTP evidence — max N over `blk.N.nextn.*` tensor names. */
   nextnLayers?: number;
+  /** `<arch>.ple.layers` element count — 0/absent means the file declares no PLE. */
+  pleLayers?: number;
+  /** Private format: `general.architecture` disagrees with the `<arch>.block_count`
+   *  prefix (Strata's `qwen4exp-mtp` material). No engine load, no draft role. */
+  archMismatch?: boolean;
   /** DSpark sentinel — `markov_w1.weight` present. */
   hasMarkovW1?: boolean;
   /** Full layer stack present. An external MTP draft is a truncated copy, so blockCount/trunk is the discriminator, not architecture. */

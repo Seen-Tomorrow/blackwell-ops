@@ -292,6 +292,10 @@ function isFullCopyHeadNaming(
 export function draftRoleFromModel(
   model: Pick<ModelEntry, "path" | "name" | "hfModelId" | "sourcePathLabel" | "draftRoleHint" | "ggufShape">,
 ): DraftRole {
+  // Tier 0 mirror of the Rust classifier: a private-format header (Strata's
+  // `qwen4exp-mtp` material) is conclusive — no role, and the naming tier must
+  // not run on it even though the folder is literally `mtp\`.
+  if (model.ggufShape?.archMismatch) return "none";
   const hint = model.draftRoleHint;
   if (hint === "external_dflash" || hint === "external_eagle3" || hint === "external_mtp") {
     return hint;
@@ -332,8 +336,11 @@ export function matchesCatalogDraftFilter(
 
 export function draftRoleBadge(
   role: DraftRole,
-  model?: Pick<ModelEntry, "path" | "name" | "hfModelId" | "sourcePathLabel">,
+  model?: Pick<ModelEntry, "path" | "name" | "hfModelId" | "sourcePathLabel" | "ggufShape">,
 ): string | null {
+  // Private-format material gets its own badge — it is neither a draft nor a
+  // main as far as our engines go (Strata's runtime consumes it, not `-md`).
+  if (model?.ggufShape?.archMismatch) return "STRATA-MTP";
   switch (role) {
     case "external_dflash":
       if (model && catalogDraftSignals(model).some(signalContainsDspark)) return "DSPARK";
