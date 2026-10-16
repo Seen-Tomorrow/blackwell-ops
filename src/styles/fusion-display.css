@@ -4247,7 +4247,7 @@ html[data-industrial-bezel="brush"] {
 
 /* Launch dock + leftover right rail (eject strip stays visible — monitor model switcher) */
 .app-shell[data-monitor-focus="1"] .launch-rail-launch, .app-shell[data-monitor-focus="1"] .config-launch-dock, .app-shell[data-monitor-focus="1"] .config-launch-rail, .app-shell[data-monitor-focus="1"] .launch-rail-split-handle{
-  display: none !important;
+  display: none;
 }
 
 /* Fill remaining width — no reserved catalog gutter */

@@ -350,10 +350,10 @@
 }
 
 .app-shell[data-ui-density="compact"] [data-config-panel] .config-launch-dock .config-launch-btn {
-  min-height: 2rem !important;
-  padding-top: 0.2rem !important;
-  padding-bottom: 0.2rem !important;
-  font-size: var(--type-body) !important;
+  min-height: 2rem;
+  padding-top: 0.2rem;
+  padding-bottom: 0.2rem;
+  font-size: var(--type-body);
   letter-spacing: 0.14em;
 }
 

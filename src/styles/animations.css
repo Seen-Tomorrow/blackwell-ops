@@ -108,6 +108,7 @@
 
 
 /* Launch dock — pinned to bottom of engine config panel, clears fixed footer/console */
+/* Owner: .config-launch-dock base surface (background/texture/border). Contextual overrides: run `npm run css:locate -- .config-launch-dock`. */
 [data-config-panel] .config-launch-dock {
   background: transparent;
   /* Crisp separation edge — bezel-edge-hi is white on ARCTIC → invisible top line */
@@ -161,21 +162,21 @@
 
 [data-config-panel] .config-launch-dock .custom-flags-block:not(.custom-flags-active):not(.custom-flags-replace) .mode-btn-add,
 [data-config-panel] .config-launch-dock__flags-scroll .custom-flags-block:not(.custom-flags-active):not(.custom-flags-replace) .mode-btn-add {
-  background-color: color-mix(in srgb, var(--fixed-green-400) 14%, var(--theme-panel-accent) 86%) !important;
+  background-color: color-mix(in srgb, var(--fixed-green-400) 14%, var(--theme-panel-accent) 86%);
 }
 
 [data-config-panel] .config-launch-dock .custom-flags-block:not(.custom-flags-active):not(.custom-flags-replace) .mode-btn-replace,
 [data-config-panel] .config-launch-dock__flags-scroll .custom-flags-block:not(.custom-flags-active):not(.custom-flags-replace) .mode-btn-replace {
-  background-color: color-mix(in srgb, var(--fixed-red-400) 14%, var(--theme-panel-accent) 86%) !important;
+  background-color: color-mix(in srgb, var(--fixed-red-400) 14%, var(--theme-panel-accent) 86%);
 }
 
 [data-config-panel] .config-launch-dock .custom-flags-block:not(.custom-flags-active):not(.custom-flags-replace) .mode-btn-off,
 [data-config-panel] .config-launch-dock__flags-scroll .custom-flags-block:not(.custom-flags-active):not(.custom-flags-replace) .mode-btn-off {
-  background-color: color-mix(in srgb, var(--fixed-brand-amber) 10%, var(--theme-panel-accent) 90%) !important;
+  background-color: color-mix(in srgb, var(--fixed-brand-amber) 10%, var(--theme-panel-accent) 90%);
 }
 
 [data-config-panel] .config-launch-dock .config-mtp-launch-warn {
-  background-color: color-mix(in srgb, var(--fixed-brand-amber-bright) 14%, var(--theme-panel-accent) 86%) !important;
+  background-color: color-mix(in srgb, var(--fixed-brand-amber-bright) 14%, var(--theme-panel-accent) 86%);
 }
 
 

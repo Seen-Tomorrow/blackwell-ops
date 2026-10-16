@@ -288,3 +288,11 @@ This trade removes ~1,000 literal paint sites and centralizes the palette.
   geometry. Owner note added to launch.css.
 - Segment-switch important 16 -> 0. Source total 343 -> 327; main CSS 336 -> 320.
   User confirmed visual stability.
+
+## .config-launch-dock ownership: zero !important
+
+- Removed compact-density sizing, collapsed min-height, monitor-focus hide,
+  custom-flags mode colors and MTP warn importants; contextual selectors already
+  out-specify base/Tailwind. Owner note added to animations.css.
+- Dock important 10 -> 0. Source total 327 -> 317; main CSS 320 -> 311.
+  User confirmed visual stability.

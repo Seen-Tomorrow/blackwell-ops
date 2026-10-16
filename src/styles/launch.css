@@ -1309,7 +1309,7 @@
 }
 
 [data-config-panel][data-launch-dock-collapsed="true"] .config-launch-dock .config-launch-btn {
-  min-height: 2.25rem !important;
+  min-height: 2.25rem;
 }
 
 [data-config-panel][data-launch-dock-collapsed="true"] .config-launch-dock .config-launch-btn__hint {
