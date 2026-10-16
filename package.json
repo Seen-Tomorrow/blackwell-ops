@@ -26,6 +26,8 @@
     "lint:dead:rust": "cargo machete src-tauri",
     "css:audit": "node scripts/css-tools.mjs audit --check",
     "css:audit:report": "node scripts/css-tools.mjs audit --write-report",
+    "css:locate": "node scripts/css-locate.mjs",
+    "css:map": "node scripts/css-locate.mjs map --write",
     "majestic:check": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode check -Variant full",
     "majestic:check:app": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode check -Variant app",
     "majestic:bump": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode bump",
