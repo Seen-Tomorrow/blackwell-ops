@@ -1005,12 +1005,12 @@
 [data-config-panel] .config-value-segment .value-chip-active,
 [data-config-panel] .config-value-segment button.value-chip-active {
   flex: 0 0 auto;
-  margin: 0 !important;
-  padding: 3px 7px !important;
+  margin: 0;
+  padding: 3px 7px;
   font-size: var(--type-tiny) !important;
   letter-spacing: 0.05em;
   line-height: 1.2;
-  border-radius: 3px !important;
+  border-radius: 3px;
   border: 1px solid transparent !important;
   background: transparent !important;
   color: color-mix(
@@ -1138,7 +1138,7 @@
   z-index: 1;
   background: transparent !important;
   border-color: transparent !important;
-  margin: 0 !important;
+  margin: 0;
 }
 
 [data-config-panel] .config-value-segment.config-value-segment--rail .value-chip:hover {
@@ -1153,7 +1153,7 @@
   border-color: transparent !important;
   box-shadow: none !important;
   color: var(--theme-accent-bright) !important;
-  text-shadow: 0 0 10px color-mix(in srgb, var(--theme-accent-glow) 65%, transparent) !important;
+  text-shadow: 0 0 10px color-mix(in srgb, var(--theme-accent-glow) 65%, transparent);
 }
 
 /* Keep default / user-added / hidden markers readable on the rail */

@@ -148,8 +148,8 @@
 [data-config-panel] .config-launch-dock .config-chip-row .value-chip-active,
 [data-config-panel] .config-launch-dock .custom-flags-input,
 [data-config-panel] .config-launch-dock__flags-scroll .custom-flags-input {
-  background-color: var(--theme-panel-accent) !important;
-  background-image: none !important;
+  background-color: var(--theme-panel-accent);
+  background-image: none;
 }
 
 [data-config-panel] .config-launch-dock input.value-chip-active,

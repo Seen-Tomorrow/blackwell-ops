@@ -248,3 +248,10 @@ This trade removes ~1,000 literal paint sites and centralizes the palette.
 - Base owner note added to `launch.css`.
 - Source `!important`: 419 -> 397; config.css 137 -> 115; chip-rule important
   declarations roughly 90 -> 68. User confirmed zero visual drift.
+
+## .value-chip ownership batch 2
+
+- Removed 7 more `!important` declarations: launch-dock input chip background,
+  config segment margin/padding/border-radius, rail hover text-shadow.
+- Source `!important`: 397 -> 390; main CSS 390 -> 383.
+- User confirmed zero visual drift.
