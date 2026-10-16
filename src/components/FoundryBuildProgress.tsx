@@ -57,7 +57,7 @@ export default function FoundryBuildProgress({
   const footer = waitingForConfirm ? (
     <>
       <button onClick={onCancel}
-        className="fnd-build-btn--danger px-3 py-1 font-mono transition-colors">
+        className="fnd-build-btn fnd-build-btn--danger px-3 py-1 font-mono transition-colors">
         REJECT — ABORT
       </button>
       <button
@@ -71,7 +71,7 @@ export default function FoundryBuildProgress({
   ) : !isComplete && !isError ? (
     <>
       <button onClick={onCancel}
-        className="fnd-build-btn--danger px-3 py-1 font-mono transition-colors">
+        className="fnd-build-btn fnd-build-btn--danger px-3 py-1 font-mono transition-colors">
         CANCEL BUILD
       </button>
       <button type="button" onClick={onMinimize} className="foundry-minimize-btn">
@@ -86,7 +86,7 @@ export default function FoundryBuildProgress({
   ) : (
     <div className="flex flex-col items-end gap-0.5">
       <button onClick={onClose}
-        className="fnd-build-btn--danger px-3 py-1 font-mono transition-colors">
+        className="fnd-build-btn fnd-build-btn--danger px-3 py-1 font-mono transition-colors">
         HIDE WINDOW
       </button>
       <span className="fnd-build-note--danger type-micro font-mono text-right leading-none">

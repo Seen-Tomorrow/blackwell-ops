@@ -568,8 +568,8 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
         onMinimize={onMinimize}
         footer={(
           <>
-            <button onClick={handleCancel} className="fnd-confirm-btn--danger px-3 py-1 font-mono">CANCEL BUILD</button>
-            <button onClick={handleBackupLockedYes} className="fnd-confirm-btn--accent px-4 py-1 font-mono rounded-sm">YES — STOP ENGINES &amp; PROCEED</button>
+            <button onClick={handleCancel} className="fnd-confirm-btn fnd-confirm-btn--danger px-3 py-1 font-mono">CANCEL BUILD</button>
+            <button onClick={handleBackupLockedYes} className="fnd-confirm-btn fnd-confirm-btn--accent px-4 py-1 font-mono rounded-sm">YES — STOP ENGINES &amp; PROCEED</button>
           </>
         )}
       >
@@ -620,7 +620,7 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
         footer={(
           <button
             onClick={handleCancel}
-            className="fnd-confirm-btn--danger px-4 py-1 font-mono"
+            className="fnd-confirm-btn fnd-confirm-btn--danger px-4 py-1 font-mono"
           >
             CANCEL BUILD
           </button>

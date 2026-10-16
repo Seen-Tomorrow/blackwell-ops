@@ -333,7 +333,7 @@ export default function DistributionDevPanel() {
               type="button"
               disabled={busy}
               onClick={() => void runAction("bump")}
-              className="fnd-dev-btn--warn type-body font-mono uppercase tracking-wider px-3 py-1.5 rounded-sm border disabled:opacity-40"
+              className="fnd-dev-btn fnd-dev-btn--warn type-body font-mono uppercase tracking-wider px-3 py-1.5 rounded-sm border disabled:opacity-40"
               title="Bump patch version only (e.g. 1.0.18 → 1.0.19). No pack/ship."
             >
               BUMP
@@ -342,7 +342,7 @@ export default function DistributionDevPanel() {
               type="button"
               disabled={busy}
               onClick={() => void runAction("bump_pi")}
-              className="fnd-dev-btn--danger type-body font-mono uppercase tracking-wider px-3 py-1.5 rounded-sm border disabled:opacity-40"
+              className="fnd-dev-btn fnd-dev-btn--danger type-body font-mono uppercase tracking-wider px-3 py-1.5 rounded-sm border disabled:opacity-40"
               title="Pin the shipped pi to the DEV-installed (tested) version (src-tauri/pi-pinned-version.txt). Release binary embeds it. No pack/ship."
             >
               BUMP HARNESS
@@ -364,19 +364,19 @@ export default function DistributionDevPanel() {
               type="button"
               disabled={busy}
               onClick={() => void runAction("pack_ship_app")}
-              className="fnd-dev-btn--info type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border disabled:opacity-40"
+              className="fnd-dev-btn fnd-dev-btn--info type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border disabled:opacity-40"
               title="Bump patch + pack App .7z + ship (no YES prompt)"
             >
               Pack+Ship App
             </button>
-            <span className="fnd-dev-btn--info-ghost type-label font-mono uppercase px-2 py-0.5 rounded-sm border disabled:opacity-40">
+            <span className="fnd-dev-btn fnd-dev-btn--info-ghost type-label font-mono uppercase px-2 py-0.5 rounded-sm border disabled:opacity-40">
               <button type="button" disabled={busy} onClick={() => void runAction("check_app")} className="disabled:opacity-40">Check</button>
             </span>
             <button
               type="button"
               disabled={busy}
               onClick={() => void runAction("pack_app")}
-              className="fnd-dev-btn--info-ghost type-tiny font-mono uppercase px-2 py-0.5 rounded-sm border disabled:opacity-40"
+              className="fnd-dev-btn fnd-dev-btn--info-ghost type-tiny font-mono uppercase px-2 py-0.5 rounded-sm border disabled:opacity-40"
             >
               Pack only
             </button>
@@ -384,7 +384,7 @@ export default function DistributionDevPanel() {
               type="button"
               disabled={busy}
               onClick={() => void runAction("ship_app")}
-              className="fnd-dev-btn--info-ghost type-tiny font-mono uppercase px-2 py-0.5 rounded-sm border disabled:opacity-40"
+              className="fnd-dev-btn fnd-dev-btn--info-ghost type-tiny font-mono uppercase px-2 py-0.5 rounded-sm border disabled:opacity-40"
               title="Ship staged App assets for current version tag (no pack)"
             >
               Ship only
@@ -401,7 +401,7 @@ export default function DistributionDevPanel() {
               type="button"
               disabled={busy}
               onClick={() => void runAction("pack_ship_full")}
-              className="fnd-dev-btn--accent type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border disabled:opacity-40"
+              className="fnd-dev-btn fnd-dev-btn--accent type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border disabled:opacity-40"
               title="Bump patch + pack Full NSIS (ggml-master) + ship"
             >
               Pack+Ship Full
@@ -410,7 +410,7 @@ export default function DistributionDevPanel() {
               type="button"
               disabled={busy}
               onClick={() => void runAction("check_full")}
-              className="fnd-dev-btn--accent-ghost type-label font-mono uppercase tracking-wider px-2 py-1 rounded-sm border disabled:opacity-40"
+              className="fnd-dev-btn fnd-dev-btn--accent-ghost type-label font-mono uppercase tracking-wider px-2 py-1 rounded-sm border disabled:opacity-40"
             >
               Check
             </button>
@@ -418,7 +418,7 @@ export default function DistributionDevPanel() {
               type="button"
               disabled={busy}
               onClick={() => void runAction("pack_full")}
-              className="fnd-dev-btn--accent-ghost type-tiny font-mono uppercase px-2 py-0.5 rounded-sm border disabled:opacity-40"
+              className="fnd-dev-btn fnd-dev-btn--accent-ghost type-tiny font-mono uppercase px-2 py-0.5 rounded-sm border disabled:opacity-40"
             >
               Pack only
             </button>
@@ -426,7 +426,7 @@ export default function DistributionDevPanel() {
               type="button"
               disabled={busy}
               onClick={() => void runAction("ship_full")}
-              className="fnd-dev-btn--accent-ghost type-tiny font-mono uppercase px-2 py-0.5 rounded-sm border disabled:opacity-40"
+              className="fnd-dev-btn fnd-dev-btn--accent-ghost type-tiny font-mono uppercase px-2 py-0.5 rounded-sm border disabled:opacity-40"
               title="Ship staged Full assets for current version tag (no pack)"
             >
               Ship only
@@ -453,7 +453,7 @@ export default function DistributionDevPanel() {
               type="button"
               disabled={busy}
               onClick={() => void runAction("pack_ship_all_providers")}
-              className="fnd-dev-btn--warn type-label font-mono uppercase tracking-wider px-3 py-1.5 rounded-sm border disabled:opacity-40"
+              className="fnd-dev-btn fnd-dev-btn--warn type-label font-mono uppercase tracking-wider px-3 py-1.5 rounded-sm border disabled:opacity-40"
               title="Pack + ship EVERY provider/profile in distribution-policy.json in one pass (plugins + core ggml-master), one after another. Uses current version tag (no bump)."
             >
               Pack+Ship All Providers (Plugins + Core GGML)

@@ -452,7 +452,7 @@ export function RestoreConfirmModal({ providerId, env, onConfirm, onCancel }: {
           </div>
         </div>
         <div className="flex items-center justify-end gap-2 px-4 py-3 border-t fnd-modal-rule">
-          <button onClick={onCancel} className="value-chip fnd-confirm-btn--danger type-label font-mono px-3 py-1 rounded-sm">NO — CANCEL</button>
+          <button onClick={onCancel} className="fnd-confirm-btn value-chip fnd-confirm-btn--danger type-label font-mono px-3 py-1 rounded-sm">NO — CANCEL</button>
           <button onClick={onConfirm} className="value-chip-active fnd-confirm-btn type-label font-mono px-4 py-1 rounded-sm">YES — RESTORE</button>
         </div>
       </div>

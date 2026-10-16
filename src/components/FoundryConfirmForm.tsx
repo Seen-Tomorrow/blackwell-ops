@@ -283,18 +283,18 @@ export default function FoundryConfirmForm({
   const footer = showEngineWarning ? (
     <>
       <button onClick={onEngineWarningCancel}
-        className="fnd-confirm-btn--danger px-3 py-1 font-mono transition-colors">
+        className="fnd-confirm-btn fnd-confirm-btn--danger px-3 py-1 font-mono transition-colors">
         CANCEL — HANDLE MANUALLY
       </button>
       <button onClick={onEngineWarningProceed}
-        className="fnd-confirm-btn--danger-solid px-4 py-1 font-mono rounded-sm transition-all">
+        className="fnd-confirm-btn fnd-confirm-btn--danger-solid px-4 py-1 font-mono rounded-sm transition-all">
         STOP ENGINES & PROCEED
       </button>
     </>
   ) : (
     <>
       <button onClick={onClose}
-        className="fnd-confirm-btn--danger px-3 py-1 font-mono transition-colors">
+        className="fnd-confirm-btn fnd-confirm-btn--danger px-3 py-1 font-mono transition-colors">
         CLOSE
       </button>
       <button type="button" onClick={onMinimize} className="foundry-minimize-btn">

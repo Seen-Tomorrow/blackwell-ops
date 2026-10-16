@@ -78,12 +78,6 @@
   font-size: var(--type-label);
 }
 
-.fnd-confirm-btn--danger {
-  font-size: var(--type-label);
-  color: var(--theme-danger);
-  border-color: var(--theme-danger);
-}
-
 /* ── FoundryBuildProgress ──────────────────────────────────── */
 
 /* Footer action buttons — accent (success) + danger variants */
@@ -97,9 +91,7 @@
   background: color-mix(in srgb, var(--theme-accent) 20%, transparent);
 }
 
-.fnd-build-btn--danger {
-  font-size: var(--type-label);
-  border: 1px solid color-mix(in srgb, var(--theme-danger) 60%, transparent);
+.fnd-build-btn--danger { border: 1px solid color-mix(in srgb, var(--theme-danger) 60%, transparent);
   color: var(--theme-danger);
 }
 
@@ -152,9 +144,7 @@
 /* ── FoundryConfirmForm ────────────────────────────────────── */
 
 /* Footer buttons (reuse FoundryComponents confirm styles where identical) */
-.fnd-confirm-btn--danger {
-  font-size: var(--type-label);
-  border: 1px solid color-mix(in srgb, var(--theme-danger) 60%, transparent);
+.fnd-confirm-btn--danger { border: 1px solid color-mix(in srgb, var(--theme-danger) 60%, transparent);
   color: var(--theme-danger);
 }
 
@@ -162,9 +152,7 @@
   background: color-mix(in srgb, var(--theme-danger) 20%, transparent);
 }
 
-.fnd-confirm-btn--danger-solid {
-  font-size: var(--type-label);
-  background: color-mix(in srgb, var(--theme-danger) 20%, transparent);
+.fnd-confirm-btn--danger-solid { background: color-mix(in srgb, var(--theme-danger) 20%, transparent);
   border: 1px solid color-mix(in srgb, var(--theme-danger) 60%, transparent);
   color: var(--theme-danger);
 }
@@ -419,9 +407,7 @@
 /* ── FoundryModal ──────────────────────────────────────────── */
 
 /* Backup-locked "YES — STOP ENGINES & PROCEED" (nv-green/20 fill, /60 border) */
-.fnd-confirm-btn--accent {
-  font-size: var(--type-label);
-  background: color-mix(in srgb, var(--theme-accent) 20%, transparent);
+.fnd-confirm-btn--accent { background: color-mix(in srgb, var(--theme-accent) 20%, transparent);
   border: 1px solid color-mix(in srgb, var(--theme-accent) 60%, transparent);
   color: var(--theme-accent);
 }
@@ -655,66 +641,25 @@
 
 .fnd-dev-section-title--warn {
   color: color-mix(in srgb, var(--theme-warn) 90%, transparent);
+}/* Primitive: Foundry dev button — tone via --fnd-*; variants only set props. */
+.fnd-dev-btn {
+  --fnd-tone: var(--theme-accent);
+  border-color: color-mix(in srgb, var(--fnd-tone) var(--fnd-border-mix, 50%), transparent);
+  color: color-mix(in srgb, var(--fnd-tone) var(--fnd-color-mix, 100%), transparent);
 }
+.fnd-dev-btn:not(.fnd-dev-btn--info-ghost):not(.fnd-dev-btn--accent-ghost) {
+  background-color: color-mix(in srgb, var(--fnd-tone) var(--fnd-bg-mix, 10%), transparent);
+}
+.fnd-dev-btn:hover {
+  background-color: color-mix(in srgb, var(--fnd-tone) var(--fnd-bg-mix-hover, 15%), transparent);
+}
+.fnd-dev-btn--warn { --fnd-tone: var(--theme-warn); }
+.fnd-dev-btn--danger { --fnd-tone: var(--theme-danger); --fnd-color-mix: 70%; }
+.fnd-dev-btn--info { --fnd-tone: var(--theme-info); --fnd-color-mix: 70%; }
+.fnd-dev-btn--info-ghost { --fnd-tone: var(--theme-info); --fnd-border-mix: 25%; --fnd-color-mix: 70%; --fnd-bg-mix: 0%; --fnd-bg-mix-hover: 10%; }
+.fnd-dev-btn--accent { --fnd-tone: var(--theme-accent); }
+.fnd-dev-btn--accent-ghost { --fnd-tone: var(--theme-accent); --fnd-border-mix: 30%; --fnd-color-mix: 80%; --fnd-bg-mix: 0%; --fnd-bg-mix-hover: 10%; }
 
-/* Action buttons — warn (yellow), danger (fuchsia), info (cyan), accent (nv-green) */
-.fnd-dev-btn--warn {
-  border-color: color-mix(in srgb, var(--theme-warn) 50%, transparent);
-  color: var(--theme-warn);
-  background: color-mix(in srgb, var(--theme-warn) 10%, transparent);
-}
-
-.fnd-dev-btn--warn:hover {
-  background: color-mix(in srgb, var(--theme-warn) 15%, transparent);
-}
-
-.fnd-dev-btn--danger {
-  border-color: color-mix(in srgb, var(--theme-danger) 50%, transparent);
-  color: color-mix(in srgb, var(--theme-danger) 70%, transparent);
-  background: color-mix(in srgb, var(--theme-danger) 10%, transparent);
-}
-
-.fnd-dev-btn--danger:hover {
-  background: color-mix(in srgb, var(--theme-danger) 15%, transparent);
-}
-
-.fnd-dev-btn--info {
-  border-color: color-mix(in srgb, var(--theme-info) 50%, transparent);
-  color: color-mix(in srgb, var(--theme-info) 70%, transparent);
-  background: color-mix(in srgb, var(--theme-info) 10%, transparent);
-}
-
-.fnd-dev-btn--info:hover {
-  background: color-mix(in srgb, var(--theme-info) 15%, transparent);
-}
-
-.fnd-dev-btn--info-ghost {
-  border-color: color-mix(in srgb, var(--theme-info) 25%, transparent);
-  color: color-mix(in srgb, var(--theme-info) 70%, transparent);
-}
-
-.fnd-dev-btn--info-ghost:hover {
-  background: color-mix(in srgb, var(--theme-info) 10%, transparent);
-}
-
-.fnd-dev-btn--accent {
-  border-color: color-mix(in srgb, var(--theme-accent) 50%, transparent);
-  color: var(--theme-accent);
-  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
-}
-
-.fnd-dev-btn--accent:hover {
-  background: color-mix(in srgb, var(--theme-accent) 15%, transparent);
-}
-
-.fnd-dev-btn--accent-ghost {
-  border-color: color-mix(in srgb, var(--theme-accent) 30%, transparent);
-  color: color-mix(in srgb, var(--theme-accent) 80%, transparent);
-}
-
-.fnd-dev-btn--accent-ghost:hover {
-  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
-}
 
 /* Current version note (white/80) */
 .fnd-dev-current__v {
