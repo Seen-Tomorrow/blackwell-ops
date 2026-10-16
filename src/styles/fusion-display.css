@@ -3183,9 +3183,9 @@ mult chip. * (Do not chain unfinished selectors — a prior strip accidentally p
 .bench-widget-panel .bench-concurrency-chip.value-chip-active,
 .bench-widget-panel .value-chip-active,
 .bench-widget-panel .bench-concurrency-chip.value-chip-active{
-  background: var(--display-face-control-active-bg) !important;
-  border-color: var(--display-face-control-active-border) !important;
-  color: var(--display-face-control-active-text) !important;
+  background: var(--display-face-control-active-bg);
+  border-color: var(--display-face-control-active-border);
+  color: var(--display-face-control-active-text);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--display-face-control-active-border) 45%, transparent);
 }
 

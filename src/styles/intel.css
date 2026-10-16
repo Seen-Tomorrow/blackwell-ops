@@ -84,9 +84,9 @@
 }
 
 [data-model-hub] .value-chip-active {
-  background: var(--theme-chip-active-bg) !important;
-  border-color: var(--theme-chip-active-border) !important;
-  color: var(--theme-chip-active-text) !important;
+  background: var(--theme-chip-active-bg);
+  border-color: var(--theme-chip-active-border);
+  color: var(--theme-chip-active-text);
 }
 
 [data-model-catalog] .text-white {

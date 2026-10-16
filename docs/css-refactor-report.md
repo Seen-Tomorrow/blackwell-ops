@@ -255,3 +255,12 @@ This trade removes ~1,000 literal paint sites and centralizes the palette.
   config segment margin/padding/border-radius, rail hover text-shadow.
 - Source `!important`: 397 -> 390; main CSS 390 -> 383.
 - User confirmed zero visual drift.
+
+## .value-chip ownership batch 3a (active state)
+
+- Owner `.value-chip-active` raised to specificity 20 and `!important` removed
+  (still beats Tailwind utilities without important).
+- Active-state overrides in config segments/rail, Fusion bench, Intel hub and
+  launch dock lost their `!important`.
+- Source `!important`: 390 -> 370; main CSS 383 -> 363; chip-rule important
+  56 -> 36. User confirmed zero visual drift on active states.

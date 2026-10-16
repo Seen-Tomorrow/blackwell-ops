@@ -154,9 +154,9 @@
 
 [data-config-panel] .config-launch-dock input.value-chip-active,
 [data-config-panel] .config-launch-dock .config-chip-row .value-chip-active {
-  background-color: var(--theme-chip-solid-bg) !important;
-  color: var(--theme-chip-solid-text) !important;
-  border-color: var(--theme-chip-solid-bg) !important;
+  background-color: var(--theme-chip-solid-bg);
+  color: var(--theme-chip-solid-text);
+  border-color: var(--theme-chip-solid-bg);
 }
 
 [data-config-panel] .config-launch-dock .custom-flags-block:not(.custom-flags-active):not(.custom-flags-replace) .mode-btn-add,
