@@ -354,7 +354,7 @@
   padding-top: 0.2rem !important;
   padding-bottom: 0.2rem !important;
   font-size: 10px !important;
-  letter-spacing: 0.14em !important;
+  letter-spacing: 0.14em;
 }
 
 .app-shell[data-ui-density="compact"] [data-config-panel] .config-launch-dock .config-launch-btn__hint {
@@ -450,14 +450,6 @@
   margin-top: 0.125rem !important;
   padding-top: 0.125rem !important;
   padding-bottom: 0.125rem !important;
-}
-
-.app-header-title {
-  color: var(--theme-header-title);
-}
-
-.app-header-subtitle {
-  color: var(--theme-header-subtitle);
 }
 
 .app-header-logo {
@@ -1072,29 +1064,12 @@
   min-width: 0;
 }
 
-.app-appearance-section__chips {
-  flex: 1 1 auto;
-  flex-wrap: nowrap;
-}
-
-.app-chrome-control {
-  border: 1px solid var(--theme-chrome-control-border);
-}
-
 .app-chrome-control-btn {
   color: var(--theme-chrome-control-text);
 }
 
 .app-chrome-control-btn:hover {
   color: var(--theme-chrome-control-hover);
-}
-
-.app-chrome-muted {
-  color: var(--theme-chrome-control-text);
-}
-
-.app-chrome-muted:hover {
-  color: var(--theme-nav-hover-text);
 }
 
 .app-footer {
@@ -1283,11 +1258,6 @@
     var(--boc-sync) 78%,
     var(--theme-accent) 22%
   );
-}
-
-/* System UI monospace — FORECAST layer captions, bar inset labels */
-.system-console-mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
 /* Output console log typography — live line + expanded body share one face */
@@ -1529,11 +1499,6 @@
   40% {
     opacity: 1;
   }
-}
-
-.foundry-status-chip__icon {
-  display: inline-block;
-  transform-origin: center bottom;
 }
 
 .foundry-status-chip__body {
@@ -2685,47 +2650,6 @@
   0% { opacity: 0; transform: translateY(4px); }
   50% { opacity: 1; transform: translateY(-2px); }
   100% { opacity: 1; transform: translateY(0); }
-}
-
-/* VRAM progress bar */
-.vram-bar-track {
-  background: rgba(17, 17, 24, 0.8);
-  border: 1px solid rgba(26, 26, 46, 0.6);
-  height: 12px;
-  border-radius: 1px;
-  overflow: hidden;
-}
-
-.vram-bar-fill {
-  height: 100%;
-  border-radius: 1px;
-  transition: width 1s ease-out;
-  position: relative;
-}
-
-.vram-bar-fill::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 20px;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3));
-}
-
-.vram-bar-fit {
-  background: linear-gradient(90deg, #76B900, #88cc00);
-  box-shadow: 0 0 8px rgba(118, 185, 0, 0.4);
-}
-
-.vram-bar-warn {
-  background: linear-gradient(90deg, #FFB800, #ffcc00);
-  box-shadow: 0 0 8px rgba(255, 184, 0, 0.4);
-}
-
-.vram-bar-overflow {
-  background: linear-gradient(90deg, #ff3333, #ff6644);
-  box-shadow: 0 0 8px rgba(255, 51, 51, 0.4);
 }
 
 /* glitch-text removed — unused + glitchFlicker keyframes never defined */

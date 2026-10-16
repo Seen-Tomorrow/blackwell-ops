@@ -4,10 +4,7 @@
   to { opacity: 1; }
 }
 
-@keyframes pulseScale {
-  0%, 100% { transform: scale(1); opacity: 0.6; }
-  50% { transform: scale(1.15); opacity: 1; }
-}
+
 
 /* ── EngineBanner animations ─── */
 @keyframes bannerEnter {
@@ -15,41 +12,13 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes bannerFadeDelayed {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
 
-@keyframes bannerSlideIn {
-  from { opacity: 0; transform: translateX(10px); }
-  to { opacity: 1; transform: translateX(0); }
-}
 
-@keyframes bannerDotPulse {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 1; }
-}
 
-@keyframes bannerLoadPulse {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 1; }
-}
 
-.banner-enter-anim {
-  animation: bannerEnter 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
-}
 
-.banner-fade-delayed {
-  animation: bannerFadeDelayed 0.5s ease-out 0.2s both;
-}
 
-.banner-slide-in {
-  animation: bannerSlideIn 0.4s ease-out 0.3s both;
-}
 
-.banner-dot-pulse {
-  animation: bannerDotPulse 2s ease-in-out infinite;
-}
 
 /* ── GpuTopology animations ─── */
 @keyframes gpuCardEnter {
@@ -57,9 +26,7 @@
   to { opacity: 1; }
 }
 
-@keyframes gpuBarFill {
-  from { width: 0 !important; }
-}
+
 
 .gpu-card-enter {
   animation: gpuCardEnter 0.3s ease-out both;
@@ -219,10 +186,6 @@
   padding-bottom: 0.5rem;
   scrollbar-gutter: stable;
   overflow-x: hidden;
-  min-width: 0;
-}
-
-[data-config-panel] .config-params-columns {
   min-width: 0;
 }
 

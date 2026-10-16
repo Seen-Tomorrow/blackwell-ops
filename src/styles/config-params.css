@@ -39,8 +39,6 @@
 .cfg-mut--a20 { color: color-mix(in srgb, var(--theme-text-muted) 20%, transparent); }
 .cfg-mut--a25 { color: color-mix(in srgb, var(--theme-text-muted) 25%, transparent); }
 .cfg-mut--a30 { color: color-mix(in srgb, var(--theme-text-muted) 30%, transparent); }
-.cfg-mut--a35 { color: color-mix(in srgb, var(--theme-text-muted) 35%, transparent); }
-.cfg-mut--a45 { color: color-mix(in srgb, var(--theme-text-muted) 45%, transparent); }
 .cfg-mut--a50 { color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent); }
 .cfg-mut--a55 { color: color-mix(in srgb, var(--theme-text-muted) 55%, transparent); }
 .cfg-mut--a60 { color: color-mix(in srgb, var(--theme-text-muted) 60%, transparent); }
@@ -55,7 +53,6 @@
 .cfg-acc--a80 { color: color-mix(in srgb, var(--theme-accent) 80%, transparent); }
 .cfg-acc--a90 { color: color-mix(in srgb, var(--theme-accent) 90%, transparent); }
 .cfg-warn--a35 { color: color-mix(in srgb, var(--theme-warn) 35%, transparent); }
-.cfg-warn--a50 { color: color-mix(in srgb, var(--theme-warn) 50%, transparent); }
 .cfg-warn--a70 { color: color-mix(in srgb, var(--theme-warn) 70%, transparent); }
 .cfg-warn--a80 { color: color-mix(in srgb, var(--theme-warn) 80%, transparent); }
 .cfg-warn--a90 { color: color-mix(in srgb, var(--theme-warn) 90%, transparent); }
@@ -72,7 +69,6 @@
 .cfg-bord { border-color: var(--theme-border); }
 .cfg-bord--acc { border-color: var(--theme-accent); }
 .cfg-bord--warn { border-color: var(--theme-warn); }
-.cfg-bord--dng { border-color: var(--theme-danger); }
 
 /* ══ border-color — alpha tints ═══════════════════════════════════ */
 .cfg-bord--a20 { border-color: color-mix(in srgb, var(--theme-border) 20%, transparent); }
@@ -96,7 +92,6 @@
 .cfg-bord--dng--a35 { border-color: color-mix(in srgb, var(--theme-danger) 35%, transparent); }
 .cfg-bord--dng--a40 { border-color: color-mix(in srgb, var(--theme-danger) 40%, transparent); }
 .cfg-bord--dng--a55 { border-color: color-mix(in srgb, var(--theme-danger) 55%, transparent); }
-.cfg-bord--dng--a60 { border-color: color-mix(in srgb, var(--theme-danger) 60%, transparent); }
 
 /* ══ fill (solid 100% = token + on-color) ═════════════════════════ */
 .cfg-fill { background: var(--theme-accent); color: var(--theme-on-accent); }
@@ -120,7 +115,6 @@
 .cfg-fill--warn--a40 { background: color-mix(in srgb, var(--theme-warn) 40%, transparent); }
 .cfg-fill--dng--a5 { background: color-mix(in srgb, var(--theme-danger) 5%, transparent); }
 .cfg-fill--dng--a10 { background: color-mix(in srgb, var(--theme-danger) 10%, transparent); }
-.cfg-fill--dng--a20 { background: color-mix(in srgb, var(--theme-danger) 20%, transparent); }
 
 /* ══ surface ══════════════════════════════════════════════════════ */
 .cfg-panel { background: var(--theme-panel); }
@@ -129,9 +123,7 @@
 
 /* ══ control accents ══════════════════════════════════════════════ */
 .cfg-accent { accent-color: var(--theme-accent); }
-.cfg-ring--inf { box-shadow: 0 0 0 1px var(--theme-info); }
 .cfg-ring--inf--a70 { box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-info) 70%, transparent); }
-.cfg-dec { text-decoration-color: var(--theme-text-muted); }
 .cfg-dec--a40 { text-decoration-color: color-mix(in srgb, var(--theme-text-muted) 40%, transparent); }
 
 /* ══ interactive states (only where the value differs from base) ══ */
@@ -139,7 +131,5 @@
 .cfg-mut:hover { color: var(--theme-accent); }
 /* hover lifts muted → warn (was hover:text-yellow-400) */
 .cfg-mut:hover.cfg-warn { color: var(--theme-warn); }
-/* focus ring on the CTX slider thumb (was focus-visible:ring-cyan-400/70) */
-.cfg-ring--inf:focus-visible { box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-info) 70%, transparent); }
 /* placeholder ink (was placeholder:text-stealth-muted/50) */
 .cfg-mut::placeholder { color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent); }

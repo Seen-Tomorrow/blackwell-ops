@@ -406,7 +406,7 @@
 
 /* Right config panel already uses eink-panel-wrapper panel-accent — no double edge */
 [data-model-catalog] .catalog-split-workspace > .eink-panel-wrapper:not(.catalog-list-panel) {
-  border-left: none !important;
+  border-left: none;
   box-shadow: none !important;
 }
 
@@ -566,22 +566,6 @@
   display: none;
 }
 
-/* Neon glow borders */
-.neon-border-green {
-  border-color: rgba(118, 185, 0, 0.4) !important;
-  box-shadow: 0 0 8px rgba(118, 185, 0, 0.2), inset 0 0 8px rgba(118, 185, 0, 0.05);
-}
-
-.neon-border-cyan {
-  border-color: rgba(0, 229, 255, 0.4) !important;
-  box-shadow: 0 0 8px rgba(0, 229, 255, 0.2), inset 0 0 8px rgba(0, 229, 255, 0.05);
-}
-
-.neon-border-magenta {
-  border-color: rgba(255, 0, 170, 0.4) !important;
-  box-shadow: 0 0 8px rgba(255, 0, 170, 0.2), inset 0 0 8px rgba(255, 0, 170, 0.05);
-}
-
 /* Model catalog — skip paint for off-screen cards; stable intrinsic height for scroll */
 [data-model-path] {
   content-visibility: auto;
@@ -625,10 +609,6 @@
   color: var(--theme-dflash-strip-text);
   border: 1px solid var(--theme-dflash-strip-border, color-mix(in srgb, #a78bfa 50%, transparent));
   background: color-mix(in srgb, var(--theme-dflash-strip-bg) 55%, transparent);
-}
-
-.catalog-sort-bar {
-  min-width: 0;
 }
 
 .catalog-sort-group {
@@ -742,8 +722,8 @@
   border-color: var(--theme-catalog-card-border) !important;
   box-shadow: var(--theme-catalog-card-shadow) !important;
   border-radius: 8px;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 [data-model-catalog] .model-catalog-card.buried-card:hover,
@@ -801,14 +781,6 @@
   gap: 0.25rem;
   flex-shrink: 0;
   min-width: 0;
-}
-
-[data-model-catalog] .model-card-badges__stack {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-  flex-shrink: 0;
 }
 
 /* Size + date footer meta — size is the primary weight readout */
@@ -879,14 +851,6 @@
   transform: translateY(0);
 }
 
-/* FIT badge kept for any residual callsites — quiet meta, not a status beacon */
-[data-model-catalog] .model-card-fit-badge {
-  color: var(--theme-catalog-fit-fg) !important;
-  border-color: var(--theme-catalog-fit-border) !important;
-  background: var(--theme-catalog-fit-bg) !important;
-  opacity: var(--theme-catalog-fit-opacity, 0.55);
-}
-
 /* Badges on catalog cards — mono mute (less cyan/green noise) */
 [data-model-catalog] .model-card-quant-badge,
 [data-model-catalog] .model-card-quant-badge--cyan,
@@ -924,60 +888,6 @@
 
 [data-model-catalog] .model-catalog-card .mcard-inkchip {
   color: var(--theme-text) !important;
-}
-
-/* ── E-ink Card — glass panel over eink surface ─── */
-.eink-card {
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.03) 0%,
-    rgba(255, 255, 255, 0.01) 100%
-  );
-  /* Dim only — no backdrop-filter blur (WebView GPU cost) */
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-top-color: rgba(255, 255, 255, 0.10);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    0 1px 2px rgba(0, 0, 0, 0.3);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
-  overflow: hidden;
-}
-
-.eink-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    var(--theme-chip-border) 50%,
-    transparent 100%
-  );
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-
-.eink-card:hover {
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.05) 0%,
-    rgba(255, 255, 255, 0.02) 100%
-  );
-  border-color: var(--theme-chip-border);
-  border-top-color: var(--theme-chip-hover-border);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 0 16px var(--theme-accent-soft),
-    0 2px 8px rgba(0, 0, 0, 0.4);
-  transform: translateY(-1px);
-}
-
-.eink-card:hover::before {
-  opacity: 1;
 }
 
 /* ── E-ink Scrollbar ─── */

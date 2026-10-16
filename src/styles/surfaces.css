@@ -7,13 +7,7 @@
  * selectors below keep their own live utilities.
  */
 
-.divide-stealth-border > :not([hidden]) ~ :not([hidden]),
-.divide-stealth-border\/30 > :not([hidden]) ~ :not([hidden]),
-.divide-stealth-border\/40 > :not([hidden]) ~ :not([hidden]),
-.divide-stealth-border\/50 > :not([hidden]) ~ :not([hidden]),
-.divide-stealth-border\/60 > :not([hidden]) ~ :not([hidden]) {
-  border-color: var(--theme-frame-border, var(--theme-border-subtle)) !important;
-}
+
 
 /* ── Shared theme surfaces — reusable across tabs ─── */
 .theme-surface {
@@ -69,10 +63,6 @@
   color: var(--theme-text-muted);
 }
 
-.theme-bar-track {
-  background: var(--theme-industrial-bar-track);
-}
-
 /* ENGINE LOGS — slot switcher (wrap grid, scales to many engines) */
 .engine-logs-switcher {
   display: flex;
@@ -95,33 +85,11 @@
   border-bottom: 1px solid var(--theme-border-subtle);
 }
 
-.engine-logs-switcher__title {
-  display: flex;
-  align-items: baseline;
-  gap: 0.625rem;
-  min-width: 0;
-}
-
-.engine-logs-switcher__heading {
-  font-size: 11px;
-  font-family: ui-monospace, monospace;
-  letter-spacing: 0.12em;
-  color: var(--theme-accent-bright);
-  flex-shrink: 0;
-}
-
 .engine-logs-switcher__count {
   font-size: 8px;
   font-family: ui-monospace, monospace;
   color: var(--theme-text-muted);
   white-space: nowrap;
-}
-
-.engine-logs-switcher__controls {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-shrink: 0;
 }
 
 .engine-logs-switcher__ansi-toggle {

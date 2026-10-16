@@ -1,5 +1,6 @@
 /* Domain partials must @import before @tailwind (postcss rule).
-   Theme paint: app-themes.ts only — no [data-theme=…] forks in partials. */
+   Theme paint: app-themes.ts only — no [data-theme=…] forks in partials.
+   Import order is canonical and enforced by `npm run css:audit`. */
 @import "./styles/tokens-base.css";
 @import "./styles/utilities.css";
 @import "./styles/chrome.css";

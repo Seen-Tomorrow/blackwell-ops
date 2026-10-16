@@ -5,7 +5,6 @@ import App from "./App";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { createRoot } from "react-dom/client";
 import "./index.css";
-import "./controls.css";
 import { applyNativeWindowTheme } from "./lib/nativeWindowTheme";
 import { applyAppTheme, getThemeById } from "./themes/app-themes";
 import {

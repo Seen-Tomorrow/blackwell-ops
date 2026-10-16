@@ -113,11 +113,6 @@
   flex-shrink: 0;
 }
 
-.boc-version-badge {
-  border: 1px solid rgba(0, 0, 0, 0.4);
-  color: #000000;
-}
-
 .boc-tab--toolbar {
   padding: 0.125rem 0.5rem;
   font-size: 8px;
@@ -138,22 +133,6 @@
   background: #000000;
   border-color: #000000;
   color: var(--boc-amber);
-}
-
-.boc-tab--error {
-  color: #b91c1c;
-  border-color: rgba(0, 0, 0, 0.2);
-}
-
-.boc-tab--error:hover {
-  color: #ef4444;
-  border-color: #991b1b;
-}
-
-.boc-tab--error-active {
-  background: #000000;
-  border-color: #ef4444;
-  color: #f87171;
 }
 
 .boc-divider {
@@ -254,8 +233,4 @@
     opacity: 1;
     transform: translateY(0);
   }
-}
-
-.animate-slide-up {
-  animation: dockSlideUp 0.2s ease-out forwards;
 }

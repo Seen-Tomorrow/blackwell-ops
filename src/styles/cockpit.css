@@ -16,13 +16,6 @@
   padding: 0.55rem 0.65rem 0.65rem;
 }
 
-.full-auto-cockpit--dense {
-  padding: 0.35rem 0.5rem;
-  border: 1px solid color-mix(in srgb, var(--theme-border-subtle) 80%, transparent);
-  border-radius: 3px;
-  background: color-mix(in srgb, var(--theme-panel) 88%, transparent);
-}
-
 /* Spec mode product colors — MTP green, DFlash violet (all themes) */
 .full-auto-cockpit {
   --cockpit-mtp: #4ade80;
@@ -117,68 +110,6 @@
   align-self: stretch;
   display: flex;
   align-items: center;
-}
-
-.full-auto-cockpit__status {
-  min-width: 0;
-  padding: 0.4rem 0.55rem;
-  border-radius: 3px;
-}
-
-/* Single outcome line in header */
-.full-auto-cockpit__status--inline {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 0;
-  padding: 0.15rem 0.35rem 0.15rem 0.55rem;
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  overflow: hidden;
-  border-left: 2px solid var(--cockpit-status-rail);
-}
-
-.full-auto-cockpit__status-text {
-  display: block;
-  font-size: 11px;
-  line-height: 1.35;
-  color: var(--cockpit-status-fg);
-  letter-spacing: 0.02em;
-  text-align: center;
-}
-
-.full-auto-cockpit__status--inline .full-auto-cockpit__status-text {
-  font-size: 10px;
-  line-height: 1.4;
-  text-align: left;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.full-auto-cockpit__status-sep {
-  opacity: 0.55;
-}
-
-.full-auto-cockpit__boost-seg {
-  font-weight: 700;
-  letter-spacing: 0.03em;
-}
-
-.full-auto-cockpit__boost-seg--mtp {
-  color: var(--cockpit-mtp);
-  text-shadow: 0 0 8px var(--cockpit-mtp-dim, color-mix(in srgb, #4ade80 40%, transparent));
-}
-
-.full-auto-cockpit__boost-seg--dflash {
-  color: var(--cockpit-dflash);
-  text-shadow: 0 0 8px var(--cockpit-dflash-dim, color-mix(in srgb, #a78bfa 40%, transparent));
-}
-
-.full-auto-cockpit__boost-seg--smart {
-  color: inherit;
-  font-weight: 600;
 }
 
 .full-auto-cockpit__status-note {
@@ -365,37 +296,12 @@
   font-style: italic;
 }
 
-.full-auto-cockpit__spec-chip {
-  font-size: 8px;
-  padding: 0.12rem 0.35rem;
-  border-radius: 2px;
-  border: 1px solid color-mix(in srgb, #a78bfa 40%, transparent);
-  color: #ddd6fe;
-  background: color-mix(in srgb, #0a0612 70%, #a78bfa 8%);
-}
-
-.full-auto-cockpit__spec-chip:hover {
-  border-color: color-mix(in srgb, #a78bfa 70%, transparent);
-}
-
-.full-auto-cockpit__spec-chip--active {
-  border-color: #a78bfa;
-  background: color-mix(in srgb, #a78bfa 22%, #0a0612 78%);
-  color: #ede9fe;
-}
-
 /* Param catalog modal — solid panel (engine panel is outside [data-config-page]) */
 .param-catalog-modal.config-form-panel,
 .param-catalog-modal {
   background: var(--theme-panel);
   border: 1px solid var(--theme-border-subtle, color-mix(in srgb, #4ade80 18%, transparent));
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
-}
-
-
-/* Assisted Full — denser body padding */
-.full-auto-cockpit--compact {
-  padding-bottom: 0.35rem;
 }
 
 .full-auto-cockpit--compact .full-auto-cockpit__grid-cell {
@@ -927,12 +833,6 @@
   background: color-mix(in srgb, #6d28d9 18%, transparent);
 }
 
-.dflash-pick-modal__section-badge--match {
-  color: #ddd6fe;
-  border-color: color-mix(in srgb, #a78bfa 45%, transparent);
-  background: color-mix(in srgb, #5b21b6 28%, transparent);
-}
-
 .dflash-pick-modal__section-badge--remote {
   color: #a5f3fc;
   border-color: color-mix(in srgb, #22d3ee 45%, transparent);
@@ -1024,57 +924,12 @@
   color: #fca5a5;
 }
 
-.full-auto-cockpit__connect {
-  font-size: 8px;
-  padding: 0.35rem 0.55rem;
-  border-radius: 3px;
-  border: 1px solid var(--theme-chip-border);
-  color: var(--theme-chip-text, var(--theme-industrial-muted));
-  background: color-mix(in srgb, var(--theme-chip-bg, transparent) 80%, transparent);
-  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
-}
-
-/* Compact header chip (was full-width footer CTA) */
-.full-auto-cockpit__connect--header {
-  font-size: 7px;
-  padding: 0.2rem 0.4rem;
-  letter-spacing: 0.1em;
-  line-height: 1.2;
-}
-
-/* Accent variant — prominent theme-accent CTA (AGENTIC HARNESS, docked left). */
-.full-auto-cockpit__connect--accent {
-  color: var(--theme-accent-bright, var(--theme-accent));
-  border-color: color-mix(in srgb, var(--theme-accent-bright, var(--theme-accent)) 55%, transparent);
-  background: color-mix(in srgb, var(--theme-accent) 22%, transparent);
-  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent-glow, transparent) 45%, transparent);
-}
-
-.full-auto-cockpit__connect--accent:hover {
-  color: var(--theme-selection-text);
-  border-color: var(--theme-accent-bright, var(--theme-accent));
-  background: color-mix(in srgb, var(--theme-accent) 42%, transparent);
-  box-shadow: 0 0 12px color-mix(in srgb, var(--theme-accent-glow, transparent) 70%, transparent);
-}
-
 .full-auto-cockpit__header-right {
   margin-left: auto;
 }
 
 .full-auto-cockpit__header-right .full-auto-cockpit__flag-toolbar {
   margin-left: 0;
-}
-
-.full-auto-cockpit__connect:hover {
-  color: var(--theme-chip-hover-text, var(--theme-accent-bright));
-  border-color: var(--theme-chip-hover-border);
-  background: var(--theme-chip-active-bg);
-}
-
-.full-auto-cockpit__connect--active {
-  color: var(--theme-chip-active-text);
-  border-color: color-mix(in srgb, #22d3ee 50%, transparent);
-  background: color-mix(in srgb, #0e7490 28%, transparent);
 }
 
 /* ── Agentic harness UX ─── */
@@ -1101,90 +956,6 @@
 
 .harness-launch-btn--solo:hover:not(:disabled) {
   box-shadow: var(--theme-launch-hover-shadow, none);
-}
-
-.harness-launch-btn--twin {
-  color: var(--theme-chip-solid-text);
-  border-color: var(--theme-chip-solid-bg);
-  background: var(--theme-chip-solid-bg);
-}
-
-.harness-launch-btn--twin:hover:not(:disabled) {
-  filter: none;
-}
-
-.harness-role-badge {
-  display: inline-block;
-  font-size: 7px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  padding: 0.12rem 0.4rem;
-  border-radius: 2px;
-  border: 1px solid transparent;
-  line-height: 1.35;
-  vertical-align: middle;
-}
-
-.harness-role-badge--brain,
-.harness-role-badge--solo {
-  color: var(--theme-provider-pill-active-text);
-  border-color: var(--theme-provider-pill-active-border);
-  background: var(--theme-provider-pill-active-bg);
-}
-
-.harness-role-badge--worker {
-  color: var(--theme-pair-secondary-text, var(--theme-chip-solid-text));
-  border-color: var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg));
-  background: color-mix(
-    in srgb,
-    var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg)) 75%,
-    var(--theme-panel) 25%
-  );
-}
-
-.harness-role-badge--solo.harness-role-badge--selected,
-.harness-role-badge--selected {
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-provider-pill-active-bg) 40%, transparent);
-}
-
-.harness-role-badge--agents {
-  color: var(--theme-chip-text);
-  border-color: var(--theme-chip-border);
-  background: var(--theme-chip-bg);
-}
-
-.harness-role-badge--muted {
-  color: var(--theme-text-muted);
-  border-color: var(--theme-border-subtle);
-  background: transparent;
-  font-weight: 500;
-}
-
-.harness-route-label {
-  font-size: 7px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  opacity: 0.55;
-  min-width: 2.5rem;
-}
-
-.harness-route-sep,
-.harness-route-arrow {
-  font-size: 8px;
-  opacity: 0.45;
-}
-
-.harness-msg-ok {
-  color: var(--theme-status-nominal);
-}
-
-.harness-msg-err {
-  color: var(--theme-danger);
-}
-
-.harness-manual-toggle {
-  font-size: 7px !important;
-  opacity: 0.75;
 }
 
 .harness-confirm-overlay {
@@ -1404,666 +1175,9 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--picked {
   outline-offset: 1px;
 }
 
-/* ── Harness full cockpit wizard (compact, amber/green) ─── */
-.config-params-scroll--harness-wizard {
-  display: flex;
-  flex-direction: column;
-}
 
-.config-params-scroll--harness-wizard > div:first-child {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
 
-.harness-wizard {
-  /*
-   * Theme-native selected fills (AGENTS.md: tokens only).
-   * BRAIN/SOLO = --theme-harness-brain-raw · WORKER = --theme-harness-worker-raw.
-   * Tokens on all themes (arctic keeps distinct blue vs copper).
-   * Soften punchy solids by mixing with panel (~68% solid).
-   */
-  --harness-brain-bg-raw: var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg));
-  --harness-brain-border: var(--theme-provider-pill-active-border);
-  --harness-brain-text: var(--theme-provider-pill-active-text);
-  --harness-brain-bg: color-mix(in srgb, var(--harness-brain-bg-raw) 68%, var(--theme-panel) 32%);
-  --harness-worker-bg-raw: var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg)));
-  --harness-worker-border: var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg));
-  --harness-worker-text: var(--theme-pair-secondary-text, var(--theme-chip-solid-text));
-  --harness-worker-bg: color-mix(in srgb, var(--harness-worker-bg-raw) 68%, var(--theme-panel) 32%);
-  --harness-worker-fg: var(--theme-chip-active-text);
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  padding: 0.5rem 0.7rem 0.55rem !important;
-  border-color: color-mix(in srgb, var(--harness-brain-bg) 45%, transparent) !important;
-}
 
-.harness-wizard__header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.3rem 0.55rem;
-  padding-bottom: 0.35rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--harness-brain-bg) 40%, transparent);
-}
-
-/* Inline tool-picker slots into the header next to the title. Replaces the
-   older subtitle slot (tool · version) which is now collapsed into
-   the active tool chip itself. */
-.harness-wizard__header-tools {
-  display: inline-flex;
-  flex: 1 1 auto;
-  gap: 0.3rem;
-  min-width: 0;
-}
-
-/* Project directory + path — moved into the header so it sits with the
-   other "what is this session pointed at" controls. `flex: 1 1 100%`
-   forces it to wrap to its own full-width row below the title + tools.
-   2 cols: button on the left, path on the right. */
-.harness-wizard__header-project {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  min-width: 0;
-  gap: 0.55rem;
-  align-items: center;
-  padding-top: 0.4rem;
-  border-top: 1px dashed
-    color-mix(in srgb, var(--harness-brain-bg) 35%, transparent);
-  margin-top: 0.4rem;
-}
-
-.harness-wizard__header-project .harness-wizard__project-btn {
-  font-size: 9px;
-}
-
-.harness-wizard__header-project .harness-wizard__project-path {
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.01em;
-  color: var(--theme-accent-bright);
-  word-break: break-all;
-  max-height: 2.2em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.harness-wizard__title {
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--theme-provider-pill-text);
-  letter-spacing: 0.16em;
-}
-
-.harness-wizard__subtitle {
-  flex: 1 1 auto;
-  font-size: 7px;
-  opacity: 0.65;
-  min-width: 6rem;
-  line-height: 1.3;
-}
-
-.harness-wizard__tool-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  margin: 0.15rem 0 0.1rem;
-}
-
-.harness-wizard__tool-chip {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.1rem;
-  padding: 0.35rem 0.6rem;
-  border-radius: 3px;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
-  background: color-mix(in srgb, var(--theme-bg) 80%, transparent);
-  color: color-mix(in srgb, var(--theme-text) 75%, transparent);
-  font-size: 8px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  cursor: pointer;
-  min-width: 6.5rem;
-}
-
-.harness-wizard__tool-chip:hover {
-  border-color: color-mix(in srgb, var(--theme-accent) 45%, transparent);
-}
-
-.harness-wizard__tool-chip--on {
-  border-color: color-mix(in srgb, var(--theme-accent) 70%, transparent);
-  background: color-mix(in srgb, var(--theme-accent) 18%, transparent);
-  color: var(--theme-text);
-  font-weight: 700;
-}
-
-.harness-wizard__tool-meta {
-  font-size: 6px;
-  letter-spacing: 0.04em;
-  text-transform: none;
-  opacity: 0.7;
-  font-weight: 400;
-}
-
-/* Blocks CONFIG until dismissed — large control, red border only */
-.harness-wizard__close {
-  flex-shrink: 0;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  padding: 0.5rem 0.9rem;
-  border-radius: 3px;
-  border: 1.5px solid color-mix(in srgb, #ef4444 72%, transparent);
-  color: var(--theme-text);
-  background: transparent;
-  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
-}
-
-.harness-wizard__close:hover {
-  border-color: #f87171;
-  color: #f87171;
-  background: color-mix(in srgb, #ef4444 8%, transparent);
-}
-
-.harness-wizard__blurb {
-  /* Lives in the header now — quieter than the body version, no card chrome,
-     sits as a single-line subtitle under the title. `flex: 1 1 100%` makes it
-     wrap to its own row across the full header width. */
-  margin: 0;
-  font-size: 8.5px;
-  line-height: 1.35;
-  color: color-mix(in srgb, var(--theme-text) 72%, transparent);
-  flex: 1 1 100%;
-  min-width: 0;
-}
-
-.harness-wizard__blurb-brain {
-  color: var(--theme-harness-brain-text, var(--theme-secondary-bright, var(--theme-provider-pill-hover-text)));
-  font-weight: 700;
-}
-
-.harness-wizard__blurb-worker {
-  color: var(--harness-worker-fg, var(--theme-chip-active-text));
-  font-weight: 700;
-}
-
-/* Full-width stacked SOLO + TWIN */
-.harness-wizard__mode-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  width: 100%;
-}
-
-.harness-wizard__mode-btn {
-  display: block;
-  width: 100%;
-  border-radius: 4px;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 80%, transparent);
-  background: color-mix(in srgb, #000 28%, transparent);
-  text-align: left;
-  /* No background dissolve on mode switch */
-  transition: border-color 0.12s ease, box-shadow 0.12s ease;
-  overflow: hidden;
-}
-
-.harness-wizard__mode-btn-inner {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  gap: 0.15rem;
-  padding: 0.55rem 0.75rem 0.5rem;
-  min-height: 4.25rem;
-  width: 100%;
-}
-
-.harness-wizard__mode-btn--disabled {
-  opacity: 0.45;
-  pointer-events: none;
-}
-
-/* SOLO on = softened provider-pill-active */
-.harness-wizard__mode-btn--solo.harness-wizard__mode-btn--on {
-  border-color: var(--harness-brain-border);
-  background: var(--harness-brain-bg);
-  box-shadow: 0 0 5px color-mix(in srgb, var(--harness-brain-bg-raw) 28%, transparent);
-}
-
-.harness-wizard__mode-btn--solo.harness-wizard__mode-btn--on .harness-wizard__mode-name,
-.harness-wizard__mode-btn--solo.harness-wizard__mode-btn--on .harness-wizard__mode-desc,
-.harness-wizard__mode-btn--solo.harness-wizard__mode-btn--on .harness-wizard__mode-engine,
-.harness-wizard__mode-btn--solo.harness-wizard__mode-btn--on .harness-wizard__mode-meta {
-  color: var(--harness-brain-text);
-  opacity: 1;
-}
-
-/* TWIN: two true halves, full width */
-.harness-wizard__mode-btn--twin {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  padding: 0;
-  min-height: 4.5rem;
-  background: transparent;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 80%, transparent);
-}
-
-.harness-wizard__mode-btn--twin.harness-wizard__mode-btn--on {
-  border-color: color-mix(in srgb, var(--harness-brain-border) 55%, var(--harness-worker) 45%);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--harness-brain-bg) 28%, transparent);
-}
-
-.harness-wizard__twin-half {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.12rem;
-  padding: 0.55rem 0.7rem 0.5rem;
-  min-height: 4.5rem;
-  border: none;
-  text-align: left;
-  background: color-mix(in srgb, #000 30%, transparent);
-  color: #e2e8f0;
-  /* Hard fills only — no soft dissolve */
-  transition: none;
-}
-
-.harness-wizard__twin-half:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-/* Divider always between halves (order may flip) */
-.harness-wizard__mode-btn--twin > .harness-wizard__twin-half:first-child {
-  border-right: 1px solid color-mix(in srgb, #fff 10%, transparent);
-}
-
-.harness-wizard__mode-btn--twin.harness-wizard__mode-btn--on .harness-wizard__twin-half--brain {
-  background: var(--harness-brain-bg);
-  color: var(--harness-brain-text);
-}
-
-.harness-wizard__mode-btn--twin.harness-wizard__mode-btn--on .harness-wizard__twin-half--brain .harness-wizard__mode-name,
-.harness-wizard__mode-btn--twin.harness-wizard__mode-btn--on .harness-wizard__twin-half--brain .harness-wizard__mode-desc,
-.harness-wizard__mode-btn--twin.harness-wizard__mode-btn--on .harness-wizard__twin-half--brain .harness-wizard__mode-engine {
-  color: var(--harness-brain-text);
-  opacity: 1;
-}
-
-.harness-wizard__mode-btn--twin.harness-wizard__mode-btn--on .harness-wizard__twin-half--worker {
-  background: var(--harness-worker-bg);
-  color: var(--harness-worker-text);
-}
-
-.harness-wizard__mode-btn--twin.harness-wizard__mode-btn--on .harness-wizard__twin-half--worker .harness-wizard__mode-name,
-.harness-wizard__mode-btn--twin.harness-wizard__mode-btn--on .harness-wizard__twin-half--worker .harness-wizard__mode-desc,
-.harness-wizard__mode-btn--twin.harness-wizard__mode-btn--on .harness-wizard__twin-half--worker .harness-wizard__mode-engine {
-  color: var(--harness-worker-text);
-  opacity: 1;
-}
-
-.harness-wizard__twin-half:hover:not(:disabled) {
-  filter: none;
-  outline: 1px solid color-mix(in srgb, #fff 25%, transparent);
-  outline-offset: -1px;
-}
-
-.harness-wizard__mode-name {
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  color: var(--theme-industrial-text, var(--theme-text));
-}
-
-.harness-wizard__mode-desc {
-  font-size: 7px;
-  line-height: 1.25;
-  opacity: 0.78;
-  color: var(--theme-text-muted);
-}
-
-.harness-wizard__mode-engine {
-  margin-top: 0.1rem;
-  font-size: 9px;
-  font-weight: 600;
-  word-break: break-all;
-  line-height: 1.25;
-  color: var(--theme-provider-pill-text);
-}
-
-.harness-wizard__mode-meta {
-  font-size: 7px;
-  opacity: 0.7;
-  margin-top: auto;
-  color: var(--theme-text-muted);
-}
-
-.harness-wizard__step-label {
-  margin: 0.1rem 0 0.15rem;
-  font-size: 7px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  opacity: 0.55;
-}
-
-.harness-wizard__agents {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem;
-}
-
-.harness-wizard__agent-chip {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.05rem;
-  min-width: 2.9rem;
-  padding: 0.35rem 0.4rem;
-  border-radius: 3px;
-  border: 1px solid var(--theme-chip-border);
-  background: var(--theme-chip-bg);
-  color: var(--theme-chip-text);
-  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
-}
-
-.harness-wizard__agent-chip:hover {
-  border-color: var(--theme-chip-hover-border, var(--theme-chip-border));
-  color: var(--theme-chip-hover-text, var(--theme-chip-text));
-}
-
-.harness-wizard__agent-chip--on {
-  border-color: var(--harness-worker-border);
-  background: var(--harness-worker-bg);
-  color: var(--harness-worker-text);
-  box-shadow: none;
-}
-
-.harness-wizard__agent-n {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-}
-
-.harness-wizard__agent-label {
-  font-size: 6px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  opacity: 0.8;
-}
-
-.harness-wizard__agents-hint {
-  margin: 0;
-  font-size: 6.5px;
-  line-height: 1.35;
-  opacity: 0.68;
-  color: var(--theme-text-muted);
-}
-
-.harness-wizard__relaunch {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  padding: 0.4rem 0.5rem;
-  border-radius: 3px;
-  border: 1px solid color-mix(in srgb, var(--theme-provider-pill-active-bg) 45%, transparent);
-  background: color-mix(in srgb, var(--theme-provider-pill-active-bg) 10%, transparent);
-}
-
-.harness-wizard__relaunch-msg {
-  font-size: 7px;
-  line-height: 1.4;
-  color: var(--theme-text-muted);
-}
-
-.harness-wizard__relaunch-msg strong {
-  color: var(--theme-provider-pill-hover-text, var(--theme-provider-pill-text));
-}
-
-.harness-wizard__relaunch-btn {
-  font-size: 8px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  padding: 0.45rem 0.55rem;
-  border-radius: 3px;
-  border: 1px solid var(--theme-provider-pill-active-border);
-  color: var(--theme-provider-pill-active-text);
-  background: color-mix(in srgb, var(--theme-provider-pill-active-bg) 72%, var(--theme-panel) 28%);
-  text-align: left;
-}
-
-.harness-wizard__relaunch-btn:disabled {
-  opacity: 0.45;
-}
-
-.harness-wizard__hotswap {
-  align-self: flex-start;
-  font-size: 7px !important;
-  opacity: 0.85;
-}
-
-.harness-wizard__launch-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
-  gap: 0.45rem;
-  align-items: stretch;
-  margin-top: 0.25rem;
-}
-
-.harness-wizard__project-side {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  min-width: 0;
-}
-
-.harness-wizard__project-btn {
-  width: 100%;
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  padding: 0.55rem 0.65rem;
-  border-radius: 3px;
-  border: 1px solid var(--theme-chip-active-border);
-  color: var(--theme-chip-active-text);
-  background: var(--theme-chip-active-bg);
-  text-align: left;
-}
-
-.harness-wizard__project-btn:hover:not(:disabled) {
-  border-color: var(--theme-chip-hover-border, var(--theme-chip-active-border));
-  color: var(--theme-chip-hover-text, var(--theme-chip-active-text));
-  background: color-mix(in srgb, var(--theme-chip-active-bg) 70%, var(--theme-panel) 30%);
-}
-
-.harness-wizard__project-btn:disabled {
-  opacity: 0.45;
-}
-
-.harness-wizard__project-path {
-  margin: 0;
-  font-size: 11px;
-  line-height: 1.35;
-  font-weight: 500;
-  letter-spacing: 0.01em;
-  color: var(--theme-accent-bright);
-  word-break: break-all;
-  max-height: 3.6em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.harness-wizard__go {
-  width: 100%;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 0.65rem 0.75rem;
-  border-radius: 3px;
-  border: 1px solid transparent;
-  align-self: stretch;
-  /* Kill dissolve/blend when switching SOLO↔TWIN */
-  transition: none;
-  background-size: 100% 100%;
-}
-
-.harness-wizard__go:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.harness-wizard__go--solo {
-  color: var(--harness-brain-text);
-  border-color: var(--harness-brain-border);
-  background: var(--harness-brain-bg);
-  background-image: none;
-  box-shadow: var(--theme-launch-shadow, none);
-}
-
-.harness-wizard__go--solo:hover:not(:disabled) {
-  filter: none;
-  box-shadow: var(--theme-launch-hover-shadow, var(--theme-launch-shadow, none));
-}
-
-/* Hard 50/50 split — solid theme fills, no soft midpoint blend */
-.harness-wizard__go--twin {
-  color: var(--harness-brain-text);
-  border-color: color-mix(in srgb, var(--harness-brain-border) 50%, var(--harness-worker-border) 50%);
-  background-color: var(--harness-brain-bg);
-  background-image: linear-gradient(
-    90deg,
-    var(--harness-brain-bg) 0%,
-    var(--harness-brain-bg) 50%,
-    var(--harness-worker-bg) 50%,
-    var(--harness-worker-bg) 100%
-  );
-  box-shadow: none;
-}
-
-.harness-wizard__go--twin.harness-wizard__go--twin-flip {
-  color: var(--harness-worker-text);
-  background-image: linear-gradient(
-    90deg,
-    var(--harness-worker-bg) 0%,
-    var(--harness-worker-bg) 50%,
-    var(--harness-brain-bg) 50%,
-    var(--harness-brain-bg) 100%
-  );
-}
-
-.harness-wizard__go--twin:hover:not(:disabled) {
-  filter: none;
-}
-
-/* ── Install progress strip ───────────────────────────────────────────
-   Visible only while a Rust install is in flight. 4 phase steps + an
-   indeterminate bar so the user sees the app is alive during a 30-90s
-   blocking download. Colors ride existing theme tokens (--theme-accent
-   / --theme-accent-bright / --theme-accent-soft) — no theme forks. */
-.harness-wizard__install {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  padding: 0.55rem 0.6rem;
-  border-radius: 3px;
-  border: 1px solid
-    color-mix(in srgb, var(--theme-accent) 35%, transparent);
-  background: var(--theme-accent-soft);
-}
-
-.harness-wizard__install-label {
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--theme-accent-bright);
-}
-
-.harness-wizard__install-phases {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  font-size: 9px;
-}
-
-.harness-wizard__install-step {
-  padding: 0.15rem 0.4rem;
-  border-radius: 2px;
-  border: 1px solid
-    color-mix(in srgb, var(--theme-accent-dim) 60%, transparent);
-  background: transparent;
-  color: color-mix(in srgb, var(--theme-accent) 55%, transparent);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.harness-wizard__install-step--reached {
-  border-color: color-mix(in srgb, var(--theme-accent) 70%, transparent);
-  color: var(--theme-accent);
-}
-
-.harness-wizard__install-step--active {
-  border-color: var(--theme-accent-bright);
-  background: color-mix(in srgb, var(--theme-accent) 22%, transparent);
-  color: var(--theme-accent-bright);
-  /* Subtle pulse so the active step catches the eye without flashing. */
-  animation: harness-install-pulse 1.4s ease-in-out infinite;
-}
-
-@keyframes harness-install-pulse {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: 0.65; }
-}
-
-/* Indeterminate bar — sliding highlight inside a recessed track. */
-.harness-wizard__install-bar {
-  position: relative;
-  height: 4px;
-  border-radius: 2px;
-  overflow: hidden;
-  background: color-mix(in srgb, var(--theme-accent-dim) 35%, transparent);
-}
-
-.harness-wizard__install-bar-fill {
-  position: absolute;
-  top: 0;
-  left: 0;
-  height: 100%;
-  width: 35%;
-  border-radius: 2px;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    var(--theme-accent-bright) 50%,
-    transparent 100%
-  );
-  animation: harness-install-slide 1.28s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-}
-
-@keyframes harness-install-slide {
-  0%   { transform: translateX(-110%); }
-  100% { transform: translateX(370%); }
-}
-
-/* ── Harness wizard layout (manual) ─────────────────────────────────
-   Driven by JS class swaps, not container queries — so app zoom and
-   user-resized rails never break the layout. */
-
-/* SOLO/TWIN switch — sits directly above the unified mode button.
-   Reuses .segment-switch primitives from launch.css. */
-.harness-wizard__mode-switch-row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.7rem;
-  margin-top: 0.15rem;
-}
 
 .harness-wizard__mode-switch-row .segment-switch {
   min-width: 11rem;
@@ -2086,250 +1200,6 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--picked {
     inset 0 1px 0 color-mix(in srgb, #fff 14%, transparent);
 }
 
-.harness-wizard__mode-switch-label {
-  font-size: 7px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--theme-text-muted);
-}
-
-/* Unified mode button — same element renders either solo (full-width
-   label) or twin (split BRAIN/WORKER halves). Both faces share the same
-   grid cell so swapping between SOLO and TWIN doesn't reflow the row —
-   they have identical outer dimensions by construction. */
-/* SOLO shell bg matches the running engine card: same intensity (25%) + same base (eject-card-bg) */
-.harness-wizard__mode-shell {
-  display: grid;
-  grid-template-areas: "content";
-  width: 100%;
-  /* Trimmed from 7.5rem — the SOLO/TWIN button no longer needs to be
-     ~2x taller than the natural content; the below-row footer already
-     provides vertical room. */
-  min-height: 5.4rem;
-  position: relative;
-  border-radius: 4px;
-  border: 1px solid color-mix(in srgb, var(--harness-brain-bg) 50%, transparent);
-  background: color-mix(in srgb, var(--harness-brain-bg-raw) 25%, var(--theme-eject-card-bg) 75%);
-  overflow: hidden;
-  cursor: pointer;
-  text-align: left;
-  font-family: "JetBrains Mono", monospace;
-}
-
-
-.harness-wizard__mode-solo,
-.harness-wizard__mode-twin {
-  grid-area: content;
-  width: 100%;
-  min-height: inherit;
-}
-
-/* Hide the inactive face. display:none pulls it from the grid layout so the
-   other face fully owns the shared cell (no overlap, no z-index fighting). */
-.harness-wizard__mode-shell--solo .harness-wizard__mode-twin {
-  display: none;
-}
-
-.harness-wizard__mode-shell--twin .harness-wizard__mode-solo {
-  display: none;
-}
-
-/* SOLO face fills its shell as a single column with the new 2-col top split. */
-.harness-wizard__mode-solo {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 0.3rem;
-  padding: 0.5rem 0.7rem;
-}
-
-/* TWIN face is a 50/50 grid filling the same shell — outer box matches SOLO. */
-.harness-wizard__mode-twin {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0;
-}
-
-/* Each TWIN half mirrors the SOLO layout: 2-col top + engine line below. */
-.harness-wizard__mode-twin-half {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 0.3rem;
-  padding: 0.5rem 0.7rem;
-  min-width: 0;
-}
-
-.harness-wizard__mode-twin-half--brain {
-  background: color-mix(in srgb, var(--harness-brain-bg-raw) 22%, var(--theme-eject-card-bg) 78%);
-  border-right: 1px solid color-mix(in srgb, var(--harness-brain-bg) 35%, transparent);
-}
-
-.harness-wizard__mode-twin-half--worker {
-  background: color-mix(in srgb, var(--harness-worker-bg-raw) 16%, var(--theme-eject-card-bg) 84%);
-}
-
-/* Top split: BIG label (30%) | HERO title + desc (70%) */
-.harness-wizard__mode-half-top {
-  display: grid;
-  grid-template-columns: 30% 1fr;
-  gap: 0.5rem;
-  align-items: center;
-  min-width: 0;
-}
-
-/* "double size" tag on the left — anchors the half visually. */
-.harness-wizard__mode-half-tag {
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  line-height: 1;
-  color: var(--harness-brain-text);
-  text-shadow: 0 0 8px color-mix(in srgb, var(--harness-brain-bg-raw) 35%, transparent);
-}
-
-.harness-wizard__mode-half-tag--worker {
-  color: var(--harness-worker-text);
-  text-shadow: 0 0 8px color-mix(in srgb, var(--harness-worker-bg-raw) 35%, transparent);
-}
-
-.harness-wizard__mode-half-info {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  min-width: 0;
-}
-
-/* "hero size" title on the right — slightly smaller than the tag. */
-.harness-wizard__mode-half-title {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--harness-brain-text);
-}
-
-.harness-wizard__mode-half-title--worker {
-  color: var(--harness-worker-text);
-}
-
-.harness-wizard__mode-half-desc {
-  font-size: 8px;
-  line-height: 1.3;
-  opacity: 0.78;
-  /* Allow wrap, don't truncate — the description is short by design. */
-}
-
-/* Engine line below the 2-col split: alias:port · model_name */
-.harness-wizard__mode-half-engine {
-  font-size: 10px;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-  padding-top: 0.3rem;
-  border-top: 1px dashed color-mix(in srgb, currentColor 22%, transparent);
-}
-
-.harness-wizard__mode-half-engine--brain { color: var(--harness-brain-text); }
-.harness-wizard__mode-half-engine--worker { color: var(--harness-worker-text); }
-
-/* Shared SOLO-side type rows */
-.harness-wizard__mode-name {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.18em;
-  color: var(--harness-brain-text);
-}
-
-.harness-wizard__mode-desc {
-  font-size: 8px;
-  opacity: 0.75;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-}
-
-.harness-wizard__mode-engine {
-  font-size: 9px;
-  margin-top: 0.15rem;
-}
-
-.harness-wizard__mode-meta {
-  font-size: 8px;
-  opacity: 0.7;
-  margin-top: 0.1rem;
-}
-
-/* ── Wizard bottom row ── concurrency chips (left) + Open CTA (right). */
-.harness-wizard__footer {
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
-  gap: 0.5rem;
-  align-items: stretch;
-  /* 2-line gap above the bottom row so the eye registers it as a separate
-     decision from the mode button above. */
-  margin-top: 1.4rem;
-  padding-top: 0.9rem;
-  border-top: 1px dashed
-    color-mix(in srgb, var(--harness-brain-bg) 30%, transparent);
-}
-
-.harness-wizard__footer-agents {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  min-width: 0;
-}
-
-.harness-wizard__footer-cta {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  min-width: 0;
-}
-
-/* Make the existing harness-wizard__go fit the footer height. */
-.harness-wizard__footer-cta .harness-wizard__go {
-  flex: 1 1 auto;
-  min-height: 2.5rem;
-}
-
-/* Stack header tool chips — same look as the old tool-row but tighter. */
-.harness-wizard__header-tools .harness-wizard__tool-chip {
-  padding: 3px 8px;
-  font-size: 8px;
-}
-
-.harness-wizard__header-tools .harness-wizard__tool-chip .harness-wizard__tool-meta {
-  font-size: 7px;
-  opacity: 0.65;
-  margin-top: 1px;
-}
-
-/* DEV-only "update pi to latest" button (hidden outside dev builds). */
-.harness-wizard__update {
-  align-self: center;
-  padding: 4px 9px;
-  font-size: 8px;
-  letter-spacing: 0.14em;
-  border-radius: 3px;
-  border: 1px solid color-mix(in srgb, var(--theme-accent) 55%, transparent);
-  color: color-mix(in srgb, var(--theme-accent) 85%, var(--theme-text));
-  background: color-mix(in srgb, var(--theme-accent) 12%, transparent);
-  cursor: pointer;
-  white-space: nowrap;
-}
-.harness-wizard__update:hover:not(:disabled) {
-  border-color: var(--theme-accent);
-  background: color-mix(in srgb, var(--theme-accent) 20%, transparent);
-}
-.harness-wizard__update:disabled {
-  opacity: 0.55;
-  cursor: default;
-}
-
 /* ── Launch dock dim while harness is open ──────────────────────────
    When the right rail is closed, the launch dock sits directly under
    the wizard — visually colliding with the "Open {tool}" CTA. Instead
@@ -2347,19 +1217,6 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--picked {
   filter: none;
   pointer-events: auto;
   transition: opacity 0.22s ease, filter 0.22s ease;
-}
-
-.harness-wizard__disclaimer-body {
-  margin: 0;
-  padding: 0.4rem;
-  font-size: 7px;
-  line-height: 1.35;
-  white-space: pre-wrap;
-  max-height: 7rem;
-  overflow: auto;
-  border-radius: 3px;
-  border: 1px solid color-mix(in srgb, #64748b 40%, transparent);
-  background: color-mix(in srgb, #000 35%, transparent);
 }
 
 /* Engine cards while harness open — tint from theme solids */
@@ -2411,19 +1268,6 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   color: color-mix(in srgb, var(--theme-industrial-muted) 55%, transparent);
 }
 
-.full-auto-cockpit__ctx-rail {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  padding: 0.35rem 0.45rem 0.45rem;
-  border-radius: 3px;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
-  background: color-mix(in srgb, #000000 18%, transparent);
-  box-shadow: inset 0 1px 3px color-mix(in srgb, #000000 35%, transparent);
-  justify-content: center;
-  min-height: 100%;
-}
-
 /* CTX hero — match industrial/panel face (not a black inset well) */
 .full-auto-cockpit__ctx-hero {
   position: relative;
@@ -2471,13 +1315,6 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   position: relative;
   min-width: 0;
 }
-.ctx-forecast-ribbon-slot--track {
-  position: absolute;
-  left: 0;
-  right: 0;
-  z-index: 1;
-  pointer-events: none;
-}
 .ctx-forecast-ribbon-slot--track .ctx-forecast-ribbon {
   height: 100%;
   margin: 0;
@@ -2488,10 +1325,6 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   inset: 0;
   border-radius: 2px;
   opacity: 0.78;
-}
-.ctx-forecast-ribbon-slot--track .ctx-forecast-ribbon__tick {
-  top: 1px;
-  height: calc(100% - 2px);
 }
 .ctx-forecast-ribbon {
   position: relative;
@@ -2513,20 +1346,6 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   border-radius: 2px;
   opacity: 0.92;
 }
-.ctx-forecast-ribbon__tick {
-  position: absolute;
-  top: 1px;
-  width: 5px;
-  height: 8px;
-  transform: translateX(-50%);
-  background: #fbbf24;
-  box-shadow: 0 0 4px color-mix(in srgb, #fbbf24 55%, transparent);
-  pointer-events: none;
-}
-.ctx-forecast-ribbon__tick.is-custom {
-  width: 6px;
-  background: #f59e0b;
-}
 .ctx-forecast-ribbon__tip {
   position: absolute;
   bottom: 100%;
@@ -2542,18 +1361,6 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   border: 1px solid color-mix(in srgb, #fff 12%, transparent);
   pointer-events: none;
   z-index: 6;
-}
-.ctx-forecast-ribbon__value-tip {
-  max-width: 22ch;
-  margin-left: 0.35rem;
-  font-size: 8px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  line-height: 1.15;
-  color: color-mix(in srgb, var(--theme-text) 72%, transparent);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /* Footer: 3-zone — hover | centered readout (fixed) | legend/actions.
@@ -2817,15 +1624,6 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   border-bottom: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent);
 }
 
-/* Arctic overrides */
-
-
-.full-auto-cockpit__ctx-label {
-  font-size: 8px;
-  letter-spacing: 0.14em;
-  color: color-mix(in srgb, var(--theme-industrial-muted) 55%, transparent);
-}
-
 .full-auto-cockpit__ctx-slider .ctx-slider-row {
   width: 100%;
 }
@@ -2845,76 +1643,6 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   font-size: 6px;
 }
 
-/* Same pad/height as value chips; type ~1.5× default chip (was 13px, −25%) */
-.full-auto-cockpit__chip {
-  padding: 0.15rem 0.4rem;
-  font-size: 10px;
-  line-height: 1.15;
-  border-color: var(--theme-chip-border);
-  color: var(--theme-chip-text, var(--theme-industrial-muted));
-  background: var(--theme-chip-bg);
-}
-
-.full-auto-cockpit--dense .full-auto-cockpit__chip {
-  font-size: 8px;
-  padding: 0.12rem 0.35rem;
-}
-
-.full-auto-cockpit__chip:hover:not(:disabled):not(.full-auto-cockpit__chip--disabled) {
-  border-color: var(--theme-chip-hover-border);
-  color: var(--theme-chip-hover-text, var(--theme-accent-bright));
-}
-
-.full-auto-cockpit__chip--active {
-  border-color: var(--theme-chip-active-border);
-  color: var(--theme-chip-active-text, var(--theme-accent-bright));
-  background: var(--theme-chip-active-bg);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--theme-accent-glow, var(--theme-accent)) 22%, transparent);
-}
-
-.full-auto-cockpit__chip--disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-  text-decoration: line-through;
-  text-decoration-color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
-}
-
-.full-auto-cockpit__chip-meta {
-  margin-left: 0.2rem;
-  opacity: 0.5;
-  font-size: 0.85em;
-}
-
-.full-auto-cockpit__sep {
-  color: color-mix(in srgb, var(--theme-text-muted) 35%, transparent);
-  padding: 0 0.15rem;
-  font-size: 11px;
-}
-
-.full-auto-cockpit__harness {
-  margin-top: 0.75rem;
-  padding-top: 0.65rem;
-  border-top: 1px solid color-mix(in srgb, var(--theme-border-subtle) 80%, transparent);
-}
-
-.full-auto-cockpit__harness-hint {
-  font-size: 8px;
-  color: color-mix(in srgb, var(--theme-industrial-muted) 50%, transparent);
-}
-
-.full-auto-cockpit__snippet {
-  border-radius: 3px;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 75%, transparent);
-  background: color-mix(in srgb, #000000 35%, var(--theme-panel) 65%);
-}
-
-.full-auto-cockpit__snippet-bar {
-  padding: 0.25rem 0.5rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--theme-border-subtle) 70%, transparent);
-  font-size: 7px;
-  color: color-mix(in srgb, var(--theme-industrial-muted) 65%, transparent);
-}
-
 .full-auto-cockpit__copy {
   font-size: 7px;
   padding: 0.15rem 0.45rem;
@@ -2926,13 +1654,6 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 .full-auto-cockpit__copy:hover {
   background: var(--theme-chip-active-bg);
-}
-
-.full-auto-cockpit__snippet-body {
-  margin: 0;
-  padding: 0.4rem 0.5rem;
-  font-size: 7px;
-  color: color-mix(in srgb, var(--theme-industrial-text) 72%, transparent);
 }
 
 /* ARCTIC — same aluminium band + texture scale as provider bar / launch dock */
@@ -3087,16 +1808,6 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   box-shadow: 0 0 5px var(--cockpit-dflash-dim, color-mix(in srgb, #a78bfa 45%, transparent));
 }
 
-/* Status above mark (draft ready / downloadable / built-in) */
-/* Family word above track (draft / ngram) — tint with mark color when selected */
-.cockpit-slider-above-label--green {
-  color: var(--cockpit-mtp);
-}
-
-.cockpit-slider-above-label--violet {
-  color: var(--cockpit-dflash);
-}
-
 .cockpit-slider-above-label {
   font-size: 6px;
   letter-spacing: 0.04em;
@@ -3105,12 +1816,6 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   color: color-mix(in srgb, var(--theme-industrial-muted) 45%, transparent);
   pointer-events: none;
   white-space: nowrap;
-}
-.cockpit-slider-above-label--green {
-  color: var(--cockpit-mtp);
-}
-.cockpit-slider-above-label--violet {
-  color: var(--cockpit-dflash);
 }
 .cockpit-slider-above-label--selected {
   font-weight: 700;

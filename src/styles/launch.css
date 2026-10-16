@@ -192,10 +192,6 @@
   z-index: 4;
 }
 
-.config-panel-main {
-  min-width: 0;
-}
-
 .config-panel-center {
   min-width: 0;
 }
@@ -276,11 +272,6 @@
   flex-shrink: 0;
   min-width: 0;
   pointer-events: none;
-}
-
-.launch-rail-lower-fill {
-  flex: 1 1 auto;
-  min-height: 0;
 }
 
 .launch-rail-body {
@@ -403,7 +394,7 @@
 
 [data-config-panel][data-launch-dock-position="right"] .config-launch-dock__rail-flags .custom-flags-body > .flex.items-center {
   width: 100%;
-  margin-left: 0 !important;
+  margin-left: 0;
   flex-wrap: wrap;
   justify-content: flex-start;
   gap: 4px;
@@ -1284,126 +1275,6 @@
   box-shadow: none;
 }
 
-.launch-rail-tel__temp {
-  font-family: ui-monospace, monospace;
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-  flex-shrink: 0;
-}
-
-.launch-rail-tel__temp--cool { color: var(--tel-vram); }
-.launch-rail-tel__temp--warm { color: var(--tel-amber); }
-.launch-rail-tel__temp--hot {
-  color: var(--tel-hot);
-  text-shadow: 0 0 8px color-mix(in srgb, var(--tel-hot) 40%, transparent);
-}
-
-.launch-rail-tel__metric {
-  padding: 4px 7px 5px;
-}
-
-.launch-rail-tel__metric-pair {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
-  padding: 0 7px 6px;
-}
-
-.launch-rail-tel__metric--half {
-  padding: 0;
-}
-
-.launch-rail-tel__metric-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 4px;
-  margin-bottom: 2px;
-}
-
-.launch-rail-tel__metric-label {
-  font-family: ui-monospace, monospace;
-  font-size: 6.5px;
-  letter-spacing: 0.12em;
-  color: var(--theme-text-muted);
-  opacity: 0.75;
-}
-
-.launch-rail-tel__metric-val {
-  font-family: ui-monospace, monospace;
-  font-size: 9px;
-  color: color-mix(in srgb, var(--theme-text) 90%, #fff);
-  font-variant-numeric: tabular-nums;
-}
-
-.launch-rail-tel__metric-unit {
-  font-size: 7px;
-  opacity: 0.7;
-}
-
-.launch-rail-tel__metric-denom {
-  font-size: 7px;
-  opacity: 0.45;
-}
-
-.launch-rail-tel__bar-track {
-  height: 4px;
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--theme-text-muted) 16%, transparent);
-  overflow: hidden;
-}
-
-.launch-rail-tel__bar-track--thin {
-  height: 3px;
-}
-
-.launch-rail-tel__bar-track > div {
-  height: 100%;
-  border-radius: 2px;
-  transition: width 0.1s linear;
-}
-
-.launch-rail-tel__bar-fill--power {
-  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-amber) 50%, #000), var(--tel-amber));
-}
-
-.launch-rail-tel__bar-fill--power-high {
-  background: linear-gradient(90deg, #b45309, #fbbf24);
-}
-
-.launch-rail-tel__bar-fill--power-critical {
-  background: linear-gradient(90deg, #991b1b, #f87171);
-  box-shadow: none;
-}
-
-.launch-rail-tel__bar-fill--gpu {
-  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-vram) 45%, #000), var(--tel-vram));
-}
-
-.launch-rail-tel__bar-fill--gpu-high {
-  background: linear-gradient(90deg, #3f6212, #a3e635);
-}
-
-.launch-rail-tel__bar-fill--gpu-critical {
-  background: linear-gradient(90deg, #14532d, #4ade80);
-  box-shadow: none;
-}
-
-.launch-rail-tel__bar-fill--mem {
-  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-cyan) 45%, #000), var(--tel-cyan));
-}
-
-.launch-rail-tel__bar-fill--mem-high {
-  background: linear-gradient(90deg, #0e7490, #67e8f9);
-}
-
-.launch-rail-tel__bar-fill--mem-critical {
-  background: linear-gradient(90deg, #155e75, #22d3ee);
-  box-shadow: none;
-}
-
 /* Launch rail — running engine chips */
 .launch-rail-engines {
   margin-bottom: 6px;
@@ -1526,13 +1397,6 @@
 
 .config-mtp-launch-warn__detail {
   color: color-mix(in srgb, #ffb800 85%, transparent);
-}
-
-
-.mono-autoset {
-  opacity: 0.55;
-  text-transform: none;
-  letter-spacing: 0.02em;
 }
 
 .config-launch-dock__meta [data-param-row] {
@@ -1880,14 +1744,4 @@
   color: var(--theme-provider-pill-active-text);
   text-shadow: none;
   font-weight: 600;
-}
-
-
-.toggle-switch--compact .toggle-track {
-  width: 2.75rem;
-  height: 1.1rem;
-}
-
-.toggle-switch--compact .toggle-label {
-  font-size: 6px;
 }

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { TextDecoder } from "node:util";
 import { describe, expect, it } from "vitest";
 
@@ -63,6 +63,9 @@ describe("repo invariants", () => {
     const corrupted: string[] = [];
 
     for (const path of trackedTextFiles()) {
+      // Tracked in the index but deleted in the working tree is a valid
+      // pre-commit state (e.g. removing a retired CSS entry point).
+      if (!existsSync(path)) continue;
       if (MOJIBAKE_ALLOWLIST.has(path.replace(/\\/g, "/"))) continue;
       const bytes = readFileSync(path);
       let text: string;
