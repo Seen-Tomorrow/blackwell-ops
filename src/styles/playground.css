@@ -146,7 +146,7 @@ body[data-onboarding-phase="paths"] [data-onboarding="add-folder"] {
 }
 
 [data-gpu-overclock] .gpu-oc-rail-btn.app-nav-tab {
-  min-height: 0 !important;
+  min-height: 0;
   line-height: 1.1;
   letter-spacing: 0.05em;
   white-space: nowrap;
@@ -154,13 +154,13 @@ body[data-onboarding-phase="paths"] [data-onboarding="add-folder"] {
 
 /* SYNC / PER GPU + TCC / WDDM — ~25% smaller than prior rail mode chips */
 [data-gpu-overclock] .gpu-oc-rail-btn--mode.app-nav-tab {
-  padding: 4px 9px !important;
-  font-size: 13.5px !important;
+  padding: 4px 9px;
+  font-size: 13.5px;
 }
 
 [data-gpu-overclock] .gpu-oc-rail-btn--action.app-nav-tab {
-  padding: 4px 4px !important;
-  font-size: var(--type-md) !important;
+  padding: 4px 4px;
+  font-size: var(--type-md);
 }
 
 [data-gpu-overclock] .gpu-oc-rail-btn .gpu-oc-rail-btn__uac {
@@ -169,23 +169,23 @@ body[data-onboarding-phase="paths"] [data-onboarding="add-folder"] {
 }
 
 .app-shell[data-ui-density="compact"] [data-gpu-overclock] .gpu-oc-rail-btn--mode.app-nav-tab {
-  min-height: 0 !important;
-  padding: 4px 9px !important;
-  font-size: 13.5px !important;
+  min-height: 0;
+  padding: 4px 9px;
+  font-size: 13.5px;
 }
 
 .app-shell[data-ui-density="compact"] [data-gpu-overclock] .gpu-oc-rail-btn--action.app-nav-tab {
-  min-height: 0 !important;
-  padding: 4px 4px !important;
-  font-size: var(--type-md) !important;
+  min-height: 0;
+  padding: 4px 4px;
+  font-size: var(--type-md);
 }
 
 /* Page layout SYNC / PER GPU (same ~25% shrink vs text-[9px] py-2) */
 [data-gpu-overclock] .gpu-oc-mode-btn.app-nav-tab {
-  min-height: 0 !important;
-  padding: 6px 8px !important;
-  font-size: var(--type-micro) !important;
-  line-height: 1.15 !important;
+  min-height: 0;
+  padding: 6px 8px;
+  font-size: var(--type-micro);
+  line-height: 1.15;
   letter-spacing: 0.06em;
 }
 
@@ -220,17 +220,17 @@ body[data-onboarding-phase="paths"] [data-onboarding="add-folder"] {
 
 [data-gpu-overclock] .gpu-oc-driver-model__btn--tcc-active.app-nav-tab,
 [data-gpu-overclock] .gpu-oc-driver-model__btn--tcc.app-nav-tab.app-nav-tab-active {
-  color: var(--fixed-c-1a1400) !important;
+  color: var(--fixed-c-1a1400);
   background: color-mix(
     in srgb,
     var(--theme-tel-amber, var(--theme-telemetry-amber)) 78%,
     var(--fixed-c-1a1400)
-  ) !important;
+  );
   border-color: color-mix(
     in srgb,
     var(--theme-tel-amber, var(--theme-telemetry-amber)) 70%,
     transparent
-  ) !important;
+  );
   box-shadow: 0 0 10px color-mix(
     in srgb,
     var(--theme-tel-amber, var(--theme-telemetry-amber)) 30%,
@@ -245,9 +245,9 @@ body[data-onboarding-phase="paths"] [data-onboarding="add-folder"] {
 
 [data-gpu-overclock] .gpu-oc-driver-model__btn--wddm-active.app-nav-tab,
 [data-gpu-overclock] .gpu-oc-driver-model__btn--wddm.app-nav-tab.app-nav-tab-active {
-  color: color-mix(in srgb, var(--theme-text) 92%, transparent) !important;
-  background: color-mix(in srgb, var(--theme-chip-bg) 70%, transparent) !important;
-  border-color: color-mix(in srgb, var(--theme-border) 55%, transparent) !important;
+  color: color-mix(in srgb, var(--theme-text) 92%, transparent);
+  background: color-mix(in srgb, var(--theme-chip-bg) 70%, transparent);
+  border-color: color-mix(in srgb, var(--theme-border) 55%, transparent);
 }
 
 /* TCC confirm modal */

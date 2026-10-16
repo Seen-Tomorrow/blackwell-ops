@@ -303,3 +303,10 @@ This trade removes ~1,000 literal paint sites and centralizes the palette.
   brain/worker highlights, compact-density padding. Cockpit base highlight
   selectors raised to keep winning without important.
 - Source total 317 -> 285; main CSS 311 -> 282. User confirmed visual stability.
+
+## app-nav-tab + app-shell ownership: zero !important
+
+- app-nav-tab: 21 playground GPU-overclock rail importants removed; owner note in chrome.css.
+- app-shell: compact-density spacing and monitor-focus hides de-importanted
+  (12 declarations).
+- Source total 285 -> 252; main CSS 282 -> 252. User confirmed visual stability.

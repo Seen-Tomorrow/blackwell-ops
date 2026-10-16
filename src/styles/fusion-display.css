@@ -4220,7 +4220,7 @@ html[data-industrial-bezel="brush"] {
 /* Monitor focus — stacked HUD: fusion + optional HW below. Keep mounts hot. */
 .app-shell[data-monitor-focus="1"] .app-header,
 .app-shell[data-monitor-focus="1"] .app-footer {
-  display: none !important;
+  display: none;
 }
 
 /* OPERATIONS tab chrome + leftover catalog column (width was the left crop). */
@@ -4229,20 +4229,20 @@ html[data-industrial-bezel="brush"] {
 .app-shell[data-monitor-focus="1"] .catalog-split-rail,
 .app-shell[data-monitor-focus="1"] .catalog-split-handle,
 .app-shell[data-monitor-focus="1"] [data-model-catalog] > .tab-page-header {
-  display: none !important;
+  display: none;
 }
 
 /* Providers bar + CTX / pin-above zone above display */
 .app-shell[data-monitor-focus="1"] .config-panel-top-chrome,
 .app-shell[data-monitor-focus="1"] .config-params-above-shell,
 .app-shell[data-monitor-focus="1"] .industrial-display-frame__top-chrome {
-  display: none !important;
+  display: none;
 }
 
 /* Cockpit / param editor body */
 .app-shell[data-monitor-focus="1"] .config-rail-main-column,
 .app-shell[data-monitor-focus="1"] .config-panel-center {
-  display: none !important;
+  display: none;
 }
 
 /* Launch dock + leftover right rail (eject strip stays visible — monitor model switcher) */
