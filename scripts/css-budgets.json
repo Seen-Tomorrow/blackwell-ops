@@ -1,15 +1,15 @@
 {
-  "note": "Regression ceilings for `node scripts/css-tools.mjs audit --check`. Ratcheted 2026-10-16 after the second lazy-CSS split (ConfigPage/LogsPanel/StackView). Startup CSS is now 490.4 kB; source grew ~12 kB from PostCSS whitespace normalization during the move, rules verified 3204=3204 with zero changed/lost.",
+  "note": "Regression ceilings for `node scripts/css-tools.mjs audit --check`. Ratcheted 2026-10-16 after .value-chip ownership batch 1 (419->397 !important; eink/GPU overrides now win by specificity). Startup CSS 490.9 kB; token migration growth is intentional. Use `npm run css:locate` before edits.",
   "sourceBytesLf": 680000,
   "deadRules": 0,
   "deadBytes": 0,
-  "important": 425,
+  "important": 400,
   "literalHex": 65,
   "literalRgba": 90,
   "colorMixLiteral": 55,
   "pxFontSizes": 30,
   "distBytes": 494000,
-  "distImportant": 418,
+  "distImportant": 395,
   "importOrder": [
     "tokens-base.css",
     "utilities.css",

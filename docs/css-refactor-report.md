@@ -238,3 +238,13 @@ This trade removes ~1,000 literal paint sites and centralizes the palette.
 - `app-themes.ts`: 24,049 -> 22,968 B; main JS 953.6 -> 952.7 kB.
 - Computed-color verification: every effective token in all three themes
   matches its pre-derivation value (0 mismatches); user confirmed zero drift.
+
+## .value-chip ownership batch 1
+
+- Eink-panel chip rules: `!important` removed; selectors raised with duplicated
+  classes so they still win over the config base and Tailwind utilities.
+- GPU assign / param-row chip rules: `!important` removed (they already win by
+  specificity).
+- Base owner note added to `launch.css`.
+- Source `!important`: 419 -> 397; config.css 137 -> 115; chip-rule important
+  declarations roughly 90 -> 68. User confirmed zero visual drift.

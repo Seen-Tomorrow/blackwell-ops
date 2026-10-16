@@ -66,6 +66,7 @@
 }
 
 /* Value chip — theme tokens only (no Tailwind opacity borders) */
+/* Owner: .value-chip / .value-chip-active base primitives. Contextual overrides: run `npm run css:locate -- .value-chip`. */
 .value-chip {
   background: var(--theme-chip-bg);
   border: 1px solid var(--theme-chip-border);

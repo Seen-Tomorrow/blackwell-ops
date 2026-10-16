@@ -941,23 +941,23 @@
 }
 
 /* Chips — themed outline, dark fill */
-.eink-panel .value-chip {
-  background: var(--theme-chip-bg) !important;
-  border-color: var(--theme-chip-border) !important;
-  color: var(--theme-chip-hover-text) !important;
+.eink-panel .value-chip.value-chip.value-chip {
+  background: var(--theme-chip-bg);
+  border-color: var(--theme-chip-border);
+  color: var(--theme-chip-hover-text);
 }
 
-.eink-panel .value-chip:hover {
-  background: var(--theme-chip-active-bg) !important;
-  border-color: var(--theme-chip-hover-border) !important;
-  color: var(--theme-chip-active-text) !important;
+.eink-panel .value-chip.value-chip.value-chip:hover {
+  background: var(--theme-chip-active-bg);
+  border-color: var(--theme-chip-hover-border);
+  color: var(--theme-chip-active-text);
 }
 
-.eink-panel .value-chip-active {
-  background: var(--theme-chip-solid-bg) !important;
-  border-color: var(--theme-chip-solid-bg) !important;
-  color: var(--theme-chip-solid-text) !important;
-  box-shadow: 0 0 4px var(--theme-accent-glow) !important;
+.eink-panel .value-chip-active.value-chip-active {
+  background: var(--theme-chip-solid-bg);
+  border-color: var(--theme-chip-solid-bg);
+  color: var(--theme-chip-solid-text);
+  box-shadow: 0 0 4px var(--theme-accent-glow);
 }
 
 /* Chip value area — wrap to panel width (spec decoding, KV quant, etc.) */
@@ -2054,12 +2054,12 @@ select option {
 [data-config-panel] .config-params-scroll [data-param-row] input.value-chip-active,
 [data-config-page] [data-param-row] .value-chip,
 [data-config-page] [data-param-row] .value-chip-active {
-  background: var(--theme-chip-bg) !important;
-  border: 1px solid var(--theme-chip-border) !important;
-  color: var(--theme-chip-text) !important;
-  box-shadow: none !important;
+  background: var(--theme-chip-bg);
+  border: 1px solid var(--theme-chip-border);
+  color: var(--theme-chip-text);
+  box-shadow: none;
   transform: none;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease !important;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
 
 [data-config-panel] .gpu-assign-panel .value-chip:hover,
@@ -2068,9 +2068,9 @@ select option {
 [data-config-panel] .config-params-scroll [data-param-row] .value-chip:hover,
 [data-config-panel] .config-params-scroll [data-param-row] input.value-chip:hover,
 [data-config-page] [data-param-row] .value-chip:hover {
-  background: var(--theme-chip-active-bg) !important;
-  border-color: var(--theme-chip-hover-border) !important;
-  color: var(--theme-chip-hover-text) !important;
+  background: var(--theme-chip-active-bg);
+  border-color: var(--theme-chip-hover-border);
+  color: var(--theme-chip-hover-text);
 }
 
 [data-config-panel] .gpu-assign-panel .value-chip-active,
@@ -2079,10 +2079,10 @@ select option {
 [data-config-panel] .config-params-scroll [data-param-row] .value-chip-active,
 [data-config-panel] .config-params-scroll [data-param-row] input.value-chip-active,
 [data-config-page] [data-param-row] .value-chip-active {
-  background: var(--theme-chip-active-bg) !important;
-  border-color: var(--theme-chip-active-border) !important;
-  color: var(--theme-chip-active-text) !important;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-chip-active-border) 40%, transparent) !important;
+  background: var(--theme-chip-active-bg);
+  border-color: var(--theme-chip-active-border);
+  color: var(--theme-chip-active-text);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-chip-active-border) 40%, transparent);
 }
 
 /* Semantic param-value chips (ValueBubbles) — sit on value-chip base */
