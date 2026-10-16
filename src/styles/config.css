@@ -2,103 +2,50 @@
 
 
 /* Chips on green bg — dark contrast */
-.runtime-section-green .value-chip {
-  background: rgba(0, 0, 0, 0.25) !important;
-  border-color: rgba(0, 0, 0, 0.3) !important;
-  color: #1a1a1a !important;
-}
 
-.runtime-section-green .value-chip:hover {
-  background: rgba(0, 0, 0, 0.4) !important;
-  border-color: rgba(0, 0, 0, 0.6) !important;
-  color: #000 !important;
-}
 
-.runtime-section-green .value-chip-active {
-  background: #1a1a1a !important;
-  border-color: #1a1a1a !important;
-  color: #ffffff !important;
-  box-shadow: 0 0 6px rgba(0, 0, 0, 0.3) !important;
-}
+
+
+
 
 /* User-set alias input text — white instead of green */
 .mono-user-input {
   color: #ffffff !important;
 }
-.mono-panel .mono-user-input {
-  color: #ffffff !important;
-}
+
 
 /* Chips on mono — themed outline, dark fill */
-.mono-panel .value-chip {
-  background: var(--theme-chip-bg) !important;
-  border-color: var(--theme-chip-border) !important;
-  color: var(--theme-chip-hover-text) !important;
-}
 
-.mono-panel .value-chip:hover {
-  background: var(--theme-chip-active-bg) !important;
-  border-color: var(--theme-chip-hover-border) !important;
-  color: var(--theme-chip-active-text) !important;
-}
 
-.mono-panel .value-chip-active {
-  background: var(--theme-chip-solid-bg) !important;
-  border-color: var(--theme-chip-solid-bg) !important;
-  color: var(--theme-chip-solid-text) !important;
-  box-shadow: 0 0 4px var(--theme-accent-glow) !important;
-}
+
+
+
 
 /* Param rows — label + chips; chips wrap instead of forcing horizontal scroll */
-.mono-panel [data-param-row],
-.eink-panel [data-param-row] {
+.eink-panel [data-param-row]{
   min-height: 22px;
   min-width: 0;
   width: 100%;
 }
 
-.mono-panel [data-param-row] .value-chip,
-.mono-panel [data-param-row] .value-chip-active,
-.eink-panel [data-param-row] .value-chip,
-.eink-panel [data-param-row] .value-chip-active,
-[data-config-panel] [data-param-row] input.value-chip,
-[data-config-panel] [data-param-row] input.value-chip-active {
+.eink-panel [data-param-row] .value-chip, .eink-panel [data-param-row] .value-chip-active, [data-config-panel] [data-param-row] input.value-chip, [data-config-panel] [data-param-row] input.value-chip-active{
   box-shadow: 0 0 4px transparent !important;
   transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease !important;
 }
 
-.mono-panel [data-param-row] .value-chip-active,
-.eink-panel [data-param-row] .value-chip-active,
-[data-config-panel] [data-param-row] input.value-chip-active {
+.eink-panel [data-param-row] .value-chip-active, [data-config-panel] [data-param-row] input.value-chip-active{
   box-shadow: 0 0 4px var(--theme-accent-glow) !important;
 }
 
-.mono-panel input.value-chip-active.mono-user-input {
-  color: #ffffff !important;
-}
 
-.runtime-profile-row .value-chip {
-  background: rgba(184, 122, 0, 0.06) !important;
-  border-color: rgba(184, 122, 0, 0.35) !important;
-  color: #b87a00 !important;
-}
 
-.runtime-profile-row .value-chip:hover {
-  background: rgba(184, 122, 0, 0.12) !important;
-  border-color: rgba(184, 122, 0, 0.6) !important;
-  color: #d4950a !important;
-}
 
-.runtime-profile-row .value-chip {
-  box-shadow: 0 0 6px transparent !important;
-}
 
-.runtime-profile-row .value-chip-active {
-  background: #b87a00 !important;
-  border-color: #b87a00 !important;
-  color: #1a1a1a !important;
-  box-shadow: 0 0 6px rgba(184, 122, 0, 0.3) !important;
-}
+
+
+
+
+
 
 /* ── Provider + runtime profile bar (50/50) ─── */
 .config-provider-profile-bar {
@@ -663,17 +610,7 @@
 }
 
 /* Always on (was crt-only): kills halo/filter. Uses no face token, so CLEAN == DOTTED. */
-.vram-forecast-display .vram-forecast-gb-accented,
-.industrial-display-area .vram-forecast-display .vram-forecast-gb-accented,
-.vram-forecast-display .vram-fc-need__val,
-.industrial-display-area .vram-forecast-display .vram-fc-need__val {
-  background-image: none !important;
-  background-clip: unset;
-  -webkit-background-clip: unset;
-  -webkit-text-fill-color: currentColor !important;
-  filter: none !important;
-  text-shadow: none !important;
-}
+
 
 /* Always on (was crt-only): crisp selected border, no glow halo. */
 .vram-forecast-display .gpu-card.gpu-selected,
@@ -996,24 +933,7 @@
 .eink-panel > * > * > * {
   color: var(--theme-accent-bright) !important;
 }
-.eink-panel .value-chip,
-.eink-panel .value-chip-active,
-.eink-panel .config-value-segment,
-.eink-panel .config-value-segment *,
-.eink-panel .err-title,
-.eink-panel .err-body,
-.eink-panel .err-detail,
-.eink-panel .err-reload,
-.eink-panel .engine-stack-profile-pill,
-.eink-panel .provider-pill-active,
-.eink-panel .catalog-seat-edit-banner,
-.eink-panel .catalog-seat-edit-banner *,
-.eink-panel .full-auto-cockpit,
-.eink-panel .full-auto-cockpit *,
-.eink-panel .config-spec-mode-badge,
-.eink-panel .config-spec-mode-badge *,
-.eink-panel .ctx-slider-ghost,
-.eink-panel .ctx-slider-ghost * {
+.eink-panel .value-chip, .eink-panel .value-chip-active, .eink-panel .config-value-segment, .eink-panel .config-value-segment *, .eink-panel .err-title, .eink-panel .err-body, .eink-panel .err-detail, .eink-panel .err-reload, .eink-panel .engine-stack-profile-pill, .eink-panel .provider-pill-active, .eink-panel .catalog-seat-edit-banner, .eink-panel .catalog-seat-edit-banner *, .eink-panel .full-auto-cockpit, .eink-panel .full-auto-cockpit *{
   color: inherit;
 }
 
@@ -1261,8 +1181,7 @@
   ) !important;
 }
 
-[data-config-panel] .eink-panel .config-value-segment,
-[data-config-panel] .mono-panel .config-value-segment {
+[data-config-panel] .eink-panel .config-value-segment{
   background: color-mix(in srgb, var(--theme-panel-accent) 80%, #000 20%);
 }
 
@@ -1894,13 +1813,9 @@ select option {
   box-shadow: 0 0 15px transparent;
 }
 
-.moe-badge-root.moe-badge-gold {
-  box-shadow: 0 0 15px rgba(251, 191, 36, 0.5);
-}
 
-.moe-badge-root.moe-badge-suggest {
-  box-shadow: 0 0 12px transparent;
-}
+
+
 
 /* Orange hatched pattern for MOE_OPTIMAL RAM bar */
 .bg-orange-hatched {
@@ -1922,18 +1837,11 @@ select option {
 
 
 
-.nuclear-btn-container.flash .toggle-switch {
-  animation: nuclearFlash 0.4s ease-out forwards;
-}
 
-.nuclear-btn-container.flash .nuclear-btn-text {
-  color: #fff;
-}
 
-.spec-warning-banner.active {
-  border-color: rgba(234, 179, 8, 0.4);
-  color: rgba(250, 204, 21, 0.9);
-}
+
+
+
 
 /* ── CTX slider track (native + custom) — uses app theme accent tokens ── */
 :root {

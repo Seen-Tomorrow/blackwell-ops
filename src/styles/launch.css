@@ -223,9 +223,7 @@
   background: var(--theme-accent-soft) !important;
 }
 
-[data-config-panel] .config-panel-toolbar-chip--muted:not(.config-panel-toolbar-chip--active) {
-  opacity: 0.5;
-}
+
 
 .config-panel-toolbar__label {
   font-size: 7px;
@@ -266,9 +264,7 @@
   background-image: var(--theme-industrial-texture-active);
 }
 
-.launch-rail-upper-pad,
-.launch-rail-align-pad,
-.launch-rail-lower-fill {
+.launch-rail-upper-pad, .launch-rail-align-pad{
   flex-shrink: 0;
   min-width: 0;
   pointer-events: none;
@@ -971,10 +967,7 @@
  * Catalog quiet-wing desaturate is ONLY `[data-model-catalog] .catalog-list-panel`
  * — never on this rail.
  */
-.launch-rail-tel__total-cell.phosphor-display-surface,
-.launch-rail-tel__cpu.phosphor-display-surface,
-.launch-rail-tel__gpu.phosphor-display-surface,
-.gpu-topo-card.phosphor-display-surface {
+.launch-rail-tel__total-cell.phosphor-display-surface, .launch-rail-tel__cpu.phosphor-display-surface, .gpu-topo-card.phosphor-display-surface{
   position: relative;
   overflow: hidden;
   /* Face fill comes from texture mode; no base black wash (that + LIGHT ink = veil) */
@@ -988,10 +981,7 @@
 }
 
 /* Soften outer chrome borders on HW cells — hairline only, not theme-glow frames */
-.launch-rail-tel__total-cell,
-.launch-rail-tel__cpu,
-.launch-rail-tel__gpu,
-.launch-rail-tel .gpu-topo-card:not(.gpu-topo-card--selected) {
+.launch-rail-tel__total-cell, .launch-rail-tel__cpu, .launch-rail-tel .gpu-topo-card:not(.gpu-topo-card--selected){
   border-color: color-mix(in srgb, var(--theme-border) 28%, transparent);
 }
 
@@ -1064,8 +1054,7 @@
   box-shadow: none;
 }
 
-.launch-rail-tel__cpu,
-.launch-rail-tel__gpu {
+.launch-rail-tel__cpu{
   border-radius: 4px;
   border: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent);
   background: var(--theme-tel-cell-bg, color-mix(in srgb, #000 18%, transparent));
@@ -1075,8 +1064,7 @@
   border-color: var(--theme-industrial-gpu-selected) !important;
 }
 
-.launch-rail-tel__cpu-head,
-.launch-rail-tel__gpu-head {
+.launch-rail-tel__cpu-head{
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -1085,8 +1073,7 @@
   border-bottom: 1px solid color-mix(in srgb, var(--theme-border) 35%, transparent);
 }
 
-.launch-rail-tel__cpu-name,
-.launch-rail-tel__gpu-name {
+.launch-rail-tel__cpu-name{
   font-family: ui-monospace, monospace;
   font-size: 7.5px;
   color: color-mix(in srgb, var(--theme-text) 88%, #fff);
@@ -1096,8 +1083,7 @@
   max-width: 11rem;
 }
 
-.launch-rail-tel__cpu-meta,
-.launch-rail-tel__gpu-sub {
+.launch-rail-tel__cpu-meta{
   font-family: ui-monospace, monospace;
   font-size: 6.5px;
   color: var(--theme-text-muted);

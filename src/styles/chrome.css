@@ -408,49 +408,24 @@
 }
 
 /* Compact — mono runtime block (alias, profile, multi-gpu dock) */
-.app-shell[data-ui-density="compact"] [data-config-panel] .mono-panel-body {
-  padding: 0.25rem 0.75rem 0.375rem 1rem !important;
-}
 
-.app-shell[data-ui-density="compact"] [data-config-panel] .mono-panel-body > .flex.gap-4 {
-  gap: 0.5rem;
-}
 
-.app-shell[data-ui-density="compact"] [data-config-panel] .mono-panel .mono-label {
-  font-size: 7px;
-  margin-bottom: 0.25rem !important;
-}
 
-.app-shell[data-ui-density="compact"] [data-config-panel] .mono-panel .space-y-2\.5 > :not([hidden]) ~ :not([hidden]) {
-  margin-top: 0.25rem !important;
-}
+
+
+
+
 
 /* Compact — speculative decoding header row */
-.app-shell[data-ui-density="compact"] [data-config-panel] .config-spec-decoding {
-  gap: 0.25rem;
-  min-height: 0;
-}
 
-.app-shell[data-ui-density="compact"] [data-config-panel] .config-spec-decoding .toggle-switch {
-  transform: scale(0.78);
-  transform-origin: left center;
-}
 
-.app-shell[data-ui-density="compact"] [data-config-panel] .config-spec-params {
-  margin-top: 0.25rem !important;
-}
 
-.app-shell[data-ui-density="compact"] [data-config-panel] .config-spec-params > :not([hidden]) ~ :not([hidden]) {
-  margin-top: 0.25rem !important;
-}
 
-.app-shell[data-ui-density="compact"] [data-config-panel] .config-spec-decoding ~ div.text-\[8px\],
-.app-shell[data-ui-density="compact"] [data-config-panel] .config-spec-decoding ~ div.type-tiny {
-  font-size: 7px !important;
-  margin-top: 0.125rem !important;
-  padding-top: 0.125rem !important;
-  padding-bottom: 0.125rem !important;
-}
+
+
+
+
+
 
 .app-header-logo {
   color: var(--theme-header-logo);
@@ -1995,30 +1970,23 @@
  *   hairline/micro (6–7px) -> fs-xs · tiny (8) -> fs-sm · label (9) -> fs-md
  *   body (10) -> fs-lg · sm (11) -> 14px x scale
  */
-.foundry-window .text-\[6px\],
-.foundry-window .text-\[7px\],
-.foundry-window .type-hairline,
-.foundry-window .type-micro {
+.foundry-window .type-hairline, .foundry-window .type-micro{
   font-size: var(--foundry-fs-xs) !important;
 }
 
-.foundry-window .text-\[8px\],
-.foundry-window .type-tiny {
+.foundry-window .type-tiny{
   font-size: var(--foundry-fs-sm) !important;
 }
 
-.foundry-window .text-\[9px\],
-.foundry-window .type-label {
+.foundry-window .type-label{
   font-size: var(--foundry-fs-md) !important;
 }
 
-.foundry-window .text-\[10px\],
-.foundry-window .type-body {
+.foundry-window .type-body{
   font-size: var(--foundry-fs-lg) !important;
 }
 
-.foundry-window .text-\[11px\],
-.foundry-window .type-sm {
+.foundry-window .type-sm{
   font-size: calc(14px * var(--foundry-scale)) !important;
 }
 

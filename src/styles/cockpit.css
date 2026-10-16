@@ -140,9 +140,7 @@
   margin-top: 0;
 }
 
-.full-auto-cockpit__footer--actions .full-auto-cockpit__connect {
-  align-self: center;
-}
+
 
 /* SPEC-EXTRA — inline in violet draft strip (Assisted only) */
 .full-auto-cockpit__dflash-get--spec-extra {
@@ -226,11 +224,7 @@
   color: color-mix(in srgb, var(--theme-industrial-muted) 70%, transparent);
 }
 
-.full-auto-cockpit__dflash-get--tone-neutral .full-auto-cockpit__spec-chip {
-  border-color: color-mix(in srgb, var(--theme-chip-border) 90%, transparent);
-  color: var(--theme-chip-text, var(--theme-industrial-muted));
-  background: transparent;
-}
+
 
 .full-auto-cockpit__header--minimal {
   justify-content: flex-start;
@@ -304,22 +298,16 @@
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
 }
 
-.full-auto-cockpit--compact .full-auto-cockpit__grid-cell {
-  padding: 0.15rem 0.3rem;
-}
 
-.full-auto-cockpit--compact .full-auto-cockpit__header {
-  margin-bottom: 0.25rem;
-}
+
+
 
 /* CTX strip is above the cockpit — tighten header → first slider gap by 6px */
 .full-auto-cockpit[data-ctx-dock="above"] .full-auto-cockpit__header {
   margin-bottom: calc(0.9rem - 6px);
 }
 
-.full-auto-cockpit--compact[data-ctx-dock="above"] .full-auto-cockpit__header {
-  margin-bottom: max(0px, calc(0.25rem - 6px));
-}
+
 
 /* Arctic — brighter header plate; MTP/DFlash accents same as dark (green / violet) */
 
@@ -1159,15 +1147,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--worker {
   background: color-mix(in srgb, var(--theme-harness-worker-raw) 30%, var(--theme-eject-card-bg) 70%) !important;
 }
 
-html[data-harness-open="1"] .running-engine-card.harness-engine--solo,
-html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--solo {
-  opacity: 1 !important;
-  border-color: color-mix(in srgb, var(--theme-harness-brain-raw) 65%, transparent) !important;
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--theme-harness-brain-raw) 45%, transparent),
-    0 0 12px color-mix(in srgb, var(--theme-harness-brain-raw) 20%, transparent) !important;
-  background: color-mix(in srgb, var(--theme-harness-brain-raw) 25%, var(--theme-eject-card-bg) 75%) !important;
-}
+
 
 html[data-harness-open="1"] .running-engine-card.harness-engine--picked,
 html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--picked {
@@ -1179,26 +1159,15 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--picked {
 
 
 
-.harness-wizard__mode-switch-row .segment-switch {
-  min-width: 11rem;
-}
+
 
 /* Doubled size via real font-size + padding — NOT transform (transform
    grows the visual without growing the layout box, so siblings overlap).
    Doubling the font + padding gives a natural 2x footprint. */
-.harness-wizard__mode-switch-row .segment-switch__option {
-  font-size: 13px;
-  padding: 6px 22px;
-  letter-spacing: 0.16em;
-}
+
 
 /* Thumb scales with the larger option. */
-.harness-wizard__mode-switch-row .segment-switch__thumb {
-  border-radius: 4px;
-  box-shadow:
-    0 0 12px color-mix(in srgb, var(--theme-accent-glow) 70%, transparent),
-    inset 0 1px 0 color-mix(in srgb, #fff 14%, transparent);
-}
+
 
 /* ── Launch dock dim while harness is open ──────────────────────────
    When the right rail is closed, the launch dock sits directly under
@@ -1315,17 +1284,8 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   position: relative;
   min-width: 0;
 }
-.ctx-forecast-ribbon-slot--track .ctx-forecast-ribbon {
-  height: 100%;
-  margin: 0;
-  pointer-events: none;
-  cursor: inherit;
-}
-.ctx-forecast-ribbon-slot--track .ctx-forecast-ribbon__rail {
-  inset: 0;
-  border-radius: 2px;
-  opacity: 0.78;
-}
+
+
 .ctx-forecast-ribbon {
   position: relative;
   height: 7px;
@@ -1638,10 +1598,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 }
 
 
-.full-auto-cockpit--dense .full-auto-cockpit__row-label {
-  width: 3.5rem;
-  font-size: 6px;
-}
+
 
 .full-auto-cockpit__copy {
   font-size: 7px;

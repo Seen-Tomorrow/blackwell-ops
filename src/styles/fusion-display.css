@@ -1009,15 +1009,9 @@
   margin-left: calc(8px * var(--vram-fc-scale, 1.12));
 }
 
-.vram-fc__verdict.is-ok {
-  color: color-mix(in srgb, var(--theme-nv-green) 92%, transparent);
-  border-color: color-mix(in srgb, var(--theme-nv-green) 40%, transparent);
-}
 
-.vram-fc__verdict.is-fail {
-  color: color-mix(in srgb, #f87171 92%, transparent);
-  border-color: color-mix(in srgb, #f87171 42%, transparent);
-}
+
+
 
 .vram-forecast-scenario-badge {
   width: auto;
@@ -1025,19 +1019,9 @@
   min-height: 0;
 }
 
-.vram-fc-need__val.vram-forecast-gb-accented--learned,
-.vram-fc-need__val.vram-forecast-gb-accented--learned_curve,
-.vram-fc[data-source-kind="learned"] .vram-fc-need:not(.vram-fc-need--ram) .vram-fc-need__val,
-.vram-fc[data-source-kind="learned_curve"] .vram-fc-need:not(.vram-fc-need--ram) .vram-fc-need__val {
-  color: color-mix(in srgb, var(--theme-telemetry-amber) 88%, #fde68a 22%);
-  text-shadow: 0 0 8px color-mix(in srgb, var(--theme-telemetry-amber) 28%, transparent);
-}
 
-.vram-fc-need__val.vram-forecast-gb-accented--fit_probe,
-.vram-fc[data-source-kind="fit_probe"] .vram-fc-need:not(.vram-fc-need--ram) .vram-fc-need__val {
-  color: color-mix(in srgb, var(--theme-telemetry-cyan) 94%, transparent);
-  text-shadow: 0 0 8px color-mix(in srgb, var(--theme-telemetry-cyan) 24%, transparent);
-}
+
+
 
 .vram-forecast-header__fit-row,
 .vram-fc__source-row {
@@ -1545,12 +1529,7 @@
   flex: 0 0 auto;
 }
 
-.vram-fc-bars--assisted .vram-fc-bar__lab {
-  flex: 0 0 3.6ch;
-  width: 3.6ch;
-  min-width: 3.6ch;
-  text-align: left;
-}
+
 
 /* Dominant fused VRAM/RAM instruments — accent chrome, never ink-grey washes */
 .vram-fc-bar--fused {
@@ -1825,10 +1804,7 @@
   flex: 1 1 0;
 }
 
-.vram-fc-bars--split .vram-fc-bar-row--vram,
-.vram-fc-bars--split .vram-fc-bar-row--ram {
-  min-width: 0;
-}
+
 
 .vram-fc-bar {
   position: relative;
@@ -1948,12 +1924,8 @@
   box-shadow: none;
   box-sizing: border-box;
 }
-.vram-fc-source__status-hero.is-exact {
-  opacity: 1;
-}
-.vram-fc-source__status-hero.is-estimate {
-  opacity: 0.92;
-}
+
+
 /* RE-PROBE — same language as PROVIDER / PROFILE pills */
 .vram-fc-source__reprobe,
 .vram-fc-header__reprobe {
@@ -2184,18 +2156,9 @@
 .vram-fc-source--dominant .vram-fc-source__pips {
   transform: scale(0.9);
 }
-.vram-fc-source--dominant .vram-fc-source__status-hero {
-  font-size: calc(11px * var(--vram-fc-scale, 1.12));
-}
-.vram-fc-source--dominant .vram-fc-source__status-slot {
-  flex: 0 0 auto;
-  margin-left: 0;
-  order: 3;
-  height: calc(14px * var(--vram-fc-scale, 1.12));
-}
-.vram-fc-source--dominant .vram-fc-source__status-main {
-  flex: 0 0 auto;
-}
+
+
+
 /* RE-PROBE keeps provider-pill metrics (don't shrink vs PROVIDER bar) */
 .vram-fc-source--dominant .vram-fc-source__reprobe {
   padding: 2px 8px;
@@ -2258,12 +2221,7 @@
 .vram-fc-source__pip.is-on { opacity: 0.9; }
 
 /* Stacked breakdown: allow wrap so model/ctx lines stay readable */
-.vram-fc-source[data-source-layout="stack"] .memory-source-body__line,
-.vram-fc-source[data-source-layout="stack"] .vram-fc-source__line {
-  white-space: normal;
-  overflow: visible;
-  text-overflow: unset;
-}
+
 
 .memory-source-kind-label,
 .vram-fc-source__kind-lab {
@@ -3142,74 +3100,35 @@
   color: #585858;
 }/* LIGHT — GPU names + memory readout (tokenized accent; no glow halo) */ /* * EINK + PAPER face — TG micro-stats,
 ctx slots,
-mult chip. * (Do not chain unfinished selectors — a prior strip accidentally painted * box-shadow rings on every listed surface.) */ .phosphor-screen .fusion-readout-emphasis,
-.phosphor-screen-inner .fusion-readout-emphasis,
-.phosphor-screen .fusion-readout-emphasis,
-.phosphor-screen-inner .fusion-readout-emphasis{
+mult chip. * (Do not chain unfinished selectors — a prior strip accidentally painted * box-shadow rings on every listed surface.) */ .phosphor-screen-inner .fusion-readout-emphasis{
   color: color-mix(in srgb, var(--display-face-text) 72%, #e8edf4);
-}.phosphor-screen .fusion-readout-divider,
-.phosphor-screen-inner .fusion-readout-divider,
-.phosphor-screen .fusion-readout-divider,
-.phosphor-screen-inner .fusion-readout-divider{
+}.phosphor-screen-inner .fusion-readout-divider{
   color: color-mix(in srgb, var(--display-face-text-muted) 48%, #a8b4c4);
   opacity: 0.72;
-}.phosphor-screen .fusion-readout-idle,
-.phosphor-screen-inner .fusion-readout-idle,
-.phosphor-screen .fusion-readout-idle,
-.phosphor-screen-inner .fusion-readout-idle{
+}.phosphor-screen-inner .fusion-readout-idle{
   /* Brightness-clamped control muted — visible on all dark faces (SLATE grey too). */
   color: var(--display-face-control-muted) !important;
   opacity: 1 !important;
-}.phosphor-screen .fusion-readout-divider-idle,
-.phosphor-screen-inner .fusion-readout-divider-idle,
-.phosphor-screen .fusion-readout-divider-idle,
-.phosphor-screen-inner .fusion-readout-divider-idle{
+}.phosphor-screen-inner .fusion-readout-divider-idle{
   color: color-mix(in srgb, var(--display-face-text-muted) 70%, #727c8c) !important;
   opacity: 0.72 !important;
-}.phosphor-screen .ctx-shared-pool-chip,
-.phosphor-screen-inner .ctx-shared-pool-chip,
-.phosphor-screen .ctx-shared-pool-chip,
-.phosphor-screen-inner .ctx-shared-pool-chip{
-  border-color: color-mix(in srgb, var(--display-face-text) 45%, transparent);
-  color: color-mix(in srgb, var(--display-face-text) 82%, transparent);
-}.phosphor-screen .ctx-bar-capacity-chip,
-.phosphor-screen-inner .ctx-bar-capacity-chip,
-.phosphor-screen .ctx-bar-capacity-chip,
-.phosphor-screen-inner .ctx-bar-capacity-chip{
+}.phosphor-screen-inner .ctx-bar-capacity-chip{
   border-color: var(--display-face-border);
   color: color-mix(in srgb, var(--display-face-text-muted) 72%, transparent);
-}.phosphor-screen .ctx-bar-fill-pct--active,
-.phosphor-screen-inner .ctx-bar-fill-pct--active,
-.phosphor-screen .ctx-bar-fill-pct--active,
-.phosphor-screen-inner .ctx-bar-fill-pct--active{
+}.phosphor-screen-inner .ctx-bar-fill-pct--active{
   color: color-mix(in srgb, var(--display-face-text) 92%, #fff);
   text-shadow: 0 0 4px color-mix(in srgb, var(--theme-bg) 80%, transparent), 0 1px 2px color-mix(in srgb, #000 55%, transparent);
-}.phosphor-screen .ctx-bar-track--active,
-.phosphor-screen-inner .ctx-bar-track--active,
-.phosphor-screen .ctx-bar-track--active,
-.phosphor-screen-inner .ctx-bar-track--active{
+}.phosphor-screen-inner .ctx-bar-track--active{
   background: color-mix(in srgb, var(--display-face-bar-bg) 65%, transparent);
   border-color: transparent;
-}.phosphor-screen .ctx-bar-track--empty,
-.phosphor-screen-inner .ctx-bar-track--empty,
-.phosphor-screen .ctx-bar-track--empty,
-.phosphor-screen-inner .ctx-bar-track--empty{
+}.phosphor-screen-inner .ctx-bar-track--empty{
   background: transparent;
   border-color: color-mix(in srgb, var(--display-face-border) 55%, transparent);
-}.phosphor-screen .ctx-bar-fill--processing,
-.phosphor-screen-inner .ctx-bar-fill--processing,
-.phosphor-screen .ctx-bar-fill--processing,
-.phosphor-screen-inner .ctx-bar-fill--processing{
+}.phosphor-screen-inner .ctx-bar-fill--processing{
   background: #22c55e;
-}.phosphor-screen .ctx-bar-fill--idle,
-.phosphor-screen-inner .ctx-bar-fill--idle,
-.phosphor-screen .ctx-bar-fill--idle,
-.phosphor-screen-inner .ctx-bar-fill--idle{
+}.phosphor-screen-inner .ctx-bar-fill--idle{
   background: color-mix(in srgb, var(--display-face-text) 38%, transparent);
-}.phosphor-screen .ctx-bar-slot-label,
-.phosphor-screen-inner .ctx-bar-slot-label,
-.phosphor-screen .ctx-bar-slot-label,
-.phosphor-screen-inner .ctx-bar-slot-label{
+}.phosphor-screen-inner .ctx-bar-slot-label{
   background: color-mix(in srgb, var(--theme-bg) 50%, transparent);
   color: color-mix(in srgb, var(--display-face-text) 78%, transparent);
 }/* EINK + PAPER face — shared ×N multiplier chip only (not ctx / readout) */ .fusion-mult-chip,
@@ -3238,13 +3157,10 @@ mult chip. * (Do not chain unfinished selectors — a prior strip accidentally p
 }
 
 /* Prefer not clipping bench chrome inside fusion glass */
-.phosphor-screen .bench-widget-panel,
-.phosphor-screen-inner .bench-widget-panel,
-.phosphor-display-surface .bench-widget-panel {
+.phosphor-screen-inner .bench-widget-panel, .phosphor-display-surface .bench-widget-panel{
   overflow: visible;
 }
 
-.phosphor-screen.phosphor-display-surface:has(.bench-widget-panel),
 .phosphor-screen-inner.phosphor-display-surface:has(.bench-widget-panel) {
   overflow: visible;
 }
@@ -3687,9 +3603,7 @@ html[data-industrial-bezel="brush"] {
  * CRT pitch for LIGHT overlays only (soft e-ink).
  * DARK uses the original fixed 2px / 4px structure below — do not invent new meshes.
  */
-.phosphor-display-surface,
-.phosphor-screen,
-.phosphor-screen-inner {
+.phosphor-display-surface, .phosphor-screen-inner{
   /* Matrix (dot + scanline) size — global per-texture tokens in tokens-base.css,
      shared across all color themes (tune there). */
 }
@@ -3755,9 +3669,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .industrial-display-area .moe-badge-root.moe-badge-suggest {
-    animation: none !important;
-  }
+  
 }
 
 /* ── Fusion share card capture + menu ─────────────────────────────── */
@@ -3999,9 +3911,7 @@ html[data-industrial-bezel="brush"] {
   cursor: wait;
 }
 
-.fusion-share-capture-brand .fusion-share-brand-mark {
-  color: var(--theme-text);
-}
+
 
 /* Fusion overlay — PREFILL hero TPS (default slate; EINK face overrides below) */
 .fusion-prefill-hero-value--active {
@@ -4032,8 +3942,7 @@ html[data-industrial-bezel="brush"] {
  * Legacy `.phosphor-screen` was a second nested glass (fusion only).
  * Glass/texture/shadow is solely `.phosphor-screen-inner` now — do not restyle fill stacks.
  */
-.phosphor-screen,
-.fusion-overlay-fill {
+.fusion-overlay-fill{
   background: transparent;
   background-image: none;
   box-shadow: none;
@@ -4148,8 +4057,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 /* CTX slot bars — base fallbacks (texture + theme rules above override) */
-.ctx-shared-pool-chip,
-.ctx-bar-capacity-chip {
+.ctx-bar-capacity-chip{
   border-width: 1px;
   border-style: solid;
 }
@@ -4338,11 +4246,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 /* Launch dock + leftover right rail (eject strip stays visible — monitor model switcher) */
-.app-shell[data-monitor-focus="1"] .launch-rail-launch,
-.app-shell[data-monitor-focus="1"] .engine-launch-dock,
-.app-shell[data-monitor-focus="1"] .config-launch-dock,
-.app-shell[data-monitor-focus="1"] .config-launch-rail,
-.app-shell[data-monitor-focus="1"] .launch-rail-split-handle {
+.app-shell[data-monitor-focus="1"] .launch-rail-launch, .app-shell[data-monitor-focus="1"] .config-launch-dock, .app-shell[data-monitor-focus="1"] .config-launch-rail, .app-shell[data-monitor-focus="1"] .launch-rail-split-handle{
   display: none !important;
 }
 
@@ -4383,10 +4287,7 @@ html[data-industrial-bezel="brush"] {
   transform-origin: top left;
 }
 
-.app-shell[data-monitor-focus="1"] .app-main {
-  flex: 1 1 auto;
-  min-height: 0;
-}
+
 
 /* Inner content packs to the TOP — leftover window height stays BELOW HW-below,
    never a blank band between fusion and HW. Stack + rails hug content height,
