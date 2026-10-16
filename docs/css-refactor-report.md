@@ -134,3 +134,37 @@ per-domain visual pass. Recommended pilot: `foundry.css` (self-contained, 142
 classes / 21 kB, no shared shell classes) -> extract 5-8 `fnd-*` primitives
 (button/card/chip/row/panel) and measure. The same recipe then repeats for
 `config.css`, `catalog.css`, `cockpit.css`.
+
+## Item 3 — Foundry primitive pilot: DELIVERED (commit d3776cc)
+
+- `fnd-dev-btn`: 12 variant rules collapsed into a tone-driven base
+  (`.fnd-dev-btn` + `--fnd-*` props); variants set tone/mix only.
+- `fnd-confirm-btn` / `fnd-build-btn`: missing base classes propagated in TSX;
+  duplicated `font-size` and the duplicate `--danger` rule removed.
+- `foundry.css` 22,433 -> 21,425 B (LF-normalized, -1,008 B, -4.5%).
+- Startup `index-*.css` 475,380 -> 474,475 B (-905 B).
+- Gates: build, tsc, vitest 108/108, `css:audit` budgets all pass.
+- Visual: user confirmed Foundry flows unchanged (normal + hover + ghosts).
+
+### Why the next domain is not another Foundry
+
+A global scan for the same pattern (variant rules re-declaring their base)
+was run over every partial. After Foundry, the largest remaining clusters are:
+
+| Root | Redundant base bytes | Domain / risk |
+|---|---:|---|
+| `full-auto-cockpit__dflash-get` | ~635 | cockpit; shared, needs per-state check |
+| `segment-switch--*` | ~417 | shared by 5 partials; high risk |
+| `catalog-quick-seat__btn--*` | ~243 | catalog; self-contained |
+| `eng-quant-badge--*` | ~157 | config; self-contained |
+| `gpu-assign-panel__*` / `cfg-mut--*` | <100 each | structural / utility variants |
+
+Conclusion: the cheap base/variant duplication wins are mostly exhausted.
+Further source reduction now means one of:
+1. **Batch the small clusters** (~1.5-2.5 kB total, low risk, same method).
+2. **Token migration** (858 hex + 194 rgba literals, 540 literal `color-mix`
+   calls) — architecture/theme maintainability, not bytes.
+3. **Cross-domain primitives** (panel/card/chip recipes) — the real 15-25%
+   source reduction, but changes shared classes + TSX and needs per-screen QA.
+4. **Theme-as-delta** (MATRIX repeats 92/106 CSS defaults) — smaller theme
+   layer, no byte win.
