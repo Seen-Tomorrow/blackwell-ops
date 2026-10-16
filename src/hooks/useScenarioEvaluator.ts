@@ -12,6 +12,7 @@ import { isDevBuild } from "../lib/build";
 import { gpuMemoryBucketKey, vramManifestSnapshotEqual, vramTopoTag } from "../lib/telemetryGpu";
 import { attachMemorySource, MEMORY_SOURCE_LABELS } from "../services/vram/memorySource";
 import { tomMtpBlocked, toastTomMtpSkip, TOM_MTP_SKIP_MESSAGE } from "../lib/tomMtp";
+import { errorKind, errorMessage } from "../lib/blackwellError";
 import { isExternalDraftOnly } from "../lib/specDraft";
 import { EVENTS } from "../lib/events";
 import { useTauriListen } from "./useTauriListen";
@@ -956,7 +957,7 @@ export function useScenarioEvaluator({
     const curConfig = configRef.current;
     const providerId = curConfig.backend_type || "";
     if (tomMtpBlocked(providerId, model)) {
-      toastTomMtpSkip();
+      toastTomMtpSkip(TOM_MTP_SKIP_MESSAGE);
       return;
     }
     validatingRef.current = true;
@@ -1078,13 +1079,26 @@ export function useScenarioEvaluator({
         scheduleEvaluationRef.current(true);
       }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
+      // `fit_scan_model` rejects with the serialized `BlackwellError`, not an `Error`.
+      const msg = errorMessage(e);
       console.error("[FitValidate]", e);
       fitFailKeyRef.current = probeKey;
-      if (msg.includes(TOM_MTP_SKIP_MESSAGE) || msg.toLowerCase().includes("mtp")) {
-        toastTomMtpSkip(msg);
-      } else {
-        window.__blackopsToasts?.addToast(`FIT probe failed: ${msg}`, "error");
+      switch (errorKind(e)) {
+        case "fit_probe_skipped":
+          // Only a real skip is informational; the message names the reason.
+          toastTomMtpSkip(msg);
+          break;
+        case "fit_binary_missing":
+        case "fit_binary_mismatch":
+          // No usable llama-fit-params — a setup problem, not an MTP skip. Saying
+          // "Tom does not load MTP models" here would name the wrong cause.
+          window.__blackopsToasts?.addToast(`FIT probe unavailable: ${msg}`, "error");
+          break;
+        case "fit_probe_failed":
+        case "fit_probe_timeout":
+        default:
+          window.__blackopsToasts?.addToast(`FIT probe failed: ${msg}`, "error");
+          break;
       }
       const hasLearned = learnedVramRef.current != null || (learnedCurveRef.current?.length ?? 0) > 0;
       void invoke("emit_to_blackwell_console", {

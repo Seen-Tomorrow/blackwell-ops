@@ -1,6 +1,16 @@
 import type { ModelEntry } from "./types";
 
-/** Keep in sync with `TOM_MTP_SKIP_NOTE` in `src-tauri/src/fit_adapters/ggml_tom.rs`. */
+/**
+ * Shown by the client-side pre-flight guards (`useScenarioEvaluator`, `EngineConfigPanel`)
+ * when a Tom seat is handed an MTP model. Those guards never reach the backend, so this
+ * text cannot come from Rust.
+ *
+ * The backend has its own copy for the FIT skip note (`TOM_MTP_SKIP_NOTE` in
+ * `src-tauri/src/fit_adapters/ggml_tom.rs`) and returns `kind: "fit_probe_skipped"`.
+ * The two are no longer byte-synced on purpose: nothing *decides* on the text any more —
+ * the rejected-promise branch switches on `kind` (see `lib/blackwellError.ts`), so these
+ * strings only ever reach a human. Reword either side freely.
+ */
 export const TOM_MTP_SKIP_MESSAGE =
   "MTP model — Tom does not load draft/MTP models yet";
 
@@ -31,6 +41,6 @@ export function tomMtpBlocked(
   return isTomProvider(providerId) && isMtpModel(model);
 }
 
-export function toastTomMtpSkip(message = TOM_MTP_SKIP_MESSAGE): void {
+export function toastTomMtpSkip(message: string): void {
   window.__blackopsToasts?.addToast(message, "error");
 }

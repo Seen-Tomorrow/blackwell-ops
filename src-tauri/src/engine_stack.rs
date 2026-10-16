@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use crate::types::{EngineConfig, StackEntry};
+use crate::errors::BlackwellError;
 use crate::log_hub::LogHub;
 
 pub const DEFAULT_N_CTX: usize = 32768;
@@ -966,6 +967,11 @@ impl EngineStack {
                 "slot": slot_idx,
                 "alias": alias,
                 "reason": user_reason,
+                // Typed discriminant for the frontend (`BlackwellError::kind`). The load
+                // path reports through this event rather than an IPC rejection, so the
+                // kind rides the payload. `App.tsx` branches on it and keeps a prose
+                // regex only as the fallback for paths that cannot classify.
+                "kind": BlackwellError::EngineSpawnFailed { message: String::new() }.kind(),
             }),
         );
 

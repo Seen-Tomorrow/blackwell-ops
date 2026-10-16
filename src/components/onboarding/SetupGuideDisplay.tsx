@@ -14,6 +14,7 @@ import { useSetupPathsActions } from "../../hooks/useSetupPathsActions";
 import { useTauriListen } from "../../hooks/useTauriListen";
 import FoundryToolchainPanel from "../FoundryToolchainPanel";
 import type { FitScanComplete, FitScanProgress } from "../../lib/types";
+import { errorMessage } from "../../lib/blackwellError";
 
 const DEFAULT_FIT_PROVIDER = "ggml-master";
 
@@ -235,7 +236,7 @@ export default function SetupGuideDisplay({
         setFitStep("stopped");
         setShowDriversStep(true);
       } else {
-        const msg = typeof err === "string" ? err : "VRAM fit scan failed.";
+        const msg = errorMessage(err) || "VRAM fit scan failed.";
         reportActionError(msg);
         setFitStep("idle");
         void invoke("emit_to_blackwell_console", {

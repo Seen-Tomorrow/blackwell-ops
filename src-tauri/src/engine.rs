@@ -15,6 +15,7 @@ use crate::output_console::{
 };
 use crate::types::EngineConfig;
 use crate::types::StackEntry;
+use crate::errors::BlackwellError;
 use crate::fit_scanner;
 use crate::telemetry::detect_gpu_count;
 use crate::fusion;
@@ -417,7 +418,7 @@ pub async fn launch_engine(
     config: EngineConfig,
     _model_base: Option<String>,
     app: tauri::State<'_, AppContext>,
-) -> Result<StackEntry, String> {
+) -> Result<StackEntry, BlackwellError> {
     let backend_type = if config.backend_type.is_empty() {
         crate::config::DEFAULT_PROVIDER_ID.to_string()
     } else {
@@ -425,13 +426,17 @@ pub async fn launch_engine(
     };
 
     let cfg = {
-        let guard = app.config.lock().map_err(|e| e.to_string())?;
+        let guard = app.config.lock().map_err(|message| BlackwellError::EngineStateBusy {
+            message: message.to_string(),
+        })?;
         guard.clone()
     };
 
-    let binary_path = engine_utils::find_provider_binary(&cfg, &backend_type, &config.binary_profile)?;
+    let binary_path = engine_utils::find_provider_binary(&cfg, &backend_type, &config.binary_profile)
+        .map_err(crate::errors::classify_binary_resolution)?;
 
-    let template = crate::templates::ProviderTemplate::load_for_provider(&backend_type)?;
+    let template = crate::templates::ProviderTemplate::load_for_provider(&backend_type)
+        .map_err(|message| BlackwellError::EngineSpawnFailed { message })?;
 
     let provider_opt2 = cfg.providers.iter().find(|p| p.id == backend_type);
 
@@ -458,8 +463,10 @@ pub async fn launch_engine(
     let gpu_mask_msg = format!("[GPU_MASK] provider={} split_mode=\"{}\" test_has_split={} -> CUDA_VISIBLE_DEVICES={}", backend_type, config.get_param_str("split").unwrap_or_default(), test_has_split, gpu_mask);
     app.log_hub.emit_console_line(BlackwellOutputConsoleCategory::Debug, &gpu_mask_msg, BlackwellOutputConsoleLineStyle::Warning);
 
-    crate::config::validate_provider_binary(binary_path.to_str().unwrap_or(""))?;
-    crate::config::validate_model_path(&config.model_path)?;
+    crate::config::validate_provider_binary(binary_path.to_str().unwrap_or(""))
+        .map_err(|message| BlackwellError::BinaryValidationFailed { message })?;
+    crate::config::validate_model_path(&config.model_path)
+        .map_err(|message| BlackwellError::EngineSpawnFailed { message })?;
     sanitize_spec_extra_params(&mut config, &user_params);
     // Catalog for `auto` draft resolution — the same merge `list_models` does, from
     // the config clone already held. Only paid when a draft row says `auto`.
@@ -475,7 +482,8 @@ pub async fn launch_engine(
     } else {
         None
     };
-    validate_spec_launch_with_catalog(&config, draft_catalog.as_deref())?;
+    validate_spec_launch_with_catalog(&config, draft_catalog.as_deref())
+        .map_err(|message| BlackwellError::EngineSpawnFailed { message })?;
 
     if let Some(note) = fit_scanner::model_fit_skip_note(&backend_type, &config.model_path) {
         app.blackwell_output_console_manager.emit_line_to_category(
@@ -483,7 +491,7 @@ pub async fn launch_engine(
             format!("[{}] Launch blocked: {}", config.alias, note),
             crate::output_console::BlackwellOutputConsoleLineStyle::Warning,
         );
-        return Err(note.to_string());
+        return Err(BlackwellError::FitProbeSkipped { message: note.to_string() });
     }
 
     // Compute port dynamically from provider's base_port with global collision avoidance.
@@ -499,7 +507,9 @@ pub async fn launch_engine(
 
     // Validate base_port is in safe range (avoid privileged ports below PRIVILEGED_PORT_THRESHOLD)
     if provider_base_port <= PRIVILEGED_PORT_THRESHOLD {
-        return Err(format!("base_port {} is too low — must be > {}", provider_base_port, PRIVILEGED_PORT_THRESHOLD));
+        return Err(BlackwellError::PortOutOfRange {
+            message: format!("base_port {} is too low — must be > {}", provider_base_port, PRIVILEGED_PORT_THRESHOLD),
+        });
     }
 
     // Resolve unique alias before reserving a slot (backend is authoritative).
@@ -516,7 +526,9 @@ pub async fn launch_engine(
                 }
                 suffix += 1;
                 if suffix > 99 {
-                    return Err(format!("Could not find a free alias for '{}'", base));
+                    return Err(BlackwellError::AliasExhausted {
+                        message: format!("Could not find a free alias for '{}'", base),
+                    });
                 }
             }
         }
@@ -527,10 +539,14 @@ pub async fn launch_engine(
             Ok(guard) => guard,
             Err(_) => {
                 log::error!("[launch_engine] stack lock timeout — possible deadlock");
-                return Err("Stack lock timeout — possible deadlock. Another task may be holding the lock.".to_string());
+                return Err(BlackwellError::EngineStateBusy {
+                    message: "Stack lock timeout — possible deadlock. Another task may be holding the lock.".to_string(),
+                });
             }
         };
-        let slot_idx = stack.find_idle_slot().ok_or("All engine slots are occupied")?;
+        let slot_idx = stack.find_idle_slot().ok_or_else(|| BlackwellError::NoFreeSlot {
+            message: "All engine slots are occupied".to_string(),
+        })?;
         let mut used_ports = stack.reserved_ports();
         used_ports.extend(crate::engine_port_lock::occupied_ports_from_locks());
         let live_pids = stack.live_engine_pids();
@@ -543,7 +559,8 @@ pub async fn launch_engine(
         } else {
             pick_next_engine_port(provider_base_port, &used_ports, &live_pids).await
         };
-        stack.reserve_slot(slot_idx, &config.alias, slot_port)?;
+        stack.reserve_slot(slot_idx, &config.alias, slot_port)
+            .map_err(|message| BlackwellError::NoFreeSlot { message })?;
         (slot_idx, slot_port, live_pids)
     };
     // Emit with the stack lock released — see EngineStack::emit_stack_changed_unlocked.
@@ -560,7 +577,7 @@ pub async fn launch_engine(
             stack.release_reserved_slot(slot_idx);
         }
         EngineStack::emit_stack_changed_unlocked(&app.stack).await;
-        return Err(e);
+        return Err(crate::errors::classify_port_reclaim(slot_port, e));
     }
 
     let provider_display_name = backend_type.clone();
@@ -670,7 +687,9 @@ pub async fn launch_engine(
             }
             Err(e) => {
                 if e == crate::engine_stack::LOAD_FAILURE_ALREADY_REPORTED {
-                    return Err("Model load failed".to_string());
+                    return Err(BlackwellError::EngineSpawnFailed {
+                        message: "Model load failed".to_string(),
+                    });
                 }
                 let err_msg = e.to_string();
                 last_err = Some(e);
@@ -692,7 +711,7 @@ pub async fn launch_engine(
             stack.release_reserved_slot(slot_idx);
         }
         EngineStack::emit_stack_changed_unlocked(&app.stack).await;
-        return Err(e);
+        return Err(BlackwellError::EngineSpawnFailed { message: e });
     }
 
     // Spawn FUSION brain only for providers that declare supports_fusion in spawn_profile

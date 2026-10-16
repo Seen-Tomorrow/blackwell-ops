@@ -126,6 +126,7 @@ import {
 } from "../lib/catalogQuickAccess";
 
 import { tomMtpBlocked, TOM_MTP_SKIP_MESSAGE } from "../lib/tomMtp";
+import { errorMessage } from "../lib/blackwellError";
 import {
   type DraftRole,
   type ScoredDraft,
@@ -2046,7 +2047,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         }
       })
       .catch((err: unknown) => {
-        const msg = err instanceof Error ? err.message : String(err);
+        // `launch_engine` rejects with the serialized `BlackwellError`, not an `Error`.
+        const msg = errorMessage(err);
         dispatchAppEvent(EVENTS.launchError, { message: msg });
       });
   }, [
@@ -2326,7 +2328,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             }
           }
         } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
+          // `launch_engine` rejects with the serialized `BlackwellError`, not an `Error`.
+          const msg = errorMessage(err);
           dispatchAppEvent(EVENTS.launchError, {
             message: `Preset ${seat.role}: ${msg}`,
           });

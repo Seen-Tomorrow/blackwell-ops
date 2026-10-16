@@ -34,6 +34,7 @@ import { dispatchAppEvent, EVENTS } from "../lib/events";
 import { loadFoundryLastRefresh, loadStartupUpdatesCache, saveFoundryLastRefresh } from "../lib/storage";
 import { isPlaceholderBuildVersion, refreshProvidersBuildInfo } from "../lib/foundryBuildRefresh";
 import { isDevBuild } from "../lib/build";
+import { errorMessage } from "../lib/blackwellError";
 
 import { BuildProfileRow, RestoreConfirmModal, UpdateStatus, type BinarySourceKind } from "./FoundryComponents";
 import FoundryToolchainPanel from "./FoundryToolchainPanel";
@@ -469,7 +470,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
       console.error(`Scan library failed for ${providerId}:`, err);
       failFitScanSession(
         providerId,
-        typeof err === "string" ? err : JSON.stringify(err),
+        errorMessage(err) || JSON.stringify(err),
         currentParallel,
       );
     }

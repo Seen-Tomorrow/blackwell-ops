@@ -4,6 +4,7 @@
 //! No template system involvement — directly builds args for llama-fit-params.exe.
 
 use crate::engine::AppContext;
+use crate::errors::BlackwellError;
 use crate::log_hub::LogHub;
 use crate::output_console::{format_console_completion, BlackwellOutputConsoleCategory, BlackwellOutputConsoleLineStyle};
 use crate::telemetry::detect_gpu_count;
@@ -2124,9 +2125,12 @@ pub async fn fit_scan_model(
     // NVML free MiB for target GPU mask (low_vram fit-target correction).
     free_budget_mib: Option<f64>,
     app: tauri::State<'_, AppContext>,
-) -> Result<FitScanResult, String> {
+) -> Result<FitScanResult, BlackwellError> {
     let cfg = {
-        let guard = app.config.lock().map_err(|e| e.to_string())?;
+        let guard = app
+            .config
+            .lock()
+            .map_err(|e| BlackwellError::EngineStateBusy { message: e.to_string() })?;
         guard.clone()
     };
 
@@ -2140,10 +2144,11 @@ pub async fn fit_scan_model(
             &format!("[FIT] {} | skipped | {}", model_path, note),
             BlackwellOutputConsoleLineStyle::Normal,
         );
-        return Err(note.to_string());
+        return Err(BlackwellError::FitProbeSkipped { message: note.to_string() });
     }
 
-    let fit_binary = resolve_fit_binary(&cfg, &backend_type, "")?;
+    let fit_binary = resolve_fit_binary(&cfg, &backend_type, "")
+        .map_err(crate::errors::classify_fit_probe)?;
 
     let ctx_int: usize = match &ctx_size {
         serde_json::Value::Number(n) => n.as_u64().map(|v| v as usize).unwrap_or(32768),
@@ -2162,7 +2167,8 @@ pub async fn fit_scan_model(
             crate::fit_low_vram::list_devices_free_mib(&fit_binary_list, &gpu_mask_list)
         })
         .await
-        .map_err(|e| format!("low-vram list-devices join: {e}"))??;
+        .map_err(|e| crate::errors::classify_fit_probe(format!("low-vram list-devices join: {e}")))
+        .and_then(|inner| inner.map_err(crate::errors::classify_fit_probe))?;
 
         // Single-device mask → first free; multi → min free (tightest card).
         let fit_free = fit_frees.iter().copied().fold(f64::INFINITY, f64::min);
@@ -2285,7 +2291,7 @@ pub async fn fit_scan_model(
             );
         }
     }
-    let raw = fit_result?;
+    let raw = fit_result.map_err(crate::errors::classify_fit_probe)?;
     let vram_mib = raw.vram_mib;
 
     let gpus = crate::telemetry::scan_gpus().await.unwrap_or_default();
@@ -2316,9 +2322,12 @@ pub async fn fit_scan_single_model(
     provider_id: String,
     force_rescan: Option<bool>,
     app: tauri::State<'_, AppContext>,
-) -> Result<FitScanFull, String> {
+) -> Result<FitScanFull, BlackwellError> {
     let cfg = {
-        let guard = app.config.lock().map_err(|e| e.to_string())?;
+        let guard = app
+            .config
+            .lock()
+            .map_err(|e| BlackwellError::EngineStateBusy { message: e.to_string() })?;
         guard.clone()
     };
 
@@ -2328,10 +2337,11 @@ pub async fn fit_scan_single_model(
             &format!("[FIT-SCAN] {} | skipped | {}", model_path, note),
             BlackwellOutputConsoleLineStyle::Normal,
         );
-        return Err(note.to_string());
+        return Err(BlackwellError::FitProbeSkipped { message: note.to_string() });
     }
 
-    let fit_binary = resolve_fit_binary(&cfg, &provider_id, "")?;
+    let fit_binary = resolve_fit_binary(&cfg, &provider_id, "")
+        .map_err(crate::errors::classify_fit_probe)?;
 
     let (progress_tx, _progress_rx) = broadcast::channel::<FitScanProgress>(64);
     let log_hub_clone = app.log_hub.clone();
@@ -2389,9 +2399,12 @@ pub async fn fit_scan_library(
     _ubatch: u32,
     force_rescan: Option<bool>,
     app: tauri::State<'_, AppContext>,
-) -> Result<FitScanComplete, String> {
+) -> Result<FitScanComplete, BlackwellError> {
     let cfg = {
-        let guard = app.config.lock().map_err(|e| e.to_string())?;
+        let guard = app
+            .config
+            .lock()
+            .map_err(|e| BlackwellError::EngineStateBusy { message: e.to_string() })?;
         guard.clone()
     };
 
@@ -2413,7 +2426,7 @@ pub async fn fit_scan_library(
                 &format!("[FIT-SCAN] {e}"),
                 BlackwellOutputConsoleLineStyle::Error,
             );
-            return Err(e);
+            return Err(crate::errors::classify_fit_probe(e));
         }
     };
 

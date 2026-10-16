@@ -372,10 +372,13 @@ function App() {
     }
   });
 
-  useTauriListen<{ slot?: number; alias?: string; reason?: string }>("engine-load-failed", (payload) => {
+  useTauriListen<{ slot?: number; alias?: string; reason?: string; kind?: string }>("engine-load-failed", (payload) => {
     if (payload?.reason) {
       const raw = payload.reason;
+      // `kind` is authoritative when the backend could classify the failure. The regex
+      // stays as the fallback for the paths that still only produce stderr prose.
       const isOom =
+        payload.kind === "engine_spawn_failed" ||
         /out of memory|cudamalloc failed|cuda error|failed to allocate/i.test(raw);
       const alias = payload.alias ? `[${payload.alias}] ` : "";
       const message = isOom

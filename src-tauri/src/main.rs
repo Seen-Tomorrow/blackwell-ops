@@ -80,6 +80,9 @@ mod engine_build_info;
 mod model_files;
 mod model_scan;
 
+// Change 2 of the same plan: typed errors at the spawn / port-reclaim / FIT boundaries.
+mod errors;
+
 
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
