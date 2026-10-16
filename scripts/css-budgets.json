@@ -1,15 +1,15 @@
 {
-  "note": "Regression ceilings for `node scripts/css-tools.mjs audit --check`. Ratcheted 2026-10-16 after .value-chip ownership batch 1 (419->397 !important; eink/GPU overrides now win by specificity). Startup CSS 490.9 kB; token migration growth is intentional. Use `npm run css:locate` before edits.",
+  "note": "Regression ceilings for `node scripts/css-tools.mjs audit --check`. Ratcheted 2026-10-16: .value-chip family is !important-free (419->343 source total), startup CSS 490.3 kB, budgets enforced by npm run css:audit. Use npm run css:locate before edits.",
   "sourceBytesLf": 680000,
   "deadRules": 0,
   "deadBytes": 0,
-  "important": 359,
+  "important": 346,
   "literalHex": 65,
   "literalRgba": 90,
   "colorMixLiteral": 55,
   "pxFontSizes": 30,
   "distBytes": 494000,
-  "distImportant": 352,
+  "distImportant": 339,
   "importOrder": [
     "tokens-base.css",
     "utilities.css",

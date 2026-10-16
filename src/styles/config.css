@@ -29,12 +29,12 @@
 }
 
 .eink-panel [data-param-row] .value-chip, .eink-panel [data-param-row] .value-chip-active, [data-config-panel] [data-param-row] input.value-chip, [data-config-panel] [data-param-row] input.value-chip-active{
-  box-shadow: 0 0 4px transparent !important;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease !important;
+  box-shadow: 0 0 4px transparent;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .eink-panel [data-param-row] .value-chip-active, [data-config-panel] [data-param-row] input.value-chip-active{
-  box-shadow: 0 0 4px var(--theme-accent-glow) !important;
+  box-shadow: 0 0 4px var(--theme-accent-glow);
 }
 
 
@@ -1057,18 +1057,18 @@
 
 /* Default / user-added still readable inside the rail (ENGINE CONFIG panel) */
 [data-config-panel] .config-value-segment .value-chip--factory-default:not(.value-chip-active) {
-  color: var(--theme-chip-hover-text) !important;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-accent-bright) 28%, transparent) !important;
+  color: var(--theme-chip-hover-text);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-accent-bright) 28%, transparent);
 }
 
 [data-config-panel] .config-value-segment .value-chip--user-default:not(.value-chip-active) {
-  color: var(--fixed-amber-400) !important;
-  box-shadow: inset 0 0 0 1px var(--fixed-amber-400-a35) !important;
+  color: var(--fixed-amber-400);
+  box-shadow: inset 0 0 0 1px var(--fixed-amber-400-a35);
 }
 
 [data-config-panel] .config-value-segment .value-chip--user-added:not(.value-chip-active) {
-  color: var(--fixed-cyan-300) !important;
-  box-shadow: inset 0 0 0 1px var(--fixed-cyan-300-a3) !important;
+  color: var(--fixed-cyan-300);
+  box-shadow: inset 0 0 0 1px var(--fixed-cyan-300-a3);
 }
 
 [data-config-panel] .config-value-segment .value-chip--hidden {
@@ -1158,13 +1158,13 @@
 
 /* Keep default / user-added / hidden markers readable on the rail */
 [data-config-panel] .config-value-segment.config-value-segment--rail .value-chip--factory-default:not(.value-chip-active) {
-  color: var(--theme-chip-hover-text) !important;
+  color: var(--theme-chip-hover-text);
 }
 [data-config-panel] .config-value-segment.config-value-segment--rail .value-chip--user-default:not(.value-chip-active) {
-  color: var(--fixed-amber-400) !important;
+  color: var(--fixed-amber-400);
 }
 [data-config-panel] .config-value-segment.config-value-segment--rail .value-chip--user-added:not(.value-chip-active) {
-  color: var(--fixed-cyan-300) !important;
+  color: var(--fixed-cyan-300);
 }
 
 /* Beat e-ink global “everything is accent green” on chip glyphs (ENGINE CONFIG panel only) */
@@ -1174,7 +1174,7 @@
     in srgb,
     var(--theme-industrial-muted) 92%,
     transparent
-  ) !important;
+  );
 }
 
 [data-config-panel] .eink-panel .config-value-segment{

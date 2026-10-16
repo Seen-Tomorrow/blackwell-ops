@@ -271,3 +271,12 @@ This trade removes ~1,000 literal paint sites and centralizes the palette.
   GPU active; Fusion bench normal chips.
 - Source `!important`: 370 -> 356; main CSS 363 -> 349; chip-rule important
   36 -> 22. User confirmed zero visual drift.
+
+## .value-chip ownership complete: zero !important
+
+- Final batch removed the variant (`factory-default`, `user-default`, `user-added`,
+  rail variants), eink box-shadow/transition and eink segment-color importants.
+- Chip family: ~90 -> 0 `!important`. Source total: 419 -> 343
+  (main CSS 412 -> 336); startup CSS 490.3 kB.
+- Cascade now: base primitives in launch.css, contextual overrides win by
+  specificity. User confirmed visual stability.
