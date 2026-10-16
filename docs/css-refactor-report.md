@@ -365,3 +365,21 @@ This trade removes ~1,000 literal paint sites and centralizes the palette.
 - Removed 31 importants: list panel/chrome, buried/selected cards, quant
   badges, mcard text, engine-stack phases, search hints. Source total 117 -> 86.
   User confirmed visual stability.
+
+## config.css grouped cleanup
+
+- Removed 21 importants across 16 rules: provider profile bar border, GPU assign
+  label ink, config group header dragging (selector raised to a doubled class so
+  it still beats Tailwind), system param row border and hover, running-engine
+  card text/badge/selected fill, chip-row wrap, `cfg-acc--a7x/a8x/a9x` and
+  `cfg-inf` ink, `config-muted`, foundry toolchain guide body, foundry active
+  binary badge, source and profile labels.
+- Source total 86 -> 65; dist 92 -> 73. config.css now carries 4 importants
+  (down from 25), every one a deliberate hold: the `.eink-panel` phosphor-ink
+  descendant rule against Tailwind, its `.mono-user-input` counter-rule, and the
+  `select option` pair that must beat WebView2's ignored inline styles.
+- Gates: `vite build`, `tsc --noEmit`, `vitest` 108/108, `css:audit` budgets all
+  pass. Committed on the gates; no separate visual pass was requested (DEV HMR
+  was live on the Config page throughout).
+- Remaining source importants are now concentrated in `fusion-display.css`
+  (45 of 65).
