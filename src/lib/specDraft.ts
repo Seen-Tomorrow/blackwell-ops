@@ -660,6 +660,12 @@ export function resolveExternalDraftPath(
     preferredPath?: string | null;
     currentPath?: string | null;
     specType?: string;
+    /**
+     * Fall back to the best-scoring candidate when nothing was chosen or saved.
+     * DFlash keeps this (its ★ picker makes the result visible). MTP passes false:
+     * a head must be picked or restored, never guessed into config silently.
+     */
+    allowAutoPair?: boolean;
   },
 ): string | null {
   const matchCatalog = (raw: string): ModelEntry | undefined =>
@@ -714,6 +720,7 @@ export function resolveExternalDraftPath(
     }
   }
 
+  if (opts?.allowAutoPair === false) return null;
   return pickBestDraftPair(main, models, draftRole, HIGH_DRAFT_PAIR_SCORE)?.path ?? null;
 }
 

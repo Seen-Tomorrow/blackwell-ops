@@ -134,6 +134,7 @@ import {
   defaultSpecTypeForMain,
   draftRoleForSpecType,
   findScoredDraftCandidates,
+  hasBakedMtp,
   isExternalDraftOnly,
   isLaunchableMain,
   isValidGgufDraftPath,
@@ -152,6 +153,7 @@ import {
   SPEC_PROFILE_MTP,
   SPEC_PROFILE_DFLASH,
   DFLASH_DRAFT_MODEL,
+  MTP_DRAFT_MODEL,
   stripObsoleteSpecParams,
   activeBoostMethodFromParams,
   cliSpecTypeForMethod,
@@ -1042,6 +1044,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     dflashMainDescribe,
     handleGetDflashDraft,
     handleChangeDflashDraft,
+    handleChangeMtpDraft,
     handleCancelDflashPick,
     handleConfirmDflashPick,
     handleConfirmDflashManual,
@@ -1238,6 +1241,19 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     specBoostMethod === "dflash" || specBoostMethod === "dspark";
   const currentDraftPath =
     config[DFLASH_DRAFT_MODEL] != null ? String(config[DFLASH_DRAFT_MODEL]) : "";
+
+  /**
+   * MTP lane. A head is whatever `mtp_draft_model` holds; baked-in nextn is a
+   * property of the target and needs no file. Head wins when both exist so an
+   * external head stays testable on a baked-in model.
+   */
+  const mtpDraftPath =
+    config[MTP_DRAFT_MODEL] != null ? String(config[MTP_DRAFT_MODEL]).trim() : "";
+  const mtpDraftLabel = isValidGgufDraftPath(mtpDraftPath)
+    ? resolveDraftPathLabel(mtpDraftPath)
+    : null;
+  const mtpBakedIn = model ? hasBakedMtp(model) : false;
+
   const draftPathValid = !specNeedsExternalDraft || isValidGgufDraftPath(currentDraftPath);
   const specLaunchActive = specBoostMethod !== "off" && hasSpecCapability;
 
@@ -1261,9 +1277,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     migrateGlobalSpecOutOfCatalogOverrides(effectiveBackendType);
   }, [effectiveBackendType]);
 
-  // HIGH auto-pair into the active method's draft key when Boost is DFlash, DSpark
-  // or MTP and the path is auto/empty.
+  // HIGH auto-pair into the DFlash lane's draft key when Boost is DFlash or DSpark
+  // and the path is auto/empty. MTP is excluded: its head is chosen by the picker
+  // and restored from the saved pairing, never guessed into config behind the user.
   useEffect(() => {
+    if (specBoostMethod !== "dflash" && specBoostMethod !== "dspark") {
+      return;
+    }
     const adapter = adapterForMethod(specBoostMethod);
     const draftKey = adapter?.knobs.draftModel;
     if (!adapter || !draftKey || !model || !models?.length) {
@@ -3275,6 +3295,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           dflashGetOfferLabel={dflashGetOfferLabel}
           onGetDflashDraft={() => { void handleGetDflashDraft(); }}
           onChangeDflashDraft={handleChangeDflashDraft}
+          mtpDraftLabel={mtpDraftLabel}
+          mtpBakedIn={mtpBakedIn}
+          onChangeMtpDraft={handleChangeMtpDraft}
           kvQuantValues={cockpitKvValuesBound}
           parallelValues={cockpitParallelValues}
           showAgents={cockpitShowAgents}

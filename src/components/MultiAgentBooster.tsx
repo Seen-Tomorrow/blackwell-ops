@@ -55,6 +55,12 @@ export interface MultiAgentBoosterProps {
   onGetDflashDraft?: () => void;
   /** Open local-library draft re-picker (when pairing is wrong). */
   onChangeDflashDraft?: () => void;
+  /** Short name of the selected MTP head. Absent ⇒ no head chosen. */
+  mtpDraftLabel?: string | null;
+  /** Target carries baked-in nextn — MTP runs without any head file. */
+  mtpBakedIn?: boolean;
+  /** Open local-library MTP head picker. */
+  onChangeMtpDraft?: () => void;
   kvQuantValues: (string | number)[];
   /** Factory + user-added parallel values for Agents marks. */
   parallelValues?: (string | number)[];
@@ -132,6 +138,9 @@ export default function MultiAgentBooster({
   dflashGetOfferLabel = null,
   onGetDflashDraft,
   onChangeDflashDraft,
+  mtpDraftLabel = null,
+  mtpBakedIn = false,
+  onChangeMtpDraft,
   kvQuantValues,
   parallelValues,
   layout = "normal",
@@ -254,6 +263,18 @@ export default function MultiAgentBooster({
     (displayBoost === "dspark"
       || (displayBoost === "dflash" && dflashLibraryReady));
 
+  /**
+   * MTP head strip. Mirrors the DFlash shape: the row shows whether or not a head
+   * is already chosen, so the picker is reachable on a first run and not only
+   * after a head happens to be in config. Baked-in MTP is a property of the target
+   * and has nothing to choose — the engine builds the draft context from the target
+   * model itself — so that case reads `Baked-in` with no button.
+   */
+  const mtpHasHead = displayBoost === "mtp" && Boolean(mtpDraftLabel);
+  const showMtp = displayBoost === "mtp";
+  const showMtpChange = showMtp && Boolean(onChangeMtpDraft);
+  const showMtpBakedIn = showMtp && !mtpHasHead && mtpBakedIn;
+
   const mtpAvailable = capSet.has("mtp");
   const dflashAvailable = dflashLibraryReady || dflashGettable || capSet.has("dflash");
   const mtpLocksAgents = displayBoost === "mtp";
@@ -356,12 +377,23 @@ export default function MultiAgentBooster({
         ? "dflash"
         : "neutral";
 
-  const showDraftStrip = showDflashGet || showDflashChange;
+  const showDraftStrip =
+    showDflashGet || showDflashChange || showMtp || showMtpBakedIn;
   const showVioletStrip =
     showDraftStrip || (showSpecExtra && specDetailParams.length > 0);
 
   const draftActions = showDraftStrip ? (
     <div className="full-auto-cockpit__dflash-get-actions">
+      {showMtpChange ? (
+        <button
+          type="button"
+          className="full-auto-cockpit__dflash-get-btn full-auto-cockpit__dflash-get-btn--ghost"
+          onClick={() => onChangeMtpDraft?.()}
+          title="Pick a different MTP head GGUF from your library"
+        >
+          Change draft
+        </button>
+      ) : null}
       {showDflashChange ? (
         <button
           type="button"
@@ -422,6 +454,20 @@ export default function MultiAgentBooster({
               <div className="full-auto-cockpit__dflash-get-sub">Confirm pack to download</div>
             ) : null}
           </>
+        ) : showMtpBakedIn ? (
+          <>
+            <div className="full-auto-cockpit__dflash-get-line">MTP head</div>
+            <div className="full-auto-cockpit__dflash-get-name">Baked-in</div>
+          </>
+        ) : displayBoost === "mtp" && !mtpDraftLabel ? (
+          <>
+            <div className="full-auto-cockpit__dflash-get-line">
+              MTP needs a head in your library
+            </div>
+            <div className="full-auto-cockpit__dflash-get-sub">
+              Pick mtp-*.gguf via Change draft
+            </div>
+          </>
         ) : displayBoost === "dspark" && !dflashLibraryReady && !dflashDraftLabel ? (
           <>
             <div className="full-auto-cockpit__dflash-get-line">
@@ -434,13 +480,19 @@ export default function MultiAgentBooster({
         ) : (
           <>
             <div className="full-auto-cockpit__dflash-get-line">
-              {displayBoost === "dspark" ? "DSpark draft" : "Paired draft"}
+              {displayBoost === "dspark"
+                ? "DSpark draft"
+                : displayBoost === "mtp"
+                  ? "MTP head"
+                  : "Paired draft"}
             </div>
             <div
               className="full-auto-cockpit__dflash-get-name"
-              title={dflashDraftLabel ?? undefined}
+              title={
+                (displayBoost === "mtp" ? mtpDraftLabel : dflashDraftLabel) ?? undefined
+              }
             >
-              {dflashDraftLabel || "—"}
+              {(displayBoost === "mtp" ? mtpDraftLabel : dflashDraftLabel) || "—"}
             </div>
           </>
         )}

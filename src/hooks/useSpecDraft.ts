@@ -1,5 +1,6 @@
 /**
- * DFlash Get/Change draft UI — pick modal, HF search, download watch.
+ * Get/Change draft UI — pick modal, HF search, download watch.
+ * DFlash/DSpark: library pick + HF download. MTP: library pick only.
  * Depends on useCockpit.applyFullAutoCockpit for re-enable after ready.
  */
 
@@ -22,8 +23,9 @@ import {
   saveDraftPairing,
   scoreDraftPair,
   signalContainsDspark,
+  type DraftRole,
 } from "../lib/specDraft";
-import { DFLASH_DRAFT_MODEL } from "../lib/specProfiles";
+import { DFLASH_DRAFT_MODEL, MTP_DRAFT_MODEL } from "../lib/specProfiles";
 import { adapterForMethod, cliTypeForMethod } from "../lib/spec/adapters";
 import { dispatchAppEvent, EVENTS } from "../lib/events";
 import { useDownloadTasks } from "./useDownloadTasks";
@@ -82,49 +84,59 @@ export function useSpecDraft({
   const prevDflashReadyRef = useRef(false);
   const hfDownloads = useDownloadTasks("hf");
 
-  const buildLocalDflashPickItems = useCallback((): DraftPickListItem[] => {
-    if (!model || !models?.length) return [];
-    const preferDspark = speedBoost === "dspark";
-    const items: DraftPickListItem[] = models
-      .filter((m) => {
-        if (m.path === model.path) return false;
-        const role = draftRoleFromModel(m);
-        if (role === "external_dflash" || role === "external_mtp") return true;
-        // DSpark heads may not score as DFlash until path signal is present
-        if (preferDspark && catalogDraftSignals(m).some(signalContainsDspark)) return true;
-        return false;
-      })
-      .map((m) => {
-        const isDspark = catalogDraftSignals(m).some(signalContainsDspark);
-        let score = scoreDraftPair(model, m, "external_dflash");
-        // Prefer explicit dspark heads when Boost is DSpark
-        if (preferDspark && isDspark) score = Math.max(score, 90);
-        const label = resolveDraftPathLabel(m.path);
-        const quant = m.quant || m.metadata?.file_type_str || "";
-        const author = m.author || m.hfMeta?.author || "";
-        const tag = isDspark ? "dspark" : "";
-        return {
-          id: m.path,
-          title: label,
-          meta: [author, quant, tag, m.size_str].filter(Boolean).join(" · "),
-          score,
-        };
-      })
-      .sort((a, b) => (b.score ?? -999) - (a.score ?? -999));
+  /**
+   * Local heads for the active lane. `role` decides which catalog entries qualify
+   * and which score profile applies; `draftKey` decides which config value is
+   * pinned to the top as the current pick.
+   */
+  const buildLocalPickItems = useCallback(
+    (role: DraftRole, draftKey: string): DraftPickListItem[] => {
+      if (!model || !models?.length) return [];
+      const preferDspark = speedBoost === "dspark" && role === "external_dflash";
+      const items: DraftPickListItem[] = models
+        .filter((m) => {
+          if (m.path === model.path) return false;
+          const mRole = draftRoleFromModel(m);
+          if (mRole === role) return true;
+          // DSpark heads may not score as DFlash until path signal is present
+          if (preferDspark && catalogDraftSignals(m).some(signalContainsDspark)) return true;
+          return false;
+        })
+        .map((m) => {
+          const isDspark = catalogDraftSignals(m).some(signalContainsDspark);
+          let score = scoreDraftPair(model, m, role);
+          // Prefer explicit dspark heads when Boost is DSpark
+          if (preferDspark && isDspark) score = Math.max(score, 90);
+          const label = resolveDraftPathLabel(m.path);
+          const quant = m.quant || m.metadata?.file_type_str || "";
+          const author = m.author || m.hfMeta?.author || "";
+          const tag = isDspark ? "dspark" : "";
+          return {
+            id: m.path,
+            title: label,
+            meta: [author, quant, tag, m.size_str].filter(Boolean).join(" · "),
+            score,
+          };
+        })
+        .sort((a, b) => (b.score ?? -999) - (a.score ?? -999));
 
-    const current =
-      config[DFLASH_DRAFT_MODEL] != null
-        ? String(config[DFLASH_DRAFT_MODEL])
-        : "";
-    if (current) {
-      items.sort((a, b) => {
-        if (a.id === current) return -1;
-        if (b.id === current) return 1;
-        return 0;
-      });
-    }
-    return items;
-  }, [model, models, config, speedBoost]);
+      const current = config[draftKey] != null ? String(config[draftKey]) : "";
+      if (current) {
+        items.sort((a, b) => {
+          if (a.id === current) return -1;
+          if (b.id === current) return 1;
+          return 0;
+        });
+      }
+      return items;
+    },
+    [model, models, config, speedBoost],
+  );
+
+  const buildLocalDflashPickItems = useCallback(
+    () => buildLocalPickItems("external_dflash", DFLASH_DRAFT_MODEL),
+    [buildLocalPickItems],
+  );
 
   const loadDflashHfCandidates = useCallback(async () => {
     if (!model) return;
@@ -173,6 +185,21 @@ export function useSpecDraft({
     setDflashPickOpen(true);
     setDflashGetState("idle");
   }, [model, buildLocalDflashPickItems]);
+
+  /**
+   * MTP head picker — library only. There is no HF MTP pack search, and the point
+   * is choosing among the heads already on disk.
+   */
+  const handleChangeMtpDraft = useCallback(() => {
+    if (!model) return;
+    const items = buildLocalPickItems("external_mtp", MTP_DRAFT_MODEL);
+    setDflashPickMode("library");
+    setLibraryPickItems(items);
+    setDflashCandidates([]);
+    setDflashResolveError(null);
+    setDflashPickOpen(true);
+    setDflashGetState("idle");
+  }, [model, buildLocalPickItems]);
 
   const handleCancelDflashPick = useCallback(() => {
     if (dflashResolving) return;
@@ -266,9 +293,13 @@ export function useSpecDraft({
 
   const dflashLocalPickItems = useMemo(() => libraryPickItems, [libraryPickItems]);
 
+  /** The active lane's own draft key — the modal pre-selects what that lane holds. */
+  const activeDraftKey =
+    speedBoost === "mtp" ? MTP_DRAFT_MODEL : DFLASH_DRAFT_MODEL;
+
   const dflashPickInitialSelectedId = useMemo(() => {
-    return config[DFLASH_DRAFT_MODEL] != null ? String(config[DFLASH_DRAFT_MODEL]) : null;
-  }, [config]);
+    return config[activeDraftKey] != null ? String(config[activeDraftKey]) : null;
+  }, [config, activeDraftKey]);
 
   const dflashMainDescribe = useMemo(
     () => (model ? describeMainForDflashPick(model) : null),
@@ -364,6 +395,7 @@ export function useSpecDraft({
     dflashMainDescribe,
     handleGetDflashDraft,
     handleChangeDflashDraft,
+    handleChangeMtpDraft,
     handleCancelDflashPick,
     handleConfirmDflashPick,
     handleConfirmDflashManual,

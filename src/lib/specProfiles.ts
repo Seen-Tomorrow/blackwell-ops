@@ -267,7 +267,9 @@ export function cockpitProfileKnobRows(
   const group = groupForBoostMethod(method);
   if (!group) return [];
 
-  const skip = new Set<string>([DFLASH_DRAFT_MODEL]);
+  // Draft paths are chosen by the ★ picker strip, not by a chip — both lanes skip
+  // their own row so the head is never picked two different ways.
+  const skip = new Set<string>([DFLASH_DRAFT_MODEL, MTP_DRAFT_MODEL]);
   return paramsInProfile(params, group)
     .filter((d) => !skip.has(d.key) && !d.userHidden && !d.hidden)
     .sort((a, b) => a.order - b.order)

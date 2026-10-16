@@ -38,6 +38,9 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
     dflashGetOfferLabel,
     onGetDflashDraft,
     onChangeDflashDraft,
+    mtpDraftLabel,
+    mtpBakedIn,
+    onChangeMtpDraft,
     kvQuantValues,
     parallelValues,
     showAgents,
@@ -86,6 +89,9 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
         dflashGetOfferLabel={dflashGetOfferLabel}
         onGetDflashDraft={onGetDflashDraft}
         onChangeDflashDraft={onChangeDflashDraft}
+        mtpDraftLabel={mtpDraftLabel}
+        mtpBakedIn={mtpBakedIn}
+        onChangeMtpDraft={onChangeMtpDraft}
         kvQuantValues={kvQuantValues}
         parallelValues={parallelValues}
         showAgents={showAgents}
@@ -144,6 +150,9 @@ export interface EngineBoostSectionProps {
   dflashGetOfferLabel: string | null;
   onGetDflashDraft: () => void;
   onChangeDflashDraft: () => void;
+  mtpDraftLabel: string | null;
+  mtpBakedIn: boolean;
+  onChangeMtpDraft: () => void;
   kvQuantValues: (string | number)[];
   parallelValues: (string | number)[];
   showAgents: boolean;

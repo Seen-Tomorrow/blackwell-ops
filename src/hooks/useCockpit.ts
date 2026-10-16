@@ -399,6 +399,10 @@ export function useCockpit({
                 preferredPath: opts?.preferredDraftPath,
                 currentPath: normalizeDraftPath(config[applyDraftKey]),
                 specType: cliType,
+                // MTP never auto-pairs: the head comes from the picker or the saved
+                // pairing. Baked-in MTP needs no path at all — the engine builds the
+                // draft context from the target model.
+                allowAutoPair: method !== "mtp",
               })
             : null);
         if (resolved) {

@@ -6,6 +6,7 @@ import {
   hasBakedMtp,
   isExternalDraftOnly,
   isLaunchableMain,
+  resolveExternalDraftPath,
   signalContainsEmbeddedMtp,
   specCapabilitiesForMain,
 } from "./specDraft";
@@ -73,5 +74,55 @@ describe("ISTA -mtp.gguf catalog classification", () => {
       ggufShape: { nextnLayers: 1 },
     } as ModelEntry;
     expect(hasBakedMtp(unnamedWithNextn)).toBe(true);
+  });
+});
+
+const main = {
+  path: String.raw`C:\models\heads\Qwen3.8-Flash-Next.gguf`,
+  name: "Qwen3.8-Flash-Next",
+} as ModelEntry;
+
+/** Exact stem match (70) + same parent (12) = 82, above HIGH_DRAFT_PAIR_SCORE. */
+const head = {
+  path: String.raw`C:\models\heads\Qwen3.8-Flash-Next-Q8_0.gguf`,
+  name: "Qwen3.8-Flash-Next",
+  draftRoleHint: "external_mtp",
+} as ModelEntry;
+
+/**
+ * The MTP lane never silently chooses a head. `allowAutoPair: false` must resolve
+ * only from an explicit pick or a saved pairing — a HIGH-scoring candidate sitting
+ * in the catalog is not consent. DFlash keeps the auto-pair, so the flag's default
+ * has to stay permissive.
+ */
+describe("MTP draft resolution is manual-only", () => {
+  it("returns null when nothing was picked or saved", () => {
+    expect(
+      resolveExternalDraftPath(main, [head], "external_mtp", { allowAutoPair: false }),
+    ).toBeNull();
+  });
+
+  it("still honours an explicit user pick", () => {
+    expect(
+      resolveExternalDraftPath(main, [head], "external_mtp", {
+        preferredPath: head.path,
+        allowAutoPair: false,
+      }),
+    ).toBe(head.path);
+  });
+
+  it("still honours the current config value", () => {
+    expect(
+      resolveExternalDraftPath(main, [head], "external_mtp", {
+        currentPath: head.path,
+        allowAutoPair: false,
+      }),
+    ).toBe(head.path);
+  });
+
+  it("auto-pairs when the flag is left at its default (DFlash behaviour)", () => {
+    expect(
+      resolveExternalDraftPath(main, [head], "external_mtp"),
+    ).toBe(head.path);
   });
 });
