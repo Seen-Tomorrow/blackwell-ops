@@ -278,7 +278,9 @@
   --fixed-white-a95: rgba(255, 255, 255, 0.95);
 }
 
-/* ── Stealth & Silicon Base Styles ─────────────────────────────── */
+/* ── SLATE base defaults ──────────────────────────────────────────
+   These values are the canonical SLATE theme; per-theme deltas live in
+   src/themes/app-themes.ts. Other themes must override, not fork, this file. */
 :root {
   --theme-stealth-dark: #0c120a;
   --theme-stealth-panel: #111810;
@@ -293,7 +295,7 @@
   /* Semantic aliases consumed by CSS; derived so they survive theme switch. */
   --theme-bg-elevated: var(--theme-panel);
   --theme-surface-inset: var(--theme-panel-accent);
-  --theme-danger: var(--theme-tel-hot);
+  --theme-danger: #ff3333;
   --theme-crit: var(--theme-tel-hot);
   --theme-telemetry-blue: var(--theme-tel-ram);
   --theme-harness-worker-text: color-mix(in srgb, var(--theme-harness-worker-raw) 22%, #fff 78%);
@@ -302,9 +304,9 @@
    * Values below are the pre-theme floor; app-themes.ts supplies per-theme deltas.
    * Retired names on the right must not be used by new code.
    */
-  --theme-warn: var(--theme-telemetry-amber);
-  --theme-on-warn: #0a0a0f;
-  --theme-info: var(--theme-telemetry-cyan);
+  --theme-warn: #FFB800;
+  --theme-on-warn: #080808;
+  --theme-info: #00e5ff;
   --theme-on-accent: var(--theme-chip-solid-text);
   /* Type scale — sizes are NOT a theme delta; keep them out of app-themes.ts. */
   --type-hairline: 6px;
@@ -320,75 +322,75 @@
 
 
   /* App theme tokens — defaults (matrix); overridden by applyAppTheme() */
-  --theme-bg: #000000;
-  --theme-text: #e0e0e0;
-  --theme-text-muted: #4a4a5a;
-  --theme-panel: #111810;
-  --theme-panel-accent: #040b01;
-  --theme-border: #1a2e1a;
+  --theme-bg: #080808;
+  --theme-text: #d8d0d0;
+  --theme-text-muted: #5a5a6a;
+  --theme-panel: #121218;
+  --theme-panel-accent: #0c0c0c;
+  --theme-border: #222228;
   /*
    * Frame edges — structural cards/sections/buttons (CONFIG secrets, MODEL HUB, …).
    * Dark: soft accent (never white glass). Light/ARCTIC: ink-dark enough to read.
    * Tailwind border-stealth-border/* remaps to these in surfaces.css.
    */
-  --theme-frame-border: rgba(74, 222, 128, 0.14);
-  --theme-frame-border-strong: rgba(74, 222, 128, 0.26);
+  --theme-frame-border: rgba(100, 100, 120, 0.22);
+  --theme-frame-border-strong: rgba(130, 130, 150, 0.34);
   --theme-border-subtle: var(--theme-frame-border);
-  --theme-accent: #76B900;
-  --theme-accent-bright: #4ade80;
-  --theme-accent-dim: #4a6a5a;
-  --theme-accent-glow: rgba(74, 222, 128, 0.3);
-  --theme-accent-soft: rgba(74, 222, 128, 0.06);
-  --theme-chip-bg: rgba(74, 222, 128, 0.03);
-  --theme-chip-border: rgba(74, 222, 128, 0.15);
-  --theme-chip-text: #4a6a5a;
-  --theme-chip-hover-border: rgba(74, 222, 128, 0.35);
-  --theme-chip-hover-text: #4ade80;
-  --theme-chip-active-bg: rgba(74, 222, 128, 0.12);
-  --theme-chip-active-border: rgba(74, 222, 128, 0.5);
-  --theme-chip-active-text: #4ade80;
-  --theme-chip-solid-bg: #4ade80;
-  --theme-chip-solid-text: #0c120a;
+  --theme-accent: #8a8a9a;
+  --theme-accent-bright: #c8c8d0;
+  --theme-accent-dim: #5a5a6a;
+  --theme-accent-glow: rgba(160, 160, 176, 0.22);
+  --theme-accent-soft: rgba(120, 120, 140, 0.08);
+  --theme-chip-bg: rgba(120, 120, 140, 0.06);
+  --theme-chip-border: rgba(140, 140, 160, 0.32);
+  --theme-chip-text: #7a7a8a;
+  --theme-chip-hover-border: rgba(180, 180, 200, 0.45);
+  --theme-chip-hover-text: #c8c8d0;
+  --theme-chip-active-bg: rgba(160, 160, 176, 0.14);
+  --theme-chip-active-border: rgba(200, 200, 216, 0.55);
+  --theme-chip-active-text: #e0e0e8;
+  --theme-chip-solid-bg: #8a8a9a;
+  --theme-chip-solid-text: #0c0c0c;
   /* PAPER face; CRT face uses --display-face-bg-dark (same on most themes; ARCTIC splits white/black) */
-  --display-face-bg: #030805;
-  --display-face-bg-dark: #030805;
-  --display-face-glow: rgba(74, 222, 128, 0.04);
-  --display-face-text: #4ade80;
-  --display-face-text-muted: #3a6a4a;
-  --display-face-bar-bg: rgba(74, 222, 128, 0.08);
-  --display-face-border: rgba(74, 222, 128, 0.12);
+  --display-face-bg: #080808;
+  --display-face-bg-dark: #080808;
+  --display-face-glow: rgba(200, 200, 200, 0.05);
+  --display-face-text: #c8c8d0;
+  --display-face-text-muted: #6a6a7a;
+  --display-face-bar-bg: rgba(200, 200, 210, 0.08);
+  --display-face-border: rgba(200, 200, 210, 0.065);
   --display-face-gpu-readout: var(--theme-accent-bright, var(--theme-accent));
   --display-face-gpu-readout-muted: var(--display-face-text-muted);
-  --theme-industrial-bg: #111810;
-  --theme-industrial-text: #4ade80;
-  --theme-industrial-muted: #4ade80;
-  --theme-industrial-bar-track: rgba(74, 222, 128, 0.03);
-  --theme-industrial-gpu-card-bg: rgba(74, 222, 128, 0.04);
-  --theme-industrial-gpu-border: rgba(74, 222, 128, 0.15);
-  --theme-industrial-gpu-selected: rgba(74, 222, 128, 0.7);
+  --theme-industrial-bg: #1a1a1e;
+  --theme-industrial-text: #c8c8d0;
+  --theme-industrial-muted: #8a8a9a;
+  --theme-industrial-bar-track: rgba(200, 200, 210, 0.025);
+  --theme-industrial-gpu-card-bg: rgba(200, 200, 210, 0.025);
+  --theme-industrial-gpu-border: rgba(200, 200, 210, 0.15);
+  --theme-industrial-gpu-selected: rgba(200, 200, 210, 0.55);
   /* Face gradient under bezel texture (arctic aluminium; none on dark themes) */
   --theme-industrial-face-gradient: none;
   /* Launch / ignite — overridden per theme in app-themes.ts */
-  --theme-launch-bg: color-mix(in srgb, var(--theme-chip-solid-bg) 58%, var(--theme-industrial-bg) 42%);
-  --theme-launch-border: color-mix(in srgb, var(--theme-chip-active-border) 82%, transparent);
-  --theme-launch-text: var(--theme-chip-active-text);
-  --theme-launch-shadow: none;
-  --theme-launch-hover-bg: color-mix(in srgb, var(--theme-chip-solid-bg) 68%, var(--theme-industrial-bg) 32%);
-  --theme-launch-hover-border: var(--theme-chip-active-border);
-  --theme-launch-hover-text: var(--theme-chip-hover-text);
-  --theme-launch-active-bg: color-mix(in srgb, var(--theme-chip-solid-bg) 72%, var(--theme-industrial-bg) 28%);
-  --theme-launch-active-border: var(--theme-chip-solid-bg);
-  --theme-launch-active-text: var(--theme-chip-solid-text);
-  --theme-launch-hover-shadow: none;
-  --theme-launch-active-shadow: none;
+  --theme-launch-bg: var(--theme-provider-pill-active-bg);
+  --theme-launch-border: var(--theme-provider-pill-active-border);
+  --theme-launch-text: var(--theme-provider-pill-active-text);
+  --theme-launch-shadow: 0 0 6px color-mix(in srgb, var(--theme-provider-pill-active-bg) 40%, transparent);
+  --theme-launch-hover-bg: color-mix(in srgb, var(--theme-provider-pill-active-bg) 82%, #ffffff 18%);
+  --theme-launch-hover-border: var(--theme-provider-pill-hover-border);
+  --theme-launch-hover-text: var(--theme-provider-pill-active-text);
+  --theme-launch-active-bg: color-mix(in srgb, var(--theme-provider-pill-active-bg) 78%, var(--theme-provider-pill-active-text) 22%);
+  --theme-launch-active-border: color-mix(in srgb, var(--theme-provider-pill-active-border) 70%, var(--theme-provider-pill-active-text) 30%);
+  --theme-launch-active-text: var(--theme-provider-pill-active-text);
+  --theme-launch-hover-shadow: 0 0 8px color-mix(in srgb, var(--theme-provider-pill-active-bg) 48%, transparent);
+  --theme-launch-active-shadow: 0 0 4px color-mix(in srgb, var(--theme-provider-pill-active-bg) 28%, transparent);
   /* Full Auto cockpit wells — dark default; ARCTIC overrides lighter */
   --theme-cockpit-well-shadow: inset 0 3px 8px color-mix(in srgb, #000000 55%, transparent), inset 0 1px 0 color-mix(in srgb, #000000 40%, transparent), inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 35%, transparent), 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 25%, transparent);
   --theme-cockpit-header-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 6%, transparent), inset 0 -1px 0 color-mix(in srgb, #000000 28%, transparent);
-  --theme-gpu-topo-selected-border: rgba(148, 163, 184, 0.5);
-  --theme-gpu-topo-selected-shadow: 0 0 10px rgba(148, 163, 184, 0.22);
-  --theme-bezel-edge-hi: rgba(74, 222, 128, 0.07);
+  --theme-gpu-topo-selected-border: rgba(200, 200, 210, 0.55);
+  --theme-gpu-topo-selected-shadow: 0 0 10px rgba(200, 200, 210, 0.24);
+  --theme-bezel-edge-hi: rgba(210, 210, 220, 0.12);
   --theme-bezel-edge-lo: rgba(0, 0, 0, 0.28);
-  --theme-bezel-grain: rgba(74, 222, 128, 0.03);
+  --theme-bezel-grain: rgba(255, 255, 255, 0.022);
   /* Bottom vignette in grit/brush/diamond — ARCTIC softens (hard black looks like a drop shadow) */
   --theme-bezel-bottom-shade: color-mix(in srgb, #000000 26%, transparent);
   --theme-bezel-dot-shade: color-mix(in srgb, #000000 14%, transparent);
@@ -465,7 +467,7 @@
       transparent 22px
     );
   --theme-industrial-texture-active: var(--theme-industrial-texture-sandblast);
-  --theme-bezel-inset-hi: rgba(74, 222, 128, 0.07);
+  --theme-bezel-inset-hi: rgba(255, 255, 255, 0.055);
   --theme-bezel-inset-lo: rgba(0, 0, 0, 0.22);
   --display-face-inset-top: rgba(0, 0, 0, 0.35);
   --display-face-inset-bottom: rgba(0, 0, 0, 0.12);
@@ -570,52 +572,52 @@
   --display-face-control-active-bg: color-mix(in srgb, var(--display-face-text) 16%, transparent);
   --display-face-control-active-border: color-mix(in srgb, var(--display-face-text) 65%, transparent);
   --display-face-control-active-text: var(--display-face-text);
-  --theme-card-selected-bg: #111810;
-  --theme-card-selected-accent: #b87a00;
-  --theme-scrollbar-track: rgba(10, 10, 15, 0.5);
-  --theme-scrollbar-thumb: rgba(118, 185, 0, 0.3);
-  --theme-secondary: #b87a00;
-  --theme-secondary-bright: #f5971f;
-  --theme-selection-bg: #76B900;
-  --theme-selection-text: #000000;
-  --theme-eject-header-bg: #000000;
-  --theme-eject-header-text: #b87a00;
-  --theme-eject-card-bg: rgba(74, 222, 128, 0.03);
-  --theme-eject-card-hover-bg: rgba(74, 222, 128, 0.06);
-  --theme-eject-card-text: #e8e2d6;
-  --theme-eject-card-muted: #9a9488;
-  --theme-eject-badge-bg: #000000;
+  --theme-card-selected-bg: #1a1a1e;
+  --theme-card-selected-accent: #8a8a9a;
+  --theme-scrollbar-track: rgba(15, 15, 18, 0.5);
+  --theme-scrollbar-thumb: rgba(138, 138, 154, 0.35);
+  --theme-secondary: #7a7a8a;
+  --theme-secondary-bright: #a0a0b0;
+  --theme-selection-bg: #8a8a9a;
+  --theme-selection-text: #0c0c0c;
+  --theme-eject-header-bg: #141418;
+  --theme-eject-header-text: #a0a0b0;
+  --theme-eject-card-bg: rgba(120, 120, 140, 0.05);
+  --theme-eject-card-hover-bg: rgba(140, 140, 160, 0.1);
+  --theme-eject-card-text: #d0d0d8;
+  --theme-eject-card-muted: #6a6a7a;
+  --theme-eject-badge-bg: #141418;
   --theme-eject-card-border: var(--theme-frame-border);
   /* frame-border-strong available for buttons / inputs */
-  --theme-eject-card-hover-border: rgba(184, 122, 0, 0.22);
-  --theme-eject-card-selected-bg: rgba(184, 122, 0, 0.16);
-  --theme-eject-card-selected-border: rgba(184, 122, 0, 0.55);
-  --theme-provider-label: rgba(245, 151, 31, 0.8);
-  --theme-provider-pill-bg: #1a1206;
-  --theme-provider-pill-border: #b87a00;
-  --theme-provider-pill-text: #b87a00;
-  --theme-provider-pill-hover-border: #f5971f;
-  --theme-provider-pill-hover-text: #f5971f;
-  --theme-provider-pill-active-bg: #f5971f;
-  --theme-provider-pill-active-border: #f5971f;
-  --theme-provider-pill-active-text: #0a0804;
-  --theme-header-border: #1a2e1a;
-  --theme-header-title: #ffffff;
-  --theme-header-subtitle: rgba(255, 255, 255, 0.25);
-  --theme-header-logo: #76B900;
-  --theme-nav-text: #4a4a5a;
-  --theme-nav-hover-text: #e0e0e0;
-  --theme-nav-hover-bg: rgba(255, 255, 255, 0.05);
-  --theme-nav-active-bg: rgba(74, 222, 128, 0.12);
-  --theme-nav-active-border: rgba(74, 222, 128, 0.5);
-  --theme-nav-active-text: #4ade80;
-  --theme-chrome-control-border: #1a2e1a;
-  --theme-chrome-control-text: #4a4a5a;
-  --theme-chrome-control-hover: #4ade80;
-  --theme-footer-bg: #000000;
-  --theme-footer-border: #b87a00;
-  --theme-footer-text: rgba(255, 255, 255, 0.4);
-  --theme-status-nominal: #4ade80;
+  --theme-eject-card-hover-border: var(--theme-frame-border-strong);
+  --theme-eject-card-selected-bg: rgba(160, 160, 176, 0.16);
+  --theme-eject-card-selected-border: rgba(200, 200, 216, 0.5);
+  --theme-provider-label: rgba(200, 170, 100, 0.8);
+  --theme-provider-pill-bg: #1a1810;
+  --theme-provider-pill-border: #a08840;
+  --theme-provider-pill-text: #a08840;
+  --theme-provider-pill-hover-border: #c8a860;
+  --theme-provider-pill-hover-text: #c8a860;
+  --theme-provider-pill-active-bg: #c8a860;
+  --theme-provider-pill-active-border: #c8a860;
+  --theme-provider-pill-active-text: #1a1408;
+  --theme-header-border: #222228;
+  --theme-header-title: #d0d0d8;
+  --theme-header-subtitle: rgba(208, 208, 216, 0.35);
+  --theme-header-logo: #8a8a9a;
+  --theme-nav-text: #5a5a6a;
+  --theme-nav-hover-text: #d0d0d8;
+  --theme-nav-hover-bg: rgba(200, 200, 210, 0.06);
+  --theme-nav-active-bg: rgba(200, 200, 210, 0.065);
+  --theme-nav-active-border: rgba(200, 200, 210, 0.45);
+  --theme-nav-active-text: #c8c8d0;
+  --theme-chrome-control-border: #222228;
+  --theme-chrome-control-text: #5a5a6a;
+  --theme-chrome-control-hover: #c8c8d0;
+  --theme-footer-bg: #0c0c0c;
+  --theme-footer-border: #7a7a8a;
+  --theme-footer-text: rgba(208, 208, 216, 0.45);
+  --theme-status-nominal: #c8c8d0;
 }
 
 * {

@@ -128,16 +128,12 @@ const MATRIX: AppTheme = {
     "--theme-launch-active-border": "var(--theme-chip-solid-bg)",
     "--theme-launch-active-text": "var(--theme-chip-solid-text)",
     /* Fused VRAM/RAM bar label chips (name/cap/need) */
-    "--display-face-gpu-readout": "var(--theme-accent-bright, var(--theme-accent))",
-    "--display-face-gpu-readout-muted": "var(--display-face-text-muted)",
     /* Semantic alert set (de-Tailwind law: chrome paints only via these) */
-    "--theme-warn": "#FFB800",
     "--theme-on-warn": "#0a0a0f",
-    "--theme-danger": "#ff3333",
     "--theme-on-danger": "#ffffff",
-    "--theme-info": "#00e5ff",
-    "--theme-on-accent": "var(--theme-chip-solid-text)",
-  },
+  
+    "--theme-launch-hover-shadow": "none",
+    "--theme-launch-active-shadow": "none",},
 };
 
 const SLATE: AppTheme = {
@@ -145,118 +141,10 @@ const SLATE: AppTheme = {
   name: "SLATE",
   description: "Neutral phosphor — grey terminal, low saturation",
   tokens: {
-    "--theme-bg": "#080808",
-    "--theme-text": "#d8d0d0",
-    "--theme-text-muted": "#5a5a6a",
-    "--theme-panel": "#121218",
-    "--theme-panel-accent": "#0c0c0c",
-    "--theme-border": "#222228",
-    /* Mid-grey structure — not pale glow on black */
-    "--theme-frame-border": "rgba(100, 100, 120, 0.22)",
-    "--theme-frame-border-strong": "rgba(130, 130, 150, 0.34)",
-    "--theme-accent": "#8a8a9a",
-    "--theme-accent-bright": "#c8c8d0",
-    "--theme-accent-dim": "#5a5a6a",
-    /* Distribution/App-update cyan — stays cyan on dark themes, readable teal on arctic */
-    "--theme-accent-glow": "rgba(160, 160, 176, 0.22)",
-    "--theme-accent-soft": "rgba(120, 120, 140, 0.08)",
-    "--theme-chip-bg": "rgba(120, 120, 140, 0.06)",
-    "--theme-chip-border": "rgba(140, 140, 160, 0.32)",
-    "--theme-chip-text": "#7a7a8a",
-    "--theme-chip-hover-border": "rgba(180, 180, 200, 0.45)",
-    "--theme-chip-hover-text": "#c8c8d0",
-    "--theme-chip-active-bg": "rgba(160, 160, 176, 0.14)",
-    "--theme-chip-active-border": "rgba(200, 200, 216, 0.55)",
-    "--theme-chip-active-text": "#e0e0e8",
-    "--theme-chip-solid-bg": "#8a8a9a",
-    "--theme-chip-solid-text": "#0c0c0c",
+    /* SLATE is the CSS base (tokens-base.css). Only tokens without a CSS default stay here. */
+    "--theme-on-danger": "#ffffff",
     "--theme-pair-secondary-bg": "#8a8a9a",
     "--theme-pair-secondary-text": "#0c0c0c",
-    /* Harness BRAIN/WORKER identity (wizard + running cards) */
-    "--display-face-bg": "#080808",
-    "--display-face-bg-dark": "#080808",
-    "--display-face-glow": "rgba(200, 200, 200, 0.05)",
-    "--display-face-text": "#c8c8d0",
-    "--display-face-text-muted": "#6a6a7a",
-    "--display-face-bar-bg": "rgba(200, 200, 210, 0.08)",
-    "--display-face-border": "rgba(200, 200, 210, 0.065)",
-    "--theme-industrial-bg": "#1a1a1e",
-    "--theme-industrial-text": "#c8c8d0",
-    /* DFlash / DSPARK spec strip — violet tone (dark surface) */
-    /* MTP spec strip — product green (dark surface) */
-    "--theme-industrial-muted": "#8a8a9a",
-    "--theme-industrial-bar-track": "rgba(200, 200, 210, 0.025)",
-    "--theme-industrial-gpu-card-bg": "rgba(200, 200, 210, 0.025)",
-    "--theme-industrial-gpu-border": "rgba(200, 200, 210, 0.15)",
-    "--theme-industrial-gpu-selected": "rgba(200, 200, 210, 0.55)",
-    "--theme-gpu-topo-selected-border": "rgba(200, 200, 210, 0.55)",
-    "--theme-gpu-topo-selected-shadow": "0 0 10px rgba(200, 200, 210, 0.24)",
-    "--theme-bezel-edge-hi": "rgba(210, 210, 220, 0.12)",
-    "--theme-bezel-grain": "rgba(255, 255, 255, 0.022)",
-    "--theme-bezel-inset-hi": "rgba(255, 255, 255, 0.055)",
-    "--theme-card-selected-bg": "#1a1a1e",
-    "--theme-card-selected-accent": "#8a8a9a",
-    "--theme-scrollbar-track": "rgba(15, 15, 18, 0.5)",
-    "--theme-scrollbar-thumb": "rgba(138, 138, 154, 0.35)",
-    "--theme-secondary": "#7a7a8a",
-    "--theme-secondary-bright": "#a0a0b0",
-    "--theme-selection-bg": "#8a8a9a",
-    "--theme-selection-text": "#0c0c0c",
-    "--theme-eject-header-bg": "#141418",
-    "--theme-eject-header-text": "#a0a0b0",
-    "--theme-eject-card-bg": "rgba(120, 120, 140, 0.05)",
-    "--theme-eject-card-hover-bg": "rgba(140, 140, 160, 0.1)",
-    "--theme-eject-card-text": "#d0d0d8",
-    "--theme-eject-card-muted": "#6a6a7a",
-    "--theme-eject-badge-bg": "#141418",
-    "--theme-eject-card-hover-border": "var(--theme-frame-border-strong)",
-    "--theme-eject-card-selected-bg": "rgba(160, 160, 176, 0.16)",
-    "--theme-eject-card-selected-border": "rgba(200, 200, 216, 0.5)",
-    "--theme-provider-label": "rgba(200, 170, 100, 0.8)",
-    "--theme-provider-pill-bg": "#1a1810",
-    "--theme-provider-pill-border": "#a08840",
-    "--theme-provider-pill-text": "#a08840",
-    "--theme-provider-pill-hover-border": "#c8a860",
-    "--theme-provider-pill-hover-text": "#c8a860",
-    "--theme-provider-pill-active-bg": "#c8a860",
-    "--theme-provider-pill-active-border": "#c8a860",
-    "--theme-provider-pill-active-text": "#1a1408",
-    "--theme-header-border": "#222228",
-    "--theme-header-title": "#d0d0d8",
-    "--theme-header-subtitle": "rgba(208, 208, 216, 0.35)",
-    "--theme-header-logo": "#8a8a9a",
-    "--theme-nav-text": "#5a5a6a",
-    "--theme-nav-hover-text": "#d0d0d8",
-    "--theme-nav-hover-bg": "rgba(200, 200, 210, 0.06)",
-    "--theme-nav-active-bg": "rgba(200, 200, 210, 0.065)",
-    "--theme-nav-active-border": "rgba(200, 200, 210, 0.45)",
-    "--theme-nav-active-text": "#c8c8d0",
-    "--theme-chrome-control-border": "#222228",
-    "--theme-chrome-control-text": "#5a5a6a",
-    "--theme-chrome-control-hover": "#c8c8d0",
-    "--theme-footer-bg": "#0c0c0c",
-    "--theme-footer-border": "#7a7a8a",
-    "--theme-footer-text": "rgba(208, 208, 216, 0.45)",
-    "--theme-status-nominal": "#c8c8d0",
-    "--theme-launch-bg": "var(--theme-provider-pill-active-bg)",
-    "--theme-launch-border": "var(--theme-provider-pill-active-border)",
-    "--theme-launch-text": "var(--theme-provider-pill-active-text)",
-    "--theme-launch-shadow": "0 0 6px color-mix(in srgb, var(--theme-provider-pill-active-bg) 40%, transparent)",
-    "--theme-launch-hover-bg": "color-mix(in srgb, var(--theme-provider-pill-active-bg) 82%, #ffffff 18%)",
-    "--theme-launch-hover-border": "var(--theme-provider-pill-hover-border)",
-    "--theme-launch-hover-text": "var(--theme-provider-pill-active-text)",
-    "--theme-launch-hover-shadow": "0 0 8px color-mix(in srgb, var(--theme-provider-pill-active-bg) 48%, transparent)",
-    "--theme-launch-active-bg": "color-mix(in srgb, var(--theme-provider-pill-active-bg) 78%, var(--theme-provider-pill-active-text) 22%)",
-    "--theme-launch-active-border": "color-mix(in srgb, var(--theme-provider-pill-active-border) 70%, var(--theme-provider-pill-active-text) 30%)",
-    "--theme-launch-active-text": "var(--theme-provider-pill-active-text)",
-    "--theme-launch-active-shadow": "0 0 4px color-mix(in srgb, var(--theme-provider-pill-active-bg) 28%, transparent)",
-    /* Semantic alert set — neutral terminal keeps dark-surface values */
-    "--theme-warn": "#FFB800",
-    "--theme-on-warn": "#080808",
-    "--theme-danger": "#ff3333",
-    "--theme-on-danger": "#ffffff",
-    "--theme-info": "#00e5ff",
-    "--theme-on-accent": "var(--theme-chip-solid-text)",
   },
 };
 
@@ -316,7 +204,6 @@ const ARCTIC: AppTheme = {
     /* ── CLEAN phosphor face ── cool porcelain */
     "--display-face-bg": "#f7fafc",
     /* DARK face = neutral like SLATE (light theme forced dark, avoid tinted banding) */
-    "--display-face-bg-dark": "#080808",
     /*
      * DOTTED face on a light theme: light dots would be invisible on porcelain, so
      * ARCTIC supplies dark dots + multiply (the recipe the old `eink` rules hardcoded)
@@ -383,7 +270,6 @@ const ARCTIC: AppTheme = {
     "--display-face-fc-label-ram-border": "#0891b2",
     /* GPU card "38.8/96G 40%" readout — theme accent, no glow */
     "--display-face-gpu-readout": "var(--theme-accent)",
-    "--display-face-gpu-readout-muted": "var(--display-face-text-muted)",
 
     /* HW monitor + OVERCLOCKING — sky VRAM, cool RAM, copper warn */
     "--theme-tel-vram": "#0284c7",
@@ -469,7 +355,6 @@ const ARCTIC: AppTheme = {
     "--theme-bezel-inset-lo": "rgba(15, 40, 70, 0.14)",
     "--display-face-inset-top": "rgba(15, 40, 70, 0.18)",
     "--display-face-inset-bottom": "rgba(15, 40, 70, 0.1)",
-    "--theme-bezel-cast-shadow": DISPLAY_PROFILE_BEZEL_CAST,
     /* Eject panel (running engines) — stronger, longer cast than the frame so
        the aluminium panel reads as floating above the toolbar below. Cool
        slate (not pure black) to stay on the Glacier Dawn language. */
@@ -497,7 +382,6 @@ const ARCTIC: AppTheme = {
     "--theme-eject-badge-bg": "rgba(255, 255, 255, 0.9)",
     /* --theme-eject-card-border omitted: same — base already equals
        var(--theme-frame-border). hover/selected borders below DO differ. */
-    "--theme-eject-card-hover-border": "var(--theme-frame-border-strong)",
     "--theme-eject-card-selected-bg": "#ffffff",
     "--theme-eject-card-selected-border": "rgba(14, 165, 233, 0.55)",
 
@@ -560,17 +444,16 @@ const ARCTIC: AppTheme = {
     "--theme-danger": "var(--theme-tel-hot)",
     "--theme-on-danger": "#f8fafc",
     "--theme-info": "var(--theme-tel-cyan)",
-    "--theme-on-accent": "var(--theme-chip-solid-text)",
   },
 };
 
 export const APP_THEMES: AppTheme[] = [MATRIX, SLATE, ARCTIC];
 
-/** EXPERIMENT-theme-arctic: trial default — glacier light for product feel */
-export const DEFAULT_THEME_ID = "arctic";
+/** Canonical default: SLATE. Its values are the CSS base in tokens-base.css. */
+export const DEFAULT_THEME_ID = "slate";
 
 export function getThemeById(id: string): AppTheme {
-  return APP_THEMES.find(t => t.id === id) ?? ARCTIC;
+  return APP_THEMES.find(t => t.id === id) ?? SLATE;
 }
 
 /** Keys last applied — cleared when missing from the next theme (avoids ARCTIC-only tokens sticking). */

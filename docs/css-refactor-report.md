@@ -200,7 +200,7 @@ Further source reduction now means one of:
 Minifiers can shorten `#ffffff` to `#fff`; `var(--fixed-*)` cannot be shortened.
 This trade removes ~1,000 literal paint sites and centralizes the palette.
 
-## Lazy split part 2 â€” ConfigPage / StackView / LogsPanel
+## Lazy split part 2 - ConfigPage / StackView / LogsPanel
 
 | Lazy graph | CSS chunk | Rules moved | Source moved |
 |---|---:|---:|---:|
@@ -217,3 +217,15 @@ This trade removes ~1,000 literal paint sites and centralizes the palette.
   would flip later same-property rules, so they stay global.
 - Source grew ~12 kB from PostCSS whitespace normalization during the move;
   delivered CSS total is unchanged (only startup vs lazy distribution changed).
+
+## Theme-as-delta -” SLATE base (visual: zero drift confirmed)
+
+- CSS base in `tokens-base.css` is now SLATE's exact palette.
+- `DEFAULT_THEME_ID = "slate"`; `main.tsx` and `ThemeContext` both use it, so a
+  fresh install boots SLATE instead of MATRIX. Stored themes are unchanged.
+- Theme declarations: SLATE 106 -> 3 (base), MATRIX 106 -> 102 delta,
+  ARCTIC 199 -> 195 delta; total 411 -> 300 (-27%).
+- `app-themes.ts`: 29,254 -> 24,049 B (-17.8%); main JS chunk 958.8 -> 953.6 kB.
+- Verification: every effective token (232) in all three themes matches the
+  pre-refactor value exactly - 0 mismatches. Build, tsc, vitest 108/108 and
+  css:audit all pass. User confirmed zero visual drift and SLATE boot.
