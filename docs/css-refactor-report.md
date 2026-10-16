@@ -353,3 +353,9 @@ This trade removes ~1,000 literal paint sites and centralizes the palette.
 - Removed 13 importants from Foundry arch chips (normal/hover/active) and CUDA
   badge; selectors raised to specificity 20 so they still beat Tailwind.
 - Source total 156 -> 143. User confirmed visual stability.
+
+## chrome.css grouped cleanup
+
+- Removed 26 importants across quick settings, header dev tools, footer dev tag,
+  palette search, Foundry typography/build log, download progress, status flash.
+- Source total 143 -> 117; chrome.css 29 -> 3. User confirmed visual stability.

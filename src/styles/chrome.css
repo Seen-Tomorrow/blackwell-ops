@@ -510,12 +510,12 @@
  */
 .app-quick-settings .app-appearance-section__label,
 .app-quick-settings .app-appearance-section__label--compact {
-  font-size: var(--chrome-fs-label) !important;
+  font-size: var(--chrome-fs-label);
 }
 
 .app-quick-settings .app-chrome-control-btn {
-  font-size: var(--chrome-fs-btn) !important;
-  line-height: 1.15 !important;
+  font-size: var(--chrome-fs-btn);
+  line-height: 1.15;
 }
 
 /*
@@ -646,15 +646,15 @@
 }
 
 
-.app-header-dev-tools__btn {
+.app-header-dev-tools__btn.app-header-dev-tools__btn {
   flex: 0 0 auto;
   min-height: calc(12px * var(--chrome-scale));
   max-height: none;
   height: auto;
-  padding: calc(1px * var(--chrome-scale)) calc(5px * var(--chrome-scale)) !important;
-  font-size: calc(8px * var(--chrome-scale)) !important;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
-  line-height: 1.15 !important;
+  padding: calc(1px * var(--chrome-scale)) calc(5px * var(--chrome-scale));
+  font-size: calc(8px * var(--chrome-scale));
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  line-height: 1.15;
   letter-spacing: 0.03em;
   white-space: nowrap;
   display: flex;
@@ -665,7 +665,7 @@
 
 /* VIEW / GPU+ wrappers used flex:1 min-h-0 and collapsed with the old stack */
 .app-header-dev-tools > .relative {
-  flex: 0 0 auto !important;
+  flex: 0 0 auto;
   min-height: 0;
   align-self: stretch;
   display: flex;
@@ -1086,9 +1086,9 @@
   --dev-danger-shell: #120000;
 }
 
-.app-build--dev .app-footer-dev-tag {
-  padding: 0 0.35rem !important;
-  font-size: var(--type-label) !important;
+.app-build--dev .app-footer-dev-tag.app-footer-dev-tag {
+  padding: 0 0.35rem;
+  font-size: var(--type-label);
   font-weight: 700;
   letter-spacing: 0.12em;
   border-radius: 2px;
@@ -1411,13 +1411,13 @@
 
 /* ~2× default catalog search field */
 .model-search-palette-input {
-  font-size: 1.05rem !important;
-  line-height: 1.35 !important;
+  font-size: 1.05rem;
+  line-height: 1.35;
   min-height: 2.5rem;
 }
 
 .model-search-palette-legend {
-  font-size: 0.8rem !important;
+  font-size: 0.8rem;
   letter-spacing: 0.06em;
 }
 
@@ -1964,23 +1964,23 @@
  *   body (10) -> fs-lg · sm (11) -> 14px x scale
  */
 .foundry-window .type-hairline, .foundry-window .type-micro{
-  font-size: var(--foundry-fs-xs) !important;
+  font-size: var(--foundry-fs-xs);
 }
 
 .foundry-window .type-tiny{
-  font-size: var(--foundry-fs-sm) !important;
+  font-size: var(--foundry-fs-sm);
 }
 
 .foundry-window .type-label{
-  font-size: var(--foundry-fs-md) !important;
+  font-size: var(--foundry-fs-md);
 }
 
 .foundry-window .type-body{
-  font-size: var(--foundry-fs-lg) !important;
+  font-size: var(--foundry-fs-lg);
 }
 
 .foundry-window .type-sm{
-  font-size: calc(14px * var(--foundry-scale)) !important;
+  font-size: calc(14px * var(--foundry-scale));
 }
 
 /* Confirm body — two columns when the shell is wide enough */
@@ -2090,15 +2090,15 @@
  * Build log terminal — always near-black so white/cyan/yellow phase lines stay readable
  * on ARCTIC (do not lighten with theme-panel remaps).
  */
-.foundry-build-log {
-  background: var(--fixed-c-0a0c10) !important;
-  border: 1px solid color-mix(in srgb, var(--fixed-black) 70%, var(--theme-frame-border)) !important;
+.foundry-build-log.foundry-build-log {
+  background: var(--fixed-c-0a0c10);
+  border: 1px solid color-mix(in srgb, var(--fixed-black) 70%, var(--theme-frame-border));
   color: var(--fixed-rgba-220-228-236-a72);
   box-shadow: inset 0 1px 4px var(--fixed-black-a55);
   /* Logs were text-[8px] — unreadable on laptop CSS viewports; track foundry scale. */
-  font-size: var(--foundry-fs-log) !important;
+  font-size: var(--foundry-fs-log);
   line-height: 1.45;
-  padding: calc(0.55rem * var(--foundry-scale)) !important;
+  padding: calc(0.55rem * var(--foundry-scale));
 }
 
 .foundry-build-log__idle {
@@ -2398,11 +2398,11 @@
   overflow: visible;
 }
 
-.download-progress-inline {
+.download-progress-inline.download-progress-inline {
   max-width: none;
   overflow: visible;
   /* Base was text-[8px] — too small on 4K / DPR1 even inside app zoom at 100%. */
-  font-size: var(--chrome-fs-dl) !important;
+  font-size: var(--chrome-fs-dl);
   gap: calc(0.5rem * var(--chrome-scale));
 }
 
@@ -2417,8 +2417,8 @@
 }
 
 .download-progress-inline button {
-  font-size: var(--chrome-fs-dl) !important;
-  padding: calc(3px * var(--chrome-scale)) calc(7px * var(--chrome-scale)) !important;
+  font-size: var(--chrome-fs-dl);
+  padding: calc(3px * var(--chrome-scale)) calc(7px * var(--chrome-scale));
 }
 
 /* Confirm-cancel modal — dim-only overlay (no blur, per design rule) */
@@ -2595,8 +2595,8 @@
 }
 
 /* ── Status bar flash animation ────────────────────────────────── */
-.status-flash {
-  color: #00e5ff !important;
+.status-flash.status-flash {
+  color: #00e5ff;
   animation: statusPulse 0.5s ease-in-out;
 }
 
