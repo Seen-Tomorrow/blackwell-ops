@@ -16,7 +16,7 @@ use crate::output_console::{
     format_console_completion, BlackwellOutputConsoleCategory, BlackwellOutputConsoleLineStyle,
     BlackwellOutputConsoleManager,
 };
-use crate::types::{EngineConfig, ModelEntry, ModelMetadata};
+use crate::types::{EngineConfig, ModelMetadata};
 use crate::types::StackEntry;
 
 const DEFAULT_BASE_PORT: u16 = 8080;
@@ -341,14 +341,18 @@ pub async fn list_models(
     config: tauri::State<'_, Arc<std::sync::Mutex<AppConfig>>>,
     downloads: tauri::State<'_, Arc<tokio::sync::RwLock<crate::download_manager::DownloadManager>>>,
     app: tauri::State<'_, AppContext>,
-) -> Result<Vec<ModelEntry>, String> {
+) -> Result<crate::types::CatalogScanReport, String> {
     let paths = {
         let cfg = config.lock().map_err(|e| e.to_string())?;
         crate::config::get_model_paths(&cfg)
     };
 
     if paths.is_empty() {
-        return Ok(Vec::new());
+        // No configured paths at all — an empty report, not an empty catalog.
+        return Ok(crate::types::CatalogScanReport {
+            models: Vec::new(),
+            paths: Vec::new(),
+        });
     }
 
     let exclusions = match downloads.try_read() {
@@ -364,8 +368,13 @@ pub async fn list_models(
     let t0 = std::time::Instant::now();
     log::info!("[list_models] start ({} path(s))", paths.len());
     let paths_for_scan = paths.clone();
-    let (entries, _conflicts) = tokio::task::spawn_blocking(move || {
-        model_catalog::merge_catalogs(&paths_for_scan, None, Some(&exclusions))
+    let (entries, path_scans, _conflicts) = tokio::task::spawn_blocking(move || {
+        // Diagnostics first — a directory walk with no metadata work — so the
+        // report can still name a path that contributed nothing.
+        let scans = model_catalog::scan_path_report(&paths_for_scan);
+        let (entries, conflicts) =
+            model_catalog::merge_catalogs(&paths_for_scan, None, Some(&exclusions))?;
+        Ok::<_, String>((entries, scans, conflicts))
     })
     .await
     .map_err(|e| format!("catalog scan task failed: {}", e))??;
@@ -386,11 +395,38 @@ pub async fn list_models(
         "[list_models] complete: {:.0}ms",
         t0.elapsed().as_secs_f64() * 1000.0
     );
+    // A path that produced nothing is the one thing worth saying out loud: the
+    // catalog's empty state is the UI half of the diagnosis, this line is the
+    // log half. Only the *actionable* half earns a WARN — a folder that is gone
+    // or blocked is a problem to fix; a folder you created and have not filled
+    // yet is a normal state, so it stays at debug.
+    for scan in &path_scans {
+        if let Some(err) = &scan.error {
+            log::warn!(
+                "[list_models] no models from path '{}': folder is unreadable ({})",
+                scan.resolved_path,
+                err
+            );
+        } else if !scan.exists {
+            log::warn!(
+                "[list_models] no models from path '{}': folder does not exist",
+                scan.resolved_path
+            );
+        } else if scan.gguf_count == 0 {
+            log::debug!(
+                "[list_models] no models from path '{}': folder holds no .gguf files",
+                scan.resolved_path
+            );
+        }
+    }
     if !_conflicts.is_empty() {
         log::warn!("[list_models] Found {} cross-path duplicates (keeping largest)", _conflicts.len());
     }
 
-    Ok(entries)
+    Ok(crate::types::CatalogScanReport {
+        models: entries,
+        paths: path_scans,
+    })
 }
 
 // ── Engine Management Commands ──────────────────────────────────────

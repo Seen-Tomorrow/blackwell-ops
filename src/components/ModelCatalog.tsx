@@ -1,6 +1,6 @@
 import { useRef, useEffect, useMemo, useState, useCallback } from "react";
 import type { CatalogDraftFilter } from "../lib/specDraft";
-import type { CatalogUpdateEntry, EngineConfig, HfModelInfo, ModelEntry, ProviderConfig, StackEntry } from "../lib/types";
+import type { CatalogUpdateEntry, EngineConfig, HfModelInfo, ModelEntry, ModelPathScan, ProviderConfig, StackEntry } from "../lib/types";
 import { invoke } from "@tauri-apps/api/core";
 import EngineConfigPanel from "./EngineConfigPanel";
 import ModelCard from "./ModelCard";
@@ -31,6 +31,9 @@ interface ModelCatalogProps {
   setBatchScanState: React.Dispatch<React.SetStateAction<{ active: boolean; scanned: number; failed: number; total: number }>>;
   stack: StackEntry[];
   setupGuide: SetupGuideState;
+  /** Per-configured-path scan diagnostics — powers the empty-state explanation.
+   *  `null` = report not received yet. */
+  pathScans?: ModelPathScan[] | null;
   catalogHfUpdates?: CatalogUpdateEntry[];
   catalogUpdatesBusy?: boolean;
   onCheckCatalogUpdates?: (onlyPath?: string) => void;
@@ -56,7 +59,7 @@ const draftFilterLabels: Record<CatalogDraftFilter, string> = {
 };
 
 export default function ModelCatalog(props: ModelCatalogProps) {
-  const { models, onLaunch, error, onReload, providers: externalProviders, committedVramMib, scanningPath, setScanningPath, batchScanState, setBatchScanState, stack, setupGuide, catalogHfUpdates, catalogUpdatesBusy, onCheckCatalogUpdates, onClearCatalogUpdate, catalogCheckVerdicts, onDismissCheckVerdict } = props;
+  const { models, onLaunch, error, onReload, providers: externalProviders, committedVramMib, scanningPath, setScanningPath, batchScanState, setBatchScanState, stack, setupGuide, catalogHfUpdates, catalogUpdatesBusy, onCheckCatalogUpdates, onClearCatalogUpdate, catalogCheckVerdicts, onDismissCheckVerdict, pathScans } = props;
   const [updatesOnly, setUpdatesOnly] = useState(false);
   const [fullConfirm, setFullConfirm] = useState<CatalogUpdateEntry | null>(null);
   const [updateBusyPath, setUpdateBusyPath] = useState<string | null>(null);
@@ -165,6 +168,46 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     () => (updatesOnly ? catalogModelsRaw.filter((m) => updateByPath.has(m.path)) : catalogModelsRaw),
     [updatesOnly, catalogModelsRaw, updateByPath],
   );
+
+  /**
+   * Why the list is empty. The catalog has several distinct failure modes that
+   * all rendered as the same blank panel: no path configured, a path that is
+   * missing or holds no GGUFs, a path that yields GGUFs none of which cataloged,
+   * and filters that hid models we did find. Name the actual one.
+   */
+  const emptyState = useMemo(() => {
+    if (catalogModels.length > 0) return null;
+
+    // Models were found — something hid them. Name the filter responsible.
+    if (models.length > 0) {
+      const active: string[] = [];
+      if (search.trim()) active.push(`SEARCH "${search.trim()}"`);
+      if (draftFilter !== "all") active.push(`KIND ${draftFilterLabels[draftFilter]}`);
+      if (fitNowFilter !== "all") active.push(`FIT-NOW ${fitNowFilter.toUpperCase()}`);
+      if (updatesOnly) active.push("UPDATES ONLY");
+      return {
+        kind: "filtered" as const,
+        headline: `0 OF ${models.length} SHOWN`,
+        detail: active.join(" · "),
+      };
+    }
+
+    // Nothing found at all — a path problem, not a filter problem. Only claim a
+    // cause once a scan report has actually arrived; before that, say nothing.
+    const scans = pathScans;
+    if (scans) {
+      const dead = scans.filter((p) => p.error || !p.exists || p.ggufCount === 0);
+      if (dead.length > 0) {
+        return { kind: "paths" as const, headline: "NO MODELS IN YOUR LIBRARY PATH(S)", paths: dead };
+      }
+      if (scans.length === 0) {
+        return { kind: "unconfigured" as const, headline: "NO MODEL PATH CONFIGURED" };
+      }
+      // Paths are readable and hold GGUFs, yet nothing cataloged.
+      return { kind: "uncataloged" as const, headline: "NO MODELS FOUND" };
+    }
+    return { kind: "unknown" as const, headline: "NO MODELS FOUND" };
+  }, [catalogModels.length, models.length, pathScans, search, draftFilter, fitNowFilter, updatesOnly]);
 
 
   useEffect(() => {
@@ -923,9 +966,55 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                 style={{ opacity: catalogListDim }}
               >
                 <p className="cat-mut text-xs font-mono opacity-50">
-                  {models.length > 0 && search.trim() ? "NO MATCHING MODELS" : "NO MODELS FOUND"}
+                  {emptyState?.headline ?? "NO MODELS FOUND"}
                 </p>
-                {models.length === 0 && !setupGuide.pathsDone && (
+
+                {/* Models were found but a filter hid every one — name it, clear it. */}
+                {emptyState?.kind === "filtered" && (
+                  <>
+                    <p className="type-body font-mono cat-mut--soft leading-relaxed max-w-[260px]">
+                      {emptyState.detail || "FILTERS ACTIVE"}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearch("");
+                        setCatalogDraftFilter("all");
+                        setFitNowFilter("all");
+                        setUpdatesOnly(false);
+                      }}
+                      className="cat-paths-btn type-tiny font-mono px-2 py-0.5 tracking-widest rounded-sm border transition-colors"
+                    >
+                      CLEAR FILTERS
+                    </button>
+                  </>
+                )}
+
+                {/* A configured path produced nothing — name it and say why. */}
+                {emptyState?.kind === "paths" && (
+                  <>
+                    <ul className="type-micro font-mono cat-dng--soft leading-relaxed max-w-[340px] space-y-1">
+                      {emptyState.paths.map((p) => (
+                        <li key={p.resolvedPath} className="break-all">
+                          {!p.exists
+                            ? `FOLDER MISSING — ${p.resolvedPath}`
+                            : p.error
+                              ? `UNREADABLE — ${p.resolvedPath} (${p.error})`
+                              : `0 GGUF FILES — ${p.resolvedPath}`}
+                        </li>
+                      ))}
+                    </ul>
+                    <button
+                      type="button"
+                      onClick={() => dispatchNavigateConfig({ subTab: "paths" })}
+                      className="cat-paths-btn type-tiny font-mono px-2 py-0.5 tracking-widest rounded-sm border transition-colors"
+                    >
+                      CONFIG → PATHS
+                    </button>
+                  </>
+                )}
+
+                {emptyState?.kind === "unconfigured" && !setupGuide.pathsDone && (
                   <>
                     <p className="type-body font-mono cat-mut--soft leading-relaxed max-w-[220px]">
                       Did you add your model path?

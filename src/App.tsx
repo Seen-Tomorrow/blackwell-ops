@@ -42,7 +42,7 @@ import { isSetupNavTabAllowed } from "./lib/setupGuide";
 
 import { BINARY_UPDATES_ENABLED } from "./lib/foundry_constants";
 import { isActiveEngineSlot, stopAllEngines } from "./lib/engineStack";
-import type { ModelEntry, StackEntry, LogBatch, SystemEvent, ProviderConfig, UpdateOfferings, CatalogUpdateEntry } from "./lib/types";
+import type { ModelEntry, StackEntry, LogBatch, SystemEvent, ProviderConfig, UpdateOfferings, CatalogUpdateEntry, CatalogScanReport, ModelPathScan } from "./lib/types";
 import {
   appendLogBatch,
   appendSystemEvent,
@@ -61,6 +61,10 @@ function App() {
     () => consumePendingExtrasSubTab() ?? loadExtrasSubTab(),
   );
   const [models, setModels] = useState<ModelEntry[]>([]);
+  // Per-path scan diagnostics — drives the catalog's "why is this empty" state.
+  // Per-path scan diagnostics — drives the catalog's "why is this empty" state.
+  // `null` = no report yet, so the catalog never blames a path before it has one.
+  const [pathScans, setPathScans] = useState<ModelPathScan[] | null>(null);
   const [catalogLoaded, setCatalogLoaded] = useState(false);
   const [stack, setStack] = useState<StackEntry[]>([]);
   // Engine logs live in `logSlotStore`, not in App state. They used to be held here,
@@ -304,8 +308,9 @@ function App() {
   const reloadModels = useCallback(async () => {
     try {
       setCatalogError(null);
-      const data = await invoke<ModelEntry[]>("list_models");
-      setModels(data);
+      const report = await invoke<CatalogScanReport>("list_models");
+      setModels(report.models);
+      setPathScans(report.paths);
     } catch (err) {
       const msg = typeof err === "string" ? err : JSON.stringify(err);
       console.error("Failed to reload models:", msg);
@@ -426,7 +431,9 @@ function App() {
       failed: payload.failed,
       total: payload.total ?? s.total ?? payload.scanned + payload.failed,
     }));
-    invoke("list_models").then((data) => setModels(data as ModelEntry[])).catch(() => {});
+    invoke<CatalogScanReport>("list_models")
+      .then((report) => { setModels(report.models); setPathScans(report.paths); })
+      .catch(() => {});
   });
 
   useTauriListen<StackEntry[]>("stack-changed", (payload) => {
@@ -561,7 +568,7 @@ function App() {
             aria-hidden={activeTab !== "catalog"}
             inert={activeTab !== "catalog" ? true : undefined}
           >
-            <ModelCatalog models={models} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} setupGuide={setupGuide} catalogHfUpdates={catalogHfUpdates} catalogUpdatesBusy={catalogUpdatesBusy} onCheckCatalogUpdates={checkCatalogHfUpdates} onClearCatalogUpdate={(path) => setCatalogHfUpdates((prev) => prev.filter((r) => r.path !== path))} catalogCheckVerdicts={catalogCheckVerdicts} onDismissCheckVerdict={dismissCatalogCheckVerdict} />
+            <ModelCatalog models={models} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} setupGuide={setupGuide} pathScans={pathScans} catalogHfUpdates={catalogHfUpdates} catalogUpdatesBusy={catalogUpdatesBusy} onCheckCatalogUpdates={checkCatalogHfUpdates} onClearCatalogUpdate={(path) => setCatalogHfUpdates((prev) => prev.filter((r) => r.path !== path))} catalogCheckVerdicts={catalogCheckVerdicts} onDismissCheckVerdict={dismissCatalogCheckVerdict} />
           </div>
         )}
 

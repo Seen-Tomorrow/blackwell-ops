@@ -344,6 +344,45 @@ pub fn is_launchable_main_model(entry: &ModelEntry) -> bool {
     crate::spec_draft::is_launchable_target(entry.gguf_shape.as_ref(), &entry.path)
 }
 
+/// Per-path diagnostics for a catalog scan — the same directory walk `scan_path`
+/// does, with no metadata work. One entry per configured path, in order.
+///
+/// Deliberately separate from `merge_catalogs`: the merge has six callers and
+/// none of them want this, and the report must be produced even when a path
+/// yields nothing (which is exactly when it matters).
+pub fn scan_path_report(paths: &[ModelPathEntry]) -> Vec<crate::types::ModelPathScan> {
+    paths
+        .iter()
+        .map(|p| {
+            let validation = crate::config::validate_model_library(&p.path);
+            let resolved_path = if validation.resolved_path.is_empty() {
+                p.path.clone()
+            } else {
+                validation.resolved_path.clone()
+            };
+            // `validate_model_library` cannot tell an empty folder from an
+            // unreadable one (both come back `exists: false` / 0 GGUFs), so probe
+            // separately — but only when the folder is there, or a merely missing
+            // path would report "unreadable" and send the user hunting for an ACL
+            // problem instead of a typo.
+            let error = if validation.exists {
+                std::fs::read_dir(&resolved_path)
+                    .err()
+                    .map(|e| e.to_string())
+            } else {
+                None
+            };
+            crate::types::ModelPathScan {
+                label: crate::config::format_catalog_source_path_label(&p.path),
+                resolved_path,
+                exists: validation.exists,
+                gguf_count: validation.gguf_count,
+                error,
+            }
+        })
+        .collect()
+}
+
 pub fn merge_catalogs(
     paths: &[ModelPathEntry],
     log_hub: Option<&crate::log_hub::LogHub>,
@@ -1103,6 +1142,48 @@ pub fn check_hf_files_against_disk(
 mod tests {
     use super::*;
     use crate::types::{DownloadStatus, DownloadTask, QuantBatchPart, QuantDownloadBatch};
+
+    /// The empty-state diagnostics must not confuse "missing" with "unreadable".
+    /// Sending a user hunting an ACL problem when the folder simply does not
+    /// exist is worse than saying nothing — and "empty" is a third answer.
+    #[test]
+    fn scan_path_report_distinguishes_missing_from_empty() {
+        let base = crate::config::app_root_dir().join(format!(
+            "scan-report-test-{}",
+            std::process::id()
+        ));
+        let empty = base.join("empty");
+        let missing = base.join("absent");
+        let _ = std::fs::create_dir_all(&empty);
+
+        let paths = vec![
+            ModelPathEntry {
+                path: empty.to_string_lossy().to_string(),
+                label: "Empty".into(),
+                is_default: false,
+            },
+            ModelPathEntry {
+                path: missing.to_string_lossy().to_string(),
+                label: "Missing".into(),
+                is_default: false,
+            },
+        ];
+
+        let report = scan_path_report(&paths);
+        assert_eq!(report.len(), 2, "one entry per configured path, in order");
+
+        assert!(report[0].exists, "an existing folder reports exists");
+        assert_eq!(report[0].gguf_count, 0);
+        assert!(report[0].error.is_none(), "an empty folder is not an error");
+
+        assert!(!report[1].exists, "a missing folder reports !exists");
+        assert!(
+            report[1].error.is_none(),
+            "a missing folder must not masquerade as unreadable"
+        );
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     #[test]
     fn parse_shard_expected_total_reads_of_suffix() {

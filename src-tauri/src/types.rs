@@ -952,6 +952,38 @@ pub struct ModelLibraryValidation {
     pub resolved_path: String,
 }
 
+/// Outcome of one configured model path during a catalog scan.
+///
+/// Exists so the catalog's empty state can **name** a path that produced no
+/// models instead of rendering a bare empty list. A missing folder, an empty
+/// folder, and a filter that excluded everything are three different problems;
+/// they must not look alike.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelPathScan {
+    /// Catalog badge label for this path (`format_catalog_source_path_label`).
+    pub label: String,
+    /// Absolute path actually probed. For a path configured as relative
+    /// (`"models"`) this is the exe-relative location — the thing to go look at.
+    #[serde(rename = "resolvedPath")]
+    pub resolved_path: String,
+    pub exists: bool,
+    /// `.gguf` files found on disk under this path.
+    #[serde(rename = "ggufCount")]
+    pub gguf_count: usize,
+    /// Why the walk could not complete (permissions, IO). `None` when the
+    /// directory was read fine — including when it is simply empty.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Result of `list_models`: the merged catalog plus per-path diagnostics.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CatalogScanReport {
+    pub models: Vec<ModelEntry>,
+    /// One entry per configured model path, in configuration order.
+    pub paths: Vec<ModelPathScan>,
+}
+
 /// Response from search_hf_models IPC command.
 #[derive(Debug, Clone, Serialize)]
 pub struct HfSearchResponse {

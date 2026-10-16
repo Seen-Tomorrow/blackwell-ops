@@ -39,6 +39,32 @@ export interface ModelLibraryValidation {
   resolvedPath: string;
 }
 
+/**
+ * Outcome of one configured model path during a catalog scan.
+ *
+ * Lets the catalog's empty state **name** a path that produced no models. A
+ * missing folder, an empty folder, and a filter that excluded everything are
+ * three different problems and must not look alike in the UI.
+ */
+export interface ModelPathScan {
+  /** Catalog badge label for this path. */
+  label: string;
+  /** Absolute path actually probed — for a relative configured path this is the exe-relative location. */
+  resolvedPath: string;
+  exists: boolean;
+  /** `.gguf` files found on disk under this path. */
+  ggufCount: number;
+  /** Why the walk could not complete (permissions, IO). Absent when it was read fine, including when empty. */
+  error?: string;
+}
+
+/** Result of `list_models`: the merged catalog plus per-path diagnostics. */
+export interface CatalogScanReport {
+  models: ModelEntry[];
+  /** One entry per configured model path, in configuration order. */
+  paths: ModelPathScan[];
+}
+
 export interface SecretStatus {
   key: string;
   label: string;
