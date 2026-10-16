@@ -359,3 +359,9 @@ This trade removes ~1,000 literal paint sites and centralizes the palette.
 - Removed 26 importants across quick settings, header dev tools, footer dev tag,
   palette search, Foundry typography/build log, download progress, status flash.
 - Source total 143 -> 117; chrome.css 29 -> 3. User confirmed visual stability.
+
+## catalog.css grouped cleanup
+
+- Removed 31 importants: list panel/chrome, buried/selected cards, quant
+  badges, mcard text, engine-stack phases, search hints. Source total 117 -> 86.
+  User confirmed visual stability.

@@ -411,8 +411,8 @@
 }
 
 [data-model-catalog] .catalog-list-scroll {
-  background: transparent !important;
-  background-image: none !important;
+  background: transparent;
+  background-image: none;
 }
 
 /*
@@ -434,10 +434,10 @@
 
 /* Override any flat transparent wipe so industrial face sticks */
 [data-model-catalog] .catalog-list-panel__chrome {
-  background-color: var(--theme-industrial-bg) !important;
+  background-color: var(--theme-industrial-bg);
   background-image:
     var(--theme-industrial-texture-active),
-    var(--theme-industrial-face-gradient, none) !important;
+    var(--theme-industrial-face-gradient, none);
 }
 
 [data-model-catalog] .catalog-list-scroll.eink-scrollbar::-webkit-scrollbar-thumb {
@@ -526,10 +526,10 @@
 }
 
 /* Header: soft amber / search hint when catalog is collapsed (readable on dark themes) */
-.config-catalog-search-hint--pulse {
-  border-color: var(--fixed-amber-600-a45) !important;
-  color: color-mix(in srgb, var(--fixed-amber-500) 75%, #e5e5e5) !important;
-  background: var(--fixed-amber-600-a1) !important;
+.config-catalog-search-hint--pulse.config-catalog-search-hint--pulse {
+  border-color: var(--fixed-amber-600-a45);
+  color: color-mix(in srgb, var(--fixed-amber-500) 75%, #e5e5e5);
+  background: var(--fixed-amber-600-a1);
   animation: catalogSearchHintPulse 2.4s ease-in-out infinite;
 }
 
@@ -557,9 +557,9 @@
   }
 }
 
-.catalog-split-toggle--collapsed-hint {
-  border-color: color-mix(in srgb, var(--fixed-amber-600) 45%, var(--theme-border)) !important;
-  color: color-mix(in srgb, var(--fixed-amber-500) 70%, var(--theme-text-muted)) !important;
+.catalog-split-toggle--collapsed-hint.catalog-split-toggle--collapsed-hint {
+  border-color: color-mix(in srgb, var(--fixed-amber-600) 45%, var(--theme-border));
+  color: color-mix(in srgb, var(--fixed-amber-500) 70%, var(--theme-text-muted));
 }
 
 .catalog-split-workspace--collapsed .catalog-list-panel {
@@ -717,10 +717,10 @@
 [data-model-catalog] .model-catalog-card.buried-card,
 [data-model-catalog] .buried-card,
 [data-model-catalog] [data-model-path] .model-catalog-card {
-  background-color: var(--theme-catalog-card-bg) !important;
-  background-image: var(--theme-catalog-card-bg-image) !important;
-  border-color: var(--theme-catalog-card-border) !important;
-  box-shadow: var(--theme-catalog-card-shadow) !important;
+  background-color: var(--theme-catalog-card-bg);
+  background-image: var(--theme-catalog-card-bg-image);
+  border-color: var(--theme-catalog-card-border);
+  box-shadow: var(--theme-catalog-card-shadow);
   border-radius: 8px;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
@@ -728,10 +728,10 @@
 
 [data-model-catalog] .model-catalog-card.buried-card:hover,
 [data-model-catalog] .buried-card:hover {
-  background-color: var(--theme-catalog-card-hover-bg) !important;
-  background-image: var(--theme-catalog-card-bg-image) !important;
-  border-color: var(--theme-catalog-card-hover-border) !important;
-  box-shadow: var(--theme-catalog-card-hover-shadow) !important;
+  background-color: var(--theme-catalog-card-hover-bg);
+  background-image: var(--theme-catalog-card-bg-image);
+  border-color: var(--theme-catalog-card-hover-border);
+  box-shadow: var(--theme-catalog-card-hover-shadow);
 }
 
 /* Selected — lifted accent face + left rail (must read at dim=100% on dark themes) */
@@ -855,9 +855,9 @@
 [data-model-catalog] .model-card-quant-badge,
 [data-model-catalog] .model-card-quant-badge--cyan,
 [data-model-catalog] .model-card-quant-badge--nvfp {
-  color: color-mix(in srgb, var(--theme-text-muted) 85%, var(--theme-text) 15%) !important;
-  border-color: color-mix(in srgb, var(--theme-border) 80%, transparent) !important;
-  background: color-mix(in srgb, var(--theme-text) 4%, transparent) !important;
+  color: color-mix(in srgb, var(--theme-text-muted) 85%, var(--theme-text) 15%);
+  border-color: color-mix(in srgb, var(--theme-border) 80%, transparent);
+  background: color-mix(in srgb, var(--theme-text) 4%, transparent);
 }
 
 /*
@@ -867,27 +867,27 @@
  */
 [data-model-catalog] .model-catalog-card .mcard-params,
 [data-model-catalog] .model-catalog-card .mcard-mini-name {
-  color: var(--theme-text) !important;
+  color: var(--theme-text);
 }
 
 [data-model-catalog] .model-catalog-card .mcard-date,
 [data-model-catalog] .model-catalog-card .mcard-inkchip {
-  color: var(--theme-text-muted) !important;
+  color: var(--theme-text-muted);
 }
 
 [data-model-catalog] .model-catalog-card .mcard-author,
 [data-model-catalog] .model-catalog-card .mcard-meta-mut,
 [data-model-catalog] .model-catalog-card .mcard-mini-author,
 [data-model-catalog] .model-catalog-card .mcard-mini-size {
-  color: var(--theme-text-muted) !important;
+  color: var(--theme-text-muted);
 }
 
 [data-model-catalog] .model-catalog-card .mcard-inkchip {
-  background-color: color-mix(in srgb, var(--theme-text) 14%, transparent) !important;
+  background-color: color-mix(in srgb, var(--theme-text) 14%, transparent);
 }
 
 [data-model-catalog] .model-catalog-card .mcard-inkchip {
-  color: var(--theme-text) !important;
+  color: var(--theme-text);
 }
 
 /* ── E-ink Scrollbar ─── */
@@ -944,18 +944,18 @@
 }
 
 [data-engine-stack] .engine-stack-phase-pp {
-  background: color-mix(in srgb, var(--theme-secondary) 10%, transparent) !important;
-  border-color: color-mix(in srgb, var(--theme-secondary) 30%, transparent) !important;
+  background: color-mix(in srgb, var(--theme-secondary) 10%, transparent);
+  border-color: color-mix(in srgb, var(--theme-secondary) 30%, transparent);
 }
 
 [data-engine-stack] .engine-stack-phase-tg {
-  background: var(--theme-accent-soft) !important;
-  border-color: color-mix(in srgb, var(--theme-accent) 30%, transparent) !important;
+  background: var(--theme-accent-soft);
+  border-color: color-mix(in srgb, var(--theme-accent) 30%, transparent);
 }
 
 [data-engine-stack] .engine-stack-phase-idle {
-  background: var(--theme-panel) !important;
-  border-color: var(--theme-border-subtle) !important;
+  background: var(--theme-panel);
+  border-color: var(--theme-border-subtle);
 }
 
 [data-engine-stack] .status-online {
