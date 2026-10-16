@@ -104,6 +104,43 @@ fn frontend_will_unload(app: tauri::State<'_, AppContext>) {
     );
 }
 
+/// Candidate paths for the panic record, in priority order.
+///
+/// `std::env::temp_dir()` is tried first for continuity with older logs, but it is
+/// NOT guaranteed writable: a Low-integrity process cannot write up into a
+/// Medium-IL `%TEMP%`. The workspace under `target\debug` stays writable in exactly
+/// those sessions (see `gguf_shape::scratch_dir`), and the session log directory is
+/// the durable option.
+fn panic_log_candidates() -> Vec<std::path::PathBuf> {
+    let mut v = vec![
+        std::env::temp_dir().join("blackwell-panic.log"),
+        crate::config::app_root_dir().join("blackwell-panic.log"),
+    ];
+    if let Some(dir) = crate::session_log::current_dir() {
+        v.push(dir.join("panic.log"));
+    }
+    v
+}
+
+/// Append one panic record. Errors are returned to the caller and printed — the
+/// previous hook hid them behind `if let Ok(..)`, which is why blackwell-panic.log
+/// was never created and nobody knew why.
+fn append_panic_record(path: &std::path::Path, msg: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let mut f = std::fs::OpenOptions::new().create(true).append(true).open(path)?;
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    writeln!(f, "=== panic record ts={ts} pid={} ===", std::process::id())?;
+    writeln!(f, "{msg}")?;
+    writeln!(f)?;
+    f.flush()
+}
+
 #[tokio::main]
 async fn main() {
     crash_log::install_native_exception_logger();
@@ -111,38 +148,64 @@ async fn main() {
 
     #[cfg(debug_assertions)]
     std::env::set_var("RUST_BACKTRACE", "1");
-    // Custom panic handler — writes backtrace to file for debugging crashes
+    // Custom panic handler.
+    //
+    // ORDER MATTERS. The payload is printed FIRST. The previous version emitted
+    // location, then payload, then a full backtrace, then `{:?}` of PanicHookInfo,
+    // so the one line that identifies the failure sat about sixty frames above the
+    // prompt and the visible tail was `PanicHookInfo { payload: Any { .. }, .. }`.
+    // That is what turned the 2026-10-15 DEV startup failure into hours of guessing:
+    // the actual cause, "failed to create webview: WebView2 error 0x800700AA", was
+    // off-screen while the last line on screen said nothing.
+    //
+    // stderr is written FIRST and unconditionally: it is the only sink here that
+    // cannot fail. File logging is best-effort, but it now REPORTS every failure
+    // instead of swallowing it, and it falls back to directories that stay writable
+    // when %TEMP% is not.
+    //
+    // This deliberately does NOT route into the Output Console. The old comment
+    // claimed it did, but no such call existed; adding one would risk a
+    // panic-inside-panic abort, since those paths allocate and take locks.
     std::panic::set_hook(Box::new(|info| {
         let payload = info
             .payload()
             .downcast_ref::<&str>()
             .map(|s| (*s).to_string())
-            .or_else(|| {
-                info.payload()
-                    .downcast_ref::<String>()
-                    .cloned()
-            })
+            .or_else(|| info.payload().downcast_ref::<String>().cloned())
             .unwrap_or_else(|| "<non-string payload>".to_string());
-        let backtrace = std::backtrace::Backtrace::force_capture();
-        let msg = format!(
-            "[PANIC] {} — {}\n{backtrace}\n{:?}",
-            info.location().map(|l| l.to_string()).unwrap_or_else(|| "unknown location".to_string()),
-            payload,
-            info
-        );
-        // Panic info now routed to Blackwell Output Console
-        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(std::env::temp_dir().join("blackwell-panic.log")) {
-            use std::io::Write;
-            let _ = writeln!(f, "{}\n", msg);
-            let _ = f.flush();
+        let location = info
+            .location()
+            .map(|l| l.to_string())
+            .unwrap_or_else(|| "unknown location".to_string());
+
+        // Cap the backtrace so the payload stays visible without scrolling.
+        let backtrace = std::backtrace::Backtrace::force_capture().to_string();
+        let mut bt = String::new();
+        for line in backtrace.lines().take(60) {
+            bt.push_str(line);
+            bt.push('\n');
         }
-        // Also to stderr, always. This hook REPLACES Rust's default hook, so without
-        // this line a panic is invisible in the terminal — and a fastfail abort
-        // (0xC0000409) additionally bypasses the vectored handler in crash_log.rs by
-        // design. A DEV crash then leaves no record anywhere: that is exactly what
-        // happened on 2026-10-02, where the terminal showed a backtrace while
-        // blackwell-panic.log stayed stale, and the two disagreed.
+
+        let msg = format!("[PANIC] {location} — {payload}\n{bt}");
+
+        // Sink 1: stderr, always, before anything that is allowed to fail.
         eprintln!("{msg}\n");
+
+        // Sink 2: the first writable log file. Report every attempt that fails.
+        let mut recorded = false;
+        for candidate in panic_log_candidates() {
+            match append_panic_record(&candidate, &msg) {
+                Ok(()) => {
+                    eprintln!("[panic] record written to {}", candidate.display());
+                    recorded = true;
+                    break;
+                }
+                Err(e) => eprintln!("[panic] cannot write {}: {e}", candidate.display()),
+            }
+        }
+        if !recorded {
+            eprintln!("[panic] FATAL: no panic record could be written anywhere");
+        }
     }));
 
     // Installed in EVERY build profile. This used to sit inside
