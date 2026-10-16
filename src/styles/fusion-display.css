@@ -3477,14 +3477,14 @@ mult chip. * (Do not chain unfinished selectors — a prior strip accidentally p
 /* ARCTIC bench — SLATE chip / control palette on phosphor (theme tokens stay light elsewhere) */
 
 .bench-widget-panel .bench-muted-btn {
-  background: color-mix(in srgb, var(--display-face-control-text) 88%, transparent) !important;
-  color: color-mix(in srgb, var(--display-face-bg) 65%, transparent) !important;
+  background: color-mix(in srgb, var(--display-face-control-text) 88%, transparent);
+  color: color-mix(in srgb, var(--display-face-bg) 65%, transparent);
   border: 1px solid var(--display-face-control-border);
 }
 
 .bench-widget-panel .bench-muted-btn:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--display-face-control-text) 95%, transparent) !important;
-  color: var(--display-face-bg) !important;
+  background: color-mix(in srgb, var(--display-face-control-text) 95%, transparent);
+  color: var(--display-face-bg);
 }
 
 html {
@@ -3570,8 +3570,8 @@ html[data-industrial-bezel="brush"] {
 }
 
 .industrial-display-frame .vram-badge-forecast {
-  box-shadow: none !important;
-  border: none !important;
+  box-shadow: none;
+  border: none;
 }
 
 .phosphor-display-surface {

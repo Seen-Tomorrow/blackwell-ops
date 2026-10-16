@@ -469,10 +469,10 @@
   background: var(--theme-nav-hover-bg);
 }
 
-.app-nav-tab-active {
-  background: var(--theme-nav-active-bg) !important;
-  color: var(--theme-nav-active-text) !important;
-  border-color: var(--theme-nav-active-border) !important;
+.app-nav-tab-active.app-nav-tab-active {
+  background: var(--theme-nav-active-bg);
+  color: var(--theme-nav-active-text);
+  border-color: var(--theme-nav-active-border);
 }
 
 /* First-run setup: ENGINES / LOGS / EXTRAS locked until wizard finishes */

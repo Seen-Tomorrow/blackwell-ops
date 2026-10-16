@@ -959,25 +959,25 @@
 }
 
 [data-engine-stack] .status-online {
-  background-color: var(--theme-accent) !important;
-  box-shadow: 0 0 6px var(--theme-accent-glow) !important;
+  background-color: var(--theme-accent);
+  box-shadow: 0 0 6px var(--theme-accent-glow);
 }
 
 [data-engine-stack] .status-loading {
-  background-color: var(--theme-secondary-bright) !important;
-  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-secondary) 40%, transparent) !important;
+  background-color: var(--theme-secondary-bright);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-secondary) 40%, transparent);
 }
 
 [data-engine-stack] .eink-panel .provider-pill-active {
-  background: var(--theme-provider-pill-active-bg) !important;
-  border: 1px solid var(--theme-provider-pill-active-border) !important;
-  color: var(--theme-provider-pill-active-text) !important;
+  background: var(--theme-provider-pill-active-bg);
+  border: 1px solid var(--theme-provider-pill-active-border);
+  color: var(--theme-provider-pill-active-text);
 }
 
 [data-engine-stack] .eink-panel .engine-stack-profile-pill {
-  background: var(--fixed-rgba-184-122-0-a08) !important;
-  border: 1px solid var(--fixed-rgba-184-122-0-a4) !important;
-  color: var(--fixed-brand-amber) !important;
+  background: var(--fixed-rgba-184-122-0-a08);
+  border: 1px solid var(--fixed-rgba-184-122-0-a4);
+  color: var(--fixed-brand-amber);
 }
 
 

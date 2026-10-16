@@ -937,7 +937,7 @@
    group-header border (the old utility died in the paint migration; the header now
    paints its border through cfg-bord--a30). */
 .eink-panel .config-group-header {
-  border-color: var(--theme-accent-soft) !important;
+  border-color: var(--theme-accent-soft);
 }
 
 /* Chips — themed outline, dark fill */
@@ -1184,16 +1184,16 @@
 
 /* Param labels on e-ink */
 .eink-panel [data-param-row] > span:first-of-type {
-  color: var(--theme-accent-bright) !important;
+  color: var(--theme-accent-bright);
 }
 
 /* Scrollbar on e-ink */
 .eink-panel::-webkit-scrollbar-thumb {
-  background: var(--theme-scrollbar-thumb) !important;
+  background: var(--theme-scrollbar-thumb);
 }
 
 .eink-panel::-webkit-scrollbar-track {
-  background: var(--theme-accent-soft) !important;
+  background: var(--theme-accent-soft);
 }
 
 /* Engine card exceptions — preserve non-green colors in eink context.
@@ -1203,37 +1203,37 @@
 
 /* Red: STOP button */
 .eink-panel .slot-log-stop {
-  color: rgba(248, 113, 113, 0.7) !important;
+  color: rgba(248, 113, 113, 0.7);
 }
 
 /* Yellow/amber: system events, phase bar, TTFT, prefill bench */
 .eink-panel .slot-log-sys {
-  color: rgba(250, 204, 21, 0.7) !important;
+  color: rgba(250, 204, 21, 0.7);
 }
 .eink-panel .slot-log-line--pp {
-  color: rgba(245, 167, 39, 0.8) !important;
+  color: rgba(245, 167, 39, 0.8);
 }
 .eink-panel .slot-log-phase--pp {
-  color: rgb(245, 167, 39) !important;
+  color: rgb(245, 167, 39);
 }
 
 /* White: bench ITL/tokens values */
 .eink-panel .slot-log-stat-value {
-  color: var(--fixed-white-a8) !important;
+  color: var(--fixed-white-a8);
 }
 
 /* Stealth muted: placeholders, secondary labels */
 .eink-panel .slot-log-line,
 .eink-panel .slot-log-stat-label,
 .eink-panel .slot-log-phase {
-  color: rgb(100, 100, 116) !important;
+  color: rgb(100, 100, 116);
 }
 .eink-panel .slot-log-empty {
-  color: rgba(100, 100, 116, 0.5) !important;
+  color: rgba(100, 100, 116, 0.5);
 }
 .eink-panel .slot-log-caption,
 .eink-panel .slot-log-bench-summary {
-  color: rgba(100, 100, 116, 0.6) !important;
+  color: rgba(100, 100, 116, 0.6);
 }
 
 /* ── Custom Flags block (launch dock + compact scroll slot) ─── */
@@ -1276,7 +1276,7 @@
 
 [data-config-panel] .custom-flags-block.custom-flags-active .custom-flags-input {
   background: var(--custom-flags-amber-deep);
-  border-color: var(--fixed-amber-200) !important;
+  border-color: var(--fixed-amber-200);
   color: var(--fixed-white);
 }
 
@@ -1317,7 +1317,7 @@
 
 [data-config-panel] .custom-flags-block.custom-flags-replace .custom-flags-input {
   background: var(--dev-danger-deep);
-  border-color: var(--fixed-c-ffb4b4) !important;
+  border-color: var(--fixed-c-ffb4b4);
   color: var(--fixed-white);
 }
 

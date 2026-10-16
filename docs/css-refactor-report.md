@@ -334,3 +334,9 @@ This trade removes ~1,000 literal paint sites and centralizes the palette.
 - Removed 15 importants: dotted-face backgrounds/pseudos, GPU name reset,
   industrial frame surface, launch-rail total cell. Source total 218 -> 203.
   User confirmed visual stability.
+
+## Grouped small-family batch
+
+- Removed 34 importants: bench muted buttons, nav active, custom flags input,
+  engine stack status dots/pills, eink panel logs/params, industrial frame vram
+  badge. Source total 203 -> 169. User confirmed visual stability.

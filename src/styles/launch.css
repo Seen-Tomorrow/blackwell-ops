@@ -57,8 +57,8 @@
   color: var(--theme-provider-pill-hover-text);
 }
 
-.provider-pill-active {
-  background: var(--theme-provider-pill-active-bg) !important;
+.provider-pill-active.provider-pill-active {
+  background: var(--theme-provider-pill-active-bg);
   border-color: var(--theme-provider-pill-active-border);
   color: var(--theme-provider-pill-active-text);
   font-weight: 600;
