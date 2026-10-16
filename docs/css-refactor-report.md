@@ -347,3 +347,9 @@ This trade removes ~1,000 literal paint sites and centralizes the palette.
   revealed 13 missed importants in four chip variant base rules.
 - Those are removed; true .value-chip family important count is 0.
 - Source total 169 -> 156; main CSS 173 -> 160. User confirmed visual stability.
+
+## animations.css grouped cleanup
+
+- Removed 13 importants from Foundry arch chips (normal/hover/active) and CUDA
+  badge; selectors raised to specificity 20 so they still beat Tailwind.
+- Source total 156 -> 143. User confirmed visual stability.

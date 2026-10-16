@@ -279,11 +279,11 @@
 
 
 /* CUDA version badges — NVIDIA green in every theme */
-.cuda-badge {
+.cuda-badge.cuda-badge {
   display: inline-block;
-  background: rgba(118, 185, 0, 0.22) !important;
-  border: 1px solid rgba(118, 185, 0, 0.55) !important;
-  color: var(--fixed-nv-green) !important;
+  background: rgba(118, 185, 0, 0.22);
+  border: 1px solid rgba(118, 185, 0, 0.55);
+  color: var(--fixed-nv-green);
 }
 
 /* CMAKE_CUDA_ARCHITECTURES — inline after build version */
@@ -305,26 +305,26 @@
 }
 
 /* CUDA arch chips — theme chips, not Tailwind stealth/nv (selection was unreadable) */
-.foundry-arch-chip {
-  background: var(--theme-chip-bg) !important;
-  border: 1px solid var(--theme-chip-border) !important;
-  color: var(--theme-chip-text) !important;
+.foundry-arch-chip.foundry-arch-chip {
+  background: var(--theme-chip-bg);
+  border: 1px solid var(--theme-chip-border);
+  color: var(--theme-chip-text);
   box-shadow: none;
 }
 
-.foundry-arch-chip:hover:not(.foundry-arch-chip--active) {
-  border-color: var(--theme-chip-hover-border) !important;
-  color: var(--theme-chip-hover-text) !important;
-  background: var(--theme-accent-soft) !important;
+.foundry-arch-chip.foundry-arch-chip:hover:not(.foundry-arch-chip--active) {
+  border-color: var(--theme-chip-hover-border);
+  color: var(--theme-chip-hover-text);
+  background: var(--theme-accent-soft);
 }
 
-.foundry-arch-chip--active {
-  background: var(--theme-chip-active-bg) !important;
-  border-color: var(--theme-chip-active-border) !important;
-  color: var(--theme-chip-active-text) !important;
+.foundry-arch-chip--active.foundry-arch-chip--active {
+  background: var(--theme-chip-active-bg);
+  border-color: var(--theme-chip-active-border);
+  color: var(--theme-chip-active-text);
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--theme-chip-active-border) 55%, transparent),
-    0 0 10px color-mix(in srgb, var(--theme-accent-glow) 55%, transparent) !important;
+    0 0 10px color-mix(in srgb, var(--theme-accent-glow) 55%, transparent);
 }
 
 
