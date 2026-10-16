@@ -12,6 +12,8 @@ import {
 } from "../lib/intelUtils";
 import { KEYS, readStorage } from "../lib/storage";
 import TabPageHeader from "./TabPageHeader";
+import "../styles/intel-page.css";
+
 
 interface IntelPageProps {
   /** When true, parent ExtrasPage owns the page chrome. */

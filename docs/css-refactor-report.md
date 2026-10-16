@@ -92,3 +92,45 @@ regress silently.
 - Removed-selector manifest: `tmp/css-prune-manifest.json`.
 - `git restore src/styles src/index.css src/main.tsx src/controls.css` (will also
   discard the intentional refactor, so use the manifest/backup for partial).
+
+## Phase 3 update (items 1-3 agreed)
+
+### 1. Zero dead classes — DELIVERED
+- Dead classes 55 -> 0; strict dead rules 0; orphan keyframes 0.
+- Removed 90 unreachable selector parts/rules across 6 partials.
+- Built CSS 499,740 -> 489,551 B; source `!important` 471 -> 419
+  (52 of them lived in unreachable rules that no longer ship).
+- Integrity: rule bodies unchanged except the 4 known `!important` edits.
+
+### 2. Per-tab CSS splitting — PARTIAL (safe pilot delivered)
+Method: static import graph + per-class ownership; move a rule only when every
+class it targets is used exclusively inside one lazy graph.
+
+| Moved | Rules | Bytes | Lazy import |
+|---|---:|---:|---|
+| ModelHub page styles | 84 | 13,660 | `ModelHub.tsx` |
+| Intel page styles | 33 | 4,733 | `IntelPage.tsx` |
+| Playground page styles | 13 | 2,011 | `Playground.tsx` |
+
+Result:
+- startup CSS `index-*.css`: **489,551 -> 475,380 B (-14,171, -2.9%)**
+- lazy CSS chunks: `ModelHub-*.css` 8.77 kB, `ExtrasPage-*.css` 5.42 kB
+- total CSS unchanged (~489.6 kB); the win is startup parse/decode, not source size
+- integrity: 3,206 rules pre = 3,206 post; zero changed/lost rules
+- build, `tsc --noEmit`, `vitest` (108/108) pass
+
+Not split (shared classes with the main shell, so a move would break them):
+`config*`, `launch`, `fusion-display`, `cockpit`, `catalog`, `chrome`, `updates`,
+`foundry`, `console`, `engine`, `badges`, `surfaces`, `animations`, `type-scale`,
+`tokens-base`, `utilities`. Rule-level partitioning can move more later, one
+domain at a time, with ownership proof.
+
+**Validation needed:** the lazy CSS loads when the tab first opens, so HMR alone
+does not exercise it. Click ModelHub and Extras (Intel / Playground) once.
+
+### 3. Primitive consolidation — NOT STARTED (next)
+This is the only remaining item that changes TSX class lists, so it needs a
+per-domain visual pass. Recommended pilot: `foundry.css` (self-contained, 142
+classes / 21 kB, no shared shell classes) -> extract 5-8 `fnd-*` primitives
+(button/card/chip/row/panel) and measure. The same recipe then repeats for
+`config.css`, `catalog.css`, `cockpit.css`.

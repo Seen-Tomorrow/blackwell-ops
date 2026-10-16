@@ -5,6 +5,8 @@ import ModelHubDownloads from './ModelHubDownloads';
 import { dispatchAppEvent, EVENTS } from '@/lib/events';
 import { useDownloadTasks } from '../hooks/useDownloadTasks';
 import TabPageHeader from './TabPageHeader';
+import "../styles/modelhub-page.css";
+
 
 interface ModelHubProps {
   /** When true, parent ExtrasPage owns the page chrome. */

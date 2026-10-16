@@ -34,6 +34,8 @@ import {
 import { dispatchNavigateCatalog } from "../lib/events";
 import { usePlaygroundSplitResize } from "../hooks/useCatalogSplitResize";
 import TabPageHeader from "./TabPageHeader";
+import "../styles/playground-page.css";
+
 
 interface PlaygroundProps {
   stack: StackEntry[];

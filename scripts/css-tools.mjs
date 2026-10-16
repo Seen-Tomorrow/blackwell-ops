@@ -435,12 +435,13 @@ function analyze() {
   const distCss = (() => {
     const dir = path.join(ROOT, "dist", "assets");
     if (!fs.existsSync(dir)) return null;
-    const hit = fs.readdirSync(dir).find((f) => f.endsWith(".css"));
+    const cssAssets = fs.readdirSync(dir).filter((f) => f.endsWith(".css"));
+    const hit = cssAssets.find((f) => /^index-.*\.css$/.test(f)) || cssAssets[0];
     if (!hit) return null;
     const full = path.join(dir, hit);
     const buf = fs.readFileSync(full);
     const text = buf.toString("utf8");
-    return { file: rel(full), bytes: buf.length, gzip: zlibGzipSize(buf), rules: (text.match(/\{/g) || []).length, important: (text.match(/!important/g) || []).length };
+    return { file: rel(full), assets: cssAssets.length, bytes: buf.length, gzip: zlibGzipSize(buf), rules: (text.match(/\{/g) || []).length, important: (text.match(/!important/g) || []).length };
   })();
 
   return {

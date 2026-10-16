@@ -4,12 +4,6 @@
   color: var(--theme-text-muted);
 }
 
-[data-playground] .playground-guide-banner {
-  background: var(--theme-accent-soft);
-  border-bottom: 1px solid color-mix(in srgb, var(--theme-accent) 28%, var(--theme-border-subtle) 72%);
-  color: var(--theme-text);
-}
-
 [data-playground] .playground-turn--user {
   background: var(--theme-eject-card-bg);
   border: 1px solid var(--theme-eject-card-border);
@@ -20,46 +14,6 @@
   background: color-mix(in srgb, var(--theme-accent-soft) 65%, var(--theme-eject-card-bg) 35%);
   border: 1px solid color-mix(in srgb, var(--theme-accent) 30%, var(--theme-border-subtle) 70%);
   border-radius: 2px;
-}
-
-[data-playground] .playground-preview-canvas {
-  background: var(--theme-bg);
-}
-
-[data-playground] .playground-fullscreen-overlay {
-  background: var(--theme-bg);
-  color: var(--theme-text-muted);
-}
-
-[data-playground] .playground-code-editor {
-  background: var(--theme-panel-accent);
-  color: var(--theme-text);
-}
-
-[data-playground] .playground-warn-btn {
-  color: var(--theme-telemetry-amber);
-  border-color: color-mix(in srgb, var(--theme-telemetry-amber) 45%, var(--theme-chip-border) 55%);
-  background: color-mix(in srgb, var(--theme-telemetry-amber) 10%, var(--theme-chip-bg) 90%);
-}
-
-[data-playground] .playground-warn-btn:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--theme-telemetry-amber) 65%, var(--theme-chip-border) 35%);
-  background: color-mix(in srgb, var(--theme-telemetry-amber) 16%, var(--theme-chip-bg) 84%);
-}
-
-[data-playground] .playground-danger-btn {
-  color: var(--theme-telemetry-red);
-  border-color: color-mix(in srgb, var(--theme-telemetry-red) 40%, var(--theme-chip-border) 60%);
-}
-
-[data-playground] .playground-danger-btn:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--theme-telemetry-red) 60%, var(--theme-chip-border) 40%);
-  background: color-mix(in srgb, var(--theme-telemetry-red) 10%, var(--theme-chip-bg) 90%);
-}
-
-[data-playground] .playground-clear-session:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--theme-telemetry-red) 55%, var(--theme-chip-border) 45%);
-  color: var(--theme-telemetry-red);
 }
 
 [data-playground] .playground-view-toolbar .app-nav-tab {
@@ -463,21 +417,4 @@ body[data-onboarding-phase="paths"] [data-onboarding="add-folder"] {
 
 .setup-welcome-art {
   animation: setup-welcome-fade 0.6s ease-out both;
-}
-
-/* ── de-Tailwind pass 2 · Playground warning/danger paint ─── */
-.play-warn {
-  color: var(--theme-warn);
-}
-
-.play-warn--dim {
-  color: color-mix(in srgb, var(--theme-warn) 80%, transparent);
-}
-
-.play-danger {
-  color: var(--theme-danger);
-}
-
-.play-stream {
-  color: var(--theme-text-muted);
 }
