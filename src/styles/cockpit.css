@@ -1092,7 +1092,7 @@
 
 .running-engine-card.harness-engine--brain,
 .launch-rail-engine-chip.harness-engine--brain {
-  border-color: color-mix(in srgb, var(--theme-harness-brain-raw) 70%, transparent) !important;
+  border-color: color-mix(in srgb, var(--theme-harness-brain-raw) 70%, transparent);
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--theme-harness-brain-raw) 40%, transparent),
     0 0 12px color-mix(in srgb, var(--theme-harness-brain-raw) 22%, transparent);
@@ -1101,7 +1101,7 @@
 
 .running-engine-card.harness-engine--worker,
 .launch-rail-engine-chip.harness-engine--worker {
-  border-color: color-mix(in srgb, var(--theme-harness-worker-raw) 70%, transparent) !important;
+  border-color: color-mix(in srgb, var(--theme-harness-worker-raw) 70%, transparent);
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--theme-harness-worker-raw) 40%, transparent),
     0 0 12px color-mix(in srgb, var(--theme-harness-worker-raw) 22%, transparent);
@@ -1129,22 +1129,22 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--live {
    copper (WORKER) even though its pill + pair-secondary both resolve to sky. */
 html[data-harness-open="1"] .running-engine-card.harness-engine--brain,
 html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
-  opacity: 1 !important;
-  border-color: color-mix(in srgb, var(--theme-harness-brain-raw) 70%, transparent) !important;
+  opacity: 1;
+  border-color: color-mix(in srgb, var(--theme-harness-brain-raw) 70%, transparent);
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--theme-harness-brain-raw) 40%, transparent),
-    0 0 12px color-mix(in srgb, var(--theme-harness-brain-raw) 22%, transparent) !important;
-  background: color-mix(in srgb, var(--theme-harness-brain-raw) 28%, var(--theme-eject-card-bg) 72%) !important;
+    0 0 12px color-mix(in srgb, var(--theme-harness-brain-raw) 22%, transparent);
+  background: color-mix(in srgb, var(--theme-harness-brain-raw) 28%, var(--theme-eject-card-bg) 72%);
 }
 
 html[data-harness-open="1"] .running-engine-card.harness-engine--worker,
 html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--worker {
-  opacity: 1 !important;
-  border-color: color-mix(in srgb, var(--theme-harness-worker-raw) 70%, transparent) !important;
+  opacity: 1;
+  border-color: color-mix(in srgb, var(--theme-harness-worker-raw) 70%, transparent);
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--theme-harness-worker-raw) 40%, transparent),
-    0 0 12px color-mix(in srgb, var(--theme-harness-worker-raw) 20%, transparent) !important;
-  background: color-mix(in srgb, var(--theme-harness-worker-raw) 30%, var(--theme-eject-card-bg) 70%) !important;
+    0 0 12px color-mix(in srgb, var(--theme-harness-worker-raw) 20%, transparent);
+  background: color-mix(in srgb, var(--theme-harness-worker-raw) 30%, var(--theme-eject-card-bg) 70%);
 }
 
 
@@ -1195,28 +1195,28 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--worker {
     in srgb,
     var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg)) 70%,
     transparent
-  ) !important;
+  );
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg)) 40%, transparent),
-    0 0 12px color-mix(in srgb, var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg)) 18%, transparent) !important;
+    0 0 12px color-mix(in srgb, var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg)) 18%, transparent);
   background: color-mix(
     in srgb,
     var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg)) 20%,
     var(--theme-eject-card-bg) 80%
-  ) !important;
+  );
 }
 
 html[data-harness-open="1"] .running-engine-card.harness-engine--brain,
 html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
-  border-color: var(--theme-provider-pill-active-border) !important;
+  border-color: var(--theme-provider-pill-active-border);
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--theme-provider-pill-active-bg) 45%, transparent),
-    0 0 12px color-mix(in srgb, var(--theme-provider-pill-active-bg) 22%, transparent) !important;
+    0 0 12px color-mix(in srgb, var(--theme-provider-pill-active-bg) 22%, transparent);
   background: color-mix(
     in srgb,
     var(--theme-provider-pill-active-bg) 22%,
     var(--theme-eject-card-bg) 78%
-  ) !important;
+  );
 }
 
 .harness-engine-role-chip--brain {

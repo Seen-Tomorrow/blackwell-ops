@@ -296,3 +296,10 @@ This trade removes ~1,000 literal paint sites and centralizes the palette.
   out-specify base/Tailwind. Owner note added to animations.css.
 - Dock important 10 -> 0. Source total 327 -> 317; main CSS 320 -> 311.
   User confirmed visual stability.
+
+## .running-engine-card ownership: zero !important
+
+- Removed all 32 importants: Config card base/hover/text/badges, Cockpit harness
+  brain/worker highlights, compact-density padding. Cockpit base highlight
+  selectors raised to keep winning without important.
+- Source total 317 -> 285; main CSS 311 -> 282. User confirmed visual stability.

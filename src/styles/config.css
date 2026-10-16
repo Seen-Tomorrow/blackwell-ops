@@ -731,13 +731,13 @@
 
 /* Cards — themed glass */
 [data-config-panel] .running-engine-card {
-  background: var(--theme-eject-card-bg) !important;
+  background: var(--theme-eject-card-bg);
   /* Dim only — no backdrop-filter blur (WebView GPU cost) */
-  border: 1px solid var(--theme-eject-card-border) !important;
-  border-radius: 6px !important;
+  border: 1px solid var(--theme-eject-card-border);
+  border-radius: 6px;
   box-shadow:
     inset 0 1px 0 var(--fixed-white-a04),
-    0 1px 2px rgba(0, 0, 0, 0.15) !important;
+    0 1px 2px rgba(0, 0, 0, 0.15);
   transition:
     background 0.15s ease,
     border-color 0.15s ease,
@@ -755,8 +755,8 @@
 }
 
 [data-config-panel] .running-engine-card:hover {
-  background: var(--theme-eject-card-hover-bg) !important;
-  border-color: var(--theme-eject-card-hover-border) !important;
+  background: var(--theme-eject-card-hover-bg);
+  border-color: var(--theme-eject-card-hover-border);
 }
 
 [data-config-panel] .running-engine-card-selected {
@@ -847,30 +847,30 @@
    selectors are dropped; the alias keeps its explicit 70% color-mix (accepted
    micro-delta: old flat white/70 vs the class's 70% mix over transparent). */
 [data-config-panel] .running-engine-card .eng-engine-alias {
-  color: color-mix(in srgb, var(--theme-eject-card-text) 70%, transparent) !important;
+  color: color-mix(in srgb, var(--theme-eject-card-text) 70%, transparent);
 }
 
 [data-config-panel] .running-engine-card .eng-engine-vram {
-  color: var(--theme-eject-card-muted) !important;
+  color: var(--theme-eject-card-muted);
 }
 
 [data-config-panel] .running-engine-card .eng-engine-model--selected {
-  color: var(--theme-eject-card-text) !important;
+  color: var(--theme-eject-card-text);
 }
 
 /* GPU + quant badges inside engine cards — re-keyed to eng-quant-badge(--nvfp);
    the classes paint the same accent/info alpha fills the old utility hooks
    forced to eject tokens. */
 [data-config-panel] .running-engine-card .eng-quant-badge {
-  background: var(--theme-eject-badge-bg) !important;
-  border-color: var(--theme-eject-card-border) !important;
-  color: var(--theme-eject-card-text) !important;
+  background: var(--theme-eject-badge-bg);
+  border-color: var(--theme-eject-card-border);
+  color: var(--theme-eject-card-text);
 }
 
 [data-config-panel] .running-engine-card .eng-quant-badge--nvfp {
-  background: var(--theme-eject-badge-bg) !important;
-  border-color: var(--theme-eject-card-border) !important;
-  color: var(--theme-eject-card-text) !important;
+  background: var(--theme-eject-badge-bg);
+  border-color: var(--theme-eject-card-border);
+  color: var(--theme-eject-card-text);
 }
 
 

@@ -403,7 +403,7 @@
 }
 
 .app-shell[data-ui-density="compact"] [data-config-panel] .running-engine-card {
-  padding: 0.25rem 0.5rem !important;
+  padding: 0.25rem 0.5rem;
   gap: 0.15rem;
 }
 
