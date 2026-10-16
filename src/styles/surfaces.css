@@ -341,7 +341,7 @@ button.engine-logs-slot-chip.engine-logs-slot-chip--active .engine-logs-slot-chi
 
 [data-engine-logs] .text-white,
 [data-engine-logs] .text-white\/80 {
-  color: var(--theme-text) !important;
+  color: var(--theme-text);
 }
 
 /* (Also covered before: the 100% stealth-muted utility died with the paint
@@ -351,7 +351,7 @@ button.engine-logs-slot-chip.engine-logs-slot-chip--active .engine-logs-slot-chi
 
 .launch-rail-tel .theme-surface .text-white,
 .launch-rail-tel .theme-surface .text-white\/80 {
-  color: var(--theme-text) !important;
+  color: var(--theme-text);
 }
 
 /* (Also covered before: the /90 white and 100% stealth-muted utilities died

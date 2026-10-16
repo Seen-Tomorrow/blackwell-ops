@@ -2083,7 +2083,7 @@
 .foundry-window .text-white,
 .foundry-window .text-white\/80,
 .foundry-window .text-white\/70 {
-  color: var(--theme-text) !important;
+  color: var(--theme-text);
 }
 
 /*

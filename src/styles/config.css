@@ -1594,7 +1594,7 @@
 [data-config-page] .text-white,
 [data-config-page] .text-white\/80,
 [data-config-page] .text-white\/70 {
-  color: var(--theme-text) !important;
+  color: var(--theme-text);
 }
 
 

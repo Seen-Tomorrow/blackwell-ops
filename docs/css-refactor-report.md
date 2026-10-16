@@ -322,3 +322,9 @@ This trade removes ~1,000 literal paint sites and centralizes the palette.
 - Removed 23 importants: industrial-display RAM colors, catalog list-panel
   resets, gunmetal selected-card styles.
 - Source total 247 -> 224; main CSS 247 -> 226. User confirmed visual stability.
+
+## text-white override cleanup
+
+- Removed `!important` from the six context-specific white-paint corrections
+  (Foundry, Config page, Model Hub/Catalog, engine logs, launch rail). Their
+  specificity already beats Tailwind `.text-white`. Source total 224 -> 218.
