@@ -62,7 +62,7 @@ function HeaderNav({
     zoom,
     shellWidthPx,
     qsHeightPx,
-  },
+  }: HeaderNavProps,
 ) {
   const clusterRef = useRef<HTMLDivElement | null>(null);
   const lastOpsTabRef = useRef<Tab>("catalog");

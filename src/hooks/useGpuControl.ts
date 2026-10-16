@@ -199,8 +199,8 @@ export function useGpuControl() {
 
   const burstPollClocks = useCallback(() => {
     void pollClocks();
-    window.setTimeout(() => void pollClocks(), 600);
-    window.setTimeout(() => void pollClocks(), 1500);
+    window.setTimeout((): void => void pollClocks(), 600);
+    window.setTimeout((): void => void pollClocks(), 1500);
   }, [pollClocks]);
 
   const deviceByIndex = useMemo(() => {
@@ -451,8 +451,8 @@ export function useGpuControl() {
           window.__blackopsToasts?.addToast(msg, "error");
         }
         burstPollClocks();
-        window.setTimeout(() => void pollClocks(), 400);
-        window.setTimeout(() => void pollClocks(), 1200);
+        window.setTimeout((): void => void pollClocks(), 400);
+        window.setTimeout((): void => void pollClocks(), 1200);
       } catch (e) {
         const msg = formatGpuControlError(e);
         setError(msg);

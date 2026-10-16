@@ -29,7 +29,7 @@ export default function IpcMeterFooter() {
     };
 
     void poll();
-    const timer = window.setInterval(() => void poll(), POLL_MS);
+    const timer = window.setInterval((): void => void poll(), POLL_MS);
     return () => {
       cancelled = true;
       window.clearInterval(timer);

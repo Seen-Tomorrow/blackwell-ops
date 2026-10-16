@@ -1568,7 +1568,7 @@ function migrateLegacyPlayground(stored: Record<string, unknown>): PlaygroundSta
   };
 }
 
-const PLAYGROUND_DEFAULT: PlaygroundState = (() => {
+const PLAYGROUND_DEFAULT: PlaygroundState = ((): PlaygroundState => {
   const session = createPlaygroundSession("Session 1");
   return {
     activeSessionId: session.id,

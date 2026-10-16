@@ -41,7 +41,7 @@ export function useDownloadTasks(kind?: DownloadTaskKind) {
         (t) => t.status === "queued" || t.status === "downloading" || t.status === "scanning",
       );
       if (active && timerRef.current == null) {
-        timerRef.current = window.setInterval(() => void pollRef.current?.(), 500);
+        timerRef.current = window.setInterval((): void => void pollRef.current?.(), 500);
       } else if (!active) {
         stopPolling();
       }
