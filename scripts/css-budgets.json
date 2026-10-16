@@ -1,15 +1,15 @@
 {
-  "note": "Regression ceilings for `node scripts/css-tools.mjs audit --check`. Ratcheted 2026-10-16: selected-card group cleaned; value-chip/segment-switch/launch-dock/running-engine-card/app-nav-tab/app-shell !important-free (419->247 source total). Use npm run css:locate before edits.",
+  "note": "Regression ceilings for `node scripts/css-tools.mjs audit --check`. Ratcheted 2026-10-16: selected cards, industrial display, catalog list resets and gunmetal cards cleaned (419->224 source total). Use npm run css:locate before edits.",
   "sourceBytesLf": 680000,
   "deadRules": 0,
   "deadBytes": 0,
-  "important": 250,
+  "important": 227,
   "literalHex": 65,
   "literalRgba": 90,
   "colorMixLiteral": 55,
   "pxFontSizes": 30,
   "distBytes": 494000,
-  "distImportant": 250,
+  "distImportant": 229,
   "importOrder": [
     "tokens-base.css",
     "utilities.css",

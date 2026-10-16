@@ -591,18 +591,18 @@
    (--theme-industrial-*) are the face tokens that already own the muted/green/border
    paint. */
 .industrial-display-area .gpu-ram-note {
-  color: var(--theme-industrial-muted) !important;
+  color: var(--theme-industrial-muted);
 }
 
 .industrial-display-area .gpu-ram-label {
-  color: var(--theme-industrial-text) !important;
+  color: var(--theme-industrial-text);
 }
 
 /* VRAM/RAM bar tracks on display bg — colour-theme token only (pattern never changes ink).
    Re-keyed to .gpu-ram-track, the class that replaced the old utility on GpuTopology's RAM bar. */
 .industrial-display-area .gpu-ram-track {
-  border-color: var(--theme-industrial-gpu-border) !important;
-  background-color: var(--theme-industrial-bar-track) !important;
+  border-color: var(--theme-industrial-gpu-border);
+  background-color: var(--theme-industrial-bar-track);
 }
 
 /* Always on (was crt-only): kills halo/filter. Uses no face token, so CLEAN == DOTTED. */
@@ -879,8 +879,8 @@
 .gunmetal-card {
   background-color: var(--theme-card-selected-bg);
   background-image: var(--theme-industrial-texture-active);
-  border: 1px solid color-mix(in srgb, var(--theme-card-selected-accent) 32%, var(--theme-border-subtle)) !important;
-  border-radius: 6px !important;
+  border: 1px solid color-mix(in srgb, var(--theme-card-selected-accent) 32%, var(--theme-border-subtle));
+  border-radius: 6px;
   box-shadow: 0 1px 2px color-mix(in srgb, var(--theme-text) 8%, transparent);
 }
 
@@ -904,15 +904,15 @@
    (--theme-text / --theme-text-muted / border 30% mix), so the dead utility
    selectors are dropped. */
 .gunmetal-card .mcard-params {
-  color: #e0e0e0 !important;
+  color: #e0e0e0;
 }
 
 .gunmetal-card .mcard-meta-mut {
-  color: #9a9488 !important;
+  color: #9a9488;
 }
 
 .gunmetal-card .mcard-footer {
-  border-top-color: rgba(154, 148, 136, 0.25) !important;
+  border-top-color: rgba(154, 148, 136, 0.25);
 }
 
 /* ── E-ink Panel — parameters section, themed phosphor text ─── */

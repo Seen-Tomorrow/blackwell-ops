@@ -316,3 +316,9 @@ This trade removes ~1,000 literal paint sites and centralizes the palette.
 - Base `.gpu-selected` selector raised to specificity 20 and border important
   removed; launch rail and VRAM forecast selected overrides de-importanted.
 - Removed 5 declarations; source total 252 -> 247. User confirmed visual stability.
+
+## Industrial display / catalog list / gunmetal batch
+
+- Removed 23 importants: industrial-display RAM colors, catalog list-panel
+  resets, gunmetal selected-card styles.
+- Source total 247 -> 224; main CSS 247 -> 226. User confirmed visual stability.

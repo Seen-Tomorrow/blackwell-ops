@@ -275,10 +275,10 @@
   z-index: 1;
 }
 [data-model-catalog] .catalog-list-panel .catalog-list-panel__chrome-tools {
-  background-color: var(--theme-industrial-bg) !important;
+  background-color: var(--theme-industrial-bg);
   background-image:
     var(--theme-industrial-texture-active),
-    var(--theme-industrial-face-gradient, none) !important;
+    var(--theme-industrial-face-gradient, none);
 }
 
 .catalog-chrome-row {
@@ -393,21 +393,21 @@
 [data-model-catalog] .catalog-list-panel,
 [data-model-catalog] .catalog-list-panel.eink-panel-wrapper {
   isolation: auto;
-  background: transparent !important;
-  background-color: transparent !important;
-  background-image: none !important;
-  border: none !important;
-  box-shadow: none !important;
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  box-shadow: none;
 }
 
 [data-model-catalog] .catalog-list-panel.eink-panel-wrapper::before {
-  display: none !important;
+  display: none;
 }
 
 /* Right config panel already uses eink-panel-wrapper panel-accent — no double edge */
 [data-model-catalog] .catalog-split-workspace > .eink-panel-wrapper:not(.catalog-list-panel) {
   border-left: none;
-  box-shadow: none !important;
+  box-shadow: none;
 }
 
 [data-model-catalog] .catalog-list-scroll {
@@ -737,10 +737,10 @@
 /* Selected — lifted accent face + left rail (must read at dim=100% on dark themes) */
 [data-model-catalog] .model-catalog-card.gunmetal-card,
 [data-model-catalog] .gunmetal-card {
-  background-color: var(--theme-catalog-card-selected-bg) !important;
-  background-image: var(--theme-catalog-card-selected-bg-image) !important;
-  border: 1px solid var(--theme-catalog-card-selected-border) !important;
-  box-shadow: var(--theme-catalog-card-selected-shadow) !important;
+  background-color: var(--theme-catalog-card-selected-bg);
+  background-image: var(--theme-catalog-card-selected-bg-image);
+  border: 1px solid var(--theme-catalog-card-selected-border);
+  box-shadow: var(--theme-catalog-card-selected-shadow);
   border-radius: 8px;
 }
 
@@ -760,7 +760,7 @@
 }
 
 [data-model-catalog] .model-catalog-card.gunmetal-card .model-card-name {
-  color: var(--theme-accent-bright, var(--theme-accent)) !important;
+  color: var(--theme-accent-bright, var(--theme-accent));
 }
 
 /* Footer: size/date left, badge column right */
