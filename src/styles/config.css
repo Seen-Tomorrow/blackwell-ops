@@ -1007,31 +1007,31 @@
   flex: 0 0 auto;
   margin: 0;
   padding: 3px 7px;
-  font-size: var(--type-tiny) !important;
+  font-size: var(--type-tiny);
   letter-spacing: 0.05em;
   line-height: 1.2;
   border-radius: 3px;
-  border: 1px solid transparent !important;
-  background: transparent !important;
+  border: 1px solid transparent;
+  background: transparent;
   color: color-mix(
     in srgb,
     var(--theme-industrial-muted, var(--theme-text-muted)) 92%,
     transparent
-  ) !important;
-  box-shadow: none !important;
+  );
+  box-shadow: none;
   text-transform: none;
   transition:
     background-color 0.15s ease,
     color 0.15s ease,
     border-color 0.15s ease,
-    box-shadow 0.15s ease !important;
+    box-shadow 0.15s ease;
 }
 
 [data-config-panel] .config-value-segment .config-value-segment__opt:hover,
 [data-config-panel] .config-value-segment .value-chip:hover,
 [data-config-panel] .config-value-segment button.value-chip:hover {
-  color: var(--theme-chip-hover-text) !important;
-  background: color-mix(in srgb, var(--theme-accent-soft) 80%, transparent) !important;
+  color: var(--theme-chip-hover-text);
+  background: color-mix(in srgb, var(--theme-accent-soft) 80%, transparent);
 }
 
 /* Selected option — solid thumb (matches cockpit flag active) */
@@ -1136,13 +1136,13 @@
 [data-config-panel] .config-value-segment.config-value-segment--rail button.value-chip {
   position: relative;
   z-index: 1;
-  background: transparent !important;
-  border-color: transparent !important;
+  background: transparent;
+  border-color: transparent;
   margin: 0;
 }
 
 [data-config-panel] .config-value-segment.config-value-segment--rail .value-chip:hover {
-  background: transparent !important;
+  background: transparent;
 }
 
 /* Active option — glowing accent segment, same as cockpit flag active */

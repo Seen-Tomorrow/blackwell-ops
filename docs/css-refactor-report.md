@@ -264,3 +264,10 @@ This trade removes ~1,000 literal paint sites and centralizes the palette.
   launch dock lost their `!important`.
 - Source `!important`: 390 -> 370; main CSS 383 -> 363; chip-rule important
   56 -> 36. User confirmed zero visual drift on active states.
+
+## .value-chip ownership batch 3b (segment / GPU / Fusion base)
+
+- Removed 14 more `!important`: config segment base, hover and rail;
+  GPU active; Fusion bench normal chips.
+- Source `!important`: 370 -> 356; main CSS 363 -> 349; chip-rule important
+  36 -> 22. User confirmed zero visual drift.
