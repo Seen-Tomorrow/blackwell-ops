@@ -1,3 +1,4 @@
+import "../styles/stack-page.css";
 import SlotLogPanel from "./SlotLogPanel";
 import EngineBanner from "./EngineBanner";
 import TabPageHeader from "./TabPageHeader";

@@ -1,3 +1,4 @@
+import "../styles/config-page.css";
 // Config tab shell — content only. Section switching lives in the app header
 // sub-rail (Layout). This file keeps the sub-tab body + PATHS panel.
 

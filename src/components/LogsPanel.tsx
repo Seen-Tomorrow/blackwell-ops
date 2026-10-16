@@ -1,3 +1,4 @@
+import "../styles/logs-page.css";
 /**
  * The LOGS tab.
  *

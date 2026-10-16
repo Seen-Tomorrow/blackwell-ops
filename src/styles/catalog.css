@@ -1,2539 +1,2535 @@
-/* ── E-ink Panel Wrapper — shared panel background ─────────────────────────────── */
-
-.eink-panel-wrapper {
-  background: var(--theme-panel-accent);
-  border: 1px solid var(--theme-border-subtle);
-  position: relative;
-  overflow: hidden;
-}
-
-.eink-panel-wrapper::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--theme-accent-glow), transparent);
-}
-
-/* ── Model catalog / engine config split handle (grip only — no grey bar) ─── */
-.catalog-split-handle {
-  position: relative;
-  flex-shrink: 0;
-  width: 10px;
-  margin: 0 -1px;
-  cursor: col-resize;
-  touch-action: none;
-  z-index: 2;
-  background: transparent;
-  transition: background-color 0.15s ease, box-shadow 0.15s ease;
-}
-
-.catalog-split-handle::before {
-  content: '';
-  position: absolute;
-  top: 6px;
-  bottom: 6px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 2px;
-  border-radius: 1px;
-  background: color-mix(in srgb, var(--theme-accent) 35%, #808080 65%);
-  opacity: 0.65;
-  transition: opacity 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
-}
-
-.catalog-split-handle::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 4px;
-  height: 28px;
-  border-radius: 2px;
-  background:
-    radial-gradient(circle, color-mix(in srgb, var(--theme-text-muted) 90%, var(--fixed-white)) 0.75px, transparent 0.8px)
-      center 2px / 4px 6px repeat-y;
-  opacity: 0.75;
-  transition: opacity 0.15s ease;
-}
-
-.catalog-split-handle:hover,
-.catalog-split-handle.is-dragging {
-  background: color-mix(in srgb, var(--theme-accent) 8%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-accent) 22%, transparent);
-}
-
-.catalog-split-handle:hover::before,
-.catalog-split-handle.is-dragging::before {
-  opacity: 1;
-  background: var(--theme-accent);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-accent-glow, var(--theme-accent)) 50%, transparent);
-}
-
-.catalog-split-handle:hover::after,
-.catalog-split-handle.is-dragging::after {
-  opacity: 1;
-}
-
-
-/* Catalog list collapse rail — toggle + resize handle */
-.catalog-split-rail {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  align-self: stretch;
-  flex-shrink: 0;
-  width: 11px;
-  min-width: 11px;
-  min-height: 100%;
-  margin: 0 -1px;
-  z-index: 3;
-}
-
-.catalog-split-rail .catalog-split-handle {
-  flex: 1 1 auto;
-  align-self: stretch;
-  min-height: 0;
-  margin: 0;
-}
-
-.catalog-list-panel {
-  position: relative;
-}
-
-/*
- * Catalog chrome header — industrial panel face (same stack as app header /
- * provider bar / bezel frame). Always full opacity; dim does not apply here.
- * Row 1: search · Row 2: sort + MAIN/MAX + DIM
- */
-.catalog-list-panel__chrome {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  flex-shrink: 0;
-  padding: 8px 12px 8px;
-  position: relative;
-  z-index: 2;
-  isolation: isolate;
-  overflow: hidden;
-  /* Gunmetal industrial face — not flat panel-accent */
-  background-color: var(--theme-industrial-bg);
-  background-image:
-    var(--theme-industrial-texture-active),
-    var(--theme-industrial-face-gradient, none);
-  border-bottom: 1.5px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 75%, var(--theme-border));
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 50%, transparent),
-    inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-lo) 45%, transparent),
-    0 2px 10px color-mix(in srgb, var(--theme-panel) 45%, transparent);
-}
-
-.catalog-list-panel__chrome > * {
-  position: relative;
-  z-index: 1;
-}
-
-.catalog-list-panel__chrome-search {
-  min-width: 0;
-  width: 100%;
-}
-
-.catalog-list-panel__chrome-search .catalog-search-wrap {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 4px;
-  width: 100%;
-  min-width: 0;
-}
-
-/* Search field — full-width input with a fused right rail:
-   kind cycler (MAIN/DRAFT/ALL) on top, model count below. */
-.catalog-list-panel__chrome-search .catalog-search-field {
-  position: relative;
-  flex: 1 1 10rem;
-  min-width: 0;
-  height: 38px;
-  display: block;
-}
-
-/* Right rail — stacks cycler + count inside the input face */
-.catalog-search-field__rail {
-  position: absolute;
-  top: 3px;
-  right: 3px;
-  bottom: 3px;
-  z-index: 2;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: space-between;
-  gap: 2px;
-  width: 3.55rem;
-  pointer-events: none;
-}
-
-.catalog-search-field__rail .catalog-kind-cycler {
-  pointer-events: auto;
-}
-
-/* Model count — under the kind cycler, same rail width (flat chip, no chrome grit) */
-.catalog-search-count {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 0;
-  flex: 0 0 auto;
-  padding: 0 4px;
-  height: 13px;
-  font-family: ui-monospace, monospace;
-  font-size: var(--type-tiny);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.04em;
-  line-height: 1;
-  color: var(--theme-text-muted, var(--theme-text));
-  opacity: 0.85;
-  white-space: nowrap;
-  user-select: none;
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--theme-panel-accent, var(--theme-panel)) 72%, transparent);
-  border: 1px solid color-mix(in srgb, var(--theme-border-subtle) 55%, transparent);
-  pointer-events: none;
-}
-
-.catalog-list-panel__chrome-search .catalog-search-input {
-  display: block;
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  padding: 0 3.95rem 0 0.75rem;
-  line-height: 36px;
-  box-sizing: border-box;
-}
-
-
-/* SCAN META + EDIT controls — moved into the filter/sort bar (row 1, far right),
-   docked right with an amber border to group them as a distinct unit. */
-.catalog-tools-right {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 6px;
-  min-width: 0;
-  margin-left: auto;
-}
-
-/* Amber grouping border on the SCAN META / EDIT chips. */
-.catalog-tools-right .catalog-scan-btn {
-  border: 1px solid var(--fixed-amber-600-a55);
-  border-radius: 3px;
-}
-
-/* Hide CHECK ALL / UPDATES in the UI (kept in the DOM for future re-enable). */
-.catalog-tools-hidden {
-  display: none;
-}
-
-.catalog-list-panel__chrome-tools {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 4px;
-  min-width: 0;
-  width: 100%;
-}
-
-.catalog-list-panel__chrome-tools .panel-dim-control {
-  margin-left: auto;
-  flex-shrink: 0;
-}
-
-/* ── Alt-B: filter/sort bar — same gunmetal chrome as the search bar, flush full width ── */
-.catalog-list-panel .catalog-list-panel__chrome-tools {
-  flex-shrink: 0;
-  padding: 8px 12px;
-  position: relative;
-  z-index: 1;
-  isolation: isolate;
-  overflow: hidden;
-  background-color: var(--theme-industrial-bg);
-  background-image:
-    var(--theme-industrial-texture-active),
-    var(--theme-industrial-face-gradient, none);
-  border-bottom: 1.5px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 75%, var(--theme-border));
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 50%, transparent),
-    inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-lo) 45%, transparent);
-}
-.catalog-list-panel .catalog-list-panel__chrome-tools > * {
-  position: relative;
-  z-index: 1;
-}
-[data-model-catalog] .catalog-list-panel .catalog-list-panel__chrome-tools {
-  background-color: var(--theme-industrial-bg) !important;
-  background-image:
-    var(--theme-industrial-texture-active),
-    var(--theme-industrial-face-gradient, none) !important;
-}
-
-.catalog-chrome-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  width: 100%;
-}
-
-.catalog-chrome-row--filters {
-  justify-content: space-between;
-}
-
-/* Single cycler for model kind (MAIN / DRAFT / ALL) — flat chip, no industrial grit */
-.catalog-kind-cycler {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 0;
-  margin: 0;
-  padding: 0 4px;
-  text-align: center;
-  font-size: var(--type-label);
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  line-height: 1;
-  border-radius: 3px;
-  border: 1px solid color-mix(in srgb, var(--theme-accent) 50%, transparent);
-  background: color-mix(in srgb, var(--theme-panel-accent, var(--theme-panel)) 88%, transparent);
-  color: var(--theme-accent-bright, var(--theme-accent));
-  cursor: pointer;
-  box-shadow: none;
-  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease, filter 0.15s ease;
-}
-
-
-.catalog-kind-cycler:hover {
-  border-color: color-mix(in srgb, var(--theme-accent-bright, var(--theme-accent)) 70%, transparent);
-  filter: brightness(1.18);
-}
-
-/* State-aware accent — border + text (+ light wash for DRAFT) */
-.catalog-kind-cycler[data-kind="draft"] {
-  border-color: var(--theme-dflash-strip-border, color-mix(in srgb, #8b5cf6 60%, transparent));
-  color: var(--theme-dflash-strip-text);
-  background: color-mix(
-    in srgb,
-    var(--theme-dflash-strip-bg) 38%,
-    var(--theme-panel-accent, var(--theme-panel)) 62%
-  );
-}
-
-.catalog-kind-cycler[data-kind="draft"]:hover {
-  border-color: color-mix(in srgb, var(--theme-dflash-strip-border) 85%, transparent);
-  filter: brightness(1.08);
-}
-
-.catalog-kind-cycler[data-kind="all"] {
-  border-color: color-mix(in srgb, var(--theme-nv-green) 60%, transparent);
-  color: var(--theme-nv-green);
-}
-
-.catalog-kind-cycler[data-kind="all"]:hover {
-  border-color: color-mix(in srgb, var(--theme-nv-green) 85%, transparent);
-}
-
-.catalog-list-panel__chrome-msg {
-  margin: 0;
-}
-
-.catalog-list-panel__chrome-dialog {
-  flex-shrink: 0;
-}
-
-/* Card list only — dim is per-card (selected stays full) */
-.catalog-list-panel__body {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
-  min-height: 0;
-  min-width: 0;
-}
-
-.catalog-list-card-wrap {
-  transition: opacity 0.15s ease;
-}
-
-/* Selected model — full opacity + full chroma under quiet-wing desaturate */
-.catalog-list-card-wrap--selected {
-  opacity: 1 !important;
-  position: relative;
-  z-index: 1;
-}
-
-[data-model-catalog] .catalog-list-panel .catalog-list-card-wrap--selected .gunmetal-card {
-  filter: saturate(1.55) brightness(1.08);
-}
-
-/*
- * OPERATIONS workspace — one continuous field with the engine-config panel.
- * Same face as .eink-panel-wrapper (theme-panel-accent); list is a quiet wing,
- * not a second chrome room. Engine config stays full chroma.
- */
-[data-model-catalog] .catalog-split-workspace {
-  background: var(--theme-panel-accent);
-}
-
-/* List column = same face as right config panel (no grit, no extra shell) */
-[data-model-catalog] .catalog-list-panel,
-[data-model-catalog] .catalog-list-panel.eink-panel-wrapper {
-  isolation: auto;
-  background: transparent !important;
-  background-color: transparent !important;
-  background-image: none !important;
-  border: none !important;
-  box-shadow: none !important;
-}
-
-[data-model-catalog] .catalog-list-panel.eink-panel-wrapper::before {
-  display: none !important;
-}
-
-/* Right config panel already uses eink-panel-wrapper panel-accent — no double edge */
-[data-model-catalog] .catalog-split-workspace > .eink-panel-wrapper:not(.catalog-list-panel) {
-  border-left: none;
-  box-shadow: none !important;
-}
-
-[data-model-catalog] .catalog-list-scroll {
-  background: transparent !important;
-  background-image: none !important;
-}
-
-/*
- * Quiet wing on list body only — chrome keeps full industrial chroma/texture.
- * Opacity dim is separate (per unselected card).
- */
-[data-model-catalog] .catalog-list-panel__body {
-  filter: saturate(0.42) brightness(0.97);
-}
-
-/* Unselected cards stay quiet; selected is boosted via .catalog-list-card-wrap--selected */
-[data-model-catalog] .catalog-list-panel .buried-card {
-  filter: none;
-}
-
-[data-model-catalog] .catalog-list-panel .gunmetal-card {
-  filter: saturate(1.35) brightness(1.04);
-}
-
-/* Override any flat transparent wipe so industrial face sticks */
-[data-model-catalog] .catalog-list-panel__chrome {
-  background-color: var(--theme-industrial-bg) !important;
-  background-image:
-    var(--theme-industrial-texture-active),
-    var(--theme-industrial-face-gradient, none) !important;
-}
-
-[data-model-catalog] .catalog-list-scroll.eink-scrollbar::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--theme-text-muted) 35%, var(--theme-panel-accent) 65%);
-}
-
-[data-model-catalog] .catalog-list-scroll.eink-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--theme-accent) 28%, var(--theme-panel-accent) 72%);
-}
-
-
-.catalog-split-rail--collapsed {
-  overflow: visible;
-}
-
-.catalog-split-rail--collapsed .catalog-split-handle {
-  cursor: col-resize;
-}
-
-.catalog-split-toggle {
-  position: absolute;
-  /* Aligned to bottom of catalog chrome header (set via --catalog-toggle-top) */
-  top: var(--catalog-toggle-top, 0px);
-  left: 50%;
-  z-index: 4;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 36px;
-  margin: 0;
-  padding: 0;
-  /* Center the chevron on the chrome/list seam */
-  transform: translate(-50%, -50%);
-  border: 1px solid color-mix(in srgb, var(--theme-accent) 40%, var(--theme-border));
-  border-radius: 4px;
-  background: var(--theme-bg-elevated, var(--theme-bg));
-  color: var(--theme-accent, var(--theme-text-muted));
-  cursor: pointer;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-accent-glow, transparent) 15%, transparent);
-  transition:
-    border-color 0.15s ease,
-    color 0.15s ease,
-    box-shadow 0.15s ease,
-    background-color 0.15s ease;
-}
-
-.catalog-split-toggle:hover {
-  border-color: color-mix(in srgb, var(--theme-accent) 70%, var(--theme-border));
-  color: var(--theme-accent-bright, var(--theme-text));
-  box-shadow: 0 0 10px color-mix(in srgb, var(--theme-accent-glow, transparent) 45%, transparent);
-}
-
-/* Collapsed: amber pulse so the rail isn’t “invisible” */
-.catalog-split-toggle--collapsed-hint {
-  animation: catalogSplitTogglePulse 1.35s ease-in-out infinite;
-}
-
-.catalog-split-toggle__glyph {
-  font-size: var(--type-body);
-  font-family: ui-monospace, monospace;
-  line-height: 1;
-  pointer-events: none;
-  transition: transform 0.2s ease;
-}
-
-.catalog-split-toggle__glyph--collapse {
-  transform: rotate(180deg);
-}
-
-.catalog-split-rail .catalog-split-toggle {
-  left: 0;
-  /* --catalog-toggle-top = first model card top; pin glyph top-aligned to that line */
-  transform: translate(-50%, 0);
-}
-
-.catalog-split-rail--collapsed .catalog-split-toggle {
-  left: 0;
-  /* No chrome when collapsed — pin near rail top */
-  transform: translate(0, 0);
-}
-
-.catalog-split-rail--collapsed .catalog-split-toggle:hover {
-  background: var(--theme-bg-elevated, var(--theme-bg));
-  box-shadow: 0 0 10px color-mix(in srgb, var(--theme-accent-glow, transparent) 45%, transparent);
-}
-
-/* Header: soft amber / search hint when catalog is collapsed (readable on dark themes) */
-.config-catalog-search-hint--pulse {
-  border-color: var(--fixed-amber-600-a45) !important;
-  color: color-mix(in srgb, var(--fixed-amber-500) 75%, #e5e5e5) !important;
-  background: var(--fixed-amber-600-a1) !important;
-  animation: catalogSearchHintPulse 2.4s ease-in-out infinite;
-}
-
-@keyframes catalogSearchHintPulse {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 transparent;
-    opacity: 0.88;
-  }
-  50% {
-    box-shadow: 0 0 8px 0 var(--fixed-amber-600-a28);
-    opacity: 1;
-  }
-}
-
-@keyframes catalogSplitTogglePulse {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 transparent;
-    border-color: color-mix(in srgb, var(--fixed-amber-600) 40%, var(--theme-border));
-  }
-  50% {
-    box-shadow: 0 0 6px 0 var(--fixed-amber-600-a3);
-    border-color: color-mix(in srgb, var(--fixed-amber-600) 55%, var(--theme-border));
-  }
-}
-
-.catalog-split-toggle--collapsed-hint {
-  border-color: color-mix(in srgb, var(--fixed-amber-600) 45%, var(--theme-border)) !important;
-  color: color-mix(in srgb, var(--fixed-amber-500) 70%, var(--theme-text-muted)) !important;
-}
-
-.catalog-split-workspace--collapsed .catalog-list-panel {
-  display: none;
-}
-
-/* Model catalog — skip paint for off-screen cards; stable intrinsic height for scroll */
-[data-model-path] {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 4.75rem;
-}
-
-.model-catalog-card {
-  contain: layout style;
-  isolation: isolate;
-  overflow: hidden;
-}
-
-.model-catalog-card > *:not(.model-card-draft-hatch):not(.model-card-check-bubble) {
-  position: relative;
-  z-index: 1;
-}
-
-/* Draft-only hatch — violet diagonal veil; text stays above and readable */
-.model-card-draft-hatch {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  background:
-    repeating-linear-gradient(
-      -52deg,
-      color-mix(in srgb, var(--theme-dflash-strip-border) 22%, transparent) 0 5px,
-      transparent 5px 11px
-    ),
-    color-mix(in srgb, var(--theme-dflash-strip-bg) 18%, transparent);
-  opacity: 0.9;
-}
-
-.model-catalog-card--draft {
-  /* keep full ink; hatch carries the draft cue (opacity mute looked disabled) */
-  opacity: 1;
-}
-
-.model-catalog-card--draft .model-card-draft-badge {
-  color: var(--theme-dflash-strip-text);
-  border: 1px solid var(--theme-dflash-strip-border, var(--fixed-violet-400-a5));
-  background: color-mix(in srgb, var(--theme-dflash-strip-bg) 55%, transparent);
-}
-
-.catalog-sort-group {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  overflow: hidden;
-  min-width: 0;
-  width: 100%;
-}
-
-.catalog-sort-group::-webkit-scrollbar {
-  display: none;
-}
-
-.catalog-sort-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.125rem;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.catalog-sort-arrow {
-  display: inline-block;
-  width: 0.5rem;
-  text-align: center;
-  flex-shrink: 0;
-}
-
-.catalog-sort-actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  justify-content: flex-start;
-  gap: 6px;
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.catalog-cycle-btn {
-  min-width: 2.125rem;
-  text-align: center;
-  flex-shrink: 0;
-}
-
-.catalog-search-wrap {
-  min-width: 0;
-}
-
-.catalog-search-input {
-  min-width: 0;
-}
-
-
-/* Catalog list — vertical scrollbar on the left (Chromium / WebView2) */
-.catalog-list-scroll {
-  direction: rtl;
-  /* Physical right = split side — keep list content off the resize rail */
-  padding-right: 1.125rem;
-}
-
-.catalog-list-scroll > * {
-  direction: ltr;
-}
-
-
-/* Model card styles */
-/* ── Catalog card (unselected) — no fill; list panel tint shows through ─── */
-.buried-card {
-  background: transparent;
-  background-image: none;
-  border: 1px solid var(--theme-border-subtle);
-  border-radius: 6px;
-  box-shadow: none;
-  transition: background 0.2s ease, border-color 0.2s ease;
-  position: relative;
-  overflow: hidden;
-}
-
-/* Reserve selection rail slot on every card — gunmetal only changes color */
-.buried-card::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 6px;
-  bottom: 6px;
-  width: 3px;
-  border-radius: 2px;
-  background: transparent;
-  box-shadow: none;
-  pointer-events: none;
-}
-
-.buried-card:hover {
-  background: color-mix(in srgb, var(--theme-accent) 5%, transparent);
-  background-image: none;
-  border-color: color-mix(in srgb, var(--theme-border) 55%, var(--theme-accent) 45%);
-  box-shadow: none;
-}
-
-/*
- * Catalog cards — face from --theme-catalog-card-* (ARCTIC = ice slab;
- * dark themes = transparent wing defaults in tokens-base).
- */
-[data-model-catalog] .model-catalog-card.buried-card,
-[data-model-catalog] .buried-card,
-[data-model-catalog] [data-model-path] .model-catalog-card {
-  background-color: var(--theme-catalog-card-bg) !important;
-  background-image: var(--theme-catalog-card-bg-image) !important;
-  border-color: var(--theme-catalog-card-border) !important;
-  box-shadow: var(--theme-catalog-card-shadow) !important;
-  border-radius: 8px;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-
-[data-model-catalog] .model-catalog-card.buried-card:hover,
-[data-model-catalog] .buried-card:hover {
-  background-color: var(--theme-catalog-card-hover-bg) !important;
-  background-image: var(--theme-catalog-card-bg-image) !important;
-  border-color: var(--theme-catalog-card-hover-border) !important;
-  box-shadow: var(--theme-catalog-card-hover-shadow) !important;
-}
-
-/* Selected — lifted accent face + left rail (must read at dim=100% on dark themes) */
-[data-model-catalog] .model-catalog-card.gunmetal-card,
-[data-model-catalog] .gunmetal-card {
-  background-color: var(--theme-catalog-card-selected-bg) !important;
-  background-image: var(--theme-catalog-card-selected-bg-image) !important;
-  border: 1px solid var(--theme-catalog-card-selected-border) !important;
-  box-shadow: var(--theme-catalog-card-selected-shadow) !important;
-  border-radius: 8px;
-}
-
-[data-model-catalog] .gunmetal-card::before,
-[data-model-catalog] .model-catalog-card.gunmetal-card::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 5px;
-  bottom: 5px;
-  width: 4px;
-  border-radius: 2px;
-  background: var(--theme-catalog-card-rail);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--theme-catalog-card-rail) 55%, transparent);
-  pointer-events: none;
-  z-index: 2;
-}
-
-[data-model-catalog] .model-catalog-card.gunmetal-card .model-card-name {
-  color: var(--theme-accent-bright, var(--theme-accent)) !important;
-}
-
-/* Footer: size/date left, badge column right */
-[data-model-catalog] .model-card-footer {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 0.5rem;
-  min-width: 0;
-}
-
-[data-model-catalog] .model-card-badges {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: nowrap;
-  align-items: flex-end;
-  justify-content: flex-end;
-  gap: 0.25rem;
-  flex-shrink: 0;
-  min-width: 0;
-}
-
-/* Size + date footer meta — size is the primary weight readout */
-[data-model-catalog] .model-card-meta {
-  position: relative;
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: baseline;
-  gap: 0.4rem;
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-[data-model-catalog] .model-card-size {
-  font-size: var(--type-sm);
-  line-height: 1.1;
-  letter-spacing: 0.02em;
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-  flex-shrink: 0;
-}
-
-[data-model-catalog] .model-card-date {
-  font-size: var(--type-tiny);
-  line-height: 1.1;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-/*
- * In-card hover tip for arch / KV / FIT — native title is unreliable under
- * contain + content-visibility in WebView2; paint the tip inside the card.
- */
-[data-model-catalog] .model-card-meta--tip {
-  cursor: help;
-}
-
-[data-model-catalog] .model-card-meta--tip::after {
-  content: attr(data-tip);
-  position: absolute;
-  left: 0;
-  bottom: 100%;
-  z-index: 5;
-  max-width: min(16rem, 100%);
-  margin-bottom: 4px;
-  padding: 3px 7px;
-  border-radius: 3px;
-  font-family: ui-monospace, monospace;
-  font-size: var(--type-tiny);
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  line-height: 1.3;
-  white-space: normal;
-  color: var(--theme-text);
-  background: color-mix(in srgb, var(--theme-panel) 94%, var(--theme-accent) 6%);
-  border: 1px solid color-mix(in srgb, var(--theme-border) 70%, var(--theme-accent) 30%);
-  box-shadow: 0 2px 8px var(--fixed-black-a35);
-  opacity: 0;
-  transform: translateY(2px);
-  pointer-events: none;
-  transition: opacity 0.12s ease, transform 0.12s ease;
-}
-
-[data-model-catalog] .model-card-meta--tip:hover::after,
-[data-model-catalog] .model-card-meta--tip:focus-visible::after {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-/* Badges on catalog cards — mono mute (less cyan/green noise) */
-[data-model-catalog] .model-card-quant-badge,
-[data-model-catalog] .model-card-quant-badge--cyan,
-[data-model-catalog] .model-card-quant-badge--nvfp {
-  color: color-mix(in srgb, var(--theme-text-muted) 85%, var(--theme-text) 15%) !important;
-  border-color: color-mix(in srgb, var(--theme-border) 80%, transparent) !important;
-  background: color-mix(in srgb, var(--theme-text) 4%, transparent) !important;
-}
-
-/*
- * Card ink — ModelCard surface classes (mcard-*) paint theme tokens directly;
- * these container rules are the ARCTIC readability correction, re-keyed from
- * the deleted text-white/* / text-stealth-muted utility hooks.
- */
-[data-model-catalog] .model-catalog-card .mcard-params,
-[data-model-catalog] .model-catalog-card .mcard-mini-name {
-  color: var(--theme-text) !important;
-}
-
-[data-model-catalog] .model-catalog-card .mcard-date,
-[data-model-catalog] .model-catalog-card .mcard-inkchip {
-  color: var(--theme-text-muted) !important;
-}
-
-[data-model-catalog] .model-catalog-card .mcard-author,
-[data-model-catalog] .model-catalog-card .mcard-meta-mut,
-[data-model-catalog] .model-catalog-card .mcard-mini-author,
-[data-model-catalog] .model-catalog-card .mcard-mini-size {
-  color: var(--theme-text-muted) !important;
-}
-
-[data-model-catalog] .model-catalog-card .mcard-inkchip {
-  background-color: color-mix(in srgb, var(--theme-text) 14%, transparent) !important;
-}
-
-[data-model-catalog] .model-catalog-card .mcard-inkchip {
-  color: var(--theme-text) !important;
-}
-
-/* ── E-ink Scrollbar ─── */
-.eink-scrollbar::-webkit-scrollbar {
-  width: 4px;
-}
-
-.eink-scrollbar::-webkit-scrollbar-track {
-  background: var(--theme-scrollbar-track);
-}
-
-.eink-scrollbar::-webkit-scrollbar-thumb {
-  background: var(--theme-scrollbar-thumb);
-  border-radius: 2px;
-}
-
-.eink-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--theme-scrollbar-thumb) 70%, var(--theme-accent-bright) 30%);
-}
-
-/* ── Engine Stack page — unified with MODELS tab ─── */
-[data-engine-stack] .engine-stack-empty-icon {
-  color: var(--theme-accent);
-}
-
-[data-engine-stack] .engine-stack-card {
-  position: relative;
-  border: 1px solid var(--theme-border-subtle);
-}
-
-[data-engine-stack] .engine-stack-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--theme-accent-glow), transparent);
-  pointer-events: none;
-  z-index: 1;
-}
-
-[data-engine-stack] .engine-stack-banner {
-  background: var(--theme-eject-card-bg);
-}
-
-
-[data-engine-stack] .engine-stack-log {
-  background: var(--theme-industrial-bar-track);
-}
-
-[data-engine-stack] .engine-stack-footer {
-  background: var(--theme-accent-soft);
-}
-
-[data-engine-stack] .engine-stack-phase-pp {
-  background: color-mix(in srgb, var(--theme-secondary) 10%, transparent) !important;
-  border-color: color-mix(in srgb, var(--theme-secondary) 30%, transparent) !important;
-}
-
-[data-engine-stack] .engine-stack-phase-tg {
-  background: var(--theme-accent-soft) !important;
-  border-color: color-mix(in srgb, var(--theme-accent) 30%, transparent) !important;
-}
-
-[data-engine-stack] .engine-stack-phase-idle {
-  background: var(--theme-panel) !important;
-  border-color: var(--theme-border-subtle) !important;
-}
-
-[data-engine-stack] .status-online {
-  background-color: var(--theme-accent) !important;
-  box-shadow: 0 0 6px var(--theme-accent-glow) !important;
-}
-
-[data-engine-stack] .status-loading {
-  background-color: var(--theme-secondary-bright) !important;
-  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-secondary) 40%, transparent) !important;
-}
-
-[data-engine-stack] .eink-panel .provider-pill-active {
-  background: var(--theme-provider-pill-active-bg) !important;
-  border: 1px solid var(--theme-provider-pill-active-border) !important;
-  color: var(--theme-provider-pill-active-text) !important;
-}
-
-[data-engine-stack] .eink-panel .engine-stack-profile-pill {
-  background: var(--fixed-rgba-184-122-0-a08) !important;
-  border: 1px solid var(--fixed-rgba-184-122-0-a4) !important;
-  color: var(--fixed-brand-amber) !important;
-}
-
-
-[data-engine-stack] .engine-stack-header {
-  background: var(--theme-panel);
-}
-
-[data-engine-stack] .engine-stack-bench {
-  background: var(--theme-panel);
-}
-
-[data-engine-stack] .engine-stack-bench-toggle {
-  cursor: pointer;
-}
-
-[data-engine-stack] .engine-stack-bench-toggle:hover {
-  background: color-mix(in srgb, var(--theme-accent) 6%, transparent);
-}
-
-[data-engine-stack] .engine-stack-bench .bench-widget-panel {
-  border: 1px solid var(--theme-border-subtle);
-  background: var(--theme-industrial-bar-track);
-}
-
-
-/* ── Catalog quick strip: seats bank + pins ──────────────────────────────── */
-.catalog-quick-strip {
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 6px 6px 8px;
-  border-bottom: 1px solid color-mix(in srgb, var(--theme-border-subtle, var(--theme-border)) 70%, transparent);
-  background: color-mix(in srgb, var(--theme-panel-accent, var(--theme-panel)) 55%, transparent);
-}
-
-/* Twin seats + optional Σ footer in one frame */
-.catalog-quick-seat-bank {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  border-radius: 5px;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent);
-  background: color-mix(in srgb, var(--theme-panel) 55%, transparent);
-  overflow: hidden;
-}
-
-.catalog-quick-seat-bank--editing {
-  border-color: color-mix(in srgb, var(--theme-accent) 35%, transparent);
-}
-
-.catalog-quick-seat-bank--help {
-  border-color: color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-accent)) 40%, transparent);
-  background:
-    radial-gradient(
-      120% 90% at 0% 0%,
-      color-mix(in srgb, var(--theme-harness-brain-raw) 14%, transparent),
-      transparent 55%
-    ),
-    radial-gradient(
-      100% 80% at 100% 100%,
-      color-mix(in srgb, var(--theme-harness-worker-raw) 12%, transparent),
-      transparent 50%
-    ),
-    color-mix(in srgb, var(--theme-panel) 70%, var(--fixed-black) 30%);
-}
-
-/* Local help panel inside seat bank (same idea as harness connect veil, scoped) */
-.catalog-seats-help {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  padding: 8px 9px 9px;
-}
-
-.catalog-seats-help__panel {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  min-width: 0;
-}
-
-.catalog-seats-help__top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.catalog-seats-help__kicker {
-  font-family: ui-monospace, monospace;
-  font-size: var(--type-label);
-  font-weight: 800;
-  letter-spacing: 0.16em;
-  color: var(--theme-accent-bright, var(--theme-accent));
-}
-
-.catalog-seats-help__close {
-  margin: 0;
-  padding: 2px 7px;
-  border-radius: 2px;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
-  background: color-mix(in srgb, var(--theme-panel) 50%, transparent);
-  color: var(--theme-text-muted);
-  font-family: ui-monospace, monospace;
-  font-size: var(--type-micro);
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  cursor: pointer;
-}
-
-.catalog-seats-help__close:hover {
-  color: var(--theme-text);
-  border-color: color-mix(in srgb, var(--theme-accent) 45%, transparent);
-}
-
-.catalog-seats-help__blurb {
-  margin: 0;
-  font-family: ui-monospace, monospace;
-  font-size: var(--type-label);
-  line-height: 1.35;
-  color: var(--theme-text);
-  opacity: 0.9;
-}
-
-.catalog-seats-help__flow {
-  display: flex;
-  align-items: stretch;
-  gap: 4px;
-  min-width: 0;
-}
-
-.catalog-seats-help__step {
-  flex: 1 1 0;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 3px;
-  padding: 5px 6px;
-  border-radius: 3px;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent);
-  background: color-mix(in srgb, var(--theme-panel) 55%, transparent);
-}
-
-.catalog-seats-help__n {
-  font-family: ui-monospace, monospace;
-  font-size: var(--type-tiny);
-  font-weight: 800;
-  color: var(--theme-text-muted);
-  opacity: 0.75;
-}
-
-.catalog-seats-help__step-title {
-  font-family: ui-monospace, monospace;
-  font-size: var(--type-tiny);
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  color: var(--theme-text);
-}
-
-.catalog-seats-help__roles {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 3px;
-}
-
-.catalog-seats-help__role {
-  font-family: ui-monospace, monospace;
-  font-size: var(--type-micro);
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  padding: 1px 4px;
-  border-radius: 2px;
-}
-
-.catalog-seats-help__role--brain {
-  color: var(--theme-harness-brain-text, var(--theme-provider-pill-active-text));
-  background: color-mix(
-    in srgb,
-    var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 28%,
-    transparent
-  );
-  border: 1px solid color-mix(
-    in srgb,
-    var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 45%,
-    transparent
-  );
-}
-
-.catalog-seats-help__role--worker {
-  color: var(--theme-pair-secondary-text, var(--theme-chip-solid-text));
-  background: color-mix(
-    in srgb,
-    var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 28%,
-    transparent
-  );
-  border: 1px solid color-mix(
-    in srgb,
-    var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 45%,
-    transparent
-  );
-}
-
-.catalog-seats-help__launch,
-.catalog-seats-help__connect {
-  font-family: ui-monospace, monospace;
-  font-size: var(--type-micro);
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  color: var(--theme-accent-bright, var(--theme-accent));
-}
-
-.catalog-seats-help__step-copy {
-  font-family: ui-monospace, monospace;
-  font-size: var(--type-micro);
-  line-height: 1.25;
-  color: var(--theme-text-muted);
-}
-
-.catalog-seats-help__arrow {
-  flex: 0 0 auto;
-  align-self: center;
-  font-family: ui-monospace, monospace;
-  font-size: var(--type-body);
-  color: var(--theme-text-muted);
-  opacity: 0.55;
-}
-
-.catalog-seats-help__foot {
-  margin: 0;
-  font-family: ui-monospace, monospace;
-  font-size: var(--type-micro);
-  line-height: 1.35;
-  color: var(--theme-text-muted);
-}
-
-.catalog-seats-help__foot b {
-  color: var(--theme-text);
-  font-weight: 700;
-}
-
-@media (max-width: 360px) {
-  .catalog-seats-help__flow {
-    flex-direction: column;
-  }
-
-  .catalog-seats-help__arrow {
-    align-self: flex-start;
-    transform: rotate(90deg);
-    margin: 0 0 0 8px;
-  }
-}
-
-.catalog-quick-strip__seats {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  min-width: 0;
-}
-
-.catalog-quick-strip__seats--editing {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-/* Seat cell inside bank — face only; bank owns the outer frame */
-.catalog-quick-seat {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 42px;
-  overflow: hidden;
-  isolation: isolate;
-  background: color-mix(in srgb, var(--theme-panel) 70%, transparent);
-}
-
-.catalog-quick-seat + .catalog-quick-seat {
-  border-left: 1px solid color-mix(in srgb, var(--theme-border) 45%, transparent);
-}
-
-.catalog-quick-seat--brain.catalog-quick-seat--filled {
-  background: color-mix(
-    in srgb,
-    var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 22%,
-    var(--theme-eject-card-bg, var(--theme-panel)) 78%
-  );
-}
-
-.catalog-quick-seat--worker.catalog-quick-seat--filled {
-  background: color-mix(
-    in srgb,
-    var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 24%,
-    var(--theme-eject-card-bg, var(--theme-panel)) 76%
-  );
-}
-
-.catalog-quick-seat--selected {
-  box-shadow: inset 0 0 0 1px var(--fixed-cyan-50-a4);
-}
-
-.catalog-quick-seat--pending {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-telemetry-amber) 55%, transparent);
-}
-
-.catalog-quick-seat--editing {
-  min-height: 52px;
-}
-
-.catalog-quick-seat--brain.catalog-quick-seat--editing {
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 50%, transparent),
-    0 0 16px color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 28%, transparent);
-}
-
-.catalog-quick-seat--worker.catalog-quick-seat--editing {
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 50%, transparent),
-    0 0 16px color-mix(in srgb, var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 26%, transparent);
-}
-
-/* Per-seat VRAM strip — VramBadge VRAM-total label tokens */
-.catalog-quick-seat__mem {
-  display: flex;
-  align-items: baseline;
-  justify-content: center;
-  gap: 4px;
-  min-width: 0;
-  padding: 3px 6px;
-  font-family: ui-monospace, "JetBrains Mono", monospace;
-  font-size: var(--type-body);
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  line-height: 1.2;
-  border-bottom: 1px solid color-mix(in srgb, var(--theme-border) 35%, transparent);
-}
-
-.catalog-quick-seat__mem--vram {
-  color: var(--display-face-fc-label-fg, var(--display-face-text));
-  background: var(
-    --display-face-fc-label-bg,
-    color-mix(in srgb, var(--theme-accent) 16%, transparent)
-  );
-}
-
-.catalog-quick-seat__mem-val {
-  font-variant-numeric: tabular-nums;
-}
-
-.catalog-quick-seat__mem-unit,
-.catalog-quick-mem__unit {
-  font-size: var(--type-micro);
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  opacity: 0.78;
-  text-transform: uppercase;
-}
-
-/* Σ footer — 50:50 VRAM | RAM, same wells as VramBadge totals */
-.catalog-quick-mem--combo {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  align-items: stretch;
-  min-width: 0;
-  border-top: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
-  font-family: ui-monospace, "JetBrains Mono", monospace;
-}
-
-.catalog-quick-mem__cell {
-  display: flex;
-  align-items: baseline;
-  justify-content: center;
-  gap: 5px;
-  min-width: 0;
-  padding: 6px 8px;
-  font-size: var(--type-md);
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  line-height: 1.15;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.catalog-quick-mem__cell + .catalog-quick-mem__cell {
-  border-left: 1px solid var(
-    --display-face-fc-label-border,
-    color-mix(in srgb, var(--theme-accent) 28%, transparent)
-  );
-}
-
-.catalog-quick-mem__cell--vram {
-  color: var(--display-face-fc-label-fg, var(--display-face-text));
-  background: var(
-    --display-face-fc-label-bg,
-    color-mix(in srgb, var(--theme-accent) 16%, transparent)
-  );
-}
-
-.catalog-quick-mem__cell--ram {
-  color: var(--display-face-fc-label-ram-fg);
-  background: var(
-    --display-face-fc-label-ram-bg,
-    var(--fixed-blue-400-a14)
-  );
-  border-left-color: var(
-    --display-face-fc-label-ram-border,
-    var(--fixed-blue-400-a3)
-  );
-}
-
-.catalog-quick-mem__sigma {
-  flex: 0 0 auto;
-  font-size: 0.92em;
-  font-weight: 800;
-  opacity: 0.88;
-  letter-spacing: 0;
-}
-
-.catalog-quick-mem__val {
-  font-variant-numeric: tabular-nums;
-}
-
-.catalog-quick-seat__body {
-  flex: 1 1 auto;
-  display: flex;
-  align-items: stretch;
-  min-height: 0;
-}
-
-.catalog-quick-seat--brain .catalog-quick-seat__role {
-  color: var(--theme-harness-brain-text, var(--theme-provider-pill-active-text, var(--theme-accent-bright)));
-}
-
-.catalog-quick-seat--worker .catalog-quick-seat__role {
-  color: var(--theme-pair-secondary-text, var(--theme-chip-solid-text, var(--theme-nv-green)));
-}
-
-.catalog-quick-seat__main {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 2px;
-  padding: 6px 8px;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  text-align: left;
-  z-index: 2;
-}
-
-.catalog-quick-seat__role {
-  font-family: ui-monospace, monospace;
-  font-size: var(--type-label);
-  letter-spacing: 0.14em;
-  font-weight: 700;
-  color: var(--theme-text-muted);
-}
-
-.catalog-quick-seat__name {
-  font-family: ui-monospace, monospace;
-  font-size: var(--type-sm);
-  line-height: 1.15;
-  font-weight: 600;
-  color: var(--theme-text);
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.catalog-quick-seat__quant {
-  font-family: ui-monospace, monospace;
-  font-size: var(--type-tiny);
-  line-height: 1.1;
-  letter-spacing: 0.04em;
-  color: var(--theme-text-muted);
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.catalog-quick-seat--empty .catalog-quick-seat__name {
-  color: var(--theme-text-muted);
-  opacity: 0.7;
-  font-size: var(--type-body);
-  font-weight: 500;
-}
-
-.catalog-quick-seat--editing .catalog-quick-seat__role {
-  font-size: var(--type-sm);
-}
-
-.catalog-quick-seat--editing .catalog-quick-seat__name {
-  font-size: 13px;
-}
-
-.catalog-quick-seat__actions {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: stretch;
-  z-index: 2;
-}
-
-.catalog-quick-seat__btn {
-  margin: 0;
-  padding: 0 7px;
-  border: 0;
-  border-left: 1px solid color-mix(in srgb, var(--theme-border-subtle) 60%, transparent);
-  background: transparent;
-  color: var(--theme-text-muted);
-  font-family: ui-monospace, monospace;
-  font-size: var(--type-tiny);
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  line-height: 1;
-  cursor: pointer;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.catalog-quick-seat__btn:hover {
-  color: var(--theme-text);
-  background: color-mix(in srgb, var(--theme-text) 8%, transparent);
-}
-
-/* R / E / X / Y / N — shared glyph tile; clear + no are danger text only */
-.catalog-quick-seat__btn--replace,
-.catalog-quick-seat__btn--edit,
-.catalog-quick-seat__btn--clear,
-.catalog-quick-seat__btn--yes,
-.catalog-quick-seat__btn--no {display: inline-flex; align-items: center; justify-content: center; min-width: 28px; padding: 0 8px; font-size: var(--type-md); font-weight: 800; letter-spacing: 0}
-
-.catalog-quick-seat__btn--replace:hover,
-.catalog-quick-seat__btn--edit:hover,
-.catalog-quick-seat__btn--yes:hover {}
-
-.catalog-quick-seat__btn--clear,
-.catalog-quick-seat__btn--no {
-  color: var(--theme-danger);
-}
-
-.catalog-quick-seat__btn--clear:hover,
-.catalog-quick-seat__btn--no:hover {
-  color: var(--theme-danger);
-  background: color-mix(in srgb, var(--theme-danger) 10%, transparent);
-}
-
-.catalog-quick-seat__btn--save {
-  color: var(--theme-text);
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  background: color-mix(in srgb, var(--theme-text) 8%, transparent);
-}
-
-.catalog-quick-seat__save-ico {
-  font-size: var(--type-sm);
-  line-height: 1;
-  color: var(--theme-text);
-  opacity: 0.85;
-}
-
-/* Live perimeter (seat + section while editing) */
-.catalog-quick-seat__live,
-.catalog-quick-section--seats-editing > .catalog-quick-seat__live {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  overflow: hidden;
-  border-radius: inherit;
-  padding: 2px;
-  box-sizing: border-box;
-  -webkit-mask:
-    linear-gradient(var(--fixed-white) 0 0) content-box,
-    linear-gradient(var(--fixed-white) 0 0);
-  -webkit-mask-composite: xor;
-  mask:
-    linear-gradient(var(--fixed-white) 0 0) content-box,
-    linear-gradient(var(--fixed-white) 0 0);
-  mask-composite: exclude;
-}
-
-.catalog-quick-section--seats-editing > .catalog-quick-seat__live {
-  border-radius: 4px;
-}
-
-.catalog-quick-seat__live-rim {
-  position: absolute;
-  inset: -45%;
-  border-radius: 50%;
-  pointer-events: none;
-  opacity: 0.8;
-  background: conic-gradient(
-    from 0deg,
-    var(--fixed-white-a05) 0deg,
-    var(--fixed-white-a05) 200deg,
-    var(--fixed-white-a45) 250deg,
-    var(--fixed-white-a95) 280deg,
-    var(--fixed-white-a45) 310deg,
-    var(--fixed-white-a05) 360deg
-  );
-  animation: catalog-seat-live-spin 1.6s linear infinite;
-}
-
-.catalog-quick-seat--brain .catalog-quick-seat__live-rim,
-.catalog-quick-strip[data-seat-editing="brain"]
-  .catalog-quick-section--seats-editing
-  > .catalog-quick-seat__live
-  .catalog-quick-seat__live-rim {
-  background: conic-gradient(
-    from 0deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw) 6%, transparent) 0deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw) 6%, transparent) 200deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw) 50%, transparent) 250deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw) 95%, var(--fixed-white) 18%) 280deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw) 50%, transparent) 310deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw) 6%, transparent) 360deg
-  );
-}
-
-.catalog-quick-seat--worker .catalog-quick-seat__live-rim,
-.catalog-quick-strip[data-seat-editing="worker"]
-  .catalog-quick-section--seats-editing
-  > .catalog-quick-seat__live
-  .catalog-quick-seat__live-rim {
-  background: conic-gradient(
-    from 0deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw) 6%, transparent) 0deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw) 6%, transparent) 200deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw) 50%, transparent) 250deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw) 95%, var(--fixed-white) 14%) 280deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw) 50%, transparent) 310deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw) 6%, transparent) 360deg
-  );
-}
-
-@keyframes catalog-seat-live-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-/* Seat-edit banner on the engine config panel (not the strip) */
-.catalog-seat-edit-banner {
-  position: relative;
-  overflow: hidden;
-  isolation: isolate;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
-  background: color-mix(in srgb, var(--theme-panel) 80%, transparent);
-  color: var(--theme-text);
-}
-
-.catalog-seat-edit-banner--brain {
-  border-color: color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 70%, transparent);
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 35%, transparent),
-    0 0 12px color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 18%, transparent);
-  background: color-mix(
-    in srgb,
-    var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 22%,
-    var(--theme-panel) 78%
-  );
-}
-
-.catalog-seat-edit-banner--worker {
-  border-color: color-mix(in srgb, var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 70%, transparent);
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 35%, transparent),
-    0 0 12px color-mix(in srgb, var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 16%, transparent);
-  background: color-mix(
-    in srgb,
-    var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 24%,
-    var(--theme-panel) 76%
-  );
-}
-
-.catalog-seat-edit-banner__label {
-  position: relative;
-  z-index: 2;
-  font-size: var(--type-body);
-  letter-spacing: 0.14em;
-  font-weight: 700;
-}
-
-.catalog-seat-edit-banner--brain .catalog-seat-edit-banner__label {
-  color: var(--theme-harness-brain-text, var(--theme-provider-pill-active-text, var(--theme-text)));
-}
-
-.catalog-seat-edit-banner--worker .catalog-seat-edit-banner__label {
-  color: var(--theme-pair-secondary-text, var(--theme-chip-solid-text, var(--theme-text)));
-}
-
-.catalog-seat-edit-banner__live {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  overflow: hidden;
-  border-radius: inherit;
-  padding: 2px;
-  box-sizing: border-box;
-  -webkit-mask:
-    linear-gradient(var(--fixed-white) 0 0) content-box,
-    linear-gradient(var(--fixed-white) 0 0);
-  -webkit-mask-composite: xor;
-  mask:
-    linear-gradient(var(--fixed-white) 0 0) content-box,
-    linear-gradient(var(--fixed-white) 0 0);
-  mask-composite: exclude;
-}
-
-.catalog-seat-edit-banner__live-rim {
-  position: absolute;
-  inset: -45%;
-  border-radius: 50%;
-  pointer-events: none;
-  opacity: 0.85;
-  animation: catalog-seat-live-spin 1.6s linear infinite;
-}
-
-.catalog-seat-edit-banner--brain .catalog-seat-edit-banner__live-rim {
-  background: conic-gradient(
-    from 0deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw) 6%, transparent) 0deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw) 6%, transparent) 200deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw) 50%, transparent) 250deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw) 95%, var(--fixed-white) 18%) 280deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw) 50%, transparent) 310deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw) 6%, transparent) 360deg
-  );
-}
-
-.catalog-seat-edit-banner--worker .catalog-seat-edit-banner__live-rim {
-  background: conic-gradient(
-    from 0deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw) 6%, transparent) 0deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw) 6%, transparent) 200deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw) 50%, transparent) 250deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw) 95%, var(--fixed-white) 14%) 280deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw) 50%, transparent) 310deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw) 6%, transparent) 360deg
-  );
-}
-
-.catalog-seat-edit-banner__btn {
-  border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
-  background: transparent;
-  color: var(--theme-text-muted);
-  padding: 2px 6px;
-  font: inherit;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.catalog-seat-edit-banner__btn--save {
-  color: var(--theme-text);
-  border-color: color-mix(in srgb, var(--theme-text) 35%, transparent);
-}
-
-.catalog-seat-edit-banner__save-ico {
-  color: var(--theme-text);
-  opacity: 0.85;
-  font-size: var(--type-body);
-}
-
-.catalog-seat-edit-banner__btn:hover {
-  color: var(--theme-text);
-}
-
-/* Section chrome */
-.catalog-quick-section {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  min-width: 0;
-}
-
-.catalog-quick-section--seats {
-  position: relative;
-  overflow: hidden;
-}
-
-.catalog-quick-section--seats-editing {
-  border-color: color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-accent)) 40%, transparent);
-}
-
-.catalog-quick-strip--seat-editing .catalog-quick-section--seats {
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-accent) 25%, transparent);
-}
-
-.catalog-quick-section__head {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-width: 0;
-  min-height: 1.15rem;
-  padding: 3px 10px;
-  isolation: isolate;
-  overflow: hidden;
-  border-radius: 2px;
-  border-top: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 55%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--theme-bezel-edge-lo) 50%, var(--theme-border));
-  background-color: var(--theme-industrial-bg);
-  background-image:
-    var(--theme-industrial-texture-active),
-    var(--theme-industrial-face-gradient, none);
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 45%, transparent),
-    inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-lo) 40%, transparent);
-}
-
-.catalog-quick-section__head > * {
-  position: relative;
-  z-index: 1;
-}
-
-/* Seats: label row + left-aligned actions row */
-.catalog-quick-section__head--seats {
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: center;
-  gap: 4px;
-  padding: 4px 6px;
-  overflow: visible;
-  min-height: 0;
-}
-
-.catalog-quick-section__head-row--label {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 0;
-  min-height: 1.15rem;
-  padding: 0 2.6rem;
-}
-
-.catalog-quick-section__title-cluster {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  min-width: 0;
-  max-width: 100%;
-}
-
-.catalog-quick-section__help {
-  flex: 0 0 auto;
-  margin: 0;
-  width: 1.05rem;
-  height: 1.05rem;
-  padding: 0;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
-  background: color-mix(in srgb, var(--theme-panel) 45%, transparent);
-  color: var(--theme-industrial-muted, var(--theme-text-muted));
-  font-family: ui-monospace, monospace;
-  font-size: var(--type-tiny);
-  font-weight: 800;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.catalog-quick-section__help:hover,
-.catalog-quick-section__help--active {
-  color: var(--theme-accent-bright, var(--theme-accent));
-  border-color: color-mix(in srgb, var(--theme-accent) 55%, transparent);
-  background: color-mix(in srgb, var(--theme-accent) 12%, transparent);
-}
-
-.catalog-quick-section__head-row--actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  min-width: 0;
-}
-
-.catalog-quick-section__actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
-  width: 100%;
-  max-width: 100%;
-}
-
-.catalog-quick-section__sets {
-  position: absolute;
-  left: 2px;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.catalog-quick-set-btn {
-  margin: 0;
-  min-width: 1.1rem;
-  height: 1rem;
-  padding: 0 3px;
-  border-radius: 2px;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
-  background: color-mix(in srgb, var(--theme-panel) 50%, transparent);
-  color: var(--theme-industrial-muted, var(--theme-text-muted));
-  font-family: ui-monospace, monospace;
-  font-size: var(--type-micro);
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.catalog-quick-set-btn:hover {
-  border-color: color-mix(in srgb, var(--theme-accent) 45%, transparent);
-  color: var(--theme-text);
-}
-
-.catalog-quick-set-btn--active {
-  border-color: color-mix(in srgb, var(--theme-accent) 65%, transparent);
-  color: var(--theme-accent-bright, var(--theme-accent));
-  background: color-mix(in srgb, var(--theme-accent) 14%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-accent) 20%, transparent);
-}
-
-.catalog-quick-section__title {
-  font-family: ui-monospace, monospace;
-  font-size: var(--type-tiny);
-  font-weight: 700;
-  letter-spacing: 0.2em;
-  text-align: center;
-  color: var(--theme-industrial-text, var(--theme-text-muted));
-  /* Two-tone label bevel via per-theme token (see app-themes.ts). Zero blur, so it is a
-     crisp edge, never a blurred ghost. Dark themes resolve to none; ARCTIC gets a
-     face-correct engraved bevel tuned for dark ink on the light aluminium bezel. */
-  text-shadow: var(--theme-catalog-label-shadow);
-}
-
-.catalog-quick-section__head .catalog-quick-section__title {
-  font-size: var(--type-label);
-  letter-spacing: 0.16em;
-}
-
-.catalog-quick-section__head--seats .catalog-quick-section__title {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.catalog-quick-section--seats .catalog-quick-section__title {
-  color: var(--theme-industrial-text, var(--theme-accent-bright, var(--theme-accent)));
-}
-
-.catalog-quick-section--seats-editing .catalog-quick-section__title {
-  font-size: var(--type-body);
-  color: var(--theme-text);
-}
-
-.catalog-quick-section--pins .catalog-quick-section__title {
-  color: var(--theme-accent-bright, var(--theme-accent));
-}
-
-.catalog-quick-section__count {
-  font-family: ui-monospace, monospace;
-  font-size: var(--type-micro);
-  letter-spacing: 0.08em;
-  color: var(--theme-industrial-muted, var(--theme-text-muted));
-  opacity: 0.85;
-  font-variant-numeric: tabular-nums;
-}
-
-.catalog-quick-section__action {
-  margin: 0;
-  padding: 1px 6px;
-  border-radius: 2px;
-  border: 1px solid color-mix(in srgb, var(--theme-accent) 45%, transparent);
-  background: color-mix(in srgb, var(--theme-panel) 55%, transparent);
-  color: var(--theme-accent-bright, var(--theme-accent));
-  font-family: ui-monospace, monospace;
-  font-size: var(--type-micro);
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  line-height: 1.2;
-  cursor: pointer;
-}
-
-.catalog-quick-section__action:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--theme-accent) 70%, transparent);
-  background: color-mix(in srgb, var(--theme-accent) 12%, transparent);
-}
-
-.catalog-quick-section__action:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-.catalog-quick-section__grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(5.75rem, 1fr));
-  gap: 4px;
-  min-width: 0;
-  align-items: stretch;
-}
-
-.catalog-quick-chip {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: center;
-  gap: 2px;
-  min-width: 0;
-  min-height: 2.15rem;
-  margin: 0;
-  /* Right gutter reserves room for the corner unpin star. */
-  padding: 4px 18px 4px 6px;
-  border-radius: 3px;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
-  background: color-mix(in srgb, var(--theme-panel) 80%, transparent);
-  color: var(--theme-text-muted);
-  cursor: pointer;
-  text-align: left;
-}
-
-/* Filled star in the chip corner — click to unpin without hunting the catalog. */
-.catalog-quick-chip__unpin {
-  position: absolute;
-  top: 1px;
-  right: 2px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--theme-accent-bright, var(--theme-accent));
-  font-size: var(--type-body);
-  line-height: 1;
-  cursor: pointer;
-}
-
-.catalog-quick-chip__unpin:hover {
-  color: var(--theme-warn, var(--theme-accent-bright, var(--theme-accent)));
-}
-
-.catalog-quick-chip__name,
-.catalog-quick-chip__quant {
-  display: block;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: ui-monospace, monospace;
-  line-height: 1.15;
-}
-
-.catalog-quick-chip__name {
-  font-size: var(--type-tiny);
-  font-weight: 600;
-  color: var(--theme-text);
-}
-
-.catalog-quick-chip__quant {
-  font-size: var(--type-micro);
-  letter-spacing: 0.04em;
-  color: var(--theme-text-muted);
-  opacity: 0.9;
-}
-
-.catalog-quick-section--pins .catalog-quick-chip__quant {
-  font-size: var(--type-hairline);
-  letter-spacing: 0.02em;
-  opacity: 0.78;
-}
-
-.catalog-quick-chip--pin {
-  border-color: color-mix(in srgb, var(--theme-accent) 35%, transparent);
-}
-
-.catalog-quick-chip--selected,
-.catalog-quick-chip:hover {
-  border-color: color-mix(in srgb, var(--theme-accent) 55%, transparent);
-}
-
-.catalog-quick-chip--selected .catalog-quick-chip__name,
-.catalog-quick-chip:hover .catalog-quick-chip__name {
-  color: var(--theme-accent-bright, var(--theme-accent));
-}
-
-.catalog-quick-chip--selected .catalog-quick-chip__quant,
-.catalog-quick-chip:hover .catalog-quick-chip__quant {
-  color: color-mix(in srgb, var(--theme-accent-bright, var(--theme-accent)) 75%, var(--theme-text-muted));
-}
-
-.catalog-sort-sep {
-  width: 1px;
-  align-self: stretch;
-  margin: 1px 2px;
-  background: color-mix(in srgb, var(--theme-border-subtle) 70%, transparent);
-}
-
-/* Card pin / seat / fit-now chips */
-[data-model-catalog] .model-card-pin {
-  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
-}
-
-[data-model-catalog] .model-card-pin--on {
-  color: var(--theme-accent-bright, var(--theme-accent));
-}
-
-[data-model-catalog] .model-card-pin--off:hover {
-  color: var(--theme-text);
-}
-
-[data-model-catalog] .model-card-seat {
-  border: 1px solid color-mix(in srgb, var(--theme-accent) 40%, transparent);
-  color: var(--theme-accent-bright, var(--theme-accent));
-  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
-  letter-spacing: 0.06em;
-}
-
-[data-model-catalog] .model-card-seat--worker {
-  border-color: color-mix(in srgb, var(--theme-nv-green) 45%, transparent);
-  color: var(--theme-nv-green);
-  background: color-mix(in srgb, var(--theme-nv-green) 10%, transparent);
-}
-
-[data-model-catalog] .model-card-seat--draft {
-  border-color: color-mix(in srgb, var(--theme-dflash-strip-border) 50%, transparent);
-  color: var(--theme-dflash-strip-text);
-  background: color-mix(in srgb, var(--theme-dflash-strip-bg) 35%, transparent);
-}
-
-[data-model-catalog] .model-card-fitnow {
-  letter-spacing: 0.06em;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent);
-  color: var(--theme-text-muted);
-  background: transparent;
-}
-
-[data-model-catalog] .model-card-fitnow--fits {
-  border-color: color-mix(in srgb, var(--theme-nv-green) 45%, transparent);
-  color: var(--theme-nv-green);
-}
-
-[data-model-catalog] .model-card-fitnow--tight {
-  border-color: var(--fixed-amber-500-a5);
-  color: var(--fixed-amber-500);
-}
-
-[data-model-catalog] .model-card-fitnow--no {
-  border-color: var(--fixed-red-500-a45);
-  color: var(--fixed-red-500-a85);
-}
-
-[data-model-catalog] .model-card-fitnow--unknown {
-  opacity: 0.7;
-}
-
-/* ── ModelCatalog (de-Tailwind surface classes) ───────────────────────────── */
-
-.cat-mut {
-  color: var(--theme-text-muted);
-}
-
-.cat-mut--soft {
-  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
-}
-
-.cat-txt {
-  color: color-mix(in srgb, var(--theme-text) 90%, transparent);
-}
-
-.cat-warn {
-  color: var(--theme-warn);
-}
-
-.cat-dng {
-  color: var(--theme-danger);
-}
-
-.cat-dng--soft {
-  color: color-mix(in srgb, var(--theme-danger) 90%, transparent);
-}
-
-/* STOP / DEL scan+edit controls */
-.cat-scan-btn--danger {
-  border-color: color-mix(in srgb, var(--theme-danger) 40%, transparent);
-  color: var(--theme-danger);
-}
-
-.cat-scan-btn--danger:hover {
-  background: color-mix(in srgb, var(--theme-danger) 10%, transparent);
-}
-
-/* RESCAN — warn idle, info while scanning */
-.cat-scan-btn--rescan {
-  border-color: color-mix(in srgb, var(--theme-warn) 30%, transparent);
-  color: var(--theme-warn);
-}
-
-.cat-scan-btn--rescan:hover {
-  background: color-mix(in srgb, var(--theme-warn) 10%, transparent);
-}
-
-.cat-scan-btn--scanning {
-  border-color: color-mix(in srgb, var(--theme-info) 40%, transparent);
-  background: color-mix(in srgb, var(--theme-info) 10%, transparent);
-  color: var(--theme-info);
-}
-
-/* Sort + FIT filter chips */
-.cat-sort-btn {
-  color: var(--theme-text-muted);
-}
-
-.cat-sort-btn:hover {
-  color: var(--theme-text);
-}
-
-.cat-sort-btn--active {
-  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
-  color: var(--theme-accent);
-}
-
-/* Header / SEARCH + FULL LIST buttons */
-.cat-header-btn {
-  border-color: color-mix(in srgb, var(--theme-border) 50%, transparent);
-  color: var(--theme-text-muted);
-}
-
-.cat-header-btn:hover {
-  color: var(--theme-accent);
-}
-
-/* CONFIG [Ctrl+Enter] zone chip */
-.cat-zone-chip {
-  border-color: color-mix(in srgb, var(--theme-info) 40%, transparent);
-  background: color-mix(in srgb, var(--theme-info) 10%, transparent);
-  color: var(--theme-info);
-}
-
-/* Error banner + RELOAD */
-.cat-error-banner {
-  border-bottom-color: color-mix(in srgb, var(--theme-danger) 30%, transparent);
-  background: color-mix(in srgb, var(--theme-danger) 5%, transparent);
-}
-
-.cat-error-reload {
-  border-color: color-mix(in srgb, var(--theme-danger) 60%, transparent);
-  color: var(--theme-danger);
-}
-
-.cat-error-reload:hover {
-  background: color-mix(in srgb, var(--theme-danger) 20%, transparent);
-}
-
-/* Chrome dialogs — neutral / warn / danger */
-.cat-dialog--neutral {
-  border-color: color-mix(in srgb, var(--theme-border) 60%, transparent);
-  background: color-mix(in srgb, var(--theme-panel) 90%, transparent);
-}
-
-.cat-dialog--warn {
-  border-color: color-mix(in srgb, var(--theme-warn) 35%, transparent);
-  background: color-mix(in srgb, var(--theme-warn) 5%, transparent);
-}
-
-.cat-dialog--danger {
-  border-color: color-mix(in srgb, var(--theme-danger) 35%, transparent);
-  background: color-mix(in srgb, var(--theme-danger) 5%, transparent);
-}
-
-.cat-warn-btn {
-  border-color: color-mix(in srgb, var(--theme-warn) 40%, transparent);
-  color: var(--theme-warn);
-}
-
-.cat-dng-btn {
-  border-color: color-mix(in srgb, var(--theme-danger) 40%, transparent);
-  color: var(--theme-danger);
-}
-
-/* Empty-state CONFIG → PATHS button */
-.cat-paths-btn {
-  border-color: color-mix(in srgb, var(--theme-accent) 50%, transparent);
-  color: var(--theme-accent);
-}
-
-.cat-paths-btn:hover {
-  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
-}
-
-/* ── ModelCard (de-Tailwind surface classes) ──────────────────────────────── */
-
-.mcard-author {
-  color: var(--theme-text-muted);
-}
-
-.mcard-gguf {
-  border-color: color-mix(in srgb, var(--theme-border) 20%, transparent);
-  color: var(--theme-text-muted);
-}
-
-/* HF update chips — header = info, full = warn */
-.mcard-hf--header {
-  border-color: color-mix(in srgb, var(--theme-info) 40%, transparent);
-  background: color-mix(in srgb, var(--theme-info) 10%, transparent);
-  color: var(--theme-info);
-}
-
-.mcard-hf--header:hover {
-  background: color-mix(in srgb, var(--theme-info) 20%, transparent);
-}
-
-.mcard-hf--full {
-  border-color: color-mix(in srgb, var(--theme-warn) 40%, transparent);
-  background: color-mix(in srgb, var(--theme-warn) 10%, transparent);
-  color: var(--theme-warn);
-}
-
-.mcard-hf--full:hover {
-  background: color-mix(in srgb, var(--theme-warn) 20%, transparent);
-}
-
-/* Transient update-check result bubble — floats over the card (never in flow).
-   Verdict-only bubbles fade after ~6s; actionable (update-available) bubbles stay
-   and expose an UPDATE button. */
-.model-card-check-bubble {
-  position: absolute;
-  top: 5px;
-  right: 5px;
-  z-index: 10;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 6px;
-  border-radius: 3px;
-  border: 1px solid;
-  font-family: ui-monospace, monospace;
-  font-size: var(--type-tiny);
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  white-space: nowrap;
-  box-shadow: 0 2px 8px var(--fixed-black-a4);
-  pointer-events: none;
-  animation: model-card-check-bubble-fade 6s ease forwards;
-}
-
-.model-card-check-bubble__icon {
-  font-size: var(--type-label);
-  line-height: 1;
-}
-
-/* Actionable bubble has an UPDATE button — keep it interactive and on-screen. */
-.model-card-check-bubble--actionable {
-  pointer-events: auto;
-  gap: 5px;
-  padding-right: 3px;
-  animation: model-card-check-bubble-in 0.18s ease both;
-}
-
-.model-card-check-bubble__btn {
-  font-family: ui-monospace, monospace;
-  font-size: var(--type-tiny);
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  padding: 1px 5px;
-  border-radius: 2px;
-  border: 1px solid currentColor;
-  background: color-mix(in srgb, var(--theme-panel) 70%, transparent);
-  color: inherit;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.model-card-check-bubble__btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.model-card-check-bubble--current {
-  border-color: color-mix(in srgb, var(--theme-accent) 55%, transparent);
-  background: color-mix(in srgb, var(--theme-panel) 92%, var(--theme-accent));
-  color: var(--theme-accent-bright, var(--theme-accent));
-}
-
-.model-card-check-bubble--header {
-  border-color: color-mix(in srgb, var(--theme-info) 60%, transparent);
-  background: color-mix(in srgb, var(--theme-panel) 90%, var(--theme-info));
-  color: var(--theme-info);
-}
-
-.model-card-check-bubble--full {
-  border-color: color-mix(in srgb, var(--theme-warn) 60%, transparent);
-  background: color-mix(in srgb, var(--theme-panel) 90%, var(--theme-warn));
-  color: var(--theme-warn);
-}
-
-.model-card-check-bubble--none {
-  border-color: color-mix(in srgb, var(--theme-text-muted) 45%, transparent);
-  background: color-mix(in srgb, var(--theme-panel) 92%, transparent);
-  color: var(--theme-text-muted);
-}
-
-@keyframes model-card-check-bubble-fade {
-  0% { opacity: 0; transform: translateY(-3px); }
-  8% { opacity: 1; transform: translateY(0); }
-  80% { opacity: 1; transform: translateY(0); }
-  100% { opacity: 0; transform: translateY(-2px); }
-}
-
-@keyframes model-card-check-bubble-in {
-  from { opacity: 0; transform: translateY(-3px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .model-card-check-bubble,
-  .model-card-check-bubble--actionable {
-    animation: none;
-  }
-}
-
-.mcard-params {
-  color: var(--theme-text);
-}
-
-/* Arch / draft badge chips — dark ink chip */
-.mcard-inkchip {
-  background: color-mix(in srgb, var(--theme-text) 14%, transparent);
-  color: color-mix(in srgb, var(--theme-text) 70%, transparent);
-}
-
-/* MULTIMODAL badge */
-.mcard-mm {
-  border-color: color-mix(in srgb, var(--theme-warn) 20%, transparent);
-  color: color-mix(in srgb, var(--theme-warn) 60%, transparent);
-}
-
-/* Footer divider */
-.mcard-footer {
-  border-top-color: color-mix(in srgb, var(--theme-border) 30%, transparent);
-}
-
-.mcard-meta-mut {
-  color: var(--theme-text-muted);
-}
-
-.mcard-date {
-  color: color-mix(in srgb, var(--theme-text) 60%, transparent);
-}
-
-/* FIT SCAN button — quiet idle, accent while scanning */
-.mcard-fit-scan {
-  border-color: color-mix(in srgb, var(--theme-border) 60%, transparent);
-  color: var(--theme-text-muted);
-}
-
-.mcard-fit-scan:hover {
-  border-color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
-  color: color-mix(in srgb, var(--theme-text) 70%, transparent);
-  background: color-mix(in srgb, var(--theme-text) 4%, transparent);
-}
-
-.mcard-fit-scan--scanning {
-  border-color: color-mix(in srgb, var(--theme-accent) 40%, transparent);
-  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
-  color: var(--theme-accent);
-}
-
-/* ⚠ SCAN button (no metadata) — warn idle, info while scanning */
-.mcard-scan {
-  border-color: color-mix(in srgb, var(--theme-warn) 30%, transparent);
-  color: var(--theme-warn);
-}
-
-.mcard-scan:hover {
-  background: color-mix(in srgb, var(--theme-warn) 10%, transparent);
-}
-
-.mcard-scan--scanning {
-  border-color: color-mix(in srgb, var(--theme-info) 40%, transparent);
-  background: color-mix(in srgb, var(--theme-info) 10%, transparent);
-  color: var(--theme-info);
-}
-
-/* Quant badge — NVFP = accent, other = info */
-.mcard-quant--nvfp {
-  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
-  border-color: color-mix(in srgb, var(--theme-accent) 20%, transparent);
-  color: color-mix(in srgb, var(--theme-accent) 50%, transparent);
-}
-
-.mcard-quant--cyan {
-  border-color: color-mix(in srgb, var(--theme-info) 15%, transparent);
-  color: color-mix(in srgb, var(--theme-info) 50%, transparent);
-}
-
-/* ── MiniModelCard (de-Tailwind surface classes) ──────────────────────────── */
-
-.mcard-mini--new {
-  background: color-mix(in srgb, var(--theme-text) 40%, transparent);
-  border-color: color-mix(in srgb, var(--theme-accent) 40%, transparent);
-}
-
-.mcard-mini--new:hover {
-  background: color-mix(in srgb, var(--theme-text) 60%, transparent);
-}
-
-.mcard-mini-author {
-  color: var(--theme-text-muted);
-}
-
-.mcard-mini-alias {
-  color: color-mix(in srgb, var(--theme-accent) 80%, transparent);
-}
-
-.mcard-mini-name {
-  color: var(--theme-text);
-}
-
-.mcard-mini-name--selected {
-  color: var(--theme-accent);
-}
-
-.mcard-mini-quant--nvfp {
-  background: color-mix(in srgb, var(--theme-accent) 20%, transparent);
-  border-color: color-mix(in srgb, var(--theme-accent) 40%, transparent);
-  color: var(--theme-accent);
-}
-
-.mcard-mini-quant--cyan {
-  border-color: color-mix(in srgb, var(--theme-info) 30%, transparent);
-  color: var(--theme-info);
-}
-
-.mcard-mini-size {
-  color: var(--theme-text-muted);
-}
-
+/* ── E-ink Panel Wrapper — shared panel background ─────────────────────────────── */
+
+.eink-panel-wrapper {
+  background: var(--theme-panel-accent);
+  border: 1px solid var(--theme-border-subtle);
+  position: relative;
+  overflow: hidden;
+}
+
+.eink-panel-wrapper::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--theme-accent-glow), transparent);
+}
+
+/* ── Model catalog / engine config split handle (grip only — no grey bar) ─── */
+.catalog-split-handle {
+  position: relative;
+  flex-shrink: 0;
+  width: 10px;
+  margin: 0 -1px;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 2;
+  background: transparent;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.catalog-split-handle::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 2px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--theme-accent) 35%, #808080 65%);
+  opacity: 0.65;
+  transition: opacity 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.catalog-split-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 4px;
+  height: 28px;
+  border-radius: 2px;
+  background:
+    radial-gradient(circle, color-mix(in srgb, var(--theme-text-muted) 90%, var(--fixed-white)) 0.75px, transparent 0.8px)
+      center 2px / 4px 6px repeat-y;
+  opacity: 0.75;
+  transition: opacity 0.15s ease;
+}
+
+.catalog-split-handle:hover,
+.catalog-split-handle.is-dragging {
+  background: color-mix(in srgb, var(--theme-accent) 8%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-accent) 22%, transparent);
+}
+
+.catalog-split-handle:hover::before,
+.catalog-split-handle.is-dragging::before {
+  opacity: 1;
+  background: var(--theme-accent);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-accent-glow, var(--theme-accent)) 50%, transparent);
+}
+
+.catalog-split-handle:hover::after,
+.catalog-split-handle.is-dragging::after {
+  opacity: 1;
+}
+
+
+/* Catalog list collapse rail — toggle + resize handle */
+.catalog-split-rail {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  align-self: stretch;
+  flex-shrink: 0;
+  width: 11px;
+  min-width: 11px;
+  min-height: 100%;
+  margin: 0 -1px;
+  z-index: 3;
+}
+
+.catalog-split-rail .catalog-split-handle {
+  flex: 1 1 auto;
+  align-self: stretch;
+  min-height: 0;
+  margin: 0;
+}
+
+.catalog-list-panel {
+  position: relative;
+}
+
+/*
+ * Catalog chrome header — industrial panel face (same stack as app header /
+ * provider bar / bezel frame). Always full opacity; dim does not apply here.
+ * Row 1: search · Row 2: sort + MAIN/MAX + DIM
+ */
+.catalog-list-panel__chrome {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 8px 12px 8px;
+  position: relative;
+  z-index: 2;
+  isolation: isolate;
+  overflow: hidden;
+  /* Gunmetal industrial face — not flat panel-accent */
+  background-color: var(--theme-industrial-bg);
+  background-image:
+    var(--theme-industrial-texture-active),
+    var(--theme-industrial-face-gradient, none);
+  border-bottom: 1.5px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 75%, var(--theme-border));
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 50%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-lo) 45%, transparent),
+    0 2px 10px color-mix(in srgb, var(--theme-panel) 45%, transparent);
+}
+
+.catalog-list-panel__chrome > * {
+  position: relative;
+  z-index: 1;
+}
+
+.catalog-list-panel__chrome-search {
+  min-width: 0;
+  width: 100%;
+}
+
+.catalog-list-panel__chrome-search .catalog-search-wrap {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+}
+
+/* Search field — full-width input with a fused right rail:
+   kind cycler (MAIN/DRAFT/ALL) on top, model count below. */
+.catalog-list-panel__chrome-search .catalog-search-field {
+  position: relative;
+  flex: 1 1 10rem;
+  min-width: 0;
+  height: 38px;
+  display: block;
+}
+
+/* Right rail — stacks cycler + count inside the input face */
+.catalog-search-field__rail {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  bottom: 3px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 2px;
+  width: 3.55rem;
+  pointer-events: none;
+}
+
+.catalog-search-field__rail .catalog-kind-cycler {
+  pointer-events: auto;
+}
+
+/* Model count — under the kind cycler, same rail width (flat chip, no chrome grit) */
+.catalog-search-count {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  flex: 0 0 auto;
+  padding: 0 4px;
+  height: 13px;
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-tiny);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  color: var(--theme-text-muted, var(--theme-text));
+  opacity: 0.85;
+  white-space: nowrap;
+  user-select: none;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-panel-accent, var(--theme-panel)) 72%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-border-subtle) 55%, transparent);
+  pointer-events: none;
+}
+
+.catalog-list-panel__chrome-search .catalog-search-input {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  padding: 0 3.95rem 0 0.75rem;
+  line-height: 36px;
+  box-sizing: border-box;
+}
+
+
+/* SCAN META + EDIT controls — moved into the filter/sort bar (row 1, far right),
+   docked right with an amber border to group them as a distinct unit. */
+.catalog-tools-right {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+  margin-left: auto;
+}
+
+/* Amber grouping border on the SCAN META / EDIT chips. */
+.catalog-tools-right .catalog-scan-btn {
+  border: 1px solid var(--fixed-amber-600-a55);
+  border-radius: 3px;
+}
+
+/* Hide CHECK ALL / UPDATES in the UI (kept in the DOM for future re-enable). */
+.catalog-tools-hidden {
+  display: none;
+}
+
+.catalog-list-panel__chrome-tools {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 0;
+  width: 100%;
+}
+
+.catalog-list-panel__chrome-tools .panel-dim-control {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* ── Alt-B: filter/sort bar — same gunmetal chrome as the search bar, flush full width ── */
+.catalog-list-panel .catalog-list-panel__chrome-tools {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  position: relative;
+  z-index: 1;
+  isolation: isolate;
+  overflow: hidden;
+  background-color: var(--theme-industrial-bg);
+  background-image:
+    var(--theme-industrial-texture-active),
+    var(--theme-industrial-face-gradient, none);
+  border-bottom: 1.5px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 75%, var(--theme-border));
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 50%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-lo) 45%, transparent);
+}
+.catalog-list-panel .catalog-list-panel__chrome-tools > * {
+  position: relative;
+  z-index: 1;
+}
+[data-model-catalog] .catalog-list-panel .catalog-list-panel__chrome-tools {
+  background-color: var(--theme-industrial-bg) !important;
+  background-image:
+    var(--theme-industrial-texture-active),
+    var(--theme-industrial-face-gradient, none) !important;
+}
+
+.catalog-chrome-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+}
+
+.catalog-chrome-row--filters {
+  justify-content: space-between;
+}
+
+/* Single cycler for model kind (MAIN / DRAFT / ALL) — flat chip, no industrial grit */
+.catalog-kind-cycler {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0 4px;
+  text-align: center;
+  font-size: var(--type-label);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  line-height: 1;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 50%, transparent);
+  background: color-mix(in srgb, var(--theme-panel-accent, var(--theme-panel)) 88%, transparent);
+  color: var(--theme-accent-bright, var(--theme-accent));
+  cursor: pointer;
+  box-shadow: none;
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease, filter 0.15s ease;
+}
+
+
+.catalog-kind-cycler:hover {
+  border-color: color-mix(in srgb, var(--theme-accent-bright, var(--theme-accent)) 70%, transparent);
+  filter: brightness(1.18);
+}
+
+/* State-aware accent — border + text (+ light wash for DRAFT) */
+.catalog-kind-cycler[data-kind="draft"] {
+  border-color: var(--theme-dflash-strip-border, color-mix(in srgb, #8b5cf6 60%, transparent));
+  color: var(--theme-dflash-strip-text);
+  background: color-mix(
+    in srgb,
+    var(--theme-dflash-strip-bg) 38%,
+    var(--theme-panel-accent, var(--theme-panel)) 62%
+  );
+}
+
+.catalog-kind-cycler[data-kind="draft"]:hover {
+  border-color: color-mix(in srgb, var(--theme-dflash-strip-border) 85%, transparent);
+  filter: brightness(1.08);
+}
+
+.catalog-kind-cycler[data-kind="all"] {
+  border-color: color-mix(in srgb, var(--theme-nv-green) 60%, transparent);
+  color: var(--theme-nv-green);
+}
+
+.catalog-kind-cycler[data-kind="all"]:hover {
+  border-color: color-mix(in srgb, var(--theme-nv-green) 85%, transparent);
+}
+
+.catalog-list-panel__chrome-msg {
+  margin: 0;
+}
+
+.catalog-list-panel__chrome-dialog {
+  flex-shrink: 0;
+}
+
+/* Card list only — dim is per-card (selected stays full) */
+.catalog-list-panel__body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+
+.catalog-list-card-wrap {
+  transition: opacity 0.15s ease;
+}
+
+/* Selected model — full opacity + full chroma under quiet-wing desaturate */
+.catalog-list-card-wrap--selected {
+  opacity: 1 !important;
+  position: relative;
+  z-index: 1;
+}
+
+[data-model-catalog] .catalog-list-panel .catalog-list-card-wrap--selected .gunmetal-card {
+  filter: saturate(1.55) brightness(1.08);
+}
+
+/*
+ * OPERATIONS workspace — one continuous field with the engine-config panel.
+ * Same face as .eink-panel-wrapper (theme-panel-accent); list is a quiet wing,
+ * not a second chrome room. Engine config stays full chroma.
+ */
+[data-model-catalog] .catalog-split-workspace {
+  background: var(--theme-panel-accent);
+}
+
+/* List column = same face as right config panel (no grit, no extra shell) */
+[data-model-catalog] .catalog-list-panel,
+[data-model-catalog] .catalog-list-panel.eink-panel-wrapper {
+  isolation: auto;
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+[data-model-catalog] .catalog-list-panel.eink-panel-wrapper::before {
+  display: none !important;
+}
+
+/* Right config panel already uses eink-panel-wrapper panel-accent — no double edge */
+[data-model-catalog] .catalog-split-workspace > .eink-panel-wrapper:not(.catalog-list-panel) {
+  border-left: none;
+  box-shadow: none !important;
+}
+
+[data-model-catalog] .catalog-list-scroll {
+  background: transparent !important;
+  background-image: none !important;
+}
+
+/*
+ * Quiet wing on list body only — chrome keeps full industrial chroma/texture.
+ * Opacity dim is separate (per unselected card).
+ */
+[data-model-catalog] .catalog-list-panel__body {
+  filter: saturate(0.42) brightness(0.97);
+}
+
+/* Unselected cards stay quiet; selected is boosted via .catalog-list-card-wrap--selected */
+[data-model-catalog] .catalog-list-panel .buried-card {
+  filter: none;
+}
+
+[data-model-catalog] .catalog-list-panel .gunmetal-card {
+  filter: saturate(1.35) brightness(1.04);
+}
+
+/* Override any flat transparent wipe so industrial face sticks */
+[data-model-catalog] .catalog-list-panel__chrome {
+  background-color: var(--theme-industrial-bg) !important;
+  background-image:
+    var(--theme-industrial-texture-active),
+    var(--theme-industrial-face-gradient, none) !important;
+}
+
+[data-model-catalog] .catalog-list-scroll.eink-scrollbar::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--theme-text-muted) 35%, var(--theme-panel-accent) 65%);
+}
+
+[data-model-catalog] .catalog-list-scroll.eink-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--theme-accent) 28%, var(--theme-panel-accent) 72%);
+}
+
+
+.catalog-split-rail--collapsed {
+  overflow: visible;
+}
+
+.catalog-split-rail--collapsed .catalog-split-handle {
+  cursor: col-resize;
+}
+
+.catalog-split-toggle {
+  position: absolute;
+  /* Aligned to bottom of catalog chrome header (set via --catalog-toggle-top) */
+  top: var(--catalog-toggle-top, 0px);
+  left: 50%;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 36px;
+  margin: 0;
+  padding: 0;
+  /* Center the chevron on the chrome/list seam */
+  transform: translate(-50%, -50%);
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 40%, var(--theme-border));
+  border-radius: 4px;
+  background: var(--theme-bg-elevated, var(--theme-bg));
+  color: var(--theme-accent, var(--theme-text-muted));
+  cursor: pointer;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-accent-glow, transparent) 15%, transparent);
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.catalog-split-toggle:hover {
+  border-color: color-mix(in srgb, var(--theme-accent) 70%, var(--theme-border));
+  color: var(--theme-accent-bright, var(--theme-text));
+  box-shadow: 0 0 10px color-mix(in srgb, var(--theme-accent-glow, transparent) 45%, transparent);
+}
+
+/* Collapsed: amber pulse so the rail isn’t “invisible” */
+.catalog-split-toggle--collapsed-hint {
+  animation: catalogSplitTogglePulse 1.35s ease-in-out infinite;
+}
+
+.catalog-split-toggle__glyph {
+  font-size: var(--type-body);
+  font-family: ui-monospace, monospace;
+  line-height: 1;
+  pointer-events: none;
+  transition: transform 0.2s ease;
+}
+
+.catalog-split-toggle__glyph--collapse {
+  transform: rotate(180deg);
+}
+
+.catalog-split-rail .catalog-split-toggle {
+  left: 0;
+  /* --catalog-toggle-top = first model card top; pin glyph top-aligned to that line */
+  transform: translate(-50%, 0);
+}
+
+.catalog-split-rail--collapsed .catalog-split-toggle {
+  left: 0;
+  /* No chrome when collapsed — pin near rail top */
+  transform: translate(0, 0);
+}
+
+.catalog-split-rail--collapsed .catalog-split-toggle:hover {
+  background: var(--theme-bg-elevated, var(--theme-bg));
+  box-shadow: 0 0 10px color-mix(in srgb, var(--theme-accent-glow, transparent) 45%, transparent);
+}
+
+/* Header: soft amber / search hint when catalog is collapsed (readable on dark themes) */
+.config-catalog-search-hint--pulse {
+  border-color: var(--fixed-amber-600-a45) !important;
+  color: color-mix(in srgb, var(--fixed-amber-500) 75%, #e5e5e5) !important;
+  background: var(--fixed-amber-600-a1) !important;
+  animation: catalogSearchHintPulse 2.4s ease-in-out infinite;
+}
+
+@keyframes catalogSearchHintPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+    opacity: 0.88;
+  }
+  50% {
+    box-shadow: 0 0 8px 0 var(--fixed-amber-600-a28);
+    opacity: 1;
+  }
+}
+
+@keyframes catalogSplitTogglePulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+    border-color: color-mix(in srgb, var(--fixed-amber-600) 40%, var(--theme-border));
+  }
+  50% {
+    box-shadow: 0 0 6px 0 var(--fixed-amber-600-a3);
+    border-color: color-mix(in srgb, var(--fixed-amber-600) 55%, var(--theme-border));
+  }
+}
+
+.catalog-split-toggle--collapsed-hint {
+  border-color: color-mix(in srgb, var(--fixed-amber-600) 45%, var(--theme-border)) !important;
+  color: color-mix(in srgb, var(--fixed-amber-500) 70%, var(--theme-text-muted)) !important;
+}
+
+.catalog-split-workspace--collapsed .catalog-list-panel {
+  display: none;
+}
+
+/* Model catalog — skip paint for off-screen cards; stable intrinsic height for scroll */
+[data-model-path] {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 4.75rem;
+}
+
+.model-catalog-card {
+  contain: layout style;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.model-catalog-card > *:not(.model-card-draft-hatch):not(.model-card-check-bubble) {
+  position: relative;
+  z-index: 1;
+}
+
+/* Draft-only hatch — violet diagonal veil; text stays above and readable */
+.model-card-draft-hatch {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      -52deg,
+      color-mix(in srgb, var(--theme-dflash-strip-border) 22%, transparent) 0 5px,
+      transparent 5px 11px
+    ),
+    color-mix(in srgb, var(--theme-dflash-strip-bg) 18%, transparent);
+  opacity: 0.9;
+}
+
+.model-catalog-card--draft {
+  /* keep full ink; hatch carries the draft cue (opacity mute looked disabled) */
+  opacity: 1;
+}
+
+.model-catalog-card--draft .model-card-draft-badge {
+  color: var(--theme-dflash-strip-text);
+  border: 1px solid var(--theme-dflash-strip-border, var(--fixed-violet-400-a5));
+  background: color-mix(in srgb, var(--theme-dflash-strip-bg) 55%, transparent);
+}
+
+.catalog-sort-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  overflow: hidden;
+  min-width: 0;
+  width: 100%;
+}
+
+.catalog-sort-group::-webkit-scrollbar {
+  display: none;
+}
+
+.catalog-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.125rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.catalog-sort-arrow {
+  display: inline-block;
+  width: 0.5rem;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.catalog-sort-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.catalog-cycle-btn {
+  min-width: 2.125rem;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.catalog-search-wrap {
+  min-width: 0;
+}
+
+.catalog-search-input {
+  min-width: 0;
+}
+
+
+/* Catalog list — vertical scrollbar on the left (Chromium / WebView2) */
+.catalog-list-scroll {
+  direction: rtl;
+  /* Physical right = split side — keep list content off the resize rail */
+  padding-right: 1.125rem;
+}
+
+.catalog-list-scroll > * {
+  direction: ltr;
+}
+
+
+/* Model card styles */
+/* ── Catalog card (unselected) — no fill; list panel tint shows through ─── */
+.buried-card {
+  background: transparent;
+  background-image: none;
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: 6px;
+  box-shadow: none;
+  transition: background 0.2s ease, border-color 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Reserve selection rail slot on every card — gunmetal only changes color */
+.buried-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 2px;
+  background: transparent;
+  box-shadow: none;
+  pointer-events: none;
+}
+
+.buried-card:hover {
+  background: color-mix(in srgb, var(--theme-accent) 5%, transparent);
+  background-image: none;
+  border-color: color-mix(in srgb, var(--theme-border) 55%, var(--theme-accent) 45%);
+  box-shadow: none;
+}
+
+/*
+ * Catalog cards — face from --theme-catalog-card-* (ARCTIC = ice slab;
+ * dark themes = transparent wing defaults in tokens-base).
+ */
+[data-model-catalog] .model-catalog-card.buried-card,
+[data-model-catalog] .buried-card,
+[data-model-catalog] [data-model-path] .model-catalog-card {
+  background-color: var(--theme-catalog-card-bg) !important;
+  background-image: var(--theme-catalog-card-bg-image) !important;
+  border-color: var(--theme-catalog-card-border) !important;
+  box-shadow: var(--theme-catalog-card-shadow) !important;
+  border-radius: 8px;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+[data-model-catalog] .model-catalog-card.buried-card:hover,
+[data-model-catalog] .buried-card:hover {
+  background-color: var(--theme-catalog-card-hover-bg) !important;
+  background-image: var(--theme-catalog-card-bg-image) !important;
+  border-color: var(--theme-catalog-card-hover-border) !important;
+  box-shadow: var(--theme-catalog-card-hover-shadow) !important;
+}
+
+/* Selected — lifted accent face + left rail (must read at dim=100% on dark themes) */
+[data-model-catalog] .model-catalog-card.gunmetal-card,
+[data-model-catalog] .gunmetal-card {
+  background-color: var(--theme-catalog-card-selected-bg) !important;
+  background-image: var(--theme-catalog-card-selected-bg-image) !important;
+  border: 1px solid var(--theme-catalog-card-selected-border) !important;
+  box-shadow: var(--theme-catalog-card-selected-shadow) !important;
+  border-radius: 8px;
+}
+
+[data-model-catalog] .gunmetal-card::before,
+[data-model-catalog] .model-catalog-card.gunmetal-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 5px;
+  bottom: 5px;
+  width: 4px;
+  border-radius: 2px;
+  background: var(--theme-catalog-card-rail);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--theme-catalog-card-rail) 55%, transparent);
+  pointer-events: none;
+  z-index: 2;
+}
+
+[data-model-catalog] .model-catalog-card.gunmetal-card .model-card-name {
+  color: var(--theme-accent-bright, var(--theme-accent)) !important;
+}
+
+/* Footer: size/date left, badge column right */
+[data-model-catalog] .model-card-footer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+[data-model-catalog] .model-card-badges {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 0.25rem;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+/* Size + date footer meta — size is the primary weight readout */
+[data-model-catalog] .model-card-meta {
+  position: relative;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: baseline;
+  gap: 0.4rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+[data-model-catalog] .model-card-size {
+  font-size: var(--type-sm);
+  line-height: 1.1;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+[data-model-catalog] .model-card-date {
+  font-size: var(--type-tiny);
+  line-height: 1.1;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/*
+ * In-card hover tip for arch / KV / FIT — native title is unreliable under
+ * contain + content-visibility in WebView2; paint the tip inside the card.
+ */
+[data-model-catalog] .model-card-meta--tip {
+  cursor: help;
+}
+
+[data-model-catalog] .model-card-meta--tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 0;
+  bottom: 100%;
+  z-index: 5;
+  max-width: min(16rem, 100%);
+  margin-bottom: 4px;
+  padding: 3px 7px;
+  border-radius: 3px;
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-tiny);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+  white-space: normal;
+  color: var(--theme-text);
+  background: color-mix(in srgb, var(--theme-panel) 94%, var(--theme-accent) 6%);
+  border: 1px solid color-mix(in srgb, var(--theme-border) 70%, var(--theme-accent) 30%);
+  box-shadow: 0 2px 8px var(--fixed-black-a35);
+  opacity: 0;
+  transform: translateY(2px);
+  pointer-events: none;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+[data-model-catalog] .model-card-meta--tip:hover::after,
+[data-model-catalog] .model-card-meta--tip:focus-visible::after {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Badges on catalog cards — mono mute (less cyan/green noise) */
+[data-model-catalog] .model-card-quant-badge,
+[data-model-catalog] .model-card-quant-badge--cyan,
+[data-model-catalog] .model-card-quant-badge--nvfp {
+  color: color-mix(in srgb, var(--theme-text-muted) 85%, var(--theme-text) 15%) !important;
+  border-color: color-mix(in srgb, var(--theme-border) 80%, transparent) !important;
+  background: color-mix(in srgb, var(--theme-text) 4%, transparent) !important;
+}
+
+/*
+ * Card ink — ModelCard surface classes (mcard-*) paint theme tokens directly;
+ * these container rules are the ARCTIC readability correction, re-keyed from
+ * the deleted text-white/* / text-stealth-muted utility hooks.
+ */
+[data-model-catalog] .model-catalog-card .mcard-params,
+[data-model-catalog] .model-catalog-card .mcard-mini-name {
+  color: var(--theme-text) !important;
+}
+
+[data-model-catalog] .model-catalog-card .mcard-date,
+[data-model-catalog] .model-catalog-card .mcard-inkchip {
+  color: var(--theme-text-muted) !important;
+}
+
+[data-model-catalog] .model-catalog-card .mcard-author,
+[data-model-catalog] .model-catalog-card .mcard-meta-mut,
+[data-model-catalog] .model-catalog-card .mcard-mini-author,
+[data-model-catalog] .model-catalog-card .mcard-mini-size {
+  color: var(--theme-text-muted) !important;
+}
+
+[data-model-catalog] .model-catalog-card .mcard-inkchip {
+  background-color: color-mix(in srgb, var(--theme-text) 14%, transparent) !important;
+}
+
+[data-model-catalog] .model-catalog-card .mcard-inkchip {
+  color: var(--theme-text) !important;
+}
+
+/* ── E-ink Scrollbar ─── */
+.eink-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.eink-scrollbar::-webkit-scrollbar-track {
+  background: var(--theme-scrollbar-track);
+}
+
+.eink-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--theme-scrollbar-thumb);
+  border-radius: 2px;
+}
+
+.eink-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--theme-scrollbar-thumb) 70%, var(--theme-accent-bright) 30%);
+}
+
+/* ── Engine Stack page — unified with MODELS tab ─── */
+[data-engine-stack] .engine-stack-empty-icon {
+  color: var(--theme-accent);
+}
+
+[data-engine-stack] .engine-stack-card {
+  position: relative;
+  border: 1px solid var(--theme-border-subtle);
+}
+
+[data-engine-stack] .engine-stack-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--theme-accent-glow), transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+
+[data-engine-stack] .engine-stack-banner {
+  background: var(--theme-eject-card-bg);
+}
+
+
+[data-engine-stack] .engine-stack-log {
+  background: var(--theme-industrial-bar-track);
+}
+
+[data-engine-stack] .engine-stack-footer {
+  background: var(--theme-accent-soft);
+}
+
+[data-engine-stack] .engine-stack-phase-pp {
+  background: color-mix(in srgb, var(--theme-secondary) 10%, transparent) !important;
+  border-color: color-mix(in srgb, var(--theme-secondary) 30%, transparent) !important;
+}
+
+[data-engine-stack] .engine-stack-phase-tg {
+  background: var(--theme-accent-soft) !important;
+  border-color: color-mix(in srgb, var(--theme-accent) 30%, transparent) !important;
+}
+
+[data-engine-stack] .engine-stack-phase-idle {
+  background: var(--theme-panel) !important;
+  border-color: var(--theme-border-subtle) !important;
+}
+
+[data-engine-stack] .status-online {
+  background-color: var(--theme-accent) !important;
+  box-shadow: 0 0 6px var(--theme-accent-glow) !important;
+}
+
+[data-engine-stack] .status-loading {
+  background-color: var(--theme-secondary-bright) !important;
+  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-secondary) 40%, transparent) !important;
+}
+
+[data-engine-stack] .eink-panel .provider-pill-active {
+  background: var(--theme-provider-pill-active-bg) !important;
+  border: 1px solid var(--theme-provider-pill-active-border) !important;
+  color: var(--theme-provider-pill-active-text) !important;
+}
+
+[data-engine-stack] .eink-panel .engine-stack-profile-pill {
+  background: var(--fixed-rgba-184-122-0-a08) !important;
+  border: 1px solid var(--fixed-rgba-184-122-0-a4) !important;
+  color: var(--fixed-brand-amber) !important;
+}
+
+
+[data-engine-stack] .engine-stack-header {
+  background: var(--theme-panel);
+}
+
+[data-engine-stack] .engine-stack-bench {
+  background: var(--theme-panel);
+}
+
+[data-engine-stack] .engine-stack-bench-toggle:hover {
+  background: color-mix(in srgb, var(--theme-accent) 6%, transparent);
+}
+
+[data-engine-stack] .engine-stack-bench .bench-widget-panel {
+  border: 1px solid var(--theme-border-subtle);
+  background: var(--theme-industrial-bar-track);
+}
+
+
+/* ── Catalog quick strip: seats bank + pins ──────────────────────────────── */
+.catalog-quick-strip {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 6px 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-border-subtle, var(--theme-border)) 70%, transparent);
+  background: color-mix(in srgb, var(--theme-panel-accent, var(--theme-panel)) 55%, transparent);
+}
+
+/* Twin seats + optional Σ footer in one frame */
+.catalog-quick-seat-bank {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-radius: 5px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 55%, transparent);
+  overflow: hidden;
+}
+
+.catalog-quick-seat-bank--editing {
+  border-color: color-mix(in srgb, var(--theme-accent) 35%, transparent);
+}
+
+.catalog-quick-seat-bank--help {
+  border-color: color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-accent)) 40%, transparent);
+  background:
+    radial-gradient(
+      120% 90% at 0% 0%,
+      color-mix(in srgb, var(--theme-harness-brain-raw) 14%, transparent),
+      transparent 55%
+    ),
+    radial-gradient(
+      100% 80% at 100% 100%,
+      color-mix(in srgb, var(--theme-harness-worker-raw) 12%, transparent),
+      transparent 50%
+    ),
+    color-mix(in srgb, var(--theme-panel) 70%, var(--fixed-black) 30%);
+}
+
+/* Local help panel inside seat bank (same idea as harness connect veil, scoped) */
+.catalog-seats-help {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 8px 9px 9px;
+}
+
+.catalog-seats-help__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+
+.catalog-seats-help__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.catalog-seats-help__kicker {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-label);
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  color: var(--theme-accent-bright, var(--theme-accent));
+}
+
+.catalog-seats-help__close {
+  margin: 0;
+  padding: 2px 7px;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 50%, transparent);
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+
+.catalog-seats-help__close:hover {
+  color: var(--theme-text);
+  border-color: color-mix(in srgb, var(--theme-accent) 45%, transparent);
+}
+
+.catalog-seats-help__blurb {
+  margin: 0;
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-label);
+  line-height: 1.35;
+  color: var(--theme-text);
+  opacity: 0.9;
+}
+
+.catalog-seats-help__flow {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 0;
+}
+
+.catalog-seats-help__step {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 5px 6px;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 55%, transparent);
+}
+
+.catalog-seats-help__n {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-tiny);
+  font-weight: 800;
+  color: var(--theme-text-muted);
+  opacity: 0.75;
+}
+
+.catalog-seats-help__step-title {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-tiny);
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: var(--theme-text);
+}
+
+.catalog-seats-help__roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.catalog-seats-help__role {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+
+.catalog-seats-help__role--brain {
+  color: var(--theme-harness-brain-text, var(--theme-provider-pill-active-text));
+  background: color-mix(
+    in srgb,
+    var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 28%,
+    transparent
+  );
+  border: 1px solid color-mix(
+    in srgb,
+    var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 45%,
+    transparent
+  );
+}
+
+.catalog-seats-help__role--worker {
+  color: var(--theme-pair-secondary-text, var(--theme-chip-solid-text));
+  background: color-mix(
+    in srgb,
+    var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 28%,
+    transparent
+  );
+  border: 1px solid color-mix(
+    in srgb,
+    var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 45%,
+    transparent
+  );
+}
+
+.catalog-seats-help__launch,
+.catalog-seats-help__connect {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--theme-accent-bright, var(--theme-accent));
+}
+
+.catalog-seats-help__step-copy {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  line-height: 1.25;
+  color: var(--theme-text-muted);
+}
+
+.catalog-seats-help__arrow {
+  flex: 0 0 auto;
+  align-self: center;
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-body);
+  color: var(--theme-text-muted);
+  opacity: 0.55;
+}
+
+.catalog-seats-help__foot {
+  margin: 0;
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  line-height: 1.35;
+  color: var(--theme-text-muted);
+}
+
+.catalog-seats-help__foot b {
+  color: var(--theme-text);
+  font-weight: 700;
+}
+
+@media (max-width: 360px) {
+  .catalog-seats-help__flow {
+    flex-direction: column;
+  }
+
+  .catalog-seats-help__arrow {
+    align-self: flex-start;
+    transform: rotate(90deg);
+    margin: 0 0 0 8px;
+  }
+}
+
+.catalog-quick-strip__seats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.catalog-quick-strip__seats--editing {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Seat cell inside bank — face only; bank owns the outer frame */
+.catalog-quick-seat {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 42px;
+  overflow: hidden;
+  isolation: isolate;
+  background: color-mix(in srgb, var(--theme-panel) 70%, transparent);
+}
+
+.catalog-quick-seat + .catalog-quick-seat {
+  border-left: 1px solid color-mix(in srgb, var(--theme-border) 45%, transparent);
+}
+
+.catalog-quick-seat--brain.catalog-quick-seat--filled {
+  background: color-mix(
+    in srgb,
+    var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 22%,
+    var(--theme-eject-card-bg, var(--theme-panel)) 78%
+  );
+}
+
+.catalog-quick-seat--worker.catalog-quick-seat--filled {
+  background: color-mix(
+    in srgb,
+    var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 24%,
+    var(--theme-eject-card-bg, var(--theme-panel)) 76%
+  );
+}
+
+.catalog-quick-seat--selected {
+  box-shadow: inset 0 0 0 1px var(--fixed-cyan-50-a4);
+}
+
+.catalog-quick-seat--pending {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-telemetry-amber) 55%, transparent);
+}
+
+.catalog-quick-seat--editing {
+  min-height: 52px;
+}
+
+.catalog-quick-seat--brain.catalog-quick-seat--editing {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 50%, transparent),
+    0 0 16px color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 28%, transparent);
+}
+
+.catalog-quick-seat--worker.catalog-quick-seat--editing {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 50%, transparent),
+    0 0 16px color-mix(in srgb, var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 26%, transparent);
+}
+
+/* Per-seat VRAM strip — VramBadge VRAM-total label tokens */
+.catalog-quick-seat__mem {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 3px 6px;
+  font-family: ui-monospace, "JetBrains Mono", monospace;
+  font-size: var(--type-body);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 1.2;
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-border) 35%, transparent);
+}
+
+.catalog-quick-seat__mem--vram {
+  color: var(--display-face-fc-label-fg, var(--display-face-text));
+  background: var(
+    --display-face-fc-label-bg,
+    color-mix(in srgb, var(--theme-accent) 16%, transparent)
+  );
+}
+
+.catalog-quick-seat__mem-val {
+  font-variant-numeric: tabular-nums;
+}
+
+.catalog-quick-seat__mem-unit,
+.catalog-quick-mem__unit {
+  font-size: var(--type-micro);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  opacity: 0.78;
+  text-transform: uppercase;
+}
+
+/* Σ footer — 50:50 VRAM | RAM, same wells as VramBadge totals */
+.catalog-quick-mem--combo {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: stretch;
+  min-width: 0;
+  border-top: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
+  font-family: ui-monospace, "JetBrains Mono", monospace;
+}
+
+.catalog-quick-mem__cell {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 6px 8px;
+  font-size: var(--type-md);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catalog-quick-mem__cell + .catalog-quick-mem__cell {
+  border-left: 1px solid var(
+    --display-face-fc-label-border,
+    color-mix(in srgb, var(--theme-accent) 28%, transparent)
+  );
+}
+
+.catalog-quick-mem__cell--vram {
+  color: var(--display-face-fc-label-fg, var(--display-face-text));
+  background: var(
+    --display-face-fc-label-bg,
+    color-mix(in srgb, var(--theme-accent) 16%, transparent)
+  );
+}
+
+.catalog-quick-mem__cell--ram {
+  color: var(--display-face-fc-label-ram-fg);
+  background: var(
+    --display-face-fc-label-ram-bg,
+    var(--fixed-blue-400-a14)
+  );
+  border-left-color: var(
+    --display-face-fc-label-ram-border,
+    var(--fixed-blue-400-a3)
+  );
+}
+
+.catalog-quick-mem__sigma {
+  flex: 0 0 auto;
+  font-size: 0.92em;
+  font-weight: 800;
+  opacity: 0.88;
+  letter-spacing: 0;
+}
+
+.catalog-quick-mem__val {
+  font-variant-numeric: tabular-nums;
+}
+
+.catalog-quick-seat__body {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: stretch;
+  min-height: 0;
+}
+
+.catalog-quick-seat--brain .catalog-quick-seat__role {
+  color: var(--theme-harness-brain-text, var(--theme-provider-pill-active-text, var(--theme-accent-bright)));
+}
+
+.catalog-quick-seat--worker .catalog-quick-seat__role {
+  color: var(--theme-pair-secondary-text, var(--theme-chip-solid-text, var(--theme-nv-green)));
+}
+
+.catalog-quick-seat__main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  padding: 6px 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  z-index: 2;
+}
+
+.catalog-quick-seat__role {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-label);
+  letter-spacing: 0.14em;
+  font-weight: 700;
+  color: var(--theme-text-muted);
+}
+
+.catalog-quick-seat__name {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-sm);
+  line-height: 1.15;
+  font-weight: 600;
+  color: var(--theme-text);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catalog-quick-seat__quant {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-tiny);
+  line-height: 1.1;
+  letter-spacing: 0.04em;
+  color: var(--theme-text-muted);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catalog-quick-seat--empty .catalog-quick-seat__name {
+  color: var(--theme-text-muted);
+  opacity: 0.7;
+  font-size: var(--type-body);
+  font-weight: 500;
+}
+
+.catalog-quick-seat--editing .catalog-quick-seat__role {
+  font-size: var(--type-sm);
+}
+
+.catalog-quick-seat--editing .catalog-quick-seat__name {
+  font-size: 13px;
+}
+
+.catalog-quick-seat__actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: stretch;
+  z-index: 2;
+}
+
+.catalog-quick-seat__btn {
+  margin: 0;
+  padding: 0 7px;
+  border: 0;
+  border-left: 1px solid color-mix(in srgb, var(--theme-border-subtle) 60%, transparent);
+  background: transparent;
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-tiny);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  cursor: pointer;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.catalog-quick-seat__btn:hover {
+  color: var(--theme-text);
+  background: color-mix(in srgb, var(--theme-text) 8%, transparent);
+}
+
+/* R / E / X / Y / N — shared glyph tile; clear + no are danger text only */
+.catalog-quick-seat__btn--replace,
+.catalog-quick-seat__btn--edit,
+.catalog-quick-seat__btn--clear,
+.catalog-quick-seat__btn--yes,
+.catalog-quick-seat__btn--no {display: inline-flex; align-items: center; justify-content: center; min-width: 28px; padding: 0 8px; font-size: var(--type-md); font-weight: 800; letter-spacing: 0}
+
+.catalog-quick-seat__btn--replace:hover,
+.catalog-quick-seat__btn--edit:hover,
+.catalog-quick-seat__btn--yes:hover {}
+
+.catalog-quick-seat__btn--clear,
+.catalog-quick-seat__btn--no {
+  color: var(--theme-danger);
+}
+
+.catalog-quick-seat__btn--clear:hover,
+.catalog-quick-seat__btn--no:hover {
+  color: var(--theme-danger);
+  background: color-mix(in srgb, var(--theme-danger) 10%, transparent);
+}
+
+.catalog-quick-seat__btn--save {
+  color: var(--theme-text);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: color-mix(in srgb, var(--theme-text) 8%, transparent);
+}
+
+.catalog-quick-seat__save-ico {
+  font-size: var(--type-sm);
+  line-height: 1;
+  color: var(--theme-text);
+  opacity: 0.85;
+}
+
+/* Live perimeter (seat + section while editing) */
+.catalog-quick-seat__live,
+.catalog-quick-section--seats-editing > .catalog-quick-seat__live {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: inherit;
+  padding: 2px;
+  box-sizing: border-box;
+  -webkit-mask:
+    linear-gradient(var(--fixed-white) 0 0) content-box,
+    linear-gradient(var(--fixed-white) 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(var(--fixed-white) 0 0) content-box,
+    linear-gradient(var(--fixed-white) 0 0);
+  mask-composite: exclude;
+}
+
+.catalog-quick-section--seats-editing > .catalog-quick-seat__live {
+  border-radius: 4px;
+}
+
+.catalog-quick-seat__live-rim {
+  position: absolute;
+  inset: -45%;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0.8;
+  background: conic-gradient(
+    from 0deg,
+    var(--fixed-white-a05) 0deg,
+    var(--fixed-white-a05) 200deg,
+    var(--fixed-white-a45) 250deg,
+    var(--fixed-white-a95) 280deg,
+    var(--fixed-white-a45) 310deg,
+    var(--fixed-white-a05) 360deg
+  );
+  animation: catalog-seat-live-spin 1.6s linear infinite;
+}
+
+.catalog-quick-seat--brain .catalog-quick-seat__live-rim,
+.catalog-quick-strip[data-seat-editing="brain"]
+  .catalog-quick-section--seats-editing
+  > .catalog-quick-seat__live
+  .catalog-quick-seat__live-rim {
+  background: conic-gradient(
+    from 0deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw) 6%, transparent) 0deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw) 6%, transparent) 200deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw) 50%, transparent) 250deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw) 95%, var(--fixed-white) 18%) 280deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw) 50%, transparent) 310deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw) 6%, transparent) 360deg
+  );
+}
+
+.catalog-quick-seat--worker .catalog-quick-seat__live-rim,
+.catalog-quick-strip[data-seat-editing="worker"]
+  .catalog-quick-section--seats-editing
+  > .catalog-quick-seat__live
+  .catalog-quick-seat__live-rim {
+  background: conic-gradient(
+    from 0deg,
+    color-mix(in srgb, var(--theme-harness-worker-raw) 6%, transparent) 0deg,
+    color-mix(in srgb, var(--theme-harness-worker-raw) 6%, transparent) 200deg,
+    color-mix(in srgb, var(--theme-harness-worker-raw) 50%, transparent) 250deg,
+    color-mix(in srgb, var(--theme-harness-worker-raw) 95%, var(--fixed-white) 14%) 280deg,
+    color-mix(in srgb, var(--theme-harness-worker-raw) 50%, transparent) 310deg,
+    color-mix(in srgb, var(--theme-harness-worker-raw) 6%, transparent) 360deg
+  );
+}
+
+@keyframes catalog-seat-live-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Seat-edit banner on the engine config panel (not the strip) */
+.catalog-seat-edit-banner {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 80%, transparent);
+  color: var(--theme-text);
+}
+
+.catalog-seat-edit-banner--brain {
+  border-color: color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 70%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 35%, transparent),
+    0 0 12px color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 18%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 22%,
+    var(--theme-panel) 78%
+  );
+}
+
+.catalog-seat-edit-banner--worker {
+  border-color: color-mix(in srgb, var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 70%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 35%, transparent),
+    0 0 12px color-mix(in srgb, var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 16%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 24%,
+    var(--theme-panel) 76%
+  );
+}
+
+.catalog-seat-edit-banner__label {
+  position: relative;
+  z-index: 2;
+  font-size: var(--type-body);
+  letter-spacing: 0.14em;
+  font-weight: 700;
+}
+
+.catalog-seat-edit-banner--brain .catalog-seat-edit-banner__label {
+  color: var(--theme-harness-brain-text, var(--theme-provider-pill-active-text, var(--theme-text)));
+}
+
+.catalog-seat-edit-banner--worker .catalog-seat-edit-banner__label {
+  color: var(--theme-pair-secondary-text, var(--theme-chip-solid-text, var(--theme-text)));
+}
+
+.catalog-seat-edit-banner__live {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: inherit;
+  padding: 2px;
+  box-sizing: border-box;
+  -webkit-mask:
+    linear-gradient(var(--fixed-white) 0 0) content-box,
+    linear-gradient(var(--fixed-white) 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(var(--fixed-white) 0 0) content-box,
+    linear-gradient(var(--fixed-white) 0 0);
+  mask-composite: exclude;
+}
+
+.catalog-seat-edit-banner__live-rim {
+  position: absolute;
+  inset: -45%;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0.85;
+  animation: catalog-seat-live-spin 1.6s linear infinite;
+}
+
+.catalog-seat-edit-banner--brain .catalog-seat-edit-banner__live-rim {
+  background: conic-gradient(
+    from 0deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw) 6%, transparent) 0deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw) 6%, transparent) 200deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw) 50%, transparent) 250deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw) 95%, var(--fixed-white) 18%) 280deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw) 50%, transparent) 310deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw) 6%, transparent) 360deg
+  );
+}
+
+.catalog-seat-edit-banner--worker .catalog-seat-edit-banner__live-rim {
+  background: conic-gradient(
+    from 0deg,
+    color-mix(in srgb, var(--theme-harness-worker-raw) 6%, transparent) 0deg,
+    color-mix(in srgb, var(--theme-harness-worker-raw) 6%, transparent) 200deg,
+    color-mix(in srgb, var(--theme-harness-worker-raw) 50%, transparent) 250deg,
+    color-mix(in srgb, var(--theme-harness-worker-raw) 95%, var(--fixed-white) 14%) 280deg,
+    color-mix(in srgb, var(--theme-harness-worker-raw) 50%, transparent) 310deg,
+    color-mix(in srgb, var(--theme-harness-worker-raw) 6%, transparent) 360deg
+  );
+}
+
+.catalog-seat-edit-banner__btn {
+  border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
+  background: transparent;
+  color: var(--theme-text-muted);
+  padding: 2px 6px;
+  font: inherit;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.catalog-seat-edit-banner__btn--save {
+  color: var(--theme-text);
+  border-color: color-mix(in srgb, var(--theme-text) 35%, transparent);
+}
+
+.catalog-seat-edit-banner__save-ico {
+  color: var(--theme-text);
+  opacity: 0.85;
+  font-size: var(--type-body);
+}
+
+.catalog-seat-edit-banner__btn:hover {
+  color: var(--theme-text);
+}
+
+/* Section chrome */
+.catalog-quick-section {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.catalog-quick-section--seats {
+  position: relative;
+  overflow: hidden;
+}
+
+.catalog-quick-section--seats-editing {
+  border-color: color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-accent)) 40%, transparent);
+}
+
+.catalog-quick-strip--seat-editing .catalog-quick-section--seats {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-accent) 25%, transparent);
+}
+
+.catalog-quick-section__head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 1.15rem;
+  padding: 3px 10px;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: 2px;
+  border-top: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 55%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-bezel-edge-lo) 50%, var(--theme-border));
+  background-color: var(--theme-industrial-bg);
+  background-image:
+    var(--theme-industrial-texture-active),
+    var(--theme-industrial-face-gradient, none);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 45%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-lo) 40%, transparent);
+}
+
+.catalog-quick-section__head > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Seats: label row + left-aligned actions row */
+.catalog-quick-section__head--seats {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 6px;
+  overflow: visible;
+  min-height: 0;
+}
+
+.catalog-quick-section__head-row--label {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 1.15rem;
+  padding: 0 2.6rem;
+}
+
+.catalog-quick-section__title-cluster {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.catalog-quick-section__help {
+  flex: 0 0 auto;
+  margin: 0;
+  width: 1.05rem;
+  height: 1.05rem;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 45%, transparent);
+  color: var(--theme-industrial-muted, var(--theme-text-muted));
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-tiny);
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.catalog-quick-section__help:hover,
+.catalog-quick-section__help--active {
+  color: var(--theme-accent-bright, var(--theme-accent));
+  border-color: color-mix(in srgb, var(--theme-accent) 55%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 12%, transparent);
+}
+
+.catalog-quick-section__head-row--actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.catalog-quick-section__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  width: 100%;
+  max-width: 100%;
+}
+
+.catalog-quick-section__sets {
+  position: absolute;
+  left: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.catalog-quick-set-btn {
+  margin: 0;
+  min-width: 1.1rem;
+  height: 1rem;
+  padding: 0 3px;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 50%, transparent);
+  color: var(--theme-industrial-muted, var(--theme-text-muted));
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.catalog-quick-set-btn:hover {
+  border-color: color-mix(in srgb, var(--theme-accent) 45%, transparent);
+  color: var(--theme-text);
+}
+
+.catalog-quick-set-btn--active {
+  border-color: color-mix(in srgb, var(--theme-accent) 65%, transparent);
+  color: var(--theme-accent-bright, var(--theme-accent));
+  background: color-mix(in srgb, var(--theme-accent) 14%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-accent) 20%, transparent);
+}
+
+.catalog-quick-section__title {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-tiny);
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-align: center;
+  color: var(--theme-industrial-text, var(--theme-text-muted));
+  /* Two-tone label bevel via per-theme token (see app-themes.ts). Zero blur, so it is a
+     crisp edge, never a blurred ghost. Dark themes resolve to none; ARCTIC gets a
+     face-correct engraved bevel tuned for dark ink on the light aluminium bezel. */
+  text-shadow: var(--theme-catalog-label-shadow);
+}
+
+.catalog-quick-section__head .catalog-quick-section__title {
+  font-size: var(--type-label);
+  letter-spacing: 0.16em;
+}
+
+.catalog-quick-section__head--seats .catalog-quick-section__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catalog-quick-section--seats .catalog-quick-section__title {
+  color: var(--theme-industrial-text, var(--theme-accent-bright, var(--theme-accent)));
+}
+
+.catalog-quick-section--seats-editing .catalog-quick-section__title {
+  font-size: var(--type-body);
+  color: var(--theme-text);
+}
+
+.catalog-quick-section--pins .catalog-quick-section__title {
+  color: var(--theme-accent-bright, var(--theme-accent));
+}
+
+.catalog-quick-section__count {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.08em;
+  color: var(--theme-industrial-muted, var(--theme-text-muted));
+  opacity: 0.85;
+  font-variant-numeric: tabular-nums;
+}
+
+.catalog-quick-section__action {
+  margin: 0;
+  padding: 1px 6px;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 45%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 55%, transparent);
+  color: var(--theme-accent-bright, var(--theme-accent));
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.catalog-quick-section__action:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--theme-accent) 70%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 12%, transparent);
+}
+
+.catalog-quick-section__action:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.catalog-quick-section__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(5.75rem, 1fr));
+  gap: 4px;
+  min-width: 0;
+  align-items: stretch;
+}
+
+.catalog-quick-chip {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  min-height: 2.15rem;
+  margin: 0;
+  /* Right gutter reserves room for the corner unpin star. */
+  padding: 4px 18px 4px 6px;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 80%, transparent);
+  color: var(--theme-text-muted);
+  cursor: pointer;
+  text-align: left;
+}
+
+/* Filled star in the chip corner — click to unpin without hunting the catalog. */
+.catalog-quick-chip__unpin {
+  position: absolute;
+  top: 1px;
+  right: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--theme-accent-bright, var(--theme-accent));
+  font-size: var(--type-body);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.catalog-quick-chip__unpin:hover {
+  color: var(--theme-warn, var(--theme-accent-bright, var(--theme-accent)));
+}
+
+.catalog-quick-chip__name,
+.catalog-quick-chip__quant {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, monospace;
+  line-height: 1.15;
+}
+
+.catalog-quick-chip__name {
+  font-size: var(--type-tiny);
+  font-weight: 600;
+  color: var(--theme-text);
+}
+
+.catalog-quick-chip__quant {
+  font-size: var(--type-micro);
+  letter-spacing: 0.04em;
+  color: var(--theme-text-muted);
+  opacity: 0.9;
+}
+
+.catalog-quick-section--pins .catalog-quick-chip__quant {
+  font-size: var(--type-hairline);
+  letter-spacing: 0.02em;
+  opacity: 0.78;
+}
+
+.catalog-quick-chip--pin {
+  border-color: color-mix(in srgb, var(--theme-accent) 35%, transparent);
+}
+
+.catalog-quick-chip--selected,
+.catalog-quick-chip:hover {
+  border-color: color-mix(in srgb, var(--theme-accent) 55%, transparent);
+}
+
+.catalog-quick-chip--selected .catalog-quick-chip__name,
+.catalog-quick-chip:hover .catalog-quick-chip__name {
+  color: var(--theme-accent-bright, var(--theme-accent));
+}
+
+.catalog-quick-chip--selected .catalog-quick-chip__quant,
+.catalog-quick-chip:hover .catalog-quick-chip__quant {
+  color: color-mix(in srgb, var(--theme-accent-bright, var(--theme-accent)) 75%, var(--theme-text-muted));
+}
+
+.catalog-sort-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 1px 2px;
+  background: color-mix(in srgb, var(--theme-border-subtle) 70%, transparent);
+}
+
+/* Card pin / seat / fit-now chips */
+[data-model-catalog] .model-card-pin {
+  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
+}
+
+[data-model-catalog] .model-card-pin--on {
+  color: var(--theme-accent-bright, var(--theme-accent));
+}
+
+[data-model-catalog] .model-card-pin--off:hover {
+  color: var(--theme-text);
+}
+
+[data-model-catalog] .model-card-seat {
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 40%, transparent);
+  color: var(--theme-accent-bright, var(--theme-accent));
+  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
+  letter-spacing: 0.06em;
+}
+
+[data-model-catalog] .model-card-seat--worker {
+  border-color: color-mix(in srgb, var(--theme-nv-green) 45%, transparent);
+  color: var(--theme-nv-green);
+  background: color-mix(in srgb, var(--theme-nv-green) 10%, transparent);
+}
+
+[data-model-catalog] .model-card-seat--draft {
+  border-color: color-mix(in srgb, var(--theme-dflash-strip-border) 50%, transparent);
+  color: var(--theme-dflash-strip-text);
+  background: color-mix(in srgb, var(--theme-dflash-strip-bg) 35%, transparent);
+}
+
+[data-model-catalog] .model-card-fitnow {
+  letter-spacing: 0.06em;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent);
+  color: var(--theme-text-muted);
+  background: transparent;
+}
+
+[data-model-catalog] .model-card-fitnow--fits {
+  border-color: color-mix(in srgb, var(--theme-nv-green) 45%, transparent);
+  color: var(--theme-nv-green);
+}
+
+[data-model-catalog] .model-card-fitnow--tight {
+  border-color: var(--fixed-amber-500-a5);
+  color: var(--fixed-amber-500);
+}
+
+[data-model-catalog] .model-card-fitnow--no {
+  border-color: var(--fixed-red-500-a45);
+  color: var(--fixed-red-500-a85);
+}
+
+[data-model-catalog] .model-card-fitnow--unknown {
+  opacity: 0.7;
+}
+
+/* ── ModelCatalog (de-Tailwind surface classes) ───────────────────────────── */
+
+.cat-mut {
+  color: var(--theme-text-muted);
+}
+
+.cat-mut--soft {
+  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
+}
+
+.cat-txt {
+  color: color-mix(in srgb, var(--theme-text) 90%, transparent);
+}
+
+.cat-warn {
+  color: var(--theme-warn);
+}
+
+.cat-dng {
+  color: var(--theme-danger);
+}
+
+.cat-dng--soft {
+  color: color-mix(in srgb, var(--theme-danger) 90%, transparent);
+}
+
+/* STOP / DEL scan+edit controls */
+.cat-scan-btn--danger {
+  border-color: color-mix(in srgb, var(--theme-danger) 40%, transparent);
+  color: var(--theme-danger);
+}
+
+.cat-scan-btn--danger:hover {
+  background: color-mix(in srgb, var(--theme-danger) 10%, transparent);
+}
+
+/* RESCAN — warn idle, info while scanning */
+.cat-scan-btn--rescan {
+  border-color: color-mix(in srgb, var(--theme-warn) 30%, transparent);
+  color: var(--theme-warn);
+}
+
+.cat-scan-btn--rescan:hover {
+  background: color-mix(in srgb, var(--theme-warn) 10%, transparent);
+}
+
+.cat-scan-btn--scanning {
+  border-color: color-mix(in srgb, var(--theme-info) 40%, transparent);
+  background: color-mix(in srgb, var(--theme-info) 10%, transparent);
+  color: var(--theme-info);
+}
+
+/* Sort + FIT filter chips */
+.cat-sort-btn {
+  color: var(--theme-text-muted);
+}
+
+.cat-sort-btn:hover {
+  color: var(--theme-text);
+}
+
+.cat-sort-btn--active {
+  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
+  color: var(--theme-accent);
+}
+
+/* Header / SEARCH + FULL LIST buttons */
+.cat-header-btn {
+  border-color: color-mix(in srgb, var(--theme-border) 50%, transparent);
+  color: var(--theme-text-muted);
+}
+
+.cat-header-btn:hover {
+  color: var(--theme-accent);
+}
+
+/* CONFIG [Ctrl+Enter] zone chip */
+.cat-zone-chip {
+  border-color: color-mix(in srgb, var(--theme-info) 40%, transparent);
+  background: color-mix(in srgb, var(--theme-info) 10%, transparent);
+  color: var(--theme-info);
+}
+
+/* Error banner + RELOAD */
+.cat-error-banner {
+  border-bottom-color: color-mix(in srgb, var(--theme-danger) 30%, transparent);
+  background: color-mix(in srgb, var(--theme-danger) 5%, transparent);
+}
+
+.cat-error-reload {
+  border-color: color-mix(in srgb, var(--theme-danger) 60%, transparent);
+  color: var(--theme-danger);
+}
+
+.cat-error-reload:hover {
+  background: color-mix(in srgb, var(--theme-danger) 20%, transparent);
+}
+
+/* Chrome dialogs — neutral / warn / danger */
+.cat-dialog--neutral {
+  border-color: color-mix(in srgb, var(--theme-border) 60%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 90%, transparent);
+}
+
+.cat-dialog--warn {
+  border-color: color-mix(in srgb, var(--theme-warn) 35%, transparent);
+  background: color-mix(in srgb, var(--theme-warn) 5%, transparent);
+}
+
+.cat-dialog--danger {
+  border-color: color-mix(in srgb, var(--theme-danger) 35%, transparent);
+  background: color-mix(in srgb, var(--theme-danger) 5%, transparent);
+}
+
+.cat-warn-btn {
+  border-color: color-mix(in srgb, var(--theme-warn) 40%, transparent);
+  color: var(--theme-warn);
+}
+
+.cat-dng-btn {
+  border-color: color-mix(in srgb, var(--theme-danger) 40%, transparent);
+  color: var(--theme-danger);
+}
+
+/* Empty-state CONFIG → PATHS button */
+.cat-paths-btn {
+  border-color: color-mix(in srgb, var(--theme-accent) 50%, transparent);
+  color: var(--theme-accent);
+}
+
+.cat-paths-btn:hover {
+  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
+}
+
+/* ── ModelCard (de-Tailwind surface classes) ──────────────────────────────── */
+
+.mcard-author {
+  color: var(--theme-text-muted);
+}
+
+.mcard-gguf {
+  border-color: color-mix(in srgb, var(--theme-border) 20%, transparent);
+  color: var(--theme-text-muted);
+}
+
+/* HF update chips — header = info, full = warn */
+.mcard-hf--header {
+  border-color: color-mix(in srgb, var(--theme-info) 40%, transparent);
+  background: color-mix(in srgb, var(--theme-info) 10%, transparent);
+  color: var(--theme-info);
+}
+
+.mcard-hf--header:hover {
+  background: color-mix(in srgb, var(--theme-info) 20%, transparent);
+}
+
+.mcard-hf--full {
+  border-color: color-mix(in srgb, var(--theme-warn) 40%, transparent);
+  background: color-mix(in srgb, var(--theme-warn) 10%, transparent);
+  color: var(--theme-warn);
+}
+
+.mcard-hf--full:hover {
+  background: color-mix(in srgb, var(--theme-warn) 20%, transparent);
+}
+
+/* Transient update-check result bubble — floats over the card (never in flow).
+   Verdict-only bubbles fade after ~6s; actionable (update-available) bubbles stay
+   and expose an UPDATE button. */
+.model-card-check-bubble {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid;
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-tiny);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px var(--fixed-black-a4);
+  pointer-events: none;
+  animation: model-card-check-bubble-fade 6s ease forwards;
+}
+
+.model-card-check-bubble__icon {
+  font-size: var(--type-label);
+  line-height: 1;
+}
+
+/* Actionable bubble has an UPDATE button — keep it interactive and on-screen. */
+.model-card-check-bubble--actionable {
+  pointer-events: auto;
+  gap: 5px;
+  padding-right: 3px;
+  animation: model-card-check-bubble-in 0.18s ease both;
+}
+
+.model-card-check-bubble__btn {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-tiny);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 1px 5px;
+  border-radius: 2px;
+  border: 1px solid currentColor;
+  background: color-mix(in srgb, var(--theme-panel) 70%, transparent);
+  color: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.model-card-check-bubble__btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.model-card-check-bubble--current {
+  border-color: color-mix(in srgb, var(--theme-accent) 55%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 92%, var(--theme-accent));
+  color: var(--theme-accent-bright, var(--theme-accent));
+}
+
+.model-card-check-bubble--header {
+  border-color: color-mix(in srgb, var(--theme-info) 60%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 90%, var(--theme-info));
+  color: var(--theme-info);
+}
+
+.model-card-check-bubble--full {
+  border-color: color-mix(in srgb, var(--theme-warn) 60%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 90%, var(--theme-warn));
+  color: var(--theme-warn);
+}
+
+.model-card-check-bubble--none {
+  border-color: color-mix(in srgb, var(--theme-text-muted) 45%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 92%, transparent);
+  color: var(--theme-text-muted);
+}
+
+@keyframes model-card-check-bubble-fade {
+  0% { opacity: 0; transform: translateY(-3px); }
+  8% { opacity: 1; transform: translateY(0); }
+  80% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-2px); }
+}
+
+@keyframes model-card-check-bubble-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .model-card-check-bubble,
+  .model-card-check-bubble--actionable {
+    animation: none;
+  }
+}
+
+.mcard-params {
+  color: var(--theme-text);
+}
+
+/* Arch / draft badge chips — dark ink chip */
+.mcard-inkchip {
+  background: color-mix(in srgb, var(--theme-text) 14%, transparent);
+  color: color-mix(in srgb, var(--theme-text) 70%, transparent);
+}
+
+/* MULTIMODAL badge */
+.mcard-mm {
+  border-color: color-mix(in srgb, var(--theme-warn) 20%, transparent);
+  color: color-mix(in srgb, var(--theme-warn) 60%, transparent);
+}
+
+/* Footer divider */
+.mcard-footer {
+  border-top-color: color-mix(in srgb, var(--theme-border) 30%, transparent);
+}
+
+.mcard-meta-mut {
+  color: var(--theme-text-muted);
+}
+
+.mcard-date {
+  color: color-mix(in srgb, var(--theme-text) 60%, transparent);
+}
+
+/* FIT SCAN button — quiet idle, accent while scanning */
+.mcard-fit-scan {
+  border-color: color-mix(in srgb, var(--theme-border) 60%, transparent);
+  color: var(--theme-text-muted);
+}
+
+.mcard-fit-scan:hover {
+  border-color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
+  color: color-mix(in srgb, var(--theme-text) 70%, transparent);
+  background: color-mix(in srgb, var(--theme-text) 4%, transparent);
+}
+
+.mcard-fit-scan--scanning {
+  border-color: color-mix(in srgb, var(--theme-accent) 40%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
+  color: var(--theme-accent);
+}
+
+/* ⚠ SCAN button (no metadata) — warn idle, info while scanning */
+.mcard-scan {
+  border-color: color-mix(in srgb, var(--theme-warn) 30%, transparent);
+  color: var(--theme-warn);
+}
+
+.mcard-scan:hover {
+  background: color-mix(in srgb, var(--theme-warn) 10%, transparent);
+}
+
+.mcard-scan--scanning {
+  border-color: color-mix(in srgb, var(--theme-info) 40%, transparent);
+  background: color-mix(in srgb, var(--theme-info) 10%, transparent);
+  color: var(--theme-info);
+}
+
+/* Quant badge — NVFP = accent, other = info */
+.mcard-quant--nvfp {
+  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
+  border-color: color-mix(in srgb, var(--theme-accent) 20%, transparent);
+  color: color-mix(in srgb, var(--theme-accent) 50%, transparent);
+}
+
+.mcard-quant--cyan {
+  border-color: color-mix(in srgb, var(--theme-info) 15%, transparent);
+  color: color-mix(in srgb, var(--theme-info) 50%, transparent);
+}
+
+/* ── MiniModelCard (de-Tailwind surface classes) ──────────────────────────── */
+
+.mcard-mini--new {
+  background: color-mix(in srgb, var(--theme-text) 40%, transparent);
+  border-color: color-mix(in srgb, var(--theme-accent) 40%, transparent);
+}
+
+.mcard-mini--new:hover {
+  background: color-mix(in srgb, var(--theme-text) 60%, transparent);
+}
+
+.mcard-mini-author {
+  color: var(--theme-text-muted);
+}
+
+.mcard-mini-alias {
+  color: color-mix(in srgb, var(--theme-accent) 80%, transparent);
+}
+
+.mcard-mini-name {
+  color: var(--theme-text);
+}
+
+.mcard-mini-name--selected {
+  color: var(--theme-accent);
+}
+
+.mcard-mini-quant--nvfp {
+  background: color-mix(in srgb, var(--theme-accent) 20%, transparent);
+  border-color: color-mix(in srgb, var(--theme-accent) 40%, transparent);
+  color: var(--theme-accent);
+}
+
+.mcard-mini-quant--cyan {
+  border-color: color-mix(in srgb, var(--theme-info) 30%, transparent);
+  color: var(--theme-info);
+}
+
+.mcard-mini-size {
+  color: var(--theme-text-muted);
+}
+

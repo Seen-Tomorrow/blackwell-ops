@@ -1,0 +1,40 @@
+/* Split from global partials: rules used only by the StackView lazy graph. Do not re-import from index.css. */
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+[data-engine-stack] .engine-stack-bench-toggle {
+  cursor: pointer;
+}
+
+.eng-stack-meta {
+  color: var(--theme-text-muted);
+}
+
+.eng-stack-empty {
+  color: var(--theme-text-muted);
+}
+
+.eng-stack-empty__note {
+  color: color-mix(in srgb, var(--theme-text-muted) 60%, transparent);
+}
+
+.bench-error {
+  color: var(--theme-danger);
+}
+
+.eng-banner-divider {
+  border-color: color-mix(in srgb, var(--theme-border) 30%, transparent);
+}
+
+.eng-banner-slot {
+  color: var(--theme-text-muted);
+}
+
+.eng-banner-build {
+  color: var(--theme-text-muted);
+}

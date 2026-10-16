@@ -1,6 +1,6 @@
 {
-  "note": "Regression ceilings for `node scripts/css-tools.mjs audit --check`. Ratcheted 2026-10-16 after item1+2: zero dead classes, lazy CSS split, foundry primitives, token migration (272 fixed/alpha tokens; 1,022->142 literal colors; 536->48 literal color-mix). Startup CSS grew intentionally (+26.6 kB uncompressed, +3.0 kB gzip) in exchange for removing ~1,000 literal paint sites; do not raise these without a measured cleanup.",
-  "sourceBytesLf": 668000,
+  "note": "Regression ceilings for `node scripts/css-tools.mjs audit --check`. Ratcheted 2026-10-16 after the second lazy-CSS split (ConfigPage/LogsPanel/StackView). Startup CSS is now 490.4 kB; source grew ~12 kB from PostCSS whitespace normalization during the move, rules verified 3204=3204 with zero changed/lost.",
+  "sourceBytesLf": 680000,
   "deadRules": 0,
   "deadBytes": 0,
   "important": 425,
@@ -8,7 +8,7 @@
   "literalRgba": 90,
   "colorMixLiteral": 55,
   "pxFontSizes": 30,
-  "distBytes": 503000,
+  "distBytes": 494000,
   "distImportant": 418,
   "importOrder": [
     "tokens-base.css",

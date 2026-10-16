@@ -169,14 +169,14 @@ Further source reduction now means one of:
 4. **Theme-as-delta** (MATRIX repeats 92/106 CSS defaults) — smaller theme
    layer, no byte win.
 
-## Items 1+2 final â€” delivered (visual: zero drift across MATRIX/SLATE/ARCTIC)
+## Items 1+2 final - delivered (visual: zero drift across MATRIX/SLATE/ARCTIC)
 
-### Item 1 â€” small clusters
+### Item 1 - small clusters
 - Only `.catalog-quick-seat__btn` had real base/variant duplication; 4 duplicate
   declarations removed (-272 B built). Other candidates rejected on evidence
   (base class not always applied in TSX / parent-child, not duplication).
 
-### Item 2 â€” token migration
+### Item 2 - token migration
 | Metric | Before | After |
 |---|---:|---:|
 | literal hex outside tokens | 841 | 59 |
@@ -199,3 +199,21 @@ Further source reduction now means one of:
 
 Minifiers can shorten `#ffffff` to `#fff`; `var(--fixed-*)` cannot be shortened.
 This trade removes ~1,000 literal paint sites and centralizes the palette.
+
+## Lazy split part 2 â€” ConfigPage / StackView / LogsPanel
+
+| Lazy graph | CSS chunk | Rules moved | Source moved |
+|---|---:|---:|---:|
+| ConfigPage | 9.77 kB | 106 | 14,449 B |
+| StackView | 0.48 kB | 9 | 773 B |
+| LogsPanel | 0.18 kB | 1 | 198 B |
+
+- Startup `index-*.css`: 500,832 -> 490,404 B (-10.4 kB, -2.1%).
+- Startup gzip: 75,319 -> 74,106 B (-1.2 kB).
+- Rule integrity: 3,204 = 3,204; zero changed/lost.
+- Moves pulled from updates, foundry, config-params, config, chrome, engine, catalog, surfaces.
+- Remaining global partials (fusion-display, cockpit, launch, console, most of
+  config/chrome/catalog/engine) are shared with the main shell; moving them
+  would flip later same-property rules, so they stay global.
+- Source grew ~12 kB from PostCSS whitespace normalization during the move;
+  delivered CSS total is unchanged (only startup vs lazy distribution changed).

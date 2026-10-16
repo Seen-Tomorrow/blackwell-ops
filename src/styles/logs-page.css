@@ -1,0 +1,6 @@
+/* Split from global partials: rules used only by the LogsPanel lazy graph. Do not re-import from index.css. */
+
+.app-shell--console-docked [data-engine-logs] .engine-logs-scroll {
+  padding-bottom: calc(var(--boc-docked-reserve) + 0.5rem);
+  scroll-padding-bottom: calc(var(--boc-docked-reserve) + 0.5rem);
+}

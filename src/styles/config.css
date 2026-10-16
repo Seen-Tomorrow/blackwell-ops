@@ -1,2125 +1,2116 @@
-/* ── Runtime docked block — full-width green section ─── */
-
-
-/* Chips on green bg — dark contrast */
-
-
-
-
-
-
-/* User-set alias input text — white instead of green */
-.mono-user-input {
-  color: var(--fixed-white) !important;
-}
-
-
-/* Chips on mono — themed outline, dark fill */
-
-
-
-
-
-
-/* Param rows — label + chips; chips wrap instead of forcing horizontal scroll */
-.eink-panel [data-param-row]{
-  min-height: 22px;
-  min-width: 0;
-  width: 100%;
-}
-
-.eink-panel [data-param-row] .value-chip, .eink-panel [data-param-row] .value-chip-active, [data-config-panel] [data-param-row] input.value-chip, [data-config-panel] [data-param-row] input.value-chip-active{
-  box-shadow: 0 0 4px transparent !important;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease !important;
-}
-
-.eink-panel [data-param-row] .value-chip-active, [data-config-panel] [data-param-row] input.value-chip-active{
-  box-shadow: 0 0 4px var(--theme-accent-glow) !important;
-}
-
-
-
-
-
-
-
-
-
-
-
-/* ── Provider + runtime profile bar (50/50) ─── */
-.config-provider-profile-bar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 0;
-  align-items: stretch;
-}
-
-.config-panel-top-chrome {
-  min-width: 0;
-  /* Air between provider bar (and any above-shell) and VRAM industrial frame */
-  margin-bottom: 6px;
-}
-
-.config-params-above-shell {
-  min-width: 0;
-  width: 100%;
-  flex-shrink: 0;
-}
-
-/* CTX docked above — also 6px under provider before the CTX strip */
-.config-params-above-shell--with-ctx {
-  margin-top: 6px;
-}
-
-.config-params-above-ctx {
-  min-width: 0;
-}
-
-.config-provider-profile-bar__half {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
-}
-
-.config-provider-profile-bar__half--providers {
-  padding-right: 8px;
-}
-
-.config-provider-profile-bar__half--profile {
-  padding-left: 8px;
-  border-left: 1px solid color-mix(in srgb, var(--theme-border-subtle) 65%, transparent);
-}
-
-.config-provider-profile-bar__control {
-  display: flex;
-  align-items: center;
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: thin;
-}
-
-.config-provider-profile-bar__control--end {
-  justify-content: flex-end;
-  margin-left: auto;
-}
-
-
-.config-provider-profile-bar__label {
-  font-size: var(--type-tiny);
-  font-family: ui-monospace, monospace;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: color-mix(in srgb, var(--theme-text-muted) 72%, transparent);
-  flex-shrink: 0;
-  margin-right: 8px;
-}
-
-/* Config panel — textured provider/profile bar (all themes) */
-[data-config-panel] .config-provider-profile-bar {
-  background-color: var(--theme-industrial-bg);
-  background-image: var(--theme-industrial-texture-active);
-  border-bottom: 1.5px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 75%, var(--theme-border)) !important;
-  box-shadow:
-    0 2px 10px color-mix(in srgb, var(--theme-panel) 55%, transparent),
-    inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 50%, transparent);
-  position: relative;
-  z-index: 2;
-}
-
-[data-config-panel] .config-provider-profile-bar.section-divider::after {
-  opacity: 0.35;
-}
-
-[data-config-panel] .config-provider-profile-bar__label {
-  color: color-mix(in srgb, var(--theme-text) 68%, var(--theme-text-muted));
-  font-weight: 600;
-  letter-spacing: 0.1em;
-}
-
-[data-config-panel] .config-provider-profile-bar .segment-switch {
-  box-shadow:
-    inset 0 1px 1px var(--fixed-black-a24),
-    inset 0 2px 3px var(--fixed-black-a12),
-    inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 18%, transparent),
-    0 1px 2px color-mix(in srgb, var(--theme-panel) 40%, transparent);
-}
-
-[data-config-panel] .config-provider-profile-bar .segment-switch--tone-amber .segment-switch__thumb {
-  box-shadow:
-    0 0 10px color-mix(in srgb, var(--theme-provider-pill-active-bg) 50%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--theme-provider-pill-active-bg) 28%, transparent),
-    inset 0 1px 0 var(--fixed-white-a16);
-}
-
-[data-config-panel] .config-provider-profile-bar .segment-switch--tone-accent .segment-switch__thumb {
-  box-shadow:
-    0 0 8px color-mix(in srgb, var(--theme-accent-glow) 55%, transparent),
-    inset 0 1px 0 var(--fixed-white-a12);
-}
-
-
-/* ── GPU assign inject panel (above bezel) — full-width chrome row ─── */
-.gpu-assign-panel {
-  margin: 0 0 -6px;
-  padding: 2px 10px 5px;
-  width: 100%;
-  box-sizing: border-box;
-  background-color: var(--theme-industrial-bg);
-  background-image: none;
-  border-radius: 4px 4px 0 0;
-  border-top: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 55%, transparent);
-  border-left: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 35%, transparent);
-  border-right: 1px solid var(--theme-bezel-edge-lo);
-  position: relative;
-  z-index: 2;
-  isolation: isolate;
-}
-
-.gpu-assign-panel::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  border-radius: inherit;
-  background-color: var(--theme-industrial-bg);
-  background-image: var(--theme-industrial-texture-active);
-}
-
-.gpu-assign-panel > * {
-  position: relative;
-  z-index: 1;
-}
-
-.gpu-assign-panel__grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
-  gap: 10px;
-  align-items: center;
-  min-height: 28px;
-  width: 100%;
-}
-
-.gpu-assign-panel__grid--solo {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.gpu-assign-panel__divider {
-  align-self: stretch;
-  width: 1px;
-  background: color-mix(in srgb, var(--theme-bezel-edge-lo) 70%, transparent);
-}
-
-.gpu-assign-panel__half {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  min-height: 22px;
-}
-
-/* Device — left anchor; chips grow/scroll across the wide column (many GPUs). */
-.gpu-assign-panel__half--device {
-  justify-content: flex-start;
-}
-
-.gpu-assign-panel__half--device .gpu-assign-panel__chips {
-  flex: 1 1 auto;
-  justify-content: flex-start;
-  flex-wrap: nowrap;
-}
-
-/* Split — uses full right column of the chrome row. */
-.gpu-assign-panel__half--split {
-  justify-content: flex-start;
-}
-
-.gpu-assign-panel__half--split .gpu-assign-panel__label {
-  flex-shrink: 0;
-}
-
-/* Split label + compact FIT/FORMULA driver badge stacked under it —
-   contextual, does not grow the chrome row height. */
-.gpu-assign-panel__split-head {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 1px;
-  flex-shrink: 0;
-  align-self: stretch;
-}
-
-.gpu-assign-panel__split-driver {
-  font-size: var(--type-hairline);
-  letter-spacing: 0.12em;
-  text-align: right;
-  opacity: 0.9;
-}
-
-.gpu-assign-panel__half--split .gpu-assign-panel__chips {
-  flex: 1 1 auto;
-  justify-content: flex-start;
-  flex-wrap: nowrap;
-}
-
-.gpu-assign-panel__label {
-  line-height: 1.35;
-  align-self: center;
-}
-
-[data-config-panel] .gpu-assign-panel {
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  box-shadow: none;
-}
-
-[data-config-panel] .gpu-assign-panel::before {
-  display: none;
-}
-
-[data-config-panel] .gpu-assign-panel .gpu-assign-panel__label {
-  color: var(--theme-text-muted) !important;
-  opacity: 0.88;
-}
-
-[data-config-panel] .gpu-assign-panel__divider {
-  background: color-mix(in srgb, var(--theme-border-subtle) 90%, transparent);
-}
-
-.gpu-assign-panel__chips {
-  display: flex;
-  align-items: center;
-  flex: 1;
-  min-width: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  flex-wrap: wrap;
-  gap: 0.375rem;
-  scrollbar-width: thin;
-}
-
-/* Pre-launch chrome hints — top bezel far right (empty rail after Device) */
-.display-chrome-hints {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 36px; /* match top chrome band */
-  pointer-events: none;
-  z-index: 35; /* under top-chrome controls (40), over phosphor */
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  box-sizing: border-box;
-  padding: 0 12px 0 0;
-}
-
-.display-chrome-hints__hint {
-  margin: 0;
-  padding: 0 2px;
-  font-size: var(--type-hairline);
-  font-family: ui-monospace, monospace;
-  line-height: 1.2;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.display-chrome-hints__hint--right {
-  position: relative;
-  right: auto;
-  left: auto;
-  max-width: min(42%, 14rem);
-  text-align: right;
-  color: color-mix(in srgb, var(--fixed-amber-500) 82%, var(--theme-text-muted));
-}
-
-
-.gpu-assign-panel--chrome-disabled .gpu-assign-panel__chips {
-  position: relative;
-}
-
-.gpu-assign-panel--chrome-disabled .gpu-assign-panel__chips::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: 2px;
-  pointer-events: none;
-  background-image: repeating-linear-gradient(
-    -45deg,
-    color-mix(in srgb, var(--theme-stealth-muted) 18%, transparent) 0px,
-    color-mix(in srgb, var(--theme-stealth-muted) 18%, transparent) 1px,
-    transparent 1px,
-    transparent 5px
-  );
-  opacity: 0.85;
-}
-
-.gpu-assign-chip--locked,
-.gpu-assign-panel--chrome-disabled .value-chip,
-.gpu-assign-panel--chrome-disabled .value-chip-active {
-  opacity: 0.55;
-  cursor: not-allowed;
-  pointer-events: none;
-}
-
-[data-config-panel] .gpu-assign-panel__chips .value-chip,
-[data-config-panel] .gpu-assign-panel__chips .value-chip-active {
-  line-height: 1.35;
-  min-height: 18px;
-}
-
-/* ── Pinned param groups above VRAM display ─── */
-.config-params-above {
-  flex-shrink: 0;
-  overflow-x: hidden;
-  overflow-y: visible;
-  /* Top pad — room for CTX preset hover labels (32K / 64K) above the track */
-  padding: 12px 16px 4px;
-}
-
-.config-params-above--multi {
-  --config-col-gutter-w: 7px;
-  display: grid;
-  align-items: start;
-  width: 100%;
-  min-width: 0;
-  gap: 0 0;
-}
-
-.config-params-above--multi .config-params-col {
-  min-height: 0;
-  overflow: visible;
-}
-
-.config-params-above--multi .config-params-col__stack {
-  min-height: 0;
-  overflow: visible;
-}
-
-.config-params-above [data-group-zone] {
-  overflow: visible;
-}
-
-.config-params-above--multi .config-col-split-handle {
-  align-self: stretch;
-  min-height: 2.5rem;
-  height: 100%;
-}
-
-.config-params-below {
-  width: 100%;
-  min-width: 0;
-}
-
-.config-params-below--1c {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.config-params-below--1c > [data-group-zone] {
-  width: 100%;
-  min-width: 0;
-  flex-shrink: 0;
-}
-
-.config-params-below--multi {
-  --config-col-gutter-w: 7px;
-  display: grid;
-  align-items: stretch;
-  width: 100%;
-  min-width: 0;
-  gap: 0 0;
-}
-
-.config-params-col {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 100%;
-  overflow: hidden;
-}
-
-.config-params-col__stack {
-  flex: 1;
-  min-width: 0;
-  min-height: 2.5rem;
-}
-
-.config-column-drop-zone {
-  flex: 1;
-  min-height: 3.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* Reuse catalog/catalog split handle between config columns */
-.config-params-below--multi .config-col-split-handle {
-  align-self: stretch;
-  min-height: 100%;
-  height: auto;
-}
-
-/* ── Power-user group layout controls (engine config headers) ─── */
-[data-config-panel] .config-group-header {
-  color: var(--theme-accent-bright);
-  opacity: 0.45;
-}
-
-[data-config-panel] .config-group-header button:hover {
-  color: var(--theme-text);
-}
-
-.config-group-header--dragging {
-  color: var(--fixed-yellow-400) !important;
-  opacity: 1 !important;
-}
-
-/* ── Detailed config panel (catalog + filter) ─── */
-.config-detailed-panel {
-  background: var(--theme-panel-accent);
-  padding: 0.2rem 0.4rem;
-}
-
-.config-detailed-panel__label {
-  opacity: 0.65;
-}
-
-.config-detailed-panel__row {
-  min-height: 1.4rem;
-}
-
-.config-layout-mode-btn--on {
-  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent-glow) 40%, transparent);
-}
-
-.config-group-layout-controls__drag {
-  color: color-mix(in srgb, var(--theme-text-muted) 55%, transparent);
-  font-size: var(--type-body);
-  line-height: 1;
-  touch-action: none;
-  -webkit-user-drag: none;
-  user-select: none;
-}
-
-.config-group-layout-controls__drag:hover,
-.config-group-layout-controls--dragging .config-group-layout-controls__drag {
-  color: var(--theme-nv-green);
-}
-
-.config-param-group--hidden {
-  filter: saturate(0.65);
-}
-
-[data-config-page] .config-param-group-header--system {
-  color: color-mix(in srgb, var(--theme-electric-blue) 72%, var(--theme-stealth-muted));
-  border-color: color-mix(in srgb, var(--theme-electric-blue) 22%, transparent);
-}
-
-[data-config-page] .config-param-row--system {
-  border-color: color-mix(in srgb, var(--theme-electric-blue) 28%, var(--theme-stealth-border)) !important;
-  background: color-mix(in srgb, var(--theme-electric-blue) 6%, transparent);
-}
-
-[data-config-page] .config-param-ess {
-  min-width: 1.65rem;
-  letter-spacing: 0.06em;
-}
-
-[data-config-page] .config-param-ess--forced {
-  text-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent-glow) 50%, transparent);
-}
-
-[data-config-page] .config-param-row--system:hover {
-  border-color: color-mix(in srgb, var(--theme-electric-blue) 42%, var(--theme-stealth-border)) !important;
-}
-
-/* ── Eject panel — running engines, gunmetal bg, flush below display bevel ─── */
-.industrial-eject-panel {
-  margin: -10px 24px 0;
-  padding: 4px 8px 0px;
-  background-color: var(--theme-industrial-bg);
-  background-image: none;
-  border-radius: 4px;
-  /* Sides use a crisp frame border (not bezel-edge-hi/lo: white/ghost on ARCTIC →
-     fuzzy washed-out edges). Keep top light-catch for the metal face. */
-  border-top: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 50%, transparent);
-  border-left: 1px solid var(--theme-frame-border);
-  border-right: 1px solid var(--theme-frame-border);
-  border-bottom: 1px solid var(--theme-frame-border);
-  position: relative;
-  z-index: 1;
-  isolation: isolate;
-}
-
-.industrial-eject-panel::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  border-radius: inherit;
-  background-color: var(--theme-industrial-bg);
-  background-image:
-    var(--theme-industrial-texture-active),
-    var(--theme-industrial-face-gradient, none);
-}
-
-.industrial-eject-panel > * {
-  position: relative;
-  z-index: 1;
-}
-
-/* Eject panel — tuck under frame (z-index 1); cast shadow onto toolbar below.
-   Own token (--theme-eject-cast-shadow, falls back to the bezel shadow) so a
-   light theme can carry a stronger/longer drop without re-shading the frame. */
-[data-config-panel] .industrial-eject-panel {
-  z-index: 1;
-  box-shadow: var(--theme-eject-cast-shadow, var(--theme-bezel-cast-shadow));
-}
-
-/* Themed text on industrial display frame — re-keyed to the surface classes that
-   replaced the dead Tailwind utilities (no element in the display area carries a
-   text-utility or border-utility name anymore; the old hooks matched literal names).
-   Values verbatim: these are FACE corrections, not theme corrections — the display
-   face keeps its fixed phosphor palette (cyan #22d3ee, blue #3b82f6, amber
-   #f59e0b, red #f87171, yellow #facc15) on every theme, and the ink/border tokens
-   (--theme-industrial-*) are the face tokens that already own the muted/green/border
-   paint. */
-.industrial-display-area .gpu-ram-note {
-  color: var(--theme-industrial-muted) !important;
-}
-
-.industrial-display-area .gpu-ram-label {
-  color: var(--theme-industrial-text) !important;
-}
-
-/* VRAM/RAM bar tracks on display bg — colour-theme token only (pattern never changes ink).
-   Re-keyed to .gpu-ram-track, the class that replaced the old utility on GpuTopology's RAM bar. */
-.industrial-display-area .gpu-ram-track {
-  border-color: var(--theme-industrial-gpu-border) !important;
-  background-color: var(--theme-industrial-bar-track) !important;
-}
-
-/* Always on (was crt-only): kills halo/filter. Uses no face token, so CLEAN == DOTTED. */
-
-
-/* Always on (was crt-only): crisp selected border, no glow halo. */
-.vram-forecast-display .gpu-card.gpu-selected,
-.industrial-display-area .vram-forecast-display .gpu-card.gpu-selected {
-  box-shadow: none !important;
-}
-
-
-
-/* ── Running engines panel — grey bg, compact row cards (below VRAM) ─── */
-/* 4 grid rows (2 cols) visible before eject panel scrolls — 2-line cards */
-.running-engines-scroll {
-  --running-engine-row-h: 3.1rem;
-  --running-engine-alias-w: 5.5rem;
-  max-height: calc(var(--running-engine-row-h) * 4 + 0.25rem * 3);
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-
-/* Fixed alias column so model names share one horizontal start edge */
-.running-engine-alias {
-  display: inline-block;
-  width: var(--running-engine-alias-w, 5.5rem);
-  max-width: var(--running-engine-alias-w, 5.5rem);
-  box-sizing: border-box;
-}
-
-/* Row 2: GPU badges + split links; provider|profile compact on the right */
-.running-engine-card__meta {
-  padding-left: 0;
-}
-
-.running-engine-gpu-badges {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 2px 3px;
-  min-width: 0;
-  flex: 1 1 auto;
-  /* No full-width fill — only the badge chips carry background */
-  background: transparent;
-  border: none;
-  padding: 0;
-}
-
-.running-engine-gpu-badge {
-  display: inline-block;
-  flex-shrink: 0;
-  font-family: ui-monospace, "JetBrains Mono", monospace;
-  font-size: var(--type-tiny);
-  line-height: 1;
-  padding: 2px 5px;
-  border-radius: 2px;
-  /* Theme ink on lifted chip — never grey-on-black or black-on-black */
-  color: var(--theme-text);
-  background: color-mix(in srgb, var(--theme-text) 11%, var(--theme-bg));
-  border: 1px solid color-mix(in srgb, var(--theme-border) 85%, var(--theme-text-muted) 15%);
-  white-space: nowrap;
-}
-
-.running-engine-gpu-link {
-  flex-shrink: 0;
-  font-family: ui-monospace, "JetBrains Mono", monospace;
-  font-size: var(--type-micro);
-  line-height: 1;
-  letter-spacing: 0.02em;
-  color: var(--theme-text-muted);
-  white-space: nowrap;
-  padding: 0 1px;
-  background: transparent;
-}
-
-[data-config-panel] .running-engine-gpu-badge {
-  color: var(--theme-text) !important;
-  background: color-mix(in srgb, var(--theme-text) 11%, var(--theme-bg)) !important;
-  border-color: color-mix(in srgb, var(--theme-border) 85%, var(--theme-text-muted) 15%) !important;
-}
-
-
-.running-engine-gpu-badges--compact .running-engine-gpu-badge {
-  font-size: var(--type-micro);
-  padding: 1px 3px;
-}
-
-.running-engine-gpu-badges--compact .running-engine-gpu-link {
-  font-size: var(--type-hairline);
-}
-
-.running-engines-header-row {
-  background: transparent;
-}
-
-.running-engine-card {
-  background: #222522;
-  border-color: rgba(120, 120, 120, 0.25);
-  transition: all 0.15s ease;
-}
-
-.running-engine-card:hover {
-  background: #2a2e2a;
-  border-color: rgba(120, 120, 120, 0.4);
-}
-
-.running-engine-card-selected {
-  background: #2a3020;
-  border-color: rgba(118, 185, 0, 0.5);
-  box-shadow: 0 0 8px rgba(118, 185, 0, 0.12);
-}
-
-/* ── Running engines — black banner + amber text ─── */
-[data-config-panel] .running-engines-header-row {
-  background: transparent;
-  padding-top: 4px;
-  padding-bottom: 2px;
-}
-
-[data-config-panel] .running-engines-header-row h3 {
-  background: var(--theme-eject-header-bg);
-  padding: 6px 12px;
-  color: var(--theme-eject-header-text) !important;
-}
-
-/* Cards — themed glass */
-[data-config-panel] .running-engine-card {
-  background: var(--theme-eject-card-bg) !important;
-  /* Dim only — no backdrop-filter blur (WebView GPU cost) */
-  border: 1px solid var(--theme-eject-card-border) !important;
-  border-radius: 6px !important;
-  box-shadow:
-    inset 0 1px 0 var(--fixed-white-a04),
-    0 1px 2px rgba(0, 0, 0, 0.15) !important;
-  transition:
-    background 0.15s ease,
-    border-color 0.15s ease,
-    box-shadow 0.15s ease,
-    opacity 0.15s ease;
-}
-
-/* Idle cards recede; selected card stays full strength */
-[data-config-panel] .running-engine-card:not(.running-engine-card-selected) {
-  opacity: 0.58;
-}
-
-[data-config-panel] .running-engine-card:not(.running-engine-card-selected):hover {
-  opacity: 0.82;
-}
-
-[data-config-panel] .running-engine-card:hover {
-  background: var(--theme-eject-card-hover-bg) !important;
-  border-color: var(--theme-eject-card-hover-border) !important;
-}
-
-[data-config-panel] .running-engine-card-selected {
-  opacity: 1;
-  background: var(--theme-eject-card-selected-bg) !important;
-  border-color: var(--theme-eject-card-selected-border) !important;
-  box-shadow:
-    inset 0 1px 0 var(--fixed-white-a06),
-    0 0 0 1px color-mix(in srgb, var(--theme-eject-card-selected-border) 45%, transparent),
-    0 2px 10px color-mix(in srgb, var(--theme-eject-card-selected-border) 24%, transparent) !important;
-}
-
-/* Same-port hot-swap control on running engine cards */
-.running-engine-hs-btn {
-  font-size: var(--type-micro);
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  line-height: 1;
-  padding: 0.2rem 0.3rem;
-  border-radius: 2px;
-  border: 1px solid var(--theme-provider-pill-border);
-  color: var(--theme-provider-pill-text);
-  background: color-mix(in srgb, var(--theme-provider-pill-bg) 80%, transparent);
-  cursor: pointer;
-  transition:
-    border-color 0.15s ease,
-    color 0.15s ease,
-    background 0.15s ease,
-    box-shadow 0.15s ease,
-    transform 0.15s ease;
-}
-
-.running-engine-hs-btn:hover {
-  border-color: var(--theme-provider-pill-hover-border);
-  color: var(--theme-provider-pill-hover-text);
-  background: color-mix(in srgb, var(--theme-provider-pill-active-bg) 18%, transparent);
-}
-
-/* Panel model/CTX/parallel differs from this live seat — invite hot-swap */
-.running-engine-hs-btn--hint {
-  border-color: var(--theme-provider-pill-active-border);
-  color: var(--theme-provider-pill-active-text);
-  background: var(--theme-provider-pill-active-bg);
-  animation: running-engine-hs-hint 1.35s ease-in-out infinite;
-}
-
-@keyframes running-engine-hs-hint {
-  0%,
-  100% {
-    transform: scale(1);
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--theme-provider-pill-active-bg) 0%, transparent);
-  }
-  45% {
-    transform: scale(1.12);
-    box-shadow:
-      0 0 0 2px color-mix(in srgb, var(--theme-provider-pill-active-bg) 35%, transparent),
-      0 0 10px color-mix(in srgb, var(--theme-provider-pill-active-bg) 45%, transparent);
-  }
-  70% {
-    transform: scale(1.04);
-    box-shadow: 0 0 6px color-mix(in srgb, var(--theme-provider-pill-active-bg) 30%, transparent);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .running-engine-hs-btn--hint {
-    animation: none;
-    outline: 1px dashed var(--theme-provider-pill-active-border);
-  }
-}
-
-
-/* Runtime profile tag — tiny amber line under model name */
-[data-config-panel] .running-engine-profile-label {
-  font-size: var(--type-hairline);
-  line-height: 1;
-  color: var(--fixed-brand-amber);
-  opacity: 0.95;
-}
-
-
-
-/* Text inside running engine cards — re-keyed to the eng-* surface classes that
-   replaced the dead utilities (text-white/70 -> eng-engine-alias,
-   text-stealth-muted -> eng-engine-vram, text-nv-green -> eng-engine-model--selected,
-   text-telemetry-cyan -> eng-quant-badge). The eng-* classes already paint the same
-   eject-card tokens (text / muted / accent) in all three faces, so the dead utility
-   selectors are dropped; the alias keeps its explicit 70% color-mix (accepted
-   micro-delta: old flat white/70 vs the class's 70% mix over transparent). */
-[data-config-panel] .running-engine-card .eng-engine-alias {
-  color: color-mix(in srgb, var(--theme-eject-card-text) 70%, transparent) !important;
-}
-
-[data-config-panel] .running-engine-card .eng-engine-vram {
-  color: var(--theme-eject-card-muted) !important;
-}
-
-[data-config-panel] .running-engine-card .eng-engine-model--selected {
-  color: var(--theme-eject-card-text) !important;
-}
-
-/* GPU + quant badges inside engine cards — re-keyed to eng-quant-badge(--nvfp);
-   the classes paint the same accent/info alpha fills the old utility hooks
-   forced to eject tokens. */
-[data-config-panel] .running-engine-card .eng-quant-badge {
-  background: var(--theme-eject-badge-bg) !important;
-  border-color: var(--theme-eject-card-border) !important;
-  color: var(--theme-eject-card-text) !important;
-}
-
-[data-config-panel] .running-engine-card .eng-quant-badge--nvfp {
-  background: var(--theme-eject-badge-bg) !important;
-  border-color: var(--theme-eject-card-border) !important;
-  color: var(--theme-eject-card-text) !important;
-}
-
-
-
-/* ── Gunmetal Card — selected model, frame texture + accent rail ─── */
-.gunmetal-card {
-  background-color: var(--theme-card-selected-bg);
-  background-image: var(--theme-industrial-texture-active);
-  border: 1px solid color-mix(in srgb, var(--theme-card-selected-accent) 32%, var(--theme-border-subtle)) !important;
-  border-radius: 6px !important;
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--theme-text) 8%, transparent);
-}
-
-
-.gunmetal-card::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 6px;
-  bottom: 6px;
-  width: 3px;
-  background: var(--theme-card-selected-accent);
-  border-radius: 2px;
-  box-shadow: 0 0 3px color-mix(in srgb, var(--theme-card-selected-accent) 30%, transparent);
-}
-
-/* Selected model card text — keep readable on gunmetal bg. Re-keyed to the mcard-*
-   surface classes that replaced the dead utilities (text-white -> mcard-params,
-   text-stealth-muted -> mcard-meta-mut, border-stealth-border/30 -> mcard-footer).
-   The mcard-* classes already paint the same values in all three faces
-   (--theme-text / --theme-text-muted / border 30% mix), so the dead utility
-   selectors are dropped. */
-.gunmetal-card .mcard-params {
-  color: #e0e0e0 !important;
-}
-
-.gunmetal-card .mcard-meta-mut {
-  color: #9a9488 !important;
-}
-
-.gunmetal-card .mcard-footer {
-  border-top-color: rgba(154, 148, 136, 0.25) !important;
-}
-
-/* ── E-ink Panel — parameters section, themed phosphor text ─── */
-.eink-panel {
-  background: var(--theme-panel-accent);
-}
-
-/* Phosphor ink — explicit child rules (was: `.eink-panel *` wildcard bomb).
-   Children that own their ink (value-chip, config-value-segment, err-*,
-   engine-stack-profile-pill, provider-pill-active, catalog-seat-edit-banner,
-   full-auto-cockpit, config-spec-mode-badge, ctx-slider-*) are excluded. */
-.eink-panel > *,
-.eink-panel > * > *,
-.eink-panel > * > * > * {
-  color: var(--theme-accent-bright) !important;
-}
-.eink-panel .value-chip, .eink-panel .value-chip-active, .eink-panel .config-value-segment, .eink-panel .config-value-segment *, .eink-panel .err-title, .eink-panel .err-body, .eink-panel .err-detail, .eink-panel .err-reload, .eink-panel .engine-stack-profile-pill, .eink-panel .provider-pill-active, .eink-panel .catalog-seat-edit-banner, .eink-panel .catalog-seat-edit-banner *, .eink-panel .full-auto-cockpit, .eink-panel .full-auto-cockpit *{
-  color: inherit;
-}
-
-/* Group headers on e-ink — re-keyed to .config-group-header, the class that owns the
-   group-header border (the old utility died in the paint migration; the header now
-   paints its border through cfg-bord--a30). */
-.eink-panel .config-group-header {
-  border-color: var(--theme-accent-soft) !important;
-}
-
-/* Chips — themed outline, dark fill */
-.eink-panel .value-chip {
-  background: var(--theme-chip-bg) !important;
-  border-color: var(--theme-chip-border) !important;
-  color: var(--theme-chip-hover-text) !important;
-}
-
-.eink-panel .value-chip:hover {
-  background: var(--theme-chip-active-bg) !important;
-  border-color: var(--theme-chip-hover-border) !important;
-  color: var(--theme-chip-active-text) !important;
-}
-
-.eink-panel .value-chip-active {
-  background: var(--theme-chip-solid-bg) !important;
-  border-color: var(--theme-chip-solid-bg) !important;
-  color: var(--theme-chip-solid-text) !important;
-  box-shadow: 0 0 4px var(--theme-accent-glow) !important;
-}
-
-/* Chip value area — wrap to panel width (spec decoding, KV quant, etc.) */
-[data-config-panel] [data-param-row] > .flex.gap-1,
-[data-config-panel] [data-param-row] > .config-chip-row {
-  flex-wrap: wrap !important;
-  align-items: center;
-  align-content: flex-start;
-  column-gap: 0.375rem;
-  row-gap: 0.25rem;
-  min-height: 18px;
-  min-width: 0;
-}
-
-/*
- * ENGINE CONFIG panel only — param value chips → segment rail (same language as
- * cockpit VISION/FLASH/LOAD and VRAM Split/Device bezel switches).
- *
- * Engine Launch path uses EngineParamGroups (rail); the CONFIG editor page uses
- * ValueBubbles and keeps its own themed .value-chip treatment.
- *
- * All rules below are scoped to [data-config-panel] so the CONFIG/PARAMETERS
- * editor page (mono/eink panels, data-config-page) is NOT restyled by the rail.
- */
-[data-config-panel] .config-value-segment {
-  display: inline-flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: stretch;
-  gap: 0;
-  max-width: 100%;
-  min-height: 22px;
-  padding: 2px;
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--theme-panel) 72%, var(--fixed-black) 28%);
-  border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 16%, transparent),
-    inset 0 -1px 2px var(--fixed-black-a26);
-}
-
-[data-config-panel] .config-value-segment .config-value-segment__opt,
-[data-config-panel] .config-value-segment .value-chip,
-[data-config-panel] .config-value-segment button.value-chip,
-[data-config-panel] .config-value-segment .value-chip-active,
-[data-config-panel] .config-value-segment button.value-chip-active {
-  flex: 0 0 auto;
-  margin: 0 !important;
-  padding: 3px 7px !important;
-  font-size: var(--type-tiny) !important;
-  letter-spacing: 0.05em;
-  line-height: 1.2;
-  border-radius: 3px !important;
-  border: 1px solid transparent !important;
-  background: transparent !important;
-  color: color-mix(
-    in srgb,
-    var(--theme-industrial-muted, var(--theme-text-muted)) 92%,
-    transparent
-  ) !important;
-  box-shadow: none !important;
-  text-transform: none;
-  transition:
-    background-color 0.15s ease,
-    color 0.15s ease,
-    border-color 0.15s ease,
-    box-shadow 0.15s ease !important;
-}
-
-[data-config-panel] .config-value-segment .config-value-segment__opt:hover,
-[data-config-panel] .config-value-segment .value-chip:hover,
-[data-config-panel] .config-value-segment button.value-chip:hover {
-  color: var(--theme-chip-hover-text) !important;
-  background: color-mix(in srgb, var(--theme-accent-soft) 80%, transparent) !important;
-}
-
-/* Selected option — solid thumb (matches cockpit flag active) */
-[data-config-panel] .config-value-segment .value-chip-active,
-[data-config-panel] .config-value-segment button.value-chip-active,
-[data-config-panel] .config-value-segment .config-value-segment__opt[data-selected="1"],
-[data-config-panel] .config-value-segment .config-value-segment__opt.value-chip-active {
-  background: color-mix(
-    in srgb,
-    var(--theme-chip-solid-bg) 88%,
-    var(--theme-panel) 12%
-  ) !important;
-  border-color: color-mix(
-    in srgb,
-    var(--theme-chip-active-border) 70%,
-    transparent
-  ) !important;
-  color: var(--theme-chip-solid-text) !important;
-  box-shadow:
-    inset 0 1px 0 var(--fixed-white-a12),
-    0 0 0 1px color-mix(in srgb, var(--theme-chip-solid-bg) 25%, transparent) !important;
-}
-
-/* Default / user-added still readable inside the rail (ENGINE CONFIG panel) */
-[data-config-panel] .config-value-segment .value-chip--factory-default:not(.value-chip-active) {
-  color: var(--theme-chip-hover-text) !important;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-accent-bright) 28%, transparent) !important;
-}
-
-[data-config-panel] .config-value-segment .value-chip--user-default:not(.value-chip-active) {
-  color: var(--fixed-amber-400) !important;
-  box-shadow: inset 0 0 0 1px var(--fixed-amber-400-a35) !important;
-}
-
-[data-config-panel] .config-value-segment .value-chip--user-added:not(.value-chip-active) {
-  color: var(--fixed-cyan-300) !important;
-  box-shadow: inset 0 0 0 1px var(--fixed-cyan-300-a3) !important;
-}
-
-[data-config-panel] .config-value-segment .value-chip--hidden {
-  opacity: 0.35;
-  text-decoration: line-through;
-}
-
-/*
- * ENGINE CONFIG panel only — param chips render as a cockpit-flag-style track:
- * one continuous bezel rail, no per-value separators, with a sliding accent thumb.
- * Theme tokens only (AGENTS.md themes policy). Scoped to [data-config-panel] so the
- * CONFIG editor page (mono/eink panels) keeps its own chip treatment.
- */
-[data-config-panel] .config-value-segment.config-value-segment--rail {
-  position: relative;
-  flex-wrap: wrap;
-  overflow: hidden;
-  gap: 0;
-  padding: 2px;
-  min-height: 20px;
-  border-radius: 4px;
-  /* Unify with .segment-switch (GPU-bezel Device/Split + cockpit flags) — same token
-     surface, resolves correctly on all themes incl. light ARCTIC. No theme fork. */
-  border: 1px solid color-mix(in srgb, var(--theme-border) 85%, transparent);
-  background: linear-gradient(
-    165deg,
-    color-mix(in srgb, var(--theme-panel-accent) 88%, var(--fixed-black) 12%) 0%,
-    var(--theme-panel-accent) 100%
-  );
-  /* Recessed — crisp 1px inner-top shadow + soft falloff + light inner-bottom edge. */
-  box-shadow:
-    inset 0 1px 1px var(--fixed-black-a24),
-    inset 0 2px 3px var(--fixed-black-a12),
-    inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 18%, transparent);
-}
-
-[data-config-panel] .config-value-segment.config-value-segment--rail .config-value-segment__thumb {
-  position: absolute;
-  /* Follow the selected chip box — never stretch full rail height when options wrap */
-  top: var(--seg-thumb-top, 2px);
-  left: var(--seg-thumb-left, 2px);
-  width: var(--seg-thumb-width, 0px);
-  height: var(--seg-thumb-height, 0px);
-  border-radius: 3px;
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--theme-accent-bright) 22%, var(--theme-panel)) 0%,
-    color-mix(in srgb, var(--theme-accent) 14%, var(--theme-panel-accent)) 100%
-  );
-  border: 1px solid color-mix(in srgb, var(--theme-accent) 42%, transparent);
-  box-shadow:
-    0 0 8px color-mix(in srgb, var(--theme-accent-glow) 55%, transparent),
-    inset 0 1px 0 var(--fixed-white-a12);
-  transition:
-    left 0.22s cubic-bezier(0.22, 1, 0.36, 1),
-    top 0.22s cubic-bezier(0.22, 1, 0.36, 1),
-    width 0.22s cubic-bezier(0.22, 1, 0.36, 1),
-    height 0.22s cubic-bezier(0.22, 1, 0.36, 1);
-  pointer-events: none;
-  z-index: 0;
-}
-
-/* Options sit above the thumb; no per-value borders → continuous track */
-[data-config-panel] .config-value-segment.config-value-segment--rail .config-value-segment__opt,
-[data-config-panel] .config-value-segment.config-value-segment--rail button.value-chip {
-  position: relative;
-  z-index: 1;
-  background: transparent !important;
-  border-color: transparent !important;
-  margin: 0 !important;
-}
-
-[data-config-panel] .config-value-segment.config-value-segment--rail .value-chip:hover {
-  background: transparent !important;
-}
-
-/* Active option — glowing accent segment, same as cockpit flag active */
-[data-config-panel] .config-value-segment.config-value-segment--rail .value-chip-active,
-[data-config-panel] .config-value-segment.config-value-segment--rail button.value-chip-active,
-[data-config-panel] .config-value-segment.config-value-segment--rail .config-value-segment__opt[data-selected="1"] {
-  background: transparent !important;
-  border-color: transparent !important;
-  box-shadow: none !important;
-  color: var(--theme-accent-bright) !important;
-  text-shadow: 0 0 10px color-mix(in srgb, var(--theme-accent-glow) 65%, transparent) !important;
-}
-
-/* Keep default / user-added / hidden markers readable on the rail */
-[data-config-panel] .config-value-segment.config-value-segment--rail .value-chip--factory-default:not(.value-chip-active) {
-  color: var(--theme-chip-hover-text) !important;
-}
-[data-config-panel] .config-value-segment.config-value-segment--rail .value-chip--user-default:not(.value-chip-active) {
-  color: var(--fixed-amber-400) !important;
-}
-[data-config-panel] .config-value-segment.config-value-segment--rail .value-chip--user-added:not(.value-chip-active) {
-  color: var(--fixed-cyan-300) !important;
-}
-
-/* Beat e-ink global “everything is accent green” on chip glyphs (ENGINE CONFIG panel only) */
-[data-config-panel] .eink-panel .config-value-segment .value-chip:not(.value-chip-active),
-[data-config-panel] .eink-panel .config-value-segment button.value-chip:not(.value-chip-active) {
-  color: color-mix(
-    in srgb,
-    var(--theme-industrial-muted) 92%,
-    transparent
-  ) !important;
-}
-
-[data-config-panel] .eink-panel .config-value-segment{
-  background: color-mix(in srgb, var(--theme-panel-accent) 80%, var(--fixed-black) 20%);
-}
-
-
-/* Param labels on e-ink */
-.eink-panel [data-param-row] > span:first-of-type {
-  color: var(--theme-accent-bright) !important;
-}
-
-/* Scrollbar on e-ink */
-.eink-panel::-webkit-scrollbar-thumb {
-  background: var(--theme-scrollbar-thumb) !important;
-}
-
-.eink-panel::-webkit-scrollbar-track {
-  background: var(--theme-accent-soft) !important;
-}
-
-/* Engine card exceptions — preserve non-green colors in eink context.
-   Log-channel exceptions (SlotLogPanel): re-key these selectors if the
-   .slot-log-* classes change — the .eink-panel accent wildcard otherwise
-   forces every line to accent-bright. */
-
-/* Red: STOP button */
-.eink-panel .slot-log-stop {
-  color: rgba(248, 113, 113, 0.7) !important;
-}
-
-/* Yellow/amber: system events, phase bar, TTFT, prefill bench */
-.eink-panel .slot-log-sys {
-  color: rgba(250, 204, 21, 0.7) !important;
-}
-.eink-panel .slot-log-line--pp {
-  color: rgba(245, 167, 39, 0.8) !important;
-}
-.eink-panel .slot-log-phase--pp {
-  color: rgb(245, 167, 39) !important;
-}
-
-/* White: bench ITL/tokens values */
-.eink-panel .slot-log-stat-value {
-  color: var(--fixed-white-a8) !important;
-}
-
-/* Stealth muted: placeholders, secondary labels */
-.eink-panel .slot-log-line,
-.eink-panel .slot-log-stat-label,
-.eink-panel .slot-log-phase {
-  color: rgb(100, 100, 116) !important;
-}
-.eink-panel .slot-log-empty {
-  color: rgba(100, 100, 116, 0.5) !important;
-}
-.eink-panel .slot-log-caption,
-.eink-panel .slot-log-bench-summary {
-  color: rgba(100, 100, 116, 0.6) !important;
-}
-
-/* ── Custom Flags block (launch dock + compact scroll slot) ─── */
-[data-config-panel] .config-launch-dock .custom-flags-block,
-[data-config-panel] .config-launch-dock__flags-scroll .custom-flags-block {
-  border-color: rgba(184, 122, 0, 0.32);
-  margin-top: 0;
-}
-
-[data-config-panel] .config-launch-dock .custom-flags-body,
-[data-config-panel] .config-launch-dock__flags-scroll .custom-flags-body {
-  background: transparent;
-}
-
-[data-config-panel] .config-launch-dock .custom-flags-label,
-[data-config-panel] .config-launch-dock__flags-scroll .custom-flags-label {
-  color: rgba(184, 122, 0, 0.72);
-}
-
-/* Custom flags chrome tokens (config panel — not only dev builds) */
-[data-config-panel] {
-  --dev-danger: var(--fixed-c-d40000);
-  --dev-danger-deep: var(--fixed-c-8f0000);
-  --custom-flags-amber: var(--fixed-c-b45309);
-  --custom-flags-amber-deep: #92400e;
-}
-
-/* APPEND mode — solid amber chrome (matches launch button banner) */
-[data-config-panel] .custom-flags-block.custom-flags-active {
-  border-color: var(--custom-flags-amber);
-}
-
-[data-config-panel] .custom-flags-block.custom-flags-active .custom-flags-body {
-  background: var(--custom-flags-amber);
-}
-
-[data-config-panel] .custom-flags-block.custom-flags-active .custom-flags-label {
-  color: var(--fixed-white);
-}
-
-[data-config-panel] .custom-flags-block.custom-flags-active .custom-flags-input {
-  background: var(--custom-flags-amber-deep);
-  border-color: var(--fixed-amber-200) !important;
-  color: var(--fixed-white);
-}
-
-[data-config-panel] .custom-flags-block.custom-flags-active .custom-flags-input::placeholder {
-  color: var(--fixed-amber-100);
-}
-
-[data-config-panel] .custom-flags-block.custom-flags-active .mode-btn-add {
-  border-color: var(--fixed-amber-100);
-  color: var(--fixed-white);
-  background: var(--custom-flags-amber);
-}
-
-[data-config-panel] .custom-flags-block.custom-flags-active .mode-btn-replace {
-  border-color: var(--fixed-amber-200);
-  color: var(--fixed-c-fffbeb);
-  background: var(--custom-flags-amber-deep);
-}
-
-[data-config-panel] .custom-flags-block.custom-flags-active .mode-btn-off {
-  border-color: var(--fixed-amber-200);
-  color: var(--fixed-c-fffbeb);
-  background: var(--custom-flags-amber-deep);
-}
-
-/* REPLACE mode — dev rosso chrome; panel config is bypassed at launch */
-[data-config-panel] .custom-flags-block.custom-flags-replace {
-  border-color: var(--dev-danger);
-}
-
-[data-config-panel] .custom-flags-block.custom-flags-replace .custom-flags-body {
-  background: var(--dev-danger);
-}
-
-[data-config-panel] .custom-flags-block.custom-flags-replace .custom-flags-label {
-  color: var(--fixed-white);
-}
-
-[data-config-panel] .custom-flags-block.custom-flags-replace .custom-flags-input {
-  background: var(--dev-danger-deep);
-  border-color: var(--fixed-c-ffb4b4) !important;
-  color: var(--fixed-white);
-}
-
-[data-config-panel] .custom-flags-block.custom-flags-replace .custom-flags-input::placeholder {
-  color: #ffc9c9;
-}
-
-[data-config-panel] .custom-flags-block.custom-flags-replace .mode-btn-replace {
-  border-color: var(--fixed-white);
-  color: var(--fixed-white);
-  background: var(--dev-danger);
-}
-
-[data-config-panel] .custom-flags-block.custom-flags-replace .mode-btn-add {
-  border-color: var(--fixed-c-ffb4b4);
-  color: var(--fixed-c-ffe4e4);
-  background: var(--dev-danger-deep);
-}
-
-[data-config-panel] .custom-flags-block.custom-flags-replace .mode-btn-off {
-  border-color: var(--fixed-c-ffb4b4);
-  color: var(--fixed-c-ffe4e4);
-  background: var(--dev-danger-deep);
-}
-
-.config-panel-params--bypassed {
-  opacity: 0.38;
-  filter: saturate(0.25);
-  transition: opacity 0.2s ease, filter 0.2s ease;
-}
-
-.config-launch-btn--custom-active {
-  min-height: 3.75rem;
-  padding-top: 0.125rem;
-  padding-bottom: 0.125rem;
-  gap: 0.2rem;
-  overflow: visible;
-}
-
-.config-launch-btn--custom-active .config-launch-btn__custom-warn {
-  width: 100%;
-  margin: 0 0 0.15rem;
-}
-
-.config-launch-btn__custom-warn {
-  display: block;
-  width: calc(100% + 1rem);
-  margin: -0.375rem -0.5rem 0.2rem;
-  padding: 3px 6px;
-  background: var(--dev-danger);
-  color: var(--fixed-white);
-  font-size: var(--type-micro);
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  line-height: 1.2;
-}
-
-.config-launch-btn__custom-warn--append {
-  background: var(--custom-flags-amber);
-  color: var(--fixed-white);
-}
-
-.config-replace-confirm {
-  border: 1px solid var(--dev-danger);
-  background: var(--dev-danger-shell);
-}
-
-.config-replace-confirm__launch {
-  border: 1px solid var(--dev-danger);
-  background: var(--dev-danger);
-  color: var(--fixed-white);
-}
-
-.config-replace-confirm__launch:hover {
-  background: var(--dev-danger-deep);
-}
-
-.config-replace-confirm__cancel {
-  border: 1px solid var(--fixed-white-a22);
-  background: var(--fixed-white-a06);
-  color: rgba(255, 255, 255, 0.82);
-}
-
-.custom-flags-popover {
-  position: fixed;
-  z-index: 220;
-  transform: translateY(calc(-100% - 8px));
-  padding: 8px;
-  background: var(--theme-surface-inset);
-  border-color: rgba(184, 122, 0, 0.45);
-  box-shadow:
-    0 10px 28px var(--fixed-black-a55),
-    0 2px 8px var(--fixed-black-a35);
-}
-
-.custom-flags-popover--below {
-  transform: translateY(8px);
-}
-
-.custom-flags-popover--below .custom-flags-popover__input {
-  min-height: 120px;
-  max-height: none;
-  resize: vertical;
-}
-
-/* Right rail — wide 3-line editor spanning over central config panel */
-.custom-flags-popover--rail-left {
-  transform: none;
-  max-width: none;
-  box-sizing: border-box;
-  padding: 10px 12px;
-}
-
-.custom-flags-popover--rail-left .custom-flags-popover__input {
-  min-height: 0;
-  max-height: 4.1em;
-  resize: none;
-  overflow-y: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.custom-flags-popover--append {
-  background: var(--custom-flags-amber-deep);
-  border-color: var(--custom-flags-amber);
-  box-shadow:
-    0 10px 28px var(--fixed-black-a55),
-    0 0 0 1px var(--custom-flags-amber);
-}
-
-.custom-flags-popover--replace {
-  background: var(--dev-danger-deep);
-  border-color: var(--dev-danger);
-  box-shadow:
-    0 10px 28px rgba(0, 0, 0, 0.6),
-    0 0 0 1px var(--dev-danger);
-}
-
-.custom-flags-popover__input {
-  display: block;
-  font-size: 16px;
-  min-height: 54px;
-  resize: vertical;
-  line-height: 1.35;
-  max-height: 140px;
-  background: var(--fixed-black-a35);
-  border-color: rgba(184, 122, 0, 0.35);
-  color: var(--theme-text);
-}
-
-.custom-flags-popover--append .custom-flags-popover__input {
-  background: var(--fixed-black);
-  border-color: var(--fixed-amber-200);
-  color: var(--fixed-white);
-}
-
-.custom-flags-popover--replace .custom-flags-popover__input {
-  background: var(--fixed-black);
-  border-color: var(--fixed-c-ffb4b4);
-  color: var(--fixed-white);
-}
-
-.custom-flags-popover__hint {
-  font-size: 13px;
-  color: var(--theme-text-muted);
-}
-
-.custom-flags-popover--append .custom-flags-popover__hint {
-  color: var(--fixed-amber-100);
-}
-
-.custom-flags-popover--replace .custom-flags-popover__hint {
-  color: #ffe0e0;
-}
-
-/* Mode toggle buttons inside Custom Flags */
-.mode-btn-add {
-  border-color: rgba(74, 222, 128, 0.3);
-  color: var(--fixed-green-400);
-  background: rgba(74, 222, 128, 0.06);
-}
-
-.mode-btn-replace {
-  border-color: rgba(248, 113, 113, 0.3);
-  color: var(--fixed-red-400);
-  background: rgba(248, 113, 113, 0.06);
-}
-
-.mode-btn-off {
-  border-color: rgba(184, 122, 0, 0.25);
-  color: rgba(184, 122, 0, 0.55);
-  background: rgba(184, 122, 0, 0.04);
-  cursor: pointer;
-}
-
-.mode-btn-off:hover {
-  border-color: var(--fixed-rgba-184-122-0-a4);
-  color: rgba(184, 122, 0, 0.75);
-  background: var(--fixed-rgba-184-122-0-a08);
-}
-
-.custom-flags-input {
-  background: var(--fixed-black-a3);
-  height: 18px;
-  min-height: 18px;
-}
-
-.custom-flags-block .mode-btn-add,
-.custom-flags-block .mode-btn-replace,
-.custom-flags-block .mode-btn-off {
-  line-height: 1.2;
-  min-height: 18px;
-}
-
-/* ── CONFIG page — reuse chip/panel tokens, no rainbow profiles ─── */
-[data-config-page] {
-  background: var(--theme-bg);
-  color: var(--theme-text);
-  /* Re-scoped warn (replaces the dead yellow-utility hooks). The pre-migration
-     correction covered warn on ALL FOUR properties, so a token scope is faithful:
-     text (text-yellow-400[/60-90], text-yellow-300[/90] -> secondary-bright),
-     border (border-yellow-400/20-50 -> secondary 48%), background
-     (bg-yellow-400/[0.05-0.06]/5/10/15 + hover -> secondary 12-16%), ring
-     (ring-yellow-400/35,40 -> secondary 40%). Migrated cfg-warn / cfg-warn--a*
-     classes now pick up --theme-warn here. MATRIX #ffb800->#f5971f, SLATE
-     #ffb800->#a0a0b0, ARCTIC #ffb800->#ea580c. Alpha tails: the class's own
-     color-mix percentage now governs (accepted micro-delta vs the old flat 100%). */
-  --theme-warn: var(--theme-secondary-bright);
-}
-
-/* Accent TEXT on the CONFIG page rendered one step brighter (the nv-green text
-   utility and its /60 /80 /85 /90 variants -> var(--theme-accent-bright)). Kept as
-   an explicit list instead of re-scoping --theme-accent: the pre-migration hook
-   corrected TEXT only, while this page's accent SOLIDs and BORDERS (launch CTA
-   fill, selected chips, slider tracks, cfg-fill--a* accents, focus rings) were
-   never corrected and must keep the base accent. Every cfg-acc / cfg-acc--a*
-   class in the Config room (ConfigPage, ConfigParamLegend, GroupHeaderControls,
-   LaunchPreset* / LaunchPresets*, Param* / SubParamsEditor, ProvidersConfig,
-   RecoveryConfig, SecretsConfig, ValueBubbles) inherits it. Update this list when
-   a Config-room class starts or stops painting accent ink. */
-[data-config-page] .cfg-acc,
-[data-config-page] .cfg-acc--a25,
-[data-config-page] .cfg-acc--a40,
-[data-config-page] .cfg-acc--a50,
-[data-config-page] .cfg-acc--a60,
-[data-config-page] .cfg-acc--a70,
-[data-config-page] .cfg-acc--a75,
-[data-config-page] .cfg-acc--a80,
-[data-config-page] .cfg-acc--a90 {
-  color: var(--theme-accent-bright) !important;
-}
-
-/* Telemetry-cyan TEXT on the CONFIG page (the telemetry-cyan text utility and its
-   /70 /80 variants -> var(--theme-accent-bright)). The cyan-400/300 family was a
-   SEPARATE pre-migration hook mapped to --theme-dist-cyan (not accent-bright), so
-   --theme-info is NOT re-scoped here: the info classes (fnd-build-step,
-   fnd-tc-cache-box__path, fnd-tc-btn--manual-active) keep the base info token.
-   The migrated cfg-inf / cfg-inf--a* classes carry the old telemetry-cyan text.
-   Update this list when a Config-room class starts or stops painting info ink. */
-[data-config-page] .cfg-inf,
-[data-config-page] .cfg-inf--a50 {
-  color: var(--theme-accent-bright) !important;
-}
-
-[data-config-page] .config-muted {
-  color: var(--theme-text-muted) !important;
-}
-
-[data-config-page] .foundry-toolchain-install-guide__body {
-  color: var(--theme-text-muted) !important;
-}
-
-
-[data-config-page] .text-white,
-[data-config-page] .text-white\/80,
-[data-config-page] .text-white\/70 {
-  color: var(--theme-text) !important;
-}
-
-
-
-
-[data-config-page] .config-section-bar {
-  border-bottom: 1px solid var(--theme-border-subtle);
-}
-
-[data-config-page] .config-provider-card {
-  background: var(--theme-eject-card-bg);
-  border: 1px solid var(--theme-eject-card-border);
-  border-radius: 6px;
-  transition: border-color 0.15s ease, background 0.15s ease;
-}
-
-[data-config-page] .config-provider-card:hover {
-  border-color: var(--theme-eject-card-hover-border);
-  background: var(--theme-eject-card-hover-bg);
-}
-
-[data-config-page] .config-provider-card.is-expanded {
-  border-color: var(--theme-chip-active-border);
-  background: var(--theme-eject-card-selected-bg);
-}
-
-[data-config-page] .config-provider-card.is-editing {
-  border-color: color-mix(in srgb, var(--theme-secondary) 45%, transparent);
-}
-
-[data-config-page] .foundry-build-panel {
-  background: var(--theme-panel-accent);
-  border: 1px solid var(--theme-border-subtle);
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-[data-config-page] .foundry-build-header {
-  background: var(--theme-panel);
-  border-bottom: 1px solid var(--theme-border-subtle);
-}
-
-[data-config-page] .foundry-profile-group {
-  border: 1px solid var(--theme-eject-card-border);
-  border-radius: 2px;
-  overflow: hidden;
-  background: var(--theme-eject-card-bg);
-}
-
-[data-config-page] .foundry-profile-row {
-  background: var(--theme-eject-card-bg);
-  border: 1px solid transparent;
-  border-left: 3px solid transparent;
-}
-
-[data-config-page] .foundry-profile-row--active {
-  background: color-mix(in srgb, var(--theme-secondary) 14%, var(--theme-eject-card-bg));
-  border-left-color: var(--theme-secondary);
-}
-
-[data-config-page] .foundry-active-binary-badge {
-  background: color-mix(in srgb, var(--theme-secondary) 14%, var(--theme-panel));
-  border: 1px solid color-mix(in srgb, var(--theme-secondary) 55%, transparent);
-  color: var(--theme-secondary-bright) !important;
-  border-radius: 2px;
-  letter-spacing: 0.04em;
-}
-
-[data-config-page] .foundry-source-label {
-  color: var(--theme-text-muted) !important;
-}
-
-[data-config-page] .foundry-profile-label {
-  color: var(--theme-secondary-bright) !important;
-}
-
-/* Secondary/gold ink on grey panels (ACTIVE row, profile labels, update badges) */
-
-
-[data-config-page] .foundry-profile-badges {
-  flex-wrap: nowrap;
-  align-items: center;
-}
-
-[data-config-page] .config-form-panel {
-  background: var(--theme-panel);
-  border: 1px solid var(--theme-border-subtle);
-}
-
-[data-config-page] .provider-row-group {
-  position: relative;
-  margin-bottom: 8px;
-}
-
-[data-config-page] .provider-form-popover {
-  position: relative;
-  z-index: 12;
-  background: var(--theme-panel);
-  border: 1px solid color-mix(in srgb, var(--theme-secondary) 28%, var(--theme-border-subtle));
-  box-shadow:
-    0 14px 36px var(--fixed-black-a48),
-    0 6px 14px var(--fixed-black-a32),
-    0 0 0 1px color-mix(in srgb, var(--theme-secondary) 10%, transparent);
-}
-
-[data-config-page] .provider-form-popover--edit {
-  margin: 6px 0 4px auto;
-  max-width: min(520px, 100%);
-  width: 100%;
-}
-
-[data-config-page] .provider-form-popover--add {
-  margin: 8px 0 16px 0;
-  max-width: min(520px, 100%);
-}
-
-[data-config-page] .config-input,
-[data-config-page] .config-textarea {
-  background: transparent;
-  color: var(--theme-text);
-  border-color: var(--theme-chip-border);
-}
-
-[data-config-page] .config-input {
-  border-bottom: 1px solid var(--theme-chip-border);
-}
-
-[data-config-page] .config-input:focus,
-[data-config-page] .config-textarea:focus {
-  border-color: var(--theme-chip-active-border);
-  outline: none;
-}
-
-[data-config-page] .config-input::placeholder,
-[data-config-page] .config-textarea::placeholder {
-  color: var(--theme-text-muted);
-}
-
-[data-config-page] .config-scan-panel {
-  background: var(--theme-panel-accent);
-  border: 1px solid var(--theme-border-subtle);
-}
-
-[data-config-page] .value-chip,
-[data-config-page] .value-chip-active {
-  font-family: 'JetBrains Mono', 'Roboto Mono', monospace;
-}
-
-/* Ensure CONFIG PARAMETER chips always paint themed borders (not bare Tailwind grey) */
-[data-config-page] .value-chip:not(.value-chip-active),
-[data-config-panel] .value-chip:not(.value-chip-active) {
-  border-color: var(--theme-chip-border);
-  background: var(--theme-chip-bg);
-  color: var(--theme-chip-text);
-}
-
-[data-config-page] .value-chip-active,
-[data-config-panel] .value-chip-active {
-  border-color: var(--theme-chip-active-border);
-  background: var(--theme-chip-active-bg);
-  color: var(--theme-chip-active-text);
-}
-
-[data-config-page] .param-catalog-modal {
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-[data-config-page] .param-catalog-modal .config-provider-card {
-  padding: 0;
-}
-
-/* ── Config panel root background ─── */
-[data-config-panel] {
-  background: var(--theme-panel-accent);
-}
-
-/* ── Selected model card name color ─── */
-.gunmetal-card .model-card-name {
-  color: var(--fixed-brand-amber);
-}
-
-
-/* ARCTIC catalog — unselected cards sample rail aluminium; selected lifts to white face */
-
-
-/* ARCTIC catalog — quant badge: dark teal ink on white/light cards */
-
-
-/* ── Select option styling (WebView2 ignores inline styles on <option>) ─── */
-select option {
-  background: var(--theme-panel) !important;
-  color: var(--theme-text) !important;
-}
-
-/* ── MOE Suggestion Animations ─────────────────────────────── */
-
-/* Simple pulsing border for suggestion state */
-@keyframes pulseBorder {
-  0%, 100% { 
-    box-shadow: 0 0 12px rgba(251, 146, 60, 0.35), inset 0 0 4px rgba(251, 146, 60, 0.2);
-    border-color: rgba(251, 146, 60, 0.8);
-  }
-  50% { 
-    box-shadow: 0 0 12px rgba(251, 146, 60, 0.7), inset 0 0 8px rgba(251, 146, 60, 0.4);
-    border-color: var(--fixed-orange-400);
-  }
-}
-
-/* MOE badge — reserved outer glow so gold ↔ suggest ↔ idle does not nudge bars */
-.moe-badge-root {
-  box-shadow: 0 0 15px transparent;
-}
-
-
-
-
-
-/* Orange hatched pattern for MOE_OPTIMAL RAM bar */
-.bg-orange-hatched {
-  background-image: 
-    repeating-linear-gradient(45deg, var(--fixed-orange-400) 0px, var(--fixed-orange-400) 1px, transparent 1px, transparent 3px),
-    linear-gradient(90deg, #3B82F6, var(--fixed-blue-400));
-  background-blend-mode: overlay;
-}
-
-/* ── Speculative Decoding Toggle ─── */
-
-@keyframes nuclearFlash {
-  0% { opacity: 0; }
-  30% { opacity: 1; }
-  100% { opacity: 1; }
-}
-
-
-
-
-
-
-
-
-
-
-
-/* ── CTX slider track (native + custom) — uses app theme accent tokens ── */
-:root {
-  --ctx-slider-control-h: 18px;
-  /* Reserved chip width — 4 glyphs (e.g. 512K); editing scrolls longer raw integers. */
-  --ctx-chip-w: calc(4.25ch + 0.45rem);
-}
-
-.ctx-slider-track-host {
-  overflow: visible;
-  align-self: center;
-}
-
-.config-params-above .ctx-slider-row,
-.config-params-above .ctx-slider-field,
-.config-params-above .ctx-slider-param-row {
-  overflow: visible;
-}
-
-.ctx-slider-track {
-  background: var(--theme-panel-accent);
-  border: 1px solid color-mix(in srgb, var(--theme-accent-bright) 30%, transparent);
-  box-sizing: border-box;
-}
-.ctx-slider-ghost-mark {
-  top: 0;
-  transform: translateX(-50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: 0;
-}
-.ctx-slider-ghost-stem {
-  position: absolute;
-  left: 50%;
-  width: 0;
-  border-left: 2px solid var(--fixed-amber-400-a92);
-  transform: translateX(-50%);
-  box-shadow: 0 0 7px var(--fixed-amber-400-a6);
-}
-.ctx-slider-ghost-label {
-  position: absolute;
-  top: -2px;
-  left: 50%;
-  transform: translate(-50%, -85%);
-  z-index: 5;
-  padding: 0 3px;
-  font-size: var(--type-micro);
-  line-height: 1.1;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-  color: var(--fixed-amber-400);
-  background: color-mix(in srgb, var(--theme-panel) 88%, transparent);
-  border: 1px solid var(--fixed-amber-400-a5);
-  border-radius: 2px;
-  text-shadow: 0 0 6px var(--fixed-amber-400-a4);
-}
-
-.ctx-slider-thumb {
-  background: var(--theme-accent-bright);
-  box-shadow: 0 0 6px var(--theme-accent-glow);
-  pointer-events: none;
-}
-
-.ctx-slider-tick {
-  background: color-mix(in srgb, var(--theme-accent-bright) 35%, transparent);
-}
-
-.ctx-slider-tick--default {
-  background: var(--theme-accent-bright);
-  box-shadow: 0 0 4px var(--theme-accent-glow);
-  width: 4px;
-}
-
-
-.ctx-slider-tick--learned {
-  background: var(--fixed-cyan-400);
-  box-shadow: 0 0 5px rgba(34, 211, 238, 0.85);
-  width: 3px;
-}
-
-.ctx-slider-tick--learned-custom {
-  width: 2px;
-  /* height comes from inline style (hero extends full mark column) */
-  background: repeating-linear-gradient(
-    to bottom,
-    rgba(34, 211, 238, 0.9) 0 2px,
-    transparent 2px 4px
-  );
-  box-shadow: none;
-  opacity: 0.8;
-}
-
-.ctx-slider-tick--learned-active {
-  box-shadow: 0 0 7px var(--fixed-cyan-400);
-  opacity: 1;
-}
-
-.ctx-slider-tick--selected {
-  background: color-mix(in srgb, var(--theme-accent-bright) 65%, transparent);
-}
-
-.ctx-slider-tick-tooltip {
-  color: color-mix(in srgb, var(--theme-accent-bright) 55%, transparent);
-  z-index: 6;
-}
-.ctx-slider-tick-tooltip--active {
-  color: var(--theme-accent-bright);
-}
-.ctx-slider-tick-tooltip--hero {
-  line-height: 1;
-  padding-bottom: 1px;
-}
-.ctx-slider-tick-tooltip--learned {
-  color: var(--fixed-cyan-400-a7);
-}
-.ctx-slider-tick-tooltip--learned.ctx-slider-tick-tooltip--active {
-  color: var(--fixed-cyan-400);
-  text-shadow: 0 0 6px rgba(34, 211, 238, 0.55);
-}
-.ctx-slider-tick-tooltip--custom {
-  font-style: italic;
-  letter-spacing: 0.02em;
-}
-
-.ctx-slider-track-host--hero {
-  align-self: stretch;
-}
-
-.ctx-slider-chip--reserve {
-  width: var(--ctx-chip-w);
-  min-width: var(--ctx-chip-w);
-  max-width: var(--ctx-chip-w);
-}
-
-.ctx-slider-value-input {
-  height: var(--ctx-slider-control-h);
-  min-height: var(--ctx-slider-control-h);
-  padding: 0 0.2rem;
-  line-height: calc(var(--ctx-slider-control-h) - 2px);
-  box-sizing: border-box;
-}
-
-.ctx-slider-row {
-  min-width: 0;
-  min-height: var(--ctx-slider-control-h);
-  overflow: visible;
-  align-items: flex-start;
-}
-
-.ctx-slider-row > .ctx-slider-track-host {
-  flex: 1 1 0%;
-  min-width: 0;
-}
-
-[data-param-row]:has(.ctx-slider-row),
-.ctx-slider-param-row {
-  align-items: flex-start;
-  min-height: 22px;
-  overflow: visible;
-}
-
-.ctx-slider-param-label {
-  margin-right: 1ch;
-}
-
-.ctx-slider-param-row {
-  padding-right: 1ch;
-}
-
-.ctx-slider-field {
-  min-width: 0;
-}
-
-.ctx-slider-per-slot-stack {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 1px;
-  user-select: none;
-}
-
-.ctx-slider-per-slot-chip {
-  font-variant-numeric: tabular-nums;
-  display: block;
-  height: var(--ctx-slider-control-h);
-  min-height: var(--ctx-slider-control-h);
-  padding: 0 0.2rem;
-  line-height: calc(var(--ctx-slider-control-h) - 2px);
-  box-sizing: border-box;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.ctx-slider-per-slot-caption {
-  font-size: var(--type-hairline);
-  line-height: 1;
-  text-align: center;
-  color: var(--theme-text-muted);
-  opacity: 0.72;
-  letter-spacing: 0.06em;
-}
-
-/*
- * Config panel chips — solid theme tokens only.
- * Do NOT mix borders with --theme-bezel-edge-hi (white on ARCTIC → invisible edges;
- * washed on dark). Same .value-chip language as launch/config chrome.
- */
-[data-config-panel] .gpu-assign-panel .value-chip,
-[data-config-panel] .gpu-assign-panel .value-chip-active,
-[data-config-panel] .config-params-above [data-param-row] .value-chip,
-[data-config-panel] .config-params-above [data-param-row] .value-chip-active,
-[data-config-panel] .config-params-above [data-param-row] input.value-chip,
-[data-config-panel] .config-params-above [data-param-row] input.value-chip-active,
-[data-config-panel] .config-params-scroll [data-param-row] .value-chip,
-[data-config-panel] .config-params-scroll [data-param-row] .value-chip-active,
-[data-config-panel] .config-params-scroll [data-param-row] input.value-chip,
-[data-config-panel] .config-params-scroll [data-param-row] input.value-chip-active,
-[data-config-page] [data-param-row] .value-chip,
-[data-config-page] [data-param-row] .value-chip-active {
-  background: var(--theme-chip-bg) !important;
-  border: 1px solid var(--theme-chip-border) !important;
-  color: var(--theme-chip-text) !important;
-  box-shadow: none !important;
-  transform: none;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease !important;
-}
-
-[data-config-panel] .gpu-assign-panel .value-chip:hover,
-[data-config-panel] .config-params-above [data-param-row] .value-chip:hover,
-[data-config-panel] .config-params-above [data-param-row] input.value-chip:hover,
-[data-config-panel] .config-params-scroll [data-param-row] .value-chip:hover,
-[data-config-panel] .config-params-scroll [data-param-row] input.value-chip:hover,
-[data-config-page] [data-param-row] .value-chip:hover {
-  background: var(--theme-chip-active-bg) !important;
-  border-color: var(--theme-chip-hover-border) !important;
-  color: var(--theme-chip-hover-text) !important;
-}
-
-[data-config-panel] .gpu-assign-panel .value-chip-active,
-[data-config-panel] .config-params-above [data-param-row] .value-chip-active,
-[data-config-panel] .config-params-above [data-param-row] input.value-chip-active,
-[data-config-panel] .config-params-scroll [data-param-row] .value-chip-active,
-[data-config-panel] .config-params-scroll [data-param-row] input.value-chip-active,
-[data-config-page] [data-param-row] .value-chip-active {
-  background: var(--theme-chip-active-bg) !important;
-  border-color: var(--theme-chip-active-border) !important;
-  color: var(--theme-chip-active-text) !important;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-chip-active-border) 40%, transparent) !important;
-}
-
-/* Semantic param-value chips (ValueBubbles) — sit on value-chip base */
-[data-config-panel] .value-chip--factory-default,
-[data-config-page] .value-chip--factory-default {
-  background: var(--theme-chip-active-bg) !important;
-  border: 2px double var(--theme-chip-active-border) !important;
-  color: var(--theme-chip-active-text) !important;
-  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-accent-glow) 50%, transparent) !important;
-}
-
-[data-config-panel] .value-chip--user-default,
-[data-config-page] .value-chip--user-default {
-  background: color-mix(in srgb, var(--theme-secondary) 18%, var(--theme-chip-bg)) !important;
-  border: 2px double color-mix(in srgb, var(--theme-secondary-bright) 75%, transparent) !important;
-  color: var(--theme-secondary-bright) !important;
-}
-
-[data-config-panel] .value-chip--user-added,
-[data-config-page] .value-chip--user-added {
-  background: color-mix(in srgb, var(--theme-secondary) 10%, var(--theme-chip-bg)) !important;
-  border: 1px solid color-mix(in srgb, var(--theme-secondary) 45%, transparent) !important;
-  color: var(--theme-secondary-bright) !important;
-}
-
-[data-config-panel] .value-chip--hidden,
-[data-config-page] .value-chip--hidden {
-  background: var(--theme-chip-bg) !important;
-  border: 1px solid var(--theme-chip-border) !important;
-  color: var(--theme-chip-text) !important;
-}
+/* ── Runtime docked block — full-width green section ─── */
+
+
+/* Chips on green bg — dark contrast */
+
+
+
+
+
+
+/* User-set alias input text — white instead of green */
+.mono-user-input {
+  color: var(--fixed-white) !important;
+}
+
+
+/* Chips on mono — themed outline, dark fill */
+
+
+
+
+
+
+/* Param rows — label + chips; chips wrap instead of forcing horizontal scroll */
+.eink-panel [data-param-row]{
+  min-height: 22px;
+  min-width: 0;
+  width: 100%;
+}
+
+.eink-panel [data-param-row] .value-chip, .eink-panel [data-param-row] .value-chip-active, [data-config-panel] [data-param-row] input.value-chip, [data-config-panel] [data-param-row] input.value-chip-active{
+  box-shadow: 0 0 4px transparent !important;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease !important;
+}
+
+.eink-panel [data-param-row] .value-chip-active, [data-config-panel] [data-param-row] input.value-chip-active{
+  box-shadow: 0 0 4px var(--theme-accent-glow) !important;
+}
+
+
+
+
+
+
+
+
+
+
+
+/* ── Provider + runtime profile bar (50/50) ─── */
+.config-provider-profile-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0;
+  align-items: stretch;
+}
+
+.config-panel-top-chrome {
+  min-width: 0;
+  /* Air between provider bar (and any above-shell) and VRAM industrial frame */
+  margin-bottom: 6px;
+}
+
+.config-params-above-shell {
+  min-width: 0;
+  width: 100%;
+  flex-shrink: 0;
+}
+
+/* CTX docked above — also 6px under provider before the CTX strip */
+.config-params-above-shell--with-ctx {
+  margin-top: 6px;
+}
+
+.config-params-above-ctx {
+  min-width: 0;
+}
+
+.config-provider-profile-bar__half {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.config-provider-profile-bar__half--providers {
+  padding-right: 8px;
+}
+
+.config-provider-profile-bar__half--profile {
+  padding-left: 8px;
+  border-left: 1px solid color-mix(in srgb, var(--theme-border-subtle) 65%, transparent);
+}
+
+.config-provider-profile-bar__control {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.config-provider-profile-bar__control--end {
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
+
+.config-provider-profile-bar__label {
+  font-size: var(--type-tiny);
+  font-family: ui-monospace, monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--theme-text-muted) 72%, transparent);
+  flex-shrink: 0;
+  margin-right: 8px;
+}
+
+/* Config panel — textured provider/profile bar (all themes) */
+[data-config-panel] .config-provider-profile-bar {
+  background-color: var(--theme-industrial-bg);
+  background-image: var(--theme-industrial-texture-active);
+  border-bottom: 1.5px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 75%, var(--theme-border)) !important;
+  box-shadow:
+    0 2px 10px color-mix(in srgb, var(--theme-panel) 55%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 50%, transparent);
+  position: relative;
+  z-index: 2;
+}
+
+[data-config-panel] .config-provider-profile-bar.section-divider::after {
+  opacity: 0.35;
+}
+
+[data-config-panel] .config-provider-profile-bar__label {
+  color: color-mix(in srgb, var(--theme-text) 68%, var(--theme-text-muted));
+  font-weight: 600;
+  letter-spacing: 0.1em;
+}
+
+[data-config-panel] .config-provider-profile-bar .segment-switch {
+  box-shadow:
+    inset 0 1px 1px var(--fixed-black-a24),
+    inset 0 2px 3px var(--fixed-black-a12),
+    inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 18%, transparent),
+    0 1px 2px color-mix(in srgb, var(--theme-panel) 40%, transparent);
+}
+
+[data-config-panel] .config-provider-profile-bar .segment-switch--tone-amber .segment-switch__thumb {
+  box-shadow:
+    0 0 10px color-mix(in srgb, var(--theme-provider-pill-active-bg) 50%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--theme-provider-pill-active-bg) 28%, transparent),
+    inset 0 1px 0 var(--fixed-white-a16);
+}
+
+[data-config-panel] .config-provider-profile-bar .segment-switch--tone-accent .segment-switch__thumb {
+  box-shadow:
+    0 0 8px color-mix(in srgb, var(--theme-accent-glow) 55%, transparent),
+    inset 0 1px 0 var(--fixed-white-a12);
+}
+
+
+/* ── GPU assign inject panel (above bezel) — full-width chrome row ─── */
+.gpu-assign-panel {
+  margin: 0 0 -6px;
+  padding: 2px 10px 5px;
+  width: 100%;
+  box-sizing: border-box;
+  background-color: var(--theme-industrial-bg);
+  background-image: none;
+  border-radius: 4px 4px 0 0;
+  border-top: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 55%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 35%, transparent);
+  border-right: 1px solid var(--theme-bezel-edge-lo);
+  position: relative;
+  z-index: 2;
+  isolation: isolate;
+}
+
+.gpu-assign-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background-color: var(--theme-industrial-bg);
+  background-image: var(--theme-industrial-texture-active);
+}
+
+.gpu-assign-panel > * {
+  position: relative;
+  z-index: 1;
+}
+
+.gpu-assign-panel__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-height: 28px;
+  width: 100%;
+}
+
+.gpu-assign-panel__grid--solo {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.gpu-assign-panel__divider {
+  align-self: stretch;
+  width: 1px;
+  background: color-mix(in srgb, var(--theme-bezel-edge-lo) 70%, transparent);
+}
+
+.gpu-assign-panel__half {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 22px;
+}
+
+/* Device — left anchor; chips grow/scroll across the wide column (many GPUs). */
+.gpu-assign-panel__half--device {
+  justify-content: flex-start;
+}
+
+.gpu-assign-panel__half--device .gpu-assign-panel__chips {
+  flex: 1 1 auto;
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+}
+
+/* Split — uses full right column of the chrome row. */
+.gpu-assign-panel__half--split {
+  justify-content: flex-start;
+}
+
+.gpu-assign-panel__half--split .gpu-assign-panel__label {
+  flex-shrink: 0;
+}
+
+/* Split label + compact FIT/FORMULA driver badge stacked under it —
+   contextual, does not grow the chrome row height. */
+.gpu-assign-panel__split-head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 1px;
+  flex-shrink: 0;
+  align-self: stretch;
+}
+
+.gpu-assign-panel__split-driver {
+  font-size: var(--type-hairline);
+  letter-spacing: 0.12em;
+  text-align: right;
+  opacity: 0.9;
+}
+
+.gpu-assign-panel__half--split .gpu-assign-panel__chips {
+  flex: 1 1 auto;
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+}
+
+.gpu-assign-panel__label {
+  line-height: 1.35;
+  align-self: center;
+}
+
+[data-config-panel] .gpu-assign-panel {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+[data-config-panel] .gpu-assign-panel::before {
+  display: none;
+}
+
+[data-config-panel] .gpu-assign-panel .gpu-assign-panel__label {
+  color: var(--theme-text-muted) !important;
+  opacity: 0.88;
+}
+
+[data-config-panel] .gpu-assign-panel__divider {
+  background: color-mix(in srgb, var(--theme-border-subtle) 90%, transparent);
+}
+
+.gpu-assign-panel__chips {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  scrollbar-width: thin;
+}
+
+/* Pre-launch chrome hints — top bezel far right (empty rail after Device) */
+.display-chrome-hints {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 36px; /* match top chrome band */
+  pointer-events: none;
+  z-index: 35; /* under top-chrome controls (40), over phosphor */
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  box-sizing: border-box;
+  padding: 0 12px 0 0;
+}
+
+.display-chrome-hints__hint {
+  margin: 0;
+  padding: 0 2px;
+  font-size: var(--type-hairline);
+  font-family: ui-monospace, monospace;
+  line-height: 1.2;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.display-chrome-hints__hint--right {
+  position: relative;
+  right: auto;
+  left: auto;
+  max-width: min(42%, 14rem);
+  text-align: right;
+  color: color-mix(in srgb, var(--fixed-amber-500) 82%, var(--theme-text-muted));
+}
+
+
+.gpu-assign-panel--chrome-disabled .gpu-assign-panel__chips {
+  position: relative;
+}
+
+.gpu-assign-panel--chrome-disabled .gpu-assign-panel__chips::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 2px;
+  pointer-events: none;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--theme-stealth-muted) 18%, transparent) 0px,
+    color-mix(in srgb, var(--theme-stealth-muted) 18%, transparent) 1px,
+    transparent 1px,
+    transparent 5px
+  );
+  opacity: 0.85;
+}
+
+.gpu-assign-chip--locked,
+.gpu-assign-panel--chrome-disabled .value-chip,
+.gpu-assign-panel--chrome-disabled .value-chip-active {
+  opacity: 0.55;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+[data-config-panel] .gpu-assign-panel__chips .value-chip,
+[data-config-panel] .gpu-assign-panel__chips .value-chip-active {
+  line-height: 1.35;
+  min-height: 18px;
+}
+
+/* ── Pinned param groups above VRAM display ─── */
+.config-params-above {
+  flex-shrink: 0;
+  overflow-x: hidden;
+  overflow-y: visible;
+  /* Top pad — room for CTX preset hover labels (32K / 64K) above the track */
+  padding: 12px 16px 4px;
+}
+
+.config-params-above--multi {
+  --config-col-gutter-w: 7px;
+  display: grid;
+  align-items: start;
+  width: 100%;
+  min-width: 0;
+  gap: 0 0;
+}
+
+.config-params-above--multi .config-params-col {
+  min-height: 0;
+  overflow: visible;
+}
+
+.config-params-above--multi .config-params-col__stack {
+  min-height: 0;
+  overflow: visible;
+}
+
+.config-params-above [data-group-zone] {
+  overflow: visible;
+}
+
+.config-params-above--multi .config-col-split-handle {
+  align-self: stretch;
+  min-height: 2.5rem;
+  height: 100%;
+}
+
+.config-params-below {
+  width: 100%;
+  min-width: 0;
+}
+
+.config-params-below--1c {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.config-params-below--1c > [data-group-zone] {
+  width: 100%;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.config-params-below--multi {
+  --config-col-gutter-w: 7px;
+  display: grid;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+  gap: 0 0;
+}
+
+.config-params-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 100%;
+  overflow: hidden;
+}
+
+.config-params-col__stack {
+  flex: 1;
+  min-width: 0;
+  min-height: 2.5rem;
+}
+
+.config-column-drop-zone {
+  flex: 1;
+  min-height: 3.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Reuse catalog/catalog split handle between config columns */
+.config-params-below--multi .config-col-split-handle {
+  align-self: stretch;
+  min-height: 100%;
+  height: auto;
+}
+
+/* ── Power-user group layout controls (engine config headers) ─── */
+[data-config-panel] .config-group-header {
+  color: var(--theme-accent-bright);
+  opacity: 0.45;
+}
+
+[data-config-panel] .config-group-header button:hover {
+  color: var(--theme-text);
+}
+
+.config-group-header--dragging {
+  color: var(--fixed-yellow-400) !important;
+  opacity: 1 !important;
+}
+
+/* ── Detailed config panel (catalog + filter) ─── */
+.config-detailed-panel {
+  background: var(--theme-panel-accent);
+  padding: 0.2rem 0.4rem;
+}
+
+.config-detailed-panel__label {
+  opacity: 0.65;
+}
+
+.config-detailed-panel__row {
+  min-height: 1.4rem;
+}
+
+.config-layout-mode-btn--on {
+  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent-glow) 40%, transparent);
+}
+
+.config-group-layout-controls__drag {
+  color: color-mix(in srgb, var(--theme-text-muted) 55%, transparent);
+  font-size: var(--type-body);
+  line-height: 1;
+  touch-action: none;
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+.config-group-layout-controls__drag:hover,
+.config-group-layout-controls--dragging .config-group-layout-controls__drag {
+  color: var(--theme-nv-green);
+}
+
+.config-param-group--hidden {
+  filter: saturate(0.65);
+}
+
+[data-config-page] .config-param-group-header--system {
+  color: color-mix(in srgb, var(--theme-electric-blue) 72%, var(--theme-stealth-muted));
+  border-color: color-mix(in srgb, var(--theme-electric-blue) 22%, transparent);
+}
+
+[data-config-page] .config-param-row--system {
+  border-color: color-mix(in srgb, var(--theme-electric-blue) 28%, var(--theme-stealth-border)) !important;
+  background: color-mix(in srgb, var(--theme-electric-blue) 6%, transparent);
+}
+
+[data-config-page] .config-param-ess {
+  min-width: 1.65rem;
+  letter-spacing: 0.06em;
+}
+
+[data-config-page] .config-param-row--system:hover {
+  border-color: color-mix(in srgb, var(--theme-electric-blue) 42%, var(--theme-stealth-border)) !important;
+}
+
+/* ── Eject panel — running engines, gunmetal bg, flush below display bevel ─── */
+.industrial-eject-panel {
+  margin: -10px 24px 0;
+  padding: 4px 8px 0px;
+  background-color: var(--theme-industrial-bg);
+  background-image: none;
+  border-radius: 4px;
+  /* Sides use a crisp frame border (not bezel-edge-hi/lo: white/ghost on ARCTIC →
+     fuzzy washed-out edges). Keep top light-catch for the metal face. */
+  border-top: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 50%, transparent);
+  border-left: 1px solid var(--theme-frame-border);
+  border-right: 1px solid var(--theme-frame-border);
+  border-bottom: 1px solid var(--theme-frame-border);
+  position: relative;
+  z-index: 1;
+  isolation: isolate;
+}
+
+.industrial-eject-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background-color: var(--theme-industrial-bg);
+  background-image:
+    var(--theme-industrial-texture-active),
+    var(--theme-industrial-face-gradient, none);
+}
+
+.industrial-eject-panel > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Eject panel — tuck under frame (z-index 1); cast shadow onto toolbar below.
+   Own token (--theme-eject-cast-shadow, falls back to the bezel shadow) so a
+   light theme can carry a stronger/longer drop without re-shading the frame. */
+[data-config-panel] .industrial-eject-panel {
+  z-index: 1;
+  box-shadow: var(--theme-eject-cast-shadow, var(--theme-bezel-cast-shadow));
+}
+
+/* Themed text on industrial display frame — re-keyed to the surface classes that
+   replaced the dead Tailwind utilities (no element in the display area carries a
+   text-utility or border-utility name anymore; the old hooks matched literal names).
+   Values verbatim: these are FACE corrections, not theme corrections — the display
+   face keeps its fixed phosphor palette (cyan #22d3ee, blue #3b82f6, amber
+   #f59e0b, red #f87171, yellow #facc15) on every theme, and the ink/border tokens
+   (--theme-industrial-*) are the face tokens that already own the muted/green/border
+   paint. */
+.industrial-display-area .gpu-ram-note {
+  color: var(--theme-industrial-muted) !important;
+}
+
+.industrial-display-area .gpu-ram-label {
+  color: var(--theme-industrial-text) !important;
+}
+
+/* VRAM/RAM bar tracks on display bg — colour-theme token only (pattern never changes ink).
+   Re-keyed to .gpu-ram-track, the class that replaced the old utility on GpuTopology's RAM bar. */
+.industrial-display-area .gpu-ram-track {
+  border-color: var(--theme-industrial-gpu-border) !important;
+  background-color: var(--theme-industrial-bar-track) !important;
+}
+
+/* Always on (was crt-only): kills halo/filter. Uses no face token, so CLEAN == DOTTED. */
+
+
+/* Always on (was crt-only): crisp selected border, no glow halo. */
+.vram-forecast-display .gpu-card.gpu-selected,
+.industrial-display-area .vram-forecast-display .gpu-card.gpu-selected {
+  box-shadow: none !important;
+}
+
+
+
+/* ── Running engines panel — grey bg, compact row cards (below VRAM) ─── */
+/* 4 grid rows (2 cols) visible before eject panel scrolls — 2-line cards */
+.running-engines-scroll {
+  --running-engine-row-h: 3.1rem;
+  --running-engine-alias-w: 5.5rem;
+  max-height: calc(var(--running-engine-row-h) * 4 + 0.25rem * 3);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Fixed alias column so model names share one horizontal start edge */
+.running-engine-alias {
+  display: inline-block;
+  width: var(--running-engine-alias-w, 5.5rem);
+  max-width: var(--running-engine-alias-w, 5.5rem);
+  box-sizing: border-box;
+}
+
+/* Row 2: GPU badges + split links; provider|profile compact on the right */
+.running-engine-card__meta {
+  padding-left: 0;
+}
+
+.running-engine-gpu-badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 3px;
+  min-width: 0;
+  flex: 1 1 auto;
+  /* No full-width fill — only the badge chips carry background */
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.running-engine-gpu-badge {
+  display: inline-block;
+  flex-shrink: 0;
+  font-family: ui-monospace, "JetBrains Mono", monospace;
+  font-size: var(--type-tiny);
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 2px;
+  /* Theme ink on lifted chip — never grey-on-black or black-on-black */
+  color: var(--theme-text);
+  background: color-mix(in srgb, var(--theme-text) 11%, var(--theme-bg));
+  border: 1px solid color-mix(in srgb, var(--theme-border) 85%, var(--theme-text-muted) 15%);
+  white-space: nowrap;
+}
+
+.running-engine-gpu-link {
+  flex-shrink: 0;
+  font-family: ui-monospace, "JetBrains Mono", monospace;
+  font-size: var(--type-micro);
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: var(--theme-text-muted);
+  white-space: nowrap;
+  padding: 0 1px;
+  background: transparent;
+}
+
+[data-config-panel] .running-engine-gpu-badge {
+  color: var(--theme-text) !important;
+  background: color-mix(in srgb, var(--theme-text) 11%, var(--theme-bg)) !important;
+  border-color: color-mix(in srgb, var(--theme-border) 85%, var(--theme-text-muted) 15%) !important;
+}
+
+
+.running-engine-gpu-badges--compact .running-engine-gpu-badge {
+  font-size: var(--type-micro);
+  padding: 1px 3px;
+}
+
+.running-engine-gpu-badges--compact .running-engine-gpu-link {
+  font-size: var(--type-hairline);
+}
+
+.running-engines-header-row {
+  background: transparent;
+}
+
+.running-engine-card {
+  background: #222522;
+  border-color: rgba(120, 120, 120, 0.25);
+  transition: all 0.15s ease;
+}
+
+.running-engine-card:hover {
+  background: #2a2e2a;
+  border-color: rgba(120, 120, 120, 0.4);
+}
+
+.running-engine-card-selected {
+  background: #2a3020;
+  border-color: rgba(118, 185, 0, 0.5);
+  box-shadow: 0 0 8px rgba(118, 185, 0, 0.12);
+}
+
+/* ── Running engines — black banner + amber text ─── */
+[data-config-panel] .running-engines-header-row {
+  background: transparent;
+  padding-top: 4px;
+  padding-bottom: 2px;
+}
+
+[data-config-panel] .running-engines-header-row h3 {
+  background: var(--theme-eject-header-bg);
+  padding: 6px 12px;
+  color: var(--theme-eject-header-text) !important;
+}
+
+/* Cards — themed glass */
+[data-config-panel] .running-engine-card {
+  background: var(--theme-eject-card-bg) !important;
+  /* Dim only — no backdrop-filter blur (WebView GPU cost) */
+  border: 1px solid var(--theme-eject-card-border) !important;
+  border-radius: 6px !important;
+  box-shadow:
+    inset 0 1px 0 var(--fixed-white-a04),
+    0 1px 2px rgba(0, 0, 0, 0.15) !important;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    opacity 0.15s ease;
+}
+
+/* Idle cards recede; selected card stays full strength */
+[data-config-panel] .running-engine-card:not(.running-engine-card-selected) {
+  opacity: 0.58;
+}
+
+[data-config-panel] .running-engine-card:not(.running-engine-card-selected):hover {
+  opacity: 0.82;
+}
+
+[data-config-panel] .running-engine-card:hover {
+  background: var(--theme-eject-card-hover-bg) !important;
+  border-color: var(--theme-eject-card-hover-border) !important;
+}
+
+[data-config-panel] .running-engine-card-selected {
+  opacity: 1;
+  background: var(--theme-eject-card-selected-bg) !important;
+  border-color: var(--theme-eject-card-selected-border) !important;
+  box-shadow:
+    inset 0 1px 0 var(--fixed-white-a06),
+    0 0 0 1px color-mix(in srgb, var(--theme-eject-card-selected-border) 45%, transparent),
+    0 2px 10px color-mix(in srgb, var(--theme-eject-card-selected-border) 24%, transparent) !important;
+}
+
+/* Same-port hot-swap control on running engine cards */
+.running-engine-hs-btn {
+  font-size: var(--type-micro);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  padding: 0.2rem 0.3rem;
+  border-radius: 2px;
+  border: 1px solid var(--theme-provider-pill-border);
+  color: var(--theme-provider-pill-text);
+  background: color-mix(in srgb, var(--theme-provider-pill-bg) 80%, transparent);
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
+}
+
+.running-engine-hs-btn:hover {
+  border-color: var(--theme-provider-pill-hover-border);
+  color: var(--theme-provider-pill-hover-text);
+  background: color-mix(in srgb, var(--theme-provider-pill-active-bg) 18%, transparent);
+}
+
+/* Panel model/CTX/parallel differs from this live seat — invite hot-swap */
+.running-engine-hs-btn--hint {
+  border-color: var(--theme-provider-pill-active-border);
+  color: var(--theme-provider-pill-active-text);
+  background: var(--theme-provider-pill-active-bg);
+  animation: running-engine-hs-hint 1.35s ease-in-out infinite;
+}
+
+@keyframes running-engine-hs-hint {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--theme-provider-pill-active-bg) 0%, transparent);
+  }
+  45% {
+    transform: scale(1.12);
+    box-shadow:
+      0 0 0 2px color-mix(in srgb, var(--theme-provider-pill-active-bg) 35%, transparent),
+      0 0 10px color-mix(in srgb, var(--theme-provider-pill-active-bg) 45%, transparent);
+  }
+  70% {
+    transform: scale(1.04);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--theme-provider-pill-active-bg) 30%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .running-engine-hs-btn--hint {
+    animation: none;
+    outline: 1px dashed var(--theme-provider-pill-active-border);
+  }
+}
+
+
+/* Runtime profile tag — tiny amber line under model name */
+[data-config-panel] .running-engine-profile-label {
+  font-size: var(--type-hairline);
+  line-height: 1;
+  color: var(--fixed-brand-amber);
+  opacity: 0.95;
+}
+
+
+
+/* Text inside running engine cards — re-keyed to the eng-* surface classes that
+   replaced the dead utilities (text-white/70 -> eng-engine-alias,
+   text-stealth-muted -> eng-engine-vram, text-nv-green -> eng-engine-model--selected,
+   text-telemetry-cyan -> eng-quant-badge). The eng-* classes already paint the same
+   eject-card tokens (text / muted / accent) in all three faces, so the dead utility
+   selectors are dropped; the alias keeps its explicit 70% color-mix (accepted
+   micro-delta: old flat white/70 vs the class's 70% mix over transparent). */
+[data-config-panel] .running-engine-card .eng-engine-alias {
+  color: color-mix(in srgb, var(--theme-eject-card-text) 70%, transparent) !important;
+}
+
+[data-config-panel] .running-engine-card .eng-engine-vram {
+  color: var(--theme-eject-card-muted) !important;
+}
+
+[data-config-panel] .running-engine-card .eng-engine-model--selected {
+  color: var(--theme-eject-card-text) !important;
+}
+
+/* GPU + quant badges inside engine cards — re-keyed to eng-quant-badge(--nvfp);
+   the classes paint the same accent/info alpha fills the old utility hooks
+   forced to eject tokens. */
+[data-config-panel] .running-engine-card .eng-quant-badge {
+  background: var(--theme-eject-badge-bg) !important;
+  border-color: var(--theme-eject-card-border) !important;
+  color: var(--theme-eject-card-text) !important;
+}
+
+[data-config-panel] .running-engine-card .eng-quant-badge--nvfp {
+  background: var(--theme-eject-badge-bg) !important;
+  border-color: var(--theme-eject-card-border) !important;
+  color: var(--theme-eject-card-text) !important;
+}
+
+
+
+/* ── Gunmetal Card — selected model, frame texture + accent rail ─── */
+.gunmetal-card {
+  background-color: var(--theme-card-selected-bg);
+  background-image: var(--theme-industrial-texture-active);
+  border: 1px solid color-mix(in srgb, var(--theme-card-selected-accent) 32%, var(--theme-border-subtle)) !important;
+  border-radius: 6px !important;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--theme-text) 8%, transparent);
+}
+
+
+.gunmetal-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  background: var(--theme-card-selected-accent);
+  border-radius: 2px;
+  box-shadow: 0 0 3px color-mix(in srgb, var(--theme-card-selected-accent) 30%, transparent);
+}
+
+/* Selected model card text — keep readable on gunmetal bg. Re-keyed to the mcard-*
+   surface classes that replaced the dead utilities (text-white -> mcard-params,
+   text-stealth-muted -> mcard-meta-mut, border-stealth-border/30 -> mcard-footer).
+   The mcard-* classes already paint the same values in all three faces
+   (--theme-text / --theme-text-muted / border 30% mix), so the dead utility
+   selectors are dropped. */
+.gunmetal-card .mcard-params {
+  color: #e0e0e0 !important;
+}
+
+.gunmetal-card .mcard-meta-mut {
+  color: #9a9488 !important;
+}
+
+.gunmetal-card .mcard-footer {
+  border-top-color: rgba(154, 148, 136, 0.25) !important;
+}
+
+/* ── E-ink Panel — parameters section, themed phosphor text ─── */
+.eink-panel {
+  background: var(--theme-panel-accent);
+}
+
+/* Phosphor ink — explicit child rules (was: `.eink-panel *` wildcard bomb).
+   Children that own their ink (value-chip, config-value-segment, err-*,
+   engine-stack-profile-pill, provider-pill-active, catalog-seat-edit-banner,
+   full-auto-cockpit, config-spec-mode-badge, ctx-slider-*) are excluded. */
+.eink-panel > *,
+.eink-panel > * > *,
+.eink-panel > * > * > * {
+  color: var(--theme-accent-bright) !important;
+}
+.eink-panel .value-chip, .eink-panel .value-chip-active, .eink-panel .config-value-segment, .eink-panel .config-value-segment *, .eink-panel .err-title, .eink-panel .err-body, .eink-panel .err-detail, .eink-panel .err-reload, .eink-panel .engine-stack-profile-pill, .eink-panel .provider-pill-active, .eink-panel .catalog-seat-edit-banner, .eink-panel .catalog-seat-edit-banner *, .eink-panel .full-auto-cockpit, .eink-panel .full-auto-cockpit *{
+  color: inherit;
+}
+
+/* Group headers on e-ink — re-keyed to .config-group-header, the class that owns the
+   group-header border (the old utility died in the paint migration; the header now
+   paints its border through cfg-bord--a30). */
+.eink-panel .config-group-header {
+  border-color: var(--theme-accent-soft) !important;
+}
+
+/* Chips — themed outline, dark fill */
+.eink-panel .value-chip {
+  background: var(--theme-chip-bg) !important;
+  border-color: var(--theme-chip-border) !important;
+  color: var(--theme-chip-hover-text) !important;
+}
+
+.eink-panel .value-chip:hover {
+  background: var(--theme-chip-active-bg) !important;
+  border-color: var(--theme-chip-hover-border) !important;
+  color: var(--theme-chip-active-text) !important;
+}
+
+.eink-panel .value-chip-active {
+  background: var(--theme-chip-solid-bg) !important;
+  border-color: var(--theme-chip-solid-bg) !important;
+  color: var(--theme-chip-solid-text) !important;
+  box-shadow: 0 0 4px var(--theme-accent-glow) !important;
+}
+
+/* Chip value area — wrap to panel width (spec decoding, KV quant, etc.) */
+[data-config-panel] [data-param-row] > .flex.gap-1,
+[data-config-panel] [data-param-row] > .config-chip-row {
+  flex-wrap: wrap !important;
+  align-items: center;
+  align-content: flex-start;
+  column-gap: 0.375rem;
+  row-gap: 0.25rem;
+  min-height: 18px;
+  min-width: 0;
+}
+
+/*
+ * ENGINE CONFIG panel only — param value chips → segment rail (same language as
+ * cockpit VISION/FLASH/LOAD and VRAM Split/Device bezel switches).
+ *
+ * Engine Launch path uses EngineParamGroups (rail); the CONFIG editor page uses
+ * ValueBubbles and keeps its own themed .value-chip treatment.
+ *
+ * All rules below are scoped to [data-config-panel] so the CONFIG/PARAMETERS
+ * editor page (mono/eink panels, data-config-page) is NOT restyled by the rail.
+ */
+[data-config-panel] .config-value-segment {
+  display: inline-flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0;
+  max-width: 100%;
+  min-height: 22px;
+  padding: 2px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--theme-panel) 72%, var(--fixed-black) 28%);
+  border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 16%, transparent),
+    inset 0 -1px 2px var(--fixed-black-a26);
+}
+
+[data-config-panel] .config-value-segment .config-value-segment__opt,
+[data-config-panel] .config-value-segment .value-chip,
+[data-config-panel] .config-value-segment button.value-chip,
+[data-config-panel] .config-value-segment .value-chip-active,
+[data-config-panel] .config-value-segment button.value-chip-active {
+  flex: 0 0 auto;
+  margin: 0 !important;
+  padding: 3px 7px !important;
+  font-size: var(--type-tiny) !important;
+  letter-spacing: 0.05em;
+  line-height: 1.2;
+  border-radius: 3px !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  color: color-mix(
+    in srgb,
+    var(--theme-industrial-muted, var(--theme-text-muted)) 92%,
+    transparent
+  ) !important;
+  box-shadow: none !important;
+  text-transform: none;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease !important;
+}
+
+[data-config-panel] .config-value-segment .config-value-segment__opt:hover,
+[data-config-panel] .config-value-segment .value-chip:hover,
+[data-config-panel] .config-value-segment button.value-chip:hover {
+  color: var(--theme-chip-hover-text) !important;
+  background: color-mix(in srgb, var(--theme-accent-soft) 80%, transparent) !important;
+}
+
+/* Selected option — solid thumb (matches cockpit flag active) */
+[data-config-panel] .config-value-segment .value-chip-active,
+[data-config-panel] .config-value-segment button.value-chip-active,
+[data-config-panel] .config-value-segment .config-value-segment__opt[data-selected="1"],
+[data-config-panel] .config-value-segment .config-value-segment__opt.value-chip-active {
+  background: color-mix(
+    in srgb,
+    var(--theme-chip-solid-bg) 88%,
+    var(--theme-panel) 12%
+  ) !important;
+  border-color: color-mix(
+    in srgb,
+    var(--theme-chip-active-border) 70%,
+    transparent
+  ) !important;
+  color: var(--theme-chip-solid-text) !important;
+  box-shadow:
+    inset 0 1px 0 var(--fixed-white-a12),
+    0 0 0 1px color-mix(in srgb, var(--theme-chip-solid-bg) 25%, transparent) !important;
+}
+
+/* Default / user-added still readable inside the rail (ENGINE CONFIG panel) */
+[data-config-panel] .config-value-segment .value-chip--factory-default:not(.value-chip-active) {
+  color: var(--theme-chip-hover-text) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-accent-bright) 28%, transparent) !important;
+}
+
+[data-config-panel] .config-value-segment .value-chip--user-default:not(.value-chip-active) {
+  color: var(--fixed-amber-400) !important;
+  box-shadow: inset 0 0 0 1px var(--fixed-amber-400-a35) !important;
+}
+
+[data-config-panel] .config-value-segment .value-chip--user-added:not(.value-chip-active) {
+  color: var(--fixed-cyan-300) !important;
+  box-shadow: inset 0 0 0 1px var(--fixed-cyan-300-a3) !important;
+}
+
+[data-config-panel] .config-value-segment .value-chip--hidden {
+  opacity: 0.35;
+  text-decoration: line-through;
+}
+
+/*
+ * ENGINE CONFIG panel only — param chips render as a cockpit-flag-style track:
+ * one continuous bezel rail, no per-value separators, with a sliding accent thumb.
+ * Theme tokens only (AGENTS.md themes policy). Scoped to [data-config-panel] so the
+ * CONFIG editor page (mono/eink panels) keeps its own chip treatment.
+ */
+[data-config-panel] .config-value-segment.config-value-segment--rail {
+  position: relative;
+  flex-wrap: wrap;
+  overflow: hidden;
+  gap: 0;
+  padding: 2px;
+  min-height: 20px;
+  border-radius: 4px;
+  /* Unify with .segment-switch (GPU-bezel Device/Split + cockpit flags) — same token
+     surface, resolves correctly on all themes incl. light ARCTIC. No theme fork. */
+  border: 1px solid color-mix(in srgb, var(--theme-border) 85%, transparent);
+  background: linear-gradient(
+    165deg,
+    color-mix(in srgb, var(--theme-panel-accent) 88%, var(--fixed-black) 12%) 0%,
+    var(--theme-panel-accent) 100%
+  );
+  /* Recessed — crisp 1px inner-top shadow + soft falloff + light inner-bottom edge. */
+  box-shadow:
+    inset 0 1px 1px var(--fixed-black-a24),
+    inset 0 2px 3px var(--fixed-black-a12),
+    inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 18%, transparent);
+}
+
+[data-config-panel] .config-value-segment.config-value-segment--rail .config-value-segment__thumb {
+  position: absolute;
+  /* Follow the selected chip box — never stretch full rail height when options wrap */
+  top: var(--seg-thumb-top, 2px);
+  left: var(--seg-thumb-left, 2px);
+  width: var(--seg-thumb-width, 0px);
+  height: var(--seg-thumb-height, 0px);
+  border-radius: 3px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--theme-accent-bright) 22%, var(--theme-panel)) 0%,
+    color-mix(in srgb, var(--theme-accent) 14%, var(--theme-panel-accent)) 100%
+  );
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 42%, transparent);
+  box-shadow:
+    0 0 8px color-mix(in srgb, var(--theme-accent-glow) 55%, transparent),
+    inset 0 1px 0 var(--fixed-white-a12);
+  transition:
+    left 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+    top 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+    width 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+    height 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Options sit above the thumb; no per-value borders → continuous track */
+[data-config-panel] .config-value-segment.config-value-segment--rail .config-value-segment__opt,
+[data-config-panel] .config-value-segment.config-value-segment--rail button.value-chip {
+  position: relative;
+  z-index: 1;
+  background: transparent !important;
+  border-color: transparent !important;
+  margin: 0 !important;
+}
+
+[data-config-panel] .config-value-segment.config-value-segment--rail .value-chip:hover {
+  background: transparent !important;
+}
+
+/* Active option — glowing accent segment, same as cockpit flag active */
+[data-config-panel] .config-value-segment.config-value-segment--rail .value-chip-active,
+[data-config-panel] .config-value-segment.config-value-segment--rail button.value-chip-active,
+[data-config-panel] .config-value-segment.config-value-segment--rail .config-value-segment__opt[data-selected="1"] {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  color: var(--theme-accent-bright) !important;
+  text-shadow: 0 0 10px color-mix(in srgb, var(--theme-accent-glow) 65%, transparent) !important;
+}
+
+/* Keep default / user-added / hidden markers readable on the rail */
+[data-config-panel] .config-value-segment.config-value-segment--rail .value-chip--factory-default:not(.value-chip-active) {
+  color: var(--theme-chip-hover-text) !important;
+}
+[data-config-panel] .config-value-segment.config-value-segment--rail .value-chip--user-default:not(.value-chip-active) {
+  color: var(--fixed-amber-400) !important;
+}
+[data-config-panel] .config-value-segment.config-value-segment--rail .value-chip--user-added:not(.value-chip-active) {
+  color: var(--fixed-cyan-300) !important;
+}
+
+/* Beat e-ink global “everything is accent green” on chip glyphs (ENGINE CONFIG panel only) */
+[data-config-panel] .eink-panel .config-value-segment .value-chip:not(.value-chip-active),
+[data-config-panel] .eink-panel .config-value-segment button.value-chip:not(.value-chip-active) {
+  color: color-mix(
+    in srgb,
+    var(--theme-industrial-muted) 92%,
+    transparent
+  ) !important;
+}
+
+[data-config-panel] .eink-panel .config-value-segment{
+  background: color-mix(in srgb, var(--theme-panel-accent) 80%, var(--fixed-black) 20%);
+}
+
+
+/* Param labels on e-ink */
+.eink-panel [data-param-row] > span:first-of-type {
+  color: var(--theme-accent-bright) !important;
+}
+
+/* Scrollbar on e-ink */
+.eink-panel::-webkit-scrollbar-thumb {
+  background: var(--theme-scrollbar-thumb) !important;
+}
+
+.eink-panel::-webkit-scrollbar-track {
+  background: var(--theme-accent-soft) !important;
+}
+
+/* Engine card exceptions — preserve non-green colors in eink context.
+   Log-channel exceptions (SlotLogPanel): re-key these selectors if the
+   .slot-log-* classes change — the .eink-panel accent wildcard otherwise
+   forces every line to accent-bright. */
+
+/* Red: STOP button */
+.eink-panel .slot-log-stop {
+  color: rgba(248, 113, 113, 0.7) !important;
+}
+
+/* Yellow/amber: system events, phase bar, TTFT, prefill bench */
+.eink-panel .slot-log-sys {
+  color: rgba(250, 204, 21, 0.7) !important;
+}
+.eink-panel .slot-log-line--pp {
+  color: rgba(245, 167, 39, 0.8) !important;
+}
+.eink-panel .slot-log-phase--pp {
+  color: rgb(245, 167, 39) !important;
+}
+
+/* White: bench ITL/tokens values */
+.eink-panel .slot-log-stat-value {
+  color: var(--fixed-white-a8) !important;
+}
+
+/* Stealth muted: placeholders, secondary labels */
+.eink-panel .slot-log-line,
+.eink-panel .slot-log-stat-label,
+.eink-panel .slot-log-phase {
+  color: rgb(100, 100, 116) !important;
+}
+.eink-panel .slot-log-empty {
+  color: rgba(100, 100, 116, 0.5) !important;
+}
+.eink-panel .slot-log-caption,
+.eink-panel .slot-log-bench-summary {
+  color: rgba(100, 100, 116, 0.6) !important;
+}
+
+/* ── Custom Flags block (launch dock + compact scroll slot) ─── */
+[data-config-panel] .config-launch-dock .custom-flags-block,
+[data-config-panel] .config-launch-dock__flags-scroll .custom-flags-block {
+  border-color: rgba(184, 122, 0, 0.32);
+  margin-top: 0;
+}
+
+[data-config-panel] .config-launch-dock .custom-flags-body,
+[data-config-panel] .config-launch-dock__flags-scroll .custom-flags-body {
+  background: transparent;
+}
+
+[data-config-panel] .config-launch-dock .custom-flags-label,
+[data-config-panel] .config-launch-dock__flags-scroll .custom-flags-label {
+  color: rgba(184, 122, 0, 0.72);
+}
+
+/* Custom flags chrome tokens (config panel — not only dev builds) */
+[data-config-panel] {
+  --dev-danger: var(--fixed-c-d40000);
+  --dev-danger-deep: var(--fixed-c-8f0000);
+  --custom-flags-amber: var(--fixed-c-b45309);
+  --custom-flags-amber-deep: #92400e;
+}
+
+/* APPEND mode — solid amber chrome (matches launch button banner) */
+[data-config-panel] .custom-flags-block.custom-flags-active {
+  border-color: var(--custom-flags-amber);
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-active .custom-flags-body {
+  background: var(--custom-flags-amber);
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-active .custom-flags-label {
+  color: var(--fixed-white);
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-active .custom-flags-input {
+  background: var(--custom-flags-amber-deep);
+  border-color: var(--fixed-amber-200) !important;
+  color: var(--fixed-white);
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-active .custom-flags-input::placeholder {
+  color: var(--fixed-amber-100);
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-active .mode-btn-add {
+  border-color: var(--fixed-amber-100);
+  color: var(--fixed-white);
+  background: var(--custom-flags-amber);
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-active .mode-btn-replace {
+  border-color: var(--fixed-amber-200);
+  color: var(--fixed-c-fffbeb);
+  background: var(--custom-flags-amber-deep);
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-active .mode-btn-off {
+  border-color: var(--fixed-amber-200);
+  color: var(--fixed-c-fffbeb);
+  background: var(--custom-flags-amber-deep);
+}
+
+/* REPLACE mode — dev rosso chrome; panel config is bypassed at launch */
+[data-config-panel] .custom-flags-block.custom-flags-replace {
+  border-color: var(--dev-danger);
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-replace .custom-flags-body {
+  background: var(--dev-danger);
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-replace .custom-flags-label {
+  color: var(--fixed-white);
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-replace .custom-flags-input {
+  background: var(--dev-danger-deep);
+  border-color: var(--fixed-c-ffb4b4) !important;
+  color: var(--fixed-white);
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-replace .custom-flags-input::placeholder {
+  color: #ffc9c9;
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-replace .mode-btn-replace {
+  border-color: var(--fixed-white);
+  color: var(--fixed-white);
+  background: var(--dev-danger);
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-replace .mode-btn-add {
+  border-color: var(--fixed-c-ffb4b4);
+  color: var(--fixed-c-ffe4e4);
+  background: var(--dev-danger-deep);
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-replace .mode-btn-off {
+  border-color: var(--fixed-c-ffb4b4);
+  color: var(--fixed-c-ffe4e4);
+  background: var(--dev-danger-deep);
+}
+
+.config-panel-params--bypassed {
+  opacity: 0.38;
+  filter: saturate(0.25);
+  transition: opacity 0.2s ease, filter 0.2s ease;
+}
+
+.config-launch-btn--custom-active {
+  min-height: 3.75rem;
+  padding-top: 0.125rem;
+  padding-bottom: 0.125rem;
+  gap: 0.2rem;
+  overflow: visible;
+}
+
+.config-launch-btn--custom-active .config-launch-btn__custom-warn {
+  width: 100%;
+  margin: 0 0 0.15rem;
+}
+
+.config-launch-btn__custom-warn {
+  display: block;
+  width: calc(100% + 1rem);
+  margin: -0.375rem -0.5rem 0.2rem;
+  padding: 3px 6px;
+  background: var(--dev-danger);
+  color: var(--fixed-white);
+  font-size: var(--type-micro);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  line-height: 1.2;
+}
+
+.config-launch-btn__custom-warn--append {
+  background: var(--custom-flags-amber);
+  color: var(--fixed-white);
+}
+
+.config-replace-confirm {
+  border: 1px solid var(--dev-danger);
+  background: var(--dev-danger-shell);
+}
+
+.config-replace-confirm__launch {
+  border: 1px solid var(--dev-danger);
+  background: var(--dev-danger);
+  color: var(--fixed-white);
+}
+
+.config-replace-confirm__launch:hover {
+  background: var(--dev-danger-deep);
+}
+
+.config-replace-confirm__cancel {
+  border: 1px solid var(--fixed-white-a22);
+  background: var(--fixed-white-a06);
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.custom-flags-popover {
+  position: fixed;
+  z-index: 220;
+  transform: translateY(calc(-100% - 8px));
+  padding: 8px;
+  background: var(--theme-surface-inset);
+  border-color: rgba(184, 122, 0, 0.45);
+  box-shadow:
+    0 10px 28px var(--fixed-black-a55),
+    0 2px 8px var(--fixed-black-a35);
+}
+
+.custom-flags-popover--below {
+  transform: translateY(8px);
+}
+
+.custom-flags-popover--below .custom-flags-popover__input {
+  min-height: 120px;
+  max-height: none;
+  resize: vertical;
+}
+
+/* Right rail — wide 3-line editor spanning over central config panel */
+.custom-flags-popover--rail-left {
+  transform: none;
+  max-width: none;
+  box-sizing: border-box;
+  padding: 10px 12px;
+}
+
+.custom-flags-popover--rail-left .custom-flags-popover__input {
+  min-height: 0;
+  max-height: 4.1em;
+  resize: none;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.custom-flags-popover--append {
+  background: var(--custom-flags-amber-deep);
+  border-color: var(--custom-flags-amber);
+  box-shadow:
+    0 10px 28px var(--fixed-black-a55),
+    0 0 0 1px var(--custom-flags-amber);
+}
+
+.custom-flags-popover--replace {
+  background: var(--dev-danger-deep);
+  border-color: var(--dev-danger);
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.6),
+    0 0 0 1px var(--dev-danger);
+}
+
+.custom-flags-popover__input {
+  display: block;
+  font-size: 16px;
+  min-height: 54px;
+  resize: vertical;
+  line-height: 1.35;
+  max-height: 140px;
+  background: var(--fixed-black-a35);
+  border-color: rgba(184, 122, 0, 0.35);
+  color: var(--theme-text);
+}
+
+.custom-flags-popover--append .custom-flags-popover__input {
+  background: var(--fixed-black);
+  border-color: var(--fixed-amber-200);
+  color: var(--fixed-white);
+}
+
+.custom-flags-popover--replace .custom-flags-popover__input {
+  background: var(--fixed-black);
+  border-color: var(--fixed-c-ffb4b4);
+  color: var(--fixed-white);
+}
+
+.custom-flags-popover__hint {
+  font-size: 13px;
+  color: var(--theme-text-muted);
+}
+
+.custom-flags-popover--append .custom-flags-popover__hint {
+  color: var(--fixed-amber-100);
+}
+
+.custom-flags-popover--replace .custom-flags-popover__hint {
+  color: #ffe0e0;
+}
+
+/* Mode toggle buttons inside Custom Flags */
+.mode-btn-add {
+  border-color: rgba(74, 222, 128, 0.3);
+  color: var(--fixed-green-400);
+  background: rgba(74, 222, 128, 0.06);
+}
+
+.mode-btn-replace {
+  border-color: rgba(248, 113, 113, 0.3);
+  color: var(--fixed-red-400);
+  background: rgba(248, 113, 113, 0.06);
+}
+
+.mode-btn-off {
+  border-color: rgba(184, 122, 0, 0.25);
+  color: rgba(184, 122, 0, 0.55);
+  background: rgba(184, 122, 0, 0.04);
+  cursor: pointer;
+}
+
+.mode-btn-off:hover {
+  border-color: var(--fixed-rgba-184-122-0-a4);
+  color: rgba(184, 122, 0, 0.75);
+  background: var(--fixed-rgba-184-122-0-a08);
+}
+
+.custom-flags-input {
+  background: var(--fixed-black-a3);
+  height: 18px;
+  min-height: 18px;
+}
+
+.custom-flags-block .mode-btn-add,
+.custom-flags-block .mode-btn-replace,
+.custom-flags-block .mode-btn-off {
+  line-height: 1.2;
+  min-height: 18px;
+}
+
+/* ── CONFIG page — reuse chip/panel tokens, no rainbow profiles ─── */
+[data-config-page] {
+  background: var(--theme-bg);
+  color: var(--theme-text);
+  /* Re-scoped warn (replaces the dead yellow-utility hooks). The pre-migration
+     correction covered warn on ALL FOUR properties, so a token scope is faithful:
+     text (text-yellow-400[/60-90], text-yellow-300[/90] -> secondary-bright),
+     border (border-yellow-400/20-50 -> secondary 48%), background
+     (bg-yellow-400/[0.05-0.06]/5/10/15 + hover -> secondary 12-16%), ring
+     (ring-yellow-400/35,40 -> secondary 40%). Migrated cfg-warn / cfg-warn--a*
+     classes now pick up --theme-warn here. MATRIX #ffb800->#f5971f, SLATE
+     #ffb800->#a0a0b0, ARCTIC #ffb800->#ea580c. Alpha tails: the class's own
+     color-mix percentage now governs (accepted micro-delta vs the old flat 100%). */
+  --theme-warn: var(--theme-secondary-bright);
+}
+
+/* Accent TEXT on the CONFIG page rendered one step brighter (the nv-green text
+   utility and its /60 /80 /85 /90 variants -> var(--theme-accent-bright)). Kept as
+   an explicit list instead of re-scoping --theme-accent: the pre-migration hook
+   corrected TEXT only, while this page's accent SOLIDs and BORDERS (launch CTA
+   fill, selected chips, slider tracks, cfg-fill--a* accents, focus rings) were
+   never corrected and must keep the base accent. Every cfg-acc / cfg-acc--a*
+   class in the Config room (ConfigPage, ConfigParamLegend, GroupHeaderControls,
+   LaunchPreset* / LaunchPresets*, Param* / SubParamsEditor, ProvidersConfig,
+   RecoveryConfig, SecretsConfig, ValueBubbles) inherits it. Update this list when
+   a Config-room class starts or stops painting accent ink. */
+[data-config-page] .cfg-acc,
+[data-config-page] .cfg-acc--a25,
+[data-config-page] .cfg-acc--a40,
+[data-config-page] .cfg-acc--a50,
+[data-config-page] .cfg-acc--a60,
+[data-config-page] .cfg-acc--a70,
+[data-config-page] .cfg-acc--a75,
+[data-config-page] .cfg-acc--a80,
+[data-config-page] .cfg-acc--a90 {
+  color: var(--theme-accent-bright) !important;
+}
+
+/* Telemetry-cyan TEXT on the CONFIG page (the telemetry-cyan text utility and its
+   /70 /80 variants -> var(--theme-accent-bright)). The cyan-400/300 family was a
+   SEPARATE pre-migration hook mapped to --theme-dist-cyan (not accent-bright), so
+   --theme-info is NOT re-scoped here: the info classes (fnd-build-step,
+   fnd-tc-cache-box__path, fnd-tc-btn--manual-active) keep the base info token.
+   The migrated cfg-inf / cfg-inf--a* classes carry the old telemetry-cyan text.
+   Update this list when a Config-room class starts or stops painting info ink. */
+[data-config-page] .cfg-inf,
+[data-config-page] .cfg-inf--a50 {
+  color: var(--theme-accent-bright) !important;
+}
+
+[data-config-page] .config-muted {
+  color: var(--theme-text-muted) !important;
+}
+
+[data-config-page] .foundry-toolchain-install-guide__body {
+  color: var(--theme-text-muted) !important;
+}
+
+
+[data-config-page] .text-white,
+[data-config-page] .text-white\/80,
+[data-config-page] .text-white\/70 {
+  color: var(--theme-text) !important;
+}
+
+
+
+
+[data-config-page] .config-section-bar {
+  border-bottom: 1px solid var(--theme-border-subtle);
+}
+
+[data-config-page] .config-provider-card {
+  background: var(--theme-eject-card-bg);
+  border: 1px solid var(--theme-eject-card-border);
+  border-radius: 6px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+[data-config-page] .config-provider-card:hover {
+  border-color: var(--theme-eject-card-hover-border);
+  background: var(--theme-eject-card-hover-bg);
+}
+
+[data-config-page] .config-provider-card.is-expanded {
+  border-color: var(--theme-chip-active-border);
+  background: var(--theme-eject-card-selected-bg);
+}
+
+[data-config-page] .config-provider-card.is-editing {
+  border-color: color-mix(in srgb, var(--theme-secondary) 45%, transparent);
+}
+
+[data-config-page] .foundry-build-panel {
+  background: var(--theme-panel-accent);
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+[data-config-page] .foundry-build-header {
+  background: var(--theme-panel);
+  border-bottom: 1px solid var(--theme-border-subtle);
+}
+
+[data-config-page] .foundry-profile-group {
+  border: 1px solid var(--theme-eject-card-border);
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--theme-eject-card-bg);
+}
+
+[data-config-page] .foundry-profile-row {
+  background: var(--theme-eject-card-bg);
+  border: 1px solid transparent;
+  border-left: 3px solid transparent;
+}
+
+[data-config-page] .foundry-profile-row--active {
+  background: color-mix(in srgb, var(--theme-secondary) 14%, var(--theme-eject-card-bg));
+  border-left-color: var(--theme-secondary);
+}
+
+[data-config-page] .foundry-active-binary-badge {
+  background: color-mix(in srgb, var(--theme-secondary) 14%, var(--theme-panel));
+  border: 1px solid color-mix(in srgb, var(--theme-secondary) 55%, transparent);
+  color: var(--theme-secondary-bright) !important;
+  border-radius: 2px;
+  letter-spacing: 0.04em;
+}
+
+[data-config-page] .foundry-source-label {
+  color: var(--theme-text-muted) !important;
+}
+
+[data-config-page] .foundry-profile-label {
+  color: var(--theme-secondary-bright) !important;
+}
+
+/* Secondary/gold ink on grey panels (ACTIVE row, profile labels, update badges) */
+
+
+[data-config-page] .foundry-profile-badges {
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+[data-config-page] .config-form-panel {
+  background: var(--theme-panel);
+  border: 1px solid var(--theme-border-subtle);
+}
+
+[data-config-page] .provider-row-group {
+  position: relative;
+  margin-bottom: 8px;
+}
+
+[data-config-page] .provider-form-popover {
+  position: relative;
+  z-index: 12;
+  background: var(--theme-panel);
+  border: 1px solid color-mix(in srgb, var(--theme-secondary) 28%, var(--theme-border-subtle));
+  box-shadow:
+    0 14px 36px var(--fixed-black-a48),
+    0 6px 14px var(--fixed-black-a32),
+    0 0 0 1px color-mix(in srgb, var(--theme-secondary) 10%, transparent);
+}
+
+[data-config-page] .provider-form-popover--edit {
+  margin: 6px 0 4px auto;
+  max-width: min(520px, 100%);
+  width: 100%;
+}
+
+[data-config-page] .config-input,
+[data-config-page] .config-textarea {
+  background: transparent;
+  color: var(--theme-text);
+  border-color: var(--theme-chip-border);
+}
+
+[data-config-page] .config-input {
+  border-bottom: 1px solid var(--theme-chip-border);
+}
+
+[data-config-page] .config-input:focus,
+[data-config-page] .config-textarea:focus {
+  border-color: var(--theme-chip-active-border);
+  outline: none;
+}
+
+[data-config-page] .config-input::placeholder,
+[data-config-page] .config-textarea::placeholder {
+  color: var(--theme-text-muted);
+}
+
+[data-config-page] .config-scan-panel {
+  background: var(--theme-panel-accent);
+  border: 1px solid var(--theme-border-subtle);
+}
+
+[data-config-page] .value-chip,
+[data-config-page] .value-chip-active {
+  font-family: 'JetBrains Mono', 'Roboto Mono', monospace;
+}
+
+/* Ensure CONFIG PARAMETER chips always paint themed borders (not bare Tailwind grey) */
+[data-config-page] .value-chip:not(.value-chip-active),
+[data-config-panel] .value-chip:not(.value-chip-active) {
+  border-color: var(--theme-chip-border);
+  background: var(--theme-chip-bg);
+  color: var(--theme-chip-text);
+}
+
+[data-config-page] .value-chip-active,
+[data-config-panel] .value-chip-active {
+  border-color: var(--theme-chip-active-border);
+  background: var(--theme-chip-active-bg);
+  color: var(--theme-chip-active-text);
+}
+
+[data-config-page] .param-catalog-modal {
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+[data-config-page] .param-catalog-modal .config-provider-card {
+  padding: 0;
+}
+
+/* ── Config panel root background ─── */
+[data-config-panel] {
+  background: var(--theme-panel-accent);
+}
+
+/* ── Selected model card name color ─── */
+.gunmetal-card .model-card-name {
+  color: var(--fixed-brand-amber);
+}
+
+
+/* ARCTIC catalog — unselected cards sample rail aluminium; selected lifts to white face */
+
+
+/* ARCTIC catalog — quant badge: dark teal ink on white/light cards */
+
+
+/* ── Select option styling (WebView2 ignores inline styles on <option>) ─── */
+select option {
+  background: var(--theme-panel) !important;
+  color: var(--theme-text) !important;
+}
+
+/* ── MOE Suggestion Animations ─────────────────────────────── */
+
+/* Simple pulsing border for suggestion state */
+@keyframes pulseBorder {
+  0%, 100% { 
+    box-shadow: 0 0 12px rgba(251, 146, 60, 0.35), inset 0 0 4px rgba(251, 146, 60, 0.2);
+    border-color: rgba(251, 146, 60, 0.8);
+  }
+  50% { 
+    box-shadow: 0 0 12px rgba(251, 146, 60, 0.7), inset 0 0 8px rgba(251, 146, 60, 0.4);
+    border-color: var(--fixed-orange-400);
+  }
+}
+
+/* MOE badge — reserved outer glow so gold ↔ suggest ↔ idle does not nudge bars */
+.moe-badge-root {
+  box-shadow: 0 0 15px transparent;
+}
+
+
+
+
+
+/* Orange hatched pattern for MOE_OPTIMAL RAM bar */
+.bg-orange-hatched {
+  background-image: 
+    repeating-linear-gradient(45deg, var(--fixed-orange-400) 0px, var(--fixed-orange-400) 1px, transparent 1px, transparent 3px),
+    linear-gradient(90deg, #3B82F6, var(--fixed-blue-400));
+  background-blend-mode: overlay;
+}
+
+/* ── Speculative Decoding Toggle ─── */
+
+@keyframes nuclearFlash {
+  0% { opacity: 0; }
+  30% { opacity: 1; }
+  100% { opacity: 1; }
+}
+
+
+
+
+
+
+
+
+
+
+
+/* ── CTX slider track (native + custom) — uses app theme accent tokens ── */
+:root {
+  --ctx-slider-control-h: 18px;
+  /* Reserved chip width — 4 glyphs (e.g. 512K); editing scrolls longer raw integers. */
+  --ctx-chip-w: calc(4.25ch + 0.45rem);
+}
+
+.ctx-slider-track-host {
+  overflow: visible;
+  align-self: center;
+}
+
+.config-params-above .ctx-slider-row,
+.config-params-above .ctx-slider-field,
+.config-params-above .ctx-slider-param-row {
+  overflow: visible;
+}
+
+.ctx-slider-track {
+  background: var(--theme-panel-accent);
+  border: 1px solid color-mix(in srgb, var(--theme-accent-bright) 30%, transparent);
+  box-sizing: border-box;
+}
+.ctx-slider-ghost-mark {
+  top: 0;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 0;
+}
+.ctx-slider-ghost-stem {
+  position: absolute;
+  left: 50%;
+  width: 0;
+  border-left: 2px solid var(--fixed-amber-400-a92);
+  transform: translateX(-50%);
+  box-shadow: 0 0 7px var(--fixed-amber-400-a6);
+}
+.ctx-slider-ghost-label {
+  position: absolute;
+  top: -2px;
+  left: 50%;
+  transform: translate(-50%, -85%);
+  z-index: 5;
+  padding: 0 3px;
+  font-size: var(--type-micro);
+  line-height: 1.1;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: var(--fixed-amber-400);
+  background: color-mix(in srgb, var(--theme-panel) 88%, transparent);
+  border: 1px solid var(--fixed-amber-400-a5);
+  border-radius: 2px;
+  text-shadow: 0 0 6px var(--fixed-amber-400-a4);
+}
+
+.ctx-slider-thumb {
+  background: var(--theme-accent-bright);
+  box-shadow: 0 0 6px var(--theme-accent-glow);
+  pointer-events: none;
+}
+
+.ctx-slider-tick {
+  background: color-mix(in srgb, var(--theme-accent-bright) 35%, transparent);
+}
+
+.ctx-slider-tick--default {
+  background: var(--theme-accent-bright);
+  box-shadow: 0 0 4px var(--theme-accent-glow);
+  width: 4px;
+}
+
+
+.ctx-slider-tick--learned {
+  background: var(--fixed-cyan-400);
+  box-shadow: 0 0 5px rgba(34, 211, 238, 0.85);
+  width: 3px;
+}
+
+.ctx-slider-tick--learned-custom {
+  width: 2px;
+  /* height comes from inline style (hero extends full mark column) */
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(34, 211, 238, 0.9) 0 2px,
+    transparent 2px 4px
+  );
+  box-shadow: none;
+  opacity: 0.8;
+}
+
+.ctx-slider-tick--learned-active {
+  box-shadow: 0 0 7px var(--fixed-cyan-400);
+  opacity: 1;
+}
+
+.ctx-slider-tick--selected {
+  background: color-mix(in srgb, var(--theme-accent-bright) 65%, transparent);
+}
+
+.ctx-slider-tick-tooltip {
+  color: color-mix(in srgb, var(--theme-accent-bright) 55%, transparent);
+  z-index: 6;
+}
+.ctx-slider-tick-tooltip--active {
+  color: var(--theme-accent-bright);
+}
+.ctx-slider-tick-tooltip--hero {
+  line-height: 1;
+  padding-bottom: 1px;
+}
+.ctx-slider-tick-tooltip--learned {
+  color: var(--fixed-cyan-400-a7);
+}
+.ctx-slider-tick-tooltip--learned.ctx-slider-tick-tooltip--active {
+  color: var(--fixed-cyan-400);
+  text-shadow: 0 0 6px rgba(34, 211, 238, 0.55);
+}
+.ctx-slider-tick-tooltip--custom {
+  font-style: italic;
+  letter-spacing: 0.02em;
+}
+
+.ctx-slider-track-host--hero {
+  align-self: stretch;
+}
+
+.ctx-slider-chip--reserve {
+  width: var(--ctx-chip-w);
+  min-width: var(--ctx-chip-w);
+  max-width: var(--ctx-chip-w);
+}
+
+.ctx-slider-value-input {
+  height: var(--ctx-slider-control-h);
+  min-height: var(--ctx-slider-control-h);
+  padding: 0 0.2rem;
+  line-height: calc(var(--ctx-slider-control-h) - 2px);
+  box-sizing: border-box;
+}
+
+.ctx-slider-row {
+  min-width: 0;
+  min-height: var(--ctx-slider-control-h);
+  overflow: visible;
+  align-items: flex-start;
+}
+
+.ctx-slider-row > .ctx-slider-track-host {
+  flex: 1 1 0%;
+  min-width: 0;
+}
+
+[data-param-row]:has(.ctx-slider-row),
+.ctx-slider-param-row {
+  align-items: flex-start;
+  min-height: 22px;
+  overflow: visible;
+}
+
+.ctx-slider-param-label {
+  margin-right: 1ch;
+}
+
+.ctx-slider-param-row {
+  padding-right: 1ch;
+}
+
+.ctx-slider-field {
+  min-width: 0;
+}
+
+.ctx-slider-per-slot-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1px;
+  user-select: none;
+}
+
+.ctx-slider-per-slot-chip {
+  font-variant-numeric: tabular-nums;
+  display: block;
+  height: var(--ctx-slider-control-h);
+  min-height: var(--ctx-slider-control-h);
+  padding: 0 0.2rem;
+  line-height: calc(var(--ctx-slider-control-h) - 2px);
+  box-sizing: border-box;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ctx-slider-per-slot-caption {
+  font-size: var(--type-hairline);
+  line-height: 1;
+  text-align: center;
+  color: var(--theme-text-muted);
+  opacity: 0.72;
+  letter-spacing: 0.06em;
+}
+
+/*
+ * Config panel chips — solid theme tokens only.
+ * Do NOT mix borders with --theme-bezel-edge-hi (white on ARCTIC → invisible edges;
+ * washed on dark). Same .value-chip language as launch/config chrome.
+ */
+[data-config-panel] .gpu-assign-panel .value-chip,
+[data-config-panel] .gpu-assign-panel .value-chip-active,
+[data-config-panel] .config-params-above [data-param-row] .value-chip,
+[data-config-panel] .config-params-above [data-param-row] .value-chip-active,
+[data-config-panel] .config-params-above [data-param-row] input.value-chip,
+[data-config-panel] .config-params-above [data-param-row] input.value-chip-active,
+[data-config-panel] .config-params-scroll [data-param-row] .value-chip,
+[data-config-panel] .config-params-scroll [data-param-row] .value-chip-active,
+[data-config-panel] .config-params-scroll [data-param-row] input.value-chip,
+[data-config-panel] .config-params-scroll [data-param-row] input.value-chip-active,
+[data-config-page] [data-param-row] .value-chip,
+[data-config-page] [data-param-row] .value-chip-active {
+  background: var(--theme-chip-bg) !important;
+  border: 1px solid var(--theme-chip-border) !important;
+  color: var(--theme-chip-text) !important;
+  box-shadow: none !important;
+  transform: none;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease !important;
+}
+
+[data-config-panel] .gpu-assign-panel .value-chip:hover,
+[data-config-panel] .config-params-above [data-param-row] .value-chip:hover,
+[data-config-panel] .config-params-above [data-param-row] input.value-chip:hover,
+[data-config-panel] .config-params-scroll [data-param-row] .value-chip:hover,
+[data-config-panel] .config-params-scroll [data-param-row] input.value-chip:hover,
+[data-config-page] [data-param-row] .value-chip:hover {
+  background: var(--theme-chip-active-bg) !important;
+  border-color: var(--theme-chip-hover-border) !important;
+  color: var(--theme-chip-hover-text) !important;
+}
+
+[data-config-panel] .gpu-assign-panel .value-chip-active,
+[data-config-panel] .config-params-above [data-param-row] .value-chip-active,
+[data-config-panel] .config-params-above [data-param-row] input.value-chip-active,
+[data-config-panel] .config-params-scroll [data-param-row] .value-chip-active,
+[data-config-panel] .config-params-scroll [data-param-row] input.value-chip-active,
+[data-config-page] [data-param-row] .value-chip-active {
+  background: var(--theme-chip-active-bg) !important;
+  border-color: var(--theme-chip-active-border) !important;
+  color: var(--theme-chip-active-text) !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-chip-active-border) 40%, transparent) !important;
+}
+
+/* Semantic param-value chips (ValueBubbles) — sit on value-chip base */
+[data-config-panel] .value-chip--factory-default,
+[data-config-page] .value-chip--factory-default {
+  background: var(--theme-chip-active-bg) !important;
+  border: 2px double var(--theme-chip-active-border) !important;
+  color: var(--theme-chip-active-text) !important;
+  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-accent-glow) 50%, transparent) !important;
+}
+
+[data-config-panel] .value-chip--user-default,
+[data-config-page] .value-chip--user-default {
+  background: color-mix(in srgb, var(--theme-secondary) 18%, var(--theme-chip-bg)) !important;
+  border: 2px double color-mix(in srgb, var(--theme-secondary-bright) 75%, transparent) !important;
+  color: var(--theme-secondary-bright) !important;
+}
+
+[data-config-panel] .value-chip--user-added,
+[data-config-page] .value-chip--user-added {
+  background: color-mix(in srgb, var(--theme-secondary) 10%, var(--theme-chip-bg)) !important;
+  border: 1px solid color-mix(in srgb, var(--theme-secondary) 45%, transparent) !important;
+  color: var(--theme-secondary-bright) !important;
+}
+
+[data-config-panel] .value-chip--hidden,
+[data-config-page] .value-chip--hidden {
+  background: var(--theme-chip-bg) !important;
+  border: 1px solid var(--theme-chip-border) !important;
+  color: var(--theme-chip-text) !important;
+}
