@@ -1,15 +1,15 @@
 {
-  "note": "Regression ceilings for `node scripts/css-tools.mjs audit --check`. Ratcheted 2026-10-16: grouped small-family batch cleaned (419->169 source total). Use npm run css:locate before edits.",
+  "note": "Regression ceilings for `node scripts/css-tools.mjs audit --check`. Ratcheted 2026-10-16: true .value-chip family is !important-free after BEM modifier fix (419->156 source total). Use npm run css:locate before edits.",
   "sourceBytesLf": 680000,
   "deadRules": 0,
   "deadBytes": 0,
-  "important": 172,
+  "important": 159,
   "literalHex": 65,
   "literalRgba": 90,
   "colorMixLiteral": 55,
   "pxFontSizes": 30,
   "distBytes": 494000,
-  "distImportant": 176,
+  "distImportant": 163,
   "importOrder": [
     "tokens-base.css",
     "utilities.css",

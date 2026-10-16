@@ -340,3 +340,10 @@ This trade removes ~1,000 literal paint sites and centralizes the palette.
 - Removed 34 importants: bench muted buttons, nav active, custom flags input,
   engine stack status dots/pills, eink panel logs/params, industrial frame vram
   badge. Source total 203 -> 169. User confirmed visual stability.
+
+## Chip variant correction + locator BEM fix
+
+- css-locate now matches BEM modifier families (`.value-chip--*`, `__*`), which
+  revealed 13 missed importants in four chip variant base rules.
+- Those are removed; true .value-chip family important count is 0.
+- Source total 169 -> 156; main CSS 173 -> 160. User confirmed visual stability.

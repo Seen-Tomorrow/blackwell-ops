@@ -2088,29 +2088,29 @@ select option {
 /* Semantic param-value chips (ValueBubbles) — sit on value-chip base */
 [data-config-panel] .value-chip--factory-default,
 [data-config-page] .value-chip--factory-default {
-  background: var(--theme-chip-active-bg) !important;
-  border: 2px double var(--theme-chip-active-border) !important;
-  color: var(--theme-chip-active-text) !important;
-  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-accent-glow) 50%, transparent) !important;
+  background: var(--theme-chip-active-bg);
+  border: 2px double var(--theme-chip-active-border);
+  color: var(--theme-chip-active-text);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-accent-glow) 50%, transparent);
 }
 
 [data-config-panel] .value-chip--user-default,
 [data-config-page] .value-chip--user-default {
-  background: color-mix(in srgb, var(--theme-secondary) 18%, var(--theme-chip-bg)) !important;
-  border: 2px double color-mix(in srgb, var(--theme-secondary-bright) 75%, transparent) !important;
-  color: var(--theme-secondary-bright) !important;
+  background: color-mix(in srgb, var(--theme-secondary) 18%, var(--theme-chip-bg));
+  border: 2px double color-mix(in srgb, var(--theme-secondary-bright) 75%, transparent);
+  color: var(--theme-secondary-bright);
 }
 
 [data-config-panel] .value-chip--user-added,
 [data-config-page] .value-chip--user-added {
-  background: color-mix(in srgb, var(--theme-secondary) 10%, var(--theme-chip-bg)) !important;
-  border: 1px solid color-mix(in srgb, var(--theme-secondary) 45%, transparent) !important;
-  color: var(--theme-secondary-bright) !important;
+  background: color-mix(in srgb, var(--theme-secondary) 10%, var(--theme-chip-bg));
+  border: 1px solid color-mix(in srgb, var(--theme-secondary) 45%, transparent);
+  color: var(--theme-secondary-bright);
 }
 
 [data-config-panel] .value-chip--hidden,
 [data-config-page] .value-chip--hidden {
-  background: var(--theme-chip-bg) !important;
-  border: 1px solid var(--theme-chip-border) !important;
-  color: var(--theme-chip-text) !important;
+  background: var(--theme-chip-bg);
+  border: 1px solid var(--theme-chip-border);
+  color: var(--theme-chip-text);
 }

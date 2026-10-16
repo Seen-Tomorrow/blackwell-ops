@@ -144,7 +144,8 @@ function tsxUsages(target) {
 // ---- reports --------------------------------------------------------------
 function locateClass(target) {
   const cls = target.replace(/^\./, "");
-  const rules = allRules().filter((r) => classesIn(r.selector).includes(cls));
+  const family = (c) => c === cls || c.startsWith(cls + '--') || c.startsWith(cls + '__');
+  const rules = allRules().filter((r) => classesIn(r.selector).some(family));
   const usage = tsxUsages(cls);
   const related = new Map();
   for (const r of rules) for (const c of classesIn(r.selector)) related.set(c, (related.get(c) || 0) + 1);
