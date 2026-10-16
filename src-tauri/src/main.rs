@@ -73,6 +73,13 @@ mod model_paths;
 mod output_console_cmds;
 mod downloads;
 
+// engine.rs split (change 1 of docs/internal/REFACTOR-PLAN-2026-10.md) — same single
+// generate_handler! below; these are domain modules, not sub-routers.
+// (`fit_scanner` is already declared above with its fit_adapters / fit_low_vram family.)
+mod engine_build_info;
+mod model_files;
+mod model_scan;
+
 
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -405,14 +412,14 @@ async fn main() {
             provider_mgmt::toggle_group_hidden,
             provider_mgmt::set_group_hidden,
             provider_mgmt::set_profile_binary_source,
-            engine::get_binary_build_info,
-            engine::get_path_size_bytes,
-            engine::set_build_info_for_env,
-            engine::open_file_dialog,
-            engine::open_folder_dialog,
-            engine::reveal_path_in_explorer,
-            engine::delete_model_file_cmd,
-            engine::rename_model_file_cmd,
+            engine_build_info::get_binary_build_info,
+            model_scan::get_path_size_bytes,
+            engine_build_info::set_build_info_for_env,
+            model_files::open_file_dialog,
+            model_files::open_folder_dialog,
+            model_files::reveal_path_in_explorer,
+            model_files::delete_model_file_cmd,
+            model_files::rename_model_file_cmd,
             // Template loading
             engine::get_template,
             engine::get_template_for_provider,
@@ -445,21 +452,21 @@ async fn main() {
             config::save_user_providers_meta,
             config::reset_param_to_template,
             config::reorder_provider,
-            // FIT Scanner commands
-            engine::fit_scan_model,
-            engine::fit_scan_single_model,
-            engine::fit_scan_library,
-            engine::fit_stop_scan,
+            // FIT Scanner commands — the probe lives in fit_scanner with the rest of the domain
+            fit_scanner::fit_scan_model,
+            fit_scanner::fit_scan_single_model,
+            fit_scanner::fit_scan_library,
+            fit_scanner::fit_stop_scan,
             fit_scanner::get_fit_scan_points,
             fit_scanner::get_fit_scan_cache_snapshot,
             vram_learn::get_learned_vram,
             vram_learn::get_learned_vram_curve,
             vram_learn::prune_learned_vram_curve,
             // GGUF Metadata Scanner commands
-            engine::scan_model_metadata_cmd,
-            engine::scan_all_models_cmd,
-            engine::cancel_gguf_scan_cmd,
-            engine::clear_model_cache_cmd,
+            model_scan::scan_model_metadata_cmd,
+            model_scan::scan_all_models_cmd,
+            model_scan::cancel_gguf_scan_cmd,
+            model_scan::clear_model_cache_cmd,
             burst_bench::cmd_burst_bench,
             bench_pp_burst::cmd_bench_pp_burst,
             bench_cancel::cmd_cancel_bench,

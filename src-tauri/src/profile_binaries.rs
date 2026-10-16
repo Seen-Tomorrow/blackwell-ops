@@ -216,7 +216,7 @@ fn merge_probed_version(
                 pp.replace('\\', "/").eq_ignore_ascii_case(&path.replace('\\', "/"))
             })
             .unwrap_or(true);
-        if same_path && !crate::engine::is_placeholder_build_version(&prev.version) {
+        if same_path && !crate::engine_build_info::is_placeholder_build_version(&prev.version) {
             info.version = prev.version.clone();
             if info.cuda_version.is_none() {
                 info.cuda_version = prev.cuda_version.clone();

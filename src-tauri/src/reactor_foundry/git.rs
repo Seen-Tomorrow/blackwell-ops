@@ -772,7 +772,7 @@ pub(crate) fn short_commit_hash(hash: &str) -> String {
 
 pub(crate) fn extract_commit_from_build_version(version: &str) -> Option<String> {
     let v = version.trim();
-    if v.is_empty() || crate::engine::is_placeholder_build_version(v) {
+    if v.is_empty() || crate::engine_build_info::is_placeholder_build_version(v) {
         return None;
     }
     // Prefer explicit "commit <hash>" (new llama.cpp) or bare "(deadbeef)".

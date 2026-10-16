@@ -3,8 +3,9 @@
 //! Self-contained scan plan with hardcoded GGML-compatible CLI commands.
 //! No template system involvement — directly builds args for llama-fit-params.exe.
 
+use crate::engine::AppContext;
 use crate::log_hub::LogHub;
-use crate::output_console::{BlackwellOutputConsoleCategory, BlackwellOutputConsoleLineStyle};
+use crate::output_console::{format_console_completion, BlackwellOutputConsoleCategory, BlackwellOutputConsoleLineStyle};
 use crate::telemetry::detect_gpu_count;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -14,7 +15,7 @@ use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc as StdArc;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, Semaphore};
 use tokio::sync::Mutex as TokioMutex;
@@ -1589,7 +1590,7 @@ pub async fn scan_library(
     _gpus_total_mib: f64,
     provider_id: String,
     progress_tx: Option<broadcast::Sender<FitScanProgress>>,
-    cancelled: StdArc<AtomicBool>,
+    cancelled: Arc<AtomicBool>,
     log_hub: Option<LogHub>,
 ) -> FitScanComplete {
     let hub_ref = log_hub.as_ref();
@@ -1658,11 +1659,11 @@ pub async fn scan_library(
 
     let existing_data = load_full_scan_partition(fit_adapter);
 
-    let semaphore = StdArc::new(Semaphore::new(max_parallel as usize));
-    let failed_count = StdArc::new(TokioMutex::new(0usize));
+    let semaphore = Arc::new(Semaphore::new(max_parallel as usize));
+    let failed_count = Arc::new(TokioMutex::new(0usize));
 
-    let full_results_map: StdArc<TokioMutex<HashMap<String, FitScanFull>>> =
-        StdArc::new(TokioMutex::new(existing_data));
+    let full_results_map: Arc<TokioMutex<HashMap<String, FitScanFull>>> =
+        Arc::new(TokioMutex::new(existing_data));
 
     let mut handles = vec![];
 
@@ -2104,3 +2105,392 @@ mod cache_key_tests {
         assert_eq!(map.get(&fit_scan_storage_key(lookup)).unwrap().model_path, lookup);
     }
 }
+// ── FIT Scanner Commands ────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn fit_scan_model(
+    model_path: String,
+    _provider_id: Option<String>,
+    ctx_size: serde_json::Value,
+    kv_quant: String,
+    device: String,
+    split_mode: String,
+    batch: u32,
+    _ubatch: u32,
+    _flash_attn: bool,
+    _offload_mode: String,
+    // full (default) | low_vram — free-aware spill probe (manual RE-PROBE LOW VRAM).
+    mode: Option<String>,
+    // NVML free MiB for target GPU mask (low_vram fit-target correction).
+    free_budget_mib: Option<f64>,
+    app: tauri::State<'_, AppContext>,
+) -> Result<FitScanResult, String> {
+    let cfg = {
+        let guard = app.config.lock().map_err(|e| e.to_string())?;
+        guard.clone()
+    };
+
+    let backend_type = _provider_id.unwrap_or_else(|| crate::config::DEFAULT_PROVIDER_ID.to_string());
+    let probe_mode = mode.unwrap_or_else(|| "full".to_string());
+    let is_low_vram = probe_mode.eq_ignore_ascii_case("low_vram");
+
+    if let Some(note) = model_fit_skip_note(&backend_type, &model_path) {
+        app.log_hub.emit_console_line(
+            BlackwellOutputConsoleCategory::Utils,
+            &format!("[FIT] {} | skipped | {}", model_path, note),
+            BlackwellOutputConsoleLineStyle::Normal,
+        );
+        return Err(note.to_string());
+    }
+
+    let fit_binary = resolve_fit_binary(&cfg, &backend_type, "")?;
+
+    let ctx_int: usize = match &ctx_size {
+        serde_json::Value::Number(n) => n.as_u64().map(|v| v as usize).unwrap_or(32768),
+        _ => ctx_size.to_string().parse::<usize>().unwrap_or(32768),
+    };
+
+    let gpu_count = detect_gpu_count();
+    let gpu_mask = crate::engine_utils::compute_gpu_mask_from_params(&device, &split_mode, gpu_count, false);
+
+    let fit_adapter = resolve_fit_adapter(&backend_type);
+
+    let args = if is_low_vram {
+        let fit_binary_list = fit_binary.clone();
+        let gpu_mask_list = gpu_mask.clone();
+        let fit_frees = tokio::task::spawn_blocking(move || {
+            crate::fit_low_vram::list_devices_free_mib(&fit_binary_list, &gpu_mask_list)
+        })
+        .await
+        .map_err(|e| format!("low-vram list-devices join: {e}"))??;
+
+        // Single-device mask → first free; multi → min free (tightest card).
+        let fit_free = fit_frees.iter().copied().fold(f64::INFINITY, f64::min);
+        let nvml_free = free_budget_mib.unwrap_or(fit_free);
+        let fit_target = crate::fit_low_vram::fit_target_mib_from_free(fit_free, nvml_free);
+        app.log_hub.emit_console_line(
+            BlackwellOutputConsoleCategory::Utils,
+            &format!(
+                "[FIT] PROBE-LOW_VRAM  target={fit_target} MiB (fit_free={fit_free:.0} nvml_free={nvml_free:.0})"
+            ),
+            BlackwellOutputConsoleLineStyle::Warning,
+        );
+        crate::fit_low_vram::build_low_vram_fit_command(
+            &model_path,
+            ctx_int,
+            &kv_quant,
+            batch,
+            _ubatch,
+            &split_mode,
+            fit_target,
+        )
+    } else {
+        build_fit_command(
+            &backend_type,
+            &model_path,
+            ctx_int,
+            &kv_quant,
+            batch,
+            _ubatch,
+            1,
+            &split_mode,
+        )
+    };
+
+    let fit_result =
+        scan_single_anchor(&fit_binary, &args, &gpu_mask, fit_adapter).await;
+    match &fit_result {
+        Ok(raw) => {
+            let model_name = std::path::Path::new(&model_path)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or(&model_path);
+            let tag = if is_low_vram {
+                "PROBE-LOW_VRAM"
+            } else {
+                "PROBE"
+            };
+            let ngl = raw
+                .fitted_ngl
+                .map(|n| n.to_string())
+                .unwrap_or_else(|| "full".into());
+            let host = raw.host_mib.unwrap_or(0.0);
+            let host_split = raw
+                .host_components_mib
+                .as_ref()
+                .map(|c| {
+                    format!(
+                        " host={:.0} (model={:.0} ctx={:.0} compute={:.0})",
+                        host, c.model_mib, c.ctx_mib, c.compute_mib
+                    )
+                })
+                .unwrap_or_else(|| format!(" host={host:.0}"));
+            let style = if is_low_vram {
+                BlackwellOutputConsoleLineStyle::Warning
+            } else {
+                BlackwellOutputConsoleLineStyle::Normal
+            };
+            app.log_hub.emit_console_line(
+                BlackwellOutputConsoleCategory::Utils,
+                &format!(
+                    "[FIT] {tag}  ngl={ngl}  GPU={:.0}{host_split}  {model_name}",
+                    raw.vram_mib
+                ),
+                style,
+            );
+        }
+        Err(e) => {
+            let tag = if is_low_vram {
+                "PROBE-LOW_VRAM"
+            } else {
+                "PROBE"
+            };
+            let model_name = std::path::Path::new(&model_path)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or(&model_path);
+            let cli_split = fit_cli_split_mode(&split_mode);
+            let split_note = if cli_split.is_empty() {
+                "split=none".to_string()
+            } else if cli_split != split_mode.trim().to_lowercase() {
+                format!("split={split_mode}→{cli_split}")
+            } else {
+                format!("split={cli_split}")
+            };
+            let why = e
+                .rsplit("): ")
+                .next()
+                .unwrap_or(e.as_str())
+                .trim();
+            let decode = if e.contains("0xC0000409") || e.contains("STACK_BUFFER") {
+                "crash=0xC0000409"
+            } else if e.contains("exit 1") {
+                "abort=exit1"
+            } else if e.contains("timeout") {
+                "timeout"
+            } else {
+                "fail"
+            };
+            app.log_hub.emit_console_line(
+                BlackwellOutputConsoleCategory::Error,
+                &format!(
+                    "[FIT] {tag}  FAILED  {decode}  {split_note}  ctx={ctx_int}  kv={kv_quant}  gpus={gpu_count}  mask={gpu_mask}  {model_name}"
+                ),
+                BlackwellOutputConsoleLineStyle::Error,
+            );
+            app.log_hub.emit_console_line(
+                BlackwellOutputConsoleCategory::Error,
+                &format!("[FIT] {tag}  why: {why}"),
+                BlackwellOutputConsoleLineStyle::Error,
+            );
+        }
+    }
+    let raw = fit_result?;
+    let vram_mib = raw.vram_mib;
+
+    let gpus = crate::telemetry::scan_gpus().await.unwrap_or_default();
+    let total_gpu_mib: f64 = gpus.iter().map(|g| g.memory_total as f64).sum();
+
+    Ok(FitScanResult {
+        model_path,
+        vram_mib,
+        ctx: ctx_int,
+        kv_quant,
+        fits: vram_mib <= total_gpu_mib,
+        gpu_breakdown_mib: raw.gpu_breakdown_mib,
+        host_mib: raw.host_mib,
+        gpu_components_mib: raw.gpu_components_mib,
+        host_components_mib: raw.host_components_mib,
+        fitted_ngl: raw.fitted_ngl,
+        probe_mode: Some(if is_low_vram {
+            "low_vram".into()
+        } else {
+            "full".into()
+        }),
+    })
+}
+
+#[tauri::command]
+pub async fn fit_scan_single_model(
+    model_path: String,
+    provider_id: String,
+    force_rescan: Option<bool>,
+    app: tauri::State<'_, AppContext>,
+) -> Result<FitScanFull, String> {
+    let cfg = {
+        let guard = app.config.lock().map_err(|e| e.to_string())?;
+        guard.clone()
+    };
+
+    if let Some(note) = model_fit_skip_note(&provider_id, &model_path) {
+        app.log_hub.emit_console_line(
+            BlackwellOutputConsoleCategory::Utils,
+            &format!("[FIT-SCAN] {} | skipped | {}", model_path, note),
+            BlackwellOutputConsoleLineStyle::Normal,
+        );
+        return Err(note.to_string());
+    }
+
+    let fit_binary = resolve_fit_binary(&cfg, &provider_id, "")?;
+
+    let (progress_tx, _progress_rx) = broadcast::channel::<FitScanProgress>(64);
+    let log_hub_clone = app.log_hub.clone();
+    let prog_for_spawn = progress_tx.clone();
+    tokio::spawn(async move {
+        let mut rx = prog_for_spawn.subscribe();
+        while let Ok(evt) = rx.recv().await {
+            log_hub_clone.emit("fit-scan-progress", &evt);
+        }
+    });
+
+    // Local cancel only — do not touch AppContext.fit_scan_cancel (library scan stop).
+    let cancel_flag = Arc::new(AtomicBool::new(false));
+
+    let result = scan_single_model_full(
+        &fit_binary,
+        &model_path,
+        &provider_id,
+        Some(&progress_tx),
+        &cancel_flag,
+        Some(&app.log_hub),
+        force_rescan.unwrap_or(false),
+        None,
+    )
+    .await;
+
+    let summary_style = if result.error.is_some() && result.skip_reason.is_none() {
+        BlackwellOutputConsoleLineStyle::Warning
+    } else {
+        BlackwellOutputConsoleLineStyle::Success
+    };
+    app.log_hub.emit_console_line(
+        BlackwellOutputConsoleCategory::Utils,
+        &format_console_completion(
+            "VRAM fit model scan complete",
+            &format!(
+                "{} — {}/{} points",
+                extract_model_name(&model_path),
+                fit_scan_labels_done(&result).len(),
+                scan_points_total()
+            ),
+        ),
+        summary_style,
+    );
+
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn fit_scan_library(
+    provider_id: String,
+    model_base: String,
+    parallel_count: u32,
+    _batch: u32,
+    _ubatch: u32,
+    force_rescan: Option<bool>,
+    app: tauri::State<'_, AppContext>,
+) -> Result<FitScanComplete, String> {
+    let cfg = {
+        let guard = app.config.lock().map_err(|e| e.to_string())?;
+        guard.clone()
+    };
+
+    // Use provided path or ALL configured model paths — resolved the same way as list_models.
+    let all_paths = if !model_base.is_empty() {
+        vec![crate::config::resolve_stored_model_path(&model_base)]
+    } else {
+        crate::config::get_model_paths(&cfg)
+            .into_iter()
+            .map(|p| p.path)
+            .collect::<Vec<_>>()
+    };
+
+    let fit_binary = match resolve_fit_binary(&cfg, &provider_id, "") {
+        Ok(path) => path,
+        Err(e) => {
+            app.log_hub.emit_console_line(
+                BlackwellOutputConsoleCategory::Error,
+                &format!("[FIT-SCAN] {e}"),
+                BlackwellOutputConsoleLineStyle::Error,
+            );
+            return Err(e);
+        }
+    };
+
+    // Get total GPU VRAM for fit checking
+    let gpus = crate::telemetry::scan_gpus().await.unwrap_or_default();
+    let total_gpu_mib: f64 = gpus.iter().map(|g| g.memory_total as f64).sum::<f64>() + (gpus.len() as f64 * FIT_OVERHEAD_PER_GPU);
+
+    // Create broadcast channel for real-time progress events
+    let (progress_tx, _progress_rx) = broadcast::channel::<FitScanProgress>(64);
+    let log_hub_clone = app.log_hub.clone();
+
+    let prog_for_spawn = progress_tx.clone();
+
+    tokio::spawn(async move {
+        let mut rx = prog_for_spawn.subscribe();
+        while let Ok(evt) = rx.recv().await {
+            log_hub_clone.emit("fit-scan-progress", &evt);
+        }
+    });
+
+    // Create cancellation flag and store in AppContext
+    let cancel_flag = Arc::new(AtomicBool::new(false));
+    {
+        let mut guard = app.fit_scan_cancel.lock().await;
+        *guard = cancel_flag.clone();
+    }
+
+    // Force rescan: drop this provider's fit-adapter partition so incremental scan re-runs all points
+    if force_rescan.unwrap_or(false) {
+        clear_full_scan_partition_for_provider(&provider_id);
+    }
+
+    // Run library scan — scans all configured paths, deduplicates across them
+    let result = scan_library(
+        &fit_binary,
+        &all_paths,
+        parallel_count.max(1),
+        total_gpu_mib,
+        provider_id.clone(),
+        Some(progress_tx),
+        cancel_flag,
+        Some(app.log_hub.clone()),
+    )
+    .await;
+
+    let models_with_errors = result
+        .results
+        .values()
+        .filter(|entry| entry.error.is_some() && entry.skip_reason.is_none())
+        .count();
+    let summary_style = if models_with_errors > 0 || result.failed > 0 {
+        BlackwellOutputConsoleLineStyle::Warning
+    } else {
+        BlackwellOutputConsoleLineStyle::Success
+    };
+    app.log_hub.emit_console_line(
+        BlackwellOutputConsoleCategory::Utils,
+        &format_console_completion(
+            "VRAM fit scan complete",
+            &format!(
+                "{}/{} models ({} failed, {} with scan errors)",
+                result.completed,
+                result.total_models,
+                result.failed,
+                models_with_errors
+            ),
+        ),
+        summary_style,
+    );
+
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn fit_stop_scan(app: tauri::State<'_, AppContext>) -> Result<(), String> {
+    let guard = app.fit_scan_cancel.lock().await;
+    guard.store(true, Ordering::Relaxed);
+    Ok(())
+}
+

@@ -1377,7 +1377,7 @@ async fn stage_publish_activate<'a>(ctx: &BuildCtx<'a>, cmake_extra: &str) -> Re
 
     // Always force ACTIVE → foundry for this profile (even if --version probe fails).
     // Probe outside the config lock — never hold Mutex across await.
-    let probed = crate::engine::get_binary_build_info(sacred_binary_path.clone()).await;
+    let probed = crate::engine_build_info::get_binary_build_info(sacred_binary_path.clone()).await;
     {
         let mut cfg = ctx.worker.config.lock().map_err(|e| e.to_string())?;
         if let Some(provider) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
@@ -1823,7 +1823,7 @@ pub async fn foundry_preview_source(
                         .to_string()
                 })
         };
-        match crate::engine::get_binary_build_info(probe_path.clone()).await {
+        match crate::engine_build_info::get_binary_build_info(probe_path.clone()).await {
             Ok(info) => {
                 let commit = extract_commit_from_build_version(&info.version);
                 if commit.is_some() {
@@ -2239,7 +2239,7 @@ pub async fn foundry_restore(
     }
 
     // Extract build info — fail hard if extraction fails
-    let info = crate::engine::get_binary_build_info(restored_exe.to_string_lossy().to_string()).await
+    let info = crate::engine_build_info::get_binary_build_info(restored_exe.to_string_lossy().to_string()).await
         .map_err(|e| format!("Failed to extract build info from restored binary: {}", e))?;
 
     {
@@ -2303,7 +2303,7 @@ fn can_reuse_build_info(path: &str, existing: Option<&crate::types::BuildInfo>) 
     let Some(info) = existing else {
         return false;
     };
-    if crate::engine::is_placeholder_build_version(&info.version) {
+    if crate::engine_build_info::is_placeholder_build_version(&info.version) {
         return false;
     }
     let resolved = crate::config::resolve_path(path);
@@ -2330,8 +2330,8 @@ async fn probe_build_info_fresh(
     build_profile: &str,
     preserve_cuda: Option<Vec<String>>,
 ) -> Option<crate::types::BuildInfo> {
-    let info = crate::engine::get_binary_build_info(path.to_string()).await.ok()?;
-    if crate::engine::is_placeholder_build_version(&info.version) {
+    let info = crate::engine_build_info::get_binary_build_info(path.to_string()).await.ok()?;
+    if crate::engine_build_info::is_placeholder_build_version(&info.version) {
         return None;
     }
     Some(finish_build_info(info, build_profile, preserve_cuda))
