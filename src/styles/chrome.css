@@ -17,8 +17,8 @@
   box-shadow:
     inset 0 1px 0 var(--theme-bezel-edge-hi),
     inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-lo) 55%, transparent),
-    0 2px 8px color-mix(in srgb, #000000 35%, transparent),
-    0 10px 24px color-mix(in srgb, #000000 18%, transparent);
+    0 2px 8px var(--fixed-black-a35),
+    0 10px 24px var(--fixed-black-a18);
   /*
    * Nav density: viewport chrome only — NOT app zoom.
    * --header-qs-h is set on .app-shell from measured Quick Settings height.
@@ -89,8 +89,8 @@
   border-radius: 5px;
   background: color-mix(in srgb, var(--theme-bg) 55%, var(--theme-panel-accent) 45%);
   box-shadow:
-    inset 0 2px 5px color-mix(in srgb, #000000 42%, transparent),
-    inset 0 1px 0 color-mix(in srgb, #000000 28%, transparent),
+    inset 0 2px 5px var(--fixed-black-a42),
+    inset 0 1px 0 var(--fixed-black-a28),
     inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 28%, transparent),
     0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 18%, transparent);
 }
@@ -156,8 +156,8 @@
   border-radius: 5px;
   background: color-mix(in srgb, var(--theme-bg) 55%, var(--theme-panel-accent) 45%);
   box-shadow:
-    inset 0 2px 5px color-mix(in srgb, #000000 42%, transparent),
-    inset 0 1px 0 color-mix(in srgb, #000000 28%, transparent),
+    inset 0 2px 5px var(--fixed-black-a42),
+    inset 0 1px 0 var(--fixed-black-a28),
     inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 28%, transparent),
     0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 18%, transparent);
 }
@@ -201,7 +201,7 @@
 /* Share cards / legacy — header logo no longer carries version (see .app-footer-version) */
 .app-header-version {
   margin: 0;
-  font-size: 6.5px;
+  font-size: var(--type-hairline);
   line-height: 1.1;
   white-space: nowrap;
   opacity: 0.85;
@@ -306,11 +306,11 @@
 .app-shell[data-ui-density="compact"] [data-config-panel] input.value-chip-active {
   padding-top: 0;
   padding-bottom: 0;
-  font-size: 8px;
+  font-size: var(--type-tiny);
 }
 
 .app-shell[data-ui-density="compact"] [data-config-panel] [data-param-row] > span:first-child {
-  font-size: 8px;
+  font-size: var(--type-tiny);
 }
 
 .app-shell[data-ui-density="compact"] [data-config-panel] .config-params-scroll {
@@ -353,7 +353,7 @@
   min-height: 2rem !important;
   padding-top: 0.2rem !important;
   padding-bottom: 0.2rem !important;
-  font-size: 10px !important;
+  font-size: var(--type-body) !important;
   letter-spacing: 0.14em;
 }
 
@@ -497,8 +497,8 @@
   align-items: flex-end;
   background: color-mix(in srgb, var(--theme-bg) 55%, var(--theme-panel-accent) 45%);
   box-shadow:
-    inset 0 2px 5px color-mix(in srgb, #000000 42%, transparent),
-    inset 0 1px 0 color-mix(in srgb, #000000 28%, transparent),
+    inset 0 2px 5px var(--fixed-black-a42),
+    inset 0 1px 0 var(--fixed-black-a28),
     inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 28%, transparent),
     0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 18%, transparent);
 }
@@ -539,7 +539,7 @@
   border-radius: 4px;
   background: color-mix(in srgb, var(--theme-bg) 55%, var(--theme-panel-accent) 45%);
   box-shadow:
-    inset 0 1px 3px color-mix(in srgb, #000000 40%, transparent),
+    inset 0 1px 3px var(--fixed-black-a4),
     inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 22%, transparent);
 }
 
@@ -609,8 +609,8 @@
   flex-shrink: 0;
   background: color-mix(in srgb, var(--theme-bg) 55%, var(--theme-panel-accent) 45%);
   box-shadow:
-    inset 0 2px 5px color-mix(in srgb, #000000 42%, transparent),
-    inset 0 1px 0 color-mix(in srgb, #000000 28%, transparent),
+    inset 0 2px 5px var(--fixed-black-a42),
+    inset 0 1px 0 var(--fixed-black-a28),
     inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 28%, transparent),
     0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 18%, transparent);
 }
@@ -679,11 +679,11 @@
   overflow-y: auto;
   padding: 0.4rem 0.45rem 0.45rem;
   background: var(--theme-panel);
-  border: 1px solid color-mix(in srgb, #22d3ee 35%, var(--theme-chrome-control-border) 65%);
+  border: 1px solid color-mix(in srgb, var(--fixed-cyan-400) 35%, var(--theme-chrome-control-border) 65%);
   border-radius: 4px;
   box-shadow:
-    0 14px 36px rgba(0, 0, 0, 0.5),
-    0 6px 14px rgba(0, 0, 0, 0.35);
+    0 14px 36px var(--fixed-black-a5),
+    0 6px 14px var(--fixed-black-a35);
 }
 
 .dev-viewport-popover__head {
@@ -695,20 +695,20 @@
 }
 
 .dev-viewport-popover__title {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   letter-spacing: 0.12em;
-  color: color-mix(in srgb, #22d3ee 80%, var(--theme-chrome-control-text) 20%);
+  color: color-mix(in srgb, var(--fixed-cyan-400) 80%, var(--theme-chrome-control-text) 20%);
 }
 
 .dev-viewport-popover__live {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   opacity: 0.75;
   color: var(--theme-chrome-control-text);
 }
 
 .dev-viewport-popover__hint {
   margin: 0 0 0.35rem;
-  font-size: 7px;
+  font-size: var(--type-micro);
   line-height: 1.25;
   opacity: 0.55;
   color: var(--theme-chrome-control-text);
@@ -749,24 +749,24 @@
 }
 
 .dev-viewport-popover__row:hover {
-  background: color-mix(in srgb, #22d3ee 12%, transparent);
-  border-color: color-mix(in srgb, #22d3ee 25%, transparent);
+  background: var(--fixed-cyan-400-a12);
+  border-color: var(--fixed-cyan-400-a25);
 }
 
 .dev-viewport-popover__row--active {
-  background: color-mix(in srgb, #22d3ee 18%, transparent);
-  border-color: color-mix(in srgb, #22d3ee 45%, transparent);
-  color: #a5f3fc;
+  background: var(--fixed-cyan-400-a18);
+  border-color: var(--fixed-cyan-400-a45);
+  color: var(--fixed-cyan-200);
 }
 
 .dev-viewport-popover__size {
-  font-size: 9px;
+  font-size: var(--type-label);
   font-weight: 600;
   letter-spacing: 0.04em;
 }
 
 .dev-viewport-popover__blurb {
-  font-size: 7px;
+  font-size: var(--type-micro);
   opacity: 0.65;
   line-height: 1.2;
 }
@@ -775,18 +775,18 @@
   margin-top: 0.35rem;
   width: 100%;
   padding: 0.28rem 0.35rem;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   letter-spacing: 0.08em;
   border-radius: 2px;
-  border: 1px solid color-mix(in srgb, var(--theme-chrome-control-border) 80%, #facc15 20%);
-  background: color-mix(in srgb, #000 25%, transparent);
-  color: color-mix(in srgb, #facc15 70%, var(--theme-chrome-control-text) 30%);
+  border: 1px solid color-mix(in srgb, var(--theme-chrome-control-border) 80%, var(--fixed-yellow-400) 20%);
+  background: var(--fixed-black-a25);
+  color: color-mix(in srgb, var(--fixed-yellow-400) 70%, var(--theme-chrome-control-text) 30%);
   cursor: pointer;
 }
 
 .dev-viewport-popover__native:hover:not(:disabled) {
-  color: #fde68a;
-  border-color: color-mix(in srgb, #facc15 50%, var(--theme-chrome-control-border) 50%);
+  color: var(--fixed-amber-200);
+  border-color: color-mix(in srgb, var(--fixed-yellow-400) 50%, var(--theme-chrome-control-border) 50%);
 }
 
 .dev-viewport-popover__native:disabled {
@@ -796,8 +796,8 @@
 
 .dev-viewport-popover__error {
   margin: 0.3rem 0 0;
-  font-size: 7px;
-  color: #f87171;
+  font-size: var(--type-micro);
+  color: var(--fixed-red-400);
 }
 
 /* DEV fake GPU topo popover (header GPU+ tool) */
@@ -810,7 +810,7 @@
   align-items: flex-start;
   justify-content: center;
   padding: 3.5rem 1rem 1rem;
-  background: color-mix(in srgb, #000 58%, transparent);
+  background: var(--fixed-black-a58);
 }
 
 .dev-fake-gpu-modal {
@@ -819,23 +819,23 @@
   overflow: auto;
   padding: 0.65rem 0.75rem 0.7rem;
   background: var(--theme-panel);
-  border: 1px solid color-mix(in srgb, #22d3ee 40%, var(--theme-chrome-control-border) 60%);
+  border: 1px solid color-mix(in srgb, var(--fixed-cyan-400) 40%, var(--theme-chrome-control-border) 60%);
   border-radius: 5px;
   box-shadow:
-    0 18px 48px rgba(0, 0, 0, 0.55),
-    0 6px 16px rgba(0, 0, 0, 0.35);
+    0 18px 48px var(--fixed-black-a55),
+    0 6px 16px var(--fixed-black-a35);
 }
 
 .dev-fake-gpu-modal__title {
   margin: 0;
-  font-size: 10px;
+  font-size: var(--type-body);
   letter-spacing: 0.14em;
-  color: color-mix(in srgb, #22d3ee 85%, var(--theme-chrome-control-text) 15%);
+  color: color-mix(in srgb, var(--fixed-cyan-400) 85%, var(--theme-chrome-control-text) 15%);
 }
 
 .dev-fake-gpu-modal__hint {
   margin: 0.25rem 0 0.55rem;
-  font-size: 7.5px;
+  font-size: var(--type-micro);
   line-height: 1.3;
   opacity: 0.6;
   color: var(--theme-chrome-control-text);
@@ -851,18 +851,18 @@
   border: 1px solid color-mix(in srgb, var(--theme-chrome-control-border) 80%, transparent);
   border-radius: 3px;
   padding: 0.35rem 0.4rem 0.4rem;
-  background: color-mix(in srgb, #000 22%, transparent);
+  background: var(--fixed-black-a22);
 }
 
 .dev-fake-gpu-modal__card-name {
-  font-size: 9px;
+  font-size: var(--type-label);
   font-weight: 600;
   letter-spacing: 0.03em;
   color: var(--theme-chrome-control-text);
 }
 
 .dev-fake-gpu-modal__card-meta {
-  font-size: 7px;
+  font-size: var(--type-micro);
   opacity: 0.55;
   margin-top: 0.1rem;
   text-transform: uppercase;
@@ -881,10 +881,10 @@
   width: 1.4rem;
   height: 1.25rem;
   border-radius: 2px;
-  border: 1px solid color-mix(in srgb, #22d3ee 35%, transparent);
-  background: color-mix(in srgb, #22d3ee 10%, transparent);
-  color: #a5f3fc;
-  font-size: 12px;
+  border: 1px solid var(--fixed-cyan-400-a35);
+  background: var(--fixed-cyan-400-a1);
+  color: var(--fixed-cyan-200);
+  font-size: var(--type-md);
   line-height: 1;
   cursor: pointer;
 }
@@ -897,9 +897,9 @@
 .dev-fake-gpu-modal__count {
   min-width: 1.25rem;
   text-align: center;
-  font-size: 12px;
+  font-size: var(--type-md);
   font-weight: 700;
-  color: #e2e8f0;
+  color: var(--fixed-slate-200);
 }
 
 .dev-fake-gpu-modal__presets {
@@ -911,14 +911,14 @@
 }
 
 .dev-fake-gpu-modal__presets-label {
-  font-size: 7px;
+  font-size: var(--type-micro);
   letter-spacing: 0.1em;
   opacity: 0.5;
   margin-right: 0.15rem;
 }
 
 .dev-fake-gpu-modal__preset {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   padding: 0.15rem 0.4rem;
   border-radius: 2px;
   border: 1px solid color-mix(in srgb, var(--theme-chrome-control-border) 90%, transparent);
@@ -928,8 +928,8 @@
 }
 
 .dev-fake-gpu-modal__preset:hover {
-  border-color: color-mix(in srgb, #22d3ee 45%, transparent);
-  color: #a5f3fc;
+  border-color: var(--fixed-cyan-400-a45);
+  color: var(--fixed-cyan-200);
 }
 
 .dev-fake-gpu-modal__foot {
@@ -943,7 +943,7 @@
 }
 
 .dev-fake-gpu-modal__total {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   opacity: 0.7;
 }
 
@@ -953,7 +953,7 @@
 }
 
 .dev-fake-gpu-modal__btn {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   letter-spacing: 0.08em;
   padding: 0.28rem 0.5rem;
   border-radius: 2px;
@@ -964,24 +964,24 @@
 }
 
 .dev-fake-gpu-modal__btn--ghost:hover {
-  border-color: color-mix(in srgb, #facc15 40%, transparent);
+  border-color: var(--fixed-yellow-400-a4);
 }
 
 .dev-fake-gpu-modal__btn--primary {
-  border-color: color-mix(in srgb, #22d3ee 50%, transparent);
-  background: color-mix(in srgb, #22d3ee 16%, transparent);
-  color: #a5f3fc;
+  border-color: var(--fixed-cyan-400-a5);
+  background: var(--fixed-cyan-400-a16);
+  color: var(--fixed-cyan-200);
 }
 
 .dev-viewport-popover__band {
-  font-size: 7px;
+  font-size: var(--type-micro);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   opacity: 0.75;
 }
 
 .dev-viewport-popover__band--marginal {
-  color: #fbbf24;
+  color: var(--fixed-amber-400);
 }
 
 .dev-viewport-popover__band--ok {
@@ -989,15 +989,15 @@
 }
 
 .dev-viewport-popover__band--ideal {
-  color: #67e8f9;
+  color: var(--fixed-cyan-300);
 }
 
 .app-update-menu-popover {
   background: var(--theme-panel);
-  border-color: color-mix(in srgb, #facc15 30%, var(--theme-chrome-control-border) 70%);
+  border-color: color-mix(in srgb, var(--fixed-yellow-400) 30%, var(--theme-chrome-control-border) 70%);
   box-shadow:
-    0 14px 36px rgba(0, 0, 0, 0.48),
-    0 6px 14px rgba(0, 0, 0, 0.32);
+    0 14px 36px var(--fixed-black-a48),
+    0 6px 14px var(--fixed-black-a32);
 }
 
 .app-appearance-panel {
@@ -1080,20 +1080,20 @@
 
 /* DEV build — Rosso badge only; footer/console keep release chrome */
 .app-build--dev {
-  --dev-danger: #d40000;
-  --dev-danger-deep: #8f0000;
+  --dev-danger: var(--fixed-c-d40000);
+  --dev-danger-deep: var(--fixed-c-8f0000);
   --dev-danger-shell: #120000;
 }
 
 .app-build--dev .app-footer-dev-tag {
   padding: 0 0.35rem !important;
-  font-size: 9px !important;
+  font-size: var(--type-label) !important;
   font-weight: 700;
   letter-spacing: 0.12em;
   border-radius: 2px;
-  border: 1px solid #8f0000;
+  border: 1px solid var(--fixed-c-8f0000);
   background: var(--dev-danger);
-  color: #000000;
+  color: var(--fixed-black);
 }
 
 /* Status bar — upper half amber console header, lower half stats + inset live line */
@@ -1119,10 +1119,10 @@
   height: var(--app-footer-status-h);
   padding-left: 1rem;
   padding-right: 1rem;
-  font-size: 9px;
+  font-size: var(--type-label);
   gap: 0.45rem;
-  background: #000000;
-  color: rgba(255, 255, 255, 0.4);
+  background: var(--fixed-black);
+  color: var(--fixed-white-a4);
   box-sizing: border-box;
 }
 
@@ -1142,17 +1142,17 @@
 }
 
 .app-footer-version {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   line-height: 1;
   letter-spacing: 0.04em;
   white-space: nowrap;
-  color: color-mix(in srgb, var(--theme-footer-text) 88%, #fff 12%);
+  color: color-mix(in srgb, var(--theme-footer-text) 88%, var(--fixed-white) 12%);
   opacity: 0.9;
 }
 
 .app-footer-console__collapse {
   padding: 0 0.35rem;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   line-height: 1;
   opacity: 0.65;
   transition: opacity 0.15s ease;
@@ -1165,7 +1165,7 @@
 .app-footer .foundry-status-chip {
   min-width: 96px;
   padding: 0 0.45rem;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   gap: 0.35rem;
 }
 
@@ -1178,7 +1178,7 @@
 }
 
 .app-footer-dev-tag {
-  font-size: 8px !important;
+  font-size: var(--type-tiny) !important;
   padding: 0 0.25rem !important;
 }
 
@@ -1204,7 +1204,7 @@
       50%,
     transparent 50%
   );
-  box-shadow: inset 0 1px 3px color-mix(in srgb, #000000 35%, transparent);
+  box-shadow: inset 0 1px 3px var(--fixed-black-a35);
   color: var(--boc-text);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
   cursor: pointer;
@@ -1218,7 +1218,7 @@
     transparent 58%
   );
   box-shadow:
-    inset 0 1px 3px color-mix(in srgb, #000000 35%, transparent),
+    inset 0 1px 3px var(--fixed-black-a35),
     0 0 0 1px color-mix(
       in srgb,
       color-mix(in srgb, var(--boc-amber) 65%, var(--theme-accent) 35%) 22%,
@@ -1227,7 +1227,7 @@
 }
 
 .app-footer-console__live-label {
-  font-size: 7px;
+  font-size: var(--type-micro);
   color: color-mix(
     in srgb,
     var(--boc-sync) 78%,
@@ -1241,7 +1241,7 @@
 }
 
 .app-footer-console__live-text {
-  font-size: 10.5px;
+  font-size: var(--type-body);
   color: var(--boc-text);
 }
 
@@ -1260,14 +1260,14 @@
 @keyframes foundryChipGlow {
   0%, 100% {
     box-shadow:
-      0 0 0 1px color-mix(in srgb, #facc15 35%, transparent),
-      0 0 10px color-mix(in srgb, #facc15 18%, transparent);
+      0 0 0 1px var(--fixed-yellow-400-a35),
+      0 0 10px var(--fixed-yellow-400-a18);
   }
   50% {
     box-shadow:
-      0 0 0 1px color-mix(in srgb, #facc15 75%, transparent),
-      0 0 18px color-mix(in srgb, #facc15 42%, transparent),
-      0 0 28px color-mix(in srgb, #f59e0b 18%, transparent);
+      0 0 0 1px var(--fixed-yellow-400-a75),
+      0 0 18px var(--fixed-yellow-400-a42),
+      0 0 28px var(--fixed-amber-500-a18);
   }
 }
 
@@ -1289,19 +1289,19 @@
   gap: 0.5rem;
   min-width: 110px;
   padding: 0.125rem 0.625rem;
-  font-size: 9px;
+  font-size: var(--type-label);
   font-family: ui-monospace, monospace;
   border-radius: 3px;
-  border: 1px solid color-mix(in srgb, #facc15 40%, transparent);
-  background: color-mix(in srgb, #facc15 10%, #000000 90%);
-  color: #facc15;
+  border: 1px solid var(--fixed-yellow-400-a4);
+  background: color-mix(in srgb, var(--fixed-yellow-400) 10%, var(--fixed-black) 90%);
+  color: var(--fixed-yellow-400);
   overflow: hidden;
   isolation: isolate;
   transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
 }
 
 .foundry-status-chip:hover {
-  background: color-mix(in srgb, #facc15 18%, #000000 82%);
+  background: color-mix(in srgb, var(--fixed-yellow-400) 18%, var(--fixed-black) 82%);
   transform: translateY(-1px);
 }
 
@@ -1311,19 +1311,19 @@
   min-width: 272px;
   max-width: 272px;
   padding: 0.28rem 0.6rem 0.42rem;
-  border-color: color-mix(in srgb, #facc15 65%, transparent);
+  border-color: var(--fixed-yellow-400-a65);
   background:
-    linear-gradient(180deg, color-mix(in srgb, #facc15 16%, #000000 84%) 0%, color-mix(in srgb, #facc15 8%, #000000 92%) 100%);
+    linear-gradient(180deg, color-mix(in srgb, var(--fixed-yellow-400) 16%, var(--fixed-black) 84%) 0%, color-mix(in srgb, var(--fixed-yellow-400) 8%, var(--fixed-black) 92%) 100%);
   animation: foundryChipGlow 2.2s ease-in-out infinite;
 }
 
 .foundry-status-chip--minimized:hover {
   background:
-    linear-gradient(180deg, color-mix(in srgb, #facc15 22%, #000000 78%) 0%, color-mix(in srgb, #facc15 12%, #000000 88%) 100%);
+    linear-gradient(180deg, color-mix(in srgb, var(--fixed-yellow-400) 22%, var(--fixed-black) 78%) 0%, color-mix(in srgb, var(--fixed-yellow-400) 12%, var(--fixed-black) 88%) 100%);
 }
 
 .foundry-status-chip--paused {
-  border-color: color-mix(in srgb, #22d3ee 55%, #facc15 45%);
+  border-color: color-mix(in srgb, var(--fixed-cyan-400) 55%, var(--fixed-yellow-400) 45%);
   animation-name: foundryChipGlow;
 }
 
@@ -1338,9 +1338,9 @@
   background: linear-gradient(
     105deg,
     transparent 0%,
-    color-mix(in srgb, #fde68a 0%, transparent) 42%,
-    color-mix(in srgb, #fde68a 35%, transparent) 50%,
-    color-mix(in srgb, #fde68a 0%, transparent) 58%,
+    var(--fixed-amber-200-a0) 42%,
+    var(--fixed-amber-200-a35) 50%,
+    var(--fixed-amber-200-a0) 58%,
     transparent 100%
   );
   opacity: 0;
@@ -1364,7 +1364,7 @@
 
 .foundry-hammer-icon--forge {
   animation: foundryHammerShake 1.45s ease-in-out infinite;
-  filter: drop-shadow(0 0 4px color-mix(in srgb, #facc15 55%, transparent));
+  filter: drop-shadow(0 0 4px var(--fixed-yellow-400-a55));
 }
 
 .foundry-status-chip--minimized .foundry-hammer-icon--forge {
@@ -1379,7 +1379,7 @@
 
 .model-search-palette-backdrop {
   /* Light dim so OPERATIONS stays visible underneath */
-  background: color-mix(in srgb, #000000 42%, transparent);
+  background: var(--fixed-black-a42);
 }
 
 
@@ -1392,7 +1392,7 @@
   /* Crisp outline — bezel-edge-hi is white on ARCTIC → invisible palette border */
   border: 1.5px solid var(--theme-frame-border-strong);
   box-shadow:
-    0 12px 40px color-mix(in srgb, #000000 45%, transparent),
+    0 12px 40px var(--fixed-black-a45),
     0 0 0 1px color-mix(in srgb, var(--theme-bezel-edge-hi) 35%, transparent);
 }
 
@@ -1497,34 +1497,34 @@
 }
 
 .foundry-status-chip__kicker {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   font-weight: 700;
-  color: #fde68a;
-  text-shadow: 0 0 8px color-mix(in srgb, #facc15 35%, transparent);
+  color: var(--fixed-amber-200);
+  text-shadow: 0 0 8px var(--fixed-yellow-400-a35);
 }
 
 .foundry-status-chip__env {
   flex-shrink: 0;
   padding: 0 0.3rem;
-  font-size: 7px;
+  font-size: var(--type-micro);
   font-weight: 700;
   letter-spacing: 0.08em;
   border-radius: 2px;
-  border: 1px solid color-mix(in srgb, #facc15 55%, transparent);
-  background: color-mix(in srgb, #000000 55%, transparent);
-  color: #fef3c7;
+  border: 1px solid var(--fixed-yellow-400-a55);
+  background: var(--fixed-black-a55);
+  color: var(--fixed-amber-100);
 }
 
 .foundry-status-chip__step {
   flex-shrink: 0;
-  font-size: 9px;
+  font-size: var(--type-label);
   font-weight: 700;
-  color: #22d3ee;
+  color: var(--fixed-cyan-400);
   animation: pulse 1.8s ease-in-out infinite;
 }
 
 .foundry-status-chip--paused .foundry-status-chip__step {
-  color: #facc15;
+  color: var(--fixed-yellow-400);
 }
 
 .foundry-status-chip__provider {
@@ -1532,24 +1532,24 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 8px;
-  color: color-mix(in srgb, #fde68a 72%, #ffffff 28%);
+  font-size: var(--type-tiny);
+  color: color-mix(in srgb, var(--fixed-amber-200) 72%, var(--fixed-white) 28%);
 }
 
 .foundry-status-chip__timer {
   flex-shrink: 0;
   min-width: 3.25rem;
-  font-size: 10px;
+  font-size: var(--type-body);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.06em;
-  color: color-mix(in srgb, #fde68a 65%, #ffffff 35%);
+  color: color-mix(in srgb, var(--fixed-amber-200) 65%, var(--fixed-white) 35%);
   text-align: right;
 }
 
 .foundry-status-chip__timer--live {
-  color: #22d3ee;
-  text-shadow: 0 0 8px color-mix(in srgb, #22d3ee 35%, transparent);
+  color: var(--fixed-cyan-400);
+  text-shadow: 0 0 8px var(--fixed-cyan-400-a35);
 }
 
 .foundry-status-chip__progress {
@@ -1558,7 +1558,7 @@
   right: 0;
   bottom: 0;
   height: 3px;
-  background: color-mix(in srgb, #000000 70%, transparent);
+  background: var(--fixed-black-a7);
   overflow: hidden;
 }
 
@@ -1566,7 +1566,7 @@
   display: block;
   height: 100%;
   width: var(--foundry-progress, 12%);
-  background: linear-gradient(90deg, #b45309 0%, #facc15 55%, #fde68a 100%);
+  background: linear-gradient(90deg, var(--fixed-c-b45309) 0%, var(--fixed-yellow-400) 55%, var(--fixed-amber-200) 100%);
   transition: width 0.45s ease;
 }
 
@@ -1576,14 +1576,14 @@
   background: linear-gradient(
     90deg,
     transparent 0%,
-    color-mix(in srgb, #ffffff 45%, transparent) 50%,
+    var(--fixed-white-a45) 50%,
     transparent 100%
   );
   animation: foundryProgressShine 2.4s ease-in-out infinite;
 }
 
 .foundry-status-chip__label {
-  color: #facc15;
+  color: var(--fixed-yellow-400);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1592,9 +1592,9 @@
 
 /* Foundry — environment profile badge (FRONTIER, VANGUARD, …) */
 .foundry-env-badge {
-  color: #facc15;
-  border: 1px solid color-mix(in srgb, #facc15 55%, transparent);
-  background: color-mix(in srgb, #facc15 12%, #000000 88%);
+  color: var(--fixed-yellow-400);
+  border: 1px solid var(--fixed-yellow-400-a55);
+  background: color-mix(in srgb, var(--fixed-yellow-400) 12%, var(--fixed-black) 88%);
 }
 
 
@@ -1608,16 +1608,16 @@
   font-family: ui-monospace, monospace;
   letter-spacing: 0.04em;
   border-radius: 2px;
-  color: #facc15;
-  border: 1px solid color-mix(in srgb, #facc15 65%, transparent);
-  background: color-mix(in srgb, #facc15 18%, #000000 82%);
+  color: var(--fixed-yellow-400);
+  border: 1px solid var(--fixed-yellow-400-a65);
+  background: color-mix(in srgb, var(--fixed-yellow-400) 18%, var(--fixed-black) 82%);
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .foundry-confirm-build-btn:hover:not(:disabled) {
-  color: #fde68a;
-  border-color: color-mix(in srgb, #facc15 85%, transparent);
-  background: color-mix(in srgb, #facc15 28%, #000000 72%);
+  color: var(--fixed-amber-200);
+  border-color: var(--fixed-yellow-400-a85);
+  background: color-mix(in srgb, var(--fixed-yellow-400) 28%, var(--fixed-black) 72%);
 }
 
 .foundry-confirm-build-btn:disabled {
@@ -1662,24 +1662,24 @@
   gap: 0.4rem;
   flex-shrink: 0;
   padding: 0.3rem 0.7rem;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   font-family: ui-monospace, monospace;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   border-radius: 2px;
-  color: #facc15;
-  border: 1px solid color-mix(in srgb, #facc15 70%, transparent);
+  color: var(--fixed-yellow-400);
+  border: 1px solid var(--fixed-yellow-400-a7);
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, #facc15 22%, #1a1206 78%) 0%,
-      color-mix(in srgb, #facc15 10%, #0a0804 90%) 100%
+      color-mix(in srgb, var(--fixed-yellow-400) 22%, var(--fixed-c-1a1206) 78%) 0%,
+      color-mix(in srgb, var(--fixed-yellow-400) 10%, var(--fixed-near-black-amber) 90%) 100%
     );
   box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fde68a 22%, transparent),
-    0 0 0 1px color-mix(in srgb, #000 55%, transparent),
-    0 0 10px color-mix(in srgb, #facc15 18%, transparent);
+    inset 0 1px 0 var(--fixed-amber-200-a22),
+    0 0 0 1px var(--fixed-black-a55),
+    0 0 10px var(--fixed-yellow-400-a18);
   transition:
     color 0.15s ease,
     border-color 0.15s ease,
@@ -1689,18 +1689,18 @@
 }
 
 .foundry-build-btn:hover:not(:disabled) {
-  color: #fef08a;
-  border-color: color-mix(in srgb, #fde68a 85%, transparent);
+  color: var(--fixed-yellow-200);
+  border-color: var(--fixed-amber-200-a85);
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, #facc15 32%, #1a1206 68%) 0%,
-      color-mix(in srgb, #facc15 16%, #0a0804 84%) 100%
+      color-mix(in srgb, var(--fixed-yellow-400) 32%, var(--fixed-c-1a1206) 68%) 0%,
+      color-mix(in srgb, var(--fixed-yellow-400) 16%, var(--fixed-near-black-amber) 84%) 100%
     );
   box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fef08a 28%, transparent),
-    0 0 0 1px color-mix(in srgb, #000 45%, transparent),
-    0 0 14px color-mix(in srgb, #facc15 32%, transparent);
+    inset 0 1px 0 var(--fixed-yellow-200-a28),
+    0 0 0 1px var(--fixed-black-a45),
+    0 0 14px var(--fixed-yellow-400-a32);
 }
 
 .foundry-build-btn:disabled {
@@ -1710,40 +1710,40 @@
 }
 
 .foundry-build-btn--active {
-  color: #fef08a;
-  border-color: color-mix(in srgb, #fde68a 90%, transparent);
+  color: var(--fixed-yellow-200);
+  border-color: var(--fixed-amber-200-a9);
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, #facc15 38%, #1a1206 62%) 0%,
-      color-mix(in srgb, #facc15 18%, #0a0804 82%) 100%
+      color-mix(in srgb, var(--fixed-yellow-400) 38%, var(--fixed-c-1a1206) 62%) 0%,
+      color-mix(in srgb, var(--fixed-yellow-400) 18%, var(--fixed-near-black-amber) 82%) 100%
     );
   box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fef08a 30%, transparent),
-    0 0 0 1px color-mix(in srgb, #facc15 35%, transparent),
-    0 0 16px color-mix(in srgb, #facc15 40%, transparent);
+    inset 0 1px 0 var(--fixed-yellow-200-a3),
+    0 0 0 1px var(--fixed-yellow-400-a35),
+    0 0 16px var(--fixed-yellow-400-a4);
   animation: foundryBuildBtnPulse 1.6s ease-in-out infinite;
 }
 
 .foundry-build-btn .foundry-hammer-icon {
-  font-size: 11px;
+  font-size: var(--type-sm);
   line-height: 1;
-  filter: drop-shadow(0 0 3px color-mix(in srgb, #facc15 45%, transparent));
+  filter: drop-shadow(0 0 3px var(--fixed-yellow-400-a45));
 }
 
 @keyframes foundryBuildBtnPulse {
   0%,
   100% {
     box-shadow:
-      inset 0 1px 0 color-mix(in srgb, #fef08a 30%, transparent),
-      0 0 0 1px color-mix(in srgb, #facc15 35%, transparent),
-      0 0 12px color-mix(in srgb, #facc15 28%, transparent);
+      inset 0 1px 0 var(--fixed-yellow-200-a3),
+      0 0 0 1px var(--fixed-yellow-400-a35),
+      0 0 12px var(--fixed-yellow-400-a28);
   }
   50% {
     box-shadow:
-      inset 0 1px 0 color-mix(in srgb, #fef08a 35%, transparent),
-      0 0 0 1px color-mix(in srgb, #fde68a 55%, transparent),
-      0 0 20px color-mix(in srgb, #facc15 48%, transparent);
+      inset 0 1px 0 var(--fixed-yellow-200-a35),
+      0 0 0 1px var(--fixed-amber-200-a55),
+      0 0 20px var(--fixed-yellow-400-a48);
   }
 }
 
@@ -1760,17 +1760,17 @@
   font-size: var(--foundry-fs-btn);
   font-family: ui-monospace, monospace;
   letter-spacing: 0.04em;
-  border: 1px solid #1e3a5f;
+  border: 1px solid var(--fixed-c-1e3a5f);
   border-radius: 2px;
-  color: #6b9fd4;
-  background: color-mix(in srgb, #0a1628 70%, #000000 30%);
+  color: var(--fixed-c-6b9fd4);
+  background: color-mix(in srgb, var(--fixed-near-black-blue) 70%, var(--fixed-black) 30%);
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .foundry-minimize-btn:hover {
-  color: #8bb8e8;
-  border-color: #3d6ea8;
-  background: color-mix(in srgb, #0f2240 75%, #000000 25%);
+  color: var(--fixed-c-8bb8e8);
+  border-color: var(--fixed-steel-blue);
+  background: color-mix(in srgb, var(--fixed-c-0f2240) 75%, var(--fixed-black) 25%);
 }
 
 
@@ -1790,15 +1790,15 @@
 }
 
 .foundry-toolchain-btn--link {
-  color: #6b9fd4;
-  border-color: color-mix(in srgb, #3d6ea8 55%, transparent);
-  background: color-mix(in srgb, #0a1628 32%, transparent);
+  color: var(--fixed-c-6b9fd4);
+  border-color: var(--fixed-steel-blue-a55);
+  background: var(--fixed-near-black-blue-a32);
 }
 
 .foundry-toolchain-btn--link:hover:not(:disabled) {
-  color: #8bb8e8;
-  border-color: #3d6ea8;
-  background: color-mix(in srgb, #0f2240 42%, transparent);
+  color: var(--fixed-c-8bb8e8);
+  border-color: var(--fixed-steel-blue);
+  background: var(--fixed-c-0f2240-a42);
 }
 
 .foundry-toolchain-btn--neutral {
@@ -1846,7 +1846,7 @@
 }
 
 .foundry-toolchain-onboarding__download:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--theme-chip-solid-bg) 88%, #fff);
+  background: color-mix(in srgb, var(--theme-chip-solid-bg) 88%, var(--fixed-white));
   transform: scale(1.03);
 }
 
@@ -1916,7 +1916,7 @@
 }
 
 .foundry-window__chrome {
-  --foundry-window-amber: #b87a00;
+  --foundry-window-amber: var(--fixed-brand-amber);
   pointer-events: auto;
   width: 100%;
   max-height: 100%;
@@ -1927,8 +1927,8 @@
   border-radius: 4px;
   background: var(--theme-panel);
   box-shadow:
-    0 10px 28px color-mix(in srgb, #000000 55%, transparent),
-    0 4px 10px color-mix(in srgb, #000000 35%, transparent);
+    0 10px 28px var(--fixed-black-a55),
+    0 4px 10px var(--fixed-black-a35);
   overflow: hidden;
 }
 
@@ -2098,10 +2098,10 @@
  * on ARCTIC (do not lighten with theme-panel remaps).
  */
 .foundry-build-log {
-  background: #0a0c10 !important;
-  border: 1px solid color-mix(in srgb, #000 70%, var(--theme-frame-border)) !important;
-  color: rgba(220, 228, 236, 0.72);
-  box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.55);
+  background: var(--fixed-c-0a0c10) !important;
+  border: 1px solid color-mix(in srgb, var(--fixed-black) 70%, var(--theme-frame-border)) !important;
+  color: var(--fixed-rgba-220-228-236-a72);
+  box-shadow: inset 0 1px 4px var(--fixed-black-a55);
   /* Logs were text-[8px] — unreadable on laptop CSS viewports; track foundry scale. */
   font-size: var(--foundry-fs-log) !important;
   line-height: 1.45;
@@ -2109,7 +2109,7 @@
 }
 
 .foundry-build-log__idle {
-  color: rgba(148, 163, 184, 0.55);
+  color: var(--fixed-rgba-148-163-184-a55);
 }
 
 .foundry-build-log__ts {
@@ -2117,29 +2117,29 @@
 }
 
 .foundry-build-log__step {
-  color: rgba(148, 163, 184, 0.55);
+  color: var(--fixed-rgba-148-163-184-a55);
 }
 
 .foundry-build-log__line {
-  color: rgba(220, 228, 236, 0.72);
+  color: var(--fixed-rgba-220-228-236-a72);
 }
 
 .foundry-build-log__line--error {
-  color: #f87171;
+  color: var(--fixed-red-400);
 }
 
 .foundry-build-log__line--warn {
-  color: #fbbf24;
+  color: var(--fixed-amber-400);
   font-weight: 700;
 }
 
 .foundry-build-log__line--done {
-  color: #4ade80;
+  color: var(--fixed-green-400);
 }
 
 .foundry-build-log__line--cmake,
 .foundry-build-log__line--phase {
-  color: #67e8f9;
+  color: var(--fixed-cyan-300);
 }
 
 .foundry-build-log__line--cmake {
@@ -2165,7 +2165,7 @@
   justify-content: space-between;
   gap: 0.75rem;
   padding: calc(0.4rem * var(--foundry-scale)) calc(0.85rem * var(--foundry-scale));
-  border-bottom: 1px solid #000000;
+  border-bottom: 1px solid var(--fixed-black);
   font-family: ui-monospace, monospace;
   font-size: var(--foundry-fs-title);
   letter-spacing: 0.12em;
@@ -2174,17 +2174,17 @@
 
 .foundry-window__header--amber {
   background: var(--foundry-window-amber);
-  color: #000000;
+  color: var(--fixed-black);
 }
 
 .foundry-window__header--green {
-  background: color-mix(in srgb, #4ade80 88%, #0a1208 12%);
-  color: #000000;
+  background: color-mix(in srgb, var(--fixed-green-400) 88%, #0a1208 12%);
+  color: var(--fixed-black);
 }
 
 .foundry-window__header--red {
-  background: color-mix(in srgb, #f87171 88%, #1a0808 12%);
-  color: #000000;
+  background: color-mix(in srgb, var(--fixed-red-400) 88%, #1a0808 12%);
+  color: var(--fixed-black);
 }
 
 .foundry-window__header-main {
@@ -2204,15 +2204,15 @@
   padding: 0 calc(0.5rem * var(--foundry-scale));
   font-size: calc(13px * var(--foundry-scale));
   line-height: 1;
-  border: 1px solid color-mix(in srgb, #000000 35%, transparent);
+  border: 1px solid var(--fixed-black-a35);
   border-radius: 2px;
-  background: color-mix(in srgb, #000000 12%, transparent);
+  background: var(--fixed-black-a12);
   color: inherit;
   transition: background 0.15s ease;
 }
 
 .foundry-window__minimize:hover {
-  background: color-mix(in srgb, #000000 22%, transparent);
+  background: var(--fixed-black-a22);
 }
 
 .foundry-window__body {
@@ -2238,7 +2238,7 @@
   font-size: var(--foundry-fs-md);
   line-height: 1.45;
   color: #e8e8e8;
-  background: color-mix(in srgb, #000000 55%, transparent);
+  background: var(--fixed-black-a55);
   border: 1px solid var(--theme-border-subtle);
   border-radius: 2px;
   resize: vertical;
@@ -2246,11 +2246,11 @@
 
 .foundry-build-profile-textarea:focus {
   outline: none;
-  border-color: color-mix(in srgb, #facc15 55%, transparent);
+  border-color: var(--fixed-yellow-400-a55);
 }
 
 .foundry-pr-label {
-  color: #3d6ea8;
+  color: var(--fixed-steel-blue);
   font-family: ui-monospace, monospace;
   font-size: var(--foundry-fs-sm);
   letter-spacing: 0.06em;
@@ -2260,20 +2260,20 @@
 .foundry-pr-input {
   font-family: ui-monospace, monospace;
   font-size: var(--foundry-fs-md);
-  color: #6b9fd4;
-  background: color-mix(in srgb, #0a1628 70%, #000000 30%);
-  border: 1px solid #1e3a5f;
+  color: var(--fixed-c-6b9fd4);
+  background: color-mix(in srgb, var(--fixed-near-black-blue) 70%, var(--fixed-black) 30%);
+  border: 1px solid var(--fixed-c-1e3a5f);
   border-radius: 2px;
 }
 
 .foundry-pr-input::placeholder {
-  color: color-mix(in srgb, #3d6ea8 45%, transparent);
+  color: var(--fixed-steel-blue-a45);
 }
 
 .foundry-pr-input:focus {
   outline: none;
-  border-color: #3d6ea8;
-  color: #8bb8e8;
+  border-color: var(--fixed-steel-blue);
+  color: var(--fixed-c-8bb8e8);
 }
 
 
@@ -2298,15 +2298,15 @@
 }
 
 .app-footer-ipc--yellow {
-  color: #facc15;
+  color: var(--fixed-yellow-400);
 }
 
 .app-footer-ipc--orange {
-  color: #fb923c;
+  color: var(--fixed-orange-400);
 }
 
 .app-footer-ipc--red {
-  color: #f87171;
+  color: var(--fixed-red-400);
 }
 
 .app-footer-stat-link {
@@ -2351,8 +2351,8 @@
 }
 
 .status-error {
-  background-color: #ff3333;
-  box-shadow: 0 0 6px #ff3333;
+  background-color: var(--fixed-c-ff3333);
+  box-shadow: 0 0 6px var(--fixed-c-ff3333);
 }
 
 .status-offline {
@@ -2443,7 +2443,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: color-mix(in srgb, #000 55%, transparent);
+  background: var(--fixed-black-a55);
 }
 
 .download-confirm {
@@ -2452,7 +2452,7 @@
   border: 1px solid color-mix(in srgb, var(--theme-tel-hot) 40%, var(--theme-border));
   border-radius: 6px;
   background: var(--theme-panel);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 8px 30px var(--fixed-black-a5);
   font-family: ui-monospace, monospace;
 }
 
@@ -2466,7 +2466,7 @@
 
 .download-confirm__body {
   margin: 0 0 0.9rem;
-  font-size: 11px;
+  font-size: var(--type-sm);
   line-height: 1.5;
   color: var(--theme-text-muted);
 }
@@ -2479,7 +2479,7 @@
 
 .download-confirm__btn {
   padding: 0.4rem 0.8rem;
-  font-size: 10px;
+  font-size: var(--type-body);
   font-family: inherit;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -2502,13 +2502,13 @@
 }
 
 .download-confirm__btn--yes {
-  color: #fff;
+  color: var(--fixed-white);
   border-color: var(--theme-tel-hot);
   background: var(--theme-tel-hot);
 }
 
 .download-confirm__btn--yes:hover {
-  background: color-mix(in srgb, var(--theme-tel-hot) 82%, #000);
+  background: color-mix(in srgb, var(--theme-tel-hot) 82%, var(--fixed-black));
 }
 
 .toast-container--inline {
@@ -2533,7 +2533,7 @@
   min-width: 0;
   max-width: min(220px, 26vw);
   padding: 2px 8px;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   line-height: 1.2;
   animation: toastSlideInInline 0.2s ease-out forwards;
 }
@@ -2557,23 +2557,23 @@
   padding: 10px 14px;
   border-radius: 4px;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-size: var(--type-body);
   /* Dim only — no backdrop-filter blur (WebView GPU cost) */
   animation: toastSlideIn 0.3s ease-out forwards;
   overflow: hidden;
 }
 
 .toast-item.success {
-  background: rgba(17, 17, 24, 0.95);
-  border: 1px solid rgba(118, 185, 0, 0.6);
-  color: #76B900;
+  background: var(--fixed-rgba-17-17-24-a95);
+  border: 1px solid var(--fixed-rgba-118-185-0-a6);
+  color: var(--fixed-nv-green);
   box-shadow: 0 0 15px rgba(118, 185, 0, 0.2);
 }
 
 .toast-item.error {
-  background: rgba(17, 17, 24, 0.95);
-  border: 1px solid rgba(255, 51, 51, 0.6);
-  color: #ff3333;
+  background: var(--fixed-rgba-17-17-24-a95);
+  border: 1px solid var(--fixed-rgba-255-51-51-a6);
+  color: var(--fixed-c-ff3333);
   box-shadow: 0 0 15px rgba(255, 51, 51, 0.2);
 }
 
@@ -2600,8 +2600,8 @@
   animation: toastProgress linear forwards;
 }
 
-.toast-item.success .toast-progress { background: rgba(118, 185, 0, 0.6); }
-.toast-item.error .toast-progress { background: rgba(255, 51, 51, 0.6); }
+.toast-item.success .toast-progress { background: var(--fixed-rgba-118-185-0-a6); }
+.toast-item.error .toast-progress { background: var(--fixed-rgba-255-51-51-a6); }
 
 @keyframes toastProgress {
   from { width: 100%; }
@@ -2734,7 +2734,7 @@
 
 /* Release notes body (releaseNotes.tsx) — shared by AppUpdateMenu + UpdatesConfig */
 .notes-code {
-  background: color-mix(in srgb, #fff 6%, transparent);
+  background: var(--fixed-white-a06);
   color: color-mix(in srgb, var(--theme-text) 70%, transparent);
 }
 
@@ -2743,6 +2743,6 @@
 }
 
 .notes-quote {
-  border-color: color-mix(in srgb, #fff 15%, transparent);
+  border-color: var(--fixed-white-a15);
   color: color-mix(in srgb, var(--theme-text-muted) 80%, transparent);
 }

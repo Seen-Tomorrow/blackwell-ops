@@ -273,7 +273,7 @@
 }
 
 .setup-guide__btn--primary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--theme-chip-solid-bg) 88%, #fff);
+  background: color-mix(in srgb, var(--theme-chip-solid-bg) 88%, var(--fixed-white));
 }
 
 .setup-guide__btn--green {
@@ -479,14 +479,14 @@
 }
 
 .vram-forecast-measuring__flank-label {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   letter-spacing: 0.18em;
   color: color-mix(in srgb, var(--theme-accent) 75%, transparent);
   text-shadow: 0 0 6px color-mix(in srgb, var(--theme-accent) 30%, transparent);
 }
 
 .vram-forecast-measuring__flank-readout {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   letter-spacing: 0.14em;
   color: color-mix(in srgb, var(--theme-text-muted) 80%, transparent);
   animation: vram-forecast-title-pulse 1.6s ease-in-out infinite;
@@ -596,7 +596,7 @@
   transform-origin: 0 50%;
   background: linear-gradient(
     90deg,
-    color-mix(in srgb, var(--theme-accent) 85%, #fff),
+    color-mix(in srgb, var(--theme-accent) 85%, var(--fixed-white)),
     transparent
   );
   box-shadow: 0 0 6px color-mix(in srgb, var(--theme-accent) 55%, transparent);
@@ -607,9 +607,9 @@
 .vram-forecast-measuring__core {
   position: relative;
   z-index: 1;
-  font-size: 11px;
+  font-size: var(--type-sm);
   letter-spacing: 0.16em;
-  color: color-mix(in srgb, var(--theme-accent-bright, var(--theme-accent)) 90%, #fff);
+  color: color-mix(in srgb, var(--theme-accent-bright, var(--theme-accent)) 90%, var(--fixed-white));
   text-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent) 45%, transparent);
   opacity: 0.9;
 }
@@ -631,7 +631,7 @@
 }
 
 .vram-forecast-measuring__sub {
-  font-size: 9px;
+  font-size: var(--type-label);
   letter-spacing: 0.1em;
   text-transform: lowercase;
   color: color-mix(in srgb, var(--theme-text-muted) 75%, transparent);
@@ -763,14 +763,14 @@
 }
 
 .vram-forecast-draft__flank-label {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   letter-spacing: 0.2em;
   color: color-mix(in srgb, var(--vram-draft-edge) 85%, transparent);
   text-shadow: 0 0 8px color-mix(in srgb, var(--vram-draft-edge) 35%, transparent);
 }
 
 .vram-forecast-draft__flank-readout {
-  font-size: 9px;
+  font-size: var(--type-label);
   letter-spacing: 0.18em;
   font-weight: 600;
   color: var(--vram-draft-ink);
@@ -840,7 +840,7 @@
 .vram-forecast-draft__seal-core {
   position: relative;
   z-index: 1;
-  font-size: 12px;
+  font-size: var(--type-md);
   letter-spacing: 0.22em;
   font-weight: 700;
   color: var(--vram-draft-ink);
@@ -857,7 +857,7 @@
 }
 
 .vram-forecast-draft__kicker {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   letter-spacing: 0.22em;
   color: color-mix(in srgb, var(--vram-draft-edge) 90%, transparent);
 }
@@ -872,14 +872,14 @@
 
 .vram-forecast-draft__body {
   max-width: 28rem;
-  font-size: 9px;
+  font-size: var(--type-label);
   line-height: 1.45;
   letter-spacing: 0.04em;
   color: color-mix(in srgb, var(--theme-text) 82%, var(--vram-draft-ink) 18%);
 }
 
 .vram-forecast-draft__hint {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   letter-spacing: 0.08em;
   line-height: 1.35;
   color: color-mix(in srgb, var(--theme-text-muted) 80%, var(--vram-draft-ink) 20%);
@@ -899,7 +899,7 @@
 }
 
 .vram-forecast-draft__meta-name {
-  font-size: 9px;
+  font-size: var(--type-label);
   letter-spacing: 0.04em;
   color: var(--vram-draft-ink);
   max-width: 16rem;
@@ -910,7 +910,7 @@
 
 .vram-forecast-draft__meta-quant {
   flex-shrink: 0;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   letter-spacing: 0.06em;
   color: color-mix(in srgb, var(--vram-draft-ink) 75%, transparent);
 }
@@ -922,7 +922,7 @@
 
 .vram-badge-body {
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+  scrollbar-color: var(--fixed-white-a12) transparent;
 }
 
 .vram-badge-body::-webkit-scrollbar {
@@ -930,7 +930,7 @@
 }
 
 .vram-badge-body::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--fixed-white-a12);
   border-radius: 2px;
 }
 
@@ -1000,7 +1000,7 @@
   color: color-mix(in srgb, var(--theme-accent-bright) 82%, var(--display-face-text));
 }
 .vram-fc__launch-summary.is-fail {
-  color: color-mix(in srgb, #f87171 88%, var(--display-face-text));
+  color: color-mix(in srgb, var(--fixed-red-400) 88%, var(--display-face-text));
 }
 .vram-forecast-header--assisted .vram-fc-header__reprobe,
 .vram-forecast-header--assisted .vram-fc-source__reprobe {
@@ -1106,7 +1106,7 @@
 }
 /* Match PROVIDER bar label cadence */
 .vram-fc-measure__source .vram-fc-source__lab {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   font-weight: 600;
   letter-spacing: 0.1em;
   opacity: 0.85;
@@ -1118,10 +1118,10 @@
   border-radius: 0.125rem;
   border: 1px solid var(--display-face-source-kind-border);
   background: var(--display-face-source-kind-bg);
-  box-shadow: 0 1px 2px color-mix(in srgb, #000 28%, transparent);
+  box-shadow: 0 1px 2px var(--fixed-black-a28);
 }
 .vram-fc-measure__source .vram-fc-source__kind-lab {
-  font-size: 9px;
+  font-size: var(--type-label);
   font-weight: 600;
   letter-spacing: 0.06em;
   opacity: 1;
@@ -1206,8 +1206,8 @@
  */
 .vram-fc-need-frame {
   --need-frame-accent: color-mix(in srgb, var(--theme-accent) 55%, transparent);
-  --need-frame-hi: color-mix(in srgb, #fff 18%, transparent);
-  --need-frame-lo: color-mix(in srgb, #000 48%, transparent);
+  --need-frame-hi: var(--fixed-white-a18);
+  --need-frame-lo: var(--fixed-black-a48);
   --need-frame-ring: color-mix(in srgb, var(--display-face-text-muted) 42%, transparent);
   --need-frame-face: color-mix(
     in srgb,
@@ -1244,18 +1244,18 @@
     ),
     linear-gradient(
       165deg,
-      color-mix(in srgb, #fff 10%, transparent) 0%,
+      var(--fixed-white-a1) 0%,
       transparent 42%,
-      color-mix(in srgb, #000 14%, transparent) 100%
+      var(--fixed-black-a14) 100%
     ),
     var(--need-frame-face);
   /* Raised 3D bump on the inner plate */
   box-shadow:
-    0 1px 0 color-mix(in srgb, #000 35%, transparent),
-    0 3px 6px color-mix(in srgb, #000 28%, transparent),
+    0 1px 0 var(--fixed-black-a35),
+    0 3px 6px var(--fixed-black-a28),
     inset 1px 1px 0 var(--need-frame-hi),
     inset -1px -1px 0 var(--need-frame-lo),
-    inset 0 0 0 1px color-mix(in srgb, #000 18%, transparent);
+    inset 0 0 0 1px var(--fixed-black-a18);
   overflow: hidden;
   /* Anchor for mini-display live overlay */
   position: relative;
@@ -1264,7 +1264,7 @@
 .vram-fc-need-frame[data-source-kind="learned"],
 .vram-fc-need-frame[data-source-kind="learned_curve"] {
   /* Premium gold */
-  --need-frame-accent: color-mix(in srgb, var(--theme-telemetry-amber) 52%, #fde68a 18%);
+  --need-frame-accent: color-mix(in srgb, var(--theme-telemetry-amber) 52%, var(--fixed-amber-200) 18%);
 }
 .vram-fc-need-frame[data-source-kind="fit_probe"] {
   /* Instrument cyan */
@@ -1293,58 +1293,58 @@
   box-sizing: border-box;
   pointer-events: none;
   -webkit-mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
+    linear-gradient(var(--fixed-white) 0 0) content-box,
+    linear-gradient(var(--fixed-white) 0 0);
   -webkit-mask-composite: xor;
   mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
+    linear-gradient(var(--fixed-white) 0 0) content-box,
+    linear-gradient(var(--fixed-white) 0 0);
   mask-composite: exclude;
 }
 .vram-fc-need-frame__live-rim {
   opacity: 0.55;
   background: conic-gradient(
     from var(--rim-angle),
-    rgba(255, 255, 255, 0.08) 0deg,
-    rgba(255, 255, 255, 0.08) 200deg,
-    rgba(255, 255, 255, 0.55) 250deg,
-    rgba(255, 255, 255, 0.95) 280deg,
-    rgba(255, 255, 255, 0.55) 310deg,
-    rgba(255, 255, 255, 0.08) 360deg
+    var(--fixed-white-a08) 0deg,
+    var(--fixed-white-a08) 200deg,
+    var(--fixed-white-a55) 250deg,
+    var(--fixed-white-a95) 280deg,
+    var(--fixed-white-a55) 310deg,
+    var(--fixed-white-a08) 360deg
   );
   box-shadow: 0 0 6px rgba(255, 255, 255, 0.2);
 }
 .vram-fc-need-frame__live.is-mode-scan .vram-fc-need-frame__live-rim {
   background: conic-gradient(
     from var(--rim-angle),
-    rgba(255, 255, 255, 0.9) 0deg 14deg,
+    var(--fixed-white-a9) 0deg 14deg,
     transparent 14deg 28deg,
-    rgba(255, 255, 255, 0.55) 28deg 40deg,
+    var(--fixed-white-a55) 28deg 40deg,
     transparent 40deg 54deg,
-    rgba(255, 255, 255, 0.9) 54deg 68deg,
+    var(--fixed-white-a9) 54deg 68deg,
     transparent 68deg 82deg,
-    rgba(255, 255, 255, 0.55) 82deg 94deg,
+    var(--fixed-white-a55) 82deg 94deg,
     transparent 94deg 108deg,
-    rgba(255, 255, 255, 0.9) 108deg 122deg,
+    var(--fixed-white-a9) 108deg 122deg,
     transparent 122deg 136deg,
-    rgba(255, 255, 255, 0.55) 136deg 148deg,
+    var(--fixed-white-a55) 136deg 148deg,
     transparent 148deg 162deg,
-    rgba(255, 255, 255, 0.9) 162deg 176deg,
+    var(--fixed-white-a9) 162deg 176deg,
     transparent 176deg 190deg,
-    rgba(255, 255, 255, 0.55) 190deg 202deg,
+    var(--fixed-white-a55) 190deg 202deg,
     transparent 202deg 216deg,
-    rgba(255, 255, 255, 0.9) 216deg 230deg,
+    var(--fixed-white-a9) 216deg 230deg,
     transparent 230deg 244deg,
-    rgba(255, 255, 255, 0.55) 244deg 256deg,
+    var(--fixed-white-a55) 244deg 256deg,
     transparent 256deg 270deg,
-    rgba(255, 255, 255, 0.9) 270deg 284deg,
+    var(--fixed-white-a9) 270deg 284deg,
     transparent 284deg 298deg,
-    rgba(255, 255, 255, 0.55) 298deg 310deg,
+    var(--fixed-white-a55) 298deg 310deg,
     transparent 310deg 324deg,
-    rgba(255, 255, 255, 0.9) 324deg 338deg,
+    var(--fixed-white-a9) 324deg 338deg,
     transparent 338deg 360deg
   );
-  box-shadow: 0 0 5px rgba(255, 255, 255, 0.22);
+  box-shadow: 0 0 5px var(--fixed-white-a22);
 }
 .vram-fc-need-frame__live-tick {
   opacity: 0.7;
@@ -1353,13 +1353,13 @@
     from var(--rim-angle),
     transparent 0deg,
     transparent 262deg,
-    rgba(255, 255, 255, 0.35) 272deg,
-    rgba(255, 255, 255, 1) 280deg,
-    rgba(255, 255, 255, 0.35) 288deg,
+    var(--fixed-white-a35) 272deg,
+    var(--fixed-white) 280deg,
+    var(--fixed-white-a35) 288deg,
     transparent 298deg,
     transparent 360deg
   );
-  filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.75));
+  filter: drop-shadow(0 0 3px var(--fixed-white-a75));
 }
 .vram-fc-need-frame__live.is-mode-full .vram-fc-need-frame__live-rim {
   padding: 2.5px;
@@ -1441,7 +1441,7 @@
   white-space: nowrap;
   color: color-mix(in srgb, var(--display-face-text) 94%, transparent);
   text-shadow:
-    0 1px 0 color-mix(in srgb, #000 45%, transparent),
+    0 1px 0 var(--fixed-black-a45),
     0 0 10px color-mix(in srgb, var(--need-frame-accent) 40%, transparent);
   user-select: none;
 }
@@ -1457,7 +1457,7 @@
 }
 .vram-fc-need-frame[data-source-kind="learned"] .vram-fc-need-frame__status,
 .vram-fc-need-frame[data-source-kind="learned_curve"] .vram-fc-need-frame__status {
-  color: color-mix(in srgb, var(--theme-telemetry-amber) 82%, #fde68a 28%);
+  color: color-mix(in srgb, var(--theme-telemetry-amber) 82%, var(--fixed-amber-200) 28%);
 }
 .vram-fc-need-frame[data-source-kind="fit_probe"] .vram-fc-need-frame__status {
   color: var(--theme-telemetry-cyan);
@@ -1550,8 +1550,8 @@
     var(--display-face-bg)
   );
   box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 5%, transparent),
-    0 1px 0 color-mix(in srgb, #000 35%, transparent);
+    inset 0 1px 0 var(--fixed-white-a05),
+    0 1px 0 var(--fixed-black-a35);
 }
 
 /* Label chips — tokenized wells (ARCTIC = dark sky well + ice ink) */
@@ -1588,8 +1588,8 @@
 }
 .vram-fc-bar__name-chip--ram {
   color: var(--display-face-fc-label-ram-fg);
-  background: var(--display-face-fc-label-ram-bg, color-mix(in srgb, #60a5fa 14%, transparent));
-  border-right-color: var(--display-face-fc-label-ram-border, color-mix(in srgb, #60a5fa 30%, transparent));
+  background: var(--display-face-fc-label-ram-bg, var(--fixed-blue-400-a14));
+  border-right-color: var(--display-face-fc-label-ram-border, var(--fixed-blue-400-a3));
 }
 
 /* TOTAL pool track — bar-bg hue; fill absolute edge-to-edge (no lip leak) */
@@ -1605,7 +1605,7 @@
   overflow: hidden;
   background: var(--display-face-bar-bg, color-mix(in srgb, var(--theme-accent) 12%, transparent));
   box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 10%, transparent),
+    inset 0 1px 0 var(--fixed-white-a1),
     inset 0 -1px 0 color-mix(in srgb, var(--theme-accent) 18%, transparent);
 }
 
@@ -1624,12 +1624,12 @@
 /* Bevel: no opaque bottom strip (reads as bg leak); hue via currentColor multiply */
 .vram-fc-bar__fill--bevel {
   box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 32%, transparent),
+    inset 0 1px 0 var(--fixed-white-a32),
     inset 0 -2px 4px color-mix(in srgb, currentColor 40%, transparent),
-    inset 0 -1px 0 color-mix(in srgb, #000 22%, currentColor);
+    inset 0 -1px 0 color-mix(in srgb, var(--fixed-black) 22%, currentColor);
   background-image: linear-gradient(
     180deg,
-    color-mix(in srgb, #fff 24%, transparent) 0%,
+    var(--fixed-white-a24) 0%,
     transparent 50%,
     color-mix(in srgb, currentColor 45%, transparent) 100%
   );
@@ -1656,8 +1656,8 @@
   white-space: nowrap;
 }
 .vram-fc-bar__cap-chip--ram {
-  background: var(--display-face-fc-label-ram-bg, color-mix(in srgb, #60a5fa 14%, transparent));
-  border-right-color: var(--display-face-fc-label-ram-border, color-mix(in srgb, #60a5fa 30%, transparent));
+  background: var(--display-face-fc-label-ram-bg, var(--fixed-blue-400-a14));
+  border-right-color: var(--display-face-fc-label-ram-border, var(--fixed-blue-400-a3));
   color: var(--display-face-fc-label-ram-fg);
 }
 .vram-fc-bar__cap-val {
@@ -1696,8 +1696,8 @@
   color: var(--display-face-fc-label-fg, var(--display-face-text));
 }
 .vram-fc-bar__need-chip--ram {
-  background: var(--display-face-fc-label-ram-bg, color-mix(in srgb, #60a5fa 14%, transparent));
-  border-left-color: var(--display-face-fc-label-ram-border, color-mix(in srgb, #60a5fa 30%, transparent));
+  background: var(--display-face-fc-label-ram-bg, var(--fixed-blue-400-a14));
+  border-left-color: var(--display-face-fc-label-ram-border, var(--fixed-blue-400-a3));
   color: var(--display-face-fc-label-ram-fg);
 }
 /*
@@ -1765,8 +1765,8 @@
 /* Prefer data-need-tone on chip — beats inherit + text-fill traps */
 .vram-fc-bar__need-chip[data-need-tone="caution"] .vram-fc-bar__need,
 .vram-fc-bar__need-chip .vram-fc-bar__need--caution {
-  color: #fcd34d !important;
-  -webkit-text-fill-color: #fcd34d !important;
+  color: var(--fixed-amber-300) !important;
+  -webkit-text-fill-color: var(--fixed-amber-300) !important;
 }
 .vram-fc-bar__need-chip[data-need-tone="warn"] .vram-fc-bar__need,
 .vram-fc-bar__need-chip .vram-fc-bar__need--warn {
@@ -1828,7 +1828,7 @@
     ),
     color-mix(in srgb, var(--display-face-bar-bg) 90%, transparent);
   box-shadow:
-    inset 0 1px 3px color-mix(in srgb, #000 40%, transparent),
+    inset 0 1px 3px var(--fixed-black-a4),
     inset 0 -1px 0 color-mix(in srgb, var(--display-face-text) 7%, transparent);
 }
 
@@ -1864,16 +1864,16 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: color-mix(in srgb, #fff 92%, transparent);
+  color: var(--fixed-white-a92);
   -webkit-text-fill-color: currentColor;
   text-shadow:
-    0 0 6px color-mix(in srgb, #000 75%, transparent),
-    0 1px 0 color-mix(in srgb, #000 55%, transparent);
+    0 0 6px var(--fixed-black-a75),
+    0 1px 0 var(--fixed-black-a55);
 }
 
 .vram-forecast-bar__inset-label--caution {
-  color: #fcd34d;
-  -webkit-text-fill-color: #fcd34d;
+  color: var(--fixed-amber-300);
+  -webkit-text-fill-color: var(--fixed-amber-300);
 }
 
 .vram-forecast-bar__inset-label--warn {
@@ -1887,13 +1887,13 @@
 }
 
 .vram-forecast-bar__inset-label--ram {
-  color: color-mix(in srgb, #bfdbfe 94%, transparent);
-  -webkit-text-fill-color: color-mix(in srgb, #bfdbfe 94%, transparent);
+  color: var(--fixed-c-bfdbfe-a94);
+  -webkit-text-fill-color: var(--fixed-c-bfdbfe-a94);
 }
 
 .vram-forecast-bar__inset-label--ram.vram-forecast-bar__inset-label--caution {
-  color: #fcd34d;
-  -webkit-text-fill-color: #fcd34d;
+  color: var(--fixed-amber-300);
+  -webkit-text-fill-color: var(--fixed-amber-300);
 }
 
 .vram-forecast-bar__inset-label--ram.vram-forecast-bar__inset-label--warn {
@@ -1937,14 +1937,14 @@
   background: var(--theme-provider-pill-bg);
   color: var(--theme-provider-pill-text);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 9px;
+  font-size: var(--type-label);
   font-weight: 600;
   letter-spacing: 0.06em;
   line-height: 1.25;
   cursor: pointer;
   white-space: nowrap;
   text-align: center;
-  box-shadow: 0 1px 2px color-mix(in srgb, #000 30%, transparent);
+  box-shadow: 0 1px 2px var(--fixed-black-a3);
   transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
 }
 .vram-fc-source__reprobe:hover:not(:disabled),
@@ -1976,10 +1976,10 @@
 .vram-fc-header__reprobe--over-free,
 .vram-fc-source__reprobe[data-probe-state="over-free"],
 .vram-fc-header__reprobe[data-probe-state="over-free"] {
-  color: #fff;
-  -webkit-text-fill-color: #fff;
+  color: var(--fixed-white);
+  -webkit-text-fill-color: var(--fixed-white);
   border-color: var(--theme-telemetry-red);
-  background: color-mix(in srgb, var(--theme-telemetry-red) 82%, #000);
+  background: color-mix(in srgb, var(--theme-telemetry-red) 82%, var(--fixed-black));
   animation: vram-fc-over-free-pulse 0.9s ease-in-out infinite;
 }
 
@@ -2017,9 +2017,9 @@
     color-mix(in srgb, var(--theme-panel) 96%, var(--theme-accent) 4%)
   );
   box-shadow:
-    0 8px 28px rgba(0, 0, 0, 0.55),
-    0 0 0 1px color-mix(in srgb, #000 40%, transparent),
-    inset 0 1px 0 color-mix(in srgb, #fff 6%, transparent);
+    0 8px 28px var(--fixed-black-a55),
+    0 0 0 1px var(--fixed-black-a4),
+    inset 0 1px 0 var(--fixed-white-a06);
   pointer-events: none;
   animation: vram-fc-recap-in 0.12s ease-out;
 }
@@ -2028,7 +2028,7 @@
   padding-bottom: 6px;
   border-bottom: 1px solid color-mix(in srgb, var(--display-face-recap-text) 12%, transparent);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 10px;
+  font-size: var(--type-body);
   font-weight: 600;
   line-height: 1.35;
   letter-spacing: 0.02em;
@@ -2044,7 +2044,7 @@
 }
 .vram-fc-recap__k {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 7px;
+  font-size: var(--type-micro);
   font-weight: 800;
   letter-spacing: 0.14em;
   color: color-mix(in srgb, var(--display-face-recap-text-muted) 85%, transparent);
@@ -2052,7 +2052,7 @@
 }
 .vram-fc-recap__v {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 10px;
+  font-size: var(--type-body);
   font-weight: 600;
   line-height: 1.35;
   color: color-mix(in srgb, var(--display-face-recap-text) 90%, transparent);
@@ -2066,7 +2066,7 @@
   letter-spacing: 0.08em;
 }
 .vram-fc-recap__v--mono {
-  font-size: 9px;
+  font-size: var(--type-label);
   font-weight: 500;
   opacity: 0.92;
   word-break: break-word;
@@ -2076,16 +2076,16 @@
   padding-top: 5px;
   border-top: 1px solid color-mix(in srgb, var(--display-face-recap-text) 10%, transparent);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 7px;
+  font-size: var(--type-micro);
   letter-spacing: 0.08em;
   color: color-mix(in srgb, var(--display-face-recap-text-muted) 70%, transparent);
 }
 .vram-fc-source[data-source-kind="fit_probe"] .vram-fc-recap {
-  border-color: color-mix(in srgb, #22d3ee 35%, transparent);
+  border-color: var(--fixed-cyan-400-a35);
 }
 .vram-fc-source[data-source-kind="learned"] .vram-fc-recap,
 .vram-fc-source[data-source-kind="learned_curve"] .vram-fc-recap {
-  border-color: color-mix(in srgb, #fbbf24 40%, transparent);
+  border-color: var(--fixed-amber-400-a4);
 }
 @keyframes vram-fc-recap-in {
   from { opacity: 0; transform: translateY(-3px); }
@@ -2162,7 +2162,7 @@
 /* RE-PROBE keeps provider-pill metrics (don't shrink vs PROVIDER bar) */
 .vram-fc-source--dominant .vram-fc-source__reprobe {
   padding: 2px 8px;
-  font-size: 9px;
+  font-size: var(--type-label);
 }
 
 .vram-fc-source--inline {
@@ -2246,11 +2246,11 @@
     linear-gradient(
       180deg,
       color-mix(in srgb, var(--display-face-text) 7%, transparent),
-      color-mix(in srgb, #000 22%, transparent)
+      var(--fixed-black-a22)
     );
   box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 6%, transparent),
-    inset 0 -1px 0 color-mix(in srgb, #000 30%, transparent);
+    inset 0 1px 0 var(--fixed-white-a06),
+    inset 0 -1px 0 var(--fixed-black-a3);
 }
 .vram-fc__topo--compact .gpu-card__meta {
   display: flex;
@@ -2310,7 +2310,7 @@
 }
 /* Projected load G only — manufactured % stays uncolored capacity context */
 .vram-fc__topo--compact .gpu-card__bar-need--caution {
-  color: #fcd34d;
+  color: var(--fixed-amber-300);
 }
 .vram-fc__topo--compact .gpu-card__bar-need--warn {
   color: var(--theme-telemetry-amber);
@@ -2330,7 +2330,7 @@
   border-radius: 2px;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--theme-accent) 28%, transparent);
-  border-top-color: color-mix(in srgb, #000 45%, var(--theme-accent));
+  border-top-color: color-mix(in srgb, var(--fixed-black) 45%, var(--theme-accent));
   border-bottom-color: color-mix(in srgb, var(--theme-accent) 18%, transparent);
   background:
     linear-gradient(
@@ -2342,11 +2342,11 @@
     color-mix(
       in srgb,
       var(--display-face-bar-bg, color-mix(in srgb, var(--theme-accent) 12%, transparent)) 70%,
-      #000
+      var(--fixed-black)
     );
   box-shadow:
-    inset 0 2px 5px color-mix(in srgb, #000 55%, transparent),
-    inset 0 1px 0 color-mix(in srgb, #000 40%, transparent),
+    inset 0 2px 5px var(--fixed-black-a55),
+    inset 0 1px 0 var(--fixed-black-a4),
     inset 0 -1px 0 color-mix(in srgb, var(--theme-accent) 12%, transparent);
 }
 .vram-fc__topo--compact .gpu-card__bar--3d .gpu-card__bar-fill {
@@ -2356,13 +2356,13 @@
 }
 .vram-fc__topo--compact .gpu-card__bar-fill--bevel {
   box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 35%, transparent),
-    inset 0 -2px 2px color-mix(in srgb, #000 50%, currentColor);
+    inset 0 1px 0 var(--fixed-white-a35),
+    inset 0 -2px 2px color-mix(in srgb, var(--fixed-black) 50%, currentColor);
   background-image: linear-gradient(
     180deg,
-    color-mix(in srgb, #fff 30%, transparent),
+    var(--fixed-white-a3),
     transparent 38%,
-    color-mix(in srgb, #000 42%, currentColor)
+    color-mix(in srgb, var(--fixed-black) 42%, currentColor)
   );
 }
 .vram-fc__topo--compact .gpu-topology-grid {
@@ -2562,7 +2562,7 @@
   border-radius: 3px;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--theme-accent) 26%, transparent);
-  border-top-color: color-mix(in srgb, #000 42%, var(--theme-accent));
+  border-top-color: color-mix(in srgb, var(--fixed-black) 42%, var(--theme-accent));
   border-bottom-color: color-mix(in srgb, var(--theme-accent) 16%, transparent);
   background:
     linear-gradient(
@@ -2574,11 +2574,11 @@
     color-mix(
       in srgb,
       var(--display-face-bar-bg, color-mix(in srgb, var(--theme-accent) 12%, transparent)) 68%,
-      #000
+      var(--fixed-black)
     );
   box-shadow:
-    inset 0 2px 5px color-mix(in srgb, #000 52%, transparent),
-    inset 0 1px 0 color-mix(in srgb, #000 38%, transparent),
+    inset 0 2px 5px var(--fixed-black-a52),
+    inset 0 1px 0 var(--fixed-black-a38),
     inset 0 -1px 0 color-mix(in srgb, var(--theme-accent) 12%, transparent);
 }
 .gpu-card__bar .gpu-card__bar-fill {
@@ -2600,13 +2600,13 @@
   left: auto;
   right: 0;
   z-index: 2;
-  background-color: color-mix(in srgb, #64748b 55%, #0f172a);
+  background-color: color-mix(in srgb, var(--fixed-c-64748b) 55%, #0f172a);
   background-image: repeating-linear-gradient(
     -45deg,
     transparent,
     transparent 3px,
-    color-mix(in srgb, #94a3b8 22%, transparent) 3px,
-    color-mix(in srgb, #94a3b8 22%, transparent) 5px
+    var(--fixed-slate-400-a22) 3px,
+    var(--fixed-slate-400-a22) 5px
   );
 }
 
@@ -2748,7 +2748,7 @@
 }
 
 .display-bezel-grid-controls__label {
-  font-size: 7px;
+  font-size: var(--type-micro);
   letter-spacing: 0.1em;
   color: color-mix(in srgb, var(--theme-chrome-control-text) 55%, transparent);
   flex-shrink: 0;
@@ -2760,7 +2760,7 @@
 }
 
 .industrial-display-frame__bottom-chrome .segment-switch.segment-switch--gpu-bezel .segment-switch__option {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   padding: 0.1rem 0.45rem;
   min-width: 1.35rem;
 }
@@ -2823,14 +2823,14 @@
   border-radius: 4px;
   /* Recessed — unified with base .segment-switch + param-chip rail. */
   box-shadow:
-    inset 0 1px 1px color-mix(in srgb, #000 24%, transparent),
-    inset 0 2px 3px color-mix(in srgb, #000 12%, transparent),
+    inset 0 1px 1px var(--fixed-black-a24),
+    inset 0 2px 3px var(--fixed-black-a12),
     inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 18%, transparent);
 }
 
 .industrial-display-frame__top-chrome .vram-badge-fit-launch-dock .segment-switch--fit-launch .segment-switch__option {
   padding: 5px 12px;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   letter-spacing: 0.16em;
   line-height: 1.2;
 }
@@ -2922,7 +2922,7 @@
   min-width: 0;
   flex-shrink: 0;
   font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 7px;
+  font-size: var(--type-micro);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   line-height: 1;
@@ -2952,7 +2952,7 @@
 
 .segment-switch.segment-switch--gpu-bezel .segment-switch__option {
   flex: 0 0 auto;
-  font-size: 7px;
+  font-size: var(--type-micro);
   letter-spacing: 0.06em;
   padding: 4px 7px;
   line-height: 1.15;
@@ -2982,8 +2982,8 @@
 .industrial-display-frame__top-chrome .segment-switch.segment-switch--gpu-bezel {
   /* Recessed — unified with base .segment-switch + param-chip rail. */
   box-shadow:
-    inset 0 1px 1px color-mix(in srgb, #000 24%, transparent),
-    inset 0 2px 3px color-mix(in srgb, #000 12%, transparent),
+    inset 0 1px 1px var(--fixed-black-a24),
+    inset 0 2px 3px var(--fixed-black-a12),
     inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 18%, transparent);
 }
 
@@ -3094,7 +3094,7 @@
 /* Bar ramp hues now live in badges.css (bar-need-fill bar-need--* / ram-fill--*) —
    the name-keyed utility hooks below were dead and removed (de-Tailwind pass 5a). */
 .vram-fc-bar__fill.bg-orange-hatched {
-  color: #fb923c;
+  color: var(--fixed-orange-400);
 }
 .gpu-card__bar-fill--os {
   color: #585858;
@@ -3116,8 +3116,8 @@ mult chip. * (Do not chain unfinished selectors — a prior strip accidentally p
   border-color: var(--display-face-border);
   color: color-mix(in srgb, var(--display-face-text-muted) 72%, transparent);
 }.phosphor-screen-inner .ctx-bar-fill-pct--active{
-  color: color-mix(in srgb, var(--display-face-text) 92%, #fff);
-  text-shadow: 0 0 4px color-mix(in srgb, var(--theme-bg) 80%, transparent), 0 1px 2px color-mix(in srgb, #000 55%, transparent);
+  color: color-mix(in srgb, var(--display-face-text) 92%, var(--fixed-white));
+  text-shadow: 0 0 4px color-mix(in srgb, var(--theme-bg) 80%, transparent), 0 1px 2px var(--fixed-black-a55);
 }.phosphor-screen-inner .ctx-bar-track--active{
   background: color-mix(in srgb, var(--display-face-bar-bg) 65%, transparent);
   border-color: transparent;
@@ -3125,7 +3125,7 @@ mult chip. * (Do not chain unfinished selectors — a prior strip accidentally p
   background: transparent;
   border-color: color-mix(in srgb, var(--display-face-border) 55%, transparent);
 }.phosphor-screen-inner .ctx-bar-fill--processing{
-  background: #22c55e;
+  background: var(--fixed-green-500);
 }.phosphor-screen-inner .ctx-bar-fill--idle{
   background: color-mix(in srgb, var(--display-face-text) 38%, transparent);
 }.phosphor-screen-inner .ctx-bar-slot-label{
@@ -3135,7 +3135,7 @@ mult chip. * (Do not chain unfinished selectors — a prior strip accidentally p
 .bench-widget-panel .bench-concurrency-badge__mult,
 .fusion-mult-chip,
 .bench-widget-panel .bench-concurrency-badge__mult{
-  --bench-concurrency-chip-bg: color-mix(in srgb, var(--theme-bg) 76%, #000);
+  --bench-concurrency-chip-bg: color-mix(in srgb, var(--theme-bg) 76%, var(--fixed-black));
   --bench-concurrency-chip-fg: #ffd24a;
   --bench-concurrency-chip-border: #c99700;
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-bg) 55%, transparent);
@@ -3209,7 +3209,7 @@ mult chip. * (Do not chain unfinished selectors — a prior strip accidentally p
   align-items: baseline;
   gap: 3px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  font-size: 6px;
+  font-size: var(--type-hairline);
   line-height: 1;
   white-space: nowrap;
   pointer-events: auto;
@@ -3287,7 +3287,7 @@ mult chip. * (Do not chain unfinished selectors — a prior strip accidentally p
   max-width: 100%;
   min-width: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  font-size: 6px;
+  font-size: var(--type-hairline);
   line-height: 1.1;
   color: color-mix(in srgb, var(--theme-text) 70%, transparent);
 }
@@ -3392,12 +3392,12 @@ mult chip. * (Do not chain unfinished selectors — a prior strip accidentally p
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, #fff 5%, transparent) 0%,
+      var(--fixed-white-a05) 0%,
       transparent 70%
     ),
     color-mix(in srgb, var(--theme-bg) 55%, transparent);
   box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 6%, transparent),
+    inset 0 1px 0 var(--fixed-white-a06),
     inset 0 1px 3px var(--theme-bench-inset-shadow);
 }
 
@@ -3418,7 +3418,7 @@ mult chip. * (Do not chain unfinished selectors — a prior strip accidentally p
   height: 7px;
   border-radius: 1px;
   background: color-mix(in srgb, var(--theme-text-muted) 18%, transparent);
-  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.45);
+  box-shadow: inset 0 1px 1px var(--fixed-black-a45);
   transition: background 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -3430,7 +3430,7 @@ mult chip. * (Do not chain unfinished selectors — a prior strip accidentally p
 .fusion-bench-latch__segments > span.is-lit {
   background: color-mix(in srgb, var(--theme-accent) 72%, transparent);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 1px 0 var(--fixed-white-a12),
     0 0 4px color-mix(in srgb, var(--theme-accent) 35%, transparent);
 }
 
@@ -3440,7 +3440,7 @@ mult chip. * (Do not chain unfinished selectors — a prior strip accidentally p
 }
 
 .fusion-bench-latch__label {
-  font-size: 6px;
+  font-size: var(--type-hairline);
   font-family: ui-monospace, monospace;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -3448,7 +3448,7 @@ mult chip. * (Do not chain unfinished selectors — a prior strip accidentally p
 }
 
 .fusion-bench-latch__action {
-  font-size: 6px;
+  font-size: var(--type-hairline);
   font-family: ui-monospace, monospace;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -3505,7 +3505,7 @@ html[data-industrial-bezel="brush"] {
 .display-texture-toggle,
 .industrial-bezel-texture-toggle {
   font-family: ui-monospace, monospace;
-  font-size: 6px;
+  font-size: var(--type-hairline);
   font-weight: 500;
   letter-spacing: 0.1em;
   line-height: 1.2;
@@ -3712,9 +3712,9 @@ html[data-industrial-bezel="brush"] {
   align-items: flex-end;
   gap: 1px;
   padding: 4px 6px 3px;
-  background: #0a0c10;
+  background: var(--fixed-c-0a0c10);
   border-radius: 5px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 1px 4px var(--fixed-black-a45);
   line-height: 0;
 }
 
@@ -3722,7 +3722,7 @@ html[data-industrial-bezel="brush"] {
   display: inline-flex;
   flex-shrink: 0;
   line-height: 0;
-  color: #76b900;
+  color: var(--fixed-nv-green);
 }
 
 .fusion-share-capture-stage[data-fusion-share-capture] .fusion-share-bezel-brand__version {
@@ -3747,7 +3747,7 @@ html[data-industrial-bezel="brush"] {
   gap: 4px;
   min-width: 0;
   font-family: ui-monospace, monospace;
-  font-size: 9px;
+  font-size: var(--type-label);
   line-height: 1.15;
   color: color-mix(in srgb, var(--theme-text) 78%, transparent);
 }
@@ -3811,11 +3811,11 @@ html[data-industrial-bezel="brush"] {
 
 .fusion-share-capture-stage[data-fusion-share-capture] .bench-concurrency-badge {
   bottom: -10px !important;
-  font-size: 7px !important;
+  font-size: var(--type-micro) !important;
 }
 
 .fusion-share-capture-stage[data-fusion-share-capture] .bench-concurrency-badge--compact {
-  font-size: 6px !important;
+  font-size: var(--type-hairline) !important;
 }
 
 .fusion-share-capture-stage[data-fusion-share-capture] .bench-concurrency-badge__mult {
@@ -3829,17 +3829,17 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-share-variant-btn--icon.fusion-share-variant-btn--white {
-  border-color: rgba(255, 255, 255, 0.22);
-  background: linear-gradient(145deg, #f4f6f8 0%, #dce2ea 55%, #b8c4d0 100%);
+  border-color: var(--fixed-white-a22);
+  background: linear-gradient(145deg, var(--fixed-c-f4f6f8) 0%, var(--fixed-c-dce2ea) 55%, var(--fixed-c-b8c4d0) 100%);
   color: #101418;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+  box-shadow: inset 0 0 0 1px var(--fixed-black-a06);
 }
 
 .fusion-share-variant-btn--icon.fusion-share-variant-btn--black {
   border-color: rgba(255, 255, 255, 0.14);
   background: linear-gradient(145deg, #3a3a42 0%, #1a1a1e 55%, #09090b 100%);
-  color: #f4f6f8;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  color: var(--fixed-c-f4f6f8);
+  box-shadow: inset 0 0 0 1px var(--fixed-white-a05);
 }
 
 .fusion-share-variant-btn--icon:hover:not(:disabled) {
@@ -3861,15 +3861,15 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-share-variant-swatch--white {
-  background: linear-gradient(145deg, #f4f6f8 0%, #dce2ea 55%, #b8c4d0 100%);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+  background: linear-gradient(145deg, var(--fixed-c-f4f6f8) 0%, var(--fixed-c-dce2ea) 55%, var(--fixed-c-b8c4d0) 100%);
+  box-shadow: inset 0 0 0 1px var(--fixed-black-a06);
 }
 
 .fusion-share-variant-swatch--black {
   background:
     radial-gradient(circle at 35% 35%, rgba(200, 200, 210, 0.12) 0%, transparent 55%),
     #080808;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px var(--fixed-white-a04);
 }
 
 .fusion-share-menu {
@@ -3889,7 +3889,7 @@ html[data-industrial-bezel="brush"] {
 .fusion-share-menu__btn {
   text-align: left;
   font-family: "JetBrains Mono", "Roboto Mono", monospace;
-  font-size: 7px;
+  font-size: var(--type-micro);
   font-weight: 700;
   letter-spacing: 0.08em;
   padding: 4px 6px;
@@ -4032,7 +4032,7 @@ html[data-industrial-bezel="brush"] {
 .phosphor-screen-inner .fusion-fuel-readout--warn,
 .phosphor-screen-inner .fusion-tps-value--warn,
 .phosphor-screen-inner .fusion-phase-badge--pp {
-  color: #b87a00 !important;
+  color: var(--fixed-brand-amber) !important;
 }
 
 /* Dark fill (was bg-stealth-dark -> --display-face-bar-bg) */
@@ -4073,13 +4073,13 @@ html[data-industrial-bezel="brush"] {
 }
 
 .ctx-bar-track--active {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--fixed-white-a05);
   border-color: transparent;
 }
 
 .ctx-bar-track--empty {
   background: transparent;
-  border-color: rgba(255, 255, 255, 0.05);
+  border-color: var(--fixed-white-a05);
 }
 
 .ctx-bar-fill-pct--active {
@@ -4092,7 +4092,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .ctx-bar-fill--processing {
-  background: #22c55e;
+  background: var(--fixed-green-500);
 }
 
 .ctx-bar-fill--idle {
@@ -4100,13 +4100,13 @@ html[data-industrial-bezel="brush"] {
 }
 
 .ctx-bar-slot-label {
-  background: rgba(0, 0, 0, 0.5);
-  color: rgba(255, 255, 255, 0.8);
+  background: var(--fixed-black-a5);
+  color: var(--fixed-white-a8);
 }
 
 .ctx-bar-slot-label--live {
   color: rgba(74, 222, 128, 0.95);
-  box-shadow: 0 0 6px color-mix(in srgb, #22c55e 35%, transparent);
+  box-shadow: 0 0 6px var(--fixed-green-500-a35);
 }
 
 .fusion-mult-chip {
@@ -4159,12 +4159,12 @@ html[data-industrial-bezel="brush"] {
 }
 
 .display-bezel-fusion-chip {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   line-height: 1;
   padding: 3px 6px;
   border-radius: 2px;
   border: 1px solid color-mix(in srgb, var(--theme-border) 80%, transparent);
-  background: color-mix(in srgb, var(--theme-panel-accent) 82%, #000 18%);
+  background: color-mix(in srgb, var(--theme-panel-accent) 82%, var(--fixed-black) 18%);
   color: var(--theme-chrome-control-text, var(--theme-chip-text, var(--theme-text-muted)));
   cursor: pointer;
   flex-shrink: 0;
@@ -4197,7 +4197,7 @@ html[data-industrial-bezel="brush"] {
 
 /* VRAM bezel top-right — multi-engine kill (same intent as ENGINE STACK STOP ALL) */
 .display-bezel-stop-all {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   line-height: 1;
   padding: 3px 7px;
   border-radius: 2px;
@@ -4214,7 +4214,7 @@ html[data-industrial-bezel="brush"] {
 
 .running-engine-card-secondary,
 .launch-rail-engine-chip--secondary {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, #38bdf8 55%, transparent);
+  box-shadow: inset 0 0 0 1px var(--fixed-c-38bdf8-a55);
 }
 
 /* Monitor focus — stacked HUD: fusion + optional HW below. Keep mounts hot. */
@@ -4511,7 +4511,7 @@ html[data-industrial-bezel="brush"] {
   border-radius: 4px;
   border: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
   background: var(--theme-panel);
-  box-shadow: 0 10px 28px color-mix(in srgb, #000 48%, transparent);
+  box-shadow: 0 10px 28px var(--fixed-black-a48);
 }
 
 .launch-rail-tel__oc-badge {
@@ -4525,7 +4525,7 @@ html[data-industrial-bezel="brush"] {
   padding: 5px 6px;
   border-radius: 4px;
   border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
-  background: var(--theme-tel-cell-bg, color-mix(in srgb, #000 22%, transparent));
+  background: var(--theme-tel-cell-bg, var(--fixed-black-a22));
   cursor: pointer;
   font-family: ui-monospace, monospace;
   text-transform: uppercase;
@@ -4533,7 +4533,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .launch-rail-tel__oc-badge-label {
-  font-size: 7px;
+  font-size: var(--type-micro);
   font-weight: 700;
   letter-spacing: 0.14em;
   color: var(--theme-text);
@@ -4561,16 +4561,16 @@ html[data-industrial-bezel="brush"] {
 }
 
 .launch-rail-tel__oc-badge--active .launch-rail-tel__oc-badge-label {
-  color: var(--theme-tel-amber-ink, color-mix(in srgb, #fbbf24 78%, #fff 22%));
+  color: var(--theme-tel-amber-ink, color-mix(in srgb, var(--fixed-amber-400) 78%, var(--fixed-white) 22%));
 }
 
 .launch-rail-tel__oc-badge--active .launch-rail-tel__oc-badge-hint {
-  color: var(--theme-tel-amber-ink, color-mix(in srgb, #fbbf24 78%, #fff 22%));
+  color: var(--theme-tel-amber-ink, color-mix(in srgb, var(--fixed-amber-400) 78%, var(--fixed-white) 22%));
   opacity: 0.85;
 }
 
 .monitor-focus-exit-bar {
-  background: color-mix(in srgb, #000 55%, transparent);
+  background: var(--fixed-black-a55);
   border-bottom: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
 }
 
@@ -4595,21 +4595,21 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-identity-rail__label {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   letter-spacing: 0.18em;
   color: var(--display-face-control-muted, var(--display-face-text-muted));
   opacity: 0.72;
 }
 
 .fusion-identity-rail__rule {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   color: var(--display-face-text-muted);
   opacity: 0.35;
   user-select: none;
 }
 
 .fusion-identity-rail__meta {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   letter-spacing: 0.06em;
   color: color-mix(in srgb, var(--display-face-text) 55%, transparent);
   font-variant-numeric: tabular-nums;
@@ -4624,14 +4624,14 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-identity-rail__port {
-  font-size: 11px;
+  font-size: var(--type-sm);
   color: color-mix(in srgb, var(--display-face-text-muted) 80%, transparent);
   opacity: 0.75;
 }
 
 /* Ops chips — QUIET / LV / STOP */
 .fusion-ops-chip {
-  font-size: 7px;
+  font-size: var(--type-micro);
   font-weight: 700;
   letter-spacing: 0.12em;
   padding: 2px 6px;
@@ -4650,9 +4650,9 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-ops-chip--quiet {
-  background: color-mix(in srgb, #f59e0b 18%, transparent);
-  border-color: color-mix(in srgb, #f59e0b 42%, transparent);
-  color: #fbbf24;
+  background: var(--fixed-amber-500-a18);
+  border-color: var(--fixed-amber-500-a42);
+  color: var(--fixed-amber-400);
 }
 
 .fusion-ops-chip--lv {
@@ -4662,14 +4662,14 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-ops-chip--stop {
-  background: color-mix(in srgb, #dc2626 78%, transparent);
-  border-color: color-mix(in srgb, #ef4444 55%, transparent);
-  color: #fff;
+  background: var(--fixed-c-dc2626-a78);
+  border-color: var(--fixed-red-500-a55);
+  color: var(--fixed-white);
 }
 
 .fusion-ops-chip--stop:hover {
-  background: color-mix(in srgb, #ef4444 88%, transparent);
-  color: #fff;
+  background: var(--fixed-red-500-a88);
+  color: var(--fixed-white);
 }
 
 .fusion-ops-chip--stop.is-stopping {
@@ -4695,8 +4695,8 @@ html[data-industrial-bezel="brush"] {
     ),
     color-mix(in srgb, var(--display-face-bar-bg) 55%, transparent);
   box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 5%, transparent),
-    inset 0 -1px 0 color-mix(in srgb, #000 28%, transparent);
+    inset 0 1px 0 var(--fixed-white-a05),
+    inset 0 -1px 0 var(--fixed-black-a28);
   transition:
     border-color 200ms ease,
     box-shadow 220ms ease,
@@ -4707,19 +4707,19 @@ html[data-industrial-bezel="brush"] {
 .fusion-instrument--live {
   border-color: color-mix(in srgb, var(--display-face-text) 38%, transparent);
   box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 7%, transparent),
-    inset 0 -1px 0 color-mix(in srgb, #000 32%, transparent),
+    inset 0 1px 0 var(--fixed-white-a07),
+    inset 0 -1px 0 var(--fixed-black-a32),
     0 0 0 1px color-mix(in srgb, var(--display-face-text) 12%, transparent),
     0 0 18px color-mix(in srgb, var(--display-face-text) 10%, transparent);
 }
 
 .fusion-instrument--pp.fusion-instrument--live {
-  border-color: color-mix(in srgb, #f59e0b 42%, var(--display-face-border));
+  border-color: color-mix(in srgb, var(--fixed-amber-500) 42%, var(--display-face-border));
   box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 6%, transparent),
-    inset 0 -1px 0 color-mix(in srgb, #000 30%, transparent),
-    0 0 0 1px color-mix(in srgb, #f59e0b 16%, transparent),
-    0 0 16px color-mix(in srgb, #f59e0b 10%, transparent);
+    inset 0 1px 0 var(--fixed-white-a06),
+    inset 0 -1px 0 var(--fixed-black-a3),
+    0 0 0 1px var(--fixed-amber-500-a16),
+    0 0 16px var(--fixed-amber-500-a1);
 }
 
 .fusion-instrument__chrome {
@@ -4728,7 +4728,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-instrument__phase {
-  font-size: 7px;
+  font-size: var(--type-micro);
   font-weight: 700;
   letter-spacing: 0.16em;
   flex-shrink: 0;
@@ -4736,8 +4736,8 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-instrument__phase--pp {
-  color: #f59e0b;
-  text-shadow: 0 0 8px color-mix(in srgb, #f59e0b 35%, transparent);
+  color: var(--fixed-amber-500);
+  text-shadow: 0 0 8px var(--fixed-amber-500-a35);
 }
 
 .fusion-instrument__phase--tg {
@@ -4761,7 +4761,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-instrument__pct {
-  font-size: 11px;
+  font-size: var(--type-sm);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
@@ -4780,7 +4780,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-mode-seg__btn {
-  font-size: 6px;
+  font-size: var(--type-hairline);
   font-weight: 700;
   letter-spacing: 0.12em;
   padding: 0 5px;
@@ -4841,7 +4841,7 @@ html[data-industrial-bezel="brush"] {
 
 .fusion-prefill-hero-value--active,
 .fusion-prefill-hero-value.is-hot {
-  color: color-mix(in srgb, var(--display-face-text) 72%, #94a3b8);
+  color: color-mix(in srgb, var(--display-face-text) 72%, var(--fixed-slate-400));
   text-shadow: 0 0 10px color-mix(in srgb, var(--display-face-text) 22%, transparent);
 }
 
@@ -4852,7 +4852,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-instrument__unit {
-  font-size: 7px;
+  font-size: var(--type-micro);
   letter-spacing: 0.12em;
   color: color-mix(in srgb, var(--display-face-text-muted) 70%, transparent);
   align-self: flex-end;
@@ -4877,7 +4877,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-per-slot-meter__unit {
-  font-size: 6px;
+  font-size: var(--type-hairline);
   letter-spacing: 0.12em;
   margin-top: 2px;
   color: color-mix(in srgb, var(--display-face-text-muted) 65%, transparent);
@@ -4945,7 +4945,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-micro-cell__value {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-variant-numeric: tabular-nums;
   line-height: 1;
@@ -4953,7 +4953,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-micro-rule {
-  font-size: 7px;
+  font-size: var(--type-micro);
   line-height: 1;
   padding-bottom: 1px;
   flex-shrink: 0;
@@ -4983,7 +4983,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-micro-readout--instrument .fusion-micro-mtp .fusion-micro-cell__value {
-  color: color-mix(in srgb, #fbbf24 88%, var(--display-face-text));
+  color: color-mix(in srgb, var(--fixed-amber-400) 88%, var(--display-face-text));
 }
 
 .fusion-micro-readout--instrument.is-idle .fusion-micro-mtp .fusion-micro-cell__value {
@@ -5015,21 +5015,21 @@ html[data-industrial-bezel="brush"] {
   top: 0;
   bottom: 0;
   border-radius: inherit;
-  background: color-mix(in srgb, var(--display-face-text) 55%, #94a3b8);
+  background: color-mix(in srgb, var(--display-face-text) 55%, var(--fixed-slate-400));
   transition: width 120ms linear;
 }
 
 .fusion-pp-progress__fill.is-active {
   background: linear-gradient(
     90deg,
-    color-mix(in srgb, #f59e0b 70%, var(--display-face-text)),
-    color-mix(in srgb, #fbbf24 55%, var(--display-face-text))
+    color-mix(in srgb, var(--fixed-amber-500) 70%, var(--display-face-text)),
+    color-mix(in srgb, var(--fixed-amber-400) 55%, var(--display-face-text))
   );
-  box-shadow: 0 0 8px color-mix(in srgb, #f59e0b 35%, transparent);
+  box-shadow: 0 0 8px var(--fixed-amber-500-a35);
 }
 
 .fusion-instrument__prompt-meta {
-  font-size: 7px;
+  font-size: var(--type-micro);
   letter-spacing: 0.04em;
   height: 12px;
   line-height: 12px;
@@ -5070,7 +5070,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-share-capture-stage[data-fusion-share-capture] .fusion-instrument {
-  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 5%, transparent);
+  box-shadow: inset 0 1px 0 var(--fixed-white-a05);
 }
 
 /* ══ Slot bank instrument ═══════════════════════════════════════════════════ */
@@ -5085,23 +5085,23 @@ html[data-industrial-bezel="brush"] {
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, #fff 4%, transparent) 0%,
+      var(--fixed-white-a04) 0%,
       transparent 28%
     ),
     color-mix(in srgb, var(--display-face-bar-bg) 55%, transparent);
   box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 6%, transparent),
-    inset 0 -1px 0 color-mix(in srgb, #000 35%, transparent);
+    inset 0 1px 0 var(--fixed-white-a06),
+    inset 0 -1px 0 var(--fixed-black-a35);
   padding: 3px 4px 2px;
 }
 
 .fusion-slot-bank--live .fusion-slot-bank__well {
-  border-color: color-mix(in srgb, #22c55e 38%, var(--display-face-border));
+  border-color: color-mix(in srgb, var(--fixed-green-500) 38%, var(--display-face-border));
   box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 7%, transparent),
-    inset 0 -1px 0 color-mix(in srgb, #000 30%, transparent),
-    0 0 0 1px color-mix(in srgb, #22c55e 18%, transparent),
-    0 0 10px color-mix(in srgb, #22c55e 12%, transparent);
+    inset 0 1px 0 var(--fixed-white-a07),
+    inset 0 -1px 0 var(--fixed-black-a3),
+    0 0 0 1px var(--fixed-green-500-a18),
+    0 0 10px var(--fixed-green-500-a12);
 }
 
 .fusion-slot-bank__chrome {
@@ -5119,7 +5119,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-slot-bank__title {
-  font-size: 6.5px;
+  font-size: var(--type-hairline);
   font-weight: 700;
   letter-spacing: 0.16em;
   line-height: 1;
@@ -5127,7 +5127,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-slot-bank__meta {
-  font-size: 6px;
+  font-size: var(--type-hairline);
   font-weight: 600;
   letter-spacing: 0.04em;
   line-height: 1;
@@ -5144,37 +5144,37 @@ html[data-industrial-bezel="brush"] {
 }
 
 .ctx-bar-track--live {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, #22c55e 28%, transparent);
+  box-shadow: inset 0 0 0 1px var(--fixed-green-500-a28);
 }
 
 .ctx-bar-track--spec {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, #f59e0b 30%, transparent);
+  box-shadow: inset 0 0 0 1px var(--fixed-amber-500-a3);
 }
 
 .ctx-bar-track--live.ctx-bar-track--spec {
   box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, #22c55e 28%, transparent),
-    0 0 6px color-mix(in srgb, #f59e0b 18%, transparent);
+    inset 0 0 0 1px var(--fixed-green-500-a28),
+    0 0 6px var(--fixed-amber-500-a18);
 }
 
 .ctx-bar-fill--processing {
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, #4ade80 92%, #fff) 0%,
-      #22c55e 55%,
-      color-mix(in srgb, #16a34a 90%, #000) 100%
+      color-mix(in srgb, var(--fixed-green-400) 92%, var(--fixed-white)) 0%,
+      var(--fixed-green-500) 55%,
+      color-mix(in srgb, #16a34a 90%, var(--fixed-black)) 100%
     );
-  box-shadow: 0 0 8px color-mix(in srgb, #22c55e 35%, transparent);
+  box-shadow: 0 0 8px var(--fixed-green-500-a35);
 }
 
 .ctx-bar-fill--spec {
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, #fbbf24 88%, #fff) 0%,
-      #f59e0b 60%,
-      color-mix(in srgb, #d97706 90%, #000) 100%
+      color-mix(in srgb, var(--fixed-amber-400) 88%, var(--fixed-white)) 0%,
+      var(--fixed-amber-500) 60%,
+      color-mix(in srgb, var(--fixed-amber-600) 90%, var(--fixed-black)) 100%
     );
 }
 
@@ -5185,23 +5185,23 @@ html[data-industrial-bezel="brush"] {
   right: 15%;
   height: 2px;
   border-radius: 0 0 1px 1px;
-  background: color-mix(in srgb, #fbbf24 85%, transparent);
-  box-shadow: 0 0 4px color-mix(in srgb, #f59e0b 55%, transparent);
+  background: var(--fixed-amber-400-a85);
+  box-shadow: 0 0 4px var(--fixed-amber-500-a55);
   z-index: 2;
   pointer-events: none;
 }
 
 .ctx-bar-slot-label--spec {
-  color: color-mix(in srgb, #fbbf24 90%, var(--display-face-text));
+  color: color-mix(in srgb, var(--fixed-amber-400) 90%, var(--display-face-text));
 }
 
 .ctx-bar-slot-label--live.ctx-bar-slot-label--spec {
-  color: #fde68a;
-  box-shadow: 0 0 6px color-mix(in srgb, #f59e0b 40%, transparent);
+  color: var(--fixed-amber-200);
+  box-shadow: 0 0 6px var(--fixed-amber-500-a4);
 }
 
 .fusion-slot-cap-chip {
-  font-size: 6px;
+  font-size: var(--type-hairline);
   font-weight: 600;
   letter-spacing: 0.02em;
   line-height: 1.1;
@@ -5217,13 +5217,13 @@ html[data-industrial-bezel="brush"] {
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, #fff 3.5%, transparent) 0%,
+      var(--fixed-white-a035) 0%,
       transparent 40%
     ),
     color-mix(in srgb, var(--display-face-bar-bg) 48%, transparent);
   box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 5%, transparent),
-    inset 0 -1px 2px color-mix(in srgb, #000 28%, transparent);
+    inset 0 1px 0 var(--fixed-white-a05),
+    inset 0 -1px 2px var(--fixed-black-a28);
 }
 
 .fusion-bench-controls {
@@ -5251,7 +5251,7 @@ html[data-industrial-bezel="brush"] {
   border-radius: 3px;
   border: 1px solid color-mix(in srgb, var(--display-face-border) 50%, transparent);
   background: color-mix(in srgb, var(--theme-bg) 22%, transparent);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 4%, transparent);
+  box-shadow: inset 0 1px 0 var(--fixed-white-a04);
 }
 
 .fusion-bench-bay__armed {
@@ -5273,7 +5273,7 @@ html[data-industrial-bezel="brush"] {
 
 .fusion-bench-bay__armed-line {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 7px;
+  font-size: var(--type-micro);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
@@ -5297,7 +5297,7 @@ html[data-industrial-bezel="brush"] {
   gap: 3px;
   min-width: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 6.5px;
+  font-size: var(--type-hairline);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: color-mix(in srgb, var(--display-face-text-muted) 92%, transparent);
@@ -5311,7 +5311,7 @@ html[data-industrial-bezel="brush"] {
 
 .fusion-bench-bay__last-empty {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 7px;
+  font-size: var(--type-micro);
   color: color-mix(in srgb, var(--display-face-text-muted) 45%, transparent);
 }
 
@@ -5384,7 +5384,7 @@ html[data-industrial-bezel="brush"] {
   width: 100%;
   min-width: 0;
   height: var(--bench-control-row-h, 18px);
-  font-size: 6.5px;
+  font-size: var(--type-hairline);
   font-weight: 700;
   letter-spacing: 0.1em;
   line-height: 1;
@@ -5415,21 +5415,21 @@ html[data-industrial-bezel="brush"] {
   background: color-mix(
     in srgb,
     var(--display-face-control-active-bg, var(--theme-accent)) 88%,
-    #fff 12%
+    var(--fixed-white) 12%
   );
   border-color: var(--display-face-control-active-border, color-mix(in srgb, var(--theme-accent) 60%, transparent));
   color: var(--display-face-control-active-text, var(--theme-accent-bright));
 }
 
 .fusion-bench-stop {
-  border: 1px solid color-mix(in srgb, #ef4444 55%, transparent);
-  background: color-mix(in srgb, #dc2626 78%, transparent);
-  color: #fff;
+  border: 1px solid var(--fixed-red-500-a55);
+  background: var(--fixed-c-dc2626-a78);
+  color: var(--fixed-white);
   letter-spacing: 0.12em;
 }
 
 .fusion-bench-stop:hover:not(:disabled) {
-  background: color-mix(in srgb, #ef4444 88%, transparent);
+  background: var(--fixed-red-500-a88);
 }
 
 .fusion-bench-stop:disabled {
@@ -5479,7 +5479,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-bench-chip--over-engine-active {
-  box-shadow: 0 0 0 1px color-mix(in srgb, #f59e0b 55%, transparent);
+  box-shadow: 0 0 0 1px var(--fixed-amber-500-a55);
 }
 
 .fusion-bench-par-hint {
@@ -5491,14 +5491,14 @@ html[data-industrial-bezel="brush"] {
   padding: 0 3px;
   min-height: 14px;
   border-radius: 2px;
-  border: 1px solid color-mix(in srgb, #f59e0b 45%, transparent);
-  background: color-mix(in srgb, #f59e0b 14%, transparent);
+  border: 1px solid var(--fixed-amber-500-a45);
+  background: var(--fixed-amber-500-a14);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 5.5px;
   font-weight: 700;
   letter-spacing: 0.04em;
   line-height: 1;
-  color: color-mix(in srgb, #fbbf24 92%, transparent);
+  color: var(--fixed-amber-400-a92);
   white-space: nowrap;
   cursor: help;
 }
@@ -5515,8 +5515,8 @@ html[data-industrial-bezel="brush"] {
   height: 5px;
   border-radius: 999px;
   flex-shrink: 0;
-  background: #4ade80;
-  box-shadow: 0 0 6px color-mix(in srgb, #22c55e 55%, transparent);
+  background: var(--fixed-green-400);
+  box-shadow: 0 0 6px var(--fixed-green-500-a55);
   animation: fusion-instrument-pulse 1.1s ease-in-out infinite;
 }
 
@@ -5562,7 +5562,7 @@ html[data-industrial-bezel="brush"] {
 
 .fusion-bench-ghost__lab {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 6.5px;
+  font-size: var(--type-hairline);
   font-weight: 700;
   letter-spacing: 0.14em;
   line-height: 1;
@@ -5582,7 +5582,7 @@ html[data-industrial-bezel="brush"] {
 
 .fusion-bench-ghost__unit {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 6px;
+  font-size: var(--type-hairline);
   font-weight: 600;
   letter-spacing: 0.06em;
   color: color-mix(in srgb, var(--display-face-text-muted) 58%, transparent);
@@ -5646,7 +5646,7 @@ html[data-industrial-bezel="brush"] {
 
 .fusion-boot__title {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   font-weight: 700;
   letter-spacing: 0.16em;
   line-height: 1;
@@ -5655,7 +5655,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-boot__title--fail {
-  color: color-mix(in srgb, #f87171 92%, transparent);
+  color: var(--fixed-red-400-a92);
 }
 
 .fusion-boot__src {
@@ -5664,7 +5664,7 @@ html[data-industrial-bezel="brush"] {
   border-radius: 2px;
   border: 1px solid color-mix(in srgb, var(--display-face-border) 55%, transparent);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 6.5px;
+  font-size: var(--type-hairline);
   font-weight: 700;
   letter-spacing: 0.1em;
   line-height: 1.2;
@@ -5689,7 +5689,7 @@ html[data-industrial-bezel="brush"] {
 
 .fusion-boot__timer {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12px;
+  font-size: var(--type-md);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.06em;
@@ -5703,7 +5703,7 @@ html[data-industrial-bezel="brush"] {
   margin-left: auto;
   min-width: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   font-weight: 600;
   letter-spacing: 0.04em;
   color: color-mix(in srgb, var(--display-face-text-muted) 78%, transparent);
@@ -5747,8 +5747,8 @@ html[data-industrial-bezel="brush"] {
   border: 1px solid color-mix(in srgb, var(--display-face-border) 55%, transparent);
   background: color-mix(in srgb, var(--display-face-bar-bg) 62%, transparent);
   box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 5%, transparent),
-    inset 0 -1px 2px color-mix(in srgb, #000 30%, transparent);
+    inset 0 1px 0 var(--fixed-white-a05),
+    inset 0 -1px 2px var(--fixed-black-a3);
   padding: 5px 5px 4px;
   box-sizing: border-box;
 }
@@ -5759,7 +5759,7 @@ html[data-industrial-bezel="brush"] {
   width: 100%;
   margin-bottom: 4px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 6.5px;
+  font-size: var(--type-hairline);
   font-weight: 700;
   letter-spacing: 0.14em;
   line-height: 1;
@@ -5792,7 +5792,7 @@ html[data-industrial-bezel="brush"] {
   border-radius: 2px;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--display-face-border) 45%, transparent);
-  background: color-mix(in srgb, #000 28%, transparent);
+  background: var(--fixed-black-a28);
 }
 
 .fusion-boot-gpu-col.is-active .fusion-boot-gpu-col__track {
@@ -5830,7 +5830,7 @@ html[data-industrial-bezel="brush"] {
 
 .fusion-boot-gpu-col__id {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 6px;
+  font-size: var(--type-hairline);
   font-weight: 700;
   letter-spacing: 0.1em;
   line-height: 1;
@@ -5839,7 +5839,7 @@ html[data-industrial-bezel="brush"] {
 
 .fusion-boot-gpu-col__val {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 10px;
+  font-size: var(--type-body);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
@@ -5875,8 +5875,8 @@ html[data-industrial-bezel="brush"] {
   border: 1px solid color-mix(in srgb, var(--display-face-border) 50%, transparent);
   background: color-mix(in srgb, var(--display-face-bar-bg) 55%, transparent);
   box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 5%, transparent),
-    inset 0 -1px 2px color-mix(in srgb, #000 28%, transparent);
+    inset 0 1px 0 var(--fixed-white-a05),
+    inset 0 -1px 2px var(--fixed-black-a28);
   overflow: hidden;
   box-sizing: border-box;
   transition: border-color 200ms ease, box-shadow 220ms ease;
@@ -5885,7 +5885,7 @@ html[data-industrial-bezel="brush"] {
 .fusion-boot-disk.is-hot {
   border-color: color-mix(in srgb, var(--theme-telemetry-cyan) 45%, transparent);
   box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 6%, transparent),
+    inset 0 1px 0 var(--fixed-white-a06),
     0 0 0 1px color-mix(in srgb, var(--theme-telemetry-cyan) 18%, transparent),
     0 0 18px color-mix(in srgb, var(--theme-telemetry-cyan) 14%, transparent);
 }
@@ -5896,7 +5896,7 @@ html[data-industrial-bezel="brush"] {
 
 .fusion-boot-disk__lab {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 6.5px;
+  font-size: var(--type-hairline);
   font-weight: 700;
   letter-spacing: 0.14em;
   line-height: 1;
@@ -5929,7 +5929,7 @@ html[data-industrial-bezel="brush"] {
 .fusion-boot-disk__unit {
   margin-top: 3px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 7px;
+  font-size: var(--type-micro);
   font-weight: 600;
   letter-spacing: 0.1em;
   color: color-mix(in srgb, var(--display-face-text-muted) 70%, transparent);
@@ -6040,7 +6040,7 @@ html[data-industrial-bezel="brush"] {
   flex: 0 0 auto;
   min-width: 3.2ch;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 7px;
+  font-size: var(--type-micro);
   font-weight: 700;
   letter-spacing: 0.04em;
   color: color-mix(in srgb, var(--display-face-text) 82%, transparent);
@@ -6060,7 +6060,7 @@ html[data-industrial-bezel="brush"] {
   border-radius: 3px;
   border: 1px solid color-mix(in srgb, var(--display-face-border) 48%, transparent);
   background: color-mix(in srgb, var(--display-face-bar-bg) 58%, transparent);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 4%, transparent);
+  box-shadow: inset 0 1px 0 var(--fixed-white-a04);
   padding: 4px 6px;
   min-height: 32px;
   max-height: 42px;
@@ -6070,7 +6070,7 @@ html[data-industrial-bezel="brush"] {
 .fusion-boot-ticker__empty {
   margin: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 7.5px;
+  font-size: var(--type-micro);
   font-style: italic;
   color: color-mix(in srgb, var(--display-face-text-muted) 45%, transparent);
 }
@@ -6078,7 +6078,7 @@ html[data-industrial-bezel="brush"] {
 .fusion-boot-ticker__line {
   margin: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 7.5px;
+  font-size: var(--type-micro);
   line-height: 1.35;
   white-space: nowrap;
   overflow: hidden;
@@ -6111,7 +6111,7 @@ html[data-industrial-bezel="brush"] {
 
 .fusion-boot-meta__val {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
@@ -6120,7 +6120,7 @@ html[data-industrial-bezel="brush"] {
 
 .fusion-boot-meta__unit {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 6.5px;
+  font-size: var(--type-hairline);
   font-weight: 600;
   color: color-mix(in srgb, var(--display-face-text-muted) 70%, transparent);
 }
@@ -6140,24 +6140,24 @@ html[data-industrial-bezel="brush"] {
   text-align: center;
   padding: 8px 12px;
   border-radius: 3px;
-  border: 1px solid color-mix(in srgb, #f87171 35%, transparent);
+  border: 1px solid var(--fixed-red-400-a35);
   background: color-mix(in srgb, #7f1d1d 18%, transparent);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 4%, transparent);
+  box-shadow: inset 0 1px 0 var(--fixed-white-a04);
 }
 
 .fusion-boot-fail__reason {
   margin: 0;
   max-width: 22rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 9px;
+  font-size: var(--type-label);
   line-height: 1.45;
-  color: color-mix(in srgb, #fecaca 92%, transparent);
+  color: var(--fixed-c-fecaca-a92);
 }
 
 .fusion-boot-fail__hint {
   margin: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 7px;
+  font-size: var(--type-micro);
   letter-spacing: 0.06em;
   color: color-mix(in srgb, var(--display-face-text-muted) 70%, transparent);
 }
@@ -6264,7 +6264,7 @@ html[data-industrial-bezel="brush"] {
 .fusion-overlay-status { color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent); }
 .fusion-overlay-port { color: color-mix(in srgb, var(--theme-text-muted) 35%, transparent); }
 
-.fusion-overlay-stop { color: #fff; }
+.fusion-overlay-stop { color: var(--fixed-white); }
 .fusion-overlay-stop--stopping { background: color-mix(in srgb, var(--theme-danger) 50%, transparent); }
 .fusion-overlay-stop--idle {
   background: color-mix(in srgb, var(--theme-danger) 80%, transparent);

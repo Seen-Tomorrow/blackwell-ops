@@ -61,7 +61,7 @@
 }
 
 .config-launch-btn:not(:disabled):not(.launch-ack) {
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35), 0 0 10px 1px var(--theme-accent-glow);
+  box-shadow: 0 1px 4px var(--fixed-black-a35), 0 0 10px 1px var(--theme-accent-glow);
   overflow: hidden;
 }
 
@@ -113,8 +113,8 @@
   /* Crisp separation edge — bezel-edge-hi is white on ARCTIC → invisible top line */
   border-top: 1.5px solid var(--theme-frame-border);
   box-shadow:
-    0 -2px 6px color-mix(in srgb, #000000 30%, transparent),
-    0 -10px 24px color-mix(in srgb, #000000 16%, transparent);
+    0 -2px 6px var(--fixed-black-a3),
+    0 -10px 24px var(--fixed-black-a16);
   position: relative;
   z-index: 4;
   isolation: isolate;
@@ -161,21 +161,21 @@
 
 [data-config-panel] .config-launch-dock .custom-flags-block:not(.custom-flags-active):not(.custom-flags-replace) .mode-btn-add,
 [data-config-panel] .config-launch-dock__flags-scroll .custom-flags-block:not(.custom-flags-active):not(.custom-flags-replace) .mode-btn-add {
-  background-color: color-mix(in srgb, #4ade80 14%, var(--theme-panel-accent) 86%) !important;
+  background-color: color-mix(in srgb, var(--fixed-green-400) 14%, var(--theme-panel-accent) 86%) !important;
 }
 
 [data-config-panel] .config-launch-dock .custom-flags-block:not(.custom-flags-active):not(.custom-flags-replace) .mode-btn-replace,
 [data-config-panel] .config-launch-dock__flags-scroll .custom-flags-block:not(.custom-flags-active):not(.custom-flags-replace) .mode-btn-replace {
-  background-color: color-mix(in srgb, #f87171 14%, var(--theme-panel-accent) 86%) !important;
+  background-color: color-mix(in srgb, var(--fixed-red-400) 14%, var(--theme-panel-accent) 86%) !important;
 }
 
 [data-config-panel] .config-launch-dock .custom-flags-block:not(.custom-flags-active):not(.custom-flags-replace) .mode-btn-off,
 [data-config-panel] .config-launch-dock__flags-scroll .custom-flags-block:not(.custom-flags-active):not(.custom-flags-replace) .mode-btn-off {
-  background-color: color-mix(in srgb, #b87a00 10%, var(--theme-panel-accent) 90%) !important;
+  background-color: color-mix(in srgb, var(--fixed-brand-amber) 10%, var(--theme-panel-accent) 90%) !important;
 }
 
 [data-config-panel] .config-launch-dock .config-mtp-launch-warn {
-  background-color: color-mix(in srgb, #ffb800 14%, var(--theme-panel-accent) 86%) !important;
+  background-color: color-mix(in srgb, var(--fixed-brand-amber-bright) 14%, var(--theme-panel-accent) 86%) !important;
 }
 
 
@@ -196,7 +196,7 @@
 }
 
 @keyframes miniCardNewPulse {
-  0%, 100% { border-color: #76B900; }
+  0%, 100% { border-color: var(--fixed-nv-green); }
   50% { border-color: #00FFFF; }
 }
 
@@ -282,7 +282,7 @@
   display: inline-block;
   background: rgba(118, 185, 0, 0.22) !important;
   border: 1px solid rgba(118, 185, 0, 0.55) !important;
-  color: #76b900 !important;
+  color: var(--fixed-nv-green) !important;
 }
 
 /* CMAKE_CUDA_ARCHITECTURES — inline after build version */

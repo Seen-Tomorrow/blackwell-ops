@@ -86,7 +86,7 @@
 }
 
 .engine-logs-switcher__count {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   font-family: ui-monospace, monospace;
   color: var(--theme-text-muted);
   white-space: nowrap;
@@ -94,7 +94,7 @@
 
 .engine-logs-switcher__ansi-toggle {
   padding: 0.2rem 0.5rem;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   font-family: ui-monospace, monospace;
   border: 1px solid var(--theme-chip-border);
   border-radius: 2px;
@@ -117,14 +117,14 @@
 .engine-logs-switcher__filter {
   width: 9rem;
   padding: 0.2rem 0.5rem;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   font-family: ui-monospace, monospace;
   border-radius: 2px;
 }
 
 .engine-logs-switcher__clear-all {
   padding: 0.2rem 0.5rem;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   font-family: ui-monospace, monospace;
   color: var(--theme-text-muted);
   border: 1px solid color-mix(in srgb, var(--theme-border) 80%, transparent);
@@ -133,8 +133,8 @@
 }
 
 .engine-logs-switcher__clear-all:hover:not(:disabled) {
-  color: #f87171;
-  border-color: color-mix(in srgb, #f87171 45%, transparent);
+  color: var(--fixed-red-400);
+  border-color: var(--fixed-red-400-a45);
 }
 
 .engine-logs-switcher__clear-all:disabled {
@@ -185,7 +185,7 @@
   flex: 1;
   min-width: 0;
   padding: 0.2rem 0.5rem;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   font-family: ui-monospace, monospace;
   border: none;
   border-radius: 0;
@@ -209,20 +209,20 @@
 .engine-logs-slot-chip__clear {
   flex-shrink: 0;
   padding: 0.2rem 0.35rem;
-  font-size: 7px;
+  font-size: var(--type-micro);
   font-family: ui-monospace, monospace;
   letter-spacing: 0.03em;
   border: none;
-  border-right: 1px solid color-mix(in srgb, #f87171 30%, var(--theme-chip-border) 70%);
+  border-right: 1px solid color-mix(in srgb, var(--fixed-red-400) 30%, var(--theme-chip-border) 70%);
   border-radius: 0;
-  background: color-mix(in srgb, #f87171 12%, transparent);
-  color: color-mix(in srgb, #f87171 90%, var(--theme-text-muted) 10%);
+  background: var(--fixed-red-400-a12);
+  color: color-mix(in srgb, var(--fixed-red-400) 90%, var(--theme-text-muted) 10%);
   transition: background 0.15s ease, color 0.15s ease;
 }
 
 .engine-logs-slot-chip__clear:hover {
-  background: color-mix(in srgb, #f87171 22%, transparent);
-  color: #f87171;
+  background: var(--fixed-red-400-a22);
+  color: var(--fixed-red-400);
 }
 
 /* Standalone ALL chip — no clear badge */
@@ -255,7 +255,7 @@ button.engine-logs-slot-chip.engine-logs-slot-chip--active {
 .engine-logs-slot-chip__meta {
   flex-shrink: 0;
   padding: 0 0.2rem;
-  font-size: 7px;
+  font-size: var(--type-micro);
   opacity: 0.55;
   border-radius: 2px;
   background: color-mix(in srgb, var(--theme-text) 6%, transparent);
@@ -269,13 +269,13 @@ button.engine-logs-slot-chip.engine-logs-slot-chip--active .engine-logs-slot-chi
 
 .engine-logs-slot-chip__search {
   flex-shrink: 0;
-  font-size: 8px;
-  color: #fbbf24;
+  font-size: var(--type-tiny);
+  color: var(--fixed-amber-400);
   opacity: 0.9;
 }
 
 .engine-logs-switcher__empty-filter {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   font-family: ui-monospace, monospace;
   color: var(--theme-text-muted);
   font-style: italic;
@@ -296,7 +296,7 @@ button.engine-logs-slot-chip.engine-logs-slot-chip--active .engine-logs-slot-chi
 
 .engine-logs-switcher__search-label {
   flex-shrink: 0;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   font-family: ui-monospace, monospace;
   letter-spacing: 0.06em;
   color: var(--theme-text-muted);
@@ -306,7 +306,7 @@ button.engine-logs-slot-chip.engine-logs-slot-chip--active .engine-logs-slot-chi
   flex: 1;
   min-width: 8rem;
   padding: 0.2rem 0.5rem;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   font-family: ui-monospace, monospace;
   border-radius: 2px;
 }
@@ -314,18 +314,18 @@ button.engine-logs-slot-chip.engine-logs-slot-chip--active .engine-logs-slot-chi
 .engine-logs-switcher__reset-search {
   flex-shrink: 0;
   padding: 0.2rem 0.5rem;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   font-family: ui-monospace, monospace;
-  border: 1px solid color-mix(in srgb, #fbbf24 35%, transparent);
+  border: 1px solid var(--fixed-amber-400-a35);
   border-radius: 2px;
-  color: color-mix(in srgb, #fbbf24 85%, var(--theme-text-muted) 15%);
+  color: color-mix(in srgb, var(--fixed-amber-400) 85%, var(--theme-text-muted) 15%);
   transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
 
 .engine-logs-switcher__reset-search:hover:not(:disabled) {
-  color: #fbbf24;
-  border-color: color-mix(in srgb, #fbbf24 60%, transparent);
-  background: color-mix(in srgb, #fbbf24 10%, transparent);
+  color: var(--fixed-amber-400);
+  border-color: var(--fixed-amber-400-a6);
+  background: var(--fixed-amber-400-a1);
 }
 
 .engine-logs-switcher__reset-search:disabled {

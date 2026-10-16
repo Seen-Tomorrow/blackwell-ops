@@ -8,7 +8,7 @@
 }
 
 .intel-row--breaking {
-  border-left: 2px solid color-mix(in srgb, #f59e0b 70%, transparent);
+  border-left: 2px solid var(--fixed-amber-500-a7);
 }
 
 /* White ink on hub surfaces. Only selectors whose utility still exists are kept;

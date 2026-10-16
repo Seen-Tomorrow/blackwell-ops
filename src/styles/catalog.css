@@ -54,7 +54,7 @@
   height: 28px;
   border-radius: 2px;
   background:
-    radial-gradient(circle, color-mix(in srgb, var(--theme-text-muted) 90%, #fff) 0.75px, transparent 0.8px)
+    radial-gradient(circle, color-mix(in srgb, var(--theme-text-muted) 90%, var(--fixed-white)) 0.75px, transparent 0.8px)
       center 2px / 4px 6px repeat-y;
   opacity: 0.75;
   transition: opacity 0.15s ease;
@@ -191,7 +191,7 @@
   padding: 0 4px;
   height: 13px;
   font-family: ui-monospace, monospace;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.04em;
   line-height: 1;
@@ -230,7 +230,7 @@
 
 /* Amber grouping border on the SCAN META / EDIT chips. */
 .catalog-tools-right .catalog-scan-btn {
-  border: 1px solid color-mix(in srgb, #d97706 55%, transparent);
+  border: 1px solid var(--fixed-amber-600-a55);
   border-radius: 3px;
 }
 
@@ -304,7 +304,7 @@
   margin: 0;
   padding: 0 4px;
   text-align: center;
-  font-size: 9px;
+  font-size: var(--type-label);
   font-weight: 600;
   letter-spacing: 0.1em;
   line-height: 1;
@@ -497,7 +497,7 @@
 }
 
 .catalog-split-toggle__glyph {
-  font-size: 10px;
+  font-size: var(--type-body);
   font-family: ui-monospace, monospace;
   line-height: 1;
   pointer-events: none;
@@ -527,9 +527,9 @@
 
 /* Header: soft amber / search hint when catalog is collapsed (readable on dark themes) */
 .config-catalog-search-hint--pulse {
-  border-color: color-mix(in srgb, #d97706 45%, transparent) !important;
-  color: color-mix(in srgb, #f59e0b 75%, #e5e5e5) !important;
-  background: color-mix(in srgb, #d97706 10%, transparent) !important;
+  border-color: var(--fixed-amber-600-a45) !important;
+  color: color-mix(in srgb, var(--fixed-amber-500) 75%, #e5e5e5) !important;
+  background: var(--fixed-amber-600-a1) !important;
   animation: catalogSearchHintPulse 2.4s ease-in-out infinite;
 }
 
@@ -540,7 +540,7 @@
     opacity: 0.88;
   }
   50% {
-    box-shadow: 0 0 8px 0 color-mix(in srgb, #d97706 28%, transparent);
+    box-shadow: 0 0 8px 0 var(--fixed-amber-600-a28);
     opacity: 1;
   }
 }
@@ -549,17 +549,17 @@
   0%,
   100% {
     box-shadow: 0 0 0 0 transparent;
-    border-color: color-mix(in srgb, #d97706 40%, var(--theme-border));
+    border-color: color-mix(in srgb, var(--fixed-amber-600) 40%, var(--theme-border));
   }
   50% {
-    box-shadow: 0 0 6px 0 color-mix(in srgb, #d97706 30%, transparent);
-    border-color: color-mix(in srgb, #d97706 55%, var(--theme-border));
+    box-shadow: 0 0 6px 0 var(--fixed-amber-600-a3);
+    border-color: color-mix(in srgb, var(--fixed-amber-600) 55%, var(--theme-border));
   }
 }
 
 .catalog-split-toggle--collapsed-hint {
-  border-color: color-mix(in srgb, #d97706 45%, var(--theme-border)) !important;
-  color: color-mix(in srgb, #f59e0b 70%, var(--theme-text-muted)) !important;
+  border-color: color-mix(in srgb, var(--fixed-amber-600) 45%, var(--theme-border)) !important;
+  color: color-mix(in srgb, var(--fixed-amber-500) 70%, var(--theme-text-muted)) !important;
 }
 
 .catalog-split-workspace--collapsed .catalog-list-panel {
@@ -607,7 +607,7 @@
 
 .model-catalog-card--draft .model-card-draft-badge {
   color: var(--theme-dflash-strip-text);
-  border: 1px solid var(--theme-dflash-strip-border, color-mix(in srgb, #a78bfa 50%, transparent));
+  border: 1px solid var(--theme-dflash-strip-border, var(--fixed-violet-400-a5));
   background: color-mix(in srgb, var(--theme-dflash-strip-bg) 55%, transparent);
 }
 
@@ -795,7 +795,7 @@
 }
 
 [data-model-catalog] .model-card-size {
-  font-size: 11px;
+  font-size: var(--type-sm);
   line-height: 1.1;
   letter-spacing: 0.02em;
   font-variant-numeric: tabular-nums;
@@ -804,7 +804,7 @@
 }
 
 [data-model-catalog] .model-card-date {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   line-height: 1.1;
   letter-spacing: 0.02em;
   white-space: nowrap;
@@ -830,7 +830,7 @@
   padding: 3px 7px;
   border-radius: 3px;
   font-family: ui-monospace, monospace;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   font-weight: 500;
   letter-spacing: 0.04em;
   line-height: 1.3;
@@ -838,7 +838,7 @@
   color: var(--theme-text);
   background: color-mix(in srgb, var(--theme-panel) 94%, var(--theme-accent) 6%);
   border: 1px solid color-mix(in srgb, var(--theme-border) 70%, var(--theme-accent) 30%);
-  box-shadow: 0 2px 8px color-mix(in srgb, #000 35%, transparent);
+  box-shadow: 0 2px 8px var(--fixed-black-a35);
   opacity: 0;
   transform: translateY(2px);
   pointer-events: none;
@@ -975,9 +975,9 @@
 }
 
 [data-engine-stack] .eink-panel .engine-stack-profile-pill {
-  background: rgba(184, 122, 0, 0.08) !important;
-  border: 1px solid rgba(184, 122, 0, 0.4) !important;
-  color: #b87a00 !important;
+  background: var(--fixed-rgba-184-122-0-a08) !important;
+  border: 1px solid var(--fixed-rgba-184-122-0-a4) !important;
+  color: var(--fixed-brand-amber) !important;
 }
 
 
@@ -1042,7 +1042,7 @@
       color-mix(in srgb, var(--theme-harness-worker-raw) 12%, transparent),
       transparent 50%
     ),
-    color-mix(in srgb, var(--theme-panel) 70%, #000 30%);
+    color-mix(in srgb, var(--theme-panel) 70%, var(--fixed-black) 30%);
 }
 
 /* Local help panel inside seat bank (same idea as harness connect veil, scoped) */
@@ -1069,7 +1069,7 @@
 
 .catalog-seats-help__kicker {
   font-family: ui-monospace, monospace;
-  font-size: 9px;
+  font-size: var(--type-label);
   font-weight: 800;
   letter-spacing: 0.16em;
   color: var(--theme-accent-bright, var(--theme-accent));
@@ -1083,7 +1083,7 @@
   background: color-mix(in srgb, var(--theme-panel) 50%, transparent);
   color: var(--theme-text-muted);
   font-family: ui-monospace, monospace;
-  font-size: 7px;
+  font-size: var(--type-micro);
   font-weight: 700;
   letter-spacing: 0.12em;
   cursor: pointer;
@@ -1097,7 +1097,7 @@
 .catalog-seats-help__blurb {
   margin: 0;
   font-family: ui-monospace, monospace;
-  font-size: 9px;
+  font-size: var(--type-label);
   line-height: 1.35;
   color: var(--theme-text);
   opacity: 0.9;
@@ -1125,7 +1125,7 @@
 
 .catalog-seats-help__n {
   font-family: ui-monospace, monospace;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   font-weight: 800;
   color: var(--theme-text-muted);
   opacity: 0.75;
@@ -1133,7 +1133,7 @@
 
 .catalog-seats-help__step-title {
   font-family: ui-monospace, monospace;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   font-weight: 800;
   letter-spacing: 0.12em;
   color: var(--theme-text);
@@ -1147,7 +1147,7 @@
 
 .catalog-seats-help__role {
   font-family: ui-monospace, monospace;
-  font-size: 7px;
+  font-size: var(--type-micro);
   font-weight: 800;
   letter-spacing: 0.08em;
   padding: 1px 4px;
@@ -1185,7 +1185,7 @@
 .catalog-seats-help__launch,
 .catalog-seats-help__connect {
   font-family: ui-monospace, monospace;
-  font-size: 7px;
+  font-size: var(--type-micro);
   font-weight: 700;
   letter-spacing: 0.06em;
   color: var(--theme-accent-bright, var(--theme-accent));
@@ -1193,7 +1193,7 @@
 
 .catalog-seats-help__step-copy {
   font-family: ui-monospace, monospace;
-  font-size: 7px;
+  font-size: var(--type-micro);
   line-height: 1.25;
   color: var(--theme-text-muted);
 }
@@ -1202,7 +1202,7 @@
   flex: 0 0 auto;
   align-self: center;
   font-family: ui-monospace, monospace;
-  font-size: 10px;
+  font-size: var(--type-body);
   color: var(--theme-text-muted);
   opacity: 0.55;
 }
@@ -1210,7 +1210,7 @@
 .catalog-seats-help__foot {
   margin: 0;
   font-family: ui-monospace, monospace;
-  font-size: 7.5px;
+  font-size: var(--type-micro);
   line-height: 1.35;
   color: var(--theme-text-muted);
 }
@@ -1275,7 +1275,7 @@
 }
 
 .catalog-quick-seat--selected {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, #ecfeff 40%, transparent);
+  box-shadow: inset 0 0 0 1px var(--fixed-cyan-50-a4);
 }
 
 .catalog-quick-seat--pending {
@@ -1307,7 +1307,7 @@
   min-width: 0;
   padding: 3px 6px;
   font-family: ui-monospace, "JetBrains Mono", monospace;
-  font-size: 10px;
+  font-size: var(--type-body);
   font-weight: 700;
   letter-spacing: 0.03em;
   line-height: 1.2;
@@ -1328,7 +1328,7 @@
 
 .catalog-quick-seat__mem-unit,
 .catalog-quick-mem__unit {
-  font-size: 7px;
+  font-size: var(--type-micro);
   font-weight: 600;
   letter-spacing: 0.06em;
   opacity: 0.78;
@@ -1352,7 +1352,7 @@
   gap: 5px;
   min-width: 0;
   padding: 6px 8px;
-  font-size: 12px;
+  font-size: var(--type-md);
   font-weight: 700;
   letter-spacing: 0.03em;
   line-height: 1.15;
@@ -1380,11 +1380,11 @@
   color: var(--display-face-fc-label-ram-fg);
   background: var(
     --display-face-fc-label-ram-bg,
-    color-mix(in srgb, #60a5fa 14%, transparent)
+    var(--fixed-blue-400-a14)
   );
   border-left-color: var(
     --display-face-fc-label-ram-border,
-    color-mix(in srgb, #60a5fa 30%, transparent)
+    var(--fixed-blue-400-a3)
   );
 }
 
@@ -1434,7 +1434,7 @@
 
 .catalog-quick-seat__role {
   font-family: ui-monospace, monospace;
-  font-size: 9px;
+  font-size: var(--type-label);
   letter-spacing: 0.14em;
   font-weight: 700;
   color: var(--theme-text-muted);
@@ -1442,7 +1442,7 @@
 
 .catalog-quick-seat__name {
   font-family: ui-monospace, monospace;
-  font-size: 11px;
+  font-size: var(--type-sm);
   line-height: 1.15;
   font-weight: 600;
   color: var(--theme-text);
@@ -1454,7 +1454,7 @@
 
 .catalog-quick-seat__quant {
   font-family: ui-monospace, monospace;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   line-height: 1.1;
   letter-spacing: 0.04em;
   color: var(--theme-text-muted);
@@ -1467,12 +1467,12 @@
 .catalog-quick-seat--empty .catalog-quick-seat__name {
   color: var(--theme-text-muted);
   opacity: 0.7;
-  font-size: 10px;
+  font-size: var(--type-body);
   font-weight: 500;
 }
 
 .catalog-quick-seat--editing .catalog-quick-seat__role {
-  font-size: 11px;
+  font-size: var(--type-sm);
 }
 
 .catalog-quick-seat--editing .catalog-quick-seat__name {
@@ -1494,7 +1494,7 @@
   background: transparent;
   color: var(--theme-text-muted);
   font-family: ui-monospace, monospace;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   font-weight: 700;
   letter-spacing: 0.06em;
   line-height: 1;
@@ -1513,25 +1513,11 @@
 .catalog-quick-seat__btn--edit,
 .catalog-quick-seat__btn--clear,
 .catalog-quick-seat__btn--yes,
-.catalog-quick-seat__btn--no {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 28px;
-  padding: 0 8px;
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0;
-  color: var(--theme-text-muted);
-  background: transparent;
-}
+.catalog-quick-seat__btn--no {display: inline-flex; align-items: center; justify-content: center; min-width: 28px; padding: 0 8px; font-size: var(--type-md); font-weight: 800; letter-spacing: 0}
 
 .catalog-quick-seat__btn--replace:hover,
 .catalog-quick-seat__btn--edit:hover,
-.catalog-quick-seat__btn--yes:hover {
-  color: var(--theme-text);
-  background: color-mix(in srgb, var(--theme-text) 8%, transparent);
-}
+.catalog-quick-seat__btn--yes:hover {}
 
 .catalog-quick-seat__btn--clear,
 .catalog-quick-seat__btn--no {
@@ -1553,7 +1539,7 @@
 }
 
 .catalog-quick-seat__save-ico {
-  font-size: 11px;
+  font-size: var(--type-sm);
   line-height: 1;
   color: var(--theme-text);
   opacity: 0.85;
@@ -1571,12 +1557,12 @@
   padding: 2px;
   box-sizing: border-box;
   -webkit-mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
+    linear-gradient(var(--fixed-white) 0 0) content-box,
+    linear-gradient(var(--fixed-white) 0 0);
   -webkit-mask-composite: xor;
   mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
+    linear-gradient(var(--fixed-white) 0 0) content-box,
+    linear-gradient(var(--fixed-white) 0 0);
   mask-composite: exclude;
 }
 
@@ -1592,12 +1578,12 @@
   opacity: 0.8;
   background: conic-gradient(
     from 0deg,
-    rgba(255, 255, 255, 0.05) 0deg,
-    rgba(255, 255, 255, 0.05) 200deg,
-    rgba(255, 255, 255, 0.45) 250deg,
-    rgba(255, 255, 255, 0.95) 280deg,
-    rgba(255, 255, 255, 0.45) 310deg,
-    rgba(255, 255, 255, 0.05) 360deg
+    var(--fixed-white-a05) 0deg,
+    var(--fixed-white-a05) 200deg,
+    var(--fixed-white-a45) 250deg,
+    var(--fixed-white-a95) 280deg,
+    var(--fixed-white-a45) 310deg,
+    var(--fixed-white-a05) 360deg
   );
   animation: catalog-seat-live-spin 1.6s linear infinite;
 }
@@ -1612,7 +1598,7 @@
     color-mix(in srgb, var(--theme-harness-brain-raw) 6%, transparent) 0deg,
     color-mix(in srgb, var(--theme-harness-brain-raw) 6%, transparent) 200deg,
     color-mix(in srgb, var(--theme-harness-brain-raw) 50%, transparent) 250deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw) 95%, #fff 18%) 280deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw) 95%, var(--fixed-white) 18%) 280deg,
     color-mix(in srgb, var(--theme-harness-brain-raw) 50%, transparent) 310deg,
     color-mix(in srgb, var(--theme-harness-brain-raw) 6%, transparent) 360deg
   );
@@ -1628,7 +1614,7 @@
     color-mix(in srgb, var(--theme-harness-worker-raw) 6%, transparent) 0deg,
     color-mix(in srgb, var(--theme-harness-worker-raw) 6%, transparent) 200deg,
     color-mix(in srgb, var(--theme-harness-worker-raw) 50%, transparent) 250deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw) 95%, #fff 14%) 280deg,
+    color-mix(in srgb, var(--theme-harness-worker-raw) 95%, var(--fixed-white) 14%) 280deg,
     color-mix(in srgb, var(--theme-harness-worker-raw) 50%, transparent) 310deg,
     color-mix(in srgb, var(--theme-harness-worker-raw) 6%, transparent) 360deg
   );
@@ -1677,7 +1663,7 @@
 .catalog-seat-edit-banner__label {
   position: relative;
   z-index: 2;
-  font-size: 10px;
+  font-size: var(--type-body);
   letter-spacing: 0.14em;
   font-weight: 700;
 }
@@ -1700,12 +1686,12 @@
   padding: 2px;
   box-sizing: border-box;
   -webkit-mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
+    linear-gradient(var(--fixed-white) 0 0) content-box,
+    linear-gradient(var(--fixed-white) 0 0);
   -webkit-mask-composite: xor;
   mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
+    linear-gradient(var(--fixed-white) 0 0) content-box,
+    linear-gradient(var(--fixed-white) 0 0);
   mask-composite: exclude;
 }
 
@@ -1724,7 +1710,7 @@
     color-mix(in srgb, var(--theme-harness-brain-raw) 6%, transparent) 0deg,
     color-mix(in srgb, var(--theme-harness-brain-raw) 6%, transparent) 200deg,
     color-mix(in srgb, var(--theme-harness-brain-raw) 50%, transparent) 250deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw) 95%, #fff 18%) 280deg,
+    color-mix(in srgb, var(--theme-harness-brain-raw) 95%, var(--fixed-white) 18%) 280deg,
     color-mix(in srgb, var(--theme-harness-brain-raw) 50%, transparent) 310deg,
     color-mix(in srgb, var(--theme-harness-brain-raw) 6%, transparent) 360deg
   );
@@ -1736,7 +1722,7 @@
     color-mix(in srgb, var(--theme-harness-worker-raw) 6%, transparent) 0deg,
     color-mix(in srgb, var(--theme-harness-worker-raw) 6%, transparent) 200deg,
     color-mix(in srgb, var(--theme-harness-worker-raw) 50%, transparent) 250deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw) 95%, #fff 14%) 280deg,
+    color-mix(in srgb, var(--theme-harness-worker-raw) 95%, var(--fixed-white) 14%) 280deg,
     color-mix(in srgb, var(--theme-harness-worker-raw) 50%, transparent) 310deg,
     color-mix(in srgb, var(--theme-harness-worker-raw) 6%, transparent) 360deg
   );
@@ -1764,7 +1750,7 @@
 .catalog-seat-edit-banner__save-ico {
   color: var(--theme-text);
   opacity: 0.85;
-  font-size: 10px;
+  font-size: var(--type-body);
 }
 
 .catalog-seat-edit-banner__btn:hover {
@@ -1861,7 +1847,7 @@
   background: color-mix(in srgb, var(--theme-panel) 45%, transparent);
   color: var(--theme-industrial-muted, var(--theme-text-muted));
   font-family: ui-monospace, monospace;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   font-weight: 800;
   line-height: 1;
   cursor: pointer;
@@ -1912,7 +1898,7 @@
   background: color-mix(in srgb, var(--theme-panel) 50%, transparent);
   color: var(--theme-industrial-muted, var(--theme-text-muted));
   font-family: ui-monospace, monospace;
-  font-size: 7px;
+  font-size: var(--type-micro);
   font-weight: 700;
   letter-spacing: 0.04em;
   line-height: 1;
@@ -1933,7 +1919,7 @@
 
 .catalog-quick-section__title {
   font-family: ui-monospace, monospace;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   font-weight: 700;
   letter-spacing: 0.2em;
   text-align: center;
@@ -1945,7 +1931,7 @@
 }
 
 .catalog-quick-section__head .catalog-quick-section__title {
-  font-size: 9px;
+  font-size: var(--type-label);
   letter-spacing: 0.16em;
 }
 
@@ -1962,7 +1948,7 @@
 }
 
 .catalog-quick-section--seats-editing .catalog-quick-section__title {
-  font-size: 10px;
+  font-size: var(--type-body);
   color: var(--theme-text);
 }
 
@@ -1972,7 +1958,7 @@
 
 .catalog-quick-section__count {
   font-family: ui-monospace, monospace;
-  font-size: 7px;
+  font-size: var(--type-micro);
   letter-spacing: 0.08em;
   color: var(--theme-industrial-muted, var(--theme-text-muted));
   opacity: 0.85;
@@ -1987,7 +1973,7 @@
   background: color-mix(in srgb, var(--theme-panel) 55%, transparent);
   color: var(--theme-accent-bright, var(--theme-accent));
   font-family: ui-monospace, monospace;
-  font-size: 7px;
+  font-size: var(--type-micro);
   font-weight: 700;
   letter-spacing: 0.12em;
   line-height: 1.2;
@@ -2046,7 +2032,7 @@
   border: 0;
   background: transparent;
   color: var(--theme-accent-bright, var(--theme-accent));
-  font-size: 10px;
+  font-size: var(--type-body);
   line-height: 1;
   cursor: pointer;
 }
@@ -2067,20 +2053,20 @@
 }
 
 .catalog-quick-chip__name {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   font-weight: 600;
   color: var(--theme-text);
 }
 
 .catalog-quick-chip__quant {
-  font-size: 7px;
+  font-size: var(--type-micro);
   letter-spacing: 0.04em;
   color: var(--theme-text-muted);
   opacity: 0.9;
 }
 
 .catalog-quick-section--pins .catalog-quick-chip__quant {
-  font-size: 6px;
+  font-size: var(--type-hairline);
   letter-spacing: 0.02em;
   opacity: 0.78;
 }
@@ -2156,13 +2142,13 @@
 }
 
 [data-model-catalog] .model-card-fitnow--tight {
-  border-color: color-mix(in srgb, #f59e0b 50%, transparent);
-  color: #f59e0b;
+  border-color: var(--fixed-amber-500-a5);
+  color: var(--fixed-amber-500);
 }
 
 [data-model-catalog] .model-card-fitnow--no {
-  border-color: color-mix(in srgb, #ef4444 45%, transparent);
-  color: color-mix(in srgb, #ef4444 85%, transparent);
+  border-color: var(--fixed-red-500-a45);
+  color: var(--fixed-red-500-a85);
 }
 
 [data-model-catalog] .model-card-fitnow--unknown {
@@ -2350,17 +2336,17 @@
   border-radius: 3px;
   border: 1px solid;
   font-family: ui-monospace, monospace;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   font-weight: 800;
   letter-spacing: 0.06em;
   white-space: nowrap;
-  box-shadow: 0 2px 8px color-mix(in srgb, #000 40%, transparent);
+  box-shadow: 0 2px 8px var(--fixed-black-a4);
   pointer-events: none;
   animation: model-card-check-bubble-fade 6s ease forwards;
 }
 
 .model-card-check-bubble__icon {
-  font-size: 9px;
+  font-size: var(--type-label);
   line-height: 1;
 }
 
@@ -2374,7 +2360,7 @@
 
 .model-card-check-bubble__btn {
   font-family: ui-monospace, monospace;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   font-weight: 800;
   letter-spacing: 0.06em;
   padding: 1px 5px;

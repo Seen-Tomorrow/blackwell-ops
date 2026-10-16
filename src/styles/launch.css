@@ -226,7 +226,7 @@
 
 
 .config-panel-toolbar__label {
-  font-size: 7px;
+  font-size: var(--type-micro);
   font-family: ui-monospace, monospace;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -258,8 +258,8 @@
   /* Left meets the page — crisp frame border, not bezel-edge-hi (white on ARCTIC → fuzzy). */
   border-left: 1.5px solid var(--theme-frame-border);
   box-shadow:
-    -2px 0 6px color-mix(in srgb, #000000 24%, transparent),
-    -8px 0 20px color-mix(in srgb, #000000 12%, transparent);
+    -2px 0 6px var(--fixed-black-a24),
+    -8px 0 20px var(--fixed-black-a12);
   background-color: var(--theme-industrial-bg);
   background-image: var(--theme-industrial-texture-active);
 }
@@ -298,7 +298,7 @@
      not bezel-edge-hi (white on ARCTIC → fuzzy seam between rail sections). */
   border-top: 1.5px solid color-mix(in srgb, var(--theme-frame-border) 70%, transparent);
   box-shadow:
-    0 -3px 10px color-mix(in srgb, #000000 28%, transparent),
+    0 -3px 10px var(--fixed-black-a28),
     0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-lo) 40%, transparent);
   padding-top: 2px;
   position: relative;
@@ -461,7 +461,7 @@
 .launch-rail-tel__dim-label,
 .panel-dim-control__label {
   font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 7px;
+  font-size: var(--type-micro);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: color-mix(in srgb, var(--theme-text-muted) 75%, transparent);
@@ -526,7 +526,7 @@
 
 .launch-rail-tel__title {
   font-family: ui-monospace, monospace;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: color-mix(in srgb, var(--theme-text) 78%, var(--theme-text-muted));
@@ -657,13 +657,13 @@
   flex: 1;
   min-width: 0;
   font-family: ui-monospace, monospace;
-  font-size: 10px;
-  color: color-mix(in srgb, var(--theme-text) 95%, #fff);
+  font-size: var(--type-body);
+  color: color-mix(in srgb, var(--theme-text) 95%, var(--fixed-white));
   line-height: 1.15;
 }
 
 .gpu-topo-card--compact .gpu-topo-card__name {
-  font-size: 9px;
+  font-size: var(--type-label);
 }
 
 .gpu-topo-card__meta {
@@ -674,12 +674,12 @@
   gap: 4px;
   margin: 0;
   font-family: ui-monospace, monospace;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   color: var(--theme-text-muted);
 }
 
 .gpu-topo-card__oc-badge {
-  font-size: 6px;
+  font-size: var(--type-hairline);
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -698,21 +698,21 @@
 
 /* Non-default OC applied — soft amber/copper (same treatment as OVERCLOCKING header) */
 .gpu-topo-card__oc-badge--active {
-  color: var(--theme-tel-amber-ink, color-mix(in srgb, #fbbf24 78%, #fff 22%));
+  color: var(--theme-tel-amber-ink, color-mix(in srgb, var(--fixed-amber-400) 78%, var(--fixed-white) 22%));
   background: color-mix(in srgb, var(--tel-amber) 22%, transparent);
   border: 1px solid color-mix(in srgb, var(--tel-amber) 38%, transparent);
 }
 
 
 .gpu-topo-card__temp {
-  font-size: 11px;
+  font-size: var(--type-sm);
   font-weight: 700;
   line-height: 1;
   font-variant-numeric: tabular-nums;
 }
 
 .gpu-topo-card--compact .gpu-topo-card__temp {
-  font-size: 11px;
+  font-size: var(--type-sm);
 }
 
 .gpu-topo-card__temp--cool { color: var(--tel-vram); }
@@ -733,14 +733,14 @@
 }
 
 .gpu-topo-card__value--readout {
-  color: color-mix(in srgb, var(--theme-text) 85%, #fff);
+  color: color-mix(in srgb, var(--theme-text) 85%, var(--fixed-white));
 }
 
 .gpu-topo-card__value--gpu { color: var(--tel-vram, var(--theme-nv-green)); }
 .gpu-topo-card__value--mem { color: var(--tel-cyan, var(--theme-telemetry-cyan)); }
 
 .gpu-topo-card--compact .gpu-topo-card__value {
-  font-size: 11px;
+  font-size: var(--type-sm);
 }
 
 .gpu-topo-card:not(.gpu-topo-card--compact) .gpu-topo-card__value {
@@ -757,15 +757,15 @@
 
 .gpu-topo-card__power-watt {
   color: var(--theme-telemetry-amber);
-  font-size: 11px;
+  font-size: var(--type-sm);
 }
 
 .gpu-topo-card--compact .gpu-topo-card__power-watt {
-  font-size: 11px;
+  font-size: var(--type-sm);
 }
 
 .gpu-topo-card__power-val {
-  color: color-mix(in srgb, var(--theme-text) 80%, #fff);
+  color: color-mix(in srgb, var(--theme-text) 80%, var(--fixed-white));
 }
 
 .gpu-topo-card__power-target {
@@ -795,7 +795,7 @@
 
 .gpu-topo-card__label {
   font-family: ui-monospace, monospace;
-  font-size: 6.5px;
+  font-size: var(--type-hairline);
   letter-spacing: 0.12em;
   color: var(--theme-text-muted);
   opacity: 0.75;
@@ -858,27 +858,27 @@
 }
 
 .gpu-topo-card__util-fill--gpu {
-  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-vram) 45%, #000), var(--tel-vram));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-vram) 45%, var(--fixed-black)), var(--tel-vram));
 }
 
 .gpu-topo-card__util-fill--gpu-high {
-  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-amber) 50%, #1a1005), var(--tel-amber));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-amber) 50%, var(--fixed-c-1a1005)), var(--tel-amber));
 }
 
 .gpu-topo-card__util-fill--gpu-critical {
-  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-hot) 55%, #1a0505), #f97316);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-hot) 55%, var(--fixed-near-black-red)), var(--fixed-c-f97316));
 }
 
 .gpu-topo-card__util-fill--mem {
-  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-cyan) 45%, #0a1628), var(--tel-cyan));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-cyan) 45%, var(--fixed-near-black-blue)), var(--tel-cyan));
 }
 
 .gpu-topo-card__util-fill--mem-high {
-  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-amber) 50%, #1a1005), var(--tel-amber));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-amber) 50%, var(--fixed-c-1a1005)), var(--tel-amber));
 }
 
 .gpu-topo-card__util-fill--mem-critical {
-  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-hot) 55%, #1a0505), #f97316);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-hot) 55%, var(--fixed-near-black-red)), var(--fixed-c-f97316));
 }
 
 .gpu-topo-card__power {
@@ -895,13 +895,13 @@
 }
 
 .gpu-topo-card__power-val {
-  font-size: 9px;
+  font-size: var(--type-label);
   line-height: 1.1;
   text-align: right;
 }
 
 .gpu-topo-card__power-denom {
-  font-size: 7px;
+  font-size: var(--type-micro);
   opacity: 0.55;
 }
 
@@ -910,7 +910,7 @@
   border-radius: 3px;
   background: color-mix(in srgb, var(--theme-text-muted) 14%, transparent);
   overflow: hidden;
-  box-shadow: inset 0 1px 3px color-mix(in srgb, #000 35%, transparent);
+  box-shadow: inset 0 1px 3px var(--fixed-black-a35);
 }
 
 .gpu-topo-card__power-track > div {
@@ -921,17 +921,17 @@
 }
 
 .gpu-topo-card__power-fill {
-  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-amber) 50%, #000), var(--tel-amber));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-amber) 50%, var(--fixed-black)), var(--tel-amber));
   box-shadow: none;
 }
 
 .gpu-topo-card__power-fill--high {
-  background: linear-gradient(90deg, #b45309, #fbbf24);
+  background: linear-gradient(90deg, var(--fixed-c-b45309), var(--fixed-amber-400));
   box-shadow: none;
 }
 
 .gpu-topo-card__power-fill--critical {
-  background: linear-gradient(90deg, #991b1b, #f87171);
+  background: linear-gradient(90deg, var(--fixed-c-991b1b), var(--fixed-red-400));
   box-shadow: none;
 }
 
@@ -951,7 +951,7 @@
   padding: 5px 6px;
   border-radius: 4px;
   border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
-  background: var(--theme-tel-cell-bg, color-mix(in srgb, #000 22%, transparent));
+  background: var(--theme-tel-cell-bg, var(--fixed-black-a22));
 }
 
 .launch-rail-tel__total-cell--power .launch-rail-tel__total-label,
@@ -994,7 +994,7 @@
 .launch-rail-tel__total-label {
   display: block;
   font-family: ui-monospace, monospace;
-  font-size: 6.5px;
+  font-size: var(--type-hairline);
   letter-spacing: 0.06em;
   line-height: 1.25;
   color: var(--theme-text-muted);
@@ -1018,7 +1018,7 @@
 .launch-rail-tel__total-value--ram { color: var(--tel-ram); }
 
 .launch-rail-tel__total-denom {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   font-weight: 400;
   opacity: 0.55;
 }
@@ -1038,15 +1038,15 @@
 }
 
 .launch-rail-tel__total-fill--power {
-  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-amber) 70%, #000), var(--tel-amber));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-amber) 70%, var(--fixed-black)), var(--tel-amber));
 }
 
 .launch-rail-tel__total-fill--vram {
-  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-vram) 70%, #000), var(--tel-vram));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-vram) 70%, var(--fixed-black)), var(--tel-vram));
 }
 
 .launch-rail-tel__total-fill--ram {
-  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-ram) 70%, #000), var(--tel-ram));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-ram) 70%, var(--fixed-black)), var(--tel-ram));
 }
 
 .launch-rail-tel__total-fill--warn {
@@ -1057,7 +1057,7 @@
 .launch-rail-tel__cpu{
   border-radius: 4px;
   border: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent);
-  background: var(--theme-tel-cell-bg, color-mix(in srgb, #000 18%, transparent));
+  background: var(--theme-tel-cell-bg, var(--fixed-black-a18));
   overflow: hidden;
 }.launch-rail-tel .gpu-topo-card--selected,
 .launch-rail-tel .gpu-topo-card--selected{
@@ -1075,8 +1075,8 @@
 
 .launch-rail-tel__cpu-name{
   font-family: ui-monospace, monospace;
-  font-size: 7.5px;
-  color: color-mix(in srgb, var(--theme-text) 88%, #fff);
+  font-size: var(--type-micro);
+  color: color-mix(in srgb, var(--theme-text) 88%, var(--fixed-white));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1085,7 +1085,7 @@
 
 .launch-rail-tel__cpu-meta{
   font-family: ui-monospace, monospace;
-  font-size: 6.5px;
+  font-size: var(--type-hairline);
   color: var(--theme-text-muted);
   opacity: 0.7;
   margin-top: 1px;
@@ -1109,7 +1109,7 @@
 }
 
 .launch-rail-tel__cpu-avg--mhz .launch-rail-tel__cpu-avg-unit {
-  font-size: 7px;
+  font-size: var(--type-micro);
   color: var(--tel-cyan);
   opacity: 0.85;
 }
@@ -1119,13 +1119,13 @@
   font-size: 16px;
   font-weight: 700;
   line-height: 1;
-  color: color-mix(in srgb, var(--theme-text) 92%, #fff);
+  color: color-mix(in srgb, var(--theme-text) 92%, var(--fixed-white));
   font-variant-numeric: tabular-nums;
 }
 
 .launch-rail-tel__cpu-avg-unit {
   font-family: ui-monospace, monospace;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   color: var(--theme-text-muted);
 }
 
@@ -1154,7 +1154,7 @@
 
 .launch-rail-tel__cpu-cores-badge {
   font-family: ui-monospace, monospace;
-  font-size: 6px;
+  font-size: var(--type-hairline);
   font-weight: 700;
   letter-spacing: 0.12em;
   color: color-mix(in srgb, var(--theme-text-muted) 80%, transparent);
@@ -1194,7 +1194,7 @@
   border-radius: 2px;
   background: color-mix(in srgb, var(--theme-text-muted) 12%, transparent);
   overflow: hidden;
-  box-shadow: inset 0 1px 2px color-mix(in srgb, #000 30%, transparent);
+  box-shadow: inset 0 1px 2px var(--fixed-black-a3);
 }
 
 .launch-rail-tel__cpu-core-fill {
@@ -1211,8 +1211,8 @@
 .launch-rail-tel__cpu-core-fill--mid {
   background: linear-gradient(
     90deg,
-    color-mix(in srgb, var(--tel-cyan) 45%, #0a1628),
-    color-mix(in srgb, var(--tel-cyan) 72%, #fff)
+    color-mix(in srgb, var(--tel-cyan) 45%, var(--fixed-near-black-blue)),
+    color-mix(in srgb, var(--tel-cyan) 72%, var(--fixed-white))
   );
 }
 
@@ -1231,7 +1231,7 @@
   border-radius: 3px;
   background: color-mix(in srgb, var(--theme-text-muted) 14%, transparent);
   overflow: hidden;
-  box-shadow: inset 0 1px 3px color-mix(in srgb, #000 35%, transparent);
+  box-shadow: inset 0 1px 3px var(--fixed-black-a35);
 }
 
 .launch-rail-tel__cpu-avg-fill {
@@ -1244,7 +1244,7 @@
 .launch-rail-tel__cpu-avg-fill--normal {
   background: linear-gradient(
     90deg,
-    color-mix(in srgb, var(--tel-cyan) 45%, #0a1628),
+    color-mix(in srgb, var(--tel-cyan) 45%, var(--fixed-near-black-blue)),
     var(--tel-cyan)
   );
   /* fill color only; track owns inset depth */
@@ -1252,12 +1252,12 @@
 }
 
 .launch-rail-tel__cpu-avg-fill--high {
-  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-amber) 50%, #1a1005), var(--tel-amber));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-amber) 50%, var(--fixed-c-1a1005)), var(--tel-amber));
   box-shadow: none;
 }
 
 .launch-rail-tel__cpu-avg-fill--critical {
-  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-hot) 55%, #1a0505), #f97316);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-hot) 55%, var(--fixed-near-black-red)), var(--fixed-c-f97316));
   box-shadow: none;
 }
 
@@ -1268,17 +1268,17 @@
 
 .launch-rail-engine-chip {
   border-color: color-mix(in srgb, var(--theme-border) 55%, transparent);
-  background: color-mix(in srgb, #000 20%, transparent);
+  background: var(--fixed-black-a2);
 }
 
 .launch-rail-engine-chip:hover {
   border-color: color-mix(in srgb, var(--theme-accent) 35%, var(--theme-border));
-  background: color-mix(in srgb, var(--theme-accent) 6%, #000);
+  background: color-mix(in srgb, var(--theme-accent) 6%, var(--fixed-black));
 }
 
 .launch-rail-engine-chip--selected {
   border-color: color-mix(in srgb, var(--theme-accent) 50%, transparent);
-  background: color-mix(in srgb, var(--theme-accent) 10%, #000);
+  background: color-mix(in srgb, var(--theme-accent) 10%, var(--fixed-black));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-accent) 18%, transparent);
 }
 
@@ -1360,29 +1360,29 @@
 .config-nobsproof-btn {
   border-color: color-mix(in srgb, var(--dev-danger) 55%, transparent);
   background: color-mix(in srgb, var(--dev-danger) 12%, transparent);
-  color: color-mix(in srgb, var(--dev-danger) 88%, #fff 12%);
+  color: color-mix(in srgb, var(--dev-danger) 88%, var(--fixed-white) 12%);
 }
 
 .config-nobsproof-btn:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--dev-danger) 75%, transparent);
   background: color-mix(in srgb, var(--dev-danger) 22%, transparent);
-  color: #fff;
+  color: var(--fixed-white);
 }
 
 .config-nobsproof-btn--on {
   border-color: color-mix(in srgb, var(--dev-danger) 90%, transparent);
   background: color-mix(in srgb, var(--dev-danger) 38%, transparent);
-  color: #fff;
+  color: var(--fixed-white);
 }
 
 .config-mtp-launch-warn {
-  border: 1px solid color-mix(in srgb, #ffb800 30%, transparent);
-  background: color-mix(in srgb, #ffb800 8%, transparent);
-  color: color-mix(in srgb, #ffb800 95%, transparent);
+  border: 1px solid var(--fixed-brand-amber-bright-a3);
+  background: var(--fixed-brand-amber-bright-a08);
+  color: var(--fixed-brand-amber-bright-a95);
 }
 
 .config-mtp-launch-warn__detail {
-  color: color-mix(in srgb, #ffb800 85%, transparent);
+  color: var(--fixed-brand-amber-bright-a85);
 }
 
 .config-launch-dock__meta [data-param-row] {
@@ -1453,22 +1453,22 @@
   justify-content: center;
   min-height: 13px;
   padding: 1px 3px;
-  font-size: 6px;
+  font-size: var(--type-hairline);
   font-family: ui-monospace, monospace;
   letter-spacing: 0.05em;
   line-height: 1;
-  border: 1px solid #000000;
+  border: 1px solid var(--fixed-black);
   border-radius: 3px;
-  background: #000000;
-  color: #f87171;
+  background: var(--fixed-black);
+  color: var(--fixed-red-400);
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
 .config-launch-dock__alias-clr:hover {
   background: #141414;
-  border-color: #000000;
-  color: #fca5a5;
+  border-color: var(--fixed-black);
+  color: var(--fixed-c-fca5a5);
 }
 
 /* Segmented switch — MANUAL/AUTO FIT + ESSENTIALS/FULL */
@@ -1481,12 +1481,12 @@
   padding: 2px;
   border-radius: 4px;
   border: 1px solid color-mix(in srgb, var(--theme-border) 85%, transparent);
-  background: linear-gradient(165deg, color-mix(in srgb, var(--theme-panel-accent) 88%, #000 12%) 0%, var(--theme-panel-accent) 100%);
+  background: linear-gradient(165deg, color-mix(in srgb, var(--theme-panel-accent) 88%, var(--fixed-black) 12%) 0%, var(--theme-panel-accent) 100%);
   /* Recessed — crisp 1px inner-top shadow + soft falloff + light inner-bottom edge.
      Unified with [data-config-panel] .config-value-segment--rail (no external drop). */
   box-shadow:
-    inset 0 1px 1px color-mix(in srgb, #000 24%, transparent),
-    inset 0 2px 3px color-mix(in srgb, #000 12%, transparent),
+    inset 0 1px 1px var(--fixed-black-a24),
+    inset 0 2px 3px var(--fixed-black-a12),
     inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 18%, transparent);
   user-select: none;
 }
@@ -1506,7 +1506,7 @@
   border: 1px solid color-mix(in srgb, var(--theme-accent) 42%, transparent);
   box-shadow:
     0 0 8px color-mix(in srgb, var(--theme-accent-glow) 55%, transparent),
-    inset 0 1px 0 color-mix(in srgb, #fff 12%, transparent);
+    inset 0 1px 0 var(--fixed-white-a12);
   transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
   pointer-events: none;
   z-index: 0;
@@ -1523,7 +1523,7 @@
   background: transparent;
   cursor: pointer;
   font-family: "JetBrains Mono", monospace;
-  font-size: 7px;
+  font-size: var(--type-micro);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   padding: 4px 10px;
@@ -1551,7 +1551,7 @@
 }
 
 .segment-switch--config-view .segment-switch__option {
-  font-size: 7px;
+  font-size: var(--type-micro);
   padding: 4px 8px;
 }
 
@@ -1599,7 +1599,7 @@
 
 .segment-switch.segment-switch--size-fit .segment-switch__option {
   padding: 5px 12px;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   letter-spacing: 0.16em;
   line-height: 1.2;
 }
@@ -1612,7 +1612,7 @@
 }
 
 .segment-switch.segment-switch--size-compact .segment-switch__option {
-  font-size: 7px;
+  font-size: var(--type-micro);
   letter-spacing: 0.06em;
   padding: 4px 7px;
   line-height: 1.15;
@@ -1715,7 +1715,7 @@
   border-color: var(--theme-provider-pill-active-border);
   box-shadow:
     0 0 10px color-mix(in srgb, var(--theme-provider-pill-active-bg) 55%, transparent),
-    inset 0 1px 0 color-mix(in srgb, #fff 18%, transparent);
+    inset 0 1px 0 var(--fixed-white-a18);
 }
 
 .segment-switch.segment-switch--tone-amber .segment-switch__option {

@@ -168,3 +168,34 @@ Further source reduction now means one of:
    source reduction, but changes shared classes + TSX and needs per-screen QA.
 4. **Theme-as-delta** (MATRIX repeats 92/106 CSS defaults) — smaller theme
    layer, no byte win.
+
+## Items 1+2 final â€” delivered (visual: zero drift across MATRIX/SLATE/ARCTIC)
+
+### Item 1 â€” small clusters
+- Only `.catalog-quick-seat__btn` had real base/variant duplication; 4 duplicate
+  declarations removed (-272 B built). Other candidates rejected on evidence
+  (base class not always applied in TSX / parent-child, not duplication).
+
+### Item 2 â€” token migration
+| Metric | Before | After |
+|---|---:|---:|
+| literal hex outside tokens | 841 | 59 |
+| literal rgba outside tokens | 181 | 83 |
+| literal color-mix arguments | 536 | 48 |
+| total color-mix calls | 2,089 | 1,555 |
+| font-size Npx literals | 333 | 28 |
+| fixed/alpha tokens | 0 | 272 |
+
+- 782 hex + 95 rgba + 305 px occurrences replaced mechanically; values are
+  identical to the literals they replace.
+- 347 transparent color-mix calls precomputed into alpha tokens.
+- Integrity: original `tokens-base.css` preserved, 0 var() selector leaks,
+  dead classes still 0, build + tsc + vitest + budgets pass.
+
+### Cost (intentional trade)
+- source LF: 648,498 -> 664,478 B (+2.5%)
+- startup CSS: 474,475 -> 500,832 B (+5.6%)
+- startup gzip: 72,329 -> 75,319 B (+4.1%)
+
+Minifiers can shorten `#ffffff` to `#fff`; `var(--fixed-*)` cannot be shortened.
+This trade removes ~1,000 literal paint sites and centralizes the palette.

@@ -1,6 +1,6 @@
 /* ── Full Auto cockpit — theme tokens (inset well + texture) ─── */
 .full-auto-cockpit {
-  border: 1px solid color-mix(in srgb, var(--theme-border) 55%, #000 45%);
+  border: 1px solid color-mix(in srgb, var(--theme-border) 55%, var(--fixed-black) 45%);
   border-radius: 5px;
   background-color: color-mix(in srgb, var(--theme-panel-accent) 55%, var(--theme-industrial-bg) 45%);
   background-image: var(--theme-industrial-texture-active, none);
@@ -18,13 +18,13 @@
 
 /* Spec mode product colors — MTP green, DFlash violet (all themes) */
 .full-auto-cockpit {
-  --cockpit-mtp: #4ade80;
-  --cockpit-mtp-dim: color-mix(in srgb, #4ade80 55%, transparent);
-  --cockpit-dflash: #a78bfa;
-  --cockpit-dflash-dim: color-mix(in srgb, #a78bfa 55%, transparent);
+  --cockpit-mtp: var(--fixed-green-400);
+  --cockpit-mtp-dim: var(--fixed-green-400-a55);
+  --cockpit-dflash: var(--fixed-violet-400);
+  --cockpit-dflash-dim: var(--fixed-violet-400-a55);
   --cockpit-header-line: color-mix(in srgb, var(--theme-border) 55%, transparent);
-  --cockpit-status-fg: color-mix(in srgb, var(--theme-industrial-text, var(--theme-accent-bright)) 92%, #fff 8%);
-  --cockpit-status-note: color-mix(in srgb, #fbbf24 88%, var(--theme-industrial-text) 12%);
+  --cockpit-status-fg: color-mix(in srgb, var(--theme-industrial-text, var(--theme-accent-bright)) 92%, var(--fixed-white) 8%);
+  --cockpit-status-note: color-mix(in srgb, var(--fixed-amber-400) 88%, var(--theme-industrial-text) 12%);
   --cockpit-status-rail: color-mix(in srgb, var(--theme-accent-bright) 22%, transparent);
   --cockpit-status-bg: color-mix(in srgb, var(--theme-panel-accent) 40%, transparent);
 }
@@ -75,7 +75,7 @@
 }
 
 .full-auto-cockpit__flag-label {
-  font-size: 7px;
+  font-size: var(--type-micro);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: color-mix(in srgb, var(--theme-industrial-muted, var(--theme-text-muted)) 92%, transparent);
@@ -87,20 +87,20 @@
   min-height: 20px;
   /* Recessed — unified with base .segment-switch + param-chip rail. */
   box-shadow:
-    inset 0 1px 1px color-mix(in srgb, #000 24%, transparent),
-    inset 0 2px 3px color-mix(in srgb, #000 12%, transparent),
+    inset 0 1px 1px var(--fixed-black-a24),
+    inset 0 2px 3px var(--fixed-black-a12),
     inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 18%, transparent);
 }
 
 .full-auto-cockpit .segment-switch.segment-switch--cockpit-flag .segment-switch__option {
-  font-size: 7px;
+  font-size: var(--type-micro);
   letter-spacing: 0.05em;
   padding: 3px 6px;
 }
 
 .full-auto-cockpit__title {
   display: block;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   letter-spacing: 0.16em;
   color: color-mix(in srgb, var(--theme-industrial-muted, var(--theme-text-muted)) 90%, transparent);
   margin-bottom: 0;
@@ -214,9 +214,9 @@
 
 .full-auto-cockpit__dflash-get--tone-neutral {
   border-color: color-mix(in srgb, var(--theme-border) 60%, transparent);
-  background: color-mix(in srgb, #000000 18%, transparent);
-  color: color-mix(in srgb, var(--theme-industrial-text) 85%, #fff 15%);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 4%, transparent);
+  background: var(--fixed-black-a18);
+  color: color-mix(in srgb, var(--theme-industrial-text) 85%, var(--fixed-white) 15%);
+  box-shadow: inset 0 1px 0 var(--fixed-white-a04);
 }
 
 .full-auto-cockpit__dflash-get--tone-neutral .full-auto-cockpit__spec-extra-title,
@@ -234,7 +234,7 @@
 }
 
 .full-auto-cockpit__header--minimal .full-auto-cockpit__status-note {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   opacity: 0.85;
 }
 
@@ -247,10 +247,10 @@
 }
 
 .full-auto-cockpit__spec-extra-title {
-  font-size: 7px;
+  font-size: var(--type-micro);
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: color-mix(in srgb, #c4b5fd 85%, #fff 15%);
+  color: color-mix(in srgb, var(--fixed-violet-300) 85%, var(--fixed-white) 15%);
   opacity: 0.9;
   white-space: nowrap;
 }
@@ -264,8 +264,8 @@
 }
 
 .full-auto-cockpit__spec-extra-sep {
-  color: color-mix(in srgb, #a78bfa 55%, transparent);
-  font-size: 9px;
+  color: var(--fixed-violet-400-a55);
+  font-size: var(--type-label);
   padding: 0 0.15rem;
   user-select: none;
 }
@@ -278,15 +278,15 @@
 }
 
 .full-auto-cockpit__spec-extra-key {
-  font-size: 7px;
+  font-size: var(--type-micro);
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: color-mix(in srgb, #ddd6fe 70%, transparent);
+  color: var(--fixed-c-ddd6fe-a7);
   white-space: nowrap;
 }
 
 .full-auto-cockpit__spec-extra-key--custom {
-  color: #fcd34d;
+  color: var(--fixed-amber-300);
   font-style: italic;
 }
 
@@ -294,8 +294,8 @@
 .param-catalog-modal.config-form-panel,
 .param-catalog-modal {
   background: var(--theme-panel);
-  border: 1px solid var(--theme-border-subtle, color-mix(in srgb, #4ade80 18%, transparent));
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+  border: 1px solid var(--theme-border-subtle, var(--fixed-green-400-a18));
+  box-shadow: 0 16px 40px var(--fixed-black-a55);
 }
 
 
@@ -323,9 +323,9 @@
   padding: 0.4rem 0.55rem;
   border-radius: 3px;
   border: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
-  background: color-mix(in srgb, #000000 18%, transparent);
-  color: color-mix(in srgb, var(--theme-industrial-text) 85%, #fff 15%);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 4%, transparent);
+  background: var(--fixed-black-a18);
+  color: color-mix(in srgb, var(--theme-industrial-text) 85%, var(--fixed-white) 15%);
+  box-shadow: inset 0 1px 0 var(--fixed-white-a04);
 }
 
 /* Higher specificity than base so MTP green / DFlash violet always paint */
@@ -345,9 +345,9 @@
 
 .full-auto-cockpit__dflash-get.full-auto-cockpit__dflash-get--tone-neutral {
   border-color: color-mix(in srgb, var(--theme-border) 60%, transparent);
-  background: color-mix(in srgb, #000000 18%, transparent);
-  color: color-mix(in srgb, var(--theme-industrial-text) 85%, #fff 15%);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 4%, transparent);
+  background: var(--fixed-black-a18);
+  color: color-mix(in srgb, var(--theme-industrial-text) 85%, var(--fixed-white) 15%);
+  box-shadow: inset 0 1px 0 var(--fixed-white-a04);
 }
 
 .full-auto-cockpit__dflash-get-main {
@@ -358,7 +358,7 @@
 }
 
 .full-auto-cockpit__dflash-get-line {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   opacity: 0.85;
@@ -366,7 +366,7 @@
 }
 
 .full-auto-cockpit__dflash-get-name {
-  font-size: 10px;
+  font-size: var(--type-body);
   font-weight: 600;
   line-height: 1.3;
   letter-spacing: 0.01em;
@@ -376,7 +376,7 @@
 }
 
 .full-auto-cockpit__dflash-get-sub {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   opacity: 0.7;
   line-height: 1.25;
 }
@@ -392,21 +392,21 @@
 
 .full-auto-cockpit__dflash-get-btn {
   flex-shrink: 0;
-  font-size: 9px;
+  font-size: var(--type-label);
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   padding: 0.35rem 0.65rem;
   border-radius: 3px;
-  border: 1px solid color-mix(in srgb, #a78bfa 55%, transparent);
-  color: #f5f3ff;
-  background: color-mix(in srgb, #6d28d9 50%, #0a0612 50%);
+  border: 1px solid var(--fixed-violet-400-a55);
+  color: var(--fixed-violet-50);
+  background: color-mix(in srgb, var(--fixed-violet-700) 50%, var(--fixed-near-black-violet) 50%);
   transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
 }
 
 .full-auto-cockpit__dflash-get-btn:hover:not(:disabled) {
-  background: color-mix(in srgb, #7c3aed 60%, #0a0612 40%);
-  border-color: color-mix(in srgb, #a78bfa 75%, transparent);
+  background: color-mix(in srgb, var(--fixed-c-7c3aed) 60%, var(--fixed-near-black-violet) 40%);
+  border-color: var(--fixed-violet-400-a75);
 }
 
 .full-auto-cockpit__dflash-get-btn:disabled {
@@ -422,7 +422,7 @@
 
 .full-auto-cockpit__dflash-get-btn--ghost:hover:not(:disabled) {
   background: var(--theme-dflash-strip-btn-hover-bg);
-  border-color: color-mix(in srgb, #a78bfa 60%, transparent);
+  border-color: var(--fixed-violet-400-a6);
 }
 
 /* ── DFlash draft pick modal — violet on black (all themes, including Arctic) ─ */
@@ -435,7 +435,7 @@
   justify-content: center;
   padding: 1rem;
   /* Dim only — no backdrop-filter blur (WebView GPU cost) */
-  background: color-mix(in srgb, #000000 42%, transparent);
+  background: var(--fixed-black-a42);
 }
 
 
@@ -447,44 +447,44 @@
   gap: 0.65rem;
   padding: 0.85rem 0.9rem 0.75rem;
   border-radius: 4px;
-  border: 1px solid color-mix(in srgb, #a78bfa 45%, transparent);
+  border: 1px solid var(--fixed-violet-400-a45);
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, #120a1c 94%, #a78bfa 6%) 0%,
+      color-mix(in srgb, var(--fixed-c-120a1c) 94%, var(--fixed-violet-400) 6%) 0%,
       #050308 100%
     );
   box-shadow:
-    0 12px 40px color-mix(in srgb, #000 60%, transparent),
-    inset 0 1px 0 color-mix(in srgb, #a78bfa 14%, transparent);
+    0 12px 40px var(--fixed-black-a6),
+    inset 0 1px 0 var(--fixed-violet-400-a14);
   color: #e9e5ff;
 }
 
 .dflash-pick-modal__title {
   margin: 0;
-  font-size: 11px;
+  font-size: var(--type-sm);
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: #c4b5fd;
+  color: var(--fixed-violet-300);
 }
 
 .dflash-pick-modal__sub {
   margin: 0.25rem 0 0;
-  font-size: 9px;
+  font-size: var(--type-label);
   line-height: 1.35;
-  color: color-mix(in srgb, #e2e8f0 72%, transparent);
+  color: var(--fixed-slate-200-a72);
 }
 
 .dflash-pick-modal__main {
-  color: #f5f3ff;
+  color: var(--fixed-violet-50);
   word-break: break-all;
 }
 
 .dflash-pick-modal__hint {
   margin: 0.35rem 0 0;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   line-height: 1.4;
-  color: color-mix(in srgb, #a78bfa 70%, transparent);
+  color: var(--fixed-violet-400-a7);
 }
 
 .dflash-pick-modal__list {
@@ -511,40 +511,40 @@
   width: 100%;
   padding: 0.5rem 0.6rem;
   border-radius: 3px;
-  border: 1px solid color-mix(in srgb, #a78bfa 22%, transparent);
-  background: color-mix(in srgb, #000 45%, transparent);
+  border: 1px solid var(--fixed-violet-400-a22);
+  background: var(--fixed-black-a45);
   color: inherit;
   cursor: pointer;
   transition: border-color 0.12s ease, background 0.12s ease;
 }
 
 .dflash-pick-modal__card--local {
-  border-color: color-mix(in srgb, #a78bfa 28%, transparent);
+  border-color: var(--fixed-violet-400-a28);
 }
 
 .dflash-pick-modal__card--remote {
-  border-color: color-mix(in srgb, #22d3ee 32%, transparent);
-  background: color-mix(in srgb, #042f2e 40%, #000 60%);
+  border-color: var(--fixed-cyan-400-a32);
+  background: color-mix(in srgb, var(--fixed-c-042f2e) 40%, var(--fixed-black) 60%);
 }
 
 .dflash-pick-modal__card--remote:hover {
-  border-color: color-mix(in srgb, #22d3ee 55%, transparent);
+  border-color: var(--fixed-cyan-400-a55);
 }
 
 .dflash-pick-modal__card--remote.dflash-pick-modal__card--active {
-  border-color: color-mix(in srgb, #22d3ee 72%, transparent);
-  background: color-mix(in srgb, #0e7490 28%, #000 72%);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, #22d3ee 28%, transparent);
+  border-color: var(--fixed-cyan-400-a72);
+  background: color-mix(in srgb, var(--fixed-c-0e7490) 28%, var(--fixed-black) 72%);
+  box-shadow: inset 0 0 0 1px var(--fixed-cyan-400-a28);
 }
 
 .dflash-pick-modal__card:hover {
-  border-color: color-mix(in srgb, #a78bfa 48%, transparent);
+  border-color: var(--fixed-violet-400-a48);
 }
 
 .dflash-pick-modal__card--active {
-  border-color: color-mix(in srgb, #a78bfa 72%, transparent);
-  background: color-mix(in srgb, #6d28d9 22%, #000 78%);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, #a78bfa 28%, transparent);
+  border-color: var(--fixed-violet-400-a72);
+  background: color-mix(in srgb, var(--fixed-violet-700) 22%, var(--fixed-black) 78%);
+  box-shadow: inset 0 0 0 1px var(--fixed-violet-400-a28);
 }
 
 /* 2-col: left = name + meta · right = hero match score */
@@ -572,26 +572,26 @@
 
 .dflash-pick-modal__rank {
   flex-shrink: 0;
-  font-size: 9px;
+  font-size: var(--type-label);
   font-weight: 700;
-  color: #a78bfa;
+  color: var(--fixed-violet-400);
   opacity: 0.95;
   letter-spacing: 0.04em;
 }
 
 .dflash-pick-modal__repo {
   min-width: 0;
-  font-size: 11px;
+  font-size: var(--type-sm);
   font-weight: 600;
   line-height: 1.3;
-  color: #f5f3ff;
+  color: var(--fixed-violet-50);
   word-break: break-word;
 }
 
 .dflash-pick-modal__meta {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   line-height: 1.3;
-  color: color-mix(in srgb, #c4b5fd 78%, transparent);
+  color: var(--fixed-violet-300-a78);
   padding-left: 1.35rem;
   word-break: break-word;
 }
@@ -610,62 +610,62 @@
 .dflash-pick-modal__match {
   flex: 0 0 auto;
   text-align: right;
-  font-size: 12px;
+  font-size: var(--type-md);
   font-weight: 800;
   letter-spacing: 0.04em;
   line-height: 1.15;
   text-transform: uppercase;
-  color: #c4b5fd;
-  text-shadow: 0 0 12px color-mix(in srgb, #a78bfa 45%, transparent);
+  color: var(--fixed-violet-300);
+  text-shadow: 0 0 12px var(--fixed-violet-400-a45);
   white-space: nowrap;
 }
 
 /* 50–79 confirm tier */
 .dflash-pick-modal__match--suggest {
-  color: #c4b5fd;
-  text-shadow: 0 0 12px color-mix(in srgb, #a78bfa 45%, transparent);
+  color: var(--fixed-violet-300);
+  text-shadow: 0 0 12px var(--fixed-violet-400-a45);
 }
 
 /* ≥80 high confidence */
 .dflash-pick-modal__match--high {
   color: #6ee7b7;
-  text-shadow: 0 0 12px color-mix(in srgb, #34d399 50%, transparent);
+  text-shadow: 0 0 12px var(--fixed-emerald-400-a5);
 }
 
 .dflash-pick-modal__match--weak {
-  font-size: 11px;
+  font-size: var(--type-sm);
   font-weight: 700;
-  color: color-mix(in srgb, #fbbf24 85%, #a78bfa 15%);
+  color: color-mix(in srgb, var(--fixed-amber-400) 85%, var(--fixed-violet-400) 15%);
   text-shadow: none;
   opacity: 0.9;
 }
 
 .dflash-pick-modal__card--high {
-  border-color: color-mix(in srgb, #34d399 40%, transparent);
+  border-color: var(--fixed-emerald-400-a4);
 }
 
 .dflash-pick-modal__card--high.dflash-pick-modal__card--active {
-  border-color: color-mix(in srgb, #34d399 65%, transparent);
-  background: color-mix(in srgb, #065f46 22%, #000 78%);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, #34d399 22%, transparent);
+  border-color: var(--fixed-emerald-400-a65);
+  background: color-mix(in srgb, var(--fixed-c-065f46) 22%, var(--fixed-black) 78%);
+  box-shadow: inset 0 0 0 1px var(--fixed-emerald-400-a22);
 }
 
 .dflash-pick-modal__rec-pill {
   flex-shrink: 0;
-  font-size: 7px;
+  font-size: var(--type-micro);
   font-weight: 800;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   padding: 0.1rem 0.3rem;
   border-radius: 2px;
   color: #a7f3d0;
-  border: 1px solid color-mix(in srgb, #34d399 50%, transparent);
-  background: color-mix(in srgb, #065f46 35%, transparent);
+  border: 1px solid var(--fixed-emerald-400-a5);
+  background: var(--fixed-c-065f46-a35);
 }
 
 .dflash-pick-modal__rec-pill--suggest {
-  color: #ddd6fe;
-  border-color: color-mix(in srgb, #a78bfa 45%, transparent);
+  color: var(--fixed-c-ddd6fe);
+  border-color: var(--fixed-violet-400-a45);
   background: color-mix(in srgb, #5b21b6 28%, transparent);
 }
 
@@ -677,7 +677,7 @@
 }
 
 .dflash-pick-modal__btn {
-  font-size: 9px;
+  font-size: var(--type-label);
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -689,31 +689,31 @@
 }
 
 .dflash-pick-modal__btn--ghost {
-  color: color-mix(in srgb, #e2e8f0 72%, transparent);
-  border-color: color-mix(in srgb, #64748b 45%, transparent);
+  color: var(--fixed-slate-200-a72);
+  border-color: var(--fixed-c-64748b-a45);
   background: transparent;
 }
 
 .dflash-pick-modal__btn--ghost:hover {
-  color: #f8fafc;
-  border-color: color-mix(in srgb, #94a3b8 55%, transparent);
+  color: var(--fixed-c-f8fafc);
+  border-color: var(--fixed-slate-400-a55);
 }
 
 .dflash-pick-modal__btn--primary {
-  color: #f5f3ff;
-  border-color: color-mix(in srgb, #a78bfa 55%, transparent);
-  background: color-mix(in srgb, #6d28d9 55%, #0a0612 45%);
+  color: var(--fixed-violet-50);
+  border-color: var(--fixed-violet-400-a55);
+  background: color-mix(in srgb, var(--fixed-violet-700) 55%, var(--fixed-near-black-violet) 45%);
 }
 
 .dflash-pick-modal__btn--primary:hover {
-  background: color-mix(in srgb, #7c3aed 65%, #0a0612 35%);
+  background: color-mix(in srgb, var(--fixed-c-7c3aed) 65%, var(--fixed-near-black-violet) 35%);
 }
 
 .dflash-pick-modal__empty {
   margin: 0;
-  font-size: 9px;
+  font-size: var(--type-label);
   line-height: 1.35;
-  color: color-mix(in srgb, #fbbf24 85%, transparent);
+  color: var(--fixed-amber-400-a85);
 }
 
 /* Local list vs remote download — clear visual split */
@@ -729,21 +729,21 @@
   min-height: 0;
   padding: 0.35rem 0.4rem 0.4rem;
   border-radius: 3px;
-  border: 1px solid color-mix(in srgb, #a78bfa 30%, transparent);
-  background: color-mix(in srgb, #120a1c 50%, #000 50%);
+  border: 1px solid var(--fixed-violet-400-a3);
+  background: color-mix(in srgb, var(--fixed-c-120a1c) 50%, var(--fixed-black) 50%);
 }
 
 .dflash-pick-modal__section--remote {
   flex: 0 0 auto;
   padding: 0.35rem 0.4rem 0.4rem;
   border-radius: 3px;
-  border: 1px dashed color-mix(in srgb, #22d3ee 40%, transparent);
-  background: color-mix(in srgb, #042f2e 35%, #000 65%);
+  border: 1px dashed var(--fixed-cyan-400-a4);
+  background: color-mix(in srgb, var(--fixed-c-042f2e) 35%, var(--fixed-black) 65%);
 }
 
 .dflash-pick-modal__section--remote-open {
   border-style: solid;
-  border-color: color-mix(in srgb, #22d3ee 50%, transparent);
+  border-color: var(--fixed-cyan-400-a5);
 }
 
 .dflash-pick-modal__remote-toggle {
@@ -762,7 +762,7 @@
 }
 
 .dflash-pick-modal__remote-toggle:hover .dflash-pick-modal__section-label--remote {
-  color: #a5f3fc;
+  color: var(--fixed-cyan-200);
 }
 
 .dflash-pick-modal__remote-toggle:disabled {
@@ -780,9 +780,9 @@
 .dflash-pick-modal__remote-status,
 .dflash-pick-modal__remote-collapsed-hint {
   margin: 0;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   line-height: 1.35;
-  color: color-mix(in srgb, #67e8f9 65%, transparent);
+  color: var(--fixed-cyan-300-a65);
 }
 
 .dflash-pick-modal__section-head {
@@ -793,20 +793,20 @@
 }
 
 .dflash-pick-modal__section-label {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: color-mix(in srgb, #c4b5fd 88%, transparent);
+  color: var(--fixed-violet-300-a88);
 }
 
 .dflash-pick-modal__section-label--remote {
-  color: color-mix(in srgb, #67e8f9 90%, transparent);
+  color: var(--fixed-cyan-300-a9);
 }
 
 .dflash-pick-modal__section-badge {
   flex-shrink: 0;
-  font-size: 7px;
+  font-size: var(--type-micro);
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -816,15 +816,15 @@
 }
 
 .dflash-pick-modal__section-badge--local {
-  color: #c4b5fd;
-  border-color: color-mix(in srgb, #a78bfa 40%, transparent);
-  background: color-mix(in srgb, #6d28d9 18%, transparent);
+  color: var(--fixed-violet-300);
+  border-color: var(--fixed-violet-400-a4);
+  background: var(--fixed-violet-700-a18);
 }
 
 .dflash-pick-modal__section-badge--remote {
-  color: #a5f3fc;
-  border-color: color-mix(in srgb, #22d3ee 45%, transparent);
-  background: color-mix(in srgb, #0891b2 22%, transparent);
+  color: var(--fixed-cyan-200);
+  border-color: var(--fixed-cyan-400-a45);
+  background: var(--fixed-c-0891b2-a22);
 }
 
 /* Remote HF paste — cyan dashed plate, distinct from violet local cards */
@@ -836,80 +836,80 @@
   margin-top: 0.15rem;
   padding: 0.55rem 0.55rem 0.5rem;
   border-radius: 3px;
-  border: 1px dashed color-mix(in srgb, #22d3ee 48%, transparent);
+  border: 1px dashed var(--fixed-cyan-400-a48);
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, #042f2e 55%, #000 45%) 0%,
-      color-mix(in srgb, #000 70%, #083344 30%) 100%
+      color-mix(in srgb, var(--fixed-c-042f2e) 55%, var(--fixed-black) 45%) 0%,
+      color-mix(in srgb, var(--fixed-black) 70%, #083344 30%) 100%
     );
-  box-shadow: inset 0 1px 0 color-mix(in srgb, #22d3ee 12%, transparent);
+  box-shadow: inset 0 1px 0 var(--fixed-cyan-400-a12);
 }
 
 .dflash-pick-modal__manual--active {
   border-style: solid;
-  border-color: color-mix(in srgb, #22d3ee 70%, transparent);
+  border-color: var(--fixed-cyan-400-a7);
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, #0e7490 28%, #000 72%) 0%,
-      color-mix(in srgb, #042f2e 50%, #000 50%) 100%
+      color-mix(in srgb, var(--fixed-c-0e7490) 28%, var(--fixed-black) 72%) 0%,
+      color-mix(in srgb, var(--fixed-c-042f2e) 50%, var(--fixed-black) 50%) 100%
     );
   box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #67e8f9 18%, transparent),
-    0 0 0 1px color-mix(in srgb, #22d3ee 18%, transparent);
+    inset 0 1px 0 var(--fixed-cyan-300-a18),
+    0 0 0 1px var(--fixed-cyan-400-a18);
 }
 
 .dflash-pick-modal__manual-label {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: color-mix(in srgb, #a5f3fc 85%, transparent);
+  color: var(--fixed-cyan-200-a85);
 }
 
 .dflash-pick-modal__manual-input {
   width: 100%;
-  font-size: 11px;
+  font-size: var(--type-sm);
   font-family: inherit;
   padding: 0.4rem 0.5rem;
   border-radius: 2px;
-  border: 1px solid color-mix(in srgb, #22d3ee 35%, transparent);
-  background: color-mix(in srgb, #000 72%, transparent);
-  color: #ecfeff;
+  border: 1px solid var(--fixed-cyan-400-a35);
+  background: var(--fixed-black-a72);
+  color: var(--fixed-cyan-50);
   outline: none;
 }
 
 .dflash-pick-modal__manual-input:focus {
-  border-color: color-mix(in srgb, #67e8f9 75%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, #22d3ee 25%, transparent);
+  border-color: var(--fixed-cyan-300-a75);
+  box-shadow: 0 0 0 1px var(--fixed-cyan-400-a25);
 }
 
 .dflash-pick-modal__manual-input::placeholder {
-  color: color-mix(in srgb, #67e8f9 38%, transparent);
+  color: var(--fixed-cyan-300-a38);
 }
 
 .dflash-pick-modal__manual-hint {
   margin: 0;
-  font-size: 7px;
+  font-size: var(--type-micro);
   line-height: 1.35;
   color: color-mix(in srgb, #99f6e4 72%, transparent);
 }
 
 .dflash-pick-modal__btn--primary-remote {
-  color: #ecfeff;
-  border-color: color-mix(in srgb, #22d3ee 55%, transparent);
-  background: color-mix(in srgb, #0e7490 60%, #041016 40%);
+  color: var(--fixed-cyan-50);
+  border-color: var(--fixed-cyan-400-a55);
+  background: color-mix(in srgb, var(--fixed-c-0e7490) 60%, var(--fixed-c-041016) 40%);
 }
 
 .dflash-pick-modal__btn--primary-remote:hover {
-  background: color-mix(in srgb, #0891b2 70%, #041016 30%);
+  background: color-mix(in srgb, var(--fixed-c-0891b2) 70%, var(--fixed-c-041016) 30%);
 }
 
 .dflash-pick-modal__error {
   margin: 0;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   line-height: 1.35;
-  color: #fca5a5;
+  color: var(--fixed-c-fca5a5);
 }
 
 .full-auto-cockpit__header-right {
@@ -924,7 +924,7 @@
 .harness-launch-btn {
   width: 100%;
   text-align: left;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   padding: 0.45rem 0.6rem;
   border-radius: 3px;
   border: 1px solid transparent;
@@ -955,7 +955,7 @@
   justify-content: center;
   padding: 1rem;
   /* Dim only — never backdrop-filter blur (keeps iGPU pegged while open) */
-  background: color-mix(in srgb, #000 62%, transparent);
+  background: var(--fixed-black-a62);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
@@ -969,14 +969,14 @@
   border: 1px solid color-mix(in srgb, var(--theme-accent) 40%, var(--theme-frame-border, transparent));
   background: var(--theme-panel);
   box-shadow:
-    0 12px 40px rgba(0, 0, 0, 0.45),
+    0 12px 40px var(--fixed-black-a45),
     0 0 0 1px color-mix(in srgb, var(--theme-frame-border, transparent) 50%, transparent);
   color: var(--theme-text);
 }
 
 .harness-confirm-title {
   margin: 0 0 0.65rem;
-  font-size: 10px;
+  font-size: var(--type-body);
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -1027,7 +1027,7 @@
 
 .harness-confirm-path {
   margin: 0 0 1rem;
-  font-size: 9px !important;
+  font-size: var(--type-label) !important;
   line-height: 1.4;
   word-break: break-all;
   color: var(--theme-text-muted);
@@ -1037,7 +1037,7 @@
 .harness-confirm-path__label {
   display: inline-block;
   margin-right: 0.45rem;
-  font-size: 7px;
+  font-size: var(--type-micro);
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -1061,7 +1061,7 @@
 /* Role chip on engine cards — theme tokens, readable at 1440p */
 .harness-engine-role-chip {
   display: inline-block;
-  font-size: 10px;
+  font-size: var(--type-body);
   font-weight: 800;
   letter-spacing: 0.12em;
   padding: 0.12rem 0.4rem;
@@ -1084,7 +1084,7 @@
 }
 
 .running-engine-port {
-  font-size: 12px;
+  font-size: var(--type-md);
   font-weight: 700;
   letter-spacing: 0.04em;
   color: var(--theme-text);
@@ -1151,7 +1151,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--worker {
 
 html[data-harness-open="1"] .running-engine-card.harness-engine--picked,
 html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--picked {
-  outline: 1px dashed color-mix(in srgb, #ecfeff 55%, transparent);
+  outline: 1px dashed var(--fixed-cyan-50-a55);
   outline-offset: 1px;
 }
 
@@ -1233,7 +1233,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 .full-auto-cockpit__row-label {
   width: 4.75rem;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   color: color-mix(in srgb, var(--theme-industrial-muted) 55%, transparent);
 }
 
@@ -1312,13 +1312,13 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   transform: translateX(-50%);
   margin-bottom: 2px;
   padding: 1px 5px;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   font-weight: 700;
   letter-spacing: 0.03em;
   white-space: nowrap;
   color: var(--theme-text);
-  background: color-mix(in srgb, #000 72%, transparent);
-  border: 1px solid color-mix(in srgb, #fff 12%, transparent);
+  background: var(--fixed-black-a72);
+  border: 1px solid var(--fixed-white-a12);
   pointer-events: none;
   z-index: 6;
 }
@@ -1340,7 +1340,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 .full-auto-cockpit__ctx-footer-hover {
   min-width: 0;
   text-align: left;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   font-weight: 700;
   letter-spacing: 0.03em;
   color: color-mix(in srgb, var(--theme-text) 78%, transparent);
@@ -1389,7 +1389,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   display: inline-flex;
   align-items: center;
   gap: 0.28rem;
-  font-size: 7px;
+  font-size: var(--type-micro);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: color-mix(in srgb, var(--theme-industrial-muted) 55%, transparent);
@@ -1411,7 +1411,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 }
 
 .full-auto-cockpit__ctx-swatch--learned {
-  background: #22d3ee;
+  background: var(--fixed-cyan-400);
   box-shadow: 0 0 4px rgba(34, 211, 238, 0.75);
 }
 
@@ -1419,7 +1419,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   width: 2px;
   background: repeating-linear-gradient(
     to bottom,
-    #22d3ee 0 2px,
+    var(--fixed-cyan-400) 0 2px,
     transparent 2px 3.5px
   );
 }
@@ -1427,7 +1427,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 .full-auto-cockpit__ctx-swatch--limit {
   width: 2px;
   height: 9px;
-  background: #fbbf24;
+  background: var(--fixed-amber-400);
   box-shadow: 0 0 4px rgba(251, 191, 36, 0.7);
 }
 
@@ -1437,12 +1437,12 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   flex-shrink: 0;
   margin: 0;
   padding: 0.08rem 0.32rem;
-  font-size: 7px;
+  font-size: var(--type-micro);
   letter-spacing: 0.08em;
   line-height: 1.2;
   text-transform: uppercase;
-  color: color-mix(in srgb, #22d3ee 75%, transparent);
-  border: 1px solid color-mix(in srgb, #22d3ee 32%, transparent);
+  color: var(--fixed-cyan-400-a75);
+  border: 1px solid var(--fixed-cyan-400-a32);
   background: color-mix(in srgb, var(--theme-panel) 55%, transparent);
   border-radius: 2px;
   cursor: pointer;
@@ -1472,13 +1472,13 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 }
 
 .full-auto-cockpit__ctx-marks-toggle:hover {
-  color: #22d3ee;
-  border-color: color-mix(in srgb, #22d3ee 55%, transparent);
+  color: var(--fixed-cyan-400);
+  border-color: var(--fixed-cyan-400-a55);
 }
 
 .full-auto-cockpit__ctx-value {
   display: inline-block;
-  font-size: 15px;
+  font-size: var(--type-lg);
   font-weight: 700;
   line-height: 1;
   color: var(--theme-accent-bright);
@@ -1507,7 +1507,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   display: inline-block;
   width: 1ch;
   flex-shrink: 0;
-  font-size: 11px;
+  font-size: var(--type-sm);
   line-height: 1;
   text-align: center;
   color: color-mix(in srgb, var(--theme-accent-bright) 40%, transparent);
@@ -1516,7 +1516,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 .full-auto-cockpit__ctx-per-slot {
   display: inline-block;
-  font-size: 11px;
+  font-size: var(--type-sm);
   line-height: 1;
   color: color-mix(in srgb, var(--theme-accent-bright) 65%, transparent);
   text-align: left;
@@ -1601,7 +1601,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 
 .full-auto-cockpit__copy {
-  font-size: 7px;
+  font-size: var(--type-micro);
   padding: 0.15rem 0.45rem;
   border-radius: 2px;
   border: 1px solid var(--theme-chip-border);
@@ -1650,7 +1650,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 }
 
 .cockpit-slider-mark-label {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   color: color-mix(in srgb, var(--theme-industrial-muted) 55%, transparent);
   transition: color 0.15s ease, text-shadow 0.15s ease;
 }
@@ -1659,7 +1659,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   color: var(--theme-accent-bright);
   text-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent-glow) 50%, transparent);
   font-weight: 700;
-  font-size: 11px;
+  font-size: var(--type-sm);
   letter-spacing: 0.04em;
 }
 
@@ -1673,7 +1673,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 }
 
 .cockpit-slider-badge--hero {
-  font-size: 11px;
+  font-size: var(--type-sm);
   font-weight: 700;
   color: var(--theme-accent-bright);
   text-shadow: 0 0 12px color-mix(in srgb, var(--theme-accent-glow) 55%, transparent);
@@ -1691,19 +1691,19 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 /* Boost accents — only when emphasize=true (capable). MTP=green, DFlash=violet */
 .cockpit-slider-mark-label--green {
   color: var(--cockpit-mtp);
-  text-shadow: 0 0 8px var(--cockpit-mtp-dim, color-mix(in srgb, #4ade80 40%, transparent));
+  text-shadow: 0 0 8px var(--cockpit-mtp-dim, var(--fixed-green-400-a4));
 }
 .cockpit-slider-mark-label--green.cockpit-slider-mark-label--selected {
   color: var(--cockpit-mtp);
-  text-shadow: 0 0 10px var(--cockpit-mtp-dim, color-mix(in srgb, #4ade80 55%, transparent));
+  text-shadow: 0 0 10px var(--cockpit-mtp-dim, var(--fixed-green-400-a55));
 }
 .cockpit-slider-mark-label--violet {
   color: var(--cockpit-dflash);
-  text-shadow: 0 0 8px var(--cockpit-dflash-dim, color-mix(in srgb, #a78bfa 40%, transparent));
+  text-shadow: 0 0 8px var(--cockpit-dflash-dim, var(--fixed-violet-400-a4));
 }
 .cockpit-slider-mark-label--violet.cockpit-slider-mark-label--selected {
   color: var(--cockpit-dflash);
-  text-shadow: 0 0 10px var(--cockpit-dflash-dim, color-mix(in srgb, #a78bfa 55%, transparent));
+  text-shadow: 0 0 10px var(--cockpit-dflash-dim, var(--fixed-violet-400-a55));
 }
 
 .cockpit-slider-mark-label--muted {
@@ -1714,17 +1714,17 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   font-style: italic;
   letter-spacing: 0.02em;
   opacity: 0.92;
-  color: color-mix(in srgb, #fbbf24 75%, var(--theme-industrial-muted) 25%);
+  color: color-mix(in srgb, var(--fixed-amber-400) 75%, var(--theme-industrial-muted) 25%);
 }
 
 .cockpit-slider-mark-label--custom.cockpit-slider-mark-label--selected {
-  color: #fcd34d;
+  color: var(--fixed-amber-300);
   opacity: 1;
 }
 
 .cockpit-slider-mark-wrap--custom .cockpit-slider-mark {
   width: 2px;
-  background: color-mix(in srgb, #fbbf24 55%, transparent);
+  background: var(--fixed-amber-400-a55);
 }
 
 .cockpit-slider-mark-label--strike {
@@ -1758,15 +1758,15 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 .cockpit-slider-mark--green {
   background: var(--cockpit-mtp);
-  box-shadow: 0 0 5px var(--cockpit-mtp-dim, color-mix(in srgb, #4ade80 45%, transparent));
+  box-shadow: 0 0 5px var(--cockpit-mtp-dim, var(--fixed-green-400-a45));
 }
 .cockpit-slider-mark--violet {
   background: var(--cockpit-dflash);
-  box-shadow: 0 0 5px var(--cockpit-dflash-dim, color-mix(in srgb, #a78bfa 45%, transparent));
+  box-shadow: 0 0 5px var(--cockpit-dflash-dim, var(--fixed-violet-400-a45));
 }
 
 .cockpit-slider-above-label {
-  font-size: 6px;
+  font-size: var(--type-hairline);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   line-height: 1;
@@ -1782,13 +1782,13 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 /* Config chip keyboard focus indicator */
 .value-chip:focus-visible {
-  outline: 1px solid rgba(0, 229, 255, 0.8);
+  outline: 1px solid var(--fixed-rgba-0-229-255-a8);
   outline-offset: 1px;
   box-shadow: 0 0 8px rgba(0, 229, 255, 0.3);
 }
 
 .value-chip-active:focus-visible {
-  outline: 1px solid rgba(0, 229, 255, 0.8);
+  outline: 1px solid var(--fixed-rgba-0-229-255-a8);
   outline-offset: 1px;
   box-shadow: 0 0 12px rgba(0, 229, 255, 0.4);
 }
@@ -1831,7 +1831,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 }
 
 .harness-connect__title {
-  font-size: 11px;
+  font-size: var(--type-sm);
   font-weight: 800;
   letter-spacing: 0.2em;
   color: var(--theme-accent-bright, var(--theme-accent));
@@ -1844,19 +1844,19 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 }
 
 .harness-connect__dismiss--stop {
-  color: #fecaca;
-  border: 1px solid color-mix(in srgb, #ef4444 75%, transparent);
-  background: color-mix(in srgb, #991b1b 55%, #1a0505 45%);
-  font-size: 11px;
+  color: var(--fixed-c-fecaca);
+  border: 1px solid var(--fixed-red-500-a75);
+  background: color-mix(in srgb, var(--fixed-c-991b1b) 55%, var(--fixed-near-black-red) 45%);
+  font-size: var(--type-sm);
   font-weight: 800;
   padding: 0.15rem 0.5rem;
   border-radius: 2px;
 }
 
 .harness-connect__dismiss--stop:hover {
-  color: #fff;
-  border-color: #ef4444;
-  background: color-mix(in srgb, #dc2626 70%, #1a0505 30%);
+  color: var(--fixed-white);
+  border-color: var(--fixed-red-500);
+  background: color-mix(in srgb, var(--fixed-c-dc2626) 70%, var(--fixed-near-black-red) 30%);
 }
 
 /* ── Zone 1 — bound seats (the orientation hero) ────────────────────────── */
@@ -1924,7 +1924,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  font-size: 8px;
+  font-size: var(--type-tiny);
   font-weight: 800;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -1942,14 +1942,14 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   width: 5px;
   height: 5px;
   border-radius: 999px;
-  background: #f59e0b;
+  background: var(--fixed-amber-500);
   opacity: 0.7;
 }
 
 .harness-connect__seat-status--run {
-  background: #4ade80;
+  background: var(--fixed-green-400);
   opacity: 1;
-  box-shadow: 0 0 8px color-mix(in srgb, #4ade80 70%, transparent);
+  box-shadow: 0 0 8px var(--fixed-green-400-a7);
 }
 
 .harness-connect__link {
@@ -1991,7 +1991,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 }
 
 .harness-connect__row-label {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   font-weight: 800;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -2014,11 +2014,11 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 }
 
 .harness-connect__row-note--warn {
-  color: #fde68a;
+  color: var(--fixed-amber-200);
 }
 
 .harness-connect__row-action {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   padding: 0.14rem 0.45rem;
@@ -2051,7 +2051,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 }
 
 .harness-connect__agent-chip {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   font-weight: 700;
   min-width: 1.9rem;
   padding: 0.12rem 0.35rem;
@@ -2075,8 +2075,8 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 .harness-connect__agent-chip--over:not(.harness-connect__agent-chip--on) {
   border-style: dashed;
-  border-color: color-mix(in srgb, #f59e0b 50%, transparent);
-  color: #fde68a;
+  border-color: var(--fixed-amber-500-a5);
+  color: var(--fixed-amber-200);
 }
 
 .harness-connect__relaunch {
@@ -2088,19 +2088,19 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 .harness-connect__relaunch-btn {
   align-self: flex-start;
-  font-size: 9px;
+  font-size: var(--type-label);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   padding: 0.3rem 0.55rem;
   border-radius: 2px;
-  border: 1px solid color-mix(in srgb, #f59e0b 55%, transparent);
+  border: 1px solid var(--fixed-amber-500-a55);
   background: transparent;
-  color: #fde68a;
+  color: var(--fixed-amber-200);
   cursor: pointer;
 }
 
 .harness-connect__relaunch-btn:hover:not(:disabled) {
-  background: color-mix(in srgb, #f59e0b 12%, transparent);
+  background: var(--fixed-amber-500-a12);
 }
 
 .harness-connect__launch-row {
@@ -2116,7 +2116,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  font-size: 9px;
+  font-size: var(--type-label);
   color: var(--theme-text-muted);
   cursor: pointer;
   user-select: none;
@@ -2124,7 +2124,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 /* GO — the single solid anchor of the whole veil */
 .harness-connect__go {
-  font-size: 11px;
+  font-size: var(--type-sm);
   font-weight: 800;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -2168,12 +2168,12 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 }
 
 .harness-connect__error {
-  font-size: 9px;
+  font-size: var(--type-label);
   color: var(--theme-crit);
 }
 
 .harness-connect__msg {
-  font-size: 9px;
+  font-size: var(--type-label);
   color: var(--theme-text-muted);
 }
 
@@ -2181,17 +2181,17 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   padding: 0.55rem;
   border-radius: 4px;
   border: 1px solid var(--theme-border);
-  background: color-mix(in srgb, #000 35%, transparent);
+  background: var(--fixed-black-a35);
 }
 
 .harness-connect__disclaimer-title {
-  font-size: 9px;
+  font-size: var(--type-label);
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
 .harness-connect__disclaimer-body {
-  font-size: 8px;
+  font-size: var(--type-tiny);
   line-height: 1.35;
   color: var(--theme-text-muted);
   max-height: 8rem;
@@ -2263,7 +2263,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 .harness-connect--veil .harness-connect__go {
   padding: 0.32rem 0.8rem;
-  font-size: 10px;
+  font-size: var(--type-body);
 }
 
 /* ── Ink on rain — veil content: halos + ink strips, no boxes ───────────── */
@@ -2275,7 +2275,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   --hcv-halo:
     0 0 7px var(--hcv-ink),
     0 0 2px var(--hcv-ink),
-    0 1px 3px rgba(0, 0, 0, 0.55);
+    0 1px 3px var(--fixed-black-a55);
   --hcv-strip: color-mix(in srgb, var(--hcv-ink) 88%, transparent);
   --hcv-seam: color-mix(in srgb, var(--theme-border) 55%, transparent);
 }
@@ -2316,7 +2316,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  font-size: 9px;
+  font-size: var(--type-label);
   font-weight: 800;
   letter-spacing: 0.14em;
   color: var(--theme-text-muted);
@@ -2356,8 +2356,8 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   text-shadow: none;
   background: linear-gradient(
     135deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw) 82%, #0a0c0f 18%),
-    color-mix(in srgb, var(--theme-accent) 72%, #0a0c0f 28%)
+    color-mix(in srgb, var(--theme-harness-brain-raw) 82%, var(--fixed-c-0a0c0f) 18%),
+    color-mix(in srgb, var(--theme-accent) 72%, var(--fixed-c-0a0c0f) 28%)
   );
   color: #07130c;
   box-shadow:
@@ -2368,8 +2368,8 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 .harness-connect--veil .harness-connect__go--twin {
   background: linear-gradient(
     135deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw) 82%, #0a0c0f 18%),
-    color-mix(in srgb, var(--theme-harness-worker-raw) 80%, #0a0c0f 20%)
+    color-mix(in srgb, var(--theme-harness-brain-raw) 82%, var(--fixed-c-0a0c0f) 18%),
+    color-mix(in srgb, var(--theme-harness-worker-raw) 80%, var(--fixed-c-0a0c0f) 20%)
   );
   box-shadow:
     0 0 18px color-mix(in srgb, var(--theme-harness-worker-raw) 40%, transparent),
@@ -2395,7 +2395,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   background: radial-gradient(
     130% 130% at 50% 42%,
     transparent 58%,
-    rgba(0, 0, 0, 0.32) 100%
+    var(--fixed-black-a32) 100%
   );
 }
 
@@ -2453,7 +2453,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 .err-detail {
   color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
-  background: color-mix(in srgb, #000 30%, transparent);
+  background: var(--fixed-black-a3);
 }
 
 .err-reload {

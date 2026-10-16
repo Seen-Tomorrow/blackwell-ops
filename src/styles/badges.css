@@ -65,8 +65,8 @@
 .badge-moe__sub--dim { opacity: 0.7; }
 
 .badge-moe--gold {
-  background: linear-gradient(180deg, #dfc9a8 0%, #FBBF24 40%, #b08700 100%);
-  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.4), 0 0 12px rgba(251, 191, 36, 0.3);
+  background: linear-gradient(180deg, #dfc9a8 0%, var(--fixed-amber-400) 40%, #b08700 100%);
+  box-shadow: inset 0 1px 2px var(--fixed-white-a4), 0 0 12px rgba(251, 191, 36, 0.3);
   color: #451A03;
 }
 
@@ -145,9 +145,9 @@
    bevel hooks produced (fusion-display.css L3636-3653). Data, not chrome: do not
    tokenize. ok = accent · caution = amber-300 · warn = orange-400 · hot = red-500. */
 .bar-need-fill.bar-need--ok { color: var(--theme-accent); }
-.bar-need-fill.bar-need--caution { color: #fcd34d; }
-.bar-need-fill.bar-need--warn { color: #fb923c; }
-.bar-need-fill.bar-need--hot { color: #ef4444; }
+.bar-need-fill.bar-need--caution { color: var(--fixed-amber-300); }
+.bar-need-fill.bar-need--warn { color: var(--fixed-orange-400); }
+.bar-need-fill.bar-need--hot { color: var(--fixed-red-500); }
 
 /* ── Memory forecast SOURCE accent (MEMORY_SOURCE_ACCENT) ───────
    probe = cyan instrument (was cyan-400) · learned = amber premium
