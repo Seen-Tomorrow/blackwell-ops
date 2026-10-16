@@ -229,3 +229,12 @@ This trade removes ~1,000 literal paint sites and centralizes the palette.
 - Verification: every effective token (232) in all three themes matches the
   pre-refactor value exactly - 0 mismatches. Build, tsc, vitest 108/108 and
   css:audit all pass. User confirmed zero visual drift and SLATE boot.
+
+## Seed-model derivation (item 1 follow-up)
+
+- 23 tokens moved from per-theme repeats to base derivations
+  (`var()` aliases + `color-mix(..., transparent)` tints).
+- Theme declarations: 300 -> 275 (MATRIX 92, SLATE 3, ARCTIC 180).
+- `app-themes.ts`: 24,049 -> 22,968 B; main JS 953.6 -> 952.7 kB.
+- Computed-color verification: every effective token in all three themes
+  matches its pre-derivation value (0 mismatches); user confirmed zero drift.

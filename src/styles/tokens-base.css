@@ -324,7 +324,7 @@
   /* App theme tokens — defaults (matrix); overridden by applyAppTheme() */
   --theme-bg: #080808;
   --theme-text: #d8d0d0;
-  --theme-text-muted: #5a5a6a;
+  --theme-text-muted: var(--theme-chrome-control-text);
   --theme-panel: #121218;
   --theme-panel-accent: #0c0c0c;
   --theme-border: #222228;
@@ -341,11 +341,11 @@
   --theme-accent-dim: #5a5a6a;
   --theme-accent-glow: rgba(160, 160, 176, 0.22);
   --theme-accent-soft: rgba(120, 120, 140, 0.08);
-  --theme-chip-bg: rgba(120, 120, 140, 0.06);
+  --theme-chip-bg: color-mix(in srgb, var(--theme-accent-soft) 70%, transparent);
   --theme-chip-border: rgba(140, 140, 160, 0.32);
   --theme-chip-text: #7a7a8a;
   --theme-chip-hover-border: rgba(180, 180, 200, 0.45);
-  --theme-chip-hover-text: #c8c8d0;
+  --theme-chip-hover-text: var(--theme-accent-bright);
   --theme-chip-active-bg: rgba(160, 160, 176, 0.14);
   --theme-chip-active-border: rgba(200, 200, 216, 0.55);
   --theme-chip-active-text: #e0e0e8;
@@ -523,7 +523,7 @@
    * HW monitor + OVERCLOCKING signal colors (launch-rail-tel / gpu-oc).
    * Themes override for palette cohesion; CSS falls back to these.
    */
-  --theme-tel-vram: var(--theme-accent-bright);
+  --theme-tel-vram: var(--display-face-gpu-readout);
   --theme-tel-ram: #4da3ff;
   --theme-tel-amber: #f59e0b;
   --theme-tel-amber-deep: #b45309;
@@ -576,7 +576,7 @@
   --theme-card-selected-accent: #8a8a9a;
   --theme-scrollbar-track: rgba(15, 15, 18, 0.5);
   --theme-scrollbar-thumb: rgba(138, 138, 154, 0.35);
-  --theme-secondary: #7a7a8a;
+  --theme-secondary: var(--theme-footer-border);
   --theme-secondary-bright: #a0a0b0;
   --theme-selection-bg: #8a8a9a;
   --theme-selection-text: #0c0c0c;
@@ -587,7 +587,7 @@
   --theme-eject-card-text: #d0d0d8;
   --theme-eject-card-muted: #6a6a7a;
   --theme-eject-badge-bg: #141418;
-  --theme-eject-card-border: var(--theme-frame-border);
+  --theme-eject-card-border: var(--theme-border-subtle);
   /* frame-border-strong available for buttons / inputs */
   --theme-eject-card-hover-border: var(--theme-frame-border-strong);
   --theme-eject-card-selected-bg: rgba(160, 160, 176, 0.16);
@@ -599,13 +599,13 @@
   --theme-provider-pill-hover-border: #c8a860;
   --theme-provider-pill-hover-text: #c8a860;
   --theme-provider-pill-active-bg: #c8a860;
-  --theme-provider-pill-active-border: #c8a860;
+  --theme-provider-pill-active-border: var(--theme-harness-brain-raw);
   --theme-provider-pill-active-text: #1a1408;
-  --theme-header-border: #222228;
+  --theme-header-border: var(--theme-chrome-control-border);
   --theme-header-title: #d0d0d8;
   --theme-header-subtitle: rgba(208, 208, 216, 0.35);
-  --theme-header-logo: #8a8a9a;
-  --theme-nav-text: #5a5a6a;
+  --theme-header-logo: var(--theme-accent);
+  --theme-nav-text: var(--theme-chrome-control-text);
   --theme-nav-hover-text: #d0d0d8;
   --theme-nav-hover-bg: rgba(200, 200, 210, 0.06);
   --theme-nav-active-bg: rgba(200, 200, 210, 0.065);
@@ -613,11 +613,11 @@
   --theme-nav-active-text: #c8c8d0;
   --theme-chrome-control-border: #222228;
   --theme-chrome-control-text: #5a5a6a;
-  --theme-chrome-control-hover: #c8c8d0;
+  --theme-chrome-control-hover: var(--display-face-gpu-readout);
   --theme-footer-bg: #0c0c0c;
   --theme-footer-border: #7a7a8a;
   --theme-footer-text: rgba(208, 208, 216, 0.45);
-  --theme-status-nominal: #c8c8d0;
+  --theme-status-nominal: var(--theme-nav-active-text);
 }
 
 * {
@@ -632,9 +632,9 @@
   --theme-harness-brain-text: var(--theme-secondary-bright, var(--theme-provider-pill-hover-text));
   --theme-dflash-strip-bg: color-mix(in srgb, #0a0612 88%, #a78bfa 12%);
   --theme-dflash-strip-border: color-mix(in srgb, #a78bfa 50%, transparent);
-  --theme-dflash-strip-text: #ddd6fe;
+  --theme-dflash-strip-text: var(--theme-dflash-strip-btn-ghost-text);
   --theme-dflash-strip-text-soft: color-mix(in srgb, #ddd6fe 82%, transparent);
-  --theme-dflash-strip-btn-text: #ddd6fe;
+  --theme-dflash-strip-btn-text: var(--theme-dflash-strip-btn-ghost-text);
   --theme-dflash-strip-btn-border: color-mix(in srgb, #a78bfa 45%, transparent);
   --theme-dflash-strip-btn-bg: transparent;
   --theme-dflash-strip-btn-hover-bg: color-mix(in srgb, #a78bfa 16%, transparent);
@@ -643,7 +643,7 @@
   --theme-dflash-strip-shadow: inset 0 1px 0 color-mix(in srgb, #a78bfa 14%, transparent);
   --theme-dflash-mtp-bg: color-mix(in srgb, #040b06 88%, #4ade80 12%);
   --theme-dflash-mtp-border: color-mix(in srgb, #4ade80 50%, transparent);
-  --theme-dflash-mtp-text: #bbf7d0;
+  --theme-dflash-mtp-text: var(--theme-dflash-mtp-btn-text);
   --theme-dflash-mtp-text-soft: color-mix(in srgb, #bbf7d0 82%, transparent);
   --theme-dflash-mtp-btn-text: #bbf7d0;
   --theme-dflash-mtp-btn-border: color-mix(in srgb, #4ade80 45%, transparent);
@@ -652,7 +652,7 @@
   --theme-dflash-mtp-btn-hover-border: color-mix(in srgb, #4ade80 75%, transparent);
   --theme-dflash-mtp-shadow: inset 0 1px 0 color-mix(in srgb, #4ade80 14%, transparent);
   --display-face-fc-label-bg: color-mix(in srgb, var(--theme-accent) 16%, transparent);
-  --display-face-fc-label-fg: var(--display-face-text);
+  --display-face-fc-label-fg: var(--display-face-control-active-text);
   --display-face-fc-label-border: color-mix(in srgb, var(--theme-accent) 28%, transparent);
   --display-face-fc-label-ram-bg: color-mix(in srgb, #60a5fa 14%, transparent);
   --display-face-fc-label-ram-fg: #93c5fd;
