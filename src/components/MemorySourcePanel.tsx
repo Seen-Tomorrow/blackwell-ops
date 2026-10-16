@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { MemorySource } from "../lib/types";
 import type { FitProbeMode } from "../services/vram/lowVramProbe";
-import { isDevBuild } from "../lib/build";
 import {
   MEMORY_SOURCE_ACCENT,
   MEMORY_SOURCE_LABELS,
@@ -255,8 +254,6 @@ export interface MemorySourceReprobeProps {
   className?: string;
   needsLowVramReprobe?: boolean;
   overFreeReprobe?: boolean;
-  /** DEV: --fit off -ngl 999, ignore forecast gate. */
-  onYoloLaunch?: () => void;
 }
 
 export function MemorySourceReprobe({
@@ -267,7 +264,6 @@ export function MemorySourceReprobe({
   className,
   needsLowVramReprobe = false,
   overFreeReprobe = false,
-  onYoloLaunch,
 }: MemorySourceReprobeProps) {
   const view = getMemorySourceView(memorySource, { onValidate, hideValidate });
   if (!view.canProbe) return null;
@@ -313,19 +309,6 @@ export function MemorySourceReprobe({
       >
         {autoLabel}
       </button>
-      {isDevBuild() && onYoloLaunch ? (
-        <button
-          type="button"
-          className="vram-fc-source__reprobe vram-fc-header__reprobe vram-fc-header__reprobe--yolo"
-          onClick={(e) => {
-            e.stopPropagation();
-            onYoloLaunch();
-          }}
-          title="DEV: --fit off --n-gpu-layers 999. No auto offload. May OOM or use shared GPU memory."
-        >
-          YOLO
-        </button>
-      ) : null}
     </span>
   );
 }

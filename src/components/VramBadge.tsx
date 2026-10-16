@@ -20,7 +20,6 @@ interface VramBadgeProps {
   onDeviceSelect?: (gpuIndex: number) => void;
   isValidating?: boolean;
   onValidate?: () => void;
-  onYoloLaunch?: () => void;
   activeEngineAlias?: string;
   activeEnginePort?: number;
   selectedSlotIdx?: number | null;
@@ -73,7 +72,7 @@ const DRAFT_FACE_COPY = {
  * Glass height is owned by EngineGpuForecast — do not write ancestor styles here.
  */
 export default function VramBadge({
-  manifest, gpus, modelMeta, selectedGpuIndices, onDeviceSelect, isValidating, onValidate, onYoloLaunch,
+  manifest, gpus, modelMeta, selectedGpuIndices, onDeviceSelect, isValidating, onValidate,
   activeEngineAlias, activeEnginePort, selectedSlotIdx, supportsFusion = true, engineStatus,
   gpuMask = "", vramTargetMib, modelLayerTotal, gpuLoadTargetsMib, offloadMode, onMoeSuggestionClick, hideMoeBadge = false,
   hideFitProbe = false, draftOnly = false, className,
@@ -296,7 +295,6 @@ export default function VramBadge({
             memorySource={memorySource}
             isValidating={isValidating}
             onValidate={onValidate}
-            onYoloLaunch={onYoloLaunch}
             needsLowVramReprobe={!!s.needsLowVramReprobe}
             overFreeReprobe={s.launchPaint === "offload" || s.launchPaint === "nofit"}
           />

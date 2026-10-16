@@ -85,7 +85,6 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     selectedGpuIndices,
     isValidating,
     onValidate,
-    onYoloLaunch,
     isModelRunning,
     activeEngineAlias,
     activeEnginePort,
@@ -374,7 +373,6 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
               onDeviceSelect={onDeviceSelect}
               isValidating={isValidating}
               onValidate={onValidate}
-              onYoloLaunch={onYoloLaunch}
               activeEngineAlias={activeEngineAlias}
               activeEnginePort={activeEnginePort}
               selectedSlotIdx={selectedSlotIdx}
@@ -493,7 +491,6 @@ export interface EngineGpuForecastProps {
   selectedGpuIndices: number[];
   isValidating: boolean;
   onValidate: () => void;
-  onYoloLaunch?: () => void;
   isModelRunning?: boolean;
   activeEngineAlias?: string;
   activeEnginePort?: number;

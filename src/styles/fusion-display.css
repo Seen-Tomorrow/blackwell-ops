@@ -2300,14 +2300,6 @@
 .vram-fc-source__status-hero.is-estimate {
   opacity: 0.92;
 }
-.vram-fc-header__reprobe--yolo {
-  color: #fff;
-  border-color: color-mix(in srgb, #f97316 70%, transparent);
-  background: color-mix(in srgb, #ea580c 78%, #000);
-}
-.vram-fc-header__reprobe--yolo:hover:not(:disabled) {
-  filter: brightness(1.1);
-}
 /* legacy alias */
 .vram-fc-source__prev-lab {
   display: block;
