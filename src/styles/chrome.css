@@ -81,10 +81,10 @@
   box-sizing: border-box;
   width: 100%;
   max-width: none;
-  height: var(--header-primary-h) !important;
-  min-height: var(--header-primary-h) !important;
-  max-height: var(--header-primary-h) !important;
-  padding: var(--seg-inset) !important;
+  height: var(--header-primary-h);
+  min-height: var(--header-primary-h);
+  max-height: var(--header-primary-h);
+  padding: var(--seg-inset);
   border: 1px solid color-mix(in srgb, var(--theme-bezel-edge-lo) 70%, var(--theme-chrome-control-border) 30%);
   border-radius: 5px;
   background: color-mix(in srgb, var(--theme-bg) 55%, var(--theme-panel-accent) 45%);
@@ -107,17 +107,17 @@
   .segment-switch__option,
 .app-header .app-header__primary-switch.segment-switch--multi .segment-switch__option,
 .app-header .app-header__primary-switch .segment-switch__option {
-  flex: 1 1 0 !important;
+  flex: 1 1 0;
   min-width: 0;
   height: 100%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   text-align: center;
-  font-size: calc(13px * var(--header-nav-scale)) !important;
+  font-size: calc(13px * var(--header-nav-scale));
   font-weight: 600;
   letter-spacing: 0.12em;
-  padding: 0 calc(12px * var(--header-nav-scale)) !important;
+  padding: 0 calc(12px * var(--header-nav-scale));
   line-height: 1.2;
   box-sizing: border-box;
 }
@@ -148,10 +148,10 @@
   box-sizing: border-box;
   width: max-content;
   max-width: 100%;
-  height: var(--header-sub-h) !important;
-  min-height: var(--header-sub-h) !important;
-  max-height: var(--header-sub-h) !important;
-  padding: var(--seg-inset) !important;
+  height: var(--header-sub-h);
+  min-height: var(--header-sub-h);
+  max-height: var(--header-sub-h);
+  padding: var(--seg-inset);
   border: 1px solid color-mix(in srgb, var(--theme-bezel-edge-lo) 70%, var(--theme-chrome-control-border) 30%);
   border-radius: 5px;
   background: color-mix(in srgb, var(--theme-bg) 55%, var(--theme-panel-accent) 45%);
@@ -172,10 +172,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: calc(11px * var(--header-nav-scale)) !important;
+  font-size: calc(11px * var(--header-nav-scale));
   font-weight: 600;
   letter-spacing: 0.1em;
-  padding: 0 calc(12px * var(--header-nav-scale)) !important;
+  padding: 0 calc(12px * var(--header-nav-scale));
   line-height: 1.2;
   box-sizing: border-box;
 }
@@ -544,10 +544,10 @@
 }
 
 .app-quick-settings .segment-switch.app-quick-settings__seg .segment-switch__option {
-  font-size: var(--chrome-fs-btn) !important;
-  line-height: 1.15 !important;
+  font-size: var(--chrome-fs-btn);
+  line-height: 1.15;
   letter-spacing: 0.06em;
-  padding: 0 calc(6px * var(--chrome-scale)) !important;
+  padding: 0 calc(6px * var(--chrome-scale));
   white-space: nowrap;
   /* Switching texture/theme must not resize the track (and twitch the whole
      well): each option takes the widest intrinsic label in its group. Covers

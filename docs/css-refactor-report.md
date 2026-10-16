@@ -280,3 +280,11 @@ This trade removes ~1,000 literal paint sites and centralizes the palette.
   (main CSS 412 -> 336); startup CSS 490.3 kB.
 - Cascade now: base primitives in launch.css, contextual overrides win by
   specificity. User confirmed visual stability.
+
+## .segment-switch ownership: zero !important
+
+- All 16 chrome header/quick-settings sizing importants removed; those selectors
+  already out-specify the base and Tailwind, and inline styles only drive thumb
+  geometry. Owner note added to launch.css.
+- Segment-switch important 16 -> 0. Source total 343 -> 327; main CSS 336 -> 320.
+  User confirmed visual stability.
