@@ -611,7 +611,7 @@
 /* Always on (was crt-only): crisp selected border, no glow halo. */
 .vram-forecast-display .gpu-card.gpu-selected,
 .industrial-display-area .vram-forecast-display .gpu-card.gpu-selected {
-  box-shadow: none !important;
+  box-shadow: none;
 }
 
 

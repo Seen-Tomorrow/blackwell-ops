@@ -709,8 +709,8 @@ html, body, #root {
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.gpu-selected {
+.gpu-selected.gpu-selected {
   z-index: 2;
-  border-color: var(--theme-gpu-topo-selected-border) !important;
+  border-color: var(--theme-gpu-topo-selected-border);
   box-shadow: var(--theme-gpu-topo-selected-shadow);
 }

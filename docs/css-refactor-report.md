@@ -310,3 +310,9 @@ This trade removes ~1,000 literal paint sites and centralizes the palette.
 - app-shell: compact-density spacing and monitor-focus hides de-importanted
   (12 declarations).
 - Source total 285 -> 252; main CSS 282 -> 252. User confirmed visual stability.
+
+## gpu-selected ownership batch
+
+- Base `.gpu-selected` selector raised to specificity 20 and border important
+  removed; launch rail and VRAM forecast selected overrides de-importanted.
+- Removed 5 declarations; source total 252 -> 247. User confirmed visual stability.

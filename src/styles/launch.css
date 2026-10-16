@@ -988,8 +988,8 @@
 
 /* Selection ring only when selected — no colored drop glow on every card */
 .launch-rail-tel .gpu-topo-card--selected {
-  box-shadow: none !important;
-  border-color: var(--theme-industrial-gpu-selected) !important;
+  box-shadow: none;
+  border-color: var(--theme-industrial-gpu-selected);
 }
 
 .launch-rail-tel__total-label {
@@ -1062,7 +1062,7 @@
   overflow: hidden;
 }.launch-rail-tel .gpu-topo-card--selected,
 .launch-rail-tel .gpu-topo-card--selected{
-  border-color: var(--theme-industrial-gpu-selected) !important;
+  border-color: var(--theme-industrial-gpu-selected);
 }
 
 .launch-rail-tel__cpu-head{
