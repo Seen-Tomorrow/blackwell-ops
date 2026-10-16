@@ -328,3 +328,9 @@ This trade removes ~1,000 literal paint sites and centralizes the palette.
 - Removed `!important` from the six context-specific white-paint corrections
   (Foundry, Config page, Model Hub/Catalog, engine logs, launch rail). Their
   specificity already beats Tailwind `.text-white`. Source total 224 -> 218.
+
+## Fusion display-face batch
+
+- Removed 15 importants: dotted-face backgrounds/pseudos, GPU name reset,
+  industrial frame surface, launch-rail total cell. Source total 218 -> 203.
+  User confirmed visual stability.

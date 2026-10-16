@@ -3564,9 +3564,9 @@ html[data-industrial-bezel="brush"] {
 
 /* Glass flush to frame; no outer Tailwind border/pad */
 .industrial-display-frame .phosphor-screen-inner.phosphor-display-surface {
-  border-radius: 4px !important;
-  border: none !important;
-  padding: 0 !important;
+  border-radius: 4px;
+  border: none;
+  padding: 0;
 }
 
 .industrial-display-frame .vram-badge-forecast {
@@ -3664,8 +3664,8 @@ html[data-industrial-bezel="brush"] {
 [data-display-face="dotted"] .phosphor-display-surface::after,
 [data-display-face="dotted"] .launch-rail-tel .phosphor-display-surface::before,
 [data-display-face="dotted"] .launch-rail-tel .phosphor-display-surface::after {
-  display: none !important;
-  opacity: 0 !important;
+  display: none;
+  opacity: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -3931,11 +3931,11 @@ html[data-industrial-bezel="brush"] {
 .phosphor-display-surface .gpu-selected .gpu-card-name,
 .industrial-display-area .gpu-card-name,
 .industrial-display-area .gpu-selected .gpu-card-name {
-  text-shadow: none !important;
-  box-shadow: none !important;
-  background: none !important;
-  background-image: none !important;
-  filter: none !important;
+  text-shadow: none;
+  box-shadow: none;
+  background: none;
+  background-image: none;
+  filter: none;
 }
 
 /*
@@ -3955,17 +3955,17 @@ html[data-industrial-bezel="brush"] {
  */
 [data-display-face="dotted"] .phosphor-screen-inner.phosphor-display-surface,
 [data-display-face="dotted"] .launch-rail-tel .phosphor-display-surface {
-  background-color: var(--display-face-dotted-bg, var(--display-face-bg-dark)) !important;
+  background-color: var(--display-face-dotted-bg, var(--display-face-bg-dark));
   background-image:
     radial-gradient(
       circle,
       var(--display-face-grain-dot)
         calc(var(--display-face-grain-cell, 2.5px) / 2),
       transparent calc(var(--display-face-grain-cell, 2.5px) / 2)
-    ) !important;
+    );
   background-size:
-    var(--display-face-grain-cell, 2.5px) var(--display-face-grain-cell, 2.5px) !important;
-  background-blend-mode: var(--display-face-grain-blend, normal) !important;
+    var(--display-face-grain-cell, 2.5px) var(--display-face-grain-cell, 2.5px);
+  background-blend-mode: var(--display-face-grain-blend, normal);
 }
 
 /*

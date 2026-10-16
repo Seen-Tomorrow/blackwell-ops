@@ -977,7 +977,7 @@
    * Flat widget faces: no per-cell inset/glow (ugly on LIGHT + ARCTIC).
    * Glass recess stays on main phosphor-screen-inner only.
    */
-  box-shadow: none !important;
+  box-shadow: none;
   filter: none;
 }
 
