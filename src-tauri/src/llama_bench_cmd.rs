@@ -307,17 +307,13 @@ fn write_latest_meta(
     Ok(path)
 }
 
-/// DEV: map current launch config → llama-bench, open external CMD (portable CUDA).
+/// Map current launch config → llama-bench, open external CMD (portable CUDA).
 #[tauri::command]
 pub async fn open_llama_bench_cmd(
     config: EngineConfig,
     provider_id: Option<String>,
     app: tauri::State<'_, AppContext>,
 ) -> Result<String, String> {
-    if !cfg!(debug_assertions) {
-        return Err("llama-bench CMD is available in DEV builds only.".into());
-    }
-
     let backend_type = provider_id.unwrap_or_else(|| {
         if config.backend_type.is_empty() {
             crate::config::DEFAULT_PROVIDER_ID.to_string()

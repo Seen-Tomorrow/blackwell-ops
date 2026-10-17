@@ -100,6 +100,16 @@
   order: 2;
 }
 
+/* Throughput mirrors it: controls + CUSTOM on row 1, Batch/uBatch badges on row 2. */
+.cockpit-instrument--throughput .cockpit-instrument__readout {
+  order: 3;
+  flex: 0 0 100%;
+  margin-top: 2px;
+}
+.cockpit-instrument--throughput .cockpit-instrument__more {
+  order: 2;
+}
+
 .cockpit-instrument__finger-item,
 .cockpit-instrument__readout-item {
   display: inline-flex;
@@ -189,7 +199,7 @@
 
 .cockpit-instrument__drawer-label {
   flex-shrink: 0;
-  width: 5.5rem;
+  width: 7.5rem;
   overflow: hidden;
   color: var(--theme-text-muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -382,39 +392,6 @@
   text-transform: uppercase;
 }
 
-.service-bay__modes {
-  display: inline-flex;
-  align-items: stretch;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 80%, transparent);
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.service-bay__mode {
-  padding: 2px 7px;
-  border: 0;
-  border-left: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
-  background: transparent;
-  color: var(--theme-text-muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: var(--type-micro);
-  letter-spacing: 0.06em;
-  cursor: pointer;
-}
-
-.service-bay__mode:first-child {
-  border-left: 0;
-}
-
-.service-bay__mode:hover {
-  color: var(--theme-text);
-}
-
-.service-bay__mode--active {
-  color: var(--theme-chip-active-text);
-  background: var(--theme-chip-active-bg);
-}
-
 .service-bay__catalog {
   margin-left: auto;
 }
@@ -432,115 +409,17 @@
   text-transform: uppercase;
 }
 
-/* ══ Compat popover (launch dock) ═══════════════════════════════════ */
+/* ══ TWEAKS row (below SAMPLER / THROUGHPUT) ═══════════════════════ */
 
-.compat-anchor {
-  position: relative;
-  min-width: 0;
+.cockpit-instrument--tweaks {
+  flex: 1 1 100%;
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
 }
 
-.compat-chip--tuned {
+.cockpit-instrument__drawer-label--tuned {
   color: var(--theme-warn);
-  border-color: color-mix(in srgb, var(--theme-warn) 40%, transparent);
-}
-
-.compat-chip--open {
-  color: var(--theme-accent-bright);
-  border-color: color-mix(in srgb, var(--theme-accent) 55%, transparent);
-}
-
-.compat-popover {
-  position: absolute;
-  left: 0;
-  bottom: calc(100% + 6px);
-  z-index: 60;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  width: 20rem;
-  max-width: 70vw;
-  max-height: 60vh;
-  overflow-y: auto;
-  padding: 8px;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 90%, transparent);
-  border-radius: 2px;
-  background: var(--theme-panel);
-  box-shadow: 0 10px 28px var(--fixed-black-a16);
-}
-
-.compat-popover__head {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding-bottom: 4px;
-  border-bottom: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
-}
-
-.compat-popover__title {
-  color: var(--theme-accent-bright);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: var(--type-micro);
-  letter-spacing: 0.14em;
-}
-
-.compat-popover__note {
-  color: var(--theme-text-muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: var(--type-micro);
-  line-height: 1.35;
-}
-
-.compat-popover__row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.compat-popover__label {
-  flex-shrink: 0;
-  width: 7.5rem;
-  overflow: hidden;
-  color: var(--theme-text-muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: var(--type-micro);
-  letter-spacing: 0.04em;
-  text-overflow: ellipsis;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.compat-popover__label--tuned {
-  color: var(--theme-warn);
-}
-
-.compat-popover__values {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 3px;
-  min-width: 0;
-}
-
-.compat-popover__value {
-  padding: 1px 5px;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 80%, transparent);
-  border-radius: 2px;
-  background: transparent;
-  color: var(--theme-text-muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: var(--type-micro);
-  cursor: pointer;
-}
-
-.compat-popover__value:hover {
-  color: var(--theme-text);
-  border-color: color-mix(in srgb, var(--theme-accent) 45%, transparent);
-}
-
-.compat-popover__value--active {
-  color: var(--theme-chip-active-text);
-  background: var(--theme-chip-active-bg);
-  border-color: var(--theme-chip-active-border);
 }
 
 /* CTX strip KV chrome lives in cockpit.css (it is cockpit footer chrome). */

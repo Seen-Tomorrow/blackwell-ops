@@ -69,7 +69,7 @@ export function SamplerTaste({ defs, config, onChange }: InstrumentProps) {
             }`}
             title={item.key}
           >
-            <span className="cockpit-instrument__finger-key">{item.short}</span>
+            <span className="cockpit-instrument__finger-key">{item.label}</span>
             {item.value}
           </span>
         ))}

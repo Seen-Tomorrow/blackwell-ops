@@ -25,13 +25,13 @@ export const SAMPLER_KEYS = [
 
 export type SamplerKey = (typeof SAMPLER_KEYS)[number];
 
-export const SAMPLER_SHORT: Record<SamplerKey, string> = {
+export const SAMPLER_LABEL: Record<SamplerKey, string> = {
   temp: "TEMP",
-  top_p: "TP",
-  top_k: "TK",
-  min_p: "MP",
-  presence_penalty: "PP",
-  repeat_penalty: "RP",
+  top_p: "TOP P",
+  top_k: "TOP K",
+  min_p: "MIN P",
+  presence_penalty: "PRESENCE P",
+  repeat_penalty: "REPEAT P",
 };
 
 export type TasteId = "model" | "exact" | "focused" | "balanced" | "wild";
@@ -95,8 +95,8 @@ export interface ThroughputDef {
 
 export const THROUGHPUT_STOPS: ThroughputDef[] = [
   { id: "latency", label: "LATENCY", blurb: "Small prompts, snappiest first token", batch: 0.15, ubatch: 0.05 },
-  { id: "balanced", label: "BAL", blurb: "Template batch — the safe default", defaults: true },
-  { id: "throughput", label: "THRU", blurb: "Long prompts, better prefill throughput", batch: 0.55, ubatch: 0.5 },
+  { id: "balanced", label: "DEFAULT", blurb: "Template batch — the safe default", defaults: true },
+  { id: "throughput", label: "FAST", blurb: "Long prompts, better prefill throughput", batch: 0.55, ubatch: 0.5 },
   { id: "max", label: "MAX", blurb: "Big-prompt / many-agent workloads", batch: 0.9, ubatch: 0.85 },
 ];
 
@@ -253,14 +253,14 @@ export function detectSamplerTaste(
 export function samplerFingerprint(
   defs: UserEditedTemplateParam[],
   config: ParamBag,
-): Array<{ key: SamplerKey; short: string; value: string; tuned: boolean }> {
-  const out: Array<{ key: SamplerKey; short: string; value: string; tuned: boolean }> = [];
+): Array<{ key: SamplerKey; label: string; value: string; tuned: boolean }> {
+  const out: Array<{ key: SamplerKey; label: string; value: string; tuned: boolean }> = [];
   for (const def of defs) {
     const key = def.key as SamplerKey;
     if (!(SAMPLER_KEYS as readonly string[]).includes(key)) continue;
     out.push({
       key,
-      short: SAMPLER_SHORT[key],
+      label: SAMPLER_LABEL[key],
       value: formatParamValue(config[key] ?? def.defaultValue),
       tuned: isParamTuned(def, config),
     });

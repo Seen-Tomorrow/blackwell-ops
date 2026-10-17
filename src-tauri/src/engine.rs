@@ -1352,17 +1352,13 @@ pub async fn preview_launch_command(
     assemble_launch_command(&cfg, &config, &backend_type).map(|a| a.launch_cmd)
 }
 
-/// DEV-only: write `config/nobsproof/latest.cmd` with portable CUDA env + exact launch CLI, open CMD.
+/// Write `config/nobsproof/latest.cmd` with portable CUDA env + exact launch CLI, open CMD.
 #[tauri::command]
 pub async fn open_nobsproof_cmd(
     config: EngineConfig,
     provider_id: Option<String>,
     app: tauri::State<'_, AppContext>,
 ) -> Result<String, String> {
-    if !cfg!(debug_assertions) {
-        return Err("NoBSproof CMD is available in DEV builds only.".into());
-    }
-
     let backend_type = provider_id.unwrap_or_else(|| {
         if config.backend_type.is_empty() {
             crate::config::DEFAULT_PROVIDER_ID.to_string()

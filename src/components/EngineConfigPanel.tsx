@@ -100,10 +100,9 @@ import {
   type RawCatalogEntry,
 } from "../lib/catalog";
 import ConfigBelowGroups from "./ConfigBelowGroups";
-import { partitionBelowGroupsByColumn } from "../lib/configColumnLayout";
 import { useConfigColumns } from "../hooks/useConfigColumns";
 import PreflightStrip from "./PreflightStrip";
-import CompatPanel from "./CompatPanel";
+import TweaksPanel from "./TweaksPanel";
 import { SamplerTaste, ThroughputRail } from "./CockpitInstruments";
 import {
   COMPAT_KEYS,
@@ -544,12 +543,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   /** USER'S EXTRA — closed by default; the pre-flight strip owns the opener. */
   const [serviceOpen, setServiceOpen] = useState(false);
-  const [bayMode, setBayMode] = useState<"all" | "tuned">("all");
-
-  const openService = useCallback((mode: "all" | "tuned") => {
-    setBayMode(mode);
-    setServiceOpen(true);
-  }, []);
 
   const toggleService = useCallback(() => {
     setServiceOpen((prev) => !prev);
@@ -1727,9 +1720,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   const {
     belowGroupKeys,
+    belowGroupsByColumn,
     columnCount,
     columnWidths,
-    groupColumn,
     draggingGutterIndex,
     handleGutterDragStart,
     setBelowColumnCount,
@@ -1777,29 +1770,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     return map;
   }, [belowGroupKeys]);
 
-  /** Columns + TUNED view over the user's extra params. */
-  const filteredBelowGroupsByColumn = useMemo(() => {
-    const partitions = partitionBelowGroupsByColumn(belowGroupKeys, groupColumn, columnCount);
-    return partitions.map((col) =>
-      col.filter((groupId) => {
-        const params = groupedParams[groupId] || [];
-        return bayMode !== "tuned" || params.some((p) => isParamTuned(p, config));
-      }),
-    );
-  }, [belowGroupKeys, groupColumn, columnCount, groupedParams, bayMode, config]);
-
-  /** Param-level count of rows that will actually render (for the empty state). */
-  const visibleBelowParamCount = useMemo(() => {
-    let n = 0;
-    for (const groupId of belowGroupKeys) {
-      for (const p of groupedParams[groupId] ?? []) {
-        if (bayMode === "tuned" && !isParamTuned(p, config)) continue;
-        n += 1;
-      }
-    }
-    return n;
-  }, [belowGroupKeys, groupedParams, bayMode, config]);
-
   const serviceCount = useMemo(
     () => belowGroupKeys.reduce((n, groupId) => n + (groupedParams[groupId]?.length ?? 0), 0),
     [belowGroupKeys, groupedParams],
@@ -1843,17 +1813,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     return free + (sample ? 1 : 0) + (throughput ? 1 : 0);
   }, [preflightParams, config]);
 
-  const freeTunedCount = useMemo(() => {
-    let n = 0;
-    for (const groupId of belowGroupKeys) {
-      for (const p of groupedParams[groupId] ?? []) {
-        if (isParamTuned(p, config)) n += 1;
-      }
-    }
-    return n;
-  }, [belowGroupKeys, groupedParams, config]);
-
-  const compatCount = useMemo(
+  const tweaksCount = useMemo(
     () =>
       countTuned(
         allParamsResolved.filter((def) => (COMPAT_KEYS as readonly string[]).includes(def.key)),
@@ -1888,8 +1848,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     groupedParams,
     collapsedGroups,
     toggleGroup,
-    tunedOnly: bayMode === "tuned",
-    isTuned: (def) => isParamTuned(def, config),
   }), [
     config,
     fullAutoFixed,
@@ -1902,7 +1860,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     groupedParams,
     collapsedGroups,
     toggleGroup,
-    bayMode,
   ]);
 
   // ── Load param definitions when model/provider changes ───────────────────
@@ -3338,15 +3295,17 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           ctxStripProps={ctxStripProps}
           instrumentSlot={
             <>
-              <SamplerTaste defs={allParamsResolved} config={config} onChange={updateParam} />
               <ThroughputRail defs={allParamsResolved} config={config} onChange={updateParam} />
+              <SamplerTaste defs={allParamsResolved} config={config} onChange={updateParam} />
+              <TweaksPanel defs={allParamsResolved} config={config} onChange={updateParam} />
             </>
           }
         />
         {!(model && !modelIsDraftOnly && showCockpitSurface) && (
           <div className="cockpit-instruments cockpit-instruments--standalone">
-            <SamplerTaste defs={allParamsResolved} config={config} onChange={updateParam} />
             <ThroughputRail defs={allParamsResolved} config={config} onChange={updateParam} />
+            <SamplerTaste defs={allParamsResolved} config={config} onChange={updateParam} />
+            <TweaksPanel defs={allParamsResolved} config={config} onChange={updateParam} />
           </div>
         )}
         {model && (
@@ -3386,11 +3345,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             batch={config.batch as string | number | undefined}
             ubatch={config.ubatch as string | number | undefined}
             tunedCount={tunedCount}
-            compatCount={compatCount}
+            tweaksCount={tweaksCount}
             serviceCount={serviceCount}
             serviceOpen={serviceOpen}
             onToggleService={toggleService}
-            onOpenTuned={freeTunedCount > 0 ? () => openService("tuned") : undefined}
             onAddParam={() => setShowEngineCatalogSearch(true)}
           />
         )}
@@ -3401,26 +3359,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             <div className="service-bay">
               <div className="service-bay__bar">
                 <span className="service-bay__title">USER'S EXTRA</span>
-                {serviceCount > 0 && (
-                  <div className="service-bay__modes" role="group" aria-label="Extra param filter">
-                    <button
-                      type="button"
-                      className={`service-bay__mode${bayMode === "all" ? " service-bay__mode--active" : ""}`}
-                      onClick={() => setBayMode("all")}
-                      title="Every extra engine param"
-                    >
-                      ALL {serviceCount}
-                    </button>
-                    <button
-                      type="button"
-                      className={`service-bay__mode${bayMode === "tuned" ? " service-bay__mode--active" : ""}`}
-                      onClick={() => setBayMode("tuned")}
-                      title="Only extras that differ from template"
-                    >
-                      TUNED {freeTunedCount}
-                    </button>
-                  </div>
-                )}
                 <button
                   type="button"
                   onClick={() => setShowEngineCatalogSearch(true)}
@@ -3431,21 +3369,17 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 </button>
               </div>
               <div className="service-bay__body">
-                {visibleBelowParamCount === 0 ? (
+                {serviceCount === 0 ? (
                   <div className="service-bay__empty">
                     {allParamsForDisplay.length === 0
                       ? "No extra params — add from the catalog"
-                      : serviceCount === 0
-                        ? "No extra params — everything is on the cockpit, dock, or catalog"
-                        : bayMode === "tuned"
-                          ? "Nothing tuned — all params at template"
-                          : "No extra params"}
+                      : "No extra params — everything is on the cockpit, dock, or catalog"}
                   </div>
                 ) : (
                   <ConfigBelowGroups
                     columnCount={columnCount}
                     columnWidths={columnWidths}
-                    belowGroupsByColumn={filteredBelowGroupsByColumn}
+                    belowGroupsByColumn={belowGroupsByColumn}
                     onGutterDragStart={handleGutterDragStart}
                     draggingGutterIndex={draggingGutterIndex}
                     renderGroup={(groupId) => {
@@ -3483,9 +3417,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           fullAutoFixed={fullAutoFixed}
           modelIsDraftOnly={modelIsDraftOnly}
           renderCustomFlags={renderCustomFlagsBlock}
-          compatSlot={
-            <CompatPanel defs={allParamsResolved} config={config} onChange={updateParam} />
-          }
           uiDensityCompact={uiDensityCompact}
           configView={configView}
           aliasDisplayValue={aliasDisplayValue}
@@ -3590,9 +3521,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 fullAutoFixed={fullAutoFixed}
                 modelIsDraftOnly={modelIsDraftOnly}
                 renderCustomFlags={renderCustomFlagsBlock}
-                compatSlot={
-                  <CompatPanel defs={allParamsResolved} config={config} onChange={updateParam} />
-                }
                 uiDensityCompact={uiDensityCompact}
                 configView={configView}
                 aliasDisplayValue={aliasDisplayValue}

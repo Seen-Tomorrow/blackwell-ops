@@ -1352,6 +1352,21 @@
   justify-content: stretch;
 }
 
+/* Launch button + vertical auxiliary actions (BENCH / CMD / NSYS). */
+.config-launch-dock__action--with-aux {
+  flex-direction: row;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.config-launch-dock__aux {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
 .config-launch-btn__hint {
   color: color-mix(in srgb, currentColor 62%, transparent);
   letter-spacing: 0.06em;
@@ -1362,6 +1377,19 @@
   border-color: color-mix(in srgb, var(--dev-danger) 55%, transparent);
   background: color-mix(in srgb, var(--dev-danger) 12%, transparent);
   color: color-mix(in srgb, var(--dev-danger) 88%, var(--fixed-white) 12%);
+}
+
+/* BENCH / CMD are REL features — neutral chrome, not DEV danger. */
+.config-launch-aux-btn {
+  border-color: color-mix(in srgb, var(--theme-border) 75%, transparent);
+  background: color-mix(in srgb, var(--theme-panel-accent) 45%, transparent);
+  color: var(--theme-text-muted);
+}
+
+.config-launch-aux-btn:hover:not(:disabled) {
+  color: var(--theme-text);
+  border-color: color-mix(in srgb, var(--theme-accent) 50%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 8%, transparent);
 }
 
 .config-nobsproof-btn:hover:not(:disabled) {

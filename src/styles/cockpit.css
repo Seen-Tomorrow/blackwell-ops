@@ -1394,7 +1394,9 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   justify-self: unset;
 }
 
-.full-auto-cockpit__ctx-legend--idle,
+.full-auto-cockpit__ctx-legend--idle {
+  display: none;
+}
 .full-auto-cockpit__ctx-footer-actions--idle {
   visibility: hidden; /* keeps layout box; no flash of empty chrome */
   pointer-events: none;

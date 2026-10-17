@@ -254,35 +254,6 @@ export default function CockpitCtxStrip({
         </div>
 
         <span className="full-auto-cockpit__ctx-footer-right">
-          <span
-            className={`full-auto-cockpit__ctx-legend${legendIdle ? " full-auto-cockpit__ctx-legend--idle" : ""}`}
-            title="Cyan ticks = LEARNED launches. Amber ≤N = VRAM limit. Ribbon paint = need vs free."
-            aria-hidden={legendIdle || undefined}
-          >
-            {hasLearned ? (
-              <>
-                <span className="full-auto-cockpit__ctx-swatch full-auto-cockpit__ctx-swatch--learned" aria-hidden />
-                LEARNED
-                <span className="full-auto-cockpit__ctx-legend-sep">·</span>
-                <span className="full-auto-cockpit__ctx-swatch full-auto-cockpit__ctx-swatch--custom" aria-hidden />
-                custom
-                <span className="full-auto-cockpit__ctx-legend-sep">·</span>
-                snap
-              </>
-            ) : null}
-            {hasLearned && hasGhost ? (
-              <span className="full-auto-cockpit__ctx-legend-sep">·</span>
-            ) : null}
-            {hasGhost ? (
-              <>
-                <span className="full-auto-cockpit__ctx-swatch full-auto-cockpit__ctx-swatch--limit" aria-hidden />
-                VRAM limit
-              </>
-            ) : null}
-            {legendIdle ? (
-              <span className="full-auto-cockpit__ctx-legend-spacer">LEARNED · snap</span>
-            ) : null}
-          </span>
           {onToggleKvUnified ? (
             <span className="full-auto-cockpit__ctx-kv-unit">
               <span className="full-auto-cockpit__ctx-kv-label">KV</span>
@@ -344,6 +315,35 @@ export default function CockpitCtxStrip({
                 ALL
               </span>
             )}
+          </span>
+          <span
+            className={`full-auto-cockpit__ctx-legend${legendIdle ? " full-auto-cockpit__ctx-legend--idle" : ""}`}
+            title="Cyan ticks = LEARNED launches. Amber ≤N = VRAM limit. Ribbon paint = need vs free."
+            aria-hidden={legendIdle || undefined}
+          >
+            {hasLearned ? (
+              <>
+                <span className="full-auto-cockpit__ctx-swatch full-auto-cockpit__ctx-swatch--learned" aria-hidden />
+                LEARNED
+                <span className="full-auto-cockpit__ctx-legend-sep">·</span>
+                <span className="full-auto-cockpit__ctx-swatch full-auto-cockpit__ctx-swatch--custom" aria-hidden />
+                custom
+                <span className="full-auto-cockpit__ctx-legend-sep">·</span>
+                snap
+              </>
+            ) : null}
+            {hasLearned && hasGhost ? (
+              <span className="full-auto-cockpit__ctx-legend-sep">·</span>
+            ) : null}
+            {hasGhost ? (
+              <>
+                <span className="full-auto-cockpit__ctx-swatch full-auto-cockpit__ctx-swatch--limit" aria-hidden />
+                VRAM limit
+              </>
+            ) : null}
+            {legendIdle ? (
+              <span className="full-auto-cockpit__ctx-legend-spacer">LEARNED · snap</span>
+            ) : null}
           </span>
         </span>
       </div>

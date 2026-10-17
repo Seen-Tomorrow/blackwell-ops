@@ -77,7 +77,6 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
     onPinSecondary,
     isHotSwapStale,
     onHotSwap,
-    compatSlot,
   } = props;
 
   const rail = position === "right";
@@ -188,41 +187,7 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
   );
 
   const renderAction = (replaceId: string) => (
-    <div className={`config-launch-dock__action relative${rail ? " shrink-0" : ""}`}>
-      {isDev && (
-        <>
-          <button
-            type="button"
-            onClick={onOpenLlamaBenchCmd}
-            disabled={launchDisabled}
-            className="config-nobsproof-btn absolute bottom-1 right-[10.5rem] z-20 px-1.5 py-0.5 type-micro font-mono uppercase tracking-wider rounded-sm border disabled:opacity-40 disabled:cursor-not-allowed"
-            title="llama-bench — map launch knobs → industry bench in external CMD (DEV). Edit config/llama-bench/defaults.json for -p/-n sweeps."
-          >
-            BENCH
-          </button>
-          <button
-            type="button"
-            onClick={onToggleNsysProfile}
-            className={`config-nobsproof-btn absolute bottom-1 right-[7rem] z-20 px-1.5 py-0.5 type-micro font-mono uppercase tracking-wider rounded-sm border disabled:opacity-40 disabled:cursor-not-allowed${nsysProfileArmed ? " config-nobsproof-btn--on" : ""}`}
-            title={
-              nsysProfileArmed
-                ? "Nsight ON — next Launch wraps llama-server in nsys. Fusion/bench/stop stay in-app. Stop finalizes config/nsys/*.nsys-rep. Click to disarm."
-                : "Nsight OFF — click to arm. Next Launch wraps the engine in nsys (same slot, not an external CMD). Edit config/nsys/defaults.json for trace flags."
-            }
-          >
-            NSYS
-          </button>
-          <button
-            type="button"
-            onClick={onOpenNobsproofCmd}
-            disabled={launchDisabled}
-            className="config-nobsproof-btn absolute bottom-1 right-1 z-20 px-1.5 py-0.5 type-micro font-mono uppercase tracking-wider rounded-sm border disabled:opacity-40 disabled:cursor-not-allowed"
-            title="NoBSproof — open exact launch CLI in a new CMD window (DEV)"
-          >
-            CMD
-          </button>
-        </>
-      )}
+    <div className={`config-launch-dock__action config-launch-dock__action--with-aux relative${rail ? " shrink-0" : ""}`}>
       {replaceLaunchConfirmOpen && (
         <div
           className="config-replace-confirm absolute inset-0 z-10 flex flex-col justify-center gap-2 rounded-sm px-2 py-2"
@@ -277,7 +242,7 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
                   ? "Custom provider — VRAM forecast does not block launch"
                   : undefined
         }
-        className={`w-full h-full min-h-[2.75rem] min-w-0 ignite-btn config-launch-btn px-2 py-1.5 type-sm font-mono tracking-[0.18em] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed flex flex-col items-stretch justify-center gap-0.5 ${customFlagsLaunchActive ? "overflow-visible" : "overflow-hidden"} ${launchAck ? "launch-ack" : ""}${customFlagsLaunchActive ? " config-launch-btn--custom-active" : ""}`}
+        className={`flex-1 h-full min-h-[2.75rem] min-w-0 ignite-btn config-launch-btn px-2 py-1.5 type-sm font-mono tracking-[0.18em] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed flex flex-col items-stretch justify-center gap-0.5 ${customFlagsLaunchActive ? "overflow-visible" : "overflow-hidden"} ${launchAck ? "launch-ack" : ""}${customFlagsLaunchActive ? " config-launch-btn--custom-active" : ""}`}
       >
         {customFlagsLaunchActive && (
           <span
@@ -293,6 +258,40 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
           Ctrl+Enter
         </span>
       </button>
+      <div className="config-launch-dock__aux">
+        <button
+          type="button"
+          onClick={onOpenLlamaBenchCmd}
+          disabled={launchDisabled}
+          className="config-launch-aux-btn px-1.5 py-0.5 type-micro font-mono uppercase tracking-wider rounded-sm border disabled:opacity-40 disabled:cursor-not-allowed"
+          title="llama-bench — map launch knobs → industry bench in external CMD. Edit config/llama-bench/defaults.json for -p/-n sweeps."
+        >
+          BENCH
+        </button>
+        <button
+          type="button"
+          onClick={onOpenNobsproofCmd}
+          disabled={launchDisabled}
+          className="config-launch-aux-btn px-1.5 py-0.5 type-micro font-mono uppercase tracking-wider rounded-sm border disabled:opacity-40 disabled:cursor-not-allowed"
+          title="NoBSproof — open the exact launch CLI in a new CMD window"
+        >
+          CMD
+        </button>
+        {isDev && (
+          <button
+            type="button"
+            onClick={onToggleNsysProfile}
+            className={`config-nobsproof-btn px-1.5 py-0.5 type-micro font-mono uppercase tracking-wider rounded-sm border disabled:opacity-40 disabled:cursor-not-allowed${nsysProfileArmed ? " config-nobsproof-btn--on" : ""}`}
+            title={
+              nsysProfileArmed
+                ? "Nsight ON — next Launch wraps llama-server in nsys. Fusion/bench/stop stay in-app. Stop finalizes config/nsys/*.nsys-rep. Click to disarm."
+                : "Nsight OFF — click to arm. Next Launch wraps the engine in nsys (same slot, not an external CMD). Edit config/nsys/defaults.json for trace flags."
+            }
+          >
+            NSYS
+          </button>
+        )}
+      </div>
     </div>
   );
 
@@ -323,7 +322,6 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
                 </div>
               )}
               {renderAliasPort()}
-              {compatSlot ? <div className="config-launch-dock__compat">{compatSlot}</div> : null}
               {renderAction("replace-confirm-title-rail")}
             </div>
           </div>
@@ -350,7 +348,6 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
         <div className="config-launch-dock__grid">
           <div className="config-launch-dock__left">
             {renderAliasPort()}
-            {compatSlot ? <div className="config-launch-dock__compat">{compatSlot}</div> : null}
             {!uiDensityCompact && !launchDockCollapsed && renderCustomFlags()}
           </div>
           {renderAction("replace-confirm-title")}
@@ -374,8 +371,6 @@ export interface EngineLaunchDockProps {
   modelIsDraftOnly: boolean;
   /** Custom flags block renderer (orchestrator owns editor state + popover). */
   renderCustomFlags: () => ReactNode;
-  /** COMPAT popover — launch-or-not flags (orchestrator owns the defs). */
-  compatSlot?: ReactNode;
   uiDensityCompact: boolean;
   configView: ConfigViewMode;
   /** Alias. */

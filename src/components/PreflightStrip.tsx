@@ -2,7 +2,7 @@
  * PRE-FLIGHT — one line that replaces the parameter wall.
  *
  * Shows the resolved machine state (not editable knobs) and how far the panel
- * has drifted from template. Amber = tuned, red = compat risk. The USER'S EXTRA
+ * has drifted from template. Amber = tuned, red = tweak changed. The USER'S EXTRA
  * opener lives on the right edge.
  */
 
@@ -20,11 +20,10 @@ interface PreflightStripProps {
   batch?: string | number;
   ubatch?: string | number;
   tunedCount: number;
-  compatCount: number;
+  tweaksCount: number;
   serviceCount: number;
   serviceOpen: boolean;
   onToggleService: () => void;
-  onOpenTuned?: () => void;
   /** Live engine catalog — the app's escape hatch for any param. */
   onAddParam?: () => void;
 }
@@ -70,11 +69,10 @@ export default function PreflightStrip(props: PreflightStripProps) {
     batch,
     ubatch,
     tunedCount,
-    compatCount,
+    tweaksCount,
     serviceCount,
     serviceOpen,
     onToggleService,
-    onOpenTuned,
     onAddParam,
   } = props;
 
@@ -89,13 +87,12 @@ export default function PreflightStrip(props: PreflightStripProps) {
       <Token
         tone={tunedCount > 0 ? "tuned" : "muted"}
         title={tunedCount > 0 ? "Params changed from template" : "Everything at template defaults"}
-        onClick={tunedCount > 0 && onOpenTuned ? onOpenTuned : undefined}
       >
         {tunedCount > 0 ? `${tunedCount} TUNED` : "0 TUNED"}
       </Token>
-      {compatCount > 0 ? (
-        <Token tone="compat" title="Launch-or-not flags changed">
-          {compatCount} COMPAT
+      {tweaksCount > 0 ? (
+        <Token tone="compat" title="Compatibility tweaks changed">
+          {tweaksCount} TWEAKS
         </Token>
       ) : null}
       <span className="preflight-strip__sep" aria-hidden />

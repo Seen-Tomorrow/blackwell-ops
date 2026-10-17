@@ -205,9 +205,6 @@ export interface ParamGroupsCtx {
   groupedParams: Record<string, UserEditedTemplateParam[]>;
   collapsedGroups: Set<string>;
   toggleGroup: (groupId: string) => void;
-  /** Maintenance bay: show only params that differ from template. */
-  tunedOnly?: boolean;
-  isTuned?: (def: UserEditedTemplateParam) => boolean;
 }
 
 /** Param row renderer (chip or slider). Pure — reads state from `ctx`. */
@@ -348,8 +345,6 @@ export function renderParamGroup(
     groupedParams,
     collapsedGroups,
     toggleGroup,
-    tunedOnly,
-    isTuned,
   } = ctx;
 
   if (
@@ -361,10 +356,7 @@ export function renderParamGroup(
     return null;
   }
 
-  let groupParams = groupedParams[group.id];
-  if (groupParams && tunedOnly && isTuned) {
-    groupParams = groupParams.filter((p) => isTuned(p));
-  }
+  const groupParams = groupedParams[group.id];
 
   if (!groupParams || groupParams.length === 0) return null;
 
