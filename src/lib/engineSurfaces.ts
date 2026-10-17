@@ -26,10 +26,10 @@ export const SAMPLER_KEYS = [
 export type SamplerKey = (typeof SAMPLER_KEYS)[number];
 
 export const SAMPLER_SHORT: Record<SamplerKey, string> = {
-  temp: "T",
-  top_p: "P",
-  top_k: "K",
-  min_p: "M",
+  temp: "TEMP",
+  top_p: "TP",
+  top_k: "TK",
+  min_p: "MP",
   presence_penalty: "PP",
   repeat_penalty: "RP",
 };

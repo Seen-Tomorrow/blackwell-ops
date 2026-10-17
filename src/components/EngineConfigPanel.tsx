@@ -541,7 +541,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     // Fresh install: tuck Performance / Feature-flags / Advanced (Power Full default).
     return new Set([...FULL_AUTO_COLLAPSE_GROUPS]);
   });
-  const [paramFilter, setParamFilter] = useState("");
 
   /** Maintenance bay — closed by default; the pre-flight strip owns the opener. */
   const [serviceOpen, setServiceOpen] = useState(false);
@@ -1792,42 +1791,26 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   }, [belowGroupKeys, baySort, groupedParams, config]);
 
   const filteredBelowGroupsByColumn = useMemo(() => {
-    const q = paramFilter.trim().toLowerCase();
     const partitions = partitionBelowGroupsByColumn(sortedBelowKeys, groupColumn, columnCount);
     return partitions.map((col) =>
       col.filter((groupId) => {
         const params = groupedParams[groupId] || [];
-        if (bayMode === "tuned" && !params.some((p) => isParamTuned(p, config))) return false;
-        if (!q) return true;
-        if (groupId.toLowerCase().includes(q)) return true;
-        return params.some(
-          (p) =>
-            p.key.toLowerCase().includes(q)
-            || (p.label || "").toLowerCase().includes(q),
-        );
+        return bayMode !== "tuned" || params.some((p) => isParamTuned(p, config));
       }),
     );
-  }, [sortedBelowKeys, groupColumn, columnCount, paramFilter, groupedParams, bayMode, config]);
+  }, [sortedBelowKeys, groupColumn, columnCount, groupedParams, bayMode, config]);
 
   /** Param-level count of rows that will actually render (for the empty state). */
   const visibleBelowParamCount = useMemo(() => {
-    const q = paramFilter.trim().toLowerCase();
     let n = 0;
     for (const groupId of belowGroupKeys) {
       for (const p of groupedParams[groupId] ?? []) {
         if (bayMode === "tuned" && !isParamTuned(p, config)) continue;
-        if (
-          q
-          && !p.key.toLowerCase().includes(q)
-          && !(p.label || "").toLowerCase().includes(q)
-        ) {
-          continue;
-        }
         n += 1;
       }
     }
     return n;
-  }, [belowGroupKeys, groupedParams, bayMode, config, paramFilter]);
+  }, [belowGroupKeys, groupedParams, bayMode, config]);
 
   const serviceCount = useMemo(
     () => belowGroupKeys.reduce((n, groupId) => n + (groupedParams[groupId]?.length ?? 0), 0),
@@ -1915,7 +1898,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     updateParam,
     allParamsResolved,
     groupedParams,
-    paramFilter,
     collapsedGroups,
     toggleGroup,
     tunedOnly: bayMode === "tuned",
@@ -1930,7 +1912,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     updateParam,
     allParamsResolved,
     groupedParams,
-    paramFilter,
     collapsedGroups,
     toggleGroup,
     bayMode,
@@ -3432,6 +3413,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             <div className="service-bay">
               <div className="service-bay__bar">
                 <span className="service-bay__title">MAINTENANCE</span>
+                {serviceCount > 0 && (
+                  <>
                 <div className="service-bay__modes" role="group" aria-label="Maintenance filter">
                   <button
                     type="button"
@@ -3447,7 +3430,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                     onClick={() => setBayMode("tuned")}
                     title="Only params that differ from template"
                   >
-                    TUNED {tunedCount}
+                    TUNED {freeTunedCount}
                   </button>
                 </div>
                 <div className="service-bay__sort" role="group" aria-label="Maintenance sort">
@@ -3469,15 +3452,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                     </button>
                   ))}
                 </div>
-                {allParamsForDisplay.length > 0 && (
-                  <input
-                    type="search"
-                    value={paramFilter}
-                    onChange={(e) => setParamFilter(e.target.value)}
-                    placeholder="Filter…"
-                    className="config-panel-param-filter service-bay__filter eng-param-filter flex-shrink-0"
-                    title="Filter maintenance rows by name or key (local — not model search)"
-                  />
+                  </>
                 )}
                 <button
                   type="button"
@@ -3491,13 +3466,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               <div className="service-bay__body">
                 {visibleBelowParamCount === 0 ? (
                   <div className="service-bay__empty">
-                    {bayMode === "tuned"
-                      ? "Nothing tuned — all params at template"
+                    {allParamsForDisplay.length === 0
+                      ? "No params — add from the catalog"
                       : serviceCount === 0
                         ? "No free params — everything is on the cockpit, dock, or catalog"
-                        : allParamsForDisplay.length === 0
-                          ? "No params — add from the catalog"
-                          : "No params match"}
+                        : bayMode === "tuned"
+                          ? "Nothing tuned — all params at template"
+                          : "No free params"}
                   </div>
                 ) : (
                   <ConfigBelowGroups

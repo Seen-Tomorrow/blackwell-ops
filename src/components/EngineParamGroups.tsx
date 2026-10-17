@@ -203,7 +203,6 @@ export interface ParamGroupsCtx {
   updateParam: (key: string, value: string | number) => void;
   allParamsResolved: UserEditedTemplateParam[];
   groupedParams: Record<string, UserEditedTemplateParam[]>;
-  paramFilter: string;
   collapsedGroups: Set<string>;
   toggleGroup: (groupId: string) => void;
   /** Maintenance bay: show only params that differ from template. */
@@ -347,7 +346,6 @@ export function renderParamGroup(
 ): ReactNode {
   const {
     groupedParams,
-    paramFilter,
     collapsedGroups,
     toggleGroup,
     tunedOnly,
@@ -364,14 +362,6 @@ export function renderParamGroup(
   }
 
   let groupParams = groupedParams[group.id];
-  const filterQuery = paramFilter.trim().toLowerCase();
-  if (groupParams && filterQuery) {
-    groupParams = groupParams.filter(
-      (p) =>
-        p.key.toLowerCase().includes(filterQuery)
-        || (p.label || "").toLowerCase().includes(filterQuery),
-    );
-  }
   if (groupParams && tunedOnly && isTuned) {
     groupParams = groupParams.filter((p) => isTuned(p));
   }

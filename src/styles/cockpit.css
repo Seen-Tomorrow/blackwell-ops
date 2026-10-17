@@ -1337,13 +1337,6 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   box-sizing: border-box;
   overflow: hidden;
 }
-.full-auto-cockpit__ctx-footer-left {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  min-width: 0;
-  overflow: hidden;
-}
 .full-auto-cockpit__ctx-kv-unit {
   display: inline-flex;
   align-items: center;
@@ -1365,7 +1358,6 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   padding: 3px 6px;
 }
 .full-auto-cockpit__ctx-footer-hover {
-  flex: 1 1 auto;
   min-width: 0;
   text-align: left;
   font-size: var(--type-tiny);

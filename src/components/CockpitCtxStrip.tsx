@@ -209,35 +209,8 @@ export default function CockpitCtxStrip({
       </div>
 
       <div className="full-auto-cockpit__ctx-footer font-mono">
-        <span className="full-auto-cockpit__ctx-footer-left">
-          {onToggleKvUnified ? (
-            <span className="full-auto-cockpit__ctx-kv-unit">
-              <span className="full-auto-cockpit__ctx-kv-label">KV</span>
-              <SegmentSwitch
-                ariaLabel="KV cache mode"
-                title={
-                  kvUnified
-                    ? "Unified KV — one cache pool shared by all slots"
-                    : "Per-slot KV — each slot gets ctx ÷ parallel"
-                }
-                options={[
-                  { id: "unified", label: "UNIFIED" },
-                  { id: "slot", label: "SLOT" },
-                ]}
-                selectedId={kvUnified ? "unified" : "slot"}
-                onSelect={(id) => {
-                  const nextUnified = id === "unified";
-                  if (nextUnified !== kvUnified) onToggleKvUnified();
-                }}
-                size="compact"
-                tone="accent"
-                className="segment-switch--gpu-bezel segment-switch--cockpit-flag"
-              />
-            </span>
-          ) : null}
-          <span className="full-auto-cockpit__ctx-footer-hover font-mono">
-            {ribbonHover || "\u00a0"}
-          </span>
+        <span className="full-auto-cockpit__ctx-footer-hover font-mono">
+          {ribbonHover || "\u00a0"}
         </span>
 
         <div className="full-auto-cockpit__ctx-footer-readout" aria-label="Context length">
@@ -310,6 +283,31 @@ export default function CockpitCtxStrip({
               <span className="full-auto-cockpit__ctx-legend-spacer">LEARNED · snap</span>
             ) : null}
           </span>
+          {onToggleKvUnified ? (
+            <span className="full-auto-cockpit__ctx-kv-unit">
+              <span className="full-auto-cockpit__ctx-kv-label">KV</span>
+              <SegmentSwitch
+                ariaLabel="KV cache mode"
+                title={
+                  kvUnified
+                    ? "Unified KV — one cache pool shared by all slots"
+                    : "Per-slot KV — each slot gets ctx ÷ parallel"
+                }
+                options={[
+                  { id: "unified", label: "UNIFIED" },
+                  { id: "slot", label: "SLOT" },
+                ]}
+                selectedId={kvUnified ? "unified" : "slot"}
+                onSelect={(id) => {
+                  const nextUnified = id === "unified";
+                  if (nextUnified !== kvUnified) onToggleKvUnified();
+                }}
+                size="compact"
+                tone="accent"
+                className="segment-switch--gpu-bezel segment-switch--cockpit-flag"
+              />
+            </span>
+          ) : null}
           <span
             className={`full-auto-cockpit__ctx-footer-actions${legendIdle && !showRibbon ? " full-auto-cockpit__ctx-footer-actions--idle" : ""}`}
           >

@@ -90,6 +90,16 @@
   white-space: nowrap;
 }
 
+/* Sampler badges get their own full-width row — six labels need the room. */
+.cockpit-instrument--sample .cockpit-instrument__finger {
+  order: 3;
+  flex: 0 0 100%;
+  margin-top: 2px;
+}
+.cockpit-instrument--sample .cockpit-instrument__more {
+  order: 2;
+}
+
 .cockpit-instrument__finger-item,
 .cockpit-instrument__readout-item {
   display: inline-flex;
@@ -156,6 +166,7 @@
 }
 
 .cockpit-instrument__drawer {
+  order: 4;
   flex-basis: 100%;
   display: flex;
   flex-direction: column;
@@ -407,11 +418,6 @@
 .service-bay__sort-btn--active {
   color: var(--theme-chip-active-text);
   background: var(--theme-chip-active-bg);
-}
-
-.service-bay__filter {
-  width: 7.5rem;
-  max-width: 40%;
 }
 
 .service-bay__catalog {
