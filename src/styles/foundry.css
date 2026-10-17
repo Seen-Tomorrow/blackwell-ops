@@ -579,7 +579,7 @@
 
 /* Job status banners */
 
-/* Section titles *//* Primitive: Foundry dev button — tone via --fnd-*; variants only set props. */
+/* Primitive: Foundry dev button — tone via --fnd-*; variants only set props. */
 .fnd-dev-btn {
   --fnd-tone: var(--theme-accent);
   border-color: color-mix(in srgb, var(--fnd-tone) var(--fnd-border-mix, 50%), transparent);

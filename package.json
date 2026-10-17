@@ -26,6 +26,7 @@
     "lint:dead:rust": "cargo machete src-tauri",
     "css:audit": "node scripts/css-tools.mjs audit --check",
     "css:audit:report": "node scripts/css-tools.mjs audit --write-report",
+    "css:minify": "node scripts/css-minify-gate.mjs",
     "css:locate": "node scripts/css-locate.mjs",
     "css:map": "node scripts/css-locate.mjs map --write",
     "majestic:check": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode check -Variant full",
@@ -44,7 +45,7 @@
     "pack:provider": "powershell -ExecutionPolicy Bypass -File scripts/pack-provider-runtime.ps1",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check": "npm run css:audit && tsc --noEmit && vitest run && cargo test --manifest-path src-tauri/Cargo.toml"
+    "check": "npm run css:audit && npm run css:minify && tsc --noEmit && vitest run && cargo test --manifest-path src-tauri/Cargo.toml"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.1",

@@ -16,6 +16,7 @@ fallback's real meaning depends on where the token is defined:
 Run from repo root: python scripts/fb-triage.py [token-substring] [root]
 """
 import glob
+import os
 import re
 import sys
 from collections import defaultdict
@@ -45,10 +46,21 @@ def face_keys():
     return out
 
 
+def css_inputs(root):
+    """The CSS sources: every partial plus index.css.
+
+    Missing paths are skipped so a deleted partial degrades the meter instead of
+    crashing it with FileNotFoundError — `controls.css` was removed in the 2026-10
+    CSS refactor and this gate kept naming it long after it was gone.
+    """
+    paths = glob.glob(root + "/styles/*.css") + [root + "/index.css"]
+    return [p for p in paths if os.path.exists(p)]
+
+
 def css_defs(root):
     """token -> files that DEFINE it (excluding var() fallback positions)."""
     out = defaultdict(set)
-    for path in glob.glob(root + "/styles/*.css") + [root + "/index.css", root + "/controls.css"]:
+    for path in css_inputs(root):
         body = open(path, encoding="utf-8").read()
         stripped = re.sub(r"var\(\s*--[a-zA-Z0-9-]+\s*,[^)]*\)", "", body)
         for m in DEF.finditer(stripped):
@@ -65,8 +77,7 @@ def scan_files(root):
     the theme layer, never by a component.
     """
     return sorted(
-        glob.glob(root + "/styles/*.css")
-        + [root + "/index.css", root + "/controls.css"]
+        css_inputs(root)
         + glob.glob(root + "/**/*.tsx", recursive=True)
         + glob.glob(root + "/**/*.ts", recursive=True)
     )
