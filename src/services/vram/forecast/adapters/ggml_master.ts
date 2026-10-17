@@ -185,8 +185,12 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   const discardSpillLearned =
     !liveLowVram
     && isDevBuild()
+    // Exact launches and the multi-point curve are measurements — trust them.
+    // Only a lone learned base can be a free-dependent spill leftover.
+    && learnedExactGbRaw == null
+    && curveGbRaw == null
     && learnedLooksLikeFreeDependentSpill(
-      withDraft(learnedExactGbRaw) ?? withDraft(curveGbRaw) ?? learnedDeltaGbRaw,
+      learnedDeltaGbRaw,
       learnedHostGbRaw,
       targetAvailForGate,
     );
