@@ -43,6 +43,8 @@ export interface MultiAgentBoosterProps {
   think: ThinkId;
   onCodingMode: (mode: CodingModeId) => void;
   onSpeedBoost: (speed: SpeedBoostId) => void;
+  /** Planner normalization — never a user edit, so it must not hand off to ASSISTED. */
+  onAutoSpeedBoost?: (speed: SpeedBoostId) => void;
   onBrains: (brains: BrainsId) => void;
   onThink: (think: ThinkId) => void;
   capabilities: SpecCapability[];
@@ -138,6 +140,7 @@ export default function MultiAgentBooster({
   think,
   onCodingMode,
   onSpeedBoost,
+  onAutoSpeedBoost,
   onBrains,
   onThink,
   capabilities,
@@ -233,10 +236,11 @@ export default function MultiAgentBooster({
 
   useEffect(() => {
     if (activeRawSpecType) return;
+    const applyPlanSpeed = onAutoSpeedBoost ?? onSpeedBoost;
     if (plan.speed !== speedBoost) {
-      onSpeedBoost(plan.speed);
+      applyPlanSpeed(plan.speed);
     }
-  }, [plan.speed, speedBoost, onSpeedBoost, activeRawSpecType]);
+  }, [plan.speed, speedBoost, onAutoSpeedBoost, onSpeedBoost, activeRawSpecType]);
 
   const capSet = useMemo(() => new Set(capabilities), [capabilities]);
 

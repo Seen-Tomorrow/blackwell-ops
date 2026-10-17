@@ -84,6 +84,9 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
         onSpeedBoost={(s) => {
           manual(() => { void applyCockpit(codingMode, s, brains, think, cockpitOpts); });
         }}
+        onAutoSpeedBoost={(s) => {
+          void applyCockpit(codingMode, s, brains, think, cockpitOpts);
+        }}
         onBrains={(b) => {
           manual(() => { void applyCockpit(codingMode, speedBoost, b, think, cockpitOpts); });
         }}
