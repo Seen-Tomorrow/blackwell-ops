@@ -1,4 +1,4 @@
-# Majestic - private release automation for Blackwell Ops.
+﻿# Majestic - private release automation for Blackwell Ops.
 # Usage: .\scripts\majestic\majestic.ps1 -Mode check|pack|ship|bump|pack-provider|ship-provider [-DryRun]
 
 param(
