@@ -1584,6 +1584,37 @@
   animation: catalog-seat-live-spin 1.6s linear infinite;
 }
 
+/* Seats disclosure — collapses the whole HARNESS SEATS block down to its label
+   bar. FAVORITE is a separate section and is never affected. */
+.catalog-quick-section__collapse {
+  flex: 0 0 auto;
+  margin: 0;
+  width: 1.05rem;
+  height: 1.05rem;
+  padding: 0;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 45%, transparent);
+  color: var(--theme-industrial-muted, var(--theme-text-muted));
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.catalog-quick-section__collapse:hover {
+  color: var(--theme-accent-bright, var(--theme-accent));
+  border-color: color-mix(in srgb, var(--theme-accent) 55%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 12%, transparent);
+}
+
+.catalog-quick-section--seats-collapsed .catalog-quick-section__sets,
+.catalog-quick-section--seats-collapsed .catalog-quick-section__head-row--actions,
+.catalog-quick-section--seats-collapsed .catalog-quick-seat-bank {
+  display: none;
+}
+
 /* Seat live-rim tone — ONE definition per seat, consumed by both the quick-seat
    strip and the seat-edit banner. Do not fork these: the two contexts drifted
    into byte-identical copies once already. */

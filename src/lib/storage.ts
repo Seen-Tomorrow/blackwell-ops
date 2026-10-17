@@ -54,6 +54,7 @@ import type {
  * | BlackOps-catalog-split-width | number string (px) | Model catalog / engine config split |
  * | BlackOps-catalog-list-collapsed | "0" \| "1" | Model catalog list fully collapsed |
  * | BlackOps-catalog-list-dim | 0.2–1 | OPERATIONS catalog list body opacity (search chrome excluded) |
+ * | BlackOps-catalog-seats-open | "0" \| "1" | Harness seats block in the catalog quick strip (absent = open) |
  * | BlackOps-model-hub-split-width | number string (0–1) | Model Hub results / quants split ratio |
 
  * | BlackOps-setup-guide-dismissed | "1" | Setup guide dismissed (cache; authority is app_config.setup_completed) |
@@ -215,6 +216,8 @@ export const KEYS = {
   runningEnginesPerRow: `${STORAGE_PREFIX}running-engines-per-row`,
   catalogSplitWidth: `${STORAGE_PREFIX}catalog-split-width`,
   catalogListCollapsed: `${STORAGE_PREFIX}catalog-list-collapsed`,
+  /** Harness seats block in the catalog quick strip — "0" = collapsed. Absent = open. */
+  catalogSeatsOpen: `${STORAGE_PREFIX}catalog-seats-open`,
   /** OPERATIONS catalog list body opacity (0.2–1); search chrome excluded. */
   catalogListDim: `${STORAGE_PREFIX}catalog-list-dim`,
   /** OPERATIONS catalog pins / recents / sticky seats (path-only). */
@@ -1230,6 +1233,18 @@ export function loadCatalogListCollapsed(): boolean {
 
 export function saveCatalogListCollapsed(collapsed: boolean): void {
   writeStorage(KEYS.catalogListCollapsed, collapsed ? "1" : "0");
+}
+
+/**
+ * Harness seats block in the catalog quick strip: permanent open/closed.
+ * Absent means open, so a fresh install shows the seats.
+ */
+export function loadCatalogSeatsOpen(): boolean {
+  return readStorage(KEYS.catalogSeatsOpen) !== "0";
+}
+
+export function saveCatalogSeatsOpen(open: boolean): void {
+  writeStorage(KEYS.catalogSeatsOpen, open ? "1" : "0");
 }
 
 /**

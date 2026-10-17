@@ -19,6 +19,7 @@ import {
   type CatalogSeatEditEndedDetail,
 } from "../lib/events";
 import { getCombo, seatOnCombo } from "../lib/launchPresets";
+import { loadCatalogSeatsOpen, saveCatalogSeatsOpen } from "../lib/storage";
 import {
   fetchLearnedMemForSeat,
   ramValueText,
@@ -150,6 +151,7 @@ export default function CatalogQuickStrip({
   const [pending, setPending] = useState<PendingAction>(null);
   const [launchMode, setLaunchMode] = useState<"solo" | "twin">("twin");
   const [seatsHelpOpen, setSeatsHelpOpen] = useState(false);
+  const [seatsOpen, setSeatsOpen] = useState<boolean>(() => loadCatalogSeatsOpen());
   const [learnedMem, setLearnedMem] = useState<{
     brain: LearnedMemGb | null;
     worker: LearnedMemGb | null;
@@ -208,6 +210,12 @@ export default function CatalogQuickStrip({
     if (editingRole != null) setSeatsHelpOpen(false);
   }, [editingRole]);
 
+  // Remember the seats block open/closed. Editing a seat or opening the help
+  // panel force-expands it without overwriting the stored preference.
+  useEffect(() => {
+    saveCatalogSeatsOpen(seatsOpen);
+  }, [seatsOpen]);
+
   const pinModels = pins
     .map((p) => findModel(models, p))
     .filter((m): m is ModelEntry => !!m);
@@ -216,6 +224,7 @@ export default function CatalogQuickStrip({
   const canLaunchTwin = Boolean(seats.brain?.path && seats.worker?.path);
   const canLaunchSolo = Boolean(seats.brain?.path);
   const seatEditing = editingRole != null;
+  const seatsExpanded = seatsOpen || seatEditing || seatsHelpOpen;
   const sum = sumLearnedMem(learnedMem.brain, learnedMem.worker);
   const hasSelection = Boolean(selectedPath);
 
@@ -288,6 +297,7 @@ export default function CatalogQuickStrip({
         className={[
           "catalog-quick-section catalog-quick-section--seats",
           seatEditing ? "catalog-quick-section--seats-editing" : "",
+          seatsExpanded ? "" : "catalog-quick-section--seats-collapsed",
         ].filter(Boolean).join(" ")}
       >
         {seatEditing ? <SeatLiveRim /> : null}
@@ -320,6 +330,19 @@ export default function CatalogQuickStrip({
               })}
             </div>
             <div className="catalog-quick-section__title-cluster">
+              {!seatEditing ? (
+                <button
+                  type="button"
+                  className="catalog-quick-section__collapse"
+                  title={seatsExpanded ? "Collapse harness seats" : "Expand harness seats"}
+                  aria-label={seatsExpanded ? "Collapse harness seats" : "Expand harness seats"}
+                  aria-expanded={seatsExpanded}
+                  aria-controls="catalog-quick-seat-bank"
+                  onClick={() => setSeatsOpen((v) => !v)}
+                >
+                  {seatsExpanded ? "\u25BE" : "\u25B8"}
+                </button>
+              ) : null}
               <span className="catalog-quick-section__title">
                 {seatEditing
                   ? `EDITING ${CATALOG_SEAT_LABEL[editingRole!]}`
@@ -383,6 +406,7 @@ export default function CatalogQuickStrip({
           ) : null}
         </header>
         <div
+          id="catalog-quick-seat-bank"
           className={[
             "catalog-quick-seat-bank",
             seatEditing ? "catalog-quick-seat-bank--editing" : "",
