@@ -82,7 +82,7 @@ export const TASTES: TasteDef[] = [
 
 // ── Throughput ──────────────────────────────────────────────────────────────
 
-export type ThroughputId = "latency" | "fast" | "max";
+export type ThroughputId = "latency" | "balance" | "speed";
 
 export interface ThroughputDef {
   id: ThroughputId;
@@ -93,11 +93,11 @@ export interface ThroughputDef {
   ubatch?: number;
 }
 
-/** Three personalities; FAST is the template default. */
+/** Three personalities; BALANCE is the template default. */
 export const THROUGHPUT_STOPS: ThroughputDef[] = [
   { id: "latency", label: "LATENCY", blurb: "Small prompts, snappiest first token", batch: 0.15, ubatch: 0.05 },
-  { id: "fast", label: "FAST", blurb: "Template batch — the safe default", defaults: true },
-  { id: "max", label: "MAX", blurb: "Big-prompt / many-agent workloads", batch: 0.9, ubatch: 0.85 },
+  { id: "balance", label: "BALANCE", blurb: "Template batch — the safe default", defaults: true },
+  { id: "speed", label: "SPEED", blurb: "Big-prompt / many-agent workloads", batch: 0.9, ubatch: 0.85 },
 ];
 
 // ── Compat ──────────────────────────────────────────────────────────────────

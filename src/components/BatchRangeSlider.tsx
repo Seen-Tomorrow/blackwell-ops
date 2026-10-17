@@ -97,10 +97,6 @@ export default function BatchRangeSlider({ defs, config, onChange }: BatchRangeS
   }, [batchDef, ubatchDef]);
 
   const active = detectThroughput(throughput, config);
-  const activeLabel =
-    active === "custom"
-      ? "CUSTOM"
-      : THROUGHPUT_STOPS.find((stop) => stop.id === active)?.label ?? "CUSTOM";
 
   const ratioFromClientX = useCallback((clientX: number) => {
     const el = trackRef.current;
@@ -172,20 +168,7 @@ export default function BatchRangeSlider({ defs, config, onChange }: BatchRangeS
 
   return (
     <div className="cockpit-instrument cockpit-instrument--batch">
-      <div className="cockpit-instrument__head">
-        <span className="cockpit-instrument__label">BATCH</span>
-        <span className="cockpit-instrument__state">{activeLabel}</span>
-      </div>
       <div className="cockpit-batch__stage">
-        <div className="cockpit-batch__hero">
-          <span className="cockpit-batch__hero-label">BATCH</span>
-          <span className="cockpit-batch__hero-value">{formatParamValue(batch)}</span>
-          <span className="cockpit-batch__hero-sep" aria-hidden>
-            //
-          </span>
-          <span className="cockpit-batch__hero-label">uBATCH</span>
-          <span className="cockpit-batch__hero-sub">{formatParamValue(ubatch)}</span>
-        </div>
         <div
           className="cockpit-batch__track"
           ref={trackRef}
@@ -241,6 +224,9 @@ export default function BatchRangeSlider({ defs, config, onChange }: BatchRangeS
             title={`uBatch ${ubatch}`}
             aria-label="uBatch"
           >
+            <span className="cockpit-batch__thumb-value cockpit-batch__thumb-value--ub">
+              {formatParamValue(ubatch)}
+            </span>
             UB
           </button>
           <button
@@ -253,10 +239,12 @@ export default function BatchRangeSlider({ defs, config, onChange }: BatchRangeS
             title={`Batch ${batch}`}
             aria-label="Batch"
           >
+            <span className="cockpit-batch__thumb-value cockpit-batch__thumb-value--b">
+              {formatParamValue(batch)}
+            </span>
             B
           </button>
         </div>
-        <div className="cockpit-batch__hint">DRAG UB / B · CLICK A MARK TO SNAP</div>
       </div>
     </div>
   );

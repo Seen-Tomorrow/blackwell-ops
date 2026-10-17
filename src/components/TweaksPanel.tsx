@@ -35,7 +35,7 @@ export default function TweaksPanel({ defs, config, onChange }: TweaksPanelProps
       <div className="cockpit-instrument__head">
         <span className="cockpit-instrument__label">TWEAKS</span>
         <span className="cockpit-instrument__state">
-          {changed > 0 ? `${changed} changed` : "template"}
+          {changed > 0 ? `${changed} customized` : "template"}
         </span>
       </div>
       <div className="cockpit-tweaks-grid">
