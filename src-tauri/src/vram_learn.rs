@@ -1277,9 +1277,21 @@ pub fn get_learned_vram(
         .map(|(rb, ru)| rb != wanted_batch || ru != wanted_ubatch)
         .unwrap_or(false);
     if reference_mismatch {
-        let delta = entry
-            .batch_deltas
-            .get(&batch_pair(wanted_batch, wanted_ubatch))?;
+        let pair = batch_pair(wanted_batch, wanted_ubatch);
+        let delta = entry.batch_deltas.get(&pair).cloned().or_else(|| {
+            let store = load_store();
+            find_batch_delta(
+                &store.entries,
+                &normalize_model_path_for_key(&model_path),
+                &provider_id,
+                &kv_quant.trim().to_lowercase(),
+                &normalize_spec_type(spec),
+                &draft_basename(&draft),
+                &normalize_split_mode(&split),
+                vram_topo.as_deref(),
+                &pair,
+            )
+        })?;
         let base_v = entry.paint_vram_mib();
         let base_h = entry.paint_host_mib();
         entry.vram_mib = base_v + delta.vram_mib;
@@ -1398,6 +1410,57 @@ fn key_matches_vram_topo(key: &str, want: &str) -> bool {
     got.eq_ignore_ascii_case(want.trim())
 }
 
+fn draft_basename(draft: &str) -> String {
+    let d = draft.trim();
+    if d.is_empty() {
+        return String::new();
+    }
+    std::path::Path::new(d)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(d)
+        .to_lowercase()
+}
+
+/// A batch delta measured at one ctx is a curve-wide addition. Look for it on
+/// any entry of the same memory-shape identity, not only the current ctx row.
+fn find_batch_delta(
+    entries: &HashMap<String, LearnedVramEntry>,
+    path_norm: &str,
+    provider_id: &str,
+    kv_n: &str,
+    spec_n: &str,
+    draft_base: &str,
+    split_n: &str,
+    vram_topo: Option<&str>,
+    pair: &str,
+) -> Option<LearnedBatchDelta> {
+    let mut best: Option<LearnedBatchDelta> = None;
+    for (key, entry) in entries {
+        if !entry_matches_curve_hard_knobs(key, path_norm, provider_id, kv_n, spec_n, draft_base)
+        {
+            continue;
+        }
+        if !key_matches_split(key, split_n) {
+            continue;
+        }
+        if let Some(topo) = vram_topo {
+            if !key_matches_vram_topo(key, topo) {
+                continue;
+            }
+        }
+        if let Some(delta) = entry.batch_deltas.get(pair) {
+            if best
+                .as_ref()
+                .map_or(true, |current| delta.measured_at > current.measured_at)
+            {
+                best = Some(delta.clone());
+            }
+        }
+    }
+    best
+}
+
 /// Launch measurements for this model + kv/spec/draft + split, every ctx (device ignored).
 #[tauri::command]
 pub fn get_learned_vram_curve(
@@ -1434,6 +1497,18 @@ pub fn get_learned_vram_curve(
     let split_n = normalize_split_mode(split.as_deref().unwrap_or("none"));
     let wanted_batch = batch.unwrap_or(0);
     let wanted_ubatch = ubatch.unwrap_or(0);
+    let wanted_pair = batch_pair(wanted_batch, wanted_ubatch);
+    let global_delta = find_batch_delta(
+        &store.entries,
+        &path_norm,
+        &provider_id,
+        &kv_n,
+        &spec_n,
+        &draft_base,
+        &split_n,
+        vram_topo.as_deref(),
+        &wanted_pair,
+    );
     let mut best: std::collections::HashMap<usize, (String, LearnedVramCurvePoint)> =
         std::collections::HashMap::new();
     for (k, entry) in &store.entries {
@@ -1462,10 +1537,11 @@ pub fn get_learned_vram_curve(
         let mut delta_h = 0.0;
         if let (Some(rb), Some(ru)) = (entry.reference_batch, entry.reference_ubatch) {
             if rb != wanted_batch || ru != wanted_ubatch {
-                let Some(delta) = entry
+                let delta = entry
                     .batch_deltas
-                    .get(&batch_pair(wanted_batch, wanted_ubatch))
-                else {
+                    .get(&wanted_pair)
+                    .or(global_delta.as_ref());
+                let Some(delta) = delta else {
                     continue;
                 };
                 delta_v = delta.vram_mib;
