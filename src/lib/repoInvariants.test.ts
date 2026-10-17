@@ -143,4 +143,29 @@ describe("repo invariants", () => {
       [],
     );
   });
+  /**
+   * .gitignore keeps generated and shipped-artifact trees out of the repo and out of
+   * searches: target/, dist/, node_modules/, src-tauri/gen/, the multi-GB toolchain
+   * and engine binaries. That is all correct.
+   *
+   * The one dangerous mistake is a rule broad enough to swallow real SOURCE — the
+   * file then never reaches a clone, and only a build that imports it would notice.
+   * Ignored markers and Python caches under scripts/ (a .majestic-enabled file, a
+   * .pyc) are legitimate, so this only counts source extensions: a broad rule like
+   * \`src/**\` or \`*.json\` that hides .ts/.tsx/.rs/.css still trips it.
+   */
+  it("no source file is hidden by .gitignore", () => {
+    const listing = execFileSync(
+      "git",
+      ["ls-files", "--others", "--ignored", "--exclude-standard", "--", "src/", "scripts/", "src-tauri/src/"],
+      { encoding: "utf8" },
+    );
+    const sourceExt = /\.(ts|tsx|js|mjs|rs|css|py|ps1|nsi|nsh)$/;
+    const hidden = listing
+      .split(/\r?\n/)
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0 && sourceExt.test(p));
+
+    expect(hidden, "gitignored source paths:\n" + hidden.join("\n")).toEqual([]);
+  });
 });

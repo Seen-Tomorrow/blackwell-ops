@@ -39,6 +39,34 @@ separate target. A full app restart is the only exception — still confirm firs
 
 ---
 
+## Where runtime data lives — git cannot see it
+
+**"App root" = the folder holding `blackwell-ops.exe`, not the repo root** (`config::app_root_dir()` is
+`current_exe().parent()`): `src-tauri/target/debug/` for DEV, the portable install folder for REL.
+`toolchain/`, `config/`, `runtime/` and the engine binaries all live there and are **gitignored** — so
+`git grep`, `git ls-files` and a repo-root `Get-ChildItem` cannot see any of it. Absence from git is not
+absence from disk. Concrete trap: repo-root `toolchain/` holds only `manifest.json` (~1.3 KB, the
+`include_str!` input); the real ~5 GB toolchain sits under the app root.
+
+**Never call a directory empty from a rounded size.** `(... | Measure-Object Length -Sum).Sum / 1MB`
+prints `0.0` for a folder holding a 1.3 KB file — list the files. On the CRCRLF partials `Select-String`
+also reports roughly doubled line numbers; use the read tool or a script there.
+
+**`rg` honours `.gitignore`, so a search silently skips `toolchain/`, `dist/`, `target/`.** Use
+`git grep` for source (tracked files only) and `rg --no-ignore <pat> <dir>` when the artifact tree is
+what you actually need. Ignoring never affected `git grep`/`git ls-files` — they were only ever
+looking at tracked files — so an ignore rule cannot "clean up" those searches, and adding one to try
+is the wrong lever. The repo's ignore list is correct on the merits (generated, GB-scale shipped
+artifacts, user data); `repoInvariants` guards the one mistake that matters, a rule broad enough to
+swallow source.
+
+**`toolchain/` is a runtime dependency, not just a build one.** `portable_cuda_env_for_profile` refuses
+to launch without its CUDA runtime DLLs (cublas\*/cublaslt\*/cudart\*), and the engine launch env is
+`toolchain CUDA bin(s) + scrubbed(inherited PATH)` — `scrub_foreign_cuda_from_path` deliberately drops a
+user's own CUDA toolkit so the bundled one always wins. Do not treat the pack as optional.
+
+---
+
 ## CSS / themes (frontend)
 
 **Themes law** — Color lives in `src/themes/app-themes.ts` + `src/styles/tokens-base.css`. CSS/TSX only *name* tokens. To recolor an element: grep the class → if it’s a `var(--token)`, edit the token (all three themes, or base if shared); if it’s a hex, that site is the source of truth until someone wires a token. Frozen set: MATRIX / SLATE / ARCTIC × DOTTED / CLEAN. Do not add themes, faces, `[data-theme="…"]` forks, or `var(--x, #hex)` “just in case.”

@@ -1671,4 +1671,48 @@ mod isolation_tests {
             );
         }
     }
+    /// The pack is a RUNTIME dependency too: launching builds the child PATH as
+    /// "toolchain CUDA bin(s) + scrubbed(inherited PATH)". A user's own NVIDIA
+    /// toolkit must be dropped, not merely outranked, or a mismatched CUDA can still
+    /// be picked up by the loader.
+    #[test]
+    fn foreign_cuda_is_scrubbed_from_the_inherited_path() {
+        let inherited = [
+            r"C:\Windows\system32",
+            r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.4\bin",
+            r"D:\Other\App\toolchain\cuda\v12.8\bin",
+            r"C:\Windows",
+        ]
+        .join(";");
+        let scrubbed = scrub_foreign_cuda_from_path(&inherited);
+        assert!(
+            !scrubbed.to_lowercase().contains("nvidia gpu computing toolkit"),
+            "a system CUDA install survived the scrub: {scrubbed}"
+        );
+        assert!(
+            !scrubbed.to_lowercase().contains(r"toolchain\cuda"),
+            "another app's toolchain CUDA survived the scrub: {scrubbed}"
+        );
+        assert_eq!(
+            scrubbed, r"C:\Windows\system32;C:\Windows",
+            "the scrub must keep ordinary entries and drop blank ones"
+        );
+    }
+
+    /// Classification covers both shapes a foreign CUDA takes — a system toolkit and
+    /// another toolchain tree — and is slash-agnostic. Note it classifies our own
+    /// toolchain path as foreign too: that is intended, the inherited PATH must never
+    /// carry it and the launch prepends it explicitly.
+    #[test]
+    fn foreign_cuda_classification_covers_system_and_foreign_trees() {
+        assert!(path_entry_is_foreign_cuda(
+            r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\bin"
+        ));
+        assert!(path_entry_is_foreign_cuda(
+            "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.8/bin"
+        ));
+        assert!(path_entry_is_foreign_cuda(r"D:\Apps\blackwell\toolchain\cuda\v13.3\bin"));
+        assert!(!path_entry_is_foreign_cuda(r"C:\Windows\system32"));
+        assert!(!path_entry_is_foreign_cuda("   "));
+    }
 }
