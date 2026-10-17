@@ -25,6 +25,7 @@ import FullAutoGoalRail from "./FullAutoGoalRail";
 import {
   fullAutoGoalBatchLabel,
   fullAutoWorkloadLabel,
+  type FullAutoFitState,
   type FullAutoGoal,
   type FullAutoWorkload,
 } from "../lib/fullAutoGoals";
@@ -137,6 +138,9 @@ export interface MultiAgentBoosterProps {
   onAutoGoal?: (goal: FullAutoGoal) => void;
   autoWorkload?: FullAutoWorkload | null;
   onAutoWorkload?: (workload: FullAutoWorkload) => void;
+  autoFitState?: FullAutoFitState;
+  autoFixing?: boolean;
+  onAutoFix?: () => void;
   onTakeControl?: () => void;
 
 }
@@ -197,6 +201,9 @@ export default function MultiAgentBooster({
   onAutoGoal,
   autoWorkload,
   onAutoWorkload,
+  autoFitState,
+  autoFixing,
+  onAutoFix,
   onTakeControl,
 }: MultiAgentBoosterProps) {
   const hero = layout === "hero";
@@ -635,11 +642,20 @@ export default function MultiAgentBooster({
   const ctxLabel = Number.isFinite(ctxNumeric) ? formatCtxChipLabel(ctxNumeric) : null;
   const batchLabel = fullAutoGoalBatchLabel(autoGoal ?? null);
   const workloadLabel = fullAutoWorkloadLabel(autoWorkload ?? null);
+  const fitLabel =
+    autoFitState === "ready"
+      ? "READY"
+      : autoFitState === "tight"
+        ? "TIGHT"
+        : autoFitState === "estimating"
+          ? "ESTIMATING"
+          : null;
   const autoOutcome = [
     plan.outcome,
     workloadLabel,
     batchLabel ? `Batch ${batchLabel}` : null,
     ctxLabel ? `CTX ${ctxLabel}` : null,
+    fitLabel,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -673,8 +689,11 @@ export default function MultiAgentBooster({
           workload={autoWorkload ?? null}
           outcome={autoOutcome}
           hero
+          fitState={autoFitState}
+          fixing={autoFixing}
           onGoal={onAutoGoal}
           onWorkload={onAutoWorkload ?? (() => {})}
+          onFix={onAutoFix}
           onTakeControl={onTakeControl}
         />
       ) : null}

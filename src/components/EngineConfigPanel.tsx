@@ -1190,6 +1190,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     setFullAuto(false);
   }, [setFullAuto]);
 
+  const autoFitState: "ready" | "tight" | "estimating" = vramCalc.manifest
+    ? vramCalc.manifest.fits
+      ? "ready"
+      : "tight"
+    : "estimating";
+
   const launchChrome = useMemo(() => {
     // Custom: never multi-GPU lock / device ALL / hide split none — user owns chrome.
     if (isCustomProvider && !fullAutoMode) {
@@ -3427,6 +3433,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           onAutoGoal={fullAutoFixed ? handleAutoGoal : undefined}
           autoWorkload={fullAutoFixed ? autoWorkload : null}
           onAutoWorkload={fullAutoFixed ? handleAutoWorkload : undefined}
+          autoFitState={fullAutoFixed ? autoFitState : undefined}
+          autoFixing={fullAutoFixed ? vramCalc.isValidating : false}
+          onAutoFix={fullAutoFixed ? () => { void vramCalc.validate("low_vram"); } : undefined}
           onTakeControl={fullAutoFixed ? handleTakeControl : undefined}
         />
         {!(model && !modelIsDraftOnly && showCockpitSurface) && (

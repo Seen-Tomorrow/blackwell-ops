@@ -66,6 +66,8 @@ export function fullAutoGoalBatchLabel(goal: FullAutoGoal | null): string | null
   return THROUGHPUT_STOPS.find((stop) => stop.id === throughput)?.label ?? null;
 }
 
+export type FullAutoFitState = "ready" | "tight" | "estimating";
+
 // ── Workload layer ─────────────────────────────────────────────────────────
 
 export type FullAutoWorkload = "chat" | "coding" | "longdoc" | "batch";

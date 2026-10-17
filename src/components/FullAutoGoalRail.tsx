@@ -2,6 +2,7 @@ import SegmentSwitch from "./SegmentSwitch";
 import {
   FULL_AUTO_GOALS,
   FULL_AUTO_WORKLOADS,
+  type FullAutoFitState,
   type FullAutoGoal,
   type FullAutoWorkload,
 } from "../lib/fullAutoGoals";
@@ -11,8 +12,11 @@ interface FullAutoGoalRailProps {
   workload: FullAutoWorkload | null;
   outcome: string;
   hero?: boolean;
+  fitState?: FullAutoFitState;
+  fixing?: boolean;
   onGoal: (goal: FullAutoGoal) => void;
   onWorkload: (workload: FullAutoWorkload) => void;
+  onFix?: () => void;
   onTakeControl?: () => void;
 }
 
@@ -22,8 +26,11 @@ export default function FullAutoGoalRail({
   workload,
   outcome,
   hero = false,
+  fitState,
+  fixing = false,
   onGoal,
   onWorkload,
+  onFix,
   onTakeControl,
 }: FullAutoGoalRailProps) {
   return (
@@ -63,6 +70,17 @@ export default function FullAutoGoalRail({
       <span className="full-auto-goal-rail__outcome" title={outcome}>
         {outcome}
       </span>
+      {fitState === "tight" && onFix ? (
+        <button
+          type="button"
+          className="full-auto-goal-rail__take"
+          onClick={onFix}
+          disabled={fixing}
+          title="Run the low-VRAM FIT probe — refine the fit or start RAM offload"
+        >
+          {fixing ? "PROBING…" : "LOW-VRAM PROBE"}
+        </button>
+      ) : null}
       {onTakeControl ? (
         <button
           type="button"

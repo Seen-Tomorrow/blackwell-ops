@@ -6,7 +6,7 @@ import type {
   ThinkId,
 } from "../lib/multiAgentBooster";
 import type { SpecCapability } from "../lib/specDraft";
-import type { FullAutoGoal, FullAutoWorkload } from "../lib/fullAutoGoals";
+import type { FullAutoFitState, FullAutoGoal, FullAutoWorkload } from "../lib/fullAutoGoals";
 import MultiAgentBooster, {
   type CockpitSpecDetailParam,
   type DflashGetUiState,
@@ -63,6 +63,9 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
     onAutoGoal,
     autoWorkload,
     onAutoWorkload,
+    autoFitState,
+    autoFixing,
+    onAutoFix,
     onTakeControl,
   } = props;
 
@@ -137,6 +140,9 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
         onAutoGoal={onAutoGoal}
         autoWorkload={autoWorkload}
         onAutoWorkload={onAutoWorkload}
+        autoFitState={autoFitState}
+        autoFixing={autoFixing}
+        onAutoFix={onAutoFix}
         onTakeControl={onTakeControl}
       />
     </div>
@@ -198,5 +204,8 @@ export interface EngineBoostSectionProps {
   onAutoGoal?: (goal: FullAutoGoal) => void;
   autoWorkload?: FullAutoWorkload | null;
   onAutoWorkload?: (workload: FullAutoWorkload) => void;
+  autoFitState?: FullAutoFitState;
+  autoFixing?: boolean;
+  onAutoFix?: () => void;
   onTakeControl?: () => void;
 }
