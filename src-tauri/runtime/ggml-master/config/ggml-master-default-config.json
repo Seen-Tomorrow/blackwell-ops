@@ -7,43 +7,20 @@
   "git_url": "https://github.com/ggml-org/llama.cpp",
   "groupOrder": [
     "PERFORMANCE",
+    "SAMPLER",
     "DEV-WORKFLOW",
     "FEATURE-FLAGS",
-    "SAMPLER",
     "SPECULATIVE-MTP",
     "SPECULATIVE-DFLASH",
     "SYSTEM"
   ],
   "id": "ggml-master",
-  "layoutDefaults": {
-    "aboveColumnWidths": [
-      0.3384311634160352,
-      0.6615688365839648
-    ],
-    "configColumnCount": 2,
-    "configColumnWidths": [
-      0.5311905470954017,
-      0.4688094529045983
-    ],
-    "groupColumn": {
-      "ADVANCED": 1,
-      "DEV-WORKFLOW": 1,
-      "FEATURE-FLAGS": 2,
-      "PERFORMANCE": 0,
-      "SPECULATIVE-DFLASH": 1,
-      "SPECULATIVE-MTP": 1,
-      "USER-ADDED-FROM-CATALOG": 2
-    },
-    "groupDisplayZone": {}
-  },
   "params": [
     {
       "default": 3072,
       "dock": "",
       "essentialsHiddenValues": [
-        8192,
-        16384,
-        32768
+        16384
       ],
       "flag": "--batch-size",
       "flag_pair": [],
@@ -62,20 +39,16 @@
         2048,
         3072,
         4096,
-        6144,
         8192,
-        16384,
-        32768
+        16384
       ]
     },
     {
       "default": 1536,
       "dock": "",
       "essentialsHiddenValues": [
-        64,
-        128,
-        8192,
-        4096
+        256,
+        8192
       ],
       "flag": "--ubatch-size",
       "flag_pair": [],
@@ -89,16 +62,13 @@
       "sub_params": null,
       "ui_group": "PERFORMANCE",
       "values": [
-        64,
-        128,
         256,
         512,
         1024,
         1536,
         2048,
         4096,
-        8192,
-        16384
+        8192
       ]
     },
     {
@@ -137,6 +107,123 @@
       "values": [
         "on",
         "off"
+      ]
+    },
+    {
+      "default": 0.7,
+      "dock": "",
+      "flag": "--temp",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "temp",
+      "label": "Temp",
+      "note": "erature N                 temperature (default: 0.80)",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SAMPLER",
+      "values": [
+        0.7,
+        0.8,
+        0.9,
+        1
+      ]
+    },
+    {
+      "default": 0.95,
+      "dock": "",
+      "flag": "--top-p",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "top_p",
+      "label": "Top P",
+      "note": "N                               top-p sampling (default: 0.95, 1.0 = disabled)",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SAMPLER",
+      "values": [
+        0.8,
+        0.95,
+        1
+      ]
+    },
+    {
+      "default": 20,
+      "dock": "",
+      "flag": "--top-k",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "top_k",
+      "label": "Top K",
+      "note": "N                               top-k sampling (default: 40, 0 = disabled)",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SAMPLER",
+      "values": [
+        20,
+        40
+      ]
+    },
+    {
+      "default": 0.05,
+      "dock": "",
+      "flag": "--min-p",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "min_p",
+      "label": "Min P",
+      "note": "N                               min-p sampling (default: 0.05, 0.0 = disabled)",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SAMPLER",
+      "values": [
+        0,
+        0.05
+      ]
+    },
+    {
+      "default": 1.5,
+      "dock": "",
+      "flag": "--presence-penalty",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "presence_penalty",
+      "label": "Presence Penalty",
+      "note": "ce-penalty N                    repeat alpha presence penalty (default: 0.00, 0.0 = disabled)",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SAMPLER",
+      "values": [
+        0,
+        1,
+        1.5
+      ]
+    },
+    {
+      "default": 1,
+      "dock": "",
+      "flag": "--repeat-penalty",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "repeat_penalty",
+      "label": "Repeat Penalty",
+      "note": "enalty N                      penalize repeat sequence of tokens (default: 1.00, 1.0 = disabled)",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SAMPLER",
+      "values": [
+        1
       ]
     },
     {
@@ -198,7 +285,7 @@
       ]
     },
     {
-      "default": "off",
+      "default": "on",
       "dock": "",
       "flag": "--reasoning-preserve",
       "flag_pair": [],
@@ -206,6 +293,25 @@
       "key": "reasoning_preserve",
       "label": "Reasoning Preserve",
       "note": "Keep prior reasoning trace in context (server --reasoning-preserve). Independent of Think / REASONING budget.",
+      "pattern": "",
+      "ptype": "switch_onoff",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "DEV-WORKFLOW",
+      "values": [
+        "on",
+        "off"
+      ]
+    },
+    {
+      "default": "on",
+      "dock": "",
+      "flag": "--jinja",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "jinja",
+      "label": "JINJA",
+      "note": "Enable Jinja templating for chat.",
       "pattern": "",
       "ptype": "switch_onoff",
       "step": null,
@@ -255,157 +361,6 @@
       ]
     },
     {
-      "default": "on",
-      "dock": "",
-      "flag": "--jinja",
-      "flag_pair": [],
-      "hidden_default": false,
-      "key": "jinja",
-      "label": "JINJA",
-      "note": "Enable Jinja templating for chat.",
-      "pattern": "",
-      "ptype": "switch_onoff",
-      "step": null,
-      "sub_params": null,
-      "ui_group": "FEATURE-FLAGS",
-      "values": [
-        "on",
-        "off"
-      ]
-    },
-    {
-      "default": 0.7,
-      "dock": "",
-      "essentialsHiddenValues": [
-        0.9,
-        0.8
-      ],
-      "flag": "--temp",
-      "flag_pair": [],
-      "hidden_default": false,
-      "key": "temp",
-      "label": "Temp",
-      "note": "erature N                 temperature (default: 0.80)",
-      "pattern": "",
-      "ptype": "arg_select",
-      "step": null,
-      "sub_params": null,
-      "ui_group": "SAMPLER",
-      "values": [
-        0.7,
-        0.8,
-        0.9,
-        1
-      ]
-    },
-    {
-      "default": 0.95,
-      "dock": "",
-      "flag": "--top-p",
-      "flag_pair": [],
-      "hidden_default": false,
-      "key": "top_p",
-      "label": "Top P",
-      "note": "N                               top-p sampling (default: 0.95, 1.0 = disabled)",
-      "pattern": "",
-      "ptype": "arg_select",
-      "step": null,
-      "sub_params": null,
-      "ui_group": "SAMPLER",
-      "values": [
-        0.8,
-        0.95,
-        1
-      ]
-    },
-    {
-      "default": 20,
-      "dock": "",
-      "essentialsHiddenValues": [
-        20
-      ],
-      "flag": "--top-k",
-      "flag_pair": [],
-      "hidden_default": false,
-      "key": "top_k",
-      "label": "Top K",
-      "note": "N                               top-k sampling (default: 40, 0 = disabled)",
-      "pattern": "",
-      "ptype": "arg_select",
-      "step": null,
-      "sub_params": null,
-      "ui_group": "SAMPLER",
-      "values": [
-        20,
-        40
-      ]
-    },
-    {
-      "default": 0.05,
-      "dock": "",
-      "essentialsHiddenValues": [
-        0.05,
-        0
-      ],
-      "flag": "--min-p",
-      "flag_pair": [],
-      "hidden_default": false,
-      "key": "min_p",
-      "label": "Min P",
-      "note": "N                               min-p sampling (default: 0.05, 0.0 = disabled)",
-      "pattern": "",
-      "ptype": "arg_select",
-      "step": null,
-      "sub_params": null,
-      "ui_group": "SAMPLER",
-      "values": [
-        0,
-        0.05
-      ]
-    },
-    {
-      "default": 1.5,
-      "dock": "",
-      "essentialsHiddenValues": [
-        1,
-        1.5
-      ],
-      "flag": "--presence-penalty",
-      "flag_pair": [],
-      "hidden_default": false,
-      "key": "presence_penalty",
-      "label": "Presence Penalty",
-      "note": "ce-penalty N                    repeat alpha presence penalty (default: 0.00, 0.0 = disabled)",
-      "pattern": "",
-      "ptype": "arg_select",
-      "step": null,
-      "sub_params": null,
-      "ui_group": "SAMPLER",
-      "values": [
-        0,
-        1,
-        1.5
-      ]
-    },
-    {
-      "default": 1,
-      "dock": "",
-      "flag": "--repeat-penalty",
-      "flag_pair": [],
-      "hidden_default": false,
-      "key": "repeat_penalty",
-      "label": "Repeat Penalty",
-      "note": "enalty N                      penalize repeat sequence of tokens (default: 1.00, 1.0 = disabled)",
-      "pattern": "",
-      "ptype": "arg_select",
-      "step": null,
-      "sub_params": null,
-      "ui_group": "SAMPLER",
-      "values": [
-        1
-      ]
-    },
-    {
       "default": 3,
       "dock": "",
       "essentialsHiddenValues": [
@@ -430,7 +385,11 @@
         4,
         6,
         8,
-        12
+        12,
+        14,
+        16,
+        20,
+        24
       ]
     },
     {
@@ -456,11 +415,13 @@
         2,
         3,
         4,
-        5
+        5,
+        6,
+        8
       ]
     },
     {
-      "default": 0,
+      "default": 0.5,
       "dock": "",
       "essentialsHiddenValues": [
         0.6,
@@ -481,9 +442,29 @@
       "values": [
         0,
         0.01,
+        0.5,
         0.6,
         0.75,
         0.8
+      ]
+    },
+    {
+      "default": "off",
+      "dock": "",
+      "flag": "--spec-draft-model",
+      "flag_pair": [],
+      "hidden_default": true,
+      "key": "mtp_draft_model",
+      "label": "DRAFT-MODEL",
+      "note": "External MTP head GGUF. With a path set, Boost emits --spec-type draft-mtp plus -md; left off, MTP uses the target's baked-in nextn layers.",
+      "pattern": "*mtp*",
+      "ptype": "logic_only",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SPECULATIVE-MTP",
+      "values": [
+        "off",
+        "auto"
       ]
     },
     {
@@ -588,28 +569,10 @@
       ]
     },
     {
-      "default": "off",
-      "dock": "",
-      "flag": "--spec-draft-model",
-      "flag_pair": [],
-      "hidden_default": true,
-      "key": "mtp_draft_model",
-      "label": "DRAFT-MODEL",
-      "note": "External MTP head GGUF. With a path set, Boost emits --spec-type draft-mtp plus -md; left off, MTP uses the target's baked-in nextn layers.",
-      "pattern": "*mtp*",
-      "ptype": "logic_only",
-      "step": null,
-      "sub_params": null,
-      "ui_group": "SPECULATIVE-MTP",
-      "values": [
-        "off",
-        "auto"
-      ]
-    },
-    {
       "default": "q4_0",
       "dock": "",
       "essentialsHiddenValues": [
+        "f16",
         "bf16"
       ],
       "flag": null,
@@ -665,11 +628,6 @@
     {
       "default": 1,
       "dock": "",
-      "essentialsHiddenValues": [
-        64,
-        128,
-        3
-      ],
       "flag": "--parallel",
       "flag_pair": [],
       "hidden_default": false,
@@ -684,13 +642,10 @@
       "values": [
         1,
         2,
-        3,
         4,
         8,
         16,
-        32,
-        64,
-        128
+        32
       ]
     },
     {
@@ -851,6 +806,6 @@
       "4"
     ]
   },
-  "templateVersion": 51,
+  "templateVersion": 53,
   "template_type": "ggml-llama"
 }
