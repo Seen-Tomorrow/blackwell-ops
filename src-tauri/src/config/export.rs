@@ -15,8 +15,6 @@ pub struct ExportFactoryTemplateInput {
     pub group_order: Vec<String>,
     #[serde(default, rename = "protectedGroups")]
     pub protected_groups: Vec<String>,
-    #[serde(default, rename = "layoutDefaults")]
-    pub layout_defaults: crate::types::LayoutDefaults,
     #[serde(default, rename = "essentialParamKeys")]
     pub essential_param_keys: Vec<String>,
 }
@@ -107,7 +105,6 @@ const FACTORY_CONFIG_KEY_ORDER: &[&str] = &[
     "params",
     "groupOrder",
     "protectedGroups",
-    "layoutDefaults",
 ];
 
 const SYSTEM_UI_GROUP: &str = "SYSTEM";
@@ -279,13 +276,6 @@ pub fn export_provider_factory_template(
             "optionalDownload": true,
             "templateVersion": 0,
             "groupOrder": [],
-            "layoutDefaults": {
-                "groupDisplayZone": {},
-                "groupColumn": {},
-                "configColumnCount": 2,
-                "configColumnWidths": [],
-                "aboveColumnWidths": []
-            },
             "params": [],
             "spawn_profile": {
                 "essentialParamKeys": [],
@@ -350,7 +340,6 @@ pub fn export_provider_factory_template(
     let factory_params: Vec<crate::templates::ProviderDefaultParam> =
         sorted.iter().map(user_param_to_factory_param).collect();
 
-    let layout = input.layout_defaults.clone();
     let pretty = serde_json::to_string_pretty(&factory_params)
         .map_err(|e| format!("Failed to serialize params: {e}"))?;
     let params_value: serde_json::Value =
@@ -368,10 +357,8 @@ pub fn export_provider_factory_template(
             "protectedGroups".to_string(),
             serde_json::to_value(&protected_groups).map_err(|e| e.to_string())?,
         );
-        obj.insert(
-            "layoutDefaults".to_string(),
-            serde_json::to_value(&layout).map_err(|e| e.to_string())?,
-        );
+        // Layout defaults are user-owned now; strip any legacy block from the factory JSON.
+        obj.remove("layoutDefaults");
         obj.insert(
             "templateVersion".to_string(),
             serde_json::Value::Number(new_tv.into()),

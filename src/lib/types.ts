@@ -205,16 +205,12 @@ export interface ProviderConfig {
    * Flag-driven — not inferred from group name. Empty → frontend seeds defaults.
    */
   protectedGroups?: string[];
-  /** Per-group pin above VRAM display (default: below). */
-  groupDisplayZone?: Record<string, "above" | "below">;
   /** Below-zone column layout (1–3). */
   configColumnCount?: 1 | 2 | 3;
   /** Below-zone column width fractions (sum = 1). */
   configColumnWidths?: number[];
   /** Per-group below-zone column index. */
   groupColumn?: Record<string, number>;
-  /** Pinned-above zone column widths (2 cols, default 65/35). */
-  aboveColumnWidths?: number[];
   _original_id?: string;
   git_url?: string;
   branch?: string;
@@ -253,15 +249,6 @@ export interface ProviderConfig {
   needsTemplateAttention?: boolean; // set by merge when user config version differs from factory — shows banner in ConfigPage
   /** Factory launch profile — synced from spawn_profile on load (not user-persisted). */
   spawnProfile?: SpawnProfile;
-}
-
-/** Factory engine-config layout defaults — shipped in *-default-config.json. */
-export interface LayoutDefaults {
-  configColumnCount?: 1 | 2 | 3;
-  configColumnWidths?: number[];
-  groupDisplayZone?: Record<string, "above" | "below">;
-  groupColumn?: Record<string, number>;
-  aboveColumnWidths?: number[];
 }
 
 export interface ExportFactoryTemplateResult {

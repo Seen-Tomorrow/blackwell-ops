@@ -2,23 +2,16 @@ import { normalizeUiGroup } from "./storage";
 
 export type ConfigColumnCount = 1 | 2 | 3;
 
-export const DEFAULT_COLUMN_WIDTHS: Record<ConfigColumnCount, number[]> = {
+const DEFAULT_COLUMN_WIDTHS: Record<ConfigColumnCount, number[]> = {
   1: [1],
   2: [0.5, 0.5],
   3: [0.4, 0.3, 0.3],
 };
 
-export const MIN_COLUMN_FRACTION = 0.15;
+const MIN_COLUMN_FRACTION = 0.15;
 
 export function defaultColumnWidths(count: ConfigColumnCount): number[] {
   return [...DEFAULT_COLUMN_WIDTHS[count]];
-}
-
-export function normalizeColumnCount(raw: unknown): ConfigColumnCount {
-  const n = Number(raw);
-  if (n === 1 || n === 2 || n === 3) return n;
-  // Product density — two columns.
-  return 2;
 }
 
 export function normalizeColumnWidths(count: ConfigColumnCount, widths?: number[] | null): number[] {
@@ -43,7 +36,7 @@ function resolvePartitionColumn(
   return 0;
 }
 
-export function partitionGroupsByColumn(
+function partitionGroupsByColumn(
   keys: string[],
   groupColumn: Record<string, number>,
   columnCount: number,
@@ -62,14 +55,6 @@ export function partitionBelowGroupsByColumn(
   columnCount: ConfigColumnCount,
 ): string[][] {
   return partitionGroupsByColumn(belowKeys, groupColumn, columnCount);
-}
-
-/** Kept for CONFIG-page factory export (above-zone widths still live there). */
-export function normalizeAboveColumnWidths(widths?: number[] | null): [number, number] {
-  if (!widths || widths.length !== 2) return [0.65, 0.35];
-  const sum = widths.reduce((a, b) => a + b, 0);
-  if (!Number.isFinite(sum) || sum <= 0) return [0.65, 0.35];
-  return [widths[0]! / sum, widths[1]! / sum];
 }
 
 export function adjustColumnGutter(

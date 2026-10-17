@@ -277,30 +277,28 @@ fn factory_default_config_path(provider_id: &str) -> std::path::PathBuf {
         .join(format!("{provider_id}-default-config.json"))
 }
 
-/// Read factory `groupOrder` + `layoutDefaults` + `protectedGroups` from default config JSON.
-pub fn load_factory_layout_supplement(
+/// Read factory `groupOrder` + `protectedGroups` from default config JSON.
+pub fn load_factory_meta_supplement(
     provider_id: &str,
-) -> (Vec<String>, crate::types::LayoutDefaults, Vec<String>) {
+) -> (Vec<String>, Vec<String>) {
     let path = factory_default_config_path(provider_id);
     if !path.exists() {
-        return (Vec::new(), crate::types::LayoutDefaults::default(), Vec::new());
+        return (Vec::new(), Vec::new());
     }
     let content = match std::fs::read_to_string(&path) {
         Ok(c) => c,
-        Err(_) => return (Vec::new(), crate::types::LayoutDefaults::default(), Vec::new()),
+        Err(_) => return (Vec::new(), Vec::new()),
     };
     #[derive(Deserialize, Default)]
     struct Supplement {
         #[serde(default, rename = "groupOrder")]
         group_order: Vec<String>,
-        #[serde(default, rename = "layoutDefaults")]
-        layout_defaults: crate::types::LayoutDefaults,
         #[serde(default, rename = "protectedGroups")]
         protected_groups: Vec<String>,
     }
     match serde_json::from_str::<Supplement>(&content) {
-        Ok(s) => (s.group_order, s.layout_defaults, s.protected_groups),
-        Err(_) => (Vec::new(), crate::types::LayoutDefaults::default(), Vec::new()),
+        Ok(s) => (s.group_order, s.protected_groups),
+        Err(_) => (Vec::new(), Vec::new()),
     }
 }
 

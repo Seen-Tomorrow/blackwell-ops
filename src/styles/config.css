@@ -1467,7 +1467,7 @@
    corrected TEXT only, while this page's accent SOLIDs and BORDERS (launch CTA
    fill, selected chips, slider tracks, cfg-fill--a* accents, focus rings) were
    never corrected and must keep the base accent. Every cfg-acc / cfg-acc--a*
-   class in the Config room (ConfigPage, ConfigParamLegend, GroupHeaderControls,
+   class in the Config room (ConfigPage, ConfigParamLegend,
    LaunchPreset* / LaunchPresets*, Param* / SubParamsEditor, ProvidersConfig,
    RecoveryConfig, SecretsConfig, ValueBubbles) inherits it. Update this list when
    a Config-room class starts or stops painting accent ink. */
@@ -1951,10 +1951,6 @@ select option {
  */
 [data-config-panel] .gpu-assign-panel .value-chip,
 [data-config-panel] .gpu-assign-panel .value-chip-active,
-[data-config-panel] .config-params-above [data-param-row] .value-chip,
-[data-config-panel] .config-params-above [data-param-row] .value-chip-active,
-[data-config-panel] .config-params-above [data-param-row] input.value-chip,
-[data-config-panel] .config-params-above [data-param-row] input.value-chip-active,
 [data-config-panel] .config-params-scroll [data-param-row] .value-chip,
 [data-config-panel] .config-params-scroll [data-param-row] .value-chip-active,
 [data-config-panel] .config-params-scroll [data-param-row] input.value-chip,
@@ -1970,8 +1966,6 @@ select option {
 }
 
 [data-config-panel] .gpu-assign-panel .value-chip:hover,
-[data-config-panel] .config-params-above [data-param-row] .value-chip:hover,
-[data-config-panel] .config-params-above [data-param-row] input.value-chip:hover,
 [data-config-panel] .config-params-scroll [data-param-row] .value-chip:hover,
 [data-config-panel] .config-params-scroll [data-param-row] input.value-chip:hover,
 [data-config-page] [data-param-row] .value-chip:hover {
@@ -1981,8 +1975,6 @@ select option {
 }
 
 [data-config-panel] .gpu-assign-panel .value-chip-active,
-[data-config-panel] .config-params-above [data-param-row] .value-chip-active,
-[data-config-panel] .config-params-above [data-param-row] input.value-chip-active,
 [data-config-panel] .config-params-scroll [data-param-row] .value-chip-active,
 [data-config-panel] .config-params-scroll [data-param-row] input.value-chip-active,
 [data-config-page] [data-param-row] .value-chip-active {

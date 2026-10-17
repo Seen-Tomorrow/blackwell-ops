@@ -561,13 +561,6 @@ fn ensure_factory_shell(
         "optionalDownload": true,
         "templateVersion": 1,
         "groupOrder": p.group_order,
-        "layoutDefaults": {
-            "groupDisplayZone": p.group_display_zone,
-            "groupColumn": p.group_column,
-            "configColumnCount": p.config_column_count.unwrap_or(2),
-            "configColumnWidths": p.config_column_widths,
-            "aboveColumnWidths": p.above_column_widths
-        },
         "params": [],
         "spawn_profile": spawn
     });

@@ -158,11 +158,9 @@ fn discover_providers() -> Vec<crate::types::ProviderConfig> {
                     group_order: Vec::new(),
                     protected_groups: Vec::new(),
                     custom_capabilities: crate::types::CustomProviderCapabilities::default(),
-                    group_display_zone: HashMap::new(),
                     config_column_count: None,
                     config_column_widths: Vec::new(),
                     group_column: HashMap::new(),
-                    above_column_widths: Vec::new(),
                     _original_id: None,
                     git_url: identity.git_url,
                     branch: identity.branch,
@@ -185,7 +183,7 @@ fn discover_providers() -> Vec<crate::types::ProviderConfig> {
                         .map(|t| t.spawn_profile.clone())
                         .unwrap_or_default(),
                 };
-                apply_factory_layout_defaults(&mut discovered, &identity.id);
+                apply_factory_meta_defaults(&mut discovered, &identity.id);
                 providers.push(discovered);
             }
         }
@@ -290,7 +288,7 @@ pub fn build_config_with_providers_full(mut config: AppConfig) -> AppConfig {
             // Active binary paths + build info resolved after meta merge (see resolve_provider_binaries_from_meta).
             let factory_key = resolve_merge_template_key(&p.id, &effective_template_type, true)
                 .unwrap_or_else(|| p.id.clone());
-            apply_meta_layout_overrides(&mut p, meta, &factory_key);
+            apply_meta_overrides(&mut p, meta, &factory_key);
             if !meta.last_pr_per_env.is_empty() {
                 p.last_pr_per_env = meta.last_pr_per_env.clone();
             }
@@ -311,9 +309,6 @@ pub fn build_config_with_providers_full(mut config: AppConfig) -> AppConfig {
             }
             p.excluded_param_keys = meta.excluded_param_keys.clone();
             p.custom_capabilities = meta.custom_capabilities.clone();
-            if !meta.above_column_widths.is_empty() {
-                p.above_column_widths = meta.above_column_widths.clone();
-            }
         }
         let pid = p.id.clone();
         resolve_provider_binaries_from_meta(&mut p, meta_map.get(&pid).copied());
@@ -364,11 +359,9 @@ pub fn build_config_with_providers_full(mut config: AppConfig) -> AppConfig {
                 group_order: Vec::new(),
                 protected_groups: Vec::new(),
                 custom_capabilities: meta.custom_capabilities.clone(),
-                group_display_zone: HashMap::new(),
                 config_column_count: None,
                 config_column_widths: Vec::new(),
                 group_column: HashMap::new(),
-                above_column_widths: meta.above_column_widths.clone(),
                 _original_id: None,
                 git_url: meta.git_url.clone(),
                 branch: meta.branch.clone(),
@@ -393,7 +386,7 @@ pub fn build_config_with_providers_full(mut config: AppConfig) -> AppConfig {
                     .map(|t| t.spawn_profile.clone())
                     .unwrap_or_default(),
             };
-            apply_meta_layout_overrides(&mut custom, &meta, &factory_key);
+            apply_meta_overrides(&mut custom, &meta, &factory_key);
             // Migration: seed history from last_pr when history is empty for an env.
             for (env, pr) in &custom.last_pr_per_env {
                 if custom.pr_history_per_env.get(env).map(Vec::is_empty).unwrap_or(true) {

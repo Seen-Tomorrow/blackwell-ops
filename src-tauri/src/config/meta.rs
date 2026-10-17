@@ -54,12 +54,12 @@ pub fn factory_default_config_path(provider_id: &str) -> PathBuf {
 }
 
 
-pub fn apply_factory_layout_defaults(
+pub fn apply_factory_meta_defaults(
     provider: &mut crate::types::ProviderConfig,
     factory_key: &str,
 ) {
-    let (factory_group_order, factory_layout, factory_protected) =
-        crate::templates::load_factory_layout_supplement(factory_key);
+    let (factory_group_order, factory_protected) =
+        crate::templates::load_factory_meta_supplement(factory_key);
     if provider.group_order.is_empty() && !factory_group_order.is_empty() {
         provider.group_order = factory_group_order
             .into_iter()
@@ -72,42 +72,23 @@ pub fn apply_factory_layout_defaults(
             .map(|g| normalize_ui_group(&g))
             .collect();
     }
-    if provider.group_display_zone.is_empty() && !factory_layout.group_display_zone.is_empty() {
-        provider.group_display_zone = factory_layout.group_display_zone.clone();
-    }
-    if provider.config_column_count.is_none() && factory_layout.config_column_count > 0 {
-        provider.config_column_count = Some(factory_layout.config_column_count.clamp(1, 3));
-    }
-    if provider.config_column_widths.is_empty() && !factory_layout.config_column_widths.is_empty() {
-        provider.config_column_widths = factory_layout.config_column_widths.clone();
-    }
-    if provider.group_column.is_empty() && !factory_layout.group_column.is_empty() {
-        provider.group_column = factory_layout.group_column.clone();
-    }
-    if provider.above_column_widths.is_empty() && !factory_layout.above_column_widths.is_empty() {
-        provider.above_column_widths = factory_layout.above_column_widths.clone();
-    }
 }
 
-pub fn apply_meta_layout_overrides(
+pub fn apply_meta_overrides(
     provider: &mut crate::types::ProviderConfig,
     meta: &crate::types::ProviderConfig,
     factory_key: &str,
 ) {
-    if !meta.group_order.is_empty() {
-        provider.group_order = meta.group_order.clone();
+    if meta.group_order.is_empty() {
+        apply_factory_meta_defaults(provider, factory_key);
     } else {
-        apply_factory_layout_defaults(provider, factory_key);
-        if !meta.protected_groups.is_empty() {
-            provider.protected_groups = meta.protected_groups.clone();
-        }
-        return;
+        provider.group_order = meta.group_order.clone();
     }
     if !meta.protected_groups.is_empty() {
         provider.protected_groups = meta.protected_groups.clone();
     } else if provider.protected_groups.is_empty() {
-        let (_, _, factory_protected) =
-            crate::templates::load_factory_layout_supplement(factory_key);
+        let (_, factory_protected) =
+            crate::templates::load_factory_meta_supplement(factory_key);
         if !factory_protected.is_empty() {
             provider.protected_groups = factory_protected
                 .into_iter()
@@ -115,9 +96,7 @@ pub fn apply_meta_layout_overrides(
                 .collect();
         }
     }
-    if !meta.group_display_zone.is_empty() {
-        provider.group_display_zone = meta.group_display_zone.clone();
-    }
+    // User-owned column preferences only — the factory no longer seeds layout.
     if meta.config_column_count.is_some() {
         provider.config_column_count = meta.config_column_count;
     }
@@ -126,32 +105,6 @@ pub fn apply_meta_layout_overrides(
     }
     if !meta.group_column.is_empty() {
         provider.group_column = meta.group_column.clone();
-    }
-    if !meta.above_column_widths.is_empty() {
-        provider.above_column_widths = meta.above_column_widths.clone();
-    }
-    if provider.group_display_zone.is_empty()
-        || provider.config_column_count.is_none()
-        || provider.config_column_widths.is_empty()
-        || provider.group_column.is_empty()
-        || provider.above_column_widths.is_empty()
-    {
-        let (_, factory_layout, _) = crate::templates::load_factory_layout_supplement(factory_key);
-        if provider.group_display_zone.is_empty() && !factory_layout.group_display_zone.is_empty() {
-            provider.group_display_zone = factory_layout.group_display_zone;
-        }
-        if provider.config_column_count.is_none() && factory_layout.config_column_count > 0 {
-            provider.config_column_count = Some(factory_layout.config_column_count.clamp(1, 3));
-        }
-        if provider.config_column_widths.is_empty() && !factory_layout.config_column_widths.is_empty() {
-            provider.config_column_widths = factory_layout.config_column_widths;
-        }
-        if provider.group_column.is_empty() && !factory_layout.group_column.is_empty() {
-            provider.group_column = factory_layout.group_column;
-        }
-        if provider.above_column_widths.is_empty() && !factory_layout.above_column_widths.is_empty() {
-            provider.above_column_widths = factory_layout.above_column_widths;
-        }
     }
 }
 

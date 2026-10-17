@@ -25,7 +25,7 @@ export const SAMPLER_KEYS = [
 
 export type SamplerKey = (typeof SAMPLER_KEYS)[number];
 
-export const SAMPLER_LABEL: Record<SamplerKey, string> = {
+const SAMPLER_LABEL: Record<SamplerKey, string> = {
   temp: "TEMP",
   top_p: "TOP P",
   top_k: "TOP K",
@@ -111,12 +111,10 @@ export const COMPAT_KEYS = [
   "reasoning_preserve",
 ] as const;
 
-export type CompatKey = (typeof COMPAT_KEYS)[number];
-
 // ── Surface routing ─────────────────────────────────────────────────────────
 
 /** Params promoted out of the maintenance bay. */
-export const SURFACE_PARAM_KEYS: ReadonlySet<string> = new Set<string>([
+const SURFACE_PARAM_KEYS: ReadonlySet<string> = new Set<string>([
   ...SAMPLER_KEYS,
   "batch",
   "ubatch",
@@ -149,7 +147,7 @@ export function sameParamValue(a: unknown, b: unknown): boolean {
 }
 
 /** Usable values: factory list + user-added, deduped, hidden-object values dropped. */
-export function paramValuesOf(def: UserEditedTemplateParam): ParamValue[] {
+function paramValuesOf(def: UserEditedTemplateParam): ParamValue[] {
   const seen = new Set<string>();
   const out: ParamValue[] = [];
   for (const raw of [...(def.values ?? []), ...(def.userAddedValues ?? [])]) {
@@ -287,7 +285,7 @@ export function throughputDefs(defs: UserEditedTemplateParam[]): UserEditedTempl
     .filter((d): d is UserEditedTemplateParam => Boolean(d));
 }
 
-export function throughputValues(
+function throughputValues(
   defs: UserEditedTemplateParam[],
   stop: ThroughputDef,
 ): Map<string, ParamValue> {

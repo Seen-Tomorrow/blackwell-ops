@@ -3,7 +3,7 @@
 
 import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { UserEditedTemplateParam, ProviderConfig, ProviderTemplate, ProviderDefaultParam, LayoutDefaults, ExportFactoryTemplateResult } from "../lib/types";
+import type { UserEditedTemplateParam, ProviderConfig, ProviderTemplate, ProviderDefaultParam, ExportFactoryTemplateResult } from "../lib/types";
 import { DEFAULT_PROVIDER_ID } from "../lib/types";
 import {
   buildParamsForFactoryExport,
@@ -22,14 +22,8 @@ import {
   catalogOverrideKey,
   effectiveParamDefault,
   groupOrderKey,
-  loadGroupDisplayZone,
   loadGroupColumn,
-  loadAboveColumnWidths,
-  loadConfigColumnCount,
-  loadConfigColumnWidths,
   saveGroupColumn,
-  saveGroupDisplayZone,
-  type GroupDisplayZone,
   normalizeUiGroup,
   paramUiGroup,
   readJsonStorage,
@@ -199,8 +193,6 @@ export default function ParamConfigPanel({
     }
   }, [selectedProviderId, currentProvider]);
 
-  const [customGroupDisplayZone, setCustomGroupDisplayZone] = useState<Record<string, GroupDisplayZone>>({});
-
   /** Session-only collapse for reordering — not persisted; separate from engine config groups. */
   const [collapsedConfigGroups, setCollapsedConfigGroups] = useState<Set<string>>(() => new Set());
 
@@ -215,32 +207,6 @@ export default function ParamConfigPanel({
       return next;
     });
   }, []);
-
-  useEffect(() => {
-    setCustomGroupDisplayZone(loadGroupDisplayZone(selectedProviderId, currentProvider?.groupDisplayZone));
-  }, [selectedProviderId, currentProvider]);
-
-  const toggleGroupDisplayZone = useCallback(
-    async (groupName: string) => {
-      const normalized = normalizeUiGroup(groupName);
-      const next = { ...customGroupDisplayZone };
-      if (next[normalized] === "above") delete next[normalized];
-      else next[normalized] = "above";
-      saveGroupDisplayZone(selectedProviderId, next);
-      setCustomGroupDisplayZone(next);
-      if (currentProvider) {
-        const updated = { ...currentProvider, groupDisplayZone: next };
-        try {
-          await invoke("save_provider", { provider: updated });
-          dispatchAppEvent(EVENTS.reloadProviders);
-        } catch {
-          /* ignore */
-        }
-      }
-      dispatchAppEvent(EVENTS.paramConfigChanged);
-    },
-    [customGroupDisplayZone, currentProvider, selectedProviderId],
-  );
 
   const saveGroupOrder = useCallback(async (newOrder: string[]) => {
     // Prefer live protectedGroups from provider; pin after reorder.
@@ -451,7 +417,6 @@ export default function ParamConfigPanel({
         oldName,
         newName,
         baseOrder,
-        customGroupDisplayZone,
         groupColumn,
       );
       const existingGroupNames = new Set(
@@ -470,15 +435,12 @@ export default function ParamConfigPanel({
         paramUiGroup(d.ui_group) === oldNorm ? { ...d, ui_group: newName } : d,
       );
       await saveGroupOrder(renamed.groupOrder);
-      saveGroupDisplayZone(selectedProviderId, renamed.groupDisplayZone);
-      setCustomGroupDisplayZone(renamed.groupDisplayZone);
       saveGroupColumn(selectedProviderId, renamed.groupColumn);
 
       const updatedProvider: ProviderConfig = {
         ...currentProvider,
         userEditedTemplateParams: updatedUserParams,
         groupOrder: renamed.groupOrder,
-        groupDisplayZone: renamed.groupDisplayZone,
         groupColumn: renamed.groupColumn,
       };
       onProvidersChange((prev) =>
@@ -500,7 +462,6 @@ export default function ParamConfigPanel({
       currentProvider,
       customGroupOrder,
       catalogVisibleParams,
-      customGroupDisplayZone,
       selectedProviderId,
       buildUserSavedParams,
       saveGroupOrder,
@@ -533,17 +494,13 @@ export default function ParamConfigPanel({
       const stripped = stripGroupFromLayout(
         groupName,
         baseOrder,
-        customGroupDisplayZone,
         groupColumn,
       );
       await saveGroupOrder(stripped.groupOrder);
-      saveGroupDisplayZone(selectedProviderId, stripped.groupDisplayZone);
-      setCustomGroupDisplayZone(stripped.groupDisplayZone);
       saveGroupColumn(selectedProviderId, stripped.groupColumn);
       const updated = {
         ...currentProvider,
         groupOrder: stripped.groupOrder,
-        groupDisplayZone: stripped.groupDisplayZone,
         groupColumn: stripped.groupColumn,
       };
       onProvidersChange((prev) => prev.map((p) => (p.id !== selectedProviderId ? p : updated)));
@@ -561,7 +518,6 @@ export default function ParamConfigPanel({
       currentProvider,
       catalogVisibleParams,
       customGroupOrder,
-      customGroupDisplayZone,
       selectedProviderId,
       saveGroupOrder,
       protectedGroups,
@@ -689,27 +645,6 @@ export default function ParamConfigPanel({
       showSaved("EXPORT — factory providers only");
       return;
     }
-    const columnCount = loadConfigColumnCount(
-      selectedProviderId,
-      currentProvider.configColumnCount,
-    );
-    const layoutDefaults: LayoutDefaults = {
-      configColumnCount: columnCount,
-      configColumnWidths: loadConfigColumnWidths(
-        selectedProviderId,
-        columnCount,
-        currentProvider.configColumnWidths,
-      ),
-      groupDisplayZone: loadGroupDisplayZone(
-        selectedProviderId,
-        currentProvider.groupDisplayZone,
-      ),
-      groupColumn: loadGroupColumn(selectedProviderId, currentProvider.groupColumn),
-      aboveColumnWidths: loadAboveColumnWidths(
-        selectedProviderId,
-        currentProvider.aboveColumnWidths,
-      ),
-    };
     const storedGroupOrder = readJsonStorage<string[]>(groupOrderKey(selectedProviderId));
     const exportGroupOrderBase =
       storedGroupOrder?.map(normalizeUiGroup) ??
@@ -737,7 +672,6 @@ export default function ParamConfigPanel({
           userEditedTemplateParams: exportParams,
           groupOrder,
           protectedGroups,
-          layoutDefaults,
           essentialParamKeys,
         },
       });
@@ -1832,24 +1766,6 @@ export default function ParamConfigPanel({
                               >
                                 DEL
                               </button>
-                            )}
-                            {editorUnlocked && !isEmpty && gCaps.pinDisplay && (
-                            <button
-                              type="button"
-                              onClick={() => toggleGroupDisplayZone(groupName)}
-                              className={`flex-shrink-0 px-1.5 py-0 type-micro font-mono rounded-sm border transition-colors ${
-                                customGroupDisplayZone[normalizeUiGroup(groupName)] === "above"
-                                  ? "cfg-bord--acc--a50 cfg-acc--a90 cfg-fill--a10"
-                                  : "cfg-bord cfg-mut hover:cfg-mut"
-                              }`}
-                              title={
-                                customGroupDisplayZone[normalizeUiGroup(groupName)] === "above"
-                                  ? "Pinned above VRAM display — click to move below"
-                                  : "Pin group above VRAM display"
-                              }
-                            >
-                              {customGroupDisplayZone[normalizeUiGroup(groupName)] === "above" ? "▲ DISP" : "▽ DISP"}
-                            </button>
                             )}
                           </div>
                           {!isGroupCollapsed && !isEmpty && (

@@ -29,8 +29,10 @@ interface UseConfigColumnsArgs {
 }
 
 /**
- * Column engine for the maintenance bay: 1/2/3 columns, gutter resize, and the
- * factory `groupColumn` map. No layout mode, no drag, no above/below.
+ * Column engine for the maintenance bay: 1/2/3 columns, gutter resize, and an
+ * optional explicit `groupColumn` map. With no map, groups spread across the
+ * chosen columns so 1/2/3 stays useful without a template layout. No layout
+ * mode, no drag, no above/below.
  */
 export function useConfigColumns({
   providerId,
@@ -192,9 +194,18 @@ export function useConfigColumns({
     [orderedGroupKeys, groupedParams],
   );
 
+  const effectiveGroupColumn = useMemo(() => {
+    if (Object.keys(groupColumn).length > 0) return groupColumn;
+    const next: Record<string, number> = {};
+    belowGroupKeys.forEach((key, index) => {
+      next[normalizeUiGroup(key)] = index % columnCount;
+    });
+    return next;
+  }, [groupColumn, belowGroupKeys, columnCount]);
+
   const belowGroupsByColumn = useMemo(
-    () => partitionBelowGroupsByColumn(belowGroupKeys, groupColumn, columnCount),
-    [belowGroupKeys, groupColumn, columnCount],
+    () => partitionBelowGroupsByColumn(belowGroupKeys, effectiveGroupColumn, columnCount),
+    [belowGroupKeys, effectiveGroupColumn, columnCount],
   );
 
   return {

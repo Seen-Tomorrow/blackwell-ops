@@ -371,32 +371,6 @@ pub fn default_ctx_size() -> usize { 32768 }
 
 // ── Provider Configuration ─────────────────────────────────────────────
 
-/// Engine config column / pin layout — factory defaults + per-user overrides.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct LayoutDefaults {
-    #[serde(default, rename = "configColumnCount")]
-    pub config_column_count: u8,
-    #[serde(default, rename = "configColumnWidths")]
-    pub config_column_widths: Vec<f64>,
-    #[serde(default, rename = "groupDisplayZone")]
-    pub group_display_zone: HashMap<String, String>,
-    #[serde(default, rename = "groupColumn")]
-    pub group_column: HashMap<String, u32>,
-    #[serde(default, rename = "aboveColumnWidths")]
-    pub above_column_widths: Vec<f64>,
-}
-
-impl LayoutDefaults {
-    #[allow(dead_code)]
-    pub fn is_empty(&self) -> bool {
-        self.config_column_count == 0
-            && self.config_column_widths.is_empty()
-            && self.group_display_zone.is_empty()
-            && self.group_column.is_empty()
-            && self.above_column_widths.is_empty()
-    }
-}
-
 /// Optional features for `template_type = custom` providers (all off by default).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -437,16 +411,12 @@ pub struct ProviderConfig {
     /// Custom providers — fusion / metrics / verbose opt-ins.
     #[serde(default, rename = "customCapabilities", skip_serializing_if = "CustomProviderCapabilities::is_default")]
     pub custom_capabilities: CustomProviderCapabilities,
-    #[serde(default, rename = "groupDisplayZone", skip_serializing_if = "HashMap::is_empty")]
-    pub group_display_zone: HashMap<String, String>,
     #[serde(default, rename = "configColumnCount", skip_serializing_if = "Option::is_none")]
     pub config_column_count: Option<u8>,
     #[serde(default, rename = "configColumnWidths", skip_serializing_if = "Vec::is_empty")]
     pub config_column_widths: Vec<f64>,
     #[serde(default, rename = "groupColumn", skip_serializing_if = "HashMap::is_empty")]
     pub group_column: HashMap<String, u32>,
-    #[serde(default, rename = "aboveColumnWidths", skip_serializing_if = "Vec::is_empty")]
-    pub above_column_widths: Vec<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub _original_id: Option<String>,
     #[serde(default)]

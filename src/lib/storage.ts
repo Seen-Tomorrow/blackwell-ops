@@ -1,4 +1,3 @@
-import { normalizeAboveColumnWidths } from "./configColumnLayout";
 import { isDisplayTexture, type DisplayTexture } from "./displayTexture";
 import { isIndustrialBezelTexture, type IndustrialBezelTexture } from "./industrialBezelTexture";
 import type { LaunchDockPosition } from "./launchDockLayout";
@@ -704,28 +703,6 @@ export function groupOrderKey(providerId: string): string {
   return `${STORAGE_PREFIX}group-order:${providerId}`;
 }
 
-export type GroupDisplayZone = "above" | "below";
-
-export function groupDisplayZoneKey(providerId: string): string {
-  return `${STORAGE_PREFIX}group-display-zone:${providerId}`;
-}
-
-export function loadGroupDisplayZone(
-  providerId: string,
-  fromProvider?: Record<string, GroupDisplayZone>,
-): Record<string, GroupDisplayZone> {
-  const stored = readJsonStorage<Record<string, GroupDisplayZone>>(groupDisplayZoneKey(providerId));
-  if (stored && typeof stored === "object") return stored;
-  return fromProvider ?? {};
-}
-
-export function saveGroupDisplayZone(
-  providerId: string,
-  zones: Record<string, GroupDisplayZone>,
-): void {
-  writeJsonStorage(groupDisplayZoneKey(providerId), zones);
-}
-
 export type ConfigColumnCount = 1 | 2 | 3;
 
 export function configColumnCountKey(providerId: string): string {
@@ -738,10 +715,6 @@ export function configColumnWidthsKey(providerId: string): string {
 
 export function groupColumnKey(providerId: string): string {
   return `${STORAGE_PREFIX}group-column:${providerId}`;
-}
-
-export function aboveColumnWidthsKey(providerId: string): string {
-  return `${STORAGE_PREFIX}above-column-widths:${providerId}`;
 }
 
 export function loadConfigColumnCount(
@@ -814,20 +787,6 @@ export function loadGroupColumn(
 
 export function saveGroupColumn(providerId: string, columns: Record<string, number>): void {
   writeJsonStorage(groupColumnKey(providerId), columns);
-}
-
-export function loadAboveColumnWidths(
-  providerId: string,
-  fromProvider?: number[],
-): [number, number] {
-  const stored = readJsonStorage<number[]>(aboveColumnWidthsKey(providerId));
-  if (stored) return normalizeAboveColumnWidths(stored);
-  if (fromProvider) return normalizeAboveColumnWidths(fromProvider);
-  return normalizeAboveColumnWidths(null);
-}
-
-export function saveAboveColumnWidths(providerId: string, widths: [number, number]): void {
-  writeJsonStorage(aboveColumnWidthsKey(providerId), widths);
 }
 
 export function autoVramKey(providerId: string): string {

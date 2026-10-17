@@ -300,7 +300,6 @@ export type GroupEditCaps = {
   deleteEmpty: boolean;
   reorder: boolean;
   toggleProtected: boolean;
-  pinDisplay: boolean;
 };
 
 export function groupEditCaps(
@@ -313,7 +312,6 @@ export function groupEditCaps(
       deleteEmpty: false,
       reorder: false,
       toggleProtected: false,
-      pinDisplay: false,
     };
   }
   if (actor === "dev") {
@@ -322,7 +320,6 @@ export function groupEditCaps(
       deleteEmpty: true,
       reorder: true, // pin still forces protected section last on save
       toggleProtected: true,
-      pinDisplay: true,
     };
   }
   // user
@@ -331,7 +328,6 @@ export function groupEditCaps(
     deleteEmpty: !opts.protectedGroup,
     reorder: !opts.protectedGroup,
     toggleProtected: false,
-    pinDisplay: !opts.protectedGroup,
   };
 }
 

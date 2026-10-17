@@ -1,4 +1,3 @@
-import type { GroupDisplayZone } from "./storage";
 import { normalizeUiGroup, paramUiGroup } from "./storage";
 
 import {
@@ -8,7 +7,7 @@ import {
 } from "./systemParams";
 
 /** Groups that must not be removed even when they have no params (always-keep slots). */
-export const PROTECTED_EMPTY_GROUPS = new Set([
+const PROTECTED_EMPTY_GROUPS = new Set([
   SYSTEM_UI_GROUP,
   "USER-ADDED-FROM-CATALOG",
   "SPECULATIVE-DECODING",
@@ -16,13 +15,13 @@ export const PROTECTED_EMPTY_GROUPS = new Set([
 ]);
 
 /** Retired layout buckets — docked params no longer roll up here (see `dock` on each param). */
-export const LEGACY_UI_GROUPS = new Set(["RUNTIME-CONFIG"]);
+const LEGACY_UI_GROUPS = new Set(["RUNTIME-CONFIG"]);
 
 /** Pre-SYSTEM catalog bucket — migrated to SYSTEM on load. */
-export const LEGACY_CATALOG_GROUPS = new Set(["MULTI-GPU"]);
+const LEGACY_CATALOG_GROUPS = new Set(["MULTI-GPU"]);
 
 /** Groups that cannot be renamed for legacy reasons (not policy flags). */
-export const PROTECTED_GROUP_NAMES = new Set([
+const PROTECTED_GROUP_NAMES = new Set([
   ...PROTECTED_EMPTY_GROUPS,
   ...LEGACY_UI_GROUPS,
 ]);
@@ -41,7 +40,7 @@ export function isGroupRenamable(
   return true;
 }
 
-export function isLegacyLayoutGroup(groupName: string): boolean {
+function isLegacyLayoutGroup(groupName: string): boolean {
   return LEGACY_UI_GROUPS.has(normalizeUiGroup(groupName));
 }
 
@@ -100,24 +99,18 @@ export function isEmptyGroupDeletable(
 export function stripGroupFromLayout(
   groupName: string,
   groupOrder: string[],
-  groupDisplayZone: Record<string, GroupDisplayZone>,
   groupColumn: Record<string, number>,
 ): {
   groupOrder: string[];
-  groupDisplayZone: Record<string, GroupDisplayZone>;
   groupColumn: Record<string, number>;
 } {
   const norm = normalizeUiGroup(groupName);
   const nextOrder = groupOrder.filter((g) => normalizeUiGroup(g) !== norm);
-  const nextZone = Object.fromEntries(
-    Object.entries(groupDisplayZone).filter(([k]) => normalizeUiGroup(k) !== norm),
-  ) as Record<string, GroupDisplayZone>;
   const nextColumn = Object.fromEntries(
     Object.entries(groupColumn).filter(([k]) => normalizeUiGroup(k) !== norm),
   ) as Record<string, number>;
   return {
     groupOrder: nextOrder,
-    groupDisplayZone: nextZone,
     groupColumn: nextColumn,
   };
 }
@@ -136,16 +129,14 @@ function renameRecordKey<T>(
   return next;
 }
 
-/** Rename a user group in saved layout maps (order, zone, column). */
+/** Rename a user group in the saved group order and column map. */
 export function renameGroupInLayout(
   oldName: string,
   newName: string,
   groupOrder: string[],
-  groupDisplayZone: Record<string, GroupDisplayZone>,
   groupColumn: Record<string, number>,
 ): {
   groupOrder: string[];
-  groupDisplayZone: Record<string, GroupDisplayZone>;
   groupColumn: Record<string, number>;
 } | null {
   const oldNorm = normalizeUiGroup(oldName);
@@ -161,7 +152,6 @@ export function renameGroupInLayout(
 
   return {
     groupOrder: nextOrder,
-    groupDisplayZone: renameRecordKey(groupDisplayZone, oldNorm, newNorm),
     groupColumn: renameRecordKey(groupColumn, oldNorm, newNorm),
   };
 }
