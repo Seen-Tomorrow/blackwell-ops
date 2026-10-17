@@ -396,7 +396,10 @@ separately. `css:minify` replays the lightningcss pass `vite build` uses, so the
 comment trap fails here instead of in a release build. `lint:dead` (knip) and
 `lint:dead:rust` (cargo machete) are deliberately NOT in it: they report real but accepted
 debt today, so they stay opt-in and never gate. `.github/workflows/test.yml` runs both
-suites on every push to `main` and every PR; `majestic ship` runs them too. Rust tests live
+suites **plus `css:audit`** on every push to `main` and every PR; `majestic ship` runs both
+suites too — but **not** the CSS gates (`Invoke-ReleaseTestGate` is `npm test` + `cargo test`
+only), so a CSS budget breach reaches ship only if CI or a manual `npm run check` caught it
+first. Rust tests live
 in `#[cfg(test)] mod …` beside their code —
 `config.rs::merge_tests` is by far the largest, run it after any
 `merge_template_for_provider` change.

@@ -39,6 +39,13 @@ jobs:
       - name: Build frontend
         run: npm run build:frontend
 
+      # The CSS budgets are the only thing stopping the paint/!important cleanup
+      # from drifting back, and nothing else in CI or Invoke-ReleaseTestGate checks
+      # them (npm test is vitest only; build:frontend is tsc + vite). Runs AFTER the
+      # build so the dist byte/!important ceilings are measured against real output.
+      - name: CSS gates
+        run: npm run css:audit
+
       # tauri.conf.json bundles four directories and two are gitignored by design:
       # `runtime-bundle/` (engine binaries) and `pi-ext/` (the 1171-file
       # pi-subagents tree, vendored by Harness UPDATE). tauri-build validates every
