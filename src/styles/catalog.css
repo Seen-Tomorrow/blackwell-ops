@@ -1596,20 +1596,20 @@
   height: 1.575rem;
   padding: 0;
   border-radius: 2px;
-  border: 1px solid color-mix(in srgb, var(--theme-accent) 45%, transparent);
-  background: color-mix(in srgb, var(--theme-accent) 8%, transparent);
-  color: var(--theme-accent);
+  border: 1px solid color-mix(in srgb, var(--theme-provider-pill-border) 55%, transparent);
+  background: color-mix(in srgb, var(--theme-provider-pill-bg) 75%, transparent);
+  color: var(--theme-provider-pill-text);
   font-family: ui-monospace, monospace;
-  font-size: calc(var(--type-micro) * 1.5);
+  font-size: var(--type-md);
   font-weight: 800;
   line-height: 1;
   cursor: pointer;
 }
 
 .catalog-quick-section__collapse:hover {
-  color: var(--theme-accent-bright, var(--theme-accent));
-  border-color: color-mix(in srgb, var(--theme-accent) 55%, transparent);
-  background: color-mix(in srgb, var(--theme-accent) 12%, transparent);
+  color: var(--theme-provider-pill-hover-text);
+  border-color: var(--theme-provider-pill-hover-border);
+  background: color-mix(in srgb, var(--theme-provider-pill-active-bg) 18%, transparent);
 }
 
 .catalog-quick-section--seats-collapsed .catalog-quick-section__sets,

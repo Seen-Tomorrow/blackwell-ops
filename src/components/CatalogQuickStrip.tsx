@@ -340,7 +340,7 @@ export default function CatalogQuickStrip({
                   aria-controls="catalog-quick-seat-bank"
                   onClick={() => setSeatsOpen((v) => !v)}
                 >
-                  {seatsExpanded ? "\u25BE" : "\u25B8"}
+                  {seatsExpanded ? "\u25BC" : "\u25B6"}
                 </button>
               ) : null}
               <span className="catalog-quick-section__title">
