@@ -1602,3 +1602,73 @@ mod crt_tests {
         );
     }
 }
+
+/// Guards the promise in this module's doc comment: every Foundry build input
+/// resolves under <app_root>/toolchain/, never a Visual Studio / CUDA / CMake
+/// install that happens to exist on the machine.
+///
+/// These are derivation and manifest assertions, not filesystem probes, so they
+/// hold on a CI runner with no toolchain pack and on a dev box that has its own
+/// VS installed. That is the point: the guarantee must not depend on what the
+/// machine happens to have.
+#[cfg(test)]
+mod isolation_tests {
+    use super::*;
+    use std::path::Path;
+
+    /// The three paths the build shell depends on all derive from the pack root.
+    #[test]
+    fn build_tools_resolve_only_inside_the_toolchain_pack() {
+        let root = toolchain_dir();
+        for (label, path) in [
+            ("portable cmake", cmake_exe_path()),
+            ("portable ninja", ninja_exe_path()),
+            ("toolchain manifest", manifest_path()),
+        ] {
+            assert!(
+                path.starts_with(&root),
+                "{label} resolved to {} — outside the toolchain root {}",
+                path.display(),
+                root.display()
+            );
+        }
+    }
+
+    /// The manifest is compiled into the binary (include_str!), which is what lets
+    /// the app validate and report readiness without the pack present. Every path it
+    /// carries must be RELATIVE: an absolute C:/Program Files/... entry here would
+    /// silently reintroduce the system dependency the pack exists to remove.
+    #[test]
+    fn embedded_manifest_is_portable_and_self_consistent() {
+        let manifest: ToolchainManifest =
+            serde_json::from_str(EMBEDDED_MANIFEST).expect("embedded manifest parses");
+        assert!(!manifest.profiles.is_empty(), "manifest lists no profiles");
+        assert!(
+            !manifest.windows_sdk_version.trim().is_empty(),
+            "manifest has no windows_sdk_version"
+        );
+
+        for (key, vs) in [("2022", &manifest.vs.vs2022), ("2026", &manifest.vs.vs2026)] {
+            assert!(
+                !Path::new(&vs.devcmd).is_absolute(),
+                "vs.{key}.devcmd is absolute ({}) — it must resolve inside the pack",
+                vs.devcmd
+            );
+            assert!(!vs.msvc_version.trim().is_empty(), "vs.{key}.msvc_version is empty");
+        }
+
+        for profile in &manifest.profiles {
+            assert!(
+                vs_def(&manifest, &profile.vs).is_ok(),
+                "profile {} names vs {}, which the manifest does not define",
+                profile.id,
+                profile.vs
+            );
+            assert!(
+                !profile.cuda.trim().is_empty(),
+                "profile {} names no CUDA version",
+                profile.id
+            );
+        }
+    }
+}

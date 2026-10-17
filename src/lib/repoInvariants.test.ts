@@ -113,4 +113,34 @@ describe("repo invariants", () => {
 
     expect(violations, `bare Instant subtraction:\n${violations.join("\n")}`).toEqual([]);
   });
+  /**
+   * The app promises an isolated environment: Foundry builds use only
+   * <app_root>/toolchain/, never a Visual Studio / CUDA / CMake install on the
+   * user's machine. A bare program name (Command::new("cmake")) is resolved
+   * through PATH, which reintroduces that dependency silently — and it only fails
+   * on a machine that does NOT have the tool, never on a dev box that does.
+   *
+   * Packaging scripts legitimately use system tools; this scans shipped Rust only.
+   */
+  it("no shipped Rust runs a Foundry build tool by bare name", () => {
+    const pattern = new RegExp(
+      'Command::new\\(\\s*"(?:cmake|ninja|nvcc|cl|vswhere|msbuild)(?:\\.exe)?"\\s*\\)',
+      "i",
+    );
+    const violations: string[] = [];
+
+    for (const path of trackedTextFiles()) {
+      if (!path.endsWith(".rs") || !path.startsWith("src-tauri")) continue;
+      const lines = readFileSync(path, "utf8").split(/\r?\n/);
+      for (let i = 0; i < lines.length; i += 1) {
+        const line = lines[i];
+        if (line.trimStart().startsWith("//")) continue;
+        if (pattern.test(line)) violations.push(path + ":" + (i + 1) + ": " + line.trim());
+      }
+    }
+
+    expect(violations, "Foundry build tool resolved via PATH:\n" + violations.join("\n")).toEqual(
+      [],
+    );
+  });
 });
