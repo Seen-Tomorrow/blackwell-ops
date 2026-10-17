@@ -1340,7 +1340,7 @@ function Invoke-MajesticPackProvider {
         [string]$ProfileId
     )
     if ([string]::IsNullOrWhiteSpace($ProviderId) -or [string]::IsNullOrWhiteSpace($ProfileId)) {
-        throw "pack-provider requires -ProviderId and -ProfileId (e.g. bee-llama frontier)"
+        throw "pack-provider requires -ProviderId and -ProfileId (e.g. bee-llama edge)"
     }
     $version = Read-AppVersion
     $tag = Get-TagName -Version $version -Prefix $Config.tagPrefix

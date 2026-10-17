@@ -10,7 +10,7 @@ use crate::types::EngineConfig;
 
 /// Resolve binary path for a provider ID. Self-healing: if a stored path doesn't exist on disk,
 /// it falls through to the next candidate and logs a warning about the stale entry.
-/// Active binary env (`frontier` / `stable`); empty → app default.
+/// Active binary env (`edge` / `stable`); empty → app default.
 pub fn normalized_binary_profile(profile: &str) -> &str {
     if profile.trim().is_empty() {
         crate::config::DEFAULT_BINARY_PROFILE
@@ -19,12 +19,12 @@ pub fn normalized_binary_profile(profile: &str) -> &str {
     }
 }
 
-/// Infer profile from `runtime/.../frontier/llama-server.exe` or foundry artifact paths.
+/// Infer profile from `runtime/.../edge/llama-server.exe` or foundry artifact paths.
 pub fn binary_profile_from_path(path: &Path) -> Option<String> {
     for comp in path.components() {
         if let std::path::Component::Normal(os) = comp {
             let s = os.to_string_lossy().to_lowercase();
-            if s == "frontier" || s == "stable" || s == "edge" {
+            if s == "edge" || s == "stable" {
                 return Some(s);
             }
         }

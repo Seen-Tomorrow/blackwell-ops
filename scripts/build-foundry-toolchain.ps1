@@ -1,5 +1,5 @@
 # One-step Foundry toolchain rebuild + pack for GitHub release upload.
-# Full build prerequisites: VS 2022/2026 Build Tools, Windows SDK, CUDA 12.8 + 13.3, CMake.
+# Full build prerequisites: VS 2022/2026 Build Tools, Windows SDK, CUDA 12.8 + 13.4, CMake.
 #
 # Usage:
 #   .\scripts\build-foundry-toolchain.ps1
@@ -72,7 +72,7 @@ if ($RepackOnly) {
         $PreflightFailed = $true
     }
     Test-HostPath "CUDA 12.8" "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8" -Required | Out-Null
-    Test-HostPath "CUDA 13.3" "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.3" -Required | Out-Null
+    Test-HostPath "CUDA 13.4" "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.4" -Required | Out-Null
     $cmakeOk = (Test-Path "C:\Program Files\CMake\bin\cmake.exe") `
         -or (Test-Path "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe") `
         -or (Test-Path "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe")
@@ -94,9 +94,9 @@ if ($RepackOnly) {
         & (Join-Path $RepoRoot "scripts\populate-foundry-toolchain.ps1") -AppRoot $AppRoot
     }
     if (-not $SkipSmokeTest) {
-        $smoke = Read-Host "Run cmake smoke tests (frontier + stable)? [y/N]"
+        $smoke = Read-Host "Run cmake smoke tests (edge + stable)? [y/N]"
         if ($smoke -match '^[Yy]') {
-            foreach ($profile in @("frontier", "stable")) {
+            foreach ($profile in @("edge", "stable")) {
                 Invoke-Step "Smoke test ($profile)" {
                     & (Join-Path $RepoRoot "scripts\test-foundry-configure.ps1") -AppRoot $AppRoot -Profile $profile
                 }

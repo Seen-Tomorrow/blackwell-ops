@@ -1300,14 +1300,14 @@ mod tests {
         assert!(!is_full_bundle_nsis_installer("CORE_Blackwell-Ops-App-v1.0.12.7z"));
         assert!(!is_full_bundle_nsis_installer("blackwell-ops.exe"));
         assert!(is_provider_pack_asset(
-            "ggml-master-frontier.7z",
+            "ggml-master-edge.7z",
             "ggml-master",
-            "frontier"
+            "edge"
         ));
         assert!(is_provider_pack_asset(
-            "CORE_ggml-master-frontier.7z",
+            "CORE_ggml-master-edge.7z",
             "ggml-master",
-            "frontier"
+            "edge"
         ));
         assert!(is_provider_pack_asset(
             "PLUGIN_ggml-tom-stable.7z",
@@ -1315,8 +1315,8 @@ mod tests {
             "stable"
         ));
         assert_eq!(
-            provider_pack_asset_name("ggml-master", "frontier"),
-            "CORE_ggml-master-frontier.7z"
+            provider_pack_asset_name("ggml-master", "edge"),
+            "CORE_ggml-master-edge.7z"
         );
         assert_eq!(
             provider_pack_asset_name("ggml-tom", "stable"),
@@ -1337,19 +1337,19 @@ mod tests {
 
     #[test]
     fn find_provider_pack_in_scans_list_without_network() {
-        let empty = find_provider_pack_in(&[], "ggml-master", "frontier");
+        let empty = find_provider_pack_in(&[], "ggml-master", "edge");
         assert!(empty.is_none());
 
         let release = GitHubRelease {
             tag_name: "v1.0.99".into(),
             body: None,
             assets: vec![ReleaseAsset {
-                name: "CORE_ggml-master-frontier.7z".into(),
+                name: "CORE_ggml-master-edge.7z".into(),
                 download_url: "https://example.invalid/x.7z".into(),
                 size: 42,
             }],
         };
-        let hit = find_provider_pack_in(&[release], "ggml-master", "frontier");
+        let hit = find_provider_pack_in(&[release], "ggml-master", "edge");
         assert_eq!(hit, Some(("v1.0.99".into(), 42)));
         let miss = find_provider_pack_in(
             &[GitHubRelease {
@@ -1358,7 +1358,7 @@ mod tests {
                 assets: vec![],
             }],
             "ds4",
-            "frontier",
+            "edge",
         );
         assert!(miss.is_none());
     }

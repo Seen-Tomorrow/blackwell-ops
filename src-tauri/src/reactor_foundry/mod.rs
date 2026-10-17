@@ -2079,7 +2079,7 @@ pub async fn refresh_build_info(
         let src_dir = foundry_src_dir(&provider_id);
         let old_build_dir = src_dir.join("build");
         if old_build_dir.exists() {
-            let new_build_dir = src_dir.join("build-frontier");
+            let new_build_dir = src_dir.join("build-edge");
             if !new_build_dir.exists() && old_build_dir.join("bin").exists() {
                 log::info!(
                     "[migration] One-time historical migration of ancient 'build/' directory for '{}'",
@@ -2091,7 +2091,7 @@ pub async fn refresh_build_info(
                     if new_bin.exists() {
                         let sacred_exe = crate::config::foundry_artifacts_dir()
                             .join(&provider_id)
-                            .join("frontier")
+                            .join("edge")
                             .join("Release")
                             .join("llama-server.exe");
                         if let Some(sacred_dir) = sacred_exe.parent() {
@@ -2107,7 +2107,7 @@ pub async fn refresh_build_info(
                                 {
                                     let rel = crate::config::to_relative_path(&sacred_exe);
                                     p.binary_path_per_env
-                                        .insert("frontier".to_string(), rel.clone());
+                                        .insert("edge".to_string(), rel.clone());
                                     p.binary_path = rel;
                                 }
                                 drop(cfg);

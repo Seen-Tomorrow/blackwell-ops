@@ -2,11 +2,11 @@
   "tagPrefix": "v",
   "repo": "Seen-Tomorrow/blackwell-ops",
   "providers": {
-    "ggml-tom": ["frontier", "stable"],
-    "bee-llama": ["frontier"]
+    "ggml-tom": ["edge", "stable"],
+    "bee-llama": ["edge"]
   },
   "nsisProviders": {
-    "ggml-master": ["frontier", "stable"]
+    "ggml-master": ["edge", "stable"]
   },
   "upload": {
     "installer": true,
@@ -16,9 +16,9 @@
   "ship": {
     "pushTag": false,
     "pushCommit": false,
-    "releaseNotes": "### Blackwell Ops release\n\n**CORE_** assets: App `.7z`, Full NSIS Setup (includes GGML Master Frontier+Stable).\n\n**PLUGIN_** assets: optional engine packs — ship separately via DISTRIBUTION Pack+Ship per plugin (not part of Full pack).",
+    "releaseNotes": "### Blackwell Ops release\n\n**CORE_** assets: App `.7z`, Full NSIS Setup (includes GGML Master Edge+Stable).\n\n**PLUGIN_** assets: optional engine packs — ship separately via DISTRIBUTION Pack+Ship per plugin (not part of Full pack).",
     "appOnlyReleaseNotes": "### App update (`CORE_Blackwell-Ops-App-v*.7z`)\n\nLean portable pack (~5 MB) - **UI, core templates, plugin catalog, foundry vendor patches, bundled 7z**.\n\nRefreshes the **engine catalog** (Tom TQ, bee-llama, etc.) - install optional engines from Config - UPDATES. They appear in PROVIDERS after download.\n\nAlso refreshes `foundry/patches/` (Foundry vendor patches applied on engine build).\n\n**How to apply:** in-app **UPDATE** menu (download, extract, restart). Keeps existing engines under `runtime/`.\n\n**First install?** Use **Full install** (`CORE_*Setup*.exe`) from Updates catalog.",
-    "fullBundleReleaseNotes": "### Full install (`CORE_*Setup*.exe`)\n\nCore installer: **app + GGML Master engines** (Frontier + Stable).\n\nAlso attaches lean App `.7z`. Optional **PLUGIN_** packs are not included — pack/ship those per engine when needed.\n\n**Choose this when:** first-time install or weekly Master engine refresh.",
+    "fullBundleReleaseNotes": "### Full install (`CORE_*Setup*.exe`)\n\nCore installer: **app + GGML Master engines** (Edge + Stable).\n\nAlso attaches lean App `.7z`. Optional **PLUGIN_** packs are not included — pack/ship those per engine when needed.\n\n**Choose this when:** first-time install or weekly Master engine refresh.",
     "providerReleaseNotes": "### Engine pack (`PLUGIN_{provider}-{profile}.7z` or `CORE_ggml-master-{profile}.7z`)\n\nRuntime extract via Config - UPDATES.\n\nStop any running engine for that provider before updating."
   },
   "pack": {

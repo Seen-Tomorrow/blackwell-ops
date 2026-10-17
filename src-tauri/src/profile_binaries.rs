@@ -71,7 +71,7 @@ fn binary_tree_modified_secs(exe_path: &Path) -> u64 {
 /// True when bundled `runtime/` or Foundry artifact engines exist for any factory provider profile.
 pub fn launch_engines_available() -> bool {
     const PROVIDERS: &[&str] = &[crate::config::DEFAULT_PROVIDER_ID, "ggml-tom"];
-    const PROFILES: &[&str] = &["frontier", "stable"];
+    const PROFILES: &[&str] = &["edge", "stable"];
     for provider_id in PROVIDERS {
         for profile in PROFILES {
             if bundled_exe_abs(provider_id, profile).is_file() {

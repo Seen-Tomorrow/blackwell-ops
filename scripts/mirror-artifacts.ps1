@@ -3,7 +3,7 @@
 # Run before release; follow with prepare-release-runtime.ps1 to strip for NSIS.
 #
 # Profile policy (see runtime-distribution.ps1):
-#   ggml-master, ggml-tom -> frontier, stable
+#   ggml-master, ggml-tom -> edge, stable
 #   vanguard/fresh retired - not mirrored
 #
 # Flow:

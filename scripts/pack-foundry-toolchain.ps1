@@ -8,7 +8,7 @@
 param(
     [string]$AppRoot = "",
     [string]$Output = "",
-    [ValidateSet("full", "frontier")]
+    [ValidateSet("full", "edge")]
     [string]$PackProfile = "full",
     [ValidateRange(1, 9)]
     [int]$CompressionLevel = 7

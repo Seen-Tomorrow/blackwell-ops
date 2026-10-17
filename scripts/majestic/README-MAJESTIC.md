@@ -14,7 +14,7 @@ Menu: **10 BUMP** → CHECK → PACK → SHIP (plus backups and dry-runs).
 |---------|------------|--------|
 | **Daily** | `majestic:pack:app` → ship | `Blackwell-Ops-App-vX.Y.Z.7z` (~5 MB) — UI + core templates + **plugin catalog** + **foundry/patches** |
 | **Weekly** | `majestic:pack` → ship | Full NSIS (**ggml-master only**) + App `.7z` + optional `{provider}-{profile}.7z` packs |
-| **One plugin** | `majestic:pack:provider` → `majestic:ship:provider` | Single `bee-llama-frontier.7z` (etc.) onto current tag |
+| **One plugin** | `majestic:pack:provider` → `majestic:ship:provider` | Single `bee-llama-edge.7z` (etc.) onto current tag |
 | **Rare** | toolchain | `toolchain.7z` on tag `toolchain` |
 
 ### Policy source of truth
@@ -23,7 +23,7 @@ Menu: **10 BUMP** → CHECK → PACK → SHIP (plus backups and dry-runs).
 
 | Key | Meaning |
 |-----|---------|
-| `nsisCore` | Engines in Full NSIS only (`ggml-master` frontier+stable) |
+| `nsisCore` | Engines in Full NSIS only (`ggml-master` edge+stable) |
 | `plugins` | Optional catalog plugins + selective `.7z` packs |
 
 Majestic merges these into `nsisProviders` / `providers` at runtime — do not hand-edit those maps for distribution. CHECK FULL **requires** Foundry only for `nsisCore`.
@@ -39,8 +39,8 @@ npm run majestic:pack:app # daily: lean App 7z only
 npm run majestic:ship     # upload staged full/app assets (unlock + YES)
 
 # Single plugin pack (after Foundry-build that provider/profile)
-npm run majestic:pack:provider -- -ProviderId bee-llama -ProfileId frontier
-npm run majestic:ship:provider -- -ProviderId bee-llama -ProfileId frontier
+npm run majestic:pack:provider -- -ProviderId bee-llama -ProfileId edge
+npm run majestic:ship:provider -- -ProviderId bee-llama -ProfileId edge
 
 npm run majestic:toolchain
 npm run majestic:ship-toolchain
@@ -111,7 +111,7 @@ Does not delete source, Foundry artifacts, or dev `target/debug/`.
 |-------|---------|
 | `Blackwell-Ops-App-vX.Y.Z.7z` | Portable App update (exe + templates + 7z) |
 | `*Setup*.exe` (no App-Only) | Full NSIS install |
-| `{provider}-{profile}.7z` | Selective engine pack (e.g. `ggml-master-frontier.7z`) |
+| `{provider}-{profile}.7z` | Selective engine pack (e.g. `ggml-master-edge.7z`) |
 | `toolchain.7z` (tag `toolchain`) | Foundry portable toolchain |
 
 `BINARY_UPDATES_ENABLED` is on. Provider packs use the same download manager + bundled 7z as toolchain.
@@ -132,9 +132,9 @@ Does not delete source, Foundry artifacts, or dev `target/debug/`.
 4. Either:
    - **Weekly full:** `majestic:pack` packs every ready `providers` profile as `.7z` + NSIS for `nsisProviders` only; or
    - **One plugin:**  
-     `npm run majestic:pack:provider -- -ProviderId bee-llama -ProfileId frontier`  
-     `npm run majestic:ship:provider -- -ProviderId bee-llama -ProfileId frontier`
+     `npm run majestic:pack:provider -- -ProviderId bee-llama -ProfileId edge`  
+     `npm run majestic:ship:provider -- -ProviderId bee-llama -ProfileId edge`
 5. **Daily App update** ships the **catalog** (`plugins.json`) so users see Install buttons; engines stay separate packs.
-6. In app: **CONFIG → UPDATES** — Install Frontier/Stable/Both. Provider appears in PROVIDERS after download.
+6. In app: **CONFIG → UPDATES** — Install Edge/Stable/Both. Provider appears in PROVIDERS after download.
 
 **New fork (in-app first):** EXPORT FACTORY seeds factory JSON if missing → promote is optional if export already wrote `src-tauri/runtime`. Keep `optionalDownload: true` on factory JSON.

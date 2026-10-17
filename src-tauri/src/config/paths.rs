@@ -34,10 +34,10 @@ pub fn should_drop_user_meta(meta: &crate::types::ProviderConfig) -> bool {
 }
 
 /// Default runtime binary profile when none is selected (fresh install / empty slot).
-pub const DEFAULT_BINARY_PROFILE: &str = "frontier";
+pub const DEFAULT_BINARY_PROFILE: &str = "edge";
 
-/// FIT library + on-demand scans always use the frontier toolchain build.
-pub const FIT_SCAN_BINARY_PROFILE: &str = "frontier";
+/// FIT library + on-demand scans always use the edge toolchain build.
+pub const FIT_SCAN_BINARY_PROFILE: &str = "edge";
 
 /// App root directory — parent of the running executable (portable).
 /// DEV: target/debug/ or target/release/ during development.

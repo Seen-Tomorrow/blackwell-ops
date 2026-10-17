@@ -134,8 +134,8 @@ export default function SetupGuideDisplay({
 
   const fitDone = fitStep === "done" || fitStep === "skipped" || fitStep === "stopped";
   const driversStepActive = showDriversStep || (metaDone && fitDone);
-  const frontierDriverOk = isDriverSufficientForProfile(driverVersion, ENV_META.frontier.cuda);
-  const driverNeedsAck = !frontierDriverOk;
+  const edgeDriverOk = isDriverSufficientForProfile(driverVersion, ENV_META.edge.cuda);
+  const driverNeedsAck = !edgeDriverOk;
 
   const driverChecklistDetail = useMemo(() => {
     // Until the wizard actually reaches the driver row, keep it a neutral placeholder.
@@ -143,11 +143,11 @@ export default function SetupGuideDisplay({
     if (!driversStepActive) return "Verify your NVIDIA drivers before using CUDA engines";
     if (driverLoading) return "Checking NVIDIA driver via nvidia-smi…";
     if (!driverVersion) return "Could not detect driver — confirm manually or install from NVIDIA";
-    if (frontierDriverOk) {
-      return `Driver ${driverVersion} — OK for FRONTIER (CUDA ${ENV_META.frontier.cuda})`;
+    if (edgeDriverOk) {
+      return `Driver ${driverVersion} — OK for EDGE (CUDA ${ENV_META.edge.cuda})`;
     }
-    return `Driver ${driverVersion} — below minimum for FRONTIER (need ${getMinDriverMajorForCuda(ENV_META.frontier.cuda)}+)`;
-  }, [driverLoading, driverVersion, frontierDriverOk, driversStepActive]);
+    return `Driver ${driverVersion} — below minimum for EDGE (need ${getMinDriverMajorForCuda(ENV_META.edge.cuda)}+)`;
+  }, [driverLoading, driverVersion, edgeDriverOk, driversStepActive]);
 
   useEffect(() => {
     if (!metaDone) {
@@ -179,12 +179,12 @@ export default function SetupGuideDisplay({
   }, [driversStepActive]);
 
   useEffect(() => {
-    if (frontierDriverOk) {
+    if (edgeDriverOk) {
       setDriversConfirmed(true);
     } else if (driverVersion != null) {
       setDriversConfirmed(false);
     }
-  }, [frontierDriverOk, driverVersion]);
+  }, [edgeDriverOk, driverVersion]);
 
   const skipFitScan = useCallback(() => {
     fitStopRequestedRef.current = false;
@@ -553,7 +553,7 @@ export default function SetupGuideDisplay({
                   Detected:{" "}
                   <span
                     className={
-                      frontierDriverOk
+                      edgeDriverOk
                         ? "setup-driver-check__ok"
                         : driverVersion
                           ? "setup-driver-check__bad"

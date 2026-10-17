@@ -186,10 +186,6 @@ pub fn find_cupti_lib_dir() -> Option<PathBuf> {
             }
         }
     }
-    let direct = toolkit_root.join("v13.3").join("extras").join("CUPTI").join("lib64");
-    if direct.is_dir() && !found.contains(&direct) {
-        found.push(direct);
-    }
     found.sort();
     found.into_iter().next_back()
 }
@@ -849,7 +845,7 @@ mod tests {
     #[test]
     fn in_app_wrap_stays_off_until_armed() {
         NSYS_IN_APP_ARMED.store(false, Ordering::Relaxed);
-        let got = maybe_in_app_wrap(&exe(), &[], "frontier", "test").unwrap();
+        let got = maybe_in_app_wrap(&exe(), &[], "edge", "test").unwrap();
         assert!(got.is_none());
     }
 }

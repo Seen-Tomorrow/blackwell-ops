@@ -289,15 +289,13 @@ pub fn profile_ids(manifest: &ToolchainManifest) -> Vec<String> {
 pub fn profile_ids_or_default() -> Vec<String> {
     load_manifest()
         .map(|m| profile_ids(&m))
-        .unwrap_or_else(|_| vec!["frontier".into(), "stable".into()])
+        .unwrap_or_else(|_| vec!["edge".into(), "stable".into()])
 }
 
-/// Retired runtime profiles — user prefs and per-env maps migrate to `frontier`.
+/// Canonical profile id: trimmed and lowercased. No aliasing — a stored id that no
+/// longer names a manifest profile simply fails to resolve.
 pub fn normalize_profile_id(id: &str) -> String {
-    match id.trim().to_lowercase().as_str() {
-        "vanguard" | "fresh" => "frontier".to_string(),
-        other => other.to_string(),
-    }
+    id.trim().to_lowercase()
 }
 
 pub fn find_profile_def<'a>(manifest: &'a ToolchainManifest, id: &str) -> Result<&'a ProfileDef, String> {
@@ -720,7 +718,7 @@ pub fn cuda_version_for_binary_profile(binary_profile: &str) -> Option<String> {
     }
     match key.as_str() {
         "stable" => Some("12.8".into()),
-        "frontier" => Some("13.3".into()),
+        "edge" => Some("13.4".into()),
         _ => None,
     }
 }
@@ -1565,9 +1563,9 @@ mod crt_tests {
     #[test]
     fn apply_crt_never_panics_or_empties_path() {
         let mut cmd = std::process::Command::new("cmd");
-        apply_msvc_crt_to_command(&mut cmd, "frontier", None);
+        apply_msvc_crt_to_command(&mut cmd, "edge", None);
         apply_msvc_crt_to_command(&mut cmd, "", None);
-        apply_msvc_crt_to_command(&mut cmd, "frontier", Some(PathBuf::from("Z:/absent").as_path()));
+        apply_msvc_crt_to_command(&mut cmd, "edge", Some(PathBuf::from("Z:/absent").as_path()));
         // If it did set PATH, it must still contain the original prefix.
         if let Some((_, v)) = cmd.get_envs().find(|(k, _)| *k == std::ffi::OsStr::new("PATH")) {
             assert!(v.map(|s| !s.is_empty()).unwrap_or(false));
@@ -1581,12 +1579,12 @@ mod crt_tests {
     #[test]
     fn apply_crt_preserves_command_cuda_path() {
         let mut cmd = std::process::Command::new("cmd");
-        let cuda_marker = r"C:\app\toolchain\cuda\v13.3\bin\x64";
+        let cuda_marker = r"C:\app\toolchain\cuda\v13.4\bin\x64";
         let seeded = format!("{cuda_marker};C:\\Windows\\System32");
         cmd.env("PATH", &seeded);
         // engine_dir absent / incomplete forces the PATH-fallback branch when a portable
         // CRT dir exists; if no CRT dir resolves, PATH must still stay exactly seeded.
-        apply_msvc_crt_to_command(&mut cmd, "frontier", Some(PathBuf::from("Z:/absent").as_path()));
+        apply_msvc_crt_to_command(&mut cmd, "edge", Some(PathBuf::from("Z:/absent").as_path()));
         let path = cmd
             .get_envs()
             .find(|(k, _)| k.to_string_lossy().eq_ignore_ascii_case("PATH"))
@@ -1711,7 +1709,7 @@ mod isolation_tests {
         assert!(path_entry_is_foreign_cuda(
             "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.8/bin"
         ));
-        assert!(path_entry_is_foreign_cuda(r"D:\Apps\blackwell\toolchain\cuda\v13.3\bin"));
+        assert!(path_entry_is_foreign_cuda(r"D:\Apps\blackwell\toolchain\cuda\v13.4\bin"));
         assert!(!path_entry_is_foreign_cuda(r"C:\Windows\system32"));
         assert!(!path_entry_is_foreign_cuda("   "));
     }

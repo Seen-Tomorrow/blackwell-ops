@@ -12,7 +12,7 @@
 #
 # Usage:
 #   .\scripts\pack-provider-runtime.ps1 -OutDir .majestic-out
-#   .\scripts\pack-provider-runtime.ps1 -ProviderId ggml-master -ProfileId frontier
+#   .\scripts\pack-provider-runtime.ps1 -ProviderId ggml-master -ProfileId edge
 
 param(
     [string]$BundleRoot = '',

@@ -4,7 +4,7 @@
 #   .\scripts\sync-dev-runtime.ps1 -Force   # ignore fingerprint, full mirror
 #
 # Copies factory configs for every provider folder, then mirrors only active
-# profiles (frontier + stable). Retired vanguard/fresh are omitted and pruned
+# profiles (edge + stable). Retired vanguard/fresh are omitted and pruned
 # from the debug runtime tree.
 #
 # Fast path: SHA-256 of (relative path | size | LastWriteTimeUtc) for every file

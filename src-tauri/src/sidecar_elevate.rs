@@ -554,12 +554,12 @@ mod tests {
     #[test]
     fn cmd_script_raw_tail_double_quotes_paths_with_spaces() {
         let p = PathBuf::from(
-            r"C:\AI-MASTER\Blackwell OPS portable\foundry\work\_build_cfg_frontier.bat",
+            r"C:\AI-MASTER\Blackwell OPS portable\foundry\work\_build_cfg_edge.bat",
         );
         let tail = cmd_script_raw_tail(&p);
         assert_eq!(
             tail,
-            r#"/d /s /c ""C:\AI-MASTER\Blackwell OPS portable\foundry\work\_build_cfg_frontier.bat"""#
+            r#"/d /s /c ""C:\AI-MASTER\Blackwell OPS portable\foundry\work\_build_cfg_edge.bat"""#
         );
     }
 

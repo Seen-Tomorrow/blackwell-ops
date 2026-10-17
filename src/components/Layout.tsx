@@ -122,7 +122,7 @@ export default function Layout({
     return prov || providers?.[0] || {} as ProviderConfig;
   }, [foundryModal, providers]);
 
-  const resolvedEnvironment = foundryModal?.environment || "frontier";
+  const resolvedEnvironment = foundryModal?.environment || "edge";
 
   // App.tsx is the sole foundry-progress → refresh_build_info owner.
   // Do not list_providers here — it races and can clobber probed build info.

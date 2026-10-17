@@ -497,7 +497,7 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
       const matching = stackStatus.filter((e: StackEngineStatus) =>
         e.provider_type === provider.id
         && e.status !== "IDLE"
-        && (e.binaryProfile || "frontier").toLowerCase() === profileKey
+        && (e.binaryProfile || "edge").toLowerCase() === profileKey
       );
 
       if (matching.length > 0) {

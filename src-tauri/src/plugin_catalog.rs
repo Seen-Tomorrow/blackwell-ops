@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 const PROFILE_LABELS: &[(&str, &str)] = &[
-    ("frontier", "Frontier (CUDA 13.3)"),
+    ("edge", "Edge (CUDA 13.4)"),
     ("stable", "Stable (CUDA 12.8)"),
 ];
 

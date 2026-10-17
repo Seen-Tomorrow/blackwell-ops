@@ -3,13 +3,13 @@
 #
 # Usage:
 #   .\scripts\slim-foundry-toolchain.ps1 -ToolchainRoot "C:\path\to\toolchain"
-#   .\scripts\slim-foundry-toolchain.ps1 -ToolchainRoot "...\target\debug\toolchain" -PackProfile frontier
+#   .\scripts\slim-foundry-toolchain.ps1 -ToolchainRoot "...\target\debug\toolchain" -PackProfile edge
 #   .\scripts\slim-foundry-toolchain.ps1 -ToolchainRoot "...\target\debug\toolchain" -WhatIf
 
 param(
     [Parameter(Mandatory)]
     [string]$ToolchainRoot,
-    [ValidateSet("full", "frontier")]
+    [ValidateSet("full", "edge")]
     [string]$PackProfile = "full",
     [switch]$WhatIf
 )
@@ -114,8 +114,8 @@ if (Test-Path $cudaRoot) {
         # Runtime DLL bloat (cufft/NPP/solver) — ggml needs cublas/Lt + cudart + nvJitLink/nvrtc only
         $totalFreed += Remove-CudaBinBloat $verDir.FullName
     }
-    # Drop CUDA versions not in manifest profiles (frontier=13.3, stable=12.8)
-    $keepCuda = if ($PackProfile -eq "frontier") { @("v13.3") } else { @("v12.8", "v13.3") }
+    # Drop CUDA versions not in manifest profiles (edge=13.4, stable=12.8)
+    $keepCuda = if ($PackProfile -eq "stable") { @("v12.8") } else { @("v12.8", "v13.4") }
     foreach ($verDir in Get-ChildItem $cudaRoot -Directory) {
         if ($keepCuda -notcontains $verDir.Name) {
             Write-Host "  remove cuda/$($verDir.Name) (pack profile $PackProfile)"
@@ -128,7 +128,7 @@ if (Test-Path $cudaRoot) {
 $vsRoot = Join-Path $ToolchainRoot "vs"
 if (Test-Path $vsRoot) {
     Write-Host "`n--- Visual Studio ---" -ForegroundColor Yellow
-    $keepVs = if ($PackProfile -eq "frontier") { @("2026") } else { @("2022", "2026") }
+    $keepVs = if ($PackProfile -eq "edge") { @("2026") } else { @("2022", "2026") }
     foreach ($vsDir in Get-ChildItem $vsRoot -Directory) {
         if ($keepVs -notcontains $vsDir.Name) {
             Write-Host "  remove vs/$($vsDir.Name) (pack profile $PackProfile)"

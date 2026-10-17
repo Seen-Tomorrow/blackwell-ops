@@ -325,7 +325,7 @@ pub struct StackEntry {
     pub slot_id: u32,
     #[serde(default = "default_provider_type")]
     pub provider_type: String,
-    /// Runtime profile env (vanguard/frontier/fresh/stable) the engine was launched with.
+    /// Runtime profile env (vanguard/edge/fresh/stable) the engine was launched with.
     #[serde(default, rename = "binaryProfile")]
     pub binary_profile: String,
     #[serde(default)]
@@ -467,7 +467,7 @@ pub struct ProviderConfig {
     /// "" = custom (user adds all params manually, no template).
     #[serde(default)]
     pub template_type: String,
-    /// Per-environment build info (frontier/stable) — captured from binary --version + file mtime.
+    /// Per-environment build info (edge/stable) — captured from binary --version + file mtime.
     #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "buildInfoPerEnv")]
     pub build_info_per_env: HashMap<String, BuildInfo>,
     /// Active launch path per profile (resolved from bundled / foundry / download).

@@ -5,7 +5,7 @@
 # Release bundles runtime-bundle/ -> Tauri resource "runtime/" beside the installed exe.
 #
 # Profile policy (see runtime-distribution.ps1):
-#   NSIS core: ggml-master -> frontier, stable (pre-installed engines)
+#   NSIS core: ggml-master -> edge, stable (pre-installed engines)
 #   Optional forks: catalog metadata in NSIS + App .7z; engines via provider packs only
 #   vanguard/fresh retired - not bundled
 #

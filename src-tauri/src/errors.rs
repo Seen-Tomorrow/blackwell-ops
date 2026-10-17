@@ -340,14 +340,14 @@ mod tests {
     fn fit_probe_classifier_covers_producers() {
         assert_eq!(
             classify_fit_probe(
-                "llama-fit-params.exe not found for provider 'ggml-master' (profile=frontier) — build Foundry frontier or bundle the tool".into()
+                "llama-fit-params.exe not found for provider 'ggml-master' (profile=edge) — build Foundry edge or bundle the tool".into()
             )
             .kind(),
             "fit_binary_missing"
         );
         assert_eq!(
             classify_fit_probe(
-                "Tom FIT requires ggml-tom llama-fit-params (Foundry frontier). Build Tom frontier in Foundry.".into()
+                "Tom FIT requires ggml-tom llama-fit-params (Foundry edge). Build Tom edge in Foundry.".into()
             )
             .kind(),
             "fit_binary_mismatch"

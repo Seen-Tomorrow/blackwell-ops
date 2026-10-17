@@ -233,7 +233,7 @@ fn fit_binary_borrow_chain(provider_id: &str) -> Vec<String> {
     chain
 }
 
-/// Resolve `llama-fit-params.exe` — always frontier; provider foundry → bundled runtime → server dir → borrow chain.
+/// Resolve `llama-fit-params.exe` — always edge; provider foundry → bundled runtime → server dir → borrow chain.
 pub fn resolve_fit_binary(
     cfg: &crate::config::AppConfig,
     provider_id: &str,

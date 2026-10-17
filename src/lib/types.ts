@@ -604,7 +604,7 @@ export interface StackEntry {
   status: string;
   slot_id?: number;
   provider_type?: string;
-  /** Runtime profile env (vanguard/frontier/fresh/stable) the engine was launched with. */
+  /** Runtime profile env (vanguard/edge/fresh/stable) the engine was launched with. */
   binaryProfile?: string;
   model_path?: string;
   vram_mib?: number;

@@ -18,7 +18,7 @@ function runtimeProviderLabel(entry: StackEntry): string {
   return name;
 }
 
-/** e.g. "GGML master | FRONTIER" — provider + runtime profile for mixed stacks */
+/** e.g. "GGML master | EDGE" — provider + runtime profile for mixed stacks */
 function runtimeEngineSourceLabel(entry: StackEntry): string {
   const profile = runtimeProfileLabel(entry.binaryProfile);
   const provider = runtimeProviderLabel(entry);

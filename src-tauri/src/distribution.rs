@@ -11,7 +11,7 @@ use tauri::{Emitter, Manager};
 static RELEASE_JOB_RUNNING: AtomicBool = AtomicBool::new(false);
 
 const POLICY_VERSION: u32 = 1;
-const DEFAULT_PROFILES: &[&str] = &["frontier", "stable"];
+const DEFAULT_PROFILES: &[&str] = &["edge", "stable"];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -32,7 +32,7 @@ impl Default for DistributionPolicy {
         let mut nsis_core = BTreeMap::new();
         nsis_core.insert(
             crate::config::DEFAULT_PROVIDER_ID.to_string(),
-            vec!["frontier".into(), "stable".into()],
+            vec!["edge".into(), "stable".into()],
         );
         Self {
             policy_version: POLICY_VERSION,

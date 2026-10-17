@@ -104,7 +104,7 @@ pub struct EngineSlot {
     pub backend_type: String,
     /// Multi-GPU split mode at launch (`none` / `layer` / `row` / `tensor`) — for load-failure hints.
     pub split_mode: String,
-    /// Runtime profile binary env (vanguard/frontier/fresh/stable) used at launch.
+    /// Runtime profile binary env (vanguard/edge/fresh/stable) used at launch.
     pub binary_profile: String,
     pub supports_fusion: bool,
     /// True when launch injected mmproj (vision on + projector loaded).

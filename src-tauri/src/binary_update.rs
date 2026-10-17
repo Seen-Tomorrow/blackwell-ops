@@ -187,7 +187,7 @@ pub struct StartupUpdateStatus {
 
 /// Profile metadata for display in UI.
 const PROFILES: &[(&str, &str)] = &[
-    ("frontier", "Frontier (VS2026 + CUDA 13.3)"),
+    ("edge", "Edge (VS2026 + CUDA 13.4)"),
     ("stable", "Stable (VS2022 + CUDA 12.8)"),
 ];
 

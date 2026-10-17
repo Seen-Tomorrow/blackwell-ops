@@ -403,7 +403,7 @@ export default function UpdatesConfig({
   const renderEngineCard = (card: EngineGroupCard) => {
     const rowKey = `engine:${card.id}`;
     const busy = pluginBusy(card.id, activeTasks) || rowStatus[rowKey] === "busy";
-    const frontier = card.profiles.find((p) => p.profile === "frontier");
+    const edgeProf = card.profiles.find((p) => p.profile === "edge");
     const stable = card.profiles.find((p) => p.profile === "stable");
     const bothProfiles = card.profiles.filter((p) => profileActionEnabled(p)).map((p) => p.profile);
     const anyAction = card.profiles.some((p) => profileActionEnabled(p));
@@ -515,26 +515,26 @@ export default function UpdatesConfig({
         </div>
 
         <div className="space-y-1 rounded-sm border upd-bord--a6 upd-fill--black20 px-2.5 py-2">
-          {renderProfilePill(frontier)}
+          {renderProfilePill(edgeProf)}
           {renderProfilePill(stable)}
         </div>
 
         {rowError[rowKey] && <p className="type-label font-mono upd-error">{rowError[rowKey]}</p>}
 
         <div className="flex flex-wrap gap-2">
-          {frontier && (
+          {edgeProf && (
             <button
               type="button"
-              disabled={busy || !profileActionEnabled(frontier)}
-              onClick={() => void handleProfilesInstall(card.id, ["frontier"], rowKey)}
-              className={`type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border ${actionBtnClass(frontier)}`}
+              disabled={busy || !profileActionEnabled(edgeProf)}
+              onClick={() => void handleProfilesInstall(card.id, ["edge"], rowKey)}
+              className={`type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border ${actionBtnClass(edgeProf)}`}
               title={
-                !frontier.packAvailable && !card.plugin
+                !edgeProf.packAvailable && !card.plugin
                   ? "Core engines refresh via Full install unless CORE_ggml-master packs are published"
                   : undefined
               }
             >
-              {profileActionLabel(frontier, !card.plugin)} Frontier
+              {profileActionLabel(edgeProf, !card.plugin)} Edge
             </button>
           )}
           {stable && (
@@ -552,7 +552,7 @@ export default function UpdatesConfig({
               {profileActionLabel(stable, !card.plugin)} Stable
             </button>
           )}
-          {frontier && stable && bothProfiles.length > 1 && (
+          {edgeProf && stable && bothProfiles.length > 1 && (
             <button
               type="button"
               disabled={busy || !anyAction}
