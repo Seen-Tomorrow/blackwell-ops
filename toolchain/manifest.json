@@ -24,6 +24,7 @@
       "generator": "Visual Studio 18 2026",
       "arch": "x64",
       "ninja": true,
+      "distributed": true,
       "description": "Bleeding-edge CUDA 13.4 on VS2026 (Ninja Multi-Config) - fastest path"
     },
     {
@@ -34,6 +35,7 @@
       "generator": "Visual Studio 17 2022",
       "arch": "x64",
       "ninja": true,
+      "distributed": true,
       "description": "Long-lived compatibility profile (Ninja Multi-Config)"
     }
   ]

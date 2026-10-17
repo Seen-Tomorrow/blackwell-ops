@@ -45,6 +45,12 @@ pub struct ProfileDef {
     pub ninja: bool,
     #[serde(default)]
     pub description: String,
+    /// Shipped to users. `false` withholds a profile: it stays resolvable by id but is
+    /// never listed by `profile_ids`, so inventory, discovery and the build list cannot
+    /// offer a profile the pack does not carry. Defaults to `true` so a manifest written
+    /// before this field existed does not silently lose its profiles.
+    #[serde(default = "distributed_by_default")]
+    pub distributed: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -282,7 +288,24 @@ fn read_manifest_from_disk() -> Result<ToolchainManifest, String> {
     serde_json::from_str(&raw).map_err(|e| format!("Invalid toolchain manifest: {}", e))
 }
 
+fn distributed_by_default() -> bool {
+    true
+}
+
+/// Profiles the app may offer. This is the ONE filter: inventory, vendor discovery and
+/// the build list all read it, so withholding a profile is a single flag on the manifest.
 pub fn profile_ids(manifest: &ToolchainManifest) -> Vec<String> {
+    manifest
+        .profiles
+        .iter()
+        .filter(|p| p.distributed)
+        .map(|p| p.id.clone())
+        .collect()
+}
+
+/// Every profile in the manifest, including withheld ones. Resolution by id uses this
+/// path; nothing user-facing should.
+pub fn all_profile_ids(manifest: &ToolchainManifest) -> Vec<String> {
     manifest.profiles.iter().map(|p| p.id.clone()).collect()
 }
 
@@ -1712,5 +1735,37 @@ mod isolation_tests {
         assert!(path_entry_is_foreign_cuda(r"D:\Apps\blackwell\toolchain\cuda\v13.4\bin"));
         assert!(!path_entry_is_foreign_cuda(r"C:\Windows\system32"));
         assert!(!path_entry_is_foreign_cuda("   "));
+    }
+    /// A profile can be withheld from the pack. profile_ids is the single filter that
+    /// inventory, discovery and the build list read, so this flag is the whole switch —
+    /// the profile stays resolvable by id but is never offered.
+    #[test]
+    fn withheld_profiles_are_not_offered() {
+        let vs = VsDef {
+            msvc_version: "1".into(),
+            cmake_version: "1".into(),
+            devcmd: "vs/2026/devcmd.bat".into(),
+            label: "x".into(),
+        };
+        let profile = |id: &str, cuda: &str, distributed: bool| ProfileDef {
+            id: id.into(),
+            label: id.to_uppercase(),
+            vs: "2026".into(),
+            cuda: cuda.into(),
+            generator: "Visual Studio 18 2026".into(),
+            arch: "x64".into(),
+            ninja: true,
+            description: String::new(),
+            distributed,
+        };
+        let manifest = ToolchainManifest {
+            version: 3,
+            windows_sdk_version: "10.0.26100.0".into(),
+            vs: VsManifest { vs2022: vs.clone(), vs2026: vs },
+            profiles: vec![profile("edge", "13.4", true), profile("lab", "13.9", false)],
+        };
+
+        assert_eq!(profile_ids(&manifest), vec!["edge".to_string()]);
+        assert_eq!(all_profile_ids(&manifest), vec!["edge".to_string(), "lab".to_string()]);
     }
 }
