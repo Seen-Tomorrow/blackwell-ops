@@ -4,7 +4,6 @@
 /* ══ Cockpit instruments: batch hero (left) + sampler/tweaks stack (right) ══ */
 
 .cockpit-instruments {
-  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   align-items: center;
@@ -12,40 +11,6 @@
   min-width: 0;
   padding-top: 8px;
   border-top: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
-}
-
-.cockpit-instruments__toggle {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  z-index: 5;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  padding: 0;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
-  border-radius: 2px;
-  background: transparent;
-  color: var(--theme-text-muted);
-  font-size: var(--type-micro);
-  line-height: 1;
-  cursor: pointer;
-}
-
-.cockpit-instruments__toggle:hover {
-  color: var(--theme-accent-bright);
-  border-color: color-mix(in srgb, var(--theme-accent) 55%, transparent);
-}
-
-.cockpit-instruments__chevron {
-  display: inline-block;
-  transition: transform 0.15s ease;
-}
-
-.cockpit-instruments__chevron--open {
-  transform: rotate(90deg);
 }
 
 .cockpit-instruments__right {
@@ -75,6 +40,46 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
+}
+
+.cockpit-instrument__head-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  min-width: 0;
+}
+
+.cockpit-instrument__head-right .cockpit-instrument__state {
+  margin-left: 0;
+}
+
+.cockpit-instrument__collapse {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--theme-text-muted);
+  font-size: var(--type-micro);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.cockpit-instrument__collapse:hover {
+  color: var(--theme-accent-bright);
+}
+
+.cockpit-instrument__chevron {
+  display: inline-block;
+  transition: transform 0.15s ease;
+}
+
+.cockpit-instrument__chevron--open {
+  transform: rotate(90deg);
 }
 
 .cockpit-instrument__label {
@@ -115,8 +120,13 @@
   width: 100%;
 }
 
-.cockpit-instrument--tweaks .cockpit-instrument__state {
-  margin-right: 16px;
+.cockpit-batch__titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 16px;
+  min-width: 0;
 }
 
 .cockpit-batch__title {
@@ -126,6 +136,33 @@
   font-size: var(--type-micro);
   letter-spacing: 0.14em;
   text-transform: uppercase;
+}
+
+.cockpit-batch__extras {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 5px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.08em;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.cockpit-batch__extras:hover {
+  color: var(--theme-accent-bright);
+  border-color: color-mix(in srgb, var(--theme-accent) 55%, transparent);
+}
+
+.cockpit-batch__extras-chevron {
+  display: inline-block;
+  font-size: var(--type-micro);
+  line-height: 1;
 }
 
 /* ── Batch / uBatch dual-thumb hero ───────────────────────────────── */

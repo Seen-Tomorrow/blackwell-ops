@@ -25,6 +25,8 @@ interface BatchRangeSliderProps {
   onChange: (key: string, value: string | number) => void;
   /** TWEAKS/SAMPLER hidden — span the full instrument row. */
   fullWidth?: boolean;
+  /** Shown only while collapsed: reopen the TWEAKS + SAMPLER stack. */
+  onExpand?: () => void;
 }
 
 type ThumbId = "batch" | "ubatch";
@@ -34,6 +36,7 @@ export default function BatchRangeSlider({
   config,
   onChange,
   fullWidth = false,
+  onExpand,
 }: BatchRangeSliderProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<ThumbId | null>(null);
@@ -179,7 +182,23 @@ export default function BatchRangeSlider({
         fullWidth ? " cockpit-instrument--batch-full" : ""
       }`}
     >
-      <div className="cockpit-batch__title">BATCH // UBATCH</div>
+      <div className="cockpit-batch__titlebar">
+        <span className="cockpit-batch__title">BATCH // UBATCH</span>
+        {onExpand ? (
+          <button
+            type="button"
+            className="cockpit-batch__extras"
+            onClick={onExpand}
+            aria-label="Show TWEAKS and SAMPLER"
+            title="Show TWEAKS + SAMPLER"
+          >
+            EXTRAS
+            <span className="cockpit-batch__extras-chevron" aria-hidden>
+              ▶
+            </span>
+          </button>
+        ) : null}
+      </div>
       <div className="cockpit-batch__stage">
         <div
           className="cockpit-batch__track"

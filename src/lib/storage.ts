@@ -148,6 +148,7 @@ export const KEYS = {
   sortDir: `${STORAGE_PREFIX}sort-dir`,
   uiZoom: `${STORAGE_PREFIX}ui-zoom`,
   uiDensity: `${STORAGE_PREFIX}ui-density`,
+  cockpitExtrasCollapsed: `${STORAGE_PREFIX}cockpit-extras-collapsed`,
   catalogDraftFilter: `${STORAGE_PREFIX}catalog-draft-filter`,
   draftPairings: `${STORAGE_PREFIX}draft-pairings`,
   /** HF Get-draft scored candidate list cache (TTL ~4h, stale OK on 429). */
@@ -447,6 +448,15 @@ export function loadUiDensity(): UiDensity {
 
 export function saveUiDensity(density: UiDensity): void {
   writeStorage(KEYS.uiDensity, density);
+}
+
+/** Cockpit TWEAKS + SAMPLER stack collapsed; BATCH spans the full row. */
+export function loadCockpitExtrasCollapsed(): boolean {
+  return readStorage(KEYS.cockpitExtrasCollapsed) === "1";
+}
+
+export function saveCockpitExtrasCollapsed(collapsed: boolean): void {
+  writeStorage(KEYS.cockpitExtrasCollapsed, collapsed ? "1" : "0");
 }
 
 // ── Engine config launch dock layout ───────────────────────────────────────

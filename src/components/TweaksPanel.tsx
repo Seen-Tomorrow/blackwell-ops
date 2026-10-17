@@ -22,9 +22,11 @@ interface TweaksPanelProps {
   defs: UserEditedTemplateParam[];
   config: Record<string, unknown>;
   onChange: (key: string, value: string | number) => void;
+  /** Hide the whole TWEAKS + SAMPLER stack from the cockpit. */
+  onCollapse?: () => void;
 }
 
-export default function TweaksPanel({ defs, config, onChange }: TweaksPanelProps) {
+export default function TweaksPanel({ defs, config, onChange, onCollapse }: TweaksPanelProps) {
   const tweaks = defs.filter((def) => TWEAK_KEY_SET.has(def.key));
   if (tweaks.length === 0) return null;
 
@@ -34,8 +36,26 @@ export default function TweaksPanel({ defs, config, onChange }: TweaksPanelProps
     <div className="cockpit-instrument cockpit-instrument--tweaks">
       <div className="cockpit-instrument__head">
         <span className="cockpit-instrument__label">TWEAKS</span>
-        <span className="cockpit-instrument__state">
-          {changed > 0 ? `${changed} customized` : "template"}
+        <span className="cockpit-instrument__head-right">
+          <span className="cockpit-instrument__state">
+            {changed > 0 ? `${changed} customized` : "template"}
+          </span>
+          {onCollapse ? (
+            <button
+              type="button"
+              className="cockpit-instrument__collapse"
+              onClick={onCollapse}
+              aria-label="Hide TWEAKS and SAMPLER"
+              title="Hide TWEAKS + SAMPLER"
+            >
+              <span
+                className="cockpit-instrument__chevron cockpit-instrument__chevron--open"
+                aria-hidden
+              >
+                ▶
+              </span>
+            </button>
+          ) : null}
         </span>
       </div>
       <div className="cockpit-tweaks-grid">
