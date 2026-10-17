@@ -168,6 +168,7 @@ export default function BatchRangeSlider({ defs, config, onChange }: BatchRangeS
 
   return (
     <div className="cockpit-instrument cockpit-instrument--batch">
+      <div className="cockpit-batch__title">BATCH // UBATCH</div>
       <div className="cockpit-batch__stage">
         <div
           className="cockpit-batch__track"

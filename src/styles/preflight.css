@@ -75,6 +75,15 @@
   justify-content: center;
 }
 
+.cockpit-batch__title {
+  text-align: center;
+  color: var(--theme-accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
 /* ── Batch / uBatch dual-thumb hero ───────────────────────────────── */
 
 .cockpit-batch__stage {
@@ -201,15 +210,16 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: 1px solid var(--theme-accent-bright);
-  border-radius: 2px;
+  border-radius: 3px;
   background: var(--theme-panel);
   color: var(--theme-accent-bright);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: var(--type-micro);
+  font-size: var(--type-label);
+  font-weight: 700;
   letter-spacing: 0;
   cursor: grab;
   touch-action: none;
@@ -234,11 +244,11 @@
 
 /* Equal or near-equal values: split the thumbs above / below the rail. */
 .cockpit-batch__thumb--collide.cockpit-batch__thumb--ub {
-  transform: translate(-50%, -100%);
+  transform: translate(-50%, -80%);
 }
 
 .cockpit-batch__thumb--collide.cockpit-batch__thumb--b {
-  transform: translate(-50%, 50%);
+  transform: translate(-50%, 60%);
 }
 
 .cockpit-batch__thumb-value {
@@ -246,7 +256,8 @@
   left: 50%;
   transform: translateX(-50%);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: var(--type-micro);
+  font-size: var(--type-body);
+  font-weight: 700;
   letter-spacing: 0.04em;
   line-height: 1;
   white-space: nowrap;

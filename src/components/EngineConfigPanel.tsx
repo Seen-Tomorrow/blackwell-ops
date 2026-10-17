@@ -3298,8 +3298,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             <>
               <BatchRangeSlider defs={allParamsResolved} config={config} onChange={updateParam} />
               <div className="cockpit-instruments__right">
-                <SamplerTaste defs={allParamsResolved} config={config} onChange={updateParam} />
                 <TweaksPanel defs={allParamsResolved} config={config} onChange={updateParam} />
+                <SamplerTaste defs={allParamsResolved} config={config} onChange={updateParam} />
               </div>
             </>
           }
@@ -3308,8 +3308,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           <div className="cockpit-instruments cockpit-instruments--standalone">
             <BatchRangeSlider defs={allParamsResolved} config={config} onChange={updateParam} />
             <div className="cockpit-instruments__right">
-              <SamplerTaste defs={allParamsResolved} config={config} onChange={updateParam} />
               <TweaksPanel defs={allParamsResolved} config={config} onChange={updateParam} />
+              <SamplerTaste defs={allParamsResolved} config={config} onChange={updateParam} />
             </div>
           </div>
         )}
