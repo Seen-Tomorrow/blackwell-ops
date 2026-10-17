@@ -62,6 +62,7 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
     autoGoal,
     onAutoGoal,
     onTakeControl,
+    autoPlanVram,
   } = props;
 
   if (!show) return null;
@@ -134,6 +135,7 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
         autoGoal={autoGoal}
         onAutoGoal={onAutoGoal}
         onTakeControl={onTakeControl}
+        autoPlanVram={autoPlanVram}
       />
     </div>
   );
@@ -193,4 +195,5 @@ export interface EngineBoostSectionProps {
   autoGoal?: FullAutoGoal | null;
   onAutoGoal?: (goal: FullAutoGoal) => void;
   onTakeControl?: () => void;
+  autoPlanVram?: { totalGb: number; freeGb: number; fits: boolean } | null;
 }

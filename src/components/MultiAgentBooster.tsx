@@ -131,6 +131,8 @@ export interface MultiAgentBoosterProps {
   autoGoal?: FullAutoGoal | null;
   onAutoGoal?: (goal: FullAutoGoal) => void;
   onTakeControl?: () => void;
+  /** Resolved forecast for the current autopilot plan. */
+  autoPlanVram?: { totalGb: number; freeGb: number; fits: boolean } | null;
 
 }
 
@@ -189,6 +191,7 @@ export default function MultiAgentBooster({
   autoGoal,
   onAutoGoal,
   onTakeControl,
+  autoPlanVram,
 }: MultiAgentBoosterProps) {
   const hero = layout === "hero";
   const densityUnified = !hero;
@@ -625,10 +628,14 @@ export default function MultiAgentBooster({
   const ctxNumeric = Number(ctxValue);
   const ctxLabel = Number.isFinite(ctxNumeric) ? formatCtxChipLabel(ctxNumeric) : null;
   const batchLabel = fullAutoGoalBatchLabel(autoGoal ?? null);
+  const vramLabel = autoPlanVram
+    ? `VRAM ${autoPlanVram.totalGb.toFixed(1)}G ${autoPlanVram.fits ? "FIT" : "TIGHT"}`
+    : null;
   const autoOutcome = [
     plan.outcome,
     batchLabel ? `Batch ${batchLabel}` : null,
     ctxLabel ? `CTX ${ctxLabel}` : null,
+    vramLabel,
   ]
     .filter(Boolean)
     .join(" · ");

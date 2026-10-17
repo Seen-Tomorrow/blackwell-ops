@@ -148,6 +148,7 @@ export const KEYS = {
   uiZoom: `${STORAGE_PREFIX}ui-zoom`,
   uiDensity: `${STORAGE_PREFIX}ui-density`,
   cockpitExtrasCollapsed: `${STORAGE_PREFIX}cockpit-extras-collapsed`,
+  fullAutoGoal: `${STORAGE_PREFIX}full-auto-goal`,
   catalogDraftFilter: `${STORAGE_PREFIX}catalog-draft-filter`,
   draftPairings: `${STORAGE_PREFIX}draft-pairings`,
   /** HF Get-draft scored candidate list cache (TTL ~4h, stale OK on 429). */
@@ -456,6 +457,19 @@ export function loadCockpitExtrasCollapsed(): boolean {
 
 export function saveCockpitExtrasCollapsed(collapsed: boolean): void {
   writeStorage(KEYS.cockpitExtrasCollapsed, collapsed ? "1" : "0");
+}
+
+/** Last autopilot goal; missing = no goal selected. */
+export function loadFullAutoGoal(): string | null {
+  return readStorage(KEYS.fullAutoGoal);
+}
+
+export function saveFullAutoGoal(goal: string | null): void {
+  if (!goal) {
+    removeStorage(KEYS.fullAutoGoal);
+    return;
+  }
+  writeStorage(KEYS.fullAutoGoal, goal);
 }
 
 // ── Engine config launch dock layout ───────────────────────────────────────

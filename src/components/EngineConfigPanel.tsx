@@ -13,6 +13,7 @@ import {
   cycleHwMonitorPlacement,
   loadCtxCockpitDock,
   loadCockpitExtrasCollapsed,
+  loadFullAutoGoal,
   loadEnginesInRail,
   loadHwMonitorDock,
   loadHwMonitorOpen,
@@ -25,6 +26,7 @@ import {
   normalizeUiGroup,
   saveCtxCockpitDock,
   saveCockpitExtrasCollapsed,
+  saveFullAutoGoal,
   saveEnginesInRail,
   saveHwMonitorDock,
   saveHwMonitorOpen,
@@ -94,7 +96,7 @@ import {
   syncComboModelPaths,
 } from "../lib/launchPresets";
 import { getLaunchPolicy, resolveLaunchPolicyId } from "../lib/launchPolicy";
-import { FULL_AUTO_GOAL_PLANS, type FullAutoGoal } from "../lib/fullAutoGoals";
+import { FULL_AUTO_GOALS, FULL_AUTO_GOAL_PLANS, type FullAutoGoal } from "../lib/fullAutoGoals";
 import { applySpecBoostProfiles } from "../lib/applySpecBoost";
 import ParamCatalogSearch from "./ParamCatalogSearch";
 import {
@@ -1102,11 +1104,17 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   });
 
   /** FULL AUTO owns the cockpit until the user takes control back. */
-  const [autoGoal, setAutoGoal] = useState<FullAutoGoal | null>("balanced");
+  const [autoGoal, setAutoGoal] = useState<FullAutoGoal | null>(() => {
+    const stored = loadFullAutoGoal();
+    return stored && FULL_AUTO_GOALS.some((goal) => goal.id === stored)
+      ? (stored as FullAutoGoal)
+      : "balanced";
+  });
   const applyAutoPlan = useCallback(
     (goal: FullAutoGoal) => {
       const plan = FULL_AUTO_GOAL_PLANS[goal];
       setAutoGoal(goal);
+      saveFullAutoGoal(goal);
       void applyFullAutoCockpit(plan.codingMode, plan.speed, plan.brains, plan.think, cockpitOpts);
       const pair = throughputPair(allParamsResolved, plan.throughput);
       if (pair) {
@@ -1137,8 +1145,17 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const handleAutoGoal = applyAutoPlan;
   const handleTakeControl = useCallback(() => {
     setAutoGoal(null);
+    saveFullAutoGoal(null);
     setFullAuto(false);
   }, [setFullAuto]);
+
+  const autoPlanVram = vramCalc.manifest
+    ? {
+        totalGb: vramCalc.manifest.vramTotalGb,
+        freeGb: vramCalc.manifest.forecastFreeGb ?? 0,
+        fits: vramCalc.manifest.fits,
+      }
+    : null;
 
   const launchChrome = useMemo(() => {
     // Custom: never multi-GPU lock / device ALL / hide split none — user owns chrome.
@@ -3058,13 +3075,14 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         onFitLaunchChange={(nextFullAuto) => {
           setFullAuto(nextFullAuto);
           if (nextFullAuto) {
-            applyAutoPlan("balanced");
+            applyAutoPlan(autoGoal ?? "balanced");
             updateParam("split", "none");
             if (String(config["offload_mode"] ?? "regular").toLowerCase() === "moe_optimal") {
               updateParam("offload_mode", "regular");
             }
           } else {
             setAutoGoal(null);
+            saveFullAutoGoal(null);
           }
         }}
         showFitOrDeviceChrome={!modelIsDraftOnly && (fitLaunchSupported || Boolean(model && gpus.length > 0))}
@@ -3375,6 +3393,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           autoGoal={fullAutoFixed ? autoGoal : null}
           onAutoGoal={fullAutoFixed ? handleAutoGoal : undefined}
           onTakeControl={fullAutoFixed ? handleTakeControl : undefined}
+          autoPlanVram={fullAutoFixed ? autoPlanVram : null}
         />
         {!(model && !modelIsDraftOnly && showCockpitSurface) && (
           <div className="cockpit-instruments cockpit-instruments--standalone">
