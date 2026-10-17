@@ -3348,7 +3348,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             });
           }}
           specDetailParams={cockpitSpecDetailParams}
-          embedCtx={ctxDockedInCockpit}
+          embedCtx={ctxDockedInCockpit || fullAutoFixed}
           ctxStripProps={ctxStripProps}
           instrumentSlot={
             <>

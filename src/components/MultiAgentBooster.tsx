@@ -23,6 +23,7 @@ import CockpitSlider from "./CockpitSlider";
 import CockpitFlagToolbar, { type CockpitFlagToggle } from "./CockpitFlagToolbar";
 import FullAutoGoalRail from "./FullAutoGoalRail";
 import { fullAutoGoalBatchLabel, type FullAutoGoal } from "../lib/fullAutoGoals";
+import { formatCtxChipLabel } from "../lib/sliderParamUtils";
 
 export type DflashGetUiState = "idle" | "searching" | "downloading" | "error";
 
@@ -600,6 +601,38 @@ export default function MultiAgentBooster({
   const densityClass = hero
     ? "full-auto-cockpit--hero"
     : "full-auto-cockpit--normal";
+
+  const ctxStrip =
+    showCtxRail && onCtxChange != null ? (
+      <CockpitCtxStrip
+        ctxValue={ctxValue}
+        ctxDefault={ctxDefault}
+        ctxValues={ctxValues}
+        ctxStep={ctxStep}
+        onCtxChange={onCtxChange}
+        ctxPerSlot={ctxPerSlot}
+        ctxSlotCount={ctxSlotCount}
+        learnedMarks={learnedMarks}
+        forecastCurve={forecastCurve}
+        forecastFreeGb={forecastFreeGb}
+        onPruneCustom={onPruneCustom}
+        standalone={false}
+        kvUnified={kvUnified}
+        onToggleKvUnified={onToggleKvUnified}
+      />
+    ) : null;
+
+  const ctxNumeric = Number(ctxValue);
+  const ctxLabel = Number.isFinite(ctxNumeric) ? formatCtxChipLabel(ctxNumeric) : null;
+  const batchLabel = fullAutoGoalBatchLabel(autoGoal ?? null);
+  const autoOutcome = [
+    plan.outcome,
+    batchLabel ? `Batch ${batchLabel}` : null,
+    ctxLabel ? `CTX ${ctxLabel}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
     <div
       className={`full-auto-cockpit ${densityClass} ${className}`}
@@ -626,38 +659,21 @@ export default function MultiAgentBooster({
       {hero && onAutoGoal ? (
         <FullAutoGoalRail
           goal={autoGoal ?? null}
-          outcome={
-            fullAutoGoalBatchLabel(autoGoal ?? null)
-              ? `${plan.outcome} · Batch ${fullAutoGoalBatchLabel(autoGoal ?? null)}`
-              : plan.outcome
-          }
+          outcome={autoOutcome}
           hero
           onGoal={onAutoGoal}
           onTakeControl={onTakeControl}
         />
       ) : null}
 
+      {hero && onAutoGoal && ctxStrip ? (
+        <div className="full-auto-cockpit__body space-y-3">{ctxStrip}</div>
+      ) : null}
+
       {!(hero && onAutoGoal) ? (
         <>
           <div className="full-auto-cockpit__body space-y-3">
-        {showCtxRail && onCtxChange != null && (
-          <CockpitCtxStrip
-            ctxValue={ctxValue}
-            ctxDefault={ctxDefault}
-            ctxValues={ctxValues}
-            ctxStep={ctxStep}
-            onCtxChange={onCtxChange}
-            ctxPerSlot={ctxPerSlot}
-            ctxSlotCount={ctxSlotCount}
-            learnedMarks={learnedMarks}
-            forecastCurve={forecastCurve}
-            forecastFreeGb={forecastFreeGb}
-            onPruneCustom={onPruneCustom}
-            standalone={false}
-            kvUnified={kvUnified}
-            onToggleKvUnified={onToggleKvUnified}
-          />
-        )}
+        {ctxStrip}
 
         <div className="full-auto-cockpit__grid">
           {showMemory && memoryOptions.length > 0 && (
