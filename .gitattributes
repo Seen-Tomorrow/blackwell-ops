@@ -1,0 +1,6 @@
+# Generated IPC wire-key list: pin to LF so the committed bytes are stable across
+# checkouts. The freshness gate in src-tauri/src/ipc_contract.rs normalizes EOL
+# before comparing (the Windows CI runner checks out CRLF via core.autocrlf), so a
+# CRLF working copy no longer fails it — but pinning keeps the file from
+# flip-flopping in `git status` on machines that rewrite line endings.
+src/lib/generated/** text eol=lf

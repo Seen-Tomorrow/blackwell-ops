@@ -274,9 +274,13 @@ mod tests {
             )
         });
         let expected = render();
-        if committed != expected {
+        // The checkout's `core.autocrlf` decides the file's EOL on disk — the Windows
+        // CI runner produces CRLF. EOL is a property of the working copy, not of the
+        // wire contract, so compare content rather than raw bytes.
+        let committed_normalized = committed.replace("\r\n", "\n");
+        if committed_normalized != expected {
             let want: serde_json::Value = serde_json::from_str(&expected).unwrap();
-            let have: serde_json::Value = serde_json::from_str(&committed).unwrap();
+            let have: serde_json::Value = serde_json::from_str(&committed_normalized).unwrap();
             let mut detail = String::new();
             if let (Some(w), Some(h)) = (want.as_object(), have.as_object()) {
                 for (ty, keys) in w {
@@ -306,7 +310,7 @@ mod tests {
                     }
                 }
             }
-            let cl: Vec<&str> = committed.lines().collect();
+            let cl: Vec<&str> = committed_normalized.lines().collect();
             let el: Vec<&str> = expected.lines().collect();
             let mut at = String::new();
             for i in 0..cl.len().max(el.len()) {
