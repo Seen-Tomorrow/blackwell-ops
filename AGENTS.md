@@ -163,8 +163,7 @@ shadowed.
 measured and is false: identical declaration blocks are 8.9% of declaration bytes, **5.0% of
 source**, and the largest groups are single declarations already at token level
 (`color: var(--theme-text-muted)` x55). Capturing even that needs a primitive class at ~1,000 TSX
-sites for ~1% gzip. The numbers are in `docs/css-refactor-report.md`; re-open only with new
-evidence.
+sites for ~1% gzip. Re-open only with new evidence.
 
 **Never let a scripted CSS edit double the CR** — nine partials once carried `\r\r\n`
 (`chrome.css` even `\r\r\r\n`): 11,585 bytes of padding that no parser sees but that corrupts
