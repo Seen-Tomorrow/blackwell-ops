@@ -256,15 +256,6 @@ mod merge_tests {
             batch.essentials_hidden_values.is_empty(),
             "empty ESS hide list must stay empty (not factory 16384)"
         );
-        // Factory high value still present in catalog for Assisted Full chips
-        assert!(
-            batch.values.iter().any(|v| {
-                v.as_i64() == Some(16384)
-                    || v.as_u64() == Some(16384)
-                    || v.as_str() == Some("16384")
-            }),
-            "factory high batch must remain in values for Full chips"
-        );
     }
 
     #[test]

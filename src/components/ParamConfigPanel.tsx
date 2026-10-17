@@ -1055,6 +1055,7 @@ export default function ParamConfigPanel({
       const vals = sortParamValues((d.values || []).filter(v => String(v) !== String(value)));
       const userAdded = (d.userAddedValues || []).filter(v => String(v) !== String(value));
       const hiddenVals = (d.hiddenValues || []).filter(v => String(v) !== String(value));
+      const essHidden = (d.essentialsHiddenValues || []).filter(v => String(v) !== String(value));
       let newDefault = d.defaultValue;
       if (String(d.defaultValue) === String(value)) {
         newDefault = vals.length > 0 ? vals[0] : undefined;
@@ -1064,6 +1065,7 @@ export default function ParamConfigPanel({
         values: vals,
         userAddedValues: userAdded.length > 0 ? userAdded : undefined,
         hiddenValues: hiddenVals.length > 0 ? hiddenVals : undefined,
+        essentialsHiddenValues: essHidden.length > 0 ? essHidden : undefined,
         defaultValue: newDefault,
       };
     });

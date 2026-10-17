@@ -152,19 +152,18 @@ pub fn merge_user_params_with_template(
     for user_param in user_edited {
         let mut m = user_param.clone();
         if let Some(tmpl) = tmpl_map.get(user_param.key.as_str()) {
-            // ── Values: user-owned catalog — only backfill when empty (never re-append deleted factory values) ──
-            if m.values.is_empty() && !tmpl.values.is_empty() {
-                m.values = tmpl.values.clone();
-            } else if !m.values.is_empty() && !tmpl.values.is_empty() {
+            // ── Values: user-owned catalog. Empty means the user deleted every value.
+            // Never backfill from the template; only keep the user's order aligned. ──
+            if !m.values.is_empty() && !tmpl.values.is_empty() {
                 m.values = reorder_values_to_template(&m.values, &tmpl.values);
             }
 
             // ── factoryDefault: always sync from fresh template — keeps bubble styling correct ──
             m.factory_default = tmpl.default.clone();
 
-            // ── defaultValue: if current value still in merged array → keep. If orphaned → force reset to new factory default ──
+            // ── defaultValue: if current value still in merged array → keep. If orphaned → force reset to new factory default. ──
             let user_default_key = json_val_key(&m.default_value);
-            if !m.values.iter().any(|v| json_val_key(v) == user_default_key) {
+            if !m.values.is_empty() && !m.values.iter().any(|v| json_val_key(v) == user_default_key) {
                 log::warn!("[config] Param '{}' default '{:?}' no longer in values — resetting to factory default {:?}",
                     m.key, m.default_value, tmpl.default);
                 m.default_value = tmpl.default.clone();
@@ -230,25 +229,12 @@ pub fn merge_user_params_with_template(
             // in Essentials" (or never curated). Factory ESS hides only land via:
             //   • new param append (below)
             //   • first-run user_edited_param_from_template / RESET TO DEFAULTS
-            // Re-backfilling empty→factory made ESS un-hide sticky-regress on every merge
-            // (empty also skip_serializing → reloads as [] → looked "unset").
-
-            // Assisted Full expansion chips: ensure factory essentialsHidden *values* exist in
-            // the values catalog (chips available in Full) even when ESS-hide list is user-owned.
-            // Does not re-hide; only ensures the token is in `values`.
-            if !tmpl.essentials_hidden_values.is_empty() {
-                let mut changed = false;
-                for tv in &tmpl.essentials_hidden_values {
-                    let key = json_val_key(tv);
-                    if !m.values.iter().any(|v| json_val_key(v) == key) {
-                        m.values.push(tv.clone());
-                        changed = true;
-                    }
-                }
-                if changed && !tmpl.values.is_empty() {
-                    m.values = reorder_values_to_template(&m.values, &tmpl.values);
-                }
-            }
+            // Never re-add a factory ESS-hidden value that the user deleted from `values`.
+            // Hide lists are pruned to the current catalog so a deleted value cannot linger.
+            m.hidden_values
+                .retain(|v| m.values.iter().any(|x| json_val_key(x) == json_val_key(v)));
+            m.essentials_hidden_values
+                .retain(|v| m.values.iter().any(|x| json_val_key(x) == json_val_key(v)));
         }
         merged.push(m);
     }
