@@ -3413,8 +3413,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 {serviceCount === 0 ? (
                   <div className="service-bay__empty">
                     {allParamsForDisplay.length === 0
-                      ? "No extra params — add from the catalog"
-                      : "No extra params — everything is on the cockpit, dock, or catalog"}
+                      ? "No parameters in the live catalog yet."
+                      : "You haven't added any custom parameters from the catalog yet — use + PARAM CATALOG above."}
                   </div>
                 ) : (
                   <ConfigBelowGroups
