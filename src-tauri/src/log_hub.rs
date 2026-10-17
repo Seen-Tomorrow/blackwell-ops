@@ -653,6 +653,8 @@ impl LogHub {
             &tables,
             already_persisted,
             phase,
+            learn_snapshot.batch,
+            learn_snapshot.ubatch,
         ) {
             Ok(Some(_)) => {
                 log::info!(
@@ -717,6 +719,8 @@ impl LogHub {
                 &tables,
                 already_persisted,
                 phase,
+                learn_snapshot.batch,
+                learn_snapshot.ubatch,
             ) {
                 Ok(Some(_)) => {
                     log::info!(
@@ -788,6 +792,8 @@ impl LogHub {
         match crate::vram_learn::record_launch_memory_snapshot(
             &learn_snapshot.learn_key,
             snapshot,
+            learn_snapshot.batch,
+            learn_snapshot.ubatch,
         ) {
             Ok(()) => {
                 log::info!(

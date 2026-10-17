@@ -24,9 +24,26 @@ pub struct LearnedVramFitAttempt {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LearnedBatchDelta {
+    #[serde(default)]
+    pub vram_mib: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host_mib: Option<f64>,
+    pub measured_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LearnedVramEntry {
     /// Authoritative GPU total — launch buffer inventory when present, else FIT/exit table.
     pub vram_mib: f64,
+    /// Batch/ubatch of the base measurement. Deltas below are relative to this pair.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference_batch: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference_ubatch: Option<u32>,
+    /// Learned VRAM additions for other batch/ubatch pairs (key: "batch|ubatch").
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub batch_deltas: HashMap<String, LearnedBatchDelta>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gpu_breakdown_mib: Option<Vec<f64>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -345,6 +362,9 @@ pub struct VramLearnSnapshot {
     pub learn_key: String,
     pub model_path: String,
     pub provider_id: String,
+    /// Launch batch/ubatch — stored as metadata/deltas, never in the cache key.
+    pub batch: u32,
+    pub ubatch: u32,
 }
 
 pub fn snapshot_from_config(
@@ -356,6 +376,14 @@ pub fn snapshot_from_config(
         learn_key: learned_vram_key_from_config(model_path, provider_id, config),
         model_path: normalize_model_path_for_key(model_path),
         provider_id: provider_id.to_string(),
+        batch: config
+            .get_param_str("batch")
+            .and_then(|v| v.parse::<u32>().ok())
+            .unwrap_or(0),
+        ubatch: config
+            .get_param_str("ubatch")
+            .and_then(|v| v.parse::<u32>().ok())
+            .unwrap_or(0),
     }
 }
 
@@ -649,6 +677,9 @@ pub fn record_learned_vram(
         key,
         LearnedVramEntry {
             vram_mib,
+            reference_batch: None,
+            reference_ubatch: None,
+            batch_deltas: HashMap::new(),
             gpu_breakdown_mib,
             host_mib: None,
             gpu_components_mib: None,
@@ -710,6 +741,42 @@ fn timestamp_now() -> String {
     chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
+fn batch_pair(batch: u32, ubatch: u32) -> String {
+    format!("{batch}|{ubatch}")
+}
+
+/// First measurement becomes the reference; returns true when this write is
+/// the reference pair (base update), false for a delta write.
+fn batch_reference_matches(entry: &mut LearnedVramEntry, batch: u32, ubatch: u32) -> bool {
+    match (entry.reference_batch, entry.reference_ubatch) {
+        (Some(rb), Some(ru)) => rb == batch && ru == ubatch,
+        _ => {
+            entry.reference_batch = Some(batch);
+            entry.reference_ubatch = Some(ubatch);
+            true
+        }
+    }
+}
+
+fn record_batch_delta(
+    entry: &mut LearnedVramEntry,
+    batch: u32,
+    ubatch: u32,
+    vram_mib: f64,
+    host_mib: Option<f64>,
+) {
+    let base_vram = entry.paint_vram_mib();
+    let base_host = entry.paint_host_mib().unwrap_or(0.0);
+    entry.batch_deltas.insert(
+        batch_pair(batch, ubatch),
+        LearnedBatchDelta {
+            vram_mib: vram_mib - base_vram,
+            host_mib: host_mib.map(|h| h - base_host),
+            measured_at: timestamp_now(),
+        },
+    );
+}
+
 /// FIT-only primary promote when no launch snapshot yet.
 /// Once a launch buffer inventory exists it owns primary; engine memory
 /// regressions/fixes are captured by the next `record_launch_memory_snapshot`.
@@ -728,6 +795,8 @@ pub fn append_fit_breakdown_tables(
     tables: &[crate::fit_scanner::MemoryBreakdownTable],
     already_stored: usize,
     phase: &str,
+    batch: u32,
+    ubatch: u32,
 ) -> Result<Option<(f64, usize)>, String> {
     if already_stored >= tables.len() {
         return Ok(None);
@@ -739,6 +808,9 @@ pub fn append_fit_breakdown_tables(
     let mut store = load_store();
     let entry = store.entries.entry(key.to_string()).or_insert_with(|| LearnedVramEntry {
         vram_mib: 0.0,
+        reference_batch: None,
+        reference_ubatch: None,
+        batch_deltas: HashMap::new(),
         gpu_breakdown_mib: None,
         host_mib: None,
         gpu_components_mib: None,
@@ -747,6 +819,18 @@ pub fn append_fit_breakdown_tables(
         measured_at: String::new(),
         fit_attempts: Vec::new(),
     });
+
+    // A different batch/ubatch pair is a delta against the reference curve;
+    // never replace the base measurement.
+    if !batch_reference_matches(entry, batch, ubatch) {
+        let table = tables.last();
+        let mib = table.map(|t| t.total_gpu_self_mib()).unwrap_or(0.0);
+        if mib > 0.0 {
+            record_batch_delta(entry, batch, ubatch, mib, table.and_then(|t| t.host_mib));
+            save_store(&store)?;
+        }
+        return Ok(Some((mib, tables.len())));
+    }
 
     let mut latest_mib = entry.paint_vram_mib();
     let mut consumed = false;
@@ -928,8 +1012,8 @@ mod dedup_tests {
             save_store(&store).unwrap();
         }
 
-        append_fit_breakdown_tables(key, &tables, 0, "fit").unwrap();
-        append_fit_breakdown_tables(key, &tables, 0, "fit").unwrap();
+        append_fit_breakdown_tables(key, &tables, 0, "fit", 0, 0).unwrap();
+        append_fit_breakdown_tables(key, &tables, 0, "fit", 0, 0).unwrap();
 
         let _guard = STORE_MUTEX.lock().unwrap();
         let store = load_store();
@@ -951,6 +1035,9 @@ mod dedup_tests {
                 key.to_string(),
                 LearnedVramEntry {
                     vram_mib: 168861.0,
+                    reference_batch: None,
+                    reference_ubatch: None,
+                    batch_deltas: HashMap::new(),
                     gpu_breakdown_mib: Some(vec![85485.0, 83376.0]),
                     host_mib: Some(105086.0),
                     gpu_components_mib: None,
@@ -984,7 +1071,7 @@ mod dedup_tests {
             phase: "loaded".into(),
             measured_at: "new".into(),
         };
-        record_launch_memory_snapshot(key, snap).unwrap();
+        record_launch_memory_snapshot(key, snap, 0, 0).unwrap();
 
         let _guard = STORE_MUTEX.lock().unwrap();
         let store = load_store();
@@ -998,7 +1085,7 @@ mod dedup_tests {
             gpu_self_mib: vec![85485.0, 83376.0],
             host_mib: Some(105086.0),
         }];
-        append_fit_breakdown_tables(key, &tables, 0, "fit").unwrap();
+        append_fit_breakdown_tables(key, &tables, 0, "fit", 0, 0).unwrap();
         let _guard = STORE_MUTEX.lock().unwrap();
         let store = load_store();
         let entry = store.entries.get(key).expect("entry");
@@ -1020,6 +1107,9 @@ mod dedup_tests {
                 key.to_string(),
                 LearnedVramEntry {
                     vram_mib: 98854.0,
+                    reference_batch: None,
+                    reference_ubatch: None,
+                    batch_deltas: HashMap::new(),
                     gpu_breakdown_mib: Some(vec![50000.0, 48854.0]),
                     host_mib: Some(800.0),
                     gpu_components_mib: None,
@@ -1052,7 +1142,7 @@ mod dedup_tests {
             phase: "loaded".into(),
             measured_at: "spill".into(),
         };
-        record_launch_memory_snapshot(key, snap).unwrap();
+        record_launch_memory_snapshot(key, snap, 0, 0).unwrap();
         let _guard = STORE_MUTEX.lock().unwrap();
         let mut store = load_store();
         let entry = store.entries.get(key).expect("entry");
@@ -1069,6 +1159,8 @@ mod dedup_tests {
 pub fn record_launch_memory_snapshot(
     key: &str,
     snapshot: LaunchMemorySnapshot,
+    batch: u32,
+    ubatch: u32,
 ) -> Result<(), String> {
     let _guard = STORE_MUTEX
         .lock()
@@ -1076,6 +1168,9 @@ pub fn record_launch_memory_snapshot(
     let mut store = load_store();
     let entry = store.entries.entry(key.to_string()).or_insert_with(|| LearnedVramEntry {
         vram_mib: 0.0,
+        reference_batch: None,
+        reference_ubatch: None,
+        batch_deltas: HashMap::new(),
         gpu_breakdown_mib: None,
         host_mib: None,
         gpu_components_mib: None,
@@ -1084,6 +1179,21 @@ pub fn record_launch_memory_snapshot(
         measured_at: String::new(),
         fit_attempts: Vec::new(),
     });
+
+    // A different batch/ubatch pair is a delta against the reference curve;
+    // never replace the base measurement.
+    if !batch_reference_matches(entry, batch, ubatch) {
+        record_batch_delta(
+            entry,
+            batch,
+            ubatch,
+            snapshot.vram_mib,
+            Some(snapshot.host_mib),
+        );
+        save_store(&store)?;
+        drop(_guard);
+        return Ok(());
+    }
 
     let measured_mib = snapshot.vram_mib;
     let measured_host = snapshot.host_mib;
@@ -1124,6 +1234,8 @@ pub fn get_learned_vram(
     cache_ram: Option<String>,
     draft_model: Option<String>,
     vram_topo: Option<String>,
+    batch: Option<u32>,
+    ubatch: Option<u32>,
 ) -> Option<LearnedVramEntry> {
     let _guard = STORE_MUTEX.lock().ok()?;
     let mode = memory_mode
@@ -1157,6 +1269,30 @@ pub fn get_learned_vram(
         cache,
         &draft,
     )?;
+    let wanted_batch = batch.unwrap_or(0);
+    let wanted_ubatch = ubatch.unwrap_or(0);
+    let reference_mismatch = entry
+        .reference_batch
+        .zip(entry.reference_ubatch)
+        .map(|(rb, ru)| rb != wanted_batch || ru != wanted_ubatch)
+        .unwrap_or(false);
+    if reference_mismatch {
+        let delta = entry
+            .batch_deltas
+            .get(&batch_pair(wanted_batch, wanted_ubatch))?;
+        let base_v = entry.paint_vram_mib();
+        let base_h = entry.paint_host_mib();
+        entry.vram_mib = base_v + delta.vram_mib;
+        entry.host_mib = match (base_h, delta.host_mib) {
+            (Some(base), Some(extra)) => Some(base + extra),
+            (None, Some(extra)) => Some(extra),
+            (base, _) => base,
+        };
+        entry.launch_snapshot = None;
+        entry.gpu_breakdown_mib = None;
+        entry.gpu_components_mib = None;
+        entry.host_components_mib = None;
+    }
     let painted_v = entry.paint_vram_mib();
     let painted_h = entry.paint_host_mib();
     let painted_bd = entry.paint_gpu_breakdown_mib().map(|b| b.to_vec());
@@ -1272,6 +1408,8 @@ pub fn get_learned_vram_curve(
     draft_model: Option<String>,
     split: Option<String>,
     vram_topo: Option<String>,
+    batch: Option<u32>,
+    ubatch: Option<u32>,
 ) -> Vec<LearnedVramCurvePoint> {
     let Some(_guard) = STORE_MUTEX.lock().ok() else {
         return Vec::new();
@@ -1294,6 +1432,8 @@ pub fn get_learned_vram_curve(
         }
     };
     let split_n = normalize_split_mode(split.as_deref().unwrap_or("none"));
+    let wanted_batch = batch.unwrap_or(0);
+    let wanted_ubatch = ubatch.unwrap_or(0);
     let mut best: std::collections::HashMap<usize, (String, LearnedVramCurvePoint)> =
         std::collections::HashMap::new();
     for (k, entry) in &store.entries {
@@ -1318,14 +1458,33 @@ pub fn get_learned_vram_curve(
         let Some(ctx) = ctx_from_learn_key(k) else {
             continue;
         };
-        let vram = entry.paint_vram_mib();
+        let mut delta_v = 0.0;
+        let mut delta_h = 0.0;
+        if let (Some(rb), Some(ru)) = (entry.reference_batch, entry.reference_ubatch) {
+            if rb != wanted_batch || ru != wanted_ubatch {
+                let Some(delta) = entry
+                    .batch_deltas
+                    .get(&batch_pair(wanted_batch, wanted_ubatch))
+                else {
+                    continue;
+                };
+                delta_v = delta.vram_mib;
+                delta_h = delta.host_mib.unwrap_or(0.0);
+            }
+        }
+        let vram = entry.paint_vram_mib() + delta_v;
         if vram <= 0.0 {
             continue;
         }
+        let host_mib = match entry.paint_host_mib() {
+            Some(base) => Some(base + delta_h),
+            None if delta_h > 0.0 => Some(delta_h),
+            None => None,
+        };
         let point = LearnedVramCurvePoint {
             ctx,
             vram_mib: vram,
-            host_mib: entry.paint_host_mib(),
+            host_mib,
         };
         match best.get(&ctx) {
             Some((at, _)) if entry.measured_at < *at => {}

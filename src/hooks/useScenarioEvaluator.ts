@@ -179,6 +179,9 @@ interface LearnedLaunchSnapshot {
 
 interface LearnedVramEntry {
   vram_mib: number;
+  reference_batch?: number;
+  reference_ubatch?: number;
+  batch_deltas?: Record<string, unknown>;
   measured_at?: string;
   gpu_breakdown_mib?: number[];
   host_mib?: number;
@@ -481,9 +484,10 @@ export function useScenarioEvaluator({
     paintIdentityRef.current = { modelPath: path, probeKey };
     if (hardKnobsChanged) {
       // KV / batch / ubatch / flash / split changed: a learned row for the old
-      // hard knobs must not suppress the fresh probe.
+      // hard knobs must not suppress the fresh probe. Defer the kick until the
+      // learned fetch for the new key lands — a matching batch delta can clear
+      // the force without probing at all.
       forceProbeRef.current = true;
-      maybeAutoFitRef.current();
     }
   }, [probeKey, model?.path, commitManifest]);
 
@@ -744,6 +748,8 @@ export function useScenarioEvaluator({
         cacheRam: String(curConfig.cache_ram ?? "0"),
         draftModel,
         vramTopo: vramTopo || null,
+        batch: Number(curConfig.batch ?? 0),
+        ubatch: Number(curConfig.ubatch ?? 0),
       }),
       invoke<Array<{ ctx: number; vram_mib: number; host_mib?: number }>>("get_learned_vram_curve", {
         modelPath: model.path,
@@ -753,10 +759,24 @@ export function useScenarioEvaluator({
         draftModel,
         split: String(curConfig.split ?? "none"),
         vramTopo: vramTopo || null,
+        batch: Number(curConfig.batch ?? 0),
+        ubatch: Number(curConfig.ubatch ?? 0),
       }).catch(() => []),
     ])
       .then(([entry, curve]) => {
         if (fetchGen !== learnedFetchGenRef.current) return;
+        const curBatch = Number(curConfig.batch ?? 0);
+        const curUbatch = Number(curConfig.ubatch ?? 0);
+        const referenceMatch =
+          entry?.reference_batch === curBatch && entry?.reference_ubatch === curUbatch;
+        const deltaMatch = Boolean(
+          entry?.batch_deltas?.[`${curBatch}|${curUbatch}`],
+        );
+        if (entry && (referenceMatch || deltaMatch)) {
+          // A measured base or a learned batch delta is valid for this pair;
+          // do not waste a FIT probe just because the key changed.
+          forceProbeRef.current = false;
+        }
         const snap = entry?.launch_snapshot;
         const lastAttempt = entry?.fit_attempts?.length
           ? entry.fit_attempts[entry.fit_attempts.length - 1]
