@@ -1,6 +1,6 @@
 //! Speculative-decoding draft model classification and pairing helpers.
 //!
-//! One classifier, Rust authoritative — `docs/SPEC-ADAPTERS.md` §2.2 / §3.
+//! One classifier, Rust authoritative.
 //! Header evidence (`gguf_shape::GgufShape`) wins over everything; naming is a
 //! fallback tier for files that have not been scanned. The case table lives in
 //! `spec_draft/fixtures.json`, included here and also read by the vitest mirror.

@@ -1,6 +1,6 @@
 /**
  * Launch combo presets — pure schema, storage, capture, apply plan.
- * See docs/launch-presets.md. UI is Launch toolbar + harness + manage modal.
+ * UI is Launch toolbar + harness + manage modal.
  */
 
 import type { LaunchPolicyId } from "./launchPolicy";

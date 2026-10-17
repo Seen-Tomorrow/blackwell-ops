@@ -1,5 +1,5 @@
 /**
- * Spec adapter registry — `docs/SPEC-ADAPTERS.md` §2.1.
+ * Spec adapter registry.
  *
  * One object per speculative-decoding method, so adding a method is one adapter file
  * plus one template group instead of an if-chain edited in six places. Mirrors the

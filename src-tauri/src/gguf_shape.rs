@@ -7,7 +7,6 @@
 //! second parser) and reports structure only. No tensor data touched, no engine spawned.
 //!
 //! Facts only — the role decision lives in the classifier (step 2), not here.
-//! See `docs/SPEC-ADAPTERS.md` §2.3.
 #![allow(dead_code)] // Step 1 is additive — nothing consumes GgufShape until step 2.
 
 use std::path::{Path, PathBuf};
