@@ -299,9 +299,29 @@ mod tests {
                         ));
                     }
                 }
+                // A type present only in the committed file is invisible to the loop above.
+                for ty in h.keys() {
+                    if !w.contains_key(ty) {
+                        detail.push_str(&format!("\n  {ty}: present only in the committed file"));
+                    }
+                }
+            }
+            let cl: Vec<&str> = committed.lines().collect();
+            let el: Vec<&str> = expected.lines().collect();
+            let mut at = String::new();
+            for i in 0..cl.len().max(el.len()) {
+                let a = cl.get(i).copied().unwrap_or("<no such line>");
+                let b = el.get(i).copied().unwrap_or("<no such line>");
+                if a != b {
+                    at = format!(
+                        "\nFirst differing line {}:\n  committed: {a}\n  expected : {b}",
+                        i + 1
+                    );
+                    break;
+                }
             }
             panic!(
-                "IPC wire keys changed but src/lib/generated/ipc-wire-keys.json is stale.{detail}\n\
+                "IPC wire keys changed but src/lib/generated/ipc-wire-keys.json is stale.{detail}{at}\n\
                  If the Rust change is intended, regenerate and update the TS interface:\n\
                  \x20 cargo test --manifest-path src-tauri/Cargo.toml -- --ignored regenerate_ipc_wire_keys"
             );
