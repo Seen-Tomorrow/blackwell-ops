@@ -41,6 +41,12 @@ export interface ToolchainInstallInfo {
   all_ready: boolean;
   profile_checks: ProfileCheck[];
   cached_archives: CachedToolchainArchive[];
+  /** Manifest version inside the installed pack (0 = none installed). */
+  pack_installed_version: number;
+  /** Manifest version this app expects. */
+  pack_expected_version: number;
+  /** Installed pack predates this app — it may lack profiles we offer. */
+  pack_outdated: boolean;
 }
 
 interface FoundryToolchainPanelProps {
@@ -234,6 +240,13 @@ export default function FoundryToolchainPanel({
     ? info.msvc_crt_error ??
       "Missing the x64 Microsoft Visual C++ runtime (vcruntime140, msvcp140) required by the engine binaries. Re-install the portable toolchain, or install the VC++ 2015-2022 Redistributable (x64)."
     : null;
+
+  // Distinct from crtError: the pack is complete for what it was built for, but it was
+  // built for an older app. Profiles it predates would fail at configure time.
+  const packStale =
+    info.pack_outdated && info.pack_installed_version > 0
+      ? `Toolchain pack v${info.pack_installed_version} predates this app (expects v${info.pack_expected_version}) — re-install the toolchain to get the current profiles.`
+      : null;
 
   const cached = info.cached_archives?.find((a) => a.pack === "full");
   const packActive =
@@ -443,6 +456,10 @@ export default function FoundryToolchainPanel({
         <p className="fnd-tc-crt-hint type-tiny font-mono leading-relaxed">
           {crtError}
         </p>
+      )}
+
+      {packStale && (
+        <p className="fnd-tc-crt-hint type-tiny font-mono leading-relaxed">{packStale}</p>
       )}
 
       {info.all_ready ? (

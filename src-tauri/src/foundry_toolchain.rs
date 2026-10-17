@@ -105,6 +105,12 @@ pub struct ToolchainInstallInfo {
     pub profile_checks: Vec<ProfileCheck>,
     /// Verified archives kept for re-extract without re-downloading.
     pub cached_archives: Vec<CachedToolchainArchive>,
+    /// Manifest version found in the toolchain on disk (0 = none installed yet).
+    pub pack_installed_version: u32,
+    /// Manifest version this app build was compiled against.
+    pub pack_expected_version: u32,
+    /// True when the pack on disk predates this app.
+    pub pack_outdated: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -118,6 +124,22 @@ pub struct CachedToolchainArchive {
 
 pub fn toolchain_dir() -> PathBuf {
     crate::config::app_root_dir().join("toolchain")
+}
+
+/// Manifest version this binary was compiled against. The embedded manifest is the app's
+/// *expectation*; the one on disk is *reality*, and they can disagree after an app update
+/// lands before its toolchain pack does.
+pub fn embedded_manifest_version() -> u32 {
+    serde_json::from_str::<ToolchainManifest>(EMBEDDED_MANIFEST)
+        .map(|m| m.version)
+        .unwrap_or(0)
+}
+
+/// An installed pack is stale only when its manifest version is strictly older than the
+/// expected one. A newer pack is fine (forward reads), and `installed == 0` means nothing
+/// is installed — a different problem, reported by `check()`, not by "outdated".
+pub fn pack_is_outdated(installed: u32, expected: u32) -> bool {
+    installed != 0 && installed < expected
 }
 
 /// Portable CMake shipped inside the Full Foundry toolchain pack (`toolchain/cmake/bin/cmake.exe`).
@@ -1407,6 +1429,11 @@ pub fn install_info() -> Result<ToolchainInstallInfo, String> {
             .unwrap_or_default()
     });
 
+    // A pack built before this app can lack profiles this build offers; say so instead of
+    // only reporting the per-profile symptoms.
+    let pack_installed_version = load_manifest().ok().map(|m| m.version).unwrap_or(0);
+    let pack_expected_version = embedded_manifest_version();
+
     let cache_dir = toolchain_archive_cache_dir();
     let _ = std::fs::create_dir_all(&cache_dir);
 
@@ -1429,6 +1456,9 @@ pub fn install_info() -> Result<ToolchainInstallInfo, String> {
         all_ready: profiles_ready == profiles_total && profiles_total > 0,
         profile_checks: checks,
         cached_archives: list_reextractable_archives(),
+        pack_installed_version,
+        pack_expected_version,
+        pack_outdated: pack_is_outdated(pack_installed_version, pack_expected_version),
     })
 }
 
@@ -1767,5 +1797,25 @@ mod isolation_tests {
 
         assert_eq!(profile_ids(&manifest), vec!["edge".to_string()]);
         assert_eq!(all_profile_ids(&manifest), vec!["edge".to_string(), "lab".to_string()]);
+    }
+    /// An installed pack older than the app is stale: it may not carry the profiles this
+    /// build offers. Only a strictly older version is flagged — a newer pack is forward-
+    /// readable, and "nothing installed" is a different failure that check() reports.
+    #[test]
+    fn stale_packs_are_detected_by_version_only() {
+        assert!(!pack_is_outdated(0, 3), "nothing installed is not outdated");
+        assert!(pack_is_outdated(2, 3), "v2 pack against a v3 app must be flagged");
+        assert!(!pack_is_outdated(3, 3), "same version is current");
+        assert!(!pack_is_outdated(4, 3), "a newer pack must not be flagged");
+    }
+
+    /// The embedded manifest must stay parseable and carry a version — it is the app's
+    /// expectation, and an unparseable one would silently disable the comparison above.
+    #[test]
+    fn embedded_manifest_reports_a_version() {
+        assert!(
+            embedded_manifest_version() > 0,
+            "embedded toolchain/manifest.json did not parse or has no version"
+        );
     }
 }
