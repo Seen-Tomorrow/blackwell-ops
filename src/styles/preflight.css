@@ -4,6 +4,7 @@
 /* ══ Cockpit instruments: batch hero (left) + sampler/tweaks stack (right) ══ */
 
 .cockpit-instruments {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   align-items: center;
@@ -11,6 +12,40 @@
   min-width: 0;
   padding-top: 8px;
   border-top: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
+}
+
+.cockpit-instruments__toggle {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--theme-text-muted);
+  font-size: var(--type-micro);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.cockpit-instruments__toggle:hover {
+  color: var(--theme-accent-bright);
+  border-color: color-mix(in srgb, var(--theme-accent) 55%, transparent);
+}
+
+.cockpit-instruments__chevron {
+  display: inline-block;
+  transition: transform 0.15s ease;
+}
+
+.cockpit-instruments__chevron--open {
+  transform: rotate(90deg);
 }
 
 .cockpit-instruments__right {
@@ -73,6 +108,15 @@
 
 .cockpit-instrument--batch {
   justify-content: center;
+}
+
+.cockpit-instrument--batch-full {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+.cockpit-instrument--tweaks .cockpit-instrument__state {
+  margin-right: 16px;
 }
 
 .cockpit-batch__title {

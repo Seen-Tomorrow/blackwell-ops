@@ -23,11 +23,18 @@ interface BatchRangeSliderProps {
   defs: UserEditedTemplateParam[];
   config: Record<string, unknown>;
   onChange: (key: string, value: string | number) => void;
+  /** TWEAKS/SAMPLER hidden — span the full instrument row. */
+  fullWidth?: boolean;
 }
 
 type ThumbId = "batch" | "ubatch";
 
-export default function BatchRangeSlider({ defs, config, onChange }: BatchRangeSliderProps) {
+export default function BatchRangeSlider({
+  defs,
+  config,
+  onChange,
+  fullWidth = false,
+}: BatchRangeSliderProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<ThumbId | null>(null);
   const [dragging, setDragging] = useState<ThumbId | null>(null);
@@ -167,7 +174,11 @@ export default function BatchRangeSlider({ defs, config, onChange }: BatchRangeS
   const collide = Math.abs(batchPct - ubPct) < 4;
 
   return (
-    <div className="cockpit-instrument cockpit-instrument--batch">
+    <div
+      className={`cockpit-instrument cockpit-instrument--batch${
+        fullWidth ? " cockpit-instrument--batch-full" : ""
+      }`}
+    >
       <div className="cockpit-batch__title">BATCH // UBATCH</div>
       <div className="cockpit-batch__stage">
         <div

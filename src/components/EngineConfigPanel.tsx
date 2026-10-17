@@ -544,6 +544,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   /** USER'S EXTRA — closed by default; the pre-flight strip owns the opener. */
   const [serviceOpen, setServiceOpen] = useState(false);
+  /** Cockpit extras: collapse TWEAKS + SAMPLER and give BATCH the full row. */
+  const [extrasCollapsed, setExtrasCollapsed] = useState(false);
+
+  const toggleExtras = useCallback(() => {
+    setExtrasCollapsed((prev) => !prev);
+  }, []);
 
   const toggleService = useCallback(() => {
     setServiceOpen((prev) => !prev);
@@ -3296,21 +3302,69 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           ctxStripProps={ctxStripProps}
           instrumentSlot={
             <>
-              <BatchRangeSlider defs={allParamsResolved} config={config} onChange={updateParam} />
-              <div className="cockpit-instruments__right">
-                <TweaksPanel defs={allParamsResolved} config={config} onChange={updateParam} />
-                <SamplerTaste defs={allParamsResolved} config={config} onChange={updateParam} />
-              </div>
+              <BatchRangeSlider
+                defs={allParamsResolved}
+                config={config}
+                onChange={updateParam}
+                fullWidth={extrasCollapsed}
+              />
+              {!extrasCollapsed && (
+                <div className="cockpit-instruments__right">
+                  <TweaksPanel defs={allParamsResolved} config={config} onChange={updateParam} />
+                  <SamplerTaste defs={allParamsResolved} config={config} onChange={updateParam} />
+                </div>
+              )}
+              <button
+                type="button"
+                className="cockpit-instruments__toggle"
+                onClick={toggleExtras}
+                aria-expanded={!extrasCollapsed}
+                aria-label={extrasCollapsed ? "Show TWEAKS and SAMPLER" : "Hide TWEAKS and SAMPLER"}
+                title={extrasCollapsed ? "Show TWEAKS + SAMPLER" : "Hide TWEAKS + SAMPLER"}
+              >
+                <span
+                  className={`cockpit-instruments__chevron${
+                    extrasCollapsed ? "" : " cockpit-instruments__chevron--open"
+                  }`}
+                  aria-hidden
+                >
+                  ▶
+                </span>
+              </button>
             </>
           }
         />
         {!(model && !modelIsDraftOnly && showCockpitSurface) && (
           <div className="cockpit-instruments cockpit-instruments--standalone">
-            <BatchRangeSlider defs={allParamsResolved} config={config} onChange={updateParam} />
-            <div className="cockpit-instruments__right">
-              <TweaksPanel defs={allParamsResolved} config={config} onChange={updateParam} />
-              <SamplerTaste defs={allParamsResolved} config={config} onChange={updateParam} />
-            </div>
+            <BatchRangeSlider
+              defs={allParamsResolved}
+              config={config}
+              onChange={updateParam}
+              fullWidth={extrasCollapsed}
+            />
+            {!extrasCollapsed && (
+              <div className="cockpit-instruments__right">
+                <TweaksPanel defs={allParamsResolved} config={config} onChange={updateParam} />
+                <SamplerTaste defs={allParamsResolved} config={config} onChange={updateParam} />
+              </div>
+            )}
+            <button
+              type="button"
+              className="cockpit-instruments__toggle"
+              onClick={toggleExtras}
+              aria-expanded={!extrasCollapsed}
+              aria-label={extrasCollapsed ? "Show TWEAKS and SAMPLER" : "Hide TWEAKS and SAMPLER"}
+              title={extrasCollapsed ? "Show TWEAKS + SAMPLER" : "Hide TWEAKS + SAMPLER"}
+            >
+              <span
+                className={`cockpit-instruments__chevron${
+                  extrasCollapsed ? "" : " cockpit-instruments__chevron--open"
+                }`}
+                aria-hidden
+              >
+                ▶
+              </span>
+            </button>
           </div>
         )}
         {model && (
