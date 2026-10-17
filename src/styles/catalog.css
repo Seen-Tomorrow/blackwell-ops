@@ -1584,11 +1584,15 @@
   animation: catalog-seat-live-spin 1.6s linear infinite;
 }
 
+/* Seat live-rim tone — ONE definition per seat, consumed by both the quick-seat
+   strip and the seat-edit banner. Do not fork these: the two contexts drifted
+   into byte-identical copies once already. */
 .catalog-quick-seat--brain .catalog-quick-seat__live-rim,
 .catalog-quick-strip[data-seat-editing="brain"]
   .catalog-quick-section--seats-editing
   > .catalog-quick-seat__live
-  .catalog-quick-seat__live-rim {
+  .catalog-quick-seat__live-rim,
+.catalog-seat-edit-banner--brain .catalog-seat-edit-banner__live-rim {
   background: conic-gradient(
     from 0deg,
     color-mix(in srgb, var(--theme-harness-brain-raw) 6%, transparent) 0deg,
@@ -1604,7 +1608,8 @@
 .catalog-quick-strip[data-seat-editing="worker"]
   .catalog-quick-section--seats-editing
   > .catalog-quick-seat__live
-  .catalog-quick-seat__live-rim {
+  .catalog-quick-seat__live-rim,
+.catalog-seat-edit-banner--worker .catalog-seat-edit-banner__live-rim {
   background: conic-gradient(
     from 0deg,
     color-mix(in srgb, var(--theme-harness-worker-raw) 6%, transparent) 0deg,
@@ -1698,30 +1703,6 @@
   pointer-events: none;
   opacity: 0.85;
   animation: catalog-seat-live-spin 1.6s linear infinite;
-}
-
-.catalog-seat-edit-banner--brain .catalog-seat-edit-banner__live-rim {
-  background: conic-gradient(
-    from 0deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw) 6%, transparent) 0deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw) 6%, transparent) 200deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw) 50%, transparent) 250deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw) 95%, var(--fixed-white) 18%) 280deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw) 50%, transparent) 310deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw) 6%, transparent) 360deg
-  );
-}
-
-.catalog-seat-edit-banner--worker .catalog-seat-edit-banner__live-rim {
-  background: conic-gradient(
-    from 0deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw) 6%, transparent) 0deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw) 6%, transparent) 200deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw) 50%, transparent) 250deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw) 95%, var(--fixed-white) 14%) 280deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw) 50%, transparent) 310deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw) 6%, transparent) 360deg
-  );
 }
 
 .catalog-seat-edit-banner__btn {
