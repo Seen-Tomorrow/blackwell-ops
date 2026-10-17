@@ -99,6 +99,50 @@ Swap the class and the override stops matching — text shrinks in that containe
 `text-[Npx]`, grep `text-\\[` in `src/styles/` and re-key every hit onto the matching `.type-*` selector
 (keep the utility selector for unmigrated rooms).
 
+**`!important` and literal paint are BUDGETED: lower the count, never the ceiling** — the
+campaign took source `!important` 525 -> 21 and left literal hex/rgba mostly **data-owned**.
+Ceilings live in `scripts/css-budgets.json` and `npm run css:audit` (inside `npm run check`)
+fails when you exceed them. When it fails, remove what pushed the count up — raising the
+ceiling hides the drift instead of fixing it. Ratchet the budget down after a cleanup, keeping
+about +3 headroom on `important` / `distImportant`.
+
+**An `!important` may only be removed with one of three proofs** — a declaration loses to exactly
+three things: another `!important`, a rule at equal-or-higher specificity, or an **inline style**.
+
+- Selector already out-specifies every competitor -> delete `!important`.
+- Tie -> **raise specificity by duplicating the class** (`.x.x`), never by adding `!important`.
+- Competitor is an inline style -> `!important` is the **only** tool that beats it. Keep it, and
+  comment why. That is the single surviving `!important` in `fusion-display.css`: the
+  compact-topology `grid-template-rows`, because `GpuTopology.tsx` writes `gridTemplateRows`
+  inline. A CSS rule cannot win against `style=` by specificity at all.
+
+Mutually exclusive selectors are **not** competitors: `.a:not([data-x="1"])` vs `.a[data-x="1"]`,
+or `[data-need-tone="caution"]` vs `[data-need-tone="hot"]`, never match the same element. A
+scanner that reports them as competing is wrong — check the pair before believing it.
+
+**Generated Tailwind utilities are invisible to a `src/styles` scan** — they are emitted at build
+time and come **last** (after `type-scale.css`), at (0,1,0). So a one-class selector ties with a
+utility and loses on source order, while two classes or more wins outright. Grep the TSX for
+utilities on that element before trusting a cascade analysis that only read the partials.
+
+**A shadowed base rule is not necessarily dead** — `.running-engine-card { background: #222522 }`
+at (0,1,0) is beaten by `[data-config-panel] .running-engine-card` at (0,2,0) on the Config page,
+yet the same class mounts inside `EngineGpuForecast` and `EngineLaunchDock`, where it paints.
+Grep the class across TSX for **every** mount point before deleting a base rule or calling it
+shadowed.
+
+**Do not re-open the cross-domain primitives refactor** — the "15-25% source reduction" premise was
+measured and is false: identical declaration blocks are 8.9% of declaration bytes, **5.0% of
+source**, and the largest groups are single declarations already at token level
+(`color: var(--theme-text-muted)` x55). Capturing even that needs a primitive class at ~1,000 TSX
+sites for ~1% gzip. The numbers are in `docs/css-refactor-report.md`; re-open only with new
+evidence.
+
+**Never let a scripted CSS edit double the CR** — nine partials once carried `\r\r\n`
+(`chrome.css` even `\r\r\r\n`): 11,585 bytes of padding that no parser sees but that corrupts
+every byte metric and every diff. It comes from writing `"\r\n"` into a buffer that is already
+CRLF. Round-trip the file's own EOL, and check for `/\r\r/` before committing a scripted edit.
+
 **Removed modules** — Mobile Sentinel Bridge (`mobile_bridge.rs`, WebSocket `0.0.0.0:3814`, `tokio-tungstenite`) is fully removed — backend and UI. Do not revive it.
 
 **Industrial display (bezel / glass)** — One glass only: frame pad = metal, `.phosphor-screen-inner` = full face + unified recess shadow, children = content (no nested phosphor surface). HW monitor widgets use the same face (`.launch-rail-tel .phosphor-display-surface`). Do not revive `DisplayGlitchOverlay` / `.display-glitch-*`.
