@@ -247,12 +247,12 @@ export default function VramBadge({
       })
     : null;
 
-  const displayVramNeedGb = manifest.vramTotalGb;
+  const displayVramNeedGb = Math.max(0, manifest.vramTotalGb);
   const displayRamNeedGb = isFitProbe
     ? (manifest.validatedHostMib != null && manifest.validatedHostMib > 0
         ? manifest.validatedHostMib / 1024
-        : manifest.ramTotalGb)
-    : manifest.ramTotalGb;
+        : Math.max(0, manifest.ramTotalGb))
+    : Math.max(0, manifest.ramTotalGb);
   const showRamBar = t.showRamBar !== false || !!isValidating;
 
   const totalVramMib = gpus.reduce((sum, g) => {
@@ -261,12 +261,12 @@ export default function VramBadge({
   const totalVramGb = totalVramMib / 1024;
 
   const vramUsagePct = totalVramMib > 0
-    ? Math.min((displayVramNeedGb * 1024 / totalVramMib) * 100, 100)
+    ? Math.max(0, Math.min((displayVramNeedGb * 1024 / totalVramMib) * 100, 100))
     : 0;
 
   const ramManufacturedGb = manifest.ramManufacturedGb;
   const ramUsagePct = ramManufacturedGb > 0
-    ? Math.min((displayRamNeedGb / ramManufacturedGb) * 100, 100)
+    ? Math.max(0, Math.min((displayRamNeedGb / ramManufacturedGb) * 100, 100))
     : 0;
 
   // NEED tone from adapter (hard gate + soft high free-util); bar uses same visual paint.

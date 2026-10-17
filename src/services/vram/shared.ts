@@ -327,12 +327,59 @@ export function adjustMeasuredGbForCtx(
   return Math.max(0, measuredGb + delta);
 }
 
+export interface LearnedCurvePoint {
+  ctx: number;
+  vramMib: number;
+  hostMib?: number;
+}
+
+/**
+ * Learned VRAM points are measurements, not truth: old engine builds can leave
+ * non-positive or clearly non-monotonic rows behind. Drop those before they
+ * become a negative NEED / inverted CTX ghost.
+ */
+export function sanitizeLearnedCurve(
+  curve: LearnedCurvePoint[] | undefined,
+): LearnedCurvePoint[] {
+  const pts = (curve ?? [])
+    .filter(
+      (p) =>
+        Number.isFinite(p.ctx)
+        && p.ctx > 0
+        && Number.isFinite(p.vramMib)
+        && p.vramMib > 0,
+    )
+    .map((p) => ({
+      ctx: p.ctx,
+      vramMib: p.vramMib,
+      hostMib:
+        p.hostMib != null && Number.isFinite(p.hostMib) && p.hostMib > 0
+          ? p.hostMib
+          : undefined,
+    }))
+    .sort((a, b) => a.ctx - b.ctx);
+
+  const out: LearnedCurvePoint[] = [];
+  for (const point of pts) {
+    const prev = out[out.length - 1];
+    if (prev && point.ctx === prev.ctx) {
+      if (point.vramMib > prev.vramMib) out[out.length - 1] = point;
+      continue;
+    }
+    // A gross downward step is a stale reading (engine allocation changed).
+    // Small noise is allowed; only drop clear cliffs.
+    if (prev && point.vramMib < prev.vramMib * 0.9) continue;
+    out.push(point);
+  }
+  return out;
+}
+
 export function interpolateLearnedCurveGb(
   curve: Array<{ ctx: number; vramMib: number; hostMib?: number }> | undefined,
   liveCtx: number,
 ): { vramGb: number; hostGb: number | null; exact: boolean } | null {
-  if (!curve || curve.length === 0) return null;
-  const pts = curve.slice().sort((a, b) => a.ctx - b.ctx);
+  const pts = sanitizeLearnedCurve(curve);
+  if (pts.length === 0) return null;
   const exact = pts.find((p) => p.ctx === liveCtx);
   if (exact) {
     return {
@@ -567,7 +614,7 @@ export function buildGpuAllocations(
     vramAvailableGb: round2(gpuAvailable[i] ?? 0),
     nvmlUsedGb: round2(g.memory_used / 1024),
     hwReservedGb: round2(hwReservedMib(g.driver_model) / 1024),
-    projectedLoadGb: round2(perGpuLoad[i] ?? 0),
+    projectedLoadGb: round2(Math.max(0, perGpuLoad[i] ?? 0)),
     runningEngines: getRunningEnginesOnGpu(g.index, runningSlots),
   }));
 }

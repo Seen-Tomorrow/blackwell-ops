@@ -11,6 +11,7 @@ import {
 import { isDevBuild } from "../lib/build";
 import { gpuMemoryBucketKey, vramManifestSnapshotEqual, vramTopoTag } from "../lib/telemetryGpu";
 import { attachMemorySource, MEMORY_SOURCE_LABELS } from "../services/vram/memorySource";
+import { sanitizeLearnedCurve } from "../services/vram/shared";
 import { tomMtpBlocked, toastTomMtpSkip, TOM_MTP_SKIP_MESSAGE } from "../lib/tomMtp";
 import { errorKind, errorMessage } from "../lib/blackwellError";
 import { isExternalDraftOnly } from "../lib/specDraft";
@@ -762,12 +763,15 @@ export function useScenarioEvaluator({
         learnedMeasuredAtRef.current = entry?.measured_at;
         learnedMtpContextRef.current = snap?.mtp_context_mib;
         learnedAnchorCtxRef.current = learnedVramRef.current ? queryCtx : undefined;
-        learnedCurveRef.current = (curve ?? []).map((p) => ({
-          ctx: p.ctx,
-          vramMib: p.vram_mib,
-          hostMib: p.host_mib,
-        }));
-        setLearnedCurveCtxs((curve ?? []).map((p) => p.ctx));
+        const cleanCurve = sanitizeLearnedCurve(
+          (curve ?? []).map((p) => ({
+            ctx: p.ctx,
+            vramMib: p.vram_mib,
+            hostMib: p.host_mib,
+          })),
+        );
+        learnedCurveRef.current = cleanCurve;
+        setLearnedCurveCtxs(cleanCurve.map((p) => p.ctx));
       })
       .catch(() => {
         if (fetchGen !== learnedFetchGenRef.current) return;

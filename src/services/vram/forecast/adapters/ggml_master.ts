@@ -32,6 +32,7 @@ import {
   parseCtx,
   resolveSplitTax,
   round2,
+  sanitizeLearnedCurve,
 } from "../../shared";
 import {
   freeFingerprintFromGb,
@@ -96,8 +97,12 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     gb == null ? null : needsDraftAdd ? gb + draftAddon : gb;
   const splitMode = cfgStr(input.engineConfig, "split", "none");
   const splitTax = resolveSplitTax(splitMode, liveCtx, input.fitPoints);
-  const probeGb = input.fitProbeVramMib != null ? input.fitProbeVramMib / 1024 : null;
-  const probeHostGb = input.fitProbeHostMib != null ? input.fitProbeHostMib / 1024 : null;
+  const probeGb = input.fitProbeVramMib != null && input.fitProbeVramMib > 0
+    ? input.fitProbeVramMib / 1024
+    : null;
+  const probeHostGb = input.fitProbeHostMib != null && input.fitProbeHostMib > 0
+    ? input.fitProbeHostMib / 1024
+    : null;
   const probeAnchor = input.fitProbeAnchorCtx ?? 0;
   // FIT cannot tensor — probe ran as layer. Add Δ(tensor−layer) if library has it.
   const tensorProxyTaxGb =
@@ -111,7 +116,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   const splitTaxGb = probeGb != null ? tensorProxyTaxGb : splitTax.taxGb;
   const probeAppliesToCurve = probeGb != null;
 
-  const allLearnedPts = input.learnedCurve ?? [];
+  const allLearnedPts = sanitizeLearnedCurve(input.learnedCurve);
   // GPU lerp uses every launch at this split. Host>2.5 must not drop a 1M
   // point or the slider cliffs to FIT (~42G) one tick off the mark.
   const mergedCurve = allLearnedPts.map((p) => ({ ...p }));
@@ -146,7 +151,9 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
       ? curveHit.vramGb
       : null;
 
-  const rawLearnedGb = input.learnedVramMib != null ? input.learnedVramMib / 1024 : null;
+  const rawLearnedGb = input.learnedVramMib != null && input.learnedVramMib > 0
+    ? input.learnedVramMib / 1024
+    : null;
   const learnedBaseGb =
     rawLearnedGb != null
       ? rawLearnedGb + (needsDraftAdd ? draftAddon : 0)
@@ -171,7 +178,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     ? probeHostGb
     : exactPt != null && exactPt.hostMib != null
       ? exactPt.hostMib / 1024
-      : learnedExactGbRaw != null && input.learnedHostMib != null
+      : learnedExactGbRaw != null && input.learnedHostMib != null && input.learnedHostMib > 0
         ? input.learnedHostMib / 1024
         : curveHit?.hostGb ?? null;
   const targetAvailForGate = gpuAvailable[tgt] ?? Math.max(...gpuAvailable, 0);
@@ -206,7 +213,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   const estimateGb = liveLowVram
     ? probeWithDraftGb
     : withDraft(learnedExactGb) ?? withDraft(curveGb) ?? withDraft(learnedDeltaGb) ?? probeWithDraftGb;
-  if (estimateGb == null) return null;
+  if (estimateGb == null || !Number.isFinite(estimateGb) || estimateGb <= 0) return null;
 
   const learnedGb = discardSpillLearned
     ? null
@@ -261,7 +268,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     input.learnedGpuBreakdownMib &&
     input.learnedGpuBreakdownMib.length === input.gpus.length
   ) {
-    const loads = input.learnedGpuBreakdownMib.map((mib) => mib / 1024);
+    const loads = input.learnedGpuBreakdownMib.map((mib) => Math.max(0, mib / 1024));
     perGpuLoad = !userSplitMultiGpu || breakdownSpansMultipleGpus(loads)
       ? scaleLoads(loads)
       : autoSplit || userSplitMultiGpu
@@ -276,7 +283,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     input.fitProbeGpuBreakdownMib &&
     input.fitProbeGpuBreakdownMib.length === input.gpus.length
   ) {
-    const loads = input.fitProbeGpuBreakdownMib.map((mib) => mib / 1024);
+    const loads = input.fitProbeGpuBreakdownMib.map((mib) => Math.max(0, mib / 1024));
     perGpuLoad = !userSplitMultiGpu || breakdownSpansMultipleGpus(loads)
       ? scaleLoads(loads)
       : autoSplit || userSplitMultiGpu
@@ -480,7 +487,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     autoLayerSplit: autoSplit,
     learnedFromPreviousRun: learnedExactGb != null,
     learnedInterpolated: curveGb != null,
-    learnedCurveCtxs: (input.learnedCurve ?? []).map((p) => p.ctx),
+    learnedCurveCtxs: allLearnedPts.map((p) => p.ctx),
     forecastCurve: (() => {
       const pts = mergedCurve.map((p) => ({
         ctx: p.ctx,
