@@ -82,8 +82,25 @@ pub struct HfMetadata {
     pub lfs_oid: String,
 }
 
+/// Result of `check_download_target` — whether the destination already holds this file.
+///
+/// Was an ad-hoc `serde_json::json!` literal at the command site, which no guard could
+/// check: the frontend typed the answer as `DownloadTargetCheck` while nothing on the
+/// Rust side named those keys.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DownloadTargetCheck {
+    pub exists: bool,
+    #[serde(rename = "sameModel")]
+    pub same_model: bool,
+    #[serde(rename = "lfsMatch")]
+    pub lfs_match: bool,
+    /// Cached LFS OID for the destination, when one is known.
+    #[serde(rename = "cachedLfsOid")]
+    pub cached_lfs_oid: Option<String>,
+}
+
 /// Result of checking an HF GGUF file against local disk.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiskCheckResult {
     /// Quant type (e.g. "Q4_K_M")
     #[serde(rename = "quantType")]
@@ -292,7 +309,11 @@ pub struct ModelEntryInternal {
 }
 
 // ── Stack Entry (for frontend display) ─────────────────────────────────
-#[derive(Debug, Clone, Serialize)]
+// `Deserialize` is here for `ipc_contract`'s key probe: serde's derived
+// `Deserialize` receives the post-`rename` wire-name list as a constant, which is
+// the only data-independent way to enumerate what this type emits. Additive and
+// behaviourally inert — nothing deserializes a `StackEntry`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StackEntry {
     pub idx: usize,
     pub alias: String,
@@ -807,7 +828,12 @@ pub struct DownloadTask {
     pub id: String,              // unique ID (UUID or timestamp-based)
     #[serde(rename = "hfModelId")]
     pub hf_model_id: String,     // HF model ID for display
+    // Multi-word fields here are camelCase on the wire — these three were the
+    // only ones missing a rename, so the frontend read `fileName` / `downloadUrl`
+    // / `hfAuthor` as `undefined` while `tsc` stayed green.
+    #[serde(rename = "fileName")]
     pub file_name: String,       // filename being downloaded
+    #[serde(rename = "downloadUrl")]
     pub download_url: String,    // direct URL from HF
     #[serde(rename = "totalBytes")]
     pub total_bytes: u64,
@@ -836,7 +862,7 @@ pub struct DownloadTask {
     #[serde(default, rename = "etaSeconds")]
     pub eta_seconds: u64,
     /// HF author (e.g., "bartowski") — used to save HfMetadata on download completion.
-    #[serde(default)]
+    #[serde(default, rename = "hfAuthor")]
     pub hf_author: String,
     /// Quant type from HF API (e.g., "Q4_K_M") — more reliable than filename parsing.
     #[serde(default, rename = "quantType")]
@@ -985,7 +1011,7 @@ pub struct CatalogScanReport {
 }
 
 /// Response from search_hf_models IPC command.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HfSearchResponse {
     pub models: Vec<HfModel>,
     /// Whether there are more results available (for pagination).
@@ -994,7 +1020,8 @@ pub struct HfSearchResponse {
 }
 
 /// Response from get_hf_model_info IPC command — full model details.
-#[derive(Debug, Clone, Serialize)]
+/// `Deserialize` for the `ipc_contract` key probe (see `StackEntry`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HfModelInfo {
     pub id: String,
     pub author: String,
@@ -1013,7 +1040,7 @@ pub struct HfModelInfo {
 }
 
 /// Result of checking a single GGUF file on HF for updates.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HfFileUpdateCheck {
     /// Quant type
     #[serde(rename = "quantType")]
@@ -1036,7 +1063,7 @@ pub struct HfFileUpdateCheck {
 }
 
 /// Aggregated update status for an HF repo.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HfRepoUpdateStatus {
     /// HF model ID
     #[serde(rename = "hfModelId")]
@@ -1064,7 +1091,7 @@ pub enum QuantUpdateKind {
 }
 
 /// Catalog entry with an HF update available for its paired repo + quant.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CatalogUpdateEntry {
     pub path: String,
     #[serde(rename = "hfModelId")]

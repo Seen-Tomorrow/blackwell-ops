@@ -2633,7 +2633,7 @@ pub async fn foundry_get_profiles() -> Result<Vec<foundry_toolchain::ProfileDef>
     Ok(manifest.profiles)
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FoundryWorkCacheStatus {
     /// Always true — work cache retention is on for all builds (UI compatibility).

@@ -3,7 +3,7 @@
 //!
 //! One brain instance per engine, keyed by slot_idx.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
@@ -90,7 +90,7 @@ pub struct FusionConfig {
 
 // ── Phase state machine ──────────────────────────────────────────────
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum InferencePhase {
     Idle,
@@ -100,7 +100,7 @@ pub enum InferencePhase {
 
 // ── Engine lifecycle state ───────────────────────────────────────────
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum EngineState {
     Loading,

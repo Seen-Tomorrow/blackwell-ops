@@ -4,7 +4,7 @@
 //! hard-reset, vendor patch apply, GitHub PR merge) plus PR-URL parsing and
 //! commit-hash helpers live here so the worker in `mod.rs` stays a thin sequencer.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 pub(crate) async fn git_hidden_output(
@@ -754,7 +754,7 @@ pub(crate) async fn apply_foundry_github_pr(
         Err(e) => Err(format!("git apply spawn failed: {e}")),
     }
 }
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FoundrySourcePreview {
     pub status: String,
     pub branch: String,

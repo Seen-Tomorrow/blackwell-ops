@@ -227,7 +227,7 @@ export default memo(function SlotLogPanel({ entry, n_ctx = 32768, onStop }: Slot
       {entry.status === "RUNNING" && (
         <div className="px-3 py-1 border-t slot-log-header-rule flex items-center justify-between engine-stack-footer">
           <span className="type-label font-mono slot-log-stat-label">SLOT {entry.idx + 1}</span>
-          <span className="type-label font-mono slot-log-stat-label">{entry.ready_at || "RUNNING"}</span>
+          <span className="type-label font-mono slot-log-stat-label">RUNNING</span>
         </div>
       )}
     </div>

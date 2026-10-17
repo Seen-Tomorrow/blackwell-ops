@@ -217,7 +217,7 @@ function modelHaystack(model: Pick<ModelEntry, "path" | "name" | "metadata" | "h
   return [
     ...catalogDraftSignals(model),
     meta?.general_basename,
-    meta?.generalName,
+    meta?.general_name,
     meta?.architecture,
   ]
     .filter(Boolean)
@@ -365,7 +365,7 @@ function stripShardSuffix(name: string): string {
 
 function normalizeBaseStem(model: ModelEntry): string {
   const meta = model.metadata;
-  const raw = meta?.general_basename?.trim() || meta?.generalName?.trim() || model.name.trim();
+  const raw = meta?.general_basename?.trim() || meta?.general_name?.trim() || model.name.trim();
   let stem = stripShardSuffix(raw);
   stem = stem
     .replace(/-dflash$/i, "")

@@ -105,16 +105,17 @@ export interface ModelMetadata {
   tensor_counts: Record<string, number>;
   total_params_str: string;
   vocab_size: number;
-  generalName: string;
+  /** GGUF `general.name` — serde emits snake_case here (see the `rename` attrs in Rust `ModelMetadata`). */
+  general_name: string;
   general_basename?: string;
-  ropeScalingType: string;
-  tokenizerModel: string;
+  /** GGUF `llama.rope.scaling.type` — wire key is snake_case. */
+  rope_scaling_type: string;
+  /** GGUF `tokenizer.ggml.model` — wire key is snake_case. */
+  tokenizer_model: string;
   file_size_bytes: number;
   scan_timestamp: number;
   file_created?: number;
   nextn_predict_layers?: number;
-  /** none | external_dflash | external_eagle3 | external_mtp */
-  draft_role?: string;
   rawKvs?: Record<string, string>;
 }
 
@@ -123,15 +124,13 @@ export interface ModelMetadata {
  * No tensor data touched, no engine spawned. Mirror of the Rust `gguf_shape::GgufShape`;
  * serde renames multi-word fields to camelCase, so the wire shape mixes both cases.
  * Every field is optional: the shape exists only for files the new reader has scanned —
- * absent means "not scanned yet", same reason `nextn_predict_layers` / `draft_role` are optional.
+ * absent means "not scanned yet", same reason `nextn_predict_layers` is optional.
  */
 export interface GgufShape {
   architecture?: string;
   block_count?: number;
   /** MTP evidence — max N over `blk.N.nextn.*` tensor names. */
   nextnLayers?: number;
-  /** `<arch>.ple.layers` element count — 0/absent means the file declares no PLE. */
-  pleLayers?: number;
   /** Private format: `general.architecture` disagrees with the `<arch>.block_count`
    *  prefix (Strata's `qwen4exp-mtp` material). No engine load, no draft role. */
   archMismatch?: boolean;
@@ -607,7 +606,6 @@ export interface StackEntry {
   provider_type?: string;
   /** Runtime profile env (vanguard/frontier/fresh/stable) the engine was launched with. */
   binaryProfile?: string;
-  ready_at?: string;
   model_path?: string;
   vram_mib?: number;
   /** Per-GPU SELF MiB from live memory breakdown (CUDA0, CUDA1, …). */
@@ -1074,7 +1072,8 @@ export interface HfModel {
   tags: string[];
   downloads: number;
   likes_count: number;
-  last_modified: string;
+  /** Rust renames this one field to camelCase (`#[serde(rename = "lastModified")]`). */
+  lastModified: string;
   gguf_files: GgufFile[];
 }
 
@@ -1097,7 +1096,8 @@ export interface HfModelInfo {
   tags: string[];
   downloads: number;
   likes_count: number;
-  last_modified?: string;
+  /** camelCase on the wire — see `HfModel.lastModified`. */
+  lastModified?: string;
   gguf_files: GgufFile[];
 }
 

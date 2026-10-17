@@ -465,7 +465,7 @@ pub fn check_download_target(
     app_config: tauri::State<'_, Arc<std::sync::Mutex<crate::config::AppConfig>>>,
     dest_path: String,
     lfs_oid: String,
-) -> Result<serde_json::Value, String> {
+) -> Result<crate::types::DownloadTargetCheck, String> {
     {
         let cfg = app_config.lock().map_err(|e| e.to_string())?;
         crate::config::validate_download_dest(&dest_path, &cfg)?;
@@ -473,12 +473,12 @@ pub fn check_download_target(
 
     let exists = std::path::Path::new(&dest_path).exists();
     if !exists {
-        return Ok(serde_json::json!({
-            "exists": false,
-            "sameModel": false,
-            "lfsMatch": false,
-            "cachedLfsOid": null,
-        }));
+        return Ok(crate::types::DownloadTargetCheck {
+            exists: false,
+            same_model: false,
+            lfs_match: false,
+            cached_lfs_oid: None,
+        });
     }
 
     // Look up cached HF metadata for this file
@@ -496,12 +496,12 @@ pub fn check_download_target(
     // Determine sameModel: same cached HF model ID or same filename
     let same_model = cached_hf.is_some();
 
-    Ok(serde_json::json!({
-        "exists": true,
-        "sameModel": same_model,
-        "lfsMatch": lfs_match,
-        "cachedLfsOid": cached_oid_str,
-    }))
+    Ok(crate::types::DownloadTargetCheck {
+        exists: true,
+        same_model,
+        lfs_match,
+        cached_lfs_oid: cached_oid_str,
+    })
 }
 
 /// Check HF GGUF files against local disk catalog. Returns per-file match results.

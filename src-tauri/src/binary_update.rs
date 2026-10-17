@@ -1,7 +1,7 @@
 //! Release updates — App `.7z` / Full NSIS, and per-provider runtime packs via download_manager.
 //! Provider packs land in portable `runtime/{id}/{profile}/` (same tree as Full Bundle).
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 #[cfg(debug_assertions)]
 use std::sync::Mutex;
@@ -155,7 +155,14 @@ pub const BINARY_UPDATES_ENABLED: bool = true;
 #[allow(dead_code)]
 const BUNDLED_PROVIDERS: &[&str] = &[crate::config::DEFAULT_PROVIDER_ID, "ggml-tom"];
 
-#[derive(Debug, Clone, Serialize)]
+/// `Deserialize` for the `ipc_contract` key probe (see `StackEntry`).
+///
+/// `rename_all` matches its siblings (`StartupUpdateStatus`, `ProviderBinaryUpdates`)
+/// and the frontend, which already reads `currentVersion` / `releaseNotes`. Without
+/// it the struct emitted `current_version` / `release_notes` while the TS interface
+/// declared the camelCase pair, so both fields were permanently `undefined`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AppUpdateInfo {
     pub available: bool,
     pub version: String,
@@ -184,7 +191,7 @@ const PROFILES: &[(&str, &str)] = &[
     ("stable", "Stable (VS2022 + CUDA 12.8)"),
 ];
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BinaryUpdateInfo {
     pub profile: String,

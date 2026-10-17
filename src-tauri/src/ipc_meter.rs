@@ -1,7 +1,7 @@
 //! Rolling IPC emit rate meter — tracks Rust→webview Tauri events for footer telemetry.
 
 use parking_lot::Mutex;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
 use tauri::{AppHandle, Emitter, Runtime};
@@ -16,7 +16,7 @@ fn snapshot_lock() -> &'static Mutex<IpcMeterSnapshot> {
     SNAPSHOT.get_or_init(|| Mutex::new(IpcMeterSnapshot::default()))
 }
 
-#[derive(Debug, Clone, Serialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct IpcMeterSnapshot {
     pub total_per_sec: u64,
@@ -27,7 +27,7 @@ pub struct IpcMeterSnapshot {
     pub tier: IpcMeterTier,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum IpcMeterTier {
     #[default]

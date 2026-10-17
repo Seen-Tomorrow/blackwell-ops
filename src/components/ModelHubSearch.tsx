@@ -275,7 +275,7 @@ export default function ModelHubSearch() {
       });
       let models = resp.models;
       if (sortBy === 'lastModified') {
-        models = [...models].sort((a, b) => (b.last_modified || '').localeCompare(a.last_modified || ''));
+        models = [...models].sort((a, b) => (b.lastModified || '').localeCompare(a.lastModified || ''));
       }
       setResults(models);
     } catch (e) {

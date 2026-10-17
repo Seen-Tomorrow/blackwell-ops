@@ -83,6 +83,11 @@ mod model_scan;
 // Change 2 of the same plan: typed errors at the spawn / port-reclaim / FIT boundaries.
 mod errors;
 
+// Change 3: the Rust<->TS IPC wire contract, asked of serde. Test-only — the
+// module carries the key probe and the gate, so none of it ships.
+#[cfg(test)]
+mod ipc_contract;
+
 
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;

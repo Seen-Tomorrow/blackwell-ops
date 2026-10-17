@@ -132,7 +132,7 @@ pub struct FitScanFull {
     pub skipped_points: Option<HashMap<String, String>>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FitScanProgress {
     pub model_path: String,
     pub model_name: String,
@@ -166,7 +166,7 @@ pub struct FitScanCacheSnapshot {
     pub results: HashMap<String, FitScanFull>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FitScanComplete {
     pub provider_id: String,
     pub total_models: usize,

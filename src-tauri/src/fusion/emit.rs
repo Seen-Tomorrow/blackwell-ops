@@ -7,14 +7,14 @@
 
 use std::collections::HashMap;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::fusion::brain::{EngineState, InferencePhase};
 use crate::fusion::meter::FusionMeterLane;
 
 // ── Per-slot CTX info emitted to frontend ────────────────────────────
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SlotCtxInfo {
     pub id: usize,
     pub n_decoded: usize,
@@ -44,7 +44,7 @@ pub struct SlotCtxInfo {
 
 // ── FusionUpdate — curated data structure for frontend subscribers ───
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FusionUpdate {
     pub alias: String,
     #[serde(rename = "slotIdx")]

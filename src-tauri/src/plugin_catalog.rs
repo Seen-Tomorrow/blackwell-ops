@@ -26,7 +26,7 @@ pub struct PluginCatalogPlugin {
     pub profiles: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginProfileOffering {
     pub profile: String,
@@ -44,7 +44,7 @@ pub struct PluginProfileOffering {
     pub cuda_version: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginCatalogEntry {
     pub id: String,
@@ -55,7 +55,7 @@ pub struct PluginCatalogEntry {
     pub profiles: Vec<PluginProfileOffering>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginCatalogResponse {
     pub catalog_version: u32,

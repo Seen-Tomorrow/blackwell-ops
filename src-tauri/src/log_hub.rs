@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tauri::AppHandle;
 use tauri::Emitter;
@@ -8,7 +8,7 @@ use crate::output_console::BlackwellOutputConsoleCategory;
 use crate::output_console::BlackwellOutputConsoleLineStyle;
 
 /// A single log line emitted to the frontend.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEntry {
     pub slot: usize,
     pub alias: String,
@@ -16,7 +16,7 @@ pub struct LogEntry {
 }
 
 /// System-level event (launch debug, errors) — separate from engine stdout.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SystemEvent {
     pub slot: usize,
     pub alias: String,
@@ -25,7 +25,7 @@ pub struct SystemEvent {
 }
 
 /// Batched log event emitted to frontend.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogBatch {
     pub slot: usize,
     pub alias: String,

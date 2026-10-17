@@ -2,7 +2,7 @@
 //! Never persist secrets in app_config.json or frontend localStorage.
 
 use keyring::Entry;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::config::AppConfig;
 
@@ -28,7 +28,7 @@ pub const SECRET_DEFINITIONS: &[SecretDefinition] = &[
     },
 ];
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SecretStatus {
     pub key: String,

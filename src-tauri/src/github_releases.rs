@@ -51,7 +51,7 @@ pub struct GitHubRelease {
     pub assets: Vec<ReleaseAsset>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateChannelOffering {
     pub channel: String,
@@ -64,7 +64,7 @@ pub struct UpdateChannelOffering {
     pub release_notes: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateOfferings {
     pub current_version: String,

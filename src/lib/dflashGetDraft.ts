@@ -238,7 +238,7 @@ function mainIdentityHay(main: ModelEntry): string {
     main.hfModelId,
     main.hfMeta?.hfModelId,
     main.hfMeta?.repoName,
-    main.metadata?.generalName,
+    main.metadata?.general_name,
     main.metadata?.general_basename,
   ]
     .filter(Boolean)

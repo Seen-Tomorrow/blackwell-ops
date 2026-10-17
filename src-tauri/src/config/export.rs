@@ -21,7 +21,7 @@ pub struct ExportFactoryTemplateInput {
     pub essential_param_keys: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExportFactoryTemplateResult {
     #[serde(rename = "templateVersion")]
     pub template_version: u32,

@@ -380,6 +380,40 @@ never sent from JS, and nested arg objects (`config: { … }`) break brace match
 produced false positives, which is exactly the failure mode this section exists to
 prevent.
 
+**The IPC field contract IS guarded — by asking serde, never by parsing text.** The
+rejected check above parsed Rust *source*. This one asks the compiler: `wire_keys::<T>()`
+in `src-tauri/src/ipc_contract.rs` (test-only, `#[cfg(test)]`) reads the `FIELDS` constant
+serde's derived `Deserialize` passes to `deserialize_struct` — the post-`rename` wire
+names, with no instance required. `src/lib/ipcContract.test.ts` reads the committed
+`src/lib/generated/ipc-wire-keys.json` through the **TypeScript compiler API** and fails if
+any declared field of a registered interface is a key serde never emits. Three hand-rolled
+text scanners were written against this repo during the audit that built it and **all three
+lied** — one read `#[serde(skip_serializing_if)]` as `skip` and deleted 3 real fields, one
+took the members of an inline nested object literal for flat fields, one missed a
+multi-line `#[serde(...)]` block and "found" a data-loss bug that did not exist. Only the
+compiler gets to answer.
+
+- **After changing any registered IPC type's fields:** `cargo test --manifest-path
+  src-tauri/Cargo.toml -- --ignored regenerate_ipc_wire_keys`, then fix the TS interface.
+  The normal suite never writes files; the freshness test fails and prints the exact
+  `+added / -removed` keys until you do.
+- **Registered types derive `Deserialize` even when nothing deserializes them.** Only the
+  `Deserialize` derive exposes the field list as a constant, and a `Serialize` probe would
+  need a real value whose `skip_serializing_if` fields silently vanish. Add it with the
+  registry entry, not later.
+- **A TS interface must never both re-export a generated type and declare it locally.**
+  `export *` from the generated module plus a local `export interface X` makes the *local*
+  one silently win — verified: `tsc` exits 0 and the drift survives. If codegen is ever
+  adopted here, re-export **explicitly by name** and delete the local declaration.
+- **`HfSearchFilters` is not an IPC type.** It mirrors an internal Rust struct; the command
+  takes separate args, which Tauri converts `camelCase`→`snake_case` on its own. Coverage is
+  derived from real `invoke<T>` / `listen<T>` call sites, so phantom mirrors like this one
+  are correctly excluded — do not "fix" it to match.
+- Checks **one direction** on purpose, like `tauriCommandParity`: a Rust field the frontend
+  does not read is normal (`ModelMetadata` emits 35 keys, TS declares 28). What must never
+  happen is the reverse — a declared field that never arrives, which reads `undefined`
+  forever with `tsc`, `vitest` and `cargo test` all green.
+
 **There is no runtime seam to intercept `invoke()`** — a DEV wrapper around
 `window.__TAURI_INTERNALS__.invoke` was built, reached DEV, and was removed: it threw
 `TypeError: Cannot assign to read only property 'invoke'` and killed startup. Tauri installs
