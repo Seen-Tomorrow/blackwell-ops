@@ -40,6 +40,10 @@ if (-not (Test-Path $ToolchainRoot)) {
 & (Join-Path $RepoRoot "scripts\toolchain-devcmd.ps1") -ToolchainRoot $ToolchainRoot
 & (Join-Path $RepoRoot "scripts\slim-foundry-toolchain.ps1") -ToolchainRoot $ToolchainRoot -PackProfile $PackProfile
 
+# Re-validate AFTER the trim: slim rewrites manifest.json to match the payload, so this
+# proves the pair agrees before 4 GB of archive is produced.
+& (Join-Path $RepoRoot "scripts\toolchain-validate.ps1") -ToolchainRoot $ToolchainRoot
+
 $outDir = Split-Path $Output -Parent
 if ($outDir -and -not (Test-Path $outDir)) {
     New-Item -ItemType Directory -Path $outDir -Force | Out-Null

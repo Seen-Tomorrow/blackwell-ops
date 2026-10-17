@@ -181,3 +181,38 @@ $remainGb = [math]::Round((Get-ChildItem $ToolchainRoot -Recurse -File -EA Silen
 Write-Host "`n=== Slim complete ===" -ForegroundColor Green
 Write-Host "Freed: $freedGb GB"
 Write-Host "Remaining: $remainGb GB"
+
+# --- Manifest must describe THIS pack ---
+# Trimming the payload while leaving the repo manifest in place is exactly how a stale
+# profile ships: the app reads the packed manifest, lists a profile whose CUDA/VS was
+# just stripped, and fails at build time. Rewrite it to match what survived, and bump
+# the version so an installed pack can be recognised as older than the app.
+$manifestPath = Join-Path $ToolchainRoot "manifest.json"
+if (Test-Path -LiteralPath $manifestPath) {
+    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    $kept = @()
+    foreach ($prof in @($manifest.profiles)) {
+        $nvccRel = "cuda/v$($prof.cuda)/bin/nvcc.exe"
+        $vsProp = $manifest.vs.PSObject.Properties[$prof.vs]
+        $hasCuda = Test-Path -LiteralPath (Join-Path $ToolchainRoot ($nvccRel -replace '/', '\'))
+        $hasVs = $false
+        if ($vsProp) {
+            $clRel = "vs/$($prof.vs)/VC/Tools/MSVC/$($vsProp.Value.msvc_version)/bin/Hostx64/x64/cl.exe"
+            $hasVs = Test-Path -LiteralPath (Join-Path $ToolchainRoot ($clRel -replace '/', '\'))
+        }
+        if ($hasCuda -and $hasVs) {
+            $kept += $prof
+        } else {
+            Write-Host "  manifest: dropping profile '$($prof.id)' (payload trimmed away)" -ForegroundColor Yellow
+        }
+    }
+    if ($kept.Count -eq 0) {
+        throw "Slim removed every profile from the manifest - nothing to pack. Check -PackProfile."
+    }
+    $manifest.version = [int]$manifest.version + 1
+    $manifest.profiles = @($kept)
+    $json = $manifest | ConvertTo-Json -Depth 10
+    [System.IO.File]::WriteAllText($manifestPath, $json, (New-Object System.Text.UTF8Encoding($false)))
+    $ids = (@($kept) | ForEach-Object { "$($_.id) (CUDA $($_.cuda))" }) -join ', '
+    Write-Host "  manifest: v$($manifest.version) -> $ids" -ForegroundColor Green
+}

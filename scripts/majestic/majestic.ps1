@@ -1289,6 +1289,10 @@ function Invoke-MajesticShipToolchain {
         throw "Missing work\toolchain.7z - run menu 11 TOOLCHAIN (or npm run majestic:toolchain) first."
     }
 
+    # Validate the ARTIFACT, not a working tree: this is exactly the check that would
+    # have caught toolchain.7z being uploaded from July with no CUDA 13.4 in it.
+    & (Join-Path $root 'scripts\toolchain-validate-archive.ps1') -Archive $archive
+
     $tag = 'toolchain'
     $size_mb = [math]::Round((Get-Item -LiteralPath $archive).Length / 1MB, 1)
     Write-Majestic "About to upload toolchain.7z ($size_mb MB) to tag '$tag' on $($Config.repo)" -Color Cyan
