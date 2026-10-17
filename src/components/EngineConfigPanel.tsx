@@ -115,6 +115,7 @@ import {
   isParamTuned,
   isSurfaceParam,
   throughputPair,
+  visibleParamValuesOf,
 } from "../lib/engineSurfaces";
 import { useLaunchDockRailResize } from "../hooks/useCatalogSplitResize";
 import { useFusionDisplayMode } from "../hooks/useFusionDisplayMode";
@@ -192,7 +193,7 @@ import WelcomeAnimation from "./onboarding/WelcomeAnimation";
 import SetupGuideDisplay from "./onboarding/SetupGuideDisplay";
 import RunningEnginesPanel from "./RunningEnginesPanel";
 import EngineLaunchDock from "./EngineLaunchDock";
-import { formatTokenLabel } from "../lib/sliderParamUtils";
+import { findMaxFittingCtx, formatTokenLabel } from "../lib/sliderParamUtils";
 import { useScenarioEvaluator } from "../hooks/useScenarioEvaluator";
 import type { SetupGuideState } from "../hooks/useSetupGuide";
 import { useConfigResolver } from "../hooks/useConfigResolver";
@@ -1033,27 +1034,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     dflashDraftLabel,
   } = cockpit;
 
-  /** FULL AUTO owns the cockpit until the user takes control back. */
-  const [autoGoal, setAutoGoal] = useState<FullAutoGoal | null>("balanced");
-  const applyAutoPlan = useCallback(
-    (goal: FullAutoGoal) => {
-      const plan = FULL_AUTO_GOAL_PLANS[goal];
-      setAutoGoal(goal);
-      void applyFullAutoCockpit(plan.codingMode, plan.speed, plan.brains, plan.think, cockpitOpts);
-      const pair = throughputPair(allParamsResolved, plan.throughput);
-      if (pair) {
-        updateParam("batch", pair.batch);
-        updateParam("ubatch", pair.ubatch);
-      }
-    },
-    [applyFullAutoCockpit, cockpitOpts, allParamsResolved, updateParam],
-  );
-  const handleAutoGoal = applyAutoPlan;
-  const handleTakeControl = useCallback(() => {
-    setAutoGoal(null);
-    setFullAuto(false);
-  }, [setFullAuto]);
-
   const dflash = useSpecDraft({
     model,
     models,
@@ -1120,6 +1100,45 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     fitStyle: spawnProfile?.fit_style ?? "",
     catalogModels: models,
   });
+
+  /** FULL AUTO owns the cockpit until the user takes control back. */
+  const [autoGoal, setAutoGoal] = useState<FullAutoGoal | null>("balanced");
+  const applyAutoPlan = useCallback(
+    (goal: FullAutoGoal) => {
+      const plan = FULL_AUTO_GOAL_PLANS[goal];
+      setAutoGoal(goal);
+      void applyFullAutoCockpit(plan.codingMode, plan.speed, plan.brains, plan.think, cockpitOpts);
+      const pair = throughputPair(allParamsResolved, plan.throughput);
+      if (pair) {
+        updateParam("batch", pair.batch);
+        updateParam("ubatch", pair.ubatch);
+      }
+      if (goal === "context") {
+        const ctxDef = allParamsResolved.find((param) => param.key === "ctx");
+        if (!ctxDef) return;
+        const ctxValues = visibleParamValuesOf(ctxDef)
+          .map((value) => Number(value))
+          .filter((value) => Number.isFinite(value));
+        if (ctxValues.length === 0) return;
+        const fit = findMaxFittingCtx(
+          Math.min(...ctxValues),
+          Math.max(...ctxValues),
+          ctxDef.step ?? 1024,
+          vramCalc.manifest?.forecastFreeGb ?? 0,
+          vramCalc.manifest?.forecastCurve ?? [],
+        );
+        if (fit == null) return;
+        const allowed = ctxValues.filter((value) => value <= fit);
+        updateParam("ctx", allowed.length > 0 ? Math.max(...allowed) : Math.min(...ctxValues));
+      }
+    },
+    [applyFullAutoCockpit, cockpitOpts, allParamsResolved, updateParam, vramCalc.manifest],
+  );
+  const handleAutoGoal = applyAutoPlan;
+  const handleTakeControl = useCallback(() => {
+    setAutoGoal(null);
+    setFullAuto(false);
+  }, [setFullAuto]);
 
   const launchChrome = useMemo(() => {
     // Custom: never multi-GPU lock / device ALL / hide split none — user owns chrome.
@@ -1750,7 +1769,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     && !modelIsDraftOnly
     && providerHasParamKey(allParamsResolved, "ctx")
     && (ctxStripProps.ctxValues?.length ?? 0) > 0
-    && !ctxDockedInCockpit;
+    && !ctxDockedInCockpit
+    && !fullAutoFixed;
 
   const {
     belowGroupKeys,
