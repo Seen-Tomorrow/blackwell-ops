@@ -419,3 +419,34 @@ This trade removes ~1,000 literal paint sites and centralizes the palette.
   `catalog.css` / `cockpit.css` / `foundry.css`, plus the one held here. A further
   pass needs per-site justification against inline styles rather than bulk
   families — the cheap family-level wins are exhausted.
+
+## Seat live-rim gradient dedupe — and what "cross-domain primitives" really measures
+
+- Four ~500 B conic-gradient blocks (brain/worker × quick-seat strip / seat-edit
+  banner) were byte-identical apart from the selector. Merged into two, each now
+  listing all three selectors. Cascade-neutral: no declaration changed, no
+  specificity changed, and nothing between the old positions set `background` on
+  either rim.
+- dist 487,615 -> 486,611 B (-1,004), rules 3,600 -> 3,598, **gzip -36 B**. That
+  gzip delta is the honest verdict on this class of work: repeated declarations
+  already compress, so dedupe buys almost nothing on the wire.
+- The "cross-domain primitives = 15-25% source reduction" estimate does not
+  survive measurement, and this report should stop quoting it. Across all 26
+  partials (3,203 rules, 377,836 B of normalized declaration text) identical
+  declaration blocks total **33,499 B = 8.9% of declaration bytes = 5.0% of source
+  LF**. The largest groups are single declarations already at token level —
+  `color: var(--theme-text-muted)` x55, `color: var(--theme-accent)` x30,
+  `color: var(--theme-text)` x21 — plus layout repeats (`display: flex` x268,
+  `min-width: 0` x208). None of those are panel/card/chip recipes, and merging
+  them requires adding a primitive class at every TSX site, which grows the JS
+  side and needs per-screen QA.
+- The report's own later scan already disagreed with the headline: after the
+  Foundry pilot it measured "~1.5-2.5 kB total" of remaining base/variant
+  duplication, and the follow-up found only `.catalog-quick-seat__btn` had real
+  duplication (-272 B). The 15-25% was a pre-work estimate; measured reality is
+  ~5% and not worth the churn.
+- Literal colors (142 occurrences in 10 files) are likewise not a byte win:
+  roughly 40% are policy-legal data (MoE gold, the `--boc-*` console, GPU
+  swatches, the share-card swatch previews), and the earlier token migration
+  measured source **+2.5%** going that direction.
+
