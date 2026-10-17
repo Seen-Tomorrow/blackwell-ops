@@ -1,10 +1,10 @@
 /* Split from global partials: rules used only by the StackView lazy graph. Do not re-import from index.css. */
 
-.status-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  display: inline-block;
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
 }
 
 [data-engine-stack] .engine-stack-bench-toggle {
