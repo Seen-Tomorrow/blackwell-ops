@@ -133,7 +133,7 @@
 
 .cockpit-batch__track {
   position: relative;
-  height: 68px;
+  height: 92px;
   margin: 0 8px;
   touch-action: none;
   user-select: none;
@@ -225,7 +225,7 @@
 .cockpit-batch__mark-label {
   position: absolute;
   left: 50%;
-  top: 26px;
+  top: -34px;
   transform: translateX(-50%);
   color: var(--theme-text-muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -258,6 +258,7 @@
   letter-spacing: 0;
   cursor: grab;
   touch-action: none;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
 
 .cockpit-batch__thumb--ub {
@@ -274,6 +275,15 @@
 .cockpit-batch__thumb:active {
   cursor: grabbing;
   box-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent-glow) 80%, transparent);
+}
+
+/* Equal or near-equal values: split the thumbs above / below the rail. */
+.cockpit-batch__thumb--collide.cockpit-batch__thumb--ub {
+  transform: translate(-50%, -100%);
+}
+
+.cockpit-batch__thumb--collide.cockpit-batch__thumb--b {
+  transform: translate(-50%, 50%);
 }
 
 .cockpit-batch__hint {
@@ -384,16 +394,21 @@
 
 /* ── TWEAKS rows ──────────────────────────────────────────────────── */
 
-.cockpit-tweak-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.cockpit-tweaks-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px 10px;
   min-width: 0;
 }
 
-.cockpit-tweak-row__label {
-  flex: 1 1 auto;
+.cockpit-tweak-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
   min-width: 0;
+}
+
+.cockpit-tweak-cell__label {
   overflow: hidden;
   color: var(--theme-text-muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -404,12 +419,12 @@
   white-space: nowrap;
 }
 
-.cockpit-tweak-row__label--tuned {
+.cockpit-tweak-cell__label--tuned {
   color: var(--theme-warn);
 }
 
-.cockpit-tweak-row .segment-switch {
-  flex-shrink: 0;
+.cockpit-tweak-cell .segment-switch {
+  max-width: 100%;
 }
 
 /* ══ Pre-flight strip ════════════════════════════════════════════════ */

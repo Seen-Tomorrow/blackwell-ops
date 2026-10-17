@@ -38,36 +38,38 @@ export default function TweaksPanel({ defs, config, onChange }: TweaksPanelProps
           {changed > 0 ? `${changed} changed` : "template"}
         </span>
       </div>
-      {tweaks.map((def) => {
-        const values = paramValuesOf(def);
-        const current = String(config[def.key] ?? def.defaultValue ?? "");
-        return (
-          <div key={def.key} className="cockpit-tweak-row" title={def.note ?? def.label}>
-            <span
-              className={`cockpit-tweak-row__label${
-                isParamTuned(def, config) ? " cockpit-tweak-row__label--tuned" : ""
-              }`}
-            >
-              {def.label}
-            </span>
-            <SegmentSwitch
-              ariaLabel={def.label}
-              options={values.map((value) => ({
-                id: String(value),
-                label: formatParamValue(value).toUpperCase(),
-              }))}
-              selectedId={current}
-              onSelect={(id) => {
-                const value = values.find((item) => String(item) === id);
-                if (value !== undefined) onChange(def.key, value);
-              }}
-              size="compact"
-              tone="accent"
-              className="segment-switch--gpu-bezel segment-switch--cockpit-flag"
-            />
-          </div>
-        );
-      })}
+      <div className="cockpit-tweaks-grid">
+        {tweaks.map((def) => {
+          const values = paramValuesOf(def);
+          const current = String(config[def.key] ?? def.defaultValue ?? "");
+          return (
+            <div key={def.key} className="cockpit-tweak-cell" title={def.note ?? def.label}>
+              <span
+                className={`cockpit-tweak-cell__label${
+                  isParamTuned(def, config) ? " cockpit-tweak-cell__label--tuned" : ""
+                }`}
+              >
+                {def.label}
+              </span>
+              <SegmentSwitch
+                ariaLabel={def.label}
+                options={values.map((value) => ({
+                  id: String(value),
+                  label: formatParamValue(value).toUpperCase(),
+                }))}
+                selectedId={current}
+                onSelect={(id) => {
+                  const value = values.find((item) => String(item) === id);
+                  if (value !== undefined) onChange(def.key, value);
+                }}
+                size="compact"
+                tone="accent"
+                className="segment-switch--gpu-bezel segment-switch--cockpit-flag"
+              />
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -168,6 +168,7 @@ export default function BatchRangeSlider({ defs, config, onChange }: BatchRangeS
 
   const ubPct = ratioOf(ubatch) * 100;
   const batchPct = ratioOf(batch) * 100;
+  const collide = Math.abs(batchPct - ubPct) < 4;
 
   return (
     <div className="cockpit-instrument cockpit-instrument--batch">
@@ -233,8 +234,8 @@ export default function BatchRangeSlider({ defs, config, onChange }: BatchRangeS
           <button
             type="button"
             className={`cockpit-batch__thumb cockpit-batch__thumb--ub${
-              dragging === "ubatch" ? " cockpit-batch__thumb--dragging" : ""
-            }`}
+              collide ? " cockpit-batch__thumb--collide" : ""
+            }${dragging === "ubatch" ? " cockpit-batch__thumb--dragging" : ""}`}
             style={{ left: `${ubPct}%` }}
             onPointerDown={(e) => startDrag("ubatch", e)}
             title={`uBatch ${ubatch}`}
@@ -245,8 +246,8 @@ export default function BatchRangeSlider({ defs, config, onChange }: BatchRangeS
           <button
             type="button"
             className={`cockpit-batch__thumb cockpit-batch__thumb--b${
-              dragging === "batch" ? " cockpit-batch__thumb--dragging" : ""
-            }`}
+              collide ? " cockpit-batch__thumb--collide" : ""
+            }${dragging === "batch" ? " cockpit-batch__thumb--dragging" : ""}`}
             style={{ left: `${batchPct}%` }}
             onPointerDown={(e) => startDrag("batch", e)}
             title={`Batch ${batch}`}
