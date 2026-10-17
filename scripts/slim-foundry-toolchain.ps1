@@ -209,7 +209,9 @@ if (Test-Path -LiteralPath $manifestPath) {
     if ($kept.Count -eq 0) {
         throw "Slim removed every profile from the manifest - nothing to pack. Check -PackProfile."
     }
-    $manifest.version = [int]$manifest.version + 1
+    # Version is PRESERVED, never bumped here: it is the contract version from
+    # toolchain/manifest.json. Bumping per pack would let an old tree's pack drift up to the
+    # app's expectation and hide the staleness this version exists to expose.
     $manifest.profiles = @($kept)
     $json = $manifest | ConvertTo-Json -Depth 10
     [System.IO.File]::WriteAllText($manifestPath, $json, (New-Object System.Text.UTF8Encoding($false)))

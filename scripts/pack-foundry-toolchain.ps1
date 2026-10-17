@@ -35,6 +35,18 @@ if (-not (Test-Path $ToolchainRoot)) {
     throw "Toolchain not found: $ToolchainRoot - run populate-foundry-toolchain.ps1 first"
 }
 
+# The contract manifest lives in the repo (`include_str!` into the app, so it IS the app's
+# expectation). The copy under the tree can be stale — this DEV tree still carries a v2
+# three-profile manifest. Stamp the repo version so the archive always ships the contract
+# version, and so the check below tests the tree against the contract rather than against
+# whatever the tree happens to claim about itself.
+$repoManifest = Join-Path $RepoRoot "toolchain\manifest.json"
+if (-not (Test-Path $repoManifest)) {
+    throw "Missing contract manifest: $repoManifest"
+}
+Copy-Item -LiteralPath $repoManifest -Destination (Join-Path $ToolchainRoot "manifest.json") -Force
+Write-Host "Stamped manifest from repo: $repoManifest" -ForegroundColor DarkGray
+
 & (Join-Path $RepoRoot "scripts\toolchain-validate.ps1") -ToolchainRoot $ToolchainRoot
 
 & (Join-Path $RepoRoot "scripts\toolchain-devcmd.ps1") -ToolchainRoot $ToolchainRoot
