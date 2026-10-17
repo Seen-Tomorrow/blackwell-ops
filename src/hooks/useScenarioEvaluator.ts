@@ -446,6 +446,8 @@ export function useScenarioEvaluator({
   const validatingRef = useRef(false);
   /** Last probeKey whose FIT failed — do not auto-loop radar. */
   const fitFailKeyRef = useRef<string | null>(null);
+  /** Hard knob changed (kv/batch/ubatch/flash/split) — learned data must not skip the probe. */
+  const forceProbeRef = useRef(false);
   const hadSysInfoRef = useRef(systemInfo != null);
   const hadMetaRef = useRef(Boolean(model?.metadata));
   const runEvaluationRef = useRef<() => void>(() => {});
@@ -470,12 +472,19 @@ export function useScenarioEvaluator({
     const prev = paintIdentityRef.current;
     const path = model?.path ?? "";
     if (path === prev.modelPath && probeKey === prev.probeKey) return;
+    const hardKnobsChanged = path === prev.modelPath && probeKey !== prev.probeKey;
     probeSessionRef.current = null;
     fitFailKeyRef.current = null;
     if (manifestRef.current != null) {
       commitManifest(null);
     }
     paintIdentityRef.current = { modelPath: path, probeKey };
+    if (hardKnobsChanged) {
+      // KV / batch / ubatch / flash / split changed: a learned row for the old
+      // hard knobs must not suppress the fresh probe.
+      forceProbeRef.current = true;
+      maybeAutoFitRef.current();
+    }
   }, [probeKey, model?.path, commitManifest]);
 
   // Stack fingerprint — changes when committed engines (RUNNING/LOADING) start/stop or VRAM shifts.
@@ -1123,6 +1132,8 @@ export function useScenarioEvaluator({
     if (!autoVramLaunchRef.current || !model?.path || !model.metadata) return;
     if (isExternalDraftOnly(model)) return;
     if (validatingRef.current) return;
+    const forceProbe = forceProbeRef.current;
+    if (forceProbe) fitFailKeyRef.current = null;
     if (fitFailKeyRef.current === probeKey) return;
     if (learnedFetchPendingRef.current) return;
     if (
@@ -1145,12 +1156,14 @@ export function useScenarioEvaluator({
           probeGpuGb: sess.validatedVramMib / 1024,
           liveFreeGb: freeGb,
         });
-      if (!staleLowVram) return;
+      if (!staleLowVram) {
+        forceProbeRef.current = false;
+        return;
+      }
     }
     // Skip auto-probe only for an identity-matched LEARNED row that is still
-    // usable. DEV: spill-shaped LEARNED (fat host, GPU already fits free) must
-    // not block a full ngl999 probe.
-    if (learnedVramRef.current != null) {
+    // usable. A hard-knob change forces a fresh probe.
+    if (!forceProbe && learnedVramRef.current != null) {
       const freeList = computeGpuAvailableList(
         gpusRef.current,
         committedSlotsFromStack(stackRef.current),
@@ -1172,6 +1185,7 @@ export function useScenarioEvaluator({
     if (Math.max(...free, 0) < 2.5) return;
     const providerId = String(configRef.current.backend_type || "");
     if (tomMtpBlocked(providerId, model)) return;
+    forceProbeRef.current = false;
     void validate("full");
   };
 
