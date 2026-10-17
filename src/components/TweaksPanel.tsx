@@ -12,7 +12,7 @@ import {
   countTuned,
   formatParamValue,
   isParamTuned,
-  paramValuesOf,
+  visibleParamValuesOf,
 } from "../lib/engineSurfaces";
 import SegmentSwitch from "./SegmentSwitch";
 
@@ -40,7 +40,7 @@ export default function TweaksPanel({ defs, config, onChange }: TweaksPanelProps
       </div>
       <div className="cockpit-tweaks-grid">
         {tweaks.map((def) => {
-          const values = paramValuesOf(def);
+          const values = visibleParamValuesOf(def);
           const current = String(config[def.key] ?? def.defaultValue ?? "");
           return (
             <div key={def.key} className="cockpit-tweak-cell" title={def.note ?? def.label}>

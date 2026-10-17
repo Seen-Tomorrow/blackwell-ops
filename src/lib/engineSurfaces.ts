@@ -162,8 +162,14 @@ export function paramValuesOf(def: UserEditedTemplateParam): ParamValue[] {
   return out;
 }
 
+/** Same as paramValuesOf, minus catalog-hidden values (the template's hidden list). */
+export function visibleParamValuesOf(def: UserEditedTemplateParam): ParamValue[] {
+  const hidden = new Set((def.hiddenValues ?? []).map((value) => String(value)));
+  return paramValuesOf(def).filter((value) => !hidden.has(String(value)));
+}
+
 function sortedValues(def: UserEditedTemplateParam): ParamValue[] {
-  const values = paramValuesOf(def);
+  const values = visibleParamValuesOf(def);
   const nums = values.map((v) => Number(v));
   if (values.length > 1 && nums.every((n) => Number.isFinite(n))) {
     return [...values].sort((a, b) => Number(a) - Number(b));

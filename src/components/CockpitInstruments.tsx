@@ -12,11 +12,11 @@ import {
   TASTES,
   detectSamplerTaste,
   formatParamValue,
-  paramValuesOf,
   sameParamValue,
   samplerDefs,
   samplerFingerprint,
   tasteValues,
+  visibleParamValuesOf,
   type TasteDef,
 } from "../lib/engineSurfaces";
 import SegmentSwitch from "./SegmentSwitch";
@@ -94,7 +94,7 @@ export function SamplerTaste({ defs, config, onChange }: InstrumentProps) {
                 {def.label}
               </span>
               <div className="cockpit-instrument__values">
-                {paramValuesOf(def).map((value) => {
+                {visibleParamValuesOf(def).map((value) => {
                   const selected = sameParamValue(config[def.key], value);
                   return (
                     <button
