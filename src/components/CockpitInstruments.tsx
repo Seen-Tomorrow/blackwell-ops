@@ -44,7 +44,7 @@ export function SamplerTaste({ defs, config, onChange }: InstrumentProps) {
 
   return (
     <div className="cockpit-instrument cockpit-instrument--sample">
-      <span className="cockpit-instrument__label">SAMPLE</span>
+      <span className="cockpit-instrument__label">SAMPLER</span>
       <div className="cockpit-instrument__stops" role="group" aria-label="Sampler personality">
         {TASTES.map((taste) => (
           <button
@@ -59,11 +59,6 @@ export function SamplerTaste({ defs, config, onChange }: InstrumentProps) {
             {taste.label}
           </button>
         ))}
-        {active === "custom" ? (
-          <span className="cockpit-instrument__custom" title="Values do not match a personality">
-            CUSTOM
-          </span>
-        ) : null}
       </div>
       <span className="cockpit-instrument__finger" aria-label="Resolved sampler values">
         {fingerprint.map((item) => (
@@ -74,18 +69,21 @@ export function SamplerTaste({ defs, config, onChange }: InstrumentProps) {
             }`}
             title={item.key}
           >
-            {item.short} {item.value}
+            <span className="cockpit-instrument__finger-key">{item.short}</span>
+            {item.value}
           </span>
         ))}
       </span>
       <button
         type="button"
-        className="cockpit-instrument__more"
+        className={`cockpit-instrument__more${
+          open || active === "custom" ? " cockpit-instrument__more--active" : ""
+        }`}
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        title={open ? "Hide exact sampler values" : "Show exact sampler values"}
+        title={open ? "Hide exact sampler values" : "Custom sampler values"}
       >
-        {open ? "CLOSE" : "VALUES"}
+        CUSTOM
       </button>
       {open ? (
         <div className="cockpit-instrument__drawer">
@@ -134,7 +132,7 @@ export function ThroughputRail({ defs, config, onChange }: InstrumentProps) {
 
   return (
     <div className="cockpit-instrument cockpit-instrument--throughput">
-      <span className="cockpit-instrument__label">THRU</span>
+      <span className="cockpit-instrument__label">THROUGHPUT</span>
       <div className="cockpit-instrument__stops" role="group" aria-label="Batch throughput">
         {THROUGHPUT_STOPS.map((stop) => (
           <button
@@ -149,23 +147,28 @@ export function ThroughputRail({ defs, config, onChange }: InstrumentProps) {
             {stop.label}
           </button>
         ))}
-        {active === "custom" ? (
-          <span className="cockpit-instrument__custom" title="Custom batch/ubatch pair">
-            CUSTOM
-          </span>
-        ) : null}
       </div>
       <span className="cockpit-instrument__readout" aria-label="Resolved batch and ubatch">
-        b{formatParamValue(batch)} / ub{formatParamValue(ubatch)}
+        <span className="cockpit-instrument__readout-item">
+          Batch {formatParamValue(batch)}
+        </span>
+        <span className="cockpit-instrument__readout-sep" aria-hidden>
+          //
+        </span>
+        <span className="cockpit-instrument__readout-item">
+          uBatch {formatParamValue(ubatch)}
+        </span>
       </span>
       <button
         type="button"
-        className="cockpit-instrument__more"
+        className={`cockpit-instrument__more${
+          open || active === "custom" ? " cockpit-instrument__more--active" : ""
+        }`}
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        title={open ? "Hide exact batch values" : "Show exact batch values"}
+        title={open ? "Hide exact batch values" : "Custom batch values"}
       >
-        {open ? "CLOSE" : "VALUES"}
+        CUSTOM
       </button>
       {open ? (
         <div className="cockpit-instrument__drawer">

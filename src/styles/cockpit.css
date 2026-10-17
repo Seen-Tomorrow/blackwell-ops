@@ -1337,7 +1337,35 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   box-sizing: border-box;
   overflow: hidden;
 }
+.full-auto-cockpit__ctx-footer-left {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  overflow: hidden;
+}
+.full-auto-cockpit__ctx-kv-unit {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-shrink: 0;
+}
+.full-auto-cockpit__ctx-kv-label {
+  font-size: var(--type-micro);
+  letter-spacing: 0.1em;
+  color: var(--theme-text-muted);
+}
+/* Same compact segment chrome in both CTX placements (cockpit + above shell). */
+.full-auto-cockpit__ctx-kv-unit .segment-switch.segment-switch--cockpit-flag {
+  min-height: 20px;
+}
+.full-auto-cockpit__ctx-kv-unit .segment-switch.segment-switch--cockpit-flag .segment-switch__option {
+  font-size: var(--type-micro);
+  letter-spacing: 0.05em;
+  padding: 3px 6px;
+}
 .full-auto-cockpit__ctx-footer-hover {
+  flex: 1 1 auto;
   min-width: 0;
   text-align: left;
   font-size: var(--type-tiny);

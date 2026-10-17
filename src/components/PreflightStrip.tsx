@@ -127,7 +127,7 @@ export default function PreflightStrip(props: PreflightStripProps) {
       ) : null}
       {batch !== undefined || ubatch !== undefined ? (
         <Token tone="muted" title="Batch / ubatch">
-          b{batch ?? "—"}/ub{ubatch ?? "—"}
+          Batch {batch ?? "—"} // uBatch {ubatch ?? "—"}
         </Token>
       ) : null}
 
