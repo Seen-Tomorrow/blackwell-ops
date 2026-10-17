@@ -228,6 +228,12 @@ and it is the bug ([dsh-desktop#1302](https://github.com/anywhere-labs/dsh-deskt
 Switching the workspace's sandbox mode back to full access does not remove the stamp either. Raise
 the root to Medium manually once, then keep this workspace on full access.
 
+**ReFS / Dev Drive carries the Low/Medium machinery identically — but a fresh Dev Drive needs one ACL grant** — verified 2026-10 on a 1 TB Dev Drive: `icacls <dir> /setintegritylevel Low` on ReFS persists and reads back exactly as on NTFS, so the stamp workflow above is unaffected by *where* the tree lives. Three traps found while proving it:
+
+- **A freshly formatted Dev Drive grants `Authenticated Users:(M)` and no per-user ACE** — unlike a profile path, which inherits an explicit `<you>:FullControl`. `Modify` lacks `WRITE_DAC`/`WRITE_OWNER`, so `setintegritylevel` fails **Access is denied** from a normal shell, which reads like a ReFS limitation and is not one. One-time fix: `icacls <dev-drive-root> /grant "${env:USERNAME}:(OI)(CI)F" /T`. After that the Dev Drive behaves exactly like a `C:` profile path, unelevated.
+- **`"$env:USERNAME:(OI)(CI)F"` silently drops the username.** PowerShell swallows the trailing colon as part of the variable name, so icacls receives a bare `(OI)(CI)F` and reports `Invalid parameter "(OI)(CI)F"`. Always brace it: `${env:USERNAME}`. Same class as the `$_` mangling note below.
+- **`icacls /setintegritylevel` writes a NON-inheritable label** — the ACE reads `Mandatory Label\Low Mandatory Level:(NW)` with no `(OI)(CI)`, on NTFS and ReFS alike, and a child directory gets nothing. The `(OI)(CI)(NW)` seen on a stamped workspace root exists because DSH's `grantWrite` sets those flags deliberately. **Inheritance is a property of who stamps, not of the filesystem** — never infer a filesystem limitation from the missing flags.
+
 **Orphaned headless Chrome (visual checks)** — The agent browser tool (puppeteer) runs its own headless Chromium under `C:\Users\<user>\.omp\puppeteer\chrome\win64-<ver>\chrome-win64\chrome.exe`. Sessions/tabs that close (or error mid-run) **orphan the process tree** — invisible (no window) but ~85 MB each, accumulating until the user Task Manager-hunts them. **Reap them in the same step as closing the browser session.** Kill by path filter ONLY — the user's real Chrome/Edge share the `chrome.exe` name, so a bare `Stop-Process -Name chrome` is forbidden:
 ```powershell
 Get-Process -Name chrome -ErrorAction SilentlyContinue |
