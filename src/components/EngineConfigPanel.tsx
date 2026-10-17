@@ -96,7 +96,13 @@ import {
   syncComboModelPaths,
 } from "../lib/launchPresets";
 import { getLaunchPolicy, resolveLaunchPolicyId } from "../lib/launchPolicy";
-import { FULL_AUTO_GOALS, FULL_AUTO_GOAL_PLANS, type FullAutoGoal } from "../lib/fullAutoGoals";
+import {
+  FULL_AUTO_GOALS,
+  FULL_AUTO_GOAL_PLANS,
+  FULL_AUTO_WORKLOADS,
+  type FullAutoGoal,
+  type FullAutoWorkload,
+} from "../lib/fullAutoGoals";
 import { applySpecBoostProfiles } from "../lib/applySpecBoost";
 import ParamCatalogSearch from "./ParamCatalogSearch";
 import {
@@ -113,9 +119,12 @@ import { SamplerTaste } from "./CockpitInstruments";
 import {
   COMPAT_KEYS,
   SAMPLER_KEYS,
+  TASTES,
   countTuned,
   isParamTuned,
   isSurfaceParam,
+  samplerDefs,
+  tasteValues,
   throughputPair,
   visibleParamValuesOf,
 } from "../lib/engineSurfaces";
@@ -1110,12 +1119,35 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       ? (stored as FullAutoGoal)
       : "balanced";
   });
+  const [autoWorkload, setAutoWorkload] = useState<FullAutoWorkload>("chat");
+  const applyAutoWorkload = useCallback(
+    (workload: FullAutoWorkload) => {
+      setAutoWorkload(workload);
+      const option = FULL_AUTO_WORKLOADS.find((item) => item.id === workload);
+      if (!option) return;
+      const taste = TASTES.find((item) => item.id === option.taste);
+      if (taste) {
+        for (const [key, value] of tasteValues(samplerDefs(allParamsResolved), taste)) {
+          updateParam(key, value);
+        }
+      }
+      for (const [key, preferred] of Object.entries(option.tweaks)) {
+        const def = allParamsResolved.find((param) => param.key === key);
+        if (!def) continue;
+        const values = visibleParamValuesOf(def);
+        const match = values.find((value) => String(value) === String(preferred));
+        if (match !== undefined) updateParam(key, match);
+      }
+    },
+    [allParamsResolved, updateParam],
+  );
   const applyAutoPlan = useCallback(
     (goal: FullAutoGoal) => {
       const plan = FULL_AUTO_GOAL_PLANS[goal];
       setAutoGoal(goal);
       saveFullAutoGoal(goal);
       void applyFullAutoCockpit(plan.codingMode, plan.speed, plan.brains, plan.think, cockpitOpts);
+      applyAutoWorkload(autoWorkload);
       const pair = throughputPair(allParamsResolved, plan.throughput);
       if (pair) {
         updateParam("batch", pair.batch);
@@ -1140,9 +1172,18 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         updateParam("ctx", allowed.length > 0 ? Math.max(...allowed) : Math.min(...ctxValues));
       }
     },
-    [applyFullAutoCockpit, cockpitOpts, allParamsResolved, updateParam, vramCalc.manifest],
+    [
+      applyFullAutoCockpit,
+      cockpitOpts,
+      allParamsResolved,
+      updateParam,
+      vramCalc.manifest,
+      applyAutoWorkload,
+      autoWorkload,
+    ],
   );
   const handleAutoGoal = applyAutoPlan;
+  const handleAutoWorkload = applyAutoWorkload;
   const handleTakeControl = useCallback(() => {
     setAutoGoal(null);
     saveFullAutoGoal(null);
@@ -3384,6 +3425,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           }
           autoGoal={fullAutoFixed ? autoGoal : null}
           onAutoGoal={fullAutoFixed ? handleAutoGoal : undefined}
+          autoWorkload={fullAutoFixed ? autoWorkload : null}
+          onAutoWorkload={fullAutoFixed ? handleAutoWorkload : undefined}
           onTakeControl={fullAutoFixed ? handleTakeControl : undefined}
         />
         {!(model && !modelIsDraftOnly && showCockpitSurface) && (

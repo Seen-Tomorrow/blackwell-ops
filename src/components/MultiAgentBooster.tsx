@@ -22,7 +22,12 @@ import CockpitCtxStrip from "./CockpitCtxStrip";
 import CockpitSlider from "./CockpitSlider";
 import CockpitFlagToolbar, { type CockpitFlagToggle } from "./CockpitFlagToolbar";
 import FullAutoGoalRail from "./FullAutoGoalRail";
-import { fullAutoGoalBatchLabel, type FullAutoGoal } from "../lib/fullAutoGoals";
+import {
+  fullAutoGoalBatchLabel,
+  fullAutoWorkloadLabel,
+  type FullAutoGoal,
+  type FullAutoWorkload,
+} from "../lib/fullAutoGoals";
 import { formatCtxChipLabel } from "../lib/sliderParamUtils";
 
 export type DflashGetUiState = "idle" | "searching" | "downloading" | "error";
@@ -130,6 +135,8 @@ export interface MultiAgentBoosterProps {
   /** FULL AUTO goal rail (hero layout only). */
   autoGoal?: FullAutoGoal | null;
   onAutoGoal?: (goal: FullAutoGoal) => void;
+  autoWorkload?: FullAutoWorkload | null;
+  onAutoWorkload?: (workload: FullAutoWorkload) => void;
   onTakeControl?: () => void;
 
 }
@@ -188,6 +195,8 @@ export default function MultiAgentBooster({
   onToggleKvUnified,
   autoGoal,
   onAutoGoal,
+  autoWorkload,
+  onAutoWorkload,
   onTakeControl,
 }: MultiAgentBoosterProps) {
   const hero = layout === "hero";
@@ -625,8 +634,10 @@ export default function MultiAgentBooster({
   const ctxNumeric = Number(ctxValue);
   const ctxLabel = Number.isFinite(ctxNumeric) ? formatCtxChipLabel(ctxNumeric) : null;
   const batchLabel = fullAutoGoalBatchLabel(autoGoal ?? null);
+  const workloadLabel = fullAutoWorkloadLabel(autoWorkload ?? null);
   const autoOutcome = [
     plan.outcome,
+    workloadLabel,
     batchLabel ? `Batch ${batchLabel}` : null,
     ctxLabel ? `CTX ${ctxLabel}` : null,
   ]
@@ -659,9 +670,11 @@ export default function MultiAgentBooster({
       {hero && onAutoGoal ? (
         <FullAutoGoalRail
           goal={autoGoal ?? null}
+          workload={autoWorkload ?? null}
           outcome={autoOutcome}
           hero
           onGoal={onAutoGoal}
+          onWorkload={onAutoWorkload ?? (() => {})}
           onTakeControl={onTakeControl}
         />
       ) : null}

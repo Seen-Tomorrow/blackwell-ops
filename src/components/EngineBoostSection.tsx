@@ -6,7 +6,7 @@ import type {
   ThinkId,
 } from "../lib/multiAgentBooster";
 import type { SpecCapability } from "../lib/specDraft";
-import type { FullAutoGoal } from "../lib/fullAutoGoals";
+import type { FullAutoGoal, FullAutoWorkload } from "../lib/fullAutoGoals";
 import MultiAgentBooster, {
   type CockpitSpecDetailParam,
   type DflashGetUiState,
@@ -61,6 +61,8 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
     instrumentSlot,
     autoGoal,
     onAutoGoal,
+    autoWorkload,
+    onAutoWorkload,
     onTakeControl,
   } = props;
 
@@ -133,6 +135,8 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
         instrumentSlot={instrumentSlot}
         autoGoal={autoGoal}
         onAutoGoal={onAutoGoal}
+        autoWorkload={autoWorkload}
+        onAutoWorkload={onAutoWorkload}
         onTakeControl={onTakeControl}
       />
     </div>
@@ -192,5 +196,7 @@ export interface EngineBoostSectionProps {
   instrumentSlot?: ReactNode;
   autoGoal?: FullAutoGoal | null;
   onAutoGoal?: (goal: FullAutoGoal) => void;
+  autoWorkload?: FullAutoWorkload | null;
+  onAutoWorkload?: (workload: FullAutoWorkload) => void;
   onTakeControl?: () => void;
 }

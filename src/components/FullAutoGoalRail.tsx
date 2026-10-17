@@ -1,20 +1,29 @@
 import SegmentSwitch from "./SegmentSwitch";
-import { FULL_AUTO_GOALS, type FullAutoGoal } from "../lib/fullAutoGoals";
+import {
+  FULL_AUTO_GOALS,
+  FULL_AUTO_WORKLOADS,
+  type FullAutoGoal,
+  type FullAutoWorkload,
+} from "../lib/fullAutoGoals";
 
 interface FullAutoGoalRailProps {
   goal: FullAutoGoal | null;
+  workload: FullAutoWorkload | null;
   outcome: string;
   hero?: boolean;
   onGoal: (goal: FullAutoGoal) => void;
+  onWorkload: (workload: FullAutoWorkload) => void;
   onTakeControl?: () => void;
 }
 
-/** FULL AUTO goal picker — outcome first, manual controls one click away. */
+/** FULL AUTO goal + workload picker — outcome first, manual controls one click away. */
 export default function FullAutoGoalRail({
   goal,
+  workload,
   outcome,
   hero = false,
   onGoal,
+  onWorkload,
   onTakeControl,
 }: FullAutoGoalRailProps) {
   return (
@@ -30,6 +39,22 @@ export default function FullAutoGoalRail({
         selectedId={goal ?? ""}
         onSelect={(id) => {
           if (id) onGoal(id as FullAutoGoal);
+        }}
+        size={hero ? "fit" : "compact"}
+        tone="accent"
+        className="segment-switch--gpu-bezel segment-switch--auto-goal"
+      />
+      <span className="full-auto-goal-rail__label">WORK</span>
+      <SegmentSwitch
+        ariaLabel="Full Auto workload"
+        options={FULL_AUTO_WORKLOADS.map((option) => ({
+          id: option.id,
+          label: option.label,
+          title: option.note,
+        }))}
+        selectedId={workload ?? ""}
+        onSelect={(id) => {
+          if (id) onWorkload(id as FullAutoWorkload);
         }}
         size={hero ? "fit" : "compact"}
         tone="accent"
