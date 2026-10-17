@@ -1,34 +1,40 @@
 /**
- * Cockpit instruments — SAMPLE personality rail + THROUGHPUT batch rail.
+ * SAMPLER — one personality switch plus the resolved-value badges.
  *
- * These are not sliders and not chip groups: one rail per family, with the
- * resolved values always visible and the exact controls one click away.
+ * The six labels (MODEL / EXACT / FOCUSED / BALANCED / WILD / CUSTOM) use the
+ * same compact segment chrome as the cockpit VISION / FLASH / LOAD flags.
+ * CUSTOM opens the exact-value drawer; picking a personality closes it.
  */
 
 import { useState } from "react";
 import type { UserEditedTemplateParam } from "../lib/types";
 import {
   TASTES,
-  THROUGHPUT_STOPS,
   detectSamplerTaste,
-  detectThroughput,
   formatParamValue,
   paramValuesOf,
   sameParamValue,
   samplerDefs,
   samplerFingerprint,
   tasteValues,
-  throughputDefs,
-  throughputValues,
   type TasteDef,
-  type ThroughputDef,
 } from "../lib/engineSurfaces";
+import SegmentSwitch from "./SegmentSwitch";
 
 interface InstrumentProps {
   defs: UserEditedTemplateParam[];
   config: Record<string, unknown>;
   onChange: (key: string, value: string | number) => void;
 }
+
+const TASTE_OPTIONS = [
+  ...TASTES.map((taste) => ({
+    id: taste.id,
+    label: taste.label,
+    title: taste.blurb,
+  })),
+  { id: "custom", label: "CUSTOM", title: "Custom sampler values" },
+];
 
 export function SamplerTaste({ defs, config, onChange }: InstrumentProps) {
   const [open, setOpen] = useState(false);
@@ -40,26 +46,32 @@ export function SamplerTaste({ defs, config, onChange }: InstrumentProps) {
 
   const apply = (taste: TasteDef) => {
     for (const [key, value] of tasteValues(sampler, taste)) onChange(key, value);
+    setOpen(false);
+  };
+
+  const select = (id: string) => {
+    if (id === "custom") {
+      setOpen((prev) => !prev);
+      return;
+    }
+    const taste = TASTES.find((item) => item.id === id);
+    if (taste) apply(taste);
   };
 
   return (
     <div className="cockpit-instrument cockpit-instrument--sample">
-      <span className="cockpit-instrument__label">SAMPLER</span>
-      <div className="cockpit-instrument__stops" role="group" aria-label="Sampler personality">
-        {TASTES.map((taste) => (
-          <button
-            key={taste.id}
-            type="button"
-            className={`cockpit-instrument__stop${
-              active === taste.id ? " cockpit-instrument__stop--active" : ""
-            }`}
-            title={taste.blurb}
-            onClick={() => apply(taste)}
-          >
-            {taste.label}
-          </button>
-        ))}
+      <div className="cockpit-instrument__head">
+        <span className="cockpit-instrument__label">SAMPLER</span>
       </div>
+      <SegmentSwitch
+        ariaLabel="Sampler personality"
+        options={TASTE_OPTIONS}
+        selectedId={open ? "custom" : active}
+        onSelect={select}
+        size="compact"
+        tone="accent"
+        className="segment-switch--gpu-bezel segment-switch--cockpit-flag"
+      />
       <span className="cockpit-instrument__finger" aria-label="Resolved sampler values">
         {fingerprint.map((item) => (
           <span
@@ -74,105 +86,9 @@ export function SamplerTaste({ defs, config, onChange }: InstrumentProps) {
           </span>
         ))}
       </span>
-      <button
-        type="button"
-        className={`cockpit-instrument__more${
-          open || active === "custom" ? " cockpit-instrument__more--active" : ""
-        }`}
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        title={open ? "Hide exact sampler values" : "Custom sampler values"}
-      >
-        CUSTOM
-      </button>
       {open ? (
         <div className="cockpit-instrument__drawer">
           {sampler.map((def) => (
-            <div key={def.key} className="cockpit-instrument__drawer-row">
-              <span className="cockpit-instrument__drawer-label" title={def.label}>
-                {def.label}
-              </span>
-              <div className="cockpit-instrument__values">
-                {paramValuesOf(def).map((value) => {
-                  const selected = sameParamValue(config[def.key], value);
-                  return (
-                    <button
-                      key={`${def.key}-${String(value)}`}
-                      type="button"
-                      className={`cockpit-instrument__value${
-                        selected ? " cockpit-instrument__value--active" : ""
-                      }`}
-                      onClick={() => onChange(def.key, value)}
-                    >
-                      {formatParamValue(value)}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-export function ThroughputRail({ defs, config, onChange }: InstrumentProps) {
-  const [open, setOpen] = useState(false);
-  const throughput = throughputDefs(defs);
-  if (throughput.length === 0) return null;
-
-  const active = detectThroughput(throughput, config);
-  const batch = config.batch;
-  const ubatch = config.ubatch;
-
-  const apply = (stop: ThroughputDef) => {
-    for (const [key, value] of throughputValues(throughput, stop)) onChange(key, value);
-  };
-
-  return (
-    <div className="cockpit-instrument cockpit-instrument--throughput">
-      <span className="cockpit-instrument__label">THROUGHPUT</span>
-      <div className="cockpit-instrument__stops" role="group" aria-label="Batch throughput">
-        {THROUGHPUT_STOPS.map((stop) => (
-          <button
-            key={stop.id}
-            type="button"
-            className={`cockpit-instrument__stop${
-              active === stop.id ? " cockpit-instrument__stop--active" : ""
-            }`}
-            title={stop.blurb}
-            onClick={() => apply(stop)}
-          >
-            {stop.label}
-          </button>
-        ))}
-      </div>
-      <span className="cockpit-instrument__readout" aria-label="Resolved batch and ubatch">
-        <span className="cockpit-instrument__readout-item">
-          Batch {formatParamValue(batch)}
-        </span>
-        <span className="cockpit-instrument__readout-sep" aria-hidden>
-          //
-        </span>
-        <span className="cockpit-instrument__readout-item">
-          uBatch {formatParamValue(ubatch)}
-        </span>
-      </span>
-      <button
-        type="button"
-        className={`cockpit-instrument__more${
-          open || active === "custom" ? " cockpit-instrument__more--active" : ""
-        }`}
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        title={open ? "Hide exact batch values" : "Custom batch values"}
-      >
-        CUSTOM
-      </button>
-      {open ? (
-        <div className="cockpit-instrument__drawer">
-          {throughput.map((def) => (
             <div key={def.key} className="cockpit-instrument__drawer-row">
               <span className="cockpit-instrument__drawer-label" title={def.label}>
                 {def.label}

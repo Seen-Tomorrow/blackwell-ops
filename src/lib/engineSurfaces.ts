@@ -82,7 +82,7 @@ export const TASTES: TasteDef[] = [
 
 // ── Throughput ──────────────────────────────────────────────────────────────
 
-export type ThroughputId = "latency" | "balanced" | "throughput" | "max";
+export type ThroughputId = "latency" | "fast" | "max";
 
 export interface ThroughputDef {
   id: ThroughputId;
@@ -93,10 +93,10 @@ export interface ThroughputDef {
   ubatch?: number;
 }
 
+/** Three personalities; FAST is the template default. */
 export const THROUGHPUT_STOPS: ThroughputDef[] = [
   { id: "latency", label: "LATENCY", blurb: "Small prompts, snappiest first token", batch: 0.15, ubatch: 0.05 },
-  { id: "balanced", label: "DEFAULT", blurb: "Template batch — the safe default", defaults: true },
-  { id: "throughput", label: "FAST", blurb: "Long prompts, better prefill throughput", batch: 0.55, ubatch: 0.5 },
+  { id: "fast", label: "FAST", blurb: "Template batch — the safe default", defaults: true },
   { id: "max", label: "MAX", blurb: "Big-prompt / many-agent workloads", batch: 0.9, ubatch: 0.85 },
 ];
 
@@ -169,6 +169,11 @@ function sortedValues(def: UserEditedTemplateParam): ParamValue[] {
     return [...values].sort((a, b) => Number(a) - Number(b));
   }
   return values;
+}
+
+/** Ascending numeric values when possible; shared by the batch slider. */
+export function sortedParamValues(def: UserEditedTemplateParam): ParamValue[] {
+  return sortedValues(def);
 }
 
 export function defaultValueOf(def: UserEditedTemplateParam): ParamValue | undefined {

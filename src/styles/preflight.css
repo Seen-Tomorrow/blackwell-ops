@@ -1,33 +1,50 @@
-/* ── Engine surfaces: cockpit instruments, pre-flight strip, service bay, compat ──
-   Paint = theme tokens only. Sizes = type scale. No color utilities in TSX. */
+/* ── Engine surfaces: cockpit instruments, pre-flight strip, USER'S EXTRA ──
+   Paint = theme tokens only. Sizes = type scale. */
 
-/* ══ Cockpit instruments (footer rail) ═══════════════════════════════ */
+/* ══ Cockpit instruments: batch hero (left) + sampler/tweaks stack (right) ══ */
 
 .cockpit-instruments {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 14px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: stretch;
+  gap: 10px 16px;
   min-width: 0;
   padding-top: 8px;
   border-top: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
 }
 
+.cockpit-instruments__right {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  height: 100%;
+}
+
 .cockpit-instruments--standalone {
   margin-bottom: 8px;
-  padding: 6px 8px;
+  padding: 8px;
   border: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
   border-radius: 2px;
   background: color-mix(in srgb, var(--theme-panel-accent) 40%, transparent);
 }
 
+.cockpit-instruments__right > .cockpit-instrument {
+  flex: 1 1 auto;
+}
+
 .cockpit-instrument {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+
+.cockpit-instrument__head {
+  display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
-  flex: 1 1 22rem;
 }
 
 .cockpit-instrument__label {
@@ -39,79 +56,247 @@
   text-transform: uppercase;
 }
 
-.cockpit-instrument__stops {
-  display: flex;
-  align-items: stretch;
+.cockpit-instrument__state {
+  margin-left: auto;
   flex-shrink: 0;
-  min-width: 0;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 85%, transparent);
-  border-radius: 2px;
-  overflow: hidden;
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
-.cockpit-instrument__stop {
-  padding: 2px 6px;
+.cockpit-instrument--batch,
+.cockpit-instrument--sample,
+.cockpit-instrument--tweaks {
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-panel-accent) 35%, transparent);
+}
+
+.cockpit-instrument--batch {
+  height: 100%;
+  justify-content: space-between;
+}
+
+/* ── Batch / uBatch dual-thumb hero ───────────────────────────────── */
+
+.cockpit-batch__stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  min-height: 80px;
+  min-width: 0;
+}
+
+.cockpit-batch__hero {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  min-width: 0;
+}
+
+.cockpit-batch__hero-label {
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.cockpit-batch__hero-value {
+  color: var(--theme-warn);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-xl);
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+
+.cockpit-batch__hero-sep {
+  color: color-mix(in srgb, var(--theme-text-muted) 55%, transparent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-body);
+}
+
+.cockpit-batch__hero-sub {
+  color: var(--theme-electric-blue);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-lg);
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+
+.cockpit-batch__track {
+  position: relative;
+  height: 68px;
+  margin: 0 8px;
+  touch-action: none;
+  user-select: none;
+}
+
+.cockpit-batch__rail,
+.cockpit-batch__band {
+  position: absolute;
+  top: 50%;
+  height: 8px;
+  transform: translateY(-50%);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.cockpit-batch__rail {
+  left: 0;
+  right: 0;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--theme-electric-blue) 30%, transparent),
+    color-mix(in srgb, var(--theme-accent) 30%, transparent),
+    color-mix(in srgb, var(--theme-warn) 30%, transparent)
+  );
+  opacity: 0.6;
+}
+
+.cockpit-batch__band {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--theme-electric-blue) 70%, transparent),
+    color-mix(in srgb, var(--theme-accent) 70%, transparent),
+    color-mix(in srgb, var(--theme-warn) 70%, transparent)
+  );
+  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent-glow) 60%, transparent);
+}
+
+.cockpit-batch__mark-wrap {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0;
   border: 0;
-  border-left: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
   background: transparent;
+  cursor: pointer;
+}
+
+.cockpit-batch__mark {
+  position: relative;
+  display: block;
+  width: 14px;
+  height: 24px;
+}
+
+.cockpit-batch__mark::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 3px;
+  width: 2px;
+  height: 18px;
+  transform: translateX(-50%);
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--theme-text-muted) 55%, transparent);
+}
+
+.cockpit-batch__mark--latency::before {
+  background: var(--theme-electric-blue);
+}
+
+.cockpit-batch__mark--fast::before {
+  background: var(--theme-accent-bright);
+}
+
+.cockpit-batch__mark--max::before {
+  background: var(--theme-warn);
+}
+
+.cockpit-batch__mark--active::before {
+  height: 24px;
+  top: 0;
+  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-accent-glow) 80%, transparent);
+}
+
+.cockpit-batch__mark-label {
+  position: absolute;
+  left: 50%;
+  top: 26px;
+  transform: translateX(-50%);
   color: var(--theme-text-muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: var(--type-micro);
   letter-spacing: 0.06em;
-  line-height: 1.35;
-  cursor: pointer;
-  transition: background-color 0.12s ease, color 0.12s ease;
-}
-
-.cockpit-instrument__stop:first-child {
-  border-left: 0;
-}
-
-.cockpit-instrument__stop:hover {
-  color: var(--theme-text);
-  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
-}
-
-.cockpit-instrument__stop--active {
-  color: var(--theme-chip-active-text);
-  background: var(--theme-chip-active-bg);
-  box-shadow: inset 0 -1px 0 var(--theme-chip-active-border);
-}
-
-.cockpit-instrument__finger {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--theme-text-muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: var(--type-micro);
   white-space: nowrap;
 }
 
-/* Sampler badges get their own full-width row — six labels need the room. */
-.cockpit-instrument--sample .cockpit-instrument__finger {
-  order: 3;
-  flex: 0 0 100%;
-  margin-top: 2px;
-}
-.cockpit-instrument--sample .cockpit-instrument__more {
-  order: 2;
+.cockpit-batch__mark-label--active {
+  color: var(--theme-text);
 }
 
-/* Throughput mirrors it: controls + CUSTOM on row 1, Batch/uBatch badges on row 2. */
-.cockpit-instrument--throughput .cockpit-instrument__readout {
-  order: 3;
-  flex: 0 0 100%;
-  margin-top: 2px;
-}
-.cockpit-instrument--throughput .cockpit-instrument__more {
-  order: 2;
+.cockpit-batch__thumb {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--theme-accent-bright);
+  border-radius: 2px;
+  background: var(--theme-panel);
+  color: var(--theme-accent-bright);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0;
+  cursor: grab;
+  touch-action: none;
 }
 
-.cockpit-instrument__finger-item,
-.cockpit-instrument__readout-item {
+.cockpit-batch__thumb--ub {
+  border-color: var(--theme-electric-blue);
+  color: var(--theme-electric-blue);
+}
+
+.cockpit-batch__thumb--b {
+  border-color: var(--theme-warn);
+  color: var(--theme-warn);
+}
+
+.cockpit-batch__thumb--dragging,
+.cockpit-batch__thumb:active {
+  cursor: grabbing;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent-glow) 80%, transparent);
+}
+
+.cockpit-batch__hint {
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.04em;
+}
+
+/* ── Saved-value badges (sampler fingerprint · batch readout) ─────── */
+
+.cockpit-instrument__finger {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-micro);
+}
+
+.cockpit-instrument__finger-item {
   display: inline-flex;
   align-items: center;
   gap: 3px;
@@ -134,56 +319,14 @@
   background: color-mix(in srgb, var(--theme-warn) 8%, transparent);
 }
 
-.cockpit-instrument__readout {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-  color: var(--theme-text-muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: var(--type-micro);
-  letter-spacing: 0.04em;
-  white-space: nowrap;
-}
-
-.cockpit-instrument__readout-sep {
-  color: color-mix(in srgb, var(--theme-text-muted) 55%, transparent);
-}
-
-.cockpit-instrument__more {
-  flex-shrink: 0;
-  margin-left: auto;
-  padding: 2px 6px;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 80%, transparent);
-  border-radius: 2px;
-  background: transparent;
-  color: var(--theme-text-muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: var(--type-micro);
-  letter-spacing: 0.08em;
-  cursor: pointer;
-}
-
-.cockpit-instrument__more:hover {
-  color: var(--theme-accent-bright);
-  border-color: color-mix(in srgb, var(--theme-accent) 45%, transparent);
-}
-
-.cockpit-instrument__more--active {
-  color: var(--theme-warn);
-  border-color: color-mix(in srgb, var(--theme-warn) 40%, transparent);
-  background: color-mix(in srgb, var(--theme-warn) 8%, transparent);
-}
+/* ── Sampler exact-values drawer ──────────────────────────────────── */
 
 .cockpit-instrument__drawer {
-  order: 4;
-  flex-basis: 100%;
   display: flex;
   flex-direction: column;
   gap: 4px;
   width: 100%;
   min-width: 0;
-  margin-top: 2px;
   padding: 6px 8px;
   border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
   border-radius: 2px;
@@ -237,6 +380,36 @@
   color: var(--theme-chip-active-text);
   background: var(--theme-chip-active-bg);
   border-color: var(--theme-chip-active-border);
+}
+
+/* ── TWEAKS rows ──────────────────────────────────────────────────── */
+
+.cockpit-tweak-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.cockpit-tweak-row__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.cockpit-tweak-row__label--tuned {
+  color: var(--theme-warn);
+}
+
+.cockpit-tweak-row .segment-switch {
+  flex-shrink: 0;
 }
 
 /* ══ Pre-flight strip ════════════════════════════════════════════════ */
@@ -407,19 +580,6 @@
   font-size: var(--type-micro);
   letter-spacing: 0.06em;
   text-transform: uppercase;
-}
-
-/* ══ TWEAKS row (below SAMPLER / THROUGHPUT) ═══════════════════════ */
-
-.cockpit-instrument--tweaks {
-  flex: 1 1 100%;
-  margin-top: 4px;
-  padding-top: 6px;
-  border-top: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
-}
-
-.cockpit-instrument__drawer-label--tuned {
-  color: var(--theme-warn);
 }
 
 /* CTX strip KV chrome lives in cockpit.css (it is cockpit footer chrome). */

@@ -103,7 +103,8 @@ import ConfigBelowGroups from "./ConfigBelowGroups";
 import { useConfigColumns } from "../hooks/useConfigColumns";
 import PreflightStrip from "./PreflightStrip";
 import TweaksPanel from "./TweaksPanel";
-import { SamplerTaste, ThroughputRail } from "./CockpitInstruments";
+import BatchRangeSlider from "./BatchRangeSlider";
+import { SamplerTaste } from "./CockpitInstruments";
 import {
   COMPAT_KEYS,
   SAMPLER_KEYS,
@@ -3295,17 +3296,21 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           ctxStripProps={ctxStripProps}
           instrumentSlot={
             <>
-              <ThroughputRail defs={allParamsResolved} config={config} onChange={updateParam} />
-              <SamplerTaste defs={allParamsResolved} config={config} onChange={updateParam} />
-              <TweaksPanel defs={allParamsResolved} config={config} onChange={updateParam} />
+              <BatchRangeSlider defs={allParamsResolved} config={config} onChange={updateParam} />
+              <div className="cockpit-instruments__right">
+                <SamplerTaste defs={allParamsResolved} config={config} onChange={updateParam} />
+                <TweaksPanel defs={allParamsResolved} config={config} onChange={updateParam} />
+              </div>
             </>
           }
         />
         {!(model && !modelIsDraftOnly && showCockpitSurface) && (
           <div className="cockpit-instruments cockpit-instruments--standalone">
-            <ThroughputRail defs={allParamsResolved} config={config} onChange={updateParam} />
-            <SamplerTaste defs={allParamsResolved} config={config} onChange={updateParam} />
-            <TweaksPanel defs={allParamsResolved} config={config} onChange={updateParam} />
+            <BatchRangeSlider defs={allParamsResolved} config={config} onChange={updateParam} />
+            <div className="cockpit-instruments__right">
+              <SamplerTaste defs={allParamsResolved} config={config} onChange={updateParam} />
+              <TweaksPanel defs={allParamsResolved} config={config} onChange={updateParam} />
+            </div>
           </div>
         )}
         {model && (

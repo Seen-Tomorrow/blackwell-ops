@@ -1,13 +1,11 @@
 /**
- * TWEAKS — compatibility / runtime flags.
+ * TWEAKS — compatibility / runtime flags as always-visible segment rows.
  *
  * Jinja, SWA full, FIM infill, host cache and reasoning preservation are
- * launch-or-not flags, not tuning knobs. They live as a full-width row under
- * the SAMPLER / THROUGHPUT instruments so the cockpit owns every engine
- * surface.
+ * launch-or-not flags, not tuning knobs. Each row uses the same compact
+ * segment chrome as the cockpit VISION / FLASH / LOAD flags.
  */
 
-import { useState } from "react";
 import type { UserEditedTemplateParam } from "../lib/types";
 import {
   COMPAT_KEYS,
@@ -15,8 +13,8 @@ import {
   formatParamValue,
   isParamTuned,
   paramValuesOf,
-  sameParamValue,
 } from "../lib/engineSurfaces";
+import SegmentSwitch from "./SegmentSwitch";
 
 const TWEAK_KEY_SET = new Set<string>(COMPAT_KEYS);
 
@@ -27,7 +25,6 @@ interface TweaksPanelProps {
 }
 
 export default function TweaksPanel({ defs, config, onChange }: TweaksPanelProps) {
-  const [open, setOpen] = useState(false);
   const tweaks = defs.filter((def) => TWEAK_KEY_SET.has(def.key));
   if (tweaks.length === 0) return null;
 
@@ -35,61 +32,42 @@ export default function TweaksPanel({ defs, config, onChange }: TweaksPanelProps
 
   return (
     <div className="cockpit-instrument cockpit-instrument--tweaks">
-      <span className="cockpit-instrument__label">TWEAKS</span>
-      <span className="cockpit-instrument__readout">
-        <span className="cockpit-instrument__readout-item">
+      <div className="cockpit-instrument__head">
+        <span className="cockpit-instrument__label">TWEAKS</span>
+        <span className="cockpit-instrument__state">
           {changed > 0 ? `${changed} changed` : "template"}
         </span>
-      </span>
-      <button
-        type="button"
-        className={`cockpit-instrument__more${
-          open ? " cockpit-instrument__more--active" : ""
-        }`}
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        title="Compatibility / runtime tweaks — chat template, SWA, FIM, host cache, reasoning"
-      >
-        {open ? "CLOSE" : "EDIT"}
-      </button>
-      {open ? (
-        <div className="cockpit-instrument__drawer">
-          {tweaks.map((def) => (
-            <div
-              key={def.key}
-              className="cockpit-instrument__drawer-row"
-              title={def.note ?? def.label}
+      </div>
+      {tweaks.map((def) => {
+        const values = paramValuesOf(def);
+        const current = String(config[def.key] ?? def.defaultValue ?? "");
+        return (
+          <div key={def.key} className="cockpit-tweak-row" title={def.note ?? def.label}>
+            <span
+              className={`cockpit-tweak-row__label${
+                isParamTuned(def, config) ? " cockpit-tweak-row__label--tuned" : ""
+              }`}
             >
-              <span
-                className={`cockpit-instrument__drawer-label${
-                  isParamTuned(def, config)
-                    ? " cockpit-instrument__drawer-label--tuned"
-                    : ""
-                }`}
-              >
-                {def.label}
-              </span>
-              <div className="cockpit-instrument__values">
-                {paramValuesOf(def).map((value) => {
-                  const selected = sameParamValue(config[def.key], value);
-                  return (
-                    <button
-                      key={`${def.key}-${String(value)}`}
-                      type="button"
-                      className={`cockpit-instrument__value${
-                        selected ? " cockpit-instrument__value--active" : ""
-                      }`}
-                      onClick={() => onChange(def.key, value)}
-                    >
-                      {formatParamValue(value)}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : null}
+              {def.label}
+            </span>
+            <SegmentSwitch
+              ariaLabel={def.label}
+              options={values.map((value) => ({
+                id: String(value),
+                label: formatParamValue(value).toUpperCase(),
+              }))}
+              selectedId={current}
+              onSelect={(id) => {
+                const value = values.find((item) => String(item) === id);
+                if (value !== undefined) onChange(def.key, value);
+              }}
+              size="compact"
+              tone="accent"
+              className="segment-switch--gpu-bezel segment-switch--cockpit-flag"
+            />
+          </div>
+        );
+      })}
     </div>
   );
 }
