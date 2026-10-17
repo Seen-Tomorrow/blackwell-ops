@@ -13,7 +13,7 @@ export interface FullAutoGoalOption {
 export const FULL_AUTO_GOALS: FullAutoGoalOption[] = [
   { id: "balanced", label: "BALANCED", note: "4 agents · Solid KV · BALANCE batch" },
   { id: "context", label: "MAX CTX", note: "Solo · Light KV · LATENCY batch" },
-  { id: "agents", label: "MAX AGENTS", note: "Army ×32 · Light KV · LATENCY batch" },
+  { id: "agents", label: "MAX AGENTS", note: "Squad ×8 · Solid KV · BALANCE batch" },
   { id: "fastest", label: "FASTEST", note: "Solo · MTP when available · SPEED batch" },
 ];
 
@@ -45,11 +45,11 @@ export const FULL_AUTO_GOAL_PLANS: Record<FullAutoGoal, FullAutoGoalPlan> = {
     throughput: "latency",
   },
   agents: {
-    codingMode: "army",
+    codingMode: "squad",
     speed: "smart",
-    brains: "light",
+    brains: "solid",
     think: "on",
-    throughput: "latency",
+    throughput: "balance",
   },
   fastest: {
     codingMode: "solo",

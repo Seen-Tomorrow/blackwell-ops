@@ -1149,14 +1149,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     setFullAuto(false);
   }, [setFullAuto]);
 
-  const autoPlanVram = vramCalc.manifest
-    ? {
-        totalGb: vramCalc.manifest.vramTotalGb,
-        freeGb: vramCalc.manifest.forecastFreeGb ?? 0,
-        fits: vramCalc.manifest.fits,
-      }
-    : null;
-
   const launchChrome = useMemo(() => {
     // Custom: never multi-GPU lock / device ALL / hide split none — user owns chrome.
     if (isCustomProvider && !fullAutoMode) {
@@ -3393,7 +3385,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           autoGoal={fullAutoFixed ? autoGoal : null}
           onAutoGoal={fullAutoFixed ? handleAutoGoal : undefined}
           onTakeControl={fullAutoFixed ? handleTakeControl : undefined}
-          autoPlanVram={fullAutoFixed ? autoPlanVram : null}
         />
         {!(model && !modelIsDraftOnly && showCockpitSurface) && (
           <div className="cockpit-instruments cockpit-instruments--standalone">
