@@ -22,7 +22,7 @@ import CockpitCtxStrip from "./CockpitCtxStrip";
 import CockpitSlider from "./CockpitSlider";
 import CockpitFlagToolbar, { type CockpitFlagToggle } from "./CockpitFlagToolbar";
 import FullAutoGoalRail from "./FullAutoGoalRail";
-import type { FullAutoGoal } from "../lib/fullAutoGoals";
+import { fullAutoGoalBatchLabel, type FullAutoGoal } from "../lib/fullAutoGoals";
 
 export type DflashGetUiState = "idle" | "searching" | "downloading" | "error";
 
@@ -611,7 +611,7 @@ export default function MultiAgentBooster({
       {/* Title left · AGENTIC HARNESS (accent) · soft note · flags */}
       <div className="full-auto-cockpit__header full-auto-cockpit__header--minimal">
         <span className="full-auto-cockpit__title font-mono tracking-[0.16em] uppercase shrink-0">
-          {powerMode ? "Power cockpit" : "Launch cockpit"}
+          {hero ? "Autopilot" : powerMode ? "Power cockpit" : "Launch cockpit"}
         </span>
         {plan.softNote ? (
           <span className="full-auto-cockpit__status-note font-mono min-w-0 truncate" title={plan.softNote}>
@@ -626,13 +626,20 @@ export default function MultiAgentBooster({
       {hero && onAutoGoal ? (
         <FullAutoGoalRail
           goal={autoGoal ?? null}
-          outcome={plan.outcome}
+          outcome={
+            fullAutoGoalBatchLabel(autoGoal ?? null)
+              ? `${plan.outcome} · Batch ${fullAutoGoalBatchLabel(autoGoal ?? null)}`
+              : plan.outcome
+          }
+          hero
           onGoal={onAutoGoal}
           onTakeControl={onTakeControl}
         />
       ) : null}
 
-      <div className="full-auto-cockpit__body space-y-3">
+      {!(hero && onAutoGoal) ? (
+        <>
+          <div className="full-auto-cockpit__body space-y-3">
         {showCtxRail && onCtxChange != null && (
           <CockpitCtxStrip
             ctxValue={ctxValue}
@@ -787,6 +794,8 @@ export default function MultiAgentBooster({
         <div className="full-auto-cockpit__footer full-auto-cockpit__footer--actions">
           {violetStrip}
         </div>
+      ) : null}
+        </>
       ) : null}
     </div>
   );

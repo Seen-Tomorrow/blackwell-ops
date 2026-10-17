@@ -193,6 +193,25 @@ export function pickPercent(def: UserEditedTemplateParam, percent: number): Para
   return values[i];
 }
 
+/** Resolve a batch/ubatch pair for one throughput preset from the live catalog. */
+export function throughputPair(
+  defs: UserEditedTemplateParam[],
+  id: ThroughputId,
+): { batch: ParamValue; ubatch: ParamValue } | null {
+  const stop = THROUGHPUT_STOPS.find((item) => item.id === id);
+  const batchDef = defs.find((def) => def.key === "batch");
+  const ubatchDef = defs.find((def) => def.key === "ubatch");
+  if (!stop || !batchDef || !ubatchDef) return null;
+  const batch = stop.defaults
+    ? defaultValueOf(batchDef)
+    : pickPercent(batchDef, stop.batch ?? 0);
+  const ubatch = stop.defaults
+    ? defaultValueOf(ubatchDef)
+    : pickPercent(ubatchDef, stop.ubatch ?? 0);
+  if (batch === undefined || ubatch === undefined) return null;
+  return { batch, ubatch };
+}
+
 export function isParamTuned(def: UserEditedTemplateParam, config: ParamBag): boolean {
   const current = config[def.key];
   if (current === undefined || current === null) return false;

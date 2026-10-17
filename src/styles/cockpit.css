@@ -62,16 +62,20 @@
   gap: 0.45rem;
   margin: 0 0.45rem 0.55rem;
   padding: 0.3rem 0.4rem;
-  min-width: 0;
   border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
   border-radius: 2px;
   background: color-mix(in srgb, var(--theme-panel-accent) 45%, transparent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.full-auto-goal-rail--hero {
+  margin: 0.45rem 0.45rem 0.75rem;
+  padding: 0.9rem 0.8rem;
 }
 
 .full-auto-goal-rail__label {
   flex-shrink: 0;
   color: var(--theme-accent-bright);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: var(--type-micro);
   letter-spacing: 0.14em;
 }
@@ -81,7 +85,6 @@
   min-width: 0;
   overflow: hidden;
   color: var(--theme-text-muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: var(--type-micro);
   letter-spacing: 0.04em;
   text-overflow: ellipsis;
@@ -95,7 +98,6 @@
   border-radius: 2px;
   background: transparent;
   color: var(--theme-text-muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: var(--type-micro);
   letter-spacing: 0.06em;
   cursor: pointer;

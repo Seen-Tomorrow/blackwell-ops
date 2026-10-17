@@ -114,6 +114,7 @@ import {
   countTuned,
   isParamTuned,
   isSurfaceParam,
+  throughputPair,
 } from "../lib/engineSurfaces";
 import { useLaunchDockRailResize } from "../hooks/useCatalogSplitResize";
 import { useFusionDisplayMode } from "../hooks/useFusionDisplayMode";
@@ -1034,14 +1035,20 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   /** FULL AUTO owns the cockpit until the user takes control back. */
   const [autoGoal, setAutoGoal] = useState<FullAutoGoal | null>("balanced");
-  const handleAutoGoal = useCallback(
+  const applyAutoPlan = useCallback(
     (goal: FullAutoGoal) => {
-      setAutoGoal(goal);
       const plan = FULL_AUTO_GOAL_PLANS[goal];
+      setAutoGoal(goal);
       void applyFullAutoCockpit(plan.codingMode, plan.speed, plan.brains, plan.think, cockpitOpts);
+      const pair = throughputPair(allParamsResolved, plan.throughput);
+      if (pair) {
+        updateParam("batch", pair.batch);
+        updateParam("ubatch", pair.ubatch);
+      }
     },
-    [applyFullAutoCockpit, cockpitOpts],
+    [applyFullAutoCockpit, cockpitOpts, allParamsResolved, updateParam],
   );
+  const handleAutoGoal = applyAutoPlan;
   const handleTakeControl = useCallback(() => {
     setAutoGoal(null);
     setFullAuto(false);
@@ -3031,15 +3038,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         onFitLaunchChange={(nextFullAuto) => {
           setFullAuto(nextFullAuto);
           if (nextFullAuto) {
-            setAutoGoal("balanced");
-            const plan = FULL_AUTO_GOAL_PLANS.balanced;
-            void applyFullAutoCockpit(
-              plan.codingMode,
-              plan.speed,
-              plan.brains,
-              plan.think,
-              cockpitOpts,
-            );
+            applyAutoPlan("balanced");
             updateParam("split", "none");
             if (String(config["offload_mode"] ?? "regular").toLowerCase() === "moe_optimal") {
               updateParam("offload_mode", "regular");

@@ -4,6 +4,7 @@ import { FULL_AUTO_GOALS, type FullAutoGoal } from "../lib/fullAutoGoals";
 interface FullAutoGoalRailProps {
   goal: FullAutoGoal | null;
   outcome: string;
+  hero?: boolean;
   onGoal: (goal: FullAutoGoal) => void;
   onTakeControl?: () => void;
 }
@@ -12,11 +13,12 @@ interface FullAutoGoalRailProps {
 export default function FullAutoGoalRail({
   goal,
   outcome,
+  hero = false,
   onGoal,
   onTakeControl,
 }: FullAutoGoalRailProps) {
   return (
-    <div className="full-auto-goal-rail">
+    <div className={`full-auto-goal-rail${hero ? " full-auto-goal-rail--hero" : ""}`}>
       <span className="full-auto-goal-rail__label">AUTO</span>
       <SegmentSwitch
         ariaLabel="Full Auto goal"
@@ -29,7 +31,7 @@ export default function FullAutoGoalRail({
         onSelect={(id) => {
           if (id) onGoal(id as FullAutoGoal);
         }}
-        size="compact"
+        size={hero ? "fit" : "compact"}
         tone="accent"
         className="segment-switch--gpu-bezel segment-switch--auto-goal"
       />
