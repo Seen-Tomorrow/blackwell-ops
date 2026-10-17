@@ -96,6 +96,8 @@ import {
   syncComboModelPaths,
 } from "../lib/launchPresets";
 import { getLaunchPolicy, resolveLaunchPolicyId } from "../lib/launchPolicy";
+import { fullAutoSingleDeviceLabel } from "../lib/fullAutoGpuPick";
+import { computeGpuAvailableList } from "../services/vram/shared";
 import {
   FULL_AUTO_GOALS,
   FULL_AUTO_GOAL_PLANS,
@@ -1146,6 +1148,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       const plan = FULL_AUTO_GOAL_PLANS[goal];
       setAutoGoal(goal);
       saveFullAutoGoal(goal);
+      if (goal === "fastest" && gpus.length > 0) {
+        // FASTEST starts on one card. No perf table yet — use the card with the
+        // most free VRAM in the same arch family; split only if FIT says it must.
+        const available = computeGpuAvailableList(gpus, runningSlotsForPlan);
+        updateParam("device", fullAutoSingleDeviceLabel(gpus, available));
+        updateParam("split", "none");
+      }
       void applyFullAutoCockpit(plan.codingMode, plan.speed, plan.brains, plan.think, cockpitOpts);
       applyAutoWorkload(autoWorkload);
       const pair = throughputPair(allParamsResolved, plan.throughput);
@@ -1180,6 +1189,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       vramCalc.manifest,
       applyAutoWorkload,
       autoWorkload,
+      gpus,
+      runningSlotsForPlan,
     ],
   );
   const handleAutoGoal = applyAutoPlan;
