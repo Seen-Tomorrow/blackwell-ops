@@ -201,82 +201,27 @@ design/judgment here, escalate only when blocked.
 path; clean up afterwards. **Commit only real source changes**, split per concern (feature / fix /
 theme).
 
-**Agent-built binaries may be Low-integrity — the owner must not run them** — **cause confirmed
-2026-10-04**, was *suspected DSH-only*. The trigger is the **sandbox mode of the session that last
-touched the folder**, not the agent's own token: `workspace-write` calls `grantWrite` on Windows,
-which stamps the folder **Low and leaves the stamp after the session ends**. `danger-full-access`
-does not stamp — which is why days of builds with DSH open were fine, and why flipping modes
-back and forth "fixed then broke" it. Inheritance is applied **at creation time**, so a folder
-stamped Low makes every PE built afterwards Low, and switching the mode back does NOT remove it.
+**Never ship or run a PE built under a Low-stamped tree** — a DSH `workspace-write` session stamps
+the workspace folder **Low** and the stamp **outlives the session** (`danger-full-access` does not
+stamp). Inheritance applies at creation time, so every PE built afterwards under `target\` is Low —
+app, test binaries, and the copied `llama-server.exe`s — and neither switching the sandbox mode back
+nor lifting the root later fixes children already stamped. Keep this workspace on **full access**;
+after any such session raise the root once (`icacls <root> /setintegritylevel Medium`) and rebuild.
+Do **not** do that before every build — it treats the symptom. Symptoms: silent `os error 5` writing
+`%TEMP%` (~15 `cargo test` failures in the `temp_dir()` modules while tsc/vitest stay green), or a DEV
+webview dying with `0x800700AA "The requested resource is in use"`. Shipping is unaffected — 7z/NSIS
+carry no SACLs — so only PEs run *in place from `target\`* are Low, which is why DEV silently loses
+`%TEMP%\blackwell-crash.log`. Full trail incl. Dev Drive/ReFS: `docs/windows-forensics.md`.
 
-**Fix: raise the folder back to Medium** (`icacls <root> /setintegritylevel Medium`), then build
-from a normal shell. Do NOT run `icacls` before every build — that treats the symptom. To keep it
-clean, keep this workspace's DSH sandbox on **full access**; the next `workspace-write` session
-will stamp it again. Filed upstream as
-[dsh-desktop#1302](https://github.com/anywhere-labs/dsh-desktop/issues/1302) (2026-10-03).
+**Do NOT commit TEMP-redirect or `/Z7` workarounds for the Low stamp** — `TEMP`/`TMP = tmp/rust-temp`
+and `debug = false` for `aws-lc-sys` / `ring` are symptom patches on a build that was only broken by
+the label. They survive in `git stash list` → `grok-lowil-workarounds` if a re-stamped tree ever needs
+them to build at all; they must never land.
 
-**Do NOT commit TEMP-redirect or `/Z7` workarounds for this** — while the folder was Low, two
-patches were tried: `TEMP`/`TMP = tmp/rust-temp` in `.cargo/config.toml` (to dodge `LNK1104` on
-`lnk*.tmp`) and `debug = false` for `aws-lc-sys` / `ring` (to dodge `D8050` from cl.exe's `/Z7`
-debug-record writer). Both are **symptom patches on a build that was only broken by the stamp**.
-Verified 2026-10-04: with the root back at Medium, both reverted, `cargo test` 303, vitest 98,
-clippy and `tsc` clean. They are recoverable from `git stash list` →
-`grok-lowil-workarounds` if a future `workspace-write` session re-stamps the tree and a rebuild
-is impossible — but the fix is the label, not the config.
-
-**Second symptom of the same root cause, easy to misdiagnose:** a DEV launch dying in
-`tauri::Builder` setup with `Failed to setup app: failed to create webview: WebView2 error:
-0x800700AA "The requested resource is in use."` The build is fine — the exe links and is stamped
-at the same second as the panic. A Low PE cannot complete the broker handshake with the
-Medium-IL WebView2 runtime, and `OLE_E_INUSE` is a misleading message for an integrity denial.
-Rule out commit exhaustion first (`handle_alloc_error` also aborts, see above), then check the
-label. An **already-Medium** exe still runs, so "it worked an hour ago" is consistent with a
-folder that got stamped in between.
-
-Run from the owner's Medium-IL shell, effective IL =
-`min(parent, file label)` = Low, and a Low process cannot write `%TEMP%`, `C:\`, or the profile —
-silent `os error 5` in any code path touching files outside the workspace.
-
-Symptom signature: ~15 `cargo test` failures that are all `std::env::temp_dir()` (`fs_util`,
-`config::merge_tests`, `foundry_toolchain::crt_tests`, `gguf_patch`, `reactor_foundry::git`) while
-`tsc` and vitest stay green. **Not** Bitdefender, **not** an ACL, **not** an MIC policy — signed
-`cmd.exe` writes to `%TEMP%` fine in the very same shell, only the Low-labeled exe is denied.
-Redirecting `TEMP` into the workspace also makes the suite green, which is a misleading "fix".
-A Low process cannot relabel its own output (`icacls /setintegritylevel` → Access denied).
-
-**The ACEs are DSH's confinement design while a `workspace-write` session is live — do NOT "repair"
-them mid-session.** On the workspace root they read as `Mandatory Label\Low Mandatory Level:(OI)(CI)(NW)`,
-`Everyone:(CI)(DENY)(DC)` and a `S-1-4-*` grant. The `diagnose-windows-sandbox-acl` skill names the deny
-and the `S-1-4-*` grant as *expected, not conflicts*, and the Low label is what lets the Low-IL sandbox
-write into the workspace at all. Never hand-edit them **during** such a session, never `icacls /T` over
-the tree, never run that skill elevated or via `runas` — **unconfined does not elevate the token**, and
-nothing here needs elevation. Writes outside the workspace are an *expected* denial the skill says to
-explain, not fix.
-
-**After the session ends, the leftover Low stamp is the bug, not the design** — raising the root back to
-Medium is correct then (see above). The two rules are not in conflict: leave a live session's ACEs alone;
-clear the orphaned stamp once nothing needs it.
-
-**Rule: never ship or launch a PE built inside a DSH workspace.** Not just agent-built ones — while
-the root carries the label, *every* PE under `target\` is Low: app and test binaries **and** the
-copied engine binaries (`target\release\runtime\ggml-master\*\llama-server.exe`), ~1800 files.
-Inheritance is applied **at creation time**, so lifting the root label later does NOT retroactively
-fix children already stamped; a rebuild into the still-labelled tree comes out Low again too.
-
-**Shipping is NOT affected** — confirmed 2026-10: the installed REL app has no label ACE at all.
-7z / NSIS do not carry SACLs, and extraction into `C:\AI-MASTER\…` (an unlabelled parent) yields the
-default Medium. Pack+Ship stays correct; only PEs run *in place from `target\`* are Low, which is why
-DEV builds silently lose `%TEMP%\blackwell-crash.log` and `-panic.log`.
-**Answered 2026-10-04: DSH does NOT lift the root label on exit** — that was the open question here,
-and it is the bug ([dsh-desktop#1302](https://github.com/anywhere-labs/dsh-desktop/issues/1302)).
-Switching the workspace's sandbox mode back to full access does not remove the stamp either. Raise
-the root to Medium manually once, then keep this workspace on full access.
-
-**ReFS / Dev Drive carries the Low/Medium machinery identically — but a fresh Dev Drive needs one ACL grant** — verified 2026-10 on a 1 TB Dev Drive: `icacls <dir> /setintegritylevel Low` on ReFS persists and reads back exactly as on NTFS, so the stamp workflow above is unaffected by *where* the tree lives. Three traps found while proving it:
-
-- **A freshly formatted Dev Drive grants `Authenticated Users:(M)` and no per-user ACE** — unlike a profile path, which inherits an explicit `<you>:FullControl`. `Modify` lacks `WRITE_DAC`/`WRITE_OWNER`, so `setintegritylevel` fails **Access is denied** from a normal shell, which reads like a ReFS limitation and is not one. One-time fix: `icacls <dev-drive-root> /grant "${env:USERNAME}:(OI)(CI)F" /T`. After that the Dev Drive behaves exactly like a `C:` profile path, unelevated.
-- **`"$env:USERNAME:(OI)(CI)F"` silently drops the username.** PowerShell swallows the trailing colon as part of the variable name, so icacls receives a bare `(OI)(CI)F` and reports `Invalid parameter "(OI)(CI)F"`. Always brace it: `${env:USERNAME}`. Same class as the `$_` mangling note below.
-- **`icacls /setintegritylevel` writes a NON-inheritable label** — the ACE reads `Mandatory Label\Low Mandatory Level:(NW)` with no `(OI)(CI)`, on NTFS and ReFS alike, and a child directory gets nothing. The `(OI)(CI)(NW)` seen on a stamped workspace root exists because DSH's `grantWrite` sets those flags deliberately. **Inheritance is a property of who stamps, not of the filesystem** — never infer a filesystem limitation from the missing flags.
+**While a `workspace-write` session is live its ACEs are the confinement design — leave them alone.**
+`Mandatory Label\Low Mandatory Level:(OI)(CI)(NW)`, `Everyone:(CI)(DENY)(DC)` and an `S-1-4-*` grant are
+*expected*; never hand-edit them mid-session, never `icacls /T` the tree, never elevate — unconfined
+does not elevate the token. Clear the orphaned stamp only after the session ends.
 
 **Orphaned headless Chrome (visual checks)** — The agent browser tool (puppeteer) runs its own headless Chromium under `C:\Users\<user>\.omp\puppeteer\chrome\win64-<ver>\chrome-win64\chrome.exe`. Sessions/tabs that close (or error mid-run) **orphan the process tree** — invisible (no window) but ~85 MB each, accumulating until the user Task Manager-hunts them. **Reap them in the same step as closing the browser session.** Kill by path filter ONLY — the user's real Chrome/Edge share the `chrome.exe` name, so a bare `Stop-Process -Name chrome` is forbidden:
 ```powershell
@@ -297,9 +242,19 @@ The bash tool mangles `$_`/`$p` in inline `powershell -Command` strings (eats th
 
 **App exit / heap corruption (`0xC0000374`)** — After engines are stopped, do **not** use `AppHandle::exit(0)` or `WebviewWindow::destroy()` for process death. Session logs showed STATUS_HEAP_CORRUPTION in ntdll immediately after “main window destroyed” / Tauri Drop, even when taskkill + fusion stop had completed cleanly. Close/update path: `teardown_all_for_app_exit` → `app_lifecycle::finish_process_exit` → `std::process::exit(0)` (skip webview destroy + Tauri Drop cascade). During shutdown: `app_lifecycle::begin_shutdown` suppresses fusion/IPC and pipe-EOF FIT work. Fusion warm-idle poll is 250ms (not 50ms) to avoid multi-engine HTTP stampede before exit.
 
-**REL blink-close after reboot (`0xC0000409` / Instant underflow)** — Not WebView. Windows `Instant` is boot-relative: `Instant::now() - Duration::from_secs(3600)` (or any window longer than uptime) **panics** with `overflow when subtracting duration from instant`. REL `panic = "abort"` → process dies right after frontend ping (canvas blinks, exit `0xC0000409`). Hit path: GitHub REST gateway hourly budget in `github_releases.rs` (`budget_remaining`), reached from REL `get_startup_updates` (DEV skips auto startup checks). Fix pattern: `now.saturating_duration_since(t) < window` / `checked_sub` — never bare `Instant - Duration`. Diagnose: `%TEMP%\blackwell-panic.log` (not only `blackwell-crash.log`). Do not reintroduce cutoff-via-subtraction in rate budgets, TTLs, or caches.
+**`0xC0000409` after reboot = `Instant` underflow, not WebView** — Windows `Instant` is boot-relative,
+so `Instant::now() - Duration` panics with `overflow when subtracting duration from instant` whenever
+the window exceeds uptime; with `panic = "abort"` the process dies right after the frontend ping
+(canvas blinks). Use `saturating_duration_since` / `checked_sub` — never a bare `Instant - Duration`,
+in rate budgets, TTLs, or caches. Enforced by `repoInvariants.test.ts`; diagnose via
+`%TEMP%\blackwell-panic.log`.
 
-**`0xC0000409` is not always the Instant bug — rule out commit exhaustion before any GPU theory** — `handle_alloc_error` aborts, and on Windows an abort surfaces as `0xC0000409`, **identical to the blink-close above**. Read app stdout first: `memory allocation of N bytes failed` means the **system commit limit** ran out — not a panic, not the GPU, not heap corruption. Commit is charged by *promise*, not by use, so this fires with 134 GiB of physical RAM free: Task Manager's Memory column looks healthy, **Details → "Commit size"** tells the truth. Under WDDM a `cudaMalloc` is backed by a page-file-backed section, so **VRAM allocations charge host commit as well** — a big-VRAM engine inflates commit twice. Observed 2026-10-02: two llama.cpp-family engines on the same cards committed 291 of a 311 GiB limit; the DEV build died first because a debug build commits more address space than REL, so **"DEV crashes, REL is fine" is not evidence of a DEV bug**. `CreateProcess` and COM DLL loads need commit too — that is why nvidia-smi "cannot launch" and WebView2 "Class not registered" appear together, and why the window goes transparent. No TDR, no WER, no panic: nothing crashed, an allocation was denied. Diagnose with `\Memory\Committed Bytes` vs `\Memory\Commit Limit`, never free RAM.
+**`0xC0000409` is ALSO the signature of commit exhaustion — read app stdout before any GPU theory.**
+`memory allocation of N bytes failed` means the system commit limit ran out: not a panic, not the GPU,
+not heap corruption. Commit is charged by *promise*, not by use, so it fires with plenty of free RAM —
+check **Details → "Commit size"**, never the Memory column — and under WDDM VRAM allocations charge
+host commit too, so **"DEV crashes, REL is fine" is not evidence of a DEV bug**. Diagnose with
+`\Memory\Committed Bytes` vs `\Memory\Commit Limit`. Detail: `docs/windows-forensics.md`.
 
 **Tauri listeners** — Use `useTauriListen`; raw `listen()` in `useEffect` leaks under StrictMode because unsubscribe resolves after first cleanup.
 
@@ -422,58 +377,42 @@ in the source; NEVER widen the allow-list or relax the pattern to get green. Rel
 these tests read `git ls-files`, so a filter bug makes them scan nothing and pass vacuously —
 when adding a scanner-style test, plant a deliberate violation and watch it fail first.
 
-**Rust↔TS name matching is NOT testable by regex** — a cross-language argument/field
-parity check was attempted and rejected: helper functions share command names
-(`add_model_path`), Tauri injects `AppHandle`/`State`/`Arc<RwLock<…>>` params that are
-never sent from JS, and nested arg objects (`config: { … }`) break brace matching. It
-produced false positives, which is exactly the failure mode this section exists to
-prevent.
+**Rust↔TS name matching is NOT testable by regex** — a parity check over Rust *source* was
+attempted and rejected: helpers share command names, Tauri injects `AppHandle`/`State`/
+`Arc<RwLock<…>>` params never sent from JS, and nested arg objects break brace matching. It
+produced false positives. Only the compiler can answer — see below.
 
-**The IPC field contract IS guarded — by asking serde, never by parsing text.** The
-rejected check above parsed Rust *source*. This one asks the compiler: `wire_keys::<T>()`
-in `src-tauri/src/ipc_contract.rs` (test-only, `#[cfg(test)]`) reads the `FIELDS` constant
-serde's derived `Deserialize` passes to `deserialize_struct` — the post-`rename` wire
-names, with no instance required. `src/lib/ipcContract.test.ts` reads the committed
-`src/lib/generated/ipc-wire-keys.json` through the **TypeScript compiler API** and fails if
-any declared field of a registered interface is a key serde never emits. Three hand-rolled
-text scanners were written against this repo during the audit that built it and **all three
-lied** — one read `#[serde(skip_serializing_if)]` as `skip` and deleted 3 real fields, one
-took the members of an inline nested object literal for flat fields, one missed a
-multi-line `#[serde(...)]` block and "found" a data-loss bug that did not exist. Only the
-compiler gets to answer.
+**The IPC field contract IS guarded — by asking serde, never by parsing text.** `wire_keys::<T>()`
+in `src-tauri/src/ipc_contract.rs` (test-only) reads the `FIELDS` constant serde's derived
+`Deserialize` passes to `deserialize_struct`: the post-`rename` wire names, no instance needed.
+`src/lib/ipcContract.test.ts` reads the committed `src/lib/generated/ipc-wire-keys.json` through
+the TypeScript compiler API and fails when a declared field is a key serde never emits. Three
+hand-rolled text scanners were written first and **all three lied** — one read
+`#[serde(skip_serializing_if)]` as `skip`, one took nested-object members for flat fields, one
+missed a multi-line `#[serde(...)]` block.
 
-- **After changing any registered IPC type's fields:** `cargo test --manifest-path
-  src-tauri/Cargo.toml -- --ignored regenerate_ipc_wire_keys`, then fix the TS interface.
-  The normal suite never writes files; the freshness test fails and prints the exact
-  `+added / -removed` keys until you do.
-- **Registered types derive `Deserialize` even when nothing deserializes them.** Only the
-  `Deserialize` derive exposes the field list as a constant, and a `Serialize` probe would
-  need a real value whose `skip_serializing_if` fields silently vanish. Add it with the
-  registry entry, not later.
-- **A TS interface must never both re-export a generated type and declare it locally.**
-  `export *` from the generated module plus a local `export interface X` makes the *local*
-  one silently win — verified: `tsc` exits 0 and the drift survives. If codegen is ever
-  adopted here, re-export **explicitly by name** and delete the local declaration.
-- **`HfSearchFilters` is not an IPC type.** It mirrors an internal Rust struct; the command
-  takes separate args, which Tauri converts `camelCase`→`snake_case` on its own. Coverage is
-  derived from real `invoke<T>` / `listen<T>` call sites, so phantom mirrors like this one
-  are correctly excluded — do not "fix" it to match.
-- Checks **one direction** on purpose, like `tauriCommandParity`: a Rust field the frontend
-  does not read is normal (`ModelMetadata` emits 35 keys, TS declares 28). What must never
-  happen is the reverse — a declared field that never arrives, which reads `undefined`
-  forever with `tsc`, `vitest` and `cargo test` all green.
+- **After changing any registered IPC type's field:** `cargo test --manifest-path
+  src-tauri/Cargo.toml -- --ignored regenerate_ipc_wire_keys`, then fix the TS interface. The
+  normal suite never writes; the freshness test prints the exact `+added / -removed` keys.
+- **Registered types derive `Deserialize` even when nothing deserializes them** — that derive is
+  the only data-independent way to enumerate what a type emits. Add it with the registry entry.
+- **A TS interface must never both re-export a generated type and declare it locally** — the local
+  declaration silently wins, `tsc` exits 0, and the drift survives. Re-export explicitly by name.
+- **`HfSearchFilters` is not an IPC type** — it mirrors an internal Rust struct; the command takes
+  separate args that Tauri camelCases itself. Coverage derives from real `invoke<T>`/`listen<T>`
+  call sites, so phantom mirrors are correctly excluded. Do not "fix" it to match.
+- Checks **one direction on purpose**: a Rust field the frontend ignores is normal
+  (`ModelMetadata` emits 35 keys, TS declares 28). The bug is the reverse — a declared field that
+  never arrives, reading `undefined` forever with every gate green.
 
-**There is no runtime seam to intercept `invoke()`** — a DEV wrapper around
-`window.__TAURI_INTERNALS__.invoke` was built, reached DEV, and was removed: it threw
-`TypeError: Cannot assign to read only property 'invoke'` and killed startup. Tauri installs
-that method with `Object.defineProperty(window.__TAURI_INTERNALS__, 'invoke', { value })`
-(`tauri-2.12.1/scripts/core.js:81`), and `writable` / `configurable` both default to **false**;
-`__TAURI_INTERNALS__` itself is defined the same way on `window` (`manager/webview.rs:175`).
-So neither the method nor the object can be reassigned, redefined, or swapped for a Proxy from
-JS. The only seam left is **build-time**: alias `@tauri-apps/api/core` in `vite.config.ts` to a
-local module that re-exports the package and overrides `invoke`. That changes resolution for
-every call site *and* for plugins that import core internally, so it needs an explicit
-decision — never a quiet patch.
+**There is no runtime seam to intercept `invoke()`** — Tauri installs it via
+`Object.defineProperty` with `writable`/`configurable` defaulting to false, and defines
+`__TAURI_INTERNALS__` the same way, so neither can be reassigned, redefined, or proxied. A DEV
+wrapper was built, reached DEV, and was removed for throwing `TypeError: Cannot assign to read
+only property 'invoke'`. The only seam is **build-time**: alias `@tauri-apps/api/core` to a local
+module that re-exports the package and overrides `invoke` — that changes resolution for every
+call site *and* for plugins importing core internally, so it needs an explicit decision, never a
+quiet patch.
 
 ---
 
