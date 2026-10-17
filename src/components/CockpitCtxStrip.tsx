@@ -79,6 +79,9 @@ export interface CockpitCtxStripProps {
   forecastFreeGb?: number;
   onPruneCustom?: (ctxs: number[]) => void | Promise<number | void>;
   standalone?: boolean;
+  /** Unified KV toggle — one cache pool across slots. */
+  kvUnified?: boolean;
+  onToggleKvUnified?: () => void;
 }
 
 export default function CockpitCtxStrip({
@@ -95,6 +98,8 @@ export default function CockpitCtxStrip({
   forecastFreeGb,
   onPruneCustom,
   standalone = true,
+  kvUnified = true,
+  onToggleKvUnified,
 }: CockpitCtxStripProps) {
   const { mode, cycle } = useCtxLearnedMarkMode();
   const [ribbonPlace, setRibbonPlace] = useState<"track" | "marks">("track");
@@ -223,6 +228,20 @@ export default function CockpitCtxStrip({
               {showPerSlot ? `${perSlotLabel} / slot` : "\u00a0"}
             </span>
           </span>
+          {onToggleKvUnified ? (
+            <button
+              type="button"
+              className={`full-auto-cockpit__ctx-kv${kvUnified ? " full-auto-cockpit__ctx-kv--unified" : ""}`}
+              onClick={onToggleKvUnified}
+              title={
+                kvUnified
+                  ? "Unified KV — one cache pool shared by all slots. Click for per-slot KV."
+                  : "Per-slot KV — each slot gets ctx ÷ parallel. Click for unified KV."
+              }
+            >
+              {kvUnified ? "KV UNIFIED" : "KV / SLOT"}
+            </button>
+          ) : null}
           <span className="full-auto-cockpit__ctx-nudge" role="group" aria-label="Nudge context by 1K">
             <button
               type="button"

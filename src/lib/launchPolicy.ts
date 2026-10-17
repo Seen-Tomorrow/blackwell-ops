@@ -23,6 +23,7 @@ import {
 } from "./launchProfile";
 import { isModelSpecParamKey, SPEC_DECODING_UI_GROUP } from "./specDraft";
 import { paramUiGroup } from "./storage";
+import { ALWAYS_LAUNCH_KEYS } from "./engineSurfaces";
 
 // ── Policy identity ─────────────────────────────────────────────────────────
 
@@ -161,6 +162,8 @@ export type ResolveLaunchKeySetInput = {
   essentialFactoryKeys: Set<string>;
   specActive: boolean;
   allParams: UserEditedTemplateParam[];
+  /** Live panel values — any param tuned away from default still emits in Essentials. */
+  tunedKeys?: Set<string>;
 };
 
 /**
@@ -193,6 +196,17 @@ export function resolveLaunchKeySet(input: ResolveLaunchKeySetInput): string[] {
 
   for (const k of COCKPIT_OWNED_PARAM_KEYS) {
     if (templateKeys.has(k)) keys.add(k);
+  }
+
+  // Launch-or-not surfaces always emit their resolved value (engine defaults
+  // are not guaranteed to match the template), plus anything the user tuned.
+  for (const k of ALWAYS_LAUNCH_KEYS) {
+    if (templateKeys.has(k)) keys.add(k);
+  }
+  if (input.tunedKeys) {
+    for (const k of input.tunedKeys) {
+      if (templateKeys.has(k)) keys.add(k);
+    }
   }
 
   if (specActive) {

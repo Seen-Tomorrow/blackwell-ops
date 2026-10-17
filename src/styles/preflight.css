@@ -1,0 +1,552 @@
+/* ── Engine surfaces: cockpit instruments, pre-flight strip, service bay, compat ──
+   Paint = theme tokens only. Sizes = type scale. No color utilities in TSX. */
+
+/* ══ Cockpit instruments (footer rail) ═══════════════════════════════ */
+
+.cockpit-instruments {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  min-width: 0;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
+}
+
+.cockpit-instruments--standalone {
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-panel-accent) 40%, transparent);
+}
+
+.cockpit-instrument {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 22rem;
+}
+
+.cockpit-instrument__label {
+  flex-shrink: 0;
+  color: var(--theme-accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.cockpit-instrument__stops {
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 85%, transparent);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.cockpit-instrument__stop {
+  padding: 2px 6px;
+  border: 0;
+  border-left: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
+  background: transparent;
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.06em;
+  line-height: 1.35;
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.cockpit-instrument__stop:first-child {
+  border-left: 0;
+}
+
+.cockpit-instrument__stop:hover {
+  color: var(--theme-text);
+  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
+}
+
+.cockpit-instrument__stop--active {
+  color: var(--theme-chip-active-text);
+  background: var(--theme-chip-active-bg);
+  box-shadow: inset 0 -1px 0 var(--theme-chip-active-border);
+}
+
+.cockpit-instrument__custom {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border-left: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
+  color: var(--theme-warn);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.06em;
+}
+
+.cockpit-instrument__finger {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-micro);
+  white-space: nowrap;
+}
+
+.cockpit-instrument__finger-item {
+  color: color-mix(in srgb, var(--theme-text-muted) 80%, transparent);
+}
+
+.cockpit-instrument__finger-item--tuned {
+  color: var(--theme-warn);
+}
+
+.cockpit-instrument__readout {
+  flex-shrink: 0;
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.04em;
+}
+
+.cockpit-instrument__more {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 2px 6px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 80%, transparent);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.cockpit-instrument__more:hover {
+  color: var(--theme-accent-bright);
+  border-color: color-mix(in srgb, var(--theme-accent) 45%, transparent);
+}
+
+.cockpit-instrument__drawer {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  margin-top: 2px;
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-panel-accent) 80%, transparent);
+}
+
+.cockpit-instrument__drawer-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.cockpit-instrument__drawer-label {
+  flex-shrink: 0;
+  width: 5.5rem;
+  overflow: hidden;
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.06em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.cockpit-instrument__values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  min-width: 0;
+}
+
+.cockpit-instrument__value {
+  padding: 1px 5px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 80%, transparent);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-micro);
+  cursor: pointer;
+}
+
+.cockpit-instrument__value:hover {
+  color: var(--theme-text);
+  border-color: color-mix(in srgb, var(--theme-accent) 45%, transparent);
+}
+
+.cockpit-instrument__value--active {
+  color: var(--theme-chip-active-text);
+  background: var(--theme-chip-active-bg);
+  border-color: var(--theme-chip-active-border);
+}
+
+/* ══ Pre-flight strip ════════════════════════════════════════════════ */
+
+.preflight-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  min-width: 0;
+  padding: 4px 8px;
+  border-top: 1px solid color-mix(in srgb, var(--theme-border) 65%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-border) 45%, transparent);
+  background: color-mix(in srgb, var(--theme-panel-accent) 55%, transparent);
+}
+
+.preflight-strip__brand {
+  flex-shrink: 0;
+  color: var(--theme-accent-bright);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.preflight-strip__sep {
+  width: 1px;
+  height: 0.85rem;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--theme-border) 85%, transparent);
+}
+
+.preflight-strip__token {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 1px 5px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  background: transparent;
+}
+
+.preflight-strip__token--muted {
+  color: color-mix(in srgb, var(--theme-text-muted) 72%, transparent);
+}
+
+.preflight-strip__token--text {
+  color: var(--theme-text);
+}
+
+.preflight-strip__token--tuned {
+  color: var(--theme-warn);
+  border-color: color-mix(in srgb, var(--theme-warn) 32%, transparent);
+  background: color-mix(in srgb, var(--theme-warn) 8%, transparent);
+}
+
+.preflight-strip__token--compat {
+  color: var(--theme-danger);
+  border-color: color-mix(in srgb, var(--theme-danger) 34%, transparent);
+  background: color-mix(in srgb, var(--theme-danger) 8%, transparent);
+}
+
+.preflight-strip__token--action {
+  cursor: pointer;
+}
+
+.preflight-strip__token--action:hover {
+  border-color: color-mix(in srgb, var(--theme-warn) 55%, transparent);
+}
+
+.preflight-strip__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.preflight-strip__add {
+  padding: 2px 7px;
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 38%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-accent) 6%, transparent);
+  color: var(--theme-accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.preflight-strip__add:hover {
+  color: var(--theme-accent-bright);
+  border-color: color-mix(in srgb, var(--theme-accent) 60%, transparent);
+}
+
+.preflight-strip__service {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 7px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 85%, transparent);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.preflight-strip__service:hover,
+.preflight-strip__service--open {
+  color: var(--theme-accent-bright);
+  border-color: color-mix(in srgb, var(--theme-accent) 50%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 8%, transparent);
+}
+
+.preflight-strip__service-count {
+  color: var(--theme-text);
+}
+
+.preflight-strip__service-action {
+  color: var(--theme-accent);
+}
+
+/* ══ Maintenance bay ═════════════════════════════════════════════════ */
+
+.service-bay {
+  border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
+  border-radius: 2px;
+  margin-top: 6px;
+  padding: 6px 8px 8px;
+  background: color-mix(in srgb, var(--theme-panel-accent) 45%, transparent);
+}
+
+.service-bay__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.service-bay__title {
+  color: var(--theme-accent-bright);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.service-bay__modes,
+.service-bay__sort {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 80%, transparent);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.service-bay__mode,
+.service-bay__sort-btn {
+  padding: 2px 7px;
+  border: 0;
+  border-left: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
+  background: transparent;
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.service-bay__mode:first-child,
+.service-bay__sort-btn:first-child {
+  border-left: 0;
+}
+
+.service-bay__mode:hover,
+.service-bay__sort-btn:hover {
+  color: var(--theme-text);
+}
+
+.service-bay__mode--active,
+.service-bay__sort-btn--active {
+  color: var(--theme-chip-active-text);
+  background: var(--theme-chip-active-bg);
+}
+
+.service-bay__filter {
+  width: 7.5rem;
+  max-width: 40%;
+}
+
+.service-bay__catalog {
+  margin-left: auto;
+}
+
+.service-bay__body {
+  margin-top: 6px;
+}
+
+.service-bay__empty {
+  padding: 14px 4px;
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* ══ Compat popover (launch dock) ═══════════════════════════════════ */
+
+.compat-anchor {
+  position: relative;
+  min-width: 0;
+}
+
+.compat-chip--tuned {
+  color: var(--theme-warn);
+  border-color: color-mix(in srgb, var(--theme-warn) 40%, transparent);
+}
+
+.compat-chip--open {
+  color: var(--theme-accent-bright);
+  border-color: color-mix(in srgb, var(--theme-accent) 55%, transparent);
+}
+
+.compat-popover {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 20rem;
+  max-width: 70vw;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 90%, transparent);
+  border-radius: 2px;
+  background: var(--theme-panel);
+  box-shadow: 0 10px 28px var(--fixed-black-a16);
+}
+
+.compat-popover__head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
+}
+
+.compat-popover__title {
+  color: var(--theme-accent-bright);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.14em;
+}
+
+.compat-popover__note {
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-micro);
+  line-height: 1.35;
+}
+
+.compat-popover__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.compat-popover__label {
+  flex-shrink: 0;
+  width: 7.5rem;
+  overflow: hidden;
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.compat-popover__label--tuned {
+  color: var(--theme-warn);
+}
+
+.compat-popover__values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  min-width: 0;
+}
+
+.compat-popover__value {
+  padding: 1px 5px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 80%, transparent);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-micro);
+  cursor: pointer;
+}
+
+.compat-popover__value:hover {
+  color: var(--theme-text);
+  border-color: color-mix(in srgb, var(--theme-accent) 45%, transparent);
+}
+
+.compat-popover__value--active {
+  color: var(--theme-chip-active-text);
+  background: var(--theme-chip-active-bg);
+  border-color: var(--theme-chip-active-border);
+}
+
+/* ══ CTX strip KV chip ══════════════════════════════════════════════ */
+
+.full-auto-cockpit__ctx-kv {
+  flex-shrink: 0;
+  margin-left: 6px;
+  padding: 0 5px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 75%, transparent);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.06em;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.full-auto-cockpit__ctx-kv:hover {
+  color: var(--theme-accent-bright);
+  border-color: color-mix(in srgb, var(--theme-accent) 50%, transparent);
+}
+
+.full-auto-cockpit__ctx-kv--unified {
+  color: var(--theme-accent-bright);
+  border-color: color-mix(in srgb, var(--theme-accent) 55%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 8%, transparent);
+}

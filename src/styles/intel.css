@@ -105,8 +105,3 @@
 .catalog-scan-status {
   color: var(--theme-accent-bright);
 }
-
-.config-drop-zone {
-  color: color-mix(in srgb, var(--theme-text-muted) 40%, transparent);
-  border-color: color-mix(in srgb, var(--theme-border) 25%, transparent);
-}

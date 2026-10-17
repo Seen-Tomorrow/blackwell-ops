@@ -7,7 +7,7 @@ import ConfigViewToggle from "./ConfigViewToggle";
 /**
  * Config toolbar: CONFIG view toggle / FULL AUTO badge, CTX dock placement,
  * launch-dock position (single toggle like CTX), HW monitor, engines-in-rail,
- * column count, and layout mode. Pure presentational — orchestrator owns state.
+ * column count. Pure presentational — orchestrator owns state.
  */
 export default function EngineToolbar(props: EngineToolbarProps) {
   const {
@@ -28,8 +28,6 @@ export default function EngineToolbar(props: EngineToolbarProps) {
     hasParams,
     columnCount,
     onSetColumnCount,
-    layoutModeActive,
-    onToggleLayoutMode,
     presetsSlot,
     seatSaveSlot,
   } = props;
@@ -134,20 +132,6 @@ export default function EngineToolbar(props: EngineToolbarProps) {
                 </button>
               ))}
             </div>
-            <button
-              type="button"
-              onClick={onToggleLayoutMode}
-              className={`config-panel-toolbar-chip config-layout-mode-btn px-2 py-0.5 type-tiny font-mono rounded-sm ${
-                layoutModeActive ? "config-panel-toolbar-chip--active config-layout-mode-btn--on" : ""
-              }`}
-              title={
-                layoutModeActive
-                  ? "Layout mode on — drag, pin, and hide groups"
-                  : "Edit group layout — reorder, pin above/below, hide"
-              }
-            >
-              LAYOUT{layoutModeActive ? " ON" : ""}
-            </button>
           </>
         )}
       </div>
@@ -176,8 +160,6 @@ export interface EngineToolbarProps {
   hasParams: boolean;
   columnCount: ConfigColumnCount;
   onSetColumnCount: (n: ConfigColumnCount) => void;
-  layoutModeActive: boolean;
-  onToggleLayoutMode: () => void;
   /** Compact PRESETS control (LaunchPresetsMenu). */
   presetsSlot?: ReactNode;
   /** Save current panel config → BRAIN / WORKER seat (left of presets). */

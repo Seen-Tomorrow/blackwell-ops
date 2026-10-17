@@ -24,13 +24,7 @@
   color: color-mix(in srgb, var(--theme-text-muted) 40%, transparent);
 }
 
-/* Detailed config panel — hairline border + label + filter */
-.eng-detailed-panel {
-  border-color: color-mix(in srgb, var(--theme-border) 30%, transparent);
-}
-.eng-detailed-panel__label {
-  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
-}
+/* Config filter */
 .eng-param-filter {
   background: color-mix(in srgb, var(--theme-panel-accent) 88%, transparent);
   border-color: color-mix(in srgb, var(--theme-border) 30%, transparent);
@@ -46,11 +40,6 @@
 /* "Starter pack" emphasis inside the cockpit note */
 .eng-note-emph {
   color: color-mix(in srgb, var(--theme-text) 70%, transparent);
-}
-
-/* NO PARAMS DEFINED / NO PARAMS MATCH notices */
-.eng-no-params {
-  color: var(--theme-text-muted);
 }
 
 /* ── GpuOverclockPanel ─────────────────────────────────────────── */

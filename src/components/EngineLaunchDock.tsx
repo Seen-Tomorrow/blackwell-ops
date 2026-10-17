@@ -77,6 +77,7 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
     onPinSecondary,
     isHotSwapStale,
     onHotSwap,
+    compatSlot,
   } = props;
 
   const rail = position === "right";
@@ -322,6 +323,7 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
                 </div>
               )}
               {renderAliasPort()}
+              {compatSlot ? <div className="config-launch-dock__compat">{compatSlot}</div> : null}
               {renderAction("replace-confirm-title-rail")}
             </div>
           </div>
@@ -348,6 +350,7 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
         <div className="config-launch-dock__grid">
           <div className="config-launch-dock__left">
             {renderAliasPort()}
+            {compatSlot ? <div className="config-launch-dock__compat">{compatSlot}</div> : null}
             {!uiDensityCompact && !launchDockCollapsed && renderCustomFlags()}
           </div>
           {renderAction("replace-confirm-title")}
@@ -371,6 +374,8 @@ export interface EngineLaunchDockProps {
   modelIsDraftOnly: boolean;
   /** Custom flags block renderer (orchestrator owns editor state + popover). */
   renderCustomFlags: () => ReactNode;
+  /** COMPAT popover — launch-or-not flags (orchestrator owns the defs). */
+  compatSlot?: ReactNode;
   uiDensityCompact: boolean;
   configView: ConfigViewMode;
   /** Alias. */

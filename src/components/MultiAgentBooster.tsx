@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, type ReactNode } from "react";
 import type { SpecCapability } from "../lib/specDraft";
 import { ConfigChipSegment } from "./EngineParamGroups";
 import {
@@ -117,6 +117,11 @@ export interface MultiAgentBoosterProps {
   showBoost?: boolean;
   /** When true, Agents marks come only from parallelValues (no hardcoded 1–32 presets). */
   agentsFromTemplateOnly?: boolean;
+  /** SAMPLE / THROUGHPUT rails rendered inside the cockpit footer. */
+  instrumentSlot?: ReactNode;
+  /** Unified KV chip in the CTX strip footer. */
+  kvUnified?: boolean;
+  onToggleKvUnified?: () => void;
 
 }
 
@@ -168,6 +173,9 @@ export default function MultiAgentBooster({
   showThink = true,
   showBoost = true,
   agentsFromTemplateOnly = false,
+  instrumentSlot,
+  kvUnified,
+  onToggleKvUnified,
 }: MultiAgentBoosterProps) {
   const hero = layout === "hero";
   const densityUnified = !hero;
@@ -617,6 +625,8 @@ export default function MultiAgentBooster({
             forecastFreeGb={forecastFreeGb}
             onPruneCustom={onPruneCustom}
             standalone={false}
+            kvUnified={kvUnified}
+            onToggleKvUnified={onToggleKvUnified}
           />
         )}
 
@@ -743,6 +753,10 @@ export default function MultiAgentBooster({
           </div>
           )}
         </div>
+
+        {instrumentSlot ? (
+          <div className="full-auto-cockpit__instruments cockpit-instruments">{instrumentSlot}</div>
+        ) : null}
 
       </div>
 

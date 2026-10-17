@@ -10,8 +10,6 @@ import type {
   UserEditedTemplateParam,
 } from "../lib/types";
 import type { SpecCapability } from "../lib/specDraft";
-import type { GroupDisplayZone } from "../lib/storage";
-import { normalizeUiGroup } from "../lib/storage";
 import { filterParamValuesForConfigView } from "../lib/launchProfile";
 import { paramValuesMatch } from "../lib/paramConfigResolve";
 import { formatCtxChipLabel } from "../lib/sliderParamUtils";
@@ -23,10 +21,7 @@ import {
   SPEC_PROFILE_MTP,
   SPEC_PROFILE_DFLASH,
 } from "../lib/specProfiles";
-import { effectiveGroupColumn } from "../lib/configColumnLayout";
-import { isEmptyGroupDeletable } from "../lib/groupLayoutUtils";
 import SliderParam from "./SliderParam";
-import GroupHeaderControls from "./GroupHeaderControls";
 
 const PARAM_LABEL_CLASS =
   "font-mono w-24 flex-shrink-0 uppercase tracking-wider truncate type-label cfg-mut";
@@ -176,12 +171,17 @@ function applyEssentialsSpecPreset(
   // Profile templates own defaults — Boost no longer pushes hardcoded presets.
 }
 
+const GROUP_LABEL_OVERRIDES: Record<string, string> = {
+  "ABOVE-CONFIG-LEFT": "MEMORY",
+  "ABOVE-CONFIG-RIGHT": "MEMORY",
+};
+
 // Group metadata derived dynamically from template — no hardcoded group names.
 export interface ParamGroupMeta { id: string; label: string; alwaysOpen: boolean }
 export function deriveParamGroups(groupKeys: string[]): ParamGroupMeta[] {
   return groupKeys.map(id => ({
     id,
-    label: id.toUpperCase(),
+    label: GROUP_LABEL_OVERRIDES[id] ?? id.toUpperCase(),
     alwaysOpen: id === 'Core' || id === 'Performance', // Core/Performance always open by convention
   }));
 }
@@ -202,24 +202,13 @@ export interface ParamGroupsCtx {
   providerDefaultKeys: Set<string>;
   updateParam: (key: string, value: string | number) => void;
   allParamsResolved: UserEditedTemplateParam[];
-  layoutModeActive: boolean;
-  groupDisplayZone: Record<string, GroupDisplayZone>;
-  groupColumn: Record<string, number>;
-  columnCount: number;
-  aboveGroupKeys: string[];
-  belowGroupKeys: string[];
-  allGroupedParams: Record<string, UserEditedTemplateParam[]>;
-  isGroupHidden: (groupId: string) => boolean;
-  draggingGroup: string | null;
-  handleGroupDragStart: (e: React.MouseEvent, zone: GroupDisplayZone, groupName: string) => void;
-  shiftGroupColumn: (groupId: string, dir: number, zone: GroupDisplayZone) => void;
-  toggleGroupDisplayZone: (groupId: string) => Promise<void>;
-  toggleGroupHidden: (groupId: string) => Promise<void>;
-  deleteEmptyGroup: (groupId: string) => Promise<void>;
   groupedParams: Record<string, UserEditedTemplateParam[]>;
   paramFilter: string;
   collapsedGroups: Set<string>;
   toggleGroup: (groupId: string) => void;
+  /** Maintenance bay: show only params that differ from template. */
+  tunedOnly?: boolean;
+  isTuned?: (def: UserEditedTemplateParam) => boolean;
 }
 
 /** Param row renderer (chip or slider). Pure — reads state from `ctx`. */
@@ -351,99 +340,22 @@ export function renderParamRow(
   );
 }
 
-/** Group header layout controls (layout-mode chrome). Pure — reads `ctx`. */
-export function renderGroupLayoutControls(
-  ctx: ParamGroupsCtx,
-  groupId: string,
-  zone: GroupDisplayZone,
-  opts?: { hideZoneToggle?: boolean; hideHideToggle?: boolean },
-): ReactNode {
-  const {
-    layoutModeActive,
-    groupDisplayZone,
-    groupColumn,
-    columnCount,
-    aboveGroupKeys,
-    belowGroupKeys,
-    allGroupedParams,
-    isGroupHidden,
-    draggingGroup,
-    handleGroupDragStart,
-    shiftGroupColumn,
-    toggleGroupDisplayZone,
-    toggleGroupHidden,
-    deleteEmptyGroup,
-  } = ctx;
-  if (!layoutModeActive) return null;
-  const displayZone = groupDisplayZone[normalizeUiGroup(groupId)] === "above" ? "above" : "below";
-  const zoneKeys = zone === "above" ? aboveGroupKeys : belowGroupKeys;
-  const zoneColumnCount = zone === "above" ? 2 : columnCount;
-  const colIdx = effectiveGroupColumn(
-    groupId,
-    zoneKeys,
-    groupColumn,
-    zoneColumnCount,
-    zone,
-  );
-  const emptyDeletable = isEmptyGroupDeletable(groupId, allGroupedParams);
-  return (
-    <GroupHeaderControls
-      zone={zone}
-      displayZone={displayZone}
-      isHidden={isGroupHidden(groupId)}
-      isDragging={draggingGroup === groupId}
-      hideZoneToggle={opts?.hideZoneToggle}
-      hideHideToggle={opts?.hideHideToggle || emptyDeletable}
-      showDelete={emptyDeletable}
-      columnIdx={colIdx}
-      columnCount={zoneColumnCount}
-      onMoveColumnLeft={() => shiftGroupColumn(groupId, -1, zone)}
-      onMoveColumnRight={() => shiftGroupColumn(groupId, 1, zone)}
-      onDragStart={(e) => handleGroupDragStart(e, zone, groupId)}
-      onToggleZone={() => { void toggleGroupDisplayZone(groupId); }}
-      onToggleHide={() => { void toggleGroupHidden(groupId); }}
-      onDelete={() => { void deleteEmptyGroup(groupId); }}
-    />
-  );
-}
-
 /** A single param group tile (header + rows). Pure — reads `ctx`. */
 export function renderParamGroup(
   ctx: ParamGroupsCtx,
   group: ParamGroupMeta,
-  zone: GroupDisplayZone,
-  placement?: { groupIdx?: number },
 ): ReactNode {
   const {
     groupedParams,
-    allGroupedParams,
     paramFilter,
     collapsedGroups,
     toggleGroup,
-    layoutModeActive,
-    isGroupHidden,
-    draggingGroup,
+    tunedOnly,
+    isTuned,
   } = ctx;
-  const groupParams = groupedParams[group.id];
-  const isSpecGroup = group.id === SPEC_DECODING_GROUP;
-  const groupHidden = !isSpecGroup && isGroupHidden(group.id);
-  const hideLeadHeader =
-    zone === "above"
-    && placement?.groupIdx === 0
-    && !layoutModeActive
-    && !isSpecGroup;
-
-  const filterQuery = paramFilter.trim().toLowerCase();
-  const filteredGroupParams = (!filterQuery || !groupParams)
-    ? groupParams
-    : groupParams.filter(
-        (p) =>
-          p.key.toLowerCase().includes(filterQuery)
-          || (p.label || "").toLowerCase().includes(filterQuery),
-      );
 
   if (
-    isSpecGroup
+    group.id === SPEC_DECODING_GROUP
     || group.id === SPEC_PROFILE_MTP
     || group.id === SPEC_PROFILE_DFLASH
   ) {
@@ -451,45 +363,30 @@ export function renderParamGroup(
     return null;
   }
 
-  const allInGroup = allGroupedParams[group.id] || [];
-  if (!filteredGroupParams || filteredGroupParams.length === 0) {
-    if (layoutModeActive && isEmptyGroupDeletable(group.id, allGroupedParams)) {
-      return (
-        <div key={group.id} className="config-param-group--empty opacity-70">
-          <div
-            className={`config-group-header flex items-center gap-1.5 type-tiny font-mono tracking-widest uppercase mb-2 pb-1 border-b border-dashed cfg-bord--a35 cfg-mut--a55 ${draggingGroup === group.id ? "config-group-header--dragging" : ""}`}
-          >
-            <span className="flex-1 min-w-0 truncate">{group.label}</span>
-            <span className="opacity-50 flex-shrink-0">(empty)</span>
-            {renderGroupLayoutControls(ctx, group.id, zone)}
-          </div>
-        </div>
-      );
-    }
-    if (!layoutModeActive || !groupHidden || allInGroup.length === 0) return null;
-    return (
-      <div key={group.id} className="config-param-group--hidden opacity-50">
-        <div
-          className={`config-group-header flex items-center gap-1.5 type-tiny font-mono tracking-widest uppercase mb-2 pb-1 border-b cfg-bord--a30 cfg-mut--a50 ${draggingGroup === group.id ? "config-group-header--dragging" : ""}`}
-        >
-          <span>{group.label}</span>
-          <span className="opacity-40">(hidden)</span>
-          {renderGroupLayoutControls(ctx, group.id, zone)}
-        </div>
-      </div>
+  let groupParams = groupedParams[group.id];
+  const filterQuery = paramFilter.trim().toLowerCase();
+  if (groupParams && filterQuery) {
+    groupParams = groupParams.filter(
+      (p) =>
+        p.key.toLowerCase().includes(filterQuery)
+        || (p.label || "").toLowerCase().includes(filterQuery),
     );
   }
+  if (groupParams && tunedOnly && isTuned) {
+    groupParams = groupParams.filter((p) => isTuned(p));
+  }
+
+  if (!groupParams || groupParams.length === 0) return null;
 
   const isCollapsed = collapsedGroups.has(group.id);
-  const showContent = hideLeadHeader || !isCollapsed;
-  const headerClass = `config-group-header flex items-center gap-1.5 type-tiny font-mono tracking-widest uppercase mb-2 pb-1 border-b cfg-bord--a30 w-full ${draggingGroup === group.id ? "config-group-header--dragging" : ""}`;
+  const headerClass =
+    "config-group-header flex items-center gap-1.5 type-tiny font-mono tracking-widest uppercase mb-2 pb-1 border-b cfg-bord--a30 w-full";
 
   return (
-    <div key={group.id} className={groupHidden ? "config-param-group--hidden opacity-50" : undefined}>
-      {!hideLeadHeader && (group.alwaysOpen ? (
+    <div key={group.id}>
+      {group.alwaysOpen ? (
         <div className={headerClass}>
           <span className="flex-1 min-w-0 truncate">{group.label}</span>
-          {renderGroupLayoutControls(ctx, group.id, zone)}
         </div>
       ) : (
         <div className={headerClass}>
@@ -500,15 +397,14 @@ export function renderParamGroup(
           >
             <span className="type-micro">{isCollapsed ? "▶" : "▼"}</span>
             <span className="truncate">{group.label}</span>
-            <span className="opacity-40 flex-shrink-0">({filteredGroupParams.length})</span>
+            <span className="opacity-40 flex-shrink-0">({groupParams.length})</span>
           </button>
-          {renderGroupLayoutControls(ctx, group.id, zone)}
         </div>
-      ))}
+      )}
 
-      {showContent && (
+      {!isCollapsed && (
         <div className="space-y-2.5">
-          {filteredGroupParams.map((def, i) => renderParamRow(ctx, def, false, i))}
+          {groupParams.map((def, i) => renderParamRow(ctx, def, false, i))}
         </div>
       )}
     </div>

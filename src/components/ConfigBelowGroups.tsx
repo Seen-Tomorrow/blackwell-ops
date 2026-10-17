@@ -9,11 +9,9 @@ interface ConfigBelowGroupsProps {
   renderGroup: (groupId: string, columnIdx: number, groupIdx: number) => ReactNode;
   onGutterDragStart: (gutterIndex: number, e: React.MouseEvent) => void;
   draggingGutterIndex?: number | null;
-  layoutModeActive?: boolean;
-  /** `above` = pinned above VRAM display; `below` = main param scroll (default). */
-  zone?: "above" | "below";
 }
 
+/** Maintenance-bay column grid — 1/2/3 columns with draggable gutters. */
 export default function ConfigBelowGroups({
   columnCount,
   columnWidths,
@@ -21,19 +19,15 @@ export default function ConfigBelowGroups({
   renderGroup,
   onGutterDragStart,
   draggingGutterIndex = null,
-  layoutModeActive = false,
-  zone = "below",
 }: ConfigBelowGroupsProps) {
-  const zonePrefix = zone === "above" ? "config-params-above" : "config-params-below";
-
   if (columnCount === 1) {
     const col = belowGroupsByColumn[0] ?? [];
     return (
-      <div className={`${zonePrefix} ${zonePrefix}--1c min-w-0`}>
+      <div className="config-params-below config-params-below--1c min-w-0">
         {col.map((groupId, groupIdx) => (
           <div
             key={groupId}
-            data-group-zone={zone}
+            data-group-zone="below"
             data-column-idx={0}
             data-group-idx={groupIdx}
             data-group-id={groupId}
@@ -56,15 +50,10 @@ export default function ConfigBelowGroups({
         style={{ gridColumn: colIdx * 2 + 1 }}
       >
         <div className="config-params-col__stack space-y-3 min-w-0">
-          {groups.length === 0 && layoutModeActive && (
-            <div className="config-column-drop-zone config-drop-zone type-micro font-mono uppercase tracking-wider py-8 text-center border border-dashed rounded-sm">
-              empty column
-            </div>
-          )}
           {groups.map((groupId, groupIdx) => (
             <div
               key={groupId}
-              data-group-zone={zone}
+              data-group-zone="below"
               data-column-idx={colIdx}
               data-group-idx={groupIdx}
               data-group-id={groupId}
@@ -95,10 +84,10 @@ export default function ConfigBelowGroups({
 
   return (
     <div
-      className={`${zonePrefix} ${zonePrefix}--multi ${zonePrefix}--${columnCount}c min-w-0`}
+      className={`config-params-below config-params-below--multi config-params-below--${columnCount}c min-w-0`}
       style={{ gridTemplateColumns: columnWidthsToGridTemplate(columnWidths) }}
       data-config-column-count={columnCount}
-      data-config-zone={zone}
+      data-config-zone="below"
     >
       {cells}
     </div>

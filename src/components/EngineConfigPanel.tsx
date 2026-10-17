@@ -50,7 +50,6 @@ import {
 import type { DflashDraftOffer } from "../lib/dflashGetDraft";
 import DraftPickModal from "./DraftPickModal";
 import {
-  isGroupFullyHidden,
   PANEL_CHROME_PARAM_KEYS,
 } from "../lib/paramDisplayZone";
 import {
@@ -100,10 +99,19 @@ import {
   isCatalogEntryAlreadyActive,
   type RawCatalogEntry,
 } from "../lib/catalog";
-import type { GroupDisplayZone } from "../lib/storage";
 import ConfigBelowGroups from "./ConfigBelowGroups";
-import type { ConfigColumnCount } from "../lib/configColumnLayout";
-import { useGroupLayoutControls } from "../hooks/useGroupLayoutControls";
+import { partitionBelowGroupsByColumn } from "../lib/configColumnLayout";
+import { useConfigColumns } from "../hooks/useConfigColumns";
+import PreflightStrip from "./PreflightStrip";
+import CompatPanel from "./CompatPanel";
+import { SamplerTaste, ThroughputRail } from "./CockpitInstruments";
+import {
+  COMPAT_KEYS,
+  SAMPLER_KEYS,
+  countTuned,
+  isParamTuned,
+  isSurfaceParam,
+} from "../lib/engineSurfaces";
 import { useLaunchDockRailResize } from "../hooks/useCatalogSplitResize";
 import { useFusionDisplayMode } from "../hooks/useFusionDisplayMode";
 import LaunchRailTelemetry from "./LaunchRailTelemetry";
@@ -455,9 +463,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     },
     [],
   );
-  const [layoutModeActive, setLayoutModeActive] = useState(
-    () => readStorage(KEYS.configLayoutMode) === "1",
-  );
   const [uiDensityCompact, setUiDensityCompact] = useState(
     () => loadUiDensity() === "compact",
   );
@@ -538,12 +543,18 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   });
   const [paramFilter, setParamFilter] = useState("");
 
-  const toggleLayoutMode = useCallback(() => {
-    setLayoutModeActive((prev) => {
-      const next = !prev;
-      writeStorage(KEYS.configLayoutMode, next ? "1" : "0");
-      return next;
-    });
+  /** Maintenance bay — closed by default; the pre-flight strip owns the opener. */
+  const [serviceOpen, setServiceOpen] = useState(false);
+  const [bayMode, setBayMode] = useState<"all" | "tuned">("all");
+  const [baySort, setBaySort] = useState<"template" | "tuned" | "name">("template");
+
+  const openService = useCallback((mode: "all" | "tuned") => {
+    setBayMode(mode);
+    setServiceOpen(true);
+  }, []);
+
+  const toggleService = useCallback(() => {
+    setServiceOpen((prev) => !prev);
   }, []);
 
   const setLaunchDockPositionUser = useCallback((position: LaunchDockPosition) => {
@@ -1638,7 +1649,17 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       if (def.hidden || isPanelChromeParam(def)) continue;
       // Cockpit / SYSTEM chrome — never free chip rows (ctx, parallel, …)
       if (isCockpitOwnedParam(def.key) || isPlacementChromeParam(def)) continue;
+      // Promoted to an instrument (SAMPLE / THRU / KV / COMPAT) — not a free chip.
+      if (isSurfaceParam(def.key)) continue;
       const groupId = paramUiGroup(def.ui_group);
+      // Spec profile knobs + spec-decoding live in the cockpit Boost detail.
+      if (
+        groupId === SPEC_DECODING_GROUP
+        || groupId === SPEC_PROFILE_MTP
+        || groupId === SPEC_PROFILE_DFLASH
+      ) {
+        continue;
+      }
       // SYSTEM group is placement-only chrome; never show as a chip tile
       if (groupId === SYSTEM_UI_GROUP) continue;
       if (!groups[groupId]) groups[groupId] = [];
@@ -1647,36 +1668,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     return groups;
   }, [allParamsForDisplay, isPanelChromeParam]);
 
-  // All params by group — includes hidden ones (spec-decoding ON/OFF toggle reads from here)
-  const allGroupedParams = useMemo(() => {
-    const groups: Record<string, UserEditedTemplateParam[]> = {};
-    const source = allParamsResolved;
-    for (const def of source) {
-      if (isPanelChromeParam(def)) continue;
-      const groupId = paramUiGroup(def.ui_group);
-      if (!groups[groupId]) groups[groupId] = [];
-      groups[groupId].push(def);
-    }
-    for (const def of allParamsResolved) {
-      if (isPanelChromeParam(def) || paramUiGroup(def.ui_group) !== SPEC_DECODING_GROUP) continue;
-      if (!groups[SPEC_DECODING_GROUP]) groups[SPEC_DECODING_GROUP] = [];
-      if (!groups[SPEC_DECODING_GROUP].some((p) => p.key === def.key)) {
-        groups[SPEC_DECODING_GROUP].push(def);
-      }
-    }
-    return groups;
-  }, [allParamsResolved, isPanelChromeParam]);
-
-  const isGroupVisible = useCallback(
-    (groupId: string) => {
-      // SPECULATIVE-DECODING lives under cockpit Boost / Spec details — not chip columns.
-      if (groupId === SPEC_DECODING_GROUP) return false;
-      if (groupId === SYSTEM_UI_GROUP) return false;
-      if ((groupedParams[groupId]?.length ?? 0) > 0) return true;
-      return layoutModeActive && isGroupFullyHidden(groupId, allGroupedParams);
-    },
-    [groupedParams, layoutModeActive, allGroupedParams],
-  );
+  /** Unified KV is the template default; only an explicit `off` disables it. */
+  const kvUnified = String(config.unified_kv ?? "on").trim().toLowerCase() !== "off";
+  const hasUnifiedKvParam = providerHasParamKey(allParamsResolved, "unified_kv");
 
   const ctxStripProps = useMemo(() => {
     const slots = resolveCtxSlotCount(config, allParamsResolved);
@@ -1707,6 +1701,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       forecastCurve: vramCalc.manifest?.forecastCurve,
       forecastFreeGb: vramCalc.manifest?.forecastFreeGb,
       onPruneCustom: vramCalc.pruneLearnedCtxs,
+      kvUnified,
+      onToggleKvUnified: hasUnifiedKvParam
+        ? () => updateParam("unified_kv", kvUnified ? "off" : "on")
+        : undefined,
     };
   }, [
     config,
@@ -1717,6 +1715,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     vramCalc.manifest?.forecastCurve,
     vramCalc.manifest?.forecastFreeGb,
     vramCalc.pruneLearnedCtxs,
+    kvUnified,
+    hasUnifiedKvParam,
   ]);
 
   const ctxDockedInCockpit = ctxCockpitDock === "cockpit";
@@ -1728,35 +1728,18 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     && !ctxDockedInCockpit;
 
   const {
-    aboveGroupKeys,
     belowGroupKeys,
-    belowGroupsByColumn,
-    aboveGroupsByColumn,
-    aboveColumnWidths,
-    groupDisplayZone,
     columnCount,
     columnWidths,
     groupColumn,
-    draggingGroup,
     draggingGutterIndex,
-    draggingAboveGutterIndex,
-    handleGroupDragStart,
     handleGutterDragStart,
-    handleAboveGutterDragStart,
-    shiftGroupColumn,
     setBelowColumnCount,
-    toggleGroupDisplayZone,
-    toggleGroupHidden,
-    deleteEmptyGroup,
-    isGroupHidden,
-  } = useGroupLayoutControls({
+  } = useConfigColumns({
     providerId: effectiveBackendType,
     currentProvider,
     layoutParams: allParamsResolved,
     groupedParams,
-    allGroupedParams,
-    layoutModeActive,
-    isGroupVisible,
   });
 
   useLayoutEffect(() => {
@@ -1770,7 +1753,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     const topEl = launchRailTopChromeMeasureRef.current;
     if (topEl) observer.observe(topEl);
     return () => observer.disconnect();
-  }, [showRightColumn, resolvedProviders, aboveGroupKeys.length]);
+  }, [showRightColumn, resolvedProviders, showCtxAboveConfig]);
 
   useLayoutEffect(() => {
     if (!showLaunchRail || hwMonitorOpen) return;
@@ -1797,13 +1780,26 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   }, [belowGroupKeys]);
 
   /** Local panel filter — matches group id/label or any param key/label in the group. */
+  const sortedBelowKeys = useMemo(() => {
+    const keys = [...belowGroupKeys];
+    if (baySort === "name") return keys.sort((a, b) => a.localeCompare(b));
+    if (baySort === "tuned") {
+      const score = (id: string) =>
+        (groupedParams[id] ?? []).filter((p) => isParamTuned(p, config)).length;
+      return keys.sort((a, b) => score(b) - score(a) || a.localeCompare(b));
+    }
+    return keys;
+  }, [belowGroupKeys, baySort, groupedParams, config]);
+
   const filteredBelowGroupsByColumn = useMemo(() => {
     const q = paramFilter.trim().toLowerCase();
-    if (!q) return belowGroupsByColumn;
-    return belowGroupsByColumn.map((col) =>
+    const partitions = partitionBelowGroupsByColumn(sortedBelowKeys, groupColumn, columnCount);
+    return partitions.map((col) =>
       col.filter((groupId) => {
-        if (groupId.toLowerCase().includes(q)) return true;
         const params = groupedParams[groupId] || [];
+        if (bayMode === "tuned" && !params.some((p) => isParamTuned(p, config))) return false;
+        if (!q) return true;
+        if (groupId.toLowerCase().includes(q)) return true;
         return params.some(
           (p) =>
             p.key.toLowerCase().includes(q)
@@ -1811,11 +1807,100 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         );
       }),
     );
-  }, [belowGroupsByColumn, paramFilter, groupedParams]);
+  }, [sortedBelowKeys, groupColumn, columnCount, paramFilter, groupedParams, bayMode, config]);
 
-  const filteredBelowHasAny = useMemo(
-    () => filteredBelowGroupsByColumn.some((c) => c.length > 0),
-    [filteredBelowGroupsByColumn],
+  /** Param-level count of rows that will actually render (for the empty state). */
+  const visibleBelowParamCount = useMemo(() => {
+    const q = paramFilter.trim().toLowerCase();
+    let n = 0;
+    for (const groupId of belowGroupKeys) {
+      for (const p of groupedParams[groupId] ?? []) {
+        if (bayMode === "tuned" && !isParamTuned(p, config)) continue;
+        if (
+          q
+          && !p.key.toLowerCase().includes(q)
+          && !(p.label || "").toLowerCase().includes(q)
+        ) {
+          continue;
+        }
+        n += 1;
+      }
+    }
+    return n;
+  }, [belowGroupKeys, groupedParams, bayMode, config, paramFilter]);
+
+  const serviceCount = useMemo(
+    () => belowGroupKeys.reduce((n, groupId) => n + (groupedParams[groupId]?.length ?? 0), 0),
+    [belowGroupKeys, groupedParams],
+  );
+
+  const preflightParams = useMemo(
+    () =>
+      allParamsResolved.filter((def) => {
+        const groupId = paramUiGroup(def.ui_group);
+        return (
+          !def.hidden
+          && !isPanelChromeParam(def)
+          && !isCockpitOwnedParam(def.key)
+          && !isPlacementChromeParam(def)
+          && groupId !== SPEC_DECODING_GROUP
+          && groupId !== SPEC_PROFILE_MTP
+          && groupId !== SPEC_PROFILE_DFLASH
+        );
+      }),
+    [allParamsResolved, isPanelChromeParam],
+  );
+
+  const tunedCount = useMemo(() => {
+    // Surface families count as one deviation each; compat has its own token.
+    let free = 0;
+    let sample = false;
+    let throughput = false;
+    for (const def of preflightParams) {
+      if (!isParamTuned(def, config)) continue;
+      if ((COMPAT_KEYS as readonly string[]).includes(def.key)) continue;
+      if ((SAMPLER_KEYS as readonly string[]).includes(def.key)) {
+        sample = true;
+        continue;
+      }
+      if (def.key === "batch" || def.key === "ubatch") {
+        throughput = true;
+        continue;
+      }
+      free += 1;
+    }
+    return free + (sample ? 1 : 0) + (throughput ? 1 : 0);
+  }, [preflightParams, config]);
+
+  const freeTunedCount = useMemo(() => {
+    let n = 0;
+    for (const groupId of belowGroupKeys) {
+      for (const p of groupedParams[groupId] ?? []) {
+        if (isParamTuned(p, config)) n += 1;
+      }
+    }
+    return n;
+  }, [belowGroupKeys, groupedParams, config]);
+
+  const compatCount = useMemo(
+    () =>
+      countTuned(
+        allParamsResolved.filter((def) => (COMPAT_KEYS as readonly string[]).includes(def.key)),
+        config,
+      ),
+    [allParamsResolved, config],
+  );
+
+  const ctxNumericForStrip = useMemo(() => {
+    const raw = config.ctx;
+    const n = typeof raw === "number" ? raw : parseInt(String(raw ?? ""), 10);
+    if (Number.isFinite(n)) return n;
+    return Number(allParamsResolved.find((p) => p.key === "ctx")?.defaultValue ?? 0);
+  }, [config.ctx, allParamsResolved]);
+
+  const slotsForStrip = useMemo(
+    () => resolveCtxSlotCount(config, allParamsResolved),
+    [config, allParamsResolved],
   );
 
 
@@ -1829,25 +1914,27 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     providerDefaultKeys,
     updateParam,
     allParamsResolved,
-    layoutModeActive,
-    groupDisplayZone,
-    groupColumn,
-    columnCount,
-    aboveGroupKeys,
-    belowGroupKeys,
-    allGroupedParams,
-    isGroupHidden,
-    draggingGroup,
-    handleGroupDragStart,
-    shiftGroupColumn,
-    toggleGroupDisplayZone,
-    toggleGroupHidden,
-    deleteEmptyGroup,
     groupedParams,
     paramFilter,
     collapsedGroups,
     toggleGroup,
-  }), [config, fullAutoFixed, configView, specCapabilities, specSimpleMode, providerDefaultKeys, updateParam, allParamsResolved, layoutModeActive, groupDisplayZone, groupColumn, columnCount, aboveGroupKeys, belowGroupKeys, allGroupedParams, isGroupHidden, draggingGroup, handleGroupDragStart, shiftGroupColumn, toggleGroupDisplayZone, toggleGroupHidden, deleteEmptyGroup, groupedParams, paramFilter, collapsedGroups, toggleGroup]);
+    tunedOnly: bayMode === "tuned",
+    isTuned: (def) => isParamTuned(def, config),
+  }), [
+    config,
+    fullAutoFixed,
+    configView,
+    specCapabilities,
+    specSimpleMode,
+    providerDefaultKeys,
+    updateParam,
+    allParamsResolved,
+    groupedParams,
+    paramFilter,
+    collapsedGroups,
+    toggleGroup,
+    bayMode,
+  ]);
 
   // ── Load param definitions when model/provider changes ───────────────────
   useEffect(() => {
@@ -2930,7 +3017,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     <div
       className="flex flex-col h-full min-h-0 overflow-hidden"
       data-config-panel
-      data-layout-mode={layoutModeActive ? "on" : "off"}
       data-launch-dock-position={launchDockPosition}
       data-launch-dock-collapsed={launchDockCollapsed && launchDockPosition === "bottom" ? "true" : "false"}
       data-hw-monitor-open={hwMonitorOpen ? "true" : "false"}
@@ -2960,36 +3046,16 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         />
 
       {/*
-        Above-config zone (near VRAM): pin-above chip groups + optional CTX strip.
-        Full Auto hides chip groups; CTX can still dock here when not embedded in cockpit.
+        Above-config zone (near VRAM): CTX strip only. Group pinning is retired —
+        every param has a cockpit, dock, or maintenance-bay home.
       */}
-      {(showCtxAboveConfig || (aboveGroupKeys.length > 0 && !fullAutoFixed)) && (
+      {showCtxAboveConfig && (
         <div
-          className={`config-params-above-shell relative${paramsBypassedClass}${
-            showCtxAboveConfig ? " config-params-above-shell--with-ctx" : ""
-          }`}
+          className={`config-params-above-shell config-params-above-shell--with-ctx relative${paramsBypassedClass}`}
         >
-          {showCtxAboveConfig && (
-            <div className="config-params-above-ctx px-3 pb-1.5 min-w-0">
-              <CockpitCtxStrip {...ctxStripProps} className="w-full" />
-            </div>
-          )}
-          {aboveGroupKeys.length > 0 && !fullAutoFixed && (
-            <ConfigBelowGroups
-              zone="above"
-              columnCount={2}
-              columnWidths={[...aboveColumnWidths]}
-              belowGroupsByColumn={aboveGroupsByColumn}
-              onGutterDragStart={handleAboveGutterDragStart}
-              draggingGutterIndex={draggingAboveGutterIndex}
-              layoutModeActive={layoutModeActive}
-              renderGroup={(groupId, _columnIdx, groupIdx) => {
-                const group = deriveParamGroups(aboveGroupKeys).find((g) => g.id === groupId);
-                if (!group) return null;
-                return renderParamGroup(paramGroupsCtx, group, "above", { groupIdx });
-              }}
-            />
-          )}
+          <div className="config-params-above-ctx px-3 pb-1.5 min-w-0">
+            <CockpitCtxStrip {...ctxStripProps} className="w-full" />
+          </div>
         </div>
       )}
           </div>
@@ -3135,9 +3201,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         onToggleEnginesInRail={toggleEnginesInRail}
         hasParams={allParamsForDisplay.length > 0}
         columnCount={columnCount}
-        onSetColumnCount={setBelowColumnCount}
-        layoutModeActive={layoutModeActive}
-        onToggleLayoutMode={toggleLayoutMode}
+        onSetColumnCount={(n) => {
+          setBelowColumnCount(n);
+          setServiceOpen(true);
+        }}
         seatSaveSlot={
           model && !modelIsDraftOnly ? (
             <div
@@ -3300,7 +3367,19 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           specDetailParams={cockpitSpecDetailParams}
           embedCtx={ctxDockedInCockpit}
           ctxStripProps={ctxStripProps}
+          instrumentSlot={
+            <>
+              <SamplerTaste defs={allParamsResolved} config={config} onChange={updateParam} />
+              <ThroughputRail defs={allParamsResolved} config={config} onChange={updateParam} />
+            </>
+          }
         />
+        {!(model && !modelIsDraftOnly && showCockpitSurface) && (
+          <div className="cockpit-instruments cockpit-instruments--standalone">
+            <SamplerTaste defs={allParamsResolved} config={config} onChange={updateParam} />
+            <ThroughputRail defs={allParamsResolved} config={config} onChange={updateParam} />
+          </div>
+        )}
         {model && (
           <DraftPickModal
             open={dflashPickOpen}
@@ -3320,65 +3399,132 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           />
         )}
 
+        {/* PRE-FLIGHT — resolved machine state, not a form. */}
         {!fullAutoFixed && (
-          <div className="config-detailed-panel mb-1.5 border rounded-sm eng-detailed-panel">
-            <div className="config-detailed-panel__row flex items-center gap-1.5">
-              <span className="config-detailed-panel__label type-tiny font-mono tracking-widest uppercase eng-detailed-panel__label flex-shrink-0">
-                DETAILED CONFIG
-              </span>
-              <span className="config-panel-toolbar__sep mx-1 h-3 w-px flex-shrink-0" />
-              <button
-                type="button"
-                onClick={() => setShowEngineCatalogSearch(true)}
-                className="config-panel-toolbar-chip px-1.5 py-0.5 type-tiny font-mono rounded-sm flex-shrink-0"
-                title="Add any parameter from the live catalog"
-              >
-                + PARAM CATALOG
-              </button>
-              {allParamsForDisplay.length > 0 && (
-                <input
-                  type="search"
-                  value={paramFilter}
-                  onChange={(e) => setParamFilter(e.target.value)}
-                  placeholder="Filter…"
-                  className="config-panel-param-filter w-[7.5rem] max-w-[40%] eng-param-filter flex-shrink-0"
-                  title="Filter chip groups by name or key (local — not model search)"
-                />
-              )}
+          <PreflightStrip
+            templateVersion={currentProvider?.templateVersion}
+            ctxLabel={ctxNumericForStrip > 0 ? formatTokenLabel(ctxNumericForStrip) : "—"}
+            slots={slotsForStrip}
+            kvQuant={
+              config.kv_quant != null && String(config.kv_quant) !== ""
+                ? String(config.kv_quant)
+                : undefined
+            }
+            unifiedKv={kvUnified}
+            flashOn={String(config.flash_attn ?? "on").toLowerCase() !== "off"}
+            gpuCount={gpus.length}
+            splitLabel={config.split != null ? String(config.split) : undefined}
+            batch={config.batch as string | number | undefined}
+            ubatch={config.ubatch as string | number | undefined}
+            tunedCount={tunedCount}
+            compatCount={compatCount}
+            serviceCount={serviceCount}
+            serviceOpen={serviceOpen}
+            onToggleService={toggleService}
+            onOpenTuned={freeTunedCount > 0 ? () => openService("tuned") : undefined}
+            onAddParam={() => setShowEngineCatalogSearch(true)}
+          />
+        )}
+
+        {/* MAINTENANCE BAY — closed by default; every remaining param + catalog additions. */}
+        {!fullAutoFixed && serviceOpen && (
+          <div className={paramsBypassedClass}>
+            <div className="service-bay">
+              <div className="service-bay__bar">
+                <span className="service-bay__title">MAINTENANCE</span>
+                <div className="service-bay__modes" role="group" aria-label="Maintenance filter">
+                  <button
+                    type="button"
+                    className={`service-bay__mode${bayMode === "all" ? " service-bay__mode--active" : ""}`}
+                    onClick={() => setBayMode("all")}
+                    title="Every remaining engine param"
+                  >
+                    ALL {serviceCount}
+                  </button>
+                  <button
+                    type="button"
+                    className={`service-bay__mode${bayMode === "tuned" ? " service-bay__mode--active" : ""}`}
+                    onClick={() => setBayMode("tuned")}
+                    title="Only params that differ from template"
+                  >
+                    TUNED {tunedCount}
+                  </button>
+                </div>
+                <div className="service-bay__sort" role="group" aria-label="Maintenance sort">
+                  {(["template", "tuned", "name"] as const).map((sort) => (
+                    <button
+                      key={sort}
+                      type="button"
+                      className={`service-bay__sort-btn${baySort === sort ? " service-bay__sort-btn--active" : ""}`}
+                      onClick={() => setBaySort(sort)}
+                      title={
+                        sort === "template"
+                          ? "Template group order"
+                          : sort === "tuned"
+                            ? "Groups with the most tuned params first"
+                            : "Alphabetical"
+                      }
+                    >
+                      {sort.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+                {allParamsForDisplay.length > 0 && (
+                  <input
+                    type="search"
+                    value={paramFilter}
+                    onChange={(e) => setParamFilter(e.target.value)}
+                    placeholder="Filter…"
+                    className="config-panel-param-filter service-bay__filter eng-param-filter flex-shrink-0"
+                    title="Filter maintenance rows by name or key (local — not model search)"
+                  />
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowEngineCatalogSearch(true)}
+                  className="config-panel-toolbar-chip service-bay__catalog px-1.5 py-0.5 type-tiny font-mono rounded-sm flex-shrink-0"
+                  title="Add any parameter from the live engine catalog — the list is read from the running engine"
+                >
+                  + PARAM CATALOG
+                </button>
+              </div>
+              <div className="service-bay__body">
+                {visibleBelowParamCount === 0 ? (
+                  <div className="service-bay__empty">
+                    {bayMode === "tuned"
+                      ? "Nothing tuned — all params at template"
+                      : serviceCount === 0
+                        ? "No free params — everything is on the cockpit, dock, or catalog"
+                        : allParamsForDisplay.length === 0
+                          ? "No params — add from the catalog"
+                          : "No params match"}
+                  </div>
+                ) : (
+                  <ConfigBelowGroups
+                    columnCount={columnCount}
+                    columnWidths={columnWidths}
+                    belowGroupsByColumn={filteredBelowGroupsByColumn}
+                    onGutterDragStart={handleGutterDragStart}
+                    draggingGutterIndex={draggingGutterIndex}
+                    renderGroup={(groupId) => {
+                      const group = belowGroupMetaById.get(groupId);
+                      if (!group) return null;
+                      return renderParamGroup(paramGroupsCtx, group);
+                    }}
+                  />
+                )}
+              </div>
             </div>
           </div>
         )}
 
-        {/* Engine chips hidden while harness wizard owns the panel */}
-        {!fullAutoFixed && (
-          <div className={paramsBypassedClass}>
-            {allParamsForDisplay.length === 0 ? (
-              <div className="eng-no-params type-body font-mono opacity-50">NO PARAMS DEFINED</div>
-            ) : belowGroupKeys.length === 0 ? null : !filteredBelowHasAny ? (
-              <div className="eng-no-params type-body font-mono opacity-50">
-                NO PARAMS MATCH “{paramFilter.trim()}”
-              </div>
-            ) : (
-              <ConfigBelowGroups
-                columnCount={columnCount}
-                columnWidths={columnWidths}
-                belowGroupsByColumn={filteredBelowGroupsByColumn}
-                onGutterDragStart={handleGutterDragStart}
-                draggingGutterIndex={draggingGutterIndex}
-                layoutModeActive={layoutModeActive}
-                renderGroup={(groupId) => {
-                  const group = belowGroupMetaById.get(groupId);
-                  if (!group) return null;
-                  return renderParamGroup(paramGroupsCtx, group, "below", undefined);
-                }}
-              />
-            )}
-
-            {uiDensityCompact && configView === "full" && launchDockPosition === "bottom" && !launchDockCollapsed ? (
-              <div className="config-launch-dock__flags-scroll">{renderCustomFlagsBlock()}</div>
-            ) : null}
-          </div>
-        )}
+        {!fullAutoFixed
+          && uiDensityCompact
+          && configView === "full"
+          && launchDockPosition === "bottom"
+          && !launchDockCollapsed ? (
+          <div className="config-launch-dock__flags-scroll">{renderCustomFlagsBlock()}</div>
+        ) : null}
       </div>
 
       {launchDockPosition === "bottom" && (
@@ -3395,6 +3541,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           fullAutoFixed={fullAutoFixed}
           modelIsDraftOnly={modelIsDraftOnly}
           renderCustomFlags={renderCustomFlagsBlock}
+          compatSlot={
+            <CompatPanel defs={allParamsResolved} config={config} onChange={updateParam} />
+          }
           uiDensityCompact={uiDensityCompact}
           configView={configView}
           aliasDisplayValue={aliasDisplayValue}
@@ -3499,6 +3648,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 fullAutoFixed={fullAutoFixed}
                 modelIsDraftOnly={modelIsDraftOnly}
                 renderCustomFlags={renderCustomFlagsBlock}
+                compatSlot={
+                  <CompatPanel defs={allParamsResolved} config={config} onChange={updateParam} />
+                }
                 uiDensityCompact={uiDensityCompact}
                 configView={configView}
                 aliasDisplayValue={aliasDisplayValue}

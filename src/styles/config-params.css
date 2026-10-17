@@ -81,7 +81,6 @@
 .cfg-fill--a10 { background: color-mix(in srgb, var(--theme-accent) 10%, transparent); }
 .cfg-fill--a25 { background: color-mix(in srgb, var(--theme-accent) 25%, transparent); }
 .cfg-fill--warn--a3 { background: color-mix(in srgb, var(--theme-warn) 3%, transparent); }
-.cfg-fill--warn--a8 { background: color-mix(in srgb, var(--theme-warn) 8%, transparent); }
 .cfg-fill--warn--a20 { background: color-mix(in srgb, var(--theme-warn) 20%, transparent); }
 .cfg-fill--warn--a30 { background: color-mix(in srgb, var(--theme-warn) 30%, transparent); }
 .cfg-fill--warn--a40 { background: color-mix(in srgb, var(--theme-warn) 40%, transparent); }

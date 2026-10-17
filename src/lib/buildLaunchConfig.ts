@@ -15,6 +15,7 @@ import type {
   VramManifest,
 } from "./types";
 import { buildAutoVramLaunchParams } from "./autoVramLaunch";
+import { sameParamValue } from "./engineSurfaces";
 import { forecastSnapshotFromManifest } from "./forecastSnapshot";
 import { buildLaunchExtraParams, resolveParamDefaultValue } from "./paramConfigResolve";
 import { vramTopoTag } from "./telemetryGpu";
@@ -134,6 +135,14 @@ export function buildLaunchConfig(input: BuildLaunchConfigInput): EngineConfig {
   const profileValues = input.profileValues ?? input.config ?? {};
   const cockpitLive = input.config ?? profileValues;
 
+  // Anything the user changed from template still reaches the CLI in Essentials.
+  const tunedKeys = new Set<string>();
+  for (const [key, value] of Object.entries(input.config ?? {})) {
+    const factory = factoryDefaults[key];
+    if (factory === undefined || value === undefined) continue;
+    if (!sameParamValue(value, factory)) tunedKeys.add(key);
+  }
+
   const method: SpecBoostMethod =
     specMethodIn
     ?? (isAnySpecProfileActive(allParamsResolved)
@@ -175,6 +184,7 @@ export function buildLaunchConfig(input: BuildLaunchConfigInput): EngineConfig {
     essentialFactoryKeys,
     specActive: method !== "off",
     allParams: allParamsResolved,
+    tunedKeys,
   }).filter((k) => !SPEC_CLI_KEYS.has(k) && !k.startsWith("mtp_") && !k.startsWith("dflash_"));
 
   // Only emit allowed keys from the merged bag

@@ -186,7 +186,6 @@ export const KEYS = {
   configParamLegend: `${STORAGE_PREFIX}config-param-legend`,
   displayTexture: `${STORAGE_PREFIX}display-texture`,
   industrialBezelTexture: `${STORAGE_PREFIX}industrial-bezel-texture`,
-  configLayoutMode: `${STORAGE_PREFIX}config-layout-mode`,
   /** Engine config launch dock — bottom bar or right rail (`bottom` | `right`). */
   launchDockPosition: `${STORAGE_PREFIX}launch-dock-position`,
   /** Set when user picks dock position manually — disables viewport auto-suggest. */

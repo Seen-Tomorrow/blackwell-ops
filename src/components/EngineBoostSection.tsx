@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type {
   BrainsId,
   CodingModeId,
@@ -56,6 +57,7 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
     embedCtx,
     ctxStripProps,
     flagToggles,
+    instrumentSlot,
   } = props;
 
   if (!show) return null;
@@ -114,6 +116,7 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
         specDetailParams={specDetailParams}
         embedCtx={embedCtx}
         {...(embedCtx ? ctxStripProps : {})}
+        instrumentSlot={instrumentSlot}
       />
     </div>
   );
@@ -169,4 +172,5 @@ export interface EngineBoostSectionProps {
   embedCtx: boolean;
   ctxStripProps: Omit<CockpitCtxStripProps, "className">;
   flagToggles: CockpitFlagToggle[];
+  instrumentSlot?: ReactNode;
 }
