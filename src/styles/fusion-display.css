@@ -436,9 +436,9 @@
   height: 100%;
   max-height: none;
   /* Edge-to-edge on phosphor face — no px/py inset */
-  padding: 0 !important;
+  padding: 0;
   margin: 0;
-  background: transparent !important;
+  background: transparent;
 }
 
 .vram-forecast-measuring {
@@ -1152,7 +1152,7 @@
   max-width: 100%;
   margin-left: 0;
   margin-right: 0;
-  background: transparent !important;
+  background: transparent;
 }
 /* Recap sits under MEMORY FORECAST SOURCE · LEARNED (right-packed cluster) */
 .vram-fc-measure__source .vram-fc-recap {
@@ -1175,7 +1175,7 @@
 .vram-fc-measure__main > .vram-fc-measure__rails,
 .vram-fc__body--assisted .vram-fc-measure__main > .vram-fc-measure__rails.vram-fc-bars--assisted,
 .vram-fc[data-forecast-mode="assisted"] .vram-fc-measure__main > .vram-fc-measure__rails.vram-fc-bars {
-  display: contents !important;
+  display: contents;
 }
 .vram-fc-measure__main .vram-fc-bar-row--vram {
   grid-column: 1;
@@ -1370,7 +1370,7 @@
   min-width: 0;
   height: 100%;
   min-height: 0;
-  border: none !important;
+  border: none;
   border-radius: 0;
   justify-content: flex-start;
   align-items: center;
@@ -1381,7 +1381,7 @@
 }
 .vram-fc-need-frame__need--ram {
   grid-row: 3;
-  border-top: 1px solid color-mix(in srgb, var(--need-frame-accent) 28%, transparent) !important;
+  border-top: 1px solid color-mix(in srgb, var(--need-frame-accent) 28%, transparent);
 }
 .vram-fc-need-frame__status-stack {
   position: relative;
@@ -1765,18 +1765,18 @@
 /* Prefer data-need-tone on chip — beats inherit + text-fill traps */
 .vram-fc-bar__need-chip[data-need-tone="caution"] .vram-fc-bar__need,
 .vram-fc-bar__need-chip .vram-fc-bar__need--caution {
-  color: var(--fixed-amber-300) !important;
-  -webkit-text-fill-color: var(--fixed-amber-300) !important;
+  color: var(--fixed-amber-300);
+  -webkit-text-fill-color: var(--fixed-amber-300);
 }
 .vram-fc-bar__need-chip[data-need-tone="warn"] .vram-fc-bar__need,
 .vram-fc-bar__need-chip .vram-fc-bar__need--warn {
-  color: var(--theme-telemetry-amber) !important;
-  -webkit-text-fill-color: var(--theme-telemetry-amber) !important;
+  color: var(--theme-telemetry-amber);
+  -webkit-text-fill-color: var(--theme-telemetry-amber);
 }
 .vram-fc-bar__need-chip[data-need-tone="hot"] .vram-fc-bar__need,
 .vram-fc-bar__need-chip .vram-fc-bar__need--hot {
-  color: var(--theme-telemetry-red) !important;
-  -webkit-text-fill-color: var(--theme-telemetry-red) !important;
+  color: var(--theme-telemetry-red);
+  -webkit-text-fill-color: var(--theme-telemetry-red);
 }
 .vram-fc-bar__need-chip .vram-fc-bar__unit {
   font-size: calc(9px * var(--vram-fc-scale, 1.12));
@@ -2420,7 +2420,7 @@
   flex: 0 0 auto;
   height: auto;
   align-content: start;
-  grid-template-rows: none !important;
+  grid-template-rows: none;
   grid-auto-rows: calc(
     (100cqh - (var(--gpu-topo-max-rows, 2) - 1) * var(--gpu-topo-gap))
     / var(--gpu-topo-max-rows, 2)
@@ -2683,7 +2683,7 @@
 
 /* Single-card: still full width of grid (cols may pad empty cells via 1fr rows) */
 .gpu-topology-root--fill[data-gpu-count="1"] .gpu-topology-grid {
-  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 
@@ -3107,11 +3107,11 @@ mult chip. * (Do not chain unfinished selectors — a prior strip accidentally p
   opacity: 0.72;
 }.phosphor-screen-inner .fusion-readout-idle{
   /* Brightness-clamped control muted — visible on all dark faces (SLATE grey too). */
-  color: var(--display-face-control-muted) !important;
-  opacity: 1 !important;
+  color: var(--display-face-control-muted);
+  opacity: 1;
 }.phosphor-screen-inner .fusion-readout-divider-idle{
-  color: color-mix(in srgb, var(--display-face-text-muted) 70%, #727c8c) !important;
-  opacity: 0.72 !important;
+  color: color-mix(in srgb, var(--display-face-text-muted) 70%, #727c8c);
+  opacity: 0.72;
 }.phosphor-screen-inner .ctx-bar-capacity-chip{
   border-color: var(--display-face-border);
   color: color-mix(in srgb, var(--display-face-text-muted) 72%, transparent);
@@ -3559,7 +3559,7 @@ html[data-industrial-bezel="brush"] {
     inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 65%, transparent),
     inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 40%, transparent),
     inset 0 8px 16px -6px var(--display-face-inset-top),
-    inset 0 -8px 16px -6px var(--display-face-inset-bottom) !important;
+    inset 0 -8px 16px -6px var(--display-face-inset-bottom);
 }
 
 /* Glass flush to frame; no outer Tailwind border/pad */
@@ -3765,10 +3765,10 @@ html[data-industrial-bezel="brush"] {
 
 
 .fusion-share-capture-stage[data-fusion-share-capture] .vram-badge-forecast > .fusion-overlay-fill {
-  padding: 0 !important;
-  border: none !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .fusion-share-capture-stage[data-fusion-share-capture] .phosphor-display-surface > *:not(.fusion-share-bezel-brand) {
@@ -3784,18 +3784,18 @@ html[data-industrial-bezel="brush"] {
 /* Hero TG/PP only — do not select [style*="6vh"] (matches 2.6vh per-slot as well). */
 .fusion-share-capture-stage[data-fusion-share-capture] .fusion-prefill-hero-value,
 .fusion-share-capture-stage[data-fusion-share-capture] .fusion-tg-hero-value {
-  font-size: 2.5rem !important;
-  line-height: 1 !important;
+  font-size: 2.5rem;
+  line-height: 1;
 }
 
 .fusion-share-capture-stage[data-fusion-share-capture] .fusion-per-slot-meter__value {
-  font-size: 1.15rem !important;
-  line-height: 1 !important;
+  font-size: 1.15rem;
+  line-height: 1;
 }
 
 .fusion-share-capture-stage[data-fusion-share-capture] .fusion-per-slot-meter {
-  top: 6px !important;
-  right: 8px !important;
+  top: 6px;
+  right: 8px;
 }
 
 /* Share card is static: the anti-jitter `ch` floors exist so the live strip does not
@@ -3810,16 +3810,16 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-share-capture-stage[data-fusion-share-capture] .bench-concurrency-badge {
-  bottom: -10px !important;
-  font-size: var(--type-micro) !important;
+  bottom: -10px;
+  font-size: var(--type-micro);
 }
 
 .fusion-share-capture-stage[data-fusion-share-capture] .bench-concurrency-badge--compact {
-  font-size: var(--type-hairline) !important;
+  font-size: var(--type-hairline);
 }
 
 .fusion-share-capture-stage[data-fusion-share-capture] .bench-concurrency-badge__mult {
-  padding: 0 6px !important;
+  padding: 0 6px;
 }
 
 .fusion-share-variant-btn {
@@ -4010,7 +4010,7 @@ html[data-industrial-bezel="brush"] {
 .phosphor-screen-inner .fusion-tps-caption,
 .phosphor-screen-inner .fusion-slotctx-id,
 .phosphor-screen-inner .fusion-tps-value--ghost {
-  color: var(--display-face-control-muted) !important;
+  color: var(--display-face-control-muted);
 }
 
 /* Accent ink (was text-nv-green[/70] -> --display-face-control-text) */
@@ -4020,24 +4020,24 @@ html[data-industrial-bezel="brush"] {
 .phosphor-screen-inner .fusion-tps-value--accent,
 .phosphor-screen-inner .fusion-slotctx-id--active,
 .phosphor-screen-inner .fusion-phase-badge--tg {
-  color: var(--display-face-control-text) !important;
+  color: var(--display-face-control-text);
 }
 
 /* Telemetry cyan (was text-telemetry-cyan[/70] -> #0088aa) */
 .phosphor-screen-inner .fusion-tps-value--info {
-  color: #0088aa !important;
+  color: #0088aa;
 }
 
 /* Orange/amber (was text-orange-400 / text-telemetry-amber[/80] -> #b87a00) */
 .phosphor-screen-inner .fusion-fuel-readout--warn,
 .phosphor-screen-inner .fusion-tps-value--warn,
 .phosphor-screen-inner .fusion-phase-badge--pp {
-  color: var(--fixed-brand-amber) !important;
+  color: var(--fixed-brand-amber);
 }
 
 /* Dark fill (was bg-stealth-dark -> --display-face-bar-bg) */
 .phosphor-screen-inner .fusion-fuel-track {
-  background: var(--display-face-bar-bg) !important;
+  background: var(--display-face-bar-bg);
 }
 
 /* Hairline borders (was border-stealth-border[/15..70] + border-stealth-muted[/30,60]
@@ -4047,7 +4047,7 @@ html[data-industrial-bezel="brush"] {
 .phosphor-screen-inner .fusion-phase-badge--idle,
 .phosphor-screen-inner .fusion-phase-badge--pp,
 .phosphor-screen-inner .fusion-phase-badge--tg {
-  border-color: var(--display-face-control-border) !important;
+  border-color: var(--display-face-control-border);
 }
 
 /* CTX bar inline text — dark with e-ink shadow for readability on colored fill */
@@ -5056,7 +5056,7 @@ html[data-industrial-bezel="brush"] {
   .fusion-ops-chip,
   .fusion-mode-seg__btn,
   .fusion-pp-progress__fill {
-    transition: none !important;
+    transition: none;
   }
 
   .fusion-ops-chip--stop.is-stopping {
@@ -5571,8 +5571,8 @@ html[data-industrial-bezel="brush"] {
 
 .fusion-bench-ghost__value {
   /* Match instrument hero scale, clamped for bench slot height */
-  font-size: clamp(1.55rem, 4.8vh, 2.65rem) !important;
-  line-height: 0.92 !important;
+  font-size: clamp(1.55rem, 4.8vh, 2.65rem);
+  line-height: 0.92;
   opacity: 0.42;
 }
 
@@ -5905,8 +5905,8 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-boot-disk__value {
-  font-size: clamp(1.55rem, 5vh, 2.35rem) !important;
-  line-height: 0.92 !important;
+  font-size: clamp(1.55rem, 5vh, 2.35rem);
+  line-height: 0.92;
   min-width: 7ch;
   text-align: center;
   color: color-mix(in srgb, var(--theme-telemetry-cyan) 42%, transparent);

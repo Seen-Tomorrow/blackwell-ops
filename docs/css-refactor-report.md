@@ -383,3 +383,39 @@ This trade removes ~1,000 literal paint sites and centralizes the palette.
   was live on the Config page throughout).
 - Remaining source importants are now concentrated in `fusion-display.css`
   (45 of 65).
+
+## fusion-display.css grouped cleanup
+
+- Removed 44 of the 45 importants in the last big file: skeleton padding/fill,
+  dominant source fill, assisted-rails `display: contents`, need-frame borders,
+  the three `data-need-tone` ink rules, compact-topology grid rows, the
+  `fusion-readout-idle` pair, the unified glass recess shadow, the whole
+  share-capture snapshot block, the phosphor face ink/track/border rules, the
+  reduced-motion `transition: none`, and the bench-ghost / boot-disk hero sizes.
+- Source total 65 -> 21; dist 73 -> 29. Budgets ratcheted to 24/32.
+- **Kept exactly one, because it is load-bearing:** `grid-template-rows: none`
+  on `.vram-fc__topo--compact .gpu-topology-root--fill:not([data-gpu-scroll="1"])
+  .gpu-topology-grid`. That rule's only competitor is an **inline style** —
+  `GpuTopology.tsx:97` writes `gridTemplateRows` on the same element — and no
+  CSS rule out-specifies it.
+- Its two siblings did come out, and the reason is the point:
+  - `[data-gpu-scroll="1"]` (the scrolled case) — the component writes **no**
+    inline row there (`fill && !scroll`), so nothing was competing.
+  - `[data-gpu-count="1"]` `grid-template-columns` — `cols === 1` whenever
+    `data-gpu-count="1"` (`GpuTopology.tsx:64`), so the inline
+    `repeat(1, minmax(0, 1fr))` computes identically to `minmax(0, 1fr)`.
+- Method: a cascade analyzer over all 26 partials compared each important site
+  against every competing declaration (specificity, source order, importance),
+  with candidates anchored on shared classes so element-only selectors could not
+  masquerade as competitors. Two groups it flagged as competing were in fact
+  mutually exclusive: the three `data-need-tone` rules, and the
+  `:not([data-gpu-scroll="1"])` / `[data-gpu-scroll="1"]` pair. The blind spot it
+  cannot see is inline styles and generated Tailwind utilities — those were
+  checked by hand against the TSX, which is how the one hold above was found.
+- Gates: `vite build`, `tsc --noEmit`, `vitest` 108/108, `css:audit` budgets pass.
+- User confirmed visual stability.
+- What is left (21 source) is now spread thin: 4 in `config.css`, 4 in
+  `launch.css`, 3 each in `chrome.css` / `playground.css` / `intel.css`, 1 each in
+  `catalog.css` / `cockpit.css` / `foundry.css`, plus the one held here. A further
+  pass needs per-site justification against inline styles rather than bulk
+  families — the cheap family-level wins are exhausted.
