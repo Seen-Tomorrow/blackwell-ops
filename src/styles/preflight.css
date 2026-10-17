@@ -356,7 +356,7 @@
   color: var(--theme-accent);
 }
 
-/* ══ Maintenance bay ═════════════════════════════════════════════════ */
+/* ══ USER'S EXTRA ═══════════════════════════════════════════════════ */
 
 .service-bay {
   border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
@@ -382,8 +382,7 @@
   text-transform: uppercase;
 }
 
-.service-bay__modes,
-.service-bay__sort {
+.service-bay__modes {
   display: inline-flex;
   align-items: stretch;
   border: 1px solid color-mix(in srgb, var(--theme-border) 80%, transparent);
@@ -391,8 +390,7 @@
   overflow: hidden;
 }
 
-.service-bay__mode,
-.service-bay__sort-btn {
+.service-bay__mode {
   padding: 2px 7px;
   border: 0;
   border-left: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
@@ -404,18 +402,15 @@
   cursor: pointer;
 }
 
-.service-bay__mode:first-child,
-.service-bay__sort-btn:first-child {
+.service-bay__mode:first-child {
   border-left: 0;
 }
 
-.service-bay__mode:hover,
-.service-bay__sort-btn:hover {
+.service-bay__mode:hover {
   color: var(--theme-text);
 }
 
-.service-bay__mode--active,
-.service-bay__sort-btn--active {
+.service-bay__mode--active {
   color: var(--theme-chip-active-text);
   background: var(--theme-chip-active-bg);
 }

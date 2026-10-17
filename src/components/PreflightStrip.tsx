@@ -2,8 +2,8 @@
  * PRE-FLIGHT — one line that replaces the parameter wall.
  *
  * Shows the resolved machine state (not editable knobs) and how far the panel
- * has drifted from template. Amber = tuned, red = compat risk. The maintenance
- * bay opener lives on the right edge.
+ * has drifted from template. Amber = tuned, red = compat risk. The USER'S EXTRA
+ * opener lives on the right edge.
  */
 
 import type { ReactNode } from "react";
@@ -149,11 +149,11 @@ export default function PreflightStrip(props: PreflightStripProps) {
           aria-expanded={serviceOpen}
           title={
             serviceOpen
-              ? "Close the maintenance bay"
-              : "Open the maintenance bay — every remaining engine param, including catalog additions"
+              ? "Close USER'S EXTRA"
+              : "Open USER'S EXTRA — every remaining engine param, including catalog additions"
           }
         >
-          <span className="preflight-strip__service-label">MAINTENANCE</span>
+          <span className="preflight-strip__service-label">USER'S EXTRA</span>
           <span className="preflight-strip__service-count">{serviceCount}</span>
           <span className="preflight-strip__service-action">{serviceOpen ? "CLOSE" : "OPEN"}</span>
         </button>

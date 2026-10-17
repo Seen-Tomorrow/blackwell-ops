@@ -542,10 +542,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     return new Set([...FULL_AUTO_COLLAPSE_GROUPS]);
   });
 
-  /** Maintenance bay — closed by default; the pre-flight strip owns the opener. */
+  /** USER'S EXTRA — closed by default; the pre-flight strip owns the opener. */
   const [serviceOpen, setServiceOpen] = useState(false);
   const [bayMode, setBayMode] = useState<"all" | "tuned">("all");
-  const [baySort, setBaySort] = useState<"template" | "tuned" | "name">("template");
 
   const openService = useCallback((mode: "all" | "tuned") => {
     setBayMode(mode);
@@ -1778,27 +1777,16 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     return map;
   }, [belowGroupKeys]);
 
-  /** Local panel filter — matches group id/label or any param key/label in the group. */
-  const sortedBelowKeys = useMemo(() => {
-    const keys = [...belowGroupKeys];
-    if (baySort === "name") return keys.sort((a, b) => a.localeCompare(b));
-    if (baySort === "tuned") {
-      const score = (id: string) =>
-        (groupedParams[id] ?? []).filter((p) => isParamTuned(p, config)).length;
-      return keys.sort((a, b) => score(b) - score(a) || a.localeCompare(b));
-    }
-    return keys;
-  }, [belowGroupKeys, baySort, groupedParams, config]);
-
+  /** Columns + TUNED view over the user's extra params. */
   const filteredBelowGroupsByColumn = useMemo(() => {
-    const partitions = partitionBelowGroupsByColumn(sortedBelowKeys, groupColumn, columnCount);
+    const partitions = partitionBelowGroupsByColumn(belowGroupKeys, groupColumn, columnCount);
     return partitions.map((col) =>
       col.filter((groupId) => {
         const params = groupedParams[groupId] || [];
         return bayMode !== "tuned" || params.some((p) => isParamTuned(p, config));
       }),
     );
-  }, [sortedBelowKeys, groupColumn, columnCount, groupedParams, bayMode, config]);
+  }, [belowGroupKeys, groupColumn, columnCount, groupedParams, bayMode, config]);
 
   /** Param-level count of rows that will actually render (for the empty state). */
   const visibleBelowParamCount = useMemo(() => {
@@ -3407,52 +3395,31 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           />
         )}
 
-        {/* MAINTENANCE BAY — closed by default; every remaining param + catalog additions. */}
+        {/* USER'S EXTRA — closed by default; every remaining param + catalog additions. */}
         {!fullAutoFixed && serviceOpen && (
           <div className={paramsBypassedClass}>
             <div className="service-bay">
               <div className="service-bay__bar">
-                <span className="service-bay__title">MAINTENANCE</span>
+                <span className="service-bay__title">USER'S EXTRA</span>
                 {serviceCount > 0 && (
-                  <>
-                <div className="service-bay__modes" role="group" aria-label="Maintenance filter">
-                  <button
-                    type="button"
-                    className={`service-bay__mode${bayMode === "all" ? " service-bay__mode--active" : ""}`}
-                    onClick={() => setBayMode("all")}
-                    title="Every remaining engine param"
-                  >
-                    ALL {serviceCount}
-                  </button>
-                  <button
-                    type="button"
-                    className={`service-bay__mode${bayMode === "tuned" ? " service-bay__mode--active" : ""}`}
-                    onClick={() => setBayMode("tuned")}
-                    title="Only params that differ from template"
-                  >
-                    TUNED {freeTunedCount}
-                  </button>
-                </div>
-                <div className="service-bay__sort" role="group" aria-label="Maintenance sort">
-                  {(["template", "tuned", "name"] as const).map((sort) => (
+                  <div className="service-bay__modes" role="group" aria-label="Extra param filter">
                     <button
-                      key={sort}
                       type="button"
-                      className={`service-bay__sort-btn${baySort === sort ? " service-bay__sort-btn--active" : ""}`}
-                      onClick={() => setBaySort(sort)}
-                      title={
-                        sort === "template"
-                          ? "Template group order"
-                          : sort === "tuned"
-                            ? "Groups with the most tuned params first"
-                            : "Alphabetical"
-                      }
+                      className={`service-bay__mode${bayMode === "all" ? " service-bay__mode--active" : ""}`}
+                      onClick={() => setBayMode("all")}
+                      title="Every extra engine param"
                     >
-                      {sort.toUpperCase()}
+                      ALL {serviceCount}
                     </button>
-                  ))}
-                </div>
-                  </>
+                    <button
+                      type="button"
+                      className={`service-bay__mode${bayMode === "tuned" ? " service-bay__mode--active" : ""}`}
+                      onClick={() => setBayMode("tuned")}
+                      title="Only extras that differ from template"
+                    >
+                      TUNED {freeTunedCount}
+                    </button>
+                  </div>
                 )}
                 <button
                   type="button"
@@ -3467,12 +3434,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 {visibleBelowParamCount === 0 ? (
                   <div className="service-bay__empty">
                     {allParamsForDisplay.length === 0
-                      ? "No params — add from the catalog"
+                      ? "No extra params — add from the catalog"
                       : serviceCount === 0
-                        ? "No free params — everything is on the cockpit, dock, or catalog"
+                        ? "No extra params — everything is on the cockpit, dock, or catalog"
                         : bayMode === "tuned"
                           ? "Nothing tuned — all params at template"
-                          : "No free params"}
+                          : "No extra params"}
                   </div>
                 ) : (
                   <ConfigBelowGroups
