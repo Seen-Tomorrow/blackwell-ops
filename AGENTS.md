@@ -346,8 +346,10 @@ Native crashes also append `%TEMP%\blackwell-crash.log` (heap `0xC0000374`, ille
 
 ## Tests
 
-**`npm run check` is the one command** — `tsc --noEmit` → vitest (56) → `cargo test` (282),
-about 12 s warm. Run it instead of the three separately. `lint:dead` (knip) and
+**`npm run check` is the one command** — `css:audit` → `css:minify` → `tsc --noEmit` →
+vitest (108) → `cargo test` (319, 1 ignored), about 15 s warm. Run it instead of the parts
+separately. `css:minify` replays the lightningcss pass `vite build` uses, so the `*/`-inside-a
+comment trap fails here instead of in a release build. `lint:dead` (knip) and
 `lint:dead:rust` (cargo machete) are deliberately NOT in it: they report real but accepted
 debt today, so they stay opt-in and never gate. `.github/workflows/test.yml` runs both
 suites on every push to `main` and every PR; `majestic ship` runs them too. Rust tests live
