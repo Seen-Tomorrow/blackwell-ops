@@ -94,6 +94,7 @@ import {
   syncComboModelPaths,
 } from "../lib/launchPresets";
 import { getLaunchPolicy, resolveLaunchPolicyId } from "../lib/launchPolicy";
+import { FULL_AUTO_GOAL_PLANS, type FullAutoGoal } from "../lib/fullAutoGoals";
 import { applySpecBoostProfiles } from "../lib/applySpecBoost";
 import ParamCatalogSearch from "./ParamCatalogSearch";
 import {
@@ -1030,6 +1031,21 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     dflashGettable,
     dflashDraftLabel,
   } = cockpit;
+
+  /** FULL AUTO owns the cockpit until the user takes control back. */
+  const [autoGoal, setAutoGoal] = useState<FullAutoGoal | null>("balanced");
+  const handleAutoGoal = useCallback(
+    (goal: FullAutoGoal) => {
+      setAutoGoal(goal);
+      const plan = FULL_AUTO_GOAL_PLANS[goal];
+      void applyFullAutoCockpit(plan.codingMode, plan.speed, plan.brains, plan.think, cockpitOpts);
+    },
+    [applyFullAutoCockpit, cockpitOpts],
+  );
+  const handleTakeControl = useCallback(() => {
+    setAutoGoal(null);
+    setFullAuto(false);
+  }, [setFullAuto]);
 
   const dflash = useSpecDraft({
     model,
@@ -3015,10 +3031,21 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         onFitLaunchChange={(nextFullAuto) => {
           setFullAuto(nextFullAuto);
           if (nextFullAuto) {
+            setAutoGoal("balanced");
+            const plan = FULL_AUTO_GOAL_PLANS.balanced;
+            void applyFullAutoCockpit(
+              plan.codingMode,
+              plan.speed,
+              plan.brains,
+              plan.think,
+              cockpitOpts,
+            );
             updateParam("split", "none");
             if (String(config["offload_mode"] ?? "regular").toLowerCase() === "moe_optimal") {
               updateParam("offload_mode", "regular");
             }
+          } else {
+            setAutoGoal(null);
           }
         }}
         showFitOrDeviceChrome={!modelIsDraftOnly && (fitLaunchSupported || Boolean(model && gpus.length > 0))}
@@ -3326,6 +3353,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               )}
             </>
           }
+          autoGoal={fullAutoFixed ? autoGoal : null}
+          onAutoGoal={fullAutoFixed ? handleAutoGoal : undefined}
+          onTakeControl={fullAutoFixed ? handleTakeControl : undefined}
         />
         {!(model && !modelIsDraftOnly && showCockpitSurface) && (
           <div className="cockpit-instruments cockpit-instruments--standalone">

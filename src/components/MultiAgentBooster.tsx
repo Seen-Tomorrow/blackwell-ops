@@ -21,6 +21,8 @@ import {
 import CockpitCtxStrip from "./CockpitCtxStrip";
 import CockpitSlider from "./CockpitSlider";
 import CockpitFlagToolbar, { type CockpitFlagToggle } from "./CockpitFlagToolbar";
+import FullAutoGoalRail from "./FullAutoGoalRail";
+import type { FullAutoGoal } from "../lib/fullAutoGoals";
 
 export type DflashGetUiState = "idle" | "searching" | "downloading" | "error";
 
@@ -122,6 +124,10 @@ export interface MultiAgentBoosterProps {
   /** Unified KV chip in the CTX strip footer. */
   kvUnified?: boolean;
   onToggleKvUnified?: () => void;
+  /** FULL AUTO goal rail (hero layout only). */
+  autoGoal?: FullAutoGoal | null;
+  onAutoGoal?: (goal: FullAutoGoal) => void;
+  onTakeControl?: () => void;
 
 }
 
@@ -176,6 +182,9 @@ export default function MultiAgentBooster({
   instrumentSlot,
   kvUnified,
   onToggleKvUnified,
+  autoGoal,
+  onAutoGoal,
+  onTakeControl,
 }: MultiAgentBoosterProps) {
   const hero = layout === "hero";
   const densityUnified = !hero;
@@ -609,6 +618,15 @@ export default function MultiAgentBooster({
           <CockpitFlagToolbar flags={flagToggles} />
         </div>
       </div>
+
+      {hero && onAutoGoal ? (
+        <FullAutoGoalRail
+          goal={autoGoal ?? null}
+          outcome={plan.outcome}
+          onGoal={onAutoGoal}
+          onTakeControl={onTakeControl}
+        />
+      ) : null}
 
       <div className="full-auto-cockpit__body space-y-3">
         {showCtxRail && onCtxChange != null && (

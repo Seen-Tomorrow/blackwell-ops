@@ -6,6 +6,7 @@ import type {
   ThinkId,
 } from "../lib/multiAgentBooster";
 import type { SpecCapability } from "../lib/specDraft";
+import type { FullAutoGoal } from "../lib/fullAutoGoals";
 import MultiAgentBooster, {
   type CockpitSpecDetailParam,
   type DflashGetUiState,
@@ -58,9 +59,17 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
     ctxStripProps,
     flagToggles,
     instrumentSlot,
+    autoGoal,
+    onAutoGoal,
+    onTakeControl,
   } = props;
 
   if (!show) return null;
+
+  const manual = (apply: () => void) => {
+    onTakeControl?.();
+    apply();
+  };
 
   return (
     <div className={wrapperClass}>
@@ -70,16 +79,16 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
         brains={brains}
         think={think}
         onCodingMode={(m) => {
-          void applyCockpit(m, speedBoost, brains, think, cockpitOpts);
+          manual(() => { void applyCockpit(m, speedBoost, brains, think, cockpitOpts); });
         }}
         onSpeedBoost={(s) => {
-          void applyCockpit(codingMode, s, brains, think, cockpitOpts);
+          manual(() => { void applyCockpit(codingMode, s, brains, think, cockpitOpts); });
         }}
         onBrains={(b) => {
-          void applyCockpit(codingMode, speedBoost, b, think, cockpitOpts);
+          manual(() => { void applyCockpit(codingMode, speedBoost, b, think, cockpitOpts); });
         }}
         onThink={(t) => {
-          void applyCockpit(codingMode, speedBoost, brains, t, cockpitOpts);
+          manual(() => { void applyCockpit(codingMode, speedBoost, brains, t, cockpitOpts); });
         }}
         flagToggles={flagToggles}
         capabilities={capabilities}
@@ -108,15 +117,20 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
         onRawSpecType={(raw) => {
           // Raw factory types only — product Off/MTP/DFlash use onSpeedBoost alone.
           if (raw == null) return;
-          void applyCockpit(codingMode, "off", brains, think, {
-            powerUser: true,
-            rawSpecType: raw,
+          manual(() => {
+            void applyCockpit(codingMode, "off", brains, think, {
+              powerUser: true,
+              rawSpecType: raw,
+            });
           });
         }}
         specDetailParams={specDetailParams}
         embedCtx={embedCtx}
         {...(embedCtx ? ctxStripProps : {})}
         instrumentSlot={instrumentSlot}
+        autoGoal={autoGoal}
+        onAutoGoal={onAutoGoal}
+        onTakeControl={onTakeControl}
       />
     </div>
   );
@@ -173,4 +187,7 @@ export interface EngineBoostSectionProps {
   ctxStripProps: Omit<CockpitCtxStripProps, "className">;
   flagToggles: CockpitFlagToggle[];
   instrumentSlot?: ReactNode;
+  autoGoal?: FullAutoGoal | null;
+  onAutoGoal?: (goal: FullAutoGoal) => void;
+  onTakeControl?: () => void;
 }

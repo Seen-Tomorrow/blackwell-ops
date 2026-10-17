@@ -54,6 +54,58 @@
   gap: 0.5rem;
 }
 
+/* FULL AUTO goal rail — outcome first, cockpit draft a click away. */
+.full-auto-goal-rail {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: 0 0.45rem 0.55rem;
+  padding: 0.3rem 0.4rem;
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-panel-accent) 45%, transparent);
+}
+
+.full-auto-goal-rail__label {
+  flex-shrink: 0;
+  color: var(--theme-accent-bright);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.14em;
+}
+
+.full-auto-goal-rail__outcome {
+  flex: 1 1 14rem;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.full-auto-goal-rail__take {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.full-auto-goal-rail__take:hover {
+  color: var(--theme-accent-bright);
+  border-color: color-mix(in srgb, var(--theme-accent) 55%, transparent);
+}
+
 .full-auto-cockpit__flag-toolbar {
   display: flex;
   flex-direction: row;
