@@ -321,6 +321,7 @@ export default function MultiAgentBooster({
 
   const mtpAvailable = capSet.has("mtp");
   const dflashAvailable = dflashLibraryReady || dflashGettable || capSet.has("dflash");
+  const heroSpecCapable = mtpAvailable || dflashAvailable;
   const mtpLocksAgents = displayBoost === "mtp";
 
   const boostMarks = useMemo((): BoostMarkParts[] => {
@@ -415,8 +416,8 @@ export default function MultiAgentBooster({
   }, [powerMode, displayBoost, activeRawSpecType]);
 
   const heroSpecSlider =
-    hero && onAutoGoal && onAutoSpec && showBoost ? (
-      <div className="full-auto-cockpit__hero-spec">
+    hero && heroSpecCapable && onAutoGoal && onAutoSpec && showBoost ? (
+      <div>
         <CockpitSlider
           label="SPEC"
           value={boostSliderValue}
@@ -744,8 +745,15 @@ export default function MultiAgentBooster({
       {hero && onAutoGoal ? (
         <div className="full-auto-cockpit__body space-y-3">
           {ctxStrip}
-          {heroSpecSlider}
-          {violetStrip}
+          {heroSpecSlider || violetStrip ? (
+            <div
+              className="full-auto-cockpit__hero-spec-stack space-y-2"
+              style={{ width: "min(50%, 760px)" }}
+            >
+              {heroSpecSlider}
+              {violetStrip}
+            </div>
+          ) : null}
         </div>
       ) : null}
 
