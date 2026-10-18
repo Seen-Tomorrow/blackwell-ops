@@ -421,7 +421,7 @@
       ]
     },
     {
-      "default": 0.5,
+      "default": 0,
       "dock": "",
       "essentialsHiddenValues": [
         0.6,
@@ -806,6 +806,6 @@
       "4"
     ]
   },
-  "templateVersion": 53,
+  "templateVersion": 54,
   "template_type": "ggml-llama"
 }
