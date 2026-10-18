@@ -80,6 +80,12 @@ export default defineConfig(async () => ({
         "**/llama.cpp/**",
         "**/node_modules/**",
         "**/.majestic-out/**",
+        // npm/update leaves a locked `.package-lock.json.<pid>.<uuid>.tmpdir`
+        // in the repo root; chokidar surfaces EBUSY as an unhandled watcher
+        // error and kills the dev server even though nothing in src changed.
+        "**/.package-lock.json.*.tmpdir/**",
+        "**/.package-lock.json.*",
+        "**/*.tmp",
         // zg (zvec-grep) daemon holds RocksDB LOCK files here with a share mode
         // that makes fs.watch fail with EBUSY on Windows. chokidar only
         // suppresses EPERM/EACCES — an EBUSY watcher error kills the dev server.
