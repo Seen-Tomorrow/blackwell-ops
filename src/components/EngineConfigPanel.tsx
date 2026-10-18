@@ -1193,6 +1193,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       setAutoGoal(goal);
       setAutoSpecOverride(null);
       saveFullAutoGoal(goal);
+      if (allParamsResolved.some((param) => param.key === "flash_attn")) {
+        // FULL AUTO always runs flash attention; the hero no longer offers the toggle.
+        updateParam("flash_attn", "on");
+      }
       if (goal === "fastest" && gpus.length > 0) {
         // FASTEST starts on one card. No perf table yet — use the card with the
         // most free VRAM in the same arch family; split only if FIT says it must.

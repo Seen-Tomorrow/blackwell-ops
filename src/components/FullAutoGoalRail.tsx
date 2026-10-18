@@ -35,7 +35,7 @@ export default function FullAutoGoalRail({
 }: FullAutoGoalRailProps) {
   return (
     <div className={`full-auto-goal-rail${hero ? " full-auto-goal-rail--hero" : ""}`}>
-      <span className="full-auto-goal-rail__label">AUTO</span>
+      <span className="full-auto-goal-rail__label">GOAL</span>
       <SegmentSwitch
         ariaLabel="Full Auto goal"
         options={FULL_AUTO_GOALS.map((option) => ({
@@ -51,7 +51,7 @@ export default function FullAutoGoalRail({
         tone="accent"
         className="segment-switch--gpu-bezel segment-switch--auto-goal"
       />
-      <span className="full-auto-goal-rail__label">WORK</span>
+      <span className="full-auto-goal-rail__label">TASK</span>
       <SegmentSwitch
         ariaLabel="Full Auto workload"
         options={FULL_AUTO_WORKLOADS.map((option) => ({

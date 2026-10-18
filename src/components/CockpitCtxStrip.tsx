@@ -83,6 +83,8 @@ export interface CockpitCtxStripProps {
   /** Unified KV toggle — one cache pool across slots. */
   kvUnified?: boolean;
   onToggleKvUnified?: () => void;
+  /** FULL AUTO hero keeps KV policy out of the CTX bar. */
+  hideKvControls?: boolean;
 }
 
 export default function CockpitCtxStrip({
@@ -101,6 +103,7 @@ export default function CockpitCtxStrip({
   standalone = true,
   kvUnified = true,
   onToggleKvUnified,
+  hideKvControls = false,
 }: CockpitCtxStripProps) {
   const { mode, cycle } = useCtxLearnedMarkMode();
   const [ribbonPlace, setRibbonPlace] = useState<"track" | "marks">("track");
@@ -254,7 +257,7 @@ export default function CockpitCtxStrip({
         </div>
 
         <span className="full-auto-cockpit__ctx-footer-right">
-          {onToggleKvUnified ? (
+          {onToggleKvUnified && !hideKvControls ? (
             <span className="full-auto-cockpit__ctx-kv-unit">
               <span className="full-auto-cockpit__ctx-kv-label">KV</span>
               <SegmentSwitch

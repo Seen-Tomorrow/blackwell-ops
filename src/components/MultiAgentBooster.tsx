@@ -321,7 +321,7 @@ export default function MultiAgentBooster({
 
   const mtpAvailable = capSet.has("mtp");
   const dflashAvailable = dflashLibraryReady || dflashGettable || capSet.has("dflash");
-  const heroSpecCapable = mtpAvailable || dflashAvailable;
+  const heroSpecCapable = capSet.has("mtp") || capSet.has("dflash");
   const mtpLocksAgents = displayBoost === "mtp";
 
   const boostMarks = useMemo((): BoostMarkParts[] => {
@@ -595,7 +595,11 @@ export default function MultiAgentBooster({
               rendered.findIndex((v) => String(v) === String(p.current)),
             );
             return (
-              <div key={p.key} className="full-auto-cockpit__spec-extra-param inline-flex items-center gap-1 min-w-0">
+              <div
+                key={p.key}
+                className="full-auto-cockpit__spec-extra-param inline-flex items-center gap-1 min-w-0"
+                style={{ flex: "0 0 auto" }}
+              >
                 {i > 0 ? <span className="full-auto-cockpit__spec-extra-sep" aria-hidden>|</span> : null}
                 <span
                   className={`full-auto-cockpit__spec-extra-key shrink-0${
@@ -679,6 +683,7 @@ export default function MultiAgentBooster({
         standalone={false}
         kvUnified={kvUnified}
         onToggleKvUnified={onToggleKvUnified}
+        hideKvControls={hero}
       />
     ) : null;
 
@@ -723,28 +728,27 @@ export default function MultiAgentBooster({
           </span>
         ) : null}
         <div className="full-auto-cockpit__header-right flex items-center gap-1.5 min-w-0 ml-auto shrink-0">
-          <CockpitFlagToolbar flags={flagToggles} />
+          <CockpitFlagToolbar
+            flags={hero ? flagToggles.filter((f) => f.key !== "flash_attn") : flagToggles}
+          />
         </div>
       </div>
 
       {hero && onAutoGoal ? (
-        <FullAutoGoalRail
-          goal={autoGoal ?? null}
-          workload={autoWorkload ?? null}
-          outcome={autoOutcome}
-          hero
-          fitState={autoFitState}
-          fixing={autoFixing}
-          onGoal={onAutoGoal}
-          onWorkload={onAutoWorkload ?? (() => {})}
-          onFix={onAutoFix}
-          onTakeControl={onTakeControl}
-        />
-      ) : null}
-
-      {hero && onAutoGoal ? (
         <div className="full-auto-cockpit__body space-y-3">
           {ctxStrip}
+          <FullAutoGoalRail
+            goal={autoGoal ?? null}
+            workload={autoWorkload ?? null}
+            outcome={autoOutcome}
+            hero
+            fitState={autoFitState}
+            fixing={autoFixing}
+            onGoal={onAutoGoal}
+            onWorkload={onAutoWorkload ?? (() => {})}
+            onFix={onAutoFix}
+            onTakeControl={onTakeControl}
+          />
           {heroSpecSlider || violetStrip ? (
             <div
               className="full-auto-cockpit__hero-spec-stack space-y-2"
