@@ -45,28 +45,26 @@ export default function FullAutoGoalRail({
         style={{ flex: "1 1 620px" }}
       >
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <div className="flex min-w-0 items-center gap-2">
-            <span
-              className="shrink-0 type-micro uppercase tracking-widest"
-              style={{ color: "var(--theme-text-muted)" }}
-            >
-              GOAL
-            </span>
-            <CockpitNavSegment
-              ariaLabel="Full Auto goal"
-              options={FULL_AUTO_GOALS.map((option) => ({
-                id: option.id,
-                label: option.label,
-                title: option.note,
-              }))}
-              selectedId={goal ?? ""}
-              onSelect={(id) => {
-                if (id) onGoal(id as FullAutoGoal);
-              }}
-              size="primary"
-              className="segment-switch--auto-goal min-w-0"
-            />
-          </div>
+          <span
+            className="type-body uppercase tracking-widest"
+            style={{ color: "var(--theme-text-muted)" }}
+          >
+            GOAL
+          </span>
+          <CockpitNavSegment
+            ariaLabel="Full Auto goal"
+            options={FULL_AUTO_GOALS.map((option) => ({
+              id: option.id,
+              label: option.label,
+              title: option.note,
+            }))}
+            selectedId={goal ?? ""}
+            onSelect={(id) => {
+              if (id) onGoal(id as FullAutoGoal);
+            }}
+            size="primary"
+            className="segment-switch--auto-goal min-w-0"
+          />
           {specSlot ? (
             <div
               className="flex items-center justify-end"
@@ -76,9 +74,9 @@ export default function FullAutoGoalRail({
             </div>
           ) : null}
         </div>
-        <div className="flex min-w-0 flex-1 items-center gap-2">
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
           <span
-            className="shrink-0 type-micro uppercase tracking-widest"
+            className="type-body uppercase tracking-widest"
             style={{ color: "var(--theme-text-muted)" }}
           >
             TASK
@@ -99,30 +97,40 @@ export default function FullAutoGoalRail({
           />
         </div>
       </div>
-      {fitState === "tight" && onFix ? (
-        <button
-          type="button"
-          className="full-auto-goal-rail__take"
-          onClick={onFix}
-          disabled={fixing}
-          title="Run the low-VRAM FIT probe, then correct CTX/batch — or let FASTEST try a split after the single GPU fails"
-        >
-          {fixing ? "PROBING…" : "LOW-VRAM PROBE"}
-        </button>
-      ) : null}
-      {onTakeControl ? (
-        <button
-          type="button"
-          className="full-auto-goal-rail__take"
-          onClick={onTakeControl}
-          title="Switch to ASSISTED and unlock the cockpit"
-        >
-          TAKE CONTROL
-        </button>
-      ) : null}
       {specExtraSlot ? (
         <div style={{ flex: "1 1 100%", padding: "5px 6px 0" }}>
           {specExtraSlot}
+        </div>
+      ) : null}
+      {fitState === "tight" && onFix ? (
+        <div
+          className="flex items-center justify-end"
+          style={{ flex: "1 1 100%", padding: "6px 6px 0" }}
+        >
+          <button
+            type="button"
+            className="full-auto-goal-rail__take"
+            onClick={onFix}
+            disabled={fixing}
+            title="Run the low-VRAM FIT probe, then correct CTX/batch — or let FASTEST try a split after the single GPU fails"
+          >
+            {fixing ? "PROBING…" : "LOW-VRAM PROBE"}
+          </button>
+        </div>
+      ) : null}
+      {onTakeControl ? (
+        <div
+          className="flex items-center justify-end"
+          style={{ flex: "1 1 100%", padding: "6px 6px 0" }}
+        >
+          <button
+            type="button"
+            className="full-auto-goal-rail__take"
+            onClick={onTakeControl}
+            title="Switch to ASSISTED and unlock the cockpit"
+          >
+            TAKE CONTROL
+          </button>
         </div>
       ) : null}
     </div>

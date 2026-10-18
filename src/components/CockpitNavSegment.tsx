@@ -96,30 +96,30 @@ export default function CockpitNavSegment({
     "--seg-thumb-width": `${thumb.width}px`,
     "--seg-thumb-height": `${thumb.height}px`,
     boxSizing: "border-box",
-    flex: primary ? "1 1 0" : "0 0 auto",
-    width: primary ? "auto" : "max-content",
+    flex: "0 0 auto",
+    width: primary ? "100%" : "max-content",
     height: primary
-      ? "calc(48px * var(--header-nav-scale, 1.12))"
-      : "calc(30px * var(--header-nav-scale, 1.12))",
+      ? "calc(48px * var(--header-nav-scale, 1.12) / var(--ui-text-scale, 1))"
+      : "calc(30px * var(--header-nav-scale, 1.12) / var(--ui-text-scale, 1))",
     minHeight: primary
-      ? "calc(48px * var(--header-nav-scale, 1.12))"
-      : "calc(30px * var(--header-nav-scale, 1.12))",
+      ? "calc(48px * var(--header-nav-scale, 1.12) / var(--ui-text-scale, 1))"
+      : "calc(30px * var(--header-nav-scale, 1.12) / var(--ui-text-scale, 1))",
     padding: primary
-      ? "max(1px, calc(2px * var(--header-nav-scale, 1.12)))"
-      : "max(1px, calc(1.5px * var(--header-nav-scale, 1.12)))",
+      ? "max(1px, calc(2px * var(--header-nav-scale, 1.12) / var(--ui-text-scale, 1)))"
+      : "max(1px, calc(1.5px * var(--header-nav-scale, 1.12) / var(--ui-text-scale, 1)))",
   } as CSSProperties;
 
   const optionStyle: CSSProperties = {
     flex: primary ? "1 1 0" : "0 0 auto",
     height: "100%",
     fontSize: primary
-      ? "calc(13px * var(--header-nav-scale, 1.12))"
-      : "calc(11px * var(--header-nav-scale, 1.12))",
+      ? "calc(13px * var(--header-nav-scale, 1.12) / var(--ui-text-scale, 1))"
+      : "calc(11px * var(--header-nav-scale, 1.12) / var(--ui-text-scale, 1))",
     fontWeight: 600,
     letterSpacing: primary ? "0.12em" : "0.1em",
     padding: primary
-      ? "0 calc(12px * var(--header-nav-scale, 1.12))"
-      : "0 calc(10px * var(--header-nav-scale, 1.12))",
+      ? "0 calc(12px * var(--header-nav-scale, 1.12) / var(--ui-text-scale, 1))"
+      : "0 calc(10px * var(--header-nav-scale, 1.12) / var(--ui-text-scale, 1))",
     boxSizing: "border-box",
   };
 
