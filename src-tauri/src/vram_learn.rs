@@ -33,6 +33,15 @@ pub struct LearnedBatchDelta {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LearnedSpecDeltaPoint {
+    pub ctx: usize,
+    pub vram_mib: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host_mib: Option<f64>,
+    pub measured_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LearnedVramEntry {
     /// Authoritative GPU total — launch buffer inventory when present, else FIT/exit table.
     pub vram_mib: f64,
@@ -41,9 +50,15 @@ pub struct LearnedVramEntry {
     pub reference_batch: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reference_ubatch: Option<u32>,
+    /// Spec/draft identity of the base measurement. Spec deltas are relative to it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference_spec_key: Option<String>,
     /// Learned VRAM additions for other batch/ubatch pairs (key: "batch|ubatch").
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub batch_deltas: HashMap<String, LearnedBatchDelta>,
+    /// Learned spec/draft additions at this ctx (key: spec identity).
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub spec_deltas: HashMap<String, LearnedSpecDeltaPoint>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gpu_breakdown_mib: Option<Vec<f64>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -214,20 +229,8 @@ fn draft_key_for_learn(spec_type: &str, draft_key: &str) -> String {
     draft_key.trim().to_string()
 }
 
-fn optional_launch_suffix(spec_type: &str, cache_ram: &str, draft_key: &str) -> String {
+fn optional_launch_suffix(_spec_type: &str, cache_ram: &str, _draft_key: &str) -> String {
     let mut out = String::new();
-    let spec = normalize_spec_type(spec_type);
-    if spec != "none" {
-        out.push_str(&format!("|spec={spec}"));
-    }
-    let draft = draft_key_for_learn(&spec, draft_key);
-    if !draft.is_empty() {
-        let base = std::path::Path::new(&draft)
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or(draft.as_str());
-        out.push_str(&format!("|draft={}", base.to_lowercase()));
-    }
     let ram = cache_ram.trim();
     if !ram.is_empty() && ram != "0" {
         out.push_str(&format!("|cache_ram={ram}"));
@@ -341,6 +344,16 @@ pub fn learned_vram_key_with_draft(
     )
 }
 
+fn spec_key_for_learn(spec_type: &str, draft_key: &str) -> String {
+    let spec = normalize_spec_type(spec_type);
+    let draft = draft_key_for_learn(&spec, draft_key);
+    if draft.is_empty() {
+        spec
+    } else {
+        format!("{spec}|{}", draft_basename(&draft))
+    }
+}
+
 fn draft_path_from_config(config: &EngineConfig) -> String {
     let spec = config
         .get_param_str("spec_type")
@@ -365,6 +378,8 @@ pub struct VramLearnSnapshot {
     /// Launch batch/ubatch — stored as metadata/deltas, never in the cache key.
     pub batch: u32,
     pub ubatch: u32,
+    /// Spec/draft identity — stored as metadata/deltas, never in the cache key.
+    pub spec_key: String,
 }
 
 pub fn snapshot_from_config(
@@ -384,6 +399,12 @@ pub fn snapshot_from_config(
             .get_param_str("ubatch")
             .and_then(|v| v.parse::<u32>().ok())
             .unwrap_or(0),
+        spec_key: spec_key_for_learn(
+            &config
+                .get_param_str("spec_type")
+                .unwrap_or_else(|| "none".to_string()),
+            &draft_path_from_config(config),
+        ),
     }
 }
 
@@ -680,6 +701,8 @@ pub fn record_learned_vram(
             reference_batch: None,
             reference_ubatch: None,
             batch_deltas: HashMap::new(),
+            reference_spec_key: None,
+            spec_deltas: HashMap::new(),
             gpu_breakdown_mib,
             host_mib: None,
             gpu_components_mib: None,
@@ -777,6 +800,36 @@ fn record_batch_delta(
     );
 }
 
+fn spec_reference_matches(entry: &mut LearnedVramEntry, spec_key: &str) -> bool {
+    match entry.reference_spec_key.as_deref() {
+        Some(reference) => reference == spec_key,
+        None => {
+            entry.reference_spec_key = Some(spec_key.to_string());
+            true
+        }
+    }
+}
+
+fn record_spec_delta(
+    entry: &mut LearnedVramEntry,
+    ctx: usize,
+    spec_key: &str,
+    vram_mib: f64,
+    host_mib: Option<f64>,
+) {
+    let base_vram = entry.paint_vram_mib();
+    let base_host = entry.paint_host_mib().unwrap_or(0.0);
+    entry.spec_deltas.insert(
+        spec_key.to_string(),
+        LearnedSpecDeltaPoint {
+            ctx,
+            vram_mib: vram_mib - base_vram,
+            host_mib: host_mib.map(|h| h - base_host),
+            measured_at: timestamp_now(),
+        },
+    );
+}
+
 /// FIT-only primary promote when no launch snapshot yet.
 /// Once a launch buffer inventory exists it owns primary; engine memory
 /// regressions/fixes are captured by the next `record_launch_memory_snapshot`.
@@ -797,6 +850,7 @@ pub fn append_fit_breakdown_tables(
     phase: &str,
     batch: u32,
     ubatch: u32,
+    spec_key: &str,
 ) -> Result<Option<(f64, usize)>, String> {
     if already_stored >= tables.len() {
         return Ok(None);
@@ -811,6 +865,8 @@ pub fn append_fit_breakdown_tables(
         reference_batch: None,
         reference_ubatch: None,
         batch_deltas: HashMap::new(),
+        reference_spec_key: None,
+        spec_deltas: HashMap::new(),
         gpu_breakdown_mib: None,
         host_mib: None,
         gpu_components_mib: None,
@@ -820,13 +876,27 @@ pub fn append_fit_breakdown_tables(
         fit_attempts: Vec::new(),
     });
 
-    // A different batch/ubatch pair is a delta against the reference curve;
-    // never replace the base measurement.
-    if !batch_reference_matches(entry, batch, ubatch) {
+    // A different batch/ubatch or spec/draft is a delta against the reference
+    // curve; never replace the base measurement.
+    let batch_matches = batch_reference_matches(entry, batch, ubatch);
+    let spec_matches = spec_reference_matches(entry, spec_key);
+    if !batch_matches || !spec_matches {
         let table = tables.last();
         let mib = table.map(|t| t.total_gpu_self_mib()).unwrap_or(0.0);
         if mib > 0.0 {
-            record_batch_delta(entry, batch, ubatch, mib, table.and_then(|t| t.host_mib));
+            let host = table.and_then(|t| t.host_mib);
+            if !batch_matches {
+                record_batch_delta(entry, batch, ubatch, mib, host);
+            }
+            if !spec_matches {
+                record_spec_delta(
+                    entry,
+                    ctx_from_learn_key(key).unwrap_or(0),
+                    spec_key,
+                    mib,
+                    host,
+                );
+            }
             save_store(&store)?;
         }
         return Ok(Some((mib, tables.len())));
@@ -954,50 +1024,6 @@ mod dedup_tests {
     }
 
     #[test]
-    fn mtp_curve_ignores_leftover_external_draft() {
-        // Baked-in MTP: no draft in the key, so a leftover draft path must not filter it out.
-        let key = "C:/m.gguf|ggml-master|ctx=65536|kv=q8_0|dev=GPU-0|split=none|mode=full_auto|spec=draft-mtp";
-        assert!(entry_matches_curve_hard_knobs(
-            key,
-            "C:/m.gguf",
-            "ggml-master",
-            "q8_0",
-            "draft-mtp",
-            "",
-        ));
-        assert!(!spec_uses_external_draft("draft-mtp", ""));
-        assert!(spec_uses_external_draft("draft-mtp", "C:/d.gguf"));
-        assert!(spec_uses_external_draft("draft-dflash", ""));
-        assert_eq!(draft_key_for_learn("draft-mtp", ""), "");
-        assert_eq!(draft_key_for_learn("draft-mtp", "C:/d.gguf"), "C:/d.gguf");
-    }
-
-    #[test]
-    fn external_mtp_curve_requires_its_own_draft_row() {
-        // External MTP head: different VRAM footprint than baked-in MTP, so the
-        // baked-in row (no |draft=) must not answer an external-head curve query.
-        let baked = "C:/m.gguf|ggml-master|ctx=65536|kv=q8_0|dev=GPU-0|split=none|mode=full_auto|spec=draft-mtp";
-        assert!(!entry_matches_curve_hard_knobs(
-            baked,
-            "C:/m.gguf",
-            "ggml-master",
-            "q8_0",
-            "draft-mtp",
-            "head.gguf",
-        ));
-        let with_draft =
-            "C:/m.gguf|ggml-master|ctx=65536|kv=q8_0|dev=GPU-0|split=none|mode=full_auto|spec=draft-mtp|draft=head.gguf";
-        assert!(entry_matches_curve_hard_knobs(
-            with_draft,
-            "C:/m.gguf",
-            "ggml-master",
-            "q8_0",
-            "draft-mtp",
-            "head.gguf",
-        ));
-    }
-
-    #[test]
     fn append_skips_duplicate_attempt_rows() {
         let tables = vec![MemoryBreakdownTable {
             gpu_self_mib: vec![100.0, 50.0],
@@ -1012,8 +1038,8 @@ mod dedup_tests {
             save_store(&store).unwrap();
         }
 
-        append_fit_breakdown_tables(key, &tables, 0, "fit", 0, 0).unwrap();
-        append_fit_breakdown_tables(key, &tables, 0, "fit", 0, 0).unwrap();
+        append_fit_breakdown_tables(key, &tables, 0, "fit", 0, 0, "none").unwrap();
+        append_fit_breakdown_tables(key, &tables, 0, "fit", 0, 0, "none").unwrap();
 
         let _guard = STORE_MUTEX.lock().unwrap();
         let store = load_store();
@@ -1038,6 +1064,8 @@ mod dedup_tests {
                     reference_batch: None,
                     reference_ubatch: None,
                     batch_deltas: HashMap::new(),
+                    reference_spec_key: None,
+                    spec_deltas: HashMap::new(),
                     gpu_breakdown_mib: Some(vec![85485.0, 83376.0]),
                     host_mib: Some(105086.0),
                     gpu_components_mib: None,
@@ -1071,7 +1099,7 @@ mod dedup_tests {
             phase: "loaded".into(),
             measured_at: "new".into(),
         };
-        record_launch_memory_snapshot(key, snap, 0, 0).unwrap();
+        record_launch_memory_snapshot(key, snap, 0, 0, "none").unwrap();
 
         let _guard = STORE_MUTEX.lock().unwrap();
         let store = load_store();
@@ -1085,7 +1113,7 @@ mod dedup_tests {
             gpu_self_mib: vec![85485.0, 83376.0],
             host_mib: Some(105086.0),
         }];
-        append_fit_breakdown_tables(key, &tables, 0, "fit", 0, 0).unwrap();
+        append_fit_breakdown_tables(key, &tables, 0, "fit", 0, 0, "none").unwrap();
         let _guard = STORE_MUTEX.lock().unwrap();
         let store = load_store();
         let entry = store.entries.get(key).expect("entry");
@@ -1110,6 +1138,8 @@ mod dedup_tests {
                     reference_batch: None,
                     reference_ubatch: None,
                     batch_deltas: HashMap::new(),
+                    reference_spec_key: None,
+                    spec_deltas: HashMap::new(),
                     gpu_breakdown_mib: Some(vec![50000.0, 48854.0]),
                     host_mib: Some(800.0),
                     gpu_components_mib: None,
@@ -1142,7 +1172,7 @@ mod dedup_tests {
             phase: "loaded".into(),
             measured_at: "spill".into(),
         };
-        record_launch_memory_snapshot(key, snap, 0, 0).unwrap();
+        record_launch_memory_snapshot(key, snap, 0, 0, "none").unwrap();
         let _guard = STORE_MUTEX.lock().unwrap();
         let mut store = load_store();
         let entry = store.entries.get(key).expect("entry");
@@ -1161,6 +1191,7 @@ pub fn record_launch_memory_snapshot(
     snapshot: LaunchMemorySnapshot,
     batch: u32,
     ubatch: u32,
+    spec_key: &str,
 ) -> Result<(), String> {
     let _guard = STORE_MUTEX
         .lock()
@@ -1171,6 +1202,8 @@ pub fn record_launch_memory_snapshot(
         reference_batch: None,
         reference_ubatch: None,
         batch_deltas: HashMap::new(),
+        reference_spec_key: None,
+        spec_deltas: HashMap::new(),
         gpu_breakdown_mib: None,
         host_mib: None,
         gpu_components_mib: None,
@@ -1182,14 +1215,27 @@ pub fn record_launch_memory_snapshot(
 
     // A different batch/ubatch pair is a delta against the reference curve;
     // never replace the base measurement.
-    if !batch_reference_matches(entry, batch, ubatch) {
-        record_batch_delta(
-            entry,
-            batch,
-            ubatch,
-            snapshot.vram_mib,
-            Some(snapshot.host_mib),
-        );
+    let batch_matches = batch_reference_matches(entry, batch, ubatch);
+    let spec_matches = spec_reference_matches(entry, spec_key);
+    if !batch_matches || !spec_matches {
+        if !batch_matches {
+            record_batch_delta(
+                entry,
+                batch,
+                ubatch,
+                snapshot.vram_mib,
+                Some(snapshot.host_mib),
+            );
+        }
+        if !spec_matches {
+            record_spec_delta(
+                entry,
+                ctx_from_learn_key(key).unwrap_or(0),
+                spec_key,
+                snapshot.vram_mib,
+                Some(snapshot.host_mib),
+            );
+        }
         save_store(&store)?;
         drop(_guard);
         return Ok(());
@@ -1271,33 +1317,64 @@ pub fn get_learned_vram(
     )?;
     let wanted_batch = batch.unwrap_or(0);
     let wanted_ubatch = ubatch.unwrap_or(0);
-    let reference_mismatch = entry
+    let wanted_spec = spec_key_for_learn(spec, &draft);
+    let path_norm = normalize_model_path_for_key(&model_path);
+    let kv_n = kv_quant.trim().to_lowercase();
+    let split_n = normalize_split_mode(&split);
+    let batch_mismatch = entry
         .reference_batch
         .zip(entry.reference_ubatch)
         .map(|(rb, ru)| rb != wanted_batch || ru != wanted_ubatch)
         .unwrap_or(false);
-    if reference_mismatch {
-        let pair = batch_pair(wanted_batch, wanted_ubatch);
-        let delta = entry.batch_deltas.get(&pair).cloned().or_else(|| {
-            let store = load_store();
-            find_batch_delta(
-                &store.entries,
-                &normalize_model_path_for_key(&model_path),
-                &provider_id,
-                &kv_quant.trim().to_lowercase(),
-                &normalize_spec_type(spec),
-                &draft_basename(&draft),
-                &normalize_split_mode(&split),
-                vram_topo.as_deref(),
-                &pair,
-            )
-        })?;
+    let spec_mismatch = entry
+        .reference_spec_key
+        .as_deref()
+        .map(|reference| reference != wanted_spec)
+        .unwrap_or(false);
+    if batch_mismatch || spec_mismatch {
         let base_v = entry.paint_vram_mib();
         let base_h = entry.paint_host_mib();
-        entry.vram_mib = base_v + delta.vram_mib;
-        entry.host_mib = match (base_h, delta.host_mib) {
-            (Some(base), Some(extra)) => Some(base + extra),
-            (None, Some(extra)) => Some(extra),
+        let mut delta_v = 0.0;
+        let mut delta_h = 0.0;
+        if batch_mismatch {
+            let pair = batch_pair(wanted_batch, wanted_ubatch);
+            let delta = entry.batch_deltas.get(&pair).cloned().or_else(|| {
+                let store = load_store();
+                find_batch_delta(
+                    &store.entries,
+                    &path_norm,
+                    &provider_id,
+                    &kv_n,
+                    &split_n,
+                    vram_topo.as_deref(),
+                    &pair,
+                )
+            })?;
+            delta_v += delta.vram_mib;
+            delta_h += delta.host_mib.unwrap_or(0.0);
+        }
+        if spec_mismatch {
+            let points = {
+                let store = load_store();
+                find_spec_delta_points(
+                    &store.entries,
+                    &path_norm,
+                    &provider_id,
+                    &kv_n,
+                    &split_n,
+                    vram_topo.as_deref(),
+                    &wanted_spec,
+                )
+            };
+            let live_ctx = normalize_ctx_key(&ctx).parse::<usize>().ok()?;
+            let (spec_v, spec_h) = interpolate_spec_delta(&points, live_ctx)?;
+            delta_v += spec_v;
+            delta_h += spec_h;
+        }
+        entry.vram_mib = base_v + delta_v;
+        entry.host_mib = match (base_h, delta_h) {
+            (Some(base), extra) => Some(base + extra),
+            (None, extra) if extra != 0.0 => Some(extra),
             (base, _) => base,
         };
         entry.launch_snapshot = None;
@@ -1336,8 +1413,6 @@ fn entry_matches_curve_hard_knobs(
     path_norm: &str,
     provider_id: &str,
     kv_n: &str,
-    spec_n: &str,
-    draft_base: &str,
 ) -> bool {
     let path_prefix = format!("{path_norm}|");
     if !key.starts_with(&path_prefix) {
@@ -1352,26 +1427,6 @@ fn entry_matches_curve_hard_knobs(
     }
     if !key.contains(&format!("|kv={kv_n}|")) {
         return false;
-    }
-    let key_has_spec = key.contains("|spec=");
-    let key_has_draft = key.contains("|draft=");
-    if spec_n == "none" {
-        if key_has_spec && !key.contains("|spec=none") {
-            return false;
-        }
-        if key_has_draft {
-            return false;
-        }
-    } else {
-        if !key.contains(&format!("|spec={spec_n}")) {
-            return false;
-        }
-        if spec_uses_external_draft(spec_n, draft_base)
-            && !draft_base.is_empty()
-            && (!key_has_draft || !key.contains(&format!("|draft={draft_base}")))
-        {
-            return false;
-        }
     }
     true
 }
@@ -1429,16 +1484,13 @@ fn find_batch_delta(
     path_norm: &str,
     provider_id: &str,
     kv_n: &str,
-    spec_n: &str,
-    draft_base: &str,
     split_n: &str,
     vram_topo: Option<&str>,
     pair: &str,
 ) -> Option<LearnedBatchDelta> {
     let mut best: Option<LearnedBatchDelta> = None;
     for (key, entry) in entries {
-        if !entry_matches_curve_hard_knobs(key, path_norm, provider_id, kv_n, spec_n, draft_base)
-        {
+        if !entry_matches_curve_hard_knobs(key, path_norm, provider_id, kv_n) {
             continue;
         }
         if !key_matches_split(key, split_n) {
@@ -1461,6 +1513,68 @@ fn find_batch_delta(
     best
 }
 
+fn find_spec_delta_points(
+    entries: &HashMap<String, LearnedVramEntry>,
+    path_norm: &str,
+    provider_id: &str,
+    kv_n: &str,
+    split_n: &str,
+    vram_topo: Option<&str>,
+    spec_key: &str,
+) -> Vec<LearnedSpecDeltaPoint> {
+    let mut by_ctx: std::collections::BTreeMap<usize, LearnedSpecDeltaPoint> =
+        std::collections::BTreeMap::new();
+    for (key, entry) in entries {
+        if !entry_matches_curve_hard_knobs(key, path_norm, provider_id, kv_n) {
+            continue;
+        }
+        if !key_matches_split(key, split_n) {
+            continue;
+        }
+        if let Some(topo) = vram_topo {
+            if !key_matches_vram_topo(key, topo) {
+                continue;
+            }
+        }
+        if let Some(point) = entry.spec_deltas.get(spec_key) {
+            match by_ctx.get(&point.ctx) {
+                Some(existing) if existing.measured_at >= point.measured_at => {}
+                _ => {
+                    by_ctx.insert(point.ctx, point.clone());
+                }
+            }
+        }
+    }
+    by_ctx.into_values().collect()
+}
+
+fn interpolate_spec_delta(
+    points: &[LearnedSpecDeltaPoint],
+    ctx: usize,
+) -> Option<(f64, f64)> {
+    if points.is_empty() {
+        return None;
+    }
+    let at = |p: &LearnedSpecDeltaPoint| (p.vram_mib, p.host_mib.unwrap_or(0.0));
+    if ctx <= points[0].ctx {
+        return Some(at(&points[0]));
+    }
+    if ctx >= points[points.len() - 1].ctx {
+        return Some(at(&points[points.len() - 1]));
+    }
+    for pair in points.windows(2) {
+        let (left, right) = (&pair[0], &pair[1]);
+        if ctx >= left.ctx && ctx <= right.ctx {
+            let span = right.ctx.saturating_sub(left.ctx).max(1) as f64;
+            let t = (ctx.saturating_sub(left.ctx) as f64) / span;
+            let (lv, lh) = at(left);
+            let (rv, rh) = at(right);
+            return Some((lv + (rv - lv) * t, lh + (rh - lh) * t));
+        }
+    }
+    Some(at(&points[points.len() - 1]))
+}
+
 /// Launch measurements for this model + kv/spec/draft + split, every ctx (device ignored).
 #[tauri::command]
 pub fn get_learned_vram_curve(
@@ -1480,20 +1594,10 @@ pub fn get_learned_vram_curve(
     let store = load_store();
     let path_norm = normalize_model_path_for_key(&model_path);
     let kv_n = kv_quant.trim().to_lowercase();
-    let spec_n = normalize_spec_type(spec_type.as_deref().unwrap_or("none"));
-    let draft_raw = draft_key_for_learn(&spec_n, draft_model.as_deref().unwrap_or(""));
-    let draft_base = {
-        let d = draft_raw.trim();
-        if d.is_empty() {
-            String::new()
-        } else {
-            std::path::Path::new(d)
-                .file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or(d)
-                .to_lowercase()
-        }
-    };
+    let wanted_spec = spec_key_for_learn(
+        spec_type.as_deref().unwrap_or("none"),
+        draft_model.as_deref().unwrap_or(""),
+    );
     let split_n = normalize_split_mode(split.as_deref().unwrap_or("none"));
     let wanted_batch = batch.unwrap_or(0);
     let wanted_ubatch = ubatch.unwrap_or(0);
@@ -1503,23 +1607,23 @@ pub fn get_learned_vram_curve(
         &path_norm,
         &provider_id,
         &kv_n,
-        &spec_n,
-        &draft_base,
         &split_n,
         vram_topo.as_deref(),
         &wanted_pair,
     );
+    let spec_points = find_spec_delta_points(
+        &store.entries,
+        &path_norm,
+        &provider_id,
+        &kv_n,
+        &split_n,
+        vram_topo.as_deref(),
+        &wanted_spec,
+    );
     let mut best: std::collections::HashMap<usize, (String, LearnedVramCurvePoint)> =
         std::collections::HashMap::new();
     for (k, entry) in &store.entries {
-        if !entry_matches_curve_hard_knobs(
-            k,
-            &path_norm,
-            &provider_id,
-            &kv_n,
-            &spec_n,
-            &draft_base,
-        ) {
+        if !entry_matches_curve_hard_knobs(k, &path_norm, &provider_id, &kv_n) {
             continue;
         }
         if !key_matches_split(k, &split_n) {
@@ -1547,6 +1651,18 @@ pub fn get_learned_vram_curve(
                 delta_v = delta.vram_mib;
                 delta_h = delta.host_mib.unwrap_or(0.0);
             }
+        }
+        let spec_mismatch = entry
+            .reference_spec_key
+            .as_deref()
+            .map(|reference| reference != wanted_spec)
+            .unwrap_or(false);
+        if spec_mismatch {
+            let Some((spec_v, spec_h)) = interpolate_spec_delta(&spec_points, ctx) else {
+                continue;
+            };
+            delta_v += spec_v;
+            delta_h += spec_h;
         }
         let vram = entry.paint_vram_mib() + delta_v;
         if vram <= 0.0 {
@@ -1602,32 +1718,12 @@ pub fn prune_learned_vram_curve(
     let mut store = load_store();
     let path_norm = normalize_model_path_for_key(&model_path);
     let kv_n = kv_quant.trim().to_lowercase();
-    let spec_n = normalize_spec_type(spec_type.as_deref().unwrap_or("none"));
-    let draft_raw = draft_key_for_learn(&spec_n, draft_model.as_deref().unwrap_or(""));
-    let draft_base = {
-        let d = draft_raw.trim();
-        if d.is_empty() {
-            String::new()
-        } else {
-            std::path::Path::new(d)
-                .file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or(d)
-                .to_lowercase()
-        }
-    };
+    let _ = (spec_type.as_deref(), draft_model.as_deref());
     let split_n = normalize_split_mode(split.as_deref().unwrap_or("none"));
 
     let before = store.entries.len();
     store.entries.retain(|k, _| {
-        if !entry_matches_curve_hard_knobs(
-            k,
-            &path_norm,
-            &provider_id,
-            &kv_n,
-            &spec_n,
-            &draft_base,
-        ) {
+        if !entry_matches_curve_hard_knobs(k, &path_norm, &provider_id, &kv_n) {
             return true;
         }
         if !key_matches_split(k, &split_n) {

@@ -181,7 +181,9 @@ interface LearnedVramEntry {
   vram_mib: number;
   reference_batch?: number;
   reference_ubatch?: number;
+  reference_spec_key?: string;
   batch_deltas?: Record<string, unknown>;
+  spec_deltas?: Record<string, unknown>;
   measured_at?: string;
   gpu_breakdown_mib?: number[];
   host_mib?: number;
@@ -253,6 +255,31 @@ function resolveDraftSizeMib(
 function draftPathForLearned(config: Record<string, unknown>): string {
   if (!externalDraftWanted(config)) return "";
   return String(config.dflash_draft_model ?? config.mtp_draft_model ?? config.spec_draft_model ?? "").trim();
+}
+
+/** Raw draft path used by the learned spec identity (mirrors Rust draft_key_for_learn). */
+function specDraftForLearned(config: Record<string, unknown>): string {
+  const spec = effectiveSpecTypeFromConfig(config);
+  if (spec === "none") return "";
+  const raw = String(
+    config.dflash_draft_model ?? config.mtp_draft_model ?? config.spec_draft_model ?? "",
+  ).trim();
+  const usesExternal = spec.includes("mtp")
+    && !spec.includes("dflash")
+    && !spec.includes("dspark")
+    && !spec.includes("eagle")
+    ? spec === "draft-mtp" && raw !== ""
+    : spec.includes("dflash") || spec.includes("dspark") || spec.includes("eagle");
+  return usesExternal ? raw : "";
+}
+
+/** Mirror Rust spec key: normalized spec type + external draft basename. */
+function specKeyForLearned(config: Record<string, unknown>): string {
+  const spec = effectiveSpecTypeFromConfig(config);
+  const draft = specDraftForLearned(config);
+  if (!draft) return spec;
+  const base = draft.split(/[/\\]/).pop()?.trim().toLowerCase();
+  return `${spec}|${base || draft.toLowerCase()}`;
 }
 
 // Shared scenarios-tab emission helper to avoid duplicating IPC calls to Blackwell Output Console
@@ -732,7 +759,7 @@ export function useScenarioEvaluator({
     const queryCtx = parseCtx(curConfig.ctx ?? "32768");
     const kvQuant = String(curConfig["kv_quant"] ?? "f16");
     const specType = effectiveSpecTypeFromConfig(curConfig);
-    const draftModel = draftPathForLearned(curConfig) || null;
+    const draftModel = specDraftForLearned(curConfig) || null;
     const vramTopo = vramTopoTag(gpusRef.current, curConfig.device);
     void Promise.all([
       invoke<LearnedVramEntry | null>("get_learned_vram", {
@@ -772,9 +799,14 @@ export function useScenarioEvaluator({
         const deltaMatch = Boolean(
           entry?.batch_deltas?.[`${curBatch}|${curUbatch}`],
         );
-        if (entry && (referenceMatch || deltaMatch)) {
-          // A measured base or a learned batch delta is valid for this pair;
-          // do not waste a FIT probe just because the key changed.
+        const specKey = specKeyForLearned(curConfig);
+        const specMatch = Boolean(
+          entry
+          && (entry.reference_spec_key === specKey || entry.spec_deltas?.[specKey]),
+        );
+        if (entry && (referenceMatch || deltaMatch) && specMatch) {
+          // A measured base or a learned batch/spec addition is valid for this
+          // config; do not waste a FIT probe just because the key changed.
           forceProbeRef.current = false;
         }
         const snap = entry?.launch_snapshot;

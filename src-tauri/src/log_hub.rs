@@ -655,6 +655,7 @@ impl LogHub {
             phase,
             learn_snapshot.batch,
             learn_snapshot.ubatch,
+            &learn_snapshot.spec_key,
         ) {
             Ok(Some(_)) => {
                 log::info!(
@@ -721,6 +722,7 @@ impl LogHub {
                 phase,
                 learn_snapshot.batch,
                 learn_snapshot.ubatch,
+                &learn_snapshot.spec_key,
             ) {
                 Ok(Some(_)) => {
                     log::info!(
@@ -794,6 +796,7 @@ impl LogHub {
             snapshot,
             learn_snapshot.batch,
             learn_snapshot.ubatch,
+            &learn_snapshot.spec_key,
         ) {
             Ok(()) => {
                 log::info!(
