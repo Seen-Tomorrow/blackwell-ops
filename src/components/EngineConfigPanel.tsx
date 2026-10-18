@@ -106,6 +106,7 @@ import {
 } from "../lib/fullAutoGoals";
 import { resolveFullAutoDecision } from "../lib/fullAutoContract";
 import { applySpecBoostProfiles } from "../lib/applySpecBoost";
+import type { SpeedBoostId } from "../lib/multiAgentBooster";
 import ParamCatalogSearch from "./ParamCatalogSearch";
 import {
   catalogEntryToParam,
@@ -1090,6 +1091,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       : "balanced";
   });
   const [autoWorkload, setAutoWorkload] = useState<FullAutoWorkload>("chat");
+  const [autoSpecOverride, setAutoSpecOverride] = useState<SpeedBoostId | null>(null);
 
   /** Pure contract decision — never reads manual cockpit state. */
   const autoDecision = useMemo(() => {
@@ -1103,9 +1105,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       kvQuantValues: cockpitKvValuesBound,
       hasBakedMtp: model ? hasBakedMtp(model) : false,
       mtpDraftPath: String(config.mtp_draft_model ?? ""),
+      speedOverride: autoSpecOverride,
     });
   }, [
     autoGoal,
+    autoSpecOverride,
     autoWorkload,
     config.mtp_draft_model,
     cockpitKvValuesBound,
@@ -1187,6 +1191,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       });
       const plan = decision.plan;
       setAutoGoal(goal);
+      setAutoSpecOverride(null);
       saveFullAutoGoal(goal);
       if (goal === "fastest" && gpus.length > 0) {
         // FASTEST starts on one card. No perf table yet — use the card with the
@@ -1240,9 +1245,14 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     ],
   );
   const handleAutoGoal = applyAutoPlan;
+  const handleAutoSpec = useCallback((speed: SpeedBoostId) => {
+    setAutoSpecOverride(speed);
+    void applyFullAutoCockpit(codingMode, speed, brains, think, cockpitOpts);
+  }, [applyFullAutoCockpit, brains, codingMode, cockpitOpts, think]);
   const handleAutoWorkload = applyAutoWorkload;
   const handleTakeControl = useCallback(() => {
     setAutoGoal(null);
+    setAutoSpecOverride(null);
     saveFullAutoGoal(null);
     setFullAuto(false);
   }, [setFullAuto]);
@@ -3549,6 +3559,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           }
           autoGoal={fullAutoFixed ? autoGoal : null}
           onAutoGoal={fullAutoFixed ? handleAutoGoal : undefined}
+          onAutoSpec={fullAutoFixed ? handleAutoSpec : undefined}
           autoWorkload={fullAutoFixed ? autoWorkload : null}
           onAutoWorkload={fullAutoFixed ? handleAutoWorkload : undefined}
           autoFitState={fullAutoFixed ? autoFitState : undefined}

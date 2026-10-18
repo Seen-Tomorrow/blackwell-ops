@@ -136,6 +136,8 @@ export interface MultiAgentBoosterProps {
   /** FULL AUTO goal rail (hero layout only). */
   autoGoal?: FullAutoGoal | null;
   onAutoGoal?: (goal: FullAutoGoal) => void;
+  /** FULL AUTO SPEC lane override — no ASSISTED handoff. */
+  onAutoSpec?: (speed: SpeedBoostId) => void;
   autoWorkload?: FullAutoWorkload | null;
   onAutoWorkload?: (workload: FullAutoWorkload) => void;
   autoFitState?: FullAutoFitState;
@@ -199,6 +201,7 @@ export default function MultiAgentBooster({
   onToggleKvUnified,
   autoGoal,
   onAutoGoal,
+  onAutoSpec,
   autoWorkload,
   onAutoWorkload,
   autoFitState,
@@ -276,7 +279,7 @@ export default function MultiAgentBooster({
     displayBoost === "dflash" || displayBoost === "dspark";
 
   const showSpecExtra = useMemo(() => {
-    if (hero || specDetailParams.length === 0) return false;
+    if (specDetailParams.length === 0) return false;
     if (
       displayBoost === "mtp"
       || displayBoost === "dflash"
@@ -288,7 +291,7 @@ export default function MultiAgentBooster({
     const s = activeRawSpecType.toLowerCase();
     if (s.startsWith("ngram") || s.includes("simple")) return false;
     return s.startsWith("draft") || s.includes("draft");
-  }, [hero, specDetailParams.length, displayBoost, activeRawSpecType]);
+  }, [specDetailParams.length, displayBoost, activeRawSpecType]);
 
   const showDflashGet =
     Boolean(onGetDflashDraft) &&
@@ -410,6 +413,39 @@ export default function MultiAgentBooster({
     if (powerMode) return displayBoost === "smart" ? "off" : displayBoost;
     return displayBoost === "off" ? "smart" : displayBoost;
   }, [powerMode, displayBoost, activeRawSpecType]);
+
+  const heroSpecSlider =
+    hero && onAutoGoal && onAutoSpec && showBoost ? (
+      <div className="full-auto-cockpit__hero-spec">
+        <CockpitSlider
+          label="SPEC"
+          value={boostSliderValue}
+          onChange={(id) => onAutoSpec(id as SpeedBoostId)}
+          options={boostMarks
+            .filter((m) => !m.id.startsWith("raw:"))
+            .map((m) => {
+              const mtpMissing = m.id === "mtp" && !mtpAvailable;
+              const dflashMissing = m.id === "dflash" && !dflashAvailable;
+              const needCap = mtpMissing || dflashMissing;
+              const available =
+                m.id === "smart"
+                || m.id === "off"
+                || m.id === "dspark"
+                || (m.id === "mtp" && mtpAvailable)
+                || (m.id === "dflash" && dflashAvailable);
+              return {
+                id: m.id,
+                label: m.id === "smart" ? "OFF" : m.label,
+                aboveLabel: m.aboveLabel,
+                blurb: m.blurb,
+                disabled: needCap,
+                badgeColor: m.badgeColor,
+                emphasize: Boolean(m.badgeColor) && available && !needCap,
+              };
+            })}
+        />
+      </div>
+    ) : null;
 
   const stripTone: "mtp" | "dflash" | "neutral" =
     displayBoost === "mtp"
@@ -705,8 +741,12 @@ export default function MultiAgentBooster({
         />
       ) : null}
 
-      {hero && onAutoGoal && ctxStrip ? (
-        <div className="full-auto-cockpit__body space-y-3">{ctxStrip}</div>
+      {hero && onAutoGoal ? (
+        <div className="full-auto-cockpit__body space-y-3">
+          {ctxStrip}
+          {heroSpecSlider}
+          {violetStrip}
+        </div>
       ) : null}
 
       {!(hero && onAutoGoal) ? (

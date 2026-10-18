@@ -80,4 +80,20 @@ describe("resolveFullAutoDecision", () => {
     );
     expect(tuned.spec.extras).toEqual({ nMax: 8, nMin: 2, pMin: 0.5 });
   });
+
+  it("honors a FULL AUTO spec-lane override", () => {
+    const off = resolveFullAutoDecision(
+      input({ capabilities: ["mtp"], hasBakedMtp: true, speedOverride: "off" }),
+    );
+    expect(off.spec.method).toBe("off");
+
+    const dflash = resolveFullAutoDecision(
+      input({
+        capabilities: ["dflash"],
+        dflashLibraryReady: true,
+        speedOverride: "dflash",
+      }),
+    );
+    expect(dflash.spec.method).toBe("dflash");
+  });
 });

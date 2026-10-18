@@ -61,6 +61,7 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
     instrumentSlot,
     autoGoal,
     onAutoGoal,
+    onAutoSpec,
     autoWorkload,
     onAutoWorkload,
     autoFitState,
@@ -138,6 +139,7 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
         instrumentSlot={instrumentSlot}
         autoGoal={autoGoal}
         onAutoGoal={onAutoGoal}
+        onAutoSpec={onAutoSpec}
         autoWorkload={autoWorkload}
         onAutoWorkload={onAutoWorkload}
         autoFitState={autoFitState}
@@ -202,6 +204,7 @@ export interface EngineBoostSectionProps {
   instrumentSlot?: ReactNode;
   autoGoal?: FullAutoGoal | null;
   onAutoGoal?: (goal: FullAutoGoal) => void;
+  onAutoSpec?: (speed: SpeedBoostId) => void;
   autoWorkload?: FullAutoWorkload | null;
   onAutoWorkload?: (workload: FullAutoWorkload) => void;
   autoFitState?: FullAutoFitState;

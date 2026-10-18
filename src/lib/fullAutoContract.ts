@@ -14,6 +14,7 @@ import {
 import {
   resolveFullAutoPlan,
   type FullAutoPlan,
+  type SpeedBoostId,
 } from "./multiAgentBooster";
 import type { SpecCapability } from "./specDraft";
 import type { ThroughputId } from "./engineSurfaces";
@@ -45,6 +46,8 @@ export interface FullAutoDecisionInput {
   hasBakedMtp?: boolean;
   /** Current/saved external MTP head path, if any. */
   mtpDraftPath?: string | null;
+  /** Auto-contract override for the SPEC lane (not an ASSISTED handoff). */
+  speedOverride?: SpeedBoostId | null;
   /** User/controller overrides; falls back to the safe defaults. */
   specExtras?: Partial<FullAutoSpecExtras>;
 }
@@ -90,9 +93,10 @@ export function resolveFullAutoDecision(
   input: FullAutoDecisionInput,
 ): FullAutoDecision {
   const goalPlan = FULL_AUTO_GOAL_PLANS[input.goal];
+  const requestedSpeed = input.speedOverride ?? goalPlan.speed;
   const plan = resolveFullAutoPlan({
     codingMode: goalPlan.codingMode,
-    speed: goalPlan.speed,
+    speed: requestedSpeed,
     brains: goalPlan.brains,
     think: goalPlan.think,
     capabilities: input.capabilities,
