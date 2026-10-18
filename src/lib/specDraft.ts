@@ -93,6 +93,7 @@ export const MIN_DRAFT_PAIR_SCORE = 50;
 export const HIGH_DRAFT_PAIR_SCORE = 80;
 
 export const FAMILY_RULES: { id: string; pattern: RegExp }[] = [
+  { id: "qwen38", pattern: /qwen3\.?8|qwen38/i },
   { id: "qwen35", pattern: /qwen3\.?5|qwen35/i },
   { id: "qwen36", pattern: /qwen3\.?6|qwen36/i },
   { id: "qwen3-coder", pattern: /qwen3[-_.]?coder/i },
@@ -386,9 +387,6 @@ function pairingStem(stem: string): string {
     .replace(/-(?:next|coder-next|coder)$/i, "");
 }
 
-/** Qwen base families that share DFlash drafts (coder-next stays isolated). */
-const QWEN_BASE_FAMILIES = new Set(["qwen3", "qwen35", "qwen36"]);
-
 function quantToken(model: ModelEntry): string {
   const ft = model.metadata?.file_type_str?.trim() ?? "";
   const q = model.quant?.trim() ?? "";
@@ -400,12 +398,12 @@ function sameParent(a: string, b: string): boolean {
   return norm(a) === norm(b);
 }
 
+/** Qwen generations are not draft-compatible across major/minor versions. */
 function familiesCompatible(main: ModelEntry, draft: ModelEntry): boolean {
   const mainFamily = extractModelFamily(main);
   const draftFamily = extractModelFamily(draft);
   if (!mainFamily || !draftFamily) return false;
-  if (mainFamily === draftFamily) return true;
-  return QWEN_BASE_FAMILIES.has(mainFamily) && QWEN_BASE_FAMILIES.has(draftFamily);
+  return mainFamily === draftFamily;
 }
 
 function stemTokens(stem: string): string[] {

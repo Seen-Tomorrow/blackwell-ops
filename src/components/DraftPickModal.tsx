@@ -181,7 +181,8 @@ export default function DraftPickModal({
   onRequestRemote,
 }: DraftPickModalProps) {
   const localAll = localItemsProp ?? (mode === "library" ? legacyItems ?? [] : []);
-  const localItems = localAll.slice(0, LOCAL_LIST_CAP);
+  const [showAllLocal, setShowAllLocal] = useState(false);
+  const localItems = showAllLocal ? localAll : localAll.slice(0, LOCAL_LIST_CAP);
   const remoteItems = hfOffersToPickItems(hfOffers);
   const hasLocal = localItems.length > 0;
   const hasRemote = remoteItems.length > 0;
@@ -522,9 +523,21 @@ export default function DraftPickModal({
         <div className="dflash-pick-modal__section dflash-pick-modal__section--local">
           <div className="dflash-pick-modal__section-head">
             <span className="dflash-pick-modal__section-label">On your drive</span>
-            <span className="dflash-pick-modal__section-badge dflash-pick-modal__section-badge--local">
-              Local · max {LOCAL_LIST_CAP}
-            </span>
+            {localAll.length > LOCAL_LIST_CAP ? (
+              <button
+                type="button"
+                className="dflash-pick-modal__section-badge dflash-pick-modal__section-badge--local"
+                onClick={() => setShowAllLocal((v) => !v)}
+              >
+                {showAllLocal
+                  ? `Show top ${LOCAL_LIST_CAP}`
+                  : `Show all ${localAll.length}`}
+              </button>
+            ) : (
+              <span className="dflash-pick-modal__section-badge dflash-pick-modal__section-badge--local">
+                Local · max {LOCAL_LIST_CAP}
+              </span>
+            )}
           </div>
           {hasLocal ? (
             <div

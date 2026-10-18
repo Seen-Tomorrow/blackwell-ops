@@ -21,6 +21,7 @@ import { KEYS, readJsonStorage, writeJsonStorage } from "./storage";
 
 const DFLASH_FAMILY_HINTS = new Set([
   "qwen3",
+  "qwen38",
   "qwen35",
   "qwen36",
   "qwen3-coder",
@@ -271,6 +272,7 @@ export function extractParamBillions(hay: string): number | null {
   const cleaned = hay
     .replace(/qwen3\.5/gi, "qwen35")
     .replace(/qwen3\.6/gi, "qwen36")
+    .replace(/qwen3\.8/gi, "qwen38")
     .replace(/gemma[-_.]?3/gi, "gemma3")
     .replace(/gemma[-_.]?4/gi, "gemma4");
 
@@ -290,6 +292,8 @@ export function extractParamBillions(hay: string): number | null {
 function familyLabel(id: string | null): string {
   if (!id) return "unknown";
   switch (id) {
+    case "qwen38":
+      return "Qwen3.8";
     case "qwen35":
       return "Qwen3.5";
     case "qwen36":
@@ -325,15 +329,17 @@ export function dflashSearchQueries(main: ModelEntry): string[] {
   const sizeToken = sizeB != null ? `${sizeB}B` : "";
 
   const familySearch =
-    family === "qwen36"
-      ? "Qwen3.6"
-      : family === "qwen35"
-        ? "Qwen3.5"
-        : family === "qwen3-coder"
-          ? "Qwen3-Coder"
-          : family === "qwen3"
-            ? "Qwen3"
-            : familyLabel(family);
+    family === "qwen38"
+      ? "Qwen3.8"
+      : family === "qwen36"
+        ? "Qwen3.6"
+        : family === "qwen35"
+          ? "Qwen3.5"
+          : family === "qwen3-coder"
+            ? "Qwen3-Coder"
+            : family === "qwen3"
+              ? "Qwen3"
+              : familyLabel(family);
 
   const queries: string[] = [];
   // Most specific first — size + family + dflash
