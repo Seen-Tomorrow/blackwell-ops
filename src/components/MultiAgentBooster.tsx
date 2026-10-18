@@ -20,7 +20,7 @@ import {
 } from "../lib/multiAgentBooster";
 import CockpitCtxStrip from "./CockpitCtxStrip";
 import CockpitSlider from "./CockpitSlider";
-import HeaderNavSegment from "./HeaderNavSegment";
+import CockpitNavSegment from "./CockpitNavSegment";
 import CockpitFlagToolbar, { type CockpitFlagToggle } from "./CockpitFlagToolbar";
 import FullAutoGoalRail from "./FullAutoGoalRail";
 import {
@@ -442,12 +442,12 @@ export default function MultiAgentBooster({
         >
           SPEC
         </span>
-        <HeaderNavSegment
+        <CockpitNavSegment
           ariaLabel="FULL AUTO SPEC"
           options={heroSpecOptions}
           selectedId={heroSpecValue}
           onSelect={(id) => onAutoSpec(id as SpeedBoostId)}
-          size="compact"
+          size="sub"
           className="segment-switch--auto-goal"
         />
       </div>
