@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import SegmentSwitch from "./SegmentSwitch";
 import {
   FULL_AUTO_GOALS,
@@ -17,6 +18,10 @@ interface FullAutoGoalRailProps {
   onWorkload: (workload: FullAutoWorkload) => void;
   onFix?: () => void;
   onTakeControl?: () => void;
+  /** Compact SPEC switch, tucked under the GOAL segment. */
+  specSlot?: ReactNode;
+  /** Full-width SPEC-EXTRA/draft row, inside the same rail. */
+  specExtraSlot?: ReactNode;
 }
 
 /** FULL AUTO goal + task picker — two big segments, manual controls one click away. */
@@ -30,35 +35,47 @@ export default function FullAutoGoalRail({
   onWorkload,
   onFix,
   onTakeControl,
+  specSlot,
+  specExtraSlot,
 }: FullAutoGoalRailProps) {
   return (
     <div className={`full-auto-goal-rail${hero ? " full-auto-goal-rail--hero" : ""}`}>
       <div
-        className="flex min-w-0 flex-1 items-center gap-3"
+        className="flex min-w-0 flex-1 items-start gap-3"
         style={{ flex: "1 1 620px" }}
       >
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <span
-            className="shrink-0 type-micro uppercase tracking-widest"
-            style={{ color: "var(--theme-text-muted)" }}
-          >
-            GOAL
-          </span>
-          <SegmentSwitch
-            ariaLabel="Full Auto goal"
-            options={FULL_AUTO_GOALS.map((option) => ({
-              id: option.id,
-              label: option.label,
-              title: option.note,
-            }))}
-            selectedId={goal ?? ""}
-            onSelect={(id) => {
-              if (id) onGoal(id as FullAutoGoal);
-            }}
-            size={hero ? "fit" : "compact"}
-            tone="amber"
-            className="segment-switch--auto-goal min-w-0 flex-1"
-          />
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <span
+              className="shrink-0 type-micro uppercase tracking-widest"
+              style={{ color: "var(--theme-text-muted)" }}
+            >
+              GOAL
+            </span>
+            <SegmentSwitch
+              ariaLabel="Full Auto goal"
+              options={FULL_AUTO_GOALS.map((option) => ({
+                id: option.id,
+                label: option.label,
+                title: option.note,
+              }))}
+              selectedId={goal ?? ""}
+              onSelect={(id) => {
+                if (id) onGoal(id as FullAutoGoal);
+              }}
+              size={hero ? "fit" : "compact"}
+              tone="amber"
+              className="segment-switch--auto-goal min-w-0 flex-1"
+            />
+          </div>
+          {specSlot ? (
+            <div
+              className="flex items-center justify-end"
+              style={{ padding: "4px 6px 0" }}
+            >
+              {specSlot}
+            </div>
+          ) : null}
         </div>
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <span
@@ -104,6 +121,11 @@ export default function FullAutoGoalRail({
         >
           TAKE CONTROL
         </button>
+      ) : null}
+      {specExtraSlot ? (
+        <div style={{ flex: "1 1 100%", padding: "5px 6px 0" }}>
+          {specExtraSlot}
+        </div>
       ) : null}
     </div>
   );

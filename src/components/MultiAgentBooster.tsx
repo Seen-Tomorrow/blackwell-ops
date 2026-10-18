@@ -435,7 +435,6 @@ export default function MultiAgentBooster({
     hero && heroSpecAllowed && heroSpecCapable && onAutoGoal && onAutoSpec && showBoost ? (
       <div
         className="flex items-center justify-end gap-2"
-        style={{ width: "min(50%, 760px)", marginLeft: "auto" }}
       >
         <span
           className="shrink-0 type-micro uppercase tracking-widest"
@@ -759,11 +758,9 @@ export default function MultiAgentBooster({
             onWorkload={onAutoWorkload ?? (() => {})}
             onFix={onAutoFix}
             onTakeControl={onTakeControl}
+            specSlot={heroSpecSwitch}
+            specExtraSlot={heroSpecAllowed ? violetStrip : null}
           />
-          {heroSpecSwitch}
-          {heroSpecAllowed && violetStrip ? (
-            <div style={{ width: "100%" }}>{violetStrip}</div>
-          ) : null}
         </div>
       ) : null}
 
