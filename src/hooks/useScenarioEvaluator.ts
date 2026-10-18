@@ -1028,9 +1028,9 @@ export function useScenarioEvaluator({
     return () => { clearTimeout(timerRef.current); };
   }, [model?.path, stack, gpuTopologyKey, gpuMemoryKey, gpus.length, configKey, learnedKey, stackKey, sysInfoLoaded, metaReady, commitManifest]);
 
-  const validate = useCallback(async (requestedMode?: FitProbeMode) => {
-    if (!model || validatingRef.current) return;
-    if (isExternalDraftOnly(model)) return;
+  const validate = useCallback(async (requestedMode?: FitProbeMode): Promise<VramManifest | null> => {
+    if (!model || validatingRef.current) return null;
+    if (isExternalDraftOnly(model)) return null;
     const curConfig = configRef.current;
     const providerId = curConfig.backend_type || "";
     if (tomMtpBlocked(providerId, model)) {
@@ -1155,6 +1155,7 @@ export function useScenarioEvaluator({
       if (painted == null) {
         scheduleEvaluationRef.current(true);
       }
+      return painted;
     } catch (e) {
       // `fit_scan_model` rejects with the serialized `BlackwellError`, not an `Error`.
       const msg = errorMessage(e);
@@ -1186,6 +1187,7 @@ export function useScenarioEvaluator({
         style: "Error",
       });
       scheduleEvaluationRef.current(true);
+      return null;
     } finally {
       validatingRef.current = false;
       setIsValidating(false);

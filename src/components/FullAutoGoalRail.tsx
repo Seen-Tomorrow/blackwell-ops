@@ -76,7 +76,7 @@ export default function FullAutoGoalRail({
           className="full-auto-goal-rail__take"
           onClick={onFix}
           disabled={fixing}
-          title="Run the low-VRAM FIT probe — refine the fit or start RAM offload"
+          title="Run the low-VRAM FIT probe, then correct CTX/batch — or let FASTEST try a split after the single GPU fails"
         >
           {fixing ? "PROBING…" : "LOW-VRAM PROBE"}
         </button>

@@ -1207,6 +1207,67 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       : "tight"
     : "estimating";
 
+  /**
+   * TIGHT correction: run the existing low-VRAM FIT probe, then either accept
+   * the offload result or correct the plan. FASTEST gets one split attempt only
+   * after the single-GPU measurement still does not fit.
+   */
+  const handleAutoFit = useCallback(async () => {
+    const result = await vramCalc.validate("low_vram");
+    if (!result || result.fits) return;
+
+    const split = String(config.split ?? "none").trim().toLowerCase();
+    if (autoGoal === "fastest" && split === "none" && gpus.length > 1) {
+      updateParam("split", "layer");
+      return;
+    }
+
+    const ctxDef = allParamsResolved.find((param) => param.key === "ctx");
+    if (ctxDef) {
+      const ctxValues = visibleParamValuesOf(ctxDef)
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value));
+      if (ctxValues.length > 0) {
+        const fit = findMaxFittingCtx(
+          Math.min(...ctxValues),
+          Math.max(...ctxValues),
+          ctxDef.step ?? 1024,
+          result.forecastFreeGb ?? 0,
+          result.forecastCurve ?? [],
+        );
+        if (fit != null) {
+          const allowed = ctxValues.filter((value) => value <= fit);
+          const next = allowed.length > 0 ? Math.max(...allowed) : Math.min(...ctxValues);
+          if (next < Number(config.ctx ?? 0)) {
+            updateParam("ctx", next);
+            return;
+          }
+        }
+      }
+    }
+
+    // CTX is already at its floor — drop to the low-latency batch pair.
+    const latency = throughputPair(allParamsResolved, "latency");
+    if (
+      latency
+      && (Number(config.batch ?? 0) > Number(latency.batch)
+        || Number(config.ubatch ?? 0) > Number(latency.ubatch))
+    ) {
+      updateParam("batch", latency.batch);
+      updateParam("ubatch", latency.ubatch);
+    }
+  }, [
+    allParamsResolved,
+    autoGoal,
+    config.batch,
+    config.ctx,
+    config.split,
+    config.ubatch,
+    gpus.length,
+    updateParam,
+    vramCalc,
+  ]);
+
   const launchChrome = useMemo(() => {
     // Custom: never multi-GPU lock / device ALL / hide split none — user owns chrome.
     if (isCustomProvider && !fullAutoMode) {
@@ -3446,7 +3507,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           onAutoWorkload={fullAutoFixed ? handleAutoWorkload : undefined}
           autoFitState={fullAutoFixed ? autoFitState : undefined}
           autoFixing={fullAutoFixed ? vramCalc.isValidating : false}
-          onAutoFix={fullAutoFixed ? () => { void vramCalc.validate("low_vram"); } : undefined}
+          onAutoFix={fullAutoFixed ? () => { void handleAutoFit(); } : undefined}
           onTakeControl={fullAutoFixed ? handleTakeControl : undefined}
         />
         {!(model && !modelIsDraftOnly && showCockpitSurface) && (
