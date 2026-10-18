@@ -184,6 +184,7 @@ interface LearnedVramEntry {
   reference_spec_key?: string;
   batch_deltas?: Record<string, unknown>;
   spec_deltas?: Record<string, unknown>;
+  joint_deltas?: Record<string, unknown>;
   measured_at?: string;
   gpu_breakdown_mib?: number[];
   host_mib?: number;
@@ -800,13 +801,17 @@ export function useScenarioEvaluator({
           entry?.batch_deltas?.[`${curBatch}|${curUbatch}`],
         );
         const specKey = specKeyForLearned(curConfig);
+        const jointKey = `${curBatch}|${curUbatch}|${specKey}`;
+        const jointMatch = Boolean(entry?.joint_deltas?.[jointKey]);
         const specMatch = Boolean(
           entry
           && (entry.reference_spec_key === specKey || entry.spec_deltas?.[specKey]),
         );
-        if (entry && (referenceMatch || deltaMatch) && specMatch) {
-          // A measured base or a learned batch/spec addition is valid for this
-          // config; do not waste a FIT probe just because the key changed.
+        const batchValid = referenceMatch || deltaMatch || jointMatch;
+        const specValid = entry?.reference_spec_key === specKey || specMatch || jointMatch;
+        if (entry && batchValid && specValid) {
+          // A measured base or a learned batch/spec/joint addition is valid for
+          // this config; do not waste a FIT probe just because the key changed.
           forceProbeRef.current = false;
         }
         const snap = entry?.launch_snapshot;

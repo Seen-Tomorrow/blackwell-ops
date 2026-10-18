@@ -59,6 +59,9 @@ pub struct LearnedVramEntry {
     /// Learned spec/draft additions at this ctx (key: spec identity).
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub spec_deltas: HashMap<String, LearnedSpecDeltaPoint>,
+    /// Combined batch+spec additions at this ctx (key: "batch|ubatch|spec").
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub joint_deltas: HashMap<String, LearnedSpecDeltaPoint>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gpu_breakdown_mib: Option<Vec<f64>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -703,6 +706,7 @@ pub fn record_learned_vram(
             batch_deltas: HashMap::new(),
             reference_spec_key: None,
             spec_deltas: HashMap::new(),
+            joint_deltas: HashMap::new(),
             gpu_breakdown_mib,
             host_mib: None,
             gpu_components_mib: None,
@@ -830,6 +834,31 @@ fn record_spec_delta(
     );
 }
 
+fn joint_delta_key(pair: &str, spec_key: &str) -> String {
+    format!("{pair}|{spec_key}")
+}
+
+fn record_joint_delta(
+    entry: &mut LearnedVramEntry,
+    ctx: usize,
+    pair: &str,
+    spec_key: &str,
+    vram_mib: f64,
+    host_mib: Option<f64>,
+) {
+    let base_vram = entry.paint_vram_mib();
+    let base_host = entry.paint_host_mib().unwrap_or(0.0);
+    entry.joint_deltas.insert(
+        joint_delta_key(pair, spec_key),
+        LearnedSpecDeltaPoint {
+            ctx,
+            vram_mib: vram_mib - base_vram,
+            host_mib: host_mib.map(|h| h - base_host),
+            measured_at: timestamp_now(),
+        },
+    );
+}
+
 /// FIT-only primary promote when no launch snapshot yet.
 /// Once a launch buffer inventory exists it owns primary; engine memory
 /// regressions/fixes are captured by the next `record_launch_memory_snapshot`.
@@ -867,6 +896,7 @@ pub fn append_fit_breakdown_tables(
         batch_deltas: HashMap::new(),
         reference_spec_key: None,
         spec_deltas: HashMap::new(),
+        joint_deltas: HashMap::new(),
         gpu_breakdown_mib: None,
         host_mib: None,
         gpu_components_mib: None,
@@ -885,17 +915,28 @@ pub fn append_fit_breakdown_tables(
         let mib = table.map(|t| t.total_gpu_self_mib()).unwrap_or(0.0);
         if mib > 0.0 {
             let host = table.and_then(|t| t.host_mib);
-            if !batch_matches {
-                record_batch_delta(entry, batch, ubatch, mib, host);
-            }
-            if !spec_matches {
-                record_spec_delta(
+            if !batch_matches && !spec_matches {
+                record_joint_delta(
                     entry,
                     ctx_from_learn_key(key).unwrap_or(0),
+                    &batch_pair(batch, ubatch),
                     spec_key,
                     mib,
                     host,
                 );
+            } else {
+                if !batch_matches {
+                    record_batch_delta(entry, batch, ubatch, mib, host);
+                }
+                if !spec_matches {
+                    record_spec_delta(
+                        entry,
+                        ctx_from_learn_key(key).unwrap_or(0),
+                        spec_key,
+                        mib,
+                        host,
+                    );
+                }
             }
             save_store(&store)?;
         }
@@ -1066,6 +1107,7 @@ mod dedup_tests {
                     batch_deltas: HashMap::new(),
                     reference_spec_key: None,
                     spec_deltas: HashMap::new(),
+                    joint_deltas: HashMap::new(),
                     gpu_breakdown_mib: Some(vec![85485.0, 83376.0]),
                     host_mib: Some(105086.0),
                     gpu_components_mib: None,
@@ -1140,6 +1182,7 @@ mod dedup_tests {
                     batch_deltas: HashMap::new(),
                     reference_spec_key: None,
                     spec_deltas: HashMap::new(),
+                    joint_deltas: HashMap::new(),
                     gpu_breakdown_mib: Some(vec![50000.0, 48854.0]),
                     host_mib: Some(800.0),
                     gpu_components_mib: None,
@@ -1204,6 +1247,7 @@ pub fn record_launch_memory_snapshot(
         batch_deltas: HashMap::new(),
         reference_spec_key: None,
         spec_deltas: HashMap::new(),
+        joint_deltas: HashMap::new(),
         gpu_breakdown_mib: None,
         host_mib: None,
         gpu_components_mib: None,
@@ -1218,23 +1262,34 @@ pub fn record_launch_memory_snapshot(
     let batch_matches = batch_reference_matches(entry, batch, ubatch);
     let spec_matches = spec_reference_matches(entry, spec_key);
     if !batch_matches || !spec_matches {
-        if !batch_matches {
-            record_batch_delta(
-                entry,
-                batch,
-                ubatch,
-                snapshot.vram_mib,
-                Some(snapshot.host_mib),
-            );
-        }
-        if !spec_matches {
-            record_spec_delta(
+        if !batch_matches && !spec_matches {
+            record_joint_delta(
                 entry,
                 ctx_from_learn_key(key).unwrap_or(0),
+                &batch_pair(batch, ubatch),
                 spec_key,
                 snapshot.vram_mib,
                 Some(snapshot.host_mib),
             );
+        } else {
+            if !batch_matches {
+                record_batch_delta(
+                    entry,
+                    batch,
+                    ubatch,
+                    snapshot.vram_mib,
+                    Some(snapshot.host_mib),
+                );
+            }
+            if !spec_matches {
+                record_spec_delta(
+                    entry,
+                    ctx_from_learn_key(key).unwrap_or(0),
+                    spec_key,
+                    snapshot.vram_mib,
+                    Some(snapshot.host_mib),
+                );
+            }
         }
         save_store(&store)?;
         drop(_guard);
@@ -1336,11 +1391,13 @@ pub fn get_learned_vram(
         let base_h = entry.paint_host_mib();
         let mut delta_v = 0.0;
         let mut delta_h = 0.0;
-        if batch_mismatch {
-            let pair = batch_pair(wanted_batch, wanted_ubatch);
-            let delta = entry.batch_deltas.get(&pair).cloned().or_else(|| {
+        let pair = batch_pair(wanted_batch, wanted_ubatch);
+        let mut joint_applied = false;
+        if batch_mismatch && spec_mismatch {
+            let live_ctx = normalize_ctx_key(&ctx).parse::<usize>().ok()?;
+            let points = {
                 let store = load_store();
-                find_batch_delta(
+                find_joint_delta_points(
                     &store.entries,
                     &path_norm,
                     &provider_id,
@@ -1348,28 +1405,50 @@ pub fn get_learned_vram(
                     &split_n,
                     vram_topo.as_deref(),
                     &pair,
-                )
-            })?;
-            delta_v += delta.vram_mib;
-            delta_h += delta.host_mib.unwrap_or(0.0);
-        }
-        if spec_mismatch {
-            let points = {
-                let store = load_store();
-                find_spec_delta_points(
-                    &store.entries,
-                    &path_norm,
-                    &provider_id,
-                    &kv_n,
-                    &split_n,
-                    vram_topo.as_deref(),
                     &wanted_spec,
                 )
             };
-            let live_ctx = normalize_ctx_key(&ctx).parse::<usize>().ok()?;
-            let (spec_v, spec_h) = interpolate_spec_delta(&points, live_ctx)?;
-            delta_v += spec_v;
-            delta_h += spec_h;
+            if let Some((joint_v, joint_h)) = interpolate_spec_delta(&points, live_ctx) {
+                delta_v += joint_v;
+                delta_h += joint_h;
+                joint_applied = true;
+            }
+        }
+        if !joint_applied {
+            if batch_mismatch {
+                let delta = entry.batch_deltas.get(&pair).cloned().or_else(|| {
+                    let store = load_store();
+                    find_batch_delta(
+                        &store.entries,
+                        &path_norm,
+                        &provider_id,
+                        &kv_n,
+                        &split_n,
+                        vram_topo.as_deref(),
+                        &pair,
+                    )
+                })?;
+                delta_v += delta.vram_mib;
+                delta_h += delta.host_mib.unwrap_or(0.0);
+            }
+            if spec_mismatch {
+                let points = {
+                    let store = load_store();
+                    find_spec_delta_points(
+                        &store.entries,
+                        &path_norm,
+                        &provider_id,
+                        &kv_n,
+                        &split_n,
+                        vram_topo.as_deref(),
+                        &wanted_spec,
+                    )
+                };
+                let live_ctx = normalize_ctx_key(&ctx).parse::<usize>().ok()?;
+                let (spec_v, spec_h) = interpolate_spec_delta(&points, live_ctx)?;
+                delta_v += spec_v;
+                delta_h += spec_h;
+            }
         }
         entry.vram_mib = base_v + delta_v;
         entry.host_mib = match (base_h, delta_h) {
@@ -1548,6 +1627,43 @@ fn find_spec_delta_points(
     by_ctx.into_values().collect()
 }
 
+fn find_joint_delta_points(
+    entries: &HashMap<String, LearnedVramEntry>,
+    path_norm: &str,
+    provider_id: &str,
+    kv_n: &str,
+    split_n: &str,
+    vram_topo: Option<&str>,
+    pair: &str,
+    spec_key: &str,
+) -> Vec<LearnedSpecDeltaPoint> {
+    let joint_key = joint_delta_key(pair, spec_key);
+    let mut by_ctx: std::collections::BTreeMap<usize, LearnedSpecDeltaPoint> =
+        std::collections::BTreeMap::new();
+    for (key, entry) in entries {
+        if !entry_matches_curve_hard_knobs(key, path_norm, provider_id, kv_n) {
+            continue;
+        }
+        if !key_matches_split(key, split_n) {
+            continue;
+        }
+        if let Some(topo) = vram_topo {
+            if !key_matches_vram_topo(key, topo) {
+                continue;
+            }
+        }
+        if let Some(point) = entry.joint_deltas.get(&joint_key) {
+            match by_ctx.get(&point.ctx) {
+                Some(existing) if existing.measured_at >= point.measured_at => {}
+                _ => {
+                    by_ctx.insert(point.ctx, point.clone());
+                }
+            }
+        }
+    }
+    by_ctx.into_values().collect()
+}
+
 fn interpolate_spec_delta(
     points: &[LearnedSpecDeltaPoint],
     ctx: usize,
@@ -1620,6 +1736,16 @@ pub fn get_learned_vram_curve(
         vram_topo.as_deref(),
         &wanted_spec,
     );
+    let joint_points = find_joint_delta_points(
+        &store.entries,
+        &path_norm,
+        &provider_id,
+        &kv_n,
+        &split_n,
+        vram_topo.as_deref(),
+        &wanted_pair,
+        &wanted_spec,
+    );
     let mut best: std::collections::HashMap<usize, (String, LearnedVramCurvePoint)> =
         std::collections::HashMap::new();
     for (k, entry) in &store.entries {
@@ -1639,8 +1765,29 @@ pub fn get_learned_vram_curve(
         };
         let mut delta_v = 0.0;
         let mut delta_h = 0.0;
-        if let (Some(rb), Some(ru)) = (entry.reference_batch, entry.reference_ubatch) {
-            if rb != wanted_batch || ru != wanted_ubatch {
+        let batch_mismatch = entry
+            .reference_batch
+            .zip(entry.reference_ubatch)
+            .map(|(rb, ru)| rb != wanted_batch || ru != wanted_ubatch)
+            .unwrap_or(false);
+        let spec_mismatch = entry
+            .reference_spec_key
+            .as_deref()
+            .map(|reference| reference != wanted_spec)
+            .unwrap_or(false);
+        let joint_applied = if batch_mismatch && spec_mismatch {
+            if let Some((joint_v, joint_h)) = interpolate_spec_delta(&joint_points, ctx) {
+                delta_v += joint_v;
+                delta_h += joint_h;
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        if !joint_applied {
+            if batch_mismatch {
                 let delta = entry
                     .batch_deltas
                     .get(&wanted_pair)
@@ -1648,21 +1795,16 @@ pub fn get_learned_vram_curve(
                 let Some(delta) = delta else {
                     continue;
                 };
-                delta_v = delta.vram_mib;
-                delta_h = delta.host_mib.unwrap_or(0.0);
+                delta_v += delta.vram_mib;
+                delta_h += delta.host_mib.unwrap_or(0.0);
             }
-        }
-        let spec_mismatch = entry
-            .reference_spec_key
-            .as_deref()
-            .map(|reference| reference != wanted_spec)
-            .unwrap_or(false);
-        if spec_mismatch {
-            let Some((spec_v, spec_h)) = interpolate_spec_delta(&spec_points, ctx) else {
-                continue;
-            };
-            delta_v += spec_v;
-            delta_h += spec_h;
+            if spec_mismatch {
+                let Some((spec_v, spec_h)) = interpolate_spec_delta(&spec_points, ctx) else {
+                    continue;
+                };
+                delta_v += spec_v;
+                delta_h += spec_h;
+            }
         }
         let vram = entry.paint_vram_mib() + delta_v;
         if vram <= 0.0 {
