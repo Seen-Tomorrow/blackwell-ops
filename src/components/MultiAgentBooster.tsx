@@ -20,6 +20,7 @@ import {
 } from "../lib/multiAgentBooster";
 import CockpitCtxStrip from "./CockpitCtxStrip";
 import CockpitSlider from "./CockpitSlider";
+import SegmentSwitch from "./SegmentSwitch";
 import CockpitFlagToolbar, { type CockpitFlagToggle } from "./CockpitFlagToolbar";
 import FullAutoGoalRail from "./FullAutoGoalRail";
 import {
@@ -416,35 +417,40 @@ export default function MultiAgentBooster({
     return displayBoost === "off" ? "smart" : displayBoost;
   }, [powerMode, displayBoost, activeRawSpecType]);
 
-  const heroSpecSlider =
+  const heroSpecOptions = (["off", "mtp", "dflash", "dspark"] as const).map((id) => {
+    const mark = boostMarks.find((m) => m.id === id || (id === "off" && m.id === "smart"));
+    const disabled =
+      (id === "mtp" && !mtpAvailable)
+      || (id === "dflash" && !dflashAvailable);
+    return {
+      id,
+      label: id === "off" ? "OFF" : (mark?.label ?? id.toUpperCase()),
+      title: mark?.blurb,
+      disabled,
+    };
+  });
+  const heroSpecValue = displayBoost === "smart" ? "off" : displayBoost;
+
+  const heroSpecSwitch =
     hero && heroSpecAllowed && heroSpecCapable && onAutoGoal && onAutoSpec && showBoost ? (
-      <div>
-        <CockpitSlider
-          label="SPEC"
-          value={boostSliderValue}
-          onChange={(id) => onAutoSpec(id as SpeedBoostId)}
-          options={boostMarks
-            .filter((m) => !m.id.startsWith("raw:"))
-            .map((m) => {
-              const mtpMissing = m.id === "mtp" && !mtpAvailable;
-              const dflashMissing = m.id === "dflash" && !dflashAvailable;
-              const needCap = mtpMissing || dflashMissing;
-              const available =
-                m.id === "smart"
-                || m.id === "off"
-                || m.id === "dspark"
-                || (m.id === "mtp" && mtpAvailable)
-                || (m.id === "dflash" && dflashAvailable);
-              return {
-                id: m.id,
-                label: m.id === "smart" ? "OFF" : m.label,
-                aboveLabel: m.aboveLabel,
-                blurb: m.blurb,
-                disabled: needCap,
-                badgeColor: m.badgeColor,
-                emphasize: Boolean(m.badgeColor) && available && !needCap,
-              };
-            })}
+      <div
+        className="flex items-center justify-end gap-2"
+        style={{ width: "min(50%, 760px)", marginLeft: "auto" }}
+      >
+        <span
+          className="shrink-0 type-micro uppercase tracking-widest"
+          style={{ color: "var(--theme-text-muted)" }}
+        >
+          SPEC
+        </span>
+        <SegmentSwitch
+          ariaLabel="FULL AUTO SPEC"
+          options={heroSpecOptions}
+          selectedId={heroSpecValue}
+          onSelect={(id) => onAutoSpec(id as SpeedBoostId)}
+          size="compact"
+          tone="accent"
+          className="segment-switch--auto-goal"
         />
       </div>
     ) : null;
@@ -588,7 +594,7 @@ export default function MultiAgentBooster({
     showSpecExtra && specDetailParams.length > 0 ? (
       <div className="full-auto-cockpit__spec-extra font-mono min-w-0 flex-1">
         <span className="full-auto-cockpit__spec-extra-title shrink-0">SPEC-EXTRA</span>
-        <div className="full-auto-cockpit__spec-extra-row min-w-0">
+        <div className="full-auto-cockpit__spec-extra-row min-w-0" style={{ flexWrap: "nowrap" }}>
           {specDetailParams.map((p, i) => {
             const rendered = p.values;
             const activeIdx = Math.max(
@@ -640,6 +646,7 @@ export default function MultiAgentBooster({
     <div
       className={`full-auto-cockpit__dflash-get full-auto-cockpit__dflash-get--footer full-auto-cockpit__dflash-get--tone-${stripTone} font-mono min-w-0 flex-1 full-auto-cockpit__dflash-get--spec-extra`}
       data-strip-tone={stripTone}
+      style={{ maxWidth: "none", width: "100%", flexWrap: "nowrap", overflowX: "auto" }}
     >
       {draftStripInner && specExtraInline ? (
         <>
@@ -753,9 +760,7 @@ export default function MultiAgentBooster({
             onFix={onAutoFix}
             onTakeControl={onTakeControl}
           />
-          {heroSpecSlider ? (
-            <div style={{ width: "min(50%, 760px)" }}>{heroSpecSlider}</div>
-          ) : null}
+          {heroSpecSwitch}
           {heroSpecAllowed && violetStrip ? (
             <div style={{ width: "100%" }}>{violetStrip}</div>
           ) : null}

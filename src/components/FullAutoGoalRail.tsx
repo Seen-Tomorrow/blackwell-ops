@@ -56,8 +56,8 @@ export default function FullAutoGoalRail({
               if (id) onGoal(id as FullAutoGoal);
             }}
             size={hero ? "fit" : "compact"}
-            tone="accent"
-            className="segment-switch--gpu-bezel segment-switch--auto-goal min-w-0 flex-1"
+            tone="amber"
+            className="segment-switch--auto-goal min-w-0 flex-1"
           />
         </div>
         <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -79,8 +79,8 @@ export default function FullAutoGoalRail({
               if (id) onWorkload(id as FullAutoWorkload);
             }}
             size={hero ? "fit" : "compact"}
-            tone="accent"
-            className="segment-switch--gpu-bezel segment-switch--auto-goal min-w-0 flex-1"
+            tone="amber"
+            className="segment-switch--auto-goal min-w-0 flex-1"
           />
         </div>
       </div>
