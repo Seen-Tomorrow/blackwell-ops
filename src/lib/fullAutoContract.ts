@@ -26,10 +26,10 @@ export const FULL_AUTO_SPEC_EXTRAS_DEFAULT = {
   pMin: 0,
 } as const;
 
-export type FullAutoSpecMethod = "off" | "mtp" | "dflash" | "dspark";
-export type FullAutoDraftSource = "none" | "built-in" | "saved" | "external";
+type FullAutoSpecMethod = "off" | "mtp" | "dflash" | "dspark";
+type FullAutoDraftSource = "none" | "built-in" | "saved" | "external";
 
-export interface FullAutoSpecExtras {
+interface FullAutoSpecExtras {
   nMax: number;
   nMin: number;
   pMin: number;
@@ -52,7 +52,7 @@ export interface FullAutoDecisionInput {
   specExtras?: Partial<FullAutoSpecExtras>;
 }
 
-export interface FullAutoSpecDecision {
+interface FullAutoSpecDecision {
   method: FullAutoSpecMethod;
   specType: string | null;
   draftSource: FullAutoDraftSource;

@@ -6,7 +6,7 @@ import {
   type ReactNode,
 } from "react";
 
-export type CockpitNavSegmentOption = {
+type CockpitNavSegmentOption = {
   id: string;
   label: ReactNode;
   title?: string;
@@ -14,7 +14,7 @@ export type CockpitNavSegmentOption = {
   className?: string;
 };
 
-export interface CockpitNavSegmentProps {
+interface CockpitNavSegmentProps {
   options: CockpitNavSegmentOption[];
   selectedId: string;
   onSelect: (id: string) => void;

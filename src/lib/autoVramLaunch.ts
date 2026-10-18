@@ -6,13 +6,6 @@ import {
 } from "../services/vram/scenarios/scenarios_factory";
 import { fullAutoSingleDeviceLabel } from "./fullAutoGpuPick";
 
-export {
-  gpuArchFamily,
-  pickFullAutoSingleGpuIndex,
-  pickFullAutoSingleGpuListPos,
-  fullAutoSingleDeviceLabel,
-} from "./fullAutoGpuPick";
-
 export function gpuHeadroomGb(capacityGb: number): number {
   return Math.max(1.0, capacityGb * 0.03);
 }

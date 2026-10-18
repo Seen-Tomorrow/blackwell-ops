@@ -4,7 +4,7 @@ import type { GpuInfo } from "./types";
  * Coarse arch family from product name (no SM query on GpuInfo).
  * Peers share a family so mixed fleets don't pin Full Auto to a random weak card.
  */
-export function gpuArchFamily(name: string): string {
+function gpuArchFamily(name: string): string {
   const n = name.toLowerCase();
   if (
     /\b(blackwell|b200|b100|gb200)\b/.test(n) ||
@@ -61,7 +61,7 @@ export function pickFullAutoSingleGpuListPos(
 }
 
 /** NVIDIA device index for CUDA_VISIBLE_DEVICES / device=GPU-N. */
-export function pickFullAutoSingleGpuIndex(
+function pickFullAutoSingleGpuIndex(
   gpus: GpuInfo[],
   perGpuAvailable: number[],
 ): number {
