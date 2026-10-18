@@ -34,7 +34,7 @@ export default function EngineToolbar(props: EngineToolbarProps) {
 
   return (
     <div className="config-panel-toolbar px-4 py-0.5 flex items-center gap-3 flex-shrink-0 border-b section-divider">
-      {/* Full Auto = one layout (no Essentials/Full). Assisted keeps the switch. */}
+      {/* Autopilot = one layout (no Essentials/Full). Assisted keeps the switch. */}
       {!fullAutoFixed && (
         <div className="config-panel-toolbar__config flex items-center gap-1.5 flex-shrink-0">
           <span className="config-panel-toolbar__label">CONFIG</span>
@@ -43,7 +43,7 @@ export default function EngineToolbar(props: EngineToolbarProps) {
       )}
       {fullAutoFixed && (
         <div className="config-panel-toolbar__config flex items-center gap-1.5 flex-shrink-0">
-          <span className="config-panel-toolbar__label eng-toolbar-label">FULL AUTO</span>
+          <span className="config-panel-toolbar__label eng-toolbar-label">AUTOPILOT</span>
         </div>
       )}
       {seatSaveSlot}

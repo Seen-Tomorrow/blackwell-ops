@@ -443,7 +443,7 @@ export default function MultiAgentBooster({
           SPEC
         </span>
         <CockpitNavSegment
-          ariaLabel="FULL AUTO SPEC"
+          ariaLabel="AUTOPILOT SPEC"
           options={heroSpecOptions}
           selectedId={heroSpecValue}
           onSelect={(id) => onAutoSpec(id as SpeedBoostId)}
@@ -726,7 +726,7 @@ export default function MultiAgentBooster({
       {/* Title left · AGENTIC HARNESS (accent) · soft note · flags */}
       <div className="full-auto-cockpit__header full-auto-cockpit__header--minimal">
         <span className="full-auto-cockpit__title font-mono tracking-[0.16em] uppercase shrink-0">
-          {hero ? "Autopilot" : powerMode ? "Power cockpit" : "Launch cockpit"}
+          {hero ? "Autopilot" : "Assisted cockpit"}
         </span>
         {hero ? (
           <span className="full-auto-cockpit__status-note font-mono min-w-0 truncate" title={autoOutcome}>

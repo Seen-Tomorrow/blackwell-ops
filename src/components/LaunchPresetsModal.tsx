@@ -27,7 +27,7 @@ export type LaunchPresetsModalProps = {
 const PORT_MODES: PortPolicyMode[] = ["auto", "prefer", "fixed"];
 
 const POLICY_LABEL: Record<string, string> = {
-  full_auto: "Full Auto",
+  full_auto: "Autopilot",
   assisted_essentials: "Assisted Essentials",
   assisted_full: "Assisted Full",
 };
@@ -257,7 +257,7 @@ export default function LaunchPresetsModal({
                         <span className="truncate opacity-80">{seatSummary(seat)}</span>
                         <span
                           className="ml-auto type-micro uppercase tracking-wide px-1.5 py-0.5 rounded-sm border cfg-bord--a40 cfg-mut"
-                          title="Launch mode at save — edit by re-saving from Full Auto / Assisted panel"
+                          title="Launch mode at save — edit by re-saving from Autopilot / Assisted panel"
                         >
                           {POLICY_LABEL[seat.policyId] ?? seat.policyId}
                         </span>

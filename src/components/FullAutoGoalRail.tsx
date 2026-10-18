@@ -24,7 +24,7 @@ interface FullAutoGoalRailProps {
   specExtraSlot?: ReactNode;
 }
 
-/** FULL AUTO goal + task picker — two big segments, manual controls one click away. */
+/** Autopilot goal + task picker — two big segments, manual controls one click away. */
 export default function FullAutoGoalRail({
   goal,
   workload,
@@ -52,7 +52,7 @@ export default function FullAutoGoalRail({
             GOAL
           </span>
           <CockpitNavSegment
-            ariaLabel="Full Auto goal"
+            ariaLabel="Autopilot goal"
             options={FULL_AUTO_GOALS.map((option) => ({
               id: option.id,
               label: option.label,
@@ -82,7 +82,7 @@ export default function FullAutoGoalRail({
             TASK
           </span>
           <CockpitNavSegment
-            ariaLabel="Full Auto task"
+            ariaLabel="Autopilot task"
             options={FULL_AUTO_WORKLOADS.map((option) => ({
               id: option.id,
               label: option.label,

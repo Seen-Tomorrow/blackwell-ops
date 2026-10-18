@@ -212,7 +212,7 @@ export default function GpuAssignPanel({
                 className={`${paramChipClass(true, chromeDisabled)} opacity-90 cursor-default`}
                 title={
                   chromeDisabled
-                    ? "FULL AUTO — engine picks GPU placement"
+                    ? "AUTOPILOT — engine picks GPU placement"
                     : "Split mode uses all detected GPUs. Set SPLIT to none to pick a single GPU."
                 }
               >

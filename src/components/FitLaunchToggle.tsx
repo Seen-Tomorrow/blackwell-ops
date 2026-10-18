@@ -6,7 +6,7 @@ interface FitLaunchToggleProps {
   onChange: (fullAuto: boolean) => void;
 }
 
-/** Segmented switch — ASSISTED vs FULL AUTO memory launch (under VRAM forecast). */
+/** Segmented switch — ASSISTED vs AUTOPILOT memory launch (under VRAM forecast). */
 export default function FitLaunchToggle({ fullAuto, available, onChange }: FitLaunchToggleProps) {
   if (!available) return null;
 
@@ -16,7 +16,7 @@ export default function FitLaunchToggle({ fullAuto, available, onChange }: FitLa
       className="segment-switch--fit-launch"
       options={[
         { id: "assisted", label: "ASSISTED" },
-        { id: "full-auto", label: "FULL AUTO" },
+        { id: "full-auto", label: "AUTOPILOT" },
       ]}
       selectedId={fullAuto ? "full-auto" : "assisted"}
       onSelect={(id) => onChange(id === "full-auto")}
