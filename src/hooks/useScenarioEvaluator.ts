@@ -54,6 +54,11 @@ function draftBaseName(config: Record<string, unknown>): string {
  */
 function fitProbeKey(config: Record<string, unknown>, autoVramLaunch: boolean): string {
   const split = String(config.split ?? "none").trim().toLowerCase() || "none";
+  const spec = effectiveSpecTypeFromConfig(config);
+  const specDraft = specDraftForLearned(config);
+  const draftBase = specDraft
+    ? (specDraft.split(/[/\\]/).pop()?.trim().toLowerCase() || specDraft.toLowerCase())
+    : "";
   return [
     config.backend_type || "",
     config["kv_quant"] || "",
@@ -61,6 +66,8 @@ function fitProbeKey(config: Record<string, unknown>, autoVramLaunch: boolean): 
     String(config.ubatch ?? ""),
     config["flash_attn"] || "",
     split,
+    spec,
+    draftBase,
     autoVramLaunch ? "1" : "0",
   ].join("|");
 }
