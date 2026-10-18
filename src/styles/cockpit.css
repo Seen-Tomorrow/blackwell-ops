@@ -73,13 +73,6 @@
   padding: 0.9rem 0.8rem;
 }
 
-.full-auto-goal-rail__label {
-  flex-shrink: 0;
-  color: var(--theme-accent-bright);
-  font-size: var(--type-micro);
-  letter-spacing: 0.14em;
-}
-
 .full-auto-goal-rail__outcome {
   flex: 1 1 14rem;
   min-width: 0;

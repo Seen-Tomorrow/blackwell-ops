@@ -1,7 +1,5 @@
-import SegmentSwitch from "./SegmentSwitch";
+import MissionStrip from "./MissionStrip";
 import {
-  FULL_AUTO_GOALS,
-  FULL_AUTO_WORKLOADS,
   type FullAutoFitState,
   type FullAutoGoal,
   type FullAutoWorkload,
@@ -35,37 +33,11 @@ export default function FullAutoGoalRail({
 }: FullAutoGoalRailProps) {
   return (
     <div className={`full-auto-goal-rail${hero ? " full-auto-goal-rail--hero" : ""}`}>
-      <span className="full-auto-goal-rail__label">GOAL</span>
-      <SegmentSwitch
-        ariaLabel="Full Auto goal"
-        options={FULL_AUTO_GOALS.map((option) => ({
-          id: option.id,
-          label: option.label,
-          title: option.note,
-        }))}
-        selectedId={goal ?? ""}
-        onSelect={(id) => {
-          if (id) onGoal(id as FullAutoGoal);
-        }}
-        size={hero ? "fit" : "compact"}
-        tone="accent"
-        className="segment-switch--gpu-bezel segment-switch--auto-goal"
-      />
-      <span className="full-auto-goal-rail__label">TASK</span>
-      <SegmentSwitch
-        ariaLabel="Full Auto workload"
-        options={FULL_AUTO_WORKLOADS.map((option) => ({
-          id: option.id,
-          label: option.label,
-          title: option.note,
-        }))}
-        selectedId={workload ?? ""}
-        onSelect={(id) => {
-          if (id) onWorkload(id as FullAutoWorkload);
-        }}
-        size={hero ? "fit" : "compact"}
-        tone="accent"
-        className="segment-switch--gpu-bezel segment-switch--auto-goal"
+      <MissionStrip
+        goal={goal}
+        workload={workload}
+        onGoal={onGoal}
+        onWorkload={onWorkload}
       />
       <span className="full-auto-goal-rail__outcome" title={outcome}>
         {outcome}
