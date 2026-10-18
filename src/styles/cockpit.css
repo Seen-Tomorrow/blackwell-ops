@@ -73,17 +73,6 @@
   padding: 0.9rem 0.8rem;
 }
 
-.full-auto-goal-rail__outcome {
-  flex: 1 1 14rem;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--theme-text-muted);
-  font-size: var(--type-micro);
-  letter-spacing: 0.04em;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .full-auto-goal-rail__take {
   flex-shrink: 0;
   padding: 1px 6px;

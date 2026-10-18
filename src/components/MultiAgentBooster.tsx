@@ -322,6 +322,7 @@ export default function MultiAgentBooster({
   const mtpAvailable = capSet.has("mtp");
   const dflashAvailable = dflashLibraryReady || dflashGettable || capSet.has("dflash");
   const heroSpecCapable = capSet.has("mtp") || capSet.has("dflash");
+  const heroSpecAllowed = autoGoal !== "agents";
   const mtpLocksAgents = displayBoost === "mtp";
 
   const boostMarks = useMemo((): BoostMarkParts[] => {
@@ -416,7 +417,7 @@ export default function MultiAgentBooster({
   }, [powerMode, displayBoost, activeRawSpecType]);
 
   const heroSpecSlider =
-    hero && heroSpecCapable && onAutoGoal && onAutoSpec && showBoost ? (
+    hero && heroSpecAllowed && heroSpecCapable && onAutoGoal && onAutoSpec && showBoost ? (
       <div>
         <CockpitSlider
           label="SPEC"
@@ -722,7 +723,11 @@ export default function MultiAgentBooster({
         <span className="full-auto-cockpit__title font-mono tracking-[0.16em] uppercase shrink-0">
           {hero ? "Autopilot" : powerMode ? "Power cockpit" : "Launch cockpit"}
         </span>
-        {plan.softNote ? (
+        {hero ? (
+          <span className="full-auto-cockpit__status-note font-mono min-w-0 truncate" title={autoOutcome}>
+            {autoOutcome}
+          </span>
+        ) : plan.softNote ? (
           <span className="full-auto-cockpit__status-note font-mono min-w-0 truncate" title={plan.softNote}>
             {plan.softNote}
           </span>
@@ -740,7 +745,6 @@ export default function MultiAgentBooster({
           <FullAutoGoalRail
             goal={autoGoal ?? null}
             workload={autoWorkload ?? null}
-            outcome={autoOutcome}
             hero
             fitState={autoFitState}
             fixing={autoFixing}
@@ -749,14 +753,11 @@ export default function MultiAgentBooster({
             onFix={onAutoFix}
             onTakeControl={onTakeControl}
           />
-          {heroSpecSlider || violetStrip ? (
-            <div
-              className="full-auto-cockpit__hero-spec-stack space-y-2"
-              style={{ width: "min(50%, 760px)" }}
-            >
-              {heroSpecSlider}
-              {violetStrip}
-            </div>
+          {heroSpecSlider ? (
+            <div style={{ width: "min(50%, 760px)" }}>{heroSpecSlider}</div>
+          ) : null}
+          {heroSpecAllowed && violetStrip ? (
+            <div style={{ width: "100%" }}>{violetStrip}</div>
           ) : null}
         </div>
       ) : null}

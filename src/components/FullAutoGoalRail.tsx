@@ -1,5 +1,7 @@
-import MissionStrip from "./MissionStrip";
+import SegmentSwitch from "./SegmentSwitch";
 import {
+  FULL_AUTO_GOALS,
+  FULL_AUTO_WORKLOADS,
   type FullAutoFitState,
   type FullAutoGoal,
   type FullAutoWorkload,
@@ -8,7 +10,6 @@ import {
 interface FullAutoGoalRailProps {
   goal: FullAutoGoal | null;
   workload: FullAutoWorkload | null;
-  outcome: string;
   hero?: boolean;
   fitState?: FullAutoFitState;
   fixing?: boolean;
@@ -18,11 +19,10 @@ interface FullAutoGoalRailProps {
   onTakeControl?: () => void;
 }
 
-/** FULL AUTO goal + workload picker — outcome first, manual controls one click away. */
+/** FULL AUTO goal + task picker — two big segments, manual controls one click away. */
 export default function FullAutoGoalRail({
   goal,
   workload,
-  outcome,
   hero = false,
   fitState,
   fixing = false,
@@ -33,15 +33,57 @@ export default function FullAutoGoalRail({
 }: FullAutoGoalRailProps) {
   return (
     <div className={`full-auto-goal-rail${hero ? " full-auto-goal-rail--hero" : ""}`}>
-      <MissionStrip
-        goal={goal}
-        workload={workload}
-        onGoal={onGoal}
-        onWorkload={onWorkload}
-      />
-      <span className="full-auto-goal-rail__outcome" title={outcome}>
-        {outcome}
-      </span>
+      <div
+        className="flex min-w-0 flex-1 items-center gap-3"
+        style={{ flex: "1 1 620px" }}
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <span
+            className="shrink-0 type-micro uppercase tracking-widest"
+            style={{ color: "var(--theme-text-muted)" }}
+          >
+            GOAL
+          </span>
+          <SegmentSwitch
+            ariaLabel="Full Auto goal"
+            options={FULL_AUTO_GOALS.map((option) => ({
+              id: option.id,
+              label: option.label,
+              title: option.note,
+            }))}
+            selectedId={goal ?? ""}
+            onSelect={(id) => {
+              if (id) onGoal(id as FullAutoGoal);
+            }}
+            size={hero ? "fit" : "compact"}
+            tone="accent"
+            className="segment-switch--gpu-bezel segment-switch--auto-goal min-w-0 flex-1"
+          />
+        </div>
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <span
+            className="shrink-0 type-micro uppercase tracking-widest"
+            style={{ color: "var(--theme-text-muted)" }}
+          >
+            TASK
+          </span>
+          <SegmentSwitch
+            ariaLabel="Full Auto task"
+            options={FULL_AUTO_WORKLOADS.map((option) => ({
+              id: option.id,
+              label: option.label,
+              title: option.note,
+            }))}
+            selectedId={workload ?? ""}
+            onSelect={(id) => {
+              if (id) onWorkload(id as FullAutoWorkload);
+            }}
+            size={hero ? "fit" : "compact"}
+            tone="accent"
+            className="segment-switch--gpu-bezel segment-switch--auto-goal min-w-0 flex-1"
+          />
+        </div>
+      </div>
       {fitState === "tight" && onFix ? (
         <button
           type="button"
