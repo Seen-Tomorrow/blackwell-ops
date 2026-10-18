@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useCallback, useEffect, useMemo } from "react";
 import { EVENTS } from "../lib/events";
 
-export interface StatusBarCtx {
+interface StatusBarCtx {
   totalParams: number;
   hiddenCount: number;
   onShowAll?: () => void;

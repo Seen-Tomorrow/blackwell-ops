@@ -133,7 +133,7 @@ export type CatalogSeatEditDetail = {
   modelPath: string;
 };
 
-export type CatalogFocusModelDetail = {
+type CatalogFocusModelDetail = {
   path: string;
 };
 
@@ -202,7 +202,7 @@ export function consumePendingExtrasSubTab(): ExtrasSubTab | null {
   return tab;
 }
 
-export function dispatchNavigateExtras(detail?: NavigateExtrasDetail): void {
+function dispatchNavigateExtras(detail?: NavigateExtrasDetail): void {
   if (detail?.subTab) pendingExtrasSubTab = detail.subTab;
   dispatchAppEvent(EVENTS.navigateExtras, detail);
 }
@@ -222,7 +222,7 @@ export function dispatchNavigateModelHub(): void {
  * setup_completed=false, then reload. Does NOT clear BlackOps localStorage —
  * use CLR LS for that. Optional plugins without binaries stay hidden after rediscovery.
  */
-export async function dispatchReplayFirstRun(): Promise<void> {
+async function dispatchReplayFirstRun(): Promise<void> {
   resetSetupGuideState();
   disableSetupGuidePreview();
   await invoke("reset_app_config");
@@ -263,6 +263,6 @@ export async function dispatchResetAppConfig(): Promise<void> {
   await dispatchReplayFirstRun();
 }
 
-export function dispatchShowAllHiddenParams(): void {
+function dispatchShowAllHiddenParams(): void {
   dispatchAppEvent(EVENTS.showAllHiddenParams);
 }

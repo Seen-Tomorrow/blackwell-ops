@@ -17,14 +17,14 @@ const PULSE_LABEL = `<text x="123" y="${READOUT_Y}" font-family="${WORD_FONT}" f
 
 const BRAND_LOGO_INNER = `${LOCKUP_BW}${LOCKUP_OPS}${PULSE_TRACK}${PULSE_FILL}${PULSE_COUNTDOWN}${PULSE_LABEL}`;
 
-export function brandLogoDisplaySize(height = APP_BRAND_LOGO_SIZE): { width: number; height: number } {
+function brandLogoDisplaySize(height = APP_BRAND_LOGO_SIZE): { width: number; height: number } {
   return {
     width: Math.round(height * (VIEW_W / VIEW_H)),
     height,
   };
 }
 
-export function brandLogoInnerMarkup(): string {
+function brandLogoInnerMarkup(): string {
   return BRAND_LOGO_INNER;
 }
 

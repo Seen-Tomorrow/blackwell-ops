@@ -16,13 +16,13 @@ export type UpdateStatus = "idle" | "checking" | "downloading" | "extracting" | 
 
 export type { BinarySourceKind };
 
-export function parseCmakeFlags(flags: string): string[] {
+function parseCmakeFlags(flags: string): string[] {
   if (!flags.trim()) return [];
   const parts = flags.split(/\s+/).filter(p => p && !/^["']+$/.test(p));
   return parts.map(f => f.trim()).filter(Boolean);
 }
 
-export function getPrNumberForEnv(provider: ProviderConfig, env: string): string | undefined {
+function getPrNumberForEnv(provider: ProviderConfig, env: string): string | undefined {
   return provider.lastPrPerEnv?.[env];
 }
 

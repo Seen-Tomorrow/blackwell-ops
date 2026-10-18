@@ -8,14 +8,14 @@ import { useTauriListen } from "@/hooks/useTauriListen";
 import { isDevBuild } from "@/lib/build";
 import { dispatchAppEvent, EVENTS } from "@/lib/events";
 
-export interface ProfileReadiness {
+interface ProfileReadiness {
   profile: string;
   runtimeBinary: boolean;
   foundryArtifact: boolean;
   ready: boolean;
 }
 
-export interface ProviderDistributionRow {
+interface ProviderDistributionRow {
   id: string;
   displayName: string;
   role: string;

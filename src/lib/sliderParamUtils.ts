@@ -8,13 +8,13 @@ import {
 
 export const SLIDER_THUMB_WIDTH_PX = 15;
 export const TRACK_HEIGHT_PX = 6;
-export const TICK_ZONE_HEIGHT_PX = 8;
+const TICK_ZONE_HEIGHT_PX = 8;
 /** Input / label control height — matches value-chip row in param rows. */
-export const CONTROL_ROW_HEIGHT_PX = 18;
+const CONTROL_ROW_HEIGHT_PX = 18;
 /** Visible track band — preset ticks overflow below without stretching the param row. */
 export const TRACK_AREA_HEIGHT_PX = CONTROL_ROW_HEIGHT_PX;
 export const TRACK_TOP_PX = (TRACK_AREA_HEIGHT_PX - TRACK_HEIGHT_PX) / 2;
-export const TRACK_BOTTOM_PX = TRACK_TOP_PX + TRACK_HEIGHT_PX;
+const TRACK_BOTTOM_PX = TRACK_TOP_PX + TRACK_HEIGHT_PX;
 export const TICK_TOP_PX = TRACK_BOTTOM_PX + 2;
 export const TICK_HEIGHT_PX = TICK_ZONE_HEIGHT_PX;
 
@@ -25,7 +25,7 @@ export const TICK_HEIGHT_PX = TICK_ZONE_HEIGHT_PX;
 export const HERO_TRACK_AREA_HEIGHT_PX = 32;
 /** Double the inline track thickness. */
 export const HERO_TRACK_HEIGHT_PX = 12;
-export const HERO_LABEL_ZONE_PX = 10;
+const HERO_LABEL_ZONE_PX = 10;
 export const HERO_TRACK_TOP_PX = HERO_LABEL_ZONE_PX + 1;
 /** Tick bar from under label through rail and a few px below. */
 export const HERO_TICK_HEIGHT_PX = HERO_TRACK_AREA_HEIGHT_PX - HERO_LABEL_ZONE_PX;
@@ -87,10 +87,10 @@ export function formatCtxChipLabel(n: number): string {
 }
 
 /** @deprecated Use formatCtxChipLabel */
-export const formatPerSlotTokenLabel = formatCtxChipLabel;
+const formatPerSlotTokenLabel = formatCtxChipLabel;
 
 /** Parse CTX field — raw integers (20000) or K/M suffix (256K, 1.5M). */
-export function parseCtxTokenInput(raw: string): number | null {
+function parseCtxTokenInput(raw: string): number | null {
   const s = raw.trim().replace(/,/g, "");
   if (!s) return null;
   const km = /^(\d+(?:\.\d+)?)\s*([kKmM])$/.exec(s);
@@ -130,7 +130,7 @@ export function clampSteppedValue(
 }
 
 /** Pixel radius for LEARNED magnetic notches (hero rail). */
-export const LEARNED_SNAP_RADIUS_PX = 12;
+const LEARNED_SNAP_RADIUS_PX = 12;
 
 /**
  * Pull value onto nearest mark when within snapRadiusPx of that mark on the track.

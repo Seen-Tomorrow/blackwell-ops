@@ -1,7 +1,7 @@
 import type { ModelEntry, VramManifest } from "./types";
 import { bestVramEstimateGb, resolveSplitDriver } from "./autoVramLaunch";
 
-export type ForecastSourceLabel = "LEARNED" | "FIT" | "PENDING";
+type ForecastSourceLabel = "LEARNED" | "FIT" | "PENDING";
 
 export function forecastSnapshotFromManifest(
   manifest: VramManifest | null,

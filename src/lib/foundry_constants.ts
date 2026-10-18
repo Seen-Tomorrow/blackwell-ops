@@ -16,13 +16,13 @@ export type BuildPhase =
   | "Failed"
   | "BackupLocked";
 
-export const ALL_BUILD_PHASES: readonly BuildPhase[] = [
+const ALL_BUILD_PHASES: readonly BuildPhase[] = [
   "Initializing", "GitClone", "GitPull", "PrCherryPick", "Configuring",
   "WaitingForConfirm", "Building", "Validating", "Complete", "Failed", "BackupLocked",
 ] as const;
 
 // ── Build Step Labels ────────────────────────────────────────────────
-export const STEP_LABELS: Record<BuildPhase, string> = {
+const STEP_LABELS: Record<BuildPhase, string> = {
   Initializing: "INIT",
   GitClone: "CLONE",
   GitPull: "PULL",
@@ -56,7 +56,7 @@ export function getStepLabel(step: string): string {
   return STEP_LABELS[step as BuildPhase] ?? MAPPED_STEP_LABELS[step] ?? step.toUpperCase();
 }
 
-export const PHASE_STEP_MAP: Record<string, string> = {
+const PHASE_STEP_MAP: Record<string, string> = {
   init: "INIT",
   clone: "CLONE",
   pull: "PULL",
@@ -70,12 +70,12 @@ export const PHASE_STEP_MAP: Record<string, string> = {
   locked: "LOCKED",
 };
 
-export function getStepFromPhase(phase: string): string {
+function getStepFromPhase(phase: string): string {
   return PHASE_STEP_MAP[phase] ?? phase.toUpperCase();
 }
 
 // ── Environment styling — unified accent (no per-profile color coding) ───
-export interface EnvColorSet {
+interface EnvColorSet {
   border: string;
   text: string;
   bg: string;
@@ -91,7 +91,7 @@ const UNIFIED_ENV_COLORS: EnvColorSet = {
   badgeBorder: "value-chip",
 };
 
-export function getEnvColors(_env: Env): EnvColorSet {
+function getEnvColors(_env: Env): EnvColorSet {
   return UNIFIED_ENV_COLORS;
 }
 
@@ -126,11 +126,11 @@ export const ENV_META: Record<Env, EnvMeta> = {
 export const BINARY_UPDATES_ENABLED = true;
 
 /** Pinned GitHub release for the portable Foundry toolchain (manual download). */
-export const TOOLCHAIN_RELEASE_TAG = "toolchain";
+const TOOLCHAIN_RELEASE_TAG = "toolchain";
 export const TOOLCHAIN_RELEASE_URL =
   "https://github.com/Seen-Tomorrow/blackwell-ops/releases/tag/toolchain";
-export const TOOLCHAIN_ARCHIVE_NAME = "toolchain.7z" as const;
-export const TOOLCHAIN_ARCHIVE_PARTS = [TOOLCHAIN_ARCHIVE_NAME] as const;
+const TOOLCHAIN_ARCHIVE_NAME = "toolchain.7z" as const;
+const TOOLCHAIN_ARCHIVE_PARTS = [TOOLCHAIN_ARCHIVE_NAME] as const;
 
 /** Minimum NVIDIA driver *major* version required per CUDA version (from official release notes).
  *  See: CUDA Toolkit Release Notes "Table 2 CUDA Toolkit and Minimum Required Driver Version"
@@ -139,7 +139,7 @@ export const TOOLCHAIN_ARCHIVE_PARTS = [TOOLCHAIN_ARCHIVE_NAME] as const;
  */
 export const NVIDIA_DRIVERS_URL = "https://www.nvidia.com/en-us/drivers/";
 
-export const CUDA_MIN_DRIVER_MAJOR: Record<string, number> = {
+const CUDA_MIN_DRIVER_MAJOR: Record<string, number> = {
   "13.4": 610,
   "13": 580,
   "12.8": 570,
@@ -156,7 +156,7 @@ export function getMinDriverMajorForCuda(cuda: string): number {
 }
 
 /** Parse major from "610.47.23" style string. */
-export function parseDriverMajor(version: string | null | undefined): number | null {
+function parseDriverMajor(version: string | null | undefined): number | null {
   if (!version) return null;
   const m = version.trim().split(".")[0];
   const n = parseInt(m, 10);

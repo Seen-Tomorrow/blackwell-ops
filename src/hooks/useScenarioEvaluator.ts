@@ -214,7 +214,7 @@ interface UseScenarioEvaluatorProps {
 }
 
 /** Effective CLI spec_type for forecast/learn — cockpit may only have Boost state until launch. */
-export function effectiveSpecTypeFromConfig(config: Record<string, unknown>): string {
+function effectiveSpecTypeFromConfig(config: Record<string, unknown>): string {
   const raw = String(config.spec_type ?? "none").trim().toLowerCase();
   if (raw && raw !== "none" && raw !== "off") return raw;
   // Boost may inject __boost_spec_type into scenarioConfig without writing template row.

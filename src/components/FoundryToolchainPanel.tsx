@@ -15,7 +15,7 @@ interface ProfileCheck {
   missing: string[];
 }
 
-export interface CachedToolchainArchive {
+interface CachedToolchainArchive {
   pack: string;
   archive_name: string;
   size_bytes: number;

@@ -3668,10 +3668,6 @@ html[data-industrial-bezel="brush"] {
   opacity: 0;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  
-}
-
 /* ── Fusion share card capture + menu ─────────────────────────────── */
 .fusion-share-capture-brand-shell {
   position: fixed;
@@ -4048,12 +4044,6 @@ html[data-industrial-bezel="brush"] {
 .phosphor-screen-inner .fusion-phase-badge--pp,
 .phosphor-screen-inner .fusion-phase-badge--tg {
   border-color: var(--display-face-control-border);
-}
-
-/* CTX bar inline text — dark with e-ink shadow for readability on colored fill */
-.ctx-bar-text {
-  color: #1a1a1a;
-  text-shadow: 0 0 3px rgba(245, 240, 232, 0.9), 0 0 6px rgba(245, 240, 232, 0.5);
 }
 
 /* CTX slot bars — base fallbacks (texture + theme rules above override) */
@@ -6169,70 +6159,6 @@ html[data-industrial-bezel="brush"] {
   .fusion-boot-gpu-col__fill {
     transition: none;
   }
-}
-
-/* ══ Pass 5a — fusion glass paint (de-Tailwind) ═══════════════════════════
-   Paint for the 7 fusion TSX components; var(--theme-*) only. */
-
-/* Phase badges (FusionPhaseBadge) — label type */
-.fusion-phase-badge {
-  font-size: var(--type-label);
-}
-
-.fusion-phase-badge--idle {
-  background: color-mix(in srgb, var(--theme-text-muted) 10%, transparent);
-  color: color-mix(in srgb, var(--theme-text-muted) 60%, transparent);
-  border-color: color-mix(in srgb, var(--theme-text-muted) 20%, transparent);
-}
-
-.fusion-phase-badge--pp {
-  background: color-mix(in srgb, var(--theme-warn) 20%, transparent);
-  color: var(--theme-warn);
-  border-color: color-mix(in srgb, var(--theme-warn) 40%, transparent);
-}
-
-.fusion-phase-badge--tg {
-  background: color-mix(in srgb, var(--theme-accent) 20%, transparent);
-  color: var(--theme-accent);
-  border-color: color-mix(in srgb, var(--theme-accent) 40%, transparent);
-}
-
-/* TPS readout (FusionTpsDisplay) — tiers + caption */
-.fusion-tps-value--info { color: var(--theme-info); }
-.fusion-tps-value--accent { color: var(--theme-accent); }
-.fusion-tps-value--warn { color: var(--theme-warn); }
-.fusion-tps-value--ghost { color: color-mix(in srgb, var(--theme-text-muted) 60%, transparent); }
-.fusion-tps-caption {
-  font-size: var(--type-tiny);
-  color: color-mix(in srgb, var(--theme-text-muted) 60%, transparent);
-}
-
-/* Fuel tank (FusionFuelTank) — label, readout, track, bar tiers */
-.fusion-fuel-label {
-  font-size: var(--type-micro);
-  color: color-mix(in srgb, var(--theme-text-muted) 60%, transparent);
-}
-
-.fusion-fuel-readout--danger { color: var(--theme-danger); }
-.fusion-fuel-readout--warn { color: var(--theme-warn); }
-.fusion-fuel-readout--accent { color: var(--theme-accent); }
-
-.fusion-fuel-track {
-  background: var(--theme-panel);
-  border-color: var(--theme-border);
-}
-
-.fusion-fuel-bar--danger { background: var(--theme-danger); }
-.fusion-fuel-bar--warn { background: var(--theme-warn); }
-.fusion-fuel-bar--accent { background: var(--theme-accent); }
-
-/* Slot context bar (FusionSlotCtxBar) — id, track; bar tiers reuse fusion-fuel-bar */
-.fusion-slotctx-id { color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent); }
-.fusion-slotctx-id--active { color: var(--theme-accent); }
-
-.fusion-slotctx-track {
-  background: color-mix(in srgb, var(--theme-bg) 20%, transparent);
-  border-color: color-mix(in srgb, var(--theme-bg) 10%, transparent);
 }
 
 /* Share menu (FusionShareMenu) — glyph, label, swatch trigger */

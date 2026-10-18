@@ -30,7 +30,7 @@ export interface RunningSlotInfo {
   gpuBreakdownMib?: number[];
 }
 
-export const CUDA_RUNTIME_OVERHEAD_CAP_MIB = 4096;
+const CUDA_RUNTIME_OVERHEAD_CAP_MIB = 4096;
 const FOREIGN_BASELINE_THRESHOLD_MIB = 1024;
 const CUDA0_SYSTEM_RESERVE_FLOOR_MIB = 640;
 
@@ -102,7 +102,7 @@ export function parseCtx(ctxSize: string | number): number {
  * Tensor FIT often reports Δ≈0 (Meta path) — then we fall back to launch-calibrated
  * constants. Prefer LEARNED for the active split when a row exists (adapter priority).
  */
-export type SplitTaxSource = "library" | "fallback" | "none";
+type SplitTaxSource = "library" | "fallback" | "none";
 
 export interface SplitTaxResult {
   taxGb: number;
@@ -112,7 +112,7 @@ export interface SplitTaxResult {
 }
 
 /** Launch-calibrated midpoints when library split Δ is missing / non-positive. */
-export function measuredSplitTaxGbFallback(splitMode: string): number {
+function measuredSplitTaxGbFallback(splitMode: string): number {
   const s = String(splitMode || "none").trim().toLowerCase();
   if (!s || s === "none") return 0;
   if (s === "layer") return 6.0;
@@ -216,7 +216,7 @@ export function resolveSplitTax(
 }
 
 /** @deprecated Prefer {@link resolveSplitTax} — kept for call-site simplicity. */
-export function measuredSplitTaxGb(
+function measuredSplitTaxGb(
   splitMode: string,
   liveCtx?: number,
   points?: FitPoint[],
@@ -225,7 +225,7 @@ export function measuredSplitTaxGb(
 }
 
 
-export function kvBytesForQuant(kvQuant: string): number {
+function kvBytesForQuant(kvQuant: string): number {
   const key = kvQuant.toLowerCase();
   const kvMap: [string, number][] = [
     ["q4_0", 0.5],
@@ -241,7 +241,7 @@ export function kvBytesForQuant(kvQuant: string): number {
   return 2.0;
 }
 
-export function findFitPoint(points: FitPoint[], label: string): FitPoint | undefined {
+function findFitPoint(points: FitPoint[], label: string): FitPoint | undefined {
   return points.find((p) => p.label === label);
 }
 
@@ -253,7 +253,7 @@ function estimateActivationPerBatchToken(points: FitPoint[]): number | null {
 }
 
 /** Piecewise-linear VRAM vs ctx from library CTX points. */
-export function extrapolateVramFromPoints(
+function extrapolateVramFromPoints(
   points: FitPoint[],
   userCtx: number,
   _userKvQuant: string,
@@ -421,11 +421,11 @@ export function interpolateLearnedCurveGb(
   return { vramGb: vramMib / 1024, hostGb, exact: false };
 }
 
-export function gpuManufacturedMib(g: GpuInfo): number {
+function gpuManufacturedMib(g: GpuInfo): number {
   return g.memory_total_manufactured > 0 ? g.memory_total_manufactured : g.memory_total;
 }
 
-export function getRunningEnginesOnGpu(gpuIdx: number, slots: RunningSlotInfo[]): RunningEngine[] {
+function getRunningEnginesOnGpu(gpuIdx: number, slots: RunningSlotInfo[]): RunningEngine[] {
   return slots
     .filter((s) => s.gpuMask.split(",").some((p) => p.trim() === String(gpuIdx)))
     .map((s) => {
@@ -568,8 +568,8 @@ export function splitGpuTopoBarUsage(
 }
 
 /** TCC: measured OOM ~1 GB leftover. WDDM: ~1.75 GB (pack ceiling ~94.3 / 96). */
-export const HW_RESERVED_TCC_MIB = 1024;
-export const HW_RESERVED_WDDM_MIB = 1792;
+const HW_RESERVED_TCC_MIB = 1024;
+const HW_RESERVED_WDDM_MIB = 1792;
 
 export function hwReservedMib(driverModel?: string): number {
   const m = (driverModel ?? "").toUpperCase();

@@ -4,9 +4,9 @@ import {
 } from "./launchDockLayout";
 
 export const CPU_GRID_COLS_MIN = 4;
-export const CPU_GRID_COLS_MAX = 16;
+const CPU_GRID_COLS_MAX = 16;
 /** Prefer at most this many core rows so multi-GPU rails stay usable. */
-export const CPU_GRID_TARGET_ROWS = 4;
+const CPU_GRID_TARGET_ROWS = 4;
 
 /** Map right-rail width (px) → core grid columns (4 at min width, 16 at max). */
 export function resolveCpuGridColumns(

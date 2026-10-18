@@ -4,11 +4,11 @@ import type { PlaygroundChatTurn } from "./storage";
 export const THREE_CDN = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js";
 
 export const PLAYGROUND_MAX_CODE_CHARS = 200_000;
-export const PLAYGROUND_MAX_PROMPT_CODE_CHARS = 14_000;
-export const PLAYGROUND_HISTORY_TURNS_FOR_PROMPT = 6;
-export const PLAYGROUND_ASSISTANT_SLICE = 1200;
+const PLAYGROUND_MAX_PROMPT_CODE_CHARS = 14_000;
+const PLAYGROUND_HISTORY_TURNS_FOR_PROMPT = 6;
+const PLAYGROUND_ASSISTANT_SLICE = 1200;
 
-export const CODEGEN_SYSTEM = `You are an expert creative coder specializing in standalone browser demos.
+const CODEGEN_SYSTEM = `You are an expert creative coder specializing in standalone browser demos.
 Rules:
 - The final answer must be a SINGLE complete, self-contained HTML5 document.
 - Start the document with <!DOCTYPE html>.

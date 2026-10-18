@@ -12,7 +12,7 @@ export const SPEC_PROFILE_DFLASH_GROUP = "SPECULATIVE-DFLASH";
  * Factory default protected groups when JSON has no `protectedGroups` yet.
  * Policy is flag-driven; this list is only a migration seed.
  */
-export const DEFAULT_PROTECTED_GROUPS = [
+const DEFAULT_PROTECTED_GROUPS = [
   SYSTEM_UI_GROUP,
   SPEC_PROFILE_MTP_GROUP,
   SPEC_PROFILE_DFLASH_GROUP,
@@ -54,7 +54,7 @@ export function isCockpitOwnedParam(key: string): boolean {
 
 /** Cockpit header flag toolbar — always bound when present on the template. */
 export const COCKPIT_FLAG_PARAM_KEYS = ["vision", "flash_attn", "load_mode"] as const;
-export type CockpitFlagParamKey = (typeof COCKPIT_FLAG_PARAM_KEYS)[number];
+type CockpitFlagParamKey = (typeof COCKPIT_FLAG_PARAM_KEYS)[number];
 
 export const SYSTEM_CATALOG_PARAM_TOOLTIP =
   "Fixed position in engine panel — edit values and defaults only; group and reorder have no effect.";
@@ -165,7 +165,7 @@ export function isPlacementChromeParam(def: {
 
 
 /** Canonical group for profile keys (repairs bad SYSTEM migration). */
-export function profileGroupForParamKey(key: string): string | null {
+function profileGroupForParamKey(key: string): string | null {
   if (key.startsWith("mtp_")) return SPEC_PROFILE_MTP_GROUP;
   if (key.startsWith("dflash_")) return SPEC_PROFILE_DFLASH_GROUP;
   return null;

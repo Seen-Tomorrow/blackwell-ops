@@ -90,7 +90,7 @@ export function getDevFakeGpuPlan(): DevFakeGpuPlan {
   return { ...plan };
 }
 
-export function getDevFakeGpuTotal(): number {
+function getDevFakeGpuTotal(): number {
   return Object.values(plan).reduce((s, n) => s + Math.max(0, n | 0), 0);
 }
 
@@ -102,7 +102,7 @@ export function getDevLastRealGpuCount(): number {
   return lastRealCount;
 }
 
-export function isDevGpuTopoActive(): boolean {
+function isDevGpuTopoActive(): boolean {
   return getDevFakeGpuTotal() > 0 || realVisibleLimit != null;
 }
 
@@ -127,7 +127,7 @@ export function setDevRealVisibleLimit(limit: number | null): void {
   notify();
 }
 
-export function setDevFakeGpuCount(skuId: string, count: number): void {
+function setDevFakeGpuCount(skuId: string, count: number): void {
   setDevFakeGpuPlan({ ...plan, [skuId]: count });
 }
 
@@ -144,7 +144,7 @@ export function subscribeDevFakeGpuExtra(cb: () => void): () => void {
   };
 }
 
-export function isDevFakeGpu(gpu: Pick<GpuInfo, "index" | "name">): boolean {
+function isDevFakeGpu(gpu: Pick<GpuInfo, "index" | "name">): boolean {
   return fakeIndices.has(gpu.index);
 }
 
@@ -159,7 +159,7 @@ function sliceVisibleReals(real: GpuInfo[]): GpuInfo[] {
  * Expand plan into GpuInfo rows after visible NVML entries.
  * Indices continue from max visible index. Names are real product strings.
  */
-export function appendDevFakeGpus(real: GpuInfo[], p: DevFakeGpuPlan = plan): GpuInfo[] {
+function appendDevFakeGpus(real: GpuInfo[], p: DevFakeGpuPlan = plan): GpuInfo[] {
   fakeIndices.clear();
   const total = Object.values(p).reduce((s, n) => s + Math.max(0, n | 0), 0);
   if (total <= 0) return real;
@@ -208,6 +208,6 @@ export function applyDevGpuTopo(real: GpuInfo[]): GpuInfo[] {
 }
 
 /** @deprecated Use getDevFakeGpuTotal / plan — kept for button label helpers. */
-export function getDevFakeGpuExtra(): number {
+function getDevFakeGpuExtra(): number {
   return getDevFakeGpuTotal();
 }

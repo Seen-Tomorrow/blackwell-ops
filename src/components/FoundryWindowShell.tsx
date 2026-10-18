@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 export type FoundryWindowTone = "amber" | "green" | "red";
-export type FoundryWindowVariant = "confirm" | "build" | "compact";
+type FoundryWindowVariant = "confirm" | "build" | "compact";
 
 interface FoundryWindowShellProps {
   title: ReactNode;

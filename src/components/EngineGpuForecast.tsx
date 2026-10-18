@@ -37,7 +37,7 @@ import { useHarnessConnectHost } from "./HarnessConnectHost";
 import type { FusionPaneIdentity } from "./FusionDualStage";
 
 /** GPU assignment / forecast data derived from the orchestrator's booter props. */
-export interface EngineGpuBooterProps {
+interface EngineGpuBooterProps {
   gpuMask: string;
   vramTargetMib: number;
   modelLayerTotal: number;
@@ -45,7 +45,7 @@ export interface EngineGpuBooterProps {
 }
 
 /** Provider + profile meta shown on the VRAM badge. */
-export interface EngineGpuShareMeta {
+interface EngineGpuShareMeta {
   providerName?: string;
   providerBuildVersion?: string;
   profileLabel?: string;

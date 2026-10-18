@@ -74,7 +74,7 @@ export function resolveSelectedCudaArchitectures(flags: string): string[] {
   return parsed.length > 0 ? parsed : [...DEFAULT_CUDA_ARCH_CODES];
 }
 
-export function parseCudaArchitecturesFromCmake(flags: string): string[] {
+function parseCudaArchitecturesFromCmake(flags: string): string[] {
   if (!flags.trim()) return [];
   const match =
     flags.match(/-D\s*CMAKE_CUDA_ARCHITECTURES\s*=\s*"([^"]+)"/i) ??
@@ -86,14 +86,14 @@ export function parseCudaArchitecturesFromCmake(flags: string): string[] {
     .filter(Boolean);
 }
 
-export function cudaArchFamily(code: string): string {
+function cudaArchFamily(code: string): string {
   const normalized = code.trim().toLowerCase();
   const numeric = normalized.replace(/[^0-9]/g, "");
   return CUDA_ARCH_FAMILY[normalized] ?? CUDA_ARCH_FAMILY[numeric] ?? "CUDA";
 }
 
 /** Unique generation names in cmake order — e.g. ["AMPERE", "ADA", "BLACKWELL"]. */
-export function cudaArchFamilies(codes: string[]): string[] {
+function cudaArchFamilies(codes: string[]): string[] {
   const seen = new Set<string>();
   const families: string[] = [];
   for (const code of codes) {

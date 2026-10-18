@@ -125,4 +125,4 @@ export function useLaunchPresets() {
   };
 }
 
-export type { ComboPreset, LaunchSeat };
+export type { ComboPreset,  };

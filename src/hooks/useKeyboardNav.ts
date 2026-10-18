@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from "react";
  * Model search `/` / Ctrl+K is always-on via ModelSearchPalette in ModelCatalog.
  * Ctrl+Enter launch lives in EngineConfigPanel.
  */
-export const MODELS_KEYBOARD_NAV_ENABLED = false;
+const MODELS_KEYBOARD_NAV_ENABLED = false;
 
 export type KeyboardZone = "search" | "config" | null;
 

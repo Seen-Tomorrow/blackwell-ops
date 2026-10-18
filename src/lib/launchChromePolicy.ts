@@ -5,7 +5,7 @@ import {
   type RunningSlotInfo,
 } from "../services/vram/scenarios/scenarios_factory";
 
-export type LaunchMemoryMode = "full_auto" | "assisted";
+type LaunchMemoryMode = "full_auto" | "assisted";
 
 export interface LaunchChromePolicy {
   mode: LaunchMemoryMode;

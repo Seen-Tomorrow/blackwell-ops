@@ -492,7 +492,7 @@ export function saveLaunchDockPosition(position: LaunchDockPosition, explicit: b
   writeStorage(KEYS.launchDockPositionExplicit, explicit ? "1" : "0");
 }
 
-export function loadLaunchDockCollapsed(): boolean {
+function loadLaunchDockCollapsed(): boolean {
   return readStorage(KEYS.launchDockCollapsed) === "1";
 }
 
@@ -533,7 +533,7 @@ export function saveHwMonitorOpen(open: boolean): void {
 }
 
 export type HwMonitorDock = "rail" | "below";
-export type HwMonitorPlacement = "off" | HwMonitorDock;
+type HwMonitorPlacement = "off" | HwMonitorDock;
 
 export function loadHwMonitorDock(): HwMonitorDock {
   return readStorage(KEYS.hwMonitorDock) === "below" ? "below" : "rail";
@@ -719,15 +719,15 @@ export function groupOrderKey(providerId: string): string {
 
 export type ConfigColumnCount = 1 | 2 | 3;
 
-export function configColumnCountKey(providerId: string): string {
+function configColumnCountKey(providerId: string): string {
   return `${STORAGE_PREFIX}config-column-count:${providerId}`;
 }
 
-export function configColumnWidthsKey(providerId: string): string {
+function configColumnWidthsKey(providerId: string): string {
   return `${STORAGE_PREFIX}config-column-widths:${providerId}`;
 }
 
-export function groupColumnKey(providerId: string): string {
+function groupColumnKey(providerId: string): string {
   return `${STORAGE_PREFIX}group-column:${providerId}`;
 }
 
@@ -803,7 +803,7 @@ export function saveGroupColumn(providerId: string, columns: Record<string, numb
   writeJsonStorage(groupColumnKey(providerId), columns);
 }
 
-export function autoVramKey(providerId: string): string {
+function autoVramKey(providerId: string): string {
   return `${STORAGE_PREFIX}auto-vram:${providerId}`;
 }
 
@@ -818,7 +818,7 @@ export function saveAutoVramEnabled(providerId: string, enabled: boolean): void 
   writeStorage(autoVramKey(providerId), enabled ? "1" : "0");
 }
 
-export function configViewKey(providerId: string): string {
+function configViewKey(providerId: string): string {
   return `${STORAGE_PREFIX}config-view:${providerId}`;
 }
 
@@ -856,7 +856,7 @@ export function nextFusionShareDailySeq(dateKey: string): number {
   return n;
 }
 
-export function foundryLastRefreshKey(providerSignature: string): string {
+function foundryLastRefreshKey(providerSignature: string): string {
   return `${STORAGE_PREFIX}foundry-last-refresh:${providerSignature}`;
 }
 
@@ -918,7 +918,7 @@ export function removeStorage(key: string): void {
 }
 
 /** All registry keys currently in localStorage (static + dynamic `BlackOps-*` namespaces). */
-export function listBlackOpsStorageKeys(): string[] {
+function listBlackOpsStorageKeys(): string[] {
   try {
     return Object.keys(localStorage).filter((key) => key.startsWith(STORAGE_PREFIX));
   } catch {
@@ -1040,13 +1040,13 @@ export function saveLastModel(modelPath: string): void {
   writeStorage(KEYS.lastModel, trimmed);
 }
 
-export function clearLastModel(): void {
+function clearLastModel(): void {
   removeStorage(KEYS.lastModel);
 }
 
 export type FusionHeroTpsMode = "live" | "avg";
 
-export const FUSION_HERO_TPS_DEFAULT: FusionHeroTpsMode = "avg";
+const FUSION_HERO_TPS_DEFAULT: FusionHeroTpsMode = "avg";
 
 export function loadFusionHeroTpsMode(): FusionHeroTpsMode {
   const v = readStorage(KEYS.fusionHeroTpsMode);
@@ -1061,7 +1061,7 @@ export function saveFusionHeroTpsMode(mode: FusionHeroTpsMode): void {
 /** llama-server `-lv` at next launch. Default 3 (timing belt without KV spam). */
 export type FusionLogVerbosity = 3 | 4;
 
-export const FUSION_LOG_VERBOSITY_DEFAULT: FusionLogVerbosity = 3;
+const FUSION_LOG_VERBOSITY_DEFAULT: FusionLogVerbosity = 3;
 
 export function loadFusionLogVerbosity(): FusionLogVerbosity {
   const v = readStorage(KEYS.fusionLogVerbosity);
@@ -1112,7 +1112,7 @@ export function saveFusionSecondarySlotIdx(_slotIdx: number | null): void {
 }
 
 /** Monitor focus is session-only — never restored from localStorage. */
-export function loadMonitorFocusMode(): boolean {
+function loadMonitorFocusMode(): boolean {
   return false;
 }
 
@@ -1209,7 +1209,7 @@ export function saveCatalogSplitWidth(width: number): void {
   writeStorage(KEYS.catalogSplitWidth, String(clamped));
 }
 
-export function loadCatalogListCollapsed(): boolean {
+function loadCatalogListCollapsed(): boolean {
   return readStorage(KEYS.catalogListCollapsed) === "1";
 }
 
@@ -1296,14 +1296,14 @@ export function saveFoundryLastRefresh(providerSignature: string, timestamp: num
   writeStorage(foundryLastRefreshKey(providerSignature), String(timestamp));
 }
 
-export type ParamCreatorMode = "simple" | "advanced";
+type ParamCreatorMode = "simple" | "advanced";
 
-export function loadParamCreatorMode(): ParamCreatorMode {
+function loadParamCreatorMode(): ParamCreatorMode {
   const v = readStorage(KEYS.paramCreatorMode);
   return v === "advanced" ? "advanced" : "simple";
 }
 
-export function saveParamCreatorMode(mode: ParamCreatorMode): void {
+function saveParamCreatorMode(mode: ParamCreatorMode): void {
   writeStorage(KEYS.paramCreatorMode, mode);
 }
 
@@ -1343,14 +1343,14 @@ export function saveLogSearchBySlot(map: Record<number, string>): void {
   }
 }
 
-export function loadSessionLogEnabled(defaultEnabled = true): boolean {
+function loadSessionLogEnabled(defaultEnabled = true): boolean {
   const value = readStorage(KEYS.sessionLogEnabled);
   if (value === "0") return false;
   if (value === "1") return true;
   return defaultEnabled;
 }
 
-export function saveSessionLogEnabled(enabled: boolean): void {
+function saveSessionLogEnabled(enabled: boolean): void {
   writeStorage(KEYS.sessionLogEnabled, enabled ? "1" : "0");
 }
 
@@ -1371,7 +1371,7 @@ export const BENCH_TG_PREDICT_OPTIONS = [512, 1024, 2048, 4096, 6144, 8192, 1000
 export const BENCH_TG_PARALLEL_OPTIONS = [1, 4, 8, 16, 32, 64, 128] as const;
 export const BENCH_PP_TOKEN_OPTIONS = [8192, 16384, 32768, 65536, 100000] as const;
 
-export type BenchPromptMode = "unique" | "repetitive";
+type BenchPromptMode = "unique" | "repetitive";
 
 export interface BenchControlPrefs {
   nPredict: number;
@@ -1505,7 +1505,7 @@ export const PLAYGROUND_SPLIT_RATIO_DEFAULT = 0.45;
 export const PLAYGROUND_SPLIT_RATIO_MIN = 0.22;
 export const PLAYGROUND_SPLIT_RATIO_MAX = 0.78;
 export const PLAYGROUND_MAX_SESSIONS = 12;
-export const PLAYGROUND_MAX_HISTORY_TURNS = 20;
+const PLAYGROUND_MAX_HISTORY_TURNS = 20;
 
 function newSessionId(): string {
   return `pg-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -1664,7 +1664,7 @@ export function savePlaygroundState(state: PlaygroundState): void {
   writeJsonStorage(KEYS.playgroundState, capped);
 }
 
-export function clearPlaygroundState(): void {
+function clearPlaygroundState(): void {
   removeStorage(KEYS.playgroundState);
 }
 

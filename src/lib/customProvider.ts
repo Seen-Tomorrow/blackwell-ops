@@ -7,7 +7,7 @@ import type { ProviderConfig, UserEditedTemplateParam } from "./types";
 import { COCKPIT_OWNED_PARAM_KEYS } from "./systemParams";
 
 /** Canonical custom type string persisted on providers. */
-export const CUSTOM_TEMPLATE_TYPE = "custom";
+const CUSTOM_TEMPLATE_TYPE = "custom";
 
 export function isCustomTemplateType(templateType: string | undefined | null): boolean {
   const t = (templateType ?? "").trim();
@@ -56,7 +56,7 @@ export function resolveCustomCapabilities(
 }
 
 /** Parse free-form verbose CLI into argv tokens. */
-export function parseVerboseArgs(raw: string): string[] {
+function parseVerboseArgs(raw: string): string[] {
   const s = raw.trim();
   if (!s) return ["-lv", "3"];
   return s.split(/\s+/).filter(Boolean);
@@ -72,7 +72,7 @@ export function parseVerboseArgs(raw: string): string[] {
  * Placed in PERFORMANCE (not SYSTEM) so rows stay fully user-editable.
  * Named "starter" (not essentials) to avoid confusion with Essentials config view.
  */
-export const CUSTOM_ESSENTIALS_PARAM_KEYS = [
+const CUSTOM_ESSENTIALS_PARAM_KEYS = [
   "ctx",
   "parallel",
   "kv_quant",
@@ -82,13 +82,13 @@ export const CUSTOM_ESSENTIALS_PARAM_KEYS = [
   "ubatch",
 ] as const;
 
-export type CustomEssentialsKey = (typeof CUSTOM_ESSENTIALS_PARAM_KEYS)[number];
+type CustomEssentialsKey = (typeof CUSTOM_ESSENTIALS_PARAM_KEYS)[number];
 
 /** User-facing group for essentials pack — never SYSTEM (avoids chrome lock). */
-export const CUSTOM_ESSENTIALS_UI_GROUP = "PERFORMANCE";
+const CUSTOM_ESSENTIALS_UI_GROUP = "PERFORMANCE";
 
 /** Cockpit surface keys — show control only if this key exists on the template. */
-export const COCKPIT_BIND_KEYS = [
+const COCKPIT_BIND_KEYS = [
   "ctx",
   "parallel",
   "kv_quant",

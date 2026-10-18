@@ -16,7 +16,7 @@ function elapsedEqual(a: number, b: number): boolean {
 }
 
 /** Shallow compare hero + progress fields — skip churn when IPC payload unchanged. */
-export function fusionPayloadEqual(a: FusionUpdate, b: FusionUpdate): boolean {
+function fusionPayloadEqual(a: FusionUpdate, b: FusionUpdate): boolean {
   return (
     a.phase === b.phase
     && a.engine_state === b.engine_state
@@ -136,7 +136,7 @@ export function getAllFusionSlots(): FusionUpdate[] {
   return Array.from(slots.values());
 }
 
-export function subscribeFusionSlot(slotIdx: number, cb: () => void): () => void {
+function subscribeFusionSlot(slotIdx: number, cb: () => void): () => void {
   let set = slotSubs.get(slotIdx);
   if (!set) {
     set = new Set();
@@ -149,7 +149,7 @@ export function subscribeFusionSlot(slotIdx: number, cb: () => void): () => void
   };
 }
 
-export function subscribeFusionGlobal(cb: () => void): () => void {
+function subscribeFusionGlobal(cb: () => void): () => void {
   globalSubs.add(cb);
   return () => globalSubs.delete(cb);
 }

@@ -3,9 +3,9 @@ import { invoke } from "@tauri-apps/api/core";
 import type { FitScanComplete, FitScanFull, FitDataPoint, FitScanProgress } from "./types";
 import { readStorage, writeStorage, KEYS } from "./storage";
 
-export type FitScanStatus = "idle" | "scanning" | "complete" | "error";
+type FitScanStatus = "idle" | "scanning" | "complete" | "error";
 
-export interface ProviderFitScanState {
+interface ProviderFitScanState {
   status: FitScanStatus;
   parallel: number;
   totalModels: number;
@@ -96,7 +96,7 @@ function emitScanConsoleLine(evt: FitScanProgress) {
   });
 }
 
-export function applyFitScanProgress(evt: FitScanProgress) {
+function applyFitScanProgress(evt: FitScanProgress) {
   if (!evt) return;
   emitScanConsoleLine(evt);
 
@@ -222,7 +222,7 @@ export function getFitScanSessions(): SessionMap {
   return sessions;
 }
 
-export function getProviderFitScanState(providerId: string): ProviderFitScanState | undefined {
+function getProviderFitScanState(providerId: string): ProviderFitScanState | undefined {
   return sessions[providerId];
 }
 

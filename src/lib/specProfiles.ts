@@ -20,7 +20,7 @@ export const SPEC_PROFILE_MTP = SPEC_PROFILE_MTP_GROUP;
 export const SPEC_PROFILE_DFLASH = SPEC_PROFILE_DFLASH_GROUP;
 
 /** Protected profile groups — cannot delete; params may be hidden. */
-export const SPEC_PROFILE_GROUPS = [SPEC_PROFILE_MTP, SPEC_PROFILE_DFLASH] as const;
+const SPEC_PROFILE_GROUPS = [SPEC_PROFILE_MTP, SPEC_PROFILE_DFLASH] as const;
 
 export type SpecProfileGroup = (typeof SPEC_PROFILE_GROUPS)[number];
 
@@ -38,12 +38,12 @@ export const SPEC_CLI_P_MIN = "spec_draft_p_min";
 export const SPEC_CLI_DRAFT = "spec_draft_model";
 
 /** Template param keys (unique per profile so both sets coexist). */
-export const MTP_N_MAX = "mtp_n_max";
-export const MTP_N_MIN = "mtp_n_min";
-export const MTP_P_MIN = "mtp_p_min";
-export const DFLASH_N_MAX = "dflash_n_max";
-export const DFLASH_N_MIN = "dflash_n_min";
-export const DFLASH_P_MIN = "dflash_p_min";
+const MTP_N_MAX = "mtp_n_max";
+const MTP_N_MIN = "mtp_n_min";
+const MTP_P_MIN = "mtp_p_min";
+const DFLASH_N_MAX = "dflash_n_max";
+const DFLASH_N_MIN = "dflash_n_min";
+const DFLASH_P_MIN = "dflash_p_min";
 export const DFLASH_DRAFT_MODEL = "dflash_draft_model";
 export const MTP_DRAFT_MODEL = "mtp_draft_model";
 
@@ -64,7 +64,7 @@ export const SPEC_PROFILE_PARAM_KEYS = [
  * `spec_draft_model` is deliberately NOT here. It is the CLI alias the launch writes
  * (`SPEC_CLI_DRAFT`) and what Rust reads for `-md` — a live key, not a legacy one.
  */
-export const OBSOLETE_SPEC_PARAM_KEYS = [
+const OBSOLETE_SPEC_PARAM_KEYS = [
   "spec_type",
   "spec_draft_n_max",
   "spec_draft_n_min",
@@ -74,7 +74,7 @@ export const OBSOLETE_SPEC_PARAM_KEYS = [
 const OBSOLETE_SET = new Set<string>(OBSOLETE_SPEC_PARAM_KEYS);
 const PROFILE_KEY_SET = new Set<string>(SPEC_PROFILE_PARAM_KEYS);
 
-export function isSpecProfileGroup(group: string | undefined | null): boolean {
+function isSpecProfileGroup(group: string | undefined | null): boolean {
   if (!group) return false;
   const g = normalizeUiGroup(group);
   return g === SPEC_PROFILE_MTP || g === SPEC_PROFILE_DFLASH;
@@ -92,7 +92,7 @@ export function groupForBoostMethod(method: SpecBoostMethod): SpecProfileGroup |
   return adapterForMethod(method)?.group ?? null;
 }
 
-export function boostMethodForGroup(group: string): SpecBoostMethod | null {
+function boostMethodForGroup(group: string): SpecBoostMethod | null {
   const g = normalizeUiGroup(group);
   if (g === SPEC_PROFILE_MTP) return "mtp";
   // Group alone cannot distinguish dflash vs dspark — UI Boost is source of truth
@@ -125,7 +125,7 @@ export function activeBoostMethodFromParams(
   return "off";
 }
 
-export function paramsInProfile(
+function paramsInProfile(
   params: UserEditedTemplateParam[],
   group: SpecProfileGroup,
 ): UserEditedTemplateParam[] {
@@ -136,7 +136,7 @@ export function paramsInProfile(
  * Desired hidden state for profile groups given Boost method.
  * Active group: respect user_hidden. Inactive groups: all hidden.
  */
-export function desiredProfileHidden(
+function desiredProfileHidden(
   method: SpecBoostMethod,
   group: SpecProfileGroup,
   param: UserEditedTemplateParam,

@@ -5,7 +5,7 @@
 import type { CatalogSeatsState } from "./catalogQuickAccess";
 import type { StackEntry } from "./types";
 
-export type HarnessMode = "none" | "solo" | "twin";
+type HarnessMode = "none" | "solo" | "twin";
 
 export type HarnessBinding = {
   mode: HarnessMode;

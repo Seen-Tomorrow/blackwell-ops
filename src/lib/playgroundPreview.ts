@@ -51,7 +51,7 @@ function isThreeCdnScript(el: Element): boolean {
 }
 
 /** DOM-safe: only remove real <script src=…three…> nodes — never regex inside inline JS strings. */
-export function ensureThreeForPreview(html: string): string {
+function ensureThreeForPreview(html: string): string {
   if (!USES_THREE_RE.test(html)) return html;
 
   const doc = parsePreviewDocument(html);
@@ -73,7 +73,7 @@ export function ensureThreeForPreview(html: string): string {
   return serializeDocument(doc);
 }
 
-export function injectConsoleBridge(html: string): string {
+function injectConsoleBridge(html: string): string {
   const doc = parsePreviewDocument(html);
   const head = ensureHead(doc);
 
@@ -97,7 +97,7 @@ export function injectConsoleBridge(html: string): string {
   return serializeDocument(doc);
 }
 
-export function preparePreviewHtml(html: string, captureConsole: boolean): string {
+function preparePreviewHtml(html: string, captureConsole: boolean): string {
   let payload = ensureThreeForPreview(html);
   if (captureConsole) payload = injectConsoleBridge(payload);
   return payload;

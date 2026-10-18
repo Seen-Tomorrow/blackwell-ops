@@ -13,7 +13,7 @@ export type CatalogSeatRole = "brain" | "worker" | "draft";
 export const CATALOG_ENGINE_SEAT_ROLES = ["brain", "worker"] as const;
 export type CatalogEngineSeatRole = (typeof CATALOG_ENGINE_SEAT_ROLES)[number];
 
-export const CATALOG_SEAT_ROLES: readonly CatalogSeatRole[] = [
+const CATALOG_SEAT_ROLES: readonly CatalogSeatRole[] = [
   "brain",
   "worker",
   "draft",
@@ -29,7 +29,7 @@ export const CATALOG_SEAT_LABEL: Record<CatalogSeatRole, string> = {
 export const CATALOG_SEAT_SET_COUNT = 3 as const;
 export type CatalogSeatSetIndex = 0 | 1 | 2;
 
-export type CatalogSeatSlot = {
+type CatalogSeatSlot = {
   path: string;
   updatedAt: number;
 };
@@ -233,7 +233,7 @@ export function loadCatalogSeats(): CatalogSeatsState {
   return { ...s.seatSets[s.activeSeatSet] };
 }
 
-export function loadCatalogSeatSets(): CatalogSeatSets {
+function loadCatalogSeatSets(): CatalogSeatSets {
   const s = readStore();
   return [
     { ...s.seatSets[0] },
@@ -333,7 +333,7 @@ export function loadCatalogSetComboId(index?: CatalogSeatSetIndex): string | nul
   return s.comboIds[i];
 }
 
-export function loadCatalogComboIds(): CatalogComboIds {
+function loadCatalogComboIds(): CatalogComboIds {
   return [...readStore().comboIds] as CatalogComboIds;
 }
 
@@ -370,6 +370,6 @@ export function catalogPathChipLabel(path: string, name?: string): string {
 }
 
 /** True if a set has at least BRAIN + WORKER filled (twin-launchable). */
-export function seatSetCanTwin(seats: CatalogSeatsState): boolean {
+function seatSetCanTwin(seats: CatalogSeatsState): boolean {
   return Boolean(seats.brain?.path && seats.worker?.path);
 }

@@ -6,7 +6,7 @@ import {
   type ReactNode,
 } from "react";
 
-export type SegmentSwitchOption = {
+type SegmentSwitchOption = {
   id: string;
   label: ReactNode;
   title?: string;
@@ -17,8 +17,8 @@ export type SegmentSwitchOption = {
   dataAttrs?: Record<string, string>;
 };
 
-export type SegmentSwitchSize = "fit" | "compact";
-export type SegmentSwitchTone = "accent" | "amber";
+type SegmentSwitchSize = "fit" | "compact";
+type SegmentSwitchTone = "accent" | "amber";
 
 export interface SegmentSwitchProps {
   options: SegmentSwitchOption[];

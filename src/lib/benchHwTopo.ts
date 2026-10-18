@@ -1,7 +1,7 @@
 import type { GpuInfo } from "./types";
 
 /** Distinct slot colors — matches multi-GPU topology chips (up to 8). */
-export const BENCH_GPU_COLORS = [
+const BENCH_GPU_COLORS = [
   "#76B900",
   "#22D3EE",
   "#FBBF24",
@@ -32,7 +32,7 @@ export function formatGpuDriverVersion(raw?: string): string | undefined {
   return trimmed;
 }
 
-export function parseGpuMaskIndices(gpuMask: string | undefined, gpus: GpuInfo[]): number[] {
+function parseGpuMaskIndices(gpuMask: string | undefined, gpus: GpuInfo[]): number[] {
   if (gpuMask?.trim()) {
     const parsed = gpuMask
       .split(",")
@@ -44,7 +44,7 @@ export function parseGpuMaskIndices(gpuMask: string | undefined, gpus: GpuInfo[]
   return [];
 }
 
-export function formatGpuShortLabel(gpu: GpuInfo): string {
+function formatGpuShortLabel(gpu: GpuInfo): string {
   const vramGb = Math.round((gpu.memory_total_manufactured || gpu.memory_total) / 1024);
   const shortName = gpu.name.replace(/^NVIDIA\s+/i, "").trim();
   return `${shortName} ${vramGb}GB`;

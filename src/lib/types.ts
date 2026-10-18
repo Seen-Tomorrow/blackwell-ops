@@ -73,7 +73,7 @@ export interface SecretStatus {
   preview?: string;
 }
 
-export interface HfMetadata {
+interface HfMetadata {
   hfModelId: string;
   author: string;
   repoName: string;
@@ -271,7 +271,7 @@ export interface SpawnProfile {
 export type ConfigViewMode = "essentials" | "full";
 
 /** Provider origin classification — derived from existing fields, not stored */
-export type ProviderOrigin = 'foundry' | 'downloaded' | 'bundled' | 'catalog';
+type ProviderOrigin = 'foundry' | 'downloaded' | 'bundled' | 'catalog';
 
 export type BinarySourceKind = 'foundry' | 'bundled' | 'catalog';
 
@@ -290,7 +290,7 @@ export interface BinaryEntry {
 }
 
 /** All inventory sources for one env profile. */
-export interface EnvBinaryInventory {
+interface EnvBinaryInventory {
   bundled?: BinaryEntry;
   foundry?: BinaryEntry;
   catalog?: BinaryEntry;
@@ -354,7 +354,7 @@ export function isProfileSourceActive(
  * - catalog / downloaded: active catalog source or product-tag stamp
  * - bundled: NSIS runtime/
  */
-export function getProviderOrigin(provider: ProviderConfig, env: string): ProviderOrigin {
+function getProviderOrigin(provider: ProviderConfig, env: string): ProviderOrigin {
   const norm = (profileEnvLookup(provider.binaryPathPerEnv, env) ?? '').replace(/\\/g, '/').toLowerCase();
   if (norm.includes('foundry/artifacts/')) return 'foundry';
   if (norm.includes('runtime-catalog/')) return 'catalog';
@@ -437,14 +437,14 @@ export interface BinaryUpdateInfo {
 }
 
 /** App update info from check_app_update IPC command. */
-export interface AppUpdateInfo {
+interface AppUpdateInfo {
   available: boolean;
   version: string;
   currentVersion: string;
   releaseNotes: string | null;
 }
 
-export type UpdateChannel = 'app_only' | 'full_bundle';
+type UpdateChannel = 'app_only' | 'full_bundle';
 
 export interface UpdateChannelOffering {
   channel: UpdateChannel | string;
@@ -467,7 +467,7 @@ export interface UpdateOfferings {
 }
 
 /** Provider binary updates grouped by provider. */
-export interface ProviderBinaryUpdates {
+interface ProviderBinaryUpdates {
   providerId: string;
   updates: BinaryUpdateInfo[];
 }
@@ -486,7 +486,7 @@ export interface PluginProfileOffering {
   cudaVersion?: string | null;
 }
 
-export interface PluginCatalogEntry {
+interface PluginCatalogEntry {
   id: string;
   displayName: string;
   description: string;
@@ -501,7 +501,7 @@ export interface PluginCatalogResponse {
 }
 
 /** Combined startup update status from get_startup_updates IPC command. */
-export interface StartupUpdateStatus {
+interface StartupUpdateStatus {
   appUpdate: AppUpdateInfo;
   updateOfferings: UpdateOfferings;
   binaryUpdates: ProviderBinaryUpdates[];
@@ -577,7 +577,7 @@ export interface SystemInfo {
   total_memory_manufactured_mib: number; // Rounded manufactured capacity for display (e.g., 256 GB = 262144 MiB)
 }
 
-export interface DiskIoInfo {
+interface DiskIoInfo {
   read_mib_per_s: number;
   write_mib_per_s: number;
 }
@@ -729,7 +729,7 @@ export interface FusionUpdate {
   specMode?: 'mtp' | 'dflash' | 'dspark';
 }
 
-export interface VramFitResult {
+interface VramFitResult {
   total_vram_gb: number;
   fits: boolean;
   gpu_total_gb: number;
@@ -742,10 +742,10 @@ export interface VramFitResult {
 
 /** Scenario Factory types — single source of truth for VRAM evaluation */
 
-export type Scenario = 'AUTO_FIT' | 'HW_LOCKED';
+type Scenario = 'AUTO_FIT' | 'HW_LOCKED';
 
 /** @soon-remove moe_optimal — leftover suggestion chip; not a scenario. */
-export interface MoeSuggestion {
+interface MoeSuggestion {
   /** Whether MOE_OPTIMAL would fit (on GPU or with less RAM offload) */
   wouldFit: boolean;
   
@@ -767,7 +767,7 @@ export interface MoeSuggestion {
 
 /** Scenario-driven UI template — copy/colors for the one ASSISTED forecast glass.
  *  Layout lives in VramBadge; do not revive a second FULL AUTO forecast UI. */
-export interface UiTemplate {
+interface UiTemplate {
   /** Fallback header if launchSummary is absent. */
   heroText?: string;
   /** Forecast header line (outcome + placement). */
@@ -792,7 +792,7 @@ export type ForecastLaunchPaint = "fit" | "offload" | "nofit";
 /** NEED + bar visual tone: ok → caution (low OOM) → warn (high OOM / spill) → hot. */
 export type ForecastNeedTone = "ok" | "caution" | "warn" | "hot";
 
-export interface StyleObject {
+interface StyleObject {
   titleColor: string;
   gpuBarColor: string;
   borderColor: string;
@@ -833,7 +833,7 @@ export interface GpuAllocation {
   runningEngines: RunningEngine[];
 }
 
-export type MemorySourceKind = "fit_probe" | "learned" | "learned_curve";
+type MemorySourceKind = "fit_probe" | "learned" | "learned_curve";
 
 
 export interface MemorySource {
@@ -908,7 +908,7 @@ export interface VramManifest {
 }
 
 /** Per-GPU component breakdown parsed from llama's memory table. */
-export interface GpuComponentMib {
+interface GpuComponentMib {
   /** Model weights VRAM in MiB (snake_case to match Rust serialization) */
   model_mib: number;
   /** KV cache VRAM in MiB (llama "ctx", snake_case to match Rust) */
@@ -1064,7 +1064,7 @@ export interface HfModel {
   gguf_files: GgufFile[];
 }
 
-export interface HfSearchFilters {
+interface HfSearchFilters {
   query: string;
   vram_limit_gb: number;  // 0 = no filter
   limit: number;
@@ -1132,7 +1132,7 @@ export interface DiskCheckResult {
   diskAuthor: string | null;
 }
 
-export interface HfFileUpdateCheck {
+interface HfFileUpdateCheck {
   quantType: string;
   hasUpdate: boolean;
   cachedSizeBytes: number;
@@ -1151,7 +1151,7 @@ export interface HfRepoUpdateStatus {
   error?: string | null;
 }
 
-export type QuantUpdateKind = 'current' | 'header' | 'full';
+type QuantUpdateKind = 'current' | 'header' | 'full';
 
 export interface CatalogUpdateEntry {
   path: string;
@@ -1177,7 +1177,7 @@ export interface DownloadHistoryEntry {
   finishedAt: number;
 }
 
-export type IpcMeterTier = "green" | "yellow" | "orange" | "red";
+type IpcMeterTier = "green" | "yellow" | "orange" | "red";
 
 export interface GpuControlDeviceInfo {
   index: number;
@@ -1211,7 +1211,7 @@ export interface GpuControlPreset {
   memOffsetMhz: number;
 }
 
-export interface GpuControlStepResult {
+interface GpuControlStepResult {
   gpuIndex: number;
   step: string;
   ok: boolean;

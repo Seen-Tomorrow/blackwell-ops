@@ -7,7 +7,7 @@ import {
   type FusionBenchTrayState,
 } from "../lib/fusionBenchTrayStore";
 
-export type { FusionBenchTrayState };
+;
 
 /** Fusion overlay benchmark tray — session memory, always starts stowed. Control knobs persist separately. */
 export function useFusionBenchTray() {

@@ -53,7 +53,7 @@ export interface ForecastInput {
 }
 
 /** Compat alias — old scenario call sites. */
-export type ScenarioInput = ForecastInput;
+type ScenarioInput = ForecastInput;
 
 export interface ForecastAdapter {
   /** Provider ids this adapter owns (lowercase). */

@@ -24,7 +24,7 @@ export interface CodingModeOption {
   custom?: boolean;
 }
 
-export interface SpeedBoostOption {
+interface SpeedBoostOption {
   id: SpeedBoostId;
   label: string;
   blurb: string;
@@ -51,7 +51,7 @@ export const CODING_MODE_OPTIONS: CodingModeOption[] = [
 
 const PRESET_PARALLEL = new Set(CODING_MODE_OPTIONS.map((o) => o.parallel));
 
-export const SPEED_BOOST_OPTIONS: SpeedBoostOption[] = [
+const SPEED_BOOST_OPTIONS: SpeedBoostOption[] = [
   {
     id: "smart",
     label: "Smart",
@@ -165,7 +165,7 @@ export function brainsFromKvQuant(kv: string | undefined): BrainsId {
   return `kv:${s}`;
 }
 
-export function pickKvQuantForBrains(
+function pickKvQuantForBrains(
   brains: BrainsId,
   available: (string | number)[],
 ): string {
@@ -239,7 +239,7 @@ export function buildMemoryOptions(
 
 // ── Boost (spec type) display: 2-word naming, family above track ───────────
 
-export type BoostMarkColor = "green" | "violet";
+type BoostMarkColor = "green" | "violet";
 
 export interface BoostMarkParts {
   /** Id for the slider (smart | off | mtp | dflash | raw:TYPE). */
@@ -566,7 +566,7 @@ export function resolveFullAutoPlan(opts: {
   };
 }
 
-export function buildHarnessSnippets(opts: {
+function buildHarnessSnippets(opts: {
   port: number;
   modelId: string;
   concurrentHint: number;

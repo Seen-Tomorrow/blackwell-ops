@@ -79,7 +79,7 @@ function defaultSharedPreset(devices: GpuControlDeviceInfo[]): GpuControlSharedP
   };
 }
 
-export const UAC_DENIED_MESSAGE = "USER did not approve the UAC prompt";
+const UAC_DENIED_MESSAGE = "USER did not approve the UAC prompt";
 
 function isUacFailure(detail?: string): boolean {
   if (!detail) return false;
@@ -92,7 +92,7 @@ function isUacFailure(detail?: string): boolean {
   );
 }
 
-export function formatGpuControlMessage(result: GpuControlApplyResult): string {
+function formatGpuControlMessage(result: GpuControlApplyResult): string {
   const failed = result.steps.filter((s) => !s.ok);
   if (failed.length > 0) {
     if (failed.some((s) => isUacFailure(s.detail))) return UAC_DENIED_MESSAGE;
@@ -102,7 +102,7 @@ export function formatGpuControlMessage(result: GpuControlApplyResult): string {
   return "Apply finished with warnings.";
 }
 
-export function formatGpuControlError(err: unknown): string {
+function formatGpuControlError(err: unknown): string {
   const msg = String(err);
   if (isUacFailure(msg)) return UAC_DENIED_MESSAGE;
   return msg;

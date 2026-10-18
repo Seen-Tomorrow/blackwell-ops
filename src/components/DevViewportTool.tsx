@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-export type DevViewportBand = "marginal" | "ok" | "ideal";
+type DevViewportBand = "marginal" | "ok" | "ideal";
 
 export type DevViewportPreset = {
   id: string;
@@ -33,7 +33,7 @@ export type DevViewportPreset = {
  * Physical desktop sizes worth testing.
  * Unsupported (&lt;1080p) omitted — product floor is 1080 marginal / 1440 recommended.
  */
-export const DEV_VIEWPORT_PRESETS: DevViewportPreset[] = [
+const DEV_VIEWPORT_PRESETS: DevViewportPreset[] = [
   { id: "fhd", label: "1920", width: 1920, height: 1080, blurb: "16:9", band: "marginal" },
   { id: "1600", label: "1600", width: 1600, height: 900, blurb: "16:9", band: "marginal" },
   { id: "1440w", label: "1440", width: 1440, height: 900, blurb: "16:10", band: "marginal" },

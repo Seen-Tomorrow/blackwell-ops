@@ -6,7 +6,7 @@ import {
   type ReactNode,
 } from "react";
 
-export type ProviderProfileSegmentOption = {
+type ProviderProfileSegmentOption = {
   id: string;
   label: ReactNode;
   title?: string;

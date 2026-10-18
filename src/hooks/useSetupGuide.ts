@@ -27,7 +27,7 @@ import { useDownloadTasks } from "./useDownloadTasks";
 import { isSetupGuidePreviewMode, useSetupGuideActivation } from "./useSetupGuideActivation";
 import { useTauriListen } from "./useTauriListen";
 
-export type { SetupPhase } from "../lib/setupGuide";
+;
 
 export interface SetupGuideState {
   active: boolean;

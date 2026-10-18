@@ -273,4 +273,4 @@ export function useConfigResolver({
 }
 
 // Re-export for callers that want factory defaults without importing buildLaunchConfig
-export { factoryDefaultsFromParams };
+;

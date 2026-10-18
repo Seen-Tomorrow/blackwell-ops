@@ -23,7 +23,7 @@ import {
 } from "../lib/appNav";
 import HeaderNavSegment from "./HeaderNavSegment";
 
-export interface HeaderNavProps {
+interface HeaderNavProps {
   activeTab: Tab;
   onTabChange: (tab: Tab) => void;
   /** CONFIG section — header sub-rail. */

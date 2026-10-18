@@ -39,18 +39,18 @@ export type BenchHeroPatch = {
   pp?: number | null;
 };
 
-export interface BenchResultsFooterProps {
+interface BenchResultsFooterProps {
   shareMeta?: FusionShareMeta & { alias?: string };
   onClose: () => void;
 }
 
-export interface BenchHwTopoProps {
+interface BenchHwTopoProps {
   gpus: GpuInfo[];
   gpuMask?: string;
   splitMode?: string;
 }
 
-export function BenchHwTopo({ gpus, gpuMask, splitMode, fullWidth = false }: BenchHwTopoProps & { fullWidth?: boolean }) {
+function BenchHwTopo({ gpus, gpuMask, splitMode, fullWidth = false }: BenchHwTopoProps & { fullWidth?: boolean }) {
   const gpuTopoEntries = useMemo(
     () => buildBenchGpuTopoEntries(gpus, gpuMask),
     [gpus, gpuMask],
@@ -91,7 +91,7 @@ export function BenchHwTopo({ gpus, gpuMask, splitMode, fullWidth = false }: Ben
   );
 }
 
-export function BenchResultsActionsCol({ shareMeta, onClose }: BenchResultsFooterProps) {
+function BenchResultsActionsCol({ shareMeta, onClose }: BenchResultsFooterProps) {
   return (
     <div
       className="bench-results-actions flex flex-col items-end justify-end self-stretch min-w-0 w-full"
@@ -130,7 +130,7 @@ export function BenchResultsActionsCol({ shareMeta, onClose }: BenchResultsFoote
   );
 }
 
-export function BenchResultsFooter({ shareMeta, onClose }: BenchResultsFooterProps) {
+function BenchResultsFooter({ shareMeta, onClose }: BenchResultsFooterProps) {
   return (
     <div
       className="bench-results-footer flex justify-end items-center gap-2 flex-shrink-0 px-1 pt-0.5"
@@ -195,7 +195,7 @@ interface BenchWidgetProps {
 
 }
 
-export interface BenchHwContext {
+interface BenchHwContext {
   gpus: GpuInfo[];
   gpuMask?: string;
   splitMode?: string;

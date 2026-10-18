@@ -88,7 +88,7 @@ export function FusionProvider({
   return <>{children}</>;
 }
 
-export function useFusionData(): FusionContextValue {
+function useFusionData(): FusionContextValue {
   const revision = useFusionStoreRevision();
   const getEngine = useCallback((slotIdx: number) => getFusionSlot(slotIdx), []);
   return useMemo(

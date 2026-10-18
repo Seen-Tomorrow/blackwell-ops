@@ -356,13 +356,13 @@ export function patchBooterSession(slotIdx: number, patch: Partial<BooterSession
   bump(session);
 }
 
-export function clearBooterSession(slotIdx: number) {
+function clearBooterSession(slotIdx: number) {
   if (sessions.delete(slotIdx)) {
     notify(slotIdx);
   }
 }
 
-export function clearAllBooterSessions() {
+function clearAllBooterSessions() {
   if (sessions.size === 0) return;
   const slots = [...sessions.keys()];
   sessions.clear();

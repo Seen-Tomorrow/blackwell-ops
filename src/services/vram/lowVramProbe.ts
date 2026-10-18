@@ -12,7 +12,7 @@ import {
 } from "./shared";
 
 /** Full-need fit-print Host is usually ~1 GB buffer; above this ≈ weight/KV spill. */
-export const HOST_BUFFER_CEILING_GB = 2.5;
+const HOST_BUFFER_CEILING_GB = 2.5;
 
 export type FitProbeMode = "full" | "low_vram";
 export function isWeightClassHostSpill(hostGb: number | null | undefined): boolean {
@@ -49,7 +49,7 @@ export function splitHostRamGb(opts: {
   return { bufferGb: host, weightGb: 0 };
 }
 /** Partial fitted ngl from a free-aware low_vram probe (−1 / 999 = all GPU). */
-export function isPartialFittedNgl(ngl: number | null | undefined): boolean {
+function isPartialFittedNgl(ngl: number | null | undefined): boolean {
   return ngl != null && ngl >= 0 && ngl < 900;
 }
 
@@ -126,12 +126,12 @@ export function freeFingerprintFromGb(freeGb: number): string {
   return (Math.round(freeGb * 2) / 2).toFixed(1);
 }
 
-export function freeFingerprintFromList(availableGb: number[]): string {
+function freeFingerprintFromList(availableGb: number[]): string {
   const sum = availableGb.reduce((a, b) => a + (Number.isFinite(b) ? Math.max(0, b) : 0), 0);
   return freeFingerprintFromGb(sum);
 }
 
-export function isLowVramProbeFresh(
+function isLowVramProbeFresh(
   mode: FitProbeMode | null | undefined,
   probeFp: string | null | undefined,
   liveFp: string,
@@ -143,7 +143,7 @@ export function isLowVramProbeFresh(
  * Show RE-PROBE LOW VRAM nudge — never auto-runs FIT.
  * Yellow 85/92% is chrome only. Nudge only at the hard over-free gate.
  */
-export function needsLowVramReprobe(args: {
+function needsLowVramReprobe(args: {
   estimateGb: number;
   freeGb: number;
   probeMode?: FitProbeMode | null;
@@ -262,9 +262,9 @@ export function showHostRamBar(args: {
   return args.hostOffloadGb > HOST_BUFFER_CEILING_GB;
 }
 
-export function isLowVramMode(mode: string | null | undefined): mode is "low_vram" {
+function isLowVramMode(mode: string | null | undefined): mode is "low_vram" {
   return mode === "low_vram";
 }
 
 // Re-export threshold for docs / UI tooltips
-export { FREE_POOL_OOM_CAUTION };
+;

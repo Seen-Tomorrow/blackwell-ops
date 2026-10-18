@@ -134,7 +134,7 @@ export function splitBreakingItems(items: IntelItem[]): {
   return { breaking, rest };
 }
 
-export function extractPrNumber(item: IntelItem): number | null {
+function extractPrNumber(item: IntelItem): number | null {
   const match = item.id.match(/-(?:pr|open_pr)-(\d+)$/);
   if (!match) return null;
   const n = Number.parseInt(match[1], 10);

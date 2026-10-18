@@ -46,7 +46,7 @@ function formatDownloads(n: number): string {
  * Hero match label — 0–100 confidence.
  *   ≥80 high · 50–79 match (confirm) · <50 weak
  */
-export function draftMatchHeroLabel(score: number | undefined): string {
+function draftMatchHeroLabel(score: number | undefined): string {
   if (score == null || !Number.isFinite(score) || score < 0) return "weak match";
   const pct = Math.max(0, Math.min(100, Math.round(score)));
   const tier = dflashMatchTier(pct);
@@ -55,14 +55,14 @@ export function draftMatchHeroLabel(score: number | undefined): string {
   return `match ${pct}%`;
 }
 
-export function draftMatchTierClass(score: number | undefined): string {
+function draftMatchTierClass(score: number | undefined): string {
   const tier = dflashMatchTier(score);
   if (tier === "high") return "dflash-pick-modal__match--high";
   if (tier === "ignore") return "dflash-pick-modal__match--weak";
   return "dflash-pick-modal__match--suggest";
 }
 
-export function hfOffersToPickItems(offers: DflashDraftOffer[]): DraftPickListItem[] {
+function hfOffersToPickItems(offers: DflashDraftOffer[]): DraftPickListItem[] {
   return offers.slice(0, REMOTE_LIST_CAP).map((c) => {
     const slash = c.hfModelId.indexOf("/");
     const author = slash > 0 ? c.hfModelId.slice(0, slash) : c.hfAuthor;

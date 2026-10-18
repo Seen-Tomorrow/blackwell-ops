@@ -22,7 +22,7 @@ import {
   type CtxLearnedMarkMode,
 } from "../lib/storage";
 
-export function useCtxLearnedMarkMode(): {
+function useCtxLearnedMarkMode(): {
   mode: CtxLearnedMarkMode;
   cycle: () => void;
 } {
@@ -37,7 +37,7 @@ export function useCtxLearnedMarkMode(): {
   return { mode, cycle };
 }
 
-export function CtxLearnedMarkToggle({
+function CtxLearnedMarkToggle({
   mode,
   onCycle,
   visible,

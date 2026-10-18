@@ -22,11 +22,11 @@ import type { SpecProfileGroup } from "../specProfiles";
 import type { SpecBoostMethod } from "../specProfiles";
 import type { DraftRole, SpecCapability } from "../specDraft";
 
-export type { SpecBoostMethod, SpecCapability };
+export type { SpecBoostMethod,  };
 
 export type SpecAdapterId = "mtp" | "dflash" | "eagle3";
 
-export interface SpecKnobs {
+interface SpecKnobs {
   nMax: string;
   nMin: string;
   pMin: string;
@@ -193,7 +193,7 @@ export function cliTypeForMethod(
 }
 
 /** Adapters whose capability a main model has, in Boost-chip order. */
-export function adaptersForCapabilities(
+function adaptersForCapabilities(
   capabilities: readonly SpecCapability[],
 ): SpecAdapter[] {
   return ALL.filter((a) => capabilities.includes(a.capability));

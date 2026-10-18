@@ -4,7 +4,7 @@ import type { FitDataPoint, FitScanFull } from "./types";
 export const FIT_SCAN_POINTS_TOTAL = 10;
 
 /** CTX spine columns. */
-export const FIT_SCAN_CTX_COLUMNS = [
+const FIT_SCAN_CTX_COLUMNS = [
   { label: "ctx_4k", header: "4K" },
   { label: "ctx_32k", header: "32K" },
   { label: "ctx_64k", header: "64K" },
@@ -14,7 +14,7 @@ export const FIT_SCAN_CTX_COLUMNS = [
 ] as const;
 
 /** Split-tax library columns — layer/tensor at 64K + 256K. */
-export const FIT_SCAN_SPLIT_COLUMNS = [
+const FIT_SCAN_SPLIT_COLUMNS = [
   { label: "split_layer_64k", header: "L64K", title: "Layer split @ 64K (library tax = L − none)" },
   { label: "split_tensor_64k", header: "T64K", title: "Tensor split @ 64K — fit-print Meta ≈ none (no multi-GPU tax); forecast uses LEARNED or +2G fallback" },
   { label: "split_layer_256k", header: "L256", title: "Layer split @ 256K (library tax = L − none)" },
@@ -116,7 +116,7 @@ function noneSpineAtCtx(points: FitDataPoint[] | undefined, ctx: number): FitDat
  * Tensor `--fit-print` emits a single Meta() row ≈ split=none total (not multi-GPU).
  * When T − none is within noise, surface `noΔ` so the table does not look like a real tax.
  */
-export function isTensorFitTaxUnmeasurable(
+function isTensorFitTaxUnmeasurable(
   pt: FitDataPoint | undefined,
   allPoints?: FitDataPoint[],
 ): boolean {

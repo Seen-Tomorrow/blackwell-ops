@@ -32,13 +32,13 @@ function skipSpecParamForLaunch(p: UserEditedTemplateParam, _specActive: boolean
 const DEFAULT_ESSENTIAL_KEYS = ["device", "ctx"] as const;
 
 /** Factory FIT whitelist (param keys only — split handled separately for multi-GPU). */
-export function resolveFitLaunchKeys(profile?: SpawnProfile): string[] {
+function resolveFitLaunchKeys(profile?: SpawnProfile): string[] {
   const raw = profile?.simple_param_keys ?? [...DEFAULT_ESSENTIAL_KEYS];
   return raw.filter((k) => k !== "split");
 }
 
 /** AUTO FIT launch + panel filter keys (split included when multi-GPU). */
-export function resolveFitLaunchExtraKeys(opts: {
+function resolveFitLaunchExtraKeys(opts: {
   profile?: SpawnProfile;
   specActive: boolean;
   multiGpu: boolean;
@@ -57,7 +57,7 @@ export function resolveFitLaunchExtraKeys(opts: {
 const FIT_PANEL_CHROME_SCROLL_SKIP = new Set(["device", "split", "base_port", "offload_mode"]);
 
 /** Scroll-area params under AUTO FIT — whitelist minus GpuAssign / dock chrome. */
-export function filterParamsForFitLaunchDisplay(
+function filterParamsForFitLaunchDisplay(
   params: UserEditedTemplateParam[],
   launchKeys: Set<string>,
 ): UserEditedTemplateParam[] {
@@ -82,7 +82,7 @@ export function isEssentialParam(
 }
 
 /** True when a value is excluded from Essentials UI only (not Full, not catalog). */
-export function isEssentialsHiddenValue(
+function isEssentialsHiddenValue(
   def: { essentialsHiddenValues?: (string | number)[] },
   value: string | number,
 ): boolean {
@@ -120,14 +120,14 @@ export function filterParamValuesForConfigView(
   return out;
 }
 
-export { valueKeyForHide };
+;
 
 /**
  * Snap a single value out of essentialsHiddenValues (and catalog hiddenValues)
  * onto a still-visible chip for Essentials / Full Auto launch.
  * Assisted Full must not call this — power keeps the fat bag.
  */
-export function snapValueOutOfEssentialsHide(
+function snapValueOutOfEssentialsHide(
   def: UserEditedTemplateParam,
   current: unknown,
 ): unknown {
@@ -267,7 +267,7 @@ export function providerSupportsFitLaunch(profile?: SpawnProfile): boolean {
  * Keys emitted on MANUAL launch — essentials view filters; full passes all visible params.
  * Prefer `resolveLaunchKeySet` + LaunchPolicy for new code (see launchPolicy.ts).
  */
-export function resolveManualLaunchKeys(opts: {
+function resolveManualLaunchKeys(opts: {
   configView: ConfigViewMode;
   essentialFactoryKeys: Set<string>;
   specActive: boolean;

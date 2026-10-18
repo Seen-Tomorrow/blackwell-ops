@@ -31,7 +31,7 @@ import {
   writeJsonStorage,
 } from "./storage";
 
-export const CATALOG_OVERRIDE_STORE_VERSION = 2 as const;
+const CATALOG_OVERRIDE_STORE_VERSION = 2 as const;
 
 export type LaunchProfileMap = Record<string, unknown>;
 
@@ -49,7 +49,7 @@ function emptyProfiles(): Record<LaunchPolicyId, LaunchProfileMap> {
   };
 }
 
-export function isCatalogOverrideStoreV2(raw: unknown): raw is CatalogOverrideStoreV2 {
+function isCatalogOverrideStoreV2(raw: unknown): raw is CatalogOverrideStoreV2 {
   if (!raw || typeof raw !== "object") return false;
   const o = raw as Record<string, unknown>;
   if (o.version !== CATALOG_OVERRIDE_STORE_VERSION) return false;
@@ -59,7 +59,7 @@ export function isCatalogOverrideStoreV2(raw: unknown): raw is CatalogOverrideSt
 }
 
 /** Flat v1 bag: plain object with no version field (or version !== 2). */
-export function isFlatCatalogOverride(raw: unknown): raw is Record<string, unknown> {
+function isFlatCatalogOverride(raw: unknown): raw is Record<string, unknown> {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
   if (isCatalogOverrideStoreV2(raw)) return false;
   // Reject accidental nested half-migrates without version
@@ -147,7 +147,7 @@ export function writeCatalogOverrideStore(
   writeJsonStorage(catalogOverrideKey(providerId), store);
 }
 
-export function readProfileValues(
+function readProfileValues(
   providerId: string,
   policyId: LaunchPolicyId,
   factoryDefaults: Record<string, unknown>,
@@ -156,7 +156,7 @@ export function readProfileValues(
   return { ...store.profiles[policyId] };
 }
 
-export function writeProfileValues(
+function writeProfileValues(
   providerId: string,
   policyId: LaunchPolicyId,
   values: LaunchProfileMap,

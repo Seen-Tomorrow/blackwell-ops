@@ -19,7 +19,7 @@ export function isTomProvider(providerId: string): boolean {
   return id === "ggml-tom" || id === "ggml_tom" || id.includes("ggml-tom");
 }
 
-export function isMtpModel(model: Pick<ModelEntry, "path" | "metadata" | "hfMeta" | "hfModelId">): boolean {
+function isMtpModel(model: Pick<ModelEntry, "path" | "metadata" | "hfMeta" | "hfModelId">): boolean {
   if ((model.metadata?.nextn_predict_layers ?? 0) > 0) return true;
 
   const hfId = (model.hfMeta?.hfModelId ?? model.hfModelId ?? "").toLowerCase();

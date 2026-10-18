@@ -196,18 +196,7 @@
   to { opacity: 1; transform: scale(1); }
 }
 
-@keyframes miniCardNewPulse {
-  0%, 100% { border-color: var(--fixed-nv-green); }
-  50% { border-color: #00FFFF; }
-}
 
-.mini-card-enter {
-  animation: miniCardEnter 0.2s ease-out both;
-}
-
-.mini-card-new-pulse {
-  animation: miniCardNewPulse 2s ease-in-out;
-}
 
 /* ── RunningEnginesPanel animations ─── */
 @keyframes enginePanelEnter {

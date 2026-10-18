@@ -36,7 +36,7 @@ export function presetsForApply(
   return individualPresets;
 }
 
-export function presetsForLaunch(state: GpuControlSavedState): GpuControlPreset[] {
+function presetsForLaunch(state: GpuControlSavedState): GpuControlPreset[] {
   if (state.ocMode === "sync") {
     if (state.sharedPreset.powerLimitW <= 0 && state.presets.length === 0) {
       return [];
@@ -53,7 +53,7 @@ export function presetsForLaunch(state: GpuControlSavedState): GpuControlPreset[
   return state.presets;
 }
 
-export async function buildLaunchApplyPresets(
+async function buildLaunchApplyPresets(
   getDevices: () => Promise<GpuControlDeviceInfo[]>,
   state: GpuControlSavedState,
 ): Promise<GpuControlPreset[]> {

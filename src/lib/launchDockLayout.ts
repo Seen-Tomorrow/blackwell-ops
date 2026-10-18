@@ -6,9 +6,9 @@ export const LAUNCH_DOCK_RAIL_WIDTH_DEFAULT = 220;
 export const LAUNCH_DOCK_RAIL_WIDTH_MIN = 180;
 export const LAUNCH_DOCK_RAIL_WIDTH_MAX = 360;
 /** Viewports shorter than this auto-pick right rail when the user has not chosen explicitly. */
-export const LAUNCH_DOCK_AUTO_SUGGEST_HEIGHT = 900;
+const LAUNCH_DOCK_AUTO_SUGGEST_HEIGHT = 900;
 
-export function suggestLaunchDockPosition(viewportHeight: number): LaunchDockPosition {
+function suggestLaunchDockPosition(viewportHeight: number): LaunchDockPosition {
   return viewportHeight < LAUNCH_DOCK_AUTO_SUGGEST_HEIGHT ? "right" : "bottom";
 }
 
@@ -21,8 +21,8 @@ export function clampLaunchDockRailWidth(width: number): number {
 
 /** Telemetry vs launch vertical split inside the right rail (fraction of rail height). */
 export const LAUNCH_RAIL_TELEMETRY_RATIO_DEFAULT = 0.38;
-export const LAUNCH_RAIL_TELEMETRY_RATIO_MIN = 0.22;
-export const LAUNCH_RAIL_TELEMETRY_RATIO_MAX = 0.72;
+const LAUNCH_RAIL_TELEMETRY_RATIO_MIN = 0.22;
+const LAUNCH_RAIL_TELEMETRY_RATIO_MAX = 0.72;
 
 export function clampLaunchRailTelemetryRatio(ratio: number): number {
   return Math.min(

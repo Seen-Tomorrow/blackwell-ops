@@ -4,7 +4,7 @@ import type { SlotLogSummary } from "../lib/logSlotStore";
 import { getActiveStackSlots, isActiveEngineSlot } from "../lib/engineStack";
 import TabPageHeader from "./TabPageHeader";
 
-export type ActiveLogSlot = number | "all";
+type ActiveLogSlot = number | "all";
 
 interface EngineLogsSwitcherProps {
   activeLogSlot: ActiveLogSlot;

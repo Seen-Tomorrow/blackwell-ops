@@ -50,7 +50,7 @@ function clampWidth(
   return Math.round(Math.min(effectiveMax, Math.max(minWidth, width)));
 }
 
-export function usePanelSplitResize(config: PanelSplitResizeConfig) {
+function usePanelSplitResize(config: PanelSplitResizeConfig) {
   const { loadWidth, saveWidth, defaultWidth, minWidth, maxWidth } = config;
   const containerRef = useRef<HTMLDivElement>(null);
   const widthRef = useRef(loadWidth());
@@ -239,7 +239,7 @@ export function useLaunchDockRailResize(enabled: boolean) {
 }
 
 /** Vertical split between telemetry HUD and launch block inside the right rail. */
-export function useLaunchRailInnerResize(enabled: boolean) {
+function useLaunchRailInnerResize(enabled: boolean) {
   const railRef = useRef<HTMLDivElement>(null);
   const ratioRef = useRef(loadLaunchRailTelemetryRatio());
   const [telemetryRatio, setTelemetryRatio] = useState(ratioRef.current);

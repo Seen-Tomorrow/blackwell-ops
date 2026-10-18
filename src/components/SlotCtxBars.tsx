@@ -405,5 +405,5 @@ function SlotCtxBars({ slotCtx, ctxTotal, ctxPerSlot, parallel }: SlotCtxBarsPro
   );
 }
 
-export { SlotCtxBars };
+;
 export default SlotCtxBars;

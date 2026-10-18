@@ -23,7 +23,7 @@ function isScalarValue(v: unknown): v is string | number {
 }
 
 /** Coerce a catalog default_value (incl. boolean false) into a param value. */
-export function coerceCatalogDefault(entry: RawCatalogEntry): string | number | undefined {
+function coerceCatalogDefault(entry: RawCatalogEntry): string | number | undefined {
   const dv = entry.default_value;
   if (dv === null || dv === undefined) return undefined;
   if (typeof dv === "boolean") {
@@ -35,7 +35,7 @@ export function coerceCatalogDefault(entry: RawCatalogEntry): string | number | 
 }
 
 /** Collect display values from catalog entry: discrete help values + default only (no auto presets). */
-export function collectCatalogValues(entry: RawCatalogEntry): (string | number)[] {
+function collectCatalogValues(entry: RawCatalogEntry): (string | number)[] {
   const raw: (string | number)[] = [];
   const pushUnique = (v: string | number) => {
     if (!raw.some((x) => String(x) === String(v))) raw.push(v);
@@ -99,12 +99,12 @@ export function catalogEntryToParam(
 }
 
 /** Check if a param key already exists in the current provider's params. */
-export function isKeyActive(key: string, existingParams: UserEditedTemplateParam[]): boolean {
+function isKeyActive(key: string, existingParams: UserEditedTemplateParam[]): boolean {
   return existingParams.some((p) => p.key === key);
 }
 
 /** Normalize CLI flag / key for alias compare (`--kv-unified` ↔ `kv_unified`). */
-export function normalizeCatalogToken(raw: string | undefined | null): string {
+function normalizeCatalogToken(raw: string | undefined | null): string {
   if (!raw) return "";
   return String(raw)
     .trim()
@@ -118,7 +118,7 @@ export function normalizeCatalogToken(raw: string | undefined | null): string {
  * Key reorder aliases — llama renames sometimes swap segments
  * (`kv_unified` ↔ `unified_kv`).
  */
-export function catalogKeyReorderVariants(key: string): string[] {
+function catalogKeyReorderVariants(key: string): string[] {
   const k = key.trim().toLowerCase();
   if (!k) return [];
   const out = new Set<string>([k]);

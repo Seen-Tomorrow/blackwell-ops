@@ -26,7 +26,7 @@ function isLive(s: StackEntry): boolean {
  * Other live seat for dual B.
  * Prefer pinned; else next live after primary in stack/eject order; else previous.
  */
-export function autoPickSecondarySlot(
+function autoPickSecondarySlot(
   primary: number | null | undefined,
   stack: StackEntry[],
   pinned: number | null,

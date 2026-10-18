@@ -33,7 +33,7 @@ export function isSpecDecodingGroupActive(params: UserEditedTemplateParam[]): bo
   return isAnySpecProfileActive(params);
 }
 
-export function resolveSpecLaunchActive(opts: {
+function resolveSpecLaunchActive(opts: {
   groupActive: boolean;
   hasCapability: boolean;
   specType: string | undefined;
@@ -132,7 +132,7 @@ export function signalContainsDspark(signal: string): boolean {
   return compactAlnumLower(signal).includes("dspark");
 }
 
-export function signalContainsEagle3(signal: string): boolean {
+function signalContainsEagle3(signal: string): boolean {
   const lower = signal.toLowerCase();
   if (lower.includes("eagle3")) return true;
   if (EAGLE3_SIGNAL_RE.test(signal)) return true;
@@ -164,7 +164,7 @@ export function signalContainsMtpHead(signal: string): boolean {
  * `Qwen3.6-27B-MTP-GGUF` repo folder (embedded token) and is named `X-MTP.gguf`
  * (suffix) — neither matches.
  */
-export function isExplicitMtpHeadSignal(signal: string): boolean {
+function isExplicitMtpHeadSignal(signal: string): boolean {
   if (signalContainsMtpHead(signal)) return true;
   for (const part of signal.replace(/\\/g, "/").split("/")) {
     if (!part) continue;
@@ -472,7 +472,7 @@ export function findScoredDraftCandidates(
     .sort((a, b) => b.score - a.score);
 }
 
-export function findDraftCandidates(
+function findDraftCandidates(
   main: ModelEntry,
   models: ModelEntry[],
   draftRole: DraftRole,
@@ -602,18 +602,18 @@ export function loadModelSpecOverride(mainPath: string): ModelSpecOverride | nul
   return readJsonStorage<ModelSpecOverride>(modelSpecOverrideKey(mainPath));
 }
 
-export function saveModelSpecOverride(mainPath: string, patch: ModelSpecOverride): void {
+function saveModelSpecOverride(mainPath: string, patch: ModelSpecOverride): void {
   if (!mainPath) return;
   const prev = loadModelSpecOverride(mainPath) ?? {};
   writeJsonStorage(modelSpecOverrideKey(mainPath), { ...prev, ...patch });
 }
 
-export function clearModelSpecOverride(mainPath: string): void {
+function clearModelSpecOverride(mainPath: string): void {
   if (!mainPath) return;
   removeStorage(modelSpecOverrideKey(mainPath));
 }
 
-export function isDraftPairingValid(
+function isDraftPairingValid(
   pairing: DraftPairing,
   main: ModelEntry,
   models: ModelEntry[],
@@ -631,7 +631,7 @@ export function isDraftPairingValid(
  * User-confirmed pairing still on disk (Change draft / Get draft / prior save).
  * MIN score — weaker than silent HIGH auto, but must not be wiped after the user picks it.
  */
-export function isUsableDraftPairing(
+function isUsableDraftPairing(
   pairing: DraftPairing,
   main: ModelEntry,
   models: ModelEntry[],

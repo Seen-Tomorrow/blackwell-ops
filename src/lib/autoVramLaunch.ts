@@ -11,7 +11,7 @@ export function gpuHeadroomGb(capacityGb: number): number {
 }
 
 /** True when the forecast manifest projects load on more than one GPU. */
-export function forecastUsesMultiGpu(manifest: VramManifest | null): boolean {
+function forecastUsesMultiGpu(manifest: VramManifest | null): boolean {
   if (!manifest) return false;
   return manifest.gpuAllocations.filter((a) => a.projectedLoadGb > 0.1).length > 1;
 }
@@ -62,7 +62,7 @@ export function resolveSplitDriver(manifest: VramManifest | null): SplitDriver |
 }
 
 /** Same number as AUTO_FIT bars: estimate vs free VRAM. No flag / bar-shape override. */
-export function resolveAutoLayerSplit(opts: {
+function resolveAutoLayerSplit(opts: {
   manifest: VramManifest | null;
   perGpuAvailable: number[];
 }): boolean {

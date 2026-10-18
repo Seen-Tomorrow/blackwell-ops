@@ -10,7 +10,7 @@ const TRACK_HEIGHT = 6;
 const TRACK_AREA_BASE = 32;
 const TRACK_AREA_WITH_ABOVE = 46;
 
-export interface CockpitSliderOption {
+interface CockpitSliderOption {
   id: string;
   label: string;
   blurb?: string;

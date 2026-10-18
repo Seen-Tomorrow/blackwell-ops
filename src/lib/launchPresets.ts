@@ -49,10 +49,10 @@ export type LaunchSeat = {
  * readers must coerce any non-`"pi"` value to pi (see {@link normalizeHarnessTool}).
  * Extend this union when a second live harness ships — keep chrome neutral (`harness-*`).
  */
-export type HarnessToolId = "pi";
+type HarnessToolId = "pi";
 
 /** Coerce a persisted (possibly legacy) harness tool id to the only live tool. */
-export function normalizeHarnessTool(_raw: unknown): HarnessToolId {
+function normalizeHarnessTool(_raw: unknown): HarnessToolId {
   return "pi";
 }
 
@@ -82,13 +82,13 @@ export type ComboPreset = {
   notes?: string;
 };
 
-export type LaunchPresetsStore = {
+type LaunchPresetsStore = {
   version: 1;
   combos: ComboPreset[];
 };
 
-export const LAUNCH_PRESETS_KEY = `${STORAGE_PREFIX}launch-presets:v1`;
-export const LAUNCH_PRESETS_MAX = 50;
+const LAUNCH_PRESETS_KEY = `${STORAGE_PREFIX}launch-presets:v1`;
+const LAUNCH_PRESETS_MAX = 50;
 
 // ── Path / id helpers ───────────────────────────────────────────────────────
 
@@ -96,18 +96,18 @@ export function normalizeModelPath(path: string): string {
   return path.replace(/\\/g, "/").toLowerCase().trim();
 }
 
-export function newPresetId(): string {
+function newPresetId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
   }
   return `preset-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-export function newSeatId(): string {
+function newSeatId(): string {
   return `seat-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-export function defaultPortPolicy(): PortPolicy {
+function defaultPortPolicy(): PortPolicy {
   return { mode: "auto" };
 }
 
@@ -117,7 +117,7 @@ function emptyStore(): LaunchPresetsStore {
   return { version: 1, combos: [] };
 }
 
-export function readLaunchPresetsStore(): LaunchPresetsStore {
+function readLaunchPresetsStore(): LaunchPresetsStore {
   const raw = readJsonStorage<LaunchPresetsStore>(LAUNCH_PRESETS_KEY);
   if (!raw || raw.version !== 1 || !Array.isArray(raw.combos)) return emptyStore();
   const valid = raw.combos.filter(isComboPreset);
@@ -129,7 +129,7 @@ export function readLaunchPresetsStore(): LaunchPresetsStore {
   };
 }
 
-export function writeLaunchPresetsStore(store: LaunchPresetsStore): void {
+function writeLaunchPresetsStore(store: LaunchPresetsStore): void {
   const catalog = store.combos.filter((c) => c.source === "catalog-set");
   const user = store.combos.filter((c) => c.source !== "catalog-set").slice(0, LAUNCH_PRESETS_MAX);
   writeJsonStorage(LAUNCH_PRESETS_KEY, {
@@ -138,7 +138,7 @@ export function writeLaunchPresetsStore(store: LaunchPresetsStore): void {
   });
 }
 
-export function listCombos(): ComboPreset[] {
+function listCombos(): ComboPreset[] {
   return readLaunchPresetsStore().combos.slice().sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
@@ -147,7 +147,7 @@ export function listUserCombos(): ComboPreset[] {
   return listCombos().filter((c) => c.source !== "catalog-set");
 }
 
-export function isCatalogOwnedCombo(c: ComboPreset): boolean {
+function isCatalogOwnedCombo(c: ComboPreset): boolean {
   return c.source === "catalog-set";
 }
 
@@ -245,7 +245,7 @@ export function sparseOverridesFromConfig(
   return out;
 }
 
-export function normalizeBoostMethod(raw: unknown): SpecBoostMethod {
+function normalizeBoostMethod(raw: unknown): SpecBoostMethod {
   if (raw === "mtp" || raw === "dflash" || raw === "dspark" || raw === "off") return raw;
   return "off";
 }
@@ -387,7 +387,7 @@ export function buildTwinCombo(opts: {
   };
 }
 
-export function catalogSetComboName(setIndex: 0 | 1 | 2): string {
+function catalogSetComboName(setIndex: 0 | 1 | 2): string {
   return `Catalog set ${setIndex + 1}`;
 }
 
@@ -461,7 +461,7 @@ export function clearComboSeatPath(combo: ComboPreset, role: SeatRole): ComboPre
 }
 
 /** Replace or insert a role seat on a twin combo; preserves sibling seat. */
-export function upsertSeatOnCombo(combo: ComboPreset, seat: LaunchSeat): ComboPreset {
+function upsertSeatOnCombo(combo: ComboPreset, seat: LaunchSeat): ComboPreset {
   const role = seat.role;
   const seats = combo.seats.filter((s) => s.role !== role);
   seats.push(seat);
@@ -518,7 +518,7 @@ export function resolveAgentsN(combo: ComboPreset): number {
 
 // ── Apply plan ──────────────────────────────────────────────────────────────
 
-export type ComboBindTarget = {
+type ComboBindTarget = {
   seatId: string;
   role: SeatRole;
   port: number;
@@ -660,7 +660,7 @@ export function duplicateCombo(combo: ComboPreset, nameSuffix = " (copy)"): Comb
 
 // ── Memory estimates (placement / UX only — not full FIT) ───────────────────
 
-export type SeatMemoryEstimate = {
+type SeatMemoryEstimate = {
   seatId: string;
   role: SeatRole;
   label: string;
@@ -679,7 +679,7 @@ export type ComboMemoryEstimate = {
 };
 
 /** Weight from GGUF size; vram ≈ weights × 1.12 (same order as synthetic placement). */
-export function estimateSeatMemory(
+function estimateSeatMemory(
   seat: LaunchSeat,
   models: Array<{ path: string; metadata?: { file_size_bytes?: number }; name?: string }>,
 ): SeatMemoryEstimate {

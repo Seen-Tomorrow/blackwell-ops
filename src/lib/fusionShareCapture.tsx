@@ -7,7 +7,7 @@ import { displayFaceFor, type DisplayTexture } from "./displayTexture";
 import { getThemeById } from "../themes/app-themes";
 import type { GpuInfo } from "./types";
 
-export const FUSION_SHARE_FRAME_SELECTOR = "[data-fusion-share-frame]";
+const FUSION_SHARE_FRAME_SELECTOR = "[data-fusion-share-frame]";
 
 /** White = ARCTIC + CLEAN display; black = SLATE + dotted. */
 export type FusionShareVariant = "white" | "black";
@@ -58,7 +58,7 @@ export interface FusionShareDownloadMeta {
 }
 
 /** SEO-friendly PNG name: Blackwell-OPS-v1.0.3_model_QWEN3-27B--193tps--2026-06-17--1.png */
-export function buildFusionShareFilename(meta: FusionShareDownloadMeta = {}): string {
+function buildFusionShareFilename(meta: FusionShareDownloadMeta = {}): string {
   const rawVersion = (meta.appVersion ?? __TAURI_VERSION__ ?? "0.0.0").trim();
   const versionTag = rawVersion.toLowerCase().startsWith("v") ? rawVersion : `v${rawVersion}`;
 
@@ -201,7 +201,7 @@ const FUSION_SHARE_CYAN = "#00e5ff";
  * clone's font sizes. 4× bought nothing for social (X serves ≤ ~1600px) and quadrupled
  * html-to-image work on every attempt.
  */
-export const FUSION_SHARE_EXPORT_PIXEL_RATIO = 2;
+const FUSION_SHARE_EXPORT_PIXEL_RATIO = 2;
 
 interface HiddenNode {
   el: HTMLElement;

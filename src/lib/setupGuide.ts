@@ -17,7 +17,7 @@
 export type SetupPhase = "paths" | "toolchain" | "scan-meta" | "fit-scan";
 
 /** Tabs usable during first-run setup (wizard + paths + download models). */
-export const SETUP_ALLOWED_TABS = ["catalog", "modelhub", "config"] as const;
+const SETUP_ALLOWED_TABS = ["catalog", "modelhub", "config"] as const;
 
 export function isSetupNavTabAllowed(tab: string): boolean {
   return (SETUP_ALLOWED_TABS as readonly string[]).includes(tab);

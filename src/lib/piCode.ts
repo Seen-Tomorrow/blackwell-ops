@@ -10,7 +10,7 @@ export interface PiCodeStatus {
   lastProject: string | null;
 }
 
-export interface PiEngineRef {
+interface PiEngineRef {
   port: number;
   /** Must match engine launch alias (OpenAI /v1 model id). */
   model: string;

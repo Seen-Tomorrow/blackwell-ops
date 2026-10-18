@@ -9,7 +9,7 @@ import {
 } from "../lib/sliderParamUtils";
 import { FREE_POOL_OOM_CAUTION, FREE_POOL_OOM_WARN, freePoolHeadroomGb } from "../services/vram/shared";
 
-export type RibbonTone = "ok" | "caution" | "warn" | "hot";
+type RibbonTone = "ok" | "caution" | "warn" | "hot";
 
 export type RibbonStop = {
   pct: number;
@@ -18,7 +18,7 @@ export type RibbonStop = {
   tone: RibbonTone;
 };
 
-export function ribbonToneAt(gb: number, freeGb: number): RibbonTone {
+function ribbonToneAt(gb: number, freeGb: number): RibbonTone {
   if (!(freeGb > 0) || !(gb > 0)) return "ok";
   const headroom = freePoolHeadroomGb(freeGb);
   if (gb > freeGb - headroom) return "hot";
@@ -91,7 +91,7 @@ export function ribbonTooltip(
   return `${tok} · ${gb.toFixed(1)}G · ${kind}${tone === "hot" ? " · OVER FREE" : ""}`;
 }
 
-export function ribbonFitsBoundary(
+function ribbonFitsBoundary(
   min: number,
   max: number,
   step: number,

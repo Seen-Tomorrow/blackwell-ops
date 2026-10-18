@@ -98,7 +98,7 @@ function draftLabel(input: ForecastInput): string {
 }
 
 /** Resolve SOURCE for measured manifests only. Returns null if nothing measured. */
-export function resolveMemorySource(
+function resolveMemorySource(
   manifest: VramManifest,
   input: ForecastInput,
 ): MemorySource | null {

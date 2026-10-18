@@ -10,7 +10,7 @@ import {
   sampleRibbonStops,
 } from "./ctxForecastRibbonMath";
 
-export type CtxForecastRibbonPlace = "track" | "marks";
+type CtxForecastRibbonPlace = "track" | "marks";
 
 export type CtxForecastRibbonProps = {
   min: number;

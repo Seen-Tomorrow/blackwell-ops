@@ -29,9 +29,9 @@ import { ALWAYS_LAUNCH_KEYS } from "./engineSurfaces";
 
 export type LaunchPolicyId = "full_auto" | "assisted_essentials" | "assisted_full";
 
-export type LaunchKeySetId = "cockpit_plus_essentials" | "essentials" | "full";
+type LaunchKeySetId = "cockpit_plus_essentials" | "essentials" | "full";
 
-export type LaunchTopologyOwner = "fit_owned" | "user_chrome";
+type LaunchTopologyOwner = "fit_owned" | "user_chrome";
 
 /**
  * Where batch/ubatch values come from at launch:
@@ -42,7 +42,7 @@ export type LaunchTopologyOwner = "fit_owned" | "user_chrome";
  * Product (2026-08-06): Full Auto Smart uses **factory** until a real algo exists.
  * Smart is the Joe "Off" wording — safe middle ground, not max batch.
  */
-export type LaunchBatchSource = "smart_push" | "profile" | "factory";
+type LaunchBatchSource = "smart_push" | "profile" | "factory";
 
 export type LaunchPolicy = Readonly<{
   id: LaunchPolicyId;
@@ -89,9 +89,9 @@ export const JOE_FULL_AUTO_DEFAULTS: Readonly<Record<string, string | number>> =
 });
 
 /** Topology keys FIT owns in Full Auto — never from Assisted chrome. */
-export const FIT_OWNED_TOPOLOGY_KEYS = Object.freeze(["device", "split", "offload_mode"] as const);
+const FIT_OWNED_TOPOLOGY_KEYS = Object.freeze(["device", "split", "offload_mode"] as const);
 
-export const LAUNCH_POLICIES: Readonly<Record<LaunchPolicyId, LaunchPolicy>> = Object.freeze({
+const LAUNCH_POLICIES: Readonly<Record<LaunchPolicyId, LaunchPolicy>> = Object.freeze({
   full_auto: Object.freeze({
     id: "full_auto",
     keySet: "cockpit_plus_essentials" as const,
@@ -354,12 +354,12 @@ export function filterValuesToKeySet(
 }
 
 /** UI helper: configView for chip matrix / value filtering from policy. */
-export function configViewForPolicy(policy: LaunchPolicy): ConfigViewMode {
+function configViewForPolicy(policy: LaunchPolicy): ConfigViewMode {
   if (policy.matrixView === "full") return "full";
   return "essentials";
 }
 
 /** True when FIT toggle maps to Full Auto (product: FIT ON = Joe). */
-export function isFullAutoPolicy(id: LaunchPolicyId): boolean {
+function isFullAutoPolicy(id: LaunchPolicyId): boolean {
   return id === "full_auto";
 }

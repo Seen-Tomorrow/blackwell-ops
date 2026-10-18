@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 /** Repair common UTF-8-as-Latin-1 mojibake from GitHub / gh CLI on Windows. */
-export function fixUtf8Mojibake(text: string): string {
+function fixUtf8Mojibake(text: string): string {
   return text
     .replace(/â€"/g, "—")
     .replace(/â€™/g, "'")

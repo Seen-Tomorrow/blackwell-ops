@@ -32,9 +32,9 @@ interface UseFusionBooterStateArgs {
 }
 
 /** Matches telemetry.rs — NVMe PHY sanity cap for boot I/O hero (25 GiB/s). */
-export const MAX_DISK_READ_MIB_PER_S = 25 * 1024;
+const MAX_DISK_READ_MIB_PER_S = 25 * 1024;
 
-export function clampDiskReadMibPerS(mibPerS: number): number {
+function clampDiskReadMibPerS(mibPerS: number): number {
   if (!Number.isFinite(mibPerS) || mibPerS < 0) return 0;
   return Math.min(mibPerS, MAX_DISK_READ_MIB_PER_S);
 }

@@ -5,7 +5,7 @@ const LOG_SEARCH_STRIP_RE = [
 ];
 
 /** Plain text for ENGINE LOGS search — strips cursor/OSC ANSI, keeps SGR for display elsewhere. */
-export function stripLogLineForSearch(text: string): string {
+function stripLogLineForSearch(text: string): string {
   let result = text;
   for (const re of LOG_SEARCH_STRIP_RE) {
     result = result.replace(re, "");
@@ -29,7 +29,7 @@ export function parseLogSearchTerms(query: string): string[] {
   return terms.length > 0 ? terms : [trimmed];
 }
 
-export function logLineMatchesSearch(text: string, query: string): boolean {
+function logLineMatchesSearch(text: string, query: string): boolean {
   const terms = parseLogSearchTerms(query);
   if (terms.length === 0) return false;
   const plain = stripLogLineForSearch(text).toLowerCase();

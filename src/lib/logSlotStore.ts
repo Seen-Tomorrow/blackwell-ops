@@ -71,7 +71,7 @@ export function getSlotLogs(slot: number): readonly StoredLogEntry[] {
   return logEntries.get(slot) ?? NO_LOGS;
 }
 
-export function getSlotEvents(slot: number): readonly StoredSystemEvent[] {
+function getSlotEvents(slot: number): readonly StoredSystemEvent[] {
   return eventEntries.get(slot) ?? NO_EVENTS;
 }
 
@@ -170,7 +170,7 @@ export function subscribeSlotLogs(slot: number, cb: () => void): () => void {
   return addTo(logSubs, slot, cb);
 }
 
-export function subscribeSlotEvents(slot: number, cb: () => void): () => void {
+function subscribeSlotEvents(slot: number, cb: () => void): () => void {
   return addTo(eventSubs, slot, cb);
 }
 

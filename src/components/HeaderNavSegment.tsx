@@ -6,7 +6,7 @@ import {
   type ReactNode,
 } from "react";
 
-export type HeaderNavSegmentOption = {
+type HeaderNavSegmentOption = {
   id: string;
   label: ReactNode;
   title?: string;

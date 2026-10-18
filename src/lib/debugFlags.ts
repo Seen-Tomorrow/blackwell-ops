@@ -35,7 +35,7 @@ export async function initDebugFlags(): Promise<DebugFlags> {
   return cached;
 }
 
-export function getDebugFlags(): DebugFlags {
+function getDebugFlags(): DebugFlags {
   return cached;
 }
 

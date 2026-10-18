@@ -66,9 +66,9 @@ export function dflashMatchTier(score: number | null | undefined): DflashMatchTi
 }
 
 /** Fresh cache TTL — high-confidence packs rarely flip hour-to-hour. */
-export const DFLASH_CACHE_TTL_MS = 4 * 60 * 60 * 1000;
+const DFLASH_CACHE_TTL_MS = 4 * 60 * 60 * 1000;
 /** Stale entries still served on HF 429 (shared IP / CGNAT). */
-export const DFLASH_CACHE_STALE_MAX_MS = 24 * 60 * 60 * 1000;
+const DFLASH_CACHE_STALE_MAX_MS = 24 * 60 * 60 * 1000;
 /** Cap disk map growth (per-main keys). */
 const DFLASH_CACHE_MAX_KEYS = 40;
 
@@ -83,7 +83,7 @@ type DflashCandidateCacheMap = Record<string, DflashCandidateCacheEntry>;
 const memoryCache = new Map<string, DflashCandidateCacheEntry>();
 
 /** Stable key for main model → candidate list. */
-export function dflashCandidateCacheKey(main: ModelEntry): string {
+function dflashCandidateCacheKey(main: ModelEntry): string {
   const family = extractModelFamily(main) ?? "";
   const sizeB = extractParamBillions(mainIdentityHay(main));
   const id =
@@ -180,7 +180,7 @@ function putCache(key: string, offers: DflashDraftOffer[]): void {
 }
 
 /** Test / diagnostics — clear memory + disk candidate cache. */
-export function clearDflashCandidateCache(): void {
+function clearDflashCandidateCache(): void {
   memoryCache.clear();
   writeDiskCache({});
 }
@@ -268,7 +268,7 @@ function familyFromHay(hay: string): string | null {
  * Parameter count in billions (27, 35, 9…).
  * Avoids treating Qwen3.5 / Qwen3.6 version dots as sizes.
  */
-export function extractParamBillions(hay: string): number | null {
+function extractParamBillions(hay: string): number | null {
   const cleaned = hay
     .replace(/qwen3\.5/gi, "qwen35")
     .replace(/qwen3\.6/gi, "qwen36")
@@ -315,7 +315,7 @@ function sizesClose(a: number, b: number): boolean {
 }
 
 /** HF search queries from main model identity (specific → broad). */
-export function dflashSearchQueries(main: ModelEntry): string[] {
+function dflashSearchQueries(main: ModelEntry): string[] {
   const family = extractModelFamily(main);
   const hay = mainIdentityHay(main);
   const repo =
@@ -365,7 +365,7 @@ export function dflashSearchQueries(main: ModelEntry): string[] {
 }
 
 /** True draft packs are small; full 27B Q4 ≈15GB must never pass as DFlash. */
-export const DFLASH_DRAFT_MAX_FILE_BYTES = 6 * 1024 * 1024 * 1024; // 6 GiB
+const DFLASH_DRAFT_MAX_FILE_BYTES = 6 * 1024 * 1024 * 1024; // 6 GiB
 
 function smallestGgufBytes(m: HfModel): number | null {
   const sizes = (m.gguf_files || [])
@@ -587,7 +587,7 @@ const QUANT_PREF = [
   "q8_0",
 ];
 
-export function pickDflashQuant(files: GgufFile[], main: ModelEntry): GgufFile | null {
+function pickDflashQuant(files: GgufFile[], main: ModelEntry): GgufFile | null {
   if (!files.length) return null;
   // Never offer full-size mains as "draft" (15GB Q4 of 27B, etc.).
   const usable = files.filter(
@@ -757,7 +757,7 @@ export async function findDflashDraftCandidates(
 }
 
 /** @deprecated Use findDflashDraftCandidates + user confirm. */
-export async function findDflashDraftOffer(main: ModelEntry): Promise<DflashDraftOffer | null> {
+async function findDflashDraftOffer(main: ModelEntry): Promise<DflashDraftOffer | null> {
   const list = await findDflashDraftCandidates(main, 1);
   return list[0] ?? null;
 }

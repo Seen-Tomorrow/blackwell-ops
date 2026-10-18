@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 import type { ForecastNeedTone, GpuAllocation } from "../lib/types";
 import { splitGpuTopoBarUsage } from "../services/vram/scenarios/scenarios_factory";
 /** Visible row bank in forecast glass — extra rows scroll (wheel). */
-export const GPU_TOPO_MAX_ROWS = 2;
+const GPU_TOPO_MAX_ROWS = 2;
 
 interface GpuTopologyProps {
   gpuAllocations: GpuAllocation[];
@@ -40,7 +40,7 @@ function formatExternalTooltip(systemReservedMib: number, foreignAppsMib: number
 }
 
 /** Density tier — fat 1–2, med 3–4, dense 5+ (slot-bank style). */
-export function gpuTopoDensity(count: number): "fat" | "med" | "dense" {
+function gpuTopoDensity(count: number): "fat" | "med" | "dense" {
   // fat was too tall for 1-row Assisted phosphor; med is the default compact card.
   if (count <= 4) return "med";
   return "dense";

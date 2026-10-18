@@ -1,6 +1,6 @@
 import type { GpuInfo, VramManifest } from "./types";
 
-export function bucketGpuMib(mib: number, bucketMib: number): number {
+function bucketGpuMib(mib: number, bucketMib: number): number {
   if (bucketMib <= 0) return mib;
   return Math.round(mib / bucketMib);
 }

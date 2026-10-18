@@ -7,57 +7,57 @@ import type { BenchSessionMode } from "./benchPortStore";
 import type { GpuInfo } from "./types";
 
 /** Vertical padding on `.bench-widget-panel` (p-1.5 × 2). */
-export const BENCH_PANEL_PAD_Y = 12;
+const BENCH_PANEL_PAD_Y = 12;
 /** One TG/PP result grid row at text-xl (label + value + unit). */
 export const BENCH_RESULT_ROW_PX = 42;
 /** One stacked result band in RUN BOTH (label + 15px value + unit slot + ×N badge overhang). */
 export const BENCH_RESULT_ROW_DUAL_PX = 40;
 /** Vertical gap between TG and PP rows in RUN BOTH (gap-y-2.5). */
-export const BENCH_DUAL_ROW_GAP_PX = 10;
+const BENCH_DUAL_ROW_GAP_PX = 10;
 /** Share + HIDE footer row. */
-export const BENCH_SHARE_FOOTER_PX = 28;
+const BENCH_SHARE_FOOTER_PX = 28;
 /** Margin above GPU topo band (bench-hw-topo mt-2.5). */
-export const BENCH_GPU_TOPO_GAP_PX = 10;
+const BENCH_GPU_TOPO_GAP_PX = 10;
 /** GPU topo band (headline + chip grid + driver line) — single grid row baseline. */
-export const BENCH_GPU_TOPO_BODY_PX = 50;
+const BENCH_GPU_TOPO_BODY_PX = 50;
 /** Per extra GPU topo grid row (2 columns). */
-export const BENCH_GPU_TOPO_ROW_PX = 14;
+const BENCH_GPU_TOPO_ROW_PX = 14;
 /** Full GPU topo block including gap above. */
-export const BENCH_GPU_TOPO_PX = BENCH_GPU_TOPO_GAP_PX + BENCH_GPU_TOPO_BODY_PX;
+const BENCH_GPU_TOPO_PX = BENCH_GPU_TOPO_GAP_PX + BENCH_GPU_TOPO_BODY_PX;
 /** In-flight status + STOP row. */
-export const BENCH_RUNNING_ROW_PX = 20;
+const BENCH_RUNNING_ROW_PX = 20;
 /** Idle control stack (4 × 18px rows). */
-export const BENCH_IDLE_PANEL_PX = 84;
+const BENCH_IDLE_PANEL_PX = 84;
 /** Extra phosphor height when bench results replace idle controls. */
-export const BENCH_PHOSPHOR_EXTRA_PX = 64;
+const BENCH_PHOSPHOR_EXTRA_PX = 64;
 
 /** Fixed hero row height (slots + TG + PP) — PP progress slot always reserved. */
 export const FUSION_HERO_ROW_PX = 122;
 
 /** Alias/port header strip inside fusion overlay. */
-export const FUSION_HEADER_CHROME_PX = 26;
+const FUSION_HEADER_CHROME_PX = 26;
 
 /** Vertical pad around fusion dashboard stack (not forecast ASSISTED chrome). */
-export const FUSION_DASHBOARD_PAD_Y_PX = 8;
+const FUSION_DASHBOARD_PAD_Y_PX = 8;
 
 /** Benchmark tray latch row (drawer lip control + open/stowed margins). */
-export const FUSION_BENCH_TRAY_LATCH_PX = 28;
+const FUSION_BENCH_TRAY_LATCH_PX = 28;
 
 /** Stowed latch headroom so OPEN is fully clickable (was clipped to top lip). */
-export const FUSION_BENCH_LATCH_STOW_HEADROOM_PX = 6;
+const FUSION_BENCH_LATCH_STOW_HEADROOM_PX = 6;
 
 /**
  * Header + hero + dashboard pad — fusion metrics chrome only.
  * Independent of ASSISTED forecast phosphor height (do not inherit 228/280 slack).
  */
-export const FUSION_DASHBOARD_TIGHT_CHROME_PX =
+const FUSION_DASHBOARD_TIGHT_CHROME_PX =
   FUSION_HEADER_CHROME_PX + FUSION_HERO_ROW_PX + FUSION_DASHBOARD_PAD_Y_PX;
 
 /**
  * Base fusion phosphor when bench tray is open with idle controls.
  * = chrome + latch + idle bench stack. Forecast height is separate (onboardingDisplay).
  */
-export const FUSION_PHOSPHOR_BASE_HEIGHT_PX =
+const FUSION_PHOSPHOR_BASE_HEIGHT_PX =
   FUSION_DASHBOARD_TIGHT_CHROME_PX + FUSION_BENCH_TRAY_LATCH_PX + BENCH_IDLE_PANEL_PX;
 
 export type BenchPanelLayoutOpts = {
@@ -113,7 +113,7 @@ function addBenchResultRowsHeight(
 }
 
 /** GPU topo block height from entry count (2-column grid + headline). */
-export function computeBenchGpuTopoHeightPx(gpus?: GpuInfo[], gpuMask?: string): number {
+function computeBenchGpuTopoHeightPx(gpus?: GpuInfo[], gpuMask?: string): number {
   const entries = gpus ? buildBenchGpuTopoEntries(gpus, gpuMask) : [];
   if (entries.length === 0) return 0;
   const gridRows = Math.ceil(entries.length / 2);
@@ -144,7 +144,7 @@ export function shouldShowBenchGpuTopo(opts: BenchPanelLayoutOpts): boolean {
 export const FUSION_SHARE_BRAND_LOGO_PX = 30;
 
 /** Results-only body when SHARE/HIDE + GPU topo are docked outside BenchWidget. */
-export function computeBenchWidgetBodyHeight(opts: BenchPanelLayoutOpts): number {
+function computeBenchWidgetBodyHeight(opts: BenchPanelLayoutOpts): number {
   const compact = opts.compact ?? false;
   const { isAnyRunning, showTgResults, showPpResults } = benchResultVisibility(opts);
 
@@ -169,7 +169,7 @@ export function computeBenchWidgetBodyHeight(opts: BenchPanelLayoutOpts): number
 }
 
 /** Results body inside the bench slot (fusion overlay docks share actions separately). */
-export function computeBenchContentHeight(
+function computeBenchContentHeight(
   opts: BenchPanelLayoutOpts,
   shareFooterVisible: boolean,
 ): number {
@@ -177,18 +177,18 @@ export function computeBenchContentHeight(
   return shareFooterVisible ? Math.max(0, total - BENCH_SHARE_FOOTER_PX) : total;
 }
 
-export function isBenchPanelExpanded(panelHeight: number): boolean {
+function isBenchPanelExpanded(panelHeight: number): boolean {
   return panelHeight > BENCH_IDLE_PANEL_PX;
 }
 
 /** Live fusion phosphor height for overlay + bench panel state. */
-export function computeFusionPhosphorHeight(benchPanelHeight: number): number {
+function computeFusionPhosphorHeight(benchPanelHeight: number): number {
   if (!isBenchPanelExpanded(benchPanelHeight)) return FUSION_PHOSPHOR_BASE_HEIGHT_PX;
   return FUSION_PHOSPHOR_BASE_HEIGHT_PX + (benchPanelHeight - BENCH_IDLE_PANEL_PX);
 }
 
 /** Grow fusion phosphor only when the bench panel is taller than the idle control stack. */
-export function computeBenchPhosphorExtra(opts: Parameters<typeof computeBenchPanelHeight>[0]): number {
+function computeBenchPhosphorExtra(opts: Parameters<typeof computeBenchPanelHeight>[0]): number {
   const panelH = computeBenchPanelHeight(opts);
   return Math.max(0, computeFusionPhosphorHeight(panelH) - FUSION_PHOSPHOR_BASE_HEIGHT_PX);
 }
@@ -228,7 +228,7 @@ export function computeFusionBenchSlotHeight(
 }
 
 /** Fixed fusion phosphor height when bench tray is open — chrome + latch + max bench slot. */
-export function computeFusionPhosphorFixedHeight(
+function computeFusionPhosphorFixedHeight(
   opts: Pick<BenchPanelLayoutOpts, "gpus" | "gpuMask" | "inlineActions">,
 ): number {
   return (
@@ -239,7 +239,7 @@ export function computeFusionPhosphorFixedHeight(
 }
 
 /** Metrics-only phosphor — header + hero + tray latch (no idle bench slack). */
-export function computeFusionPhosphorStowedHeight(): number {
+function computeFusionPhosphorStowedHeight(): number {
   return (
     FUSION_DASHBOARD_TIGHT_CHROME_PX
     + FUSION_BENCH_TRAY_LATCH_PX
