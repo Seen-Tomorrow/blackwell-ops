@@ -100,11 +100,11 @@ import { fullAutoSingleDeviceLabel } from "../lib/fullAutoGpuPick";
 import { computeGpuAvailableList } from "../services/vram/shared";
 import {
   FULL_AUTO_GOALS,
-  FULL_AUTO_GOAL_PLANS,
   FULL_AUTO_WORKLOADS,
   type FullAutoGoal,
   type FullAutoWorkload,
 } from "../lib/fullAutoGoals";
+import { resolveFullAutoDecision } from "../lib/fullAutoContract";
 import { applySpecBoostProfiles } from "../lib/applySpecBoost";
 import ParamCatalogSearch from "./ParamCatalogSearch";
 import {
@@ -1082,25 +1082,63 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     loadDflashHfCandidates,
   } = dflash;
 
+  /** FULL AUTO owns the cockpit until the user takes control back. */
+  const [autoGoal, setAutoGoal] = useState<FullAutoGoal | null>(() => {
+    const stored = loadFullAutoGoal();
+    return stored && FULL_AUTO_GOALS.some((goal) => goal.id === stored)
+      ? (stored as FullAutoGoal)
+      : "balanced";
+  });
+  const [autoWorkload, setAutoWorkload] = useState<FullAutoWorkload>("chat");
+
+  /** Pure contract decision — never reads manual cockpit state. */
+  const autoDecision = useMemo(() => {
+    if (!fullAutoFixed) return null;
+    return resolveFullAutoDecision({
+      goal: autoGoal ?? "balanced",
+      workload: autoWorkload,
+      capabilities: specCapabilities,
+      dflashLibraryReady,
+      dflashGettable,
+      kvQuantValues: cockpitKvValuesBound,
+      hasBakedMtp: model ? hasBakedMtp(model) : false,
+      mtpDraftPath: String(config.mtp_draft_model ?? ""),
+    });
+  }, [
+    autoGoal,
+    autoWorkload,
+    config.mtp_draft_model,
+    cockpitKvValuesBound,
+    dflashGettable,
+    dflashLibraryReady,
+    fullAutoFixed,
+    model,
+    specCapabilities,
+  ]);
+
   // VRAM forecast must see Boost method as CLI spec_type (template row is only set at launch).
   const scenarioConfig = useMemo(() => {
-    const boostSpec =
+    const autoSpec = fullAutoFixed ? (autoDecision?.plan.specType ?? "none") : null;
+    const boostSpec = autoSpec ?? (
       speedBoost === "mtp"
         ? "draft-mtp"
         : speedBoost === "dflash"
           ? "draft-dflash"
           : speedBoost === "dspark"
             ? "draft-dspark"
-            : "";
+            : ""
+    );
     return {
       ...config,
       backend_type: effectiveBackendType,
-      ...(boostSpec
-        ? { spec_type: boostSpec, __boost_spec_type: boostSpec }
-        : {}),
+      ...(autoSpec != null
+        ? { spec_type: autoSpec, __boost_spec_type: autoSpec }
+        : boostSpec
+          ? { spec_type: boostSpec, __boost_spec_type: boostSpec }
+          : {}),
       ...(fullAutoMode ? { split: "none", offload_mode: "regular" } : {}),
     };
-  }, [config, effectiveBackendType, fullAutoMode, speedBoost]);
+  }, [autoDecision?.plan.specType, config, effectiveBackendType, fullAutoFixed, fullAutoMode, speedBoost]);
 
   const vramCalc = useScenarioEvaluator({
     model,
@@ -1114,14 +1152,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     catalogModels: models,
   });
 
-  /** FULL AUTO owns the cockpit until the user takes control back. */
-  const [autoGoal, setAutoGoal] = useState<FullAutoGoal | null>(() => {
-    const stored = loadFullAutoGoal();
-    return stored && FULL_AUTO_GOALS.some((goal) => goal.id === stored)
-      ? (stored as FullAutoGoal)
-      : "balanced";
-  });
-  const [autoWorkload, setAutoWorkload] = useState<FullAutoWorkload>("chat");
   const applyAutoWorkload = useCallback(
     (workload: FullAutoWorkload) => {
       setAutoWorkload(workload);
@@ -1145,7 +1175,17 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   );
   const applyAutoPlan = useCallback(
     (goal: FullAutoGoal) => {
-      const plan = FULL_AUTO_GOAL_PLANS[goal];
+      const decision = resolveFullAutoDecision({
+        goal,
+        workload: autoWorkload,
+        capabilities: specCapabilities,
+        dflashLibraryReady,
+        dflashGettable,
+        kvQuantValues: cockpitKvValuesBound,
+        hasBakedMtp: model ? hasBakedMtp(model) : false,
+        mtpDraftPath: String(config.mtp_draft_model ?? ""),
+      });
+      const plan = decision.plan;
       setAutoGoal(goal);
       saveFullAutoGoal(goal);
       if (goal === "fastest" && gpus.length > 0) {
@@ -1157,7 +1197,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       }
       void applyFullAutoCockpit(plan.codingMode, plan.speed, plan.brains, plan.think, cockpitOpts);
       applyAutoWorkload(autoWorkload);
-      const pair = throughputPair(allParamsResolved, plan.throughput);
+      const pair = throughputPair(allParamsResolved, decision.throughput);
       if (pair) {
         updateParam("batch", pair.batch);
         updateParam("ubatch", pair.ubatch);
@@ -1191,6 +1231,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       autoWorkload,
       gpus,
       runningSlotsForPlan,
+      specCapabilities,
+      dflashLibraryReady,
+      dflashGettable,
+      cockpitKvValuesBound,
+      model,
+      config,
     ],
   );
   const handleAutoGoal = applyAutoPlan;
