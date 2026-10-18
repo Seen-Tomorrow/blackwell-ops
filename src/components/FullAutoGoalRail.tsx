@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import SegmentSwitch from "./SegmentSwitch";
+import HeaderNavSegment from "./HeaderNavSegment";
 import {
   FULL_AUTO_GOALS,
   FULL_AUTO_WORKLOADS,
@@ -52,7 +52,7 @@ export default function FullAutoGoalRail({
             >
               GOAL
             </span>
-            <SegmentSwitch
+            <HeaderNavSegment
               ariaLabel="Full Auto goal"
               options={FULL_AUTO_GOALS.map((option) => ({
                 id: option.id,
@@ -64,7 +64,6 @@ export default function FullAutoGoalRail({
                 if (id) onGoal(id as FullAutoGoal);
               }}
               size={hero ? "fit" : "compact"}
-              tone="amber"
               className="segment-switch--auto-goal min-w-0 flex-1"
             />
           </div>
@@ -84,7 +83,7 @@ export default function FullAutoGoalRail({
           >
             TASK
           </span>
-          <SegmentSwitch
+          <HeaderNavSegment
             ariaLabel="Full Auto task"
             options={FULL_AUTO_WORKLOADS.map((option) => ({
               id: option.id,
@@ -96,7 +95,6 @@ export default function FullAutoGoalRail({
               if (id) onWorkload(id as FullAutoWorkload);
             }}
             size={hero ? "fit" : "compact"}
-            tone="amber"
             className="segment-switch--auto-goal min-w-0 flex-1"
           />
         </div>
