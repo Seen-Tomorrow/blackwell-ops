@@ -359,7 +359,15 @@ export function useCockpit({
       });
 
       if (plan.forcedSoloForMtp) setCodingMode("solo");
-      if (plan.speed !== speed) setSpeedBoost(plan.speed);
+      // Only auto-normalize the soft Off/Smart modes. A user-picked MTP/DFlash/
+      // DSpark stays selected even when its draft is not ready yet — the strip
+      // then asks for the missing draft instead of silently reverting.
+      if (
+        (speed === "off" || speed === "smart")
+        && plan.speed !== speed
+      ) {
+        setSpeedBoost(plan.speed);
+      }
 
       updateParam("parallel", plan.parallel);
       updateParam("kv_quant", plan.kvQuant);
@@ -516,7 +524,10 @@ export function useCockpit({
       kvQuantValues,
       powerUser: powerCockpitMode,
     });
-    if (plan.speed !== speedBoost) {
+    if (
+      (speedBoost === "off" || speedBoost === "smart")
+      && plan.speed !== speedBoost
+    ) {
       setSpeedBoost(plan.speed);
       void applyFullAutoCockpit(modeFromCfg, plan.speed, brainsFromCfg, thinkFromCfg, {
         powerUser: powerCockpitMode,

@@ -253,6 +253,9 @@ export default function MultiAgentBooster({
 
   useEffect(() => {
     if (activeRawSpecType) return;
+    // Manual Boost picks stick. Only the soft Off/Smart mode is normalized by
+    // the planner; an unready draft must ask for a draft, not revert the pick.
+    if (speedBoost !== "off" && speedBoost !== "smart") return;
     const applyPlanSpeed = onAutoSpeedBoost ?? onSpeedBoost;
     if (plan.speed !== speedBoost) {
       applyPlanSpeed(plan.speed);
@@ -262,12 +265,12 @@ export default function MultiAgentBooster({
   const capSet = useMemo(() => new Set(capabilities), [capabilities]);
 
   const displayBoost = powerMode
-    ? plan.speed === "smart"
+    ? speedBoost === "smart"
       ? "off"
-      : plan.speed
-    : plan.speed === "off"
+      : speedBoost
+    : speedBoost === "off"
       ? "smart"
-      : plan.speed;
+      : speedBoost;
 
   const externalDraftBoost =
     displayBoost === "dflash" || displayBoost === "dspark";
@@ -427,9 +430,13 @@ export default function MultiAgentBooster({
           type="button"
           className="full-auto-cockpit__dflash-get-btn full-auto-cockpit__dflash-get-btn--ghost"
           onClick={() => onChangeMtpDraft?.()}
-          title="Pick a different MTP head GGUF from your library"
+          title={
+            showMtpBakedIn
+              ? "Target already has a built-in MTP head. Pick an external MTP head only to override it."
+              : "Pick a different MTP head GGUF from your library"
+          }
         >
-          Change draft
+          {showMtpBakedIn ? "Override with external MTP" : "Change draft"}
         </button>
       ) : null}
       {showDflashChange ? (
