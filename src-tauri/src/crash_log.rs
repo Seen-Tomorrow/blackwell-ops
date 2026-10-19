@@ -1,26 +1,46 @@
 //! Windows native exception logger — captures STATUS_* codes that bypass Rust's panic hook.
 
-/// Silence the Windows “has stopped working” dialog for this process **and every
-/// child it spawns**.
+/// Silence Windows crash UI for this process **and the helper binaries we spawn**.
 ///
-/// Helper binaries legitimately crash on GGUFs their build cannot load:
-/// `llama-fit-params` exits `0xC0000409` on a draft tensor or an unimplemented
-/// arch, a dozen times during a library scan. Each crash raised a modal WER box
-/// that stole focus and stacked up — from the UI it looked like the app itself
-/// was dying. The error mode is inherited at `CreateProcess` unless the child is
-/// created with `CREATE_DEFAULT_ERROR_MODE`, so one process-wide setting covers
-/// the whole spawn surface.
+/// Two layers, because one is not enough:
 ///
-/// Evidence is not lost: the vectored exception logger below and the session log
-/// still record every native exception in this process, and child failures keep
-/// arriving in the fit-scan warnings.
+/// 1. `SetErrorMode` — suppresses the ordinary unhandled-exception box, inherited
+///    by children at `CreateProcess`.
+/// 2. `WerAddExcludedApplication` — **fail-fast** exits (`0xC0000409`, e.g. a
+///    `/GS` stack-cookie trip or `__fastfail`) bypass the normal exception
+///    dispatch, so the error mode alone does not stop WerFault from raising a
+///    modal “has stopped working” box. Excluding the helper image from Windows
+///    Error Reporting is the documented lever for exactly that case.
+///
+/// Why it matters: `llama-fit-params` dies on GGUFs its build cannot load (old
+/// MTP heads, unimplemented tensors). A modal box per crashed probe is the kind
+/// of behaviour that gets an app uninstalled — the failure is already reported
+/// per model in the fit table and the session log; a dialog adds nothing.
+///
+/// The exclusion is per-user (`bAllUsers = 0`) and only names images we ship and
+/// spawn ourselves. It does not touch WER for anything else on the machine.
 #[cfg(windows)]
 pub fn silence_crash_dialogs() {
     use windows_sys::Win32::System::Diagnostics::Debug::{
         SetErrorMode, SEM_FAILCRITICALERRORS, SEM_NOGPFAULTERRORBOX, SEM_NOOPENFILEERRORBOX,
     };
+    use windows_sys::Win32::System::ErrorReporting::WerAddExcludedApplication;
+
     unsafe {
         SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
+    }
+
+    // Helpers we spawn directly. `llama-server` is also used by the metadata
+    // probe, where a corrupt GGUF crashes it the same way.
+    for exe in ["llama-fit-params.exe", "llama-server.exe"] {
+        let wide: Vec<u16> = exe.encode_utf16().chain(std::iter::once(0)).collect();
+        let hr = unsafe { WerAddExcludedApplication(wide.as_ptr(), 0) };
+        if hr < 0 {
+            // Policy may forbid it; the error mode above still covers ordinary faults.
+            crate::session_log::append_session_line(&format!(
+                "[crash] WER exclusion refused for {exe} (hr=0x{hr:08X})"
+            ));
+        }
     }
 }
 

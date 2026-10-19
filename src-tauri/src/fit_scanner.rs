@@ -1677,6 +1677,21 @@ pub async fn scan_library(
             let map = full_results_map.lock().await;
             find_existing_scan(&map, &model_path)
         };
+        // A model whose probe crashed the helper (fail-fast STATUS_*, load error)
+        // with no points is not retried on incremental runs: every attempt spawns
+        // the same crash, and each one used to raise a modal Windows Error
+        // Reporting box. RESCAN clears the partition, so it retries everything.
+        let probe_crashed = existing_full
+            .as_ref()
+            .map(|e| e.error.is_some() && e.points.is_empty())
+            .unwrap_or(false);
+        if probe_crashed {
+            if let Some(existing) = existing_full {
+                let mut map = full_results_map.lock().await;
+                insert_fit_scan_result(&mut map, &model_path, &existing);
+            }
+            continue;
+        }
         if missing_scan_labels(existing_full.as_ref()).is_empty() {
             if let Some(existing) = existing_full {
                 let mut map = full_results_map.lock().await;

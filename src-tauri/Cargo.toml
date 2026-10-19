@@ -44,7 +44,7 @@ hex = "0.4"
 
 [target.'cfg(windows)'.dependencies]
 keyring = { version = "4", default-features = false, features = ["v1"] }
-windows-sys = { version = "0.61", features = ["Win32_System_Console", "Win32_System_Threading", "Win32_Foundation", "Win32_System_Performance", "Win32_System_Diagnostics_Debug", "Win32_System_Kernel", "Win32_System_Memory", "Win32_System_LibraryLoader", "Win32_System_JobObjects"] }
+windows-sys = { version = "0.61", features = ["Win32_System_Console", "Win32_System_Threading", "Win32_Foundation", "Win32_System_Performance", "Win32_System_Diagnostics_Debug", "Win32_System_Kernel", "Win32_System_Memory", "Win32_System_LibraryLoader", "Win32_System_JobObjects", "Win32_System_ErrorReporting"] }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
