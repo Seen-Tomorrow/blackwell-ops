@@ -327,6 +327,7 @@ pub fn profile_ids(manifest: &ToolchainManifest) -> Vec<String> {
 
 /// Every profile in the manifest, including withheld ones. Resolution by id uses this
 /// path; nothing user-facing should.
+#[cfg(test)]
 pub fn all_profile_ids(manifest: &ToolchainManifest) -> Vec<String> {
     manifest.profiles.iter().map(|p| p.id.clone()).collect()
 }

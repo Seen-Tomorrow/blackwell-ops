@@ -30,7 +30,7 @@ import {
 import { loadLibraryBackfill, saveLibraryBackfill } from "./storage";
 
 /** Model shape the scan order needs — the catalog already carries both fields. */
-export interface ScanOrderModel {
+interface ScanOrderModel {
   path: string;
   size_str?: string;
   metadata?: unknown;
@@ -52,7 +52,7 @@ const SIZE_UNITS: Record<string, number> = {
  * `"46.20 GiB"` → bytes. Anything unparseable sorts last, so a formatting change
  * can never put an unknown model at the front of the queue.
  */
-export function parseSizeLabel(label: string | undefined): number {
+function parseSizeLabel(label: string | undefined): number {
   if (!label) return Number.POSITIVE_INFINITY;
   const match = label.trim().match(/^([\d.]+)\s*([a-zA-Z]+)$/);
   if (!match) return Number.POSITIVE_INFINITY;
@@ -73,7 +73,7 @@ function pathKey(path: string): string {
  * badges immediately instead of after the whole library. Already-scanned models
  * are dropped — nothing to probe.
  */
-export function orderModelsForScan<T extends ScanOrderModel>(
+function orderModelsForScan<T extends ScanOrderModel>(
   models: T[],
   firstPath?: string | null,
 ): T[] {
@@ -91,7 +91,7 @@ export function orderModelsForScan<T extends ScanOrderModel>(
 }
 
 /** “NOT NOW” silence window for the fit scan. */
-export const FIT_SNOOZE_MS = 24 * 60 * 60 * 1000;
+const FIT_SNOOZE_MS = 24 * 60 * 60 * 1000;
 
 export interface MetadataJobState {
   status: "idle" | "running";
@@ -220,7 +220,7 @@ export function cancelMetadataScan(): void {
 
 // ── Fit job ─────────────────────────────────────────────────────────────
 
-export function getFitSnoozeUntil(): number {
+function getFitSnoozeUntil(): number {
   return loadLibraryBackfill().fitSnoozeUntil ?? 0;
 }
 
