@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useCallback, useEffect, useMemo, u
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { type BuildPhase } from "../lib/foundry_constants";
+import type { EdgeProgress } from "../lib/foundryProgress";
 
 /**
  * Professional, robust Foundry build state management.
@@ -21,6 +22,8 @@ export interface BuildProgressState {
   step: string;
   logLine?: string;
   buildId?: number;
+  /** Ninja `[N/M]` edge counter — live compile granularity, null outside BUILD. */
+  progress?: EdgeProgress | null;
 }
 
 /** Authoritative snapshot from `foundry_status` (Rust `BuildProgress`). */
@@ -30,6 +33,7 @@ export interface FoundryStatusPayload {
   provider_id: string;
   environment: string;
   log_line?: string | null;
+  progress?: EdgeProgress | null;
 }
 
 import { normalizeBinaryProfile, type Env as FoundryEnv } from "../lib/foundry_constants";
@@ -43,6 +47,7 @@ interface BuildSession {
   environment: Env;
   phase: BuildPhase;
   logLine?: string;
+  progress?: EdgeProgress | null;
 }
 
 export interface FoundryCtx {
@@ -100,6 +105,7 @@ function sessionFromStatus(status: FoundryStatusPayload): BuildSession {
     environment: status.environment as Env,
     phase: (status.phase as BuildPhase) || "Configuring",
     logLine: status.log_line ?? undefined,
+    progress: status.progress ?? null,
   };
 }
 
@@ -121,6 +127,7 @@ interface BuildProgressEvent {
   environment: string;
   log_line?: string;
   log_lines?: string[];
+  progress?: EdgeProgress | null;
 }
 
 // ── Internal Reducer (the heart of the robust design) ─────────────────
@@ -178,6 +185,9 @@ function foundryReducer(state: FoundryInternalState, action: FoundryAction): Fou
         environment: normalizeBinaryProfile(e.environment),
         phase,
         logLine: e.log_lines?.[e.log_lines.length - 1] ?? e.log_line,
+        // Events that predate the compile stage omit the key entirely — keep the last
+        // known counter instead of clearing the bar on every configure heartbeat.
+        progress: e.progress ?? state.session?.progress ?? null,
       };
 
       // If we are closed, ignore progress for old sessions
@@ -280,6 +290,7 @@ export const FoundryProvider: React.FC<{ children?: React.ReactNode }> = ({ chil
         step: mapPhase(session.phase),
         logLine: session.logLine,
         buildId: session.id > 0 ? session.id : undefined,
+        progress: session.progress ?? null,
       }
     : null);
 
@@ -330,6 +341,7 @@ export const FoundryProvider: React.FC<{ children?: React.ReactNode }> = ({ chil
           step: mapPhase(status.phase),
           logLine: status.log_line ?? undefined,
           buildId: status.build_id,
+          progress: status.progress ?? null,
         });
         dispatch({ type: 'RECONCILE', session: reconciledSession, reason });
       } else {
@@ -359,6 +371,7 @@ export const FoundryProvider: React.FC<{ children?: React.ReactNode }> = ({ chil
             step: mapPhase(status.phase),
             logLine: status.log_line ?? undefined,
             buildId: status.build_id,
+            progress: status.progress ?? null,
           });
           dispatch({ type: 'RECONCILE', session: reconciledSession, reason: 'attach' });
           dispatch({ type: 'RESTORE' });
@@ -439,13 +452,16 @@ export const FoundryProvider: React.FC<{ children?: React.ReactNode }> = ({ chil
       // Keep shape in sync for consumers that still read buildProgress directly
       const step = mapPhase(payload.phase);
       const logLine = payload.log_lines?.[payload.log_lines.length - 1] ?? payload.log_line;
-      setLegacyProgress({
+      setLegacyProgress(prev => ({
         providerId: payload.provider_id,
         environment: payload.environment,
         step,
         logLine,
         buildId: payload.build_id ?? undefined,
-      });
+        progress:
+          payload.progress ??
+          (prev && prev.buildId === payload.build_id ? prev.progress ?? null : null),
+      }));
 
       // Terminal states: keep the session + dock widget alive so the user can click back to review the result/log.
       // We only fully clear when the user explicitly closes the modal.

@@ -16,8 +16,10 @@ mod artifacts;
 mod batch;
 mod cmake;
 mod git;
+mod progress;
 
 pub use batch::foundry_kill_all_children;
+pub use progress::BuildEdgeProgress;
 pub(crate) use artifacts::{copy_dir_contents, publish_artifacts_to_sacred};
 pub(crate) use batch::{
     clear_pids, kill_all_children, run_foundry_batch_streaming, with_child_pids,
@@ -264,6 +266,10 @@ pub struct BuildProgress {
     pub provider_id: String,
     pub environment: String,
     pub log_line: Option<String>,
+    /// Ninja edge counter while compiling; `None` before the first edge and outside
+    /// the compile stage. Carried here (not only on events) so a modal reopen or a
+    /// dock remount rehydrates the bar instead of freezing it.
+    pub progress: Option<BuildEdgeProgress>,
 }
 
 // ── Event Emission ───────────────────────────────────────────────────
@@ -279,6 +285,7 @@ fn emit_build_event(
         "provider_id": state.provider_id,
         "environment": state.profile_id,
         "log_line": log_line,
+        "progress": progress::snapshot(),
     });
 
     crate::ipc_meter::emit_tracked(app_handle, "foundry-progress", &event);
@@ -295,6 +302,7 @@ fn emit_build_batch(
         "provider_id": state.provider_id,
         "environment": state.profile_id,
         "log_lines": lines,
+        "progress": progress::snapshot(),
     });
 
     crate::ipc_meter::emit_tracked(app_handle, "foundry-progress", &event);
@@ -402,6 +410,9 @@ pub async fn foundry_build(
     // Reset cancellation state for new build
     BUILD_CANCELLED.store(false, Ordering::SeqCst);
     clear_pids();
+    // Compile edge counter belongs to one build only — never let a previous run
+    // seed the new bar.
+    progress::reset();
 
     let build_id = BUILD_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
 
@@ -2035,6 +2046,7 @@ pub async fn foundry_status() -> Result<Option<BuildProgress>, String> {
         provider_id: state.provider_id.clone(),
         environment: state.profile_id.clone(),
         log_line: None,
+        progress: progress::snapshot(),
     }))
 }
 
@@ -2559,6 +2571,7 @@ fn emit_config_event(
         "provider_id": provider_id,
         "environment": profile_id,
         "log_line": log_line,
+        "progress": progress::snapshot(),
     });
 
     crate::ipc_meter::emit_tracked(app_handle, "foundry-progress", &event);

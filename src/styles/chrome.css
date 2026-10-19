@@ -1955,6 +1955,46 @@
   overflow: hidden;
 }
 
+/* Log drawer shut: shrink to the instrument strip; two classes beat Tailwind's h-full. */
+.foundry-window--build.foundry-window--auto-height .foundry-window__chrome,
+.foundry-window--build.foundry-window--auto-height .fnd-build-panel {
+  height: auto;
+}
+
+/* Log drawer handle — the whole strip is the toggle. */
+.fnd-logbar {
+  display: flex;
+  align-items: center;
+  gap: calc(0.5rem * var(--foundry-scale));
+  padding: calc(0.3rem * var(--foundry-scale)) calc(0.6rem * var(--foundry-scale));
+  background: color-mix(in srgb, var(--theme-text) 5%, var(--theme-panel-accent));
+  border: 1px solid color-mix(in srgb, var(--theme-text) 12%, transparent);
+  border-radius: 1px;
+  color: var(--theme-text-muted);
+  text-align: left;
+  cursor: pointer;
+}
+
+.fnd-logbar:hover {
+  color: var(--theme-text);
+  border-color: color-mix(in srgb, var(--theme-warn) 45%, transparent);
+}
+
+.fnd-logbar:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--theme-warn) 70%, transparent);
+  outline-offset: 1px;
+}
+
+.fnd-logbar__title { letter-spacing: 0.14em; }
+.fnd-logbar__count { opacity: 0.75; }
+
+.fnd-logbar__action {
+  margin-left: auto;
+  color: var(--theme-warn);
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+}
+
 /*
  * Fixed CSS px ignores app zoom, so Foundry's micro stack is remapped onto
  * --foundry-scale (bases bumped ~+1–2px vs the original 6–11 stack).

@@ -1,27 +1,9 @@
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent } from "react";
 import type { BuildProgressState } from "../hooks/useBuildDock";
 import { ENV_META, getStepLabel, normalizeBinaryProfile } from "../lib/foundry_constants";
-
-const PHASE_PROGRESS: Record<string, number> = {
-  init: 8,
-  initializing: 8,
-  clone: 18,
-  pull: 26,
-  "pr-cherry-pick": 34,
-  configuring: 42,
-  "waiting-confirm": 52,
-  building: 72,
-  validating: 88,
-  complete: 100,
-  error: 100,
-  "backup-locked": 48,
-};
+import { formatEdgeCounter, overallPercent } from "../lib/foundryProgress";
 
 const COMPILE_STEPS = new Set(["building", "validating"]);
-
-function resolvePhaseProgress(step: string): number {
-  return PHASE_PROGRESS[step] ?? 12;
-}
 
 function formatCompileElapsed(ms: number): string {
   const totalSec = Math.max(0, Math.floor(ms / 1000));
@@ -56,7 +38,9 @@ export default function FoundryStatusChip({
   const stepLabel = getStepLabel(step);
   const envKey = normalizeBinaryProfile(buildProgress.environment);
   const envLabel = ENV_META[envKey].label;
-  const progress = resolvePhaseProgress(step);
+  const edge = buildProgress.progress ?? null;
+  const progress = overallPercent(step, edge);
+  const counter = formatEdgeCounter(edge);
   const waitingConfirm = step === "waiting-confirm";
   const compileActive = COMPILE_STEPS.has(step);
   useEffect(() => {
@@ -105,7 +89,10 @@ export default function FoundryStatusChip({
             <span className="foundry-status-chip__env">{envLabel}</span>
           </span>
           <span className="foundry-status-chip__row foundry-status-chip__row--detail">
-            <span className="foundry-status-chip__step">{stepLabel}</span>
+            <span className="foundry-status-chip__step">
+              {stepLabel}
+              {counter ? ` ${counter}` : ""}
+            </span>
             <span
               className={`foundry-status-chip__timer${
                 compileActive ? " foundry-status-chip__timer--live" : ""
@@ -117,7 +104,9 @@ export default function FoundryStatusChip({
           <span className="foundry-status-chip__provider">{providerLabel}</span>
         </span>
       ) : (
-        <span className="foundry-status-chip__label">{stepLabel}…</span>
+        <span className="foundry-status-chip__label">
+          {counter ? `${stepLabel} ${counter}` : `${stepLabel}…`}
+        </span>
       )}
 
       {isMinimized ? (

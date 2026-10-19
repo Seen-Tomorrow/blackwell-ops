@@ -9,7 +9,7 @@ use std::os::windows::process::CommandExt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use super::{BUILD_CANCELLED, CHILD_PIDS, BuildState, emit_build_batch};
+use super::{BUILD_CANCELLED, CHILD_PIDS, BuildState, emit_build_batch, progress};
 
 // ── PID Tracking ─────────────────────────────────────────────────────
 
@@ -102,6 +102,9 @@ pub(crate) fn drain_pipe_lines_blocking(
         if is_suppressed_vendor_noise(&line) {
             continue;
         }
+        // Ninja `[N/M]` edge counters — the only real progress signal in the compile
+        // stage. Recorded here because every streamed line already passes through.
+        progress::record_line(&line);
         if let Some(mut buf) = try_lock_log_buf(&log_buffer) {
             if as_err {
                 if is_genuine_error_line(&line) {
