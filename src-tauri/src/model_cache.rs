@@ -181,8 +181,12 @@ pub fn get_cached_with_shape(model_path: &str) -> (Option<ModelMetadata>, Option
     if shape.is_none() {
         shape = read_shape_for_model(model_path);
         if let Some(ref shape) = shape {
-            cache.entry(entry_key.clone()).and_modify(|e| e.gguf_shape = Some(shape.clone()));
-            if let Err(e) = save_cache(&cache) {
+            cache
+                .entry(entry_key.clone())
+                .and_modify(|e| e.gguf_shape = Some(shape.clone()));
+            // Persist just this shape — a whole-snapshot save here would drop
+            // entries a concurrent metadata scan has written since we loaded.
+            if let Err(e) = apply_shapes(&[(model_path.to_string(), shape.clone())]) {
                 log::warn!("[Cache] Failed to persist shape for {}: {}", model_path, e);
             }
         }
@@ -193,22 +197,50 @@ pub fn get_cached_with_shape(model_path: &str) -> (Option<ModelMetadata>, Option
     (meta, shape)
 }
 
+/// Serializes every read-modify-write of the cache file.
+///
+/// These writers all load the entire map, mutate it, and write it back. With the
+/// per-model metadata scan running several probes at once — while the catalog
+/// merge heals header shapes on every reload — two writers overlap and the later
+/// `save_cache` silently drops the other's entry. That is exactly “metadata
+/// disappears from the catalog after a scan, and a re-scan brings it back”.
+static CACHE_WRITE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn with_cache_write<F>(f: F) -> Result<(), String>
+where
+    F: FnOnce(&mut HashMap<String, CachedEntry>),
+{
+    let _guard = CACHE_WRITE_LOCK.lock().map_err(|e| e.to_string())?;
+    let mut cache = load_cache();
+    f(&mut cache);
+    save_cache(&cache)
+}
+
+/// Persist header shapes healed during a catalog merge.
+///
+/// Re-reads the cache under the write lock and only adds the shapes — it must
+/// never write back the merge's snapshot, which is older than any metadata a
+/// concurrent scan has already stored.
+pub fn apply_shapes(shapes: &[(String, GgufShape)]) -> Result<(), String> {
+    if shapes.is_empty() {
+        return Ok(());
+    }
+    with_cache_write(|cache| {
+        for (path, shape) in shapes {
+            if let Some(key) = resolve_cache_key(cache, path) {
+                cache
+                    .entry(key)
+                    .and_modify(|e| e.gguf_shape = Some(shape.clone()));
+            }
+        }
+    })
+}
+
 /// Insert or update GGUF scan metadata for a model path.
 /// Preserves existing hf_meta if the entry already exists.
 pub fn set_cached(model_path: &str, metadata: ModelMetadata) -> Result<(), String> {
-    let mut cache = load_cache();
     let storage_key = storage_key_for(model_path);
-
     let file_mtime_ms = current_mtime_ms(model_path).unwrap_or(0);
-
-    // Preserve existing hf_meta from any alias key.
-    let existing_hf = keys_for_same_file(&cache, model_path)
-        .iter()
-        .find_map(|k| cache.get(k).and_then(|e| e.hf_meta.clone()));
-    // A fresh engine scan says nothing about the tensor table — keep any shape we have.
-    let existing_shape = keys_for_same_file(&cache, model_path)
-        .iter()
-        .find_map(|k| cache.get(k).and_then(|e| e.gguf_shape.clone()));
 
     log::debug!(
         "[Cache] SAVE key: {} (mtime {}, arch: {})",
@@ -217,65 +249,72 @@ pub fn set_cached(model_path: &str, metadata: ModelMetadata) -> Result<(), Strin
         metadata.architecture
     );
 
-    for alias in keys_for_same_file(&cache, model_path) {
-        if alias != storage_key {
-            cache.remove(&alias);
+    with_cache_write(|cache| {
+        // Preserve existing hf_meta from any alias key.
+        let existing_hf = keys_for_same_file(cache, model_path)
+            .iter()
+            .find_map(|k| cache.get(k).and_then(|e| e.hf_meta.clone()));
+        // A fresh engine scan says nothing about the tensor table — keep any shape we have.
+        let existing_shape = keys_for_same_file(cache, model_path)
+            .iter()
+            .find_map(|k| cache.get(k).and_then(|e| e.gguf_shape.clone()));
+
+        for alias in keys_for_same_file(cache, model_path) {
+            if alias != storage_key {
+                cache.remove(&alias);
+            }
         }
-    }
 
-    cache.insert(
-        storage_key,
-        CachedEntry {
-            hf_meta: existing_hf,
-            gguf_meta: Some(metadata),
-            gguf_shape: existing_shape,
-            file_mtime_ms,
-        },
-    );
-
-    save_cache(&cache)
+        cache.insert(
+            storage_key.clone(),
+            CachedEntry {
+                hf_meta: existing_hf,
+                gguf_meta: Some(metadata),
+                gguf_shape: existing_shape,
+                file_mtime_ms,
+            },
+        );
+    })
 }
 
 /// Set HF metadata for a model path. Preserves existing gguf_meta / gguf_shape if present.
 pub fn set_hf_metadata(model_path: &str, hf_meta: HfMetadata) -> Result<(), String> {
-    let mut cache = load_cache();
     let storage_key = storage_key_for(model_path);
-
-    let aliases = keys_for_same_file(&cache, model_path);
-    let existing_gguf = aliases
-        .iter()
-        .find_map(|k| cache.get(k).and_then(|e| e.gguf_meta.clone()));
-    let existing_shape = aliases
-        .iter()
-        .find_map(|k| cache.get(k).and_then(|e| e.gguf_shape.clone()));
-    let existing_mtime = aliases
-        .iter()
-        .find_map(|k| cache.get(k).map(|e| e.file_mtime_ms))
-        .unwrap_or(0);
-
     log::debug!(
         "[Cache] SET HF meta for {} (model_id: {})",
         storage_key,
         hf_meta.hf_model_id
     );
 
-    for alias in aliases {
-        if alias != storage_key {
-            cache.remove(&alias);
+    with_cache_write(|cache| {
+        let aliases = keys_for_same_file(cache, model_path);
+        let existing_gguf = aliases
+            .iter()
+            .find_map(|k| cache.get(k).and_then(|e| e.gguf_meta.clone()));
+        let existing_shape = aliases
+            .iter()
+            .find_map(|k| cache.get(k).and_then(|e| e.gguf_shape.clone()));
+        let existing_mtime = aliases
+            .iter()
+            .find_map(|k| cache.get(k).map(|e| e.file_mtime_ms))
+            .unwrap_or(0);
+
+        for alias in aliases {
+            if alias != storage_key {
+                cache.remove(&alias);
+            }
         }
-    }
 
-    cache.insert(
-        storage_key,
-        CachedEntry {
-            hf_meta: Some(hf_meta),
-            gguf_meta: existing_gguf,
-            gguf_shape: existing_shape,
-            file_mtime_ms: existing_mtime,
-        },
-    );
-
-    save_cache(&cache)
+        cache.insert(
+            storage_key.clone(),
+            CachedEntry {
+                hf_meta: Some(hf_meta),
+                gguf_meta: existing_gguf,
+                gguf_shape: existing_shape,
+                file_mtime_ms: existing_mtime,
+            },
+        );
+    })
 }
 
 /// Get HF metadata for a model path regardless of GGUF scan state.
@@ -331,32 +370,27 @@ pub fn get_hf_metadata_with_cache(cache: &HashMap<String, CachedEntry>, model_pa
 
 /// Drop cached metadata for one model file (all path aliases).
 pub fn remove_cached(model_path: &str) -> Result<(), String> {
-    let mut cache = load_cache();
-    let keys = keys_for_same_file(&cache, model_path);
-    if keys.is_empty() {
-        return Ok(());
-    }
-    for key in keys {
-        cache.remove(&key);
-    }
-    save_cache(&cache)
+    with_cache_write(|cache| {
+        for key in keys_for_same_file(cache, model_path) {
+            cache.remove(&key);
+        }
+    })
 }
 
 /// Move cached metadata when a model file is renamed.
 pub fn rename_cached_path(old_path: &str, new_path: &str) -> Result<(), String> {
-    let mut cache = load_cache();
-    let old_key = match resolve_cache_key(&cache, old_path) {
-        Some(k) => k,
-        None => return Ok(()),
-    };
-    let Some(entry) = cache.remove(&old_key) else {
-        return Ok(());
-    };
-    for alias in keys_for_same_file(&cache, old_path) {
-        cache.remove(&alias);
-    }
-    cache.insert(storage_key_for(new_path), entry);
-    save_cache(&cache)
+    with_cache_write(|cache| {
+        let Some(old_key) = resolve_cache_key(cache, old_path) else {
+            return;
+        };
+        let Some(entry) = cache.remove(&old_key) else {
+            return;
+        };
+        for alias in keys_for_same_file(cache, old_path) {
+            cache.remove(&alias);
+        }
+        cache.insert(storage_key_for(new_path), entry);
+    })
 }
 
 /// Clear the entire cache.

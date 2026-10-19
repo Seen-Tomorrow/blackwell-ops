@@ -502,6 +502,9 @@ pub fn merge_catalogs(
     log::info!("[catalog] Loaded model cache: {} entries", model_cache.len());
     // Shapes read during this merge that were not already on disk.
     let mut shapes_healed: usize = 0;
+    // Shapes to persist after the merge — written under the cache lock, never as
+    // a snapshot: a concurrent metadata scan may add entries meanwhile.
+    let mut healed_shapes: Vec<(String, crate::gguf_shape::GgufShape)> = Vec::new();
 
     let final_catalog: Vec<ModelEntry> = deduped.into_values()
         .map(|internal| {
@@ -517,10 +520,21 @@ pub fn merge_catalogs(
             // Header evidence for classification. Reading a GGUF header is cheap and
             // spawns no engine, so an entry scanned before ggufShape existed is healed
             // here and written back once at the end of the merge.
+            let had_shape = crate::model_cache::get_cached_with_cache_and_shape(
+                &model_cache,
+                lookup_path,
+            )
+            .and_then(|(_, shape)| shape)
+            .is_some();
             let cached_shape = crate::model_cache::ensure_shape_in_cache(
                 &mut model_cache,
                 lookup_path,
             );
+            if !had_shape {
+                if let Some(ref shape) = cached_shape {
+                    healed_shapes.push((lookup_path.clone(), shape.clone()));
+                }
+            }
             if cached_shape.is_some() && cached_meta.is_some() {
                 shapes_healed += 1;
             } else if cached_meta.is_some() {
@@ -610,12 +624,17 @@ pub fn merge_catalogs(
         })
         .collect();
 
-    // Persist shapes healed during this merge — one write, not one per model.
-    if shapes_healed > 0 {
-        if let Err(e) = crate::model_cache::save_cache(&model_cache) {
-            log::warn!("[catalog] Failed to persist ggufShape cache: {}", e);
-        } else {
-            log::info!("[catalog] Read {} GGUF header shapes into the cache", shapes_healed);
+    // Persist shapes healed during this merge — under the cache lock, and only
+    // the shapes themselves. Writing back this merge's snapshot would drop any
+    // metadata a concurrent scan has stored since we loaded it.
+    if !healed_shapes.is_empty() {
+        match crate::model_cache::apply_shapes(&healed_shapes) {
+            Ok(()) => log::info!(
+                "[catalog] Persisted {} healed GGUF header shapes ({} models read)",
+                healed_shapes.len(),
+                shapes_healed
+            ),
+            Err(e) => log::warn!("[catalog] Failed to persist ggufShape cache: {}", e),
         }
     }
 
