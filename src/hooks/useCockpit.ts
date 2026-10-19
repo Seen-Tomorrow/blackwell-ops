@@ -476,11 +476,11 @@ export function useCockpit({
     else if (r === 4000 || r === "4000") setThink("budget");
     else if (r === 8000 || r === "8000") setThink("budget");
     else setThink("on");
-  }, [allParamsResolved, config.parallel, config.kv_quant, config.reasoning]);
+  }, [allParamsResolved, config.parallel, config.kv_quant, config.reasoning, fullAutoMode, configView]);
 
   useEffect(() => {
     boosterSeededRef.current = false;
-  }, [effectiveBackendType, model?.path]);
+  }, [effectiveBackendType, model?.path, fullAutoMode, configView]);
 
   useEffect(() => {
     if (boosterSeededRef.current) return;

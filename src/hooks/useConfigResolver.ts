@@ -103,8 +103,8 @@ export function useConfigResolver({
     [cleanedParams],
   );
 
-  const loadConfig = useCallback(() => {
-    if (hydrateLockRef?.current) return;
+  const loadConfig = useCallback((force = false) => {
+    if (!force && hydrateLockRef?.current) return;
     if (!cleanedParams.length) {
       setConfig({});
       return;
@@ -173,8 +173,11 @@ export function useConfigResolver({
     if (prevPolicyRef.current === policyId) return;
 
     prevPolicyRef.current = policyId;
+    // A mode switch owns the load: do not let a stale seat-hydration lock keep
+    // the previous mode's config on screen.
+    if (hydrateLockRef) hydrateLockRef.current = false;
     switchActivePolicy(backendType, policyId, factoryDefaults);
-    loadConfig();
+    loadConfig(true);
   }, [policyId, backendType, factoryDefaults, loadConfig]);
 
   useEffect(() => {
