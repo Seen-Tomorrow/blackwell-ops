@@ -1214,16 +1214,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         updateParam("ubatch", pair.ubatch);
       }
       if (goal === "context") {
-        // MAX CTX must not be capped by the manifest captured before this
-        // plan's KV/parallel change. Use the top template value; FIT on owns
+        // MAX CTX must not be capped by the essentials-visible list or the
+        // previous goal's manifest. 512K is the FULL AUTO ceiling; FIT on owns
         // the launch-side cap, and the low-VRAM probe corrects it if needed.
         const ctxDef = allParamsResolved.find((param) => param.key === "ctx");
         if (!ctxDef) return;
-        const ctxValues = visibleParamValuesOf(ctxDef)
-          .map((value) => Number(value))
-          .filter((value) => Number.isFinite(value));
-        if (ctxValues.length === 0) return;
-        updateParam("ctx", Math.max(...ctxValues));
+        updateParam("ctx", 524288);
       } else {
         // Do not let MAX CTX's 512K leak into the other goals. Start them at
         // the sane 64K anchor; the user can still adjust from there.
