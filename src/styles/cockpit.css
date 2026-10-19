@@ -186,6 +186,19 @@
   gap: 0.45rem 0.55rem;
 }
 
+/* Reserve a readable lane for the MTP/DFlash head status. Without it the
+   unbroken SPEC-EXTRA rail paints over the status at narrow widths. */
+.full-auto-cockpit__dflash-get--spec-extra .full-auto-cockpit__spec-extra {
+  flex: 1 1 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.full-auto-cockpit__dflash-get--spec-extra .full-auto-cockpit__dflash-get-main {
+  flex: 0 0 9rem;
+  min-width: 7rem;
+}
+
 /* SPEC-EXTRA / draft strip — product tones (MTP green, DFlash violet). Chips = theme value-chip. */
 /* Explicit MTP tone — theme tokens (--theme-dflash-mtp-*) resolve on all themes,
    no [data-theme] fork. Product green, adapted per theme (dark wash / arctic paper wash). */
