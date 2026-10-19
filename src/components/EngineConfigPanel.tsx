@@ -205,6 +205,7 @@ import {
 } from "./EngineParamGroups";
 import WelcomeAnimation from "./onboarding/WelcomeAnimation";
 import SetupGuideDisplay from "./onboarding/SetupGuideDisplay";
+import LibraryEmptyState from "./LibraryEmptyState";
 import RunningEnginesPanel from "./RunningEnginesPanel";
 import EngineLaunchDock from "./EngineLaunchDock";
 import { findMaxFittingCtx, formatTokenLabel } from "../lib/sliderParamUtils";
@@ -3153,11 +3154,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                   runtimeReady={setupGuide.runtimeReady}
                   toolchainChecked={setupGuide.toolchainChecked}
                   modelsDeferred={setupGuide.modelsDeferred}
-                  metaDone={setupGuide.metaDone}
-                  metaScanFailed={setupGuide.metaScanFailed}
                   modelsCount={setupGuide.modelsCount}
-                  scannedCount={setupGuide.scannedCount}
                   catalogLoaded={setupGuide.catalogLoaded}
+                  libraryLinked={setupGuide.libraryLinked}
+                  finishError={setupGuide.dismissError}
                   onDeferModels={setupGuide.deferModels}
                   onDismiss={setupGuide.dismiss}
                 />
@@ -3170,6 +3170,14 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   }
 
   if (!model) {
+    // "Nothing selected" and "nothing to select" are different states. The
+    // second one used to render the first one's dead-end hint — after finishing
+    // setup with an empty library the whole OPERATIONS pane was a cul-de-sac.
+    // Wait for the first catalog fetch: the actions would be a lie while
+    // `list_models` is still in flight.
+    if ((models?.length ?? 0) === 0 && setupGuide.catalogLoaded) {
+      return <LibraryEmptyState libraryLinked={setupGuide.libraryLinked} />;
+    }
     return (
       <div className="flex flex-col items-center justify-center h-full eng-empty font-mono">
         <div className="text-center config-empty-enter">

@@ -34,6 +34,12 @@ export type CatalogQuickStripProps = {
   activeSeatSet: CatalogSeatSetIndex;
   pins: string[];
   selectedPath: string | null;
+  /**
+   * Harness seats are agentic-harness chrome, not catalog chrome. First-run
+   * setup hides them: a brand-new user has no models to seat, and the block
+   * pushed the actual catalog down on first contact.
+   */
+  showSeats?: boolean;
   onSelectPath: (path: string) => void;
   onAssignSeat: (role: CatalogEngineSeatRole) => void;
   onClearSeat: (role: CatalogEngineSeatRole) => void;
@@ -141,6 +147,7 @@ export default function CatalogQuickStrip({
   activeSeatSet,
   pins,
   selectedPath,
+  showSeats = true,
   onSelectPath,
   onAssignSeat,
   onClearSeat,
@@ -293,6 +300,7 @@ export default function CatalogQuickStrip({
       data-catalog-quick-strip
       data-seat-editing={seatEditing ? editingRole : undefined}
     >
+      {showSeats && (
       <section
         className={[
           "catalog-quick-section catalog-quick-section--seats",
@@ -680,6 +688,7 @@ export default function CatalogQuickStrip({
           ) : null}
         </div>
       </section>
+      )}
 
       {pinModels.length > 0 && (
         <section className="catalog-quick-section catalog-quick-section--pins">

@@ -48,6 +48,13 @@ import {
   writeComboSeatPath,
 } from "../lib/launchPresets";
 import {
+  cancelMetadataScan,
+  getMetadataJob,
+  startMetadataScan,
+  subscribeLibraryJobs,
+  type ModelScanPatch,
+} from "../lib/libraryJobs";
+import {
   fitNowNeedMib,
   fitNowTitle,
   fitNowVerdict,
@@ -255,6 +262,8 @@ interface UseModelCatalogParams {
   setScanningPath: (p: string | null) => void;
   batchScanState: { active: boolean; scanned: number; failed: number; total: number };
   setBatchScanState: React.Dispatch<React.SetStateAction<{ active: boolean; scanned: number; failed: number; total: number }>>;
+  /** Publish each probed model immediately (App patches its catalog array). */
+  onModelScanned?: (path: string, patch: ModelScanPatch) => void;
   onReload: () => void;
 }
 
@@ -267,6 +276,7 @@ export function useModelCatalog({
   setScanningPath,
   batchScanState,
   setBatchScanState,
+  onModelScanned,
   onReload,
 }: UseModelCatalogParams) {
   const [search, setSearch] = useState("");
@@ -330,7 +340,11 @@ export function useModelCatalog({
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<{ active?: boolean }>).detail;
       if (detail?.active !== false) return;
-      if (panelActiveModel || loadLastModel()) return;
+      if (panelActiveModel) return;
+      // A saved path only counts when it still exists in the catalog — a stale
+      // one must not block the post-setup auto-pick.
+      const savedPath = loadLastModel();
+      if (savedPath && findModelByPath(models, savedPath)) return;
       const pick = pickDefaultCatalogModel(models);
       if (!pick) return;
       applyCatalogSelection(pick, setCatalogSelectedModel, setPanelActiveModel);
@@ -346,15 +360,17 @@ export function useModelCatalog({
     if (models.length === 0 || panelActiveModel !== null) return;
 
     const savedPath = loadLastModel();
-    if (savedPath) {
-      const match = findModelByPath(models, savedPath);
-      if (match) {
-        applyCatalogSelection(match, setCatalogSelectedModel, setPanelActiveModel);
-        restoreAttemptedRef.current = true;
-      }
+    const match = savedPath ? findModelByPath(models, savedPath) : undefined;
+    if (match) {
+      applyCatalogSelection(match, setCatalogSelectedModel, setPanelActiveModel);
+      restoreAttemptedRef.current = true;
       return;
     }
 
+    // Saved path resolved to nothing in this catalog — the library moved, the
+    // folder was removed, or config was reset. Falling through to the default
+    // pick matters: returning here left the OPS pane on a permanent
+    // “SELECT A MODEL” even though the catalog was full.
     if (restoreAttemptedRef.current) return;
     const pick = pickDefaultCatalogModel(models);
     if (!pick) return;
@@ -564,17 +580,35 @@ export function useModelCatalog({
   }, [scanningPath, onReload]);
 
   const handleScanAll = useCallback(async (concurrency?: number) => {
-    setBatchScanState({ active: true, scanned: 0, failed: 0, total: models.length });
-    try {
-      await invoke("scan_all_models_cmd", { modelBase: null, providerId: null, concurrency: concurrency ? concurrency : undefined });
-      onReload();
-    } catch (e) { console.error("Batch scan failed:", e); }
-    finally { setBatchScanState(s => ({ ...s, active: false })); }
-  }, [models.length, onReload]);
+    // Same per-model runner as the first-run backfill: each model is published
+    // as it lands instead of one batch reload at the end.
+    await startMetadataScan({
+      models,
+      firstPath: panelActiveModel?.path ?? loadLastModel(),
+      concurrency: concurrency && concurrency > 0 ? concurrency : 3,
+      onModelScanned,
+    });
+    onReload();
+  }, [models, onModelScanned, onReload, panelActiveModel?.path]);
 
   const handleCancelScan = useCallback(async () => {
-    try { await invoke("cancel_gguf_scan_cmd"); } catch {}
+    cancelMetadataScan();
   }, []);
+
+  // The catalog's scan chrome mirrors the shared job (whoever started it).
+  useEffect(() => {
+    const sync = () => {
+      const job = getMetadataJob();
+      setBatchScanState({
+        active: job.status === "running",
+        scanned: job.done,
+        failed: job.failed,
+        total: job.total,
+      });
+    };
+    sync();
+    return subscribeLibraryJobs(sync);
+  }, [setBatchScanState]);
 
   const clearModelSelection = useCallback(() => {
     setCatalogSelectedModel(null);
@@ -647,49 +681,81 @@ export function useModelCatalog({
     };
   }, [reloadFitScanCache]);
 
+  // Fit progress arrives per plan point (~10 per model). Applying each event to
+  // state re-rendered the whole catalog (73 cards) >1000 times per library run —
+  // coalesce into ~4 batches per second while preserving event order.
+  const pendingFitEventsRef = useRef<FitScanProgress[]>([]);
+  const fitFlushTimerRef = useRef<number | null>(null);
+
   useTauriListen<FitScanProgress>("fit-scan-progress", (evt) => {
-    if (!evt.model_path) return;
-    if (evt.status === "scanning") {
-      if (fitScanningPathsRef.current.has(evt.model_path) && evt.label) {
-        setFitScanActiveLabels((prev) => ({ ...prev, [evt.model_path]: evt.label! }));
+    if (!evt?.model_path) return;
+    pendingFitEventsRef.current.push(evt);
+    if (fitFlushTimerRef.current != null) return;
+    fitFlushTimerRef.current = window.setTimeout(() => {
+      fitFlushTimerRef.current = null;
+      const batch = pendingFitEventsRef.current;
+      pendingFitEventsRef.current = [];
+
+      // Live row label: only the latest scanning event matters.
+      let liveLabel: { path: string; label: string } | null = null;
+      let pointsTotal: number | null = null;
+      let resultsChanged = false;
+      for (const e of batch) {
+        if (e.status === "scanning") {
+          if (e.label) liveLabel = { path: e.model_path, label: e.label };
+          if (e.scan_points_total) pointsTotal = e.scan_points_total;
+        } else {
+          resultsChanged = true;
+        }
       }
-      if (evt.scan_points_total) setFitScanPointsTotal(evt.scan_points_total);
-      return;
-    }
-    setFitScanResults((prev) => {
-      const entry = findFitScanEntry(prev, evt.model_path);
-      if (evt.status === "skipped") {
-        return {
-          ...prev,
-          [evt.model_path]: {
-            model_path: evt.model_path,
-            points: [],
-            skip_reason: evt.skip_reason,
-          },
-        };
+      if (liveLabel && fitScanningPathsRef.current.has(liveLabel.path)) {
+        setFitScanActiveLabels((prev) => ({ ...prev, [liveLabel!.path]: liveLabel!.label }));
       }
-      if (evt.status === "point_skipped" && evt.label) {
-        const prevSkipped = { ...(entry?.skipped_points ?? {}) };
-        if (evt.skip_reason) prevSkipped[evt.label] = evt.skip_reason;
-        return {
-          ...prev,
-          [evt.model_path]: {
-            model_path: evt.model_path,
-            points: entry?.points ?? [],
-            error: entry?.error,
-            skip_reason: entry?.skip_reason,
-            skipped_points: prevSkipped,
-          },
-        };
-      }
-      if (evt.status === "complete" && evt.vram_mib != null && evt.label) {
-        return {
-          ...prev,
-          [evt.model_path]: mergeFitScanProgressPoint(entry, evt.model_path, evt.label, evt.vram_mib),
-        };
-      }
-      return prev;
-    });
+      if (pointsTotal != null) setFitScanPointsTotal(pointsTotal);
+      if (!resultsChanged) return;
+
+      setFitScanResults((prev) => {
+        let next = prev;
+        for (const evt of batch) {
+          if (evt.status === "scanning") continue;
+          const entry = findFitScanEntry(next, evt.model_path);
+          if (evt.status === "skipped") {
+            next = {
+              ...next,
+              [evt.model_path]: {
+                model_path: evt.model_path,
+                points: [],
+                skip_reason: evt.skip_reason,
+              },
+            };
+          } else if (evt.status === "point_skipped" && evt.label) {
+            const prevSkipped = { ...(entry?.skipped_points ?? {}) };
+            if (evt.skip_reason) prevSkipped[evt.label] = evt.skip_reason;
+            next = {
+              ...next,
+              [evt.model_path]: {
+                model_path: evt.model_path,
+                points: entry?.points ?? [],
+                error: entry?.error,
+                skip_reason: entry?.skip_reason,
+                skipped_points: prevSkipped,
+              },
+            };
+          } else if (evt.status === "complete" && evt.vram_mib != null && evt.label) {
+            next = {
+              ...next,
+              [evt.model_path]: mergeFitScanProgressPoint(
+                entry,
+                evt.model_path,
+                evt.label,
+                evt.vram_mib,
+              ),
+            };
+          }
+        }
+        return next;
+      });
+    }, 250);
   });
 
   const fitScanAvailable = useMemo(() => {

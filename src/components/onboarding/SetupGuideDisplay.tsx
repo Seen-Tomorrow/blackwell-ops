@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-shell";
 import type { SetupPhase } from "../../lib/setupGuide";
-import { FIT_SCAN_PARALLEL_OPTIONS } from "../../lib/onboarding";
 import {
   ENV_META,
   ENV_ORDER,
@@ -11,15 +10,7 @@ import {
   NVIDIA_DRIVERS_URL,
 } from "../../lib/foundry_constants";
 import { useSetupPathsActions } from "../../hooks/useSetupPathsActions";
-import { useTauriListen } from "../../hooks/useTauriListen";
 import FoundryToolchainPanel from "../FoundryToolchainPanel";
-import type { FitScanComplete, FitScanProgress } from "../../lib/types";
-import { errorMessage } from "../../lib/blackwellError";
-
-const DEFAULT_FIT_PROVIDER = "ggml-master";
-
-type FitScanStep = "idle" | "running" | "done" | "skipped" | "stopped";
-type FitScanParallel = (typeof FIT_SCAN_PARALLEL_OPTIONS)[number];
 
 interface SetupGuideDisplayProps {
   phase: SetupPhase;
@@ -27,11 +18,11 @@ interface SetupGuideDisplayProps {
   runtimeReady: boolean;
   toolchainChecked: boolean;
   modelsDeferred: boolean;
-  metaDone: boolean;
-  metaScanFailed: number;
   modelsCount: number;
-  scannedCount: number;
   catalogLoaded: boolean;
+  libraryLinked: boolean;
+  /** `mark_setup_completed` was rejected — FINISH stays available for a retry. */
+  finishError: string | null;
   onDeferModels: () => void;
   onDismiss: () => void;
 }
@@ -67,17 +58,24 @@ function ChecklistItem({ done, current, title, detail, optional, accent = "green
   );
 }
 
+/**
+ * First-run guide — two decisions, then finish.
+ *
+ * Deliberately short: where the models are, and the portable CUDA runtime. The
+ * metadata scan and library VRAM fit scan are background passes with their own
+ * header strip, so nothing here blocks on a GPU measurement. The driver row is
+ * informational — an old driver warns about EDGE but never gates FINISH.
+ */
 export default function SetupGuideDisplay({
   phase,
   pathsDone,
   runtimeReady,
   toolchainChecked,
   modelsDeferred,
-  metaDone,
-  metaScanFailed,
   modelsCount,
-  scannedCount,
   catalogLoaded,
+  libraryLinked,
+  finishError,
   onDeferModels,
   onDismiss,
 }: SetupGuideDisplayProps) {
@@ -91,76 +89,18 @@ export default function SetupGuideDisplay({
     browseModelLibrary,
     migrateFromLmStudio,
     clearActionError,
-    reportActionError,
   } = useSetupPathsActions();
 
-  const [fitStep, setFitStep] = useState<FitScanStep>("idle");
-  const [fitRunning, setFitRunning] = useState(false);
-  const [showFitScanMenu, setShowFitScanMenu] = useState(false);
-  const [driversConfirmed, setDriversConfirmed] = useState(false);
-  const [showDriversStep, setShowDriversStep] = useState(false);
   const [driverVersion, setDriverVersion] = useState<string | null>(null);
   const [driverLoading, setDriverLoading] = useState(false);
-  /** User hit STOP — don't let the in-flight invoke resolve reset the step to idle. */
-  const fitStopRequestedRef = useRef(false);
 
-  // SCAN META control lives in the action row under the wizard steps (like RUN VRAM FIT SCAN).
-  const [metaScanRunning, setMetaScanRunning] = useState(false);
-  const [showMetaMenu, setShowMetaMenu] = useState(false);
-
-  const runMetaScan = useCallback(async (concurrency: number) => {
-    setShowMetaMenu(false);
-    setMetaScanRunning(true);
-    clearActionError();
-    try {
-      await invoke("scan_all_models_cmd", {
-        modelBase: null,
-        providerId: null,
-        concurrency: concurrency || undefined,
-      });
-    } catch (err) {
-      const msg = typeof err === "string" ? err : "Metadata scan failed.";
-      reportActionError(msg);
-    } finally {
-      setMetaScanRunning(false);
-    }
-  }, [clearActionError, reportActionError]);
-
-  const cancelMetaScan = useCallback(() => {
-    void invoke("cancel_gguf_scan_cmd").catch(() => {});
-    setMetaScanRunning(false);
-    setShowMetaMenu(false);
-  }, []);
-
-  const fitDone = fitStep === "done" || fitStep === "skipped" || fitStep === "stopped";
-  const driversStepActive = showDriversStep || (metaDone && fitDone);
+  const toolchainStepDone = runtimeReady;
+  const toolchainStepCurrent = phase === "toolchain";
+  const finishStep = phase === "finish";
   const edgeDriverOk = isDriverSufficientForProfile(driverVersion, ENV_META.edge.cuda);
-  const driverNeedsAck = !edgeDriverOk;
-
-  const driverChecklistDetail = useMemo(() => {
-    // Until the wizard actually reaches the driver row, keep it a neutral placeholder.
-    // The verbose detect/confirm message only appears once we're checking that step.
-    if (!driversStepActive) return "Verify your NVIDIA drivers before using CUDA engines";
-    if (driverLoading) return "Checking NVIDIA driver via nvidia-smi…";
-    if (!driverVersion) return "Could not detect driver — confirm manually or install from NVIDIA";
-    if (edgeDriverOk) {
-      return `Driver ${driverVersion} — OK for EDGE (CUDA ${ENV_META.edge.cuda})`;
-    }
-    return `Driver ${driverVersion} — below minimum for EDGE (need ${getMinDriverMajorForCuda(ENV_META.edge.cuda)}+)`;
-  }, [driverLoading, driverVersion, edgeDriverOk, driversStepActive]);
 
   useEffect(() => {
-    if (!metaDone) {
-      setShowDriversStep(false);
-      setFitStep("idle");
-      setDriversConfirmed(false);
-      setDriverVersion(null);
-      setDriverLoading(false);
-    }
-  }, [metaDone]);
-
-  useEffect(() => {
-    if (!driversStepActive) return;
+    if (!finishStep) return;
     let mounted = true;
     setDriverLoading(true);
     void invoke<string | null>("get_nvidia_driver_version")
@@ -176,101 +116,19 @@ export default function SetupGuideDisplay({
     return () => {
       mounted = false;
     };
-  }, [driversStepActive]);
+  }, [finishStep]);
 
-  useEffect(() => {
+  const driverChecklistDetail = useMemo(() => {
+    if (!finishStep) return "Checked before launch — EDGE needs a current driver";
+    if (driverLoading) return "Checking NVIDIA driver via nvidia-smi…";
+    if (!driverVersion) return "Could not detect driver — confirm manually or install from NVIDIA";
     if (edgeDriverOk) {
-      setDriversConfirmed(true);
-    } else if (driverVersion != null) {
-      setDriversConfirmed(false);
+      return `Driver ${driverVersion} — OK for EDGE (CUDA ${ENV_META.edge.cuda})`;
     }
-  }, [edgeDriverOk, driverVersion]);
-
-  const skipFitScan = useCallback(() => {
-    fitStopRequestedRef.current = false;
-    setFitStep("skipped");
-    setShowDriversStep(true);
-  }, []);
-
-  const stopFitScan = useCallback(() => {
-    fitStopRequestedRef.current = true;
-    void invoke("fit_stop_scan").catch(() => {
-      // Cancel flag may already be set / scan already finishing.
-    });
-    setFitStep("stopped");
-    setShowDriversStep(true);
-  }, []);
-
-  const runFitScan = useCallback(async (parallel: FitScanParallel) => {
-    fitStopRequestedRef.current = false;
-    setShowFitScanMenu(false);
-    setFitRunning(true);
-    setFitStep("running");
-    clearActionError();
-
-    void invoke("emit_to_blackwell_console", {
-      category: "utils",
-      content: `[FIT-SCAN] Starting library VRAM fit scan (${DEFAULT_FIT_PROVIDER}, ${parallel}x parallel)…`,
-      style: "Normal",
-    });
-
-    try {
-      await invoke<FitScanComplete>("fit_scan_library", {
-        providerId: DEFAULT_FIT_PROVIDER,
-        modelBase: "",
-        parallelCount: parallel,
-        batch: 2048,
-        ubatch: 512,
-        forceRescan: false,
-      });
-
-      // STOP may have advanced the wizard already — don't clobber that.
-      if (fitStopRequestedRef.current) {
-        setFitStep("stopped");
-      } else {
-        setFitStep("done");
-      }
-      setShowDriversStep(true);
-    } catch (err) {
-      if (fitStopRequestedRef.current) {
-        setFitStep("stopped");
-        setShowDriversStep(true);
-      } else {
-        const msg = errorMessage(err) || "VRAM fit scan failed.";
-        reportActionError(msg);
-        setFitStep("idle");
-        void invoke("emit_to_blackwell_console", {
-          category: "error",
-          content: `[FIT-SCAN] ${msg}`,
-          style: "Error",
-        });
-      }
-    } finally {
-      setFitRunning(false);
-      fitStopRequestedRef.current = false;
-    }
-  }, [clearActionError, reportActionError]);
-
-  useTauriListen<FitScanProgress>("fit-scan-progress", (evt) => {
-    if (!evt?.model_path || evt.status === "error") return;
-    void invoke("emit_to_blackwell_console", {
-      category: "utils",
-      content: `[FIT-SCAN] ${evt.model_path} | ${evt.status} | ${evt.label || ""} | ${
-        evt.vram_mib != null ? `${evt.vram_mib} MiB` : ""
-      }`,
-      style: evt.status === "complete" ? "Success" : "Normal",
-    });
-  }, []);
-
-  const scanStepApplicable = modelsCount > 0 && !modelsDeferred;
-  // FIT row is only "current" once the wizard has actually reached the fit-scan phase.
-  // metaDone alone can be true early (e.g. no models yet), which would wrongly show the chevron
-  // on the first screen next to LINK YOUR MODEL LIBRARY.
-  const fitCurrent = phase === "fit-scan" && metaDone && !fitDone && !showDriversStep;
-  const toolchainStepDone = runtimeReady;
-  const toolchainStepCurrent = phase === "toolchain";
-  const canScanMeta = runtimeReady;
-  const metaStepActive = phase === "scan-meta" && !metaDone && canScanMeta;
+    return `Driver ${driverVersion} — below EDGE minimum (need ${getMinDriverMajorForCuda(
+      ENV_META.edge.cuda,
+    )}+); STABLE still works`;
+  }, [driverLoading, driverVersion, edgeDriverOk, finishStep]);
 
   const handleDeferModels = useCallback(() => {
     onDeferModels();
@@ -300,32 +158,14 @@ export default function SetupGuideDisplay({
           done={toolchainStepDone}
           current={toolchainStepCurrent}
           title="CUDA runtime"
-          detail="Portable toolkit — engines, metadata scan, and build-from-source"
+          detail="Portable toolkit — required to launch engines"
         />
-        {scanStepApplicable && (
-          <ChecklistItem
-            done={metaDone}
-            current={metaStepActive}
-            accent="cyan"
-            title="Scan your models"
-            detail={
-              metaScanFailed > 0
-                ? `Metadata for ${scannedCount}/${modelsCount} models (${metaScanFailed} failed)`
-                : `Metadata for ${scannedCount}/${modelsCount} models — powers the VRAM forecast`
-            }
-          />
-        )}
         <ChecklistItem
-          done={fitDone}
-          current={fitCurrent}
+          done={finishStep && edgeDriverOk}
+          current={finishStep && !edgeDriverOk}
+          accent="amber"
           optional
-          title="VRAM fit scan"
-          detail="Measured VRAM per model — runs in background, logs to Output Console"
-        />
-        <ChecklistItem
-          done={driversConfirmed}
-          current={driversStepActive && toolchainStepDone && !driversConfirmed}
-          title="NVIDIA driver check"
+          title="NVIDIA driver"
           detail={driverChecklistDetail}
         />
       </ul>
@@ -334,23 +174,19 @@ export default function SetupGuideDisplay({
         <p className="setup-guide__note setup-guide__note--error">{actionError}</p>
       )}
 
-      {needsBrowse && phase === "paths" && (
-        <p className="setup-guide__note setup-guide__note--muted">
-          Default LM Studio path missing or empty. Browse to the folder where your GGUF models live.
+      {/* Folder is linked, yet nothing selectable came out of it (draft-only,
+          partial shards, filtered files). Without this the step looks broken. */}
+      {phase === "paths" && catalogLoaded && modelsCount === 0 && libraryLinked && (
+        <p className="setup-guide__note setup-guide__note--amber">
+          Library folder linked, but no launchable GGUF model was found in it. Browse to the folder
+          that actually holds your models, or download one.
         </p>
       )}
 
       {phase === "toolchain" && !toolchainStepDone && (
         <p className="setup-guide__note setup-guide__note--amber">
           Portable CUDA runtime is required. Download it, or drop the archive in the cache folder and
-          install from cache. 
-        </p>
-      )}
-
-      {metaScanFailed > 0 && metaDone && (
-        <p className="setup-guide__note setup-guide__note--amber">
-          {metaScanFailed} model{metaScanFailed !== 1 ? "s" : ""} could not be parsed (corrupt or
-          unrecognized GGUF) — skipped. Fix or remove those files later in CATALOG.
+          install from cache.{" "}
         </p>
       )}
 
@@ -392,7 +228,10 @@ export default function SetupGuideDisplay({
             >
               OPEN PATHS
             </button>
-            {modelsCount === 0 && needsBrowse && (
+            {/* Always offered with an empty catalog — migration can fail for
+                reasons we cannot guess (custom LM Studio folder, empty folder),
+                and the user must never be unable to leave this step. */}
+            {modelsCount === 0 && (
               <button
                 type="button"
                 onClick={handleDeferModels}
@@ -419,129 +258,7 @@ export default function SetupGuideDisplay({
           </>
         )}
 
-        {phase === "scan-meta" && !metaDone && (
-          <>
-            {metaScanRunning ? (
-              <div className="setup-guide__fit-row">
-                <button
-                  type="button"
-                  disabled
-                  className="setup-guide__btn setup-guide__btn--cyan setup-guide__btn--running"
-                >
-                  SCANNING MODELS…
-                </button>
-                <button
-                  type="button"
-                  onClick={cancelMetaScan}
-                  className="setup-guide__btn setup-guide__btn--danger"
-                  title="Stop the metadata scan"
-                >
-                  STOP
-                </button>
-              </div>
-            ) : showMetaMenu ? (
-              <div className="setup-guide__fit-row">
-                {[4, 8].map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => void runMetaScan(c)}
-                    className="setup-guide__btn setup-guide__btn--primary"
-                    title={`Scan all models with ${c}x parallelism`}
-                  >
-                    {c}×
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setShowMetaMenu(false)}
-                  className="setup-guide__btn setup-guide__btn--neutral"
-                >
-                  CANCEL
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setShowMetaMenu(true)}
-                disabled={!canScanMeta}
-                className="setup-guide__btn setup-guide__btn--cyan"
-                title={
-                  canScanMeta
-                    ? "Scan all models for metadata"
-                    : "Install the portable toolchain before scanning"
-                }
-              >
-                SCAN META ▾
-              </button>
-            )}
-          </>
-        )}
-
-        {phase === "fit-scan" && !fitDone && !showDriversStep && (
-          <>
-            {fitRunning ? (
-              <div className="setup-guide__fit-row">
-                <button
-                  type="button"
-                  disabled
-                  className="setup-guide__btn setup-guide__btn--green setup-guide__btn--running"
-                >
-                  FIT SCAN RUNNING…
-                </button>
-                <button
-                  type="button"
-                  onClick={stopFitScan}
-                  className="setup-guide__btn setup-guide__btn--danger"
-                  title="Stop the running VRAM fit scan"
-                >
-                  STOP
-                </button>
-              </div>
-            ) : showFitScanMenu ? (
-              <div className="setup-guide__fit-row">
-                {FIT_SCAN_PARALLEL_OPTIONS.map((parallel) => (
-                  <button
-                    key={parallel}
-                    type="button"
-                    onClick={() => void runFitScan(parallel)}
-                    className="setup-guide__btn setup-guide__btn--primary"
-                    title={`VRAM fit scan with ${parallel}x parallelism`}
-                  >
-                    SPEED {parallel}×
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setShowFitScanMenu(false)}
-                  className="setup-guide__btn setup-guide__btn--neutral"
-                >
-                  CANCEL
-                </button>
-              </div>
-            ) : (
-              <div className="setup-guide__fit-row">
-                <button
-                  type="button"
-                  onClick={() => setShowFitScanMenu(true)}
-                  className="setup-guide__btn setup-guide__btn--primary"
-                >
-                  RUN VRAM FIT SCAN ▾
-                </button>
-                <button
-                  type="button"
-                  onClick={skipFitScan}
-                  disabled={fitRunning}
-                  className="setup-guide__btn setup-guide__btn--neutral"
-                >
-                  SKIP
-                </button>
-              </div>
-            )}
-          </>
-        )}
-
-        {driversStepActive && (!scanStepApplicable || toolchainStepDone) && (
+        {finishStep && (
           <div className="setup-driver-check">
             {driverLoading ? (
               <p className="setup-guide__note setup-guide__note--muted">
@@ -581,8 +298,12 @@ export default function SetupGuideDisplay({
                     );
                   })}
                 </ul>
-                {driverNeedsAck && (
+                {!edgeDriverOk && (
                   <>
+                    <p className="setup-guide__note setup-guide__note--amber">
+                      Update NVIDIA drivers before launching EDGE engines — STABLE works below this
+                      minimum. You can finish setup now.
+                    </p>
                     <button
                       type="button"
                       onClick={() => void open(NVIDIA_DRIVERS_URL)}
@@ -590,15 +311,6 @@ export default function SetupGuideDisplay({
                     >
                       Download drivers at nvidia.com
                     </button>
-                    <label className="setup-driver-check__ack">
-                      <input
-                        type="checkbox"
-                        checked={driversConfirmed}
-                        onChange={(e) => setDriversConfirmed(e.target.checked)}
-                        className="setup-checklist__checkbox"
-                      />
-                      I will update NVIDIA drivers before using CUDA engines
-                    </label>
                   </>
                 )}
               </>
@@ -606,17 +318,19 @@ export default function SetupGuideDisplay({
           </div>
         )}
 
-        {driversStepActive && (
+        {finishStep && finishError && (
+          <p className="setup-guide__note setup-guide__note--error">{finishError}</p>
+        )}
+
+        {finishStep && (
           <button
             type="button"
             onClick={onDismiss}
-            disabled={!driversConfirmed || !runtimeReady}
+            disabled={!runtimeReady}
             title={
               !runtimeReady
                 ? "Install the portable toolchain before finishing setup"
-                : !driversConfirmed
-                  ? "Confirm NVIDIA drivers first"
-                  : "Complete first-run setup"
+                : "Complete first-run setup"
             }
             className="setup-guide__btn setup-guide__btn--primary setup-guide__btn--finish"
           >

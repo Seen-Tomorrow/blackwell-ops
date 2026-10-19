@@ -3,12 +3,10 @@ import { invoke } from "@tauri-apps/api/core";
 import type { DownloadStatus } from "../lib/types";
 import { dispatchAppEvent, EVENTS } from "../lib/events";
 import {
-  computeMetaDone,
   computePathsDone,
   computeSetupPhase,
   computeToolchainBusy,
   computeToolchainDone,
-  type MetaScanSummary,
   type SetupPhase,
 } from "../lib/setupGuide";
 import {
@@ -16,9 +14,7 @@ import {
   clearToolchainOnboardingSkipped,
   isSetupModelsDeferred,
   isSetupWelcomeSeen,
-  loadSetupMetaScanSummary,
   saveSetupGuideDismissed,
-  saveSetupMetaScanSummary,
   saveSetupModelsDeferred,
   saveSetupWelcomeSeen,
   isSetupGuideDismissed,
@@ -26,11 +22,13 @@ import {
 import { useDownloadTasks } from "./useDownloadTasks";
 import { isSetupGuidePreviewMode, useSetupGuideActivation } from "./useSetupGuideActivation";
 import { useTauriListen } from "./useTauriListen";
-
-;
+import { errorMessage } from "../lib/blackwellError";
 
 export interface SetupGuideState {
   active: boolean;
+  /** Both probes (`is_setup_completed`, `model_library_configured`) have answered.
+   *  Until then `active` is false for a *pending* reason, not a finished setup. */
+  resolved: boolean;
   phase: SetupPhase;
   pathsDone: boolean;
   runtimeReady: boolean;
@@ -39,9 +37,11 @@ export interface SetupGuideState {
   /** Download or 7z extract in flight. */
   toolchainBusy: boolean;
   modelsDeferred: boolean;
-  metaDone: boolean;
-  /** Models that failed GGUF metadata scan in the last completed batch. */
-  metaScanFailed: number;
+  /** A configured library path holds GGUF files on disk — the catalog can still
+   *  be empty when none of them is usable (draft-only, partial shards). */
+  libraryLinked: boolean;
+  /** FINISH failed to persist `setup_completed` — the wizard stays open, say why. */
+  dismissError: string | null;
   showWelcome: boolean;
   welcomeDone: boolean;
   completeWelcome: () => void;
@@ -52,34 +52,31 @@ export interface SetupGuideState {
   catalogLoaded: boolean;
 }
 
-interface BatchScanSnapshot {
-  active: boolean;
-  scanned: number;
-  failed: number;
-  total: number;
-}
-
 interface UseSetupGuideOptions {
   models: { metadata?: unknown }[];
   /** True after the first `list_models` fetch completes (avoids paths-step flash on replay). */
   catalogLoaded?: boolean;
-  batchScanState?: BatchScanSnapshot;
 }
 
-export function useSetupGuide({ models, catalogLoaded = false, batchScanState }: UseSetupGuideOptions) {
+/**
+ * First-run wizard state.
+ *
+ * The wizard now ends at **library + runtime**. Metadata scanning and the VRAM
+ * fit scan are background passes (`useLibrarySchedule`) reported in the page
+ * header — a first-run user should never wait on minutes of GPU fitting to reach
+ * the cockpit. The NVIDIA driver result is shown on the finish step as a warning,
+ * not as a gate.
+ */
+export function useSetupGuide({ models, catalogLoaded = false }: UseSetupGuideOptions) {
   const preview = isSetupGuidePreviewMode();
   const [dismissed, setDismissed] = useState(() => isSetupGuideDismissed());
   const [welcomeDone, setWelcomeDone] = useState(() => isSetupWelcomeSeen());
   const [modelsDeferred, setModelsDeferred] = useState(() => isSetupModelsDeferred());
   const [runtimeReady, setRuntimeReady] = useState(false);
   const [toolchainChecked, setToolchainChecked] = useState(false);
+  const [dismissError, setDismissError] = useState<string | null>(null);
   const [pathsConfigured, setPathsConfigured] = useState(false);
   const [pathsReady, setPathsReady] = useState(false);
-  const [metaScanSummary, setMetaScanSummary] = useState<MetaScanSummary | null>(
-    () => loadSetupMetaScanSummary(),
-  );
-  const prevModelsCountRef = useRef(0);
-  const prevToolchainTaskStatusRef = useRef<Record<string, DownloadStatus>>({});
   const toolchainTasks = useDownloadTasks("toolchain");
 
   const refreshPaths = useCallback(async () => {
@@ -128,6 +125,7 @@ export function useSetupGuide({ models, catalogLoaded = false, batchScanState }:
 
   useTauriListen("download-event", refreshToolchain, [refreshToolchain]);
 
+  const prevToolchainTaskStatusRef = useRef<Record<string, DownloadStatus>>({});
   useEffect(() => {
     for (const t of toolchainTasks) {
       const prev = prevToolchainTaskStatusRef.current[t.id];
@@ -145,35 +143,12 @@ export function useSetupGuide({ models, catalogLoaded = false, batchScanState }:
   );
   const modelsCount = models.length;
 
-  const pathsDone = computePathsDone({
-    pathsConfigured,
-    modelsDeferred,
-    catalogLoaded,
-    modelsCount,
-  });
+  const pathsDone = computePathsDone({ modelsDeferred, modelsCount });
   const toolchainDone = computeToolchainDone(runtimeReady);
-  const metaScanFailed = metaScanSummary?.failed ?? 0;
-  const metaDone = useMemo(
-    () =>
-      computeMetaDone({
-        modelsDeferred,
-        modelsCount,
-        scannedCount,
-        metaScanSummary,
-      }),
-    [modelsDeferred, modelsCount, scannedCount, metaScanSummary],
-  );
 
   const phase = useMemo(
-    () =>
-      computeSetupPhase({
-        pathsDone,
-        toolchainDone,
-        modelsCount,
-        modelsDeferred,
-        metaDone,
-      }),
-    [pathsDone, toolchainDone, modelsCount, modelsDeferred, metaDone],
+    () => computeSetupPhase({ pathsDone, toolchainDone }),
+    [pathsDone, toolchainDone],
   );
 
   const toolchainBusy = useMemo(
@@ -181,13 +156,13 @@ export function useSetupGuide({ models, catalogLoaded = false, batchScanState }:
     [toolchainTasks, runtimeReady],
   );
 
-  const { active, diskSetupCompleted, setDiskSetupCompleted } = useSetupGuideActivation({
+  const { active, diskSetupCompleted, setDiskSetupCompleted, resolved } =
+    useSetupGuideActivation({
     preview,
     pathsReady,
     pathsConfigured,
     modelsCount,
     scannedCount,
-    metaDone,
     modelsDeferred,
     dismissed,
     welcomeDone,
@@ -203,50 +178,11 @@ export function useSetupGuide({ models, catalogLoaded = false, batchScanState }:
     void refreshToolchain();
   }, [active, refreshToolchain]);
 
-  const clearMetaScanSummary = useCallback(() => {
-    setMetaScanSummary(null);
-    saveSetupMetaScanSummary(null);
-  }, []);
-
-  useTauriListen<{ total?: number }>("gguf-scan-start", clearMetaScanSummary, [clearMetaScanSummary]);
-
-  useTauriListen<{ scanned: number; failed: number; total?: number }>(
-    "gguf-scan-complete",
-    (payload) => {
-      const total = payload.total ?? payload.scanned + payload.failed;
-      const summary = { scanned: payload.scanned, failed: payload.failed, total };
-      setMetaScanSummary(summary);
-      saveSetupMetaScanSummary(summary);
-    },
-    [],
-  );
-
-  useEffect(() => {
-    if (modelsCount > prevModelsCountRef.current) {
-      clearMetaScanSummary();
-    }
-    prevModelsCountRef.current = modelsCount;
-  }, [modelsCount, clearMetaScanSummary]);
-
   useEffect(() => {
     if (!modelsDeferred || modelsCount === 0) return;
     setModelsDeferred(false);
     clearSetupModelsDeferred();
   }, [modelsDeferred, modelsCount]);
-
-  useEffect(() => {
-    if (metaScanSummary || !batchScanState || batchScanState.active) return;
-    const processed = batchScanState.scanned + batchScanState.failed;
-    const total = batchScanState.total || processed;
-    if (processed <= 0 || total <= 0 || processed < total) return;
-    const summary = {
-      scanned: batchScanState.scanned,
-      failed: batchScanState.failed,
-      total,
-    };
-    setMetaScanSummary(summary);
-    saveSetupMetaScanSummary(summary);
-  }, [batchScanState, metaScanSummary]);
 
   const completeWelcome = useCallback(() => {
     if (!preview) saveSetupWelcomeSeen();
@@ -262,10 +198,18 @@ export function useSetupGuide({ models, catalogLoaded = false, batchScanState }:
     // Hard gate: never complete setup without portable CUDA runtime.
     if (!runtimeReady) return;
     if (!preview) {
+      setDismissError(null);
       saveSetupGuideDismissed();
-      saveSetupMetaScanSummary(null);
       clearToolchainOnboardingSkipped();
-      void invoke("mark_setup_completed").then(() => setDiskSetupCompleted(true));
+      // `active` is driven by the disk flag, so a rejected write must not look
+      // like a dead button — surface it and let the retry stay available.
+      void invoke("mark_setup_completed")
+        .then(() => setDiskSetupCompleted(true))
+        .catch((err) => {
+          setDismissError(
+            errorMessage(err) || "Could not save setup completion to disk — try again.",
+          );
+        });
     }
     setDismissed(true);
   }, [preview, setDiskSetupCompleted, runtimeReady]);
@@ -284,14 +228,15 @@ export function useSetupGuide({ models, catalogLoaded = false, batchScanState }:
 
   return {
     active,
+    resolved,
     phase,
     pathsDone,
     runtimeReady,
     toolchainChecked,
     toolchainBusy,
     modelsDeferred,
-    metaDone,
-    metaScanFailed,
+    libraryLinked: pathsConfigured,
+    dismissError,
     showWelcome,
     welcomeDone,
     completeWelcome,

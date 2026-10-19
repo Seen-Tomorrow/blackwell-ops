@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Tab } from "../App";
 import type { ProviderConfig, UpdateOfferings } from "../lib/types";
 import type { ConfigSubTab, ExtrasSubTab } from "../lib/appNav";
+import type { SetupPhase } from "../lib/setupGuide";
 import HeaderNav from "./HeaderNav";
 import { useStatus } from "../context/StatusBarContext";
 import { useFoundry, type Env } from "../hooks/useBuildDock";
@@ -68,6 +69,8 @@ interface LayoutProps {
   hasBinaryUpdates?: boolean;
   /** First-run wizard active — lock ENGINES / LOGS / EXTRAS. */
   setupGuideActive?: boolean;
+  /** Wizard phase — decides which nav destination is the next step. */
+  setupGuidePhase?: SetupPhase;
   /** CONFIG section — header sub-rail. */
   configSubTab: ConfigSubTab;
   onConfigSubTabChange: (tab: ConfigSubTab) => void;
@@ -85,6 +88,7 @@ export default function Layout({
   onRefreshUpdateOfferings,
   hasBinaryUpdates,
   setupGuideActive = false,
+  setupGuidePhase,
   configSubTab,
   onConfigSubTabChange,
   extrasSubTab,
@@ -443,6 +447,7 @@ export default function Layout({
               extrasSubTab={extrasSubTab}
               onExtrasSubTabChange={onExtrasSubTabChange}
               setupGuideActive={setupGuideActive}
+              setupGuidePhase={setupGuidePhase}
               chromeScale={chromeScale}
               zoom={zoom}
               shellWidthPx={shellWidthPx}

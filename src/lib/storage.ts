@@ -230,8 +230,9 @@ export const KEYS = {
   setupGuidePreview: `${STORAGE_PREFIX}setup-guide-preview`,
   /** Legacy: toolchain skip removed — key only cleared on reset / successful install. */
   toolchainOnboardingSkipped: `${STORAGE_PREFIX}toolchain-onboarding-skipped`,
-  /** Last completed GGUF batch scan during setup (scanned/failed/total). */
-  setupMetaScanSummary: `${STORAGE_PREFIX}setup-meta-scan-summary`,
+  /** Background library backfill — fingerprint of the library each job last covered,
+   *  plus the “NOT NOW” snooze for the VRAM fit scan. */
+  libraryBackfill: `${STORAGE_PREFIX}library-backfill`,
   /** Onboarding: user chose to download models later (skip library link + metadata scan). */
   setupModelsDeferred: `${STORAGE_PREFIX}setup-models-deferred`,
   benchControls: `${STORAGE_PREFIX}bench-controls`,
@@ -350,41 +351,29 @@ export function clearSetupModelsDeferred(): void {
   removeStorage(KEYS.setupModelsDeferred);
 }
 
-export interface SetupMetaScanSummary {
-  scanned: number;
-  failed: number;
-  total: number;
+/** The only maintenance preference that survives a restart. */
+export interface LibraryBackfillPersisted {
+  /** Epoch ms before which the VRAM fit pass must not auto-start (“NOT NOW”). */
+  fitSnoozeUntil?: number;
 }
 
-export function loadSetupMetaScanSummary(): SetupMetaScanSummary | null {
-  const raw = readStorage(KEYS.setupMetaScanSummary);
-  if (!raw) return null;
+export function loadLibraryBackfill(): LibraryBackfillPersisted {
+  const raw = readStorage(KEYS.libraryBackfill);
+  if (!raw) return {};
   try {
-    const parsed = JSON.parse(raw) as Partial<SetupMetaScanSummary>;
-    if (
-      parsed &&
-      typeof parsed.scanned === "number" &&
-      typeof parsed.failed === "number" &&
-      typeof parsed.total === "number"
-    ) {
-      return {
-        scanned: parsed.scanned,
-        failed: parsed.failed,
-        total: parsed.total,
-      };
-    }
+    const parsed = JSON.parse(raw) as LibraryBackfillPersisted;
+    if (!parsed || typeof parsed !== "object") return {};
+    return {
+      fitSnoozeUntil:
+        typeof parsed.fitSnoozeUntil === "number" ? parsed.fitSnoozeUntil : undefined,
+    };
   } catch {
-    /* ignore */
+    return {};
   }
-  return null;
 }
 
-export function saveSetupMetaScanSummary(summary: SetupMetaScanSummary | null): void {
-  if (!summary) {
-    removeStorage(KEYS.setupMetaScanSummary);
-    return;
-  }
-  writeStorage(KEYS.setupMetaScanSummary, JSON.stringify(summary));
+export function saveLibraryBackfill(next: LibraryBackfillPersisted): void {
+  writeStorage(KEYS.libraryBackfill, JSON.stringify(next));
 }
 
 export function isSetupWelcomeSeen(): boolean {
@@ -426,7 +415,9 @@ export function resetSetupGuideState(): void {
   removeStorage(KEYS.setupGuideDismissed);
   removeStorage(KEYS.setupWelcomeSeen);
   removeStorage(KEYS.setupGuidePreview);
-  removeStorage(KEYS.setupMetaScanSummary);
+  // A setup replay wipes config/cache — the “library covered” fingerprints go
+  // with it, or the first-run scans would be suppressed against an empty cache.
+  removeStorage(KEYS.libraryBackfill);
   removeStorage(KEYS.setupModelsDeferred);
   clearToolchainOnboardingSkipped();
 }

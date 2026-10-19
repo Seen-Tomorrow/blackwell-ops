@@ -2,20 +2,16 @@ import React, { useState, useCallback, useEffect, useRef, Fragment, useSyncExter
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useTauriListen } from "../hooks/useTauriListen";
-import type { ProviderConfig, UserEditedTemplateParam, FitScanComplete, BinaryUpdateInfo } from "../lib/types";
+import type { ProviderConfig, UserEditedTemplateParam, BinaryUpdateInfo } from "../lib/types";
 import {
-  beginFitScanSession,
-  bootstrapFitScanCache,
-  completeFitScanSession,
-  failFitScanSession,
   getFitScanRevision,
   getFitScanSessions,
   hideFitScanPanel,
   showFitScanPanel,
   setFitScanActiveProvider,
-  stopFitScanLocal,
   subscribeFitScanSessions,
 } from "../lib/fitScanSessionStore";
+import { startFitScan, stopFitScan } from "../lib/libraryJobs";
 import {
   FIT_SCAN_TABLE_COLUMNS,
   fitScanModelDisplayName,
@@ -34,7 +30,6 @@ import { dispatchAppEvent, EVENTS } from "../lib/events";
 import { loadFoundryLastRefresh, loadStartupUpdatesCache, saveFoundryLastRefresh } from "../lib/storage";
 import { isPlaceholderBuildVersion, refreshProvidersBuildInfo } from "../lib/foundryBuildRefresh";
 import { isDevBuild } from "../lib/build";
-import { errorMessage } from "../lib/blackwellError";
 
 import { BuildProfileRow, RestoreConfirmModal, UpdateStatus, type BinarySourceKind } from "./FoundryComponents";
 import FoundryToolchainPanel from "./FoundryToolchainPanel";
@@ -50,6 +45,9 @@ function formatElapsed(startTime: number): string {
   const s = secs % 60;
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
+
+/** How long a finished fit-scan table stays up before it folds away. */
+const FIT_PANEL_AUTOHIDE_MS = 12_000;
 
 interface ProvidersConfigProps {
   providers: ProviderConfig[];
@@ -106,8 +104,54 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
   const [customNotice, setCustomNotice] = useState<null | "select" | "register">(null);
   const customTemplateAckRef = useRef(false);
 
-  useSyncExternalStore(subscribeFitScanSessions, getFitScanRevision, getFitScanRevision);
+  const fitScanRevision = useSyncExternalStore(
+    subscribeFitScanSessions,
+    getFitScanRevision,
+    getFitScanRevision,
+  );
   const scanStates = getFitScanSessions();
+
+  // Fit results auto-dismiss: leave the finished table up long enough to read,
+  // then fold it away. Background passes (first-run backfill, header strip) open
+  // this panel too, so a panel that never closes would sit there forever.
+  //
+  // Timers live in a ref and are keyed per provider: the provider page re-renders
+  // on every progress notification (~10/s), and a cleanup that cleared the timer
+  // each time would cancel the very hide it just scheduled.
+  const autoHideTimersRef = useRef<Record<string, number>>({});
+  const autoHiddenRef = useRef<Record<string, number>>({});
+  useEffect(
+    () => () => {
+      for (const t of Object.values(autoHideTimersRef.current)) window.clearTimeout(t);
+      autoHideTimersRef.current = {};
+    },
+    [],
+  );
+  useEffect(() => {
+    for (const [pid, ps] of Object.entries(scanStates)) {
+      // A new run for this provider supersedes any pending dismissal.
+      if (ps.status === "scanning") {
+        const pending = autoHideTimersRef.current[pid];
+        if (pending != null) {
+          window.clearTimeout(pending);
+          delete autoHideTimersRef.current[pid];
+        }
+        continue;
+      }
+      if (ps.status !== "complete" && ps.status !== "error") continue;
+      if (ps.panelHidden) continue;
+      // Only background passes fold themselves away — a manual RESCAN/SCAN is
+      // the user asking for the table, so it stays until DISMISS.
+      if (ps.manual) continue;
+      const runKey = ps.scanStartTime ?? 0;
+      if (autoHiddenRef.current[pid] === runKey) continue;
+      autoHiddenRef.current[pid] = runKey;
+      autoHideTimersRef.current[pid] = window.setTimeout(() => {
+        delete autoHideTimersRef.current[pid];
+        hideFitScanPanel(pid);
+      }, FIT_PANEL_AUTOHIDE_MS);
+    }
+  }, [fitScanRevision, scanStates]);
 
   // Ref to always have the latest parallel setting available during async operations
   const parallelRef = useRef<Record<string, number>>({});
@@ -451,36 +495,13 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
 
   const handleScanLibrary = useCallback(async (providerId: string, forceRescan = false) => {
     const currentParallel = parallelRef.current[providerId] ?? FIT_SCAN_PARALLEL_OPTIONS[0];
-    const cached = forceRescan ? null : await bootstrapFitScanCache(providerId);
-    beginFitScanSession(providerId, currentParallel, cached, forceRescan);
-
-    try {
-      const result = await invoke<FitScanComplete>("fit_scan_library", {
-        providerId,
-        modelBase: "",
-        parallelCount: Math.max(currentParallel, 1),
-        batch: 2048,
-        ubatch: 512,
-        forceRescan,
-      });
-
-      completeFitScanSession(providerId, result);
-      dispatchAppEvent(EVENTS.fitScanCacheChanged);
-    } catch (err) {
-      console.error(`Scan library failed for ${providerId}:`, err);
-      failFitScanSession(
-        providerId,
-        errorMessage(err) || JSON.stringify(err),
-        currentParallel,
-      );
-    }
+    // Same runner as the first-run backfill and the header strip — one behaviour.
+    // `manual` marks the run so its result table is not auto-dismissed.
+    await startFitScan(providerId, currentParallel, forceRescan, { manual: true });
   }, []);
 
   const handleStopScan = useCallback(async (providerId: string) => {
-    try {
-      await invoke("fit_stop_scan");
-    } catch {}
-    stopFitScanLocal(providerId);
+    await stopFitScan(providerId);
   }, []);
 
   const handleHideScan = useCallback((providerId: string) => {
@@ -804,7 +825,14 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
               const donePts = fitScanDonePointCount(full);
               const isComplete = isSkipped || donePts >= pointsTotal;
               const isActive = state.status === "scanning" && state.activeModelPath === path;
-              const rowTitle = full.skip_reason ?? path;
+              // The row is the only place a probe failure can be read without the
+              // log: the ✖ cells say “failed”, the tooltip says why (llama's
+              // stderr tail, e.g. “failed to load model”, “ctx_other”).
+              const rowTitle = full.error
+                ? `${path}\n\n${full.error}`
+                : full.skip_reason
+                  ? `${path}\n\nskipped: ${full.skip_reason}`
+                  : path;
 
               return (
                 <div
@@ -846,10 +874,12 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                     const colTitle =
                       cell === "noΔ"
                         ? "fit-print tensor Meta ≈ none — no multi-GPU tax from FIT; forecast uses LEARNED or +2G fallback"
-                        : pointSkip
-                          ?? ("title" in col && col.title ? col.title : undefined)
-                          ?? full.skip_reason
-                          ?? col.label;
+                        : failed && full.error
+                          ? full.error
+                          : pointSkip
+                            ?? ("title" in col && col.title ? col.title : undefined)
+                            ?? full.skip_reason
+                            ?? col.label;
                     return (
                       <span
                         key={col.label}

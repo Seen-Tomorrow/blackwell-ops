@@ -14,7 +14,6 @@ interface UseSetupGuideActivationOptions {
   pathsConfigured: boolean;
   modelsCount: number;
   scannedCount: number;
-  metaDone: boolean;
   modelsDeferred: boolean;
   dismissed: boolean;
   welcomeDone: boolean;
@@ -33,7 +32,6 @@ export function useSetupGuideActivation({
   pathsConfigured,
   modelsCount,
   scannedCount,
-  metaDone,
   modelsDeferred,
   dismissed,
   welcomeDone,
@@ -72,7 +70,7 @@ export function useSetupGuideActivation({
     catalogBaselineReady
     && catalogHadMetadataAtBaseline
     && catalogReady
-    && (scannedCount > 0 || metaDone);
+    && scannedCount > 0;
   const bareCatalog = pathsReady && !pathsConfigured && modelsCount === 0;
   const staleLsAfterConfigWipe =
     bareCatalog && hadDismissedOnMount.current && !diskSetupCompleted;
@@ -134,7 +132,14 @@ export function useSetupGuideActivation({
     setWelcomeDone,
   ]);
 
-  return { active, setupSatisfied, diskSetupCompleted, setDiskSetupCompleted };
+  return {
+    active,
+    setupSatisfied,
+    diskSetupCompleted,
+    setDiskSetupCompleted,
+    /** Both probes answered — `active === false` now means “setup is done”. */
+    resolved: pathsReady && diskSetupReady,
+  };
 }
 
 export function isSetupGuidePreviewMode(): boolean {

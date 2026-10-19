@@ -38,6 +38,24 @@ body[data-onboarding-phase="paths"] [data-onboarding="add-folder"] {
   animation: onboarding-pulse 1.8s ease-in-out infinite;
 }
 
+/* The way back: leaving OPS for DOWNLOADS / CONFIG with setup unfinished keeps
+   OPERATIONS accented + pulsing, so the guide always has a visible home. */
+@keyframes onboarding-return {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--theme-accent) 0%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--theme-accent) 40%, transparent);
+  }
+}
+
+/* (0,2,0) — out-specifies the segment option's own colour rule without `!important`. */
+.segment-switch__option[data-setup-return] {
+  color: var(--theme-accent);
+  animation: onboarding-return 1.8s ease-in-out infinite;
+}
+
 .foundry-toolchain-btn--cache-ready {
   animation: onboarding-pulse 1.8s ease-in-out infinite;
 }

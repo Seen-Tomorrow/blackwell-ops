@@ -13,6 +13,70 @@
   color: color-mix(in srgb, var(--theme-text-muted) 40%, transparent);
 }
 
+/* Empty library — the three actions that can actually produce a model.
+   Same accent vocabulary as the setup-guide buttons, but scoped here: the
+   `--setup-*` density vars only exist under `.setup-guide`. */
+.eng-empty__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.eng-empty__btn {
+  padding: 5px 12px;
+  font-family: inherit;
+  font-size: var(--type-tiny);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--theme-text-muted);
+  border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.eng-empty__btn:hover:not(:disabled) {
+  color: var(--theme-text);
+  border-color: var(--theme-border);
+}
+
+.eng-empty__btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.eng-empty__btn--cyan {
+  color: var(--theme-tel-cyan);
+  border-color: color-mix(in srgb, var(--theme-tel-cyan) 45%, transparent);
+}
+
+.eng-empty__btn--cyan:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--theme-tel-cyan) 10%, transparent);
+  border-color: color-mix(in srgb, var(--theme-tel-cyan) 70%, transparent);
+}
+
+.eng-empty__btn--primary {
+  color: var(--theme-chip-solid-text);
+  border-color: var(--theme-chip-solid-bg);
+  background: var(--theme-chip-solid-bg);
+  font-weight: 700;
+}
+
+.eng-empty__btn--primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--theme-chip-solid-bg) 88%, var(--fixed-white));
+}
+
+.eng-empty__error {
+  margin: 0;
+  font-size: var(--type-micro);
+  line-height: 1.5;
+  color: var(--theme-tel-hot);
+}
+
 /* Custom flags input — amber-tinted border + placeholder */
 .eng-flags-input {
   border-color: color-mix(in srgb, var(--theme-warn) 30%, transparent);

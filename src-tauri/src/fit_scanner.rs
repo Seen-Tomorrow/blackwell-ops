@@ -2390,6 +2390,22 @@ pub async fn fit_scan_single_model(
     Ok(result)
 }
 
+/// One library fit scan at a time.
+///
+/// Two concurrent runs share the GPU, replace each other's `fit_scan_cancel`
+/// handle (the second start overwrites the slot, so the first becomes
+/// un-stoppable) and interleave progress events — from the UI it looks like a
+/// scan that silently stalls for minutes.
+static FIT_SCAN_RUNNING: AtomicBool = AtomicBool::new(false);
+
+struct FitScanRunningGuard;
+
+impl Drop for FitScanRunningGuard {
+    fn drop(&mut self) {
+        FIT_SCAN_RUNNING.store(false, Ordering::SeqCst);
+    }
+}
+
 #[tauri::command]
 pub async fn fit_scan_library(
     provider_id: String,
@@ -2400,6 +2416,16 @@ pub async fn fit_scan_library(
     force_rescan: Option<bool>,
     app: tauri::State<'_, AppContext>,
 ) -> Result<FitScanComplete, BlackwellError> {
+    if FIT_SCAN_RUNNING
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return Err(BlackwellError::EngineStateBusy {
+            message: "A library VRAM fit scan is already running.".into(),
+        });
+    }
+    let _fit_scan_guard = FitScanRunningGuard;
+
     let cfg = {
         let guard = app
             .config

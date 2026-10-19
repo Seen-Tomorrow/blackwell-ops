@@ -15,6 +15,11 @@ interface ProviderFitScanState {
   error?: string;
   scanStartTime?: number;
   panelHidden?: boolean;
+  /** True when a user pressed SCAN/RESCAN — such a run keeps its results open. */
+  manual?: boolean;
+  /** Models finished **in this run** (the strip's numerator; the results map also
+   *  holds entries carried over from the cache). */
+  runCompleted?: number;
   /** Model currently scanning (live row highlight) */
   activeLabel?: string;
   activeModelPath?: string;
@@ -27,6 +32,8 @@ let revision = 0;
 let activeProviderId: string | null = null;
 const subscribers = new Set<() => void>();
 let listenersReady = false;
+/** Models finished per provider **in the current run** — in-memory only. */
+const runDone = new Map<string, Set<string>>();
 
 function loadPersistedSessions(): SessionMap {
   try {
@@ -35,8 +42,17 @@ function loadPersistedSessions(): SessionMap {
     const parsed = JSON.parse(raw) as SessionMap;
     if (!parsed || typeof parsed !== "object") return {};
     for (const state of Object.values(parsed)) {
+      // A scan cannot survive a page reload — the command future dies with the
+      // webview and so does the progress listener. A persisted "scanning" was
+      // kept before, which then satisfied the single-flight check forever: every
+      // new scan answered "busy" and a phantom progress panel never closed.
       if (state.status === "scanning") {
-        state.status = "scanning";
+        state.status = "idle";
+        state.totalModels = 0;
+        state.completed = 0;
+        state.failed = 0;
+        state.activeModelPath = undefined;
+        state.activeLabel = undefined;
       }
     }
     return parsed;
@@ -49,10 +65,47 @@ function persistSessions() {
   writeStorage(KEYS.fitScanSessions, JSON.stringify(sessions));
 }
 
+/**
+ * Progress arrives per plan point (~10 per model, plus scanning events), so a
+ * 73-model run emits >1000 updates. Serialising the whole results map and
+ * notifying every subscriber per event re-rendered the provider page and the
+ * catalog thousands of times — enough to stall the window during a cancel.
+ * Coalesce both: subscribers see ~10 fps, the localStorage write is debounced.
+ */
+let notifyScheduled = false;
+let persistTimer: number | null = null;
+
+const hasWindow = typeof window !== "undefined";
+
+function scheduleNotify() {
+  if (!hasWindow) {
+    subscribers.forEach((cb) => cb());
+    return;
+  }
+  if (notifyScheduled) return;
+  notifyScheduled = true;
+  window.setTimeout(() => {
+    notifyScheduled = false;
+    subscribers.forEach((cb) => cb());
+  }, 100);
+}
+
+function schedulePersist() {
+  if (!hasWindow) {
+    persistSessions();
+    return;
+  }
+  if (persistTimer !== null) return;
+  persistTimer = window.setTimeout(() => {
+    persistTimer = null;
+    persistSessions();
+  }, 1500);
+}
+
 function bump() {
   revision += 1;
-  persistSessions();
-  subscribers.forEach((cb) => cb());
+  schedulePersist();
+  scheduleNotify();
 }
 
 function ensureListeners() {
@@ -107,7 +160,10 @@ function applyFitScanProgress(evt: FitScanProgress) {
     if (!ps || ps.status !== "scanning") return;
     sessions[pid] = {
       ...ps,
-      totalModels: evt.total_models ?? ps.totalModels,
+      // The queue total is seeded from the catalog before the run starts; the
+      // backend's `library_meta` used to overwrite it per path, which made the
+      // progress read 1/5 → 1/9 → 1/32 while the scan was already underway.
+      totalModels: ps.totalModels > 0 ? ps.totalModels : (evt.total_models ?? 0),
       results: ps.results
         ? {
             ...ps.results,
@@ -135,10 +191,13 @@ function applyFitScanProgress(evt: FitScanProgress) {
 
   const existingResults = ps.results?.results ?? {};
   const prevEntry = existingResults[evt.model_path];
+  runDone.get(pid)?.add(evt.model_path);
+  const runCompleted = runDone.get(pid)?.size ?? 0;
 
   if (evt.status === "scanning") {
     sessions[pid] = {
       ...ps,
+      runCompleted,
       activeModelPath: evt.model_path,
       activeLabel: evt.label,
       results: ps.results
@@ -186,7 +245,10 @@ function applyFitScanProgress(evt: FitScanProgress) {
 
   sessions[pid] = {
     ...ps,
-    totalModels: Math.max(ps.totalModels, evt.total_models ?? Object.keys(updatedResults).length),
+    runCompleted,
+    // The denominator is the queue seeded at start; the results map also carries
+    // cached entries, so it must never grow the total mid-run.
+    totalModels: ps.totalModels > 0 ? ps.totalModels : (evt.total_models ?? 0),
     activeModelPath:
       evt.status === "complete" || evt.status === "skipped" || evt.status === "point_skipped"
         ? undefined
@@ -252,6 +314,7 @@ export function hideFitScanPanel(providerId: string) {
 
 export function stopFitScanLocal(providerId: string) {
   const ps = sessions[providerId];
+  runDone.delete(providerId);
   sessions[providerId] = {
     status: "idle",
     parallel: ps?.parallel ?? 2,
@@ -289,9 +352,11 @@ export function beginFitScanSession(
   parallel: number,
   cached: FitScanComplete | null,
   forceRescan: boolean,
+  opts?: { totalModels?: number; manual?: boolean },
 ) {
   ensureListeners();
   activeProviderId = providerId;
+  runDone.set(providerId, new Set());
   const prev = sessions[providerId];
   const scanPointsTotal = cached?.scan_points_total ?? prev?.results?.scan_points_total;
   const baseResults: Record<string, FitScanFull> = forceRescan
@@ -301,7 +366,14 @@ export function beginFitScanSession(
   sessions[providerId] = {
     status: "scanning",
     parallel,
-    totalModels: Math.max(Object.keys(baseResults).length, cached?.total_models ?? 0),
+    // Seed the total from the queue the caller is about to scan, so the bar has
+    // a stable denominator from the first frame. The cache size is NOT the job
+    // size (cached entries are skipped), so it is only a last-resort default.
+    totalModels:
+      opts?.totalModels ??
+      Math.max(Object.keys(baseResults).length, cached?.total_models ?? 0),
+    manual: opts?.manual ?? false,
+    runCompleted: 0,
     completed: 0,
     failed: 0,
     scanStartTime: Date.now(),
@@ -323,26 +395,33 @@ export function completeFitScanSession(providerId: string, result: FitScanComple
   sessions[providerId] = {
     status: "complete",
     parallel: ps?.parallel ?? 2,
-    totalModels: result.total_models,
+    // Keep the queue total when it is known: `result.total_models` is the
+    // backend's own main-model count, which can differ from the catalog queue.
+    totalModels: Math.max(result.total_models, ps?.totalModels ?? 0),
+    manual: ps?.manual,
     completed: result.completed,
     failed: result.failed,
     results: result,
     panelHidden: false,
     scanStartTime: ps?.scanStartTime,
   };
+  runDone.delete(providerId);
   if (activeProviderId === providerId) activeProviderId = null;
   bump();
 }
 
 export function failFitScanSession(providerId: string, error: string, parallel: number) {
+  const ps = sessions[providerId];
   sessions[providerId] = {
     status: "error",
     parallel,
-    totalModels: 0,
+    totalModels: ps?.totalModels ?? 0,
+    manual: ps?.manual,
     completed: 0,
     failed: 0,
     error,
   };
+  runDone.delete(providerId);
   if (activeProviderId === providerId) activeProviderId = null;
   bump();
 }

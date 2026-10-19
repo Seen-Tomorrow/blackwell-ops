@@ -169,6 +169,14 @@ fn signal_contains_dflash(signal: &str) -> bool {
     if compact_alnum_lower(signal).contains("dflash") {
         return true;
     }
+    // DSpark is a DFlash draft with a different CLI type (`draft-dspark`) and a
+    // name that shares no substring with "dflash". Without this the file falls
+    // through both tiers and is treated as a main: it then lands in the library
+    // fit scan and crashes `llama-fit-params` on every plan point
+    // ("dflash requires ctx_other to be set").
+    if lower.contains("dspark") || compact_alnum_lower(signal).contains("dspark") {
+        return true;
+    }
     // D-Flash, D_Flash, D.Flash, "D Flash"
     lower.contains("d-flash")
         || lower.contains("d_flash")

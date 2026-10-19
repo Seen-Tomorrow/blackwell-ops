@@ -210,10 +210,6 @@
   opacity: 0.85;
 }
 
-.setup-checklist__checkbox {
-  accent-color: var(--theme-accent-bright);
-}
-
 /* Notes */
 .setup-guide__note {
   font-size: var(--setup-fs-note);
@@ -232,13 +228,6 @@
   align-items: center;
   gap: 0.75rem 0.75rem;
   margin-top: auto;
-}
-
-.setup-guide__fit-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.75rem;
 }
 
 .setup-guide__block {
@@ -308,22 +297,6 @@
   border-color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
 }
 
-.setup-guide__btn--danger {
-  color: var(--theme-tel-hot);
-  border-color: color-mix(in srgb, var(--theme-tel-hot) 50%, transparent);
-  background: transparent;
-}
-
-.setup-guide__btn--danger:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--theme-tel-hot) 12%, transparent);
-}
-
-.setup-guide__btn--running {
-  opacity: 0.75;
-  cursor: progress;
-  animation: setup-running-pulse 1.6s ease-in-out infinite;
-}
-
 .setup-guide__btn--finish {
   font-size: calc(12px * var(--setup-scale));
   padding: calc(7px * var(--setup-scale)) calc(22px * var(--setup-scale));
@@ -369,21 +342,6 @@
 .setup-driver-check__ok { color: var(--theme-accent-bright); }
 .setup-driver-check__bad { color: var(--theme-tel-hot); }
 .setup-driver-check__warn { color: var(--theme-tel-amber); }
-
-.setup-driver-check__ack {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: var(--setup-fs-detail);
-  color: var(--theme-text-muted);
-  cursor: pointer;
-  user-select: none;
-}
-
-@keyframes setup-running-pulse {
-  0%, 100% { opacity: 0.75; }
-  50% { opacity: 1; }
-}
 
 .setup-welcome-art {
   display: block;

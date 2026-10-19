@@ -9,6 +9,7 @@ import CatalogQuickStrip from "./CatalogQuickStrip";
 import { type CatalogFitNowFilter } from "../lib/catalogFitNow";
 
 import { useModelCatalog, type SortField } from "../hooks/useModelCatalog";
+import type { ModelScanPatch } from "../lib/libraryJobs";
 import type { SetupGuideState } from "../hooks/useSetupGuide";
 import { useCatalogSplitResize } from "../hooks/useCatalogSplitResize";
 import { useTelemetry } from "../context/TelemetryContext";
@@ -31,6 +32,8 @@ interface ModelCatalogProps {
   setBatchScanState: React.Dispatch<React.SetStateAction<{ active: boolean; scanned: number; failed: number; total: number }>>;
   stack: StackEntry[];
   setupGuide: SetupGuideState;
+  /** Publish each probed model immediately (App owns the catalog array). */
+  onModelScanned?: (path: string, patch: ModelScanPatch) => void;
   /** Per-configured-path scan diagnostics — powers the empty-state explanation.
    *  `null` = report not received yet. */
   pathScans?: ModelPathScan[] | null;
@@ -59,7 +62,7 @@ const draftFilterLabels: Record<CatalogDraftFilter, string> = {
 };
 
 export default function ModelCatalog(props: ModelCatalogProps) {
-  const { models, onLaunch, error, onReload, providers: externalProviders, committedVramMib, scanningPath, setScanningPath, batchScanState, setBatchScanState, stack, setupGuide, catalogHfUpdates, catalogUpdatesBusy, onCheckCatalogUpdates, onClearCatalogUpdate, catalogCheckVerdicts, onDismissCheckVerdict, pathScans } = props;
+  const { models, onLaunch, error, onReload, providers: externalProviders, committedVramMib, scanningPath, setScanningPath, batchScanState, setBatchScanState, stack, setupGuide, onModelScanned, catalogHfUpdates, catalogUpdatesBusy, onCheckCatalogUpdates, onClearCatalogUpdate, catalogCheckVerdicts, onDismissCheckVerdict, pathScans } = props;
   const [updatesOnly, setUpdatesOnly] = useState(false);
   const [fullConfirm, setFullConfirm] = useState<CatalogUpdateEntry | null>(null);
   const [updateBusyPath, setUpdateBusyPath] = useState<string | null>(null);
@@ -88,7 +91,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
   const [fileEditError, setFileEditError] = useState<string | null>(null);
 
   const catalog = useModelCatalog({
-    models, stack, providers: externalProviders, gpus, scanningPath, setScanningPath, batchScanState, setBatchScanState, onReload,
+    models, stack, providers: externalProviders, gpus, scanningPath, setScanningPath, batchScanState, setBatchScanState, onModelScanned, onReload,
   });
 
   const {
@@ -937,13 +940,15 @@ export default function ModelCatalog(props: ModelCatalogProps) {
             )}
           </div>
 
-          {/* Quick access — HARNESS SEATS then FAVORITE (favorites below seats). */}
+          {/* Quick access — HARNESS SEATS then FAVORITE (favorites below seats).
+              Seats stay hidden through first-run setup: they need models to seat. */}
           <CatalogQuickStrip
             models={models}
             seats={catalogSeats}
             activeSeatSet={activeSeatSet}
             pins={catalogPins}
             selectedPath={catalogSelectedModel?.path ?? null}
+            showSeats={!setupGuide.active}
             onSelectPath={handleSelectPath}
             onAssignSeat={(role) => handleAssignSeat(role)}
             onClearSeat={handleClearSeat}
@@ -1014,7 +1019,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                   </>
                 )}
 
-                {emptyState?.kind === "unconfigured" && !setupGuide.pathsDone && (
+                {emptyState?.kind === "unconfigured" && (
                   <>
                     <p className="type-body font-mono cat-mut--soft leading-relaxed max-w-[220px]">
                       Did you add your model path?

@@ -39,6 +39,8 @@ import {
 import { dispatchAppEvent, EVENTS, consumePendingConfigSubTab, consumePendingExtrasSubTab, type NavigateConfigDetail, type NavigateExtrasDetail } from "./lib/events";
 import type { ConfigSubTab } from "./lib/appNav";
 import { isSetupNavTabAllowed } from "./lib/setupGuide";
+import { useLibrarySchedule } from "./hooks/useLibrarySchedule";
+import type { ModelScanPatch } from "./lib/libraryJobs";
 
 import { BINARY_UPDATES_ENABLED } from "./lib/foundry_constants";
 import { isActiveEngineSlot, stopAllEngines } from "./lib/engineStack";
@@ -97,7 +99,7 @@ function App() {
       setHwMonitorOpen(loadHwMonitorOpen());
     });
   }, []);
-  const setupGuide = useSetupGuide({ models, catalogLoaded, batchScanState });
+  const setupGuide = useSetupGuide({ models, catalogLoaded });
   const setupActiveRef = useRef(setupGuide.active);
   setupActiveRef.current = setupGuide.active;
 
@@ -346,6 +348,33 @@ function App() {
     return () => window.removeEventListener(EVENTS.setupGuideChanged, handler);
   }, [reloadModels, reloadProviders]);
 
+  // Background library passes — scheduled here, executed by `lib/libraryJobs`.
+  // Metadata may start as soon as the toolchain exists (even mid-wizard); the
+  // GPU fit waits for setup to end and for an idle machine.
+  const patchScannedModel = useCallback((path: string, patch: ModelScanPatch) => {
+    const key = (p: string) => p.replace(/\//g, "\\").toLowerCase();
+    const target = key(path);
+    setModels((prev) => {
+      let changed = false;
+      const next = prev.map((m) => {
+        if (key(m.path) !== target) return m;
+        changed = true;
+        return { ...m, ...patch };
+      });
+      return changed ? next : prev;
+    });
+  }, []);
+
+  useLibrarySchedule({
+    models,
+    runtimeReady: setupGuide.runtimeReady,
+    setupActive: setupGuide.active,
+    setupResolved: setupGuide.resolved,
+    stack,
+    onCatalogChanged: reloadModels,
+    onModelScanned: patchScannedModel,
+  });
+
   useEffect(() => {
     const handler = (e: Event) => {
       setActiveTab("config");
@@ -560,6 +589,7 @@ function App() {
               onRefreshUpdateOfferings={refreshUpdateOfferings}
               hasBinaryUpdates={hasBinaryUpdates}
               setupGuideActive={setupGuide.active}
+              setupGuidePhase={setupGuide.phase}
               configSubTab={configSubTab}
               onConfigSubTabChange={setConfigSubTab}
               extrasSubTab={extrasSubTab}
@@ -571,7 +601,7 @@ function App() {
             aria-hidden={activeTab !== "catalog"}
             inert={activeTab !== "catalog" ? true : undefined}
           >
-            <ModelCatalog models={models} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} setupGuide={setupGuide} pathScans={pathScans} catalogHfUpdates={catalogHfUpdates} catalogUpdatesBusy={catalogUpdatesBusy} onCheckCatalogUpdates={checkCatalogHfUpdates} onClearCatalogUpdate={(path) => setCatalogHfUpdates((prev) => prev.filter((r) => r.path !== path))} catalogCheckVerdicts={catalogCheckVerdicts} onDismissCheckVerdict={dismissCatalogCheckVerdict} />
+            <ModelCatalog models={models} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} setupGuide={setupGuide} onModelScanned={patchScannedModel} pathScans={pathScans} catalogHfUpdates={catalogHfUpdates} catalogUpdatesBusy={catalogUpdatesBusy} onCheckCatalogUpdates={checkCatalogHfUpdates} onClearCatalogUpdate={(path) => setCatalogHfUpdates((prev) => prev.filter((r) => r.path !== path))} catalogCheckVerdicts={catalogCheckVerdicts} onDismissCheckVerdict={dismissCatalogCheckVerdict} />
           </div>
         )}
 

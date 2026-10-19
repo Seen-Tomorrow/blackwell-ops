@@ -11,6 +11,81 @@
   color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
 }
 
+/* ── HeaderMaintenanceStrip — background metadata / VRAM fit pass ───────── */
+
+.hdr-maint-strip {
+  padding: 0 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--type-micro);
+  white-space: nowrap;
+  max-width: 30rem;
+  border-left: 1px solid color-mix(in srgb, var(--theme-border) 45%, transparent);
+}
+
+.hdr-maint-strip__label {
+  letter-spacing: 0.08em;
+  color: var(--theme-tel-cyan);
+}
+
+/* The GPU pass is the heavier one — amber, same family as the fit badges. */
+.hdr-maint-strip[data-job="fit"] .hdr-maint-strip__label {
+  color: var(--theme-tel-amber);
+}
+
+.hdr-maint-strip__count {
+  color: color-mix(in srgb, var(--theme-text) 75%, transparent);
+}
+
+.hdr-maint-strip__track {
+  display: inline-block;
+  width: 54px;
+  height: 4px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--theme-text) 14%, transparent);
+}
+
+.hdr-maint-strip__fill {
+  display: block;
+  height: 100%;
+  background: var(--theme-tel-cyan);
+  transition: width 0.2s ease;
+}
+
+.hdr-maint-strip[data-job="fit"] .hdr-maint-strip__fill {
+  background: var(--theme-tel-amber);
+}
+
+.hdr-maint-strip__current {
+  max-width: 9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: color-mix(in srgb, var(--theme-text-muted) 75%, transparent);
+}
+
+.hdr-maint-strip__btn {
+  padding: 0 2px;
+  font-family: inherit;
+  font-size: var(--type-micro);
+  letter-spacing: 0.06em;
+  color: color-mix(in srgb, var(--theme-text-muted) 85%, transparent);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.hdr-maint-strip__btn:hover {
+  color: var(--theme-accent);
+}
+
+.hdr-maint-strip__btn--stop {
+  color: color-mix(in srgb, var(--theme-text-muted) 55%, transparent);
+}
+
+.hdr-maint-strip__btn--stop:hover {
+  color: var(--theme-danger);
+}
+
 .dl-mgr-history-kind--header {
   color: var(--theme-info);
 }

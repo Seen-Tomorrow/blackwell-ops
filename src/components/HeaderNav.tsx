@@ -9,6 +9,7 @@ import {
 } from "react";
 import type { Tab } from "../App";
 import { isSetupNavTabAllowed } from "../lib/setupGuide";
+import type { SetupPhase } from "../lib/setupGuide";
 import {
   PRIMARY_NAV,
   OPS_SUB_NAV,
@@ -34,6 +35,8 @@ interface HeaderNavProps {
   onExtrasSubTabChange: (tab: ExtrasSubTab) => void;
   /** First-run wizard active — lock ENGINES / LOGS / EXTRAS. */
   setupGuideActive?: boolean;
+  /** Wizard phase — a CONFIG visit during `paths` is the step, not a detour. */
+  setupGuidePhase?: SetupPhase;
   /**
    * Sub-rail anchor re-measure triggers. The ResizeObserver on the cluster
    * and primary switch already catches most resizes; these explicit values
@@ -58,6 +61,7 @@ function HeaderNav({
     extrasSubTab,
     onExtrasSubTabChange,
     setupGuideActive = false,
+    setupGuidePhase,
     chromeScale,
     zoom,
     shellWidthPx,
@@ -75,23 +79,38 @@ function HeaderNav({
   const showConfigSub = primaryId === "config";
   const showExtrasSub = primaryId === "extras";
 
-  const primaryOptions = useMemo(
-    () =>
-      PRIMARY_NAV.map((p) => {
-        const extrasLocked = setupGuideActive && p.id === "extras";
-        return {
-          id: p.id,
-          label: p.label,
-          disabled: extrasLocked,
-          title: extrasLocked
+  const primaryOptions = useMemo(() => {
+    /**
+     * Away from the guide with setup unfinished — DOWNLOADS or a non-`paths`
+     * CONFIG visit. The way back is highlighted (accent + pulse) so leaving the
+     * wizard to fetch a model or a folder never strands the user in a nav rail
+     * where the unfinished guide has no visible home. During the `paths` phase
+     * CONFIG *is* the destination (it hosts PATHS), so it does not count.
+     */
+    const awayFromSetup =
+      setupGuideActive &&
+      !isOpsTab(activeTab) &&
+      !(activeTab === "config" && setupGuidePhase === "paths");
+
+    return PRIMARY_NAV.map((p) => {
+      const extrasLocked = setupGuideActive && p.id === "extras";
+      const returnToSetup = awayFromSetup && p.id === "operations";
+      const dataAttrs: Record<string, string> = {};
+      if (p.id === "config") dataAttrs["data-onboarding"] = "config-tab";
+      if (returnToSetup) dataAttrs["data-setup-return"] = "1";
+      return {
+        id: p.id,
+        label: p.label,
+        disabled: extrasLocked,
+        title: returnToSetup
+          ? "Return to first-run setup"
+          : extrasLocked
             ? "Finish first-run setup first (OPERATIONS, DOWNLOADS, or CONFIG)"
             : undefined,
-          dataAttrs:
-            p.id === "config" ? { "data-onboarding": "config-tab" } : undefined,
-        };
-      }),
-    [setupGuideActive],
-  );
+        dataAttrs: Object.keys(dataAttrs).length > 0 ? dataAttrs : undefined,
+      };
+    });
+  }, [setupGuideActive, setupGuidePhase, activeTab]);
 
   const opsOptions = useMemo(
     () =>

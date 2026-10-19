@@ -3,18 +3,20 @@
  *
  * Layering (top → bottom):
  * 1. **Phase** — derived from step flags below; never persisted.
- * 2. **Step flags** — pathsDone, toolchainDone, metaDone from disk + session state.
- * 3. **Persistence** — localStorage caches (dismissed, welcome, defer, meta summary);
+ * 2. **Step flags** — pathsDone, toolchainDone from disk + session state.
+ * 3. **Persistence** — localStorage caches (dismissed, welcome, defer);
  *    `app_config.setup_completed` is authority for “setup finished”.
  * 4. **Activation** — `useSetupGuide` decides whether the wizard is shown (recovery / wipe edge cases).
  *
- * Portable CUDA toolchain is a hard requirement (no skip). FIT scan and driver
- * confirmation are optional UI sub-steps inside `fit-scan`; not separate phases.
+ * Two decisions only: where the models are, and whether the portable CUDA
+ * runtime is installed. Metadata probing and the VRAM fit scan are background
+ * passes (`useLibrarySchedule`) — they no longer gate first contact, and the
+ * NVIDIA driver result is a warning on the finish step, not a checkbox.
  *
  * While setup is active, header nav allows only OPERATIONS, MODEL HUB, and CONFIG.
  */
 
-export type SetupPhase = "paths" | "toolchain" | "scan-meta" | "fit-scan";
+export type SetupPhase = "paths" | "toolchain" | "finish";
 
 /** Tabs usable during first-run setup (wizard + paths + download models). */
 const SETUP_ALLOWED_TABS = ["catalog", "modelhub", "config"] as const;
@@ -23,23 +25,20 @@ export function isSetupNavTabAllowed(tab: string): boolean {
   return (SETUP_ALLOWED_TABS as readonly string[]).includes(tab);
 }
 
-export interface MetaScanSummary {
-  scanned: number;
-  failed: number;
-  total: number;
-}
-
+/**
+ * The catalog is the authority for “library linked” — never the config alone.
+ *
+ * A configured folder can hold `.gguf` files the catalog refuses (draft-only
+ * weights, incomplete shards, every file filtered out). Counting those as done
+ * sent the user past the wizard into an OPERATIONS pane with nothing selectable,
+ * so the step completes only when `list_models` actually returns a model — or the
+ * user explicitly chose to download later.
+ */
 export function computePathsDone(opts: {
-  pathsConfigured: boolean;
   modelsDeferred: boolean;
-  catalogLoaded: boolean;
   modelsCount: number;
 }): boolean {
-  return (
-    opts.pathsConfigured
-    || opts.modelsDeferred
-    || (opts.catalogLoaded && opts.modelsCount > 0)
-  );
+  return opts.modelsDeferred || opts.modelsCount > 0;
 }
 
 /** Portable CUDA runtime is a hard requirement — no skip path. */
@@ -47,31 +46,13 @@ export function computeToolchainDone(runtimeReady: boolean): boolean {
   return runtimeReady;
 }
 
-/** Metadata scan is required when local models exist (powers VRAM forecast badges). */
-export function computeMetaDone(opts: {
-  modelsDeferred: boolean;
-  modelsCount: number;
-  scannedCount: number;
-  metaScanSummary: MetaScanSummary | null;
-}): boolean {
-  if (opts.modelsDeferred || opts.modelsCount === 0) return true;
-  if (opts.scannedCount >= opts.modelsCount) return true;
-  if (!opts.metaScanSummary) return false;
-  const processed = opts.metaScanSummary.scanned + opts.metaScanSummary.failed;
-  return processed >= opts.metaScanSummary.total && opts.metaScanSummary.total >= opts.modelsCount;
-}
-
 export function computeSetupPhase(opts: {
   pathsDone: boolean;
   toolchainDone: boolean;
-  modelsCount: number;
-  modelsDeferred: boolean;
-  metaDone: boolean;
 }): SetupPhase {
   if (!opts.pathsDone) return "paths";
   if (!opts.toolchainDone) return "toolchain";
-  if (opts.modelsCount > 0 && !opts.modelsDeferred && !opts.metaDone) return "scan-meta";
-  return "fit-scan";
+  return "finish";
 }
 
 /** Toolchain download/extract in flight, or waiting for post-extract disk verify. */
