@@ -10,6 +10,7 @@
     "sync:dev-runtime": "powershell -ExecutionPolicy Bypass -File scripts/sync-dev-runtime.ps1",
     "sync:dev-runtime:force": "powershell -ExecutionPolicy Bypass -File scripts/sync-dev-runtime.ps1 -Force",
     "dev": "tauri dev --no-watch --config src-tauri/tauri.conf.dev.json",
+    "devbuild": "node scripts/dev-build.mjs",
     "dev:watch": "tauri dev --config src-tauri/tauri.conf.dev.json",
     "build": "tsc && vite build",
     "build:frontend": "tsc && vite build",
