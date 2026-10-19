@@ -1261,23 +1261,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     void applyFullAutoCockpit(codingMode, speed, brains, think, cockpitOpts);
   }, [applyFullAutoCockpit, brains, codingMode, cockpitOpts, think]);
   const handleAutoWorkload = applyAutoWorkload;
-  const pendingFullAutoPlanRef = useRef<FullAutoGoal | null>(null);
-  // Entering Autopilot must switch the active profile before the plan writes.
-  // Otherwise policyIdRef is still assisted_* and the whole Autopilot plan lands
-  // in the Assisted profile.
-  useEffect(() => {
-    if (!fullAutoMode) return;
-    const goal = pendingFullAutoPlanRef.current;
-    if (goal == null) return;
-    pendingFullAutoPlanRef.current = null;
-    applyAutoPlan(goal);
-    updateParam("split", "none");
-    if (String(config["offload_mode"] ?? "regular").toLowerCase() === "moe_optimal") {
-      updateParam("offload_mode", "regular");
-    }
-  }, [fullAutoMode, applyAutoPlan, updateParam, config]);
   const handleTakeControl = useCallback(() => {
-    pendingFullAutoPlanRef.current = null;
     // TAKE CONTROL is the explicit handoff: start Assisted from the exact
     // Autopilot plan the user is looking at, then let them tweak it.
     copyActiveProfileTo("assisted_full");
@@ -3283,10 +3267,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         fullAutoMode={fullAutoMode}
         onFitLaunchChange={(nextFullAuto) => {
           if (nextFullAuto) {
-            pendingFullAutoPlanRef.current = autoGoal ?? "balanced";
+            // Mode switch only. Do not auto-apply a goal plan: the user may be
+            // entering Autopilot just to inspect it, and a write here can race
+            // the profile switch.
             setFullAuto(true);
           } else {
-            pendingFullAutoPlanRef.current = null;
             setFullAuto(false);
             setAutoGoal(null);
             saveFullAutoGoal(null);
