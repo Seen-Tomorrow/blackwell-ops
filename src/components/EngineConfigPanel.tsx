@@ -855,7 +855,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   // ── Hooks ────────────────────────────────────────────────────────────────
   // Per-mode profiles: Full Auto / Assisted Essentials / Assisted Full never share one bag.
-  const { config, updateParam, updateParams, clearSpecConfig } = useConfigResolver({
+  const { config, updateParam, updateParams, copyActiveProfileTo, clearSpecConfig } = useConfigResolver({
     model,
     userEditedParams: allParamsResolved,
     backendType: effectiveBackendType,
@@ -1277,11 +1277,14 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   }, [fullAutoMode, applyAutoPlan, updateParam, config]);
   const handleTakeControl = useCallback(() => {
     pendingFullAutoPlanRef.current = null;
+    // TAKE CONTROL is the explicit handoff: start Assisted from the exact
+    // Autopilot plan the user is looking at, then let them tweak it.
+    copyActiveProfileTo("assisted_full");
     setAutoGoal(null);
     setAutoSpecOverride(null);
     saveFullAutoGoal(null);
     setFullAuto(false);
-  }, [setFullAuto]);
+  }, [copyActiveProfileTo, setFullAuto]);
 
   const autoFitState: "ready" | "tight" | "estimating" = vramCalc.manifest
     ? vramCalc.manifest.fits

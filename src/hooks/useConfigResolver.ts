@@ -240,6 +240,15 @@ export function useConfigResolver({
     loadConfig();
   }, [backendType, modelPath, loadConfig]);
 
+  const copyActiveProfileTo = useCallback((target: LaunchPolicyId) => {
+    const source = policyIdRef.current;
+    if (source === target) return;
+    const store = readCatalogOverrideStore(backendType, factoryDefaults, source);
+    store.profiles[target] = { ...store.profiles[source] };
+    store.activePolicy = target;
+    writeCatalogOverrideStore(backendType, store);
+  }, [backendType, factoryDefaults]);
+
   const clearSpecConfig = useCallback(() => {
     if (modelPath) {
       const prev = readJsonStorage<Record<string, unknown>>(modelSpecOverrideKey(modelPath)) ?? {};
@@ -266,6 +275,7 @@ export function useConfigResolver({
     config,
     updateParam,
     updateParams,
+    copyActiveProfileTo,
     clearOverrides,
     clearSpecConfig,
     /** Active launch policy id for this resolver. */

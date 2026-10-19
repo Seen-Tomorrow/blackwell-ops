@@ -478,6 +478,53 @@ export function useCockpit({
     else setThink("on");
   }, [allParamsResolved, config.parallel, config.kv_quant, config.reasoning, fullAutoMode, configView]);
 
+  // The four cockpit sliders are UI state, not launch config. Keep a snapshot
+  // per mode so switching back restores the mode's own slider positions even
+  // when the shared config hydration above did not move.
+  const cockpitModeKey = fullAutoMode
+    ? "full_auto"
+    : configView === "full"
+      ? "assisted_full"
+      : "assisted_essentials";
+  const cockpitByModeRef = useRef<Record<string, {
+    codingMode: CodingModeId;
+    speedBoost: SpeedBoostId;
+    brains: BrainsId;
+    think: ThinkId;
+  }>>({});
+  const prevCockpitModeRef = useRef(cockpitModeKey);
+  useEffect(() => {
+    const prev = prevCockpitModeRef.current;
+    if (prev === cockpitModeKey) return;
+    cockpitByModeRef.current[prev] = { codingMode, speedBoost, brains, think };
+    const saved = cockpitByModeRef.current[cockpitModeKey];
+    if (saved) {
+      // Restore only when the mode's config still agrees with the snapshot.
+      // TAKE CONTROL copies Autopilot into Assisted; in that case config wins.
+      const par = resolveParallelSlots(config, allParamsResolved);
+      const cfgMode = codingModeFromParallel(par);
+      const cfgBrains = brainsFromKvQuant(
+        config.kv_quant != null ? String(config.kv_quant) : undefined,
+      );
+      const r = config.reasoning;
+      const cfgThink: ThinkId =
+        r === "off" || r === 0 || r === "0"
+          ? "off"
+          : r === 2000 || r === "2000"
+            ? "budget2k"
+            : r === 4000 || r === "4000" || r === 8000 || r === "8000"
+              ? "budget"
+              : "on";
+      if (cfgMode === saved.codingMode && cfgBrains === saved.brains && cfgThink === saved.think) {
+        setCodingMode(saved.codingMode);
+        setSpeedBoost(saved.speedBoost);
+        setBrains(saved.brains);
+        setThink(saved.think);
+      }
+    }
+    prevCockpitModeRef.current = cockpitModeKey;
+  }, [cockpitModeKey, codingMode, speedBoost, brains, think, config, allParamsResolved]);
+
   useEffect(() => {
     boosterSeededRef.current = false;
   }, [effectiveBackendType, model?.path, fullAutoMode, configView]);
