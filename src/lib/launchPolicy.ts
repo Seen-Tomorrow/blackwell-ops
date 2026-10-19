@@ -39,8 +39,8 @@ type LaunchTopologyOwner = "fit_owned" | "user_chrome";
  * - profile    — use profile values as-is
  * - factory    — force template factory defaults (ignore profile residue for batch/ubatch)
  *
- * Product (2026-08-06): Full Auto Smart uses **factory** until a real algo exists.
- * Smart is the Joe "Off" wording — safe middle ground, not max batch.
+ * Product: Full Auto's goal throughput writes batch/ubatch into its profile;
+ * Smart batch push remains reserved for a future algo.
  */
 type LaunchBatchSource = "smart_push" | "profile" | "factory";
 
@@ -97,8 +97,8 @@ const LAUNCH_POLICIES: Readonly<Record<LaunchPolicyId, LaunchPolicy>> = Object.f
     keySet: "cockpit_plus_essentials" as const,
     fitImplied: true,
     topology: "fit_owned" as const,
-    /** Safe middle until Smart has a real algo — not max batch. */
-    batch: "factory" as const,
+    /** Goal throughput owns batch/ubatch via the full_auto profile. */
+    batch: "profile" as const,
     fallbackDefaults: JOE_FULL_AUTO_DEFAULTS,
     powerUser: false,
     defaultSpeed: "smart" as const,
@@ -306,7 +306,7 @@ export function seedFullAutoProfile(input: {
 
 /**
  * Smart batch picks (ephemeral). Pure — only when policy.batch === "smart_push".
- * Full Auto currently uses batch: "factory" (no push). Kept for a future algo.
+ * Kept for a future algo; Full Auto uses its goal-owned profile pair.
  */
 export function resolveSmartBatchPush(input: {
   policy: LaunchPolicy;

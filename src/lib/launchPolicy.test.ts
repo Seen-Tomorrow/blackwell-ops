@@ -119,10 +119,10 @@ describe("§8 leakage cases", () => {
     expect(String(filtered.load_mode)).not.toBe("mlock");
   });
 
-  it("2: Full Auto Smart uses factory batch (not max smart_push)", () => {
+  it("2: Full Auto uses goal-owned profile batch (not smart_push)", () => {
     const policy = getLaunchPolicy("full_auto");
-    expect(policy.batch).toBe("factory");
-    // smart_push helper stays inert under factory policy
+    expect(policy.batch).toBe("profile");
+    // smart_push helper stays inert under profile policy
     const push = resolveSmartBatchPush({
       policy,
       pushBatch: true,
@@ -133,13 +133,13 @@ describe("§8 leakage cases", () => {
     expect(push.batch).toBeUndefined();
     expect(push.ubatch).toBeUndefined();
 
-    const forced = applyBatchPolicy({
+    const kept = applyBatchPolicy({
       policy,
       merged: { batch: 16384, ubatch: 2048, parallel: 1 },
       factoryDefaults: { batch: 512, ubatch: 256 },
     });
-    expect(forced.batch).toBe(512);
-    expect(forced.ubatch).toBe(256);
+    expect(kept.batch).toBe(16384);
+    expect(kept.ubatch).toBe(2048);
 
     const power = getLaunchPolicy("assisted_full");
     expect(power.batch).toBe("profile");
@@ -361,7 +361,7 @@ describe("buildLaunchConfig policy metadata", () => {
     expect(cfg.extra_params?.temp).toBeUndefined();
   });
 
-  it("Full Auto Smart uses factory batch even if profile has huge batch residue", () => {
+  it("Full Auto launches the goal-selected profile batch", () => {
     const model = {
       path: "C:/models/test.gguf",
       author: "t",
@@ -379,7 +379,7 @@ describe("buildLaunchConfig policy metadata", () => {
         ubatch: 2048,
       },
       policy: getLaunchPolicy("full_auto"),
-      smartBatchPush: true, // ignored — policy.batch is factory
+      smartBatchPush: true, // ignored — policy.batch is profile
       effectiveBackendType: "ggml-master",
       selectedBinaryProfile: "edge",
       fitLaunchSupported: false,
@@ -392,9 +392,9 @@ describe("buildLaunchConfig policy metadata", () => {
       testFlags: "",
       testFlagsMode: "add",
     });
-    // template factory default is first value in values list (512)
-    expect(withSmart.extra_params?.batch).toBe(factoryDefaults.batch);
-    expect(withSmart.extra_params?.batch).not.toBe(16384);
+    // The goal writes its throughput pair into the full_auto profile.
+    expect(withSmart.extra_params?.batch).toBe(16384);
+    expect(withSmart.extra_params?.ubatch).toBe(2048);
 
     const assisted = buildLaunchConfig({
       model,

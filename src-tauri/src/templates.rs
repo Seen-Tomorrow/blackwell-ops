@@ -1193,14 +1193,16 @@ fn spec_types_in_launch(config: &EngineConfig) -> Vec<String> {
 /// Draft models loaded from `--spec-draft-model` (dflash, eagle3, …) need the target ctx first.
 /// llama-server's `--fit on` path probes draft memory without `ctx_other` and aborts load.
 fn external_draft_spec_needs_fit_off(config: &EngineConfig) -> bool {
-    let has_draft_model_flag = config
-        .extra_params
-        .keys()
-        .any(|k| {
-            k.eq_ignore_ascii_case("spec_draft_model") || k.eq_ignore_ascii_case("mtp_draft_model")
+    // A key being present is not enough: baked-in MTP leaves `mtp_draft_model`
+    // in extra_params with an empty/off value. Only a real draft path counts.
+    let has_path = |value: Option<String>| {
+        value.is_some_and(|v| {
+            let normalized = v.trim().to_ascii_lowercase();
+            !normalized.is_empty() && normalized != "off" && normalized != "none"
         })
-        || config.get_param_str("spec_draft_model").is_some_and(|s| !s.trim().is_empty())
-        || config.get_param_str("mtp_draft_model").is_some_and(|s| !s.trim().is_empty())
+    };
+    let has_draft_model_flag = has_path(config.get_param_str("spec_draft_model"))
+        || has_path(config.get_param_str("mtp_draft_model"))
         || launch_args_contain_flag(config, "--spec-draft-model")
         || launch_args_contain_flag(config, "--model-draft");
 
@@ -1366,6 +1368,47 @@ mod build_cmd_tests {
         assert!(
             !args.windows(2).any(|w| w[0] == "--fit" && w[1] == "on"),
             "draft-dflash must not launch with --fit on: {args:?}"
+        );
+    }
+
+    #[test]
+    fn baked_in_mtp_keeps_fit_on() {
+        let sp = SpawnProfile {
+            fit_style: "ggml_fit_params".to_string(),
+            ..SpawnProfile::default()
+        };
+
+        let template = ProviderTemplate {
+            binary_name: "llama-server.exe".to_string(),
+            description: "test".to_string(),
+            spawn_profile: sp,
+            params: Vec::new(),
+        };
+
+        let mut extra = HashMap::new();
+        extra.insert("__auto_vram".to_string(), serde_json::json!(true));
+        extra.insert("ctx".to_string(), serde_json::json!("65536"));
+        extra.insert("spec_type".to_string(), serde_json::json!("draft-mtp"));
+        // Cockpit keeps the key but leaves it empty for baked-in MTP.
+        extra.insert("mtp_draft_model".to_string(), serde_json::json!(""));
+
+        let config = EngineConfig {
+            alias: String::new(),
+            model_path: "model.gguf".to_string(),
+            port: 8888,
+            backend_type: "ggml-master".to_string(),
+            binary_profile: String::new(),
+            extra_params: extra,
+        };
+
+        let args = template.build_command(&config, "", &[]);
+        assert!(
+            args.windows(2).any(|w| w[0] == "--fit" && w[1] == "on"),
+            "baked-in MTP must keep --fit on: {args:?}"
+        );
+        assert!(
+            !args.windows(2).any(|w| w[0] == "--fit" && w[1] == "off"),
+            "baked-in MTP must not force --fit off: {args:?}"
         );
     }
 

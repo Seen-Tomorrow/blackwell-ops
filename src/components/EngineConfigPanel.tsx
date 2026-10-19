@@ -1213,22 +1213,16 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         updateParam("ubatch", pair.ubatch);
       }
       if (goal === "context") {
+        // MAX CTX must not be capped by the manifest captured before this
+        // plan's KV/parallel change. Use the top template value; FIT on owns
+        // the launch-side cap, and the low-VRAM probe corrects it if needed.
         const ctxDef = allParamsResolved.find((param) => param.key === "ctx");
         if (!ctxDef) return;
         const ctxValues = visibleParamValuesOf(ctxDef)
           .map((value) => Number(value))
           .filter((value) => Number.isFinite(value));
         if (ctxValues.length === 0) return;
-        const fit = findMaxFittingCtx(
-          Math.min(...ctxValues),
-          Math.max(...ctxValues),
-          ctxDef.step ?? 1024,
-          vramCalc.manifest?.forecastFreeGb ?? 0,
-          vramCalc.manifest?.forecastCurve ?? [],
-        );
-        if (fit == null) return;
-        const allowed = ctxValues.filter((value) => value <= fit);
-        updateParam("ctx", allowed.length > 0 ? Math.max(...allowed) : Math.min(...ctxValues));
+        updateParam("ctx", Math.max(...ctxValues));
       }
     },
     [
@@ -1236,7 +1230,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       cockpitOpts,
       allParamsResolved,
       updateParam,
-      vramCalc.manifest,
       applyAutoWorkload,
       autoWorkload,
       gpus,
@@ -1278,10 +1271,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     if (!result || result.fits) return;
 
     const split = String(config.split ?? "none").trim().toLowerCase();
-    if (autoGoal === "fastest" && split === "none" && gpus.length > 1) {
-      updateParam("split", "layer");
-      return;
-    }
 
     const ctxDef = allParamsResolved.find((param) => param.key === "ctx");
     if (ctxDef) {
@@ -1316,6 +1305,14 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     ) {
       updateParam("batch", latency.batch);
       updateParam("ubatch", latency.ubatch);
+      return;
+    }
+
+    // Only split after the single-GPU low-VRAM probe and the fit corrections
+    // above have had their chance. FIT-on can make a pressured single card
+    // run acceptably; a split is the last resort.
+    if (autoGoal === "fastest" && split === "none" && gpus.length > 1) {
+      updateParam("split", "layer");
     }
   }, [
     allParamsResolved,
