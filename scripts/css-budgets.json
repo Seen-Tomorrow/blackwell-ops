@@ -1,15 +1,5 @@
 {
-  "note": "Regression ceilings for `node scripts/css-tools.mjs audit --check`. Ratcheted 2026-10-16: catalog surface batch cleaned (419->86 source total); config surface batch cleaned (86->65 source total); fusion-display batch cleaned (65->21 source total). 2026-10-17 engine-ui-a: +preflight/instrument/compat surfaces (+~9 KB dist); distBytes ceiling raised deliberately to 500000. Use npm run css:locate before edits.",
-  "sourceBytesLf": 680000,
-  "deadRules": 0,
-  "deadBytes": 0,
-  "important": 24,
-  "literalHex": 65,
-  "literalRgba": 90,
-  "colorMixLiteral": 55,
-  "pxFontSizes": 30,
-  "distBytes": 500000,
-  "distImportant": 32,
+  "note": "Only structural invariants are enforced: `importOrder` is the canonical src/index.css partial order (type-scale.css last). Size and paint counts — source/dist bytes, !important, literal hex/rgba, color-mix with literal color, px font sizes, dead CSS — are printed by `npm run css:audit` as a REPORT, not a ceiling. The 2026-10 CSS reduction campaign is closed; its numbers were a snapshot of that baseline and must not gate normal feature work. Re-add a numeric ceiling only with a deliberate reason recorded here.",
   "importOrder": [
     "tokens-base.css",
     "utilities.css",

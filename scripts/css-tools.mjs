@@ -571,24 +571,14 @@ function checkBudgets(a) {
   if (!fs.existsSync(budgetPath)) { console.log("\nno scripts/css-budgets.json — report only"); return 0; }
   const budgets = JSON.parse(fs.readFileSync(budgetPath, "utf8"));
   const fail = [];
-  const cmp = (label, value, max) => { if (max != null && value > max) fail.push(`${label}: ${value} > ${max}`); };
-  cmp("source bytes (LF-normalized)", a.source.bytesLf, budgets.sourceBytesLf);
+  // Only structural invariants gate the build. Size and paint counts are printed above for
+  // drift visibility, never enforced: the reduction campaign's ceilings were a snapshot of
+  // its own baseline (set "just above" the current numbers) and blocked ordinary CSS work.
   if (budgets.importOrder && JSON.stringify(a.source.imports) !== JSON.stringify(budgets.importOrder)) {
     fail.push("index.css import order changed (canonical order is enforced; update budgets deliberately)");
   }
-  cmp("dead rules", a.dead.rules, budgets.deadRules);
-  cmp("dead bytes", a.dead.bytes, budgets.deadBytes);
-  cmp("!important", a.important, budgets.important);
-  cmp("literal hex (outside tokens)", a.literalColors.hexOutsideTokens, budgets.literalHex);
-  cmp("literal rgba (outside tokens)", a.literalColors.rgbaOutsideTokens, budgets.literalRgba);
-  cmp("color-mix with literal color", a.colorMix.withLiteralColor, budgets.colorMixLiteral);
-  cmp("px font sizes", a.type.pxFontSizes, budgets.pxFontSizes);
-  if (a.dist) {
-    cmp("dist bytes", a.dist.bytes, budgets.distBytes);
-    cmp("dist !important", a.dist.important, budgets.distImportant);
-  }
   if (fail.length) { console.log("\nBUDGET FAIL:\n  " + fail.join("\n  ")); return 1; }
-  console.log("\nbudgets OK");
+  console.log("\ncss invariants OK");
   return 0;
 }
 

@@ -30,7 +30,9 @@ npm run css:map                           # regenerate docs/css-map.md (ownershi
 4. No new `!important`. Existing ones need a `css:locate` justification comment.
 5. New component styles should be co-located with the component or in its domain
    file, never in an unrelated partial.
-6. After edits: `npm run css:audit`. Budgets live in `scripts/css-budgets.json`.
+6. After edits: `npm run css:audit`. It prints the counts (source/dist bytes,
+   `!important`, literal paint, dead CSS) as a report; only the canonical import
+   order is enforced. Treat a big jump in the numbers as a signal to look.
 
 ## Current hotspots (from css:map)
 

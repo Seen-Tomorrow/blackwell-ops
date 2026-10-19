@@ -39,10 +39,10 @@ jobs:
       - name: Build frontend
         run: npm run build:frontend
 
-      # The CSS budgets are the only thing stopping the paint/!important cleanup
-      # from drifting back, and nothing else in CI or Invoke-ReleaseTestGate checks
-      # them (npm test is vitest only; build:frontend is tsc + vite). Runs AFTER the
-      # build so the dist byte/!important ceilings are measured against real output.
+      # CSS gates: the canonical src/index.css partial order and the lightningcss
+      # minify pass. Size and paint counts are printed for drift visibility but are
+      # deliberately NOT ceilings (the 2026-10 reduction campaign is closed). Runs
+      # AFTER the build so the reported dist numbers describe real output.
       - name: CSS gates
         run: npm run css:audit
 
