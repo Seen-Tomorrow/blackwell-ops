@@ -16,9 +16,11 @@ import type {
 } from "../lib/types";
 import type { ConfigViewMode } from "../lib/types";
 import {
+  BRAINS_OPTIONS,
   brainsFromKvQuant,
   codingModeFromParallel,
   collectBoostSpecTypes,
+  parallelForCodingMode,
   resolveFullAutoPlan,
   type BrainsId,
   type CodingModeId,
@@ -81,6 +83,13 @@ function thinkFromReasoning(value: unknown): ThinkId {
   if (value === "off" || value === 0 || value === "0") return "off";
   if (value === 2000 || value === "2000") return "budget2k";
   if (value === 4000 || value === "4000" || value === 8000 || value === "8000") return "budget";
+  return "on";
+}
+
+function reasoningForThink(think: ThinkId): string | number {
+  if (think === "off") return "off";
+  if (think === "budget2k") return 2000;
+  if (think === "budget") return 4000;
   return "on";
 }
 
@@ -402,6 +411,20 @@ export function useCockpit({
       // Cockpit-owned only — never vision/flash/load_mode or Smart batch.
       if (plan.reasoning != null && allParamsResolved.some((p) => p.key === "reasoning")) {
         updateParam("reasoning", plan.reasoning);
+      }
+
+      // Assisted sliders are explicit user choices. Do not let plan
+      // normalization (Smart/safe fallbacks) turn them back into defaults in
+      // the profile after the click.
+      if (powerUser) {
+        if (!plan.forcedSoloForMtp) updateParam("parallel", parallelForCodingMode(mode));
+        const kv = BRAINS_OPTIONS.find((b) => b.id === brainsPick)?.kvQuant;
+        if (kv && kvQuantValues.some((v) => String(v).toLowerCase() === kv.toLowerCase())) {
+          updateParam("kv_quant", kv);
+        }
+        if (allParamsResolved.some((p) => p.key === "reasoning")) {
+          updateParam("reasoning", reasoningForThink(thinkPick));
+        }
       }
 
       const method: SpecBoostMethod =
