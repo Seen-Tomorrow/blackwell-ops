@@ -1260,7 +1260,23 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     void applyFullAutoCockpit(codingMode, speed, brains, think, cockpitOpts);
   }, [applyFullAutoCockpit, brains, codingMode, cockpitOpts, think]);
   const handleAutoWorkload = applyAutoWorkload;
+  const pendingFullAutoPlanRef = useRef<FullAutoGoal | null>(null);
+  // Entering Autopilot must switch the active profile before the plan writes.
+  // Otherwise policyIdRef is still assisted_* and the whole Autopilot plan lands
+  // in the Assisted profile.
+  useEffect(() => {
+    if (!fullAutoMode) return;
+    const goal = pendingFullAutoPlanRef.current;
+    if (goal == null) return;
+    pendingFullAutoPlanRef.current = null;
+    applyAutoPlan(goal);
+    updateParam("split", "none");
+    if (String(config["offload_mode"] ?? "regular").toLowerCase() === "moe_optimal") {
+      updateParam("offload_mode", "regular");
+    }
+  }, [fullAutoMode, applyAutoPlan, updateParam, config]);
   const handleTakeControl = useCallback(() => {
+    pendingFullAutoPlanRef.current = null;
     setAutoGoal(null);
     setAutoSpecOverride(null);
     saveFullAutoGoal(null);
@@ -3261,14 +3277,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         fitLaunchSupported={fitLaunchSupported}
         fullAutoMode={fullAutoMode}
         onFitLaunchChange={(nextFullAuto) => {
-          setFullAuto(nextFullAuto);
           if (nextFullAuto) {
-            applyAutoPlan(autoGoal ?? "balanced");
-            updateParam("split", "none");
-            if (String(config["offload_mode"] ?? "regular").toLowerCase() === "moe_optimal") {
-              updateParam("offload_mode", "regular");
-            }
+            pendingFullAutoPlanRef.current = autoGoal ?? "balanced";
+            setFullAuto(true);
           } else {
+            pendingFullAutoPlanRef.current = null;
+            setFullAuto(false);
             setAutoGoal(null);
             saveFullAutoGoal(null);
           }
