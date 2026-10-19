@@ -15,7 +15,7 @@ import type {
   VramManifest,
 } from "./types";
 import { buildAutoVramLaunchParams } from "./autoVramLaunch";
-import { sameParamValue } from "./engineSurfaces";
+import { sameParamValue, visibleParamValuesOf } from "./engineSurfaces";
 import { forecastSnapshotFromManifest } from "./forecastSnapshot";
 import { buildLaunchExtraParams, resolveParamDefaultValue } from "./paramConfigResolve";
 import { vramTopoTag } from "./telemetryGpu";
@@ -109,6 +109,34 @@ export type BuildLaunchConfigInput = {
 };
 
 /**
+ * Essentials curation can snap an ubatch to the factory default after the
+ * throughput pair was chosen. If that leaves ubatch > batch (e.g. LATENCY
+ * 1024/1536), choose the highest allowed ubatch that still fits the batch.
+ */
+function clampUbatchToBatch(
+  merged: Record<string, unknown>,
+  defs: UserEditedTemplateParam[],
+  policy: LaunchPolicy,
+): Record<string, unknown> {
+  const batch = Number(merged.batch);
+  const ubatch = Number(merged.ubatch);
+  if (!Number.isFinite(batch) || !Number.isFinite(ubatch)) return merged;
+  if (batch <= 0 || ubatch <= batch) return merged;
+
+  const ubatchDef = defs.find((def) => def.key === "ubatch");
+  if (!ubatchDef) return merged;
+  const hidden = new Set(
+    (policy.keySet === "full" ? [] : ubatchDef.essentialsHiddenValues ?? []).map(String),
+  );
+  const candidates = visibleParamValuesOf(ubatchDef)
+    .map(Number)
+    .filter((value) => Number.isFinite(value) && value > 0 && value <= batch && !hidden.has(String(value)))
+    .sort((a, b) => a - b);
+  if (candidates.length === 0) return merged;
+  return { ...merged, ubatch: candidates[candidates.length - 1] };
+}
+
+/**
  * Build the EngineConfig payload sent to `launch_engine` (port resolved on backend).
  */
 export function buildLaunchConfig(input: BuildLaunchConfigInput): EngineConfig {
@@ -178,6 +206,7 @@ export function buildLaunchConfig(input: BuildLaunchConfigInput): EngineConfig {
   if (policy.keySet !== "full") {
     merged = snapEssentialsHiddenInValues(merged, allParamsResolved);
   }
+  merged = clampUbatchToBatch(merged, allParamsResolved, policy);
 
   const launchKeys = resolveLaunchKeySet({
     policy,

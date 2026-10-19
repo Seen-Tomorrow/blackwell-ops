@@ -145,6 +145,47 @@ describe("§8 leakage cases", () => {
     expect(power.batch).toBe("profile");
   });
 
+  it("2b: Full Auto never launches ubatch above batch after Essentials snapping", () => {
+    const latencyTemplate = template.map((p) => {
+      if (p.key === "batch") return { ...p, values: [512, 1024, 2048], defaultValue: 1024 };
+      if (p.key === "ubatch") {
+        return {
+          ...p,
+          values: [256, 512, 1536],
+          defaultValue: 1536,
+          essentialsHiddenValues: [256, 1536],
+        };
+      }
+      return p;
+    });
+    const cfg = buildLaunchConfig({
+      model: {
+        path: "C:/models/test.gguf",
+        author: "t",
+        name: "test",
+        quant: "Q4",
+        size_str: "1G",
+        vision: false,
+      },
+      finalAlias: "test",
+      profileValues: { batch: 1024, ubatch: 256, parallel: 1 },
+      policy: getLaunchPolicy("full_auto"),
+      effectiveBackendType: "ggml-master",
+      selectedBinaryProfile: "edge",
+      fitLaunchSupported: false,
+      essentialFactoryKeys: essentialKeys,
+      allParamsResolved: latencyTemplate,
+      gpus: [],
+      runningSlotsForPlan: [],
+      vramManifest: null,
+      testFlagsEnabled: false,
+      testFlags: "",
+      testFlagsMode: "add",
+    });
+    expect(cfg.extra_params?.batch).toBe(1024);
+    expect(cfg.extra_params?.ubatch).toBe(512);
+  });
+
   it("3: Full Auto Think 2k sets reasoning budget; never forces vision", () => {
     const policy = getLaunchPolicy("full_auto");
     const profile = seedFullAutoProfile({
