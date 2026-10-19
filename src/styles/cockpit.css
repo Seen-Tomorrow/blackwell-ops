@@ -186,8 +186,8 @@
   gap: 0.45rem 0.55rem;
 }
 
-/* Reserve a readable lane for the MTP/DFlash head status. Without it the
-   unbroken SPEC-EXTRA rail paints over the status at narrow widths. */
+/* Keep the MTP/DFlash status next to its action, not floating in the middle
+   of a wide strip. SPEC-EXTRA scrolls in the remaining lane on narrow widths. */
 .full-auto-cockpit__dflash-get--spec-extra .full-auto-cockpit__spec-extra {
   flex: 1 1 0;
   overflow-x: auto;
@@ -195,8 +195,10 @@
 }
 
 .full-auto-cockpit__dflash-get--spec-extra .full-auto-cockpit__dflash-get-main {
-  flex: 0 0 9rem;
-  min-width: 7rem;
+  flex: 0 1 auto;
+  max-width: 10rem;
+  margin-left: auto;
+  text-align: right;
 }
 
 /* SPEC-EXTRA / draft strip — product tones (MTP green, DFlash violet). Chips = theme value-chip. */
