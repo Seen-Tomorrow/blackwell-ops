@@ -1,5 +1,6 @@
 {
-  "note": "Only structural invariants are enforced: `importOrder` is the canonical src/index.css partial order (type-scale.css last). Size and paint counts — source/dist bytes, !important, literal hex/rgba, color-mix with literal color, px font sizes, dead CSS — are printed by `npm run css:audit` as a REPORT, not a ceiling. The 2026-10 CSS reduction campaign is closed; its numbers were a snapshot of that baseline and must not gate normal feature work. Re-add a numeric ceiling only with a deliberate reason recorded here.",
+  "note": "One numeric tripwire, generously set: source `!important` must stay <= 50 (currently 22). It exists to catch a campaign-scale regression, not to police normal work — raise it deliberately if a legitimate override needs the room, and never tighten it toward the current count. Everything else — source/dist bytes, literal hex/rgba, color-mix with literal color, px font sizes, dead CSS — is printed by `npm run css:audit` as a REPORT, never a ceiling: the 2026-10 reduction campaign is closed and its numbers were a snapshot of that baseline. `importOrder` is the canonical src/index.css partial order (type-scale.css last).",
+  "important": 50,
   "importOrder": [
     "tokens-base.css",
     "utilities.css",

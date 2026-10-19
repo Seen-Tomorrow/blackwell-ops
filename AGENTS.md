@@ -127,13 +127,14 @@ Swap the class and the override stops matching — text shrinks in that containe
 `text-[Npx]`, grep `text-\\[` in `src/styles/` and re-key every hit onto the matching `.type-*` selector
 (keep the utility selector for unmigrated rooms).
 
-**CSS counts are REPORTED, not gated** — the 2026-10 reduction campaign took source
+**CSS counts are REPORTED, with one tripwire** — the 2026-10 reduction campaign took source
 `!important` 525 -> 22 and left literal hex/rgba largely **data-owned**; that work is closed.
-`npm run css:audit` (inside `npm run check`) still prints source/dist bytes, `!important`,
-literal colors, `color-mix`, px font sizes and dead CSS every run, but the only thing it *fails*
-on is a change to the canonical `src/index.css` partial order. Do not reintroduce size or count
-ceilings to police ordinary CSS work: its ceilings were a snapshot of that campaign's baseline
-(set "just above" the numbers of the day) and they turned every legitimate UI addition into
+`npm run css:audit` (inside `npm run check`) prints source/dist bytes, `!important`, literal
+colors, `color-mix`, px font sizes and dead CSS every run. Two things fail it: a change to the
+canonical `src/index.css` partial order, and source `!important` above **50** — a
+campaign-scale-regression alarm, not a budget. Do not reintroduce size or paint ceilings, and
+do not tighten the `!important` tripwire toward the current count: its old ceilings were a
+snapshot of that campaign's baseline and turned every legitimate UI addition into
 declaration-shaving. Treat a big jump in the report as a signal to look, not a build failure.
 
 **An `!important` may only be removed with one of three proofs** — a declaration loses to exactly

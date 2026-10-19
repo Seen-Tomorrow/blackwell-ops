@@ -571,9 +571,12 @@ function checkBudgets(a) {
   if (!fs.existsSync(budgetPath)) { console.log("\nno scripts/css-budgets.json — report only"); return 0; }
   const budgets = JSON.parse(fs.readFileSync(budgetPath, "utf8"));
   const fail = [];
-  // Only structural invariants gate the build. Size and paint counts are printed above for
-  // drift visibility, never enforced: the reduction campaign's ceilings were a snapshot of
-  // its own baseline (set "just above" the current numbers) and blocked ordinary CSS work.
+  // Only structural invariants and the single `!important` tripwire gate the build. Size and
+  // paint counts are printed above for drift visibility, never enforced: the reduction campaign's
+  // ceilings were a snapshot of its own baseline and blocked ordinary CSS work.
+  if (budgets.important != null && a.important > budgets.important) {
+    fail.push(`!important: ${a.important} > ${budgets.important} (campaign-scale regression?)`);
+  }
   if (budgets.importOrder && JSON.stringify(a.source.imports) !== JSON.stringify(budgets.importOrder)) {
     fail.push("index.css import order changed (canonical order is enforced; update budgets deliberately)");
   }
