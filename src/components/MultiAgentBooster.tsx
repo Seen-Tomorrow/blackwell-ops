@@ -653,16 +653,11 @@ export default function MultiAgentBooster({
           <span className="full-auto-cockpit__spec-extra-sep full-auto-cockpit__spec-extra-sep--block" aria-hidden>
             |
           </span>
-          {draftActions}
+          {draftStripInner}
         </>
       ) : (
         <>
           {draftStripInner}
-          {draftStripInner && specExtraInline ? (
-            <span className="full-auto-cockpit__spec-extra-sep full-auto-cockpit__spec-extra-sep--block" aria-hidden>
-              |
-            </span>
-          ) : null}
           {specExtraInline}
         </>
       )}
