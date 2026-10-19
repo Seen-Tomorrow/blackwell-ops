@@ -76,16 +76,32 @@ pub const DEFAULT_MODEL_PATH_LABEL: &str = "Models";
 
 const LM_STUDIO_PATH_LABEL: &str = "LM Studio";
 
-/// Portable LM Studio models folder — expanded at runtime via `expand_path_placeholders`.
+/// Known LM Studio models folders, current release first — expanded at runtime
+/// via `expand_path_placeholders`.
+///
+/// LM Studio 0.2.19 moved the library from the `…/.cache/lm-studio/models`
+/// layout to `…/.lmstudio/models`. Users who upgraded usually copied nothing
+/// (they just pointed LM Studio at the new folder), but the old location is
+/// still where a large part of the migration audience keeps its GGUFs, so
+/// migration probes both instead of declaring “LM Studio not found”.
+#[cfg(windows)]
+const LM_STUDIO_MODEL_PATH_TEMPLATES: &[&str] = &[
+    r"%USERPROFILE%\.lmstudio\models",
+    r"%USERPROFILE%\.cache\lm-studio\models",
+];
+#[cfg(not(windows))]
+const LM_STUDIO_MODEL_PATH_TEMPLATES: &[&str] = &[
+    "~/.lmstudio/models",
+    "~/.cache/lm-studio/models",
+];
+
+pub fn lm_studio_model_path_templates() -> &'static [&'static str] {
+    LM_STUDIO_MODEL_PATH_TEMPLATES
+}
+
+/// Primary (current-release) LM Studio models folder.
 pub fn lm_studio_model_path_template() -> &'static str {
-    #[cfg(windows)]
-    {
-        r"%USERPROFILE%\.lmstudio\models"
-    }
-    #[cfg(not(windows))]
-    {
-        "~/.lmstudio/models"
-    }
+    LM_STUDIO_MODEL_PATH_TEMPLATES[0]
 }
 
 /// Expand `~`, `%USERPROFILE%`, and other `%VAR%` segments in stored model paths.
@@ -133,8 +149,24 @@ fn user_home_dir() -> Option<PathBuf> {
     }
 }
 
+/// First known LM Studio folder that actually holds GGUF models.
+fn find_lm_studio_library() -> Option<(&'static str, ModelLibraryValidation)> {
+    lm_studio_model_path_templates()
+        .iter()
+        .find_map(|template| {
+            let validation = validate_model_library(template);
+            (validation.exists && validation.gguf_count > 0).then_some((*template, validation))
+        })
+}
+
 /// Expanded default LM Studio models folder for display (no `%USERPROFILE%` placeholders).
+/// Points at the folder migration would actually use, so the tooltip never lies.
 pub fn lm_studio_default_path_display() -> String {
+    if let Some((_, validation)) = find_lm_studio_library() {
+        if !validation.resolved_path.is_empty() {
+            return validation.resolved_path;
+        }
+    }
     let template = lm_studio_model_path_template();
     let resolved = resolve_stored_model_path(template);
     if resolved.is_empty() {
@@ -144,9 +176,9 @@ pub fn lm_studio_default_path_display() -> String {
     }
 }
 
-/// True when the standard LM Studio models directory exists on this machine.
+/// True when any standard LM Studio models directory holds GGUF models.
 pub fn lm_studio_models_available() -> bool {
-    validate_model_library(lm_studio_model_path_template()).gguf_count > 0
+    find_lm_studio_library().is_some()
 }
 
 /// Probe a model library folder — exists on disk and contains at least one `.gguf`.
@@ -181,40 +213,56 @@ fn entry_has_models(entry: &ModelPathEntry) -> bool {
     validate_model_library(&entry.path).gguf_count > 0
 }
 
-/// Add the portable LM Studio models path when the folder exists and contains GGUF models.
+/// Link the LM Studio models folder that holds GGUF models (current or legacy layout).
+///
+/// Returns `Ok(false)` when that folder is already configured. Errors name every
+/// location probed — an empty folder must never read as a successful migration,
+/// because the wizard treats a linked library as a completed setup step.
 pub fn add_lmstudio_model_path(config: &mut AppConfig) -> Result<bool, String> {
-    let template = lm_studio_model_path_template();
-    let validation = validate_model_library(template);
-    if !validation.exists {
-        let display_path = if validation.resolved_path.is_empty() {
-            lm_studio_default_path_display()
+    if let Some((template, validation)) = find_lm_studio_library() {
+        if find_model_path_index(config.model_paths.as_slice(), template).is_some() {
+            return Ok(false);
+        }
+        if !validation.resolved_path.is_empty()
+            && find_model_path_index(config.model_paths.as_slice(), &validation.resolved_path)
+                .is_some()
+        {
+            return Ok(false);
+        }
+        config.model_paths.push(ModelPathEntry {
+            path: template.to_string(),
+            label: LM_STUDIO_PATH_LABEL.to_string(),
+            is_default: false,
+        });
+        return Ok(true);
+    }
+
+    let mut checked: Vec<String> = Vec::new();
+    let mut existing: Vec<String> = Vec::new();
+    for template in lm_studio_model_path_templates() {
+        let validation = validate_model_library(template);
+        let display = if validation.resolved_path.is_empty() {
+            expand_path_placeholders(template)
         } else {
-            validation.resolved_path.clone()
-        };
-        return Err(format!(
-            "LM Studio models folder not found at {display_path}. Use Browse to pick your library."
-        ));
-    }
-    if validation.gguf_count == 0 {
-        return Err(format!(
-            "No GGUF models found in {}. LM Studio may use a custom folder — use Browse to pick it.",
             validation.resolved_path
-        ));
+        };
+        if validation.exists {
+            existing.push(display.clone());
+        }
+        checked.push(display);
     }
-    if find_model_path_index(config.model_paths.as_slice(), template).is_some() {
-        return Ok(false);
-    }
-    if !validation.resolved_path.is_empty()
-        && find_model_path_index(config.model_paths.as_slice(), &validation.resolved_path).is_some()
-    {
-        return Ok(false);
-    }
-    config.model_paths.push(ModelPathEntry {
-        path: template.to_string(),
-        label: LM_STUDIO_PATH_LABEL.to_string(),
-        is_default: false,
-    });
-    Ok(true)
+
+    Err(if existing.is_empty() {
+        format!(
+            "No LM Studio models folder found ({}). Use BROWSE to pick the folder that holds your GGUF models.",
+            checked.join(" · ")
+        )
+    } else {
+        format!(
+            "LM Studio's models folder holds no GGUF models ({}). If your models live elsewhere, use BROWSE to pick that folder.",
+            existing.join(" · ")
+        )
+    })
 }
 
 pub fn default_model_path_entry() -> ModelPathEntry {
