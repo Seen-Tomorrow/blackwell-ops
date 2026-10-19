@@ -540,8 +540,8 @@ export function resolveFullAutoPlan(opts: {
     boostLabel = "Smart";
   }
 
-  // Header order: BOOST · MEMORY · AGENTS · THINK
-  const outcome = `Boost ${boostLabel} · Memory ${brainsLabel} · Agents ${agentsLabel} · Think ${thinkLabel}`;
+  // Header order: <boost> Boost · <memory> Memory · Agents · Think
+  const outcome = `${boostLabel} Boost · ${brainsLabel} Memory · Agents ${agentsLabel} · Think ${thinkLabel}`;
 
   return {
     parallel: agentsN,

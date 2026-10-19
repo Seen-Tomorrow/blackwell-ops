@@ -1223,6 +1223,18 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           .filter((value) => Number.isFinite(value));
         if (ctxValues.length === 0) return;
         updateParam("ctx", Math.max(...ctxValues));
+      } else {
+        // Do not let MAX CTX's 512K leak into the other goals. Start them at
+        // the sane 64K anchor; the user can still adjust from there.
+        const ctxDef = allParamsResolved.find((param) => param.key === "ctx");
+        if (!ctxDef) return;
+        const ctxValues = visibleParamValuesOf(ctxDef)
+          .map((value) => Number(value))
+          .filter((value) => Number.isFinite(value));
+        const saneCtx = ctxValues.includes(65536)
+          ? 65536
+          : Number(ctxDef.defaultValue);
+        if (Number.isFinite(saneCtx) && saneCtx > 0) updateParam("ctx", saneCtx);
       }
     },
     [

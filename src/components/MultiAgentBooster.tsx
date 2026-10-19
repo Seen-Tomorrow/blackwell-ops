@@ -692,6 +692,11 @@ export default function MultiAgentBooster({
   const ctxNumeric = Number(ctxValue);
   const ctxLabel = Number.isFinite(ctxNumeric) ? formatCtxChipLabel(ctxNumeric) : null;
   const batchLabel = fullAutoGoalBatchLabel(autoGoal ?? null);
+  const batchPhrase = batchLabel
+    ? batchLabel === "BALANCE"
+      ? "Balanced batch"
+      : `${batchLabel.charAt(0)}${batchLabel.slice(1).toLowerCase()} batch`
+    : null;
   const workloadLabel = fullAutoWorkloadLabel(autoWorkload ?? null);
   const fitLabel =
     autoFitState === "ready"
@@ -704,7 +709,7 @@ export default function MultiAgentBooster({
   const autoOutcome = [
     plan.outcome,
     workloadLabel,
-    batchLabel ? `Batch ${batchLabel}` : null,
+    batchPhrase,
     ctxLabel ? `CTX ${ctxLabel}` : null,
     fitLabel,
   ]
