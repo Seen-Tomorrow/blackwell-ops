@@ -158,6 +158,8 @@ fn append_panic_record(path: &std::path::Path, msg: &str) -> std::io::Result<()>
 
 #[tokio::main]
 async fn main() {
+    // First: no modal crash dialogs for us or any helper binary we spawn.
+    crash_log::silence_crash_dialogs();
     crash_log::install_native_exception_logger();
     session_log::init();
 

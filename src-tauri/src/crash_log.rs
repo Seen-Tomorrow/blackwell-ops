@@ -1,5 +1,32 @@
 //! Windows native exception logger — captures STATUS_* codes that bypass Rust's panic hook.
 
+/// Silence the Windows “has stopped working” dialog for this process **and every
+/// child it spawns**.
+///
+/// Helper binaries legitimately crash on GGUFs their build cannot load:
+/// `llama-fit-params` exits `0xC0000409` on a draft tensor or an unimplemented
+/// arch, a dozen times during a library scan. Each crash raised a modal WER box
+/// that stole focus and stacked up — from the UI it looked like the app itself
+/// was dying. The error mode is inherited at `CreateProcess` unless the child is
+/// created with `CREATE_DEFAULT_ERROR_MODE`, so one process-wide setting covers
+/// the whole spawn surface.
+///
+/// Evidence is not lost: the vectored exception logger below and the session log
+/// still record every native exception in this process, and child failures keep
+/// arriving in the fit-scan warnings.
+#[cfg(windows)]
+pub fn silence_crash_dialogs() {
+    use windows_sys::Win32::System::Diagnostics::Debug::{
+        SetErrorMode, SEM_FAILCRITICALERRORS, SEM_NOGPFAULTERRORBOX, SEM_NOOPENFILEERRORBOX,
+    };
+    unsafe {
+        SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
+    }
+}
+
+#[cfg(not(windows))]
+pub fn silence_crash_dialogs() {}
+
 #[cfg(windows)]
 mod imp {
     use std::io::Write;
