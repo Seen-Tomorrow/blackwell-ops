@@ -608,10 +608,19 @@ pub async fn launch_engine(
         );
     }
 
-    // Emit full launch command to Blackwell Output Console (DEBUG category)
+    // Emit full launch command to Blackwell Output Console (ENGINES category,
+    // with the active launch mode so ASSISTED/AUTOPILOT runs are distinguishable).
+    let launch_mode = match config.get_param_str("__launch_policy").as_deref() {
+        Some("full_auto") => "AUTOPILOT",
+        Some("assisted_essentials") | Some("assisted_full") => "ASSISTED",
+        _ => match config.get_param_str("__memory_mode").as_deref() {
+            Some("full_auto") => "AUTOPILOT",
+            _ => "ASSISTED",
+        },
+    };
     app.blackwell_output_console_manager.emit_line_to_category(
-        crate::output_console::BlackwellOutputConsoleCategory::Debug,
-        format!("[LAUNCH_CMD] slot={}: {}", slot_idx, launch_cmd),
+        crate::output_console::BlackwellOutputConsoleCategory::Engines,
+        format!("[LAUNCH_CMD] {launch_mode} slot={}: {}", slot_idx, launch_cmd),
         crate::output_console::BlackwellOutputConsoleLineStyle::Command,
     );
 
