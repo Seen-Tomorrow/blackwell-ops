@@ -77,6 +77,13 @@ function resolveParallelSlots(
   return Number.isFinite(n) && n > 0 ? n : 1;
 }
 
+function thinkFromReasoning(value: unknown): ThinkId {
+  if (value === "off" || value === 0 || value === "0") return "off";
+  if (value === 2000 || value === "2000") return "budget2k";
+  if (value === 4000 || value === "4000" || value === 8000 || value === "8000") return "budget";
+  return "on";
+}
+
 export type ApplyCockpitOpts = {
   powerUser?: boolean;
   rawSpecType?: string | null;
@@ -120,12 +127,37 @@ export function useCockpit({
   setResolvedProviders,
   hydrateLockRef,
 }: UseCockpitOptions) {
-  const [codingMode, setCodingMode] = useState<CodingModeId>("solo");
-  const [speedBoost, setSpeedBoost] = useState<SpeedBoostId>("off");
-  const [brains, setBrains] = useState<BrainsId>("solid");
-  const [think, setThink] = useState<ThinkId>("on");
+  const cockpitModeKey = fullAutoMode
+    ? "full_auto"
+    : configView === "full"
+      ? "assisted_full"
+      : "assisted_essentials";
+  const [speedByMode, setSpeedByMode] = useState<Record<string, SpeedBoostId>>({});
+  const speedBoost = speedByMode[cockpitModeKey] ?? (fullAutoMode ? "smart" : "off");
+  const setSpeedBoost = useCallback(
+    (next: SpeedBoostId) => {
+      setSpeedByMode((prev) => ({ ...prev, [cockpitModeKey]: next }));
+    },
+    [cockpitModeKey],
+  );
+  const setSpeedForMode = useCallback((mode: string, next: SpeedBoostId) => {
+    setSpeedByMode((prev) => ({ ...prev, [mode]: next }));
+  }, []);
   const [specFlash, setSpecFlash] = useState(false);
   const boosterSeededRef = useRef(false);
+
+  // Agents / Memory / Think are derived from the active mode's config, not
+  // shared React state. CTX/batch/header flags already work this way; keeping
+  // these three derived removes the cross-mode slider leak at the source.
+  const codingMode = useMemo(
+    () => codingModeFromParallel(resolveParallelSlots(config, allParamsResolved)),
+    [config, allParamsResolved],
+  );
+  const brains = useMemo(
+    () => brainsFromKvQuant(config.kv_quant != null ? String(config.kv_quant) : undefined),
+    [config.kv_quant],
+  );
+  const think = useMemo(() => thinkFromReasoning(config.reasoning), [config.reasoning]);
 
   const fullAutoFixed = fullAutoMode;
 
@@ -321,10 +353,7 @@ export function useCockpit({
       opts?: ApplyCockpitOpts,
     ) => {
       const powerUser = opts?.powerUser ?? false;
-      setCodingMode(mode);
       setSpeedBoost(speed);
-      setBrains(brainsPick);
-      setThink(thinkPick);
 
       const draftReadyMethod: SpecBoostMethod =
         speed === "mtp" || speed === "dflash" || speed === "dspark" ? speed : "off";
@@ -358,7 +387,6 @@ export function useCockpit({
         powerUser,
       });
 
-      if (plan.forcedSoloForMtp) setCodingMode("solo");
       // Only auto-normalize the soft Off/Smart modes. A user-picked MTP/DFlash/
       // DSpark stays selected even when its draft is not ready yet — the strip
       // then asks for the missing draft instead of silently reverting.
@@ -461,70 +489,6 @@ export function useCockpit({
     return st;
   }, [specDecodingGroupVisible, config.spec_type]);
 
-  // Hydrate Agents / Memory / Think from resolved profile (not one-shot seed).
-  useEffect(() => {
-    if (!allParamsResolved.length) return;
-    if (config.parallel == null && config.kv_quant == null && config.reasoning == null) {
-      return;
-    }
-    const par = resolveParallelSlots(config, allParamsResolved);
-    setCodingMode(codingModeFromParallel(par));
-    setBrains(brainsFromKvQuant(config.kv_quant != null ? String(config.kv_quant) : undefined));
-    const r = config.reasoning;
-    if (r === "off" || r === 0 || r === "0") setThink("off");
-    else if (r === 2000 || r === "2000") setThink("budget2k");
-    else if (r === 4000 || r === "4000") setThink("budget");
-    else if (r === 8000 || r === "8000") setThink("budget");
-    else setThink("on");
-  }, [allParamsResolved, config.parallel, config.kv_quant, config.reasoning, fullAutoMode, configView]);
-
-  // The four cockpit sliders are UI state, not launch config. Keep a snapshot
-  // per mode so switching back restores the mode's own slider positions even
-  // when the shared config hydration above did not move.
-  const cockpitModeKey = fullAutoMode
-    ? "full_auto"
-    : configView === "full"
-      ? "assisted_full"
-      : "assisted_essentials";
-  const cockpitByModeRef = useRef<Record<string, {
-    codingMode: CodingModeId;
-    speedBoost: SpeedBoostId;
-    brains: BrainsId;
-    think: ThinkId;
-  }>>({});
-  const prevCockpitModeRef = useRef(cockpitModeKey);
-  useEffect(() => {
-    const prev = prevCockpitModeRef.current;
-    if (prev === cockpitModeKey) return;
-    cockpitByModeRef.current[prev] = { codingMode, speedBoost, brains, think };
-    const saved = cockpitByModeRef.current[cockpitModeKey];
-    if (saved) {
-      // Restore only when the mode's config still agrees with the snapshot.
-      // TAKE CONTROL copies Autopilot into Assisted; in that case config wins.
-      const par = resolveParallelSlots(config, allParamsResolved);
-      const cfgMode = codingModeFromParallel(par);
-      const cfgBrains = brainsFromKvQuant(
-        config.kv_quant != null ? String(config.kv_quant) : undefined,
-      );
-      const r = config.reasoning;
-      const cfgThink: ThinkId =
-        r === "off" || r === 0 || r === "0"
-          ? "off"
-          : r === 2000 || r === "2000"
-            ? "budget2k"
-            : r === 4000 || r === "4000" || r === 8000 || r === "8000"
-              ? "budget"
-              : "on";
-      if (cfgMode === saved.codingMode && cfgBrains === saved.brains && cfgThink === saved.think) {
-        setCodingMode(saved.codingMode);
-        setSpeedBoost(saved.speedBoost);
-        setBrains(saved.brains);
-        setThink(saved.think);
-      }
-    }
-    prevCockpitModeRef.current = cockpitModeKey;
-  }, [cockpitModeKey, codingMode, speedBoost, brains, think, config, allParamsResolved]);
-
   useEffect(() => {
     boosterSeededRef.current = false;
   }, [effectiveBackendType, model?.path, fullAutoMode, configView]);
@@ -532,6 +496,10 @@ export function useCockpit({
   useEffect(() => {
     if (boosterSeededRef.current) return;
     if (!allParamsResolved.length) return;
+    if (speedByMode[cockpitModeKey] !== undefined) {
+      boosterSeededRef.current = true;
+      return;
+    }
     if (config.parallel == null && config.kv_quant == null && Object.keys(config).length === 0) {
       return;
     }
@@ -541,7 +509,7 @@ export function useCockpit({
     }
     else setSpeedBoost(fullAutoMode ? "smart" : "off");
     boosterSeededRef.current = true;
-  }, [allParamsResolved, config, fullAutoMode, specDecodingGroupVisible]);
+  }, [allParamsResolved, config, fullAutoMode, specDecodingGroupVisible, speedByMode, cockpitModeKey]);
 
   // Model / capability drop → snap Boost (derive agents/memory/think from config).
   useEffect(() => {
@@ -593,10 +561,8 @@ export function useCockpit({
     speedBoost,
     brains,
     think,
-    setCodingMode,
     setSpeedBoost,
-    setBrains,
-    setThink,
+    setSpeedForMode,
     specFlash,
     applyFullAutoCockpit,
     cockpitOpts,

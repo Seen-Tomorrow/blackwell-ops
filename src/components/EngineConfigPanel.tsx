@@ -1028,6 +1028,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     brains,
     think,
     specFlash,
+    setSpeedForMode,
     applyFullAutoCockpit,
     cockpitOpts,
     specCapabilities,
@@ -1280,11 +1281,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     // TAKE CONTROL is the explicit handoff: start Assisted from the exact
     // Autopilot plan the user is looking at, then let them tweak it.
     copyActiveProfileTo("assisted_full");
+    setSpeedForMode("assisted_full", speedBoost);
     setAutoGoal(null);
     setAutoSpecOverride(null);
     saveFullAutoGoal(null);
     setFullAuto(false);
-  }, [copyActiveProfileTo, setFullAuto]);
+  }, [copyActiveProfileTo, setFullAuto, setSpeedForMode, speedBoost]);
 
   const autoFitState: "ready" | "tight" | "estimating" = vramCalc.manifest
     ? vramCalc.manifest.fits
