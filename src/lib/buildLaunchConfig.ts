@@ -133,7 +133,10 @@ function clampUbatchToBatch(
     .filter((value) => Number.isFinite(value) && value > 0 && value <= batch && !hidden.has(String(value)))
     .sort((a, b) => a - b);
   if (candidates.length === 0) return merged;
-  return { ...merged, ubatch: candidates[candidates.length - 1] };
+  // The pair was invalid because snap moved ubatch upward. Prefer the
+  // smallest allowed value rather than the largest that fits: the goal that
+  // reaches this path is the latency/low-memory side.
+  return { ...merged, ubatch: candidates[0] };
 }
 
 /**
