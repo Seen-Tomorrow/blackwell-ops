@@ -51,6 +51,17 @@ interface BuildLogEntry {
 }
 
 /**
+ * Hard cap on retained build log lines.
+ *
+ * The build window renders the last 200, so this holds a little more than it shows —
+ * enough that a failure's context survives the render cap. Capped unconditionally:
+ * the previous version gated the trim on a step string that never matched the
+ * backend's phase name ("BUILD" vs "Building"), so the array grew for the whole
+ * compile while the render simply hid the excess.
+ */
+const MAX_BUILD_LOG_LINES = 500;
+
+/**
  * The build flow has TWO distinct consent points where the user must explicitly approve:
  *
  * 1. Initial Build Confirmation (this modal in "confirm" phase)
@@ -340,11 +351,14 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
           if (payload.log_lines?.length > 0) {
             setLogLines(prev => {
               const next = [...prev, ...payload.log_lines.map((text: string) => ({ step: stepLabel, text, timestamp: ts }))];
-              if (stepLabel === "BUILD" && next.length > 150) return next.slice(next.length - 150);
-              return next;
+              return next.length > MAX_BUILD_LOG_LINES ? next.slice(-MAX_BUILD_LOG_LINES) : next;
             });
           } else if (payload.log_line) {
-            setLogLines(prev => [...prev, { step: stepLabel, text: payload.log_line, timestamp: ts }]);
+            const line = payload.log_line;
+            setLogLines(prev => {
+              const next = [...prev, { step: stepLabel, text: line, timestamp: ts }];
+              return next.length > MAX_BUILD_LOG_LINES ? next.slice(-MAX_BUILD_LOG_LINES) : next;
+            });
           }
 
           const mapping = mapBackendPhase(payload.phase);
