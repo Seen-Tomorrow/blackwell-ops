@@ -324,6 +324,7 @@ export default function MultiAgentBooster({
   const dflashAvailable = dflashLibraryReady || dflashGettable || capSet.has("dflash");
   const heroSpecCapable = capSet.has("mtp") || capSet.has("dflash");
   const heroSpecAllowed = autoGoal !== "agents";
+  const heroSpecAvailable = heroSpecAllowed && heroSpecCapable;
   const mtpLocksAgents = displayBoost === "mtp";
 
   const boostMarks = useMemo((): BoostMarkParts[] => {
@@ -432,7 +433,7 @@ export default function MultiAgentBooster({
   const heroSpecValue = displayBoost === "smart" ? "off" : displayBoost;
 
   const heroSpecSwitch =
-    hero && heroSpecAllowed && heroSpecCapable && onAutoGoal && onAutoSpec && showBoost ? (
+    hero && heroSpecAvailable && onAutoGoal && onAutoSpec && showBoost ? (
       <div
         className="flex items-center justify-end gap-2"
       >
@@ -758,7 +759,7 @@ export default function MultiAgentBooster({
             onFix={onAutoFix}
             onTakeControl={onTakeControl}
             specSlot={heroSpecSwitch}
-            specExtraSlot={heroSpecAllowed ? violetStrip : null}
+            specExtraSlot={heroSpecAvailable ? violetStrip : null}
           />
         </div>
       ) : null}
