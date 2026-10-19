@@ -325,7 +325,6 @@ export default function MultiAgentBooster({
   const heroSpecCapable = capSet.has("mtp") || capSet.has("dflash");
   const heroSpecAllowed = autoGoal !== "agents";
   const heroSpecAvailable = heroSpecAllowed && heroSpecCapable;
-  const mtpLocksAgents = displayBoost === "mtp";
 
   const boostMarks = useMemo((): BoostMarkParts[] => {
     const marks: BoostMarkParts[] = [];
@@ -802,25 +801,17 @@ export default function MultiAgentBooster({
           <div className="full-auto-cockpit__grid-cell">
             <CockpitSlider
               label="Agents"
-              value={mtpLocksAgents ? "solo" : codingMode}
+              value={codingMode}
               onChange={onCodingMode}
-              options={agentOptions.map((o) => {
-                const locked = mtpLocksAgents && o.id !== "solo";
-                return {
-                  id: o.id,
-                  label: o.label,
-                  blurb: locked
-                    ? "MTP needs Solo — multi-agent disabled"
-                    : `${o.blurb} (x${o.parallel})`,
-                  disabled: locked,
-                  strike: locked,
-                  custom: o.custom,
-                };
-              })}
-              valueBadge={`x${mtpLocksAgents ? 1 : parallelForCodingMode(codingMode)}`}
+              options={agentOptions.map((o) => ({
+                id: o.id,
+                label: o.label,
+                blurb: `${o.blurb} (x${o.parallel})`,
+                custom: o.custom,
+              }))}
+              valueBadge={`x${parallelForCodingMode(codingMode)}`}
               badgeWidth="3rem"
               heroBadge
-              className={mtpLocksAgents ? "cockpit-slider-row--mtp-agents" : ""}
             />
           </div>
           )}

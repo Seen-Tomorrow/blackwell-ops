@@ -60,7 +60,7 @@ const SPEED_BOOST_OPTIONS: SpeedBoostOption[] = [
   {
     id: "mtp",
     label: "MTP",
-    blurb: "Built-in speculative tokens — one agent only",
+    blurb: "Built-in speculative tokens",
     needs: "mtp",
   },
   {
@@ -280,7 +280,7 @@ export function parseSpecTypeBoostMark(specType: string): BoostMarkParts {
       id: "mtp",
       label: "MTP",
       aboveLabel: "draft",
-      blurb: "Built-in speculative tokens — one agent only",
+      blurb: "Built-in speculative tokens",
       badgeColor: "green",
       rank: 90,
     };
@@ -380,7 +380,6 @@ export interface FullAutoPlan {
   think: ThinkId;
   enableSpec: boolean;
   specType: string | null;
-  forcedSoloForMtp: boolean;
   /** Prefer aggressive batch/ubatch (Smart speed). */
   pushBatch: boolean;
   kvQuant: string;
@@ -450,7 +449,6 @@ export function resolveFullAutoPlan(opts: {
   let parallel = parallelForCodingMode(codingMode);
   let enableSpec = false;
   let specType: string | null = null;
-  let forcedSoloForMtp = false;
   let pushBatch = false;
   let softNote: string | null = null;
   let needsDflashDraft = false;
@@ -458,11 +456,6 @@ export function resolveFullAutoPlan(opts: {
   if (speed === "mtp") {
     enableSpec = true;
     specType = "draft-mtp";
-    if (parallel > 1) {
-      parallel = 1;
-      forcedSoloForMtp = true;
-      softNote = "MTP works best with one agent — Agents set to Solo";
-    }
   } else if (speed === "dflash") {
     // Always keep SPEC group ON for DFlash boost so n_max/n_min survive MTP↔DFlash switches.
     // Missing draft only gates the Get-draft CTA / launch validity — never tears down knobs.
@@ -507,7 +500,7 @@ export function resolveFullAutoPlan(opts: {
     ?? (typeof brains === "string" && brains.startsWith("kv:")
       ? brains.slice(3)
       : "Solid");
-  const agentsN = forcedSoloForMtp ? 1 : parallel;
+  const agentsN = parallel;
   const agentsLabel = `×${agentsN}`;
   const thinkLabel =
     think === "off"
@@ -545,13 +538,12 @@ export function resolveFullAutoPlan(opts: {
 
   return {
     parallel: agentsN,
-    codingMode: forcedSoloForMtp ? "solo" : codingMode,
+    codingMode,
     speed,
     brains,
     think,
     enableSpec,
     specType,
-    forcedSoloForMtp,
     pushBatch,
     kvQuant,
     reasoning,

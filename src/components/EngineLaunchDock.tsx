@@ -29,8 +29,6 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
     launchDockCollapsed = false,
     onExpandCollapsedDock = () => {},
     // warnings
-    specParallelWarn,
-    mtpParallelSlotCount,
     fullAutoFixed,
     modelIsDraftOnly,
     // custom flags renderer
@@ -83,34 +81,6 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
 
   const renderWarnings = () => (
     <>
-      {specParallelWarn && !fullAutoFixed && (
-        <div
-          className={`config-mtp-launch-warn rounded-sm px-2.5 py-1.5 type-micro font-mono leading-snug${
-            rail ? " shrink-0" : ""
-          }`}
-          role="status"
-        >
-          <span className="uppercase tracking-wide">⚠ MTP limited at launch</span>
-          {" — "}
-          <span className="config-mtp-launch-warn__detail">
-            parallel ×{mtpParallelSlotCount} strips MTP speculative decoding. Use parallel = 1 for MTP, or switch to DFlash for multi-slot.
-          </span>
-        </div>
-      )}
-      {specParallelWarn && fullAutoFixed && (
-        <div
-          className={`config-mtp-launch-warn rounded-sm px-2.5 py-1.5 type-micro font-mono leading-snug${
-            rail ? " shrink-0" : ""
-          }`}
-          role="status"
-        >
-          <span className="config-mtp-launch-warn__detail">
-            {rail
-              ? "Multi-agent is on — use Speed Off/DFlash, or Agents Solo for MTP."
-              : "Multi-agent is on — Speed boost will use Off or DFlash (MTP needs Solo). Tap Speed → Off, or Agents → Solo for MTP."}
-          </span>
-        </div>
-      )}
       {modelIsDraftOnly && (
         <div
           className={`config-mtp-launch-warn rounded-sm px-2.5 py-1.5 type-micro font-mono leading-snug${
@@ -364,9 +334,6 @@ export interface EngineLaunchDockProps {
   launchDockCollapsed?: boolean;
   onExpandCollapsedDock?: () => void;
   /** Warnings. */
-  specParallelWarn: boolean;
-  mtpParallelSlotCount: number;
-
   fullAutoFixed: boolean;
   modelIsDraftOnly: boolean;
   /** Custom flags block renderer (orchestrator owns editor state + popover). */

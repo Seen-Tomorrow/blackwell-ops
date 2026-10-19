@@ -209,13 +209,13 @@ function formatBenchK(n: number): string {
 const BENCH_CONCURRENCY_HELP =
   "Measured TG only (warmup stays ×1). Each concurrent feed pins to its own engine slot — ×4 needs --parallel ≥ 4 at launch. "
   + "Picking more than the engine has caps to the slot count (e.g. ×128 with 16 slots runs ×16). "
-  + "MTP / speculative models: use ×1 parallel when the draft model conflicts with multi-slot decode.";
+  + "MTP / speculative models can use multi-slot decode on current llama builds.";
 
 function benchConcurrencyChipTitle(n: number): string {
   if (n === 1) {
-    return "Single /completion feed — no multi-slot stress. Safe for MTP / speculative models.";
+    return "Single /completion feed — no multi-slot stress.";
   }
-  return `×${n}: ${n} parallel /completion feeds pinned to slots 0–${n - 1}. Requires --parallel ≥ ${n} at launch; capped to live slot count if lower. Not for MTP models.`;
+  return `×${n}: ${n} parallel /completion feeds pinned to slots 0–${n - 1}. Requires --parallel ≥ ${n} at launch; capped to live slot count if lower.`;
 }
 
 

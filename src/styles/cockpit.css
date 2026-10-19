@@ -1816,11 +1816,6 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   opacity: 0.35;
 }
 
-/* MTP on — agents track feels locked except Solo */
-.cockpit-slider-row--mtp-agents .cockpit-slider-track {
-  opacity: 0.72;
-}
-
 .cockpit-slider-mark--tint.cockpit-slider-mark--green {
   opacity: 0.75;
 }

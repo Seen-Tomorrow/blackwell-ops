@@ -417,7 +417,7 @@ export function useCockpit({
       // normalization (Smart/safe fallbacks) turn them back into defaults in
       // the profile after the click.
       if (powerUser) {
-        if (!plan.forcedSoloForMtp) updateParam("parallel", parallelForCodingMode(mode));
+        updateParam("parallel", parallelForCodingMode(mode));
         const kv = BRAINS_OPTIONS.find((b) => b.id === brainsPick)?.kvQuant;
         if (kv && kvQuantValues.some((v) => String(v).toLowerCase() === kv.toLowerCase())) {
           updateParam("kv_quant", kv);

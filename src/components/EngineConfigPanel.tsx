@@ -173,7 +173,6 @@ import {
   resolveExternalDraftPath,
   resolveDraftPathLabel,
   saveDraftPairing,
-  specTypeAllowsParallel,
   isSpecDecodingGroupActive,
 } from "../lib/specDraft";
 import {
@@ -273,16 +272,6 @@ const PROFILE_COLORS: Record<string, string> = {
 
 function isSpecDecodingActive(params: UserEditedTemplateParam[]): boolean {
   return isSpecDecodingGroupActive(params);
-}
-
-function specParallelConflict(
-  specType: string | undefined,
-  params: UserEditedTemplateParam[],
-  config: Record<string, unknown>,
-): boolean {
-  if (!specType || !isSpecDecodingActive(params)) return false;
-  if (specTypeAllowsParallel(specType)) return false;
-  return resolveParallelSlots(config, params) > 1;
 }
 
 
@@ -1374,25 +1363,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
 
 
-  const specParallelWarn = useMemo(
-    () =>
-      specParallelConflict(
-        speedBoost === "mtp"
-          ? "draft-mtp"
-          : speedBoost === "dflash"
-            ? "draft-dflash"
-            : speedBoost === "dspark"
-              ? "draft-dspark"
-              : undefined,
-        allParamsResolved,
-        config,
-      ),
-    [speedBoost, allParamsResolved, config],
-  );
-  const mtpParallelSlotCount = useMemo(
-    () => resolveParallelSlots(config, allParamsResolved),
-    [config, allParamsResolved],
-  );
   const hasSpecCapability = specCapabilities.length > 0;
   const specActive = useMemo(
     () => hasSpecCapability && specDecodingGroupVisible,
@@ -3714,8 +3684,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             setLaunchDockCollapsed(false);
             saveLaunchDockCollapsed(false);
           }}
-          specParallelWarn={specParallelWarn}
-          mtpParallelSlotCount={mtpParallelSlotCount}
           fullAutoFixed={fullAutoFixed}
           modelIsDraftOnly={modelIsDraftOnly}
           renderCustomFlags={renderCustomFlagsBlock}
@@ -3818,8 +3786,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             {showLaunchRail && (
               <EngineLaunchDock
                 position="right"
-                specParallelWarn={specParallelWarn}
-                mtpParallelSlotCount={mtpParallelSlotCount}
                 fullAutoFixed={fullAutoFixed}
                 modelIsDraftOnly={modelIsDraftOnly}
                 renderCustomFlags={renderCustomFlagsBlock}

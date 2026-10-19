@@ -218,11 +218,7 @@ export default function CockpitSlider({
                 }}
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={() => commitIndex(idx)}
-                title={
-                  opt.strike
-                    ? `${opt.label}: not available with MTP (Solo only)`
-                    : opt.blurb || opt.label
-                }
+                title={opt.blurb || opt.label}
                 role="button"
                 aria-label={`Select ${opt.label}`}
                 aria-disabled={opt.disabled || undefined}
