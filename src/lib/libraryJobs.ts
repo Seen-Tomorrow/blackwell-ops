@@ -98,6 +98,8 @@ export interface MetadataJobState {
   done: number;
   failed: number;
   total: number;
+  /** True when the catalog's SCAN META started it, false for the first-run pass. */
+  manual: boolean;
   /** Display name of the model being probed. */
   current: string | null;
 }
@@ -109,6 +111,7 @@ const IDLE_METADATA: MetadataJobState = {
   done: 0,
   failed: 0,
   total: 0,
+  manual: false,
   current: null,
 };
 
@@ -140,6 +143,8 @@ export interface StartMetadataOptions {
   concurrency?: number;
   /** Called as each model lands, so the catalog updates model by model. */
   onModelScanned?: (path: string, patch: ModelScanPatch) => void;
+  /** Started by the user (catalog SCAN META) rather than the first-run pass. */
+  manual?: boolean;
 }
 
 export type MetadataRunResult = "completed" | "cancelled" | "busy";
@@ -156,6 +161,7 @@ export async function startMetadataScan({
   firstPath,
   concurrency = 2,
   onModelScanned,
+  manual = false,
 }: StartMetadataOptions): Promise<MetadataRunResult> {
   if (metadataJob.status === "running") return "busy";
 
@@ -163,7 +169,14 @@ export async function startMetadataScan({
   const queue = orderModelsForScan(models, firstPath);
   // Nothing to probe — do not flash a running job for an empty queue.
   if (queue.length === 0) return "completed";
-  metadataJob = { status: "running", done: 0, failed: 0, total: queue.length, current: null };
+  metadataJob = {
+    status: "running",
+    done: 0,
+    failed: 0,
+    total: queue.length,
+    manual,
+    current: null,
+  };
   bump();
 
   let cursor = 0;

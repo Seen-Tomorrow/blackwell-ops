@@ -50,6 +50,7 @@ export default function HeaderMaintenanceStrip() {
           kind: "metadata" as const,
           done: metadata.done,
           total: metadata.total,
+          manual: metadata.manual,
           current: baseName(metadata.current),
           providerId: null as string | null,
         }
@@ -60,6 +61,7 @@ export default function HeaderMaintenanceStrip() {
             // entries, so counting it would show 60/12 on an incremental pass.
             done: fit.state.runCompleted ?? 0,
             total: fit.state.totalModels,
+            manual: fit.state.manual ?? false,
             current: baseName(fit.state.activeModelPath ?? null),
             providerId: fit.providerId,
           }
@@ -69,16 +71,17 @@ export default function HeaderMaintenanceStrip() {
 
   const isFit = view.kind === "fit";
   const pct = view.total > 0 ? Math.min(100, (view.done / view.total) * 100) : 0;
-  const label = isFit ? "VRAM FIT" : "METADATA";
+  const label = isFit ? "VRAM FIT SCAN" : "MODEL METADATA SCAN";
+  const mode = view.manual ? "MANUAL SCAN" : "ONE-TIME SCAN";
   const detail = isFit
     ? `VRAM fit scan — ${view.done} of ${view.total} models measured`
-    : `GGUF metadata scan — ${view.done} of ${view.total} models parsed`;
+    : `Model metadata scan — ${view.done} of ${view.total} models parsed`;
 
   return (
     <div
       className="hdr-maint-strip flex items-center gap-2 flex-shrink-0"
       data-job={view.kind}
-      title={view.current ? `${detail}\n${view.current}` : detail}
+      title={view.current ? `${detail}\nModel ${view.current}` : detail}
     >
       <span className="hdr-maint-strip__label">{label}</span>
       <span className="hdr-maint-strip__count">
@@ -94,7 +97,10 @@ export default function HeaderMaintenanceStrip() {
       >
         <span className="hdr-maint-strip__fill" style={{ width: `${pct}%` }} />
       </span>
-      {view.current && <span className="hdr-maint-strip__current">{view.current}</span>}
+      <span className="hdr-maint-strip__mode">{mode}</span>
+      {view.current && (
+        <span className="hdr-maint-strip__current">Model {view.current}</span>
+      )}
       {isFit && view.providerId && (
         <button
           type="button"

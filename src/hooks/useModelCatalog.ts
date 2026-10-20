@@ -587,6 +587,8 @@ export function useModelCatalog({
       firstPath: panelActiveModel?.path ?? loadLastModel(),
       concurrency: concurrency && concurrency > 0 ? concurrency : 3,
       onModelScanned,
+      // Header strip reads this to say MANUAL SCAN instead of ONE-TIME SCAN.
+      manual: true,
     });
     onReload();
   }, [models, onModelScanned, onReload, panelActiveModel?.path]);

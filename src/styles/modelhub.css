@@ -18,13 +18,19 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: var(--type-micro);
   white-space: nowrap;
-  max-width: 30rem;
+  max-width: 46rem;
   border-left: 1px solid color-mix(in srgb, var(--theme-border) 45%, transparent);
 }
 
 .hdr-maint-strip__label {
   letter-spacing: 0.08em;
   color: var(--theme-tel-cyan);
+}
+
+/* “ONE-TIME SCAN” / “MANUAL SCAN” — what kind of pass this is. */
+.hdr-maint-strip__mode {
+  letter-spacing: 0.06em;
+  color: color-mix(in srgb, var(--theme-text-muted) 55%, transparent);
 }
 
 /* The GPU pass is the heavier one — amber, same family as the fit badges. */
@@ -57,7 +63,7 @@
 }
 
 .hdr-maint-strip__current {
-  max-width: 9rem;
+  max-width: 14rem;
   overflow: hidden;
   text-overflow: ellipsis;
   color: color-mix(in srgb, var(--theme-text-muted) 75%, transparent);
