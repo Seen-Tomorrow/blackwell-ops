@@ -13,6 +13,21 @@ use super::{BUILD_CANCELLED, CHILD_PIDS, BuildState, emit_build_batch, progress}
 
 // ── PID Tracking ─────────────────────────────────────────────────────
 
+/// Join batch-script lines the way `cmd.exe` requires: **CRLF**.
+///
+/// LF-only batch files are not merely untidy — `cmd.exe` misparses them. Once a line
+/// grows past the parser's buffer (our `set "PATH=…"` lines do), the following lines
+/// lose their leading characters (`echo` → `ho`, `set` → `t`, `call` → `ll`) and the
+/// script dies with exit 1. Measured against the real foundry configure batch: the LF
+/// copy aborted in 0.1 s, the identical bytes as CRLF configured in 3.1 s.
+///
+/// Never join batch content with `"\n"`.
+pub(crate) fn batch_script_text(lines: &[String]) -> String {
+    let mut out = lines.join("\r\n");
+    out.push_str("\r\n");
+    out
+}
+
 pub(crate) fn with_child_pids<F, R>(f: F) -> Option<R>
 where
     F: FnOnce(&mut Vec<u32>) -> R,
@@ -71,6 +86,7 @@ fn is_genuine_error_line(line: &str) -> bool {
 /// Returns `true` if the line should be suppressed entirely (not shown in the log).
 fn is_suppressed_vendor_noise(line: &str) -> bool {
     let lower = line.to_ascii_lowercase();
+    let trimmed = lower.trim_start();
     // cpp-httplib probes OpenSSL unconditionally, even when LLAMA_OPENSSL=OFF. Its
     // warning header prints to stderr; the useful child line is filtered below too.
     lower.contains("could not find openssl")
@@ -81,6 +97,14 @@ fn is_suppressed_vendor_noise(line: &str) -> bool {
         // type comes from `cmake --build --config Release`, not this cache var.
         || lower.trim() == "cmake_build_type=release"
         || lower.trim() == "cmake_build_type="
+        // CMake's FindThreads probe always walks through pthread on Windows: it tests
+        // libc pthread, hunts pthread_create twice, fails all three, then prints
+        // "Found Threads: TRUE". Five log lines that can never differ, every configure.
+        || trimmed.starts_with("-- performing test cmake_have_libc_pthread")
+        || trimmed.starts_with("-- looking for pthread_create")
+        // GGML_CCACHE defaults ON upstream; we do not ship ccache, so every configure
+        // warns about it. Installing one is a toolchain decision, not a build failure.
+        || lower.contains("ccache not found")
 }
 
 /// OS-thread line drain for one pipe (stdout or stderr).
@@ -276,6 +300,20 @@ pub(crate) fn clear_pids() {
 }
 
 #[cfg(test)]
+mod script_tests {
+    use super::batch_script_text;
+
+    #[test]
+    fn batch_text_is_crlf_only() {
+        let text = batch_script_text(&["@echo off".to_string(), "echo hi".to_string()]);
+        assert_eq!(text, "@echo off\r\necho hi\r\n");
+        // The regression that matters: no bare LF anywhere.
+        assert!(!text.replace("\r\n", "").contains('\n'));
+        assert!(text.ends_with("\r\n"));
+    }
+}
+
+#[cfg(test)]
 mod noise_tests {
     use super::is_suppressed_vendor_noise;
 
@@ -288,5 +326,39 @@ mod noise_tests {
         ));
         assert!(!is_suppressed_vendor_noise("CMAKE_BUILD_TYPE=Release is required"));
         assert!(!is_suppressed_vendor_noise("error: cpp-httplib failed to build"));
+    }
+
+    #[test]
+    fn suppresses_windows_thread_probe_family() {
+        // FindThreads always walks the pthread path on Windows, fails every check, then
+        // succeeds via Win32. Five lines per configure that can never say anything new.
+        assert!(is_suppressed_vendor_noise(
+            "-- Performing Test CMAKE_HAVE_LIBC_PTHREAD"
+        ));
+        assert!(is_suppressed_vendor_noise(
+            "-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Failed"
+        ));
+        assert!(is_suppressed_vendor_noise(
+            "-- Looking for pthread_create in pthreads"
+        ));
+        assert!(is_suppressed_vendor_noise(
+            "-- Looking for pthread_create in pthread - not found"
+        ));
+        // The useful outcome line stays.
+        assert!(!is_suppressed_vendor_noise("-- Found Threads: TRUE"));
+        // Other feature tests are NOT hidden — only the pthread family is known-benign.
+        assert!(!is_suppressed_vendor_noise(
+            "-- Performing Test CMAKE_HAVE_SOME_OTHER_THING - Failed"
+        ));
+        assert!(!is_suppressed_vendor_noise("-- Looking for fopen"));
+    }
+
+    #[test]
+    fn suppresses_ccache_warning() {
+        assert!(is_suppressed_vendor_noise(
+            "-- Warning: ccache not found - consider installing it for faster compilation \
+             or disable this warning with GGML_CCACHE=OFF"
+        ));
+        assert!(!is_suppressed_vendor_noise("-- Found CUDAToolkit: 13.4"));
     }
 }

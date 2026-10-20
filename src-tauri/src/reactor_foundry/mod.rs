@@ -22,7 +22,7 @@ pub use batch::foundry_kill_all_children;
 pub use progress::BuildEdgeProgress;
 pub(crate) use artifacts::{copy_dir_contents, publish_artifacts_to_sacred};
 pub(crate) use batch::{
-    clear_pids, kill_all_children, run_foundry_batch_streaming, with_child_pids,
+    batch_script_text, clear_pids, kill_all_children, run_foundry_batch_streaming, with_child_pids,
 };
 pub(crate) use cmake::{
     check_foundry_core_binaries, cmd_escape_batch, dir_size_bytes, format_bytes_label,
@@ -973,7 +973,7 @@ async fn stage_cmake_configure<'a>(ctx: &BuildCtx<'a>) -> Result<String, String>
         ctx.git_cmd_bin.as_deref(),
         cmake_configure_line,
     );
-    let cfg_batch_content = cfg_batch_lines.join("\n");
+    let cfg_batch_content = batch_script_text(&cfg_batch_lines);
     let (cfg_batch_path, _) = foundry_batch_script_paths(&work_root, profile_id);
     if let Err(e) = tokio::fs::write(&cfg_batch_path, &cfg_batch_content).await {
         clear_build_slot_if_matches(build_id, provider_id, app_handle).await;
@@ -1173,7 +1173,7 @@ async fn stage_compile<'a>(ctx: &BuildCtx<'a>) -> Result<bool, String> {
             ctx.cmake_cmd, build_dir_str, ctx.num_cpus
         ),
     );
-    let build_batch_content = build_batch_lines.join("\n");
+    let build_batch_content = batch_script_text(&build_batch_lines);
     let (_, build_batch_path) = foundry_batch_script_paths(&work_root, profile_id);
     if let Err(e) = tokio::fs::write(&build_batch_path, &build_batch_content).await {
         return Err(format!("Failed to write build script: {}", e));
