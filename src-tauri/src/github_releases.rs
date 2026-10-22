@@ -42,6 +42,23 @@ pub struct ReleaseAsset {
     pub name: String,
     pub download_url: String,
     pub size: u64,
+    /// `assets[].digest` from the release API — `sha256:<hex>`, or `None` for an asset
+    /// uploaded before GitHub started computing digests.
+    pub digest: Option<String>,
+}
+
+/// A release asset selected for download, flattened out of its release.
+///
+/// Carries `digest` alongside the bytes so the download path can verify what it
+/// fetched without a second round-trip (the digest already arrived in the same
+/// cached release JSON).
+#[derive(Debug, Clone)]
+pub struct ResolvedAsset {
+    pub download_url: String,
+    pub name: String,
+    pub release_tag: String,
+    pub size: u64,
+    pub digest: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -204,10 +221,15 @@ fn parse_release(body: &serde_json::Value) -> Option<GitHubRelease> {
                     let name = a.get("name")?.as_str()?.to_string();
                     let download_url = a.get("browser_download_url")?.as_str()?.to_string();
                     let size = a.get("size").and_then(|s| s.as_u64()).unwrap_or(0);
+                    let digest = a
+                        .get("digest")
+                        .and_then(|d| d.as_str())
+                        .map(String::from);
                     Some(ReleaseAsset {
                         name,
                         download_url,
                         size,
+                        digest,
                     })
                 })
                 .collect()
@@ -787,16 +809,17 @@ pub fn find_provider_pack_in(
 pub async fn resolve_provider_pack_asset(
     provider_id: &str,
     profile: &str,
-) -> Result<(String, String, String, u64), String> {
+) -> Result<ResolvedAsset, String> {
     let releases = fetch_recent_version_releases(40).await?;
     for release in releases {
         if let Some(asset) = find_provider_pack(&release, provider_id, profile) {
-            return Ok((
-                asset.download_url,
-                asset.name,
-                release.tag_name,
-                asset.size,
-            ));
+            return Ok(ResolvedAsset {
+                download_url: asset.download_url,
+                name: asset.name,
+                release_tag: release.tag_name,
+                size: asset.size,
+                digest: asset.digest,
+            });
         }
     }
     Err(format!(
@@ -807,7 +830,7 @@ pub async fn resolve_provider_pack_asset(
 pub async fn resolve_installer_asset_for_version(
     channel: &str,
     current_version: &str,
-) -> Result<(String, String, String, u64), String> {
+) -> Result<ResolvedAsset, String> {
     let offerings = fetch_update_offerings(current_version).await?;
     let pick = match channel {
         CHANNEL_APP_ONLY => &offerings.app_only,
@@ -834,12 +857,13 @@ pub async fn resolve_installer_asset_for_version(
     }
     .ok_or_else(|| format!("Installer asset missing on release '{}'", pick.tag))?;
 
-    Ok((
-        asset.download_url,
-        asset.name,
-        release.tag_name,
-        asset.size,
-    ))
+    Ok(ResolvedAsset {
+        download_url: asset.download_url,
+        name: asset.name,
+        release_tag: release.tag_name,
+        size: asset.size,
+        digest: asset.digest,
+    })
 }
 
 /// Directory for cached app update downloads (resume-capable via download manager).
@@ -1347,6 +1371,7 @@ mod tests {
                 name: "CORE_ggml-master-edge.7z".into(),
                 download_url: "https://example.invalid/x.7z".into(),
                 size: 42,
+                digest: None,
             }],
         };
         let hit = find_provider_pack_in(&[release], "ggml-master", "edge");

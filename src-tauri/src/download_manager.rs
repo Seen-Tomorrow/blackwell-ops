@@ -37,6 +37,14 @@ struct ManifestEntry {
     quant_type: String,
     #[serde(default, rename = "lfsOid")]
     lfs_oid: String,
+    /// Release tag the asset was resolved from (`v1.2.3`, `toolchain`) — provider packs
+    /// hand this to `activate_provider_pack`, so it may not ride in `lfs_oid`.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    source_tag: String,
+    /// Digest the finished bytes must hash to; carried through so a download that
+    /// resumed after a restart is verified like a fresh one.
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "expectedSha256")]
+    expected_sha256: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "batchId")]
     batch_id: Option<String>,
     #[serde(default = "default_manifest_task_kind", rename = "taskKind")]
@@ -230,6 +238,8 @@ fn persist_task_to_manifest(task: &DownloadTask) {
         hf_author: task.hf_author.clone(),
         quant_type: task.quant_type.clone(),
         lfs_oid: task.lfs_oid.clone(),
+        source_tag: task.source_tag.clone(),
+        expected_sha256: task.expected_sha256.clone(),
         batch_id: task.batch_id.clone(),
         task_kind: task.task_kind.clone(),
     });
@@ -428,6 +438,8 @@ impl DownloadManager {
             eta_seconds: 0,
             hf_author,
             quant_type,
+            expected_sha256: expected_hex(&lfs_oid),
+            source_tag: String::new(),
             lfs_oid,
             batch_id,
             task_kind: TASK_KIND_HF.to_string(),
@@ -489,9 +501,16 @@ impl DownloadManager {
             self.tasks.remove(&id);
         }
 
-        let (download_url, archive_name, total_bytes) =
-            crate::foundry_toolchain::fetch_toolchain_asset(&pack_key).await?;
-        let dest_path = crate::foundry_toolchain::toolchain_download_dest(&archive_name);
+        let asset = crate::foundry_toolchain::fetch_toolchain_asset(&pack_key).await?;
+        let expected_sha256 = asset.digest.as_deref().and_then(expected_hex);
+        if expected_sha256.is_none() {
+            return Err(format!(
+                "Toolchain asset '{}' on release '{}' has no published SHA-256 — refusing to \
+                 download unverifiable engine tooling.",
+                asset.name, asset.release_tag
+            ));
+        }
+        let dest_path = crate::foundry_toolchain::toolchain_download_dest(&asset.name);
 
         if self.has_active_task_for_dest(&dest_path) {
             return Err("A download for this toolchain archive is already in progress.".into());
@@ -514,9 +533,9 @@ impl DownloadManager {
         let task = DownloadTask {
             id: task_id.clone(),
             hf_model_id: crate::foundry_toolchain::toolchain_pack_label(&pack_key).to_string(),
-            file_name: archive_name,
-            download_url,
-            total_bytes,
+            file_name: asset.name,
+            download_url: asset.download_url,
+            total_bytes: asset.size,
             downloaded_bytes: resume_offset,
             status: DownloadStatus::Queued,
             dest_path,
@@ -528,6 +547,8 @@ impl DownloadManager {
             eta_seconds: 0,
             hf_author: String::new(),
             quant_type: pack_key,
+            expected_sha256,
+            source_tag: asset.release_tag,
             lfs_oid: String::new(),
             batch_id: None,
             task_kind: TASK_KIND_TOOLCHAIN.to_string(),
@@ -603,6 +624,10 @@ impl DownloadManager {
             eta_seconds: 0,
             hf_author: String::new(),
             quant_type: pack_key.clone(),
+            // Re-extract of a local cached archive: no network, and the archive was
+            // verified when it was downloaded (see `finalize_toolchain_extract_worker`).
+            expected_sha256: None,
+            source_tag: String::new(),
             lfs_oid: String::new(),
             batch_id: None,
             task_kind: TASK_KIND_TOOLCHAIN.to_string(),
@@ -659,14 +684,22 @@ impl DownloadManager {
             return Err("An app update download is already in progress.".into());
         }
 
-        let (download_url, installer_name, release_tag, total_bytes) =
+        let asset =
             crate::github_releases::resolve_installer_asset_for_version(&channel, &current_version)
                 .await?;
+        let expected_sha256 = asset.digest.as_deref().and_then(expected_hex);
+        if expected_sha256.is_none() {
+            return Err(format!(
+                "Installer asset '{}' on release '{}' has no published SHA-256 — refusing to run \
+                 unverifiable code.",
+                asset.name, asset.release_tag
+            ));
+        }
 
         let dest_dir = crate::github_releases::app_update_cache_dir();
         std::fs::create_dir_all(&dest_dir)
             .map_err(|e| format!("Failed to create app update cache dir: {e}"))?;
-        let dest_path = dest_dir.join(&installer_name);
+        let dest_path = dest_dir.join(&asset.name);
         let dest_path_str = dest_path.to_string_lossy().to_string();
 
         if self.has_active_task_for_dest(&dest_path_str) {
@@ -700,10 +733,10 @@ impl DownloadManager {
         };
         let task = DownloadTask {
             id: task_id.clone(),
-            hf_model_id: format!("Blackwell Ops {channel_label} {release_tag}"),
-            file_name: installer_name,
-            download_url,
-            total_bytes,
+            hf_model_id: format!("Blackwell Ops {channel_label} {}", asset.release_tag),
+            file_name: asset.name,
+            download_url: asset.download_url,
+            total_bytes: asset.size,
             downloaded_bytes: resume_offset,
             status: DownloadStatus::Queued,
             dest_path: dest_path_str,
@@ -715,6 +748,8 @@ impl DownloadManager {
             eta_seconds: 0,
             hf_author: String::new(),
             quant_type: channel,
+            expected_sha256,
+            source_tag: asset.release_tag,
             lfs_oid: String::new(),
             batch_id: None,
             task_kind: TASK_KIND_APP.to_string(),
@@ -764,13 +799,21 @@ impl DownloadManager {
             ));
         }
 
-        let (download_url, asset_name, release_tag, total_bytes) =
+        let asset =
             crate::github_releases::resolve_provider_pack_asset(&provider_id, &profile).await?;
+        let expected_sha256 = asset.digest.as_deref().and_then(expected_hex);
+        if expected_sha256.is_none() {
+            return Err(format!(
+                "Provider pack '{}' on release '{}' has no published SHA-256 — refusing to \
+                 extract unverifiable engine binaries.",
+                asset.name, asset.release_tag
+            ));
+        }
 
         let dest_dir = crate::github_releases::provider_pack_cache_dir();
         std::fs::create_dir_all(&dest_dir)
             .map_err(|e| format!("Failed to create provider pack cache: {e}"))?;
-        let dest_path = dest_dir.join(&asset_name);
+        let dest_path = dest_dir.join(&asset.name);
         let dest_path_str = dest_path.to_string_lossy().to_string();
 
         if self.has_active_task_for_dest(&dest_path_str) {
@@ -787,10 +830,10 @@ impl DownloadManager {
         let quant_key = format!("{provider_id}:{profile}");
         let task = DownloadTask {
             id: task_id.clone(),
-            hf_model_id: format!("Engine {provider_id} [{profile}] {release_tag}"),
-            file_name: asset_name,
-            download_url,
-            total_bytes,
+            hf_model_id: format!("Engine {provider_id} [{profile}] {}", asset.release_tag),
+            file_name: asset.name,
+            download_url: asset.download_url,
+            total_bytes: asset.size,
             downloaded_bytes: resume_offset,
             status: DownloadStatus::Queued,
             dest_path: dest_path_str,
@@ -802,7 +845,9 @@ impl DownloadManager {
             eta_seconds: 0,
             hf_author: provider_id,
             quant_type: quant_key,
-            lfs_oid: release_tag,
+            expected_sha256,
+            source_tag: asset.release_tag,
+            lfs_oid: String::new(),
             batch_id: None,
             task_kind: TASK_KIND_PROVIDER.to_string(),
             priority: 100,
@@ -871,6 +916,8 @@ impl DownloadManager {
                 hf_author: entry.hf_author,
                 quant_type: entry.quant_type,
                 lfs_oid: entry.lfs_oid,
+                source_tag: entry.source_tag,
+                expected_sha256: entry.expected_sha256,
                 batch_id: entry.batch_id,
                 task_kind: entry.task_kind,
                 priority: 100,
@@ -960,6 +1007,8 @@ impl DownloadManager {
                     eta_seconds: 0,
                     hf_author: batch.hf_author.clone(),
                     quant_type: batch.quant_type.clone(),
+                    expected_sha256: expected_hex(&part.lfs_oid),
+                    source_tag: String::new(),
                     lfs_oid: part.lfs_oid.clone(),
                     batch_id: Some(batch_id.clone()),
                     task_kind: TASK_KIND_HF.to_string(),
@@ -1724,7 +1773,9 @@ async fn mark_completed_worker(
     task_id: &str,
     dest_path: &str,
 ) {
-    let (batch_id, is_toolchain, is_app) = {
+    // Read what the post-download step needs. Nothing is mutated yet: a digest failure
+    // below must not leave a `Completed` task — or a "completed" history row — behind.
+    let (batch_id, is_toolchain, is_app, expected_sha256) = {
         let mut dm = manager.write().await;
         let Some(task) = dm.tasks.get_mut(task_id) else {
             return;
@@ -1746,17 +1797,73 @@ async fn mark_completed_worker(
             return;
         }
 
-        let toolchain = is_toolchain_task(task);
-        let app = is_app_task(task);
-        if !toolchain && !app {
+        let expected = task.expected_sha256.clone();
+        if expected.is_some() {
+            task.status_message = Some("Verifying integrity…".to_string());
+        }
+        (
+            task.batch_id.clone(),
+            is_toolchain_task(task),
+            is_app_task(task),
+            expected,
+        )
+    };
+
+    // Integrity gate — the only place a finished download is accepted. Hashing happens on
+    // the `.part` bytes, before any rename or extraction, so an archive that was truncated,
+    // corrupted, or substituted in transit can never be applied or executed.
+    // `verify_file_integrity` deletes the offending file, so a retry starts from clean bytes.
+    //
+    // A resumed download re-enters here: `download_worker` calls this after the stream ends
+    // even when it transferred zero new bytes, and the manifest entry is removed only after
+    // this gate passes — so a crash *during* verification is retried instead of trusted.
+    // Only an asset with no digest published upstream gets here without one; the GitHub
+    // resolvers refuse those before a single byte is fetched.
+    //
+    // Known residual, left deliberately: a full-size `.part` whose crash landed *inside*
+    // the hash window can still be renamed by a sibling shard's batch finalize without being
+    // re-hashed. Reaching it needs write access to our own cache dir, which already owns this
+    // process — a corruption case, not a substitution one, and not worth a re-hash pass.
+    if let Some(expected) = expected_sha256.as_deref() {
+        let partial = partial_download_path(dest_path);
+        let verify_path = if Path::new(&partial).exists() {
+            partial
+        } else {
+            dest_path.to_string()
+        };
+        let expected_owned = expected.to_string();
+        let outcome = tokio::task::spawn_blocking(move || {
+            verify_file_integrity(&verify_path, &expected_owned)
+        })
+        .await;
+
+        let failure = match outcome {
+            Ok(Ok(())) => None,
+            Ok(Err(reason)) => Some(reason),
+            // Panic or cancellation means the bytes are *unverified*, which is not success.
+            Err(join_err) => Some(format!("Integrity check did not complete: {join_err}")),
+        };
+
+        if let Some(reason) = failure {
+            log::error!("[download] Rejecting {} — {reason}", dest_path);
+            mark_failed(manager, task_id, reason).await;
+            return;
+        }
+    }
+
+    {
+        let mut dm = manager.write().await;
+        let Some(task) = dm.tasks.get_mut(task_id) else {
+            return;
+        };
+        if !is_toolchain && !is_app {
             task.status = DownloadStatus::Completed;
             record_download_history(history_from_task(task, "completed"));
         }
         task.speed_bps = 0;
         task.eta_seconds = 0;
         task.pause_offset = 0;
-        (task.batch_id.clone(), toolchain, app)
-    };
+    }
 
     if !is_toolchain && !is_app {
         remove_task_from_manifest(task_id);
@@ -1881,40 +1988,7 @@ async fn mark_completed_worker(
     drop(dm_snapshot);
 
     if let Some((hf_model_id, hf_author, quant_type, total_bytes, lfs_oid)) = cache_data {
-        // Integrity verification: compare SHA256 of final file against HF LFS OID.
-        if let Some(expected) = lfs_oid.strip_prefix("sha256:") {
-            // Set status message so the UI shows we're verifying before declaring complete.
-            {
-                let mut dm = manager.write().await;
-                if let Some(task) = dm.tasks.get_mut(&task_id_for_finalization) {
-                    task.status_message = Some("Verifying integrity…".to_string());
-                }
-            }
-            let verify_path = dest_to_rename.clone();
-            let expected_owned = expected.to_string();
-            let outcome = tokio::task::spawn_blocking(move || {
-                verify_file_integrity(&verify_path, &expected_owned)
-            })
-            .await;
-
-            let failure = match outcome {
-                Ok(Ok(())) => None,
-                Ok(Err(reason)) => Some(reason),
-                // The blocking task panicked or was cancelled: the file is *unverified*,
-                // which must not be reported as success.
-                Err(join_err) => Some(format!("Integrity check did not complete: {join_err}")),
-            };
-
-            if let Some(reason) = failure {
-                // This digest gate is the only thing between a corrupt shard and the
-                // model library. `Completed` was set earlier in this function, so it has
-                // to be overridden here — and no HF metadata may be written for a file
-                // the verifier may already have deleted.
-                log::error!("[download] Rejecting {} — {reason}", dest_to_rename);
-                mark_failed(manager, &task_id_for_finalization, reason).await;
-                return;
-            }
-        }
+        // Bytes were verified by the gate above; this only records provenance.
         save_hf_metadata_for_part(
             &dest_to_rename,
             &hf_model_id,
@@ -1990,7 +2064,7 @@ async fn finalize_provider_pack_worker(
                 let mut parts = t.quant_type.splitn(2, ':');
                 let p = parts.next().unwrap_or("").to_string();
                 let prof = parts.next().unwrap_or("").to_string();
-                (p, prof, t.lfs_oid.clone(), handle)
+                (p, prof, t.source_tag.clone(), handle)
             }
             None => {
                 return;
@@ -2127,9 +2201,21 @@ async fn finalize_toolchain_extract_worker(
     task.eta_seconds = 0;
 }
 
-/// Verify a downloaded file's SHA256 matches the expected LFS OID.
-/// HF LFS OIDs are formatted as "sha256:<hex>"; the caller strips the prefix.
+/// Normalize a published digest to bare lowercase hex — GitHub's `assets[].digest` and
+/// HF's LFS OID both arrive as `sha256:<hex>`.
 ///
+/// `None` means *no usable digest was published*, never "verification not needed":
+/// the GitHub resolvers turn it into a hard error before download, and the HF path
+/// only sees it for non-LFS entries, which no upstream publishes a SHA-256 for.
+fn expected_hex(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    let hex_part = trimmed.strip_prefix("sha256:").unwrap_or(trimmed);
+    let is_digest = hex_part.len() == 64 && hex_part.chars().all(|c| c.is_ascii_hexdigit());
+    is_digest.then(|| hex_part.to_ascii_lowercase())
+}
+
+/// Verify a downloaded file's SHA256 matches the expected digest (bare hex, from
+/// `expected_hex`), streaming so a multi-GB archive never lands in memory.
 /// Returns `Err(reason)` on any failure — unreadable file, read error, or digest
 /// mismatch (the corrupt file is deleted in the mismatch case). Reporting is the
 /// caller's job: this runs on the blocking pool, which has **no runtime context**,
@@ -2155,7 +2241,7 @@ fn verify_file_integrity(file_path: &str, expected_hex: &str) -> Result<(), Stri
 
     let actual_hex = hex::encode(hasher.finalize());
     if actual_hex.eq_ignore_ascii_case(expected_hex) {
-        log::info!("[download] Integrity OK: {} matches LFS OID", file_path);
+        log::info!("[download] Integrity OK: {} matches expected digest", file_path);
         return Ok(());
     }
 
@@ -2317,6 +2403,8 @@ mod tests {
                 hf_author: "author".to_string(),
                 quant_type: "Q4_K_M".to_string(),
                 lfs_oid: String::new(),
+                expected_sha256: None,
+                source_tag: String::new(),
                 batch_id: None,
                 task_kind: TASK_KIND_HF.to_string(),
                 priority: 100,
@@ -2352,6 +2440,8 @@ mod tests {
                 hf_author: "a".to_string(),
                 quant_type: "Q4".to_string(),
                 lfs_oid: String::new(),
+                expected_sha256: None,
+                source_tag: String::new(),
                 batch_id: None,
                 task_kind: TASK_KIND_HF.to_string(),
                 priority: 100,
@@ -2377,6 +2467,8 @@ mod tests {
                 hf_author: "a".to_string(),
                 quant_type: "Q4".to_string(),
                 lfs_oid: String::new(),
+                expected_sha256: None,
+                source_tag: String::new(),
                 batch_id: None,
                 task_kind: TASK_KIND_HF.to_string(),
                 priority: 100,
@@ -2411,6 +2503,8 @@ mod tests {
                 hf_author: "a".to_string(),
                 quant_type: "Q4".to_string(),
                 lfs_oid: String::new(),
+                expected_sha256: None,
+                source_tag: String::new(),
                 batch_id: None,
                 task_kind: TASK_KIND_HF.to_string(),
                 priority: 100,
@@ -2447,6 +2541,8 @@ mod tests {
                     hf_author: "author".to_string(),
                     quant_type: "Q4_K_M".to_string(),
                     lfs_oid: String::new(),
+                    expected_sha256: None,
+                    source_tag: String::new(),
                     batch_id: None,
                     task_kind: TASK_KIND_HF.to_string(),
                 priority: 100,
@@ -2480,6 +2576,8 @@ mod tests {
             hf_author: "MiniMaxAI".to_string(),
             quant_type: "Q4_K_M".to_string(),
             lfs_oid: String::new(),
+            expected_sha256: None,
+            source_tag: String::new(),
             batch_id,
             task_kind: TASK_KIND_HF.to_string(),
             priority: 100,
@@ -2563,5 +2661,90 @@ mod tests {
     #[test]
     fn delete_partial_files_skips_non_part() {
         delete_partial_files(&["models/finished.gguf".into()]);
+    }
+
+    #[test]
+    fn expected_hex_accepts_only_published_sha256_digests() {
+        let hex = "a".repeat(64);
+        assert_eq!(expected_hex(&format!("sha256:{hex}")), Some(hex.clone()));
+        assert_eq!(expected_hex(&hex.to_ascii_uppercase()), Some(hex.clone()));
+        assert_eq!(expected_hex(&format!("  sha256:{hex}  ")), Some(hex.clone()));
+
+        // No digest published, or not a digest at all. A release tag is the specific
+        // value that used to arrive here via the overloaded `lfs_oid` field.
+        assert_eq!(expected_hex(""), None);
+        assert_eq!(expected_hex("sha256:"), None);
+        assert_eq!(expected_hex("v1.1.0"), None);
+        assert_eq!(expected_hex(&"a".repeat(63)), None);
+        assert_eq!(expected_hex(&"z".repeat(64)), None);
+    }
+
+    #[test]
+    fn verify_file_integrity_accepts_match_and_deletes_mismatch() {
+        let dir = std::env::temp_dir().join(format!("boc-integrity-{}", generate_task_id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let good_hex = hex::encode(Sha256::digest(b"payload"));
+
+        let good = dir.join("good.bin");
+        std::fs::write(&good, b"payload").expect("write");
+        let good_str = good.to_string_lossy().to_string();
+        assert!(verify_file_integrity(&good_str, &good_hex).is_ok());
+        assert!(verify_file_integrity(&good_str, &good_hex.to_ascii_uppercase()).is_ok());
+
+        let bad = dir.join("bad.bin");
+        std::fs::write(&bad, b"payload").expect("write");
+        let bad_str = bad.to_string_lossy().to_string();
+        assert!(verify_file_integrity(&bad_str, &"00".repeat(32)).is_err());
+        assert!(!bad.exists(), "mismatched bytes must be deleted");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The gate, end to end: wrong bytes never reach the destination, and the task fails
+    /// instead of reporting success. Covers provider packs, toolchain archives, installers
+    /// and model shards, all of which used to finalize with no digest check at all.
+    #[tokio::test]
+    async fn digest_mismatch_fails_task_and_never_promotes_the_bytes() {
+        let dir = std::env::temp_dir().join(format!("boc-gate-{}", generate_task_id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let dest = dir.join("CORE_pack.7z");
+        let dest_str = dest.to_string_lossy().to_string();
+        let partial = partial_download_path(&dest_str);
+        let payload = b"bytes from the wrong asset";
+        std::fs::write(&partial, payload).expect("seed partial");
+
+        let manager = Arc::new(RwLock::new(DownloadManager::new()));
+        {
+            let mut dm = manager.write().await;
+            dm.tasks.insert(
+                "t-gate".to_string(),
+                DownloadTask {
+                    id: "t-gate".to_string(),
+                    total_bytes: payload.len() as u64,
+                    downloaded_bytes: payload.len() as u64,
+                    status: DownloadStatus::Downloading,
+                    dest_path: dest_str.clone(),
+                    expected_sha256: Some("00".repeat(32)),
+                    ..dummy_task("t-gate", &dest_str, None, DownloadStatus::Downloading)
+                },
+            );
+        }
+
+        mark_completed_worker(&manager, "t-gate", &dest_str).await;
+
+        {
+            let dm = manager.read().await;
+            let task = dm.tasks.get("t-gate").expect("task retained for retry");
+            assert_eq!(task.status, DownloadStatus::Failed);
+            assert!(
+                task.error.as_deref().unwrap_or("").contains("Integrity"),
+                "failure must name the digest, got {:?}",
+                task.error
+            );
+        }
+        assert!(!Path::new(&partial).exists(), "offending .part must be deleted");
+        assert!(!dest.exists(), "unverified bytes must never be promoted");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

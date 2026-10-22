@@ -1282,6 +1282,8 @@ mod tests {
                 hf_author: "a".to_string(),
                 quant_type: "Q4".to_string(),
                 lfs_oid: String::new(),
+                expected_sha256: None,
+                source_tag: String::new(),
                 batch_id: Some("batch-1".to_string()),
                 task_kind: crate::types::TASK_KIND_HF.to_string(),
                 priority: 100,

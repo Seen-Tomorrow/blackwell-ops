@@ -155,11 +155,35 @@ pub fn ninja_exe_path() -> PathBuf {
 /// Pinned Ninja release used when the stripped-down CMake pack lacks ninja.exe.
 pub const NINJA_VERSION: &str = "v1.12.1";
 pub const NINJA_WIN_ZIP: &str = "ninja-win.zip";
+/// SHA-256 of `ninja-win.zip` for `NINJA_VERSION`, pinned rather than fetched.
+///
+/// Ninja's own release predates GitHub's per-asset digests (`assets[].digest` is empty
+/// for v1.12.1), and this is a third-party binary this repo does not publish — so a value
+/// reviewed in git is the only trustworthy source for it. A wrong pin fails closed:
+/// the archive is rejected before it is ever written to disk. Bump with `NINJA_VERSION`.
+pub const NINJA_WIN_SHA256: &str =
+    "f550fec705b6d6ff58f2db3c374c2277a37691678d6aba463adcbb129108467a";
 
 pub fn ninja_download_url() -> String {
     format!(
         "https://github.com/ninja-build/ninja/releases/download/{NINJA_VERSION}/{NINJA_WIN_ZIP}"
     )
+}
+
+#[cfg(test)]
+mod pin_tests {
+    use super::*;
+
+    /// A mistyped pin — or a `NINJA_VERSION` bump without re-hashing the archive — would
+    /// otherwise only surface on a Foundry machine mid-build, as a download rejection.
+    #[test]
+    fn pinned_ninja_digest_is_a_sha256_hex_string() {
+        assert_eq!(NINJA_WIN_SHA256.len(), 64);
+        assert!(
+            NINJA_WIN_SHA256.chars().all(|c| c.is_ascii_hexdigit()),
+            "NINJA_WIN_SHA256 must be bare lowercase hex: {NINJA_WIN_SHA256}"
+        );
+    }
 }
 
 pub fn resolve_ninja_exe() -> Result<PathBuf, String> {
@@ -204,6 +228,20 @@ pub async fn ensure_ninja_available() -> Result<PathBuf, String> {
         .bytes()
         .await
         .map_err(|e| format!("Failed to read ninja download: {e}"))?;
+
+    // Verify before the bytes ever reach disk — this archive is extracted and executed
+    // as a build tool, so an unverified one is exactly the hole the digest gate closes
+    // for provider packs and installers.
+    let actual = crate::external_agents::sha256_hex(&data);
+    if !actual.eq_ignore_ascii_case(NINJA_WIN_SHA256) {
+        return Err(format!(
+            "ninja {NINJA_VERSION} archive failed its integrity check: expected {}, got {actual}. \
+             Nothing was installed — re-check NINJA_WIN_SHA256 against the release if the pin \
+             was bumped without updating it.",
+            NINJA_WIN_SHA256
+        ));
+    }
+
     tokio::fs::write(&zip_path, &data)
         .await
         .map_err(|e| format!("Failed to write ninja archive: {e}"))?;
@@ -1151,8 +1189,10 @@ fn promote_archive_to_cache(archive_path: &std::path::Path, archive_name: &str) 
     }
 }
 
-/// Resolve GitHub release asset URL and byte size for a toolchain pack.
-pub async fn fetch_toolchain_asset(pack: &str) -> Result<(String, String, u64), String> {
+/// Resolve GitHub release asset URL, byte size and published digest for a toolchain pack.
+pub async fn fetch_toolchain_asset(
+    pack: &str,
+) -> Result<crate::github_releases::ResolvedAsset, String> {
     let pack_key = pack.trim().to_lowercase();
     let archive_name = pack_archive_name(&pack_key)?;
     let release = crate::github_releases::fetch_release_by_tag(TOOLCHAIN_RELEASE_TAG)
@@ -1170,7 +1210,13 @@ pub async fn fetch_toolchain_asset(pack: &str) -> Result<(String, String, u64), 
                 archive_name, TOOLCHAIN_RELEASE_TAG
             )
         })?;
-    Ok((asset.download_url, asset.name, asset.size))
+    Ok(crate::github_releases::ResolvedAsset {
+        download_url: asset.download_url,
+        name: asset.name,
+        release_tag: release.tag_name,
+        size: asset.size,
+        digest: asset.digest,
+    })
 }
 
 #[cfg(windows)]

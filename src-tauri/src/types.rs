@@ -840,6 +840,17 @@ pub struct DownloadTask {
     /// LFS content hash for incremental scan skip on completion.
     #[serde(default, rename = "lfsOid")]
     pub lfs_oid: String,
+    /// SHA-256 the downloaded bytes must hash to, lowercase hex (no `sha256:` prefix).
+    ///
+    /// Filled from the release asset's `digest` for GitHub downloads (toolchain, app
+    /// installer, provider pack) and from the HF LFS OID for model files. Deliberately
+    /// off the wire — it is download-path bookkeeping, not UI state.
+    #[serde(skip)]
+    pub expected_sha256: Option<String>,
+    /// Release tag this task's asset came from (`v1.2.3`, `toolchain`); empty for HF.
+    /// Provider activation reads it, so it may not ride in `lfs_oid`.
+    #[serde(skip)]
+    pub source_tag: String,
     /// Sharded quant batch — `.part` → `.gguf` rename deferred until all parts complete.
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "batchId")]
     pub batch_id: Option<String>,
@@ -872,6 +883,8 @@ impl Default for DownloadTask {
             hf_author: String::new(),
             quant_type: String::new(),
             lfs_oid: String::new(),
+            expected_sha256: None,
+            source_tag: String::new(),
             batch_id: None,
             task_kind: default_download_task_kind(),
             priority: 100,
