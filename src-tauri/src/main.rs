@@ -10,7 +10,6 @@ mod engine;
 mod disk_io_pdh;
 mod cpu_topology;
 mod telemetry;
-mod intel;
 mod config;
 mod engine_stack;
 mod engine_load_progress;
@@ -60,7 +59,6 @@ mod secrets;
 mod foundry_toolchain;
 mod reactor_foundry;
 mod output_console;
-mod playground;
 mod pi_code;
 mod external_agents;
 mod gpu_control;
@@ -73,7 +71,7 @@ mod model_paths;
 mod output_console_cmds;
 mod downloads;
 
-// engine.rs split (change 1 of docs/internal/REFACTOR-PLAN-2026-10.md) — same single
+// engine.rs domain split — same single
 // generate_handler! below; these are domain modules, not sub-routers.
 // (`fit_scanner` is already declared above with its fit_adapters / fit_low_vram family.)
 mod engine_build_info;
@@ -446,7 +444,6 @@ async fn main() {
             pi_code::pi_code_update_latest,
             pi_code::pi_code_console_running,
             pi_code::pi_code_launch,
-            intel::fetch_github_intel,
             telemetry::scan_gpus,
             telemetry::scan_cpu,
             telemetry::scan_system_info,
@@ -480,7 +477,6 @@ async fn main() {
             burst_bench::cmd_burst_bench,
             bench_pp_burst::cmd_bench_pp_burst,
             bench_cancel::cmd_cancel_bench,
-            playground::playground_open_html_in_browser,
             fusion::emit::get_fusion_snapshots,
             fusion::brain::set_fusion_quiet_mode,
             debug_flags::get_debug_flags,

@@ -13,13 +13,11 @@ import type { SetupPhase } from "../lib/setupGuide";
 import {
   PRIMARY_NAV,
   OPS_SUB_NAV,
-  EXTRAS_SUB_NAV,
   configSubNavOptions,
   defaultTabForPrimary,
   isOpsTab,
   primaryNavFromTab,
   type ConfigSubTab,
-  type ExtrasSubTab,
   type PrimaryNavId,
 } from "../lib/appNav";
 import HeaderNavSegment from "./HeaderNavSegment";
@@ -30,10 +28,7 @@ interface HeaderNavProps {
   /** CONFIG section — header sub-rail. */
   configSubTab: ConfigSubTab;
   onConfigSubTabChange: (tab: ConfigSubTab) => void;
-  /** EXTRAS section — header sub-rail. */
-  extrasSubTab: ExtrasSubTab;
-  onExtrasSubTabChange: (tab: ExtrasSubTab) => void;
-  /** First-run wizard active — lock ENGINES / LOGS / EXTRAS. */
+  /** First-run wizard active — lock ENGINES / LOGS. */
   setupGuideActive?: boolean;
   /** Wizard phase — a CONFIG visit during `paths` is the step, not a detour. */
   setupGuidePhase?: SetupPhase;
@@ -58,8 +53,6 @@ function HeaderNav({
     onTabChange,
     configSubTab,
     onConfigSubTabChange,
-    extrasSubTab,
-    onExtrasSubTabChange,
     setupGuideActive = false,
     setupGuidePhase,
     chromeScale,
@@ -77,7 +70,6 @@ function HeaderNav({
   const primaryId = primaryNavFromTab(activeTab);
   const showOpsSub = primaryId === "operations";
   const showConfigSub = primaryId === "config";
-  const showExtrasSub = primaryId === "extras";
 
   const primaryOptions = useMemo(() => {
     /**
@@ -93,7 +85,6 @@ function HeaderNav({
       !(activeTab === "config" && setupGuidePhase === "paths");
 
     return PRIMARY_NAV.map((p) => {
-      const extrasLocked = setupGuideActive && p.id === "extras";
       const returnToSetup = awayFromSetup && p.id === "operations";
       const dataAttrs: Record<string, string> = {};
       if (p.id === "config") dataAttrs["data-onboarding"] = "config-tab";
@@ -101,12 +92,7 @@ function HeaderNav({
       return {
         id: p.id,
         label: p.label,
-        disabled: extrasLocked,
-        title: returnToSetup
-          ? "Return to first-run setup"
-          : extrasLocked
-            ? "Finish first-run setup first (OPERATIONS, DOWNLOADS, or CONFIG)"
-            : undefined,
+        title: returnToSetup ? "Return to first-run setup" : undefined,
         dataAttrs: Object.keys(dataAttrs).length > 0 ? dataAttrs : undefined,
       };
     });
@@ -140,11 +126,6 @@ function HeaderNav({
     [],
   );
 
-  const extrasOptions = useMemo(
-    () => EXTRAS_SUB_NAV.map((o) => ({ id: o.id, label: o.label })),
-    [],
-  );
-
   const onPrimarySelect = useCallback(
     (id: string) => {
       const primary = id as PrimaryNavId;
@@ -166,13 +147,12 @@ function HeaderNav({
    * Sub-rail docked under the horizontal midpoint of the active parent option.
    * `left` is clamped so the rail never overflows the cluster's right edge — the
    * right-side chrome (Quick Settings / UPDATE) is always present, so an
-   * unclamped anchor would push the last sub-option under it (EXTRAS is the
-   * rightmost parent, so its rail is the one that overflows below ~2500px).
+   * unclamped anchor would push the last sub-option under it.
    * `shift` slides the whole rail left when clamped, keeping it under its parent.
    */
   const [subAnchor, setSubAnchor] = useState({ left: 0, width: 0, shift: 0 });
   const subRef = useRef<HTMLDivElement | null>(null);
-  const showSubRail = showOpsSub || showConfigSub || showExtrasSub;
+  const showSubRail = showOpsSub || showConfigSub;
 
   useLayoutEffect(() => {
     if (!showSubRail) return;
@@ -249,7 +229,7 @@ function HeaderNav({
               selectedId={activeTab}
               onSelect={(id) => onTabChange(id as Tab)}
             />
-          ) : showConfigSub ? (
+          ) : (
             <HeaderNavSegment
               ariaLabel="Config section"
               size="compact"
@@ -257,15 +237,6 @@ function HeaderNav({
               options={configOptions}
               selectedId={configSubTab}
               onSelect={(id) => onConfigSubTabChange(id as ConfigSubTab)}
-            />
-          ) : (
-            <HeaderNavSegment
-              ariaLabel="Extras section"
-              size="compact"
-              className="app-header__sub-switch"
-              options={extrasOptions}
-              selectedId={extrasSubTab}
-              onSelect={(id) => onExtrasSubTabChange(id as ExtrasSubTab)}
             />
           )}
         </div>

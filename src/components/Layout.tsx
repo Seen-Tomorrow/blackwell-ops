@@ -2,7 +2,7 @@ import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, typ
 import { invoke } from "@tauri-apps/api/core";
 import type { Tab } from "../App";
 import type { ProviderConfig, UpdateOfferings } from "../lib/types";
-import type { ConfigSubTab, ExtrasSubTab } from "../lib/appNav";
+import type { ConfigSubTab } from "../lib/appNav";
 import type { SetupPhase } from "../lib/setupGuide";
 import HeaderNav from "./HeaderNav";
 import { useStatus } from "../context/StatusBarContext";
@@ -67,16 +67,13 @@ interface LayoutProps {
   updateOfferings?: UpdateOfferings | null;
   onRefreshUpdateOfferings?: () => void;
   hasBinaryUpdates?: boolean;
-  /** First-run wizard active — lock ENGINES / LOGS / EXTRAS. */
+  /** First-run wizard active — lock ENGINES / LOGS. */
   setupGuideActive?: boolean;
   /** Wizard phase — decides which nav destination is the next step. */
   setupGuidePhase?: SetupPhase;
   /** CONFIG section — header sub-rail. */
   configSubTab: ConfigSubTab;
   onConfigSubTabChange: (tab: ConfigSubTab) => void;
-  /** EXTRAS section — header sub-rail. */
-  extrasSubTab: ExtrasSubTab;
-  onExtrasSubTabChange: (tab: ExtrasSubTab) => void;
 }
 
 export default function Layout({
@@ -91,8 +88,6 @@ export default function Layout({
   setupGuidePhase,
   configSubTab,
   onConfigSubTabChange,
-  extrasSubTab,
-  onExtrasSubTabChange,
 }: LayoutProps) {
   const [zoom, setZoom] = useState(loadZoom);
   const [uiDensity, setUiDensity] = useState<UiDensity>(loadUiDensity);
@@ -444,8 +439,6 @@ export default function Layout({
               onTabChange={onTabChange}
               configSubTab={configSubTab}
               onConfigSubTabChange={onConfigSubTabChange}
-              extrasSubTab={extrasSubTab}
-              onExtrasSubTabChange={onExtrasSubTabChange}
               setupGuideActive={setupGuideActive}
               setupGuidePhase={setupGuidePhase}
               chromeScale={chromeScale}

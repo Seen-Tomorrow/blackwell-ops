@@ -7,7 +7,6 @@ import HarnessVeilPreview from "./components/HarnessVeilPreview";
 import ModelCatalog from "./components/ModelCatalog";
 const StackView = lazy(() => import("./components/StackView"));
 const ConfigPage = lazy(() => import("./components/ConfigPage"));
-const ExtrasPage = lazy(() => import("./components/ExtrasPage"));
 const ModelHub = lazy(() => import("./components/ModelHub"));
 const LogsPanel = lazy(() => import("./components/LogsPanel"));
 
@@ -31,12 +30,10 @@ import {
   loadPowerUserState,
   saveStartupUpdatesCache,
   loadHwMonitorOpen,
-  loadExtrasSubTab,
   KEYS,
   subscribeStorage,
-  type ExtrasSubTab,
 } from "./lib/storage";
-import { dispatchAppEvent, EVENTS, consumePendingConfigSubTab, consumePendingExtrasSubTab, type NavigateConfigDetail, type NavigateExtrasDetail } from "./lib/events";
+import { dispatchAppEvent, EVENTS, consumePendingConfigSubTab, type NavigateConfigDetail } from "./lib/events";
 import type { ConfigSubTab } from "./lib/appNav";
 import { isSetupNavTabAllowed } from "./lib/setupGuide";
 import { useLibrarySchedule } from "./hooks/useLibrarySchedule";
@@ -52,15 +49,12 @@ import {
   releaseSlotLogs,
 } from "./lib/logSlotStore";
 
-export type Tab = "catalog" | "stack" | "extras" | "modelhub" | "logs" | "config";
+export type Tab = "catalog" | "stack" | "modelhub" | "logs" | "config";
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>("catalog");
   const [configSubTab, setConfigSubTab] = useState<ConfigSubTab>(
     () => consumePendingConfigSubTab() ?? "providers",
-  );
-  const [extrasSubTab, setExtrasSubTab] = useState<ExtrasSubTab>(
-    () => consumePendingExtrasSubTab() ?? loadExtrasSubTab(),
   );
   const [models, setModels] = useState<ModelEntry[]>([]);
   // Per-path scan diagnostics — drives the catalog's "why is this empty" state.
@@ -122,25 +116,15 @@ function App() {
       setActiveTab("stack");
     };
     const catalogNavHandler = () => setActiveTab("catalog");
-    const extrasNavHandler = (e: Event) => {
-      if (setupActiveRef.current) return;
-      setActiveTab("extras");
-      const detail = (e as CustomEvent<NavigateExtrasDetail>).detail;
-      const pending = consumePendingExtrasSubTab();
-      const sub = detail?.subTab ?? pending;
-      if (sub) setExtrasSubTab(sub);
-    };
     const modelHubNavHandler = () => setActiveTab("modelhub");
     const unsubPowerUser = subscribeStorage(KEYS.powerUser, () => requestAnimationFrame(handler));
     window.addEventListener(EVENTS.navigateStack, navHandler);
     window.addEventListener(EVENTS.navigateCatalog, catalogNavHandler);
-    window.addEventListener(EVENTS.navigateExtras, extrasNavHandler);
     window.addEventListener(EVENTS.navigateModelHub, modelHubNavHandler);
     return () => {
       unsubPowerUser();
       window.removeEventListener(EVENTS.navigateStack, navHandler);
       window.removeEventListener(EVENTS.navigateCatalog, catalogNavHandler);
-      window.removeEventListener(EVENTS.navigateExtras, extrasNavHandler);
       window.removeEventListener(EVENTS.navigateModelHub, modelHubNavHandler);
     };
   }, []);
@@ -592,8 +576,6 @@ function App() {
               setupGuidePhase={setupGuide.phase}
               configSubTab={configSubTab}
               onConfigSubTabChange={setConfigSubTab}
-              extrasSubTab={extrasSubTab}
-              onExtrasSubTabChange={setExtrasSubTab}
             >
         {(activeTab === "catalog" || keepOpsAlive) && (
           <div
@@ -626,15 +608,6 @@ function App() {
         {activeTab === "modelhub" && (
           <Suspense fallback={<TabFallback />}>
             <ModelHub />
-          </Suspense>
-        )}
-        {activeTab === "extras" && (
-          <Suspense fallback={<TabFallback />}>
-            <ExtrasPage
-              stack={stack}
-              models={models}
-              subTab={extrasSubTab}
-            />
           </Suspense>
         )}
         {activeTab === "logs" && (

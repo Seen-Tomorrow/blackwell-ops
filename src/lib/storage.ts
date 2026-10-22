@@ -8,7 +8,6 @@ import {
   LAUNCH_DOCK_RAIL_WIDTH_DEFAULT,
   LAUNCH_RAIL_TELEMETRY_RATIO_DEFAULT,
 } from "./launchDockLayout";
-import { capCodeSize, PLAYGROUND_MAX_CODE_CHARS } from "./playgroundCodegen";
 import type {
   ConfigViewMode,
   GpuControlOcMode,
@@ -240,25 +239,11 @@ export const KEYS = {
   fusionShareSeq: `${STORAGE_PREFIX}fusion-share-seq`,
   /** CONFIG providers FIT library scan UI — survives sub-tab navigation (session). */
   fitScanSessions: `${STORAGE_PREFIX}fit-scan-sessions`,
-  /** Agent Playground isolated state (history, current code, last engine choice). Never touches app source. */
-  playgroundState: `${STORAGE_PREFIX}playground-state`,
-  /** EXTRAS tab sub-navigation (playground, …). */
-  extrasSubTab: `${STORAGE_PREFIX}extras-sub-tab`,
   /** GPU overclock presets + re-apply on launch (Telemetry). */
   gpuControlState: `${STORAGE_PREFIX}gpu-control-state`,
 } as const;
 
-export type ExtrasSubTab = "intel" | "playground";
-
-const EXTRAS_SUB_TAB_DEFAULT: ExtrasSubTab = "intel";
-
-export function loadExtrasSubTab(): ExtrasSubTab {
-  const v = readStorage(KEYS.extrasSubTab);
-  if (v === "intel" || v === "playground") return v;
-  return EXTRAS_SUB_TAB_DEFAULT;
-}
-
-// ── GPU control (Extras) ────────────────────────────────────────────────────
+// ── GPU control ─────────────────────────────────────────────────────────────
 
 export type { GpuControlSavedState };
 
@@ -320,10 +305,6 @@ export function loadGpuControlState(): GpuControlSavedState {
 
 export function saveGpuControlState(state: GpuControlSavedState): void {
   writeStorage(KEYS.gpuControlState, JSON.stringify(state));
-}
-
-export function saveExtrasSubTab(tab: ExtrasSubTab): void {
-  writeStorage(KEYS.extrasSubTab, tab);
 }
 
 export function isSetupGuideDismissed(): boolean {
@@ -1458,229 +1439,4 @@ export function resolveGroupOrder(
     ...normalizedCustom.filter((g) => seen.has(g)),
     ...derivedOrder.filter((g) => !normalizedCustom.includes(g)),
   ];
-}
-
-// ── Playground (isolated agent test area) ────────────────────────────────────
-// State lives ONLY under BlackOps-playground-state. Generated code, prompts,
-// and previews are never persisted into app source, engines, or shared stores.
-
-export interface PlaygroundChatTurn {
-  role: "user" | "assistant";
-  content: string;
-}
-
-export interface PlaygroundSession {
-  id: string;
-  name: string;
-  createdAt: number;
-  updatedAt: number;
-  history: PlaygroundChatTurn[];
-  currentCode: string;
-  lastPrompt: string;
-}
-
-export interface PlaygroundState {
-  activeSessionId: string;
-  sessions: PlaygroundSession[];
-  selectedSlotIdx: number | null;
-  temp: number;
-  maxTokens: number;
-  autoPreview: boolean;
-  wrapOutput: boolean;
-  useChatApi: boolean;
-  splitRatio: number;
-  hasSeenGuide: boolean;
-}
-
-export const PLAYGROUND_SPLIT_RATIO_DEFAULT = 0.45;
-export const PLAYGROUND_SPLIT_RATIO_MIN = 0.22;
-export const PLAYGROUND_SPLIT_RATIO_MAX = 0.78;
-export const PLAYGROUND_MAX_SESSIONS = 12;
-const PLAYGROUND_MAX_HISTORY_TURNS = 20;
-
-function newSessionId(): string {
-  return `pg-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-export function createPlaygroundSession(name = "Session 1"): PlaygroundSession {
-  const now = Date.now();
-  return {
-    id: newSessionId(),
-    name,
-    createdAt: now,
-    updatedAt: now,
-    history: [],
-    currentCode: "",
-    lastPrompt: "",
-  };
-}
-
-function clampSplitRatio(ratio: number): number {
-  if (!Number.isFinite(ratio)) return PLAYGROUND_SPLIT_RATIO_DEFAULT;
-  return Math.min(PLAYGROUND_SPLIT_RATIO_MAX, Math.max(PLAYGROUND_SPLIT_RATIO_MIN, ratio));
-}
-
-function normalizeSession(raw: unknown, fallbackName: string): PlaygroundSession | null {
-  if (!raw || typeof raw !== "object") return null;
-  const s = raw as Record<string, unknown>;
-  const id = typeof s.id === "string" ? s.id : newSessionId();
-  const now = Date.now();
-  return {
-    id,
-    name: typeof s.name === "string" && s.name.trim() ? s.name.trim() : fallbackName,
-    createdAt: typeof s.createdAt === "number" ? s.createdAt : now,
-    updatedAt: typeof s.updatedAt === "number" ? s.updatedAt : now,
-    history: Array.isArray(s.history) ? (s.history as PlaygroundChatTurn[]) : [],
-    currentCode: typeof s.currentCode === "string" ? capCodeSize(s.currentCode) : "",
-    lastPrompt: typeof s.lastPrompt === "string" ? s.lastPrompt : "",
-  };
-}
-
-function migrateLegacyPlayground(stored: Record<string, unknown>): PlaygroundState {
-  const session = createPlaygroundSession("Migrated session");
-  session.history = Array.isArray(stored.history) ? (stored.history as PlaygroundChatTurn[]) : [];
-  session.currentCode =
-    typeof stored.currentCode === "string" ? capCodeSize(stored.currentCode) : "";
-  session.lastPrompt = typeof stored.lastPrompt === "string" ? stored.lastPrompt : "";
-  return {
-    activeSessionId: session.id,
-    sessions: [session],
-    selectedSlotIdx: typeof stored.selectedSlotIdx === "number" ? stored.selectedSlotIdx : null,
-    temp: 0.65,
-    maxTokens: 4096,
-    autoPreview: true,
-    wrapOutput: true,
-    useChatApi: true,
-    splitRatio: PLAYGROUND_SPLIT_RATIO_DEFAULT,
-    hasSeenGuide: false,
-  };
-}
-
-const PLAYGROUND_DEFAULT: PlaygroundState = ((): PlaygroundState => {
-  const session = createPlaygroundSession("Session 1");
-  return {
-    activeSessionId: session.id,
-    sessions: [session],
-    selectedSlotIdx: null,
-    temp: 0.65,
-    maxTokens: 4096,
-    autoPreview: true,
-    wrapOutput: true,
-    useChatApi: true,
-    splitRatio: PLAYGROUND_SPLIT_RATIO_DEFAULT,
-    hasSeenGuide: false,
-  };
-})();
-
-export function loadPlaygroundState(): PlaygroundState {
-  const stored = readJsonStorage<Record<string, unknown>>(KEYS.playgroundState);
-  if (!stored || typeof stored !== "object") return { ...PLAYGROUND_DEFAULT };
-
-  if (!Array.isArray(stored.sessions)) {
-    return migrateLegacyPlayground(stored);
-  }
-
-  const sessions = stored.sessions
-    .map((s, i) => normalizeSession(s, `Session ${i + 1}`))
-    .filter((s): s is PlaygroundSession => s != null)
-    .slice(0, PLAYGROUND_MAX_SESSIONS);
-
-  if (sessions.length === 0) return { ...PLAYGROUND_DEFAULT };
-
-  const activeSessionId =
-    typeof stored.activeSessionId === "string" &&
-    sessions.some((s) => s.id === stored.activeSessionId)
-      ? stored.activeSessionId
-      : sessions[0].id;
-
-  return {
-    activeSessionId,
-    sessions,
-    selectedSlotIdx: typeof stored.selectedSlotIdx === "number" ? stored.selectedSlotIdx : null,
-    temp: typeof stored.temp === "number" ? stored.temp : 0.65,
-    maxTokens: typeof stored.maxTokens === "number" ? stored.maxTokens : 4096,
-    autoPreview: stored.autoPreview !== false,
-    wrapOutput: stored.wrapOutput !== false,
-    useChatApi: stored.useChatApi !== false,
-    splitRatio: clampSplitRatio(
-      typeof stored.splitRatio === "number" ? stored.splitRatio : PLAYGROUND_SPLIT_RATIO_DEFAULT,
-    ),
-    hasSeenGuide: stored.hasSeenGuide === true,
-  };
-}
-
-export function getActivePlaygroundSession(state: PlaygroundState): PlaygroundSession {
-  return state.sessions.find((s) => s.id === state.activeSessionId) ?? state.sessions[0];
-}
-
-export function updateActiveSession(
-  state: PlaygroundState,
-  patch: Partial<Pick<PlaygroundSession, "history" | "currentCode" | "lastPrompt" | "name">>,
-): PlaygroundState {
-  const now = Date.now();
-  const sessions = state.sessions.map((s) =>
-    s.id === state.activeSessionId
-      ? {
-          ...s,
-          ...patch,
-          currentCode:
-            patch.currentCode !== undefined ? capCodeSize(patch.currentCode) : s.currentCode,
-          history:
-            patch.history !== undefined
-              ? patch.history.slice(-PLAYGROUND_MAX_HISTORY_TURNS)
-              : s.history,
-          updatedAt: now,
-        }
-      : s,
-  );
-  return { ...state, sessions };
-}
-
-export function savePlaygroundState(state: PlaygroundState): void {
-  const sessions = state.sessions
-    .slice(0, PLAYGROUND_MAX_SESSIONS)
-    .map((s) => ({
-      ...s,
-      history: s.history.slice(-PLAYGROUND_MAX_HISTORY_TURNS),
-      currentCode: capCodeSize(s.currentCode),
-    }));
-
-  const capped: PlaygroundState = {
-    ...state,
-    sessions,
-    splitRatio: clampSplitRatio(state.splitRatio),
-    maxTokens: Math.max(256, Math.min(65536, Math.round(state.maxTokens))),
-    temp: Math.max(0, Math.min(2, state.temp)),
-  };
-  writeJsonStorage(KEYS.playgroundState, capped);
-}
-
-function clearPlaygroundState(): void {
-  removeStorage(KEYS.playgroundState);
-}
-
-export function exportPlaygroundBundle(state: PlaygroundState): string {
-  return JSON.stringify(
-    {
-      version: 1,
-      exportedAt: new Date().toISOString(),
-      state: state,
-      maxCodeChars: PLAYGROUND_MAX_CODE_CHARS,
-    },
-    null,
-    2,
-  );
-}
-
-export function importPlaygroundBundle(raw: string): PlaygroundState | null {
-  try {
-    const parsed = JSON.parse(raw) as { state?: Record<string, unknown> };
-    if (!parsed?.state || !Array.isArray(parsed.state.sessions) || parsed.state.sessions.length === 0) {
-      return null;
-    }
-    writeJsonStorage(KEYS.playgroundState, parsed.state);
-    return loadPlaygroundState();
-  } catch {
-    return null;
-  }
 }

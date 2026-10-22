@@ -7,7 +7,6 @@
  * | BlackOps-param-config-changed | Param catalog/count changed; reload overrides |
  * | BlackOps-navigate-stack | Switch to ENGINES tab (GPU topo click-through) |
  * | BlackOps-navigate-catalog | Switch to OPERATIONS tab (catalog — model pick, FIT, bench) |
- * | BlackOps-navigate-extras | Switch to EXTRAS tab; detail.subTab selects sub-tab (intel, playground) |
  * | BlackOps-navigate-model-hub | Switch to MODEL HUB tab |
  * | BlackOps-launch-engine | Request launch from catalog keyboard shortcut |
  * | BlackOps-launch-success | Engine started — status bar + toast |
@@ -34,7 +33,6 @@ import {
   enableSetupGuidePreview,
   resetSetupGuideState,
   STORAGE_PREFIX,
-  type ExtrasSubTab,
 } from "./storage";
 
 export type NavigateConfigDetail = {
@@ -46,7 +44,6 @@ export const EVENTS = {
   paramConfigChanged: `${STORAGE_PREFIX}param-config-changed`,
   navigateStack: `${STORAGE_PREFIX}navigate-stack`,
   navigateCatalog: `${STORAGE_PREFIX}navigate-catalog`,
-  navigateExtras: `${STORAGE_PREFIX}navigate-extras`,
   navigateModelHub: `${STORAGE_PREFIX}navigate-model-hub`,
   launchEngine: `${STORAGE_PREFIX}launch-engine`,
   launchSuccess: `${STORAGE_PREFIX}launch-success`,
@@ -188,23 +185,6 @@ export function dispatchNavigateConfig(detail?: NavigateConfigDetail): void {
 
 export function dispatchNavigateCatalog(): void {
   dispatchAppEvent(EVENTS.navigateCatalog);
-}
-
-export type NavigateExtrasDetail = {
-  subTab?: ExtrasSubTab;
-};
-
-let pendingExtrasSubTab: ExtrasSubTab | null = null;
-
-export function consumePendingExtrasSubTab(): ExtrasSubTab | null {
-  const tab = pendingExtrasSubTab;
-  pendingExtrasSubTab = null;
-  return tab;
-}
-
-function dispatchNavigateExtras(detail?: NavigateExtrasDetail): void {
-  if (detail?.subTab) pendingExtrasSubTab = detail.subTab;
-  dispatchAppEvent(EVENTS.navigateExtras, detail);
 }
 
 export function dispatchNavigateModelHub(): void {

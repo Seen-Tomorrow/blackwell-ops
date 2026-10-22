@@ -112,10 +112,9 @@ const SERIALIZE_ONLY_KEYS: &[(&str, &[&str])] = &[
 /// Declares the IPC surface: every type whose shape the frontend mirrors.
 ///
 /// Names are given explicitly (rather than derived from the path) so a TS
-/// interface that deliberately mirrors a differently-named Rust type —
-/// `IntelChannel` over `IntelChannelMeta` — can still be checked. A name that
-/// matches no TS interface fails the guard in `src/lib/ipcContract.test.ts`,
-/// so a typo here cannot silently reduce coverage.
+/// interface that deliberately mirrors a differently-named Rust type can still
+/// be checked. A name that matches no TS interface fails the guard in
+/// `src/lib/ipcContract.test.ts`, so a typo here cannot silently reduce coverage.
 ///
 /// Adding a type is the deliberate act that puts it under the guard.
 macro_rules! ipc_registry {
@@ -196,12 +195,6 @@ ipc_registry! {
     "LogEntry" => crate::log_hub::LogEntry,
     "LogBatch" => crate::log_hub::LogBatch,
     "SystemEvent" => crate::log_hub::SystemEvent,
-
-    // ── intel feed ────────────────────────────────────────────────────
-    // TS keeps the shorter name for this one.
-    "IntelChannel" => crate::intel::IntelChannelMeta,
-    "IntelItem" => crate::intel::IntelItem,
-    "IntelFeed" => crate::intel::IntelFeed,
 
     // ── updates / plugins / distribution ──────────────────────────────
     "AppUpdateInfo" => crate::binary_update::AppUpdateInfo,

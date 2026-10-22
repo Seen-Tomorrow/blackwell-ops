@@ -1,9 +1,8 @@
 import type { Tab } from "../App";
 import { isDevBuild } from "./build";
-import type { ExtrasSubTab } from "./storage";
 
 /** Top-level header destinations (segment primary rail). */
-export type PrimaryNavId = "operations" | "downloads" | "extras" | "config";
+export type PrimaryNavId = "operations" | "downloads" | "config";
 
 /** CONFIG page sections (header sub-rail when primary = CONFIG). */
 export type ConfigSubTab =
@@ -16,13 +15,10 @@ export type ConfigSubTab =
   | "updates"
   | "distribution";
 
-export type { ExtrasSubTab };
-
 export const PRIMARY_NAV: { id: PrimaryNavId; label: string }[] = [
   { id: "operations", label: "OPERATIONS" },
   { id: "config", label: "CONFIG" },
   { id: "downloads", label: "DOWNLOADS" },
-  { id: "extras", label: "EXTRAS" },
 ];
 
 /** OPERATIONS children — catalog cockpit + engines + logs. */
@@ -30,12 +26,6 @@ export const OPS_SUB_NAV: { id: Tab; label: string }[] = [
   { id: "catalog", label: "OPS" },
   { id: "stack", label: "ENGINES" },
   { id: "logs", label: "LOGS" },
-];
-
-/** EXTRAS children — header sub-rail. */
-export const EXTRAS_SUB_NAV: { id: ExtrasSubTab; label: string }[] = [
-  { id: "intel", label: "INTEL" },
-  { id: "playground", label: "PLAYGROUND" },
 ];
 
 const CONFIG_SUB_NAV_ALL: {
@@ -65,7 +55,6 @@ export function isOpsTab(tab: Tab): boolean {
 export function primaryNavFromTab(tab: Tab): PrimaryNavId {
   if (isOpsTab(tab)) return "operations";
   if (tab === "modelhub") return "downloads";
-  if (tab === "extras") return "extras";
   return "config";
 }
 
@@ -79,8 +68,6 @@ export function defaultTabForPrimary(
       return isOpsTab(lastOpsTab) ? lastOpsTab : "catalog";
     case "downloads":
       return "modelhub";
-    case "extras":
-      return "extras";
     case "config":
       return "config";
   }

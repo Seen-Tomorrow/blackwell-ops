@@ -475,7 +475,7 @@
   border-color: var(--theme-nav-active-border);
 }
 
-/* First-run setup: ENGINES / LOGS / EXTRAS locked until wizard finishes */
+/* First-run setup: ENGINES / LOGS locked until wizard finishes */
 .app-nav-tab:disabled {
   opacity: 0.35;
   cursor: not-allowed;
@@ -2414,9 +2414,8 @@
   min-height: 1.65rem;
 }
 
-/* ── TEMP: hide only the page-title text (✦ OPERATIONS / CONFIG / EXTRAS / …).
-   Header strip (meta, actions, toasts, download bar) stays. Reviewing before
-   deciding whether to remove permanently. To restore: delete this rule. */
+/* ── Hide only the page-title text (✦ OPERATIONS / CONFIG / …).
+   Header strip (meta, actions, toasts, download bar) stays. */
 .tab-page-header h2 {
   display: none !important;
 }

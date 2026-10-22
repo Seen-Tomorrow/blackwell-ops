@@ -8,12 +8,7 @@ import TabPageHeader from './TabPageHeader';
 import "../styles/modelhub-page.css";
 
 
-interface ModelHubProps {
-  /** When true, parent ExtrasPage owns the page chrome. */
-  embedded?: boolean;
-}
-
-export default function ModelHub({ embedded = false }: ModelHubProps) {
+export default function ModelHub() {
   // All task kinds (HF models, app update, provider packs, toolchain) — top = download manager.
   const downloads = useDownloadTasks();
   const completedRefs = useRef(new Set<string>());
@@ -32,9 +27,9 @@ export default function ModelHub({ embedded = false }: ModelHubProps) {
 
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden" data-model-hub>
-      {!embedded && <TabPageHeader title="MODEL HUB" />}
+      <TabPageHeader title="MODEL HUB" />
 
-      <div className={`flex-1 overflow-hidden flex flex-col min-h-0 gap-0 ${embedded ? "px-3 py-2" : "px-4 py-3"}`}>
+      <div className="flex-1 overflow-hidden flex flex-col min-h-0 gap-0 px-4 py-3">
         <div className="theme-surface grid shrink-0 grid-cols-2 min-h-[160px] max-h-[40%] rounded-sm overflow-hidden divide-x">
           <ModelHubDownloadPaths downloads={downloads} />
           <ModelHubDownloads downloads={downloads} />

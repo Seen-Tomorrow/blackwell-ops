@@ -353,9 +353,3 @@ button.engine-logs-slot-chip.engine-logs-slot-chip--active .engine-logs-slot-chi
 .launch-rail-tel .theme-surface .text-white\/80 {
   color: var(--theme-text);
 }
-
-/* (Also covered before: the /90 white and 100% stealth-muted utilities died
-   with the paint migration — IntelPage's summary line now paints through
-   .intel-summary at its own 60% color-mix, which reads as text-muted at 60%
-   in every face; no element under [data-intel-page] .theme-surface carries a
-   white-ink utility anymore.) */
