@@ -2,7 +2,7 @@
 //! rename.
 //!
 //! Seam: these are the commands that act on the model library as *files on disk*. They split
-//! out of `engine.rs` (change 1 of `docs/internal/REFACTOR-PLAN-2026-10.md`) because none of
+//! out of `engine.rs` because none of
 //! them touches engine state — `AppContext` is taken only to reach the output console, never
 //! the stack — which is why they are the safest region to have moved first, and why they do
 //! not belong in the module that owns spawn/teardown.

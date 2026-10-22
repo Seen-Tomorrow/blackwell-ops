@@ -1,10 +1,7 @@
 # Engine config + CONFIG editor pipeline
 
-**Status:** living notes after ENGINE-CONFIG-refactor  
-**Branch context:** `ENGINE-CONFIG-refactor`  
+**Status:** living notes
 **Audience:** next agent / self — do not lose this when the panel is slimmed later
-
-This file is **git-tracked** (unlike `docs/internal/`). Internal design proposal: `docs/internal/ENGINE-CONFIG-MODES.md` (local only).
 
 ---
 

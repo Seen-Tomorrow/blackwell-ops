@@ -1,6 +1,6 @@
 //! `model_scan` — the GGUF metadata scan pipeline and the metadata cache that backs it.
 //!
-//! Seam: moved out of `engine.rs` (change 1 of `docs/internal/REFACTOR-PLAN-2026-10.md`).
+//! Seam: moved out of `engine.rs`.
 //! This is the *model library* lifecycle — enumerate the catalog, probe each GGUF with
 //! `llama-server` so the UI can show real metadata, persist to the cache, and report
 //! progress. It never touches the engine stack: it reads `AppContext` only for the

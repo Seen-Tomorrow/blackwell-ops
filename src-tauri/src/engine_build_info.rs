@@ -1,7 +1,7 @@
 //! `engine_build_info` — identifying *which* engine binary is in front of us: version
 //! probe, build date, and the recorded per-environment build info.
 //!
-//! Seam: moved out of `engine.rs` (change 1 of `docs/internal/REFACTOR-PLAN-2026-10.md`).
+//! Seam: moved out of `engine.rs`.
 //! It is a separate lifecycle concern from launching: the launch path consumes a binary
 //! it already trusts, while this module answers "what is this binary" for the Foundry
 //! and the Config UI. `reactor_foundry` and `binary_update` both call into it without

@@ -1,5 +1,5 @@
 /**
- * Leakage / policy unit tests — ENGINE-CONFIG-MODES §8.
+ * Leakage / policy unit tests.
  * Pure modules only; no React / localStorage.
  */
 import { describe, expect, it } from "vitest";

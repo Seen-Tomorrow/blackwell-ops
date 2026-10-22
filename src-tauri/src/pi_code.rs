@@ -1265,7 +1265,7 @@ fn build_models_and_settings(req: &PiLaunchRequest) -> Result<(String, String, S
     // Retest (Qwen3.6-27B + thinking FT): all server levels work including minimal/medium
     // via identity if a client sends them — not in this map. On that SKU, none is the only
     // true OFF; minimal is lightest on-tier; low→max is a tight band (diminishing returns).
-    // See docs/internal/thinking-levels-validation.md. Larger models may separate more.
+    // Larger models may separate more.
     let thinking_map = serde_json::json!({
         "off": "none",
         "low": "low",
