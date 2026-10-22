@@ -1,0 +1,14 @@
+# Compiler pin — supply chain, not style.
+#
+# The toolchain is what actually executes the 65 `build.rs` scripts and 19 proc
+# macros in the Windows crate graph; a floating `stable` means `rustup update`
+# can swap the compiler that builds and ships the app without a single line of
+# Cargo.lock changing. Pinning turns a toolchain move into a reviewed edit.
+#
+# 1.95.0 is already installed on this box (no download, no offline surprise).
+# Product is Windows x64 only, so no extra `targets` are declared.
+#
+# Bump deliberately: edit the channel, then rebuild + `npm run check` once
+# before committing — a new toolchain invalidates every artifact in target/.
+[toolchain]
+channel = "1.95.0"

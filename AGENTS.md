@@ -370,6 +370,17 @@ Native crashes also append `%TEMP%\blackwell-crash.log` (heap `0xC0000374`, ille
   Launched via `Start-Process -WindowStyle Hidden` the app fails to initialize correctly —
   observed, mechanism not identified in this app (registered Tauri plugins are only
   `shell` + `updater`; there is no MCP/WebSocket bridge plugin to blame).
+- **The crate graph and the compiler are both pinned.** Every direct cargo call
+  passes `--locked`, and `rust-toolchain.toml` names the exact toolchain. The
+  compiler is what executes the 65 `build.rs` + proc-macro crates of the 285-crate
+  Windows graph, so a floating `stable` silently moves the build while Cargo.lock
+  shows no diff at all. **`tauri build` forwards no cargo flags** — it cannot take
+  `--locked`. Hence `npm run check:lock` (a `cargo metadata --locked` resolve) runs
+  before it in `build:exe` / `release`, and Pack calls `Assert-CargoLockPinned`:
+  a lock that already satisfies every manifest gives the nested cargo nothing to
+  re-resolve, which is what puts the pinned graph on the shipped binary.
+  `majestic:bump` refreshes the lock via `cargo update --workspace --offline` —
+  Cargo.lock mirrors `[package] version`, so bumping without that trips the gate.
 
 ---
 

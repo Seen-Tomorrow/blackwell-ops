@@ -41,7 +41,7 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Write-Host ""
 Write-Host "==> [2/3] Rust (debug, full crate rebuild)..." -ForegroundColor Cyan
 Push-Location (Join-Path $Root "src-tauri")
-cargo build
+cargo build --locked
 $code = $LASTEXITCODE
 Pop-Location
 if ($code -ne 0) { exit $code }

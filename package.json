@@ -1,7 +1,7 @@
 {
   "name": "blackwell-ops",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.1.1",
   "type": "module",
   "scripts": {
     "vite": "vite --host 127.0.0.1 --port 1420",
@@ -14,14 +14,15 @@
     "dev:watch": "tauri dev --config src-tauri/tauri.conf.dev.json",
     "build": "tsc && vite build",
     "build:frontend": "tsc && vite build",
-    "build:exe": "npm run build && tauri build --no-bundle",
-    "build:rust": "cargo build --release --manifest-path src-tauri/Cargo.toml",
+    "build:exe": "npm run build && npm run check:lock && tauri build --no-bundle",
+    "build:rust": "cargo build --release --locked --manifest-path src-tauri/Cargo.toml",
+    "check:lock": "cargo metadata --locked --format-version 1 --manifest-path src-tauri/Cargo.toml >nul",
     "rebuild:frontend": "powershell -ExecutionPolicy Bypass -File scripts/rebuild-frontend.ps1",
     "rebuild:dev": "powershell -ExecutionPolicy Bypass -File scripts/rebuild-dev.ps1",
     "rebuild:dev:selective": "powershell -ExecutionPolicy Bypass -File scripts/rebuild-dev-selective.ps1",
     "preview": "vite preview",
     "prerelease": "powershell -ExecutionPolicy Bypass -File scripts/mirror-artifacts.ps1 && powershell -ExecutionPolicy Bypass -File scripts/prepare-release-runtime.ps1",
-    "release": "npm run build && tauri build",
+    "release": "npm run build && npm run check:lock && tauri build",
     "release:exe": "npm run build:exe",
     "lint:dead": "knip",
     "lint:dead:rust": "cargo machete src-tauri",
@@ -46,7 +47,7 @@
     "pack:provider": "powershell -ExecutionPolicy Bypass -File scripts/pack-provider-runtime.ps1",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check": "npm run css:audit && npm run css:minify && tsc --noEmit && vitest run && cargo test --manifest-path src-tauri/Cargo.toml"
+    "check": "npm run css:audit && npm run css:minify && tsc --noEmit && vitest run && cargo test --locked --manifest-path src-tauri/Cargo.toml"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.1",

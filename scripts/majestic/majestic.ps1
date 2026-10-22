@@ -1,4 +1,4 @@
-﻿# Majestic - private release automation for Blackwell Ops.
+# Majestic - private release automation for Blackwell Ops.
 # Usage: .\scripts\majestic\majestic.ps1 -Mode check|pack|ship|bump|pack-provider|ship-provider [-DryRun]
 
 param(
@@ -272,6 +272,29 @@ function Invoke-ForceReleasePackageClean {
     }
 }
 
+function Assert-CargoLockPinned {
+    # `tauri build` runs cargo itself and forwards no flags, so the shipping
+    # compile cannot take --locked. A lockfile that already satisfies every
+    # manifest requirement cannot be re-resolved by that nested build either, so
+    # resolving under --locked here is what puts the pinned crate graph onto the
+    # binary that ships — and it fails in ~1s instead of after a 499-crate build.
+    $manifest = Join-Path $root 'src-tauri\Cargo.toml'
+    Write-Majestic "Asserting Cargo.lock satisfies the manifests (cargo metadata --locked)..." -Color Cyan
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $out = cargo metadata --locked --format-version 1 --manifest-path $manifest 2>&1
+        $code = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $prev
+    }
+    if ($code -ne 0) {
+        $out | ForEach-Object { if ($_) { Write-Host $_ } }
+        throw "SHIP BLOCKED: src-tauri/Cargo.lock does not match the manifests. Refresh it deliberately (cargo update --workspace --offline, or -p <crate> for a real dependency change) and commit the lockfile before packing."
+    }
+    Write-Majestic "Crate graph pinned to the committed Cargo.lock." -Color Green
+}
+
 function Get-PackKindLabel {
     param([string]$Kind)
     if ($Kind -eq 'app') { 'App update (7z)' } else { 'Full Bundle (CORE: App .7z + NSIS w/ ggml-master)' }
@@ -334,6 +357,7 @@ function Invoke-FrontendAndTauriBuild {
         $version = Read-AppVersion
         Write-Majestic "Build target version $version | conf: tauri.conf.json only (never conf.dev)" -Color Cyan
         Invoke-ForceReleasePackageClean
+        Assert-CargoLockPinned
 
         if ($Variant -eq 'app') {
             Write-Majestic "Building frontend + release exe (no NSIS, no engine mirror)..." -Color Cyan
@@ -883,6 +907,24 @@ function Invoke-MajesticBump {
     Set-JsonFileVersion -Path (Get-PackageJsonPath) -NewVersion $newVersion
     Set-CargoTomlVersion -Path (Get-CargoTomlPath) -NewVersion $newVersion
 
+    # Cargo.lock mirrors [package] version, so rewriting the manifest alone leaves
+    # the tree failing the --locked gate that Pack and the ship release gate now
+    # enforce. Refresh only workspace-member entries — offline, and incapable of
+    # moving a third-party pin — so bump can never smuggle in a dependency change.
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        cargo update --workspace --offline --manifest-path (Get-CargoTomlPath) 2>&1 | ForEach-Object {
+            if ($_ -and "$_".Trim().Length -gt 0) { Write-Majestic "  $_" -Color DarkGray }
+        }
+        if ($LASTEXITCODE -ne 0) {
+            throw "cargo update --workspace failed (exit $LASTEXITCODE) — src-tauri/Cargo.lock is now out of sync with the bumped manifest."
+        }
+    } finally {
+        $ErrorActionPreference = $prevEap
+    }
+    Write-Majestic "Refreshed src-tauri/Cargo.lock (workspace entry only)." -Color DarkGray
+
     $old_tag = Get-TagName -Version $current -Prefix (Read-MajesticConfig).tagPrefix
     Push-Location $root
     try {
@@ -1111,7 +1153,7 @@ function Invoke-ReleaseTestGate {
         }
 
         Write-Majestic "Release gate: Rust suite (cargo test) - builds the test profile, expect a few minutes..." -Color Cyan
-        cargo test --manifest-path (Join-Path $root 'src-tauri\Cargo.toml')
+        cargo test --locked --manifest-path (Join-Path $root 'src-tauri\Cargo.toml')
         if ($LASTEXITCODE -ne 0) {
             throw "SHIP BLOCKED: Rust tests failed (exit $LASTEXITCODE). Nothing was tagged or uploaded."
         }

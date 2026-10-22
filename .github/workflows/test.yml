@@ -62,13 +62,22 @@ jobs:
           Set-Content src-tauri/runtime-bundle/.ci-placeholder "placeholder"
           Set-Content src-tauri/pi-ext/pi-subagents/package.json '{"name":"pi-subagents","version":"0.0.0-ci"}'
 
+      # Pinned, and pinned to the same version as rust-toolchain.toml. The compiler
+      # is what runs the 65 build scripts + 19 proc macros in the Windows graph, so
+      # a floating `stable` is a wider door than any single crate.
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
 
+      # --locked: cargo must refuse to re-resolve rather than silently adopt a new
+      # semver-compatible release of any of the 285 crates this target builds.
       - name: Rust suite
-        run: cargo test --manifest-path src-tauri/Cargo.toml
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+
+      # Belt and braces — nothing above is allowed to rewrite the pin.
+      - name: Assert Cargo.lock unchanged
+        run: git diff --exit-code -- src-tauri/Cargo.lock
