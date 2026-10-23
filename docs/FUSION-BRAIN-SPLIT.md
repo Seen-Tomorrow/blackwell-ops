@@ -1,18 +1,25 @@
 # Fusion brain split — SSE-only brain for ggml-master
 
-Status: **design agreed, not implemented.** This document is the execution plan. Everything below
-assumes the checkpoint commit `3ab678fda` (373 Rust tests green, working tree clean).
+Status: **steps 1–2 landed; step 3 (SseBrain skeleton) is next.** Everything below assumes the
+checkpoint commit `ece8f3ab6` (384 Rust tests green, 2 ignored, working tree clean).
 
 ## Start here (next session)
 
-1. `git log --oneline -3` — expect `3ab678fda feat(fusion): windowed decode rate`, then
-   `ae4dc6504 docs: plan the fusion brain split`. If the tree is dirty, stop and look.
-2. `npm run check` — 373 tests, css/tsc/vitest included. Anything red is not yours.
-3. Read *Where we are* + *Migration steps*, then start at step 1 (`RequestLifecycle` extraction).
+1. `git log --oneline -4` — expect `ece8f3ab6 feat(fusion): probe /events/sse and make the brain
+   registry an enum`, `f696c6e1f refactor(fusion): extract RequestLifecycle from brain`,
+   `94a1be237 docs: close the fusion split baseline with the stable-profile row`. If the tree is
+   dirty, stop and look.
+2. `npm run check` — 384 tests, css/tsc/vitest included. Anything red is not yours.
+3. Read *Where we are* + *Migration steps*, then continue at step 3 (`SseBrain` skeleton).
+4. The eight-row table's live re-run is still owed: the baseline below was recorded on `bb431c70d`,
+   and steps 1–2 have only been through the suite. Rebuild DEV, restart, and re-run the table
+   against it before step 3 changes what is on screen.
 
 Already landed and reusable: the reader (`engine_events.rs`) with per-slot state, lane aggregate,
-windowing (`gen_tps_window`), staleness clearing; the engine patch (`foundry/patches/`, three
-patches, ordered); the steady-PP calibration; the probe has **not** been written.
+windowing (`gen_tps_window`), staleness clearing and the launch-time `/events/sse` probe; the shared
+`fusion/lifecycle.rs` (phase, request clock, TTFT, freeze) both brains call; the `BrainHandle` enum
+(`Poll` live, `Sse` reserved for step 3); the engine patch (`foundry/patches/`, three patches,
+ordered); the steady-PP calibration.
 
 ### Tomorrow's test checklist (one category at a time)
 
@@ -33,7 +40,8 @@ Record the outcome of each row before touching step 1 — the split must preserv
 
 DEV app, `ggml-master` edge (engine `b11842`, 2× RTX PRO 6000 Blackwell), recorded with a
 passive harness: engine `/events/sse`, `/slots` at 5 Hz, the brain's `[fusion-stats]` lines and
-1 fps screenshots. Raw evidence is in gitignored `tmp/baseline/` (`capture-*.jsonl`, `shots/`).
+1 fps screenshots. Raw evidence is in gitignored `tmp/baseline/` (`capture-*.jsonl`) and
+`tmp/shots/` (screenshots).
 
 Engines used: **0.5B** = Qwen2.5-0.5B-Instruct Q8_0 (`b=1024/256`, or `3072/1536` at ×8);
 **27B** = Qwen3.8-27B-UD-IQ3_XXS + mmproj (`b=8192/4096` and `b=1024/256`, ×1 at 128K).
@@ -89,13 +97,14 @@ Scope: `ggml-master` (the bearer engine) gets a dedicated SSE brain. `cafe-llama
 
 | piece | file | role |
 | --- | --- | --- |
-| reader | `engine_events.rs` | SSE parse, per-`(port, slot)` state, aggregate, reconnect |
+| reader | `engine_events.rs` | SSE parse, per-`(port, slot)` state, aggregate, reconnect, launch probe |
 | contract | `fusion/emit.rs` | `FusionUpdate` — the only thing the UI knows |
 | math | `fusion/meter.rs` | pure rate/clamp helpers, `ParallelMeter` walls |
-| state machine | `fusion/brain.rs` | phases, meters, freeze/latch, log belt, poll loop |
+| lifecycle | `fusion/lifecycle.rs` | phase, request clock, TTFT split, freeze/latch — shared by every brain |
+| state machine | `fusion/brain.rs` | meters, log belt, poll loop (`FusionBrain`, the `Poll` variant) |
 | poller | `fusion/poller.rs` | `/slots` + `/metrics` deserialization |
 | slots | `fusion/slotstate.rs` | `SlotBank`, per-slot KV/decode bookkeeping |
-| selection | `engine.rs` `start_brain` | one spawn per engine, today always `FusionBrain` |
+| selection | `brain.rs` `start_brain` | one `BrainHandle` per engine; probe logs capability, still `Poll` |
 
 The SSE work landed as a ~90-line **overlay** inside `build_update`, not as a second brain. That is
 the thing being promoted.
@@ -220,8 +229,15 @@ Each step is shippable on its own and leaves the tree green.
 
 1. **Extract `RequestLifecycle`** (phases, freeze, TTFT, close) out of `brain.rs`, with the existing
    tests moved. `FusionBrain` calls it. No behaviour change; gate is the full suite.
+   **Done (`f696c6e1f`):** `fusion/lifecycle.rs` owns phase, request clock, TTFT split, the freeze
+   policy and the inter-request hold; `FusionBrain` keeps a `req` field and delegates. Freeze takes
+   explicit inputs (`FreezeInput`) so a stream brain can feed it without `/slots`. 9 lifecycle tests.
 2. **Registry enum + probe.** `start_brain` probes `/events/sse`, logs which brain it chose, and
    still spawns `FusionBrain` for both variants. Behaviour unchanged — the probe only reports.
+   **Done (`ece8f3ab6`):** `engine_events::probe` (300 ms bound, one connection) runs once in
+   `start_brain`; the log line is now `brain=Poll sse_capable=…`. `BrainHandle::{Poll,Sse}` replaces
+   the two registries — stop cancels either variant, and quiet/bench/log routing reaches only
+   `Poll` (`Sse` has no inbound channel). The app still spawns `FusionBrain` for both outcomes.
 3. **SseBrain skeleton.** Renders `FusionUpdate` from the stream for phase/PP/TG/TTFT/ctx, calls the
    shared lifecycle, no HTTP at all. Wired for `ggml_master` engines behind a DEV flag.
 4. **Bench validation.** PP and TG on `ggml_master`, single-slot and 16/32-lane, against llama-bench
@@ -235,7 +251,7 @@ Each step is shippable on its own and leaves the tree green.
 
 ## Verification
 
-- `npm run check` green at every step (371 Rust tests today).
+- `npm run check` green at every step (384 Rust tests today, 2 ignored).
 - On `ggml_master`: SSE badge `SSE`, hero smooth, PP steady within ~3 % of the report's `PP steady`.
 - On `stable` and `ggml-tom`: badge `POLL`, behaviour identical to today's — the regression you
   already ran on the unpatched engine is the baseline.
