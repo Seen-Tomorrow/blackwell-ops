@@ -237,29 +237,41 @@ checking the never-run `bump-pi` path — DEV was at 0.84.3 with the pin still a
 **both** variants and folds the result into `$ready`. Not a warning — **NOT READY**, naming both
 versions, the consequence, and the fix.
 
+It also checks the **pair**, not just the pin: the bundled `pi-ext/pi-subagents/package.json` declares
+a `@earendil-works/pi-ai` peer floor, and a pin below that floor ships an extension that cannot load.
+That is not hypothetical — a REL build carried pi-subagents 0.80.0 (`>= 1.2.0`) next to an installed
+pi 0.84.3 and died with `(0, _piAi.toToolDeclaration) is not a function`, reporting no `subagent`
+tool. Both halves were individually "correct"; nothing compared them.
+
 **A missing DEV pi is a warning, not a failure.** A clean checkout cannot be pinned and that must
-not block an unrelated pack. A *present but mismatched* pi is a hard gate.
+not block an unrelated pack. A *present but mismatched* pi is a hard gate, and so is a pin below the
+bundle's floor (that one is a property of the repo, so it is checked even with no DEV pi).
 
 Byte format matters: **no BOM, no trailing newline** — `include_str!` reads it verbatim.
 
-Distribution tab has two adjacent buttons with different effects: **BUMP** (app patch version) and
-**BUMP HARNESS** (`bump_pi` → majestic `-Mode bump-pi`). Easy to press wrong.
+Distribution tab has three adjacent buttons: **BUMP** (app patch version), **UPDATE HARNESS**
+(latest pi + refreshed bundle + pin + pairing gate), and **BUMP HARNESS** (`bump_pi` → pin only).
+
+`majestic.ps1` must stay parseable by **Windows PowerShell 5.1**, which is what the npm scripts and
+the Distribution panel invoke. Without a BOM it decodes the file as ANSI, so a non-ASCII character
+inside a *double-quoted* string (e.g. an em dash → `”`) acts as a string terminator and the whole
+script fails to parse. Keep those strings ASCII.
 
 ---
 
 ## Release ritual
 
 ```powershell
-# 1. Close the pi console window (UPDATE PI refuses while one is live)
-#    Harness connect → UPDATE   → pi + pi-subagents + lean pipeline + sync_dev_pi_ext
-# 2. Launch a session — sync_bundled_subagents self-heals and re-stamps pi-home
-# 3. Pin what you tested
-npm run majestic:bump:pi          # or Distribution tab → BUMP HARNESS
-# 4. Check — now refuses READY on a stale pi pin
-npm run majestic:check
-# 5. Pack + ship (Distribution tab, or)
+# 1. Close any pi console window — the update replaces the package dir a live pi.exe holds.
+# 2. Distribution tab → UPDATE HARNESS
+#    One action: latest pi → refreshed pi-subagents bundle → pin both → pairing gate.
+#    (Harness connect → UPDATE remains the bundle-only half; BUMP HARNESS is pin-only.)
+# 3. Pack + ship (Distribution tab, or)
 npm run majestic:pack:app ; npm run majestic:ship
 ```
+
+`npm run majestic:check` refuses READY when the pin, the DEV-installed pi, and the bundled
+extension's peer floor disagree — run it if you packed by hand.
 
 `majestic.ps1` modes: `check`, `bump`, `bump-pi`, `pack -Variant app|full`, `ship`,
 `ship-toolchain`, `pack-provider`, `ship-provider`.

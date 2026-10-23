@@ -1,256 +1,137 @@
-# Blackwell Ops, pocket mini datacenter for local AI
+# Blackwell Ops
 
-**Windows-native local LLM inference** — a portable, tiny, single-exe multi-engine orchestrator for llama.cpp (official master + Tom TurboQuant fork). Built for GGUF models on Windows with easy Foundry builds from source , State of the art MEMORY forecast, and live fusion telemetry.
--support MTP, Dflash and TurboQuant out of the box.
+**The control room for a fleet of local models on Windows.**
 
-No WSL. No Electron. No Docker required. Native desktop app for running and managing local llama servers on Windows.
+Blackwell Ops is a Windows desktop app for running many GGUF models on your own
+NVIDIA GPUs. Each engine gets its own process, config, port, and telemetry; the
+app tells you whether a model will fit before you load it, launches llama.cpp
+with the right flags, and shows prefill, decode, and slots while the fleet runs.
 
-[![Release](https://img.shields.io/github/v/release/Seen-Tomorrow/blackwell-ops?style=flat-square)](https://github.com/Seen-Tomorrow/blackwell-ops/releases)
-![Platform](https://img.shields.io/badge/platform-Windows%20x64-0078D6?style=flat-square&logo=windows)
-![Stack](https://img.shields.io/badge/core-Rust%20%2B%20Tauri%20v2-orange?style=flat-square&logo=rust)
-![Mission](https://img.shields.io/badge/mission-local%20inference%20first-76B900?style=flat-square)
+It is built for the part of local AI that a chat window does not cover: a
+reasoner, a coder, a small fast model, and an embedder running side by side, long
+context, speculative decoding, and a brain model or agent harness routing work
+across their endpoints.
 
-[→ Quick Start](#quick-start)
+Native Windows. No WSL, no Docker, no Electron.
 
-> *This project is my testament to open source and a **local inference first** mission.*
+![Blackwell Ops operations view](docs/screenshots/readme-operations.png)
 
-You do **not** need Linux to run serious LLM workloads on your own hardware.
-Blackwell Ops exists to challenge it — directly, on Windows, with top performance and minimal memory footprint.
----
-![Dashboard-themes](docs/screenshots/Dashboard-themes.png)
-## What it is
+*Operations view on a 2× RTX PRO 6000 workstation: model library, measured fit,
+26 parallel slots, live generation, and hardware monitor in one window.*
 
-Blackwell Ops is a native Windows desktop app for local LLM / llama.cpp users. It orchestrates multiple `llama-server` instances (GGUF models), provides a GGUF model library with VRAM estimation, one-click Foundry CMake builds, and real-time telemetry — all without Docker, WSL, or cloud dependencies. Fully portable and open source.
+**Early build** · Windows 10/11 x64 · NVIDIA CUDA · GPL-3.0
 
-Drop the installer or portable folder anywhere. The app recreates its ecosystem around itself: configs, runtime engines, foundry artifacts, and user preferences — all relative to the install directory. Great for portable local LLM setups or moving between machines.
+*Independent project; not affiliated with NVIDIA.*
 
-**At v1.0.x** we strongly focus on **GGML / llama.cpp** (official master + Tom TurboQuant fork bundled). 
-Any llama-compatible fork can be easily wired in by users in 2 clicks. You will get most of funcionality right away, including 1click builds form source anytime. The architecture is **semi–backend-agnostic** by design — support grows over time.
----
+**[Download the latest release →](https://github.com/Seen-Tomorrow/blackwell-ops/releases/latest)**
 
-## By the numbers
+## The problem
 
-| | |
-|---|---|
-| **Core binary** | ~14 MB Rust executable |
-| **Typical RAM (app shell)** | ~40 MB running — about half what Windows Notepad needs |
-| **Engine slots (factory)** | Up to **64** concurrent instances (GGML master) |
-| **Stress-tested** | **64** engine instances orchestrated with **~400 MB** total app RAM overhead |
-| **Build investment** | ~**2,500+ hours** across ~5 months |
-| **GPU targets** | **BLACKWELL** (heavily optimized), also **AMPERE · ADA** |
+Local inference is easy to start and hard to operate.
 
-*Engine VRAM is separate — these figures are the ops layer, not model weights.*
+The model loads, then you find out it did not fit. The agent feels slow, then
+you find out prefill is the bottleneck. You change one flag, relaunch, and lose
+the comparison you were trying to make. A chat app hides all of this; a terminal
+shows it only if you know which line to read.
 
----
+Running one model well is one problem. Running a reasoner, a coder, a small
+router, and an embedder at the same time is another: which one fits, which one
+is busy, which one is thrashing, and which one is worth the VRAM? A single-chat
+tool cannot answer that, and a pile of terminals makes it worse.
 
-## Why Blackwell Ops?
+Blackwell Ops makes the three decisions visible: **Fit. Launch. Watch.**
 
-People running serious local LLMs on Windows often hit friction with existing tools:
+## Fit. Launch. Watch.
 
-| Tool          | Windows Native | Multiple Engines      | Easy Source Builds | Portable | Low Overhead | Full Config Freedom |
-|---------------|----------------|-----------------------|--------------------|----------|--------------|---------------------|
-| **Blackwell Ops** | ✅            | ✅ (up to 64 engines) | ✅ (Foundry)      | ✅      | ✅          | ✅                 |
-| Ollama        | Partial (WSL)  | Limited               | No                 | No       | Medium       | Limited            |
-| LM Studio     | ✅             | Limited               | No                 | No       | Medium       | Medium             |
-| llama-server (bare) | ✅        | Manual                | Manual             | Partial  | ✅           | ✅ (CLI only)      |
+| Fit | Launch | Watch |
+|---|---|---|
+| Will this model, at this context, on this GPU split, actually fit? A FIT probe and learned VRAM points answer it. When nothing has been measured, the app shows a skeleton instead of a guess. | One place per engine for model, context, device, split, speculative decoding, and parallel slots. Save the configurations you repeat; skip the flag notebook. | Prefill vs decode, per engine and per slot, with context occupancy and speculative acceptance. The meter tells you which trade you actually bought. |
 
-**Blackwell Ops** is the Windows-native alternative to Ollama and LM Studio for power users who want full control over llama.cpp (and Tom TurboQuant builds) — multiple engines, source builds, and proper Windows integration.
+## The fleet pattern
 
-### Parallel agents, no extra pain
-Most users run models in a single session. But llama-server supports **multiple parallel slots** on one instance.
+A common setup: one brain model for planning and routing, a coder, a small fast
+model for cheap calls, and an embedder for retrieval - each on its own engine,
+each with its own context and flags. The harness sends work to the right
+endpoint; the app keeps the whole fleet visible and alive.
 
-In Blackwell Ops you simply:
-- Set 4× or 8× parallel slots on a single model / single port
-- Tell your agent harness (OpenCode, etc.) something like:  
-  *"Use up to 8 parallel agents for any suitable work or sub-task"*
+Most local tools optimize a single model on a given topology. Blackwell Ops does
+that per engine, then lets many engines coexist on the same workstation. The app
+is the substrate: process ownership, fit, config, and telemetry. The
+orchestration stays with your brain model or harness.
 
-Real results on the same hardware:
-- Qwen3.6-27B single slot + MTP → ~185 TPS per session, but **prefill is halved** (painful for coding)
-- Same model, **8× parallel, MTP off** → 330+ total TPS on one GPU
-- 2× RTX Pro with tensor split → **850 TPS** combined, with full prefill speed
+## Who it is for
 
-You get dramatically higher aggregate throughput and much snappier prefill behavior for agentic workflows — with almost no extra power draw.
+Windows workstations with one or many NVIDIA GPUs: one, two, four, eight,
+twelve, or a mixed set of cards. The app has no four-GPU ceiling; each engine
+targets a specific GPU and split, so different cards are just different targets.
+It is for people who run GGUF models as infrastructure: coding agents, several
+specialists at once, long context, MTP/DFlash tuning, and local endpoints that
+other tools depend on.
 
-(You can also run completely separate engine instances if you prefer full isolation.)
+You already have the weights. You care whether 32k or 64k fits, whether a
+two-GPU split is worth it, and what speculative decoding did to prefill. You
+want to see the fleet, not just the answer.
 
-### Speculative decoding — MTP & DFlash, out of the box
+## Who it is not for
 
-Blackwell Ops treats faster generation as a first-class feature, not a hidden CLI flag. **Multi-Token Prediction (MTP)** and **DFlash** speculative decoding are wired through the whole stack — catalog, pairing, launch, and telemetry — so you can rapidly test a ton of settings just by clicking.
+- A chat window and nothing else. A chat app is the right tool.
+- One command with a hidden daemon. A one-command runner is the right tool.
+- A single-model setup. If one model on one box is all you need, a single-model
+  runner is simpler.
+- A team inference server. There is no multi-user auth, RAG, or audit layer.
+- AMD, Intel, or Apple GPUs. The supported GPU path is NVIDIA CUDA on Windows.
+- A promise of API or config stability. The direction is still being decided.
 
-| | **MTP** | **DFlash** |
-|---|---------|------------|
-| **What it is** | Draft tokens baked into the main GGUF (`nextn` layers) | Separate lightweight draft model loaded alongside the main |
-| **Best for** | Single-session speed on MTP-capable weights (Qwen 3.x, etc.) | Multi-slot / agent workloads — full prefill speed with parallel agents |
-| **Setup** | Turn spec on — no second file | Family-matched draft picker finds the right `.gguf` in your library |
-| **Parallel slots** | Use **1×** parallel (MTP + multi-slot conflict) | **4× / 8×** parallel — aggregate TPS without halving prefill |
+## What is in the current build
 
-**What you get in the app**
+- **Fleet scale.** Up to 64 concurrent engines in the current build, each with
+  its own port, config, and telemetry. The cap is a product limit, not a hardware
+  limit; the app has no four-GPU ceiling and targets each engine at a specific
+  GPU or split, including mixed cards.
+- **Engine ops.** Launch, monitor, bench, and stop the fleet from one panel, or
+  run parallel slots on one engine. Engines run in private Job Objects with
+  PID-only teardown and port locks.
+- **Measured fit.** FIT probe plus learned VRAM points for the model, context,
+  and GPU split, with a visible skeleton when no measurement exists.
+- **Live telemetry.** Per-engine and per-slot prefill/decode, context
+  occupancy, and speculative acceptance, read from `/slots` plus engine stderr.
+- **Tuning.** Provider templates, per-model overrides, a detailed llama.cpp
+  parameter editor, and presets for configurations you repeat.
+- **Build provenance.** Foundry builds `llama-server` in-app with the STABLE
+  (CUDA 12.8) or FRONTIER (CUDA 13.x) toolchain pack.
+- **Speculative decoding.** MTP and DFlash profiles where the model and engine
+  build support them.
+- **Models.** GGUF library scan and metadata, Hugging Face downloads, and
+  draft-model pairing.
+- **Portable.** Relative-path layout, no account, no telemetry. Network access
+  is limited to explicit model/engine downloads and update checks.
 
-- **Smart catalog** — MAIN / DRAFT / ALL filter; DFLASH badges on external draft models; Gemma, Qwen, and family-aware pairing (no random cross-family matches).
-- **Engine config** — spec group with ON/OFF toggle, live **MTP** / **DFLASH** mode badge, and a ★ best-match draft picker when DFlash is selected.
-- **Both on the same main** — a model can ship with baked-in MTP *and* support an external DFlash draft; pick the mode that fits the workload (MTP for one chat, DFlash when you crank parallel agents).
-- **FULL-AUTO + Essentials** — Regular Joe path: spec turns on when your model supports it, only **MTP** and **DFLASH** shown, sensible N-max / N-min presets applied automatically; Full config view stays untouched for power users.
-- **Launch-safe** — draft-only GGUFs cannot be launched as mains; DFlash launches with `--fit off` and a resolved `--spec-draft-model` path.
+## Current state
 
-*DFlash / external drafts are on **GGML master** today; Tom TurboQuant remains MTP-focused for now.*
-
-### Core strengths
-- **Native Rust + Tauri** — tiny footprint, no Electron bloat or Linux subsystem tax
-- **Foundry** — one-click build `llama-server` from source with your preferred CUDA / VS version
-- **Portable** — works from USB, relative paths everywhere
-- **Multi-engine stack** — orchestrate many `llama-server` instances (or parallel slots) with a shared config system
-- **Fusion telemetry** — real-time metrics from stderr + /slots without extra overhead
-
-## Technical deep-dive
-
-<details><summary><strong>Architecture</strong> — click to expand</summary>
-
-**Process model**
-- Each `llama-server` instance runs in a private **Job Object** (`engine_job`, `KILL_ON_JOB_CLOSE`)
-- Teardown is **PID-only** via `stop_child_fast` — never port-based carpet-bombing
-- Launch verifies orphan status via `engine_port_lock::reclaim_our_ghost_or_fail` (checked against verified orphans only)
-- App exit: `teardown_all_for_app_exit` → `std::process::exit(0)` (skips Tauri Drop to avoid heap corruption `0xC0000374`)
-
-**Fusion telemetry**
-- Single constant `TELEMETRY_TICK_MS` drives: stderr batch flush, `/slots` poll, and `RENDER_INTERVAL_MS`
-- Currently 25ms (~80 HTTP polls/s per active engine)
-- Merges `NewPrompt` (prefill) + `/slots` (decode) metrics — `n_decoded` compared per-request, not absolute
-- Spec flags respect per-param `hidden` from ConfigPage — spec group fully omitted from CLI when OFF
-
-**Foundry**
-- CMake cache retained in `work/` when fingerprint matches (`.blackwell-foundry-cache-key` + `CMakeCache.txt`)
-- Durable runtime binary: `foundry/artifacts/.../Release/`
-- Supports VS2022 (CUDA 12.8 / `stable`) and VS2026 (CUDA 13.3 / `frontier`)
-
-**Speculative decoding**
-- MTP: draft tokens baked into main GGUF (`nextn` layers) — single-slot best
-- DFlash: separate lightweight draft, family-aware pairing (Gemma/Qwen) via `llama-fit-params`
-- Toggle state reads all group params; rows use `specVisibleParams` (respects `hidden`)
-
-**Performance**
-| Metric | Value |
-|---|---|
-| Core binary | ~14 MB |
-| App RAM (idle) | ~40 MB |
-| Max concurrent engines | 64 |
-| Stress test RAM overhead | ~400 MB (64 instances) |
-| Telemetry poll rate | 25ms per active engine |
-| Parallel slot throughput (8× Qwen3.6 27B) | 330+ TPS |
-| 2× RTX PRO tensor split | 850 TPS combined |
-
-</details>
-
----
-
-## Why Windows — on purpose
-
-- **Native Rust, Win32/Tauri shell** — no Electron bloat, no Linux subsystem tax  
-- **Foundry** — build `llama-server` from source on your machine (VS2022 / VS2026 + CUDA 12.8–13.3)  
-- **Portable path model** — clone/move the folder, it still works, even from a flash drive.
-- **Full config freedom** — factory templates merge with your overrides; nothing hidden behind a SaaS panel  
-- **Low idle cost** — run many engine *slots* without many heavy processes until you launch  
-
----
-
-## Bundled engine profiles (v1.0)
-
-Pre-built binaries ship for multiple toolchain generations — pick the profile that matches your GPU and driver stack:
-
-| Profile | CUDA | Toolchain |
-|---------|------|-----------|
-| **FRONTIER** | 13.3 | VS Build Tools 2026 | - The one Cuda to rule them all
-| **STABLE** | 12.8 | VS Build Tools 2022 | - compatible path.
-
-- Includes **GGML llama (master)** and **Tom-llama** runtimes.  
-- Users can **Foundry-build** their own engines anytime (5minutes 1 click), or download asset packages later — the app does not lock you to shipped binaries.
-
----
-
-## Features
-- **Rapid onboarding** — two-click setup for local LLM on Windows from zero to first inference
-- **GGUF Model Library** — catalog, metadata scan, VRAM fit estimation and benchmarks for your models
-- **Multi-engine stack** — run, monitor, bench or stop many llama.cpp / llama-server instances side-by-side
-- **Advanced Provider Config** — full params editor with 250+ parameters and factory templates
-- **Foundry Builds** — update, configure, compile and publish llama-server binaries directly from the UI (custom CMake flags supported)
-- **Fusion Telemetry** — real-time metrics (generation, prefill, progress) from multiple sources
-- **MTP & DFlash speculative decoding** — catalog pairing, mode badges, draft picker, FULL-AUTO presets, full launch validation
-- **Unified Console & Logs** — dockable logs for Engines, Foundry, Errors with search and syntax highlight (supports 64+ concurrent streams)
-- **Portable & Lightweight** — relative paths, tiny RAM usage, works from USB stick, no registry
-- **Hardware Monitoring** — GPU/CPU stats and vital signs
-- **Zero Telemetry** — completely offline, no calling home, no data collection
-
-Perfect for users looking for a **Windows native llama.cpp GUI**, **multiple llama engines**, or **portable local LLM server**.
-
----
-
-## Screenshots & demo
-
-A short auto-playing demo GIF lives in the Quick Start section below.
-
-| Main dashboard | Engine stack | Foundry build |
-|:---:|:---:|:---:|
-| ![Dashboard](docs/screenshots/Dashboard.png) | ![Stack](docs/screenshots/Stack.png) | ![Foundry](docs/screenshots/Foundry.png) |
-
----
+Early. The core loop - fit, launch, watch - works on Windows with NVIDIA CUDA,
+and the current build has been stress-tested with 64 concurrent engines. The
+surface is still narrowing; interfaces and config shapes may change, and nothing
+here is a roadmap promise.
 
 ## Quick start
 
-1. Download the latest **`Blackwell Ops_*_x64-setup.exe`** from [Releases](https://github.com/Seen-Tomorrow/blackwell-ops/releases).  
-2. Install (or extract portable layout if you ship a zip).  
-3. Point **Setup Guide → Step 1** at your GGUF model folder (or LM Studio / Ollama path).  
-4. Pick a **provider profile** (FRONTIER or STABLE).  
-5. Launch an engine.  
+1. Install the app. The installer bundles the GGML master runtime; the portable
+   layout works once an engine pack is present.
+2. Point Setup at a folder of GGUF files.
+3. Pick a provider profile, a model, and a context that fits.
+4. Launch, then read the live prefill and decode meters.
+5. Point any OpenAI-compatible client or agent at the engine's local port.
 
-First-run onboarding walks the rest.
+## Requirements
 
-**Quick demo** — click the thumbnail to play (30s MP4):
-
-[![Blackwell Ops onboarding](docs/gifs/blackwell_ops_onboarding-thumb.gif)](https://raw.githubusercontent.com/Seen-Tomorrow/blackwell-ops/main/docs/videos/blackwell_ops_onboarding.mp4)
-
-### Requirements
-
-- **Windows 10/11 x64**  
-- **NVIDIA GPU** recommended (CUDA builds bundled), AMD, Intel will follow
-- **GGUF models** — not included; you bring your own weights  
-**Optional and trongly recommended** **BUILD TOOLS package** -for Foundry cmake builds
-[BUILD TOOLS package](https://github.com/Seen-Tomorrow/blackwell-ops/releases/tag/toolchain).
-
----
-
-## A personal note
-
-I **vibe-coded** this app on **local models** — mostly **Qwen3.5 236B** + **Qwen3.6 27B** + **Step3.7-flash** — with hardening passes on **Composer 2.5**, on hand build custom workstation (**2× RTX PRO 6000 · 256 GB VRAM**).
-
-I baked in **30+ years** of love for PC hardware and Windows — how machines should feel, how software should respect RAM, how inference should stay on *your* desk.
-
-Roughly **3,000 hours** went into this across ~six months. Time not spent with my family and my **five-year-old daughter**, who I love more than anything. This repo is what that time became.
-
-If Blackwell Ops helps one person run serious local inference on Windows without apologizing for their OS choice, it was worth it.
-PS: This is my first coding endeavor. I openly state this, as inspiration to anyone hesitating to use AI besides chating. AI scene, including the local only is very powerfull already - DO NOT WAIT - JUST DO IT NOW, anyone can.
--This was very difficult project as a "starter", now it is progressively more easy. I had been fully determined to achieve this, since i had a strong skill in HW suite and clear idea how i want this to work. I would NEVER achieve that without AI - NEVER!
-
--I'am etternally gratefull to my family, to be supportive and respecting the need to pursue my purpose in this. Love you Karla.
-
----
-
-## Roadmap (honest)
-
-- [ ] In-app binary updates (GitHub release assets)  
-- [ ] Broader backend adapters beyond GGML llama and TOM llama
-- [ ] Deeper fusion metrics for third-party forks
-- [ ] and one surprise very soon ;-)
-
----
+- Windows 10/11 x64.
+- NVIDIA GPU with CUDA for GPU inference.
+- GGUF weights (not included).
+- Optional: the Foundry toolchain pack for source builds.
 
 ## Links
 
-- **Releases:** https://github.com/Seen-Tomorrow/blackwell-ops/releases  
-- **Issues:** https://github.com/Seen-Tomorrow/blackwell-ops/issues  
-- **Third-party notices:** [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) (includes Nvidia Inspector / Orbmu2k attribution)
-
----
-
-<p align="center">
-  <strong>Local inference first. Windows is not the compromise.</strong><br>
-  <sub>Built with open source engines, open source tools, and closed-door family time I'll try to win back.</sub>
-</p>
+- **Releases:** https://github.com/Seen-Tomorrow/blackwell-ops/releases
+- **Issues:** https://github.com/Seen-Tomorrow/blackwell-ops/issues
+- **Third-party notices:** [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+- **License:** GPL-3.0 ([LICENSE](LICENSE))

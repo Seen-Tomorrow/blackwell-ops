@@ -625,6 +625,51 @@ function Invoke-MajesticCheck {
         }
     }
 
+    # The bundled extension declares which @earendil-works/pi-ai it needs. A pin below that
+    # floor ships a pair the extension cannot load - 0.80.0 against pi 0.84.3 died with
+    # "(0, _piAi.toToolDeclaration) is not a function" and no subagent tool. Computed from
+    # the repo files alone, because the pin and the bundle are what the installer ships.
+    $pi_bundle_pkg = Join-Path $root 'src-tauri\pi-ext\pi-subagents\package.json'
+    if (Test-Path -LiteralPath $pi_bundle_pkg) {
+        try {
+            $pi_bundle = Get-Content -LiteralPath $pi_bundle_pkg -Raw | ConvertFrom-Json
+            $pi_ai_req = $null
+            if ($pi_bundle.peerDependencies) {
+                $pi_ai_req = $pi_bundle.peerDependencies.'@earendil-works/pi-ai'
+            }
+            $pi_floor_text = if ($pi_ai_req) { ($pi_ai_req -replace '^>=', '').Trim() } else { '' }
+            $pi_pin_now = Read-PiPinnedVersion
+            if ($pi_floor_text -and $pi_floor_text -ne '*' -and $pi_pin_now) {
+                $pi_floor = [version]$pi_floor_text
+                $pi_host = [version]$pi_pin_now
+                if ($pi_host -lt $pi_floor) {
+                    $pi_pin_stale = $true
+                    Write-Majestic ("pi bundle: pi-subagents {0} needs pi-ai >= {1} but the pin is {2} - the extension would not load." -f $pi_bundle.version, $pi_floor_text, $pi_pin_now) -Color Red
+                    Write-Majestic '  Fix: Distribution > UPDATE HARNESS (updates pi + bundle, then pins both).' -Color Red
+                } else {
+                    Write-Majestic ("pi bundle: pi-subagents {0} needs pi-ai >= {1} - pin {2} satisfies it." -f $pi_bundle.version, $pi_floor_text, $pi_pin_now) -Color Green
+                }
+            }
+            # The bundle must ALSO be the pinned version. 0.70+ satisfies the peer range,
+            # loads, and then crashes the host on the first workflow/parallel run
+            # (Bun "cannot resolve DirInfo for non-absolute path"), so semver alone is not
+            # the gate - the pin is.
+            $pi_bundle_pin_file = Join-Path $root 'src-tauri\pi-subagents-pinned-version.txt'
+            if (Test-Path -LiteralPath $pi_bundle_pin_file) {
+                $pi_bundle_pin = (Get-Content -LiteralPath $pi_bundle_pin_file -Raw).Trim()
+                if ($pi_bundle_pin -and "$($pi_bundle.version)" -ne $pi_bundle_pin) {
+                    $pi_pin_stale = $true
+                    Write-Majestic ("pi bundle: bundled pi-subagents {0} is NOT the pinned {1} - 0.70+ crashes every parallel run." -f $pi_bundle.version, $pi_bundle_pin) -Color Red
+                    Write-Majestic '  Fix: Distribution > UPDATE HARNESS (installs the pinned bundle).' -Color Red
+                } elseif ($pi_bundle_pin) {
+                    Write-Majestic ("pi bundle: pi-subagents {0} matches the pin." -f $pi_bundle.version) -Color Green
+                }
+            }
+        } catch {
+            Write-Majestic "pi bundle: could not compare bundle/pi pin ($($_.Exception.Message))" -Color Yellow
+        }
+    }
+
     if ($Variant -eq 'app') {
         $exe = Get-ReleaseExePath
         if (Test-Path -LiteralPath $exe) {
@@ -681,7 +726,7 @@ function Invoke-MajesticCheck {
         Write-Majestic "READY TO PACK ($kind_label)." -Color Green
     } else {
         if ($pi_pin_stale) {
-            Write-Majestic "NOT READY - pi pin is stale (see above). BUMP HARNESS, then rebuild." -Color Red
+            Write-Majestic "NOT READY - pi pin/bundle mismatch (see above). Distribution > UPDATE HARNESS, then rebuild." -Color Red
         } elseif ($Variant -eq 'app') {
             Write-Majestic "NOT READY - fix provider template JSONs under src-tauri/runtime/*/config/." -Color Red
         } else {
@@ -918,7 +963,7 @@ function Invoke-MajesticBump {
             if ($_ -and "$_".Trim().Length -gt 0) { Write-Majestic "  $_" -Color DarkGray }
         }
         if ($LASTEXITCODE -ne 0) {
-            throw "cargo update --workspace failed (exit $LASTEXITCODE) — src-tauri/Cargo.lock is now out of sync with the bumped manifest."
+            throw "cargo update --workspace failed (exit $LASTEXITCODE) - src-tauri/Cargo.lock is now out of sync with the bumped manifest."
         }
     } finally {
         $ErrorActionPreference = $prevEap
@@ -947,7 +992,7 @@ function Invoke-MajesticBump {
         if ($old_tag_sha) {
             Write-Majestic "Keeping tag $old_tag -> $old_tag_sha" -Color DarkGray
         } else {
-            Write-Majestic "WARNING: no local tag $old_tag — release $current has no recorded commit." -Color Yellow
+            Write-Majestic "WARNING: no local tag $old_tag - release $current has no recorded commit." -Color Yellow
         }
         # Clear native exit so successful bump never reports fail to the chain.
         $global:LASTEXITCODE = 0

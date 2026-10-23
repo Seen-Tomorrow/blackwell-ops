@@ -220,8 +220,9 @@ providers:
 `task.maxConcurrency = N` (+1 if BRAIN subagents should queue in during main-session gaps)
 and `maxInFlightRequests` pinned per engine to each engine's `--parallel`.
 The app already computes `routing_facts.slots` per engine in `build_models_and_settings` —
-feed the same values into these two keys. (Pi had no per-engine knob either: its
-`parallel.concurrency` + `globalConcurrencyLimit` were also global. `maxInFlightRequests`
+feed the same values into these two keys. (Pi has no per-engine knob either: `globalConcurrencyLimit`
+is global, and a `parallel` batch is hard-capped at 4 inside the extension —
+`MAX_PARALLEL_CONCURRENCY` — so `config.parallel.concurrency` was never read. `maxInFlightRequests`
 is strictly more precise.)
 
 **Orchestrator slot economics** — does the main session (default model = BRAIN) itself
@@ -332,7 +333,7 @@ home `.env`; `OMP_*` keys mirror to `PI_*` aliases inside parsed dotenvs.
 | pi writer | What it does |
 |---|---|
 | `build_models_and_settings()` | models.json + settings.json + routing facts (slots, twin) |
-| `write_subagents_config(home, slots)` | `extensions/subagent/config.json` → `parallel.concurrency` + `globalConcurrencyLimit` = slots |
+| `write_subagents_config(home, slots)` | `extensions/subagent/config.json` → `globalConcurrencyLimit` = slots (the only concurrency key the extension reads; per-batch stays capped at 4) |
 | `write_worker_agent(home, target, ctx, slots, twin)` | `agents/worker.md` with model pin + slot-aware prompt |
 | `write_pi_context_files(home, project, …)` | `PI.md` + `AGENTS.md` (topology text) |
 | `sync_bundled_subagents(home)` | copy pi-subagents package into home |
