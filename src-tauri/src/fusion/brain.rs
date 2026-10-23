@@ -1223,20 +1223,21 @@ impl FusionBrain {
 
     // ── Public spawn API ────────────────────────────────────────────
 
-    pub fn spawn(
-        log_hub: LogHub,
-        config: FusionConfig,
-    ) -> (tokio::task::JoinHandle<()>, tokio_util::sync::CancellationToken) {
+    fn spawn(log_hub: LogHub, config: FusionConfig) -> BrainHandle {
         let cancel = tokio_util::sync::CancellationToken::new();
         let cancel_spawn = cancel.clone();
 
+        // Channel for log events + bench meter resets → this brain task (bounded to backpressure on slow consumer).
+        // Owned by the handle so the registry is the single place that knows a slot's brain.
+        let (tx, rx) = tokio::sync::mpsc::channel::<BrainInbound>(1024);
+
         // JoinHandle (not AbortOnDrop): app exit must cancel+await cleanly.
         // Abort-on-drop mid-HTTP/IPC with 10 brains correlated with STATUS_HEAP_CORRUPTION after teardown.
-        let handle = tokio::spawn(async move {
-            Self::run(log_hub, config, cancel_spawn).await;
+        let join = tokio::spawn(async move {
+            Self::run(log_hub, config, cancel_spawn, rx).await;
         });
 
-        (handle, cancel)
+        BrainHandle::Poll { tx, cancel, join }
     }
 
     // ── Main loop ───────────────────────────────────────────────────
@@ -1245,6 +1246,7 @@ impl FusionBrain {
         log_hub: LogHub,
         config: FusionConfig,
         cancel: tokio_util::sync::CancellationToken,
+        mut event_rx: tokio::sync::mpsc::Receiver<BrainInbound>,
     ) {
         let mut brain = Self::new(&config);
         registry::register_slot_adapter(config.slot_idx, config.adapter);
@@ -1252,11 +1254,6 @@ impl FusionBrain {
         // Optional SSE telemetry reader. No-op unless BLACKWELL_ENGINE_SSE=1; the poll path below
         // stays authoritative until the SSE path has carried a full session.
         crate::engine_events::ensure(config.port);
-
-        // Channel for log events + bench meter resets → this brain task (bounded to backpressure on slow consumer)
-        let (event_tx, mut event_rx) =
-            tokio::sync::mpsc::channel::<BrainInbound>(1024);
-        register_brain_inbound(config.slot_idx, event_tx);
 
         // Emit initial LOADING update so frontend shows launch animation
         let init = brain.build_update(&[], None);
@@ -1280,7 +1277,6 @@ impl FusionBrain {
         loop {
             tokio::select! {
                 _ = cancel.cancelled() => {
-                    unregister_brain_inbound(slot_idx);
                     // Skip IPC on full app shutdown — concurrent fusion-update into a dying
                     // WebView during exit has been a heap-corruption smoke trail.
                     if !FUSION_SHUTTING_DOWN.load(std::sync::atomic::Ordering::Acquire) {
@@ -2844,8 +2840,6 @@ pub async fn set_fusion_quiet_mode(port: u16, quiet: bool) {
 
 // ── Fusion task registry (replaces old global FUSION_TASKS) ─────────
 
-use tokio::sync::Mutex as TokioMutex;
-
 /// Inbound messages to a running FusionBrain task (stderr logs + bench phase boundaries).
 pub enum BrainInbound {
     Log(crate::fusion::log::LogEvent),
@@ -2856,11 +2850,45 @@ pub enum BrainInbound {
     SetQuietMode(bool),
 }
 
-/// One running brain task: join handle + its cancellation token.
-type BrainTask = (tokio::task::JoinHandle<()>, tokio_util::sync::CancellationToken);
+/// The brain running one slot — the variant names the *brain*, not the data source.
+///
+/// `Poll` is `FusionBrain` (stats + `/slots` + `/metrics` + stderr). `Sse` is the stream-only brain
+/// from the split plan: it has no inbound channel (nothing to route to it) and is constructed by
+/// migration step 3, which is why the variant is still unused here.
+enum BrainHandle {
+    Poll {
+        tx: tokio::sync::mpsc::Sender<BrainInbound>,
+        cancel: tokio_util::sync::CancellationToken,
+        join: tokio::task::JoinHandle<()>,
+    },
+    #[allow(dead_code)] // constructed by the SSE brain (migration step 3)
+    Sse {
+        cancel: tokio_util::sync::CancellationToken,
+        join: tokio::task::JoinHandle<()>,
+    },
+}
 
-static BRAIN_REGISTRY: std::sync::LazyLock<TokioMutex<HashMap<usize, BrainTask>>> =
-    std::sync::LazyLock::new(|| TokioMutex::new(HashMap::new()));
+impl BrainHandle {
+    /// Inbound channel — `Sse` reads the stream, so it has nothing to route log events to.
+    fn inbound(&self) -> Option<&tokio::sync::mpsc::Sender<BrainInbound>> {
+        match self {
+            Self::Poll { tx, .. } => Some(tx),
+            Self::Sse { .. } => None,
+        }
+    }
+
+    fn into_task(self) -> (tokio::task::JoinHandle<()>, tokio_util::sync::CancellationToken) {
+        match self {
+            Self::Poll { join, cancel, .. } => (join, cancel),
+            Self::Sse { join, cancel } => (join, cancel),
+        }
+    }
+}
+
+/// Keyed by slot_idx. parking_lot so `route_log_event` can read it synchronously from the log
+/// thread; the lock is never held across an await (entries are removed, then stopped).
+static BRAIN_REGISTRY: std::sync::LazyLock<parking_lot::Mutex<HashMap<usize, BrainHandle>>> =
+    std::sync::LazyLock::new(|| parking_lot::Mutex::new(HashMap::new()));
 
 /// Set by [`stop_all_brains`] so cancel paths skip WebView IPC during process exit.
 static FUSION_SHUTTING_DOWN: std::sync::atomic::AtomicBool =
@@ -2869,22 +2897,14 @@ static FUSION_SHUTTING_DOWN: std::sync::atomic::AtomicBool =
 /// Max wait for a brain to leave after cancel before hard-abort (ms).
 const BRAIN_STOP_JOIN_MS: u64 = 750;
 
-/// Registry of brain inbound senders — keyed by slot_idx.
-/// Uses parking_lot Mutex so .lock() is safe inside both blocking & async contexts.
-static BRAIN_INBOUND_SENDERS: std::sync::LazyLock<
-    parking_lot::Mutex<HashMap<usize, tokio::sync::mpsc::Sender<BrainInbound>>>,
-> = std::sync::LazyLock::new(|| parking_lot::Mutex::new(HashMap::new()));
-
 /// Cancel, await clean exit; abort only if still running after [`BRAIN_STOP_JOIN_MS`].
-async fn stop_brain_handle(
-    handle: tokio::task::JoinHandle<()>,
-    cancel: tokio_util::sync::CancellationToken,
-) {
-    let abort = handle.abort_handle();
+async fn stop_brain_handle(handle: BrainHandle) {
+    let (join, cancel) = handle.into_task();
+    let abort = join.abort_handle();
     cancel.cancel();
     match tokio::time::timeout(
         std::time::Duration::from_millis(BRAIN_STOP_JOIN_MS),
-        handle,
+        join,
     )
     .await
     {
@@ -2896,21 +2916,18 @@ async fn stop_brain_handle(
     }
 }
 
-/// Register this brain's inbound channel. Called from run() before polling starts.
-pub fn register_brain_inbound(slot_idx: usize, tx: tokio::sync::mpsc::Sender<BrainInbound>) {
-    let mut registry = BRAIN_INBOUND_SENDERS.lock();
-    registry.insert(slot_idx, tx);
-}
-
-fn unregister_brain_inbound(slot_idx: usize) {
-    let mut registry = BRAIN_INBOUND_SENDERS.lock();
-    registry.remove(&slot_idx);
+/// This slot's inbound channel, if its brain has one (`Sse` returns None).
+fn brain_inbound(slot_idx: usize) -> Option<tokio::sync::mpsc::Sender<BrainInbound>> {
+    BRAIN_REGISTRY
+        .lock()
+        .get(&slot_idx)
+        .and_then(|h| h.inbound().cloned())
 }
 
 /// Route a parsed log event to the brain for the given slot (fire-and-forget, drops on full).
+/// `Sse` ignores log events — the stream needs no stderr parsers.
 pub fn route_log_event(slot_idx: usize, event: crate::fusion::log::LogEvent) {
-    let registry = BRAIN_INBOUND_SENDERS.lock();
-    if let Some(tx) = registry.get(&slot_idx) {
+    if let Some(tx) = brain_inbound(slot_idx) {
         let _ = tx.try_send(BrainInbound::Log(event));
     }
 }
@@ -2919,8 +2936,7 @@ pub fn route_log_event(slot_idx: usize, event: crate::fusion::log::LogEvent) {
 pub async fn freeze_request_meters_for_port(port: u16) {
     if let Some(idx) = find_slot_idx_for_port(port) {
         let (ack_tx, ack_rx) = tokio::sync::oneshot::channel();
-        let brain_tx = BRAIN_INBOUND_SENDERS.lock().get(&idx).cloned();
-        if let Some(tx) = brain_tx {
+        if let Some(tx) = brain_inbound(idx) {
             if tx.try_send(BrainInbound::BenchMeterFreeze(Some(ack_tx))).is_ok() {
                 let _ = tokio::time::timeout(
                     std::time::Duration::from_millis(200),
@@ -2936,8 +2952,7 @@ pub async fn freeze_request_meters_for_port(port: u16) {
 /// Used by the fusion-display toggle for models like DS4 that emit no stderr PP/TG logs.
 pub async fn set_quiet_mode_for_port(port: u16, quiet: bool) {
     if let Some(idx) = find_slot_idx_for_port(port) {
-        let brain_tx = BRAIN_INBOUND_SENDERS.lock().get(&idx).cloned();
-        if let Some(tx) = brain_tx {
+        if let Some(tx) = brain_inbound(idx) {
             let _ = tx.try_send(BrainInbound::SetQuietMode(quiet));
         }
     }
@@ -2947,8 +2962,7 @@ pub async fn set_quiet_mode_for_port(port: u16, quiet: bool) {
 pub async fn reset_bench_meters_for_port(port: u16) {
     if let Some(idx) = find_slot_idx_for_port(port) {
         let (ack_tx, ack_rx) = tokio::sync::oneshot::channel();
-        let brain_tx = BRAIN_INBOUND_SENDERS.lock().get(&idx).cloned();
-        if let Some(tx) = brain_tx {
+        if let Some(tx) = brain_inbound(idx) {
             if tx.try_send(BrainInbound::BenchMeterReset(Some(ack_tx))).is_ok() {
                 let _ = tokio::time::timeout(
                     std::time::Duration::from_millis(200),
@@ -2961,44 +2975,35 @@ pub async fn reset_bench_meters_for_port(port: u16) {
 }
 
 /// Start a fusion brain for an engine. Keyed by slot_idx.
+///
+/// The `/events/sse` probe runs once here, at launch. It only reports for now — both variants
+/// still spawn `FusionBrain` (migration step 2); the SSE brain is wired in step 3.
 pub async fn start_brain(log_hub: LogHub, config: FusionConfig) {
+    let sse_capable = crate::engine_events::probe(config.port).await;
     log::info!(
-        "[fusion] slot={} provider={} adapter={} port={}",
+        "[fusion] slot={} provider={} adapter={} port={} brain=Poll sse_capable={}",
         config.slot_idx,
         config.provider_id,
         config.adapter.as_str(),
-        config.port
+        config.port,
+        sse_capable
     );
-    let old = {
-        let mut registry = BRAIN_REGISTRY.lock().await;
-        registry.remove(&config.slot_idx)
-    };
-    if let Some((handle, cancel)) = old {
-        stop_brain_handle(handle, cancel).await;
-    }
-    // Clear old inbound sender so events between cancel and new register don't route to dead channel
-    {
-        let mut senders = BRAIN_INBOUND_SENDERS.lock();
-        senders.remove(&config.slot_idx);
+    let old = BRAIN_REGISTRY.lock().remove(&config.slot_idx);
+    if let Some(handle) = old {
+        stop_brain_handle(handle).await;
     }
 
     let idx = config.slot_idx;
-    let (handle, cancel) = FusionBrain::spawn(log_hub, config);
-    BRAIN_REGISTRY.lock().await.insert(idx, (handle, cancel));
+    BRAIN_REGISTRY
+        .lock()
+        .insert(idx, FusionBrain::spawn(log_hub, config));
 }
 
 /// Stop the fusion brain for a specific slot.
 pub async fn stop_brain(slot_idx: usize) {
-    let entry = {
-        let mut registry = BRAIN_REGISTRY.lock().await;
-        registry.remove(&slot_idx)
-    };
-    {
-        let mut senders = BRAIN_INBOUND_SENDERS.lock();
-        senders.remove(&slot_idx);
-    }
-    if let Some((handle, cancel)) = entry {
-        stop_brain_handle(handle, cancel).await;
+    let entry = BRAIN_REGISTRY.lock().remove(&slot_idx);
+    if let Some(handle) = entry {
+        stop_brain_handle(handle).await;
     }
     registry::unregister_slot_adapter(slot_idx);
     remove_fusion_snapshot(slot_idx);
@@ -3011,20 +3016,13 @@ pub async fn stop_brain(slot_idx: usize) {
 pub async fn stop_all_brains() {
     FUSION_SHUTTING_DOWN.store(true, std::sync::atomic::Ordering::Release);
 
-    let entries: Vec<_> = {
-        let mut registry = BRAIN_REGISTRY.lock().await;
-        registry.drain().map(|(_, v)| v).collect()
-    };
-    {
-        let mut senders = BRAIN_INBOUND_SENDERS.lock();
-        senders.clear();
-    }
+    let entries: Vec<BrainHandle> = BRAIN_REGISTRY.lock().drain().map(|(_, v)| v).collect();
 
     // Parallel join — 10 brains × 750ms sequential would block close UI.
     let mut joins = Vec::with_capacity(entries.len());
-    for (handle, cancel) in entries {
+    for handle in entries {
         joins.push(tokio::spawn(async move {
-            stop_brain_handle(handle, cancel).await;
+            stop_brain_handle(handle).await;
         }));
     }
     for j in joins {

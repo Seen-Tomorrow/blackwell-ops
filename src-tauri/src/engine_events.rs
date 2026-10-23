@@ -308,6 +308,32 @@ pub fn aggregate(port: u16) -> Option<SlotTelemetry> {
     Some(out)
 }
 
+/// One-shot capability probe: true when this port serves `/events/sse`.
+///
+/// The handler writes a comment frame immediately, so `send()` resolves at the response headers
+/// and the body is dropped at once — the probe costs one connection and leaves no reader behind.
+/// Bounded by a 300 ms timeout: a listening engine without the patch answers 404 immediately, a
+/// port that is not up yet refuses immediately, and a silent endpoint cannot stall the launch.
+///
+/// This reports what the *engine* can do; callers still gate the SSE brain on [`enabled`].
+pub async fn probe(port: u16) -> bool {
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_millis(300))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    match client
+        .get(format!("http://127.0.0.1:{port}/events/sse"))
+        .send()
+        .await
+    {
+        Ok(resp) => resp.status().is_success(),
+        Err(_) => false,
+    }
+}
+
 /// Start the reader for a port. Idempotent; no-op unless `BLACKWELL_ENGINE_SSE=1`.
 pub fn ensure(port: u16) {
     if !enabled() {
@@ -549,6 +575,45 @@ fn apply(port: u16, evt: &EngineEvent) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Minimal HTTP endpoint that answers one request with `status` and closes.
+    async fn fake_http(status: &'static str) -> u16 {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            if let Ok((mut sock, _)) = listener.accept().await {
+                let mut buf = [0u8; 1024];
+                let _ = sock.read(&mut buf).await;
+                let body = if status.starts_with("200") { ":ok\n\n" } else { "" };
+                let head = format!(
+                    "HTTP/1.1 {status}\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = sock.write_all(head.as_bytes()).await;
+                let _ = sock.flush().await;
+            }
+        });
+        port
+    }
+
+    #[tokio::test]
+    async fn probe_reports_only_a_successful_stream() {
+        assert!(probe(fake_http("200 OK").await).await, "an SSE endpoint is capable");
+        assert!(
+            !probe(fake_http("404 Not Found").await).await,
+            "an unpatched engine (404) must not be called SSE-capable"
+        );
+    }
+
+    #[tokio::test]
+    async fn probe_is_false_when_nothing_listens() {
+        // Bind then drop: the port is closed again, so the connect is refused immediately.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        assert!(!probe(port).await);
+    }
 
     #[test]
     fn parses_records_and_keeps_partial() {
