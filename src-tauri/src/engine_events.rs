@@ -85,6 +85,8 @@ pub struct SlotTelemetry {
     pub pp_time_ms: f64,
     pub gen_decoded: u64,
     pub gen_tps: f64,
+    /// Recent `(arrival, decoded)` samples: a trailing-window rate instead of a two-sample delta.
+    pub gen_samples: Vec<(std::time::Instant, u64)>,
     pub last_request: Option<RequestSummary>,
     /// Monotonic frame counter, useful to detect a stalled stream.
     pub seq: u64,
@@ -139,6 +141,39 @@ impl SlotTelemetry {
         let evaluated = (self.pp_processed - self.pp_cache).max(0) as f64;
         (evaluated / self.pp_time_ms) * 1000.0
     }
+
+    /// Decode rate over the trailing `window`, from the samples actually received.
+    ///
+    /// A two-sample delta aliases badly when a whole ubatch lands between ticks (a 1024-token
+    /// step at 25 ms reads as ~40k tok/s for one frame). A trailing window smooths that without
+    /// inventing data, and returns 0 until the span is long enough to mean anything.
+    pub fn gen_tps_window(&self, window: std::time::Duration) -> f64 {
+        window_rate(&self.gen_samples, window)
+    }
+}
+
+/// Rate over the trailing window of `samples` (sorted oldest→newest, `(arrival, count)`).
+///
+/// Returns 0 when there are fewer than two samples inside the window, or when their span is
+/// under 50 ms — below that the divisor is noise, not a measurement.
+pub fn window_rate(
+    samples: &[(std::time::Instant, u64)],
+    window: std::time::Duration,
+) -> f64 {
+    let Some(&(end_t, end_n)) = samples.last() else {
+        return 0.0;
+    };
+    let Some(&(start_t, start_n)) = samples
+        .iter()
+        .find(|(t, _)| end_t.saturating_duration_since(*t) <= window)
+    else {
+        return 0.0;
+    };
+    let span = end_t.saturating_duration_since(start_t);
+    if span < std::time::Duration::from_millis(50) || end_n <= start_n {
+        return 0.0;
+    }
+    (end_n - start_n) as f64 / span.as_secs_f64()
 }
 
 /// True when the SSE path is enabled for this process.
@@ -431,6 +466,8 @@ fn apply(port: u16, evt: &EngineEvent) {
                 entry.t_prefill_end = None;
                 entry.t_first_token = None;
                 entry.request_closed = false;
+                // a two-request-old decode sample must not leak into this request's window
+                entry.gen_samples.clear();
             } else if phase == "TG" && entry.t_prefill_end.is_none() {
                 entry.t_prefill_end = Some(now);
             }
@@ -466,6 +503,16 @@ fn apply(port: u16, evt: &EngineEvent) {
             entry.gen_decoded = *decoded;
             entry.gen_tps = *tps;
             entry.seq = *seq;
+            entry.gen_samples.push((now, *decoded));
+            const KEEP: std::time::Duration = std::time::Duration::from_secs(4);
+            while entry
+                .gen_samples
+                .first()
+                .map(|(t, _)| now.saturating_duration_since(*t) > KEEP)
+                .unwrap_or(false)
+            {
+                entry.gen_samples.remove(0);
+            }
         }
         EngineEvent::RequestEnd {
             prompt_ms,
@@ -566,6 +613,44 @@ mod tests {
             ..Default::default()
         };
         assert!((t.prefill_tps() - 4000.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn window_rate_smooths_a_burst() {
+        let d = std::time::Duration::from_secs;
+        let t0 = std::time::Instant::now();
+        // one ubatch landing between two samples: a two-sample delta would read 20k/s
+        let samples = vec![(t0, 0u64), (t0 + d(1), 1000)];
+        assert!((window_rate(&samples, d(2)) - 1000.0).abs() < 1.0);
+
+        // only the samples inside the window count
+        let samples = vec![(t0, 0u64), (t0 + d(1), 500), (t0 + d(2), 1000)];
+        assert!((window_rate(&samples, d(1)) - 500.0).abs() < 1.0);
+
+        // too short a span is noise, not a measurement
+        let samples = vec![(t0, 0u64), (t0 + std::time::Duration::from_millis(10), 500)];
+        assert_eq!(window_rate(&samples, d(1)), 0.0);
+
+        assert_eq!(window_rate(&[], d(1)), 0.0);
+        assert_eq!(window_rate(&[(t0, 5u64)], d(1)), 0.0);
+    }
+
+    #[test]
+    fn decode_window_resets_between_requests() {
+        let mut buf = String::from(concat!(
+            "data: {\"type\":\"state\",\"slot\":0,\"phase\":\"TG\",\"busy\":1,\"peak\":1,\"n_ctx\":4096,\"n_ctx_used\":0,\"seq\":1}\n\n",
+            "data: {\"type\":\"gen_progress\",\"slot\":0,\"decoded\":10,\"gen_ms\":100.0,\"tps\":100.0,\"seq\":2}\n\n"
+        ));
+        for evt in take_frames(&mut buf) {
+            apply(9300, &evt);
+        }
+        assert_eq!(slot_snapshot(9300, 0).unwrap().gen_samples.len(), 1);
+
+        let mut buf = String::from("data: {\"type\":\"state\",\"slot\":0,\"phase\":\"PP\",\"busy\":1,\"peak\":1,\"n_ctx\":4096,\"n_ctx_used\":0,\"seq\":3}\n\n");
+        for evt in take_frames(&mut buf) {
+            apply(9300, &evt);
+        }
+        assert!(slot_snapshot(9300, 0).unwrap().gen_samples.is_empty());
     }
 
     #[test]
