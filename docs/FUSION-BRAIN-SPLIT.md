@@ -1,7 +1,33 @@
 # Fusion brain split — SSE-only brain for ggml-master
 
 Status: **design agreed, not implemented.** This document is the execution plan. Everything below
-assumes the checkpoint commit `846803491`, where both paths work and are tested.
+assumes the checkpoint commit `3ab678fda` (373 Rust tests green, working tree clean).
+
+## Start here (next session)
+
+1. `git log --oneline -3` — expect `3ab678fda feat(fusion): windowed decode rate`, then
+   `ae4dc6504 docs: plan the fusion brain split`. If the tree is dirty, stop and look.
+2. `npm run check` — 373 tests, css/tsc/vitest included. Anything red is not yours.
+3. Read *Where we are* + *Migration steps*, then start at step 1 (`RequestLifecycle` extraction).
+
+Already landed and reusable: the reader (`engine_events.rs`) with per-slot state, lane aggregate,
+windowing (`gen_tps_window`), staleness clearing; the engine patch (`foundry/patches/`, three
+patches, ordered); the steady-PP calibration; the probe has **not** been written.
+
+### Tomorrow's test checklist (one category at a time)
+
+| category | what to watch |
+| --- | --- |
+| PP single-slot | hero from first batch, steady value vs report `PP steady` (≈3 %) |
+| PP long prompt (8k) | progress steps per ubatch, no stalls |
+| TG single-slot | AVG reaches true rate within ~1 s, no frozen-hero flicker |
+| TG x4 / x16 / x32 | AVG starts when the last lane decodes, never ramps from ~500 |
+| ctx bars x16 | fill matches per-lane budget (4K slot → 100 % at 4K, not at 8K) |
+| frozen hero | value holds between requests, no blink to 0 |
+| STABLE / ggml-tom | badge `POLL`, behaviour identical to pre-SSE |
+| engine restart | no stale `SSE` badge, reconnect within ~2 s |
+
+Record the outcome of each row before touching step 1 — the split must preserve all eight.
 
 Scope: `ggml-master` (the bearer engine) gets a dedicated SSE brain. `cafe-llama`, `ggml-tom`,
 `ggml_quiet` and any unpatched engine keep today's brain, restored to its pre-SSE behaviour.
