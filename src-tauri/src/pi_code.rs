@@ -20,6 +20,19 @@ use std::path::{Path, PathBuf};
 /// written without a trailing newline; the install path trims anyway.
 pub const PINNED_VERSION: &str = include_str!("../pi-pinned-version.txt");
 
+/// Pinned `pi-subagents` version for the bundled extension.
+///
+/// Pinned because "latest" is not usable: on Windows, every version from 0.70.0 up
+/// (0.70/0.76.1/0.77/0.79.2/0.80) crashes the host on any **workflow/parallel** run —
+/// pi exits 3 and the embedded Bun 1.3.14 panics with
+/// `Internal assertion failure: cannot resolve DirInfo for non-absolute path:` (empty
+/// path), while single-subagent runs are fine. 0.58.0 was measured 3/3 clean on the same
+/// machine/engine/cwd, so it is what ships until upstream fixes that spawn path.
+///
+/// The pin also decouples the two bumps: `UPDATE HARNESS` may move pi to a newer release
+/// while the extension stays here. Written without a trailing newline, like the pi pin.
+pub const PINNED_SUBAGENTS_VERSION: &str = include_str!("../pi-subagents-pinned-version.txt");
+
 const GITHUB_RELEASE_BASE: &str = "https://github.com/earendil-works/pi/releases/download";
 
 // ── Paths ──────────────────────────────────────────────────────────────
@@ -104,6 +117,52 @@ fn probe_version() -> Option<String> {
     } else {
         Some(line.to_string())
     }
+}
+
+/// Reinstall pi when the install on disk is not the pinned version.
+///
+/// An app update replaces the bundled `pi-ext` tree but leaves `external-tools/pi`
+/// untouched, so a stale host ends up loading a newer extension. The two are a matched
+/// pair — `pi-subagents` declares a peer range on the host's API surface — and the
+/// failure is a cryptic `(0, _piAi.toToolDeclaration) is not a function` with no
+/// `subagent` tool, which reads as a packaging bug rather than as version skew.
+/// `PINNED_VERSION` is the single source of truth for that pair, so reconcile here
+/// instead of letting the extension discover the mismatch at load time.
+#[cfg(windows)]
+async fn ensure_pinned_pi_version() -> Result<(), String> {
+    let pinned = PINNED_VERSION.trim();
+    if pinned.is_empty() {
+        return Ok(());
+    }
+    // No stamp to compare means a pre-stamp install; leave it alone rather than
+    // reinstalling on every launch.
+    let Some(installed) = read_version_stamp() else {
+        return Ok(());
+    };
+    if installed == pinned {
+        return Ok(());
+    }
+
+    // Replacing the package directory under a running pi.exe is a sharing violation on
+    // Windows, and the caller is about to spawn exactly that binary.
+    let live = running_pi_consoles();
+    if !live.is_empty() {
+        let ids = live
+            .iter()
+            .map(|p| p.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(format!(
+            "pi {installed} is running (PID {ids}) but this build requires {pinned}. \
+             Close the pi window — Blackwell updates pi on the next launch."
+        ));
+    }
+
+    emit_dbg(&format!(
+        "[Pi] installed {installed} != pinned {pinned} — reinstalling before launch"
+    ));
+    install_pi_version(pinned).await?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -256,6 +315,165 @@ exit /b %ERRORLEVEL%
 mod shim_tests {
     use super::*;
 
+    /// `PINNED_VERSION` addresses a real pi release and is what the shipped `pi-ext`
+    /// bundle was tested against — `ensure_pinned_pi_version` reinstalls on any
+    /// mismatch, so a malformed pin would break every launch rather than one download.
+    #[test]
+    fn pinned_version_is_a_bare_release_version() {
+        let pinned = PINNED_VERSION.trim();
+        assert_eq!(
+            pinned,
+            PINNED_VERSION.trim_start_matches('v'),
+            "pin must not carry the release's 'v' prefix — the download URL adds it"
+        );
+        let parts: Vec<&str> = pinned.split('.').collect();
+        assert_eq!(parts.len(), 3, "expected MAJOR.MINOR.PATCH, got {pinned}");
+        assert!(
+            parts.iter().all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit())),
+            "pin must be numeric MAJOR.MINOR.PATCH, got {pinned}"
+        );
+    }
+
+    /// The shipped bundle must be exactly the pinned version. 0.70+ satisfies the peer
+    /// range, loads, and then kills the host on the first workflow/parallel run, so the
+    /// pin — not semver — is what decides what ships.
+    #[test]
+    fn pi_subagents_pin_matches_shipped_bundle() {
+        let pinned = PINNED_SUBAGENTS_VERSION.trim();
+        assert!(!pinned.is_empty(), "pi-subagents pin is empty");
+        assert_eq!(
+            pinned,
+            PINNED_SUBAGENTS_VERSION.trim_start_matches('v'),
+            "bundle pin must not carry a 'v' prefix"
+        );
+        // Compare against the REPO tree — that is what NSIS stages. (`app_root_dir()` in a
+        // test binary resolves to `target/debug/deps`, so the runtime helper would skip.)
+        let pkg = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("pi-ext")
+            .join("pi-subagents")
+            .join("package.json");
+        let Ok(raw) = std::fs::read_to_string(&pkg) else {
+            return; // gitignored on a clean checkout (CI fabricates a stub tree)
+        };
+        let v: serde_json::Value = serde_json::from_str(&raw).expect("bundle package.json");
+        let shipped = v.get("version").and_then(|x| x.as_str()).unwrap_or_default();
+        assert_eq!(
+            shipped, pinned,
+            "shipped pi-subagents bundle is not the pinned version — run Distribution > UPDATE HARNESS"
+        );
+    }
+
+    /// pi 1.4.0 provides `typebox` itself and rejects extensions that ship a copy. The
+    /// shipped manifest must therefore declare it as a `"*"` peer, never a dependency —
+    /// otherwise every start reports the host-provided-package issue and a duplicate
+    /// module can be loaded.
+    #[test]
+    fn shipped_bundle_declares_typebox_as_host_peer() {
+        let pkg = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("pi-ext")
+            .join("pi-subagents")
+            .join("package.json");
+        let Ok(raw) = std::fs::read_to_string(&pkg) else {
+            return; // gitignored on a clean checkout
+        };
+        let v: serde_json::Value = serde_json::from_str(&raw).expect("bundle package.json");
+        assert!(
+            v.get("dependencies").and_then(|d| d.get("typebox")).is_none(),
+            "typebox must not be a dependency — pi provides it as a host module"
+        );
+        assert_eq!(
+            v.get("peerDependencies").and_then(|p| p.get("typebox")).and_then(|x| x.as_str()),
+            Some("*"),
+            "typebox must be declared as a \"*\" peer for pi 1.4+"
+        );
+    }
+
+    /// The host/bundle pairing rule: a `>=` floor is compared numerically, and a bundle
+    /// that declares no floor never blocks anything.
+    #[test]
+    fn peer_floor_parsing_matches_pi_semantics() {
+        assert_eq!(numeric_version("1.4.0"), Some((1, 4, 0)));
+        assert_eq!(numeric_version("v1.2.3"), Some((1, 2, 3)));
+        assert_eq!(numeric_version("1.2"), Some((1, 2, 0)));
+        assert_eq!(numeric_version("1.2.x"), Some((1, 2, 0)));
+        assert_eq!(numeric_version("not-a-version"), None);
+
+        assert_eq!(peer_floor(">=1.2.0"), Some((1, 2, 0)));
+        assert_eq!(peer_floor(">= 1.2.0"), Some((1, 2, 0)));
+        assert_eq!(peer_floor("*"), None);
+        assert_eq!(peer_floor(""), None);
+    }
+
+    /// The exact pair that shipped broken in a REL build: bundle 0.80.0 declares
+    /// `@earendil-works/pi-ai >= 1.2.0`, the machine had pi 0.84.3, and the extension
+    /// died on a missing export instead of the app refusing the pair.
+    #[test]
+    fn host_below_bundle_floor_is_rejected() {
+        let floor = (1u64, 2u64, 0u64);
+        assert!(numeric_version("0.84.3").unwrap() < floor);
+        assert!(numeric_version("1.2.0").unwrap() >= floor);
+        assert!(numeric_version("1.4.0").unwrap() >= floor);
+    }
+
+    /// `globalConcurrencyLimit` is the only concurrency key the extension reads;
+    /// `parallel.concurrency` was ignored by every version and must not come back.
+    #[test]
+    fn subagents_config_writes_only_keys_the_extension_reads() {
+        let home = std::env::temp_dir().join(format!("boc-subcfg-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(&home).unwrap();
+
+        write_subagents_config(&home, 8).expect("write config");
+        let raw = std::fs::read_to_string(home.join("extensions/subagent/config.json"))
+            .expect("config.json written");
+        let v: serde_json::Value = serde_json::from_str(&raw).expect("valid json");
+
+        assert_eq!(
+            v.get("globalConcurrencyLimit").and_then(|x| x.as_u64()),
+            Some(8),
+            "the engine's slot count must reach globalConcurrencyLimit"
+        );
+        assert_eq!(v.get("artifactDir").and_then(|x| x.as_str()), Some("session"));
+        assert!(
+            v.get("parallel").is_none(),
+            "config.parallel is read by no pi-subagents version — do not reintroduce it"
+        );
+
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// The documented per-batch cap must be the extension's actual constant, otherwise the
+    /// generated PI.md/AGENTS.md tell the orchestrator something untrue.
+    #[test]
+    fn subagent_batch_cap_matches_bundle() {
+        let p = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("pi-ext")
+            .join("pi-subagents")
+            .join("src")
+            .join("runs")
+            .join("shared")
+            .join("parallel-utils.js");
+        // gitignored on a clean checkout (CI fabricates a stub tree) — nothing to compare.
+        let Ok(raw) = std::fs::read_to_string(&p) else {
+            return;
+        };
+        let needle = "MAX_PARALLEL_CONCURRENCY =";
+        let Some(idx) = raw.find(needle) else {
+            return;
+        };
+        let digits: String = raw[idx + needle.len()..]
+            .trim_start()
+            .chars()
+            .take_while(|c| c.is_ascii_digit())
+            .collect();
+        let cap: u32 = digits.parse().expect("MAX_PARALLEL_CONCURRENCY literal");
+        assert_eq!(
+            cap, SUBAGENT_BATCH_CONCURRENCY,
+            "pi-subagents changed its per-batch cap — update SUBAGENT_BATCH_CONCURRENCY and the \
+             generated fan-out instructions"
+        );
+    }
+
     /// The outer shim must anchor `PKG` on an ABSOLUTE path baked in at write
     /// time, never on `%~dp0` as the primary source. Under the spaced-path launch
     /// chain (`cmd /d /s /c ""session.cmd""` → `call "launcher.cmd"`), an outer
@@ -383,15 +601,22 @@ async fn install_pi_version(version: &str) -> Result<(), String> {
             String::new()
         }
     };
-    if let Some(expected) = parse_sums_expected(&sums_text, &archive_name) {
-        if expected != actual {
+    match parse_sums_expected(&sums_text, &archive_name) {
+        Some(expected) if expected == actual => emit_dbg("[Pi] SHA-256 OK"),
+        Some(expected) => {
             return Err(format!(
                 "Checksum mismatch for {archive_name}: expected {expected}, got {actual}"
             ));
         }
-        emit_dbg("[Pi] SHA-256 OK");
-    } else {
-        emit_dbg(&format!("[Pi] No SHA256SUMS entry — proceeding with sha256={actual}"));
+        // No manifest entry (or no manifest at all) means nothing attests to these bytes.
+        // This used to log and install anyway. A binary that Blackwell downloads, unpacks
+        // and executes gets verified or it does not get installed.
+        None => {
+            return Err(format!(
+                "No SHA256SUMS entry for {archive_name} on pi {ver} — refusing to install an \
+                 unverified binary (got sha256={actual})."
+            ));
+        }
     }
 
     // Save with a real `.zip` extension: PowerShell Expand-Archive determines the
@@ -572,16 +797,65 @@ pub async fn pi_code_update_latest() -> Result<PiCodeStatus, String> {
         refresh_pi_subagents_bundle()?;
         sync_dev_pi_ext()?;
 
-        emit_dbg(&format!("[Pi] Updated to {ver} (latest) + pi-subagents refreshed"));
+        // Prove the pair we are about to run: pinned bundle version + loadable host.
+        let bundle = assert_bundle_matches_pin()?;
+        assert_bundle_matches_host(&ver)?;
+
+        emit_dbg(&format!(
+            "[Pi] Updated to {ver} (latest) + pi-subagents {bundle} (pinned)"
+        ));
         pi_code_status().await
     }
 }
 
-/// Refresh `src-tauri/pi-ext/pi-subagents` from the latest npm `pi-subagents`
-/// release, installing only its runtime deps (jiti/typebox/yaml) — the correct
-/// way to bump the bundle. Installing with `--omit=dev` avoids the upstream
+/// Rewrite the copied manifest so the **host** provides `typebox`.
+///
+/// pi 1.4.0 treats `typebox` as host-provided and rejects extensions that ship their own:
+/// `Host-provided extension packages must be declared in peerDependencies with a "*" range,
+/// not dependencies: typebox. Installed copies can bypass the extension loader and create
+/// duplicate runtime modules.` The pinned 0.58.0 predates that rule, so the refresh
+/// normalises it — move the dependency to a `"*"` peer (and stop copying it, which
+/// [`SUBAGENTS_RUNTIME_DEPS`] no longer lists). Without this the bundle still loads, but pi
+/// reports the issue on every start and two copies of the module can coexist.
+fn patch_subagents_manifest_for_host(root: &Path) -> Result<(), String> {
+    let p = root.join("package.json");
+    let raw = std::fs::read_to_string(&p).map_err(|e| format!("read bundle package.json: {e}"))?;
+    let mut v: serde_json::Value =
+        serde_json::from_str(&raw).map_err(|e| format!("parse bundle package.json: {e}"))?;
+    let obj = v
+        .as_object_mut()
+        .ok_or_else(|| "bundle package.json is not an object".to_string())?;
+    let moved = obj
+        .get_mut("dependencies")
+        .and_then(|d| d.as_object_mut())
+        .map(|deps| deps.remove("typebox").is_some())
+        .unwrap_or(false);
+    if !moved {
+        return Ok(());
+    }
+    let peers = obj
+        .entry("peerDependencies")
+        .or_insert_with(|| serde_json::json!({}));
+    if let Some(pm) = peers.as_object_mut() {
+        pm.insert("typebox".to_string(), serde_json::json!("*"));
+    }
+    let body = serde_json::to_string_pretty(&v)
+        .map_err(|e| format!("serialize bundle package.json: {e}"))?;
+    std::fs::write(&p, body).map_err(|e| format!("write bundle package.json: {e}"))?;
+    Ok(())
+}
+
+/// Refresh `src-tauri/pi-ext/pi-subagents` to [`PINNED_SUBAGENTS_VERSION`], installing
+/// only that version's runtime closure (see [`SUBAGENTS_RUNTIME_DEPS`]) — the correct way
+/// to (re)build the bundle. Installing with `--omit=dev` avoids the upstream
 /// `file:./test/fixtures/pi-coding-agent-shim` devDep that otherwise creates a
 /// dangling junction and breaks the dev-runtime mirror.
+///
+/// **Installs the pinned version, never `@latest`.** Latest (0.70+) crashes the host on
+/// every workflow/parallel run — see [`PINNED_SUBAGENTS_VERSION`]. Only `pi-subagents`
+/// itself is requested: npm then resolves that version's own dependency tree exactly,
+/// which is what the copy loop expects. Asking for `typebox` separately would install a
+/// *newer* top-level copy than the pinned release depends on.
 #[cfg(windows)]
 fn refresh_pi_subagents_bundle() -> Result<(), String> {
     use std::os::windows::process::CommandExt;
@@ -592,6 +866,10 @@ fn refresh_pi_subagents_bundle() -> Result<(), String> {
     if !cfg!(debug_assertions) {
         return Err("pi-subagents bundle refresh is DEV-only.".into());
     }
+    let want = PINNED_SUBAGENTS_VERSION.trim();
+    if want.is_empty() {
+        return Err("pi-subagents pin is empty (src-tauri/pi-subagents-pinned-version.txt)".into());
+    }
 
     // Temp project so npm resolves pi-subagents + runtime deps without touching
     // the repo's own package manager state.
@@ -601,10 +879,11 @@ fn refresh_pi_subagents_bundle() -> Result<(), String> {
     std::fs::write(tmp.join("package.json"), "{}\n")
         .map_err(|e| format!("write temp package.json: {e}"))?;
 
+    let spec = format!("pi-subagents@{want}");
     let out = Command::new("npm.cmd")
         .args([
             "install",
-            "pi-subagents@latest",
+            spec.as_str(),
             "--omit=dev",
             "--no-audit",
             "--no-fund",
@@ -633,20 +912,29 @@ fn refresh_pi_subagents_bundle() -> Result<(), String> {
         std::fs::remove_dir_all(&bundle_src).map_err(|e| format!("clear bundle: {e}"))?;
     }
     copy_dir_all(&installed, &bundle_src)?;
+    // pi 1.4.0 wants typebox as a host-provided "*" peer, not a shipped dependency.
+    patch_subagents_manifest_for_host(&bundle_src)?;
 
-    // Ship ONLY pi-subagents' own runtime deps: upstream `dependencies` is exactly
-    // acorn + jiti + typebox + yaml, and all four are dependency-free, so this is the
-    // complete closure (verified with `npm install pi-subagents@latest --omit=dev`).
-    // Everything else in the temp tree is a transitive dep of an OPTIONAL
-    // `@earendil-works/*` peer — pi bundles the core itself, so those must never be
-    // copied (see `strip_shadowed_pi_core_modules`).
+    // Ship ONLY the runtime closure in `SUBAGENTS_RUNTIME_DEPS`. Everything else in the
+    // temp tree is a transitive dep of an OPTIONAL `@earendil-works/*` peer — pi bundles
+    // the core itself, so those must never be copied (see
+    // `strip_shadowed_pi_core_modules`).
     let bnm = bundle_src.join("node_modules");
     std::fs::create_dir_all(&bnm).map_err(|e| format!("bundle node_modules: {e}"))?;
     for dep in SUBAGENTS_RUNTIME_DEPS {
         let from = tmp.join("node_modules").join(dep);
-        if from.is_dir() {
-            copy_dir_all(&from, &bnm.join(dep))?;
+        // A missing dep used to be skipped silently, which produced a bundle that could
+        // not resolve its own imports — pi then loaded no extension and reported nothing.
+        // Fail loudly instead, naming the fix.
+        if !from.is_dir() {
+            let _ = std::fs::remove_dir_all(&tmp);
+            return Err(format!(
+                "npm install produced no '{dep}': the refreshed bundle would fail to load \
+                 (no subagent tool). If upstream changed its closure, update \
+                 SUBAGENTS_RUNTIME_DEPS and the install args in refresh_pi_subagents_bundle."
+            ));
         }
+        copy_dir_all(&from, &bnm.join(dep))?;
     }
 
     // npm may still have left `@earendil-works/*` (incl. the dangling
@@ -765,20 +1053,123 @@ fn bundled_subagents_version() -> Option<String> {
     v.get("version")?.as_str().map(|s| s.to_string())
 }
 
-/// The ONLY third-party modules pi-subagents needs at runtime.
+/// Parse a numeric `MAJOR.MINOR.PATCH` prefix out of a version or range bound.
+fn numeric_version(raw: &str) -> Option<(u64, u64, u64)> {
+    let trimmed = raw.trim().trim_start_matches('v');
+    let mut parts = trimmed.split('.');
+    let major = parts.next()?.parse::<u64>().ok()?;
+    let minor = parts.next()?.parse::<u64>().ok()?;
+    // `1.2` and `1.2.x` both mean PATCH 0.
+    let patch = parts
+        .next()
+        .and_then(|p| p.trim_end_matches(|c: char| !c.is_ascii_digit()).parse::<u64>().ok())
+        .unwrap_or(0);
+    Some((major, minor, patch))
+}
+
+/// Lower bound of a `>=X.Y.Z` peer range, or `None` for `*` / anything not a floor.
+fn peer_floor(req: &str) -> Option<(u64, u64, u64)> {
+    let r = req.trim();
+    if r.is_empty() || r == "*" {
+        return None;
+    }
+    let floor = r.strip_prefix(">=").map(str::trim).unwrap_or(r);
+    numeric_version(floor)
+}
+
+/// Minimum `@earendil-works/pi-ai` the bundled extension declares, if any.
+fn bundled_pi_ai_floor() -> Option<(u64, u64, u64)> {
+    let pkg = bundled_subagents_dir().join("package.json");
+    let raw = std::fs::read_to_string(&pkg).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    let req = v.get("peerDependencies")?.get("@earendil-works/pi-ai")?.as_str()?;
+    peer_floor(req)
+}
+
+/// Refuse a host/bundle pair the extension cannot load on.
 ///
-/// Upstream `dependencies` is exactly these four, and all four are dependency-free, so
-/// this is the complete closure (verified with `npm install pi-subagents@latest
-/// --omit=dev` — it resolves to acorn + jiti + typebox + yaml and nothing else).
+/// The probe that found this: a REL build shipped pi-subagents 0.80.0 (peer
+/// `@earendil-works/pi-ai >= 1.2.0`) next to an installed pi 0.84.3. The extension
+/// threw `(0, _piAi.toToolDeclaration) is not a function` at load, the `subagent` tool
+/// never appeared, and nothing in the app compared the two versions. Returns the bundle
+/// version on success so callers can report what they validated.
+///
+/// Missing peer information is not a failure — the bundle may simply declare no floor.
+pub fn assert_bundle_matches_host(host: &str) -> Result<Option<String>, String> {
+    let bundle = bundled_subagents_version();
+    let Some(floor) = bundled_pi_ai_floor() else {
+        return Ok(bundle);
+    };
+    let Some(host_v) = numeric_version(host) else {
+        return Err(format!("Cannot compare pi '{host}' against the bundled extension floor"));
+    };
+    if host_v < floor {
+        return Err(format!(
+            "Bundled pi-subagents {} needs @earendil-works/pi-ai >= {}.{}.{} but pi {host} is \
+             installed — the extension would fail to load and the subagent tool would be \
+             missing. Update pi to at least that version before shipping.",
+            bundle.as_deref().unwrap_or("?"),
+            floor.0,
+            floor.1,
+            floor.2
+        ));
+    }
+    Ok(bundle)
+}
+
+/// Refuse a bundle whose version is not [`PINNED_SUBAGENTS_VERSION`].
+///
+/// Separate from the peer-floor check above: that one asks "can this extension load on
+/// this host", this one asks "is this the extension we verified". They diverge on Windows
+/// — 0.70+ satisfies the peer range, loads, and then kills the host on the first
+/// workflow/parallel run — so the pin, not semver, decides.
+pub fn assert_bundle_matches_pin() -> Result<String, String> {
+    let want = PINNED_SUBAGENTS_VERSION.trim();
+    match bundled_subagents_version() {
+        Some(v) if v == want => Ok(v),
+        Some(v) => Err(format!(
+            "Bundled pi-subagents is {v} but the pinned version is {want}. Releases from \
+             0.70 up crash the host on every workflow/parallel run (Bun: \"cannot resolve \
+             DirInfo for non-absolute path\"), so this bundle must not ship. \
+             Fix: Distribution > UPDATE HARNESS (installs the pin)."
+        )),
+        None => Err(format!(
+            "Bundled pi-subagents is missing at {} (pinned version {want}). \
+             Fix: Distribution > UPDATE HARNESS, or restore app_root/pi-ext/pi-subagents.",
+            bundled_subagents_dir().display()
+        )),
+    }
+}
+
+/// The ONLY third-party modules the pinned pi-subagents needs at runtime, as **top-level
+/// `node_modules` entry names** — scoped packages are listed by scope (`@js-temporal`),
+/// because both the copy loop and [`prune_bundle_node_modules`] iterate that directory.
+///
+/// This list is a property of [`PINNED_SUBAGENTS_VERSION`], not of "latest". For the
+/// pinned 0.58.0 the shippable closure is three of its declared dependencies — `acorn`,
+/// `jiti`, `yaml`. Its fourth, `typebox`, is **host-provided** on pi 1.4.0 and must not be
+/// bundled: pi accepts it only as a `"*"` peer, and a shipped copy trips
+/// `Host-provided extension packages must be declared in peerDependencies … Installed
+/// copies can bypass the extension loader and create duplicate runtime modules.` The
+/// refresh rewrites the manifest accordingly (see [`patch_subagents_manifest_for_host`]).
+///
+/// Newer releases (0.70+) add `undici` and `@js-temporal/polyfill` (which pulls `jsbi`) —
+/// and that is also the range that crashes the host on every parallel run, so those names
+/// are deliberately absent.
+///
+/// **Bump this together with the pin**, by running `npm install
+/// pi-subagents@<pin> --omit=dev` in a scratch project and comparing `npm ls --all`.
+/// A name that is listed but not installed is now a hard error (see the refresh), and
+/// `pi_subagents_pin_matches_shipped_bundle` fails if the shipped tree and pin disagree.
 ///
 /// Everything else that npm drops into the tree is a transitive dependency of an
-/// OPTIONAL `@earendil-works/*` peer. pi 0.84.x is a compiled bun binary with the
-/// provider SDKs already inlined (`@anthropic-ai/sdk`, `openai`, `@google/genai`,
-/// `@aws-sdk/client-sts` are all embedded strings inside `pi.exe`), so extension-side
-/// copies are unreachable dead weight: ~136 MB of AWS/Google/Anthropic/OpenAI SDKs for
-/// a 4–5 MB app. Blackwell ships lean; users add packages themselves with
-/// `pi install npm:…`, which lands in `{home}/npm/` as its own module root.
-const SUBAGENTS_RUNTIME_DEPS: [&str; 4] = ["acorn", "jiti", "typebox", "yaml"];
+/// OPTIONAL `@earendil-works/*` peer. pi is a compiled bun binary with the provider SDKs
+/// already inlined (`@anthropic-ai/sdk`, `openai`, `@google/genai`, `@aws-sdk/client-sts`
+/// are all embedded strings inside `pi.exe`), so extension-side copies are unreachable
+/// dead weight: ~136 MB of AWS/Google/Anthropic/OpenAI SDKs for a 4–5 MB app. Blackwell
+/// ships lean; users add packages themselves with `pi install npm:…`, which lands in
+/// `{home}/npm/` as its own module root.
+const SUBAGENTS_RUNTIME_DEPS: [&str; 3] = ["acorn", "jiti", "yaml"];
 
 /// Build artifacts that are dead weight at runtime inside the bundled deps.
 ///
@@ -1045,19 +1436,33 @@ fn sync_bundled_subagents(home: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Per-batch fan-out cap inside the shipped pi-subagents extension
+/// (`MAX_PARALLEL_CONCURRENCY` in `src/runs/shared/parallel-utils.js`).
+///
+/// Not ours to raise: a `parallel` group starts at most this many agents at once even when
+/// `globalConcurrencyLimit` is higher, and no config key changes it. Four is also the
+/// deliberate product choice — a wave wider than this makes long-prefill requests stall the
+/// GPU. The generated PI.md/AGENTS.md state the cap, and `subagent_batch_cap_matches_bundle`
+/// fails if upstream moves it, so those instructions cannot silently start lying.
+const SUBAGENT_BATCH_CONCURRENCY: u32 = 4;
+
 /// Write the pi-subagents extension config so subagent run artifacts land inside the
-/// agent dir (session) instead of the project cwd, and so the parallel fan-out
-/// concurrency matches the running engine's slot count (no hardcoded ×4). Default is
-/// "project" which drops a `.pi-subagents/` folder into whatever repo the user is
-/// editing — this keeps all external-tool output inside its own folder
+/// agent dir (session) instead of the project cwd, and so the **global** fan-out cap
+/// matches the running engine's slot count.
+///
+/// Default is "project", which drops a `.pi-subagents/` folder into whatever repo the
+/// user is editing — this keeps all external-tool output inside its own folder
 /// (`{PI_CODING_AGENT_DIR}/extensions/subagent/` — pi default is
 /// `~/.pi/agent/extensions/subagent/`; our `home` **is** the agent dir).
 ///
-/// `slots` = engine `--parallel` (concurrent subagent capacity). We set BOTH the
-/// per-parallel-batch `parallel.concurrency` and the global `globalConcurrencyLimit`
-/// to `slots` so a fan-out of N tasks actually runs N agents concurrently on the
-/// engine's N slots (extension defaults cap per-batch at 4 and global at 20). No upper
-/// clamp here — the user's engine slot count is the source of truth.
+/// `slots` = engine `--parallel` (concurrent capacity). `globalConcurrencyLimit` is the
+/// **only** concurrency key the extension reads (`config.globalConcurrencyLimit ??
+/// DEFAULT_GLOBAL_CONCURRENCY_LIMIT`, default 20), so it is the only one written here.
+///
+/// A `parallel` batch is capped separately at [`SUBAGENT_BATCH_CONCURRENCY`] by a constant
+/// inside the extension, and **no config key raises it**. This function used to also write
+/// `"parallel": { "concurrency": n }`; neither 0.58 nor 0.80 ever read `config.parallel`, so
+/// it was inert and is no longer written — see the batch-cap note in the generated docs.
 fn write_subagents_config(home: &Path, slots: u32) -> Result<(), String> {
     // PI_CODING_AGENT_DIR replaces ~/.pi/agent — config is extensions/subagent under
     // that dir, NOT a nested agent/extensions (legacy wrong path).
@@ -1067,7 +1472,6 @@ fn write_subagents_config(home: &Path, slots: u32) -> Result<(), String> {
     let n = slots.max(1);
     let cfg = serde_json::json!({
         "artifactDir": "session",
-        "parallel": { "concurrency": n },
         "globalConcurrencyLimit": n
     });
     let body = serde_json::to_string_pretty(&cfg)
@@ -1549,11 +1953,11 @@ Launch mode: **{mode}**
 
 {topology}
 
-Fan-out concurrency is set to **{n}** (`extensions/subagent/config.json` → `parallel.concurrency` + `globalConcurrencyLimit`). Match engine `--parallel` slots.
+Fan-out: global cap **{n}** (`extensions/subagent/config.json` → `globalConcurrencyLimit`, which equals the engine's `--parallel` slots). A single `parallel` batch still runs at most **{batch}** agents at a time — that limit is compiled into the extension and no config key raises it. Split larger jobs into waves of {batch}; do not expect {n} agents from one call.
 
 ### Parallel work (use workers)
 
-- Parallelize independent reads / searches / edits across up to **{n}** `worker` subagents.
+- Parallelize independent reads / searches / edits across up to **{batch}** `worker` subagents per wave (global cap {n}).
 - Non-overlapping write scopes; you own synthesis and final decisions.
 - Stay sequential for tiny tasks, strict data dependencies, or pure Q&A.
 - Twin: keep architecture / validation on BRAIN; dump grunt work to WORKER.
@@ -1575,6 +1979,7 @@ Fan-out concurrency is set to **{n}** (`extensions/subagent/config.json` → `pa
         routing = routing,
         topology = topology,
         n = n,
+        batch = SUBAGENT_BATCH_CONCURRENCY,
     )
 }
 
@@ -1583,9 +1988,13 @@ Fan-out concurrency is set to **{n}** (`extensions/subagent/config.json` → `pa
 fn write_agents_md(home: &Path, project: &Path, slots: u32, is_twin: bool) -> Result<(), String> {
     let n = slots.max(1);
     let mode_line = if is_twin {
-        format!("TWIN: BRAIN=`local`, WORKER=`worker`, up to {n} concurrent workers on the worker engine.")
+        format!(
+            "TWIN: BRAIN=`local`, WORKER=`worker`, up to {n} workers in flight ({SUBAGENT_BATCH_CONCURRENCY} per wave) on the worker engine."
+        )
     } else {
-        format!("SOLO: `local` and `worker` share one engine; up to {n} equal-capability workers.")
+        format!(
+            "SOLO: `local` and `worker` share one engine and follow its `--parallel` slots; up to {n} workers in flight, {SUBAGENT_BATCH_CONCURRENCY} per wave."
+        )
     };
     let body = format!(
         r#"# Blackwell Ops — pi session (managed)
@@ -1609,7 +2018,7 @@ You are running under **Blackwell Ops Harness Connect**, not a stock global pi i
 
 {mode_line}
 
-Use the `worker` subagent and parallel fan-out (up to {n}) for independent multi-file work. You remain the orchestrator.
+Use the `worker` subagent for independent multi-file work: up to {batch} per wave, {n} in flight. You remain the orchestrator.
 
 When asked “where is pi home?”, answer with the value of `PI_CODING_AGENT_DIR` only.
 "#,
@@ -1617,6 +2026,7 @@ When asked “where is pi home?”, answer with the value of `PI_CODING_AGENT_DI
         project = project.display(),
         mode_line = mode_line,
         n = n,
+        batch = SUBAGENT_BATCH_CONCURRENCY,
     );
     std::fs::write(home.join("AGENTS.md"), body).map_err(|e| format!("AGENTS.md: {e}"))?;
     Ok(())
@@ -1904,6 +2314,10 @@ pub async fn pi_code_launch(
         if !is_installed() {
             return Err("pi is not installed in external-tools. Install it first.".into());
         }
+        // The shipped pi-ext bundle and the pi host must be the same generation; an app
+        // update refreshes the bundle and leaves the installed binary behind, so align
+        // them before spawning anything.
+        ensure_pinned_pi_version().await?;
 
         let project = PathBuf::from(request.project_dir.trim());
         if request.project_dir.trim().is_empty() {

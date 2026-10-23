@@ -802,6 +802,17 @@ pub async fn run_dev_release_action(
 ) -> Result<String, String> {
     assert_dev()?;
 
+    // Harness refresh is async (network + npm), so it cannot share the sync inline block
+    // below. It must still claim the single-job slot: it rewrites the installed pi tree.
+    if action.action == "update_harness" {
+        if RELEASE_JOB_RUNNING.swap(true, Ordering::SeqCst) {
+            return Err("A release job is already running".into());
+        }
+        let result = refresh_harness(&app_handle).await;
+        RELEASE_JOB_RUNNING.store(false, Ordering::SeqCst);
+        return result;
+    }
+
     // Fast paths stay in-process (no detached console).
     // Bump is quick version-file edits — run inline so UI can refresh immediately.
     if action.action == "check_app"
@@ -856,7 +867,60 @@ fn run_check_inline(app: &tauri::AppHandle, action: &DevReleaseAction) -> Result
         "app"
     };
     run_majestic_step(app, &["-Mode", "check", "-Variant", variant])?;
+    // Majestic compares the pin against the DEV-installed pi. It cannot see whether the
+    // bundled extension can actually load on that pi, which is the failure that shipped:
+    // bundle 0.80.0 (needs pi-ai >= 1.2.0) pinned to pi 0.84.3. Same gate, cheap.
+    let pinned = read_pinned_version();
+    crate::pi_code::assert_bundle_matches_host(&pinned)?;
+    // And the bundle must be the *pinned* version, not merely a loadable one: 0.70+
+    // satisfies the peer range and then kills the host on the first workflow run.
+    crate::pi_code::assert_bundle_matches_pin()?;
     Ok("ok".into())
+}
+
+fn pinned_version_path() -> PathBuf {
+    repo_root().join("src-tauri").join("pi-pinned-version.txt")
+}
+
+fn read_pinned_version() -> String {
+    std::fs::read_to_string(pinned_version_path())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default()
+}
+
+/// One click: newest pi + refreshed pi-subagents bundle + pin the two to each other.
+///
+/// These used to be three separate rituals — Harness UPDATE for the binary and bundle,
+/// Distribution BUMP HARNESS for the pin, and nothing that checked the pair. Skipping
+/// the middle step shipped a bundle the installed host could not load, which surfaced as
+/// `(0, _piAi.toToolDeclaration) is not a function` with no subagent tool.
+async fn refresh_harness(app: &tauri::AppHandle) -> Result<String, String> {
+    let before = read_pinned_version();
+
+    emit_log(
+        app,
+        "[harness] fetching latest pi, refreshing pi-subagents, then pinning both…",
+    );
+    let status = crate::pi_code::pi_code_update_latest().await?;
+    let installed = status.version.clone().unwrap_or_default();
+
+    // Majestic stays the only writer of the pin file (no BOM, no trailing newline).
+    let app_for_step = app.clone();
+    tokio::task::spawn_blocking(move || run_majestic_step(&app_for_step, &["-Mode", "bump-pi"]))
+        .await
+        .map_err(|e| format!("Pin task failed: {e}"))??;
+
+    let pinned = read_pinned_version();
+    crate::pi_code::assert_bundle_matches_host(&pinned)?;
+    // The shipped bundle must be the pinned version — 0.70+ loads fine and then crashes
+    // the host on the first workflow/parallel run, which no peer check can catch.
+    let bundle = crate::pi_code::assert_bundle_matches_pin()?;
+
+    let msg = format!(
+        "harness: pi {before} -> {installed}, pin {pinned}, pi-subagents {bundle} (pinned, pairing OK)"
+    );
+    emit_log(app, &format!("[harness] {msg}"));
+    Ok(msg)
 }
 
 /// Patch version bump only (tauri conf + package.json + Cargo.toml). No pack/ship.

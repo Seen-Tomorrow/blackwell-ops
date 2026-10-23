@@ -42,6 +42,7 @@ export interface DistributionDashboard {
 type ReleaseAction =
   | "bump"
   | "bump_pi"
+  | "update_harness"
   | "pack_app"
   | "ship_app"
   | "pack_full"
@@ -222,7 +223,12 @@ export default function DistributionDevPanel() {
           void pollJob();
           // busy stays true until poll sees job end
         } else {
-          setLogLines((p) => [...p, `OK: ${action}`]);
+          // Inline actions may return a summary (e.g. the harness refresh report);
+          // "ok" and "detached" are handled separately.
+          setLogLines((p) => [
+            ...p,
+            result && result !== "ok" ? result : `OK: ${action}`,
+          ]);
           setBusy(false);
           await refresh();
           if (action === "bump") {
@@ -234,6 +240,11 @@ export default function DistributionDevPanel() {
             setLogLines((p) => [
               ...p,
               "pi pinned to the DEV-installed (tested) version — Pack Full/App will embed it. Bundle should already be refreshed via Harness UPDATE.",
+            ]);
+          } else if (action === "update_harness") {
+            setLogLines((p) => [
+              ...p,
+              "Harness updated and pinned together. Pack Full/App now ships this pi + pi-subagents pair.",
             ]);
           }
         }
@@ -337,6 +348,15 @@ export default function DistributionDevPanel() {
               title="Bump patch version only (e.g. 1.0.18 → 1.0.19). No pack/ship."
             >
               BUMP
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void runAction("update_harness")}
+              className="fnd-dev-btn fnd-dev-btn--accent type-body font-mono uppercase tracking-wider px-3 py-1.5 rounded-sm border disabled:opacity-40"
+              title="One click: fetch the latest pi release, refresh the pi-subagents bundle from npm, pin pi to it, and verify the pair actually loads. Close any pi console window first."
+            >
+              UPDATE HARNESS
             </button>
             <button
               type="button"
