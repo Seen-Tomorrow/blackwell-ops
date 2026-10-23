@@ -29,6 +29,47 @@ patches, ordered); the steady-PP calibration; the probe has **not** been written
 
 Record the outcome of each row before touching step 1 — the split must preserve all eight.
 
+### Baseline recorded 2026-10-23, build `bb431c70d`
+
+DEV app, `ggml-master` edge (engine `b11842`, 2× RTX PRO 6000 Blackwell), recorded with a
+passive harness: engine `/events/sse`, `/slots` at 5 Hz, the brain's `[fusion-stats]` lines and
+1 fps screenshots. Raw evidence is in gitignored `tmp/baseline/` (`capture-*.jsonl`, `shots/`).
+
+Engines used: **0.5B** = Qwen2.5-0.5B-Instruct Q8_0 (`b=1024/256`, or `3072/1536` at ×8);
+**27B** = Qwen3.8-27B-UD-IQ3_XXS + mmproj (`b=8192/4096` and `b=1024/256`, ×1 at 128K).
+
+| # | category | result | measured |
+| --- | --- | --- | --- |
+| 1 | PP single-slot | **pass, with calibration caveat** | 27B: report steady **4 242.4**; frozen hero 4 259 (+0.4 %) at 32K tok, 4 524 (+6.6 %) at 16K, 4 548 (+7.2 %) at 8K, 4 798 (+13.1 %) at 2K — the 54 ms deduction over-corrects short windows. 65 374 tok: hero **3 056** vs engine `prompt eval` **3 055.90** (+0.003 %). |
+| 2 | PP long prompt (8k) | **pass** | 0.5B 8 274 tok: 9 progress frames, 246.3 ms, no stall. 27B 32 525 tok: progress frames once per ubatch, no stall; 65 374 tok completed in 21.4 s. Fluency tracks ubatch size (see finding 2). |
+| 3 | TG single-slot | **pass** | 0.5B: bench 636.6, AVG **631.8** at +1.1 s (−0.75 %), frozen **638.7** (`last_gen`), no flicker. |
+| 4 | TG ×4 / ×16 / ×32 | **pass** | ×4: 1 145.6 bench / 1 277.3 AVG @+1 s / 1 283.8 frozen / 103 ms lane ramp. ×16: 1 628.6 / 1 692.0 / 1 716.5 / 380 ms. ×32: 1 712.0 / **0 at +1.16 s then 1 757.6 at +2 s** / 1 785.2 / 889 ms. No ramp from ~500. |
+| 5 | ctx bars ×16 | **pass** | 16 slots at CTX 64K → 4 096/slot; after 56 634 decoded (≈4 096/lane) every bar read **100 %** — denominator is the per-slot budget, not the 64K total. |
+| 6 | frozen hero | **pass** | Value holds between requests (display sat at 1 401.1 / 636.6 / 4.5k with no blink). PP freezes the *final* rate (65 374 tok → 3 056); parallel TG freezes the *peak* (`peak_gen`). |
+| 7 | STABLE / ggml-tom | **pending** | not exercised in this session — the only row still owed before the split can be called safe. |
+| 8 | engine restart | **pass on the badge, miss on stream reattach** | no stale `SSE`: disconnect clears the port snapshot and the badge goes `POLL` immediately. The stream itself reattached 30 s and 16 s after relaunches (retry ladder 2/4/…/30 s survives the engine-down gap); polling keeps the display live, so the perceived restart is ~2 s but the stream is not. |
+
+Findings the split must not lose:
+
+1. **PP frozen = final, not peak.** The live window decays as the denominator grows (32K run:
+   9 749 → 6 266 → 5 445 → 4 959 → **4 259** from 8K → 32K processed). The early number is
+   inflated by a short window plus the 54 ms deduction; the frozen value is the engine's final
+   rate, verified to 0.003 % against `print_timing` at 65 374 tokens.
+2. **PP fluency is ubatch cadence, not brain policy.** `B=8192/4096` emits ~1 frame per 4 096
+   tokens and reports steady 4 242.4; `B=1024/256` emits ~16× more frames and reports 3 501.4.
+   Progress was present in both — the split must not add its own throttle on top.
+3. **PP 512 on the 0.5B is a cache hit.** Warmup and measured run carry the identical 550-token
+   prompt, so the measured request took 27.8 ms (19 809.8 TPS) and the `>50k` filter let it
+   through. Do not use that point for the steady fit; 2 048 (17 795.7) and 8 192 (33 591.7) are
+   exact `tokens/prompt_ms`. This is bench-design debt, not a fusion bug.
+4. **Parallel TG freezes the peak by design** and it shows: frozen vs bench aggregate was
+   +12.1 % (×4), +5.4 % (×16), +4.3 % (×32), +19.9 % (×16 / 4K slots, 40 s run). Single-slot TG
+   pins `last_gen` instead (638.7 vs 636.6).
+5. **`/slots` ctx capacity is authoritative per lane.** A 16-lane engine must never divide by
+   the engine-wide context; that is the exact bug the x16 bars caught here.
+6. **Source honesty held.** Badge was `SSE` while attached, `POLL` on the 27B before the reader
+   reattached, then `SSE` — no frame claimed a source it did not have.
+
 Scope: `ggml-master` (the bearer engine) gets a dedicated SSE brain. `cafe-llama`, `ggml-tom`,
 `ggml_quiet` and any unpatched engine keep today's brain, restored to its pre-SSE behaviour.
 
