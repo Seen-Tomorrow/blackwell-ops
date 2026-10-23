@@ -87,6 +87,7 @@ impl ParallelMeter {
         any_decode: bool,
         any_pp: bool,
         tolerant: bool,
+        all_lanes_decoding: bool,
     ) {
         if self.latched_peak <= 1 {
             return;
@@ -103,7 +104,9 @@ impl ParallelMeter {
         } else {
             any_pp
         };
-        if any_decode && !pp_block && self.decode_wall_at.is_none() {
+        // Every processing lane must have produced a token: a queued lane is neither prefilling
+        // nor decoding, so `!any_pp` alone lets the wall open mid-ramp and dilutes the average.
+        if any_decode && !pp_block && all_lanes_decoding && self.decode_wall_at.is_none() {
             self.decode_wall_at = Some(now);
         }
     }
@@ -165,5 +168,21 @@ mod tests {
         assert_eq!(clamp_display_tps(200_000.0), 0.0);
         assert_eq!(clamp_display_tps(1_000_000.0), 0.0);
         assert!(clamp_display_tps(21_049.0) > 0.0);
+    }
+
+    #[test]
+    fn decode_wall_waits_for_the_last_lane() {
+        let now = Instant::now();
+        let mut meter = ParallelMeter::default();
+        meter.observe_wave(32, 32);
+
+        // Ramp: some lanes decode while others still prefill. Starting the wall here is what
+        // diluted the x32 average for minutes, so it must stay closed.
+        meter.note_decode_wave(now, 32, true, false, false, false);
+        assert!(meter.decode_wall_at().is_none(), "wall must not open mid-ramp");
+
+        // Last lane produced its first token: this is the moment the clock may start.
+        meter.note_decode_wave(now, 32, true, false, false, true);
+        assert!(meter.decode_wall_at().is_some(), "wall opens when every lane decodes");
     }
 }

@@ -4675,6 +4675,25 @@ html[data-industrial-bezel="brush"] {
   min-height: 16px;
 }
 
+/* Live-feed badge: SSE = metres come straight off the engine stream, POLL = legacy path. */
+.fusion-instrument__source {
+  font-size: var(--type-micro);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  line-height: 1;
+  flex-shrink: 0;
+  padding: 2px 4px;
+  border: 1px solid color-mix(in srgb, var(--display-face-text-muted) 30%, transparent);
+  border-radius: 2px;
+  color: color-mix(in srgb, var(--display-face-text-muted) 80%, transparent);
+}
+
+.fusion-instrument__source--sse {
+  color: var(--fixed-telemetry-green, var(--fixed-amber-500));
+  border-color: color-mix(in srgb, var(--fixed-telemetry-green, var(--fixed-amber-500)) 55%, transparent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--fixed-telemetry-green, var(--fixed-amber-500)) 40%, transparent);
+}
+
 .fusion-instrument__phase {
   font-size: var(--type-micro);
   font-weight: 700;

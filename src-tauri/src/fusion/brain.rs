@@ -38,6 +38,7 @@ fn poll_idle_ms() -> u64 {
 /// ~60–90s idle `STATUS_ILLEGAL_INSTRUCTION` / latent heap corruption (close only *detects* it).
 /// 250ms keeps agent-turn responsiveness without sustained stampede.
 const WARM_IDLE_POLL_MS: u64 = 250;
+
 /// Stay on warm cadence for this long after last slot activity (coding-session belt).
 const WARM_IDLE_WINDOW_MS: u64 = 60_000;
 /// Re-emit idle snapshots periodically so frontend can rehydrate after HMR/remount.
@@ -70,6 +71,58 @@ fn log_event_wakes_poll(event: &crate::fusion::log::LogEvent) -> bool {
 
 fn clamp_display_tps(tps: f64) -> f64 {
     meter::clamp_display_tps(tps)
+}
+
+/// Fixed per-request setup the server charges before a prompt starts moving tokens.
+///
+/// Measured on b11841: 54 ms for IQ3_XXS, 46-55 ms for Q4_K_M / Q6_K, quant-independent, split
+/// as ~18 ms HTTP/slot floor plus ~40 ms first-prefill setup inside `t_p_eval`. llama-bench pays
+/// it once during warmup, so its numbers exclude it. See
+/// `docs/ENGINE-TELEMETRY-SSE-HANDOFF.md`.
+const PREFILL_SETUP_MS: f64 = 54.0;
+
+/// Prefill tok/s with the per-request setup deducted — the figure comparable to llama-bench.
+///
+/// The deduction is capped at 65 % of the measured window: a very short prompt is mostly setup,
+/// and subtracting the full constant there would invent a throughput the engine never produced.
+fn steady_prefill_tps(tokens: f64, slot_ms: f64) -> f64 {
+    if tokens <= 0.0 || slot_ms <= 0.0 {
+        return 0.0;
+    }
+    let deduction = PREFILL_SETUP_MS.min(slot_ms * 0.65);
+    clamp_display_tps(tokens / (slot_ms - deduction) * 1000.0)
+}
+
+#[cfg(test)]
+mod steady_pp_tests {
+    use super::*;
+
+    #[test]
+    fn deducts_setup_from_a_512_prefill() {
+        // 513 tokens in 161.6 ms is the measured shape; llama-bench reports ~4895 on the same run.
+        let tps = steady_prefill_tps(513.0, 161.6);
+        assert!((tps - 4768.0).abs() < 100.0, "got {tps}");
+    }
+
+    #[test]
+    fn long_prompts_barely_move() {
+        // 4097 tokens in 883.8 ms: the 54 ms is noise at this size.
+        let tps = steady_prefill_tps(4097.0, 883.8);
+        assert!((tps - 4942.0).abs() < 250.0, "got {tps}");
+    }
+
+    #[test]
+    fn short_prompts_cannot_explode() {
+        // 11 tokens in 85 ms is mostly setup; the deduction is capped so the figure stays sane.
+        let tps = steady_prefill_tps(11.0, 85.0);
+        assert!(tps > 0.0 && tps < 1000.0, "got {tps}");
+    }
+
+    #[test]
+    fn zero_inputs_are_zero() {
+        assert_eq!(steady_prefill_tps(0.0, 100.0), 0.0);
+        assert_eq!(steady_prefill_tps(100.0, 0.0), 0.0);
+    }
 }
 
 // ── Configuration (immutable after construction) ─────────────────────
@@ -500,10 +553,14 @@ impl FusionBrain {
         }
         let tg_active = self.tg_burst_active(slots);
         if tg_active {
-            if self.tg_burst_started_at.is_none() {
+            let tokens = self.per_request_gen_tokens(slots);
+            // Start the clock at the FIRST GENERATED TOKEN, not at TG detection. Starting at
+            // detection puts TTFT (and any ramp) inside the window while no tokens exist yet, so
+            // the average is diluted: on a 1000 t/s model that head start is 1000-2000 missing
+            // tokens, and the mean crawls from ~500 toward 1000 for tens of thousands of tokens.
+            if tokens > 0 && self.tg_burst_started_at.is_none() {
                 self.tg_burst_started_at = Some(Instant::now());
             }
-            let tokens = self.per_request_gen_tokens(slots);
             if tokens > self.tg_burst_peak_tokens {
                 self.tg_burst_peak_tokens = tokens;
             }
@@ -570,13 +627,20 @@ impl FusionBrain {
     }
 
     fn poll_tier_ms(&self, now: Instant) -> u64 {
-        if !self.is_idle_ready() || self.log_request_open || self.phase == InferencePhase::PP {
+        let base = if !self.is_idle_ready() || self.log_request_open || self.phase == InferencePhase::PP {
             poll_active_ms()
         } else if self.is_warm_idle(now) {
             WARM_IDLE_POLL_MS
         } else {
             poll_idle_ms()
-        }
+        };
+
+        // NOTE: the poll cadence is deliberately NOT slowed while the stream is attached.
+        // The brain's loop *is* the render tick (it emits FusionUpdate once per iteration), so
+        // slowing /slots would slow the hero to 4 Hz even when every value came from SSE.
+        // Decoupling emit cadence from poll cadence is a prerequisite for capping the poller.
+
+        base
     }
 
     /// True when /slots or log belt should run at active cadence (PP start before phase flips).
@@ -1130,8 +1194,9 @@ impl FusionBrain {
             self.frozen_request_gen_tps,
             self.frozen_gen_tps_per_slot,
         );
+        // High-frequency meter dump: session.log keeps it for diagnostics, the console must not.
         crate::session_log::append_session_line(&line);
-        log::info!("{line}");
+        log::debug!("{line}");
     }
 
 
@@ -1391,6 +1456,10 @@ impl FusionBrain {
         let mut brain = Self::new(&config);
         registry::register_slot_adapter(config.slot_idx, config.adapter);
 
+        // Optional SSE telemetry reader. No-op unless BLACKWELL_ENGINE_SSE=1; the poll path below
+        // stays authoritative until the SSE path has carried a full session.
+        crate::engine_events::ensure(config.port);
+
         // Channel for log events + bench meter resets → this brain task (bounded to backpressure on slow consumer)
         let (event_tx, mut event_rx) =
             tokio::sync::mpsc::channel::<BrainInbound>(1024);
@@ -1501,7 +1570,7 @@ impl FusionBrain {
                                 "[fusion] slot={slot_idx} port={} quiet_mode={quiet}",
                                 brain.port
                             );
-                            log::info!("{msg}");
+                            log::debug!("{msg}");
                             crate::session_log::append_session_line(&msg);
                             let preview = brain.build_update(&[], None);
                             brain.force_emit(&log_hub, preview);
@@ -1559,7 +1628,7 @@ impl FusionBrain {
                             "[fusion] slot={slot_idx} port={} tier={label} poll={poll_ms}ms (prev={last_logged_tier_ms}ms)",
                             brain.port
                         );
-                        log::info!("{msg}");
+                        log::debug!("{msg}");
                         crate::session_log::append_session_line(&msg);
                         last_logged_tier_ms = poll_ms;
                     }
@@ -2431,8 +2500,30 @@ impl FusionBrain {
         }
         let any_decode = self.slots_have_active_generation(slots);
         let any_pp = self.any_busy_slot_prefilling(slots);
-        self.parallel_meter
-            .note_decode_wave(now, busy_count, any_decode, any_pp, !self.has_log_belt);
+        // "All lanes are producing" — every processing slot has emitted at least one token.
+        // A queued slot is neither prefilling nor decoding, so `!any_pp` alone can open the
+        // decode wall during the ramp of a wide wave; on x32 that diluted the average for
+        // minutes. Requiring every processing lane to have decoded pins the clock to the
+        // moment the LAST slot produced its first token.
+        let all_lanes_decoding = {
+            let busy: Vec<&crate::fusion::poller::SlotData> =
+                slots.iter().filter(|s| s.is_processing).collect();
+            !busy.is_empty()
+                && busy.iter().all(|s| {
+                    s.next_token
+                        .first()
+                        .map(|t| t.n_decoded > 0)
+                        .unwrap_or(false)
+                })
+        };
+        self.parallel_meter.note_decode_wave(
+            now,
+            busy_count,
+            any_decode,
+            any_pp,
+            !self.has_log_belt,
+            all_lanes_decoding,
+        );
         self.sync_decode_wall_token_base(slots);
 
         self.update_prefill_from_slots(slots);
@@ -2757,6 +2848,86 @@ impl FusionBrain {
         let concurrent = self.concurrent_slots_for_meter(busy_slots);
         let gen_tps_out = clamp_display_tps(gen_tps);
         let gen_tps_instant_out = clamp_display_tps(self.gen_tps_instant);
+
+        // One brain per ENGINE, not per llama slot: a single-slot engine reads its lane directly,
+        // a `--parallel N` engine reads the system-wide aggregate across lanes (phase, summed
+        // prefill/generation, longest window, earliest TTFT).
+        let sse_snapshot = if self.parallel <= 1 {
+            crate::engine_events::snapshot(self.port)
+        } else {
+            crate::engine_events::aggregate(self.port)
+        };
+        let sse_live = sse_snapshot.is_some();
+        let (ttft_out, prefill_ms_out, decode_ttft_out) = match &sse_snapshot {
+            Some(t) => (
+                t.ttft_ms().or(self.ttft_ms),
+                t.last_request.as_ref().map(|r| r.prompt_ms).or(self.prefill_ms),
+                t.decode_ttft_ms().or(self.decode_ttft_ms),
+            ),
+            None => (self.ttft_ms, self.prefill_ms, self.decode_ttft_ms),
+        };
+        // Spec counters are cumulative in the update, and `engine_events` accumulates the
+        // per-request counters from `request_end`; `request_closed` is derived from the same
+        // event (true until the next request's PP). Both fall back to the poll/log path.
+        let (spec_acc_out, spec_gen_out, request_closed_out) = match &sse_snapshot {
+            Some(t) => (
+                t.spec_accepted_total,
+                t.spec_draft_total,
+                t.request_closed || self.request_closed,
+            ),
+            None => (
+                self.spec_draft_accepted_total,
+                self.spec_draft_generated_total,
+                self.request_closed,
+            ),
+        };
+
+        // SSE telemetry: when a stream is attached its live window is authoritative for
+        // progress/tokens/PP TPS. Without it, or before the first event, every value above stands
+        // exactly as the poll path computed it.
+        //
+        // PP is reported steady-state: the server charges a fixed per-request setup (measured
+        // 54 ms on b11841, quant-independent — see docs/ENGINE-TELEMETRY-SSE-HANDOFF.md), which
+        // llama-bench pays once and never again. Deducting it turns the per-request figure into
+        // the one comparable with llama-bench. It is an approximation, so the deduction is capped
+        // at 65 % of the measured window to keep tiny prompts from producing absurd numbers.
+        let (prefill_progress, prefill_tokens, prefill_tps_session, gen_tps_out) =
+            match crate::engine_events::snapshot(self.port) {
+                Some(t) if t.phase != "IDLE" => (
+                    if t.pp_total > 0 {
+                        (t.pp_processed as f64 / t.pp_total as f64).clamp(0.0, 1.0)
+                    } else {
+                        prefill_progress
+                    },
+                    t.pp_processed.max(0) as usize,
+                    {
+                        let evaluated = (t.pp_processed - t.pp_cache).max(0) as f64;
+                        let steady = steady_prefill_tps(evaluated, t.pp_time_ms);
+                        if steady > 0.0 { steady } else { prefill_tps_session }
+                    },
+                    if t.gen_tps > 0.0 {
+                        clamp_display_tps(t.gen_tps)
+                    } else {
+                        gen_tps_out
+                    },
+                ),
+                // Request finished: the frontier value comes from the slot clock of that request,
+                // deducted by the same setup cost.
+                Some(t) if t.phase == "IDLE" => {
+                    let steady = t
+                        .last_request
+                        .as_ref()
+                        .map(|r| steady_prefill_tps(r.tokens_evaluated as f64, r.prompt_ms))
+                        .unwrap_or(0.0);
+                    (
+                        prefill_progress,
+                        prefill_tokens,
+                        if steady > 0.0 { steady } else { prefill_tps_session },
+                        gen_tps_out,
+                    )
+                }
+                _ => (prefill_progress, prefill_tokens, prefill_tps_session, gen_tps_out),
+            };
         let (gen_tps_per_slot, gen_tps_per_slot_instant) = if self.request_closed
             && self.frozen_gen_tps_per_slot > 0.0
         {
@@ -2772,11 +2943,25 @@ impl FusionBrain {
             alias: self.alias.clone(),
             slot_idx: self.slot_idx,
             port: self.port,
+            // Honest source: "sse" only when this tick's values actually came from the stream.
+            // A live socket that cannot serve a slot (parallel lanes) is still the poll path.
+            telemetry_source: if sse_live {
+                "sse".to_string()
+            } else {
+                "poll".to_string()
+            },
             engine_state: self.engine_state.clone(),
             phase: self.phase,
             prefill_tps_metrics: clamp_display_tps(prefill_tps_metrics),
             prefill_tps_session,
-            prefill_tps_instant: clamp_display_tps(self.prefill_tps_instant),
+            // LIVE mode reads this: on the poll path it is a per-tick delta, and a whole ubatch
+            // landing between two polls reads as ~50k tok/s. When the stream serves the port,
+            // the immediate figure is the same steady value, so both modes agree.
+            prefill_tps_instant: if sse_live {
+                prefill_tps_session
+            } else {
+                clamp_display_tps(self.prefill_tps_instant)
+            },
             prefill_progress,
             prefill_tokens,
             // Emit the effective request total (log-derived, or /slots peak sum when no log belt)
@@ -2794,9 +2979,9 @@ impl FusionBrain {
             ctx_total: self.ctx_total,
             ctx_per_slot,
             request_elapsed_ms,
-            ttft_ms: self.ttft_ms,
-            prefill_ms: self.prefill_ms,
-            decode_ttft_ms: self.decode_ttft_ms,
+            ttft_ms: ttft_out,
+            prefill_ms: prefill_ms_out,
+            decode_ttft_ms: decode_ttft_out,
             slot_ctx,
             parallel: self.parallel,
             unified_kv: self.unified_kv,
@@ -2815,12 +3000,12 @@ impl FusionBrain {
                 None
             },
             spec_draft_accept_rate: self.spec_draft_accept_rate,
-            spec_draft_accepted: self.spec_draft_accepted_total,
-            spec_draft_generated: self.spec_draft_generated_total,
+            spec_draft_accepted: spec_acc_out,
+            spec_draft_generated: spec_gen_out,
             spec_draft_accept_rate_last: self.spec_draft_accept_rate_last,
             spec_draft_accepted_last: self.spec_draft_accepted_last,
             spec_draft_generated_last: self.spec_draft_generated_last,
-            request_closed: self.request_closed,
+            request_closed: request_closed_out,
             spec_mode: self.spec_mode.and_then(|m| m.label()).map(str::to_string),
             meter_lane,
             busy_slot_count: busy_slots,
@@ -3181,11 +3366,11 @@ mod tests {
         let mut meter = ParallelMeter::default();
         meter.observe_wave(8, 1);
         let now = std::time::Instant::now();
-        meter.note_decode_wave(now, 1, true, false, true);
+        meter.note_decode_wave(now, 1, true, false, true, true);
         assert!(meter.decode_wall_at().is_some());
         let mut strict = ParallelMeter::default();
         strict.observe_wave(8, 1);
-        strict.note_decode_wave(now, 1, true, false, false);
+        strict.note_decode_wave(now, 1, true, false, false, true);
         assert!(strict.decode_wall_at().is_none());
     }
 }

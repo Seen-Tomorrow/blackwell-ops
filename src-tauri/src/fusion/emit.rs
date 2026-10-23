@@ -51,6 +51,11 @@ pub struct FusionUpdate {
     pub slot_idx: usize,
     pub port: u16,
 
+    /// Where the live prefill/gen values came from this tick: "sse" when the engine
+    /// `/events/sse` stream is attached, otherwise "poll" (/slots + /metrics + stderr).
+    #[serde(rename = "telemetrySource")]
+    pub telemetry_source: String,
+
     // Lifecycle (3 states)
     pub engine_state: EngineState,
 

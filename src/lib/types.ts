@@ -509,11 +509,14 @@ interface StartupUpdateStatus {
 
 /**
  * TG + PP bench prompt corpus (shared backend builder).
- * Unique — cycles diverse technical vocabulary. Repetitive — cycles a fixed short phrase.
+ * Unique — diverse technical vocabulary (conservative real-text case).
+ * Code — realistic source code: structs, impls, loops, conditionals. Idiom repetition,
+ *        not one recycled phrase, so speculative decoding gets honest coding material.
+
  * TG: 512-token prefill (calibrated via /tokenize); measured decode = n_predict at temp 0.
  * PP: token target from chip; prefill-only (n_predict=0).
  */
-export type bench_PromptMode = "unique" | "repetitive";
+export type bench_PromptMode = "unique" | "code";
 
 /** TG (generation) burst benchmark result from cmd_burst_bench IPC command. */
 export interface bench_TGBenchResult {
@@ -635,6 +638,9 @@ export interface FusionUpdate {
   /** Unique engine slot index (0-based, never duplicated) */
   slotIdx: number;
   port: number;
+
+  /** Live feed behind the prefill/gen meters: 'sse' = engine /events/sse stream, 'poll' = legacy path. */
+  telemetrySource?: 'sse' | 'poll';
 
   // Lifecycle (3 states)
   engine_state: 'LOADING' | 'READY' | 'ACTIVE';

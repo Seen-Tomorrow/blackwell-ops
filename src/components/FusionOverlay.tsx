@@ -707,6 +707,18 @@ export default function FusionOverlay({
                         ? "AWAITING REQUEST"
                         : "GENERATION"}
                   </span>
+                  <span
+                    className={`fusion-instrument__source ${
+                      fusion.telemetrySource === "sse" ? "fusion-instrument__source--sse" : ""
+                    }`}
+                    title={
+                      fusion.telemetrySource === "sse"
+                        ? "Live feed: /events/sse stream from the engine. PP is steady-state: the 54 ms per-request setup is deducted so it compares with llama-bench"
+                        : "Live feed: poll fallback (/slots + /metrics + stderr). PP includes the per-request setup"
+                    }
+                  >
+                    {fusion.telemetrySource === "sse" ? "SSE" : "POLL"}
+                  </span>
                   <div className="fusion-mode-seg" role="group" aria-label="Hero TPS mode">
                     <button
                       type="button"

@@ -13,6 +13,7 @@ mod telemetry;
 mod config;
 mod engine_stack;
 mod engine_load_progress;
+mod engine_events;
 
 mod log_hub;
 mod hf_api;
@@ -28,6 +29,7 @@ mod vram_learn;
 mod forecast_log;
 mod launch_memory_parse;
 mod bench_prompts;
+mod bench_archive;
 mod burst_bench;
 mod bench_pp_burst;
 mod bench_cancel;
