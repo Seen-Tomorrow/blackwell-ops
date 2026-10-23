@@ -7,6 +7,7 @@
 pub mod adapters;
 pub mod brain;
 pub mod emit;
+pub mod lifecycle;
 pub mod log;
 pub mod meter;
 pub mod poller;

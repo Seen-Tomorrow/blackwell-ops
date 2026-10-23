@@ -9,7 +9,8 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::fusion::brain::{EngineState, InferencePhase};
+use crate::fusion::brain::EngineState;
+use crate::fusion::lifecycle::InferencePhase;
 use crate::fusion::meter::FusionMeterLane;
 
 // ── Per-slot CTX info emitted to frontend ────────────────────────────
