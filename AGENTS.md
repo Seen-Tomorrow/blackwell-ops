@@ -342,6 +342,24 @@ Native crashes also append `%TEMP%\blackwell-crash.log` (heap `0xC0000374`, ille
 
 ## Known gaps / flags
 
+- **Fusion telemetry has two paths, and the old one is not dead code.** `/events/sse` (engine
+  patch, `docs/ENGINE-TELEMETRY-SSE-HANDOFF.md`) feeds single-slot engines; parallel engines use
+  `aggregate(port)` because fusion runs **one brain per engine, not per llama slot** — a single
+  lane's snapshot must never stand in for a 16-lane engine. `/slots` + `/metrics` + stderr remain
+  the fallback for unpatched engines and the other providers. `telemetrySource` in `FusionUpdate`
+  reports which path fed the tick; when it says `SSE` the values are the stream's.
+- **PP is displayed steady-state, not raw.** `PREFILL_SETUP_MS = 54` in `fusion/brain.rs` deducts
+  the measured per-request server setup so the hero compares with llama-bench. It is a
+  calibration, capped at 65 % of the window; re-measure it when the engine patch level or launch
+  flags change (procedure in the handoff doc), and keep raw `PP tok/s` in the report so the
+  difference stays visible.
+- **The poll loop is the render tick.** `FusionUpdate` is emitted once per loop iteration, so
+  throttling `/slots` throttles the hero even when every value came from SSE. Decouple render
+  from poll before slowing the poller.
+- **Engine vendor patches are ordered by filename** (`foundry/patches/<provider>-*.patch`):
+  `cuda-graph-instance` → `single-model-load-sse` → `telemetry-sse`. The telemetry patch is based
+  on the tree *after* the cold-boot patch and must keep sorting after it; renaming it earlier
+  makes it fail on a pristine tree.
 - Reaper clears slots + `engine-locks` on unexpected exit (Loading or Running). Stale locks from prior sessions are swept on app start and when launching on a free port.
 - **Quiet stderr loads** — Some models stop writing to stderr early (pipe EOF) while still loading. `log_hub` must not fail the slot when spawn-time `engine_pid` is still alive; HTTP `/slots` or `/health` readiness owns promotion to Running. Do not require stderr “model loaded” lines for these models.
 - **GPU topo “External apps”** — Grey = NVML used minus (breakdown SELF + capped CUDA/runtime, max 4 GiB/GPU). Do not assign all NVML to our bar when a foreign app (LM Studio) shares the GPU. Stale NVML after stop = background `scan_gpus` + `gpuMemoryKey` re-eval + burst poll on `slot-cleared` (+2s).
