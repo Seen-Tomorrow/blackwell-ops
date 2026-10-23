@@ -343,11 +343,12 @@ Native crashes also append `%TEMP%\blackwell-crash.log` (heap `0xC0000374`, ille
 ## Known gaps / flags
 
 - **Fusion telemetry has two paths, and the old one is not dead code.** `/events/sse` (engine
-  patch, `docs/ENGINE-TELEMETRY-SSE-HANDOFF.md`) feeds single-slot engines; parallel engines use
-  `aggregate(port)` because fusion runs **one brain per engine, not per llama slot** — a single
-  lane's snapshot must never stand in for a 16-lane engine. `/slots` + `/metrics` + stderr remain
-  the fallback for unpatched engines and the other providers. `telemetrySource` in `FusionUpdate`
-  reports which path fed the tick; when it says `SSE` the values are the stream's.
+  patch, `docs/ENGINE-TELEMETRY-SSE-HANDOFF.md`) is the primary source for **both** shapes: a
+  single-slot engine reads its lane snapshot, a parallel engine reads `aggregate(port)` over its
+  lanes. There is no per-lane brain — fusion runs **one brain per engine, not per llama slot** — so
+  a single lane's snapshot must never stand in for a 16-lane engine. `/slots` + `/metrics` + stderr
+  remain the fallback for unpatched engines and the other providers. `telemetrySource` in
+  `FusionUpdate` reports which path fed the tick; when it says `SSE` the values are the stream's.
 - **PP is displayed steady-state, not raw.** `PREFILL_SETUP_MS = 54` in `fusion/brain.rs` deducts
   the measured per-request server setup so the hero compares with llama-bench. It is a
   calibration, capped at 65 % of the window; re-measure it when the engine patch level or launch
