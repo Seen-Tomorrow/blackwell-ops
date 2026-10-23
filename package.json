@@ -47,6 +47,8 @@
     "pack:provider": "powershell -ExecutionPolicy Bypass -File scripts/pack-provider-runtime.ps1",
     "test": "vitest run",
     "test:watch": "vitest",
+    "bench:report": "node scripts/bench/report.mjs --dir src-tauri/target/debug/config/bench --out bench-out",
+    "bench:report:rel": "node scripts/bench/report.mjs --dir \"C:\\AI-MASTER\\Blackwell OPS portable\\config\\bench\" --out bench-out",
     "check": "npm run css:audit && npm run css:minify && tsc --noEmit && vitest run && cargo test --locked --manifest-path src-tauri/Cargo.toml"
   },
   "dependencies": {

@@ -1341,9 +1341,9 @@ export function saveLogsAnsiEnabled(enabled: boolean): void {
 
 export const BENCH_TG_PREDICT_OPTIONS = [512, 1024, 2048, 4096, 6144, 8192, 10000] as const;
 export const BENCH_TG_PARALLEL_OPTIONS = [1, 4, 8, 16, 32, 64, 128] as const;
-export const BENCH_PP_TOKEN_OPTIONS = [8192, 16384, 32768, 65536, 100000] as const;
+export const BENCH_PP_TOKEN_OPTIONS = [512, 2048, 8192, 16384, 32768, 65536, 100000] as const;
 
-type BenchPromptMode = "unique" | "repetitive";
+type BenchPromptMode = "unique" | "code";
 
 export interface BenchControlPrefs {
   nPredict: number;
@@ -1351,19 +1351,22 @@ export interface BenchControlPrefs {
   tgWarmupEnabled: boolean;
   promptMode: BenchPromptMode;
   ppTargetTokens: number;
+  reps: number;
 }
 
 export const BENCH_CONTROL_DEFAULTS: BenchControlPrefs = {
   nPredict: 1024,
   tgParallel: 1,
   tgWarmupEnabled: false,
-  promptMode: "repetitive",
+  promptMode: "code",
   ppTargetTokens: 16384,
+  reps: 1,
 };
 
 const BENCH_N_PREDICT_ALLOWED = new Set<number>(BENCH_TG_PREDICT_OPTIONS);
 const BENCH_TG_PARALLEL_ALLOWED = new Set<number>(BENCH_TG_PARALLEL_OPTIONS);
 const BENCH_PP_TOKEN_ALLOWED = new Set<number>(BENCH_PP_TOKEN_OPTIONS);
+const BENCH_REPS_ALLOWED = new Set<number>([1, 3, 5]);
 
 function normalizeBenchControlPrefs(raw: unknown): BenchControlPrefs | null {
   if (!raw || typeof raw !== "object") return null;
@@ -1372,13 +1375,15 @@ function normalizeBenchControlPrefs(raw: unknown): BenchControlPrefs | null {
   const tgParallel = typeof o.tgParallel === "number" ? o.tgParallel : NaN;
   const ppTargetTokens = typeof o.ppTargetTokens === "number" ? o.ppTargetTokens : NaN;
   const tgWarmupEnabled = o.tgWarmupEnabled;
+  const reps = typeof o.reps === "number" ? o.reps : 1;
   const promptMode = o.promptMode;
   if (
     !BENCH_N_PREDICT_ALLOWED.has(nPredict)
     || !BENCH_TG_PARALLEL_ALLOWED.has(tgParallel)
     || !BENCH_PP_TOKEN_ALLOWED.has(ppTargetTokens)
     || typeof tgWarmupEnabled !== "boolean"
-    || (promptMode !== "unique" && promptMode !== "repetitive")
+    || !BENCH_REPS_ALLOWED.has(reps)
+    || (promptMode !== "unique" && promptMode !== "code")
   ) {
     return null;
   }
@@ -1388,6 +1393,7 @@ function normalizeBenchControlPrefs(raw: unknown): BenchControlPrefs | null {
     tgWarmupEnabled,
     promptMode,
     ppTargetTokens,
+    reps,
   };
 }
 

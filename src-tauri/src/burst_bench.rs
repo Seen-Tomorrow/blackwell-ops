@@ -336,8 +336,6 @@ pub async fn cmd_burst_bench(
         );
     }
 
-    let repetitive = bench_prompts::is_repetitive_mode(&bench_prompt_mode);
-
     bench_session_log(&format!(
         "[BENCH_TG] start | n_predict={} parallel={} engine_slots={} mode={} prefill_target={}",
         n_predict,
@@ -357,7 +355,7 @@ pub async fn cmd_burst_bench(
         &client,
         port,
         TG_PREFILL_TARGET_TOKENS,
-        repetitive,
+        &bench_prompt_mode,
         "[BENCH_TG]",
     )
     .await
@@ -371,6 +369,9 @@ pub async fn cmd_burst_bench(
     let mut measured_parallel = 1usize;
     let mut measured_per_request_gen_tps: Option<f64> = None;
     let mut measured_aggregate_gen_tps: Option<f64> = None;
+    // Speculative-decode acceptance is a decode property: snapshot the engine counters before
+    // the run and store the delta as this run's acceptance rate.
+    let spec_before = crate::bench_archive::spec_counters(port).await;
 
     for run in 0..total_runs {
         if bench_cancel::stop_after_current_requested(port) {
@@ -482,6 +483,15 @@ pub async fn cmd_burst_bench(
         }
     };
 
+    // Acceptance delta for this bench run (warmup decodes included; they are tiny).
+    let (spec_acc, spec_draft, spec_rate) = match (spec_before, crate::bench_archive::spec_counters(port).await) {
+        (Some((a0, d0)), Some((a1, d1))) if d1 >= d0 && a1 >= a0 => {
+            let (da, dd) = (a1 - a0, d1 - d0);
+            (da, dd, if dd > 0 { da as f64 / dd as f64 } else { 0.0 })
+        }
+        _ => (0, 0, 0.0),
+    };
+
     let itl_ms = if run.gen_tps > 0.0 {
         1000.0 / run.gen_tps
     } else {
@@ -499,6 +509,38 @@ pub async fn cmd_burst_bench(
         measured_per_request_gen_tps,
         measured_aggregate_gen_tps,
     ));
+
+    // Persist the measurement. Fire-and-forget: the archive must never delay or fail a
+    // bench, and `/props` + telemetry enrichment happens inside the capture task.
+    {
+        let metrics = serde_json::json!({
+            "success": true,
+            "prompt_tokens": run.prompt_tokens,
+            "gen_tokens": run.gen_tokens,
+            "prompt_tps": run.prompt_tps,
+            "gen_tps": run.gen_tps,
+            "itl_ms": itl_ms,
+            "parallel_requests": measured_parallel,
+            "aggregate_gen_tps": measured_aggregate_gen_tps,
+            "per_request_gen_tps": measured_per_request_gen_tps,
+        });
+        let params = serde_json::json!({
+            "prompt_mode": bench_prompt_mode.clone(),
+            "n_predict": n_predict,
+            "tg_warmup_enabled": tg_warmup_enabled,
+            "parallel_requests": requested_parallel,
+            "measured_parallel": measured_parallel,
+            "engine_slots": engine_slots,
+        });
+        let bench_port = port;
+        tokio::spawn(async move {
+            if let Err(e) =
+                crate::bench_archive::capture("tg_burst", bench_port, params, metrics).await
+            {
+                log::warn!("[bench-archive] tg capture failed: {e}");
+            }
+        });
+    }
 
     Ok(BenchResult {
         prompt_tokens: run.prompt_tokens,

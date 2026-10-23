@@ -448,6 +448,7 @@ export default function BenchWidget({
       const res: bench_PPBurstResult = await invoke("cmd_bench_pp_burst", {
         port,
         targetTokens: ps.ppTargetTokens,
+        reps: ps.reps,
         benchPromptMode: ps.promptMode,
       });
       ps.ppResult = res;
@@ -532,12 +533,18 @@ export default function BenchWidget({
   };
 
   const cyclePromptMode = () => {
-    ps.promptMode = ps.promptMode === "unique" ? "repetitive" : "unique";
+    ps.promptMode = ps.promptMode === "unique" ? "code" : "unique";
     bumpControls();
   };
 
   const toggleTgWarmup = () => {
     ps.tgWarmupEnabled = !ps.tgWarmupEnabled;
+    bumpControls();
+  };
+
+  /** Repeats are opt-in: x1 stays quick, x3/x5 give a median for publishing. */
+  const cycleReps = () => {
+    ps.reps = ps.reps === 1 ? 3 : ps.reps === 3 ? 5 : 1;
     bumpControls();
   };
 
@@ -871,11 +878,28 @@ export default function BenchWidget({
                       className={`bench-muted-btn fusion-bench-toggle font-mono rounded-sm focus:outline-none cursor-pointer select-none disabled:opacity-30 ${chipPadClass}`}
                       title={
                         ps.promptMode === "unique"
-                          ? "Unique: diverse technical vocabulary (512-tok prefill, token-calibrated). TG decode is temp-0 continuation."
-                          : "Repetitive: fixed phrase cycled to 512-tok prefill — predictable for MTP/spec-decode. TG decode is temp-0 continuation of the pattern."
+                          ? "Unique: diverse technical vocabulary (512-tok prefill, token-calibrated). Conservative real-text case."
+                          : "Code: realistic source code — structs, impls, loops, conditionals. Moderate idiom repetition, so spec-decode gets a fair coding workload."
                       }
                     >
-                      {ps.promptMode === "unique" ? "Unique" : "CODE gen"}
+                      {ps.promptMode === "unique" ? "Unique" : "Code"}
+                    </button>
+                  </div>
+                  <div className="fusion-bench-field">
+                    <span className="fusion-bench-field__lab" title="PP measured runs; median is reported. x1 = fastest, x3/x5 = publishable spread">
+                      REPS
+                    </span>
+                    <button
+                      onClick={cycleReps}
+                      disabled={isAnyRunning || ps.tgRunning}
+                      className={`bench-muted-btn fusion-bench-toggle font-mono rounded-sm focus:outline-none cursor-pointer select-none disabled:opacity-30 ${chipPadClass}`}
+                      title={
+                        ps.reps === 1
+                          ? "1 measured PP run — quick iteration"
+                          : `${ps.reps} measured PP runs, median reported — slower, but a publishable number`
+                      }
+                    >
+                      {`x${ps.reps}`}
                     </button>
                   </div>
                 </div>

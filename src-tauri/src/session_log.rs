@@ -23,6 +23,39 @@ const MAX_STREAM_BYTES: u64 = 50 * 1024 * 1024;
 
 static RUNTIME_ENABLED: AtomicBool = AtomicBool::new(true);
 static STATE: OnceLock<Mutex<SessionState>> = OnceLock::new();
+/// One engine launch, remembered in memory so other subsystems (bench archive) can record
+/// the exact flag set and the engine instance a measurement ran against, without reading logs.
+#[derive(Clone, Debug)]
+pub struct EngineLaunch {
+    pub port: u16,
+    pub pid: u32,
+    pub launch_cmd: String,
+    pub started_unix: i64,
+    /// Stable per launch: same engine process + same config → same id.
+    pub id: String,
+}
+
+static LAUNCH_BY_PORT: OnceLock<Mutex<HashMap<u16, EngineLaunch>>> = OnceLock::new();
+
+fn launch_by_port() -> &'static Mutex<HashMap<u16, EngineLaunch>> {
+    LAUNCH_BY_PORT.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Exact launch command for a running engine port, if this process launched it.
+pub fn launch_cmd_for_port(port: u16) -> Option<String> {
+    launch_by_port()
+        .lock()
+        .ok()
+        .and_then(|m| m.get(&port).map(|l| l.launch_cmd.clone()))
+}
+
+/// Engine instance id for a port — groups every measurement taken on that same launch.
+pub fn engine_session_for_port(port: u16) -> Option<String> {
+    launch_by_port()
+        .lock()
+        .ok()
+        .and_then(|m| m.get(&port).map(|l| l.id.clone()))
+}
 
 #[derive(Default)]
 struct SessionState {
@@ -373,6 +406,23 @@ pub fn append_crash_line(line: &str) {
 }
 
 pub fn record_launch(slot_idx: usize, alias: &str, pid: u32, port: u16, launch_cmd: &str) {
+    // Remember the launch even when session logging is off — the bench archive depends on it.
+    {
+        use std::hash::{Hash, Hasher};
+        let started_unix = chrono::Utc::now().timestamp();
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        port.hash(&mut h);
+        pid.hash(&mut h);
+        started_unix.hash(&mut h);
+        launch_cmd.hash(&mut h);
+        let id = format!("{port}-{pid}-{:08x}", (h.finish() & 0xffff_ffff) as u32);
+        if let Ok(mut map) = launch_by_port().lock() {
+            map.insert(
+                port,
+                EngineLaunch { port, pid, launch_cmd: launch_cmd.to_string(), started_unix, id },
+            );
+        }
+    }
     if !is_active() {
         return;
     }

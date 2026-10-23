@@ -423,15 +423,29 @@ async fn slot_ids(client: &reqwest::Client, port: u16) -> Vec<u64> {
 }
 
 /// Release every llama-server slot KV cache on a port (prompt-cache clear before bench).
+///
+/// The releases are issued concurrently: they are independent per-slot requests, and running
+/// them in sequence cost one round-trip per slot — on a `--parallel 32` engine that turned a
+/// pre-PP cache clear into a multi-second stall before a test that only uses one slot.
 pub async fn release_all_slots(client: &reqwest::Client, port: u16, label: &str) {
     let ids = slot_ids(client, port).await;
-    for idx in &ids {
-        let _ = client
-            .post(format!("http://127.0.0.1:{port}/slots/{idx}/release"))
-            .send()
-            .await;
-    }
-    log::debug!("[BENCH] released {} slots {}", ids.len(), label);
+    let started = std::time::Instant::now();
+    let releases = ids.iter().map(|idx| {
+        let client = client.clone();
+        async move {
+            let _ = client
+                .post(format!("http://127.0.0.1:{port}/slots/{idx}/release"))
+                .send()
+                .await;
+        }
+    });
+    futures_util::future::join_all(releases).await;
+    log::debug!(
+        "[BENCH] released {} slots {} in {} ms",
+        ids.len(),
+        label,
+        started.elapsed().as_millis()
+    );
 }
 
 /// Abort in-flight slot work. Separate short-timeout client — must not share the

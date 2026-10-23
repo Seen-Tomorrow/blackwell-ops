@@ -33,6 +33,7 @@ pub async fn cmd_bench_pp_burst(
     port: u16,
     target_tokens: usize,
     bench_prompt_mode: String,
+    reps: Option<usize>,
 ) -> Result<BenchPPResult, String> {
     bench_cancel::begin(port);
     let _guard = BenchPortGuard(port);
@@ -40,15 +41,29 @@ pub async fn cmd_bench_pp_burst(
     let client = bench_cancel::bench_http_client(1)?;
 
     const WARMUP_RUNS: usize = 1;
-    const MEASURED_RUNS: usize = 1;
-    const TOTAL_RUNS: usize = WARMUP_RUNS + MEASURED_RUNS;
+    // Repeats are opt-in: one run by default keeps iteration fast, 3+ is for publishing.
+    let measured_runs = reps.unwrap_or(1).clamp(1, 5);
+    let total_runs = WARMUP_RUNS + measured_runs;
 
+    /// Physically implausible prefill = the request hit the slot KV cache instead of
+    /// evaluating. Dropping those samples is what stops the "tens of thousands" spikes.
+    const IMPLAUSIBLE_PREFILL_TPS: f64 = 50_000.0;
+
+    #[derive(Clone, Copy)]
     struct RunStats {
         prefill_tps: f64,
         prompt_tokens: usize,
     }
 
-    let repetitive = bench_prompts::is_repetitive_mode(&bench_prompt_mode);
+    fn median(mut v: Vec<RunStats>) -> RunStats {
+        v.sort_by(|a, b| {
+            a.prefill_tps
+                .partial_cmp(&b.prefill_tps)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        v[v.len() / 2]
+    }
+
 
     // Probe per-slot n_ctx before release so we can clamp full-CTX PP targets.
     let slot_n_ctx = bench_prompts::probe_min_slot_n_ctx(&client, port).await;
@@ -56,7 +71,7 @@ pub async fn cmd_bench_pp_burst(
     let measured_target = if slot_n_ctx > 0 {
         let clamped = bench_prompts::clamp_pp_target_to_slot_ctx(target_tokens, slot_n_ctx);
         if clamped < target_tokens {
-            log::info!(
+            log::debug!(
                 "[BENCH_PP] clamping PP target {} → {} (slot n_ctx={} budget={})",
                 target_tokens,
                 clamped,
@@ -73,9 +88,10 @@ pub async fn cmd_bench_pp_burst(
     // Release all slot KV caches once before the benchmark loop to prevent prompt caching from skewing results.
     release_all_slots(&client, port, "before benchmark").await;
 
-    let mut measured_run: Option<RunStats> = None;
+    let spec_before = crate::bench_archive::spec_counters(port).await;
+    let mut samples: Vec<RunStats> = Vec::with_capacity(measured_runs);
 
-    for run in 0..TOTAL_RUNS {
+    for run in 0..total_runs {
         if bench_cancel::stop_after_current_requested(port) {
             return Ok(bench_stopped_pp_result());
         }
@@ -94,7 +110,7 @@ pub async fn cmd_bench_pp_burst(
                 "port": port,
                 "phase": phase,
                 "run": run + 1,
-                "total": TOTAL_RUNS,
+                "total": total_runs,
                 "effectiveLength": effective_target,
             }),
         );
@@ -103,7 +119,7 @@ pub async fn cmd_bench_pp_burst(
             &client,
             port,
             effective_target,
-            repetitive,
+            &bench_prompt_mode,
             "[BENCH_PP]",
             // Warmup is tiny — only enforce ceiling on measured full-CTX runs.
             if run < WARMUP_RUNS { None } else { max_prompt_tokens },
@@ -135,7 +151,7 @@ pub async fn cmd_bench_pp_burst(
                     0.0
                 };
 
-                log::info!(
+                log::debug!(
                     "[BENCH_PP] run {} | mode={} | target={} actual={} tok | prefill: {:.1} TPS",
                     run + 1,
                     bench_prompt_mode,
@@ -145,10 +161,17 @@ pub async fn cmd_bench_pp_burst(
                 );
 
                 if run >= WARMUP_RUNS {
-                    measured_run = Some(RunStats {
-                        prefill_tps,
-                        prompt_tokens: p_tokens,
-                    });
+                    if prefill_tps > IMPLAUSIBLE_PREFILL_TPS {
+                        // Cache hit, not a prefill — keep it out of the median.
+                        log::warn!(
+                            "[BENCH_PP] run {} implausible ({:.0} TPS over {} tok) — treating as cache hit, dropping",
+                            run + 1,
+                            prefill_tps,
+                            p_tokens
+                        );
+                    } else if prefill_tps > 0.0 {
+                        samples.push(RunStats { prefill_tps, prompt_tokens: p_tokens });
+                    }
                 }
             }
             Err(e) if bench_cancel::is_stopped_err(&e) => {
@@ -161,12 +184,23 @@ pub async fn cmd_bench_pp_burst(
             return Ok(bench_stopped_pp_result());
         }
 
-        if run < WARMUP_RUNS {
-            release_all_slots(&client, port, "after warmup for cold measured run").await;
-        }
+        // The post-warmup release was there to force a "cold" measured run. It is redundant —
+        // every request already sends cache_prompt:false, so the engine re-evaluates the prompt
+        // regardless — and it had a cost: releasing every slot moves the measured run onto a
+        // different slot than the warmed one, so the first measured run paid cold-slot setup
+        // (graph build) inside prompt_ms. Also, on a --parallel 32 engine it was a second full
+        // sweep of 32 release calls before a test that uses one slot.
     }
 
-    let run = match measured_run {
+    let spec_after = crate::bench_archive::spec_counters(port).await;
+    let (spec_acc, spec_draft, spec_rate) = match (spec_before, spec_after) {
+        (Some((a0, d0)), Some((a1, d1))) if d1 >= d0 && a1 >= a0 => {
+            let (da, dd) = (a1 - a0, d1 - d0);
+            (da, dd, if dd > 0 { da as f64 / dd as f64 } else { 0.0 })
+        }
+        _ => (0, 0, 0.0),
+    };
+    let run = match if samples.is_empty() { None } else { Some(median(samples)) } {
         Some(r) => r,
         None => {
             return Ok(BenchPPResult {
@@ -187,8 +221,35 @@ pub async fn cmd_bench_pp_burst(
         slot_n_ctx,
         run.prefill_tps
     );
-    log::info!("{pp_line}");
+    log::debug!("{pp_line}");
     crate::session_log::append_session_line(&pp_line);
+
+    // Persist the measurement (fire-and-forget; never delays or fails the bench).
+    {
+        let metrics = serde_json::json!({
+            "success": true,
+            "prompt_tokens": run.prompt_tokens,
+            "prompt_tps": run.prefill_tps,
+        });
+        let params = serde_json::json!({
+            "prompt_mode": bench_prompt_mode.clone(),
+            "target_tokens": target_tokens,
+            "effective_target": measured_target,
+            "slot_n_ctx": slot_n_ctx,
+            "reps": measured_runs,
+            "spec_accepted": spec_acc,
+            "spec_draft": spec_draft,
+            "spec_accept_rate": spec_rate,
+        });
+        let bench_port = port;
+        tokio::spawn(async move {
+            if let Err(e) =
+                crate::bench_archive::capture("pp_burst", bench_port, params, metrics).await
+            {
+                log::warn!("[bench-archive] pp capture failed: {e}");
+            }
+        });
+    }
 
     Ok(BenchPPResult {
         bench_prefill_tps: run.prefill_tps,

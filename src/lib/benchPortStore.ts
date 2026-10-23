@@ -25,6 +25,8 @@ export interface BenchPortState {
   ppPhase: "warmup" | "measured" | null;
   ppEffectiveLength: number | null;
   ppTargetTokens: number;
+  /** Measured PP runs; the median is reported (1 = quick iteration). */
+  reps: number;
   showResults: boolean;
   sessionMode: BenchSessionMode;
 }
@@ -35,6 +37,7 @@ function applyBenchControlPrefs(state: BenchPortState, prefs: BenchControlPrefs)
   state.tgWarmupEnabled = prefs.tgWarmupEnabled;
   state.promptMode = prefs.promptMode;
   state.ppTargetTokens = prefs.ppTargetTokens;
+  state.reps = prefs.reps;
 }
 
 function defaultBenchState(): BenchPortState {
@@ -52,6 +55,7 @@ function defaultBenchState(): BenchPortState {
     ppPhase: null,
     ppEffectiveLength: null,
     ppTargetTokens: BENCH_CONTROL_DEFAULTS.ppTargetTokens,
+    reps: BENCH_CONTROL_DEFAULTS.reps,
     showResults: false,
     sessionMode: "idle",
   };
@@ -120,6 +124,7 @@ export function persistBenchControls(ps: BenchPortState): void {
     tgWarmupEnabled: ps.tgWarmupEnabled,
     promptMode: ps.promptMode,
     ppTargetTokens: ps.ppTargetTokens,
+    reps: ps.reps,
   });
   for (const state of portStates.values()) {
     applyBenchControlPrefs(state, ps);

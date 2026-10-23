@@ -1,7 +1,7 @@
-//! Shared synthetic prompts for TG + PP benchmarks — single source of truth for Unique/Repetitive.
+//! Shared synthetic prompts for TG + PP benchmarks — single source of truth for Unique/Code.
 //!
 //! **Unique** — cycles a large technical vocabulary (diverse tokens, low cross-request predictability).
-//! **Repetitive** — cycles a fixed short phrase (highly predictable prefill + temp-0 decode continuation).
+//! **Code** — realistic source: structs, impls, loops, conditionals (idiom repetition, not a phrase loop).
 //!
 //! Both modes calibrate via the engine `/tokenize` endpoint so prefill token counts match targets.
 
@@ -79,23 +79,6 @@ pub const UNIQUE_WORDS: &[&str] = &[
     "krotov-method", "crab-algorithm", "closed-loop-learning", "reinforcement-pulse-design",
 ];
 
-/// Short phrase cycled for repetitive mode — predictable for MTP / speculative decode benches.
-pub const REPETITIVE_PATTERN: &str =
-    "the cat sat on the mat and then walked away because it was tired so the dog ran after the cat but the cat jumped over the fence";
-
-pub fn is_repetitive_mode(bench_prompt_mode: &str) -> bool {
-    match bench_prompt_mode.to_ascii_lowercase().as_str() {
-        "repetitive" => true,
-        "unique" => false,
-        other => {
-            log::warn!(
-                "[BENCH] unknown prompt mode {:?} — defaulting to unique",
-                other
-            );
-            false
-        }
-    }
-}
 
 /// Build a unique-vocabulary prompt by cycling UNIQUE_WORDS in coherent-ish sentences.
 pub fn build_unique_prompt(target_words: usize) -> String {
@@ -138,25 +121,113 @@ pub fn build_unique_prompt(target_words: usize) -> String {
     words.join(" ")
 }
 
-/// Build a repetitive prompt by cycling REPETITIVE_PATTERN until `target_words`.
-pub fn build_repetitive_prompt(target_words: usize) -> String {
-    let pattern_words: Vec<&str> = REPETITIVE_PATTERN.split_whitespace().collect();
-    let mut words = Vec::with_capacity(target_words);
-
-    while words.len() < target_words {
-        for &word in &pattern_words {
-            if words.len() >= target_words {
-                break;
-            }
-            words.push(word);
-        }
-    }
-
-    words.join(" ")
-}
 
 fn token_target_tolerance(target: usize) -> i64 {
     (target as i64 / 25).max(256)
+}
+
+/// What the prefill text looks like. It changes draft acceptance, so a run is only
+/// comparable to another run in the same mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PromptMode {
+    /// Diverse technical prose — the conservative "real text" case.
+    Unique,
+    /// Realistic source code: idiom repetition, not one recycled phrase.
+    Code,
+
+}
+
+impl PromptMode {
+    pub fn parse(mode: &str) -> Self {
+        match mode.trim().to_ascii_lowercase().as_str() {
+            "code" => Self::Code,
+            "unique" => Self::Unique,
+            other => {
+                log::warn!("[BENCH] unknown prompt mode {other:?} — defaulting to unique");
+                Self::Unique
+            }
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Unique => "unique",
+            Self::Code => "code",
+        }
+    }
+
+    pub fn build(self, target_words: usize) -> String {
+        match self {
+            Self::Unique => build_unique_prompt(target_words),
+            Self::Code => build_code_prompt(target_words),
+        }
+    }
+}
+
+/// One realistic source block: struct + impl + loops + conditionals + error returns.
+///
+/// Deliberately idiom-repetitive rather than word-repetitive: it gives speculative decoding
+/// the predictable continuations real code offers (`for`, `if`, `Ok(`, `});`), without
+/// resorting to a single recycled phrase that would make the number meaningless.
+fn code_block(index: usize) -> String {
+    format!(
+        r#"
+#[derive(Debug, Clone)]
+struct Record{index} {{
+    id: u64,
+    name: String,
+    weight: f32,
+    tags: Vec<String>,
+}}
+
+impl Record{index} {{
+    fn new(id: u64, name: &str, weight: f32) -> Self {{
+        Self {{ id, name: name.to_string(), weight, tags: Vec::new() }}
+    }}
+
+    fn active_weight(records: &[Record{index}]) -> f32 {{
+        let mut total = 0.0f32;
+        for record in records {{
+            if record.weight > 0.0 {{
+                total += record.weight;
+            }} else {{
+                continue;
+            }}
+        }}
+        total
+    }}
+
+    fn by_name<'a>(records: &'a [Record{index}], name: &str) -> Option<&'a Record{index}> {{
+        records.iter().find(|record| record.name == name)
+    }}
+
+    fn summarize(records: &[Record{index}]) -> Result<(usize, f32), String> {{
+        if records.is_empty() {{
+            return Err("no records".to_string());
+        }}
+        let count = records.len();
+        let total = Self::active_weight(records);
+        Ok((count, total))
+    }}
+}}
+"#
+    )
+}
+
+/// Build a realistic code prompt by stacking distinct numbered blocks until `target_words`.
+pub fn build_code_prompt(target_words: usize) -> String {
+    let mut out = String::with_capacity(target_words.saturating_mul(6).max(512));
+    out.push_str("// Reference module used for a throughput benchmark. Read only.\n");
+    out.push_str("use std::collections::HashMap;\nuse std::sync::Arc;\n");
+    let mut words = out.split_whitespace().count();
+    let mut index = 0usize;
+    while words < target_words {
+        let block = code_block(index);
+        words += block.split_whitespace().count();
+        out.push_str(&block);
+        index += 1;
+    }
+    out
 }
 
 async fn count_prompt_tokens(client: &reqwest::Client, port: u16, content: &str) -> Option<usize> {
@@ -198,10 +269,10 @@ pub async fn build_prompt_for_token_target(
     client: &reqwest::Client,
     port: u16,
     target_tokens: usize,
-    repetitive: bool,
+    mode: &str,
     log_tag: &str,
 ) -> Result<String, String> {
-    build_prompt_for_token_target_capped(client, port, target_tokens, repetitive, log_tag, None)
+    build_prompt_for_token_target_capped(client, port, target_tokens, mode, log_tag, None)
         .await
 }
 
@@ -210,7 +281,7 @@ pub async fn build_prompt_for_token_target_capped(
     client: &reqwest::Client,
     port: u16,
     target_tokens: usize,
-    repetitive: bool,
+    mode: &str,
     log_tag: &str,
     max_tokens: Option<usize>,
 ) -> Result<String, String> {
@@ -227,19 +298,15 @@ pub async fn build_prompt_for_token_target_capped(
         return Ok(String::new());
     }
 
-    let build = |words: usize| -> String {
-        if repetitive {
-            build_repetitive_prompt(words)
-        } else {
-            build_unique_prompt(words)
-        }
-    };
+    let prompt_mode = PromptMode::parse(mode);
+    let build = |words: usize| -> String { prompt_mode.build(words) };
 
-    let mode_label = if repetitive { "repetitive" } else { "unique" };
-    let mut words = if repetitive {
-        target_tokens
-    } else {
-        target_tokens.saturating_mul(11) / 10
+    let mode_label = prompt_mode.label();
+    let mut words = match prompt_mode {
+        // Code is token-dense (symbols, short identifiers) — start at the token target and let
+        // the calibration loop correct.
+        PromptMode::Code => target_tokens,
+        PromptMode::Unique => target_tokens.saturating_mul(11) / 10,
     };
 
     let mut best_text = build(words);
@@ -291,7 +358,7 @@ pub async fn build_prompt_for_token_target_capped(
         let within_tol = err <= token_target_tolerance(target_tokens);
         let under_cap = max_tokens.map(|m| actual <= m).unwrap_or(true);
         if within_tol && under_cap {
-            log::info!(
+            log::debug!(
                 "{log_tag} prompt calibrated: mode={mode_label} target={} actual={} words={} max={:?}",
                 target_tokens,
                 actual,
@@ -314,7 +381,7 @@ pub async fn build_prompt_for_token_target_capped(
 
     let chosen = best_under_text.unwrap_or(best_text);
     if let Some(actual) = count_prompt_tokens(client, port, &chosen).await {
-        log::info!(
+        log::debug!(
             "{log_tag} prompt best-effort: mode={mode_label} target={} tokenize={} err={} words={} max={:?} (last_best_actual={})",
             target_tokens,
             actual,
@@ -326,7 +393,7 @@ pub async fn build_prompt_for_token_target_capped(
     } else if bench_cancel::stop_after_current_requested(port) {
         return Err(bench_cancel::STOPPED_ERR.to_string());
     } else {
-        log::info!(
+        log::debug!(
             "{log_tag} prompt best-effort: mode={mode_label} target={} err={} words={} max={:?}",
             target_tokens,
             best_err,
@@ -370,22 +437,31 @@ mod tests {
     }
 
     #[test]
-    fn repetitive_prompt_cycles_fixed_pattern() {
-        let text = build_repetitive_prompt(80);
-        let words: Vec<&str> = text.split_whitespace().collect();
-        assert_eq!(words.len(), 80);
-        assert_eq!(words[0], "the");
-        assert_eq!(words[1], "cat");
-        let pattern_len = REPETITIVE_PATTERN.split_whitespace().count();
-        assert_eq!(words[pattern_len], "the");
-        assert_eq!(words[pattern_len + 1], "cat");
+    fn mode_parsing_is_case_insensitive_and_defaults_to_unique() {
+        assert_eq!(PromptMode::parse("unique"), PromptMode::Unique);
+        assert_eq!(PromptMode::parse("CODE"), PromptMode::Code);
+        assert_eq!(PromptMode::parse("nonsense"), PromptMode::Unique);
+        // Retired mode: old stored prefs must not blow up, they fall back to unique.
+        assert_eq!(PromptMode::parse("repetitive"), PromptMode::Unique);
     }
 
     #[test]
-    fn mode_parsing() {
-        assert!(!is_repetitive_mode("unique"));
-        assert!(is_repetitive_mode("repetitive"));
-        assert!(is_repetitive_mode("Repetitive"));
-        assert!(is_repetitive_mode("REPETITIVE"));
+    fn code_prompt_is_realistic_code_not_one_recycled_phrase() {
+        let text = build_code_prompt(400);
+        // Real code shape: structure and control flow, which is what speculative decoding
+        // can predict — but many distinct lines, so it is not a phrase loop.
+        for needle in ["struct Record", "impl Record", "fn ", "for ", "if ", "Ok(", "return Err"] {
+            assert!(text.contains(needle), "code prompt missing {needle:?}");
+        }
+        let distinct: std::collections::HashSet<&str> = text.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+        assert!(distinct.len() > 20, "code prompt should have many distinct lines, got {}", distinct.len());
+        assert!(text.split_whitespace().count() >= 400);
+    }
+
+    #[test]
+    fn code_prompt_scales_to_the_tolerated_budget() {
+        let text = build_code_prompt(4_000);
+        let words = text.split_whitespace().count();
+        assert!(words >= 4_000 && words <= 4_800, "unexpected size {words}");
     }
 }
