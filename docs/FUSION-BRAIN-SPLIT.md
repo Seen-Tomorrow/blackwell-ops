@@ -46,7 +46,7 @@ Engines used: **0.5B** = Qwen2.5-0.5B-Instruct Q8_0 (`b=1024/256`, or `3072/1536
 | 4 | TG ×4 / ×16 / ×32 | **pass** | ×4: 1 145.6 bench / 1 277.3 AVG @+1 s / 1 283.8 frozen / 103 ms lane ramp. ×16: 1 628.6 / 1 692.0 / 1 716.5 / 380 ms. ×32: 1 712.0 / **0 at +1.16 s then 1 757.6 at +2 s** / 1 785.2 / 889 ms. No ramp from ~500. |
 | 5 | ctx bars ×16 | **pass** | 16 slots at CTX 64K → 4 096/slot; after 56 634 decoded (≈4 096/lane) every bar read **100 %** — denominator is the per-slot budget, not the 64K total. |
 | 6 | frozen hero | **pass** | Value holds between requests (display sat at 1 401.1 / 636.6 / 4.5k with no blink). PP freezes the *final* rate (65 374 tok → 3 056); parallel TG freezes the *peak* (`peak_gen`). |
-| 7 | STABLE / ggml-tom | **pending** | not exercised in this session — the only row still owed before the split can be called safe. |
+| 7 | STABLE / ggml-tom | **pass** | ggml-master STABLE profile (`artifacts/ggml-master/stable`, unpatched): `/events/sse` → **HTTP 404** for both the app reader and an independent client, badge **POLL**, and the ×32 TG ran entirely on the poll path like pre-SSE (bench 509.8, frozen 547.1 `peak_gen`, per-slot 17.1). `ggml-tom` is not registered in DEV. |
 | 8 | engine restart | **pass on the badge, miss on stream reattach** | no stale `SSE`: disconnect clears the port snapshot and the badge goes `POLL` immediately. The stream itself reattached 30 s and 16 s after relaunches (retry ladder 2/4/…/30 s survives the engine-down gap); polling keeps the display live, so the perceived restart is ~2 s but the stream is not. |
 
 Findings the split must not lose:
@@ -68,7 +68,9 @@ Findings the split must not lose:
 5. **`/slots` ctx capacity is authoritative per lane.** A 16-lane engine must never divide by
    the engine-wide context; that is the exact bug the x16 bars caught here.
 6. **Source honesty held.** Badge was `SSE` while attached, `POLL` on the 27B before the reader
-   reattached, then `SSE` — no frame claimed a source it did not have.
+   reattached, then `SSE` — no frame claimed a source it did not have. The unpatched STABLE
+   engine answered `/events/sse` with **404**; the badge stayed `POLL` and the poll path carried
+   the whole run, which is the pre-SSE behaviour the split must leave untouched.
 
 Scope: `ggml-master` (the bearer engine) gets a dedicated SSE brain. `cafe-llama`, `ggml-tom`,
 `ggml_quiet` and any unpatched engine keep today's brain, restored to its pre-SSE behaviour.
