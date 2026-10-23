@@ -191,10 +191,12 @@ export default function LogsPanel({ stack }: { stack: StackEntry[] }) {
   const totalLogLines = getTotalLogLines();
   const hasAnySlot = slotSummaries.size > 0;
 
+  // ALL view keeps one query under the synthetic key -1 so it can search across every slot.
+  const logSearchKey = activeLogSlot === "all" ? -1 : (activeLogSlot as number);
   const activeLogSearchQuery = useMemo(() => {
-    if (typeof activeLogSlot !== "number") return "";
-    return logSearchBySlot[activeLogSlot]?.trim() ?? "";
-  }, [activeLogSlot, logSearchBySlot]);
+    if (activeLogSlot !== "all" && typeof activeLogSlot !== "number") return "";
+    return logSearchBySlot[logSearchKey]?.trim() ?? "";
+  }, [activeLogSlot, logSearchKey, logSearchBySlot]);
 
   // Auto-scroll to the bottom on new lines, unless the user scrolled up.
   const prevLineCountRef = useRef(0);
@@ -258,9 +260,10 @@ export default function LogsPanel({ stack }: { stack: StackEntry[] }) {
             const entries = flatLogs.get(slot) ?? [];
             const stackEntry = stack.find((s) => s.idx === slot);
             const alias = stackEntry?.alias || entries[0]?.alias || `SLOT ${slot}`;
-            const slotQuery = logSearchBySlot[slot] ?? "";
             const lineQuery =
-              activeLogSlot === "all" ? slotQuery : logSearchBySlot[activeLogSlot as number] ?? "";
+              activeLogSlot === "all"
+                ? logSearchBySlot[-1] ?? ""
+                : logSearchBySlot[activeLogSlot as number] ?? "";
             return (
               <div key={`slot-${slot}`} className="space-y-0.5">
                 {activeLogSlot === "all" && (

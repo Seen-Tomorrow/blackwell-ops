@@ -85,6 +85,12 @@ export default function EngineLogsSwitcher({
     ? slots.find((s) => s.slot === activeLogSlot)
     : null;
 
+  // The ALL view searches across every slot, so it keeps its query under a synthetic key.
+  const searchAll = activeLogSlot === "all";
+  const searchKey = searchAll ? -1 : (activeLogSlot as number);
+  const searchValue = logSearchBySlot[searchKey] ?? "";
+  const searchAvailable = searchAll || (typeof activeLogSlot === "number" && Boolean(activeSlotMeta));
+
   return (
     <div className="engine-logs-switcher flex-shrink-0">
       <TabPageHeader
@@ -168,15 +174,17 @@ export default function EngineLogsSwitcher({
         ) : null}
       </div>
 
-      {typeof activeLogSlot === "number" && activeSlotMeta ? (
+      {searchAvailable ? (
         <div className="engine-logs-switcher__toolbar">
-          <span className="engine-logs-switcher__search-label">SEARCH IN LOG</span>
+          <span className="engine-logs-switcher__search-label">
+            {searchAll ? "SEARCH ALL LOGS" : "SEARCH IN LOG"}
+          </span>
           <input
             type="text"
-            value={logSearchBySlot[activeLogSlot] ?? ""}
-            onChange={(e) => onSlotLogSearchChange(activeLogSlot, e.target.value)}
+            value={searchValue}
+            onChange={(e) => onSlotLogSearchChange(searchKey, e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && logSearchBySlot[activeLogSlot]?.trim()) {
+              if (e.key === "Enter" && searchValue.trim()) {
                 e.preventDefault();
                 onLogSearchStep?.();
               }
@@ -191,8 +199,8 @@ export default function EngineLogsSwitcher({
           <button
             type="button"
             title="Reset search highlight"
-            onClick={() => onClearSlotLogSearch(activeLogSlot)}
-            disabled={!logSearchBySlot[activeLogSlot]?.trim()}
+            onClick={() => onClearSlotLogSearch(searchKey)}
+            disabled={!searchValue.trim()}
             className="engine-logs-switcher__reset-search"
           >
             RESET SEARCH
