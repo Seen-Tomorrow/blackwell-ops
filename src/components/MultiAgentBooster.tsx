@@ -884,18 +884,18 @@ export default function MultiAgentBooster({
           )}
         </div>
 
+        {/* SPEC-EXTRA / draft strip sits above the BATCH/UBATCH instrument row. */}
+        {violetStrip ? (
+          <div className="full-auto-cockpit__footer full-auto-cockpit__footer--actions">
+            {violetStrip}
+          </div>
+        ) : null}
+
         {instrumentSlot ? (
           <div className="full-auto-cockpit__instruments cockpit-instruments">{instrumentSlot}</div>
         ) : null}
 
       </div>
-
-      {/* Footer: draft strip + SPEC-EXTRA only (AGENTIC lives in header). */}
-      {violetStrip ? (
-        <div className="full-auto-cockpit__footer full-auto-cockpit__footer--actions">
-          {violetStrip}
-        </div>
-      ) : null}
         </>
       ) : null}
     </div>
