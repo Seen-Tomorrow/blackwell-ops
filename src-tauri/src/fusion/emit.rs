@@ -75,8 +75,10 @@ pub struct FusionUpdate {
     #[serde(rename = "prefillTpsInstant")]
     pub prefill_tps_instant: f64,
 
-    /// PP from the library's own prompt-eval clock (`t_p_eval_ms`): excludes the server's HTTP
-    /// setup and any context-checkpoint KV copies, so it is the closest match to llama-bench.
+    /// PP from the library's own prompt-eval clock (`t_p_eval_ms`): excludes the server's
+    /// wall-clock setup and the 54 ms calibration. It does **not** exclude llama-server's
+    /// context-checkpoint copies (42 157-token A/B: 7 661 slot / 7 734 lib with checkpoints,
+    /// 8 914 with `-ctxcp 0`) — only `-ctxcp 0` removes that cost.
     /// 0 until the engine reported a library time for the last request (so the UI can hide it).
     #[serde(rename = "prefillTpsLib")]
     pub prefill_tps_lib: f64,

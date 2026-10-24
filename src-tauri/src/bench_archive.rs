@@ -200,6 +200,11 @@ fn canonical_flag(tok: &str) -> Option<&'static str> {
         "-ngl" | "--n-gpu-layers" => Some("n-gpu-layers"),
         "-sm" | "--split-mode" => Some("split-mode"),
         "--tensor-split" => Some("tensor-split"),
+        // Checkpoints copy KV state inside the PP window: a run with them on is not comparable
+        // to one with `-ctxcp 0` (measured 7 742 vs 8 495 tok/s on the same model/prompt).
+        "-ctxcp" | "--ctx-checkpoints" | "--swa-checkpoints" => Some("ctx-checkpoints"),
+        "-cms" | "--checkpoint-min-step" => Some("checkpoint-min-step"),
+        "-cram" | "--cache-ram" => Some("cache-ram"),
         _ => None,
     }
 }
@@ -530,6 +535,37 @@ mod tests {
             comparability_hash("tg_burst", &engine, &with_mtp),
             comparability_hash("tg_burst", &engine, &without),
             "MTP on/off must not share a series"
+        );
+    }
+
+    #[test]
+    fn comparability_separates_checkpoint_settings() {
+        let engine = EngineSnapshot {
+            port: 8889,
+            model_path: Some("m.gguf".into()),
+            build_info: Some("b1".into()),
+            n_ctx: Some(131072),
+            total_slots: Some(1),
+            ..Default::default()
+        };
+        let with = parse_launch_flags(r#"llama-server.exe -m "m.gguf" -c 131072 -ub 4096"#);
+        let without = parse_launch_flags(r#"llama-server.exe -m "m.gguf" -c 131072 -ub 4096 -ctxcp 0"#);
+        assert_eq!(without["ctx-checkpoints"], "0");
+        assert_eq!(with.get("ctx-checkpoints"), None, "default means 32, not absent");
+        let run = |flags: serde_json::Value| {
+            let mut p = serde_json::json!({
+                "prompt_mode": "code",
+                "n_predict": 0,
+                "parallel_requests": 1,
+                "flags": flags,
+            });
+            let _ = p.as_object_mut();
+            comparability_hash("pp_burst", &engine, &p)
+        };
+        assert_ne!(
+            run(with),
+            run(without),
+            "PP with checkpoint copies must not share a series with -ctxcp 0"
         );
     }
 

@@ -164,11 +164,12 @@ pub fn steady_prefill_tps(tokens: f64, slot_ms: f64) -> f64 {
 
 /// Prefill tok/s from the library's own prompt-eval clock (`t_p_eval_ms`).
 ///
-/// No setup deduction: the timestamp is already inside the library, so this number excludes both
-/// the HTTP/slot floor and any server-side work that copies state outside `t_p_eval` — notably
-/// the context-checkpoint writes llama-server charges to the request at long prompts. It is the
-/// figure llama-bench reports (`llama_print_timings: prompt eval time`), shown as the small
-/// companion to [`steady_prefill_tps`].
+/// No setup deduction: the timestamp is already inside the library, so this number excludes the
+/// server's HTTP/slot floor and the 54 ms calibration. It does **not** remove llama-server's
+/// context-checkpoint copies — measured on b11842 they land inside `t_p_eval` too (42 157-token
+/// A/B: 7 661 slot / 7 734 lib with checkpoints, 8 914 with `-ctxcp 0`, so lib only closes ~1 %
+/// of a ~14 % gap). Only `-ctxcp 0` removes that cost; this figure is the uncalibrated cross-check
+/// shown as the small companion readout.
 pub fn lib_prefill_tps(tokens: u64, lib_ms: f64) -> f64 {
     if tokens == 0 || lib_ms <= 0.0 {
         return 0.0;

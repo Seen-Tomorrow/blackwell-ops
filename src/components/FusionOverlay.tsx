@@ -812,7 +812,7 @@ export default function FusionOverlay({
                   {prefillLibTps > 0 && (
                     <span
                       className="fusion-instrument__pp-lib"
-                      title="Library prompt-eval clock (t_p_eval): excludes server setup and context-checkpoint KV copies — the figure llama-bench reports"
+                      title="Library prompt-eval clock (t_p_eval), no setup deduction. Checkpoint copies are included — relaunch the engine with -ctxcp 0 for a checkpoint-free number."
                     >
                       <span className="fusion-instrument__pp-lib-label">LIB</span>
                       {Math.round(prefillLibTps).toLocaleString()} tok/s

@@ -354,14 +354,17 @@ Native crashes also append `%TEMP%\blackwell-crash.log` (heap `0xC0000374`, ille
   llama-bench. It is a calibration, capped at 65 % of the window; re-measure it when the engine
   patch level or launch flags change (procedure in the handoff doc), and keep raw `PP tok/s` in
   the report so the difference stays visible. The hero's small `LIB` companion
-  (`prefillTpsLib`) is tokens ÷ `request_end.lib_prompt_ms` (`t_p_eval`): that clock excludes the
-  setup **and** llama-server's context-checkpoint KV copies, so it is the closest match to
-  llama-bench and can sit 3–6 % above the slot figure at long prompts (16 223 tok: 7 095 lib vs
-  ~6 798 slot). Checkpoints are `-ctxcp/--ctx-checkpoints` (max per slot, default 32, 0
-  disables) and `-cms/--checkpoint-min-step` (default 8 192 tok, 0 = no minimum); they are
+  (`prefillTpsLib`) is tokens ÷ `request_end.lib_prompt_ms` (`t_p_eval`): it removes the server's
+  wall-clock setup and the 54 ms calibration, but **not** the checkpoint cost — measured on b11842
+  with checkpoints on, lib tracked slot within 1 % (42 157-token A/B: 7 661 slot / 7 734 lib, while
+  the same prompt with `-ctxcp 0` ran at 8 914). Do not sell it as a checkpoint-free number; only
+  `-ctxcp 0` removes that tax. Checkpoints are `-ctxcp/--ctx-checkpoints` (max per slot, default
+  32, 0 disables) and `-cms/--checkpoint-min-step` (default 8 192 tok, 0 = no minimum); they are
   created at user-message starts and near the prompt end, cost a KV copy (≈112 MiB at 16K ctx,
   ≈150 MiB at 32K) inside the request, and are pure overhead for a bench that sends a fresh
-  prompt every time. `-cram 0` disables the prompt cache (and prefix reuse) entirely.
+  prompt every time. `-cram 0` disables the prompt cache (and prefix reuse) entirely. The bench
+  archive's comparability flags include `ctx-checkpoints` / `checkpoint-min-step` / `cache-ram`,
+  so a checkpointed run no longer shares a series with a `-ctxcp 0` run.
 - **The poll loop is the render tick.** `FusionUpdate` is emitted once per loop iteration, so
   throttling `/slots` throttles the hero even when every value came from SSE. Decouple render
   from poll before slowing the poller.
