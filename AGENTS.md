@@ -349,11 +349,11 @@ Native crashes also append `%TEMP%\blackwell-crash.log` (heap `0xC0000374`, ille
   a single lane's snapshot must never stand in for a 16-lane engine. `/slots` + `/metrics` + stderr
   remain the fallback for unpatched engines and the other providers. `telemetrySource` in
   `FusionUpdate` reports which path fed the tick; when it says `SSE` the values are the stream's.
-- **PP is displayed steady-state, not raw.** `PREFILL_SETUP_MS = 54` in `fusion/brain.rs` deducts
-  the measured per-request server setup so the hero compares with llama-bench. It is a
-  calibration, capped at 65 % of the window; re-measure it when the engine patch level or launch
-  flags change (procedure in the handoff doc), and keep raw `PP tok/s` in the report so the
-  difference stays visible.
+- **PP is displayed steady-state, not raw.** `PREFILL_SETUP_MS = 54` in `fusion/meter.rs`
+  (`steady_prefill_tps`) deducts the measured per-request server setup so the hero compares with
+  llama-bench. It is a calibration, capped at 65 % of the window; re-measure it when the engine
+  patch level or launch flags change (procedure in the handoff doc), and keep raw `PP tok/s` in
+  the report so the difference stays visible.
 - **The poll loop is the render tick.** `FusionUpdate` is emitted once per loop iteration, so
   throttling `/slots` throttles the hero even when every value came from SSE. Decouple render
   from poll before slowing the poller.
@@ -367,8 +367,12 @@ Native crashes also append `%TEMP%\blackwell-crash.log` (heap `0xC0000374`, ille
 - `BINARY_UPDATES_ENABLED = true` — App `.7z` + Full NSIS + provider packs via GitHub releases (Majestic ships assets).
 - Fusion prefill % needs `prefill_tokens_total` from `NewPrompt` log; `/slots` `n_prompt_tokens_processed` is the numerator. Do not call `reset_prefill_counters()` on `/slots` new_request after NewPrompt — it zeroes total and forces fallback to sparse `print_timing` stderr lines.
 - Bench warmup→measured has no `/slots` idle gap — call `reset_bench_meters_for_port` at each bench phase start or hero AVG/LIVE TPS bleeds warmup into measured.
-- **Telemetry tick:** Single constant `log_hub::TELEMETRY_TICK_MS` drives stderr batch flush, `fusion::brain` active `/slots` poll, and `FusionContext` `RENDER_INTERVAL_MS` — keep them synced (one knob). Currently **25ms** (~80 HTTP polls/s per active engine). 10ms was most reliable but heavy; 50ms is lighter if phase detection still holds.
-- **Fusion adapters:** Per-provider metrics live in `src-tauri/src/fusion/adapters/` — set `spawn_profile.fusion_adapter` in factory JSON (`ggml_master` | `ggml_tom` | `ggml_quiet`). Per-slot KV/decode/prompt tracking lives in `fusion/slotstate.rs` (`SlotBank`); the frontend `FusionUpdate` contract + emit fingerprint + snapshot rehydrate cache live in `fusion/emit.rs`; pure hero TPS math in `fusion/meter.rs` (`session_avg_tps`, `per_slot_tps`). `brain.rs` remains the orchestrator + phase/log-handler. `ggml_quiet` = silent server (no stderr PP/TG logs); brain derives PP totals/progress from `/slots` peak `n_prompt_tokens` and opens the multi-slot TG window on decode-without-log signal. Custom providers: `customCapabilities.fusionAdapter`.
+- **Telemetry tick:** Single constant `log_hub::TELEMETRY_TICK_MS` drives stderr batch flush, the
+  poll brain's active `/slots` poll, the SSE brain's render tick and `FusionContext`
+  `RENDER_INTERVAL_MS` — keep them synced (one knob). Currently **25ms** (~80 HTTP polls/s per
+  active engine on the poll path; the SSE brain does no HTTP at all). 10ms was most reliable but
+  heavy; 50ms is lighter if phase detection still holds.
+- **Fusion adapters:** Per-provider metrics live in `src-tauri/src/fusion/adapters/` — set `spawn_profile.fusion_adapter` in factory JSON (`ggml_master` | `ggml_tom` | `ggml_quiet`). Per-slot KV/decode/prompt tracking lives in `fusion/slotstate.rs` (`SlotBank`); the frontend `FusionUpdate` contract + emit fingerprint + snapshot rehydrate cache live in `fusion/emit.rs`; pure hero TPS math in `fusion/meter.rs` (`session_avg_tps`, `per_slot_tps`, the 54 ms prefill calibration). **One brain per engine, chosen once at launch:** `start_brain` probes `/events/sse`; a patched engine runs `fusion/sse.rs` (stream only, no polling), everything else runs `fusion/brain.rs` (the poll brain: orchestrator + phase/log-handler). Phase, request clock, TTFT and the freeze/latch policy are shared in `fusion/lifecycle.rs` — never re-derive them in either brain. The registry is `BrainHandle::{Poll,Sse}`; `Sse` has no inbound channel, so quiet-mode flips and bench meter resets are no-ops there (request boundaries come from the stream's `request_epoch`). `ggml_quiet` = silent server (no stderr PP/TG logs); the poll brain derives PP totals/progress from `/slots` peak `n_prompt_tokens` and opens the multi-slot TG window on decode-without-log signal. Custom providers: `customCapabilities.fusionAdapter`.
 - **Runtime quiet toggle:** Silent models on a normal ggml-master provider (e.g. DS4) flip the live brain via the fusion-display `QUIET`/`LOGS` button → `set_fusion_quiet_mode(port, quiet)` → `BrainInbound::SetQuietMode` toggles `has_log_belt` + re-polls `/slots`. Persisted per model (`fusion.quiet.<model>` localStorage). Do not gate this on provider template — it is per-model. Tom uses stdout `PromptProcessingProgress` at `-lv 3`; brain skips `/slots` PP when `slots_expose_prompt_processed() == false`.
 - **FIT adapters:** Per-provider `llama-fit-params` + learned VRAM in `src-tauri/src/fit_adapters/` — set `spawn_profile.fit_adapter`. Tom rejects `--fit-print`; use `projected to use N MiB` from `llama_params_fit_impl` (do not parse CUDA init VRAM lines).
 - **FIT library cache:** `config/cache/fit_scan_full.json` is partitioned by `fit_adapter` (`ggml_master` | `ggml_tom`), not shared across providers. Legacy flat file migrates into `ggml_master` on first read.

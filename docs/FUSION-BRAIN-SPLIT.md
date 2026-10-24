@@ -1,25 +1,27 @@
 # Fusion brain split — SSE-only brain for ggml-master
 
-Status: **steps 1–2 landed and live-verified; step 3 (SseBrain skeleton) is next.** Everything
-below assumes the code checkpoint `6265bbd23` (384 Rust tests green, 2 ignored, working tree clean;
-the doc commits sit on top of it).
+Status: **steps 1–3 landed; step 4 (bench validation of the SSE brain) is next.** Everything
+below assumes the code checkpoint that ends step 3 (391 Rust tests green, 2 ignored, working tree
+clean; the doc commits sit on top of it).
 
 ## Start here (next session)
 
-1. `git log --oneline -5` — expect the docs commit that last touched this file, then
-   `6265bbd23 fix(fusion): reset the wave token base…`, `ece8f3ab6 feat(fusion): probe /events/sse…`,
-   `f696c6e1f refactor(fusion): extract RequestLifecycle…`. If the tree is dirty, stop and look.
-2. `npm run check` — 384 tests, css/tsc/vitest included. Anything red is not yours.
-3. Read *Where we are* + *Migration steps*, then continue at step 3 (`SseBrain` skeleton).
+1. `git log --oneline -6` — expect the docs commit that last touched this file, then the
+   `feat(fusion): SseBrain…` commit, `6265bbd23 fix(fusion): reset the wave token base…`,
+   `ece8f3ab6 feat(fusion): probe /events/sse…`, `f696c6e1f refactor(fusion): extract
+   RequestLifecycle…`. If the tree is dirty, stop and look.
+2. `npm run check` — 391 tests, css/tsc/vitest included. Anything red is not yours.
+3. Read *Where we are* + *Migration steps*, then run step 4 (bench validation on an edge engine
+   with the SseBrain selected; the eight-row baseline and its re-run are in this file).
 4. The eight-row table's live re-run on the split build is **done** (see *Re-run on the split
    build* below): all eight behaviours reproduced and the probe confirmed true/false per engine.
    The only open sample is a cold-start TG ×1 first-second AVG, noted there.
 
 Already landed and reusable: the reader (`engine_events.rs`) with per-slot state, lane aggregate,
-windowing (`gen_tps_window`), staleness clearing and the launch-time `/events/sse` probe; the shared
-`fusion/lifecycle.rs` (phase, request clock, TTFT, freeze) both brains call; the `BrainHandle` enum
-(`Poll` live, `Sse` reserved for step 3); the engine patch (`foundry/patches/`, three patches,
-ordered); the steady-PP calibration.
+windowing, staleness clearing, the launch probe and `request_epoch`; the shared
+`fusion/lifecycle.rs` (phase, request clock, TTFT, freeze); `fusion/sse.rs` (the stream-only
+brain); the `BrainHandle` enum (`Poll` live, `Sse` live); the engine patch
+(`foundry/patches/`, three patches, ordered); the steady-PP calibration in `fusion/meter.rs`.
 
 ### Tomorrow's test checklist (one category at a time)
 
@@ -123,17 +125,19 @@ Scope: `ggml-master` (the bearer engine) gets a dedicated SSE brain. `cafe-llama
 
 | piece | file | role |
 | --- | --- | --- |
-| reader | `engine_events.rs` | SSE parse, per-`(port, slot)` state, aggregate, reconnect, launch probe |
+| reader | `engine_events.rs` | SSE parse, per-`(port, slot)` state, aggregate, reconnect, launch probe, `request_epoch` |
 | contract | `fusion/emit.rs` | `FusionUpdate` — the only thing the UI knows |
-| math | `fusion/meter.rs` | pure rate/clamp helpers, `ParallelMeter` walls |
+| math | `fusion/meter.rs` | pure rate/clamp helpers, `ParallelMeter` walls, the 54 ms PP calibration |
 | lifecycle | `fusion/lifecycle.rs` | phase, request clock, TTFT split, freeze/latch — shared by every brain |
-| state machine | `fusion/brain.rs` | meters, log belt, poll loop (`FusionBrain`, the `Poll` variant) |
+| SSE brain | `fusion/sse.rs` | stream-only brain: renders `FusionUpdate` with no HTTP at all |
+| poll brain | `fusion/brain.rs` | meters, log belt, poll loop (`FusionBrain`, the `Poll` variant) |
 | poller | `fusion/poller.rs` | `/slots` + `/metrics` deserialization |
 | slots | `fusion/slotstate.rs` | `SlotBank`, per-slot KV/decode bookkeeping |
-| selection | `brain.rs` `start_brain` | one `BrainHandle` per engine; probe logs capability, still `Poll` |
+| selection | `brain.rs` `start_brain` | one `BrainHandle` per engine; probe picks `Sse` or `Poll` once, at launch |
 
-The SSE work landed as a ~90-line **overlay** inside `build_update`, not as a second brain. That is
-the thing being promoted.
+The SSE work started life as a ~90-line **overlay** inside `build_update`; step 3 promoted it to a
+separate brain for patched engines. The overlay is still in `brain.rs` for the poll path and is
+deleted in step 6.
 
 ## Target
 
@@ -266,6 +270,21 @@ Each step is shippable on its own and leaves the tree green.
    `Poll` (`Sse` has no inbound channel). The app still spawns `FusionBrain` for both outcomes.
 3. **SseBrain skeleton.** Renders `FusionUpdate` from the stream for phase/PP/TG/TTFT/ctx, calls the
    shared lifecycle, no HTTP at all. Wired for `ggml_master` engines behind a DEV flag.
+   **Done, without the DEV flag** (owner decision 2026-10-24 — no users; REL is tested by hand).
+   `fusion/sse.rs` is selected whenever the launch probe says the engine serves `/events/sse`;
+   everything else keeps the poll brain. It reads only the reader's snapshot on the 25 ms render
+   tick, drives `RequestLifecycle` for phase/clock/TTFT/freeze and feeds `meter::steady_prefill_tps`
+   for PP. Known gaps, deliberate for the skeleton:
+   - no stderr: `lp_*` fields stay empty (the UI's log-comparison line shows nothing) and
+     `specMode` is `None`, so the draft-family label falls back to MTP; acceptance counters are real.
+   - readiness comes from the launch path (`engine_stack::slot_ready`), not the stream — `/events/sse`
+     has no `ready` event. A `ready` frame is the proper stream addition (step 5).
+   - bench meter reset/freeze are no-ops for `Sse` (no inbound channel). Request boundaries come from
+     `engine_events::request_epoch` (one bump per wave, not per lane) plus any lane's `request_end`,
+     so warmup/measured and back-to-back requests still reset the meters.
+   - ctx bars are per-request prompt+generated fill, held between requests; the stream carries no
+     session KV counter like `SlotBank::session_n_decoded`.
+   - per-lane `speculative` / `id_task` are absent from the stream (shown false / None).
 4. **Bench validation.** PP and TG on `ggml_master`, single-slot and 16/32-lane, against llama-bench
    and against the old brain on the same engine. Accept: no regression on the frozen-hero behaviour,
    hero updates ≥ the poll cadence, numbers within noise of `lib_prompt_ms`-based values.
@@ -277,11 +296,13 @@ Each step is shippable on its own and leaves the tree green.
 
 ## Verification
 
-- `npm run check` green at every step (384 Rust tests today, 2 ignored).
-- On `ggml_master`: SSE badge `SSE`, hero smooth, PP steady within ~3 % of the report's `PP steady`.
+- `npm run check` green at every step (391 Rust tests today, 2 ignored).
+- On `ggml_master`: log line says `brain=Sse`; hero smooth, PP steady within ~3 % of the report's
+  `PP steady`; ctx bars per lane; no `/slots` polling in the session log (poll tier lines stop).
 - On `stable` and `ggml-tom`: badge `POLL`, behaviour identical to today's — the regression you
   already ran on the unpatched engine is the baseline.
-- Parallel 16 and 32: aggregate sums lanes, AVG reaches true rate within ~1 s, ctx bars per lane.
+- Parallel 16 and 32: aggregate sums lanes, AVG reaches true rate within ~1 s, ctx bars per lane,
+  frozen value follows `peak_gen`.
 
 ## Risks
 
