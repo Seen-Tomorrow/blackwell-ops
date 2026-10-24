@@ -2675,12 +2675,14 @@ impl FusionBrain {
             )
         };
 
-        // Small companion readout: the library's own prompt-eval clock. Prefer the stream's
-        // `lib_prompt_ms`; without a patched engine fall back to the stderr `prompt eval time`
-        // rate the log belt already parsed (both exclude server setup and checkpoint copies).
-        let prefill_tps_lib = match sse_snapshot.as_ref().and_then(|t| t.last_request.as_ref()) {
-            Some(r) => meter::lib_prefill_tps(r.tokens_evaluated, r.lib_prompt_ms),
-            None => clamp_display_tps(self.prefill_tps_eval),
+        // REAL PP: prefill without the context-checkpoint copies (copy clock from the engine log).
+        let prefill_tps_real = match sse_snapshot.as_ref().and_then(|t| t.last_request.as_ref()) {
+            Some(r) => meter::real_prefill_tps(r.tokens_evaluated, r.prompt_ms, r.checkpoint_ms),
+            None => meter::real_prefill_tps(
+                self.prefill_tokens_total.max(0) as u64,
+                prefill_ms_out.unwrap_or(0.0),
+                crate::engine_events::checkpoint_ms(self.port),
+            ),
         };
 
         FusionUpdate {
@@ -2705,8 +2707,7 @@ impl FusionBrain {
             } else {
                 clamp_display_tps(self.prefill_tps_instant)
             },
-            prefill_tps_lib,
-            prefill_progress,
+            prefill_tps_real,            prefill_progress,
             prefill_tokens,
             // Emit the effective request total (log-derived, or /slots peak sum when no log belt)
             // so the frontend can render `processed / total` even without engine stderr.

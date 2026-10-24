@@ -69,13 +69,14 @@ Findings the split must not lose:
    line *is* the whole-request average — it falls because later ubatches attend over a longer
    context and the tail includes checkpoint writes. A median of per-ubatch rates would be higher,
    but it would not match llama-bench's `n_prompt / t_prompt` and would hide the long-context cost;
-   do not "fix" the freeze that way. The small `LIB` readout (`prefillTpsLib`) is the same request
-   measured on `lib_prompt_ms` (`t_p_eval`): it removes the server's setup calibration but **not**
-   the checkpoint copies — measured with checkpoints on, lib tracked slot within 1 % (42 157-token
-   A/B: 7 661 slot / 7 734 lib, while the same prompt with `-ctxcp 0` ran at 8 914). Checkpoint
-   cost is real but avoidable: `-ctxcp 0` disables them, `-cms N` sets the minimum spacing (default
-   8 192 tok), and they are pure overhead for a bench that always sends a fresh prompt. The bench
-   archive's comparability flags now include `ctx-checkpoints` / `checkpoint-min-step` /
+   do not "fix" the freeze that way. The small `REAL PP` readout (`prefillTpsReal`) is tokens ÷
+   (slot prompt time − checkpoint save time), the save time measured from the engine log
+   (`created context checkpoint` timestamp vs the last streamed frame), so a checkpointed engine
+   reports the rate a `-ctxcp 0` run produces (42 157-token A/B: 7 661 wall vs 8 914 clean; the
+   copies were ~0.5 s at 76 K). The PP bench result and archive now use the same adjustment, so
+   benching no longer requires a clean-launch engine. Checkpoints remain launch-time
+   (`-ctxcp 0`, `-cms N`); they are pure overhead for a bench that always sends a fresh prompt.
+   The archive's comparability flags include `ctx-checkpoints` / `checkpoint-min-step` /
    `cache-ram`, so a checkpointed run no longer claims to be comparable to a `-ctxcp 0` one.
 2. **PP fluency is ubatch cadence, not brain policy.** `B=8192/4096` emits ~1 frame per 4 096
    tokens and reports steady 4 242.4; `B=1024/256` emits ~16× more frames and reports 3 501.4.

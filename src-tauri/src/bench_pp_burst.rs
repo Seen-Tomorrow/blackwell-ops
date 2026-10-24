@@ -53,6 +53,10 @@ pub async fn cmd_bench_pp_burst(
     struct RunStats {
         prefill_tps: f64,
         prompt_tokens: usize,
+        /// Wall prompt time reported by the engine (includes checkpoint copies).
+        prompt_ms: f64,
+        /// Checkpoint copy time measured from the engine log and removed from `prefill_tps`.
+        checkpoint_ms: f64,
     }
 
     fn median(mut v: Vec<RunStats>) -> RunStats {
@@ -145,19 +149,32 @@ pub async fn cmd_bench_pp_burst(
             Ok(parsed) => {
                 let p_tokens = parsed["tokens_evaluated"].as_u64().unwrap_or(0) as usize;
                 let p_ms = parsed["timings"]["prompt_ms"].as_f64().unwrap_or(0.0);
-                let prefill_tps = if p_ms > 0.0 {
-                    (p_tokens as f64 / p_ms) * 1000.0
+                // The checkpoint saves are logged just before the response is written; give the
+                // stderr reader one tick if the last line has not landed yet.
+                let mut checkpoint_ms = crate::engine_events::checkpoint_ms(port);
+                if checkpoint_ms == 0.0 {
+                    tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+                    checkpoint_ms = crate::engine_events::checkpoint_ms(port);
+                }
+                if checkpoint_ms < 0.0 || checkpoint_ms >= p_ms * 0.5 {
+                    checkpoint_ms = 0.0; // implausible: never skew the number with a bad clock
+                }
+                let clean_ms = p_ms - checkpoint_ms;
+                let prefill_tps = if clean_ms > 0.0 {
+                    (p_tokens as f64 / clean_ms) * 1000.0
                 } else {
                     0.0
                 };
 
                 log::debug!(
-                    "[BENCH_PP] run {} | mode={} | target={} actual={} tok | prefill: {:.1} TPS",
+                    "[BENCH_PP] run {} | mode={} | target={} actual={} tok | prefill: {:.1} TPS (wall {:.1} ms, checkpoints {:.1} ms)",
                     run + 1,
                     bench_prompt_mode,
                     effective_target,
                     p_tokens,
-                    prefill_tps
+                    prefill_tps,
+                    p_ms,
+                    checkpoint_ms
                 );
 
                 if run >= WARMUP_RUNS {
@@ -170,7 +187,12 @@ pub async fn cmd_bench_pp_burst(
                             p_tokens
                         );
                     } else if prefill_tps > 0.0 {
-                        samples.push(RunStats { prefill_tps, prompt_tokens: p_tokens });
+                        samples.push(RunStats {
+                            prefill_tps,
+                            prompt_tokens: p_tokens,
+                            prompt_ms: p_ms,
+                            checkpoint_ms,
+                        });
                     }
                 }
             }
@@ -213,13 +235,15 @@ pub async fn cmd_bench_pp_burst(
     };
 
     let pp_line = format!(
-        "[BENCH_PP] RESULT | mode={} | requested={} effective={} actual={} tok | slot_n_ctx={} | prefill: {:.1} TPS",
+        "[BENCH_PP] RESULT | mode={} | requested={} effective={} actual={} tok | slot_n_ctx={} | prefill: {:.1} TPS (wall {:.1} ms, checkpoints {:.1} ms)",
         bench_prompt_mode,
         target_tokens,
         measured_target,
         run.prompt_tokens,
         slot_n_ctx,
-        run.prefill_tps
+        run.prefill_tps,
+        run.prompt_ms,
+        run.checkpoint_ms
     );
     log::debug!("{pp_line}");
     crate::session_log::append_session_line(&pp_line);
@@ -229,7 +253,15 @@ pub async fn cmd_bench_pp_burst(
         let metrics = serde_json::json!({
             "success": true,
             "prompt_tokens": run.prompt_tokens,
+            // Real PP: wall time minus the checkpoint saves, so a checkpointed engine reports
+            // the same figure as a `-ctxcp 0` run.
             "prompt_tps": run.prefill_tps,
+            "prompt_tps_wall": if run.prompt_ms > 0.0 {
+                (run.prompt_tokens as f64 / run.prompt_ms) * 1000.0
+            } else {
+                0.0
+            },
+            "checkpoint_ms": run.checkpoint_ms,
         });
         let params = serde_json::json!({
             "prompt_mode": bench_prompt_mode.clone(),

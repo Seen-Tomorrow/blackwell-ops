@@ -5007,8 +5007,8 @@ html[data-industrial-bezel="brush"] {
   text-overflow: ellipsis;
 }
 
-/* Second PP figure — the library clock, without setup or checkpoint copies. */
-.fusion-instrument__pp-lib {
+/* Second PP figure — prefill with the context-checkpoint copies removed. */
+.fusion-instrument__pp-real {
   display: flex;
   align-items: baseline;
   gap: 4px;
@@ -5020,7 +5020,7 @@ html[data-industrial-bezel="brush"] {
   white-space: nowrap;
 }
 
-.fusion-instrument__pp-lib-label {
+.fusion-instrument__pp-real-label {
   font-size: var(--type-hairline);
   font-weight: 700;
   letter-spacing: 0.14em;

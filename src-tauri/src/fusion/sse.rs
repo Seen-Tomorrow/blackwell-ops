@@ -302,15 +302,21 @@ impl SseBrain {
             None => (0.0, 0.0, 0, 0),
         };
 
-        // Library clock for the *completed* request: `t_p_eval` excludes the server's setup and
-        // context-checkpoint copies. Only meaningful once the request is closed — while it is
-        // open, `last_request` still describes the previous one.
-        let pp_lib = if open {
-            0.0
-        } else {
-            t.and_then(|t| t.last_request.as_ref())
-                .map(|r| meter::lib_prefill_tps(r.tokens_evaluated, r.lib_prompt_ms))
-                .unwrap_or(0.0)
+        // REAL PP: prefill without the context-checkpoint copies. The copy clock comes from the
+        // engine log (checkpoint save timestamps), so this works on any engine launched with
+        // checkpoints on; it is the figure a `-ctxcp 0` run produces.
+        let pp_real = match t {
+            Some(t) if t.pp_processed > 0 => meter::real_prefill_tps(
+                t.pp_processed.max(0) as u64,
+                t.pp_time_ms,
+                crate::engine_events::checkpoint_ms(self.port),
+            ),
+            Some(t) if !open => t
+                .last_request
+                .as_ref()
+                .map(|r| meter::real_prefill_tps(r.tokens_evaluated, r.prompt_ms, r.checkpoint_ms))
+                .unwrap_or(0.0),
+            _ => 0.0,
         };
 
         let gen_avg = if self.req.request_closed {
@@ -435,7 +441,7 @@ impl SseBrain {
             prefill_tps_session: pp_rate,
             // The stream's PP rate is already the steady figure, so LIVE and AVG agree here.
             prefill_tps_instant: pp_rate,
-            prefill_tps_lib: pp_lib,
+            prefill_tps_real: pp_real,
             prefill_progress: pp_progress,
             prefill_tokens: pp_tokens,
             prefill_tokens_total: pp_total,
@@ -658,6 +664,10 @@ mod tests {
             parallel: 16,
             ..config(16)
         });
+        crate::engine_events::note_engine_line(
+            port,
+            "0.00.00.000.000 I slot operator (): id  0 | task 1 | new prompt, n_ctx_slot = 4096",
+        );
         crate::engine_events::ingest_for_test(
             port,
             concat!(
@@ -684,13 +694,19 @@ mod tests {
             update.prefill_tps_session > 0.0,
             "the PP hero rate comes from the same frame"
         );
-        assert_eq!(
-            update.prefill_tps_lib, 0.0,
-            "no library clock while the request is still open"
+        assert!(
+            update.prefill_tps_real > 0.0,
+            "REAL PP is live while the request prefills"
         );
 
-        // The request ends: `prompt_ms` includes two 112 MiB checkpoint copies, the library
-        // clock does not, so the two readouts must split by a visible margin.
+        // The request ends: `prompt_ms` includes a checkpoint copy. The copy is measured from
+        // the engine log: the last frame (401.2 ms of task time) then a save completing at
+        // 701.2 ms -> 300 ms of copy that REAL PP must add back.
+        crate::engine_events::note_engine_line(
+            port,
+            "0.00.00.701.200 I slot create_check: id  0 | task 1 | created context checkpoint 1 of 32 (pos_min = 2044, pos_max = 2044, n_tokens = 2045, size = 112.571 MiB)",
+        );
+
         crate::engine_events::ingest_for_test(
             port,
             concat!(
@@ -699,6 +715,10 @@ mod tests {
             ),
         );
         let t = crate::engine_events::snapshot(port).expect("snapshot");
+        assert!(
+            (t.last_request.as_ref().unwrap().checkpoint_ms - 300.0).abs() < 0.01,
+            "checkpoint clock must be attached to the request summary"
+        );
         let lanes = crate::engine_events::lanes(port);
         brain.observe(Some(&t), &lanes, now);
         let closed = brain.build_update(Some(&t), &lanes, now);
@@ -707,14 +727,16 @@ mod tests {
             closed.request_closed,
             "request_end must close the request"
         );
+        let want = crate::fusion::meter::real_prefill_tps(16223, 2440.0, 300.0);
         assert!(
-            (closed.prefill_tps_lib - 7095.0).abs() < 2.0,
-            "library PP = tokens / lib_prompt_ms, got {}",
-            closed.prefill_tps_lib
+            (closed.prefill_tps_real - want).abs() < 1.0,
+            "REAL PP = tokens / (prompt_ms - copy_ms), got {} want {}",
+            closed.prefill_tps_real,
+            want
         );
         assert!(
-            closed.prefill_tps_session < closed.prefill_tps_lib,
-            "slot-clock PP includes the checkpoint copies and must sit lower"
+            closed.prefill_tps_real > closed.prefill_tps_session,
+            "slot PP includes the copy and must sit below REAL PP"
         );
     }
 

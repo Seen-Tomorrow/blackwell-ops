@@ -243,10 +243,14 @@ impl LogHub {
         tokio::task::spawn_blocking({
             let tx = line_tx.clone();
             let alias = alias.clone();
+            let port = engine_port;
             move || {
                 drain_engine_pipe_lines(
                     stderr,
                     |line| {
+                        // Checkpoint saves only exist in the log; this clock is what lets the PP
+                        // meter report the prefill rate without those copies.
+                        crate::engine_events::note_engine_line(port, &line);
                         // Closed channel = process_lines exited; stop forwarding.
                         let _ = tx.blocking_send(EnginePipeLine::Stderr(line));
                     },

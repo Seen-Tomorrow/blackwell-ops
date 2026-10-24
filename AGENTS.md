@@ -353,18 +353,20 @@ Native crashes also append `%TEMP%\blackwell-crash.log` (heap `0xC0000374`, ille
   (`steady_prefill_tps`) deducts the measured per-request server setup so the hero compares with
   llama-bench. It is a calibration, capped at 65 % of the window; re-measure it when the engine
   patch level or launch flags change (procedure in the handoff doc), and keep raw `PP tok/s` in
-  the report so the difference stays visible. The hero's small `LIB` companion
-  (`prefillTpsLib`) is tokens ÷ `request_end.lib_prompt_ms` (`t_p_eval`): it removes the server's
-  wall-clock setup and the 54 ms calibration, but **not** the checkpoint cost — measured on b11842
-  with checkpoints on, lib tracked slot within 1 % (42 157-token A/B: 7 661 slot / 7 734 lib, while
-  the same prompt with `-ctxcp 0` ran at 8 914). Do not sell it as a checkpoint-free number; only
-  `-ctxcp 0` removes that tax. Checkpoints are `-ctxcp/--ctx-checkpoints` (max per slot, default
-  32, 0 disables) and `-cms/--checkpoint-min-step` (default 8 192 tok, 0 = no minimum); they are
-  created at user-message starts and near the prompt end, cost a KV copy (≈112 MiB at 16K ctx,
-  ≈150 MiB at 32K) inside the request, and are pure overhead for a bench that sends a fresh
-  prompt every time. `-cram 0` disables the prompt cache (and prefix reuse) entirely. The bench
-  archive's comparability flags include `ctx-checkpoints` / `checkpoint-min-step` / `cache-ram`,
-  so a checkpointed run no longer shares a series with a `-ctxcp 0` run.
+  the report so the difference stays visible. The hero's small `REAL PP` companion
+  (`prefillTpsReal`) is tokens ÷ (slot prompt time − checkpoint save time), with the save time
+  measured from the engine log: a `created context checkpoint` line's timestamp minus the last
+  streamed `prompt_progress` frame, anchored on the request's `new prompt` line. That is the rate
+  a `-ctxcp 0` run produces, so a checkpointed engine still benches like a clean one without a
+  relaunch. The PP bench result and archive use the same adjustment (`prompt_tps` is real;
+  `prompt_tps_wall` and `checkpoint_ms` are recorded alongside). Checkpoints are
+  `-ctxcp/--ctx-checkpoints` (max per slot, default 32, 0 disables) and
+  `-cms/--checkpoint-min-step` (default 8 192 tok, 0 = no minimum); they are created at
+  user-message starts and near the prompt end, cost a KV copy (≈112 MiB at 16K ctx, ≈150 MiB at
+  32K) inside the request, and are pure overhead for a bench that sends a fresh prompt every
+  time. `-cram 0` disables the prompt cache (and prefix reuse) entirely. The bench archive's
+  comparability flags include `ctx-checkpoints` / `checkpoint-min-step` / `cache-ram`, so a
+  checkpointed run no longer shares a series with a `-ctxcp 0` run.
 - **The poll loop is the render tick.** `FusionUpdate` is emitted once per loop iteration, so
   throttling `/slots` throttles the hero even when every value came from SSE. Decouple render
   from poll before slowing the poller.
