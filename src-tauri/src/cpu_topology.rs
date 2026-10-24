@@ -551,7 +551,7 @@ pub fn topology_from_l3_and_cores(l3: &[(u64, u64)], core_masks: &[u64]) -> CpuT
             }
         })
         .collect();
-    ccds.sort_by(|a, b| a.lp_mask.cmp(&b.lp_mask));
+    ccds.sort_by_key(|a| a.lp_mask);
 
     let (compute_idx, vcache_idx) = classify_asymmetric(&ccds);
     CpuTopology {
@@ -672,10 +672,10 @@ fn detect_topology_windows() -> Result<CpuTopology, String> {
             let body = offset + mem::size_of::<Header>();
 
             match hdr.relationship {
-                RELATION_PROCESSOR_CORE => {
+                RELATION_PROCESSOR_CORE
                     // PROCESSOR_RELATIONSHIP: Flags@0 Eff@1 Reserved[20] GroupCount@22
                     // GROUP_AFFINITY @24: Mask u64
-                    if body + 32 <= offset + size {
+                    if body + 32 <= offset + size => {
                         let group_count =
                             u16::from_le_bytes([buf[body + 22], buf[body + 23]]);
                         if group_count >= 1 {
@@ -687,11 +687,10 @@ fn detect_topology_windows() -> Result<CpuTopology, String> {
                             }
                         }
                     }
-                }
-                RELATION_CACHE => {
+                RELATION_CACHE
                     // CACHE_RELATIONSHIP:
                     // Level@0 Assoc@1 Line@2 Size@4 Type@8 Reserved[18] GroupCount@30 GA@32
-                    if body + 40 <= offset + size {
+                    if body + 40 <= offset + size => {
                         let level = buf[body];
                         if level == 3 {
                             let cache_size = u32::from_le_bytes(
@@ -714,7 +713,6 @@ fn detect_topology_windows() -> Result<CpuTopology, String> {
                             }
                         }
                     }
-                }
                 _ => {}
             }
             offset += size;

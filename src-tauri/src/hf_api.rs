@@ -153,7 +153,7 @@ pub fn aggregate_gguf_entries(
         }
     }
 
-    result.sort_by(|a, b| a.size_bytes.cmp(&b.size_bytes));
+    result.sort_by_key(|a| a.size_bytes);
     result
 }
 

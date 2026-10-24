@@ -448,11 +448,7 @@ pub async fn scan_cpu() -> Result<CpuInfo, String> {
         0.0
     };
 
-    let sysinfo_avg = if freq_n > 0 {
-        (freq_sum / freq_n) as u32
-    } else {
-        0
-    };
+    let sysinfo_avg = freq_sum.checked_div(freq_n).unwrap_or(0) as u32;
     // Base/advertised (WMI MaxClockSpeed) — sticky 4300 on Ryzen; turbo is not here.
     let max_clock_mhz = cached_base_clock_mhz(sysinfo_avg);
     // Live = base × PDH % Processor Performance (moves under load / turbo).

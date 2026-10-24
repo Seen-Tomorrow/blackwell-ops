@@ -46,10 +46,7 @@ fn parse_edge(line: &str) -> Option<(u32, u32, &str)> {
     let mut rest = line;
     while let Some(open) = rest.find('[') {
         let after_open = &rest[open + 1..];
-        let close = match after_open.find(']') {
-            Some(c) => c,
-            None => return None,
-        };
+        let close = after_open.find(']')?;
         let inner = &after_open[..close];
         if let Some((a, b)) = inner.split_once('/') {
             if let (Ok(done), Ok(total)) = (a.trim().parse::<u32>(), b.trim().parse::<u32>()) {
@@ -103,7 +100,7 @@ fn classify(tail: &str) -> (Option<String>, Option<String>) {
         .rsplit(' ')
         .find(|tok| !tok.is_empty())
         .and_then(|tok| {
-            let leaf = tok.rsplit(|c| c == '\\' || c == '/').next().unwrap_or(tok);
+            let leaf = tok.rsplit(['\\', '/']).next().unwrap_or(tok);
             let plausible = leaf.len() <= 96 && leaf.len() > 2 && leaf.contains('.') && !leaf.starts_with('.');
             if plausible {
                 Some(leaf.to_string())

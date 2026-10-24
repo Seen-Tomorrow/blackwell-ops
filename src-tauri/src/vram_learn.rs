@@ -1322,6 +1322,7 @@ pub fn record_launch_memory_snapshot(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // Tauri IPC: one param per wire field; bundling would change the invoke shape
 pub fn get_learned_vram(
     model_path: String,
     provider_id: String,
@@ -1583,7 +1584,7 @@ fn find_batch_delta(
         if let Some(delta) = entry.batch_deltas.get(pair) {
             if best
                 .as_ref()
-                .map_or(true, |current| delta.measured_at > current.measured_at)
+                .is_none_or(|current| delta.measured_at > current.measured_at)
             {
                 best = Some(delta.clone());
             }

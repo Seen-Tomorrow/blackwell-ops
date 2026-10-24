@@ -462,6 +462,6 @@ mod tests {
     fn code_prompt_scales_to_the_tolerated_budget() {
         let text = build_code_prompt(4_000);
         let words = text.split_whitespace().count();
-        assert!(words >= 4_000 && words <= 4_800, "unexpected size {words}");
+        assert!((4_000..=4_800).contains(&words), "unexpected size {words}");
     }
 }

@@ -347,7 +347,7 @@ pub fn aggregate(port: u16) -> Option<SlotTelemetry> {
         } else if lane.phase == "TG" && out.phase != "PP" {
             out.phase = "TG".to_string();
         }
-        if latest.map_or(true, |l| lane.seq >= l.seq) {
+        if latest.is_none_or(|l| lane.seq >= l.seq) {
             latest = Some(lane);
         }
     }
