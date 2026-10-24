@@ -2,14 +2,20 @@
 //!
 //! The engine broadcasts the events its per-request stream already carries, so an observer that
 //! does not own the request (fusion) can meter PP and TG without polling `/slots`, scraping
-//! `/metrics` or parsing stderr. Gated by `BLACKWELL_ENGINE_SSE=1`; when the variable is unset or
-//! the engine lacks the endpoint, nothing here runs and the existing poll path is unchanged.
+//! `/metrics` or parsing stderr. One reader task per port keeps a per-lane snapshot; the poll
+//! brain consumes it as an overlay and the SSE-only brain (`fusion/sse.rs`) reads it as its whole
+//! source. `probe()` is the one-shot launch capability check, and `request_epoch()` gives
+//! stream-only callers request boundaries that do not depend on catching a transient idle tick.
+//!
+//! `BLACKWELL_ENGINE_SSE=0|false|off|no` disables the reader (legacy escape hatch); otherwise it is
+//! on and an engine without the endpoint answers one 404 and leaves the poll path alone.
 //!
 //! Event shapes are defined by the engine patch `foundry/patches/ggml-master-telemetry-sse.patch`
 //! (`docs/ENGINE-TELEMETRY-SSE-HANDOFF.md`).
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, OnceLock};
+use std::time::Instant;
 
 use futures_util::StreamExt;
 use serde::Deserialize;
@@ -105,6 +111,11 @@ pub struct SlotTelemetry {
     pub aggregate_pp_tps: f64,
     /// Aggregate-only: earliest lane TTFT.
     pub aggregate_ttft_ms: Option<f64>,
+    /// Aggregate-only: the *last* busy lane's first token — the clock the SSE brain's TG
+    /// average starts from ("AVG starts when the last lane decodes").
+    pub t_wave_start: Option<Instant>,
+    /// Aggregate-only: every busy lane has produced its first token (wave clock may start).
+    pub wave_ready: bool,
 }
 
 /// Kept as an alias: callers that only care about a single-slot engine read `snapshot()`.
@@ -213,6 +224,30 @@ fn started() -> &'static Mutex<HashSet<u16>> {
     STARTED.get_or_init(|| Mutex::new(HashSet::new()))
 }
 
+fn request_epochs() -> &'static Mutex<HashMap<u16, u64>> {
+    static EPOCHS: OnceLock<Mutex<HashMap<u16, u64>>> = OnceLock::new();
+    EPOCHS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Monotonic per-port request counter, bumped on every `state: PP` transition.
+///
+/// A brain that renders only from the stream needs request boundaries that do not depend on
+/// catching a transient `IDLE` between two back-to-back requests (bench reps, agent turns):
+/// comparing this counter is a hard "a new request started" edge.
+pub fn request_epoch(port: u16) -> u64 {
+    request_epochs()
+        .lock()
+        .ok()
+        .and_then(|m| m.get(&port).copied())
+        .unwrap_or(0)
+}
+
+fn bump_request_epoch(port: u16) {
+    if let Ok(mut m) = request_epochs().lock() {
+        *m.entry(port).or_insert(0) += 1;
+    }
+}
+
 /// Telemetry for the port's active engine slot.
 ///
 /// A single-slot engine (`--parallel 1`) has exactly one record. Ports that have seen several
@@ -240,6 +275,22 @@ pub fn snapshot(port: u16) -> Option<SlotTelemetry> {
 /// Per-slot view, for callers that know the engine slot id.
 pub fn slot_snapshot(port: u16, slot: i32) -> Option<SlotTelemetry> {
     snapshots().lock().ok()?.get(&(port, slot)).cloned()
+}
+
+/// Per-lane telemetry for a port, sorted by engine slot id.
+///
+/// Callers that need per-slot data (ctx bars) read this instead of re-parsing the stream.
+pub fn lanes(port: u16) -> Vec<SlotTelemetry> {
+    let Ok(map) = snapshots().lock() else {
+        return Vec::new();
+    };
+    let mut out: Vec<SlotTelemetry> = map
+        .iter()
+        .filter(|((p, _), _)| *p == port)
+        .map(|(_, v)| v.clone())
+        .collect();
+    out.sort_by_key(|s| s.slot);
+    out
 }
 
 /// Engine-wide view across every lane of a parallel engine.
@@ -272,6 +323,10 @@ pub fn aggregate(port: u16) -> Option<SlotTelemetry> {
     let mut pp_rate = 0.0;
     let mut ttft: Option<f64> = None;
     let mut latest: Option<&SlotTelemetry> = None;
+    // Wave clock: the last busy lane's first token, only once every busy lane has decoded.
+    let mut busy_lanes = 0usize;
+    let mut all_busy_decoded = true;
+    let mut wave_start: Option<Instant> = None;
 
     for lane in &lanes {
         out.n_ctx += lane.n_ctx;
@@ -289,6 +344,13 @@ pub fn aggregate(port: u16) -> Option<SlotTelemetry> {
         if let Some(t) = lane.ttft_ms() {
             ttft = Some(ttft.map_or(t, |cur: f64| cur.min(t)));
         }
+        if lane.phase == "PP" || lane.phase == "TG" {
+            busy_lanes += 1;
+            match lane.t_first_token {
+                Some(t) => wave_start = Some(wave_start.map_or(t, |cur: Instant| cur.max(t))),
+                None => all_busy_decoded = false,
+            }
+        }
         if lane.phase == "PP" {
             out.phase = "PP".to_string();
         } else if lane.phase == "TG" && out.phase != "PP" {
@@ -305,6 +367,10 @@ pub fn aggregate(port: u16) -> Option<SlotTelemetry> {
     // way that survives the summed counters: the summed rate is not derivable, keep it explicit.
     out.aggregate_pp_tps = pp_rate;
     out.aggregate_ttft_ms = ttft;
+    // Only a wave where every busy lane produced a token may start the TG average; a queued or
+    // still-prefilling lane means the clock has not started yet.
+    out.wave_ready = busy_lanes > 0 && all_busy_decoded;
+    out.t_wave_start = if out.wave_ready { wave_start } else { None };
     Some(out)
 }
 
@@ -473,6 +539,7 @@ fn apply(port: u16, evt: &EngineEvent) {
     let entry = map.entry((port, slot)).or_default();
     entry.slot = slot;
     let now = std::time::Instant::now();
+    let mut opened_wave = false;
     match evt {
         EngineEvent::State {
             phase,
@@ -494,6 +561,7 @@ fn apply(port: u16, evt: &EngineEvent) {
                 entry.request_closed = false;
                 // a two-request-old decode sample must not leak into this request's window
                 entry.gen_samples.clear();
+                opened_wave = true;
             } else if phase == "TG" && entry.t_prefill_end.is_none() {
                 entry.t_prefill_end = Some(now);
             }
@@ -568,6 +636,18 @@ fn apply(port: u16, evt: &EngineEvent) {
             entry.spec_accepted_total += *spec_accepted;
             entry.spec_draft_total += *spec_draft;
             entry.request_closed = true;
+        }
+    }
+
+    // One request boundary per *wave*, not per lane: a parallel engine emits a PP state per lane,
+    // and only the first busy lane of the wave may advance the epoch.
+    if opened_wave {
+        let busy_now = map
+            .iter()
+            .filter(|((p, _), e)| *p == port && (e.phase == "PP" || e.phase == "TG"))
+            .count();
+        if busy_now == 1 {
+            bump_request_epoch(port);
         }
     }
 }
@@ -752,6 +832,80 @@ mod tests {
         assert_eq!(agg.phase, "PP");
         assert_eq!(agg.pp_processed, 2048);
         assert!((agg.prefill_tps() - 10_240.0).abs() < 1.0, "got {}", agg.prefill_tps());
+    }
+
+    #[test]
+    fn request_epoch_bumps_only_on_a_new_pp() {
+        let port = 9500;
+        let before = request_epoch(port);
+        let mut buf = String::from(concat!(
+            "data: {\"type\":\"state\",\"slot\":0,\"phase\":\"PP\",\"busy\":1,\"peak\":1,\"n_ctx\":4096,\"n_ctx_used\":0,\"seq\":1}\n\n",
+            "data: {\"type\":\"state\",\"slot\":0,\"phase\":\"TG\",\"busy\":1,\"peak\":1,\"n_ctx\":4096,\"n_ctx_used\":100,\"seq\":2}\n\n"
+        ));
+        for evt in take_frames(&mut buf) {
+            apply(port, &evt);
+        }
+        assert_eq!(request_epoch(port), before + 1, "one PP transition, one request");
+
+        let mut buf = String::from(concat!(
+            "data: {\"type\":\"state\",\"slot\":0,\"phase\":\"IDLE\",\"busy\":0,\"peak\":1,\"n_ctx\":4096,\"n_ctx_used\":0,\"seq\":3}\n\n",
+            "data: {\"type\":\"state\",\"slot\":0,\"phase\":\"PP\",\"busy\":1,\"peak\":1,\"n_ctx\":4096,\"n_ctx_used\":0,\"seq\":4}\n\n"
+        ));
+        for evt in take_frames(&mut buf) {
+            apply(port, &evt);
+        }
+        assert_eq!(request_epoch(port), before + 2, "the next request is a new epoch");
+    }
+
+    #[test]
+    fn request_epoch_is_one_per_wave_not_per_lane() {
+        let port = 9501;
+        let before = request_epoch(port);
+        let mut buf = String::from(concat!(
+            "data: {\"type\":\"state\",\"slot\":0,\"phase\":\"PP\",\"busy\":1,\"peak\":2,\"n_ctx\":4096,\"n_ctx_used\":0,\"seq\":1}\n\n",
+            "data: {\"type\":\"state\",\"slot\":1,\"phase\":\"PP\",\"busy\":2,\"peak\":2,\"n_ctx\":4096,\"n_ctx_used\":0,\"seq\":2}\n\n",
+            "data: {\"type\":\"state\",\"slot\":0,\"phase\":\"TG\",\"busy\":2,\"peak\":2,\"n_ctx\":4096,\"n_ctx_used\":50,\"seq\":3}\n\n",
+            "data: {\"type\":\"state\",\"slot\":1,\"phase\":\"TG\",\"busy\":2,\"peak\":2,\"n_ctx\":4096,\"n_ctx_used\":60,\"seq\":4}\n\n"
+        ));
+        for evt in take_frames(&mut buf) {
+            apply(port, &evt);
+        }
+        assert_eq!(
+            request_epoch(port),
+            before + 1,
+            "a 2-lane wave is one request, not two"
+        );
+    }
+
+    #[test]
+    fn aggregate_wave_start_waits_for_every_busy_lane() {
+        let mut buf = String::from(concat!(
+            "data: {\"type\":\"state\",\"slot\":0,\"phase\":\"TG\",\"busy\":2,\"peak\":2,\"n_ctx\":4096,\"n_ctx_used\":10,\"seq\":1}\n\n",
+            "data: {\"type\":\"gen_progress\",\"slot\":0,\"decoded\":5,\"gen_ms\":100.0,\"tps\":50.0,\"seq\":2}\n\n",
+            "data: {\"type\":\"state\",\"slot\":1,\"phase\":\"TG\",\"busy\":2,\"peak\":2,\"n_ctx\":4096,\"n_ctx_used\":0,\"seq\":3}\n\n"
+        ));
+        for evt in take_frames(&mut buf) {
+            apply(9400, &evt);
+        }
+        let agg = aggregate(9400).expect("aggregate");
+        assert!(!agg.wave_ready, "lane 1 has not produced a token");
+        assert_eq!(agg.t_wave_start, None);
+
+        let mut buf = String::from("data: {\"type\":\"gen_progress\",\"slot\":1,\"decoded\":3,\"gen_ms\":50.0,\"tps\":60.0,\"seq\":4}\n\n");
+        for evt in take_frames(&mut buf) {
+            apply(9400, &evt);
+        }
+        let agg = aggregate(9400).expect("aggregate");
+        assert!(agg.wave_ready, "every busy lane has decoded");
+        let lane1_first = slot_snapshot(9400, 1)
+            .unwrap()
+            .t_first_token
+            .expect("lane 1 token");
+        assert_eq!(
+            agg.t_wave_start,
+            Some(lane1_first),
+            "the wave clock starts at the LAST lane's first token"
+        );
     }
 
     #[test]

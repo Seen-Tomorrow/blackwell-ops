@@ -72,58 +72,6 @@ fn clamp_display_tps(tps: f64) -> f64 {
     meter::clamp_display_tps(tps)
 }
 
-/// Fixed per-request setup the server charges before a prompt starts moving tokens.
-///
-/// Measured on b11841: 54 ms for IQ3_XXS, 46-55 ms for Q4_K_M / Q6_K, quant-independent, split
-/// as ~18 ms HTTP/slot floor plus ~40 ms first-prefill setup inside `t_p_eval`. llama-bench pays
-/// it once during warmup, so its numbers exclude it. See
-/// `docs/ENGINE-TELEMETRY-SSE-HANDOFF.md`.
-const PREFILL_SETUP_MS: f64 = 54.0;
-
-/// Prefill tok/s with the per-request setup deducted — the figure comparable to llama-bench.
-///
-/// The deduction is capped at 65 % of the measured window: a very short prompt is mostly setup,
-/// and subtracting the full constant there would invent a throughput the engine never produced.
-fn steady_prefill_tps(tokens: f64, slot_ms: f64) -> f64 {
-    if tokens <= 0.0 || slot_ms <= 0.0 {
-        return 0.0;
-    }
-    let deduction = PREFILL_SETUP_MS.min(slot_ms * 0.65);
-    clamp_display_tps(tokens / (slot_ms - deduction) * 1000.0)
-}
-
-#[cfg(test)]
-mod steady_pp_tests {
-    use super::*;
-
-    #[test]
-    fn deducts_setup_from_a_512_prefill() {
-        // 513 tokens in 161.6 ms is the measured shape; llama-bench reports ~4895 on the same run.
-        let tps = steady_prefill_tps(513.0, 161.6);
-        assert!((tps - 4768.0).abs() < 100.0, "got {tps}");
-    }
-
-    #[test]
-    fn long_prompts_barely_move() {
-        // 4097 tokens in 883.8 ms: the 54 ms is noise at this size.
-        let tps = steady_prefill_tps(4097.0, 883.8);
-        assert!((tps - 4942.0).abs() < 250.0, "got {tps}");
-    }
-
-    #[test]
-    fn short_prompts_cannot_explode() {
-        // 11 tokens in 85 ms is mostly setup; the deduction is capped so the figure stays sane.
-        let tps = steady_prefill_tps(11.0, 85.0);
-        assert!(tps > 0.0 && tps < 1000.0, "got {tps}");
-    }
-
-    #[test]
-    fn zero_inputs_are_zero() {
-        assert_eq!(steady_prefill_tps(0.0, 100.0), 0.0);
-        assert_eq!(steady_prefill_tps(100.0, 0.0), 0.0);
-    }
-}
-
 // ── Configuration (immutable after construction) ─────────────────────
 
 #[derive(Clone)]
@@ -1253,10 +1201,6 @@ impl FusionBrain {
     ) {
         let mut brain = Self::new(&config);
         registry::register_slot_adapter(config.slot_idx, config.adapter);
-
-        // Optional SSE telemetry reader. No-op unless BLACKWELL_ENGINE_SSE=1; the poll path below
-        // stays authoritative until the SSE path has carried a full session.
-        crate::engine_events::ensure(config.port);
 
         // Emit initial LOADING update so frontend shows launch animation
         let init = brain.build_update(&[], None);
@@ -2694,7 +2638,7 @@ impl FusionBrain {
                     t.pp_processed.max(0) as usize,
                     {
                         let evaluated = (t.pp_processed - t.pp_cache).max(0) as f64;
-                        let steady = steady_prefill_tps(evaluated, t.pp_time_ms);
+                        let steady = meter::steady_prefill_tps(evaluated, t.pp_time_ms);
                         if steady > 0.0 { steady } else { prefill_tps_session }
                     },
                     if t.gen_tps > 0.0 {
@@ -2709,7 +2653,7 @@ impl FusionBrain {
                     let steady = t
                         .last_request
                         .as_ref()
-                        .map(|r| steady_prefill_tps(r.tokens_evaluated as f64, r.prompt_ms))
+                        .map(|r| meter::steady_prefill_tps(r.tokens_evaluated as f64, r.prompt_ms))
                         .unwrap_or(0.0);
                     (
                         prefill_progress,
@@ -2856,15 +2800,14 @@ pub enum BrainInbound {
 /// The brain running one slot — the variant names the *brain*, not the data source.
 ///
 /// `Poll` is `FusionBrain` (stats + `/slots` + `/metrics` + stderr). `Sse` is the stream-only brain
-/// from the split plan: it has no inbound channel (nothing to route to it) and is constructed by
-/// migration step 3, which is why the variant is still unused here.
+/// from the split plan: it has no inbound channel (nothing to route to it), so quiet-mode flips and
+/// bench meter resets are no-ops there by design.
 enum BrainHandle {
     Poll {
         tx: tokio::sync::mpsc::Sender<BrainInbound>,
         cancel: tokio_util::sync::CancellationToken,
         join: tokio::task::JoinHandle<()>,
     },
-    #[allow(dead_code)] // constructed by the SSE brain (migration step 3)
     Sse {
         cancel: tokio_util::sync::CancellationToken,
         join: tokio::task::JoinHandle<()>,
@@ -2894,7 +2837,7 @@ static BRAIN_REGISTRY: std::sync::LazyLock<parking_lot::Mutex<HashMap<usize, Bra
     std::sync::LazyLock::new(|| parking_lot::Mutex::new(HashMap::new()));
 
 /// Set by [`stop_all_brains`] so cancel paths skip WebView IPC during process exit.
-static FUSION_SHUTTING_DOWN: std::sync::atomic::AtomicBool =
+pub(crate) static FUSION_SHUTTING_DOWN: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
 /// Max wait for a brain to leave after cancel before hard-abort (ms).
@@ -2979,16 +2922,20 @@ pub async fn reset_bench_meters_for_port(port: u16) {
 
 /// Start a fusion brain for an engine. Keyed by slot_idx.
 ///
-/// The `/events/sse` probe runs once here, at launch. It only reports for now — both variants
-/// still spawn `FusionBrain` (migration step 2); the SSE brain is wired in step 3.
+/// The `/events/sse` probe runs once here, at launch: the stream-only brain takes over whenever
+/// the engine serves the telemetry endpoint, and the poll brain remains the fallback for engines
+/// without the patch. Either way the reader is started, because the poll brain's update path also
+/// consumes the stream while it is attached.
 pub async fn start_brain(log_hub: LogHub, config: FusionConfig) {
     let sse_capable = crate::engine_events::probe(config.port).await;
+    crate::engine_events::ensure(config.port);
     log::info!(
-        "[fusion] slot={} provider={} adapter={} port={} brain=Poll sse_capable={}",
+        "[fusion] slot={} provider={} adapter={} port={} brain={} sse_capable={}",
         config.slot_idx,
         config.provider_id,
         config.adapter.as_str(),
         config.port,
+        if sse_capable { "Sse" } else { "Poll" },
         sse_capable
     );
     let old = BRAIN_REGISTRY.lock().remove(&config.slot_idx);
@@ -2997,9 +2944,13 @@ pub async fn start_brain(log_hub: LogHub, config: FusionConfig) {
     }
 
     let idx = config.slot_idx;
-    BRAIN_REGISTRY
-        .lock()
-        .insert(idx, FusionBrain::spawn(log_hub, config));
+    let handle = if sse_capable {
+        let (join, cancel) = crate::fusion::sse::SseBrain::spawn(log_hub, config);
+        BrainHandle::Sse { cancel, join }
+    } else {
+        FusionBrain::spawn(log_hub, config)
+    };
+    BRAIN_REGISTRY.lock().insert(idx, handle);
 }
 
 /// Stop the fusion brain for a specific slot.

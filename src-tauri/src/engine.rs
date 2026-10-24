@@ -649,6 +649,8 @@ pub async fn launch_engine(
         slot_idx: usize,
     ) -> Arc<dyn Fn() + Send + Sync> {
         Arc::new(move || {
+            // Readiness fact for the stream-only fusion brain (no HTTP path to ask).
+            crate::engine_stack::mark_slot_ready(slot_idx);
             let s_clone = stack.clone();
             let si = slot_idx;
             tokio::spawn(async move {
@@ -679,6 +681,8 @@ pub async fn launch_engine(
     // Spawn engine with auto-retry (once) on immediate crash
     let stack_for_ready = app.stack.clone();
     let slot_for_ready = slot_idx;
+    // A relaunch starts unready; the on-ready callback below sets it again.
+    crate::engine_stack::clear_slot_ready(slot_idx);
     let mut last_err = None;
     for attempt in 0..2 {
         let result = EngineStack::load_slot(

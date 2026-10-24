@@ -140,6 +140,28 @@ pub fn clamp_display_tps(tps: f64) -> f64 {
     }
 }
 
+/// Fixed per-request setup the server charges before a prompt starts moving tokens.
+///
+/// Measured on b11841: 54 ms for IQ3_XXS, 46-55 ms for Q4_K_M / Q6_K, quant-independent, split
+/// as ~18 ms HTTP/slot floor plus ~40 ms first-prefill setup inside `t_p_eval`. llama-bench pays
+/// it once during warmup, so its numbers exclude it. See
+/// `docs/ENGINE-TELEMETRY-SSE-HANDOFF.md`.
+pub const PREFILL_SETUP_MS: f64 = 54.0;
+
+/// Prefill tok/s with the per-request setup deducted — the figure comparable to llama-bench.
+///
+/// The deduction is capped at 65 % of the measured window: a very short prompt is mostly setup,
+/// and subtracting the full constant there would invent a throughput the engine never produced.
+///
+/// Shared by the poll brain and the SSE brain; do not re-derive it on either path.
+pub fn steady_prefill_tps(tokens: f64, slot_ms: f64) -> f64 {
+    if tokens <= 0.0 || slot_ms <= 0.0 {
+        return 0.0;
+    }
+    let deduction = PREFILL_SETUP_MS.min(slot_ms * 0.65);
+    clamp_display_tps(tokens / (slot_ms - deduction) * 1000.0)
+}
+
 /// Session-average tok/s from cumulative tokens + cumulative wall ms (hero AVG mode).
 /// Pure — no brain state. Returns 0 until the wall exceeds `min_ms` (filters elapsed≈0 spikes).
 pub fn session_avg_tps(total_tokens: u64, total_ms: u64, min_ms: u64) -> f64 {
@@ -184,5 +206,32 @@ mod tests {
         // Last lane produced its first token: this is the moment the clock may start.
         meter.note_decode_wave(now, 32, true, false, false, true);
         assert!(meter.decode_wall_at().is_some(), "wall opens when every lane decodes");
+    }
+
+    #[test]
+    fn steady_pp_deducts_setup_from_a_512_prefill() {
+        // 513 tokens in 161.6 ms is the measured shape; llama-bench reports ~4895 on the same run.
+        let tps = steady_prefill_tps(513.0, 161.6);
+        assert!((tps - 4768.0).abs() < 100.0, "got {tps}");
+    }
+
+    #[test]
+    fn steady_pp_long_prompts_barely_move() {
+        // 4097 tokens in 883.8 ms: the 54 ms is noise at this size.
+        let tps = steady_prefill_tps(4097.0, 883.8);
+        assert!((tps - 4942.0).abs() < 250.0, "got {tps}");
+    }
+
+    #[test]
+    fn steady_pp_short_prompts_cannot_explode() {
+        // 11 tokens in 85 ms is mostly setup; the deduction is capped so the figure stays sane.
+        let tps = steady_prefill_tps(11.0, 85.0);
+        assert!(tps > 0.0 && tps < 1000.0, "got {tps}");
+    }
+
+    #[test]
+    fn steady_pp_zero_inputs_are_zero() {
+        assert_eq!(steady_prefill_tps(0.0, 100.0), 0.0);
+        assert_eq!(steady_prefill_tps(100.0, 0.0), 0.0);
     }
 }

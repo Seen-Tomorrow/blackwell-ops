@@ -75,6 +75,27 @@ pub enum SlotStatus {
     Running,
 }
 
+/// Slots whose engine passed the app's readiness probe this launch (stack promoted to Running).
+///
+/// Cleared by `launch_engine` before each spawn and set by the on-ready callback. The stream-only
+/// fusion brain uses it because `/events/sse` carries no readiness event: a brain that renders
+/// from the stream alone would otherwise have to call `/slots`/`/health` just to know the model
+/// finished loading.
+static READY_SLOTS: std::sync::LazyLock<parking_lot::Mutex<std::collections::HashSet<usize>>> =
+    std::sync::LazyLock::new(|| parking_lot::Mutex::new(std::collections::HashSet::new()));
+
+pub fn mark_slot_ready(slot_idx: usize) {
+    READY_SLOTS.lock().insert(slot_idx);
+}
+
+pub fn clear_slot_ready(slot_idx: usize) {
+    READY_SLOTS.lock().remove(&slot_idx);
+}
+
+pub fn slot_ready(slot_idx: usize) -> bool {
+    READY_SLOTS.lock().contains(&slot_idx)
+}
+
 impl std::fmt::Display for SlotStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

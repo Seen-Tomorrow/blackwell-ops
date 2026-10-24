@@ -13,6 +13,7 @@ pub mod meter;
 pub mod poller;
 pub mod registry;
 pub mod slotstate;
+pub mod sse;
 
 pub use adapters::FusionAdapterId;
 pub use brain::{
