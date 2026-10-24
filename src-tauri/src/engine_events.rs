@@ -209,9 +209,9 @@ fn snapshots() -> &'static Mutex<HashMap<(u16, i32), SlotTelemetry>> {
     SNAPSHOTS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn started() -> &'static Mutex<HashSet<u16>> {
-    static STARTED: OnceLock<Mutex<HashSet<u16>>> = OnceLock::new();
-    STARTED.get_or_init(|| Mutex::new(HashSet::new()))
+fn started() -> &'static Mutex<HashMap<u16, tokio::task::AbortHandle>> {
+    static STARTED: OnceLock<Mutex<HashMap<u16, tokio::task::AbortHandle>>> = OnceLock::new();
+    STARTED.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 fn request_epochs() -> &'static Mutex<HashMap<u16, u64>> {
@@ -396,16 +396,31 @@ pub fn ensure(port: u16) {
     if !enabled() {
         return;
     }
-    {
-        let mut set = match started().lock() {
-            Ok(s) => s,
-            Err(_) => return,
-        };
-        if !set.insert(port) {
-            return;
+    let mut map = match started().lock() {
+        Ok(m) => m,
+        Err(_) => return,
+    };
+    if map.contains_key(&port) {
+        return;
+    }
+    let handle = tokio::spawn(async move { run(port).await });
+    map.insert(port, handle.abort_handle());
+}
+
+/// A new engine launch on this port: abort the previous reader and attach a fresh one now.
+///
+/// `ensure` alone is not enough. When an engine stops, the reader's reconnect loop keeps
+/// sleeping with a backoff that grows to 30 s; a relaunch on the same port inherits that
+/// sleep, so the new brain renders `raw=-` for up to half a minute while the first bench
+/// runs into the gap. The new process deserves a new reader.
+pub fn restart(port: u16) {
+    if let Ok(mut map) = started().lock() {
+        if let Some(old) = map.remove(&port) {
+            old.abort();
         }
     }
-    tokio::spawn(async move { run(port).await });
+    forget_port(port);
+    ensure(port);
 }
 
 async fn run(port: u16) {

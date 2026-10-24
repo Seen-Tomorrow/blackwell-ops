@@ -2928,7 +2928,7 @@ pub async fn reset_bench_meters_for_port(port: u16) {
 /// consumes the stream while it is attached.
 pub async fn start_brain(log_hub: LogHub, config: FusionConfig) {
     let sse_capable = crate::engine_events::probe(config.port).await;
-    crate::engine_events::ensure(config.port);
+    crate::engine_events::restart(config.port);
     log::info!(
         "[fusion] slot={} provider={} adapter={} port={} brain={} sse_capable={}",
         config.slot_idx,
