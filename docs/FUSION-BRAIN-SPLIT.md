@@ -1,19 +1,19 @@
 # Fusion brain split — SSE-only brain for ggml-master
 
-Status: **steps 1–2 landed; step 3 (SseBrain skeleton) is next.** Everything below assumes the
-checkpoint commit `ece8f3ab6` (384 Rust tests green, 2 ignored, working tree clean).
+Status: **steps 1–2 landed and live-verified; step 3 (SseBrain skeleton) is next.** Everything
+below assumes the code checkpoint `6265bbd23` (384 Rust tests green, 2 ignored, working tree clean;
+the doc commits sit on top of it).
 
 ## Start here (next session)
 
-1. `git log --oneline -4` — expect `ece8f3ab6 feat(fusion): probe /events/sse and make the brain
-   registry an enum`, `f696c6e1f refactor(fusion): extract RequestLifecycle from brain`,
-   `94a1be237 docs: close the fusion split baseline with the stable-profile row`. If the tree is
-   dirty, stop and look.
+1. `git log --oneline -5` — expect the docs commit that last touched this file, then
+   `6265bbd23 fix(fusion): reset the wave token base…`, `ece8f3ab6 feat(fusion): probe /events/sse…`,
+   `f696c6e1f refactor(fusion): extract RequestLifecycle…`. If the tree is dirty, stop and look.
 2. `npm run check` — 384 tests, css/tsc/vitest included. Anything red is not yours.
 3. Read *Where we are* + *Migration steps*, then continue at step 3 (`SseBrain` skeleton).
-4. The eight-row table's live re-run is still owed: the baseline below was recorded on `bb431c70d`,
-   and steps 1–2 have only been through the suite. Rebuild DEV, restart, and re-run the table
-   against it before step 3 changes what is on screen.
+4. The eight-row table's live re-run on the split build is **done** (see *Re-run on the split
+   build* below): all eight behaviours reproduced and the probe confirmed true/false per engine.
+   The only open sample is a cold-start TG ×1 first-second AVG, noted there.
 
 Already landed and reusable: the reader (`engine_events.rs`) with per-slot state, lane aggregate,
 windowing (`gen_tps_window`), staleness clearing and the launch-time `/events/sse` probe; the shared
@@ -79,6 +79,32 @@ Findings the split must not lose:
    reattached, then `SSE` — no frame claimed a source it did not have. The unpatched STABLE
    engine answered `/events/sse` with **404**; the badge stayed `POLL` and the poll path carried
    the whole run, which is the pre-SSE behaviour the split must leave untouched.
+
+### Re-run on the split build, 2026-10-24
+
+Same matrix on the rebuilt DEV binary (`6265bbd23`, includes steps 1–2), same engines. Every row
+reproduced, and the new probe line appeared once per launch: `brain=Poll sse_capable=true` on the
+three edge launches, `brain=Poll sse_capable=false` on the STABLE one.
+
+| row | baseline `bb431c70d` | re-run `6265bbd23` | delta |
+| --- | --- | --- | --- |
+| TG ×1 / 4096 | 636.6 bench / 638.7 frozen | 625.6 / 627.9 `last_gen` | −1.7 % |
+| TG ×4 / 4096 | 1 145.6 / 1 283.8 | 1 175.8 / 1 329.0 `peak_gen` | +2.6 % |
+| TG ×16 / 1 024 | 1 628.6 / 1 716.5 | 1 635.7 / 1 723.1 `peak_gen` | +0.4 % |
+| TG ×16 / 4K slots | 1 401.1 / 1 679.8 | 1 525.5 / 1 732.1 `peak_gen` | +8.9 % (bench moved) |
+| TG ×32 STABLE | 509.8 / 547.1 | 509.2 / 544.6 `peak_gen` | −0.1 % |
+| PP 2 048 | 4 265.8 / steady 4 798 | 4 232.0 / 4 750 | −0.8 % |
+| PP 8 192 | 4 419.0 / steady 4 548 | 4 404.9 / 4 533 | −0.3 % |
+| PP 32 768 | 4 228.1 / steady 4 259 | 4 232.0 / 4 262 | +0.1 % |
+
+Pin sources are unchanged (solo `last_gen`, parallel `peak_gen`, PP `none`), the ×16 ctx bars read
+96 % at 4K/slot (per-lane denominator still 4 096, not 64K), and each relaunch reattached with no
+stale `SSE` badge (7 s then 1 s — the reader's retry ladder, unchanged by the split).
+
+Two honest caveats: the edge **×32** block was not repeated (its parallel/freeze path was covered
+by the 32-lane STABLE run and the ×16 edge run), and TG ×1's first AVG sample was 566 at +1 s vs
+631.8 in the baseline, recovering to 627 by +5 s. It was the first request after a cold launch, so
+it is recorded as cold-start dilution rather than a regression; one warm repeat closes it.
 
 Scope: `ggml-master` (the bearer engine) gets a dedicated SSE brain. `cafe-llama`, `ggml-tom`,
 `ggml_quiet` and any unpatched engine keep today's brain, restored to its pre-SSE behaviour.
