@@ -51,18 +51,21 @@ pub async fn cmd_bench_pp_burst(
 
     #[derive(Clone, Copy)]
     struct RunStats {
-        prefill_tps: f64,
+        /// Wall rate the engine prints (includes checkpoint copies) — the hero/log figure.
+        prefill_tps_wall: f64,
+        /// Wall rate minus the measured checkpoint saves — comparable across engines.
+        prefill_tps_real: f64,
         prompt_tokens: usize,
         /// Wall prompt time reported by the engine (includes checkpoint copies).
         prompt_ms: f64,
-        /// Checkpoint copy time measured from the engine log and removed from `prefill_tps`.
+        /// Checkpoint copy time measured from the engine log and removed from `prefill_tps_real`.
         checkpoint_ms: f64,
     }
 
     fn median(mut v: Vec<RunStats>) -> RunStats {
         v.sort_by(|a, b| {
-            a.prefill_tps
-                .partial_cmp(&b.prefill_tps)
+            a.prefill_tps_wall
+                .partial_cmp(&b.prefill_tps_wall)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
         v[v.len() / 2]
@@ -160,35 +163,42 @@ pub async fn cmd_bench_pp_burst(
                     checkpoint_ms = 0.0; // implausible: never skew the number with a bad clock
                 }
                 let clean_ms = p_ms - checkpoint_ms;
-                let prefill_tps = if clean_ms > 0.0 {
+                let prefill_tps_wall = if p_ms > 0.0 {
+                    (p_tokens as f64 / p_ms) * 1000.0
+                } else {
+                    0.0
+                };
+                let prefill_tps_real = if clean_ms > 0.0 {
                     (p_tokens as f64 / clean_ms) * 1000.0
                 } else {
                     0.0
                 };
 
                 log::debug!(
-                    "[BENCH_PP] run {} | mode={} | target={} actual={} tok | prefill: {:.1} TPS (wall {:.1} ms, checkpoints {:.1} ms)",
+                    "[BENCH_PP] run {} | mode={} | target={} actual={} tok | prefill: {:.1} TPS (real {:.1}, wall {:.1} ms, checkpoints {:.1} ms)",
                     run + 1,
                     bench_prompt_mode,
                     effective_target,
                     p_tokens,
-                    prefill_tps,
+                    prefill_tps_wall,
+                    prefill_tps_real,
                     p_ms,
                     checkpoint_ms
                 );
 
                 if run >= WARMUP_RUNS {
-                    if prefill_tps > IMPLAUSIBLE_PREFILL_TPS {
+                    if prefill_tps_wall > IMPLAUSIBLE_PREFILL_TPS {
                         // Cache hit, not a prefill — keep it out of the median.
                         log::warn!(
                             "[BENCH_PP] run {} implausible ({:.0} TPS over {} tok) — treating as cache hit, dropping",
                             run + 1,
-                            prefill_tps,
+                            prefill_tps_wall,
                             p_tokens
                         );
-                    } else if prefill_tps > 0.0 {
+                    } else if prefill_tps_wall > 0.0 {
                         samples.push(RunStats {
-                            prefill_tps,
+                            prefill_tps_wall,
+                            prefill_tps_real,
                             prompt_tokens: p_tokens,
                             prompt_ms: p_ms,
                             checkpoint_ms,
@@ -235,13 +245,14 @@ pub async fn cmd_bench_pp_burst(
     };
 
     let pp_line = format!(
-        "[BENCH_PP] RESULT | mode={} | requested={} effective={} actual={} tok | slot_n_ctx={} | prefill: {:.1} TPS (wall {:.1} ms, checkpoints {:.1} ms)",
+        "[BENCH_PP] RESULT | mode={} | requested={} effective={} actual={} tok | slot_n_ctx={} | prefill: {:.1} TPS (real {:.1}, wall {:.1} ms, checkpoints {:.1} ms)",
         bench_prompt_mode,
         target_tokens,
         measured_target,
         run.prompt_tokens,
         slot_n_ctx,
-        run.prefill_tps,
+        run.prefill_tps_wall,
+        run.prefill_tps_real,
         run.prompt_ms,
         run.checkpoint_ms
     );
@@ -253,9 +264,10 @@ pub async fn cmd_bench_pp_burst(
         let metrics = serde_json::json!({
             "success": true,
             "prompt_tokens": run.prompt_tokens,
-            // Real PP: wall time minus the checkpoint saves, so a checkpointed engine reports
-            // the same figure as a `-ctxcp 0` run.
-            "prompt_tps": run.prefill_tps,
+            // Wall is what the engine logs (and the hero pin); real removes the checkpoint saves
+            // and is the figure to compare across engines / launch flags.
+            "prompt_tps": run.prefill_tps_wall,
+            "prompt_tps_real": run.prefill_tps_real,
             "prompt_tps_wall": if run.prompt_ms > 0.0 {
                 (run.prompt_tokens as f64 / run.prompt_ms) * 1000.0
             } else {
@@ -284,7 +296,7 @@ pub async fn cmd_bench_pp_burst(
     }
 
     Ok(BenchPPResult {
-        bench_prefill_tps: run.prefill_tps,
+        bench_prefill_tps: run.prefill_tps_wall,
         bench_prompt_tokens_actual: run.prompt_tokens,
         success: true,
         error: None,

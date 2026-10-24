@@ -358,8 +358,8 @@ Native crashes also append `%TEMP%\blackwell-crash.log` (heap `0xC0000374`, ille
   measured from the engine log: a `created context checkpoint` line's timestamp minus the last
   streamed `prompt_progress` frame, anchored on the request's `new prompt` line. That is the rate
   a `-ctxcp 0` run produces, so a checkpointed engine still benches like a clean one without a
-  relaunch. The PP bench result and archive use the same adjustment (`prompt_tps` is real;
-  `prompt_tps_wall` and `checkpoint_ms` are recorded alongside). Checkpoints are
+  relaunch. The PP bench result and hero pin stay the **wall** figure (the engine's own number);
+  the archive records both (`prompt_tps` wall, `prompt_tps_real`, `checkpoint_ms`). Checkpoints are
   `-ctxcp/--ctx-checkpoints` (max per slot, default 32, 0 disables) and
   `-cms/--checkpoint-min-step` (default 8 192 tok, 0 = no minimum); they are created at
   user-message starts and near the prompt end, cost a KV copy (≈112 MiB at 16K ctx, ≈150 MiB at
