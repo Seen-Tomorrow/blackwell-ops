@@ -73,8 +73,9 @@ Findings the split must not lose:
    (slot prompt time − checkpoint save time), the save time measured from the engine log
    (`created context checkpoint` timestamp vs the last streamed frame), so a checkpointed engine
    reports the rate a `-ctxcp 0` run produces (42 157-token A/B: 7 661 wall vs 8 914 clean; the
-   copies were ~0.5 s at 76 K). The PP bench result and hero pin stay the wall figure (matching
-   the engine log); the archive stores `prompt_tps` (wall), `prompt_tps_real` and
+   copies were ~0.5 s at 76 K). The hero is REAL PP; the small ENGINE companion is the number the
+   engine log prints (copies included), shown only when the two differ. The PP bench result and
+   hero pin use REAL; the archive stores `prompt_tps` (wall), `prompt_tps_real` and
    `checkpoint_ms`. Checkpoints remain launch-time
    (`-ctxcp 0`, `-cms N`); they are pure overhead for a bench that always sends a fresh prompt.
    The archive's comparability flags include `ctx-checkpoints` / `checkpoint-min-step` /

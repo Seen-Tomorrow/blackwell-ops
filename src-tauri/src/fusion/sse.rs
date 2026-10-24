@@ -318,6 +318,18 @@ impl SseBrain {
                 .unwrap_or(0.0),
             _ => 0.0,
         };
+        // What the engine's own log reports (copies included) — the small companion.
+        let pp_engine = match t {
+            Some(t) if t.pp_processed > 0 => {
+                meter::engine_prefill_tps(t.pp_processed.max(0) as u64, t.pp_time_ms)
+            }
+            Some(t) if !open => t
+                .last_request
+                .as_ref()
+                .map(|r| meter::engine_prefill_tps(r.tokens_evaluated, r.prompt_ms))
+                .unwrap_or(0.0),
+            _ => 0.0,
+        };
 
         let gen_avg = if self.req.request_closed {
             if self.req.frozen_request_gen_tps > 0.0 {
@@ -442,6 +454,7 @@ impl SseBrain {
             // The stream's PP rate is already the steady figure, so LIVE and AVG agree here.
             prefill_tps_instant: pp_rate,
             prefill_tps_real: pp_real,
+            prefill_tps_engine: pp_engine,
             prefill_progress: pp_progress,
             prefill_tokens: pp_tokens,
             prefill_tokens_total: pp_total,
@@ -737,6 +750,17 @@ mod tests {
         assert!(
             closed.prefill_tps_real > closed.prefill_tps_session,
             "slot PP includes the copy and must sit below REAL PP"
+        );
+        assert!(
+            (closed.prefill_tps_engine - crate::fusion::meter::engine_prefill_tps(16223, 2440.0))
+                .abs()
+                < 0.01,
+            "ENGINE is exactly tokens / prompt_ms, got {}",
+            closed.prefill_tps_engine
+        );
+        assert!(
+            closed.prefill_tps_engine < closed.prefill_tps_real,
+            "engine figure includes the copy"
         );
     }
 

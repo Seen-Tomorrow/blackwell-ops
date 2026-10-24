@@ -162,6 +162,15 @@ pub fn steady_prefill_tps(tokens: f64, slot_ms: f64) -> f64 {
     clamp_display_tps(tokens / (slot_ms - deduction) * 1000.0)
 }
 
+/// Prefill tok/s exactly as the engine's log reports it: tokens ÷ slot prompt time, checkpoint
+/// copies included.
+pub fn engine_prefill_tps(tokens: u64, slot_ms: f64) -> f64 {
+    if tokens == 0 || slot_ms <= 0.0 {
+        return 0.0;
+    }
+    clamp_display_tps(tokens as f64 / (slot_ms / 1000.0))
+}
+
 /// Prefill tok/s with the checkpoint-copy time removed — the figure a `-ctxcp 0` run produces.
 ///
 /// `checkpoint_ms` is measured from the engine log (checkpoint save timestamps against the last
@@ -250,8 +259,14 @@ mod tests {
     }
 
     #[test]
-    fn real_pp_removes_only_the_checkpoint_time() {
-        // 76 657 tokens, 9 141.9 ms of slot time, 521.4 ms measured in checkpoint saves.
+    fn engine_pp_is_tokens_over_slot_time() {
+        assert!((engine_prefill_tps(1000, 1000.0) - 1000.0).abs() < 0.01);
+        assert_eq!(engine_prefill_tps(0, 100.0), 0.0);
+        assert_eq!(engine_prefill_tps(100, 0.0), 0.0);
+    }
+
+    #[test]
+    fn real_pp_removes_only_the_checkpoint_time() {        // 76 657 tokens, 9 141.9 ms of slot time, 521.4 ms measured in checkpoint saves.
         let tps = real_prefill_tps(76_657, 9141.9, 521.4);
         assert!((tps - 8893.0).abs() < 3.0, "got {tps}");
         assert_eq!(real_prefill_tps(0, 100.0, 10.0), 0.0);

@@ -296,7 +296,7 @@ pub async fn cmd_bench_pp_burst(
     }
 
     Ok(BenchPPResult {
-        bench_prefill_tps: run.prefill_tps_wall,
+        bench_prefill_tps: run.prefill_tps_real,
         bench_prompt_tokens_actual: run.prompt_tokens,
         success: true,
         error: None,

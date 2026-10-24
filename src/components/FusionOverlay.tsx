@@ -415,9 +415,14 @@ export default function FusionOverlay({
     fusion.prefillTpsInstant ?? 0,
     fusion.logPrefillTps ?? 0,
   ));
-  // Default hero mode is AVG, but AVG is 0 until a long wall / print_timing.
-  // Show the live /slots rate until AVG exists; print_timing then replaces it.
-  const ppTpsPick = heroTpsMode === "avg" && ppTpsAvg > 0 ? ppTpsAvg : ppTpsLive;
+  // Hero PP is the checkpoint-free rate; the engine's own number is the small companion.
+  const ppReal = clampHeroTps(fusion.prefillTpsReal ?? 0);
+  const ppEngine = clampHeroTps(fusion.prefillTpsEngine ?? 0);
+  const ppTpsPick = ppReal > 0
+    ? ppReal
+    : heroTpsMode === "avg" && ppTpsAvg > 0
+      ? ppTpsAvg
+      : ppTpsLive;
   const ppTpsValue =
     ppTpsPick > 0
       ? ppTpsPick.toFixed(0)
@@ -539,9 +544,11 @@ export default function FusionOverlay({
     fusion.prefillTokens ?? 0,
     fusion.logPromptTokens ?? 0,
   );
-  // REAL PP: prefill without the engine's context-checkpoint copies, so a checkpointed engine
-  // reports the same rate a `-ctxcp 0` run would produce.
+  // Hero PP is checkpoint-free; the companion is what the engine log reports. They agree on an
+  // engine that created no checkpoints — that is the point of showing both.
   const prefillRealTps = fusion.prefillTpsReal ?? 0;
+  const prefillEngineTps = fusion.prefillTpsEngine ?? 0;
+  const showPrefillEngine = prefillEngineTps > 0;
   const showPrefillProgress =
     !suppressPrefillHero && isPrefillPhase && (prefillTotal > 0 || primaryPrefillProgress > 0);
   const slotCol = fusionSlotColumnLayout(fusion.parallel);
@@ -809,13 +816,13 @@ export default function FusionOverlay({
                 </div>
 
                 <div className="fusion-instrument__pp-foot flex flex-col justify-end flex-1 w-full min-h-0 mt-auto">
-                  {prefillRealTps > 0 && (
+                  {showPrefillEngine && (
                     <span
-                      className="fusion-instrument__pp-real"
-                      title="Prefill without the engine's context-checkpoint copies (measured from the checkpoint save timestamps) — the rate a -ctxcp 0 run produces"
+                      className="fusion-instrument__pp-engine"
+                      title="Engine-reported prefill (slot wall time, context-checkpoint copies included) — the number its log prints"
                     >
-                      <span className="fusion-instrument__pp-real-label">REAL PP</span>
-                      {Math.round(prefillRealTps).toLocaleString()} tok/s
+                      <span className="fusion-instrument__pp-engine-label">ENGINE</span>
+                      {Math.round(prefillEngineTps).toLocaleString()} tok/s
                     </span>
                   )}
                   <div

@@ -2684,6 +2684,14 @@ impl FusionBrain {
                 crate::engine_events::checkpoint_ms(self.port),
             ),
         };
+        // The engine's own reported rate (copies included).
+        let prefill_tps_engine = match sse_snapshot.as_ref().and_then(|t| t.last_request.as_ref()) {
+            Some(r) => meter::engine_prefill_tps(r.tokens_evaluated, r.prompt_ms),
+            None => meter::engine_prefill_tps(
+                self.prefill_tokens_total.max(0) as u64,
+                prefill_ms_out.unwrap_or(0.0),
+            ),
+        };
 
         FusionUpdate {
             alias: self.alias.clone(),
@@ -2707,7 +2715,8 @@ impl FusionBrain {
             } else {
                 clamp_display_tps(self.prefill_tps_instant)
             },
-            prefill_tps_real,            prefill_progress,
+            prefill_tps_real,
+            prefill_tps_engine,            prefill_progress,
             prefill_tokens,
             // Emit the effective request total (log-derived, or /slots peak sum when no log belt)
             // so the frontend can render `processed / total` even without engine stderr.
