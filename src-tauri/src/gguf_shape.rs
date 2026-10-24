@@ -49,7 +49,7 @@ pub struct GgufShape {
     pub alignment: u64,
     /// The header declares an architecture the llama.cpp registry does not know —
     /// `general.architecture` and every `<arch>.block_count` prefix disagree (e.g.
-    /// Strata's `mtp-q2_0.gguf`: `general.architecture = qwen4exp-mtp`, KVs under
+    /// the private `mtp-q2_0.gguf`: `general.architecture = qwen4exp-mtp`, KVs under
     /// `qwen4exp.*`). Such a file is private-format material: no engine load, no
     /// draft role. See `spec_draft::classify_draft_role` tier 0.
     #[serde(default, rename = "archMismatch")]
@@ -164,7 +164,7 @@ fn shape_from_facts(facts: &gguf_patch::HeaderFacts, shard_count: u32) -> GgufSh
 
     // A registry-known arch has ONE name: `general.architecture` and every
     // `<arch>.block_count` prefix agree. They disagree only for private formats —
-    // Strata's MTP material declares `general.architecture = qwen4exp-mtp` while
+    // the private MTP material declares `general.architecture = qwen4exp-mtp` while
     // its KVs sit under `qwen4exp.` (the converter reuses the base arch's keys).
     // A file with no `general.architecture` at all is not judged here — the
     // block_count fallback already names it.
@@ -539,7 +539,7 @@ pub(crate) mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Strata's MTP material: `general.architecture = qwen4exp-mtp`, KVs under
+    /// Private MTP material: `general.architecture = qwen4exp-mtp`, KVs under
     /// `qwen4exp.`. The arch strings disagree — a private format, flagged.
     #[test]
     fn arch_mismatch_flags_private_formats() {
@@ -552,7 +552,7 @@ pub(crate) mod tests {
         kv_str(&mut buf, "general.architecture", "qwen4exp-mtp");
         kv_u32(&mut buf, "qwen4exp.block_count", 1);
 
-        let path = write_gguf(&dir, "strata-mtp.gguf", &buf);
+        let path = write_gguf(&dir, "private-mtp.gguf", &buf);
         let shape = read_shape(&path).expect("shape");
         assert!(shape.arch_mismatch, "general.architecture != KV prefix");
 

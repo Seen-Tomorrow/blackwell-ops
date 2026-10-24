@@ -63,9 +63,9 @@ pub fn classify_draft_role(
 
     // ── Tier 0: private formats ─────────────────────────────────────────────
     // A header whose `general.architecture` disagrees with its `<arch>.block_count`
-    // prefix is not a llama.cpp model at all — Strata's MTP material declares
-    // `qwen4exp-mtp` over `qwen4exp.*` KVs and is consumed by Strata's own runtime
-    // (tools/mtp_rt.py -> rt/), never by an engine. Conclusive like any readable
+    // prefix is not a llama.cpp model at all — the private MTP material declares
+    // `qwen4exp-mtp` over `qwen4exp.*` KVs and is consumed by its own runtime,
+    // never by an engine. Conclusive like any readable
     // header: no role, no naming tier, launchable only as inert library material.
     if shape.is_some_and(|s| s.arch_mismatch) {
         return (DraftRole::None, facts);
@@ -476,20 +476,20 @@ pub fn baked_mtp_for_path(shape: Option<&GgufShape>, path: &str) -> bool {
     classify_draft_role(shape, path, "", None, None).1.baked_mtp
 }
 
-/// Why an external MTP head cannot run on the current engine.
-///
-/// No such rule exists, and there was never a valid one. An earlier version
-/// condemned any `qwen4exp` head whose file omitted `<arch>.ple.layers`, on the
-/// theory that the merged `graph_mtp` builds PLE ops and would get null weights.
-/// That is false: `graph_mtp` (src/models/qwen4exp.cpp) contains no PLE reference
-/// at all, and PLE hparams come from the TRUNK's KV, never the head's. A head
-/// built without PLE metadata loads and serves correctly.
-///
-/// The `GGML_ASSERT(buffer)` the rule was written to pre-empt is real, but it is
-/// not predictable from the header: the unsloth `MTP/mtp-*-Q8_0.gguf` head and a
-/// hand-built head with an identical 34-tensor name set produce opposite results.
-/// Screening on `ple.layers` therefore only blocked working heads. Let the engine
-/// answer instead — it fails at reserve, after the load, which is honest.
+// Why an external MTP head cannot run on the current engine.
+//
+// No such rule exists, and there was never a valid one. An earlier version
+// condemned any `qwen4exp` head whose file omitted `<arch>.ple.layers`, on the
+// theory that the merged `graph_mtp` builds PLE ops and would get null weights.
+// That is false: `graph_mtp` (src/models/qwen4exp.cpp) contains no PLE reference
+// at all, and PLE hparams come from the TRUNK's KV, never the head's. A head
+// built without PLE metadata loads and serves correctly.
+//
+// The `GGML_ASSERT(buffer)` the rule was written to pre-empt is real, but it is
+// not predictable from the header: the unsloth `MTP/mtp-*-Q8_0.gguf` head and a
+// hand-built head with an identical 34-tensor name set produce opposite results.
+// Screening on `ple.layers` therefore only blocked working heads. Let the engine
+// answer instead — it fails at reserve, after the load, which is honest.
 
 #[cfg(test)]
 mod tests {
@@ -621,7 +621,7 @@ mod tests {
         assert_eq!(role, DraftRole::ExternalMtp);
     }
 
-    /// A private-format file (Strata's `qwen4exp-mtp` material) gets no draft role
+    /// A private-format file (the private `qwen4exp-mtp` material) gets no draft role
     /// even when its path screams `mtp-` — the naming tier must not run on a
     /// conclusive header.
     #[test]
@@ -641,14 +641,14 @@ mod tests {
         };
         let (role, facts) = classify_draft_role(
             Some(&shape),
-            r"C:\infra\Strata-data\mtp\mtp-q2_0.gguf",
+            r"C:\models\private-mtp\mtp-q2_0.gguf",
             "mtp-q2_0",
             None,
             None,
         );
         assert_eq!(role, DraftRole::None, "private format is not a draft");
         assert!(!facts.baked_mtp);
-        assert!(is_launchable_target(Some(&shape), r"C:\infra\Strata-data\mtp\mtp-q2_0.gguf"));
+        assert!(is_launchable_target(Some(&shape), r"C:\models\private-mtp\mtp-q2_0.gguf"));
 
         // The same file WITHOUT the mismatch flag is a naming-tier head again —
         // tier 0 fires on the header, not on the folder name. The explicit head

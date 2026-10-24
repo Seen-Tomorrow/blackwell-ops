@@ -142,7 +142,7 @@ pub(crate) struct HeaderFacts {
     /// because `gguf_shape` needs the element count; every other array KV is skipped.
     pub(crate) kv_int_arrays: HashMap<String, Vec<i64>>,
     /// `general.architecture` plus every `<arch>.block_count` key seen. `gguf_shape`
-    /// uses it to detect a non-registry architecture (e.g. Strata's `qwen4exp-mtp`,
+    /// uses it to detect a non-registry architecture (e.g. a private `qwen4exp-mtp`,
     /// which shares the `qwen4exp` KV prefix but is not the `qwen4exp` arch).
     pub(crate) arch_keys: Vec<String>,
     pub(crate) tensors: Vec<TensorInfo>,

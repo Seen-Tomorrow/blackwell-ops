@@ -132,7 +132,7 @@ export interface GgufShape {
   /** MTP evidence — max N over `blk.N.nextn.*` tensor names. */
   nextnLayers?: number;
   /** Private format: `general.architecture` disagrees with the `<arch>.block_count`
-   *  prefix (Strata's `qwen4exp-mtp` material). No engine load, no draft role. */
+   *  prefix (the private `qwen4exp-mtp` material). No engine load, no draft role. */
   archMismatch?: boolean;
   /** DSpark sentinel — `markov_w1.weight` present. */
   hasMarkovW1?: boolean;

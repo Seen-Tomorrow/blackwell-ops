@@ -221,10 +221,10 @@ Ranked by value; all are small engine-side changes and all are optional to start
 | `t_request_start` (us) | `state` on PP | TTFT today is measured from frame arrival, so it carries IPC jitter. |
 | `queued`, `running`, `waiting` | `state` | What a 16-lane engine looks like while requests queue; we only have busy/peak. |
 
-## Prior art — Strata (`C:\AI-MASTER\StrataAPP`, Python control server)
+## Prior art — aggregated metrics endpoint
 
-Their `/metrics` is a single aggregated document rather than an event stream, but the shape is
-worth copying:
+A control server's `/metrics` is a single aggregated document rather than an event stream, but
+the shape is worth copying:
 
 ```jsonc
 {
@@ -246,7 +246,7 @@ worth copying:
 
 What to take:
 
-- **`tok_s` vs `tok_s_mean` vs a declared `tok_s_window_s`.** They name the window in the payload.
+- **`tok_s` vs `tok_s_mean` vs a declared `tok_s_window_s`.** The window is named in the payload.
   Our hero has the same two concepts but the window is implicit — making it explicit (and moving
   the instant rate to a server-side window) is the fix for aliasing.
 - **`state: idle|reading|generating`** as a three-value vocabulary, with `busy` and `first_token`
