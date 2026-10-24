@@ -81,6 +81,15 @@ Findings the split must not lose:
    reattached, then `SSE` — no frame claimed a source it did not have. The unpatched STABLE
    engine answered `/events/sse` with **404**; the badge stayed `POLL` and the poll path carried
    the whole run, which is the pre-SSE behaviour the split must leave untouched.
+7. **A checkpoint-free PP cannot be derived from a checkpointed run.** llama-server's context
+   checkpoints save the KV state (112.6 MiB each; at 32 K with defaults: two saves, ~0.4-0.6 s
+   inside `prompt_ms`). Subtracting save gaps measured from the engine log does **not** recover
+   a `-ctxcp 0` rate: the clean path also batches the prompt differently (one large tail batch),
+   so `wall − gaps` overstated the clean run by 5-7 % in a 3×3 A/B (clean 8 610-8 708 t/s,
+   estimate 9 2xx, both engines equal through 16 K tokens). Only launching the bench engine
+   with `-ctxcp 0` gives the real figure. The bench archive now hashes
+   `ctx-checkpoints` / `checkpoint-min-step` / `cache-ram` with the comparability flags, so a
+   checkpointed run is never grouped with a clean one. Do not re-add a "REAL PP" readout.
 
 ### Re-run on the split build, 2026-10-24
 
