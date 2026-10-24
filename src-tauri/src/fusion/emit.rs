@@ -75,16 +75,6 @@ pub struct FusionUpdate {
     #[serde(rename = "prefillTpsInstant")]
     pub prefill_tps_instant: f64,
 
-    /// PP without the engine's context-checkpoint copies (measured from the checkpoint save
-    /// timestamps): the rate a `-ctxcp 0` run would produce. This is the hero figure.
-    #[serde(rename = "prefillTpsReal")]
-    pub prefill_tps_real: f64,
-
-    /// What the engine's own log reports: tokens ÷ slot prompt time, **including** checkpoint
-    /// copies. Shown as the small companion only when it differs from the REAL hero.
-    #[serde(rename = "prefillTpsEngine")]
-    pub prefill_tps_engine: f64,
-
     /// Primary prefill progress 0→1 computed from /slots (n_prompt_tokens_processed / n_prompt_tokens). Bypasses log throttle/miss issues.
     #[serde(rename = "prefillProgress")]
     pub prefill_progress: f64,
@@ -216,8 +206,7 @@ pub struct FusionEmitFingerprint {
     pub prefill_tokens_total: u32,
     pub prefill_tps_session_centi: u32,
     pub prefill_tps_instant_centi: u32,
-    pub prefill_tps_real_centi: u32,
-    pub prefill_tps_engine_centi: u32,    pub prefill_tps_metrics_centi: u32,
+    pub prefill_tps_metrics_centi: u32,
     pub gen_tps_deci: u32,
     pub gen_tps_session_deci: u32,
     pub gen_tps_instant_deci: u32,
@@ -253,8 +242,6 @@ impl FusionEmitFingerprint {
             prefill_tokens_total: u.prefill_tokens_total.min(u32::MAX as usize) as u32,
             prefill_tps_session_centi: (u.prefill_tps_session * 100.0).round() as u32,
             prefill_tps_instant_centi: (u.prefill_tps_instant * 100.0).round() as u32,
-            prefill_tps_real_centi: (u.prefill_tps_real * 100.0).round() as u32,
-            prefill_tps_engine_centi: (u.prefill_tps_engine * 100.0).round() as u32,
             prefill_tps_metrics_centi: (u.prefill_tps_metrics * 100.0).round() as u32,
             gen_tps_deci: (u.gen_tps * 10.0).round() as u32,
             gen_tps_session_deci: (u.gen_tps_session * 10.0).round() as u32,

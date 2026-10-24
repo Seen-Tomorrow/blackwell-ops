@@ -5007,26 +5007,6 @@ html[data-industrial-bezel="brush"] {
   text-overflow: ellipsis;
 }
 
-/* Second PP figure — what the engine log reports (checkpoint copies included). */
-.fusion-instrument__pp-engine {
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
-  height: 12px;
-  line-height: 12px;
-  font-size: var(--type-micro);
-  font-variant-numeric: tabular-nums;
-  color: color-mix(in srgb, var(--display-face-text-muted) 58%, transparent);
-  white-space: nowrap;
-}
-
-.fusion-instrument__pp-engine-label {
-  font-size: var(--type-hairline);
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  color: color-mix(in srgb, var(--display-face-text-muted) 42%, transparent);
-}
-
 @keyframes fusion-instrument-pulse {
   0%,
   100% {

@@ -64,22 +64,7 @@ Findings the split must not lose:
 1. **PP frozen = final, not peak.** The live window decays as the denominator grows (32K run:
    9 749 → 6 266 → 5 445 → 4 959 → **4 259** from 8K → 32K processed). The early number is
    inflated by a short window plus the 54 ms deduction; the frozen value is the engine's final
-   rate, verified to 0.003 % against `print_timing` at 65 374 tokens. **The engine's printed rate
-   is cumulative** (`n_tokens / t`, e.g. 24576/3.27 s = 7 512 and 32521/4.67 s = 6 971), so the final
-   line *is* the whole-request average — it falls because later ubatches attend over a longer
-   context and the tail includes checkpoint writes. A median of per-ubatch rates would be higher,
-   but it would not match llama-bench's `n_prompt / t_prompt` and would hide the long-context cost;
-   do not "fix" the freeze that way. The small `REAL PP` readout (`prefillTpsReal`) is tokens ÷
-   (slot prompt time − checkpoint save time), the save time measured from the engine log
-   (`created context checkpoint` timestamp vs the last streamed frame), so a checkpointed engine
-   reports the rate a `-ctxcp 0` run produces (42 157-token A/B: 7 661 wall vs 8 914 clean; the
-   copies were ~0.5 s at 76 K). The hero is REAL PP; the small ENGINE companion is the number the
-   engine log prints (copies included), shown only when the two differ. The PP bench result and
-   hero pin use REAL; the archive stores `prompt_tps` (wall), `prompt_tps_real` and
-   `checkpoint_ms`. Checkpoints remain launch-time
-   (`-ctxcp 0`, `-cms N`); they are pure overhead for a bench that always sends a fresh prompt.
-   The archive's comparability flags include `ctx-checkpoints` / `checkpoint-min-step` /
-   `cache-ram`, so a checkpointed run no longer claims to be comparable to a `-ctxcp 0` one.
+   rate, verified to 0.003 % against `print_timing` at 65 374 tokens.
 2. **PP fluency is ubatch cadence, not brain policy.** `B=8192/4096` emits ~1 frame per 4 096
    tokens and reports steady 4 242.4; `B=1024/256` emits ~16× more frames and reports 3 501.4.
    Progress was present in both — the split must not add its own throttle on top.

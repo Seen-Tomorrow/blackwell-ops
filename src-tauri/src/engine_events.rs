@@ -70,10 +70,6 @@ pub struct RequestSummary {
     pub prompt_ms: f64,
     /// Library prefill counter (`t_p_eval_ms`) for the same request.
     pub lib_prompt_ms: f64,
-    /// Time this request spent inside llama-server's context-checkpoint saves, measured from the
-    /// engine log (`created context checkpoint` timestamps against the last streamed progress
-    /// frame). `prompt_ms - checkpoint_ms` is the prefill time without the copies.
-    pub checkpoint_ms: f64,
     pub tokens_evaluated: u64,
     pub predicted_ms: f64,
     pub tokens_predicted: u64,
@@ -257,105 +253,6 @@ fn bump_request_epoch(port: u16) {
 /// A single-slot engine (`--parallel 1`) has exactly one record. Ports that have seen several
 /// slots return the busy one; if two slots are busy at the same time (true parallel lanes) this
 /// returns `None` on purpose — the poller still owns the aggregate for that case.
-#[derive(Default, Clone)]
-struct CheckpointClock {
-    task_start_us: Option<i64>,
-    copy_ms: f64,
-    last_frame_ms: f64,
-}
-
-static CHECKPOINT_CLOCK: std::sync::LazyLock<std::sync::Mutex<HashMap<(u16, i32), CheckpointClock>>> =
-    std::sync::LazyLock::new(|| std::sync::Mutex::new(HashMap::new()));
-
-/// Engine log prefix as microseconds.
-///
-/// b11842 prints `M.SS.mmm.uuu` (e.g. `0.48.810.445` = 0 min 48.810445 s); older builds printed
-/// an extra hour field (`H.MM.SS.mmm.uuu`). Both are accepted.
-fn parse_engine_ts(line: &str) -> Option<i64> {
-    let first = line.split_whitespace().next()?;
-    let parts: Vec<&str> = first.split('.').collect();
-    let nums: Vec<i64> = parts.iter().map(|p| p.parse().ok()).collect::<Option<_>>()?;
-    match nums.as_slice() {
-        [m, s, ms, us] => Some((m * 60 + s) * 1_000_000 + ms * 1000 + us),
-        [h, m, s, ms, us] => Some(((h * 60 + m) * 60 + s) * 1_000_000 + ms * 1000 + us),
-        _ => None,
-    }
-}
-
-/// `id  0 | task 52` → 0.
-fn slot_id_from_line(line: &str) -> Option<i32> {
-    let (_, rest) = line.split_once(" id")?;
-    let digits: String = rest
-        .trim_start()
-        .chars()
-        .take_while(|c| c.is_ascii_digit() || *c == '-')
-        .collect();
-    digits.parse().ok()
-}
-
-/// Feed raw engine stderr lines into the checkpoint clock.
-///
-/// llama-server does not report how long its context-checkpoint copies take, but it does log the
-/// save with an engine timestamp (`0.17.12.942.476 I slot create_check: … created context
-/// checkpoint … size = 112.571 MiB`). The copy starts right after the last `prompt_progress`
-/// frame finished the previous batch, so
-/// `copy_ms = (checkpoint_ts - task_start_ts) - last_frame_time_ms`.
-///
-/// Called from the stderr reader in `log_hub`; no-op for every other line.
-pub(crate) fn note_engine_line(port: u16, line: &str) {
-    let is_new = line.contains("new prompt, n_ctx_slot");
-    let is_ckpt = line.contains("created context checkpoint");
-    if !is_new && !is_ckpt {
-        return;
-    }
-    let (Some(slot), Some(ts)) = (slot_id_from_line(line), parse_engine_ts(line)) else {
-        return;
-    };
-    let Ok(mut map) = CHECKPOINT_CLOCK.lock() else {
-        return;
-    };
-    let e = map.entry((port, slot)).or_default();
-    if is_new {
-        e.task_start_us = Some(ts);
-        e.copy_ms = 0.0;
-        e.last_frame_ms = 0.0;
-        return;
-    }
-    let Some(start) = e.task_start_us else {
-        return;
-    };
-    let rel_ms = (ts - start) as f64 / 1000.0;
-    e.copy_ms += (rel_ms - e.last_frame_ms).max(0.0);
-}
-
-/// Current checkpoint total for a port (summed over the lanes of the in-flight wave).
-pub fn checkpoint_ms(port: u16) -> f64 {
-    CHECKPOINT_CLOCK
-        .lock()
-        .map(|map| {
-            map.iter()
-                .filter(|((p, _), _)| *p == port)
-                .map(|(_, c)| c.copy_ms)
-                .sum()
-        })
-        .unwrap_or(0.0)
-}
-
-fn checkpoint_ms_for(port: u16, slot: i32) -> f64 {
-    CHECKPOINT_CLOCK
-        .lock()
-        .ok()
-        .and_then(|map| map.get(&(port, slot)).map(|c| c.copy_ms))
-        .unwrap_or(0.0)
-}
-
-/// Record the last streamed progress frame, the anchor for the next checkpoint save.
-fn note_progress_frame(port: u16, slot: i32, time_ms: f64) {
-    if let Ok(mut map) = CHECKPOINT_CLOCK.lock() {
-        map.entry((port, slot)).or_default().last_frame_ms = time_ms;
-    }
-}
-
 pub fn snapshot(port: u16) -> Option<SlotTelemetry> {
     let map = snapshots().lock().ok()?;
     let mut entries: Vec<&SlotTelemetry> = map
@@ -664,11 +561,6 @@ fn apply(port: u16, evt: &EngineEvent) {    let slot = match evt {
                 // a two-request-old decode sample must not leak into this request's window
                 entry.gen_samples.clear();
                 opened_wave = true;
-                if let Ok(mut clocks) = CHECKPOINT_CLOCK.lock() {
-                    let c = clocks.entry((port, slot)).or_default();
-                    c.copy_ms = 0.0;
-                    c.last_frame_ms = 0.0;
-                }
             } else if phase == "TG" && entry.t_prefill_end.is_none() {
                 entry.t_prefill_end = Some(now);
             }
@@ -694,7 +586,6 @@ fn apply(port: u16, evt: &EngineEvent) {    let slot = match evt {
             entry.pp_processed = *processed;
             entry.pp_time_ms = *time_ms;
             entry.seq = *seq;
-            note_progress_frame(port, slot, *time_ms);
         }
         EngineEvent::GenProgress {
             decoded, tps, seq, ..
@@ -731,7 +622,6 @@ fn apply(port: u16, evt: &EngineEvent) {    let slot = match evt {
             entry.last_request = Some(RequestSummary {
                 prompt_ms: *prompt_ms,
                 lib_prompt_ms: *lib_prompt_ms,
-                checkpoint_ms: checkpoint_ms_for(port, slot),
                 tokens_evaluated: *tokens_evaluated,
                 predicted_ms: *predicted_ms,
                 tokens_predicted: *tokens_predicted,
@@ -773,51 +663,6 @@ pub(crate) fn ingest_for_test(port: u16, text: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn engine_log_timestamp_is_minutes_seconds_ms_us() {
-        // b11842: 0.48.810.445 = 0 min 48.810445 s
-        assert_eq!(parse_engine_ts("0.48.810.445 I slot"), Some(48_810_445));
-        // older builds printed an hour field too
-        assert_eq!(
-            parse_engine_ts("0.17.12.942.476 I slot create_check:"),
-            Some(((17 * 60 + 12) * 1_000_000) + 942_476)
-        );
-        assert_eq!(parse_engine_ts("no timestamp here"), None);
-        assert_eq!(parse_engine_ts("0.1.2"), None);
-    }
-
-    #[test]
-    fn checkpoint_copy_time_is_measured_from_the_log() {
-        let port = 9996;
-        note_engine_line(
-            port,
-            "0.00.000.000 I slot operator (): id  0 | task 1 | new prompt, n_ctx_slot = 4096",
-        );
-        ingest_for_test(
-            port,
-            concat!(
-                "data: {\"type\":\"state\",\"slot\":0,\"phase\":\"PP\",\"busy\":1,\"peak\":1,\"n_ctx\":4096,\"n_ctx_used\":0,\"seq\":1}\n\n",
-                "data: {\"type\":\"prompt_progress\",\"slot\":0,\"total\":4096,\"cache\":0,\"processed\":2048,\"time_ms\":401.2,\"seq\":2}\n\n"
-            ),
-        );
-        // save completes 300 ms after the last streamed frame (401.2 ms of task time)
-        note_engine_line(
-            port,
-            "0.00.701.200 I slot create_check: id  0 | task 1 | created context checkpoint 1 of 32 (pos_min = 2044, pos_max = 2044, n_tokens = 2045, size = 112.571 MiB)",
-        );
-        assert!((checkpoint_ms(port) - 300.0).abs() < 0.01);
-
-        ingest_for_test(
-            port,
-            "data: {\"type\":\"request_end\",\"slot\":0,\"task\":1,\"prompt_ms\":2440.0,\"predicted_ms\":1.0,\"tokens_evaluated\":16223,\"tokens_predicted\":1,\"cache_hit_tokens\":0,\"spec_accepted\":0,\"spec_draft\":0,\"lib_prompt_ms\":2286.49,\"lib_tokens_evaluated\":16223,\"seq\":3}\n\n",
-        );
-        let t = snapshot(port).expect("snapshot");
-        assert!(
-            (t.last_request.expect("summary").checkpoint_ms - 300.0).abs() < 0.01,
-            "request summary carries the measured copy time"
-        );
-    }
 
     /// Minimal HTTP endpoint that answers one request with `status` and closes.
     async fn fake_http(status: &'static str) -> u16 {
@@ -1111,4 +956,3 @@ mod tests {
         assert!(!slot_snapshot(9101, 0).unwrap().request_closed);
     }
 }
-

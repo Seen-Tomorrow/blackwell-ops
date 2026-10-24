@@ -2675,28 +2675,11 @@ impl FusionBrain {
             )
         };
 
-        // REAL PP: prefill without the context-checkpoint copies (copy clock from the engine log).
-        let prefill_tps_real = match sse_snapshot.as_ref().and_then(|t| t.last_request.as_ref()) {
-            Some(r) => meter::real_prefill_tps(r.tokens_evaluated, r.prompt_ms, r.checkpoint_ms),
-            None => meter::real_prefill_tps(
-                self.prefill_tokens_total.max(0) as u64,
-                prefill_ms_out.unwrap_or(0.0),
-                crate::engine_events::checkpoint_ms(self.port),
-            ),
-        };
-        // The engine's own reported rate (copies included).
-        let prefill_tps_engine = match sse_snapshot.as_ref().and_then(|t| t.last_request.as_ref()) {
-            Some(r) => meter::engine_prefill_tps(r.tokens_evaluated, r.prompt_ms),
-            None => meter::engine_prefill_tps(
-                self.prefill_tokens_total.max(0) as u64,
-                prefill_ms_out.unwrap_or(0.0),
-            ),
-        };
-
         FusionUpdate {
             alias: self.alias.clone(),
             slot_idx: self.slot_idx,
-            port: self.port,            // Honest source: "sse" only when this tick's values actually came from the stream.
+            port: self.port,
+            // Honest source: "sse" only when this tick's values actually came from the stream.
             // A live socket that cannot serve a slot (parallel lanes) is still the poll path.
             telemetry_source: if sse_live {
                 "sse".to_string()
@@ -2715,8 +2698,7 @@ impl FusionBrain {
             } else {
                 clamp_display_tps(self.prefill_tps_instant)
             },
-            prefill_tps_real,
-            prefill_tps_engine,            prefill_progress,
+            prefill_progress,
             prefill_tokens,
             // Emit the effective request total (log-derived, or /slots peak sum when no log belt)
             // so the frontend can render `processed / total` even without engine stderr.

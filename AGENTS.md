@@ -353,22 +353,7 @@ Native crashes also append `%TEMP%\blackwell-crash.log` (heap `0xC0000374`, ille
   (`steady_prefill_tps`) deducts the measured per-request server setup so the hero compares with
   llama-bench. It is a calibration, capped at 65 % of the window; re-measure it when the engine
   patch level or launch flags change (procedure in the handoff doc), and keep raw `PP tok/s` in
-  the report so the difference stays visible. The hero's small `REAL PP` companion
-  (`prefillTpsReal`) is tokens ÷ (slot prompt time − checkpoint save time), with the save time
-  measured from the engine log: a `created context checkpoint` line's timestamp minus the last
-  streamed `prompt_progress` frame, anchored on the request's `new prompt` line. That is the rate
-  a `-ctxcp 0` run produces, so a checkpointed engine still benches like a clean one without a
-  relaunch. The hero itself is REAL PP (`prefillTpsReal`); the small `ENGINE` companion
-  (`prefillTpsEngine`) is the number the engine log prints (checkpoint copies included). The PP
-  bench result and hero pin use the REAL figure; the archive records `prompt_tps` (wall),
-  `prompt_tps_real` and `checkpoint_ms`. Checkpoints are
-  `-ctxcp/--ctx-checkpoints` (max per slot, default 32, 0 disables) and
-  `-cms/--checkpoint-min-step` (default 8 192 tok, 0 = no minimum); they are created at
-  user-message starts and near the prompt end, cost a KV copy (≈112 MiB at 16K ctx, ≈150 MiB at
-  32K) inside the request, and are pure overhead for a bench that sends a fresh prompt every
-  time. `-cram 0` disables the prompt cache (and prefix reuse) entirely. The bench archive's
-  comparability flags include `ctx-checkpoints` / `checkpoint-min-step` / `cache-ram`, so a
-  checkpointed run no longer shares a series with a `-ctxcp 0` run.
+  the report so the difference stays visible.
 - **The poll loop is the render tick.** `FusionUpdate` is emitted once per loop iteration, so
   throttling `/slots` throttles the hero even when every value came from SSE. Decouple render
   from poll before slowing the poller.

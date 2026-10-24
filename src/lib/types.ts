@@ -652,10 +652,6 @@ export interface FusionUpdate {
   prefillTpsSession: number;   // tokens / elapsed — same as bench tokens_evaluated / prompt_ms
   prefillTpsInstant?: number;  // per-poll / log chunk — hero LIVE mode
   prefillTpsMetrics: number;   // llamacpp:prompt_tokens_seconds gauge (often lower; legacy fallback)
-  /** Prefill without the engine's context-checkpoint copies (checkpoint save time removed) — the hero figure. */
-  prefillTpsReal?: number;
-  /** What the engine log reports (slot wall time, checkpoint copies included) — the small companion. */
-  prefillTpsEngine?: number;
 
   // Primary prefill progress/tokens from /slots (real-time, catches short+long prompts, no 3s throttle)
   prefillProgress: number;    // 0→1 from n_prompt_tokens_processed / n_prompt_tokens

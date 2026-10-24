@@ -162,29 +162,6 @@ pub fn steady_prefill_tps(tokens: f64, slot_ms: f64) -> f64 {
     clamp_display_tps(tokens / (slot_ms - deduction) * 1000.0)
 }
 
-/// Prefill tok/s exactly as the engine's log reports it: tokens ÷ slot prompt time, checkpoint
-/// copies included.
-pub fn engine_prefill_tps(tokens: u64, slot_ms: f64) -> f64 {
-    if tokens == 0 || slot_ms <= 0.0 {
-        return 0.0;
-    }
-    clamp_display_tps(tokens as f64 / (slot_ms / 1000.0))
-}
-
-/// Prefill tok/s with the checkpoint-copy time removed — the figure a `-ctxcp 0` run produces.
-///
-/// `checkpoint_ms` is measured from the engine log (checkpoint save timestamps against the last
-/// streamed progress frame); `slot_ms` is the request's wall prompt time. No 54 ms deduction:
-/// this is the raw engine rate without the copies, so it compares with the bench on a clean
-/// engine.
-pub fn real_prefill_tps(tokens: u64, slot_ms: f64, checkpoint_ms: f64) -> f64 {
-    let clean_ms = slot_ms - checkpoint_ms.max(0.0);
-    if tokens == 0 || clean_ms <= 0.0 {
-        return 0.0;
-    }
-    clamp_display_tps(tokens as f64 / (clean_ms / 1000.0))
-}
-
 /// Session-average tok/s from cumulative tokens + cumulative wall ms (hero AVG mode).
 /// Pure — no brain state. Returns 0 until the wall exceeds `min_ms` (filters elapsed≈0 spikes).
 pub fn session_avg_tps(total_tokens: u64, total_ms: u64, min_ms: u64) -> f64 {
@@ -256,22 +233,5 @@ mod tests {
     fn steady_pp_zero_inputs_are_zero() {
         assert_eq!(steady_prefill_tps(0.0, 100.0), 0.0);
         assert_eq!(steady_prefill_tps(100.0, 0.0), 0.0);
-    }
-
-    #[test]
-    fn engine_pp_is_tokens_over_slot_time() {
-        assert!((engine_prefill_tps(1000, 1000.0) - 1000.0).abs() < 0.01);
-        assert_eq!(engine_prefill_tps(0, 100.0), 0.0);
-        assert_eq!(engine_prefill_tps(100, 0.0), 0.0);
-    }
-
-    #[test]
-    fn real_pp_removes_only_the_checkpoint_time() {        // 76 657 tokens, 9 141.9 ms of slot time, 521.4 ms measured in checkpoint saves.
-        let tps = real_prefill_tps(76_657, 9141.9, 521.4);
-        assert!((tps - 8893.0).abs() < 3.0, "got {tps}");
-        assert_eq!(real_prefill_tps(0, 100.0, 10.0), 0.0);
-        assert_eq!(real_prefill_tps(100, 10.0, 10.0), 0.0);
-        // No copies -> the plain slot rate, no 54 ms calibration.
-        assert!((real_prefill_tps(1000, 1000.0, 0.0) - 1000.0).abs() < 0.01);
     }
 }
