@@ -76,6 +76,10 @@ pub struct SseBrain {
     last_active_at: Option<Instant>,
     /// Port request counter at the last request boundary (see `engine_events::request_epoch`).
     request_epoch: u64,
+    /// Throttle the DEV `[fusion-sse]` meter dump.
+    last_stats_log_at: Option<Instant>,
+    /// Set by `close_request` so the next tick can dump the FINAL line once.
+    just_closed: bool,
 }
 
 impl SseBrain {
@@ -106,6 +110,8 @@ impl SseBrain {
             session_tokens: 0,
             last_active_at: None,
             request_epoch: 0,
+            last_stats_log_at: None,
+            just_closed: false,
         }
     }
 
@@ -145,7 +151,12 @@ impl SseBrain {
         self.request_peak_tps = 0.0;
         self.peak_wave = 0;
         self.wave_start = None;
+        // The stream goes IDLE after the request; carry that into the update instead of leaving
+        // the display stuck in PP/TG until the next request starts.
+        self.req.phase = InferencePhase::Idle;
+        self.req.lp_phase = InferencePhase::Idle;
         self.engine_state = EngineState::Ready;
+        self.just_closed = true;
     }
 
     /// Tokens ÷ wall since the wave clock started. Zero until the whole wave has decoded and the
@@ -162,14 +173,17 @@ impl SseBrain {
     }
 
     /// Fold one snapshot into the lifecycle and the request-local latches.
-    fn observe(&mut self, now: Instant) {
-        let lanes = crate::engine_events::lanes(self.port);
-        let snapshot = if self.parallel <= 1 {
-            crate::engine_events::snapshot(self.port)
-        } else {
-            crate::engine_events::aggregate(self.port)
-        };
-        let Some(t) = snapshot.as_ref() else {
+    ///
+    /// The caller fetches the snapshot once per tick and hands the *same* view to
+    /// [`Self::build_update`], so the phase the update is built from cannot differ from the phase
+    /// this method just observed.
+    fn observe(
+        &mut self,
+        t: Option<&crate::engine_events::SlotTelemetry>,
+        lanes: &[crate::engine_events::SlotTelemetry],
+        now: Instant,
+    ) {
+        let Some(t) = t else {
             // Attach gap or engine gone: hold the last emitted state until the app stops the
             // brain (stop_brain emits the terminal update).
             return;
@@ -221,7 +235,7 @@ impl SseBrain {
             }
 
             // Per-lane fill for the ctx bars: prompt evaluated + generated this request.
-            for lane in &lanes {
+            for lane in lanes {
                 let fill = (lane.pp_processed.max(0) + lane.gen_decoded as i64).max(0) as usize;
                 let held = self.slot_fill.entry(lane.slot).or_insert(0);
                 if fill > *held {
@@ -252,14 +266,12 @@ impl SseBrain {
         }
     }
 
-    fn build_update(&self, now: Instant) -> FusionUpdate {
-        let lanes = crate::engine_events::lanes(self.port);
-        let snapshot = if self.parallel <= 1 {
-            crate::engine_events::snapshot(self.port)
-        } else {
-            crate::engine_events::aggregate(self.port)
-        };
-        let t = snapshot.as_ref();
+    fn build_update(
+        &self,
+        t: Option<&crate::engine_events::SlotTelemetry>,
+        lanes: &[crate::engine_events::SlotTelemetry],
+        now: Instant,
+    ) -> FusionUpdate {
         let busy = lanes.iter().filter(|l| lane_busy(l)).count();
         let open = !self.req.request_closed && self.req.request_start.is_some();
         let parallel_lane = self.parallel > 1 || busy > 1;
@@ -483,24 +495,80 @@ impl SseBrain {
     }
 
     /// Promote LOADING → READY from the launch path's readiness fact (the stream has no event).
+    /// Never touches ACTIVE — a request in flight must keep the UI's live belt.
     fn sync_ready(&mut self) {
-        if self.engine_state != EngineState::Ready
+        if self.engine_state == EngineState::Loading
             && crate::engine_stack::slot_ready(self.slot_idx)
         {
             self.engine_state = EngineState::Ready;
         }
     }
 
+    /// One snapshot for both the lifecycle fold and the update built from it.
+    fn stream_view(
+        &self,
+    ) -> (
+        Option<crate::engine_events::SlotTelemetry>,
+        Vec<crate::engine_events::SlotTelemetry>,
+    ) {
+        let lanes = crate::engine_events::lanes(self.port);
+        let snapshot = if self.parallel <= 1 {
+            crate::engine_events::snapshot(self.port)
+        } else {
+            crate::engine_events::aggregate(self.port)
+        };
+        (snapshot, lanes)
+    }
+
+    /// DEV meter dump → session.log (the SSE brain's `[fusion-stats]`).
+    fn log_stats(&mut self, kind: &str, u: &FusionUpdate, raw_phase: Option<&str>) {
+        if !crate::session_log::is_active() {
+            return;
+        }
+        let now = Instant::now();
+        if kind == "LIVE" {
+            if let Some(prev) = self.last_stats_log_at {
+                if now.duration_since(prev).as_millis() < 1000 {
+                    return;
+                }
+            }
+            self.last_stats_log_at = Some(now);
+        }
+        crate::session_log::append_session_line(&format!(
+            "[fusion-sse] {kind} port={} raw={} phase={:?} engine={:?} proc={} total={} prog={:.3} ppTps={:.1} genAvg={:.1} genInst={:.1} tokens={} ctx={:.0}%",
+            self.port,
+            raw_phase.unwrap_or("-"),
+            u.phase,
+            u.engine_state,
+            u.prefill_tokens,
+            u.prefill_tokens_total,
+            u.prefill_progress,
+            u.prefill_tps_session,
+            u.gen_tps,
+            u.gen_tps_instant,
+            u.gen_tokens_per_request_slots,
+            u.ctx_fill_pct,
+        ));
+    }
+
     fn tick(&mut self, log_hub: &LogHub) {
         let now = Instant::now();
         self.sync_ready();
-        self.observe(now);
-        let update = self.build_update(now);
+        let (snapshot, lanes) = self.stream_view();
+        self.observe(snapshot.as_ref(), &lanes, now);
+        let update = self.build_update(snapshot.as_ref(), &lanes, now);
+        let raw_phase = snapshot.as_ref().map(|t| t.phase.as_str());
+        if self.just_closed {
+            self.just_closed = false;
+            self.log_stats("FINAL", &update, raw_phase);
+        }
+        self.log_stats("LIVE", &update, raw_phase);
         self.emit(log_hub, update);
     }
 
     fn terminal_update(&self) -> FusionUpdate {
-        let mut update = self.build_update(Instant::now());
+        let (snapshot, lanes) = self.stream_view();
+        let mut update = self.build_update(snapshot.as_ref(), &lanes, Instant::now());
         update.engine_state = EngineState::Ready;
         update.phase = InferencePhase::Idle;
         update.lp_phase = InferencePhase::Idle;
@@ -528,7 +596,8 @@ impl SseBrain {
     ) {
         let mut brain = Self::new(&config);
         // Paint the idle glass immediately; the engine is already loaded when this starts.
-        let init = brain.build_update(Instant::now());
+        let (snapshot, lanes) = brain.stream_view();
+        let init = brain.build_update(snapshot.as_ref(), &lanes, Instant::now());
         brain.emit(&log_hub, init);
 
         let mut tick = tokio::time::interval(Duration::from_millis(render_tick_ms()));
@@ -566,6 +635,43 @@ mod tests {
             adapter: crate::fusion::adapters::FusionAdapterId::GgmlMaster,
             has_log_belt: true,
         }
+    }
+
+    #[test]
+    fn pp_progress_fields_are_emitted_during_prefill() {
+        // Real frame shapes from the telemetry patch: one PP state, then prompt_progress.
+        let port = 9997;
+        let mut brain = SseBrain::new(&FusionConfig {
+            port,
+            parallel: 16,
+            ..config(16)
+        });
+        crate::engine_events::ingest_for_test(
+            port,
+            concat!(
+                "data: {\"type\":\"state\",\"slot\":0,\"phase\":\"PP\",\"busy\":1,\"peak\":1,\"n_ctx\":4096,\"n_ctx_used\":0,\"seq\":1}\n\n",
+                "data: {\"type\":\"prompt_progress\",\"slot\":0,\"total\":4096,\"cache\":0,\"processed\":512,\"time_ms\":128.4,\"seq\":2}\n\n",
+                "data: {\"type\":\"prompt_progress\",\"slot\":0,\"total\":4096,\"cache\":0,\"processed\":2048,\"time_ms\":401.2,\"seq\":3}\n\n"
+            ),
+        );
+
+        let t = crate::engine_events::snapshot(port).expect("snapshot");
+        let now = Instant::now();
+        brain.observe(Some(&t), &[], now);
+        let update = brain.build_update(Some(&t), &[], now);
+
+        assert_eq!(update.phase, InferencePhase::PP);
+        assert_eq!(update.prefill_tokens, 2048, "processed tokens drive the bar");
+        assert_eq!(update.prefill_tokens_total, 4096, "task size must be present");
+        assert!(
+            (update.prefill_progress - 0.5).abs() < 1e-9,
+            "progress = processed / total, got {}",
+            update.prefill_progress
+        );
+        assert!(
+            update.prefill_tps_session > 0.0,
+            "the PP hero rate comes from the same frame"
+        );
     }
 
     #[test]

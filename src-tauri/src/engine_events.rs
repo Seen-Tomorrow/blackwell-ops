@@ -526,8 +526,7 @@ pub fn take_frames(buf: &mut String) -> Vec<EngineEvent> {
     out
 }
 
-fn apply(port: u16, evt: &EngineEvent) {
-    let slot = match evt {
+fn apply(port: u16, evt: &EngineEvent) {    let slot = match evt {
         EngineEvent::State { slot, .. }
         | EngineEvent::PromptProgress { slot, .. }
         | EngineEvent::GenProgress { slot, .. }
@@ -649,6 +648,15 @@ fn apply(port: u16, evt: &EngineEvent) {
         if busy_now == 1 {
             bump_request_epoch(port);
         }
+    }
+}
+
+/// Feed raw SSE text into the per-port snapshot. Test-only; the real path is `stream_once`.
+#[cfg(test)]
+pub(crate) fn ingest_for_test(port: u16, text: &str) {
+    let mut buf = text.to_string();
+    for evt in take_frames(&mut buf) {
+        apply(port, &evt);
     }
 }
 
