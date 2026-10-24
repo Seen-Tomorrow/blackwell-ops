@@ -38,6 +38,22 @@ function formatPcieRate(mib: number | undefined): string {
   return `${mib.toFixed(1)} MB/s`;
 }
 
+/**
+ * Session peak per GPU, kept outside the component: the card unmounts on density
+ * changes, and the peak must survive that. Resets only with the app.
+ */
+const pciePeaks = new Map<number, { rx: number; tx: number }>();
+
+function trackPciePeak(gpu: GpuInfo): { rx: number; tx: number } {
+  const previous = pciePeaks.get(gpu.index) ?? { rx: 0, tx: 0 };
+  const next = {
+    rx: Math.max(previous.rx, gpu.pcie_rx_mib_per_s ?? 0),
+    tx: Math.max(previous.tx, gpu.pcie_tx_mib_per_s ?? 0),
+  };
+  pciePeaks.set(gpu.index, next);
+  return next;
+}
+
 export default function GpuTopologyCard({
   gpu,
   oc,
@@ -53,14 +69,16 @@ export default function GpuTopologyCard({
   const powerPercent = gpu.power_limit > 0 ? (gpu.power_draw / gpu.power_limit) * 100 : 0;
 
   const pcieGen = gpu.pcie_gen_max ?? gpu.pcie_gen;
-  const pcieWidth = gpu.pcie_width_max ?? gpu.pcie_width;
+  // NVML's max width is the CARD's capability, not the slot's: an x8/x8 bifurcated
+  // board still reports max 16. Show the negotiated width (what the link really runs).
+  const pcieWidth = gpu.pcie_width;
   const pcieIdle =
-    (gpu.pcie_gen != null && gpu.pcie_gen_max != null && gpu.pcie_gen < gpu.pcie_gen_max) ||
-    (gpu.pcie_width != null && gpu.pcie_width_max != null && gpu.pcie_width < gpu.pcie_width_max);
+    gpu.pcie_gen != null && gpu.pcie_gen_max != null && gpu.pcie_gen < gpu.pcie_gen_max;
   const pcieTitle =
     gpu.pcie_gen != null && gpu.pcie_gen_max != null
-      ? `negotiated Gen${gpu.pcie_gen} x${gpu.pcie_width ?? "?"} · max Gen${gpu.pcie_gen_max} x${gpu.pcie_width_max ?? "?"}`
+      ? `link now Gen${gpu.pcie_gen} x${gpu.pcie_width ?? "?"} · card max Gen${gpu.pcie_gen_max} x${gpu.pcie_width_max ?? "?"}`
       : undefined;
+  const pciePeak = trackPciePeak(gpu);
 
   const driverVer = formatGpuDriverVersion(gpu.driver_version);
 
@@ -207,8 +225,14 @@ export default function GpuTopologyCard({
               ) : null}
             </p>
             <p className="gpu-topo-card__pcie-io font-mono tabular-nums">
-              <span>RX {formatPcieRate(gpu.pcie_rx_mib_per_s)}</span>
-              <span>TX {formatPcieRate(gpu.pcie_tx_mib_per_s)}</span>
+              <span>
+                RX {formatPcieRate(gpu.pcie_rx_mib_per_s)}
+                <span className="gpu-topo-card__pcie-peak"> // {formatPcieRate(pciePeak.rx)}</span>
+              </span>
+              <span>
+                TX {formatPcieRate(gpu.pcie_tx_mib_per_s)}
+                <span className="gpu-topo-card__pcie-peak"> // {formatPcieRate(pciePeak.tx)}</span>
+              </span>
             </p>
           </div>
         </div>

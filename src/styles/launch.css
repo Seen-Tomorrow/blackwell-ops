@@ -816,6 +816,10 @@
   letter-spacing: 0.08em;
 }
 
+.gpu-topo-card__pcie-peak {
+  opacity: 0.55;
+}
+
 .gpu-topo-card__cell {
   display: flex;
   flex-direction: column;
