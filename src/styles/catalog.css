@@ -865,8 +865,7 @@
  * these container rules are the ARCTIC readability correction, re-keyed from
  * the deleted text-white/* / text-stealth-muted utility hooks.
  */
-[data-model-catalog] .model-catalog-card .mcard-params,
-[data-model-catalog] .model-catalog-card .mcard-mini-name {
+[data-model-catalog] .model-catalog-card .mcard-params {
   color: var(--theme-text);
 }
 
@@ -876,9 +875,7 @@
 }
 
 [data-model-catalog] .model-catalog-card .mcard-author,
-[data-model-catalog] .model-catalog-card .mcard-meta-mut,
-[data-model-catalog] .model-catalog-card .mcard-mini-author,
-[data-model-catalog] .model-catalog-card .mcard-mini-size {
+[data-model-catalog] .model-catalog-card .mcard-meta-mut {
   color: var(--theme-text-muted);
 }
 

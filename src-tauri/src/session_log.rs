@@ -27,10 +27,7 @@ static STATE: OnceLock<Mutex<SessionState>> = OnceLock::new();
 /// the exact flag set and the engine instance a measurement ran against, without reading logs.
 #[derive(Clone, Debug)]
 pub struct EngineLaunch {
-    pub port: u16,
-    pub pid: u32,
     pub launch_cmd: String,
-    pub started_unix: i64,
     /// Stable per launch: same engine process + same config → same id.
     pub id: String,
 }
@@ -419,7 +416,7 @@ pub fn record_launch(slot_idx: usize, alias: &str, pid: u32, port: u16, launch_c
         if let Ok(mut map) = launch_by_port().lock() {
             map.insert(
                 port,
-                EngineLaunch { port, pid, launch_cmd: launch_cmd.to_string(), started_unix, id },
+                EngineLaunch { launch_cmd: launch_cmd.to_string(), id },
             );
         }
     }

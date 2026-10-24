@@ -118,9 +118,6 @@ pub struct SlotTelemetry {
     pub wave_ready: bool,
 }
 
-/// Kept as an alias: callers that only care about a single-slot engine read `snapshot()`.
-pub type PortTelemetry = SlotTelemetry;
-
 impl SlotTelemetry {
     /// Time from request start to the first generated token (aggregate: earliest lane).
     pub fn ttft_ms(&self) -> Option<f64> {
@@ -158,6 +155,7 @@ impl SlotTelemetry {
     /// A two-sample delta aliases badly when a whole ubatch lands between ticks (a 1024-token
     /// step at 25 ms reads as ~40k tok/s for one frame). A trailing window smooths that without
     /// inventing data, and returns 0 until the span is long enough to mean anything.
+    #[allow(dead_code)] // split step 5: the SSE reader will switch to this window
     pub fn gen_tps_window(&self, window: std::time::Duration) -> f64 {
         window_rate(&self.gen_samples, window)
     }
@@ -204,14 +202,6 @@ pub fn enabled() -> bool {
 fn live_ports() -> &'static Mutex<HashSet<u16>> {
     static LIVE: OnceLock<Mutex<HashSet<u16>>> = OnceLock::new();
     LIVE.get_or_init(|| Mutex::new(HashSet::new()))
-}
-
-/// True while a `/events/sse` connection is open for this port.
-pub fn is_live(port: u16) -> bool {
-    live_ports()
-        .lock()
-        .map(|s| s.contains(&port))
-        .unwrap_or(false)
 }
 
 fn snapshots() -> &'static Mutex<HashMap<(u16, i32), SlotTelemetry>> {
@@ -272,7 +262,8 @@ pub fn snapshot(port: u16) -> Option<SlotTelemetry> {
     }
 }
 
-/// Per-slot view, for callers that know the engine slot id.
+/// Per-slot view used by the parser tests (production reads `snapshot`/`lanes`).
+#[cfg(test)]
 pub fn slot_snapshot(port: u16, slot: i32) -> Option<SlotTelemetry> {
     snapshots().lock().ok()?.get(&(port, slot)).cloned()
 }
@@ -759,7 +750,7 @@ mod tests {
 
     #[test]
     fn prefill_tps_uses_processed_over_time() {
-        let t = PortTelemetry {
+        let t = SlotTelemetry {
             pp_processed: 512,
             pp_total: 512,
             pp_time_ms: 128.0,

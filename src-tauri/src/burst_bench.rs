@@ -369,9 +369,6 @@ pub async fn cmd_burst_bench(
     let mut measured_parallel = 1usize;
     let mut measured_per_request_gen_tps: Option<f64> = None;
     let mut measured_aggregate_gen_tps: Option<f64> = None;
-    // Speculative-decode acceptance is a decode property: snapshot the engine counters before
-    // the run and store the delta as this run's acceptance rate.
-    let spec_before = crate::bench_archive::spec_counters(port).await;
 
     for run in 0..total_runs {
         if bench_cancel::stop_after_current_requested(port) {
@@ -481,15 +478,6 @@ pub async fn cmd_burst_bench(
                 per_request_gen_tps: None,
             });
         }
-    };
-
-    // Acceptance delta for this bench run (warmup decodes included; they are tiny).
-    let (spec_acc, spec_draft, spec_rate) = match (spec_before, crate::bench_archive::spec_counters(port).await) {
-        (Some((a0, d0)), Some((a1, d1))) if d1 >= d0 && a1 >= a0 => {
-            let (da, dd) = (a1 - a0, d1 - d0);
-            (da, dd, if dd > 0 { da as f64 / dd as f64 } else { 0.0 })
-        }
-        _ => (0, 0, 0.0),
     };
 
     let itl_ms = if run.gen_tps > 0.0 {

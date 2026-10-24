@@ -3959,49 +3959,14 @@ html[data-industrial-bezel="brush"] {
 .phosphor-screen-inner .fusion-overlay-status,
 .phosphor-screen-inner .fusion-overlay-port,
 .phosphor-screen-inner .fusion-overlay-note,
-.phosphor-screen-inner .fusion-overlay-detail,
-.phosphor-screen-inner .fusion-fuel-label,
-.phosphor-screen-inner .fusion-tps-caption,
-.phosphor-screen-inner .fusion-slotctx-id,
-.phosphor-screen-inner .fusion-tps-value--ghost {
+.phosphor-screen-inner .fusion-overlay-detail {
   color: var(--display-face-control-muted);
 }
 
 /* Accent ink (was text-nv-green[/70] -> --display-face-control-text) */
 .phosphor-screen-inner .fusion-overlay-sync,
-.phosphor-screen-inner .fusion-overlay-boot,
-.phosphor-screen-inner .fusion-fuel-readout--accent,
-.phosphor-screen-inner .fusion-tps-value--accent,
-.phosphor-screen-inner .fusion-slotctx-id--active,
-.phosphor-screen-inner .fusion-phase-badge--tg {
+.phosphor-screen-inner .fusion-overlay-boot {
   color: var(--display-face-control-text);
-}
-
-/* Telemetry cyan (was text-telemetry-cyan[/70] -> #0088aa) */
-.phosphor-screen-inner .fusion-tps-value--info {
-  color: #0088aa;
-}
-
-/* Orange/amber (was text-orange-400 / text-telemetry-amber[/80] -> #b87a00) */
-.phosphor-screen-inner .fusion-fuel-readout--warn,
-.phosphor-screen-inner .fusion-tps-value--warn,
-.phosphor-screen-inner .fusion-phase-badge--pp {
-  color: var(--fixed-brand-amber);
-}
-
-/* Dark fill (was bg-stealth-dark -> --display-face-bar-bg) */
-.phosphor-screen-inner .fusion-fuel-track {
-  background: var(--display-face-bar-bg);
-}
-
-/* Hairline borders (was border-stealth-border[/15..70] + border-stealth-muted[/30,60]
-   -> --display-face-control-border) */
-.phosphor-screen-inner .fusion-fuel-track,
-.phosphor-screen-inner .fusion-slotctx-track,
-.phosphor-screen-inner .fusion-phase-badge--idle,
-.phosphor-screen-inner .fusion-phase-badge--pp,
-.phosphor-screen-inner .fusion-phase-badge--tg {
-  border-color: var(--display-face-control-border);
 }
 
 /* CTX slot bars — base fallbacks (texture + theme rules above override) */
