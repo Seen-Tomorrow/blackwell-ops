@@ -21,7 +21,6 @@ mod types;
 
 mod templates;
 mod nvml_metrics;
-mod nvml_probe;
 mod nsys_profile_cmd;
 mod fit_adapters;
 mod fit_scanner;

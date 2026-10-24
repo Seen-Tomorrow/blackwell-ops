@@ -372,6 +372,13 @@ Native crashes also append `%TEMP%\blackwell-crash.log` (heap `0xC0000374`, ille
   x8/x8 bifurcated board still reports max 16 - and mark idle off the gen downshift only.
   The `// peak` after each row is a frontend session max (module map, resets with the app).
   `nvidia-smi` cannot report throughput; do not replace this with a query field.
+
+- **Memory junction temp is not in NVML on this stack.** Probed driver 616.92 / RTX PRO 6000
+  Blackwell: `nvidia-smi` says `Memory Current Temp: N/A`; `nvmlDeviceGetThermalSettings`
+  returns only target GPU (the die), no MEMORY target; `nvmlDeviceGetTemperature(1)` is
+  GPU_MAX (not memory) and returns INVALID_ARGUMENT; `nvmlDeviceGetTemperatureThreshold(MEM_MAX)`
+  is NOT_SUPPORTED. HWiNFO reads it through its own driver, not NVML. Do not re-add the old
+  sensor-ID guesses (1-7) - `nvml_probe.rs` was removed for that reason.
 - `BINARY_UPDATES_ENABLED = true` — App `.7z` + Full NSIS + provider packs via GitHub releases (Majestic ships assets).
 - Fusion prefill % needs `prefill_tokens_total` from `NewPrompt` log; `/slots` `n_prompt_tokens_processed` is the numerator. Do not call `reset_prefill_counters()` on `/slots` new_request after NewPrompt — it zeroes total and forces fallback to sparse `print_timing` stderr lines.
 - Bench warmup→measured has no `/slots` idle gap — call `reset_bench_meters_for_port` at each bench phase start or hero AVG/LIVE TPS bleeds warmup into measured.
