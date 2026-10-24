@@ -69,7 +69,12 @@ Findings the split must not lose:
    line *is* the whole-request average — it falls because later ubatches attend over a longer
    context and the tail includes checkpoint writes. A median of per-ubatch rates would be higher,
    but it would not match llama-bench's `n_prompt / t_prompt` and would hide the long-context cost;
-   do not "fix" the freeze that way.
+   do not "fix" the freeze that way. The small `LIB` readout (`prefillTpsLib`) is the same request
+   measured on `lib_prompt_ms` (`t_p_eval`), which excludes setup **and** context-checkpoint KV
+   copies — the llama-bench-comparable figure (16 223 tok: 7 095 vs ~6 798 on the slot clock).
+   Checkpoint cost is real but avoidable: `-ctxcp 0` disables them, `-cms N` sets the minimum
+   spacing (default 8 192 tok), and they are pure overhead for a bench that always sends a fresh
+   prompt.
 2. **PP fluency is ubatch cadence, not brain policy.** `B=8192/4096` emits ~1 frame per 4 096
    tokens and reports steady 4 242.4; `B=1024/256` emits ~16× more frames and reports 3 501.4.
    Progress was present in both — the split must not add its own throttle on top.

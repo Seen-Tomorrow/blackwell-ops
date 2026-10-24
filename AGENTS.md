@@ -353,7 +353,15 @@ Native crashes also append `%TEMP%\blackwell-crash.log` (heap `0xC0000374`, ille
   (`steady_prefill_tps`) deducts the measured per-request server setup so the hero compares with
   llama-bench. It is a calibration, capped at 65 % of the window; re-measure it when the engine
   patch level or launch flags change (procedure in the handoff doc), and keep raw `PP tok/s` in
-  the report so the difference stays visible.
+  the report so the difference stays visible. The hero's small `LIB` companion
+  (`prefillTpsLib`) is tokens ÷ `request_end.lib_prompt_ms` (`t_p_eval`): that clock excludes the
+  setup **and** llama-server's context-checkpoint KV copies, so it is the closest match to
+  llama-bench and can sit 3–6 % above the slot figure at long prompts (16 223 tok: 7 095 lib vs
+  ~6 798 slot). Checkpoints are `-ctxcp/--ctx-checkpoints` (max per slot, default 32, 0
+  disables) and `-cms/--checkpoint-min-step` (default 8 192 tok, 0 = no minimum); they are
+  created at user-message starts and near the prompt end, cost a KV copy (≈112 MiB at 16K ctx,
+  ≈150 MiB at 32K) inside the request, and are pure overhead for a bench that sends a fresh
+  prompt every time. `-cram 0` disables the prompt cache (and prefix reuse) entirely.
 - **The poll loop is the render tick.** `FusionUpdate` is emitted once per loop iteration, so
   throttling `/slots` throttles the hero even when every value came from SSE. Decouple render
   from poll before slowing the poller.
