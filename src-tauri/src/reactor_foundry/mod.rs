@@ -749,9 +749,10 @@ async fn stage_git_ops<'a>(ctx: &BuildCtx<'a>) -> Result<std::path::PathBuf, Str
         }
     }
 
-    // Product vendor patches (e.g. single-model /models/sse cold-boot). Soft-fail:
-    // a drifted upstream must not kill the 1-click newest-engine path.
-    // Applied AFTER PR so overlays always win on product paths.
+    // Product vendor patches (single-model /models/sse cold-boot + /events/sse telemetry) are
+    // product-critical: without them the engine builds and serves fine, but fusion falls back
+    // to polling and every SSE regression looks like a ghost. A drifted upstream must be
+    // rebased — do not silently ship an unpatched engine.
     let (applied_patches, failed_patches) =
         apply_foundry_vendor_patches(&git_exe, &src_dir, provider_id).await;
     if !applied_patches.is_empty() {
@@ -766,23 +767,58 @@ async fn stage_git_ops<'a>(ctx: &BuildCtx<'a>) -> Result<std::path::PathBuf, Str
             )),
         );
     }
-    for fail in &failed_patches {
-        let msg = format!(
-            "[WARN] PATCH FAIL — {fail}. Continuing without this patch (fallback boot path)."
-        );
-        log::warn!("[foundry] {msg}");
-        emit_config_event(
-            app_handle,
-            provider_id,
-            profile_id,
-            build_id,
-            Some(msg.clone()),
-        );
-        foundry_console_emit(
-            app_handle,
-            msg,
-            BlackwellOutputConsoleLineStyle::Error,
-        );
+    if !failed_patches.is_empty() {
+        for fail in &failed_patches {
+            let msg = format!("[PATCH FAIL] {fail}");
+            log::error!("[foundry] {msg}");
+            emit_config_event(
+                app_handle,
+                provider_id,
+                profile_id,
+                build_id,
+                Some(msg.clone()),
+            );
+            foundry_console_emit(
+                app_handle,
+                msg,
+                BlackwellOutputConsoleLineStyle::Error,
+            );
+        }
+        let allow_unpatched = std::env::var("BLACKWELL_FOUNDRY_ALLOW_UNPATCHED")
+            .map(|v| {
+                matches!(
+                    v.trim().to_ascii_lowercase().as_str(),
+                    "1" | "true" | "yes" | "on"
+                )
+            })
+            .unwrap_or(false);
+        if allow_unpatched {
+            let msg = "[WARN] BLACKWELL_FOUNDRY_ALLOW_UNPATCHED is set — building without \
+                       product patches; SSE fusion will fall back to polling.";
+            log::warn!("[foundry] {msg}");
+            emit_config_event(
+                app_handle,
+                provider_id,
+                profile_id,
+                build_id,
+                Some(msg.to_string()),
+            );
+        } else {
+            // A failed 3-way apply can leave conflict markers; reset so the next attempt is clean.
+            let _ = git_hidden_output(
+                git_exe.to_path_buf(),
+                src_dir.to_path_buf(),
+                vec!["reset".into(), "--hard".into()],
+            )
+            .await;
+            return Err(format!(
+                "vendor patch(es) failed on this upstream tree:\n{}\n\n\
+                 Rebase foundry/patches/{provider_id}-*.patch onto origin HEAD (the SSE stream is \
+                 product-critical), or set BLACKWELL_FOUNDRY_ALLOW_UNPATCHED=1 to build an \
+                 unpatched engine deliberately.",
+                failed_patches.join("\n")
+            ));
+        }
     }
 
     Ok(git_exe)

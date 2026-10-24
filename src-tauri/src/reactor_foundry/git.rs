@@ -192,8 +192,8 @@ pub(crate) async fn git_hard_sync_branch(
     Ok(())
 }
 /// Apply durable product patches after clean clone/sync. Idempotent when already applied.
-/// Never hard-fails the build: a broken/outdated patch is reported and skipped so the
-/// battle-tested cmake/ninja path still runs (product has a fallback boot path without SSE).
+/// Returns `(applied, failed)`; the caller decides the policy — Foundry treats a failure as
+/// fatal (unless the unpatched escape hatch is set), because the SSE stream is product-critical.
 pub(crate) async fn apply_foundry_vendor_patches(
     git_exe: &std::path::Path,
     src_dir: &std::path::Path,

@@ -313,7 +313,20 @@ host commit too, so **"DEV crashes, REL is fine" is not evidence of a DEV bug**.
 **Foundry `work/` CMake cache** — Retained between builds for all users when the configure fingerprint matches (`.blackwell-foundry-cache-key` + `CMakeCache.txt`). Fingerprint miss, configure failure (cold path), or CLEAR CACHE wipes the tree. `foundry/artifacts/.../Release/` is the only durable **runtime** binary location. Provider `binary_path` / `binary_path_per_env` must point at artifacts after a foundry build, never at cmake temp output under `work/`.
 
 **Foundry batch spawn** — Configure/build write `_build_cfg_*.bat` / `_build_run_*.bat` under `work/` then run via `cmd_script_launch` + `run_foundry_batch_streaming` (`raw_arg` tail). Do not spawn those batches with plain `cmd /c path` — install dirs with spaces fail before cmake starts (see **Windows paths with spaces** above).
-**Vendor patches track upstream HEAD.** Check origin for the feature before adding or rebasing a patch — upstream may already provide it (it has the router `/models/sse`; the single-model `/models/sse` and `/events/sse` are ours). After a server entrypoint refactor, re-port `ggml-master-single-model-load-sse.patch` + `ggml-master-telemetry-sse.patch` onto the new `server_register_routes` / `server_run_instance` hooks; filename order matters (load-sse first — the telemetry HTTP hunk builds on it). The obsolete `cuda-graph-instance` patch is gone: upstream #30804 replaced `graph->instance` with the `instances` vector and carries the fix.
+
+**Vendor patches track upstream HEAD.** Check origin for the feature before adding or rebasing
+a patch — upstream may already provide it (it has the router `/models/sse`; the single-model
+`/models/sse` and `/events/sse` are ours). After a server entrypoint refactor, re-port
+`ggml-master-single-model-load-sse.patch` + `ggml-master-telemetry-sse.patch` onto the new
+`server_register_routes` / `server_run_instance` hooks; filename order matters (load-sse first —
+the telemetry HTTP hunk builds on it). The obsolete `cuda-graph-instance` patch is gone: upstream
+#30804 replaced `graph->instance` with the `instances` vector and carries the fix.
+
+`npm run check:patches` checks each vendor patch in a throwaway `origin/master` worktree
+(PASS / FAIL / UPSTREAM marker) without touching the build clone — the local clone is normally
+dirty after a build, so checking it in place lies. Foundry's configure stage now **aborts** on a
+patch failure instead of silently building unpatched; only `BLACKWELL_FOUNDRY_ALLOW_UNPATCHED=1`
+opts into the old fallback (SSE fusion then falls back to polling).
 
 ---
 ## APP/engine logs
@@ -359,9 +372,9 @@ Native crashes also append `%TEMP%\blackwell-crash.log` (heap `0xC0000374`, ille
   throttling `/slots` throttles the hero even when every value came from SSE. Decouple render
   from poll before slowing the poller.
 - **Engine vendor patches are ordered by filename** (`foundry/patches/<provider>-*.patch`):
-  `cuda-graph-instance` → `single-model-load-sse` → `telemetry-sse`. The telemetry patch is based
-  on the tree *after* the cold-boot patch and must keep sorting after it; renaming it earlier
-  makes it fail on a pristine tree.
+  `single-model-load-sse` → `telemetry-sse` (the telemetry HTTP hunk builds on load-sse's
+  `/models/sse` early-attach). A failed patch aborts Foundry configure; `npm run check:patches`
+  runs the same check without touching the clone.
 - Reaper clears slots + `engine-locks` on unexpected exit (Loading or Running). Stale locks from prior sessions are swept on app start and when launching on a free port.
 - **Quiet stderr loads** — Some models stop writing to stderr early (pipe EOF) while still loading. `log_hub` must not fail the slot when spawn-time `engine_pid` is still alive; HTTP `/slots` or `/health` readiness owns promotion to Running. Do not require stderr “model loaded” lines for these models.
 - **GPU topo “External apps”** — Grey = NVML used minus (breakdown SELF + capped CUDA/runtime, max 4 GiB/GPU). Do not assign all NVML to our bar when a foreign app (LM Studio) shares the GPU. Stale NVML after stop = background `scan_gpus` + `gpuMemoryKey` re-eval + burst poll on `slot-cleared` (+2s).
