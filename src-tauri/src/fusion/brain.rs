@@ -2675,11 +2675,18 @@ impl FusionBrain {
             )
         };
 
+        // Small companion readout: the library's own prompt-eval clock. Prefer the stream's
+        // `lib_prompt_ms`; without a patched engine fall back to the stderr `prompt eval time`
+        // rate the log belt already parsed (both exclude server setup and checkpoint copies).
+        let prefill_tps_lib = match sse_snapshot.as_ref().and_then(|t| t.last_request.as_ref()) {
+            Some(r) => meter::lib_prefill_tps(r.tokens_evaluated, r.lib_prompt_ms),
+            None => clamp_display_tps(self.prefill_tps_eval),
+        };
+
         FusionUpdate {
             alias: self.alias.clone(),
             slot_idx: self.slot_idx,
-            port: self.port,
-            // Honest source: "sse" only when this tick's values actually came from the stream.
+            port: self.port,            // Honest source: "sse" only when this tick's values actually came from the stream.
             // A live socket that cannot serve a slot (parallel lanes) is still the poll path.
             telemetry_source: if sse_live {
                 "sse".to_string()
@@ -2698,6 +2705,7 @@ impl FusionBrain {
             } else {
                 clamp_display_tps(self.prefill_tps_instant)
             },
+            prefill_tps_lib,
             prefill_progress,
             prefill_tokens,
             // Emit the effective request total (log-derived, or /slots peak sum when no log belt)

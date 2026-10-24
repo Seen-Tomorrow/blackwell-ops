@@ -75,6 +75,12 @@ pub struct FusionUpdate {
     #[serde(rename = "prefillTpsInstant")]
     pub prefill_tps_instant: f64,
 
+    /// PP from the library's own prompt-eval clock (`t_p_eval_ms`): excludes the server's HTTP
+    /// setup and any context-checkpoint KV copies, so it is the closest match to llama-bench.
+    /// 0 until the engine reported a library time for the last request (so the UI can hide it).
+    #[serde(rename = "prefillTpsLib")]
+    pub prefill_tps_lib: f64,
+
     /// Primary prefill progress 0→1 computed from /slots (n_prompt_tokens_processed / n_prompt_tokens). Bypasses log throttle/miss issues.
     #[serde(rename = "prefillProgress")]
     pub prefill_progress: f64,
@@ -206,6 +212,7 @@ pub struct FusionEmitFingerprint {
     pub prefill_tokens_total: u32,
     pub prefill_tps_session_centi: u32,
     pub prefill_tps_instant_centi: u32,
+    pub prefill_tps_lib_centi: u32,
     pub prefill_tps_metrics_centi: u32,
     pub gen_tps_deci: u32,
     pub gen_tps_session_deci: u32,
@@ -242,6 +249,7 @@ impl FusionEmitFingerprint {
             prefill_tokens_total: u.prefill_tokens_total.min(u32::MAX as usize) as u32,
             prefill_tps_session_centi: (u.prefill_tps_session * 100.0).round() as u32,
             prefill_tps_instant_centi: (u.prefill_tps_instant * 100.0).round() as u32,
+            prefill_tps_lib_centi: (u.prefill_tps_lib * 100.0).round() as u32,
             prefill_tps_metrics_centi: (u.prefill_tps_metrics * 100.0).round() as u32,
             gen_tps_deci: (u.gen_tps * 10.0).round() as u32,
             gen_tps_session_deci: (u.gen_tps_session * 10.0).round() as u32,

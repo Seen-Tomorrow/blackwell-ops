@@ -539,6 +539,9 @@ export default function FusionOverlay({
     fusion.prefillTokens ?? 0,
     fusion.logPromptTokens ?? 0,
   );
+  // Companion readout: the library's own prompt-eval clock. It has no live per-tick value in the
+  // stream (prompt_progress carries the slot clock), so it appears once the request closes.
+  const prefillLibTps = fusion.prefillTpsLib ?? 0;
   const showPrefillProgress =
     !suppressPrefillHero && isPrefillPhase && (prefillTotal > 0 || primaryPrefillProgress > 0);
   const slotCol = fusionSlotColumnLayout(fusion.parallel);
@@ -806,6 +809,15 @@ export default function FusionOverlay({
                 </div>
 
                 <div className="fusion-instrument__pp-foot flex flex-col justify-end flex-1 w-full min-h-0 mt-auto">
+                  {prefillLibTps > 0 && (
+                    <span
+                      className="fusion-instrument__pp-lib"
+                      title="Library prompt-eval clock (t_p_eval): excludes server setup and context-checkpoint KV copies — the figure llama-bench reports"
+                    >
+                      <span className="fusion-instrument__pp-lib-label">LIB</span>
+                      {Math.round(prefillLibTps).toLocaleString()} tok/s
+                    </span>
+                  )}
                   <div
                     className="fusion-pp-progress"
                     style={{ visibility: showPrefillProgress ? "visible" : "hidden" }}

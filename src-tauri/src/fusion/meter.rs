@@ -162,6 +162,20 @@ pub fn steady_prefill_tps(tokens: f64, slot_ms: f64) -> f64 {
     clamp_display_tps(tokens / (slot_ms - deduction) * 1000.0)
 }
 
+/// Prefill tok/s from the library's own prompt-eval clock (`t_p_eval_ms`).
+///
+/// No setup deduction: the timestamp is already inside the library, so this number excludes both
+/// the HTTP/slot floor and any server-side work that copies state outside `t_p_eval` — notably
+/// the context-checkpoint writes llama-server charges to the request at long prompts. It is the
+/// figure llama-bench reports (`llama_print_timings: prompt eval time`), shown as the small
+/// companion to [`steady_prefill_tps`].
+pub fn lib_prefill_tps(tokens: u64, lib_ms: f64) -> f64 {
+    if tokens == 0 || lib_ms <= 0.0 {
+        return 0.0;
+    }
+    clamp_display_tps(tokens as f64 / (lib_ms / 1000.0))
+}
+
 /// Session-average tok/s from cumulative tokens + cumulative wall ms (hero AVG mode).
 /// Pure — no brain state. Returns 0 until the wall exceeds `min_ms` (filters elapsed≈0 spikes).
 pub fn session_avg_tps(total_tokens: u64, total_ms: u64, min_ms: u64) -> f64 {
@@ -233,5 +247,22 @@ mod tests {
     fn steady_pp_zero_inputs_are_zero() {
         assert_eq!(steady_prefill_tps(0.0, 100.0), 0.0);
         assert_eq!(steady_prefill_tps(100.0, 0.0), 0.0);
+    }
+
+    #[test]
+    fn lib_pp_reads_straight_off_the_library_clock() {
+        // 16 223 tokens / 2 286.49 ms is the measured 16K shape: 7 095 tok/s, no setup deduction.
+        let tps = lib_prefill_tps(16_223, 2286.49);
+        assert!((tps - 7095.0).abs() < 1.0, "got {tps}");
+        // Same request on the slot clock (2 440 ms incl. two checkpoint copies) is ~6 % lower —
+        // the gap between the two readouts is exactly the point of showing both.
+        let slot = steady_prefill_tps(16_223.0, 2440.0);
+        assert!(slot < tps, "slot {slot} must sit below lib {tps}");
+    }
+
+    #[test]
+    fn lib_pp_zero_inputs_are_zero() {
+        assert_eq!(lib_prefill_tps(0, 100.0), 0.0);
+        assert_eq!(lib_prefill_tps(100, 0.0), 0.0);
     }
 }

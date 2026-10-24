@@ -302,6 +302,17 @@ impl SseBrain {
             None => (0.0, 0.0, 0, 0),
         };
 
+        // Library clock for the *completed* request: `t_p_eval` excludes the server's setup and
+        // context-checkpoint copies. Only meaningful once the request is closed — while it is
+        // open, `last_request` still describes the previous one.
+        let pp_lib = if open {
+            0.0
+        } else {
+            t.and_then(|t| t.last_request.as_ref())
+                .map(|r| meter::lib_prefill_tps(r.tokens_evaluated, r.lib_prompt_ms))
+                .unwrap_or(0.0)
+        };
+
         let gen_avg = if self.req.request_closed {
             if self.req.frozen_request_gen_tps > 0.0 {
                 self.req.frozen_request_gen_tps
@@ -424,6 +435,7 @@ impl SseBrain {
             prefill_tps_session: pp_rate,
             // The stream's PP rate is already the steady figure, so LIVE and AVG agree here.
             prefill_tps_instant: pp_rate,
+            prefill_tps_lib: pp_lib,
             prefill_progress: pp_progress,
             prefill_tokens: pp_tokens,
             prefill_tokens_total: pp_total,
@@ -671,6 +683,38 @@ mod tests {
         assert!(
             update.prefill_tps_session > 0.0,
             "the PP hero rate comes from the same frame"
+        );
+        assert_eq!(
+            update.prefill_tps_lib, 0.0,
+            "no library clock while the request is still open"
+        );
+
+        // The request ends: `prompt_ms` includes two 112 MiB checkpoint copies, the library
+        // clock does not, so the two readouts must split by a visible margin.
+        crate::engine_events::ingest_for_test(
+            port,
+            concat!(
+                "data: {\"type\":\"request_end\",\"slot\":0,\"task\":1,\"prompt_ms\":2440.0,\"predicted_ms\":1.0,\"tokens_evaluated\":16223,\"tokens_predicted\":1,\"cache_hit_tokens\":0,\"spec_accepted\":0,\"spec_draft\":0,\"lib_prompt_ms\":2286.49,\"lib_tokens_evaluated\":16223,\"seq\":4}\n\n",
+                "data: {\"type\":\"state\",\"slot\":0,\"phase\":\"IDLE\",\"busy\":0,\"peak\":1,\"n_ctx\":4096,\"n_ctx_used\":16223,\"seq\":5}\n\n"
+            ),
+        );
+        let t = crate::engine_events::snapshot(port).expect("snapshot");
+        let lanes = crate::engine_events::lanes(port);
+        brain.observe(Some(&t), &lanes, now);
+        let closed = brain.build_update(Some(&t), &lanes, now);
+
+        assert!(
+            closed.request_closed,
+            "request_end must close the request"
+        );
+        assert!(
+            (closed.prefill_tps_lib - 7095.0).abs() < 2.0,
+            "library PP = tokens / lib_prompt_ms, got {}",
+            closed.prefill_tps_lib
+        );
+        assert!(
+            closed.prefill_tps_session < closed.prefill_tps_lib,
+            "slot-clock PP includes the checkpoint copies and must sit lower"
         );
     }
 
