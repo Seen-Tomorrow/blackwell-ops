@@ -267,19 +267,19 @@ struct CheckpointClock {
 static CHECKPOINT_CLOCK: std::sync::LazyLock<std::sync::Mutex<HashMap<(u16, i32), CheckpointClock>>> =
     std::sync::LazyLock::new(|| std::sync::Mutex::new(HashMap::new()));
 
-/// Engine log prefix `H.MM.SS.mmm.uuu` (e.g. `0.17.12.942.476`) as microseconds.
+/// Engine log prefix as microseconds.
+///
+/// b11842 prints `M.SS.mmm.uuu` (e.g. `0.48.810.445` = 0 min 48.810445 s); older builds printed
+/// an extra hour field (`H.MM.SS.mmm.uuu`). Both are accepted.
 fn parse_engine_ts(line: &str) -> Option<i64> {
     let first = line.split_whitespace().next()?;
-    let mut it = first.split('.');
-    let h: i64 = it.next()?.parse().ok()?;
-    let m: i64 = it.next()?.parse().ok()?;
-    let s: i64 = it.next()?.parse().ok()?;
-    let ms: i64 = it.next()?.parse().ok()?;
-    let us: i64 = it.next()?.parse().ok()?;
-    if it.next().is_some() {
-        return None;
+    let parts: Vec<&str> = first.split('.').collect();
+    let nums: Vec<i64> = parts.iter().map(|p| p.parse().ok()).collect::<Option<_>>()?;
+    match nums.as_slice() {
+        [m, s, ms, us] => Some((m * 60 + s) * 1_000_000 + ms * 1000 + us),
+        [h, m, s, ms, us] => Some(((h * 60 + m) * 60 + s) * 1_000_000 + ms * 1000 + us),
+        _ => None,
     }
-    Some(((h * 60 + m) * 60 + s) * 1_000_000 + ms * 1000 + us)
 }
 
 /// `id  0 | task 52` → 0.
@@ -775,13 +775,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn engine_log_timestamp_is_h_mm_ss_mmm_us() {
+    fn engine_log_timestamp_is_minutes_seconds_ms_us() {
+        // b11842: 0.48.810.445 = 0 min 48.810445 s
+        assert_eq!(parse_engine_ts("0.48.810.445 I slot"), Some(48_810_445));
+        // older builds printed an hour field too
         assert_eq!(
             parse_engine_ts("0.17.12.942.476 I slot create_check:"),
             Some(((17 * 60 + 12) * 1_000_000) + 942_476)
         );
         assert_eq!(parse_engine_ts("no timestamp here"), None);
-        assert_eq!(parse_engine_ts("0.1.2.3"), None);
+        assert_eq!(parse_engine_ts("0.1.2"), None);
     }
 
     #[test]
@@ -789,7 +792,7 @@ mod tests {
         let port = 9996;
         note_engine_line(
             port,
-            "0.00.00.000.000 I slot operator (): id  0 | task 1 | new prompt, n_ctx_slot = 4096",
+            "0.00.000.000 I slot operator (): id  0 | task 1 | new prompt, n_ctx_slot = 4096",
         );
         ingest_for_test(
             port,
@@ -801,7 +804,7 @@ mod tests {
         // save completes 300 ms after the last streamed frame (401.2 ms of task time)
         note_engine_line(
             port,
-            "0.00.00.701.200 I slot create_check: id  0 | task 1 | created context checkpoint 1 of 32 (pos_min = 2044, pos_max = 2044, n_tokens = 2045, size = 112.571 MiB)",
+            "0.00.701.200 I slot create_check: id  0 | task 1 | created context checkpoint 1 of 32 (pos_min = 2044, pos_max = 2044, n_tokens = 2045, size = 112.571 MiB)",
         );
         assert!((checkpoint_ms(port) - 300.0).abs() < 0.01);
 
@@ -1108,3 +1111,4 @@ mod tests {
         assert!(!slot_snapshot(9101, 0).unwrap().request_closed);
     }
 }
+

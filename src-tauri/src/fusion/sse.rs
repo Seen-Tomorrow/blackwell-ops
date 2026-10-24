@@ -666,7 +666,7 @@ mod tests {
         });
         crate::engine_events::note_engine_line(
             port,
-            "0.00.00.000.000 I slot operator (): id  0 | task 1 | new prompt, n_ctx_slot = 4096",
+            "0.00.000.000 I slot operator (): id  0 | task 1 | new prompt, n_ctx_slot = 4096",
         );
         crate::engine_events::ingest_for_test(
             port,
@@ -704,7 +704,7 @@ mod tests {
         // 701.2 ms -> 300 ms of copy that REAL PP must add back.
         crate::engine_events::note_engine_line(
             port,
-            "0.00.00.701.200 I slot create_check: id  0 | task 1 | created context checkpoint 1 of 32 (pos_min = 2044, pos_max = 2044, n_tokens = 2045, size = 112.571 MiB)",
+            "0.00.701.200 I slot create_check: id  0 | task 1 | created context checkpoint 1 of 32 (pos_min = 2044, pos_max = 2044, n_tokens = 2045, size = 112.571 MiB)",
         );
 
         crate::engine_events::ingest_for_test(
@@ -801,3 +801,4 @@ mod tests {
         assert_eq!(brain.session_tokens, 1500);
     }
 }
+
