@@ -14,6 +14,7 @@ import {
   formatBenchSplitHeadline,
 } from "../lib/benchHwTopo";
 import { benchFailureLine } from "../lib/benchErrorUtils";
+import { mergeBenchLastRun, type BenchLastRunGhost } from "../lib/benchLastRun";
 import {
   BENCH_PP_TOKEN_OPTIONS,
   BENCH_TG_PARALLEL_OPTIONS,
@@ -218,13 +219,6 @@ function benchConcurrencyChipTitle(n: number): string {
   return `×${n}: ${n} parallel /completion feeds pinned to slots 0–${n - 1}. Requires --parallel ≥ ${n} at launch; capped to live slot count if lower.`;
 }
 
-
-type BenchLastRunGhost = {
-  tgTps: number | null;
-  ppTps: number | null;
-  tgPar: number;
-};
-
 function BenchConcurrencyBadge({
   parallel,
   compact = false,
@@ -281,16 +275,10 @@ export default function BenchWidget({
 
   const [lastRun, setLastRun] = useState<BenchLastRunGhost | null>(null);
 
-  // Keep a ghost of the last successful bench after HIDE clears live results.
+  // Keep a ghost of the last successful bench after HIDE clears live results, and across runs
+  // that clear their own result at the start (REPS report the median only when they finish).
   useEffect(() => {
-    const tgOk = ps.tgResult?.success && ps.tgResult.gen_tps > 0 ? ps.tgResult : null;
-    const ppOk = ps.ppResult?.success && ps.ppResult.bench_prefill_tps > 0 ? ps.ppResult : null;
-    if (!tgOk && !ppOk) return;
-    setLastRun((prev) => ({
-      tgTps: tgOk ? tgOk.gen_tps : prev?.tgTps ?? null,
-      ppTps: ppOk ? ppOk.bench_prefill_tps : prev?.ppTps ?? null,
-      tgPar: tgOk ? (tgOk.parallel_requests ?? 1) : prev?.tgPar ?? 1,
-    }));
+    setLastRun((prev) => mergeBenchLastRun(prev, ps.tgResult, ps.ppResult));
   }, [ps.tgResult, ps.ppResult]);
 
 
@@ -717,7 +705,7 @@ export default function BenchWidget({
                     <span className="fusion-bench-bay__last-vals">
                       {lastRun.tgTps != null && (
                         <span title="Last TG gen tok/s">
-                          TG {lastRun.tgTps.toFixed(1)}
+                          TG {lastRun.tgTps.toFixed(2)}
                           {lastRun.tgPar > 1 ? `×${lastRun.tgPar}` : ""}
                         </span>
                       )}
@@ -725,7 +713,7 @@ export default function BenchWidget({
                         <span className="fusion-bench-bay__last-sep">·</span>
                       )}
                       {lastRun.ppTps != null && (
-                        <span title="Last PP prefill tok/s">PP {lastRun.ppTps >= 1000 ? `${(lastRun.ppTps / 1000).toFixed(1)}k` : lastRun.ppTps.toFixed(0)}</span>
+                        <span title="Last PP prefill tok/s">PP {lastRun.ppTps.toFixed(2)}</span>
                       )}
                     </span>
                   ) : (
@@ -949,7 +937,7 @@ export default function BenchWidget({
                      <span className="fusion-bench-ghost__lab">PREV TG</span>
                      <span className={`fusion-bench-ghost__value fusion-instrument__value ${lastRun?.tgTps != null ? "is-ghost" : "is-empty"}`}>
                        {lastRun?.tgTps != null
-                         ? lastRun.tgTps.toFixed(1)
+                         ? lastRun.tgTps.toFixed(2)
                          : "—"}
                      </span>
                      <span className="fusion-bench-ghost__unit">
@@ -960,9 +948,7 @@ export default function BenchWidget({
                      <span className="fusion-bench-ghost__lab">PREV PP</span>
                      <span className={`fusion-bench-ghost__value fusion-instrument__value ${lastRun?.ppTps != null ? "is-ghost" : "is-empty"}`}>
                        {lastRun?.ppTps != null
-                         ? (lastRun.ppTps >= 1000
-                           ? `${(lastRun.ppTps / 1000).toFixed(1)}k`
-                           : lastRun.ppTps.toFixed(0))
+                         ? lastRun.ppTps.toFixed(2)
                          : "—"}
                      </span>
                      <span className="fusion-bench-ghost__unit">tok/s</span>
