@@ -561,6 +561,16 @@ export interface GpuInfo {
   driver_version?: string;
   /** Windows: TCC | WDDM. */
   driver_model?: string;
+  /** Negotiated PCIe generation (drops at idle); NVML device counter. */
+  pcie_gen?: number;
+  /** PCIe capability generation of the slot/card. */
+  pcie_gen_max?: number;
+  /** Negotiated PCIe link width. */
+  pcie_width?: number;
+  /** PCIe traffic into the GPU, MiB/s — every process on the card, not just ours. */
+  pcie_rx_mib_per_s?: number;
+  /** PCIe traffic out of the GPU, MiB/s. */
+  pcie_tx_mib_per_s?: number;
 }
 export interface CpuInfo {
   name: string;

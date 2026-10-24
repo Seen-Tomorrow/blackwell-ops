@@ -30,6 +30,14 @@ function tempClass(temp: number): string {
   return "gpu-topo-card__temp--cool";
 }
 
+/** MiB/s -> the narrowest readable unit for the PCIe column. */
+function formatPcieRate(mib: number | undefined): string {
+  if (mib == null || !Number.isFinite(mib)) return "—";
+  if (mib >= 1024) return `${(mib / 1024).toFixed(2)} GB/s`;
+  if (mib >= 10) return `${Math.round(mib)} MB/s`;
+  return `${mib.toFixed(1)} MB/s`;
+}
+
 export default function GpuTopologyCard({
   gpu,
   oc,
@@ -152,25 +160,49 @@ export default function GpuTopologyCard({
           </div>
         </div>
 
-        <div className="gpu-topo-card__power">
-          <div className="gpu-topo-card__power-head">
-            <span className="gpu-topo-card__label">POWER</span>
-            <span className="gpu-topo-card__power-val font-mono tabular-nums">
-              <span className="gpu-topo-card__power-watt">{gpu.power_draw.toFixed(0)}W</span>
-              <span className="gpu-topo-card__power-denom">
-                {" / "}
-                {gpu.power_limit.toFixed(0)}W
-                {oc && oc.configPowerLimitW !== Math.round(gpu.power_limit) && (
-                  <span className="gpu-topo-card__power-target"> →{oc.configPowerLimitW}W</span>
-                )}
+        <div className="gpu-topo-card__pair gpu-topo-card__pair--footer">
+          <div className="gpu-topo-card__cell gpu-topo-card__power">
+            <div className="gpu-topo-card__power-head">
+              <span className="gpu-topo-card__label">POWER</span>
+              <span className="gpu-topo-card__power-val font-mono tabular-nums">
+                <span className="gpu-topo-card__power-watt">{gpu.power_draw.toFixed(0)}W</span>
+                <span className="gpu-topo-card__power-denom">
+                  {" / "}
+                  {gpu.power_limit.toFixed(0)}W
+                  {oc && oc.configPowerLimitW !== Math.round(gpu.power_limit) && (
+                    <span className="gpu-topo-card__power-target"> →{oc.configPowerLimitW}W</span>
+                  )}
+                </span>
               </span>
-            </span>
+            </div>
+            <div className="gpu-topo-card__power-track">
+              <div
+                className={powerBarClass(powerPercent)}
+                style={{ width: `${Math.min(powerPercent, 100)}%` }}
+              />
+            </div>
           </div>
-          <div className="gpu-topo-card__power-track">
-            <div
-              className={powerBarClass(powerPercent)}
-              style={{ width: `${Math.min(powerPercent, 100)}%` }}
-            />
+          <div className="gpu-topo-card__cell gpu-topo-card__pcie">
+            <span className="gpu-topo-card__label">PCIE</span>
+            <p
+              className="gpu-topo-card__value gpu-topo-card__value--readout gpu-topo-card__pcie-link font-mono tabular-nums"
+              title={
+                gpu.pcie_gen != null && gpu.pcie_gen_max != null
+                  ? `negotiated Gen${gpu.pcie_gen} · max Gen${gpu.pcie_gen_max}`
+                  : undefined
+              }
+            >
+              {gpu.pcie_gen_max != null || gpu.pcie_gen != null ? (
+                `Gen${gpu.pcie_gen_max ?? gpu.pcie_gen}`
+              ) : (
+                <span className="gpu-topo-card__empty">—</span>
+              )}
+              {gpu.pcie_width != null ? ` · x${gpu.pcie_width}` : ""}
+            </p>
+            <p className="gpu-topo-card__pcie-io font-mono tabular-nums">
+              <span>RX {formatPcieRate(gpu.pcie_rx_mib_per_s)}</span>
+              <span>TX {formatPcieRate(gpu.pcie_tx_mib_per_s)}</span>
+            </p>
           </div>
         </div>
       </div>

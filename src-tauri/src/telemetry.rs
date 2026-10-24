@@ -30,6 +30,21 @@ pub struct GpuInfo {
     /// Windows: `TCC` | `WDDM` | omitted.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub driver_model: String,
+    /// Negotiated PCIe link generation (drops at idle); NVML, device-wide.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pcie_gen: Option<u32>,
+    /// PCIe slot/card capability generation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pcie_gen_max: Option<u32>,
+    /// Negotiated PCIe link width.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pcie_width: Option<u32>,
+    /// PCIe traffic into the GPU, MiB/s (all processes on that card).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pcie_rx_mib_per_s: Option<f32>,
+    /// PCIe traffic out of the GPU, MiB/s.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pcie_tx_mib_per_s: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -265,7 +280,7 @@ async fn run_nvidia_smi() -> Result<Vec<GpuInfo>, String> {
     let output = crate::engine_utils::run_hidden_output_async(move || {
         let mut cmd = std::process::Command::new(&smi);
         cmd.args([
-            "--query-gpu=index,name,driver_version,memory.total,memory.used,memory.free,temperature.gpu,power.draw,power.limit,utilization.gpu,utilization.memory,driver_model.current",
+            "--query-gpu=index,name,driver_version,memory.total,memory.used,memory.free,temperature.gpu,power.draw,power.limit,utilization.gpu,utilization.memory,driver_model.current,pci.bus_id",
             "--format=csv,noheader,nounits",
         ])
         .stdout(Stdio::piped())
@@ -289,17 +304,17 @@ async fn run_nvidia_smi() -> Result<Vec<GpuInfo>, String> {
             continue;
         }
 
-        // Last 10 fields: driver_version + mem/temp/power/util + driver_model.
+        // Last 11 fields: driver_version + mem/temp/power/util + driver_model + pci.bus_id.
         let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
 
-        if parts.len() < 11 {
+        if parts.len() < 12 {
             log::debug!("nvidia-smi line has too few fields ({}): {}", parts.len(), line);
             continue;
         }
 
         let index: u32 = parts[0].parse().unwrap_or(0);
 
-        let num_trailing = 10;
+        let num_trailing = 11;
         let name_end = parts.len() - num_trailing;
         let gpu_name = if name_end > 1 {
             parts[1..name_end].join(", ")
@@ -334,6 +349,8 @@ async fn run_nvidia_smi() -> Result<Vec<GpuInfo>, String> {
                 String::new()
             }
         };
+        let pci_bus_id = parts.get(base + 10).copied().unwrap_or("").trim();
+        let pcie = crate::nvml_metrics::pcie_metrics(pci_bus_id, index);
 
         gpus.push(GpuInfo {
             index,
@@ -351,6 +368,11 @@ async fn run_nvidia_smi() -> Result<Vec<GpuInfo>, String> {
             utilization_memory,
             driver_version,
             driver_model,
+            pcie_gen: pcie.gen,
+            pcie_gen_max: pcie.gen_max,
+            pcie_width: pcie.width,
+            pcie_rx_mib_per_s: pcie.rx_mib_per_s,
+            pcie_tx_mib_per_s: pcie.tx_mib_per_s,
         });
     }
 
@@ -672,6 +694,11 @@ mod tests {
             utilization_memory: 0,
             driver_version: Some("610.47".to_string()),
             driver_model: String::new(),
+            pcie_gen: None,
+            pcie_gen_max: None,
+            pcie_width: None,
+            pcie_rx_mib_per_s: None,
+            pcie_tx_mib_per_s: None,
         }
     }
 

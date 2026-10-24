@@ -787,6 +787,29 @@
   align-items: start;
 }
 
+/* Footer row: power keeps the bar, PCIe stacks gen/link + RX/TX beside it. */
+.gpu-topo-card__pair--footer {
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+}
+
+.gpu-topo-card__pcie {
+  gap: 1px;
+}
+
+.gpu-topo-card__pcie-link {
+  font-size: var(--type-sm);
+  line-height: 1.15;
+}
+
+.gpu-topo-card__pcie-io {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  line-height: 1.2;
+  color: var(--theme-text-muted);
+  font-size: var(--type-micro);
+}
+
 .gpu-topo-card__cell {
   display: flex;
   flex-direction: column;

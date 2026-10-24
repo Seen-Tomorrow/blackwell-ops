@@ -25,7 +25,7 @@
   "GpuControlApplyResult": ["ok", "steps", "elevated"],
   "GpuControlDeviceInfo": ["index", "name", "powerLimitW", "powerMinW", "powerMaxW", "powerDefaultW", "coreClockMhz", "memClockMhz", "maxCoreClockMhz", "maxMemClockMhz", "driverModel", "driverModelPending"],
   "GpuControlStepResult": ["gpuIndex", "step", "ok", "detail"],
-  "GpuInfo": ["index", "name", "memory_total", "memory_used", "memory_free", "memory_total_manufactured", "temperature_gpu", "temperature_hot_spot", "temperature_memory", "power_draw", "power_limit", "utilization_gpu", "utilization_memory", "driver_version", "driver_model"],
+  "GpuInfo": ["index", "name", "memory_total", "memory_used", "memory_free", "memory_total_manufactured", "temperature_gpu", "temperature_hot_spot", "temperature_memory", "power_draw", "power_limit", "utilization_gpu", "utilization_memory", "driver_version", "driver_model", "pcie_gen", "pcie_gen_max", "pcie_width", "pcie_rx_mib_per_s", "pcie_tx_mib_per_s"],
   "HfFileUpdateCheck": ["quantType", "hasUpdate", "cachedSizeBytes", "hfSizeBytes", "hfLfsOid", "status"],
   "HfMetadata": ["hfModelId", "author", "repoName", "tags", "downloads", "likesCount", "quantType", "fileSizeBytes", "lastModified", "lfsOid"],
   "HfModel": ["id", "author", "tags", "downloads", "likes_count", "lastModified", "gguf_files"],
