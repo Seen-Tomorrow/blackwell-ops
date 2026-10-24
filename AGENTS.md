@@ -313,6 +313,7 @@ host commit too, so **"DEV crashes, REL is fine" is not evidence of a DEV bug**.
 **Foundry `work/` CMake cache** — Retained between builds for all users when the configure fingerprint matches (`.blackwell-foundry-cache-key` + `CMakeCache.txt`). Fingerprint miss, configure failure (cold path), or CLEAR CACHE wipes the tree. `foundry/artifacts/.../Release/` is the only durable **runtime** binary location. Provider `binary_path` / `binary_path_per_env` must point at artifacts after a foundry build, never at cmake temp output under `work/`.
 
 **Foundry batch spawn** — Configure/build write `_build_cfg_*.bat` / `_build_run_*.bat` under `work/` then run via `cmd_script_launch` + `run_foundry_batch_streaming` (`raw_arg` tail). Do not spawn those batches with plain `cmd /c path` — install dirs with spaces fail before cmake starts (see **Windows paths with spaces** above).
+**Vendor patches track upstream HEAD.** Check origin for the feature before adding or rebasing a patch — upstream may already provide it (it has the router `/models/sse`; the single-model `/models/sse` and `/events/sse` are ours). After a server entrypoint refactor, re-port `ggml-master-single-model-load-sse.patch` + `ggml-master-telemetry-sse.patch` onto the new `server_register_routes` / `server_run_instance` hooks; filename order matters (load-sse first — the telemetry HTTP hunk builds on it). The obsolete `cuda-graph-instance` patch is gone: upstream #30804 replaced `graph->instance` with the `instances` vector and carries the fix.
 
 ---
 ## APP/engine logs

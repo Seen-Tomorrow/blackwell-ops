@@ -1,21 +1,233 @@
-diff --git a/tools/server/server.cpp b/tools/server/server.cpp
-index 6b4534c..6c71e7e 100644
---- a/tools/server/server.cpp
-+++ b/tools/server/server.cpp
-@@ -17,7 +17,9 @@
- #include <chrono>
- #include <clocale>
- #include <condition_variable>
-+#include <deque>
+diff --git a/tools/server/server-common.h b/tools/server/server-common.h
+index 0925c508e..097d23f8e 100644
+--- a/tools/server/server-common.h
++++ b/tools/server/server-common.h
+@@ -489,6 +489,35 @@ struct server_slot_stats {
+     json to_json() const;
+ };
+ 
++//
++// engine telemetry SSE (/events/sse)
++//
++// Additive fan-out of the events the per-request streams already carry, for
++// observers that do not own the request (fusion meters, bench, the ops UI).
++// Values come from the same slot counters that produce the per-request
++// prompt_progress / timings payloads, so they are comparable with llama-bench.
++// With no subscriber attached every call is a no-op.
++//
++namespace server_events {
++
++// true when at least one /events/sse connection is attached, emitters check
++// this to skip building a payload on the hot path
++bool enabled();
++
++void publish_prompt_progress(int id_slot, int n_total, int n_cache, int n_processed, double time_ms);
++
++// lib_* are the library's own counters (llama_perf_context t_p_eval_ms and
++// n_p_eval) across this request, the same numbers llama-bench reports
++void publish_request_end(int id_slot, int id_task, const server_slot_stats & stats,
++        double lib_prompt_ms, int64_t lib_tokens_evaluated);
++
++// throttled decode progress, so a live TG meter does not have to poll /slots
++void publish_gen_progress(int id_slot, uint64_t n_decoded, double gen_ms, double tps);
++
++void publish_state(int id_slot, const char * phase, int busy, int peak, int n_ctx, int n_ctx_used);
++
++} // namespace server_events
++
+ // shared between server_context_impl and server_task_result_*
+ // unlike server_slot_stats, server_metrics is server-global and cumulative, not tied to a slot
+ struct server_metrics {
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index a5cba1d71..3f7c91bf9 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -27,6 +27,7 @@
+ #include <cinttypes>
+ #include <deque>
  #include <exception>
 +#include <map>
- #include <mutex>
- #include <signal.h>
- #include <thread> // for std::thread::hardware_concurrency
-@@ -108,6 +110,205 @@ static server_http_res_ptr handle_single_model_load_sse(const server_http_req &
+ #include <memory>
+ #include <filesystem>
+ #include <random>
+@@ -1520,6 +1521,7 @@ private:
+ 
+             slot.callback_on_release = [this](int id_slot) {
+                 queue_tasks.pop_deferred_task(id_slot);
++                emit_state(slots[id_slot]);
+             };
+ 
+             slot.callback_on_reset = [this](const server_slot & slot) {
+@@ -2379,6 +2381,18 @@ private:
+         res->prompt          = slot.task->tokens.detokenize(ctx_tgt, true);
+         res->response_fields = std::move(slot.task->params.response_fields);
+ 
++        // telemetry: the same stats the response timings object is built from
++        if (slot.stats.is_set() && server_events::enabled()) {
++            // library prefill counters across this request (llama-bench numbers)
++            const llama_perf_context_data perf_now  = llama_perf_context(ctx_tgt);
++            const auto                    perf_iter = perf_prompt_start.find(slot.id);
++            const llama_perf_context_data perf_then = perf_iter != perf_prompt_start.end() ? perf_iter->second : perf_now;
++
++            server_events::publish_request_end(slot.id, slot.task->id, slot.stats,
++                    perf_now.t_p_eval_ms - perf_then.t_p_eval_ms,
++                    (int64_t) (perf_now.n_p_eval - perf_then.n_p_eval));
++        }
++
+         res->truncated             = slot.truncated;
+         res->n_decoded             = slot.stats.n_gen;
+         res->n_prompt_tokens       = slot.task->n_tokens();
+@@ -3906,8 +3920,13 @@ private:
+                     if (slot.state == SLOT_STATE_STARTED) {
+                         slot.stats.update_prompt_start();
+ 
++                        // baseline for the library prefill delta reported at request_end
++                        perf_prompt_start[slot.id] = llama_perf_context(ctx_tgt);
++
+                         slot.state = SLOT_STATE_PROCESSING_PROMPT;
+ 
++                        emit_state(slot);
++
+                         SLT_TRC(slot, "new prompt, n_ctx_slot = %d, n_keep = %d, task.n_tokens = %d\n",
+                                 slot.n_ctx, slot.task->params.n_keep, slot.task->n_tokens());
+ 
+@@ -4711,6 +4730,8 @@ private:
+                 if (slot.task->params.stream && slot.task->params.return_progress) {
+                     send_partial_response(slot, {}, true);
+                 }
++                // same values, broadcast to observers that do not own this request
++                emit_prompt_progress(slot);
+             }
+ 
+             if (!is_inside_view(slot.i_batch)) {
+@@ -4746,6 +4767,8 @@ private:
+                 // prompt evaluated for next-token prediction
+                 slot.state = SLOT_STATE_GENERATING;
+ 
++                emit_state(slot);
++
+                 if (slot.can_speculate()) {
+                     common_speculative_begin(spec.get(), slot.id, slot.prompt.tokens.get_text_tokens());
+                 }
+@@ -4783,6 +4806,8 @@ private:
+ 
+             slot.stats.update_gen_last();
+ 
++            emit_gen_progress(slot, t_now);
++
+             completion_token_output result;
+             result.tok          = id;
+             result.text_to_send = common_token_to_piece(slot.ctx_tgt, result.tok, accept_special_token(slot, result.tok));
+@@ -4901,6 +4926,8 @@ private:
+ 
+             slot.stats.update_gen_last();
+ 
++            emit_gen_progress(slot, ggml_time_us());
++
+             // update how many tokens out of those tested were accepted
+             slot.stats.n_draft_accepted += n_accepted;
+             slot.stats.n_draft_verif_steps += 1;
+@@ -5076,6 +5103,77 @@ private:
+             dst[i] += src[i];
+         }
+     }
++
++    //
++    // engine telemetry (/events/sse)
++    //
++    // Read-only mirrors of the counters the per-request stream already exposes.
++    // Nothing below runs unless an observer is attached.
++    //
++
++    int n_busy_peak = 0;
++
++    // llama_perf_context() snapshot taken when each slot started its prompt
++    std::map<int, llama_perf_context_data> perf_prompt_start;
++
++    // last gen_progress emitted per slot, us
++    std::map<int, int64_t> t_gen_emit_last;
++
++    static const char * telemetry_phase(slot_state state) {
++        switch (state) {
++            case SLOT_STATE_IDLE:       return "IDLE";
++            case SLOT_STATE_WAIT_OTHER: return "WAIT";
++            case SLOT_STATE_GENERATING: return "TG";
++            default:                    return "PP";
++        }
++    }
++
++    void emit_state(const server_slot & slot) {
++        if (!server_events::enabled()) {
++            return;
++        }
++
++        int busy = 0;
++        for (const auto & s : slots) {
++            if (s.is_processing()) {
++                busy++;
++            }
++        }
++        n_busy_peak = std::max(n_busy_peak, busy);
++
++        server_events::publish_state(slot.id, telemetry_phase(slot.state), busy, n_busy_peak,
++                (int) slot.n_ctx, (int) slot.prompt.n_tokens());
++    }
++
++    // one event per 50 ms per slot, so a live TG meter gets ~20 updates/s
++    void emit_gen_progress(const server_slot & slot, int64_t t_now) {
++        if (!server_events::enabled() || !slot.stats.is_set()) {
++            return;
++        }
++
++        const auto it = t_gen_emit_last.find(slot.id);
++        if (it != t_gen_emit_last.end() && t_now - it->second < 50 * 1000) {
++            return;
++        }
++        t_gen_emit_last[slot.id] = t_now;
++
++        server_events::publish_gen_progress(slot.id, slot.stats.n_gen,
++                slot.stats.t_gen_ms(), slot.stats.n_gen_tps());
++    }
++
++    void emit_prompt_progress(const server_slot & slot) {
++        if (!server_events::enabled() || !slot.task || !slot.stats.is_set()) {
++            return;
++        }
++
++        // identical to the values send_partial_response() puts in progress
++        server_events::publish_prompt_progress(
++                slot.id,
++                (int) slot.task->n_tokens(),
++                (int) slot.stats.n_prompt_cached,
++                (int) slot.prompt.tokens.size(),
++                (double) slot.stats.t_elapsed_us() / 1000.0);
++    }
+ };
+ 
+ //
+diff --git a/tools/server/server-http.cpp b/tools/server/server-http.cpp
+index f4de5efdb..ccc8ba169 100644
+--- a/tools/server/server-http.cpp
++++ b/tools/server/server-http.cpp
+@@ -312,7 +312,9 @@ bool server_http_context::init_listener(const common_params & params) {
+             }
+             // Cold-boot progress stream must be reachable while weights load (single-model + router).
+             // Without this, GET /models/sse returns 503 "Loading model" and never streams progress.
+-            if (req.path == "/models/sse") {
++            // /events/sse is the same kind of long-lived stream: let it attach early and idle
++            // on keep-alives instead of failing the connection.
++            if (req.path == "/models/sse" || req.path == "/events/sse") {
+                 return true;
+             }
+             // no endpoints are allowed to be accessed when the server is not ready
+diff --git a/tools/server/server.cpp b/tools/server/server.cpp
+index d9abe7906..bd86c6d19 100644
+--- a/tools/server/server.cpp
++++ b/tools/server/server.cpp
+@@ -109,6 +109,206 @@ static server_http_res_ptr handle_single_model_load_sse(const server_http_req &
+     };
      return res;
  }
- 
 +//
 +// Engine telemetry fan-out (/events/sse).
 +//
@@ -215,239 +427,18 @@ index 6b4534c..6c71e7e 100644
 +
 +} // namespace server_events
 +
++
  // satisfies -Wmissing-declarations (used by llama command)
  int llama_server(int argc, char ** argv);
  
-@@ -352,6 +553,10 @@ int llama_server(common_params & params, int argc, char ** argv, server_child &
-         ctx_http.get("/models/sse", ex_wrapper(handle_single_model_load_sse));
-     }
+@@ -280,6 +480,10 @@ static void server_register_routes(server_http_context & ctx_http, server_routes
+     ctx_http.post("/slots/:id_slot",           ex_wrapper(routes.post_slots));
  
+     // Google Cloud Platform (Vertex AI) compat
 +    // engine telemetry fan-out: prompt_progress / request_end / state, so an
 +    // observer that does not own the request can meter PP and TG directly
 +    ctx_http.get("/events/sse", ex_wrapper(handle_engine_events_sse));
 +
-     ctx_http.get ("/health",                   ex_wrapper(routes.get_health)); // public endpoint (no API key check)
-     ctx_http.get ("/v1/health",                ex_wrapper(routes.get_health)); // public endpoint (no API key check)
-     ctx_http.get ("/metrics",                  ex_wrapper(routes.get_metrics));
-diff --git a/tools/server/server-http.cpp b/tools/server/server-http.cpp
-index f4de5ef..ccc8ba1 100644
---- a/tools/server/server-http.cpp
-+++ b/tools/server/server-http.cpp
-@@ -312,7 +312,9 @@ bool server_http_context::init_listener(const common_params & params) {
-             }
-             // Cold-boot progress stream must be reachable while weights load (single-model + router).
-             // Without this, GET /models/sse returns 503 "Loading model" and never streams progress.
--            if (req.path == "/models/sse") {
-+            // /events/sse is the same kind of long-lived stream: let it attach early and idle
-+            // on keep-alives instead of failing the connection.
-+            if (req.path == "/models/sse" || req.path == "/events/sse") {
-                 return true;
-             }
-             // no endpoints are allowed to be accessed when the server is not ready
-diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
-index a5cba1d..3f7c91b 100644
---- a/tools/server/server-context.cpp
-+++ b/tools/server/server-context.cpp
-@@ -27,6 +27,7 @@
- #include <cinttypes>
- #include <deque>
- #include <exception>
-+#include <map>
- #include <memory>
- #include <filesystem>
- #include <random>
-@@ -1520,6 +1521,7 @@ private:
+     ctx_http.register_gcp_compat();
+ }
  
-             slot.callback_on_release = [this](int id_slot) {
-                 queue_tasks.pop_deferred_task(id_slot);
-+                emit_state(slots[id_slot]);
-             };
- 
-             slot.callback_on_reset = [this](const server_slot & slot) {
-@@ -2379,6 +2381,18 @@ private:
-         res->prompt          = slot.task->tokens.detokenize(ctx_tgt, true);
-         res->response_fields = std::move(slot.task->params.response_fields);
- 
-+        // telemetry: the same stats the response timings object is built from
-+        if (slot.stats.is_set() && server_events::enabled()) {
-+            // library prefill counters across this request (llama-bench numbers)
-+            const llama_perf_context_data perf_now  = llama_perf_context(ctx_tgt);
-+            const auto                    perf_iter = perf_prompt_start.find(slot.id);
-+            const llama_perf_context_data perf_then = perf_iter != perf_prompt_start.end() ? perf_iter->second : perf_now;
-+
-+            server_events::publish_request_end(slot.id, slot.task->id, slot.stats,
-+                    perf_now.t_p_eval_ms - perf_then.t_p_eval_ms,
-+                    (int64_t) (perf_now.n_p_eval - perf_then.n_p_eval));
-+        }
-+
-         res->truncated             = slot.truncated;
-         res->n_decoded             = slot.stats.n_gen;
-         res->n_prompt_tokens       = slot.task->n_tokens();
-@@ -3906,8 +3920,13 @@ private:
-                     if (slot.state == SLOT_STATE_STARTED) {
-                         slot.stats.update_prompt_start();
- 
-+                        // baseline for the library prefill delta reported at request_end
-+                        perf_prompt_start[slot.id] = llama_perf_context(ctx_tgt);
-+
-                         slot.state = SLOT_STATE_PROCESSING_PROMPT;
- 
-+                        emit_state(slot);
-+
-                         SLT_TRC(slot, "new prompt, n_ctx_slot = %d, n_keep = %d, task.n_tokens = %d\n",
-                                 slot.n_ctx, slot.task->params.n_keep, slot.task->n_tokens());
- 
-@@ -4711,6 +4730,8 @@ private:
-                 if (slot.task->params.stream && slot.task->params.return_progress) {
-                     send_partial_response(slot, {}, true);
-                 }
-+                // same values, broadcast to observers that do not own this request
-+                emit_prompt_progress(slot);
-             }
- 
-             if (!is_inside_view(slot.i_batch)) {
-@@ -4746,6 +4767,8 @@ private:
-                 // prompt evaluated for next-token prediction
-                 slot.state = SLOT_STATE_GENERATING;
- 
-+                emit_state(slot);
-+
-                 if (slot.can_speculate()) {
-                     common_speculative_begin(spec.get(), slot.id, slot.prompt.tokens.get_text_tokens());
-                 }
-@@ -4783,6 +4806,8 @@ private:
- 
-             slot.stats.update_gen_last();
- 
-+            emit_gen_progress(slot, t_now);
-+
-             completion_token_output result;
-             result.tok          = id;
-             result.text_to_send = common_token_to_piece(slot.ctx_tgt, result.tok, accept_special_token(slot, result.tok));
-@@ -4901,6 +4926,8 @@ private:
- 
-             slot.stats.update_gen_last();
- 
-+            emit_gen_progress(slot, ggml_time_us());
-+
-             // update how many tokens out of those tested were accepted
-             slot.stats.n_draft_accepted += n_accepted;
-             slot.stats.n_draft_verif_steps += 1;
-@@ -5076,6 +5103,77 @@ private:
-             dst[i] += src[i];
-         }
-     }
-+
-+    //
-+    // engine telemetry (/events/sse)
-+    //
-+    // Read-only mirrors of the counters the per-request stream already exposes.
-+    // Nothing below runs unless an observer is attached.
-+    //
-+
-+    int n_busy_peak = 0;
-+
-+    // llama_perf_context() snapshot taken when each slot started its prompt
-+    std::map<int, llama_perf_context_data> perf_prompt_start;
-+
-+    // last gen_progress emitted per slot, us
-+    std::map<int, int64_t> t_gen_emit_last;
-+
-+    static const char * telemetry_phase(slot_state state) {
-+        switch (state) {
-+            case SLOT_STATE_IDLE:       return "IDLE";
-+            case SLOT_STATE_WAIT_OTHER: return "WAIT";
-+            case SLOT_STATE_GENERATING: return "TG";
-+            default:                    return "PP";
-+        }
-+    }
-+
-+    void emit_state(const server_slot & slot) {
-+        if (!server_events::enabled()) {
-+            return;
-+        }
-+
-+        int busy = 0;
-+        for (const auto & s : slots) {
-+            if (s.is_processing()) {
-+                busy++;
-+            }
-+        }
-+        n_busy_peak = std::max(n_busy_peak, busy);
-+
-+        server_events::publish_state(slot.id, telemetry_phase(slot.state), busy, n_busy_peak,
-+                (int) slot.n_ctx, (int) slot.prompt.n_tokens());
-+    }
-+
-+    // one event per 50 ms per slot, so a live TG meter gets ~20 updates/s
-+    void emit_gen_progress(const server_slot & slot, int64_t t_now) {
-+        if (!server_events::enabled() || !slot.stats.is_set()) {
-+            return;
-+        }
-+
-+        const auto it = t_gen_emit_last.find(slot.id);
-+        if (it != t_gen_emit_last.end() && t_now - it->second < 50 * 1000) {
-+            return;
-+        }
-+        t_gen_emit_last[slot.id] = t_now;
-+
-+        server_events::publish_gen_progress(slot.id, slot.stats.n_gen,
-+                slot.stats.t_gen_ms(), slot.stats.n_gen_tps());
-+    }
-+
-+    void emit_prompt_progress(const server_slot & slot) {
-+        if (!server_events::enabled() || !slot.task || !slot.stats.is_set()) {
-+            return;
-+        }
-+
-+        // identical to the values send_partial_response() puts in progress
-+        server_events::publish_prompt_progress(
-+                slot.id,
-+                (int) slot.task->n_tokens(),
-+                (int) slot.stats.n_prompt_cached,
-+                (int) slot.prompt.tokens.size(),
-+                (double) slot.stats.t_elapsed_us() / 1000.0);
-+    }
- };
- 
- //
-diff --git a/tools/server/server-common.h b/tools/server/server-common.h
-index 09ffa9a..7fa81d5 100644
---- a/tools/server/server-common.h
-+++ b/tools/server/server-common.h
-@@ -488,6 +488,35 @@ struct server_slot_stats {
-     json to_json() const;
- };
- 
-+//
-+// engine telemetry SSE (/events/sse)
-+//
-+// Additive fan-out of the events the per-request streams already carry, for
-+// observers that do not own the request (fusion meters, bench, the ops UI).
-+// Values come from the same slot counters that produce the per-request
-+// prompt_progress / timings payloads, so they are comparable with llama-bench.
-+// With no subscriber attached every call is a no-op.
-+//
-+namespace server_events {
-+
-+// true when at least one /events/sse connection is attached, emitters check
-+// this to skip building a payload on the hot path
-+bool enabled();
-+
-+void publish_prompt_progress(int id_slot, int n_total, int n_cache, int n_processed, double time_ms);
-+
-+// lib_* are the library's own counters (llama_perf_context t_p_eval_ms and
-+// n_p_eval) across this request, the same numbers llama-bench reports
-+void publish_request_end(int id_slot, int id_task, const server_slot_stats & stats,
-+        double lib_prompt_ms, int64_t lib_tokens_evaluated);
-+
-+// throttled decode progress, so a live TG meter does not have to poll /slots
-+void publish_gen_progress(int id_slot, uint64_t n_decoded, double gen_ms, double tps);
-+
-+void publish_state(int id_slot, const char * phase, int busy, int peak, int n_ctx, int n_ctx_used);
-+
-+} // namespace server_events
-+
- // shared between server_context_impl and server_task_result_*
- // unlike server_slot_stats, server_metrics is server-global and cumulative, not tied to a slot
- struct server_metrics {
