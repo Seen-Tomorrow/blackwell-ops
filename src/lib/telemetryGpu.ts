@@ -36,6 +36,10 @@ export function gpuScanSnapshotEqual(
     if (Math.round(a.pcie_rx_mib_per_s ?? 0) !== Math.round(b.pcie_rx_mib_per_s ?? 0)) return false;
     if (Math.round(a.pcie_tx_mib_per_s ?? 0) !== Math.round(b.pcie_tx_mib_per_s ?? 0)) return false;
     if (a.pcie_gen !== b.pcie_gen || a.pcie_width !== b.pcie_width) return false;
+    // Memory clock and throttle reasons describe the thermal/power state; a 100 MHz bucket
+    // keeps the row responsive without a render per MHz of drift.
+    if (Math.round((a.mem_clock_mhz ?? 0) / 100) !== Math.round((b.mem_clock_mhz ?? 0) / 100)) return false;
+    if (a.throttle_reasons !== b.throttle_reasons) return false;
   }
   return true;
 }

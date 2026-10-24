@@ -573,6 +573,10 @@ export interface GpuInfo {
   pcie_rx_mib_per_s?: number;
   /** PCIe traffic out of the GPU, MiB/s. */
   pcie_tx_mib_per_s?: number;
+  /** Current memory clock, MHz. */
+  mem_clock_mhz?: number;
+  /** NVML clock-throttle reasons bitmask (0x40 HW thermal, 0x20 SW thermal, 0x80 power brake, 0x8 HW slowdown, 0x4 power cap, 0x200 board limit). */
+  throttle_reasons?: number;
 }
 export interface CpuInfo {
   name: string;

@@ -364,13 +364,16 @@ Native crashes also append `%TEMP%\blackwell-crash.log` (heap `0xC0000374`, ille
 - Reaper clears slots + `engine-locks` on unexpected exit (Loading or Running). Stale locks from prior sessions are swept on app start and when launching on a free port.
 - **Quiet stderr loads** — Some models stop writing to stderr early (pipe EOF) while still loading. `log_hub` must not fail the slot when spawn-time `engine_pid` is still alive; HTTP `/slots` or `/health` readiness owns promotion to Running. Do not require stderr “model loaded” lines for these models.
 - **GPU topo “External apps”** — Grey = NVML used minus (breakdown SELF + capped CUDA/runtime, max 4 GiB/GPU). Do not assign all NVML to our bar when a foreign app (LM Studio) shares the GPU. Stale NVML after stop = background `scan_gpus` + `gpuMemoryKey` re-eval + burst poll on `slot-cleared` (+2s).
-- **PCIe on the GPU tile is NVML.** `nvml_metrics.rs` loads `nvml.dll` via `libloading` (same
-  pattern as `nvml_probe.rs`) and reads `nvmlDeviceGetPcieThroughput` (KB/s TX/RX -> MiB/s,
+- **PCIe on the GPU tile is NVML.** `nvml_metrics.rs` loads `nvml.dll` via `libloading` and reads `nvmlDeviceGetPcieThroughput` (KB/s TX/RX -> MiB/s,
   i.e. bytes not bits) plus current/max link gen and width, matched by `pci.bus_id` from the
   nvidia-smi query. The rate is **device-wide** (every process on that card). Show the
   **negotiated** width: NVML's `MaxPcieLinkWidth` is the card's capability, not the slot's - an
   x8/x8 bifurcated board still reports max 16 - and mark idle off the gen downshift only.
   The `// peak` after each row is a frontend session max (module map, resets with the app).
+  The same NVML read feeds the tile's MEM clock and THR row (clock-throttle reasons: 0x40 HW
+  thermal, 0x20 SW thermal, 0x80 power brake, 0x8 HW slowdown, 0x4 power cap, 0x200 board
+  limit; the 0x1 idle / 0x400 reliability bits are ignored) - the supported proxy for
+  thermal/power limits, since the memory junction is not exposed.
   `nvidia-smi` cannot report throughput; do not replace this with a query field.
 
 - **Memory junction temp is not in NVML on this stack.** Probed driver 616.92 / RTX PRO 6000

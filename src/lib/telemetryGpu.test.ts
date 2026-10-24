@@ -23,6 +23,8 @@ function gpu(overrides: Partial<GpuInfo> = {}): GpuInfo {
     pcie_width_max: 16,
     pcie_rx_mib_per_s: 1,
     pcie_tx_mib_per_s: 0.5,
+    mem_clock_mhz: 9_501,
+    throttle_reasons: 0,
     ...overrides,
   };
 }
@@ -43,6 +45,18 @@ describe("gpuScanSnapshotEqual", () => {
   it("treats a link-width change as a new snapshot", () => {
     const a = [gpu({ pcie_width: 8 })];
     const b = [gpu({ pcie_width: 16 })];
+    expect(gpuScanSnapshotEqual(a, b, 64)).toBe(false);
+  });
+
+  it("treats a throttle-reason change as a new snapshot", () => {
+    const a = [gpu({ throttle_reasons: 0 })];
+    const b = [gpu({ throttle_reasons: 0x40 })];
+    expect(gpuScanSnapshotEqual(a, b, 64)).toBe(false);
+  });
+
+  it("treats a 1 GHz memory-clock change as a new snapshot", () => {
+    const a = [gpu({ mem_clock_mhz: 9_501 })];
+    const b = [gpu({ mem_clock_mhz: 10_501 })];
     expect(gpuScanSnapshotEqual(a, b, 64)).toBe(false);
   });
 });

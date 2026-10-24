@@ -48,6 +48,12 @@ pub struct GpuInfo {
     /// PCIe traffic out of the GPU, MiB/s.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pcie_tx_mib_per_s: Option<f32>,
+    /// Current memory clock, MHz (NVML).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mem_clock_mhz: Option<u32>,
+    /// `nvmlClocksThrottleReason_t` bitmask (thermal/power/idle reasons).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub throttle_reasons: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -353,7 +359,7 @@ async fn run_nvidia_smi() -> Result<Vec<GpuInfo>, String> {
             }
         };
         let pci_bus_id = parts.get(base + 10).copied().unwrap_or("").trim();
-        let pcie = crate::nvml_metrics::pcie_metrics(pci_bus_id, index);
+        let metrics = crate::nvml_metrics::gpu_metrics(pci_bus_id, index);
 
         gpus.push(GpuInfo {
             index,
@@ -371,12 +377,14 @@ async fn run_nvidia_smi() -> Result<Vec<GpuInfo>, String> {
             utilization_memory,
             driver_version,
             driver_model,
-            pcie_gen: pcie.gen,
-            pcie_gen_max: pcie.gen_max,
-            pcie_width: pcie.width,
-            pcie_width_max: pcie.width_max,
-            pcie_rx_mib_per_s: pcie.rx_mib_per_s,
-            pcie_tx_mib_per_s: pcie.tx_mib_per_s,
+            pcie_gen: metrics.gen,
+            pcie_gen_max: metrics.gen_max,
+            pcie_width: metrics.width,
+            pcie_width_max: metrics.width_max,
+            pcie_rx_mib_per_s: metrics.rx_mib_per_s,
+            pcie_tx_mib_per_s: metrics.tx_mib_per_s,
+            mem_clock_mhz: metrics.mem_clock_mhz,
+            throttle_reasons: metrics.throttle_reasons,
         });
     }
 
@@ -704,6 +712,8 @@ mod tests {
             pcie_width_max: None,
             pcie_rx_mib_per_s: None,
             pcie_tx_mib_per_s: None,
+            mem_clock_mhz: None,
+            throttle_reasons: None,
         }
     }
 

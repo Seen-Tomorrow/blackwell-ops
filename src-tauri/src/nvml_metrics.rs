@@ -1,9 +1,11 @@
-//! PCIe link state and throughput straight from NVML.
+//! Extra per-GPU readings straight from NVML: PCIe link/throughput, memory clock and the
+//! current clock-throttle reasons.
 //!
-//! `nvidia-smi` cannot print PCIe bandwidth, so the GPU tiles read it from the driver
-//! library: `nvmlDeviceGetPcieThroughput` (KB/s, device-wide) plus the negotiated and
-//! maximum link generation/width. All calls are optional - a missing `nvml.dll`, an old
-//! driver or a GPU without the counter returns `None`/0 and never breaks the poll.
+//! `nvidia-smi` cannot print PCIe bandwidth, and NVML does not expose the memory junction
+//! on this stack (probed: only the die sensor, `MEM_MAX` threshold NOT_SUPPORTED). The
+//! clock-throttle reasons are the supported proxy for "is it thermally/power limited".
+//! Every call is optional - a missing `nvml.dll`, an old driver or a GPU without the
+//! counter returns `None` and never breaks the poll.
 
 use libloading::{Library, Symbol};
 use std::ffi::{c_char, c_void, CString};
@@ -13,12 +15,14 @@ use std::sync::Mutex;
 const NVML_PCIE_UTIL_TX_BYTES: u32 = 0;
 /// `nvmlPcieUtilCounter_t`: transaction bytes out of the device.
 const NVML_PCIE_UTIL_RX_BYTES: u32 = 1;
+/// `nvmlClocks_t`: memory clock.
+const NVML_CLOCK_MEM: u32 = 2;
 
 static NVML_LIB: Mutex<Option<Library>> = Mutex::new(None);
 
-/// PCIe readings for one GPU. Every field is optional: the tile renders whatever arrived.
+/// NVML readings for one GPU. Every field is optional: the tile renders whatever arrived.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
-pub struct PcieMetrics {
+pub struct GpuMetrics {
     /// Negotiated link generation; drops at idle (power saving).
     pub gen: Option<u32>,
     /// Capability of the slot/the card.
@@ -31,6 +35,10 @@ pub struct PcieMetrics {
     pub rx_mib_per_s: Option<f32>,
     /// Bytes/s out of the GPU, MiB/s.
     pub tx_mib_per_s: Option<f32>,
+    /// Current memory clock, MHz.
+    pub mem_clock_mhz: Option<u32>,
+    /// `nvmlClocksThrottleReason_t` bitmask.
+    pub throttle_reasons: Option<u64>,
 }
 
 fn with_lib<T>(f: impl FnOnce(&Library) -> T) -> Option<T> {
@@ -83,9 +91,15 @@ unsafe fn read_u32_arg(lib: &Library, name: &[u8], dev: *mut c_void, arg: u32) -
     (f(dev, arg, &mut value) == 0).then_some(value)
 }
 
-/// Read the PCIe counters for the GPU at `bus_id` (authoritative) or, when the bus id is
-/// missing, the NVML index (same order as `nvidia-smi`).
-pub fn pcie_metrics(bus_id: &str, index: u32) -> PcieMetrics {
+unsafe fn read_u64(lib: &Library, name: &[u8], dev: *mut c_void) -> Option<u64> {
+    let f: Symbol<unsafe extern "C" fn(*mut c_void, *mut u64) -> u32> = lib.get(name).ok()?;
+    let mut value = 0u64;
+    (f(dev, &mut value) == 0).then_some(value)
+}
+
+/// Read NVML's per-GPU counters for the card at `bus_id` (authoritative) or, when the bus
+/// id is missing, the NVML index (same order as `nvidia-smi`).
+pub fn gpu_metrics(bus_id: &str, index: u32) -> GpuMetrics {
     let bus_id = bus_id.trim();
     with_lib(|lib| unsafe {
         let dev = if bus_id.is_empty() {
@@ -94,9 +108,9 @@ pub fn pcie_metrics(bus_id: &str, index: u32) -> PcieMetrics {
             handle_by_bus(lib, bus_id).or_else(|| handle_by_index(lib, index))
         };
         let Some(dev) = dev else {
-            return PcieMetrics::default();
+            return GpuMetrics::default();
         };
-        PcieMetrics {
+        GpuMetrics {
             gen: read_u32(lib, b"nvmlDeviceGetCurrPcieLinkGeneration\0", dev),
             gen_max: read_u32(lib, b"nvmlDeviceGetMaxPcieLinkGeneration\0", dev),
             width: read_u32(lib, b"nvmlDeviceGetCurrPcieLinkWidth\0", dev),
@@ -105,6 +119,8 @@ pub fn pcie_metrics(bus_id: &str, index: u32) -> PcieMetrics {
                 .map(|kb_per_s| kb_per_s as f32 / 1024.0),
             tx_mib_per_s: read_u32_arg(lib, b"nvmlDeviceGetPcieThroughput\0", dev, NVML_PCIE_UTIL_TX_BYTES)
                 .map(|kb_per_s| kb_per_s as f32 / 1024.0),
+            mem_clock_mhz: read_u32_arg(lib, b"nvmlDeviceGetClockInfo\0", dev, NVML_CLOCK_MEM),
+            throttle_reasons: read_u64(lib, b"nvmlDeviceGetCurrentClocksThrottleReasons\0", dev),
         }
     })
     .unwrap_or_default()

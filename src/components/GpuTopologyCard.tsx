@@ -54,6 +54,23 @@ function trackPciePeak(gpu: GpuInfo): { rx: number; tx: number } {
   return next;
 }
 
+/** `nvmlClocksThrottleReason_t` bits worth showing; idle/app-clock/reliability bits are noise. */
+const THROTTLE_BITS: Array<[number, string]> = [
+  [0x40, "HW THERMAL"],
+  [0x20, "SW THERMAL"],
+  [0x80, "PWR BRAKE"],
+  [0x08, "HW SLOWDOWN"],
+  [0x04, "PWR CAP"],
+  [0x200, "BOARD LIMIT"],
+];
+const THROTTLE_HOT = 0x40 | 0x20 | 0x80 | 0x08;
+
+function throttleText(mask: number | undefined): string | null {
+  if (mask == null) return null;
+  const labels = THROTTLE_BITS.filter(([bit]) => (mask & bit) !== 0).map(([, label]) => label);
+  return labels.length > 0 ? labels.join(" · ") : null;
+}
+
 export default function GpuTopologyCard({
   gpu,
   oc,
@@ -79,6 +96,8 @@ export default function GpuTopologyCard({
       ? `link now Gen${gpu.pcie_gen} x${gpu.pcie_width ?? "?"} · card max Gen${gpu.pcie_gen_max} x${gpu.pcie_width_max ?? "?"}`
       : undefined;
   const pciePeak = trackPciePeak(gpu);
+  const throttle = throttleText(gpu.throttle_reasons);
+  const throttleHot = ((gpu.throttle_reasons ?? 0) & THROTTLE_HOT) !== 0;
 
   const driverVer = formatGpuDriverVersion(gpu.driver_version);
 
@@ -236,6 +255,16 @@ export default function GpuTopologyCard({
             </p>
           </div>
         </div>
+
+        <p className="gpu-topo-card__throttle font-mono tabular-nums">
+          <span className="gpu-topo-card__label">MEM</span>
+          <span>{gpu.mem_clock_mhz != null ? `${gpu.mem_clock_mhz} MHz` : "—"}</span>
+          <span className="gpu-topo-card__vdiv" aria-hidden="true" />
+          <span className="gpu-topo-card__label">THR</span>
+          <span className={throttleHot ? "gpu-topo-card__thr gpu-topo-card__thr--hot" : "gpu-topo-card__thr"}>
+            {throttle ?? "—"}
+          </span>
+        </p>
       </div>
     </button>
   );

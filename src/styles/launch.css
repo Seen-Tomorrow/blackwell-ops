@@ -820,6 +820,20 @@
   opacity: 0.55;
 }
 
+/* Thermal/power status line under the footer row. */
+.gpu-topo-card__throttle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: var(--type-micro);
+  color: var(--theme-text-muted);
+}
+
+.gpu-topo-card__thr--hot {
+  color: var(--theme-telemetry-amber);
+}
+
 .gpu-topo-card__cell {
   display: flex;
   flex-direction: column;
