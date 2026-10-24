@@ -364,6 +364,12 @@ Native crashes also append `%TEMP%\blackwell-crash.log` (heap `0xC0000374`, ille
 - Reaper clears slots + `engine-locks` on unexpected exit (Loading or Running). Stale locks from prior sessions are swept on app start and when launching on a free port.
 - **Quiet stderr loads** — Some models stop writing to stderr early (pipe EOF) while still loading. `log_hub` must not fail the slot when spawn-time `engine_pid` is still alive; HTTP `/slots` or `/health` readiness owns promotion to Running. Do not require stderr “model loaded” lines for these models.
 - **GPU topo “External apps”** — Grey = NVML used minus (breakdown SELF + capped CUDA/runtime, max 4 GiB/GPU). Do not assign all NVML to our bar when a foreign app (LM Studio) shares the GPU. Stale NVML after stop = background `scan_gpus` + `gpuMemoryKey` re-eval + burst poll on `slot-cleared` (+2s).
+- **PCIe on the GPU tile is NVML.** `nvml_metrics.rs` loads `nvml.dll` via `libloading` (same
+  pattern as `nvml_probe.rs`) and reads `nvmlDeviceGetPcieThroughput` (KB/s TX/RX -> MiB/s)
+  plus current/max link gen and width, matched by `pci.bus_id` from the nvidia-smi query.
+  It is **device-wide** traffic (every process on that card) and the link legitimately
+  downshifts at idle - neither is a fault. `nvidia-smi` cannot report throughput; do not
+  replace this with a query field.
 - `BINARY_UPDATES_ENABLED = true` — App `.7z` + Full NSIS + provider packs via GitHub releases (Majestic ships assets).
 - Fusion prefill % needs `prefill_tokens_total` from `NewPrompt` log; `/slots` `n_prompt_tokens_processed` is the numerator. Do not call `reset_prefill_counters()` on `/slots` new_request after NewPrompt — it zeroes total and forces fallback to sparse `print_timing` stderr lines.
 - Bench warmup→measured has no `/slots` idle gap — call `reset_bench_meters_for_port` at each bench phase start or hero AVG/LIVE TPS bleeds warmup into measured.

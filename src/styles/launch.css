@@ -810,6 +810,12 @@
   font-size: var(--type-micro);
 }
 
+.gpu-topo-card__pcie-idle {
+  color: var(--theme-text-muted);
+  font-size: var(--type-hairline);
+  letter-spacing: 0.08em;
+}
+
 .gpu-topo-card__cell {
   display: flex;
   flex-direction: column;

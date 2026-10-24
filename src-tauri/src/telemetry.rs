@@ -39,6 +39,9 @@ pub struct GpuInfo {
     /// Negotiated PCIe link width.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pcie_width: Option<u32>,
+    /// PCIe capability width of the slot/card.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pcie_width_max: Option<u32>,
     /// PCIe traffic into the GPU, MiB/s (all processes on that card).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pcie_rx_mib_per_s: Option<f32>,
@@ -371,6 +374,7 @@ async fn run_nvidia_smi() -> Result<Vec<GpuInfo>, String> {
             pcie_gen: pcie.gen,
             pcie_gen_max: pcie.gen_max,
             pcie_width: pcie.width,
+            pcie_width_max: pcie.width_max,
             pcie_rx_mib_per_s: pcie.rx_mib_per_s,
             pcie_tx_mib_per_s: pcie.tx_mib_per_s,
         });
@@ -697,6 +701,7 @@ mod tests {
             pcie_gen: None,
             pcie_gen_max: None,
             pcie_width: None,
+            pcie_width_max: None,
             pcie_rx_mib_per_s: None,
             pcie_tx_mib_per_s: None,
         }

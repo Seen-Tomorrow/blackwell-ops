@@ -52,6 +52,16 @@ export default function GpuTopologyCard({
   const freeVramGb = Math.max(0, totalVramGb - usedVramGb - reservedGb);
   const powerPercent = gpu.power_limit > 0 ? (gpu.power_draw / gpu.power_limit) * 100 : 0;
 
+  const pcieGen = gpu.pcie_gen_max ?? gpu.pcie_gen;
+  const pcieWidth = gpu.pcie_width_max ?? gpu.pcie_width;
+  const pcieIdle =
+    (gpu.pcie_gen != null && gpu.pcie_gen_max != null && gpu.pcie_gen < gpu.pcie_gen_max) ||
+    (gpu.pcie_width != null && gpu.pcie_width_max != null && gpu.pcie_width < gpu.pcie_width_max);
+  const pcieTitle =
+    gpu.pcie_gen != null && gpu.pcie_gen_max != null
+      ? `negotiated Gen${gpu.pcie_gen} x${gpu.pcie_width ?? "?"} · max Gen${gpu.pcie_gen_max} x${gpu.pcie_width_max ?? "?"}`
+      : undefined;
+
   const driverVer = formatGpuDriverVersion(gpu.driver_version);
 
   return (
@@ -186,18 +196,15 @@ export default function GpuTopologyCard({
             <span className="gpu-topo-card__label">PCIE</span>
             <p
               className="gpu-topo-card__value gpu-topo-card__value--readout gpu-topo-card__pcie-link font-mono tabular-nums"
-              title={
-                gpu.pcie_gen != null && gpu.pcie_gen_max != null
-                  ? `negotiated Gen${gpu.pcie_gen} · max Gen${gpu.pcie_gen_max}`
-                  : undefined
-              }
+              title={pcieTitle}
             >
-              {gpu.pcie_gen_max != null || gpu.pcie_gen != null ? (
-                `Gen${gpu.pcie_gen_max ?? gpu.pcie_gen}`
-              ) : (
-                <span className="gpu-topo-card__empty">—</span>
-              )}
-              {gpu.pcie_width != null ? ` · x${gpu.pcie_width}` : ""}
+              {pcieGen != null ? `Gen${pcieGen}` : <span className="gpu-topo-card__empty">—</span>}
+              {pcieWidth != null ? ` · x${pcieWidth}` : ""}
+              {pcieIdle ? (
+                <span className="gpu-topo-card__pcie-idle" title="link downshifts at idle (power saving)">
+                  {" idle"}
+                </span>
+              ) : null}
             </p>
             <p className="gpu-topo-card__pcie-io font-mono tabular-nums">
               <span>RX {formatPcieRate(gpu.pcie_rx_mib_per_s)}</span>

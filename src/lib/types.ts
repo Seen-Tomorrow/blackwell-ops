@@ -567,6 +567,8 @@ export interface GpuInfo {
   pcie_gen_max?: number;
   /** Negotiated PCIe link width. */
   pcie_width?: number;
+  /** PCIe capability width of the slot/card. */
+  pcie_width_max?: number;
   /** PCIe traffic into the GPU, MiB/s — every process on the card, not just ours. */
   pcie_rx_mib_per_s?: number;
   /** PCIe traffic out of the GPU, MiB/s. */

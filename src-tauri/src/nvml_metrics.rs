@@ -25,6 +25,8 @@ pub struct PcieMetrics {
     pub gen_max: Option<u32>,
     /// Negotiated link width.
     pub width: Option<u32>,
+    /// Capability width of the slot/the card.
+    pub width_max: Option<u32>,
     /// Bytes/s into the GPU, MiB/s.
     pub rx_mib_per_s: Option<f32>,
     /// Bytes/s out of the GPU, MiB/s.
@@ -98,6 +100,7 @@ pub fn pcie_metrics(bus_id: &str, index: u32) -> PcieMetrics {
             gen: read_u32(lib, b"nvmlDeviceGetCurrPcieLinkGeneration\0", dev),
             gen_max: read_u32(lib, b"nvmlDeviceGetMaxPcieLinkGeneration\0", dev),
             width: read_u32(lib, b"nvmlDeviceGetCurrPcieLinkWidth\0", dev),
+            width_max: read_u32(lib, b"nvmlDeviceGetMaxPcieLinkWidth\0", dev),
             rx_mib_per_s: read_u32_arg(lib, b"nvmlDeviceGetPcieThroughput\0", dev, NVML_PCIE_UTIL_RX_BYTES)
                 .map(|kb_per_s| kb_per_s as f32 / 1024.0),
             tx_mib_per_s: read_u32_arg(lib, b"nvmlDeviceGetPcieThroughput\0", dev, NVML_PCIE_UTIL_TX_BYTES)
