@@ -31,6 +31,11 @@ export function gpuScanSnapshotEqual(
     if (Math.round(a.power_draw) !== Math.round(b.power_draw)) return false;
     if (Math.abs(a.utilization_gpu - b.utilization_gpu) > 2) return false;
     if (Math.abs(a.utilization_memory - b.utilization_memory) > 2) return false;
+    // PCIe has no other trigger: without these the tile only re-rendered when util/mem/power
+    // moved, so a throughput-only spike was dropped before the peak tracker saw it.
+    if (Math.round(a.pcie_rx_mib_per_s ?? 0) !== Math.round(b.pcie_rx_mib_per_s ?? 0)) return false;
+    if (Math.round(a.pcie_tx_mib_per_s ?? 0) !== Math.round(b.pcie_tx_mib_per_s ?? 0)) return false;
+    if (a.pcie_gen !== b.pcie_gen || a.pcie_width !== b.pcie_width) return false;
   }
   return true;
 }
