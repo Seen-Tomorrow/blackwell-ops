@@ -694,6 +694,9 @@ impl FusionBrain {
     fn ensure_request_clock(&mut self) {
         if self.req.ensure_request_clock() {
             self.bump_meter_seq();
+            // The belt just opened a request, so the wave's token base is stale (same reset the
+            // explicit restart does).
+            self.decode_wall_token_base = None;
         }
     }
 
