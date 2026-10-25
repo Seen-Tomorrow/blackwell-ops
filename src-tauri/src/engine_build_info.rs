@@ -52,6 +52,17 @@ fn parse_llama_version_line(cleaned: &str) -> Option<String> {
             .expect("generic version regex")
     });
 
+    // `llama.exe` build stub: prints a bare build id, e.g. "b9940-259f2e2a5".
+    static BUILD_ID_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"(?i)^b\d+-[0-9a-f]{7,40}$").expect("build id regex")
+    });
+    for line in cleaned.lines() {
+        let trimmed = line.trim();
+        if BUILD_ID_RE.is_match(trimmed) {
+            return Some(trimmed.to_string());
+        }
+    }
+
     if let Some(caps) = NEW_RE.captures(cleaned) {
         // Normalize to "0.2.0-dev (d7fa69b)" so commit extract stays simple.
         return Some(format!("{} ({})", caps[1].trim(), short_hex(&caps[2])));
@@ -131,12 +142,15 @@ fn probe_skip_reason(path: &Path) -> Option<String> {
     ))
 }
 
-/// Upstream can ship a tiny `llama-version.exe` next to the server; prefer it when present so the
-/// probe does not start the full server. Falls back to `llama-server --version`.
+/// A build stub beside the server is the cheapest source of identity: `llama.exe` (or a
+/// `llama-version.exe`) prints the build id and does not load CUDA, so it works even when the
+/// runtime pack is missing and never starts the server.
 fn version_probe_exe(path: &Path) -> PathBuf {
-    let sibling = path.with_file_name("llama-version.exe");
-    if sibling.is_file() {
-        return sibling;
+    for name in ["llama.exe", "llama-version.exe"] {
+        let sibling = path.with_file_name(name);
+        if sibling.is_file() {
+            return sibling;
+        }
     }
     path.to_path_buf()
 }
@@ -144,9 +158,78 @@ fn version_probe_exe(path: &Path) -> PathBuf {
 /// Blocking llama-server --version — same spawn shape as catalog `get_llama_catalog` (`--help`):
 /// one `run_hidden_output`, cwd = exe dir, portable CUDA PATH, no pre-sleep / preflight.
 /// Retry only if the first spawn fails or output has no parseable version line.
-pub(crate) fn probe_binary_version_sync(path: &std::path::Path) -> Result<String, String> {
+fn run_version_probe(executable: &Path, cuda_target: &Path) -> Result<String, Option<String>> {
     const MAX_ATTEMPTS: u32 = 2;
     const RETRY_MS: u64 = 100;
+
+    let work_dir = cuda_target.parent().map(|p| p.to_path_buf());
+    let mut last_snippet = String::new();
+
+    for attempt in 1..=MAX_ATTEMPTS {
+        let exe = executable.to_path_buf();
+        let target = cuda_target.to_path_buf();
+        let dir = work_dir.clone();
+        let output = crate::engine_utils::run_hidden_output(move || {
+            let mut cmd = std::process::Command::new(&exe);
+            cmd.arg("--version")
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+            if let Some(ref d) = dir {
+                cmd.current_dir(d);
+            }
+            let _ = crate::engine_utils::apply_cuda_toolchain_for_binary(&mut cmd, &target);
+            cmd
+        });
+
+        match output {
+            Ok(o) => {
+                let cleaned = clean_version_probe_output(&o.stdout, &o.stderr);
+                if !cleaned.is_empty() {
+                    last_snippet = cleaned.chars().take(200).collect();
+                }
+                if let Some(version) = parse_llama_version_line(&cleaned) {
+                    return Ok(version);
+                }
+                log::debug!(
+                    "[build-info] --version no parse for {} (attempt {}/{}, exit {:?})",
+                    executable.display(),
+                    attempt,
+                    MAX_ATTEMPTS,
+                    o.status.code()
+                );
+            }
+            Err(e) => {
+                log::debug!(
+                    "[build-info] --version spawn failed for {} (attempt {}/{}): {}",
+                    executable.display(),
+                    attempt,
+                    MAX_ATTEMPTS,
+                    e
+                );
+            }
+        }
+
+        if attempt < MAX_ATTEMPTS {
+            std::thread::sleep(std::time::Duration::from_millis(RETRY_MS));
+        }
+    }
+
+    Err(if last_snippet.is_empty() { None } else { Some(last_snippet) })
+}
+
+/// Identify the engine binary: stub first (no CUDA), then the full server when its runtime is
+/// installed, and cache failures so a refresh loop cannot retry or warn forever.
+pub(crate) fn probe_binary_version_sync(path: &std::path::Path) -> Result<String, String> {
+    let stub = version_probe_exe(path);
+    if stub != path {
+        match run_version_probe(&stub, path) {
+            Ok(version) => return Ok(version),
+            Err(_) => log::debug!(
+                "[build-info] {} did not report a version; falling back to the server",
+                stub.display()
+            ),
+        }
+    }
 
     if let Some(reason) = probe_skip_reason(path) {
         log::debug!("[build-info] {} ({})", reason, path.display());
@@ -162,78 +245,25 @@ pub(crate) fn probe_binary_version_sync(path: &std::path::Path) -> Result<String
         ));
     }
 
-    let probe_exe = version_probe_exe(path);
-    let work_dir = path.parent().map(|p| p.to_path_buf());
-    let mut last_snippet = String::new();
-
-    for attempt in 1..=MAX_ATTEMPTS {
-        let path_for_probe = probe_exe.clone();
-        let cuda_target = path.to_path_buf();
-        let work_dir_for_probe = work_dir.clone();
-        let output = crate::engine_utils::run_hidden_output(move || {
-            let mut cmd = std::process::Command::new(&path_for_probe);
-            // Match llama_catalog: --help path uses arg + cwd + CUDA env only.
-            cmd.arg("--version")
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped());
-            if let Some(ref dir) = work_dir_for_probe {
-                cmd.current_dir(dir);
-            }
-            let _ = crate::engine_utils::apply_cuda_toolchain_for_binary(&mut cmd, &cuda_target);
-            cmd
-        });
-
-        match output {
-            Ok(o) => {
-                let cleaned = clean_version_probe_output(&o.stdout, &o.stderr);
-                if !cleaned.is_empty() {
-                    last_snippet = cleaned.chars().take(200).collect();
-                }
-                if let Some(version) = parse_llama_version_line(&cleaned) {
-                    forget_failure(path, stamp);
-                    return Ok(version);
-                }
-                log::debug!(
-                    "[build-info] --version no parse for {} (attempt {}/{}, exit {:?})",
-                    path.display(),
-                    attempt,
-                    MAX_ATTEMPTS,
-                    o.status.code()
-                );
-            }
-            Err(e) => {
-                log::debug!(
-                    "[build-info] --version spawn failed for {} (attempt {}/{}): {}",
-                    path.display(),
-                    attempt,
-                    MAX_ATTEMPTS,
-                    e
-                );
-            }
+    match run_version_probe(path, path) {
+        Ok(version) => {
+            forget_failure(path, stamp);
+            Ok(version)
         }
-
-        if attempt < MAX_ATTEMPTS {
-            std::thread::sleep(std::time::Duration::from_millis(RETRY_MS));
+        Err(snippet) => {
+            // One warning per binary+mtime, then silent for PROBE_FAILURE_TTL.
+            match snippet {
+                Some(out) => log::warn!(
+                    "Could not parse version from binary '{}', output: {}",
+                    path.display(),
+                    out
+                ),
+                None => log::warn!("Could not probe version from binary '{}'", path.display()),
+            }
+            remember_failure(path, stamp);
+            Err(format!("Version probe failed for {}", path.display()))
         }
     }
-
-    // One warning per binary+mtime, then silent for PROBE_FAILURE_TTL.
-    if !last_snippet.is_empty() {
-        log::warn!(
-            "Could not parse version from binary '{}' after {} attempts, output: {}",
-            path.display(),
-            MAX_ATTEMPTS,
-            last_snippet
-        );
-    } else {
-        log::warn!(
-            "Could not probe version from binary '{}' after {} attempts",
-            path.display(),
-            MAX_ATTEMPTS
-        );
-    }
-    remember_failure(path, stamp);
-    Err(format!("Version probe failed for {}", path.display()))
 }
 
 pub(crate) async fn probe_binary_version(path: &std::path::Path) -> Result<String, String> {
@@ -294,4 +324,30 @@ pub(crate) fn is_placeholder_build_version(version: &str) -> bool {
             | "downloaded"
             | "catalog"
     )
+}
+
+#[cfg(test)]
+mod parse_tests {
+    use super::*;
+
+    #[test]
+    fn parses_a_bare_build_id_from_the_stub() {
+        assert_eq!(
+            parse_llama_version_line("b9940-259f2e2a5\n").as_deref(),
+            Some("b9940-259f2e2a5")
+        );
+    }
+
+    #[test]
+    fn still_parses_the_server_version_line() {
+        let line = "version: 0.7.0-dev (build 11869, commit d327bf1f0)";
+        assert_eq!(
+            parse_llama_version_line(line).as_deref(),
+            Some("0.7.0-dev (d327bf1f)")
+        );
+        assert_eq!(
+            parse_llama_version_line("version: 519 (635cdd5)").as_deref(),
+            Some("519 (635cdd5)")
+        );
+    }
 }
