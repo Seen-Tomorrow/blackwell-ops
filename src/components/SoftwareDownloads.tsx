@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 import { useDownloadTasks } from "../hooks/useDownloadTasks";
-import { buildEngineOverview, packDownloadAction } from "../lib/engineOverview";
+import { buildEngineOverview, formatEngineVersion, packDownloadAction } from "../lib/engineOverview";
 import { DEFAULT_PROVIDER_ID } from "../lib/types";
 import type { BinaryUpdateInfo, DownloadTask, ProviderConfig } from "../lib/types";
 import type { ToolchainInstallInfo } from "./FoundryToolchainPanel";
@@ -162,12 +162,12 @@ export default function SoftwareDownloads() {
                 </div>
                 <div className="type-micro font-mono config-muted">
                   {mode.packAvailable
-                    ? `Published ${mode.packVersion ?? "unknown"} · ${formatSize(mode.downloadSizeBytes)}`
+                    ? `Published ${formatEngineVersion(mode.packVersion)} · ${formatSize(mode.downloadSizeBytes)}`
                     : "No published pack yet"}
                 </div>
                 <div className="type-micro font-mono config-muted">
                   {catalog?.available
-                    ? `Downloaded ${catalog.version ?? "unknown"}${catalog.buildDate ? ` · ${catalog.buildDate}` : ""}`
+                    ? `Downloaded ${formatEngineVersion(catalog.version)}${catalog.buildDate ? ` · ${catalog.buildDate}` : ""}`
                     : "Not downloaded"}
                 </div>
               </div>

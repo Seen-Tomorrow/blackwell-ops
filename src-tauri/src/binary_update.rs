@@ -232,13 +232,23 @@ fn version_commit(v: &str) -> Option<String> {
 /// Build number from `b11870-...`; bundled semver strings have none.
 fn version_build_number(v: &str) -> Option<u64> {
     let t = v.trim();
-    let t = t.strip_prefix('b').unwrap_or(t);
-    let digits: String = t.chars().take_while(|c| c.is_ascii_digit()).collect();
+    // `b11870-74bca395` (sidecar / pack names)
+    let bare = t.strip_prefix('b').unwrap_or(t);
+    let digits: String = bare.chars().take_while(|c| c.is_ascii_digit()).collect();
     if digits.len() >= 3 {
-        digits.parse().ok()
-    } else {
-        None
+        return digits.parse().ok();
     }
+    // `0.7.0-dev (build 11870)` (probed server line)
+    if let Some(pos) = t.find("build ") {
+        let digits: String = t[pos + 6..]
+            .chars()
+            .take_while(|c| c.is_ascii_digit())
+            .collect();
+        if digits.len() >= 3 {
+            return digits.parse().ok();
+        }
+    }
+    None
 }
 
 /// True only when the published pack is genuinely newer than what is installed. A local build

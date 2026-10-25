@@ -76,12 +76,12 @@ fn parse_llama_version_line(cleaned: &str) -> Option<String> {
             .and_then(|b| b.get(1))
             .map(|m| m.as_str().to_string());
         return match build {
-            Some(n) => Some(format!("b{n}-{}", short_hex(&caps[2]))),
+            Some(n) => Some(format!("{} (build {n})", caps[1].trim())),
             None => Some(format!("{} ({})", caps[1].trim(), short_hex(&caps[2]))),
         };
     }
     if let Some(caps) = OLD_RE.captures(cleaned) {
-        return Some(format!("b{}-{}", &caps[1], short_hex(&caps[2])));
+        return Some(format!("{} (build {})", &caps[1], &caps[1]));
     }
     GENERIC_RE
         .captures(cleaned)
@@ -396,7 +396,7 @@ mod parse_tests {
         let out = "version: 0.7.0-dev (build 11870, commit 74bca3950)\nbuilt with MSVC 19.51.36243.0 for Windows AMD64\n";
         assert_eq!(
             parse_llama_version_line(out).as_deref(),
-            Some("b11870-74bca395")
+            Some("0.7.0-dev (build 11870)")
         );
     }
 
@@ -405,11 +405,11 @@ mod parse_tests {
         let line = "version: 0.7.0-dev (build 11869, commit d327bf1f0)";
         assert_eq!(
             parse_llama_version_line(line).as_deref(),
-            Some("b11869-d327bf1f")
+            Some("0.7.0-dev (build 11869)")
         );
         assert_eq!(
             parse_llama_version_line("version: 519 (635cdd5)").as_deref(),
-            Some("b519-635cdd5")
+            Some("519 (build 519)")
         );
     }
 }

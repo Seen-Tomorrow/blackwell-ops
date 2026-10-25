@@ -179,8 +179,26 @@ export function buildEngineOverview(
 /** Build number from `b11887-6050b467`; null for unknown identities. */
 export function buildNumberOf(version: string | null | undefined): number | null {
   if (!version) return null;
-  const match = /^(?:b|build\s+)(\d{3,})/i.exec(version.trim());
-  return match ? Number(match[1]) : null;
+  const text = version.trim();
+  const bare = /^b(\d{3,})/i.exec(text);
+  if (bare) return Number(bare[1]);
+  const parenthesized = /\(build\s+(\d{3,})\)/i.exec(text);
+  return parenthesized ? Number(parenthesized[1]) : null;
+}
+
+/**
+ * Human identity. Probed engines carry `0.7.0-dev (build 11870)`; sidecar builds only have
+ * `b11870-74bca395`. Display as `version: 0.7.0-dev, build: 11870` / `build: 11870`; the
+ * commit is deliberately not shown.
+ */
+export function formatEngineVersion(version: string | null | undefined): string {
+  if (!version?.trim()) return "unknown";
+  const text = version.trim();
+  const withBuild = /^(.+?)\s*\(build\s+(\d+)\)$/i.exec(text);
+  if (withBuild) return `version: ${withBuild[1]}, build: ${withBuild[2]}`;
+  const sidecar = /^b(\d+)(?:-[0-9a-z]+)?$/i.exec(text);
+  if (sidecar) return `build: ${sidecar[1]}`;
+  return text;
 }
 
 export type PackDownloadAction = "download" | "redownload" | "update";
