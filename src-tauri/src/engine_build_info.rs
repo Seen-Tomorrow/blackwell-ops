@@ -142,6 +142,23 @@ fn probe_skip_reason(path: &Path) -> Option<String> {
     ))
 }
 
+/// `<engine dir>/build-info.txt` — one line `b<build>-<commit>`, written at build time.
+fn read_build_info_sidecar(path: &Path) -> Option<String> {
+    use std::sync::LazyLock;
+    static ID_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"(?i)^b\d+-[0-9a-f]{7,40}$").expect("build info regex")
+    });
+    let sidecar = path.with_file_name("build-info.txt");
+    let text = std::fs::read_to_string(sidecar).ok()?;
+    let line = text.lines().next()?.trim();
+    if ID_RE.is_match(line) {
+        Some(line.to_string())
+    } else {
+        log::debug!("[build-info] sidecar has an unexpected format: {line:?}");
+        None
+    }
+}
+
 /// A build stub beside the server is the cheapest source of identity: `llama.exe` (or a
 /// `llama-version.exe`) prints the build id and does not load CUDA, so it works even when the
 /// runtime pack is missing and never starts the server.
@@ -220,6 +237,12 @@ fn run_version_probe(executable: &Path, cuda_target: &Path) -> Result<String, Op
 /// Identify the engine binary: stub first (no CUDA), then the full server when its runtime is
 /// installed, and cache failures so a refresh loop cannot retry or warn forever.
 pub(crate) fn probe_binary_version_sync(path: &std::path::Path) -> Result<String, String> {
+    // Written by Foundry from CMake's LLAMA_BUILD_NUMBER/LLAMA_BUILD_COMMIT. It is the cheapest
+    // and most accurate identity: no spawn, no CUDA, and it is regenerated with the build.
+    if let Some(version) = read_build_info_sidecar(path) {
+        return Ok(version);
+    }
+
     let stub = version_probe_exe(path);
     if stub != path {
         match run_version_probe(&stub, path) {

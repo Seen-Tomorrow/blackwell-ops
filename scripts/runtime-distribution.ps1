@@ -160,6 +160,10 @@ function Test-RuntimeDistributionFile {
     if ($script:RuntimeDistributionExecutables -contains $File.Name) {
         return $true
     }
+    if ($File.Name -eq 'build-info.txt') {
+        # Written by Foundry at build time: b<build>-<commit>, read for engine identity.
+        return $true
+    }
     if ($File.Extension -ine '.dll') {
         return $false
     }
