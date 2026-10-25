@@ -367,10 +367,10 @@ function App() {
       const detail = (e as CustomEvent<NavigateConfigDetail>).detail;
       const pending = consumePendingConfigSubTab();
       const sub = detail?.subTab ?? pending;
-      // UPDATES moved into DOWNLOADS -> SOFTWARE.
-      if (sub === "updates") {
+      // Software installs live in DOWNLOADS -> SOFTWARE.
+      if (detail?.downloadsView) {
         setActiveTab("modelhub");
-        setDownloadsView("software");
+        setDownloadsView(detail.downloadsView);
         return;
       }
       setActiveTab("config");

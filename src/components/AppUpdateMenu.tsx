@@ -87,8 +87,8 @@ export default function AppUpdateMenu({
           activeTask
             ? "App update downloading — progress is in the page header (right)"
             : highlight
-              ? "Updates available — App pack here; engine packs in UPDATES catalog"
-              : "App update (engine packs in Config → UPDATES)"
+              ? "Updates available — App here; engine installs in DOWNLOADS, SOFTWARE tab"
+              : "App update (engine installs in DOWNLOADS, SOFTWARE tab)"
         }
       >
         {activeTask ? "UPDATING…" : "UPDATE"}
@@ -174,12 +174,12 @@ export default function AppUpdateMenu({
             type="button"
             onClick={() => {
               setOpen(false);
-              dispatchNavigateConfig({ subTab: "updates" });
+              dispatchNavigateConfig({ downloadsView: "software" });
             }}
             className="w-full text-left rounded-sm upd-catalog-link px-2.5 py-2 type-label font-mono transition-colors uppercase tracking-wider"
-            title="Config → UPDATES — Full install, engine packs, full catalog"
+            title="DOWNLOADS, SOFTWARE tab — app update, engine installs, Foundry"
           >
-            Updates catalog →
+            Software downloads →
           </button>
 
           {error && <p className="type-label font-mono upd-error--popover">{error}</p>}

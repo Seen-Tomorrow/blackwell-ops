@@ -12,7 +12,6 @@ export type ConfigSubTab =
   | "runtime"
   | "secrets"
   | "recovery"
-  | "updates"
   | "distribution";
 
 export const PRIMARY_NAV: { id: PrimaryNavId; label: string }[] = [

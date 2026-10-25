@@ -116,10 +116,6 @@ export default function ConfigPage({
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
           <EngineConfig providers={allProviders} onProvidersChange={setAllProviders} />
         </div>
-      ) : effectiveSub === "updates" ? (
-        <div className="flex-1 flex flex-col overflow-hidden min-h-0 p-4 type-body font-mono config-muted">
-          Updates moved to DOWNLOADS, SOFTWARE tab.
-        </div>
       ) : effectiveSub === "distribution" && factoryExportEnabled ? (
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
           <DistributionDevPanel />

@@ -37,6 +37,8 @@ import {
 
 export type NavigateConfigDetail = {
   subTab?: ConfigSubTab;
+  /** DOWNLOADS intent: open the software or models view. */
+  downloadsView?: "models" | "software";
 };
 
 export const EVENTS = {
