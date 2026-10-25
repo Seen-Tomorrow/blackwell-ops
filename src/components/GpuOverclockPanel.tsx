@@ -258,21 +258,23 @@ export default function GpuOverclockPanel({
       <button
         type="button"
         onClick={() => setExpandedAndNotify((v) => !v)}
-        className={`theme-surface-header gpu-oc-header w-full px-3 py-2 border-b flex items-center gap-3 text-left transition-colors ${
+        className={`theme-surface-header gpu-oc-header w-full px-3 py-2 border-b flex flex-col items-stretch gap-1 text-left transition-colors ${
           ocActive ? "gpu-oc-header--active" : "hover:bg-white/[0.02]"
         }`}
       >
-        <span className="gpu-oc-header__title type-body font-mono gpu-oc-title tracking-wider shrink-0">
-          OVERCLOCKING [at your own risk]
+        <span className="flex items-center gap-2 min-w-0">
+          <span className="gpu-oc-header__title type-body font-mono gpu-oc-title tracking-wider min-w-0 truncate text-left">
+            OVERCLOCKING [at your own risk]
+          </span>
+          <span className="gpu-oc-header__toggle type-md font-mono leading-none ml-auto shrink-0">
+            {expanded ? "▴" : "▾"}
+          </span>
         </span>
         <span
-          className={`gpu-oc-header__feedback flex-1 min-w-0 type-tiny font-mono truncate text-right leading-none min-h-[0.65rem] ${feedback ? feedbackTone : "text-transparent select-none"}`}
+          className={`gpu-oc-header__feedback block w-full type-tiny font-mono truncate text-left leading-none min-h-[0.65rem] ${feedback ? feedbackTone : "text-transparent select-none"}`}
           aria-live="polite"
         >
           {feedback ?? "·"}
-        </span>
-        <span className="gpu-oc-header__toggle type-label font-mono gpu-oc-muted shrink-0 w-3 text-center">
-          {expanded ? "−" : "+"}
         </span>
       </button>
 
