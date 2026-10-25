@@ -314,9 +314,9 @@
   --type-tiny: clamp(8px, calc(8px * var(--text-scale, 1)), 16px);
   --type-label: clamp(9px, calc(9px * var(--text-scale, 1)), 16px);
   --type-body: clamp(10px, calc(10px * var(--text-scale, 1)), 16px);
-  --type-sm: clamp(11px, calc(11px * var(--text-scale, 1)), 16px);
-  --type-md: clamp(12px, calc(12px * var(--text-scale, 1)), 16px);
-  --type-lg: clamp(15px, calc(15px * var(--text-scale, 1)), 16px);
+  --type-sm: 11px;
+  --type-md: 12px;
+  --type-lg: 15px;
   --type-xl: 18px;
   --type-2xl: 22px;
 
