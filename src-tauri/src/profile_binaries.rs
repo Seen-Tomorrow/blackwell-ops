@@ -8,11 +8,11 @@
 //! Model:
 //! - `inventory_per_env` = disk scan (paths + optional probed build info)
 //! - `binary_source_per_env` = **user/intent preference only** (`foundry` | `bundled` |
-//!   `catalog`). Missing key = **auto** (newest tree). Resolve never overwrites preference.
+//!   `catalog`). Missing key = deterministic default: catalog (pack) > foundry > bundled seed.
+//!   Resolve never overwrites preference. `bundled` is the seed/floor, not a managed version.
 //! - `binary_path_per_env` / `build_info_per_env` = pure(active) from inventory + preference
 
 use std::path::{Path, PathBuf};
-use std::time::UNIX_EPOCH;
 
 use chrono::{DateTime, Local};
 
@@ -44,33 +44,9 @@ fn build_info_from_mtime(exe: &Path, version_label: &str) -> Option<BuildInfo> {
     })
 }
 
-fn exe_modified_secs(path: &Path) -> u64 {
-    std::fs::metadata(path)
-        .ok()
-        .and_then(|m| m.modified().ok())
-        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
-}
-
-/// Freshness of a launch tree. Stub `llama-server.exe` can lag; prefer max of
-/// exe + `llama-server-impl.dll` (real ggml code) so Foundry rebuilds win auto-pick.
-fn binary_tree_modified_secs(exe_path: &Path) -> u64 {
-    let mut best = exe_modified_secs(exe_path);
-    if let Some(dir) = exe_path.parent() {
-        for name in ["llama-server-impl.dll", "llama.dll", "ggml.dll"] {
-            let t = exe_modified_secs(&dir.join(name));
-            if t > best {
-                best = t;
-            }
-        }
-    }
-    best
-}
-
 /// True when bundled `runtime/` or Foundry artifact engines exist for any factory provider profile.
 pub fn launch_engines_available() -> bool {
-    const PROVIDERS: &[&str] = &[crate::config::DEFAULT_PROVIDER_ID, "ggml-tom"];
+    const PROVIDERS: &[&str] = &[crate::config::DEFAULT_PROVIDER_ID];
     const PROFILES: &[&str] = &["edge", "stable"];
     for provider_id in PROVIDERS {
         for profile in PROFILES {
@@ -168,35 +144,22 @@ fn scan_catalog(
 }
 
 fn auto_pick_source(
-    bundled: &Option<(String, BuildInfo)>,
     foundry: &Option<(String, BuildInfo)>,
     catalog: &Option<(String, BuildInfo)>,
-    prefer_catalog: bool,
 ) -> &'static str {
-    if prefer_catalog && catalog.is_some() {
+    // Deterministic precedence, deliberately NOT "newest tree". With a bundled seed, a
+    // downloaded pack and a Foundry build able to coexist for one profile, mtime is not
+    // intent: a fresh pack could lose to yesterday's build (and the reverse) after any
+    // update, so what launches depended on file timestamps. Order is:
+    //   pack (managed, updatable) > local build > bundled seed (the floor).
+    // A user who wants their own build selects it; that preference is explicit and wins.
+    if catalog.is_some() {
         return SOURCE_CATALOG;
     }
-    match (bundled, foundry) {
-        (Some((bp, _)), Some((fp, _))) => {
-            let bt = binary_tree_modified_secs(&resolve_path(bp));
-            let ft = binary_tree_modified_secs(&resolve_path(fp));
-            // Foundry wins on equal mtime — a just-built artifact must beat a stale NSIS stub.
-            if ft >= bt {
-                SOURCE_FOUNDRY
-            } else {
-                SOURCE_BUNDLED
-            }
-        }
-        (Some(_), None) => SOURCE_BUNDLED,
-        (None, Some(_)) => SOURCE_FOUNDRY,
-        (None, None) => {
-            if catalog.is_some() {
-                SOURCE_CATALOG
-            } else {
-                SOURCE_BUNDLED
-            }
-        }
+    if foundry.is_some() {
+        return SOURCE_FOUNDRY;
     }
+    SOURCE_BUNDLED
 }
 
 fn enrich(info: BuildInfo, build_profile: &str) -> BuildInfo {
@@ -316,18 +279,12 @@ pub fn resolve_provider_binaries(p: &mut ProviderConfig) {
             .map(|s| s.as_str())
             .filter(|s| is_known_source(s));
 
-        let prefer_catalog = catalog.is_some()
-            && p.downloaded_version_per_env
-                .get(&profile)
-                .map(|s| !s.trim().is_empty())
-                .unwrap_or(false);
-
-        // Explicit pref if that source exists; otherwise auto (do not rewrite pref).
+        // Explicit pref if that source exists; otherwise the deterministic default (no mtime).
         let source = match pref {
             Some(SOURCE_CATALOG) if catalog.is_some() => SOURCE_CATALOG,
             Some(SOURCE_BUNDLED) if show_bundled_as_nsis.is_some() => SOURCE_BUNDLED,
             Some(SOURCE_FOUNDRY) if foundry.is_some() => SOURCE_FOUNDRY,
-            _ => auto_pick_source(&show_bundled_as_nsis, &foundry, &catalog, prefer_catalog),
+            _ => auto_pick_source(&foundry, &catalog),
         };
 
         let active = match source {
@@ -415,6 +372,36 @@ fn sync_main_binary_path(p: &mut ProviderConfig) {
     }
     if let Some((_, path)) = p.binary_path_per_env.iter().next() {
         p.binary_path = path.clone();
+    }
+}
+
+#[cfg(test)]
+mod source_tests {
+    use super::*;
+
+    fn entry(name: &str) -> Option<(String, BuildInfo)> {
+        Some((
+            name.to_string(),
+            BuildInfo {
+                version: name.to_string(),
+                build_date: "2026-10-25 02:00".into(),
+                cuda_version: None,
+                cuda_architectures: None,
+            },
+        ))
+    }
+
+    /// Precedence is fixed: pack > local build > bundled seed. The previous rule compared
+    /// file mtimes, so identical disk state could resolve differently after an update — a
+    /// fresh pack losing to yesterday's Foundry build, or the reverse. That is exactly what
+    /// this test pins.
+    #[test]
+    fn default_source_precedence_is_deterministic() {
+        assert_eq!(auto_pick_source(&entry("f"), &entry("c")), SOURCE_CATALOG);
+        assert_eq!(auto_pick_source(&entry("f"), &None), SOURCE_FOUNDRY);
+        assert_eq!(auto_pick_source(&None, &entry("c")), SOURCE_CATALOG);
+        // Nothing on disk: the caller drops the paths; the value is only a placeholder.
+        assert_eq!(auto_pick_source(&None, &None), SOURCE_BUNDLED);
     }
 }
 

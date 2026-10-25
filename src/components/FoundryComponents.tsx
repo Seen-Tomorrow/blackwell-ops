@@ -26,23 +26,6 @@ function getPrNumberForEnv(provider: ProviderConfig, env: string): string | unde
   return provider.lastPrPerEnv?.[env];
 }
 
-/** True when this inventory row has the newer build date vs the other source for the same profile. */
-function isNewestSourceForProfile(provider: ProviderConfig, env: string, source: BinarySourceKind): boolean {
-  const foundryDate = envBinaryLookup(provider, env, "foundry")?.info?.buildDate ?? "";
-  const bundledDate = envBinaryLookup(provider, env, "bundled")?.info?.buildDate ?? "";
-  const catalogDate = envBinaryLookup(provider, env, "catalog")?.info?.buildDate ?? "";
-  const dates = (
-    [
-      { s: "foundry" as const, d: foundryDate },
-      { s: "bundled" as const, d: bundledDate },
-      { s: "catalog" as const, d: catalogDate },
-    ] satisfies { s: BinarySourceKind; d: string }[]
-  ).filter((x) => !!x.d);
-  if (dates.length === 0) return false;
-  const best = dates.reduce((a, b) => (a.d >= b.d ? a : b));
-  return best.s === source;
-}
-
 function originBadge(origin: string | null): ReactNode {
   if (origin === "foundry") return <span className="value-chip fnd-origin-chip font-mono px-1 py-0.5 rounded-sm">FOUNDRY</span>;
   if (origin === "catalog" || origin === "downloaded") {
@@ -189,7 +172,6 @@ function BinarySourceRow({
     productTag.replace(/^v/i, "") === latestVersion.replace(/^v/i, "");
   const showUpdateChrome = source === "catalog" && !!binaryUpdate;
   const needsDownload = source === "catalog" && !productTag && !!binaryUpdate?.packAvailable;
-  const isNewestBuild = isNewestSourceForProfile(provider, env, source);
   const badgeOrigin = source === "foundry" ? "foundry" : source === "catalog" ? "catalog" : "bundled";
 
   return (
@@ -210,9 +192,6 @@ function BinarySourceRow({
           </span>
         ) : (
           buildInfoLine(buildInfo, provider, env, source)
-        )}
-        {isNewestBuild && !!buildInfo && source !== "catalog" && !isProbingBuildInfo && (
-          <span className="value-chip fnd-latest-chip type-micro font-mono px-1.5 py-0.5 rounded-sm shrink-0">LATEST</span>
         )}
         {showUpdateChrome && !isBuilding && (
           <div className="flex-shrink-0 flex items-center gap-1.5">
@@ -295,8 +274,8 @@ function BinarySourceRow({
         isActive ? (
           <span className="foundry-active-binary-badge type-micro font-mono px-2 py-1 shrink-0">ACTIVE BINARY</span>
         ) : (
-          <button onClick={onSelect} className="value-chip fnd-action-chip type-micro font-mono px-2 py-1 shrink-0" title={`Use ${label.toLowerCase()} for launch`}>
-            ACTIVATE
+          <button onClick={onSelect} className="value-chip fnd-action-chip type-micro font-mono px-2 py-1 shrink-0" title={source === "bundled" ? "Revert to the engine bundled with the installer (downloaded pack and Foundry build stay on disk)" : `Use ${label.toLowerCase()} for launch`}>
+            {source === "bundled" ? "RESET TO SEED" : "ACTIVATE"}
           </button>
         )
       ) : (
