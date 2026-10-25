@@ -372,7 +372,7 @@ export default function FoundryConfirmForm({
               )}
 
               <div className="flex items-center gap-2 pt-1 flex-wrap">
-                <span className="fnd-confirm-field-label type-tiny font-mono uppercase">Environment:</span>
+                <span className="fnd-confirm-field-label type-tiny font-mono uppercase">Mode:</span>
                 <span className="foundry-env-badge px-2 py-0.5 type-label font-mono rounded-sm">
                   {envMeta.label}
                 </span>
@@ -519,7 +519,7 @@ export default function FoundryConfirmForm({
 
           <div className="foundry-confirm-col">
             <div className="foundry-confirm-panel">
-              <p className="foundry-confirm-section-label">Build profile (CMake flags)</p>
+              <p className="foundry-confirm-section-label">Extra CMake flags</p>
               <p className="foundry-confirm-hint">
                 Base flags + architectures are merged on build. Server/tests/examples/native stay pinned. Saved on start.
               </p>
