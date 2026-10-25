@@ -184,7 +184,7 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
           {modes.map((mode) => {
             const task = taskForProfile(providerTasks, DEFAULT_PROVIDER_ID, mode.id);
             return (
-              <article key={mode.id} className="rounded-sm border p-3 space-y-2.5">
+              <article key={mode.id} className="industrial-panel-face p-3 space-y-2.5">
                 <header className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
@@ -292,7 +292,7 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
                 </div>
 
                 {manage === mode.id && (
-                  <div className="rounded-sm border p-2 space-y-1.5">
+                  <div className="eng-src-box p-2 space-y-1.5">
                     <div className="eng-src-table type-micro font-mono">
                       <div className="eng-src-row eng-src-row--head">
                         <span>Source</span>
@@ -346,7 +346,7 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
           })}
         </div>
 
-        <section className="rounded-sm border p-3 space-y-2">
+        <section className="industrial-panel-face p-3 space-y-2">
           <div className="flex items-start justify-between gap-2">
             <div>
               <p className="type-label font-mono uppercase tracking-wider">FOUNDRY pack</p>

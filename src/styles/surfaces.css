@@ -353,3 +353,23 @@ button.engine-logs-slot-chip.engine-logs-slot-chip--active .engine-logs-slot-chi
 .launch-rail-tel .theme-surface .text-white\/80 {
   color: var(--theme-text);
 }
+
+/* Gunmetal industrial face — same stack as the app header and bezel frame. */
+.industrial-panel-face {
+  background-color: var(--theme-industrial-bg);
+  background-image:
+    var(--theme-industrial-texture-active),
+    var(--theme-industrial-face-gradient, none);
+  border: 1px solid color-mix(in srgb, var(--theme-bezel-edge-lo) 55%, var(--theme-border));
+  border-radius: 2px;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 45%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-lo) 40%, transparent);
+}
+
+/* Flat inset panel — used for data tables sitting on an industrial face. */
+.eng-src-box {
+  border: 1px solid var(--theme-border);
+  border-radius: 2px;
+  background: var(--theme-panel-accent);
+}
