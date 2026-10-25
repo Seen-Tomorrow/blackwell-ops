@@ -142,7 +142,7 @@ export default function FoundryToolchainPanel({
       : "";
   const installActionLabel = onboarding
     ? "DOWNLOAD CUDA RUNTIME"
-    : `INSTALL BUILD TOOLS · ${downloadSizeLabel}`;
+    : `INSTALL FOUNDRY PACKAGE · ${downloadSizeLabel}`;
   // Driver gate for the seeded profile: downloading 383 MB of CUDA runtime for a driver that
   // cannot initialise it is a wasted download and a failed first launch.
   const seeded = info?.runtime_versions?.find((v) => v.id === DEFAULT_BINARY_PROFILE);
@@ -480,7 +480,7 @@ export default function FoundryToolchainPanel({
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
         <span className="fnd-tc-section-label type-tiny font-mono uppercase tracking-wider">
-          Foundry build tools
+          Foundry package
         </span>
         <span className={`fnd-tc-status type-micro font-mono px-1.5 py-0.5 rounded-sm border ${statusClass}`}>
           {statusLabel}
@@ -525,7 +525,7 @@ export default function FoundryToolchainPanel({
         </p>
       )}
 
-      {packStale && (
+      {false && packStale && (
         <p className="fnd-tc-crt-hint type-tiny font-mono leading-relaxed">{packStale}</p>
       )}
 

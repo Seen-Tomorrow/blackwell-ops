@@ -22,12 +22,38 @@ fn command_no_window(program: &Path) -> std::process::Command {
 /// `Command::output()` that deadlocks once the pipe buffer fills (hangs forever
 /// on large provider packs). stderr is still captured for error messages.
 #[cfg(windows)]
+/// Clear the read-only attribute on everything under `dir`.
+///
+/// 7z replaces files by deleting them first; a read-only file makes that fail with
+/// "Cannot delete output file: Access is denied", which aborted toolchain re-extraction
+/// on files previously copied from a read-only source tree.
+fn clear_readonly_under(dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            clear_readonly_under(&path);
+        } else if let Ok(meta) = std::fs::metadata(&path) {
+            let mut perms = meta.permissions();
+            if perms.readonly() {
+                perms.set_readonly(false);
+                let _ = std::fs::set_permissions(&path, perms);
+            }
+        }
+    }
+}
+
+#[cfg(windows)]
 pub fn extract_7z_archive(archive: &Path, dest_root: &Path) -> Result<(), String> {
     use std::process::Stdio;
 
     let seven_z = resolve_7z_exe()?;
     std::fs::create_dir_all(dest_root)
         .map_err(|e| format!("Failed to create extract dir: {e}"))?;
+    // Existing files may be read-only; 7z deletes before writing and fails otherwise.
+    clear_readonly_under(dest_root);
 
     let dest = dest_root.to_string_lossy().to_string();
     log::info!(
