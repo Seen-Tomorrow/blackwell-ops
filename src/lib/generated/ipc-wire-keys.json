@@ -1,7 +1,7 @@
 {
   "AppUpdateInfo": ["available", "version", "currentVersion", "releaseNotes"],
   "BinaryEntry": ["path", "info"],
-  "BinaryUpdateInfo": ["profile", "profileLabel", "installedVersion", "latestVersion", "available", "packAvailable"],
+  "BinaryUpdateInfo": ["profile", "profileLabel", "installedVersion", "latestVersion", "available", "packAvailable", "packSizeBytes", "cuda"],
   "BuildInfo": ["version", "buildDate", "cudaVersion", "cudaArchitectures"],
   "CatalogScanReport": ["models", "paths"],
   "CatalogUpdateEntry": ["path", "hfModelId", "quant", "hasUpdate", "kind", "remoteUrl", "remoteTotalSize", "reason", "noRemote"],

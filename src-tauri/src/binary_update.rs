@@ -202,6 +202,12 @@ pub struct BinaryUpdateInfo {
     /// True when a CORE_/PLUGIN_ (or legacy) pack exists on recent releases.
     #[serde(default)]
     pub pack_available: bool,
+    /// Engine pack size in bytes (0 when no pack is published).
+    #[serde(default)]
+    pub pack_size_bytes: u64,
+    /// CUDA version this profile runs on (drives runtime pack selection).
+    #[serde(default)]
+    pub cuda: Option<String>,
 }
 
 fn norm_release_version(v: &str) -> String {
@@ -346,6 +352,12 @@ pub async fn check_binary_updates(
             latest_version,
             available,
             pack_available,
+            pack_size_bytes: crate::engine_packs::engine_pack(&provider_id, profile)
+                .map(|p| p.size_bytes)
+                .unwrap_or(0),
+            cuda: crate::engine_packs::engine_pack(&provider_id, profile)
+                .map(|p| p.cuda.clone())
+                .or_else(|| crate::foundry_toolchain::cuda_version_for_binary_profile(profile)),
         });
     }
 
@@ -779,6 +791,8 @@ pub async fn get_startup_updates(app_handle: tauri::AppHandle) -> Result<Startup
                     latest_version: r.pack_version.trim_start_matches('v').to_string(),
                     available: true,
                     pack_available: r.pack_available,
+                    pack_size_bytes: 0,
+                    cuda: crate::foundry_toolchain::cuda_version_for_binary_profile(&r.profile),
                 })
                 .collect();
             if !pending.is_empty() {

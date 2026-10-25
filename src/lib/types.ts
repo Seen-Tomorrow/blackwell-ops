@@ -434,6 +434,10 @@ export interface BinaryUpdateInfo {
   available: boolean;
   /** Separate CORE_/PLUGIN_ pack exists on GitHub (core may be NSIS-only). */
   packAvailable?: boolean;
+  /** Engine pack size in bytes (0 when no pack is published). */
+  packSizeBytes?: number;
+  /** CUDA version this profile runs on. */
+  cuda?: string | null;
 }
 
 /** App update info from check_app_update IPC command. */
