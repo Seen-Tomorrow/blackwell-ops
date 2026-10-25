@@ -705,6 +705,15 @@ read by the Rust launch gate. `src/lib/foundry_constants.ts` still carries a dis
 | Build pack (VS/SDK/cmake/nvcc minus the six runtime DLLs) | **landed** — 366.2 MB | `pack-toolchain-packs.ps1 -Packs build`; Foundry now requests `build`, not `full` |
 | Foundry download requests `build` instead of `full` | **landed** | `FoundryToolchainPanel` (`onboardingPackId ?? "build"`) |
 
+**Release flow (majestic), reworked for one engine:** profile rows come from
+`distribution-policy.json` (`nsisCore`, `enginePacks`) — there is no provider list in
+`majestic.config.json` any more. `pack` stages the App `.7z`, the NSIS setup (EDGE seed), then
+builds **and digest-verifies** both `ENGINE_*` packs from `engines.json`; `ship` uploads exactly the
+files recorded in the pack manifest (the old `CORE_`/`PLUGIN_` filename filters are gone).
+`ship-provider` is retired (`npm run majestic:ship:provider` removed); `majestic:pack:provider` /
+`majestic:pack:engines` rebuild engine packs from the policy. Adding a future engine = policy edit +
+pack, no script edit.
+
 Engine packs built 2026-10-25 (engine `b11869-d327bf1f`, both profiles):
 
 | Asset | Size |

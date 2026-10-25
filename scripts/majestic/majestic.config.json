@@ -1,25 +1,13 @@
 {
   "tagPrefix": "v",
   "repo": "Seen-Tomorrow/blackwell-ops",
-  "providers": {
-    "ggml-tom": ["edge", "stable"],
-    "bee-llama": ["edge"]
-  },
-  "nsisProviders": {
-    "ggml-master": ["edge", "stable"]
-  },
-  "upload": {
-    "installer": true,
-    "providerPacks": false,
-    "binaryZips": false
-  },
   "ship": {
     "pushTag": false,
     "pushCommit": false,
-    "releaseNotes": "### Blackwell Ops release\n\n**CORE_** assets: App `.7z`, Full NSIS Setup (includes GGML Master Edge+Stable).\n\n**PLUGIN_** assets: optional engine packs — ship separately via DISTRIBUTION Pack+Ship per plugin (not part of Full pack).",
-    "appOnlyReleaseNotes": "### App update (`CORE_Blackwell-Ops-App-v*.7z`)\n\nLean portable pack (~5 MB) - **UI, core templates, plugin catalog, foundry vendor patches, bundled 7z**.\n\nRefreshes the **engine catalog** (Tom TQ, bee-llama, etc.) - install optional engines from Config - UPDATES. They appear in PROVIDERS after download.\n\nAlso refreshes `foundry/patches/` (Foundry vendor patches applied on engine build).\n\n**How to apply:** in-app **UPDATE** menu (download, extract, restart). Keeps existing engines under `runtime/`.\n\n**First install?** Use **Full install** (`CORE_*Setup*.exe`) from Updates catalog.",
-    "fullBundleReleaseNotes": "### Full install (`CORE_*Setup*.exe`)\n\nCore installer: **app + GGML Master engines** (Edge + Stable).\n\nAlso attaches lean App `.7z`. Optional **PLUGIN_** packs are not included — pack/ship those per engine when needed.\n\n**Choose this when:** first-time install or weekly Master engine refresh.",
-    "providerReleaseNotes": "### Engine pack (`PLUGIN_{provider}-{profile}.7z` or `CORE_ggml-master-{profile}.7z`)\n\nRuntime extract via Config - UPDATES.\n\nStop any running engine for that provider before updating."
+    "releaseNotes": "### Blackwell Ops release\n\nAssets are enumerated from the pack manifest — nothing is picked by filename convention:\n\n- App `.7z` — in-app update (~6 MB)\n- NSIS Setup — first install: app + EDGE engine seed\n- `ENGINE_*` packs — EDGE and STABLE engine bundles, digest-pinned in `engines.json`\n\nThe CUDA runtime is downloaded by the setup wizard, not bundled.",
+    "appOnlyReleaseNotes": "### App update (`CORE_Blackwell-Ops-App-v*.7z`)\n\nLean portable pack (~6 MB): UI, factory templates, plugin catalog, Foundry vendor patches, bundled 7z.\n\nKeeps engines, engine packs and toolchains under the app root untouched.\n\n**How to apply:** in-app UPDATE menu (download, extract, restart).\n\n**First install?** Use the NSIS Setup.",
+    "fullBundleReleaseNotes": "### Full install (`CORE_*Setup*.exe`)\n\nApp plus the EDGE engine seed — no STABLE, no toolchain (~140 MB compressed).\n\nThe setup wizard downloads the CUDA runtime for the seeded profile (383 MB) on first run; STABLE and the Foundry build tools are optional downloads from CONFIG → UPDATES.\n\nAlso attaches the lean App `.7z` and both `ENGINE_*` engine packs.",
+    "providerReleaseNotes": "### Engine pack\n\nRuntime extract via CONFIG → UPDATES. Engine packs ship with the release now; this note is obsolete."
   },
   "pack": {
     "skipBuildIfInstallerFresh": true,

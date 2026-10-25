@@ -297,7 +297,7 @@ function Assert-CargoLockPinned {
 
 function Get-PackKindLabel {
     param([string]$Kind)
-    if ($Kind -eq 'app') { 'App update (7z)' } else { 'Full Bundle (CORE: App .7z + NSIS w/ ggml-master)' }
+    if ($Kind -eq 'app') { 'App update (7z)' } else { 'Full Bundle (App .7z + NSIS with EDGE seed + engine packs)' }
 }
 
 function Get-ReleaseNotesForVariant {
@@ -544,20 +544,32 @@ function Get-ProviderProfileRows {
     $rows
 }
 
-# NSIS Full installer engines only (ggml-master by policy).
-function Get-NsisRequiredProfiles {
-    param($Config)
-    if ($null -ne $Config.PSObject.Properties['nsisProviders'] -and $null -ne $Config.nsisProviders) {
-        return Get-ProviderProfileRows -MapObject $Config.nsisProviders
+# Profile rows come from the distribution policy, never from a list in majestic.config.json:
+#   nsisCore    = profiles seeded inside the installer
+#   enginePacks = profiles published as downloadable engine packs
+# Adding an engine later means editing the policy + packing it, not editing this script.
+function Get-PolicyProfileRows {
+    param($Map)
+    $rows = @()
+    if (-not $Map) { return $rows }
+    foreach ($kv in $Map.GetEnumerator()) {
+        foreach ($prof in @($kv.Value)) {
+            $rows += [PSCustomObject]@{ Provider = $kv.Key; Profile = $prof }
+        }
     }
-    # Legacy: fall back to full providers map
-    return Get-ProviderProfileRows -MapObject $Config.providers
+    return $rows
 }
 
-# Optional plugin packs + any provider listed for selective .7z shipping.
+# Engines the installer must carry (EDGE today).
+function Get-NsisRequiredProfiles {
+    param($Config)
+    return Get-PolicyProfileRows -Map $script:NsisCoreProviders
+}
+
+# Engines published as downloadable packs (EDGE + STABLE today).
 function Get-ProviderPackProfiles {
     param($Config)
-    return Get-ProviderProfileRows -MapObject $Config.providers
+    return Get-PolicyProfileRows -Map $script:EnginePackProviders
 }
 
 function Invoke-MajesticCheck {
@@ -578,9 +590,9 @@ function Invoke-MajesticCheck {
     $missing_artifacts = @()
     if ($Variant -eq 'full') {
         Write-Majestic "NSIS core engines (must be ready):" -Color Cyan
-        $artifact_rows = foreach ($row in $nsis_required) {
+        $artifact_rows = @(foreach ($row in $nsis_required) {
             Test-ProfileArtifact -ProviderId $row.Provider -ProfileId $row.Profile
-        }
+        })
 
         $missing_artifacts = @($artifact_rows | Where-Object { -not $_.Ready })
         if ($missing_artifacts.Count -eq 0) {
@@ -603,19 +615,15 @@ function Invoke-MajesticCheck {
             }
         }
 
-        Write-Majestic "Optional plugin packs (warn only if missing):" -Color Cyan
+        Write-Majestic "Engine packs (published with the release):" -Color Cyan
         foreach ($row in $pack_profiles) {
-            $is_nsis = $false
-            foreach ($n in $nsis_required) {
-                if ($n.Provider -eq $row.Provider -and $n.Profile -eq $row.Profile) { $is_nsis = $true; break }
-            }
-            if ($is_nsis) { continue }
             $art = Test-ProfileArtifact -ProviderId $row.Provider -ProfileId $row.Profile
-            $label = "plugin $($row.Provider)/$($row.Profile)"
+            $label = "engine pack $($row.Provider)/$($row.Profile)"
             if ($art.Ready) {
                 Write-Majestic "$label : ready to pack" -Color Green
             } else {
-                Write-Majestic "$label : missing (skip on pack unless Foundry-built)" -Color Yellow
+                Write-Majestic "$label : missing Foundry artifact (rebuild before pack)" -Color Red
+                $missing_artifacts += $art
             }
         }
     } else {
@@ -633,14 +641,15 @@ function Invoke-MajesticCheck {
                 $template_ok = $false
             }
         }
-        foreach ($prop in $Config.providers.PSObject.Properties) {
-            $provider_id = $prop.Name
-            if ($core_ids -contains $provider_id) { continue }
+        # Only the providers whose templates ship need checking; the provider list comes from
+        # the policy, not from a hardcoded map in majestic.config.json.
+        foreach ($provider_id in $core_ids) {
             $template = Join-Path $runtime_root "$provider_id\config\$provider_id-default-config.json"
             if (Test-Path -LiteralPath $template) {
-                Write-Majestic "Plugin template $provider_id : ok (catalog)" -Color Green
+                Write-Majestic "Core template $provider_id : ok" -Color Green
             } else {
-                Write-Majestic "Plugin template $provider_id : missing (catalog entry skipped until promoted)" -Color Yellow
+                Write-Majestic "Core template $provider_id : MISSING ($template)" -Color Red
+                $template_ok = $false
             }
         }
         if (-not $template_ok) {
@@ -953,9 +962,36 @@ function Invoke-MajesticPack {
             $dest_installer = Stage-InstallerForVariant -Version $version -Variant 'full' -OutRoot $out_root
             $manifest_files += New-ManifestEntry -File (Get-Item -LiteralPath $dest_installer)
 
-            # Full = CORE assets only (App .7z + Setup with Master). PLUGIN packs are manual
-            # via DISTRIBUTION Pack+Ship per provider - not attached on weekly Full.
-            Write-Majestic "PLUGIN packs: skipped on Full pack (use Pack+Ship per plugin when needed)" -Color DarkGray
+            # Engine packs are release assets now (docs/ENGINE-PACKS.md): built from
+            # src-tauri\runtime, named ENGINE_{provider}-{profile}-{build}.7z, and pinned in
+            # runtime-catalog\engines.json. Build + verify here so a digest mismatch fails the
+            # pack, not the download.
+            Write-Majestic "Packing engine bundles..." -Color Cyan
+            $engine_pack_script = Join-Path $root 'scripts\pack-provider-runtime.ps1'
+            $engine_log = & $engine_pack_script -OutDir $out_root *>&1
+            $engine_exit = $LASTEXITCODE
+            foreach ($line in @($engine_log)) {
+                if ($null -ne $line -and "$line".Length -gt 0) { Write-Majestic "$line" -Color DarkGray }
+            }
+            if ($engine_exit -ne 0) { throw "pack-provider-runtime.ps1 failed (exit $engine_exit)" }
+
+            $engine_manifest_path = Join-Path $root 'src-tauri\runtime-catalog\engines.json'
+            $engine_manifest = Get-Content -LiteralPath $engine_manifest_path -Raw -Encoding UTF8 | ConvertFrom-Json
+            if (-not $engine_manifest.enginePacks -or @($engine_manifest.enginePacks).Count -eq 0) {
+                throw "engines.json has no enginePacks after packing - refuse to ship an installer with no engine bundle."
+            }
+            foreach ($p in $engine_manifest.enginePacks) {
+                $asset_path = Join-Path $out_root $p.asset
+                if (-not (Test-Path -LiteralPath $asset_path)) {
+                    throw "Engine pack missing after pack: $($p.asset)"
+                }
+                $sha = (Get-FileHash -LiteralPath $asset_path -Algorithm SHA256).Hash.ToLowerInvariant()
+                if ($sha -ne $p.sha256.ToLowerInvariant()) {
+                    throw ("Engine pack digest mismatch for {0}: manifest {1}, file {2}. Re-commit engines.json." -f $p.asset, $p.sha256, $sha)
+                }
+                $manifest_files += New-ManifestEntry -File (Get-Item -LiteralPath $asset_path)
+                Write-Majestic ("  {0}  {1:N1} MB  ({2}/{3})" -f $p.asset, ((Get-Item -LiteralPath $asset_path).Length / 1MB), $p.provider, $p.profile) -Color Green
+            }
         }
     }
 
@@ -1289,19 +1325,10 @@ function Invoke-MajesticShip {
     foreach ($entry in @($manifest.files)) {
         if (-not (Test-Path -LiteralPath $entry.path)) { continue }
         $leaf = Split-Path -Leaf $entry.path
-        # Full pack/ship = CORE only (App + NSIS). Never re-upload PLUGIN leftover files.
-        if ($pack_kind -eq 'full') {
-            $is_core = ($leaf -like 'CORE_*') -or
-                ($leaf -like '*Blackwell-Ops-App*') -or
-                ($leaf -like '*Setup*.exe' -and $leaf -notlike '*App*')
-            if (-not $is_core) {
-                Write-Majestic "Ship full: skipping non-CORE asset $leaf (pack plugins separately)" -Color DarkGray
-                continue
-            }
-        } elseif ($pack_kind -eq 'app') {
-            $is_app = ($leaf -like 'CORE_*Blackwell-Ops-App*') -or
-                ($leaf -like 'Blackwell-Ops-App*') -or
-                ($leaf -like '*Blackwell-Ops-App*')
+        # The pack manifest is the authority: App .7z, the NSIS setup and every verified
+        # ENGINE_*.7z. Only the app-only variant filters (it must never carry an installer).
+        if ($pack_kind -eq 'app') {
+            $is_app = $leaf -like '*Blackwell-Ops-App*'
             if (-not $is_app) {
                 Write-Majestic "Ship app: skipping non-App asset $leaf" -Color DarkGray
                 continue
@@ -1619,8 +1646,17 @@ switch ($Mode) {
     'bump' { Invoke-MajesticBump }
     'bump-pi' { Invoke-MajesticBumpPi }
     'ship-toolchain' { Invoke-MajesticShipToolchain -Config $config }
-    'pack-provider' { Invoke-MajesticPackProvider -Config $config -ProviderId $ProviderId -ProfileId $ProfileId }
-    'ship-provider' { Invoke-MajesticShipProvider -Config $config -ProviderId $ProviderId -ProfileId $ProfileId }
+    'pack-provider' {
+        # Engine packs are built from the policy (enginePacks), not from a provider list.
+        $pack_args = @{ OutDir = $out_root }
+        if ($ProviderId) { $pack_args.ProviderId = $ProviderId }
+        if ($ProfileId) { $pack_args.ProfileId = $ProfileId }
+        & (Join-Path $root 'scripts\pack-provider-runtime.ps1') @pack_args
+        if ($LASTEXITCODE -ne 0) { throw "pack-provider-runtime.ps1 failed (exit $LASTEXITCODE)" }
+    }
+    'ship-provider' {
+        throw "Engine packs ship with the release now. Use: npm run majestic:pack  then  npm run majestic:ship (app-only: majestic:pack:app + ship)."
+    }
 }
 # Native tools (git/gh/7z) can leave LASTEXITCODE non-zero after a successful
 # mode. Detached chain treats that as failure — force clean success exit.
