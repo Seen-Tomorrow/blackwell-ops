@@ -131,7 +131,10 @@ export default function SoftwareDownloads() {
         </p>
         {(overview?.modes ?? []).map((mode) => {
           const task = providerTasks.find(
-            (t) => t.hfAuthor === DEFAULT_PROVIDER_ID && t.quantType === mode.id && active(t),
+            (t) =>
+              t.hfAuthor === DEFAULT_PROVIDER_ID &&
+              (t.quantType === mode.id || t.quantType === `${DEFAULT_PROVIDER_ID}:${mode.id}`) &&
+              active(t),
           );
           return (
             <div key={mode.id} className={rowClass}>

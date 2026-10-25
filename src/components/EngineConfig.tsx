@@ -32,7 +32,10 @@ function taskForProfile(
   profile: string,
 ): DownloadTask | undefined {
   return tasks.find(
-    (t) => t.hfAuthor === providerId && t.quantType === profile && ACTIVE_STATUSES.includes(t.status),
+    (t) =>
+      t.hfAuthor === providerId &&
+      (t.quantType === profile || t.quantType === `${providerId}:${profile}`) &&
+      ACTIVE_STATUSES.includes(t.status),
   );
 }
 
