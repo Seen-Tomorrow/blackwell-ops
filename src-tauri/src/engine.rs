@@ -435,6 +435,17 @@ pub async fn launch_engine(
     let binary_path = engine_utils::find_provider_binary(&cfg, &backend_type, &config.binary_profile)
         .map_err(crate::errors::classify_binary_resolution)?;
 
+    // Driver gate. CUDA 13.4 cannot initialize below its driver floor and the failure would
+    // surface as a bare engine exit with no usable log, so refuse here — before a port is
+    // claimed or a child is spawned. Probe is fresh per launch (no session cache), which is
+    // what lets a driver updated mid-session work on the next launch without a restart.
+    // NOTE for tests: `BLACKWELL_FAKE_DRIVER_MAJOR` overrides the probe in debug builds only.
+    let gate_profile = engine_utils::binary_profile_from_path(&binary_path)
+        .unwrap_or_else(|| crate::config::DEFAULT_BINARY_PROFILE.to_string());
+    crate::foundry_toolchain::ensure_driver_supports_profile(&gate_profile)
+        .await
+        .map_err(|message| BlackwellError::EngineSpawnFailed { message })?;
+
     let template = crate::templates::ProviderTemplate::load_for_provider(&backend_type)
         .map_err(|message| BlackwellError::EngineSpawnFailed { message })?;
 
@@ -1391,6 +1402,9 @@ pub async fn open_nobsproof_cmd(
     config.port = peek_next_launch_port(&app, &config).await?;
     let assembled = assemble_launch_command(&cfg, &config, &backend_type)?;
     let cuda = crate::foundry_toolchain::portable_cuda_env_for_profile(&assembled.binary_profile)?;
+    // Same driver gate as the piped launch path — NoBSproof must not open a console that
+    // dies on CUDA init either.
+    crate::foundry_toolchain::ensure_driver_supports_profile(&assembled.binary_profile).await?;
 
     #[cfg(windows)]
     {

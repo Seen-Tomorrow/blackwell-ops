@@ -51,6 +51,12 @@ pub struct ProfileDef {
     /// before this field existed does not silently lose its profiles.
     #[serde(default = "distributed_by_default")]
     pub distributed: bool,
+    /// Minimum NVIDIA driver *major* that can run this profile's CUDA version, per the
+    /// toolkit release notes. `None` means the manifest forgot to state it: the gate then
+    /// passes and logs, so a missing value never bricks launches — but it must not stay
+    /// missing (`shipped_profiles_state_their_driver_floor` pins that).
+    #[serde(default)]
+    pub min_driver_major: Option<u32>,
 }
 
 #[derive(Debug, Clone)]
@@ -92,6 +98,9 @@ pub struct ToolchainInstallInfo {
     pub manifest_present: bool,
     /// Portable CUDA runtime DLLs (cublas + cudart) present for both profiles.
     pub runtime_ready: bool,
+    /// Per-profile runtime readiness plus the driver gate. `runtime_ready` above stays the
+    /// "every profile" aggregate for the Foundry panel; onboarding reads one entry.
+    pub runtime_versions: Vec<RuntimeVersionInfo>,
     /// x64 MSVC C runtime (vcruntime140 / vcruntime140_1 / msvcp140) resolvable for every
     /// profile — app-local, in the portable toolchain, or installed system-wide. Every
     /// shipped engine binary imports these; absent means LoadLibrary dies before any log.
@@ -111,6 +120,21 @@ pub struct ToolchainInstallInfo {
     pub pack_expected_version: u32,
     /// True when the pack on disk predates this app.
     pub pack_outdated: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RuntimeVersionInfo {
+    pub id: String,
+    pub label: String,
+    pub cuda: String,
+    /// cublas + cublasLt + cudart present for this CUDA version.
+    pub ready: bool,
+    /// Manifest floor. `None` = not stated, treated as no constraint.
+    pub min_driver_major: Option<u32>,
+    /// Detected driver major (`nvidia-smi`), `None` when unreadable / no NVIDIA GPU.
+    pub driver_major: Option<u32>,
+    /// `driver_major >= min_driver_major`. Strict when the driver is unknown.
+    pub driver_ok: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -182,6 +206,66 @@ mod pin_tests {
         assert!(
             NINJA_WIN_SHA256.chars().all(|c| c.is_ascii_hexdigit()),
             "NINJA_WIN_SHA256 must be bare lowercase hex: {NINJA_WIN_SHA256}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod driver_tests {
+    use super::*;
+
+    #[test]
+    fn parse_driver_major_reads_the_leading_component() {
+        assert_eq!(parse_driver_major(Some("616.92")), Some(616));
+        assert_eq!(parse_driver_major(Some(" 610.47.03 ")), Some(610));
+        assert_eq!(parse_driver_major(Some("580")), Some(580));
+        assert_eq!(parse_driver_major(Some("")), None);
+        assert_eq!(parse_driver_major(Some("not-a-version")), None);
+        assert_eq!(parse_driver_major(None), None);
+    }
+
+    #[test]
+    fn gate_is_strict_when_the_driver_is_unknown() {
+        assert!(driver_gate_result("EDGE", 610, Some(616)).is_ok());
+        assert!(driver_gate_result("EDGE", 610, Some(610)).is_ok());
+        assert!(driver_gate_result("EDGE", 610, Some(609)).is_err());
+        assert!(
+            driver_gate_result("EDGE", 610, None).is_err(),
+            "an unreadable driver must not be treated as compatible"
+        );
+        assert!(driver_ok(None, None), "no stated floor never blocks");
+        assert!(!driver_ok(Some(570), None));
+        assert!(driver_ok(Some(570), Some(570)));
+    }
+
+    /// A manifest edit that drops the floor silently disables the gate for that profile.
+    /// Reads the embedded manifest via `profile_def` — the same source the launch gate uses.
+    #[test]
+    fn shipped_profiles_state_their_driver_floor() {
+        for id in ["edge", "stable"] {
+            let def = profile_def(id).unwrap_or_else(|| panic!("profile '{id}' present"));
+            assert!(
+                def.min_driver_major.is_some(),
+                "profile '{id}' must state min_driver_major (CUDA {})",
+                def.cuda
+            );
+        }
+    }
+
+    /// The fallback hint must come from the same manifest the gate reads, or it lies after a
+    /// floor change. 580 can run STABLE (570) but not EDGE (610); 500 can run neither.
+    #[test]
+    fn compatible_alternative_is_derived_from_the_manifest() {
+        let hint = driver_compatible_alternative("edge", Some(580)).expect("STABLE hint");
+        assert!(hint.contains("STABLE"), "unexpected hint: {hint}");
+        assert!(hint.contains("570"), "hint must quote the manifest floor: {hint}");
+        assert!(driver_compatible_alternative("edge", Some(500)).is_none());
+        // From STABLE the only "other" profile is EDGE, which needs 610.
+        assert!(driver_compatible_alternative("stable", Some(580)).is_none());
+        assert!(
+            driver_compatible_alternative("stable", Some(616))
+                .expect("EDGE hint")
+                .contains("EDGE")
         );
     }
 }
@@ -998,6 +1082,115 @@ pub fn check_runtime_ready(manifest: &ToolchainManifest) -> bool {
         .all(|p| cuda_runtime_ready_for_version(&p.cuda))
 }
 
+// ── Driver gate ────────────────────────────────────────────────────────
+// The driver floor is a property of the CUDA version, so it lives in the manifest next to
+// `cuda` (`min_driver_major`) rather than in a second table in the frontend. The launch
+// path refuses to spawn when the installed driver is below it: CUDA 13.4 cannot initialize
+// on an older driver, and the failure otherwise surfaces as a bare engine exit with no log.
+
+/// Parse the leading major from `nvidia-smi`'s `610.47` / `610.47.03` style version.
+pub fn parse_driver_major(version: Option<&str>) -> Option<u32> {
+    let first = version?.trim().split('.').next()?.trim();
+    first.parse::<u32>().ok()
+}
+
+/// Empty floor means "no constraint stated" -> pass. Unknown driver under a stated floor
+/// means fail: an engine launched on an unverified driver is the case this gate exists for.
+pub fn driver_ok(min: Option<u32>, driver: Option<u32>) -> bool {
+    match min {
+        None => true,
+        Some(min) => driver.is_some_and(|d| d >= min),
+    }
+}
+
+/// Profile definition from the **embedded** manifest, not the one on disk.
+///
+/// The driver floor is a property of the app's launch code, so it must not depend on which
+/// pack happens to be installed: a stale pack manifest (a dev box with an old `frontier`
+/// entry, or a user one version behind) would otherwise drop the gate silently. Resolution
+/// elsewhere still reads disk-first — that is about the resident toolchain, not this.
+pub fn profile_def(binary_profile: &str) -> Option<ProfileDef> {
+    let manifest: ToolchainManifest = serde_json::from_str(EMBEDDED_MANIFEST).ok()?;
+    find_profile_def(&manifest, binary_profile).ok().cloned()
+}
+
+/// Fail message shared by the launch gate and the onboarding copy. No fallback hint here:
+/// which profile is compatible depends on the driver, so `ensure_driver_supports_profile`
+/// appends it from the manifest instead of hardcoding a number.
+pub fn driver_gate_result(label: &str, min: u32, driver: Option<u32>) -> Result<(), String> {
+    match driver {
+        Some(d) if d >= min => Ok(()),
+        Some(d) => Err(format!(
+            "{label} needs NVIDIA driver {min}+ (installed: {d}). Update the driver and relaunch."
+        )),
+        None => Err(format!(
+            "{label} needs NVIDIA driver {min}+, but no driver version could be read (nvidia-smi). \
+             Install or update the NVIDIA driver, then relaunch."
+        )),
+    }
+}
+
+/// "STABLE (driver 570+) also works" — derived from the embedded manifest, so it cannot drift
+/// from the floor the gate actually enforced.
+fn driver_compatible_alternative(current_id: &str, driver: Option<u32>) -> Option<String> {
+    let manifest: ToolchainManifest = serde_json::from_str(EMBEDDED_MANIFEST).ok()?;
+    manifest
+        .profiles
+        .iter()
+        .filter(|p| p.distributed && !p.id.eq_ignore_ascii_case(current_id))
+        .find(|p| p.min_driver_major.is_some() && driver_ok(p.min_driver_major, driver))
+        .map(|p| {
+            format!(
+                "{} (driver {}+) is compatible if you cannot update.",
+                p.label,
+                p.min_driver_major.unwrap_or(0)
+            )
+        })
+}
+
+/// Fresh probe on every call, deliberately: onboarding re-checks in place after the user
+/// updates the driver, so a session-cached value would make CHECK AGAIN a no-op.
+pub async fn detect_driver_major() -> Option<u32> {
+    #[cfg(debug_assertions)]
+    if let Ok(raw) = std::env::var("BLACKWELL_FAKE_DRIVER_MAJOR") {
+        if let Ok(major) = raw.trim().parse::<u32>() {
+            log::warn!("[driver] BLACKWELL_FAKE_DRIVER_MAJOR={major} — DEV override active");
+            return Some(major);
+        }
+        log::warn!("[driver] BLACKWELL_FAKE_DRIVER_MAJOR is not a number: {raw:?}");
+    }
+    match crate::telemetry::get_nvidia_driver_version().await {
+        Ok(v) => parse_driver_major(v.as_deref()),
+        Err(e) => {
+            log::debug!("[driver] nvidia-smi probe failed: {e}");
+            None
+        }
+    }
+}
+
+/// Refuse a launch the installed driver cannot run. Called before any engine spawn that
+/// has a binary profile; bench/nsys paths should call it too once they carry a profile.
+pub async fn ensure_driver_supports_profile(binary_profile: &str) -> Result<(), String> {
+    let Some(def) = profile_def(binary_profile) else {
+        return Ok(());
+    };
+    let Some(min) = def.min_driver_major else {
+        log::debug!(
+            "[driver] profile '{}' states no min_driver_major — gate skipped",
+            def.id
+        );
+        return Ok(());
+    };
+    let driver = detect_driver_major().await;
+    match driver_gate_result(&def.label, min, driver) {
+        Ok(()) => Ok(()),
+        Err(base) => Err(match driver_compatible_alternative(&def.id, driver) {
+            Some(hint) => format!("{base} {hint}"),
+            None => base,
+        }),
+    }
+}
+
 /// GGUF metadata scan spawns llama-server — needs portable CUDA runtime DLLs on PATH.
 pub fn require_runtime_for_gguf_scan() -> Result<(), String> {
     let manifest = load_manifest().map_err(|_| {
@@ -1454,7 +1647,7 @@ pub fn finalize_toolchain_install(archive_path: &std::path::Path, pack: &str) ->
     Ok(())
 }
 
-pub fn install_info() -> Result<ToolchainInstallInfo, String> {
+pub fn install_info(driver_major: Option<u32>) -> Result<ToolchainInstallInfo, String> {
     let app_root = crate::config::app_root_dir();
     let _ = consolidate_stray_toolchain_into_toolchain_dir(&app_root);
     let tc_dir = toolchain_dir();
@@ -1463,7 +1656,25 @@ pub fn install_info() -> Result<ToolchainInstallInfo, String> {
     let profiles_total = checks.len();
 
     let manifest = load_manifest()?;
-    let runtime_ready = check_runtime_ready(&manifest);
+    // Runtime readiness + driver floors describe what *this app* launches, so they come from
+    // the embedded manifest (`profile_def` rationale). The disk manifest below still owns
+    // pack version and CRT staging.
+    let embedded: ToolchainManifest = serde_json::from_str(EMBEDDED_MANIFEST)
+        .map_err(|e| format!("Embedded toolchain manifest is invalid: {e}"))?;
+    let runtime_ready = check_runtime_ready(&embedded);
+    let runtime_versions: Vec<RuntimeVersionInfo> = embedded
+        .profiles
+        .iter()
+        .map(|p| RuntimeVersionInfo {
+            id: p.id.clone(),
+            label: p.label.clone(),
+            cuda: p.cuda.clone(),
+            ready: cuda_runtime_ready_for_version(&p.cuda),
+            min_driver_major: p.min_driver_major,
+            driver_major,
+            driver_ok: driver_ok(p.min_driver_major, driver_major),
+        })
+        .collect();
     let crt_profiles: Vec<String> = manifest.profiles.iter().map(|p| p.id.clone()).collect();
     let crt_missing: Vec<String> = crt_profiles
         .iter()
@@ -1496,6 +1707,7 @@ pub fn install_info() -> Result<ToolchainInstallInfo, String> {
         uncompressed_size_label: "~4.2 GB".to_string(),
         manifest_present: manifest_path().exists(),
         runtime_ready,
+        runtime_versions,
         msvc_crt_ready,
         msvc_crt_error,
         profiles_ready,
@@ -1521,7 +1733,9 @@ fn open_path_in_shell(path: &std::path::Path) -> Result<(), String> {
 #[tauri::command]
 pub async fn foundry_get_toolchain_install_info(
 ) -> Result<ToolchainInstallInfo, String> {
-    install_info()
+    // Fresh probe every time: the onboarding nudge re-checks in place after a driver update.
+    let driver_major = detect_driver_major().await;
+    install_info(driver_major)
 }
 
 /// Opens the app root folder (legacy — prefer cache folder for manual drops).
@@ -1834,6 +2048,7 @@ mod isolation_tests {
             ninja: true,
             description: String::new(),
             distributed,
+            min_driver_major: None,
         };
         let manifest = ToolchainManifest {
             version: 3,
