@@ -352,6 +352,35 @@ pub async fn check_binary_updates(
     Ok(results)
 }
 
+/// Enqueue the profile's CUDA runtime pack when it is missing, before/alongside the engine pack.
+async fn queue_missing_runtime_pack(
+    manager: &std::sync::Arc<tokio::sync::RwLock<crate::download_manager::DownloadManager>>,
+    provider_id: &str,
+    profile: &str,
+) {
+    let Some(pack) = crate::engine_packs::engine_pack(provider_id, profile) else {
+        return;
+    };
+    if crate::foundry_toolchain::cuda_runtime_ready_for_version(&pack.cuda) {
+        return;
+    }
+    let runtime = format!("runtime-{}", pack.cuda);
+    if crate::foundry_toolchain::pack_def(&runtime).is_err() {
+        log::warn!("[binary-update] no runtime pack '{runtime}' for {provider_id}/{profile}");
+        return;
+    }
+    let mut dm = manager.write().await;
+    match dm
+        .start_toolchain_download(Some(runtime.clone()), std::sync::Arc::clone(manager))
+        .await
+    {
+        Ok(_) => log::info!(
+            "[binary-update] queued {runtime} before installing {provider_id}/{profile}"
+        ),
+        Err(e) => log::warn!("[binary-update] could not queue {runtime}: {e}"),
+    }
+}
+
 /// Enqueue provider pack download through the shared download manager (resume + 7z extract).
 #[tauri::command]
 pub async fn download_binary_update(
@@ -374,6 +403,10 @@ pub async fn download_binary_update(
             ));
         }
     }
+
+    // An engine pack installed without its CUDA runtime extracts an engine that cannot start.
+    // Queue the runtime pack first; both downloads resume and install independently.
+    queue_missing_runtime_pack(&manager, &provider_id, &profile).await;
 
     crate::ipc_meter::emit_tracked(
         &app_handle,

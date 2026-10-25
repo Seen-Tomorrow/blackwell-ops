@@ -69,8 +69,8 @@ function profileActionLabel(row: PluginProfileOffering, isCore = false): string 
   return "Current";
 }
 
-function profileActionEnabled(row: PluginProfileOffering): boolean {
-  return row.packAvailable && (!row.installed || row.updateAvailable);
+function profileActionEnabled(row: PluginProfileOffering, runtimeMissing = false): boolean {
+  return row.packAvailable && (!row.installed || row.updateAvailable || runtimeMissing);
 }
 
 function formatPackVersion(v: string): string {
@@ -111,6 +111,7 @@ export default function UpdatesConfig({
   const [rowStatus, setRowStatus] = useState<Record<string, RowStatus>>({});
   const [rowError, setRowError] = useState<Record<string, string>>({});
   const [globalError, setGlobalError] = useState<string | null>(null);
+  const [runtimeByCuda, setRuntimeByCuda] = useState<Record<string, boolean>>({});
 
   const appTasks = useDownloadTasks("app");
   const providerTasks = useDownloadTasks("provider");
@@ -135,7 +136,7 @@ export default function UpdatesConfig({
       if (isDevBuild()) {
         console.info("[Updates] LIVE refresh (force=true) — offerings + catalog + core packs");
       }
-      const [off, cat, coreUpdates, providers] = await Promise.all([
+      const [off, cat, coreUpdates, providers, toolchain] = await Promise.all([
         invoke<UpdateOfferings>("get_update_offerings", { force: true }),
         invoke<PluginCatalogResponse>("get_plugin_catalog", { force: true }),
         invoke<BinaryUpdateInfo[]>("check_binary_updates", {
@@ -143,7 +144,13 @@ export default function UpdatesConfig({
           force: true,
         }),
         invoke<ProviderConfig[]>("list_providers").catch(() => [] as ProviderConfig[]),
+        invoke<{ runtime_versions: { cuda: string; ready: boolean }[] }>(
+          "foundry_get_toolchain_install_info",
+        ).catch(() => ({ runtime_versions: [] as { cuda: string; ready: boolean }[] })),
       ]);
+      setRuntimeByCuda(
+        Object.fromEntries((toolchain.runtime_versions ?? []).map((v) => [v.cuda, v.ready])),
+      );
       setOfferings(off);
       setCatalog(cat);
       await onRefreshOfferings?.();
@@ -405,8 +412,8 @@ export default function UpdatesConfig({
     const busy = pluginBusy(card.id, activeTasks) || rowStatus[rowKey] === "busy";
     const edgeProf = card.profiles.find((p) => p.profile === "edge");
     const stable = card.profiles.find((p) => p.profile === "stable");
-    const bothProfiles = card.profiles.filter((p) => profileActionEnabled(p)).map((p) => p.profile);
-    const anyAction = card.profiles.some((p) => profileActionEnabled(p));
+    const bothProfiles = card.profiles.filter((p) => profileActionEnabled(p, rowRuntimeMissing(p))).map((p) => p.profile);
+    const anyAction = card.profiles.some((p) => profileActionEnabled(p, rowRuntimeMissing(p)));
     const anyUpdate = card.profiles.some((p) => p.updateAvailable);
     const anyInstallable = card.profiles.some((p) => p.packAvailable && !p.installed);
     const cardAccent = anyUpdate
@@ -417,8 +424,12 @@ export default function UpdatesConfig({
           ? "upd-card--plugin"
           : "upd-card--core";
 
+    const rowRuntimeMissing = (row: PluginProfileOffering) =>
+      Boolean(row.installed && row.cudaVersion && runtimeByCuda[row.cudaVersion] === false);
+
     const renderProfilePill = (row: PluginProfileOffering | undefined) => {
       if (!row) return null;
+      const runtimeMissing = rowRuntimeMissing(row);
       const size = formatSize(row.sizeBytes);
       const instTag = formatInstalledTag(row.installedVersion);
       const packTag = row.packAvailable && row.packVersion ? formatPackVersion(row.packVersion) : "";
@@ -438,7 +449,9 @@ export default function UpdatesConfig({
             )}
           </span>
           <span className="text-right leading-relaxed">
-            {row.installed ? (
+            {runtimeMissing ? (
+              <span className="upd-profile-not-installed">engine installed · runtime missing</span>
+            ) : row.installed ? (
               <span className={row.updateAvailable ? "upd-profile-installed--upd" : "upd-profile-installed"}>
                 installed
                 {instTag ? (
@@ -525,7 +538,7 @@ export default function UpdatesConfig({
           {edgeProf && (
             <button
               type="button"
-              disabled={busy || !profileActionEnabled(edgeProf)}
+              disabled={busy || !profileActionEnabled(edgeProf, rowRuntimeMissing(edgeProf))}
               onClick={() => void handleProfilesInstall(card.id, ["edge"], rowKey)}
               className={`type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border ${actionBtnClass(edgeProf)}`}
               title={
@@ -540,7 +553,7 @@ export default function UpdatesConfig({
           {stable && (
             <button
               type="button"
-              disabled={busy || !profileActionEnabled(stable)}
+              disabled={busy || !profileActionEnabled(stable, rowRuntimeMissing(stable))}
               onClick={() => void handleProfilesInstall(card.id, ["stable"], rowKey)}
               className={`type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border ${actionBtnClass(stable)}`}
               title={
