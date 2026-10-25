@@ -147,6 +147,7 @@ function Test-RuntimeNsisProfile {
 
 $script:RuntimeDistributionExecutables = @(
     'llama-server.exe'
+    'llama.exe'          # build-identity stub: prints only "b<build>-<sha>"
     'llama-fit-params.exe'
     'llama-bench.exe'
 )
