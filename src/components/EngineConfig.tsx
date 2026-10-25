@@ -9,7 +9,8 @@ import { invoke } from "@tauri-apps/api/core";
 
 import { useDownloadTasks } from "../hooks/useDownloadTasks";
 import { useFoundry } from "../hooks/useBuildDock";
-import { buildEngineOverview, formatEngineVersion, modeSourceLabel } from "../lib/engineOverview";
+import { buildEngineOverview, modeSourceLabel } from "../lib/engineOverview";
+import EngineVersionLabel from "./EngineVersionLabel";
 import { DEFAULT_PROVIDER_ID } from "../lib/types";
 import type { BinaryUpdateInfo, DownloadTask, ProviderConfig } from "../lib/types";
 import type { ToolchainInstallInfo } from "./FoundryToolchainPanel";
@@ -170,7 +171,7 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
           </span>
         </div>
         {overview?.buildVersion ? (
-          <span className="type-micro font-mono config-muted">{formatEngineVersion(overview.buildVersion)}</span>
+          <span className="type-micro font-mono config-muted"><EngineVersionLabel version={overview.buildVersion} /></span>
         ) : null}
       </div>
 
@@ -223,7 +224,7 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
                 <div className="type-micro font-mono config-muted">
                   {mode.installed ? (
                     <>
-                      {formatEngineVersion(mode.version)} · {modeSourceLabel(mode.source)}
+                      <EngineVersionLabel version={mode.version} /> · {modeSourceLabel(mode.source)}
                       {mode.sourceBuildDate ? ` · ${mode.sourceBuildDate}` : ""}
                     </>
                   ) : (
@@ -310,8 +311,12 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
                               <span className="eng-badge eng-badge--newest">newest</span>
                             )}
                           </span>
-                          <span className="eng-badge">
-                            {source.available ? formatEngineVersion(source.version) : "—"}
+                          <span>
+                            {source.available ? (
+                              <EngineVersionLabel version={source.version} />
+                            ) : (
+                              "—"
+                            )}
                           </span>
                           <span className="eng-badge">{source.buildDate ?? "—"}</span>
                           <span className="eng-src-action">

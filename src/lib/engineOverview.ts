@@ -187,18 +187,29 @@ export function buildNumberOf(version: string | null | undefined): number | null
 }
 
 /**
- * Human identity. Probed engines carry `0.7.0-dev (build 11870)`; sidecar builds only have
- * `b11870-74bca395`. Display as `version: 0.7.0-dev, build: 11870` / `build: 11870`; the
- * commit is deliberately not shown.
+ * Human identity parts. Probed engines carry `0.7.0-dev (build 11870)`; sidecar builds only
+ * have `b11870-74bca395`. The commit is deliberately not shown.
  */
-export function formatEngineVersion(version: string | null | undefined): string {
-  if (!version?.trim()) return "unknown";
+export function engineVersionParts(version: string | null | undefined): {
+  name: string | null;
+  build: string | null;
+} {
+  if (!version?.trim()) return { name: null, build: null };
   const text = version.trim();
   const withBuild = /^(.+?)\s*\(build\s+(\d+)\)$/i.exec(text);
-  if (withBuild) return `version: ${withBuild[1]}, build: ${withBuild[2]}`;
+  if (withBuild) return { name: withBuild[1], build: withBuild[2] };
   const sidecar = /^b(\d+)(?:-[0-9a-z]+)?$/i.exec(text);
-  if (sidecar) return `build: ${sidecar[1]}`;
-  return text;
+  if (sidecar) return { name: null, build: sidecar[1] };
+  return { name: text, build: null };
+}
+
+/** Plain-text form, for lines that cannot host chips. */
+export function formatEngineVersion(version: string | null | undefined): string {
+  const { name, build } = engineVersionParts(version);
+  if (!name && !build) return "unknown";
+  if (name && build) return `version: ${name}, build: ${build}`;
+  if (build) return `build: ${build}`;
+  return name as string;
 }
 
 export type PackDownloadAction = "download" | "redownload" | "update";

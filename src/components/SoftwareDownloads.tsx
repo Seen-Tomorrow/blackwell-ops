@@ -7,7 +7,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 import { useDownloadTasks } from "../hooks/useDownloadTasks";
-import { buildEngineOverview, formatEngineVersion, packDownloadAction } from "../lib/engineOverview";
+import { buildEngineOverview, packDownloadAction } from "../lib/engineOverview";
+import EngineVersionLabel from "./EngineVersionLabel";
 import { DEFAULT_PROVIDER_ID } from "../lib/types";
 import type { BinaryUpdateInfo, DownloadTask, ProviderConfig } from "../lib/types";
 import type { ToolchainInstallInfo } from "./FoundryToolchainPanel";
@@ -161,14 +162,24 @@ export default function SoftwareDownloads() {
                   <span className="config-muted"> · {mode.tagline}</span>
                 </div>
                 <div className="type-micro font-mono config-muted">
-                  {mode.packAvailable
-                    ? `Published ${formatEngineVersion(mode.packVersion)} · ${formatSize(mode.downloadSizeBytes)}`
-                    : "No published pack yet"}
+                  {mode.packAvailable ? (
+                    <>
+                      Published <EngineVersionLabel version={mode.packVersion} /> ·{" "}
+                      {formatSize(mode.downloadSizeBytes)}
+                    </>
+                  ) : (
+                    "No published pack yet"
+                  )}
                 </div>
                 <div className="type-micro font-mono config-muted">
-                  {catalog?.available
-                    ? `Downloaded ${formatEngineVersion(catalog.version)}${catalog.buildDate ? ` · ${catalog.buildDate}` : ""}`
-                    : "Not downloaded"}
+                  {catalog?.available ? (
+                    <>
+                      Downloaded <EngineVersionLabel version={catalog.version} />
+                      {catalog.buildDate ? ` · ${catalog.buildDate}` : ""}
+                    </>
+                  ) : (
+                    "Not downloaded"
+                  )}
                 </div>
               </div>
               {task ? (
