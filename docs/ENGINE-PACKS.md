@@ -698,6 +698,22 @@ read by the Rust launch gate. `src/lib/foundry_constants.ts` still carries a dis
 | Launch refusal on an old/unknown driver (piped + NoBSproof) | **landed** | `foundry_toolchain::ensure_driver_supports_profile`; `engine.rs` (`launch_engine`, `open_nobsproof_cmd`) |
 | Fresh driver probe + `runtime_versions` in install info | **landed** | `foundry_toolchain::{detect_driver_major, install_info}` |
 | DEV override for testing the nudge | **landed** | `BLACKWELL_FAKE_DRIVER_MAJOR` (debug builds only) |
+| Toolchain split: `manifest.json` v4 `packs[]` | **landed** | `toolchain/manifest.json`, `scripts/pack-toolchain-packs.ps1` |
+| Pack registry, per-pack verify, merge-not-wipe extraction, runtime packs not cached | **landed** | `foundry_toolchain::{pack_def, finalize_toolchain_install, verify_toolchain_install}` |
+| Wizard installs `runtime-13.4` only (not the 1.15 GB full pack) | **landed** | `FoundryToolchainPanel` `onboarding` → pack id |
+
+Generated packs (2026-10-25, `-mx=7`, digests pinned in the manifest):
+
+| Pack | Size | SHA-256 (short) |
+|---|---:|---|
+| `toolchain-rt-13.4-v4.7z` | 382.9 MB | `a1d5c8df…` |
+| `toolchain-rt-12.8-v4.7z` | 423.7 MB | `e645819c…` |
+| `toolchain.7z` (full) | 1.18 GB | `facbbb21…` |
+
+Runtime packs are **not** cached after a verified extract (383 MB archive next to 523 MB extracted is
+duplication); build/full stay in `.toolchain-download/cache` for install-from-cache and re-extract.
+The `build` pack is not generated yet — Foundry still needs the full pack's VS/SDK tree, so `full`
+remains the build path until that split is produced.
 
 Two implementation notes worth keeping:
 
@@ -709,8 +725,8 @@ Two implementation notes worth keeping:
   Tauri command does the async probe and passes it in.
 
 Not landed yet, in order: wizard phase rename + nudge UI and deleting the TS driver table (PR 2b),
-runtime/build pack split (PR 2c), `engines.json` + `ENGINE_*` packs (PR 3), EDGE-only installer
-(PR 4), cleanup (PR 5).
+`engines.json` + `ENGINE_*` packs (PR 3), EDGE-only installer (PR 4), cleanup (PR 5), majestic
+policy-driven rework (last).
 
 Engine sizes are the 2026-10-25 3-arch build: 144.7 MB edge / 144.4 MB stable raw, 107.6 / 112.0 MB as
 7z, with a 124.2 MB `ggml-cuda.dll` in both. The old "STABLE is 2.8× EDGE" reading was a FA-all-quants
