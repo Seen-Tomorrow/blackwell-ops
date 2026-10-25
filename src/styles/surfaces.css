@@ -378,7 +378,6 @@ button.engine-logs-slot-chip.engine-logs-slot-chip--active .engine-logs-slot-chi
    parameter groups and the DEV distribution header. Rows keep their own hover rules. */
 [data-config-page] .theme-surface-row,
 [data-config-page] .config-form-panel,
-[data-config-page] .config-param-group-block,
 [data-config-page] .fnd-dev-header {
   background-color: var(--theme-industrial-bg);
   background-image:
@@ -387,7 +386,12 @@ button.engine-logs-slot-chip.engine-logs-slot-chip--active .engine-logs-slot-chi
   border: 1px solid color-mix(in srgb, var(--theme-bezel-edge-lo) 55%, var(--theme-border));
   border-radius: 2px;
 }
-
-[data-config-page] .config-param-group-block {
-  padding: 10px 12px;
+
+/* PARAMETER CONFIGURATION toolbar — the one textured strip on that tab. */
+[data-config-page] .param-config-toolbar {
+  background-color: var(--theme-industrial-bg);
+  background-image:
+    var(--theme-industrial-texture-active),
+    var(--theme-industrial-face-gradient, none);
 }
+
