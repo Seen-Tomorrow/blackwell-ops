@@ -991,7 +991,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                   FOUNDRY PACKAGE
                 </span>
                 <span className="type-micro font-mono config-muted ml-auto truncate">
-                  CUDA + VS
+                  BUILD
                 </span>
               </div>
               <div className="px-3 py-1.5">

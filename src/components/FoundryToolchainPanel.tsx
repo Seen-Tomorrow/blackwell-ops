@@ -286,12 +286,15 @@ export default function FoundryToolchainPanel({
     ? checkByEnv[requiredProfile]
     : undefined;
 
-  if (buildReady && compact) {
+  if (compact) {
+    // The badge must describe the whole package, not just the required profile: reporting
+    // "ready" with a missing profile is what made it disagree with the expanded panel.
+    const allProfilesReady = info.profiles_ready >= info.profiles_total;
     return (
       <div className="fnd-tc-ready type-tiny font-mono">
-        {requiredCheck
-          ? `✓ Portable toolchain ready (${requiredCheck.vs_label} + CUDA ${requiredCheck.cuda})`
-          : `✓ Portable toolchain ready — all ${info.profiles_total} build profiles`}
+        {allProfilesReady
+          ? "✓ Foundry package ready"
+          : `Foundry package · ${info.profiles_ready}/${info.profiles_total} profiles ready`}
       </div>
     );
   }
