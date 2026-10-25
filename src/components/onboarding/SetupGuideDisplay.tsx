@@ -157,11 +157,11 @@ export default function SetupGuideDisplay({
         <ChecklistItem
           done={runtimeStepDone}
           current={runtimeStepCurrent}
-          title="CUDA runtime"
+          title="Engine runtime"
           detail={
             runtimeStepDone
               ? "Installed — the engine can launch"
-              : "One download (~383 MB) — required to launch the EDGE engine"
+              : "One download (~383 MB) — required to run engines"
           }
         />
         <ChecklistItem

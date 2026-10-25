@@ -308,7 +308,7 @@ export default function FoundryToolchainPanel({
   // built for an older app. Profiles it predates would fail at configure time.
   const packStale =
     info.pack_outdated && info.pack_installed_version > 0
-      ? `Toolchain pack v${info.pack_installed_version} predates this app (expects v${info.pack_expected_version}) — re-install the toolchain to get the current profiles.`
+      ? "Installed package is out of date — reinstall it."
       : null;
 
   const cached = info.cached_archives?.find((a) => a.pack === "full");
@@ -346,6 +346,7 @@ export default function FoundryToolchainPanel({
           </button>
           <button
             type="button"
+            hidden
             onClick={() => void handleReextract()}
             disabled={!canInstallFromCache}
             className="foundry-toolchain-btn foundry-toolchain-btn--neutral"
@@ -359,6 +360,7 @@ export default function FoundryToolchainPanel({
           </button>
           <button
             type="button"
+            hidden
             onClick={() => setShowManual((v) => !v)}
             className={`foundry-toolchain-btn foundry-toolchain-btn--neutral${
               showManual ? " fnd-tc-btn--manual-active" : ""
@@ -394,11 +396,11 @@ export default function FoundryToolchainPanel({
         )}
         {cancelable && (
           <p className="foundry-toolchain-onboarding__cancel-hint">
-            Cancel the download anytime to use Install from cache or Manual instead.
+            Cancel the download to free the folder, then retry.
           </p>
         )}
 
-        {showManual && (
+        {false && showManual && (
           <div className="foundry-toolchain-install-guide fnd-tc-guide border rounded-sm p-2.5 space-y-2">
             <p className="fnd-tc-guide__title type-tiny font-mono uppercase tracking-wide">
               Manual install
@@ -534,7 +536,7 @@ export default function FoundryToolchainPanel({
       ) : (
         <div className="foundry-toolchain-install-guide fnd-tc-guide--warn border rounded-sm p-2.5 space-y-2">
           <p className="foundry-toolchain-install-guide__title fnd-tc-guide__title--warn type-tiny font-mono font-bold uppercase tracking-wide">
-            {onboarding ? "CUDA runtime" : "Install Foundry build tools"}
+            {onboarding ? "CUDA runtime" : "Install Foundry package"}
           </p>
 
           <p className="fnd-tc-guide__desc type-tiny font-mono leading-relaxed">
@@ -546,9 +548,8 @@ export default function FoundryToolchainPanel({
               </>
             ) : (
               <>
-                Single download (~{downloadSizeLabel}): VS Build Tools, Windows SDK, CMake and
-                nvcc. Only needed to compile engines — launching them uses the CUDA runtime the
-                setup wizard installs.
+                One download (~{downloadSizeLabel}). Needed to compile engines on this machine;
+                running them does not need it.
               </>
             )}
           </p>
@@ -606,7 +607,7 @@ export default function FoundryToolchainPanel({
           <div className="fnd-tc-archive-box rounded-sm px-2 py-2 space-y-1.5">
             <div className="flex flex-wrap items-center gap-2">
               <span className="fnd-tc-archive-box__name type-tiny font-mono font-bold uppercase">
-                {onboarding && runtimePack ? runtimePack.asset : info.archive_name}
+                {onboarding ? "Engine runtime" : "Foundry package"}
               </span>
               <span className="fnd-tc-archive-box__meta type-micro font-mono">
                 {downloadSizeLabel} download
@@ -614,8 +615,7 @@ export default function FoundryToolchainPanel({
               </span>
             </div>
             <p className="fnd-tc-archive-box__desc type-micro font-mono leading-relaxed">
-              One-click download extracts automatically. Already have the archive? Drop it in the cache
-              folder and use Install from cache.
+              Download and install in one step.
             </p>
             <div className="flex flex-wrap gap-1.5">
               <button
@@ -640,6 +640,7 @@ export default function FoundryToolchainPanel({
               </button>
               <button
                 type="button"
+                hidden
                 onClick={() => void handleReextract()}
                 disabled={!canInstallFromCache || info.all_ready}
                 className={`foundry-toolchain-btn ${
@@ -659,6 +660,7 @@ export default function FoundryToolchainPanel({
               </button>
               <button
                 type="button"
+                hidden
                 onClick={() => setShowManual((v) => !v)}
                 className={`foundry-toolchain-btn foundry-toolchain-btn--neutral${
                   showManual ? " fnd-tc-btn--manual-active" : ""
@@ -669,7 +671,7 @@ export default function FoundryToolchainPanel({
             </div>
           </div>
 
-          {showManual && (
+          {false && showManual && (
             <div className="foundry-toolchain-install-guide fnd-tc-guide border rounded-sm p-2.5 space-y-2">
               <p className="fnd-tc-guide__title type-tiny font-mono uppercase tracking-wide">
                 Manual install

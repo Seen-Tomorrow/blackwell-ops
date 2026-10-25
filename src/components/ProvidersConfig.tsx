@@ -988,7 +988,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                   ⚒
                 </span>
                 <span className="type-label font-mono theme-accent-text tracking-wider">
-                  FOUNDRY TOOLCHAIN
+                  FOUNDRY PACKAGE
                 </span>
                 <span className="type-micro font-mono config-muted ml-auto truncate">
                   CUDA + VS
