@@ -53,8 +53,67 @@ pub(crate) async fn publish_artifacts_to_sacred(
         return Err("Published directory missing llama-server.exe".into());
     }
 
+    // Engine identity sidecar. CMake derived these from git at configure time
+    // (cmake/build-info.cmake), so no probe, CPU build or spawn is needed — and it is rewritten
+    // with every publish, so it can never go stale.
+    write_build_info_sidecar(build_dir, &sacred).await;
+
     log::info!("[foundry] Published sacred artifacts for {} {} -> {}", provider_id, profile_id, sacred.display());
     Ok(exe.to_string_lossy().to_string())
+}
+
+/// Read one `KEY:TYPE=value` entry from a CMake cache file.
+fn cache_value(cache: &str, key: &str) -> Option<String> {
+    for line in cache.lines() {
+        let Some(rest) = line.strip_prefix(key) else {
+            continue;
+        };
+        if !rest.starts_with(':') {
+            continue;
+        }
+        if let Some((_, value)) = rest.split_once('=') {
+            let v = value.trim();
+            if !v.is_empty() {
+                return Some(v.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Write `build-info.txt` (`b<build>-<commit>`) beside the published engine binaries.
+async fn write_build_info_sidecar(build_dir: &Path, sacred: &Path) {
+    let cache = build_dir.join("CMakeCache.txt");
+    let Ok(text) = tokio::fs::read_to_string(&cache).await else {
+        log::debug!("[foundry] no CMakeCache at {} — build-info.txt skipped", cache.display());
+        return;
+    };
+    let (Some(build), Some(commit)) = (
+        cache_value(&text, "LLAMA_BUILD_NUMBER"),
+        cache_value(&text, "LLAMA_BUILD_COMMIT"),
+    ) else {
+        log::warn!("[foundry] CMake cache lacks LLAMA_BUILD_NUMBER/COMMIT — build-info.txt skipped");
+        return;
+    };
+    let short: String = commit.chars().take(8).collect();
+    let body = format!("b{build}-{short}\n");
+    if let Err(e) = tokio::fs::write(sacred.join("build-info.txt"), body).await {
+        log::warn!("[foundry] could not write build-info.txt: {e}");
+    }
+}
+
+#[cfg(test)]
+mod build_info_tests {
+    use super::cache_value;
+
+    #[test]
+    fn reads_typed_cache_entries_only() {
+        let cache = "LLAMA_BUILD_NUMBER:STRING=11869\nLLAMA_BUILD_COMMIT:STRING=d327bf1f0\nLLAMA_BUILD_NUMBER_EXTRA=x\n";
+        assert_eq!(cache_value(cache, "LLAMA_BUILD_NUMBER").as_deref(), Some("11869"));
+        assert_eq!(cache_value(cache, "LLAMA_BUILD_COMMIT").as_deref(), Some("d327bf1f0"));
+        assert_eq!(cache_value(cache, "LLAMA_BUILD_NUMBER_EXTRA"), None);
+        assert_eq!(cache_value(cache, "MISSING"), None);
+    }
 }
 
 /// Recursively copy *contents* of src_dir into dst_dir (dst must already exist).
