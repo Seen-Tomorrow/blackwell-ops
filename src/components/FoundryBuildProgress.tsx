@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import type { ProviderConfig } from "../lib/types";
 import FoundryWindowShell, { type FoundryWindowTone } from "./FoundryWindowShell";
 import { getStepLabel, type Env } from "../lib/foundry_constants";
@@ -55,8 +56,38 @@ export default function FoundryBuildProgress({
 
   // Compile progress comes straight from the dock context: the modal already receives
   // `buildProgress`, and adding a prop here would mean another wire through it.
+  const activateBuild = async () => {
+    setActivateState("busy");
+    setActivateError(null);
+    try {
+      await invoke("set_profile_binary_source", {
+        providerId: provider.id,
+        profile: environment,
+        source: "foundry",
+      });
+      await invoke("refresh_build_info", { providerId: provider.id }).catch(() => undefined);
+      setActivateState("done");
+    } catch (e) {
+      setActivateState("prompt");
+      setActivateError(typeof e === "string" ? e : "Could not activate this build");
+    }
+  };
+
   const { buildProgress } = useFoundry();
+  // A finished build is not the active engine until the user says so (or USE in MANAGE).
+  const [activateState, setActivateState] = useState<"prompt" | "busy" | "done" | "dismissed">(
+    "prompt",
+  );
+  const [activateError, setActivateError] = useState<string | null>(null);
   const edge = buildProgress?.progress ?? null;
+
+  // A new build attempt re-arms the prompt.
+  useEffect(() => {
+    if (!isComplete) {
+      setActivateState("prompt");
+      setActivateError(null);
+    }
+  }, [isComplete]);
   const samplesRef = useRef<EdgeSample[]>([]);
   const etaAnchorRef = useRef<EtaAnchor | null>(null);
   const [eta, setEta] = useState<number | null>(null);
@@ -181,6 +212,40 @@ export default function FoundryBuildProgress({
         <p className="fnd-build-provider type-body font-mono m-0">
           <span className="fnd-build-provider__id">{provider.id}</span> &mdash; {provider.display_name}
         </p>
+
+        {isComplete && activateState !== "dismissed" && (
+          <div className="fnd-use-build">
+            {activateState === "done" ? (
+              <span className="fnd-use-build__text type-micro font-mono">
+                Active engine is now this build.
+              </span>
+            ) : (
+              <>
+                <span className="fnd-use-build__text type-micro font-mono">
+                  Build finished. Use this build as the active engine?
+                </span>
+                <button
+                  type="button"
+                  disabled={activateState === "busy"}
+                  onClick={() => void activateBuild()}
+                  className="fnd-confirm-btn fnd-confirm-btn--accent px-3 py-1 font-mono rounded-sm"
+                >
+                  {activateState === "busy" ? "ACTIVATING…" : "USE THIS BUILD"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActivateState("dismissed")}
+                  className="fnd-build-btn px-3 py-1 font-mono"
+                >
+                  KEEP CURRENT
+                </button>
+              </>
+            )}
+            {activateError && (
+              <span className="fnd-use-build__text type-micro font-mono cfg-dng">{activateError}</span>
+            )}
+          </div>
+        )}
 
         {!isComplete && !isError && (
           <div className="flex items-center gap-2">

@@ -739,3 +739,18 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
+
+/* Build complete - offer to activate the fresh engine */
+.fnd-use-build {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--theme-border);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-text) 5%, transparent);
+}
+.fnd-use-build__text {
+  color: var(--theme-text);
+}
