@@ -30,7 +30,7 @@ export default function ModelHub() {
       <TabPageHeader title="MODEL HUB" />
 
       <div className="flex-1 overflow-hidden flex flex-col min-h-0 gap-0 px-4 py-3">
-        <div className="theme-surface grid shrink-0 grid-cols-2 min-h-[160px] max-h-[40%] rounded-sm overflow-hidden divide-x">
+        <div className="industrial-panel-face grid shrink-0 grid-cols-2 min-h-[160px] max-h-[40%] rounded-sm overflow-hidden divide-x">
           <ModelHubDownloadPaths downloads={downloads} />
           <ModelHubDownloads downloads={downloads} />
         </div>

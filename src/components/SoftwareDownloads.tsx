@@ -8,6 +8,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 // Shares the ModelHub panel/row styling (heading, label, sub-line).
 import "../styles/modelhub-page.css";
+import TabPageHeader from "./TabPageHeader";
 
 import { useDownloadTasks } from "../hooks/useDownloadTasks";
 import { buildEngineOverview, packDownloadAction } from "../lib/engineOverview";
@@ -116,7 +117,9 @@ export default function SoftwareDownloads() {
   );
 
   return (
-    <div className="h-full overflow-y-auto eink-scrollbar px-3 py-2.5 space-y-2">
+    <div className="flex flex-col h-full min-h-0 overflow-hidden" data-software-page>
+      <TabPageHeader title="SOFTWARE" />
+      <div className="flex-1 overflow-y-auto eink-scrollbar px-4 py-3 space-y-2">
       <section className="industrial-panel-face px-3 py-2.5">
         <div className="dl-paths-heading">Application</div>
         <div className="theme-surface-row flex items-center justify-between gap-3 rounded-sm px-2.5 py-1.5">
@@ -282,7 +285,8 @@ export default function SoftwareDownloads() {
         </section>
       )}
 
-      {error && <p className="type-micro font-mono cfg-dng px-1">{error}</p>}
+        {error && <p className="type-micro font-mono cfg-dng px-1">{error}</p>}
+      </div>
     </div>
   );
 }
