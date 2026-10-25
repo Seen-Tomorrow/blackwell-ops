@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "windows_sdk_version": "10.0.26100.0",
   "vs": {
     "2022": {
@@ -39,6 +39,31 @@
       "ninja": true,
       "distributed": true,
       "description": "Long-lived compatibility profile (Ninja Multi-Config)"
+    }
+  ],
+  "packs": [
+    {
+      "id": "runtime-13.4",
+      "kind": "runtime",
+      "cuda": "13.4",
+      "asset": "toolchain-rt-13.4-v4.7z",
+      "sha256": "a1d5c8dfbc09be64a30d889a7ef156d190e72f6f70b782142295eb615a9ae478",
+      "sizeBytes": 401449148
+    },
+    {
+      "id": "runtime-12.8",
+      "kind": "runtime",
+      "cuda": "12.8",
+      "asset": "toolchain-rt-12.8-v4.7z",
+      "sha256": "e645819c0fed925b5d4429271332d4d3932aacbc1357396f3ba13c61afe320f2",
+      "sizeBytes": 444263043
+    },
+    {
+      "id": "full",
+      "kind": "full",
+      "asset": "toolchain.7z",
+      "sha256": "facbbb21b25a42c6ef2c7bef084962e2c4504be0c94a841a2addfa97989987ca",
+      "sizeBytes": 1238194815
     }
   ]
 }

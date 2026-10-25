@@ -11,6 +11,53 @@ pub struct ToolchainManifest {
     pub windows_sdk_version: String,
     pub vs: VsManifest,
     pub profiles: Vec<ProfileDef>,
+    /// Split pack registry — `runtime-<cuda>` / `build` / `full`. Empty in a pre-v4 manifest.
+    #[serde(default)]
+    pub packs: Vec<ToolchainPackDef>,
+}
+
+/// One downloadable toolchain pack. Identity (asset name + digest) comes from this manifest,
+/// which is embedded in the binary, so a stale installed pack cannot hide a new one.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ToolchainPackDef {
+    pub id: String,
+    /// `runtime` | `build` | `full`.
+    pub kind: String,
+    #[serde(default)]
+    pub cuda: Option<String>,
+    pub asset: String,
+    #[serde(default)]
+    pub sha256: String,
+    #[serde(default, rename = "sizeBytes")]
+    pub size_bytes: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PackKind {
+    Runtime,
+    Build,
+    Full,
+}
+
+impl ToolchainPackDef {
+    pub fn kind(&self) -> PackKind {
+        match self.kind.trim().to_lowercase().as_str() {
+            "runtime" => PackKind::Runtime,
+            "build" => PackKind::Build,
+            _ => PackKind::Full,
+        }
+    }
+
+    pub fn label(&self) -> String {
+        match self.kind() {
+            PackKind::Runtime => format!(
+                "CUDA {} runtime",
+                self.cuda.as_deref().unwrap_or("?")
+            ),
+            PackKind::Build => "Foundry build tools".to_string(),
+            PackKind::Full => "Full toolchain".to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -101,6 +148,8 @@ pub struct ToolchainInstallInfo {
     /// Per-profile runtime readiness plus the driver gate. `runtime_ready` above stays the
     /// "every profile" aggregate for the Foundry panel; onboarding reads one entry.
     pub runtime_versions: Vec<RuntimeVersionInfo>,
+    /// Split pack registry as offered by this build (identity from the embedded manifest).
+    pub packs: Vec<PackOffering>,
     /// x64 MSVC C runtime (vcruntime140 / vcruntime140_1 / msvcp140) resolvable for every
     /// profile — app-local, in the portable toolchain, or installed system-wide. Every
     /// shipped engine binary imports these; absent means LoadLibrary dies before any log.
@@ -135,6 +184,18 @@ pub struct RuntimeVersionInfo {
     pub driver_major: Option<u32>,
     /// `driver_major >= min_driver_major`. Strict when the driver is unknown.
     pub driver_ok: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PackOffering {
+    pub id: String,
+    /// `runtime` | `build` | `full`.
+    pub kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cuda: Option<String>,
+    pub asset: String,
+    pub size_bytes: u64,
+    pub installed: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1274,18 +1335,43 @@ pub fn toolchain_release_url() -> String {
     )
 }
 
-pub fn pack_archive_name(pack: &str) -> Result<&'static str, String> {
-    match pack.trim().to_lowercase().as_str() {
-        "" | "full" | "runtime" => Ok(TOOLCHAIN_ARCHIVE_NAME),
-        other => Err(format!(
-            "Unknown toolchain pack '{}'. Expected 'full'.",
-            other
-        )),
-    }
+/// The embedded manifest is the authority for pack identity: the arch of the app decides which
+/// packs exist, not whichever tree the user happens to have installed.
+pub fn embedded_manifest() -> Result<ToolchainManifest, String> {
+    serde_json::from_str(EMBEDDED_MANIFEST)
+        .map_err(|e| format!("Embedded toolchain manifest is invalid: {e}"))
 }
 
-pub fn toolchain_pack_label(_pack: &str) -> &'static str {
-    "Foundry Toolchain"
+/// `""`/`full` fall back to the full pack so older call sites keep working.
+pub fn pack_def(pack: &str) -> Result<ToolchainPackDef, String> {
+    let key = match pack.trim().to_lowercase().as_str() {
+        "" | "runtime" | "toolchain" => "full".to_string(),
+        other => other.to_string(),
+    };
+    let manifest = embedded_manifest()?;
+    manifest
+        .packs
+        .iter()
+        .find(|p| p.id.eq_ignore_ascii_case(&key))
+        .cloned()
+        .ok_or_else(|| {
+            let known: Vec<&str> = manifest.packs.iter().map(|p| p.id.as_str()).collect();
+            format!(
+                "Unknown toolchain pack '{}'. Known packs: {}",
+                key,
+                if known.is_empty() { "(none in this build)".to_string() } else { known.join(", ") }
+            )
+        })
+}
+
+pub fn pack_archive_name(pack: &str) -> Result<String, String> {
+    Ok(pack_def(pack)?.asset)
+}
+
+pub fn toolchain_pack_label(pack: &str) -> String {
+    pack_def(pack)
+        .map(|d| d.label())
+        .unwrap_or_else(|_| "Foundry Toolchain".to_string())
 }
 
 pub fn toolchain_download_dir() -> std::path::PathBuf {
@@ -1313,26 +1399,26 @@ fn archive_size(path: &std::path::Path) -> u64 {
 
 /// Archives available for re-extract (durable cache first, then unstaged download copy).
 pub fn list_reextractable_archives() -> Vec<CachedToolchainArchive> {
+    let Ok(manifest) = embedded_manifest() else {
+        return Vec::new();
+    };
     let mut out = Vec::new();
-    for pack in ["full"] {
-        let Ok(archive_name) = pack_archive_name(pack) else {
-            continue;
-        };
-        let cache = toolchain_archive_cache_path(archive_name);
+    for def in &manifest.packs {
+        let cache = toolchain_archive_cache_path(&def.asset);
         if cache.is_file() {
             out.push(CachedToolchainArchive {
-                pack: pack.to_string(),
-                archive_name: archive_name.to_string(),
+                pack: def.id.clone(),
+                archive_name: def.asset.clone(),
                 size_bytes: archive_size(&cache),
                 location: "cache".into(),
             });
             continue;
         }
-        let download = std::path::PathBuf::from(toolchain_download_dest(archive_name));
+        let download = std::path::PathBuf::from(toolchain_download_dest(&def.asset));
         if download.is_file() {
             out.push(CachedToolchainArchive {
-                pack: pack.to_string(),
-                archive_name: archive_name.to_string(),
+                pack: def.id.clone(),
+                archive_name: def.asset.clone(),
                 size_bytes: archive_size(&download),
                 location: "download".into(),
             });
@@ -1344,11 +1430,11 @@ pub fn list_reextractable_archives() -> Vec<CachedToolchainArchive> {
 pub fn archive_for_reextract(pack: &str) -> Result<std::path::PathBuf, String> {
     let pack_key = pack.trim().to_lowercase();
     let archive_name = pack_archive_name(&pack_key)?;
-    let cache = toolchain_archive_cache_path(archive_name);
+    let cache = toolchain_archive_cache_path(&archive_name);
     if cache.is_file() {
         return Ok(cache);
     }
-    let download = std::path::PathBuf::from(toolchain_download_dest(archive_name));
+    let download = std::path::PathBuf::from(toolchain_download_dest(&archive_name));
     if download.is_file() {
         return Ok(download);
     }
@@ -1396,7 +1482,7 @@ pub async fn fetch_toolchain_asset(
                 TOOLCHAIN_RELEASE_TAG
             )
         })?;
-    let asset = crate::github_releases::find_asset_by_name(&release, archive_name)
+    let asset = crate::github_releases::find_asset_by_name(&release, &archive_name)
         .ok_or_else(|| {
             format!(
                 "Asset '{}' not found on release '{}'.",
@@ -1567,21 +1653,43 @@ fn resolve_toolchain_extract_dest(
     }
 }
 
-fn verify_toolchain_install(_pack: &str) -> Result<(), String> {
-    let checks = check_all_profiles_strict()?;
-    let not_ready: Vec<_> = checks.iter().filter(|c| !c.ready).collect();
-    if not_ready.is_empty() {
-        return Ok(());
+/// Verify what the installed pack claims to provide — never "everything".
+///
+/// A runtime pack carries only cublas/cublasLt/cudart, so `check_all_profiles_strict`
+/// (devcmd/MSVC/ml64/SDK/nvcc/include/cmake) would fail every runtime installation. The build
+/// pack is the reverse: profiles without the runtime DLLs, because launch needs what build does not.
+fn verify_toolchain_install(def: &ToolchainPackDef) -> Result<(), String> {
+    match def.kind() {
+        PackKind::Runtime => {
+            let cuda = def.cuda.as_deref().ok_or_else(|| {
+                format!("Pack '{}' is a runtime pack without a cuda version", def.id)
+            })?;
+            if cuda_runtime_ready_for_version(cuda) {
+                Ok(())
+            } else {
+                Err(format!(
+                    "CUDA {cuda} runtime is still incomplete after extracting {}.",
+                    def.asset
+                ))
+            }
+        }
+        PackKind::Build | PackKind::Full => {
+            let checks = check_all_profiles_strict()?;
+            let not_ready: Vec<_> = checks.iter().filter(|c| !c.ready).collect();
+            if not_ready.is_empty() {
+                return Ok(());
+            }
+            let details: Vec<String> = not_ready
+                .iter()
+                .flat_map(|c| c.missing.iter().map(|m| format!("{}: {}", c.id, m)))
+                .collect();
+            Err(format!(
+                "Toolchain extracted but {} profile(s) still incomplete:\n  - {}",
+                not_ready.len(),
+                details.join("\n  - ")
+            ))
+        }
     }
-    let details: Vec<String> = not_ready
-        .iter()
-        .flat_map(|c| c.missing.iter().map(|m| format!("{}: {}", c.id, m)))
-        .collect();
-    Err(format!(
-        "Toolchain extracted but {} profile(s) still incomplete:\n  - {}",
-        not_ready.len(),
-        details.join("\n  - ")
-    ))
 }
 
 #[cfg(windows)]
@@ -1628,22 +1736,49 @@ pub fn extract_toolchain_archive(
     Err("Portable Foundry toolchain download is supported on Windows only.".into())
 }
 
-/// Extract a toolchain archive into the app root. On success, move a copy into durable cache.
+/// Extract a toolchain archive into the app root.
+///
+/// Full packs replace the tree (as before). Partial packs **merge**: installing `runtime-12.8`
+/// after `runtime-13.4` must not delete 13.4, and a runtime pack must not delete the VS/SDK tree
+/// that the build pack put there. `extract_toolchain_archive` already passes `-aoa`.
+///
+/// Runtime packs are not cached: keeping a 383 MB archive next to a 523 MB extraction is pure
+/// duplication, and re-download is the accepted recovery path for them. Build/full stay cached
+/// for install-from-cache and re-extract.
 pub fn finalize_toolchain_install(archive_path: &std::path::Path, pack: &str) -> Result<(), String> {
     let app_root = crate::config::app_root_dir();
-    let pack_key = pack.trim().to_lowercase();
-    let archive_name = pack_archive_name(&pack_key)?;
-    prepare_toolchain_upgrade(&pack_key)?;
+    let def = pack_def(pack)?;
+    let archive_name = def.asset.as_str();
+
+    match def.kind() {
+        PackKind::Full => prepare_toolchain_upgrade(&def.id)?,
+        PackKind::Runtime | PackKind::Build => {
+            std::fs::create_dir_all(toolchain_dir())
+                .map_err(|e| format!("Failed to create toolchain dir: {e}"))?;
+        }
+    }
+    remove_stray_toolchain_roots_at_app_root(&app_root)?;
+
     let extract_dest = resolve_toolchain_extract_dest(archive_path, &app_root)?;
     extract_toolchain_archive(archive_path, &extract_dest)?;
     consolidate_stray_toolchain_into_toolchain_dir(&app_root)?;
-    verify_toolchain_install(&pack_key)?;
-    promote_archive_to_cache(archive_path, archive_name)?;
-    log::info!(
-        "[toolchain] Verified and cached {} at {}",
-        archive_name,
-        toolchain_archive_cache_path(archive_name).display()
-    );
+    verify_toolchain_install(&def)?;
+
+    if def.kind() == PackKind::Runtime {
+        if let Err(e) = std::fs::remove_file(archive_path) {
+            log::warn!(
+                "[toolchain] Runtime pack verified but the archive could not be removed ({}): {e}",
+                archive_path.display()
+            );
+        }
+    } else {
+        promote_archive_to_cache(archive_path, archive_name)?;
+        log::info!(
+            "[toolchain] Verified and cached {} at {}",
+            archive_name,
+            toolchain_archive_cache_path(archive_name).display()
+        );
+    }
     Ok(())
 }
 
@@ -1676,6 +1811,33 @@ pub fn install_info(driver_major: Option<u32>) -> Result<ToolchainInstallInfo, S
         })
         .collect();
     let crt_profiles: Vec<String> = manifest.profiles.iter().map(|p| p.id.clone()).collect();
+    let packs: Vec<PackOffering> = embedded
+        .packs
+        .iter()
+        .map(|p| {
+            let installed = match p.kind() {
+                PackKind::Runtime => p
+                    .cuda
+                    .as_deref()
+                    .map(cuda_runtime_ready_for_version)
+                    .unwrap_or(false),
+                PackKind::Build => profiles_ready == profiles_total && profiles_total > 0,
+                PackKind::Full => {
+                    profiles_ready == profiles_total
+                        && profiles_total > 0
+                        && check_runtime_ready(&embedded)
+                }
+            };
+            PackOffering {
+                id: p.id.clone(),
+                kind: p.kind.clone(),
+                cuda: p.cuda.clone(),
+                asset: p.asset.clone(),
+                size_bytes: p.size_bytes,
+                installed,
+            }
+        })
+        .collect();
     let crt_missing: Vec<String> = crt_profiles
         .iter()
         .filter(|p| msvc_crt_missing_message(p, None).is_some())
@@ -1701,13 +1863,15 @@ pub fn install_info(driver_major: Option<u32>) -> Result<ToolchainInstallInfo, S
         archive_cache_dir: cache_dir.to_string_lossy().to_string(),
         toolchain_dir: tc_dir.to_string_lossy().to_string(),
         release_url: toolchain_release_url(),
-        archive_name: TOOLCHAIN_ARCHIVE_NAME.to_string(),
+        archive_name: pack_archive_name("full")
+            .unwrap_or_else(|_| TOOLCHAIN_ARCHIVE_NAME.to_string()),
         archive_parts: TOOLCHAIN_ARCHIVE_PARTS.iter().map(|s| (*s).to_string()).collect(),
         compressed_size_label: "~1.15 GB".to_string(),
         uncompressed_size_label: "~4.2 GB".to_string(),
         manifest_present: manifest_path().exists(),
         runtime_ready,
         runtime_versions,
+        packs,
         msvc_crt_ready,
         msvc_crt_error,
         profiles_ready,
@@ -2055,6 +2219,7 @@ mod isolation_tests {
             windows_sdk_version: "10.0.26100.0".into(),
             vs: VsManifest { vs2022: vs.clone(), vs2026: vs },
             profiles: vec![profile("edge", "13.4", true), profile("lab", "13.9", false)],
+            packs: Vec::new(),
         };
 
         assert_eq!(profile_ids(&manifest), vec!["edge".to_string()]);

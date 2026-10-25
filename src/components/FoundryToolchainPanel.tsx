@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-shell";
-import { ENV_ORDER, TOOLCHAIN_RELEASE_URL, type Env } from "../lib/foundry_constants";
+import { DEFAULT_BINARY_PROFILE, ENV_META, ENV_ORDER, TOOLCHAIN_RELEASE_URL, type Env } from "../lib/foundry_constants";
 import type { DownloadStatus } from "../lib/types";
 import { useDownloadTasks } from "../hooks/useDownloadTasks";
 import DownloadProgressRow from "./DownloadProgressRow";
@@ -33,6 +33,25 @@ export interface ToolchainInstallInfo {
   uncompressed_size_label: string;
   manifest_present: boolean;
   runtime_ready: boolean;
+  /** Per-profile CUDA runtime + driver gate, from the embedded manifest. */
+  runtime_versions: {
+    id: string;
+    label: string;
+    cuda: string;
+    ready: boolean;
+    min_driver_major?: number | null;
+    driver_major?: number | null;
+    driver_ok: boolean;
+  }[];
+  /** Split pack registry: `runtime-<cuda>` / `build` / `full`. */
+  packs: {
+    id: string;
+    kind: string;
+    cuda?: string | null;
+    asset: string;
+    size_bytes: number;
+    installed: boolean;
+  }[];
   /** x64 MSVC C runtime resolvable for every profile (app-local, toolchain, or system). */
   msvc_crt_ready: boolean;
   msvc_crt_error?: string | null;
@@ -106,6 +125,16 @@ export default function FoundryToolchainPanel({
   );
   const downloading = Boolean(busyTask);
 
+  // Onboarding installs ONLY the CUDA runtime for the seeded profile: the engine ships in the
+  // installer, and the build tools exist to compile, not to launch. Foundry keeps the full pack.
+  const onboardingCuda = ENV_META[DEFAULT_BINARY_PROFILE].cuda;
+  const runtimePack = info?.packs?.find((p) => p.kind === "runtime" && p.cuda === onboardingCuda);
+  const onboardingPackId = onboarding ? runtimePack?.id : undefined;
+  const downloadSizeLabel =
+    onboarding && runtimePack
+      ? `${Math.round(runtimePack.size_bytes / 1048576)} MB`
+      : info?.compressed_size_label ?? "";
+
   const refresh = useCallback(async () => {
     setLoading(true);
     setActionError(null);
@@ -143,20 +172,20 @@ export default function FoundryToolchainPanel({
   const handleDownload = useCallback(async () => {
     setActionError(null);
     try {
-      await invoke("start_toolchain_download", {});
+      await invoke("start_toolchain_download", onboardingPackId ? { pack: onboardingPackId } : {});
     } catch (e) {
       setActionError(String(e));
     }
-  }, []);
+  }, [onboardingPackId]);
 
   const handleReextract = useCallback(async () => {
     setActionError(null);
     try {
-      await invoke("retry_toolchain_extract", {});
+      await invoke("retry_toolchain_extract", onboardingPackId ? { pack: onboardingPackId } : {});
     } catch (e) {
       setActionError(String(e));
     }
-  }, []);
+  }, [onboardingPackId]);
 
   const handleCancelDownload = useCallback(async () => {
     if (!activeTask?.id) return;
@@ -323,8 +352,10 @@ export default function FoundryToolchainPanel({
 
         {!downloading && !cached && (
           <p className="foundry-toolchain-onboarding__hint">
-            ~{info.compressed_size_label} one-time download — engines, metadata scan, and
-            build-from-source.
+            ~{downloadSizeLabel} one-time download
+            {onboarding
+              ? " — the CUDA runtime this engine needs."
+              : " — engines, metadata scan, and build-from-source."}
           </p>
         )}
         {cancelable && (
@@ -469,15 +500,25 @@ export default function FoundryToolchainPanel({
       ) : (
         <div className="foundry-toolchain-install-guide fnd-tc-guide--warn border rounded-sm p-2.5 space-y-2">
           <p className="foundry-toolchain-install-guide__title fnd-tc-guide__title--warn type-tiny font-mono font-bold uppercase tracking-wide">
-            {onboarding ? "One-click toolchain" : "Install portable toolchain"}
+            {onboarding ? "CUDA runtime" : "Install portable toolchain"}
           </p>
 
           <p className="fnd-tc-guide__desc type-tiny font-mono leading-relaxed">
-            Single download (~{info.compressed_size_label}): VS Build Tools, Windows SDK, both CUDA versions, and CMake.
-            Required for Foundry cmake builds and for running bundled CUDA engines.
+            {onboarding ? (
+              <>
+                Single download (~{downloadSizeLabel}): the CUDA runtime this build launches.
+                Engine binaries are already installed — Foundry build tools are only needed to
+                compile your own.
+              </>
+            ) : (
+              <>
+                Single download (~{info.compressed_size_label}): VS Build Tools, Windows SDK, both CUDA versions, and CMake.
+                Required for Foundry cmake builds and for running bundled CUDA engines.
+              </>
+            )}
           </p>
 
-          {!info.all_ready && info.profiles_ready < info.profiles_total && (
+          {!onboarding && !info.all_ready && info.profiles_ready < info.profiles_total && (
             <div className="fnd-tc-profiles-box rounded-sm px-2 py-1.5 space-y-0.5">
               <p className="fnd-tc-profiles-box__title type-micro font-mono uppercase tracking-wide">
                 {info.profiles_ready}/{info.profiles_total} build profiles ready
@@ -500,10 +541,11 @@ export default function FoundryToolchainPanel({
           <div className="fnd-tc-archive-box rounded-sm px-2 py-2 space-y-1.5">
             <div className="flex flex-wrap items-center gap-2">
               <span className="fnd-tc-archive-box__name type-tiny font-mono font-bold uppercase">
-                {info.archive_name}
+                {onboarding && runtimePack ? runtimePack.asset : info.archive_name}
               </span>
               <span className="fnd-tc-archive-box__meta type-micro font-mono">
-                {info.compressed_size_label} download · {info.uncompressed_size_label} installed
+                {downloadSizeLabel} download
+                {onboarding ? "" : ` · ${info.uncompressed_size_label} installed`}
               </span>
             </div>
             <p className="fnd-tc-archive-box__desc type-micro font-mono leading-relaxed">

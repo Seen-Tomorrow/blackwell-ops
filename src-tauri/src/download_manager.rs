@@ -615,7 +615,7 @@ impl DownloadManager {
             total_bytes: size,
             downloaded_bytes: size,
             status: DownloadStatus::Scanning,
-            dest_path: crate::foundry_toolchain::toolchain_download_dest(archive_name),
+            dest_path: crate::foundry_toolchain::toolchain_download_dest(&archive_name),
             speed_bps: 0,
             pause_offset: 0,
             error: None,
