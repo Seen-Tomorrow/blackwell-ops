@@ -41,10 +41,9 @@
     "majestic:ship:app": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode ship",
     "majestic:toolchain": "powershell -ExecutionPolicy Bypass -File scripts/build-foundry-toolchain.ps1",
     "majestic:ship-toolchain": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode ship-toolchain",
-    "majestic:pack:provider": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode pack-provider",
     "majestic:pack:engines": "powershell -ExecutionPolicy Bypass -File scripts/pack-provider-runtime.ps1",
     "promote:provider": "node scripts/promote-user-provider-to-runtime.mjs",
-    "pack:provider": "powershell -ExecutionPolicy Bypass -File scripts/pack-provider-runtime.ps1",
+
     "test": "vitest run",
     "test:watch": "vitest",
     "bench:report": "node scripts/bench/report.mjs --dir src-tauri/target/debug/config/bench --out bench-out",

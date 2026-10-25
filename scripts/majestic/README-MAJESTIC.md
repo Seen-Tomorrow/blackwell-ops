@@ -1,6 +1,8 @@
-# Majestic — release robot (your eyes only)
+# Majestic — release robot (single engine)
 
-You keep coding and using Foundry in DEV. Majestic ships when you say so.
+You build and tune in DEV. Majestic ships when you say so. There is **one** engine today
+(`ggml-master`, 3-arch, EDGE + STABLE), and majestic enumerates everything from files — there is no
+provider list to keep in sync.
 
 ## Easiest: double-click
 
@@ -10,67 +12,79 @@ Majestic.bat
 
 Menu: **10 BUMP** → CHECK → PACK → SHIP (plus backups and dry-runs).
 
-| Cadence | Menu / npm | Output |
-|---------|------------|--------|
-| **Daily** | `majestic:pack:app` → ship | `Blackwell-Ops-App-vX.Y.Z.7z` (~5 MB) — UI + core templates + **plugin catalog** + **foundry/patches** |
-| **Weekly** | `majestic:pack` → ship | Full NSIS (**ggml-master only**) + App `.7z` + optional `{provider}-{profile}.7z` packs |
-| **One plugin** | `majestic:pack:provider` → `majestic:ship:provider` | Single `bee-llama-edge.7z` (etc.) onto current tag |
-| **Rare** | toolchain | `toolchain.7z` on tag `toolchain` |
+| Cadence | npm | Output |
+|---|---|---|
+| **Daily app** | `majestic:pack:app` → `majestic:ship` | App `.7z` only (~6 MB) |
+| **Release** | `majestic:pack` → `majestic:ship` | App `.7z` + NSIS (EDGE seed, ~140 MB) + `ENGINE_*` packs |
+| **Engine only** | `majestic:pack:engines` | Rebuilds `ENGINE_*` + updates `engines.json` |
+| **Rare** | `majestic:toolchain` → `majestic:ship-toolchain` | Toolchain packs on tag `toolchain` |
 
-### Policy source of truth
+## Source of truth (three files, no others)
 
-**`scripts/distribution-policy.json`** (also edited from DEV app → Config → **DISTRIBUTION**):
+| File | Owns |
+|---|---|
+| `scripts/distribution-policy.json` | `nsisCore` (profiles **inside** the installer — EDGE only), `enginePacks` (profiles published as packs — EDGE + STABLE), `plugins` (empty; not part of this flow), `recommendedEngine` |
+| `src-tauri/runtime-catalog/engines.json` | every engine pack: asset name, sha256, size, CUDA, build id (written by `pack-provider-runtime.ps1`, committed) |
+| `toolchain/manifest.json` | toolchain packs: `runtime-<cuda>`, `build`, `full` + digests (written by `pack-toolchain-packs.ps1`) |
 
-| Key | Meaning |
-|-----|---------|
-| `nsisCore` | Engines in Full NSIS only (`ggml-master` edge+stable) |
-| `plugins` | Optional catalog plugins + selective `.7z` packs |
-
-Majestic merges these into `nsisProviders` / `providers` at runtime — do not hand-edit those maps for distribution. CHECK FULL **requires** Foundry only for `nsisCore`.
+Both manifests are **embedded in the binary**, so the app asks for an exact asset name and verifies the
+digest itself. Adding an engine later = edit the policy + pack it; do not edit this script.
 
 ## Or npm
 
 ```powershell
-npm run majestic:bump     # 1.0.0 → 1.0.1 (asks YES)
-npm run majestic:check    # Full: NSIS engines ready?
-npm run majestic:check:app
-npm run majestic:pack     # weekly: NSIS (core only) + App 7z + all ready provider packs
-npm run majestic:pack:app # daily: lean App 7z only
-npm run majestic:ship     # upload staged full/app assets (unlock + YES)
+npm run majestic:bump      # 1.0.0 -> 1.0.1 (asks YES), syncs conf/package/Cargo, refreshes lock
+npm run majestic:check     # full: policy rows + Foundry artifacts + installer age + pi pin
+npm run majestic:check:app # app-only variant
 
-# Single plugin pack (after Foundry-build that provider/profile)
-npm run majestic:pack:provider -- -ProviderId bee-llama -ProfileId edge
-npm run majestic:ship:provider -- -ProviderId bee-llama -ProfileId edge
+npm run majestic:pack      # App .7z + NSIS (EDGE seed) + both ENGINE_* packs, digest-verified
+npm run majestic:pack:app  # lean App .7z only
+npm run majestic:pack:engines   # rebuild engine packs + engines.json (no app build)
+
+npm run majestic:ship      # uploads exactly the files in the pack manifest
 
 npm run majestic:toolchain
-npm run majestic:ship-toolchain
+npm run majestic:ship-toolchain  # uploads every pack listed in toolchain/manifest.json
 ```
 
-## Version bump
+Dry-run without touching anything: append `-- -DryRun`, e.g. `npm run majestic:ship -- -DryRun`.
 
-**BUMP** increments the **patch** only (`1.0.0` → `1.0.1`). Syncs `tauri.conf.json`, `tauri.conf.dev.json`, `package.json`, and `Cargo.toml`. Run **before PACK** so the installer name matches.
+## What PACK actually does
+
+1. `Invoke-MajesticCheck` — policy rows, Foundry artifacts for `enginePacks`, pi pin/bundle, installer age.
+2. Full variant: `cargo clean -p blackwell-ops --release` → `npm run release` (Vite + tauri build with
+   **default** `tauri.conf.json` only) → PE identity assert.
+3. `prepare-release-runtime.ps1` stages **`nsisCore` only** (EDGE) into `runtime-bundle/`; the
+   installer is built, then `Assert-InstallerSeed` requires EDGE present, no other profile staged,
+   and the installer in the 120–200 MB band.
+4. `prepare-release-app-only.ps1` rebuilds templates+catalog for the lean App `.7z`.
+5. `pack-provider-runtime.ps1` packs **every `enginePacks` profile** from `src-tauri/runtime`, writes
+   `engines.json`, and majestic verifies each file's digest before adding it to the pack manifest.
+6. Writes `.majestic-out/manifest-vX.Y.Z.json` — the only list SHIP reads.
+
+`SHIP` uploads that manifest (App `.7z`, setup, `ENGINE_*`, nothing filtered by filename) after
+re-asserting the App archive PE, running the release test gate, and asking for `YES`.
 
 ## Release integrity (App / Full pack)
 
 Pack always:
 
-1. Scrubs `TAURI_CONFIG` / DEV env pollution (critical when Pack is launched from DISTRIBUTION inside `tauri dev`)
+1. Scrubs `TAURI_CONFIG` / DEV env pollution (critical when launched from DISTRIBUTION inside `tauri dev`)
 2. `cargo clean -p blackwell-ops --release` so VERSIONINFO / ProductName cannot stick from a prior conf
-3. Builds with **default** `tauri.conf.json` only (never merges `tauri.conf.dev.json`)
+3. Builds with **default** `tauri.conf.json` (never merges `tauri.conf.dev.json`)
 4. Asserts PE: ProductName = `Blackwell Ops`, FileVersion = conf version, no `.app.dev` / `:1420`
 5. Asserts the staged App `.7z` embeds that same PE
+6. Asserts the installer carries the seed and sits in the expected size band
 
-Ship re-asserts App archives before `gh release` upload. A DEV-named or off-by-one PE **fails the job** instead of publishing.
+Ship re-asserts App archives before `gh release`. A DEV-named or off-by-one PE fails the job instead
+of publishing.
 
 ## Git tags on SHIP
 
-SHIP does **not** commit your code. It does:
-
 1. **Local** annotated tag `v1.0.0` on current `HEAD` (if missing)
-2. **GitHub Release** via `gh release create v1.0.0 <assets...>` — creates the tag and attaches assets **before** publish (required when release immutability is enabled)
+2. **GitHub Release** via `gh release create v1.0.0 <assets…>` — tag and assets before publish
+   (required when release immutability is enabled)
 3. **`git push origin tag`** only if `"pushTag": true` in `majestic.config.json` (default **false**)
-
-So the GitHub release tag is automatic; pushing the tag to `origin` via plain git is optional.
 
 ## First-time unlock (ship only)
 
@@ -79,62 +93,100 @@ New-Item -ItemType File -Path scripts/majestic/.majestic-enabled -Force
 gh auth login    # if not already logged in
 ```
 
-## Tonight (v1.0)
+## Release assets
 
-1. Finish Foundry builds for all required profiles.
-2. `npm run majestic:check` — all green?
-3. `npm run majestic:pack` — go get coffee (~10–20 min).
-4. Test `/.majestic-out/Blackwell Ops_*_x64-setup.exe` if you want.
-5. `npm run majestic:ship` — type `YES`.
+| Asset | Tag | Contents |
+|---|---|---|
+| `CORE_Blackwell-Ops-App-vX.Y.Z.7z` | `vX.Y.Z` | lean app update: exe + templates + catalog + patches + 7z |
+| `CORE_Blackwell Ops_X.Y.Z_x64-setup.exe` | `vX.Y.Z` | first install: app + **EDGE seed** (~140 MB compressed) |
+| `ENGINE_ggml-master-{edge,stable}-{build}.7z` | `vX.Y.Z` | engine packs (107.8 / 110.2 MB), CRT included |
+| `toolchain-rt-{13.4,12.8}-v4.7z`, `toolchain-build-v4.7z`, `toolchain.7z` | `toolchain` | split toolchain packs + full |
+
+The CUDA runtime is **not** bundled: the setup wizard downloads it (383 MB for EDGE) and STABLE is an
+optional pack (engine 110 MB + CUDA 12.8 runtime 424 MB) from CONFIG → UPDATES.
+
+## One GitHub tag = one version
+
+- Each **BUMP** creates a new `vX.Y.Z`. Ship **once** per version when possible.
+- Re-uploading to an **existing mutable** release is allowed (`--clobber`) and majestic edits the
+  release notes to match the pack kind.
+- **Immutable** releases cannot be changed — bump instead.
+- In-app update scans recent tags and picks the newest App asset and newest Full asset independently.
+
+## Testing
+
+### 1. Cheap gates
+
+```powershell
+npm run check                 # tsc + vitest + css + cargo (401 tests)
+npm run majestic:check        # READY + "1 profile(s) ready" + "engine pack … ready to pack" x2
+```
+
+### 2. Pack without shipping
+
+```powershell
+npm run majestic:pack -- -DryRun     # shows the plan, builds nothing
+npm run majestic:pack                # real run (10-20 min)
+```
+
+Then inspect `.majestic-out`:
+
+```powershell
+Get-ChildItem .majestic-out | Select-Object Name, @{n='MB';e={[math]::Round($_.Length/1MB,1)}}
+# expect: CORE_…App….7z ~6 MB, CORE_…setup.exe 120-200 MB,
+#         ENGINE_…edge….7z ~108 MB, ENGINE_…stable….7z ~110 MB, manifest-vX.Y.Z.json
+
+# the installer must carry EDGE and NO STABLE:
+7z l ".majestic-out\CORE_*setup.exe" | Select-String "ggml-master\\(edge|stable)"
+```
+
+Read `manifest-vX.Y.Z.json` — it must list exactly those four files.
+
+### 3. Fresh-install test (the real one)
+
+```powershell
+# silent install into a scratch folder
+Start-Process -Wait -FilePath ".majestic-out\CORE_*.setup.exe" -ArgumentList '/S','/D=C:\tmp\bo-test'
+C:\tmp\bo-test\blackwell-ops.exe
+```
+
+Expected, in order:
+
+1. App opens; no missing-DLL dialog, no engine spawn error.
+2. Wizard asks for the model library, then shows **CUDA runtime · 383 MB** (not 1.15 GB) and the
+   engine asset `toolchain-rt-13.4-v4.7z`.
+3. On a driver below 610 the step instead shows **Driver too old for EDGE** with OPEN DRIVER PAGE +
+   CHECK AGAIN; update (or fake it with `BLACKWELL_FAKE_DRIVER_MAJOR=620` in a debug run) and the
+   download must start without restarting the app.
+4. After the runtime downloads, GGUF scan runs and an engine launches.
+5. CONFIG → UPDATES shows **STABLE** available: engine 110 MB + CUDA 12.8 runtime 424 MB. Install it,
+   switch the active binary (RESET TO SEED returns to the installer copy), launch.
+6. Foundry: it offers **Foundry build tools · 366 MB**, not the 1.18 GB full pack.
+
+### 4. Reinstall / uninstall
+
+- Reinstall over the same folder: `runtime\` packs and `toolchain\` must survive.
+- Uninstall currently leaves `runtime\`/`toolchain\` behind (known gap) — verify nothing corrupts.
+
+### 5. Ship
+
+```powershell
+npm run majestic:ship -- -DryRun   # asset list only
+npm run majestic:ship              # type YES
+```
+
+Then on the release page confirm the four assets, and that the in-app UPDATE menu offers the new
+version. If `gh` returns **HTTP 422**, the tag already exists on an immutable release — bump the patch,
+pack, ship.
 
 ## Safety
 
-PACK mirror **replaces files** in `src-tauri/runtime/<profile>/` (not `config/`). Menu **7** backs up the whole runtime tree; PACK asks to backup first (default yes).
-
-Menu **9 PARANOID** zips to `.majestic-backup/paranoid-*.zip` (**no compression**, ~15s). Keeps source + `src-tauri/runtime/` + `foundry/artifacts/` only (the 1h rebuild insurance). Skips llama.cpp `engines/`, `runtime-bundle`, repo `target/` dev mirror, `.pdb`, `node_modules`, Rust caches, `target/release/`.
-
-SHIP only touches GitHub. Mutable releases can be re-uploaded (`--clobber`); **immutable** releases cannot be changed after publish (disabling immutability in settings does not unlock old releases). If ship fails with HTTP 422, delete the broken release, **bump patch** (tag cannot be reused), pack, ship again.
-
-Does not delete source, Foundry artifacts, or dev `target/debug/`.
+- PACK mirrors into `src-tauri/runtime/<profile>/` (replaces binaries, keeps `config/`).
+- Menu **7** backs up the runtime tree; PACK asks first.
+- Menu **9 PARANOID** zips source + `src-tauri/runtime/` + `foundry/artifacts/` to `.majestic-backup/`.
+- SHIP only touches GitHub. It never commits or pushes source.
 
 ## What never gets committed
 
-- `scripts/majestic/.majestic-enabled`
-- `scripts/majestic/.majestic-secrets`
-- `scripts/majestic/majestic.lock`
-- `.majestic-out/`
-- `.majestic-backup/`
-
-## In-app update assets (shipped by Majestic)
-
-| Asset | Channel |
-|-------|---------|
-| `Blackwell-Ops-App-vX.Y.Z.7z` | Portable App update (exe + templates + 7z) |
-| `*Setup*.exe` (no App-Only) | Full NSIS install |
-| `{provider}-{profile}.7z` | Selective engine pack (e.g. `ggml-master-edge.7z`) |
-| `toolchain.7z` (tag `toolchain`) | Foundry portable toolchain |
-
-`BINARY_UPDATES_ENABLED` is on. Provider packs use the same download manager + bundled 7z as toolchain.
-
-### One GitHub tag = one version (important)
-
-- Each **BUMP** creates a new `vX.Y.Z`. Ship **once** per version when possible.
-- **Daily App pack** → creates release `vX.Y.Z` with App `.7z` + App notes.
-- **Weekly Full pack** → prefer a **new bump** so Full gets its own tag with NSIS + App `.7z` + provider packs + Full notes.
-- If you re-upload assets to an **existing mutable** release, Majestic now also **edits release notes** to match the pack kind just shipped (so Full does not leave stale App-only body text). Immutable releases still cannot be changed — bump instead.
-- In-app updater **scans recent tags** and picks the newest App asset and newest Full asset independently (they need not be the same tag).
-
-### Provider / plugin packs — prepare, ship, test
-
-1. **In DEV app:** add provider (or use existing plugin), tune params/layout, **EXPORT FACTORY** (writes `src-tauri/runtime/{id}/config/{id}-default-config.json`).
-2. Add `{id}` + profiles to `majestic.config.json` → `providers` and `scripts/runtime-distribution.ps1` → `OptionalDownloadProviders` (not `nsisProviders` unless it should be in Full install).
-3. Foundry-build that provider’s profiles.
-4. Either:
-   - **Weekly full:** `majestic:pack` packs every ready `providers` profile as `.7z` + NSIS for `nsisProviders` only; or
-   - **One plugin:**  
-     `npm run majestic:pack:provider -- -ProviderId bee-llama -ProfileId edge`  
-     `npm run majestic:ship:provider -- -ProviderId bee-llama -ProfileId edge`
-5. **Daily App update** ships the **catalog** (`plugins.json`) so users see Install buttons; engines stay separate packs.
-6. In app: **CONFIG → UPDATES** — Install Edge/Stable/Both. Provider appears in PROVIDERS after download.
-
-**New fork (in-app first):** EXPORT FACTORY seeds factory JSON if missing → promote is optional if export already wrote `src-tauri/runtime`. Keep `optionalDownload: true` on factory JSON.
+`scripts/majestic/.majestic-enabled`, `.majestic-secrets`, `majestic.lock`, `.majestic-out/`,
+`.majestic-backup/`.

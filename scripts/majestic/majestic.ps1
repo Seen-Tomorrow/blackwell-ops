@@ -1,5 +1,7 @@
 # Majestic - private release automation for Blackwell Ops.
-# Usage: .\scripts\majestic\majestic.ps1 -Mode check|pack|ship|bump|pack-provider|ship-provider [-DryRun]
+# Usage: .\scripts\majestic\majestic.ps1 -Mode check|pack|ship|bump|ship-toolchain|pack-provider [-DryRun]
+#   pack-provider = rebuild engine packs (all enginePacks, or one with -ProviderId/-ProfileId)
+#   ships from the pack manifest; there is no per-plugin ship mode any more
 
 param(
     [Parameter(Mandatory = $true)]
