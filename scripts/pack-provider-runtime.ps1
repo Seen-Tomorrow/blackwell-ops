@@ -119,6 +119,16 @@ function Pack-OneProfile {
     if ($files.Count -eq 0) { throw "No distribution binaries found in $src" }
     foreach ($f in $files) { Copy-Item -LiteralPath $f.FullName -Destination $dst -Force }
 
+    # Every engine binary imports the x64 MSVC CRT (vcruntime140 / vcruntime140_1 / msvcp140).
+    # App-local copies win the DLL search order; a pack without them dies at LoadLibrary on a
+    # machine that never had VC++ 2015-2022 — the "raw Windows dialog, no engine log" failure.
+    # Previously only prepare-release-runtime.ps1 staged these, i.e. only the installer seed.
+    $crt_written = Install-MsvcCrtIntoDirs -Root (Join-Path $stage 'runtime') `
+        -ToolchainRoot (Join-Path $root 'src-tauri\target\debug\toolchain') -Quiet
+    if ($crt_written -lt 3) {
+        throw ("MSVC CRT staging wrote {0} file(s) for {1}/{2}; expected 3. Fix the toolchain path before packing." -f $crt_written, $Prov, $Prof)
+    }
+
     $config_src = Join-Path $SourceRoot "$Prov\config"
     if (Test-Path -LiteralPath $config_src) {
         $config_dst = Join-Path $stage "runtime\$Prov\config"

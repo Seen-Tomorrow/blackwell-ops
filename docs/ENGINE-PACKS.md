@@ -504,13 +504,11 @@ CUDA bin on PATH, returns `b<build>-<sha8>`, **fails the pack if unparseable**) 
 `Update-EngineManifest` (rewrites `engines.json`; no write when content is identical, so `git status`
 stays clean).
 
-**Every pack must also carry the three CRT DLLs.** `Install-MsvcCrtIntoDirs` currently runs only in
-`prepare-release-runtime.ps1` (the installer seed), so `src-tauri/runtime/**` has no
-`msvcp140/vcruntime140` and `pack-provider-runtime.ps1` publishes engine dirs without them. Today that
-is invisible for forks (their users usually have VC++), but once EDGE/STABLE arrive as packs it is the
-documented "raw Windows dialog, no engine log" failure. Stage the CRT into `$stage` before `7z`, and
-assert all three DLLs exist in each packed profile — a pack that cannot start on a clean machine must
-fail the pack, not the user.
+**Every pack carries the three CRT DLLs (landed).** Previously `Install-MsvcCrtIntoDirs` ran only in
+`prepare-release-runtime.ps1` (the installer seed), so `pack-provider-runtime.ps1` published engine
+dirs without `msvcp140/vcruntime140` — the documented "raw Windows dialog, no engine log" failure on a
+machine that never had VC++ 2015-2022. The pack script now stages them into the staged profile and
+fails the pack if it wrote fewer than three.
 
 ### 8.6 `scripts/majestic/majestic.ps1`
 
@@ -700,7 +698,19 @@ read by the Rust launch gate. `src/lib/foundry_constants.ts` still carries a dis
 | DEV override for testing the nudge | **landed** | `BLACKWELL_FAKE_DRIVER_MAJOR` (debug builds only) |
 | Toolchain split: `manifest.json` v4 `packs[]` | **landed** | `toolchain/manifest.json`, `scripts/pack-toolchain-packs.ps1` |
 | Pack registry, per-pack verify, merge-not-wipe extraction, runtime packs not cached | **landed** | `foundry_toolchain::{pack_def, finalize_toolchain_install, verify_toolchain_install}` |
-| Wizard installs `runtime-13.4` only (not the 1.15 GB full pack) | **landed** | `FoundryToolchainPanel` `onboarding` → pack id |
+| Engine pack manifest + `ENGINE_*` assets | **landed** | `scripts/pack-provider-runtime.ps1` → `src-tauri/runtime-catalog/engines.json`; `src-tauri/src/engine_packs.rs` |
+| Digest-pinned pack resolution (manifest name preferred, forks fall back to the name scan) | **landed** | `github_releases::resolve_provider_pack_asset`; `download_manager` uses the manifest sha |
+| Installer seeds **EDGE only** (policy v2) | **landed** | `scripts/distribution-policy.json`: `nsisCore: edge`, `enginePacks: edge + stable` |
+| Wizard nudge + seeded-runtime gate (no second CUDA download) | **landed** | `FoundryToolchainPanel` (driver block, CHECK AGAIN, 3 s + focus re-probe), `useSetupGuide` |
+| Build pack (VS/SDK/cmake/nvcc minus the six runtime DLLs) | **landed** — 366.2 MB | `pack-toolchain-packs.ps1 -Packs build`; Foundry now requests `build`, not `full` |
+| Foundry download requests `build` instead of `full` | **landed** | `FoundryToolchainPanel` (`onboardingPackId ?? "build"`) |
+
+Engine packs built 2026-10-25 (engine `b11869-d327bf1f`, both profiles):
+
+| Asset | Size |
+|---|---:|
+| `ENGINE_ggml-master-edge-b11869-d327bf1f.7z` | 107.6 MB |
+| `ENGINE_ggml-master-stable-b11869-d327bf1f.7z` | 110.0 MB |
 
 Generated packs (2026-10-25, `-mx=7`, digests pinned in the manifest):
 
@@ -708,6 +718,7 @@ Generated packs (2026-10-25, `-mx=7`, digests pinned in the manifest):
 |---|---:|---|
 | `toolchain-rt-13.4-v4.7z` | 382.9 MB | `a1d5c8df…` |
 | `toolchain-rt-12.8-v4.7z` | 423.7 MB | `e645819c…` |
+| `toolchain-build-v4.7z` | 366.2 MB | `56643fc7…` |
 | `toolchain.7z` (full) | 1.18 GB | `facbbb21…` |
 
 Runtime packs are **not** cached after a verified extract (383 MB archive next to 523 MB extracted is
