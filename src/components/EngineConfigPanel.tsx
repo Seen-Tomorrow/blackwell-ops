@@ -172,7 +172,7 @@ import {
   pickBestDraftPair,
   resolveExternalDraftPath,
   resolveDraftPathLabel,
-  saveDraftPairing,
+  stageDraftPairing,
   isSpecDecodingGroupActive,
 } from "../lib/specDraft";
 import {
@@ -1456,7 +1456,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     const best = pickBestDraftPair(model, models, draftRole, HIGH_DRAFT_PAIR_SCORE);
     if (!best) return;
     updateParam(draftKey, best.path);
-    saveDraftPairing(model.path, cliTypeForMethod(specBoostMethod) ?? adapter.cliType, best.path);
+    stageDraftPairing(model.path, cliTypeForMethod(specBoostMethod) ?? adapter.cliType, best.path);
   }, [specBoostMethod, model, models, config, updateParam]);
 
   const customFlagsReplaceActive = testFlagsEnabled && testFlagsMode === "replace";
@@ -2203,6 +2203,19 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     const fullConfig = buildCurrentLaunchConfig();
     if (!fullConfig) return;
 
+    // Stage the active manual head for this attempt. A load failure discards it;
+    // only an engine that reaches RUNNING lets it stick (App commits on transition).
+    const launchAdapter = adapterForMethod(specBoostMethod);
+    const launchDraftKey = launchAdapter?.knobs.draftModel;
+    const launchDraftPath = launchDraftKey ? normalizeDraftPath(config[launchDraftKey]) : null;
+    if (launchAdapter && launchDraftPath) {
+      stageDraftPairing(
+        model.path,
+        cliTypeForMethod(specBoostMethod) ?? launchAdapter.cliType,
+        launchDraftPath,
+      );
+    }
+
     void onLaunch(fullConfig)
       .then((result) => {
         const resolvedAlias = result?.alias ?? fullConfig.alias;
@@ -2229,6 +2242,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     autoAlias,
     buildCurrentLaunchConfig,
     onLaunch,
+    specBoostMethod,
+    config,
   ]);
 
   const handleOpenNobsproofCmd = useCallback(() => {

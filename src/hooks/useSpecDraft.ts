@@ -20,9 +20,9 @@ import {
   catalogDraftSignals,
   draftRoleFromModel,
   resolveDraftPathLabel,
-  saveDraftPairing,
   scoreDraftPair,
   signalContainsDspark,
+  stageDraftPairing,
   type DraftRole,
 } from "../lib/specDraft";
 import { DFLASH_DRAFT_MODEL, MTP_DRAFT_MODEL } from "../lib/specProfiles";
@@ -267,7 +267,7 @@ export function useSpecDraft({
       const draftKey = adapter?.knobs.draftModel;
       if (!adapter || !draftKey) return;
       updateParam(draftKey, path);
-      saveDraftPairing(model.path, cliTypeForMethod(method) ?? adapter.cliType, path);
+      stageDraftPairing(model.path, cliTypeForMethod(method) ?? adapter.cliType, path);
       setDflashPickOpen(false);
       setLibraryPickItems([]);
       setDflashResolveError(null);

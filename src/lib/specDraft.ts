@@ -13,6 +13,8 @@ import { isTomProvider } from "./tomMtp";
 import {
   isAnySpecProfileActive,
   isSpecProfileParamKey,
+  DFLASH_DRAFT_MODEL,
+  MTP_DRAFT_MODEL,
   SPEC_PROFILE_PARAM_KEYS,
 } from "./specProfiles";
 
@@ -491,7 +493,14 @@ export function pickBestDraftPair(
     ?.model;
 }
 
-/** Spec modes a main model supports. MTP (baked-in nextn) and DFlash (external draft) are independent. */
+/**
+ * Spec modes a main model supports from evidence. MTP (baked-in nextn) and DFlash
+ * (external draft) are independent.
+ *
+ * MTP is ALSO a manual lane in the UI: a baked-in target or a user-picked head is
+ * always selectable, and launch validates the head. This list stays evidence-based
+ * so auto planning and saved defaults do not invent a lane the model cannot run.
+ */
 export function specCapabilitiesForMain(
   main: ModelEntry,
   models: ModelEntry[],
@@ -583,6 +592,107 @@ export function saveDraftPairing(mainPath: string, specType: string, draftPath: 
   writeJsonStorage(KEYS.draftPairings, map);
 }
 
+type StagedDraftPairing = {
+  specType: string;
+  draftPath: string;
+  /** Config key that holds this head (MTP vs DFlash lane). */
+  draftKey: string;
+};
+
+/**
+ * Manual draft heads are staged, not persisted: a head only earns its place in the
+ * model's saved config after the engine reaches RUNNING. A failed launch then cannot
+ * leave a bad head glued to the model. Keyed by normalized main path.
+ */
+const stagedDraftPairings = new Map<string, StagedDraftPairing[]>();
+/** Staged config values for manual heads — written to the model's spec bag only on RUNNING. */
+const stagedDraftValues = new Map<string, Record<string, unknown>>();
+
+function draftKeyForSpecType(specType: string): string {
+  return specType.trim().toLowerCase().includes("mtp") ? MTP_DRAFT_MODEL : DFLASH_DRAFT_MODEL;
+}
+
+export function stageDraftValue(mainPath: string, key: string, value: unknown): void {
+  if (!mainPath) return;
+  const pathKey = normalizeModelPathKey(mainPath);
+  const values = stagedDraftValues.get(pathKey) ?? {};
+  values[key] = value;
+  stagedDraftValues.set(pathKey, values);
+}
+
+/** Staged head values for a model — `loadConfig` overlays these on the persisted bag. */
+export function getStagedDraftValues(mainPath: string): Record<string, unknown> | undefined {
+  return stagedDraftValues.get(normalizeModelPathKey(mainPath));
+}
+
+export function stageDraftPairing(
+  mainPath: string,
+  specType: string,
+  draftPath: string,
+): void {
+  if (!mainPath || !draftPath) return;
+  const key = normalizeModelPathKey(mainPath);
+  const staged: StagedDraftPairing = {
+    specType,
+    draftPath,
+    draftKey: draftKeyForSpecType(specType),
+  };
+  const list = (stagedDraftPairings.get(key) ?? []).filter(
+    (s) => s.draftKey !== staged.draftKey,
+  );
+  list.push(staged);
+  stagedDraftPairings.set(key, list);
+}
+
+/** Engine reached RUNNING — now the staged head(s) are allowed to stick. */
+export function commitStagedDraftPairing(mainPath: string): void {
+  const key = normalizeModelPathKey(mainPath);
+  const values = stagedDraftValues.get(key);
+  if (values && Object.keys(values).length > 0) {
+    const spec = readJsonStorage<Record<string, unknown>>(modelSpecOverrideKey(mainPath)) ?? {};
+    writeJsonStorage(modelSpecOverrideKey(mainPath), { ...spec, ...values });
+    stagedDraftValues.delete(key);
+  }
+  const staged = stagedDraftPairings.get(key);
+  if (!staged?.length) return;
+  for (const s of staged) saveDraftPairing(mainPath, s.specType, s.draftPath);
+  stagedDraftPairings.delete(key);
+}
+
+/**
+ * Load failed — drop the staged heads and their config values, and remove the pairing
+ * record. Returns true when a staged head existed (caller should reload the panel).
+ */
+export function discardStagedDraftPairing(mainPath: string): boolean {
+  const key = normalizeModelPathKey(mainPath);
+  const staged = stagedDraftPairings.get(key);
+  const values = stagedDraftValues.get(key);
+  if (!staged?.length && !values) return false;
+  stagedDraftPairings.delete(key);
+  stagedDraftValues.delete(key);
+
+  const keys = new Set<string>([
+    ...Object.keys(values ?? {}),
+    ...(staged ?? []).map((s) => s.draftKey),
+  ]);
+  const spec = readJsonStorage<Record<string, unknown>>(modelSpecOverrideKey(mainPath)) ?? {};
+  let specChanged = false;
+  for (const k of keys) {
+    if (Object.prototype.hasOwnProperty.call(spec, k)) {
+      delete spec[k];
+      specChanged = true;
+    }
+  }
+  if (specChanged) writeJsonStorage(modelSpecOverrideKey(mainPath), spec);
+
+  const pairings = readJsonStorage<Record<string, DraftPairing>>(KEYS.draftPairings) ?? {};
+  if (Object.prototype.hasOwnProperty.call(pairings, key)) {
+    delete pairings[key];
+    writeJsonStorage(KEYS.draftPairings, pairings);
+  }
+  return true;
+}
+
 export function loadModelSpecOverride(mainPath: string): ModelSpecOverride | null {
   if (!mainPath) return null;
   return readJsonStorage<ModelSpecOverride>(modelSpecOverrideKey(mainPath));
@@ -670,7 +780,10 @@ export function resolveExternalDraftPath(
       if (!draftRolesMatch(draftRole, draftRoleFromModel(draft))) return null;
       if (mode === "user") return draft.path;
       const score = scoreDraftPair(main, draft, draftRole);
-      if (mode === "restored" && score < MIN_DRAFT_PAIR_SCORE) return null;
+      // The pairing score is only a suggestion for MTP: an explicit head is
+      // user-owned, and its GGUF `general.name` often has nothing to do with the
+      // target filename. Restore it; launch validates the path.
+      if (mode === "restored" && draftRole !== "external_mtp" && score < MIN_DRAFT_PAIR_SCORE) return null;
       if (mode === "auto" && score < HIGH_DRAFT_PAIR_SCORE) return null;
       return draft.path;
     }

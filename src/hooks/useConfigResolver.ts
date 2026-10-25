@@ -11,9 +11,12 @@ import { paramsVisibilityFingerprint, resolveParamDefaultValue } from "../lib/pa
 import {
   isSpecProfileParamKey,
   isObsoleteSpecParamKey,
+  DFLASH_DRAFT_MODEL,
+  MTP_DRAFT_MODEL,
   SPEC_PROFILE_PARAM_KEYS,
   stripObsoleteSpecParams,
 } from "../lib/specProfiles";
+import { discardStagedDraftPairing, getStagedDraftValues, stageDraftValue } from "../lib/specDraft";
 import {
   modelSpecOverrideKey,
   readJsonStorage,
@@ -53,6 +56,8 @@ const normalizeValue = (value: unknown): unknown => {
 };
 
 const SPEC_KEY_SET = new Set<string>(SPEC_PROFILE_PARAM_KEYS);
+/** Manual head keys — staged until the engine reaches RUNNING. */
+const DRAFT_HEAD_KEY_SET = new Set<string>([MTP_DRAFT_MODEL, DFLASH_DRAFT_MODEL]);
 
 interface UseConfigResolverOptions {
   model: ModelEntry | null;
@@ -147,6 +152,15 @@ export function useConfigResolver({
       Object.entries(resolved).map(([k, v]) => [k, normalizeValue(v)]),
     );
 
+    // A manual head picked in this session but not yet confirmed by a RUNNING engine
+    // lives only in memory; overlay it so the panel and launch see the selection.
+    const staged = modelPath ? getStagedDraftValues(modelPath) : undefined;
+    if (staged) {
+      for (const [k, v] of Object.entries(staged)) {
+        if (k in normalized) normalized[k] = normalizeValue(v);
+      }
+    }
+
     setConfig(normalized);
   }, [cleanedParams, backendType, modelPath, policyId, factoryDefaults, hydrateLockRef]);
 
@@ -192,6 +206,12 @@ export function useConfigResolver({
       const normalizedValue = normalizeValue(value);
       setConfig((prev) => ({ ...prev, [key]: normalizedValue }));
 
+      // Manual draft heads persist only after a successful load (see specDraft staging).
+      if (modelPath && DRAFT_HEAD_KEY_SET.has(key)) {
+        stageDraftValue(modelPath, key, normalizedValue);
+        return;
+      }
+
       if (modelPath && SPEC_KEY_SET.has(key)) {
         const prev = readJsonStorage<ModelSpecOverride>(modelSpecOverrideKey(modelPath)) ?? {};
         writeJsonStorage(modelSpecOverrideKey(modelPath), { ...prev, [key]: normalizedValue });
@@ -220,6 +240,10 @@ export function useConfigResolver({
       const modelPatch: Record<string, unknown> = {};
       const catalogPatch: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(normalized)) {
+        if (modelPath && DRAFT_HEAD_KEY_SET.has(k)) {
+          stageDraftValue(modelPath, k, v);
+          continue;
+        }
         if (SPEC_KEY_SET.has(k)) modelPatch[k] = v;
         else catalogPatch[k] = v;
       }
@@ -236,7 +260,10 @@ export function useConfigResolver({
 
   const clearOverrides = useCallback(() => {
     clearAllProfiles(backendType);
-    if (modelPath) removeStorage(modelSpecOverrideKey(modelPath));
+    if (modelPath) {
+      discardStagedDraftPairing(modelPath);
+      removeStorage(modelSpecOverrideKey(modelPath));
+    }
     loadConfig();
   }, [backendType, modelPath, loadConfig]);
 

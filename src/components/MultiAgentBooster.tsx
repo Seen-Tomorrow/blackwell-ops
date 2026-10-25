@@ -236,7 +236,11 @@ export default function MultiAgentBooster({
         speed: speedBoost,
         brains,
         think,
-        capabilities,
+        // A manual MTP pick is not gated by detection (see mtpSelectable below).
+        capabilities:
+          speedBoost === "mtp" && !capabilities.includes("mtp")
+            ? [...capabilities, "mtp" as const]
+            : capabilities,
         dflashLibraryReady,
         dflashGettable,
         kvQuantValues,
@@ -321,8 +325,14 @@ export default function MultiAgentBooster({
   const showMtpBakedIn = showMtp && !mtpHasHead && mtpBakedIn;
 
   const mtpAvailable = capSet.has("mtp");
+  /**
+   * MTP is a manual lane, like DSpark: a baked-in target or a user-picked
+   * `mtp-*.gguf` head. Detection only decides the label — launch validates the
+   * head, so a missing capability must not hide the choice.
+   */
+  const mtpSelectable = true;
   const dflashAvailable = dflashLibraryReady || dflashGettable || capSet.has("dflash");
-  const heroSpecCapable = capSet.has("mtp") || capSet.has("dflash");
+  const heroSpecCapable = mtpSelectable || capSet.has("dflash");
   const heroSpecAllowed = autoGoal !== "agents";
   const heroSpecAvailable = heroSpecAllowed && heroSpecCapable;
 
@@ -365,7 +375,7 @@ export default function MultiAgentBooster({
       const m = parseSpecTypeBoostMark("draft-mtp");
       m.blurb = mtpAvailable
         ? m.blurb
-        : "MTP not available for this model";
+        : "MTP — baked-in target or pick an external mtp-*.gguf head";
       marks.push(m);
     }
     {
@@ -419,9 +429,7 @@ export default function MultiAgentBooster({
 
   const heroSpecOptions = (["off", "mtp", "dflash", "dspark"] as const).map((id) => {
     const mark = boostMarks.find((m) => m.id === id || (id === "off" && m.id === "smart"));
-    const disabled =
-      (id === "mtp" && !mtpAvailable)
-      || (id === "dflash" && !dflashAvailable);
+    const disabled = id === "dflash" && !dflashAvailable;
     return {
       id,
       label: id === "off" ? "OFF" : (mark?.label ?? id.toUpperCase()),
@@ -844,14 +852,13 @@ export default function MultiAgentBooster({
                 onSpeedBoost(id as SpeedBoostId);
               }}
               options={boostMarks.map((m) => {
-                const mtpMissing = m.id === "mtp" && !mtpAvailable;
-                const dflashMissing = m.id === "dflash" && !dflashAvailable;
-                const needCap = mtpMissing || dflashMissing;
+                // DFlash keeps its library gate; MTP is a manual lane (see mtpSelectable).
+                const needCap = m.id === "dflash" && !dflashAvailable;
                 const available =
                   m.id === "smart" ||
                   m.id === "off" ||
                   m.id === "dspark" ||
-                  (m.id === "mtp" && mtpAvailable) ||
+                  m.id === "mtp" ||
                   (m.id === "dflash" && dflashAvailable) ||
                   m.id.startsWith("raw:");
                 return {

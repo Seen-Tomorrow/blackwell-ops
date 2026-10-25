@@ -37,6 +37,7 @@ import {
 import { dispatchAppEvent, EVENTS, consumePendingConfigSubTab, type NavigateConfigDetail } from "./lib/events";
 import type { ConfigSubTab } from "./lib/appNav";
 import { isSetupNavTabAllowed } from "./lib/setupGuide";
+import { commitStagedDraftPairing, discardStagedDraftPairing } from "./lib/specDraft";
 import { useLibrarySchedule } from "./hooks/useLibrarySchedule";
 import type { ModelScanPatch } from "./lib/libraryJobs";
 
@@ -64,6 +65,7 @@ function App() {
   const [pathScans, setPathScans] = useState<ModelPathScan[] | null>(null);
   const [catalogLoaded, setCatalogLoaded] = useState(false);
   const [stack, setStack] = useState<StackEntry[]>([]);
+  const stackRef = useRef<StackEntry[]>([]);
   // Engine logs live in `logSlotStore`, not in App state. They used to be held here,
   // which meant every 25 ms `engine-log-batch` created a new Map, re-rendered App, and
   // reconciled the entire mounted tree — with the LOGS tab closed. See logSlotStore.ts.
@@ -394,7 +396,7 @@ function App() {
     }
   });
 
-  useTauriListen<{ slot?: number; alias?: string; reason?: string; kind?: string }>("engine-load-failed", (payload) => {
+  useTauriListen<{ slot?: number; alias?: string; modelPath?: string; reason?: string; kind?: string }>("engine-load-failed", (payload) => {
     if (payload?.reason) {
       const raw = payload.reason;
       // `kind` is authoritative when the backend could classify the failure. The regex
@@ -407,6 +409,15 @@ function App() {
         ? `${alias}OOM — ${raw.replace(/\s+/g, " ").trim().slice(0, 280)}`
         : raw;
       dispatchAppEvent(EVENTS.launchError, { message, durationMs: isOom ? 14000 : undefined });
+    }
+    // A failed load must not leave the attempted manual head glued to the model.
+    const failedPath =
+      payload?.modelPath
+      ?? (payload?.slot !== undefined
+        ? stackRef.current.find((s) => s.idx === payload.slot)?.model_path
+        : undefined);
+    if (failedPath && discardStagedDraftPairing(failedPath)) {
+      dispatchAppEvent(EVENTS.paramConfigChanged);
     }
     if (payload?.slot !== undefined) {
       dispatchAppEvent(EVENTS.slotCleared, { slot: payload.slot });
@@ -462,12 +473,27 @@ function App() {
   });
 
   useTauriListen<StackEntry[]>("stack-changed", (payload) => {
+    // A staged manual draft head sticks only when its engine actually reaches RUNNING.
+    const prevById = new Map(stackRef.current.map((s) => [s.idx, s]));
+    for (const entry of payload) {
+      if (
+        entry.status === "RUNNING"
+        && entry.model_path
+        && prevById.get(entry.idx)?.status !== "RUNNING"
+      ) {
+        commitStagedDraftPairing(entry.model_path);
+      }
+    }
+    stackRef.current = payload;
     setStack(payload);
   });
 
   useEffect(() => {
     invoke<StackEntry[]>("get_stack_status")
-      .then((data) => setStack(data))
+      .then((data) => {
+        stackRef.current = data;
+        setStack(data);
+      })
       .catch(() => {});
   }, []);
 
@@ -483,6 +509,10 @@ function App() {
         });
         return result;
       } catch (err) {
+        // A rejected launch (spawn/validation) never confirmed the staged head.
+        if (config?.model_path && discardStagedDraftPairing(config.model_path)) {
+          dispatchAppEvent(EVENTS.paramConfigChanged);
+        }
         console.error("Launch failed:", err);
         throw err;
       }

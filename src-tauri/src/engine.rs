@@ -155,7 +155,11 @@ fn strip_spec_extra_params(config: &mut crate::types::EngineConfig) {
     });
 }
 
-/// Drop stale spec keys from launch payload when the UI group is off or MTP is invalid for `-m`.
+/// Drop stale spec keys from launch payload when the UI group is off.
+///
+/// MTP with no head is **not** treated as stale here: it is a real user selection
+/// (the lane is manual), and `validate_spec_launch` reports it with a clear message.
+/// Stripping it here would silently launch the target without speculative decoding.
 fn sanitize_spec_extra_params(
     config: &mut crate::types::EngineConfig,
     user_params: &[crate::types::UserEditedTemplateParam],
@@ -165,9 +169,8 @@ fn sanitize_spec_extra_params(
     let has_spec_type = config
         .get_param_str("spec_type")
         .is_some_and(|t| !t.trim().is_empty() && !t.eq_ignore_ascii_case("none"));
-    let stale_mtp = mtp_spec_is_stale(config, &config.model_path);
 
-    if stale_mtp || (!group_active && !has_spec_type) {
+    if !group_active && !has_spec_type {
         strip_spec_extra_params(config);
     }
 }
@@ -231,8 +234,7 @@ fn validate_spec_launch_with_catalog(
     if spec_type.eq_ignore_ascii_case("draft-mtp") && !draft_set {
         if !model_has_embedded_mtp(&config.model_path) {
             return Err(
-                "MTP speculative decoding requires a baked-in MTP model — use DFlash or turn spec off."
-                    .into(),
+                "This needs a model with MTP baked-in or an external MTP draft.".into(),
             );
         }
         return Ok(());

@@ -55,8 +55,8 @@ import {
   hasReadyDflashDraft,
   resolveExternalDraftPath,
   resolveDraftPathLabel,
-  saveDraftPairing,
   specCapabilitiesForMain,
+  stageDraftPairing,
   type SpecCapability,
 } from "../lib/specDraft";
 import { mainMaySupportDflash } from "../lib/dflashGetDraft";
@@ -384,12 +384,20 @@ export function useCockpit({
           }),
         );
 
+      // MTP is a manual lane (baked-in target or user-picked head). An explicit
+      // MTP pick must survive planning even when detection found no head pair;
+      // auto goals still use the detected list.
+      const planCapabilities =
+        speed === "mtp" && !specCapabilities.includes("mtp")
+          ? [...specCapabilities, "mtp" as const]
+          : specCapabilities;
+
       const plan = resolveFullAutoPlan({
         codingMode: mode,
         speed,
         brains: brainsPick,
         think: thinkPick,
-        capabilities: specCapabilities,
+        capabilities: planCapabilities,
         dflashLibraryReady: draftReadyNow,
         dflashGettable,
         kvQuantValues,
@@ -466,11 +474,11 @@ export function useCockpit({
             : null);
         if (resolved) {
           updateParam(applyDraftKey, resolved);
-          saveDraftPairing(model.path, cliType, resolved);
+          stageDraftPairing(model.path, cliType, resolved);
         } else if (opts?.preferredDraftPath) {
           // Explicit path (Change draft) even if not scored as the method's draft role
           updateParam(applyDraftKey, opts.preferredDraftPath);
-          saveDraftPairing(model.path, cliType, opts.preferredDraftPath);
+          stageDraftPairing(model.path, cliType, opts.preferredDraftPath);
         }
       }
 

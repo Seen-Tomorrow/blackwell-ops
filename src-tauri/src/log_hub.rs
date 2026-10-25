@@ -478,9 +478,11 @@ impl LogHub {
                         }
                     }
 
-                    if !stdout_only
-                        && !model_ready.load(Ordering::Acquire)
+                    if !model_ready.load(Ordering::Acquire)
                         && !load_failed
+                        // stdout is not scanned for generic fatal prose (false positives),
+                        // but an engine assertion is always fatal wherever it is printed.
+                        && (!stdout_only || Self::is_engine_assertion(&cleaned))
                         && Self::is_fatal_load_error(&cleaned)
                     {
                         load_failed = true;
@@ -929,6 +931,13 @@ impl LogHub {
             && lower.contains("abort")
     }
 
+    /// Engine assertion abort — fatal on either pipe (llama.cpp prints these to stderr,
+    /// but some builds/log paths can surface them on stdout).
+    fn is_engine_assertion(line: &str) -> bool {
+        let lower = line.to_lowercase();
+        lower.contains("ggml_assert") || lower.contains("assertion failed")
+    }
+
     /// True only for explicit engine-reported failures — not normal CUDA_Host buffer info lines.
     fn is_fatal_load_error(line: &str) -> bool {
         let lower = line.to_lowercase();
@@ -954,6 +963,12 @@ impl LogHub {
             || lower.contains("error loading model")
             || lower.contains("unable to load model")
         {
+            return true;
+        }
+
+        // Engine assertions abort the process mid-load. Treat the assertion itself as
+        // the fatal line so the reason is captured before exit, not a later benign line.
+        if Self::is_engine_assertion(line) {
             return true;
         }
 
@@ -989,6 +1004,23 @@ impl LogHub {
         }
         if lower.contains("model loading error") {
             return "Model loading error — check VRAM, ctx size, and launch flags".to_string();
+        }
+        // GGML_ASSERT(...) failed — prefer the quoted condition, which is the human
+        // explanation ("MTP input row width must match the target h_nextn width").
+        if lower.contains("ggml_assert") || lower.contains("assertion failed") {
+            // ASCII lower keeps byte offsets aligned with the original line.
+            let ascii = line.to_ascii_lowercase();
+            let marker = ascii.find("ggml_assert").unwrap_or(0);
+            let after = &line[marker..];
+            if let Some(open) = after.find('"') {
+                if let Some(close) = after[open + 1..].find('"') {
+                    let message = after[open + 1..open + 1 + close].trim();
+                    if !message.is_empty() {
+                        return message.to_string();
+                    }
+                }
+            }
+            return "Model load failed — engine assertion (GGML_ASSERT)".to_string();
         }
         let stripped = crate::engine_utils::strip_ansi(line)
             .chars()

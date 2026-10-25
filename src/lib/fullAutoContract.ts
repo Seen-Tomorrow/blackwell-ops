@@ -94,12 +94,18 @@ export function resolveFullAutoDecision(
 ): FullAutoDecision {
   const goalPlan = FULL_AUTO_GOAL_PLANS[input.goal];
   const requestedSpeed = input.speedOverride ?? goalPlan.speed;
+  // An explicit MTP pick is manual (baked-in target or user-picked head) and
+  // must survive planning; auto goals still use the detected capability list.
+  const planCapabilities =
+    input.speedOverride === "mtp" && !input.capabilities.includes("mtp")
+      ? [...input.capabilities, "mtp" as const]
+      : input.capabilities;
   const plan = resolveFullAutoPlan({
     codingMode: goalPlan.codingMode,
     speed: requestedSpeed,
     brains: goalPlan.brains,
     think: goalPlan.think,
-    capabilities: input.capabilities,
+    capabilities: planCapabilities,
     dflashLibraryReady: input.dflashLibraryReady,
     dflashGettable: input.dflashGettable,
     kvQuantValues: input.kvQuantValues,
@@ -111,7 +117,7 @@ export function resolveFullAutoDecision(
       ? plan.speed
       : "off";
 
-  const mtpAvailable = input.capabilities.includes("mtp");
+  const mtpAvailable = planCapabilities.includes("mtp");
   const bakedIn = Boolean(input.hasBakedMtp && mtpAvailable);
   const savedMtp = Boolean(
     mtpAvailable

@@ -151,7 +151,9 @@ function filterSpecTypeValues(
   caps: SpecCapability[],
   essentialsSimpleMode?: boolean,
 ): (string | number)[] {
-  const allowed = new Set<string>();
+  // draft-mtp is a manual lane: baked-in nextn or a user-picked external head.
+  // Detection only labels it; launch validates the head, so never hide the value.
+  const allowed = new Set<string>(["draft-mtp"]);
   for (const cap of caps) {
     if (essentialsSimpleMode && cap !== "mtp" && cap !== "dflash") continue;
     allowed.add(SPEC_TYPE_BY_CAPABILITY[cap]);

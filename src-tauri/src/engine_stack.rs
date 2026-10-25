@@ -962,10 +962,11 @@ impl EngineStack {
                 slot.pid,
                 slot.split_mode.clone(),
                 slot.port,
+                slot.model_path.clone(),
             )
         };
 
-        let (alias, pid, split_mode, port) = snapshot;
+        let (alias, pid, split_mode, port, model_path) = snapshot;
 
         crate::fusion::stop_brain(slot_idx).await;
 
@@ -987,6 +988,7 @@ impl EngineStack {
             &serde_json::json!({
                 "slot": slot_idx,
                 "alias": alias,
+                "modelPath": model_path,
                 "reason": user_reason,
                 // Typed discriminant for the frontend (`BlackwellError::kind`). The load
                 // path reports through this event rather than an IPC rejection, so the
