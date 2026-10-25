@@ -127,8 +127,7 @@ pub struct ProfileCheck {
 /// Pinned GitHub release for the portable Foundry toolchain bundle.
 pub const TOOLCHAIN_RELEASE_TAG: &str = "toolchain";
 pub const TOOLCHAIN_GITHUB_REPO: &str = "Seen-Tomorrow/blackwell-ops";
-pub const TOOLCHAIN_ARCHIVE_NAME: &str = "toolchain.7z";
-pub const TOOLCHAIN_ARCHIVE_PARTS: &[&str] = &[TOOLCHAIN_ARCHIVE_NAME];
+
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ToolchainInstallInfo {
@@ -1344,10 +1343,13 @@ pub fn embedded_manifest() -> Result<ToolchainManifest, String> {
 
 /// `""`/`full` fall back to the full pack so older call sites keep working.
 pub fn pack_def(pack: &str) -> Result<ToolchainPackDef, String> {
-    let key = match pack.trim().to_lowercase().as_str() {
-        "" | "runtime" | "toolchain" => "full".to_string(),
-        other => other.to_string(),
-    };
+    let key = pack.trim().to_lowercase();
+    if key.is_empty() {
+        return Err(
+            "No toolchain pack specified. Expected a pack id from the embedded manifest: runtime-<cuda> or build."
+                .to_string(),
+        );
+    }
     let manifest = embedded_manifest()?;
     manifest
         .packs
@@ -1863,9 +1865,10 @@ pub fn install_info(driver_major: Option<u32>) -> Result<ToolchainInstallInfo, S
         archive_cache_dir: cache_dir.to_string_lossy().to_string(),
         toolchain_dir: tc_dir.to_string_lossy().to_string(),
         release_url: toolchain_release_url(),
-        archive_name: pack_archive_name("full")
-            .unwrap_or_else(|_| TOOLCHAIN_ARCHIVE_NAME.to_string()),
-        archive_parts: TOOLCHAIN_ARCHIVE_PARTS.iter().map(|s| (*s).to_string()).collect(),
+        archive_name: pack_archive_name("build")
+            .unwrap_or_else(|_| "toolchain-build.7z".to_string()),
+        archive_parts: vec![pack_archive_name("build")
+            .unwrap_or_else(|_| "toolchain-build.7z".to_string())],
         compressed_size_label: "~1.15 GB".to_string(),
         uncompressed_size_label: "~4.2 GB".to_string(),
         manifest_present: manifest_path().exists(),

@@ -469,7 +469,7 @@ impl DownloadManager {
         }
 
         let pack_key = pack
-            .unwrap_or_else(|| "full".to_string())
+            .unwrap_or_else(|| "build".to_string())
             .trim()
             .to_lowercase();
 
@@ -578,7 +578,7 @@ impl DownloadManager {
         }
 
         let pack_key = pack
-            .unwrap_or_else(|| "full".to_string())
+            .unwrap_or_else(|| "build".to_string())
             .trim()
             .to_lowercase();
         let archive_path = crate::foundry_toolchain::archive_for_reextract(&pack_key)?;
@@ -2179,7 +2179,7 @@ async fn finalize_toolchain_extract_worker(
         dm.tasks
             .get(task_id)
             .map(|t| t.quant_type.clone())
-            .unwrap_or_else(|| "full".to_string())
+            .unwrap_or_else(|| "build".to_string())
     };
     let archive = archive_path.to_string();
     let result = tokio::task::spawn_blocking(move || {

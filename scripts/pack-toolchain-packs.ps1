@@ -175,25 +175,9 @@ if ($do_build) {
     Write-Host ("[toolchain-pack] {0}  {1:N1} MB  sha256={2}" -f $asset, ($file.Length / 1MB), $built['build'].sha256) -ForegroundColor Green
 }
 
-# Preserve the full pack entry if the archive is present locally; otherwise carry the old one.
-$full_asset = 'toolchain.7z'
-$full_archive = Join-Path $root "work\$full_asset"
-if (Test-Path -LiteralPath $full_archive) {
-    $full_file = Get-Item -LiteralPath $full_archive
-    $built['full'] = [ordered]@{
-        id        = 'full'
-        kind      = 'full'
-        asset     = $full_asset
-        sha256    = (Get-Sha256 $full_archive)
-        sizeBytes = [long]$full_file.Length
-    }
-} elseif ($existing['full']) {
-    $built['full'] = $existing['full']
-}
-
 # Stable order, merge built entries over existing ones so a `-Packs build` run keeps the
 # runtime digests instead of dropping them.
-$order = @('runtime-13.4', 'runtime-12.8', 'build', 'full')
+$order = @('runtime-13.4', 'runtime-12.8', 'build')
 $pack_entries = @()
 foreach ($id in $order) {
     if ($built.ContainsKey($id)) { $pack_entries += $built[$id] }

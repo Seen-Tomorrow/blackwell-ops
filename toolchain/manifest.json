@@ -64,13 +64,6 @@
       "asset": "toolchain-build-v4.7z",
       "sha256": "56643fc7c4611f8430a5e8ebb2edb7bf353fb6cc38c2918b50a2917a60a13c32",
       "sizeBytes": 383952673
-    },
-    {
-      "id": "full",
-      "kind": "full",
-      "asset": "toolchain.7z",
-      "sha256": "facbbb21b25a42c6ef2c7bef084962e2c4504be0c94a841a2addfa97989987ca",
-      "sizeBytes": 1238194815
     }
   ]
 }
