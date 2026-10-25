@@ -267,6 +267,10 @@ const FORCE_DEDUP_WINDOW: Duration = Duration::from_secs(60);
 /// Hard hourly cap on real API calls. Background (non-force) fetches serve stale cache
 /// once we're within 2 of the cap; user-initiated force fetches always proceed.
 const BUDGET_MAX_PER_HOUR: usize = 45;
+/// A failed fetch is not cached by GitHub, so without this every poll (5-15 s) retried it.
+/// Ordinary failures back off 10 minutes; 403/429 rate limits back off 15 minutes.
+const FAILURE_BACKOFF: Duration = Duration::from_secs(10 * 60);
+const RATE_LIMIT_BACKOFF: Duration = Duration::from_secs(15 * 60);
 
 fn github_cache_dir() -> PathBuf {
     crate::config::cache_dir().join("github")
@@ -321,6 +325,8 @@ struct GatewayMem {
     locks: HashMap<String, Arc<Mutex<()>>>,
     recent: HashMap<String, (Instant, serde_json::Value)>,
     budget: Vec<Instant>,
+    /// url -> (failed_at, cooldown, message): suppress retries of a known-bad endpoint.
+    failures: HashMap<String, (Instant, Duration, String)>,
 }
 
 static GATEWAY_MEM: LazyLock<PlMutex<GatewayMem>> = LazyLock::new(|| {
@@ -328,6 +334,7 @@ static GATEWAY_MEM: LazyLock<PlMutex<GatewayMem>> = LazyLock::new(|| {
         locks: HashMap::new(),
         recent: HashMap::new(),
         budget: Vec::new(),
+        failures: HashMap::new(),
     })
 });
 
@@ -425,6 +432,21 @@ async fn github_get_json_cached(
         }
     }
 
+    // 3b. Failure cooldown: a URL that just failed (offline, 403, 429) must not be retried
+    // at poll rate. Serve stale cache when we have one; otherwise fail fast.
+    {
+        let g = GATEWAY_MEM.lock();
+        if let Some((at, cooldown, msg)) = g.failures.get(&url) {
+            if at.elapsed() < *cooldown {
+                if let Some(e) = read_github_cache(&url) {
+                    dev_github_log("[github] FAILURE COOLDOWN — serving stale cache");
+                    return Ok(e.body);
+                }
+                return Err(format!("{msg} (retry later)"));
+            }
+        }
+    }
+
     // 4. Budget: background (non-force) calls yield to stale cache when near the cap.
     if !force && budget_remaining() <= 2 {
         if let Some(e) = read_github_cache(&url) {
@@ -436,7 +458,31 @@ async fn github_get_json_cached(
     // 5. Conditional GET (ETag): 304 refreshes TTL cheaply, 200 stores the new body.
     let prior = read_github_cache(&url);
     let (body, new_etag) =
-        github_get_json_conditional(&url, prior.as_ref().and_then(|e| e.etag.clone())).await?;
+        match github_get_json_conditional(&url, prior.as_ref().and_then(|e| e.etag.clone())).await {
+            Ok(v) => v,
+            Err(e) => {
+                let lower = e.to_ascii_lowercase();
+                let cooldown = if e.contains("403")
+                    || e.contains("429")
+                    || lower.contains("rate limit")
+                {
+                    RATE_LIMIT_BACKOFF
+                } else {
+                    FAILURE_BACKOFF
+                };
+                {
+                    let mut g = GATEWAY_MEM.lock();
+                    g.failures.insert(url.clone(), (Instant::now(), cooldown, e.clone()));
+                }
+                if let Some(entry) = prior {
+                    dev_github_log(&format!(
+                        "[github] LIVE FAILED ({e}) — serving stale cache"
+                    ));
+                    return Ok(entry.body);
+                }
+                return Err(e);
+            }
+        };
 
     // 6. Persist: 200 → new body+etag; 304 → prior body, refreshed TTL.
     let entry = GitHubCacheEntry {
@@ -447,6 +493,7 @@ async fn github_get_json_cached(
     write_github_cache(&url, &entry);
     {
         let mut g = GATEWAY_MEM.lock();
+        g.failures.remove(&url);
         g.recent.insert(url.clone(), (Instant::now(), body.clone()));
     }
 

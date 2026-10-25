@@ -91,7 +91,7 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
     const timer = window.setInterval(() => {
       if (document.hidden) return;
       void refresh();
-    }, 5000);
+    }, 15000);
     return () => window.clearInterval(timer);
   }, [refresh]);
 

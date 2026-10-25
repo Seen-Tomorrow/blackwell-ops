@@ -65,7 +65,7 @@ export default function SoftwareDownloads() {
     const timer = window.setInterval(() => {
       if (document.hidden) return;
       void refresh();
-    }, 6000);
+    }, 15000);
     return () => window.clearInterval(timer);
   }, [refresh]);
 
