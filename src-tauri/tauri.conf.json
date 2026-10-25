@@ -43,7 +43,7 @@
         "type": "embedBootstrapper"
       },
       "nsis": {
-        "compression": "none",
+        "compression": "lzma",
         "template": "./nsis/installer.nsi",
         "languages": ["English"],
         "customLanguageFiles": {

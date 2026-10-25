@@ -437,6 +437,58 @@ function Invoke-PackProviderArchives {
     }
 }
 
+# The installer carries the EDGE seed only (docs/ENGINE-PACKS.md). This asserts against the
+# STAGING tree, not the built exe: with NSIS compression enabled the payload is no longer
+# listable as plain paths, and a stale runtime-bundle/ is exactly how engines leak back in.
+function Assert-InstallerSeed {
+    param(
+        [Parameter(Mandatory = $true)][string]$InstallerPath,
+        [Parameter(Mandatory = $true)][string]$BundleRoot
+    )
+    $staged = @()
+    Get-ChildItem -LiteralPath $BundleRoot -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+        $provider = $_
+        Get-ChildItem -LiteralPath $provider.FullName -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+            if (Test-Path -LiteralPath (Join-Path $_.FullName 'llama-server.exe')) {
+                $staged += ('{0}/{1}' -f $provider.Name, $_.Name)
+            }
+        }
+    }
+    if ($staged.Count -eq 0) {
+        throw 'runtime-bundle has no engine profile. Run scripts\prepare-release-runtime.ps1 first.'
+    }
+
+    $policy_path = Join-Path $root 'scripts\distribution-policy.json'
+    $policy = Get-Content -LiteralPath $policy_path -Raw -Encoding UTF8 | ConvertFrom-Json
+    if (-not $policy.nsisCore) {
+        throw 'distribution-policy.json has no nsisCore map - cannot tell what belongs in the installer.'
+    }
+    $expected = @()
+    foreach ($prop in $policy.nsisCore.PSObject.Properties) {
+        foreach ($prof in @($prop.Value)) { $expected += ('{0}/{1}' -f $prop.Name, $prof) }
+    }
+    $unexpected = @($staged | Where-Object { $expected -notcontains $_ })
+    if ($unexpected.Count -gt 0) {
+        throw ("runtime-bundle has engine profile(s) the policy does not install: {0}. Policy: {1}. Delete runtime-bundle\ and re-run the prepare script." -f ($unexpected -join ', '), ($expected -join ', '))
+    }
+    $missing = @($expected | Where-Object { $staged -notcontains $_ })
+    if ($missing.Count -gt 0) {
+        throw ("runtime-bundle is missing installer profile(s) the policy requires: {0}" -f ($missing -join ', '))
+    }
+
+    $mb = [math]::Round((Get-Item -LiteralPath $InstallerPath).Length / 1MB, 1)
+    if ($mb -lt 100) {
+        throw "Installer is $mb MB - below the 100 MB floor; the engine seed or bin/ is missing."
+    }
+    if ($mb -gt 1100) {
+        throw "Installer is $mb MB - engine payload leaked in? Expected shell + bin/ + seed (docs/ENGINE-PACKS.md)."
+    }
+    if ($mb -gt 700) {
+        Write-Majestic "WARN: installer is $mb MB (> 700 MB). Revisit the EDGE seed once 3-arch engines land (docs/ENGINE-PACKS.md section 3)." -Color Yellow
+    }
+    Write-Majestic ("Installer assertion passed: {0} seed(s), {1} MB" -f $staged.Count, $mb) -Color Green
+}
+
 function Stage-InstallerForVariant {
     param(
         [string]$Version,
@@ -455,6 +507,7 @@ function Stage-InstallerForVariant {
     $core_name = if ($installer.Name -like 'CORE_*') { $installer.Name } else { "CORE_$($installer.Name)" }
     $dest_installer = Join-Path $OutRoot $core_name
     Copy-Item -LiteralPath $installer.FullName -Destination $dest_installer -Force
+    Assert-InstallerSeed -InstallerPath $dest_installer -BundleRoot (Join-Path $root 'src-tauri\runtime-bundle')
     Write-Majestic "Full installer staged: $core_name" -Color Green
     return $dest_installer
 }
