@@ -286,18 +286,11 @@ export default function FoundryToolchainPanel({
     ? checkByEnv[requiredProfile]
     : undefined;
 
-  if (compact) {
-    // The badge must describe the whole package, not just the required profile: reporting
-    // "ready" with a missing profile is what made it disagree with the expanded panel.
-    const allProfilesReady = info.profiles_ready >= info.profiles_total;
+  // Compact badge is only a summary for the nothing-to-do case. Anything less than fully
+  // ready must fall through to the full panel; a bare badge would leave no action to fix it.
+  if (compact && info.profiles_ready >= info.profiles_total && !info.pack_outdated) {
     return (
-      <div className="fnd-tc-ready type-tiny font-mono">
-        {info.pack_outdated
-          ? "Foundry package · reinstall needed"
-          : allProfilesReady
-            ? "✓ Foundry package ready"
-            : `Foundry package · ${info.profiles_ready}/${info.profiles_total} profiles ready`}
-      </div>
+      <div className="fnd-tc-ready type-tiny font-mono">✓ Foundry package ready</div>
     );
   }
 
