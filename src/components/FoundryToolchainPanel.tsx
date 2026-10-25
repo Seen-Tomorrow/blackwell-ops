@@ -1,25 +1,41 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+//! Foundry package + CUDA runtime panel.
+//!
+//! Two independent things, side by side: the CUDA runtime packs the engines launch with, and
+//! the Foundry package that compiles engines. Everything else (cache paths, archive names,
+//! per-profile build detail) is deliberately not surfaced.
+
+import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-shell";
-import { DEFAULT_BINARY_PROFILE, ENV_META, ENV_ORDER, NVIDIA_DRIVERS_URL, TOOLCHAIN_RELEASE_URL, type Env } from "../lib/foundry_constants";
-import type { DownloadStatus } from "../lib/types";
+
 import { useDownloadTasks } from "../hooks/useDownloadTasks";
-import DownloadProgressRow from "./DownloadProgressRow";
+import { DEFAULT_BINARY_PROFILE } from "../lib/foundry_constants";
+import type { DownloadTask } from "../lib/types";
 
 interface ProfileCheck {
   id: string;
-  label: string;
   cuda: string;
   vs_label: string;
   ready: boolean;
   missing: string[];
 }
 
-interface CachedToolchainArchive {
-  pack: string;
-  archive_name: string;
+interface RuntimeVersion {
+  id: string;
+  label: string;
+  cuda: string;
+  ready: boolean;
+  min_driver_major?: number | null;
+  driver_major?: number | null;
+  driver_ok: boolean;
+}
+
+interface PackOffering {
+  id: string;
+  kind: string;
+  cuda?: string | null;
+  asset: string;
   size_bytes: number;
-  location: "cache" | "download";
+  installed: boolean;
 }
 
 export interface ToolchainInstallInfo {
@@ -33,69 +49,37 @@ export interface ToolchainInstallInfo {
   uncompressed_size_label: string;
   manifest_present: boolean;
   runtime_ready: boolean;
-  /** Per-profile CUDA runtime + driver gate, from the embedded manifest. */
-  runtime_versions: {
-    id: string;
-    label: string;
-    cuda: string;
-    ready: boolean;
-    min_driver_major?: number | null;
-    driver_major?: number | null;
-    driver_ok: boolean;
-  }[];
-  /** Split pack registry: `runtime-<cuda>` / `build` / `full`. */
-  packs: {
-    id: string;
-    kind: string;
-    cuda?: string | null;
-    asset: string;
-    size_bytes: number;
-    installed: boolean;
-  }[];
-  /** x64 MSVC C runtime resolvable for every profile (app-local, toolchain, or system). */
+  runtime_versions: RuntimeVersion[];
+  packs: PackOffering[];
   msvc_crt_ready: boolean;
   msvc_crt_error?: string | null;
   profiles_ready: number;
   profiles_total: number;
   all_ready: boolean;
   profile_checks: ProfileCheck[];
-  cached_archives: CachedToolchainArchive[];
-  /** Manifest version inside the installed pack (0 = none installed). */
   pack_installed_version: number;
-  /** Manifest version this app expects. */
   pack_expected_version: number;
-  /** Installed pack predates this app — it may lack profiles we offer. */
   pack_outdated: boolean;
 }
 
 interface FoundryToolchainPanelProps {
-  /** Compact: ready state is one line; incomplete still shows full guide. */
   compact?: boolean;
-  /** Onboarding checklist — emphasize required one-click download. */
   onboarding?: boolean;
-  /** When set (e.g. Foundry confirm), onReadyChange reflects only this profile. */
-  requiredProfile?: Env;
+  requiredProfile?: string;
   onReadyChange?: (ready: boolean) => void;
   onInstallStatusChange?: (status: { foundryReady: boolean; runtimeReady: boolean }) => void;
 }
 
-const ACTIVE_TOOLCHAIN_STATUSES: DownloadStatus[] = [
-  "queued",
-  "downloading",
-  "paused",
-  "scanning",
-  "failed",
-];
+const ACTIVE_STATUSES = ["queued", "downloading", "paused", "scanning"];
 
-function profileReadyForBuild(
-  checks: ProfileCheck[],
-  requiredProfile?: Env,
-): boolean {
-  if (!requiredProfile) {
-    return checks.length > 0 && checks.every((c) => c.ready);
-  }
-  const key = requiredProfile.toLowerCase();
-  return checks.find((c) => c.id.toLowerCase() === key)?.ready ?? false;
+function formatSize(bytes: number): string {
+  if (!bytes) return "";
+  const mb = Math.round(bytes / (1024 * 1024));
+  return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb} MB`;
+}
+
+function taskForPack(tasks: DownloadTask[], pack: string): DownloadTask | undefined {
+  return tasks.find((t) => t.quantType === pack || t.quantType === `toolchain:${pack}`);
 }
 
 export default function FoundryToolchainPanel({
@@ -106,641 +90,221 @@ export default function FoundryToolchainPanel({
   onInstallStatusChange,
 }: FoundryToolchainPanelProps) {
   const [info, setInfo] = useState<ToolchainInstallInfo | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-  const [showManual, setShowManual] = useState(false);
-  const toolchainDownloads = useDownloadTasks("toolchain");
-
-  // A task the user explicitly cancelled (backend sets error = "Cancelled") is treated as
-  // absent — it must not keep the DOWNLOAD button disabled or linger as a fake "failed".
-  const isCancelled = (t: { status: string; error?: string | null }) =>
-    t.status === "failed" && t.error === "Cancelled";
-  const activeTask = toolchainDownloads.find(
-    (t) => ACTIVE_TOOLCHAIN_STATUSES.includes(t.status) && !isCancelled(t),
-  );
-  const busyTask = toolchainDownloads.find(
-    (t) =>
-      ["queued", "downloading", "paused", "scanning"].includes(t.status) && !isCancelled(t),
-  );
-  const downloading = Boolean(busyTask);
-
-  // Onboarding installs ONLY the CUDA runtime for the seeded profile: the engine ships in the
-  // installer, and the build tools exist to compile, not to launch. Foundry keeps the full pack.
-  const onboardingCuda = ENV_META[DEFAULT_BINARY_PROFILE].cuda;
-  const runtimePack = info?.packs?.find((p) => p.kind === "runtime" && p.cuda === onboardingCuda);
-  const onboardingPackId = onboarding ? runtimePack?.id : undefined;
-  // Onboarding installs the CUDA runtime; this panel installs the Foundry build pack. There is
-  // no "full" pack any more (docs/ENGINE-PACKS.md) — both consumers have their own split pack.
-  const buildPack = info?.packs?.find((p) => p.kind === "build");
-  const downloadSizeLabel = onboarding
-    ? runtimePack
-      ? `${Math.round(runtimePack.size_bytes / 1048576)} MB`
-      : ""
-    : buildPack
-      ? `${Math.round(buildPack.size_bytes / 1048576)} MB`
-      : "";
-  const installActionLabel = onboarding
-    ? "DOWNLOAD CUDA RUNTIME"
-    : `INSTALL FOUNDRY PACKAGE · ${downloadSizeLabel}`;
-  // Driver gate for the seeded profile: downloading 383 MB of CUDA runtime for a driver that
-  // cannot initialise it is a wasted download and a failed first launch.
-  const seeded = info?.runtime_versions?.find((v) => v.id === DEFAULT_BINARY_PROFILE);
-  const driverBlocked = Boolean(onboarding && seeded && !seeded.driver_ok);
+  const [error, setError] = useState<string | null>(null);
+  const tasks = useDownloadTasks("toolchain");
 
   const refresh = useCallback(async () => {
-    setLoading(true);
-    setActionError(null);
     try {
       const data = await invoke<ToolchainInstallInfo>("foundry_get_toolchain_install_info");
       setInfo(data);
-      onReadyChange?.(profileReadyForBuild(data.profile_checks, requiredProfile));
-      onInstallStatusChange?.({
-        foundryReady: data.all_ready,
-        runtimeReady: data.runtime_ready,
-      });
     } catch (e) {
-      setActionError(String(e));
-      onReadyChange?.(false);
-    } finally {
-      setLoading(false);
-    }
-  }, [onReadyChange, onInstallStatusChange, requiredProfile]);
-
-  // Re-check in place while the driver gate blocks the step: nvidia-smi is spawned fresh per
-  // call, so a driver installed mid-session is picked up without an app restart. The user will
-  // alt-tab back from the NVIDIA installer, hence the focus listener.
-  useEffect(() => {
-    if (!driverBlocked) return;
-    const interval = window.setInterval(() => {
-      void refresh();
-    }, 3000);
-    const onFocus = () => {
-      void refresh();
-    };
-    window.addEventListener("focus", onFocus);
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener("focus", onFocus);
-    };
-  }, [driverBlocked, refresh]);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  const prevTaskStatusRef = useRef<Record<string, DownloadStatus>>({});
-  useEffect(() => {
-    for (const t of toolchainDownloads) {
-      const prev = prevTaskStatusRef.current[t.id];
-      if (prev && prev !== "completed" && t.status === "completed") {
-        void refresh();
-      }
-      prevTaskStatusRef.current[t.id] = t.status;
-    }
-  }, [toolchainDownloads, refresh]);
-
-  const handleDownload = useCallback(async () => {
-    setActionError(null);
-    try {
-      // Onboarding needs a CUDA runtime; Foundry needs the build pack (VS/SDK/cmake/nvcc).
-      const pack = onboardingPackId ?? "build";
-      await invoke("start_toolchain_download", { pack });
-    } catch (e) {
-      setActionError(String(e));
-    }
-  }, [onboardingPackId]);
-
-  const handleReextract = useCallback(async () => {
-    setActionError(null);
-    try {
-      const pack = onboardingPackId ?? "build";
-      await invoke("retry_toolchain_extract", { pack });
-    } catch (e) {
-      setActionError(String(e));
-    }
-  }, [onboardingPackId]);
-
-  const handleCancelDownload = useCallback(async () => {
-    if (!activeTask?.id) return;
-    setActionError(null);
-    try {
-      await invoke("cancel_download", { taskId: activeTask.id });
-    } catch (e) {
-      setActionError(String(e));
-    }
-  }, [activeTask?.id]);
-
-  const handleOpenRelease = useCallback(async () => {
-    setActionError(null);
-    try {
-      await open(info?.release_url ?? TOOLCHAIN_RELEASE_URL);
-    } catch (e) {
-      setActionError(`Failed to open release page: ${e}`);
-    }
-  }, [info?.release_url]);
-
-  const handleCopyCachePath = useCallback(async () => {
-    if (!info?.archive_cache_dir) return;
-    setActionError(null);
-    try {
-      await navigator.clipboard.writeText(info.archive_cache_dir);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
-    } catch (e) {
-      setActionError(`Failed to copy path: ${e}`);
-    }
-  }, [info?.archive_cache_dir]);
-
-  const handleOpenCacheFolder = useCallback(async () => {
-    setActionError(null);
-    try {
-      await invoke("foundry_open_toolchain_cache_folder");
-    } catch (e) {
-      setActionError(String(e));
+      setError(typeof e === "string" ? e : "Could not read the Foundry package state");
     }
   }, []);
 
-  if (loading && !info) {
-    return (
-      <div className="fnd-tc-loading type-tiny font-mono">
-        Checking portable toolchain…
-      </div>
-    );
-  }
+  useEffect(() => {
+    void refresh();
+    const timer = window.setInterval(() => {
+      void refresh();
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [refresh]);
+
+  const runtimeForProfile = useCallback(
+    (profile: string): RuntimeVersion | undefined =>
+      info?.runtime_versions.find((v: RuntimeVersion) => v.id === profile),
+    [info],
+  );
+
+  useEffect(() => {
+    if (!info || !onReadyChange) return;
+    if (requiredProfile) {
+      const check = info.profile_checks.find(
+        (c) => c.id.toLowerCase() === requiredProfile.toLowerCase(),
+      );
+      onReadyChange(Boolean(check?.ready));
+    } else {
+      onReadyChange(info.all_ready);
+    }
+  }, [info, requiredProfile, onReadyChange]);
+
+  useEffect(() => {
+    if (!info || !onInstallStatusChange) return;
+    onInstallStatusChange({
+      foundryReady: info.all_ready,
+      runtimeReady: info.runtime_versions.some((v) => v.ready) || info.runtime_ready,
+    });
+  }, [info, onInstallStatusChange]);
+
+  const startPack = useCallback(
+    async (pack: string) => {
+      setError(null);
+      try {
+        await invoke("start_toolchain_download", { pack });
+        await refresh();
+      } catch (e) {
+        setError(typeof e === "string" ? e : "Download failed");
+      }
+    },
+    [refresh],
+  );
+
+  const cancelTask = useCallback(
+    async (taskId: string) => {
+      try {
+        await invoke("cancel_download", { taskId });
+        await refresh();
+      } catch (e) {
+        setError(typeof e === "string" ? e : "Cancel failed");
+      }
+    },
+    [refresh],
+  );
 
   if (!info) {
     return (
-      <div className="fnd-tc-error type-tiny font-mono">
-        {actionError ?? "Toolchain status unavailable."}
+      <div className="type-tiny font-mono config-muted">
+        {error ?? "Reading the Foundry package…"}
       </div>
     );
   }
 
-  const checkByEnv = Object.fromEntries(
-    info.profile_checks.map((c) => [c.id.toLowerCase(), c]),
-  ) as Partial<Record<Env, ProfileCheck>>;
+  const buildPack = info.packs.find((p) => p.kind === "build");
+  const foundryReady = info.profiles_total > 0 && info.profiles_ready >= info.profiles_total;
+  const readyBadge = foundryReady && !info.pack_outdated;
 
-  const buildReady = profileReadyForBuild(info.profile_checks, requiredProfile);
-  const requiredCheck = requiredProfile
-    ? checkByEnv[requiredProfile]
-    : undefined;
-
-  // Compact badge is only a summary for the nothing-to-do case. Anything less than fully
-  // ready must fall through to the full panel; a bare badge would leave no action to fix it.
-  if (compact && info.profiles_ready >= info.profiles_total && !info.pack_outdated) {
-    return (
-      <div className="fnd-tc-ready type-tiny font-mono">✓ Foundry package ready</div>
-    );
+  // A completed setup is the only state worth collapsing into one line.
+  if (compact && !onboarding && readyBadge) {
+    return <div className="fnd-tc-ready type-tiny font-mono">✓ Foundry package ready</div>;
   }
 
-  // CUDA is present but the MSVC C runtime is not: engines would die at LoadLibrary with a
-  // raw Windows "MSVCP140.dll was not found" dialog and no engine log. Say it plainly.
-  // Not gated behind all_ready — this must surface even when everything else is green.
-  const crtError = !info.msvc_crt_ready
-    ? info.msvc_crt_error ??
-      "Missing the x64 Microsoft Visual C++ runtime (vcruntime140, msvcp140) required by the engine binaries. Re-install the portable toolchain, or install the VC++ 2015-2022 Redistributable (x64)."
-    : null;
-
-  // Distinct from crtError: the pack is complete for what it was built for, but it was
-  // built for an older app. Profiles it predates would fail at configure time.
-  const packStale =
-    info.pack_outdated && info.pack_installed_version > 0
-      ? "Installed package is out of date — reinstall it."
-      : null;
-
-  const cached = info.cached_archives?.find((a) => a.pack === "full");
-  const packActive =
-    Boolean(busyTask) ||
-    (activeTask?.status === "failed" && activeTask.quantType === "full");
-  const canInstallFromCache = Boolean(cached) && !downloading;
-  // A download task that can be cancelled (not mid-extract, which cannot be aborted cleanly).
-  const cancelable = Boolean(activeTask && activeTask.status !== "scanning");
-
-  // Onboarding — simplified, jargon-free toolchain block.
-  if (onboarding && !info.all_ready) {
+  const runtimeRow = (profile: string, label: string) => {
+    const runtime = runtimeForProfile(profile);
+    const pack = info.packs.find((p) => p.kind === "runtime" && p.cuda === runtime?.cuda);
+    if (!runtime || !pack) return null;
+    const task = taskForPack(tasks, pack.id);
+    const busy = Boolean(task && ACTIVE_STATUSES.includes(task.status));
+    const installed = runtime.ready || pack.installed;
+    const active = profile === DEFAULT_BINARY_PROFILE;
     return (
-      <div className="foundry-toolchain-onboarding space-y-2">
-        {activeTask && <DownloadProgressRow task={activeTask} onActionError={setActionError} compact />}
-
-        <div className="foundry-toolchain-onboarding__actions flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => void handleDownload()}
-            disabled={downloading || packActive}
-            className="foundry-toolchain-onboarding__download"
-          >
-            {packActive && busyTask
-              ? busyTask.status === "scanning"
-                ? "EXTRACTING…"
-                : busyTask.status === "downloading"
-                  ? "DOWNLOADING…"
-                  : busyTask.status === "paused"
-                    ? "PAUSED"
-                    : busyTask.status === "queued"
-                      ? "QUEUED…"
-                      : "DOWNLOAD"
-              : "DOWNLOAD CUDA RUNTIME"}
-          </button>
-          <button
-            type="button"
-            hidden
-            onClick={() => void handleReextract()}
-            disabled={!canInstallFromCache}
-            className="foundry-toolchain-btn foundry-toolchain-btn--neutral"
-            title={
-              cached
-                ? "Extract toolchain.7z from cache (no download)"
-                : `Place ${info.archive_name} in the cache folder, then click here`
-            }
-          >
-            INSTALL FROM CACHE
-          </button>
-          <button
-            type="button"
-            hidden
-            onClick={() => setShowManual((v) => !v)}
-            className={`foundry-toolchain-btn foundry-toolchain-btn--neutral${
-              showManual ? " fnd-tc-btn--manual-active" : ""
-            }`}
-          >
-            {showManual ? "HIDE MANUAL" : "MANUAL"}
-          </button>
-          {cancelable && (
+      <div
+        key={profile}
+        className="flex items-center justify-between gap-2 py-1"
+      >
+        <div className="min-w-0">
+          <div className="type-tiny font-mono uppercase tracking-wide">
+            {label}
+            {active && <span className="type-micro font-mono uppercase config-muted"> active</span>}
+          </div>
+          <div className="type-micro font-mono config-muted">CUDA {runtime.cuda}</div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {busy ? (
+            <>
+              <span className="type-micro font-mono config-muted">{task?.status}</span>
+              {task && (
+                <button
+                  type="button"
+                  className="foundry-toolchain-btn foundry-toolchain-btn--neutral"
+                  onClick={() => void cancelTask(task.id)}
+                >
+                  CANCEL
+                </button>
+              )}
+            </>
+          ) : installed ? (
+            <span className="type-micro font-mono config-muted">installed</span>
+          ) : (
             <button
               type="button"
-              onClick={() => void handleCancelDownload()}
-              className="foundry-toolchain-btn foundry-toolchain-btn--cancel"
-              title="Cancel this download to switch to Install from cache or Manual"
+              className="foundry-toolchain-btn foundry-toolchain-btn--action"
+              onClick={() => void startPack(pack.id)}
             >
-              CANCEL DOWNLOAD
+              DOWNLOAD {formatSize(pack.size_bytes)}
             </button>
           )}
         </div>
+      </div>
+    );
+  };
 
-        {crtError && (
-          <p className="foundry-toolchain-onboarding__hint fnd-tc-crt-hint font-mono m-0">
-            {crtError}
-          </p>
-        )}
+  const buildTask = buildPack ? taskForPack(tasks, buildPack.id) : undefined;
+  const buildBusy = Boolean(buildTask && ACTIVE_STATUSES.includes(buildTask.status));
 
-        {!downloading && !cached && (
-          <p className="foundry-toolchain-onboarding__hint">
-            ~{downloadSizeLabel} one-time download
-            {onboarding
-              ? " — the CUDA runtime this engine needs."
-              : " — engines, metadata scan, and build-from-source."}
-          </p>
-        )}
-        {cancelable && (
-          <p className="foundry-toolchain-onboarding__cancel-hint">
-            Cancel the download to free the folder, then retry.
-          </p>
-        )}
-
-        {false && showManual && (
-          <div className="foundry-toolchain-install-guide fnd-tc-guide border rounded-sm p-2.5 space-y-2">
-            <p className="fnd-tc-guide__title type-tiny font-mono uppercase tracking-wide">
-              Manual install
-            </p>
-            <ol className="foundry-toolchain-install-guide__body fnd-tc-guide__body list-decimal list-inside space-y-1 type-tiny font-mono leading-relaxed">
-              <li>
-                Download <span className="fnd-tc-guide__hl">{info.archive_name}</span> from the GitHub
-                release (or use Download above).
-              </li>
-              <li>
-                Place the file in the cache folder below — do not extract it yourself.
-              </li>
-              <li>
-                Click <span className="fnd-tc-guide__hl">Install from cache</span> — the app extracts
-                and verifies into <span className="fnd-tc-guide__hl">toolchain\</span> automatically.
-              </li>
-            </ol>
-
-            <div className="fnd-tc-cache-box rounded-sm px-2 py-1.5 space-y-0.5">
-              <div className="fnd-tc-cache-box__label type-micro font-mono uppercase">Cache folder</div>
-              <div className="fnd-tc-cache-box__path type-tiny font-mono break-all">
-                {info.archive_cache_dir}
-              </div>
-              {!info.manifest_present && (
-                <div className="fnd-tc-cache-box__note type-micro font-mono">
-                  {cached
-                    ? `${info.archive_name} found — click Install from cache`
-                    : `Waiting for ${info.archive_name} in cache`}
-                </div>
-              )}
-            </div>
-
-            <div className="foundry-toolchain-install-guide__actions flex flex-wrap gap-1.5 pt-0.5">
-              <button
-                type="button"
-                onClick={() => void handleOpenCacheFolder()}
-                className="foundry-toolchain-btn foundry-toolchain-btn--neutral"
-              >
-                OPEN CACHE FOLDER
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleCopyCachePath()}
-                className="foundry-toolchain-btn foundry-toolchain-btn--neutral"
-              >
-                {copied ? "COPIED" : "COPY CACHE PATH"}
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleOpenRelease()}
-                className="foundry-toolchain-btn foundry-toolchain-btn--link"
-              >
-                OPEN RELEASE PAGE
-              </button>
-            </div>
-          </div>
-        )}
-
-        {actionError && (
-          <p className="fnd-tc-error type-micro font-mono break-all">{actionError}</p>
-        )}
+  if (onboarding) {
+    const seed = runtimeForProfile(requiredProfile ?? DEFAULT_BINARY_PROFILE);
+    const seedPack = info.packs.find((p) => p.kind === "runtime" && p.cuda === seed?.cuda);
+    const seedTask = seedPack ? taskForPack(tasks, seedPack.id) : undefined;
+    const seedBusy = Boolean(seedTask && ACTIVE_STATUSES.includes(seedTask.status));
+    return (
+      <div className="space-y-2">
+        <p className="type-tiny font-mono uppercase tracking-wide config-muted">Engine runtime</p>
+        <div className="flex items-center justify-between gap-2">
+          <span className="type-tiny font-mono">
+            CUDA {seed?.cuda ?? "—"}
+            {seed?.ready ? " · installed" : ""}
+          </span>
+          {seedBusy ? (
+            <span className="type-micro font-mono config-muted">{seedTask?.status}</span>
+          ) : seed?.ready ? null : (
+            <button
+              type="button"
+              className="foundry-toolchain-btn foundry-toolchain-btn--action"
+              onClick={() => seedPack && void startPack(seedPack.id)}
+              disabled={!seedPack}
+            >
+              DOWNLOAD {seedPack ? formatSize(seedPack.size_bytes) : ""}
+            </button>
+          )}
+        </div>
+        {error && <p className="type-micro font-mono">{error}</p>}
       </div>
     );
   }
 
-  // Foundry readiness is the build profiles only. A missing CUDA runtime is an onboarding
-  // concern, not a Foundry one — it used to show PARTIAL for that.
-  const statusLabel = info.all_ready
-    ? "READY"
-    : `${info.profiles_ready}/${info.profiles_total} PROFILES`;
-
-  const statusClass = info.all_ready
-    ? "fnd-tc-status--done"
-    : "fnd-tc-status--warn";
-
   return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="fnd-tc-section-label type-tiny font-mono uppercase tracking-wider">
-          Foundry package
-        </span>
-        <span className={`fnd-tc-status type-micro font-mono px-1.5 py-0.5 rounded-sm border ${statusClass}`}>
-          {statusLabel}
-        </span>
-      </div>
-
-      <div className="flex flex-wrap gap-1">
-        {ENV_ORDER.map((env) => {
-          const check = checkByEnv[env];
-          const ready = check?.ready ?? false;
-          return (
-            <span
-              key={env}
-              title={
-                ready
-                  ? `${check?.label} ready`
-                  : check?.missing.join("\n") ?? "Not checked"
-              }
-              className={`fnd-tc-env-badge type-micro font-mono px-1.5 py-0.5 rounded-sm border ${
-                ready
-                  ? "fnd-tc-env-badge--ready"
-                  : "fnd-tc-env-badge--pending"
-              }`}
-            >
-              {ready ? "✓" : "○"} {check?.label ?? env.toUpperCase()}
-            </span>
-          );
-        })}
-      </div>
-
-      {activeTask && (
-        <DownloadProgressRow
-          task={activeTask}
-          onActionError={setActionError}
-          compact
-        />
-      )}
-
-      {crtError && (
-        <p className="fnd-tc-crt-hint type-tiny font-mono leading-relaxed">
-          {crtError}
-        </p>
-      )}
-
-      {false && packStale && (
-        <p className="fnd-tc-crt-hint type-tiny font-mono leading-relaxed">{packStale}</p>
-      )}
-
-      {info.all_ready ? (
-        <p className="fnd-tc-ready type-tiny font-mono leading-relaxed">
-          Portable VS Build Tools, Windows SDK, CUDA, and CMake are installed. Foundry builds are ready.
-        </p>
-      ) : (
-        <div className="foundry-toolchain-install-guide fnd-tc-guide--warn border rounded-sm p-2.5 space-y-2">
-          <p className="foundry-toolchain-install-guide__title fnd-tc-guide__title--warn type-tiny font-mono font-bold uppercase tracking-wide">
-            {onboarding ? "CUDA runtime" : "Install Foundry package"}
+    <div className="w-full space-y-2">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <section className="rounded-sm border p-2.5 space-y-1.5">
+          <p className="type-tiny font-mono uppercase tracking-wide config-muted">CUDA profiles</p>
+          {runtimeRow("edge", "EDGE")}
+          {runtimeRow("stable", "STABLE")}
+        </section>
+        <section className="rounded-sm border p-2.5 space-y-1.5">
+          <p className="type-tiny font-mono uppercase tracking-wide config-muted">Foundry</p>
+          <p className="type-micro font-mono config-muted leading-relaxed">
+            Compiles engines on this machine. Running them does not need it.
           </p>
-
-          <p className="fnd-tc-guide__desc type-tiny font-mono leading-relaxed">
-            {onboarding ? (
+          <div className="flex items-center gap-2">
+            {buildBusy ? (
               <>
-                Single download (~{downloadSizeLabel}): the CUDA runtime this build launches.
-                Engine binaries are already installed — Foundry build tools are only needed to
-                compile your own.
-              </>
-            ) : (
-              <>
-                One download (~{downloadSizeLabel}). Needed to compile engines on this machine;
-                running them does not need it.
-              </>
-            )}
-          </p>
-
-          {!onboarding && !info.all_ready && info.profiles_ready < info.profiles_total && (
-            <div className="fnd-tc-profiles-box rounded-sm px-2 py-1.5 space-y-0.5">
-              <p className="fnd-tc-profiles-box__title type-micro font-mono uppercase tracking-wide">
-                {info.profiles_ready}/{info.profiles_total} build profiles ready
-              </p>
-              {info.profile_checks
-                .filter((c) => !c.ready)
-                .map((c) => (
-                  <p
-                    key={c.id}
-                    className="fnd-tc-profiles-box__row type-micro font-mono leading-relaxed"
-                    title={c.missing.join("\n")}
+                <span className="type-micro font-mono config-muted">{buildTask?.status}</span>
+                {buildTask && (
+                  <button
+                    type="button"
+                    className="foundry-toolchain-btn foundry-toolchain-btn--neutral"
+                    onClick={() => void cancelTask(buildTask.id)}
                   >
-                    ○ {c.label}: {c.missing[0] ?? "incomplete"}
-                    {c.missing.length > 1 ? ` (+${c.missing.length - 1} more)` : ""}
-                  </p>
-                ))}
-            </div>
-          )}
-
-          {onboarding && seeded && !seeded.driver_ok && (
-            <div className="fnd-tc-guide--warn border rounded-sm p-2 space-y-1.5">
-              <p className="type-tiny font-mono font-bold uppercase tracking-wide">
-                Driver too old for {seeded.label}
-              </p>
-              <p className="type-micro font-mono leading-relaxed">
-                {seeded.label} needs NVIDIA driver {seeded.min_driver_major}+
-                {seeded.driver_major ? ` (installed: ${seeded.driver_major})` : " (no driver detected)"}.
-                Update it, then press CHECK AGAIN — no app restart needed. If the installer finished
-                but the number did not change, reboot: the new driver is not loaded until then.
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => void open(NVIDIA_DRIVERS_URL)}
-                  className="foundry-toolchain-btn foundry-toolchain-btn--link"
-                >
-                  OPEN DRIVER PAGE
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void refresh()}
-                  className="foundry-toolchain-btn foundry-toolchain-btn--action"
-                >
-                  CHECK AGAIN
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div className="fnd-tc-archive-box rounded-sm px-2 py-2 space-y-1.5">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="fnd-tc-archive-box__name type-tiny font-mono font-bold uppercase">
-                {onboarding ? "Engine runtime" : "Foundry package"}
-              </span>
-              <span className="fnd-tc-archive-box__meta type-micro font-mono">
-                {downloadSizeLabel} download
-                {onboarding ? "" : ` · ${info.uncompressed_size_label} installed`}
-              </span>
-            </div>
-            <p className="fnd-tc-archive-box__desc type-micro font-mono leading-relaxed">
-              Download and install in one step.
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              <button
-                type="button"
-                onClick={() => void handleDownload()}
-                disabled={downloading || driverBlocked || info.all_ready || (packActive && downloading)}
-                className="foundry-toolchain-btn foundry-toolchain-btn--action"
-              >
-                {packActive && busyTask
-                  ? busyTask.status === "scanning"
-                    ? "EXTRACTING…"
-                    : busyTask.status === "downloading"
-                      ? "DOWNLOADING…"
-                      : busyTask.status === "paused"
-                        ? "PAUSED"
-                        : busyTask.status === "queued"
-                          ? "QUEUED…"
-                          : installActionLabel
-                  : info.all_ready
-                    ? "INSTALLED"
-                    : installActionLabel}
-              </button>
-              <button
-                type="button"
-                hidden
-                onClick={() => void handleReextract()}
-                disabled={!canInstallFromCache || info.all_ready}
-                className={`foundry-toolchain-btn ${
-                  cached && !info.all_ready && !downloading
-                    ? "catalog-scan-btn foundry-toolchain-btn--action foundry-toolchain-btn--cache-ready"
-                    : "foundry-toolchain-btn--neutral"
-                }`}
-                title={
-                  cached
-                    ? cached.location === "cache"
-                      ? `Extract ${info.archive_name} from cache (no download)`
-                      : "Extract local copy (no download)"
-                    : `Place ${info.archive_name} in the cache folder, then click here`
-                }
-              >
-                INSTALL FROM CACHE
-              </button>
-              <button
-                type="button"
-                hidden
-                onClick={() => setShowManual((v) => !v)}
-                className={`foundry-toolchain-btn foundry-toolchain-btn--neutral${
-                  showManual ? " fnd-tc-btn--manual-active" : ""
-                }`}
-              >
-                {showManual ? "HIDE MANUAL" : "MANUAL"}
-              </button>
-            </div>
-          </div>
-
-          {false && showManual && (
-            <div className="foundry-toolchain-install-guide fnd-tc-guide border rounded-sm p-2.5 space-y-2">
-              <p className="fnd-tc-guide__title type-tiny font-mono uppercase tracking-wide">
-                Manual install
-              </p>
-              <ol className="foundry-toolchain-install-guide__body fnd-tc-guide__body list-decimal list-inside space-y-1 type-tiny font-mono leading-relaxed">
-                <li>
-                  Download <span className="fnd-tc-guide__hl">{info.archive_name}</span> from the GitHub
-                  release (or use Download above).
-                </li>
-                <li>
-                  Place the file in the cache folder below — do not extract it yourself.
-                </li>
-                <li>
-                  Click <span className="fnd-tc-guide__hl">Install from cache</span> — the app extracts
-                  and verifies into <span className="fnd-tc-guide__hl">toolchain\</span> automatically.
-                </li>
-              </ol>
-
-              <div className="fnd-tc-cache-box rounded-sm px-2 py-1.5 space-y-0.5">
-                <div className="fnd-tc-cache-box__label type-micro font-mono uppercase">Cache folder</div>
-                <div className="fnd-tc-cache-box__path type-tiny font-mono break-all">
-                  {info.archive_cache_dir}
-                </div>
-                {!info.manifest_present && (
-                  <div className="fnd-tc-cache-box__note type-micro font-mono">
-                    {cached
-                      ? `${info.archive_name} found — click Install from cache`
-                      : `Waiting for ${info.archive_name} in cache`}
-                  </div>
+                    CANCEL
+                  </button>
                 )}
-              </div>
-
-              <div className="foundry-toolchain-install-guide__actions flex flex-wrap gap-1.5 pt-0.5">
-                <button
-                  type="button"
-                  onClick={() => void handleOpenCacheFolder()}
-                  className="foundry-toolchain-btn foundry-toolchain-btn--neutral"
-                >
-                  OPEN CACHE FOLDER
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleCopyCachePath()}
-                  className="foundry-toolchain-btn foundry-toolchain-btn--neutral"
-                >
-                  {copied ? "COPIED" : "COPY CACHE PATH"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleOpenRelease()}
-                  className="foundry-toolchain-btn foundry-toolchain-btn--link"
-                >
-                  OPEN RELEASE PAGE
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void refresh()}
-                  disabled={loading || downloading}
-                  className="foundry-toolchain-btn foundry-toolchain-btn--action"
-                >
-                  {loading ? "CHECKING…" : "RE-CHECK"}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {actionError && (
-        <p className="fnd-tc-error type-micro font-mono break-all">{actionError}</p>
-      )}
+              </>
+            ) : readyBadge ? (
+              <span className="type-micro font-mono config-muted">installed</span>
+            ) : (
+              <button
+                type="button"
+                className="foundry-toolchain-btn foundry-toolchain-btn--action"
+                onClick={() => buildPack && void startPack(buildPack.id)}
+                disabled={!buildPack}
+              >
+                INSTALL {buildPack ? formatSize(buildPack.size_bytes) : ""}
+              </button>
+            )}
+          </div>
+        </section>
+      </div>
+      {error && <p className="type-micro font-mono">{error}</p>}
     </div>
   );
 }

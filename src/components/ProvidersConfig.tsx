@@ -950,7 +950,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
 
       {/* Top strip: add provider | toolchain — then full-width provider list */}
       <div className="flex-1 overflow-y-auto eink-scrollbar p-4 min-h-0 space-y-3">
-        <div className="flex flex-col sm:flex-row gap-3 sm:items-start sm:justify-between">
+        <div className="flex flex-col gap-3">
           <div className="min-w-0 flex-1 space-y-2">
             <button
               onClick={() => {
@@ -981,7 +981,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
             )}
           </div>
 
-          <aside className="w-full sm:w-auto sm:max-w-md sm:min-w-[240px] shrink-0">
+          <aside className="w-full order-first">
             <div className="foundry-build-panel border cfg-bord--a40 rounded-sm overflow-hidden">
               <div className="foundry-build-header flex items-center gap-2 px-3 py-1.5">
                 <span style={{ fontSize: "11px" }} aria-hidden>
