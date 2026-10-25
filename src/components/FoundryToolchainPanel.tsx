@@ -105,6 +105,7 @@ export default function FoundryToolchainPanel({
   useEffect(() => {
     void refresh();
     const timer = window.setInterval(() => {
+      if (document.hidden) return;
       void refresh();
     }, 4000);
     return () => window.clearInterval(timer);

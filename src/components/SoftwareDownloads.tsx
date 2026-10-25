@@ -63,6 +63,7 @@ export default function SoftwareDownloads() {
   useEffect(() => {
     void refresh();
     const timer = window.setInterval(() => {
+      if (document.hidden) return;
       void refresh();
     }, 6000);
     return () => window.clearInterval(timer);
@@ -104,13 +105,13 @@ export default function SoftwareDownloads() {
         <p className="type-tiny font-mono uppercase tracking-wide config-muted">Application</p>
         <div className={rowClass}>
           <div>
-            <div className="type-tiny font-mono">
-              Blackwell Ops {appUpdate?.currentVersion ?? "—"}
-            </div>
+            <div className="type-tiny font-mono">Blackwell Ops</div>
             <div className="type-micro font-mono config-muted">
-              {appUpdate?.available
-                ? `Version ${appUpdate.version} is available`
-                : "Up to date"}
+              {!appUpdate
+                ? "Could not check for updates"
+                : appUpdate.available
+                  ? `Version ${appUpdate.version} available (you have ${appUpdate.currentVersion})`
+                  : `Up to date · ${appUpdate.currentVersion}`}
             </div>
           </div>
           {appUpdate?.available && (
@@ -153,6 +154,8 @@ export default function SoftwareDownloads() {
               </div>
               {task ? (
                 <span className="type-micro font-mono config-muted">{task.status}</span>
+              ) : mode.state === "install" && mode.engineMissing && !mode.packAvailable ? (
+                <span className="type-micro font-mono config-muted">not published yet</span>
               ) : mode.state === "install" ? (
                 <button
                   type="button"

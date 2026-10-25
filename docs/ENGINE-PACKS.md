@@ -25,7 +25,7 @@ runs, not guesses; see §13 for the commands.
 | ~~**Full pack**~~ | retired 2026-10-25 — split packs cover both consumers | — |
 
 One compatibility pack (`STABLE` = engine + CUDA 12.8 runtime) and any fork engines are optional
-downloads from CONFIG → UPDATES. Foundry is offered the first time it is used, never in the wizard.
+downloads from DOWNLOADS → SOFTWARE. Foundry is offered the first time it is used, never in the wizard.
 
 ### 0.1 Driver gate — the actual first decision
 
@@ -334,7 +334,7 @@ Rules that must hold, in this order:
   (`manifest.profiles.iter().all(...)`), which would force a 424 MB 12.8 download on an EDGE user —
   that is the bug this section removes.
 - **A parked seed must be visibly parked.** On the STABLE branch the seeded EDGE appears in
-  PROVIDERS as "requires driver 610+ (yours: NNN)", is never probed or launched, and does not count
+  ENGINE page as "requires driver 610+ (yours: NNN)", is never probed or launched, and does not count
   toward `engineReady`. Otherwise the first launch looks broken on hardware that is fine.
 - **"No NVIDIA GPU" is not "old driver".** `get_nvidia_driver_version` distinguishes `Ok(None)` from
   an error. A machine with no driver at all must not be offered a 536 MB pack it can never run:
@@ -346,7 +346,7 @@ Copy for step 2:
 
 > **CUDA runtime for EDGE**
 > One download, 383 MB. Required to start the EDGE engine. STABLE, other forks and the Foundry build
-> tools can be added later from CONFIG → UPDATES.
+> tools can be added later from DOWNLOADS → SOFTWARE.
 
 Offline story (unchanged, and the reason no second installer is needed): the runtime pack can be
 dropped into `.toolchain-download/cache/` and installed from cache — the wizard already supports it.
@@ -386,14 +386,14 @@ same value; FINISH tooltip becomes "Install the CUDA runtime before finishing se
 "CUDA runtime"; its detail becomes "383 MB — required for the EDGE engine".
 
 `EngineSetupPanel` is **not** needed for the seed. It is needed only for the optional packs (STABLE,
-forks) and lives in UPDATES.
+forks) and lives in DOWNLOADS → SOFTWARE.
 
 ---
 
 ## 7. Optional packs: STABLE, forks, Foundry
 
 - **STABLE** = one action that installs `runtime-12.8` then `ENGINE_ggml-master-stable-*.7z`
-  (~536 MB). UPDATES shows the requirement before the click (`requires CUDA 12.8 ·
+  (~536 MB). SOFTWARE shows the requirement before the click (`requires CUDA 12.8 ·
   424 MB`). `install_engine_pack(provider, profile)` does both: resolve the `EnginePackDef`, start the
   runtime pack if `!cuda_runtime_ready_for_version(def.cuda)`, then start the engine pack. Extraction
   targets are disjoint (`toolchain/` vs `runtime/`), so they may run concurrently and the UI
@@ -605,7 +605,7 @@ function Assert-InstallerSeed {
 |---|---|---|---|
 | 1 | `compression: "lzma"` + size/seed assertions | 508 → **~250 MB** (both engines) | unchanged 1.69 GB |
 | 2 | manifest v4 + pack registry + per-pack verify/merge + **driver gate with in-place re-check** (`min_driver_major`, `driver_ok`); wizard pulls one runtime pack once the nudge passes. While both engines are still bundled, the fallback for a stuck driver is the **already-installed STABLE** + `runtime-12.8` | ~250 MB | 633 MB |
-| 3 | `engines.json` + `ENGINE_*` packs + digest-pinned resolution; UPDATES installs/updates cores and STABLE | ~250 MB | same |
+| 3 | `engines.json` + `ENGINE_*` packs + digest-pinned resolution; SOFTWARE installs/updates modes | ~250 MB | same |
 | 4 | policy v2: installer seeds EDGE only (STABLE becomes a pack); catalog path | **~140 MB** | **523 MB** |
 | 5 | probe/scan gating (§6), uninstall hook (§9), docs, `majestic:check` digest gates | ~140 MB | 523 MB |
 
@@ -660,7 +660,7 @@ $env:BLACKWELL_FAKE_DRIVER_MAJOR=620
 ```
 
 Explicit failure tests: cancel mid-runtime (FINISH stays disabled, no dialog, scan stays queued);
-delete `cublasLt64_13.dll` (launch fails with `portable_cuda_missing_message`, UPDATES offers repair);
+delete `cublasLt64_13.dll` (launch fails with `portable_cuda_missing_message`, SOFTWARE offers repair);
 install STABLE with only 13.4 present (pulls 12.8, does not touch 13.4); run with the driver faked to
 560 after STABLE is installed (STABLE launches, EDGE stays parked).
 

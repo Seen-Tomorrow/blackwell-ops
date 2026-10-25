@@ -4,7 +4,7 @@
 //! and how do I get the other one" is here; runtime packs, sources and build tools are
 //! implementation detail behind "Manage" and the Foundry card.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 import { useDownloadTasks } from "../hooks/useDownloadTasks";
@@ -49,6 +49,7 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
   const { openBuildModal } = useFoundry();
   const providerTasks = useDownloadTasks("provider");
   const toolchainTasks = useDownloadTasks("toolchain");
+  const probedRef = useRef(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -67,7 +68,9 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
           /^(catalog|bundled|downloaded|foundry-artifact|disk-scanned)$/i.test(b.version?.trim() ?? ""),
         ),
       );
-      if (needsProbe) {
+      if (needsProbe && !probedRef.current) {
+        // One probe per mount: an unresolvable binary must not be respawned every poll.
+        probedRef.current = true;
         next = await invoke<ProviderConfig[]>("refresh_build_info", {
           providerId: DEFAULT_PROVIDER_ID,
         }).catch(() => provs);
@@ -86,6 +89,7 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
   useEffect(() => {
     void refresh();
     const timer = window.setInterval(() => {
+      if (document.hidden) return;
       void refresh();
     }, 5000);
     return () => window.clearInterval(timer);
@@ -241,16 +245,22 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
                       Update your NVIDIA driver to use this mode.
                     </span>
                   ) : mode.state === "install" ? (
-                    <button
-                      type="button"
-                      className="foundry-toolchain-btn foundry-toolchain-btn--action"
-                      onClick={() =>
-                        void installMode(mode.id, mode.runtimeMissing && !mode.engineMissing)
-                      }
-                    >
-                      {mode.engineMissing ? "INSTALL" : "INSTALL RUNTIME"}{" "}
-                      {formatSize(mode.sizeBytes)}
-                    </button>
+                    mode.engineMissing && !mode.packAvailable ? (
+                      <span className="type-micro font-mono config-muted">
+                        Engine build not published yet
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="foundry-toolchain-btn foundry-toolchain-btn--action"
+                        onClick={() =>
+                          void installMode(mode.id, mode.runtimeMissing && !mode.engineMissing)
+                        }
+                      >
+                        {mode.engineMissing ? "INSTALL" : "INSTALL RUNTIME"}{" "}
+                        {formatSize(mode.sizeBytes)}
+                      </button>
+                    )
                   ) : mode.updateAvailable ? (
                     <button
                       type="button"

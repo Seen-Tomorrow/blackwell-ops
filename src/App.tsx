@@ -601,9 +601,6 @@ function App() {
             <ConfigPage
               providers={providers}
               setupGuide={setupGuide}
-              updateOfferings={updateOfferings}
-              onRefreshUpdateOfferings={refreshUpdateOfferings}
-              onBinaryUpdatesChange={setHasBinaryUpdates}
               subTab={configSubTab}
               onSubTabChange={setConfigSubTab}
             />

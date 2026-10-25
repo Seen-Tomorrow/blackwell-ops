@@ -1,82 +1,4 @@
-/* ── Config room · app/provider updates + update menus ─────────────
-   Paint here, not in TSX. Color = var(--theme-*) only (no #hex, no
-   var(--x,#hex) fallback). Sizes = var(--type-*).
-   Owner: de-Tailwind pass 1E. */
 
-/* Surface-class vocabulary (grep a class → change its color here):
-     card:    upd-card--full / --app / --available / --installable / --plugin / --core
-     chip:    upd-chip-core / --app / --plugin / --upd / --available
-     ink:     upd-title--full / --app / upd-version-note / --latest /
-              upd-profile-name / --shipped / --installed / --not-installed /
-              --pack / --meta / --hint / --no-pack / --cuda /
-              upd-menu-btn--active / --idle / upd-menu-dot /
-              upd-popover-title / --sub / upd-offer-title / --version /
-              --up-to-date / upd-error / --global / --popover
-     action:  upd-act--full / --app / --idle / --update / --install / --both
-     popover: upd-offer--available / --idle / upd-catalog-link
-     rule:    upd-bord--a6 / --warn30 / upd-fill--black15 / --black20
-
-   Alpha parity: a base class paints its token at 100%. A tinted site
-   (originally a Tailwind /NN opacity) uses the matching --aNN class,
-   which mixes the token to NN% over transparent — pixel-identical to the
-   original utility. color-mix(..., transparent) is the required form;
-   no rgba(), no hex. */
-
-/* ══ UpdatesConfig · app channel cards ════════════════════════════ */
-
-/* App card frame (config-form-panel keeps its fill).
-   Full install = accent border; App = warn border. */
-
-/* Update-available highlight — warn ring + border + faint wash */
-
-/* Card titles (full = accent, app = warn) */
-.upd-title--full { color: var(--theme-accent); }
-
-/* "installed → latest" note (white/60) */
-/* latest when an update is available (yellow-400/90 bold) */
-
-/* Release-notes summary (stealth-muted/55) */
-
-/* Error line under a card (telemetry-red) */
-
-/* ══ UpdatesConfig · app install button ═══════════════════════════ */
-
-/* Download <channel> — full install (value-chip-active keeps its fill) */
-.upd-act--full { border-color: color-mix(in srgb, var(--theme-accent) 40%, transparent); }
-/* Download <channel> — app (warn border/ink, warn hover wash) */
-.upd-act--app {
-  border-color: color-mix(in srgb, var(--theme-warn) 40%, transparent);
-  color: var(--theme-warn);
-}
-.upd-act--app:hover { background: color-mix(in srgb, var(--theme-warn) 10%, transparent); }
-/* Up to date — value-chip keeps its fill; faint ink */
-.upd-act--idle { color: color-mix(in srgb, var(--theme-text-muted) 45%, transparent); }
-
-/* ══ UpdatesConfig · engine cards ═════════════════════════════════ */
-
-/* Card label (white/90) */
-
-/* Role chips — CORE / PLUGIN / Update available / upd */
-
-/* Profile pill row — update wash (yellow-400/10) */
-.upd-profile-pill--update { background: color-mix(in srgb, var(--theme-warn) 10%, transparent); }
-
-/* Profile pill ink */
-/* installed + update available (yellow-300/90) */
-/* installed, current (nv-green/80) */
-/* "not installed" (stealth-muted/55) */
-/* " → pack <tag>" (yellow-400/90) */
-/* pack/size meta (stealth-muted/45) */
-/* arch hint (stealth-muted/50) */
-/* "no CORE pack — use Full install" (stealth-muted/45) */
-/* "CUDA <ver>" (stealth-muted/45) */
-
-/* Profile action buttons — update / install / both / idle */
-.upd-act--update {
-  border-color: color-mix(in srgb, var(--theme-warn) 50%, transparent);
-  color: var(--theme-warn);
-  background: color-mix(in srgb, var(--theme-warn) 10%, transparent);
-}
 
 /* Global error line (telemetry-red) */
 
@@ -133,7 +55,6 @@
 
 /* Popover error line (telemetry-red) */
 .upd-error--popover { color: var(--theme-danger); }
-
 
 /* ══ UpdatesConfig · hairline rules + dark washes ════════════════ */
 

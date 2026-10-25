@@ -103,7 +103,7 @@ gh auth login    # if not already logged in
 | `toolchain-rt-{13.4,12.8}-v4.7z`, `toolchain-build-v4.7z` | `toolchain` | split toolchain packs (1.17 GB total) |
 
 The CUDA runtime is **not** bundled: the setup wizard downloads it (383 MB for EDGE) and STABLE is an
-optional pack (engine 110 MB + CUDA 12.8 runtime 424 MB) from CONFIG → UPDATES.
+optional pack (engine 110 MB + CUDA 12.8 runtime 424 MB) from DOWNLOADS → SOFTWARE.
 
 ## One GitHub tag = one version
 
@@ -159,7 +159,7 @@ Expected, in order:
    CHECK AGAIN; update (or fake it with `BLACKWELL_FAKE_DRIVER_MAJOR=620` in a debug run) and the
    download must start without restarting the app.
 4. After the runtime downloads, GGUF scan runs and an engine launches.
-5. CONFIG → UPDATES shows **STABLE** available: engine 110 MB + CUDA 12.8 runtime 424 MB. Install it,
+5. DOWNLOADS → SOFTWARE shows **STABLE** available: engine 110 MB + CUDA 12.8 runtime 424 MB. Install it,
    switch the active binary (RESET TO SEED returns to the installer copy), launch.
 6. Foundry: it offers **Foundry build tools · 366 MB**. The old 1.18 GB full pack is retired.
 

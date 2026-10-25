@@ -4,7 +4,7 @@ import "../styles/config-page.css";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { ProviderConfig, ModelPathEntry, PathDiskUsage, UpdateOfferings } from "../lib/types";
+import type { ProviderConfig, ModelPathEntry, PathDiskUsage } from "../lib/types";
 import { DEFAULT_PROVIDER_ID } from "../lib/types";
 import EngineConfig from "./EngineConfig";
 import SecretsConfig from "./SecretsConfig";
@@ -38,9 +38,6 @@ import type { ConfigSubTab } from "../lib/appNav";
 interface ConfigPageProps {
   providers?: ProviderConfig[];
   setupGuide: SetupGuideState;
-  updateOfferings?: UpdateOfferings | null;
-  onRefreshUpdateOfferings?: () => void | Promise<void>;
-  onBinaryUpdatesChange?: (hasUpdates: boolean) => void;
   /** Controlled section — header sub-rail owns selection. */
   subTab: ConfigSubTab;
   onSubTabChange: (tab: ConfigSubTab) => void;
@@ -49,9 +46,6 @@ interface ConfigPageProps {
 export default function ConfigPage({
   providers: externalProviders,
   setupGuide,
-  updateOfferings,
-  onRefreshUpdateOfferings,
-  onBinaryUpdatesChange,
   subTab,
   onSubTabChange,
 }: ConfigPageProps) {

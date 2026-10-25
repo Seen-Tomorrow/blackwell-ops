@@ -26,6 +26,8 @@ export interface EngineModeOverview {
   /** Engine pack + missing runtime, in bytes. 0 when nothing needs downloading. */
   sizeBytes: number;
   updateAvailable: boolean;
+  /** A published engine pack exists for this mode (false when offline or unpublished). */
+  packAvailable: boolean;
   /** Every engine source present on disk, with its identity and build time. */
   sources: EngineSourceOption[];
 }
@@ -140,6 +142,7 @@ export function buildEngineOverview(
       runtimeMissing,
       sizeBytes,
       updateAvailable: Boolean(update?.available),
+      packAvailable: Boolean(update?.packAvailable),
       sources,
     };
   });
