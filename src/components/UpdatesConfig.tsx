@@ -412,6 +412,8 @@ export default function UpdatesConfig({
     const busy = pluginBusy(card.id, activeTasks) || rowStatus[rowKey] === "busy";
     const edgeProf = card.profiles.find((p) => p.profile === "edge");
     const stable = card.profiles.find((p) => p.profile === "stable");
+    const rowRuntimeMissing = (row: PluginProfileOffering) =>
+      Boolean(row.installed && row.cudaVersion && runtimeByCuda[row.cudaVersion] === false);
     const bothProfiles = card.profiles.filter((p) => profileActionEnabled(p, rowRuntimeMissing(p))).map((p) => p.profile);
     const anyAction = card.profiles.some((p) => profileActionEnabled(p, rowRuntimeMissing(p)));
     const anyUpdate = card.profiles.some((p) => p.updateAvailable);
@@ -423,9 +425,6 @@ export default function UpdatesConfig({
         : card.plugin
           ? "upd-card--plugin"
           : "upd-card--core";
-
-    const rowRuntimeMissing = (row: PluginProfileOffering) =>
-      Boolean(row.installed && row.cudaVersion && runtimeByCuda[row.cudaVersion] === false);
 
     const renderProfilePill = (row: PluginProfileOffering | undefined) => {
       if (!row) return null;
