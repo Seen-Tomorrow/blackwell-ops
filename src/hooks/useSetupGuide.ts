@@ -23,6 +23,7 @@ import { useDownloadTasks } from "./useDownloadTasks";
 import { isSetupGuidePreviewMode, useSetupGuideActivation } from "./useSetupGuideActivation";
 import { useTauriListen } from "./useTauriListen";
 import { errorMessage } from "../lib/blackwellError";
+import { DEFAULT_BINARY_PROFILE } from "../lib/foundry_constants";
 
 export interface SetupGuideState {
   active: boolean;
@@ -92,10 +93,18 @@ export function useSetupGuide({ models, catalogLoaded = false }: UseSetupGuideOp
 
   const refreshToolchain = useCallback(async () => {
     try {
-      const info = await invoke<{ runtime_ready: boolean }>("foundry_get_toolchain_install_info");
-      setRuntimeReady(info.runtime_ready);
+      const info = await invoke<{
+        runtime_ready: boolean;
+        runtime_versions?: { id: string; ready: boolean }[];
+      }>("foundry_get_toolchain_install_info");
+      // Onboarding gates on the SEEDED profile's runtime only. `runtime_ready` is the
+      // "every manifest profile" aggregate and would force a second 424 MB CUDA 12.8 download
+      // on an EDGE user (docs/ENGINE-PACKS.md).
+      const seeded = info.runtime_versions?.find((v) => v.id === DEFAULT_BINARY_PROFILE);
+      const ready = seeded ? seeded.ready : info.runtime_ready;
+      setRuntimeReady(ready);
       // Drop legacy skip flag if present (toolchain is no longer skippable).
-      if (info.runtime_ready) clearToolchainOnboardingSkipped();
+      if (ready) clearToolchainOnboardingSkipped();
     } catch {
       setRuntimeReady(false);
     } finally {

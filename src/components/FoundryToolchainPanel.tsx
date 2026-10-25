@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-shell";
-import { DEFAULT_BINARY_PROFILE, ENV_META, ENV_ORDER, TOOLCHAIN_RELEASE_URL, type Env } from "../lib/foundry_constants";
+import { DEFAULT_BINARY_PROFILE, ENV_META, ENV_ORDER, NVIDIA_DRIVERS_URL, TOOLCHAIN_RELEASE_URL, type Env } from "../lib/foundry_constants";
 import type { DownloadStatus } from "../lib/types";
 import { useDownloadTasks } from "../hooks/useDownloadTasks";
 import DownloadProgressRow from "./DownloadProgressRow";
@@ -134,6 +134,10 @@ export default function FoundryToolchainPanel({
     onboarding && runtimePack
       ? `${Math.round(runtimePack.size_bytes / 1048576)} MB`
       : info?.compressed_size_label ?? "";
+  // Driver gate for the seeded profile: downloading 383 MB of CUDA runtime for a driver that
+  // cannot initialise it is a wasted download and a failed first launch.
+  const seeded = info?.runtime_versions?.find((v) => v.id === DEFAULT_BINARY_PROFILE);
+  const driverBlocked = Boolean(onboarding && seeded && !seeded.driver_ok);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -153,6 +157,24 @@ export default function FoundryToolchainPanel({
       setLoading(false);
     }
   }, [onReadyChange, onInstallStatusChange, requiredProfile]);
+
+  // Re-check in place while the driver gate blocks the step: nvidia-smi is spawned fresh per
+  // call, so a driver installed mid-session is picked up without an app restart. The user will
+  // alt-tab back from the NVIDIA installer, hence the focus listener.
+  useEffect(() => {
+    if (!driverBlocked) return;
+    const interval = window.setInterval(() => {
+      void refresh();
+    }, 3000);
+    const onFocus = () => {
+      void refresh();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [driverBlocked, refresh]);
 
   useEffect(() => {
     void refresh();
@@ -538,6 +560,36 @@ export default function FoundryToolchainPanel({
             </div>
           )}
 
+          {onboarding && seeded && !seeded.driver_ok && (
+            <div className="fnd-tc-guide--warn border rounded-sm p-2 space-y-1.5">
+              <p className="type-tiny font-mono font-bold uppercase tracking-wide">
+                Driver too old for {seeded.label}
+              </p>
+              <p className="type-micro font-mono leading-relaxed">
+                {seeded.label} needs NVIDIA driver {seeded.min_driver_major}+
+                {seeded.driver_major ? ` (installed: ${seeded.driver_major})` : " (no driver detected)"}.
+                Update it, then press CHECK AGAIN — no app restart needed. If the installer finished
+                but the number did not change, reboot: the new driver is not loaded until then.
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => void open(NVIDIA_DRIVERS_URL)}
+                  className="foundry-toolchain-btn foundry-toolchain-btn--link"
+                >
+                  OPEN DRIVER PAGE
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void refresh()}
+                  className="foundry-toolchain-btn foundry-toolchain-btn--action"
+                >
+                  CHECK AGAIN
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="fnd-tc-archive-box rounded-sm px-2 py-2 space-y-1.5">
             <div className="flex flex-wrap items-center gap-2">
               <span className="fnd-tc-archive-box__name type-tiny font-mono font-bold uppercase">
@@ -556,7 +608,7 @@ export default function FoundryToolchainPanel({
               <button
                 type="button"
                 onClick={() => void handleDownload()}
-                disabled={downloading || info.all_ready || (packActive && downloading)}
+                disabled={downloading || driverBlocked || info.all_ready || (packActive && downloading)}
                 className="foundry-toolchain-btn foundry-toolchain-btn--action"
               >
                 {packActive && busyTask
