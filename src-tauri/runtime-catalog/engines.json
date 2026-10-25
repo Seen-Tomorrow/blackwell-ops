@@ -1,27 +1,27 @@
 {
-  "schemaVersion": 1,
-  "enginePacks": [
-    {
-      "provider": "ggml-master",
-      "profile": "edge",
-      "label": "EDGE",
-      "asset": "ENGINE_ggml-master-edge-b11869-d327bf1f.7z",
-      "sha256": "c414181f4bef113e233394a3d4f863ac93692971426dd205c7b47951af4479e7",
-      "sizeBytes": 113019870,
-      "cuda": "13.4",
-      "engineVersion": "b11869-d327bf1f",
-      "recommended": true
-    },
-    {
-      "provider": "ggml-master",
-      "profile": "stable",
-      "label": "STABLE",
-      "asset": "ENGINE_ggml-master-stable-b11869-d327bf1f.7z",
-      "sha256": "65edd859263c5e85782cbd0f6df6a96a9ba12cea0a53bc088b67fe906952d0f5",
-      "sizeBytes": 115512456,
-      "cuda": "12.8",
-      "engineVersion": "b11869-d327bf1f",
-      "recommended": false
-    }
-  ]
+    "schemaVersion":  1,
+    "enginePacks":  [
+                        {
+                            "provider":  "ggml-master",
+                            "profile":  "edge",
+                            "label":  "EDGE",
+                            "asset":  "ENGINE_ggml-master-edge-b11870-74bca395.7z",
+                            "sha256":  "16b8fdc4a639f2f51d5be2691c880e6470e5b83d743b4a2e4062a88c4e3c9f48",
+                            "sizeBytes":  113108697,
+                            "cuda":  "13.4",
+                            "engineVersion":  "b11870-74bca395",
+                            "recommended":  true
+                        },
+                        {
+                            "provider":  "ggml-master",
+                            "profile":  "stable",
+                            "label":  "STABLE",
+                            "asset":  "ENGINE_ggml-master-stable-b11869-d327bf1f.7z",
+                            "sha256":  "b9fa55fe060b30c7fbbf6e2a1eee11292fb14a4ffdaebcaab1904c0cac3df56a",
+                            "sizeBytes":  115534655,
+                            "cuda":  "12.8",
+                            "engineVersion":  "b11869-d327bf1f",
+                            "recommended":  false
+                        }
+                    ]
 }
