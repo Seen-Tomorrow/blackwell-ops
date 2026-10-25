@@ -59,9 +59,22 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
         }).catch(() => [] as BinaryUpdateInfo[]),
         invoke<ToolchainInstallInfo>("foundry_get_toolchain_install_info").catch(() => null),
       ]);
-      if (provs.length > 0) {
-        setProviders(provs);
-        onProvidersChange?.(provs);
+      let next = provs;
+      // Inventory scans label unknown binaries "catalog"/"bundled"; probe once so the page
+      // shows the real engine identity instead of a source name.
+      const needsProbe = provs.some((p) =>
+        Object.values(p.buildInfoPerEnv ?? {}).some((b) =>
+          /^(catalog|bundled|downloaded|foundry-artifact|disk-scanned)$/i.test(b.version?.trim() ?? ""),
+        ),
+      );
+      if (needsProbe) {
+        next = await invoke<ProviderConfig[]>("refresh_build_info", {
+          providerId: DEFAULT_PROVIDER_ID,
+        }).catch(() => provs);
+      }
+      if (next.length > 0) {
+        setProviders(next);
+        onProvidersChange?.(next);
       }
       setUpdates(ups);
       setToolchain(tc);
@@ -195,6 +208,7 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
                   {mode.version ? (
                     <>
                       Build {mode.version} · {modeSourceLabel(mode.source)}
+                      {mode.sourceBuildDate ? ` · ${mode.sourceBuildDate}` : ""}
                     </>
                   ) : (
                     "No engine installed for this mode"
@@ -260,21 +274,37 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
                       Source: {modeSourceLabel(mode.source)}
                       {mode.version ? ` · ${mode.version}` : ""}
                     </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {(["bundled", "catalog", "foundry"] as const).map((source) => (
-                        <button
-                          key={source}
-                          type="button"
-                          disabled={!mode.sources[source] || mode.source === source}
-                          className={`foundry-toolchain-btn ${
-                            mode.source === source
-                              ? "foundry-toolchain-btn--action"
-                              : "foundry-toolchain-btn--neutral"
-                          }`}
-                          onClick={() => void setSource(mode.id, source)}
+                    <div className="space-y-1">
+                      {mode.sources.map((source) => (
+                        <div
+                          key={source.id}
+                          className="flex items-center justify-between gap-2 type-micro font-mono"
                         >
-                          {modeSourceLabel(source)}
-                        </button>
+                          <span className="min-w-0">
+                            {source.label}
+                            <span className="config-muted">
+                              {source.version ? ` · ${source.version}` : ""}
+                              {source.buildDate ? ` · ${source.buildDate}` : ""}
+                            </span>
+                          </span>
+                          <span className="flex items-center gap-1.5 shrink-0">
+                            {source.newest && !source.active && (
+                              <span className="uppercase config-muted">newest</span>
+                            )}
+                            {source.active ? (
+                              <span className="uppercase config-muted">in use</span>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={!source.available}
+                                className="foundry-toolchain-btn foundry-toolchain-btn--neutral"
+                                onClick={() => void setSource(mode.id, source.id)}
+                              >
+                                USE
+                              </button>
+                            )}
+                          </span>
+                        </div>
                       ))}
                     </div>
                     <p className="type-micro font-mono config-muted leading-relaxed">

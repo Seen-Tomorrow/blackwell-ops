@@ -19,14 +19,28 @@ export interface EngineModeOverview {
   driverMajor: number | null;
   version: string | null;
   source: BinarySourceKind | undefined;
+  sourceBuildDate: string | null;
   state: EngineModeState;
   engineMissing: boolean;
   runtimeMissing: boolean;
   /** Engine pack + missing runtime, in bytes. 0 when nothing needs downloading. */
   sizeBytes: number;
   updateAvailable: boolean;
-  /** Which sources actually exist on disk for this mode. */
-  sources: { bundled: boolean; catalog: boolean; foundry: boolean };
+  /** Every engine source present on disk, with its identity and build time. */
+  sources: EngineSourceOption[];
+}
+
+export interface EngineSourceOption {
+  id: BinarySourceKind;
+  label: string;
+  available: boolean;
+  active: boolean;
+  /** Real engine identity, or null when the scan only has a placeholder. */
+  version: string | null;
+  /** File build time ("YYYY-MM-DD HH:MM"), sortable. */
+  buildDate: string | null;
+  /** Newest source on disk (by build time) — the one to recommend. */
+  newest: boolean;
 }
 
 export interface EngineOverview {
@@ -54,7 +68,7 @@ export const MODE_META = [
 
 function realVersion(version: string | undefined): string | null {
   if (!version) return null;
-  return /disk-scanned|unknown/i.test(version) ? null : version;
+  return /disk-scanned|unknown|catalog|bundled|downloaded|foundry-artifact/i.test(version) ? null : version;
 }
 
 export function buildEngineOverview(
@@ -72,16 +86,28 @@ export function buildEngineOverview(
     );
     const update = updates.find((u) => u.profile === meta.id);
     const version = realVersion(engine.buildInfoPerEnv?.[meta.id]?.version);
-    const has = (s: "bundled" | "foundry" | "catalog") => {
-      const entry = envBinaryLookup(engine, meta.id, s);
-      return Boolean(entry?.path?.trim() || entry?.info);
-    };
-    const sources = { bundled: has("bundled"), foundry: has("foundry"), catalog: has("catalog") };
+    const sources: EngineSourceOption[] = (["bundled", "catalog", "foundry"] as const).map(
+      (s) => {
+        const entry = envBinaryLookup(engine, meta.id, s);
+        return {
+          id: s,
+          label: s === "bundled" ? "Bundled" : s === "catalog" ? "Downloaded" : "Built locally",
+          available: Boolean(entry?.path?.trim() || entry?.info),
+          active: isProfileSourceActive(engine, meta.id, s),
+          version: realVersion(entry?.info?.version),
+          buildDate: entry?.info?.buildDate?.trim() || null,
+          newest: false,
+        };
+      },
+    );
+    // Freshest by build time; ties fall back to the first available entry.
+    const dated = sources
+      .filter((s) => s.available && s.buildDate)
+      .sort((a, b) => (a.buildDate! < b.buildDate! ? 1 : -1));
+    if (dated.length > 0) dated[0].newest = true;
     const source: BinarySourceKind =
-      (["foundry", "catalog", "bundled"] as const).find((s) =>
-        isProfileSourceActive(engine, meta.id, s),
-      ) ??
-      (sources.bundled ? "bundled" : sources.catalog ? "catalog" : "foundry");
+      sources.find((s) => s.active)?.id ??
+      (sources.find((s) => s.id === "bundled" && s.available)?.id ?? "foundry");
     const runtimeMissing = runtime ? !runtime.ready : true;
     const driverBlocked = runtime ? !runtime.driver_ok : false;
     const engineMissing = !version;
@@ -108,6 +134,7 @@ export function buildEngineOverview(
       driverMajor: runtime?.driver_major ?? null,
       version,
       source,
+      sourceBuildDate: sources.find((s) => s.active)?.buildDate ?? null,
       state,
       engineMissing,
       runtimeMissing,

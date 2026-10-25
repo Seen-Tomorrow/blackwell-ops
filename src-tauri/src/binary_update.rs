@@ -261,12 +261,8 @@ fn is_newer_pack(installed: &str, latest: &str) -> bool {
 }
 
 fn is_placeholder_install_version(v: &str) -> bool {
-    let n = v.trim().to_ascii_lowercase();
-    n.is_empty()
-        || n == "disk-scanned"
-        || n == "unknown"
-        || n == "bundled"
-        || n == "local"
+    // Single authoritative list lives in engine_build_info.
+    crate::engine_build_info::is_placeholder_build_version(v)
 }
 
 /// True when this provider can ship a GitHub CORE_/PLUGIN_ pack.
@@ -363,19 +359,22 @@ pub async fn check_binary_updates(
             })
             .unwrap_or(false);
 
-        let installed_version = provider.as_ref().and_then(|p| {
-            p.downloaded_version_per_env
-                .get(profile)
-                .cloned()
-                .or_else(|| {
-                    p.build_info_per_env
-                        .get(profile)
-                        .map(|b| b.version.clone())
-                })
-        });
+        // Engine identity is the build, never the product/release tag: `downloaded_version_per_env`
+        // holds app versions like "1.1.3" and cannot be compared with `bNNNNN-sha`.
+        let installed_version = provider
+            .as_ref()
+            .and_then(|p| p.build_info_per_env.get(profile).map(|b| b.version.clone()));
 
+        // Same for the published side: compare against the pack's engine version, not the
+        // release tag. Fall back to the tag only for forks with no embedded pack manifest.
         let (pack_available, latest_version) = match &found {
-            Some((ver, _)) => (true, ver.clone()),
+            Some((tag_version, _)) => {
+                let engine_version = crate::engine_packs::engine_pack(&provider_id, profile)
+                    .map(|p| p.engine_version.clone())
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or_else(|| tag_version.clone());
+                (true, engine_version)
+            }
             None => (false, String::new()),
         };
 
