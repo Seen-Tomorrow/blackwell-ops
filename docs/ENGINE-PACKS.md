@@ -504,6 +504,14 @@ CUDA bin on PATH, returns `b<build>-<sha8>`, **fails the pack if unparseable**) 
 `Update-EngineManifest` (rewrites `engines.json`; no write when content is identical, so `git status`
 stays clean).
 
+**Every pack must also carry the three CRT DLLs.** `Install-MsvcCrtIntoDirs` currently runs only in
+`prepare-release-runtime.ps1` (the installer seed), so `src-tauri/runtime/**` has no
+`msvcp140/vcruntime140` and `pack-provider-runtime.ps1` publishes engine dirs without them. Today that
+is invisible for forks (their users usually have VC++), but once EDGE/STABLE arrive as packs it is the
+documented "raw Windows dialog, no engine log" failure. Stage the CRT into `$stage` before `7z`, and
+assert all three DLLs exist in each packed profile — a pack that cannot start on a clean machine must
+fail the pack, not the user.
+
 ### 8.6 `scripts/majestic/majestic.ps1`
 
 Replace the engine assertion (the 7z-listing one from v1 does not survive `lzma`) with a staging +
