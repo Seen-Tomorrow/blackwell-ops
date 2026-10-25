@@ -110,6 +110,8 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
           profile,
           runtimeOnly,
         });
+        // New files may scan as placeholders; allow one fresh probe.
+        probedRef.current = false;
         await refresh();
       } catch (e) {
         setError(typeof e === "string" ? e : "Install failed");
@@ -127,6 +129,7 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
           profile,
           source,
         });
+        probedRef.current = false;
         await refresh();
       } catch (e) {
         setError(typeof e === "string" ? e : "Could not switch the source");
