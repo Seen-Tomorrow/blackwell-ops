@@ -35,12 +35,13 @@ pub async fn scan_model_metadata_cmd(
     provider_id: Option<String>,
     app: tauri::State<'_, AppContext>,
 ) -> Result<crate::types::ModelEntry, String> {
-    crate::foundry_toolchain::require_runtime_for_gguf_scan()?;
     let pid = provider_id.unwrap_or_else(|| crate::config::DEFAULT_PROVIDER_ID.to_string());
     let bin_str = {
         let cfg = app.config.lock().map_err(|e| e.to_string())?;
         crate::engine_utils::find_provider_binary(&cfg, &pid, "")?.to_string_lossy().to_string()
     };
+    // Gate on the runtime of the binary we will actually spawn, not on every profile.
+    crate::foundry_toolchain::require_runtime_for_gguf_scan(&bin_str)?;
 
     // Run scan on a background thread — closure captures only Strings (Send types)
     let metadata_result: Result<crate::types::ModelMetadata, String> = tokio::task::spawn_blocking({
@@ -118,7 +119,6 @@ pub async fn scan_all_models_cmd(
     concurrency: Option<usize>,
     app: tauri::State<'_, AppContext>,
 ) -> Result<usize, String> {
-    crate::foundry_toolchain::require_runtime_for_gguf_scan()?;
     let (bin_str, all_paths, total) = {
         let cfg = app.config.lock().map_err(|e| e.to_string())?;
         let pid = provider_id.unwrap_or_else(|| crate::config::DEFAULT_PROVIDER_ID.to_string());
@@ -133,6 +133,8 @@ pub async fn scan_all_models_cmd(
         }
         (binary_path.to_string_lossy().to_string(), all_paths, total)
     };
+    // Gate on the runtime of the binary we will actually spawn, not on every profile.
+    crate::foundry_toolchain::require_runtime_for_gguf_scan(&bin_str)?;
 
     // Clone log_hub for event emission (LogHub is Clone)
     let log_hub = app.log_hub.clone();
