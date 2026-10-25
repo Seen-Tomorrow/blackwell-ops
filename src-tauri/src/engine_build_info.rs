@@ -7,7 +7,11 @@
 //! and the Config UI. `reactor_foundry` and `binary_update` both call into it without
 //! going near the engine stack.
 
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use crate::engine::AppContext;
 
@@ -65,6 +69,72 @@ fn short_hex(hash: &str) -> String {
 }
 
 
+/// Failures are cached by binary + mtime: a probe that cannot succeed (missing CUDA runtime,
+/// broken exe) must not be retried on every provider refresh. That retry loop is what flooded
+/// the log with "could not probe version … after 2 attempts".
+const PROBE_FAILURE_TTL: Duration = Duration::from_secs(300);
+
+fn probe_failures() -> &'static Mutex<HashMap<(PathBuf, u64), Instant>> {
+    static CACHE: OnceLock<Mutex<HashMap<(PathBuf, u64), Instant>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn file_stamp(path: &Path) -> u64 {
+    std::fs::metadata(path)
+        .ok()
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+fn cached_failure(path: &Path, stamp: u64) -> bool {
+    let Ok(map) = probe_failures().lock() else {
+        return false;
+    };
+    match map.get(&(path.to_path_buf(), stamp)) {
+        Some(at) => at.elapsed() < PROBE_FAILURE_TTL,
+        None => false,
+    }
+}
+
+fn remember_failure(path: &Path, stamp: u64) {
+    if let Ok(mut map) = probe_failures().lock() {
+        map.insert((path.to_path_buf(), stamp), Instant::now());
+    }
+}
+
+fn forget_failure(path: &Path, stamp: u64) {
+    if let Ok(mut map) = probe_failures().lock() {
+        map.remove(&(path.to_path_buf(), stamp));
+    }
+}
+
+/// A binary whose CUDA runtime is not installed cannot start — the loader fails before it
+/// prints anything, so spawning it only burns two attempts and a warning per refresh. This is
+/// the expected state for a profile whose runtime pack was never installed (e.g. STABLE on a
+/// machine that only ran the EDGE onboarding).
+fn probe_skip_reason(path: &Path) -> Option<String> {
+    let profile = crate::engine_utils::binary_profile_from_path(path)?;
+    let cuda = crate::foundry_toolchain::cuda_version_for_binary_profile(&profile)?;
+    if crate::foundry_toolchain::cuda_runtime_ready_for_version(&cuda) {
+        return None;
+    }
+    Some(format!(
+        "CUDA {cuda} runtime not installed for profile '{profile}' — version probe skipped"
+    ))
+}
+
+/// Upstream can ship a tiny `llama-version.exe` next to the server; prefer it when present so the
+/// probe does not start the full server. Falls back to `llama-server --version`.
+fn version_probe_exe(path: &Path) -> PathBuf {
+    let sibling = path.with_file_name("llama-version.exe");
+    if sibling.is_file() {
+        return sibling;
+    }
+    path.to_path_buf()
+}
+
 /// Blocking llama-server --version — same spawn shape as catalog `get_llama_catalog` (`--help`):
 /// one `run_hidden_output`, cwd = exe dir, portable CUDA PATH, no pre-sleep / preflight.
 /// Retry only if the first spawn fails or output has no parseable version line.
@@ -72,11 +142,27 @@ pub(crate) fn probe_binary_version_sync(path: &std::path::Path) -> Result<String
     const MAX_ATTEMPTS: u32 = 2;
     const RETRY_MS: u64 = 100;
 
+    if let Some(reason) = probe_skip_reason(path) {
+        log::debug!("[build-info] {} ({})", reason, path.display());
+        return Err(reason);
+    }
+
+    let stamp = file_stamp(path);
+    if cached_failure(path, stamp) {
+        return Err(format!(
+            "Version probe failed for {} (cached; retried after {}s)",
+            path.display(),
+            PROBE_FAILURE_TTL.as_secs()
+        ));
+    }
+
+    let probe_exe = version_probe_exe(path);
     let work_dir = path.parent().map(|p| p.to_path_buf());
     let mut last_snippet = String::new();
 
     for attempt in 1..=MAX_ATTEMPTS {
-        let path_for_probe = path.to_path_buf();
+        let path_for_probe = probe_exe.clone();
+        let cuda_target = path.to_path_buf();
         let work_dir_for_probe = work_dir.clone();
         let output = crate::engine_utils::run_hidden_output(move || {
             let mut cmd = std::process::Command::new(&path_for_probe);
@@ -87,7 +173,7 @@ pub(crate) fn probe_binary_version_sync(path: &std::path::Path) -> Result<String
             if let Some(ref dir) = work_dir_for_probe {
                 cmd.current_dir(dir);
             }
-            let _ = crate::engine_utils::apply_cuda_toolchain_for_binary(&mut cmd, &path_for_probe);
+            let _ = crate::engine_utils::apply_cuda_toolchain_for_binary(&mut cmd, &cuda_target);
             cmd
         });
 
@@ -98,6 +184,7 @@ pub(crate) fn probe_binary_version_sync(path: &std::path::Path) -> Result<String
                     last_snippet = cleaned.chars().take(200).collect();
                 }
                 if let Some(version) = parse_llama_version_line(&cleaned) {
+                    forget_failure(path, stamp);
                     return Ok(version);
                 }
                 log::debug!(
@@ -124,6 +211,7 @@ pub(crate) fn probe_binary_version_sync(path: &std::path::Path) -> Result<String
         }
     }
 
+    // One warning per binary+mtime, then silent for PROBE_FAILURE_TTL.
     if !last_snippet.is_empty() {
         log::warn!(
             "Could not parse version from binary '{}' after {} attempts, output: {}",
@@ -138,6 +226,7 @@ pub(crate) fn probe_binary_version_sync(path: &std::path::Path) -> Result<String
             MAX_ATTEMPTS
         );
     }
+    remember_failure(path, stamp);
     Err(format!("Version probe failed for {}", path.display()))
 }
 
