@@ -184,11 +184,18 @@ pub fn provider_pack_asset_candidates(provider_id: &str, profile: &str) -> Vec<S
     ]
 }
 
-/// Provider runtime pack: `CORE_|PLUGIN_{provider}-{profile}.7z` (+ legacy unprefixed).
+/// Provider runtime pack: `CORE_|PLUGIN_{provider}-{profile}.7z` (+ legacy unprefixed) or the
+/// canonical `ENGINE_{provider}-{profile}-{buildId}.7z` written by `pack-provider-runtime.ps1`.
 pub fn is_provider_pack_asset(name: &str, provider_id: &str, profile: &str) -> bool {
-    provider_pack_asset_candidates(provider_id, profile)
+    if provider_pack_asset_candidates(provider_id, profile)
         .iter()
         .any(|c| name.eq_ignore_ascii_case(c))
+    {
+        return true;
+    }
+    let prefix = format!("ENGINE_{provider_id}-{profile}-").to_ascii_lowercase();
+    let lower = name.to_ascii_lowercase();
+    lower.starts_with(&prefix) && lower.ends_with(".7z")
 }
 
 pub fn apply_github_auth(req: RequestBuilder) -> RequestBuilder {
@@ -810,9 +817,17 @@ pub async fn resolve_provider_pack_asset(
     provider_id: &str,
     profile: &str,
 ) -> Result<ResolvedAsset, String> {
+    // Identity first: the embedded engine manifest names the exact asset (build id in the
+    // filename) and pins its digest. Name-pattern scanning stays only as the fork fallback for
+    // providers this app build does not know about.
+    let def = crate::engine_packs::engine_pack(provider_id, profile);
     let releases = fetch_recent_version_releases(40).await?;
     for release in releases {
-        if let Some(asset) = find_provider_pack(&release, provider_id, profile) {
+        let found = match def {
+            Some(d) => find_asset_by_name(&release, &d.asset),
+            None => find_provider_pack(&release, provider_id, profile),
+        };
+        if let Some(asset) = found {
             return Ok(ResolvedAsset {
                 download_url: asset.download_url,
                 name: asset.name,
@@ -822,9 +837,15 @@ pub async fn resolve_provider_pack_asset(
             });
         }
     }
-    Err(format!(
-        "No provider pack '{provider_id}-{profile}.7z' found on recent GitHub releases"
-    ))
+    Err(match def {
+        Some(d) => format!(
+            "Engine pack '{}' ({}, CUDA {}) for {provider_id}/{profile} not found on recent GitHub releases — ship it with pack-provider-runtime.ps1 + majestic.",
+            d.asset, d.label, d.cuda
+        ),
+        None => format!(
+            "No provider pack '{provider_id}-{profile}.7z' found on recent GitHub releases"
+        ),
+    })
 }
 
 pub async fn resolve_installer_asset_for_version(

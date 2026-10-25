@@ -1,12 +1,21 @@
 {
-  "policyVersion": 1,
+  "policyVersion": 2,
   "nsisCore": {
+    "ggml-master": [
+      "edge"
+    ]
+  },
+  "enginePacks": {
     "ggml-master": [
       "edge",
       "stable"
     ]
   },
   "plugins": {},
+  "recommendedEngine": {
+    "provider": "ggml-master",
+    "profile": "edge"
+  },
   "defaultPluginProfiles": [
     "edge",
     "stable"

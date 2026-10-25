@@ -24,8 +24,25 @@ function Import-RuntimeDistributionPolicy {
         }
     }
 
+    # enginePacks = every profile that ships as a downloadable engine pack. nsisCore = the
+    # subset seeded inside the installer (docs/ENGINE-PACKS.md: EDGE only). Mirroring and
+    # packing follow enginePacks; only prepare-release-runtime follows nsisCore.
+    $script:EnginePackProviders = @{}
+    $pack_source = if ($policy.enginePacks) { $policy.enginePacks } else { $policy.nsisCore }
+    foreach ($prop in $pack_source.PSObject.Properties) {
+        $script:EnginePackProviders[$prop.Name] = @($prop.Value)
+    }
+
+    $script:RecommendedEngine = $null
+    if ($policy.recommendedEngine) {
+        $script:RecommendedEngine = [PSCustomObject]@{
+            provider = [string]$policy.recommendedEngine.provider
+            profile  = [string]$policy.recommendedEngine.profile
+        }
+    }
+
     $script:RuntimeBundleProfiles = @{}
-    foreach ($kv in $script:NsisCoreProviders.GetEnumerator()) {
+    foreach ($kv in $script:EnginePackProviders.GetEnumerator()) {
         $script:RuntimeBundleProfiles[$kv.Key] = $kv.Value
     }
     foreach ($kv in $script:OptionalDownloadProviders.GetEnumerator()) {

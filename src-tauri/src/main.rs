@@ -7,6 +7,7 @@ mod runtime_settings;
 mod debug_flags;
 mod ipc_meter;
 mod engine;
+mod engine_packs;
 mod disk_io_pdh;
 mod cpu_topology;
 mod telemetry;

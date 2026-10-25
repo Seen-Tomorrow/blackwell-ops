@@ -801,7 +801,13 @@ impl DownloadManager {
 
         let asset =
             crate::github_releases::resolve_provider_pack_asset(&provider_id, &profile).await?;
-        let expected_sha256 = asset.digest.as_deref().and_then(expected_hex);
+        // The embedded engines.json digest is authoritative when this build knows the pack: it
+        // arrives over a different trust path than the release asset itself.
+        let manifest_sha = crate::engine_packs::engine_pack(&provider_id, &profile)
+            .map(|d| d.sha256.clone())
+            .filter(|s| s.len() == 64);
+        let expected_sha256 =
+            manifest_sha.or_else(|| asset.digest.as_deref().and_then(expected_hex));
         if expected_sha256.is_none() {
             return Err(format!(
                 "Provider pack '{}' on release '{}' has no published SHA-256 — refusing to \
@@ -830,7 +836,12 @@ impl DownloadManager {
         let quant_key = format!("{provider_id}:{profile}");
         let task = DownloadTask {
             id: task_id.clone(),
-            hf_model_id: format!("Engine {provider_id} [{profile}] {}", asset.release_tag),
+            hf_model_id: format!(
+                "Engine {provider_id} [{profile}] {}",
+                crate::engine_packs::engine_pack(&provider_id, &profile)
+                    .map(|d| d.engine_version.as_str())
+                    .unwrap_or(asset.release_tag.as_str())
+            ),
             file_name: asset.name,
             download_url: asset.download_url,
             total_bytes: asset.size,
