@@ -175,7 +175,11 @@ pub(crate) async fn nuke_foundry_work_tree_on_exit(provider_id: &str) {
 /// `llama-server` = HTTP API engine (OpenAI-compatible). Not a separate WebUI package —
 /// any browser UI is served by this binary when you open its port.
 /// `llama-bench` = industry-standard offline PP/TG reference (secondary to fusion bench).
-const FOUNDRY_CMAKE_CORE_TARGETS: &[&str] = &["llama-server", "llama-fit-params", "llama-bench"];
+// `llama-identity` is our vendor patch (foundry/patches/ggml-master-identity-stub.patch):
+// it links nothing but the CRT and prints "b<build>-<commit>", so engine identity never
+// needs CUDA or a server spawn.
+const FOUNDRY_CMAKE_CORE_TARGETS: &[&str] =
+    &["llama-server", "llama-fit-params", "llama-bench", "llama-identity"];
 
 /// Optional offline tools (Foundry modal toggle) — not built unless the toggle is on.
 /// `llama-tts` = Qwen3-TTS voice synthesis (links `mtmd`). Upstream adds `tools/tts`
@@ -188,6 +192,7 @@ const FOUNDRY_CORE_BINARIES: &[&str] = &[
     "llama-server.exe",
     "llama-fit-params.exe",
     "llama-bench.exe",
+    "llama.exe",
 ];
 
 /// Checked only when the extra-tools toggle is on (`mod.rs` stage_compile).

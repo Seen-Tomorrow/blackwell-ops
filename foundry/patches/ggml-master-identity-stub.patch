@@ -1,0 +1,48 @@
+diff --git a/tools/CMakeLists.txt b/tools/CMakeLists.txt
+index 6a6592c..124f61e 100644
+--- a/tools/CMakeLists.txt
++++ b/tools/CMakeLists.txt
+@@ -41,6 +41,7 @@ else()
+         add_subdirectory(export-lora)
+     endif()
+     add_subdirectory(fit-params)
++    add_subdirectory(version)
+     if (GGML_METAL)
+         add_subdirectory(tuning)
+     endif()
+diff --git a/tools/version/CMakeLists.txt b/tools/version/CMakeLists.txt
+new file mode 100644
+--- /dev/null
++++ b/tools/version/CMakeLists.txt
+@@ -0,0 +1,13 @@
++# Blackwell Ops identity stub: prints "b<build>-<commit>" and links nothing but the CRT.
++# The app reads it for engine identity and pack naming, so it must not load CUDA.
++set(TARGET llama-identity)
++add_executable(${TARGET} main.cpp)
++set_target_properties(${TARGET} PROPERTIES OUTPUT_NAME "llama")
++target_compile_definitions(${TARGET} PRIVATE
++    LLAMA_ID_BUILD="${LLAMA_BUILD_NUMBER}"
++    LLAMA_ID_COMMIT="${LLAMA_BUILD_COMMIT}")
++target_compile_features(${TARGET} PRIVATE cxx_std_17)
++
++if(LLAMA_TOOLS_INSTALL)
++    install(TARGETS ${TARGET} RUNTIME)
++endif()
+diff --git a/tools/version/main.cpp b/tools/version/main.cpp
+new file mode 100644
+--- /dev/null
++++ b/tools/version/main.cpp
+@@ -0,0 +1,13 @@
++#include <cstdio>
++
++#ifndef LLAMA_ID_BUILD
++#define LLAMA_ID_BUILD "0"
++#endif
++#ifndef LLAMA_ID_COMMIT
++#define LLAMA_ID_COMMIT "unknown"
++#endif
++
++int main() {
++    std::printf("b%s-%.8s\n", LLAMA_ID_BUILD, LLAMA_ID_COMMIT);
++    return 0;
++}
