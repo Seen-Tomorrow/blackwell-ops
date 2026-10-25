@@ -917,7 +917,7 @@ function Invoke-MajesticPack {
                 if (-not (Test-Path -LiteralPath $asset_path)) {
                     throw "Engine pack missing after pack: $($p.asset)"
                 }
-                $sha = (Get-FileHash -LiteralPath $asset_path -Algorithm SHA256).Hash.ToLowerInvariant()
+                $sha = Get-Sha256Hex -Path $asset_path
                 if ($sha -ne $p.sha256.ToLowerInvariant()) {
                     throw ("Engine pack digest mismatch for {0}: manifest {1}, file {2}. Re-commit engines.json." -f $p.asset, $p.sha256, $sha)
                 }
@@ -1402,7 +1402,7 @@ function Invoke-MajesticShipToolchain {
         if (-not $found) {
             throw ("Missing pack asset '{0}' for '{1}'. Build it with scripts\pack-toolchain-packs.ps1." -f $p.asset, $p.id)
         }
-        $sha = (Get-FileHash -LiteralPath $found -Algorithm SHA256).Hash.ToLowerInvariant()
+        $sha = Get-Sha256Hex -Path $found
         if ($p.sha256 -and $sha -ne $p.sha256.ToLowerInvariant()) {
             throw ("Pack '{0}' digest mismatch: manifest says {1}, file is {2}. Re-run pack-toolchain-packs.ps1 and commit the manifest." -f $p.id, $p.sha256, $sha)
         }

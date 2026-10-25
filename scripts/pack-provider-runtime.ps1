@@ -22,6 +22,24 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# SHA-256 without Get-FileHash: some pack steps run in hosts where the Utility module
+# is not autoloaded (Get-FileHash is then 'not recognized'). .NET statics always work;
+# certutil is the fallback for a constrained host.
+function Get-FileSha256Hex([string]$Path) {
+    try {
+        $sha = [System.Security.Cryptography.SHA256]::Create()
+        try {
+            $stream = [System.IO.File]::OpenRead($Path)
+            try { $bytes = $sha.ComputeHash($stream) } finally { $stream.Dispose() }
+        } finally { $sha.Dispose() }
+        return ([System.BitConverter]::ToString($bytes) -replace '-', '').ToLowerInvariant()
+    } catch {
+        $line = (& certutil.exe -hashfile $Path SHA256 | Select-Object -Skip 1 -First 1)
+        return ($line.Trim() -replace ' ', '').ToLowerInvariant()
+    }
+}
+
+
 
 $script_dir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $root = Split-Path -Parent $script_dir
@@ -163,7 +181,7 @@ function Pack-OneProfile {
         profile       = $Prof
         label         = $label
         asset         = $asset
-        sha256        = (Get-FileHash -LiteralPath $zip_path -Algorithm SHA256).Hash.ToLowerInvariant()
+        sha256        = Get-FileSha256Hex -Path $zip_path
         sizeBytes     = [long]$file.Length
         cuda          = $cuda
         engineVersion = $build_id
