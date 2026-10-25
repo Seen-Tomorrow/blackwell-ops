@@ -226,7 +226,7 @@ function App() {
   }, [reloadProviders]);
 
   // Sole owner: foundry Complete → refresh_build_info (probe + inventory). Do not
-  // also refresh from Layout/ProvidersConfig — duplicate callers race list_providers.
+  // also refresh from Layout/EngineConfig — duplicate callers race list_providers.
   useTauriListen<{ phase: string; provider_id?: string }>("foundry-progress", (payload) => {
     if (payload.phase !== "Complete" || !payload.provider_id) return;
     void (async () => {

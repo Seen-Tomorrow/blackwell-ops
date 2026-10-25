@@ -76,8 +76,10 @@ export function buildEngineOverview(
     const driverBlocked = runtime ? !runtime.driver_ok : false;
     const engineMissing = !version;
 
+    // Downloading happens when the mode is missing, or when the pack is newer than what
+    // is installed; either way the engine pack is the payload, plus the runtime if absent.
     let sizeBytes = 0;
-    if (engineMissing) sizeBytes += update?.packSizeBytes ?? 0;
+    if (engineMissing || update?.available) sizeBytes += update?.packSizeBytes ?? 0;
     if (runtimeMissing) sizeBytes += runtimePack?.size_bytes ?? 0;
 
     const state: EngineModeState = driverBlocked
