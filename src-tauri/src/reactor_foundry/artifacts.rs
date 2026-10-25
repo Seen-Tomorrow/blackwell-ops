@@ -81,22 +81,65 @@ fn cache_value(cache: &str, key: &str) -> Option<String> {
     None
 }
 
+/// Parse the CMake-generated `common/build-info.cpp`:
+/// `int LLAMA_BUILD_NUMBER = 11870;` / `char const * LLAMA_COMMIT = "74bca3950";`
+fn parse_generated_build_info(text: &str) -> Option<(String, String)> {
+    let mut build = None;
+    let mut commit = None;
+    for line in text.lines() {
+        if build.is_none() && line.contains("LLAMA_BUILD_NUMBER") {
+            if let Some((_, rhs)) = line.split_once('=') {
+                let digits: String = rhs.chars().filter(|c| c.is_ascii_digit()).collect();
+                if !digits.is_empty() {
+                    build = Some(digits);
+                }
+            }
+        }
+        if commit.is_none() && line.contains("LLAMA_COMMIT") {
+            if let Some(start) = line.find('"') {
+                if let Some(len) = line[start + 1..].find('"') {
+                    let candidate = &line[start + 1..start + 1 + len];
+                    if (7..=40).contains(&candidate.len())
+                        && candidate.chars().all(|c| c.is_ascii_hexdigit())
+                    {
+                        commit = Some(candidate.to_string());
+                    }
+                }
+            }
+        }
+    }
+    Some((build?, commit?))
+}
+
 /// Write `build-info.txt` (`b<build>-<commit>`) beside the published engine binaries.
+/// Source of truth is the CMake-generated `common/build-info.cpp`; `CMakeCache.txt` is only a
+/// fallback because upstream sets these as normal variables, not cache entries.
 async fn write_build_info_sidecar(build_dir: &Path, sacred: &Path) {
-    let cache = build_dir.join("CMakeCache.txt");
-    let Ok(text) = tokio::fs::read_to_string(&cache).await else {
-        log::debug!("[foundry] no CMakeCache at {} — build-info.txt skipped", cache.display());
-        return;
+    let generated = build_dir.join("common").join("build-info.cpp");
+    let from_generated = match tokio::fs::read_to_string(&generated).await {
+        Ok(text) => parse_generated_build_info(&text),
+        Err(_) => None,
     };
-    let (Some(build), Some(commit)) = (
-        cache_value(&text, "LLAMA_BUILD_NUMBER"),
-        cache_value(&text, "LLAMA_BUILD_COMMIT"),
-    ) else {
-        log::warn!("[foundry] CMake cache lacks LLAMA_BUILD_NUMBER/COMMIT — build-info.txt skipped");
-        return;
+    let pair = match from_generated {
+        Some(pair) => pair,
+        None => {
+            let cache = build_dir.join("CMakeCache.txt");
+            let Ok(text) = tokio::fs::read_to_string(&cache).await else {
+                log::warn!("[foundry] no build-info.cpp or CMakeCache — build-info.txt skipped");
+                return;
+            };
+            let (Some(build), Some(commit)) = (
+                cache_value(&text, "LLAMA_BUILD_NUMBER"),
+                cache_value(&text, "LLAMA_BUILD_COMMIT"),
+            ) else {
+                log::warn!("[foundry] build info missing in cache — build-info.txt skipped");
+                return;
+            };
+            (build, commit)
+        }
     };
-    let short: String = commit.chars().take(8).collect();
-    let body = format!("b{build}-{short}\n");
+    let short: String = pair.1.chars().take(8).collect();
+    let body = format!("b{}-{short}\n", pair.0);
     if let Err(e) = tokio::fs::write(sacred.join("build-info.txt"), body).await {
         log::warn!("[foundry] could not write build-info.txt: {e}");
     }
@@ -104,7 +147,7 @@ async fn write_build_info_sidecar(build_dir: &Path, sacred: &Path) {
 
 #[cfg(test)]
 mod build_info_tests {
-    use super::cache_value;
+    use super::{cache_value, parse_generated_build_info};
 
     #[test]
     fn reads_typed_cache_entries_only() {
@@ -113,6 +156,18 @@ mod build_info_tests {
         assert_eq!(cache_value(cache, "LLAMA_BUILD_COMMIT").as_deref(), Some("d327bf1f0"));
         assert_eq!(cache_value(cache, "LLAMA_BUILD_NUMBER_EXTRA"), None);
         assert_eq!(cache_value(cache, "MISSING"), None);
+    }
+
+    #[test]
+    fn parses_the_cmake_generated_build_info() {
+        let generated = "#include \"build-info.h\"\n\
+int LLAMA_BUILD_NUMBER = 11870;\n\
+char const * LLAMA_COMMIT = \"74bca3950\";\n\
+char const * LLAMA_COMPILER = \"MSVC 19.51.36243.0\";\n";
+        assert_eq!(
+            parse_generated_build_info(generated),
+            Some(("11870".to_string(), "74bca3950".to_string()))
+        );
     }
 }
 

@@ -362,6 +362,15 @@ mod parse_tests {
     }
 
     #[test]
+    fn parses_llama_app_version_output() {
+        let out = "version: 0.7.0-dev (build 11870, commit 74bca3950)\nbuilt with MSVC 19.51.36243.0 for Windows AMD64\n";
+        assert_eq!(
+            parse_llama_version_line(out).as_deref(),
+            Some("0.7.0-dev (74bca395)")
+        );
+    }
+
+    #[test]
     fn still_parses_the_server_version_line() {
         let line = "version: 0.7.0-dev (build 11869, commit d327bf1f0)";
         assert_eq!(
