@@ -6,8 +6,7 @@
     "pushCommit": false,
     "releaseNotes": "### Blackwell Ops release\n\nAssets are enumerated from the pack manifest — nothing is picked by filename convention:\n\n- App `.7z` — in-app update (~6 MB)\n- NSIS Setup — first install: app + EDGE engine seed\n- `ENGINE_*` packs — EDGE and STABLE engine bundles, digest-pinned in `engines.json`\n\nThe CUDA runtime is downloaded by the setup wizard, not bundled.",
     "appOnlyReleaseNotes": "### App update (`CORE_Blackwell-Ops-App-v*.7z`)\n\nLean portable pack (~6 MB): UI, factory templates, plugin catalog, Foundry vendor patches, bundled 7z.\n\nKeeps engines, engine packs and toolchains under the app root untouched.\n\n**How to apply:** in-app UPDATE menu (download, extract, restart).\n\n**First install?** Use the NSIS Setup.",
-    "fullBundleReleaseNotes": "### Full install (`CORE_*Setup*.exe`)\n\nApp plus the EDGE engine seed — no STABLE, no toolchain (~140 MB compressed).\n\nThe setup wizard downloads the CUDA runtime for the seeded profile (383 MB) on first run; STABLE and the Foundry build tools are optional downloads from CONFIG → UPDATES.\n\nAlso attaches the lean App `.7z` and both `ENGINE_*` engine packs.",
-    "providerReleaseNotes": "### Engine pack\n\nRuntime extract via CONFIG → UPDATES. Engine packs ship with the release now; this note is obsolete."
+    "fullBundleReleaseNotes": "### Full install (`CORE_*Setup*.exe`)\n\nApp plus the EDGE engine seed — no STABLE, no toolchain (~140 MB compressed).\n\nThe setup wizard downloads the CUDA runtime for the seeded profile (383 MB) on first run; STABLE and the Foundry build tools are optional downloads from CONFIG → UPDATES.\n\nAlso attaches the lean App `.7z` and both `ENGINE_*` engine packs."
   },
   "pack": {
     "skipBuildIfInstallerFresh": true,

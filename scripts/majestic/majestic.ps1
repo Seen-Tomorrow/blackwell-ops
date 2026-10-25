@@ -47,18 +47,6 @@ function Read-MajesticConfig {
     $cfg = Get-Content -LiteralPath $config_path -Raw -Encoding UTF8 | ConvertFrom-Json
     # Provider maps always come from scripts/distribution-policy.json (DEV app + scripts).
     Import-RuntimeDistributionPolicy
-
-    $nsis_obj = New-Object PSObject
-    foreach ($kv in $script:NsisCoreProviders.GetEnumerator()) {
-        $nsis_obj | Add-Member -NotePropertyName $kv.Key -NotePropertyValue @($kv.Value) -Force
-    }
-    # providers = optional PLUGIN packs only (not NSIS core). Core engines ship inside Full Setup.
-    $packs_obj = New-Object PSObject
-    foreach ($kv in $script:OptionalDownloadProviders.GetEnumerator()) {
-        $packs_obj | Add-Member -NotePropertyName $kv.Key -NotePropertyValue @($kv.Value) -Force
-    }
-    $cfg | Add-Member -NotePropertyName nsisProviders -NotePropertyValue $nsis_obj -Force
-    $cfg | Add-Member -NotePropertyName providers -NotePropertyValue $packs_obj -Force
     return $cfg
 }
 
@@ -168,28 +156,6 @@ function Get-AppUpdateArchiveFileName {
     "CORE_Blackwell-Ops-App-v$Version.7z"
 }
 
-function Get-ProviderPackArchiveFileName {
-    param(
-        [string]$ProviderId,
-        [string]$ProfileId
-    )
-    $kind = if (Test-RuntimeNsisProvider -ProviderId $ProviderId) { 'CORE' } else { 'PLUGIN' }
-    "${kind}_${ProviderId}-${ProfileId}.7z"
-}
-
-function Resolve-ProviderPackArchivePath {
-    param(
-        [string]$OutRoot,
-        [string]$ProviderId,
-        [string]$ProfileId
-    )
-    $canonical = Join-Path $OutRoot (Get-ProviderPackArchiveFileName -ProviderId $ProviderId -ProfileId $ProfileId)
-    if (Test-Path -LiteralPath $canonical) { return $canonical }
-    # Legacy unprefixed name (pre CORE_/PLUGIN_)
-    $legacy = Join-Path $OutRoot "$ProviderId-$ProfileId.7z"
-    if (Test-Path -LiteralPath $legacy) { return $legacy }
-    return $canonical
-}
 
 function Get-ReleaseExePath {
     Join-Path $root 'src-tauri\target\release\blackwell-ops.exe'
@@ -309,10 +275,6 @@ function Get-ReleaseNotesForVariant {
         if ($Config.ship.appOnlyReleaseNotes) {
             return [string]$Config.ship.appOnlyReleaseNotes
         }
-    } elseif ($Variant -eq 'provider') {
-        if ($Config.ship.providerReleaseNotes) {
-            return [string]$Config.ship.providerReleaseNotes
-        }
     } else {
         if ($Config.ship.fullBundleReleaseNotes) {
             return [string]$Config.ship.fullBundleReleaseNotes
@@ -421,21 +383,6 @@ function Invoke-PackAppUpdateArchive {
     return [string]$out_path
 }
 
-function Invoke-PackProviderArchives {
-    param([string]$OutRoot)
-    $pack_script = Join-Path $root 'scripts\pack-provider-runtime.ps1'
-    Write-Majestic "Packing provider runtime .7z archives..." -Color Cyan
-    $pack_log = & $pack_script -OutDir $OutRoot *>&1
-    $pack_exit = $LASTEXITCODE
-    foreach ($line in @($pack_log)) {
-        if ($null -ne $line -and "$line".Length -gt 0) {
-            Write-Host $line
-        }
-    }
-    if ($pack_exit -ne 0) {
-        throw "pack-provider-runtime.ps1 failed (exit $pack_exit)"
-    }
-}
 
 # The installer carries the EDGE seed only (docs/ENGINE-PACKS.md). This asserts against the
 # STAGING tree, not the built exe: with NSIS compression enabled the payload is no longer
@@ -503,7 +450,7 @@ function Stage-InstallerForVariant {
         throw "Installer not found after build. Expected under src-tauri/target/release/bundle/nsis/"
     }
     $installer = $installers[0]
-    # CORE_ prefix so release assets are clearly full-install vs plugins.
+    # CORE_ marks the app-owned assets (App .7z + setup) apart from the ENGINE_* packs.
     $core_name = if ($installer.Name -like 'CORE_*') { $installer.Name } else { "CORE_$($installer.Name)" }
     $dest_installer = Join-Path $OutRoot $core_name
     Copy-Item -LiteralPath $installer.FullName -Destination $dest_installer -Force
@@ -526,23 +473,6 @@ function Test-ProfileArtifact {
     }
 }
 
-function Get-ProviderProfileRows {
-    param(
-        $MapObject
-    )
-    $rows = @()
-    if ($null -eq $MapObject) { return $rows }
-    foreach ($prop in $MapObject.PSObject.Properties) {
-        $provider_id = $prop.Name
-        foreach ($profile_id in @($prop.Value)) {
-            $rows += [PSCustomObject]@{
-                Provider = $provider_id
-                Profile  = $profile_id
-            }
-        }
-    }
-    $rows
-}
 
 # Profile rows come from the distribution policy, never from a list in majestic.config.json:
 #   nsisCore    = profiles seeded inside the installer
@@ -630,7 +560,7 @@ function Invoke-MajesticCheck {
         Write-Majestic "App-Only: skipping Foundry artifact checks." -Color DarkGray
         $runtime_root = Join-Path $root 'src-tauri\runtime'
         $template_ok = $true
-        # Core NSIS provider templates must exist; optional plugins only need factory JSON for catalog.
+        # Templates are required for every provider the installer seeds.
         $core_ids = @($nsis_required | ForEach-Object { $_.Provider } | Select-Object -Unique)
         foreach ($provider_id in $core_ids) {
             $template = Join-Path $runtime_root "$provider_id\config\$provider_id-default-config.json"
@@ -930,7 +860,7 @@ function Invoke-MajesticPack {
     if ($DryRun) {
         Write-Majestic "[dry-run] would stage $(Get-AppUpdateArchiveFileName -Version $version)" -Color Cyan
         if ($Variant -eq 'full') {
-            Write-Majestic "[dry-run] would stage CORE only: App .7z + Full NSIS (ggml-master inside). PLUGIN packs are manual (pack-provider)." -Color Cyan
+            Write-Majestic "[dry-run] would stage App .7z + NSIS (EDGE seed) + both ENGINE_* packs (built and digest-verified during pack)." -Color Cyan
         }
     } else {
         # Always stage lean App update for both daily app pack and weekly full pack
@@ -1531,110 +1461,6 @@ function Invoke-MajesticShipToolchain {
     Write-Majestic "SHIPPED toolchain - https://github.com/$($Config.repo)/releases/tag/$tag" -Color Green
 }
 
-function Invoke-MajesticPackProvider {
-    param(
-        $Config,
-        [string]$ProviderId,
-        [string]$ProfileId
-    )
-    if ([string]::IsNullOrWhiteSpace($ProviderId) -or [string]::IsNullOrWhiteSpace($ProfileId)) {
-        throw "pack-provider requires -ProviderId and -ProfileId (e.g. bee-llama edge)"
-    }
-    $version = Read-AppVersion
-    $tag = Get-TagName -Version $version -Prefix $Config.tagPrefix
-    Write-Majestic "PACK PROVIDER $ProviderId/$ProfileId (tag $tag)" -Color Cyan
-
-    if (-not (Test-Path -LiteralPath $out_root)) {
-        New-Item -ItemType Directory -Path $out_root -Force | Out-Null
-    }
-
-    $pack_script = Join-Path $root 'scripts\pack-provider-runtime.ps1'
-    $pack_name = Get-ProviderPackArchiveFileName -ProviderId $ProviderId -ProfileId $ProfileId
-    if ($DryRun) {
-        Write-Majestic "[dry-run] would pack $pack_name" -Color Yellow
-        return
-    }
-    $pack_log = & $pack_script -OutDir $out_root -ProviderId $ProviderId -ProfileId $ProfileId *>&1
-    $pack_exit = $LASTEXITCODE
-    foreach ($line in @($pack_log)) {
-        if ($null -ne $line -and "$line".Length -gt 0) { Write-Host $line }
-    }
-    if ($pack_exit -ne 0) {
-        throw "pack-provider-runtime.ps1 failed for $ProviderId/$ProfileId"
-    }
-
-    $archive = Resolve-ProviderPackArchivePath -OutRoot $out_root -ProviderId $ProviderId -ProfileId $ProfileId
-    if (-not (Test-Path -LiteralPath $archive)) {
-        throw "Expected pack missing: $archive"
-    }
-    $manifest = [PSCustomObject]@{
-        version   = $version
-        tag       = $tag
-        packKind  = 'provider'
-        createdAt = (Get-Date).ToUniversalTime().ToString('o')
-        repo      = $Config.repo
-        files     = @(New-ManifestEntry -File (Get-Item -LiteralPath $archive))
-    }
-    $manifest_path = Join-Path $out_root "manifest-$tag-provider-$ProviderId-$ProfileId.json"
-    $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $manifest_path -Encoding UTF8
-    Write-Majestic "PACK PROVIDER DONE: $archive" -Color Green
-    Write-Majestic "Ship with: npm run majestic:ship:provider -- -ProviderId $ProviderId -ProfileId $ProfileId" -Color Cyan
-    Write-Majestic "  or: gh release upload $tag --repo $($Config.repo) --clobber `"$archive`"" -Color DarkGray
-}
-
-function Invoke-MajesticShipProvider {
-    param(
-        $Config,
-        [string]$ProviderId,
-        [string]$ProfileId
-    )
-    Assert-ShipUnlocked
-    if ([string]::IsNullOrWhiteSpace($ProviderId) -or [string]::IsNullOrWhiteSpace($ProfileId)) {
-        throw "ship-provider requires -ProviderId and -ProfileId"
-    }
-    $version = Read-AppVersion
-    $tag = Get-TagName -Version $version -Prefix $Config.tagPrefix
-    $archive = Resolve-ProviderPackArchivePath -OutRoot $out_root -ProviderId $ProviderId -ProfileId $ProfileId
-    if (-not (Test-Path -LiteralPath $archive)) {
-        throw "No pack at $archive - run pack-provider first"
-    }
-    $pack_leaf = Split-Path -Leaf $archive
-
-    Write-Majestic "About to upload $pack_leaf to $tag on $($Config.repo)" -Color Cyan
-    if ($DryRun) {
-        Write-Majestic "[dry-run] would upload $archive" -Color Yellow
-        return
-    }
-    if (-not $Force) {
-        $confirm = Read-Host "Type YES to ship $pack_leaf to $tag"
-        if ($confirm -ne 'YES') {
-            Write-Majestic "Ship cancelled." -Color Yellow
-            return
-        }
-    } else {
-        Write-Majestic "Force: shipping $pack_leaf without prompt" -Color DarkGray
-    }
-
-    $notes = [string]$Config.ship.providerReleaseNotes
-    if ([string]::IsNullOrWhiteSpace($notes)) {
-        $notes = "Engine pack $ProviderId-$ProfileId"
-    }
-    $notes = $notes -replace '\{provider\}', $ProviderId -replace '\{profile\}', $ProfileId
-
-    $release_meta = Get-GhReleaseView -Tag $tag -Repo $Config.repo
-    if ($null -eq $release_meta) {
-        $create_result = New-GhReleaseWithAssets -Tag $tag -Repo $Config.repo -Notes $notes -Assets @($archive)
-        if ($create_result.ExitCode -ne 0) {
-            Throw-GhReleaseCreateFailed -Tag $tag -Repo $Config.repo -GhOutput $create_result.Output
-        }
-    } elseif ($release_meta.isImmutable) {
-        Throw-ImmutableReleaseBlocked -Tag $tag -Repo $Config.repo -AssetCount @($release_meta.assets).Count
-    } else {
-        gh release upload $tag --repo $Config.repo --clobber $archive
-        if ($LASTEXITCODE -ne 0) { throw "gh release upload failed" }
-    }
-    Write-Majestic "SHIPPED $ProviderId-$ProfileId.7z -> https://github.com/$($Config.repo)/releases/tag/$tag" -Color Green
-}
 
 switch ($Mode) {
     'check' {
