@@ -1424,32 +1424,58 @@ function Invoke-MajesticShipToolchain {
 
     Assert-ShipUnlocked
 
-    $archive = Join-Path $root 'work\toolchain.7z'
-    if (-not (Test-Path -LiteralPath $archive)) {
-        throw "Missing work\toolchain.7z - run menu 11 TOOLCHAIN (or npm run majestic:toolchain) first."
+    # Ship every pack the embedded manifest can ask for. The app resolves assets by name from
+    # its own compiled-in manifest, so an asset missing here is a user-visible 404 during
+    # onboarding - and a digest mismatch means the app refuses the download. Fail closed.
+    $manifest_path = Join-Path $root 'toolchain\manifest.json'
+    $manifest = Get-Content -LiteralPath $manifest_path -Raw -Encoding UTF8 | ConvertFrom-Json
+    if (-not $manifest.packs -or @($manifest.packs).Count -eq 0) {
+        throw "toolchain\manifest.json has no packs[] - run scripts\pack-toolchain-packs.ps1 first."
     }
 
-    # Validate the ARTIFACT, not a working tree: this is exactly the check that would
-    # have caught toolchain.7z being uploaded from July with no CUDA 13.4 in it.
-    & (Join-Path $root 'scripts\toolchain-validate-archive.ps1') -Archive $archive
+    $assets = @()
+    foreach ($p in $manifest.packs) {
+        $candidates = @(
+            (Join-Path $root (Join-Path 'work' $p.asset)),
+            (Join-Path $root (Join-Path '.majestic-out' $p.asset))
+        )
+        $found = $candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+        if (-not $found) {
+            throw ("Missing pack asset '{0}' for '{1}'. Build it with scripts\pack-toolchain-packs.ps1." -f $p.asset, $p.id)
+        }
+        $sha = (Get-FileHash -LiteralPath $found -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($p.sha256 -and $sha -ne $p.sha256.ToLowerInvariant()) {
+            throw ("Pack '{0}' digest mismatch: manifest says {1}, file is {2}. Re-run pack-toolchain-packs.ps1 and commit the manifest." -f $p.id, $p.sha256, $sha)
+        }
+        $assets += (Get-Item -LiteralPath $found)
+    }
+
+    # Content check applies to the full pack: it is the one that must contain both CUDA trees.
+    $full_asset = $assets | Where-Object { $_.Name -eq 'toolchain.7z' } | Select-Object -First 1
+    if ($full_asset) {
+        & (Join-Path $root 'scripts\toolchain-validate-archive.ps1') -Archive $full_asset.FullName
+    }
 
     $tag = 'toolchain'
-    $size_mb = [math]::Round((Get-Item -LiteralPath $archive).Length / 1MB, 1)
-    Write-Majestic "About to upload toolchain.7z ($size_mb MB) to tag '$tag' on $($Config.repo)" -Color Cyan
+    $total_mb = [math]::Round((($assets | Measure-Object Length -Sum).Sum) / 1MB, 1)
+    Write-Majestic ("About to upload {0} toolchain asset(s), {1} MB total, to tag '{2}' on {3}" -f $assets.Count, $total_mb, $tag, $Config.repo) -Color Cyan
+    foreach ($a in $assets) {
+        Write-Majestic ("  {0}  {1:N1} MB" -f $a.Name, ($a.Length / 1MB)) -Color DarkGray
+    }
 
     if ($DryRun) {
-        Write-Majestic "[dry-run] would upload $archive to release $tag" -Color Yellow
+        Write-Majestic "[dry-run] would upload $($assets.Count) asset(s) to release $tag" -Color Yellow
         return
     }
 
     if (-not $Force) {
-        $confirm = Read-Host "Type YES to ship toolchain.7z"
+        $confirm = Read-Host "Type YES to ship $($assets.Count) toolchain archive(s)"
         if ($confirm -ne 'YES') {
             Write-Majestic "Ship cancelled." -Color Yellow
             return
         }
     } else {
-        Write-Majestic "Force: shipping toolchain.7z without prompt" -Color DarkGray
+        Write-Majestic "Force: shipping toolchain assets without prompt" -Color DarkGray
     }
 
     if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
@@ -1457,18 +1483,19 @@ function Invoke-MajesticShipToolchain {
     }
 
     $release_meta = Get-GhReleaseView -Tag $tag -Repo $Config.repo
-    $notes = "Portable Foundry toolchain (CUDA + VS/SDK/CMake). Extract via in-app Config -> Foundry Toolchain."
+    $notes = "Portable toolchain packs (CUDA runtime per version, Foundry build tools, full). The app resolves them by name from its embedded manifest; extract via in-app setup / Foundry."
+    $asset_paths = @($assets | ForEach-Object { $_.FullName })
     if ($null -eq $release_meta) {
-        Write-Majestic "Creating GitHub release $tag with toolchain.7z..." -Color Cyan
-        $create_result = New-GhReleaseWithAssets -Tag $tag -Repo $Config.repo -Notes $notes -Assets @($archive)
+        Write-Majestic "Creating GitHub release $tag with $($assets.Count) asset(s)..." -Color Cyan
+        $create_result = New-GhReleaseWithAssets -Tag $tag -Repo $Config.repo -Notes $notes -Assets $asset_paths
         if ($create_result.ExitCode -ne 0) {
             throw "gh release create failed:`n$($create_result.Output)"
         }
     } elseif ($release_meta.isImmutable) {
         throw "Release $tag is immutable - delete it on GitHub or use a new tag before re-uploading."
     } else {
-        Write-Majestic "Release $tag exists - uploading toolchain.7z (clobber)..." -Color Cyan
-        gh release upload $tag --repo $Config.repo --clobber $archive
+        Write-Majestic "Release $tag exists - uploading $($assets.Count) asset(s) (clobber)..." -Color Cyan
+        gh release upload $tag --repo $Config.repo --clobber @asset_paths
         if ($LASTEXITCODE -ne 0) {
             throw "gh release upload failed"
         }
