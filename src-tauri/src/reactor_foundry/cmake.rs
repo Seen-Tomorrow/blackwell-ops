@@ -175,11 +175,13 @@ pub(crate) async fn nuke_foundry_work_tree_on_exit(provider_id: &str) {
 /// `llama-server` = HTTP API engine (OpenAI-compatible). Not a separate WebUI package —
 /// any browser UI is served by this binary when you open its port.
 /// `llama-bench` = industry-standard offline PP/TG reference (secondary to fusion bench).
-// `llama-app` is upstream's multi-tool binary with OUTPUT_NAME "llama" (bin/Release/llama.exe);
-// the version probe uses it for engine identity. Do NOT add a target with OUTPUT_NAME llama —
-// ninja fails with "multiple rules generate bin/Release/llama.exe".
-const FOUNDRY_CMAKE_CORE_TARGETS: &[&str] =
-    &["llama-server", "llama-fit-params", "llama-bench", "llama-app"];
+// `llama-app` is NOT built here: upstream's target sets OUTPUT_NAME "llama" but links ggml-cuda,
+// so it cannot identify a profile whose runtime pack is missing, and it would ship ~15 MB of CUDA-
+// linked binary in every engine pack. Engine identity comes from a CPU-only `llama.exe` (no CUDA
+// imports), supplied as an artifact and picked up by the version probe.
+// Do NOT add any target with OUTPUT_NAME "llama" here: ninja fails with
+// "multiple rules generate bin/Release/llama.exe".
+const FOUNDRY_CMAKE_CORE_TARGETS: &[&str] = &["llama-server", "llama-fit-params", "llama-bench"];
 
 /// Optional offline tools (Foundry modal toggle) — not built unless the toggle is on.
 /// `llama-tts` = Qwen3-TTS voice synthesis (links `mtmd`). Upstream adds `tools/tts`
@@ -188,11 +190,12 @@ const FOUNDRY_CMAKE_CORE_TARGETS: &[&str] =
 /// Promote to CORE when `llama-server` gains TTS (llama.cpp PR #26254 follow-up).
 const FOUNDRY_CMAKE_EXTRA_TARGETS: &[&str] = &["llama-cli", "llama-quantize", "llama-tts"];
 
+// `llama.exe` is intentionally absent: it is an optional CPU-only artifact, not a build product of
+// the CUDA configure. Requiring it here would fail every build that does not supply one.
 const FOUNDRY_CORE_BINARIES: &[&str] = &[
     "llama-server.exe",
     "llama-fit-params.exe",
     "llama-bench.exe",
-    "llama.exe",
 ];
 
 /// Checked only when the extra-tools toggle is on (`mod.rs` stage_compile).
