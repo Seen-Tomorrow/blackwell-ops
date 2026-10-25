@@ -292,9 +292,11 @@ export default function FoundryToolchainPanel({
     const allProfilesReady = info.profiles_ready >= info.profiles_total;
     return (
       <div className="fnd-tc-ready type-tiny font-mono">
-        {allProfilesReady
-          ? "✓ Foundry package ready"
-          : `Foundry package · ${info.profiles_ready}/${info.profiles_total} profiles ready`}
+        {info.pack_outdated
+          ? "Foundry package · reinstall needed"
+          : allProfilesReady
+            ? "✓ Foundry package ready"
+            : `Foundry package · ${info.profiles_ready}/${info.profiles_total} profiles ready`}
       </div>
     );
   }

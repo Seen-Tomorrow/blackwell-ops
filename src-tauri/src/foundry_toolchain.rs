@@ -454,6 +454,15 @@ pub fn manifest_path() -> PathBuf {
 
 const EMBEDDED_MANIFEST: &str = include_str!("../../toolchain/manifest.json");
 
+/// Record the expected layout version after a verified install. Packs contain the tree only,
+/// so without this the on-disk manifest keeps whatever version was there before.
+fn write_installed_manifest() {
+    let path = toolchain_dir().join("manifest.json");
+    if let Err(e) = std::fs::write(&path, EMBEDDED_MANIFEST) {
+        log::warn!("[toolchain] could not write installed manifest: {e}");
+    }
+}
+
 pub fn ensure_manifest_on_disk() -> Result<(), String> {
     let path = manifest_path();
     if path.exists() {
@@ -1771,6 +1780,10 @@ pub fn finalize_toolchain_install(archive_path: &std::path::Path, pack: &str) ->
     extract_toolchain_archive(archive_path, &extract_dest)?;
     consolidate_stray_toolchain_into_toolchain_dir(&app_root)?;
     verify_toolchain_install(&def)?;
+
+    // The packs carry the tree, not the manifest, so without this a completed install still
+    // reported the previously installed version and the UI insisted it was outdated.
+    write_installed_manifest();
 
     if def.kind() == PackKind::Runtime {
         if let Err(e) = std::fs::remove_file(archive_path) {

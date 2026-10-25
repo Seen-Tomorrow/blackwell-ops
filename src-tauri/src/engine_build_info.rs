@@ -240,13 +240,25 @@ pub(crate) fn probe_binary_version_sync(path: &std::path::Path) -> Result<String
     // Written by Foundry from CMake's LLAMA_BUILD_NUMBER/LLAMA_BUILD_COMMIT. It is the cheapest
     // and most accurate identity: no spawn, no CUDA, and it is regenerated with the build.
     if let Some(version) = read_build_info_sidecar(path) {
+        log::info!(
+            "[build-info] {} -> {} (build-info.txt)",
+            path.display(),
+            version
+        );
         return Ok(version);
     }
 
     let stub = version_probe_exe(path);
     if stub != path {
         match run_version_probe(&stub, path) {
-            Ok(version) => return Ok(version),
+            Ok(version) => {
+                let name = stub
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "stub".to_string());
+                log::info!("[build-info] {} -> {} ({name})", path.display(), version);
+                return Ok(version);
+            }
             Err(_) => log::debug!(
                 "[build-info] {} did not report a version; falling back to the server",
                 stub.display()
@@ -271,6 +283,11 @@ pub(crate) fn probe_binary_version_sync(path: &std::path::Path) -> Result<String
     match run_version_probe(path, path) {
         Ok(version) => {
             forget_failure(path, stamp);
+            log::info!(
+                "[build-info] {} -> {} (--version)",
+                path.display(),
+                version
+            );
             Ok(version)
         }
         Err(snippet) => {

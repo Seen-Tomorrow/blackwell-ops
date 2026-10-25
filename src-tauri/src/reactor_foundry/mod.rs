@@ -2469,7 +2469,7 @@ async fn enrich_provider_binary_info(
 
     if !to_probe.is_empty() {
         log::info!(
-            "[refresh] {} — probing {} unique binary path(s) in parallel (catalog-style --version)",
+            "[refresh] {} — resolving engine identity for {} path(s)",
             provider_id,
             to_probe.len()
         );
