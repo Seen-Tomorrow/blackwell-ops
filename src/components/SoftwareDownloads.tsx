@@ -6,6 +6,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
+// Shares the ModelHub panel/row styling (heading, label, sub-line).
+import "../styles/modelhub-page.css";
+
 import { useDownloadTasks } from "../hooks/useDownloadTasks";
 import { buildEngineOverview, packDownloadAction } from "../lib/engineOverview";
 import EngineVersionLabel from "./EngineVersionLabel";
@@ -112,27 +115,32 @@ export default function SoftwareDownloads() {
     [refresh],
   );
 
-  const rowClass = "flex items-center justify-between gap-3 py-1.5";
-
   return (
-    <div className="h-full overflow-y-auto eink-scrollbar p-4 space-y-3">
-      <section className="industrial-panel-face p-3 space-y-1.5">
-        <p className="type-tiny font-mono uppercase tracking-wide config-muted">Application</p>
-        <div className={rowClass}>
-          <div>
-            <div className="type-tiny font-mono">Blackwell Ops</div>
-            <div className="type-micro font-mono config-muted">
+    <div className="h-full overflow-y-auto eink-scrollbar px-3 py-2.5 space-y-2">
+      <section className="industrial-panel-face px-3 py-2.5">
+        <div className="dl-paths-heading">Application</div>
+        <div className="theme-surface-row flex items-center justify-between gap-3 rounded-sm px-2.5 py-1.5">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className="dl-paths-label truncate font-mono">Blackwell Ops</span>
+              {appUpdate && (
+                <span className="value-chip shrink-0 font-mono px-1.5 py-0.5">
+                  {appUpdate.currentVersion}
+                </span>
+              )}
+            </div>
+            <div className="dl-paths-sub truncate font-mono">
               {!appUpdate
                 ? "Could not check for updates"
                 : appUpdate.available
-                  ? `Version ${appUpdate.version} available (you have ${appUpdate.currentVersion})`
-                  : `Up to date · ${appUpdate.currentVersion}`}
+                  ? `Version ${appUpdate.version} available`
+                  : "Up to date"}
             </div>
           </div>
           {appUpdate?.available && (
             <button
               type="button"
-              className="foundry-toolchain-btn foundry-toolchain-btn--action"
+              className="value-chip shrink-0 px-2 py-0.5 font-mono whitespace-nowrap"
               onClick={() => void run(() => invoke("install_app_update", { channel: "app_only" }))}
             >
               UPDATE {appUpdate.version}
@@ -141,10 +149,10 @@ export default function SoftwareDownloads() {
         </div>
       </section>
 
-      <section className="industrial-panel-face p-3 space-y-1.5">
-        <p className="type-tiny font-mono uppercase tracking-wide config-muted">
-          Engine {overview?.label ? `· ${overview.label}` : ""}
-        </p>
+      <section className="industrial-panel-face px-3 py-2.5 space-y-1.5">
+        <div className="dl-paths-heading">
+          Engine{overview?.label ? ` · ${overview.label}` : ""}
+        </div>
         {(overview?.modes ?? []).map((mode) => {
           const task = providerTasks.find(
             (t) =>
@@ -155,13 +163,16 @@ export default function SoftwareDownloads() {
           const catalog = mode.sources.find((s) => s.id === "catalog");
           const action = packDownloadAction(mode.packVersion, catalog?.version ?? null);
           return (
-            <div key={mode.id} className={rowClass}>
-              <div className="min-w-0">
-                <div className="type-tiny font-mono">
-                  {mode.label}
-                  <span className="config-muted"> · {mode.tagline}</span>
+            <div
+              key={mode.id}
+              className="theme-surface-row flex items-center justify-between gap-3 rounded-sm px-2.5 py-1.5"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="dl-paths-label truncate font-mono">{mode.label}</span>
+                  <span className="dl-paths-sub truncate font-mono">{mode.tagline}</span>
                 </div>
-                <div className="type-micro font-mono config-muted">
+                <div className="dl-paths-sub truncate font-mono">
                   {mode.packAvailable ? (
                     <>
                       Published <EngineVersionLabel version={mode.packVersion} /> ·{" "}
@@ -171,7 +182,7 @@ export default function SoftwareDownloads() {
                     "No published pack yet"
                   )}
                 </div>
-                <div className="type-micro font-mono config-muted">
+                <div className="dl-paths-sub truncate font-mono">
                   {catalog?.available ? (
                     <>
                       Downloaded <EngineVersionLabel version={catalog.version} />
@@ -183,13 +194,13 @@ export default function SoftwareDownloads() {
                 </div>
               </div>
               {task ? (
-                <span className="type-micro font-mono config-muted">{task.status}</span>
+                <span className="dl-paths-sub shrink-0 font-mono">{task.status}</span>
               ) : !mode.packAvailable ? (
-                <span className="type-micro font-mono config-muted">not published yet</span>
+                <span className="dl-paths-sub shrink-0 font-mono">not published yet</span>
               ) : (
                 <button
                   type="button"
-                  className="foundry-toolchain-btn foundry-toolchain-btn--action"
+                  className="value-chip shrink-0 px-2 py-0.5 font-mono whitespace-nowrap"
                   onClick={() =>
                     void run(() =>
                       invoke("download_binary_update", {
@@ -213,19 +224,21 @@ export default function SoftwareDownloads() {
         })}
       </section>
 
-      <section className="industrial-panel-face p-3 space-y-1.5">
-        <p className="type-tiny font-mono uppercase tracking-wide config-muted">Foundry</p>
-        <div className={rowClass}>
-          <div>
-            <div className="type-tiny font-mono">Build engines yourself</div>
-            <div className="type-micro font-mono config-muted">
-              {foundryReady ? "Installed" : `Not installed · ${formatSize(buildPack?.size_bytes ?? 0)}`}
+      <section className="industrial-panel-face px-3 py-2.5">
+        <div className="dl-paths-heading">Foundry</div>
+        <div className="theme-surface-row flex items-center justify-between gap-3 rounded-sm px-2.5 py-1.5">
+          <div className="min-w-0 flex-1">
+            <span className="dl-paths-label truncate font-mono">Build engines yourself</span>
+            <div className="dl-paths-sub truncate font-mono">
+              {foundryReady
+                ? "Installed"
+                : `Not installed · ${formatSize(buildPack?.size_bytes ?? 0)}`}
             </div>
           </div>
           {!foundryReady && (
             <button
               type="button"
-              className="foundry-toolchain-btn foundry-toolchain-btn--action"
+              className="value-chip shrink-0 px-2 py-0.5 font-mono whitespace-nowrap"
               onClick={() => void run(() => invoke("start_toolchain_download", { pack: "build" }))}
             >
               INSTALL
@@ -235,25 +248,30 @@ export default function SoftwareDownloads() {
       </section>
 
       {inFlight.length > 0 && (
-        <section className="eng-src-box p-3 space-y-1.5">
-          <p className="type-tiny font-mono uppercase tracking-wide config-muted">In progress</p>
+        <section className="industrial-panel-face px-3 py-2.5 space-y-1.5">
+          <div className="dl-paths-heading">In progress</div>
           {inFlight.map((task) => {
             const pct =
               task.totalBytes > 0
                 ? Math.min(100, Math.round((task.downloadedBytes / task.totalBytes) * 100))
                 : null;
             return (
-              <div key={task.id} className={rowClass}>
-                <div className="min-w-0">
-                  <div className="type-micro font-mono truncate">{task.fileName || task.id}</div>
-                  <div className="type-micro font-mono config-muted">
+              <div
+                key={task.id}
+                className="theme-surface-row flex items-center justify-between gap-3 rounded-sm px-2.5 py-1.5"
+              >
+                <div className="min-w-0 flex-1">
+                  <span className="dl-paths-label truncate font-mono">
+                    {task.fileName || task.id}
+                  </span>
+                  <div className="dl-paths-sub truncate font-mono">
                     {task.status}
                     {pct !== null ? ` · ${pct}%` : ""}
                   </div>
                 </div>
                 <button
                   type="button"
-                  className="foundry-toolchain-btn foundry-toolchain-btn--neutral"
+                  className="value-chip shrink-0 px-2 py-0.5 font-mono whitespace-nowrap"
                   onClick={() => void run(() => invoke("cancel_download", { taskId: task.id }))}
                 >
                   CANCEL
@@ -264,7 +282,7 @@ export default function SoftwareDownloads() {
         </section>
       )}
 
-      {error && <p className="type-micro font-mono cfg-dng">{error}</p>}
+      {error && <p className="type-micro font-mono cfg-dng px-1">{error}</p>}
     </div>
   );
 }
