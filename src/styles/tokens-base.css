@@ -309,16 +309,16 @@
   --theme-info: #00e5ff;
   --theme-on-accent: var(--theme-chip-solid-text);
   /* Type scale — sizes are NOT a theme delta; keep them out of app-themes.ts. */
-  --type-hairline: 6px;
-  --type-micro: 7px;
-  --type-tiny: 8px;
-  --type-label: 9px;
-  --type-body: 10px;
-  --type-sm: 11px;
-  --type-md: 12px;
-  --type-lg: 15px;
-  --type-xl: 18px;
-  --type-2xl: 22px;
+  --type-hairline: calc(6px * var(--text-scale, 1));
+  --type-micro: calc(7px * var(--text-scale, 1));
+  --type-tiny: calc(8px * var(--text-scale, 1));
+  --type-label: calc(9px * var(--text-scale, 1));
+  --type-body: calc(10px * var(--text-scale, 1));
+  --type-sm: calc(11px * var(--text-scale, 1));
+  --type-md: calc(12px * var(--text-scale, 1));
+  --type-lg: calc(15px * var(--text-scale, 1));
+  --type-xl: calc(18px * var(--text-scale, 1));
+  --type-2xl: calc(22px * var(--text-scale, 1));
 
 
   /* App theme tokens — defaults (matrix); overridden by applyAppTheme() */

@@ -25,6 +25,8 @@ import {
   saveMonitorWindow,
   saveUiDensity,
   saveUiZoom,
+  loadUiTextScale,
+  saveUiTextScale,
   type MonitorWindowSnap,
   type UiDensity,
 } from "../lib/storage";
@@ -50,6 +52,9 @@ import DevFakeGpuTopoTool from "./DevFakeGpuTopoTool";
 const MIN_ZOOM = 0.7;
 const MAX_ZOOM = 1.5;
 const ZOOM_STEP = 0.05;
+const MIN_TEXT = 1.0;
+const MAX_TEXT = 1.6;
+const TEXT_STEP = 0.05;
 
 function loadZoom(): number {
   return loadUiZoom(1.0, MIN_ZOOM, MAX_ZOOM);
@@ -57,6 +62,10 @@ function loadZoom(): number {
 
 function saveZoom(zoom: number): void {
   saveUiZoom(zoom);
+}
+
+function loadTextScale(): number {
+  return loadUiTextScale(1.0, MIN_TEXT, MAX_TEXT);
 }
 
 interface LayoutProps {
@@ -95,6 +104,7 @@ export default function Layout({
   onDownloadsSubTabChange,
 }: LayoutProps) {
   const [zoom, setZoom] = useState(loadZoom);
+  const [textScale, setTextScale] = useState(loadTextScale);
   const [uiDensity, setUiDensity] = useState<UiDensity>(loadUiDensity);
   const [monitorFocus, setMonitorFocus] = useState(false);
   const [shellWidthPx, setShellWidthPx] = useState(() =>
@@ -350,6 +360,14 @@ export default function Layout({
     });
   }, []); // setZoom is stable (React guarantee), functional update ensures latest value
 
+  const adjustTextScale = useCallback((delta: number) => {
+    setTextScale((prev) => {
+      const next = Math.round(Math.min(MAX_TEXT, Math.max(MIN_TEXT, prev + delta)) * 100) / 100;
+      saveUiTextScale(next);
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     const onWheel = (e: WheelEvent) => {
       if (!e.ctrlKey) return;
@@ -370,6 +388,7 @@ export default function Layout({
 
   const shellStyle = {
     "--ui-text-scale": String(zoom),
+    "--text-scale": String(textScale),
     "--app-shell-width-px": `${shellWidthPx}px`,
     /** Header/footer density — independent of app zoom (see resolveChromeScale). */
     "--chrome-scale": String(chromeScale),
@@ -490,6 +509,14 @@ export default function Layout({
                  */}
                 <div className="app-quick-settings__tool-group flex items-center gap-1 flex-wrap justify-end min-w-0">
                   <div className="app-appearance-inline-group flex items-center gap-0.5 flex-shrink-0">
+                  <div className="app-appearance-inline-group flex items-center gap-0.5 flex-shrink-0">
+                    <span className="app-appearance-section__label app-appearance-section__label--compact type-hairline font-mono tracking-widest uppercase">
+                      Text
+                    </span>
+                    <button type="button" onClick={() => adjustTextScale(-TEXT_STEP)} className="app-chrome-control-btn shell-scale-btn type-label font-mono transition-colors leading-none" title="Decrease text size (layout unchanged)">−</button>
+                    <span className="app-chrome-control-btn shell-scale-readout type-tiny font-mono opacity-60 w-8 text-center" title="Text size — multiplies the type scale only">{Math.round(textScale * 100)}%</span>
+                    <button type="button" onClick={() => adjustTextScale(TEXT_STEP)} className="app-chrome-control-btn shell-scale-btn type-label font-mono transition-colors leading-none" title="Increase text size (layout unchanged)">+</button>
+                  </div>
                     <span className="app-appearance-section__label app-appearance-section__label--compact type-hairline font-mono tracking-widest uppercase">
                       Zoom
                     </span>

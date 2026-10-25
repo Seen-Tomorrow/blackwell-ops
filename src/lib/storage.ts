@@ -145,6 +145,7 @@ export const KEYS = {
   sortField: `${STORAGE_PREFIX}sort-field`,
   sortDir: `${STORAGE_PREFIX}sort-dir`,
   uiZoom: `${STORAGE_PREFIX}ui-zoom`,
+  uiTextScale: `${STORAGE_PREFIX}ui-text-scale`,
   uiDensity: `${STORAGE_PREFIX}ui-density`,
   cockpitExtrasCollapsed: `${STORAGE_PREFIX}cockpit-extras-collapsed`,
   fullAutoGoal: `${STORAGE_PREFIX}full-auto-goal`,
@@ -1289,6 +1290,18 @@ export function loadUiZoom(defaultZoom = 1.0, min = 0.7, max = 1.5): number {
 
 export function saveUiZoom(zoom: number): void {
   writeStorage(KEYS.uiZoom, String(zoom));
+}
+
+export function loadUiTextScale(defaultScale = 1.0, min = 1.0, max = 1.6): number {
+  const stored = readStorage(KEYS.uiTextScale);
+  if (!stored) return defaultScale;
+  const val = parseFloat(stored);
+  if (Number.isNaN(val) || val < min || val > max) return defaultScale;
+  return val;
+}
+
+export function saveUiTextScale(scale: number): void {
+  writeStorage(KEYS.uiTextScale, String(scale));
 }
 
 /** Per-slot ENGINE LOGS search queries — survives tab navigation until cleared. */
