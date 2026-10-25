@@ -62,7 +62,7 @@ function pluginBusy(pluginId: string, tasks: DownloadTask[]): boolean {
 
 function profileActionLabel(row: PluginProfileOffering, isCore = false): string {
   if (!row.packAvailable) {
-    return isCore ? "Via Full install" : "Unavailable";
+    return isCore ? "No pack yet" : "Unavailable";
   }
   if (!row.installed) return "Install";
   if (row.updateAvailable) return "Update";
@@ -270,8 +270,8 @@ export default function UpdatesConfig({
         id: DEFAULT_PROVIDER_ID,
         label: "GGML Master",
         summary: anyCorePack
-          ? "Core engine — CORE_* profile packs when published; otherwise refresh via Full install."
-          : "Core engine — ships inside Full NSIS (CORE_*Setup). Separate CORE_ggml-master packs only when published.",
+          ? "EDGE seed ships with the installer; EDGE and STABLE engine packs install/update from here."
+          : "EDGE seed ships with the installer. STABLE and engine updates appear here once the ENGINE_* packs are published.",
         plugin: false,
         profiles: coreProfiles,
       });
@@ -467,7 +467,7 @@ export default function UpdatesConfig({
             ) : null}
             {!row.packAvailable && !card.plugin ? (
               <span className="block type-tiny upd-profile-no-pack mt-0.5">
-                no CORE pack — use Full install
+                no engine pack published yet
               </span>
             ) : null}
             {arch ? (
@@ -530,7 +530,7 @@ export default function UpdatesConfig({
               className={`type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border ${actionBtnClass(edgeProf)}`}
               title={
                 !edgeProf.packAvailable && !card.plugin
-                  ? "Core engines refresh via Full install unless CORE_ggml-master packs are published"
+                  ? "This profile updates from its ENGINE_* pack; the installer only carries the EDGE seed"
                   : undefined
               }
             >
@@ -545,7 +545,7 @@ export default function UpdatesConfig({
               className={`type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border ${actionBtnClass(stable)}`}
               title={
                 !stable.packAvailable && !card.plugin
-                  ? "Core engines refresh via Full install unless CORE_ggml-master packs are published"
+                  ? "This profile updates from its ENGINE_* pack; the installer only carries the EDGE seed"
                   : undefined
               }
             >
@@ -579,8 +579,8 @@ export default function UpdatesConfig({
         <div className="min-w-0 max-w-2xl">
           <h2 className="text-xs font-mono theme-accent-text tracking-widest">UPDATES</h2>
           <p className="type-body font-mono config-muted mt-1 leading-relaxed">
-            App refresh updates the plugin catalog. Install engines here — they appear in PROVIDERS after download.
-            Foundry build still works for installed plugins.
+            App refresh keeps the catalog current. Engine packs install and update here — they appear in PROVIDERS after download.
+            
           </p>
         </div>
         <button
