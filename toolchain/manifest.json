@@ -59,6 +59,13 @@
       "sizeBytes": 444263043
     },
     {
+      "id": "build",
+      "kind": "build",
+      "asset": "toolchain-build-v4.7z",
+      "sha256": "56643fc7c4611f8430a5e8ebb2edb7bf353fb6cc38c2918b50a2917a60a13c32",
+      "sizeBytes": 383952673
+    },
+    {
       "id": "full",
       "kind": "full",
       "asset": "toolchain.7z",

@@ -194,7 +194,10 @@ export default function FoundryToolchainPanel({
   const handleDownload = useCallback(async () => {
     setActionError(null);
     try {
-      await invoke("start_toolchain_download", onboardingPackId ? { pack: onboardingPackId } : {});
+      // Onboarding needs a CUDA runtime; Foundry needs the build tools (VS/SDK/cmake/nvcc).
+      // "full" stays available for cache/offline installs, but nothing requests it by default.
+      const pack = onboardingPackId ?? "build";
+      await invoke("start_toolchain_download", { pack });
     } catch (e) {
       setActionError(String(e));
     }
@@ -203,7 +206,8 @@ export default function FoundryToolchainPanel({
   const handleReextract = useCallback(async () => {
     setActionError(null);
     try {
-      await invoke("retry_toolchain_extract", onboardingPackId ? { pack: onboardingPackId } : {});
+      const pack = onboardingPackId ?? "build";
+      await invoke("retry_toolchain_extract", { pack });
     } catch (e) {
       setActionError(String(e));
     }
