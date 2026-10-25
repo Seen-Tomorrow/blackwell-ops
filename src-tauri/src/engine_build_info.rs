@@ -161,10 +161,14 @@ fn read_build_info_sidecar(path: &Path) -> Option<String> {
     static ID_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
         regex::Regex::new(r"(?i)^b\d+-[0-9a-f]{7,40}$").expect("build info regex")
     });
+    // Newer sidecars carry the human version: `0.7.0-dev (build 11887)`.
+    static VERSION_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"(?i)^.+ \(build \d+\)$").expect("version info regex")
+    });
     let sidecar = path.with_file_name("build-info.txt");
     let text = std::fs::read_to_string(sidecar).ok()?;
     let line = text.lines().next()?.trim();
-    if ID_RE.is_match(line) {
+    if ID_RE.is_match(line) || VERSION_RE.is_match(line) {
         Some(line.to_string())
     } else {
         log::debug!("[build-info] sidecar has an unexpected format: {line:?}");

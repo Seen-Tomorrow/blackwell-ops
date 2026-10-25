@@ -111,7 +111,31 @@ fn parse_generated_build_info(text: &str) -> Option<(String, String)> {
     Some((build?, commit?))
 }
 
-/// Write `build-info.txt` (`b<build>-<commit>`) beside the published engine binaries.
+/// Version name CMake generated for this build (`llama-config-version.cmake`):
+/// `set(PACKAGE_VERSION "0.7.0-dev")`.
+fn parse_package_version(text: &str) -> Option<String> {
+    let line = text
+        .lines()
+        .find(|l| l.trim_start().starts_with("set(PACKAGE_VERSION"))?;
+    let start = line.find('"')? + 1;
+    let rest = &line[start..];
+    let end = rest.find('"')?;
+    let value = rest[..end].trim();
+    if value.is_empty() || value.contains("${") {
+        None
+    } else {
+        Some(value.to_string())
+    }
+}
+
+async fn read_engine_version_name(build_dir: &Path) -> Option<String> {
+    let path = build_dir.join("llama-config-version.cmake");
+    let text = tokio::fs::read_to_string(path).await.ok()?;
+    parse_package_version(&text)
+}
+
+/// Write `build-info.txt` beside the published engine binaries: `<version> (build N)` when the
+/// configure produced a version name, `b<build>-<commit>` otherwise.
 /// Source of truth is the CMake-generated `common/build-info.cpp`; `CMakeCache.txt` is only a
 /// fallback because upstream sets these as normal variables, not cache entries.
 async fn write_build_info_sidecar(build_dir: &Path, sacred: &Path) {
@@ -139,7 +163,10 @@ async fn write_build_info_sidecar(build_dir: &Path, sacred: &Path) {
         }
     };
     let short: String = pair.1.chars().take(8).collect();
-    let body = format!("b{}-{short}\n", pair.0);
+    let body = match read_engine_version_name(build_dir).await {
+        Some(version) => format!("{version} (build {})\n", pair.0),
+        None => format!("b{}-{short}\n", pair.0),
+    };
     if let Err(e) = tokio::fs::write(sacred.join("build-info.txt"), body).await {
         log::warn!("[foundry] could not write build-info.txt: {e}");
     }
@@ -147,7 +174,7 @@ async fn write_build_info_sidecar(build_dir: &Path, sacred: &Path) {
 
 #[cfg(test)]
 mod build_info_tests {
-    use super::{cache_value, parse_generated_build_info};
+    use super::{cache_value, parse_generated_build_info, parse_package_version};
 
     #[test]
     fn reads_typed_cache_entries_only() {
@@ -159,6 +186,12 @@ mod build_info_tests {
     }
 
     #[test]
+    #[test]
+    fn parses_the_generated_package_version() {
+        let text = "set(PACKAGE_VERSION \"0.7.0-dev\")";
+        assert_eq!(parse_package_version(text).as_deref(), Some("0.7.0-dev"));
+        assert_eq!(parse_package_version("nothing here"), None);
+    }
     fn parses_the_cmake_generated_build_info() {
         let generated = "#include \"build-info.h\"\n\
 int LLAMA_BUILD_NUMBER = 11870;\n\
