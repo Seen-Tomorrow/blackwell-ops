@@ -221,9 +221,9 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
                 </div>
 
                 <div className="type-micro font-mono config-muted">
-                  {mode.version ? (
+                  {mode.installed ? (
                     <>
-                      Build {mode.version} · {modeSourceLabel(mode.source)}
+                      Build {mode.version ?? "unknown"} · {modeSourceLabel(mode.source)}
                       {mode.sourceBuildDate ? ` · ${mode.sourceBuildDate}` : ""}
                     </>
                   ) : (

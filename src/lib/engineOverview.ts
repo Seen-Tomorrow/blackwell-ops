@@ -3,7 +3,7 @@
 //! re-derive states or sizes themselves.
 
 import { DEFAULT_BINARY_PROFILE } from "./foundry_constants";
-import { DEFAULT_PROVIDER_ID, envBinaryLookup, isProfileSourceActive } from "./types";
+import { DEFAULT_PROVIDER_ID, envBinaryLookup, isProfileBuilt, isProfileSourceActive } from "./types";
 import type { BinarySourceKind, BinaryUpdateInfo, ProviderConfig } from "./types";
 import type { ToolchainInstallInfo } from "../components/FoundryToolchainPanel";
 
@@ -21,6 +21,8 @@ export interface EngineModeOverview {
   source: BinarySourceKind | undefined;
   sourceBuildDate: string | null;
   state: EngineModeState;
+  /** Binary present on disk, regardless of whether its identity could be probed. */
+  installed: boolean;
   engineMissing: boolean;
   runtimeMissing: boolean;
   /** Engine pack + missing runtime, in bytes. 0 when nothing needs downloading. */
@@ -112,7 +114,10 @@ export function buildEngineOverview(
       (sources.find((s) => s.id === "bundled" && s.available)?.id ?? "foundry");
     const runtimeMissing = runtime ? !runtime.ready : true;
     const driverBlocked = runtime ? !runtime.driver_ok : false;
-    const engineMissing = !version;
+    // Existence is a filesystem fact; a version string is only an identity hint. Treating a
+    // placeholder identity as "not installed" is what made SOFTWARE claim no engines.
+    const installed = isProfileBuilt(engine, meta.id);
+    const engineMissing = !installed;
 
     // Downloading happens when the mode is missing, or when the pack is newer than what
     // is installed; either way the engine pack is the payload, plus the runtime if absent.
@@ -138,6 +143,7 @@ export function buildEngineOverview(
       source,
       sourceBuildDate: sources.find((s) => s.active)?.buildDate ?? null,
       state,
+      installed,
       engineMissing,
       runtimeMissing,
       sizeBytes,

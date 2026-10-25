@@ -3,7 +3,7 @@
 //! The only place software arrives: app update, engine modes, Foundry. Transfers in flight are
 //! listed underneath; models stay in the MODELS tab of the same page.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 import { useDownloadTasks } from "../hooks/useDownloadTasks";
@@ -37,6 +37,7 @@ export default function SoftwareDownloads() {
   const [updates, setUpdates] = useState<BinaryUpdateInfo[]>([]);
   const [toolchain, setToolchain] = useState<ToolchainInstallInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const probedRef = useRef(false);
   const providerTasks = useDownloadTasks("provider");
   const toolchainTasks = useDownloadTasks("toolchain");
   const appTasks = useDownloadTasks("app");
@@ -51,8 +52,21 @@ export default function SoftwareDownloads() {
         }).catch(() => [] as BinaryUpdateInfo[]),
         invoke<ToolchainInstallInfo>("foundry_get_toolchain_install_info").catch(() => null),
       ]);
+      // Identity probe once per mount so rows can show the build, not just "Installed".
+      let next = provs;
+      const needsProbe = provs.some((p) =>
+        Object.values(p.buildInfoPerEnv ?? {}).some((b) =>
+          /^(catalog|bundled|downloaded|foundry-artifact|disk-scanned)$/i.test(b.version?.trim() ?? ""),
+        ),
+      );
+      if (needsProbe && !probedRef.current) {
+        probedRef.current = true;
+        next = await invoke<ProviderConfig[]>("refresh_build_info", {
+          providerId: DEFAULT_PROVIDER_ID,
+        }).catch(() => provs);
+      }
       setAppUpdate(app);
-      setProviders(provs);
+      setProviders(next);
       setUpdates(ups);
       setToolchain(tc);
     } catch (e) {
