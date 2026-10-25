@@ -115,6 +115,12 @@ fn forget_failure(path: &Path, stamp: u64) {
 /// the expected state for a profile whose runtime pack was never installed (e.g. STABLE on a
 /// machine that only ran the EDGE onboarding).
 fn probe_skip_reason(path: &Path) -> Option<String> {
+    // Only a CUDA build can die on the loader. A CPU-only build (no ggml-cuda.dll beside it) has
+    // no runtime to miss, and probing it is the only way to learn its version.
+    let dir = path.parent()?;
+    if !dir.join("ggml-cuda.dll").is_file() {
+        return None;
+    }
     let profile = crate::engine_utils::binary_profile_from_path(path)?;
     let cuda = crate::foundry_toolchain::cuda_version_for_binary_profile(&profile)?;
     if crate::foundry_toolchain::cuda_runtime_ready_for_version(&cuda) {
