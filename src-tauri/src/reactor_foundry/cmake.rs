@@ -217,11 +217,12 @@ pub(crate) fn foundry_batch_script_paths(work_root: &std::path::Path, profile_id
 }
 
 pub(crate) fn foundry_cmake_build_targets(include_extra_tools: bool) -> Vec<&'static str> {
-    let mut t: Vec<&'static str> = FOUNDRY_CMAKE_CORE_TARGETS.to_vec();
+    // Extra tools = build every target upstream ships (no --target filter). Listing a subset
+    // here would only under-build and needs maintenance whenever upstream adds a tool.
     if include_extra_tools {
-        t.extend_from_slice(FOUNDRY_CMAKE_EXTRA_TARGETS);
+        return Vec::new();
     }
-    t
+    FOUNDRY_CMAKE_CORE_TARGETS.to_vec()
 }
 
 pub(crate) fn foundry_cmake_build_target_args(include_extra_tools: bool) -> String {
