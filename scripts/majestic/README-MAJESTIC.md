@@ -25,7 +25,7 @@ Menu: **10 BUMP** → CHECK → PACK → SHIP (plus backups and dry-runs).
 |---|---|
 | `scripts/distribution-policy.json` | `nsisCore` (profiles **inside** the installer — EDGE only), `enginePacks` (profiles published as packs — EDGE + STABLE), `plugins` (empty; not part of this flow), `recommendedEngine` |
 | `src-tauri/runtime-catalog/engines.json` | every engine pack: asset name, sha256, size, CUDA, build id (written by `pack-provider-runtime.ps1`, committed) |
-| `toolchain/manifest.json` | toolchain packs: `runtime-<cuda>`, `build`, `full` + digests (written by `pack-toolchain-packs.ps1`) |
+| `toolchain/manifest.json` | toolchain packs: `runtime-<cuda>`, `build` + digests (written by `pack-toolchain-packs.ps1`) |
 
 Both manifests are **embedded in the binary**, so the app asks for an exact asset name and verifies the
 digest itself. Adding an engine later = edit the policy + pack it; do not edit this script.
@@ -100,7 +100,7 @@ gh auth login    # if not already logged in
 | `CORE_Blackwell-Ops-App-vX.Y.Z.7z` | `vX.Y.Z` | lean app update: exe + templates + catalog + patches + 7z |
 | `CORE_Blackwell Ops_X.Y.Z_x64-setup.exe` | `vX.Y.Z` | first install: app + **EDGE seed** (~140 MB compressed) |
 | `ENGINE_ggml-master-{edge,stable}-{build}.7z` | `vX.Y.Z` | engine packs (107.8 / 110.2 MB), CRT included |
-| `toolchain-rt-{13.4,12.8}-v4.7z`, `toolchain-build-v4.7z`, `toolchain.7z` | `toolchain` | split toolchain packs + full |
+| `toolchain-rt-{13.4,12.8}-v4.7z`, `toolchain-build-v4.7z` | `toolchain` | split toolchain packs (1.17 GB total) |
 
 The CUDA runtime is **not** bundled: the setup wizard downloads it (383 MB for EDGE) and STABLE is an
 optional pack (engine 110 MB + CUDA 12.8 runtime 424 MB) from CONFIG → UPDATES.
@@ -161,7 +161,7 @@ Expected, in order:
 4. After the runtime downloads, GGUF scan runs and an engine launches.
 5. CONFIG → UPDATES shows **STABLE** available: engine 110 MB + CUDA 12.8 runtime 424 MB. Install it,
    switch the active binary (RESET TO SEED returns to the installer copy), launch.
-6. Foundry: it offers **Foundry build tools · 366 MB**, not the 1.18 GB full pack.
+6. Foundry: it offers **Foundry build tools · 366 MB**. The old 1.18 GB full pack is retired.
 
 ### 4. Reinstall / uninstall
 

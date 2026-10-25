@@ -22,7 +22,7 @@ runs, not guesses; see §13 for the commands.
 | **CUDA runtime pack** | 3 DLLs for one CUDA version | wizard, mandatory for whichever profile the driver supports |
 | **Engine pack** | one provider/profile | updates, repair, STABLE, forks |
 | **Build pack** | VS + SDK + cmake + nvcc | first Foundry use |
-| **Full pack** | everything above | offline / one-shot only |
+| ~~**Full pack**~~ | retired 2026-10-25 — split packs cover both consumers | — |
 
 One compatibility pack (`STABLE` = engine + CUDA 12.8 runtime) and any fork engines are optional
 downloads from CONFIG → UPDATES. Foundry is offered the first time it is used, never in the wizard.
@@ -296,7 +296,7 @@ Pack contents (keep the `toolchain/` prefix so `resolve_toolchain_extract_dest` 
 | `runtime-13.4` | `toolchain/cuda/v13.4/bin/x64/{cublas64_13,cublasLt64_13,cudart64_13}.dll` |
 | `runtime-12.8` | `toolchain/cuda/v12.8/bin/{cublas64_12,cublasLt64_12,cudart64_12}.dll` |
 | `build` | full tree minus those 6 files |
-| `full` | today's `toolchain.7z`, renamed |
+| ~~`full`~~ | retired 2026-10-25 — the two consumers are a runtime and `build` |
 
 `build` does not need the runtime to build: `ProfileCheck` tests devcmd / MSVC / ml64 / SDK headers /
 nvcc / CUDA include / cmake only. Verified import chain for launch is
@@ -728,12 +728,13 @@ Generated packs (2026-10-25, `-mx=7`, digests pinned in the manifest):
 | `toolchain-rt-13.4-v4.7z` | 382.9 MB | `a1d5c8df…` |
 | `toolchain-rt-12.8-v4.7z` | 423.7 MB | `e645819c…` |
 | `toolchain-build-v4.7z` | 366.2 MB | `56643fc7…` |
-| `toolchain.7z` (full) | 1.18 GB | `facbbb21…` |
+
+Published to the `toolchain` tag on 2026-10-25 (3 assets, 1,172.7 MB total). The former
+`toolchain.7z` full pack is **retired**: onboarding needs a runtime pack and Foundry needs `build`,
+so nothing requests it — it was 1.18 GB of every ship.
 
 Runtime packs are **not** cached after a verified extract (383 MB archive next to 523 MB extracted is
-duplication); build/full stay in `.toolchain-download/cache` for install-from-cache and re-extract.
-The `build` pack is not generated yet — Foundry still needs the full pack's VS/SDK tree, so `full`
-remains the build path until that split is produced.
+duplication); `build` stays in `.toolchain-download/cache` for install-from-cache and re-extract.
 
 Two implementation notes worth keeping:
 

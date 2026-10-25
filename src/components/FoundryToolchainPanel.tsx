@@ -130,10 +130,19 @@ export default function FoundryToolchainPanel({
   const onboardingCuda = ENV_META[DEFAULT_BINARY_PROFILE].cuda;
   const runtimePack = info?.packs?.find((p) => p.kind === "runtime" && p.cuda === onboardingCuda);
   const onboardingPackId = onboarding ? runtimePack?.id : undefined;
-  const downloadSizeLabel =
-    onboarding && runtimePack
+  // Onboarding installs the CUDA runtime; this panel installs the Foundry build pack. There is
+  // no "full" pack any more (docs/ENGINE-PACKS.md) — both consumers have their own split pack.
+  const buildPack = info?.packs?.find((p) => p.kind === "build");
+  const downloadSizeLabel = onboarding
+    ? runtimePack
       ? `${Math.round(runtimePack.size_bytes / 1048576)} MB`
-      : info?.compressed_size_label ?? "";
+      : ""
+    : buildPack
+      ? `${Math.round(buildPack.size_bytes / 1048576)} MB`
+      : "";
+  const installActionLabel = onboarding
+    ? "DOWNLOAD CUDA RUNTIME"
+    : `INSTALL BUILD TOOLS · ${downloadSizeLabel}`;
   // Driver gate for the seeded profile: downloading 383 MB of CUDA runtime for a driver that
   // cannot initialise it is a wasted download and a failed first launch.
   const seeded = info?.runtime_versions?.find((v) => v.id === DEFAULT_BINARY_PROFILE);
@@ -194,8 +203,7 @@ export default function FoundryToolchainPanel({
   const handleDownload = useCallback(async () => {
     setActionError(null);
     try {
-      // Onboarding needs a CUDA runtime; Foundry needs the build tools (VS/SDK/cmake/nvcc).
-      // "full" stays available for cache/offline installs, but nothing requests it by default.
+      // Onboarding needs a CUDA runtime; Foundry needs the build pack (VS/SDK/cmake/nvcc).
       const pack = onboardingPackId ?? "build";
       await invoke("start_toolchain_download", { pack });
     } catch (e) {
@@ -456,11 +464,11 @@ export default function FoundryToolchainPanel({
     );
   }
 
+  // Foundry readiness is the build profiles only. A missing CUDA runtime is an onboarding
+  // concern, not a Foundry one — it used to show PARTIAL for that.
   const statusLabel = info.all_ready
     ? "READY"
-    : info.runtime_ready
-      ? "PARTIAL"
-      : `${info.profiles_ready}/${info.profiles_total} PROFILES`;
+    : `${info.profiles_ready}/${info.profiles_total} PROFILES`;
 
   const statusClass = info.all_ready
     ? "fnd-tc-status--done"
@@ -470,7 +478,7 @@ export default function FoundryToolchainPanel({
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
         <span className="fnd-tc-section-label type-tiny font-mono uppercase tracking-wider">
-          Foundry Toolchain
+          Foundry build tools
         </span>
         <span className={`fnd-tc-status type-micro font-mono px-1.5 py-0.5 rounded-sm border ${statusClass}`}>
           {statusLabel}
@@ -521,12 +529,12 @@ export default function FoundryToolchainPanel({
 
       {info.all_ready ? (
         <p className="fnd-tc-ready type-tiny font-mono leading-relaxed">
-          Portable VS Build Tools, Windows SDK, CUDA, and CMake are installed. Foundry builds and bundled engines are ready.
+          Portable VS Build Tools, Windows SDK, CUDA, and CMake are installed. Foundry builds are ready.
         </p>
       ) : (
         <div className="foundry-toolchain-install-guide fnd-tc-guide--warn border rounded-sm p-2.5 space-y-2">
           <p className="foundry-toolchain-install-guide__title fnd-tc-guide__title--warn type-tiny font-mono font-bold uppercase tracking-wide">
-            {onboarding ? "CUDA runtime" : "Install portable toolchain"}
+            {onboarding ? "CUDA runtime" : "Install Foundry build tools"}
           </p>
 
           <p className="fnd-tc-guide__desc type-tiny font-mono leading-relaxed">
@@ -538,8 +546,9 @@ export default function FoundryToolchainPanel({
               </>
             ) : (
               <>
-                Single download (~{info.compressed_size_label}): VS Build Tools, Windows SDK, both CUDA versions, and CMake.
-                Required for Foundry cmake builds and for running bundled CUDA engines.
+                Single download (~{downloadSizeLabel}): VS Build Tools, Windows SDK, CMake and
+                nvcc. Only needed to compile engines — launching them uses the CUDA runtime the
+                setup wizard installs.
               </>
             )}
           </p>
@@ -624,10 +633,10 @@ export default function FoundryToolchainPanel({
                         ? "PAUSED"
                         : busyTask.status === "queued"
                           ? "QUEUED…"
-                          : `DOWNLOAD ${info.archive_name.toUpperCase()}`
+                          : installActionLabel
                   : info.all_ready
                     ? "INSTALLED"
-                    : `DOWNLOAD ${info.archive_name.toUpperCase()}`}
+                    : installActionLabel}
               </button>
               <button
                 type="button"
@@ -641,7 +650,7 @@ export default function FoundryToolchainPanel({
                 title={
                   cached
                     ? cached.location === "cache"
-                      ? "Extract toolchain.7z from cache (no download)"
+                      ? `Extract ${info.archive_name} from cache (no download)`
                       : "Extract local copy (no download)"
                     : `Place ${info.archive_name} in the cache folder, then click here`
                 }
