@@ -161,7 +161,7 @@ export default function SetupGuideDisplay({
           detail={
             runtimeStepDone
               ? "Installed — the engine can launch"
-              : "One download (~383 MB) — required to run engines"
+              : "One download, handled here — required to run the engine"
           }
         />
         <ChecklistItem
@@ -189,7 +189,7 @@ export default function SetupGuideDisplay({
 
       {phase === "runtime" && !runtimeStepDone && (
         <p className="setup-guide__note setup-guide__note--amber">
-          The CUDA runtime pack is required for the installed engine. Download it, or drop the archive in the cache folder and
+          The engine runtime is required for the installed engine. Download it here, or install it from cache if you already have it.
           install from cache.{" "}
         </p>
       )}
@@ -333,7 +333,7 @@ export default function SetupGuideDisplay({
             disabled={!runtimeReady}
             title={
               !runtimeReady
-                ? "Install the CUDA runtime before finishing setup"
+                ? "Install the engine runtime before finishing setup"
                 : "Complete first-run setup"
             }
             className="setup-guide__btn setup-guide__btn--primary setup-guide__btn--finish"

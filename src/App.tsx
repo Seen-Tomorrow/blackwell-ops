@@ -8,7 +8,7 @@ import ModelCatalog from "./components/ModelCatalog";
 const StackView = lazy(() => import("./components/StackView"));
 const ConfigPage = lazy(() => import("./components/ConfigPage"));
 const ModelHub = lazy(() => import("./components/ModelHub"));
-const UpdatesConfig = lazy(() => import("./components/UpdatesConfig"));
+const SoftwareDownloads = lazy(() => import("./components/SoftwareDownloads"));
 const LogsPanel = lazy(() => import("./components/LogsPanel"));
 
 function TabFallback() {
@@ -635,11 +635,7 @@ function App() {
                 {downloadsView === "models" ? (
                   <ModelHub />
                 ) : (
-                  <UpdatesConfig
-                    offerings={updateOfferings}
-                    onRefreshOfferings={refreshUpdateOfferings}
-                    onBinaryUpdatesChange={setHasBinaryUpdates}
-                  />
+                  <SoftwareDownloads />
                 )}
               </Suspense>
             </div>
