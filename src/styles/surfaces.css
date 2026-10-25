@@ -373,3 +373,21 @@ button.engine-logs-slot-chip.engine-logs-slot-chip--active .engine-logs-slot-chi
   border-radius: 2px;
   background: var(--theme-panel-accent);
 }
+
+/* CONFIG subtabs share the gunmetal face: Runtime/Secrets cards, Recovery panels,
+   parameter groups and the DEV distribution header. Rows keep their own hover rules. */
+[data-config-page] .theme-surface-row,
+[data-config-page] .config-form-panel,
+[data-config-page] .config-param-group-block,
+[data-config-page] .fnd-dev-header {
+  background-color: var(--theme-industrial-bg);
+  background-image:
+    var(--theme-industrial-texture-active),
+    var(--theme-industrial-face-gradient, none);
+  border: 1px solid color-mix(in srgb, var(--theme-bezel-edge-lo) 55%, var(--theme-border));
+  border-radius: 2px;
+}
+
+[data-config-page] .config-param-group-block {
+  padding: 10px 12px;
+}

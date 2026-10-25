@@ -292,7 +292,7 @@ function ModelPathsPanel() {
           const usage = getUsage(entry.path);
           return (
             <div key={entry.path}
-              className={`border rounded-sm p-3 transition-colors ${entry.isDefault ? "cfg-bord--acc--a40 cfg-fill--a5" : "cfg-bord cfg-panel--a50"}`}>
+              className={`industrial-panel-face p-3 transition-colors ${entry.isDefault ? "cfg-bord--acc--a40" : "cfg-bord"}`}>
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
