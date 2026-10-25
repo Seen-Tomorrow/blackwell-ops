@@ -173,7 +173,7 @@ function App() {
   const [updateOfferings, setUpdateOfferings] = useState<UpdateOfferings | null>(null);
   const [hasBinaryUpdates, setHasBinaryUpdates] = useState(false);
   /** DOWNLOADS: model browser vs software installs/updates. */
-  const [downloadsView, setDownloadsView] = useState<"models" | "software">("models");
+  const [downloadsSubTab, setDownloadsSubTab] = useState<"models" | "software">("models");
 
   const refreshUpdateOfferings = useCallback(async () => {
     if (!BINARY_UPDATES_ENABLED) return;
@@ -367,10 +367,10 @@ function App() {
       const detail = (e as CustomEvent<NavigateConfigDetail>).detail;
       const pending = consumePendingConfigSubTab();
       const sub = detail?.subTab ?? pending;
-      // Software installs live in DOWNLOADS -> SOFTWARE.
+      // Software installs live in DOWNLOADS -> SOFTWARE updates.
       if (detail?.downloadsView) {
         setActiveTab("modelhub");
-        setDownloadsView(detail.downloadsView);
+        setDownloadsSubTab(detail.downloadsView);
         return;
       }
       setActiveTab("config");
@@ -584,6 +584,8 @@ function App() {
               setupGuideActive={setupGuide.active}
               setupGuidePhase={setupGuide.phase}
               configSubTab={configSubTab}
+              downloadsSubTab={downloadsSubTab}
+              onDownloadsSubTabChange={setDownloadsSubTab}
               onConfigSubTabChange={setConfigSubTab}
             >
         {(activeTab === "catalog" || keepOpsAlive) && (
@@ -613,27 +615,9 @@ function App() {
         )}
         {activeTab === "modelhub" && (
           <div className="h-full flex flex-col overflow-hidden">
-            <div className="px-4 py-2 config-section-bar flex items-center gap-2">
-              {(["models", "software"] as const).map((view) => (
-                <button
-                  key={view}
-                  type="button"
-                  onClick={() => setDownloadsView(view)}
-                  className={`type-micro font-mono uppercase tracking-wider px-2 py-1 rounded-sm border ${
-                    downloadsView === view ? "theme-accent-text" : "config-muted"
-                  }`}
-                >
-                  {view}
-                </button>
-              ))}
-            </div>
             <div className="flex-1 min-h-0 overflow-hidden">
               <Suspense fallback={<TabFallback />}>
-                {downloadsView === "models" ? (
-                  <ModelHub />
-                ) : (
-                  <SoftwareDownloads />
-                )}
+                {downloadsSubTab === "models" ? <ModelHub /> : <SoftwareDownloads />}
               </Suspense>
             </div>
           </div>

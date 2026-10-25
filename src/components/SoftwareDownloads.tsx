@@ -116,7 +116,7 @@ export default function SoftwareDownloads() {
 
   return (
     <div className="h-full overflow-y-auto eink-scrollbar p-4 space-y-3">
-      <section className="rounded-sm border p-3 space-y-1.5">
+      <section className="industrial-panel-face p-3 space-y-1.5">
         <p className="type-tiny font-mono uppercase tracking-wide config-muted">Application</p>
         <div className={rowClass}>
           <div>
@@ -141,7 +141,7 @@ export default function SoftwareDownloads() {
         </div>
       </section>
 
-      <section className="rounded-sm border p-3 space-y-1.5">
+      <section className="industrial-panel-face p-3 space-y-1.5">
         <p className="type-tiny font-mono uppercase tracking-wide config-muted">
           Engine {overview?.label ? `· ${overview.label}` : ""}
         </p>
@@ -213,7 +213,7 @@ export default function SoftwareDownloads() {
         })}
       </section>
 
-      <section className="rounded-sm border p-3 space-y-1.5">
+      <section className="industrial-panel-face p-3 space-y-1.5">
         <p className="type-tiny font-mono uppercase tracking-wide config-muted">Foundry</p>
         <div className={rowClass}>
           <div>
@@ -235,7 +235,7 @@ export default function SoftwareDownloads() {
       </section>
 
       {inFlight.length > 0 && (
-        <section className="rounded-sm border p-3 space-y-1.5">
+        <section className="eng-src-box p-3 space-y-1.5">
           <p className="type-tiny font-mono uppercase tracking-wide config-muted">In progress</p>
           {inFlight.map((task) => {
             const pct =

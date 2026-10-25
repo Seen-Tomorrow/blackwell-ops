@@ -14,10 +14,12 @@ import {
   PRIMARY_NAV,
   OPS_SUB_NAV,
   configSubNavOptions,
+  DOWNLOADS_SUB_NAV,
   defaultTabForPrimary,
   isOpsTab,
   primaryNavFromTab,
   type ConfigSubTab,
+  type DownloadsSubTab,
   type PrimaryNavId,
 } from "../lib/appNav";
 import HeaderNavSegment from "./HeaderNavSegment";
@@ -28,6 +30,9 @@ interface HeaderNavProps {
   /** CONFIG section — header sub-rail. */
   configSubTab: ConfigSubTab;
   onConfigSubTabChange: (tab: ConfigSubTab) => void;
+  /** DOWNLOADS section — header sub-rail. */
+  downloadsSubTab: DownloadsSubTab;
+  onDownloadsSubTabChange: (tab: DownloadsSubTab) => void;
   /** First-run wizard active — lock ENGINES / LOGS. */
   setupGuideActive?: boolean;
   /** Wizard phase — a CONFIG visit during `paths` is the step, not a detour. */
@@ -53,6 +58,8 @@ function HeaderNav({
     onTabChange,
     configSubTab,
     onConfigSubTabChange,
+    downloadsSubTab,
+    onDownloadsSubTabChange,
     setupGuideActive = false,
     setupGuidePhase,
     chromeScale,
@@ -70,6 +77,7 @@ function HeaderNav({
   const primaryId = primaryNavFromTab(activeTab);
   const showOpsSub = primaryId === "operations";
   const showConfigSub = primaryId === "config";
+  const showDownloadsSub = primaryId === "downloads";
 
   const primaryOptions = useMemo(() => {
     /**
@@ -126,6 +134,11 @@ function HeaderNav({
     [],
   );
 
+  const downloadsOptions = useMemo(
+    () => DOWNLOADS_SUB_NAV.map((o) => ({ id: o.id, label: o.label })),
+    [],
+  );
+
   const onPrimarySelect = useCallback(
     (id: string) => {
       const primary = id as PrimaryNavId;
@@ -152,7 +165,7 @@ function HeaderNav({
    */
   const [subAnchor, setSubAnchor] = useState({ left: 0, width: 0, shift: 0 });
   const subRef = useRef<HTMLDivElement | null>(null);
-  const showSubRail = showOpsSub || showConfigSub;
+  const showSubRail = showOpsSub || showConfigSub || showDownloadsSub;
 
   useLayoutEffect(() => {
     if (!showSubRail) return;
@@ -228,6 +241,15 @@ function HeaderNav({
               options={opsOptions}
               selectedId={activeTab}
               onSelect={(id) => onTabChange(id as Tab)}
+            />
+          ) : showDownloadsSub ? (
+            <HeaderNavSegment
+              ariaLabel="Downloads section"
+              size="compact"
+              className="app-header__sub-switch"
+              options={downloadsOptions}
+              selectedId={downloadsSubTab}
+              onSelect={(id) => onDownloadsSubTabChange(id as DownloadsSubTab)}
             />
           ) : (
             <HeaderNavSegment

@@ -5,6 +5,14 @@ import { isDevBuild } from "./build";
 export type PrimaryNavId = "operations" | "downloads" | "config";
 
 /** CONFIG page sections (header sub-rail when primary = CONFIG). */
+export type DownloadsSubTab = "models" | "software";
+
+/** DOWNLOADS sections (header sub-rail when primary = DOWNLOADS). */
+export const DOWNLOADS_SUB_NAV: { id: DownloadsSubTab; label: string }[] = [
+  { id: "models", label: "MODELS" },
+  { id: "software", label: "SOFTWARE" },
+];
+
 export type ConfigSubTab =
   | "providers"
   | "params"

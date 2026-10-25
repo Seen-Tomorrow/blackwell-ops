@@ -2,7 +2,7 @@ import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, typ
 import { invoke } from "@tauri-apps/api/core";
 import type { Tab } from "../App";
 import type { ProviderConfig, UpdateOfferings } from "../lib/types";
-import type { ConfigSubTab } from "../lib/appNav";
+import type { ConfigSubTab, DownloadsSubTab } from "../lib/appNav";
 import type { SetupPhase } from "../lib/setupGuide";
 import HeaderNav from "./HeaderNav";
 import { useStatus } from "../context/StatusBarContext";
@@ -74,6 +74,9 @@ interface LayoutProps {
   /** CONFIG section — header sub-rail. */
   configSubTab: ConfigSubTab;
   onConfigSubTabChange: (tab: ConfigSubTab) => void;
+  /** DOWNLOADS section — header sub-rail. */
+  downloadsSubTab: DownloadsSubTab;
+  onDownloadsSubTabChange: (tab: DownloadsSubTab) => void;
 }
 
 export default function Layout({
@@ -88,6 +91,8 @@ export default function Layout({
   setupGuidePhase,
   configSubTab,
   onConfigSubTabChange,
+  downloadsSubTab,
+  onDownloadsSubTabChange,
 }: LayoutProps) {
   const [zoom, setZoom] = useState(loadZoom);
   const [uiDensity, setUiDensity] = useState<UiDensity>(loadUiDensity);
@@ -439,6 +444,8 @@ export default function Layout({
               onTabChange={onTabChange}
               configSubTab={configSubTab}
               onConfigSubTabChange={onConfigSubTabChange}
+              downloadsSubTab={downloadsSubTab}
+              onDownloadsSubTabChange={onDownloadsSubTabChange}
               setupGuideActive={setupGuideActive}
               setupGuidePhase={setupGuidePhase}
               chromeScale={chromeScale}
