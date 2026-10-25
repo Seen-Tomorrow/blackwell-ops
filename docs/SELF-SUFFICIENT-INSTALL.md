@@ -8,6 +8,15 @@ If you are changing anything in `pi_code.rs`, `foundry_toolchain.rs`, `runtime-d
 `pack-app-update.ps1`, or `majestic.ps1`, read this first. Most of what follows is the answer to a
 question that was already asked once and got the wrong answer.
 
+> **Update 2026-10-25 — the first-run gate is moving from toolchain to engine + driver.**
+> `docs/ENGINE-PACKS.md` splits the toolchain into CUDA-runtime packs + a Foundry build pack, seeds
+> `ggml-master/edge` in the installer, and gates onboarding on "an engine, the CUDA runtime its
+> driver supports, and a driver new enough for that CUDA version" instead of `runtime_ready` (which
+> today forces *both* CUDA versions and never checks the driver). Where this memo says "the toolchain
+> is a hard gate in `SetupGuideDisplay.tsx`", that is pre-change state. Everything else here
+> (app-local CRT, hash-gated pi-ext, no absolute paths) still holds, and the CRT staging moves into
+> the engine packs.
+
 ---
 
 ## One-line model
