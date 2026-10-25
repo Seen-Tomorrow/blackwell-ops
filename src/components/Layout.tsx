@@ -375,13 +375,19 @@ export default function Layout({
 
   useEffect(() => {
     const onWheel = (e: WheelEvent) => {
+      // Alt+wheel = text scale only; Ctrl+wheel = app zoom (layout included).
+      if (e.altKey) {
+        e.preventDefault();
+        adjustTextScale(e.deltaY < 0 ? TEXT_STEP : -TEXT_STEP);
+        return;
+      }
       if (!e.ctrlKey) return;
       e.preventDefault();
       adjustZoom(e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP);
     };
     window.addEventListener("wheel", onWheel, { passive: false });
     return () => window.removeEventListener("wheel", onWheel);
-  }, [adjustZoom]);
+  }, [adjustZoom, adjustTextScale]);
 
   const shellStyle = {
     "--ui-text-scale": String(zoom),
@@ -409,9 +415,9 @@ export default function Layout({
           <span className="shell-focus-hud type-label font-mono uppercase tracking-wider">
             Focus HUD · Esc to exit
           </span>
-          <div className="flex items-center gap-1 flex-shrink-0" title="Ctrl+scroll to zoom">
+          <div className="flex items-center gap-1 flex-shrink-0" title="Ctrl+scroll zoom · Alt+scroll text">
             <span className="shell-focus-hud--dim type-tiny font-mono uppercase tracking-wider">
-              Ctrl+scroll to zoom
+              Ctrl+scroll zoom · Alt+scroll text
             </span>
             <button
               type="button"
@@ -483,9 +489,9 @@ export default function Layout({
                     <span className="app-appearance-section__label app-appearance-section__label--compact type-hairline font-mono tracking-widest uppercase">
                       Text
                     </span>
-                    <button type="button" onClick={() => adjustTextScale(-TEXT_STEP)} className="app-chrome-control-btn shell-scale-btn type-label font-mono transition-colors leading-none" title="Decrease text size (layout unchanged)">−</button>
+                    <button type="button" onClick={() => adjustTextScale(-TEXT_STEP)} className="app-chrome-control-btn shell-scale-btn type-label font-mono transition-colors leading-none" title="Decrease text size (Alt+scroll)">−</button>
                     <span className="app-chrome-control-btn shell-scale-readout type-tiny font-mono opacity-60 w-8 text-center" title="Text size — multiplies the type scale only">{Math.round(textScale * 100)}%</span>
-                    <button type="button" onClick={() => adjustTextScale(TEXT_STEP)} className="app-chrome-control-btn shell-scale-btn type-label font-mono transition-colors leading-none" title="Increase text size (layout unchanged)">+</button>
+                    <button type="button" onClick={() => adjustTextScale(TEXT_STEP)} className="app-chrome-control-btn shell-scale-btn type-label font-mono transition-colors leading-none" title="Increase text size (Alt+scroll)">+</button>
                   </div>
                   <div className="app-appearance-inline-group flex items-center gap-0.5 flex-shrink-0">
                     <span className="app-appearance-section__label app-appearance-section__label--compact type-hairline font-mono tracking-widest uppercase">
