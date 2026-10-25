@@ -162,6 +162,7 @@ export default function SoftwareDownloads() {
                       invoke("download_binary_update", {
                         providerId: DEFAULT_PROVIDER_ID,
                         profile: mode.id,
+                        runtimeOnly: mode.runtimeMissing && !mode.engineMissing,
                       }),
                     )
                   }

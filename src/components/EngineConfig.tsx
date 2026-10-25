@@ -8,7 +8,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 import { useDownloadTasks } from "../hooks/useDownloadTasks";
+import { useFoundry } from "../hooks/useBuildDock";
 import { buildEngineOverview, modeSourceLabel } from "../lib/engineOverview";
+import { normalizeBinaryProfile } from "../lib/foundry_constants";
+import { binaryProfileKey, readStorage, writeStorage } from "../lib/storage";
 import { DEFAULT_PROVIDER_ID } from "../lib/types";
 import type { BinaryUpdateInfo, DownloadTask, ProviderConfig } from "../lib/types";
 import type { ToolchainInstallInfo } from "./FoundryToolchainPanel";
@@ -45,6 +48,11 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
   const [toolchain, setToolchain] = useState<ToolchainInstallInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [manage, setManage] = useState<string | null>(null);
+  const { openBuildModal } = useFoundry();
+  // The launcher reads this persisted preference, so "active" here is the real choice.
+  const [activeMode, setActiveMode] = useState(() =>
+    normalizeBinaryProfile(readStorage(binaryProfileKey(DEFAULT_PROVIDER_ID))),
+  );
   const providerTasks = useDownloadTasks("provider");
   const toolchainTasks = useDownloadTasks("toolchain");
 
@@ -77,16 +85,20 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
   }, [refresh]);
 
   const overview = useMemo(
-    () => buildEngineOverview(providers, updates, toolchain),
-    [providers, updates, toolchain],
+    () => buildEngineOverview(providers, updates, toolchain, activeMode),
+    [providers, updates, toolchain, activeMode],
   );
   const modes = overview?.modes ?? [];
 
   const installMode = useCallback(
-    async (profile: string) => {
+    async (profile: string, runtimeOnly = false) => {
       setError(null);
       try {
-        await invoke("download_binary_update", { providerId: DEFAULT_PROVIDER_ID, profile });
+        await invoke("download_binary_update", {
+          providerId: DEFAULT_PROVIDER_ID,
+          profile,
+          runtimeOnly,
+        });
         await refresh();
       } catch (e) {
         setError(typeof e === "string" ? e : "Install failed");
@@ -94,6 +106,11 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
     },
     [refresh],
   );
+
+  const useMode = useCallback((profile: "edge" | "stable") => {
+    writeStorage(binaryProfileKey(DEFAULT_PROVIDER_ID), profile);
+    setActiveMode(profile);
+  }, []);
 
   const useBundled = useCallback(
     async (profile: string) => {
@@ -218,7 +235,9 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
                     <button
                       type="button"
                       className="foundry-toolchain-btn foundry-toolchain-btn--action"
-                      onClick={() => void installMode(mode.id)}
+                      onClick={() =>
+                        void installMode(mode.id, mode.runtimeMissing && !mode.engineMissing)
+                      }
                     >
                       {mode.engineMissing ? "INSTALL" : "INSTALL RUNTIME"}{" "}
                       {formatSize(mode.sizeBytes)}
@@ -232,6 +251,24 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
                       UPDATE {formatSize(mode.sizeBytes)}
                     </button>
                   ) : null}
+                  {!mode.active && (
+                    <button
+                      type="button"
+                      className="foundry-toolchain-btn foundry-toolchain-btn--neutral"
+                      title="Use this mode the next time you launch the engine"
+                      onClick={() => useMode(mode.id as "edge" | "stable")}
+                    >
+                      USE
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="foundry-toolchain-btn foundry-toolchain-btn--neutral"
+                    title="Build this mode with Foundry"
+                    onClick={() => openBuildModal(DEFAULT_PROVIDER_ID, mode.id as "edge" | "stable")}
+                  >
+                    BUILD
+                  </button>
                   <button
                     type="button"
                     className="foundry-toolchain-btn foundry-toolchain-btn--neutral"

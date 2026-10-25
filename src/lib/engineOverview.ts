@@ -60,6 +60,8 @@ export function buildEngineOverview(
   providers: ProviderConfig[],
   updates: BinaryUpdateInfo[],
   toolchain: ToolchainInstallInfo | null,
+  /** Mode the launcher will use (persisted per engine); defaults to EDGE. */
+  activeProfile?: string,
 ): EngineOverview | null {
   const engine = providers.find((p) => p.id === DEFAULT_PROVIDER_ID);
   if (!engine) return null;
@@ -103,7 +105,7 @@ export function buildEngineOverview(
       runtimeMissing,
       sizeBytes,
       updateAvailable: Boolean(update?.available),
-      active: meta.id === DEFAULT_BINARY_PROFILE,
+      active: meta.id === (activeProfile ?? DEFAULT_BINARY_PROFILE),
     };
   });
 

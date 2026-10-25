@@ -395,11 +395,13 @@ async fn queue_missing_runtime_pack(
 
 /// Enqueue provider pack download through the shared download manager (resume + 7z extract).
 #[tauri::command]
+/// `runtime_only`: caller only needs the missing CUDA runtime (engine already installed).
 pub async fn download_binary_update(
     app_handle: tauri::AppHandle,
     manager: tauri::State<'_, std::sync::Arc<tokio::sync::RwLock<crate::download_manager::DownloadManager>>>,
     provider_id: String,
     profile: String,
+    runtime_only: Option<bool>,
 ) -> Result<String, String> {
     if !BINARY_UPDATES_ENABLED {
         return Err("Binary updates are disabled".to_string());
@@ -419,6 +421,10 @@ pub async fn download_binary_update(
     // An engine pack installed without its CUDA runtime extracts an engine that cannot start.
     // Queue the runtime pack first; both downloads resume and install independently.
     queue_missing_runtime_pack(&manager, &provider_id, &profile).await;
+    if runtime_only.unwrap_or(false) {
+        // The caller only needs the runtime (engine already installed) — skip the pack download.
+        return Ok("runtime".to_string());
+    }
 
     crate::ipc_meter::emit_tracked(
         &app_handle,
