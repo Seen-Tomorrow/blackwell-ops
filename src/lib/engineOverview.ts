@@ -56,13 +56,13 @@ export const MODE_META = [
     id: "edge",
     label: "EDGE",
     tagline: "Max speed",
-    blurb: "Newest CUDA. Fastest kernels, needs a very recent driver.",
+    blurb: "Newest CUDA. Fastest kernels, needs recent GPU driver.",
   },
   {
     id: "stable",
     label: "STABLE",
     tagline: "Maximum compatibility",
-    blurb: "Older CUDA. Runs on two-year-old drivers and lagging models.",
+    blurb: "Most compatible CUDA. Runs on older drivers and lagging models.",
   },
 ] as const;
 

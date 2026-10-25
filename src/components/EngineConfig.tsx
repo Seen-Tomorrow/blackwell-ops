@@ -169,8 +169,7 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
 
       <div className="flex-1 overflow-y-auto eink-scrollbar p-4 min-h-0 space-y-3">
         <p className="type-body font-mono config-muted max-w-3xl">
-          Two ways to run the same models. Pick the one your driver supports — the app brings the
-          runtime with it, there is no separate download to track.
+          Two modes for your engine.
         </p>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
@@ -198,10 +197,20 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
 
                 <p className="type-micro font-mono config-muted leading-relaxed">{mode.blurb}</p>
 
-                <div className="type-micro font-mono config-muted">
-                  CUDA {mode.cuda || "—"}
-                  {mode.driverFloor ? ` · driver ${mode.driverFloor}+` : ""}
-                  {mode.driverMajor ? ` (you have ${mode.driverMajor})` : ""}
+                <div className="flex flex-wrap items-center gap-1.5 type-micro font-mono">
+                  <span className="cuda-badge cuda-badge type-micro font-mono px-1.5 py-0.5 rounded-sm">
+                    CUDA {mode.cuda || "—"}
+                  </span>
+                  {mode.driverFloor && (
+                    <span className="eng-badge type-micro font-mono">
+                      driver {mode.driverFloor}+
+                    </span>
+                  )}
+                  {mode.driverMajor && (
+                    <span className="eng-badge type-micro font-mono">
+                      installed {mode.driverMajor}
+                    </span>
+                  )}
                 </div>
 
                 <div className="type-micro font-mono config-muted">
@@ -257,42 +266,44 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
                     title="Build this mode with Foundry"
                     onClick={() => openBuildModal(DEFAULT_PROVIDER_ID, mode.id as "edge" | "stable")}
                   >
-                    BUILD
+                    BUILD latest in FOUNDRY
                   </button>
                   <button
                     type="button"
                     className="foundry-toolchain-btn foundry-toolchain-btn--neutral"
                     onClick={() => setManage(manage === mode.id ? null : mode.id)}
                   >
-                    {manage === mode.id ? "HIDE" : "MANAGE"}
+                    {manage === mode.id ? "HIDE" : "MANAGE sources"}
                   </button>
                 </div>
 
                 {manage === mode.id && (
                   <div className="rounded-sm border p-2 space-y-1.5">
-                    <p className="type-micro font-mono config-muted">
-                      Source: {modeSourceLabel(mode.source)}
-                      {mode.version ? ` · ${mode.version}` : ""}
-                    </p>
-                    <div className="space-y-1">
+                    <div className="eng-src-table type-micro font-mono">
+                      <div className="eng-src-row eng-src-row--head">
+                        <span>Source</span>
+                        <span>Build</span>
+                        <span>Built</span>
+                        <span />
+                      </div>
                       {mode.sources.map((source) => (
                         <div
                           key={source.id}
-                          className="flex items-center justify-between gap-2 type-micro font-mono"
+                          className={`eng-src-row${source.active ? " eng-src-row--active" : ""}`}
                         >
-                          <span className="min-w-0">
+                          <span className="eng-src-name">
                             {source.label}
-                            <span className="config-muted">
-                              {source.version ? ` · ${source.version}` : ""}
-                              {source.buildDate ? ` · ${source.buildDate}` : ""}
-                            </span>
-                          </span>
-                          <span className="flex items-center gap-1.5 shrink-0">
                             {source.newest && !source.active && (
-                              <span className="uppercase config-muted">newest</span>
+                              <span className="eng-badge eng-badge--newest">newest</span>
                             )}
+                          </span>
+                          <span className="eng-badge">
+                            {source.available ? source.version ?? "unknown" : "—"}
+                          </span>
+                          <span className="eng-badge">{source.buildDate ?? "—"}</span>
+                          <span className="eng-src-action">
                             {source.active ? (
-                              <span className="uppercase config-muted">in use</span>
+                              <span className="eng-src-inuse">in use</span>
                             ) : (
                               <button
                                 type="button"
@@ -308,8 +319,7 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
                       ))}
                     </div>
                     <p className="type-micro font-mono config-muted leading-relaxed">
-                      Run the installer's copy, a downloaded pack, or a local Foundry build. Only
-                      sources present on disk can be selected.
+                      Select your engine preffered source.
                     </p>
                   </div>
                 )}
@@ -321,9 +331,9 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
         <section className="rounded-sm border p-3 space-y-2">
           <div className="flex items-start justify-between gap-2">
             <div>
-              <p className="type-label font-mono uppercase tracking-wider">FOUNDRY</p>
+              <p className="type-label font-mono uppercase tracking-wider">FOUNDRY pack</p>
               <p className="type-micro font-mono config-muted mt-0.5">
-                Build the engine yourself. Only needed for compiling — running does not use it.
+                Build the engine yourself. You only need this, if you compile engines from source.
               </p>
             </div>
             <span className="type-micro font-mono uppercase config-muted shrink-0">

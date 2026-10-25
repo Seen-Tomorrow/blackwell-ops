@@ -689,3 +689,53 @@
 /* Per-profile Pack+Ship button (yellow/35 border, /90 text) */
 
 /* Job log (black/30 bg, white/[0.06] border) */
+
+/* ENGINE page - engine sources table */
+.eng-src-table {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.eng-src-row {
+  display: grid;
+  grid-template-columns: minmax(6.5rem, 1fr) 9.5rem 8.5rem 4.5rem;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px;
+  border-radius: 2px;
+}
+.eng-src-row--head {
+  color: var(--theme-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.eng-src-row--active {
+  background: color-mix(in srgb, var(--theme-text) 5%, transparent);
+}
+.eng-src-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--theme-text);
+}
+.eng-badge {
+  display: inline-block;
+  padding: 0 4px;
+  border: 1px solid var(--theme-border);
+  border-radius: 2px;
+  color: var(--theme-text-muted);
+  white-space: nowrap;
+}
+.eng-badge--newest {
+  border-color: color-mix(in srgb, var(--theme-accent-bright) 45%, var(--theme-border) 55%);
+  color: var(--theme-accent-bright);
+}
+.eng-src-action {
+  display: flex;
+  justify-content: flex-end;
+}
+.eng-src-inuse {
+  color: var(--theme-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
