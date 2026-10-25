@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 import { useDownloadTasks } from "../hooks/useDownloadTasks";
-import { buildEngineOverview } from "../lib/engineOverview";
+import { buildEngineOverview, packDownloadAction } from "../lib/engineOverview";
 import { DEFAULT_PROVIDER_ID } from "../lib/types";
 import type { BinaryUpdateInfo, DownloadTask, ProviderConfig } from "../lib/types";
 import type { ToolchainInstallInfo } from "./FoundryToolchainPanel";
@@ -152,6 +152,7 @@ export default function SoftwareDownloads() {
               active(t),
           );
           const catalog = mode.sources.find((s) => s.id === "catalog");
+          const action = packDownloadAction(mode.packVersion, catalog?.version ?? null);
           return (
             <div key={mode.id} className={rowClass}>
               <div className="min-w-0">
@@ -188,7 +189,12 @@ export default function SoftwareDownloads() {
                     )
                   }
                 >
-                  DOWNLOAD {formatSize(mode.downloadSizeBytes)}
+                  {action === "update"
+                    ? "UPDATE"
+                    : action === "redownload"
+                      ? "RE-DOWNLOAD"
+                      : "DOWNLOAD"}{" "}
+                  {formatSize(mode.downloadSizeBytes)}
                 </button>
               )}
             </div>

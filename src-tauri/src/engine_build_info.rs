@@ -63,12 +63,25 @@ fn parse_llama_version_line(cleaned: &str) -> Option<String> {
         }
     }
 
+    // One identity shape everywhere: `b<build>-<commit>`. The server line carries the build
+    // number inside the parens; keeping it makes bundled/installed versions comparable with
+    // Foundry artifacts and published packs (which already use this shape).
+    static BUILD_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"(?i)build\s+(\d+)").expect("build number regex")
+    });
+
     if let Some(caps) = NEW_RE.captures(cleaned) {
-        // Normalize to "0.2.0-dev (d7fa69b)" so commit extract stays simple.
-        return Some(format!("{} ({})", caps[1].trim(), short_hex(&caps[2])));
+        let build = BUILD_RE
+            .captures(cleaned)
+            .and_then(|b| b.get(1))
+            .map(|m| m.as_str().to_string());
+        return match build {
+            Some(n) => Some(format!("b{n}-{}", short_hex(&caps[2]))),
+            None => Some(format!("{} ({})", caps[1].trim(), short_hex(&caps[2]))),
+        };
     }
     if let Some(caps) = OLD_RE.captures(cleaned) {
-        return Some(format!("{} ({})", &caps[1], short_hex(&caps[2])));
+        return Some(format!("b{}-{}", &caps[1], short_hex(&caps[2])));
     }
     GENERIC_RE
         .captures(cleaned)
@@ -383,7 +396,7 @@ mod parse_tests {
         let out = "version: 0.7.0-dev (build 11870, commit 74bca3950)\nbuilt with MSVC 19.51.36243.0 for Windows AMD64\n";
         assert_eq!(
             parse_llama_version_line(out).as_deref(),
-            Some("0.7.0-dev (74bca395)")
+            Some("b11870-74bca395")
         );
     }
 
@@ -392,11 +405,11 @@ mod parse_tests {
         let line = "version: 0.7.0-dev (build 11869, commit d327bf1f0)";
         assert_eq!(
             parse_llama_version_line(line).as_deref(),
-            Some("0.7.0-dev (d327bf1f)")
+            Some("b11869-d327bf1f")
         );
         assert_eq!(
             parse_llama_version_line("version: 519 (635cdd5)").as_deref(),
-            Some("519 (635cdd5)")
+            Some("b519-635cdd5")
         );
     }
 }

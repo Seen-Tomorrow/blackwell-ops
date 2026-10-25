@@ -32,6 +32,9 @@ export interface EngineModeOverview {
   packAvailable: boolean;
   /** Engine version carried by the published pack, if any. */
   packVersion: string | null;
+  /** Version of the downloaded catalogue copy, if one exists. */
+  catalogVersion: string | null;
+  catalogDate: string | null;
   /** Pack size, plus the runtime when that is missing (the real download a click triggers). */
   downloadSizeBytes: number;
   /** Every engine source present on disk, with its identity and build time. */
@@ -157,6 +160,8 @@ export function buildEngineOverview(
       updateAvailable: Boolean(update?.available),
       packAvailable: Boolean(update?.packAvailable),
       packVersion: realVersion(update?.latestVersion),
+      catalogVersion: sources.find((s) => s.id === "catalog")?.version ?? null,
+      catalogDate: sources.find((s) => s.id === "catalog")?.buildDate ?? null,
       downloadSizeBytes,
       sources,
     };
@@ -169,6 +174,35 @@ export function buildEngineOverview(
     hasUpdate: modes.some((m) => m.updateAvailable),
     modes,
   };
+}
+
+/** Build number from `b11887-6050b467`; null for unknown identities. */
+export function buildNumberOf(version: string | null | undefined): number | null {
+  if (!version) return null;
+  const match = /^(?:b|build\s+)(\d{3,})/i.exec(version.trim());
+  return match ? Number(match[1]) : null;
+}
+
+export type PackDownloadAction = "download" | "redownload" | "update";
+
+/**
+ * The catalogue only knows packs: no downloaded copy → DOWNLOAD; same build → RE-DOWNLOAD;
+ * a higher published build → UPDATE. A lower published build stays DOWNLOAD (the user may
+ * deliberately want it).
+ */
+export function packDownloadAction(
+  packVersion: string | null,
+  catalogVersion: string | null,
+): PackDownloadAction {
+  if (!catalogVersion) return "download";
+  if (packVersion && packVersion === catalogVersion) return "redownload";
+  const pack = buildNumberOf(packVersion);
+  const local = buildNumberOf(catalogVersion);
+  if (pack !== null && local !== null) {
+    if (pack === local) return "redownload";
+    return pack > local ? "update" : "download";
+  }
+  return "download";
 }
 
 export function modeSourceLabel(source: BinarySourceKind | undefined): string {

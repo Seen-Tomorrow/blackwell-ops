@@ -321,7 +321,7 @@ pub async fn check_binary_updates(
     let force = force.unwrap_or(false);
     if cfg!(debug_assertions) {
         log::info!(
-            "[binary-update] check_binary_updates provider={provider_id} force={force}"
+            "[binary-update] check_binary_updates engine={provider_id} force={force}"
         );
     }
 
@@ -541,12 +541,9 @@ pub fn activate_provider_pack(
             .downloaded_version_per_env
             .insert(profile.to_string(), tag.clone());
 
-        crate::profile_binaries::activate_profile_source(
-            provider,
-            profile,
-            crate::profile_binaries::SOURCE_CATALOG,
-        )?;
-
+        // A download only registers a catalogue copy. The active source is recomputed from
+        // the preference (if any) and the newest build id — an older pack must not hijack a
+        // newer local build just because it arrived later.
         // Placeholder build-info until refresh_build_info probes llama --version.
         if let Some(inv) = provider.inventory_per_env.get_mut(profile) {
             if let Some(entry) = inv.catalog.as_mut() {
@@ -576,8 +573,10 @@ pub fn activate_provider_pack(
             }
         }
 
+        crate::profile_binaries::resolve_after_source_change(provider);
+
         log::info!(
-            "[binary-update] Activated catalog {} [{}]: {} (product tag: {})",
+            "[binary-update] Registered catalog {} [{}]: {} (product tag: {})",
             provider_id,
             profile,
             server_exe.display(),

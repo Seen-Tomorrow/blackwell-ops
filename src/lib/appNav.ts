@@ -23,7 +23,7 @@ export const PRIMARY_NAV: { id: PrimaryNavId; label: string }[] = [
 /** OPERATIONS children — catalog cockpit + engines + logs. */
 export const OPS_SUB_NAV: { id: Tab; label: string }[] = [
   { id: "catalog", label: "OPS" },
-  { id: "stack", label: "ENGINES" },
+  { id: "stack", label: "RUNNING" },
   { id: "logs", label: "LOGS" },
 ];
 

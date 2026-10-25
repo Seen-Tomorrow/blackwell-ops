@@ -143,16 +143,53 @@ fn scan_catalog(
     None
 }
 
+/// Build number from an engine identity: `b11887-6050b467`, or a legacy stored
+/// `version: 0.7.0-dev (build 11869, commit …)` string.
+fn version_build_number(version: &str) -> Option<u64> {
+    let t = version.trim();
+    if let Some(rest) = t.strip_prefix('b') {
+        let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+        if digits.len() >= 3 {
+            return digits.parse().ok();
+        }
+    }
+    if let Some(pos) = t.find("build ") {
+        let digits: String = t[pos + 6..]
+            .chars()
+            .take_while(|c| c.is_ascii_digit())
+            .collect();
+        if digits.len() >= 3 {
+            return digits.parse().ok();
+        }
+    }
+    None
+}
+
+/// No explicit preference: the newest *engine build* wins, whatever its source. Ordering by
+/// build id (not file mtime) is stable across copies; sources with unreadable identities fall
+/// back to pack > local build > bundled seed.
 fn auto_pick_source(
+    bundled: &Option<(String, BuildInfo)>,
     foundry: &Option<(String, BuildInfo)>,
     catalog: &Option<(String, BuildInfo)>,
 ) -> &'static str {
-    // Deterministic precedence, deliberately NOT "newest tree". With a bundled seed, a
-    // downloaded pack and a Foundry build able to coexist for one profile, mtime is not
-    // intent: a fresh pack could lose to yesterday's build (and the reverse) after any
-    // update, so what launches depended on file timestamps. Order is:
-    //   pack (managed, updatable) > local build > bundled seed (the floor).
-    // A user who wants their own build selects it; that preference is explicit and wins.
+    let mut best: Option<(&'static str, u64)> = None;
+    for (id, entry) in [
+        (SOURCE_CATALOG, catalog),
+        (SOURCE_FOUNDRY, foundry),
+        (SOURCE_BUNDLED, bundled),
+    ] {
+        let Some((_, info)) = entry else { continue };
+        let Some(number) = version_build_number(&info.version) else {
+            continue;
+        };
+        if best.map_or(true, |(_, current)| number > current) {
+            best = Some((id, number));
+        }
+    }
+    if let Some((id, _)) = best {
+        return id;
+    }
     if catalog.is_some() {
         return SOURCE_CATALOG;
     }
@@ -284,7 +321,7 @@ pub fn resolve_provider_binaries(p: &mut ProviderConfig) {
             Some(SOURCE_CATALOG) if catalog.is_some() => SOURCE_CATALOG,
             Some(SOURCE_BUNDLED) if show_bundled_as_nsis.is_some() => SOURCE_BUNDLED,
             Some(SOURCE_FOUNDRY) if foundry.is_some() => SOURCE_FOUNDRY,
-            _ => auto_pick_source(&foundry, &catalog),
+            _ => auto_pick_source(&show_bundled_as_nsis, &foundry, &catalog),
         };
 
         let active = match source {
@@ -391,17 +428,42 @@ mod source_tests {
         ))
     }
 
-    /// Precedence is fixed: pack > local build > bundled seed. The previous rule compared
-    /// file mtimes, so identical disk state could resolve differently after an update — a
-    /// fresh pack losing to yesterday's Foundry build, or the reverse. That is exactly what
-    /// this test pins.
+    fn build_entry(build: u64) -> Option<(String, BuildInfo)> {
+        Some((
+            format!("C:/engines/b{build}"),
+            BuildInfo {
+                version: format!("b{build}-6050b467"),
+                build_date: "2026-10-25 02:00".into(),
+                cuda_version: None,
+                cuda_architectures: None,
+            },
+        ))
+    }
+
+    /// Newest engine build wins, regardless of source. Identity, not file mtime, decides.
     #[test]
-    fn default_source_precedence_is_deterministic() {
-        assert_eq!(auto_pick_source(&entry("f"), &entry("c")), SOURCE_CATALOG);
-        assert_eq!(auto_pick_source(&entry("f"), &None), SOURCE_FOUNDRY);
-        assert_eq!(auto_pick_source(&None, &entry("c")), SOURCE_CATALOG);
-        // Nothing on disk: the caller drops the paths; the value is only a placeholder.
-        assert_eq!(auto_pick_source(&None, &None), SOURCE_BUNDLED);
+    fn newest_build_wins_without_a_preference() {
+        assert_eq!(
+            auto_pick_source(&build_entry(11869), &build_entry(11887), &build_entry(11870)),
+            SOURCE_FOUNDRY
+        );
+        assert_eq!(
+            auto_pick_source(&build_entry(11869), &build_entry(11870), &build_entry(11871)),
+            SOURCE_CATALOG
+        );
+        assert_eq!(
+            auto_pick_source(&build_entry(11900), &build_entry(11887), &build_entry(11870)),
+            SOURCE_BUNDLED
+        );
+    }
+
+    /// Unreadable identities keep the deterministic fallback: pack > local build > seed.
+    #[test]
+    fn unknown_identities_fall_back_to_source_priority() {
+        assert_eq!(auto_pick_source(&entry("f"), &None, &entry("c")), SOURCE_CATALOG);
+        assert_eq!(auto_pick_source(&entry("f"), &entry("c"), &None), SOURCE_FOUNDRY);
+        assert_eq!(auto_pick_source(&entry("c"), &None, &None), SOURCE_BUNDLED);
+        assert_eq!(auto_pick_source(&None, &None, &None), SOURCE_BUNDLED);
     }
 }
 
