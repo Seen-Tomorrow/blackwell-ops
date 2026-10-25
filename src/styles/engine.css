@@ -613,3 +613,23 @@
   box-shadow: 0 0 4px color-mix(in srgb, var(--theme-telemetry-amber) 35%, transparent);
   pointer-events: none;
 }
+
+/* Rail OC panel overlays the HW monitor: gunmetal face + a 4px metal rim so it
+   reads as a raised instrument, not as part of the noise behind it. */
+[data-gpu-overclock].gpu-oc-rail {
+  background-color: var(--theme-industrial-bg);
+  background-image:
+    var(--theme-industrial-texture-active),
+    var(--theme-industrial-face-gradient, none);
+  border: 4px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 45%, var(--theme-panel-accent));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--theme-bezel-edge-lo) 75%, transparent),
+    0 14px 30px var(--fixed-black-a45),
+    inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 40%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-lo) 45%, transparent);
+}
+
+/* Keep the header band legible on the textured face. */
+[data-gpu-overclock].gpu-oc-rail .gpu-oc-header {
+  background: color-mix(in srgb, var(--theme-industrial-bg) 55%, transparent);
+}
