@@ -6,7 +6,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { ProviderConfig, ModelPathEntry, PathDiskUsage, UpdateOfferings } from "../lib/types";
 import { DEFAULT_PROVIDER_ID } from "../lib/types";
-import ProvidersConfig from "./ProvidersConfig";
+import EngineConfig from "./EngineConfig";
 import SecretsConfig from "./SecretsConfig";
 import RecoveryConfig from "./RecoveryConfig";
 import UpdatesConfig from "./UpdatesConfig";
@@ -115,7 +115,7 @@ export default function ConfigPage({
 
       {effectiveSub === "providers" ? (
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-          <ProvidersConfig providers={allProviders} onProvidersChange={setAllProviders} />
+          <EngineConfig providers={allProviders} onProvidersChange={setAllProviders} />
         </div>
       ) : effectiveSub === "updates" ? (
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">

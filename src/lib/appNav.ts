@@ -34,7 +34,7 @@ const CONFIG_SUB_NAV_ALL: {
   devOnly?: boolean;
   dataOnboarding?: string;
 }[] = [
-  { id: "providers", label: "PROVIDERS" },
+  { id: "providers", label: "ENGINE" },
   { id: "params", label: "PARAMETERS" },
   { id: "paths", label: "PATHS", dataOnboarding: "paths-tab" },
   { id: "runtime", label: "RUNTIME" },
