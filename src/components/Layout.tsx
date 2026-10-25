@@ -105,7 +105,12 @@ export default function Layout({
 }: LayoutProps) {
   const [zoom, setZoom] = useState(loadZoom);
   const [textScale, setTextScale] = useState(loadTextScale);
-  const [uiDensity, setUiDensity] = useState<UiDensity>(loadUiDensity);
+
+  // Root-level so the :root type tokens re-evaluate when the scale changes.
+  useEffect(() => {
+    document.documentElement.style.setProperty("--text-scale", String(textScale));
+  }, [textScale]);
+  const [uiDensity] = useState<UiDensity>(loadUiDensity);
   const [monitorFocus, setMonitorFocus] = useState(false);
   const [shellWidthPx, setShellWidthPx] = useState(() =>
     typeof window !== "undefined"
@@ -378,17 +383,8 @@ export default function Layout({
     return () => window.removeEventListener("wheel", onWheel);
   }, [adjustZoom]);
 
-  const toggleUiDensity = useCallback(() => {
-    setUiDensity(prev => {
-      const next: UiDensity = prev === "comfortable" ? "compact" : "comfortable";
-      saveUiDensity(next);
-      return next;
-    });
-  }, []);
-
   const shellStyle = {
     "--ui-text-scale": String(zoom),
-    "--text-scale": String(textScale),
     "--app-shell-width-px": `${shellWidthPx}px`,
     /** Header/footer density — independent of app zoom (see resolveChromeScale). */
     "--chrome-scale": String(chromeScale),
@@ -481,34 +477,8 @@ export default function Layout({
 
               {/* No "Quick Settings" caption — the recessed well + per-group labels read on their own. */}
               <div className="app-quick-settings__tools app-quick-settings__row flex items-center gap-2">
-                {/* Density leads the row (left); zoom / update / recovery stay right-aligned. */}
-                <div className="app-appearance-inline-group flex items-center gap-0.5 flex-shrink-0">
-                  <span className="app-appearance-section__label app-appearance-section__label--compact type-hairline font-mono tracking-widest uppercase">
-                    Comfort
-                  </span>
-                  <SegmentSwitch
-                    ariaLabel="UI density"
-                    size="compact"
-                    tone="accent"
-                    className="app-quick-settings__seg"
-                    options={[
-                      { id: "comfortable", label: "COMFORT", title: "Density: Comfortable" },
-                      { id: "compact", label: "COMPACT", title: "Density: Compact" },
-                    ]}
-                    selectedId={uiDensity === "compact" ? "compact" : "comfortable"}
-                    onSelect={(id) => {
-                      const next = id === "compact" ? "compact" : "comfortable";
-                      if (next !== uiDensity) toggleUiDensity();
-                    }}
-                  />
-                </div>
-                {/*
-                 * Grows to absorb slack only (`flex-basis: 0`) — basis must stay 0 or
-                 * the wrap-around remainder becomes a phantom track that pulls this
-                 * group back under the density control instead of to the right edge.
-                 */}
-                <div className="app-quick-settings__tool-group flex items-center gap-1 flex-wrap justify-end min-w-0">
-                  <div className="app-appearance-inline-group flex items-center gap-0.5 flex-shrink-0">
+                {/* No density switch yet (unfinished) — text and zoom stay separated. */}
+                <div className="app-quick-settings__tool-group flex items-center gap-3 flex-wrap justify-end min-w-0">
                   <div className="app-appearance-inline-group flex items-center gap-0.5 flex-shrink-0">
                     <span className="app-appearance-section__label app-appearance-section__label--compact type-hairline font-mono tracking-widest uppercase">
                       Text
@@ -517,12 +487,13 @@ export default function Layout({
                     <span className="app-chrome-control-btn shell-scale-readout type-tiny font-mono opacity-60 w-8 text-center" title="Text size — multiplies the type scale only">{Math.round(textScale * 100)}%</span>
                     <button type="button" onClick={() => adjustTextScale(TEXT_STEP)} className="app-chrome-control-btn shell-scale-btn type-label font-mono transition-colors leading-none" title="Increase text size (layout unchanged)">+</button>
                   </div>
+                  <div className="app-appearance-inline-group flex items-center gap-0.5 flex-shrink-0">
                     <span className="app-appearance-section__label app-appearance-section__label--compact type-hairline font-mono tracking-widest uppercase">
                       Zoom
                     </span>
-                    <button onClick={() => adjustZoom(-ZOOM_STEP)} className="app-chrome-control-btn shell-scale-btn type-label font-mono transition-colors leading-none" title="Decrease text scale (Ctrl+scroll)">−</button>
-                    <span className="app-chrome-control-btn shell-scale-readout type-tiny font-mono opacity-60 w-8 text-center" title="Text scale (Ctrl+scroll)">{Math.round(zoom * 100)}%</span>
-                    <button onClick={() => adjustZoom(ZOOM_STEP)} className="app-chrome-control-btn shell-scale-btn type-label font-mono transition-colors leading-none" title="Increase text scale (Ctrl+scroll)">+</button>
+                    <button type="button" onClick={() => adjustZoom(-ZOOM_STEP)} className="app-chrome-control-btn shell-scale-btn type-label font-mono transition-colors leading-none" title="Decrease app zoom (Ctrl+scroll)">−</button>
+                    <span className="app-chrome-control-btn shell-scale-readout type-tiny font-mono opacity-60 w-8 text-center" title="App zoom (Ctrl+scroll)">{Math.round(zoom * 100)}%</span>
+                    <button type="button" onClick={() => adjustZoom(ZOOM_STEP)} className="app-chrome-control-btn shell-scale-btn type-label font-mono transition-colors leading-none" title="Increase app zoom (Ctrl+scroll)">+</button>
                   </div>
                   <AppUpdateMenu
                     offerings={updateOfferings ?? null}
