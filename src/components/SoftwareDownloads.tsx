@@ -151,26 +151,30 @@ export default function SoftwareDownloads() {
               (t.quantType === mode.id || t.quantType === `${DEFAULT_PROVIDER_ID}:${mode.id}`) &&
               active(t),
           );
+          const catalog = mode.sources.find((s) => s.id === "catalog");
           return (
             <div key={mode.id} className={rowClass}>
-              <div>
+              <div className="min-w-0">
                 <div className="type-tiny font-mono">
                   {mode.label}
                   <span className="config-muted"> · {mode.tagline}</span>
                 </div>
                 <div className="type-micro font-mono config-muted">
-                  {mode.state === "ready"
-                    ? `Installed${mode.version ? ` · ${mode.version}` : ""}`
-                    : mode.state === "driver"
-                      ? `Needs NVIDIA driver ${mode.driverFloor ?? 610}+`
-                      : "Not installed"}
+                  {mode.packAvailable
+                    ? `Published ${mode.packVersion ?? "unknown"} · ${formatSize(mode.downloadSizeBytes)}`
+                    : "No published pack yet"}
+                </div>
+                <div className="type-micro font-mono config-muted">
+                  {catalog?.available
+                    ? `Downloaded ${catalog.version ?? "unknown"}${catalog.buildDate ? ` · ${catalog.buildDate}` : ""}`
+                    : "Not downloaded"}
                 </div>
               </div>
               {task ? (
                 <span className="type-micro font-mono config-muted">{task.status}</span>
-              ) : mode.state === "install" && mode.engineMissing && !mode.packAvailable ? (
+              ) : !mode.packAvailable ? (
                 <span className="type-micro font-mono config-muted">not published yet</span>
-              ) : mode.state === "install" ? (
+              ) : (
                 <button
                   type="button"
                   className="foundry-toolchain-btn foundry-toolchain-btn--action"
@@ -184,25 +188,8 @@ export default function SoftwareDownloads() {
                     )
                   }
                 >
-                  INSTALL {formatSize(mode.sizeBytes)}
+                  DOWNLOAD {formatSize(mode.downloadSizeBytes)}
                 </button>
-              ) : mode.updateAvailable ? (
-                <button
-                  type="button"
-                  className="foundry-toolchain-btn foundry-toolchain-btn--action"
-                  onClick={() =>
-                    void run(() =>
-                      invoke("download_binary_update", {
-                        providerId: DEFAULT_PROVIDER_ID,
-                        profile: mode.id,
-                      }),
-                    )
-                  }
-                >
-                  UPDATE {formatSize(mode.sizeBytes)}
-                </button>
-              ) : (
-                <span className="type-micro font-mono config-muted">up to date</span>
               )}
             </div>
           );

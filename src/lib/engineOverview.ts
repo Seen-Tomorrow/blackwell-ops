@@ -30,6 +30,10 @@ export interface EngineModeOverview {
   updateAvailable: boolean;
   /** A published engine pack exists for this mode (false when offline or unpublished). */
   packAvailable: boolean;
+  /** Engine version carried by the published pack, if any. */
+  packVersion: string | null;
+  /** Pack size, plus the runtime when that is missing (the real download a click triggers). */
+  downloadSizeBytes: number;
   /** Every engine source present on disk, with its identity and build time. */
   sources: EngineSourceOption[];
 }
@@ -121,9 +125,12 @@ export function buildEngineOverview(
 
     // Downloading happens when the mode is missing, or when the pack is newer than what
     // is installed; either way the engine pack is the payload, plus the runtime if absent.
+    const runtimeSizeBytes = runtimeMissing ? runtimePack?.size_bytes ?? 0 : 0;
     let sizeBytes = 0;
     if (engineMissing || update?.available) sizeBytes += update?.packSizeBytes ?? 0;
     if (runtimeMissing) sizeBytes += runtimePack?.size_bytes ?? 0;
+    // Catalogue download size: the pack itself plus the runtime when it is not installed yet.
+    const downloadSizeBytes = (update?.packSizeBytes ?? 0) + runtimeSizeBytes;
 
     const state: EngineModeState = driverBlocked
       ? "driver"
@@ -149,6 +156,8 @@ export function buildEngineOverview(
       sizeBytes,
       updateAvailable: Boolean(update?.available),
       packAvailable: Boolean(update?.packAvailable),
+      packVersion: realVersion(update?.latestVersion),
+      downloadSizeBytes,
       sources,
     };
   });
