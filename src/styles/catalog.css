@@ -1235,6 +1235,11 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
+/* SOLO launches the BRAIN seat alone — one full-width seat, no split seam. */
+.catalog-quick-strip__seats--solo {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 /* Seat cell inside bank — face only; bank owns the outer frame */
 .catalog-quick-seat {
   position: relative;
@@ -1582,8 +1587,14 @@
 }
 
 /* Seats disclosure — collapses the whole HARNESS SEATS block down to its label
-   bar. FAVORITE is a separate section and is never affected. */
-.catalog-quick-section__collapse {
+   bar. FAVORITE is a separate section and is never affected. Pinned to the far
+   right of the label row so the title cluster stays centred. */
+.catalog-quick-section__head--seats .catalog-quick-section__collapse {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
@@ -1593,9 +1604,9 @@
   height: 1.575rem;
   padding: 0;
   border-radius: 2px;
-  border: 1px solid color-mix(in srgb, var(--theme-provider-pill-border) 55%, transparent);
-  background: color-mix(in srgb, var(--theme-provider-pill-bg) 75%, transparent);
-  color: var(--theme-provider-pill-text);
+  border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 45%, transparent);
+  color: var(--theme-industrial-muted, var(--theme-text-muted));
   font-family: ui-monospace, monospace;
   font-size: var(--type-md);
   font-weight: 800;
@@ -1603,10 +1614,10 @@
   cursor: pointer;
 }
 
-.catalog-quick-section__collapse:hover {
-  color: var(--theme-provider-pill-hover-text);
-  border-color: var(--theme-provider-pill-hover-border);
-  background: color-mix(in srgb, var(--theme-provider-pill-active-bg) 18%, transparent);
+.catalog-quick-section__head--seats .catalog-quick-section__collapse:hover {
+  color: var(--theme-text);
+  border-color: color-mix(in srgb, var(--theme-border) 80%, transparent);
+  background: color-mix(in srgb, var(--theme-text) 8%, transparent);
 }
 
 .catalog-quick-section--seats-collapsed .catalog-quick-section__sets,
@@ -1831,7 +1842,7 @@
   align-items: center;
   justify-content: center;
   min-width: 0;
-  min-height: 1.15rem;
+  min-height: 1.575rem;
   padding: 0 2.6rem;
 }
 
@@ -1883,6 +1894,16 @@
   gap: 4px;
   width: 100%;
   max-width: 100%;
+}
+
+/* Mode + launch sit far left; HARNESS CONNECT keeps the far right.
+   The 8px gap keeps a mode toggle from landing on LAUNCH by accident. */
+.catalog-quick-section__launch-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-right: auto;
 }
 
 .catalog-quick-section__sets {
@@ -1996,6 +2017,35 @@
 .catalog-quick-section__action:disabled {
   opacity: 0.35;
   cursor: not-allowed;
+}
+
+/* Mode + launch share one control size so the pair reads as a unit. */
+.catalog-quick-section__action--mode,
+.catalog-quick-section__action--launch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 7px;
+  font-size: var(--type-md);
+  text-align: center;
+}
+
+/* Launch seats — the attention amber that used to live on the disclosure tile. */
+.catalog-quick-section__action--launch {
+  min-width: 1.4rem;
+  border-color: color-mix(in srgb, var(--theme-provider-pill-border) 55%, transparent);
+  background: color-mix(in srgb, var(--theme-provider-pill-bg) 75%, transparent);
+  color: var(--theme-provider-pill-text);
+}
+
+.catalog-quick-section__action--mode {
+  letter-spacing: 0.08em;
+}
+
+.catalog-quick-section__action--launch:hover:not(:disabled) {
+  color: var(--theme-provider-pill-hover-text);
+  border-color: var(--theme-provider-pill-hover-border);
+  background: color-mix(in srgb, var(--theme-provider-pill-active-bg) 18%, transparent);
 }
 
 .catalog-quick-section__grid {

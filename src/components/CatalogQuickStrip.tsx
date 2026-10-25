@@ -232,7 +232,11 @@ export default function CatalogQuickStrip({
   const canLaunchSolo = Boolean(seats.brain?.path);
   const seatEditing = editingRole != null;
   const seatsExpanded = seatsOpen || seatEditing || seatsHelpOpen;
-  const sum = sumLearnedMem(learnedMem.brain, learnedMem.worker);
+  /** SOLO launches the BRAIN seat alone, so the bank shows one seat in that mode. */
+  const soloSeats = !seatEditing && launchMode === "solo";
+  const sum = soloSeats
+    ? sumLearnedMem(learnedMem.brain, null)
+    : sumLearnedMem(learnedMem.brain, learnedMem.worker);
   const hasSelection = Boolean(selectedPath);
 
   const launchSeats = () => {
@@ -285,9 +289,12 @@ export default function CatalogQuickStrip({
     setPending(null);
   };
 
+  /** SOLO launches the BRAIN seat alone, so the bank shows one seat in that mode. */
   const rolesToShow: CatalogEngineSeatRole[] = seatEditing
     ? [editingRole!]
-    : [...CATALOG_ENGINE_SEAT_ROLES];
+    : soloSeats
+      ? ["brain"]
+      : [...CATALOG_ENGINE_SEAT_ROLES];
 
   return (
     <div
@@ -338,19 +345,6 @@ export default function CatalogQuickStrip({
               })}
             </div>
             <div className="catalog-quick-section__title-cluster">
-              {!seatEditing ? (
-                <button
-                  type="button"
-                  className="catalog-quick-section__collapse"
-                  title={seatsExpanded ? "Collapse harness seats" : "Expand harness seats"}
-                  aria-label={seatsExpanded ? "Collapse harness seats" : "Expand harness seats"}
-                  aria-expanded={seatsExpanded}
-                  aria-controls="catalog-quick-seat-bank"
-                  onClick={() => setSeatsOpen((v) => !v)}
-                >
-                  {seatsExpanded ? "\u25BC" : "\u25B6"}
-                </button>
-              ) : null}
               <span className="catalog-quick-section__title">
                 {seatEditing
                   ? `EDITING ${CATALOG_SEAT_LABEL[editingRole!]}`
@@ -372,35 +366,50 @@ export default function CatalogQuickStrip({
                 </button>
               ) : null}
             </div>
+            {!seatEditing ? (
+              <button
+                type="button"
+                className="catalog-quick-section__collapse"
+                title={seatsExpanded ? "Collapse harness seats" : "Expand harness seats"}
+                aria-label={seatsExpanded ? "Collapse harness seats" : "Expand harness seats"}
+                aria-expanded={seatsExpanded}
+                aria-controls="catalog-quick-seat-bank"
+                onClick={() => setSeatsOpen((v) => !v)}
+              >
+                {seatsExpanded ? "\u25BC" : "\u25B6"}
+              </button>
+            ) : null}
           </div>
           {!seatEditing ? (
             <div className="catalog-quick-section__head-row catalog-quick-section__head-row--actions">
               <div className="catalog-quick-section__actions">
-                <button
-                  type="button"
-                  className="catalog-quick-section__action"
-                  title="Switch SOLO / TWIN launch"
-                  onClick={() => setLaunchMode((m) => (m === "twin" ? "solo" : "twin"))}
-                >
-                  {launchMode === "twin" ? "TWIN" : "SOLO"}
-                </button>
-                <button
-                  type="button"
-                  className="catalog-quick-section__action"
-                  disabled={launchMode === "twin" ? !canLaunchTwin : !canLaunchSolo}
-                  title={
-                    launchMode === "twin"
-                      ? canLaunchTwin
-                        ? "Launch BRAIN + WORKER (needs saved bags on both)"
-                        : "Assign BRAIN and WORKER first"
-                      : canLaunchSolo
-                        ? "Launch BRAIN seat as solo"
-                        : "Assign BRAIN seat first"
-                  }
-                  onClick={launchSeats}
-                >
-                  ▶
-                </button>
+                <div className="catalog-quick-section__launch-actions">
+                  <button
+                    type="button"
+                    className="catalog-quick-section__action catalog-quick-section__action--mode"
+                    title="Switch SOLO / TWIN launch"
+                    onClick={() => setLaunchMode((m) => (m === "twin" ? "solo" : "twin"))}
+                  >
+                    {launchMode === "twin" ? "TWIN" : "SOLO"}
+                  </button>
+                  <button
+                    type="button"
+                    className="catalog-quick-section__action catalog-quick-section__action--launch"
+                    disabled={launchMode === "twin" ? !canLaunchTwin : !canLaunchSolo}
+                    title={
+                      launchMode === "twin"
+                        ? canLaunchTwin
+                          ? "Launch BRAIN + WORKER (needs saved bags on both)"
+                          : "Assign BRAIN and WORKER first"
+                        : canLaunchSolo
+                          ? "Launch BRAIN seat as solo"
+                          : "Assign BRAIN seat first"
+                    }
+                    onClick={launchSeats}
+                  >
+                    ▶
+                  </button>
+                </div>
                 <button
                   type="button"
                   className="catalog-quick-section__action"
@@ -486,6 +495,7 @@ export default function CatalogQuickStrip({
                 className={[
                   "catalog-quick-strip__seats",
                   seatEditing ? "catalog-quick-strip__seats--editing" : "",
+                  soloSeats ? "catalog-quick-strip__seats--solo" : "",
                 ]
                   .filter(Boolean)
                   .join(" ")}
@@ -670,7 +680,11 @@ export default function CatalogQuickStrip({
               {sum && !seatEditing ? (
                 <div
                   className="catalog-quick-mem catalog-quick-mem--combo"
-                  title="LEARNED total for both seats at saved knobs (re-read, not stored on the bags)"
+                  title={
+                    soloSeats
+                      ? "LEARNED VRAM+RAM for the SOLO seat at saved knobs (re-read, not stored on the bag)"
+                      : "LEARNED total for both seats at saved knobs (re-read, not stored on the bags)"
+                  }
                 >
                   <span className="catalog-quick-mem__cell catalog-quick-mem__cell--vram">
                     <span className="catalog-quick-mem__sigma" aria-hidden>Σ</span>

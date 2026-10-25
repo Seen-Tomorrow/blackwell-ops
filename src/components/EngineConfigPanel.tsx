@@ -506,7 +506,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   }, [fusionDisplay.monitorFocus, hwMonitorOpen, hwMonitorDock, applyHwPlacement]);
 
   const [enginesInRail, setEnginesInRail] = useState(loadEnginesInRail);
-  /** Agentic harness wizard open — full cockpit takeover; skip param dim. */
   /** CTX strip: docked in cockpit vs above-config zone (near VRAM / pin-above groups). */
   const [ctxCockpitDock, setCtxCockpitDock] = useState<CtxCockpitDock>(() => loadCtxCockpitDock());
   const showLaunchRail = launchDockPosition === "right";
@@ -853,70 +852,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     hydrateLockRef: seatHydrateLockRef,
   });
 
-  /**
-   * Visual-only dim of engine params after launch / when focusing a running slot.
-   * Does NOT block launch (same model + same config can still spawn another instance).
-   * Clears when the user edits config or cycles the catalog model.
-   */
-  const [paramsLiveDimmed, setParamsLiveDimmed] = useState(false);
-  const liveDimConfigSnapRef = useRef<string | null>(null);
-  /**
-   * Launch / engine focus may update model.path in the same turn — skip that one undim.
-   * Cleared by the path effect when consumed, or on a macrotask if path did not change.
-   */
-  const skipNextModelPathUndimRef = useRef(false);
   const configRef = useRef(config);
   configRef.current = config;
-
-  const applyParamsLiveDim = useCallback(() => {
-    skipNextModelPathUndimRef.current = true;
-    liveDimConfigSnapRef.current = JSON.stringify(configRef.current);
-    setParamsLiveDimmed(true);
-    window.setTimeout(() => {
-      // Path effect did not run (same model) — drop the one-shot skip
-      skipNextModelPathUndimRef.current = false;
-    }, 0);
-  }, []);
-
-
-
-  // Catalog model cycle → clear live dim (not the path change that follows engine focus/launch)
-  useEffect(() => {
-    if (skipNextModelPathUndimRef.current) {
-      skipNextModelPathUndimRef.current = false;
-      return;
-    }
-    setParamsLiveDimmed(false);
-    liveDimConfigSnapRef.current = null;
-  }, [model?.path]);
-
-  // User changed config (any field) vs snapshot at last dim → clear live dim
-  const configFingerprint = useMemo(() => JSON.stringify(config), [config]);
-  useEffect(() => {
-    if (!paramsLiveDimmed || liveDimConfigSnapRef.current == null) return;
-    if (configFingerprint !== liveDimConfigSnapRef.current) {
-      setParamsLiveDimmed(false);
-      liveDimConfigSnapRef.current = null;
-    }
-  }, [configFingerprint, paramsLiveDimmed]);
-
-  // Successful launch → dim (visual only)
-  useEffect(() => {
-    const onLaunch = () => applyParamsLiveDim();
-    window.addEventListener(EVENTS.engineLaunched, onLaunch);
-    return () => window.removeEventListener(EVENTS.engineLaunched, onLaunch);
-  }, [applyParamsLiveDim]);
-
-  // Selecting a running/loading slot → dim
-  useEffect(() => {
-    if (selectedSlotIdx == null || selectedSlotIdx < 0) return;
-    const entry = stack.find((s) => s.idx === selectedSlotIdx);
-    if (entry && (entry.status === "RUNNING" || entry.status === "LOADING")) {
-      applyParamsLiveDim();
-    }
-    // Only react to slot selection, not status churn (LOADING→RUNNING would re-snap)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- stack used only for status at select time
-  }, [selectedSlotIdx, applyParamsLiveDim]);
 
   const handleSelectEngine = useCallback(
     (slotIdx: number) => {
@@ -927,7 +864,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         fusionDisplay.pinSecondaryOrCycle(slotIdx);
         return;
       }
-      applyParamsLiveDim();
       onSelectEngine?.(slotIdx);
     },
     [
@@ -937,7 +873,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       fusionDisplay.pinSecondaryOrCycle,
       selectedSlotIdx,
       onSelectEngine,
-      applyParamsLiveDim,
     ],
   );
 
@@ -1526,12 +1461,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   const customFlagsReplaceActive = testFlagsEnabled && testFlagsMode === "replace";
   const customFlagsLaunchActive = testFlagsEnabled;
-  // REPLACE mode OR live-dim after launch / focus running engine (visual only — launch stays free).
-  // Never dim while the agentic harness wizard is open (user is picking engines).
-  const paramsBypassedClass =
-    (customFlagsReplaceActive || paramsLiveDimmed)
-      ? " config-panel-params--bypassed"
-      : "";
+  // REPLACE mode only — panel params are bypassed, so they dim to say so.
+  const paramsBypassedClass = customFlagsReplaceActive
+    ? " config-panel-params--bypassed"
+    : "";
 
   useEffect(() => {
     if (!customFlagsReplaceActive) {

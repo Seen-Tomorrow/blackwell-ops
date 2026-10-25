@@ -309,16 +309,16 @@
   --theme-info: #00e5ff;
   --theme-on-accent: var(--theme-chip-solid-text);
   /* Type scale — sizes are NOT a theme delta; keep them out of app-themes.ts. */
-  --type-hairline: calc(6px * var(--text-scale, 1));
-  --type-micro: calc(7px * var(--text-scale, 1));
-  --type-tiny: calc(8px * var(--text-scale, 1));
-  --type-label: calc(9px * var(--text-scale, 1));
-  --type-body: calc(10px * var(--text-scale, 1));
-  --type-sm: calc(11px * var(--text-scale, 1));
-  --type-md: calc(12px * var(--text-scale, 1));
-  --type-lg: calc(15px * var(--text-scale, 1));
-  --type-xl: calc(18px * var(--text-scale, 1));
-  --type-2xl: calc(22px * var(--text-scale, 1));
+  --type-hairline: clamp(6px, calc(6px * var(--text-scale, 1)), 16px);
+  --type-micro: clamp(7px, calc(7px * var(--text-scale, 1)), 16px);
+  --type-tiny: clamp(8px, calc(8px * var(--text-scale, 1)), 16px);
+  --type-label: clamp(9px, calc(9px * var(--text-scale, 1)), 16px);
+  --type-body: clamp(10px, calc(10px * var(--text-scale, 1)), 16px);
+  --type-sm: clamp(11px, calc(11px * var(--text-scale, 1)), 16px);
+  --type-md: clamp(12px, calc(12px * var(--text-scale, 1)), 16px);
+  --type-lg: clamp(15px, calc(15px * var(--text-scale, 1)), 16px);
+  --type-xl: 18px;
+  --type-2xl: 22px;
 
 
   /* App theme tokens — defaults (matrix); overridden by applyAppTheme() */
