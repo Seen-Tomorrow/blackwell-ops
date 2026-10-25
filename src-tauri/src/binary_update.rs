@@ -214,6 +214,52 @@ fn norm_release_version(v: &str) -> String {
     v.trim().trim_start_matches('v').trim().to_string()
 }
 
+/// Commit sha carried by any version shape we produce:
+/// `0.7.0-dev (d327bf1f)`, `b11870-74bca395`, `519 (635cdd5)`.
+fn version_commit(v: &str) -> Option<String> {
+    let mut found: Option<String> = None;
+    for token in v.split(|c: char| !c.is_ascii_hexdigit()) {
+        if token.len() >= 7
+            && token.chars().any(|c| c.is_ascii_digit())
+            && token.chars().any(|c| c.is_ascii_alphabetic())
+        {
+            found = Some(token.to_ascii_lowercase());
+        }
+    }
+    found
+}
+
+/// Build number from `b11870-...`; bundled semver strings have none.
+fn version_build_number(v: &str) -> Option<u64> {
+    let t = v.trim();
+    let t = t.strip_prefix('b').unwrap_or(t);
+    let digits: String = t.chars().take_while(|c| c.is_ascii_digit()).collect();
+    if digits.len() >= 3 {
+        digits.parse().ok()
+    } else {
+        None
+    }
+}
+
+/// True only when the published pack is genuinely newer than what is installed. A local build
+/// of a different (newer) commit must not advertise the older pack as an update.
+fn is_newer_pack(installed: &str, latest: &str) -> bool {
+    if norm_release_version(installed) == norm_release_version(latest) {
+        return false;
+    }
+    let same_commit = match (version_commit(installed), version_commit(latest)) {
+        (Some(a), Some(b)) => a == b || a.starts_with(&b) || b.starts_with(&a),
+        _ => false,
+    };
+    if same_commit {
+        return false;
+    }
+    match (version_build_number(installed), version_build_number(latest)) {
+        (Some(i), Some(l)) => l > i,
+        _ => true,
+    }
+}
+
 fn is_placeholder_install_version(v: &str) -> bool {
     let n = v.trim().to_ascii_lowercase();
     n.is_empty()
@@ -340,9 +386,9 @@ pub async fn check_binary_updates(
                 .as_ref()
                 .map(|v| !is_placeholder_install_version(v))
                 .unwrap_or(false)
-            && installed_version.as_ref().is_some_and(|inst| {
-                norm_release_version(inst) != norm_release_version(&latest_version)
-            });
+            && installed_version
+                .as_ref()
+                .is_some_and(|inst| is_newer_pack(inst, &latest_version));
 
         // Always return both profiles for UI (core may be NSIS-only with no separate pack).
         results.push(BinaryUpdateInfo {
@@ -849,4 +895,23 @@ pub async fn revert_binary_to_bundled(
         .map_err(|e| format!("Failed to persist after revert: {e}"))?;
 
     Ok(())
+}
+#[cfg(test)]
+mod version_tests {
+    use super::is_newer_pack;
+
+    #[test]
+    fn same_commit_is_not_an_update() {
+        assert!(!is_newer_pack("0.7.0-dev (d327bf1f)", "b11869-d327bf1f"));
+    }
+
+    #[test]
+    fn local_build_of_a_newer_commit_is_not_downgraded() {
+        assert!(!is_newer_pack("b11887-6050b467", "b11870-74bca395"));
+    }
+
+    #[test]
+    fn newer_pack_is_an_update() {
+        assert!(is_newer_pack("b11800-6abcdef", "b11870-74bca395"));
+    }
 }

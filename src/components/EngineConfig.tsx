@@ -10,8 +10,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { useDownloadTasks } from "../hooks/useDownloadTasks";
 import { useFoundry } from "../hooks/useBuildDock";
 import { buildEngineOverview, modeSourceLabel } from "../lib/engineOverview";
-import { normalizeBinaryProfile } from "../lib/foundry_constants";
-import { binaryProfileKey, readStorage, writeStorage } from "../lib/storage";
 import { DEFAULT_PROVIDER_ID } from "../lib/types";
 import type { BinaryUpdateInfo, DownloadTask, ProviderConfig } from "../lib/types";
 import type { ToolchainInstallInfo } from "./FoundryToolchainPanel";
@@ -49,10 +47,6 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
   const [error, setError] = useState<string | null>(null);
   const [manage, setManage] = useState<string | null>(null);
   const { openBuildModal } = useFoundry();
-  // The launcher reads this persisted preference, so "active" here is the real choice.
-  const [activeMode, setActiveMode] = useState(() =>
-    normalizeBinaryProfile(readStorage(binaryProfileKey(DEFAULT_PROVIDER_ID))),
-  );
   const providerTasks = useDownloadTasks("provider");
   const toolchainTasks = useDownloadTasks("toolchain");
 
@@ -85,8 +79,8 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
   }, [refresh]);
 
   const overview = useMemo(
-    () => buildEngineOverview(providers, updates, toolchain, activeMode),
-    [providers, updates, toolchain, activeMode],
+    () => buildEngineOverview(providers, updates, toolchain),
+    [providers, updates, toolchain],
   );
   const modes = overview?.modes ?? [];
 
@@ -107,19 +101,14 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
     [refresh],
   );
 
-  const useMode = useCallback((profile: "edge" | "stable") => {
-    writeStorage(binaryProfileKey(DEFAULT_PROVIDER_ID), profile);
-    setActiveMode(profile);
-  }, []);
-
-  const useBundled = useCallback(
-    async (profile: string) => {
+  const setSource = useCallback(
+    async (profile: string, source: "bundled" | "catalog" | "foundry") => {
       setError(null);
       try {
         await invoke("set_profile_binary_source", {
           providerId: DEFAULT_PROVIDER_ID,
           profile,
-          source: "bundled",
+          source,
         });
         await refresh();
       } catch (e) {
@@ -182,9 +171,6 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
                       <span className="type-label font-mono uppercase tracking-wider">
                         {mode.label}
                       </span>
-                      {mode.active && (
-                        <span className="type-micro font-mono uppercase config-muted">active</span>
-                      )}
                     </div>
                     <div className="type-micro font-mono config-muted mt-0.5">{mode.tagline}</div>
                   </div>
@@ -251,16 +237,6 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
                       UPDATE {formatSize(mode.sizeBytes)}
                     </button>
                   ) : null}
-                  {!mode.active && (
-                    <button
-                      type="button"
-                      className="foundry-toolchain-btn foundry-toolchain-btn--neutral"
-                      title="Use this mode the next time you launch the engine"
-                      onClick={() => useMode(mode.id as "edge" | "stable")}
-                    >
-                      USE
-                    </button>
-                  )}
                   <button
                     type="button"
                     className="foundry-toolchain-btn foundry-toolchain-btn--neutral"
@@ -284,18 +260,26 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
                       Source: {modeSourceLabel(mode.source)}
                       {mode.version ? ` · ${mode.version}` : ""}
                     </p>
-                    {mode.source !== "bundled" && (
-                      <button
-                        type="button"
-                        className="foundry-toolchain-btn foundry-toolchain-btn--neutral"
-                        onClick={() => void useBundled(mode.id)}
-                      >
-                        USE BUNDLED
-                      </button>
-                    )}
+                    <div className="flex flex-wrap gap-1.5">
+                      {(["bundled", "catalog", "foundry"] as const).map((source) => (
+                        <button
+                          key={source}
+                          type="button"
+                          disabled={!mode.sources[source] || mode.source === source}
+                          className={`foundry-toolchain-btn ${
+                            mode.source === source
+                              ? "foundry-toolchain-btn--action"
+                              : "foundry-toolchain-btn--neutral"
+                          }`}
+                          onClick={() => void setSource(mode.id, source)}
+                        >
+                          {modeSourceLabel(source)}
+                        </button>
+                      ))}
+                    </div>
                     <p className="type-micro font-mono config-muted leading-relaxed">
-                      Bundled builds ship with the installer and can be restored at any time. Build
-                      newer ones yourself with Foundry below.
+                      Run the installer's copy, a downloaded pack, or a local Foundry build. Only
+                      sources present on disk can be selected.
                     </p>
                   </div>
                 )}

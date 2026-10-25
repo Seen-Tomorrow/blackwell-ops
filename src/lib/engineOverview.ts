@@ -3,7 +3,7 @@
 //! re-derive states or sizes themselves.
 
 import { DEFAULT_BINARY_PROFILE } from "./foundry_constants";
-import { DEFAULT_PROVIDER_ID } from "./types";
+import { DEFAULT_PROVIDER_ID, envBinaryLookup, isProfileSourceActive } from "./types";
 import type { BinarySourceKind, BinaryUpdateInfo, ProviderConfig } from "./types";
 import type { ToolchainInstallInfo } from "../components/FoundryToolchainPanel";
 
@@ -25,7 +25,8 @@ export interface EngineModeOverview {
   /** Engine pack + missing runtime, in bytes. 0 when nothing needs downloading. */
   sizeBytes: number;
   updateAvailable: boolean;
-  active: boolean;
+  /** Which sources actually exist on disk for this mode. */
+  sources: { bundled: boolean; catalog: boolean; foundry: boolean };
 }
 
 export interface EngineOverview {
@@ -60,8 +61,6 @@ export function buildEngineOverview(
   providers: ProviderConfig[],
   updates: BinaryUpdateInfo[],
   toolchain: ToolchainInstallInfo | null,
-  /** Mode the launcher will use (persisted per engine); defaults to EDGE. */
-  activeProfile?: string,
 ): EngineOverview | null {
   const engine = providers.find((p) => p.id === DEFAULT_PROVIDER_ID);
   if (!engine) return null;
@@ -73,7 +72,16 @@ export function buildEngineOverview(
     );
     const update = updates.find((u) => u.profile === meta.id);
     const version = realVersion(engine.buildInfoPerEnv?.[meta.id]?.version);
-    const source = engine.binarySourcePerEnv?.[meta.id] as BinarySourceKind | undefined;
+    const has = (s: "bundled" | "foundry" | "catalog") => {
+      const entry = envBinaryLookup(engine, meta.id, s);
+      return Boolean(entry?.path?.trim() || entry?.info);
+    };
+    const sources = { bundled: has("bundled"), foundry: has("foundry"), catalog: has("catalog") };
+    const source: BinarySourceKind =
+      (["foundry", "catalog", "bundled"] as const).find((s) =>
+        isProfileSourceActive(engine, meta.id, s),
+      ) ??
+      (sources.bundled ? "bundled" : sources.catalog ? "catalog" : "foundry");
     const runtimeMissing = runtime ? !runtime.ready : true;
     const driverBlocked = runtime ? !runtime.driver_ok : false;
     const engineMissing = !version;
@@ -105,7 +113,7 @@ export function buildEngineOverview(
       runtimeMissing,
       sizeBytes,
       updateAvailable: Boolean(update?.available),
-      active: meta.id === (activeProfile ?? DEFAULT_BINARY_PROFILE),
+      sources,
     };
   });
 
