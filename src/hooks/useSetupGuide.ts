@@ -5,8 +5,8 @@ import { dispatchAppEvent, EVENTS } from "../lib/events";
 import {
   computePathsDone,
   computeSetupPhase,
-  computeToolchainBusy,
-  computeToolchainDone,
+  computeRuntimeBusy,
+  computeRuntimeDone,
   type SetupPhase,
 } from "../lib/setupGuide";
 import {
@@ -33,10 +33,10 @@ export interface SetupGuideState {
   phase: SetupPhase;
   pathsDone: boolean;
   runtimeReady: boolean;
-  /** False until first toolchain status fetch completes. */
-  toolchainChecked: boolean;
+  /** False until the first runtime-pack status fetch completes. */
+  runtimeChecked: boolean;
   /** Download or 7z extract in flight. */
-  toolchainBusy: boolean;
+  runtimeBusy: boolean;
   modelsDeferred: boolean;
   /** A configured library path holds GGUF files on disk — the catalog can still
    *  be empty when none of them is usable (draft-only, partial shards). */
@@ -74,11 +74,11 @@ export function useSetupGuide({ models, catalogLoaded = false }: UseSetupGuideOp
   const [welcomeDone, setWelcomeDone] = useState(() => isSetupWelcomeSeen());
   const [modelsDeferred, setModelsDeferred] = useState(() => isSetupModelsDeferred());
   const [runtimeReady, setRuntimeReady] = useState(false);
-  const [toolchainChecked, setToolchainChecked] = useState(false);
+  const [runtimeChecked, setRuntimeChecked] = useState(false);
   const [dismissError, setDismissError] = useState<string | null>(null);
   const [pathsConfigured, setPathsConfigured] = useState(false);
   const [pathsReady, setPathsReady] = useState(false);
-  const toolchainTasks = useDownloadTasks("toolchain");
+  const runtimeTasks = useDownloadTasks("toolchain");
 
   const refreshPaths = useCallback(async () => {
     try {
@@ -91,7 +91,7 @@ export function useSetupGuide({ models, catalogLoaded = false }: UseSetupGuideOp
     }
   }, []);
 
-  const refreshToolchain = useCallback(async () => {
+  const refreshRuntime = useCallback(async () => {
     try {
       const info = await invoke<{
         runtime_ready: boolean;
@@ -108,43 +108,43 @@ export function useSetupGuide({ models, catalogLoaded = false }: UseSetupGuideOp
     } catch {
       setRuntimeReady(false);
     } finally {
-      setToolchainChecked(true);
+      setRuntimeChecked(true);
     }
   }, []);
 
-  const refreshPathsAndToolchain = useCallback(() => {
+  const refreshPathsAndRuntime = useCallback(() => {
     void refreshPaths();
-    void refreshToolchain();
-  }, [refreshPaths, refreshToolchain]);
+    void refreshRuntime();
+  }, [refreshPaths, refreshRuntime]);
 
   useEffect(() => {
     // Legacy localStorage: toolchain skip is no longer valid.
     clearToolchainOnboardingSkipped();
-    refreshPathsAndToolchain();
-  }, [refreshPathsAndToolchain]);
+    refreshPathsAndRuntime();
+  }, [refreshPathsAndRuntime]);
 
   useEffect(() => {
-    window.addEventListener(EVENTS.modelPathsChanged, refreshPathsAndToolchain);
-    window.addEventListener(EVENTS.downloadCompleted, refreshPathsAndToolchain);
+    window.addEventListener(EVENTS.modelPathsChanged, refreshPathsAndRuntime);
+    window.addEventListener(EVENTS.downloadCompleted, refreshPathsAndRuntime);
     return () => {
-      window.removeEventListener(EVENTS.modelPathsChanged, refreshPathsAndToolchain);
-      window.removeEventListener(EVENTS.downloadCompleted, refreshPathsAndToolchain);
+      window.removeEventListener(EVENTS.modelPathsChanged, refreshPathsAndRuntime);
+      window.removeEventListener(EVENTS.downloadCompleted, refreshPathsAndRuntime);
     };
-  }, [refreshPathsAndToolchain]);
+  }, [refreshPathsAndRuntime]);
 
-  useTauriListen("download-event", refreshToolchain, [refreshToolchain]);
+  useTauriListen("download-event", refreshRuntime, [refreshRuntime]);
 
-  const prevToolchainTaskStatusRef = useRef<Record<string, DownloadStatus>>({});
+  const prevRuntimeTaskStatusRef = useRef<Record<string, DownloadStatus>>({});
   useEffect(() => {
-    for (const t of toolchainTasks) {
-      const prev = prevToolchainTaskStatusRef.current[t.id];
+    for (const t of runtimeTasks) {
+      const prev = prevRuntimeTaskStatusRef.current[t.id];
       if (prev && prev !== "completed" && t.status === "completed") {
-        void refreshToolchain();
+        void refreshRuntime();
         dispatchAppEvent(EVENTS.downloadCompleted);
       }
-      prevToolchainTaskStatusRef.current[t.id] = t.status;
+      prevRuntimeTaskStatusRef.current[t.id] = t.status;
     }
-  }, [toolchainTasks, refreshToolchain]);
+  }, [runtimeTasks, refreshRuntime]);
 
   const scannedCount = useMemo(
     () => models.filter((m) => m.metadata).length,
@@ -153,16 +153,16 @@ export function useSetupGuide({ models, catalogLoaded = false }: UseSetupGuideOp
   const modelsCount = models.length;
 
   const pathsDone = computePathsDone({ modelsDeferred, modelsCount });
-  const toolchainDone = computeToolchainDone(runtimeReady);
+  const runtimeDone = computeRuntimeDone(runtimeReady);
 
   const phase = useMemo(
-    () => computeSetupPhase({ pathsDone, toolchainDone }),
-    [pathsDone, toolchainDone],
+    () => computeSetupPhase({ pathsDone, runtimeDone }),
+    [pathsDone, runtimeDone],
   );
 
-  const toolchainBusy = useMemo(
-    () => computeToolchainBusy(toolchainTasks, runtimeReady),
-    [toolchainTasks, runtimeReady],
+  const runtimeBusy = useMemo(
+    () => computeRuntimeBusy(runtimeTasks, runtimeReady),
+    [runtimeTasks, runtimeReady],
   );
 
   const { active, diskSetupCompleted, setDiskSetupCompleted, resolved } =
@@ -184,8 +184,8 @@ export function useSetupGuide({ models, catalogLoaded = false }: UseSetupGuideOp
 
   useEffect(() => {
     if (!active) return;
-    void refreshToolchain();
-  }, [active, refreshToolchain]);
+    void refreshRuntime();
+  }, [active, refreshRuntime]);
 
   useEffect(() => {
     if (!modelsDeferred || modelsCount === 0) return;
@@ -241,8 +241,8 @@ export function useSetupGuide({ models, catalogLoaded = false }: UseSetupGuideOp
     phase,
     pathsDone,
     runtimeReady,
-    toolchainChecked,
-    toolchainBusy,
+    runtimeChecked,
+    runtimeBusy,
     modelsDeferred,
     libraryLinked: pathsConfigured,
     dismissError,

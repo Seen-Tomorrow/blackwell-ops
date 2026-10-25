@@ -3,7 +3,7 @@
  *
  * Layering (top → bottom):
  * 1. **Phase** — derived from step flags below; never persisted.
- * 2. **Step flags** — pathsDone, toolchainDone from disk + session state.
+ * 2. **Step flags** — pathsDone, runtimeDone from disk + session state.
  * 3. **Persistence** — localStorage caches (dismissed, welcome, defer);
  *    `app_config.setup_completed` is authority for “setup finished”.
  * 4. **Activation** — `useSetupGuide` decides whether the wizard is shown (recovery / wipe edge cases).
@@ -16,7 +16,7 @@
  * While setup is active, header nav allows only OPERATIONS, MODEL HUB, and CONFIG.
  */
 
-export type SetupPhase = "paths" | "toolchain" | "finish";
+export type SetupPhase = "paths" | "runtime" | "finish";
 
 /** Tabs usable during first-run setup (wizard + paths + download models). */
 const SETUP_ALLOWED_TABS = ["catalog", "modelhub", "config"] as const;
@@ -41,22 +41,22 @@ export function computePathsDone(opts: {
   return opts.modelsDeferred || opts.modelsCount > 0;
 }
 
-/** Portable CUDA runtime is a hard requirement — no skip path. */
-export function computeToolchainDone(runtimeReady: boolean): boolean {
+/** The seeded engine needs its CUDA runtime pack — no skip path. */
+export function computeRuntimeDone(runtimeReady: boolean): boolean {
   return runtimeReady;
 }
 
 export function computeSetupPhase(opts: {
   pathsDone: boolean;
-  toolchainDone: boolean;
+  runtimeDone: boolean;
 }): SetupPhase {
   if (!opts.pathsDone) return "paths";
-  if (!opts.toolchainDone) return "toolchain";
+  if (!opts.runtimeDone) return "runtime";
   return "finish";
 }
 
-/** Toolchain download/extract in flight, or waiting for post-extract disk verify. */
-export function computeToolchainBusy(
+/** Runtime-pack download/extract in flight, or waiting for post-extract disk verify. */
+export function computeRuntimeBusy(
   tasks: { status: string }[],
   runtimeReady: boolean,
 ): boolean {

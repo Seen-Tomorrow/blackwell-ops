@@ -10,8 +10,8 @@ import { describe, expect, it } from "vitest";
 import {
   computePathsDone,
   computeSetupPhase,
-  computeToolchainBusy,
-  computeToolchainDone,
+  computeRuntimeBusy,
+  computeRuntimeDone,
 } from "./setupGuide";
 
 describe("computePathsDone", () => {
@@ -32,29 +32,29 @@ describe("computePathsDone", () => {
 
 describe("computeSetupPhase", () => {
   it("starts on paths and cannot skip ahead", () => {
-    expect(computeSetupPhase({ pathsDone: false, toolchainDone: false })).toBe("paths");
+    expect(computeSetupPhase({ pathsDone: false, runtimeDone: false })).toBe("paths");
     // Runtime already installed must still not advance past an unlinked library.
-    expect(computeSetupPhase({ pathsDone: false, toolchainDone: true })).toBe("paths");
+    expect(computeSetupPhase({ pathsDone: false, runtimeDone: true })).toBe("paths");
   });
 
   it("moves to the runtime step once a library is linked", () => {
-    expect(computeSetupPhase({ pathsDone: true, toolchainDone: false })).toBe("toolchain");
+    expect(computeSetupPhase({ pathsDone: true, runtimeDone: false })).toBe("runtime");
   });
 
   it("ends at finish — no scan steps gate first contact", () => {
-    expect(computeSetupPhase({ pathsDone: true, toolchainDone: true })).toBe("finish");
+    expect(computeSetupPhase({ pathsDone: true, runtimeDone: true })).toBe("finish");
   });
 });
 
-describe("toolchain step", () => {
+describe("runtime step", () => {
   it("is never skippable", () => {
-    expect(computeToolchainDone(false)).toBe(false);
-    expect(computeToolchainDone(true)).toBe(true);
+    expect(computeRuntimeDone(false)).toBe(false);
+    expect(computeRuntimeDone(true)).toBe(true);
   });
 
   it("reports busy while a task is in flight or an extract awaits verification", () => {
-    expect(computeToolchainBusy([{ status: "downloading" }], false)).toBe(true);
-    expect(computeToolchainBusy([{ status: "completed" }], false)).toBe(true);
-    expect(computeToolchainBusy([{ status: "completed" }], true)).toBe(false);
+    expect(computeRuntimeBusy([{ status: "downloading" }], false)).toBe(true);
+    expect(computeRuntimeBusy([{ status: "completed" }], false)).toBe(true);
+    expect(computeRuntimeBusy([{ status: "completed" }], true)).toBe(false);
   });
 });

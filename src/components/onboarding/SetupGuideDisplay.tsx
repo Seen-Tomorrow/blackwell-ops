@@ -16,7 +16,7 @@ interface SetupGuideDisplayProps {
   phase: SetupPhase;
   pathsDone: boolean;
   runtimeReady: boolean;
-  toolchainChecked: boolean;
+  runtimeChecked: boolean;
   modelsDeferred: boolean;
   modelsCount: number;
   catalogLoaded: boolean;
@@ -70,7 +70,7 @@ export default function SetupGuideDisplay({
   phase,
   pathsDone,
   runtimeReady,
-  toolchainChecked,
+  runtimeChecked,
   modelsDeferred,
   modelsCount,
   catalogLoaded,
@@ -94,8 +94,8 @@ export default function SetupGuideDisplay({
   const [driverVersion, setDriverVersion] = useState<string | null>(null);
   const [driverLoading, setDriverLoading] = useState(false);
 
-  const toolchainStepDone = runtimeReady;
-  const toolchainStepCurrent = phase === "toolchain";
+  const runtimeStepDone = runtimeReady;
+  const runtimeStepCurrent = phase === "runtime";
   const finishStep = phase === "finish";
   const edgeDriverOk = isDriverSufficientForProfile(driverVersion, ENV_META.edge.cuda);
 
@@ -155,10 +155,14 @@ export default function SetupGuideDisplay({
           }
         />
         <ChecklistItem
-          done={toolchainStepDone}
-          current={toolchainStepCurrent}
+          done={runtimeStepDone}
+          current={runtimeStepCurrent}
           title="CUDA runtime"
-          detail="Portable toolkit — required to launch engines"
+          detail={
+            runtimeStepDone
+              ? "Installed — the engine can launch"
+              : "One download (~383 MB) — required to launch the EDGE engine"
+          }
         />
         <ChecklistItem
           done={finishStep && edgeDriverOk}
@@ -183,9 +187,9 @@ export default function SetupGuideDisplay({
         </p>
       )}
 
-      {phase === "toolchain" && !toolchainStepDone && (
+      {phase === "runtime" && !runtimeStepDone && (
         <p className="setup-guide__note setup-guide__note--amber">
-          Portable CUDA runtime is required. Download it, or drop the archive in the cache folder and
+          The CUDA runtime pack is required for the installed engine. Download it, or drop the archive in the cache folder and
           install from cache.{" "}
         </p>
       )}
@@ -244,9 +248,9 @@ export default function SetupGuideDisplay({
           </>
         )}
 
-        {phase === "toolchain" && !toolchainStepDone && (
+        {phase === "runtime" && !runtimeStepDone && (
           <>
-            {!toolchainChecked ? (
+            {!runtimeChecked ? (
               <p className="setup-guide__note setup-guide__note--muted">
                 Checking portable toolchain…
               </p>
@@ -329,7 +333,7 @@ export default function SetupGuideDisplay({
             disabled={!runtimeReady}
             title={
               !runtimeReady
-                ? "Install the portable toolchain before finishing setup"
+                ? "Install the CUDA runtime before finishing setup"
                 : "Complete first-run setup"
             }
             className="setup-guide__btn setup-guide__btn--primary setup-guide__btn--finish"

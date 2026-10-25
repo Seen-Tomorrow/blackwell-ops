@@ -3132,7 +3132,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                   phase={setupGuide.phase}
                   pathsDone={setupGuide.pathsDone}
                   runtimeReady={setupGuide.runtimeReady}
-                  toolchainChecked={setupGuide.toolchainChecked}
+                  runtimeChecked={setupGuide.runtimeChecked}
                   modelsDeferred={setupGuide.modelsDeferred}
                   modelsCount={setupGuide.modelsCount}
                   catalogLoaded={setupGuide.catalogLoaded}
