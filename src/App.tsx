@@ -8,6 +8,7 @@ import ModelCatalog from "./components/ModelCatalog";
 const StackView = lazy(() => import("./components/StackView"));
 const ConfigPage = lazy(() => import("./components/ConfigPage"));
 const ModelHub = lazy(() => import("./components/ModelHub"));
+const UpdatesConfig = lazy(() => import("./components/UpdatesConfig"));
 const LogsPanel = lazy(() => import("./components/LogsPanel"));
 
 function TabFallback() {
@@ -171,6 +172,8 @@ function App() {
   // ── Startup update check (app + binary updates) ──────────────────────
   const [updateOfferings, setUpdateOfferings] = useState<UpdateOfferings | null>(null);
   const [hasBinaryUpdates, setHasBinaryUpdates] = useState(false);
+  /** DOWNLOADS: model browser vs software installs/updates. */
+  const [downloadsView, setDownloadsView] = useState<"models" | "software">("models");
 
   const refreshUpdateOfferings = useCallback(async () => {
     if (!BINARY_UPDATES_ENABLED) return;
@@ -361,10 +364,16 @@ function App() {
 
   useEffect(() => {
     const handler = (e: Event) => {
-      setActiveTab("config");
       const detail = (e as CustomEvent<NavigateConfigDetail>).detail;
       const pending = consumePendingConfigSubTab();
       const sub = detail?.subTab ?? pending;
+      // UPDATES moved into DOWNLOADS -> SOFTWARE.
+      if (sub === "updates") {
+        setActiveTab("modelhub");
+        setDownloadsView("software");
+        return;
+      }
+      setActiveTab("config");
       if (sub) setConfigSubTab(sub);
     };
     window.addEventListener(EVENTS.navigateConfig, handler);
@@ -606,9 +615,35 @@ function App() {
           </Suspense>
         )}
         {activeTab === "modelhub" && (
-          <Suspense fallback={<TabFallback />}>
-            <ModelHub />
-          </Suspense>
+          <div className="h-full flex flex-col overflow-hidden">
+            <div className="px-4 py-2 config-section-bar flex items-center gap-2">
+              {(["models", "software"] as const).map((view) => (
+                <button
+                  key={view}
+                  type="button"
+                  onClick={() => setDownloadsView(view)}
+                  className={`type-micro font-mono uppercase tracking-wider px-2 py-1 rounded-sm border ${
+                    downloadsView === view ? "theme-accent-text" : "config-muted"
+                  }`}
+                >
+                  {view}
+                </button>
+              ))}
+            </div>
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <Suspense fallback={<TabFallback />}>
+                {downloadsView === "models" ? (
+                  <ModelHub />
+                ) : (
+                  <UpdatesConfig
+                    offerings={updateOfferings}
+                    onRefreshOfferings={refreshUpdateOfferings}
+                    onBinaryUpdatesChange={setHasBinaryUpdates}
+                  />
+                )}
+              </Suspense>
+            </div>
+          </div>
         )}
         {activeTab === "logs" && (
           <Suspense fallback={<TabFallback />}>

@@ -9,7 +9,6 @@ import { DEFAULT_PROVIDER_ID } from "../lib/types";
 import EngineConfig from "./EngineConfig";
 import SecretsConfig from "./SecretsConfig";
 import RecoveryConfig from "./RecoveryConfig";
-import UpdatesConfig from "./UpdatesConfig";
 import DistributionDevPanel from "./DistributionDevPanel";
 import RuntimeConfig from "./RuntimeConfig";
 import ParamConfigPanel from "./ParamConfigPanel";
@@ -118,12 +117,8 @@ export default function ConfigPage({
           <EngineConfig providers={allProviders} onProvidersChange={setAllProviders} />
         </div>
       ) : effectiveSub === "updates" ? (
-        <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-          <UpdatesConfig
-            offerings={updateOfferings ?? null}
-            onRefreshOfferings={onRefreshUpdateOfferings}
-            onBinaryUpdatesChange={onBinaryUpdatesChange}
-          />
+        <div className="flex-1 flex flex-col overflow-hidden min-h-0 p-4 type-body font-mono config-muted">
+          Updates moved to DOWNLOADS, SOFTWARE tab.
         </div>
       ) : effectiveSub === "distribution" && factoryExportEnabled ? (
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
