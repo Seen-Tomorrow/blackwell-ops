@@ -188,7 +188,8 @@ pub fn window_rate(
 /// True when the SSE path is enabled for this process.
 ///
 /// SSE is the primary path: it is on unless `BLACKWELL_ENGINE_SSE=0|false|off` disables it. A
-/// missing endpoint costs one failed connect and a warning, then the poll path keeps working.
+/// missing endpoint costs a failed connect per backoff tick, logged at debug only — the poll
+/// path keeps working, and a stopped engine is the normal reason for the reconnect.
 pub fn enabled() -> bool {
     !matches!(
         std::env::var("BLACKWELL_ENGINE_SSE")
@@ -442,7 +443,9 @@ async fn run(port: u16) {
                 // An engine without the patch (or a restarted one) must not inherit this port's
                 // previous telemetry: clear it so callers fall back to polling immediately.
                 forget_port(port);
-                log::warn!("[engine-events] port={port} disconnected: {e}");
+                // Console stays clean: a disconnect is expected whenever the engine is stopped,
+                // restarting, or running an unpatched binary. RUST_LOG=debug still shows it.
+                log::debug!("[engine-events] port={port} disconnected: {e}");
             }
         }
         let secs = (2u64 * u64::from(failures.max(1))).min(30);
