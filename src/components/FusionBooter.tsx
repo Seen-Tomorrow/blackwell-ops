@@ -5,6 +5,7 @@ import {
   LOAD_PHASE_ORDER,
   type LoadPhaseId,
 } from "../lib/fusionLoadParser";
+import FusionStopButton from "./FusionStopButton";
 
 const MAX_BOOT_GPUS = 8;
 
@@ -17,6 +18,9 @@ interface FusionBooterProps {
   vramTargetMib?: number;
   modelLayerTotal?: number;
   gpuLoadTargetsMib?: Record<number, number>;
+  /** Abort the in-flight model load (same stop path as the engine rail). */
+  onStop?: () => void;
+  stopPending?: boolean;
 }
 
 function vramLoadForGpu(loads: GpuVramLoad[], index: number): GpuVramLoad | undefined {
@@ -171,6 +175,8 @@ export default function FusionBooter({
   vramTargetMib,
   modelLayerTotal,
   gpuLoadTargetsMib,
+  onStop,
+  stopPending = false,
 }: FusionBooterProps) {
   const state = useFusionBooterState({
     slotIdx,
@@ -259,6 +265,15 @@ export default function FusionBooter({
             gpuVramLoads={state.gpuVramLoads}
           />
         </div>
+        {onStop ? (
+          <FusionStopButton
+            label={stopPending ? "STOPPING…" : "STOP LOADING"}
+            onClick={onStop}
+            disabled={stopPending}
+            title="Abort this model load and stop the engine slot"
+            className="fusion-boot__stop"
+          />
+        ) : null}
         <DiskIoHero mibPerS={state.diskReadMibPerS} />
       </div>
 

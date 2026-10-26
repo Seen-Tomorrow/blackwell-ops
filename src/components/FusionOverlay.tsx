@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { FusionUpdate } from "../lib/types";
-import { FUSION_HERO_ROW_PX } from "../lib/benchPanelLayout";
-import {
+import { FUSION_HERO_ROW_PX } from "../lib/benchPanelLayout";import {
   getBenchPortState,
   notifyBenchPortStore,
   subscribeBenchPortStore,
@@ -18,11 +17,6 @@ import type { GpuInfo } from "../lib/types";
 import { useFusionBenchTray } from "../hooks/useFusionBenchTray";
 import { useFusionHeroTpsMode } from "../hooks/useFusionHeroTpsMode";
 import { useTauriListen } from "../hooks/useTauriListen";
-import {
-  loadFusionLogVerbosity,
-  saveFusionLogVerbosity,
-  type FusionLogVerbosity,
-} from "../lib/storage";
 
 interface FusionOverlayProps {
   alias?: string;
@@ -318,14 +312,7 @@ export default function FusionOverlay({
     invoke("set_fusion_quiet_mode", { port: displayPort, quiet: quietMode }).catch(() => {});
   }, [quietMode, quietKey, displayPort]);
 
-  // ── Engine `-lv` for *next* launch (CLI; cannot change a running process) ──
-  const [logVerbosity, setLogVerbosity] = useState<FusionLogVerbosity>(() => loadFusionLogVerbosity());
-  useEffect(() => {
-    saveFusionLogVerbosity(logVerbosity);
-  }, [logVerbosity]);
-  const toggleLogVerbosity = useCallback(() => {
-    setLogVerbosity((v) => (v === 3 ? 4 : 3));
-  }, []);
+  // ── Engine `-lv` lives in CONFIG → RUNTIME now (CLI; restart to apply) ──
 
   if (!supportsFusion) {
     const isLaunching = engineStatus === "LOADING";
@@ -342,6 +329,8 @@ export default function FusionOverlay({
             vramTargetMib={vramTargetMib}
             modelLayerTotal={modelLayerTotal}
             gpuLoadTargetsMib={gpuLoadTargetsMib}
+            onStop={handleStopEngine}
+            stopPending={isStopping}
           />
         </div>
       );
@@ -560,6 +549,8 @@ export default function FusionOverlay({
             vramTargetMib={vramTargetMib}
             modelLayerTotal={modelLayerTotal}
             gpuLoadTargetsMib={gpuLoadTargetsMib}
+            onStop={handleStopEngine}
+            stopPending={isStopping}
           />
         </div>
       ) : isLaunching ? (
@@ -615,18 +606,6 @@ export default function FusionOverlay({
                 className={`fusion-ops-chip ${quietMode ? "fusion-ops-chip--quiet" : ""}`}
               >
                 {quietMode ? "FALLBACK" : "FULL"}
-              </button>
-              <button
-                type="button"
-                onClick={toggleLogVerbosity}
-                title={
-                  logVerbosity === 3
-                    ? "Engine -lv 3 (default): print_timing / draft / eval belt, less boot spam. Applies on NEXT launch. Click for -lv 4 (full metadata belt)."
-                    : "Engine -lv 4: full model_loader / slot chatter. Applies on NEXT launch. Click for -lv 3 (timing belt only)."
-                }
-                className={`fusion-ops-chip ${logVerbosity === 4 ? "fusion-ops-chip--lv" : ""}`}
-              >
-                LV{logVerbosity}
               </button>
               <button
                 type="button"

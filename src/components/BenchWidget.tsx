@@ -31,6 +31,7 @@ import {
 } from "../lib/benchPortStore";
 import { useTauriListen } from "../hooks/useTauriListen";
 import FusionShareMenu from "./FusionShareMenu";
+import FusionStopButton from "./FusionStopButton";
 import type { FusionShareMeta } from "../lib/fusionShareCapture";
 
 export type { BenchSessionMode };
@@ -562,9 +563,6 @@ export default function BenchWidget({
   const runBtnClass = (_disabled: boolean) =>
     "fusion-bench-run type-tiny font-bold tracking-wider px-1.5 py-0.5 rounded cursor-pointer select-none disabled:opacity-30";
 
-  const stopBtnClass =
-    "fusion-bench-stop type-micro font-bold tracking-wider px-1.5 py-0.5 rounded cursor-pointer select-none flex-shrink-0";
-
   const chipPadClass = isCompact ? "px-1 py-0 type-hairline" : "px-1.5 py-0.5 type-micro";
 
   const closeResults = () => {
@@ -663,7 +661,7 @@ export default function BenchWidget({
       ? benchFailureLine("pp", ps.ppResult.error)
       : null;
   const benchErrorNotice = tgErrorNotice ?? ppErrorNotice;
-  const showResultsSidebar = Boolean(benchErrorNotice) || showInlineActions || showStackDismiss;
+  const showResultsSidebar = Boolean(benchErrorNotice) || showInlineActions || showStackDismiss || isAnyRunning;
   const dismissResults = onCloseResults ?? closeResults;
 
   return (
@@ -919,15 +917,6 @@ export default function BenchWidget({
                              : "Running…"}
                      </span>
                    </div>
-                   <button
-                     type="button"
-                     onClick={() => { void stopBench(); }}
-                     disabled={stopPending}
-                     className={stopBtnClass}
-                     title="Abort the in-flight completion and stop the bench"
-                   >
-                     STOP
-                   </button>
                  </div>
                )}
 
@@ -1056,6 +1045,15 @@ export default function BenchWidget({
                        : undefined,
                  }}
                >
+                 {isAnyRunning && (
+                   <FusionStopButton
+                     label={stopPending ? "STOPPING…" : "STOP BENCH"}
+                     onClick={() => { void stopBench(); }}
+                     disabled={stopPending}
+                     title="Abort the in-flight completion and stop the benchmark"
+                     className="fusion-stop-btn--bench"
+                   />
+                 )}
                  {benchErrorNotice && (
                    <p className="type-hairline font-mono bench-error text-right leading-snug mb-auto pt-0.5 max-w-[11rem]">
                      {benchErrorNotice}

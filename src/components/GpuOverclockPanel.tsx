@@ -274,7 +274,7 @@ export default function GpuOverclockPanel({
           className={`gpu-oc-header__feedback block w-full type-tiny font-mono truncate text-left leading-none min-h-[0.65rem] ${feedback ? feedbackTone : "text-transparent select-none"}`}
           aria-live="polite"
         >
-          {feedback ?? "·"}
+          {feedback ?? ""}
         </span>
       </button>
 

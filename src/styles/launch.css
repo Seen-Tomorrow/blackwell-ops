@@ -679,6 +679,29 @@
   color: var(--theme-text-muted);
 }
 
+/* Throttle indicator rides the subheader (left) so it costs no extra row. */
+.gpu-topo-card__thr-inline {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  max-width: 6.5rem;
+  margin-right: auto;
+}
+
+.gpu-topo-card__thr-inline .gpu-topo-card__thr {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gpu-topo-card__meta-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .gpu-topo-card__oc-badge {
   font-size: var(--type-hairline);
   font-weight: 700;
@@ -787,47 +810,56 @@
   align-items: start;
 }
 
-/* Footer row: power keeps the bar, PCIe stacks gen/link + RX/TX beside it. */
-.gpu-topo-card__pair--footer {
-  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+/* PCIe block — 2×2: [PCIE | big link] over [RX | TX]. Compact, never wraps. */
+.gpu-topo-card__io {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  grid-template-areas:
+    "label link"
+    "reads reads";
+  column-gap: 10px;
+  row-gap: 2px;
+  align-items: baseline;
+  min-width: 0;
+  font-size: var(--type-micro);
+  color: var(--theme-text-muted);
 }
 
-.gpu-topo-card__pcie {
-  gap: 1px;
+.gpu-topo-card__io-label {
+  grid-area: label;
 }
 
-.gpu-topo-card__pcie-link {
+.gpu-topo-card__io-link {
+  grid-area: link;
   font-size: var(--type-sm);
-  line-height: 1.15;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: 0.02em;
+  color: color-mix(in srgb, var(--theme-text) 85%, var(--fixed-white));
+  white-space: nowrap;
+}
+
+.gpu-topo-card__io-reads {
+  grid-area: reads;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0 12px;
+  min-width: 0;
 }
 
 .gpu-topo-card__pcie-io {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  line-height: 1.2;
+  display: inline;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.15;
   color: var(--theme-text-muted);
   font-size: var(--type-micro);
-}
-
-.gpu-topo-card__pcie-idle {
-  color: var(--theme-text-muted);
-  font-size: var(--type-hairline);
-  letter-spacing: 0.08em;
+  white-space: nowrap;
 }
 
 .gpu-topo-card__pcie-peak {
   opacity: 0.55;
-}
-
-/* Thermal/power status line under the footer row. */
-.gpu-topo-card__throttle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 2px;
-  font-size: var(--type-micro);
-  color: var(--theme-text-muted);
 }
 
 .gpu-topo-card__thr--hot {
@@ -1103,6 +1135,8 @@
 }
 
 .launch-rail-tel__cpu{
+  display: flex;
+  flex-direction: column;
   border-radius: 4px;
   border: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent);
   background: var(--theme-tel-cell-bg, var(--fixed-black-a18));
@@ -1234,11 +1268,17 @@
   gap: 2px;
   margin: 0 7px 7px;
   width: calc(100% - 14px);
+  /* Fill whatever height the card has (BELOW stretches it, RAIL stays compact). */
+  flex: 1 1 auto;
+  min-height: 0;
+  align-content: stretch;
+  grid-auto-rows: minmax(1rem, 1fr);
 }
 
 .launch-rail-tel__cpu-core {
   position: relative;
-  height: 1rem;
+  height: auto;
+  min-height: 0;
   border-radius: 2px;
   background: color-mix(in srgb, var(--theme-text-muted) 12%, transparent);
   overflow: hidden;
@@ -1693,6 +1733,22 @@
   letter-spacing: 0.06em;
   padding: 4px 7px;
   line-height: 1.15;
+}
+
+/* One option is a status plate, not a two-column track with an empty half. */
+.segment-switch.segment-switch--single {
+  display: inline-flex;
+  width: max-content;
+  grid-template-columns: none;
+}
+
+.segment-switch--single .segment-switch__thumb {
+  width: calc(100% - 4px);
+}
+
+.segment-switch--single .segment-switch__option {
+  cursor: default;
+  white-space: nowrap;
 }
 
 /* Whole-control disabled */

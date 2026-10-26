@@ -4568,12 +4568,6 @@ html[data-industrial-bezel="brush"] {
   color: var(--fixed-amber-400);
 }
 
-.fusion-ops-chip--lv {
-  background: color-mix(in srgb, var(--theme-dist-cyan) 14%, transparent);
-  border-color: color-mix(in srgb, var(--theme-dist-cyan) 40%, transparent);
-  color: var(--theme-dist-cyan);
-}
-
 .fusion-ops-chip--stop {
   background: var(--fixed-c-dc2626-a78);
   border-color: var(--fixed-red-500-a55);
@@ -5353,20 +5347,47 @@ html[data-industrial-bezel="brush"] {
   color: var(--display-face-control-active-text, var(--theme-accent-bright));
 }
 
-.fusion-bench-stop {
-  border: 1px solid var(--fixed-red-500-a55);
-  background: var(--fixed-c-dc2626-a78);
-  color: var(--fixed-white);
+/* Amber, 2x stop — bench abort and load abort share one face. */
+.fusion-stop-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 6px 13px;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--theme-telemetry-amber) 60%, transparent);
+  background: color-mix(in srgb, var(--theme-telemetry-amber) 18%, transparent);
+  color: var(--theme-telemetry-amber);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-label);
+  font-weight: 700;
   letter-spacing: 0.12em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
-.fusion-bench-stop:hover:not(:disabled) {
-  background: var(--fixed-red-500-a88);
+.fusion-stop-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--theme-telemetry-amber) 30%, transparent);
+  border-color: color-mix(in srgb, var(--theme-telemetry-amber) 85%, transparent);
 }
 
-.fusion-bench-stop:disabled {
+.fusion-stop-btn:disabled {
   opacity: 0.55;
   cursor: wait;
+}
+
+/* Bench: top of the results' right lane, directly under the header row. */
+.fusion-stop-btn--bench {
+  align-self: flex-end;
+  margin-bottom: auto;
+}
+
+/* Boot: between the GPU bank and the NVMe hero (middle-right of the face). */
+.fusion-boot__stop {
+  align-self: center;
 }
 
 .fusion-bench-toggle {

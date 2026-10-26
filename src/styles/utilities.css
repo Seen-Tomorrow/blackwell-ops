@@ -6,3 +6,25 @@
 .theme-accent-text {
   color: var(--theme-accent);
 }
+
+/*
+ * .preview-fade — transient content fader.
+ *
+ * Hidden at rest; add `--on` while the caller wants it visible. Keeps layout
+ * height (opacity only), so revealing it never shifts the surrounding chrome.
+ * Used by the TASK sampler-value bubbles; reuse for any "show briefly" readout.
+ */
+.preview-fade {
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.preview-fade--on {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .preview-fade {
+    transition: none;
+  }
+}

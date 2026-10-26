@@ -99,6 +99,35 @@ export default function ProviderProfileSegment({
     size === "fit" ? "segment-switch--size-fit" : "segment-switch--size-compact";
   const toneClass =
     tone === "amber" ? "segment-switch--tone-amber" : "segment-switch--tone-accent";
+
+  // One option is not a switch: render the selected plate, not a two-column
+  // track with an empty half. Becomes a real segment as soon as a second
+  // engine lands.
+  if (n === 1) {
+    const only = options[0];
+    return (
+      <div
+        className={[
+          "segment-switch",
+          "segment-switch--single",
+          sizeClass,
+          toneClass,
+          className ?? "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        role="group"
+        aria-label={ariaLabel}
+        title={only?.title}
+      >
+        <span className="segment-switch__thumb" aria-hidden />
+        <span className="segment-switch__option segment-switch__option--active">
+          {only?.label}
+        </span>
+      </div>
+    );
+  }
+
   const rootClass = [
     "segment-switch",
     n > 2 ? "segment-switch--multi" : "",

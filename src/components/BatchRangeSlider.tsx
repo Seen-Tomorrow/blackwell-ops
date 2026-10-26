@@ -23,10 +23,6 @@ interface BatchRangeSliderProps {
   defs: UserEditedTemplateParam[];
   config: Record<string, unknown>;
   onChange: (key: string, value: string | number) => void;
-  /** TWEAKS/TASK hidden — span the full instrument row. */
-  fullWidth?: boolean;
-  /** Shown only while collapsed: reopen the TWEAKS + TASK stack. */
-  onExpand?: () => void;
 }
 
 type ThumbId = "batch" | "ubatch";
@@ -35,8 +31,6 @@ export default function BatchRangeSlider({
   defs,
   config,
   onChange,
-  fullWidth = false,
-  onExpand,
 }: BatchRangeSliderProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<ThumbId | null>(null);
@@ -177,27 +171,19 @@ export default function BatchRangeSlider({
   const collide = Math.abs(batchPct - ubPct) < 4;
 
   return (
-    <div
-      className={`cockpit-instrument cockpit-instrument--batch${
-        fullWidth ? " cockpit-instrument--batch-full" : ""
-      }`}
-    >
-      <div className="cockpit-batch__titlebar">
-        <span className="cockpit-batch__title">BATCH // UBATCH</span>
-        {onExpand ? (
-          <button
-            type="button"
-            className="cockpit-batch__extras"
-            onClick={onExpand}
-            aria-label="Show TWEAKS and TASK"
-            title="Show TWEAKS + TASK"
-          >
-            EXTRAS
-            <span className="cockpit-batch__extras-chevron" aria-hidden>
-              ▶
-            </span>
-          </button>
-        ) : null}
+    <div className="cockpit-instrument cockpit-instrument--batch">
+      <div className="cockpit-instrument__head">
+        <span className="cockpit-instrument__label">BATCH // UBATCH</span>
+        <span className="cockpit-batch__readout" aria-label="Resolved batch values">
+          <span className="cockpit-batch__readout-item cockpit-batch__readout-item--ub">
+            <span className="cockpit-batch__readout-key">UB</span>
+            {formatParamValue(ubatch)}
+          </span>
+          <span className="cockpit-batch__readout-item cockpit-batch__readout-item--b">
+            <span className="cockpit-batch__readout-key">B</span>
+            {formatParamValue(batch)}
+          </span>
+        </span>
       </div>
       <div className="cockpit-batch__stage">
         <div
@@ -255,9 +241,6 @@ export default function BatchRangeSlider({
             title={`uBatch ${ubatch}`}
             aria-label="uBatch"
           >
-            <span className="cockpit-batch__thumb-value cockpit-batch__thumb-value--ub">
-              {formatParamValue(ubatch)}
-            </span>
             UB
           </button>
           <button
@@ -270,9 +253,6 @@ export default function BatchRangeSlider({
             title={`Batch ${batch}`}
             aria-label="Batch"
           >
-            <span className="cockpit-batch__thumb-value cockpit-batch__thumb-value--b">
-              {formatParamValue(batch)}
-            </span>
             B
           </button>
         </div>

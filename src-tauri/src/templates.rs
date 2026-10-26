@@ -115,7 +115,7 @@ impl Default for SpawnProfile {
             port_flag: default_port_flag(),
             alias_flag: default_alias_flag(),
             // Product default: -lv 3 keeps print_timing / draft / eval belt without tokenizer KV spam.
-            // Cockpit can raise to 4 via __log_verbosity (see build_command).
+            // CONFIG → RUNTIME can set 2/3/4 via __log_verbosity (see build_command).
             verbosity_args: vec!["-lv".into(), "3".into()],
             spawn_flags: Vec::new(),
             fit_binary_provider: String::new(),
@@ -368,7 +368,7 @@ fn apply_spawn_profile_overrides(provider_id: &str, tmpl: &mut ProviderTemplate)
     }
 }
 
-/// Cockpit / launch override: `extra_params.__log_verbosity` = 3 or 4.
+/// CONFIG → RUNTIME override: `extra_params.__log_verbosity` = 2, 3 or 4.
 /// Rewrites existing `-lv N` (or `--verbosity N`) pairs; no-op when the provider has no lv-style args.
 fn apply_log_verbosity_override(args: &mut Vec<String>, config: &EngineConfig) {
     let lv = config
@@ -380,7 +380,7 @@ fn apply_log_verbosity_override(args: &mut Vec<String>, config: &EngineConfig) {
                 .or_else(|| v.as_str().and_then(|s| s.trim().parse().ok()))
         })
         .unwrap_or(0);
-    if lv != 3 && lv != 4 {
+    if !(2..=4).contains(&lv) {
         return;
     }
     let lv_s = lv.to_string();

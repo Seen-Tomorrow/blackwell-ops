@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import {
+  loadFusionLogVerbosity,
+  saveFusionLogVerbosity,
+  type FusionLogVerbosity,
+} from "../lib/storage";
 
 type RuntimeSettingsStatus = {
   session_log: boolean;
@@ -38,6 +43,13 @@ export default function RuntimeConfig() {
   const [status, setStatus] = useState<RuntimeSettingsStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Engine `-lv` — stored in the launch layer, applied at spawn (restart to change).
+  const [verbosity, setVerbosity] = useState<FusionLogVerbosity>(loadFusionLogVerbosity);
+
+  const setLogVerbosity = (level: FusionLogVerbosity) => {
+    setVerbosity(level);
+    saveFusionLogVerbosity(level);
+  };
 
   const load = useCallback(async () => {
     try {
@@ -150,6 +162,33 @@ export default function RuntimeConfig() {
                 disabled={busy}
                 onClick={() => void save({ cpu_affinity: "off" })}
               />
+            </div>
+          </div>
+          <p className="type-tiny font-mono cfg-mut--a70">
+            Next launch only. Stop and start the engine after changing this.
+          </p>
+        </div>
+
+        <div className="theme-surface-row rounded-sm p-3 flex flex-col gap-2">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="type-body font-mono theme-accent-text tracking-wider">
+                LOG VERBOSITY LEVEL
+              </p>
+              <p className="type-tiny font-mono cfg-mut mt-0.5 leading-relaxed">
+                Engine -lv at next launch. 2 = quiet, 3 = timing / draft / eval belt (default),
+                4 = full loader / slot chatter. CLI only — a running engine keeps its level.
+              </p>
+            </div>
+            <div className="flex gap-1 flex-shrink-0">
+              {([2, 3, 4] as const).map((level) => (
+                <Chip
+                  key={level}
+                  label={String(level)}
+                  active={verbosity === level}
+                  onClick={() => setLogVerbosity(level)}
+                />
+              ))}
             </div>
           </div>
           <p className="type-tiny font-mono cfg-mut--a70">

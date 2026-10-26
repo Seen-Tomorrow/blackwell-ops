@@ -1,35 +1,93 @@
 /* ── Engine surfaces: cockpit instruments, pre-flight strip, USER'S EXTRA ──
    Paint = theme tokens only. Sizes = type scale. */
 
-/* ══ Cockpit instruments: batch hero (left) + sampler/tweaks stack (right) ══ */
+/* ══ Cockpit instruments: BATCH (left) · TASK + TWEAKS (right) ══
+   BATCH spans both right-hand rows, so the right column always ends level with
+   the batch block: TASK on top, TWEAKS collapsed underneath. */
 
 .cockpit-instruments {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-areas:
+    "batch task"
+    "batch tweaks";
   align-items: stretch;
-  gap: 10px 16px;
+  gap: 8px 16px;
   min-width: 0;
   padding-top: 8px;
   border-top: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
 }
 
-.cockpit-instruments__right {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  min-width: 0;
+/* One panel face per instrument so the row reads as blocks, not a stack. */
+.cockpit-instrument--batch,
+.cockpit-instrument--task,
+.cockpit-instrument--tweaks {
+  padding: 6px 8px;
   border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
   border-radius: 2px;
   background: color-mix(in srgb, var(--theme-panel-accent) 35%, transparent);
-  overflow: hidden;
 }
 
-.cockpit-instruments__right > .cockpit-instrument {
+.cockpit-instrument--batch {
+  grid-area: batch;
+}
+
+.cockpit-instrument--task {
+  grid-area: task;
+}
+
+.cockpit-instrument--tweaks {
+  grid-area: tweaks;
+}
+
+/* Collapsed bar is stretched to the batch height — keep its label centered. */
+.cockpit-instrument--tweaks--collapsed {
+  justify-content: center;
+}
+
+/* Opening the CUSTOM values drawer grows TASK only — BATCH keeps its own
+   height instead of being stretched into empty space by the tall drawer. */
+.cockpit-instruments:has(.cockpit-instrument__drawer) .cockpit-instrument--batch {
+  align-self: start;
+}
+
+/* TASK row: preset switch + prompt cache on one line (cache right-aligned,
+   wraps under the switch on narrow panels). */
+.cockpit-instrument__task-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
   min-width: 0;
 }
 
-.cockpit-instruments__right > .cockpit-instrument + .cockpit-instrument {
-  border-top: 1px solid color-mix(in srgb, var(--theme-border) 45%, transparent);
+.cockpit-instrument__cache {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  min-width: 0;
+}
+
+.cockpit-instrument__warn {
+  flex-shrink: 0;
+  color: var(--theme-warn);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* TASK preset switch uses the AUTOPILOT SPEC scale (sub), so it sizes to its
+   own labels instead of filling the block. */
+.cockpit-instrument--task .segment-switch {
+  max-width: 100%;
+}
+
+/* Bubbles fade via the shared .preview-fade utility — never a hit target. */
+.cockpit-instrument--task .cockpit-instrument__finger {
+  pointer-events: none;
 }
 
 .cockpit-instruments--standalone {
@@ -66,27 +124,37 @@
   margin-left: 0;
 }
 
-.cockpit-instrument__collapse {
-  display: flex;
+/* Whole header row toggles a collapsed instrument (TWEAKS). */
+.cockpit-instrument__head--toggle {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cockpit-instrument__head--toggle:hover .cockpit-instrument__label {
+  color: var(--theme-accent-bright);
+}
+
+.cockpit-instrument__head--toggle:hover .cockpit-instrument__chevron {
+  color: var(--theme-accent-bright);
+}
+
+.cockpit-instrument__head--toggle:focus-visible {
+  outline: 1px solid var(--theme-accent);
+  outline-offset: 2px;
+}
+
+.cockpit-instrument__chevron {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 16px;
   height: 16px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--theme-text-muted);
-  font-size: var(--type-micro);
-  line-height: 1;
-  cursor: pointer;
-}
-
-.cockpit-instrument__collapse:hover {
-  color: var(--theme-accent-bright);
-}
-
-.cockpit-instrument__chevron {
-  display: inline-block;
   transition: transform 0.15s ease;
 }
 
@@ -114,94 +182,23 @@
   white-space: nowrap;
 }
 
-.cockpit-instrument__state--warn {
-  color: var(--theme-warn);
-}
-
 .cockpit-instrument--batch {
-  padding: 6px 8px;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--theme-panel-accent) 35%, transparent);
-  height: 100%;
   justify-content: flex-start;
 }
-
-.cockpit-instrument--sample,
-.cockpit-instrument--tweaks {
-  padding: 6px 8px;
-}
-
-.cockpit-instrument--batch-full {
-  grid-column: 1 / -1;
-  width: 100%;
-}
-
-.cockpit-batch__titlebar {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 16px;
-  min-width: 0;
-}
-
-.cockpit-batch__title {
-  text-align: center;
-  color: var(--theme-accent);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: var(--type-micro);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.cockpit-batch__extras {
-  position: absolute;
-  right: 4px;
-  top: 50%;
-  transform: translateY(-50%);
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0 5px;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
-  border-radius: 2px;
-  background: transparent;
-  color: var(--theme-text-muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: var(--type-micro);
-  letter-spacing: 0.08em;
-  line-height: 1.4;
-  cursor: pointer;
-}
-
-.cockpit-batch__extras:hover {
-  color: var(--theme-accent-bright);
-  border-color: color-mix(in srgb, var(--theme-accent) 55%, transparent);
-}
-
-.cockpit-batch__extras-chevron {
-  display: inline-block;
-  font-size: var(--type-micro);
-  line-height: 1;
-}
-
-/* ── Batch / uBatch dual-thumb hero ───────────────────────────────── */
 
 .cockpit-batch__stage {
   flex: 1;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  min-height: 110px;
-  padding-bottom: 18px;
+  min-height: 0;
+  padding-bottom: 14px;
   min-width: 0;
 }
 
 .cockpit-batch__track {
   position: relative;
-  height: 92px;
+  height: 64px;
   margin: 0 8px;
   touch-action: none;
   user-select: none;
@@ -293,7 +290,7 @@
 .cockpit-batch__mark-label {
   position: absolute;
   left: 50%;
-  top: 60px;
+  top: 46px;
   transform: translateX(-50%);
   color: var(--theme-text-muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -346,7 +343,8 @@
   box-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent-glow) 80%, transparent);
 }
 
-/* Equal or near-equal values: split the thumbs above / below the rail. */
+/* Collided thumbs must not grow the block: the values are read in the head
+   readout, so only the 28px thumb bodies need vertical separation. */
 .cockpit-batch__thumb--collide.cockpit-batch__thumb--ub {
   transform: translate(-50%, -80%);
 }
@@ -355,27 +353,40 @@
   transform: translate(-50%, 60%);
 }
 
-.cockpit-batch__thumb-value {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
+/* Resolved values live in the header — the rail stays short and never grows
+   to hold labels above/below the thumbs. */
+.cockpit-batch__readout {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-left: auto;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: var(--type-body);
+  font-size: var(--type-sm);
   font-weight: 700;
   letter-spacing: 0.04em;
   line-height: 1;
   white-space: nowrap;
-  pointer-events: none;
 }
 
-.cockpit-batch__thumb-value--ub {
-  bottom: calc(100% + 3px);
+.cockpit-batch__readout-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+}
+
+.cockpit-batch__readout-item--ub {
   color: var(--theme-electric-blue);
 }
 
-.cockpit-batch__thumb-value--b {
-  top: calc(100% + 3px);
+.cockpit-batch__readout-item--b {
   color: var(--theme-warn);
+}
+
+.cockpit-batch__readout-key {
+  color: color-mix(in srgb, var(--theme-text-muted) 85%, transparent);
+  font-size: var(--type-micro);
+  font-weight: 600;
+  letter-spacing: 0.08em;
 }
 
 /* ── Saved-value badges (sampler fingerprint · batch readout) ─────── */
@@ -384,7 +395,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   min-width: 0;
   color: var(--theme-text-muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -395,7 +406,7 @@
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  padding: 0 4px;
+  padding: 2px 6px;
   border: 1px solid color-mix(in srgb, var(--theme-border) 75%, transparent);
   border-radius: 2px;
   background: color-mix(in srgb, var(--theme-panel-accent) 70%, transparent);
@@ -479,21 +490,26 @@
 
 /* ── TWEAKS rows ──────────────────────────────────────────────────── */
 
+/* Two label|switch tables. Each column's label track is max-content, so the
+   switches line up in a clean track while sitting right next to their label. */
 .cockpit-tweaks-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px 10px;
-  min-width: 0;
-}
-
-.cockpit-tweak-cell {
   display: flex;
-  flex-direction: column;
-  gap: 3px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 4px 32px;
   min-width: 0;
 }
 
-.cockpit-tweak-cell__label {
+.cockpit-tweaks-col {
+  display: grid;
+  grid-template-columns: max-content auto;
+  align-items: center;
+  gap: 6px 8px;
+  min-width: 0;
+}
+
+.cockpit-tweak-label {
+  min-width: 0;
   overflow: hidden;
   color: var(--theme-text-muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -504,11 +520,11 @@
   white-space: nowrap;
 }
 
-.cockpit-tweak-cell__label--tuned {
+.cockpit-tweak-label--tuned {
   color: var(--theme-warn);
 }
 
-.cockpit-tweak-cell .segment-switch {
+.cockpit-tweaks-col .segment-switch {
   max-width: 100%;
 }
 

@@ -4,6 +4,7 @@ import type {
   CodingModeId,
   SpeedBoostId,
   ThinkId,
+  ThinkOption,
 } from "../lib/multiAgentBooster";
 import type { SpecCapability } from "../lib/specDraft";
 import type { FullAutoFitState, FullAutoGoal, FullAutoWorkload } from "../lib/fullAutoGoals";
@@ -29,6 +30,7 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
     speedBoost,
     brains,
     think,
+    thinkOptions,
     applyCockpit,
     cockpitOpts,
     capabilities,
@@ -84,6 +86,7 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
         speedBoost={speedBoost}
         brains={brains}
         think={think}
+        thinkOptions={thinkOptions}
         onCodingMode={(m) => {
           manual(() => { void applyCockpit(m, speedBoost, brains, think, cockpitOpts); });
         }}
@@ -160,6 +163,8 @@ export interface EngineBoostSectionProps {
   speedBoost: SpeedBoostId;
   brains: BrainsId;
   think: ThinkId;
+  /** Marks the template actually maps (2k/4k/8k only when offered). */
+  thinkOptions: ThinkOption[];
   /** `applyFullAutoCockpit` — the orchestrator's cockpit planner. */
   applyCockpit: (
     mode: CodingModeId,

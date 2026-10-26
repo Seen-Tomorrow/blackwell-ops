@@ -21,7 +21,7 @@ export default function EngineToolbar(props: EngineToolbarProps) {
     onToggleLaunchDockPosition,
     hwMonitorOpen,
     hwMonitorDock,
-    onHwMonitorOff,
+    onToggleHwMonitor,
     onToggleHwMonitorDock,
     showLaunchRail,
     enginesInRail,
@@ -100,14 +100,18 @@ export default function EngineToolbar(props: EngineToolbarProps) {
           )}
           <button
             type="button"
-            onClick={onHwMonitorOff}
+            onClick={onToggleHwMonitor}
             className={`config-panel-toolbar-chip px-1.5 py-0.5 type-tiny font-mono rounded-sm ${
-              !hwMonitorOpen ? "config-panel-toolbar-chip--active" : ""
+              hwMonitorOpen ? "config-panel-toolbar-chip--active" : ""
             }`}
-            title={hwMonitorOpen ? "Turn HW monitor off" : "HW monitor is off"}
-            aria-pressed={!hwMonitorOpen}
+            title={
+              hwMonitorOpen
+                ? "Hardware monitor ON — click to hide (position is remembered)"
+                : `Hardware monitor OFF — click to show in ${hwMonitorDock === "below" ? "BELOW display" : "the right RAIL"}`
+            }
+            aria-pressed={hwMonitorOpen}
           >
-            HW OFF
+            HW MON {hwMonitorOpen ? "ON" : "OFF"}
           </button>
           <button
             type="button"
@@ -116,11 +120,9 @@ export default function EngineToolbar(props: EngineToolbarProps) {
               hwMonitorOpen ? "config-panel-toolbar-chip--active" : ""
             }`}
             title={
-              !hwMonitorOpen
-                ? `HW monitor off — click to show in ${hwMonitorDock === "below" ? "BELOW display" : "RAIL"}`
-                : hwMonitorDock === "below"
-                  ? "HW monitor below display — click for right RAIL"
-                  : "HW monitor in right rail — click for BELOW display"
+              hwMonitorDock === "below"
+                ? "Hardware monitor position: BELOW display — click for right RAIL"
+                : "Hardware monitor position: right RAIL — click for BELOW display"
             }
             aria-pressed={hwMonitorOpen}
           >
@@ -164,9 +166,9 @@ export interface EngineToolbarProps {
   onToggleLaunchDockPosition: () => void;
   hwMonitorOpen: boolean;
   hwMonitorDock: HwMonitorDock;
-  /** Explicit power-off for the HW monitor (separate from the dock toggle). */
-  onHwMonitorOff: () => void;
-  /** Reopen in the remembered dock, or flip BELOW ↔ RAIL when already on. */
+  /** Toggle the hardware monitor on/off (reopens in the remembered dock). */
+  onToggleHwMonitor: () => void;
+  /** Flip the monitor between BELOW display and the right RAIL. */
   onToggleHwMonitorDock: () => void;
   showLaunchRail: boolean;
   enginesInRail: boolean;

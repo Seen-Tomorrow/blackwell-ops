@@ -13,7 +13,7 @@ export type SpeedBoostId = "off" | "mtp" | "dflash" | "dspark" | "smart";
 /** Brains row — KV quant quality (VRAM trade) + `kv:VALUE` for custom. */
 export type BrainsId = string;
 /** Optional thinking budget for models that expose reasoning flags. */
-export type ThinkId = "off" | "on" | "budget" | "budget2k";
+export type ThinkId = "off" | "on" | "budget" | "budget2k" | "budget8k";
 
 export interface CodingModeOption {
   id: CodingModeId;
@@ -88,11 +88,19 @@ const KNOWN_KV_BY_NORM = new Map(
   BRAINS_OPTIONS.map((o) => [o.kvQuant.toLowerCase(), o] as const),
 );
 
-export const THINK_OPTIONS: { id: ThinkId; label: string; blurb: string }[] = [
+export type ThinkOption = { id: ThinkId; label: string; blurb: string };
+
+/**
+ * One mark per engine budget. Labels are the user-facing size, the raw value
+ * passed to --reasoning-budget is the engine's (2k → 2000, 4k → 4000, 8k →
+ * 8000) — never collapse two engine values onto one label.
+ */
+export const THINK_OPTIONS: ThinkOption[] = [
   { id: "off", label: "Off", blurb: "No chain-of-thought budget" },
   { id: "on", label: "On", blurb: "Full reasoning when the model supports it" },
   { id: "budget2k", label: "2k", blurb: "Capped thinking budget (~2000)" },
   { id: "budget", label: "4k", blurb: "Capped thinking budget (~4000)" },
+  { id: "budget8k", label: "8k", blurb: "Capped thinking budget (~8000)" },
 ];
 
 /** Groups tucked away under Full Auto (Full Assisted still shows everything). */
@@ -491,6 +499,8 @@ export function resolveFullAutoPlan(opts: {
     reasoning = "on";
   } else if (think === "budget2k") {
     reasoning = 2000;
+  } else if (think === "budget8k") {
+    reasoning = 8000;
   } else {
     reasoning = 4000;
   }
@@ -509,7 +519,9 @@ export function resolveFullAutoPlan(opts: {
         ? "On"
         : think === "budget2k"
           ? "2k"
-          : "4k";
+          : think === "budget8k"
+            ? "8k"
+            : "4k";
 
   let boostTone: "mtp" | "dflash" | "dspark" | "smart" = "smart";
   let boostLabel = powerUser ? "Off" : "Smart";

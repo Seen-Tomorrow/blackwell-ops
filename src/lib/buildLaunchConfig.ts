@@ -279,7 +279,8 @@ export function buildLaunchConfig(input: BuildLaunchConfigInput): EngineConfig {
         ...merged,
         ...launchExtra,
       }),
-      // Cockpit LV 3/4 toggle — Rust rewrites spawn_profile `-lv N` (see apply_log_verbosity_override).
+      // CONFIG → RUNTIME log verbosity (2/3/4) — Rust rewrites spawn_profile `-lv N`
+      // (see apply_log_verbosity_override).
       __log_verbosity: loadFusionLogVerbosity(),
     },
   };

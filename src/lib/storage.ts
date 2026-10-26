@@ -147,7 +147,6 @@ export const KEYS = {
   uiZoom: `${STORAGE_PREFIX}ui-zoom`,
   uiTextScale: `${STORAGE_PREFIX}ui-text-scale`,
   uiDensity: `${STORAGE_PREFIX}ui-density`,
-  cockpitExtrasCollapsed: `${STORAGE_PREFIX}cockpit-extras-collapsed`,
   fullAutoGoal: `${STORAGE_PREFIX}full-auto-goal`,
   catalogDraftFilter: `${STORAGE_PREFIX}catalog-draft-filter`,
   draftPairings: `${STORAGE_PREFIX}draft-pairings`,
@@ -421,15 +420,6 @@ export function loadUiDensity(): UiDensity {
 
 export function saveUiDensity(density: UiDensity): void {
   writeStorage(KEYS.uiDensity, density);
-}
-
-/** Cockpit TWEAKS + SAMPLER stack collapsed; BATCH spans the full row. */
-export function loadCockpitExtrasCollapsed(): boolean {
-  return readStorage(KEYS.cockpitExtrasCollapsed) === "1";
-}
-
-export function saveCockpitExtrasCollapsed(collapsed: boolean): void {
-  writeStorage(KEYS.cockpitExtrasCollapsed, collapsed ? "1" : "0");
 }
 
 /** Last autopilot goal; missing = no goal selected. */
@@ -1021,18 +1011,19 @@ export function saveFusionHeroTpsMode(mode: FusionHeroTpsMode): void {
 }
 
 /** llama-server `-lv` at next launch. Default 3 (timing belt without KV spam). */
-export type FusionLogVerbosity = 3 | 4;
+export type FusionLogVerbosity = 2 | 3 | 4;
 
 const FUSION_LOG_VERBOSITY_DEFAULT: FusionLogVerbosity = 3;
 
 export function loadFusionLogVerbosity(): FusionLogVerbosity {
   const v = readStorage(KEYS.fusionLogVerbosity);
+  if (v === "2") return 2;
   if (v === "4") return 4;
   return 3;
 }
 
 export function saveFusionLogVerbosity(level: FusionLogVerbosity): void {
-  writeStorage(KEYS.fusionLogVerbosity, String(level === 4 ? 4 : 3));
+  writeStorage(KEYS.fusionLogVerbosity, String(level === 2 || level === 4 ? level : 3));
 }
 
 

@@ -17,6 +17,7 @@ import {
   type CodingModeId,
   type SpeedBoostId,
   type ThinkId,
+  type ThinkOption,
 } from "../lib/multiAgentBooster";
 import CockpitCtxStrip from "./CockpitCtxStrip";
 import CockpitSlider from "./CockpitSlider";
@@ -49,6 +50,8 @@ export interface MultiAgentBoosterProps {
   speedBoost: SpeedBoostId;
   brains: BrainsId;
   think: ThinkId;
+  /** Marks the template actually maps (defaults to every product budget). */
+  thinkOptions?: ThinkOption[];
   onCodingMode: (mode: CodingModeId) => void;
   onSpeedBoost: (speed: SpeedBoostId) => void;
   /** Planner normalization — never a user edit, so it must not hand off to ASSISTED. */
@@ -153,6 +156,7 @@ export default function MultiAgentBooster({
   speedBoost,
   brains,
   think,
+  thinkOptions = THINK_OPTIONS,
   onCodingMode,
   onSpeedBoost,
   onAutoSpeedBoost,
@@ -211,7 +215,6 @@ export default function MultiAgentBooster({
   onTakeControl,
 }: MultiAgentBoosterProps) {
   const hero = layout === "hero";
-  const densityUnified = !hero;
   const showCtxRail =
     embedCtx && onCtxChange != null && (ctxValues?.length ?? 0) > 0;
   const markCustomValues = !hero;
@@ -651,7 +654,6 @@ export default function MultiAgentBooster({
   const violetStrip = showVioletStrip ? (
     <div
       className={`full-auto-cockpit__dflash-get full-auto-cockpit__dflash-get--footer full-auto-cockpit__dflash-get--tone-${stripTone} font-mono min-w-0 flex-1 full-auto-cockpit__dflash-get--spec-extra`}
-      data-strip-tone={stripTone}
       style={{ maxWidth: "none", width: "100%", flexWrap: "nowrap", overflowX: "auto" }}
     >
       {draftStripInner && specExtraInline ? (
@@ -726,9 +728,6 @@ export default function MultiAgentBooster({
   return (
     <div
       className={`full-auto-cockpit ${densityClass} ${className}`}
-      data-booster-layout={layout}
-      data-power-mode={powerMode ? "on" : "off"}
-      data-density-unified={densityUnified ? "on" : "off"}
       data-ctx-dock={showCtxRail ? "in" : "above"}
     >
       {/* Title left · AGENTIC HARNESS (accent) · soft note · flags */}
@@ -881,7 +880,7 @@ export default function MultiAgentBooster({
               label="Think"
               value={think}
               onChange={onThink}
-              options={THINK_OPTIONS.map((o) => ({
+              options={thinkOptions.map((o) => ({
                 id: o.id,
                 label: o.label,
                 blurb: o.blurb,
@@ -899,7 +898,7 @@ export default function MultiAgentBooster({
         ) : null}
 
         {instrumentSlot ? (
-          <div className="full-auto-cockpit__instruments cockpit-instruments">{instrumentSlot}</div>
+          <div className="full-auto-cockpit__instruments">{instrumentSlot}</div>
         ) : null}
 
       </div>

@@ -1288,7 +1288,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   color: color-mix(in srgb, var(--theme-industrial-muted) 55%, transparent);
 }
 
-/* CTX hero — match industrial/panel face (not a black inset well) */
+/* CTX hero — recessed channel in the cockpit/panel face (inset well, not a plate) */
 .full-auto-cockpit__ctx-hero {
   position: relative;
   display: flex;
@@ -1297,20 +1297,19 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   padding: 0.45rem 0.5rem 0.35rem;
   overflow: visible;
   border-radius: 3px;
-  border: 1px solid var(--theme-frame-border, color-mix(in srgb, var(--theme-border) 55%, transparent));
-  background: color-mix(
-    in srgb,
-    var(--theme-industrial-bg, var(--theme-panel)) 42%,
-    var(--theme-panel-accent) 58%
-  );
-  background-image: var(--theme-industrial-texture-active, none);
-  box-shadow: none;
+  border: 1px solid color-mix(in srgb, var(--theme-bezel-edge-lo) 60%, var(--theme-border) 40%);
+  background-color: var(--theme-panel-accent);
+  /* Well fill from the theme's bezel inset ramp (black on dark faces, blue-grey
+     on ARCTIC), stacked twice so the recess resolves on the light face too. */
+  background-image:
+    linear-gradient(var(--theme-bezel-inset-lo), var(--theme-bezel-inset-lo)),
+    linear-gradient(var(--theme-bezel-inset-lo), var(--theme-bezel-inset-lo));
+  box-shadow: var(--theme-cockpit-well-shadow);
 }
 
 .full-auto-cockpit__ctx-hero--standalone {
-  /* ABOVE dock — same face as cockpit/params, no extra drop shadow */
+  /* ABOVE dock — same recessed face, no extra drop shadow */
   margin: 0;
-  box-shadow: none;
 }
 
 .full-auto-cockpit__ctx-hero-main {

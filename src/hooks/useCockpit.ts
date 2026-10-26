@@ -17,6 +17,7 @@ import type {
 import type { ConfigViewMode } from "../lib/types";
 import {
   BRAINS_OPTIONS,
+  THINK_OPTIONS,
   brainsFromKvQuant,
   codingModeFromParallel,
   collectBoostSpecTypes,
@@ -26,6 +27,7 @@ import {
   type CodingModeId,
   type SpeedBoostId,
   type ThinkId,
+  type ThinkOption,
 } from "../lib/multiAgentBooster";
 import {
   filterParamValuesForConfigView,
@@ -51,6 +53,7 @@ import {
 } from "../lib/spec/adapters";
 import type { DraftRole } from "../lib/specDraft";
 import { applySpecBoostProfiles } from "../lib/applySpecBoost";
+import { visibleParamValuesOf } from "../lib/engineSurfaces";
 import {
   hasReadyDflashDraft,
   resolveExternalDraftPath,
@@ -82,13 +85,15 @@ function resolveParallelSlots(
 function thinkFromReasoning(value: unknown): ThinkId {
   if (value === "off" || value === 0 || value === "0") return "off";
   if (value === 2000 || value === "2000") return "budget2k";
-  if (value === 4000 || value === "4000" || value === 8000 || value === "8000") return "budget";
+  if (value === 8000 || value === "8000") return "budget8k";
+  if (value === 4000 || value === "4000") return "budget";
   return "on";
 }
 
 function reasoningForThink(think: ThinkId): string | number {
   if (think === "off") return "off";
   if (think === "budget2k") return 2000;
+  if (think === "budget8k") return 8000;
   if (think === "budget") return 4000;
   return "on";
 }
@@ -152,7 +157,6 @@ export function useCockpit({
   const setSpeedForMode = useCallback((mode: string, next: SpeedBoostId) => {
     setSpeedByMode((prev) => ({ ...prev, [mode]: next }));
   }, []);
-  const [specFlash, setSpecFlash] = useState(false);
   const boosterSeededRef = useRef(false);
 
   // Agents / Memory / Think are derived from the active mode's config, not
@@ -167,6 +171,27 @@ export function useCockpit({
     [config.kv_quant],
   );
   const think = useMemo(() => thinkFromReasoning(config.reasoning), [config.reasoning]);
+
+  /**
+   * Think marks are engine budgets — offer only the ones this template maps
+   * (Master: off / on / 2k / 4k / 8k). The current raw value keeps its mark even
+   * when the value chip is catalog-hidden, so the slider never lies about it.
+   */
+  const cockpitThinkOptions = useMemo((): ThinkOption[] => {
+    const def = allParamsResolved.find((p) => p.key === "reasoning");
+    if (!def) return THINK_OPTIONS;
+    const allowed = new Set(
+      visibleParamValuesOf(def).map((value) => String(value).toLowerCase()),
+    );
+    if (allowed.size === 0) return THINK_OPTIONS;
+    const current =
+      config.reasoning != null ? String(config.reasoning).toLowerCase() : null;
+    const options = THINK_OPTIONS.filter((option) => {
+      const raw = String(reasoningForThink(option.id)).toLowerCase();
+      return allowed.has(raw) || raw === current;
+    });
+    return options.length > 0 ? options : THINK_OPTIONS;
+  }, [allParamsResolved, config.reasoning]);
 
   const fullAutoFixed = fullAutoMode;
 
@@ -417,7 +442,22 @@ export function useCockpit({
       updateParam("parallel", plan.parallel);
       updateParam("kv_quant", plan.kvQuant);
       // Cockpit-owned only — never vision/flash/load_mode or Smart batch.
-      if (plan.reasoning != null && allParamsResolved.some((p) => p.key === "reasoning")) {
+      //
+      // Write REASONING only when the Think selection actually moved. Marks are
+      // engine budgets; a stored raw value that already maps to the current mark
+      // (or a custom budget with no mark) must not be rewritten just because
+      // another slider was clicked — that silently changed the launch.
+      const storedReasoning =
+        config.reasoning != null && String(config.reasoning).trim() !== ""
+          ? config.reasoning
+          : null;
+      const thinkChanged =
+        storedReasoning == null || thinkFromReasoning(storedReasoning) !== thinkPick;
+      if (
+        thinkChanged
+        && plan.reasoning != null
+        && allParamsResolved.some((p) => p.key === "reasoning")
+      ) {
         updateParam("reasoning", plan.reasoning);
       }
 
@@ -430,7 +470,7 @@ export function useCockpit({
         if (kv && kvQuantValues.some((v) => String(v).toLowerCase() === kv.toLowerCase())) {
           updateParam("kv_quant", kv);
         }
-        if (allParamsResolved.some((p) => p.key === "reasoning")) {
+        if (thinkChanged && allParamsResolved.some((p) => p.key === "reasoning")) {
           updateParam("reasoning", reasoningForThink(thinkPick));
         }
       }
@@ -446,8 +486,6 @@ export function useCockpit({
           method,
           setProviders: setResolvedProviders,
         });
-        setSpecFlash(true);
-        window.setTimeout(() => setSpecFlash(false), 400);
       } catch (err) {
         console.error("[cockpit] applySpecBoostProfiles failed:", err);
       }
@@ -592,9 +630,9 @@ export function useCockpit({
     speedBoost,
     brains,
     think,
+    cockpitThinkOptions,
     setSpeedBoost,
     setSpeedForMode,
-    specFlash,
     applyFullAutoCockpit,
     cockpitOpts,
     specCapabilities,

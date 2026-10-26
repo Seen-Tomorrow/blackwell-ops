@@ -11,7 +11,6 @@ import {
   migrateGlobalSpecOutOfCatalogOverrides,
   normalizeModelPathKey,
   loadCtxCockpitDock,
-  loadCockpitExtrasCollapsed,
   loadFullAutoGoal,
   loadEnginesInRail,
   loadHwMonitorDock,
@@ -24,7 +23,6 @@ import {
   type LaunchDockPosition,
   normalizeUiGroup,
   saveCtxCockpitDock,
-  saveCockpitExtrasCollapsed,
   saveFullAutoGoal,
   saveEnginesInRail,
   saveHwMonitorDock,
@@ -116,9 +114,7 @@ import {
 import ConfigBelowGroups from "./ConfigBelowGroups";
 import { useConfigColumns } from "../hooks/useConfigColumns";
 import PreflightStrip from "./PreflightStrip";
-import TweaksPanel from "./TweaksPanel";
-import BatchRangeSlider from "./BatchRangeSlider";
-import { SamplerTask } from "./CockpitInstruments";
+import { CockpitInstruments } from "./CockpitInstruments";
 import {
   COMPAT_KEYS,
   SAMPLER_KEYS,
@@ -489,19 +485,16 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     }
   }, [hwMonitorDock]);
 
-  const toggleHwMonitorDock = useCallback(() => {
-    // Off → reopen in the remembered dock; on → flip between BELOW and RAIL.
-    const nextDock: HwMonitorDock = !hwMonitorOpen
-      ? hwMonitorDock
-      : hwMonitorDock === "below"
-        ? "rail"
-        : "below";
-    applyHwPlacement(true, nextDock);
+  /** HW monitor ON/OFF — turning it back on lands on the remembered dock (persisted). */
+  const toggleHwMonitor = useCallback(() => {
+    applyHwPlacement(!hwMonitorOpen, hwMonitorDock);
   }, [applyHwPlacement, hwMonitorOpen, hwMonitorDock]);
 
-  const hwMonitorOff = useCallback(() => {
-    applyHwPlacement(false, hwMonitorDock);
-  }, [applyHwPlacement, hwMonitorDock]);
+  /** Position switch — flips BELOW ↔ RAIL and remembers it even while the monitor is off. */
+  const toggleHwMonitorPosition = useCallback(() => {
+    const nextDock: HwMonitorDock = hwMonitorDock === "below" ? "rail" : "below";
+    applyHwPlacement(hwMonitorOpen, nextDock);
+  }, [applyHwPlacement, hwMonitorOpen, hwMonitorDock]);
 
   // Focus HUD: stacked fusion + HW below. Dual is user's choice.
   useEffect(() => {
@@ -558,14 +551,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   /** USER'S EXTRA — closed by default; the pre-flight strip owns the opener. */
   const [serviceOpen, setServiceOpen] = useState(false);
-  /** Cockpit extras: collapse TWEAKS + SAMPLER and give BATCH the full row. */
-  const [extrasCollapsed, setExtrasCollapsed] = useState(loadCockpitExtrasCollapsed);
-
-  const toggleExtras = useCallback(() => {
-    const next = !extrasCollapsed;
-    setExtrasCollapsed(next);
-    saveCockpitExtrasCollapsed(next);
-  }, [extrasCollapsed]);
 
   const toggleService = useCallback(() => {
     setServiceOpen((prev) => !prev);
@@ -957,7 +942,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     setSpeedBoost,
     brains,
     think,
-    specFlash,
+    cockpitThinkOptions,
     setSpeedForMode,
     applyFullAutoCockpit,
     cockpitOpts,
@@ -3318,8 +3303,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         onToggleLaunchDockPosition={toggleLaunchDockPosition}
         hwMonitorOpen={hwMonitorOpen}
         hwMonitorDock={hwMonitorDock}
-        onHwMonitorOff={hwMonitorOff}
-        onToggleHwMonitorDock={toggleHwMonitorDock}
+        onToggleHwMonitor={toggleHwMonitor}
+        onToggleHwMonitorDock={toggleHwMonitorPosition}
         showLaunchRail={showLaunchRail}
         enginesInRail={enginesInRail}
         onToggleEnginesInRail={toggleEnginesInRail}
@@ -3454,6 +3439,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           speedBoost={speedBoost}
           brains={brains}
           think={think}
+          thinkOptions={cockpitThinkOptions}
           applyCockpit={applyFullAutoCockpit}
           cockpitOpts={cockpitOpts}
           capabilities={specCapabilities}
@@ -3492,33 +3478,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           embedCtx={ctxDockedInCockpit || fullAutoFixed}
           ctxStripProps={ctxStripProps}
           instrumentSlot={
-            <>
-              <BatchRangeSlider
-                defs={allParamsResolved}
-                config={config}
-                onChange={updateParam}
-                fullWidth={extrasCollapsed}
-                onExpand={extrasCollapsed ? toggleExtras : undefined}
-              />
-              {!extrasCollapsed && (
-                <div className="cockpit-instruments__right">
-                  <TweaksPanel
-                    defs={allParamsResolved}
-                    config={config}
-                    onChange={updateParam}
-                    onCollapse={toggleExtras}
-                  />
-                  {!fullAutoFixed ? (
-                    <SamplerTask
-                      defs={allParamsResolved}
-                      config={config}
-                      onChange={updateParam}
-                      onTask={applyWorkloadPreset}
-                    />
-                  ) : null}
-                </div>
-              )}
-            </>
+            <CockpitInstruments
+              defs={allParamsResolved}
+              config={config}
+              onChange={updateParam}
+              onTask={applyWorkloadPreset}
+            />
           }
           autoGoal={fullAutoFixed ? autoGoal : null}
           onAutoGoal={fullAutoFixed ? handleAutoGoal : undefined}
@@ -3531,33 +3496,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           onTakeControl={fullAutoFixed ? handleTakeControl : undefined}
         />
         {!(model && !modelIsDraftOnly && showCockpitSurface) && (
-          <div className="cockpit-instruments cockpit-instruments--standalone">
-            <BatchRangeSlider
-              defs={allParamsResolved}
-              config={config}
-              onChange={updateParam}
-              fullWidth={extrasCollapsed}
-              onExpand={extrasCollapsed ? toggleExtras : undefined}
-            />
-            {!extrasCollapsed && (
-              <div className="cockpit-instruments__right">
-                <TweaksPanel
-                  defs={allParamsResolved}
-                  config={config}
-                  onChange={updateParam}
-                  onCollapse={toggleExtras}
-                />
-                {!fullAutoFixed ? (
-                  <SamplerTask
-                    defs={allParamsResolved}
-                    config={config}
-                    onChange={updateParam}
-                    onTask={applyWorkloadPreset}
-                  />
-                ) : null}
-              </div>
-            )}
-          </div>
+          <CockpitInstruments
+            defs={allParamsResolved}
+            config={config}
+            onChange={updateParam}
+            onTask={applyWorkloadPreset}
+            standalone
+          />
         )}
         {model && (
           <DraftPickModal

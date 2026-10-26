@@ -5,11 +5,11 @@
                             "provider":  "ggml-master",
                             "profile":  "edge",
                             "label":  "EDGE",
-                            "asset":  "ENGINE_ggml-master-edge-b11870-74bca395.7z",
-                            "sha256":  "16b8fdc4a639f2f51d5be2691c880e6470e5b83d743b4a2e4062a88c4e3c9f48",
-                            "sizeBytes":  113108697,
+                            "asset":  "ENGINE_ggml-master-edge-b11909-caa8191d.7z",
+                            "sha256":  "cd5ee29ee742cb41a353d891f7b991ca37f80ef493284d9b8ae94e672a77281d",
+                            "sizeBytes":  114992304,
                             "cuda":  "13.4",
-                            "engineVersion":  "b11870-74bca395",
+                            "engineVersion":  "b11909-caa8191d",
                             "recommended":  true
                         },
                         {
@@ -17,8 +17,8 @@
                             "profile":  "stable",
                             "label":  "STABLE",
                             "asset":  "ENGINE_ggml-master-stable-b11869-d327bf1f.7z",
-                            "sha256":  "b9fa55fe060b30c7fbbf6e2a1eee11292fb14a4ffdaebcaab1904c0cac3df56a",
-                            "sizeBytes":  115534655,
+                            "sha256":  "7198c34325b58e29402c0be4d51e1f8a4f9fdb7b9b927fb2e2098bdf506dc445",
+                            "sizeBytes":  115534650,
                             "cuda":  "12.8",
                             "engineVersion":  "b11869-d327bf1f",
                             "recommended":  false

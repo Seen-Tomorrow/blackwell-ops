@@ -61,7 +61,6 @@ export const COMPAT_KEYS = [
   "jinja",
   "swa_full",
   "spm_infill",
-  "cache_ram",
   "reasoning_preserve",
 ] as const;
 
@@ -73,6 +72,8 @@ const SURFACE_PARAM_KEYS: ReadonlySet<string> = new Set<string>([
   "batch",
   "ubatch",
   "unified_kv",
+  /** PROMPT CACHE lives on the TASK row — never a free chip. */
+  "cache_ram",
   ...COMPAT_KEYS,
 ]);
 
@@ -86,6 +87,8 @@ export function isSurfaceParam(key: string): boolean {
  */
 export const ALWAYS_LAUNCH_KEYS: ReadonlySet<string> = new Set<string>([
   "unified_kv",
+  /** TASK-row control, outside the essentials key set — value must still emit. */
+  "cache_ram",
   ...COMPAT_KEYS,
 ]);
 

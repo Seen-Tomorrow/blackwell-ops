@@ -53,11 +53,11 @@ export default function EngineProviderProfileBar(props: EngineProviderProfileBar
   return (
     <div className="px-4 py-2 border-b section-divider relative flex-shrink-0 config-provider-profile-bar">
       <div className="config-provider-profile-bar__half config-provider-profile-bar__half--providers">
-        <span className="config-provider-profile-bar__label">PROVIDER</span>
+        <span className="config-provider-profile-bar__label">ENGINE</span>
         <div className="config-provider-profile-bar__control">
           {providerOptions.length > 0 && (
             <ProviderProfileSegment
-              ariaLabel="Engine provider"
+              ariaLabel="Engine"
               options={providerOptions}
               selectedId={selectedProvider}
               onSelect={onSelectProvider}
@@ -68,10 +68,10 @@ export default function EngineProviderProfileBar(props: EngineProviderProfileBar
         </div>
       </div>
       <div className="config-provider-profile-bar__half config-provider-profile-bar__half--profile">
-        <span className="config-provider-profile-bar__label">PROFILE</span>
+        <span className="config-provider-profile-bar__label">RUNTIME MODE</span>
         <div className="config-provider-profile-bar__control config-provider-profile-bar__control--end">
             <ProviderProfileSegment
-              ariaLabel="Runtime profile"
+              ariaLabel="Runtime mode"
               options={profileOptions}
               selectedId={selectedBinaryProfile}
               onSelect={(id) => onSelectProfile(id as Env)}
