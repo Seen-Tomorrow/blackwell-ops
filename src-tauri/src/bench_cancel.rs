@@ -64,7 +64,7 @@ fn abort_inflight(slot: &PortStop) {
             handle.abort();
         }
         if n > 0 {
-            log::info!("[BENCH] aborted {n} in-flight HTTP task(s)");
+            log::debug!("[BENCH] aborted {n} in-flight HTTP task(s)");
         }
     }
 }

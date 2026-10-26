@@ -17,7 +17,9 @@ use serde::Serialize;
 use tokio::task::JoinSet;
 
 fn bench_session_log(line: &str) {
-    log::info!("{line}");
+    // Console stays quiet: the full run trace still lands in the session log file,
+    // and the archive save is the one line worth printing (bench_archive::info).
+    log::debug!("{line}");
     crate::session_log::append_session_line(line);
 }
 
