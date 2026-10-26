@@ -10,7 +10,6 @@ import {
   engineAliasKey,
   migrateGlobalSpecOutOfCatalogOverrides,
   normalizeModelPathKey,
-  cycleHwMonitorPlacement,
   loadCtxCockpitDock,
   loadCockpitExtrasCollapsed,
   loadFullAutoGoal,
@@ -492,10 +491,19 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     }
   }, [hwMonitorDock]);
 
-  const cycleHwMonitor = useCallback(() => {
-    const next = cycleHwMonitorPlacement(hwMonitorOpen, hwMonitorDock);
-    applyHwPlacement(next.open, next.dock);
-  }, [hwMonitorOpen, hwMonitorDock, applyHwPlacement]);
+  const toggleHwMonitorDock = useCallback(() => {
+    // Off → reopen in the remembered dock; on → flip between BELOW and RAIL.
+    const nextDock: HwMonitorDock = !hwMonitorOpen
+      ? hwMonitorDock
+      : hwMonitorDock === "below"
+        ? "rail"
+        : "below";
+    applyHwPlacement(true, nextDock);
+  }, [applyHwPlacement, hwMonitorOpen, hwMonitorDock]);
+
+  const hwMonitorOff = useCallback(() => {
+    applyHwPlacement(false, hwMonitorDock);
+  }, [applyHwPlacement, hwMonitorDock]);
 
   // Focus HUD: stacked fusion + HW below. Dual is user's choice.
   useEffect(() => {
@@ -3302,7 +3310,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         onToggleLaunchDockPosition={toggleLaunchDockPosition}
         hwMonitorOpen={hwMonitorOpen}
         hwMonitorDock={hwMonitorDock}
-        onCycleHwMonitor={cycleHwMonitor}
+        onHwMonitorOff={hwMonitorOff}
+        onToggleHwMonitorDock={toggleHwMonitorDock}
         showLaunchRail={showLaunchRail}
         enginesInRail={enginesInRail}
         onToggleEnginesInRail={toggleEnginesInRail}

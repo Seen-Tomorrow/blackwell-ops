@@ -601,7 +601,7 @@ function App() {
         <DisplayFaceSync>
         <IndustrialBezelTextureProvider>
         <FoundryProvider>
-          <TelemetryProvider pollingActive={hwMonitorOpen || activeTab === "catalog" || hasLiveEngines} gpuPollTier={gpuPollTier}>
+          <TelemetryProvider pollingActive={hwMonitorOpen || activeTab === "catalog" || hasLiveEngines} cpuPollingActive={hwMonitorOpen} gpuPollTier={gpuPollTier}>
             <StatusProvider value={statusValue}>
             <HarnessVeilPreview />
             <Layout

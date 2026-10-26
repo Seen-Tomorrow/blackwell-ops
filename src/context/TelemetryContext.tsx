@@ -80,11 +80,15 @@ function cpuSnapshotEqual(a: CpuInfo | null, b: CpuInfo): boolean {
 export function TelemetryProvider({
   children,
   pollingActive,
+  cpuPollingActive = pollingActive,
   gpuPollTier = "idle",
 }: {
   children: React.ReactNode;
+  /** Any surface needs GPU/RAM snapshots (catalog, live engine, open HW monitor). */
   pollingActive: boolean;
-  /** fast = HW monitor open; normal = catalog or live engines; idle = other tabs */
+  /** CPU snapshots are only consumed by the HW monitor; stop them when it is off. */
+  cpuPollingActive?: boolean;
+  /** fast = HW monitor open; normal = catalog or live engines; idle = no live surface. */
   gpuPollTier?: GpuPollTier;
 }) {
   /** Real NVML list only — fakes are merged for consumers in `value`. */
@@ -171,7 +175,9 @@ export function TelemetryProvider({
   }, [pollGpu, pollCpu]);
 
   // GPU poll tier: fast (HW monitor) / normal (catalog or engines) / idle (other tabs).
+  // No live surface → no timer at all; the one-shot bootstrap below seeded the snapshot.
   useEffect(() => {
+    if (!pollingActive) return;
     let paused = document.visibilityState !== "visible";
     const interval = gpuPollIntervalMs(gpuPollTier);
 
@@ -189,11 +195,11 @@ export function TelemetryProvider({
       clearInterval(gpuTimer);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [gpuPollTier, pollGpu]);
+  }, [pollingActive, gpuPollTier, pollGpu]);
 
-  // CPU live polling — TELEMETRY tab or config-panel HW monitor (see App pollingActive)
+  // CPU live polling — only the HW monitor consumes it.
   useEffect(() => {
-    if (!pollingActive) return;
+    if (!cpuPollingActive) return;
 
     let paused = document.visibilityState !== "visible";
     const tickCpu = () => { if (!paused) void pollCpu(); };
@@ -210,9 +216,10 @@ export function TelemetryProvider({
       clearInterval(cpuTimer);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [pollingActive, pollCpu]);
+  }, [cpuPollingActive, pollCpu]);
 
   useEffect(() => {
+    if (!pollingActive) return;
     let cancelled = false;
     let paused = document.visibilityState !== "visible";
 
@@ -248,7 +255,7 @@ export function TelemetryProvider({
       clearInterval(ramTimer);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, []);
+  }, [pollingActive]);
 
   const gpus = useMemo(() => {
     return applyDevGpuTopo(realGpus);

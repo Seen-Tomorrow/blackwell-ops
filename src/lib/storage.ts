@@ -506,7 +506,6 @@ export function saveHwMonitorOpen(open: boolean): void {
 }
 
 export type HwMonitorDock = "rail" | "below";
-type HwMonitorPlacement = "off" | HwMonitorDock;
 
 export function loadHwMonitorDock(): HwMonitorDock {
   return readStorage(KEYS.hwMonitorDock) === "below" ? "below" : "rail";
@@ -514,16 +513,6 @@ export function loadHwMonitorDock(): HwMonitorDock {
 
 export function saveHwMonitorDock(dock: HwMonitorDock): void {
   writeStorage(KEYS.hwMonitorDock, dock);
-}
-
-/** Cycle OFF → BELOW → RAIL → OFF. Placement persists independently of OFF. */
-export function cycleHwMonitorPlacement(
-  open: boolean,
-  dock: HwMonitorDock,
-): { open: boolean; dock: HwMonitorDock } {
-  if (!open) return { open: true, dock: "below" };
-  if (dock === "below") return { open: true, dock: "rail" };
-  return { open: false, dock };
 }
 
 

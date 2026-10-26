@@ -21,7 +21,8 @@ export default function EngineToolbar(props: EngineToolbarProps) {
     onToggleLaunchDockPosition,
     hwMonitorOpen,
     hwMonitorDock,
-    onCycleHwMonitor,
+    onHwMonitorOff,
+    onToggleHwMonitorDock,
     showLaunchRail,
     enginesInRail,
     onToggleEnginesInRail,
@@ -99,19 +100,31 @@ export default function EngineToolbar(props: EngineToolbarProps) {
           )}
           <button
             type="button"
-            onClick={onCycleHwMonitor}
+            onClick={onHwMonitorOff}
+            className={`config-panel-toolbar-chip px-1.5 py-0.5 type-tiny font-mono rounded-sm ${
+              !hwMonitorOpen ? "config-panel-toolbar-chip--active" : ""
+            }`}
+            title={hwMonitorOpen ? "Turn HW monitor off" : "HW monitor is off"}
+            aria-pressed={!hwMonitorOpen}
+          >
+            HW OFF
+          </button>
+          <button
+            type="button"
+            onClick={onToggleHwMonitorDock}
             className={`config-panel-toolbar-chip px-1.5 py-0.5 type-tiny font-mono rounded-sm ${
               hwMonitorOpen ? "config-panel-toolbar-chip--active" : ""
             }`}
             title={
               !hwMonitorOpen
-                ? "HW monitor off — click for BELOW display"
+                ? `HW monitor off — click to show in ${hwMonitorDock === "below" ? "BELOW display" : "RAIL"}`
                 : hwMonitorDock === "below"
                   ? "HW monitor below display — click for right RAIL"
-                  : "HW monitor in right rail — click to turn off"
+                  : "HW monitor in right rail — click for BELOW display"
             }
+            aria-pressed={hwMonitorOpen}
           >
-            HW {!hwMonitorOpen ? "OFF" : hwMonitorDock === "below" ? "BELOW" : "RAIL"}
+            {hwMonitorDock === "below" ? "BELOW" : "RAIL"}
           </button>
         </div>
         {hasParams && (
@@ -151,8 +164,10 @@ export interface EngineToolbarProps {
   onToggleLaunchDockPosition: () => void;
   hwMonitorOpen: boolean;
   hwMonitorDock: HwMonitorDock;
-  /** Cycle HW monitor OFF → BELOW → RAIL → OFF. Last chrome control before columns. */
-  onCycleHwMonitor: () => void;
+  /** Explicit power-off for the HW monitor (separate from the dock toggle). */
+  onHwMonitorOff: () => void;
+  /** Reopen in the remembered dock, or flip BELOW ↔ RAIL when already on. */
+  onToggleHwMonitorDock: () => void;
   showLaunchRail: boolean;
   enginesInRail: boolean;
   onToggleEnginesInRail: () => void;
