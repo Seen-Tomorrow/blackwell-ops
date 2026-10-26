@@ -36,6 +36,13 @@ src-tauri/runtime-bundle/
 src-tauri/bin/git/
 src-tauri/pi-ext/
 
+# --- Engine packs (published as 7z release assets by majestic pack:engines) ---
+# runtime/<provider>/<profile>/ holds the llama-server pack + build-info sidecar;
+# it is assembled locally and shipped as a release asset, never committed.
+# Factory templates under runtime/<provider>/config/ stay tracked.
+src-tauri/runtime/*/*/
+!src-tauri/runtime/*/config/
+
 # --- AI / Llama Server Specific ---
 # Ignore the actual server executable if you download it externally
 # but keep your integration logic.
