@@ -23,9 +23,9 @@ interface BatchRangeSliderProps {
   defs: UserEditedTemplateParam[];
   config: Record<string, unknown>;
   onChange: (key: string, value: string | number) => void;
-  /** TWEAKS/SAMPLER hidden — span the full instrument row. */
+  /** TWEAKS/TASK hidden — span the full instrument row. */
   fullWidth?: boolean;
-  /** Shown only while collapsed: reopen the TWEAKS + SAMPLER stack. */
+  /** Shown only while collapsed: reopen the TWEAKS + TASK stack. */
   onExpand?: () => void;
 }
 
@@ -189,8 +189,8 @@ export default function BatchRangeSlider({
             type="button"
             className="cockpit-batch__extras"
             onClick={onExpand}
-            aria-label="Show TWEAKS and SAMPLER"
-            title="Show TWEAKS + SAMPLER"
+            aria-label="Show TWEAKS and TASK"
+            title="Show TWEAKS + TASK"
           >
             EXTRAS
             <span className="cockpit-batch__extras-chevron" aria-hidden>

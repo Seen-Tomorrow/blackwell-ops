@@ -100,6 +100,7 @@ import { computeGpuAvailableList } from "../services/vram/shared";
 import {
   FULL_AUTO_GOALS,
   FULL_AUTO_WORKLOADS,
+  detectSamplerTask,
   type FullAutoGoal,
   type FullAutoWorkload,
 } from "../lib/fullAutoGoals";
@@ -117,16 +118,13 @@ import { useConfigColumns } from "../hooks/useConfigColumns";
 import PreflightStrip from "./PreflightStrip";
 import TweaksPanel from "./TweaksPanel";
 import BatchRangeSlider from "./BatchRangeSlider";
-import { SamplerTaste } from "./CockpitInstruments";
+import { SamplerTask } from "./CockpitInstruments";
 import {
   COMPAT_KEYS,
   SAMPLER_KEYS,
-  TASTES,
   countTuned,
   isParamTuned,
   isSurfaceParam,
-  samplerDefs,
-  tasteValues,
   throughputPair,
   visibleParamValuesOf,
 } from "../lib/engineSurfaces";
@@ -1027,6 +1025,14 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const [autoWorkload, setAutoWorkload] = useState<FullAutoWorkload>("chat");
   const [autoSpecOverride, setAutoSpecOverride] = useState<SpeedBoostId | null>(null);
 
+  // Keep the AUTOPILOT task row aligned with the sampler bag edited in ASSISTED.
+  // A custom bag keeps the last named task; clicking a task re-applies it.
+  useEffect(() => {
+    const detected = detectSamplerTask(config);
+    if (detected === "custom") return;
+    setAutoWorkload((prev) => (prev === detected ? prev : detected));
+  }, [config]);
+
   /** Pure contract decision — never reads manual cockpit state. */
   const autoDecision = useMemo(() => {
     if (!fullAutoFixed) return null;
@@ -1090,16 +1096,16 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     catalogModels: models,
   });
 
-  const applyAutoWorkload = useCallback(
+  /** Apply a task's explicit sampler + compat values. Shared by AUTOPILOT and ASSISTED. */
+  const applyWorkloadPreset = useCallback(
     (workload: FullAutoWorkload) => {
       setAutoWorkload(workload);
       const option = FULL_AUTO_WORKLOADS.find((item) => item.id === workload);
       if (!option) return;
-      const taste = TASTES.find((item) => item.id === option.taste);
-      if (taste) {
-        for (const [key, value] of tasteValues(samplerDefs(allParamsResolved), taste)) {
-          updateParam(key, value);
-        }
+      for (const [key, value] of Object.entries(option.sampler)) {
+        const def = allParamsResolved.find((param) => param.key === key);
+        if (!def) continue;
+        updateParam(key, value);
       }
       for (const [key, preferred] of Object.entries(option.tweaks)) {
         const def = allParamsResolved.find((param) => param.key === key);
@@ -1111,6 +1117,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     },
     [allParamsResolved, updateParam],
   );
+
+  const applyAutoWorkload = applyWorkloadPreset;
   const applyAutoPlan = useCallback(
     (goal: FullAutoGoal) => {
       const decision = resolveFullAutoDecision({
@@ -3500,7 +3508,14 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                     onChange={updateParam}
                     onCollapse={toggleExtras}
                   />
-                  <SamplerTaste defs={allParamsResolved} config={config} onChange={updateParam} />
+                  {!fullAutoFixed ? (
+                    <SamplerTask
+                      defs={allParamsResolved}
+                      config={config}
+                      onChange={updateParam}
+                      onTask={applyWorkloadPreset}
+                    />
+                  ) : null}
                 </div>
               )}
             </>
@@ -3532,7 +3547,14 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                   onChange={updateParam}
                   onCollapse={toggleExtras}
                 />
-                <SamplerTaste defs={allParamsResolved} config={config} onChange={updateParam} />
+                {!fullAutoFixed ? (
+                  <SamplerTask
+                    defs={allParamsResolved}
+                    config={config}
+                    onChange={updateParam}
+                    onTask={applyWorkloadPreset}
+                  />
+                ) : null}
               </div>
             )}
           </div>

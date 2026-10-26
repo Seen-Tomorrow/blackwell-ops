@@ -1,5 +1,11 @@
 import type { BrainsId, CodingModeId, SpeedBoostId, ThinkId } from "./multiAgentBooster";
-import { THROUGHPUT_STOPS, type ParamValue, type TasteId, type ThroughputId } from "./engineSurfaces";
+import {
+  THROUGHPUT_STOPS,
+  sameParamValue,
+  type ParamValue,
+  type SamplerKey,
+  type ThroughputId,
+} from "./engineSurfaces";
 
 /** FULL AUTO outcomes — the app owns the knobs until the user takes control. */
 export type FullAutoGoal = "balanced" | "context" | "agents" | "fastest";
@@ -76,7 +82,8 @@ export interface FullAutoWorkloadOption {
   id: FullAutoWorkload;
   label: string;
   note: string;
-  taste: TasteId;
+  /** Explicit sampler values — no percent positions, no provider-value drift. */
+  sampler: Record<SamplerKey, ParamValue>;
   /** Preferred tweak values; only applied when the template exposes them. */
   tweaks: Record<string, ParamValue>;
 }
@@ -85,8 +92,15 @@ export const FULL_AUTO_WORKLOADS: FullAutoWorkloadOption[] = [
   {
     id: "chat",
     label: "CHAT",
-    note: "BALANCED sampler · Jinja on · reasoning on",
-    taste: "balanced",
+    note: "0.7 / 0.95 · presence 0 · Jinja on",
+    sampler: {
+      temp: 0.7,
+      top_p: 0.95,
+      top_k: 20,
+      min_p: 0.05,
+      presence_penalty: 0,
+      repeat_penalty: 1,
+    },
     tweaks: {
       jinja: "on",
       swa_full: "off",
@@ -98,8 +112,15 @@ export const FULL_AUTO_WORKLOADS: FullAutoWorkloadOption[] = [
   {
     id: "coding",
     label: "CODING",
-    note: "EXACT sampler · Jinja on · larger cache",
-    taste: "exact",
+    note: "0.3 / 0.95 · presence 0 · larger cache",
+    sampler: {
+      temp: 0.3,
+      top_p: 0.95,
+      top_k: 20,
+      min_p: 0,
+      presence_penalty: 0,
+      repeat_penalty: 1,
+    },
     tweaks: {
       jinja: "on",
       swa_full: "off",
@@ -111,8 +132,15 @@ export const FULL_AUTO_WORKLOADS: FullAutoWorkloadOption[] = [
   {
     id: "longdoc",
     label: "LONG-DOC",
-    note: "BALANCED sampler · SWA full · 32K cache",
-    taste: "balanced",
+    note: "0.3 / 0.9 · presence 0 · SWA full · 32K cache",
+    sampler: {
+      temp: 0.3,
+      top_p: 0.9,
+      top_k: 20,
+      min_p: 0,
+      presence_penalty: 0,
+      repeat_penalty: 1,
+    },
     tweaks: {
       jinja: "on",
       swa_full: "on",
@@ -124,8 +152,15 @@ export const FULL_AUTO_WORKLOADS: FullAutoWorkloadOption[] = [
   {
     id: "batch",
     label: "BATCH",
-    note: "EXACT sampler · Jinja off · reasoning off",
-    taste: "exact",
+    note: "greedy · top-k 1 · presence 0 · max TPS",
+    sampler: {
+      temp: 0,
+      top_p: 1,
+      top_k: 1,
+      min_p: 0,
+      presence_penalty: 0,
+      repeat_penalty: 1,
+    },
     tweaks: {
       jinja: "off",
       swa_full: "off",
@@ -135,6 +170,19 @@ export const FULL_AUTO_WORKLOADS: FullAutoWorkloadOption[] = [
     },
   },
 ];
+
+/** Which task the current sampler bag represents, or CUSTOM after any edit. */
+export function detectSamplerTask(
+  config: Record<string, unknown>,
+): FullAutoWorkload | "custom" {
+  for (const option of FULL_AUTO_WORKLOADS) {
+    const match = Object.entries(option.sampler).every(([key, value]) =>
+      sameParamValue(config[key], value),
+    );
+    if (match) return option.id;
+  }
+  return "custom";
+}
 
 export function fullAutoWorkloadLabel(workload: FullAutoWorkload | null): string | null {
   if (!workload) return null;

@@ -22,7 +22,7 @@ interface TweaksPanelProps {
   defs: UserEditedTemplateParam[];
   config: Record<string, unknown>;
   onChange: (key: string, value: string | number) => void;
-  /** Hide the whole TWEAKS + SAMPLER stack from the cockpit. */
+  /** Hide the whole TWEAKS + TASK stack from the cockpit. */
   onCollapse?: () => void;
 }
 
@@ -45,8 +45,8 @@ export default function TweaksPanel({ defs, config, onChange, onCollapse }: Twea
               type="button"
               className="cockpit-instrument__collapse"
               onClick={onCollapse}
-              aria-label="Hide TWEAKS and SAMPLER"
-              title="Hide TWEAKS + SAMPLER"
+              aria-label="Hide TWEAKS and TASK"
+              title="Hide TWEAKS + TASK"
             >
               <span
                 className="cockpit-instrument__chevron cockpit-instrument__chevron--open"

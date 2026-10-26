@@ -124,6 +124,10 @@
       "sub_params": null,
       "ui_group": "SAMPLER",
       "values": [
+        0,
+        0.2,
+        0.3,
+        0.4,
         0.7,
         0.8,
         0.9,
@@ -146,6 +150,7 @@
       "ui_group": "SAMPLER",
       "values": [
         0.8,
+        0.9,
         0.95,
         1
       ]
@@ -165,6 +170,8 @@
       "sub_params": null,
       "ui_group": "SAMPLER",
       "values": [
+        0,
+        1,
         20,
         40
       ]
@@ -185,11 +192,12 @@
       "ui_group": "SAMPLER",
       "values": [
         0,
+        0.02,
         0.05
       ]
     },
     {
-      "default": 1.5,
+      "default": 0,
       "dock": "",
       "flag": "--presence-penalty",
       "flag_pair": [],
@@ -204,6 +212,8 @@
       "ui_group": "SAMPLER",
       "values": [
         0,
+        0.1,
+        0.3,
         1,
         1.5
       ]

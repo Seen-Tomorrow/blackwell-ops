@@ -114,6 +114,10 @@
   white-space: nowrap;
 }
 
+.cockpit-instrument__state--warn {
+  color: var(--theme-warn);
+}
+
 .cockpit-instrument--batch {
   padding: 6px 8px;
   border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
