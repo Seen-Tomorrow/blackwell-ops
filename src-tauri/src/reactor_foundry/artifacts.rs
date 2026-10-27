@@ -34,7 +34,6 @@ pub(crate) async fn publish_artifacts_to_sacred(
         .ok_or_else(|| format!("Invalid sacred artifact path: {}", sacred.display()))?
         .join("Release.prev");
     if sacred.exists() {
-        // Remove any previous .prev
         if prev_dir.exists() {
             let _ = tokio::fs::remove_dir_all(&prev_dir).await;
         }
@@ -186,12 +185,12 @@ mod build_info_tests {
     }
 
     #[test]
-    #[test]
     fn parses_the_generated_package_version() {
         let text = "set(PACKAGE_VERSION \"0.7.0-dev\")";
         assert_eq!(parse_package_version(text).as_deref(), Some("0.7.0-dev"));
         assert_eq!(parse_package_version("nothing here"), None);
     }
+    #[test]
     fn parses_the_cmake_generated_build_info() {
         let generated = "#include \"build-info.h\"\n\
 int LLAMA_BUILD_NUMBER = 11870;\n\
