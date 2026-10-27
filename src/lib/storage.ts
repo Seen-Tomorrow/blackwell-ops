@@ -17,65 +17,8 @@ import type {
 } from "./types";
 
 /**
- * Centralized localStorage registry — single source of truth for all app keys.
- *
- * Convention: `BlackOps-{kebab-case}` static keys; `BlackOps-{namespace}:{id}` dynamic keys.
- *
- * | Key | Type | Purpose |
- * |-----|------|---------|
- * | BlackOps-power-user | string | POWER USER tri-state: locked / unlocked / permanently |
- * | BlackOps-last-provider | string | Last selected provider in engine panel |
- * | BlackOps-test-flags | string | Custom CLI flags for test launches |
- * | BlackOps-test-flags-on | "0" \| "1" | Test flags enabled toggle |
- * | BlackOps-test-flags-mode | add \| replace | Test flags merge mode |
- * | BlackOps-collapsed-groups | JSON string[] | Collapsed param groups in engine panel |
- * | BlackOps-last-model | string | Last selected model path in catalog |
- * | BlackOps-sort-field | string | Catalog sort column (default: date) |
- * | BlackOps-sort-dir | asc \| desc | Catalog sort direction (default: desc) |
- * | BlackOps-ui-zoom | number string | Main content text scale (0.7–1.5) |
- * | BlackOps-ui-density | comfortable \| compact | Engine config chip/row density |
- * | BlackOps-catalog-draft-filter | regular \| draft \| all | Catalog main/draft filter |
- * | BlackOps-model-spec:{modelPath} | JSON | Per-main-model profile knobs (mtp_ / dflash_ keys) |
- * | BlackOps-draft-pairings | JSON Record<targetPath, {specType, draftPath}> | Per-target DFlash draft pairings |
- * | BlackOps-dflash-hf-candidates | JSON | TTL cache of HF Get-draft scored candidates per main identity |
- * | BlackOps-param-creator-mode | simple \| advanced | Param creator UI mode |
- * | BlackOps-selected-slot-idx | number string | Last selected engine slot (-1 = none) |
- * | BlackOps-app-theme | string | Active app theme id (matrix, amber, …) |
- * | BlackOps-log-search-by-slot | JSON Record<slot, query> | Per-slot ENGINE LOGS search |
- * | BlackOps-logs-ansi-enabled | "0" \| "1" | ENGINE LOGS ANSI color rendering |
- * | BlackOps-startup-updates | JSON | Cached startup update check results |
- * | BlackOps-fusion-hero-tps | live \| avg | Fusion hero TPS display mode |
- * | BlackOps-fusion-log-verbosity | 3 \| 4 | Engine `-lv` at launch (default 3; 4 = full belt debug) |
- * | BlackOps-config-param-legend | open \| stowed | CONFIG PARAMETERS editor legend panel |
- * | BlackOps-display-texture | clean \| dotted | Display texture cycle |
- * | BlackOps-industrial-bezel-texture | sandblast \| diamond \| brush | Dark-theme gunmetal bezel pattern |
- * | BlackOps-catalog-split-width | number string (px) | Model catalog / engine config split |
- * | BlackOps-catalog-list-collapsed | "0" \| "1" | Model catalog list fully collapsed |
- * | BlackOps-catalog-list-dim | 0.2–1 | OPERATIONS catalog list body opacity (search chrome excluded) |
- * | BlackOps-catalog-seats-open | "0" \| "1" | Harness seats block in the catalog quick strip (absent = open) |
- * | BlackOps-model-hub-split-width | number string (0–1) | Model Hub results / quants split ratio |
-
- * | BlackOps-setup-guide-dismissed | "1" | Setup guide dismissed (cache; authority is app_config.setup_completed) |
- * | BlackOps-toolchain-onboarding-skipped | legacy | Cleared only — toolchain skip removed |
- * | BlackOps-setup-welcome-seen | "1" | Welcome animation seen (cache; replayed when config/ is reset) |
- * | BlackOps-setup-guide-preview | "1" | Dev: force welcome + guide in VRAM display |
- * | BlackOps-bench-controls | JSON | Global TG/PP bench control chips (n_predict, concurrency, warmup, prompt mode) |
-
- * | BlackOps-catalog-override:{providerId} | JSON v2 { version, activePolicy, profiles } | Per-mode launch value profiles (full_auto / assisted_essentials / assisted_full); flat v1 migrates on read |
- * | BlackOps-launch-presets:v1 | JSON { version, combos } | Named solo/twin launch combo presets |
- * | BlackOps-group-order:{providerId} | JSON string[] | CONFIG param group order |
- * | BlackOps-group-display-zone:{providerId} | JSON Record<group, above\|below> | Pin groups above VRAM display |
- * | BlackOps-engine-alias:{modelPath} | string | Per-model launch alias |
- * | BlackOps-binary-profile:{providerId} | fresh \| vanguard \| edge \| stable | Selected binary env profile |
- * | BlackOps-foundry-last-refresh:{signature} | timestamp string | Foundry git refresh throttle |
- * | BlackOps-auto-vram:{providerId} | "0" \| "1" | Auto VRAM (default ON when factory autoVram / missing key) |
-
- *
- * Purged on boot (stale — no longer read by app):
- * | Key | Notes |
- * |-----|-------|
- * | blackops-phosphor-theme | Superseded by BlackOps-app-theme |
- * | BlackOps-fusion-bench-tray | Tray open/stowed is session memory; knobs stay in BlackOps-bench-controls |
+ * Centralized localStorage registry — every `BlackOps-*` key lives in `KEYS` below.
+ * Static keys are `BlackOps-{kebab-case}`; dynamic ones append `:{id}`.
  */
 
 export const STORAGE_PREFIX = "BlackOps-" as const;

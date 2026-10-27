@@ -3925,34 +3925,12 @@ html[data-industrial-bezel="brush"] {
 /*
  * Phosphor face inks — property-scoped class rules.
  *
- * These used to match the literal Tailwind utility names, so deleting the
- * utilities silently killed them. They cannot be token scopes on
- * .phosphor-screen-inner: a container token scope changes EVERY use of that
- * token inside the subtree, but the old hooks corrected ONE property on ONE
- * family. Inside the glass, --theme-accent also paints forecast bar fills
- * (.vram-fc-bar__fill, the bar-need-fill ramp), accent chip borders and glows;
- * --theme-panel paints every panel/surface background; --theme-warn and
- * --theme-info fill fuel bars, phase badges and ctx bars. Re-scoping those
- * tokens would move all of those paints, not just the ink the old hook fixed.
- *
- * So the correction is keyed to the surface class that replaced each utility,
- * grouped by property. Values are verbatim from the old hooks.
- *
- *   color: control-muted   (was text-stealth-muted[/25..80])
- *   color: control-text    (was text-nv-green[/70])
- *   color: #0088aa         (was text-telemetry-cyan[/70])
- *   color: #b87a00         (was text-orange-400 / text-telemetry-amber[/80])
- *   background: bar-bg     (was bg-stealth-dark)
- *   border-color: control-border (was border-stealth-border[/15..70] +
- *                              border-stealth-muted[/30,60])
- *
- * Accepted micro-delta: alpha tails no longer flatten to 100% — each class
- * keeps its own color-mix step over the same clamped ink.
- *
- * The hover:utility rules are gone with the utilities: the only pre-migration
- * hover site (EngineConfigPanel's "Starter pack" span) was migrated to
- * .eng-note-emph outside the glass; no current element inside
- * .phosphor-screen-inner carries a hover ink utility.
+ * The old hooks matched literal Tailwind utility names, so deleting those
+ * utilities would silently kill the corrections. Re-scoping the tokens on
+ * .phosphor-screen-inner is not an option: each token also paints forecast
+ * fills, chip borders, glows and panel backgrounds inside the glass, so a
+ * token scope would move every one of those paints, not just the ink.
+ * Each rule below is keyed to the surface class that replaced its utility.
  */
 
 /* Muted ink (was text-stealth-muted[/25..80] -> --display-face-control-muted) */

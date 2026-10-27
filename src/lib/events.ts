@@ -1,28 +1,5 @@
 /**
- * App-wide custom event registry — all names use the `BlackOps-` prefix.
- *
- * | Event | Purpose |
- * |-------|---------|
- * | BlackOps-reload-providers | Refetch provider list from Rust after config save |
- * | BlackOps-param-config-changed | Param catalog/count changed; reload overrides |
- * | BlackOps-navigate-stack | Switch to ENGINES tab (GPU topo click-through) |
- * | BlackOps-navigate-catalog | Switch to OPERATIONS tab (catalog — model pick, FIT, bench) |
- * | BlackOps-navigate-model-hub | Switch to MODEL HUB tab |
- * | BlackOps-launch-engine | Request launch from catalog keyboard shortcut |
- * | BlackOps-launch-success | Engine started — status bar + toast |
- * | BlackOps-launch-error | Launch failed — status bar + toast |
- * | BlackOps-engine-launched | Backend returned slot — auto-select in catalog |
- * | BlackOps-stop-all | All engines stopped — clear slot selection |
- * | BlackOps-slot-cleared | Single slot cleared — update selection |
- * | BlackOps-download-completed | Model Hub download finished — refresh catalog |
-
- * | BlackOps-model-paths-changed | Model path added/removed/default changed — refresh catalog |
- * | BlackOps-navigate-config | Switch to CONFIG tab; detail.subTab selects sub-tab (incl. recovery) |
- * | BlackOps-setup-guide-changed | Setup guide phase/dismiss state changed |
- * | BlackOps-reset-setup-guide | Clear onboarding keys and replay welcome/guide in-app |
- * | BlackOps-show-all-hidden-params | CONFIG footer — unhide all hidden param rows (current provider) |
- * | BlackOps-local-storage-cleared | All `BlackOps-*` keys removed (before optional reload) |
- * | BlackOps-fit-scan-cache-changed | FIT library partition updated — refresh forecast points |
+ * App-wide custom event registry — every name in `EVENTS` uses the `BlackOps-` prefix.
  */
 
 import type { ConfigSubTab } from "./appNav";
