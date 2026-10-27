@@ -309,7 +309,6 @@ pub fn ensure_portable_structure(app_handle: &tauri::AppHandle) {
     #[cfg(not(debug_assertions))]
     sync_runtime_factory_configs_from_resources(app_handle, &root);
 
-    // Create directories
     let _ = std::fs::create_dir_all(&data);
     let _ = std::fs::create_dir_all(default_models_dir());
     let _ = std::fs::create_dir_all(cache_dir().parent().unwrap_or(&data));

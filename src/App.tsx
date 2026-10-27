@@ -60,7 +60,6 @@ function App() {
   );
   const [models, setModels] = useState<ModelEntry[]>([]);
   // Per-path scan diagnostics — drives the catalog's "why is this empty" state.
-  // Per-path scan diagnostics — drives the catalog's "why is this empty" state.
   // `null` = no report yet, so the catalog never blames a path before it has one.
   const [pathScans, setPathScans] = useState<ModelPathScan[] | null>(null);
   const [catalogLoaded, setCatalogLoaded] = useState(false);

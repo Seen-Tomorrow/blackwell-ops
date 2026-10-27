@@ -77,7 +77,6 @@ export function catalogEntryToParam(
   const values = collectCatalogValues(entry);
   const defaultValue = coerceCatalogDefault(entry) ?? (values.length > 0 ? values[0] : undefined);
 
-  // Check if key already exists — if so, we skip addition
   const exists = existingParams.some((p) => p.key === entry.key);
   if (exists) {
     // Still return the param but caller should handle

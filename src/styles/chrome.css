@@ -2103,17 +2103,11 @@
 }
 
 /*
- * Foundry window ink corrections — re-scoped to TOKENS.
- * These used to match the literal Tailwind utility names (the yellow text
- * utility and its /60, /70, /90 variants plus yellow-300 -> var(--theme-secondary-bright);
- * the telemetry-cyan text utility and its /70, /80 variants -> var(--theme-accent-bright)),
- * so deleting the utilities silently killed them. Paint is token-driven now: the
- * container re-scopes the semantic tokens and every fnd-* class inherits them, in
- * all three faces, with no name coupling.
- *   warn  MATRIX/SLATE #FFB800 vs secondary-bright #f5971f; ARCTIC both #ea580c
- *   info  MATRIX #00e5ff vs accent-bright #4ade80; ARCTIC #0891b2 vs #075985
- * Accepted micro-delta: alpha variants no longer flatten to 100% — each class
- * keeps its own color-mix step.
+ * Foundry window ink corrections — re-scoped to tokens.
+ * The old hooks matched literal Tailwind utilities, so deleting those utilities
+ * would silently kill them. Paint is token-driven now: the container re-scopes
+ * the semantic tokens and every fnd-* class inherits them, in all three faces.
+ * Accepted micro-delta: alpha variants keep their own color-mix step.
  */
 .foundry-window {
   --theme-warn: var(--theme-secondary-bright);

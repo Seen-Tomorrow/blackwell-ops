@@ -89,7 +89,6 @@ pub fn scan_model_metadata(model_path: &str, binary_path: &str) -> Result<ModelM
         match rx.recv_timeout(Duration::from_millis(200)) {
             Ok(line) => lines.push(line),
             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                // Check if thread is done
                 if collect_thread.is_finished() { break; }
                 if start.elapsed() > Duration::from_secs(15) { break; }
                 continue;

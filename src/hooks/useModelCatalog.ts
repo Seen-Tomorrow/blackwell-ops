@@ -499,7 +499,6 @@ export function useModelCatalog({
   const runningModelPaths = useMemo(() => new Set(runningInstances.keys()), [runningInstances]);
 
   // First engine per model (backward compat for EngineConfigPanel)
-  // First engine per model (backward compat for EngineConfigPanel)
   const activeEngineByModel = useMemo(() => {
     const map = new Map<string, { alias: string; port?: number }>();
     stack.filter(s => s.status === "RUNNING" || s.status === "LOADING").forEach(s => {

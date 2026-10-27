@@ -66,7 +66,6 @@ pub async fn scan_model_metadata_cmd(
     crate::model_cache::set_cached(&model_path, cached_meta)
         .map_err(|e| format!("Cache save failed: {}", e))?;
 
-    // Return enriched ModelEntry — build minimal entry with metadata attached
     let file_size = total_file_size;
 
     let hf_meta_for_entry = crate::model_cache::get_hf_metadata(&model_path);

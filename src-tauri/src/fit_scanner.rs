@@ -2475,7 +2475,6 @@ pub async fn fit_scan_library(
     let gpus = crate::telemetry::scan_gpus().await.unwrap_or_default();
     let total_gpu_mib: f64 = gpus.iter().map(|g| g.memory_total as f64).sum::<f64>() + (gpus.len() as f64 * FIT_OVERHEAD_PER_GPU);
 
-    // Create broadcast channel for real-time progress events
     let (progress_tx, _progress_rx) = broadcast::channel::<FitScanProgress>(64);
     let log_hub_clone = app.log_hub.clone();
 
@@ -2488,7 +2487,6 @@ pub async fn fit_scan_library(
         }
     });
 
-    // Create cancellation flag and store in AppContext
     let cancel_flag = Arc::new(AtomicBool::new(false));
     {
         let mut guard = app.fit_scan_cancel.lock().await;

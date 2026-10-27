@@ -166,24 +166,10 @@ async fn main() {
 
     #[cfg(debug_assertions)]
     std::env::set_var("RUST_BACKTRACE", "1");
-    // Custom panic handler.
-    //
-    // ORDER MATTERS. The payload is printed FIRST. The previous version emitted
-    // location, then payload, then a full backtrace, then `{:?}` of PanicHookInfo,
-    // so the one line that identifies the failure sat about sixty frames above the
-    // prompt and the visible tail was `PanicHookInfo { payload: Any { .. }, .. }`.
-    // That is what turned the 2026-10-15 DEV startup failure into hours of guessing:
-    // the actual cause, "failed to create webview: WebView2 error 0x800700AA", was
-    // off-screen while the last line on screen said nothing.
-    //
-    // stderr is written FIRST and unconditionally: it is the only sink here that
-    // cannot fail. File logging is best-effort, but it now REPORTS every failure
-    // instead of swallowing it, and it falls back to directories that stay writable
-    // when %TEMP% is not.
-    //
-    // This deliberately does NOT route into the Output Console. The old comment
-    // claimed it did, but no such call existed; adding one would risk a
-    // panic-inside-panic abort, since those paths allocate and take locks.
+    // Custom panic handler: payload first, then location, then backtrace.
+    // stderr is written unconditionally; file logging is best-effort but reports
+    // failures and falls back to writable dirs. Do not route into the Output
+    // Console — those paths allocate and take locks, risking a panic-inside-panic abort.
     std::panic::set_hook(Box::new(|info| {
         let payload = info
             .payload()

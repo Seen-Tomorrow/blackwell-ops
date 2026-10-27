@@ -530,6 +530,3 @@ export const FoundryProvider: React.FC<{ children?: React.ReactNode }> = ({ chil
 export function useFoundry(): FoundryCtx {
   return useContext(FoundryContext);
 }
-
-// Note: Deprecated aliases (useBuildDock / BuildDockProvider) have been fully removed.
-// Only modern exports (FoundryProvider + useFoundry) remain in this file.

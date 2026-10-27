@@ -106,7 +106,6 @@ export function useKeyboardNav({ modelCount, onSelectModel, onLaunch }: UseKeybo
     if (zone !== "config") return;
 
     const handler = (e: KeyboardEvent) => {
-      // Get all interactive elements in config panel
       const configPanel = document.querySelector('[data-config-panel]');
       if (!configPanel) return;
 

@@ -1355,7 +1355,6 @@ impl DownloadManager {
             }
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
-            // Check if task was cancelled while waiting
             {
                 let dm = manager.read().await;
                 if let Some(task) = dm.tasks.get(&task_id) {
@@ -1393,7 +1392,6 @@ impl DownloadManager {
             }
         };
 
-        // Create parent directories
         if let Some(parent) = Path::new(&partial_path).parent() {
             if !parent.as_os_str().is_empty() {
                 if let Err(e) = fs::create_dir_all(parent).await {
