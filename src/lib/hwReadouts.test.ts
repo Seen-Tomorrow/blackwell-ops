@@ -10,6 +10,7 @@ import {
   hwTotals,
   pcieReadout,
   powerFill,
+  shouldAnimate,
   tempTone,
   throttleHot,
   throttleText,
@@ -72,6 +73,31 @@ describe("barStep", () => {
     expect(barStep(140)).toBe(100);
     expect(barStep(Number.NaN)).toBe(0);
     expect(barStep(10, 0)).toBe(10);
+  });
+});
+
+/**
+ * The gate that decides whether a quantized move starts a tween. If this ever returns true
+ * for a sub-step move, idle jitter wakes the compositor every tick again (the 1->6->10 % iGPU
+ * spikes); if it returns false for a real step, the meters snap and the panel looks choppy.
+ */
+describe("shouldAnimate", () => {
+  it("stays quiet on unchanged or sub-step targets", () => {
+    expect(shouldAnimate(3, 3)).toBe(false);
+    expect(shouldAnimate(3, 3.4)).toBe(false);
+    expect(shouldAnimate(12.5, 12.9)).toBe(false);
+  });
+
+  it("animates exactly one visual step in either direction", () => {
+    expect(shouldAnimate(3, 3.5)).toBe(true);
+    expect(shouldAnimate(3.5, 3)).toBe(true);
+  });
+
+  it("animates large moves and honours a coarser gate", () => {
+    expect(shouldAnimate(0, 100)).toBe(true);
+    expect(shouldAnimate(100, 0)).toBe(true);
+    expect(shouldAnimate(10, 14, 5)).toBe(false);
+    expect(shouldAnimate(10, 15, 5)).toBe(true);
   });
 });
 

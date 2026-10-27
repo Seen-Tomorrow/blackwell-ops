@@ -74,6 +74,23 @@ export function barStep(percent: number, stepPct = 0.5): number {
   return Math.round(clamped / step) * step;
 }
 
+/**
+ * Whether a meter move is worth animating.
+ *
+ * The tween restarts on every target change, and each restart costs compositor frames, so
+ * this must be decided from the *quantized* targets: one visual step animates, anything
+ * below it cannot be seen and must not wake the compositor. Kept pure and tested because
+ * the previous in-render decision broke under StrictMode's double render (both passes must
+ * agree, or the second one writes `transition: none` over the tween the first started).
+ */
+export function shouldAnimate(
+  prevTarget: number,
+  nextTarget: number,
+  minDeltaPct = 0.5,
+): boolean {
+  return Math.abs(nextTarget - prevTarget) >= minDeltaPct;
+}
+
 export function fillLevel(percent: number, high = 70, critical = 90): FillLevel {
   if (percent > critical) return "critical";
   if (percent > high) return "high";

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { barStep } from "../../lib/hwReadouts";
+import { barStep, shouldAnimate } from "../../lib/hwReadouts";
 
 /**
  * Meter fill — animates `transform` (compositor-only) and only when the move is visible.
@@ -35,7 +35,7 @@ export default function HwFill({
 }) {
   const target = barStep(percent, stepPct);
   const prev = useRef(target);
-  const animate = Math.abs(target - prev.current) >= animateDeltaPct;
+  const animate = shouldAnimate(prev.current, target, animateDeltaPct);
   /*
    * Commit the seen value AFTER paint, never during render. Writing a ref while rendering is
    * impure, and StrictMode (DEV) renders twice: the second pass saw a zero delta, wrote
