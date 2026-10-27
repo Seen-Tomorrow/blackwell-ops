@@ -2013,3 +2013,106 @@ select option {
   border: 1px solid var(--theme-chip-border);
   color: var(--theme-chip-text);
 }
+
+/* ── Runtime telemetry polling sliders (CONFIG → RUNTIME) ─────────── */
+.cfg-poll-rows {
+  padding-top: 2px;
+}
+
+.cfg-poll-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.cfg-poll-row--toggle {
+  cursor: default;
+}
+
+.cfg-poll-row__note {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-hairline);
+  line-height: 1.3;
+  color: var(--theme-text-muted);
+  opacity: 0.7;
+}
+
+.cfg-poll-row__label {
+  flex: 0 0 auto;
+  width: 3.25rem;
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-tiny);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--theme-text-muted);
+}
+
+/* Monitor rows above, app-wide engine ticks below. */
+.cfg-poll-divider {
+  height: 1px;
+  margin: 3px 0 1px;
+  background: color-mix(in srgb, var(--theme-border) 45%, transparent);
+}
+
+.cfg-poll-row__value {
+  flex: 0 0 auto;
+  width: 7rem;
+  text-align: right;
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-tiny);
+  color: var(--theme-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.cfg-poll-row__hz {
+  color: var(--theme-text-muted);
+  opacity: 0.7;
+}
+
+.cfg-poll-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1 1 auto;
+  min-width: 8rem;
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-border) 70%, transparent);
+  outline: none;
+  cursor: pointer;
+}
+
+.cfg-poll-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--theme-accent-bright);
+  border: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 40%, transparent);
+  box-shadow: 0 0 4px color-mix(in srgb, var(--theme-accent-glow) 45%, transparent);
+  cursor: pointer;
+}
+
+.cfg-poll-slider::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--theme-accent-bright);
+  border: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 40%, transparent);
+  cursor: pointer;
+}
+
+.cfg-poll-slider::-moz-range-track {
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-border) 70%, transparent);
+}
+
+.cfg-poll-slider:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--theme-accent) 55%, transparent);
+  outline-offset: 3px;
+}

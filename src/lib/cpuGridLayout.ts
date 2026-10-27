@@ -75,8 +75,9 @@ export function resolveCpuGridColumns(
   return best > 0 ? best : target;
 }
 
-export function coreUsageFillClass(usage: number): string {
-  if (usage > 80) return "launch-rail-tel__cpu-core-fill--hot";
-  if (usage > 40) return "launch-rail-tel__cpu-core-fill--mid";
-  return "launch-rail-tel__cpu-core-fill--low";
+/** Core-bar tone — consumed as `data-fill` on the core fill. */
+export function cpuCoreFill(usage: number): "core-low" | "core-mid" | "core-hot" {
+  if (usage > 80) return "core-hot";
+  if (usage > 40) return "core-mid";
+  return "core-low";
 }

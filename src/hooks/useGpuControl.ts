@@ -118,7 +118,15 @@ export interface GpuOcOverlay {
   profileActive: boolean;
 }
 
-export function useGpuControl() {
+/**
+ * GPU overclock state.
+ *
+ * `pollDevices` gates the 2.5 s `get_gpu_control_devices` refresh (an nvidia-smi spawn
+ * in Rust). The HW monitor seeds it once on mount and only keeps polling while the OC
+ * panel is open — the values it returns (power limits, driver model) cannot change
+ * without an apply, and every apply already bursts a refresh.
+ */
+export function useGpuControl({ pollDevices = true }: { pollDevices?: boolean } = {}) {
   const [devices, setDevices] = useState<GpuControlDeviceInfo[]>([]);
   const [individualPresets, setIndividualPresets] = useState<GpuControlPreset[]>([]);
   const [sharedPreset, setSharedPreset] = useState<GpuControlSharedPreset>({
@@ -188,14 +196,22 @@ export function useGpuControl() {
   }, [loadInitial]);
 
   useEffect(() => {
+    if (!pollDevices) {
+      if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = null;
+      return;
+    }
+    // Fresh readings the moment the panel opens, then the steady refresh.
+    void pollClocks();
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = setInterval(() => {
       void pollClocks();
     }, CLOCK_POLL_MS);
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = null;
     };
-  }, [pollClocks]);
+  }, [pollDevices, pollClocks]);
 
   const burstPollClocks = useCallback(() => {
     void pollClocks();

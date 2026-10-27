@@ -363,7 +363,8 @@ async fn main() {
 
             app.manage(download_mgr);
 
-            telemetry::ensure_disk_io_poller();
+            // Disk I/O starts on the first `scan_disk_io` (model boot) and stops when idle —
+            // no sampler thread runs for a feature that is only visible while loading.
             ipc_meter::start_rotator();
 
             log::info!(
@@ -438,6 +439,7 @@ async fn main() {
             telemetry::scan_system_info,
             telemetry::get_nvidia_driver_version,
             telemetry::scan_disk_io,
+            telemetry::set_telemetry_timings,
             config::load_config,
             config::dev_reset_first_run,
             config::get_config_dir,

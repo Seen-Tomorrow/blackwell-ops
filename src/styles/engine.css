@@ -238,12 +238,6 @@
   color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
 }
 
-/* ── LaunchRailTelemetry ───────────────────────────────────────── */
-
-.eng-rail-empty {
-  color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
-}
-
 /* GPU overclock panel - restored from the retired playground.css;
    the Intel/Playground removal took these rules with it by accident. */
 /* GPU overclock — theme tel amber (ARCTIC copper; dark themes classic amber) */

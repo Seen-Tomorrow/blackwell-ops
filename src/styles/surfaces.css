@@ -349,8 +349,8 @@ button.engine-logs-slot-chip.engine-logs-slot-chip--active .engine-logs-slot-chi
    .shell-log-empty / .shell-log-count at their own text-muted color-mix steps.) */
 
 
-.launch-rail-tel .theme-surface .text-white,
-.launch-rail-tel .theme-surface .text-white\/80 {
+.hw-mon .theme-surface .text-white,
+.hw-mon .theme-surface .text-white\/80 {
   color: var(--theme-text);
 }
 

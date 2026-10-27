@@ -1,0 +1,1114 @@
+/* ═══ HW monitor ═════════════════════════════════════════════════════════
+   One home for the whole monitor — shell, header, widgets, both placements.
+
+   Placement is shape:  rail  = vertical column in the right rail
+                        below = horizontal strip under the launch display
+   Density is content:  full    = every reading the widget knows
+                        compact = the short shape (clocks + PCIe rows are
+                                  dropped in JSX, never rendered and hidden)
+
+   Face/texture is NOT here: widgets carry `phosphor-display-surface`, whose
+   dot-matrix recipe lives with the other display faces in fusion-display.css.
+   ===================================================================== */
+
+.hw-mon {
+  /* Signal colors — theme tokens; ARCTIC overrides them in app-themes.ts. */
+  --tel-vram: var(--theme-tel-vram, var(--theme-accent-bright));
+  --tel-ram: var(--theme-tel-ram);
+  --tel-amber: var(--theme-tel-amber);
+  --tel-cyan: var(--theme-tel-cyan);
+  --tel-hot: var(--theme-tel-hot);
+  --hw-header-h: 24px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  container-type: inline-size;
+  container-name: hwmon;
+}
+
+/* Rail slot the shell is mounted into (above the launch dock). */
+.hw-mon-slot {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.hw-mon[data-placement="rail"] {
+  flex: 1 1 auto;
+  height: 100%;
+}
+
+.hw-mon[data-placement="below"] {
+  height: auto;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────── */
+
+.hw-mon__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  min-height: var(--hw-header-h);
+  padding: 2px 6px 2px 9px;
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-bezel-edge-lo) 45%, transparent);
+}
+
+.hw-mon__identity {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Static on purpose: a 60 fps pulse keeps WebView2 compositing the whole window
+   even when every reading is unchanged, which is pure iGPU cost on a monitor. */
+.hw-mon__pulse {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--tel-vram);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--tel-vram) 65%, transparent);
+}
+
+.hw-mon__title {
+  min-width: 0;
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-tiny);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--theme-text) 78%, var(--theme-text-muted));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hw-mon__controls {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+}
+
+.hw-mon__chip {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-hairline);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  line-height: 1;
+  padding: 3px 5px 2px;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 45%, transparent);
+  background: transparent;
+  color: color-mix(in srgb, var(--theme-text-muted) 65%, transparent);
+  cursor: pointer;
+  transition: color 0.12s ease, border-color 0.12s ease, background-color 0.12s ease;
+}
+
+.hw-mon__chip:hover {
+  color: var(--theme-text);
+  border-color: color-mix(in srgb, var(--theme-border) 75%, transparent);
+}
+
+.hw-mon__chip--on {
+  color: color-mix(in srgb, var(--theme-accent-bright) 85%, var(--theme-text));
+  border-color: color-mix(in srgb, var(--theme-accent) 50%, transparent);
+  background: var(--theme-accent-soft);
+}
+
+.hw-mon__chip--alert {
+  color: var(--theme-tel-amber-ink, var(--fixed-amber-400));
+  border-color: color-mix(in srgb, var(--tel-amber) 55%, transparent);
+  background: color-mix(in srgb, var(--tel-amber) 15%, transparent);
+}
+
+/* Dim control — slider only in narrow rails, label reappears when the shell
+   is wide enough (below placement). */
+.hw-mon__dim {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 0 1 auto;
+  cursor: pointer;
+  user-select: none;
+}
+
+.hw-mon__dim-label {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-hairline);
+  letter-spacing: 0.12em;
+  line-height: 1;
+  color: color-mix(in srgb, var(--theme-text-muted) 75%, transparent);
+}
+
+.hw-mon__dim-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 44px;
+  flex: 0 1 44px;
+  min-width: 24px;
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-border) 70%, transparent);
+  outline: none;
+  cursor: pointer;
+}
+
+.hw-mon__dim-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--theme-accent-bright);
+  border: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 40%, transparent);
+  box-shadow: 0 0 4px color-mix(in srgb, var(--theme-accent-glow) 45%, transparent);
+  cursor: pointer;
+}
+
+.hw-mon__dim-slider::-moz-range-thumb {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--theme-accent-bright);
+  border: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 40%, transparent);
+  cursor: pointer;
+}
+
+.hw-mon__dim-slider::-moz-range-track {
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-border) 70%, transparent);
+}
+
+@container hwmon (max-width: 300px) {
+  .hw-mon__dim-label {
+    display: none;
+  }
+  .hw-mon__dim-slider {
+    flex-basis: 40px;
+    width: 40px;
+  }
+}
+
+@container hwmon (max-width: 250px) {
+  .hw-mon__pulse {
+    display: none;
+  }
+  .hw-mon__title {
+    letter-spacing: 0.1em;
+  }
+  .hw-mon__dim-slider {
+    flex-basis: 32px;
+    width: 32px;
+  }
+}
+
+/* ── Body — the only scroll owner; dim applies here, never to the OC overlay ── */
+
+.hw-mon__body {
+  min-width: 0;
+  min-height: 0;
+  opacity: var(--hw-monitor-dim, 1);
+  transition: opacity 0.15s ease;
+}
+
+.hw-mon[data-placement="rail"] .hw-mon__body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px 8px 8px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.hw-mon[data-density="compact"] .hw-mon__body {
+  gap: 6px;
+}
+
+/* Rail scrolls; widgets keep their natural height instead of compressing. */
+.hw-mon[data-placement="rail"] .hw-mon__body > * {
+  flex-shrink: 0;
+}
+
+.hw-mon[data-placement="rail"] .hw-mon__body::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+/* Below strip: totals column, CPU column, one column per GPU. */
+.hw-mon[data-placement="below"] .hw-mon__body {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(150px, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  align-items: stretch;
+  gap: 6px;
+  padding: 5px 8px 6px;
+  overflow: hidden;
+}
+
+.hw-mon__empty {
+  margin: 0;
+  padding: 10px 8px;
+  text-align: center;
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-tiny);
+  color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
+}
+
+/* ── Totals cells ───────────────────────────────────────────────────── */
+
+.hw-totals {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.hw-totals__pair {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 6px;
+  min-width: 0;
+}
+
+.hw-mon[data-placement="below"] .hw-totals {
+  height: 100%;
+}
+
+.hw-mon[data-placement="below"] .hw-totals > * {
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+.hw-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 5px 6px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 28%, transparent);
+}
+
+.hw-cell__row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  min-width: 0;
+}
+
+.hw-mon[data-density="full"] .hw-cell--power .hw-cell__row {
+  align-items: center;
+}
+
+.hw-cell__label {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-hairline);
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+  color: var(--theme-text-muted);
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+.hw-cell__label-short {
+  display: none;
+}
+
+.hw-cell__value {
+  font-family: ui-monospace, monospace;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.hw-cell__value--power { color: var(--tel-amber); }
+.hw-cell__value--vram { color: var(--tel-vram); }
+.hw-cell__value--ram { color: var(--tel-ram); }
+
+.hw-cell__denom {
+  font-size: var(--type-tiny);
+  font-weight: 400;
+  opacity: 0.55;
+}
+
+.hw-cell__track {
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-text-muted) 18%, transparent);
+  overflow: hidden;
+}
+
+/*
+ * Meter fills animate `transform`, never `width`: a width tween forces layout + paint on
+ * every frame (that was the old iGPU cost), a composited scaleX tween does not. 120 ms
+ * linear is the glide the panel had before it was cut for paint; gradients are painted
+ * full-width and scaled, so a fill still shows its whole ramp.
+ *
+ * Deliberately no `prefers-reduced-motion` guard: Windows "animate controls and elements"
+ * off (MinAnimate=0) reports `reduce`, and the guard silently turns this instrument's
+ * motion off. Do not re-add a reduced-motion opt-out without asking the owner.
+ */
+.hw-cell__fill,
+.hw-cpu__fill,
+.hw-cpu__core-fill,
+.hw-gpu__fill,
+.hw-gpu__power-fill {
+  width: 100%;
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 70ms linear;
+  /* Keep the fill on its own compositor layer so a tween never repaints the dotted
+     widget face underneath it (promotion churn was the other half of the idle iGPU cost). */
+  will-change: transform;
+}
+
+.hw-cell__fill {
+  height: 100%;
+  border-radius: 2px;
+}
+
+.hw-cell__fill[data-fill="power"] {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-amber) 70%, var(--fixed-black)), var(--tel-amber));
+}
+
+.hw-cell__fill[data-fill="vram"] {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-vram) 70%, var(--fixed-black)), var(--tel-vram));
+}
+
+.hw-cell__fill[data-fill="ram"] {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-ram) 70%, var(--fixed-black)), var(--tel-ram));
+}
+
+/* Compact totals — one line per cell, hairline bar under it. */
+.hw-mon[data-density="compact"] .hw-totals {
+  gap: 4px;
+}
+
+.hw-mon[data-density="compact"] .hw-cell {
+  gap: 2px;
+  padding: 3px 5px;
+}
+
+.hw-mon[data-density="compact"] .hw-cell__row {
+  flex-direction: row;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.hw-mon[data-density="compact"] .hw-cell__value {
+  font-size: 13px;
+}
+
+.hw-mon[data-density="compact"] .hw-cell__label-full {
+  display: none;
+}
+
+.hw-mon[data-density="compact"] .hw-cell__label-short {
+  display: inline;
+}
+
+.hw-mon[data-density="compact"] .hw-cell__track {
+  height: 2px;
+}
+
+/* ── CPU ────────────────────────────────────────────────────────────── */
+
+.hw-cpu {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  min-width: 0;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 28%, transparent);
+  overflow: hidden;
+}
+
+.hw-cpu[data-cores="open"] {
+  border-color: color-mix(in srgb, var(--tel-cyan) 28%, var(--theme-border) 72%);
+}
+
+.hw-cpu__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 5px 7px 4px;
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-border) 35%, transparent);
+}
+
+.hw-cpu__head--toggle {
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s ease;
+}
+
+.hw-cpu__head--toggle:hover {
+  background: color-mix(in srgb, var(--tel-cyan) 6%, transparent);
+}
+
+.hw-cpu__head--toggle:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--tel-cyan) 55%, transparent);
+  outline-offset: -1px;
+}
+
+.hw-cpu__id {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.hw-cpu__name {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  color: color-mix(in srgb, var(--theme-text) 88%, var(--fixed-white));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 11rem;
+}
+
+.hw-cpu__meta {
+  margin-top: 1px;
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-hairline);
+  color: var(--theme-text-muted);
+  opacity: 0.7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hw-cpu__head-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.hw-cpu__cores-badge {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-hairline);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  line-height: 1.2;
+  padding: 1px 3px;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 45%, transparent);
+  color: color-mix(in srgb, var(--theme-text-muted) 80%, transparent);
+}
+
+.hw-cpu__cores-badge[data-on="true"] {
+  color: var(--tel-cyan);
+  border-color: color-mix(in srgb, var(--tel-cyan) 45%, transparent);
+}
+
+.hw-cpu__hero {
+  display: flex;
+  align-items: baseline;
+  gap: 1px;
+  flex-shrink: 0;
+}
+
+.hw-cpu__hero-val {
+  font-family: ui-monospace, monospace;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  color: color-mix(in srgb, var(--theme-text) 92%, var(--fixed-white));
+  font-variant-numeric: tabular-nums;
+}
+
+.hw-cpu__hero-unit {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-tiny);
+  color: var(--theme-text-muted);
+}
+
+/* Live MHz (cores open) — 4 digits need a touch smaller hero type. */
+.hw-cpu__hero[data-mhz="true"] .hw-cpu__hero-val {
+  font-size: 13px;
+  letter-spacing: -0.02em;
+  color: var(--tel-cyan);
+}
+
+.hw-cpu__hero[data-mhz="true"] .hw-cpu__hero-unit {
+  font-size: var(--type-micro);
+  color: var(--tel-cyan);
+  opacity: 0.85;
+}
+
+.hw-cpu__track {
+  height: 10px;
+  margin: 4px 7px 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--theme-text-muted) 14%, transparent);
+  overflow: hidden;
+  box-shadow: inset 0 1px 3px var(--fixed-black-a35);
+}
+
+.hw-cpu__fill {
+  height: 100%;
+  border-radius: 3px;
+}
+
+.hw-cpu__fill[data-fill="cpu"] {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-cyan) 45%, var(--fixed-near-black-blue)), var(--tel-cyan));
+}
+
+.hw-cpu__fill[data-fill="cpu-high"] {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-amber) 50%, var(--fixed-c-1a1005)), var(--tel-amber));
+}
+
+.hw-cpu__fill[data-fill="cpu-critical"] {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-hot) 55%, var(--fixed-near-black-red)), var(--fixed-c-f97316));
+}
+
+.hw-cpu__grid {
+  display: grid;
+  gap: 2px;
+  margin: 0 7px 7px;
+  flex: 1 1 auto;
+  min-height: 0;
+  align-content: stretch;
+  grid-auto-rows: minmax(1rem, 1fr);
+}
+
+.hw-cpu__core {
+  position: relative;
+  min-height: 0;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-text-muted) 12%, transparent);
+  overflow: hidden;
+  box-shadow: inset 0 1px 2px var(--fixed-black-a3);
+}
+
+.hw-cpu__core-fill {
+  height: 100%;
+  border-radius: 2px;
+}
+
+.hw-cpu__core-fill[data-fill="core-low"] {
+  background: color-mix(in srgb, var(--tel-cyan) 22%, transparent);
+}
+
+.hw-cpu__core-fill[data-fill="core-mid"] {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-cyan) 45%, var(--fixed-near-black-blue)), color-mix(in srgb, var(--tel-cyan) 72%, var(--fixed-white)));
+}
+
+.hw-cpu__core-fill[data-fill="core-hot"] {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-amber) 55%, var(--fixed-c-1a1005)), var(--tel-amber));
+  box-shadow: 0 0 5px color-mix(in srgb, var(--tel-amber) 35%, transparent);
+}
+
+/* Below: the card stretches to the strip row, and the average bar moves to the
+   bottom so the extra height reads as layout instead of an empty pocket. */
+.hw-mon[data-placement="below"] .hw-cpu {
+  height: 100%;
+  min-height: 0;
+}
+
+.hw-mon[data-placement="below"] .hw-cpu__track {
+  order: 1;
+  margin-top: auto;
+}
+
+.hw-mon[data-placement="below"] .hw-cpu__grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.hw-mon[data-placement="below"] .hw-cpu__grid::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.hw-mon[data-density="compact"] .hw-cpu__head {
+  padding: 3px 7px;
+}
+
+.hw-mon[data-density="compact"] .hw-cpu__track {
+  height: 6px;
+  margin: 3px 7px 5px;
+}
+
+.hw-mon[data-placement="below"][data-density="compact"] .hw-cpu__track {
+  margin-top: auto;
+}
+
+/* ── GPU tile ───────────────────────────────────────────────────────── */
+
+.hw-gpu {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 28%, transparent);
+  background: transparent;
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color 0.12s ease;
+}
+
+.hw-gpu:hover:not([data-selected="true"]) {
+  border-color: color-mix(in srgb, var(--theme-border) 70%, transparent);
+}
+
+.hw-gpu[data-selected="true"] {
+  border-color: var(--theme-industrial-gpu-selected);
+}
+
+.hw-gpu:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.hw-gpu:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--theme-accent) 60%, transparent);
+  outline-offset: -1px;
+}
+
+.hw-gpu__head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px 10px 4px;
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-border) 35%, transparent);
+}
+
+.hw-gpu__head-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+
+.hw-gpu__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-label);
+  line-height: 1.15;
+  color: color-mix(in srgb, var(--theme-text) 95%, var(--fixed-white));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hw-gpu__temp {
+  flex: 0 0 auto;
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-sm);
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.hw-gpu__temp[data-tone="cool"] { color: var(--tel-vram); }
+.hw-gpu__temp[data-tone="warm"] { color: var(--tel-amber); }
+.hw-gpu__temp[data-tone="hot"] {
+  color: var(--tel-hot);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--tel-hot) 40%, transparent);
+}
+
+.hw-gpu__meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-tiny);
+  color: var(--theme-text-muted);
+}
+
+/* Throttle rides the subheader (left) so it costs no extra row. */
+.hw-gpu__thr {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  max-width: 6.5rem;
+  margin-right: auto;
+}
+
+.hw-gpu__thr-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hw-gpu__thr-text[data-hot="true"] {
+  color: var(--tel-amber);
+}
+
+.hw-gpu__meta-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hw-gpu__target {
+  flex: 0 0 auto;
+  font-size: var(--type-hairline);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  line-height: 1.2;
+  padding: 1px 4px;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
+  color: color-mix(in srgb, var(--theme-text-muted) 88%, transparent);
+  background: color-mix(in srgb, var(--theme-text-muted) 10%, transparent);
+}
+
+.hw-gpu__target[data-active="true"] {
+  color: var(--theme-tel-amber-ink, var(--fixed-amber-400));
+  background: color-mix(in srgb, var(--tel-amber) 22%, transparent);
+  border-color: color-mix(in srgb, var(--tel-amber) 38%, transparent);
+}
+
+.hw-gpu__body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 5px 12px 6px;
+  /* The whole tile is the select target — inner text must not swallow clicks. */
+  pointer-events: none;
+}
+
+.hw-gpu__pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  align-items: start;
+  min-width: 0;
+}
+
+.hw-gpu__cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.hw-gpu__label {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-hairline);
+  letter-spacing: 0.12em;
+  color: var(--theme-text-muted);
+  opacity: 0.75;
+}
+
+.hw-gpu__value {
+  margin: 0;
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-sm);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.hw-gpu__value--readout {
+  color: color-mix(in srgb, var(--theme-text) 85%, var(--fixed-white));
+}
+
+.hw-gpu__value-row {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+}
+
+.hw-gpu__vdiv {
+  width: 1px;
+  align-self: stretch;
+  flex-shrink: 0;
+  margin: 1px 0;
+  background: color-mix(in srgb, var(--theme-text-muted) 42%, transparent);
+}
+
+.hw-gpu__mem-gb {
+  min-width: 0;
+  font-size: 0.82em;
+  line-height: 1.1;
+  color: color-mix(in srgb, var(--tel-cyan) 78%, var(--theme-text));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hw-gpu__dim {
+  color: color-mix(in srgb, var(--theme-text-muted) 88%, transparent);
+}
+
+.hw-gpu__empty {
+  color: var(--theme-text-muted);
+}
+
+.hw-gpu__offset {
+  font-size: 0.5em;
+  vertical-align: baseline;
+  letter-spacing: 0.02em;
+  color: color-mix(in srgb, var(--theme-nv-green) 90%, transparent);
+}
+
+.hw-gpu__track {
+  height: 3px;
+  margin-top: 2px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-text-muted) 16%, transparent);
+  overflow: hidden;
+}
+
+.hw-gpu__fill {
+  height: 100%;
+  border-radius: 2px;
+}
+
+.hw-gpu__fill[data-fill="gpu"] {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-vram) 45%, var(--fixed-black)), var(--tel-vram));
+}
+
+.hw-gpu__fill[data-fill="mem"] {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-cyan) 45%, var(--fixed-near-black-blue)), var(--tel-cyan));
+}
+
+.hw-gpu__fill[data-fill="gpu-high"],
+.hw-gpu__fill[data-fill="mem-high"] {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-amber) 50%, var(--fixed-c-1a1005)), var(--tel-amber));
+}
+
+.hw-gpu__fill[data-fill="gpu-critical"],
+.hw-gpu__fill[data-fill="mem-critical"] {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-hot) 55%, var(--fixed-near-black-red)), var(--fixed-c-f97316));
+}
+
+.hw-gpu__power {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.hw-gpu__power-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.hw-gpu__power-val {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-label);
+  line-height: 1.1;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.hw-gpu__power-watt {
+  color: var(--tel-amber);
+  font-size: var(--type-sm);
+}
+
+.hw-gpu__power-target {
+  color: color-mix(in srgb, var(--theme-nv-green) 80%, transparent);
+}
+
+.hw-gpu__power-track {
+  height: 10px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--theme-text-muted) 14%, transparent);
+  overflow: hidden;
+  box-shadow: inset 0 1px 3px var(--fixed-black-a35);
+}
+
+.hw-gpu__power-fill {
+  height: 100%;
+  border-radius: 3px;
+}
+
+.hw-gpu__power-fill[data-fill="power"] {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-amber) 50%, var(--fixed-black)), var(--tel-amber));
+}
+
+.hw-gpu__power-fill[data-fill="power-high"] {
+  background: linear-gradient(90deg, var(--fixed-c-b45309), var(--fixed-amber-400));
+}
+
+.hw-gpu__power-fill[data-fill="power-critical"] {
+  background: linear-gradient(90deg, var(--fixed-c-991b1b), var(--fixed-red-400));
+}
+
+/* PCIe block — 2x2: [PCIE | big link] over [RX | TX]. Compact, never wraps. */
+.hw-gpu__io {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  grid-template-areas:
+    "label link"
+    "reads reads";
+  column-gap: 10px;
+  row-gap: 2px;
+  align-items: baseline;
+  min-width: 0;
+  margin-top: 5px;
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  color: var(--theme-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.hw-gpu__io-label {
+  grid-area: label;
+}
+
+.hw-gpu__io-link {
+  grid-area: link;
+  font-size: var(--type-sm);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: 0.02em;
+  color: color-mix(in srgb, var(--theme-text) 85%, var(--fixed-white));
+  white-space: nowrap;
+}
+
+.hw-gpu__io-reads {
+  grid-area: reads;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0 12px;
+  min-width: 0;
+}
+
+.hw-gpu__io-rate {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.15;
+  font-size: var(--type-micro);
+}
+
+.hw-gpu__peak {
+  opacity: 0.55;
+}
+
+/* Compact GPU tile — fewer rows (dropped in JSX) and a hairline power bar. */
+.hw-mon[data-density="compact"] .hw-gpu__head {
+  padding: 3px 9px;
+}
+
+.hw-mon[data-density="compact"] .hw-gpu__body {
+  gap: 5px;
+  padding: 4px 10px 5px;
+}
+
+.hw-mon[data-density="compact"] .hw-gpu__track {
+  margin-top: 1px;
+}
+
+.hw-mon[data-density="compact"] .hw-gpu__power-track {
+  height: 4px;
+  box-shadow: none;
+}
+
+/* Below: tiles stretch to the strip row like the totals + CPU columns. */
+.hw-mon[data-placement="below"] .hw-gpu {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Rows breathe into the stretched height instead of pooling at the bottom. */
+.hw-mon[data-placement="below"] .hw-gpu__body {
+  flex: 1 1 auto;
+  justify-content: space-between;
+}
+
+/* ── OC overlay — header chip owns it in both placements ────────────── */
+
+.hw-mon__oc {
+  position: absolute;
+  z-index: 30;
+  top: calc(var(--hw-header-h) + 1px);
+  left: 6px;
+  right: 6px;
+  max-height: calc(100% - var(--hw-header-h) - 7px);
+  overflow: auto;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
+  border-radius: 4px;
+  background: var(--theme-panel);
+  box-shadow: 0 10px 28px var(--fixed-black-a48);
+  scrollbar-width: none;
+}
+
+.hw-mon__oc::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.hw-mon__oc > [data-gpu-overclock] {
+  border: none;
+  border-radius: 0;
+}
+
+/* Below: opens upward over the display, anchored to the strip header. */
+.hw-mon[data-placement="below"] .hw-mon__oc {
+  top: auto;
+  bottom: calc(100% + 4px);
+  left: auto;
+  right: 8px;
+  width: min(340px, calc(100% - 16px));
+  max-height: min(66vh, 540px);
+}
+
+/* ── Mount: strip under the display ─────────────────────────────────── */
+
+.config-hw-below-display {
+  min-height: 0;
+  overflow: hidden;
+  border-top: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
+}
+
+/* Overlay hangs above the strip — lift the clip only while it is open. */
+.config-hw-below-display:has(.hw-mon[data-oc-open="true"]) {
+  overflow: visible;
+  position: relative;
+  z-index: 4;
+}
+
+.app-shell[data-monitor-focus="1"] .config-hw-below-display {
+  flex: 0 0 auto;
+  width: 100%;
+  align-self: stretch;
+  align-items: stretch;
+}

@@ -520,7 +520,7 @@
   --display-face-recap-text: var(--display-face-text);
   --display-face-recap-text-muted: var(--display-face-text-muted);
   /*
-   * HW monitor + OVERCLOCKING signal colors (launch-rail-tel / gpu-oc).
+   * HW monitor + OVERCLOCKING signal colors (hw-monitor.css / gpu-oc).
    * Themes override for palette cohesion; CSS falls back to these.
    */
   --theme-tel-vram: var(--display-face-gpu-readout);

@@ -126,7 +126,7 @@ import {
 } from "../lib/engineSurfaces";
 import { useLaunchDockRailResize } from "../hooks/useCatalogSplitResize";
 import { useFusionDisplayMode } from "../hooks/useFusionDisplayMode";
-import LaunchRailTelemetry from "./LaunchRailTelemetry";
+import HwMonitor from "./hw/HwMonitor";
 import {
   dispatchAppEvent,
   EVENTS,
@@ -3362,7 +3362,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
       {hwBelowDisplay && (
         <div className="config-hw-below-display min-h-0 flex-shrink-0">
-          <LaunchRailTelemetry layout="below" />
+          <HwMonitor placement="below" />
         </div>
       )}
 
@@ -3696,8 +3696,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             ) : null}
             <div className="launch-rail-body flex flex-col flex-1 min-h-0 min-w-0">
             {hwInRail && (
-              <div className="launch-rail-telemetry flex-1 min-h-0 overflow-hidden">
-                <LaunchRailTelemetry layout="rail" />
+              <div className="hw-mon-slot flex-1 min-h-0">
+                <HwMonitor placement="rail" />
               </div>
             )}
             {showLaunchRail && !hwMonitorOpen && launchRailDisplayHeight > 0 ? (

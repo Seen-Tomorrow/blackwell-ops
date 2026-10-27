@@ -3581,7 +3581,7 @@ html[data-industrial-bezel="brush"] {
  * CLEAN emits no rule at all — nothing to switch off, nothing to drift.
  */
 [data-display-face="dotted"] .phosphor-screen-inner.phosphor-display-surface,
-[data-display-face="dotted"] .launch-rail-tel .phosphor-display-surface {
+[data-display-face="dotted"] .hw-mon .phosphor-display-surface {
   position: relative;
   background-color: var(--display-face-dotted-bg, var(--display-face-bg-dark));
   /* Dots only — scan bands stay gated off via --display-face-grain-band-opacity (0). */
@@ -3620,8 +3620,8 @@ html[data-industrial-bezel="brush"] {
 /* Pattern is painted on the face itself, never on ::before/::after. */
 [data-display-face="dotted"] .phosphor-display-surface::before,
 [data-display-face="dotted"] .phosphor-display-surface::after,
-[data-display-face="dotted"] .launch-rail-tel .phosphor-display-surface::before,
-[data-display-face="dotted"] .launch-rail-tel .phosphor-display-surface::after {
+[data-display-face="dotted"] .hw-mon .phosphor-display-surface::before,
+[data-display-face="dotted"] .hw-mon .phosphor-display-surface::after {
   display: none;
   opacity: 0;
 }
@@ -3908,7 +3908,7 @@ html[data-industrial-bezel="brush"] {
  * flatten it. Same single face-neutral grain family as the primary rule above.
  */
 [data-display-face="dotted"] .phosphor-screen-inner.phosphor-display-surface,
-[data-display-face="dotted"] .launch-rail-tel .phosphor-display-surface {
+[data-display-face="dotted"] .hw-mon .phosphor-display-surface {
   background-color: var(--display-face-dotted-bg, var(--display-face-bg-dark));
   background-image:
     radial-gradient(
@@ -4224,240 +4224,6 @@ html[data-industrial-bezel="brush"] {
 /* Dual stack: each pane scrolls its own tray if needed */
 .app-shell[data-monitor-focus="1"] .fusion-dual-stage--stack > .fusion-dual-stage__pane {
   overflow: auto;
-}
-
-/* HW under fusion — horizontal GPU strip so N cards don't force full-window height.
-   In MONITOR it hugs content immediately under the display stack (or eject tray). */
-.config-hw-below-display {
-  min-height: 0;
-  overflow: hidden;
-  border-top: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
-}
-
-.app-shell[data-monitor-focus="1"] .config-hw-below-display {
-  flex: 0 0 auto;
-  width: 100%;
-  align-self: stretch;
-  align-items: stretch;
-}
-
-.config-hw-below-display:has(.launch-rail-tel--below[data-oc-expanded="true"]) {
-  overflow: visible;
-  position: relative;
-  /*
-   * Dim (opacity < 1) on .launch-rail-tel__body creates a stacking context that
-   * traps the OC popover's z-index inside auto — loses to .industrial-eject-panel
-   * (z-index: 1). Lift the whole strip above eject while OC is expanded.
-   */
-  z-index: 4;
-}
-
-.launch-rail-tel--below {
-  height: auto;
-  max-height: none;
-  overflow: hidden;
-}
-
-.launch-rail-tel--below[data-oc-expanded="true"] {
-  overflow: visible;
-}
-
-.launch-rail-tel--below .launch-rail-tel__body {
-  overflow: hidden;
-}
-
-.launch-rail-tel--below[data-oc-expanded="true"] .launch-rail-tel__body,
-.launch-rail-tel--below[data-oc-expanded="true"] .launch-rail-tel__below-grid,
-.launch-rail-tel--below[data-oc-expanded="true"] .launch-rail-tel__totals-stack {
-  overflow: visible;
-}
-
-/* HW-below strip — GPU cards set the row height; totals + CPU stretch to match.
-   Columns L→R: totals stack (power/VRAM/RAM/OC badge) | CPU | GPU cards (1 col each). */
-.launch-rail-tel--below .launch-rail-tel__below-grid {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(160px, 1fr);
-  grid-template-rows: minmax(0, 1fr);
-  height: auto;
-  min-height: 0;
-  align-items: stretch;
-  gap: 8px;
-  padding: 0 8px;
-  box-sizing: border-box;
-  overflow: hidden;
-}
-
-/* GPU cards each become their own column of the same row; natural height
-   defines the row, so cards never stretch. */
-.launch-rail-tel--below .launch-rail-tel__gpu-stack {
-  display: contents;
-}
-
-.launch-rail-tel--below .launch-rail-tel__gpu-stack .gpu-topo-card {
-  min-width: 0;
-  min-height: 0;
-  align-self: stretch;
-}
-
-/* Totals stack — 3 rows filling the GPU-card row height:
-   power (full width) | VRAM+RAM (2-col) | OC badge (full width). */
-.launch-rail-tel--below .launch-rail-tel__totals-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
-  max-height: 100%;
-  overflow: hidden;
-}
-
-/* Compress totals cells in below mode so 3 rows fit the GPU-card row */
-.launch-rail-tel--below .launch-rail-tel__total-cell {
-  padding: 2px 6px;
-}
-
-.launch-rail-tel--below .launch-rail-tel__total-value {
-  font-size: 13px;
-}
-
-.launch-rail-tel--below .launch-rail-tel__totals-stack > .launch-rail-tel__total-cell,
-.launch-rail-tel--below .launch-rail-tel__totals-stack > .launch-rail-tel__totals,
-.launch-rail-tel--below .launch-rail-tel__totals-stack > .launch-rail-tel__oc-slot {
-  flex: 1 1 0;
-  min-height: 0;
-  width: 100%;
-}
-
-/* VRAM|RAM stay side by side inside their 2-col row */
-.launch-rail-tel--below .launch-rail-tel__totals-stack .launch-rail-tel__totals {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-}
-
-.launch-rail-tel--below .launch-rail-tel__totals-stack .launch-rail-tel__totals > .launch-rail-tel__total-cell {
-  min-height: 0;
-}
-
-/* CPU column — stretches to row height; cores-open scrolls inside, never grows row */
-.launch-rail-tel--below .launch-rail-tel__cpu-col {
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
-  max-height: 100%;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.launch-rail-tel--below .launch-rail-tel__cpu-col .launch-rail-tel__cpu {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-
-.launch-rail-tel--below .launch-rail-tel__cpu-col .launch-rail-tel__cpu::-webkit-scrollbar {
-  width: 0;
-  height: 0;
-  display: none;
-}
-
-.launch-rail-tel--below .launch-rail-tel__cpu-col .launch-rail-tel__cpu--cores-open,
-.launch-rail-tel--below .launch-rail-tel__cpu-col .launch-rail-tel__cpu--cores-open.phosphor-display-surface {
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-
-/* OC badge — below mode expands the rail panel in-place above the badge. */
-.launch-rail-tel--below .launch-rail-tel__oc-slot {
-  position: relative;
-  flex: 1 1 0;
-  min-height: 0;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-}
-
-.launch-rail-tel--below .launch-rail-tel__oc-badge {
-  padding: 2px 6px;
-  gap: 0;
-  flex: 1 1 0;
-}
-
-.launch-rail-tel--below .launch-rail-tel__oc-popover {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: calc(100% + 4px);
-  z-index: 20;
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
-  max-height: min(62vh, 560px);
-  overflow: auto;
-  border-radius: 4px;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
-  background: var(--theme-panel);
-  box-shadow: 0 10px 28px var(--fixed-black-a48);
-}
-
-.launch-rail-tel__oc-badge {
-  flex: 1 1 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  padding: 5px 6px;
-  border-radius: 4px;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
-  background: var(--theme-tel-cell-bg, var(--fixed-black-a22));
-  cursor: pointer;
-  font-family: ui-monospace, monospace;
-  text-transform: uppercase;
-  transition: border-color 0.12s ease, background 0.12s ease;
-}
-
-.launch-rail-tel__oc-badge-label {
-  font-size: var(--type-micro);
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  color: var(--theme-text);
-  opacity: 0.85;
-}
-
-.launch-rail-tel__oc-badge--open {
-  border-color: color-mix(in srgb, var(--tel-amber) 70%, transparent);
-  background: color-mix(in srgb, var(--tel-amber) 20%, transparent);
-}
-.launch-rail-tel__oc-badge-hint {
-  font-size: 5.5px;
-  letter-spacing: 0.08em;
-  color: var(--theme-text-muted);
-  opacity: 0.7;
-}
-
-.launch-rail-tel__oc-badge:hover {
-  border-color: color-mix(in srgb, var(--tel-amber) 55%, transparent);
-}
-
-.launch-rail-tel__oc-badge--active {
-  border-color: color-mix(in srgb, var(--tel-amber) 60%, transparent);
-  background: color-mix(in srgb, var(--tel-amber) 14%, transparent);
-}
-
-.launch-rail-tel__oc-badge--active .launch-rail-tel__oc-badge-label {
-  color: var(--theme-tel-amber-ink, color-mix(in srgb, var(--fixed-amber-400) 78%, var(--fixed-white) 22%));
-}
-
-.launch-rail-tel__oc-badge--active .launch-rail-tel__oc-badge-hint {
-  color: var(--theme-tel-amber-ink, color-mix(in srgb, var(--fixed-amber-400) 78%, var(--fixed-white) 22%));
-  opacity: 0.85;
 }
 
 .monitor-focus-exit-bar {

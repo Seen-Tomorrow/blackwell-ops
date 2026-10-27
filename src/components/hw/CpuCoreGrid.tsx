@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import type { CpuInfo } from "../lib/types";
-import { CPU_GRID_COLS_MIN, coreUsageFillClass, resolveCpuGridColumns } from "../lib/cpuGridLayout";
+import type { CpuInfo } from "../../lib/types";
+import { CPU_GRID_COLS_MIN, cpuCoreFill, resolveCpuGridColumns } from "../../lib/cpuGridLayout";
+import HwFill from "./HwFill";
 
 interface CpuCoreGridProps {
   cpu: CpuInfo;
@@ -25,23 +26,20 @@ export default function CpuCoreGrid({ cpu, className = "" }: CpuCoreGridProps) {
     return () => ro.disconnect();
   }, [cpu.threads]);
 
-  const usages = cpu.core_usages;
-
   return (
     <div
       ref={wrapRef}
-      className={`launch-rail-tel__cpu-grid${className ? ` ${className}` : ""}`}
+      className={`hw-cpu__grid${className ? ` ${className}` : ""}`}
       style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
     >
-      {usages.map((usage, index) => (
-        <div
-          key={index}
-          className="launch-rail-tel__cpu-core"
-          title={`CPU ${index}: ${usage.toFixed(0)}%`}
-        >
-          <div
-            className={`launch-rail-tel__cpu-core-fill ${coreUsageFillClass(usage)}`}
-            style={{ width: `${Math.min(usage, 100)}%` }}
+      {cpu.core_usages.map((usage, index) => (
+        <div key={index} className="hw-cpu__core" title={`CPU ${index}: ${usage.toFixed(0)}%`}>
+          <HwFill
+            className="hw-cpu__core-fill"
+            fill={cpuCoreFill(usage)}
+            percent={usage}
+            stepPct={5}
+            animateDeltaPct={10}
           />
         </div>
       ))}

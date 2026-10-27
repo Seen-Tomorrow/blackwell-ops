@@ -3,10 +3,8 @@ import { isIndustrialBezelTexture, type IndustrialBezelTexture } from "./industr
 import type { LaunchDockPosition } from "./launchDockLayout";
 import {
   clampLaunchDockRailWidth,
-  clampLaunchRailTelemetryRatio,
   LAUNCH_DOCK_POSITION_DEFAULT,
   LAUNCH_DOCK_RAIL_WIDTH_DEFAULT,
-  LAUNCH_RAIL_TELEMETRY_RATIO_DEFAULT,
 } from "./launchDockLayout";
 import type {
   ConfigViewMode,
@@ -135,17 +133,26 @@ export const KEYS = {
   launchDockPositionExplicit: `${STORAGE_PREFIX}launch-dock-position-explicit`,
   launchDockCollapsed: `${STORAGE_PREFIX}launch-dock-collapsed`,
   launchDockRailWidth: `${STORAGE_PREFIX}launch-dock-rail-width`,
-  /** Right rail — telemetry vs launch vertical split (0–1 ratio). */
-  launchRailTelemetryRatio: `${STORAGE_PREFIX}launch-rail-telemetry-ratio`,
   /** Config panel — live HW monitor column (any dock layout). */
   hwMonitorOpen: `${STORAGE_PREFIX}hw-monitor-open`,
   /** HW monitor placement: right rail vs under fusion display. */
   hwMonitorDock: `${STORAGE_PREFIX}hw-monitor-dock`,
+  /** HW monitor widget density: full readings vs compact (short) widgets. */
+  hwMonitorDensity: `${STORAGE_PREFIX}hw-monitor-density`,
 
   /** HW monitor — per-core CPU grid expanded under CPU header. */
   hwMonitorCpuCoresOpen: `${STORAGE_PREFIX}hw-monitor-cpu-cores-open`,
-  /** HW monitor widget opacity (0.2–1); expanded OC full; launch block excluded. */
+  /** HW monitor widget dim (0.2–1); expanded OC full; launch block excluded. */
   hwMonitorDim: `${STORAGE_PREFIX}hw-monitor-dim`,
+  /** Telemetry polling intervals (ms) — CONFIG → RUNTIME sliders. */
+  telemetryPollGpu: `${STORAGE_PREFIX}telemetry-poll-gpu`,
+  telemetryPollCpu: `${STORAGE_PREFIX}telemetry-poll-cpu`,
+  telemetryPollRam: `${STORAGE_PREFIX}telemetry-poll-ram`,
+  /** App-wide runtime ticks — pushed to Rust, live. */
+  telemetryTickMs: `${STORAGE_PREFIX}telemetry-tick-ms`,
+  telemetryDiskIoMs: `${STORAGE_PREFIX}telemetry-disk-io-ms`,
+  /** GPU tile PCIe link counters — expensive NVML reads (~32 ms per card). */
+  telemetryPcieThroughput: `${STORAGE_PREFIX}telemetry-pcie-throughput`,
   /** Running engine / fusion switcher in launch rail instead of below VRAM display. */
   enginesInRail: `${STORAGE_PREFIX}engines-in-rail`,
   /** CTX strip: docked inside cockpit vs standalone above cockpit. */
@@ -418,18 +425,6 @@ export function saveLaunchDockRailWidth(width: number): void {
   writeStorage(KEYS.launchDockRailWidth, String(clampLaunchDockRailWidth(width)));
 }
 
-export function loadLaunchRailTelemetryRatio(): number {
-  const raw = readStorage(KEYS.launchRailTelemetryRatio);
-  if (!raw) return LAUNCH_RAIL_TELEMETRY_RATIO_DEFAULT;
-  const n = Number.parseFloat(raw);
-  if (!Number.isFinite(n)) return LAUNCH_RAIL_TELEMETRY_RATIO_DEFAULT;
-  return clampLaunchRailTelemetryRatio(n);
-}
-
-export function saveLaunchRailTelemetryRatio(ratio: number): void {
-  writeStorage(KEYS.launchRailTelemetryRatio, String(clampLaunchRailTelemetryRatio(ratio)));
-}
-
 export function loadHwMonitorOpen(): boolean {
   return readStorage(KEYS.hwMonitorOpen) === "1";
 }
@@ -446,6 +441,17 @@ export function loadHwMonitorDock(): HwMonitorDock {
 
 export function saveHwMonitorDock(dock: HwMonitorDock): void {
   writeStorage(KEYS.hwMonitorDock, dock);
+}
+
+/** Widget density — `full` shows every reading, `compact` drops the tall rows. */
+export type HwMonitorDensity = "full" | "compact";
+
+export function loadHwMonitorDensity(): HwMonitorDensity {
+  return readStorage(KEYS.hwMonitorDensity) === "compact" ? "compact" : "full";
+}
+
+export function saveHwMonitorDensity(density: HwMonitorDensity): void {
+  writeStorage(KEYS.hwMonitorDensity, density);
 }
 
 
@@ -469,6 +475,68 @@ export function saveHwMonitorDim(dim: number): void {
   const n = Math.min(1, Math.max(0.2, dim));
   writeStorage(KEYS.hwMonitorDim, String(Math.round(n * 100) / 100));
 }
+
+/* ── Telemetry polling ─────────────────────────────────────────────── */
+
+export type TelemetryPollSource = "gpu" | "cpu" | "ram" | "fusion" | "disk";
+
+/**
+ * One range per source, tuned so the monitor never goes below a cadence the render
+ * path cannot pay for, and never so slow that a reading looks stuck. GPU drives the
+ * HW monitor's fast tier; the background/idle tiers scale from it in TelemetryContext.
+ * `fusion` and `disk` are the app-wide Rust ticks — TelemetryContext pushes them to
+ * `set_telemetry_timings`, so they apply live (bounds are mirrored defensively in Rust).
+ */
+export const TELEMETRY_POLL: Record<
+  TelemetryPollSource,
+  { key: string; minMs: number; maxMs: number; stepMs: number; defaultMs: number }
+> = {
+  gpu: { key: KEYS.telemetryPollGpu, minMs: 100, maxMs: 1000, stepMs: 25, defaultMs: 250 },
+  cpu: { key: KEYS.telemetryPollCpu, minMs: 100, maxMs: 2000, stepMs: 50, defaultMs: 250 },
+  ram: { key: KEYS.telemetryPollRam, minMs: 1000, maxMs: 10000, stepMs: 250, defaultMs: 2000 },
+  fusion: { key: KEYS.telemetryTickMs, minMs: 10, maxMs: 250, stepMs: 5, defaultMs: 25 },
+  disk: { key: KEYS.telemetryDiskIoMs, minMs: 100, maxMs: 2000, stepMs: 50, defaultMs: 300 },
+};
+
+export function clampTelemetryPollMs(source: TelemetryPollSource, ms: number): number {
+  const spec = TELEMETRY_POLL[source];
+  if (!Number.isFinite(ms)) return spec.defaultMs;
+  return Math.min(spec.maxMs, Math.max(spec.minMs, Math.round(ms)));
+}
+
+export function loadTelemetryPollMs(source: TelemetryPollSource): number {
+  const spec = TELEMETRY_POLL[source];
+  const raw = readStorage(spec.key);
+  const n = raw ? Number.parseInt(raw, 10) : Number.NaN;
+  return Number.isFinite(n) ? clampTelemetryPollMs(source, n) : spec.defaultMs;
+}
+
+export function saveTelemetryPollMs(source: TelemetryPollSource, ms: number): void {
+  writeStorage(TELEMETRY_POLL[source].key, String(clampTelemetryPollMs(source, ms)));
+}
+
+export function loadTelemetryPollIntervals(): Record<TelemetryPollSource, number> {
+  return {
+    gpu: loadTelemetryPollMs("gpu"),
+    cpu: loadTelemetryPollMs("cpu"),
+    ram: loadTelemetryPollMs("ram"),
+    fusion: loadTelemetryPollMs("fusion"),
+    disk: loadTelemetryPollMs("disk"),
+  };
+}
+
+/**
+ * PCIe link counters are the one expensive GPU reading (~32 ms per card per refresh), so
+ * they get a switch instead of a cadence: off = no counter reads at all, tile shows "—".
+ */
+export function loadPcieThroughputEnabled(): boolean {
+  return readStorage(KEYS.telemetryPcieThroughput) !== "0";
+}
+
+export function savePcieThroughputEnabled(enabled: boolean): void {
+  writeStorage(KEYS.telemetryPcieThroughput, enabled ? "1" : "0");
+}
+
 
 /** Catalog list body opacity (sort + cards). Range 0.2–1, default 1. Search chrome stays full. */
 export function loadCatalogListDim(): number {

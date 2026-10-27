@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::os::windows::process::CommandExt;
 use std::process::Stdio;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 use sysinfo::System;
@@ -157,34 +157,49 @@ pub struct SystemInfo {
     pub total_memory_manufactured_mib: u64, // Physically installed RAM from hardware (e.g., 256 GB = 262144 MiB)
 }
 
-/// Get physically installed RAM from WMI (sum of all memory module capacities).
+/// Physically installed RAM (bytes) straight from the kernel.
+///
+/// The old probe spawned PowerShell + a CIM query (~318 ms CPU on the dev box) and ran
+/// on every 2 s RAM poll. The installed capacity cannot change while the app runs, so
+/// one call is cached for the process.
 #[cfg(windows)]
 fn get_physical_ram_bytes() -> Result<u64, String> {
-    let output = std::process::Command::new("powershell")
-        .args([
-            "-NoProfile", "-NonInteractive", "-Command",
-            "(Get-CimInstance Win32_PhysicalMemory | Measure-Object Capacity -Sum).Sum",
-        ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .creation_flags(0x08000000) // CREATE_NO_WINDOW
-        .output()
-        .map_err(|e| format!("PowerShell WMI query failed: {}", e))?;
+    use windows_sys::Win32::System::SystemInformation::GetPhysicallyInstalledSystemMemory;
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let bytes: u64 = stdout.trim().parse().map_err(|_| {
-        format!("Failed to parse physical RAM from PowerShell output: {}", stdout)
-    })?;
-    if bytes < 4 * 1024 * 1024 * 1024 {
-        return Err(format!("Physical RAM value too low ({}), likely empty WMI result", bytes));
+    let mut kib: u64 = 0;
+    // SAFETY: out-pointer is a valid u64 the API fills with KiB.
+    let ok = unsafe { GetPhysicallyInstalledSystemMemory(&mut kib) };
+    if ok == 0 {
+        return Err("GetPhysicallyInstalledSystemMemory failed".to_string());
     }
-    Ok(bytes)
+    if kib < 4 * 1024 * 1024 {
+        return Err(format!(
+            "Physical RAM value too low ({} KiB), likely a bogus SMBIOS read",
+            kib
+        ));
+    }
+    Ok(kib * 1024)
 }
 
 /// Fallback: use sysinfo total memory as manufactured (same value).
 #[cfg(not(windows))]
 fn get_physical_ram_bytes() -> Result<u64, String> {
     Err("Not on Windows".into())
+}
+
+static PHYSICAL_RAM_BYTES: LazyLock<Option<u64>> = LazyLock::new(|| {
+    let bytes = get_physical_ram_bytes().ok();
+    if bytes.is_none() {
+        log::warn!(
+            "[telemetry] physical RAM unavailable; reporting usable RAM as manufactured"
+        );
+    }
+    bytes
+});
+
+/// Installed RAM in bytes, `None` when the platform cannot answer.
+fn physical_ram_bytes() -> Option<u64> {
+    *PHYSICAL_RAM_BYTES
 }
 
 /// How long spawning stops after nvidia-smi fails.
@@ -260,12 +275,18 @@ fn smi_record_failure(error: &str) {
     }
 }
 
-/// Scan GPUs using nvidia-smi — real metrics from the NVIDIA driver.
+/// Scan GPUs — NVML first, `nvidia-smi` only as a fallback.
 ///
-/// A failure backs off for [`SMI_COOLDOWN`] instead of being retried every poll; see
-/// [`SmiState`] for why that mattered.
+/// The hardware monitor polls this at 4 Hz. Each `nvidia-smi` spawn cost ~56 ms CPU /
+/// ~90 ms wall on the dev box, and it is only a CLI over the same NVML library, so the
+/// fast path reads NVML in process. The CLI path stays for drivers where `nvml.dll`
+/// cannot load/init, and keeps its failure backoff ([`SmiState`]).
 #[tauri::command]
 pub async fn scan_gpus() -> Result<Vec<GpuInfo>, String> {
+    if let Some(gpus) = nvml_gpus_off_thread().await {
+        return Ok(gpus);
+    }
+
     match smi_gate() {
         SmiGate::Cached(cached) => return Ok(cached),
         SmiGate::Wait => return Err("nvidia-smi unavailable (cooling down)".to_string()),
@@ -282,6 +303,53 @@ pub async fn scan_gpus() -> Result<Vec<GpuInfo>, String> {
             Err(error)
         }
     }
+}
+
+/// NVML calls block inside the driver (the link counters sample ~32 ms), so they run on the
+/// blocking pool — a slow read must never occupy an async worker that IPC also needs.
+async fn nvml_gpus_off_thread() -> Option<Vec<GpuInfo>> {
+    tauri::async_runtime::spawn_blocking(nvml_gpus)
+        .await
+        .ok()
+        .flatten()
+}
+
+/// NVML snapshot mapped onto the IPC shape. `None` = no usable NVML, use the CLI path.
+fn nvml_gpus() -> Option<Vec<GpuInfo>> {
+    let samples = crate::nvml_metrics::scan()?;
+    Some(
+        samples
+            .into_iter()
+            .map(|s| {
+                let manufactured = manufactured_vram(&s.name);
+                GpuInfo {
+                    index: s.index,
+                    name: s.name,
+                    memory_total: s.memory_total_mib,
+                    memory_used: s.memory_used_mib,
+                    memory_free: s.memory_free_mib,
+                    memory_total_manufactured: manufactured,
+                    temperature_gpu: s.temperature_gpu,
+                    temperature_hot_spot: None,
+                    temperature_memory: None,
+                    power_draw: s.power_draw_w,
+                    power_limit: s.power_limit_w,
+                    utilization_gpu: s.utilization_gpu,
+                    utilization_memory: s.utilization_memory,
+                    driver_version: s.driver_version,
+                    driver_model: s.driver_model,
+                    pcie_gen: s.metrics.gen,
+                    pcie_gen_max: s.metrics.gen_max,
+                    pcie_width: s.metrics.width,
+                    pcie_width_max: s.metrics.width_max,
+                    pcie_rx_mib_per_s: s.metrics.rx_mib_per_s,
+                    pcie_tx_mib_per_s: s.metrics.tx_mib_per_s,
+                    mem_clock_mhz: s.metrics.mem_clock_mhz,
+                    throttle_reasons: s.metrics.throttle_reasons,
+                }
+            })
+            .collect(),
+    )
 }
 
 async fn run_nvidia_smi() -> Result<Vec<GpuInfo>, String> {
@@ -546,12 +614,40 @@ static DISK_IO_POLLER_STARTED: AtomicBool = AtomicBool::new(false);
 
 /// PDH sample interval — matches FusionBooter frontend poll (~350ms) without PowerShell spawn overhead.
 const DISK_IO_POLL_INTERVAL_MS: u64 = 300;
+/// Live override from CONFIG → RUNTIME (`0` = use the constant above).
+static DISK_IO_POLL_MS: AtomicU64 = AtomicU64::new(0);
+
+fn disk_io_poll_ms() -> u64 {
+    match DISK_IO_POLL_MS.load(Ordering::Relaxed) {
+        0 => DISK_IO_POLL_INTERVAL_MS,
+        ms => ms,
+    }
+}
+
+/// Clamp defensively — the RUNTIME sliders hold the product bounds.
+pub fn set_disk_io_poll_ms(ms: u64) {
+    DISK_IO_POLL_MS.store(ms.clamp(100, 2000), Ordering::Relaxed);
+}
+
+/// Apply the user's polling cadences (CONFIG → RUNTIME → TELEMETRY POLLING).
+#[tauri::command]
+pub fn set_telemetry_timings(tick_ms: u64, disk_io_ms: u64, pcie_throughput: bool) {
+    crate::log_hub::set_telemetry_tick_ms(tick_ms);
+    set_disk_io_poll_ms(disk_io_ms);
+    crate::nvml_metrics::set_pcie_throughput_enabled(pcie_throughput);
+}
 
 fn disk_io_poller_disabled() -> bool {
     crate::debug_flags::flags().disable_disk_io
 }
 
-/// Start the single global disk I/O poller (idempotent). Called from app setup and first `scan_disk_io`.
+/// Disk I/O is only shown while a model boots (FusionBooter), so the sampler is demand-driven:
+/// it starts on `scan_disk_io` and exits once nobody has asked for [`DISK_IO_IDLE_STOP_MS`].
+/// Nothing polls the disk when the app is idle.
+const DISK_IO_IDLE_STOP_MS: u64 = 5000;
+static DISK_IO_LAST_USE: Mutex<Option<Instant>> = Mutex::new(None);
+
+/// Start the disk I/O poller on demand (idempotent). The thread stops itself when idle.
 pub fn ensure_disk_io_poller() {
     if disk_io_poller_disabled() {
         return;
@@ -563,7 +659,20 @@ pub fn ensure_disk_io_poller() {
         .name("disk-io-pdh".into())
         .spawn(disk_io_poller_thread)
     {
+        DISK_IO_POLLER_STARTED.store(false, Ordering::SeqCst);
         log::warn!("[telemetry] disk io poller thread failed to start: {}", e);
+    }
+}
+
+fn disk_io_used_recently() -> bool {
+    let last = DISK_IO_LAST_USE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .to_owned();
+    match last {
+        Some(at) => Instant::now().saturating_duration_since(at)
+            < Duration::from_millis(DISK_IO_IDLE_STOP_MS),
+        None => false,
     }
 }
 
@@ -573,6 +682,7 @@ fn disk_io_poller_thread() {
         let mut sampler = match crate::disk_io_pdh::PdhDiskSampler::new() {
             Ok(s) => s,
             Err(e) => {
+                DISK_IO_POLLER_STARTED.store(false, Ordering::SeqCst);
                 log::warn!("[telemetry] PDH disk sampler init failed: {}", e);
                 return;
             }
@@ -590,19 +700,31 @@ fn disk_io_poller_thread() {
                 }
                 Err(e) => log::debug!("[telemetry] disk io poll failed: {}", e),
             }
-            std::thread::sleep(Duration::from_millis(DISK_IO_POLL_INTERVAL_MS));
+            std::thread::sleep(Duration::from_millis(disk_io_poll_ms()));
+            if !disk_io_used_recently() {
+                DISK_IO_POLLER_STARTED.store(false, Ordering::SeqCst);
+                log::debug!("[telemetry] disk io poller idle — stopped");
+                return;
+            }
         }
     }
 
     #[cfg(not(windows))]
     loop {
-        std::thread::sleep(Duration::from_millis(DISK_IO_POLL_INTERVAL_MS));
+        std::thread::sleep(Duration::from_millis(disk_io_poll_ms()));
+        if !disk_io_used_recently() {
+            DISK_IO_POLLER_STARTED.store(false, Ordering::SeqCst);
+            return;
+        }
     }
 }
 
 /// Returns the latest cached system disk read/write rates (MiB/s). `slot_idx` is kept for IPC compat only.
 #[tauri::command]
 pub async fn scan_disk_io(_slot_idx: Option<i32>) -> Result<DiskIoInfo, String> {
+    *DISK_IO_LAST_USE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(Instant::now());
     ensure_disk_io_poller();
     let sample = DISK_IO_CACHE
         .lock()
@@ -624,13 +746,7 @@ pub async fn scan_system_info() -> Result<SystemInfo, String> {
     sys.refresh_memory();
 
     let total = sys.total_memory() / (1024 * 1024);   // bytes → MiB, usable by OS
-    let phys_bytes = match get_physical_ram_bytes() {
-        Ok(v) => v,
-        Err(e) => {
-            log::warn!("WMI physical RAM query failed: {}. Falling back to sysinfo.", e);
-            sys.total_memory()
-        }
-    };
+    let phys_bytes = physical_ram_bytes().unwrap_or_else(|| sys.total_memory());
     Ok(SystemInfo {
         total_memory_mib: total,
         available_memory_mib: sys.available_memory() / (1024 * 1024),

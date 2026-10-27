@@ -12,7 +12,7 @@ import { useModelCatalog, type SortField } from "../hooks/useModelCatalog";
 import type { ModelScanPatch } from "../lib/libraryJobs";
 import type { SetupGuideState } from "../hooks/useSetupGuide";
 import { useCatalogSplitResize } from "../hooks/useCatalogSplitResize";
-import { useTelemetry } from "../context/TelemetryContext";
+import { useGpuFitTelemetry } from "../context/TelemetryContext";
 import { dispatchNavigateConfig } from "../lib/events";
 import { loadCatalogListDim, saveCatalogListDim } from "../lib/storage";
 import TabPageHeader from "./TabPageHeader";
@@ -74,7 +74,9 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     }
     return map;
   }, [catalogHfUpdates]);
-  const { gpus, systemInfo } = useTelemetry();
+  // Coarse slice on purpose: the catalog stays mounted while an engine runs and renders
+  // hundreds of cards — it must not re-render at the HW monitor's 4-10 Hz sample rate.
+  const { gpus, systemInfo } = useGpuFitTelemetry();
   const [showScanMenu, setShowScanMenu] = useState(false);
   const [editMode, setEditMode] = useState(false);
   /** Opacity of sort + model cards (search chrome stays full). Same range as HW monitor dim. */

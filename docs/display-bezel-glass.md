@@ -78,22 +78,26 @@ Glitch overlay DOM (`DisplayGlitchOverlay`, `.display-glitch-*`) is **removed** 
 
 ---
 
-## HW monitor widgets (right rail)
+## HW monitor widgets (rail + below strip)
 
 Display texture also covers HW monitor cells (not only forecast/fusion).
 
 | Surface | Class | Texture host |
 |---------|--------|----------------|
-| Main glass | `.phosphor-screen-inner.phosphor-display-surface` | full CRT / e-ink + **recess shadow** |
-| HW widgets | `.launch-rail-tel .phosphor-display-surface` (totals / CPU / GPU / topo cards) | **same face** (PAPER / CRT / EINK), **no** glass recess shadow |
+| Main glass | `.phosphor-screen-inner.phosphor-display-surface` | full face (DOTTED grain) + **recess shadow** |
+| HW widgets | `.hw-mon .phosphor-display-surface` (totals / CPU / GPU tiles) | **same face**, **no** glass recess shadow |
 
-- `data-display-face` is set on `.launch-rail-tel` (see `LaunchRailTelemetry.tsx`).
+- `data-display-face` is published on `<html>` by `DisplayFaceSync`; the HW shell reaches it through the
+  ancestor chain and must not set a face attribute of its own.
 - Face recipes live in `fusion-display.css` paired selectors:
   - glass: `.phosphor-screen-inner…`
-  - rail: `.launch-rail-tel[data-display-face="…"] .phosphor-display-surface`
-- Widget chrome (borders, ink on EINK) lives in `launch.css`.
+  - HW: `[data-display-face="dotted"] .hw-mon .phosphor-display-surface`
+- Widget chrome, placements and density live in `src/styles/hw-monitor.css` — the only owner of the
+  `.hw-mon`, `.hw-totals`, `.hw-cell`, `.hw-cpu` and `.hw-gpu` families.
+- Placement is shape (`data-placement="rail" | "below"`), density is content (`data-density="full" |
+  "compact"`). Compact drops whole rows in JSX — clocks and PCIe are not computed, never hidden by CSS.
 - **Not** the catalog quiet wing: catalog desaturate is only  
-  `[data-model-catalog] .catalog-list-panel { filter: saturate(…) }` — never the launch rail.
+  `[data-model-catalog] .catalog-list-panel { filter: saturate(…) }` — never the HW monitor.
 - Do not leave EINK ink on a transparent / black-wash widget face (reads as a veil). EINK must set `--fusion-eink-surface` on the widget face like the main glass.
 
 ---
@@ -135,6 +139,7 @@ That nested “inner display” only showed under fusion + DOTTED and fought the
 | Theme phosphor inset / e-ink tokens | `src/themes/app-themes.ts`, `src/styles/tokens-base.css` |
 | Frame + glass mount / phosphor height | `EngineGpuForecast.tsx` |
 | Forecast / fusion fill | `VramBadge.tsx` |
+| HW monitor widgets, rail + below placements, density | `src/components/hw/`, `src/styles/hw-monitor.css` |
 
 | Fusion widgets | `FusionOverlay.tsx` |
 | Share capture host = glass face | `fusionShareCapture.tsx` → `.vram-forecast-display` / phosphor-screen-inner |

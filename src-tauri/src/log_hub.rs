@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::mpsc;
 use tauri::AppHandle;
 use tauri::Emitter;
@@ -33,10 +34,21 @@ pub struct LogBatch {
 }
 
 /// Shared telemetry tick — stderr log batch flush and fusion /slots poll cadence.
-/// Single knob keeps log console and fusion meters aligned (25ms ≈ 80 HTTP polls/s per active engine).
-/// Override via `BLACKWELL_TELEMETRY_TICK_MS` for bisection (e.g. 500 or 2000).
+/// Single knob keeps log console and fusion meters aligned (25ms ≈ 40 HTTP polls/s per
+/// active engine). Override via `BLACKWELL_TELEMETRY_TICK_MS` for bisection (500 / 2000),
+/// or live from CONFIG → RUNTIME (`0` = env/default).
+static TELEMETRY_TICK_OVERRIDE_MS: AtomicU64 = AtomicU64::new(0);
+
 pub fn telemetry_tick_ms() -> u64 {
-    crate::debug_flags::flags().telemetry_tick_ms
+    match TELEMETRY_TICK_OVERRIDE_MS.load(Ordering::Relaxed) {
+        0 => crate::debug_flags::flags().telemetry_tick_ms,
+        ms => ms,
+    }
+}
+
+/// Clamp defensively — the RUNTIME sliders hold the product bounds.
+pub fn set_telemetry_tick_ms(ms: u64) {
+    TELEMETRY_TICK_OVERRIDE_MS.store(ms.clamp(10, 250), Ordering::Relaxed);
 }
 const MAX_BATCH_SIZE: usize = 10;
 /// Bounded stderr line queue — drops on flood instead of unbounded RAM growth.
@@ -316,7 +328,7 @@ impl LogHub {
 
         let mut batch_buffer: Vec<LogEntry> = Vec::with_capacity(MAX_BATCH_SIZE);
         let mut last_emit = tokio::time::Instant::now();
-        let batch_interval = tokio::time::Duration::from_millis(telemetry_tick_ms());
+        let mut batch_interval = tokio::time::Duration::from_millis(telemetry_tick_ms());
 
         let mut load_failed = false;
         let mut tables_seen: usize = 0;
@@ -591,6 +603,12 @@ impl LogHub {
 
                 // ── Timer tick — flush stale partial buffer ──────────────
                 _ = flush_interval.tick() => {
+                    // Track the live tick (CONFIG → RUNTIME) without rebuilding the interval.
+                    let tick_ms = telemetry_tick_ms();
+                    if batch_interval.as_millis() as u64 != tick_ms {
+                        batch_interval = tokio::time::Duration::from_millis(tick_ms);
+                        flush_interval.reset_after(batch_interval);
+                    }
                     if Self::flush_batch(&app_handle, slot_idx, &alias, &mut batch_buffer, &mut last_emit, &batch_interval) {
                         // flushed
                     }

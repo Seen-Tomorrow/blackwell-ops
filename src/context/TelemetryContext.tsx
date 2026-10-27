@@ -5,6 +5,13 @@ import { gpuScanSnapshotEqual } from "../lib/telemetryGpu";
 import { useTauriListen } from "../hooks/useTauriListen";
 import { frontendPollEnabled } from "../lib/debugFlags";
 import {
+  KEYS,
+  TELEMETRY_POLL,
+  loadPcieThroughputEnabled,
+  loadTelemetryPollIntervals,
+  subscribeStorage,
+} from "../lib/storage";
+import {
   applyDevGpuTopo,
   subscribeDevFakeGpuExtra,
 } from "../lib/devFakeGpuTopo";
@@ -25,22 +32,48 @@ export function useTelemetry() {
   return useContext(TelemetryContext);
 }
 
-const GPU_FAST_INTERVAL_MS = 250;
-/** Catalog VRAM topo — 1s while catalog tab or live engines. */
-const GPU_BACKGROUND_INTERVAL_MS = 1000;
-/** Idle tabs — slow poll; slot-cleared still triggers immediate refresh. */
-const GPU_IDLE_INTERVAL_MS = 5000;
-const CPU_INTERVAL_MS = 500;
-/** Host RAM used/free — widget + forecast; 1–2s is enough. */
-const RAM_INTERVAL_MS = 2000;
+interface GpuFitState {
+  gpus: GpuInfo[];
+  systemInfo: SystemInfo | null;
+}
+
+/**
+ * Coarse telemetry for background consumers (catalog, forecast).
+ *
+ * `useTelemetry` fires on every fast-tier sample (4-10 Hz). The catalog stays mounted while
+ * an engine runs (`keepOpsAlive`) and renders hundreds of ModelCards, so subscribing it to
+ * the live context cost ~125 ms/s of main-thread JS for data it only uses to bucket VRAM.
+ * This slice changes only when fit-relevant numbers move (64 MiB buckets).
+ */
+const GpuFitContext = createContext<GpuFitState>({ gpus: [], systemInfo: null });
+
+export function useGpuFitTelemetry() {
+  return useContext(GpuFitContext);
+}
+
 /** NVML can lag CUDA free by 1–2s after engine stop. */
 const GPU_POST_STOP_POLL_MS = 2000;
+/** Background/idle GPU tiers scale off the fast tier the user tunes in CONFIG → RUNTIME. */
+const GPU_BACKGROUND_MIN_MS = 1000;
+const GPU_BACKGROUND_FACTOR = 4;
+const GPU_IDLE_MIN_MS = 5000;
+const GPU_IDLE_FACTOR = 20;
 export type GpuPollTier = "fast" | "normal" | "idle";
 
-function gpuPollIntervalMs(tier: GpuPollTier): number {
-  if (tier === "fast") return GPU_FAST_INTERVAL_MS;
-  if (tier === "normal") return GPU_BACKGROUND_INTERVAL_MS;
-  return GPU_IDLE_INTERVAL_MS;
+/**
+ * Tier cadences derived from one user-tunable fast interval (CONFIG → RUNTIME).
+ * The RUNTIME card renders these same numbers, so keep the single source here.
+ */
+export function gpuTierIntervalsMs(fastMs: number): Record<GpuPollTier, number> {
+  return {
+    fast: fastMs,
+    normal: Math.max(GPU_BACKGROUND_MIN_MS, fastMs * GPU_BACKGROUND_FACTOR),
+    idle: Math.max(GPU_IDLE_MIN_MS, fastMs * GPU_IDLE_FACTOR),
+  };
+}
+
+function gpuPollIntervalMs(tier: GpuPollTier, fastMs: number): number {
+  return gpuTierIntervalsMs(fastMs)[tier];
 }
 
 function gpuVramBucketMib(tier: GpuPollTier): number {
@@ -100,30 +133,80 @@ export function TelemetryProvider({
   const gpuPollTierRef = useRef(gpuPollTier);
   gpuPollTierRef.current = gpuPollTier;
 
+  /** User-tunable cadences (CONFIG → RUNTIME); defaults live in storage.ts. */
+  const [pollMs, setPollMs] = useState(loadTelemetryPollIntervals);
+  useEffect(() => {
+    const refresh = () => setPollMs(loadTelemetryPollIntervals());
+    const offs = [TELEMETRY_POLL.gpu.key, TELEMETRY_POLL.cpu.key, TELEMETRY_POLL.ram.key].map(
+      (key) => subscribeStorage(key, refresh),
+    );
+    return () => offs.forEach((off) => off());
+  }, []);
+
+  // App-wide Rust ticks (fusion render/poll, disk I/O, PCIe counters) follow the same sliders.
+  useEffect(() => {
+    const push = () => {
+      const { fusion, disk } = loadTelemetryPollIntervals();
+      void invoke("set_telemetry_timings", {
+        tickMs: fusion,
+        diskIoMs: disk,
+        pcieThroughput: loadPcieThroughputEnabled(),
+      }).catch(() => {});
+    };
+    push();
+    const offs = [
+      TELEMETRY_POLL.fusion.key,
+      TELEMETRY_POLL.disk.key,
+      KEYS.telemetryPcieThroughput,
+    ].map((key) => subscribeStorage(key, push));
+    return () => offs.forEach((off) => off());
+  }, []);
+
   useEffect(() => {
     return subscribeDevFakeGpuExtra(() => setDevFakeRev((n) => n + 1));
   }, []);
 
+  /**
+   * One request in flight per source. Without this a slider below the scan latency just
+   * stacks invokes: the old 100 ms setting queued ~135 ms scans and the app stalled.
+   */
+  const gpuScanInFlight = useRef(false);
   const pollGpu = useCallback(async () => {
-    if (!frontendPollEnabled()) return;
+    if (!frontendPollEnabled() || gpuScanInFlight.current) return;
+    gpuScanInFlight.current = true;
     try {
       const data = await invoke<GpuInfo[]>("scan_gpus");
-      const bucketMib = gpuVramBucketMib(gpuPollTierRef.current);
-      if (gpuScanSnapshotEqual(gpusRef.current, data, bucketMib)) return;
+      const tier = gpuPollTierRef.current;
+      // Fast tier = HW monitor open: render EVERY sample — the display is the product, and
+      // any tolerance here reads as "the monitor only updates 2-4×/s" however fast it polls.
+      // Background tiers keep the coarse filter so the catalog does not churn on NVML drift.
+      if (tier !== "fast" && gpuScanSnapshotEqual(gpusRef.current, data, gpuVramBucketMib(tier))) {
+        return;
+      }
       gpusRef.current = data;
       setRealGpus(data);
-    } catch {}
+    } catch {
+      /* keep last */
+    } finally {
+      gpuScanInFlight.current = false;
+    }
   }, []);
 
   const cpuRef = useRef<CpuInfo | null>(null);
+  const cpuScanInFlight = useRef(false);
   const pollCpu = useCallback(async () => {
-    if (!frontendPollEnabled()) return;
+    if (!frontendPollEnabled() || cpuScanInFlight.current) return;
+    cpuScanInFlight.current = true;
     try {
       const data = await invoke<CpuInfo>("scan_cpu");
       if (cpuSnapshotEqual(cpuRef.current, data)) return;
       cpuRef.current = data;
       setCpu(data);
-    } catch {}
+    } catch {
+      /* keep last */
+    } finally {
+      cpuScanInFlight.current = false;
+    }
   }, []);
 
   const postStopPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -174,88 +257,96 @@ export function TelemetryProvider({
     };
   }, [pollGpu, pollCpu]);
 
-  // GPU poll tier: fast (HW monitor) / normal (catalog or engines) / idle (other tabs).
-  // No live surface → no timer at all; the one-shot bootstrap below seeded the snapshot.
-  useEffect(() => {
-    if (!pollingActive) return;
-    let paused = document.visibilityState !== "visible";
-    const interval = gpuPollIntervalMs(gpuPollTier);
+  const ramInFlight = useRef(false);
+  const pollRam = useCallback(async () => {
+    if (!frontendPollEnabled() || ramInFlight.current) return;
+    ramInFlight.current = true;
+    try {
+      const data = await invoke<SystemInfo>("scan_system_info");
+      setSystemInfo((prev) => {
+        if (
+          prev
+          && prev.total_memory_mib === data.total_memory_mib
+          && prev.available_memory_mib === data.available_memory_mib
+          && prev.total_memory_manufactured_mib === data.total_memory_manufactured_mib
+        ) {
+          return prev;
+        }
+        return data;
+      });
+    } catch {
+      /* keep last */
+    } finally {
+      ramInFlight.current = false;
+    }
+  }, []);
 
-    const tickGpu = () => { if (!paused) void pollGpu(); };
-    tickGpu();
-    const gpuTimer = setInterval(tickGpu, interval);
+  /**
+   * One clock for every polled source.
+   *
+   * They used to run on three independent `setInterval`s, so the CPU and GPU ticks drifted
+   * out of phase and their bar tweens never overlapped: a 120 ms tween at each of 250 ms
+   * kept the compositor busy ~100 % of the time (measured via CDP duty cycle). Firing all
+   * due sources from one timer makes the tweens share a single window per cycle, which
+   * halves compositor time with no visual change. Sources with different intervals still
+   * fire when their own accumulator is due.
+   */
+  useEffect(() => {
+    if (!pollingActive && !cpuPollingActive) return;
+    const gpuMs = gpuPollIntervalMs(gpuPollTier, pollMs.gpu);
+    const sources: Array<{ ms: number; acc: number; run: () => void }> = [];
+    if (pollingActive) sources.push({ ms: gpuMs, acc: 0, run: () => void pollGpu() });
+    if (cpuPollingActive) sources.push({ ms: pollMs.cpu, acc: 0, run: () => void pollCpu() });
+    if (pollingActive) sources.push({ ms: pollMs.ram, acc: 0, run: () => void pollRam() });
+    if (sources.length === 0) return;
+
+    let paused = document.visibilityState !== "visible";
+    let last = performance.now();
+    const runAll = () => {
+      for (const source of sources) {
+        source.acc = 0;
+        source.run();
+      }
+    };
+
+    runAll();
+    const step = Math.max(10, Math.min(...sources.map((s) => s.ms)));
+    const timer = window.setInterval(() => {
+      const now = performance.now();
+      const dt = now - last;
+      last = now;
+      if (paused) return;
+      for (const source of sources) {
+        source.acc += dt;
+        if (source.acc >= source.ms) {
+          source.acc = 0;
+          source.run();
+        }
+      }
+    }, step);
 
     const handleVisibility = () => {
       paused = document.visibilityState !== "visible";
-      if (!paused) void pollGpu();
+      last = performance.now();
+      if (!paused) runAll();
     };
     document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
-      clearInterval(gpuTimer);
+      window.clearInterval(timer);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [pollingActive, gpuPollTier, pollGpu]);
-
-  // CPU live polling — only the HW monitor consumes it.
-  useEffect(() => {
-    if (!cpuPollingActive) return;
-
-    let paused = document.visibilityState !== "visible";
-    const tickCpu = () => { if (!paused) void pollCpu(); };
-    tickCpu();
-    const cpuTimer = setInterval(tickCpu, CPU_INTERVAL_MS);
-
-    const handleVisibility = () => {
-      paused = document.visibilityState !== "visible";
-      if (!paused) void pollCpu();
-    };
-    document.addEventListener("visibilitychange", handleVisibility);
-
-    return () => {
-      clearInterval(cpuTimer);
-      document.removeEventListener("visibilitychange", handleVisibility);
-    };
-  }, [cpuPollingActive, pollCpu]);
-
-  useEffect(() => {
-    if (!pollingActive) return;
-    let cancelled = false;
-    let paused = document.visibilityState !== "visible";
-
-    const tickRam = () => {
-      if (cancelled || paused) return;
-      invoke<SystemInfo>("scan_system_info")
-        .then((data) => {
-          if (cancelled) return;
-          setSystemInfo((prev) => {
-            if (
-              prev
-              && prev.total_memory_mib === data.total_memory_mib
-              && prev.available_memory_mib === data.available_memory_mib
-              && prev.total_memory_manufactured_mib === data.total_memory_manufactured_mib
-            ) {
-              return prev;
-            }
-            return data;
-          });
-        })
-        .catch(() => { /* keep last */ });
-    };
-
-    tickRam();
-    const ramTimer = setInterval(tickRam, RAM_INTERVAL_MS);
-    const handleVisibility = () => {
-      paused = document.visibilityState !== "visible";
-      if (!paused) tickRam();
-    };
-    document.addEventListener("visibilitychange", handleVisibility);
-    return () => {
-      cancelled = true;
-      clearInterval(ramTimer);
-      document.removeEventListener("visibilitychange", handleVisibility);
-    };
-  }, [pollingActive]);
+  }, [
+    pollingActive,
+    cpuPollingActive,
+    gpuPollTier,
+    pollMs.gpu,
+    pollMs.cpu,
+    pollMs.ram,
+    pollGpu,
+    pollCpu,
+    pollRam,
+  ]);
 
   const gpus = useMemo(() => {
     return applyDevGpuTopo(realGpus);
@@ -268,9 +359,29 @@ export function TelemetryProvider({
     [gpus, cpu, systemInfo],
   );
 
+  /** Fit-relevant fingerprint — 64 MiB buckets, so bar jitter cannot re-render the catalog. */
+  const fitKey = useMemo(() => {
+    const gpuKey = gpus
+      .map(
+        (g) =>
+          `${g.index}:${g.name}:${g.memory_total_manufactured || g.memory_total}:${Math.round(g.memory_used / 64)}`,
+      )
+      .join("|");
+    const ramKey = systemInfo
+      ? `${systemInfo.total_memory_mib}:${Math.round(systemInfo.available_memory_mib / 64)}:${systemInfo.total_memory_manufactured_mib}`
+      : "none";
+    return `${gpuKey}#${ramKey}`;
+  }, [gpus, systemInfo]);
+
+  const fitValue = useMemo<GpuFitState>(
+    () => ({ gpus, systemInfo }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [fitKey],
+  );
+
   return (
     <TelemetryContext.Provider value={value}>
-      {children}
+      <GpuFitContext.Provider value={fitValue}>{children}</GpuFitContext.Provider>
     </TelemetryContext.Provider>
   );
 }

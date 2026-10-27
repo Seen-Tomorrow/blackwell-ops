@@ -175,7 +175,7 @@ CRLF. Round-trip the file's own EOL, and check for `/\r\r/` before committing a 
 
 **Removed modules** — Mobile Sentinel Bridge (`mobile_bridge.rs`, WebSocket `0.0.0.0:3814`, `tokio-tungstenite`) is fully removed — backend and UI. Do not revive it.
 
-**Industrial display (bezel / glass)** — One glass only: frame pad = metal, `.phosphor-screen-inner` = full face + unified recess shadow, children = content (no nested phosphor surface). HW monitor widgets use the same face (`.launch-rail-tel .phosphor-display-surface`). Do not revive `DisplayGlitchOverlay` / `.display-glitch-*`.
+**Industrial display (bezel / glass)** — One glass only: frame pad = metal, `.phosphor-screen-inner` = full face + unified recess shadow, children = content (no nested phosphor surface). HW monitor widgets use the same face (`.hw-mon .phosphor-display-surface`). Do not revive `DisplayGlitchOverlay` / `.display-glitch-*`.
 
 **No `backdrop-filter: blur` (or `-webkit-backdrop-filter: blur`)** — Modal/scrim overlays must **dim only** (semi-opaque `background`, e.g. `color-mix(in srgb, #000 60%, transparent)`). Blur forces continuous full-compositor work in WebView2 and pegs the **iGPU at ~100%** for as long as the overlay is open (harness confirm, etc.). Prefer stronger dim over blur. Do not reintroduce blur for “frosted glass” aesthetics without an explicit exception.
 
@@ -206,8 +206,9 @@ only. Formula evaluators (`auto_fit` / `hw_locked`) and old scenarios live under
 
 **Supported viewports** — **1080p minimum (marginal)**, **1440p+ recommended**, **4K optimal**; below
 1080 is out of scope. Vertical space is the constraint; horizontal is fine. Prefer **manual** density
-(display bezel **GPU 2|3** / **ENG 2|3** cards-per-row) over auto viewport policies. HW monitor: GPU
-stack scrolls; OC panel stays pinned above launch dock.
+(display bezel **GPU 2|3** / **ENG 2|3** cards-per-row) over auto viewport policies. HW monitor: rail
+body scrolls; **FULL/CMPT** density is its own header toggle (compact drops the clocks + PCIe rows in
+JSX, never hides them with CSS), and the OC panel is a header-triggered overlay in both placements.
 
 **DEV tools (header)** — `VIEW` = physical panel presets + live Windows scale (app zoom 100% when testing). `GPU+` = fake multi-GPU topo (real SKU names/VRAM) for layout + forecast stress — session only. Do not ship these in REL UX.
 
@@ -378,12 +379,31 @@ Native crashes also append `%TEMP%\blackwell-crash.log` (heap `0xC0000374`, ille
 - Reaper clears slots + `engine-locks` on unexpected exit (Loading or Running). Stale locks from prior sessions are swept on app start and when launching on a free port.
 - **Quiet stderr loads** — Some models stop writing to stderr early (pipe EOF) while still loading. `log_hub` must not fail the slot when spawn-time `engine_pid` is still alive; HTTP `/slots` or `/health` readiness owns promotion to Running. Do not require stderr “model loaded” lines for these models.
 - **GPU topo “External apps”** — Grey = NVML used minus (breakdown SELF + capped CUDA/runtime, max 4 GiB/GPU). Do not assign all NVML to our bar when a foreign app (LM Studio) shares the GPU. Stale NVML after stop = background `scan_gpus` + `gpuMemoryKey` re-eval + burst poll on `slot-cleared` (+2s).
-- **PCIe on the GPU tile is NVML.** `nvml_metrics.rs` loads `nvml.dll` via `libloading` and reads `nvmlDeviceGetPcieThroughput` (KB/s TX/RX -> MiB/s,
-  i.e. bytes not bits) plus current/max link gen and width, matched by `pci.bus_id` from the
-  nvidia-smi query. The rate is **device-wide** (every process on that card). Show the
+- **GPU + RAM telemetry must never spawn per tick.** The HW monitor polls `scan_gpus` at 4 Hz and
+  system RAM at 0.5 Hz. Measured on the dev box: one `nvidia-smi` spawn = **56 ms CPU / 91 ms wall**,
+  one `powershell Get-CimInstance Win32_PhysicalMemory` = **318 ms CPU**. Both are gone: `scan_gpus`
+  builds the full `GpuInfo` from `nvml_metrics::scan()` in process (`nvml.dll` via `libloading` —
+  identity, VRAM, util, temp, power, PCIe/clocks/throttle; parity verified field-by-field against
+  the CLI), and installed RAM is `GetPhysicallyInstalledSystemMemory`, cached in a `LazyLock`
+  (`physical_ram_bytes`). The `nvidia-smi` CLI path stays as a fallback only (no usable `nvml.dll`),
+  with its `SmiGate` backoff. Before adding a field to a polled command, check NVML/kernel32 first.
+  The disk I/O PDH sampler is **demand-driven**: it starts on `scan_disk_io` and stops itself after
+  `DISK_IO_IDLE_STOP_MS` (5 s) with no calls — the disk widget only exists during model boot, so
+  nothing samples it while the app idles.
+- **PCIe on the GPU tile.** `nvml_metrics.rs` reads `nvmlDeviceGetPcieThroughput` (KB/s TX/RX -> MiB/s,
+  i.e. bytes not bits) plus current/max link gen and width; the CLI fallback resolves the device by
+  `pci.bus_id`. The rate is **device-wide** (every process on that card). Show the
   **negotiated** width: NVML's `MaxPcieLinkWidth` is the card's capability, not the slot's - an
   x8/x8 bifurcated board still reports max 16 - and mark idle off the gen downshift only.
   The `// peak` after each row is a frontend session max (module map, resets with the app).
+  **`nvmlDeviceGetPcieThroughput` costs ~32 ms per call** (driver counter read; two calls per
+  device) and `nvmlDeviceGetDriverModel` ~2.9 ms — both are cached in `nvml_metrics::scan`
+  (`PCIE_SAMPLE_TTL` 1 s / `DRIVER_MODEL_TTL` 30 s) and must never return to the fast path:
+  uncached they capped every scan at ~135 ms, so a 100 ms slider just queued scans and the
+  app stalled. Refreshes are **spread** — at most one card's counters per scan (oldest due),
+  so scan latency stays bounded for 4/8/12-card rigs — and CONFIG → RUNTIME can switch the
+  counters off entirely (PCIE ON/OFF). The per-tick scan is otherwise sub-millisecond and
+  runs on the blocking pool.
   The same NVML read feeds the tile's MEM clock and THR row (clock-throttle reasons: 0x40 HW
   thermal, 0x20 SW thermal, 0x80 power brake, 0x8 HW slowdown, 0x4 power cap, 0x200 board
   limit; the 0x1 idle / 0x400 reliability bits are ignored) - the supported proxy for
@@ -399,11 +419,13 @@ Native crashes also append `%TEMP%\blackwell-crash.log` (heap `0xC0000374`, ille
 - `BINARY_UPDATES_ENABLED = true` — App `.7z` + Full NSIS + provider packs via GitHub releases (Majestic ships assets).
 - Fusion prefill % needs `prefill_tokens_total` from `NewPrompt` log; `/slots` `n_prompt_tokens_processed` is the numerator. Do not call `reset_prefill_counters()` on `/slots` new_request after NewPrompt — it zeroes total and forces fallback to sparse `print_timing` stderr lines.
 - Bench warmup→measured has no `/slots` idle gap — call `reset_bench_meters_for_port` at each bench phase start or hero AVG/LIVE TPS bleeds warmup into measured.
-- **Telemetry tick:** Single constant `log_hub::TELEMETRY_TICK_MS` drives stderr batch flush, the
-  poll brain's active `/slots` poll, the SSE brain's render tick and `FusionContext`
-  `RENDER_INTERVAL_MS` — keep them synced (one knob). Currently **25ms** (~80 HTTP polls/s per
-  active engine on the poll path; the SSE brain does no HTTP at all). 10ms was most reliable but
-  heavy; 50ms is lighter if phase detection still holds.
+- **Telemetry tick:** one knob — `log_hub::telemetry_tick_ms()` — drives the stderr batch flush,
+  the poll brain's active `/slots` poll and the SSE brain's render tick; keep them synced. Default
+  **25 ms** (~40 HTTP polls/s per active engine on the poll path; the SSE brain does no HTTP at
+  all), overridable live from CONFIG → RUNTIME (10–250 ms, `set_telemetry_timings`) or at startup
+  via `BLACKWELL_TELEMETRY_TICK_MS`. The poll brain and the log flush re-read it per tick; an SSE
+  brain picks a change up on its next stream start. 10 ms was most reliable but heavy; 50 ms is
+  lighter if phase detection still holds.
 - **Fusion adapters:** Per-provider metrics live in `src-tauri/src/fusion/adapters/` — set `spawn_profile.fusion_adapter` in factory JSON (`ggml_master` | `ggml_tom` | `ggml_quiet`). Per-slot KV/decode/prompt tracking lives in `fusion/slotstate.rs` (`SlotBank`); the frontend `FusionUpdate` contract + emit fingerprint + snapshot rehydrate cache live in `fusion/emit.rs`; pure hero TPS math in `fusion/meter.rs` (`session_avg_tps`, `per_slot_tps`, the 54 ms prefill calibration). **One brain per engine, chosen once at launch:** `start_brain` probes `/events/sse`; a patched engine runs `fusion/sse.rs` (stream only, no polling), everything else runs `fusion/brain.rs` (the poll brain: orchestrator + phase/log-handler). Phase, request clock, TTFT and the freeze/latch policy are shared in `fusion/lifecycle.rs` — never re-derive them in either brain. The registry is `BrainHandle::{Poll,Sse}`; `Sse` has no inbound channel, so quiet-mode flips and bench meter resets are no-ops there (request boundaries come from the stream's `request_epoch`). `ggml_quiet` = silent server (no stderr PP/TG logs); the poll brain derives PP totals/progress from `/slots` peak `n_prompt_tokens` and opens the multi-slot TG window on decode-without-log signal. Custom providers: `customCapabilities.fusionAdapter`.
 - **Runtime quiet toggle:** Silent models on a normal ggml-master provider (e.g. DS4) flip the live brain via the fusion-display `QUIET`/`LOGS` button → `set_fusion_quiet_mode(port, quiet)` → `BrainInbound::SetQuietMode` toggles `has_log_belt` + re-polls `/slots`. Persisted per model (`fusion.quiet.<model>` localStorage). Do not gate this on provider template — it is per-model. Tom uses stdout `PromptProcessingProgress` at `-lv 3`; brain skips `/slots` PP when `slots_expose_prompt_processed() == false`.
 - **FIT adapters:** Per-provider `llama-fit-params` + learned VRAM in `src-tauri/src/fit_adapters/` — set `spawn_profile.fit_adapter`. Tom rejects `--fit-print`; use `projected to use N MiB` from `llama_params_fit_impl` (do not parse CUDA init VRAM lines).

@@ -5,7 +5,13 @@ function bucketGpuMib(mib: number, bucketMib: number): number {
   return Math.round(mib / bucketMib);
 }
 
-/** Skip React state churn when NVML noise is within bucket/tolerance. */
+/**
+ * Skip React state churn when NVML noise is within bucket/tolerance.
+ *
+ * This is the **background** gate (catalog / forecast / idle tabs). The HW monitor's fast
+ * tier deliberately bypasses it: there the display is the product, and any threshold here
+ * shows up as "the monitor only updates 2-4 times a second" no matter how fast it polls.
+ */
 export function gpuScanSnapshotEqual(
   prev: GpuInfo[],
   next: GpuInfo[],
