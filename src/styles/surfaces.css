@@ -386,7 +386,7 @@ button.engine-logs-slot-chip.engine-logs-slot-chip--active .engine-logs-slot-chi
   border: 1px solid color-mix(in srgb, var(--theme-bezel-edge-lo) 55%, var(--theme-border));
   border-radius: 2px;
 }
-
+
 /* PARAMETER CONFIGURATION toolbar — the one textured strip on that tab. */
 [data-config-page] .param-config-toolbar {
   background-color: var(--theme-industrial-bg);
@@ -394,4 +394,4 @@ button.engine-logs-slot-chip.engine-logs-slot-chip--active .engine-logs-slot-chi
     var(--theme-industrial-texture-active),
     var(--theme-industrial-face-gradient, none);
 }
-
+
