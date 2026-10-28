@@ -218,7 +218,7 @@ export default function FoundryBuildProgress({
 
         {waitingForConfirm && (
           <div className="fnd-build-pause rounded-sm px-3 py-2 text-center">
-            <span className="fnd-build-pause__text type-body font-mono animate-pulse">⏸ PAUSED — REVIEW CMAKE OUTPUT ABOVE, THEN CLICK BUILD THE ENGINE</span>
+            <span className="fnd-build-pause__text type-body font-mono animate-pulse">⏸ PAUSED — REVIEW THE CONFIGURATION, THAN REJECT OR BUILD.</span>
           </div>
         )}
 
@@ -291,7 +291,7 @@ export default function FoundryBuildProgress({
 
         {isComplete && (
           <p className="fnd-build-ready type-label font-mono m-0">
-            ENGINE binaries build and READY TO USE.
+            ENGINE build and set as the actual source.
           </p>
         )}
       </div>
