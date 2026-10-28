@@ -108,8 +108,6 @@ export const KEYS = {
   /** Dev: fake installed version for in-app updater testing (e.g. "1.0.9"). */
   devUpdateVersionFake: `${STORAGE_PREFIX}dev-update-version-fake`,
   fusionHeroTpsMode: `${STORAGE_PREFIX}fusion-hero-tps`,
-  /** Engine launch `-lv` (3 = product timing belt, 4 = full metadata belt). */
-  fusionLogVerbosity: `${STORAGE_PREFIX}fusion-log-verbosity`,
   /** Fusion display: single pane vs dual BRAIN+WORKER panes. */
   fusionDisplayMode: `${STORAGE_PREFIX}fusion-display-mode`,
   /** Dual fusion pane orientation: side | stack. */
@@ -1020,23 +1018,6 @@ export function loadFusionHeroTpsMode(): FusionHeroTpsMode {
 export function saveFusionHeroTpsMode(mode: FusionHeroTpsMode): void {
   writeStorage(KEYS.fusionHeroTpsMode, mode);
 }
-
-/** llama-server `-lv` at next launch. Default 3 (timing belt without KV spam). */
-export type FusionLogVerbosity = 2 | 3 | 4;
-
-const FUSION_LOG_VERBOSITY_DEFAULT: FusionLogVerbosity = 3;
-
-export function loadFusionLogVerbosity(): FusionLogVerbosity {
-  const v = readStorage(KEYS.fusionLogVerbosity);
-  if (v === "2") return 2;
-  if (v === "4") return 4;
-  return 3;
-}
-
-export function saveFusionLogVerbosity(level: FusionLogVerbosity): void {
-  writeStorage(KEYS.fusionLogVerbosity, String(level === 2 || level === 4 ? level : 3));
-}
-
 
 export type FusionDisplayMode = "single" | "dual";
 export type FusionDualOrient = "side" | "stack";

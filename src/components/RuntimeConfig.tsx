@@ -4,13 +4,10 @@ import { gpuTierIntervalsMs } from "../context/TelemetryContext";
 import {
   TELEMETRY_POLL,
   clampTelemetryPollMs,
-  loadFusionLogVerbosity,
   loadPcieThroughputEnabled,
   loadTelemetryPollIntervals,
-  saveFusionLogVerbosity,
   savePcieThroughputEnabled,
   saveTelemetryPollMs,
-  type FusionLogVerbosity,
   type TelemetryPollSource,
 } from "../lib/storage";
 
@@ -64,13 +61,6 @@ export default function RuntimeConfig() {
   const [status, setStatus] = useState<RuntimeSettingsStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // Engine `-lv` — stored in the launch layer, applied at spawn (restart to change).
-  const [verbosity, setVerbosity] = useState<FusionLogVerbosity>(loadFusionLogVerbosity);
-
-  const setLogVerbosity = (level: FusionLogVerbosity) => {
-    setVerbosity(level);
-    saveFusionLogVerbosity(level);
-  };
 
   // Telemetry cadences — persisted, and TelemetryContext re-arms on the storage notify.
   const [pollMs, setPollMs] = useState(loadTelemetryPollIntervals);
@@ -288,29 +278,13 @@ export default function RuntimeConfig() {
         </div>
 
         <div className="theme-surface-row rounded-sm p-3 flex flex-col gap-2">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="type-body font-mono theme-accent-text tracking-wider">
-                LOG VERBOSITY LEVEL
-              </p>
-              <p className="type-tiny font-mono cfg-mut mt-0.5 leading-relaxed">
-                Engine -lv at next launch. 2 = quiet, 3 = timing / draft / eval belt (default),
-                4 = full loader / slot chatter. CLI only — a running engine keeps its level.
-              </p>
-            </div>
-            <div className="flex gap-1 flex-shrink-0">
-              {([2, 3, 4] as const).map((level) => (
-                <Chip
-                  key={level}
-                  label={String(level)}
-                  active={verbosity === level}
-                  onClick={() => setLogVerbosity(level)}
-                />
-              ))}
-            </div>
-          </div>
-          <p className="type-tiny font-mono cfg-mut--a70">
-            Next launch only. Stop and start the engine after changing this.
+          <p className="type-body font-mono theme-accent-text tracking-wider">
+            ENGINE LOAD INVENTORY
+          </p>
+          <p className="type-tiny font-mono cfg-mut mt-0.5 leading-relaxed">
+            Engine launch uses the provider's full loader verbosity so the exact
+            buffer inventory (model / KV / compute) can be learned for the VRAM
+            forecast. No runtime override.
           </p>
         </div>
       </div>

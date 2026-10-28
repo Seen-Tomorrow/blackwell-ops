@@ -30,7 +30,6 @@ import {
   resolveLaunchPolicyId,
   resolveSmartBatchPush,
 } from "./launchPolicy";
-import { loadFusionLogVerbosity } from "./storage";
 import { snapEssentialsHiddenInValues } from "./launchProfile";
 import {
   type SpecBoostMethod,
@@ -279,9 +278,6 @@ export function buildLaunchConfig(input: BuildLaunchConfigInput): EngineConfig {
         ...merged,
         ...launchExtra,
       }),
-      // CONFIG → RUNTIME log verbosity (2/3/4) — Rust rewrites spawn_profile `-lv N`
-      // (see apply_log_verbosity_override).
-      __log_verbosity: loadFusionLogVerbosity(),
     },
   };
 

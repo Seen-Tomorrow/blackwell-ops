@@ -40,7 +40,7 @@ export const DEFAULT_CUSTOM_CAPABILITIES: Required<
   fusion: false,
   metrics: false,
   verbose: false,
-  verboseArgs: "-lv 3",
+  verboseArgs: "-lv 4",
 };
 
 export function resolveCustomCapabilities(

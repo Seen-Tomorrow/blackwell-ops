@@ -114,9 +114,9 @@ impl Default for SpawnProfile {
             model_flag: default_model_flag(),
             port_flag: default_port_flag(),
             alias_flag: default_alias_flag(),
-            // Product default: -lv 3 keeps print_timing / draft / eval belt without tokenizer KV spam.
-            // CONFIG → RUNTIME can set 2/3/4 via __log_verbosity (see build_command).
-            verbosity_args: vec!["-lv".into(), "3".into()],
+            // Full loader inventory (model/KV/compute buffer lines) is required for
+            // exact learned VRAM; `-lv 3` hides those lines on current ggml builds.
+            verbosity_args: vec!["-lv".into(), "4".into()],
             spawn_flags: Vec::new(),
             fit_binary_provider: String::new(),
             enable_metrics: true,
@@ -356,9 +356,9 @@ fn apply_spawn_profile_overrides(provider_id: &str, tmpl: &mut ProviderTemplate)
     if provider_id != "ggml-tom" {
         return;
     }
-    let tom_verbosity = vec!["-lv".to_string(), "3".to_string()];
+    let tom_verbosity = vec!["-lv".to_string(), "4".to_string()];
     if tmpl.spawn_profile.verbosity_args != tom_verbosity {
-        tmpl.spawn_profile.verbosity_args = vec!["-lv".to_string(), "3".to_string()];
+        tmpl.spawn_profile.verbosity_args = vec!["-lv".to_string(), "4".to_string()];
     }
     if tmpl.spawn_profile.fusion_adapter.is_empty() {
         tmpl.spawn_profile.fusion_adapter = "ggml_tom".into();
@@ -366,38 +366,6 @@ fn apply_spawn_profile_overrides(provider_id: &str, tmpl: &mut ProviderTemplate)
     if tmpl.spawn_profile.fit_adapter.is_empty() {
         tmpl.spawn_profile.fit_adapter = "ggml_tom".into();
     }
-}
-
-/// CONFIG → RUNTIME override: `extra_params.__log_verbosity` = 2, 3 or 4.
-/// Rewrites existing `-lv N` (or `--verbosity N`) pairs; no-op when the provider has no lv-style args.
-fn apply_log_verbosity_override(args: &mut Vec<String>, config: &EngineConfig) {
-    let lv = config
-        .extra_params
-        .get("__log_verbosity")
-        .and_then(|v| {
-            v.as_u64()
-                .or_else(|| v.as_i64().map(|i| i as u64))
-                .or_else(|| v.as_str().and_then(|s| s.trim().parse().ok()))
-        })
-        .unwrap_or(0);
-    if !(2..=4).contains(&lv) {
-        return;
-    }
-    let lv_s = lv.to_string();
-    let mut i = 0;
-    while i < args.len() {
-        let a = args[i].as_str();
-        if a == "-lv" || a == "--verbosity" {
-            if i + 1 < args.len() {
-                args[i + 1] = lv_s;
-            } else {
-                args.push(lv_s);
-            }
-            return;
-        }
-        i += 1;
-    }
-    // Don't invent -lv for providers that never shipped verbosity_args.
 }
 
 impl ProviderTemplate {
@@ -471,7 +439,7 @@ impl ProviderTemplate {
         sp.enable_metrics = caps.metrics;
         if caps.verbose {
             let raw = if caps.verbose_args.trim().is_empty() {
-                "-lv 3"
+                "-lv 4"
             } else {
                 caps.verbose_args.trim()
             };
@@ -574,9 +542,9 @@ impl ProviderTemplate {
             }
         }
 
+        // Provider verbosity is intentional: exact learned VRAM needs the loader's
+        // buffer inventory lines. Do not add a runtime override here.
         args.extend(sp.verbosity_args.clone());
-        // Cockpit LV 3/4 toggle (and any future launch override). Only rewrites `-lv N` tokens.
-        apply_log_verbosity_override(&mut args, config);
 
         let auto_vram_launch = config
             .extra_params
@@ -1276,6 +1244,14 @@ mod build_cmd_tests {
             },
             params: Vec::new(),
         }
+    }
+
+    #[test]
+    fn default_spawn_verbosity_keeps_loader_inventory() {
+        // `-lv 3` hides load_tensors/sched_reserve buffer lines on current ggml
+        // builds, which is exactly what the exact learned-VRAM parser needs.
+        let sp = SpawnProfile::default();
+        assert_eq!(sp.verbosity_args, vec!["-lv".to_string(), "4".to_string()]);
     }
 
     fn arg_param(key: &str, flag: &str, default: &str) -> crate::types::UserEditedTemplateParam {
