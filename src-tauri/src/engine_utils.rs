@@ -206,8 +206,15 @@ pub async fn stop_child_fast(
     mut child: std::process::Child,
     pid: Option<u32>,
 ) -> bool {
-    if let Some(p) = pid {
-        let _ = kill_process_by_pid(p).await;
+    // If the Child handle is the target PID and already exited, skip taskkill by PID:
+    // Windows may have recycled that PID, and killing it would hit an unrelated process.
+    let same_pid = pid.is_some_and(|p| child.id() == p);
+    let child_already_exited = matches!(child.try_wait(), Ok(Some(_)));
+
+    if !(same_pid && child_already_exited) {
+        if let Some(p) = pid {
+            let _ = kill_process_by_pid(p).await;
+        }
     }
 
     tokio::task::spawn_blocking(move || reap_child_handle(&mut child))

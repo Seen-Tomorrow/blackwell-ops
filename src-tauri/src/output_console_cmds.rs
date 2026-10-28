@@ -4,6 +4,67 @@
 
 use crate::engine::AppContext;
 
+/// Folder used by SAVE AS / OPEN LOG FOLDER for console logs: the live session
+/// directory when logging is active, else the durable sessions root.
+fn console_logs_dir() -> std::path::PathBuf {
+    crate::session_log::current_dir().unwrap_or_else(|| {
+        crate::config::config_dir().join("logs").join("sessions")
+    })
+}
+
+/// Native Save As dialog for the current console buffer (replaces the old
+/// WebView `<a download>` path, which does nothing in Tauri/WebView2).
+#[tauri::command]
+pub async fn save_output_console_text(
+    default_name: String,
+    content: String,
+) -> Result<Option<String>, String> {
+    let dir = console_logs_dir();
+    let _ = std::fs::create_dir_all(&dir);
+    let default_name = if default_name.trim().is_empty() {
+        "blackwell-console.log".to_string()
+    } else {
+        default_name
+    };
+
+    let picked = tokio::task::spawn_blocking(move || {
+        rfd::FileDialog::new()
+            .set_title("Save console log")
+            .set_directory(&dir)
+            .set_file_name(&default_name)
+            .add_filter("Log files", &["log", "txt"])
+            .save_file()
+    })
+    .await
+    .map_err(|e| format!("Save dialog panicked: {e}"))?;
+
+    let Some(path) = picked else {
+        return Ok(None);
+    };
+    std::fs::write(&path, content).map_err(|e| format!("Could not write log: {e}"))?;
+    Ok(Some(path.to_string_lossy().to_string()))
+}
+
+/// Reveal the console/session log folder in Explorer.
+#[tauri::command]
+pub async fn open_output_console_logs_folder() -> Result<String, String> {
+    let dir = console_logs_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Could not create log folder: {e}"))?;
+
+    #[cfg(windows)]
+    {
+        std::process::Command::new("explorer")
+            .arg(&dir)
+            .spawn()
+            .map_err(|e| format!("Could not open Explorer: {e}"))?;
+        Ok(dir.to_string_lossy().to_string())
+    }
+    #[cfg(not(windows))]
+    {
+        Err(format!("Log folder: {}", dir.display()))
+    }
+}
+
 #[tauri::command]
 pub async fn get_blackwell_output_console_categories() -> Vec<String> {
     use crate::output_console::BlackwellOutputConsoleCategory;

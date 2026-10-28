@@ -2,18 +2,16 @@ import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, typ
 import { invoke } from "@tauri-apps/api/core";
 import type { Tab } from "../App";
 import type { ProviderConfig, UpdateOfferings } from "../lib/types";
-import type { ConfigSubTab, DownloadsSubTab } from "../lib/appNav";
+import type { ConfigSubTab, DownloadsSubTab, FoundrySubTab } from "../lib/appNav";
 import type { SetupPhase } from "../lib/setupGuide";
 import HeaderNav from "./HeaderNav";
 import { useStatus } from "../context/StatusBarContext";
-import { useFoundry, type Env } from "../hooks/useBuildDock";
-import FoundryStatusChip from "./FoundryStatusChip";
-import BlackwellOutputConsole, {
-  type OutputConsoleCategory,
+import BlackwellOutputConsole from "./BlackwellOutputConsole";
+import {
   parseOutputConsoleCategory,
-} from "./BlackwellOutputConsole";
+  type OutputConsoleCategory,
+} from "../lib/outputConsole";
 import OutputConsoleInlineDock from "./OutputConsoleInlineDock";
-import FoundryModal from "./FoundryModal";
 import AppearanceControls from "./AppearanceControls";
 import SegmentSwitch from "./SegmentSwitch";
 import BlackwellBrandMark from "./BlackwellBrandMark";
@@ -44,7 +42,6 @@ import {
 } from "../lib/storage";
 import { APP_SHELL_MIN_PX, resolveAppShellWidthPx, resolveChromeScale } from "../lib/uiShell";
 import { isMobileDevice } from "../lib/utils";
-import IpcMeterFooter from "./IpcMeterFooter";
 import AppUpdateMenu from "./AppUpdateMenu";
 import DevViewportTool from "./DevViewportTool";
 import DevFakeGpuTopoTool from "./DevFakeGpuTopoTool";
@@ -76,6 +73,8 @@ interface LayoutProps {
   updateOfferings?: UpdateOfferings | null;
   onRefreshUpdateOfferings?: () => void;
   hasBinaryUpdates?: boolean;
+  /** At least one engine slot is loading/running. */
+  hasLiveEngines?: boolean;
   /** First-run wizard active — lock ENGINES / LOGS. */
   setupGuideActive?: boolean;
   /** Wizard phase — decides which nav destination is the next step. */
@@ -86,6 +85,9 @@ interface LayoutProps {
   /** DOWNLOADS section — header sub-rail. */
   downloadsSubTab: DownloadsSubTab;
   onDownloadsSubTabChange: (tab: DownloadsSubTab) => void;
+  /** FOUNDRY section — BUILD / CACHE sub-rail. */
+  foundrySubTab: FoundrySubTab;
+  onFoundrySubTabChange: (tab: FoundrySubTab) => void;
 }
 
 export default function Layout({
@@ -96,12 +98,15 @@ export default function Layout({
   updateOfferings,
   onRefreshUpdateOfferings,
   hasBinaryUpdates,
+  hasLiveEngines = false,
   setupGuideActive = false,
   setupGuidePhase,
   configSubTab,
   onConfigSubTabChange,
   downloadsSubTab,
   onDownloadsSubTabChange,
+  foundrySubTab,
+  onFoundrySubTabChange,
 }: LayoutProps) {
   const [zoom, setZoom] = useState(loadZoom);
   const [textScale, setTextScale] = useState(loadTextScale);
@@ -122,38 +127,16 @@ export default function Layout({
       ? resolveChromeScale(window.innerWidth, window.innerHeight)
       : 1.12,
   );
-  const { totalParams, hiddenCount, onShowAll, flashMessage } = useStatus();
-  const {
-    buildProgress,
-    foundryModal,
-    foundryModalVisible,
-    openBuildModal,
-    minimizeBuildModal,
-    restoreBuildModal,
-    closeBuildModal,
-    attachToActiveBuild,
-    buildAttempt,
-    compileStartedAt,
-  } = useFoundry();
-  const resolvedProvider = useMemo(() => {
-    if (!foundryModal) return providers?.[0] || {} as ProviderConfig;
-    const prov = providers?.find(p => p.id === foundryModal.providerId);
-    return prov || providers?.[0] || {} as ProviderConfig;
-  }, [foundryModal, providers]);
-
-  const resolvedEnvironment = foundryModal?.environment || "edge";
+  const { totalParams, hiddenCount, onShowAll, flashMessage, attention, clearAttention } = useStatus();
 
   // App.tsx is the sole foundry-progress → refresh_build_info owner.
   // Do not list_providers here — it races and can clobber probed build info.
-  const handleFoundryComplete = useCallback((_providerId: string) => {}, []);
+  const handleFoundrySelect = useCallback(() => {
+    onTabChange("foundry");
+    // The primary tab is the build surface; CACHE stays an explicit sub-rail choice.
+    onFoundrySubTabChange("build");
+  }, [onTabChange, onFoundrySubTabChange]);
 
-  const buildProviderLabel = useMemo(() => {
-    if (!buildProgress) return "";
-    const match = providers?.find((p) => p.id === buildProgress.providerId);
-    return match?.display_name || buildProgress.providerId;
-  }, [buildProgress, providers]);
-
-  // Dock slot click: if modal exists and is visible → minimize; if exists but hidden → restore; if no modal but build running → open fresh
   const [showTooltip, setShowTooltip] = useState(false);
   const [isMobile, setIsMobile] = useState(isMobileDevice);
   const [isOutputConsoleExpanded, setIsOutputConsoleExpanded] = useState(false);
@@ -162,6 +145,14 @@ export default function Layout({
   const [lastConsoleLine, setLastConsoleLine] = useState<string>("Ready for telemetry");
   const [lastConsoleCategory, setLastConsoleCategory] = useState<OutputConsoleCategory | null>(null);
   const [activeConsoleCategory, setActiveConsoleCategory] = useState<OutputConsoleCategory>("engines");
+
+  /** Acknowledge an engine fault by opening the Error console tab. */
+  const openEngineAttention = useCallback(() => {
+    setActiveConsoleCategory("error");
+    setIsConsoleDetached(false);
+    setIsOutputConsoleExpanded(true);
+    clearAttention();
+  }, [clearAttention]);
   const [updFakeOn, setUpdFakeOn] = useState(false);
   const [updFakeVersion, setUpdFakeVersion] = useState<string | null>(null);
 
@@ -389,6 +380,19 @@ export default function Layout({
     return () => window.removeEventListener("wheel", onWheel);
   }, [adjustZoom, adjustTextScale]);
 
+  const systemStatusLabel = setupGuideActive
+    ? "SETUP INCOMPLETE"
+    : hasBinaryUpdates
+      ? "UPDATE AVAILABLE"
+      : hasLiveEngines
+        ? "ENGINES LIVE"
+        : "READY";
+  const systemStatusTone = setupGuideActive || hasBinaryUpdates
+    ? "warn"
+    : hasLiveEngines
+      ? "live"
+      : "ok";
+
   const shellStyle = {
     "--ui-text-scale": String(zoom),
     "--app-shell-width-px": `${shellWidthPx}px`,
@@ -467,6 +471,9 @@ export default function Layout({
               onConfigSubTabChange={onConfigSubTabChange}
               downloadsSubTab={downloadsSubTab}
               onDownloadsSubTabChange={onDownloadsSubTabChange}
+              foundrySubTab={foundrySubTab}
+              onFoundrySubTabChange={onFoundrySubTabChange}
+              onFoundrySelect={handleFoundrySelect}
               setupGuideActive={setupGuideActive}
               setupGuidePhase={setupGuidePhase}
               chromeScale={chromeScale}
@@ -630,29 +637,9 @@ export default function Layout({
               />
             </>
           }
-          foundrySlot={
-            buildProgress ? (
-              <FoundryStatusChip
-                buildProgress={buildProgress}
-                providerLabel={buildProviderLabel}
-                compileStartedAt={compileStartedAt}
-                isMinimized={!!foundryModal && !foundryModalVisible}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (foundryModal && foundryModalVisible) minimizeBuildModal();
-                  else if (foundryModal) restoreBuildModal();
-                  else if (buildProgress) {
-                    openBuildModal(buildProgress.providerId, buildProgress.environment.toLowerCase() as Env);
-                  } else {
-                    attachToActiveBuild();
-                  }
-                }}
-              />
-            ) : null
-          }
           statusRight={
             <>
-              {activeTab === "config" && (
+              {activeTab === "config" && configSubTab === "params" && (
                 <>
                   <span>TOTAL PARAMS: {totalParams}</span>
                   <div className="relative inline-block">
@@ -672,27 +659,30 @@ export default function Layout({
                   </div>
                 </>
               )}
-              <span className={`transition-colors ${flashMessage ? "status-flash" : "app-status-nominal"}`}>
-                {flashMessage || "SYSTEM NOMINAL"}
+              <span className={`transition-colors ${flashMessage ? "status-flash" : ""}`}>
+                {flashMessage ? (
+                  flashMessage
+                ) : attention ? (
+                  <button
+                    type="button"
+                    className="app-status-state app-status-state--error"
+                    title={`Engine fault${attention.alias ? ` [${attention.alias}]` : ""}: ${attention.message}`}
+                    onClick={openEngineAttention}
+                  >
+                    <span className="app-status-state__dot" aria-hidden />
+                    ATTENTION
+                  </button>
+                ) : (
+                  <span className={`app-status-state app-status-state--${systemStatusTone}`}>
+                    <span className="app-status-state__dot" aria-hidden />
+                    {systemStatusLabel}
+                  </span>
+                )}
               </span>
-              <IpcMeterFooter />
             </>
           }
         />
       </footer>
-
-      {/* Foundry Build Modal — always mounted, CSS visibility controlled by foundryModalVisible.
-          Key uses buildAttempt only (stable for the whole attempt). Do NOT include buildId here —
-          changing key mid-build remounts the modal and wipes configure logs. HMR reattach uses hydration. */}
-      <FoundryModal
-        key={`${resolvedProvider.id}-${resolvedEnvironment}-${buildAttempt}`}
-        provider={resolvedProvider}
-        environment={resolvedEnvironment}
-        onClose={closeBuildModal}
-        onComplete={handleFoundryComplete}
-        visible={foundryModalVisible}
-        onMinimize={minimizeBuildModal}
-      />
 
     </div>
   );

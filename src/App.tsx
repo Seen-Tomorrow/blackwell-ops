@@ -7,6 +7,7 @@ import HarnessVeilPreview from "./components/HarnessVeilPreview";
 import ModelCatalog from "./components/ModelCatalog";
 const StackView = lazy(() => import("./components/StackView"));
 const ConfigPage = lazy(() => import("./components/ConfigPage"));
+const FoundryPage = lazy(() => import("./components/FoundryPage"));
 const ModelHub = lazy(() => import("./components/ModelHub"));
 const SoftwareDownloads = lazy(() => import("./components/SoftwareDownloads"));
 const LogsPanel = lazy(() => import("./components/LogsPanel"));
@@ -23,7 +24,7 @@ import { DisplayTextureProvider } from "./context/DisplayTextureContext";
 import DisplayFaceSync from "./context/DisplayFaceSync";
 import { IndustrialBezelTextureProvider } from "./context/IndustrialBezelTextureContext";
 import { ToastProvider } from "./components/Toast";
-import { FoundryProvider } from "./hooks/useBuildDock";
+import { FoundryProvider } from "./hooks/useFoundry";
 import { useSetupGuide } from "./hooks/useSetupGuide";
 import { useTauriListen } from "./hooks/useTauriListen";
 import {
@@ -35,7 +36,7 @@ import {
   subscribeStorage,
 } from "./lib/storage";
 import { dispatchAppEvent, EVENTS, consumePendingConfigSubTab, type NavigateConfigDetail } from "./lib/events";
-import type { ConfigSubTab } from "./lib/appNav";
+import type { ConfigSubTab, FoundrySubTab } from "./lib/appNav";
 import { isSetupNavTabAllowed } from "./lib/setupGuide";
 import { commitStagedDraftPairing, discardStagedDraftPairing } from "./lib/specDraft";
 import { useLibrarySchedule } from "./hooks/useLibrarySchedule";
@@ -51,13 +52,15 @@ import {
   releaseSlotLogs,
 } from "./lib/logSlotStore";
 
-export type Tab = "catalog" | "stack" | "modelhub" | "logs" | "config";
+export type Tab = "catalog" | "stack" | "modelhub" | "logs" | "config" | "foundry";
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>("catalog");
   const [configSubTab, setConfigSubTab] = useState<ConfigSubTab>(
     () => consumePendingConfigSubTab() ?? "providers",
   );
+  const [foundrySubTab, setFoundrySubTab] = useState<FoundrySubTab>("build");
+
   const [models, setModels] = useState<ModelEntry[]>([]);
   // Per-path scan diagnostics — drives the catalog's "why is this empty" state.
   // `null` = no report yet, so the catalog never blames a path before it has one.
@@ -98,6 +101,19 @@ function App() {
   const setupGuide = useSetupGuide({ models, catalogLoaded });
   const setupActiveRef = useRef(setupGuide.active);
   setupActiveRef.current = setupGuide.active;
+
+  // ENGINE "BUILD latest in FOUNDRY" → the page owns the flow now. The provider
+  // stores the target; this only routes the app to FOUNDRY/BUILD. FOUNDRY is
+  // locked during first-run setup, same as the nav segment.
+  useEffect(() => {
+    const onNavigateFoundry = () => {
+      if (setupActiveRef.current) return;
+      setFoundrySubTab("build");
+      setActiveTab("foundry");
+    };
+    window.addEventListener(EVENTS.navigateFoundry, onNavigateFoundry);
+    return () => window.removeEventListener(EVENTS.navigateFoundry, onNavigateFoundry);
+  }, []);
 
   const handleTabChange = useCallback((tab: Tab) => {
     if (setupActiveRef.current && !isSetupNavTabAllowed(tab)) return;
@@ -226,10 +242,12 @@ function App() {
     return () => window.removeEventListener(EVENTS.reloadProviders, handler);
   }, [reloadProviders]);
 
-  // Sole owner: foundry Complete → refresh_build_info (probe + inventory). Do not
+  // Sole owner: foundry terminal outcome → refresh_build_info (probe + inventory). Do not
   // also refresh from Layout/EngineConfig — duplicate callers race list_providers.
+  // Failed is included because build-both may activate the first profile and then fail
+  // on the queued one; without this the freshly published binary would stay invisible.
   useTauriListen<{ phase: string; provider_id?: string }>("foundry-progress", (payload) => {
-    if (payload.phase !== "Complete" || !payload.provider_id) return;
+    if ((payload.phase !== "Complete" && payload.phase !== "Failed") || !payload.provider_id) return;
     void (async () => {
       try {
         const updated = await invoke<ProviderConfig[]>("refresh_build_info", {
@@ -610,12 +628,15 @@ function App() {
               updateOfferings={updateOfferings}
               onRefreshUpdateOfferings={refreshUpdateOfferings}
               hasBinaryUpdates={hasBinaryUpdates}
+              hasLiveEngines={hasLiveEngines}
               setupGuideActive={setupGuide.active}
               setupGuidePhase={setupGuide.phase}
               configSubTab={configSubTab}
               downloadsSubTab={downloadsSubTab}
               onDownloadsSubTabChange={setDownloadsSubTab}
               onConfigSubTabChange={setConfigSubTab}
+              foundrySubTab={foundrySubTab}
+              onFoundrySubTabChange={setFoundrySubTab}
             >
         {(activeTab === "catalog" || keepOpsAlive) && (
           <div
@@ -634,6 +655,19 @@ function App() {
               setupGuide={setupGuide}
               subTab={configSubTab}
               onSubTabChange={setConfigSubTab}
+            />
+          </Suspense>
+        )}
+        {activeTab === "foundry" && (
+          <Suspense fallback={<TabFallback />}>
+            <FoundryPage
+              providers={providers}
+              subTab={foundrySubTab}
+              onSubTabChange={setFoundrySubTab}
+              onOpenEngine={() => {
+                setConfigSubTab("providers");
+                setActiveTab("config");
+              }}
             />
           </Suspense>
         )}

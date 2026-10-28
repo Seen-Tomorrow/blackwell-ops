@@ -275,13 +275,6 @@
   color: var(--fixed-nv-green);
 }
 
-/* CMAKE_CUDA_ARCHITECTURES — inline after build version */
-.foundry-cuda-arch-inline {
-  color: rgba(118, 185, 0, 0.75);
-  letter-spacing: 0.02em;
-  opacity: 0.85;
-}
-
 .foundry-clear-cache-btn {
   color: var(--theme-telemetry-red);
   border-color: color-mix(in srgb, var(--theme-telemetry-red) 45%, var(--theme-chip-border) 55%);
@@ -291,29 +284,6 @@
 .foundry-clear-cache-btn:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--theme-telemetry-red) 65%, var(--theme-chip-border) 35%);
   background: color-mix(in srgb, var(--theme-telemetry-red) 14%, var(--theme-chip-bg) 86%);
-}
-
-/* CUDA arch chips — theme chips, not Tailwind stealth/nv (selection was unreadable) */
-.foundry-arch-chip.foundry-arch-chip {
-  background: var(--theme-chip-bg);
-  border: 1px solid var(--theme-chip-border);
-  color: var(--theme-chip-text);
-  box-shadow: none;
-}
-
-.foundry-arch-chip.foundry-arch-chip:hover:not(.foundry-arch-chip--active) {
-  border-color: var(--theme-chip-hover-border);
-  color: var(--theme-chip-hover-text);
-  background: var(--theme-accent-soft);
-}
-
-.foundry-arch-chip--active.foundry-arch-chip--active {
-  background: var(--theme-chip-active-bg);
-  border-color: var(--theme-chip-active-border);
-  color: var(--theme-chip-active-text);
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--theme-chip-active-border) 55%, transparent),
-    0 0 10px color-mix(in srgb, var(--theme-accent-glow) 55%, transparent);
 }
 
 

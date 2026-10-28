@@ -5,9 +5,11 @@
 // `foundry-progress` and `foundry_status`. This module only maps that counter onto
 // the bar, so the dock chip and the build window cannot drift apart.
 //
-// One deliberate shape: BUILD owns the 24→96 band. The compile is ~80% of wall clock,
-// so a linear overall bar must give it most of the width — otherwise it sits frozen
-// through the only phase worth watching.
+// One deliberate shape: the stage bands live in `foundryPhases.ts` (`BUILD` owns the
+// 24→96 band). The compile is ~80% of wall clock, so a linear overall bar must give it
+// most of the width — otherwise it sits frozen through the only phase worth watching.
+
+import { phaseBand } from "./foundryPhases";
 
 export interface EdgeProgress {
   done: number;
@@ -17,27 +19,6 @@ export interface EdgeProgress {
   /** Coarse kind from the backend: CUDA | CXX | C | LINK | GEN | OTHER. */
   kind?: string | null;
 }
-
-/** Wall-clock share of the build each stage owns, as `[start, end]` bar percent. */
-const STAGE_BANDS: Record<string, readonly [number, number]> = {
-  initializing: [0, 4],
-  init: [0, 4],
-  gitclone: [4, 10],
-  clone: [4, 10],
-  gitpull: [10, 14],
-  pull: [10, 14],
-  prcherrypick: [14, 18],
-  "pr-cherry-pick": [14, 18],
-  configuring: [18, 24],
-  waitingforconfirm: [18, 24],
-  "waiting-confirm": [18, 24],
-  "backup-locked": [18, 24],
-  building: [24, 96],
-  validating: [96, 99],
-  complete: [100, 100],
-  failed: [100, 100],
-  error: [100, 100],
-};
 
 /** Edges of movement required before an ETA is meaningful. */
 export const ETA_MIN_EDGES = 12;
@@ -75,8 +56,7 @@ export function edgeFraction(edge?: EdgeProgress | null): number | null {
  * VALIDATE reads as a bug.
  */
 export function overallPercent(step: string, edge?: EdgeProgress | null): number {
-  const key = (step || "").toLowerCase();
-  const [lo, hi] = STAGE_BANDS[key] ?? STAGE_BANDS.initializing;
+  const [lo, hi] = phaseBand(step);
   if (hi <= lo) return hi;
   const frac = edgeFraction(edge);
   if (frac === null) return lo + (hi - lo) * 0.35;

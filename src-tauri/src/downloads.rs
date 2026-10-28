@@ -57,7 +57,7 @@ pub async fn start_download(
         .await?;
     drop(dm);
 
-    crate::ipc_meter::emit_tracked(&app, "download-event", serde_json::json!({
+    crate::ipc_emit::emit_guarded(&app, "download-event", serde_json::json!({
         "type": "queued",
         "taskId": task_id,
     }));
@@ -171,7 +171,7 @@ pub async fn start_quant_download(
     }
 
     for task_id in &task_ids {
-        crate::ipc_meter::emit_tracked(&app, "download-event", serde_json::json!({
+        crate::ipc_emit::emit_guarded(&app, "download-event", serde_json::json!({
             "type": "queued",
             "taskId": task_id,
         }));
@@ -190,7 +190,7 @@ pub async fn pause_download(
     dm.pause_task(&task_id)?;
     drop(dm);
 
-    crate::ipc_meter::emit_tracked(&app, "download-event", serde_json::json!({
+    crate::ipc_emit::emit_guarded(&app, "download-event", serde_json::json!({
         "type": "paused",
         "taskId": task_id,
     }));
@@ -217,7 +217,7 @@ pub async fn cancel_download(
     .await
     .map_err(|e| format!("cancel cleanup join: {e}"))?;
 
-    crate::ipc_meter::emit_tracked(&app, "download-event", serde_json::json!({
+    crate::ipc_emit::emit_guarded(&app, "download-event", serde_json::json!({
         "type": "cancelled",
         "taskId": task_id,
     }));
@@ -236,7 +236,7 @@ pub async fn resume_download(
     drop(dm);
 
     if result.is_ok() {
-        crate::ipc_meter::emit_tracked(&app, "download-event", serde_json::json!({
+        crate::ipc_emit::emit_guarded(&app, "download-event", serde_json::json!({
             "type": "resumed",
             "taskId": task_id,
         }));
@@ -264,7 +264,7 @@ pub async fn start_toolchain_download(
         .await?;
     drop(dm);
 
-    crate::ipc_meter::emit_tracked(
+    crate::ipc_emit::emit_guarded(
         &app,
         "download-event",
         serde_json::json!({
@@ -296,7 +296,7 @@ pub async fn retry_toolchain_extract(
         .await?;
     drop(dm);
 
-    crate::ipc_meter::emit_tracked(
+    crate::ipc_emit::emit_guarded(
         &app,
         "download-event",
         serde_json::json!({

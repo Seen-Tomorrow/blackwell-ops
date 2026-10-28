@@ -207,7 +207,7 @@ import { useConfigResolver } from "../hooks/useConfigResolver";
 import { useDisplayTexture } from "../context/DisplayTextureContext";
 import { useTheme } from "../context/ThemeContext";
 
-import { useFoundry } from "../hooks/useBuildDock";
+import { useFoundry } from "../hooks/useFoundry";
 import { isDevBuild } from "../lib/build";
 import { buildLaunchFullConfig } from "../lib/buildLaunchFullConfig";
 import { resolveLaunchChromePolicy } from "../lib/launchChromePolicy";

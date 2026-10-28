@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 import { useDownloadTasks } from "../hooks/useDownloadTasks";
-import { useFoundry } from "../hooks/useBuildDock";
+import { useFoundry } from "../hooks/useFoundry";
 import { buildEngineOverview, modeSourceLabel } from "../lib/engineOverview";
 import EngineVersionLabel from "./EngineVersionLabel";
 import { DEFAULT_PROVIDER_ID } from "../lib/types";
@@ -47,7 +47,7 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
   const [toolchain, setToolchain] = useState<ToolchainInstallInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [manage, setManage] = useState<string | null>(null);
-  const { openBuildModal } = useFoundry();
+  const { openFoundryBuild } = useFoundry();
   const providerTasks = useDownloadTasks("provider");
   const toolchainTasks = useDownloadTasks("toolchain");
   const probedRef = useRef(false);
@@ -221,14 +221,26 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
                   )}
                 </div>
 
-                <div className="type-micro font-mono config-muted">
+                <div className={`eng-hero${mode.installed ? "" : " eng-hero--empty"}`}>
+                  <div className="eng-hero__head">
+                    <span className="eng-hero__kicker">ACTIVE ENGINE</span>
+                    <span className="eng-hero__source">
+                      {mode.installed ? modeSourceLabel(mode.source) : "NOT INSTALLED"}
+                    </span>
+                  </div>
                   {mode.installed ? (
                     <>
-                      <EngineVersionLabel version={mode.version} /> · {modeSourceLabel(mode.source)}
-                      {mode.sourceBuildDate ? ` · ${mode.sourceBuildDate}` : ""}
+                      <div className="eng-hero__version">
+                        <EngineVersionLabel version={mode.version} />
+                      </div>
+                      <div className="eng-hero__meta">
+                        {mode.sourceBuildDate
+                          ? `built ${mode.sourceBuildDate}`
+                          : "build date unknown"}
+                      </div>
                     </>
                   ) : (
-                    "No engine installed for this mode"
+                    <div className="eng-hero__meta">No engine installed for this mode.</div>
                   )}
                 </div>
 
@@ -278,7 +290,7 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
                     type="button"
                     className="foundry-toolchain-btn foundry-toolchain-btn--neutral"
                     title="Build this mode with Foundry"
-                    onClick={() => openBuildModal(DEFAULT_PROVIDER_ID, mode.id as "edge" | "stable")}
+                    onClick={() => openFoundryBuild(DEFAULT_PROVIDER_ID, mode.id as "edge" | "stable")}
                   >
                     BUILD latest in FOUNDRY
                   </button>
@@ -293,33 +305,19 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
 
                 {manage === mode.id && (
                   <div className="eng-src-box p-2 space-y-1.5">
-                    <div className="eng-src-table type-micro font-mono">
-                      <div className="eng-src-row eng-src-row--head">
-                        <span>Source</span>
-                        <span>Build</span>
-                        <span>Built</span>
-                        <span />
-                      </div>
+                    <div className="eng-src-list">
                       {mode.sources.map((source) => (
                         <div
                           key={source.id}
-                          className={`eng-src-row${source.active ? " eng-src-row--active" : ""}`}
+                          className={`eng-src-card${source.active ? " eng-src-card--active" : ""}`}
                         >
-                          <span className="eng-src-name">
-                            {source.label}
-                            {source.newest && !source.active && (
-                              <span className="eng-badge eng-badge--newest">newest</span>
-                            )}
-                          </span>
-                          <span>
-                            {source.available ? (
-                              <EngineVersionLabel version={source.version} />
-                            ) : (
-                              "—"
-                            )}
-                          </span>
-                          <span className="eng-badge">{source.buildDate ?? "—"}</span>
-                          <span className="eng-src-action">
+                          <div className="eng-src-card__head">
+                            <span className="eng-src-card__name">
+                              {source.label}
+                              {source.newest && !source.active && (
+                                <span className="eng-badge eng-badge--newest">newest</span>
+                              )}
+                            </span>
                             {source.active ? (
                               <span className="eng-src-inuse">in use</span>
                             ) : (
@@ -332,12 +330,22 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
                                 USE
                               </button>
                             )}
-                          </span>
+                          </div>
+                          <div className="eng-src-card__identity">
+                            {source.available ? (
+                              <EngineVersionLabel version={source.version} />
+                            ) : (
+                              <span className="config-muted">not present on disk</span>
+                            )}
+                          </div>
+                          <div className="eng-src-card__meta">
+                            built {source.buildDate ?? "—"}
+                          </div>
                         </div>
                       ))}
                     </div>
                     <p className="type-micro font-mono config-muted leading-relaxed">
-                      Select your engine preffered source.
+                      Select your engine's preferred source.
                     </p>
                   </div>
                 )}

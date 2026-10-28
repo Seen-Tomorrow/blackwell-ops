@@ -27,11 +27,11 @@ pub(crate) use batch::{
 pub(crate) use cmake::{
     check_foundry_core_binaries, cmd_escape_batch, dir_size_bytes, format_bytes_label,
     foundry_batch_script_paths, foundry_cache_fingerprint, foundry_cmake_build_target_args,
-    foundry_cmake_build_targets, foundry_keep_work_cache, foundry_release_candidate_dirs,
-    get_default_cmake_flags, is_windows_vs_tail_batch_flake, merge_mandatory_cmake_flags,
-    nuke_foundry_build_dir_on_configure_fail, nuke_foundry_work_tree_on_exit,
-    prepare_foundry_build_dir, resolve_template_type, write_foundry_cache_key,
-    FOUNDRY_EXTRA_BINARIES,
+    foundry_cmake_build_targets, foundry_compiler_launcher_flags, foundry_keep_work_cache,
+    foundry_release_candidate_dirs, get_default_cmake_flags, is_windows_vs_tail_batch_flake,
+    merge_mandatory_cmake_flags, nuke_foundry_build_dir_on_configure_fail,
+    nuke_foundry_work_tree_on_exit, prepare_foundry_build_dir, resolve_template_type,
+    user_pins_compiler_launcher, write_foundry_cache_key, FOUNDRY_EXTRA_BINARIES,
 };
 pub use git::FoundrySourcePreview;
 pub(crate) use git::{
@@ -142,6 +142,21 @@ pub(crate) struct BuildState {
     provider_id: String,
     profile_id: String,
     phase: BuildPhase,
+    /// Queued second profile: its configure result is accepted automatically, so
+    /// build-both only stops once (before the first, expensive compile).
+    auto_confirm: bool,
+}
+
+/// One build waiting behind the active one (build-both: EDGE then STABLE).
+#[derive(Debug, Clone)]
+struct BuildRequest {
+    provider_id: String,
+    environment: String,
+    pr_url: Option<String>,
+    max_cores: Option<u32>,
+    cmake_flags: Option<String>,
+    generator: Option<String>,
+    include_extra_tools: bool,
 }
 
 static BUILD_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -150,6 +165,28 @@ static BUILD_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU6
 
 static CURRENT_BUILD: std::sync::LazyLock<TokioMutex<Option<BuildState>>> =
     std::sync::LazyLock::new(|| TokioMutex::new(None));
+
+/// Build-both queue. Owned by the backend (not the modal) so minimizing, HMR, or a
+/// window reload cannot lose the second profile.
+static PENDING_BUILDS: StdLazyLock<std::sync::Mutex<std::collections::VecDeque<BuildRequest>>> =
+    StdLazyLock::new(|| std::sync::Mutex::new(std::collections::VecDeque::new()));
+
+fn queued_environments() -> Vec<String> {
+    PENDING_BUILDS
+        .lock()
+        .map(|queue| queue.iter().map(|build| build.environment.clone()).collect())
+        .unwrap_or_default()
+}
+
+fn clear_pending_builds() {
+    if let Ok(mut queue) = PENDING_BUILDS.lock() {
+        queue.clear();
+    }
+}
+
+fn take_pending_build() -> Option<BuildRequest> {
+    PENDING_BUILDS.lock().ok().and_then(|mut queue| queue.pop_front())
+}
 
 async fn snapshot_build_state() -> Option<BuildState> {
     CURRENT_BUILD.lock().await.as_ref().cloned()
@@ -270,6 +307,8 @@ pub struct BuildProgress {
     /// the compile stage. Carried here (not only on events) so a modal reopen or a
     /// dock remount rehydrates the bar instead of freezing it.
     pub progress: Option<BuildEdgeProgress>,
+    /// Profiles waiting behind the active one (build-both). Empty for a normal build.
+    pub queued_environments: Vec<String>,
 }
 
 // ── Event Emission ───────────────────────────────────────────────────
@@ -286,9 +325,10 @@ fn emit_build_event(
         "environment": state.profile_id,
         "log_line": log_line,
         "progress": progress::snapshot(),
+        "queued_environments": queued_environments(),
     });
 
-    crate::ipc_meter::emit_tracked(app_handle, "foundry-progress", &event);
+    crate::ipc_emit::emit_guarded(app_handle, "foundry-progress", &event);
 }
 
 fn emit_build_batch(
@@ -303,9 +343,10 @@ fn emit_build_batch(
         "environment": state.profile_id,
         "log_lines": lines,
         "progress": progress::snapshot(),
+        "queued_environments": queued_environments(),
     });
 
-    crate::ipc_meter::emit_tracked(app_handle, "foundry-progress", &event);
+    crate::ipc_emit::emit_guarded(app_handle, "foundry-progress", &event);
 }
 
 // ── Batch Script Builder ─────────────────────────────────────────────
@@ -380,6 +421,8 @@ async fn clear_build_slot_if_matches(
         }
     };
     if should_clear {
+        // A failed/cancelled build must not leave a build-both sibling queued.
+        clear_pending_builds();
         foundry_console_end_session(app_handle, build_id);
         nuke_foundry_work_tree_on_exit(provider_id).await;
     }
@@ -391,6 +434,12 @@ async fn clear_build_slot_if_matches(
 pub async fn foundry_build(
     provider_id: String,
     environment: String,
+    // Optional second profile (build-both): queued behind `environment`, started
+    // automatically after it succeeds, configure auto-accepted. Omit/null for one.
+    also_environment: Option<String>,
+    // True when the UI has already collected consent in one click: configure is
+    // accepted automatically instead of pausing at WaitingForConfirm.
+    auto_confirm: Option<bool>,
     pr_url: Option<String>,
     max_cores: Option<u32>,
     cmake_flags: Option<String>,
@@ -407,12 +456,20 @@ pub async fn foundry_build(
     let _manifest = foundry_toolchain::load_manifest()?;
     let include_extra_tools = include_extra_tools.unwrap_or(false);
 
-    // Reset cancellation state for new build
-    BUILD_CANCELLED.store(false, Ordering::SeqCst);
-    clear_pids();
-    // Compile edge counter belongs to one build only — never let a previous run
-    // seed the new bar.
-    progress::reset();
+    // Validate the queued profile up front too: a missing toolchain must fail this
+    // click, not surface after the first profile's 10-minute compile.
+    let also_profile = match also_environment
+        .as_deref()
+        .map(str::trim)
+        .filter(|env| !env.is_empty())
+    {
+        Some(env) if !env.eq_ignore_ascii_case(&environment) => Some(
+            foundry_toolchain::validate_profile_ready(env)?
+                .env_label()
+                .to_string(),
+        ),
+        _ => None,
+    };
 
     let build_id = BUILD_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
 
@@ -420,11 +477,10 @@ pub async fn foundry_build(
     // past the duplicate check and nuke an in-flight work/ tree.
     {
         let mut current = CURRENT_BUILD.lock().await;
-        if current.is_some() {
+        if let Some(existing) = current.as_ref() {
             return Err(format!(
                 "A Foundry build is already in progress for '{}' ({}). Wait for it to finish or cancel it explicitly.",
-                current.as_ref().map(|s| s.provider_id.as_str()).unwrap_or("?"),
-                current.as_ref().map(|s| s.profile_id.as_str()).unwrap_or("?"),
+                existing.provider_id, existing.profile_id,
             ));
         }
         *current = Some(BuildState {
@@ -432,7 +488,32 @@ pub async fn foundry_build(
             provider_id: provider_id.clone(),
             profile_id: profile_id.clone(),
             phase: BuildPhase::Configuring,
+            auto_confirm: auto_confirm.unwrap_or(false),
         });
+    }
+
+    // Only the invocation that actually owns the slot may reset transient state or drop
+    // a queue — a rejected duplicate must never disarm the running build's cancel flag,
+    // clear its edge counter, or wipe a queued build-both sibling.
+    BUILD_CANCELLED.store(false, Ordering::SeqCst);
+    clear_pids();
+    // Compile edge counter belongs to one build only — never let a previous run
+    // seed the new bar.
+    progress::reset();
+    clear_pending_builds();
+
+    if let Some(also_env) = also_profile {
+        if let Ok(mut queue) = PENDING_BUILDS.lock() {
+            queue.push_back(BuildRequest {
+                provider_id: provider_id.clone(),
+                environment: also_env,
+                pr_url: pr_url.clone(),
+                max_cores,
+                cmake_flags: cmake_flags.clone(),
+                generator: generator.clone(),
+                include_extra_tools,
+            });
+        }
     }
 
     // Run the long build in the background so confirm/cancel IPC is never blocked by this command.
@@ -456,6 +537,11 @@ pub async fn foundry_build(
         .await
         {
             log::error!("[foundry] Background build task failed: {}", e);
+            clear_pending_builds();
+            // The worker owns the slot for the whole queue. If it returns with an error,
+            // nothing else can have started (foundry_build rejects while Some), so clear
+            // unconditionally — a stale Configuring slot would wedge the next attempt.
+            *CURRENT_BUILD.lock().await = None;
         }
     });
 
@@ -918,6 +1004,36 @@ async fn stage_cmake_configure<'a>(ctx: &BuildCtx<'a>) -> Result<String, String>
     // flags are kept for the display message and the cache fingerprint stays deterministic.
     let joined_extra_batch = cmd_escape_batch(&joined_extra);
 
+    // Compiler cache: an sccache dropped into the portable toolchain (or found on PATH)
+    // is auto-wired at configure time. Explicit COMPILER_LAUNCHER flags win; a binary
+    // that fails `--version` is ignored rather than breaking every configure.
+    // `BLACKWELL_FOUNDRY_NO_SCCACHE=1` is the escape hatch for a system-wide install.
+    let sccache_disabled = std::env::var("BLACKWELL_FOUNDRY_NO_SCCACHE")
+        .map(|value| value == "1")
+        .unwrap_or(false);
+    let sccache_launcher = if sccache_disabled || user_pins_compiler_launcher(&joined_extra) {
+        None
+    } else {
+        foundry_toolchain::resolve_sccache_exe()
+            .filter(|path| foundry_toolchain::probe_sccache_exe(path))
+    };
+    let launcher_flags = sccache_launcher
+        .as_deref()
+        .map(foundry_compiler_launcher_flags)
+        .unwrap_or_default();
+    if let Some(path) = &sccache_launcher {
+        emit_config_event(
+            app_handle,
+            provider_id,
+            profile_id,
+            build_id,
+            Some(format!(
+                "[CACHE] sccache enabled — {} (C/C++/CUDA objects are cached)",
+                path.display()
+            )),
+        );
+    }
+
     let vs_def = foundry_toolchain::vs_def(manifest, &profile.def.vs)?;
     let gen_flag = profile.cmake_generator_flag(vs_def, use_ninja);
     let nvcc_bin = profile.cuda_root.join("bin").to_string_lossy().to_string();
@@ -948,13 +1064,13 @@ async fn stage_cmake_configure<'a>(ctx: &BuildCtx<'a>) -> Result<String, String>
     let src_dir_str   = src_dir.to_string_lossy().replace('\\', "/");
     let cmake_configure_line = if joined_extra_batch.is_empty() {
         format!(
-            r#""{}" -B "{}" -S "{}" {} {} {} {} -Wno-dev"#,
-            ctx.cmake_cmd, build_dir_str, src_dir_str, gen_flag, toolset_flag, forced_cuda_flags, asm_flag
+            r#""{}" -B "{}" -S "{}" {} {} {} {} {} -Wno-dev"#,
+            ctx.cmake_cmd, build_dir_str, src_dir_str, gen_flag, toolset_flag, forced_cuda_flags, asm_flag, launcher_flags.as_str()
         )
     } else {
         format!(
-            r#""{}" -B "{}" -S "{}" {} {} {} {} {} -Wno-dev"#,
-            ctx.cmake_cmd, build_dir_str, src_dir_str, gen_flag, toolset_flag, forced_cuda_flags, asm_flag, joined_extra_batch
+            r#""{}" -B "{}" -S "{}" {} {} {} {} {} {} -Wno-dev"#,
+            ctx.cmake_cmd, build_dir_str, src_dir_str, gen_flag, toolset_flag, forced_cuda_flags, asm_flag, launcher_flags.as_str(), joined_extra_batch
         )
     };
 
@@ -990,12 +1106,13 @@ async fn stage_cmake_configure<'a>(ctx: &BuildCtx<'a>) -> Result<String, String>
     }
 
     emit_config_event(app_handle, provider_id, profile_id, build_id, Some(format!(
-        "cmake -B work/build-{} -S llama.cpp {} {} {} {}{}",
+        "cmake -B work/build-{} -S llama.cpp {} {} {} {}{}{}",
         profile_id,
         gen_flag,
         toolset_flag,
         asm_flag,
         forced_cuda_flags,
+        if !launcher_flags.is_empty() { format!(" {}", launcher_flags) } else { String::new() },
         if !joined_extra.is_empty() { format!(" {}", joined_extra) } else { String::new() }
     )));
 
@@ -1094,6 +1211,28 @@ async fn stage_wait_for_confirm<'a>(ctx: &BuildCtx<'a>, cmake_extra: &str) -> Re
         return Err("Build cancelled by user.".to_string());
     }
 
+    // Build-both: the second profile's configure result was already covered by the
+    // user's single PROCEED, so it must not pause for a second gate.
+    if snapshot_build_state().await.map(|s| s.auto_confirm).unwrap_or(false) {
+        {
+            let mut current = CURRENT_BUILD.lock().await;
+            if let Some(ref mut s) = *current {
+                s.phase = BuildPhase::Building;
+            }
+        }
+        if let Some(state) = snapshot_build_state().await {
+            emit_build_event(app_handle, &state, Some(
+                "[WAIT-CONFIRM] Queued profile — configure accepted automatically. Starting compilation…".into(),
+            ));
+        }
+        foundry_console_emit(
+            app_handle,
+            "Phase: Compilation started (queued profile — auto-accepted)...".to_string(),
+            BlackwellOutputConsoleLineStyle::Highlight,
+        );
+        return Ok(());
+    }
+
     // ── Wait for user confirmation via state machine ─────────────────
 
     {
@@ -1123,6 +1262,7 @@ async fn stage_wait_for_confirm<'a>(ctx: &BuildCtx<'a>, cmake_extra: &str) -> Re
                 provider_id: provider_id.to_string(),
                 profile_id: profile_id.to_string(),
                 phase: BuildPhase::Failed("Build cancelled.".into()),
+                auto_confirm: false,
             }, Some("Build cancelled.".into()));
 
             return Err("Build cancelled by user.".to_string());
@@ -1417,6 +1557,7 @@ async fn stage_publish_activate<'a>(ctx: &BuildCtx<'a>, cmake_extra: &str) -> Re
         Ok(p) => p,
         Err(e) => {
             foundry_console_end_session(app_handle, build_id);
+            clear_pending_builds();
             *CURRENT_BUILD.lock().await = None;
             return Err(format!("Build succeeded but failed to publish sacred artifacts: {}", e));
         }
@@ -1503,18 +1644,29 @@ async fn stage_publish_activate<'a>(ctx: &BuildCtx<'a>, cmake_extra: &str) -> Re
         }
     }
 
+    // Completion belongs to the sequencer: it either finishes the session or starts
+    // the queued profile. Publishing + activation above are shared by both paths.
+    Ok(())
+}
+
+/// Close out the last profile: Complete, console banner, disposable work cleanup.
+async fn finish_build(app_handle: &tauri::AppHandle, provider_id: &str, build_id: u64) {
     {
         let mut current = CURRENT_BUILD.lock().await;
-        if let Some(ref mut s) = *current {
-            s.phase = BuildPhase::Complete;
+        if let Some(ref mut state) = *current {
+            if state.build_id == build_id {
+                state.phase = BuildPhase::Complete;
+            }
         }
     }
     if let Some(state) = snapshot_build_state().await {
-        emit_build_event(
-            app_handle,
-            &state,
-            Some("Foundry build complete — ACTIVE binary source: foundry.".into()),
-        );
+        if state.build_id == build_id {
+            emit_build_event(
+                app_handle,
+                &state,
+                Some("Foundry build complete — ACTIVE binary source: foundry.".into()),
+            );
+        }
     }
 
     // Feed final success message into the Blackwell Output Console
@@ -1544,32 +1696,96 @@ async fn stage_publish_activate<'a>(ctx: &BuildCtx<'a>, cmake_extra: &str) -> Re
         log::info!("[foundry] Success path: {} tracked PIDs left (expected to have exited naturally)", remaining.len());
     }
 
-    *CURRENT_BUILD.lock().await = None;
-
-    Ok(())
+    let mut current = CURRENT_BUILD.lock().await;
+    if current.as_ref().map(|state| state.build_id) == Some(build_id) {
+        *current = None;
+    }
 }
 
-/// Sequencer — calls each stage in order. Control flow, error strings, cancel checks,
-/// rollback, and emit text stay identical to the pre-decomposition single body.
-async fn run_foundry_build_worker(
-    worker: FoundryWorkerApp,
-    provider_id: String,
-    environment: String,
-    pr_url: Option<String>,
-    max_cores: Option<u32>,
-    cmake_flags: Option<String>,
-    generator: Option<String>,
-    include_extra_tools: bool,
+/// Promote the next queued profile to the active build, in the same worker loop.
+///
+/// Called after the previous profile published successfully. The previous session
+/// never emits `Complete`, so the completion badge (and the user's "done" moment)
+/// only lands after the LAST queued profile. Returns the new build id, or `None`
+/// when a cancel landed during the publish/cleanup window.
+async fn advance_to_queued_build(
+    worker: &FoundryWorkerApp,
+    next: &BuildRequest,
+    previous_build_id: u64,
+) -> Option<u64> {
+    let app_handle = &worker.app_handle;
+
+    foundry_console_end_session(app_handle, previous_build_id);
+    nuke_foundry_work_tree_on_exit(&next.provider_id).await;
+
+    // A cancel may land while the previous profile is publishing. Never start the
+    // queued profile after the user already aborted the session.
+    if BUILD_CANCELLED.load(Ordering::SeqCst) {
+        return None;
+    }
+    clear_pids();
+    progress::reset();
+
+    let build_id = BUILD_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
+    {
+        let mut current = CURRENT_BUILD.lock().await;
+        if current.is_none() || BUILD_CANCELLED.load(Ordering::SeqCst) {
+            return None;
+        }
+        *current = Some(BuildState {
+            build_id,
+            provider_id: next.provider_id.clone(),
+            profile_id: next.environment.clone(),
+            phase: BuildPhase::Configuring,
+            auto_confirm: true,
+        });
+    }
+
+    if let Some(state) = snapshot_build_state().await {
+        emit_build_event(
+            app_handle,
+            &state,
+            Some(format!(
+                "[QUEUE] Previous profile published — starting queued {} build (Build ID {}).",
+                next.environment.to_uppercase(),
+                build_id
+            )),
+        );
+    }
+
+    Some(build_id)
+}
+
+/// One profile: stages 1–6, ending with publish + activation. Completion and the
+/// build-both advance are owned by the sequencer below.
+async fn run_single_build(
+    worker: &FoundryWorkerApp,
+    request: &BuildRequest,
     build_id: u64,
 ) -> Result<(), String> {
+    let provider_id = request.provider_id.as_str();
+    let environment = request.environment.as_str();
+    let pr_url = request.pr_url.as_deref();
+    let max_cores = request.max_cores;
+    let cmake_flags = request.cmake_flags.as_deref();
+    let generator = request.generator.as_deref();
+    let include_extra_tools = request.include_extra_tools;
+
     let manifest = foundry_toolchain::load_manifest()?;
-    let profile = foundry_toolchain::validate_profile_ready(&environment)?;
+    let profile = foundry_toolchain::validate_profile_ready(environment)?;
     let profile_id = profile.env_label().to_string();
     let all_cuda_vars = foundry_toolchain::all_cuda_path_vars(&manifest);
 
     let app_handle = &worker.app_handle;
 
-    foundry_console_start_session(app_handle, build_id, &provider_id, &environment);
+    // A queued profile can be cancelled between publish and start; never let it run
+    // a git sync against a session the user already aborted.
+    if is_cancelled() {
+        clear_pending_builds();
+        return Err("Build cancelled by user.".to_string());
+    }
+
+    foundry_console_start_session(app_handle, build_id, provider_id, environment);
 
     foundry_console_emit(
         app_handle,
@@ -1588,7 +1804,7 @@ async fn run_foundry_build_worker(
 
     foundry_console_emit(
         app_handle,
-        "Phase: Configuring (CMake)...".to_string(),
+        "Phase: Configuring (Ninja)...".to_string(),
         BlackwellOutputConsoleLineStyle::Highlight,
     );
 
@@ -1669,12 +1885,12 @@ async fn run_foundry_build_worker(
     // sacred_binary_path     = foundry/artifacts/<provider>/<env>/Release  ← permanent, never nuked
     //
     // Flow: cmake builds into work/build-{env}/bin/Release → validated → copied to sacred artifacts
-    let work_root = crate::config::foundry_work_dir(&provider_id);
+    let work_root = crate::config::foundry_work_dir(provider_id);
     // NOTE: bin_bak / rename dance removed entirely from normal build flow. Sacred artifacts are never touched during a build attempt.
 
     // Keep work/ between builds (fingerprint decides reuse of build-{profile}/). Ensure root exists.
     if let Err(e) = tokio::fs::create_dir_all(&work_root).await {
-        rollback_build(app_handle, &provider_id, &profile_id, build_id)
+        rollback_build(app_handle, provider_id, &profile_id, build_id)
             .execute()
             .await;
         return Err(format!("Failed to create work directory: {}", e));
@@ -1696,18 +1912,18 @@ async fn run_foundry_build_worker(
         .map(|p| p.to_string_lossy().to_string());
 
     let ctx = BuildCtx {
-        worker: &worker,
+        worker,
         app_handle,
-        provider_id: &provider_id,
+        provider_id,
         profile_id: &profile_id,
         build_id,
         manifest: &manifest,
         profile: &profile,
         all_cuda_vars: &all_cuda_vars,
-        pr_url: pr_url.as_deref(),
+        pr_url,
         max_cores,
-        cmake_flags: cmake_flags.as_deref(),
-        generator: generator.as_deref(),
+        cmake_flags,
+        generator,
         include_extra_tools,
         num_cpus,
         cmake_cmd,
@@ -1739,8 +1955,53 @@ async fn run_foundry_build_worker(
     // Stage 5: integrity validation
     stage_validate(&ctx, recovered_tail_flake).await?;
 
-    // Stage 6: publish + activate
-    stage_publish_activate(&ctx, &cmake_extra).await
+    // Stage 6: publish + activate (the binary is the active source even when a sibling
+    // profile is still queued behind it).
+    stage_publish_activate(&ctx, &cmake_extra).await?;
+    Ok(())
+}
+
+/// Sequencer — one profile, then any queued profile (build-both), in the same
+/// background task. The previous profile never emits Complete when a sibling is
+/// queued, so the UI's terminal state only arrives after the last profile.
+async fn run_foundry_build_worker(
+    worker: FoundryWorkerApp,
+    provider_id: String,
+    environment: String,
+    pr_url: Option<String>,
+    max_cores: Option<u32>,
+    cmake_flags: Option<String>,
+    generator: Option<String>,
+    include_extra_tools: bool,
+    build_id: u64,
+) -> Result<(), String> {
+    let mut request = BuildRequest {
+        provider_id,
+        environment,
+        pr_url,
+        max_cores,
+        cmake_flags,
+        generator,
+        include_extra_tools,
+    };
+    let mut build_id = build_id;
+    loop {
+        run_single_build(&worker, &request, build_id).await?;
+        let Some(next) = take_pending_build() else {
+            finish_build(&worker.app_handle, &request.provider_id, build_id).await;
+            return Ok(());
+        };
+        match advance_to_queued_build(&worker, &next, build_id).await {
+            Some(next_id) => {
+                request = next;
+                build_id = next_id;
+            }
+            None => {
+                clear_pending_builds();
+                return Err("Build cancelled by user.".to_string());
+            }
+        }
+    }
 }
 
 
@@ -1750,11 +2011,18 @@ pub async fn foundry_cancel(
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
     BUILD_CANCELLED.store(true, Ordering::SeqCst);
+    // Cancel the whole session, including a build-both sibling that has not started.
+    clear_pending_builds();
 
     kill_all_children();
 
     let mut current = CURRENT_BUILD.lock().await;
     if let Some(state) = current.take() {
+        // A close click can land during the 750 ms post-Complete cleanup. That is not
+        // a cancellation — never overwrite a success with a Failed event.
+        if matches!(state.phase, BuildPhase::Complete) {
+            return Ok(());
+        }
         emit_build_event(&app_handle, &state,
             Some("Build cancelled by user.".into()));
 
@@ -1778,7 +2046,7 @@ pub async fn foundry_cancel(
             "environment": state.profile_id,
             "log_line": Some("Build cancelled by user."),
         });
-        crate::ipc_meter::emit_tracked(&app_handle, "foundry-progress", &event);
+        crate::ipc_emit::emit_guarded(&app_handle, "foundry-progress", &event);
     }
 
     Ok(())
@@ -1872,7 +2140,9 @@ pub async fn foundry_preview_source(
         };
         match crate::engine_build_info::get_binary_build_info(probe_path.clone()).await {
             Ok(info) => {
-                let commit = extract_commit_from_build_version(&info.version);
+                let sidecar_path = crate::config::resolve_path(&probe_path);
+                let commit = extract_commit_from_build_version(&info.version)
+                    .or_else(|| crate::engine_build_info::read_sidecar_commit(&sidecar_path));
                 if commit.is_some() {
                     let mut wrote = false;
                     if let Ok(mut cfg) = app.config.lock() {
@@ -2083,6 +2353,7 @@ pub async fn foundry_status() -> Result<Option<BuildProgress>, String> {
         environment: state.profile_id.clone(),
         log_line: None,
         progress: progress::snapshot(),
+        queued_environments: queued_environments(),
     }))
 }
 
@@ -2610,7 +2881,7 @@ fn emit_config_event(
         "progress": progress::snapshot(),
     });
 
-    crate::ipc_meter::emit_tracked(app_handle, "foundry-progress", &event);
+    crate::ipc_emit::emit_guarded(app_handle, "foundry-progress", &event);
 }
 
 /// Rollback builder — allows attaching a custom failure message.
@@ -2642,7 +2913,7 @@ impl<'a> RollbackBuilder<'a> {
             "log_line": Some(msg),
         });
 
-        crate::ipc_meter::emit_tracked(app_handle, "foundry-progress", &event);
+        crate::ipc_emit::emit_guarded(app_handle, "foundry-progress", &event);
         // Central cleanup — every rollback path ends the output-console session so its buffer
         // is released instead of leaking until the next build.
         foundry_console_end_session(app_handle, build_id);
@@ -2697,6 +2968,14 @@ pub struct FoundryWorkCacheStatus {
     /// Bytes under entire `work/` for this provider (all profiles).
     pub work_total_bytes: u64,
     pub work_total_label: String,
+    /// Optional compiler cache (sccache) discovered by `resolve_sccache_exe`.
+    /// This is object-level caching, independent of the retained CMake work tree.
+    pub sccache_available: bool,
+    pub sccache_path: Option<String>,
+    pub sccache_version: Option<String>,
+    /// Bytes under the sccache object-cache directory (shared across Foundry builds).
+    pub sccache_size_bytes: u64,
+    pub sccache_size_label: String,
 }
 
 /// Confirm modal: warm/cold CMake tree + on-disk size for this provider/profile.
@@ -2704,20 +2983,37 @@ pub struct FoundryWorkCacheStatus {
 pub async fn foundry_work_cache_status(
     provider_id: String,
     profile_id: String,
+    include_sccache_size: Option<bool>,
 ) -> Result<FoundryWorkCacheStatus, String> {
     let profile_id = foundry_toolchain::normalize_profile_id(&profile_id);
     let work_root = crate::config::foundry_work_dir(&provider_id);
     let build_dir = work_root.join(format!("build-{profile_id}"));
     let build_dir_for_size = build_dir.clone();
     let work_root_for_size = work_root.clone();
-    let (size_bytes, work_total_bytes) = tokio::task::spawn_blocking(move || {
+    let scan_sccache_size = include_sccache_size.unwrap_or(true);
+    let sccache_dir = foundry_toolchain::sccache_cache_dir();
+    let sccache_dir_for_size = sccache_dir.clone();
+    let (size_bytes, work_total_bytes, sccache_size_bytes) = tokio::task::spawn_blocking(move || {
         (
             dir_size_bytes(&build_dir_for_size),
             dir_size_bytes(&work_root_for_size),
+            if scan_sccache_size {
+                dir_size_bytes(&sccache_dir_for_size)
+            } else {
+                0
+            },
         )
     })
     .await
     .map_err(|e| format!("cache size task failed: {e}"))?;
+
+    // Object cache is independent of the retained tree: report it separately so the
+    // confirm form can explain the difference instead of conflating both under "cache".
+    let sccache_path = foundry_toolchain::resolve_sccache_exe();
+    let sccache_version = sccache_path
+        .as_deref()
+        .and_then(foundry_toolchain::sccache_version);
+    let sccache_available = sccache_version.is_some();
 
     Ok(FoundryWorkCacheStatus {
         cache_enabled: foundry_keep_work_cache(),
@@ -2728,7 +3024,45 @@ pub async fn foundry_work_cache_status(
         size_label: format_bytes_label(size_bytes),
         work_total_bytes,
         work_total_label: format_bytes_label(work_total_bytes),
+        sccache_available,
+        sccache_path: sccache_path.map(|path| path.to_string_lossy().to_string()),
+        sccache_version,
+        sccache_size_bytes,
+        sccache_size_label: format_bytes_label(sccache_size_bytes),
     })
+}
+
+/// Remove a retained Foundry tree and verify it is actually gone.
+///
+/// Windows occasionally keeps a handle briefly after the last compiler/ninja child
+/// exits; a single `remove_dir_all` then leaves a partial tree, which reads as
+/// "CLEAR CACHE did nothing" and invites 2–3 clicks. Retry with a short backoff and
+/// fail loudly if the tree survives, so the UI can show the real error.
+async fn remove_foundry_tree_verified(
+    path: &std::path::Path,
+    label: &str,
+) -> Result<(), String> {
+    if !path.exists() {
+        return Ok(());
+    }
+    let mut last_error: Option<String> = None;
+    for attempt in 0..3u64 {
+        match tokio::fs::remove_dir_all(path).await {
+            Ok(()) => {}
+            Err(e) => last_error = Some(e.to_string()),
+        }
+        if !path.exists() {
+            return Ok(());
+        }
+        if attempt < 2 {
+            tokio::time::sleep(std::time::Duration::from_millis(150 * (attempt + 1))).await;
+        }
+    }
+    let detail = last_error.unwrap_or_else(|| "tree still present".to_string());
+    Err(format!(
+        "{label} could not be removed ({detail}): {}",
+        path.display()
+    ))
 }
 
 /// Delete `foundry/engines/<provider>/work/` or one `build-{profile}/` subtree.
@@ -2737,21 +3071,84 @@ pub async fn foundry_clear_work_cache(
     provider_id: String,
     profile_id: Option<String>,
 ) -> Result<(), String> {
+    // Never race a live compile for its own build tree. The confirm form is only
+    // shown before a build, so this is a guard against a stale/second window.
+    if let Some(state) = snapshot_build_state().await {
+        if state.provider_id == provider_id {
+            return Err(
+                "A Foundry build owns this work tree — wait for it to finish or cancel it before clearing."
+                    .to_string(),
+            );
+        }
+    }
+
     let work_root = crate::config::foundry_work_dir(&provider_id);
     if let Some(profile) = profile_id {
         let profile_id = foundry_toolchain::normalize_profile_id(&profile);
         let build_dir = work_root.join(format!("build-{profile_id}"));
-        if build_dir.exists() {
-            tokio::fs::remove_dir_all(&build_dir)
-                .await
-                .map_err(|e| format!("Failed to clear Foundry build cache: {e}"))?;
-        }
+        remove_foundry_tree_verified(&build_dir, "Foundry build tree").await?;
     } else if work_root.exists() {
-        tokio::fs::remove_dir_all(&work_root)
-            .await
-            .map_err(|e| format!("Failed to clear Foundry work directory: {e}"))?;
+        remove_foundry_tree_verified(&work_root, "Foundry work tree").await?;
     }
     Ok(())
+}
+
+/// Clear the sccache object cache (independent of the retained build tree).
+///
+/// Stops the sccache server first so Windows releases the cache file handles, then
+/// removes the whole cache directory. The next build starts a fresh server and
+/// recompiles objects as needed.
+#[tauri::command]
+pub async fn foundry_clear_sccache() -> Result<(), String> {
+    if snapshot_build_state().await.is_some() {
+        return Err(
+            "A Foundry build is using the compiler cache — wait for it to finish or cancel it before clearing."
+                .to_string(),
+        );
+    }
+
+    if let Some(exe) = foundry_toolchain::resolve_sccache_exe() {
+        // Best effort: a stale/absent server is fine; failure to stop is reported by
+        // the directory removal if handles are still held.
+        let _ = tokio::task::spawn_blocking(move || {
+            let mut cmd = std::process::Command::new(exe);
+            cmd.arg("--stop-server")
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null());
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                cmd.creation_flags(0x0800_0000);
+            }
+            let _ = cmd.status();
+        })
+        .await;
+    }
+
+    remove_foundry_tree_verified(
+        &foundry_toolchain::sccache_cache_dir(),
+        "sccache object cache",
+    )
+    .await
+}
+
+/// Latest upstream release notes for the provider's GitHub repo (FOUNDRY changelog).
+#[tauri::command]
+pub async fn foundry_remote_changelog(
+    app: tauri::State<'_, crate::engine::AppContext>,
+    provider_id: String,
+) -> Result<crate::github_releases::RepoReleaseNotes, String> {
+    let git_url = {
+        let cfg = app.config.lock().map_err(|e| e.to_string())?;
+        cfg.providers
+            .iter()
+            .find(|p| p.id == provider_id)
+            .map(|p| p.git_url.clone())
+            .unwrap_or_default()
+    };
+    let repo = git::extract_github_owner_repo(&git_url)
+        .ok_or_else(|| "No GitHub repository for this engine — changelog unavailable.".to_string())?;
+    crate::github_releases::fetch_repo_latest_release(&repo).await
 }
 
 /// Fetch PR titles for HISTORY chip tooltips (confirm modal).

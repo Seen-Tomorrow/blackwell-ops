@@ -2,7 +2,16 @@ import type { Tab } from "../App";
 import { isDevBuild } from "./build";
 
 /** Top-level header destinations (segment primary rail). */
-export type PrimaryNavId = "operations" | "downloads" | "config";
+export type PrimaryNavId = "operations" | "downloads" | "config" | "foundry";
+
+/** FOUNDRY page sections. */
+export type FoundrySubTab = "build" | "cache" | "log";
+
+export const FOUNDRY_SUB_NAV: { id: FoundrySubTab; label: string }[] = [
+  { id: "build", label: "BUILD" },
+  { id: "cache", label: "CACHE" },
+  { id: "log", label: "LOG" },
+];
 
 /** CONFIG page sections (header sub-rail when primary = CONFIG). */
 export type DownloadsSubTab = "models" | "software";
@@ -26,6 +35,7 @@ export const PRIMARY_NAV: { id: PrimaryNavId; label: string }[] = [
   { id: "operations", label: "OPERATIONS" },
   { id: "config", label: "CONFIG" },
   { id: "downloads", label: "DOWNLOADS" },
+  { id: "foundry", label: "FOUNDRY" },
 ];
 
 /** OPERATIONS children — catalog cockpit + engines + logs. */
@@ -61,6 +71,7 @@ export function isOpsTab(tab: Tab): boolean {
 export function primaryNavFromTab(tab: Tab): PrimaryNavId {
   if (isOpsTab(tab)) return "operations";
   if (tab === "modelhub") return "downloads";
+  if (tab === "foundry") return "foundry";
   return "config";
 }
 
@@ -76,5 +87,7 @@ export function defaultTabForPrimary(
       return "modelhub";
     case "config":
       return "config";
+    case "foundry":
+      return "foundry";
   }
 }

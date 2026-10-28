@@ -191,7 +191,6 @@ ipc_registry! {
     "GpuInfo" => crate::telemetry::GpuInfo,
     "CpuInfo" => crate::telemetry::CpuInfo,
     "SystemInfo" => crate::telemetry::SystemInfo,
-    "IpcMeterSnapshot" => crate::ipc_meter::IpcMeterSnapshot,
     "LogEntry" => crate::log_hub::LogEntry,
     "LogBatch" => crate::log_hub::LogBatch,
     "SystemEvent" => crate::log_hub::SystemEvent,
@@ -208,6 +207,7 @@ ipc_registry! {
     // ── foundry / gpu control / secrets ───────────────────────────────
     "FoundrySourcePreview" => crate::reactor_foundry::FoundrySourcePreview,
     "FoundryWorkCacheStatus" => crate::reactor_foundry::FoundryWorkCacheStatus,
+    "FoundryChangelog" => crate::github_releases::RepoReleaseNotes,
     "GpuControlDeviceInfo" => crate::gpu_control::GpuControlDeviceInfo,
     "GpuControlStepResult" => crate::gpu_control::GpuControlStepResult,
     "GpuControlApplyResult" => crate::gpu_control::GpuControlApplyResult,

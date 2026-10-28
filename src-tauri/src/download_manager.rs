@@ -2113,7 +2113,7 @@ async fn finalize_provider_pack_worker(
                 Ok(()) => {
                     log::info!("[download] Provider pack installed: {task_id}");
                     if let Some(handle) = app_handle.as_ref() {
-                        crate::ipc_meter::emit_tracked(
+                        crate::ipc_emit::emit_guarded(
                             handle,
                             "binary-update:download-complete",
                             &crate::binary_update::BinaryUpdateEvent {
@@ -2123,7 +2123,7 @@ async fn finalize_provider_pack_worker(
                                 message: format!("Updated {provider_id}/{profile}"),
                             },
                         );
-                        crate::ipc_meter::emit_tracked(
+                        crate::ipc_emit::emit_guarded(
                             handle,
                             "download-event",
                             serde_json::json!({

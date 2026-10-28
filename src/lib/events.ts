@@ -18,12 +18,19 @@ export type NavigateConfigDetail = {
   downloadsView?: "models" | "software";
 };
 
+export type NavigateFoundryDetail = {
+  providerId: string;
+  environment: "edge" | "stable";
+};
+
 export const EVENTS = {
   reloadProviders: `${STORAGE_PREFIX}reload-providers`,
   paramConfigChanged: `${STORAGE_PREFIX}param-config-changed`,
   navigateStack: `${STORAGE_PREFIX}navigate-stack`,
   navigateCatalog: `${STORAGE_PREFIX}navigate-catalog`,
   navigateModelHub: `${STORAGE_PREFIX}navigate-model-hub`,
+  /** ENGINE build shortcut → FOUNDRY/BUILD with this provider+profile preselected. */
+  navigateFoundry: `${STORAGE_PREFIX}navigate-foundry`,
   launchEngine: `${STORAGE_PREFIX}launch-engine`,
   launchSuccess: `${STORAGE_PREFIX}launch-success`,
   launchError: `${STORAGE_PREFIX}launch-error`,

@@ -388,9 +388,17 @@ export interface ProviderDefaultParam extends Omit<UserEditedTemplateParam, 'val
   hidden_default?: boolean;
 }
 
-/** Pre-build source/binary revision check — shown on Foundry confirm modal. */
+/** Pre-build source/binary revision check — shown on the FOUNDRY build page. */
 export interface FoundrySourcePreview {
-  status: "up_to_date" | "update_available" | "first_clone" | "binary_stale" | "no_binary" | "offline" | "unknown";
+  status:
+    | "up_to_date"
+    | "update_available"
+    | "first_clone"
+    | "binary_present_unknown_rev"
+    | "binary_stale"
+    | "no_binary"
+    | "offline"
+    | "unknown";
   branch: string;
   local_commit?: string | null;
   remote_commit?: string | null;
@@ -400,7 +408,7 @@ export interface FoundrySourcePreview {
   banner_tone: "green" | "amber" | "cyan" | "muted";
 }
 
-/** Foundry confirm modal — CMake work tree under foundry/engines/.../work/build-{profile}/ */
+/** FOUNDRY cache card — CMake work tree under foundry/engines/.../work/build-{profile}/ */
 export interface FoundryWorkCacheStatus {
   /** Always true — work cache retention is on for all builds. */
   cacheEnabled: boolean;
@@ -414,6 +422,25 @@ export interface FoundryWorkCacheStatus {
   /** Bytes under entire work/ for this provider. */
   workTotalBytes: number;
   workTotalLabel: string;
+  /** Object-level compiler cache (sccache) — independent of the retained tree. */
+  sccacheAvailable: boolean;
+  sccachePath: string | null;
+  /** e.g. "0.19.0"; null when absent or not runnable. */
+  sccacheVersion: string | null;
+  /** Bytes under the shared sccache object-cache directory. */
+  sccacheSizeBytes: number;
+  sccacheSizeLabel: string;
+}
+
+/** Latest published upstream release notes (FOUNDRY source card changelog). */
+export interface FoundryChangelog {
+  repo: string;
+  tag: string;
+  name: string;
+  htmlUrl: string;
+  /** Markdown body from the GitHub release. */
+  body: string;
+  publishedAt: string;
 }
 
 /** Build metadata extracted from a compiled binary via --version + file mtime. */
@@ -1175,8 +1202,6 @@ export interface DownloadHistoryEntry {
   finishedAt: number;
 }
 
-type IpcMeterTier = "green" | "yellow" | "orange" | "red";
-
 export interface GpuControlDeviceInfo {
   index: number;
   name: string;
@@ -1228,15 +1253,6 @@ export interface GpuControlSavedState {
   selectedGpuIndex: number;
   sharedPreset: GpuControlSharedPreset;
   presets: GpuControlPreset[];
-}
-
-export interface IpcMeterSnapshot {
-  totalPerSec: number;
-  fusionPerSec: number;
-  logBatchPerSec: number;
-  otherPerSec: number;
-  peakPerSec: number;
-  tier: IpcMeterTier;
 }
 
 /** Sanitize alias for CLI/API use — replaces spaces and commas with hyphens. */

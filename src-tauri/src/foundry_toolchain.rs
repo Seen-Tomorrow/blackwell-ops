@@ -448,6 +448,81 @@ pub fn resolve_cmake_exe() -> Result<PathBuf, String> {
     }
 }
 
+/// Optional compiler cache (sccache) — discovered, never required.
+///
+/// Canonical portable location is `toolchain/sccache/sccache.exe`; a copy dropped
+/// beside cmake/ninja (or anywhere on PATH) works too. Discovery is intentionally
+/// silent: without sccache the configure line is byte-for-byte what it was before.
+pub fn resolve_sccache_exe() -> Option<PathBuf> {
+    let mut candidates = vec![
+        toolchain_dir().join("sccache").join("sccache.exe"),
+        toolchain_dir().join("bin").join("sccache.exe"),
+        toolchain_dir().join("sccache.exe"),
+    ];
+    if let Some(cmake_bin) = cmake_exe_path().parent() {
+        candidates.push(cmake_bin.join("sccache.exe"));
+    }
+    for path in candidates {
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+
+    let path_var = std::env::var_os("PATH")?;
+    std::env::split_paths(&path_var)
+        .map(|dir| dir.join("sccache.exe"))
+        .find(|path| path.is_file())
+}
+
+/// Directory sccache uses for its object cache. Mirrors the env the build batch sets:
+/// the portable app's `config/cache/sccache` unless the user overrode `SCCACHE_DIR`.
+pub fn sccache_cache_dir() -> PathBuf {
+    std::env::var_os("SCCACHE_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| crate::config::cache_dir().join("sccache"))
+}
+
+/// Parse `sccache --version` from a discovered binary. `None` means the binary is
+/// absent, not runnable, or the wrong architecture — callers must fall back to a
+/// normal build rather than failing configure.
+pub fn sccache_version(path: &std::path::Path) -> Option<String> {
+    match command_no_window(path).arg("--version").output() {
+        Ok(output) if output.status.success() => {
+            let text = String::from_utf8_lossy(&output.stdout);
+            let line = text.lines().next().unwrap_or("").trim();
+            let version = line.strip_prefix("sccache ").unwrap_or(line).trim();
+            if version.is_empty() {
+                None
+            } else {
+                Some(version.to_string())
+            }
+        }
+        Ok(output) => {
+            log::warn!(
+                "[toolchain] sccache at {} exited {} on --version — ignoring it",
+                path.display(),
+                output.status
+            );
+            None
+        }
+        Err(e) => {
+            log::warn!(
+                "[toolchain] sccache at {} is not runnable ({e}) — ignoring it",
+                path.display()
+            );
+            None
+        }
+    }
+}
+
+/// Smoke-test a discovered sccache before wiring it into CMake.
+///
+/// A half-copied or wrong-arch binary must degrade to a normal build instead of
+/// failing every configure with an opaque "compiler launcher" error.
+pub fn probe_sccache_exe(path: &std::path::Path) -> bool {
+    sccache_version(path).is_some()
+}
+
 pub fn manifest_path() -> PathBuf {
     toolchain_dir().join("manifest.json")
 }

@@ -162,10 +162,13 @@ async fn write_build_info_sidecar(build_dir: &Path, sacred: &Path) {
         }
     };
     let short: String = pair.1.chars().take(8).collect();
-    let body = match read_engine_version_name(build_dir).await {
+    let mut body = match read_engine_version_name(build_dir).await {
         Some(version) => format!("{version} (build {})\n", pair.0),
         None => format!("b{}-{short}\n", pair.0),
     };
+    // Second line carries the source commit even when the first line is a human
+    // version (the preview needs the commit to compare against origin HEAD).
+    body.push_str(&format!("commit {short}\n"));
     if let Err(e) = tokio::fs::write(sacred.join("build-info.txt"), body).await {
         log::warn!("[foundry] could not write build-info.txt: {e}");
     }

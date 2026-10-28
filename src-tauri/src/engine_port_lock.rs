@@ -381,20 +381,14 @@ pub async fn reclaim_our_ghost_or_fail(
             crate::output_console::BlackwellOutputConsoleLineStyle::Warning,
         );
         crate::output_console::emit_blackwell_output_console_debug_line(&msg);
-    } else if crate::engine_utils::is_managed_llama_server_image(&listener_image) {
-        let msg = format!(
-            "[port_lock] Reclaiming orphan engine on port {port} without lock metadata (PID {listener_pid})",
-        );
-        log::info!("{msg}");
-        crate::output_console::emit_blackwell_output_console_engines_line(
-            &msg,
-            crate::output_console::BlackwellOutputConsoleLineStyle::Warning,
-        );
-        crate::output_console::emit_blackwell_output_console_debug_line(&msg);
     } else {
+        // A managed llama-server image alone is not proof that this port belongs to us.
+        // It may be another instance in the tiny pre-lock window, or a user-started
+        // engine. Never kill without lock metadata; ask the user to resolve it.
         return Err(format!(
-            "Port {port} is in use by PID {listener_pid} (not a Blackwell Ops engine lock). \
-             Stop the other application or change BASE-PORT."
+            "Port {port} is in use by PID {listener_pid} ({}) without a Blackwell Ops engine lock. \
+             Stop that process or change BASE-PORT.",
+            listener_image.display()
         ));
     }
 

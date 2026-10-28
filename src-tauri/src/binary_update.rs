@@ -481,7 +481,7 @@ pub async fn download_binary_update(
         return Ok("runtime".to_string());
     }
 
-    crate::ipc_meter::emit_tracked(
+    crate::ipc_emit::emit_guarded(
         &app_handle,
         "binary-update:download-start",
         &BinaryUpdateEvent {
@@ -506,7 +506,7 @@ pub async fn download_binary_update(
         .await?;
     drop(dm);
 
-    crate::ipc_meter::emit_tracked(
+    crate::ipc_emit::emit_guarded(
         &app_handle,
         "download-event",
         serde_json::json!({
@@ -751,7 +751,7 @@ pub async fn install_app_update(
         .await?;
     drop(dm);
 
-    crate::ipc_meter::emit_tracked(
+    crate::ipc_emit::emit_guarded(
         &app_handle,
         "download-event",
         serde_json::json!({

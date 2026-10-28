@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use crate::types::{EngineConfig, StackEntry};
 use crate::errors::BlackwellError;
 use crate::log_hub::LogHub;
@@ -8,6 +8,13 @@ use crate::log_hub::LogHub;
 pub const DEFAULT_N_CTX: usize = 32768;
 /// Returned from `load_slot` when `fail_loading_slot` already emitted the user-facing error.
 pub const LOAD_FAILURE_ALREADY_REPORTED: &str = "LOAD_FAILURE_ALREADY_REPORTED";
+/// Returned from `load_slot` when the slot was stopped/replaced while spawning.
+pub const LAUNCH_CANCELLED: &str = "LAUNCH_CANCELLED";
+
+/// Monotonic launch reservation. A slot cleared and re-reserved never reuses a token,
+/// so a late log reader / readiness probe / reaper from the previous attempt cannot
+/// act on the new engine.
+static NEXT_LAUNCH_RESERVATION: AtomicU64 = AtomicU64::new(1);
 
 /// When TENSOR split is active, silent engine exits are common — nudge users toward LAYER/NONE.
 fn format_load_failure_reason(reason: &str, split_mode: &str) -> String {
@@ -132,6 +139,8 @@ pub struct EngineSlot {
     pub vision: bool,
     /// Set when stop/clear runs — background reaper exits without duplicate cleanup.
     pub reaper_cancel: Arc<AtomicBool>,
+    /// Monotonic reservation token for this launch attempt; 0 = no active launch.
+    pub reservation: u64,
     /// One-shot guard — stderr EOF vs reaper must not both emit load-failure UI.
     pub load_fail_claimed: Arc<AtomicBool>,
 }
@@ -165,6 +174,7 @@ impl EngineStack {
                 supports_fusion: true,
                 vision: false,
                 reaper_cancel: Arc::new(AtomicBool::new(false)),
+                reservation: 0,
                 load_fail_claimed: Arc::new(AtomicBool::new(false)),
             }))));
         }
@@ -262,26 +272,31 @@ impl EngineStack {
     }
 
     /// Reserve a slot before slow launch work — prevents double-booking during port cleanup/spawn.
-    pub fn reserve_slot(&self, idx: usize, alias: &str, port: u16) -> Result<(), String> {
+    /// Returns the launch reservation token; pass it to `load_slot` and release with it on failure.
+    pub fn reserve_slot(&self, idx: usize, alias: &str, port: u16) -> Result<u64, String> {
         let slot_arc = self.slots.get(idx).and_then(|s| s.as_ref()).ok_or("Slot not found")?;
         let mut slot = slot_arc.lock();
         if !matches!(slot.status, SlotStatus::Idle) {
             return Err(format!("Slot {} is not idle (current status: {})", idx, slot.status));
         }
+        let reservation = NEXT_LAUNCH_RESERVATION.fetch_add(1, Ordering::Relaxed);
         slot.status = SlotStatus::Loading;
         slot.alias = alias.to_string();
         slot.port = port;
         slot.child_proc = None;
         slot.pid = None;
+        slot.reservation = reservation;
         slot.load_fail_claimed.store(false, Ordering::Release);
-        Ok(())
+        Ok(reservation)
     }
 
-    /// Release a reserved slot after a failed launch attempt.
-    pub fn release_reserved_slot(&self, idx: usize) {
+    /// Release a reserved slot after a failed launch attempt. The token prevents a
+    /// failed older attempt from clearing a newer launch in the same slot.
+    pub fn release_reserved_slot(&self, idx: usize, reservation: u64) {
         if let Some(slot_arc) = self.slots.get(idx).and_then(|s| s.as_ref()) {
             let slot = slot_arc.lock();
-            if matches!(slot.status, SlotStatus::Loading)
+            if slot.reservation == reservation
+                && matches!(slot.status, SlotStatus::Loading)
                 && slot.child_proc.is_none()
                 && slot.pid.is_none()
             {
@@ -294,6 +309,7 @@ impl EngineStack {
     /// Static entry point — handles its own locking. Callers don't need to hold the stack lock.
     pub async fn load_slot(
         slot_idx: usize,
+        reservation: u64,
         config: &EngineConfig,
         binary_path: &std::path::PathBuf,
         gpu_mask: String,
@@ -317,18 +333,22 @@ impl EngineStack {
                 .and_then(|s| s.as_ref())
                 .ok_or("Slot not found")?
                 .clone();
-            // Accept idle slots or slots reserved by launch_engine (LOADING, no child yet).
             {
                 let slot = arc.lock();
-                let reserved = matches!(slot.status, SlotStatus::Loading)
+                let reserved = slot.reservation == reservation
+                    && matches!(slot.status, SlotStatus::Loading)
                     && slot.child_proc.is_none()
                     && slot.pid.is_none();
-                if !matches!(slot.status, SlotStatus::Idle) && !reserved {
-                    return Err(format!("Slot {} is not idle (current status: {})", slot_idx, slot.status));
+                if !reserved {
+                    return Err(LAUNCH_CANCELLED.to_string());
                 }
             }
             drop(stack); // Release tokio stack lock before async work below
             arc
+        };
+        let launch_fail_claimed = {
+            let slot = slot_arc.lock();
+            slot.load_fail_claimed.clone()
         };
 
         let profile_for_toolchain = if config.binary_profile.is_empty() {
@@ -409,6 +429,33 @@ impl EngineStack {
                 config.port,
             );
         }
+
+        // Claim the PID immediately: stop/stop-all can then kill a launch that is still
+        // in its post-spawn settling window, before the Child handle is stored below.
+        let claimed_pid = {
+            let mut slot = slot_arc.lock();
+            if slot.reservation == reservation {
+                slot.pid = Some(pid);
+                true
+            } else {
+                false
+            }
+        };
+        if !claimed_pid {
+            let _ = crate::engine_utils::stop_child_fast(child, Some(pid)).await;
+            return Err(LAUNCH_CANCELLED.to_string());
+        }
+        // Provisional lock closes the multi-instance window before the final PID/lock
+        // write after readiness setup; the owner PID is what other instances check.
+        if let Err(e) = crate::engine_port_lock::write_lock(config.port, pid, binary_path) {
+            log::warn!(
+                "[port_lock] Provisional lock write failed for port {} (PID {}): {}",
+                config.port,
+                pid,
+                e
+            );
+        }
+
         let launch_cmd = crate::engine_utils::format_cmd_line(binary_path, &cmd_args);
         crate::session_log::record_launch(
             slot_idx,
@@ -462,6 +509,7 @@ impl EngineStack {
         };
         log_hub.spawn_slot_reader(
             slot_idx,
+            reservation,
             config.alias.clone(),
             pid,
             config.port,
@@ -474,6 +522,7 @@ impl EngineStack {
 
         Self::spawn_health_readiness_probe(
             config.port,
+            reservation,
             config.alias.clone(),
             log_hub.clone(),
             fire_ready,
@@ -495,17 +544,28 @@ impl EngineStack {
             );
         }
 
-        // Quick alive check — give process 500ms to initialize (async — do not block tokio worker)
+        // Quick alive check — give process 500ms to initialize (async — do not block tokio worker).
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         if let Ok(Some(code)) = child.try_wait() {
             let exit_code = code.code().unwrap_or(-1);
-            let already_reported = {
+            let (cancelled, already_reported) = {
+                let failed = launch_fail_claimed.load(Ordering::Acquire);
                 let stack = stack_ref.lock().await;
-                stack.get_slot(slot_idx).is_none_or(|slot| {
-                    slot.load_fail_claimed.load(Ordering::Acquire)
-                        || matches!(slot.status, SlotStatus::Idle)
-                })
+                let state = match stack.get_slot(slot_idx) {
+                    None => (false, failed),
+                    Some(slot) => (
+                        slot.reservation != reservation && !failed,
+                        failed
+                            || slot.load_fail_claimed.load(Ordering::Acquire)
+                            || matches!(slot.status, SlotStatus::Idle),
+                    ),
+                };
+                state
             };
+            if cancelled {
+                let _ = crate::engine_utils::stop_child_fast(child, Some(pid)).await;
+                return Err(LAUNCH_CANCELLED.to_string());
+            }
             if !already_reported {
                 {
                     let stack = stack_ref.lock().await;
@@ -536,6 +596,20 @@ impl EngineStack {
                 tokio::time::sleep(std::time::Duration::from_millis(50)).await;
             }
             if let Some(engine_pid) = found {
+                let claimed = {
+                    let mut slot = slot_arc.lock();
+                    if slot.reservation == reservation && slot.pid == Some(spawned_pid) {
+                        slot.pid = Some(engine_pid);
+                        true
+                    } else {
+                        false
+                    }
+                };
+                if !claimed {
+                    let _ = crate::engine_utils::kill_process_by_pid(engine_pid).await;
+                    let _ = crate::engine_utils::stop_child_fast(child, Some(spawned_pid)).await;
+                    return Err(LAUNCH_CANCELLED.to_string());
+                }
                 pid = engine_pid;
                 crate::cpu_topology::apply_process_affinity_from_args(pid, &cmd_args);
                 crate::engine_job::assign_engine_to_job(pid, &config.alias, slot_idx, config.port);
@@ -546,6 +620,56 @@ impl EngineStack {
             }
         }
 
+        // Commit the Child handle only while this exact reservation still owns the slot.
+        // A stop/clear/new launch in the settling window must not be resurrected.
+        let mut pending_child = Some(child);
+        {
+            let mut slot = slot_arc.lock();
+            let ours = slot.reservation == reservation
+                && slot.pid == Some(pid)
+                && slot.child_proc.is_none()
+                && !matches!(slot.status, SlotStatus::Idle);
+            if ours {
+                slot.child_proc = pending_child.take();
+                slot.pid = Some(pid);
+                slot.port = config.port;
+                slot.alias = config.alias.clone();
+                slot.model_path = config.model_path.clone();
+                slot.gpu_mask = gpu_mask;
+                slot.vram_mib = fit_scanner_estimate_vram(config);
+                slot.n_ctx = config.get_param_str("ctx")
+                    .and_then(|v| v.parse::<usize>().ok())
+                    .unwrap_or(32768);
+                slot.parallel = config.get_parallel().max(1);
+                slot.provider_name = provider_display_name;
+                slot.backend_type = backend_type;
+                slot.split_mode = config.get_param_str("split").unwrap_or_default();
+                slot.binary_profile = if config.binary_profile.is_empty() {
+                    crate::config::DEFAULT_BINARY_PROFILE.to_string()
+                } else {
+                    config.binary_profile.clone()
+                };
+                slot.supports_fusion = supports_fusion;
+                // Vision only when mmproj was actually on the launch line (not just vision=on).
+                slot.vision = cmd_args.windows(2).any(|w| w[0].eq_ignore_ascii_case("--mmproj"))
+                    || cmd_args
+                        .iter()
+                        .any(|a| a.to_ascii_lowercase().starts_with("--mmproj="));
+                // Health/stderr readiness can fire while we still hold child/pid setup below.
+                // Never downgrade Running → Loading or on_ready is one-shot and the stack sticks LOADING
+                // while fusion /slots already reports READY (bench + phase bar gated on stack status).
+                if !matches!(slot.status, SlotStatus::Running) {
+                    slot.status = SlotStatus::Loading;
+                }
+            }
+        }
+
+        if let Some(child) = pending_child {
+            let _ = crate::engine_utils::stop_child_fast(child, Some(pid)).await;
+            return Err(LAUNCH_CANCELLED.to_string());
+        }
+
+        // Final lock reflects the engine PID (an nsys wrapper pid may have been replaced).
         if let Err(e) = crate::engine_port_lock::write_lock(config.port, pid, binary_path) {
             let msg = format!(
                 "[port_lock] Failed to write lock for port {} (PID {}): {}",
@@ -566,47 +690,27 @@ impl EngineStack {
             ));
         }
 
-        // Update slot state under per-slot lock only
-        {
-            let mut slot = slot_arc.lock();
-            slot.child_proc = Some(child);
-            slot.pid = Some(pid);
-            slot.port = config.port;
-            slot.alias = config.alias.clone();
-            slot.model_path = config.model_path.clone();
-            slot.gpu_mask = gpu_mask;
-            slot.vram_mib = fit_scanner_estimate_vram(config);
-            slot.n_ctx = config.get_param_str("ctx")
-                .and_then(|v| v.parse::<usize>().ok())
-                .unwrap_or(32768);
-            slot.parallel = config.get_parallel().max(1);
-            slot.provider_name = provider_display_name;
-            slot.backend_type = backend_type;
-            slot.split_mode = config.get_param_str("split").unwrap_or_default();
-            slot.binary_profile = if config.binary_profile.is_empty() {
-                crate::config::DEFAULT_BINARY_PROFILE.to_string()
-            } else {
-                config.binary_profile.clone()
-            };
-            slot.supports_fusion = supports_fusion;
-            // Vision only when mmproj was actually on the launch line (not just vision=on).
-            slot.vision = cmd_args.windows(2).any(|w| w[0].eq_ignore_ascii_case("--mmproj"))
-                || cmd_args
-                    .iter()
-                    .any(|a| a.to_ascii_lowercase().starts_with("--mmproj="));
-            // Health/stderr readiness can fire while we still hold child/pid setup below.
-            // Never downgrade Running → Loading or on_ready is one-shot and the stack sticks LOADING
-            // while fusion /slots already reports READY (bench + phase bar gated on stack status).
-            if !matches!(slot.status, SlotStatus::Running) {
-                slot.status = SlotStatus::Loading;
-            }
+        let still_ours = {
+            let slot = slot_arc.lock();
+            slot.reservation == reservation
+        };
+        if !still_ours {
+            crate::engine_port_lock::delete_lock(config.port);
+            return Err(LAUNCH_CANCELLED.to_string());
         }
 
         let reaper_cancel = {
             let slot = slot_arc.lock();
             slot.reaper_cancel.clone()
         };
-        Self::spawn_reaper(slot_idx, slot_arc.clone(), stack_ref.clone(), log_hub.clone(), reaper_cancel);
+        Self::spawn_reaper(
+            slot_idx,
+            reservation,
+            slot_arc.clone(),
+            stack_ref.clone(),
+            log_hub.clone(),
+            reaper_cancel,
+        );
 
         Ok(())
     }
@@ -667,6 +771,7 @@ impl EngineStack {
     /// Poll until stack readiness — prefer `/slots` (GGML-safe); fall back to `/health` when /slots is absent.
     fn spawn_health_readiness_probe(
         port: u16,
+        reservation: u64,
         alias: String,
         log_hub: LogHub,
         on_ready: Arc<dyn Fn() + Send + Sync>,
@@ -689,7 +794,9 @@ impl EngineStack {
             for _ in 0..1200 {
                 {
                     let slot = slot_arc.lock();
-                    if !matches!(slot.status, SlotStatus::Loading) {
+                    if slot.reservation != reservation
+                        || !matches!(slot.status, SlotStatus::Loading)
+                    {
                         return;
                     }
                 }
@@ -699,7 +806,8 @@ impl EngineStack {
                 if let Some(source) = source {
                     let still_loading = {
                         let slot = slot_arc.lock();
-                        matches!(slot.status, SlotStatus::Loading)
+                        slot.reservation == reservation
+                            && matches!(slot.status, SlotStatus::Loading)
                     };
                     if !still_loading {
                         return;
@@ -738,6 +846,7 @@ impl EngineStack {
     /// Background reaper: monitors a PID and cleans up the slot if the process dies unexpectedly.
     fn spawn_reaper(
         slot_idx: usize,
+        reservation: u64,
         slot_arc: Arc<parking_lot::Mutex<EngineSlot>>,
         stack_ref: Arc<tokio::sync::Mutex<EngineStack>>,
         log_hub: LogHub,
@@ -767,7 +876,7 @@ impl EngineStack {
                 let alive = crate::engine_utils::is_process_alive(pid);
 
                 if !alive {
-                    Self::handle_engine_died(slot_idx, &stack_ref, log_hub.clone()).await;
+                    Self::handle_engine_died(slot_idx, reservation, &stack_ref, log_hub.clone()).await;
                     break;
                 }
             }
@@ -843,9 +952,43 @@ impl EngineStack {
         }
     }
 
+    /// PID-only teardown for a launch that has not committed its Child handle yet.
+    async fn finish_pid_stop(
+        pid: u32,
+        hub: Option<LogHub>,
+        slot_idx: usize,
+        alias: String,
+        emit_console: bool,
+    ) {
+        let result = crate::engine_utils::kill_process_by_pid(pid).await;
+        let (msg, style) = match result {
+            Ok(()) => (
+                format!("[STOP] slot={slot_idx} alias={alias} taskkill OK pid={pid} (pre-commit launch)"),
+                crate::output_console::BlackwellOutputConsoleLineStyle::Warning,
+            ),
+            Err(e) => (
+                format!("[STOP] slot={slot_idx} alias={alias} taskkill pid={pid} failed: {e}"),
+                crate::output_console::BlackwellOutputConsoleLineStyle::Error,
+            ),
+        };
+        log::info!("{msg}");
+        if emit_console {
+            if let Some(hub) = hub {
+                hub.emit_console_line(
+                    crate::output_console::BlackwellOutputConsoleCategory::Engines,
+                    &msg,
+                    style,
+                );
+            } else {
+                crate::output_console::emit_blackwell_output_console_engines_line(&msg, style);
+            }
+        }
+    }
+
     /// Reaper entry: engine PID gone while slot still Loading or Running.
     async fn handle_engine_died(
         slot_idx: usize,
+        reservation: u64,
         stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>,
         log_hub: LogHub,
     ) {
@@ -854,6 +997,9 @@ impl EngineStack {
             let Some(slot) = stack.get_slot(slot_idx) else {
                 return;
             };
+            if slot.reservation != reservation {
+                return;
+            }
             if matches!(slot.status, SlotStatus::Idle) {
                 return;
             }
@@ -863,19 +1009,21 @@ impl EngineStack {
         if during_load {
             Self::fail_loading_slot(
                 slot_idx,
+                reservation,
                 stack_ref,
                 log_hub,
                 "Engine process exited during model load",
             )
             .await;
         } else {
-            Self::clear_crashed_running_slot(slot_idx, stack_ref, log_hub).await;
+            Self::clear_crashed_running_slot(slot_idx, reservation, stack_ref, log_hub).await;
         }
     }
 
     /// Running engine exited unexpectedly — clear slot, delete port lock, notify UI (not a launch error).
     async fn clear_crashed_running_slot(
         slot_idx: usize,
+        reservation: u64,
         stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>,
         log_hub: LogHub,
     ) {
@@ -884,6 +1032,9 @@ impl EngineStack {
             let Some(slot) = stack.get_slot(slot_idx) else {
                 return;
             };
+            if slot.reservation != reservation {
+                return;
+            }
             if !matches!(slot.status, SlotStatus::Running) {
                 return;
             }
@@ -906,6 +1057,16 @@ impl EngineStack {
             &format!("[{alias}] Engine exited unexpectedly — slot cleared"),
             crate::output_console::BlackwellOutputConsoleLineStyle::Warning,
         );
+
+        let still_current = {
+            let stack = stack_ref.lock().await;
+            stack
+                .get_slot(slot_idx)
+                .is_some_and(|slot| slot.reservation == reservation)
+        };
+        if !still_current {
+            return;
+        }
 
         let proc_to_stop = {
             let stack = stack_ref.lock().await;
@@ -941,6 +1102,7 @@ impl EngineStack {
     /// Model load failed or engine exited before ready — tear down slot and notify frontend.
     pub async fn fail_loading_slot(
         slot_idx: usize,
+        reservation: u64,
         stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>,
         log_hub: LogHub,
         reason: &str,
@@ -950,6 +1112,9 @@ impl EngineStack {
             let Some(slot) = stack.get_slot(slot_idx) else {
                 return;
             };
+            if slot.reservation != reservation {
+                return;
+            }
             if matches!(slot.status, SlotStatus::Idle) {
                 return;
             }
@@ -983,6 +1148,7 @@ impl EngineStack {
             &format!("[{}] Model load failed: {}", alias, user_reason),
             crate::output_console::BlackwellOutputConsoleLineStyle::Error,
         );
+        log_hub.emit_engine_fault(slot_idx, &alias, "engine_load_failed", &user_reason);
         log_hub.emit(
             "engine-load-failed",
             &serde_json::json!({
@@ -997,6 +1163,17 @@ impl EngineStack {
                 "kind": BlackwellError::EngineSpawnFailed { message: String::new() }.kind(),
             }),
         );
+
+        // Re-check after the diagnostic pause: stop/clear may have retired this attempt.
+        let still_current = {
+            let stack = stack_ref.lock().await;
+            stack
+                .get_slot(slot_idx)
+                .is_some_and(|slot| slot.reservation == reservation)
+        };
+        if !still_current {
+            return;
+        }
 
         let proc_to_stop = {
             let stack = stack_ref.lock().await;
@@ -1059,6 +1236,7 @@ impl EngineStack {
             slot.status = SlotStatus::Idle;
             slot.child_proc = None;
             slot.pid = None;
+            slot.reservation = 0;
             slot.alias = format!("ENGINE-{}", idx);
             slot.port = 0;
             slot.model_path.clear();
@@ -1163,6 +1341,9 @@ impl EngineStack {
                 true,
             )
             .await;
+        } else if let Some(p) = pid {
+            // Launch is still in its settling window (PID claimed, Child not committed).
+            Self::finish_pid_stop(p, hub_opt, slot_idx, alias, true).await;
         }
 
         Ok(())
@@ -1222,6 +1403,18 @@ impl EngineStack {
                 let handle = tokio::spawn(Self::finish_process_stop(
                     pid,
                     proc,
+                    hub_clone,
+                    i,
+                    alias,
+                    emit_events,
+                ));
+                if await_process_kill {
+                    kill_handles.push(handle);
+                }
+            } else if let Some(p) = pid {
+                let hub_clone = log_hub_ref.clone();
+                let handle = tokio::spawn(Self::finish_pid_stop(
+                    p,
                     hub_clone,
                     i,
                     alias,
@@ -1454,5 +1647,28 @@ mod tests {
         let stack = EngineStack::new(1);
         stack.clear_slot(0);
         stack.clear_slot(7);
+    }
+
+    #[test]
+    fn stale_reservation_cannot_release_a_new_launch() {
+        let stack = EngineStack::new(1);
+        let first = stack.reserve_slot(0, "ENGINE-A", 9101).unwrap();
+        stack.release_reserved_slot(0, first);
+        let second = stack.reserve_slot(0, "ENGINE-B", 9102).unwrap();
+        assert_ne!(first, second);
+
+        // An old failed attempt must not clear the newer reservation.
+        stack.release_reserved_slot(0, first);
+        {
+            let slot = stack.get_slot(0).unwrap();
+            assert_eq!(slot.reservation, second);
+            assert_eq!(slot.alias, "ENGINE-B");
+            assert_eq!(slot.port, 9102);
+        }
+
+        stack.release_reserved_slot(0, second);
+        let slot = stack.get_slot(0).unwrap();
+        assert_eq!(slot.reservation, 0);
+        assert!(matches!(slot.status, super::SlotStatus::Idle));
     }
 }

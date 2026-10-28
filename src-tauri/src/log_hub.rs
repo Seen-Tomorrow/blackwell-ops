@@ -25,6 +25,19 @@ pub struct SystemEvent {
     pub timestamp: String,
 }
 
+/// Classified engine failure for the status bar's ATTENTION state.
+///
+/// Emitted only when the backend can classify a fatal load/runtime fault.
+/// Raw stderr is never promoted to this event wholesale.
+#[derive(Debug, Clone, Serialize)]
+pub struct EngineFaultPayload {
+    pub slot: usize,
+    pub alias: String,
+    pub kind: String,
+    pub severity: String,
+    pub message: String,
+}
+
 /// Batched log event emitted to frontend.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogBatch {
@@ -138,10 +151,23 @@ impl LogHub {
         if crate::debug_flags::flags().disable_ipc_emit {
             return;
         }
-        crate::ipc_meter::record(event);
         if let Err(e) = self.app_handle.emit(event, payload) {
             log::warn!("[LOG_HUB] emit failed: {}", e);
         }
+    }
+
+    /// Emit a classified engine fault for the footer ATTENTION state.
+    pub fn emit_engine_fault(&self, slot: usize, alias: &str, kind: &str, message: &str) {
+        self.emit(
+            "engine-fault",
+            EngineFaultPayload {
+                slot,
+                alias: alias.to_string(),
+                kind: kind.to_string(),
+                severity: "error".to_string(),
+                message: message.to_string(),
+            },
+        );
     }
 
     /// Emit a line to the Blackwell Output Console via the specified category.
@@ -235,6 +261,7 @@ impl LogHub {
     pub fn spawn_slot_reader(
         &self,
         slot_idx: usize,
+        reservation: u64,
         alias: String,
         engine_pid: u32,
         engine_port: u16,
@@ -290,6 +317,7 @@ impl LogHub {
         tokio::spawn(Self::process_lines(
             app_handle,
             slot_idx,
+            reservation,
             alias,
             engine_pid,
             engine_port,
@@ -307,6 +335,7 @@ impl LogHub {
     async fn process_lines(
         app_handle: AppHandle,
         slot_idx: usize,
+        reservation: u64,
         alias: String,
         engine_pid: u32,
         engine_port: u16,
@@ -331,6 +360,7 @@ impl LogHub {
         let mut batch_interval = tokio::time::Duration::from_millis(telemetry_tick_ms());
 
         let mut load_failed = false;
+        let mut runtime_fault_reported = false;
         let mut tables_seen: usize = 0;
         let mut tables_persisted: usize = 0;
         let mut launch_snapshot_persisted = false;
@@ -394,6 +424,7 @@ impl LogHub {
                                 Self::cleanup_slot_if_still_active(
                                     &app_handle,
                                     slot_idx,
+                                    reservation,
                                     &alias,
                                     engine_pid,
                                     engine_port,
@@ -428,6 +459,20 @@ impl LogHub {
                     if !model_ready.load(Ordering::Acquire)
                         && Self::is_engine_ready_log_line(&cleaned)
                     {
+                        let still_current = if let Some(ctx) =
+                            app_handle.try_state::<crate::engine::AppContext>()
+                        {
+                            let stack = ctx.stack.lock().await;
+                            stack.get_slot(slot_idx).is_some_and(|slot| {
+                                slot.reservation == reservation
+                                    && !matches!(slot.status, crate::engine_stack::SlotStatus::Idle)
+                            })
+                        } else {
+                            false
+                        };
+                        if !still_current {
+                            break;
+                        }
                         let source = if stdout_only { "stdout log pattern" } else { "stderr log pattern" };
                         Self::emit_readiness_debug(&app_handle, &alias, source, &cleaned);
                         fire_ready();
@@ -510,7 +555,7 @@ impl LogHub {
                             alias,
                             cleaned.chars().take(240).collect::<String>()
                         );
-                        Self::fail_loading_from_log(&app_handle, slot_idx, &alias, &reason).await;
+                        Self::fail_loading_from_log(&app_handle, slot_idx, reservation, &alias, &reason).await;
                         batch_buffer.push(LogEntry {
                             slot: slot_idx,
                             alias: alias.clone(),
@@ -525,6 +570,47 @@ impl LogHub {
                             &batch_interval,
                         );
                         break;
+                    }
+
+                    // A running engine can still emit a fatal fault (runtime OOM,
+                    // assertion, spec-decode failure, unsupported architecture).
+                    // Promote one classified fault per process to ATTENTION; never
+                    // scrape every stderr line into the status bar.
+                    if (!stdout_only || Self::is_engine_assertion(&cleaned))
+                        && model_ready.load(Ordering::Acquire)
+                        && !runtime_fault_reported
+                        && Self::is_runtime_fault(&cleaned)
+                    {
+                        runtime_fault_reported = true;
+                        let still_current = if let Some(ctx) =
+                            app_handle.try_state::<crate::engine::AppContext>()
+                        {
+                            let stack = ctx.stack.lock().await;
+                            stack.get_slot(slot_idx).is_some_and(|slot| {
+                                slot.reservation == reservation
+                                    && !matches!(slot.status, crate::engine_stack::SlotStatus::Idle)
+                            })
+                        } else {
+                            false
+                        };
+                        if !still_current {
+                            break;
+                        }
+                        let message = cleaned.trim().chars().take(280).collect::<String>();
+                        if !message.is_empty() {
+                            let hub = LogHub::new(app_handle.clone());
+                            hub.emit_console_line(
+                                BlackwellOutputConsoleCategory::Error,
+                                &format!("[{}] Engine fault: {}", alias, message),
+                                BlackwellOutputConsoleLineStyle::Error,
+                            );
+                            hub.emit_engine_fault(
+                                slot_idx,
+                                &alias,
+                                Self::runtime_fault_kind(&cleaned),
+                                &message,
+                            );
+                        }
                     }
 
                     // Buffer provider-specific learn lines; persist only on complete samples.
@@ -618,7 +704,6 @@ impl LogHub {
 
         // Flush remaining batch on channel close
         if !batch_buffer.is_empty() && !crate::debug_flags::flags().disable_ipc_emit {
-            crate::ipc_meter::record("engine-log-batch");
             let _ = app_handle.emit("engine-log-batch", &LogBatch {
                 slot: slot_idx,
                 alias: alias.clone(),
@@ -1005,6 +1090,91 @@ impl LogHub {
         false
     }
 
+    /// Fatal faults that can surface *after* the model is ready. Deliberately narrower
+    /// than `is_fatal_load_error`: a running server logs plenty of recoverable `error:`
+    /// request noise that must not turn the footer red.
+    fn is_runtime_fault(line: &str) -> bool {
+        let lower = line.to_lowercase();
+
+        if Self::is_fit_abort_warning(line) {
+            return false;
+        }
+        if Self::is_engine_assertion(line) {
+            return true;
+        }
+
+        if lower.contains("out of memory")
+            || lower.contains("cudamalloc failed")
+            || lower.contains("cuda error")
+            || lower.contains("ggml_cuda error")
+            || lower.contains("std::bad_alloc")
+            || lower.contains("terminate called after throwing")
+            || (lower.contains("unable to allocate") && !lower.contains("allocated '"))
+        {
+            return true;
+        }
+
+        let spec_topic = lower.contains("speculative")
+            || lower.contains("spec decode")
+            || lower.contains("draft model")
+            || lower.contains("draft sequence");
+        if spec_topic
+            && (lower.contains("error")
+                || lower.contains("fail")
+                || lower.contains("invalid")
+                || lower.contains("not supported")
+                || lower.contains("unsupported"))
+        {
+            return true;
+        }
+
+        let arch_topic = lower.contains("model") || lower.contains("architecture");
+        if arch_topic
+            && (lower.contains("unsupported")
+                || lower.contains("not supported")
+                || lower.contains("not implemented"))
+        {
+            return true;
+        }
+
+        if lower.contains("failed to decode")
+            || lower.contains("decode error")
+            || lower.contains("error decoding")
+        {
+            return true;
+        }
+
+        false
+    }
+
+    fn runtime_fault_kind(line: &str) -> &'static str {
+        let lower = line.to_lowercase();
+        if lower.contains("out of memory")
+            || lower.contains("cudamalloc failed")
+            || lower.contains("cuda error")
+            || lower.contains("ggml_cuda error")
+            || lower.contains("std::bad_alloc")
+            || (lower.contains("unable to allocate") && !lower.contains("allocated '"))
+        {
+            "engine_oom"
+        } else if Self::is_engine_assertion(line) {
+            "engine_assertion"
+        } else if lower.contains("speculative")
+            || lower.contains("spec decode")
+            || lower.contains("draft model")
+            || lower.contains("draft sequence")
+        {
+            "engine_spec_decode"
+        } else if lower.contains("unsupported")
+            || lower.contains("not supported")
+            || lower.contains("not implemented")
+        {
+            "engine_unsupported"
+        } else {
+            "engine_runtime_fault"
+        }
+    }
+
     fn extract_load_error_reason(line: &str) -> String {
         let lower = line.to_lowercase();
         if let Some(idx) = lower.find("exiting due to") {
@@ -1056,6 +1226,7 @@ impl LogHub {
     async fn cleanup_slot_if_still_active(
         app_handle: &AppHandle,
         slot_idx: usize,
+        reservation: u64,
         alias: &str,
         engine_pid: u32,
         engine_port: u16,
@@ -1091,9 +1262,10 @@ impl LogHub {
         };
         let still_active = {
             let stack = ctx.stack.lock().await;
-            stack
-                .get_slot(slot_idx)
-                .is_some_and(|s| !matches!(s.status, crate::engine_stack::SlotStatus::Idle))
+            stack.get_slot(slot_idx).is_some_and(|s| {
+                s.reservation == reservation
+                    && !matches!(s.status, crate::engine_stack::SlotStatus::Idle)
+            })
         };
         if !still_active {
             return;
@@ -1101,6 +1273,7 @@ impl LogHub {
 
         crate::engine_stack::EngineStack::fail_loading_slot(
             slot_idx,
+            reservation,
             &ctx.stack,
             ctx.log_hub.clone(),
             reason,
@@ -1111,6 +1284,7 @@ impl LogHub {
     async fn fail_loading_from_log(
         app_handle: &AppHandle,
         slot_idx: usize,
+        reservation: u64,
         alias: &str,
         reason: &str,
     ) {
@@ -1126,6 +1300,7 @@ impl LogHub {
         let stack_ref = ctx.stack.clone();
         crate::engine_stack::EngineStack::fail_loading_slot(
             slot_idx,
+            reservation,
             &stack_ref,
             ctx.log_hub.clone(),
             reason,
@@ -1152,7 +1327,6 @@ impl LogHub {
             let entries = std::mem::take(batch_buffer);
             if !entries.is_empty() && !crate::debug_flags::flags().disable_ipc_emit {
                 let batch = LogBatch { slot: slot_idx, alias: alias.to_string(), entries };
-                crate::ipc_meter::record("engine-log-batch");
                 if let Err(_e) = app_handle.emit_to("main", "engine-log-batch", &batch) {
                     // Log hub emit_to failed now routed to Blackwell Output Console
                     let _ = app_handle.emit("engine-log-batch", &batch);
@@ -1180,7 +1354,6 @@ impl LogHub {
         if crate::debug_flags::flags().disable_ipc_emit {
             return;
         }
-        crate::ipc_meter::record("engine-system");
         if let Err(e) = self.app_handle.emit("engine-system", &event) {
             log::warn!("Failed to emit engine-system event: {}", e);
         }
@@ -1294,5 +1467,34 @@ mod tests {
         let line = "llama_init_from_model: simultaneous use of SPLIT_MODE_TENSOR and KV cache quantization not implemented";
         assert!(!LogHub::is_fit_abort_warning(line));
         assert!(LogHub::is_fatal_load_error(line));
+    }
+
+    #[test]
+    fn runtime_fault_classifier_only_promotes_fatal_engine_lines() {
+        assert!(LogHub::is_runtime_fault("CUDA error: out of memory"));
+        assert!(LogHub::is_runtime_fault(
+            "speculative decoding failed: draft model rejected the batch"
+        ));
+        assert!(LogHub::is_runtime_fault(
+            "error: unsupported model architecture 'future-arch'"
+        ));
+        assert!(LogHub::is_runtime_fault("GGML_ASSERT(row_width == n_embd) failed"));
+        assert_eq!(
+            LogHub::runtime_fault_kind("CUDA error: out of memory"),
+            "engine_oom"
+        );
+        assert_eq!(
+            LogHub::runtime_fault_kind("speculative decoding failed"),
+            "engine_spec_decode"
+        );
+
+        assert!(!LogHub::is_runtime_fault("allocated 'CUDA_Host' buffer"));
+        assert!(!LogHub::is_runtime_fault("print_timing: n_decoded = 100"));
+        assert!(!LogHub::is_runtime_fault(
+            "14.24.080.725 I srv  update_slots: all slots are idle"
+        ));
+        assert!(!LogHub::is_runtime_fault(
+            "common_fit_params: failed to fit params to free device memory: llama_params_fit is not implemented for SPLIT_MODE_TENSOR, abort"
+        ));
     }
 }

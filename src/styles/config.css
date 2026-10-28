@@ -1499,10 +1499,6 @@
   color: var(--theme-text-muted);
 }
 
-[data-config-page] .foundry-toolchain-install-guide__body {
-  color: var(--theme-text-muted);
-}
-
 
 [data-config-page] .text-white,
 [data-config-page] .text-white\/80,
@@ -1538,85 +1534,15 @@
   border-color: color-mix(in srgb, var(--theme-secondary) 45%, transparent);
 }
 
-[data-config-page] .foundry-build-panel {
-  background: var(--theme-panel-accent);
-  border: 1px solid var(--theme-border-subtle);
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-[data-config-page] .foundry-build-header {
-  background: var(--theme-panel);
-  border-bottom: 1px solid var(--theme-border-subtle);
-}
-
-[data-config-page] .foundry-profile-group {
-  border: 1px solid var(--theme-eject-card-border);
-  border-radius: 2px;
-  overflow: hidden;
-  background: var(--theme-eject-card-bg);
-}
-
 [data-config-page] .foundry-profile-row {
   background: var(--theme-eject-card-bg);
   border: 1px solid transparent;
   border-left: 3px solid transparent;
 }
 
-[data-config-page] .foundry-profile-row--active {
-  background: color-mix(in srgb, var(--theme-secondary) 14%, var(--theme-eject-card-bg));
-  border-left-color: var(--theme-secondary);
-}
-
-[data-config-page] .foundry-active-binary-badge {
-  background: color-mix(in srgb, var(--theme-secondary) 14%, var(--theme-panel));
-  border: 1px solid color-mix(in srgb, var(--theme-secondary) 55%, transparent);
-  color: var(--theme-secondary-bright);
-  border-radius: 2px;
-  letter-spacing: 0.04em;
-}
-
-[data-config-page] .foundry-source-label {
-  color: var(--theme-text-muted);
-}
-
-[data-config-page] .foundry-profile-label {
-  color: var(--theme-secondary-bright);
-}
-
-/* Secondary/gold ink on grey panels (ACTIVE row, profile labels, update badges) */
-
-
-[data-config-page] .foundry-profile-badges {
-  flex-wrap: nowrap;
-  align-items: center;
-}
-
 [data-config-page] .config-form-panel {
   background: var(--theme-panel);
   border: 1px solid var(--theme-border-subtle);
-}
-
-[data-config-page] .provider-row-group {
-  position: relative;
-  margin-bottom: 8px;
-}
-
-[data-config-page] .provider-form-popover {
-  position: relative;
-  z-index: 12;
-  background: var(--theme-panel);
-  border: 1px solid color-mix(in srgb, var(--theme-secondary) 28%, var(--theme-border-subtle));
-  box-shadow:
-    0 14px 36px var(--fixed-black-a48),
-    0 6px 14px var(--fixed-black-a32),
-    0 0 0 1px color-mix(in srgb, var(--theme-secondary) 10%, transparent);
-}
-
-[data-config-page] .provider-form-popover--edit {
-  margin: 6px 0 4px auto;
-  max-width: min(520px, 100%);
-  width: 100%;
 }
 
 [data-config-page] .config-input,
@@ -1639,11 +1565,6 @@
 [data-config-page] .config-input::placeholder,
 [data-config-page] .config-textarea::placeholder {
   color: var(--theme-text-muted);
-}
-
-[data-config-page] .config-scan-panel {
-  background: var(--theme-panel-accent);
-  border: 1px solid var(--theme-border-subtle);
 }
 
 [data-config-page] .value-chip,

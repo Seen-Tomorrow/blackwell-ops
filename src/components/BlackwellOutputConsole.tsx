@@ -4,8 +4,14 @@ import { invoke } from "@tauri-apps/api/core";
 import { frontendPollEnabled } from "../lib/debugFlags";
 import OutputConsoleHeader from "./OutputConsoleHeader";
 import {
+  formatConsoleTimestamp,
+  type OutputConsoleCategory,
+} from "../lib/outputConsole";
+import {
   clearAllOutputConsoleBuffers,
   clearOutputConsoleCategory,
+  copyOutputConsoleCategory,
+  openOutputConsoleLogsFolder,
   saveOutputConsoleCategory,
 } from "./outputConsoleActions";
 
@@ -25,40 +31,7 @@ interface BlackwellOutputConsoleProps {
   onCategoryChange: (category: OutputConsoleCategory) => void;
 }
 
-export const OUTPUT_CONSOLE_CATEGORIES = ["engines", "utils", "foundry", "error", "scenarios", "debug"] as const;
-export type OutputConsoleCategory = typeof OUTPUT_CONSOLE_CATEGORIES[number];
-
 type Category = OutputConsoleCategory;
-
-export function parseOutputConsoleCategory(value: string): OutputConsoleCategory | null {
-  const lower = value.toLowerCase();
-  return (OUTPUT_CONSOLE_CATEGORIES as readonly string[]).includes(lower)
-    ? (lower as OutputConsoleCategory)
-    : null;
-}
-
-export const OUTPUT_CONSOLE_CATEGORY_LABELS: Record<Category, string> = {
-  engines: "Engines",
-  utils: "Utils",
-  foundry: "Foundry",
-  error: "Error",
-  scenarios: "Scenarios",
-  debug: "Debug",
-};
-
-/** RFC3339 or legacy ISO strings → local HH:MM:SS.mmm for display. */
-export function formatConsoleTimestamp(timestamp: string): string {
-  const parsed = new Date(timestamp);
-  if (!Number.isNaN(parsed.getTime())) {
-    const h = String(parsed.getHours()).padStart(2, "0");
-    const m = String(parsed.getMinutes()).padStart(2, "0");
-    const s = String(parsed.getSeconds()).padStart(2, "0");
-    const ms = String(parsed.getMilliseconds()).padStart(3, "0");
-    return `${h}:${m}:${s}.${ms}`;
-  }
-  if (timestamp.length >= 23) return timestamp.slice(11, 23);
-  return timestamp;
-}
 
 function lineStyleClass(style: string, activeCategory: Category): string {
   if (activeCategory === "error") return "boc-line--error";
@@ -86,6 +59,8 @@ export default function BlackwellOutputConsole({
 }: BlackwellOutputConsoleProps) {
   const [lines, setLines] = useState<OutputLine[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [actionNote, setActionNote] = useState<string | null>(null);
+  const actionNoteTimer = useRef<number | null>(null);
   const [position, setPosition] = useState({ x: 80, y: 80 });
   const [detachedSize, setDetachedSize] = useState(DETACHED_DEFAULT_SIZE);
   const [isDragging, setIsDragging] = useState(false);
@@ -115,6 +90,19 @@ export default function BlackwellOutputConsole({
     }
   }, []);
 
+  const showActionNote = useCallback((message: string) => {
+    setActionNote(message);
+    if (actionNoteTimer.current) window.clearTimeout(actionNoteTimer.current);
+    actionNoteTimer.current = window.setTimeout(() => {
+      setActionNote(null);
+      actionNoteTimer.current = null;
+    }, 3500);
+  }, []);
+
+  useEffect(() => () => {
+    if (actionNoteTimer.current) window.clearTimeout(actionNoteTimer.current);
+  }, []);
+
   useEffect(() => {
     if (isOpen) {
       fetchBuffer(activeCategory);
@@ -142,8 +130,36 @@ export default function BlackwellOutputConsole({
     setLines([]);
   };
 
+  const copyCategory = async (cat: Category) => {
+    try {
+      const count = await copyOutputConsoleCategory(cat);
+      showActionNote(`COPIED ${count} LINES`);
+    } catch (err) {
+      showActionNote(`COPY FAILED — ${typeof err === "string" ? err : "clipboard unavailable"}`);
+    }
+  };
+
   const saveCategory = async (cat: Category) => {
-    await saveOutputConsoleCategory(cat);
+    try {
+      const path = await saveOutputConsoleCategory(cat);
+      if (!path) {
+        showActionNote("SAVE CANCELLED");
+        return;
+      }
+      const name = path.split(/[\\/]/).pop() || path;
+      showActionNote(`SAVED ${name}`);
+    } catch (err) {
+      showActionNote(`SAVE FAILED — ${typeof err === "string" ? err : "could not write file"}`);
+    }
+  };
+
+  const openLogsFolder = async () => {
+    try {
+      await openOutputConsoleLogsFolder();
+      showActionNote("LOG FOLDER OPENED");
+    } catch (err) {
+      showActionNote(`FOLDER FAILED — ${typeof err === "string" ? err : "could not open"}`);
+    }
   };
 
   const clampDetachedSize = useCallback((width: number, height: number, pos = position) => {
@@ -271,7 +287,9 @@ export default function BlackwellOutputConsole({
           activeCategory={activeCategory}
           onCategoryChange={onCategoryChange}
           onClearCategory={() => void clearCategory(activeCategory)}
+          onCopyCategory={() => void copyCategory(activeCategory)}
           onSaveCategory={() => void saveCategory(activeCategory)}
+          onOpenLogsFolder={() => void openLogsFolder()}
           onClearAll={() => void clearAll()}
           isDetached={isDetached}
           showTitle={!isDetached}
@@ -281,6 +299,12 @@ export default function BlackwellOutputConsole({
           onMouseDown={isDetached ? startDrag : undefined}
           className={compact ? "" : "px-4 tracking-[1.5px] type-label py-1"}
         />
+      )}
+
+      {actionNote && (
+        <div className="boc-action-note" role="status" aria-live="polite">
+          {actionNote}
+        </div>
       )}
 
       <div className={`blackwell-output-console__body app-console-mono flex-1 overflow-auto custom-scrollbar min-h-0 ${isDetached ? "p-2 pb-4 type-label leading-[1.35]" : compact ? "p-1.5 pb-1" : "p-2 pb-1 type-label leading-[1.35]"}`}>

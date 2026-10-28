@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { OutputConsoleCategory } from "./BlackwellOutputConsole";
+import type { OutputConsoleCategory } from "../lib/outputConsole";
 import OutputConsoleHeader from "./OutputConsoleHeader";
 
 interface OutputConsoleInlineDockProps {
@@ -10,7 +10,6 @@ interface OutputConsoleInlineDockProps {
   onToggle: () => void;
   statusLeft: ReactNode;
   statusRight: ReactNode;
-  foundrySlot?: ReactNode;
 }
 
 export default function OutputConsoleInlineDock({
@@ -21,7 +20,6 @@ export default function OutputConsoleInlineDock({
   onToggle,
   statusLeft,
   statusRight,
-  foundrySlot,
 }: OutputConsoleInlineDockProps) {
   const handleToggle = () => onToggle();
 
@@ -70,13 +68,9 @@ export default function OutputConsoleInlineDock({
 
         {/*
           Live line flex-fills the middle (see .app-footer-console__live).
-          ml-auto keeps foundry / SYSTEM NOMINAL / IPC on the far right.
+          ml-auto keeps the status readout pinned to the far right.
         */}
         <div className="app-footer-status-right flex items-center gap-2 shrink-0 ml-auto min-w-0">
-          {foundrySlot ? (
-            <div className="flex items-center shrink-0">{foundrySlot}</div>
-          ) : null}
-
           {isExpanded ? (
             <button
               type="button"

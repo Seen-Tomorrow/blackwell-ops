@@ -5,7 +5,7 @@ mod runtime_log;
 mod session_log;
 mod runtime_settings;
 mod debug_flags;
-mod ipc_meter;
+mod ipc_emit;
 mod engine;
 mod engine_packs;
 mod disk_io_pdh;
@@ -363,10 +363,6 @@ async fn main() {
 
             app.manage(download_mgr);
 
-            // Disk I/O starts on the first `scan_disk_io` (model boot) and stops when idle —
-            // no sampler thread runs for a feature that is only visible while loading.
-            ipc_meter::start_rotator();
-
             log::info!(
                 "[startup] setup total: {:.0}ms",
                 startup_t0.elapsed().as_secs_f64() * 1000.0
@@ -477,7 +473,6 @@ async fn main() {
             runtime_settings::set_runtime_settings,
             startup_frontend_ping,
             frontend_will_unload,
-            ipc_meter::get_ipc_meter_stats,
             gpu_control::get_gpu_control_devices,
             gpu_control::is_gpu_control_elevated,
             gpu_control::apply_gpu_control_presets,
@@ -496,6 +491,8 @@ async fn main() {
             reactor_foundry::foundry_get_profiles,
             reactor_foundry::foundry_work_cache_status,
             reactor_foundry::foundry_clear_work_cache,
+            reactor_foundry::foundry_clear_sccache,
+            reactor_foundry::foundry_remote_changelog,
             reactor_foundry::foundry_pr_titles,
             foundry_toolchain::foundry_get_toolchain_install_info,
             foundry_toolchain::foundry_open_toolchain_install_folder,
@@ -507,6 +504,8 @@ async fn main() {
             output_console_cmds::get_blackwell_output_console_latest_line,
             output_console_cmds::clear_blackwell_output_console_category,
             output_console_cmds::clear_all_blackwell_output_console_buffers,
+            output_console_cmds::save_output_console_text,
+            output_console_cmds::open_output_console_logs_folder,
             output_console_cmds::emit_to_blackwell_console,
             // Download manager commands
             downloads::start_download,

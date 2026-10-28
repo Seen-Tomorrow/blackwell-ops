@@ -594,6 +594,59 @@ pub async fn fetch_latest_release_tag(repo: &str) -> Result<String, String> {
         .ok_or_else(|| format!("No tag_name in latest release for {repo}"))
 }
 
+/// Latest published release notes for a provider's upstream repo (FOUNDRY changelog).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoReleaseNotes {
+    pub repo: String,
+    pub tag: String,
+    pub name: String,
+    pub html_url: String,
+    pub body: String,
+    pub published_at: String,
+}
+
+/// Latest release (tag/name/Markdown body/html_url) for an arbitrary GitHub repo.
+/// Shares the cached api.github.com gateway; no token is required for public repos.
+pub async fn fetch_repo_latest_release(repo: &str) -> Result<RepoReleaseNotes, String> {
+    let url = format!("https://api.github.com/repos/{repo}/releases/latest");
+    let body = github_get_json_cached(&url, LATEST_TAG_CACHE_TTL, false).await?;
+    let tag = body
+        .get("tag_name")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| format!("No tag_name in latest release for {repo}"))?
+        .to_string();
+    let name = body
+        .get("name")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or(&tag)
+        .to_string();
+    let html_url = body
+        .get("html_url")
+        .and_then(|v| v.as_str())
+        .map(String::from)
+        .unwrap_or_else(|| format!("https://github.com/{repo}/releases"));
+    let release_body = body
+        .get("body")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    let published_at = body
+        .get("published_at")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    Ok(RepoReleaseNotes {
+        repo: repo.to_string(),
+        tag,
+        name,
+        html_url,
+        body: release_body,
+        published_at,
+    })
+}
+
 /// Recent semver releases (newest first). Shared 30m TTL + single-flight.
 pub async fn fetch_recent_version_releases(per_page: u32) -> Result<Vec<GitHubRelease>, String> {
     fetch_recent_version_releases_ex(per_page, false).await

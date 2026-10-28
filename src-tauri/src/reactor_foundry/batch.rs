@@ -179,6 +179,20 @@ pub(crate) async fn run_foundry_batch_streaming(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+
+    // Optional sccache keeps its cache inside the portable app tree. Respect an explicit
+    // SCCACHE_DIR from the user's environment — this is only the portable default.
+    if std::env::var_os("SCCACHE_DIR").is_none() {
+        let sccache_dir = crate::config::cache_dir().join("sccache");
+        let _ = std::fs::create_dir_all(&sccache_dir);
+        child_cmd.env("SCCACHE_DIR", &sccache_dir);
+    }
+    // Auto-detected cache must never turn a working compiler into a failed build:
+    // if the sccache server cannot be reached, compile locally instead.
+    if std::env::var_os("SCCACHE_IGNORE_SERVER_IO_ERROR").is_none() {
+        child_cmd.env("SCCACHE_IGNORE_SERVER_IO_ERROR", "1");
+    }
+
     let mut child = child_cmd
         .spawn()
         .map_err(|e| format!("Failed to start foundry batch ({}): {e}", program.display()))?;

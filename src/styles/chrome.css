@@ -129,6 +129,150 @@
   border-radius: calc(4px * var(--header-nav-scale));
 }
 
+/* FOUNDRY primary segment — permanently wide so the live build readout never
+   resizes the nav. Idle it reads FOUNDRY / NO BUILD; active it becomes the ear. */
+.app-header
+  .app-header__primary-switch.segment-switch--size-fit
+  .segment-switch__option.app-header__primary-option--foundry,
+.app-header
+  .app-header__primary-switch.segment-switch--multi
+  .segment-switch__option.app-header__primary-option--foundry {
+  flex: 0 0 clamp(200px, 18vw, 268px);
+  padding: 0 calc(7px * var(--header-nav-scale));
+  justify-content: stretch;
+}
+
+.fnd-nav-badge {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
+  font-family: ui-monospace, monospace;
+  line-height: 1;
+  text-align: left;
+}
+
+.fnd-nav-badge--idle,
+.fnd-nav-badge--starting {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fnd-nav-badge__name {
+  color: var(--theme-text);
+  font-size: calc(12px * var(--header-nav-scale));
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  white-space: nowrap;
+}
+
+.fnd-nav-badge__idle {
+  color: var(--theme-text-muted);
+  font-size: calc(9px * var(--header-nav-scale));
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+}
+
+.fnd-nav-badge__top {
+  display: flex;
+  align-items: center;
+  gap: calc(5px * var(--header-nav-scale));
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.fnd-nav-badge__mark {
+  flex-shrink: 0;
+  color: var(--fnd-nav-tone, var(--theme-warn));
+  font-size: calc(9px * var(--header-nav-scale));
+}
+
+.fnd-nav-badge__env {
+  flex-shrink: 0;
+  padding: 1px 3px;
+  border: 1px solid color-mix(in srgb, var(--fnd-nav-tone, var(--theme-warn)) 55%, transparent);
+  border-radius: 1px;
+  color: var(--fnd-nav-tone, var(--theme-warn));
+  font-size: calc(8px * var(--header-nav-scale));
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.fnd-nav-badge__stage {
+  min-width: 0;
+  flex-shrink: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--theme-text);
+  font-size: calc(9px * var(--header-nav-scale));
+  letter-spacing: 0.06em;
+}
+
+.fnd-nav-badge__counter {
+  color: var(--theme-text-muted);
+  font-size: calc(8px * var(--header-nav-scale));
+  font-variant-numeric: tabular-nums;
+}
+
+.fnd-nav-badge__pct {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--fnd-nav-tone, var(--theme-warn));
+  font-size: calc(10px * var(--header-nav-scale));
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.fnd-nav-badge__bottom {
+  display: flex;
+  align-items: center;
+  gap: calc(5px * var(--header-nav-scale));
+  min-width: 0;
+}
+
+.fnd-nav-badge__track {
+  flex: 1 1 auto;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--theme-text) 16%, transparent);
+}
+
+.fnd-nav-badge__fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--fnd-nav-tone, var(--theme-warn));
+  transition: width 0.3s ease;
+}
+
+.fnd-nav-badge__eta,
+.fnd-nav-badge__timer {
+  flex-shrink: 0;
+  color: var(--theme-text-muted);
+  font-size: calc(8px * var(--header-nav-scale));
+  font-variant-numeric: tabular-nums;
+}
+
+.fnd-nav-badge--active { --fnd-nav-tone: var(--theme-warn); }
+.fnd-nav-badge--paused { --fnd-nav-tone: var(--theme-info); }
+.fnd-nav-badge--done { --fnd-nav-tone: var(--theme-accent); }
+.fnd-nav-badge--error { --fnd-nav-tone: var(--theme-danger); }
+
+.fnd-nav-badge--starting .fnd-nav-badge__idle {
+  color: var(--theme-warn);
+  animation: fnd-nav-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes fnd-nav-pulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+
 /* Sub — left edge aligned to the parent option's midpoint (--sub-left) */
 .app-header__sub-under {
   position: relative;
@@ -242,7 +386,7 @@
   --app-shell-width-px: 960px;
   --ui-text-scale: 1;
   /*
-   * Chrome outside app zoom (header quick-settings, footer, fixed foundry).
+   * Chrome outside app zoom (header quick-settings, footer, Foundry toolchain controls).
    * Layout sets --chrome-scale from viewport; floor ~1.12 so 1080p/DPR1 is readable.
    */
   --chrome-scale: 1.12;
@@ -251,9 +395,9 @@
   --chrome-fs-title: calc(11px * var(--chrome-scale));
   --chrome-fs-dl: calc(10px * var(--chrome-scale));
   /*
-   * Foundry floats outside .app-main-frame (no transform zoom). Track both
-   * viewport chrome density and user app zoom so Ctrl+scroll still helps.
-   * Base px are slightly larger than the old 7–9px Tailwind stack.
+   * Foundry toolchain/shared-cache controls follow chrome × app zoom. The FOUNDRY
+   * page re-declares these against --text-scale because the page itself sits inside
+   * the transform-zoomed .app-main-frame.
    */
   --foundry-scale: calc(var(--chrome-scale) * var(--ui-text-scale));
   --foundry-fs-xs: calc(9px * var(--foundry-scale));
@@ -1132,7 +1276,7 @@
   gap: 0.4rem;
 }
 
-/* Foundry chip · SYSTEM NOMINAL · IPC — pinned far right (live line is width-capped) */
+/* Status readout — pinned far right (the live line is width-capped) */
 .app-footer-status-right {
   gap: 0.45rem;
 }
@@ -1161,21 +1305,6 @@
 
 .app-footer-console__collapse:hover {
   opacity: 1;
-}
-
-.app-footer .foundry-status-chip {
-  min-width: 96px;
-  padding: 0 0.45rem;
-  font-size: var(--type-tiny);
-  gap: 0.35rem;
-}
-
-.app-footer .foundry-status-chip--minimized {
-  width: 272px;
-  min-width: 272px;
-  max-width: 272px;
-  padding: 0.2rem 0.55rem 0.35rem;
-  gap: 0.45rem;
 }
 
 .app-footer-dev-tag {
@@ -1247,128 +1376,6 @@
 }
 
 
-/* Foundry build chip — footer dock widget; amplified when modal minimized */
-@keyframes foundryHammerShake {
-  0%, 72%, 100% { transform: rotate(0deg) scale(1); }
-  74% { transform: rotate(-16deg) scale(1.08); }
-  76% { transform: rotate(16deg) scale(1.08); }
-  78% { transform: rotate(-12deg) scale(1.04); }
-  80% { transform: rotate(12deg) scale(1.04); }
-  82% { transform: rotate(-6deg) scale(1); }
-  84% { transform: rotate(0deg) scale(1); }
-}
-
-@keyframes foundryChipGlow {
-  0%, 100% {
-    box-shadow:
-      0 0 0 1px var(--fixed-yellow-400-a35),
-      0 0 10px var(--fixed-yellow-400-a18);
-  }
-  50% {
-    box-shadow:
-      0 0 0 1px var(--fixed-yellow-400-a75),
-      0 0 18px var(--fixed-yellow-400-a42),
-      0 0 28px var(--fixed-amber-500-a18);
-  }
-}
-
-@keyframes foundryChipScan {
-  0% { transform: translateX(-120%); opacity: 0; }
-  12% { opacity: 0.55; }
-  100% { transform: translateX(220%); opacity: 0; }
-}
-
-@keyframes foundryProgressShine {
-  0% { transform: translateX(-120%); }
-  100% { transform: translateX(220%); }
-}
-
-.foundry-status-chip {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  min-width: 110px;
-  padding: 0.125rem 0.625rem;
-  font-size: var(--type-label);
-  font-family: ui-monospace, monospace;
-  border-radius: 3px;
-  border: 1px solid var(--fixed-yellow-400-a4);
-  background: color-mix(in srgb, var(--fixed-yellow-400) 10%, var(--fixed-black) 90%);
-  color: var(--fixed-yellow-400);
-  overflow: hidden;
-  isolation: isolate;
-  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
-}
-
-.foundry-status-chip:hover {
-  background: color-mix(in srgb, var(--fixed-yellow-400) 18%, var(--fixed-black) 82%);
-  transform: translateY(-1px);
-}
-
-.foundry-status-chip--minimized {
-  align-items: flex-start;
-  width: 272px;
-  min-width: 272px;
-  max-width: 272px;
-  padding: 0.28rem 0.6rem 0.42rem;
-  border-color: var(--fixed-yellow-400-a65);
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--fixed-yellow-400) 16%, var(--fixed-black) 84%) 0%, color-mix(in srgb, var(--fixed-yellow-400) 8%, var(--fixed-black) 92%) 100%);
-  animation: foundryChipGlow 2.2s ease-in-out infinite;
-}
-
-.foundry-status-chip--minimized:hover {
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--fixed-yellow-400) 22%, var(--fixed-black) 78%) 0%, color-mix(in srgb, var(--fixed-yellow-400) 12%, var(--fixed-black) 88%) 100%);
-}
-
-.foundry-status-chip--paused {
-  border-color: color-mix(in srgb, var(--fixed-cyan-400) 55%, var(--fixed-yellow-400) 45%);
-  animation-name: foundryChipGlow;
-}
-
-.foundry-status-chip__glow,
-.foundry-status-chip__scan {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.foundry-status-chip__scan {
-  background: linear-gradient(
-    105deg,
-    transparent 0%,
-    var(--fixed-amber-200-a0) 42%,
-    var(--fixed-amber-200-a35) 50%,
-    var(--fixed-amber-200-a0) 58%,
-    transparent 100%
-  );
-  opacity: 0;
-}
-
-.foundry-status-chip--minimized .foundry-status-chip__scan {
-  animation: foundryChipScan 3.6s linear infinite;
-}
-
-.foundry-hammer-icon {
-  display: inline-block;
-  flex-shrink: 0;
-  transform-origin: center bottom;
-  font-size: 1.05em;
-  line-height: 1;
-}
-
-.foundry-hammer-icon--forge {
-  animation: foundryHammerShake 1.45s ease-in-out infinite;
-  filter: drop-shadow(0 0 4px var(--fixed-yellow-400-a55));
-}
-
-.foundry-status-chip--minimized .foundry-hammer-icon--forge {
-  font-size: 1.35em;
-  margin-top: 0.05rem;
-}
-
 /* Floating model search palette (OPERATIONS / ) — themed panel; never use catalog-list-scroll (RTL) */
 .model-search-palette-root {
   pointer-events: auto;
@@ -1432,339 +1439,9 @@
   }
 }
 
-/* Compact “reading build info …” / “probing …” indicator */
-.foundry-buildinfo-probing {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.12rem;
-  opacity: 0.9;
-  letter-spacing: 0.02em;
-}
-
-.foundry-buildinfo-dots {
-  display: inline-flex;
-  gap: 1px;
-  width: 1.15em;
-  justify-content: flex-start;
-}
-
-.foundry-buildinfo-dots > i {
-  font-style: normal;
-  opacity: 0.2;
-  animation: foundryBuildInfoDot 1.05s ease-in-out infinite;
-}
-
-.foundry-buildinfo-dots > i:nth-child(2) {
-  animation-delay: 0.15s;
-}
-
-@keyframes foundryBuildInfoDot {
-  0%,
-  80%,
-  100% {
-    opacity: 0.2;
-  }
-  40% {
-    opacity: 1;
-  }
-}
-
-.foundry-status-chip__body {
-  display: flex;
-  flex-direction: column;
-  gap: 0.12rem;
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-.foundry-status-chip__row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.45rem;
-  min-width: 0;
-}
-
-.foundry-status-chip__row--title {
-  letter-spacing: 0.1em;
-}
-
-.foundry-status-chip__kicker {
-  font-size: var(--type-tiny);
-  font-weight: 700;
-  color: var(--fixed-amber-200);
-  text-shadow: 0 0 8px var(--fixed-yellow-400-a35);
-}
-
-.foundry-status-chip__env {
-  flex-shrink: 0;
-  padding: 0 0.3rem;
-  font-size: var(--type-micro);
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  border-radius: 2px;
-  border: 1px solid var(--fixed-yellow-400-a55);
-  background: var(--fixed-black-a55);
-  color: var(--fixed-amber-100);
-}
-
-.foundry-status-chip__step {
-  flex-shrink: 0;
-  font-size: var(--type-label);
-  font-weight: 700;
-  color: var(--fixed-cyan-400);
-  animation: pulse 1.8s ease-in-out infinite;
-}
-
-.foundry-status-chip--paused .foundry-status-chip__step {
-  color: var(--fixed-yellow-400);
-}
-
-.foundry-status-chip__provider {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--type-tiny);
-  color: color-mix(in srgb, var(--fixed-amber-200) 72%, var(--fixed-white) 28%);
-}
-
-.foundry-status-chip__timer {
-  flex-shrink: 0;
-  min-width: 3.25rem;
-  font-size: var(--type-body);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.06em;
-  color: color-mix(in srgb, var(--fixed-amber-200) 65%, var(--fixed-white) 35%);
-  text-align: right;
-}
-
-.foundry-status-chip__timer--live {
-  color: var(--fixed-cyan-400);
-  text-shadow: 0 0 8px var(--fixed-cyan-400-a35);
-}
-
-.foundry-status-chip__progress {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 3px;
-  background: var(--fixed-black-a7);
-  overflow: hidden;
-}
-
-.foundry-status-chip__progress-fill {
-  display: block;
-  height: 100%;
-  width: var(--foundry-progress, 12%);
-  background: linear-gradient(90deg, var(--fixed-c-b45309) 0%, var(--fixed-yellow-400) 55%, var(--fixed-amber-200) 100%);
-  transition: width 0.45s ease;
-}
-
-.foundry-status-chip__progress-shine {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    var(--fixed-white-a45) 50%,
-    transparent 100%
-  );
-  animation: foundryProgressShine 2.4s ease-in-out infinite;
-}
-
-.foundry-status-chip__label {
-  color: var(--fixed-yellow-400);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 140px;
-}
-
-/* Foundry — environment profile badge (FRONTIER, VANGUARD, …) */
-.foundry-env-badge {
-  color: var(--fixed-yellow-400);
-  border: 1px solid var(--fixed-yellow-400-a55);
-  background: color-mix(in srgb, var(--fixed-yellow-400) 12%, var(--fixed-black) 88%);
-}
 
 
-/*
- * Foundry primary CTA — dark amber (shared by confirm + post-configure).
- * Labels: "PROCEED TO CONFIGURE" then "BUILD THE ENGINE".
- */
-.foundry-confirm-build-btn {
-  padding: calc(0.3rem * var(--foundry-scale)) calc(1rem * var(--foundry-scale));
-  font-size: var(--foundry-fs-btn);
-  font-family: ui-monospace, monospace;
-  letter-spacing: 0.04em;
-  border-radius: 2px;
-  color: var(--fixed-yellow-400);
-  border: 1px solid var(--fixed-yellow-400-a65);
-  background: color-mix(in srgb, var(--fixed-yellow-400) 18%, var(--fixed-black) 82%);
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-}
 
-.foundry-confirm-build-btn:hover:not(:disabled) {
-  color: var(--fixed-amber-200);
-  border-color: var(--fixed-yellow-400-a85);
-  background: color-mix(in srgb, var(--fixed-yellow-400) 28%, var(--fixed-black) 72%);
-}
-
-.foundry-confirm-build-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-
-/* Foundry confirm — banners use theme tokens (readable on ARCTIC light panels) */
-.foundry-source-banner--amber {
-  border-color: color-mix(in srgb, var(--theme-secondary) 45%, transparent);
-  background: color-mix(in srgb, var(--theme-secondary) 10%, var(--theme-panel));
-  color: var(--theme-secondary-bright);
-  box-shadow: 0 0 14px color-mix(in srgb, var(--theme-secondary) 12%, transparent);
-}
-
-.foundry-source-banner--cyan {
-  border-color: color-mix(in srgb, var(--theme-accent) 42%, transparent);
-  background: color-mix(in srgb, var(--theme-accent) 9%, var(--theme-panel));
-  color: var(--theme-accent-bright);
-}
-
-.foundry-source-banner--green {
-  border-color: color-mix(in srgb, var(--theme-accent) 45%, transparent);
-  background: color-mix(in srgb, var(--theme-accent) 10%, var(--theme-panel));
-  color: var(--theme-accent-bright);
-}
-
-.foundry-source-banner--muted {
-  border-color: var(--theme-frame-border, var(--theme-border-subtle));
-  background: color-mix(in srgb, var(--theme-text) 5%, var(--theme-panel));
-  color: var(--theme-text-muted);
-}
-
-/*
- * Providers page — FOUNDRY BUILD CTA (must stand out from plain value-chips).
- * Dark amber forge chip + hammer; active = brighter pulse-ready state.
- */
-.foundry-build-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  flex-shrink: 0;
-  padding: 0.3rem 0.7rem;
-  font-size: var(--type-tiny);
-  font-family: ui-monospace, monospace;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  border-radius: 2px;
-  color: var(--fixed-yellow-400);
-  border: 1px solid var(--fixed-yellow-400-a7);
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--fixed-yellow-400) 22%, var(--fixed-c-1a1206) 78%) 0%,
-      color-mix(in srgb, var(--fixed-yellow-400) 10%, var(--fixed-near-black-amber) 90%) 100%
-    );
-  box-shadow:
-    inset 0 1px 0 var(--fixed-amber-200-a22),
-    0 0 0 1px var(--fixed-black-a55),
-    0 0 10px var(--fixed-yellow-400-a18);
-  transition:
-    color 0.15s ease,
-    border-color 0.15s ease,
-    background 0.15s ease,
-    box-shadow 0.15s ease,
-    opacity 0.15s ease;
-}
-
-.foundry-build-btn:hover:not(:disabled) {
-  color: var(--fixed-yellow-200);
-  border-color: var(--fixed-amber-200-a85);
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--fixed-yellow-400) 32%, var(--fixed-c-1a1206) 68%) 0%,
-      color-mix(in srgb, var(--fixed-yellow-400) 16%, var(--fixed-near-black-amber) 84%) 100%
-    );
-  box-shadow:
-    inset 0 1px 0 var(--fixed-yellow-200-a28),
-    0 0 0 1px var(--fixed-black-a45),
-    0 0 14px var(--fixed-yellow-400-a32);
-}
-
-.foundry-build-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-  box-shadow: none;
-}
-
-.foundry-build-btn--active {
-  color: var(--fixed-yellow-200);
-  border-color: var(--fixed-amber-200-a9);
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--fixed-yellow-400) 38%, var(--fixed-c-1a1206) 62%) 0%,
-      color-mix(in srgb, var(--fixed-yellow-400) 18%, var(--fixed-near-black-amber) 82%) 100%
-    );
-  box-shadow:
-    inset 0 1px 0 var(--fixed-yellow-200-a3),
-    0 0 0 1px var(--fixed-yellow-400-a35),
-    0 0 16px var(--fixed-yellow-400-a4);
-  animation: foundryBuildBtnPulse 1.6s ease-in-out infinite;
-}
-
-.foundry-build-btn .foundry-hammer-icon {
-  font-size: var(--type-sm);
-  line-height: 1;
-  filter: drop-shadow(0 0 3px var(--fixed-yellow-400-a45));
-}
-
-@keyframes foundryBuildBtnPulse {
-  0%,
-  100% {
-    box-shadow:
-      inset 0 1px 0 var(--fixed-yellow-200-a3),
-      0 0 0 1px var(--fixed-yellow-400-a35),
-      0 0 12px var(--fixed-yellow-400-a28);
-  }
-  50% {
-    box-shadow:
-      inset 0 1px 0 var(--fixed-yellow-200-a35),
-      0 0 0 1px var(--fixed-amber-200-a55),
-      0 0 20px var(--fixed-yellow-400-a48);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .foundry-build-btn--active {
-    animation: none;
-  }
-}
-
-
-/* Foundry modal — minimize action; navy so it pairs with amber primary CTA */
-.foundry-minimize-btn {
-  padding: calc(0.3rem * var(--foundry-scale)) calc(0.75rem * var(--foundry-scale));
-  font-size: var(--foundry-fs-btn);
-  font-family: ui-monospace, monospace;
-  letter-spacing: 0.04em;
-  border: 1px solid var(--fixed-c-1e3a5f);
-  border-radius: 2px;
-  color: var(--fixed-c-6b9fd4);
-  background: color-mix(in srgb, var(--fixed-near-black-blue) 70%, var(--fixed-black) 30%);
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-}
-
-.foundry-minimize-btn:hover {
-  color: var(--fixed-c-8bb8e8);
-  border-color: var(--fixed-steel-blue);
-  background: color-mix(in srgb, var(--fixed-c-0f2240) 75%, var(--fixed-black) 25%);
-}
 
 
 /* Foundry toolchain — install guide action buttons (config + confirm modal) */
@@ -1780,18 +1457,6 @@
 .foundry-toolchain-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
-}
-
-.foundry-toolchain-btn--link {
-  color: var(--fixed-c-6b9fd4);
-  border-color: var(--fixed-steel-blue-a55);
-  background: var(--fixed-near-black-blue-a32);
-}
-
-.foundry-toolchain-btn--link:hover:not(:disabled) {
-  color: var(--fixed-c-8bb8e8);
-  border-color: var(--fixed-steel-blue);
-  background: var(--fixed-c-0f2240-a42);
 }
 
 .foundry-toolchain-btn--neutral {
@@ -1818,308 +1483,6 @@
   background: var(--theme-accent-soft);
 }
 
-/* Onboarding toolchain — one dominant download CTA, secondary cache/manual */
-.foundry-toolchain-onboarding {}
-
-.foundry-toolchain-onboarding__download {
-  padding: 0.6rem 1.4rem;
-  font-size: 13px;
-  font-family: ui-monospace, monospace;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  border-radius: 4px;
-  border: 1px solid var(--theme-chip-solid-bg, var(--theme-accent-bright));
-  color: var(--theme-chip-solid-text);
-  background: var(--theme-chip-solid-bg, var(--theme-accent-bright));
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
-  white-space: nowrap;
-  animation: onboarding-pulse-grow 1.5s ease-in-out infinite;
-}
-
-.foundry-toolchain-onboarding__download:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--theme-chip-solid-bg) 88%, var(--fixed-white));
-  transform: scale(1.03);
-}
-
-.foundry-toolchain-onboarding__download:disabled {
-  opacity: 0.6;
-  cursor: progress;
-  animation: none;
-}
-
-.foundry-toolchain-onboarding__hint {
-  margin: 0;
-  font-size: var(--foundry-fs-sm);
-  line-height: 1.5;
-  font-family: ui-monospace, monospace;
-  color: var(--theme-text-muted);
-}
-
-.foundry-toolchain-onboarding__cancel-hint {
-  margin: 0;
-  font-size: var(--foundry-fs-sm);
-  line-height: 1.5;
-  font-family: ui-monospace, monospace;
-  color: var(--theme-tel-amber);
-}
-
-.foundry-toolchain-btn--cancel {
-  color: var(--theme-tel-hot);
-  border-color: color-mix(in srgb, var(--theme-tel-hot) 55%, transparent);
-  background: color-mix(in srgb, var(--theme-tel-hot) 8%, transparent);
-}
-
-.foundry-toolchain-btn--cancel:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--theme-tel-hot) 16%, transparent);
-  border-color: color-mix(in srgb, var(--theme-tel-hot) 80%, transparent);
-}
-
-@keyframes onboarding-pulse-grow {
-  0%, 100% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--theme-accent-bright) 0%, transparent);
-    transform: scale(1);
-  }
-  50% {
-    box-shadow: 0 0 0 4px color-mix(in srgb, var(--theme-accent-bright) 40%, transparent);
-    transform: scale(1.04);
-  }
-}
-
-
-/* Foundry — floating window above status bar (no fullscreen blur overlay) */
-.foundry-window {
-  position: fixed;
-  z-index: 120;
-  left: 10px;
-  right: 10px;
-  top: 10px;
-  bottom: calc(var(--app-footer-h) + 10px);
-  display: flex;
-  justify-content: center;
-  align-items: flex-end;
-  max-height: none;
-  pointer-events: none;
-  /*
-   * Outside app transform zoom — scale type via --foundry-scale (chrome × ui zoom).
-   * Do not apply CSS zoom/transform on the shell: it overflowed 1080p height before.
-   */
-  font-size: var(--foundry-fs-md);
-}
-
-.foundry-window__chrome {
-  --foundry-window-amber: var(--fixed-brand-amber);
-  pointer-events: auto;
-  width: 100%;
-  max-height: 100%;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  border: 2px solid color-mix(in srgb, var(--foundry-window-amber) 82%, transparent);
-  border-radius: 4px;
-  background: var(--theme-panel);
-  box-shadow:
-    0 10px 28px var(--fixed-black-a55),
-    0 4px 10px var(--fixed-black-a35);
-  overflow: hidden;
-}
-
-/*
- * Confirm form is tall (arch chips, cmake, toolchain). Never use CSS zoom here —
- * it blew past 1080p height. Cap to viewport, scroll the body, use width for density.
- */
-.foundry-window--confirm .foundry-window__chrome {
-  max-width: min(1180px, 96vw);
-  max-height: 100%;
-}
-
-.foundry-window--confirm .foundry-window__body {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-
-.foundry-window--build .foundry-window__chrome {
-  max-width: min(1400px, 98vw);
-  height: min(82vh, 100%);
-  max-height: 100%;
-}
-
-.foundry-window--build .foundry-window__body {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: hidden;
-}
-
-/* Log drawer shut: shrink to the instrument strip; two classes beat Tailwind's h-full. */
-.foundry-window--build.foundry-window--auto-height .foundry-window__chrome,
-.foundry-window--build.foundry-window--auto-height .fnd-build-panel {
-  height: auto;
-}
-
-/* Log drawer handle — the whole strip is the toggle. */
-.fnd-logbar {
-  display: flex;
-  align-items: center;
-  gap: calc(0.5rem * var(--foundry-scale));
-  padding: calc(0.3rem * var(--foundry-scale)) calc(0.6rem * var(--foundry-scale));
-  background: color-mix(in srgb, var(--theme-text) 5%, var(--theme-panel-accent));
-  border: 1px solid color-mix(in srgb, var(--theme-text) 12%, transparent);
-  border-radius: 1px;
-  color: var(--theme-text-muted);
-  text-align: left;
-  cursor: pointer;
-}
-
-.fnd-logbar:hover {
-  color: var(--theme-text);
-  border-color: color-mix(in srgb, var(--theme-warn) 45%, transparent);
-}
-
-.fnd-logbar:focus-visible {
-  outline: 1px solid color-mix(in srgb, var(--theme-warn) 70%, transparent);
-  outline-offset: 1px;
-}
-
-.fnd-logbar__title { letter-spacing: 0.14em; }
-.fnd-logbar__count { opacity: 0.75; }
-
-.fnd-logbar__action {
-  margin-left: auto;
-  color: var(--theme-warn);
-  letter-spacing: 0.1em;
-  white-space: nowrap;
-}
-
-/*
- * Fixed CSS px ignores app zoom, so Foundry's micro stack is remapped onto
- * --foundry-scale (bases bumped ~+1–2px vs the original 6–11 stack).
- * Hook both spellings: legacy Tailwind `text-[Npx]` (rooms not migrated yet)
- * and the `.type-*` scale (post-de-Tailwind). Step map:
- *   hairline/micro (6–7px) -> fs-xs · tiny (8) -> fs-sm · label (9) -> fs-md
- *   body (10) -> fs-lg · sm (11) -> 14px x scale
- */
-.foundry-window .type-hairline, .foundry-window .type-micro{
-  font-size: var(--foundry-fs-xs);
-}
-
-.foundry-window .type-tiny{
-  font-size: var(--foundry-fs-sm);
-}
-
-.foundry-window .type-label{
-  font-size: var(--foundry-fs-md);
-}
-
-.foundry-window .type-body{
-  font-size: var(--foundry-fs-lg);
-}
-
-.foundry-window .type-sm{
-  font-size: calc(14px * var(--foundry-scale));
-}
-
-/* Confirm body — two columns when the shell is wide enough */
-.foundry-confirm-body {
-  padding: calc(1rem * var(--foundry-scale)) calc(1.1rem * var(--foundry-scale));
-  display: flex;
-  flex-direction: column;
-  gap: calc(0.85rem * var(--foundry-scale));
-}
-
-.foundry-confirm-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: calc(0.85rem * var(--foundry-scale));
-  min-width: 0;
-}
-
-/* ~900 CSS-px of modal content ≈ shell ≥ ~940; use container when available */
-@supports (width: 1cqi) {
-  .foundry-window--confirm .foundry-window__chrome {
-    container-type: inline-size;
-    container-name: foundry-confirm;
-  }
-
-  @container foundry-confirm (min-width: 880px) {
-    .foundry-confirm-grid {
-      grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
-      align-items: start;
-      gap: calc(1rem * var(--foundry-scale));
-    }
-  }
-}
-
-/* Fallback when container queries unavailable: viewport is usually wider than the modal */
-@supports not (width: 1cqi) {
-  @media (min-width: 960px) {
-    .foundry-confirm-grid {
-      grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
-      align-items: start;
-    }
-  }
-}
-
-.foundry-confirm-col {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: calc(0.75rem * var(--foundry-scale));
-}
-
-.foundry-confirm-panel {
-  border: 1px solid color-mix(in srgb, var(--theme-border-subtle) 80%, transparent);
-  background: color-mix(in srgb, var(--theme-text) 6%, var(--theme-panel-accent, var(--theme-panel)));
-  border-radius: 2px;
-  padding: calc(0.7rem * var(--foundry-scale));
-}
-
-.foundry-confirm-section-label {
-  font-family: ui-monospace, monospace;
-  font-size: var(--foundry-fs-sm);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--theme-text-muted);
-  margin: 0 0 calc(0.35rem * var(--foundry-scale));
-}
-
-.foundry-confirm-hint {
-  font-family: ui-monospace, monospace;
-  font-size: var(--foundry-fs-xs);
-  line-height: 1.4;
-  color: color-mix(in srgb, var(--theme-text-muted) 88%, transparent);
-  margin: 0 0 calc(0.4rem * var(--foundry-scale));
-}
-
-/* Footer actions that still use raw Tailwind text-[9px] */
-.foundry-window__footer button {
-  font-size: var(--foundry-fs-btn);
-  padding-block: calc(0.3rem * var(--foundry-scale));
-  padding-inline: calc(0.75rem * var(--foundry-scale));
-}
-
-/*
- * Foundry window ink corrections — re-scoped to tokens.
- * The old hooks matched literal Tailwind utilities, so deleting those utilities
- * would silently kill them. Paint is token-driven now: the container re-scopes
- * the semantic tokens and every fnd-* class inherits them, in all three faces.
- * Accepted micro-delta: alpha variants keep their own color-mix step.
- */
-.foundry-window {
-  --theme-warn: var(--theme-secondary-bright);
-  --theme-info: var(--theme-accent-bright);
-}
-
-.foundry-window .text-white,
-.foundry-window .text-white\/80,
-.foundry-window .text-white\/70 {
-  color: var(--theme-text);
-}
-
 /*
  * Build log terminal — always near-black so white/cyan/yellow phase lines stay readable
  * on ARCTIC (do not lighten with theme-panel remaps).
@@ -2135,205 +1498,40 @@
   padding: calc(0.55rem * var(--foundry-scale));
 }
 
-.foundry-build-log__idle {
-  color: var(--fixed-rgba-148-163-184-a55);
-}
-
-.foundry-build-log__ts {
-  color: rgba(148, 163, 184, 0.4);
-}
-
-.foundry-build-log__step {
-  color: var(--fixed-rgba-148-163-184-a55);
-}
-
-.foundry-build-log__line {
-  color: var(--fixed-rgba-220-228-236-a72);
-}
-
-.foundry-build-log__line--error {
-  color: var(--fixed-red-400);
-}
-
-.foundry-build-log__line--warn {
-  color: var(--fixed-amber-400);
-  font-weight: 700;
-}
-
-.foundry-build-log__line--done {
-  color: var(--fixed-green-400);
-}
-
-.foundry-build-log__line--cmake,
-.foundry-build-log__line--phase {
-  color: var(--fixed-cyan-300);
-}
-
-.foundry-build-log__line--cmake {
-  font-weight: 700;
-}
-
-.foundry-build-log__line--build {
-  color: rgba(250, 204, 21, 0.78);
-}
-
-/* Build-log ink is owned by .foundry-build-log__line--* (explicit hex per phase).
-   The old "ignore the yellow/cyan/white remap inside the terminal" guard matched
-   literal Tailwind utilities that no longer exist and was removed. */
-
-.foundry-window--compact .foundry-window__chrome {
-  max-width: min(720px, 94vw);
-}
-
-.foundry-window__header {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: calc(0.4rem * var(--foundry-scale)) calc(0.85rem * var(--foundry-scale));
-  border-bottom: 1px solid var(--fixed-black);
-  font-family: ui-monospace, monospace;
-  font-size: var(--foundry-fs-title);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.foundry-window__header--amber {
-  background: var(--foundry-window-amber);
-  color: var(--fixed-black);
-}
-
-.foundry-window__header--green {
-  background: color-mix(in srgb, var(--fixed-green-400) 88%, #0a1208 12%);
-  color: var(--fixed-black);
-}
-
-.foundry-window__header--red {
-  background: color-mix(in srgb, var(--fixed-red-400) 88%, #1a0808 12%);
-  color: var(--fixed-black);
-}
-
-.foundry-window__header-main {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  min-width: 0;
-}
-
-.foundry-window__title {
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.foundry-window__minimize {
-  flex-shrink: 0;
-  padding: 0 calc(0.5rem * var(--foundry-scale));
-  font-size: calc(13px * var(--foundry-scale));
-  line-height: 1;
-  border: 1px solid var(--fixed-black-a35);
-  border-radius: 2px;
-  background: var(--fixed-black-a12);
-  color: inherit;
-  transition: background 0.15s ease;
-}
-
-.foundry-window__minimize:hover {
-  background: var(--fixed-black-a22);
-}
-
-.foundry-window__body {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-}
-
-.foundry-window__footer {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: calc(0.5rem * var(--foundry-scale));
-  padding: calc(0.7rem * var(--foundry-scale)) calc(1.1rem * var(--foundry-scale));
-  border-top: 1px solid var(--theme-border-subtle);
-}
-
-
-.foundry-build-profile-textarea {
-  font-family: ui-monospace, monospace;
-  font-size: var(--foundry-fs-md);
-  line-height: 1.45;
-  color: #e8e8e8;
-  background: var(--fixed-black-a55);
-  border: 1px solid var(--theme-border-subtle);
-  border-radius: 2px;
-  resize: vertical;
-}
-
-.foundry-build-profile-textarea:focus {
-  outline: none;
-  border-color: var(--fixed-yellow-400-a55);
-}
-
-.foundry-pr-label {
-  color: var(--fixed-steel-blue);
-  font-family: ui-monospace, monospace;
-  font-size: var(--foundry-fs-sm);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.foundry-pr-input {
-  font-family: ui-monospace, monospace;
-  font-size: var(--foundry-fs-md);
-  color: var(--fixed-c-6b9fd4);
-  background: color-mix(in srgb, var(--fixed-near-black-blue) 70%, var(--fixed-black) 30%);
-  border: 1px solid var(--fixed-c-1e3a5f);
-  border-radius: 2px;
-}
-
-.foundry-pr-input::placeholder {
-  color: var(--fixed-steel-blue-a45);
-}
-
-.foundry-pr-input:focus {
-  outline: none;
-  border-color: var(--fixed-steel-blue);
-  color: var(--fixed-c-8bb8e8);
-}
-
 
 .app-status-nominal {
   color: var(--theme-status-nominal);
 }
 
-.app-footer-ipc {
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
+.app-status-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
 }
 
-.app-footer-ipc__detail {
-  margin-left: 0.35rem;
-  opacity: 0.72;
-  font-size: 0.92em;
+.app-status-state__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
 }
 
-.app-footer-ipc--green {
-  color: var(--theme-status-nominal);
+.app-status-state--ok { color: var(--theme-status-nominal); }
+.app-status-state--live { color: var(--theme-accent); }
+.app-status-state--warn { color: var(--theme-warn); }
+.app-status-state--error { color: var(--theme-danger); }
+
+button.app-status-state {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
 }
 
-.app-footer-ipc--yellow {
-  color: var(--fixed-yellow-400);
-}
-
-.app-footer-ipc--orange {
-  color: var(--fixed-orange-400);
-}
-
-.app-footer-ipc--red {
-  color: var(--fixed-red-400);
+button.app-status-state:hover .app-status-state__dot {
+  box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 25%, transparent);
 }
 
 .app-footer-stat-link {

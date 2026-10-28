@@ -245,6 +245,29 @@ pub(crate) fn merge_mandatory_cmake_flags(extra: &str) -> String {
     out
 }
 
+/// CMake `-D` flags that route C, C++ and CUDA compilation through a launcher.
+///
+/// The launcher is written as an absolute, forward-slash, quoted path: the Foundry
+/// batch does not put the toolchain bin dir on PATH, and install roots may contain
+/// spaces. All three languages use the same program.
+pub(crate) fn foundry_compiler_launcher_flags(launcher: &std::path::Path) -> String {
+    let path = launcher.to_string_lossy().replace('\\', "/");
+    format!(
+        "-DCMAKE_C_COMPILER_LAUNCHER=\"{path}\" \
+         -DCMAKE_CXX_COMPILER_LAUNCHER=\"{path}\" \
+         -DCMAKE_CUDA_COMPILER_LAUNCHER=\"{path}\""
+    )
+}
+
+/// True when the provider's extra flags already pin a compiler launcher.
+///
+/// The auto-discovered launcher must not fight an explicit `-D…COMPILER_LAUNCHER=…`
+/// in the confirm form — CMake would receive both and the later one would win by
+/// accident, not by intent.
+pub(crate) fn user_pins_compiler_launcher(extra: &str) -> bool {
+    extra.to_ascii_uppercase().contains("COMPILER_LAUNCHER")
+}
+
 pub(crate) fn foundry_release_candidate_dirs(build_dir: &std::path::Path, src_dir: &std::path::Path) -> Vec<PathBuf> {
     vec![
         build_dir.join("bin").join("Release"),
@@ -361,6 +384,30 @@ mod tests {
             .filter(|t| t.starts_with("-DGGML_NATIVE="))
             .count();
         assert_eq!(count, 1, "expected exactly one GGML_NATIVE, got: {out}");
+    }
+
+    #[test]
+    fn compiler_launcher_flags_cover_c_cxx_and_cuda() {
+        let flags = foundry_compiler_launcher_flags(std::path::Path::new(
+            r"C:\Program Files\Blackwell OPS\toolchain\sccache\sccache.exe",
+        ));
+        for key in ["CMAKE_C_COMPILER_LAUNCHER", "CMAKE_CXX_COMPILER_LAUNCHER", "CMAKE_CUDA_COMPILER_LAUNCHER"] {
+            assert!(flags.contains(&format!("-D{key}=")), "missing {key}: {flags}");
+        }
+        assert!(
+            flags.contains(r#""C:/Program Files/Blackwell OPS/toolchain/sccache/sccache.exe""#),
+            "launcher must be a quoted forward-slash absolute path: {flags}"
+        );
+        assert!(!flags.contains('\\'), "backslashes break the CMake -D value: {flags}");
+    }
+
+    #[test]
+    fn explicit_launcher_in_user_flags_wins() {
+        assert!(user_pins_compiler_launcher(
+            "-DGGML_CUDA=ON\n-DCMAKE_CXX_COMPILER_LAUNCHER=clcache"
+        ));
+        assert!(user_pins_compiler_launcher("-DCMAKE_CUDA_COMPILER_LAUNCHER=\"C:/x.exe\""));
+        assert!(!user_pins_compiler_launcher("-DGGML_CUDA=ON -DGGML_AVX512=ON"));
     }
 
     #[test]

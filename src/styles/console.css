@@ -156,6 +156,16 @@
   color: var(--fixed-emerald-400);
 }
 
+/* Destructive pair kept apart from the everyday actions. */
+.boc-action-danger {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-left: 0.35rem;
+  padding-left: 0.55rem;
+  border-left: 1px solid var(--fixed-black-a2);
+}
+
 .boc-utility-btn {
   border: 1px solid var(--fixed-black-a3);
   border-radius: 0.125rem;
@@ -167,6 +177,17 @@
 
 .boc-close-btn:hover {
   color: var(--fixed-red-400);
+}
+
+.boc-action-note {
+  flex-shrink: 0;
+  padding: 2px 10px;
+  border-bottom: 1px solid var(--boc-border);
+  background: var(--boc-footer-bg);
+  color: var(--boc-amber);
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.08em;
 }
 
 .blackwell-output-console__body {

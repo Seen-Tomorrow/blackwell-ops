@@ -547,7 +547,7 @@ pub async fn launch_engine(
         }
     }
 
-    let (slot_idx, slot_port, live_pids) = {
+    let (slot_idx, slot_port, live_pids, mut reservation) = {
         let stack = match tokio::time::timeout(Duration::from_secs(5), app.stack.lock()).await {
             Ok(guard) => guard,
             Err(_) => {
@@ -572,9 +572,10 @@ pub async fn launch_engine(
         } else {
             pick_next_engine_port(provider_base_port, &used_ports, &live_pids).await
         };
-        stack.reserve_slot(slot_idx, &config.alias, slot_port)
+        let reservation = stack
+            .reserve_slot(slot_idx, &config.alias, slot_port)
             .map_err(|message| BlackwellError::NoFreeSlot { message })?;
-        (slot_idx, slot_port, live_pids)
+        (slot_idx, slot_port, live_pids, reservation)
     };
     // Emit with the stack lock released — see EngineStack::emit_stack_changed_unlocked.
     EngineStack::emit_stack_changed_unlocked(&app.stack).await;
@@ -587,7 +588,7 @@ pub async fn launch_engine(
     {
         {
             let stack = app.stack.lock().await;
-            stack.release_reserved_slot(slot_idx);
+            stack.release_reserved_slot(slot_idx, reservation);
         }
         EngineStack::emit_stack_changed_unlocked(&app.stack).await;
         return Err(crate::errors::classify_port_reclaim(slot_port, e));
@@ -660,10 +661,9 @@ pub async fn launch_engine(
     fn make_on_ready(
         stack: Arc<tokio::sync::Mutex<EngineStack>>,
         slot_idx: usize,
+        reservation: u64,
     ) -> Arc<dyn Fn() + Send + Sync> {
         Arc::new(move || {
-            // Readiness fact for the stream-only fusion brain (no HTTP path to ask).
-            crate::engine_stack::mark_slot_ready(slot_idx);
             let s_clone = stack.clone();
             let si = slot_idx;
             tokio::spawn(async move {
@@ -672,7 +672,9 @@ pub async fn launch_engine(
                     let promote = {
                         if let Some(mut slot) = s.get_slot(si) {
                             use crate::engine_stack::SlotStatus;
-                            if matches!(slot.status, SlotStatus::Loading) {
+                            if slot.reservation == reservation
+                                && matches!(slot.status, SlotStatus::Loading)
+                            {
                                 slot.status = SlotStatus::Running;
                                 true
                             } else {
@@ -685,6 +687,8 @@ pub async fn launch_engine(
                     promote
                 };
                 if should_emit {
+                    // Readiness fact for the stream-only fusion brain (no HTTP path to ask).
+                    crate::engine_stack::mark_slot_ready(si);
                     EngineStack::emit_stack_changed_unlocked(&s_clone).await;
                 }
             });
@@ -694,16 +698,16 @@ pub async fn launch_engine(
     // Spawn engine with auto-retry (once) on immediate crash
     let stack_for_ready = app.stack.clone();
     let slot_for_ready = slot_idx;
-    // A relaunch starts unready; the on-ready callback below sets it again.
-    crate::engine_stack::clear_slot_ready(slot_idx);
     let mut last_err = None;
     for attempt in 0..2 {
+        // A relaunch starts unready; clear even on retry so a failed attempt cannot leak readiness.
+        crate::engine_stack::clear_slot_ready(slot_idx);
         let result = EngineStack::load_slot(
-            slot_idx, &config, &binary_path, gpu_mask.clone(), cmd_args.clone(),
+            slot_idx, reservation, &config, &binary_path, gpu_mask.clone(), cmd_args.clone(),
             provider_display_name.clone(), backend_type.clone(), supports_fusion, fusion_adapter,
             &app.stack,
             app.log_hub.clone(),
-            make_on_ready(stack_for_ready.clone(), slot_for_ready),
+            make_on_ready(stack_for_ready.clone(), slot_for_ready, reservation),
         ).await;
 
         match result {
@@ -717,9 +721,53 @@ pub async fn launch_engine(
                         message: "Model load failed".to_string(),
                     });
                 }
+                if e == crate::engine_stack::LAUNCH_CANCELLED {
+                    return Err(BlackwellError::EngineSpawnFailed {
+                        message: "Launch cancelled".to_string(),
+                    });
+                }
                 let err_msg = e.to_string();
                 last_err = Some(e);
                 if attempt == 0 {
+                    // A failed attempt can leave the slot either cleared (retryable:
+                    // immediate crash) or still reserved by this token (pre-spawn error).
+                    // Never steal a newer launch reservation.
+                    let state = {
+                        let stack = app.stack.lock().await;
+                        stack.get_slot(slot_idx).map(|slot| {
+                            (slot.status.clone(), slot.reservation, slot.pid, slot.child_proc.is_some())
+                        })
+                    };
+                    let owns_slot = matches!(
+                        &state,
+                        Some((_, current, _, _)) if *current == reservation
+                    );
+                    let retry = match state {
+                        Some((SlotStatus::Idle, _, _, _)) => {
+                            let stack = app.stack.lock().await;
+                            match stack.reserve_slot(slot_idx, &config.alias, config.port) {
+                                Ok(token) => {
+                                    reservation = token;
+                                    true
+                                }
+                                Err(_) => false,
+                            }
+                        }
+                        Some((_, current, None, false)) if current == reservation => true,
+                        _ => false,
+                    };
+                    if !retry {
+                        if owns_slot {
+                            let _ = EngineStack::stop_slot(slot_idx, &app.stack).await;
+                        } else {
+                            let stack = app.stack.lock().await;
+                            stack.release_reserved_slot(slot_idx, reservation);
+                        }
+                        EngineStack::emit_stack_changed_unlocked(&app.stack).await;
+                        return Err(BlackwellError::EngineSpawnFailed {
+                            message: err_msg,
+                        });
+                    }
                     app.blackwell_output_console_manager.emit_line_to_category(
                         crate::output_console::BlackwellOutputConsoleCategory::Error,
                         format!("[{}] [RETRY] Launch failed: {} — retrying...", config.alias, err_msg),
@@ -732,12 +780,40 @@ pub async fn launch_engine(
     }
 
     if let Some(e) = last_err {
-        {
+        let owns_process = {
             let stack = app.stack.lock().await;
-            stack.release_reserved_slot(slot_idx);
+            stack.get_slot(slot_idx).is_some_and(|slot| {
+                slot.reservation == reservation
+                    && (slot.pid.is_some() || slot.child_proc.is_some())
+            })
+        };
+        if owns_process {
+            let _ = EngineStack::stop_slot(slot_idx, &app.stack).await;
+        } else {
+            let stack = app.stack.lock().await;
+            stack.release_reserved_slot(slot_idx, reservation);
         }
         EngineStack::emit_stack_changed_unlocked(&app.stack).await;
         return Err(BlackwellError::EngineSpawnFailed { message: e });
+    }
+
+    // A stop may have landed after load_slot committed but before this point — never
+    // start a fusion brain for a slot that no longer belongs to this launch.
+    let still_current = {
+        let stack = app.stack.lock().await;
+        stack.get_slot(slot_idx).is_some_and(|slot| {
+            slot.reservation == reservation
+                && !matches!(slot.status, SlotStatus::Idle)
+        })
+    };
+    if !still_current {
+        let stack = app.stack.lock().await;
+        stack.release_reserved_slot(slot_idx, reservation);
+        drop(stack);
+        EngineStack::emit_stack_changed_unlocked(&app.stack).await;
+        return Err(BlackwellError::EngineSpawnFailed {
+            message: "Launch cancelled".to_string(),
+        });
     }
 
     // Spawn FUSION brain only for providers that declare supports_fusion in spawn_profile

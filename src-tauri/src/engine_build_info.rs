@@ -176,6 +176,35 @@ fn read_build_info_sidecar(path: &Path) -> Option<String> {
     }
 }
 
+/// Source commit recorded in `<engine dir>/build-info.txt`.
+///
+/// Foundry writes a human version first line and a `commit <sha>` second line; pack
+/// sidecars use `<version> (build N)` or the older `b<build>-<sha>` id. This reads
+/// any of those shapes and returns the bare commit.
+pub fn read_sidecar_commit(path: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(path.with_file_name("build-info.txt")).ok()?;
+    let is_hex = |s: &str| (7..=40).contains(&s.len()) && s.chars().all(|c| c.is_ascii_hexdigit());
+    for (idx, line) in text.lines().enumerate() {
+        let line = line.trim();
+        if let Some(rest) = line.strip_prefix("commit ") {
+            let commit = rest.trim();
+            if is_hex(commit) {
+                return Some(commit.to_string());
+            }
+        }
+        if idx == 0 {
+            if let Some(rest) = line.strip_prefix('b') {
+                if let Some((_, commit)) = rest.split_once('-') {
+                    if is_hex(commit) {
+                        return Some(commit.to_string());
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 /// A build stub beside the server is the cheapest source of identity: `llama.exe` (or a
 /// `llama-version.exe`) prints the build id and does not load CUDA, so it works even when the
 /// runtime pack is missing and never starts the server.
@@ -415,5 +444,28 @@ mod parse_tests {
             parse_llama_version_line("version: 519 (635cdd5)").as_deref(),
             Some("519 (build 519)")
         );
+    }
+
+    #[test]
+    fn sidecar_commit_reads_human_version_and_legacy_id_shapes() {
+        let dir = std::env::temp_dir().join(format!(
+            "bo-sidecar-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let binary = dir.join("llama-server.exe");
+        let sidecar = dir.join("build-info.txt");
+
+        std::fs::write(&sidecar, "0.8.0 (build 11870)\ncommit ac8e16942\n").expect("version sidecar");
+        assert_eq!(read_sidecar_commit(&binary).as_deref(), Some("ac8e16942"));
+
+        std::fs::write(&sidecar, "b11870-ac8e16942\n").expect("legacy sidecar");
+        assert_eq!(read_sidecar_commit(&binary).as_deref(), Some("ac8e16942"));
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

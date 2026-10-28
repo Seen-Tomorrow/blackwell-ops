@@ -57,7 +57,6 @@
 /* ══ border-color — alpha tints ═══════════════════════════════════ */
 .cfg-bord--a20 { border-color: color-mix(in srgb, var(--theme-border) 20%, transparent); }
 .cfg-bord--a30 { border-color: color-mix(in srgb, var(--theme-border) 30%, transparent); }
-.cfg-bord--a35 { border-color: color-mix(in srgb, var(--theme-border) 35%, transparent); }
 .cfg-bord--a40 { border-color: color-mix(in srgb, var(--theme-border) 40%, transparent); }
 .cfg-bord--a50 { border-color: color-mix(in srgb, var(--theme-border) 50%, transparent); }
 .cfg-bord--a60 { border-color: color-mix(in srgb, var(--theme-border) 60%, transparent); }
@@ -74,10 +73,6 @@
 
 /* ══ fill (solid 100% = token + on-color) ═════════════════════════ */
 .cfg-fill { background: var(--theme-accent); color: var(--theme-on-accent); }
-.cfg-fill--dng { background: var(--theme-danger); color: var(--theme-on-danger); }
-
-/* ══ fill — alpha tints (background only; text stays explicit on site) ══ */
-.cfg-fill--a5 { background: color-mix(in srgb, var(--theme-accent) 5%, transparent); }
 .cfg-fill--a10 { background: color-mix(in srgb, var(--theme-accent) 10%, transparent); }
 .cfg-fill--a25 { background: color-mix(in srgb, var(--theme-accent) 25%, transparent); }
 .cfg-fill--warn--a3 { background: color-mix(in srgb, var(--theme-warn) 3%, transparent); }
@@ -86,8 +81,6 @@
 
 /* ══ surface ══════════════════════════════════════════════════════ */
 .cfg-panel { background: var(--theme-panel); }
-.cfg-panel--a20 { background: color-mix(in srgb, var(--theme-panel) 20%, transparent); }
-.cfg-panel--a50 { background: color-mix(in srgb, var(--theme-panel) 50%, transparent); }
 
 /* ══ control accents ══════════════════════════════════════════════ */
 .cfg-accent { accent-color: var(--theme-accent); }

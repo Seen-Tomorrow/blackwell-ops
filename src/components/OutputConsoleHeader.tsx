@@ -2,13 +2,15 @@ import {
   OUTPUT_CONSOLE_CATEGORIES,
   OUTPUT_CONSOLE_CATEGORY_LABELS,
   type OutputConsoleCategory,
-} from "./BlackwellOutputConsole";
+} from "../lib/outputConsole";
 
 interface OutputConsoleHeaderProps {
   activeCategory: OutputConsoleCategory;
   onCategoryChange: (category: OutputConsoleCategory) => void;
   onClearCategory?: () => void;
+  onCopyCategory?: () => void;
   onSaveCategory?: () => void;
+  onOpenLogsFolder?: () => void;
   onClearAll?: () => void;
   onDetach?: () => void;
   onDock?: () => void;
@@ -26,7 +28,9 @@ export default function OutputConsoleHeader({
   activeCategory,
   onCategoryChange,
   onClearCategory,
+  onCopyCategory,
   onSaveCategory,
+  onOpenLogsFolder,
   onClearAll,
   onDetach,
   onDock,
@@ -78,28 +82,52 @@ export default function OutputConsoleHeader({
 
               <button
                 type="button"
-                onClick={onClearCategory}
-                className="boc-action-btn boc-action-btn--clear"
-                title="Clear tab"
+                onClick={onCopyCategory}
+                className="boc-action-btn"
+                title="Copy tab to clipboard"
+                aria-label="Copy tab to clipboard"
               >
-                C
+                CP
               </button>
               <button
                 type="button"
                 onClick={onSaveCategory}
                 className="boc-action-btn boc-action-btn--save"
-                title="Save tab"
+                title="Save tab as…"
+                aria-label="Save tab as"
               >
                 S
               </button>
               <button
                 type="button"
-                onClick={onClearAll}
-                className="boc-action-btn boc-action-btn--clear"
-                title="Clear all"
+                onClick={onOpenLogsFolder}
+                className="boc-action-btn"
+                title="Open log folder"
+                aria-label="Open log folder"
               >
-                ALL
+                DIR
               </button>
+
+              <div className="boc-action-danger">
+                <button
+                  type="button"
+                  onClick={onClearCategory}
+                  className="boc-action-btn boc-action-btn--clear"
+                  title="Clear tab"
+                  aria-label="Clear tab"
+                >
+                  C
+                </button>
+                <button
+                  type="button"
+                  onClick={onClearAll}
+                  className="boc-action-btn boc-action-btn--clear"
+                  title="Clear all categories"
+                  aria-label="Clear all categories"
+                >
+                  ALL
+                </button>
+              </div>
 
               {isDetached ? (
                 <>

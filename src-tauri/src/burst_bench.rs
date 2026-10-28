@@ -387,7 +387,7 @@ pub async fn cmd_burst_bench(
         let run_parallel = if is_warmup { 1 } else { parallel_requests };
 
         crate::fusion::reset_bench_meters_for_port(port).await;
-        crate::ipc_meter::emit_tracked(
+        crate::ipc_emit::emit_guarded(
             &app_handle,
             "bench-tg-progress",
             serde_json::json!({

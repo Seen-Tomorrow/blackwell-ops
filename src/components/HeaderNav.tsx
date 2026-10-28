@@ -15,14 +15,17 @@ import {
   OPS_SUB_NAV,
   configSubNavOptions,
   DOWNLOADS_SUB_NAV,
+  FOUNDRY_SUB_NAV,
   defaultTabForPrimary,
   isOpsTab,
   primaryNavFromTab,
   type ConfigSubTab,
   type DownloadsSubTab,
+  type FoundrySubTab,
   type PrimaryNavId,
 } from "../lib/appNav";
 import HeaderNavSegment from "./HeaderNavSegment";
+import FoundryNavBadge from "./FoundryNavBadge";
 
 interface HeaderNavProps {
   activeTab: Tab;
@@ -33,6 +36,11 @@ interface HeaderNavProps {
   /** DOWNLOADS section — header sub-rail. */
   downloadsSubTab: DownloadsSubTab;
   onDownloadsSubTabChange: (tab: DownloadsSubTab) => void;
+  /** FOUNDRY section — BUILD / CACHE sub-rail. */
+  foundrySubTab: FoundrySubTab;
+  onFoundrySubTabChange: (tab: FoundrySubTab) => void;
+  /** FOUNDRY click: navigate to the page (the nav badge is the background monitor). */
+  onFoundrySelect: () => void;
   /** First-run wizard active — lock ENGINES / LOGS. */
   setupGuideActive?: boolean;
   /** Wizard phase — a CONFIG visit during `paths` is the step, not a detour. */
@@ -60,6 +68,9 @@ function HeaderNav({
     onConfigSubTabChange,
     downloadsSubTab,
     onDownloadsSubTabChange,
+    foundrySubTab,
+    onFoundrySubTabChange,
+    onFoundrySelect,
     setupGuideActive = false,
     setupGuidePhase,
     chromeScale,
@@ -78,6 +89,7 @@ function HeaderNav({
   const showOpsSub = primaryId === "operations";
   const showConfigSub = primaryId === "config";
   const showDownloadsSub = primaryId === "downloads";
+  const showFoundrySub = primaryId === "foundry";
 
   const primaryOptions = useMemo(() => {
     /**
@@ -97,6 +109,16 @@ function HeaderNav({
       const dataAttrs: Record<string, string> = {};
       if (p.id === "config") dataAttrs["data-onboarding"] = "config-tab";
       if (returnToSetup) dataAttrs["data-setup-return"] = "1";
+      if (p.id === "foundry") {
+        return {
+          id: p.id,
+          className: "app-header__primary-option--foundry",
+          label: <FoundryNavBadge />,
+          title: "Foundry — click to open the build page",
+          disabled: setupGuideActive,
+          dataAttrs: Object.keys(dataAttrs).length > 0 ? dataAttrs : undefined,
+        };
+      }
       return {
         id: p.id,
         label: p.label,
@@ -139,9 +161,18 @@ function HeaderNav({
     [],
   );
 
+  const foundryOptions = useMemo(
+    () => FOUNDRY_SUB_NAV.map((o) => ({ id: o.id, label: o.label })),
+    [],
+  );
+
   const onPrimarySelect = useCallback(
     (id: string) => {
       const primary = id as PrimaryNavId;
+      if (primary === "foundry") {
+        onFoundrySelect();
+        return;
+      }
       if (primary === "operations") {
         const last = lastOpsTabRef.current;
         const target =
@@ -153,7 +184,7 @@ function HeaderNav({
       }
       onTabChange(defaultTabForPrimary(primary));
     },
-    [onTabChange, setupGuideActive],
+    [onTabChange, onFoundrySelect, setupGuideActive],
   );
 
   /**
@@ -165,7 +196,7 @@ function HeaderNav({
    */
   const [subAnchor, setSubAnchor] = useState({ left: 0, width: 0, shift: 0 });
   const subRef = useRef<HTMLDivElement | null>(null);
-  const showSubRail = showOpsSub || showConfigSub || showDownloadsSub;
+  const showSubRail = showOpsSub || showConfigSub || showDownloadsSub || showFoundrySub;
 
   useLayoutEffect(() => {
     if (!showSubRail) return;
@@ -250,6 +281,15 @@ function HeaderNav({
               options={downloadsOptions}
               selectedId={downloadsSubTab}
               onSelect={(id) => onDownloadsSubTabChange(id as DownloadsSubTab)}
+            />
+          ) : showFoundrySub ? (
+            <HeaderNavSegment
+              ariaLabel="Foundry section"
+              size="compact"
+              className="app-header__sub-switch"
+              options={foundryOptions}
+              selectedId={foundrySubTab}
+              onSelect={(id) => onFoundrySubTabChange(id as FoundrySubTab)}
             />
           ) : (
             <HeaderNavSegment

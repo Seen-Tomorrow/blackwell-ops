@@ -1,20 +1,9 @@
 /* Split from global partials: rules used only by the ConfigPage lazy graph. Do not re-import from index.css. */
 
-.foundry-hammer-icon--shake {
-  animation: foundryHammerShake 2.8s ease-in-out infinite;
-}
 
-.foundry-buildinfo-dots > i:nth-child(3) {
-  animation-delay: 0.3s;
-}
 
 [data-config-page] .config-param-ess--forced {
   text-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent-glow) 50%, transparent);
-}
-
-[data-config-page] .provider-form-popover--add {
-  margin: 8px 0 16px 0;
-  max-width: min(520px, 100%);
 }
 
 .cfg-inf { color: var(--theme-info); }
@@ -76,18 +65,6 @@
 .cfg-fill--dng--a5 { background: color-mix(in srgb, var(--theme-danger) 5%, transparent); }
 
 .cfg-dec--a40 { text-decoration-color: color-mix(in srgb, var(--theme-text-muted) 40%, transparent); }
-
-.fnd-origin-chip {
-  font-size: var(--type-micro);
-}
-
-.fnd-buildinfo {
-  font-size: var(--type-tiny);
-}
-
-.fnd-shipped-note {
-  color: color-mix(in srgb, var(--theme-text-muted) 55%, transparent);
-}
 
 .fnd-dev-header {
   border-bottom: 1px solid color-mix(in srgb, var(--theme-text) 6%, transparent);
@@ -228,106 +205,3 @@
   background: color-mix(in srgb, var(--theme-panel) 30%, black);
   border: 1px solid color-mix(in srgb, var(--theme-text) 6%, transparent);
 }
-
-.upd-card--full { border-color: color-mix(in srgb, var(--theme-accent) 30%, transparent); }
-
-.upd-card--app  { border-color: color-mix(in srgb, var(--theme-warn) 30%, transparent); }
-
-.upd-card--available {
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-warn) 40%, transparent);
-  border-color: color-mix(in srgb, var(--theme-warn) 45%, transparent);
-  background: color-mix(in srgb, var(--theme-warn) 6%, transparent);
-}
-
-.upd-card--installable { border-color: color-mix(in srgb, var(--theme-warn) 20%, transparent); }
-
-.upd-card--plugin { border-color: color-mix(in srgb, var(--theme-text) 12%, transparent); }
-
-.upd-card--core   { border-color: color-mix(in srgb, var(--theme-accent) 25%, transparent); }
-
-.upd-title--app  { color: var(--theme-warn); }
-
-.upd-version-note { color: color-mix(in srgb, var(--theme-text) 60%, transparent); }
-
-.upd-version-note--latest { color: color-mix(in srgb, var(--theme-warn) 90%, transparent); }
-
-.upd-rn-summary { color: color-mix(in srgb, var(--theme-text-muted) 55%, transparent); }
-
-.upd-error { color: var(--theme-danger); }
-
-.upd-card-label { color: color-mix(in srgb, var(--theme-text) 90%, transparent); }
-
-.upd-chip-core {
-  border-color: color-mix(in srgb, var(--theme-accent) 35%, transparent);
-  color: color-mix(in srgb, var(--theme-accent) 85%, transparent);
-}
-
-.upd-chip-core--app {
-  border-color: color-mix(in srgb, var(--theme-accent) 30%, transparent);
-  color: color-mix(in srgb, var(--theme-accent) 80%, transparent);
-}
-
-.upd-chip-plugin {
-  border-color: color-mix(in srgb, var(--theme-text) 15%, transparent);
-  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
-}
-
-.upd-chip-available {
-  border-color: color-mix(in srgb, var(--theme-warn) 50%, transparent);
-  background: color-mix(in srgb, var(--theme-warn) 15%, transparent);
-  color: var(--theme-warn);
-}
-
-.upd-chip-upd {
-  border-color: color-mix(in srgb, var(--theme-warn) 50%, transparent);
-  color: var(--theme-warn);
-}
-
-.upd-profile-name { color: color-mix(in srgb, var(--theme-text) 70%, transparent); }
-
-.upd-profile-shipped { color: color-mix(in srgb, var(--theme-text-muted) 60%, transparent); }
-
-.upd-profile-installed--upd { color: color-mix(in srgb, var(--theme-warn) 90%, transparent); }
-
-.upd-profile-installed { color: color-mix(in srgb, var(--theme-accent) 80%, transparent); }
-
-.upd-profile-not-installed { color: color-mix(in srgb, var(--theme-text-muted) 55%, transparent); }
-
-.upd-profile-pack { color: color-mix(in srgb, var(--theme-warn) 90%, transparent); }
-
-.upd-profile-meta { color: color-mix(in srgb, var(--theme-text-muted) 45%, transparent); }
-
-.upd-profile-hint { color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent); }
-
-.upd-profile-no-pack { color: color-mix(in srgb, var(--theme-text-muted) 45%, transparent); }
-
-.upd-profile-cuda { color: color-mix(in srgb, var(--theme-text-muted) 45%, transparent); }
-
-.upd-act--update:hover { background: color-mix(in srgb, var(--theme-warn) 15%, transparent); }
-
-.upd-act--install {
-  border-color: color-mix(in srgb, var(--theme-warn) 30%, transparent);
-  color: color-mix(in srgb, var(--theme-warn) 90%, transparent);
-}
-
-.upd-act--install:hover { background: color-mix(in srgb, var(--theme-warn) 10%, transparent); }
-
-.upd-act--both {
-  border-color: color-mix(in srgb, var(--theme-warn) 35%, transparent);
-  color: color-mix(in srgb, var(--theme-warn) 90%, transparent);
-}
-
-.upd-act--both:hover { background: color-mix(in srgb, var(--theme-warn) 10%, transparent); }
-
-.upd-act--idle {
-  border-color: color-mix(in srgb, var(--theme-text) 20%, transparent);
-  color: color-mix(in srgb, var(--theme-text) 80%, transparent);
-}
-
-.upd-act--idle:hover { background: color-mix(in srgb, var(--theme-text) 5%, transparent); }
-
-.upd-error--global { color: var(--theme-danger); }
-
-.upd-fill--black20 { background: color-mix(in srgb, var(--theme-text) 20%, transparent); }
-
-.upd-fill--black15 { background: color-mix(in srgb, var(--theme-text) 15%, transparent); }

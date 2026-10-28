@@ -11,110 +11,11 @@
 
 
 /* LATEST badge on the newest source row */
-.fnd-latest-chip {
-  font-size: var(--type-micro);
-}
 
-/* " · shipped <date>" suffix inside the build-info line (stealth-muted/55) */
-/* Error state readout + retry chip */
-.fnd-update-state--danger {
-  font-size: var(--type-micro);
-  color: var(--theme-danger);
-}
 
-.fnd-action-chip--danger {
-  font-size: var(--type-micro);
-  color: var(--theme-danger);
-  border-color: var(--theme-danger);
-}
-
-/* Action chips (UPDATE / DOWNLOAD / RETRY / ↻ USE BUNDLED / ↻ RESTORE / ACTIVATE) */
-.fnd-action-chip {
-  font-size: var(--type-micro);
-}
-
-/* "—" placeholder when a source has no active binary */
-.fnd-dash {
-  font-size: var(--type-micro);
-}
-
-/* VS / PR meta chips in the profile header */
-.fnd-meta-chip {
-  font-size: var(--type-micro);
-}
-
-/* Restore-confirm modal rule (stealth-border/30) */
-.fnd-modal-rule {
-  border-color: color-mix(in srgb, var(--theme-border) 30%, transparent);
-}
-
-.fnd-modal-title {
-  color: var(--theme-accent);
-}
-
-.fnd-modal-close {
-  color: var(--theme-text-muted);
-}
-
-.fnd-modal-caption {
-  font-size: var(--type-body);
-}
-
-.fnd-modal-note {
-  font-size: var(--type-label);
-}
-
-/* Confirm buttons */
-.fnd-confirm-btn {
-  font-size: var(--type-label);
-}
-
-/* ── FoundryBuildProgress ──────────────────────────────────── */
-
-/* Footer action buttons — accent (success) + danger variants */
-.fnd-build-btn {
-  font-size: var(--type-label);
-  border: 1px solid color-mix(in srgb, var(--theme-accent) 60%, transparent);
-  color: var(--theme-accent);
-}
-
-.fnd-build-btn:hover {
-  background: color-mix(in srgb, var(--theme-accent) 20%, transparent);
-}
-
-.fnd-build-btn--danger { border: 1px solid color-mix(in srgb, var(--theme-danger) 60%, transparent);
-  color: var(--theme-danger);
-}
-
-.fnd-build-btn--danger:hover {
-  background: color-mix(in srgb, var(--theme-danger) 20%, transparent);
-}
-
-/* "Only hides — failed attempt remains." note (red-400/50) */
-.fnd-build-note--danger {
-  color: color-mix(in srgb, var(--theme-danger) 50%, transparent);
-}
-
-/* Provider line: muted base, warn id */
-.fnd-build-provider {
-  color: var(--theme-text-muted);
-}
-
-.fnd-build-provider__id {
-  color: var(--theme-warn);
-}
-
-/* Step label + current step value (telemetry cyan) */
-.fnd-build-step-label {
-  color: var(--theme-text-muted);
-}
-
-.fnd-build-step {
-  color: var(--theme-info);
-}
-
-/* PAUSED — review cmake banner (yellow-400/30 border, /5 bg) */
+/* PAUSED — review configuration banner */
 .fnd-build-pause {
+  flex-shrink: 0;
   border: 1px solid color-mix(in srgb, var(--theme-warn) 30%, transparent);
   background: color-mix(in srgb, var(--theme-warn) 5%, transparent);
 }
@@ -123,129 +24,288 @@
   color: var(--theme-warn);
 }
 
-/* Last-error / ready-to-use footer lines */
 .fnd-build-last-error {
+  flex-shrink: 0;
   color: color-mix(in srgb, var(--theme-danger) 70%, transparent);
 }
 
-.fnd-build-ready {
-  color: color-mix(in srgb, var(--theme-accent) 70%, transparent);
-}
-
-/* ── Compile edge progress (ninja [N/M]) — fill mirrors the dock chip. ── */
-
-.fnd-edge {
+/* The hero owns the empty half of the confirm-sized frame while the log is shut. */
+.fnd-hero {
   display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: calc(0.55rem * var(--foundry-scale));
+  padding: calc(0.85rem * var(--foundry-scale)) calc(1rem * var(--foundry-scale));
+  border: 1px solid color-mix(in srgb, var(--theme-border-subtle) 80%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-text) 5%, var(--theme-panel-accent));
+  overflow: hidden;
 }
 
-.fnd-edge__meta {
+.fnd-hero__top {
   display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
   min-width: 0;
 }
 
-.fnd-edge__counter {
-  color: var(--theme-warn);
+.fnd-hero__stage {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fnd-hero__kicker {
+  font-family: ui-monospace, monospace;
+  font-size: var(--foundry-fs-xs);
+  letter-spacing: 0.22em;
+  color: var(--theme-text-muted);
+}
+
+.fnd-hero__stage-label {
+  font-family: ui-monospace, monospace;
+  font-size: calc(26px * var(--foundry-scale));
   font-weight: 700;
-  letter-spacing: 0.06em;
-  font-variant-numeric: tabular-nums;
-}
-
-.fnd-edge__kind {
-  color: var(--theme-text-muted);
   letter-spacing: 0.14em;
-}
-
-.fnd-edge__eta {
-  margin-left: auto;
-  color: var(--theme-info);
-  letter-spacing: 0.08em;
-  white-space: nowrap;
-}
-
-.fnd-edge__track {
-  position: relative;
-  height: 5px;
-  overflow: hidden;
-  background: color-mix(in srgb, var(--theme-text) 8%, var(--theme-panel-accent));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-text) 6%, transparent);
-}
-
-.fnd-edge__fill {
-  display: block;
-  height: 100%;
-  width: 0;
-  background: linear-gradient(90deg, var(--fixed-c-b45309) 0%, var(--fixed-yellow-400) 55%, var(--fixed-amber-200) 100%);
-  transition: width 0.35s ease;
-}
-
-.fnd-edge__label {
-  color: var(--theme-text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* ── FoundryConfirmForm ────────────────────────────────────── */
-
-/* Footer buttons (reuse FoundryComponents confirm styles where identical) */
-.fnd-confirm-btn--danger { border: 1px solid color-mix(in srgb, var(--theme-danger) 60%, transparent);
-  color: var(--theme-danger);
-}
-
-.fnd-confirm-btn--danger:hover {
-  background: color-mix(in srgb, var(--theme-danger) 20%, transparent);
-}
-
-.fnd-confirm-btn--danger-solid { background: color-mix(in srgb, var(--theme-danger) 20%, transparent);
-  border: 1px solid color-mix(in srgb, var(--theme-danger) 60%, transparent);
-  color: var(--theme-danger);
-}
-
-.fnd-confirm-btn--danger-solid:hover {
-  background: color-mix(in srgb, var(--theme-danger) 30%, transparent);
-}
-
-/* "Ready to build?" lead */
-.fnd-confirm-lead {
-  color: var(--theme-text-muted);
-}
-
-/* Source banner text (banner tone paint lives in .foundry-source-banner--*) */
-.fnd-banner-title {
-  font-size: var(--type-label);
-}
-
-.fnd-banner-msg {
-  font-size: var(--type-label);
-}
-
-.fnd-banner-commits {
-  font-size: var(--type-micro);
-}
-
-/* Provider header line */
-.fnd-confirm-provider__id {
-  color: var(--theme-warn);
-}
-
-.fnd-confirm-provider__dash {
-  color: var(--theme-text-muted);
-}
-
-.fnd-confirm-provider__name {
+  line-height: 1;
   color: var(--theme-text);
 }
 
-/* git url line (telemetry-cyan/70) */
-.fnd-confirm-git {
-  color: color-mix(in srgb, var(--theme-info) 70%, transparent);
+.fnd-hero__pct {
+  flex-shrink: 0;
+  font-family: ui-monospace, monospace;
+  font-size: calc(38px * var(--foundry-scale));
+  font-weight: 700;
+  line-height: 0.9;
+  letter-spacing: 0.02em;
+  color: var(--theme-warn);
+  font-variant-numeric: tabular-nums;
 }
 
-.fnd-confirm-field-label {
+.fnd-hero__pct-unit {
+  font-size: 0.45em;
+  letter-spacing: 0.1em;
+  margin-left: 0.15em;
+  color: color-mix(in srgb, var(--theme-warn) 70%, transparent);
+}
+
+.fnd-hero__bar {
+  position: relative;
+  height: calc(10px * var(--foundry-scale));
+  overflow: hidden;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--theme-text) 8%, var(--theme-panel-accent));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-text) 8%, transparent);
+}
+
+.fnd-hero__fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: linear-gradient(
+    90deg,
+    var(--fixed-c-b45309) 0%,
+    var(--fixed-yellow-400) 55%,
+    var(--fixed-amber-200) 100%
+  );
+  transition: width 0.35s ease;
+}
+
+.fnd-hero__meta {
+  display: flex;
+  align-items: baseline;
+  gap: calc(0.6rem * var(--foundry-scale));
+  min-width: 0;
+  font-family: ui-monospace, monospace;
+}
+
+.fnd-hero__counter {
+  font-size: calc(15px * var(--foundry-scale));
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--theme-warn);
+  font-variant-numeric: tabular-nums;
+}
+
+.fnd-hero__kind {
+  font-size: var(--foundry-fs-xs);
+  letter-spacing: 0.14em;
+  color: var(--theme-text-muted);
+}
+
+.fnd-hero__eta {
+  margin-left: auto;
+  font-size: var(--foundry-fs-sm);
+  letter-spacing: 0.08em;
+  color: var(--theme-info);
+  white-space: nowrap;
+}
+
+.fnd-hero__timer {
+  flex-shrink: 0;
+  font-size: var(--foundry-fs-sm);
+  color: var(--theme-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.fnd-hero__file {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--theme-text-muted);
+}
+
+.fnd-stage-rail {
+  display: flex;
+  gap: calc(0.4rem * var(--foundry-scale));
+  margin: auto 0 0;
+  padding: calc(0.55rem * var(--foundry-scale)) 0 0;
+  list-style: none;
+}
+
+.fnd-stage-rail__step {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  padding-top: calc(0.35rem * var(--foundry-scale));
+  border-top: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
+  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
+}
+
+.fnd-stage-rail__step--done {
+  border-top-color: color-mix(in srgb, var(--theme-accent) 55%, transparent);
+  color: color-mix(in srgb, var(--theme-accent) 85%, transparent);
+}
+
+.fnd-stage-rail__step--active {
+  border-top-color: var(--theme-warn);
+  color: var(--theme-warn);
+}
+
+.fnd-stage-rail__dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.fnd-stage-rail__step--active .fnd-stage-rail__dot {
+  box-shadow: 0 0 7px color-mix(in srgb, var(--theme-warn) 65%, transparent);
+}
+
+.fnd-stage-rail__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, monospace;
+  font-size: var(--foundry-fs-xs);
+  letter-spacing: 0.1em;
+}
+
+/* Completion plate — the build is done AND is the active source. */
+.fnd-complete-plate {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: calc(0.85rem * var(--foundry-scale));
+  padding: calc(0.9rem * var(--foundry-scale)) calc(1rem * var(--foundry-scale));
+  border: 2px solid color-mix(in srgb, var(--theme-accent) 70%, transparent);
+  border-radius: 3px;
+  background:
+    linear-gradient(
+      100deg,
+      color-mix(in srgb, var(--theme-accent) 20%, var(--theme-panel-accent)) 0%,
+      color-mix(in srgb, var(--theme-accent) 7%, var(--theme-panel-accent)) 70%
+    );
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-accent) 18%, transparent);
+}
+
+.fnd-complete-plate__icon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: calc(44px * var(--foundry-scale));
+  height: calc(44px * var(--foundry-scale));
+  border-radius: 2px;
+  background: var(--theme-accent);
+  color: var(--theme-panel);
+  font-size: calc(24px * var(--foundry-scale));
+  font-weight: 700;
+  line-height: 1;
+}
+
+.fnd-complete-plate__body {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fnd-complete-plate__kicker {
+  font-family: ui-monospace, monospace;
+  font-size: var(--foundry-fs-sm);
+  letter-spacing: 0.2em;
+  color: color-mix(in srgb, var(--theme-accent) 80%, transparent);
+}
+
+.fnd-complete-plate__title {
+  font-family: ui-monospace, monospace;
+  font-size: calc(22px * var(--foundry-scale));
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  line-height: 1.1;
+  color: var(--theme-text);
+}
+
+.fnd-complete-plate__meta {
+  font-family: ui-monospace, monospace;
+  font-size: var(--foundry-fs-sm);
+  letter-spacing: 0.06em;
+  color: var(--theme-text-muted);
+}
+
+.fnd-complete-plate__stamp {
+  margin-left: auto;
+  padding: 0.15rem 0.4rem;
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 45%, transparent);
+  border-radius: 2px;
+  font-family: ui-monospace, monospace;
+  font-size: var(--foundry-fs-xs);
+  letter-spacing: 0.18em;
+  color: color-mix(in srgb, var(--theme-accent) 75%, transparent);
+  transform: rotate(-4deg);
+}
+
+/* Failure plate — short, red, above the error log. */
+.fnd-fail-plate {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: calc(0.55rem * var(--foundry-scale)) calc(0.8rem * var(--foundry-scale));
+  border: 1px solid color-mix(in srgb, var(--theme-danger) 55%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-danger) 8%, var(--theme-panel-accent));
+}
+
+.fnd-fail-plate__title {
+  font-family: ui-monospace, monospace;
+  font-size: calc(14px * var(--foundry-scale));
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--theme-danger);
+}
+
+.fnd-fail-plate__meta {
+  font-family: ui-monospace, monospace;
+  font-size: var(--foundry-fs-sm);
   color: var(--theme-text-muted);
 }
 
@@ -282,57 +342,177 @@
   font-size: var(--type-micro);
 }
 
-/* CUDA arch chips */
-.fnd-arch-label {
-  font-size: var(--type-label);
+/* Two independent caches: retained work tree + sccache object cache. */
+.fnd-cache-stack {
+  display: flex;
+  flex-direction: column;
+  gap: calc(0.5rem * var(--foundry-scale));
 }
 
-.fnd-arch-hint {
-  font-size: var(--type-micro);
+.fnd-cache-block {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
 }
 
-/* "Also build CLI + quantize" checkbox (accent-color → theme accent) */
-.fnd-checkbox {
-  accent-color: var(--theme-accent);
+.fnd-cache-block__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: calc(0.75rem * var(--foundry-scale));
 }
 
-.fnd-extra-label {
-  color: var(--theme-text-muted);
+.fnd-cache-divider {
+  height: 1px;
+  background: color-mix(in srgb, var(--theme-border) 40%, transparent);
 }
 
-/* Note text (stealth-muted/80) with white/80 binary names */
-.fnd-extra-note {
-  color: color-mix(in srgb, var(--theme-text-muted) 80%, transparent);
+.fnd-cache-path {
+  color: var(--theme-info);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
-.fnd-extra-note__bin {
-  color: color-mix(in srgb, var(--theme-text) 80%, transparent);
+.fnd-cache-path-line {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: color-mix(in srgb, var(--theme-text-muted) 55%, transparent);
 }
 
-/* Max build threads buttons */
-.fnd-cores-btn {
-  font-size: var(--type-label);
+/* ── Foundry clear-tree dialog ─────────────────────────────── */
+
+.fnd-cache-dialog-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 140;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  /* Dim only — never blur (WebView2/iGPU). */
+  background: color-mix(in srgb, var(--fixed-black) 62%, transparent);
 }
 
-.fnd-cores-btn--active {
-  background: color-mix(in srgb, var(--theme-accent) 30%, transparent);
-  border-color: color-mix(in srgb, var(--theme-accent) 60%, transparent);
-  color: var(--theme-accent);
-}
-
-.fnd-cores-btn--idle {
-  border-color: var(--theme-border);
-  color: var(--theme-text-muted);
-}
-
-.fnd-cores-btn--idle:hover {
+.fnd-cache-dialog {
+  width: min(480px, 94vw);
+  overflow: hidden;
+  border: 2px solid color-mix(in srgb, var(--fixed-brand-amber) 82%, transparent);
+  border-radius: 4px;
+  background: var(--theme-panel);
+  box-shadow:
+    0 12px 36px var(--fixed-black-a55),
+    0 4px 12px var(--fixed-black-a35);
   color: var(--theme-text);
-  border-color: color-mix(in srgb, var(--theme-border) 80%, transparent);
+  font-family: ui-monospace, monospace;
 }
 
-/* PR history row — one line of reuse chips under the PR input */
-.fnd-pr-hint {
-  color: color-mix(in srgb, var(--theme-text-muted) 80%, transparent);
+.fnd-cache-dialog__header {
+  padding: calc(0.45rem * var(--foundry-scale)) calc(0.8rem * var(--foundry-scale));
+  background: var(--fixed-brand-amber);
+  color: var(--fixed-black);
+  font-size: var(--foundry-fs-title);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.fnd-cache-dialog__body {
+  display: flex;
+  flex-direction: column;
+  gap: calc(0.45rem * var(--foundry-scale));
+  padding: calc(0.8rem * var(--foundry-scale));
+}
+
+.fnd-cache-dialog__target {
+  margin: 0;
+  color: var(--theme-warn);
+  font-size: var(--foundry-fs-md);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.fnd-cache-dialog__line {
+  margin: 0;
+  font-size: var(--foundry-fs-sm);
+}
+
+.fnd-cache-dialog__meta {
+  margin: 0;
+  color: var(--theme-text-muted);
+  font-size: var(--foundry-fs-xs);
+}
+
+.fnd-cache-dialog__note {
+  margin: 0;
+  color: var(--theme-text-muted);
+  font-size: var(--foundry-fs-xs);
+  line-height: 1.5;
+}
+
+.fnd-cache-dialog__note strong {
+  color: var(--theme-warn);
+}
+
+.fnd-cache-dialog__path {
+  color: var(--theme-info);
+}
+
+.fnd-cache-dialog__size {
+  color: var(--theme-warn);
+  font-variant-numeric: tabular-nums;
+}
+
+.fnd-cache-dialog__error {
+  margin: 0;
+  padding: calc(0.4rem * var(--foundry-scale)) calc(0.55rem * var(--foundry-scale));
+  border: 1px solid color-mix(in srgb, var(--theme-danger) 45%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-danger) 8%, var(--theme-panel-accent));
+  color: var(--theme-danger);
+  font-size: var(--foundry-fs-xs);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.fnd-cache-dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: calc(0.6rem * var(--foundry-scale)) calc(0.8rem * var(--foundry-scale));
+  border-top: 1px solid var(--theme-border-subtle);
+  background: color-mix(in srgb, var(--theme-text) 4%, var(--theme-panel-accent));
+}
+
+.fnd-cache-dialog__btn {
+  padding: calc(0.3rem * var(--foundry-scale)) calc(0.8rem * var(--foundry-scale));
+  border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
+  border-radius: 2px;
+  color: var(--theme-text-muted);
+  font-family: inherit;
+  font-size: var(--foundry-fs-btn);
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.fnd-cache-dialog__btn:hover:not(:disabled) {
+  color: var(--theme-text);
+  border-color: color-mix(in srgb, var(--theme-border) 100%, transparent);
+}
+
+.fnd-cache-dialog__btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.fnd-cache-dialog__btn--danger {
+  border-color: color-mix(in srgb, var(--theme-danger) 60%, transparent);
+  color: var(--theme-danger);
+}
+
+.fnd-cache-dialog__btn--danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--theme-danger) 15%, transparent);
+  border-color: color-mix(in srgb, var(--theme-danger) 80%, transparent);
+  color: var(--theme-danger);
 }
 
 .fnd-pr-history {
@@ -347,13 +527,6 @@
   flex-shrink: 0;
 }
 
-.fnd-pr-history__chips {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 0.375rem;
-  /* overflow: visible — a clipped row would cut off the hover tip below */
-}
-
 /*
  * HISTORY chip hover tip — native title= is delayed/suppressed in WebView2,
  * so paint the tip as a CSS ::after (same idiom as the model-catalog data-tip).
@@ -364,46 +537,6 @@
   cursor: help;
   border-color: var(--theme-border);
   color: var(--theme-text-muted);
-}
-
-/* Visible number truncates inside the overflow-visible chip host */
-.fnd-pr-history__chip-label {
-  max-width: 10rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.fnd-pr-history__tip::after {
-  content: attr(data-tip);
-  position: absolute;
-  left: 0;
-  top: 100%;
-  z-index: 1000;
-  margin-top: 4px;
-  max-width: 40ch;
-  padding: 0.5rem 0.75rem;
-  border-radius: 4px;
-  font-family: ui-monospace, monospace;
-  font-size: 13px !important;
-  font-weight: 500;
-  line-height: 1.4;
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
-  color: var(--theme-text);
-  background: var(--theme-panel);
-  border: 1px solid var(--theme-border);
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--theme-text) 25%, transparent);
-  opacity: 0;
-  transform: translateY(-2px);
-  pointer-events: none;
-  transition: opacity 0.12s ease, transform 0.12s ease;
-}
-
-.fnd-pr-history__tip:hover::after,
-.fnd-pr-history__tip:focus-visible::after {
-  opacity: 1;
-  transform: translateY(0);
 }
 .fnd-pr-history__chip:hover {
   color: var(--theme-text);
@@ -434,196 +567,8 @@
   color: var(--theme-text-muted);
 }
 
-/* Profile-isolated build note (stealth-border/50 border, black/20 fill) */
-.fnd-profile-isolated {
-  border: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent);
-  background: color-mix(in srgb, var(--theme-panel) 20%, black);
-}
-
-.fnd-profile-isolated__title {
-  color: var(--theme-accent);
-}
-
-.fnd-profile-isolated__body {
-  color: color-mix(in srgb, var(--theme-text) 80%, transparent);
-}
-
-.fnd-profile-isolated__note {
-  color: var(--theme-text-muted);
-}
-
-/* ── FoundryModal ──────────────────────────────────────────── */
-
-/* Backup-locked "YES — STOP ENGINES & PROCEED" (nv-green/20 fill, /60 border) */
-.fnd-confirm-btn--accent { background: color-mix(in srgb, var(--theme-accent) 20%, transparent);
-  border: 1px solid color-mix(in srgb, var(--theme-accent) 60%, transparent);
-  color: var(--theme-accent);
-}
-
-/* Stopping-engines screen (white/80 body, warn highlights, muted note) */
-.fnd-stop-body {
-  color: color-mix(in srgb, var(--theme-text) 80%, transparent);
-}
-
-.fnd-stop-body__hl {
-  color: var(--theme-warn);
-}
-
-.fnd-stop-note {
-  color: var(--theme-text-muted);
-}
-
-/* "Build still running — UI reattached" toast (yellow-400/50 border, /10 fill, yellow-300 text) */
-.fnd-reattach-banner {
-  font-size: var(--type-label);
-  border: 1px solid color-mix(in srgb, var(--theme-warn) 50%, transparent);
-  background: color-mix(in srgb, var(--theme-warn) 10%, transparent);
-  color: var(--theme-warn);
-}
-
-/* ── FoundryToolchainPanel ─────────────────────────────────── */
-
-/* Loading / error / ready one-liners */
-.fnd-tc-loading {
-  color: color-mix(in srgb, var(--theme-text-muted) 60%, transparent);
-}
-
-.fnd-tc-error {
-  color: color-mix(in srgb, var(--theme-danger) 80%, transparent);
-}
-
 .fnd-tc-ready {
   color: var(--theme-accent);
-}
-
-/* Section label */
-.fnd-tc-section-label {
-  color: var(--theme-text-muted);
-}
-
-/* Status badge (READY / PARTIAL / N/M PROFILES) */
-.fnd-tc-status {
-  font-size: var(--type-micro);
-}
-
-.fnd-tc-status--done {
-  color: var(--theme-accent);
-  border-color: color-mix(in srgb, var(--theme-accent) 40%, transparent);
-  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
-}
-
-.fnd-tc-status--warn {
-  color: var(--theme-warn);
-  border-color: color-mix(in srgb, var(--theme-warn) 40%, transparent);
-  background: color-mix(in srgb, var(--theme-warn) 10%, transparent);
-}
-
-/* Per-env profile badges */
-.fnd-tc-env-badge {
-  font-size: var(--type-micro);
-}
-
-.fnd-tc-env-badge--ready {
-  color: color-mix(in srgb, var(--theme-accent) 90%, transparent);
-  border-color: color-mix(in srgb, var(--theme-accent) 30%, transparent);
-}
-
-.fnd-tc-env-badge--pending {
-  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
-  border-color: color-mix(in srgb, var(--theme-border) 50%, transparent);
-}
-
-/* MSVC C runtime error hint (yellow-400/90) */
-.fnd-tc-crt-hint {
-  font-size: var(--type-label);
-  color: color-mix(in srgb, var(--theme-warn) 90%, transparent);
-}
-
-/* MANUAL button active ring (telemetry-cyan/50) */
-.fnd-tc-btn--manual-active {
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-info) 50%, transparent);
-}
-
-/* Manual install guide (stealth-border/40 border, black/25 fill — see .fnd-cache-row) */
-.fnd-tc-guide {
-  border-color: color-mix(in srgb, var(--theme-border) 40%, transparent);
-  background: color-mix(in srgb, var(--theme-text) 6%, var(--theme-panel-accent));
-}
-
-/* Warn guide (yellow-400/30 border, /5 fill) */
-.fnd-tc-guide--warn {
-  border-color: color-mix(in srgb, var(--theme-warn) 30%, transparent);
-  background: color-mix(in srgb, var(--theme-warn) 5%, transparent);
-}
-
-.fnd-tc-guide__title {
-  color: var(--theme-text-muted);
-}
-
-.fnd-tc-guide__title--warn {
-  color: color-mix(in srgb, var(--theme-warn) 90%, transparent);
-}
-
-.fnd-tc-guide__body {
-  color: color-mix(in srgb, var(--theme-text) 65%, transparent);
-}
-
-.fnd-tc-guide__desc {
-  color: color-mix(in srgb, var(--theme-text) 70%, transparent);
-}
-
-.fnd-tc-guide__hl {
-  color: var(--theme-accent);
-}
-
-/* Cache folder box (stealth-border/50 border, black/30 fill — face-correct, see .fnd-cache-row) */
-.fnd-tc-cache-box {
-  border: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent);
-  background: color-mix(in srgb, var(--theme-text) 6%, var(--theme-panel-accent));
-}
-
-.fnd-tc-cache-box__label {
-  color: var(--theme-text-muted);
-}
-
-.fnd-tc-cache-box__path {
-  color: var(--theme-info);
-}
-
-.fnd-tc-cache-box__note {
-  color: color-mix(in srgb, var(--theme-text-muted) 80%, transparent);
-}
-
-/* Profiles-ready box (yellow-400/20 border, black/20 fill — face-correct, see .fnd-cache-row) */
-.fnd-tc-profiles-box {
-  border: 1px solid color-mix(in srgb, var(--theme-warn) 20%, transparent);
-  background: color-mix(in srgb, var(--theme-text) 6%, var(--theme-panel-accent));
-}
-
-.fnd-tc-profiles-box__title {
-  color: color-mix(in srgb, var(--theme-warn) 80%, transparent);
-}
-
-.fnd-tc-profiles-box__row {
-  color: color-mix(in srgb, var(--theme-text-muted) 80%, transparent);
-}
-
-/* Archive box (nv-green/40 border, /5 fill) */
-.fnd-tc-archive-box {
-  border: 1px solid color-mix(in srgb, var(--theme-accent) 40%, transparent);
-  background: color-mix(in srgb, var(--theme-accent) 5%, transparent);
-}
-
-.fnd-tc-archive-box__name {
-  color: color-mix(in srgb, var(--theme-text) 90%, transparent);
-}
-
-.fnd-tc-archive-box__meta {
-  color: var(--theme-text-muted);
-}
-
-.fnd-tc-archive-box__desc {
-  color: color-mix(in srgb, var(--theme-text) 60%, transparent);
 }
 
 /* ── DistributionDevPanel ──────────────────────────────────── */
@@ -685,39 +630,6 @@
 .fnd-dev-catalog-btn--off:hover {
   border-color: color-mix(in srgb, var(--theme-warn) 30%, transparent);
 }
-
-/* Per-profile Pack+Ship button (yellow/35 border, /90 text) */
-
-/* Job log (black/30 bg, white/[0.06] border) */
-
-/* ENGINE page - engine sources table */
-.eng-src-table {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.eng-src-row {
-  display: grid;
-  grid-template-columns: minmax(6.5rem, 1fr) 9.5rem 8.5rem 4.5rem;
-  align-items: center;
-  gap: 8px;
-  padding: 2px 4px;
-  border-radius: 2px;
-}
-.eng-src-row--head {
-  color: var(--theme-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-.eng-src-row--active {
-  background: color-mix(in srgb, var(--theme-text) 5%, transparent);
-}
-.eng-src-name {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--theme-text);
-}
 .eng-badge {
   display: inline-block;
   padding: 0 4px;
@@ -729,10 +641,6 @@
 .eng-badge--newest {
   border-color: color-mix(in srgb, var(--theme-accent-bright) 45%, var(--theme-border) 55%);
   color: var(--theme-accent-bright);
-}
-.eng-src-action {
-  display: flex;
-  justify-content: flex-end;
 }
 .eng-src-inuse {
   color: var(--theme-text-muted);
@@ -746,4 +654,129 @@
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+}
+
+/* ENGINE page — active identity hero (matches the Foundry source card language) */
+.eng-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 32%, var(--theme-border));
+  border-left: 3px solid var(--theme-accent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-accent) 5%, var(--theme-panel-accent));
+}
+
+.eng-hero--empty {
+  border-color: color-mix(in srgb, var(--theme-border) 55%, transparent);
+  border-left-color: var(--theme-text-muted);
+  background: color-mix(in srgb, var(--theme-text) 3%, var(--theme-panel-accent));
+}
+
+.eng-hero__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.eng-hero__kicker,
+.eng-hero__source {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.12em;
+}
+
+.eng-hero__kicker {
+  color: var(--theme-text-muted);
+}
+
+.eng-hero__source {
+  color: var(--theme-accent);
+  text-transform: uppercase;
+}
+
+.eng-hero--empty .eng-hero__source {
+  color: var(--theme-text-muted);
+}
+
+.eng-hero__version .eng-version {
+  color: var(--theme-text);
+  font-size: var(--type-body);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.eng-hero__version .eng-badge {
+  font-size: var(--type-micro);
+  font-weight: 400;
+}
+
+.eng-hero__meta {
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+}
+
+/* ENGINE page — MANAGE sources as compact hero cards */
+.eng-src-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.eng-src-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
+  border-left: 3px solid var(--theme-text-muted);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-text) 3%, var(--theme-panel-accent));
+}
+
+.eng-src-card--active {
+  border-left-color: var(--theme-accent);
+  background: color-mix(in srgb, var(--theme-accent) 6%, var(--theme-panel-accent));
+}
+
+.eng-src-card__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.eng-src-card__name {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  color: var(--theme-text);
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-label);
+  font-weight: 600;
+}
+
+.eng-src-card__identity .eng-version {
+  color: var(--theme-text);
+  font-size: var(--type-body);
+  font-weight: 700;
+}
+
+.eng-src-card__identity .eng-badge {
+  font-size: var(--type-micro);
+  font-weight: 400;
+}
+
+.eng-src-card__meta {
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
 }
