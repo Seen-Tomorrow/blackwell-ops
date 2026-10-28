@@ -212,6 +212,16 @@ JSX, never hides them with CSS), and the OC panel is a header-triggered overlay 
 
 **DEV tools (header)** — `VIEW` = physical panel presets + live Windows scale (app zoom 100% when testing). `GPU+` = fake multi-GPU topo (real SKU names/VRAM) for layout + forecast stress — session only. Do not ship these in REL UX.
 
+**DEV "memory leak" = React's performance-track measures, not your objects** — the dev build emits
+`performance.measure("<ComponentName>")` for every component render. Those entries live in the renderer's
+**native** performance timeline, not the JS heap, so V8 cannot reclaim them: a DEV app left open for a day
+accumulated **3.4 M measures (~4 GB private WS)** in the WebView2 renderer while `JSHeapUsedSize` stayed at
+~60 MB and forced GC changed nothing. REL emits none, which is exactly why only DEV appeared to leak.
+`src/lib/perfTimelineGuard.ts` (installed from `main.tsx` in dev builds) clears the timeline past 20 k
+measures, so a short DevTools recording still works. Diagnose with
+`performance.getEntriesByType("measure").length`; a forced heap snapshot will look clean throughout, so do
+not conclude "not a leak" from heap numbers alone.
+
 ---
 
 ## Agent harness

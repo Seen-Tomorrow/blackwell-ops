@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { initDebugFlags } from "./lib/debugFlags";
+import { installPerfTimelineGuard } from "./lib/perfTimelineGuard";
 import App from "./App";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { createRoot } from "react-dom/client";
@@ -37,6 +38,9 @@ migrateLegacyStorageKeys();
 
 if (__BUILD_MODE__ === "dev") {
   document.documentElement.classList.add("app-build--dev");
+  // React's dev build emits one performance measure per component render; the timeline is
+  // native renderer memory that GC never reclaims (see perfTimelineGuard).
+  installPerfTimelineGuard();
   interface BlackOpsDevTools {
     /** Replay welcome (3s) + setup guide in the VRAM display, then reload. */
     previewSetupWelcome: () => void;
