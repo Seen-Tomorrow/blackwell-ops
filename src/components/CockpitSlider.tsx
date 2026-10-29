@@ -122,7 +122,7 @@ export default function CockpitSlider({
     : -1;
   const hasSubControl = subControlIdx >= 0;
   const baseTrackAreaH = hasAbove ? TRACK_AREA_WITH_ABOVE : TRACK_AREA_BASE;
-  const trackAreaH = baseTrackAreaH + (hasSubControl ? 18 : 0);
+  const trackAreaH = baseTrackAreaH + (hasSubControl ? 22 : 0);
   const trackTop = (baseTrackAreaH - TRACK_HEIGHT) / 2 + (hasAbove ? 4 : 0);
 
   const selectedIdx = Math.max(0, options.findIndex((o) => o.id === value));
@@ -296,7 +296,7 @@ export default function CockpitSlider({
               className="cockpit-slider-subcontrol"
               style={{
                 left: `${trackWidthPx > 0 ? thumbPercent(subControlIdx, options.length, trackWidthPx) : 0}%`,
-                top: `${baseTrackAreaH}px`,
+                top: `${baseTrackAreaH + 4}px`,
               }}
               onPointerDown={(e) => e.stopPropagation()}
             >
