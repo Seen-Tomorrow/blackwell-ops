@@ -40,6 +40,12 @@ interface CockpitSliderProps {
   badgeWidth?: string;
   /** Use hero-style badge (larger, CTX hero formatting). */
   heroBadge?: boolean;
+  /**
+   * Tiny control pinned under one option mark (e.g. DFlash2 draft sampling).
+   * It is positioned with the same mark geometry, so it stays centered under
+   * the option as the track resizes.
+   */
+  subControl?: { optionId: string; content: React.ReactNode };
   className?: string;
 }
 
@@ -103,6 +109,7 @@ export default function CockpitSlider({
   valueBadge,
   badgeWidth = "3rem",
   heroBadge = false,
+  subControl,
   className = "",
 }: CockpitSliderProps) {
   const { trackRef, trackWidthPx } = useTrackWidth();
@@ -110,8 +117,13 @@ export default function CockpitSlider({
   const dragRef = useRef(false);
 
   const hasAbove = options.some((o) => Boolean(o.aboveLabel));
-  const trackAreaH = hasAbove ? TRACK_AREA_WITH_ABOVE : TRACK_AREA_BASE;
-  const trackTop = (trackAreaH - TRACK_HEIGHT) / 2 + (hasAbove ? 4 : 0);
+  const subControlIdx = subControl
+    ? options.findIndex((option) => option.id === subControl.optionId)
+    : -1;
+  const hasSubControl = subControlIdx >= 0;
+  const baseTrackAreaH = hasAbove ? TRACK_AREA_WITH_ABOVE : TRACK_AREA_BASE;
+  const trackAreaH = baseTrackAreaH + (hasSubControl ? 18 : 0);
+  const trackTop = (baseTrackAreaH - TRACK_HEIGHT) / 2 + (hasAbove ? 4 : 0);
 
   const selectedIdx = Math.max(0, options.findIndex((o) => o.id === value));
 
@@ -278,6 +290,19 @@ export default function CockpitSlider({
             }}
             aria-hidden
           />
+
+          {hasSubControl && subControl ? (
+            <div
+              className="cockpit-slider-subcontrol"
+              style={{
+                left: `${trackWidthPx > 0 ? thumbPercent(subControlIdx, options.length, trackWidthPx) : 0}%`,
+                top: `${baseTrackAreaH}px`,
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              {subControl.content}
+            </div>
+          ) : null}
         </div>
 
         {/* Value badge — right side with reserved left padding for growth */}

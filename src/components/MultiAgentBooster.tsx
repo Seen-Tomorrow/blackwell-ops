@@ -876,27 +876,33 @@ export default function MultiAgentBooster({
                   emphasize: Boolean(m.badgeColor) && available && !needCap,
                 };
               })}
+              subControl={
+                speedBoost === "dflash" && onDflashSampling
+                  ? {
+                      optionId: "dflash",
+                      content: (
+                        <div
+                          className="full-auto-cockpit__dflash-sampling"
+                          title="DFlash2 only — probabilistic samples the draft and lets the target rejection-sample; DFlash1 ignores it."
+                        >
+                          {(["greedy", "probabilistic"] as const).map((mode) => (
+                            <button
+                              key={mode}
+                              type="button"
+                              className={`full-auto-cockpit__dflash-sampling-btn ${
+                                dflashSampling === mode ? "value-chip-active" : "value-chip"
+                              }`}
+                              onClick={() => onDflashSampling(mode)}
+                            >
+                              {mode === "greedy" ? "GREEDY" : "PROBAB"}
+                            </button>
+                          ))}
+                        </div>
+                      ),
+                    }
+                  : undefined
+              }
             />
-            {speedBoost === "dflash" && onDflashSampling && (
-              <div
-                className="full-auto-cockpit__dflash-sampling"
-                title="DFlash2 only — probabilistic samples the draft and lets the target rejection-sample; DFlash1 ignores it."
-              >
-                <span className="full-auto-cockpit__dflash-sampling-label">DRAFT</span>
-                {(["greedy", "probabilistic"] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    className={`full-auto-cockpit__dflash-sampling-btn ${
-                      dflashSampling === mode ? "value-chip-active" : "value-chip"
-                    }`}
-                    onClick={() => onDflashSampling(mode)}
-                  >
-                    {mode === "greedy" ? "GREEDY" : "PROBAB"}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
           )}
           {showThink && (
