@@ -604,10 +604,18 @@ export default function MultiAgentBooster({
     </>
   ) : null;
 
+  const specExtraValueCount = specDetailParams.reduce(
+    (count, param) => count + param.values.length,
+    0,
+  );
+  const showSpecExtraTitle = specDetailParams.length <= 2 && specExtraValueCount <= 8;
+
   const specExtraInline =
     showSpecExtra && specDetailParams.length > 0 ? (
       <div className="full-auto-cockpit__spec-extra font-mono min-w-0 flex-1">
-        <span className="full-auto-cockpit__spec-extra-title shrink-0">SPEC-EXTRA</span>
+        {showSpecExtraTitle ? (
+          <span className="full-auto-cockpit__spec-extra-title shrink-0">SPEC-EXTRA</span>
+        ) : null}
         <div className="full-auto-cockpit__spec-extra-row min-w-0" style={{ flexWrap: "nowrap" }}>
           {specDetailParams.map((p, i) => {
             const rendered = p.values;
