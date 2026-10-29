@@ -65,6 +65,16 @@ function shortEffort(level: string): string {
   }
 }
 
+/** SSE carries acceptance totals but no draft family; fall back to the launch spec type. */
+function specModeLabelFor(detected: string | undefined, launchSpecType: string | undefined): string {
+  const raw = (detected ?? launchSpecType ?? "mtp").toLowerCase();
+  if (raw.includes("dflash")) return "DFLASH2";
+  if (raw.includes("dspark")) return "DSPARK";
+  if (raw.includes("mtp")) return "MTP";
+  const bare = raw.replace(/^draft-/, "").trim();
+  return bare ? bare.toUpperCase() : "MTP";
+}
+
 interface LastRequestStats {
   genTokensSlots: number;
   prefillMs: string | null;
@@ -521,7 +531,7 @@ export default function FusionOverlay({
       : null;
   // Draft family suffix — from `common_specu` log line; MTP is the fallback when only
   // the `print_timing draft acceptance` rate is seen (baked-in nextn emits no spec line).
-  const specModeLabel = (fusion.specMode ?? "mtp").toUpperCase();
+  const specModeLabel = specModeLabelFor(fusion.specMode, launchConfig?.specType);
   const mtpAcceptLabel = `ACC ${specModeLabel}`;
   const mtpAcceptTitle =
     fusion.specDraftAcceptedLast != null && fusion.specDraftGeneratedLast != null
