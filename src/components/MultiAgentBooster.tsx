@@ -70,6 +70,9 @@ export interface MultiAgentBoosterProps {
   onGetDflashDraft?: () => void;
   /** Open local-library draft re-picker (when pairing is wrong). */
   onChangeDflashDraft?: () => void;
+  /** DFlash2 draft sampling mode shown under the Boost slider. */
+  dflashSampling?: "greedy" | "probabilistic";
+  onDflashSampling?: (sampling: "greedy" | "probabilistic") => void;
   /** Short name of the selected MTP head. Absent ⇒ no head chosen. */
   mtpDraftLabel?: string | null;
   /** Target carries baked-in nextn — MTP runs without any head file. */
@@ -171,6 +174,8 @@ export default function MultiAgentBooster({
   dflashGetOfferLabel = null,
   onGetDflashDraft,
   onChangeDflashDraft,
+  dflashSampling = "greedy",
+  onDflashSampling,
   mtpDraftLabel = null,
   mtpBakedIn = false,
   onChangeMtpDraft,
@@ -872,6 +877,26 @@ export default function MultiAgentBooster({
                 };
               })}
             />
+            {speedBoost === "dflash" && onDflashSampling && (
+              <div
+                className="full-auto-cockpit__dflash-sampling"
+                title="DFlash2 only — probabilistic samples the draft and lets the target rejection-sample; DFlash1 ignores it."
+              >
+                <span className="full-auto-cockpit__dflash-sampling-label">DRAFT</span>
+                {(["greedy", "probabilistic"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    className={`full-auto-cockpit__dflash-sampling-btn ${
+                      dflashSampling === mode ? "value-chip-active" : "value-chip"
+                    }`}
+                    onClick={() => onDflashSampling(mode)}
+                  >
+                    {mode === "greedy" ? "GREEDY" : "PROBAB"}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           )}
           {showThink && (

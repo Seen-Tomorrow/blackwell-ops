@@ -1646,6 +1646,31 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   padding: 0.25rem 0.35rem;
 }
 
+/* Tiny DFlash2 draft-sampling switch under the Boost slider. */
+.full-auto-cockpit__dflash-sampling {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  margin-top: 0.15rem;
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-tiny);
+  line-height: 1;
+}
+
+.full-auto-cockpit__dflash-sampling-label {
+  color: var(--display-face-text-muted, var(--theme-text-muted));
+  letter-spacing: 0.08em;
+  opacity: 0.65;
+}
+
+.full-auto-cockpit__dflash-sampling-btn {
+  padding: 0 0.25rem;
+  border-radius: 0.125rem;
+  font-size: var(--type-tiny);
+  letter-spacing: 0.04em;
+}
+
 /* Center vertical divider */
 .full-auto-cockpit__grid-cell:nth-child(odd) {
   border-right: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent);

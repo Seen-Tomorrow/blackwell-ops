@@ -65,8 +65,8 @@ const SPEED_BOOST_OPTIONS: SpeedBoostOption[] = [
   },
   {
     id: "dflash",
-    label: "DFlash",
-    blurb: "External draft — needs a draft model in your library",
+    label: "DFlash2",
+    blurb: "External DFlash1/2 draft — needs a draft model in your library",
     needs: "dflash",
   },
   {
@@ -296,9 +296,9 @@ export function parseSpecTypeBoostMark(specType: string): BoostMarkParts {
   if (s === "draft-dflash" || s === "dflash") {
     return {
       id: "dflash",
-      label: "DFlash",
+      label: "DFlash2",
       aboveLabel: "draft",
-      blurb: "External draft model — needs a draft GGUF in library",
+      blurb: "External DFlash1/2 draft model — needs a draft GGUF in library",
       badgeColor: "violet",
       rank: 100,
     };

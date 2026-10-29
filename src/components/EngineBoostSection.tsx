@@ -42,6 +42,8 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
     dflashGetOfferLabel,
     onGetDflashDraft,
     onChangeDflashDraft,
+    dflashSampling,
+    onDflashSampling,
     mtpDraftLabel,
     mtpBakedIn,
     onChangeMtpDraft,
@@ -112,6 +114,8 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
         dflashGetOfferLabel={dflashGetOfferLabel}
         onGetDflashDraft={onGetDflashDraft}
         onChangeDflashDraft={onChangeDflashDraft}
+        dflashSampling={dflashSampling}
+        onDflashSampling={onDflashSampling}
         mtpDraftLabel={mtpDraftLabel}
         mtpBakedIn={mtpBakedIn}
         onChangeMtpDraft={onChangeMtpDraft}
@@ -187,6 +191,8 @@ export interface EngineBoostSectionProps {
   dflashGetOfferLabel: string | null;
   onGetDflashDraft: () => void;
   onChangeDflashDraft: () => void;
+  dflashSampling: "greedy" | "probabilistic";
+  onDflashSampling: (sampling: "greedy" | "probabilistic") => void;
   mtpDraftLabel: string | null;
   mtpBakedIn: boolean;
   onChangeMtpDraft: () => void;

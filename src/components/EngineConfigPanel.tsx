@@ -3458,6 +3458,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           dflashGetOfferLabel={dflashGetOfferLabel}
           onGetDflashDraft={() => { void handleGetDflashDraft(); }}
           onChangeDflashDraft={handleChangeDflashDraft}
+          dflashSampling={config.dflash_sampling === "probabilistic" ? "probabilistic" : "greedy"}
+          onDflashSampling={(sampling) => updateParam("dflash_sampling", sampling)}
           mtpDraftLabel={mtpDraftLabel}
           mtpBakedIn={mtpBakedIn}
           onChangeMtpDraft={handleChangeMtpDraft}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { UserEditedTemplateParam } from "./types";
-import { specShareFields } from "./specProfiles";
+import { buildSpecCliExtraParams, specShareFields } from "./specProfiles";
 
 /**
  * The share card's SPEC chip row is derived from Boost state, never from the legacy
@@ -35,6 +35,7 @@ const params: UserEditedTemplateParam[] = [
   knob("dflash_n_max", DFLASH_GROUP),
   knob("dflash_n_min", DFLASH_GROUP, { defaultValue: 1 }),
   knob("dflash_p_min", DFLASH_GROUP, { defaultValue: 0.5, values: [0.5] }),
+  knob("dflash_sampling", DFLASH_GROUP, { defaultValue: "greedy", values: ["greedy", "probabilistic"] }),
   knob("dflash_draft_model", DFLASH_GROUP, { values: ["auto"], defaultValue: "auto" }),
 ];
 
@@ -77,5 +78,14 @@ describe("specShareFields", () => {
     expect(
       specShareFields("off", { spec_type: "ngram", spec_draft_n_max: 8 }, params),
     ).toEqual({});
+  });
+
+  it("keeps DFlash2 sampling on DFlash only, never DSpark", () => {
+    expect(
+      buildSpecCliExtraParams("dflash", { dflash_sampling: "probabilistic" }, params),
+    ).toMatchObject({ dflash_sampling: "probabilistic" });
+    expect(
+      buildSpecCliExtraParams("dspark", { dflash_sampling: "probabilistic" }, params),
+    ).not.toHaveProperty("dflash_sampling");
   });
 });

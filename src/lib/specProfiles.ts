@@ -44,6 +44,7 @@ const MTP_P_MIN = "mtp_p_min";
 const DFLASH_N_MAX = "dflash_n_max";
 const DFLASH_N_MIN = "dflash_n_min";
 const DFLASH_P_MIN = "dflash_p_min";
+const DFLASH_SAMPLING = "dflash_sampling";
 export const DFLASH_DRAFT_MODEL = "dflash_draft_model";
 export const MTP_DRAFT_MODEL = "mtp_draft_model";
 
@@ -54,6 +55,7 @@ export const SPEC_PROFILE_PARAM_KEYS = [
   DFLASH_N_MAX,
   DFLASH_N_MIN,
   DFLASH_P_MIN,
+  DFLASH_SAMPLING,
   DFLASH_DRAFT_MODEL,
   MTP_DRAFT_MODEL,
 ] as const;
@@ -197,6 +199,10 @@ export function buildSpecCliExtraParams(
   pickProfileKey(adapter.knobs.nMax);
   pickProfileKey(adapter.knobs.nMin);
   pickProfileKey(adapter.knobs.pMin);
+  // DFlash2-only: probabilistic sampling. DSpark shares the profile but not this knob.
+  if (method === "dflash" && adapter.knobs.sampling) {
+    pickProfileKey(adapter.knobs.sampling);
+  }
 
   const draftKey = adapter.knobs.draftModel;
   if (draftKey) {

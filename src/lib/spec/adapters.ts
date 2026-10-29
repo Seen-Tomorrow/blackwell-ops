@@ -30,6 +30,8 @@ interface SpecKnobs {
   nMax: string;
   nMin: string;
   pMin: string;
+  /** DFlash2 draft sampling mode; absent for methods that do not use it. */
+  sampling?: string;
   /** Absent ⇒ the method is baked-in only and never takes an external draft path. */
   draftModel?: string;
 }
@@ -82,13 +84,14 @@ const MTP: SpecAdapter = {
 const DFLASH: SpecAdapter = {
   id: "dflash",
   cliType: "draft-dflash",
-  label: "DFLASH",
+  label: "DFLASH2",
   group: SPEC_PROFILE_DFLASH_GROUP,
   capability: "dflash",
   knobs: {
     nMax: "dflash_n_max",
     nMin: "dflash_n_min",
     pMin: "dflash_p_min",
+    sampling: "dflash_sampling",
     draftModel: "dflash_draft_model",
   },
   // external_mtp stays listed: an MTP head is a valid external draft for the DFlash

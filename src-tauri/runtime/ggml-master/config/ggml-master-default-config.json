@@ -557,6 +557,25 @@
       ]
     },
     {
+      "default": "greedy",
+      "dock": "",
+      "flag": "--spec-draft-sampling",
+      "flag_pair": [],
+      "hidden_default": true,
+      "key": "dflash_sampling",
+      "label": "DRAFT-SAMPLING",
+      "note": "DFlash2: greedy argmax or probabilistic draft sampling with target rejection (DFlash1 ignores probabilistic).",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SPECULATIVE-DFLASH",
+      "values": [
+        "greedy",
+        "probabilistic"
+      ]
+    },
+    {
       "default": "off",
       "dock": "",
       "flag": "--spec-draft-model",
@@ -813,6 +832,6 @@
       "4"
     ]
   },
-  "templateVersion": 55,
+  "templateVersion": 56,
   "template_type": "ggml-llama"
 }
