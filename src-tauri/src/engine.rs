@@ -480,6 +480,28 @@ pub async fn launch_engine(
         .map_err(|message| BlackwellError::BinaryValidationFailed { message })?;
     crate::config::validate_model_path(&config.model_path)
         .map_err(|message| BlackwellError::EngineSpawnFailed { message })?;
+
+    // Arch capabilities are a data file, not a hardcoded match: upstream may deny
+    // flags for an architecture (currently `-sm tensor` on laguna/amax rescaling).
+    if config
+        .get_param_str("split")
+        .is_some_and(|split| split.eq_ignore_ascii_case("tensor"))
+    {
+        let shape = crate::model_cache::get_cached_with_shape(&config.model_path)
+            .1
+            .or_else(|| crate::gguf_shape::read_shape_for_path(&config.model_path).ok());
+        if let Some(shape) = shape {
+            if let Some(reason) = crate::arch_capabilities::tensor_split_denial(&shape.architecture) {
+                return Err(BlackwellError::EngineSpawnFailed {
+                    message: format!(
+                        "TENSOR split is not supported for architecture '{}' — {reason}",
+                        shape.architecture
+                    ),
+                });
+            }
+        }
+    }
+
     sanitize_spec_extra_params(&mut config, &user_params);
     // Catalog for `auto` draft resolution — the same merge `list_models` does, from
     // the config clone already held. Only paid when a draft row says `auto`.

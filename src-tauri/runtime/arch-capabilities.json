@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "arches": {
+    "laguna": {
+      "tensor_split": false,
+      "reason": "llama.cpp denies -sm tensor on amax-rescaled MoE architectures"
+    }
+  }
+}

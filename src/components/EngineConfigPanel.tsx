@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
+import { useArchCapabilities } from "../hooks/useArchCapabilities";
 import type { ConfigViewMode, ModelEntry, EngineConfig, GpuInfo, UserEditedTemplateParam, ProviderConfig, ProviderTemplate, StackEntry, SystemInfo } from "../lib/types";
 import { DEFAULT_PROVIDER_ID, isProfileBuilt, profileEnvLookup } from "../lib/types";
 import {
@@ -737,8 +738,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     spawnProfile,
   });
   // Custom / empty profile: always allow tensor/row if present in template values.
+  const archCaps = useArchCapabilities();
+  const modelArch = (model?.metadata?.architecture ?? "").trim().toLowerCase();
+  const archRule = modelArch ? archCaps?.arches[modelArch] : undefined;
   const tensorSplitSupported =
-    isCustomProvider || spawnProfile?.tensor_split !== false;
+    (isCustomProvider || spawnProfile?.tensor_split !== false)
+    && archRule?.tensor_split !== false;
 
   const isProfileBuilding = useCallback((profile: EnvProfile): boolean => {
     if (!buildProgress) return false;
@@ -3199,7 +3204,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         splitValue={config.split}
         splitValues={splitParamDef?.values?.length ? splitParamDef.values : ["none", "layer", "row", "tensor"]}
         launchChrome={launchChrome}
-        hideTensorSplit={!tensorSplitSupported && !isCustomProvider}
+        hideTensorSplit={!tensorSplitSupported}
         onDeviceChange={(v) => {
           if (launchChrome.chromeDisabled || launchChrome.deviceLocked) return;
           updateParam("device", v);

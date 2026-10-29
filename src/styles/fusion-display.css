@@ -4272,6 +4272,14 @@ html[data-industrial-bezel="brush"] {
   font-variant-numeric: tabular-nums;
 }
 
+.fusion-identity-rail__reasoning {
+  font-size: var(--type-tiny);
+  letter-spacing: 0.06em;
+  color: color-mix(in srgb, var(--display-face-text) 72%, transparent);
+  max-width: 30ch;
+  font-variant-numeric: tabular-nums;
+}
+
 .fusion-identity-rail__alias {
   font-size: 13px;
   letter-spacing: 0.1em;

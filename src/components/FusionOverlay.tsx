@@ -16,6 +16,7 @@ import FusionMicroReadout from "./FusionMicroReadout";
 import type { GpuInfo } from "../lib/types";
 import { useFusionBenchTray } from "../hooks/useFusionBenchTray";
 import { useFusionHeroTpsMode } from "../hooks/useFusionHeroTpsMode";
+import { useEngineReasoning } from "../hooks/useEngineReasoning";
 import { useTauriListen } from "../hooks/useTauriListen";
 
 interface FusionOverlayProps {
@@ -54,6 +55,14 @@ function formatK(n: number): string {
   if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
   if (n >= 1000) return `${Math.floor(n / 1000)}K`;
   return n.toString();
+}
+
+function shortEffort(level: string): string {
+  switch (level.toLowerCase()) {
+    case "minimal": return "MIN";
+    case "medium": return "MED";
+    default: return level.toUpperCase();
+  }
 }
 
 interface LastRequestStats {
@@ -211,6 +220,11 @@ export default function FusionOverlay({
 }: FusionOverlayProps) {
   const displayAlias = alias ?? "ENGINE";
   const displayPort = enginePort ?? 9090;
+  const reasoning = useEngineReasoning(
+    enginePort,
+    engineStatus !== "LOADING" && engineStatus !== "IDLE",
+    modelName ?? displayAlias,
+  );
 
   // Per-engine state stored in a Map keyed by slotIdx — no remounting needed on switch
   interface EngineStateData {
@@ -586,6 +600,19 @@ export default function FusionOverlay({
                   >
                     {formatTokenCount(ctxTotal)}
                     {fusion.parallel > 1 ? ` · ×${fusion.parallel}` : ""}
+                  </span>
+                </>
+              )}
+              {reasoning && reasoning.levels.length > 0 && (
+                <>
+                  <span className="fusion-identity-rail__rule" aria-hidden>
+                    │
+                  </span>
+                  <span
+                    className="fusion-identity-rail__reasoning truncate"
+                    title={`Client reasoning_effort values: ${reasoning.levels.join(", ")}`}
+                  >
+                    EFFORT {reasoning.levels.map(shortEffort).join("·")}
                   </span>
                 </>
               )}

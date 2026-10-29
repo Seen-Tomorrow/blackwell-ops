@@ -7,6 +7,8 @@ mod runtime_settings;
 mod debug_flags;
 mod ipc_emit;
 mod engine;
+mod engine_props;
+mod arch_capabilities;
 mod engine_packs;
 mod disk_io_pdh;
 mod cpu_topology;
@@ -394,6 +396,8 @@ async fn main() {
             engine::launch_engine,
             engine::stop_engine,
             engine::stop_engine_slot,
+            engine_props::get_engine_reasoning_levels,
+            arch_capabilities::get_arch_capabilities,
             engine::stop_all_engines,
             engine::stop_engines_by_provider,
             engine::get_stack_status,
