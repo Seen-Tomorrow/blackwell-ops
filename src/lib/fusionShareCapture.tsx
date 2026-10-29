@@ -27,6 +27,8 @@ export interface FusionShareLaunchConfig {
   flashAttn?: string;
   splitMode?: string;
   kvQuant?: string;
+  /** Launch reasoning mode; `"off"` means clients cannot pick an effort level. */
+  reasoning?: string | number | null;
   specType?: string;
   specDraftNMax?: string | number;
   specDraftNMin?: string | number;

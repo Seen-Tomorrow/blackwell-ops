@@ -220,9 +220,11 @@ export default function FusionOverlay({
 }: FusionOverlayProps) {
   const displayAlias = alias ?? "ENGINE";
   const displayPort = enginePort ?? 9090;
+  const reasoningDisabled =
+    String(launchConfig?.reasoning ?? "").trim().toLowerCase() === "off";
   const reasoning = useEngineReasoning(
     enginePort,
-    engineStatus !== "LOADING" && engineStatus !== "IDLE",
+    !reasoningDisabled && engineStatus !== "LOADING" && engineStatus !== "IDLE",
     modelName ?? displayAlias,
   );
 
@@ -603,16 +605,22 @@ export default function FusionOverlay({
                   </span>
                 </>
               )}
-              {reasoning && reasoning.levels.length > 0 && (
+              {(reasoningDisabled || (reasoning && reasoning.levels.length > 0)) && (
                 <>
                   <span className="fusion-identity-rail__rule" aria-hidden>
                     │
                   </span>
                   <span
                     className="fusion-identity-rail__reasoning truncate"
-                    title={`Client reasoning_effort values: ${reasoning.levels.join(", ")}`}
+                    title={
+                      reasoningDisabled
+                        ? "Launch --reasoning off — clients cannot set a reasoning effort level"
+                        : `Client reasoning_effort values: ${reasoning?.levels.join(", ") ?? ""}`
+                    }
                   >
-                    EFFORT {reasoning.levels.map(shortEffort).join("·")}
+                    {reasoningDisabled
+                      ? "EFFORT DISABLED"
+                      : `EFFORT ${reasoning?.levels.map(shortEffort).join("·") ?? ""}`}
                   </span>
                 </>
               )}

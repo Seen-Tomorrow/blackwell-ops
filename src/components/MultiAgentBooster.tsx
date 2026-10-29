@@ -880,6 +880,8 @@ export default function MultiAgentBooster({
               label="Think"
               value={think}
               onChange={onThink}
+              valueBadge={think === "off" ? "DISABLED" : undefined}
+              badgeWidth={think === "off" ? "8ch" : undefined}
               options={thinkOptions.map((o) => ({
                 id: o.id,
                 label: o.label,

@@ -96,7 +96,7 @@ export type ThinkOption = { id: ThinkId; label: string; blurb: string };
  * 8000) — never collapse two engine values onto one label.
  */
 export const THINK_OPTIONS: ThinkOption[] = [
-  { id: "off", label: "Off", blurb: "No chain-of-thought budget" },
+  { id: "off", label: "Off", blurb: "Disabled at launch — clients cannot set a reasoning effort level" },
   { id: "on", label: "On", blurb: "Full reasoning when the model supports it" },
   { id: "budget2k", label: "2k", blurb: "Capped thinking budget (~2000)" },
   { id: "budget", label: "4k", blurb: "Capped thinking budget (~4000)" },
@@ -514,7 +514,7 @@ export function resolveFullAutoPlan(opts: {
   const agentsLabel = `×${agentsN}`;
   const thinkLabel =
     think === "off"
-      ? "Off"
+      ? "Disabled"
       : think === "on"
         ? "On"
         : think === "budget2k"

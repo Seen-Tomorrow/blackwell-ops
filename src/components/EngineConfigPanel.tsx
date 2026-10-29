@@ -1701,6 +1701,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     flashAttn: config.flash_attn != null ? String(config.flash_attn) : undefined,
     splitMode: config.split != null ? String(config.split) : undefined,
     kvQuant: config.kv_quant != null ? String(config.kv_quant) : undefined,
+    reasoning: config.reasoning ?? null,
     specType: shareSpecFields.specType,
     specDraftNMax: shareSpecFields.nMax,
     specDraftNMin: shareSpecFields.nMin,
@@ -1711,6 +1712,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     config.flash_attn,
     config.split,
     config.kv_quant,
+    config.reasoning,
     shareSpecFields,
   ]);
 
