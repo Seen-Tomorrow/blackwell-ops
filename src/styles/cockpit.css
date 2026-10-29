@@ -6,6 +6,13 @@
   background-image: var(--theme-industrial-texture-active, none);
   /* Recess depth — --theme-cockpit-well-shadow (softer on ARCTIC) */
   box-shadow: var(--theme-cockpit-well-shadow);
+  /* Cockpit-first mono trial: same ui-monospace face as the DFlash2 switch. */
+  --cockpit-mono: ui-monospace, "Cascadia Mono", "JetBrains Mono", "Roboto Mono", monospace;
+}
+
+.full-auto-cockpit .font-mono,
+.full-auto-cockpit.font-mono {
+  font-family: var(--cockpit-mono);
 }
 
 .full-auto-cockpit--hero {
