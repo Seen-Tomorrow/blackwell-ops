@@ -6,79 +6,214 @@ use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, PhysicalPosition, WebviewWindow, WindowEvent};
 
+use oym_link_core::identity::{
+    default_data_dir, load_identity, load_token, save_identity, Identity,
+};
+use oym_link_core::pairing::pair_device;
+use oym_link_core::status::{probe, Probe};
+use oym_link_core::{CLIENT_VERSION, PI_VERSION};
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LinkStatus {
     mode: &'static str,
     connected: bool,
+    paired: bool,
     device_name: String,
     gateway: String,
     version: &'static str,
     home_models: usize,
     cloud_model: String,
     cloud_key_stored: bool,
+    server_version: Option<String>,
+    public_url: Option<String>,
+    session: bool,
+    error: Option<String>,
+}
+
+impl LinkStatus {
+    fn unpaired() -> Self {
+        Self {
+            mode: "portable",
+            connected: false,
+            paired: false,
+            device_name: String::new(),
+            gateway: String::new(),
+            version: CLIENT_VERSION,
+            home_models: 0,
+            cloud_model: "deepseek-flash".into(),
+            cloud_key_stored: false,
+            server_version: None,
+            public_url: None,
+            session: false,
+            error: None,
+        }
+    }
+
+    fn from_probe(identity: &Identity, probe: Probe) -> Self {
+        Self {
+            mode: "portable",
+            connected: true,
+            paired: true,
+            device_name: identity.name.clone(),
+            gateway: identity.server.clone(),
+            version: CLIENT_VERSION,
+            home_models: probe.routes,
+            cloud_model: "deepseek-flash".into(),
+            cloud_key_stored: false,
+            server_version: Some(probe.server_version),
+            public_url: probe.public_url,
+            session: probe.session,
+            error: None,
+        }
+    }
 }
 
 fn default_settings() -> Value {
     serde_json::json!({
         "deviceName": "",
+        "gatewayUrl": "",
         "cloudBaseUrl": "https://api.deepseek.com",
         "cloudModel": "deepseek-flash",
         "cloudKeyStored": false
     })
 }
 
-fn settings_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|error| format!("app data dir: {error}"))?;
-    Ok(dir.join("settings.json"))
+fn settings_path() -> std::path::PathBuf {
+    default_data_dir().join("settings.json")
 }
 
-#[tauri::command]
-fn link_status() -> LinkStatus {
-    LinkStatus {
-        mode: "portable",
-        connected: false,
-        device_name: String::new(),
-        gateway: String::new(),
-        version: env!("CARGO_PKG_VERSION"),
-        home_models: 0,
-        cloud_model: "deepseek-flash".into(),
-        cloud_key_stored: false,
+fn load_settings() -> Value {
+    std::fs::read_to_string(settings_path())
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_else(default_settings)
+}
+
+fn save_settings(settings: &Value) -> Result<(), String> {
+    let path = settings_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| format!("create data dir: {error}"))?;
+    }
+    let raw = serde_json::to_string_pretty(settings).map_err(|error| error.to_string())?;
+    std::fs::write(&path, raw).map_err(|error| format!("write settings: {error}"))
+}
+
+fn device_name(settings: &Value) -> String {
+    settings
+        .get("deviceName")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| {
+            std::env::var("COMPUTERNAME").unwrap_or_else(|_| "windows-device".into())
+        })
+}
+
+async fn status_snapshot() -> LinkStatus {
+    let data_dir = default_data_dir();
+    let Some(identity) = load_identity(&data_dir) else {
+        return LinkStatus::unpaired();
+    };
+    let token = match load_token(&identity) {
+        Ok(token) => token,
+        Err(error) => {
+            let mut status = LinkStatus::unpaired();
+            status.paired = true;
+            status.device_name = identity.name;
+            status.gateway = identity.server;
+            status.error = Some(error);
+            return status;
+        }
+    };
+    match probe(
+        &identity.server,
+        &token,
+        &identity.name,
+        CLIENT_VERSION,
+        PI_VERSION,
+        "Medium",
+    )
+    .await
+    {
+        Ok(probe) => LinkStatus::from_probe(&identity, probe),
+        Err(error) => {
+            let mut status = LinkStatus::unpaired();
+            status.paired = true;
+            status.device_name = identity.name;
+            status.gateway = identity.server;
+            status.error = Some(error);
+            status
+        }
     }
 }
 
 #[tauri::command]
-fn link_pair(code: String) -> Result<(), String> {
-    let _ = code;
-    Err("Pairing is wired in the link-core slice.".into())
+async fn link_status() -> Result<LinkStatus, String> {
+    Ok(status_snapshot().await)
+}
+
+#[tauri::command]
+async fn link_pair(code: String, server: String, name: Option<String>) -> Result<LinkStatus, String> {
+    let server = server.trim().to_string();
+    if server.is_empty() {
+        return Err("Enter the gateway URL from REMOTE → STATUS first.".into());
+    }
+    let code = code.trim().to_string();
+    if code.is_empty() {
+        return Err("Enter the pairing code.".into());
+    }
+    let settings = load_settings();
+    let name = name
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| device_name(&settings));
+
+    let (identity, _token) = pair_device(
+        &server,
+        &code,
+        &name,
+        CLIENT_VERSION,
+        PI_VERSION,
+        "Medium",
+    )
+    .await?;
+    save_identity(&default_data_dir(), &identity)?;
+
+    let mut settings = load_settings();
+    if let Some(object) = settings.as_object_mut() {
+        object.insert("gatewayUrl".into(), Value::String(server));
+        if object
+            .get("deviceName")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim()
+            .is_empty()
+        {
+            object.insert("deviceName".into(), Value::String(identity.name.clone()));
+        }
+    }
+    let _ = save_settings(&settings);
+
+    Ok(status_snapshot().await)
 }
 
 #[tauri::command]
 fn link_assistant_start() -> Result<(), String> {
-    Err("The local assistant launches in the link-core slice.".into())
+    Err("The local assistant launches in the next slice.".into())
 }
 
 #[tauri::command]
-fn link_settings_get(app: AppHandle) -> Result<Value, String> {
-    let path = settings_path(&app)?;
-    match std::fs::read_to_string(&path) {
-        Ok(raw) => serde_json::from_str(&raw).map_err(|error| format!("parse settings: {error}")),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(default_settings()),
-        Err(error) => Err(format!("read settings: {error}")),
-    }
+fn link_settings_get() -> Result<Value, String> {
+    Ok(load_settings())
 }
 
 #[tauri::command]
-fn link_settings_set(app: AppHandle, settings: Value) -> Result<(), String> {
-    let path = settings_path(&app)?;
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|error| format!("create settings dir: {error}"))?;
-    }
-    let raw = serde_json::to_string_pretty(&settings).map_err(|error| error.to_string())?;
-    std::fs::write(&path, raw).map_err(|error| format!("write settings: {error}"))
+fn link_settings_set(settings: Value) -> Result<(), String> {
+    save_settings(&settings)
 }
 
 #[tauri::command]
@@ -170,7 +305,7 @@ fn main() {
                 })
                 .build(app)?;
 
-            show_flyout(&app.handle().clone());
+            show_flyout(app.handle());
             Ok(())
         })
         .on_window_event(|window, event| {

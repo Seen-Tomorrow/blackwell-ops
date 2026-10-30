@@ -21,13 +21,10 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use base64::Engine;
-use oym_gateway::protocol::{
-    ClientMessage, ModelRoute, PairRequest, PairResponse, ServerMessage, SessionOpen,
-};
+use oym_gateway::protocol::{ClientMessage, ModelRoute, ServerMessage, SessionOpen};
 use futures_util::{SinkExt, StreamExt};
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use rand::RngCore;
-use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -38,15 +35,14 @@ use tokio::sync::{mpsc, oneshot, Mutex, RwLock};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::Message;
-use url::Url;
 
 mod admin;
 mod local;
 
-const SERVICE: &str = "OYMLink";
+use oym_link_core::identity::{load_identity, load_token, save_identity, Identity};
+
 const CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const PI_VERSION: &str = "1.4.0";
-
 /// Server baked into this portable trial build. The named-tunnel step replaces
 /// this with the stable hostname; rebuild the client at that point.
 const DEFAULT_SERVER: &str = "wss://favorite-fountain-begin-field.trycloudflare.com/link";
@@ -67,13 +63,6 @@ struct Args {
     cloud_base_url: Option<String>,
     cloud_model: Option<String>,
     cloud_context_window: Option<usize>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct Identity {
-    device_id: String,
-    server: String,
-    name: String,
 }
 
 fn arg_value(args: &mut impl Iterator<Item = String>, flag: &str) -> Option<String> {
@@ -196,35 +185,17 @@ fn parse_args() -> Args {
     }
 }
 
-fn identity_path(data_dir: &Path) -> PathBuf {
-    data_dir.join("identity.json")
-}
-
-fn load_identity(data_dir: &Path) -> Option<Identity> {
-    let raw = std::fs::read_to_string(identity_path(data_dir)).ok()?;
-    serde_json::from_str(&raw).ok()
-}
-
-fn save_identity(data_dir: &Path, identity: &Identity) -> Result<(), String> {
-    std::fs::create_dir_all(data_dir).map_err(|e| format!("create data dir: {e}"))?;
-    let raw = serde_json::to_string_pretty(identity).map_err(|e| e.to_string())?;
-    std::fs::write(identity_path(data_dir), raw).map_err(|e| format!("write identity: {e}"))
-}
-
-fn token_entry(device_id: &str) -> Result<keyring::Entry, String> {
-    keyring::Entry::new(SERVICE, device_id).map_err(|e| format!("credential entry: {e}"))
-}
-
-fn load_token(identity: &Identity) -> Result<String, String> {
-    token_entry(&identity.device_id)?
-        .get_password()
-        .map_err(|e| format!("read device token: {e}"))
-}
-
-fn save_token(device_id: &str, token: &str) -> Result<(), String> {
-    token_entry(device_id)?
-        .set_password(token)
-        .map_err(|e| format!("store device token: {e}"))
+async fn pair_device(server: &str, code: &str, name: &str) -> Result<(Identity, String), String> {
+    let integrity = if is_elevated() { "High" } else { "Medium" };
+    oym_link_core::pairing::pair_device(
+        server,
+        code,
+        name,
+        CLIENT_VERSION,
+        PI_VERSION,
+        integrity,
+    )
+    .await
 }
 
 fn prompt_pairing_code() -> Result<String, String> {
@@ -247,57 +218,6 @@ fn prompt_pairing_code() -> Result<String, String> {
         return Err("pairing cancelled".into());
     }
     Ok(code)
-}
-
-fn pair_url(server: &str) -> Result<Url, String> {
-    let mut url = Url::parse(server).map_err(|e| format!("server URL: {e}"))?;
-    match url.scheme() {
-        "wss" | "https" => {
-            url.set_scheme("https").ok();
-        }
-        "ws" | "http" => {
-            url.set_scheme("http").ok();
-        }
-        other => return Err(format!("unsupported server scheme: {other}")),
-    }
-    url.set_path("/pair");
-    url.set_query(None);
-    url.set_fragment(None);
-    Ok(url)
-}
-
-async fn pair_device(server: &str, code: &str, name: &str) -> Result<(Identity, String), String> {
-    let request = PairRequest {
-        code: code.trim().to_string(),
-        device_name: Some(name.to_string()),
-        os: Some("Windows".into()),
-        user: std::env::var("USERNAME").ok(),
-        integrity: Some(if is_elevated() { "High" } else { "Medium" }.into()),
-        client_version: Some(CLIENT_VERSION.into()),
-        pi_version: Some(PI_VERSION.into()),
-    };
-    let response = reqwest::Client::new()
-        .post(pair_url(server)?)
-        .json(&request)
-        .send()
-        .await
-        .map_err(|e| format!("pair request: {e:?}"))?;
-    let status = response.status();
-    if !status.is_success() {
-        let text = response.text().await.unwrap_or_default();
-        return Err(format!("pairing rejected ({status}): {text}"));
-    }
-    let body: PairResponse = response
-        .json()
-        .await
-        .map_err(|e| format!("pair response: {e}"))?;
-    let identity = Identity {
-        device_id: body.device_id.clone(),
-        server: server.to_string(),
-        name: name.to_string(),
-    };
-    save_token(&body.device_id, &body.token)?;
-    Ok((identity, body.token))
 }
 
 #[cfg(windows)]

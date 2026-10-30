@@ -1610,9 +1610,9 @@ dependencies = [
  "http",
  "keyring",
  "oym-gateway",
+ "oym-link-core",
  "portable-pty",
  "rand 0.8.8",
- "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -1620,6 +1620,21 @@ dependencies = [
  "tokio-tungstenite",
  "url",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "oym-link-core"
+version = "0.1.0"
+dependencies = [
+ "futures-util",
+ "keyring",
+ "oym-gateway",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite",
+ "url",
 ]
 
 [[package]]

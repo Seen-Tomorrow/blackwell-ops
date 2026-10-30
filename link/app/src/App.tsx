@@ -4,16 +4,22 @@ import { invoke } from "@tauri-apps/api/core";
 type Status = {
   mode: string;
   connected: boolean;
+  paired: boolean;
   deviceName: string;
   gateway: string;
   version: string;
   homeModels: number;
   cloudModel: string;
   cloudKeyStored: boolean;
+  serverVersion: string | null;
+  publicUrl: string | null;
+  session: boolean;
+  error: string | null;
 };
 
 type Settings = {
   deviceName: string;
+  gatewayUrl: string;
   cloudBaseUrl: string;
   cloudModel: string;
   cloudKeyStored: boolean;
@@ -22,16 +28,22 @@ type Settings = {
 const DEFAULT_STATUS: Status = {
   mode: "portable",
   connected: false,
+  paired: false,
   deviceName: "",
   gateway: "",
   version: "0.1.0",
   homeModels: 0,
   cloudModel: "deepseek-flash",
   cloudKeyStored: false,
+  serverVersion: null,
+  publicUrl: null,
+  session: false,
+  error: null,
 };
 
 const DEFAULT_SETTINGS: Settings = {
   deviceName: "",
+  gatewayUrl: "",
   cloudBaseUrl: "https://api.deepseek.com",
   cloudModel: "deepseek-flash",
   cloudKeyStored: false,
@@ -44,6 +56,7 @@ export default function App() {
   const [status, setStatus] = useState<Status>(DEFAULT_STATUS);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [code, setCode] = useState("");
+  const [gateway, setGateway] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -58,7 +71,9 @@ export default function App() {
 
   const loadSettings = useCallback(async () => {
     try {
-      setSettings(await invoke<Settings>("link_settings_get"));
+      const loaded = await invoke<Settings>("link_settings_get");
+      setSettings(loaded);
+      setGateway((current) => current || loaded.gatewayUrl);
     } catch {
       setSettings(DEFAULT_SETTINGS);
     }
@@ -67,7 +82,7 @@ export default function App() {
   useEffect(() => {
     void refresh();
     void loadSettings();
-    const timer = window.setInterval(() => void refresh(), 5000);
+    const timer = window.setInterval(() => void refresh(), 10000);
     return () => window.clearInterval(timer);
   }, [refresh, loadSettings]);
 
@@ -75,22 +90,33 @@ export default function App() {
     void invoke("link_hide").catch(() => {});
   }, []);
 
+  const openPair = useCallback(() => {
+    setGateway(settings.gatewayUrl || status.gateway || "");
+    setError(null);
+    setNotice(null);
+    setView("pair");
+  }, [settings.gatewayUrl, status.gateway]);
+
   const pair = useCallback(async () => {
     setError(null);
     setNotice(null);
     setBusy("pair");
     try {
-      await invoke("link_pair", { code: code.trim() });
-      setNotice("Paired. Connecting…");
+      const next = await invoke<Status>("link_pair", {
+        code: code.trim(),
+        server: gateway.trim(),
+      });
+      setStatus(next);
+      setSettings((current) => ({ ...current, gatewayUrl: gateway.trim() }));
+      setNotice(next.connected ? "Paired and online." : "Paired. The gateway is not reachable yet.");
       setCode("");
       setView("home");
-      await refresh();
     } catch (e) {
       setError(typeof e === "string" ? e : String(e));
     } finally {
       setBusy(null);
     }
-  }, [code, refresh]);
+  }, [code, gateway, refresh]);
 
   const startAssistant = useCallback(async () => {
     setError(null);
@@ -141,17 +167,20 @@ export default function App() {
                 <span className="label">CONNECTION</span>
                 <span className={`state ${status.connected ? "is-on" : "is-off"}`}>
                   <span className="dot" />
-                  {status.connected ? "ONLINE" : "OFFLINE"}
+                  {status.connected ? "ONLINE" : status.paired ? "PAIRED · OFFLINE" : "OFFLINE"}
                 </span>
               </div>
               <dl className="kv">
                 <dt>Gateway</dt>
-                <dd className={status.gateway ? "" : "muted"}>{status.gateway || "not paired"}</dd>
+                <dd className={status.gateway || gateway ? "" : "muted"}>
+                  {status.gateway || gateway || "not paired"}
+                </dd>
                 <dt>Device</dt>
                 <dd className={status.deviceName ? "" : "muted"}>{status.deviceName || "—"}</dd>
               </dl>
-              <button className="button" onClick={() => setView("pair")}>
-                {status.gateway ? "REPAIR DEVICE" : "PAIR DEVICE"}
+              {status.error && <p className="copy">{status.error}</p>}
+              <button className="button" onClick={openPair}>
+                {status.paired || status.gateway ? "REPAIR DEVICE" : "PAIR DEVICE"}
               </button>
             </section>
 
@@ -191,20 +220,37 @@ export default function App() {
               </button>
             </div>
             <p className="copy">
-              In OYM → REMOTE → STATUS, click PAIR DEVICE. Enter the one-time code below.
+              In OYM → REMOTE → STATUS, copy the public endpoint and click PAIR DEVICE.
+              Then enter both below.
             </p>
-            <input
-              className="input"
-              autoFocus
-              maxLength={12}
-              placeholder="PAIRING CODE"
-              value={code}
-              onChange={(e) => setCode(e.target.value.toUpperCase())}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && code.trim()) void pair();
-              }}
-            />
-            <button className="button button-accent" disabled={!code.trim() || busy === "pair"} onClick={() => void pair()}>
+            <label className="field">
+              <span>Gateway URL</span>
+              <input
+                className="input"
+                autoFocus
+                placeholder="wss://host/link or https://host"
+                value={gateway}
+                onChange={(e) => setGateway(e.target.value)}
+              />
+            </label>
+            <label className="field">
+              <span>Pairing code</span>
+              <input
+                className="input"
+                maxLength={12}
+                placeholder="PAIRING CODE"
+                value={code}
+                onChange={(e) => setCode(e.target.value.toUpperCase())}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && code.trim() && gateway.trim()) void pair();
+                }}
+              />
+            </label>
+            <button
+              className="button button-accent"
+              disabled={!code.trim() || !gateway.trim() || busy === "pair"}
+              onClick={() => void pair()}
+            >
               {busy === "pair" ? "PAIRING…" : "PAIR"}
             </button>
           </section>
@@ -218,6 +264,15 @@ export default function App() {
                 BACK
               </button>
             </div>
+            <label className="field">
+              <span>Gateway URL</span>
+              <input
+                className="input"
+                placeholder="wss://host/link or https://host"
+                value={settings.gatewayUrl}
+                onChange={(e) => setSettings({ ...settings, gatewayUrl: e.target.value })}
+              />
+            </label>
             <label className="field">
               <span>Device name</span>
               <input
