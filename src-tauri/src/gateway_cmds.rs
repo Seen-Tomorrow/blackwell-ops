@@ -260,24 +260,26 @@ fn helper_script() -> Result<PathBuf, String> {
     Err("helper packer not found (scripts/make-oym-helper-sfx.ps1); this is a DEV build".into())
 }
 
-fn helper_output(owner: &str) -> PathBuf {
+fn helper_label(owner: &str) -> String {
     let label: String = owner
         .trim()
         .chars()
         .filter(|ch| ch.is_ascii_alphanumeric() || *ch == '-' || *ch == '_')
         .take(40)
         .collect();
-    let label = if label.is_empty() {
+    if label.is_empty() {
         "support".to_string()
     } else {
         label
-    };
-    let downloads = std::env::var_os("USERPROFILE")
+    }
+}
+
+fn helper_final_dir() -> PathBuf {
+    std::env::var_os("USERPROFILE")
         .map(PathBuf::from)
         .map(|home| home.join("Downloads"))
         .filter(|path| path.is_dir())
-        .unwrap_or_else(std::env::temp_dir);
-    downloads.join(format!("OYM-Help-{label}.exe"))
+        .unwrap_or_else(std::env::temp_dir)
 }
 
 /// Build a one-file helper SFX from a freshly created invite. This is the dev
@@ -312,13 +314,22 @@ pub async fn remote_helper_build(
     }
 
     let script = helper_script()?;
+    let repo_root = script
+        .parent()
+        .and_then(|path| path.parent())
+        .ok_or_else(|| "cannot resolve repo root from helper packer".to_string())?
+        .to_path_buf();
     let owner = owner.unwrap_or_else(|| "support".into());
-    let out = helper_output(&owner);
+    let label = helper_label(&owner);
+    let build_out = repo_root
+        .join("tmp")
+        .join(format!("OYM-Help-{label}.exe"));
+    let final_out = helper_final_dir().join(format!("OYM-Help-{label}.exe"));
 
     let result = tauri::async_runtime::spawn_blocking(move || {
-        if let Some(parent) = out.parent() {
+        if let Some(parent) = build_out.parent() {
             std::fs::create_dir_all(parent)
-                .map_err(|error| format!("create output dir: {error}"))?;
+                .map_err(|error| format!("create build dir: {error}"))?;
         }
         let mut command = Command::new("pwsh");
         command
@@ -334,7 +345,7 @@ pub async fn remote_helper_build(
             .arg("-Owner")
             .arg(&owner)
             .arg("-OutFile")
-            .arg(&out)
+            .arg(&build_out)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -356,11 +367,20 @@ pub async fn remote_helper_build(
                 stdout.trim()
             ));
         }
-        let size = std::fs::metadata(&out)
+
+        if let Some(parent) = final_out.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|error| format!("create Downloads dir: {error}"))?;
+        }
+        if final_out != build_out {
+            std::fs::copy(&build_out, &final_out)
+                .map_err(|error| format!("copy helper to Downloads: {error}"))?;
+        }
+        let size = std::fs::metadata(&final_out)
             .map_err(|error| format!("read helper output: {error}"))?
             .len();
         Ok(HelperBuild {
-            path: out.display().to_string(),
+            path: final_out.display().to_string(),
             size_bytes: size,
         })
     })
