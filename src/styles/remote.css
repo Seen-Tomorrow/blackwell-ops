@@ -410,6 +410,29 @@
   flex-shrink: 0;
 }
 
+.remote-terminal-zoom {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.12rem;
+  border: 1px solid var(--theme-border-subtle);
+  background: var(--theme-panel-accent);
+}
+
+.remote-terminal-zoom .remote-action {
+  min-width: 1.4rem;
+  padding: 0.18rem 0.35rem;
+  line-height: 1;
+}
+
+.remote-terminal-zoom span {
+  min-width: 2.4rem;
+  text-align: center;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.58rem;
+  color: var(--theme-text-muted);
+}
+
 .remote-kicker {
   color: var(--theme-text-muted);
   letter-spacing: 0.12em;

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -31,10 +32,58 @@ function base64ToBytes(data: string): Uint8Array {
 
 export default function RemoteTerminalOverlay({ deviceId, deviceName, onClose, onRestart }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const [terminateBusy, setTerminateBusy] = useState(false);
   const [closed, setClosed] = useState(false);
+  const [fontSize, setFontSize] = useState(13);
+
+  const adjustFont = useCallback((delta: number) => {
+    setFontSize((current) => Math.max(9, Math.min(28, current + delta)));
+  }, []);
+
+  useEffect(() => {
+    const term = termRef.current;
+    if (!term) return;
+    term.options.fontSize = fontSize;
+    // Let xterm re-measure before fitting, otherwise it computes rows with the
+    // old glyph height and the PTY resize lags one step behind.
+    requestAnimationFrame(() => fitRef.current?.fit());
+  }, [fontSize]);
+
+  useEffect(() => {
+    const node = overlayRef.current;
+    if (!node) return;
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey) return;
+      event.preventDefault();
+      event.stopPropagation();
+      adjustFont(event.deltaY < 0 ? 1 : -1);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!event.ctrlKey) return;
+      if (event.key === "=" || event.key === "+") {
+        event.preventDefault();
+        event.stopPropagation();
+        adjustFont(1);
+      } else if (event.key === "-") {
+        event.preventDefault();
+        event.stopPropagation();
+        adjustFont(-1);
+      } else if (event.key === "0") {
+        event.preventDefault();
+        event.stopPropagation();
+        setFontSize(13);
+      }
+    };
+    node.addEventListener("wheel", onWheel, { passive: false, capture: true });
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      node.removeEventListener("wheel", onWheel, { capture: true });
+      window.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [adjustFont]);
 
   useTauriListen<RemoteEvent>("remote-event", (event) => {
     if (!("deviceId" in event) || event.deviceId !== deviceId) return;
@@ -215,8 +264,8 @@ export default function RemoteTerminalOverlay({ deviceId, deviceName, onClose, o
     }
   }, [deviceId]);
 
-  return (
-    <div className="remote-terminal-overlay" data-remote-terminal>
+  return createPortal(
+    <div className="remote-terminal-overlay" data-remote-terminal ref={overlayRef}>
       <div className="remote-terminal-shell">
         <header className="remote-terminal-head">
           <div className="min-w-0">
@@ -224,9 +273,38 @@ export default function RemoteTerminalOverlay({ deviceId, deviceName, onClose, o
             <div className="type-body font-mono remote-terminal-title">
               {deviceName} <span className="remote-muted">/ pi-maintenance</span>
             </div>
-            <div className="type-tiny font-mono remote-muted">CTRL+C interrupt · CTRL+V paste</div>
+            <div className="type-tiny font-mono remote-muted">
+              CTRL+C interrupt · CTRL+V paste · CTRL+wheel terminal zoom
+            </div>
           </div>
           <div className="flex items-center gap-2">
+            <div className="remote-terminal-zoom" title="Terminal content zoom — independent of app zoom">
+              <button
+                type="button"
+                className="remote-action"
+                aria-label="Zoom terminal out"
+                disabled={fontSize <= 9}
+                onClick={() => {
+                  adjustFont(-1);
+                  termRef.current?.focus();
+                }}
+              >
+                −
+              </button>
+              <span>{Math.round((fontSize / 13) * 100)}%</span>
+              <button
+                type="button"
+                className="remote-action"
+                aria-label="Zoom terminal in"
+                disabled={fontSize >= 28}
+                onClick={() => {
+                  adjustFont(1);
+                  termRef.current?.focus();
+                }}
+              >
+                +
+              </button>
+            </div>
             <span className={`remote-state ${closed ? "is-down" : "is-live"}`}>
               {closed ? "EXITED" : "LIVE"}
             </span>
@@ -253,6 +331,7 @@ export default function RemoteTerminalOverlay({ deviceId, deviceName, onClose, o
         </header>
         <div className="remote-terminal-body" ref={hostRef} />
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
