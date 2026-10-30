@@ -4,7 +4,7 @@
 //! live operator session that uses the same device token.
 
 use futures_util::{SinkExt, StreamExt};
-use oym_gateway::protocol::{ClientMessage, ServerMessage};
+use oym_gateway::protocol::{ClientMessage, ModelRoute, ServerMessage};
 use std::time::Duration;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::http::HeaderValue;
@@ -16,7 +16,7 @@ pub struct Probe {
     pub server_version: String,
     pub public_url: Option<String>,
     pub session: bool,
-    pub routes: usize,
+    pub routes: Vec<ModelRoute>,
 }
 
 /// `wss://host/link` (or ws/http) with the routes-only marker.
@@ -114,7 +114,7 @@ pub async fn probe(
                         }
                     }
                     ServerMessage::Routes { routes } => {
-                        probe.routes = routes.len();
+                        probe.routes = routes;
                         let _ = socket.close(None).await;
                         return Ok(probe);
                     }

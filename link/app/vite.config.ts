@@ -6,6 +6,10 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   clearScreen: false,
+  // The root app shares this node_modules tree. Keep a separate optimizer cache:
+  // Vite's default `node_modules/.vite` is common to both and invalidating it
+  // breaks the main app's dynamic imports mid-session.
+  cacheDir: "node_modules/.vite-link",
   server: {
     port: 1422,
     strictPort: true,

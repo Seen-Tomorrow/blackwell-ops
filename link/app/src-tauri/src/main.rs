@@ -11,7 +11,7 @@ use oym_link_core::identity::{
 };
 use oym_link_core::pairing::pair_device;
 use oym_link_core::status::{probe, Probe};
-use oym_link_core::{CLIENT_VERSION, PI_VERSION};
+use oym_link_core::{ModelRoute, CLIENT_VERSION, PI_VERSION};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -23,6 +23,7 @@ struct LinkStatus {
     gateway: String,
     version: &'static str,
     home_models: usize,
+    home_routes: Vec<ModelRoute>,
     cloud_model: String,
     cloud_key_stored: bool,
     server_version: Option<String>,
@@ -41,6 +42,7 @@ impl LinkStatus {
             gateway: String::new(),
             version: CLIENT_VERSION,
             home_models: 0,
+            home_routes: Vec::new(),
             cloud_model: "deepseek-flash".into(),
             cloud_key_stored: false,
             server_version: None,
@@ -51,6 +53,7 @@ impl LinkStatus {
     }
 
     fn from_probe(identity: &Identity, probe: Probe) -> Self {
+        let home_models = probe.routes.len();
         Self {
             mode: "portable",
             connected: true,
@@ -58,7 +61,8 @@ impl LinkStatus {
             device_name: identity.name.clone(),
             gateway: identity.server.clone(),
             version: CLIENT_VERSION,
-            home_models: probe.routes,
+            home_models,
+            home_routes: probe.routes,
             cloud_model: "deepseek-flash".into(),
             cloud_key_stored: false,
             server_version: Some(probe.server_version),

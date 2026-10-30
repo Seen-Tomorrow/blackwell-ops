@@ -9,6 +9,7 @@ type Status = {
   gateway: string;
   version: string;
   homeModels: number;
+  homeRoutes: { id: string; label: string; model: string; contextWindow: number; vision: boolean }[];
   cloudModel: string;
   cloudKeyStored: boolean;
   serverVersion: string | null;
@@ -33,6 +34,7 @@ const DEFAULT_STATUS: Status = {
   gateway: "",
   version: "0.1.0",
   homeModels: 0,
+  homeRoutes: [],
   cloudModel: "deepseek-flash",
   cloudKeyStored: false,
   serverVersion: null,
@@ -57,6 +59,7 @@ export default function App() {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [code, setCode] = useState("");
   const [gateway, setGateway] = useState("");
+  const [provider, setProvider] = useState<"private" | "cloud">("private");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -186,25 +189,78 @@ export default function App() {
 
             <section className="card">
               <div className="card-head">
-                <span className="label">LOCAL ASSISTANT</span>
-                <span className="chip">DEEPSEEK FLASH</span>
+                <span className="label">ASSISTANT</span>
+                <div className="segmented">
+                  <button
+                    className={`segment ${provider === "private" ? "is-selected" : ""}`}
+                    onClick={() => setProvider("private")}
+                  >
+                    PRIVATE
+                  </button>
+                  <button
+                    className={`segment ${provider === "cloud" ? "is-selected" : ""}`}
+                    onClick={() => setProvider("cloud")}
+                  >
+                    CLOUD
+                  </button>
+                </div>
               </div>
-              <p className="copy">Pi runs on this machine. Models never leave it unless you pick cloud.</p>
-              <dl className="kv">
-                <dt>Home models</dt>
-                <dd>{status.homeModels > 0 ? `${status.homeModels} route(s)` : "no engine running"}</dd>
-                <dt>Cloud key</dt>
-                <dd className={status.cloudKeyStored ? "" : "muted"}>
-                  {status.cloudKeyStored ? "stored" : "not stored"}
-                </dd>
-              </dl>
-              <button
-                className="button button-accent"
-                disabled={busy === "assistant"}
-                onClick={() => void startAssistant()}
-              >
-                {busy === "assistant" ? "STARTING…" : "START LOCAL ASSISTANT"}
-              </button>
+
+              {provider === "private" ? (
+                <>
+                  <p className="copy">
+                    Blackwell engines on this machine. The engines keep running; switching tabs
+                    only changes where the assistant sends work.
+                  </p>
+                  {status.homeRoutes.length > 0 ? (
+                    <ul className="route-list">
+                      {status.homeRoutes.map((route) => (
+                        <li key={route.id}>
+                          <span className="route-model">{route.model}</span>
+                          <span className="route-meta">
+                            {route.vision ? "vision" : "text"} ·{" "}
+                            {Math.round(route.contextWindow / 1024)}K
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="copy muted">
+                      No engine running. Start one in OYM → OPERATIONS → RUNNING.
+                    </p>
+                  )}
+                  <button
+                    className="button button-accent"
+                    disabled={busy === "assistant" || status.homeRoutes.length === 0}
+                    onClick={() => void startAssistant()}
+                  >
+                    {busy === "assistant" ? "STARTING…" : "START PRIVATE ASSISTANT"}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="copy">
+                    DeepSeek over the cloud. The API key stays in Windows Credential Manager.
+                  </p>
+                  <dl className="kv">
+                    <dt>Model</dt>
+                    <dd>deepseek-flash</dd>
+                    <dt>Endpoint</dt>
+                    <dd>api.deepseek.com</dd>
+                    <dt>API key</dt>
+                    <dd className={status.cloudKeyStored ? "" : "muted"}>
+                      {status.cloudKeyStored ? "stored" : "not stored"}
+                    </dd>
+                  </dl>
+                  <button
+                    className="button"
+                    disabled={busy === "assistant"}
+                    onClick={() => void startAssistant()}
+                  >
+                    {busy === "assistant" ? "STARTING…" : "START CLOUD ASSISTANT"}
+                  </button>
+                </>
+              )}
             </section>
 
             <p className="tagline">Own your infra.</p>

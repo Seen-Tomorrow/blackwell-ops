@@ -8,6 +8,8 @@ pub mod identity;
 pub mod pairing;
 pub mod status;
 
+pub use oym_gateway::protocol::ModelRoute;
+
 pub const CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const PI_VERSION: &str = "1.4.0";
 
