@@ -412,6 +412,88 @@ fn stop_helper(app: &AppHandle) {
     };
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HelperLinkStatus {
+    linked: bool,
+    session_active: bool,
+    updated_at: Option<u64>,
+    error: Option<String>,
+}
+
+#[tauri::command]
+fn helper_stopped() -> bool {
+    load_settings()
+        .get("helperStopped")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
+#[tauri::command]
+fn helper_link_status() -> HelperLinkStatus {
+    let path = default_data_dir().join("link-status.json");
+    let mut status = HelperLinkStatus {
+        linked: false,
+        session_active: false,
+        updated_at: None,
+        error: None,
+    };
+    let raw = match std::fs::read_to_string(&path) {
+        Ok(raw) => raw,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return status,
+        Err(error) => {
+            status.error = Some(format!("read link status: {error}"));
+            return status;
+        }
+    };
+    let value: Value = match serde_json::from_str(&raw) {
+        Ok(value) => value,
+        Err(error) => {
+            status.error = Some(format!("parse link status: {error}"));
+            return status;
+        }
+    };
+    let updated_at = value.get("updatedAt").and_then(Value::as_u64);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    let fresh = updated_at
+        .map(|updated| now.saturating_sub(updated) < 15)
+        .unwrap_or(false);
+    status.updated_at = updated_at;
+    status.linked = fresh && value.get("connected").and_then(Value::as_bool).unwrap_or(false);
+    status.session_active =
+        status.linked && value.get("sessionActive").and_then(Value::as_bool).unwrap_or(false);
+    status
+}
+
+fn set_helper_stopped(stopped: bool) -> Result<(), String> {
+    let mut settings = load_settings();
+    if let Some(object) = settings.as_object_mut() {
+        object.insert("helperStopped".into(), Value::Bool(stopped));
+    }
+    save_settings(&settings)
+}
+
+#[tauri::command]
+fn helper_stop(app: AppHandle) -> Result<(), String> {
+    stop_helper(&app);
+    set_helper_stopped(true)
+}
+
+#[tauri::command]
+fn helper_reconnect(app: AppHandle) -> Result<(), String> {
+    set_helper_stopped(false)?;
+    start_helper_client(&app)
+}
+
+#[tauri::command]
+fn helper_close(app: AppHandle) {
+    stop_helper(&app);
+    app.exit(0);
+}
+
 #[tauri::command]
 async fn invite_bootstrap(app: AppHandle) -> Bootstrap {
     let settings = load_settings();
@@ -427,7 +509,11 @@ async fn invite_bootstrap(app: AppHandle) -> Bootstrap {
         .map(str::to_string);
 
     if let Some(identity) = load_identity(&data_dir) {
-        let error = if helper {
+        let stopped = settings
+            .get("helperStopped")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let error = if helper && !stopped {
             start_helper_client(&app).err()
         } else {
             None
@@ -538,6 +624,7 @@ async fn invite_bootstrap(app: AppHandle) -> Bootstrap {
     if let Some(object) = settings.as_object_mut() {
         object.insert("gatewayUrl".into(), Value::String(invite.server.clone()));
         object.insert("helper".into(), Value::Bool(helper));
+        object.insert("helperStopped".into(), Value::Bool(false));
         if let Some(owner) = &owner {
             object.insert("owner".into(), Value::String(owner.clone()));
         }
@@ -977,6 +1064,11 @@ fn main() {
             service_status,
             service_install,
             service_uninstall,
+            helper_stopped,
+            helper_link_status,
+            helper_stop,
+            helper_reconnect,
+            helper_close,
             link_hide,
             link_quit,
             assistant_open,

@@ -981,6 +981,29 @@ async fn run(args: Args) -> Result<(), String> {
     say(&format!("Connected as {}", identity.name));
     let (mut socket_tx, mut socket_rx) = socket.split();
     let (out_tx, mut out_rx) = mpsc::unbounded_channel::<ClientMessage>();
+
+    let session_active = Arc::new(AtomicBool::new(false));
+    let link_alive = Arc::new(AtomicBool::new(true));
+    write_link_status(&args.data_dir, true, false);
+    {
+        let dir = args.data_dir.clone();
+        let session_active = session_active.clone();
+        let link_alive = link_alive.clone();
+        tokio::spawn(async move {
+            let mut ticker = tokio::time::interval(Duration::from_secs(4));
+            loop {
+                ticker.tick().await;
+                if !link_alive.load(Ordering::Relaxed) {
+                    break;
+                }
+                write_link_status(
+                    &dir,
+                    true,
+                    session_active.load(Ordering::Relaxed),
+                );
+            }
+        });
+    }
     tokio::spawn(async move {
         while let Some(message) = out_rx.recv().await {
             let Ok(text) = serde_json::to_string(&message) else {
@@ -1063,6 +1086,8 @@ async fn run(args: Args) -> Result<(), String> {
                         Ok(next) => {
                             let pid = next.pid;
                             pty = Some(next);
+                            session_active.store(true, Ordering::Relaxed);
+                            write_link_status(&args.data_dir, true, true);
                             println!("session ready · pi pid {:?}", pid);
                             let _ = shared.outbound.send(ClientMessage::SessionReady {
                                 pid,
@@ -1073,6 +1098,8 @@ async fn run(args: Args) -> Result<(), String> {
                             });
                         }
                         Err(error) => {
+                            session_active.store(false, Ordering::Relaxed);
+                            write_link_status(&args.data_dir, true, false);
                             eprintln!("session start: {error}");
                             let _ = shared.outbound.send(ClientMessage::SessionExit { code: None });
                         }
@@ -1087,6 +1114,8 @@ async fn run(args: Args) -> Result<(), String> {
                     Ok(next) => {
                         let pid = next.pid;
                         pty = Some(next);
+                        session_active.store(true, Ordering::Relaxed);
+                        write_link_status(&args.data_dir, true, true);
                         println!("session ready · pi pid {:?}", pid);
                         let _ = shared.outbound.send(ClientMessage::SessionReady {
                             pid,
@@ -1097,6 +1126,8 @@ async fn run(args: Args) -> Result<(), String> {
                         });
                     }
                     Err(error) => {
+                        session_active.store(false, Ordering::Relaxed);
+                        write_link_status(&args.data_dir, true, false);
                         eprintln!("session start: {error}");
                         let _ = shared.outbound.send(ClientMessage::SessionExit { code: None });
                     }
@@ -1104,6 +1135,8 @@ async fn run(args: Args) -> Result<(), String> {
             }
             ServerMessage::SessionStop { reason } => {
                 println!("session stop: {reason}");
+                session_active.store(false, Ordering::Relaxed);
+                write_link_status(&args.data_dir, true, false);
                 if let Some(mut current) = pty.take() {
                     current.kill();
                 }
@@ -1164,6 +1197,9 @@ async fn run(args: Args) -> Result<(), String> {
     }
 
     println!("gateway reader ended");
+    link_alive.store(false, Ordering::Relaxed);
+    session_active.store(false, Ordering::Relaxed);
+    write_link_status(&args.data_dir, false, false);
     if let Some(mut current) = pty.take() {
         current.kill();
     }
@@ -1176,6 +1212,30 @@ fn say(line: &str) {
     }
     println!("{line}");
     let _ = std::io::stdout().flush();
+}
+
+/// Local presence file for the tray helper. It is written by the link client in
+/// the same data dir, so the UI can distinguish "gateway online" from "operator
+/// has an active session".
+fn write_link_status(data_dir: &Path, connected: bool, session_active: bool) {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    let value = json!({
+        "connected": connected,
+        "sessionActive": session_active,
+        "updatedAt": now,
+        "pid": std::process::id(),
+    });
+    let _ = std::fs::create_dir_all(data_dir);
+    let path = data_dir.join("link-status.json");
+    let temporary = data_dir.join("link-status.json.tmp");
+    if let Ok(raw) = serde_json::to_string_pretty(&value) {
+        if std::fs::write(&temporary, raw).is_ok() {
+            let _ = std::fs::rename(&temporary, &path);
+        }
+    }
 }
 
 fn pause_for_exit() {

@@ -43,6 +43,13 @@ type ServiceStatus = {
   error: string | null;
 };
 
+type HelperLink = {
+  linked: boolean;
+  sessionActive: boolean;
+  updatedAt: number | null;
+  error: string | null;
+};
+
 const DEFAULT_STATUS: Status = {
   mode: "portable",
   connected: false,
@@ -79,6 +86,8 @@ export default function App() {
   const [apiKey, setApiKey] = useState("");
   const [boot, setBoot] = useState<Bootstrap | null>(null);
   const [service, setService] = useState<ServiceStatus | null>(null);
+  const [helperStopped, setHelperStopped] = useState(false);
+  const [helperLink, setHelperLink] = useState<HelperLink | null>(null);
   const [provider, setProvider] = useState<"private" | "cloud">("private");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -115,6 +124,53 @@ export default function App() {
     const timer = window.setInterval(() => void loadService(), 5000);
     return () => window.clearInterval(timer);
   }, [loadService]);
+
+  useEffect(() => {
+    void invoke<boolean>("helper_stopped")
+      .then(setHelperStopped)
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!boot?.helper) return;
+    const load = () => {
+      void invoke<HelperLink>("helper_link_status")
+        .then(setHelperLink)
+        .catch(() => {});
+    };
+    void load();
+    const timer = window.setInterval(load, 2000);
+    return () => window.clearInterval(timer);
+  }, [boot?.helper]);
+
+  const stopHelper = useCallback(async () => {
+    setError(null);
+    setNotice(null);
+    try {
+      await invoke("helper_stop");
+      setHelperStopped(true);
+      setHelperLink(null);
+      setNotice("Remote access stopped.");
+    } catch (e) {
+      setError(typeof e === "string" ? e : String(e));
+    }
+  }, []);
+
+  const reconnectHelper = useCallback(async () => {
+    setError(null);
+    setNotice(null);
+    try {
+      await invoke("helper_reconnect");
+      setHelperStopped(false);
+      setNotice("Reconnecting…");
+    } catch (e) {
+      setError(typeof e === "string" ? e : String(e));
+    }
+  }, []);
+
+  const closeHelper = useCallback(() => {
+    void invoke("helper_close").catch(() => {});
+  }, []);
 
   useEffect(() => {
     void refresh();
@@ -263,7 +319,17 @@ export default function App() {
     return <div className="boot-screen">Preparing secure link…</div>;
   }
   if (boot.helper) {
-    return <HelperScreen boot={boot} status={status} />;
+    return (
+      <HelperScreen
+        boot={boot}
+        status={status}
+        stopped={helperStopped}
+        link={helperLink}
+        onStop={() => void stopHelper()}
+        onReconnect={() => void reconnectHelper()}
+        onClose={closeHelper}
+      />
+    );
   }
 
   return (
@@ -572,9 +638,45 @@ export default function App() {
   );
 }
 
-function HelperScreen({ boot, status }: { boot: Bootstrap; status: Status }) {
-  const online = status.connected;
+function HelperScreen({
+  boot,
+  status,
+  stopped,
+  link,
+  onStop,
+  onReconnect,
+  onClose,
+}: {
+  boot: Bootstrap;
+  status: Status;
+  stopped: boolean;
+  link: HelperLink | null;
+  onStop: () => void;
+  onReconnect: () => void;
+  onClose: () => void;
+}) {
   const failed = !boot.paired;
+  const linked = Boolean(link?.linked) && !stopped;
+  const active = linked && Boolean(link?.sessionActive);
+  const label = failed
+    ? "NOT CONNECTED"
+    : stopped
+      ? "DISCONNECTED"
+      : active
+        ? "SESSION ACTIVE"
+        : linked
+          ? "CONNECTED"
+          : "CONNECTING";
+  const copy = failed
+    ? "This support link could not be completed."
+    : stopped
+      ? "Remote access is off. No one can connect to this PC."
+      : active
+        ? `${boot.owner ?? "Your technician"} has control of this session.`
+        : linked
+          ? `Waiting for ${boot.owner ?? "your technician"} to connect.`
+          : "Contacting the support gateway…";
+
   return (
     <div className="app helper">
       <header className="titlebar" data-tauri-drag-region>
@@ -583,17 +685,16 @@ function HelperScreen({ boot, status }: { boot: Bootstrap; status: Status }) {
           <span className="brand-name">OYM</span>
           <span className="mode-chip">HELP</span>
         </div>
+        <button className="icon-button" title="Close" onClick={onClose}>
+          ×
+        </button>
       </header>
       <main className="helper-content">
-        <div className={`helper-orb ${online ? "is-on" : ""} ${failed ? "is-bad" : ""}`} />
-        <h1>{failed ? "NOT CONNECTED" : online ? "CONNECTED" : "CONNECTING"}</h1>
-        <p className="helper-copy">
-          {failed
-            ? "This support link could not be completed."
-            : online
-              ? `Waiting for ${boot.owner ?? "your technician"} to connect.`
-              : "Contacting the support gateway…"}
-        </p>
+        <div
+          className={`helper-orb ${linked ? "is-on" : ""} ${stopped || failed ? "is-bad" : ""}`}
+        />
+        <h1>{label}</h1>
+        <p className="helper-copy">{copy}</p>
         <dl className="kv helper-kv">
           <dt>Device</dt>
           <dd>{status.deviceName || boot.deviceName || "this PC"}</dd>
@@ -602,10 +703,24 @@ function HelperScreen({ boot, status }: { boot: Bootstrap; status: Status }) {
         </dl>
         {boot.error && <p className="banner banner-bad">{boot.error}</p>}
         {!failed && (
-          <p className="helper-note">
-            Keep this window open. You are sharing control with{" "}
-            {boot.owner ?? "your technician"} for this session.
-          </p>
+          <>
+            <div className="helper-actions">
+              {stopped ? (
+                <button className="button button-accent" onClick={onReconnect}>
+                  RECONNECT
+                </button>
+              ) : (
+                <button className="button button-danger" onClick={onStop}>
+                  DISCONNECT
+                </button>
+              )}
+            </div>
+            <p className="helper-note">
+              {active
+                ? "Disconnect immediately ends the remote session."
+                : "Keep this window open while your technician is helping."}
+            </p>
+          </>
         )}
       </main>
     </div>

@@ -452,6 +452,29 @@ body {
   opacity: 0.8;
 }
 
+.helper-actions {
+  width: 100%;
+  max-width: 280px;
+  display: flex;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.helper-actions .button {
+  width: 100%;
+}
+
+.button-danger {
+  border-color: rgba(255, 107, 122, 0.45);
+  background: rgba(255, 107, 122, 0.08);
+  color: var(--danger);
+}
+
+.button-danger:hover:not(:disabled) {
+  border-color: rgba(255, 107, 122, 0.75);
+  color: #ff9aa3;
+}
+
 .footer {
   height: 36px;
   flex-shrink: 0;

@@ -112,10 +112,18 @@ endlocal
 '@
 Set-Content (Join-Path $stage "install.cmd") -Value $install -Encoding ascii
 
+# wscript is a GUI-subsystem host, so the copy step leaves no console window.
+$installVbs = @'
+Set shell = CreateObject("WScript.Shell")
+base = Left(WScript.ScriptFullName, InStrRev(WScript.ScriptFullName, "\"))
+shell.Run "cmd.exe /c """ & base & "install.cmd""", 0, False
+'@
+Set-Content (Join-Path $stage "install.vbs") -Value $installVbs -Encoding ascii
+
 $config = @'
 ;!@Install@!UTF-8!
 Title="OYM Help"
-RunProgram="install.cmd"
+RunProgram="wscript.exe //B install.vbs"
 GUIMode="2"
 ;!@InstallEnd@!
 '@
