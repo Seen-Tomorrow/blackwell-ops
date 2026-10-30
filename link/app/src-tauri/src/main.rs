@@ -8,9 +8,10 @@ use std::sync::Mutex;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{
-    AppHandle, Emitter, Manager, PhysicalPosition, WebviewUrl, WebviewWindow,
-    WebviewWindowBuilder, WindowEvent,
+    AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent,
 };
+#[cfg(not(windows))]
+use tauri::PhysicalPosition;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 
 use oym_link_core::identity::{
@@ -486,6 +487,50 @@ fn link_quit(app: AppHandle) {
     app.exit(0);
 }
 
+#[cfg(windows)]
+fn place_bottom_right(window: &WebviewWindow) {
+    use std::mem::{size_of, zeroed};
+    use windows_sys::Win32::Foundation::RECT;
+    use windows_sys::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetWindowRect, SetWindowPos, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER,
+    };
+
+    let Ok(hwnd) = window.hwnd() else {
+        return;
+    };
+    let hwnd = hwnd.0 as *mut _;
+    unsafe {
+        let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        let mut info: MONITORINFO = zeroed();
+        info.cbSize = size_of::<MONITORINFO>() as u32;
+        if GetMonitorInfoW(monitor, &mut info) == 0 {
+            return;
+        }
+        let mut rect: RECT = zeroed();
+        if GetWindowRect(hwnd, &mut rect) == 0 {
+            return;
+        }
+        let width = rect.right - rect.left;
+        let height = rect.bottom - rect.top;
+        let margin = 0;
+        let x = info.rcWork.right - width - margin;
+        let y = info.rcWork.bottom - height - margin;
+        SetWindowPos(
+            hwnd,
+            std::ptr::null_mut(),
+            x,
+            y,
+            0,
+            0,
+            SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOZORDER,
+        );
+    }
+}
+
+#[cfg(not(windows))]
 fn place_bottom_right(window: &WebviewWindow) {
     let Ok(Some(monitor)) = window.current_monitor() else {
         return;
@@ -494,7 +539,7 @@ fn place_bottom_right(window: &WebviewWindow) {
         return;
     };
     let work = monitor.work_area();
-    let margin = 16i32;
+    let margin = 0i32;
     let x = work.position.x + work.size.width as i32 - size.width as i32 - margin;
     let y = work.position.y + work.size.height as i32 - size.height as i32 - margin;
     let _ = window.set_position(PhysicalPosition::new(x, y));
