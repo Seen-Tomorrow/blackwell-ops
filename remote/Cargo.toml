@@ -1,0 +1,30 @@
+[package]
+name = "blackwell-remote"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Blackwell Ops remote gateway: pairing, WSS tunnel, model proxy, PTY relay"
+
+[lib]
+name = "blackwell_remote"
+path = "src/lib.rs"
+
+[[bin]]
+name = "blackwell-gateway"
+path = "src/bin/gateway.rs"
+
+[dependencies]
+axum = { version = "0.8", features = ["ws"] }
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.13", features = ["json", "stream"] }
+futures-util = "0.3"
+sha2 = "0.11"
+hex = "0.4"
+rand = "0.8"
+base64 = "0.22"
+subtle = "2"
+log = "0.4"
+env_logger = "0.11"
