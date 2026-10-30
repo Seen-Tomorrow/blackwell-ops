@@ -6,6 +6,7 @@
   "scripts": {
     "vite": "vite --host 127.0.0.1 --port 1420",
     "server": "node scripts/warm-vite-dev.mjs",
+    "remote:tunnel": "powershell -ExecutionPolicy Bypass -File scripts/remote-tunnel.ps1",
     "predev": "powershell -ExecutionPolicy Bypass -File scripts/sync-dev-runtime.ps1",
     "sync:dev-runtime": "powershell -ExecutionPolicy Bypass -File scripts/sync-dev-runtime.ps1",
     "sync:dev-runtime:force": "powershell -ExecutionPolicy Bypass -File scripts/sync-dev-runtime.ps1 -Force",
@@ -54,6 +55,8 @@
   "dependencies": {
     "@tauri-apps/api": "^2.12.1",
     "@tauri-apps/plugin-shell": "^2.4.0",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "ansi-to-html": "^0.7.2",
     "html-to-image": "^1.11.13",
     "react": "^19.2.6",

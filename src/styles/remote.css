@@ -1,0 +1,451 @@
+/* CONFIG / REMOTE — tunnel control room and terminal overlay.
+   Paint names theme tokens only. ANSI colours live inside xterm, not here. */
+
+.remote-panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 1rem 1rem;
+}
+
+.remote-panel__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--theme-border-subtle);
+}
+
+.remote-title {
+  color: var(--theme-text);
+  letter-spacing: 0.12em;
+}
+
+.remote-muted {
+  color: var(--theme-text-muted);
+}
+
+.remote-head-actions,
+.remote-modal__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.remote-action {
+  font-family: "JetBrains Mono", "Roboto Mono", monospace;
+  font-size: var(--type-tiny);
+  letter-spacing: 0.06em;
+  color: var(--theme-chip-text);
+  background: var(--theme-chip-bg);
+  border: 1px solid var(--theme-chip-border);
+  border-radius: 3px;
+  padding: 0.25rem 0.55rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.remote-action:hover:not(:disabled) {
+  color: var(--theme-chip-hover-text);
+  border-color: var(--theme-chip-hover-border);
+  background: var(--theme-chip-active-bg);
+}
+
+.remote-action:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.remote-action--accent {
+  color: var(--theme-accent-bright);
+  border-color: color-mix(in srgb, var(--theme-accent) 55%, var(--theme-border-subtle));
+  background: color-mix(in srgb, var(--theme-accent) 12%, var(--theme-panel));
+}
+
+.remote-action--danger {
+  color: var(--theme-danger);
+  border-color: color-mix(in srgb, var(--theme-danger) 40%, var(--theme-border-subtle));
+  background: color-mix(in srgb, var(--theme-danger) 8%, var(--theme-panel));
+}
+
+.remote-action--danger:hover:not(:disabled) {
+  color: var(--theme-danger);
+  border-color: color-mix(in srgb, var(--theme-danger) 70%, var(--theme-border-subtle));
+  background: color-mix(in srgb, var(--theme-danger) 14%, var(--theme-panel));
+}
+
+.remote-banner {
+  margin-top: 0.75rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: 3px;
+  font-family: "JetBrains Mono", "Roboto Mono", monospace;
+  font-size: var(--type-tiny);
+}
+
+.remote-banner--bad {
+  color: var(--theme-danger);
+  border-color: color-mix(in srgb, var(--theme-danger) 45%, var(--theme-border-subtle));
+  background: color-mix(in srgb, var(--theme-danger) 8%, var(--theme-panel));
+}
+
+.remote-banner--ok {
+  color: var(--theme-accent-bright);
+  border-color: color-mix(in srgb, var(--theme-accent) 45%, var(--theme-border-subtle));
+  background: color-mix(in srgb, var(--theme-accent) 8%, var(--theme-panel));
+}
+
+.remote-banner--warn {
+  color: var(--theme-warn);
+  border-color: color-mix(in srgb, var(--theme-warn) 45%, var(--theme-border-subtle));
+  background: color-mix(in srgb, var(--theme-warn) 8%, var(--theme-panel));
+}
+
+.remote-status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+}
+
+.remote-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: 4px;
+  background: var(--theme-panel);
+}
+
+.remote-card__label {
+  color: var(--theme-text-muted);
+  letter-spacing: 0.1em;
+}
+
+.remote-card__value {
+  color: var(--theme-text);
+  font-family: "JetBrains Mono", "Roboto Mono", monospace;
+  line-height: 1.1;
+}
+
+.remote-card__detail {
+  color: var(--theme-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remote-state {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  font-family: "JetBrains Mono", "Roboto Mono", monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.08em;
+  line-height: 1.3;
+  padding: 0.05rem 0.35rem;
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: 2px;
+}
+
+.remote-state.is-ok,
+.remote-state.is-live {
+  color: var(--theme-accent-bright);
+  border-color: color-mix(in srgb, var(--theme-accent) 45%, var(--theme-border-subtle));
+  background: color-mix(in srgb, var(--theme-accent) 8%, var(--theme-panel));
+}
+
+.remote-state.is-bad {
+  color: var(--theme-danger);
+  border-color: color-mix(in srgb, var(--theme-danger) 45%, var(--theme-border-subtle));
+  background: color-mix(in srgb, var(--theme-danger) 8%, var(--theme-panel));
+}
+
+.remote-state.is-wait {
+  color: var(--theme-warn);
+  border-color: color-mix(in srgb, var(--theme-warn) 45%, var(--theme-border-subtle));
+  background: color-mix(in srgb, var(--theme-warn) 8%, var(--theme-panel));
+}
+
+.remote-devices {
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: 4px;
+  background: var(--theme-panel);
+  overflow: hidden;
+}
+
+.remote-devices__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.65rem;
+  border-bottom: 1px solid var(--theme-border-subtle);
+  background: color-mix(in srgb, var(--theme-text) 3%, var(--theme-panel));
+}
+
+.remote-device-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.remote-device-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.6rem 0.65rem;
+  border-bottom: 1px solid var(--theme-border-subtle);
+}
+
+.remote-device-row:last-child {
+  border-bottom: 0;
+}
+
+.remote-device-row:hover {
+  background: color-mix(in srgb, var(--theme-accent) 5%, var(--theme-panel));
+}
+
+.remote-device-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.remote-device-name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.remote-device-name {
+  color: var(--theme-text);
+}
+
+.remote-device-rename {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.remote-rename-input {
+  min-width: 12rem;
+  max-width: 22rem;
+  padding: 0.22rem 0.4rem;
+  font-family: "JetBrains Mono", "Roboto Mono", monospace;
+  font-size: var(--type-tiny);
+  color: var(--theme-text);
+  background: var(--theme-panel-accent);
+  border: 1px solid var(--theme-border);
+  border-radius: 2px;
+  outline: none;
+}
+
+.remote-rename-input:focus {
+  border-color: var(--theme-accent);
+}
+
+.remote-rename-input::placeholder {
+  color: var(--theme-text-muted);
+}
+
+.remote-device-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  color: var(--theme-text-muted);
+}
+
+.remote-device-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.remote-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.remote-dot.is-online {
+  background: var(--theme-accent-bright);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-accent) 45%, transparent);
+}
+
+.remote-dot.is-offline {
+  background: var(--theme-text-muted);
+}
+
+.remote-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 2rem 1rem;
+  text-align: center;
+}
+
+.remote-footnote {
+  margin-top: 0.75rem;
+  color: var(--theme-text-muted);
+  line-height: 1.5;
+}
+
+.remote-footnote code,
+.remote-command {
+  font-family: "JetBrains Mono", "Roboto Mono", monospace;
+  color: var(--theme-text);
+}
+
+.remote-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remote-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: color-mix(in srgb, #000 62%, transparent);
+}
+
+.remote-modal {
+  width: min(640px, 92vw);
+  max-height: 86vh;
+  overflow-y: auto;
+  padding: 1rem;
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: 5px;
+  background: var(--theme-panel);
+  box-shadow: 0 18px 50px color-mix(in srgb, #000 55%, transparent);
+}
+
+.remote-modal__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.remote-pair-code {
+  font-family: "JetBrains Mono", "Roboto Mono", monospace;
+  font-size: var(--type-xl);
+  letter-spacing: 0.28em;
+  color: var(--theme-accent-bright);
+  text-align: center;
+  padding: 0.75rem 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 40%, var(--theme-border-subtle));
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--theme-accent) 8%, var(--theme-panel));
+  user-select: all;
+}
+
+.remote-command {
+  margin: 0.75rem 0;
+  padding: 0.6rem;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--theme-text) 5%, var(--theme-panel-accent));
+  font-size: var(--type-tiny);
+}
+
+.remote-modal__actions {
+  justify-content: flex-end;
+}
+
+.remote-terminal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10002;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: color-mix(in srgb, #000 68%, transparent);
+}
+
+.remote-terminal-shell {
+  width: min(1500px, 96vw);
+  height: 86vh;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--theme-panel);
+  box-shadow: 0 22px 60px color-mix(in srgb, #000 62%, transparent);
+}
+
+.remote-terminal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0.7rem;
+  border-bottom: 1px solid var(--theme-border-subtle);
+  background: color-mix(in srgb, var(--theme-text) 4%, var(--theme-panel));
+  flex-shrink: 0;
+}
+
+.remote-kicker {
+  color: var(--theme-text-muted);
+  letter-spacing: 0.12em;
+}
+
+.remote-terminal-title {
+  color: var(--theme-text);
+}
+
+.remote-terminal-body {
+  flex: 1;
+  min-height: 0;
+  padding: 0.4rem 0.5rem;
+  background: #0b0b0d;
+  overflow: hidden;
+}
+
+.remote-terminal-body .xterm {
+  height: 100%;
+}
+
+.remote-terminal-body .xterm-viewport {
+  overflow-y: auto;
+}
+
+@media (max-width: 1100px) {
+  .remote-status-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .remote-device-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .remote-device-actions {
+    justify-content: flex-start;
+  }
+}

@@ -66,6 +66,7 @@ mod reactor_foundry;
 mod output_console;
 mod pi_code;
 mod external_agents;
+mod remote_cmds;
 mod gpu_control;
 mod sidecar_elevate;
 
@@ -301,6 +302,10 @@ async fn main() {
                 stack_init.lock().await.set_log_hub(LogHub::new(app_handle));
             });
 
+            // Cloned before the stack moves into AppContext: the remote route
+            // refresh below reads it on a timer.
+            let route_refresh_stack = stack.clone();
+
             let ctx = AppContext {
                 stack,
                 log_hub,
@@ -311,6 +316,54 @@ async fn main() {
             };
 
             app.manage(ctx);
+
+            // ── Remote control room gateway ─────────────────────────────
+            // Loopback-only; Cloudflare Tunnel provides the public TLS edge.
+            let remote_cfg = blackwell_remote::RemoteConfig::for_app(&crate::config::app_root_dir());
+            match blackwell_remote::RemoteState::load(remote_cfg) {
+                Ok(remote) => {
+                    let start_state = remote.clone();
+                    tauri::async_runtime::spawn(async move {
+                        if let Err(error) = start_state.start_gateway().await {
+                            log::error!("[remote] gateway start: {error}");
+                            start_state.set_gateway_error(Some(error)).await;
+                        }
+                    });
+                    let event_state = remote.clone();
+                    let event_app = app.handle().clone();
+                    tauri::async_runtime::spawn(async move {
+                        let mut rx = event_state.subscribe();
+                        loop {
+                            match rx.recv().await {
+                                Ok(event) => {
+                                    let _ = event_app.emit("remote-event", event);
+                                }
+                                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                                    continue
+                                }
+                                Err(_) => break,
+                            }
+                        }
+                    });
+                    // Local Power Mode (`blackwell-link --local`) asks the
+                    // gateway for routes before any remote session exists, so
+                    // the route table must track the running stack. Refresh off
+                    // the startup path, a few seconds apart; a session start
+                    // still refreshes routes as a fallback.
+                    let refresh_remote = remote.clone();
+                    app.manage(remote);
+
+                    let refresh_stack = route_refresh_stack.clone();
+                    tauri::async_runtime::spawn(async move {
+                        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                        loop {
+                            crate::remote_cmds::refresh_routes(&refresh_stack, &refresh_remote).await;
+                            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                        }
+                    });
+                }
+                Err(error) => log::error!("[remote] disabled: {error}"),
+            }
 
             crate::output_console::register_blackwell_output_console_app_handle(app.handle().clone());
             // Console is registered — surface job status (init ran earlier, before AppContext).
@@ -434,6 +487,19 @@ async fn main() {
             pi_code::pi_code_update_latest,
             pi_code::pi_code_console_running,
             pi_code::pi_code_launch,
+            // Remote control room
+            remote_cmds::remote_status,
+            remote_cmds::remote_gateway_start,
+            remote_cmds::remote_gateway_stop,
+            remote_cmds::remote_pairing_create,
+            remote_cmds::remote_devices_list,
+            remote_cmds::remote_device_rename,
+            remote_cmds::remote_device_revoke,
+            remote_cmds::remote_health,
+            remote_cmds::remote_session_start,
+            remote_cmds::remote_session_terminate,
+            remote_cmds::remote_session_input,
+            remote_cmds::remote_session_resize,
             telemetry::scan_gpus,
             telemetry::scan_cpu,
             telemetry::scan_system_info,

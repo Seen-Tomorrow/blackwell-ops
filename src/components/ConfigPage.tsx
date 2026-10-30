@@ -11,6 +11,7 @@ import SecretsConfig from "./SecretsConfig";
 import RecoveryConfig from "./RecoveryConfig";
 import DistributionDevPanel from "./DistributionDevPanel";
 import RuntimeConfig from "./RuntimeConfig";
+import RemoteConfig from "./RemoteConfig";
 import ParamConfigPanel from "./ParamConfigPanel";
 import TabPageHeader from "./TabPageHeader";
 import {
@@ -118,6 +119,8 @@ export default function ConfigPage({
         <ModelPathsPanel />
       ) : effectiveSub === "runtime" ? (
         <RuntimeConfig />
+      ) : effectiveSub === "remote" ? (
+        <RemoteConfig />
       ) : effectiveSub === "secrets" ? (
         <SecretsConfig />
       ) : effectiveSub === "recovery" ? (

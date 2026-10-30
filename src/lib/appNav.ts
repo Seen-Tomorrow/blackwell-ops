@@ -27,6 +27,7 @@ export type ConfigSubTab =
   | "params"
   | "paths"
   | "runtime"
+  | "remote"
   | "secrets"
   | "recovery"
   | "distribution";
@@ -55,6 +56,7 @@ const CONFIG_SUB_NAV_ALL: {
   { id: "params", label: "PARAMETERS" },
   { id: "paths", label: "PATHS", dataOnboarding: "paths-tab" },
   { id: "runtime", label: "RUNTIME" },
+  { id: "remote", label: "REMOTE" },
   { id: "distribution", label: "DISTRIBUTION", devOnly: true },
   { id: "secrets", label: "SECRETS" },
   { id: "recovery", label: "RECOVERY" },
