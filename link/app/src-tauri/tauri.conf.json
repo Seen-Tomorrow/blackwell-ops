@@ -1,0 +1,41 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "OYM Link",
+  "version": "0.1.0",
+  "identifier": "com.oym.link",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1422"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "label": "flyout",
+        "title": "OYM Link",
+        "width": 380,
+        "height": 560,
+        "minWidth": 380,
+        "minHeight": 560,
+        "maxWidth": 380,
+        "maxHeight": 560,
+        "resizable": false,
+        "decorations": false,
+        "transparent": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": false,
+        "shadow": true,
+        "focus": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": ["icons/icon.ico"]
+  }
+}

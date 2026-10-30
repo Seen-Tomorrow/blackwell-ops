@@ -1,0 +1,6 @@
+{
+  "identifier": "default",
+  "description": "Default capability for the OYM Link flyout",
+  "windows": ["flyout"],
+  "permissions": ["core:default"]
+}
