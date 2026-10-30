@@ -5,6 +5,7 @@
 
 pub mod devices;
 pub mod gateway;
+pub mod invites;
 pub mod protocol;
 pub mod state;
 

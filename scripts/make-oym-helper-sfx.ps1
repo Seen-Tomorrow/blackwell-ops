@@ -15,13 +15,14 @@
 .EXAMPLE
   pwsh scripts/make-oym-helper-sfx.ps1 `
     -Server https://link.example.com `
-    -Code ABCD1234 `
+    -Invite oym_inv_... `
     -Owner Alex `
     -OutFile tmp/OYM-Help-Alex.exe
 #>
 param(
     [Parameter(Mandatory)] [string] $Server,
-    [Parameter(Mandatory)] [string] $Code,
+    [string] $Code = "",
+    [string] $Invite = "",
     [string] $Owner = "your technician",
     [string] $OutFile = "tmp/OYM-Help.exe",
     [string] $StageDir = "tmp/oym-helper-stage"
@@ -29,6 +30,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
+
+if (($Code -eq "") -eq ($Invite -eq "")) {
+    throw "Provide exactly one of -Code (short pairing code) or -Invite (gateway invite token)."
+}
 
 $app = Join-Path $root "link/app/src-tauri/target/release/oym-link-app.exe"
 $cli = Join-Path $root "remote-client/target/release/oym-link.exe"
@@ -80,14 +85,18 @@ Copy-Item $app (Join-Path $stage "OYM-Help.exe")
 Copy-Item $cli (Join-Path $stage "oym-link.exe")
 Copy-Item $pi (Join-Path $stage "pi") -Recurse
 
-$invite = [ordered]@{
+$inviteData = [ordered]@{
     version = 1
     server  = $Server
-    code    = $Code.Trim().ToUpperInvariant()
     owner   = $Owner
     helper  = $true
 }
-$invite | ConvertTo-Json | Set-Content (Join-Path $stage "oym-invite.json") -Encoding utf8NoBOM
+if ($Invite -ne "") {
+    $inviteData.invite = $Invite.Trim()
+} else {
+    $inviteData.code = $Code.Trim().ToUpperInvariant()
+}
+$inviteData | ConvertTo-Json | Set-Content (Join-Path $stage "oym-invite.json") -Encoding utf8NoBOM
 
 # 7zS extracts to a new %TEMP%\7zS*.tmp path on every run. A path that changes
 # on every launch means a new firewall prompt each time, so the extracted
@@ -148,4 +157,4 @@ Write-Host "Built:  $out"
 Write-Host "Size:   $size MB"
 Write-Host "SHA256: $hash"
 Write-Host ""
-Write-Host "The pairing code is single-use. Send the file now; rebuild if it expires."
+Write-Host "The invite is single-use and expires. Send the file now; rebuild if it expires."

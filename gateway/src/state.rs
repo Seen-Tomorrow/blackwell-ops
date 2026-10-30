@@ -457,7 +457,15 @@ impl GatewayState {
             inner.pair_attempts.push_back(Instant::now());
         }
 
-        {
+        let invite_token = request
+            .invite
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        if let Some(token) = invite_token {
+            // Invite files are local owner state; redemption is single-use.
+            let _ = crate::invites::redeem(&self.cfg.data_dir, token)?;
+        } else {
             let mut inner = self.inner.write().await;
             let Some(code) = inner.pairing.remove(&request.code) else {
                 return Err("invalid or already used pairing code".into());

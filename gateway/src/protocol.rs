@@ -123,6 +123,9 @@ pub enum ServerMessage {
 #[serde(rename_all = "camelCase")]
 pub struct PairRequest {
     pub code: String,
+    /// One-time support invite token. When present, `code` is ignored.
+    #[serde(default)]
+    pub invite: Option<String>,
     #[serde(default)]
     pub device_name: Option<String>,
     #[serde(default)]

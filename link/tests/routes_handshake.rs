@@ -110,6 +110,7 @@ async fn start_gateway(routes: Vec<RouteBinding>) -> TestGateway {
     let pair = state
         .pair(PairRequest {
             code: pairing.code,
+            invite: None,
             device_name: Some("routes-test".into()),
             os: Some("Windows".into()),
             user: None,

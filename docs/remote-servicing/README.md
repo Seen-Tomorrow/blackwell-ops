@@ -9,6 +9,9 @@ Product and operations notes for the Blackwell remote-servicing capability.
 | [LOCAL-MODE-SPEC.md](LOCAL-MODE-SPEC.md) | Local Power Mode: home Blackwell or cloud model routing, routes-only gateway, local Pi launcher |
 | [LOCAL-MODE-REPORT.md](LOCAL-MODE-REPORT.md) | Implementation result, tests, untested items, and owner manual steps |
 | [LINK-SHAPE.md](LINK-SHAPE.md) | Device app shape: Portable vs Integrated, vocabulary, UI, credentials, rename plan |
+| [SUPPORT-INVITES.md](SUPPORT-INVITES.md) | One-time invite tokens, helper SFX packaging, revocation |
+| [CLOUDFLARE-NAMED-TUNNEL.md](CLOUDFLARE-NAMED-TUNNEL.md) | Permanent hostname via Cloudflare Tunnel, `.cz` NSSET notes |
+| [CODE-SIGNING.md](CODE-SIGNING.md) | Authenticode options, self-signed dev flow, SmartScreen |
 | [TRANSCRIPT-FETCH.md](TRANSCRIPT-FETCH.md) | Design for on-demand local transcript retrieval from the dashboard (not implemented yet) |
 | [HANDOFF.md](HANDOFF.md) | Current state, guardrails, next implementation slice, test constraints |
 | [DSH-ORCHESTRATOR.md](DSH-ORCHESTRATOR.md) | DeepSeek Harness as the server-side orchestrator: fit, profile constraints, plugin seams, spike |

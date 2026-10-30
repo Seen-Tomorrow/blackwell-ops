@@ -19,7 +19,7 @@ use oym_link_core::identity::{
     clear_cloud_key, cloud_key_stored as cloud_key_present, default_data_dir, load_identity,
     load_token, save_cloud_key, save_identity, Identity,
 };
-use oym_link_core::pairing::pair_device;
+use oym_link_core::pairing::{pair_device, pair_with_invite};
 use oym_link_core::status::{probe, Probe};
 use oym_link_core::{ModelRoute, CLIENT_VERSION, PI_VERSION};
 
@@ -144,7 +144,10 @@ struct HelperState {
 #[derive(Deserialize)]
 struct Invite {
     server: String,
+    #[serde(default)]
     code: String,
+    #[serde(default)]
+    invite: Option<String>,
     #[serde(default)]
     owner: Option<String>,
     #[serde(default)]
@@ -351,16 +354,33 @@ async fn invite_bootstrap(app: AppHandle) -> Bootstrap {
     owner = invite.owner.clone();
     let name = device_name(&settings);
 
-    let (identity, _token) = match pair_device(
-        &invite.server,
-        &invite.code,
-        &name,
-        CLIENT_VERSION,
-        PI_VERSION,
-        "Medium",
-    )
-    .await
+    let pair_result = if let Some(token) = invite
+        .invite
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
     {
+        pair_with_invite(
+            &invite.server,
+            token,
+            &name,
+            CLIENT_VERSION,
+            PI_VERSION,
+            "Medium",
+        )
+        .await
+    } else {
+        pair_device(
+            &invite.server,
+            &invite.code,
+            &name,
+            CLIENT_VERSION,
+            PI_VERSION,
+            "Medium",
+        )
+        .await
+    };
+    let (identity, _token) = match pair_result {
         Ok(pair) => pair,
         Err(error) => {
             return Bootstrap {

@@ -34,6 +34,7 @@ pub async fn pair_device(
 ) -> Result<(Identity, String), String> {
     let request = PairRequest {
         code: code.trim().to_string(),
+        invite: None,
         device_name: Some(name.to_string()),
         os: Some("Windows".into()),
         user: std::env::var("USERNAME").ok(),
@@ -41,6 +42,37 @@ pub async fn pair_device(
         client_version: Some(client_version.to_string()),
         pi_version: Some(pi_version.to_string()),
     };
+    submit(server, request, name).await
+}
+
+/// Redeem a one-time support invite token instead of a pairing code.
+#[allow(clippy::too_many_arguments)]
+pub async fn pair_with_invite(
+    server: &str,
+    invite: &str,
+    name: &str,
+    client_version: &str,
+    pi_version: &str,
+    integrity: &str,
+) -> Result<(Identity, String), String> {
+    let request = PairRequest {
+        code: String::new(),
+        invite: Some(invite.trim().to_string()),
+        device_name: Some(name.to_string()),
+        os: Some("Windows".into()),
+        user: std::env::var("USERNAME").ok(),
+        integrity: Some(integrity.to_string()),
+        client_version: Some(client_version.to_string()),
+        pi_version: Some(pi_version.to_string()),
+    };
+    submit(server, request, name).await
+}
+
+async fn submit(
+    server: &str,
+    request: PairRequest,
+    name: &str,
+) -> Result<(Identity, String), String> {
     let response = reqwest::Client::new()
         .post(pair_url(server)?)
         .json(&request)
