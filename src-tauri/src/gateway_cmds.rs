@@ -9,6 +9,7 @@ use oym_gateway::{
     DeviceView, HealthInfo, PairingInfo, GatewayState, GatewayStatus, RouteBinding, SessionOpen,
     TerminateResult,
 };
+use serde::Serialize;
 use std::sync::Arc;
 use tauri::State;
 
@@ -157,6 +158,78 @@ pub async fn remote_session_resize(
     rows: u16,
 ) -> Result<(), String> {
     remote.resize_pty(&device_id, cols, rows).await
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InviteView {
+    pub id: String,
+    pub owner: Option<String>,
+    pub created_at: u64,
+    pub expires_at: u64,
+    pub used_at: Option<u64>,
+    pub revoked: bool,
+    pub state: &'static str,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreatedInvite {
+    pub token: String,
+    pub invite: InviteView,
+}
+
+fn invite_view(record: oym_gateway::invites::InviteRecord) -> InviteView {
+    let state = if record.revoked {
+        "revoked"
+    } else if record.used_at.is_some() {
+        "used"
+    } else if record.expires_at <= oym_gateway::devices::unix_now() {
+        "expired"
+    } else {
+        "unused"
+    };
+    InviteView {
+        id: record.id,
+        owner: record.owner,
+        created_at: record.created_at,
+        expires_at: record.expires_at,
+        used_at: record.used_at,
+        revoked: record.revoked,
+        state,
+    }
+}
+
+#[tauri::command]
+pub fn remote_invites_list(remote: State<'_, Arc<GatewayState>>) -> Vec<InviteView> {
+    let mut invites: Vec<InviteView> = oym_gateway::invites::list(&remote.cfg.data_dir)
+        .into_iter()
+        .map(invite_view)
+        .collect();
+    invites.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    invites
+}
+
+#[tauri::command]
+pub fn remote_invite_create(
+    remote: State<'_, Arc<GatewayState>>,
+    owner: Option<String>,
+    ttl_hours: Option<u64>,
+) -> Result<CreatedInvite, String> {
+    let ttl = ttl_hours.unwrap_or(oym_gateway::invites::DEFAULT_TTL_HOURS);
+    let (token, record) = oym_gateway::invites::create(&remote.cfg.data_dir, owner, ttl)?;
+    Ok(CreatedInvite {
+        token,
+        invite: invite_view(record),
+    })
+}
+
+#[tauri::command]
+pub fn remote_invite_revoke(
+    remote: State<'_, Arc<GatewayState>>,
+    id: String,
+) -> Result<bool, String> {
+    oym_gateway::invites::revoke(&remote.cfg.data_dir, &id)
 }
 
 #[cfg(test)]

@@ -44,6 +44,21 @@ export type RemoteHealth = {
   error: string | null;
 };
 
+export type RemoteInvite = {
+  id: string;
+  owner: string | null;
+  createdAt: number;
+  expiresAt: number;
+  usedAt: number | null;
+  revoked: boolean;
+  state: "unused" | "used" | "revoked" | "expired";
+};
+
+export type RemoteCreatedInvite = {
+  token: string;
+  invite: RemoteInvite;
+};
+
 export type RemoteModelRoute = {
   id: string;
   label: string;

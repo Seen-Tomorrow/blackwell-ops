@@ -56,7 +56,8 @@ deletes the invite file.
 
 ## Current status
 
-The gateway, `/pair`, CLI and helper package support invites. The main app’s
-REMOTE → STATUS UI does not have a “Create invite” button yet; until it does, use
-the CLI above. The next slice is wiring that button to the same library call and
-showing unused/used/revoked invites in the app.
+The gateway, `/pair`, CLI, helper package and the main app’s **REMOTE → STATUS →
+SUPPORT INVITES** panel support invites. The panel creates a token (shown once),
+copies it, lists unused/used/revoked/expired invites, and revokes unused ones.
+Building the SFX is still a script because it packages the Pi runtime; a
+“Build helper” button is a later slice.

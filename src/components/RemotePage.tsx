@@ -2,9 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTauriListen } from "../hooks/useTauriListen";
 import type {
+  RemoteCreatedInvite,
   RemoteDevice,
   RemoteEvent,
   RemoteHealth,
+  RemoteInvite,
   RemotePairing,
   RemoteSessionOpen,
   RemoteStatus,
@@ -25,6 +27,11 @@ function timeAgo(unixSeconds: number): string {
   if (delta < 3600) return `${Math.floor(delta / 60)}m ago`;
   if (delta < 86400) return `${Math.floor(delta / 3600)}h ago`;
   return `${Math.floor(delta / 86400)}d ago`;
+}
+
+function dateTime(unixSeconds: number): string {
+  if (!unixSeconds) return "—";
+  return new Date(unixSeconds * 1000).toLocaleString();
 }
 
 function expiresIn(expiresAt: number, nowMs: number): string {
@@ -51,6 +58,11 @@ export default function RemotePage({ subTab }: { subTab: RemoteSubTab }) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [invites, setInvites] = useState<RemoteInvite[]>([]);
+  const [inviteOwner, setInviteOwner] = useState("");
+  const [inviteTtl, setInviteTtl] = useState(72);
+  const [createdInvite, setCreatedInvite] = useState<RemoteCreatedInvite | null>(null);
+  const [inviteBusy, setInviteBusy] = useState<"create" | "revoke" | null>(null);
   const [editingName, setEditingName] = useState<{ id: string; value: string } | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
@@ -83,9 +95,18 @@ export default function RemotePage({ subTab }: { subTab: RemoteSubTab }) {
     }
   }, []);
 
+  const loadInvites = useCallback(async () => {
+    try {
+      setInvites(await invoke<RemoteInvite[]>("remote_invites_list"));
+    } catch (e) {
+      setError(errorText(e));
+    }
+  }, []);
+
   useEffect(() => {
     void load();
     void checkHealth();
+    void loadInvites();
     const statusTimer = window.setInterval(() => {
       void load();
     }, 15_000);
@@ -96,7 +117,7 @@ export default function RemotePage({ subTab }: { subTab: RemoteSubTab }) {
       window.clearInterval(statusTimer);
       window.clearInterval(healthTimer);
     };
-  }, [load, checkHealth]);
+  }, [load, checkHealth, loadInvites]);
 
   useEffect(() => {
     if (!pairing) return;
@@ -158,6 +179,44 @@ export default function RemotePage({ subTab }: { subTab: RemoteSubTab }) {
       setError("Clipboard unavailable; select the text and copy it manually.");
     }
   }, []);
+
+  const createInvite = useCallback(async () => {
+    setError(null);
+    setNotice(null);
+    setInviteBusy("create");
+    try {
+      const created = await invoke<RemoteCreatedInvite>("remote_invite_create", {
+        owner: inviteOwner.trim() || null,
+        ttlHours: inviteTtl,
+      });
+      setCreatedInvite(created);
+      setNotice("Invite created. Copy it now; the token is shown once.");
+      await loadInvites();
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setInviteBusy(null);
+    }
+  }, [inviteOwner, inviteTtl, loadInvites]);
+
+  const revokeInvite = useCallback(
+    async (id: string) => {
+      setError(null);
+      setNotice(null);
+      setInviteBusy("revoke");
+      try {
+        const revoked = await invoke<boolean>("remote_invite_revoke", { id });
+        if (!revoked) setError(`Invite not found: ${id}`);
+        if (createdInvite?.invite.id === id) setCreatedInvite(null);
+        await loadInvites();
+      } catch (e) {
+        setError(errorText(e));
+      } finally {
+        setInviteBusy(null);
+      }
+    },
+    [createdInvite, loadInvites],
+  );
 
   const startSession = useCallback(async (device: RemoteDevice) => {
     setError(null);
@@ -321,6 +380,109 @@ export default function RemotePage({ subTab }: { subTab: RemoteSubTab }) {
           <span className="type-tiny font-mono remote-card__detail">active pi sessions</span>
         </div>
             </div>
+
+            <section className="remote-invites">
+              <div className="remote-invites__head">
+                <div>
+                  <span className="type-micro font-mono remote-card__label">SUPPORT INVITES</span>
+                  <p className="type-tiny font-mono remote-muted">
+                    One-time helper pairing. The token is shown once and can be revoked.
+                  </p>
+                </div>
+                <span className="remote-invite-count">
+                  {invites.filter((invite) => invite.state === "unused").length} UNUSED
+                </span>
+              </div>
+
+              <div className="remote-invite-form">
+                <input
+                  className="remote-invite-input"
+                  value={inviteOwner}
+                  maxLength={80}
+                  placeholder="Owner label (e.g. Alex)"
+                  onChange={(event) => setInviteOwner(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") void createInvite();
+                  }}
+                />
+                <select
+                  className="remote-invite-select"
+                  value={inviteTtl}
+                  onChange={(event) => setInviteTtl(Number(event.target.value))}
+                >
+                  <option value={24}>24 HOURS</option>
+                  <option value={72}>72 HOURS</option>
+                  <option value={168}>7 DAYS</option>
+                </select>
+                <button
+                  type="button"
+                  className="remote-action remote-action--accent"
+                  disabled={inviteBusy === "create"}
+                  onClick={() => void createInvite()}
+                >
+                  {inviteBusy === "create" ? "CREATING…" : "CREATE INVITE"}
+                </button>
+              </div>
+
+              {createdInvite && (
+                <div className="remote-invite-token">
+                  <div className="remote-invite-token__head">
+                    <span className="type-micro font-mono">TOKEN · SHOWN ONCE</span>
+                    <button
+                      type="button"
+                      className="remote-action"
+                      onClick={() => void copy(createdInvite.token)}
+                    >
+                      COPY
+                    </button>
+                  </div>
+                  <code className="remote-invite-token__value">{createdInvite.token}</code>
+                  <p className="type-tiny font-mono remote-muted">
+                    Single-use. Expires {dateTime(createdInvite.invite.expiresAt)}. Put it in the
+                    helper package; do not paste it into chat.
+                  </p>
+                </div>
+              )}
+
+              <div className="remote-invite-list">
+                {invites.length === 0 ? (
+                  <p className="type-tiny font-mono remote-muted">
+                    No invites yet. Create one instead of reading a short pairing code.
+                  </p>
+                ) : (
+                  invites.map((invite) => (
+                    <div key={invite.id} className={`remote-invite-row is-${invite.state}`}>
+                      <div className="remote-invite-row__main">
+                        <span className="remote-invite-row__owner">
+                          {invite.owner?.trim() || "Unlabelled invite"}
+                        </span>
+                        <span className="type-tiny font-mono remote-muted">{invite.id}</span>
+                      </div>
+                      <div className="remote-invite-row__meta">
+                        <span className={`remote-invite-state is-${invite.state}`}>
+                          {invite.state.toUpperCase()}
+                        </span>
+                        <span className="type-tiny font-mono remote-muted">
+                          {invite.state === "used"
+                            ? `used ${dateTime(invite.usedAt ?? 0)}`
+                            : `expires ${dateTime(invite.expiresAt)}`}
+                        </span>
+                      </div>
+                      {invite.state === "unused" && (
+                        <button
+                          type="button"
+                          className="remote-action remote-action--danger"
+                          disabled={inviteBusy === "revoke"}
+                          onClick={() => void revokeInvite(invite.id)}
+                        >
+                          REVOKE
+                        </button>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
 
             {status?.publicUrl == null && (
               <p className="type-tiny font-mono remote-footnote">
