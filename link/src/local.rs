@@ -14,8 +14,8 @@
 //! inherited stdio, not ConPTY, because the console is already real.
 
 use super::{
-    decode_b64, load_identity, load_token, say, start_proxy, Args, Identity, ModelHeadInfo,
-    ProxyShared, CLIENT_VERSION, PI_VERSION,
+    decode_b64, load_identity, load_token, say, start_proxy, Args, CloudUpstream, Identity,
+    ModelHeadInfo, ProxyShared, CLIENT_VERSION, PI_VERSION,
 };
 use axum::body::Bytes;
 use axum::http::header::AUTHORIZATION;
@@ -329,6 +329,9 @@ fn build_local_pi_config(
     }
 
     if let Some(cloud) = cloud {
+        let Some(proxy) = proxy else {
+            return Err("cloud provider requires the local proxy".into());
+        };
         let input = if cloud.vision {
             json!(["text", "image"])
         } else {
@@ -338,14 +341,14 @@ fn build_local_pi_config(
             "cloud".into(),
             json!({
                 "api": "openai-completions",
-                "baseUrl": cloud.base_url,
-                "apiKey": cloud.api_key,
+                "baseUrl": format!("http://127.0.0.1:{}/v1/cloud", proxy.port),
+                "apiKey": proxy.token,
                 "models": [{
                     "id": cloud.model,
                     "name": cloud.model,
                     "contextWindow": cloud.context_window.max(1),
                     "input": input,
-                    // The trial endpoint is generic OpenAI-compatible; do not
+                    // The cloud provider is generic OpenAI-compatible; do not
                     // ask Pi for provider-specific reasoning parameters.
                     "reasoning": false
                 }]
@@ -772,8 +775,19 @@ async fn run_with_admin(args: Args, is_local_admin: bool) -> Result<i32, String>
 
     let mut home: Option<HomeLink> = None;
     let mut routes: Vec<ModelRoute> = Vec::new();
-    let mut shared: Option<Arc<ProxyShared>> = None;
     let mut home_issue = String::new();
+
+    let (out_tx, out_rx) = mpsc::unbounded_channel();
+    let shared = Arc::new(ProxyShared::new(out_tx.clone(), proxy_token.clone()));
+    if let Some(provider) = &cloud {
+        shared
+            .set_cloud(CloudUpstream {
+                base_url: provider.base_url.clone(),
+                api_key: provider.api_key.clone(),
+                model: provider.model.clone(),
+            })
+            .await;
+    }
 
     match home_credentials(&args) {
         Ok((identity, token)) => {
@@ -782,9 +796,7 @@ async fn run_with_admin(args: Args, is_local_admin: bool) -> Result<i32, String>
                 .clone()
                 .unwrap_or_else(|| identity.server.clone());
             say(&format!("Home: connecting to {server} (routes only)"));
-            let (out_tx, out_rx) = mpsc::unbounded_channel();
-            let proxy_shared = Arc::new(ProxyShared::new(out_tx.clone(), proxy_token.clone()));
-            match connect_home(&server, &token, out_tx, out_rx, proxy_shared.clone()).await {
+            match connect_home(&server, &token, out_tx, out_rx, shared.clone()).await {
                 Ok(link) => {
                     if link.routes.is_empty() {
                         say("Home: connected, but no Blackwell engine is running.");
@@ -801,7 +813,6 @@ async fn run_with_admin(args: Args, is_local_admin: bool) -> Result<i32, String>
                         ));
                         routes = link.routes.clone();
                         home = Some(link);
-                        shared = Some(proxy_shared);
                     }
                 }
                 Err(error) => {
@@ -846,24 +857,32 @@ async fn run_with_admin(args: Args, is_local_admin: bool) -> Result<i32, String>
     }
 
     let model_ids = local_model_ids(&routes);
-    let proxy = if let Some(shared) = &shared {
-        let (by_id, by_model) = route_tables(&routes, &model_ids);
-        *shared.routes.write().await = by_id;
-        *shared.models.write().await = by_model;
-        let port = start_proxy(shared.clone(), true).await?;
-        say(&format!(
-            "Proxy: http://127.0.0.1:{port}/v1 · loopback + random bearer token"
-        ));
-        Some(ProxyEndpoint {
-            port,
-            token: proxy_token.clone(),
-        })
-    } else {
-        None
-    };
+    let (by_id, by_model) = route_tables(&routes, &model_ids);
+    *shared.routes.write().await = by_id;
+    *shared.models.write().await = by_model;
+    let port = start_proxy(shared.clone(), true).await?;
+    say(&format!(
+        "Proxy: http://127.0.0.1:{port}/v1 · loopback + random bearer token"
+    ));
+    let proxy = Some(ProxyEndpoint {
+        port,
+        token: proxy_token.clone(),
+    });
 
-    let (models, settings) =
+    let (mut models, mut settings) =
         build_local_pi_config(&routes, &model_ids, proxy.as_ref(), cloud.as_ref())?;
+    if args.prefer_cloud {
+        if let Some(provider) = &cloud {
+            if let Some(object) = models.as_object_mut() {
+                object.insert("defaultProvider".into(), json!("cloud"));
+                object.insert("defaultModel".into(), json!(provider.model));
+            }
+            if let Some(object) = settings.as_object_mut() {
+                object.insert("defaultProvider".into(), json!("cloud"));
+                object.insert("defaultModel".into(), json!(provider.model));
+            }
+        }
+    }
     write_pi_config(&pi_home, &models, &settings)?;
     say(&format!(
         "Pi home: {} · session store: {}",
@@ -901,6 +920,7 @@ mod tests {
             cwd: data_dir.clone(),
             cwd_explicit: false,
             local: true,
+            prefer_cloud: false,
             cloud_base_url: None,
             cloud_model: None,
             cloud_context_window: None,
@@ -981,8 +1001,9 @@ mod tests {
         assert_eq!(engine_models[0]["contextWindow"], 32768);
 
         let cloud_block = provider(&models, "cloud");
-        assert_eq!(cloud_block["baseUrl"], "https://api.example.com/v1");
-        assert_eq!(cloud_block["apiKey"], "sk-secret");
+        assert_eq!(cloud_block["baseUrl"], "http://127.0.0.1:4567/v1/cloud");
+        assert_eq!(cloud_block["apiKey"], "proxy-token");
+        assert!(!models.to_string().contains("sk-secret"));
         assert_eq!(cloud_block["models"][0]["id"], "cloud-model");
 
         // Exactly the two `provider/model` names the spec names.
@@ -1009,8 +1030,12 @@ mod tests {
     #[test]
     fn cloud_only_keeps_a_single_cloud_provider() {
         let cloud = cloud();
-        let (models, _) =
-            build_local_pi_config(&[], &[], None, Some(&cloud)).expect("cloud-only config");
+        let proxy = ProxyEndpoint {
+            port: 4567,
+            token: "proxy-token".into(),
+        };
+        let (models, _) = build_local_pi_config(&[], &[], Some(&proxy), Some(&cloud))
+            .expect("cloud-only config");
         let providers = models["providers"].as_object().expect("providers");
         assert_eq!(providers.len(), 1);
         assert!(providers.contains_key("cloud"));
@@ -1130,15 +1155,18 @@ mod tests {
     }
 
     #[test]
-    fn cloud_models_json_never_uses_the_blackwell_proxy() {
+    fn cloud_models_json_uses_the_cloud_proxy_without_the_real_key() {
         let routes = vec![route("route_1", "ENGINE_1", 8192, false)];
         let ids = local_model_ids(&routes);
-        let (models, _) = build_local_pi_config(&routes, &ids, None, Some(&cloud())).expect("config");
-        // No proxy endpoint => no blackwell provider, even when routes exist.
-        assert!(!models["providers"]
-            .as_object()
-            .expect("providers")
-            .contains_key("blackwell"));
-        assert_eq!(models["defaultProvider"], "cloud");
+        let proxy = ProxyEndpoint {
+            port: 4567,
+            token: "proxy-token".into(),
+        };
+        let (models, _) =
+            build_local_pi_config(&routes, &ids, Some(&proxy), Some(&cloud())).expect("config");
+        let cloud = provider(&models, "cloud");
+        assert_eq!(cloud["baseUrl"], "http://127.0.0.1:4567/v1/cloud");
+        assert_eq!(cloud["apiKey"], "proxy-token");
+        assert!(!models.to_string().contains("sk-secret"));
     }
 }

@@ -66,6 +66,71 @@ pub fn save_token(_device_id: &str, _token: &str) -> Result<(), String> {
     Err("Credential Manager is only available on Windows".into())
 }
 
+/// The optional cloud API key lives under the same service with its own user
+/// entry; it is never written to disk or returned to the UI.
+pub const CLOUD_SERVICE: &str = "OYMLink";
+pub const CLOUD_KEY_ENTRY: &str = "cloud-api-key";
+
+#[cfg(windows)]
+fn cloud_entry() -> Result<keyring::Entry, String> {
+    keyring::Entry::new(CLOUD_SERVICE, CLOUD_KEY_ENTRY)
+        .map_err(|error| format!("cloud credential entry: {error}"))
+}
+
+#[cfg(windows)]
+pub fn cloud_key_stored() -> bool {
+    cloud_entry()
+        .and_then(|entry| entry.get_password().map_err(|error| error.to_string()))
+        .is_ok()
+}
+
+#[cfg(windows)]
+pub fn read_cloud_key() -> Result<String, String> {
+    cloud_entry()?
+        .get_password()
+        .map_err(|error| format!("read cloud key: {error}"))
+}
+
+#[cfg(windows)]
+pub fn save_cloud_key(key: &str) -> Result<(), String> {
+    let key = key.trim();
+    if key.is_empty() {
+        return Err("cloud API key is empty".into());
+    }
+    cloud_entry()?
+        .set_password(key)
+        .map_err(|error| format!("store cloud key: {error}"))
+}
+
+#[cfg(windows)]
+pub fn clear_cloud_key() -> Result<(), String> {
+    match cloud_entry()?.delete_credential() {
+        Ok(()) => Ok(()),
+        Err(keyring::Error::NoEntry) => Ok(()),
+        Err(error) => Err(format!("delete cloud key: {error}")),
+    }
+}
+
+#[cfg(not(windows))]
+pub fn cloud_key_stored() -> bool {
+    false
+}
+
+#[cfg(not(windows))]
+pub fn read_cloud_key() -> Result<String, String> {
+    Err("Credential Manager is only available on Windows".into())
+}
+
+#[cfg(not(windows))]
+pub fn save_cloud_key(_key: &str) -> Result<(), String> {
+    Err("Credential Manager is only available on Windows".into())
+}
+
+#[cfg(not(windows))]
+pub fn clear_cloud_key() -> Result<(), String> {
+    Err("Credential Manager is only available on Windows".into())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

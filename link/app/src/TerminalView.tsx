@@ -8,6 +8,8 @@ import "./terminal.css";
 
 export default function TerminalView() {
   const host = useRef<HTMLDivElement>(null);
+  const provider =
+    new URLSearchParams(window.location.search).get("provider") ?? "private";
 
   useEffect(() => {
     const element = host.current;
@@ -84,7 +86,11 @@ export default function TerminalView() {
 
       safeFit();
       try {
-        await invoke("assistant_start", { rows: term.rows, cols: term.cols });
+        await invoke("assistant_start", {
+          rows: term.rows,
+          cols: term.cols,
+          provider,
+        });
       } catch (error) {
         term.write(
           `\r\n\x1b[38;2;255;107;122m[${String(error)}]\x1b[0m\r\n`,

@@ -2,5 +2,5 @@
   "identifier": "default",
   "description": "Default capability for the OYM Link flyout",
   "windows": ["flyout", "terminal"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "core:window:allow-start-dragging"]
 }

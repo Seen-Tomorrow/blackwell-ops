@@ -292,6 +292,16 @@ body {
   color: var(--accent);
 }
 
+.key-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.key-actions .button {
+  flex: 1;
+}
+
 .link-button {
   background: none;
   border: 0;

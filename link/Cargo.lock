@@ -1613,6 +1613,7 @@ dependencies = [
  "oym-link-core",
  "portable-pty",
  "rand 0.8.8",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",

@@ -29,6 +29,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot, Mutex, RwLock};
@@ -43,6 +44,10 @@ use oym_link_core::identity::{load_identity, load_token, save_identity, Identity
 
 const CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const PI_VERSION: &str = "1.4.0";
+
+/// Local mode prints setup diagnostics on stdout before Pi starts. The tray app
+/// asks for `--quiet` so only real errors reach the embedded terminal.
+static QUIET: AtomicBool = AtomicBool::new(false);
 /// Server baked into this portable trial build. The named-tunnel step replaces
 /// this with the stable hostname; rebuild the client at that point.
 const DEFAULT_SERVER: &str = "wss://favorite-fountain-begin-field.trycloudflare.com/link";
@@ -60,6 +65,8 @@ struct Args {
     cwd_explicit: bool,
     /// Local Power Mode: local Pi in this console, no remote session/PTY.
     local: bool,
+    /// Start with the cloud provider selected when both are available.
+    prefer_cloud: bool,
     cloud_base_url: Option<String>,
     cloud_model: Option<String>,
     cloud_context_window: Option<usize>,
@@ -96,6 +103,7 @@ fn parse_args() -> Args {
     let mut cwd = PathBuf::from("C:\\");
     let mut cwd_explicit = false;
     let mut local = false;
+    let mut prefer_cloud = false;
     let mut cloud_base_url = None;
     let mut cloud_model = None;
     let mut cloud_context_window = None;
@@ -122,6 +130,8 @@ fn parse_args() -> Args {
                 }
             }
             "--local" => local = true,
+            "--prefer-cloud" => prefer_cloud = true,
+            "--quiet" | "-q" => QUIET.store(true, Ordering::Relaxed),
             "--cloud-base-url" => cloud_base_url = arg_value(&mut args, "--cloud-base-url"),
             "--cloud-model" => cloud_model = arg_value(&mut args, "--cloud-model"),
             "--cloud-context-window" => {
@@ -144,6 +154,8 @@ fn parse_args() -> Args {
                      --pi <path>       Pi package executable (default: <exe dir>/pi/pi.exe)\n\
                      --data-dir <dir>  identity + per-session Pi home\n\
                      --cwd <dir>       working directory for the maintenance session\n\
+                     --quiet           suppress local-mode setup diagnostics\n\
+                     --prefer-cloud    start on the cloud provider when configured\n\
                      \n\
                      Local Power Mode:\n\
                      --local                    run Pi in this console with blackwell/* and cloud/*\n\
@@ -179,6 +191,7 @@ fn parse_args() -> Args {
         cwd: absolute_path(cwd),
         cwd_explicit,
         local,
+        prefer_cloud,
         cloud_base_url,
         cloud_model,
         cloud_context_window,
@@ -284,8 +297,18 @@ struct ProxyShared {
     /// local Power Mode uses. Remote sessions never populate it; they address
     /// routes by id.
     models: RwLock<HashMap<String, String>>,
+    /// Cloud upstream for the loopback cloud proxy. The real API key stays here
+    /// (process memory) and never enters Pi's models.json.
+    cloud: RwLock<Option<CloudUpstream>>,
     heads: Mutex<HashMap<String, oneshot::Sender<ModelHeadInfo>>>,
     chunks: Mutex<HashMap<String, mpsc::Sender<Result<Bytes, std::convert::Infallible>>>>,
+}
+
+#[derive(Clone)]
+pub(crate) struct CloudUpstream {
+    pub base_url: String,
+    pub api_key: String,
+    pub model: String,
 }
 
 impl ProxyShared {
@@ -295,9 +318,14 @@ impl ProxyShared {
             token,
             routes: RwLock::new(HashMap::new()),
             models: RwLock::new(HashMap::new()),
+            cloud: RwLock::new(None),
             heads: Mutex::new(HashMap::new()),
             chunks: Mutex::new(HashMap::new()),
         }
+    }
+
+    async fn set_cloud(&self, cloud: CloudUpstream) {
+        *self.cloud.write().await = Some(cloud);
     }
 
     /// Every proxy surface is loopback-only and additionally guarded by a random
@@ -354,6 +382,72 @@ async fn models_all(State(shared): State<Arc<ProxyShared>>, headers: HeaderMap) 
         })
         .collect();
     Json(json!({ "object": "list", "data": data })).into_response()
+}
+
+async fn cloud_models(State(shared): State<Arc<ProxyShared>>, headers: HeaderMap) -> Response {
+    if !shared.authorized(&headers) {
+        return (StatusCode::UNAUTHORIZED, "invalid local proxy token").into_response();
+    }
+    let cloud = shared.cloud.read().await.clone();
+    let Some(cloud) = cloud else {
+        return (StatusCode::SERVICE_UNAVAILABLE, "cloud is not configured").into_response();
+    };
+    Json(json!({
+        "object": "list",
+        "data": [{
+            "id": cloud.model,
+            "object": "model",
+            "owned_by": "oym"
+        }]
+    }))
+    .into_response()
+}
+
+/// Forward a cloud chat request with the real key injected here. Pi only ever
+/// sees the loopback URL and the per-process proxy token.
+async fn cloud_chat(
+    State(shared): State<Arc<ProxyShared>>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Response {
+    if !shared.authorized(&headers) {
+        return (StatusCode::UNAUTHORIZED, "invalid local proxy token").into_response();
+    }
+    let cloud = shared.cloud.read().await.clone();
+    let Some(cloud) = cloud else {
+        return (StatusCode::SERVICE_UNAVAILABLE, "cloud is not configured").into_response();
+    };
+    let url = format!("{}/chat/completions", cloud.base_url.trim_end_matches('/'));
+    let response = reqwest::Client::new()
+        .post(url)
+        .bearer_auth(&cloud.api_key)
+        .json(&body)
+        .send()
+        .await;
+    match response {
+        Ok(response) => {
+            let status = StatusCode::from_u16(response.status().as_u16())
+                .unwrap_or(StatusCode::BAD_GATEWAY);
+            let content_type = response
+                .headers()
+                .get(CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or("application/json")
+                .to_string();
+            Response::builder()
+                .status(status)
+                .header(CONTENT_TYPE, content_type)
+                .body(Body::from_stream(response.bytes_stream()))
+                .unwrap_or_else(|_| {
+                    (StatusCode::BAD_GATEWAY, "invalid cloud response").into_response()
+                })
+        }
+        Err(error) => (
+            StatusCode::BAD_GATEWAY,
+            format!("cloud request failed: {error}"),
+        )
+            .into_response(),
+    }
 }
 
 async fn chat(
@@ -459,7 +553,9 @@ async fn start_proxy(shared: Arc<ProxyShared>, model_routed: bool) -> Result<u16
     if model_routed {
         app = app
             .route("/v1/chat/completions", post(chat_by_model))
-            .route("/v1/models", get(models_all));
+            .route("/v1/models", get(models_all))
+            .route("/v1/cloud/chat/completions", post(cloud_chat))
+            .route("/v1/cloud/models", get(cloud_models));
     }
     let app = app
         .layer(DefaultBodyLimit::max(32 * 1024 * 1024))
@@ -1074,6 +1170,9 @@ async fn run(args: Args) -> Result<(), String> {
 }
 
 fn say(line: &str) {
+    if QUIET.load(Ordering::Relaxed) {
+        return;
+    }
     println!("{line}");
     let _ = std::io::stdout().flush();
 }
@@ -1086,13 +1185,16 @@ fn pause_for_exit() {
 }
 
 fn main() {
+    let args = parse_args();
     // Print before the Tokio runtime is built. On a fresh unsigned exe,
     // Defender/loader work can still delay the first instruction; this is the
-    // earliest output the program itself can produce.
-    println!("OYM Link {CLIENT_VERSION} — starting");
-    let _ = std::io::stdout().flush();
+    // earliest output the program itself can produce. The tray app asks for
+    // quiet mode so the embedded terminal opens directly in Pi.
+    if !QUIET.load(Ordering::Relaxed) {
+        println!("OYM Link {CLIENT_VERSION} — starting");
+        let _ = std::io::stdout().flush();
+    }
 
-    let args = parse_args();
     let local_mode = args.local;
     let interactive = std::env::args().len() == 1;
 

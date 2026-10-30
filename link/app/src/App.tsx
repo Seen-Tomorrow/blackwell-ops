@@ -59,6 +59,7 @@ export default function App() {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [code, setCode] = useState("");
   const [gateway, setGateway] = useState("");
+  const [apiKey, setApiKey] = useState("");
   const [provider, setProvider] = useState<"private" | "cloud">("private");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -149,6 +150,39 @@ export default function App() {
       setBusy(null);
     }
   }, [settings, loadSettings]);
+
+  const storeCloudKey = useCallback(async () => {
+    setError(null);
+    setNotice(null);
+    setBusy("cloudkey");
+    try {
+      await invoke("cloud_key_set", { key: apiKey.trim() });
+      setApiKey("");
+      setNotice("Cloud key stored in Windows Credential Manager.");
+      await loadSettings();
+      await refresh();
+    } catch (e) {
+      setError(typeof e === "string" ? e : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }, [apiKey, loadSettings, refresh]);
+
+  const removeCloudKey = useCallback(async () => {
+    setError(null);
+    setNotice(null);
+    setBusy("cloudkey");
+    try {
+      await invoke("cloud_key_clear");
+      setNotice("Cloud key removed.");
+      await loadSettings();
+      await refresh();
+    } catch (e) {
+      setError(typeof e === "string" ? e : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }, [loadSettings, refresh]);
 
   return (
     <div className="app">
@@ -253,9 +287,12 @@ export default function App() {
                       {status.cloudKeyStored ? "stored" : "not stored"}
                     </dd>
                   </dl>
+                  <button className="link-button" onClick={() => setView("settings")}>
+                    {status.cloudKeyStored ? "MANAGE API KEY" : "STORE API KEY IN SETTINGS"}
+                  </button>
                   <button
                     className="button"
-                    disabled={busy === "assistant"}
+                    disabled={busy === "assistant" || !status.cloudKeyStored}
                     onClick={() => void startAssistant()}
                   >
                     {busy === "assistant" ? "STARTING…" : "START CLOUD ASSISTANT"}
@@ -347,12 +384,42 @@ export default function App() {
               <span>Cloud model</span>
               <input className="input" value={settings.cloudModel} readOnly />
             </label>
-            <div className="kv">
-              <dt>Cloud key</dt>
-              <dd className={settings.cloudKeyStored ? "" : "muted"}>
-                {settings.cloudKeyStored ? "stored in Credential Manager" : "not stored"}
-              </dd>
+            <label className="field">
+              <span>DeepSeek API key</span>
+              <input
+                className="input"
+                type="password"
+                autoComplete="off"
+                spellCheck={false}
+                placeholder={
+                  settings.cloudKeyStored
+                    ? "stored — enter a new key to replace"
+                    : "sk-…"
+                }
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && apiKey.trim()) void storeCloudKey();
+                }}
+              />
+            </label>
+            <div className="key-actions">
+              <button
+                className="button"
+                disabled={!apiKey.trim() || busy === "cloudkey"}
+                onClick={() => void storeCloudKey()}
+              >
+                {busy === "cloudkey" ? "STORING…" : "STORE KEY"}
+              </button>
+              {settings.cloudKeyStored && (
+                <button className="link-button" onClick={() => void removeCloudKey()}>
+                  REMOVE
+                </button>
+              )}
             </div>
+            <p className="copy">
+              The key is written to Windows Credential Manager, never to settings.json.
+            </p>
             <button className="button" disabled={busy === "settings"} onClick={() => void saveSettings()}>
               {busy === "settings" ? "SAVING…" : "SAVE"}
             </button>

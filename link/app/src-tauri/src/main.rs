@@ -14,7 +14,8 @@ use tauri::{
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 
 use oym_link_core::identity::{
-    default_data_dir, load_identity, load_token, save_identity, Identity,
+    clear_cloud_key, cloud_key_stored as cloud_key_present, default_data_dir, load_identity,
+    load_token, save_cloud_key, save_identity, Identity,
 };
 use oym_link_core::pairing::pair_device;
 use oym_link_core::status::{probe, Probe};
@@ -196,7 +197,12 @@ async fn assistant_open(app: AppHandle, provider: Option<String>) -> Result<(), 
 }
 
 #[tauri::command]
-fn assistant_start(app: AppHandle, rows: u16, cols: u16) -> Result<(), String> {
+fn assistant_start(
+    app: AppHandle,
+    rows: u16,
+    cols: u16,
+    provider: Option<String>,
+) -> Result<(), String> {
     let state = app.state::<AssistantState>();
     let mut guard = state
         .session
@@ -226,12 +232,32 @@ fn assistant_start(app: AppHandle, rows: u16, cols: u16) -> Result<(), String> {
         })
         .map_err(|error| format!("open pty: {error}"))?;
 
+    let settings = load_settings();
+    let cloud_base = settings
+        .get("cloudBaseUrl")
+        .and_then(Value::as_str)
+        .unwrap_or("https://api.deepseek.com");
+    let cloud_model = settings
+        .get("cloudModel")
+        .and_then(Value::as_str)
+        .unwrap_or("deepseek-flash");
+
     let mut command = CommandBuilder::new(cli);
     command.arg("--local");
+    command.arg("--quiet");
+    if provider.as_deref() == Some("cloud") {
+        command.arg("--prefer-cloud");
+    }
     command.arg("--pi");
     command.arg(pi);
     command.arg("--data-dir");
     command.arg(default_data_dir());
+    command.arg("--cloud-base-url");
+    command.arg(cloud_base);
+    command.arg("--cloud-model");
+    command.arg(cloud_model);
+    command.arg("--cloud-context-window");
+    command.arg("1000000");
     command.env("TERM", "xterm-256color");
     command.env("COLORTERM", "truecolor");
 
@@ -365,7 +391,9 @@ async fn status_snapshot() -> LinkStatus {
 
 #[tauri::command]
 async fn link_status() -> Result<LinkStatus, String> {
-    Ok(status_snapshot().await)
+    let mut status = status_snapshot().await;
+    status.cloud_key_stored = cloud_key_present();
+    Ok(status)
 }
 
 #[tauri::command]
@@ -412,12 +440,33 @@ async fn link_pair(code: String, server: String, name: Option<String>) -> Result
     }
     let _ = save_settings(&settings);
 
-    Ok(status_snapshot().await)
+    let mut status = status_snapshot().await;
+    status.cloud_key_stored = cloud_key_present();
+    Ok(status)
+}
+
+#[tauri::command]
+fn cloud_key_status() -> bool {
+    cloud_key_present()
+}
+
+#[tauri::command]
+fn cloud_key_set(key: String) -> Result<(), String> {
+    save_cloud_key(&key)
+}
+
+#[tauri::command]
+fn cloud_key_clear() -> Result<(), String> {
+    clear_cloud_key()
 }
 
 #[tauri::command]
 fn link_settings_get() -> Result<Value, String> {
-    Ok(load_settings())
+    let mut settings = load_settings();
+    if let Some(object) = settings.as_object_mut() {
+        object.insert("cloudKeyStored".into(), Value::Bool(cloud_key_present()));
+    }
+    Ok(settings)
 }
 
 #[tauri::command]
@@ -444,11 +493,10 @@ fn place_bottom_right(window: &WebviewWindow) {
     let Ok(size) = window.outer_size() else {
         return;
     };
-    let monitor_size = monitor.size();
-    let monitor_pos = monitor.position();
+    let work = monitor.work_area();
     let margin = 16i32;
-    let x = monitor_pos.x + monitor_size.width as i32 - size.width as i32 - margin;
-    let y = monitor_pos.y + monitor_size.height as i32 - size.height as i32 - margin;
+    let x = work.position.x + work.size.width as i32 - size.width as i32 - margin;
+    let y = work.position.y + work.size.height as i32 - size.height as i32 - margin;
     let _ = window.set_position(PhysicalPosition::new(x, y));
 }
 
@@ -482,6 +530,9 @@ fn main() {
             link_pair,
             link_settings_get,
             link_settings_set,
+            cloud_key_status,
+            cloud_key_set,
+            cloud_key_clear,
             link_hide,
             link_quit,
             assistant_open,
