@@ -59,6 +59,11 @@ export type RemoteCreatedInvite = {
   invite: RemoteInvite;
 };
 
+export type RemoteHelperBuild = {
+  path: string;
+  sizeBytes: number;
+};
+
 export type RemoteModelRoute = {
   id: string;
   label: string;

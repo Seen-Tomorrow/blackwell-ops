@@ -1,0 +1,19 @@
+<service>
+  <id>OymLink</id>
+  <name>OYM Link Service</name>
+  <description>OYM Link integrated-mode service (skeleton: heartbeat only).</description>
+  <executable>%BASE%\oym-link-service.exe</executable>
+  <arguments>--run</arguments>
+  <workingdirectory>%BASE%</workingdirectory>
+  <startmode>Automatic</startmode>
+  <serviceaccount>
+    <username>LocalSystem</username>
+  </serviceaccount>
+  <logpath>%BASE%\logs</logpath>
+  <log mode="roll-by-size">
+    <sizeThreshold>10240</sizeThreshold>
+    <keepFiles>4</keepFiles>
+  </log>
+  <onfailure action="restart" delay="10 sec"/>
+  <stoptimeout>15 sec</stoptimeout>
+</service>

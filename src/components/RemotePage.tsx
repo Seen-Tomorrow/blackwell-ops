@@ -6,6 +6,7 @@ import type {
   RemoteDevice,
   RemoteEvent,
   RemoteHealth,
+  RemoteHelperBuild,
   RemoteInvite,
   RemotePairing,
   RemoteSessionOpen,
@@ -63,6 +64,8 @@ export default function RemotePage({ subTab }: { subTab: RemoteSubTab }) {
   const [inviteTtl, setInviteTtl] = useState(72);
   const [createdInvite, setCreatedInvite] = useState<RemoteCreatedInvite | null>(null);
   const [inviteBusy, setInviteBusy] = useState<"create" | "revoke" | null>(null);
+  const [helperBuild, setHelperBuild] = useState<RemoteHelperBuild | null>(null);
+  const [helperBusy, setHelperBusy] = useState(false);
   const [editingName, setEditingName] = useState<{ id: string; value: string } | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
@@ -217,6 +220,26 @@ export default function RemotePage({ subTab }: { subTab: RemoteSubTab }) {
     },
     [createdInvite, loadInvites],
   );
+
+  const buildHelper = useCallback(async () => {
+    if (!createdInvite) return;
+    setError(null);
+    setNotice(null);
+    setHelperBuild(null);
+    setHelperBusy(true);
+    try {
+      const built = await invoke<RemoteHelperBuild>("remote_helper_build", {
+        invite: createdInvite.token,
+        owner: createdInvite.invite.owner,
+      });
+      setHelperBuild(built);
+      setNotice("Helper .exe built. It is in your Downloads folder.");
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setHelperBusy(false);
+    }
+  }, [createdInvite]);
 
   const startSession = useCallback(async (device: RemoteDevice) => {
     setError(null);
@@ -441,6 +464,22 @@ export default function RemotePage({ subTab }: { subTab: RemoteSubTab }) {
                     Single-use. Expires {dateTime(createdInvite.invite.expiresAt)}. Put it in the
                     helper package; do not paste it into chat.
                   </p>
+                  <div className="remote-helper-actions">
+                    <button
+                      type="button"
+                      className="remote-action remote-action--accent"
+                      disabled={helperBusy}
+                      onClick={() => void buildHelper()}
+                    >
+                      {helperBusy ? "BUILDING HELPER…" : "BUILD HELPER .EXE"}
+                    </button>
+                    {helperBuild && (
+                      <span className="type-tiny font-mono remote-muted">
+                        {(helperBuild.sizeBytes / 1024 / 1024).toFixed(1)} MB ·{" "}
+                        {helperBuild.path}
+                      </span>
+                    )}
+                  </div>
                 </div>
               )}
 

@@ -165,6 +165,135 @@ struct Bootstrap {
     error: Option<String>,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ServiceStatusView {
+    installed: bool,
+    running: bool,
+    pid: Option<u32>,
+    updated_at: Option<u64>,
+    error: Option<String>,
+}
+
+fn service_dir() -> Option<PathBuf> {
+    std::env::var_os("PROGRAMDATA")
+        .map(PathBuf::from)
+        .map(|dir| dir.join("OYM").join("Link").join("service"))
+}
+
+#[tauri::command]
+fn service_status() -> ServiceStatusView {
+    let installed = service_dir()
+        .map(|dir| dir.join("OymLink.xml").is_file())
+        .unwrap_or(false);
+    let status_path = std::env::var_os("PROGRAMDATA").map(|dir| {
+        PathBuf::from(dir)
+            .join("OYM")
+            .join("Link")
+            .join("service-status.json")
+    });
+
+    let mut view = ServiceStatusView {
+        installed,
+        running: false,
+        pid: None,
+        updated_at: None,
+        error: None,
+    };
+
+    let Some(status_path) = status_path else {
+        view.error = Some("PROGRAMDATA is not set".into());
+        return view;
+    };
+    let raw = match std::fs::read_to_string(&status_path) {
+        Ok(raw) => raw,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return view,
+        Err(error) => {
+            view.error = Some(format!("read service status: {error}"));
+            return view;
+        }
+    };
+    let value: Value = match serde_json::from_str(&raw) {
+        Ok(value) => value,
+        Err(error) => {
+            view.error = Some(format!("parse service status: {error}"));
+            return view;
+        }
+    };
+    view.pid = value.get("pid").and_then(Value::as_u64).map(|pid| pid as u32);
+    view.updated_at = value.get("updatedAt").and_then(Value::as_u64);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    view.running = view
+        .updated_at
+        .map(|updated| now.saturating_sub(updated) < 10)
+        .unwrap_or(false);
+    view
+}
+
+fn repo_script(name: &str) -> Result<PathBuf, String> {
+    let mut roots = Vec::new();
+    if let Ok(exe) = std::env::current_exe() {
+        for ancestor in exe.ancestors().take(8) {
+            roots.push(ancestor.to_path_buf());
+        }
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        roots.push(cwd);
+    }
+    for root in roots {
+        let candidate = root.join("scripts").join(name);
+        if candidate.is_file() {
+            return Ok(candidate);
+        }
+    }
+    Err(format!("{name} not found; this is a DEV build"))
+}
+
+#[cfg(windows)]
+fn launch_elevated_script(name: &str) -> Result<(), String> {
+    use windows_sys::Win32::UI::Shell::ShellExecuteW;
+    use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+    let script = repo_script(name)?;
+    let script = script.to_string_lossy().to_string();
+    let params = format!("-NoProfile -ExecutionPolicy Bypass -File \"{script}\"");
+    let verb: Vec<u16> = "runas\0".encode_utf16().collect();
+    let file: Vec<u16> = "pwsh.exe\0".encode_utf16().collect();
+    let params: Vec<u16> = params.encode_utf16().chain(std::iter::once(0)).collect();
+    let result = unsafe {
+        ShellExecuteW(
+            std::ptr::null_mut(),
+            verb.as_ptr(),
+            file.as_ptr(),
+            params.as_ptr(),
+            std::ptr::null(),
+            SW_SHOWNORMAL,
+        )
+    };
+    if result as isize <= 32 {
+        return Err(format!("could not start elevated installer (ShellExecuteW {result:?})"));
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn launch_elevated_script(_name: &str) -> Result<(), String> {
+    Err("service install is Windows-only".into())
+}
+
+#[tauri::command]
+fn service_install() -> Result<(), String> {
+    launch_elevated_script("install-oym-service.ps1")
+}
+
+#[tauri::command]
+fn service_uninstall() -> Result<(), String> {
+    launch_elevated_script("uninstall-oym-service.ps1")
+}
+
 /// Find a dev/packaged artifact by walking up from the app exe (works from
 /// `link/app/src-tauri/target/debug` back to the repo root) and from the cwd.
 fn find_tool(env_var: &str, repo_relative: &str, exe_relative: &str) -> Result<PathBuf, String> {
@@ -845,6 +974,9 @@ fn main() {
             cloud_key_status,
             cloud_key_set,
             cloud_key_clear,
+            service_status,
+            service_install,
+            service_uninstall,
             link_hide,
             link_quit,
             assistant_open,

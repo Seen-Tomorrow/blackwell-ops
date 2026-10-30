@@ -302,6 +302,15 @@ body {
   flex: 1;
 }
 
+.service-block {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .link-button {
   background: none;
   border: 0;

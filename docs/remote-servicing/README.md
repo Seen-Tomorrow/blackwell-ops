@@ -10,6 +10,7 @@ Product and operations notes for the Blackwell remote-servicing capability.
 | [LOCAL-MODE-REPORT.md](LOCAL-MODE-REPORT.md) | Implementation result, tests, untested items, and owner manual steps |
 | [LINK-SHAPE.md](LINK-SHAPE.md) | Device app shape: Portable vs Integrated, vocabulary, UI, credentials, rename plan |
 | [SUPPORT-INVITES.md](SUPPORT-INVITES.md) | One-time invite tokens, helper SFX packaging, revocation |
+| [INTEGRATED-SERVICE.md](INTEGRATED-SERVICE.md) | LocalSystem service skeleton, install/uninstall, next layer guardrails |
 | [CLOUDFLARE-NAMED-TUNNEL.md](CLOUDFLARE-NAMED-TUNNEL.md) | Permanent hostname via Cloudflare Tunnel, `.cz` NSSET notes |
 | [CODE-SIGNING.md](CODE-SIGNING.md) | Authenticode options, self-signed dev flow, SmartScreen |
 | [TRANSCRIPT-FETCH.md](TRANSCRIPT-FETCH.md) | Design for on-demand local transcript retrieval from the dashboard (not implemented yet) |

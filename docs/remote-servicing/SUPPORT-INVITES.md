@@ -59,5 +59,5 @@ deletes the invite file.
 The gateway, `/pair`, CLI, helper package and the main app’s **REMOTE → STATUS →
 SUPPORT INVITES** panel support invites. The panel creates a token (shown once),
 copies it, lists unused/used/revoked/expired invites, and revokes unused ones.
-Building the SFX is still a script because it packages the Pi runtime; a
-“Build helper” button is a later slice.
+After creating an invite, **BUILD HELPER .EXE** runs the packer and writes
+`OYM-Help-<owner>.exe` to Downloads.

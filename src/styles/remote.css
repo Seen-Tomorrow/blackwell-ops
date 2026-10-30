@@ -528,6 +528,18 @@
   margin: 0;
 }
 
+.remote-helper-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding-top: 0.15rem;
+}
+
+.remote-helper-actions span {
+  overflow-wrap: anywhere;
+}
+
 .remote-invite-list {
   display: flex;
   flex-direction: column;

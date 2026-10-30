@@ -35,6 +35,14 @@ type Bootstrap = {
   error: string | null;
 };
 
+type ServiceStatus = {
+  installed: boolean;
+  running: boolean;
+  pid: number | null;
+  updatedAt: number | null;
+  error: string | null;
+};
+
 const DEFAULT_STATUS: Status = {
   mode: "portable",
   connected: false,
@@ -70,6 +78,7 @@ export default function App() {
   const [gateway, setGateway] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [boot, setBoot] = useState<Bootstrap | null>(null);
+  const [service, setService] = useState<ServiceStatus | null>(null);
   const [provider, setProvider] = useState<"private" | "cloud">("private");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -92,6 +101,20 @@ export default function App() {
       setSettings(DEFAULT_SETTINGS);
     }
   }, []);
+
+  const loadService = useCallback(async () => {
+    try {
+      setService(await invoke<ServiceStatus>("service_status"));
+    } catch {
+      setService(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadService();
+    const timer = window.setInterval(() => void loadService(), 5000);
+    return () => window.clearInterval(timer);
+  }, [loadService]);
 
   useEffect(() => {
     void refresh();
@@ -205,6 +228,36 @@ export default function App() {
       setBusy(null);
     }
   }, [loadSettings, refresh]);
+
+  const installService = useCallback(async () => {
+    setError(null);
+    setNotice(null);
+    setBusy("service");
+    try {
+      await invoke("service_install");
+      setNotice("UAC prompt opened. Finish the elevated install, then status refreshes.");
+      window.setTimeout(() => void loadService(), 4000);
+    } catch (e) {
+      setError(typeof e === "string" ? e : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }, [loadService]);
+
+  const uninstallService = useCallback(async () => {
+    setError(null);
+    setNotice(null);
+    setBusy("service");
+    try {
+      await invoke("service_uninstall");
+      setNotice("UAC prompt opened for service removal.");
+      window.setTimeout(() => void loadService(), 4000);
+    } catch (e) {
+      setError(typeof e === "string" ? e : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }, [loadService]);
 
   if (!boot) {
     return <div className="boot-screen">Preparing secure link…</div>;
@@ -453,6 +506,50 @@ export default function App() {
               {busy === "settings" ? "SAVING…" : "SAVE"}
             </button>
             <p className="copy">Integrated mode, service install and transcripts arrive in the next slices.</p>
+
+            <div className="service-block">
+              <div className="card-head">
+                <span className="label">INTEGRATED SERVICE</span>
+                <span className={`state ${service?.running ? "is-on" : "is-off"}`}>
+                  <span className="dot" />
+                  {service?.running
+                    ? "RUNNING"
+                    : service?.installed
+                      ? "STOPPED"
+                      : "NOT INSTALLED"}
+                </span>
+              </div>
+              <p className="copy">
+                Optional LocalSystem service. This skeleton writes a heartbeat and is the base for
+                SYSTEM remote sessions; the terminal still runs in Portable mode.
+              </p>
+              <dl className="kv">
+                <dt>Service</dt>
+                <dd>{service?.installed ? "OymLink" : "not installed"}</dd>
+                <dt>PID</dt>
+                <dd>{service?.pid ?? "—"}</dd>
+              </dl>
+              {service?.error && <p className="copy">{service.error}</p>}
+              <div className="key-actions">
+                <button
+                  className="button"
+                  disabled={busy === "service"}
+                  onClick={() => void installService()}
+                >
+                  {busy === "service"
+                    ? "WORKING…"
+                    : service?.installed
+                      ? "REINSTALL SERVICE"
+                      : "INSTALL SERVICE"}
+                </button>
+                {service?.installed && (
+                  <button className="link-button" onClick={() => void uninstallService()}>
+                    UNINSTALL
+                  </button>
+                )}
+              </div>
+              <p className="copy">Install and removal require a UAC prompt.</p>
+            </div>
           </section>
         )}
 

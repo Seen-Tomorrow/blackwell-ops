@@ -10,6 +10,8 @@ use oym_gateway::{
     TerminateResult,
 };
 use serde::Serialize;
+use std::path::PathBuf;
+use std::process::{Command, Stdio};
 use std::sync::Arc;
 use tauri::State;
 
@@ -230,6 +232,142 @@ pub fn remote_invite_revoke(
     id: String,
 ) -> Result<bool, String> {
     oym_gateway::invites::revoke(&remote.cfg.data_dir, &id)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HelperBuild {
+    pub path: String,
+    pub size_bytes: u64,
+}
+
+fn helper_script() -> Result<PathBuf, String> {
+    let mut roots = Vec::new();
+    if let Ok(exe) = std::env::current_exe() {
+        for ancestor in exe.ancestors().take(8) {
+            roots.push(ancestor.to_path_buf());
+        }
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        roots.push(cwd);
+    }
+    for root in roots {
+        let candidate = root.join("scripts").join("make-oym-helper-sfx.ps1");
+        if candidate.is_file() {
+            return Ok(candidate);
+        }
+    }
+    Err("helper packer not found (scripts/make-oym-helper-sfx.ps1); this is a DEV build".into())
+}
+
+fn helper_output(owner: &str) -> PathBuf {
+    let label: String = owner
+        .trim()
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric() || *ch == '-' || *ch == '_')
+        .take(40)
+        .collect();
+    let label = if label.is_empty() {
+        "support".to_string()
+    } else {
+        label
+    };
+    let downloads = std::env::var_os("USERPROFILE")
+        .map(PathBuf::from)
+        .map(|home| home.join("Downloads"))
+        .filter(|path| path.is_dir())
+        .unwrap_or_else(std::env::temp_dir);
+    downloads.join(format!("OYM-Help-{label}.exe"))
+}
+
+/// Build a one-file helper SFX from a freshly created invite. This is the dev
+/// implementation: it invokes the repo packer, which requires the release app,
+/// release CLI and the local Pi package to exist.
+#[tauri::command]
+pub async fn remote_helper_build(
+    remote: State<'_, Arc<GatewayState>>,
+    invite: String,
+    owner: Option<String>,
+) -> Result<HelperBuild, String> {
+    let public_url = remote
+        .cfg
+        .public_url
+        .clone()
+        .ok_or_else(|| "public URL is not configured yet".to_string())?;
+    let data_dir = remote.cfg.data_dir.clone();
+    let token = invite.trim().to_string();
+    if !token.starts_with("oym_inv_") {
+        return Err("invalid invite token".into());
+    }
+    let token_hash = oym_gateway::devices::hash_token(&token);
+    let now = oym_gateway::devices::unix_now();
+    let valid = oym_gateway::invites::list(&data_dir).into_iter().any(|record| {
+        !record.revoked
+            && record.used_at.is_none()
+            && record.expires_at > now
+            && oym_gateway::devices::hash_matches(&record.token_hash, &token_hash)
+    });
+    if !valid {
+        return Err("invite is missing, used, revoked or expired".into());
+    }
+
+    let script = helper_script()?;
+    let owner = owner.unwrap_or_else(|| "support".into());
+    let out = helper_output(&owner);
+
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        if let Some(parent) = out.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|error| format!("create output dir: {error}"))?;
+        }
+        let mut command = Command::new("pwsh");
+        command
+            .arg("-NoProfile")
+            .arg("-ExecutionPolicy")
+            .arg("Bypass")
+            .arg("-File")
+            .arg(&script)
+            .arg("-Server")
+            .arg(&public_url)
+            .arg("-Invite")
+            .arg(&token)
+            .arg("-Owner")
+            .arg(&owner)
+            .arg("-OutFile")
+            .arg(&out)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x0800_0000);
+        }
+        let output = command
+            .output()
+            .map_err(|error| format!("start helper packer: {error}"))?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            return Err(format!(
+                "helper build failed ({}): {}\n{}",
+                output.status,
+                stderr.trim(),
+                stdout.trim()
+            ));
+        }
+        let size = std::fs::metadata(&out)
+            .map_err(|error| format!("read helper output: {error}"))?
+            .len();
+        Ok(HelperBuild {
+            path: out.display().to_string(),
+            size_bytes: size,
+        })
+    })
+    .await
+    .map_err(|error| format!("helper build task: {error}"))??;
+
+    Ok(result)
 }
 
 #[cfg(test)]
