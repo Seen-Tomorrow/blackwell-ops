@@ -829,7 +829,7 @@ async fn run_with_admin(args: Args, is_local_admin: bool) -> Result<i32, String>
              Cloud: {cloud_reason}\n\
              \n\
              Pair this PC with Blackwell Ops (run blackwell-link.exe without --local and enter\n\
-             the code from CONFIG → REMOTE), or configure an OpenAI-compatible endpoint in\n\
+             the code from REMOTE → STATUS), or configure an OpenAI-compatible endpoint in\n\
              {}:\n\
              \n\
                {{ \"baseUrl\": \"https://api.example.com/v1\", \"model\": \"<model-id>\",\n\

@@ -89,7 +89,7 @@ blackwell-link.exe
 On the first run it prints the server, asks for the one-time pairing code, and
 stores the resulting device token in Windows Credential Manager. Later runs use
 that token and do not ask for a code. The code is generated on demand in
-CONFIG → REMOTE → PAIR DEVICE, is one-time, and expires after five minutes.
+REMOTE → STATUS → PAIR DEVICE, is one-time, and expires after five minutes.
 
 When the Pi folder is already present, updating the client means replacing only
 `blackwell-link.exe`. The existing identity in `%LOCALAPPDATA%\BlackwellLink`
@@ -116,7 +116,7 @@ makes `PI_CODING_AGENT_DIR` relative to the wrong cwd and Pi starts with no
 models. The client normalizes relative paths, but absolute paths are the safest
 portable form.
 
-The gateway sends `session.open` from CONFIG / REMOTE. The client launches Pi with:
+The gateway sends `session.open` from REMOTE → DEVICES. The client launches Pi with:
 
 ```text
 --tools read,powershell,edit,write
@@ -158,7 +158,7 @@ Runs Pi in the current console. Pi's `/model` lists two providers:
 | `cloud/<model>` | direct OpenAI-compatible endpoint, no home gateway required |
 
 - The device must be paired (run the client once without `--local` and enter the
-  code from CONFIG → REMOTE). Local mode never pairs and never opens a remote
+  code from REMOTE → STATUS). Local mode never pairs and never opens a remote
   session or PTY; it uses a **routes-only** WSS connection
   (`/agent?role=routes`) that cannot replace an active remote session.
 - If home is unreachable or no engine is running, local mode starts cloud-only
@@ -227,7 +227,7 @@ Runs Pi in the current console. Pi's `/model` lists two providers:
 
 ## Gateway on/off
 
-CONFIG → REMOTE has a **STOP GATEWAY / START GATEWAY** control. Stopping the
+REMOTE → STATUS has a **STOP GATEWAY / START GATEWAY** control. Stopping the
 gateway closes the listener, disconnects all remote clients, and marks their
 sessions exited. The device records and tokens remain; clients must be
 restarted to reconnect when the gateway is turned back on. The Cloudflare

@@ -230,7 +230,7 @@ fn save_token(device_id: &str, token: &str) -> Result<(), String> {
 fn prompt_pairing_code() -> Result<String, String> {
     println!();
     println!("No paired identity for this Windows user.");
-    println!("In Blackwell OPS → CONFIG → REMOTE, click PAIR DEVICE.");
+    println!("In Blackwell OPS → REMOTE → STATUS, click PAIR DEVICE.");
     print!("Pairing code (blank to cancel): ");
     std::io::stdout()
         .flush()
