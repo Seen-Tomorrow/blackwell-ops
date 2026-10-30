@@ -241,7 +241,7 @@ pub struct HelperBuild {
     pub size_bytes: u64,
 }
 
-fn helper_script() -> Result<PathBuf, String> {
+fn repo_script(name: &str) -> Result<PathBuf, String> {
     let mut roots = Vec::new();
     if let Ok(exe) = std::env::current_exe() {
         for ancestor in exe.ancestors().take(8) {
@@ -252,12 +252,16 @@ fn helper_script() -> Result<PathBuf, String> {
         roots.push(cwd);
     }
     for root in roots {
-        let candidate = root.join("scripts").join("make-oym-helper-sfx.ps1");
+        let candidate = root.join("scripts").join(name);
         if candidate.is_file() {
             return Ok(candidate);
         }
     }
-    Err("helper packer not found (scripts/make-oym-helper-sfx.ps1); this is a DEV build".into())
+    Err(format!("{name} not found; this is a DEV build"))
+}
+
+fn helper_script() -> Result<PathBuf, String> {
+    repo_script("make-oym-helper-nsis.ps1")
 }
 
 fn helper_label(owner: &str) -> String {
@@ -386,6 +390,83 @@ pub async fn remote_helper_build(
     })
     .await
     .map_err(|error| format!("helper build task: {error}"))??;
+
+    Ok(result)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LinkBuild {
+    pub profile: String,
+    pub app: String,
+    pub cli: Option<String>,
+    pub output: String,
+}
+
+#[tauri::command]
+pub async fn remote_link_build(profile: String) -> Result<LinkBuild, String> {
+    let profile = profile.trim().to_lowercase();
+    if profile != "dev" && profile != "rel" {
+        return Err("profile must be dev or rel".into());
+    }
+    let script = repo_script("build-link.ps1")?;
+    let repo_root = script
+        .parent()
+        .and_then(|path| path.parent())
+        .ok_or_else(|| "cannot resolve repo root from build script".to_string())?
+        .to_path_buf();
+    let requested = profile.clone();
+
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let mut command = Command::new("pwsh");
+        command
+            .arg("-NoProfile")
+            .arg("-ExecutionPolicy")
+            .arg("Bypass")
+            .arg("-File")
+            .arg(&script)
+            .arg("-Profile")
+            .arg(&requested)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x0800_0000);
+        }
+        let output = command
+            .output()
+            .map_err(|error| format!("start link build: {error}"))?;
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        if !output.status.success() {
+            return Err(format!(
+                "link build failed ({}): {}\n{}",
+                output.status,
+                stderr.trim(),
+                stdout.trim()
+            ));
+        }
+        let app = repo_root
+            .join("link/app/src-tauri/target")
+            .join(if requested == "dev" { "debug" } else { "release" })
+            .join("oym-link-app.exe");
+        let cli = (requested == "rel").then(|| {
+            repo_root
+                .join("remote-client/target/release/oym-link.exe")
+                .display()
+                .to_string()
+        });
+        Ok(LinkBuild {
+            profile: requested,
+            app: app.display().to_string(),
+            cli,
+            output: stdout.chars().rev().take(2000).collect::<String>().chars().rev().collect(),
+        })
+    })
+    .await
+    .map_err(|error| format!("link build task: {error}"))??;
 
     Ok(result)
 }

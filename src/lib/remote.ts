@@ -64,6 +64,13 @@ export type RemoteHelperBuild = {
   sizeBytes: number;
 };
 
+export type RemoteLinkBuild = {
+  profile: "dev" | "rel";
+  app: string;
+  cli: string | null;
+  output: string;
+};
+
 export type RemoteModelRoute = {
   id: string;
   label: string;

@@ -504,6 +504,7 @@ async fn main() {
             gateway_cmds::remote_invite_create,
             gateway_cmds::remote_invite_revoke,
             gateway_cmds::remote_helper_build,
+            gateway_cmds::remote_link_build,
             telemetry::scan_gpus,
             telemetry::scan_cpu,
             telemetry::scan_system_info,

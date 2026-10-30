@@ -1,0 +1,56 @@
+#requires -Version 7.0
+<#
+.SYNOPSIS
+  Build the OYM Link device app (and CLI for REL) from the Blackwell dashboard.
+
+.DESCRIPTION
+  DEV: cargo build of link/app in debug mode. It still needs the link Vite
+       server at :1422 to render; this only produces the exe.
+  REL: frontend build + release app (embedded assets, no Vite) + release CLI.
+       The helper SFX packer consumes these REL artifacts.
+#>
+param(
+    [Parameter(Mandatory)]
+    [ValidateSet("dev", "rel")]
+    [string] $Profile
+)
+
+$ErrorActionPreference = "Stop"
+$root = Split-Path -Parent $PSScriptRoot
+$appManifest = Join-Path $root "link/app/src-tauri/Cargo.toml"
+$cliManifest = Join-Path $root "link/Cargo.toml"
+
+if ($Profile -eq "dev") {
+    & cargo build --locked --manifest-path $appManifest
+    if ($LASTEXITCODE -ne 0) { throw "cargo build (link DEV) failed with exit $LASTEXITCODE" }
+    $app = Join-Path $root "link/app/src-tauri/target/debug/oym-link-app.exe"
+    Write-Host ""
+    Write-Host "APP=$app"
+    Write-Host "NOTE=DEV needs the link Vite server at http://127.0.0.1:1422"
+    exit 0
+}
+
+Push-Location (Join-Path $root "link/app")
+try {
+    npm run build
+    if ($LASTEXITCODE -ne 0) { throw "link frontend build failed with exit $LASTEXITCODE" }
+}
+finally {
+    Pop-Location
+}
+
+# Force a rebuild so the embedded dist is refreshed even when Rust sources did
+# not change.
+(Get-Item $appManifest).LastWriteTime = Get-Date
+& cargo build --locked --release --features custom-protocol --manifest-path $appManifest
+if ($LASTEXITCODE -ne 0) { throw "cargo build (link REL app) failed with exit $LASTEXITCODE" }
+
+$env:CARGO_TARGET_DIR = Join-Path $root "remote-client/target"
+& cargo build --locked --release --manifest-path $cliManifest
+if ($LASTEXITCODE -ne 0) { throw "cargo build (link REL cli) failed with exit $LASTEXITCODE" }
+
+$app = Join-Path $root "link/app/src-tauri/target/release/oym-link-app.exe"
+$cli = Join-Path $root "remote-client/target/release/oym-link.exe"
+Write-Host ""
+Write-Host "APP=$app"
+Write-Host "CLI=$cli"

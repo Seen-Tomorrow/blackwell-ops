@@ -8,6 +8,7 @@ import type {
   RemoteHealth,
   RemoteHelperBuild,
   RemoteInvite,
+  RemoteLinkBuild,
   RemotePairing,
   RemoteSessionOpen,
   RemoteStatus,
@@ -67,6 +68,9 @@ export default function RemotePage({ subTab }: { subTab: RemoteSubTab }) {
   const [helperBuild, setHelperBuild] = useState<RemoteHelperBuild | null>(null);
   const [helperBusy, setHelperBusy] = useState(false);
   const [helperElapsed, setHelperElapsed] = useState(0);
+  const [linkBuild, setLinkBuild] = useState<RemoteLinkBuild | null>(null);
+  const [linkBuildBusy, setLinkBuildBusy] = useState<"dev" | "rel" | null>(null);
+  const [linkBuildElapsed, setLinkBuildElapsed] = useState(0);
   const [editingName, setEditingName] = useState<{ id: string; value: string } | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
@@ -252,6 +256,39 @@ export default function RemotePage({ subTab }: { subTab: RemoteSubTab }) {
     }, 1000);
     return () => window.clearInterval(timer);
   }, [helperBusy]);
+
+  useEffect(() => {
+    if (subTab !== "status") return;
+    const timer = window.setInterval(() => {
+      void loadInvites();
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [subTab, loadInvites]);
+
+  const buildLink = useCallback(async (profile: "dev" | "rel") => {
+    setError(null);
+    setNotice(null);
+    setLinkBuild(null);
+    setLinkBuildBusy(profile);
+    setLinkBuildElapsed(0);
+    try {
+      const built = await invoke<RemoteLinkBuild>("remote_link_build", { profile });
+      setLinkBuild(built);
+      setNotice(`${profile.toUpperCase()} link built.`);
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setLinkBuildBusy(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!linkBuildBusy) return;
+    const timer = window.setInterval(() => {
+      setLinkBuildElapsed((value) => value + 1);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [linkBuildBusy]);
 
   const startSession = useCallback(async (device: RemoteDevice) => {
     setError(null);
@@ -498,7 +535,7 @@ export default function RemotePage({ subTab }: { subTab: RemoteSubTab }) {
                       <div className="remote-helper-progress__text">
                         <strong>BUILDING HELPER</strong>
                         <span>
-                          Compressing the 111 MB Pi package… {helperElapsed}s
+                          Packing the 111 MB Pi payload with NSIS… {helperElapsed}s
                         </span>
                       </div>
                       <div className="remote-progress-track">
@@ -547,6 +584,55 @@ export default function RemotePage({ subTab }: { subTab: RemoteSubTab }) {
                   ))
                 )}
               </div>
+            </section>
+
+            <section className="remote-invites remote-link-builds">
+              <div className="remote-invites__head">
+                <div>
+                  <span className="type-micro font-mono remote-card__label">LINK BUILDS</span>
+                  <p className="type-tiny font-mono remote-muted">
+                    Build the device app here instead of opening another terminal. REL is
+                    standalone; DEV still needs its Vite server.
+                  </p>
+                </div>
+              </div>
+              <div className="remote-invite-form">
+                <button
+                  type="button"
+                  className="remote-action"
+                  disabled={linkBuildBusy !== null}
+                  onClick={() => void buildLink("dev")}
+                >
+                  {linkBuildBusy === "dev" ? "BUILDING DEV…" : "BUILD LINK DEV"}
+                </button>
+                <button
+                  type="button"
+                  className="remote-action remote-action--accent"
+                  disabled={linkBuildBusy !== null}
+                  onClick={() => void buildLink("rel")}
+                >
+                  {linkBuildBusy === "rel" ? "BUILDING REL…" : "BUILD LINK REL"}
+                </button>
+              </div>
+              {linkBuildBusy && (
+                <div className="remote-helper-progress">
+                  <span className="remote-spinner" aria-hidden />
+                  <div className="remote-helper-progress__text">
+                    <strong>BUILDING LINK {linkBuildBusy.toUpperCase()}</strong>
+                    <span>Cargo + frontend… {linkBuildElapsed}s</span>
+                  </div>
+                  <div className="remote-progress-track">
+                    <span />
+                  </div>
+                </div>
+              )}
+              {linkBuild && (
+                <div className="remote-link-build-result">
+                  <span className="remote-invite-state is-used">{linkBuild.profile.toUpperCase()}</span>
+                  <code>APP {linkBuild.app}</code>
+                  {linkBuild.cli && <code>CLI {linkBuild.cli}</code>}
+                </div>
+              )}
             </section>
 
             {status?.publicUrl == null && (

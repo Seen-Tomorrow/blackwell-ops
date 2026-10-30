@@ -609,6 +609,22 @@
   }
 }
 
+.remote-link-build-result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid var(--theme-border-subtle);
+  background: var(--theme-panel-accent);
+}
+
+.remote-link-build-result code {
+  overflow-wrap: anywhere;
+  font-size: 0.58rem;
+  color: var(--theme-text-muted);
+}
+
 .remote-invite-list {
   display: flex;
   flex-direction: column;

@@ -34,12 +34,17 @@ the helper package. It is not stored in plaintext anywhere.
 ## Build the helper
 
 ```powershell
-pwsh scripts/make-oym-helper-sfx.ps1 `
+pwsh scripts/make-oym-helper-nsis.ps1 `
   -Server https://help.oym.cz `
   -Invite oym_inv_... `
   -Owner Alex `
   -OutFile tmp/OYM-Help-Alex.exe
 ```
+
+The result is a silent NSIS installer: double-click installs to
+`%LOCALAPPDATA%\OYM\Help` and starts the app — one file, no wizard, no console.
+Default compression is bzip2 (~8 s, ~48 MB); `-NsisCompression lzma` gives ~35 MB
+at ~80 s. The legacy `make-oym-helper-sfx.ps1` remains as a fallback only.
 
 Exactly one of `-Invite` or `-Code` is required. The helper writes the invite into
 `oym-invite.json`; the app redeems it on first run, saves the device token, and
@@ -49,6 +54,9 @@ deletes the invite file.
 
 - 256-bit random token, prefix `oym_inv_`; only its hash is at rest.
 - TTL 1 hour … 30 days (default 72 h); expired/used/revoked tokens are rejected.
+- Single-use means **first pairing only**. Restarting or reconnecting the helper
+  reuses the saved device token; a new invite is needed only if the identity is
+  deleted or the helper is installed on another machine.
 - Redemption touches only `/pair`; a leaked Cloudflare URL cannot mint invites.
 - The resulting device appears in REMOTE like any other device; revoke the device
   if a package is lost after it has been used.
