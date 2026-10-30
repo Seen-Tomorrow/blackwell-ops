@@ -98,7 +98,7 @@ want to see the fleet, not just the answer.
 - **Tuning.** Provider templates, per-model overrides, a detailed llama.cpp
   parameter editor, and presets for configurations you repeat.
 - **Build provenance.** Foundry builds `llama-server` in-app with the STABLE
-  (CUDA 12.8) or FRONTIER (CUDA 13.x) toolchain pack.
+  (CUDA 12.9) or FRONTIER (CUDA 13.x) toolchain pack.
 - **Speculative decoding.** MTP and DFlash profiles where the model and engine
   build support them.
 - **Models.** GGUF library scan and metadata, Hugging Face downloads, and

@@ -1,7 +1,7 @@
 # Build the split toolchain packs and pin their digests in toolchain/manifest.json.
 #
 #   toolchain-rt-13.4-v<N>.7z   -> toolchain/cuda/v13.4/bin[/x64]/{cublas,cublasLt,cudart}
-#   toolchain-rt-12.8-v<N>.7z   -> toolchain/cuda/v12.8/bin/{cublas,cublasLt,cudart}
+#   toolchain-rt-12.9-v<N>.7z   -> toolchain/cuda/v12.9/bin/{cublas,cublasLt,cudart}
 #   toolchain-build-v<N>.7z     -> everything else (VS Build Tools, Windows SDK, cmake, nvcc)
 #
 # Why split: engine launch needs exactly those three DLLs (verified with dumpbin:
@@ -49,11 +49,11 @@ if ($toolchain_leaf -ne 'toolchain') {
 New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
 
 # CUDA version -> the three DLLs that must exist, relative to the toolchain root.
-# 13.4 ships them under bin\x64; 12.8 under bin. Check both so a layout change cannot silently
+# 13.4 ships them under bin\x64; 12.9 under bin. Check both so a layout change cannot silently
 # produce an empty pack.
 $runtime = [ordered]@{
     '13.4' = @('cublas64_13.dll', 'cublasLt64_13.dll', 'cudart64_13.dll')
-    '12.8' = @('cublas64_12.dll', 'cublasLt64_12.dll', 'cudart64_12.dll')
+    '12.9' = @('cublas64_12.dll', 'cublasLt64_12.dll', 'cudart64_12.dll')
 }
 
 function Resolve-CudaDllDir {
@@ -144,7 +144,7 @@ if ($do_runtime) {
             kind      = 'runtime'
             cuda      = $cuda
             asset     = $asset
-            sha256    = (Get-Sha256 $zip_path)
+            sha256    = (Get-FileSha256Hex $zip_path)
             sizeBytes = [long]$file.Length
         }
         Write-Host ("[toolchain-pack] {0}  {1:N1} MB  sha256={2}" -f $asset, ($file.Length / 1MB), $built[$id].sha256) -ForegroundColor Green
@@ -182,7 +182,7 @@ if ($do_build) {
         id        = 'build'
         kind      = 'build'
         asset     = $asset
-        sha256    = (Get-Sha256 $zip_path)
+        sha256    = (Get-FileSha256Hex $zip_path)
         sizeBytes = [long]$file.Length
     }
     Write-Host ("[toolchain-pack] {0}  {1:N1} MB  sha256={2}" -f $asset, ($file.Length / 1MB), $built['build'].sha256) -ForegroundColor Green
@@ -190,7 +190,7 @@ if ($do_build) {
 
 # Stable order, merge built entries over existing ones so a `-Packs build` run keeps the
 # runtime digests instead of dropping them.
-$order = @('runtime-13.4', 'runtime-12.8', 'build')
+$order = @('runtime-13.4', 'runtime-12.9', 'build')
 $pack_entries = @()
 foreach ($id in $order) {
     if ($built.ContainsKey($id)) { $pack_entries += $built[$id] }

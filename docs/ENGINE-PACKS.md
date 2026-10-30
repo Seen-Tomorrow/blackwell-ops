@@ -4,6 +4,9 @@ Design + phase-1 diff. **v3.1 — 2026-10-25, supersedes v3/v2.1/v1.** PR 1 (NSI
 seed assertion) and PR 2a (driver gate) are landed; see §14. Adds the driver nudge (§0.1) and puts
 3-arch engines on the roadmap (§3).
 
+**2026-10-29:** STABLE moved to CUDA 12.9 (driver floor 576, runtime pack 412.2 MB). The 12.8 sizes in
+§1/§3 and the 12.8 digests in §14 are the 2026-10-25 baseline, not the current pack.
+
 v1 said "ship no engine in the installer". That was wrong for this product: an empty app cannot
 finish onboarding (the GGUF scan spawns `llama-server`, which needs the CUDA runtime), and it makes
 the first-run download the *only* thing standing between the user and a working app. v2 keeps the
@@ -24,13 +27,13 @@ runs, not guesses; see §13 for the commands.
 | **Build pack** | VS + SDK + cmake + nvcc | first Foundry use |
 | ~~**Full pack**~~ | retired 2026-10-25 — split packs cover both consumers | — |
 
-One compatibility pack (`STABLE` = engine + CUDA 12.8 runtime) and any fork engines are optional
+One compatibility pack (`STABLE` = engine + CUDA 12.9 runtime) and any fork engines are optional
 downloads from DOWNLOADS → SOFTWARE. Foundry is offered the first time it is used, never in the wizard.
 
 ### 0.1 Driver gate — the actual first decision
 
 The seeded EDGE engine is usable only on a driver that can run CUDA 13.4. This repo already has the
-table (`src/lib/foundry_constants.ts`): **13.4 → 610**, 13.0 → 580, **12.8 → 570**, 12.0 → 525. You
+table (`src/lib/foundry_constants.ts`): **13.4 → 610**, 13.0 → 580, **12.9 → 576**, 12.0 → 525. You
 said 580 — that is the CUDA 13.x *floor*; 13.4 is **610** in the constants. Keep 610 unless the
 release notes are re-checked. This machine runs 616.92, so it passes either number.
 
@@ -46,8 +49,8 @@ so the wizard checks, nudges, and re-checks **in place**:
    focus, because the user will alt-tab back from the NVIDIA installer.
 4. **Installed but unchanged** → the new kernel driver is not in memory until reboot. Say exactly
    that, and keep `CHECK AGAIN` (it passes after the reboot; the next app start re-checks too).
-5. **Still old after two checks** → offer the STABLE compatibility pack (engine + 12.8 runtime,
-   ~536 MB). This is the only real decision in the wizard, and only the minority ever sees it.
+5. **Still old after two checks** → offer the STABLE compatibility pack (engine + 12.9 runtime,
+   ~522 MB). This is the only real decision in the wizard, and only the minority ever sees it.
 6. **Refused** → "continue without an engine (degraded)" as an explicit escape (locked-down machine),
    same rule as "no NVIDIA GPU" in §6. Nothing is downloaded; the nudge stays in the header.
 
@@ -294,7 +297,7 @@ Pack contents (keep the `toolchain/` prefix so `resolve_toolchain_extract_dest` 
 | Pack | Files |
 |---|---|
 | `runtime-13.4` | `toolchain/cuda/v13.4/bin/x64/{cublas64_13,cublasLt64_13,cudart64_13}.dll` |
-| `runtime-12.8` | `toolchain/cuda/v12.8/bin/{cublas64_12,cublasLt64_12,cudart64_12}.dll` |
+| `runtime-12.9` | `toolchain/cuda/v12.9/bin/{cublas64_12,cublasLt64_12,cudart64_12}.dll` |
 | `build` | full tree minus those 6 files |
 | ~~`full`~~ | retired 2026-10-25 — the two consumers are a runtime and `build` |
 
@@ -329,9 +332,9 @@ Rules that must hold, in this order:
   make the refusal a queued state, not an error, and re-run the scan on the `runtime ready`
   transition (the download-complete event already exists).
 - **Onboarding gate = "some engine can launch".**
-  `engineReady = (seed && runtime13.4 && driver_ok(edge)) || (stable && runtime12.8 && driver_ok(stable))`.
+  `engineReady = (seed && runtime13.4 && driver_ok(edge)) || (stable && runtime12.9 && driver_ok(stable))`.
   Not `all_ready`, not both CUDA versions. `check_runtime_ready` currently requires every profile
-  (`manifest.profiles.iter().all(...)`), which would force a 424 MB 12.8 download on an EDGE user —
+  (`manifest.profiles.iter().all(...)`), which would force a 412 MB 12.9 download on an EDGE user —
   that is the bug this section removes.
 - **A parked seed must be visibly parked.** On the STABLE branch the seeded EDGE appears in
   ENGINE page as "requires driver 610+ (yours: NNN)", is never probed or launched, and does not count
@@ -392,9 +395,9 @@ forks) and lives in DOWNLOADS → SOFTWARE.
 
 ## 7. Optional packs: STABLE, forks, Foundry
 
-- **STABLE** = one action that installs `runtime-12.8` then `ENGINE_ggml-master-stable-*.7z`
-  (~536 MB). SOFTWARE shows the requirement before the click (`requires CUDA 12.8 ·
-  424 MB`). `install_engine_pack(provider, profile)` does both: resolve the `EnginePackDef`, start the
+- **STABLE** = one action that installs `runtime-12.9` then `ENGINE_ggml-master-stable-*.7z`
+  (~522 MB). SOFTWARE shows the requirement before the click (`requires CUDA 12.9 ·
+  412 MB`). `install_engine_pack(provider, profile)` does both: resolve the `EnginePackDef`, start the
   runtime pack if `!cuda_runtime_ready_for_version(def.cuda)`, then start the engine pack. Extraction
   targets are disjoint (`toolchain/` vs `runtime/`), so they may run concurrently and the UI
   aggregates progress.

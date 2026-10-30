@@ -32,8 +32,8 @@
       "id": "stable",
       "label": "STABLE",
       "vs": "2022",
-      "cuda": "12.8",
-      "min_driver_major": 570,
+      "cuda": "12.9",
+      "min_driver_major": 576,
       "generator": "Visual Studio 17 2022",
       "arch": "x64",
       "ninja": true,
@@ -51,19 +51,19 @@
       "sizeBytes": 401449148
     },
     {
-      "id": "runtime-12.8",
+      "id": "runtime-12.9",
       "kind": "runtime",
-      "cuda": "12.8",
-      "asset": "toolchain-rt-12.8-v4.7z",
-      "sha256": "e645819c0fed925b5d4429271332d4d3932aacbc1357396f3ba13c61afe320f2",
-      "sizeBytes": 444263043
+      "cuda": "12.9",
+      "asset": "toolchain-rt-12.9-v4.7z",
+      "sha256": "ba68596d94d00b38d3d131d326a7c3e01a53724902d55b995b7dbdc5690a421a",
+      "sizeBytes": 432227607
     },
     {
       "id": "build",
       "kind": "build",
       "asset": "toolchain-build-v4.7z",
-      "sha256": "56643fc7c4611f8430a5e8ebb2edb7bf353fb6cc38c2918b50a2917a60a13c32",
-      "sizeBytes": 383952673
+      "sha256": "2b0fb63e662538f5ec7209697babe76c3afaf7484740f18b8811c216da26407f",
+      "sizeBytes": 398221419
     }
   ]
 }

@@ -90,7 +90,7 @@ Write-Host "  cmake from $CmakeSrc -> $CmakeDest"
 if (-not $SkipCuda) {
     Write-Host "`n--- CUDA toolkits ---" -ForegroundColor Yellow
     $stripScript = Join-Path $RepoRoot "scripts\strip-cuda-toolkit.ps1"
-    foreach ($ver in @("12.8", "13.4")) {
+    foreach ($ver in @("12.9", "13.4")) {
         $src = Join-Path $CudaSrcRoot "v$ver"
         $dst = Join-Path $ToolchainRoot "cuda\v$ver"
         if (-not (Test-Path $src)) {

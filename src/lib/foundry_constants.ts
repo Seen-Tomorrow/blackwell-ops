@@ -42,7 +42,7 @@ export interface EnvMeta {
 
 export const ENV_META: Record<Env, EnvMeta> = {
   edge:     { label: "EDGE",   cuda: "13.4", vs: "VS Build Tools 2026 (v18)", color: "edge",   description: "Bleeding-edge CUDA 13.4 — fastest path" },
-  stable:   { label: "STABLE",   cuda: "12.8", vs: "VS Build Tools 2022",        color: "stable",   description: "Long-lived compatibility profile" },
+  stable:   { label: "STABLE",   cuda: "12.9", vs: "VS Build Tools 2022",        color: "stable",   description: "Long-lived compatibility profile" },
 };
 
 /** Mirror of `BINARY_UPDATES_ENABLED` in `src-tauri/src/binary_update.rs`. */
@@ -60,7 +60,7 @@ export function getMinDriverMajorForCuda(cuda: string): number {
   const c = (cuda || "").trim();
   if (c.startsWith("13.4")) return 610;
   if (c.startsWith("13")) return 580;
-  if (c.startsWith("12.8")) return 570;
+  if (c.startsWith("12.9")) return 576;
   if (c.startsWith("12")) return 525;
   return 525;
 }

@@ -114,8 +114,8 @@ if (Test-Path $cudaRoot) {
         # Runtime DLL bloat (cufft/NPP/solver) — ggml needs cublas/Lt + cudart + nvJitLink/nvrtc only
         $totalFreed += Remove-CudaBinBloat $verDir.FullName
     }
-    # Drop CUDA versions not in manifest profiles (edge=13.4, stable=12.8)
-    $keepCuda = if ($PackProfile -eq "stable") { @("v12.8") } else { @("v12.8", "v13.4") }
+    # Drop CUDA versions not in manifest profiles (edge=13.4, stable=12.9)
+    $keepCuda = if ($PackProfile -eq "stable") { @("v12.9") } else { @("v12.9", "v13.4") }
     foreach ($verDir in Get-ChildItem $cudaRoot -Directory) {
         if ($keepCuda -notcontains $verDir.Name) {
             Write-Host "  remove cuda/$($verDir.Name) (pack profile $PackProfile)"
