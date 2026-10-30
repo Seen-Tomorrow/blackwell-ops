@@ -89,11 +89,24 @@ $invite = [ordered]@{
 }
 $invite | ConvertTo-Json | Set-Content (Join-Path $stage "oym-invite.json") -Encoding utf8NoBOM
 
+# 7zS extracts to a new %TEMP%\7zS*.tmp path on every run. A path that changes
+# on every launch means a new firewall prompt each time, so the extracted
+# launcher copies the payload to a stable per-user install and starts it there.
+$install = @'
+@echo off
+setlocal
+set "DEST=%LOCALAPPDATA%\OYM\Help"
+if not exist "%DEST%" mkdir "%DEST%"
+xcopy "%~dp0*" "%DEST%\" /E /I /Y /Q >nul
+start "" "%DEST%\OYM-Help.exe"
+endlocal
+'@
+Set-Content (Join-Path $stage "install.cmd") -Value $install -Encoding ascii
+
 $config = @'
 ;!@Install@!UTF-8!
 Title="OYM Help"
-InstallPath="%LOCALAPPDATA%\OYM\Help"
-RunProgram="OYM-Help.exe"
+RunProgram="install.cmd"
 GUIMode="2"
 ;!@InstallEnd@!
 '@

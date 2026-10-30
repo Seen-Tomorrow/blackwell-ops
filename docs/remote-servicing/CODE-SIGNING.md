@@ -57,6 +57,25 @@ signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 `
   /dmdf trusted-signing.json OYM-Help.exe
 ```
 
+## Self-signed certificate (development only)
+
+For local builds, `scripts/sign-dev.ps1` creates a code-signing certificate in
+`Cert:\CurrentUser\My` and signs the release app, CLI and SFX:
+
+```powershell
+pwsh scripts/sign-dev.ps1 -Trust
+```
+
+`-Trust` imports the public certificate into the current user's
+`TrustedPublisher` and `Root` stores. This makes the publisher name appear
+locally; it does **not** establish SmartScreen reputation and is not a substitute
+for a public certificate. Remove the certificate from both stores when it is no
+longer needed.
+
+Windows may refuse key creation with `NTE_PERM` / `0x80070005` under a restricted
+token. Run the script from an elevated terminal if that happens, or sign with a
+PFX via `signtool sign /f cert.pfx`.
+
 ## Until signing is in place
 
 An unsigned SFX will often show SmartScreen. The recipient can use **More info →
