@@ -335,49 +335,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
 
 [[package]]
-name = "blackwell-link"
-version = "0.1.0"
-dependencies = [
- "axum",
- "base64 0.22.1",
- "blackwell-remote",
- "futures-util",
- "hex",
- "http",
- "keyring",
- "portable-pty",
- "rand 0.8.8",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "tokio-stream",
- "tokio-tungstenite",
- "url",
- "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "blackwell-remote"
-version = "0.1.0"
-dependencies = [
- "axum",
- "base64 0.22.1",
- "env_logger",
- "futures-util",
- "hex",
- "log",
- "rand 0.8.8",
- "reqwest",
- "serde",
- "serde_json",
- "sha2",
- "subtle",
- "tokio",
- "tokio-util",
-]
-
-[[package]]
 name = "block-buffer"
 version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1620,6 +1577,49 @@ checksum = "9aa2b01e1d916879f73a53d01d1d6cee68adbb31d6d9177a8cfce093cced1d50"
 dependencies = [
  "futures-core",
  "pin-project-lite",
+]
+
+[[package]]
+name = "oym-gateway"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "env_logger",
+ "futures-util",
+ "hex",
+ "log",
+ "rand 0.8.8",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "subtle",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
+name = "oym-link"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "futures-util",
+ "hex",
+ "http",
+ "keyring",
+ "oym-gateway",
+ "portable-pty",
+ "rand 0.8.8",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-stream",
+ "tokio-tungstenite",
+ "url",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

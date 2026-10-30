@@ -25,6 +25,16 @@ needs the owner later.
 | D-015 | **Cloud API keys are per owner** | One key per owner account, provisioned by the owner and used on the owner's machines. The machine stores it in Credential Manager for that owner; a key is not minted per device. Revocation and spend control are owner-wide. |
 | D-016 | **Local transcripts are fetched on demand, never uploaded automatically** | The local Pi session files stay on the machine. "Fetch them home for review" is an explicit owner action in the Blackwell dashboard; until that pull path ships, sessions stay local. |
 | D-017 | **Local Power Mode is limited to the owner / local administrator** | Home PCs are single-user administrator machines, so the administrator account is the boundary. Standard/family users get Home mode. |
+| D-018 | **Blackwell Link is a separate Tauri v2 + React tray app** | It must run on devices without Blackwell OPS; same stack and design language as the main app, reusing the link core. |
+| D-019 | **Two run profiles: Portable and Integrated** | Portable = signed-in user, no install, one incident. Integrated = installed Windows service (LocalSystem) plus tray, permanent access. |
+| D-020 | **Local Assistant runs as the signed-in user in both profiles, with an embedded terminal** | A service cannot host an interactive console in the user's session; users never open a console or pass flags. |
+| D-021 | **Integrated remote sessions run in the service (SYSTEM)** | Unattended maintenance needs machine privilege; the installer states this explicitly. |
+| D-022 | **Cloud is DeepSeek Flash only; the owner key stays in Credential Manager/DPAPI and never in models.json** | One provider to start; cloud calls go through the loopback proxy, which injects the key upstream. |
+| D-023 | **The Link app is dark-only for now** | No theme switcher in the device app; keeps the surface small. |
+| D-024 | **Vocabulary: Remote, Link, Gateway, Device, Operator, Assistant, Transcript; Portable/Integrated** | One concept per word in UI and code; retires "client", "agent", "Power Mode" and "harness" from the UI. |
+| D-025 | **Mechanical renames land before the GUI work** | `remote`→`gateway`, `remote-client`→`link`, `/agent`→`/link`, `remote_*`→`gateway_*`, credentials/data dir to BlackwellLink. No installed base; test machines re-pair once. |
+| D-026 | **Product name is OYM; tagline “Own your infra.”** | Short mark, device app **OYM Link**, build **OYM Foundry**. “Metal” is not used in product copy (Apple Metal collision); `INFRA OPS` is a descriptor/category, never the mark. |
+| D-027 | **Rename in two stages** | Gateway/link crates, wire path, credentials and data dirs move now (no UI dependency). Tauri commands, events, main-app brand and bundle identifier move in one coordinated pass with an app restart. |
 
 ## Defaults chosen for now
 

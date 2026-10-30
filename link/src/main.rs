@@ -1,8 +1,8 @@
-//! Portable Blackwell Ops remote maintenance link.
+//! Portable OYM device link and local assistant.
 //!
 //! The client owns only transport and process supervision:
 //!   1. pair once and keep the device token in Windows Credential Manager
-//!   2. connect outbound to the Blackwell gateway over WSS
+//!   2. connect outbound to the OYM gateway over WSS
 //!   3. start Pi in a ConPTY when the operator opens a session
 //!   4. expose a loopback OpenAI-compatible proxy that tunnels model calls
 //!
@@ -21,7 +21,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use base64::Engine;
-use blackwell_remote::protocol::{
+use oym_gateway::protocol::{
     ClientMessage, ModelRoute, PairRequest, PairResponse, ServerMessage, SessionOpen,
 };
 use futures_util::{SinkExt, StreamExt};
@@ -43,13 +43,13 @@ use url::Url;
 mod admin;
 mod local;
 
-const SERVICE: &str = "BlackwellRemote";
+const SERVICE: &str = "OYMLink";
 const CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const PI_VERSION: &str = "1.4.0";
 
 /// Server baked into this portable trial build. The named-tunnel step replaces
 /// this with the stable hostname; rebuild the client at that point.
-const DEFAULT_SERVER: &str = "wss://favorite-fountain-begin-field.trycloudflare.com/agent";
+const DEFAULT_SERVER: &str = "wss://favorite-fountain-begin-field.trycloudflare.com/link";
 
 #[derive(Clone, Debug)]
 struct Args {
@@ -102,8 +102,8 @@ fn parse_args() -> Args {
     let mut pi = None;
     let mut data_dir = std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
-        .map(|path| path.join("BlackwellLink"))
-        .unwrap_or_else(|| PathBuf::from(".blackwell-link"));
+        .map(|path| path.join("OYM").join("Link"))
+        .unwrap_or_else(|| PathBuf::from(".oym-link"));
     let mut cwd = PathBuf::from("C:\\");
     let mut cwd_explicit = false;
     let mut local = false;
@@ -149,8 +149,8 @@ fn parse_args() -> Args {
             }
             "--help" | "-h" => {
                 println!(
-                    "blackwell-link --server wss://host/agent [--pair CODE] [--name NAME]\n\
-                     blackwell-link --local [--cloud-base-url URL] [--cloud-model MODEL]\n\
+                    "oym-link --server wss://host/link [--pair CODE] [--name NAME]\n\
+                     oym-link --local [--cloud-base-url URL] [--cloud-model MODEL]\n\
                      \n\
                      --pi <path>       Pi package executable (default: <exe dir>/pi/pi.exe)\n\
                      --data-dir <dir>  identity + per-session Pi home\n\
@@ -230,7 +230,7 @@ fn save_token(device_id: &str, token: &str) -> Result<(), String> {
 fn prompt_pairing_code() -> Result<String, String> {
     println!();
     println!("No paired identity for this Windows user.");
-    println!("In Blackwell OPS → REMOTE → STATUS, click PAIR DEVICE.");
+    println!("In OYM → REMOTE → STATUS, click PAIR DEVICE.");
     print!("Pairing code (blank to cancel): ");
     std::io::stdout()
         .flush()
@@ -626,7 +626,7 @@ fn write_pi_files(
     let mut providers = serde_json::Map::new();
     let mut first_provider = String::new();
     for (index, route) in routes.iter().enumerate() {
-        // Blackwell's own pi catalog uses the provider name `local`. Pi's
+        // OYM's own pi catalog uses the provider name `local`. Pi's
         // interactive model lookup has been reliable with that name; the wire
         // route id stays opaque and is only used in the local proxy path.
         let provider_id = if index == 0 {
@@ -700,7 +700,7 @@ fn write_pi_files(
     let guidance = r#"# Headless remote maintenance — Windows
 
 This is a remote, headless Windows maintenance session. The operator watches the
-terminal through Blackwell Ops; there is no one at the remote console to close a
+terminal through OYM; there is no one at the remote console to close a
 window.
 
 ## Hard rules
@@ -792,7 +792,7 @@ async fn start_pi_session(
     *shared.routes.write().await = route_map;
     let proxy_port = start_proxy(shared.clone(), false).await?;
 
-    let stamp = blackwell_remote::devices::unix_now();
+    let stamp = oym_gateway::devices::unix_now();
     let home = args
         .data_dir
         .join("sessions")
@@ -805,7 +805,7 @@ async fn start_pi_session(
         .ok_or_else(|| "session has no model routes".to_string())?;
     if !conpty_available() {
         return Err(
-            "this Windows build has no ConPTY; Blackwell Link needs Windows 10 1809+ / \
+            "this Windows build has no ConPTY; OYM Link needs Windows 10 1809+ / \
              Server 2019+. Pi also imports ClosePseudoConsole, so Server 2012 R2 / Windows 8.1 \
              cannot run the harness."
                 .into(),
@@ -821,7 +821,7 @@ async fn start_pi_session(
         })
         .map_err(|e| format!("open ConPTY: {e}"))?;
 
-    // Launch through a batch wrapper, like Blackwell's own pi launcher. This
+    // Launch through a batch wrapper, like OYM's own pi launcher. This
     // guarantees PI_CODING_AGENT_DIR is present in the shell process that
     // spawns pi; Pi's interactive model loader has been observed to miss a
     // custom catalog when the variable is only attached to the direct child.
@@ -905,7 +905,7 @@ async fn prompt_and_pair(server: &str, args: &Args) -> Result<(Identity, String)
             }
             Err(error) => {
                 eprintln!("Pairing failed: {error}");
-                println!("Generate a fresh code in Blackwell OPS and try again.");
+                println!("Generate a fresh code in OYM and try again.");
             }
         }
     }
@@ -1168,7 +1168,7 @@ fn main() {
     // Print before the Tokio runtime is built. On a fresh unsigned exe,
     // Defender/loader work can still delay the first instruction; this is the
     // earliest output the program itself can produce.
-    println!("Blackwell Link {CLIENT_VERSION} — starting");
+    println!("OYM Link {CLIENT_VERSION} — starting");
     let _ = std::io::stdout().flush();
 
     let args = parse_args();
@@ -1181,7 +1181,7 @@ fn main() {
     {
         Ok(runtime) => runtime,
         Err(error) => {
-            eprintln!("blackwell-link: runtime: {error}");
+            eprintln!("oym-link: runtime: {error}");
             std::process::exit(1);
         }
     };
@@ -1192,7 +1192,7 @@ fn main() {
         let code = match runtime.block_on(local::run(args)) {
             Ok(code) => code,
             Err(error) => {
-                eprintln!("blackwell-link --local: {error}");
+                eprintln!("oym-link --local: {error}");
                 1
             }
         };
@@ -1204,7 +1204,7 @@ fn main() {
     // failure/disconnect so the operator can read the message instead of the
     // window vanishing immediately.
     if let Err(error) = runtime.block_on(run(args)) {
-        eprintln!("blackwell-link: {error}");
+        eprintln!("oym-link: {error}");
         if interactive {
             pause_for_exit();
         }

@@ -1,4 +1,4 @@
-//! Blackwell Ops remote gateway.
+//! OYM gateway.
 //!
 //! The gateway is deliberately independent of Tauri so it can be run
 //! standalone for a Cloudflare smoke test, then embedded in the app.
@@ -11,7 +11,7 @@ pub mod state;
 pub use devices::DeviceView;
 pub use protocol::SessionOpen;
 pub use state::{
-    AttachResult, HealthInfo, PairingInfo, RemoteConfig, RemoteEvent, RemoteState, RemoteStatus,
+    AttachResult, HealthInfo, PairingInfo, GatewayConfig, GatewayEvent, GatewayState, GatewayStatus,
     RouteBinding, TerminateResult, SERVER_VERSION,
 };
 
@@ -21,7 +21,7 @@ use tokio_util::sync::CancellationToken;
 
 /// Bind and serve until the listener dies or `shutdown` is cancelled.
 pub async fn serve_with_shutdown(
-    state: Arc<RemoteState>,
+    state: Arc<GatewayState>,
     shutdown: CancellationToken,
 ) -> Result<(), String> {
     let listener = TcpListener::bind(state.cfg.bind)
@@ -35,13 +35,13 @@ pub async fn serve_with_shutdown(
 }
 
 /// Bind and serve until the listener dies. Kept for the standalone gateway.
-pub async fn serve(state: Arc<RemoteState>) -> Result<(), String> {
+pub async fn serve(state: Arc<GatewayState>) -> Result<(), String> {
     serve_with_shutdown(state, CancellationToken::new()).await
 }
 
 /// Load state and start the listener in a background task.
-pub async fn start(cfg: RemoteConfig) -> Result<Arc<RemoteState>, String> {
-    let state = RemoteState::load(cfg)?;
+pub async fn start(cfg: GatewayConfig) -> Result<Arc<GatewayState>, String> {
+    let state = GatewayState::load(cfg)?;
     state.clone().start_gateway().await?;
     Ok(state)
 }

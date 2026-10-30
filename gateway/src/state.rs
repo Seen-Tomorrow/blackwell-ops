@@ -60,7 +60,7 @@ fn append_session_event(path: &Path, event: serde_json::Value) {
 }
 
 #[derive(Clone, Debug)]
-pub struct RemoteConfig {
+pub struct GatewayConfig {
     pub bind: SocketAddr,
     pub public_url: Option<String>,
     pub data_dir: PathBuf,
@@ -68,11 +68,11 @@ pub struct RemoteConfig {
     pub auto_session: bool,
 }
 
-impl RemoteConfig {
+impl GatewayConfig {
     /// App-root layout: `{app_root}/config/remote`.
     pub fn for_app(app_root: &Path) -> Self {
         let data_dir = app_root.join("config").join("remote");
-        let public_url = std::env::var("BLACKWELL_REMOTE_PUBLIC_URL")
+        let public_url = std::env::var("OYM_PUBLIC_URL")
             .ok()
             .map(|v| v.trim().to_string())
             .filter(|v| !v.is_empty())
@@ -94,7 +94,7 @@ impl RemoteConfig {
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RemoteStatus {
+pub struct GatewayStatus {
     pub bind: String,
     pub public_url: Option<String>,
     pub gateway_error: Option<String>,
@@ -149,7 +149,7 @@ pub struct RouteBinding {
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case", rename_all_fields = "camelCase")]
-pub enum RemoteEvent {
+pub enum GatewayEvent {
     DeviceUpdated { device: DeviceView },
     DeviceConnected { device_id: String, name: String },
     DeviceDisconnected { device_id: String },
@@ -203,10 +203,10 @@ struct Inner {
     gateway_error: Option<String>,
 }
 
-pub struct RemoteState {
-    pub cfg: RemoteConfig,
+pub struct GatewayState {
+    pub cfg: GatewayConfig,
     inner: RwLock<Inner>,
-    events: broadcast::Sender<RemoteEvent>,
+    events: broadcast::Sender<GatewayEvent>,
     client: reqwest::Client,
     started: Instant,
     next_connection_id: AtomicU64,
@@ -215,8 +215,8 @@ pub struct RemoteState {
     gateway_runtime: Mutex<Option<GatewayRuntime>>,
 }
 
-impl RemoteState {
-    pub fn load(cfg: RemoteConfig) -> Result<Arc<Self>, String> {
+impl GatewayState {
+    pub fn load(cfg: GatewayConfig) -> Result<Arc<Self>, String> {
         let records = devices::load(&cfg.data_dir.join("devices.json"));
         let mut devices_map = HashMap::new();
         for record in records {
@@ -251,7 +251,7 @@ impl RemoteState {
         }))
     }
 
-    pub fn subscribe(&self) -> broadcast::Receiver<RemoteEvent> {
+    pub fn subscribe(&self) -> broadcast::Receiver<GatewayEvent> {
         self.events.subscribe()
     }
 
@@ -267,7 +267,7 @@ impl RemoteState {
         self.started.elapsed().as_secs()
     }
 
-    pub async fn status(&self) -> RemoteStatus {
+    pub async fn status(&self) -> GatewayStatus {
         let inner = self.inner.read().await;
         let online_count = inner
             .devices
@@ -279,7 +279,7 @@ impl RemoteState {
             .values()
             .filter(|session| session.state == "starting" || session.state == "running")
             .count();
-        RemoteStatus {
+        GatewayStatus {
             bind: self.cfg.bind.to_string(),
             public_url: self.cfg.public_url.clone(),
             gateway_error: inner.gateway_error.clone(),
@@ -339,7 +339,7 @@ impl RemoteState {
             connection.shutdown.cancel();
             let _ = self
                 .events
-                .send(RemoteEvent::DeviceDisconnected { device_id });
+                .send(GatewayEvent::DeviceDisconnected { device_id });
         }
     }
 
@@ -405,11 +405,11 @@ impl RemoteState {
         };
         let base = public_url.trim_end_matches('/');
         if let Some(rest) = base.strip_prefix("https://") {
-            format!("wss://{rest}/agent")
+            format!("wss://{rest}/link")
         } else if let Some(rest) = base.strip_prefix("http://") {
-            format!("ws://{rest}/agent")
+            format!("ws://{rest}/link")
         } else {
-            format!("{base}/agent")
+            format!("{base}/link")
         }
     }
 
@@ -435,7 +435,7 @@ impl RemoteState {
             .pairing
             .insert(code.clone(), PairingCode { expires_at });
         let public_url = self.cfg.public_url.clone();
-        let command = format!("blackwell-link --server {} --pair {code}", self.ws_url());
+        let command = format!("oym-link --server {} --pair {code}", self.ws_url());
         PairingInfo {
             code,
             expires_at,
@@ -612,7 +612,7 @@ impl RemoteState {
             (view, snapshot)
         };
         devices::save(&self.cfg.data_dir.join("devices.json"), &snapshot)?;
-        let _ = self.events.send(RemoteEvent::DeviceUpdated {
+        let _ = self.events.send(GatewayEvent::DeviceUpdated {
             device: view.clone(),
         });
         Ok(view)
@@ -649,7 +649,7 @@ impl RemoteState {
         for (_, token) in cancels {
             token.cancel();
         }
-        let _ = self.events.send(RemoteEvent::DeviceRemoved {
+        let _ = self.events.send(GatewayEvent::DeviceRemoved {
             device_id: device_id.to_string(),
         });
         Ok(())
@@ -711,7 +711,7 @@ impl RemoteState {
             (None, false)
         };
 
-        let _ = self.events.send(RemoteEvent::DeviceConnected {
+        let _ = self.events.send(GatewayEvent::DeviceConnected {
             device_id: device_id.to_string(),
             name: device_name,
         });
@@ -751,7 +751,7 @@ impl RemoteState {
             }
         };
         if removed {
-            let _ = self.events.send(RemoteEvent::DeviceDisconnected {
+            let _ = self.events.send(GatewayEvent::DeviceDisconnected {
                 device_id: device_id.to_string(),
             });
         }
@@ -833,7 +833,7 @@ impl RemoteState {
             let _ = devices::save(&self.cfg.data_dir.join("devices.json"), &snapshot);
             view
         };
-        let _ = self.events.send(RemoteEvent::DeviceUpdated { device: view });
+        let _ = self.events.send(GatewayEvent::DeviceUpdated { device: view });
     }
 
     pub async fn set_routes(&self, routes: Vec<RouteBinding>) {
@@ -1114,9 +1114,9 @@ impl RemoteState {
             })
         };
         if let Some(device) = view {
-            let _ = self.events.send(RemoteEvent::DeviceUpdated { device });
+            let _ = self.events.send(GatewayEvent::DeviceUpdated { device });
         }
-        let _ = self.events.send(RemoteEvent::SessionReady {
+        let _ = self.events.send(GatewayEvent::SessionReady {
             device_id: device_id.to_string(),
             pid,
             pi_version,
@@ -1145,7 +1145,7 @@ impl RemoteState {
                 }),
             );
         }
-        let _ = self.events.send(RemoteEvent::SessionData {
+        let _ = self.events.send(GatewayEvent::SessionData {
             device_id: device_id.to_string(),
             data,
         });
@@ -1178,7 +1178,7 @@ impl RemoteState {
                 token.cancel();
             }
         }
-        let _ = self.events.send(RemoteEvent::SessionExit {
+        let _ = self.events.send(GatewayEvent::SessionExit {
             device_id: device_id.to_string(),
             code,
         });
@@ -1235,12 +1235,12 @@ impl RemoteState {
 mod tests {
     use super::*;
 
-    fn test_state() -> (Arc<RemoteState>, PathBuf) {
+    fn test_state() -> (Arc<GatewayState>, PathBuf) {
         let data_dir = std::env::temp_dir().join(format!(
-            "blackwell-remote-state-test-{}",
+            "oym-gateway-state-test-{}",
             rand::random::<u64>()
         ));
-        let state = RemoteState::load(RemoteConfig {
+        let state = GatewayState::load(GatewayConfig {
             bind: "127.0.0.1:0".parse().expect("static socket addr"),
             public_url: None,
             data_dir: data_dir.clone(),
@@ -1265,7 +1265,7 @@ mod tests {
 
     #[test]
     fn remote_events_keep_the_ui_wire_contract() {
-        let event = RemoteEvent::SessionData {
+        let event = GatewayEvent::SessionData {
             device_id: "dev_1".into(),
             data: "aGVsbG8=".into(),
         };
@@ -1273,7 +1273,7 @@ mod tests {
         assert_eq!(json["type"], "session_data");
         assert_eq!(json["deviceId"], "dev_1");
 
-        let event = RemoteEvent::SessionReady {
+        let event = GatewayEvent::SessionReady {
             device_id: "dev_1".into(),
             pid: Some(42),
             pi_version: Some("1.4.0".into()),

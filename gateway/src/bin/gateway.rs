@@ -1,12 +1,12 @@
 //! Standalone remote gateway for local/Cloudflare smoke testing.
 //!
 //! ```text
-//! cargo run --manifest-path remote/Cargo.toml --bin blackwell-gateway -- \
+//! cargo run --manifest-path remote/Cargo.toml --bin oym-gateway -- \
 //!   --bind 127.0.0.1:7443 --data-dir tmp/remote-data
 //! ```
 
-use blackwell_remote::protocol::ModelRoute;
-use blackwell_remote::{serve, RemoteConfig, RemoteState, RouteBinding, SERVER_VERSION};
+use oym_gateway::protocol::ModelRoute;
+use oym_gateway::{serve, GatewayConfig, GatewayState, RouteBinding, SERVER_VERSION};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
@@ -60,7 +60,7 @@ async fn main() {
         }
     }
 
-    let state = match RemoteState::load(RemoteConfig {
+    let state = match GatewayState::load(GatewayConfig {
         bind,
         public_url: public_url.clone(),
         data_dir,
@@ -89,7 +89,7 @@ async fn main() {
         println!("model route route_1 -> 127.0.0.1:{port}");
     }
 
-    println!("Blackwell remote gateway {SERVER_VERSION}");
+    println!("OYM gateway {SERVER_VERSION}");
     println!("bind: http://{bind}");
     println!(
         "public: {}",

@@ -1,9 +1,9 @@
-//! Local Power Mode: `blackwell-link --local`.
+//! Local Power Mode: `oym-link --local`.
 //!
 //! Pi runs in the console the user is sitting at, with two model providers:
 //!
 //! * `blackwell/<engine>` — model calls travel over a **routes-only** WSS
-//!   connection to the Blackwell gateway, which proxies them to the running
+//!   connection to the OYM gateway, which proxies them to the running
 //!   engine. The loopback proxy only accepts its random bearer token and the
 //!   route models assigned to this launch.
 //! * `cloud/<model>` — Pi calls an OpenAI-compatible endpoint directly with a
@@ -19,7 +19,7 @@ use super::{
 };
 use axum::body::Bytes;
 use axum::http::header::AUTHORIZATION;
-use blackwell_remote::protocol::{ClientMessage, ModelRoute, ServerMessage};
+use oym_gateway::protocol::{ClientMessage, ModelRoute, ServerMessage};
 use futures_util::{SinkExt, StreamExt};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
@@ -34,8 +34,8 @@ use tokio_tungstenite::tungstenite::Message;
 use url::Url;
 
 /// Keyring coordinates for the optional cloud API key. The device token uses a
-/// different service (`BlackwellRemote`) so the two can be revoked separately.
-const CLOUD_SERVICE: &str = "BlackwellCloud";
+/// different service (`OYMLink`) so the two can be revoked separately.
+const CLOUD_SERVICE: &str = "OYMLink";
 const CLOUD_KEY_ENTRY: &str = "cloud-api-key";
 const CLOUD_DEFAULT_CONTEXT_WINDOW: usize = 131_072;
 const HOME_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -131,7 +131,7 @@ fn resolve_cloud(
         missing.push("model");
     }
     if api_key.is_none() {
-        missing.push("apiKey (cloud.json or Windows Credential Manager BlackwellCloud/cloud-api-key)");
+        missing.push("apiKey (cloud.json or Windows Credential Manager OYMLink/cloud-api-key)");
     }
     if !missing.is_empty() {
         return Ok(CloudOutcome::Missing(format!(
@@ -682,7 +682,7 @@ async fn launch_pi(
 ) -> Result<i32, String> {
     if !pi.is_file() {
         return Err(format!(
-            "Pi not found: {}\nPlace the Pi package beside blackwell-link.exe (pi/pi.exe) or pass --pi <path>.",
+            "Pi not found: {}\nPlace the Pi package beside oym-link.exe (pi/pi.exe) or pass --pi <path>.",
             pi.display()
         ));
     }
@@ -738,11 +738,11 @@ async fn run_with_admin(args: Args, is_local_admin: bool) -> Result<i32, String>
     if !is_local_admin {
         return Err("Local Power Mode is limited to the owner / local administrator account on this PC.\n\
              Sign in with this PC's administrator account (the usual single-user home setup) and run\n\
-             blackwell-link.exe --local again. Standard accounts use Home mode instead."
+             oym-link.exe --local again. Standard accounts use Home mode instead."
             .into());
     }
     say(&format!(
-        "Blackwell Link {CLIENT_VERSION} — local Power Mode (pi {PI_VERSION})"
+        "OYM Link {CLIENT_VERSION} — local Power Mode (pi {PI_VERSION})"
     ));
     if args.pair.is_some() {
         say("--pair is ignored in local mode: pair once from a normal run, then use --local.");
@@ -828,7 +828,7 @@ async fn run_with_admin(args: Args, is_local_admin: bool) -> Result<i32, String>
              Home: {home_issue}\n\
              Cloud: {cloud_reason}\n\
              \n\
-             Pair this PC with Blackwell Ops (run blackwell-link.exe without --local and enter\n\
+             Pair this PC with OYM (run oym-link.exe without --local and enter\n\
              the code from REMOTE → STATUS), or configure an OpenAI-compatible endpoint in\n\
              {}:\n\
              \n\
@@ -836,7 +836,7 @@ async fn run_with_admin(args: Args, is_local_admin: bool) -> Result<i32, String>
                  \"contextWindow\": 131072, \"vision\": false }}\n\
              \n\
              Keep the API key out of the file if you prefer Windows Credential Manager:\n\
-               service BlackwellCloud, user cloud-api-key",
+               service OYMLink, user cloud-api-key",
             cloud_path.display()
         ));
     }
@@ -1116,10 +1116,10 @@ mod tests {
 
     #[test]
     fn local_socket_is_marked_routes_only() {
-        assert_eq!(routes_url("wss://host/agent"), "wss://host/agent?role=routes");
+        assert_eq!(routes_url("wss://host/link"), "wss://host/link?role=routes");
         assert_eq!(
-            routes_url("ws://127.0.0.1:7555/agent?x=1"),
-            "ws://127.0.0.1:7555/agent?x=1&role=routes"
+            routes_url("ws://127.0.0.1:7555/link?x=1"),
+            "ws://127.0.0.1:7555/link?x=1&role=routes"
         );
     }
 

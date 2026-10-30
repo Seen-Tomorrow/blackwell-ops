@@ -8,6 +8,7 @@ Product and operations notes for the Blackwell remote-servicing capability.
 | [DECISIONS.md](DECISIONS.md) | Decided items, implementation defaults, and the few owner decisions still open |
 | [LOCAL-MODE-SPEC.md](LOCAL-MODE-SPEC.md) | Local Power Mode: home Blackwell or cloud model routing, routes-only gateway, local Pi launcher |
 | [LOCAL-MODE-REPORT.md](LOCAL-MODE-REPORT.md) | Implementation result, tests, untested items, and owner manual steps |
+| [LINK-SHAPE.md](LINK-SHAPE.md) | Device app shape: Portable vs Integrated, vocabulary, UI, credentials, rename plan |
 | [TRANSCRIPT-FETCH.md](TRANSCRIPT-FETCH.md) | Design for on-demand local transcript retrieval from the dashboard (not implemented yet) |
 | [HANDOFF.md](HANDOFF.md) | Current state, guardrails, next implementation slice, test constraints |
 | [DSH-ORCHESTRATOR.md](DSH-ORCHESTRATOR.md) | DeepSeek Harness as the server-side orchestrator: fit, profile constraints, plugin seams, spike |

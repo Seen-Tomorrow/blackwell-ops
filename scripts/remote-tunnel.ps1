@@ -58,7 +58,7 @@ try {
       Write-Host "PUBLIC URL: $publicUrl" -ForegroundColor Cyan
       Write-Host "Written to: $urlFile"
       Write-Host "Gateway health: $publicUrl/healthz"
-      Write-Host "Pairing command: blackwell-link --server wss://$($publicUrl -replace '^https://','')/agent --pair <code>"
+      Write-Host "Pairing command: oym-link --server wss://$($publicUrl -replace '^https://','')/link --pair <code>"
       Write-Host ""
     }
   }

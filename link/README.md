@@ -1,12 +1,12 @@
-# blackwell-link
+# oym-link
 
-Portable Windows client for the Blackwell Ops remote maintenance trial.
+Portable Windows client for the OYM remote maintenance trial.
 
 It owns only transport and process supervision:
 
 - pair once with a one-time code
 - keep the device token in Windows Credential Manager
-- connect outbound to the Blackwell gateway over WSS
+- connect outbound to the OYM gateway over WSS
 - start a bundled Pi in ConPTY when the operator opens a session
 - expose a loopback OpenAI-compatible proxy so Pi's model calls travel through
   the same tunnel
@@ -26,7 +26,7 @@ The minimum technical floor is **Windows 10 version 1809 (build 17763) x64** or
 and Pi's Bun runtime (`ClosePseudoConsole`) require ConPTY, which was introduced
 in that release.
 
-| OS | Direct Blackwell Link + Pi |
+| OS | Direct OYM Link + Pi |
 |---|---|
 | Windows 11 22H2+ | yes — tested on build 26200 |
 | Windows 10 22H2 / 21H2 / 21H1 / 20H2 | yes, but out of support |
@@ -56,12 +56,12 @@ Remoting/SSH.
 cargo build --release --manifest-path remote-client/Cargo.toml
 ```
 
-The release binary is `remote-client/target/release/blackwell-link.exe`.
+The release binary is `remote-client/target/release/oym-link.exe`.
 
 ## Package layout
 
 ```text
-blackwell-link.exe
+oym-link.exe
 vcruntime140.dll
 pi/
   pi.exe
@@ -83,7 +83,7 @@ The trial build has the current gateway URL baked in. Double-click it (or run it
 with no arguments):
 
 ```text
-blackwell-link.exe
+oym-link.exe
 ```
 
 On the first run it prints the server, asks for the one-time pairing code, and
@@ -92,14 +92,14 @@ that token and do not ask for a code. The code is generated on demand in
 REMOTE → STATUS → PAIR DEVICE, is one-time, and expires after five minutes.
 
 When the Pi folder is already present, updating the client means replacing only
-`blackwell-link.exe`. The existing identity in `%LOCALAPPDATA%\BlackwellLink`
+`oym-link.exe`. The existing identity in `%LOCALAPPDATA%\OYM\Link`
 and the Pi folder stay in place.
 
 For a different gateway or a scripted invocation:
 
 ```powershell
-.\blackwell-link.exe `
-  --server wss://<public-host>/agent `
+.\oym-link.exe `
+  --server wss://<public-host>/link `
   --pair <CODE> `
   --name <DEVICE-NAME> `
   --pi .\pi\pi.exe `
@@ -107,7 +107,7 @@ For a different gateway or a scripted invocation:
 ```
 
 After pairing, the identity file is under `--data-dir` (default
-`%LOCALAPPDATA%\BlackwellLink`) and the token is in Windows Credential Manager.
+`%LOCALAPPDATA%\OYM\Link`) and the token is in Windows Credential Manager.
 Subsequent runs need only `--server`, `--name`, `--pi`, and `--cwd`.
 
 Use an **absolute** `--data-dir` when you override it. The client launches Pi
@@ -147,20 +147,20 @@ local and remote sessions on this machine.
 ## Local Power Mode
 
 ```text
-blackwell-link.exe --local
+oym-link.exe --local
 ```
 
 Runs Pi in the current console. Pi's `/model` lists two providers:
 
 | selector | path |
 |---|---|
-| `blackwell/<engine>` | home Blackwell Ops engine, proxied over the outbound WSS |
+| `blackwell/<engine>` | home OYM engine, proxied over the outbound WSS |
 | `cloud/<model>` | direct OpenAI-compatible endpoint, no home gateway required |
 
 - The device must be paired (run the client once without `--local` and enter the
   code from REMOTE → STATUS). Local mode never pairs and never opens a remote
   session or PTY; it uses a **routes-only** WSS connection
-  (`/agent?role=routes`) that cannot replace an active remote session.
+  (`/link?role=routes`) that cannot replace an active remote session.
 - If home is unreachable or no engine is running, local mode starts cloud-only
   when cloud is configured. If neither is available it prints an explicit error
   and exits.
@@ -189,7 +189,7 @@ Runs Pi in the current console. Pi's `/model` lists two providers:
 ```
 
 - `apiKey` may be included in the file, but the preferred storage is Windows
-  Credential Manager: service **BlackwellCloud**, user **cloud-api-key**.
+  Credential Manager: service **OYMLink**, user **cloud-api-key**.
 - `baseUrl` must be `https`; plain `http` is accepted only for a loopback test
   endpoint (`127.0.0.1`, `localhost`, `[::1]`).
 - The key is never printed, never logged, and never accepted as a command-line
@@ -248,7 +248,7 @@ no rotation or automatic deletion in the trial.
 
 ## Startup output
 
-The client prints `Blackwell Link … — starting` before the Tokio runtime is
+The client prints `OYM Link … — starting` before the Tokio runtime is
 created, then flushes progress lines for identity lookup, connection, and
 pairing. A multi-second gap before that first line is process loading and
 Defender/AV scanning of the unsigned exe, not a Cloudflare wait.

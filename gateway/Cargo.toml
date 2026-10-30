@@ -1,16 +1,16 @@
 [package]
-name = "blackwell-remote"
+name = "oym-gateway"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-description = "Blackwell Ops remote gateway: pairing, WSS tunnel, model proxy, PTY relay"
+description = "OYM gateway: pairing, WSS tunnel, model proxy, PTY relay"
 
 [lib]
-name = "blackwell_remote"
+name = "oym_gateway"
 path = "src/lib.rs"
 
 [[bin]]
-name = "blackwell-gateway"
+name = "oym-gateway"
 path = "src/bin/gateway.rs"
 
 [dependencies]

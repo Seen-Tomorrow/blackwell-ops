@@ -1,12 +1,12 @@
 //! Tauri commands for the remote control room.
 //!
-//! The gateway itself lives in the `blackwell-remote` crate. This module is the
+//! The gateway itself lives in the `oym-gateway` crate. This module is the
 //! thin app-side adapter: it projects the running engine stack into model
 //! routes and exposes device/session controls to the React UI.
 
-use blackwell_remote::protocol::ModelRoute;
-use blackwell_remote::{
-    DeviceView, HealthInfo, PairingInfo, RemoteState, RemoteStatus, RouteBinding, SessionOpen,
+use oym_gateway::protocol::ModelRoute;
+use oym_gateway::{
+    DeviceView, HealthInfo, PairingInfo, GatewayState, GatewayStatus, RouteBinding, SessionOpen,
     TerminateResult,
 };
 use std::sync::Arc;
@@ -47,7 +47,7 @@ pub(crate) fn running_routes(entries: Vec<crate::types::StackEntry>) -> Vec<Rout
 /// Returns the number of routes published.
 pub(crate) async fn refresh_routes(
     stack: &tokio::sync::Mutex<crate::engine_stack::EngineStack>,
-    remote: &RemoteState,
+    remote: &GatewayState,
 ) -> usize {
     let routes = {
         let stack = stack.lock().await;
@@ -59,46 +59,46 @@ pub(crate) async fn refresh_routes(
 }
 
 #[tauri::command]
-pub async fn remote_status(remote: State<'_, Arc<RemoteState>>) -> Result<RemoteStatus, String> {
+pub async fn remote_status(remote: State<'_, Arc<GatewayState>>) -> Result<GatewayStatus, String> {
     Ok(remote.status().await)
 }
 
 #[tauri::command]
-pub async fn remote_gateway_start(remote: State<'_, Arc<RemoteState>>) -> Result<(), String> {
+pub async fn remote_gateway_start(remote: State<'_, Arc<GatewayState>>) -> Result<(), String> {
     remote.start_gateway().await
 }
 
 #[tauri::command]
-pub async fn remote_gateway_stop(remote: State<'_, Arc<RemoteState>>) -> Result<(), String> {
+pub async fn remote_gateway_stop(remote: State<'_, Arc<GatewayState>>) -> Result<(), String> {
     remote.stop_gateway().await
 }
 
 #[tauri::command]
 pub async fn remote_pairing_create(
-    remote: State<'_, Arc<RemoteState>>,
+    remote: State<'_, Arc<GatewayState>>,
 ) -> Result<PairingInfo, String> {
     Ok(remote.create_pairing().await)
 }
 
 #[tauri::command]
 pub async fn remote_devices_list(
-    remote: State<'_, Arc<RemoteState>>,
+    remote: State<'_, Arc<GatewayState>>,
 ) -> Result<Vec<DeviceView>, String> {
     Ok(remote.device_views().await)
 }
 
 #[tauri::command]
 pub async fn remote_device_rename(
-    remote: State<'_, Arc<RemoteState>>,
+    remote: State<'_, Arc<GatewayState>>,
     device_id: String,
     custom_name: Option<String>,
-) -> Result<blackwell_remote::DeviceView, String> {
+) -> Result<oym_gateway::DeviceView, String> {
     remote.rename_device(&device_id, custom_name).await
 }
 
 #[tauri::command]
 pub async fn remote_device_revoke(
-    remote: State<'_, Arc<RemoteState>>,
+    remote: State<'_, Arc<GatewayState>>,
     device_id: String,
 ) -> Result<(), String> {
     remote.revoke(&device_id).await
@@ -106,7 +106,7 @@ pub async fn remote_device_revoke(
 
 #[tauri::command]
 pub async fn remote_health(
-    remote: State<'_, Arc<RemoteState>>,
+    remote: State<'_, Arc<GatewayState>>,
 ) -> Result<HealthInfo, String> {
     Ok(remote.health_check().await)
 }
@@ -114,7 +114,7 @@ pub async fn remote_health(
 #[tauri::command]
 pub async fn remote_session_start(
     app: State<'_, AppContext>,
-    remote: State<'_, Arc<RemoteState>>,
+    remote: State<'_, Arc<GatewayState>>,
     device_id: String,
     cols: Option<u16>,
     rows: Option<u16>,
@@ -134,7 +134,7 @@ pub async fn remote_session_start(
 
 #[tauri::command]
 pub async fn remote_session_terminate(
-    remote: State<'_, Arc<RemoteState>>,
+    remote: State<'_, Arc<GatewayState>>,
     device_id: String,
 ) -> Result<TerminateResult, String> {
     remote.terminate_session(&device_id).await
@@ -142,7 +142,7 @@ pub async fn remote_session_terminate(
 
 #[tauri::command]
 pub async fn remote_session_input(
-    remote: State<'_, Arc<RemoteState>>,
+    remote: State<'_, Arc<GatewayState>>,
     device_id: String,
     data: String,
 ) -> Result<(), String> {
@@ -151,7 +151,7 @@ pub async fn remote_session_input(
 
 #[tauri::command]
 pub async fn remote_session_resize(
-    remote: State<'_, Arc<RemoteState>>,
+    remote: State<'_, Arc<GatewayState>>,
     device_id: String,
     cols: u16,
     rows: u16,

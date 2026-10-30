@@ -1,11 +1,11 @@
 //! Standalone gateway test for Local Power Mode's routes-only handshake.
 //!
-//! Runs the real `blackwell_remote` router on an ephemeral loopback port with a
-//! temporary data dir and a fake OpenAI-compatible engine. No Blackwell OPS app,
+//! Runs the real `oym_gateway` router on an ephemeral loopback port with a
+//! temporary data dir and a fake OpenAI-compatible engine. No OYM app,
 //! no 7443 gateway, no Pi.
 //!
 //! These tests pin the three properties local mode depends on:
-//!   1. `RoutesRequest` answers from `RemoteState` without creating a session.
+//!   1. `RoutesRequest` answers from `GatewayState` without creating a session.
 //!   2. A routes-only connection can relay model calls (the `blackwell/*`
 //!      provider) but is never accepted as an operator/PTY session.
 //!   3. Connecting with the local-mode marker does not detach or replace an
@@ -15,8 +15,8 @@ use axum::http::header::AUTHORIZATION;
 use axum::routing::post;
 use axum::Router;
 use base64::Engine as _;
-use blackwell_remote::protocol::{ClientMessage, ModelRoute, PairRequest, ServerMessage};
-use blackwell_remote::{gateway, RemoteConfig, RemoteState, RouteBinding};
+use oym_gateway::protocol::{ClientMessage, ModelRoute, PairRequest, ServerMessage};
+use oym_gateway::{gateway, GatewayConfig, GatewayState, RouteBinding};
 use futures_util::{SinkExt, StreamExt};
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -29,7 +29,7 @@ type TestSocket =
     tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 
 struct TestGateway {
-    state: Arc<RemoteState>,
+    state: Arc<GatewayState>,
     addr: SocketAddr,
     token: String,
     device_id: String,
@@ -97,7 +97,7 @@ async fn start_gateway(routes: Vec<RouteBinding>) -> TestGateway {
         "blackwell-routes-only-test-{}",
         rand::random::<u64>()
     ));
-    let state = RemoteState::load(RemoteConfig {
+    let state = GatewayState::load(GatewayConfig {
         bind: "127.0.0.1:0".parse().expect("static socket addr"),
         public_url: None,
         data_dir: data_dir.clone(),
@@ -141,7 +141,7 @@ async fn start_gateway(routes: Vec<RouteBinding>) -> TestGateway {
 }
 
 async fn connect(gateway: &TestGateway, query: &str) -> TestSocket {
-    let url = format!("ws://{}/agent{query}", gateway.addr);
+    let url = format!("ws://{}/link{query}", gateway.addr);
     let mut request = url.as_str().into_client_request().expect("ws request");
     request.headers_mut().insert(
         AUTHORIZATION,
@@ -178,9 +178,11 @@ async fn recv(socket: &mut TestSocket) -> ServerMessage {
 
 #[tokio::test]
 async fn routes_request_returns_routes_without_a_session() {
-    let mut gateway = start_gateway(vec![route("route_1", "ENGINE_1", 8888)]).await;
-    let engine = fake_engine().await;
-    gateway.engines.push(engine.1);
+    // Seed the route with the fake engine's own port: the test must never depend
+    // on a live llama-server that happens to be listening on a fixed port.
+    let (engine_port, engine) = fake_engine().await;
+    let mut gateway = start_gateway(vec![route("route_1", "ENGINE_1", engine_port)]).await;
+    gateway.engines.push(engine);
 
     let mut socket = connect(&gateway, "?role=routes").await;
     match recv(&mut socket).await {

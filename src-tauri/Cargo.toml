@@ -41,7 +41,7 @@ futures-util = "0.3"
 trash = "5"
 percent-encoding = "2"
 hex = "0.4"
-blackwell-remote = { path = "../remote" }
+oym-gateway = { path = "../gateway" }
 
 [target.'cfg(windows)'.dependencies]
 keyring = { version = "4", default-features = false, features = ["v1"] }

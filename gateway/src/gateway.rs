@@ -3,8 +3,8 @@
 //! Public routes (intended to sit behind Cloudflare Tunnel):
 //!   GET  /healthz, /health
 //!   POST /pair
-//!   GET  /agent   (WebSocket, bearer device token)
-//!   GET  /agent?role=routes
+//!   GET  /link   (WebSocket, bearer device token)
+//!   GET  /link?role=routes
 //!       Routes-only WebSocket for local Power Mode: it can list routes and
 //!       relay model calls, but it never attaches an operator connection, owns
 //!       no PTY, and creates no session record.
@@ -16,7 +16,7 @@ use crate::protocol::{
     ClientMessage, HealthResponse, PairRequest, PairResponse, ServerMessage, MAX_WS_MESSAGE_BYTES,
     PROTOCOL_VERSION,
 };
-use crate::state::{RemoteState, RouteBinding, SERVER_VERSION};
+use crate::state::{GatewayState, RouteBinding, SERVER_VERSION};
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::State;
 use axum::http::header::{AUTHORIZATION, CONTENT_TYPE};
@@ -31,12 +31,12 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-pub fn router(state: Arc<RemoteState>) -> Router {
+pub fn router(state: Arc<GatewayState>) -> Router {
     Router::new()
         .route("/healthz", get(health))
         .route("/health", get(health))
         .route("/pair", post(pair))
-        .route("/agent", get(agent))
+        .route("/link", get(agent))
         .with_state(state)
 }
 
@@ -53,12 +53,12 @@ fn routes_only_connection(query: Option<&str>) -> bool {
         .any(|(key, value)| key == "role" && value == "routes")
 }
 
-async fn health(State(state): State<Arc<RemoteState>>) -> Json<HealthResponse> {
+async fn health(State(state): State<Arc<GatewayState>>) -> Json<HealthResponse> {
     Json(state.health_payload().await)
 }
 
 async fn pair(
-    State(state): State<Arc<RemoteState>>,
+    State(state): State<Arc<GatewayState>>,
     Json(request): Json<PairRequest>,
 ) -> Result<Json<PairResponse>, (StatusCode, Json<Value>)> {
     state
@@ -76,7 +76,7 @@ fn bearer_token(headers: &HeaderMap) -> Option<String> {
 }
 
 async fn agent(
-    State(state): State<Arc<RemoteState>>,
+    State(state): State<Arc<GatewayState>>,
     headers: HeaderMap,
     uri: Uri,
     ws: WebSocketUpgrade,
@@ -94,7 +94,7 @@ async fn agent(
 }
 
 async fn handle_socket(
-    state: Arc<RemoteState>,
+    state: Arc<GatewayState>,
     device: crate::devices::DeviceRecord,
     socket: WebSocket,
     routes_only: bool,
@@ -323,7 +323,7 @@ async fn handle_socket(
 }
 
 async fn run_model(
-    state: Arc<RemoteState>,
+    state: Arc<GatewayState>,
     tx: mpsc::Sender<ServerMessage>,
     device_id: String,
     request_id: String,

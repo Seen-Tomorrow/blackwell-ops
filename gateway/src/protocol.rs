@@ -1,4 +1,4 @@
-//! Wire protocol shared by the Blackwell gateway and the portable client.
+//! Wire protocol shared by the OYM gateway and the portable client.
 //!
 //! All frames are JSON text WebSocket messages. PTY/model byte payloads are
 //! base64 inside JSON. This is deliberately boring: it keeps the first client
@@ -72,7 +72,7 @@ pub enum ClientMessage {
     ModelCancel { id: String },
     /// Ask for the current model route list without opening a session.
     ///
-    /// Local Power Mode (`blackwell-link --local`) uses this to build Pi's
+    /// Local Power Mode (`oym-link --local`) uses this to build Pi's
     /// `blackwell/*` model catalog before any remote session exists. The gateway
     /// answers with [`ServerMessage::Routes`] and creates no session record, no
     /// PTY, and no task/approval.

@@ -1,6 +1,6 @@
-# blackwell-remote
+# oym-gateway
 
-Loopback-only gateway for the Blackwell Ops remote control room.
+Loopback-only gateway for the OYM remote control room.
 
 Public routes (normally behind Cloudflare Tunnel):
 
@@ -8,7 +8,7 @@ Public routes (normally behind Cloudflare Tunnel):
 |---|---|
 | `GET /healthz` (alias `/health`) | tunnel/gateway health, no secrets |
 | `POST /pair` | one-time pairing code → device token |
-| `GET /agent` | authenticated WebSocket; device control, PTY, model frames |
+| `GET /link` | authenticated WebSocket; device control, PTY, model frames |
 
 Everything else stays on loopback. The gateway never exposes an engine port,
 Tauri IPC, or engine-management endpoints.
@@ -16,7 +16,7 @@ Tauri IPC, or engine-management endpoints.
 ## Standalone smoke gateway
 
 ```powershell
-cargo run --manifest-path remote/Cargo.toml --bin blackwell-gateway -- `
+cargo run --manifest-path remote/Cargo.toml --bin oym-gateway -- `
   --bind 127.0.0.1:7443 `
   --data-dir tmp\remote-gw `
   --engine-port 8888 `
