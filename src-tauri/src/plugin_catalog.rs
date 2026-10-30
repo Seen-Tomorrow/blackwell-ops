@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 const PROFILE_LABELS: &[(&str, &str)] = &[
     ("edge", "Edge (CUDA 13.4)"),
-    ("stable", "Stable (CUDA 12.8)"),
+    ("stable", "Stable (CUDA 12.9)"),
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

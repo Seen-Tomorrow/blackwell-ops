@@ -98,7 +98,7 @@ export function useSetupGuide({ models, catalogLoaded = false }: UseSetupGuideOp
         runtime_versions?: { id: string; ready: boolean }[];
       }>("foundry_get_toolchain_install_info");
       // Onboarding gates on the SEEDED profile's runtime only. `runtime_ready` is the
-      // "every manifest profile" aggregate and would force a second 424 MB CUDA 12.8 download
+      // "every manifest profile" aggregate and would force a second 412 MB CUDA 12.9 download
       // on an EDGE user (docs/ENGINE-PACKS.md).
       const seeded = info.runtime_versions?.find((v) => v.id === DEFAULT_BINARY_PROFILE);
       const ready = seeded ? seeded.ready : info.runtime_ready;

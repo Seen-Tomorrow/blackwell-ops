@@ -313,12 +313,12 @@ mod driver_tests {
     }
 
     /// The fallback hint must come from the same manifest the gate reads, or it lies after a
-    /// floor change. 580 can run STABLE (570) but not EDGE (610); 500 can run neither.
+    /// floor change. 580 can run STABLE (576) but not EDGE (610); 500 can run neither.
     #[test]
     fn compatible_alternative_is_derived_from_the_manifest() {
         let hint = driver_compatible_alternative("edge", Some(580)).expect("STABLE hint");
         assert!(hint.contains("STABLE"), "unexpected hint: {hint}");
-        assert!(hint.contains("570"), "hint must quote the manifest floor: {hint}");
+        assert!(hint.contains("576"), "hint must quote the manifest floor: {hint}");
         assert!(driver_compatible_alternative("edge", Some(500)).is_none());
         // From STABLE the only "other" profile is EDGE, which needs 610.
         assert!(driver_compatible_alternative("stable", Some(580)).is_none());
@@ -1029,7 +1029,7 @@ pub fn cuda_version_for_binary_profile(binary_profile: &str) -> Option<String> {
         }
     }
     match key.as_str() {
-        "stable" => Some("12.8".into()),
+        "stable" => Some("12.9".into()),
         "edge" => Some("13.4".into()),
         _ => None,
     }
@@ -1274,7 +1274,7 @@ pub fn driver_gate_result(label: &str, min: u32, driver: Option<u32>) -> Result<
     }
 }
 
-/// "STABLE (driver 570+) also works" — derived from the embedded manifest, so it cannot drift
+/// "STABLE (driver 576+) also works" — derived from the embedded manifest, so it cannot drift
 /// from the floor the gate actually enforced.
 fn driver_compatible_alternative(current_id: &str, driver: Option<u32>) -> Option<String> {
     let manifest: ToolchainManifest = serde_json::from_str(EMBEDDED_MANIFEST).ok()?;
@@ -1830,7 +1830,7 @@ pub fn extract_toolchain_archive(
 
 /// Extract a toolchain archive into the app root.
 ///
-/// Full packs replace the tree (as before). Partial packs **merge**: installing `runtime-12.8`
+/// Full packs replace the tree (as before). Partial packs **merge**: installing `runtime-12.9`
 /// after `runtime-13.4` must not delete 13.4, and a runtime pack must not delete the VS/SDK tree
 /// that the build pack put there. `extract_toolchain_archive` already passes `-aoa`.
 ///
@@ -2243,6 +2243,27 @@ mod isolation_tests {
                 profile.id
             );
         }
+
+        // Every pack is downloaded by name and verified against this digest. A malformed
+        // pin is a 404-or-refuse at install time, so catch it where the manifest is parsed.
+        assert!(!manifest.packs.is_empty(), "manifest lists no packs");
+        for pack in &manifest.packs {
+            assert_eq!(
+                pack.sha256.len(),
+                64,
+                "pack '{}' must pin a 64-char sha256, got {} chars",
+                pack.id,
+                pack.sha256.len()
+            );
+            assert!(
+                pack.sha256
+                    .chars()
+                    .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()),
+                "pack '{}' sha256 must be bare lowercase hex",
+                pack.id
+            );
+            assert!(pack.size_bytes > 0, "pack '{}' pins no size", pack.id);
+        }
     }
     /// The pack is a RUNTIME dependency too: launching builds the child PATH as
     /// "toolchain CUDA bin(s) + scrubbed(inherited PATH)". A user's own NVIDIA
@@ -2253,7 +2274,7 @@ mod isolation_tests {
         let inherited = [
             r"C:\Windows\system32",
             r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.4\bin",
-            r"D:\Other\App\toolchain\cuda\v12.8\bin",
+            r"D:\Other\App\toolchain\cuda\v12.9\bin",
             r"C:\Windows",
         ]
         .join(";");
@@ -2279,10 +2300,10 @@ mod isolation_tests {
     #[test]
     fn foreign_cuda_classification_covers_system_and_foreign_trees() {
         assert!(path_entry_is_foreign_cuda(
-            r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\bin"
+            r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9\bin"
         ));
         assert!(path_entry_is_foreign_cuda(
-            "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.8/bin"
+            "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.9/bin"
         ));
         assert!(path_entry_is_foreign_cuda(r"D:\Apps\blackwell\toolchain\cuda\v13.4\bin"));
         assert!(!path_entry_is_foreign_cuda(r"C:\Windows\system32"));

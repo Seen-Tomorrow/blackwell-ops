@@ -188,7 +188,7 @@ pub struct StartupUpdateStatus {
 /// Profile metadata for display in UI.
 const PROFILES: &[(&str, &str)] = &[
     ("edge", "Edge (VS2026 + CUDA 13.4)"),
-    ("stable", "Stable (VS2022 + CUDA 12.8)"),
+    ("stable", "Stable (VS2022 + CUDA 12.9)"),
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

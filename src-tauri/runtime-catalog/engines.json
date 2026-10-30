@@ -19,7 +19,7 @@
                             "asset":  "ENGINE_ggml-master-stable-b11910-63b4b303.7z",
                             "sha256":  "d75df2e51e242abd024d441a73992db406f8042dc4388b5013e2fed32e5575ea",
                             "sizeBytes":  118957190,
-                            "cuda":  "12.8",
+                            "cuda":  "12.9",
                             "engineVersion":  "b11910-63b4b303",
                             "recommended":  false
                         }

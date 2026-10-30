@@ -507,7 +507,7 @@ pub struct BuildInfo {
     /// File modification time of the binary — proxy for build date.
     #[serde(rename = "buildDate")]
     pub build_date: String,
-    /// CUDA version detected from binary --version output (e.g., "12.8").
+    /// CUDA version detected from binary --version output (e.g., "12.9").
     #[serde(default, rename = "cudaVersion")]
     pub cuda_version: Option<String>,
     /// GPU architectures from CMAKE_CUDA_ARCHITECTURES at build time (e.g., ["86", "89", "120"]).

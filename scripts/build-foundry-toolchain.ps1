@@ -1,5 +1,5 @@
 # One-step Foundry toolchain rebuild + pack for GitHub release upload.
-# Full build prerequisites: VS 2022/2026 Build Tools, Windows SDK, CUDA 12.8 + 13.4, CMake.
+# Full build prerequisites: VS 2022/2026 Build Tools, Windows SDK, CUDA 12.9 + 13.4, CMake.
 #
 # Usage:
 #   .\scripts\build-foundry-toolchain.ps1
@@ -71,7 +71,7 @@ if ($RepackOnly) {
         Write-Host "  [missing] Windows SDK`n         C:\BuildTools\Windows Kits or Program Files (x86)\Windows Kits" -ForegroundColor Red
         $PreflightFailed = $true
     }
-    Test-HostPath "CUDA 12.8" "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8" -Required | Out-Null
+    Test-HostPath "CUDA 12.9" "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9" -Required | Out-Null
     Test-HostPath "CUDA 13.4" "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.4" -Required | Out-Null
     $cmakeOk = (Test-Path "C:\Program Files\CMake\bin\cmake.exe") `
         -or (Test-Path "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe") `
