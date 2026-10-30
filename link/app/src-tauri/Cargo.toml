@@ -5,6 +5,9 @@ edition = "2021"
 license = "MIT"
 description = "OYM Link tray application"
 
+[features]
+custom-protocol = ["tauri/custom-protocol"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

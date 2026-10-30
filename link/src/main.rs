@@ -928,14 +928,15 @@ async fn prompt_and_pair(server: &str, args: &Args) -> Result<(Identity, String)
 }
 
 async fn run(args: Args) -> Result<(), String> {
+    let existing = load_identity(&args.data_dir);
     let server = args
         .server
         .clone()
+        .or_else(|| existing.as_ref().map(|identity| identity.server.clone()))
         .unwrap_or_else(|| DEFAULT_SERVER.to_string());
     say(&format!("Server: {server}"));
     say("Looking up paired identity...");
 
-    let existing = load_identity(&args.data_dir);
     let (identity, token) = if let Some(code) = args.pair.as_deref() {
         let (identity, token) = pair_device(&server, code, &args.name).await?;
         save_identity(&args.data_dir, &identity)?;

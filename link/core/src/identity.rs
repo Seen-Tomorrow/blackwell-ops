@@ -15,7 +15,11 @@ pub struct Identity {
 }
 
 /// `%LOCALAPPDATA%\OYM\Link` on Windows; a relative fallback for tests/dev.
+/// `OYM_DATA_DIR` overrides it for isolated support/invite testing.
 pub fn default_data_dir() -> PathBuf {
+    if let Some(dir) = std::env::var_os("OYM_DATA_DIR") {
+        return PathBuf::from(dir);
+    }
     std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
         .map(|path| path.join("OYM").join("Link"))

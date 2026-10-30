@@ -26,6 +26,15 @@ type Settings = {
   cloudKeyStored: boolean;
 };
 
+type Bootstrap = {
+  paired: boolean;
+  helper: boolean;
+  owner: string | null;
+  deviceName: string;
+  gateway: string;
+  error: string | null;
+};
+
 const DEFAULT_STATUS: Status = {
   mode: "portable",
   connected: false,
@@ -60,6 +69,7 @@ export default function App() {
   const [code, setCode] = useState("");
   const [gateway, setGateway] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [boot, setBoot] = useState<Bootstrap | null>(null);
   const [provider, setProvider] = useState<"private" | "cloud">("private");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -86,6 +96,18 @@ export default function App() {
   useEffect(() => {
     void refresh();
     void loadSettings();
+    void invoke<Bootstrap>("invite_bootstrap")
+      .then(setBoot)
+      .catch((e) =>
+        setBoot({
+          paired: false,
+          helper: false,
+          owner: null,
+          deviceName: "",
+          gateway: "",
+          error: typeof e === "string" ? e : String(e),
+        }),
+      );
     const timer = window.setInterval(() => void refresh(), 10000);
     return () => window.clearInterval(timer);
   }, [refresh, loadSettings]);
@@ -183,6 +205,13 @@ export default function App() {
       setBusy(null);
     }
   }, [loadSettings, refresh]);
+
+  if (!boot) {
+    return <div className="boot-screen">Preparing secure link…</div>;
+  }
+  if (boot.helper) {
+    return <HelperScreen boot={boot} status={status} />;
+  }
 
   return (
     <div className="app">
@@ -445,3 +474,44 @@ export default function App() {
     </div>
   );
 }
+
+function HelperScreen({ boot, status }: { boot: Bootstrap; status: Status }) {
+  const online = status.connected;
+  const failed = !boot.paired;
+  return (
+    <div className="app helper">
+      <header className="titlebar" data-tauri-drag-region>
+        <div className="brand" data-tauri-drag-region>
+          <span className="brand-mark">O</span>
+          <span className="brand-name">OYM</span>
+          <span className="mode-chip">HELP</span>
+        </div>
+      </header>
+      <main className="helper-content">
+        <div className={`helper-orb ${online ? "is-on" : ""} ${failed ? "is-bad" : ""}`} />
+        <h1>{failed ? "NOT CONNECTED" : online ? "CONNECTED" : "CONNECTING"}</h1>
+        <p className="helper-copy">
+          {failed
+            ? "This support link could not be completed."
+            : online
+              ? `Waiting for ${boot.owner ?? "your technician"} to connect.`
+              : "Contacting the support gateway…"}
+        </p>
+        <dl className="kv helper-kv">
+          <dt>Device</dt>
+          <dd>{status.deviceName || boot.deviceName || "this PC"}</dd>
+          <dt>Gateway</dt>
+          <dd>{status.gateway || boot.gateway || "not configured"}</dd>
+        </dl>
+        {boot.error && <p className="banner banner-bad">{boot.error}</p>}
+        {!failed && (
+          <p className="helper-note">
+            Keep this window open. You are sharing control with{" "}
+            {boot.owner ?? "your technician"} for this session.
+          </p>
+        )}
+      </main>
+    </div>
+  );
+}
+

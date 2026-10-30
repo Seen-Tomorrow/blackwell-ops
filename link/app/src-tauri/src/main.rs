@@ -1,9 +1,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::io::{Read, Write};
 use std::path::PathBuf;
+use std::process::{Child as StdChild, Command, Stdio};
 use std::sync::Mutex;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -135,6 +136,32 @@ struct AssistantState {
     session: Mutex<Option<AssistantSession>>,
 }
 
+#[derive(Default)]
+struct HelperState {
+    child: Mutex<Option<StdChild>>,
+}
+
+#[derive(Deserialize)]
+struct Invite {
+    server: String,
+    code: String,
+    #[serde(default)]
+    owner: Option<String>,
+    #[serde(default)]
+    helper: Option<bool>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Bootstrap {
+    paired: bool,
+    helper: bool,
+    owner: Option<String>,
+    device_name: String,
+    gateway: String,
+    error: Option<String>,
+}
+
 /// Find a dev/packaged artifact by walking up from the app exe (works from
 /// `link/app/src-tauri/target/debug` back to the repo root) and from the cwd.
 fn find_tool(env_var: &str, repo_relative: &str, exe_relative: &str) -> Result<PathBuf, String> {
@@ -164,6 +191,224 @@ fn find_tool(env_var: &str, repo_relative: &str, exe_relative: &str) -> Result<P
     Err(format!(
         "could not find {env_var} artifact (`{repo_relative}`); pass {env_var} explicitly"
     ))
+}
+
+fn helper_requested() -> bool {
+    std::env::args().any(|arg| arg == "--helper")
+}
+
+fn invite_path() -> Option<PathBuf> {
+    let mut args = std::env::args().skip(1);
+    while let Some(arg) = args.next() {
+        if arg == "--invite" {
+            if let Some(path) = args.next() {
+                return Some(PathBuf::from(path));
+            }
+        }
+    }
+    if let Some(path) = std::env::var_os("OYM_INVITE") {
+        return Some(PathBuf::from(path));
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let candidate = dir.join("oym-invite.json");
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        let candidate = cwd.join("oym-invite.json");
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+fn start_helper_client(app: &AppHandle) -> Result<(), String> {
+    let state = app.state::<HelperState>();
+    let mut guard = state
+        .child
+        .lock()
+        .map_err(|_| "helper state poisoned".to_string())?;
+    if let Some(child) = guard.as_mut() {
+        if child.try_wait().ok().flatten().is_none() {
+            return Ok(());
+        }
+    }
+
+    let cli = find_tool(
+        "OYM_LINK_CLI",
+        "remote-client/target/release/oym-link.exe",
+        "oym-link.exe",
+    )?;
+    let pi = find_tool(
+        "OYM_PI",
+        "tmp/blackwell-link-package/pi/pi.exe",
+        "pi/pi.exe",
+    )?;
+    let mut command = Command::new(cli);
+    command
+        .arg("--quiet")
+        .arg("--pi")
+        .arg(pi)
+        .arg("--data-dir")
+        .arg(default_data_dir())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    let child = command
+        .spawn()
+        .map_err(|error| format!("start helper link: {error}"))?;
+    *guard = Some(child);
+    Ok(())
+}
+
+fn stop_helper(app: &AppHandle) {
+    let state = app.state::<HelperState>();
+    if let Ok(mut guard) = state.child.lock() {
+        if let Some(mut child) = guard.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    };
+}
+
+#[tauri::command]
+async fn invite_bootstrap(app: AppHandle) -> Bootstrap {
+    let settings = load_settings();
+    let data_dir = default_data_dir();
+    let mut helper = helper_requested()
+        || settings
+            .get("helper")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+    let mut owner = settings
+        .get("owner")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+
+    if let Some(identity) = load_identity(&data_dir) {
+        let error = if helper {
+            start_helper_client(&app).err()
+        } else {
+            None
+        };
+        return Bootstrap {
+            paired: true,
+            helper,
+            owner,
+            device_name: identity.name,
+            gateway: identity.server,
+            error,
+        };
+    }
+
+    let Some(path) = invite_path() else {
+        return Bootstrap {
+            paired: false,
+            helper,
+            owner,
+            device_name: String::new(),
+            gateway: String::new(),
+            error: None,
+        };
+    };
+
+    let raw = match std::fs::read_to_string(&path) {
+        Ok(raw) => raw,
+        Err(error) => {
+            return Bootstrap {
+                paired: false,
+                helper,
+                owner,
+                device_name: String::new(),
+                gateway: String::new(),
+                error: Some(format!("read invite: {error}")),
+            }
+        }
+    };
+    let invite: Invite = match serde_json::from_str(&raw) {
+        Ok(invite) => invite,
+        Err(error) => {
+            return Bootstrap {
+                paired: false,
+                helper,
+                owner,
+                device_name: String::new(),
+                gateway: String::new(),
+                error: Some(format!("invalid invite: {error}")),
+            }
+        }
+    };
+    helper = invite.helper.unwrap_or(true);
+    owner = invite.owner.clone();
+    let name = device_name(&settings);
+
+    let (identity, _token) = match pair_device(
+        &invite.server,
+        &invite.code,
+        &name,
+        CLIENT_VERSION,
+        PI_VERSION,
+        "Medium",
+    )
+    .await
+    {
+        Ok(pair) => pair,
+        Err(error) => {
+            return Bootstrap {
+                paired: false,
+                helper,
+                owner,
+                device_name: String::new(),
+                gateway: invite.server,
+                error: Some(error),
+            }
+        }
+    };
+
+    if let Err(error) = save_identity(&data_dir, &identity) {
+        return Bootstrap {
+            paired: false,
+            helper,
+            owner,
+            device_name: identity.name,
+            gateway: identity.server,
+            error: Some(error),
+        };
+    }
+
+    let mut settings = load_settings();
+    if let Some(object) = settings.as_object_mut() {
+        object.insert("gatewayUrl".into(), Value::String(invite.server.clone()));
+        object.insert("helper".into(), Value::Bool(helper));
+        if let Some(owner) = &owner {
+            object.insert("owner".into(), Value::String(owner.clone()));
+        }
+    }
+    let _ = save_settings(&settings);
+    let _ = std::fs::remove_file(&path);
+
+    let error = if helper {
+        start_helper_client(&app).err()
+    } else {
+        None
+    };
+    Bootstrap {
+        paired: true,
+        helper,
+        owner,
+        device_name: identity.name,
+        gateway: identity.server,
+        error,
+    }
 }
 
 fn stop_assistant(app: &AppHandle) {
@@ -568,11 +813,13 @@ fn toggle_flyout(app: &AppHandle) {
 }
 
 fn main() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .manage(AssistantState::default())
+        .manage(HelperState::default())
         .invoke_handler(tauri::generate_handler![
             link_status,
             link_pair,
+            invite_bootstrap,
             link_settings_get,
             link_settings_set,
             cloud_key_status,
@@ -631,6 +878,12 @@ fn main() {
                 let _ = window.hide();
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running OYM Link");
+        .build(tauri::generate_context!())
+        .expect("error while building OYM Link");
+    builder.run(|app, event| {
+        if let tauri::RunEvent::Exit = event {
+            stop_helper(app);
+            stop_assistant(app);
+        }
+    });
 }
