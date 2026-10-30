@@ -37,6 +37,7 @@ if (($Code -eq "") -eq ($Invite -eq "")) {
 
 $app = Join-Path $root "link/app/src-tauri/target/release/oym-link-app.exe"
 $cli = Join-Path $root "remote-client/target/release/oym-link.exe"
+$launcher = Join-Path $root "link/helper-launcher/target/release/oym-helper-launcher.exe"
 $pi = Join-Path $root "tmp/blackwell-link-package/pi"
 $sevenZip = "C:\Program Files\7-Zip\7z.exe"
 
@@ -60,7 +61,7 @@ if (-not $sfxModule) {
     if (-not (Test-Path $sfxModule)) { throw "Could not obtain 7zS.sfx" }
 }
 
-foreach ($required in @($app, $cli, $sevenZip, $sfxModule)) {
+foreach ($required in @($app, $cli, $launcher, $sevenZip, $sfxModule)) {
     if (-not (Test-Path $required)) {
         throw "Missing build input: $required"
     }
@@ -83,6 +84,7 @@ New-Item -ItemType Directory -Force -Path (Split-Path -Parent $out) | Out-Null
 
 Copy-Item $app (Join-Path $stage "OYM-Help.exe")
 Copy-Item $cli (Join-Path $stage "oym-link.exe")
+Copy-Item $launcher (Join-Path $stage "OYM-Launcher.exe")
 Copy-Item $pi (Join-Path $stage "pi") -Recurse
 
 $inviteData = [ordered]@{
@@ -98,32 +100,14 @@ if ($Invite -ne "") {
 }
 $inviteData | ConvertTo-Json | Set-Content (Join-Path $stage "oym-invite.json") -Encoding utf8NoBOM
 
-# 7zS extracts to a new %TEMP%\7zS*.tmp path on every run. A path that changes
-# on every launch means a new firewall prompt each time, so the extracted
-# launcher copies the payload to a stable per-user install and starts it there.
-$install = @'
-@echo off
-setlocal
-set "DEST=%LOCALAPPDATA%\OYM\Help"
-if not exist "%DEST%" mkdir "%DEST%"
-xcopy "%~dp0*" "%DEST%\" /E /I /Y /Q >nul
-start "" "%DEST%\OYM-Help.exe"
-endlocal
-'@
-Set-Content (Join-Path $stage "install.cmd") -Value $install -Encoding ascii
-
-# wscript is a GUI-subsystem host, so the copy step leaves no console window.
-$installVbs = @'
-Set shell = CreateObject("WScript.Shell")
-base = Left(WScript.ScriptFullName, InStrRev(WScript.ScriptFullName, "\"))
-shell.Run "cmd.exe /c """ & base & "install.cmd""", 0, False
-'@
-Set-Content (Join-Path $stage "install.vbs") -Value $installVbs -Encoding ascii
-
+# 7zS extracts to a new %TEMP%\7zS*.tmp path on every run. OYM-Launcher.exe is a
+# GUI-subsystem exe: it copies the payload to %LOCALAPPDATA%\OYM\Help (stable
+# path for firewall rules) and starts the app there, with no console flash and
+# no relative wscript/install.cmd handoff.
 $config = @'
 ;!@Install@!UTF-8!
 Title="OYM Help"
-RunProgram="wscript.exe //B install.vbs"
+RunProgram="OYM-Launcher.exe"
 GUIMode="2"
 ;!@InstallEnd@!
 '@
