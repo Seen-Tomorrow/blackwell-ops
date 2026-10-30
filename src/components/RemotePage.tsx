@@ -66,6 +66,7 @@ export default function RemotePage({ subTab }: { subTab: RemoteSubTab }) {
   const [inviteBusy, setInviteBusy] = useState<"create" | "revoke" | null>(null);
   const [helperBuild, setHelperBuild] = useState<RemoteHelperBuild | null>(null);
   const [helperBusy, setHelperBusy] = useState(false);
+  const [helperElapsed, setHelperElapsed] = useState(0);
   const [editingName, setEditingName] = useState<{ id: string; value: string } | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
@@ -227,6 +228,8 @@ export default function RemotePage({ subTab }: { subTab: RemoteSubTab }) {
     setNotice(null);
     setHelperBuild(null);
     setHelperBusy(true);
+    setHelperElapsed(0);
+    const startedAt = Date.now();
     try {
       const built = await invoke<RemoteHelperBuild>("remote_helper_build", {
         invite: createdInvite.token,
@@ -237,9 +240,18 @@ export default function RemotePage({ subTab }: { subTab: RemoteSubTab }) {
     } catch (e) {
       setError(errorText(e));
     } finally {
+      setHelperElapsed(Math.round((Date.now() - startedAt) / 1000));
       setHelperBusy(false);
     }
   }, [createdInvite]);
+
+  useEffect(() => {
+    if (!helperBusy) return;
+    const timer = window.setInterval(() => {
+      setHelperElapsed((value) => value + 1);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [helperBusy]);
 
   const startSession = useCallback(async (device: RemoteDevice) => {
     setError(null);
@@ -480,6 +492,20 @@ export default function RemotePage({ subTab }: { subTab: RemoteSubTab }) {
                       </span>
                     )}
                   </div>
+                  {helperBusy && (
+                    <div className="remote-helper-progress">
+                      <span className="remote-spinner" aria-hidden />
+                      <div className="remote-helper-progress__text">
+                        <strong>BUILDING HELPER</strong>
+                        <span>
+                          Compressing the 111 MB Pi package… {helperElapsed}s
+                        </span>
+                      </div>
+                      <div className="remote-progress-track">
+                        <span />
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

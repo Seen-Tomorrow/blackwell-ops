@@ -25,7 +25,9 @@ param(
     [string] $Invite = "",
     [string] $Owner = "your technician",
     [string] $OutFile = "tmp/OYM-Help.exe",
-    [string] $StageDir = "tmp/oym-helper-stage"
+    [string] $StageDir = "tmp/oym-helper-stage",
+    # 3 is ~4 s / ~39 MB; 9 is ~40 s / ~32 MB. Helper delivery values speed.
+    [ValidateSet(1, 3, 5, 7, 9)] [int] $CompressionLevel = 3
 )
 
 $ErrorActionPreference = "Stop"
@@ -122,7 +124,7 @@ $payload = Join-Path $root "tmp/oym-helper-payload.7z"
 if (Test-Path $payload) { Remove-Item $payload -Force }
 Push-Location $stage
 try {
-    & $sevenZip a "-mx=9" "-mmt=on" $payload * | Out-Host
+    & $sevenZip a "-mx=$CompressionLevel" "-mmt=on" $payload * | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "7-Zip payload build failed with exit $LASTEXITCODE" }
 }
 finally {
