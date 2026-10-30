@@ -8,6 +8,7 @@ import ModelCatalog from "./components/ModelCatalog";
 const StackView = lazy(() => import("./components/StackView"));
 const ConfigPage = lazy(() => import("./components/ConfigPage"));
 const FoundryPage = lazy(() => import("./components/FoundryPage"));
+const RemotePage = lazy(() => import("./components/RemotePage"));
 const ModelHub = lazy(() => import("./components/ModelHub"));
 const SoftwareDownloads = lazy(() => import("./components/SoftwareDownloads"));
 const LogsPanel = lazy(() => import("./components/LogsPanel"));
@@ -36,7 +37,7 @@ import {
   subscribeStorage,
 } from "./lib/storage";
 import { dispatchAppEvent, EVENTS, consumePendingConfigSubTab, type NavigateConfigDetail } from "./lib/events";
-import type { ConfigSubTab, FoundrySubTab } from "./lib/appNav";
+import type { ConfigSubTab, FoundrySubTab, RemoteSubTab } from "./lib/appNav";
 import { isSetupNavTabAllowed } from "./lib/setupGuide";
 import { commitStagedDraftPairing, discardStagedDraftPairing } from "./lib/specDraft";
 import { useLibrarySchedule } from "./hooks/useLibrarySchedule";
@@ -52,7 +53,7 @@ import {
   releaseSlotLogs,
 } from "./lib/logSlotStore";
 
-export type Tab = "catalog" | "stack" | "modelhub" | "logs" | "config" | "foundry";
+export type Tab = "catalog" | "stack" | "modelhub" | "logs" | "config" | "foundry" | "remote";
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>("catalog");
@@ -60,6 +61,7 @@ function App() {
     () => consumePendingConfigSubTab() ?? "providers",
   );
   const [foundrySubTab, setFoundrySubTab] = useState<FoundrySubTab>("build");
+  const [remoteSubTab, setRemoteSubTab] = useState<RemoteSubTab>("status");
 
   const [models, setModels] = useState<ModelEntry[]>([]);
   // Per-path scan diagnostics — drives the catalog's "why is this empty" state.
@@ -635,6 +637,8 @@ function App() {
               downloadsSubTab={downloadsSubTab}
               onDownloadsSubTabChange={setDownloadsSubTab}
               onConfigSubTabChange={setConfigSubTab}
+              remoteSubTab={remoteSubTab}
+              onRemoteSubTabChange={setRemoteSubTab}
               foundrySubTab={foundrySubTab}
               onFoundrySubTabChange={setFoundrySubTab}
             >
@@ -656,6 +660,11 @@ function App() {
               subTab={configSubTab}
               onSubTabChange={setConfigSubTab}
             />
+          </Suspense>
+        )}
+        {activeTab === "remote" && (
+          <Suspense fallback={<TabFallback />}>
+            <RemotePage subTab={remoteSubTab} />
           </Suspense>
         )}
         {activeTab === "foundry" && (

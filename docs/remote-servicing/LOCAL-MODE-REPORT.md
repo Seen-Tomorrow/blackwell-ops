@@ -160,7 +160,7 @@ Prerequisite: an engine is RUNNING in Blackwell OPS and the app is running the
 **new build** so the gateway answers `RoutesRequest` and refreshes routes.
 
 1. Pair this PC once if needed: run `blackwell-link.exe` without `--local`,
-   enter the code from CONFIG → REMOTE. Identity goes to
+   enter the code from REMOTE → STATUS. Identity goes to
    `%LOCALAPPDATA%\BlackwellLink\identity.json`, token to Credential Manager.
 2. Start an engine and wait for RUNNING.
 3. In a terminal, from the repo root:
@@ -178,7 +178,7 @@ Prerequisite: an engine is RUNNING in Blackwell OPS and the app is running the
    `Home: 1 route(s) — blackwell/ENGINE_x`, `Proxy: http://127.0.0.1:<port>/v1`,
    then Pi's TUI in the same window.
 5. In Pi, `/model` must list `blackwell/ENGINE_x`. Send a prompt; the running
-   engine serves it and CONFIG → REMOTE shows **zero** active sessions.
+   engine serves it and REMOTE → STATUS shows **zero** active sessions.
 6. `/resume` must list the shared `<data-dir>/pi-sessions` history.
 7. Exit Pi (`/exit` or Ctrl+D) and confirm the console returns and the client
    exits with Pi's code.
@@ -305,11 +305,11 @@ tested it, and re-verified the slice with an independent harness.
 | `node tmp/local-mode-test/run-e2e.mjs --real-engine 8888` | 14/14 PASS, ~91 s |
 | real Pi + live engine (above) | exit 0, output `PONG`, 3 s |
 
-Deliverable rebuilt with the gate:
+Deliverable rebuilt with the gate and the REMOTE nav copy:
 
 ```text
 tmp/blackwell-link-local.exe            (also copied beside the Pi package)
-sha256 67E7F1E6DFC1BA943075ECFC67100A1037A1BDFF691B928922C3D23CBF4C0047
+sha256 DADE742E4EC33D2878DC3EE6FA6EA2DD7A1C2D1EB35E1E86D0001195C0D9B0EF
 size   6,877,696 bytes
 ```
 

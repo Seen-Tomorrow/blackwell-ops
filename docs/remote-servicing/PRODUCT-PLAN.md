@@ -23,7 +23,7 @@ The current implementation is a working PoC on Windows 11 and Windows Server
 - portable `blackwell-link.exe`, no install, no inbound port
 - one-time pairing code → per-device token in Windows Credential Manager
 - outbound WSS through a Cloudflare tunnel
-- Pi 1.4.0 on the target, terminal in CONFIG → REMOTE
+- Pi 1.4.0 on the target, terminal in REMOTE (DEVICES)
 - PowerShell tool calls with real output
 - all running engines selectable as model routes
 - device rename, gateway start/stop, session termination
@@ -139,7 +139,7 @@ Blackwell host
   gateway (inside Tauri app)
     ├─ device/session registry
     ├─ model routes → local llama engines
-    └─ CONFIG → REMOTE UI
+    └─ REMOTE UI
 
 Public edge: Cloudflare quick tunnel → 127.0.0.1:7443
 ```

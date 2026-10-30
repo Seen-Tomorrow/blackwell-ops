@@ -66,7 +66,7 @@ convention. The base64 chunk cap (256 KiB) keeps every frame far below
 
 ## Flow
 
-1. Operator opens CONFIG → REMOTE and selects a paired device that is currently
+1. Operator opens REMOTE → DEVICES and selects a paired device that is currently
    in local Power Mode (routes-only socket online).
 2. Dashboard calls `remote_local_sessions(device_id)`; the gateway sends
    `SessionListRequest` over that device's socket and waits (15 s timeout).
@@ -126,7 +126,7 @@ request_id -> oneshot::Sender<Vec<LocalSession>> / chunk sink
 
 - Tauri: `remote_local_sessions(device_id) -> Vec<LocalSession>`,
   `remote_fetch_session(device_id, session) -> String` (saved path).
-- CONFIG → REMOTE: in the device panel, a **LOCAL SESSIONS** section (visible
+- REMOTE → DEVICES: in the device panel, a **LOCAL SESSIONS** section (visible
   when the device is in local mode), list rows with started/cwd/size, and a
   FETCH button; fetched files appear under a small "FETCHED" list with
   open-in-explorer.
@@ -153,5 +153,5 @@ request_id -> oneshot::Sender<Vec<LocalSession>> / chunk sink
 3. E2E: standalone gateway on a spare port, paired client in local mode, real Pi
    `-p` creates a session, operator lists and fetches it, compare sha256 with the
    file on disk.
-4. App: after the owner restarts DEV, fetch a session in CONFIG → REMOTE and open
+4. App: after the owner restarts DEV, fetch a session in REMOTE → DEVICES and open
    the saved file.

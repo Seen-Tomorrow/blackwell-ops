@@ -16,6 +16,7 @@ import {
   configSubNavOptions,
   DOWNLOADS_SUB_NAV,
   FOUNDRY_SUB_NAV,
+  REMOTE_SUB_NAV,
   defaultTabForPrimary,
   isOpsTab,
   primaryNavFromTab,
@@ -23,6 +24,7 @@ import {
   type DownloadsSubTab,
   type FoundrySubTab,
   type PrimaryNavId,
+  type RemoteSubTab,
 } from "../lib/appNav";
 import HeaderNavSegment from "./HeaderNavSegment";
 import FoundryNavBadge from "./FoundryNavBadge";
@@ -39,6 +41,9 @@ interface HeaderNavProps {
   /** FOUNDRY section — BUILD / CACHE sub-rail. */
   foundrySubTab: FoundrySubTab;
   onFoundrySubTabChange: (tab: FoundrySubTab) => void;
+  /** REMOTE section — STATUS / DEVICES sub-rail. */
+  remoteSubTab: RemoteSubTab;
+  onRemoteSubTabChange: (tab: RemoteSubTab) => void;
   /** FOUNDRY click: navigate to the page (the nav badge is the background monitor). */
   onFoundrySelect: () => void;
   /** First-run wizard active — lock ENGINES / LOGS. */
@@ -70,6 +75,8 @@ function HeaderNav({
     onDownloadsSubTabChange,
     foundrySubTab,
     onFoundrySubTabChange,
+    remoteSubTab,
+    onRemoteSubTabChange,
     onFoundrySelect,
     setupGuideActive = false,
     setupGuidePhase,
@@ -89,6 +96,7 @@ function HeaderNav({
   const showOpsSub = primaryId === "operations";
   const showConfigSub = primaryId === "config";
   const showDownloadsSub = primaryId === "downloads";
+  const showRemoteSub = primaryId === "remote";
   const showFoundrySub = primaryId === "foundry";
 
   const primaryOptions = useMemo(() => {
@@ -109,6 +117,17 @@ function HeaderNav({
       const dataAttrs: Record<string, string> = {};
       if (p.id === "config") dataAttrs["data-onboarding"] = "config-tab";
       if (returnToSetup) dataAttrs["data-setup-return"] = "1";
+      // REMOTE is a servicing surface, not part of first-run setup: keep it
+      // visible but locked until the guide is complete.
+      if (p.id === "remote" && setupGuideActive) {
+        return {
+          id: p.id,
+          label: p.label,
+          title: "Finish first-run setup first (OPERATIONS, DOWNLOADS, or CONFIG)",
+          disabled: true,
+          dataAttrs: Object.keys(dataAttrs).length > 0 ? dataAttrs : undefined,
+        };
+      }
       if (p.id === "foundry") {
         return {
           id: p.id,
@@ -166,6 +185,11 @@ function HeaderNav({
     [],
   );
 
+  const remoteOptions = useMemo(
+    () => REMOTE_SUB_NAV.map((o) => ({ id: o.id, label: o.label })),
+    [],
+  );
+
   const onPrimarySelect = useCallback(
     (id: string) => {
       const primary = id as PrimaryNavId;
@@ -196,7 +220,7 @@ function HeaderNav({
    */
   const [subAnchor, setSubAnchor] = useState({ left: 0, width: 0, shift: 0 });
   const subRef = useRef<HTMLDivElement | null>(null);
-  const showSubRail = showOpsSub || showConfigSub || showDownloadsSub || showFoundrySub;
+  const showSubRail = showOpsSub || showConfigSub || showDownloadsSub || showRemoteSub || showFoundrySub;
 
   useLayoutEffect(() => {
     if (!showSubRail) return;
@@ -281,6 +305,15 @@ function HeaderNav({
               options={downloadsOptions}
               selectedId={downloadsSubTab}
               onSelect={(id) => onDownloadsSubTabChange(id as DownloadsSubTab)}
+            />
+          ) : showRemoteSub ? (
+            <HeaderNavSegment
+              ariaLabel="Remote section"
+              size="compact"
+              className="app-header__sub-switch"
+              options={remoteOptions}
+              selectedId={remoteSubTab}
+              onSelect={(id) => onRemoteSubTabChange(id as RemoteSubTab)}
             />
           ) : showFoundrySub ? (
             <HeaderNavSegment

@@ -2,7 +2,7 @@ import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, typ
 import { invoke } from "@tauri-apps/api/core";
 import type { Tab } from "../App";
 import type { ProviderConfig, UpdateOfferings } from "../lib/types";
-import type { ConfigSubTab, DownloadsSubTab, FoundrySubTab } from "../lib/appNav";
+import type { ConfigSubTab, DownloadsSubTab, FoundrySubTab, RemoteSubTab } from "../lib/appNav";
 import type { SetupPhase } from "../lib/setupGuide";
 import HeaderNav from "./HeaderNav";
 import { useStatus } from "../context/StatusBarContext";
@@ -88,6 +88,9 @@ interface LayoutProps {
   /** FOUNDRY section — BUILD / CACHE sub-rail. */
   foundrySubTab: FoundrySubTab;
   onFoundrySubTabChange: (tab: FoundrySubTab) => void;
+  /** REMOTE section — STATUS / DEVICES sub-rail. */
+  remoteSubTab: RemoteSubTab;
+  onRemoteSubTabChange: (tab: RemoteSubTab) => void;
 }
 
 export default function Layout({
@@ -107,6 +110,8 @@ export default function Layout({
   onDownloadsSubTabChange,
   foundrySubTab,
   onFoundrySubTabChange,
+  remoteSubTab,
+  onRemoteSubTabChange,
 }: LayoutProps) {
   const [zoom, setZoom] = useState(loadZoom);
   const [textScale, setTextScale] = useState(loadTextScale);
@@ -473,6 +478,8 @@ export default function Layout({
               onDownloadsSubTabChange={onDownloadsSubTabChange}
               foundrySubTab={foundrySubTab}
               onFoundrySubTabChange={onFoundrySubTabChange}
+              remoteSubTab={remoteSubTab}
+              onRemoteSubTabChange={onRemoteSubTabChange}
               onFoundrySelect={handleFoundrySelect}
               setupGuideActive={setupGuideActive}
               setupGuidePhase={setupGuidePhase}

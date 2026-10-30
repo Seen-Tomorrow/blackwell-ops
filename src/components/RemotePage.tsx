@@ -10,6 +10,8 @@ import type {
   RemoteStatus,
   RemoteTerminateResult,
 } from "../lib/remote";
+import type { RemoteSubTab } from "../lib/appNav";
+import TabPageHeader from "./TabPageHeader";
 import RemoteTerminalOverlay from "./RemoteTerminalOverlay";
 
 function errorText(error: unknown): string {
@@ -40,7 +42,7 @@ function deviceLabel(device: RemoteDevice): string {
   return device.customName?.trim() || device.name;
 }
 
-export default function RemoteConfig() {
+export default function RemotePage({ subTab }: { subTab: RemoteSubTab }) {
   const [status, setStatus] = useState<RemoteStatus | null>(null);
   const [devices, setDevices] = useState<RemoteDevice[]>([]);
   const [health, setHealth] = useState<RemoteHealth | null>(null);
@@ -236,33 +238,38 @@ export default function RemoteConfig() {
   }, [health]);
 
   return (
-    <div className="remote-panel">
-      <div className="remote-panel__head">
-        <div>
-          <h2 className="type-body font-mono remote-title">REMOTE ACCESS</h2>
+    <div className="h-full flex flex-col overflow-hidden" data-remote-page>
+      <TabPageHeader title="REMOTE" />
+      <div className="remote-panel">
+        <div className="remote-panel__head">
           <p className="type-label font-mono remote-muted">
-            Outbound-only Windows link. Pair a device, open a pi-maintenance session, terminate it here.
+            {subTab === "status"
+              ? "Outbound-only Windows link. Gateway state, public endpoint and pairing."
+              : "Paired devices, live pi-maintenance sessions and terminal access."}
           </p>
+          <div className="remote-head-actions">
+            {subTab === "status" && (
+              <button type="button" className="remote-action" onClick={() => void checkHealth()}>
+                CHECK TUNNEL
+              </button>
+            )}
+            <button
+              type="button"
+              className="remote-action remote-action--accent"
+              disabled={busy === "pair"}
+              onClick={() => void pairDevice()}
+            >
+              {busy === "pair" ? "CREATING…" : "PAIR DEVICE"}
+            </button>
+          </div>
         </div>
-        <div className="remote-head-actions">
-          <button type="button" className="remote-action" onClick={() => void checkHealth()}>
-            CHECK TUNNEL
-          </button>
-          <button
-            type="button"
-            className="remote-action remote-action--accent"
-            disabled={busy === "pair"}
-            onClick={() => void pairDevice()}
-          >
-            {busy === "pair" ? "CREATING…" : "PAIR DEVICE"}
-          </button>
-        </div>
-      </div>
 
-      {error && <div className="remote-banner remote-banner--bad">{error}</div>}
-      {notice && <div className="remote-banner remote-banner--ok">{notice}</div>}
+        {error && <div className="remote-banner remote-banner--bad">{error}</div>}
+        {notice && <div className="remote-banner remote-banner--ok">{notice}</div>}
 
-      <div className="remote-status-grid">
+        {subTab === "status" ? (
+          <>
+            <div className="remote-status-grid">
         <div className="remote-card">
           <span className="type-micro font-mono remote-card__label">PUBLIC ENDPOINT</span>
           <span className={`remote-state is-${healthLabel.tone}`}>{healthLabel.label}</span>
@@ -313,9 +320,17 @@ export default function RemoteConfig() {
           <span className="remote-card__value type-xl">{status?.activeSessions ?? 0}</span>
           <span className="type-tiny font-mono remote-card__detail">active pi sessions</span>
         </div>
-      </div>
+            </div>
 
-      <div className="remote-devices">
+            {status?.publicUrl == null && (
+              <p className="type-tiny font-mono remote-footnote">
+                Quick-tunnel setup: run <code>cloudflared tunnel --url http://127.0.0.1:7443 --protocol http2 --edge-ip-version 4</code>,
+                then write the printed URL to <code>config/remote/public_url.txt</code> and restart Blackwell Ops.
+              </p>
+            )}
+          </>
+        ) : (
+          <div className="remote-devices">
         <div className="remote-devices__head">
           <span className="type-micro font-mono remote-card__label">PAIRED DEVICES</span>
           <span className="type-tiny font-mono remote-muted">
@@ -434,16 +449,10 @@ export default function RemoteConfig() {
             })}
           </div>
         )}
-      </div>
+          </div>
+        )}
 
-      {status?.publicUrl == null && (
-        <p className="type-tiny font-mono remote-footnote">
-          Quick-tunnel setup: run <code>cloudflared tunnel --url http://127.0.0.1:7443 --protocol http2 --edge-ip-version 4</code>,
-          then write the printed URL to <code>config/remote/public_url.txt</code> and restart Blackwell Ops.
-        </p>
-      )}
-
-      {pairing && (
+        {pairing && (
         <div className="remote-modal-overlay" role="dialog" aria-modal="true" aria-label="Pair remote device">
           <div className="remote-modal">
             <div className="remote-modal__head">
@@ -485,6 +494,7 @@ export default function RemoteConfig() {
           onClose={() => setTerminal(null)}
         />
       )}
+      </div>
     </div>
   );
 }

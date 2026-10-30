@@ -12,6 +12,9 @@ Purpose: continue autonomously without the full conversation context.
   or restart the app** while a remote session is active.
 - The current working tree is uncommitted and contains the remote-servicing PoC
   changes. Do not revert unrelated modifications.
+- Top navigation is now **OPERATIONS / DOWNLOAD / REMOTE / CONFIG / FOUNDRY**.
+  REMOTE is a top-level page with STATUS and DEVICES sub-tabs; it is locked
+  during first-run setup. The client pairing hints point at REMOTE → STATUS.
 - `tmp/blackwell-link-remote.exe` is the latest client build with startup
   output, regular TUI, Ctrl+C/paste, stop acknowledgement, and persistent
   `/resume` sessions. `tmp/blackwell-link-package/blackwell-link.exe` may be an
@@ -51,7 +54,7 @@ Key points:
 Verification detail: [LOCAL-MODE-REPORT.md](LOCAL-MODE-REPORT.md)
 ("Verification update"). Current build:
 `tmp/blackwell-link-local.exe`, sha256
-`67E7F1E6DFC1BA943075ECFC67100A1037A1BDFF691B928922C3D23CBF4C0047`.
+`DADE742E4EC33D2878DC3EE6FA6EA2DD7A1C2D1EB35E1E86D0001195C0D9B0EF`.
 
 Owner action: the running app (PID 106100) is the old build. It must be
 rebuilt/restarted when no remote session is active, then local mode can fetch

@@ -20,7 +20,7 @@ Implementation references:
 
 The current proof of concept is a portable `blackwell-link.exe` that pairs to a
 Blackwell gateway, runs Pi on the target, and exposes a Pi terminal and
-PowerShell tool calls to CONFIG → REMOTE. The product plan separates this
+PowerShell tool calls to REMOTE (top-level). The product plan separates this
 "Power Mode" from the thinner, service-based agent intended for the product.
 Local Power Mode (`blackwell-link.exe --local`) runs Pi on the machine in front
 of the user with `blackwell/*` home models or a direct `cloud/*` endpoint; it is
