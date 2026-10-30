@@ -87,6 +87,7 @@ export default function App() {
   const [boot, setBoot] = useState<Bootstrap | null>(null);
   const [service, setService] = useState<ServiceStatus | null>(null);
   const [helperStopped, setHelperStopped] = useState(false);
+  const [helperForgotten, setHelperForgotten] = useState(false);
   const [helperLink, setHelperLink] = useState<HelperLink | null>(null);
   const [provider, setProvider] = useState<"private" | "cloud">("private");
   const [busy, setBusy] = useState<string | null>(null);
@@ -170,6 +171,26 @@ export default function App() {
 
   const closeHelper = useCallback(() => {
     void invoke("helper_close").catch(() => {});
+  }, []);
+
+  const forgetHelper = useCallback(async () => {
+    if (
+      !window.confirm(
+        "Forget this device? Remote access ends and this PC will need a new helper package to reconnect.",
+      )
+    ) {
+      return;
+    }
+    setError(null);
+    setNotice(null);
+    try {
+      await invoke("helper_forget");
+      setHelperStopped(true);
+      setHelperForgotten(true);
+      setHelperLink(null);
+    } catch (e) {
+      setError(typeof e === "string" ? e : String(e));
+    }
   }, []);
 
   useEffect(() => {
@@ -324,9 +345,11 @@ export default function App() {
         boot={boot}
         status={status}
         stopped={helperStopped}
+        forgotten={helperForgotten}
         link={helperLink}
         onStop={() => void stopHelper()}
         onReconnect={() => void reconnectHelper()}
+        onForget={() => void forgetHelper()}
         onClose={closeHelper}
       />
     );
@@ -642,40 +665,48 @@ function HelperScreen({
   boot,
   status,
   stopped,
+  forgotten,
   link,
   onStop,
   onReconnect,
+  onForget,
   onClose,
 }: {
   boot: Bootstrap;
   status: Status;
   stopped: boolean;
+  forgotten: boolean;
   link: HelperLink | null;
   onStop: () => void;
   onReconnect: () => void;
+  onForget: () => void;
   onClose: () => void;
 }) {
   const failed = !boot.paired;
-  const linked = Boolean(link?.linked) && !stopped;
+  const linked = Boolean(link?.linked) && !stopped && !forgotten;
   const active = linked && Boolean(link?.sessionActive);
   const label = failed
     ? "NOT CONNECTED"
-    : stopped
-      ? "DISCONNECTED"
-      : active
-        ? "SESSION ACTIVE"
-        : linked
-          ? "CONNECTED"
-          : "CONNECTING";
+    : forgotten
+      ? "DEVICE FORGOTTEN"
+      : stopped
+        ? "DISCONNECTED"
+        : active
+          ? "SESSION ACTIVE"
+          : linked
+            ? "CONNECTED"
+            : "CONNECTING";
   const copy = failed
     ? "This support link could not be completed."
-    : stopped
-      ? "Remote access is off. No one can connect to this PC."
-      : active
-        ? `${boot.owner ?? "Your technician"} has control of this session.`
-        : linked
-          ? `Waiting for ${boot.owner ?? "your technician"} to connect.`
-          : "Contacting the support gateway…";
+    : forgotten
+      ? "This PC is no longer paired. Request a new helper package to reconnect."
+      : stopped
+        ? "Remote access is off. No one can connect to this PC."
+        : active
+          ? `${boot.owner ?? "Your technician"} has control of this session.`
+          : linked
+            ? `Waiting for ${boot.owner ?? "your technician"} to connect.`
+            : "Contacting the support gateway…";
 
   return (
     <div className="app helper">
@@ -691,7 +722,7 @@ function HelperScreen({
       </header>
       <main className="helper-content">
         <div
-          className={`helper-orb ${linked ? "is-on" : ""} ${stopped || failed ? "is-bad" : ""}`}
+          className={`helper-orb ${linked ? "is-on" : ""} ${stopped || forgotten || failed ? "is-bad" : ""}`}
         />
         <h1>{label}</h1>
         <p className="helper-copy">{copy}</p>
@@ -702,13 +733,18 @@ function HelperScreen({
           <dd>{status.gateway || boot.gateway || "not configured"}</dd>
         </dl>
         {boot.error && <p className="banner banner-bad">{boot.error}</p>}
-        {!failed && (
+        {!failed && !forgotten && (
           <>
             <div className="helper-actions">
               {stopped ? (
-                <button className="button button-accent" onClick={onReconnect}>
-                  RECONNECT
-                </button>
+                <>
+                  <button className="button button-accent" onClick={onReconnect}>
+                    RECONNECT
+                  </button>
+                  <button className="button button-danger" onClick={onForget}>
+                    FORGET DEVICE
+                  </button>
+                </>
               ) : (
                 <button className="button button-danger" onClick={onStop}>
                   DISCONNECT
@@ -718,7 +754,9 @@ function HelperScreen({
             <p className="helper-note">
               {active
                 ? "Disconnect immediately ends the remote session."
-                : "Keep this window open while your technician is helping."}
+                : stopped
+                  ? "Forget removes this PC's pairing; reconnecting then needs a new helper."
+                  : "Keep this window open while your technician is helping."}
             </p>
           </>
         )}

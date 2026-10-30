@@ -60,6 +60,14 @@ pub fn save_token(device_id: &str, token: &str) -> Result<(), String> {
         .map_err(|error| format!("store device token: {error}"))
 }
 
+#[cfg(windows)]
+pub fn delete_token(identity: &Identity) -> Result<(), String> {
+    match token_entry(&identity.device_id)?.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(error) => Err(format!("delete device token: {error}")),
+    }
+}
+
 #[cfg(not(windows))]
 pub fn load_token(_identity: &Identity) -> Result<String, String> {
     Err("Credential Manager is only available on Windows".into())
@@ -67,6 +75,11 @@ pub fn load_token(_identity: &Identity) -> Result<String, String> {
 
 #[cfg(not(windows))]
 pub fn save_token(_device_id: &str, _token: &str) -> Result<(), String> {
+    Err("Credential Manager is only available on Windows".into())
+}
+
+#[cfg(not(windows))]
+pub fn delete_token(_identity: &Identity) -> Result<(), String> {
     Err("Credential Manager is only available on Windows".into())
 }
 

@@ -510,8 +510,9 @@ export default function RemotePage({ subTab }: { subTab: RemoteSubTab }) {
                   </div>
                   <code className="remote-invite-token__value">{createdInvite.token}</code>
                   <p className="type-tiny font-mono remote-muted">
-                    Single-use. Expires {dateTime(createdInvite.invite.expiresAt)}. Put it in the
-                    helper package; do not paste it into chat.
+                    Single-use for first pairing; restarts reuse the saved device token. Expires{" "}
+                    {dateTime(createdInvite.invite.expiresAt)}. Put it in the helper package; do not
+                    paste it into chat.
                   </p>
                   <div className="remote-helper-actions">
                     <button

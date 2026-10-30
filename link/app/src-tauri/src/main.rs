@@ -495,6 +495,21 @@ fn helper_close(app: AppHandle) {
 }
 
 #[tauri::command]
+fn helper_forget(app: AppHandle) -> Result<(), String> {
+    stop_helper(&app);
+    let data_dir = default_data_dir();
+    if let Some(identity) = load_identity(&data_dir) {
+        let _ = oym_link_core::identity::delete_token(&identity);
+    }
+    let _ = std::fs::remove_file(data_dir.join("identity.json"));
+    let _ = std::fs::remove_file(data_dir.join("link-status.json"));
+    if let Some(invite) = invite_path() {
+        let _ = std::fs::remove_file(invite);
+    }
+    set_helper_stopped(true)
+}
+
+#[tauri::command]
 async fn invite_bootstrap(app: AppHandle) -> Bootstrap {
     let settings = load_settings();
     let data_dir = default_data_dir();
@@ -1069,6 +1084,7 @@ fn main() {
             helper_stop,
             helper_reconnect,
             helper_close,
+            helper_forget,
             link_hide,
             link_quit,
             assistant_open,

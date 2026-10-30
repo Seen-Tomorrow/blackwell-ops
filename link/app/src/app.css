@@ -457,11 +457,13 @@ body {
   max-width: 280px;
   display: flex;
   justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
   margin-top: 4px;
 }
 
 .helper-actions .button {
-  width: 100%;
+  flex: 1 1 100px;
 }
 
 .button-danger {
