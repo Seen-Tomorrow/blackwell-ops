@@ -317,52 +317,59 @@ async fn main() {
 
             app.manage(ctx);
 
-            // ── Remote control room gateway ─────────────────────────────
-            // Loopback-only; Cloudflare Tunnel provides the public TLS edge.
-            let remote_cfg = oym_gateway::GatewayConfig::for_app(&crate::config::app_root_dir());
-            match oym_gateway::GatewayState::load(remote_cfg) {
-                Ok(remote) => {
-                    let start_state = remote.clone();
-                    tauri::async_runtime::spawn(async move {
-                        if let Err(error) = start_state.start_gateway().await {
-                            log::error!("[remote] gateway start: {error}");
-                            start_state.set_gateway_error(Some(error)).await;
-                        }
-                    });
-                    let event_state = remote.clone();
-                    let event_app = app.handle().clone();
-                    tauri::async_runtime::spawn(async move {
-                        let mut rx = event_state.subscribe();
-                        loop {
-                            match rx.recv().await {
-                                Ok(event) => {
-                                    let _ = event_app.emit("remote-event", event);
-                                }
-                                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
-                                    continue
-                                }
-                                Err(_) => break,
+            // ── Remote control room gateway (DEV only for now) ─────────────
+            // The REMOTE surface is an incomplete servicing feature. It is
+            // deliberately disabled in release builds so testers do not see a
+            // half-built control room; DEV keeps the full gateway.
+            if cfg!(debug_assertions) {
+                // Loopback-only; Cloudflare Tunnel provides the public TLS edge.
+                let remote_cfg = oym_gateway::GatewayConfig::for_app(&crate::config::app_root_dir());
+                match oym_gateway::GatewayState::load(remote_cfg) {
+                    Ok(remote) => {
+                        let start_state = remote.clone();
+                        tauri::async_runtime::spawn(async move {
+                            if let Err(error) = start_state.start_gateway().await {
+                                log::error!("[remote] gateway start: {error}");
+                                start_state.set_gateway_error(Some(error)).await;
                             }
-                        }
-                    });
-                    // Local Power Mode (`oym-link --local`) asks the
-                    // gateway for routes before any remote session exists, so
-                    // the route table must track the running stack. Refresh off
-                    // the startup path, a few seconds apart; a session start
-                    // still refreshes routes as a fallback.
-                    let refresh_remote = remote.clone();
-                    app.manage(remote);
+                        });
+                        let event_state = remote.clone();
+                        let event_app = app.handle().clone();
+                        tauri::async_runtime::spawn(async move {
+                            let mut rx = event_state.subscribe();
+                            loop {
+                                match rx.recv().await {
+                                    Ok(event) => {
+                                        let _ = event_app.emit("remote-event", event);
+                                    }
+                                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                                        continue
+                                    }
+                                    Err(_) => break,
+                                }
+                            }
+                        });
+                        // Local Power Mode (`oym-link --local`) asks the
+                        // gateway for routes before any remote session exists, so
+                        // the route table must track the running stack. Refresh off
+                        // the startup path, a few seconds apart; a session start
+                        // still refreshes routes as a fallback.
+                        let refresh_remote = remote.clone();
+                        app.manage(remote);
 
-                    let refresh_stack = route_refresh_stack.clone();
-                    tauri::async_runtime::spawn(async move {
-                        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-                        loop {
-                            crate::gateway_cmds::refresh_routes(&refresh_stack, &refresh_remote).await;
-                            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                        }
-                    });
+                        let refresh_stack = route_refresh_stack.clone();
+                        tauri::async_runtime::spawn(async move {
+                            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                            loop {
+                                crate::gateway_cmds::refresh_routes(&refresh_stack, &refresh_remote).await;
+                                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                            }
+                        });
+                    }
+                    Err(error) => log::error!("[remote] disabled: {error}"),
                 }
-                Err(error) => log::error!("[remote] disabled: {error}"),
+            } else {
+                log::info!("[remote] disabled in release builds");
             }
 
             crate::output_console::register_blackwell_output_console_app_handle(app.handle().clone());

@@ -38,6 +38,7 @@ import {
 } from "./lib/storage";
 import { dispatchAppEvent, EVENTS, consumePendingConfigSubTab, type NavigateConfigDetail } from "./lib/events";
 import type { ConfigSubTab, FoundrySubTab, RemoteSubTab } from "./lib/appNav";
+import { isDevBuild } from "./lib/build";
 import { isSetupNavTabAllowed } from "./lib/setupGuide";
 import { commitStagedDraftPairing, discardStagedDraftPairing } from "./lib/specDraft";
 import { useLibrarySchedule } from "./hooks/useLibrarySchedule";
@@ -662,7 +663,7 @@ function App() {
             />
           </Suspense>
         )}
-        {activeTab === "remote" && (
+        {activeTab === "remote" && isDevBuild() && (
           <Suspense fallback={<TabFallback />}>
             <RemotePage subTab={remoteSubTab} />
           </Suspense>

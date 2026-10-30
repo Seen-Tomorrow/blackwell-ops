@@ -8,6 +8,7 @@ import {
   type CSSProperties,
 } from "react";
 import type { Tab } from "../App";
+import { isDevBuild } from "../lib/build";
 import { isSetupNavTabAllowed } from "../lib/setupGuide";
 import type { SetupPhase } from "../lib/setupGuide";
 import {
@@ -112,7 +113,7 @@ function HeaderNav({
       !isOpsTab(activeTab) &&
       !(activeTab === "config" && setupGuidePhase === "paths");
 
-    return PRIMARY_NAV.map((p) => {
+    return PRIMARY_NAV.filter((p) => p.id !== "remote" || isDevBuild()).map((p) => {
       const returnToSetup = awayFromSetup && p.id === "operations";
       const dataAttrs: Record<string, string> = {};
       if (p.id === "config") dataAttrs["data-onboarding"] = "config-tab";
