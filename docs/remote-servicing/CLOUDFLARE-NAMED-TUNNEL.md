@@ -65,6 +65,25 @@ Expect JSON with `"ok": true`. Then pair a test device from REMOTE → STATUS; t
 pairing command should show `wss://help.example.com/link`, and the link app
 should report ONLINE.
 
+## `.cz` registrars: NSSET, not individual nameservers
+
+Czech registrars (tele3.cz, Wedos, …) require a **NSSET** object. The domain
+points at the NSSET, and the NSSET points at two or more nameservers.
+
+1. Add both Cloudflare nameservers under **Nameservery → Nový Nameserver**.
+2. Create **Nový NSSET** with a short unique ID such as `NOVERIA-OYM-2026`.
+   Do not put a hostname in the NSSET ID field — `NSSET ID` is a label, not a
+   nameserver name.
+3. Select both Cloudflare nameservers and the admin/authorization contact.
+4. Edit the domain and choose that NSSET.
+
+If the registrar says the NSSET already exists, the ID is globally taken; pick
+a more unique label. If it says a nameserver does not exist, add that nameserver
+first. Once the registry publishes the pair, `Resolve-DnsName oym.cz -Type NS`
+shows the Cloudflare nameservers and Cloudflare flips the zone to Active.
+
+`scripts/cloudflare-zone-status.ps1 -Domain oym.cz -Hostname help.oym.cz -Watch`
+polls until the delegation and `/healthz` are live.
 ## Support invites
 
 Once this host is stable, build a one-file helper:
