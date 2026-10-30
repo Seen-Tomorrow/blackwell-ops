@@ -2,9 +2,16 @@
 
 use serde::Serialize;
 use serde_json::Value;
+use std::io::{Read, Write};
+use std::path::PathBuf;
+use std::sync::Mutex;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Manager, PhysicalPosition, WebviewWindow, WindowEvent};
+use tauri::{
+    AppHandle, Emitter, Manager, PhysicalPosition, WebviewUrl, WebviewWindow,
+    WebviewWindowBuilder, WindowEvent,
+};
+use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 
 use oym_link_core::identity::{
     default_data_dir, load_identity, load_token, save_identity, Identity,
@@ -115,6 +122,209 @@ fn device_name(settings: &Value) -> String {
         })
 }
 
+struct AssistantSession {
+    master: Box<dyn MasterPty + Send>,
+    writer: Box<dyn Write + Send>,
+    child: Box<dyn Child + Send + Sync>,
+}
+
+#[derive(Default)]
+struct AssistantState {
+    session: Mutex<Option<AssistantSession>>,
+}
+
+/// Find a dev/packaged artifact by walking up from the app exe (works from
+/// `link/app/src-tauri/target/debug` back to the repo root) and from the cwd.
+fn find_tool(env_var: &str, repo_relative: &str, exe_relative: &str) -> Result<PathBuf, String> {
+    if let Some(value) = std::env::var_os(env_var) {
+        let path = PathBuf::from(value);
+        if path.is_file() {
+            return Ok(path);
+        }
+    }
+    let mut roots = Vec::new();
+    if let Ok(exe) = std::env::current_exe() {
+        for ancestor in exe.ancestors().take(8) {
+            roots.push(ancestor.to_path_buf());
+        }
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        roots.push(cwd);
+    }
+    for root in roots {
+        for relative in [repo_relative, exe_relative] {
+            let candidate = root.join(relative);
+            if candidate.is_file() {
+                return Ok(candidate);
+            }
+        }
+    }
+    Err(format!(
+        "could not find {env_var} artifact (`{repo_relative}`); pass {env_var} explicitly"
+    ))
+}
+
+fn stop_assistant(app: &AppHandle) {
+    let state = app.state::<AssistantState>();
+    if let Ok(mut guard) = state.session.lock() {
+        if let Some(mut session) = guard.take() {
+            let _ = session.child.kill();
+        }
+    };
+}
+
+#[tauri::command]
+async fn assistant_open(app: AppHandle, provider: Option<String>) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("terminal") {
+        let _ = window.show();
+        let _ = window.set_focus();
+        return Ok(());
+    }
+    let provider = provider.unwrap_or_else(|| "private".into());
+    let url = WebviewUrl::App(format!("index.html?terminal=1&provider={provider}").into());
+    WebviewWindowBuilder::new(&app, "terminal", url)
+        .title("OYM Assistant")
+        .inner_size(980.0, 640.0)
+        .min_inner_size(720.0, 440.0)
+        .resizable(true)
+        .decorations(false)
+        .shadow(true)
+        .center()
+        .build()
+        .map(|_| ())
+        .map_err(|error| format!("open assistant window: {error}"))
+}
+
+#[tauri::command]
+fn assistant_start(app: AppHandle, rows: u16, cols: u16) -> Result<(), String> {
+    let state = app.state::<AssistantState>();
+    let mut guard = state
+        .session
+        .lock()
+        .map_err(|_| "assistant state poisoned".to_string())?;
+    if guard.is_some() {
+        return Ok(());
+    }
+
+    let cli = find_tool(
+        "OYM_LINK_CLI",
+        "remote-client/target/release/oym-link.exe",
+        "oym-link.exe",
+    )?;
+    let pi = find_tool(
+        "OYM_PI",
+        "tmp/blackwell-link-package/pi/pi.exe",
+        "pi/pi.exe",
+    )?;
+
+    let pair = native_pty_system()
+        .openpty(PtySize {
+            rows: rows.max(10),
+            cols: cols.max(40),
+            pixel_width: 0,
+            pixel_height: 0,
+        })
+        .map_err(|error| format!("open pty: {error}"))?;
+
+    let mut command = CommandBuilder::new(cli);
+    command.arg("--local");
+    command.arg("--pi");
+    command.arg(pi);
+    command.arg("--data-dir");
+    command.arg(default_data_dir());
+    command.env("TERM", "xterm-256color");
+    command.env("COLORTERM", "truecolor");
+
+    let child = pair
+        .slave
+        .spawn_command(command)
+        .map_err(|error| format!("launch local assistant: {error}"))?;
+    drop(pair.slave);
+
+    let reader = pair
+        .master
+        .try_clone_reader()
+        .map_err(|error| format!("pty reader: {error}"))?;
+    let writer = pair
+        .master
+        .take_writer()
+        .map_err(|error| format!("pty writer: {error}"))?;
+    *guard = Some(AssistantSession {
+        master: pair.master,
+        writer,
+        child,
+    });
+    drop(guard);
+
+    let app_for_thread = app.clone();
+    std::thread::spawn(move || {
+        let mut reader = reader;
+        let mut buffer = [0u8; 8192];
+        loop {
+            match reader.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(count) => {
+                    let _ = app_for_thread.emit("assistant-output", &buffer[..count]);
+                }
+                Err(_) => break,
+            }
+        }
+        let _ = app_for_thread.emit("assistant-exit", ());
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
+fn assistant_input(app: AppHandle, data: String) -> Result<(), String> {
+    let state = app.state::<AssistantState>();
+    let mut guard = state
+        .session
+        .lock()
+        .map_err(|_| "assistant state poisoned".to_string())?;
+    let Some(session) = guard.as_mut() else {
+        return Err("assistant is not running".into());
+    };
+    session
+        .writer
+        .write_all(data.as_bytes())
+        .map_err(|error| format!("write to assistant: {error}"))
+}
+
+#[tauri::command]
+fn assistant_resize(app: AppHandle, rows: u16, cols: u16) -> Result<(), String> {
+    let state = app.state::<AssistantState>();
+    let mut guard = state
+        .session
+        .lock()
+        .map_err(|_| "assistant state poisoned".to_string())?;
+    let Some(session) = guard.as_mut() else {
+        return Ok(());
+    };
+    session
+        .master
+        .resize(PtySize {
+            rows: rows.max(2),
+            cols: cols.max(2),
+            pixel_width: 0,
+            pixel_height: 0,
+        })
+        .map_err(|error| format!("resize assistant: {error}"))
+}
+
+#[tauri::command]
+fn assistant_stop(app: AppHandle) {
+    stop_assistant(&app);
+}
+
+#[tauri::command]
+fn assistant_close(app: AppHandle) {
+    stop_assistant(&app);
+    if let Some(window) = app.get_webview_window("terminal") {
+        let _ = window.close();
+    }
+}
+
 async fn status_snapshot() -> LinkStatus {
     let data_dir = default_data_dir();
     let Some(identity) = load_identity(&data_dir) else {
@@ -206,11 +416,6 @@ async fn link_pair(code: String, server: String, name: Option<String>) -> Result
 }
 
 #[tauri::command]
-fn link_assistant_start() -> Result<(), String> {
-    Err("The local assistant launches in the next slice.".into())
-}
-
-#[tauri::command]
 fn link_settings_get() -> Result<Value, String> {
     Ok(load_settings())
 }
@@ -271,14 +476,20 @@ fn toggle_flyout(app: &AppHandle) {
 
 fn main() {
     tauri::Builder::default()
+        .manage(AssistantState::default())
         .invoke_handler(tauri::generate_handler![
             link_status,
             link_pair,
-            link_assistant_start,
             link_settings_get,
             link_settings_set,
             link_hide,
-            link_quit
+            link_quit,
+            assistant_open,
+            assistant_start,
+            assistant_input,
+            assistant_resize,
+            assistant_stop,
+            assistant_close
         ])
         .setup(|app| {
             let open = MenuItemBuilder::with_id("open", "Open OYM Link").build(app)?;
@@ -313,6 +524,12 @@ fn main() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            if window.label() == "terminal" {
+                if let WindowEvent::CloseRequested { .. } = event {
+                    stop_assistant(window.app_handle());
+                }
+                return;
+            }
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 let _ = window.hide();

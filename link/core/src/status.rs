@@ -19,8 +19,8 @@ pub struct Probe {
     pub routes: Vec<ModelRoute>,
 }
 
-/// `wss://host/link` (or ws/http) with the routes-only marker.
-pub fn status_url(server: &str) -> Result<Url, String> {
+/// Canonical link socket URL: ws(s) scheme, `/link` path, no query.
+pub fn link_url(server: &str) -> Result<Url, String> {
     let mut url = Url::parse(server).map_err(|error| format!("server URL: {error}"))?;
     match url.scheme() {
         "wss" | "https" => {
@@ -34,6 +34,12 @@ pub fn status_url(server: &str) -> Result<Url, String> {
     url.set_path("/link");
     url.set_query(None);
     url.set_fragment(None);
+    Ok(url)
+}
+
+/// `wss://host/link` (or ws/http) with the routes-only marker.
+pub fn status_url(server: &str) -> Result<Url, String> {
+    let mut url = link_url(server)?;
     url.query_pairs_mut().append_pair("role", "routes");
     Ok(url)
 }

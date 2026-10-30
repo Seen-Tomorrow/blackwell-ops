@@ -867,7 +867,8 @@ async fn run(args: Args) -> Result<(), String> {
     ));
     say(&format!("Connecting to {server}..."));
 
-    let mut request = server
+    let mut request = oym_link_core::status::link_url(&server)
+        .map_err(|e| format!("server URL: {e}"))?
         .as_str()
         .into_client_request()
         .map_err(|e| format!("websocket request: {e}"))?;

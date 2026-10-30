@@ -424,14 +424,12 @@ impl Drop for HomeLink {
 }
 
 /// Local mode always marks its socket `role=routes` so it cannot replace a live
-/// remote session that uses the same device token.
+/// remote session that uses the same device token. The server value may be a
+/// bare host from older pairing or a full /link URL; normalize both.
 fn routes_url(server: &str) -> String {
-    let trimmed = server.trim();
-    if trimmed.contains('?') {
-        format!("{trimmed}&role=routes")
-    } else {
-        format!("{trimmed}?role=routes")
-    }
+    oym_link_core::status::status_url(server)
+        .map(|url| url.to_string())
+        .unwrap_or_else(|_| server.trim().to_string())
 }
 
 fn home_credentials(args: &Args) -> Result<(Identity, String), String> {
@@ -1119,7 +1117,15 @@ mod tests {
         assert_eq!(routes_url("wss://host/link"), "wss://host/link?role=routes");
         assert_eq!(
             routes_url("ws://127.0.0.1:7555/link?x=1"),
-            "ws://127.0.0.1:7555/link?x=1&role=routes"
+            "ws://127.0.0.1:7555/link?role=routes"
+        );
+        assert_eq!(
+            routes_url("wss://host"),
+            "wss://host/link?role=routes"
+        );
+        assert_eq!(
+            routes_url("https://host"),
+            "wss://host/link?role=routes"
         );
     }
 

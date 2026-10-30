@@ -1,0 +1,97 @@
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  background: #0a0c10;
+  overflow: hidden;
+}
+
+.term {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #0a0c10;
+}
+
+.term-bar {
+  height: 36px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px 0 12px;
+  border-bottom: 1px solid #232a35;
+  background: #0d1015;
+  user-select: none;
+}
+
+.term-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.16em;
+  color: #e7ebf2;
+  font-size: 11px;
+}
+
+.term-mark {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  background: #6ee7ff;
+  color: #0a0c10;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.term-name {
+  font-weight: 700;
+}
+
+.term-chip {
+  color: #8b93a1;
+  border: 1px solid #232a35;
+  padding: 1px 6px;
+  font-size: 8px;
+  letter-spacing: 0.12em;
+  border-radius: 2px;
+}
+
+.term-close {
+  width: 26px;
+  height: 26px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: #8b93a1;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.term-close:hover {
+  border-color: #232a35;
+  color: #ff6b7a;
+}
+
+.term-host {
+  flex: 1;
+  min-height: 0;
+  padding: 6px 8px 8px;
+}
+
+.term-host .xterm {
+  height: 100%;
+}
+
+.term-host .xterm-viewport {
+  background: #0a0c10 !important;
+}

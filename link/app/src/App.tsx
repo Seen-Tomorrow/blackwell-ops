@@ -126,13 +126,14 @@ export default function App() {
     setNotice(null);
     setBusy("assistant");
     try {
-      await invoke("link_assistant_start");
+      await invoke("assistant_open", { provider });
+      setNotice("Assistant terminal opened.");
     } catch (e) {
       setError(typeof e === "string" ? e : String(e));
     } finally {
       setBusy(null);
     }
-  }, []);
+  }, [provider]);
 
   const saveSettings = useCallback(async () => {
     setError(null);

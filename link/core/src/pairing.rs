@@ -59,7 +59,7 @@ pub async fn pair_device(
     save_token(&body.device_id, &body.token)?;
     let identity = Identity {
         device_id: body.device_id,
-        server: server.to_string(),
+        server: crate::status::link_url(server)?.to_string(),
         name: name.to_string(),
     };
     Ok((identity, body.token))

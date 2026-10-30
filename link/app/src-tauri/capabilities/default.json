@@ -1,6 +1,6 @@
 {
   "identifier": "default",
   "description": "Default capability for the OYM Link flyout",
-  "windows": ["flyout"],
+  "windows": ["flyout", "terminal"],
   "permissions": ["core:default"]
 }
