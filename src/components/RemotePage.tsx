@@ -719,6 +719,10 @@ export default function RemotePage({ subTab }: { subTab: RemoteSubTab }) {
           deviceId={terminal.id}
           deviceName={terminal.name}
           onClose={() => setTerminal(null)}
+          onRestart={() => {
+            const device = devices.find((candidate) => candidate.id === terminal.id);
+            if (device) void startSession(device);
+          }}
         />
       )}
       </div>

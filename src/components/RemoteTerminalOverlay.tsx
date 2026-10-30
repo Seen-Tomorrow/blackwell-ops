@@ -10,6 +10,7 @@ type Props = {
   deviceId: string;
   deviceName: string;
   onClose: () => void;
+  onRestart: () => void;
 };
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -28,7 +29,7 @@ function base64ToBytes(data: string): Uint8Array {
   return bytes;
 }
 
-export default function RemoteTerminalOverlay({ deviceId, deviceName, onClose }: Props) {
+export default function RemoteTerminalOverlay({ deviceId, deviceName, onClose, onRestart }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -44,6 +45,8 @@ export default function RemoteTerminalOverlay({ deviceId, deviceName, onClose }:
         // A malformed frame is not allowed to tear down the terminal.
       }
     } else if (event.type === "session_ready") {
+      setClosed(false);
+      termRef.current?.reset();
       termRef.current?.writeln(
         `\r\n\x1b[90m[session ready${event.pid ? ` · pid ${event.pid}` : ""}${
           event.integrity ? ` · ${event.integrity} integrity` : ""
@@ -227,6 +230,14 @@ export default function RemoteTerminalOverlay({ deviceId, deviceName, onClose }:
             <span className={`remote-state ${closed ? "is-down" : "is-live"}`}>
               {closed ? "EXITED" : "LIVE"}
             </span>
+            <button
+              type="button"
+              className="remote-action remote-action--accent"
+              disabled={!closed}
+              onClick={onRestart}
+            >
+              RESTART SESSION
+            </button>
             <button
               type="button"
               className="remote-action remote-action--danger"
