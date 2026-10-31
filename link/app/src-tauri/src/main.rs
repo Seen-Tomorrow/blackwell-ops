@@ -207,6 +207,12 @@ fn service_status() -> ServiceStatusView {
         error: None,
     };
 
+    // A stale service-status.json from a previous install must not make the app
+    // look INTEGRATED/SYSTEM after the service was uninstalled.
+    if !installed {
+        return view;
+    }
+
     let Some(status_path) = status_path else {
         view.error = Some("PROGRAMDATA is not set".into());
         return view;
