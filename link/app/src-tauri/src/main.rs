@@ -507,6 +507,73 @@ fn link_restart_elevated(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn link_restart_normal(app: AppHandle) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        if !link_is_elevated() {
+            return Ok(());
+        }
+        let exe = std::env::current_exe()
+            .map_err(|error| format!("current exe: {error}"))?
+            .to_string_lossy()
+            .to_string();
+        let task = "OYM Link Restart";
+        let create = Command::new("schtasks")
+            .args([
+                "/Create",
+                "/TN",
+                task,
+                "/TR",
+                &format!("\"{exe}\""),
+                "/SC",
+                "ONCE",
+                "/ST",
+                "00:00",
+                "/RL",
+                "LIMITED",
+                "/IT",
+                "/F",
+            ])
+            .creation_flags(0x0800_0000)
+            .output()
+            .map_err(|error| format!("schedule normal restart: {error}"))?;
+        if !create.status.success() {
+            return Err(format!(
+                "could not schedule normal restart: {}",
+                String::from_utf8_lossy(&create.stderr).trim()
+            ));
+        }
+        let run = Command::new("schtasks")
+            .args(["/Run", "/TN", task])
+            .creation_flags(0x0800_0000)
+            .output()
+            .map_err(|error| format!("run normal restart: {error}"))?;
+        if !run.status.success() {
+            return Err(format!(
+                "could not start normal restart: {}",
+                String::from_utf8_lossy(&run.stderr).trim()
+            ));
+        }
+        let _ = Command::new("schtasks")
+            .args(["/Delete", "/TN", task, "/F"])
+            .creation_flags(0x0800_0000)
+            .output();
+        let handle = app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(700));
+            handle.exit(0);
+        });
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = app;
+        Err("elevation is Windows-only".into())
+    }
+}
+
+#[tauri::command]
 fn link_portable_start(app: AppHandle) -> Result<(), String> {
     start_helper_client(&app)
 }
@@ -1459,6 +1526,7 @@ fn main() {
             service_action_status,
             link_is_elevated,
             link_restart_elevated,
+            link_restart_normal,
             link_hide,
             link_quit,
             assistant_open,

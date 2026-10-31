@@ -483,6 +483,17 @@ export default function App() {
     }
   }, []);
 
+  const restartNormal = useCallback(async () => {
+    setError(null);
+    setNotice(null);
+    try {
+      await invoke("link_restart_normal");
+      setNotice("Restarting with your normal user token…");
+    } catch (e) {
+      setError(typeof e === "string" ? e : String(e));
+    }
+  }, []);
+
   const toggleNetwork = useCallback(async () => {
     const next = !networkEnabled;
     setError(null);
@@ -587,7 +598,7 @@ export default function App() {
       <main className="content dash-scroll">
         {view === "home" && (
           <>
-            <section className="dash-card mode-card">
+            <section className={`dash-card mode-card ${integrated ? "is-integrated" : "is-portable"}`}>
               <div className="dash-card-head">
                 <span className="dash-label">MODE</span>
                 <span className="dash-note">{integrated ? "Always available" : "Runs while open"}</span>
@@ -616,7 +627,7 @@ export default function App() {
               </div>
             </section>
 
-            <section className="dash-card">
+            <section className={`dash-card privilege-card ${integrated || elevated ? "is-high" : "is-low"}`}>
               <div className="dash-card-head">
                 <span className="dash-label">PRIVILEGE</span>
                 <span className={`dash-value ${integrated || elevated ? "is-accent" : ""}`}>
@@ -627,9 +638,13 @@ export default function App() {
                 <span className="dash-copy">
                   {integrated ? "SYSTEM LEVEL" : elevated ? "ADMIN LEVEL" : "USER LEVEL"}
                 </span>
-                {!integrated && !elevated && (
-                  <button type="button" className="soft-button" onClick={() => void restartElevated()}>
-                    RESTART AS ADMIN
+                {!integrated && (
+                  <button
+                    type="button"
+                    className="soft-button"
+                    onClick={() => void (elevated ? restartNormal() : restartElevated())}
+                  >
+                    {elevated ? "RESTART AS USER" : "RESTART AS ADMIN"}
                   </button>
                 )}
               </div>
@@ -684,27 +699,7 @@ export default function App() {
               <span className="dash-copy">Transfer monitor · coming soon</span>
             </section>
 
-            <section className={`dash-card emergency ${networkEnabled ? "is-armed" : "is-off"}`}>
-              <div className="dash-card-head">
-                <span className="dash-label">REMOTE ACCESS</span>
-                <span className={`dash-value ${networkEnabled ? "is-danger" : ""}`}>
-                  {networkEnabled ? "ON" : "OFF"}
-                </span>
-              </div>
-              <p className="emergency-copy">
-                {networkEnabled
-                  ? "Blackwell and cloud are reachable."
-                  : "No remote or cloud access. Local assistant only."}
-              </p>
-              <button
-                type="button"
-                className={`emergency-button ${networkEnabled ? "is-stop" : "is-enable"}`}
-                onClick={() => void toggleNetwork()}
-              >
-                <span className="emergency-led" />
-                {networkEnabled ? "STOP ALL NETWORK" : "ENABLE NETWORK"}
-              </button>
-            </section>
+
           </>
         )}
 
@@ -933,7 +928,27 @@ export default function App() {
       </main>
 
       {view === "home" && (
-        <>
+        <div className="bottom-dock">
+          <section className={`emergency ${networkEnabled ? "is-armed" : "is-off"}`}>
+            <div className="dash-card-head">
+              <span className="dash-label">REMOTE ACCESS</span>
+              <span className={`dash-value ${networkEnabled ? "is-danger" : ""}`}>
+                {networkEnabled ? "ON" : "OFF"}
+              </span>
+            </div>
+            <p className="emergency-copy">
+              {networkEnabled ? "Network access enabled." : "Network access disabled."}
+            </p>
+            <button
+              type="button"
+              className={`emergency-button ${networkEnabled ? "is-stop" : "is-enable"}`}
+              onClick={() => void toggleNetwork()}
+            >
+              <span className="emergency-led" />
+              {networkEnabled ? "STOP ALL NETWORK" : "ENABLE NETWORK"}
+            </button>
+          </section>
+
           <div className={`status-rail ${networkEnabled ? "" : "is-off"}`}>
             <div className="status-main">{operatorLabel}</div>
             <div className="status-action">{actionLabel}</div>
@@ -959,7 +974,7 @@ export default function App() {
               </span>
             </div>
           </footer>
-        </>
+        </div>
       )}
 
       {pendingMode && (
@@ -970,8 +985,8 @@ export default function App() {
             </div>
             <p className="modal-copy">
               {pendingMode === "integrated"
-                ? "Runs as a Windows service. Stays available when this app is closed. Windows will ask for permission."
-                : "Stops the Windows service. Remote access ends when this app closes."}
+                ? "Installed as system level. This computer will be permanently accessible to remote operators until access is revoked. Windows will ask for permission."
+                : "Installed as user level. Remote access ends when this app closes. Windows will ask for permission to stop the system service."}
             </p>
             <div className="modal-actions">
               <button type="button" className="soft-button" onClick={() => setPendingMode(null)}>

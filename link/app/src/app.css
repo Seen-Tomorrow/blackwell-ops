@@ -969,3 +969,75 @@ body {
   height: 30px;
   font-size: 9px;
 }
+
+:root {
+  --state-green: #63e6a2;
+  --state-amber: #e6c86e;
+}
+
+:root[data-oym-theme="light"] {
+  --state-green: #18865d;
+  --state-amber: #a86a12;
+}
+
+.mode-card.is-portable {
+  border-color: color-mix(in srgb, var(--state-amber) 45%, var(--border));
+  background: color-mix(in srgb, var(--state-amber) 9%, var(--panel));
+}
+
+.mode-card.is-integrated {
+  border-color: color-mix(in srgb, var(--state-green) 45%, var(--border));
+  background: color-mix(in srgb, var(--state-green) 9%, var(--panel));
+}
+
+.mode-card.is-portable .mode-option.is-active {
+  border-color: var(--state-amber);
+  background: color-mix(in srgb, var(--state-amber) 20%, var(--panel));
+  color: var(--state-amber);
+}
+
+.mode-card.is-integrated .mode-option.is-active {
+  border-color: var(--state-green);
+  background: color-mix(in srgb, var(--state-green) 20%, var(--panel));
+  color: var(--state-green);
+}
+
+.privilege-card.is-low {
+  border-color: color-mix(in srgb, var(--state-amber) 45%, var(--border));
+  background: color-mix(in srgb, var(--state-amber) 9%, var(--panel));
+}
+
+.privilege-card.is-high {
+  border-color: color-mix(in srgb, var(--state-green) 45%, var(--border));
+  background: color-mix(in srgb, var(--state-green) 9%, var(--panel));
+}
+
+.privilege-card.is-low .dash-value {
+  color: var(--state-amber);
+}
+
+.privilege-card.is-high .dash-value {
+  color: var(--state-green);
+}
+
+.bottom-dock {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0 10px;
+  background: var(--bg);
+}
+
+.bottom-dock .emergency {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-bottom: 8px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--danger) 55%, var(--border));
+  border-radius: 10px;
+} 
+
+.bottom-dock .emergency.is-off {
+  border-color: var(--border);
+}
