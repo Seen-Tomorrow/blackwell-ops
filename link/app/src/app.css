@@ -1326,3 +1326,90 @@ body {
   font-size: 22px;
   margin-top: -1px;
 }
+
+/* ── Visual pass: mid-grey SLATE chassis + saturated state surfaces ───── */
+:root[data-oym-theme="dark"] {
+  --bg: #252529;
+  --panel: #303036;
+  --panel-2: #1b1b20;
+  --border: #4e4e5b;
+  --text: #f3eef3;
+  --muted: #c7c1cd;
+  --accent: #d8d2dc;
+  --accent-dim: rgba(216, 210, 220, 0.16);
+  --ok: #5df0a5;
+  --danger: #ff7780;
+  --state-green: #5df0a5;
+  --state-amber: #ffc247;
+  --bezel-edge-hi: rgba(245, 245, 255, 0.16);
+  --bezel-grain: rgba(255, 255, 255, 0.065);
+  --bezel-dot-shade: rgba(0, 0, 0, 0.2);
+}
+
+:root[data-oym-theme="light"] {
+  --bg: #e3eaf2;
+  --panel: #f8fafc;
+  --panel-2: #d7e3ef;
+  --border: #a9bdcf;
+  --text: #0b1220;
+  --muted: #4e6072;
+  --accent: #0284c7;
+  --state-green: #067a50;
+  --state-amber: #c06a00;
+}
+
+.mode-card.is-portable {
+  border-color: color-mix(in srgb, var(--state-amber) 60%, var(--border));
+  background-color: color-mix(in srgb, var(--state-amber) 18%, var(--panel));
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--state-amber) 16%, transparent), transparent 80%),
+    var(--panel-texture),
+    var(--bezel-face-gradient);
+}
+
+.mode-card.is-integrated {
+  border-color: color-mix(in srgb, var(--state-green) 60%, var(--border));
+  background-color: color-mix(in srgb, var(--state-green) 16%, var(--panel));
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--state-green) 14%, transparent), transparent 80%),
+    var(--panel-texture),
+    var(--bezel-face-gradient);
+}
+
+.privilege-card.is-low {
+  border-color: color-mix(in srgb, var(--state-amber) 60%, var(--border));
+  background-color: color-mix(in srgb, var(--state-amber) 18%, var(--panel));
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--state-amber) 16%, transparent), transparent 80%),
+    var(--panel-texture),
+    var(--bezel-face-gradient);
+}
+
+.privilege-card.is-high {
+  border-color: color-mix(in srgb, var(--state-green) 60%, var(--border));
+  background-color: color-mix(in srgb, var(--state-green) 16%, var(--panel));
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--state-green) 14%, transparent), transparent 80%),
+    var(--panel-texture),
+    var(--bezel-face-gradient);
+}
+
+.dash-card,
+.card {
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--bezel-edge-hi) 70%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--bezel-edge-hi) 20%, transparent),
+    0 4px 12px color-mix(in srgb, #000 48%, transparent);
+}
+
+.mode-card.is-portable .mode-option.is-active {
+  border-color: var(--state-amber);
+  background: color-mix(in srgb, var(--state-amber) 26%, var(--panel));
+  color: var(--state-amber);
+}
+
+.mode-card.is-integrated .mode-option.is-active {
+  border-color: var(--state-green);
+  background: color-mix(in srgb, var(--state-green) 24%, var(--panel));
+  color: var(--state-green);
+}
