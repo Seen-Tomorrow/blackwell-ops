@@ -316,7 +316,15 @@ fn launch_elevated_script(_name: &str, _extra: &str) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn service_install() -> Result<(), String> {
+fn link_portable_start(app: AppHandle) -> Result<(), String> {
+    start_helper_client(&app)
+}
+
+#[tauri::command]
+fn service_install(app: AppHandle) -> Result<(), String> {
+    // The service owns the link; stop the portable child first so the device
+    // does not connect twice.
+    stop_helper(&app);
     let data_dir = default_data_dir();
     let identity = load_identity(&data_dir).ok_or_else(|| {
         "Pair this device in Portable mode first; the service uses its device identity.".to_string()
@@ -611,7 +619,14 @@ async fn invite_bootstrap(app: AppHandle) -> Bootstrap {
             .get("helperStopped")
             .and_then(Value::as_bool)
             .unwrap_or(false);
+        let service_hosted = service_dir()
+            .map(|dir| dir.join("OymLink.xml").is_file())
+            .unwrap_or(false);
         let error = if helper && !stopped {
+            start_helper_client(&app).err()
+        } else if !service_hosted {
+            // Normal Portable mode: run the same hidden link client as the
+            // helper so this device is visible in Blackwell and can be opened.
             start_helper_client(&app).err()
         } else {
             None
@@ -1218,6 +1233,7 @@ fn main() {
             helper_reconnect,
             helper_close,
             helper_forget,
+            link_portable_start,
             link_hide,
             link_quit,
             assistant_open,
