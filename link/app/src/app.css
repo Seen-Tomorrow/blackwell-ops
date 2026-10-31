@@ -1413,3 +1413,94 @@ body {
   background: color-mix(in srgb, var(--state-green) 24%, var(--panel));
   color: var(--state-green);
 }
+
+/* DARK: full-opacity state surfaces (no wash, no texture opacity). */
+:root[data-oym-theme="dark"] .mode-card.is-portable,
+:root[data-oym-theme="dark"] .privilege-card.is-low {
+  background-color: #b86e00;
+  background-image: none;
+  border-color: #f0a93a;
+}
+
+:root[data-oym-theme="dark"] .mode-card.is-integrated,
+:root[data-oym-theme="dark"] .privilege-card.is-high {
+  background-color: #137a4c;
+  background-image: none;
+  border-color: #46d695;
+}
+
+:root[data-oym-theme="dark"] .mode-card.is-portable .dash-label,
+:root[data-oym-theme="dark"] .mode-card.is-portable .dash-note,
+:root[data-oym-theme="dark"] .mode-card.is-portable .dash-copy,
+:root[data-oym-theme="dark"] .privilege-card.is-low .dash-label,
+:root[data-oym-theme="dark"] .privilege-card.is-low .dash-copy,
+:root[data-oym-theme="dark"] .privilege-card.is-low .privilege-meta,
+:root[data-oym-theme="dark"] .mode-card.is-portable .dash-value {
+  color: #211300;
+}
+
+:root[data-oym-theme="dark"] .mode-card.is-portable .privilege-sep,
+:root[data-oym-theme="dark"] .privilege-card.is-low .privilege-sep {
+  background: rgba(33, 19, 0, 0.45);
+}
+
+:root[data-oym-theme="dark"] .mode-card.is-integrated .dash-label,
+:root[data-oym-theme="dark"] .mode-card.is-integrated .dash-note,
+:root[data-oym-theme="dark"] .mode-card.is-integrated .dash-copy,
+:root[data-oym-theme="dark"] .privilege-card.is-high .dash-label,
+:root[data-oym-theme="dark"] .privilege-card.is-high .dash-copy,
+:root[data-oym-theme="dark"] .privilege-card.is-high .privilege-meta,
+:root[data-oym-theme="dark"] .mode-card.is-integrated .dash-value {
+  color: #eafff3;
+}
+
+:root[data-oym-theme="dark"] .mode-card.is-integrated .privilege-sep,
+:root[data-oym-theme="dark"] .privilege-card.is-high .privilege-sep {
+  background: rgba(234, 255, 243, 0.35);
+}
+
+:root[data-oym-theme="dark"] .mode-card.is-portable .mode-option.is-active {
+  background: rgba(0, 0, 0, 0.18);
+  border-color: #2a1900;
+  color: #211300;
+}
+
+:root[data-oym-theme="dark"] .mode-card.is-portable .mode-option:not(.is-active) {
+  background: rgba(0, 0, 0, 0.22);
+  border-color: rgba(255, 240, 210, 0.32);
+  color: #2a1900;
+}
+
+:root[data-oym-theme="dark"] .mode-card.is-integrated .mode-option.is-active {
+  background: rgba(255, 255, 255, 0.17);
+  border-color: #eafff3;
+  color: #ffffff;
+}
+
+:root[data-oym-theme="dark"] .mode-card.is-integrated .mode-option:not(.is-active) {
+  background: rgba(0, 0, 0, 0.2);
+  border-color: rgba(220, 255, 238, 0.32);
+  color: #eafff3;
+}
+
+:root[data-oym-theme="dark"] .privilege-card.is-low .soft-button {
+  background: rgba(0, 0, 0, 0.18);
+  border-color: rgba(33, 19, 0, 0.5);
+  color: #211300;
+}
+
+:root[data-oym-theme="dark"] .privilege-card.is-high .soft-button {
+  background: rgba(0, 0, 0, 0.2);
+  border-color: rgba(234, 255, 243, 0.5);
+  color: #eafff3;
+}
+
+:root[data-oym-theme="dark"] .mode-card.is-portable .dash-value,
+:root[data-oym-theme="dark"] .privilege-card.is-low .dash-value {
+  color: #211300;
+}
+
+:root[data-oym-theme="dark"] .mode-card.is-integrated .dash-value,
+:root[data-oym-theme="dark"] .privilege-card.is-high .dash-value {
+  color: #eafff3;
+}
