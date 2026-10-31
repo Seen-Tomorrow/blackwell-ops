@@ -178,6 +178,14 @@ export default function RemotePage({ subTab }: { subTab: RemoteSubTab }) {
     }
   }, []);
 
+  const revealBuildPath = useCallback(async (path: string) => {
+    try {
+      await invoke("reveal_path_in_explorer", { path });
+    } catch (e) {
+      setError(errorText(e));
+    }
+  }, []);
+
   const copy = useCallback(async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -578,10 +586,19 @@ export default function RemotePage({ subTab }: { subTab: RemoteSubTab }) {
                       {helperBusy ? "BUILDING HELPER…" : "BUILD HELPER .EXE"}
                     </button>
                     {helperBuild && (
-                      <span className="type-tiny font-mono remote-muted">
-                        {(helperBuild.sizeBytes / 1024 / 1024).toFixed(1)} MB ·{" "}
-                        {helperBuild.path}
-                      </span>
+                      <>
+                        <span className="type-tiny font-mono remote-muted">
+                          {(helperBuild.sizeBytes / 1024 / 1024).toFixed(1)} MB ·{" "}
+                          {helperBuild.path}
+                        </span>
+                        <button
+                          type="button"
+                          className="remote-action"
+                          onClick={() => void revealBuildPath(helperBuild.path)}
+                        >
+                          SHOW ON DISK
+                        </button>
+                      </>
                     )}
                   </div>
                   {helperBusy && (
@@ -705,6 +722,17 @@ export default function RemotePage({ subTab }: { subTab: RemoteSubTab }) {
                   {linkBuild.cli && <code>CLI {linkBuild.cli}</code>}
                   {linkBuild.package && <code>PACKAGE {linkBuild.package}</code>}
                   {linkBuild.installer && <code>INSTALLER {linkBuild.installer}</code>}
+                  <button
+                    type="button"
+                    className="remote-action"
+                    onClick={() =>
+                      void revealBuildPath(
+                        linkBuild.installer ?? linkBuild.package ?? linkBuild.app,
+                      )
+                    }
+                  >
+                    SHOW ON DISK
+                  </button>
                 </div>
               )}
             </section>

@@ -70,7 +70,6 @@ export type RemoteLinkBuild = {
   cli: string | null;
   package: string | null;
   installer: string | null;
-  output: string;
 };
 
 export type RemoteModelRoute = {

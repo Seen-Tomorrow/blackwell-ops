@@ -380,19 +380,20 @@ pub async fn remote_helper_build(
             ));
         }
 
+        let mut output_path = build_out.clone();
         if let Some(parent) = final_out.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|error| format!("create Downloads dir: {error}"))?;
+            let _ = std::fs::create_dir_all(parent);
         }
         if final_out != build_out {
-            std::fs::copy(&build_out, &final_out)
-                .map_err(|error| format!("copy helper to Downloads: {error}"))?;
+            if std::fs::copy(&build_out, &final_out).is_ok() {
+                output_path = final_out;
+            }
         }
-        let size = std::fs::metadata(&final_out)
+        let size = std::fs::metadata(&output_path)
             .map_err(|error| format!("read helper output: {error}"))?
             .len();
         Ok(HelperBuild {
-            path: final_out.display().to_string(),
+            path: output_path.display().to_string(),
             size_bytes: size,
         })
     })
@@ -410,7 +411,6 @@ pub struct LinkBuild {
     pub cli: Option<String>,
     pub package: Option<String>,
     pub installer: Option<String>,
-    pub output: String,
 }
 
 #[tauri::command]
@@ -450,12 +450,18 @@ pub async fn remote_link_build(profile: String) -> Result<LinkBuild, String> {
             .map_err(|error| format!("start link build: {error}"))?;
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let log_path = repo_root.join("tmp/link-build.log");
+        let combined = format!(
+            "$ build-link.ps1 -Profile {requested}\n--- stdout ---\n{stdout}\n--- stderr ---\n{stderr}\n"
+        );
+        let _ = std::fs::write(&log_path, &combined);
         if !output.status.success() {
+            let tail: String = combined.chars().rev().take(1_500).collect::<String>().chars().rev().collect();
             return Err(format!(
-                "link build failed ({}): {}\n{}",
+                "link build failed ({}). Full log: {}\n{}",
                 output.status,
-                stderr.trim(),
-                stdout.trim()
+                log_path.display(),
+                tail.trim()
             ));
         }
         let app = repo_root
@@ -464,7 +470,7 @@ pub async fn remote_link_build(profile: String) -> Result<LinkBuild, String> {
             .join("oym-link-app.exe");
         let cli = (requested != "dev").then(|| {
             repo_root
-                .join("remote-client/target/release/oym-link.exe")
+                .join("link/target/release/oym-link.exe")
                 .display()
                 .to_string()
         });
@@ -474,9 +480,10 @@ pub async fn remote_link_build(profile: String) -> Result<LinkBuild, String> {
             let build_installer = repo_root.join("tmp/OYM-Link-Setup.exe");
             let final_dir = helper_final_dir();
             let final_installer = final_dir.join("OYM-Link-Setup.exe");
-            std::fs::copy(&build_installer, &final_installer)
-                .map_err(|error| format!("copy installer to Downloads: {error}"))?;
-            Some(final_installer.display().to_string())
+            match std::fs::copy(&build_installer, &final_installer) {
+                Ok(_) => Some(final_installer.display().to_string()),
+                Err(_) => Some(build_installer.display().to_string()),
+            }
         } else {
             None
         };
@@ -486,7 +493,6 @@ pub async fn remote_link_build(profile: String) -> Result<LinkBuild, String> {
             cli,
             package,
             installer,
-            output: stdout.chars().rev().take(2000).collect::<String>().chars().rev().collect(),
         })
     })
     .await
