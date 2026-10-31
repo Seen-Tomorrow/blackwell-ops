@@ -598,7 +598,7 @@ export default function App() {
                   className={`mode-option ${!integrated ? "is-active" : ""}`}
                   disabled={serviceApply !== null}
                   onClick={() => {
-                    if (!integrated) setPendingMode("portable");
+                    if (integrated) setPendingMode("portable");
                   }}
                 >
                   PORTABLE
@@ -620,12 +620,12 @@ export default function App() {
               <div className="dash-card-head">
                 <span className="dash-label">PRIVILEGE</span>
                 <span className={`dash-value ${integrated || elevated ? "is-accent" : ""}`}>
-                  {integrated ? "SYSTEM" : elevated ? "ADMIN" : "STANDARD"}
+                  {integrated ? "MAXIMUM" : elevated ? "HIGH" : "LOW"}
                 </span>
               </div>
               <div className="dash-row">
                 <span className="dash-copy">
-                  {integrated ? "Always elevated by Windows." : "App runs with your user token."}
+                  {integrated ? "SYSTEM LEVEL" : elevated ? "ADMIN LEVEL" : "USER LEVEL"}
                 </span>
                 {!integrated && !elevated && (
                   <button type="button" className="soft-button" onClick={() => void restartElevated()}>
@@ -635,43 +635,21 @@ export default function App() {
               </div>
             </section>
 
-            <section className={`dash-card emergency ${networkEnabled ? "is-armed" : "is-off"}`}>
-              <div className="dash-card-head">
-                <span className="dash-label">REMOTE ACCESS</span>
-                <span className={`dash-value ${networkEnabled ? "is-danger" : ""}`}>
-                  {networkEnabled ? "ON" : "OFF"}
-                </span>
-              </div>
-              <p className="emergency-copy">
-                {networkEnabled
-                  ? "Blackwell and cloud are reachable."
-                  : "No remote or cloud access. Local assistant only."}
-              </p>
-              <button
-                type="button"
-                className={`emergency-button ${networkEnabled ? "is-stop" : "is-enable"}`}
-                onClick={() => void toggleNetwork()}
-              >
-                <span className="emergency-led" />
-                {networkEnabled ? "STOP ALL NETWORK" : "ENABLE NETWORK"}
-              </button>
-            </section>
-
             <section className="dash-card">
               <div className="dash-card-head">
                 <span className="dash-label">LOCAL ASSISTANT</span>
               </div>
-              <div className="segmented">
+              <div className="mode-switch assistant-switch">
                 <button
                   type="button"
-                  className={`segment ${provider === "private" ? "is-selected" : ""}`}
+                  className={`mode-option assistant-option ${provider === "private" ? "is-active" : ""}`}
                   onClick={() => setProvider("private")}
                 >
                   PRIVATE
                 </button>
                 <button
                   type="button"
-                  className={`segment ${provider === "cloud" ? "is-selected" : ""}`}
+                  className={`mode-option assistant-option ${provider === "cloud" ? "is-active" : ""}`}
                   disabled={!cloudReady || !status.cloudKeyStored}
                   onClick={() => setProvider("cloud")}
                 >
@@ -681,9 +659,7 @@ export default function App() {
               <div className="dash-row">
                 <span className="dash-copy">
                   {provider === "private"
-                    ? status.homeRoutes.length > 0
-                      ? `${status.homeRoutes.length} local model${status.homeRoutes.length === 1 ? "" : "s"}`
-                      : "No local engine"
+                    ? `${status.homeRoutes.length} Private model options`
                     : !status.cloudKeyStored
                       ? "Cloud key not configured"
                       : `Cloud · ${cloudLabel.toLowerCase()}`}
@@ -706,6 +682,28 @@ export default function App() {
             <section className="dash-card files-card">
               <span className="dash-label">FILES</span>
               <span className="dash-copy">Transfer monitor · coming soon</span>
+            </section>
+
+            <section className={`dash-card emergency ${networkEnabled ? "is-armed" : "is-off"}`}>
+              <div className="dash-card-head">
+                <span className="dash-label">REMOTE ACCESS</span>
+                <span className={`dash-value ${networkEnabled ? "is-danger" : ""}`}>
+                  {networkEnabled ? "ON" : "OFF"}
+                </span>
+              </div>
+              <p className="emergency-copy">
+                {networkEnabled
+                  ? "Blackwell and cloud are reachable."
+                  : "No remote or cloud access. Local assistant only."}
+              </p>
+              <button
+                type="button"
+                className={`emergency-button ${networkEnabled ? "is-stop" : "is-enable"}`}
+                onClick={() => void toggleNetwork()}
+              >
+                <span className="emergency-led" />
+                {networkEnabled ? "STOP ALL NETWORK" : "ENABLE NETWORK"}
+              </button>
             </section>
           </>
         )}

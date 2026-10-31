@@ -964,3 +964,8 @@ body {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(350%); }
 }
+
+.assistant-switch .assistant-option {
+  height: 30px;
+  font-size: 9px;
+}
