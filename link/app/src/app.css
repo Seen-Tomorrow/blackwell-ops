@@ -1530,3 +1530,35 @@ body {
   border-color: #3e3e4a;
   color: #c7c1cd;
 }
+
+/* DARK: selected toggle = black + white rim; unselected = muted panel. */
+:root[data-oym-theme="dark"] .assistant-switch .mode-option.is-active {
+  background-color: #000000;
+  border-color: #f2eef3;
+  color: #ffffff;
+}
+
+:root[data-oym-theme="dark"] .assistant-switch .mode-option:not(.is-active) {
+  background-color: #2d2d34;
+  border-color: #4e4e5b;
+  color: #c7c1cd;
+}
+
+:root[data-oym-theme="dark"] .mode-card.is-portable .mode-option.is-active,
+:root[data-oym-theme="dark"] .mode-card.is-integrated .mode-option.is-active {
+  background-color: #000000;
+  border-color: #f2eef3;
+  color: #ffffff;
+}
+
+:root[data-oym-theme="dark"] .mode-card.is-portable .mode-option:not(.is-active) {
+  background-color: rgba(0, 0, 0, 0.14);
+  border-color: rgba(33, 19, 0, 0.28);
+  color: #211300;
+}
+
+:root[data-oym-theme="dark"] .mode-card.is-integrated .mode-option:not(.is-active) {
+  background-color: rgba(0, 0, 0, 0.18);
+  border-color: rgba(234, 255, 243, 0.2);
+  color: #eafff3;
+}
