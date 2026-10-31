@@ -1399,3 +1399,26 @@ body {
   border-color: rgba(234, 255, 243, 0.2);
   color: #eafff3;
 }
+
+.update-button {
+  height: 24px;
+  padding: 0 7px;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--border));
+  border-radius: 5px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+}
+
+.update-button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.update-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}

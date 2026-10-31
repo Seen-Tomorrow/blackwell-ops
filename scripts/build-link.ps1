@@ -88,6 +88,13 @@ Copy-Item $app (Join-Path $package "OYM Link.exe")
 $runtime = Join-Path $package "runtime"
 New-Item -ItemType Directory -Force -Path $runtime | Out-Null
 Copy-Item $cli (Join-Path $runtime "oym-link.exe")
+$seven = Join-Path $root "src-tauri/bin/7z.exe"
+$sevenDll = Join-Path $root "src-tauri/bin/7z.dll"
+foreach ($required in @($seven, $sevenDll)) {
+    if (-not (Test-Path $required)) { throw "Missing 7z update asset: $required" }
+}
+Copy-Item $seven (Join-Path $runtime "7z.exe") -Force
+Copy-Item $sevenDll (Join-Path $runtime "7z.dll") -Force
 if (Test-Path (Join-Path $pi "pi.exe")) {
     Copy-Item $pi (Join-Path $runtime "pi") -Recurse
 }

@@ -78,6 +78,16 @@ const DEFAULT_SETTINGS: Settings = {
   cloudKeyStored: false,
 };
 
+type LinkUpdateInfo = {
+  available: boolean;
+  currentBuild: number;
+  latestBuild: number | null;
+  name: string | null;
+  url: string | null;
+  sizeBytes: number | null;
+  publishedAt: string | null;
+};
+
 type View = "home" | "pair" | "settings";
 
 export default function App() {
@@ -97,6 +107,8 @@ export default function App() {
   const [networkEnabled, setNetworkEnabled] = useState(true);
   const [cloudStatus, setCloudStatus] = useState("checking");
   const [pendingMode, setPendingMode] = useState<"portable" | "integrated" | null>(null);
+  const [updateInfo, setUpdateInfo] = useState<LinkUpdateInfo | null>(null);
+  const [updateBusy, setUpdateBusy] = useState(false);
   const [theme, setTheme] = useState<"system" | "light" | "dark">(() => {
     const saved = window.localStorage.getItem("oym.link.theme");
     return saved === "light" || saved === "dark" ? saved : "system";
@@ -271,6 +283,13 @@ export default function App() {
   useEffect(() => {
     if (boot && !boot.paired && !boot.helper) setView("pair");
   }, [boot?.paired, boot?.helper]);
+
+  useEffect(() => {
+    if (!boot?.paired) return;
+    void invoke<LinkUpdateInfo>("link_update_check", { currentBuild: __LINK_BUILD__ })
+      .then(setUpdateInfo)
+      .catch(() => {});
+  }, [boot?.paired]);
 
   const stopHelper = useCallback(async () => {
     setError(null);
@@ -507,6 +526,23 @@ export default function App() {
     }
   }, [networkEnabled]);
 
+  const installUpdate = useCallback(async () => {
+    if (!updateInfo?.url || !updateInfo.name) return;
+    setError(null);
+    setNotice(null);
+    setUpdateBusy(true);
+    try {
+      await invoke("link_update_install", {
+        url: updateInfo.url,
+        name: updateInfo.name,
+      });
+      setNotice("Update started. OYM Link will close and relaunch.");
+    } catch (e) {
+      setError(typeof e === "string" ? e : String(e));
+      setUpdateBusy(false);
+    }
+  }, [updateInfo]);
+
   const confirmMode = useCallback(async () => {
     const target = pendingMode;
     setPendingMode(null);
@@ -574,6 +610,17 @@ export default function App() {
           <span className="brand-name">OYM</span>
         </div>
         <div className="header-actions">
+          {updateInfo?.available && (
+            <button
+              type="button"
+              className="update-button"
+              disabled={updateBusy}
+              title={`Update OYM Link to build ${updateInfo.latestBuild ?? "?"}`}
+              onClick={() => void installUpdate()}
+            >
+              {updateBusy ? "UPDATING" : `UPDATE ${updateInfo.latestBuild ?? ""}`}
+            </button>
+          )}
           <button
             className="icon-button"
             title={`Theme: ${theme}. Click to change.`}

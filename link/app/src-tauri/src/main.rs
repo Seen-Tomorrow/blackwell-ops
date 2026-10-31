@@ -185,6 +185,224 @@ fn service_dir() -> Option<PathBuf> {
         .map(|dir| dir.join("OYM").join("Link").join("service"))
 }
 
+const LINK_UPDATE_REPO: &str = "Seen-Tomorrow/blackwell-ops";
+const LINK_UPDATE_PREFIX: &str = "LINK_OYM-Link-";
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LinkUpdateInfo {
+    available: bool,
+    current_build: u64,
+    latest_build: Option<u64>,
+    name: Option<String>,
+    url: Option<String>,
+    size_bytes: Option<u64>,
+    published_at: Option<String>,
+}
+
+fn curl_exe() -> PathBuf {
+    let system = PathBuf::from(r"C:\Windows\System32\curl.exe");
+    if system.is_file() {
+        system
+    } else {
+        PathBuf::from("curl.exe")
+    }
+}
+
+fn run_curl(args: &[String]) -> Result<std::process::Output, String> {
+    let mut command = Command::new(curl_exe());
+    command
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    command
+        .output()
+        .map_err(|error| format!("start curl: {error}"))
+}
+
+#[tauri::command]
+async fn link_update_check(current_build: u64) -> Result<LinkUpdateInfo, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let endpoint = format!(
+            "https://api.github.com/repos/{LINK_UPDATE_REPO}/releases/latest"
+        );
+        let output = run_curl(&[
+            "-L".into(),
+            "--fail".into(),
+            "--silent".into(),
+            "--show-error".into(),
+            "-H".into(),
+            "Accept: application/vnd.github+json".into(),
+            "-H".into(),
+            "User-Agent: OYM-Link-Updater".into(),
+            endpoint,
+        ])?;
+        if !output.status.success() {
+            return Err(format!(
+                "GitHub update check failed: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            ));
+        }
+        let release: Value = serde_json::from_slice(&output.stdout)
+            .map_err(|error| format!("parse GitHub release: {error}"))?;
+        let published_at = release
+            .get("published_at")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let mut best: Option<(u64, String, String, u64)> = None;
+        if let Some(assets) = release.get("assets").and_then(Value::as_array) {
+            for asset in assets {
+                let name = asset.get("name").and_then(Value::as_str).unwrap_or("");
+                let Some(build) = name
+                    .strip_prefix(LINK_UPDATE_PREFIX)
+                    .and_then(|rest| rest.strip_suffix(".7z"))
+                    .and_then(|digits| digits.parse::<u64>().ok())
+                else {
+                    continue;
+                };
+                let url = asset
+                    .get("browser_download_url")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                if url.is_empty() {
+                    continue;
+                }
+                let size = asset.get("size").and_then(Value::as_u64).unwrap_or(0);
+                if best.as_ref().is_none_or(|(best_build, ..)| build > *best_build) {
+                    best = Some((build, name.to_string(), url.to_string(), size));
+                }
+            }
+        }
+        let Some((latest_build, name, url, size_bytes)) = best else {
+            return Ok(LinkUpdateInfo {
+                available: false,
+                current_build,
+                latest_build: None,
+                name: None,
+                url: None,
+                size_bytes: None,
+                published_at,
+            });
+        };
+        Ok(LinkUpdateInfo {
+            available: latest_build > current_build,
+            current_build,
+            latest_build: Some(latest_build),
+            name: Some(name),
+            url: Some(url),
+            size_bytes: Some(size_bytes),
+            published_at,
+        })
+    })
+    .await
+    .map_err(|error| format!("update check task: {error}"))?
+}
+
+#[tauri::command]
+async fn link_update_install(
+    app: AppHandle,
+    url: String,
+    name: String,
+) -> Result<(), String> {
+    if !url.starts_with("https://github.com/") && !url.starts_with("https://objects.githubusercontent.com/")
+    {
+        return Err("refusing a non-GitHub update URL".into());
+    }
+    if !name.starts_with(LINK_UPDATE_PREFIX) || !name.ends_with(".7z") {
+        return Err("unexpected update asset name".into());
+    }
+    let app_handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let dir = default_data_dir().join("update");
+        if dir.exists() {
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+        std::fs::create_dir_all(&dir).map_err(|e| format!("create update dir: {e}"))?;
+        let archive = dir.join("OYM-Link-Update.7z");
+        let download = run_curl(&[
+            "-L".into(),
+            "--fail".into(),
+            "--silent".into(),
+            "--show-error".into(),
+            "-o".into(),
+            archive.display().to_string(),
+            url,
+        ])?;
+        if !download.status.success() {
+            return Err(format!(
+                "update download failed: {}",
+                String::from_utf8_lossy(&download.stderr).trim()
+            ));
+        }
+        let app_dir = std::env::current_exe()
+            .map_err(|e| format!("current exe: {e}"))?
+            .parent()
+            .map(PathBuf::from)
+            .ok_or_else(|| "cannot resolve app directory".to_string())?;
+        let seven = [app_dir.join("7z.exe"), app_dir.join("runtime/7z.exe")]
+            .into_iter()
+            .find(|path| path.is_file())
+            .ok_or_else(|| "bundled 7z.exe is missing".to_string())?;
+        let staging = dir.join("staging");
+        std::fs::create_dir_all(&staging).map_err(|e| format!("create staging: {e}"))?;
+        let mut extract = Command::new(&seven);
+        extract
+            .arg("x")
+            .arg(&archive)
+            .arg(format!("-o{}", staging.display()))
+            .arg("-y")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            extract.creation_flags(CREATE_NO_WINDOW);
+        }
+        let extracted = extract
+            .output()
+            .map_err(|e| format!("start 7z: {e}"))?;
+        if !extracted.status.success() {
+            return Err(format!(
+                "update extraction failed: {}",
+                String::from_utf8_lossy(&extracted.stderr).trim()
+            ));
+        }
+        let installer = staging.join("OYM-Link-Setup.exe");
+        if !installer.is_file() {
+            return Err("update archive did not contain OYM-Link-Setup.exe".into());
+        }
+        let mut launch = Command::new(&installer);
+        launch
+            .arg("/S")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            launch.creation_flags(CREATE_NO_WINDOW);
+        }
+        launch
+            .spawn()
+            .map_err(|e| format!("start link installer: {e}"))?;
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(1_200));
+            app_handle.exit(0);
+        });
+        Ok::<(), String>(())
+    })
+    .await
+    .map_err(|error| format!("update install task: {error}"))?
+}
+
 #[tauri::command]
 fn service_install_log() -> String {
     let Some(program_data) = std::env::var_os("PROGRAMDATA") else {
@@ -1643,6 +1861,8 @@ fn main() {
             link_cloud_status,
             service_action_status,
             link_is_elevated,
+            link_update_check,
+            link_update_install,
             link_restart_elevated,
             link_restart_normal,
             link_hide,

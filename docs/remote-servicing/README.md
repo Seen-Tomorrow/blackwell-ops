@@ -10,6 +10,7 @@ Product and operations notes for the Blackwell remote-servicing capability.
 | [LOCAL-MODE-REPORT.md](LOCAL-MODE-REPORT.md) | Implementation result, tests, untested items, and owner manual steps |
 | [LINK-SHAPE.md](LINK-SHAPE.md) | Device app shape: Portable vs Integrated, vocabulary, UI, credentials, rename plan |
 | [SUPPORT-INVITES.md](SUPPORT-INVITES.md) | One-time invite tokens, NSIS helper packaging, revocation |
+| [LINK-UPDATES.md](LINK-UPDATES.md) | OYM Link 7z release asset, GitHub shipping and one-click self-update |
 | [INTEGRATED-SERVICE.md](INTEGRATED-SERVICE.md) | LocalSystem service skeleton, install/uninstall, next layer guardrails |
 | [CLOUDFLARE-NAMED-TUNNEL.md](CLOUDFLARE-NAMED-TUNNEL.md) | Permanent hostname via Cloudflare Tunnel, `.cz` NSSET notes |
 | [CODE-SIGNING.md](CODE-SIGNING.md) | Authenticode options, self-signed dev flow, SmartScreen |
@@ -20,8 +21,8 @@ Product and operations notes for the Blackwell remote-servicing capability.
 
 Implementation references:
 
-- [remote client](../../remote-client/README.md) — portable Windows station
-- [remote gateway](../../remote/README.md) — gateway crate
+- [remote client](../../link/README.md) — portable Windows station
+- [remote gateway](../../gateway/README.md) — gateway crate
 
 The current proof of concept is a portable `blackwell-link.exe` that pairs to a
 Blackwell gateway, runs Pi on the target, and exposes a Pi terminal and
