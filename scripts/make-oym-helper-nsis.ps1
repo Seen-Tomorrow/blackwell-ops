@@ -34,7 +34,7 @@ if (($Code -eq "") -eq ($Invite -eq "")) {
 }
 
 $app = Join-Path $root "link/app/src-tauri/target/release/oym-link-app.exe"
-$cli = Join-Path $root "remote-client/target/release/oym-link.exe"
+$cli = Join-Path $root "link/target/release/oym-link.exe"
 $pi = Join-Path $root "tmp/blackwell-link-package/pi"
 $makensis = @(
     "$env:LOCALAPPDATA\tauri\NSIS\Bin\makensis.exe",

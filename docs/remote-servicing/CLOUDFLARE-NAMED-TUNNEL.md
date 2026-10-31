@@ -89,16 +89,16 @@ polls until the delegation and `/healthz` are live.
 Once this host is stable, build a one-file helper:
 
 ```powershell
-pwsh scripts/make-oym-helper-sfx.ps1 `
+pwsh scripts/make-oym-helper-nsis.ps1 `
   -Server https://help.example.com `
-  -Code <one-time-pair-code> `
+  -Invite oym_inv_... `
   -Owner Alex `
   -OutFile tmp/OYM-Help-Alex.exe
 ```
 
-The code is the normal one-time gateway pairing code. Generate it immediately
-before building the SFX; it expires. The next step is a gateway-issued invite
-token with a longer TTL and single use, so the file can be prepared in advance.
+Generate the invite in OYM → REMOTE immediately before packaging. The helper
+installs silently under `%LOCALAPPDATA%\OYM\Help`; the invite is single-use and
+long-lived, so the file can be prepared in advance.
 
 ## Notes
 

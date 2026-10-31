@@ -32,11 +32,11 @@ before buying; if eligible it is the least painful route for a small team.
 
 ## What to sign
 
-- `OYM-Help.exe` (the SFX users double-click) — most important.
+- `OYM-Help.exe` (the one-file NSIS helper installer users double-click) — most important.
 - `OYM-Help.exe`'s inner app (`oym-link-app.exe`) and `oym-link.exe`.
 - Any future installer (`OYM-Setup.exe`).
 
-Sign the final SFX, not only the files inside it: SmartScreen evaluates the file
+Sign the final helper installer, not only the files inside it: SmartScreen evaluates the file
 the user runs.
 
 ## Signing and verification
@@ -60,7 +60,7 @@ signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 `
 ## Self-signed certificate (development only)
 
 For local builds, `scripts/sign-dev.ps1` creates a code-signing certificate in
-`Cert:\CurrentUser\My` and signs the release app, CLI and SFX:
+`Cert:\CurrentUser\My` and signs the release app, CLI and helper installer:
 
 ```powershell
 pwsh scripts/sign-dev.ps1 -Trust
@@ -78,10 +78,10 @@ PFX via `signtool sign /f cert.pfx`.
 
 ## Until signing is in place
 
-An unsigned SFX will often show SmartScreen. The recipient can use **More info →
+An unsigned helper installer will often show SmartScreen. The recipient can use **More info →
 Run anyway**, but that is not acceptable for a regular user. For family support
 during the trial, send it with a one-line instruction; before wider distribution,
-sign the SFX.
+sign the helper installer.
 
 Do not buy a certificate just to "register with Microsoft" — there is no such
 registration for normal desktop apps. Buy a trusted code-signing certificate (or

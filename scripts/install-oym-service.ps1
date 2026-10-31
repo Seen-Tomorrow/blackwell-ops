@@ -49,7 +49,7 @@ if (-not $ServiceExe -or -not (Test-Path $ServiceExe)) {
     throw "oym-link-service.exe not found. Build it: cargo build --release --manifest-path link\service\Cargo.toml"
 }
 if (-not $Cli) {
-    $Cli = Join-Path $root "remote-client/target/release/oym-link.exe"
+    $Cli = Join-Path $root "link/target/release/oym-link.exe"
 }
 if (-not $PiDir) {
     $PiDir = Join-Path $root "tmp/blackwell-link-package/pi"

@@ -344,13 +344,6 @@ export default function App() {
     void invoke("link_hide").catch(() => {});
   }, []);
 
-  const openPair = useCallback(() => {
-    setGateway(settings.gatewayUrl || status.gateway || "");
-    setError(null);
-    setNotice(null);
-    setView("pair");
-  }, [settings.gatewayUrl, status.gateway]);
-
   const pair = useCallback(async () => {
     setError(null);
     setNotice(null);

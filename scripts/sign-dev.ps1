@@ -28,7 +28,7 @@ $root = Split-Path -Parent $PSScriptRoot
 if ($Files.Count -eq 0) {
     $Files = @(
         (Join-Path $root "link/app/src-tauri/target/release/oym-link-app.exe"),
-        (Join-Path $root "remote-client/target/release/oym-link.exe")
+        (Join-Path $root "link/target/release/oym-link.exe")
     )
     $sfx = Join-Path $root "tmp/OYM-Help.exe"
     if (Test-Path $sfx) { $Files += $sfx }

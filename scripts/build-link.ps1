@@ -7,7 +7,7 @@
   DEV: cargo build of link/app in debug mode. It still needs the link Vite
        server at :1422 to render; this only produces the exe.
   REL: frontend build + release app (embedded assets, no Vite) + release CLI.
-       The helper SFX packer consumes these REL artifacts.
+       The NSIS helper packer consumes these REL artifacts.
 #>
 param(
     [Parameter(Mandatory)]
@@ -62,12 +62,12 @@ Remove-Item $releaseApp -Force -ErrorAction SilentlyContinue
 & cargo build --locked --release --features custom-protocol --manifest-path $appManifest
 if ($LASTEXITCODE -ne 0) { throw "cargo build (link REL app) failed with exit $LASTEXITCODE" }
 
-$env:CARGO_TARGET_DIR = Join-Path $root "remote-client/target"
+$env:CARGO_TARGET_DIR = Join-Path $root "link/target"
 & cargo build --locked --release --manifest-path $cliManifest
 if ($LASTEXITCODE -ne 0) { throw "cargo build (link REL cli) failed with exit $LASTEXITCODE" }
 
 $app = Join-Path $root "link/app/src-tauri/target/release/oym-link-app.exe"
-$cli = Join-Path $root "remote-client/target/release/oym-link.exe"
+$cli = Join-Path $root "link/target/release/oym-link.exe"
 $pi = Join-Path $root "tmp/blackwell-link-package/pi"
 
 # Stage a runnable portable folder. A raw app exe copied somewhere else cannot

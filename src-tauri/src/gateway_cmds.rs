@@ -234,6 +234,14 @@ pub fn remote_invite_revoke(
     oym_gateway::invites::revoke(&remote.cfg.data_dir, &id)
 }
 
+#[tauri::command]
+pub fn remote_invites_cleanup(
+    remote: State<'_, Arc<GatewayState>>,
+    scope: String,
+) -> Result<usize, String> {
+    oym_gateway::invites::cleanup(&remote.cfg.data_dir, &scope)
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HelperBuild {

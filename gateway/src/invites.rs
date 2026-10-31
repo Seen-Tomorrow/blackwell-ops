@@ -122,6 +122,21 @@ pub fn revoke(data_dir: &Path, id: &str) -> Result<bool, String> {
     Ok(true)
 }
 
+/// Remove stored invites. `revoked` deletes only revoked records; `all` wipes
+/// the invite store. Paired devices are untouched.
+pub fn cleanup(data_dir: &Path, scope: &str) -> Result<usize, String> {
+    let mut file = load(data_dir);
+    let before = file.invites.len();
+    match scope {
+        "revoked" => file.invites.retain(|record| !record.revoked),
+        "all" => file.invites.clear(),
+        other => return Err(format!("unknown invite cleanup scope: {other}")),
+    }
+    let removed = before - file.invites.len();
+    save(data_dir, &file)?;
+    Ok(removed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -156,6 +171,21 @@ mod tests {
     fn unknown_invite_is_rejected() {
         let dir = temp_dir("unknown");
         assert!(redeem(&dir, "oym_inv_not-a-real-token").is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cleanup_targets_revoked_or_all() {
+        let dir = temp_dir("cleanup");
+        let (_, first) = create(&dir, Some("A".into()), 1).expect("create first");
+        let (_, second) = create(&dir, Some("B".into()), 1).expect("create second");
+        revoke(&dir, &first.id).expect("revoke");
+        assert_eq!(cleanup(&dir, "revoked").expect("clean revoked"), 1);
+        assert_eq!(list(&dir).len(), 1);
+        assert_eq!(cleanup(&dir, "all").expect("clean all"), 1);
+        assert!(list(&dir).is_empty());
+        assert!(cleanup(&dir, "unknown").is_err());
+        let _ = second;
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

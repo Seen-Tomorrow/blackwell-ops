@@ -64,7 +64,7 @@ export default function RemotePage({ subTab }: { subTab: RemoteSubTab }) {
   const [inviteOwner, setInviteOwner] = useState("");
   const [inviteTtl, setInviteTtl] = useState(72);
   const [createdInvite, setCreatedInvite] = useState<RemoteCreatedInvite | null>(null);
-  const [inviteBusy, setInviteBusy] = useState<"create" | "revoke" | null>(null);
+  const [inviteBusy, setInviteBusy] = useState<"create" | "revoke" | "cleanup" | null>(null);
   const [helperBuild, setHelperBuild] = useState<RemoteHelperBuild | null>(null);
   const [helperBusy, setHelperBusy] = useState(false);
   const [helperElapsed, setHelperElapsed] = useState(0);
@@ -224,6 +224,37 @@ export default function RemotePage({ subTab }: { subTab: RemoteSubTab }) {
       }
     },
     [createdInvite, loadInvites],
+  );
+
+  const cleanupInvites = useCallback(
+    async (scope: "revoked" | "all") => {
+      if (
+        scope === "all" &&
+        !window.confirm(
+          "Delete all support invites? Devices that are already paired stay paired.",
+        )
+      ) {
+        return;
+      }
+      setError(null);
+      setNotice(null);
+      setInviteBusy("cleanup");
+      try {
+        const removed = await invoke<number>("remote_invites_cleanup", { scope });
+        setCreatedInvite(null);
+        setNotice(
+          removed === 0
+            ? "No invites to clean up."
+            : `${removed} invite${removed === 1 ? "" : "s"} removed.`,
+        );
+        await loadInvites();
+      } catch (e) {
+        setError(errorText(e));
+      } finally {
+        setInviteBusy(null);
+      }
+    },
+    [loadInvites],
   );
 
   const buildHelper = useCallback(async () => {
@@ -461,9 +492,32 @@ export default function RemotePage({ subTab }: { subTab: RemoteSubTab }) {
                     One-time helper pairing. The token is shown once and can be revoked.
                   </p>
                 </div>
-                <span className="remote-invite-count">
-                  {invites.filter((invite) => invite.state === "unused").length} UNUSED
-                </span>
+                <div className="remote-invites__aside">
+                  <span className="remote-invite-count">
+                    {invites.filter((invite) => invite.state === "unused").length} UNUSED
+                  </span>
+                  <div className="remote-invites__cleanup">
+                    <button
+                      type="button"
+                      className="remote-action remote-action--danger"
+                      disabled={
+                        inviteBusy !== null ||
+                        invites.every((invite) => invite.state !== "revoked")
+                      }
+                      onClick={() => void cleanupInvites("revoked")}
+                    >
+                      {inviteBusy === "cleanup" ? "CLEANING…" : "CLEAN REVOKED"}
+                    </button>
+                    <button
+                      type="button"
+                      className="remote-action remote-action--danger"
+                      disabled={inviteBusy !== null || invites.length === 0}
+                      onClick={() => void cleanupInvites("all")}
+                    >
+                      CLEAN ALL
+                    </button>
+                  </div>
+                </div>
               </div>
 
               <div className="remote-invite-form">

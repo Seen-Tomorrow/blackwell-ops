@@ -44,7 +44,7 @@ pwsh scripts/make-oym-helper-nsis.ps1 `
 The result is a silent NSIS installer: double-click installs to
 `%LOCALAPPDATA%\OYM\Help` and starts the app — one file, no wizard, no console.
 Default compression is bzip2 (~8 s, ~48 MB); `-NsisCompression lzma` gives ~35 MB
-at ~80 s. The legacy `make-oym-helper-sfx.ps1` remains as a fallback only.
+at ~80 s.
 
 Exactly one of `-Invite` or `-Code` is required. The helper writes the invite into
 `oym-invite.json`; the app redeems it on first run, saves the device token, and

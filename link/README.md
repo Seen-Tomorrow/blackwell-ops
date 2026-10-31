@@ -53,10 +53,10 @@ Remoting/SSH.
 ## Build
 
 ```powershell
-cargo build --release --manifest-path remote-client/Cargo.toml
+cargo build --release --manifest-path link/Cargo.toml
 ```
 
-The release binary is `remote-client/target/release/oym-link.exe`.
+The release binary is `link/target/release/oym-link.exe`.
 
 ## Package layout
 
