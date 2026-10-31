@@ -11,7 +11,7 @@
 #>
 param(
     [Parameter(Mandatory)]
-    [ValidateSet("dev", "rel")]
+    [ValidateSet("dev", "rel", "installer")]
     [string] $Profile
 )
 
@@ -19,6 +19,17 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $appManifest = Join-Path $root "link/app/src-tauri/Cargo.toml"
 $cliManifest = Join-Path $root "link/Cargo.toml"
+
+if ($Profile -eq "installer") {
+    & $PSCommandPath -Profile rel
+    if (-not $?) { throw "REL build failed; installer not built" }
+    $installer = Join-Path $root "tmp/OYM-Link-Setup.exe"
+    & (Join-Path $root "scripts/make-link-installer.ps1") -OutFile $installer
+    if (-not $?) { throw "NSIS installer build failed" }
+    Write-Host ""
+    Write-Host "INSTALLER=$installer"
+    exit 0
+}
 
 if ($Profile -eq "dev") {
     & cargo build --locked --manifest-path $appManifest

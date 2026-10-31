@@ -103,7 +103,9 @@ Section "Install"
   File "$stageEscaped\OYM-Help.exe"
   File "$stageEscaped\oym-link.exe"
   File "$stageEscaped\oym-invite.json"
+  SetOutPath "`$INSTDIR\pi"
   File /r "$stageEscaped\pi\*.*"
+  SetOutPath "`$INSTDIR"
   Exec '"`$INSTDIR\OYM-Help.exe"'
 SectionEnd
 "@

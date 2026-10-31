@@ -401,14 +401,15 @@ pub struct LinkBuild {
     pub app: String,
     pub cli: Option<String>,
     pub package: Option<String>,
+    pub installer: Option<String>,
     pub output: String,
 }
 
 #[tauri::command]
 pub async fn remote_link_build(profile: String) -> Result<LinkBuild, String> {
     let profile = profile.trim().to_lowercase();
-    if profile != "dev" && profile != "rel" {
-        return Err("profile must be dev or rel".into());
+    if profile != "dev" && profile != "rel" && profile != "installer" {
+        return Err("profile must be dev, rel or installer".into());
     }
     let script = repo_script("build-link.ps1")?;
     let repo_root = script
@@ -453,19 +454,30 @@ pub async fn remote_link_build(profile: String) -> Result<LinkBuild, String> {
             .join("link/app/src-tauri/target")
             .join(if requested == "dev" { "debug" } else { "release" })
             .join("oym-link-app.exe");
-        let cli = (requested == "rel").then(|| {
+        let cli = (requested != "dev").then(|| {
             repo_root
                 .join("remote-client/target/release/oym-link.exe")
                 .display()
                 .to_string()
         });
-        let package = (requested == "rel")
+        let package = (requested != "dev")
             .then(|| repo_root.join("tmp/link-rel-package").display().to_string());
+        let installer = if requested == "installer" {
+            let build_installer = repo_root.join("tmp/OYM-Link-Setup.exe");
+            let final_dir = helper_final_dir();
+            let final_installer = final_dir.join("OYM-Link-Setup.exe");
+            std::fs::copy(&build_installer, &final_installer)
+                .map_err(|error| format!("copy installer to Downloads: {error}"))?;
+            Some(final_installer.display().to_string())
+        } else {
+            None
+        };
         Ok(LinkBuild {
             profile: requested,
             app: app.display().to_string(),
             cli,
             package,
+            installer,
             output: stdout.chars().rev().take(2000).collect::<String>().chars().rev().collect(),
         })
     })

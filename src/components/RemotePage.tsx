@@ -69,7 +69,7 @@ export default function RemotePage({ subTab }: { subTab: RemoteSubTab }) {
   const [helperBusy, setHelperBusy] = useState(false);
   const [helperElapsed, setHelperElapsed] = useState(0);
   const [linkBuild, setLinkBuild] = useState<RemoteLinkBuild | null>(null);
-  const [linkBuildBusy, setLinkBuildBusy] = useState<"dev" | "rel" | null>(null);
+  const [linkBuildBusy, setLinkBuildBusy] = useState<"dev" | "rel" | "installer" | null>(null);
   const [linkBuildElapsed, setLinkBuildElapsed] = useState(0);
   const [editingName, setEditingName] = useState<{ id: string; value: string } | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -265,7 +265,7 @@ export default function RemotePage({ subTab }: { subTab: RemoteSubTab }) {
     return () => window.clearInterval(timer);
   }, [subTab, loadInvites]);
 
-  const buildLink = useCallback(async (profile: "dev" | "rel") => {
+  const buildLink = useCallback(async (profile: "dev" | "rel" | "installer") => {
     setError(null);
     setNotice(null);
     setLinkBuild(null);
@@ -614,13 +614,28 @@ export default function RemotePage({ subTab }: { subTab: RemoteSubTab }) {
                 >
                   {linkBuildBusy === "rel" ? "BUILDING REL…" : "BUILD LINK REL"}
                 </button>
+                <button
+                  type="button"
+                  className="remote-action"
+                  disabled={linkBuildBusy !== null}
+                  onClick={() => void buildLink("installer")}
+                >
+                  {linkBuildBusy === "installer"
+                    ? "BUILDING INSTALLER…"
+                    : "BUILD LINK INSTALLER"}
+                </button>
               </div>
               {linkBuildBusy && (
                 <div className="remote-helper-progress">
                   <span className="remote-spinner" aria-hidden />
                   <div className="remote-helper-progress__text">
                     <strong>BUILDING LINK {linkBuildBusy.toUpperCase()}</strong>
-                    <span>Cargo + frontend… {linkBuildElapsed}s</span>
+                    <span>
+                      {linkBuildBusy === "installer"
+                        ? "Cargo + frontend + NSIS…"
+                        : "Cargo + frontend…"}{" "}
+                      {linkBuildElapsed}s
+                    </span>
                   </div>
                   <div className="remote-progress-track">
                     <span />
@@ -629,10 +644,13 @@ export default function RemotePage({ subTab }: { subTab: RemoteSubTab }) {
               )}
               {linkBuild && (
                 <div className="remote-link-build-result">
-                  <span className="remote-invite-state is-used">{linkBuild.profile.toUpperCase()}</span>
+                  <span className="remote-invite-state is-used">
+                    {linkBuild.profile.toUpperCase()}
+                  </span>
                   <code>APP {linkBuild.app}</code>
                   {linkBuild.cli && <code>CLI {linkBuild.cli}</code>}
                   {linkBuild.package && <code>PACKAGE {linkBuild.package}</code>}
+                  {linkBuild.installer && <code>INSTALLER {linkBuild.installer}</code>}
                 </div>
               )}
             </section>

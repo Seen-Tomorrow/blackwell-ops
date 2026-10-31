@@ -65,10 +65,11 @@ export type RemoteHelperBuild = {
 };
 
 export type RemoteLinkBuild = {
-  profile: "dev" | "rel";
+  profile: "dev" | "rel" | "installer";
   app: string;
   cli: string | null;
   package: string | null;
+  installer: string | null;
   output: string;
 };
 
