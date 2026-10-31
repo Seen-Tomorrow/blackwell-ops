@@ -1019,8 +1019,20 @@ fn place_bottom_right(window: &WebviewWindow) {
         if GetWindowRect(hwnd, &mut rect) == 0 {
             return;
         }
-        let width = rect.right - rect.left;
-        let height = rect.bottom - rect.top;
+        let mut width = rect.right - rect.left;
+        let mut height = rect.bottom - rect.top;
+        // A window that has never been shown can report a zero rect. Use the
+        // Tauri outer size (the configured 380x560) instead of placing a
+        // zero-sized window at the bottom-right corner.
+        if width <= 0 || height <= 0 {
+            if let Ok(size) = window.outer_size() {
+                width = size.width as i32;
+                height = size.height as i32;
+            }
+        }
+        if width <= 0 || height <= 0 {
+            return;
+        }
         let margin = 0;
         let x = info.rcWork.right - width - margin;
         let y = info.rcWork.bottom - height - margin;
@@ -1055,8 +1067,11 @@ fn show_flyout(app: &AppHandle) {
     let Some(window) = app.get_webview_window("flyout") else {
         return;
     };
-    place_bottom_right(&window);
+    let _ = window.set_title("OYM Link");
+    let _ = window.unminimize();
+    // Show first: positioning a never-shown window can read a zero rect.
     let _ = window.show();
+    place_bottom_right(&window);
     let _ = window.set_focus();
 }
 
@@ -1067,8 +1082,10 @@ fn toggle_flyout(app: &AppHandle) {
     if window.is_visible().unwrap_or(false) {
         let _ = window.hide();
     } else {
-        place_bottom_right(&window);
+        let _ = window.set_title("OYM Link");
+        let _ = window.unminimize();
         let _ = window.show();
+        place_bottom_right(&window);
         let _ = window.set_focus();
     }
 }

@@ -53,6 +53,10 @@ finally {
 # Force a rebuild so the embedded dist is refreshed even when Rust sources did
 # not change.
 (Get-Item $appManifest).LastWriteTime = Get-Date
+# Also remove the previous PE: stale Cargo hardlinks have survived a resource
+# change before and left Blackwell Ops metadata in the OYM Link binary.
+$releaseApp = Join-Path $root "link/app/src-tauri/target/release/oym-link-app.exe"
+Remove-Item $releaseApp -Force -ErrorAction SilentlyContinue
 & cargo build --locked --release --features custom-protocol --manifest-path $appManifest
 if ($LASTEXITCODE -ne 0) { throw "cargo build (link REL app) failed with exit $LASTEXITCODE" }
 
