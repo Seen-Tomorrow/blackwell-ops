@@ -343,6 +343,62 @@ fn launch_elevated_script(_name: &str, _extra: &str) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn link_is_elevated() -> bool {
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::UI::Shell::IsUserAnAdmin;
+        unsafe { IsUserAnAdmin() != 0 }
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
+}
+
+#[tauri::command]
+fn link_restart_elevated(app: AppHandle) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::UI::Shell::ShellExecuteW;
+        use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+        if link_is_elevated() {
+            return Ok(());
+        }
+        let exe = std::env::current_exe()
+            .map_err(|error| format!("current exe: {error}"))?
+            .to_string_lossy()
+            .to_string();
+        let verb: Vec<u16> = "runas\0".encode_utf16().collect();
+        let file: Vec<u16> = exe.encode_utf16().chain(std::iter::once(0)).collect();
+        let result = unsafe {
+            ShellExecuteW(
+                std::ptr::null_mut(),
+                verb.as_ptr(),
+                file.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+                SW_SHOWNORMAL,
+            )
+        };
+        if result as isize <= 32 {
+            return Err(format!("could not start elevated app (ShellExecuteW {result:?})"));
+        }
+        let handle = app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(700));
+            handle.exit(0);
+        });
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = app;
+        Err("elevation is Windows-only".into())
+    }
+}
+
+#[tauri::command]
 fn link_portable_start(app: AppHandle) -> Result<(), String> {
     start_helper_client(&app)
 }
@@ -1277,6 +1333,8 @@ fn main() {
             helper_close,
             helper_forget,
             link_portable_start,
+            link_is_elevated,
+            link_restart_elevated,
             link_hide,
             link_quit,
             assistant_open,

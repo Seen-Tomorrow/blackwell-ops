@@ -90,6 +90,9 @@ export default function App() {
   const [boot, setBoot] = useState<Bootstrap | null>(null);
   const [service, setService] = useState<ServiceStatus | null>(null);
   const [serviceLog, setServiceLog] = useState("");
+  const [serviceApply, setServiceApply] = useState<"install" | "uninstall" | null>(null);
+  const [serviceElapsed, setServiceElapsed] = useState(0);
+  const [elevated, setElevated] = useState(false);
   const lastServiceInstalled = useRef<boolean | null>(null);
   const [helperStopped, setHelperStopped] = useState(false);
   const [helperForgotten, setHelperForgotten] = useState(false);
@@ -132,7 +135,7 @@ export default function App() {
   }, [loadService]);
 
   useEffect(() => {
-    if (busy !== "service") {
+    if (!serviceApply) {
       setServiceLog("");
       return;
     }
@@ -144,7 +147,35 @@ export default function App() {
     load();
     const timer = window.setInterval(load, 1000);
     return () => window.clearInterval(timer);
-  }, [busy]);
+  }, [serviceApply]);
+
+  useEffect(() => {
+    if (!serviceApply) return;
+    setServiceElapsed(0);
+    const ticker = window.setInterval(() => setServiceElapsed((value) => value + 1), 1000);
+    const timeout = window.setTimeout(() => setServiceApply(null), 90000);
+    return () => {
+      window.clearInterval(ticker);
+      window.clearTimeout(timeout);
+    };
+  }, [serviceApply]);
+
+  useEffect(() => {
+    if (!serviceApply) return;
+    const completed =
+      serviceApply === "install"
+        ? /was started successfully/i.test(serviceLog)
+        : Boolean(service && !service.installed);
+    if (!completed) return;
+    const timer = window.setTimeout(() => setServiceApply(null), 1200);
+    return () => window.clearTimeout(timer);
+  }, [serviceApply, serviceLog, service?.installed]);
+
+  useEffect(() => {
+    void invoke<boolean>("link_is_elevated")
+      .then(setElevated)
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!service) return;
@@ -340,16 +371,15 @@ export default function App() {
   const installService = useCallback(async () => {
     setError(null);
     setNotice(null);
+    setServiceLog("");
+    setServiceApply("install");
     setBusy("service");
     try {
       await invoke("service_install");
-      setNotice("UAC prompt opened. Finish the elevated install, then status refreshes.");
-      window.setTimeout(() => {
-        void loadService();
-        setNotice(null);
-      }, 12000);
+      setNotice("UAC prompt opened. Keep this window open; progress appears below.");
       window.setTimeout(() => void loadService(), 4000);
     } catch (e) {
+      setServiceApply(null);
       setError(typeof e === "string" ? e : String(e));
     } finally {
       setBusy(null);
@@ -359,21 +389,31 @@ export default function App() {
   const uninstallService = useCallback(async () => {
     setError(null);
     setNotice(null);
+    setServiceLog("");
+    setServiceApply("uninstall");
     setBusy("service");
     try {
       await invoke("service_uninstall");
-      setNotice("UAC prompt opened for service removal.");
-      window.setTimeout(() => {
-        void loadService();
-        setNotice(null);
-      }, 12000);
+      setNotice("UAC prompt opened for service removal. Keep this window open.");
       window.setTimeout(() => void loadService(), 4000);
     } catch (e) {
+      setServiceApply(null);
       setError(typeof e === "string" ? e : String(e));
     } finally {
       setBusy(null);
     }
   }, [loadService]);
+
+  const restartElevated = useCallback(async () => {
+    setError(null);
+    setNotice(null);
+    try {
+      await invoke("link_restart_elevated");
+      setNotice("Elevation prompt opened; OYM Link will restart as admin.");
+    } catch (e) {
+      setError(typeof e === "string" ? e : String(e));
+    }
+  }, []);
 
   if (!boot) {
     return <div className="boot-screen">Preparing secure link…</div>;
@@ -667,41 +707,71 @@ export default function App() {
                 <dd>{service?.sessionActive ? "SYSTEM active" : "none"}</dd>
               </dl>
               {service?.error && <p className="copy">{service.error}</p>}
-              {busy === "service" && (
+              {serviceApply && (
                 <div className="service-progress">
                   <span className="service-spinner" aria-hidden />
                   <div>
-                    <strong>APPLYING SERVICE CHANGE</strong>
-                    <span>Approve the UAC prompt; the installer output appears here.</span>
+                    <strong>
+                      {serviceApply === "install" ? "INSTALLING SERVICE" : "REMOVING SERVICE"} ·{" "}
+                      {serviceElapsed}s
+                    </strong>
+                    <span>
+                      Approve the UAC prompt; the installer transcript appears here.
+                    </span>
                   </div>
                   <div className="service-progress-track">
                     <span />
                   </div>
                 </div>
               )}
-              {busy === "service" && serviceLog && (
+              {serviceApply && serviceLog && (
                 <pre className="service-install-log">{serviceLog.slice(-2500)}</pre>
               )}
               <div className="key-actions">
                 <button
                   className="button"
-                  disabled={busy === "service"}
+                  disabled={serviceApply !== null}
                   onClick={() => void installService()}
                 >
-                  {busy === "service"
+                  {serviceApply === "install"
                     ? "WORKING…"
                     : service?.installed
                       ? "REINSTALL SERVICE"
                       : "INSTALL SERVICE"}
                 </button>
                 {service?.installed && (
-                  <button className="link-button" onClick={() => void uninstallService()}>
-                    UNINSTALL
+                  <button
+                    className="link-button"
+                    disabled={serviceApply !== null}
+                    onClick={() => void uninstallService()}
+                  >
+                    {serviceApply === "uninstall" ? "REMOVING…" : "UNINSTALL"}
                   </button>
                 )}
               </div>
               <p className="copy">Install and removal require a UAC prompt.</p>
             </div>
+
+            {!service?.installed && (
+              <div className="service-block">
+                <div className="card-head">
+                  <span className="label">PORTABLE PRIVILEGE</span>
+                  <span className={`state ${elevated ? "is-on" : "is-off"}`}>
+                    <span className="dot" />
+                    {elevated ? "ELEVATED" : "STANDARD"}
+                  </span>
+                </div>
+                <p className="copy">
+                  Portable runs with your filtered user token. Restart as admin to let the local
+                  and remote Pi sessions perform service-level work; Windows will ask for consent.
+                </p>
+                {!elevated && (
+                  <button className="button" onClick={() => void restartElevated()}>
+                    RESTART AS ADMIN
+                  </button>
+                )}
+              </div>
+            )}
           </section>
         )}
 
