@@ -400,6 +400,7 @@ pub struct LinkBuild {
     pub profile: String,
     pub app: String,
     pub cli: Option<String>,
+    pub package: Option<String>,
     pub output: String,
 }
 
@@ -458,10 +459,13 @@ pub async fn remote_link_build(profile: String) -> Result<LinkBuild, String> {
                 .display()
                 .to_string()
         });
+        let package = (requested == "rel")
+            .then(|| repo_root.join("tmp/link-rel-package").display().to_string());
         Ok(LinkBuild {
             profile: requested,
             app: app.display().to_string(),
             cli,
+            package,
             output: stdout.chars().rev().take(2000).collect::<String>().chars().rev().collect(),
         })
     })

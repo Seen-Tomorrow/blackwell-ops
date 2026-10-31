@@ -632,6 +632,7 @@ export default function RemotePage({ subTab }: { subTab: RemoteSubTab }) {
                   <span className="remote-invite-state is-used">{linkBuild.profile.toUpperCase()}</span>
                   <code>APP {linkBuild.app}</code>
                   {linkBuild.cli && <code>CLI {linkBuild.cli}</code>}
+                  {linkBuild.package && <code>PACKAGE {linkBuild.package}</code>}
                 </div>
               )}
             </section>

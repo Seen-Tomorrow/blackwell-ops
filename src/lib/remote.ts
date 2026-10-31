@@ -68,6 +68,7 @@ export type RemoteLinkBuild = {
   profile: "dev" | "rel";
   app: string;
   cli: string | null;
+  package: string | null;
   output: string;
 };
 

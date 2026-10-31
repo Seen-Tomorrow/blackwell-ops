@@ -51,6 +51,20 @@ if ($LASTEXITCODE -ne 0) { throw "cargo build (link REL cli) failed with exit $L
 
 $app = Join-Path $root "link/app/src-tauri/target/release/oym-link-app.exe"
 $cli = Join-Path $root "remote-client/target/release/oym-link.exe"
+$pi = Join-Path $root "tmp/blackwell-link-package/pi"
+
+# Stage a runnable portable folder. A raw app exe copied somewhere else cannot
+# find oym-link.exe/pi; this keeps the exe-relative layout find_tool expects.
+$package = Join-Path $root "tmp/link-rel-package"
+if (Test-Path $package) { Remove-Item $package -Recurse -Force }
+New-Item -ItemType Directory -Force -Path $package | Out-Null
+Copy-Item $app (Join-Path $package "OYM Link.exe")
+Copy-Item $cli (Join-Path $package "oym-link.exe")
+if (Test-Path (Join-Path $pi "pi.exe")) {
+    Copy-Item $pi (Join-Path $package "pi") -Recurse
+}
+
 Write-Host ""
 Write-Host "APP=$app"
 Write-Host "CLI=$cli"
+Write-Host "PACKAGE=$package"
