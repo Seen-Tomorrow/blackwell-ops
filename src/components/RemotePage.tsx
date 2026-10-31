@@ -9,6 +9,7 @@ import type {
   RemoteHelperBuild,
   RemoteInvite,
   RemoteLinkBuild,
+  RemoteLinkBuildStatus,
   RemotePairing,
   RemoteSessionOpen,
   RemoteStatus,
@@ -311,12 +312,9 @@ export default function RemotePage({ subTab }: { subTab: RemoteSubTab }) {
     setLinkBuildBusy(profile);
     setLinkBuildElapsed(0);
     try {
-      const built = await invoke<RemoteLinkBuild>("remote_link_build", { profile });
-      setLinkBuild(built);
-      setNotice(`${profile.toUpperCase()} link built.`);
+      await invoke("remote_link_build_start", { profile });
     } catch (e) {
       setError(errorText(e));
-    } finally {
       setLinkBuildBusy(null);
     }
   }, []);
@@ -327,6 +325,61 @@ export default function RemotePage({ subTab }: { subTab: RemoteSubTab }) {
       setLinkBuildElapsed((value) => value + 1);
     }, 1000);
     return () => window.clearInterval(timer);
+  }, [linkBuildBusy]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadStatus = async () => {
+      try {
+        const status = await invoke<RemoteLinkBuildStatus>("remote_link_build_status");
+        if (cancelled) return;
+        if (status.running) {
+          setLinkBuildBusy(status.profile as "dev" | "rel" | "installer");
+        } else if (status.state === "success" && status.result) {
+          setLinkBuild(status.result);
+        }
+      } catch {
+        // The status file is absent until the first build.
+      }
+    };
+    void loadStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!linkBuildBusy) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const status = await invoke<RemoteLinkBuildStatus>("remote_link_build_status");
+        if (cancelled) return;
+        if (status.running) {
+          if (status.message) setNotice(status.message);
+          return;
+        }
+        setLinkBuildBusy(null);
+        setNotice(null);
+        if (status.state === "success" && status.result) {
+          setLinkBuild(status.result);
+          setNotice(`${status.result.profile.toUpperCase()} link built.`);
+        } else if (status.state === "failed") {
+          setError(status.message || "link build failed");
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setError(errorText(e));
+          setLinkBuildBusy(null);
+        }
+      }
+    };
+    void poll();
+    const timer = window.setInterval((): void => { void poll(); }, 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
   }, [linkBuildBusy]);
 
   const startSession = useCallback(async (device: RemoteDevice) => {

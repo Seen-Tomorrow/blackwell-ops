@@ -9,7 +9,7 @@ use oym_gateway::{
     DeviceView, HealthInfo, PairingInfo, GatewayState, GatewayStatus, RouteBinding, SessionOpen,
     TerminateResult,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
@@ -414,7 +414,7 @@ pub async fn remote_helper_build(
     Ok(result)
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LinkBuild {
     pub profile: String,
@@ -424,30 +424,97 @@ pub struct LinkBuild {
     pub installer: Option<String>,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LinkBuildStatus {
+    pub state: String,
+    pub profile: String,
+    pub message: String,
+    pub updated_at: String,
+    pub running: bool,
+    pub result: Option<LinkBuild>,
+    pub log_tail: Vec<String>,
+}
+
+fn link_build_status_path() -> PathBuf {
+    repo_root_path().join("tmp/link-build-status.json")
+}
+
+fn link_build_log_path() -> PathBuf {
+    repo_root_path().join("tmp/link-build.log")
+}
+
+fn repo_root_path() -> PathBuf {
+    if let Ok(exe) = std::env::current_exe() {
+        for ancestor in exe.ancestors().take(8) {
+            if ancestor.join("scripts/build-link.ps1").is_file() {
+                return ancestor.to_path_buf();
+            }
+        }
+    }
+    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+}
+
+fn read_link_build_log_tail(max_lines: usize) -> Vec<String> {
+    let Ok(raw) = std::fs::read_to_string(link_build_log_path()) else {
+        return Vec::new();
+    };
+    raw.lines()
+        .map(str::to_string)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .take(max_lines)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect()
+}
+
+/// Start a detached link build. Mirrors the Majestic runner: a visible
+/// PowerShell owns the job and writes a status/log the app can poll while the
+/// app itself stays responsive and survives a dev restart.
 #[tauri::command]
-pub async fn remote_link_build(profile: String) -> Result<LinkBuild, String> {
+pub async fn remote_link_build_start(profile: String) -> Result<(), String> {
     let profile = profile.trim().to_lowercase();
     if profile != "dev" && profile != "rel" && profile != "installer" {
         return Err("profile must be dev, rel or installer".into());
     }
-    let script = repo_script("build-link.ps1")?;
-    let repo_root = script
-        .parent()
-        .and_then(|path| path.parent())
-        .ok_or_else(|| "cannot resolve repo root from build script".to_string())?
-        .to_path_buf();
-    let requested = profile.clone();
+    let root = repo_root_path();
+    let runner = root.join("scripts/run-detached-link-build.ps1");
+    if !runner.is_file() {
+        return Err(format!("missing link build runner: {}", runner.display()));
+    }
+    let status = link_build_status_path();
+    let log = link_build_log_path();
+    if let Some(parent) = status.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("create build dir: {e}"))?;
+    }
+    let seed = serde_json::json!({
+        "state": "running",
+        "profile": profile,
+        "message": "Spawning detached build…",
+        "updatedAt": chrono::Local::now().to_rfc3339(),
+        "result": null,
+    });
+    std::fs::write(&status, serde_json::to_string_pretty(&seed).map_err(|e| e.to_string())?)
+        .map_err(|e| format!("write build status: {e}"))?;
+    std::fs::write(&log, format!("[{}] starting {profile} build\n", chrono::Local::now().to_rfc3339()))
+        .map_err(|e| format!("write build log: {e}"))?;
 
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        let mut command = Command::new("pwsh");
+    let root_s = root.to_string_lossy().replace('\'', "''");
+    let runner_s = runner.to_string_lossy().replace('\'', "''");
+    let status_s = status.to_string_lossy().replace('\'', "''");
+    let log_s = log.to_string_lossy().replace('\'', "''");
+    let launcher = format!(
+        "foreach($n in @('TAURI_CONFIG','TAURI_ANDROID_PACKAGE_NAME','TAURI_ANDROID_PACKAGE_NAME_PREFIX','TAURI_DEV_HOST')){{ Remove-Item \"Env:$n\" -ErrorAction SilentlyContinue }};          $env:NODE_ENV='production';          $wd='{root_s}';          $p=Start-Process -FilePath powershell.exe -WorkingDirectory $wd          -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File','{runner_s}','-Profile','{profile}','-StatusFile','{status_s}','-LogFile','{log_s}')          -WindowStyle Normal -PassThru;          if($null -eq $p){{ exit 1 }}; Write-Output $p.Id"
+    );
+
+    let output = tauri::async_runtime::spawn_blocking(move || {
+        let mut command = Command::new("powershell.exe");
         command
-            .arg("-NoProfile")
-            .arg("-ExecutionPolicy")
-            .arg("Bypass")
-            .arg("-File")
-            .arg(&script)
-            .arg("-Profile")
-            .arg(&requested)
+            .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", &launcher])
+            .current_dir(&root)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -456,60 +523,62 @@ pub async fn remote_link_build(profile: String) -> Result<LinkBuild, String> {
             use std::os::windows::process::CommandExt;
             command.creation_flags(0x0800_0000);
         }
-        let output = command
-            .output()
-            .map_err(|error| format!("start link build: {error}"))?;
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        let log_path = repo_root.join("tmp/link-build.log");
-        let combined = format!(
-            "$ build-link.ps1 -Profile {requested}\n--- stdout ---\n{stdout}\n--- stderr ---\n{stderr}\n"
-        );
-        let _ = std::fs::write(&log_path, &combined);
-        if !output.status.success() {
-            let tail: String = combined.chars().rev().take(1_500).collect::<String>().chars().rev().collect();
-            return Err(format!(
-                "link build failed ({}). Full log: {}\n{}",
-                output.status,
-                log_path.display(),
-                tail.trim()
-            ));
-        }
-        let app = repo_root
-            .join("link/app/src-tauri/target")
-            .join(if requested == "dev" { "debug" } else { "release" })
-            .join("oym-link-app.exe");
-        let cli = (requested != "dev").then(|| {
-            repo_root
-                .join("link/target/release/oym-link.exe")
-                .display()
-                .to_string()
-        });
-        let package = (requested != "dev")
-            .then(|| repo_root.join("tmp/link-rel-package").display().to_string());
-        let installer = if requested == "installer" {
-            let build_installer = repo_root.join("tmp/OYM-Link-Setup.exe");
-            let final_dir = helper_final_dir();
-            let final_installer = final_dir.join("OYM-Link-Setup.exe");
-            match std::fs::copy(&build_installer, &final_installer) {
-                Ok(_) => Some(final_installer.display().to_string()),
-                Err(_) => Some(build_installer.display().to_string()),
-            }
-        } else {
-            None
-        };
-        Ok(LinkBuild {
-            profile: requested,
-            app: app.display().to_string(),
-            cli,
-            package,
-            installer,
-        })
+        command.output()
     })
     .await
-    .map_err(|error| format!("link build task: {error}"))??;
+    .map_err(|e| format!("link build spawn: {e}"))?
+    .map_err(|e| format!("link build spawn: {e}"))?;
 
-    Ok(result)
+    if !output.status.success() {
+        let message = format!(
+            "could not start detached link build: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+        let failed = serde_json::json!({
+            "state": "failed",
+            "profile": profile,
+            "message": message,
+            "updatedAt": chrono::Local::now().to_rfc3339(),
+            "result": null,
+        });
+        let _ = std::fs::write(&status, serde_json::to_string_pretty(&failed).unwrap_or_default());
+        return Err(message);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn remote_link_build_status() -> Result<LinkBuildStatus, String> {
+    let raw = match std::fs::read_to_string(link_build_status_path()) {
+        Ok(raw) => raw,
+        Err(_) => {
+            return Ok(LinkBuildStatus {
+                state: "idle".into(),
+                profile: String::new(),
+                message: String::new(),
+                updated_at: String::new(),
+                running: false,
+                result: None,
+                log_tail: read_link_build_log_tail(120),
+            })
+        }
+    };
+    let value: serde_json::Value =
+        serde_json::from_str(&raw).map_err(|e| format!("parse build status: {e}"))?;
+    let state = value.get("state").and_then(|v| v.as_str()).unwrap_or("idle").to_string();
+    Ok(LinkBuildStatus {
+        running: state == "running",
+        profile: value.get("profile").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        message: value.get("message").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        updated_at: value.get("updatedAt").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        result: value
+            .get("result")
+            .cloned()
+            .filter(|v| !v.is_null())
+            .and_then(|v| serde_json::from_value(v).ok()),
+        state,
+        log_tail: read_link_build_log_tail(120),
+    })
 }
 
 #[cfg(test)]

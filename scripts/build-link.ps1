@@ -57,8 +57,12 @@ finally {
 # Blackwell Ops DEV resource and window config; clean the app package so
 # tauri-build re-reads link/app/src-tauri/tauri.conf.json.
 (Get-Item $appManifest).LastWriteTime = Get-Date
-& cargo clean --release -p oym-link-app --manifest-path $appManifest
-if ($LASTEXITCODE -ne 0) { throw "cargo clean (link REL app) failed with exit $LASTEXITCODE" }
+$releaseTarget = Join-Path $root "link/app/src-tauri/target/release"
+Get-ChildItem (Join-Path $releaseTarget "build") -Directory -Filter "oym-link-app-*" -ErrorAction SilentlyContinue |
+    Remove-Item -Recurse -Force
+Get-ChildItem (Join-Path $releaseTarget ".fingerprint") -Directory -Filter "oym-link-app-*" -ErrorAction SilentlyContinue |
+    Remove-Item -Recurse -Force
+Remove-Item (Join-Path $releaseTarget "oym-link-app.exe") -Force -ErrorAction SilentlyContinue
 & cargo build --locked --release --features custom-protocol --manifest-path $appManifest
 if ($LASTEXITCODE -ne 0) { throw "cargo build (link REL app) failed with exit $LASTEXITCODE" }
 $releaseApp = Join-Path $root "link/app/src-tauri/target/release/oym-link-app.exe"

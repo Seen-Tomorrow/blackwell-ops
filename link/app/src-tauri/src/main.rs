@@ -1565,7 +1565,42 @@ fn toggle_flyout(app: &AppHandle) {
     }
 }
 
+#[cfg(windows)]
+fn acquire_single_instance() -> bool {
+    use std::sync::OnceLock;
+    use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, ERROR_ALREADY_EXISTS};
+    use windows_sys::Win32::System::Threading::CreateMutexW;
+
+    static INSTANCE_MUTEX: OnceLock<usize> = OnceLock::new();
+    let helper = std::env::current_exe()
+        .ok()
+        .and_then(|path| path.file_name().map(|name| name.to_string_lossy().to_ascii_lowercase()))
+        .is_some_and(|name| name.contains("help"))
+        || std::env::args().any(|arg| arg == "--helper");
+    let name = if helper {
+        "Local\\OYM.Help.SingleInstance\0"
+    } else {
+        "Local\\OYM.Link.SingleInstance\0"
+    };
+    let wide: Vec<u16> = name.encode_utf16().collect();
+    let handle = unsafe { CreateMutexW(std::ptr::null(), 0, wide.as_ptr()) };
+    if handle.is_null() {
+        return true;
+    }
+    if unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
+        unsafe { CloseHandle(handle) };
+        return false;
+    }
+    let _ = INSTANCE_MUTEX.set(handle as usize);
+    true
+}
+
 fn main() {
+    #[cfg(windows)]
+    if !acquire_single_instance() {
+        return;
+    }
+
     // The default EBWebView profile can inherit a broken ACL from an earlier
     // install and then WebView2 creation fails with 0x8007139F. Keep the
     // profile beside the link data instead; it is always under the user's

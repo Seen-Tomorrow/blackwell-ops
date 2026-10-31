@@ -80,6 +80,10 @@ OutFile "$outEscaped"
 $compressor
 
 Section "Install"
+  ; Replace an existing install cleanly. Without this the old tray app keeps
+  ; the exe locked and the new copy starts a second, non-docked instance.
+  nsExec::Exec 'taskkill /IM "OYM Link.exe" /F'
+  Sleep 900
   SetOutPath "`$INSTDIR"
   File "$pkgEscaped\OYM Link.exe"
   File "$pkgEscaped\runtime\oym-link.exe"
@@ -106,6 +110,8 @@ Section "Install"
 SectionEnd
 
 Section "Uninstall"
+  nsExec::Exec 'taskkill /IM "OYM Link.exe" /F'
+  Sleep 600
   SetShellVarContext current
   Delete "`$SMPROGRAMS\OYM\OYM Link.lnk"
   RMDir "`$SMPROGRAMS\OYM"

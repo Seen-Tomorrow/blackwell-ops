@@ -64,6 +64,16 @@ export type RemoteHelperBuild = {
   sizeBytes: number;
 };
 
+export type RemoteLinkBuildStatus = {
+  state: "idle" | "running" | "success" | "failed";
+  profile: string;
+  message: string;
+  updatedAt: string;
+  running: boolean;
+  result: RemoteLinkBuild | null;
+  logTail: string[];
+};
+
 export type RemoteLinkBuild = {
   profile: "dev" | "rel" | "installer";
   app: string;
