@@ -161,7 +161,7 @@ export default function App() {
     if (!serviceApply) return;
     setServiceElapsed(0);
     const ticker = window.setInterval(() => setServiceElapsed((value) => value + 1), 1000);
-    const timeout = window.setTimeout(() => setServiceApply(null), 90000);
+    const timeout = window.setTimeout(() => setServiceApply(null), 30000);
     return () => {
       window.clearInterval(ticker);
       window.clearTimeout(timeout);
