@@ -35,5 +35,10 @@ else {
 if ($RemoveFiles -and (Test-Path $ServiceDir)) {
     Remove-Item $ServiceDir -Recurse -Force
 }
+else {
+    # The app detects installation by this XML. Leaving it behind made the UI
+    # stay INTEGRATED after a successful uninstall.
+    Remove-Item (Join-Path $ServiceDir "OymLink.xml") -Force -ErrorAction SilentlyContinue
+}
 
 sc.exe query OymLink 2>$null

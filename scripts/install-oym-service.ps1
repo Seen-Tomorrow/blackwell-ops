@@ -81,6 +81,17 @@ New-Item -ItemType Directory -Force -Path $baseDir | Out-Null
 $serviceData = Join-Path $baseDir "service-data"
 New-Item -ItemType Directory -Force -Path $serviceData | Out-Null
 & icacls $serviceData /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)(F)" "*S-1-5-32-544:(OI)(CI)(F)" | Out-Null
+# Reuse the portable Pi tool cache so SYSTEM sessions do not re-download fd/rg
+# on every reconnect.
+$localTools = Join-Path $env:LOCALAPPDATA "OYM\Link\local-pi-home\bin"
+$serviceTools = Join-Path $serviceData "tools\bin"
+New-Item -ItemType Directory -Force -Path $serviceTools | Out-Null
+foreach ($tool in @("fd.exe", "rg.exe")) {
+    $source = Join-Path $localTools $tool
+    if (Test-Path $source) {
+        Copy-Item $source (Join-Path $serviceTools $tool) -Force
+    }
+}
 if ($Bootstrap -ne "") {
     if (-not (Test-Path $Bootstrap)) { throw "Bootstrap file not found: $Bootstrap" }
     # A fresh install must not inherit a malformed identity/token from an older

@@ -768,6 +768,7 @@ fn write_pi_launch_bat(
     provider_id: &str,
     model: &str,
     name: &str,
+    tools: Option<&Path>,
 ) -> Result<PathBuf, String> {
     let strip = |value: &str| value.replace('"', "");
     let home_s = strip(&home.to_string_lossy());
@@ -775,11 +776,15 @@ fn write_pi_launch_bat(
     let cwd_s = strip(&cwd.to_string_lossy());
     let session_s = strip(&session_dir.to_string_lossy());
     let name_s = strip(name);
+    let path_line = tools
+        .map(|dir| format!("set \"PATH={};%PATH%\"\r\n", strip(&dir.to_string_lossy())))
+        .unwrap_or_default();
     let body = format!(
         "@echo off\r\n\
          setlocal\r\n\
          set \"PI_CODING_AGENT_DIR={home_s}\"\r\n\
          set \"PI_SUBAGENT_PI_BINARY={pi_s}\"\r\n\
+         {path_line}\
          cd /d \"{cwd_s}\"\r\n\
          \"{pi_s}\" --model \"{provider_id}/{model}\" --tools read,powershell,edit,write \
          --no-extensions --no-mcp --no-skills --no-context-files --no-prompt-templates \
@@ -790,6 +795,44 @@ fn write_pi_launch_bat(
     let bat = home.join("launch-session.cmd");
     std::fs::write(&bat, body).map_err(|e| format!("write launch-session.cmd: {e}"))?;
     Ok(bat)
+}
+
+fn seed_home_tools(home: &Path, tools: &Path) {
+    let bin = home.join("bin");
+    let _ = std::fs::create_dir_all(&bin);
+    for name in ["fd.exe", "rg.exe"] {
+        let source = tools.join(name);
+        let destination = bin.join(name);
+        if source.is_file() && !destination.is_file() {
+            let _ = std::fs::copy(source, destination);
+        }
+    }
+}
+/// Seed a shared tools/bin once and prepend it to PATH for later sessions.
+fn prepare_tool_cache(data_dir: &Path) -> Option<PathBuf> {
+    let tools = data_dir.join("tools").join("bin");
+    let _ = std::fs::create_dir_all(&tools);
+    for name in ["fd.exe", "rg.exe"] {
+        let destination = tools.join(name);
+        if destination.is_file() {
+            continue;
+        }
+        let mut sources = vec![
+            data_dir.join("local-pi-home").join("bin").join(name),
+        ];
+        if let Ok(entries) = std::fs::read_dir(data_dir.join("sessions")) {
+            for entry in entries.flatten() {
+                sources.push(entry.path().join("bin").join(name));
+            }
+        }
+        for source in sources {
+            if source.is_file() {
+                let _ = std::fs::copy(&source, &destination);
+                break;
+            }
+        }
+    }
+    tools.is_dir().then_some(tools)
 }
 
 async fn start_pi_session(
@@ -847,6 +890,10 @@ async fn start_pi_session(
     let session_dir = args.data_dir.join("pi-sessions");
     std::fs::create_dir_all(&session_dir)
         .map_err(|e| format!("create pi session dir: {e}"))?;
+    let tools = prepare_tool_cache(&args.data_dir);
+    if let Some(tools) = tools.as_deref() {
+        seed_home_tools(&home, tools);
+    }
     let launch_bat = write_pi_launch_bat(
         &home,
         &args.pi,
@@ -855,6 +902,7 @@ async fn start_pi_session(
         &provider_id,
         &first.model,
         &args.name,
+        tools.as_deref(),
     )?;
     std::env::set_var("PI_CODING_AGENT_DIR", home.as_os_str());
     let mut command = CommandBuilder::new("cmd.exe");

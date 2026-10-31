@@ -335,6 +335,10 @@ export default function App() {
     try {
       await invoke("service_uninstall");
       setNotice("UAC prompt opened for service removal.");
+      window.setTimeout(() => {
+        void loadService();
+        setNotice(null);
+      }, 12000);
       window.setTimeout(() => void loadService(), 4000);
     } catch (e) {
       setError(typeof e === "string" ? e : String(e));
