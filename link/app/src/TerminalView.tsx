@@ -15,35 +15,70 @@ export default function TerminalView() {
     const element = host.current;
     if (!element) return;
 
+    const stored = window.localStorage.getItem("oym.link.theme");
+    const resolved =
+      stored === "light" || stored === "dark"
+        ? stored
+        : window.matchMedia("(prefers-color-scheme: light)").matches
+          ? "light"
+          : "dark";
+    document.documentElement.dataset.oymTheme = resolved;
+    const palette =
+      resolved === "light"
+        ? {
+            background: "#f7f6f0",
+            foreground: "#1a1b1f",
+            cursor: "#087c8c",
+            cursorAccent: "#f7f6f0",
+            selectionBackground: "#cfe6e8",
+            black: "#1a1b1f",
+            red: "#b83242",
+            green: "#177a50",
+            yellow: "#8a5a00",
+            blue: "#0b6d7a",
+            magenta: "#7b3fa0",
+            cyan: "#0b6d7a",
+            white: "#e8e6de",
+            brightBlack: "#62666e",
+            brightRed: "#d34b5a",
+            brightGreen: "#1f9a66",
+            brightYellow: "#a87300",
+            brightBlue: "#108b9b",
+            brightMagenta: "#9852bd",
+            brightCyan: "#108b9b",
+            brightWhite: "#ffffff",
+          }
+        : {
+            background: "#0a0c10",
+            foreground: "#e7ebf2",
+            cursor: "#6ee7ff",
+            cursorAccent: "#0a0c10",
+            selectionBackground: "#1d3a44",
+            black: "#0a0c10",
+            red: "#ff6b7a",
+            green: "#63e6a2",
+            yellow: "#ffc857",
+            blue: "#6ee7ff",
+            magenta: "#c792ea",
+            cyan: "#6ee7ff",
+            white: "#e7ebf2",
+            brightBlack: "#5b6472",
+            brightRed: "#ff8a95",
+            brightGreen: "#8cf0bc",
+            brightYellow: "#ffd98a",
+            brightBlue: "#a5f3ff",
+            brightMagenta: "#dbb4ff",
+            brightCyan: "#a5f3ff",
+            brightWhite: "#ffffff",
+          };
+
     const term = new Terminal({
       fontFamily: '"Cascadia Mono", Consolas, "Courier New", monospace',
       fontSize: 13,
       lineHeight: 1.2,
       cursorBlink: true,
       scrollback: 10_000,
-      theme: {
-        background: "#0a0c10",
-        foreground: "#e7ebf2",
-        cursor: "#6ee7ff",
-        cursorAccent: "#0a0c10",
-        selectionBackground: "#1d3a44",
-        black: "#0a0c10",
-        red: "#ff6b7a",
-        green: "#63e6a2",
-        yellow: "#ffc857",
-        blue: "#6ee7ff",
-        magenta: "#c792ea",
-        cyan: "#6ee7ff",
-        white: "#e7ebf2",
-        brightBlack: "#5b6472",
-        brightRed: "#ff8a95",
-        brightGreen: "#8cf0bc",
-        brightYellow: "#ffd98a",
-        brightBlue: "#a5f3ff",
-        brightMagenta: "#dbb4ff",
-        brightCyan: "#a5f3ff",
-        brightWhite: "#ffffff",
-      },
+      theme: palette,
     });
     const fit = new FitAddon();
     term.loadAddon(fit);

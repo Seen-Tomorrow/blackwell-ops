@@ -1107,8 +1107,35 @@ fn stop_assistant(app: &AppHandle) {
     };
 }
 
+fn set_local_pi_theme(theme: &str) -> Result<(), String> {
+    let dir = default_data_dir().join("local-pi-home");
+    std::fs::create_dir_all(&dir).map_err(|error| format!("create Pi home: {error}"))?;
+    let path = dir.join("settings.json");
+    let mut value: Value = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_else(|| Value::Object(Default::default()));
+    if let Some(object) = value.as_object_mut() {
+        object.insert("theme".into(), Value::String(theme.into()));
+    }
+    std::fs::write(
+        path,
+        serde_json::to_string_pretty(&value).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| format!("write Pi theme: {error}"))
+}
+
 #[tauri::command]
-async fn assistant_open(app: AppHandle, provider: Option<String>) -> Result<(), String> {
+async fn assistant_open(
+    app: AppHandle,
+    provider: Option<String>,
+    theme: Option<String>,
+) -> Result<(), String> {
+    if let Some(theme) = theme.as_deref() {
+        if theme == "light" || theme == "dark" {
+            set_local_pi_theme(theme)?;
+        }
+    }
     if let Some(window) = app.get_webview_window("terminal") {
         let _ = window.show();
         let _ = window.set_focus();

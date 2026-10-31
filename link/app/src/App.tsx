@@ -377,14 +377,20 @@ export default function App() {
     setNotice(null);
     setBusy("assistant");
     try {
-      await invoke("assistant_open", { provider: selected });
+      const resolvedTheme =
+        theme === "system"
+          ? window.matchMedia("(prefers-color-scheme: light)").matches
+            ? "light"
+            : "dark"
+          : theme;
+      await invoke("assistant_open", { provider: selected, theme: resolvedTheme });
       setNotice("Assistant terminal opened.");
     } catch (e) {
       setError(typeof e === "string" ? e : String(e));
     } finally {
       setBusy(null);
     }
-  }, [provider]);
+  }, [provider, theme]);
 
   const saveSettings = useCallback(async () => {
     setError(null);

@@ -99,3 +99,49 @@ body,
 .term-host .xterm-viewport {
   background: #0a0c10 !important;
 }
+
+:root[data-oym-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-oym-theme="light"] html,
+:root[data-oym-theme="light"] body,
+:root[data-oym-theme="light"] #root {
+  background: #f7f6f0;
+}
+
+:root[data-oym-theme="light"] .term {
+  background: #f7f6f0;
+}
+
+:root[data-oym-theme="light"] .term-bar {
+  border-bottom-color: #d8d5c9;
+  background: #efeee7;
+}
+
+:root[data-oym-theme="light"] .term-brand {
+  color: #1a1b1f;
+}
+
+:root[data-oym-theme="light"] .term-mark {
+  background: #087c8c;
+  color: #ffffff;
+}
+
+:root[data-oym-theme="light"] .term-chip {
+  color: #5d616a;
+  border-color: #d8d5c9;
+}
+
+:root[data-oym-theme="light"] .term-close {
+  color: #5d616a;
+}
+
+:root[data-oym-theme="light"] .term-close:hover {
+  border-color: #d8d5c9;
+  color: #b83242;
+}
+
+:root[data-oym-theme="light"] .term-host .xterm-viewport {
+  background: #f7f6f0 !important;
+}

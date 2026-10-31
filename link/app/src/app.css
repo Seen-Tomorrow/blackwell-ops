@@ -1085,3 +1085,17 @@ body {
   border-color: color-mix(in srgb, var(--ok) 55%, var(--border));
   color: var(--ok);
 }
+
+:root[data-oym-theme="dark"] {
+  color-scheme: dark;
+  --bg: #07090d;
+  --panel: #121821;
+  --panel-2: #18212c;
+  --border: #3a4658;
+  --text: #f4f7fb;
+  --muted: #b4bfce;
+  --accent: #7deaff;
+  --accent-dim: rgba(125, 234, 255, 0.14);
+  --ok: #64e6a0;
+  --danger: #ff7a88;
+}
