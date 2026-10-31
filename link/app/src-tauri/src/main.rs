@@ -321,12 +321,22 @@ fn find_tool(env_var: &str, repo_relative: &str, exe_relative: &str) -> Result<P
         }
     }
     Err(format!(
-        "could not find {env_var} artifact (`{repo_relative}`); pass {env_var} explicitly"
+        "could not find {env_var} artifact (`{repo_relative}`). This exe is probably outside its package; run the NSIS helper, place the CLI/Pi next to OYM-Help.exe, or pass {env_var} explicitly"
     ))
 }
 
 fn helper_requested() -> bool {
-    std::env::args().any(|arg| arg == "--helper")
+    if std::env::args().any(|arg| arg == "--helper") {
+        return true;
+    }
+    // The packaged helper is installed as OYM-Help.exe. A normal OYM Link
+    // install shares %LOCALAPPDATA%\OYM\Link settings, so a persisted
+    // helper=true must not turn the normal app into the helper UI.
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.file_stem().map(|stem| stem.to_owned()))
+        .map(|stem| stem.eq_ignore_ascii_case("OYM-Help"))
+        .unwrap_or(false)
 }
 
 fn invite_path() -> Option<PathBuf> {
@@ -513,11 +523,7 @@ fn helper_forget(app: AppHandle) -> Result<(), String> {
 async fn invite_bootstrap(app: AppHandle) -> Bootstrap {
     let settings = load_settings();
     let data_dir = default_data_dir();
-    let mut helper = helper_requested()
-        || settings
-            .get("helper")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
+    let mut helper = helper_requested();
     let mut owner = settings
         .get("owner")
         .and_then(Value::as_str)
