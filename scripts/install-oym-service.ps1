@@ -83,6 +83,10 @@ New-Item -ItemType Directory -Force -Path $serviceData | Out-Null
 & icacls $serviceData /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)(F)" "*S-1-5-32-544:(OI)(CI)(F)" | Out-Null
 if ($Bootstrap -ne "") {
     if (-not (Test-Path $Bootstrap)) { throw "Bootstrap file not found: $Bootstrap" }
+    # A fresh install must not inherit a malformed identity/token from an older
+    # service-data directory.
+    Remove-Item (Join-Path $serviceData "identity.json") -Force -ErrorAction SilentlyContinue
+    Remove-Item (Join-Path $serviceData "device.token") -Force -ErrorAction SilentlyContinue
     $target = Join-Path $baseDir "service-bootstrap.json"
     Copy-Item $Bootstrap $target -Force
     & icacls $target /inheritance:r /grant:r "*S-1-5-18:(F)" "*S-1-5-32-544:(F)" | Out-Null

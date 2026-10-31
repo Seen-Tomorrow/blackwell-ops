@@ -929,6 +929,11 @@ async fn prompt_and_pair(server: &str, args: &Args) -> Result<(Identity, String)
 
 async fn run(args: Args) -> Result<(), String> {
     let existing = load_identity(&args.data_dir);
+    eprintln!(
+        "OYM Link data dir: {} (identity: {})",
+        args.data_dir.display(),
+        existing.is_some()
+    );
     let server = args
         .server
         .clone()

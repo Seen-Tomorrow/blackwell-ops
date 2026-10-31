@@ -152,6 +152,8 @@ fn spawn_link(cli: &Path, data: &Path, log_path: &Path) -> Result<Child, String>
     let mut command = Command::new(cli);
     command
         .arg("--quiet")
+        .arg("--data-dir")
+        .arg(data)
         .env("OYM_DATA_DIR", data)
         .env("OYM_DEVICE_TOKEN_FILE", token)
         .stdin(Stdio::null())
