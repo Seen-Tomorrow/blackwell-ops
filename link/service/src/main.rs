@@ -22,6 +22,7 @@ struct ServiceStatus {
     child_pid: Option<u32>,
     connected: bool,
     session_active: bool,
+    network_enabled: bool,
     started_at: u64,
     updated_at: u64,
     mode: &'static str,
@@ -51,6 +52,7 @@ fn write_status(
     child_pid: Option<u32>,
     connected: bool,
     session_active: bool,
+    network_enabled: bool,
     error: Option<String>,
 ) {
     let status = ServiceStatus {
@@ -59,6 +61,7 @@ fn write_status(
         child_pid,
         connected,
         session_active,
+        network_enabled,
         started_at,
         updated_at: now(),
         mode: "integrated",
@@ -274,7 +277,15 @@ fn main() {
     let mut last_error: Option<String> = None;
 
     loop {
-        if child.is_none() {
+        let network_off = base.join("control").join("network-off").is_file();
+        if network_off {
+            if let Some(mut process) = child.take() {
+                let _ = process.kill();
+                let _ = process.wait();
+            }
+            child_pid = None;
+            last_error = None;
+        } else if child.is_none() {
             match prepare(&base).and_then(|data| cli_path().map(|cli| (data, cli))) {
                 Ok((data, cli)) => match spawn_link(&cli, &data, &base.join("service-child.log")) {
                     Ok(next) => {
@@ -323,6 +334,7 @@ fn main() {
             child_pid,
             connected,
             session_active,
+            !network_off,
             last_error.clone(),
         );
 
@@ -333,6 +345,6 @@ fn main() {
             }
             break;
         }
-        std::thread::sleep(Duration::from_secs(2));
+        std::thread::sleep(Duration::from_secs(1));
     }
 }

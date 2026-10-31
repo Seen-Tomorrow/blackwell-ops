@@ -91,8 +91,16 @@ export default function App() {
   const [service, setService] = useState<ServiceStatus | null>(null);
   const [serviceLog, setServiceLog] = useState("");
   const [serviceApply, setServiceApply] = useState<"install" | "uninstall" | null>(null);
+  const [serviceStartedAt, setServiceStartedAt] = useState(0);
   const [serviceElapsed, setServiceElapsed] = useState(0);
   const [elevated, setElevated] = useState(false);
+  const [networkEnabled, setNetworkEnabled] = useState(true);
+  const [cloudStatus, setCloudStatus] = useState("checking");
+  const [pendingMode, setPendingMode] = useState<"portable" | "integrated" | null>(null);
+  const [theme, setTheme] = useState<"system" | "light" | "dark">(() => {
+    const saved = window.localStorage.getItem("oym.link.theme");
+    return saved === "light" || saved === "dark" ? saved : "system";
+  });
   const lastServiceInstalled = useRef<boolean | null>(null);
   const [helperStopped, setHelperStopped] = useState(false);
   const [helperForgotten, setHelperForgotten] = useState(false);
@@ -147,7 +155,7 @@ export default function App() {
     load();
     const timer = window.setInterval(load, 1000);
     return () => window.clearInterval(timer);
-  }, [serviceApply]);
+  }, [serviceApply, serviceStartedAt]);
 
   useEffect(() => {
     if (!serviceApply) return;
@@ -158,23 +166,77 @@ export default function App() {
       window.clearInterval(ticker);
       window.clearTimeout(timeout);
     };
-  }, [serviceApply]);
+  }, [serviceApply, serviceStartedAt]);
 
   useEffect(() => {
     if (!serviceApply) return;
-    const completed =
-      serviceApply === "install"
-        ? /was started successfully/i.test(serviceLog)
-        : Boolean(service && !service.installed);
-    if (!completed) return;
-    const timer = window.setTimeout(() => setServiceApply(null), 1200);
-    return () => window.clearTimeout(timer);
-  }, [serviceApply, serviceLog, service?.installed]);
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const raw = await invoke<string>("service_action_status");
+        if (!cancelled && raw) {
+          try {
+            const marker = JSON.parse(raw) as { action?: string; at?: number };
+            if (marker.action === serviceApply && Number(marker.at ?? 0) >= serviceStartedAt) {
+              setServiceApply(null);
+            }
+          } catch {
+            // ignore a partial write
+          }
+        }
+      } catch {
+        // keep the 90s fallback timer
+      }
+    };
+    void check();
+    const timer = window.setInterval(() => void check(), 500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [serviceApply, serviceStartedAt]);
 
   useEffect(() => {
     void invoke<boolean>("link_is_elevated")
       .then(setElevated)
       .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    void invoke<boolean>("link_network_status")
+      .then(setNetworkEnabled)
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const load = () => {
+      void invoke<string>("link_cloud_status")
+        .then(setCloudStatus)
+        .catch(() => setCloudStatus("offline"));
+    };
+    load();
+    const timer = window.setInterval(load, 15000);
+    return () => window.clearInterval(timer);
+  }, [networkEnabled, settings.cloudKeyStored]);
+
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-color-scheme: light)");
+    const apply = () => {
+      const resolved = theme === "system" ? (media.matches ? "light" : "dark") : theme;
+      document.documentElement.dataset.oymTheme = resolved;
+    };
+    apply();
+    if (theme !== "system") return;
+    media.addEventListener("change", apply);
+    return () => media.removeEventListener("change", apply);
+  }, [theme]);
+
+  const cycleTheme = useCallback(() => {
+    setTheme((current) => {
+      const next = current === "system" ? "light" : current === "light" ? "dark" : "system";
+      window.localStorage.setItem("oym.link.theme", next);
+      return next;
+    });
   }, []);
 
   useEffect(() => {
@@ -195,7 +257,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!boot?.helper) return;
+    if (!boot?.paired) return;
     const load = () => {
       void invoke<HelperLink>("helper_link_status")
         .then(setHelperLink)
@@ -204,7 +266,11 @@ export default function App() {
     void load();
     const timer = window.setInterval(load, 2000);
     return () => window.clearInterval(timer);
-  }, [boot?.helper]);
+  }, [boot?.paired]);
+
+  useEffect(() => {
+    if (boot && !boot.paired && !boot.helper) setView("pair");
+  }, [boot?.paired, boot?.helper]);
 
   const stopHelper = useCallback(async () => {
     setError(null);
@@ -306,12 +372,12 @@ export default function App() {
     }
   }, [code, gateway, refresh]);
 
-  const startAssistant = useCallback(async () => {
+  const startAssistant = useCallback(async (selected: "private" | "cloud" = provider) => {
     setError(null);
     setNotice(null);
     setBusy("assistant");
     try {
-      await invoke("assistant_open", { provider });
+      await invoke("assistant_open", { provider: selected });
       setNotice("Assistant terminal opened.");
     } catch (e) {
       setError(typeof e === "string" ? e : String(e));
@@ -373,6 +439,7 @@ export default function App() {
     setNotice(null);
     setServiceLog("");
     setServiceApply("install");
+    setServiceStartedAt(Math.floor(Date.now() / 1000));
     setBusy("service");
     try {
       await invoke("service_install");
@@ -391,6 +458,7 @@ export default function App() {
     setNotice(null);
     setServiceLog("");
     setServiceApply("uninstall");
+    setServiceStartedAt(Math.floor(Date.now() / 1000));
     setBusy("service");
     try {
       await invoke("service_uninstall");
@@ -415,6 +483,30 @@ export default function App() {
     }
   }, []);
 
+  const toggleNetwork = useCallback(async () => {
+    const next = !networkEnabled;
+    setError(null);
+    setNotice(null);
+    try {
+      await invoke("link_network_set", { enabled: next });
+      setNetworkEnabled(next);
+      setCloudStatus(next ? "checking" : "disabled");
+      setNotice(next ? "Network access enabled." : "Network access stopped.");
+    } catch (e) {
+      setError(typeof e === "string" ? e : String(e));
+    }
+  }, [networkEnabled]);
+
+  const confirmMode = useCallback(async () => {
+    const target = pendingMode;
+    setPendingMode(null);
+    if (target === "integrated") {
+      await installService();
+    } else if (target === "portable") {
+      await uninstallService();
+    }
+  }, [pendingMode, installService, uninstallService]);
+
   if (!boot) {
     return <div className="boot-screen">Preparing secure link…</div>;
   }
@@ -434,126 +526,187 @@ export default function App() {
     );
   }
 
+  const integrated = Boolean(service?.installed);
+  const linked = integrated ? Boolean(service?.connected) : Boolean(helperLink?.linked);
+  const sessionActive = integrated
+    ? Boolean(service?.sessionActive)
+    : Boolean(helperLink?.sessionActive);
+  const blackwellOnline = networkEnabled && linked;
+  const cloudReady = networkEnabled && cloudStatus === "ready";
+  const operatorLabel = !networkEnabled
+    ? "REMOTE OFF"
+    : sessionActive
+      ? "OPERATOR CONNECTED · ACTIVE"
+      : linked
+        ? "OPERATOR CONNECTED · IDLE"
+        : "WAITING FOR OPERATOR";
+  const actionLabel =
+    serviceApply === "install"
+      ? "Integrating with Windows…"
+      : serviceApply === "uninstall"
+        ? "Returning to portable…"
+        : "Ready";
+  const cloudLabel = !networkEnabled
+    ? "Off"
+    : cloudStatus === "ready"
+      ? "Ready"
+      : cloudStatus === "offline"
+        ? "Offline"
+        : cloudStatus === "not-configured"
+          ? "Not configured"
+          : "Checking";
+
   return (
     <div className="app">
-      <header className="titlebar" data-tauri-drag-region>
+      <header className="titlebar dash-titlebar" data-tauri-drag-region>
         <div className="brand" data-tauri-drag-region>
           <span className="brand-mark">O</span>
           <span className="brand-name">OYM</span>
-          <span className="mode-chip">
-            {service?.installed ? "INTEGRATED" : status.mode.toUpperCase()}
-          </span>
         </div>
-        <button className="icon-button" title="Hide" onClick={hide}>
-          —
-        </button>
+        <div className="header-actions">
+          <button
+            className="icon-button"
+            title={`Theme: ${theme}. Click to change.`}
+            onClick={cycleTheme}
+          >
+            {theme === "light" ? "☀" : theme === "dark" ? "☾" : "◐"}
+          </button>
+          <button
+            className="icon-button"
+            title="Config"
+            onClick={() => setView(view === "settings" ? "home" : "settings")}
+          >
+            ⚙
+          </button>
+          <button className="icon-button" title="Hide" onClick={hide}>
+            ×
+          </button>
+        </div>
       </header>
 
-      <main className="content">
+      <main className="content dash-scroll">
         {view === "home" && (
           <>
-            <section className="card">
-              <div className="card-head">
-                <span className="label">CONNECTION</span>
-                <span className={`state ${status.connected ? "is-on" : "is-off"}`}>
-                  <span className="dot" />
-                  {status.connected ? "ONLINE" : status.paired ? "PAIRED · OFFLINE" : "OFFLINE"}
+            <section className="dash-card mode-card">
+              <div className="dash-card-head">
+                <span className="dash-label">MODE</span>
+                <span className="dash-note">{integrated ? "Always available" : "Runs while open"}</span>
+              </div>
+              <div className="mode-switch">
+                <button
+                  type="button"
+                  className={`mode-option ${!integrated ? "is-active" : ""}`}
+                  disabled={serviceApply !== null}
+                  onClick={() => {
+                    if (!integrated) setPendingMode("portable");
+                  }}
+                >
+                  PORTABLE
+                </button>
+                <button
+                  type="button"
+                  className={`mode-option ${integrated ? "is-active" : ""}`}
+                  disabled={serviceApply !== null}
+                  onClick={() => {
+                    if (!integrated) setPendingMode("integrated");
+                  }}
+                >
+                  INTEGRATED
+                </button>
+              </div>
+            </section>
+
+            <section className="dash-card">
+              <div className="dash-card-head">
+                <span className="dash-label">PRIVILEGE</span>
+                <span className={`dash-value ${integrated || elevated ? "is-accent" : ""}`}>
+                  {integrated ? "SYSTEM" : elevated ? "ADMIN" : "STANDARD"}
                 </span>
               </div>
-              <dl className="kv">
-                <dt>Gateway</dt>
-                <dd className={status.gateway || gateway ? "" : "muted"}>
-                  {status.gateway || gateway || "not paired"}
-                </dd>
-                <dt>Device</dt>
-                <dd className={status.deviceName ? "" : "muted"}>{status.deviceName || "—"}</dd>
-              </dl>
-              {status.error && <p className="copy">{status.error}</p>}
-              <button className="button" onClick={openPair}>
-                {status.paired || status.gateway ? "REPAIR DEVICE" : "PAIR DEVICE"}
+              <div className="dash-row">
+                <span className="dash-copy">
+                  {integrated ? "Always elevated by Windows." : "App runs with your user token."}
+                </span>
+                {!integrated && !elevated && (
+                  <button type="button" className="soft-button" onClick={() => void restartElevated()}>
+                    RESTART AS ADMIN
+                  </button>
+                )}
+              </div>
+            </section>
+
+            <section className={`dash-card emergency ${networkEnabled ? "is-armed" : "is-off"}`}>
+              <div className="dash-card-head">
+                <span className="dash-label">REMOTE ACCESS</span>
+                <span className={`dash-value ${networkEnabled ? "is-danger" : ""}`}>
+                  {networkEnabled ? "ON" : "OFF"}
+                </span>
+              </div>
+              <p className="emergency-copy">
+                {networkEnabled
+                  ? "Blackwell and cloud are reachable."
+                  : "No remote or cloud access. Local assistant only."}
+              </p>
+              <button
+                type="button"
+                className={`emergency-button ${networkEnabled ? "is-stop" : "is-enable"}`}
+                onClick={() => void toggleNetwork()}
+              >
+                <span className="emergency-led" />
+                {networkEnabled ? "STOP ALL NETWORK" : "ENABLE NETWORK"}
               </button>
             </section>
 
-            <section className="card">
-              <div className="card-head">
-                <span className="label">ASSISTANT</span>
-                <div className="segmented">
-                  <button
-                    className={`segment ${provider === "private" ? "is-selected" : ""}`}
-                    onClick={() => setProvider("private")}
-                  >
-                    PRIVATE
-                  </button>
-                  <button
-                    className={`segment ${provider === "cloud" ? "is-selected" : ""}`}
-                    onClick={() => setProvider("cloud")}
-                  >
-                    CLOUD
-                  </button>
-                </div>
+            <section className="dash-card">
+              <div className="dash-card-head">
+                <span className="dash-label">LOCAL ASSISTANT</span>
               </div>
-
-              {provider === "private" ? (
-                <>
-                  <p className="copy">
-                    Blackwell engines on this machine. The engines keep running; switching tabs
-                    only changes where the assistant sends work.
-                  </p>
-                  {status.homeRoutes.length > 0 ? (
-                    <ul className="route-list">
-                      {status.homeRoutes.map((route) => (
-                        <li key={route.id}>
-                          <span className="route-model">{route.model}</span>
-                          <span className="route-meta">
-                            {route.vision ? "vision" : "text"} ·{" "}
-                            {Math.round(route.contextWindow / 1024)}K
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="copy muted">
-                      No engine running. Start one in OYM → OPERATIONS → RUNNING.
-                    </p>
-                  )}
-                  <button
-                    className="button button-accent"
-                    disabled={busy === "assistant" || status.homeRoutes.length === 0}
-                    onClick={() => void startAssistant()}
-                  >
-                    {busy === "assistant" ? "STARTING…" : "START PRIVATE ASSISTANT"}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <p className="copy">
-                    DeepSeek over the cloud. The API key stays in Windows Credential Manager.
-                  </p>
-                  <dl className="kv">
-                    <dt>Model</dt>
-                    <dd>deepseek-flash</dd>
-                    <dt>Endpoint</dt>
-                    <dd>api.deepseek.com</dd>
-                    <dt>API key</dt>
-                    <dd className={status.cloudKeyStored ? "" : "muted"}>
-                      {status.cloudKeyStored ? "stored" : "not stored"}
-                    </dd>
-                  </dl>
-                  <button className="link-button" onClick={() => setView("settings")}>
-                    {status.cloudKeyStored ? "MANAGE API KEY" : "STORE API KEY IN SETTINGS"}
-                  </button>
-                  <button
-                    className="button"
-                    disabled={busy === "assistant" || !status.cloudKeyStored}
-                    onClick={() => void startAssistant()}
-                  >
-                    {busy === "assistant" ? "STARTING…" : "START CLOUD ASSISTANT"}
-                  </button>
-                </>
-              )}
+              <div className="segmented">
+                <button
+                  type="button"
+                  className={`segment ${provider === "private" ? "is-selected" : ""}`}
+                  onClick={() => setProvider("private")}
+                >
+                  PRIVATE
+                </button>
+                <button
+                  type="button"
+                  className={`segment ${provider === "cloud" ? "is-selected" : ""}`}
+                  disabled={!cloudReady || !status.cloudKeyStored}
+                  onClick={() => setProvider("cloud")}
+                >
+                  CLOUD
+                </button>
+              </div>
+              <div className="dash-row">
+                <span className="dash-copy">
+                  {provider === "private"
+                    ? status.homeRoutes.length > 0
+                      ? `${status.homeRoutes.length} local model${status.homeRoutes.length === 1 ? "" : "s"}`
+                      : "No local engine"
+                    : !status.cloudKeyStored
+                      ? "Cloud key not configured"
+                      : `Cloud · ${cloudLabel.toLowerCase()}`}
+                </span>
+                <button
+                  type="button"
+                  className="soft-button"
+                  disabled={
+                    busy === "assistant" ||
+                    (provider === "private" && status.homeRoutes.length === 0) ||
+                    (provider === "cloud" && (!cloudReady || !status.cloudKeyStored))
+                  }
+                  onClick={() => void startAssistant(provider)}
+                >
+                  {busy === "assistant" ? "OPENING…" : "OPEN"}
+                </button>
+              </div>
             </section>
 
-            <p className="tagline">Own your infra.</p>
+            <section className="dash-card files-card">
+              <span className="dash-label">FILES</span>
+              <span className="dash-copy">Transfer monitor · coming soon</span>
+            </section>
           </>
         )}
 
@@ -772,6 +925,7 @@ export default function App() {
                 )}
               </div>
             )}
+            <p className="tagline">OYM {status.version} · BUILD {__LINK_BUILD__}</p>
           </section>
         )}
 
@@ -780,17 +934,58 @@ export default function App() {
         {notice && <p className="banner banner-ok">{notice}</p>}
       </main>
 
-      <footer className="footer">
-        <span>OYM {status.version} · BUILD {__LINK_BUILD__}</span>
-        <div className="footer-actions">
-          <button className="link-button" onClick={() => setView("settings")}>
-            SETTINGS
-          </button>
-          <button className="link-button" onClick={hide}>
-            HIDE
-          </button>
+      {view === "home" && (
+        <>
+          <div className={`status-rail ${networkEnabled ? "" : "is-off"}`}>
+            <div className="status-main">{operatorLabel}</div>
+            <div className="status-action">{actionLabel}</div>
+            {serviceApply && (
+              <div className="status-progress">
+                <span />
+              </div>
+            )}
+          </div>
+
+          <footer className="dash-footer">
+            <div className="footer-statuses">
+              <span className={`footer-led ${blackwellOnline ? "is-on" : "is-off"}`} />
+              <span className="footer-name">Blackwell</span>
+              <span className={`footer-value ${blackwellOnline ? "is-on" : "is-off"}`}>
+                {blackwellOnline ? "Online" : networkEnabled ? "Offline" : "Off"}
+              </span>
+
+              <span className={`footer-led ${cloudReady ? "is-on" : "is-off"}`} />
+              <span className="footer-name">Cloud</span>
+              <span className={`footer-value ${cloudReady ? "is-on" : "is-off"}`}>
+                {cloudLabel}
+              </span>
+            </div>
+          </footer>
+        </>
+      )}
+
+      {pendingMode && (
+        <div className="modal-scrim" onClick={() => setPendingMode(null)}>
+          <div className="mode-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="dash-label">
+              {pendingMode === "integrated" ? "SWITCH TO INTEGRATED" : "SWITCH TO PORTABLE"}
+            </div>
+            <p className="modal-copy">
+              {pendingMode === "integrated"
+                ? "Runs as a Windows service. Stays available when this app is closed. Windows will ask for permission."
+                : "Stops the Windows service. Remote access ends when this app closes."}
+            </p>
+            <div className="modal-actions">
+              <button type="button" className="soft-button" onClick={() => setPendingMode(null)}>
+                CANCEL
+              </button>
+              <button type="button" className="button button-accent" onClick={() => void confirmMode()}>
+                CONTINUE
+              </button>
+            </div>
+          </div>
         </div>
-      </footer>
+      )}
     </div>
   );
 }

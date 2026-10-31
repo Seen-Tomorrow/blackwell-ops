@@ -16,6 +16,10 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
     throw "Run this script from an elevated PowerShell (Administrator)."
 }
 
+$baseDir = Join-Path $env:ProgramData "OYM\Link"
+$actionMarker = Join-Path $baseDir "service-action.json"
+Remove-Item $actionMarker -Force -ErrorAction SilentlyContinue
+
 $wrapper = Join-Path $ServiceDir "OymLink.exe"
 if (Test-Path $wrapper) {
     Push-Location $ServiceDir
@@ -42,3 +46,5 @@ else {
 }
 
 sc.exe query OymLink 2>$null
+@{ action = "uninstall"; ok = $true; at = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() } |
+    ConvertTo-Json | Set-Content $actionMarker -Encoding utf8NoBOM

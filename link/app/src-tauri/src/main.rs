@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::io::{Read, Write};
+use std::net::ToSocketAddrs;
 use std::path::PathBuf;
 use std::process::{Child as StdChild, Command, Stdio};
 use std::sync::Mutex;
@@ -340,6 +341,113 @@ fn launch_elevated_script(name: &str, extra: &str) -> Result<(), String> {
 #[cfg(not(windows))]
 fn launch_elevated_script(_name: &str, _extra: &str) -> Result<(), String> {
     Err("service install is Windows-only".into())
+}
+
+fn network_disabled() -> bool {
+    load_settings()
+        .get("networkDisabled")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
+fn save_network_disabled(disabled: bool) -> Result<(), String> {
+    let mut settings = load_settings();
+    if let Some(object) = settings.as_object_mut() {
+        object.insert("networkDisabled".into(), Value::Bool(disabled));
+    }
+    save_settings(&settings)
+}
+
+fn service_control_dir() -> Option<PathBuf> {
+    std::env::var_os("PROGRAMDATA").map(|dir| {
+        PathBuf::from(dir)
+            .join("OYM")
+            .join("Link")
+            .join("control")
+    })
+}
+
+#[tauri::command]
+fn link_network_status() -> bool {
+    !network_disabled()
+}
+
+#[tauri::command]
+fn link_network_set(app: AppHandle, enabled: bool) -> Result<(), String> {
+    save_network_disabled(!enabled)?;
+    if let Some(control) = service_control_dir() {
+        let flag = control.join("network-off");
+        if enabled {
+            let _ = std::fs::remove_file(flag);
+        }
+        else if service_dir()
+            .map(|dir| dir.join("OymLink.xml").is_file())
+            .unwrap_or(false)
+        {
+            std::fs::create_dir_all(&control)
+                .map_err(|error| format!("create service control dir: {error}"))?;
+            std::fs::write(&flag, b"off")
+                .map_err(|error| format!("disable service network: {error}"))?;
+        }
+    }
+    if !enabled {
+        stop_helper(&app);
+        stop_assistant(&app);
+    }
+    else if !service_dir()
+        .map(|dir| dir.join("OymLink.xml").is_file())
+        .unwrap_or(false)
+    {
+        start_helper_client(&app)?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn link_cloud_status() -> String {
+    if network_disabled() {
+        return "disabled".into();
+    }
+    if !cloud_key_present() {
+        return "not-configured".into();
+    }
+    let settings = load_settings();
+    let base = settings
+        .get("cloudBaseUrl")
+        .and_then(Value::as_str)
+        .unwrap_or("https://api.deepseek.com");
+    let (host, port) = if let Some(rest) = base.strip_prefix("https://") {
+        (rest.split('/').next().unwrap_or(rest), 443)
+    } else if let Some(rest) = base.strip_prefix("http://") {
+        (rest.split('/').next().unwrap_or(rest), 80)
+    } else {
+        (base.split('/').next().unwrap_or(base), 443)
+    };
+    let address = format!("{host}:{port}");
+    let Ok(mut addresses) = address.to_socket_addrs() else {
+        return "offline".into();
+    };
+    let Some(socket) = addresses.next() else {
+        return "offline".into();
+    };
+    match std::net::TcpStream::connect_timeout(&socket, std::time::Duration::from_secs(2)) {
+        Ok(_) => "ready".into(),
+        Err(_) => "offline".into(),
+    }
+}
+
+#[tauri::command]
+fn service_action_status() -> String {
+    let Some(program_data) = std::env::var_os("PROGRAMDATA") else {
+        return String::new();
+    };
+    std::fs::read_to_string(
+        PathBuf::from(program_data)
+            .join("OYM")
+            .join("Link")
+            .join("service-action.json"),
+    )
+    .unwrap_or_default()
 }
 
 #[tauri::command]
@@ -720,7 +828,10 @@ async fn invite_bootstrap(app: AppHandle) -> Bootstrap {
         let service_hosted = service_dir()
             .map(|dir| dir.join("OymLink.xml").is_file())
             .unwrap_or(false);
-        let error = if helper && !stopped {
+        let network_off = network_disabled();
+        let error = if network_off {
+            None
+        } else if helper && !stopped {
             start_helper_client(&app).err()
         } else if !service_hosted {
             // Normal Portable mode: run the same hidden link client as the
@@ -843,7 +954,13 @@ async fn invite_bootstrap(app: AppHandle) -> Bootstrap {
     let _ = save_settings(&settings);
     let _ = std::fs::remove_file(&path);
 
-    let error = if helper {
+    let error = if network_disabled() {
+        None
+    } else if helper
+        || !service_dir()
+            .map(|dir| dir.join("OymLink.xml").is_file())
+            .unwrap_or(false)
+    {
         start_helper_client(&app).err()
     } else {
         None
@@ -896,6 +1013,9 @@ fn assistant_start(
     cols: u16,
     provider: Option<String>,
 ) -> Result<(), String> {
+    if provider.as_deref() == Some("cloud") && network_disabled() {
+        return Err("Network is disabled. Enable remote/cloud access first.".into());
+    }
     let state = app.state::<AssistantState>();
     let mut guard = state
         .session
@@ -1333,6 +1453,10 @@ fn main() {
             helper_close,
             helper_forget,
             link_portable_start,
+            link_network_status,
+            link_network_set,
+            link_cloud_status,
+            service_action_status,
             link_is_elevated,
             link_restart_elevated,
             link_hide,

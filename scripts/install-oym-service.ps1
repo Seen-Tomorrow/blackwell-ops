@@ -31,6 +31,8 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 
 $installLogDir = Join-Path $env:ProgramData "OYM\Link"
 New-Item -ItemType Directory -Force -Path $installLogDir | Out-Null
+$actionMarker = Join-Path $installLogDir "service-action.json"
+Remove-Item $actionMarker -Force -ErrorAction SilentlyContinue
 try {
     Start-Transcript -Path (Join-Path $installLogDir "service-install.log") -Force | Out-Null
 }
@@ -85,6 +87,11 @@ Copy-Item $Xml (Join-Path $ServiceDir "OymLink.xml") -Force
 # service starts. The service consumes and deletes it.
 $baseDir = Join-Path $env:ProgramData "OYM\Link"
 New-Item -ItemType Directory -Force -Path $baseDir | Out-Null
+$controlDir = Join-Path $baseDir "control"
+New-Item -ItemType Directory -Force -Path $controlDir | Out-Null
+# Authenticated Users may flip the emergency network-off flag without UAC;
+# the service watches it and kills its link child immediately.
+& icacls $controlDir /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)(F)" "*S-1-5-32-544:(OI)(CI)(F)" "*S-1-5-11:(OI)(CI)(M)" | Out-Null
 $serviceData = Join-Path $baseDir "service-data"
 New-Item -ItemType Directory -Force -Path $serviceData | Out-Null
 & icacls $serviceData /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)(F)" "*S-1-5-32-544:(OI)(CI)(F)" | Out-Null
@@ -140,3 +147,5 @@ Start-Sleep -Seconds 2
 sc.exe query OymLink
 Get-Content "$env:ProgramData\OYM\Link\service-status.json" -ErrorAction SilentlyContinue
 try { Stop-Transcript | Out-Null } catch {}
+@{ action = "install"; ok = $true; at = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() } |
+    ConvertTo-Json | Set-Content $actionMarker -Encoding utf8NoBOM
