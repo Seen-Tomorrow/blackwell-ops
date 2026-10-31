@@ -364,7 +364,9 @@ export default function App() {
         <div className="brand" data-tauri-drag-region>
           <span className="brand-mark">O</span>
           <span className="brand-name">OYM</span>
-          <span className="mode-chip">{status.mode.toUpperCase()}</span>
+          <span className="mode-chip">
+            {service?.installed ? "INTEGRATED" : status.mode.toUpperCase()}
+          </span>
         </div>
         <button className="icon-button" title="Hide" onClick={hide}>
           —

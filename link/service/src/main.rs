@@ -139,16 +139,24 @@ fn cli_path() -> Result<PathBuf, String> {
     Err("oym-link.exe not found next to the service (reinstall the service)".into())
 }
 
-fn spawn_link(cli: &Path, data: &Path) -> Result<Child, String> {
+fn spawn_link(cli: &Path, data: &Path, log_path: &Path) -> Result<Child, String> {
     let token = data.join("device.token");
+    let stdout = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_path)
+        .map_err(|error| format!("open service log: {error}"))?;
+    let stderr = stdout
+        .try_clone()
+        .map_err(|error| format!("clone service log: {error}"))?;
     let mut command = Command::new(cli);
     command
         .arg("--quiet")
         .env("OYM_DATA_DIR", data)
         .env("OYM_DEVICE_TOKEN_FILE", token)
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        .stdout(Stdio::from(stdout))
+        .stderr(Stdio::from(stderr));
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -157,6 +165,22 @@ fn spawn_link(cli: &Path, data: &Path) -> Result<Child, String> {
     command
         .spawn()
         .map_err(|error| format!("start link client: {error}"))
+}
+
+fn read_log_tail(path: &Path) -> String {
+    let raw = std::fs::read_to_string(path).unwrap_or_default();
+    let trimmed = raw.trim();
+    if trimmed.chars().count() <= 2000 {
+        return trimmed.to_string();
+    }
+    trimmed
+        .chars()
+        .rev()
+        .take(2000)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect()
 }
 
 /// Job object with KILL_ON_JOB_CLOSE: if the service is stopped or crashes, the
@@ -240,6 +264,7 @@ fn main() {
     let base = data_dir();
     let started_at = now();
     let once = std::env::args().any(|arg| arg == "--once");
+    let _ = std::fs::write(base.join("service-child.log"), "");
     #[cfg(windows)]
     let job = create_job();
     let mut child: Option<Child> = None;
@@ -249,7 +274,7 @@ fn main() {
     loop {
         if child.is_none() {
             match prepare(&base).and_then(|data| cli_path().map(|cli| (data, cli))) {
-                Ok((data, cli)) => match spawn_link(&cli, &data) {
+                Ok((data, cli)) => match spawn_link(&cli, &data, &base.join("service-child.log")) {
                     Ok(next) => {
                         child_pid = Some(next.id());
                         #[cfg(windows)]
@@ -257,7 +282,6 @@ fn main() {
                             assign_job(job, pid);
                         }
                         child = Some(next);
-                        last_error = None;
                     }
                     Err(error) => last_error = Some(error),
                 },
@@ -268,7 +292,12 @@ fn main() {
         if let Some(process) = child.as_mut() {
             match process.try_wait() {
                 Ok(Some(status)) => {
-                    last_error = Some(format!("link client exited: {status}"));
+                    let log = read_log_tail(&base.join("service-child.log"));
+                    last_error = Some(if log.is_empty() {
+                        format!("link client exited: {status}")
+                    } else {
+                        format!("link client exited: {status}\n{log}")
+                    });
                     child = None;
                     child_pid = None;
                 }
@@ -283,6 +312,9 @@ fn main() {
 
         let data = base.join("service-data");
         let (connected, session_active) = read_link_status(&data);
+        if connected {
+            last_error = None;
+        }
         write_status(
             &base,
             started_at,

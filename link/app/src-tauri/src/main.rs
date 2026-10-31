@@ -1146,6 +1146,14 @@ fn show_flyout(app: &AppHandle) {
     let _ = window.show();
     place_bottom_right(&window);
     let _ = window.set_focus();
+
+    // Tauri/Windows can apply their own initial placement after show. Repeat
+    // once the window has settled so it cannot reopen centered.
+    let delayed = window.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(250));
+        place_bottom_right(&delayed);
+    });
 }
 
 fn toggle_flyout(app: &AppHandle) {
@@ -1160,6 +1168,11 @@ fn toggle_flyout(app: &AppHandle) {
         let _ = window.show();
         place_bottom_right(&window);
         let _ = window.set_focus();
+        let delayed = window.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(250));
+            place_bottom_right(&delayed);
+        });
     }
 }
 
