@@ -70,7 +70,26 @@ Section "Install"
   SetOutPath "`$INSTDIR\pi"
   File /r "$pkgEscaped\runtime\pi\*.*"
   SetOutPath "`$INSTDIR"
+
+  SetShellVarContext current
+  CreateDirectory "`$SMPROGRAMS\OYM"
+  CreateShortcut "`$SMPROGRAMS\OYM\OYM Link.lnk" "`$INSTDIR\OYM Link.exe"
+  WriteUninstaller "`$INSTDIR\Uninstall.exe"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\OYM Link" "DisplayName" "OYM Link"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\OYM Link" "InstallLocation" "`$INSTDIR"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\OYM Link" "UninstallString" "`$INSTDIR\Uninstall.exe"
+  WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\OYM Link" "NoModify" 1
+  WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\OYM Link" "NoRepair" 1
+
   Exec '"`$INSTDIR\OYM Link.exe"'
+SectionEnd
+
+Section "Uninstall"
+  SetShellVarContext current
+  Delete "`$SMPROGRAMS\OYM\OYM Link.lnk"
+  RMDir "`$SMPROGRAMS\OYM"
+  DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\OYM Link"
+  RMDir /r "`$INSTDIR"
 SectionEnd
 "@
 Set-Content $nsi -Value $script -Encoding utf8NoBOM
