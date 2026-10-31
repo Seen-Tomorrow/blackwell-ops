@@ -348,6 +348,28 @@ function Invoke-FrontendAndTauriBuild {
     }
 }
 
+function Invoke-PackLinkUpdate {
+    param([string]$OutRoot)
+    $installer = Join-Path $root 'tmp/OYM-Link-Setup.exe'
+    if (-not (Test-Path -LiteralPath $installer)) {
+        Write-Majestic "Link installer not staged (tmp/OYM-Link-Setup.exe); skipping LINK asset." -Color DarkGray
+        return $null
+    }
+    $pack_script = Join-Path $root 'scripts\pack-link-update.ps1'
+    $log = & $pack_script *>&1
+    $exit_code = $LASTEXITCODE
+    foreach ($line in @($log)) {
+        if ($null -ne $line -and "$line".Length -gt 0) { Write-Host $line }
+    }
+    if ($exit_code -ne 0) { throw "pack-link-update.ps1 failed (exit $exit_code)" }
+    $asset = Get-ChildItem -LiteralPath $OutRoot -File -Filter 'LINK_OYM-Link-*.7z' -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 1
+    if (-not $asset) { throw "Link update asset missing after pack" }
+    Write-Majestic "Link update staged: $($asset.Name) ($([math]::Round($asset.Length / 1MB, 1)) MB)" -Color Green
+    return [string]$asset.FullName
+}
+
 function Invoke-PackAppUpdateArchive {
     param(
         [string]$Version,
@@ -888,6 +910,11 @@ function Invoke-MajesticPack {
         }
         $manifest_files += New-ManifestEntry -File (Get-Item -LiteralPath $app_archive)
 
+        $link_archive = Invoke-PackLinkUpdate -OutRoot $out_root
+        if ($link_archive) {
+            $manifest_files += New-ManifestEntry -File (Get-Item -LiteralPath $link_archive)
+        }
+
         if ($Variant -eq 'full') {
             # NSIS needs full runtime-bundle (app + ggml-master engines) for the installer build artifacts.
             Invoke-PrepareReleaseBundle -Variant 'full'
@@ -1260,7 +1287,7 @@ function Invoke-MajesticShip {
         # The pack manifest is the authority: App .7z, the NSIS setup and every verified
         # ENGINE_*.7z. Only the app-only variant filters (it must never carry an installer).
         if ($pack_kind -eq 'app') {
-            $is_app = $leaf -like '*Blackwell-Ops-App*'
+            $is_app = ($leaf -like '*Blackwell-Ops-App*') -or ($leaf -like 'LINK_OYM-Link-*.7z')
             if (-not $is_app) {
                 Write-Majestic "Ship app: skipping non-App asset $leaf" -Color DarkGray
                 continue

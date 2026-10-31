@@ -22,7 +22,7 @@ relaunching one instance.
 
 ## Ship
 
-Upload to the current app release:
+`majestic pack` includes the link asset in its manifest when `tmp/OYM-Link-Setup.exe` exists; `majestic ship` uploads it with the app assets. The standalone command is useful for a link-only upload:
 
 ```powershell
 pwsh scripts/ship-link.ps1 -Tag v1.1.9

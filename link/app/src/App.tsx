@@ -765,17 +765,11 @@ export default function App() {
                 </button>
               )}
             </div>
-            <p className="copy">
-              This device is not paired. In OYM → REMOTE → STATUS, copy the public
-              endpoint and click PAIR DEVICE, then enter both below. The main
-              controls stay hidden until this succeeds.
-            </p>
             <label className="field">
               <span>Gateway URL</span>
               <input
                 className="input"
                 autoFocus
-                placeholder="wss://host/link or https://host"
                 value={gateway}
                 onChange={(e) => setGateway(e.target.value)}
               />
@@ -785,7 +779,6 @@ export default function App() {
               <input
                 className="input"
                 maxLength={12}
-                placeholder="PAIRING CODE"
                 value={code}
                 onChange={(e) => setCode(e.target.value.toUpperCase())}
                 onKeyDown={(e) => {
