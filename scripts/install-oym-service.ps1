@@ -29,6 +29,13 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
     throw "Run this script from an elevated PowerShell (Administrator)."
 }
 
+$installLogDir = Join-Path $env:ProgramData "OYM\Link"
+New-Item -ItemType Directory -Force -Path $installLogDir | Out-Null
+try {
+    Start-Transcript -Path (Join-Path $installLogDir "service-install.log") -Force | Out-Null
+}
+catch {}
+
 if (-not $ServiceExe) {
     $candidates = @(
         (Join-Path $root "link\service\target\release\oym-link-service.exe"),
@@ -132,3 +139,4 @@ finally {
 Start-Sleep -Seconds 2
 sc.exe query OymLink
 Get-Content "$env:ProgramData\OYM\Link\service-status.json" -ErrorAction SilentlyContinue
+try { Stop-Transcript | Out-Null } catch {}

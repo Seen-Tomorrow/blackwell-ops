@@ -185,6 +185,27 @@ fn service_dir() -> Option<PathBuf> {
 }
 
 #[tauri::command]
+fn service_install_log() -> String {
+    let Some(program_data) = std::env::var_os("PROGRAMDATA") else {
+        return String::new();
+    };
+    let path = PathBuf::from(program_data)
+        .join("OYM")
+        .join("Link")
+        .join("service-install.log");
+    let raw = std::fs::read_to_string(path).unwrap_or_default();
+    let trimmed = raw.trim();
+    trimmed
+        .chars()
+        .rev()
+        .take(8000)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect()
+}
+
+#[tauri::command]
 fn service_status() -> ServiceStatusView {
     let installed = service_dir()
         .map(|dir| dir.join("OymLink.xml").is_file())
@@ -285,12 +306,12 @@ fn repo_script(name: &str) -> Result<PathBuf, String> {
 #[cfg(windows)]
 fn launch_elevated_script(name: &str, extra: &str) -> Result<(), String> {
     use windows_sys::Win32::UI::Shell::ShellExecuteW;
-    use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    use windows_sys::Win32::UI::WindowsAndMessaging::SW_HIDE;
 
     let script = repo_script(name)?;
     let script = script.to_string_lossy().to_string();
     let params = format!(
-        "-NoProfile -ExecutionPolicy Bypass -File \"{script}\"{}",
+        "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \"{script}\"{}",
         if extra.is_empty() {
             String::new()
         } else {
@@ -307,7 +328,7 @@ fn launch_elevated_script(name: &str, extra: &str) -> Result<(), String> {
             file.as_ptr(),
             params.as_ptr(),
             std::ptr::null(),
-            SW_SHOWNORMAL,
+            SW_HIDE,
         )
     };
     if result as isize <= 32 {
@@ -491,6 +512,18 @@ fn start_helper_client(app: &AppHandle) -> Result<(), String> {
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
+    // Portable link failures were invisible with null stderr. Keep a small
+    // append-only log next to the identity so a silent exit is diagnosable.
+    let log_path = default_data_dir().join("link-client.log");
+    if let Ok(log) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+    {
+        if let Ok(err) = log.try_clone() {
+            command.stdout(Stdio::from(log)).stderr(Stdio::from(err));
+        }
+    }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -498,7 +531,10 @@ fn start_helper_client(app: &AppHandle) -> Result<(), String> {
     }
     let child = command
         .spawn()
-        .map_err(|error| format!("start helper link: {error}"))?;
+        .map_err(|error| {
+            let _ = std::fs::write(&log_path, format!("spawn failed: {error}\n"));
+            format!("start helper link: {error}")
+        })?;
     *guard = Some(child);
     Ok(())
 }
@@ -1231,6 +1267,7 @@ fn main() {
             cloud_key_set,
             cloud_key_clear,
             service_status,
+            service_install_log,
             service_install,
             service_uninstall,
             helper_stopped,

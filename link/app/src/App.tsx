@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 type Status = {
@@ -89,6 +89,8 @@ export default function App() {
   const [apiKey, setApiKey] = useState("");
   const [boot, setBoot] = useState<Bootstrap | null>(null);
   const [service, setService] = useState<ServiceStatus | null>(null);
+  const [serviceLog, setServiceLog] = useState("");
+  const lastServiceInstalled = useRef<boolean | null>(null);
   const [helperStopped, setHelperStopped] = useState(false);
   const [helperForgotten, setHelperForgotten] = useState(false);
   const [helperLink, setHelperLink] = useState<HelperLink | null>(null);
@@ -128,6 +130,32 @@ export default function App() {
     const timer = window.setInterval(() => void loadService(), 5000);
     return () => window.clearInterval(timer);
   }, [loadService]);
+
+  useEffect(() => {
+    if (busy !== "service") {
+      setServiceLog("");
+      return;
+    }
+    const load = () => {
+      void invoke<string>("service_install_log")
+        .then(setServiceLog)
+        .catch(() => {});
+    };
+    load();
+    const timer = window.setInterval(load, 1000);
+    return () => window.clearInterval(timer);
+  }, [busy]);
+
+  useEffect(() => {
+    if (!service) return;
+    const previous = lastServiceInstalled.current;
+    lastServiceInstalled.current = service.installed;
+    if (previous === true && !service.installed && boot?.paired && !boot.helper) {
+      // Service was just removed: return the device to Portable instead of
+      // leaving Blackwell with no link.
+      void invoke("link_portable_start").catch(() => {});
+    }
+  }, [service?.installed, boot?.paired, boot?.helper]);
 
   useEffect(() => {
     void invoke<boolean>("helper_stopped")
@@ -639,6 +667,21 @@ export default function App() {
                 <dd>{service?.sessionActive ? "SYSTEM active" : "none"}</dd>
               </dl>
               {service?.error && <p className="copy">{service.error}</p>}
+              {busy === "service" && (
+                <div className="service-progress">
+                  <span className="service-spinner" aria-hidden />
+                  <div>
+                    <strong>APPLYING SERVICE CHANGE</strong>
+                    <span>Approve the UAC prompt; the installer output appears here.</span>
+                  </div>
+                  <div className="service-progress-track">
+                    <span />
+                  </div>
+                </div>
+              )}
+              {busy === "service" && serviceLog && (
+                <pre className="service-install-log">{serviceLog.slice(-2500)}</pre>
+              )}
               <div className="key-actions">
                 <button
                   className="button"
@@ -662,6 +705,7 @@ export default function App() {
           </section>
         )}
 
+        {boot?.error && <p className="banner banner-bad">{boot.error}</p>}
         {error && <p className="banner banner-bad">{error}</p>}
         {notice && <p className="banner banner-ok">{notice}</p>}
       </main>
