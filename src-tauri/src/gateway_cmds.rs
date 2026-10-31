@@ -372,11 +372,22 @@ pub async fn remote_helper_build(
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             let stdout = String::from_utf8_lossy(&output.stdout);
+            let log_path = repo_root.join("tmp/helper-build.log");
+            let combined = format!("--- stdout ---\n{stdout}\n--- stderr ---\n{stderr}\n");
+            let _ = std::fs::write(&log_path, &combined);
+            let tail: String = combined
+                .chars()
+                .rev()
+                .take(1_500)
+                .collect::<String>()
+                .chars()
+                .rev()
+                .collect();
             return Err(format!(
-                "helper build failed ({}): {}\n{}",
+                "helper build failed ({}). Full log: {}\n{}",
                 output.status,
-                stderr.trim(),
-                stdout.trim()
+                log_path.display(),
+                tail.trim()
             ));
         }
 

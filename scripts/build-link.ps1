@@ -53,14 +53,19 @@ finally {
 }
 
 # Force a rebuild so the embedded dist is refreshed even when Rust sources did
-# not change.
+# not change. A stale build-script cache has twice produced a PE carrying the
+# Blackwell Ops DEV resource and window config; clean the app package so
+# tauri-build re-reads link/app/src-tauri/tauri.conf.json.
 (Get-Item $appManifest).LastWriteTime = Get-Date
-# Also remove the previous PE: stale Cargo hardlinks have survived a resource
-# change before and left Blackwell Ops metadata in the OYM Link binary.
-$releaseApp = Join-Path $root "link/app/src-tauri/target/release/oym-link-app.exe"
-Remove-Item $releaseApp -Force -ErrorAction SilentlyContinue
+& cargo clean --release -p oym-link-app --manifest-path $appManifest
+if ($LASTEXITCODE -ne 0) { throw "cargo clean (link REL app) failed with exit $LASTEXITCODE" }
 & cargo build --locked --release --features custom-protocol --manifest-path $appManifest
 if ($LASTEXITCODE -ne 0) { throw "cargo build (link REL app) failed with exit $LASTEXITCODE" }
+$releaseApp = Join-Path $root "link/app/src-tauri/target/release/oym-link-app.exe"
+$linkVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo($releaseApp)
+if ($linkVersion.ProductName -ne "OYM Link") {
+    throw "link release PE has wrong metadata: ProductName='$($linkVersion.ProductName)' FileDescription='$($linkVersion.FileDescription)'"
+}
 
 $env:CARGO_TARGET_DIR = Join-Path $root "link/target"
 & cargo build --locked --release --manifest-path $cliManifest
