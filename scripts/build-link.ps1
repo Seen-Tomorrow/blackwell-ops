@@ -59,9 +59,11 @@ $package = Join-Path $root "tmp/link-rel-package"
 if (Test-Path $package) { Remove-Item $package -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $package | Out-Null
 Copy-Item $app (Join-Path $package "OYM Link.exe")
-Copy-Item $cli (Join-Path $package "oym-link.exe")
+$runtime = Join-Path $package "runtime"
+New-Item -ItemType Directory -Force -Path $runtime | Out-Null
+Copy-Item $cli (Join-Path $runtime "oym-link.exe")
 if (Test-Path (Join-Path $pi "pi.exe")) {
-    Copy-Item $pi (Join-Path $package "pi") -Recurse
+    Copy-Item $pi (Join-Path $runtime "pi") -Recurse
 }
 
 Write-Host ""

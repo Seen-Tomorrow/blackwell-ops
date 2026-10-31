@@ -319,6 +319,10 @@ fn find_tool(env_var: &str, repo_relative: &str, exe_relative: &str) -> Result<P
                 return Ok(candidate);
             }
         }
+        let runtime_candidate = root.join("runtime").join(exe_relative);
+        if runtime_candidate.is_file() {
+            return Ok(runtime_candidate);
+        }
     }
     Err(format!(
         "could not find {env_var} artifact (`{repo_relative}`). This exe is probably outside its package; run the NSIS helper, place the CLI/Pi next to OYM-Help.exe, or pass {env_var} explicitly"
@@ -1070,6 +1074,20 @@ fn toggle_flyout(app: &AppHandle) {
 }
 
 fn main() {
+    // The default EBWebView profile can inherit a broken ACL from an earlier
+    // install and then WebView2 creation fails with 0x8007139F. Keep the
+    // profile beside the link data instead; it is always under the user's
+    // LOCALAPPDATA and can be cleared independently of the app binaries.
+    #[cfg(windows)]
+    if std::env::var_os("WEBVIEW2_USER_DATA_FOLDER").is_none() {
+        let dir = default_data_dir().join("WebView2");
+        if std::fs::create_dir_all(&dir).is_ok() {
+            if let Ok(path) = std::fs::canonicalize(&dir) {
+                std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", path);
+            }
+        }
+    }
+
     let builder = tauri::Builder::default()
         .manage(AssistantState::default())
         .manage(HelperState::default())
