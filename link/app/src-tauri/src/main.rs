@@ -266,12 +266,14 @@ fn repo_script(name: &str) -> Result<PathBuf, String> {
         roots.push(cwd);
     }
     for root in roots {
-        let candidate = root.join("scripts").join(name);
-        if candidate.is_file() {
-            return Ok(candidate);
+        for relative in [PathBuf::from("scripts"), PathBuf::from("service")] {
+            let candidate = root.join(relative).join(name);
+            if candidate.is_file() {
+                return Ok(candidate);
+            }
         }
     }
-    Err(format!("{name} not found; this is a DEV build"))
+    Err(format!("{name} not found; reinstall the app with its service assets"))
 }
 
 #[cfg(windows)]
@@ -333,6 +335,26 @@ fn service_install() -> Result<(), String> {
     )
     .map_err(|error| format!("write service bootstrap: {error}"))?;
     let extra = format!("-Bootstrap \"{}\"", bootstrap.display());
+    let extra = if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let service_dir = dir.join("service");
+            if service_dir.join("oym-link-service.exe").is_file() {
+                format!(
+                    "{extra} -ServiceExe \"{}\" -Cli \"{}\" -PiDir \"{}\" -Xml \"{}\"",
+                    service_dir.join("oym-link-service.exe").display(),
+                    dir.join("oym-link.exe").display(),
+                    dir.join("pi").display(),
+                    service_dir.join("OymLink.xml").display(),
+                )
+            } else {
+                extra
+            }
+        } else {
+            extra
+        }
+    } else {
+        extra
+    };
     if let Err(error) = launch_elevated_script("install-oym-service.ps1", &extra) {
         let _ = std::fs::remove_file(&bootstrap);
         return Err(error);

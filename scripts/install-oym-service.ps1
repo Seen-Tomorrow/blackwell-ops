@@ -13,7 +13,11 @@
 param(
     [string] $ServiceDir = "$env:ProgramData\OYM\Link\service",
     [string] $WinSWPath = "",
-    [string] $Bootstrap = ""
+    [string] $Bootstrap = "",
+    [string] $ServiceExe = "",
+    [string] $Cli = "",
+    [string] $PiDir = "",
+    [string] $Xml = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -25,28 +29,35 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
     throw "Run this script from an elevated PowerShell (Administrator)."
 }
 
-$candidates = @(
-    (Join-Path $root "link\service\target\release\oym-link-service.exe"),
-    (Join-Path $root "link\service\target\debug\oym-link-service.exe")
-)
-$serviceExe = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-if (-not $serviceExe) {
+if (-not $ServiceExe) {
+    $candidates = @(
+        (Join-Path $root "link\service\target\release\oym-link-service.exe"),
+        (Join-Path $root "link\service\target\debug\oym-link-service.exe")
+    )
+    $ServiceExe = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+}
+if (-not $ServiceExe -or -not (Test-Path $ServiceExe)) {
     throw "oym-link-service.exe not found. Build it: cargo build --release --manifest-path link\service\Cargo.toml"
 }
-$cli = Join-Path $root "remote-client/target/release/oym-link.exe"
-$pi = Join-Path $root "tmp/blackwell-link-package/pi/pi.exe"
-if (-not (Test-Path $cli)) { throw "Missing link CLI: $cli" }
-if (-not (Test-Path $pi)) { throw "Missing Pi package: $pi" }
-
-$xml = Join-Path $root "link\service\OymLink.xml"
-if (-not (Test-Path $xml)) { throw "Missing $xml" }
+if (-not $Cli) {
+    $Cli = Join-Path $root "remote-client/target/release/oym-link.exe"
+}
+if (-not $PiDir) {
+    $PiDir = Join-Path $root "tmp/blackwell-link-package/pi"
+}
+if (-not (Test-Path $Cli)) { throw "Missing link CLI: $Cli" }
+if (-not (Test-Path (Join-Path $PiDir "pi.exe"))) { throw "Missing Pi package: $PiDir" }
+if (-not $Xml) {
+    $Xml = Join-Path $root "link\service\OymLink.xml"
+}
+if (-not (Test-Path $Xml)) { throw "Missing service XML: $Xml" }
 
 New-Item -ItemType Directory -Force -Path $ServiceDir | Out-Null
-Copy-Item $serviceExe (Join-Path $ServiceDir "oym-link-service.exe") -Force
-Copy-Item $cli (Join-Path $ServiceDir "oym-link.exe") -Force
+Copy-Item $ServiceExe (Join-Path $ServiceDir "oym-link-service.exe") -Force
+Copy-Item $Cli (Join-Path $ServiceDir "oym-link.exe") -Force
 if (Test-Path (Join-Path $ServiceDir "pi")) { Remove-Item (Join-Path $ServiceDir "pi") -Recurse -Force }
-Copy-Item (Split-Path -Parent $pi) (Join-Path $ServiceDir "pi") -Recurse
-Copy-Item $xml (Join-Path $ServiceDir "OymLink.xml") -Force
+Copy-Item $PiDir (Join-Path $ServiceDir "pi") -Recurse
+Copy-Item $Xml (Join-Path $ServiceDir "OymLink.xml") -Force
 
 # The desktop app writes the paired identity/token into a user-only bootstrap.
 # Move it into ProgramData with a SYSTEM/Administrators-only ACL before the

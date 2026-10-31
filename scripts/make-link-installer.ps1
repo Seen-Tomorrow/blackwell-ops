@@ -31,6 +31,22 @@ foreach ($required in @($app, $cli, $pi)) {
         throw "Missing REL package input: $required (run BUILD LINK REL first)"
     }
 }
+
+# Bundle the integrated-service assets so INSTALL SERVICE works from the
+# installed app, not only from the repo.
+$serviceSource = Join-Path $root "link/service/target/release/oym-link-service.exe"
+$serviceXml = Join-Path $root "link/service/OymLink.xml"
+foreach ($required in @($serviceSource, $serviceXml)) {
+    if (-not (Test-Path $required)) {
+        throw "Missing service input: $required (build link/service first)"
+    }
+}
+$serviceDir = Join-Path $package "service"
+New-Item -ItemType Directory -Force -Path $serviceDir | Out-Null
+Copy-Item $serviceSource (Join-Path $serviceDir "oym-link-service.exe") -Force
+Copy-Item $serviceXml (Join-Path $serviceDir "OymLink.xml") -Force
+Copy-Item (Join-Path $root "scripts/install-oym-service.ps1") (Join-Path $serviceDir "install-oym-service.ps1") -Force
+Copy-Item (Join-Path $root "scripts/uninstall-oym-service.ps1") (Join-Path $serviceDir "uninstall-oym-service.ps1") -Force
 if (-not $out.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) {
     throw "Refusing to write outside the repo: $out"
 }
@@ -69,6 +85,11 @@ Section "Install"
   File "$pkgEscaped\runtime\oym-link.exe"
   SetOutPath "`$INSTDIR\pi"
   File /r "$pkgEscaped\runtime\pi\*.*"
+  SetOutPath "`$INSTDIR\service"
+  File "$pkgEscaped\service\oym-link-service.exe"
+  File "$pkgEscaped\service\OymLink.xml"
+  File "$pkgEscaped\service\install-oym-service.ps1"
+  File "$pkgEscaped\service\uninstall-oym-service.ps1"
   SetOutPath "`$INSTDIR"
 
   SetShellVarContext current
