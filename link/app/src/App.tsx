@@ -572,6 +572,7 @@ export default function App() {
     );
   }
 
+  const pairingRequired = Boolean(!boot.paired && !boot.helper);
   const integrated = Boolean(service?.installed);
   const linked = integrated ? Boolean(service?.connected) : Boolean(helperLink?.linked);
   const sessionActive = integrated
@@ -628,13 +629,15 @@ export default function App() {
           >
             {theme === "light" ? "☀" : theme === "dark" ? "☾" : "◐"}
           </button>
-          <button
-            className="icon-button"
-            title="Config"
-            onClick={() => setView(view === "settings" ? "home" : "settings")}
-          >
-            ⚙
-          </button>
+          {!pairingRequired && (
+            <button
+              className="icon-button"
+              title="Config"
+              onClick={() => setView(view === "settings" ? "home" : "settings")}
+            >
+              ⚙
+            </button>
+          )}
           <button className="icon-button icon-button--close" title="Hide" onClick={hide}>
             ×
           </button>
@@ -642,7 +645,7 @@ export default function App() {
       </header>
 
       <main className="content dash-scroll">
-        {view === "home" && (
+        {view === "home" && !pairingRequired && (
           <>
             <section className={`dash-card mode-card ${integrated ? "is-integrated" : "is-portable"}`}>
               <div className="dash-card-head">
@@ -752,17 +755,20 @@ export default function App() {
           </>
         )}
 
-        {view === "pair" && (
+        {(view === "pair" || pairingRequired) && (
           <section className="card">
             <div className="card-head">
               <span className="label">PAIR THIS DEVICE</span>
-              <button className="link-button" onClick={() => setView("home")}>
-                BACK
-              </button>
+              {!pairingRequired && (
+                <button className="link-button" onClick={() => setView("home")}>
+                  BACK
+                </button>
+              )}
             </div>
             <p className="copy">
-              In OYM → REMOTE → STATUS, copy the public endpoint and click PAIR DEVICE.
-              Then enter both below.
+              This device is not paired. In OYM → REMOTE → STATUS, copy the public
+              endpoint and click PAIR DEVICE, then enter both below. The main
+              controls stay hidden until this succeeds.
             </p>
             <label className="field">
               <span>Gateway URL</span>
@@ -797,7 +803,7 @@ export default function App() {
           </section>
         )}
 
-        {view === "settings" && (
+        {view === "settings" && !pairingRequired && (
           <section className="card">
             <div className="card-head">
               <span className="label">SETTINGS</span>
@@ -977,7 +983,7 @@ export default function App() {
         {notice && <p className="banner banner-ok">{notice}</p>}
       </main>
 
-      {view === "home" && (
+      {view === "home" && !pairingRequired && (
         <div className="bottom-dock">
           <div className={`status-rail ${networkEnabled ? "" : "is-off"}`}>
             <div className="status-head">
