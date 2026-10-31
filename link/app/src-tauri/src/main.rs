@@ -510,55 +510,111 @@ fn link_restart_elevated(app: AppHandle) -> Result<(), String> {
 fn link_restart_normal(app: AppHandle) -> Result<(), String> {
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::Foundation::CloseHandle;
+        use windows_sys::Win32::Security::{
+            DuplicateTokenEx, SecurityImpersonation, TokenPrimary,
+            TOKEN_ASSIGN_PRIMARY, TOKEN_DUPLICATE, TOKEN_QUERY,
+        };
+        use windows_sys::Win32::System::Threading::{
+            CreateProcessWithTokenW, OpenProcess, OpenProcessToken, LOGON_WITH_PROFILE,
+            PROCESS_INFORMATION, PROCESS_QUERY_LIMITED_INFORMATION, STARTUPINFOW,
+        };
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            GetShellWindow, GetWindowThreadProcessId,
+        };
+
         if !link_is_elevated() {
             return Ok(());
         }
         let exe = std::env::current_exe()
-            .map_err(|error| format!("current exe: {error}"))?
-            .to_string_lossy()
-            .to_string();
-        let task = "OYM Link Restart";
-        let create = Command::new("schtasks")
-            .args([
-                "/Create",
-                "/TN",
-                task,
-                "/TR",
-                &format!("\"{exe}\""),
-                "/SC",
-                "ONCE",
-                "/ST",
-                "00:00",
-                "/RL",
-                "LIMITED",
-                "/IT",
-                "/F",
-            ])
-            .creation_flags(0x0800_0000)
-            .output()
-            .map_err(|error| format!("schedule normal restart: {error}"))?;
-        if !create.status.success() {
-            return Err(format!(
-                "could not schedule normal restart: {}",
-                String::from_utf8_lossy(&create.stderr).trim()
-            ));
+            .map_err(|error| format!("current exe: {error}"))?;
+        let exe_string = exe.to_string_lossy().to_string();
+        let parent = exe.parent().map(|path| path.to_path_buf()).unwrap_or_default();
+
+        unsafe {
+            let shell = GetShellWindow();
+            if shell.is_null() {
+                return Err("Windows shell is not available".into());
+            }
+            let mut shell_pid = 0u32;
+            GetWindowThreadProcessId(shell, &mut shell_pid);
+            if shell_pid == 0 {
+                return Err("could not resolve Windows shell process".into());
+            }
+            let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, shell_pid);
+            if process.is_null() {
+                return Err(format!(
+                    "open shell process: {}",
+                    std::io::Error::last_os_error()
+                ));
+            }
+            let mut token = std::ptr::null_mut();
+            if OpenProcessToken(
+                process,
+                TOKEN_DUPLICATE | TOKEN_ASSIGN_PRIMARY | TOKEN_QUERY,
+                &mut token,
+            ) == 0
+            {
+                CloseHandle(process);
+                return Err(format!(
+                    "open shell token: {}",
+                    std::io::Error::last_os_error()
+                ));
+            }
+            let mut primary = std::ptr::null_mut();
+            if DuplicateTokenEx(
+                token,
+                0x0200_0000, // MAXIMUM_ALLOWED
+                std::ptr::null(),
+                SecurityImpersonation,
+                TokenPrimary,
+                &mut primary,
+            ) == 0
+            {
+                CloseHandle(token);
+                CloseHandle(process);
+                return Err(format!(
+                    "duplicate shell token: {}",
+                    std::io::Error::last_os_error()
+                ));
+            }
+
+            let app_name: Vec<u16> = exe.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+            let mut command_line: Vec<u16> = format!("\"{exe_string}\"")
+                .encode_utf16()
+                .chain(std::iter::once(0))
+                .collect();
+            let current_dir: Vec<u16> = parent
+                .as_os_str()
+                .encode_wide()
+                .chain(std::iter::once(0))
+                .collect();
+            let mut startup: STARTUPINFOW = std::mem::zeroed();
+            startup.cb = std::mem::size_of::<STARTUPINFOW>() as u32;
+            let mut info: PROCESS_INFORMATION = std::mem::zeroed();
+            let created = CreateProcessWithTokenW(
+                primary,
+                LOGON_WITH_PROFILE,
+                app_name.as_ptr(),
+                command_line.as_mut_ptr(),
+                0,
+                std::ptr::null(),
+                current_dir.as_ptr(),
+                &startup,
+                &mut info,
+            );
+            let error = std::io::Error::last_os_error();
+            CloseHandle(primary);
+            CloseHandle(token);
+            CloseHandle(process);
+            if created == 0 {
+                return Err(format!("could not start normal app: {error}"));
+            }
+            CloseHandle(info.hThread);
+            CloseHandle(info.hProcess);
         }
-        let run = Command::new("schtasks")
-            .args(["/Run", "/TN", task])
-            .creation_flags(0x0800_0000)
-            .output()
-            .map_err(|error| format!("run normal restart: {error}"))?;
-        if !run.status.success() {
-            return Err(format!(
-                "could not start normal restart: {}",
-                String::from_utf8_lossy(&run.stderr).trim()
-            ));
-        }
-        let _ = Command::new("schtasks")
-            .args(["/Delete", "/TN", task, "/F"])
-            .creation_flags(0x0800_0000)
-            .output();
+
         let handle = app.clone();
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(700));

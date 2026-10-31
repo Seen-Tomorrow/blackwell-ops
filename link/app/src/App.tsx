@@ -635,8 +635,11 @@ export default function App() {
                 </span>
               </div>
               <div className="dash-row">
-                <span className="dash-copy">
-                  {integrated ? "SYSTEM LEVEL" : elevated ? "ADMIN LEVEL" : "USER LEVEL"}
+                <span className="dash-copy privilege-meta">
+                  <span>{integrated ? "SYSTEM LEVEL" : elevated ? "ADMIN LEVEL" : "USER LEVEL"}</span>
+                  {(integrated || elevated) && <span className="privilege-sep" />}
+                  {integrated && <span>always available, survives restarts</span>}
+                  {!integrated && elevated && <span>temporary admin, until restart</span>}
                 </span>
                 {!integrated && (
                   <button
@@ -644,7 +647,7 @@ export default function App() {
                     className="soft-button"
                     onClick={() => void (elevated ? restartNormal() : restartElevated())}
                   >
-                    {elevated ? "RESTART AS USER" : "RESTART AS ADMIN"}
+                    {elevated ? "SWITCH TO LOW" : "SWITCH TO HIGH"}
                   </button>
                 )}
               </div>
@@ -911,11 +914,12 @@ export default function App() {
                   Portable runs with your filtered user token. Restart as admin to let the local
                   and remote Pi sessions perform service-level work; Windows will ask for consent.
                 </p>
-                {!elevated && (
-                  <button className="button" onClick={() => void restartElevated()}>
-                    RESTART AS ADMIN
-                  </button>
-                )}
+                <button
+                  className="button"
+                  onClick={() => void (elevated ? restartNormal() : restartElevated())}
+                >
+                  {elevated ? "SWITCH TO LOW" : "SWITCH TO HIGH"}
+                </button>
               </div>
             )}
             <p className="tagline">OYM {status.version} · BUILD {__LINK_BUILD__}</p>
@@ -929,28 +933,17 @@ export default function App() {
 
       {view === "home" && (
         <div className="bottom-dock">
-          <section className={`emergency ${networkEnabled ? "is-armed" : "is-off"}`}>
-            <div className="dash-card-head">
-              <span className="dash-label">REMOTE ACCESS</span>
-              <span className={`dash-value ${networkEnabled ? "is-danger" : ""}`}>
-                {networkEnabled ? "ON" : "OFF"}
-              </span>
-            </div>
-            <p className="emergency-copy">
-              {networkEnabled ? "Network access enabled." : "Network access disabled."}
-            </p>
-            <button
-              type="button"
-              className={`emergency-button ${networkEnabled ? "is-stop" : "is-enable"}`}
-              onClick={() => void toggleNetwork()}
-            >
-              <span className="emergency-led" />
-              {networkEnabled ? "STOP ALL NETWORK" : "ENABLE NETWORK"}
-            </button>
-          </section>
-
           <div className={`status-rail ${networkEnabled ? "" : "is-off"}`}>
-            <div className="status-main">{operatorLabel}</div>
+            <div className="status-head">
+              <div className="status-main">{operatorLabel}</div>
+              <button
+                type="button"
+                className={`access-toggle ${networkEnabled ? "is-stop" : "is-enable"}`}
+                onClick={() => void toggleNetwork()}
+              >
+                {networkEnabled ? "DISABLE ACCESS" : "ENABLE ACCESS"}
+              </button>
+            </div>
             <div className="status-action">{actionLabel}</div>
             {serviceApply && (
               <div className="status-progress">
