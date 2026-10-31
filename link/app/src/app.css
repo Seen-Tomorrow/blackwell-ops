@@ -1504,3 +1504,29 @@ body {
 :root[data-oym-theme="dark"] .privilege-card.is-high .dash-value {
   color: #eafff3;
 }
+
+/* DARK: settings wells and the unselected assistant choice are true black. */
+:root[data-oym-theme="dark"] .input,
+:root[data-oym-theme="dark"] .select,
+:root[data-oym-theme="dark"] textarea {
+  background-color: #000000;
+  color: var(--text);
+  border-color: #3e3e4a;
+}
+
+:root[data-oym-theme="dark"] .input:focus,
+:root[data-oym-theme="dark"] .select:focus,
+:root[data-oym-theme="dark"] textarea:focus {
+  border-color: var(--accent);
+}
+
+:root[data-oym-theme="dark"] .input::placeholder,
+:root[data-oym-theme="dark"] textarea::placeholder {
+  color: #77727e;
+}
+
+:root[data-oym-theme="dark"] .assistant-switch .mode-option:not(.is-active) {
+  background-color: #000000;
+  border-color: #3e3e4a;
+  color: #c7c1cd;
+}
