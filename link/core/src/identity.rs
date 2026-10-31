@@ -46,8 +46,17 @@ fn token_entry(device_id: &str) -> Result<keyring::Entry, String> {
     keyring::Entry::new(SERVICE, device_id).map_err(|error| format!("credential entry: {error}"))
 }
 
+fn token_file_path() -> Option<PathBuf> {
+    std::env::var_os("OYM_DEVICE_TOKEN_FILE").map(PathBuf::from)
+}
+
 #[cfg(windows)]
 pub fn load_token(identity: &Identity) -> Result<String, String> {
+    if let Some(path) = token_file_path() {
+        return std::fs::read_to_string(path)
+            .map(|token| token.trim().to_string())
+            .map_err(|error| format!("read device token file: {error}"));
+    }
     token_entry(&identity.device_id)?
         .get_password()
         .map_err(|error| format!("read device token: {error}"))
@@ -55,6 +64,13 @@ pub fn load_token(identity: &Identity) -> Result<String, String> {
 
 #[cfg(windows)]
 pub fn save_token(device_id: &str, token: &str) -> Result<(), String> {
+    if let Some(path) = token_file_path() {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|error| format!("create token dir: {error}"))?;
+        }
+        return std::fs::write(path, token).map_err(|error| format!("write device token file: {error}"));
+    }
     token_entry(device_id)?
         .set_password(token)
         .map_err(|error| format!("store device token: {error}"))
@@ -62,6 +78,10 @@ pub fn save_token(device_id: &str, token: &str) -> Result<(), String> {
 
 #[cfg(windows)]
 pub fn delete_token(identity: &Identity) -> Result<(), String> {
+    if let Some(path) = token_file_path() {
+        let _ = std::fs::remove_file(path);
+        return Ok(());
+    }
     match token_entry(&identity.device_id)?.delete_credential() {
         Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
         Err(error) => Err(format!("delete device token: {error}")),

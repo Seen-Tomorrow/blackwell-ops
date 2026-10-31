@@ -9,6 +9,9 @@ description = "OYM Link integrated service host (skeleton)"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading"] }
+
 [[bin]]
 name = "oym-link-service"
 path = "src/main.rs"

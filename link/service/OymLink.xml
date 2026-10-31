@@ -1,7 +1,7 @@
 <service>
   <id>OymLink</id>
   <name>OYM Link Service</name>
-  <description>OYM Link integrated-mode service (skeleton: heartbeat only).</description>
+  <description>OYM Link integrated-mode link host (LocalSystem).</description>
   <executable>%BASE%\oym-link-service.exe</executable>
   <arguments>--run</arguments>
   <workingdirectory>%BASE%</workingdirectory>

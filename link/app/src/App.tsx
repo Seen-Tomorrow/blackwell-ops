@@ -39,6 +39,9 @@ type ServiceStatus = {
   installed: boolean;
   running: boolean;
   pid: number | null;
+  childPid: number | null;
+  connected: boolean;
+  sessionActive: boolean;
   updatedAt: number | null;
   error: string | null;
 };
@@ -594,29 +597,36 @@ export default function App() {
             <button className="button" disabled={busy === "settings"} onClick={() => void saveSettings()}>
               {busy === "settings" ? "SAVING…" : "SAVE"}
             </button>
-            <p className="copy">Integrated mode, service install and transcripts arrive in the next slices.</p>
+            <p className="copy">Portable runtime is active; the Integrated service can host the link below.</p>
 
             <div className="service-block">
               <div className="card-head">
                 <span className="label">INTEGRATED SERVICE</span>
-                <span className={`state ${service?.running ? "is-on" : "is-off"}`}>
+                <span className={`state ${service?.connected ? "is-on" : "is-off"}`}>
                   <span className="dot" />
-                  {service?.running
-                    ? "RUNNING"
-                    : service?.installed
-                      ? "STOPPED"
-                      : "NOT INSTALLED"}
+                  {service?.connected
+                    ? "ONLINE"
+                    : service?.running
+                      ? "RUNNING"
+                      : service?.installed
+                        ? "STOPPED"
+                        : "NOT INSTALLED"}
                 </span>
               </div>
               <p className="copy">
-                Optional LocalSystem service. This skeleton writes a heartbeat and is the base for
-                SYSTEM remote sessions; the terminal still runs in Portable mode.
+                Runs the link as LocalSystem. Closing the app leaves this device reachable; the
+                service-owned session is SYSTEM. Paired Portable identity is handed over once at
+                install.
               </p>
               <dl className="kv">
                 <dt>Service</dt>
                 <dd>{service?.installed ? "OymLink" : "not installed"}</dd>
+                <dt>Link</dt>
+                <dd>{service?.connected ? "connected" : "not connected"}</dd>
                 <dt>PID</dt>
-                <dd>{service?.pid ?? "—"}</dd>
+                <dd>{service?.childPid ?? service?.pid ?? "—"}</dd>
+                <dt>Session</dt>
+                <dd>{service?.sessionActive ? "SYSTEM active" : "none"}</dd>
               </dl>
               {service?.error && <p className="copy">{service.error}</p>}
               <div className="key-actions">

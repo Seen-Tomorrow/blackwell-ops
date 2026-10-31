@@ -171,6 +171,9 @@ struct ServiceStatusView {
     installed: bool,
     running: bool,
     pid: Option<u32>,
+    child_pid: Option<u32>,
+    connected: bool,
+    session_active: bool,
     updated_at: Option<u64>,
     error: Option<String>,
 }
@@ -197,6 +200,9 @@ fn service_status() -> ServiceStatusView {
         installed,
         running: false,
         pid: None,
+        child_pid: None,
+        connected: false,
+        session_active: false,
         updated_at: None,
         error: None,
     };
@@ -221,7 +227,23 @@ fn service_status() -> ServiceStatusView {
         }
     };
     view.pid = value.get("pid").and_then(Value::as_u64).map(|pid| pid as u32);
+    view.child_pid = value
+        .get("childPid")
+        .and_then(Value::as_u64)
+        .map(|pid| pid as u32);
+    view.connected = value
+        .get("connected")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    view.session_active = value
+        .get("sessionActive")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
     view.updated_at = value.get("updatedAt").and_then(Value::as_u64);
+    view.error = value
+        .get("error")
+        .and_then(Value::as_str)
+        .map(str::to_string);
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_secs())
@@ -253,13 +275,20 @@ fn repo_script(name: &str) -> Result<PathBuf, String> {
 }
 
 #[cfg(windows)]
-fn launch_elevated_script(name: &str) -> Result<(), String> {
+fn launch_elevated_script(name: &str, extra: &str) -> Result<(), String> {
     use windows_sys::Win32::UI::Shell::ShellExecuteW;
     use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
     let script = repo_script(name)?;
     let script = script.to_string_lossy().to_string();
-    let params = format!("-NoProfile -ExecutionPolicy Bypass -File \"{script}\"");
+    let params = format!(
+        "-NoProfile -ExecutionPolicy Bypass -File \"{script}\"{}",
+        if extra.is_empty() {
+            String::new()
+        } else {
+            format!(" {extra}")
+        }
+    );
     let verb: Vec<u16> = "runas\0".encode_utf16().collect();
     let file: Vec<u16> = "pwsh.exe\0".encode_utf16().collect();
     let params: Vec<u16> = params.encode_utf16().chain(std::iter::once(0)).collect();
@@ -280,18 +309,40 @@ fn launch_elevated_script(name: &str) -> Result<(), String> {
 }
 
 #[cfg(not(windows))]
-fn launch_elevated_script(_name: &str) -> Result<(), String> {
+fn launch_elevated_script(_name: &str, _extra: &str) -> Result<(), String> {
     Err("service install is Windows-only".into())
 }
 
 #[tauri::command]
 fn service_install() -> Result<(), String> {
-    launch_elevated_script("install-oym-service.ps1")
+    let data_dir = default_data_dir();
+    let identity = load_identity(&data_dir).ok_or_else(|| {
+        "Pair this device in Portable mode first; the service uses its device identity.".to_string()
+    })?;
+    let token = load_token(&identity)?;
+    let bootstrap = data_dir.join("service-bootstrap.json");
+    let payload = serde_json::json!({
+        "identity": identity,
+        "token": token,
+    });
+    std::fs::create_dir_all(&data_dir)
+        .map_err(|error| format!("create data dir: {error}"))?;
+    std::fs::write(
+        &bootstrap,
+        serde_json::to_string_pretty(&payload).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| format!("write service bootstrap: {error}"))?;
+    let extra = format!("-Bootstrap \"{}\"", bootstrap.display());
+    if let Err(error) = launch_elevated_script("install-oym-service.ps1", &extra) {
+        let _ = std::fs::remove_file(&bootstrap);
+        return Err(error);
+    }
+    Ok(())
 }
 
 #[tauri::command]
 fn service_uninstall() -> Result<(), String> {
-    launch_elevated_script("uninstall-oym-service.ps1")
+    launch_elevated_script("uninstall-oym-service.ps1", "")
 }
 
 /// Find a dev/packaged artifact by walking up from the app exe (works from
