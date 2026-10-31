@@ -507,7 +507,7 @@ pub async fn remote_link_build_start(profile: String) -> Result<(), String> {
     let status_s = status.to_string_lossy().replace('\'', "''");
     let log_s = log.to_string_lossy().replace('\'', "''");
     let launcher = format!(
-        "foreach($n in @('TAURI_CONFIG','TAURI_ANDROID_PACKAGE_NAME','TAURI_ANDROID_PACKAGE_NAME_PREFIX','TAURI_DEV_HOST')){{ Remove-Item \"Env:$n\" -ErrorAction SilentlyContinue }};          $env:NODE_ENV='production';          $wd='{root_s}';          $p=Start-Process -FilePath powershell.exe -WorkingDirectory $wd          -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File','{runner_s}','-Profile','{profile}','-StatusFile','{status_s}','-LogFile','{log_s}')          -WindowStyle Normal -PassThru;          if($null -eq $p){{ exit 1 }}; Write-Output $p.Id"
+        "foreach($n in @('TAURI_CONFIG','TAURI_ANDROID_PACKAGE_NAME','TAURI_ANDROID_PACKAGE_NAME_PREFIX','TAURI_DEV_HOST')){{ Remove-Item \"Env:$n\" -ErrorAction SilentlyContinue }};          $env:NODE_ENV='production';          $wd='{root_s}';          $p=Start-Process -FilePath pwsh.exe -WorkingDirectory $wd          -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File','{runner_s}','-Profile','{profile}','-StatusFile','{status_s}','-LogFile','{log_s}')          -WindowStyle Normal -PassThru;          if($null -eq $p){{ exit 1 }}; Write-Output $p.Id"
     );
 
     let output = tauri::async_runtime::spawn_blocking(move || {
