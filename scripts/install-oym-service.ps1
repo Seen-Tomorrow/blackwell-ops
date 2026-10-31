@@ -53,6 +53,20 @@ if (-not $Xml) {
 if (-not (Test-Path $Xml)) { throw "Missing service XML: $Xml" }
 
 New-Item -ItemType Directory -Force -Path $ServiceDir | Out-Null
+# Stop/uninstall the old service before copying: Windows locks the running
+# service exe, and the previous order silently left the old binary in place.
+$existingWrapper = Join-Path $ServiceDir "OymLink.exe"
+if (Test-Path $existingWrapper) {
+    Push-Location $ServiceDir
+    try {
+        & $existingWrapper stop 2>$null | Out-Null
+        & $existingWrapper uninstall 2>$null | Out-Null
+    }
+    finally {
+        Pop-Location
+    }
+    Start-Sleep -Seconds 2
+}
 Copy-Item $ServiceExe (Join-Path $ServiceDir "oym-link-service.exe") -Force
 Copy-Item $Cli (Join-Path $ServiceDir "oym-link.exe") -Force
 if (Test-Path (Join-Path $ServiceDir "pi")) { Remove-Item (Join-Path $ServiceDir "pi") -Recurse -Force }

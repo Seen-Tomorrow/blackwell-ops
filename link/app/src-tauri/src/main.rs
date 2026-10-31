@@ -1151,8 +1151,12 @@ fn show_flyout(app: &AppHandle) {
     // once the window has settled so it cannot reopen centered.
     let delayed = window.clone();
     std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(250));
-        place_bottom_right(&delayed);
+        // Give Tauri/Windows time to apply their own initial placement, then
+        // keep correcting the corner for a moment.
+        for _ in 0..8 {
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            place_bottom_right(&delayed);
+        }
     });
 }
 
@@ -1170,8 +1174,10 @@ fn toggle_flyout(app: &AppHandle) {
         let _ = window.set_focus();
         let delayed = window.clone();
         std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(250));
-            place_bottom_right(&delayed);
+            for _ in 0..8 {
+                std::thread::sleep(std::time::Duration::from_millis(150));
+                place_bottom_right(&delayed);
+            }
         });
     }
 }

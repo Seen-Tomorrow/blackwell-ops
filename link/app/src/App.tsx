@@ -316,6 +316,10 @@ export default function App() {
     try {
       await invoke("service_install");
       setNotice("UAC prompt opened. Finish the elevated install, then status refreshes.");
+      window.setTimeout(() => {
+        void loadService();
+        setNotice(null);
+      }, 12000);
       window.setTimeout(() => void loadService(), 4000);
     } catch (e) {
       setError(typeof e === "string" ? e : String(e));
@@ -659,7 +663,7 @@ export default function App() {
       </main>
 
       <footer className="footer">
-        <span>OYM {status.version}</span>
+        <span>OYM {status.version} · BUILD {__LINK_BUILD__}</span>
         <div className="footer-actions">
           <button className="link-button" onClick={() => setView("settings")}>
             SETTINGS
