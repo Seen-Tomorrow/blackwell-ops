@@ -595,7 +595,7 @@ export default function App() {
           >
             ⚙
           </button>
-          <button className="icon-button" title="Hide" onClick={hide}>
+          <button className="icon-button icon-button--close" title="Hide" onClick={hide}>
             ×
           </button>
         </div>

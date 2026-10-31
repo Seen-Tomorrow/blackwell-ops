@@ -1099,3 +1099,230 @@ body {
   --ok: #64e6a0;
   --danger: #ff7a88;
 }
+
+/* ── Blackwell SLATE / ARCTIC industrial surfaces ───────────────────── */
+:root[data-oym-theme="dark"] {
+  --bg: #080808;
+  --panel: #1a1a1e;
+  --panel-2: #121218;
+  --border: #2e2e36;
+  --text: #d8d0d0;
+  --muted: #9a96a2;
+  --accent: #c8c8d0;
+  --accent-dim: rgba(200, 200, 210, 0.12);
+  --ok: #7ee0a4;
+  --danger: #ff6b6b;
+  --state-green: #7ee0a4;
+  --state-amber: #e6c86e;
+  --bezel-edge-hi: rgba(210, 210, 220, 0.12);
+  --bezel-grain: rgba(255, 255, 255, 0.03);
+  --bezel-dot-shade: rgba(0, 0, 0, 0.16);
+  --bezel-bottom-shade: rgba(0, 0, 0, 0.26);
+  --bezel-face-gradient: none;
+}
+
+:root[data-oym-theme="light"] {
+  --bg: #e8eef4;
+  --panel: #f8fafc;
+  --panel-2: #dbe7f2;
+  --border: #b9cadb;
+  --text: #0b1220;
+  --muted: #5b6b7c;
+  --accent: #0ea5e9;
+  --accent-dim: rgba(14, 165, 233, 0.14);
+  --ok: #047857;
+  --danger: #b83242;
+  --state-green: #047857;
+  --state-amber: #b45309;
+  --bezel-edge-hi: rgba(255, 255, 255, 0.72);
+  --bezel-grain: rgba(80, 100, 120, 0.08);
+  --bezel-dot-shade: rgba(100, 120, 140, 0.05);
+  --bezel-bottom-shade: color-mix(in srgb, #64748b 7%, transparent);
+  --bezel-face-gradient: linear-gradient(168deg, #d8e2ec 0%, #c8d6e4 20%, #b4c4d4 46%, #c2d0de 70%, #dce6f0 100%);
+}
+
+:root[data-oym-theme="dark"],
+:root[data-oym-theme="light"] {
+  --panel-texture:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--bezel-edge-hi) 20%, transparent) 0%,
+      transparent 14%,
+      transparent 86%,
+      var(--bezel-bottom-shade) 100%
+    ),
+    radial-gradient(
+      circle,
+      color-mix(in srgb, var(--bezel-grain) 110%, transparent) 0.55px,
+      transparent 0.65px
+    )
+      0 0 / 3px 3px,
+    radial-gradient(
+      circle,
+      var(--bezel-dot-shade) 0.4px,
+      transparent 0.5px
+    )
+      1.5px 1.5px / 3px 3px;
+}
+
+.app {
+  background: var(--bg);
+}
+
+.titlebar,
+.status-rail,
+.dash-footer,
+.bottom-dock {
+  background-color: var(--panel);
+  background-image: var(--panel-texture), var(--bezel-face-gradient);
+}
+
+.titlebar {
+  border-bottom-color: var(--border);
+}
+
+.dash-card,
+.card {
+  background-color: var(--panel);
+  background-image: var(--panel-texture), var(--bezel-face-gradient);
+  border-color: var(--border);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--bezel-edge-hi) 45%, transparent),
+    0 1px 2px color-mix(in srgb, #000 18%, transparent);
+}
+
+.mode-card.is-portable {
+  background-color: color-mix(in srgb, var(--state-amber) 9%, var(--panel));
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--state-amber) 7%, transparent), transparent),
+    var(--panel-texture),
+    var(--bezel-face-gradient);
+}
+
+.mode-card.is-integrated {
+  background-color: color-mix(in srgb, var(--state-green) 9%, var(--panel));
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--state-green) 7%, transparent), transparent),
+    var(--panel-texture),
+    var(--bezel-face-gradient);
+}
+
+.privilege-card.is-low {
+  background-color: color-mix(in srgb, var(--state-amber) 9%, var(--panel));
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--state-amber) 7%, transparent), transparent),
+    var(--panel-texture),
+    var(--bezel-face-gradient);
+}
+
+.privilege-card.is-high {
+  background-color: color-mix(in srgb, var(--state-green) 9%, var(--panel));
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--state-green) 7%, transparent), transparent),
+    var(--panel-texture),
+    var(--bezel-face-gradient);
+}
+
+.mode-option,
+.soft-button,
+.access-toggle,
+.input,
+.select,
+.segment {
+  background-color: var(--panel-2);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.dash-label,
+.footer-name,
+.dash-copy,
+.status-action {
+  color: var(--muted);
+}
+
+.footer-statuses {
+  min-height: 30px;
+}
+
+.icon-button--close {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  font-size: 19px;
+  line-height: 1;
+}
+
+/* Stronger SLATE bevel + brushed grain (the 3 px sandblast was too fine at 125% scale). */
+:root[data-oym-theme="dark"] {
+  --panel: #1b1b20;
+  --panel-2: #111115;
+  --border: #3e3e4a;
+  --text: #f0ecec;
+  --muted: #b9b4c0;
+  --bezel-edge-hi: rgba(230, 230, 240, 0.18);
+  --bezel-grain: rgba(255, 255, 255, 0.045);
+  --bezel-dot-shade: rgba(0, 0, 0, 0.18);
+}
+
+:root[data-oym-theme="dark"],
+:root[data-oym-theme="light"] {
+  --panel-texture:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--bezel-edge-hi) 38%, transparent) 0%,
+      transparent 10%,
+      transparent 88%,
+      var(--bezel-bottom-shade) 100%
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 2px,
+      color-mix(in srgb, var(--bezel-grain) 65%, transparent) 2px 3px
+    ),
+    radial-gradient(
+      circle,
+      color-mix(in srgb, var(--bezel-grain) 110%, transparent) 0.55px,
+      transparent 0.65px
+    )
+      0 0 / 3px 3px,
+    radial-gradient(
+      circle,
+      var(--bezel-dot-shade) 0.4px,
+      transparent 0.5px
+    )
+      1.5px 1.5px / 3px 3px;
+}
+
+.dash-card,
+.card {
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--bezel-edge-hi) 65%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--bezel-edge-hi) 18%, transparent),
+    0 2px 6px color-mix(in srgb, #000 30%, transparent);
+}
+
+.header-actions .icon-button--close {
+  width: 28px;
+  height: 28px;
+  font-size: 20px;
+  line-height: 1;
+}
+
+/* Make the brushed grain legible at 125% WebView scaling, and match the close hit area. */
+:root[data-oym-theme="dark"] {
+  --panel: #1d1d22;
+  --bezel-grain: rgba(255, 255, 255, 0.07);
+  --bezel-dot-shade: rgba(0, 0, 0, 0.2);
+}
+
+:root[data-oym-theme="light"] {
+  --bezel-grain: rgba(80, 100, 120, 0.12);
+  --bezel-dot-shade: rgba(100, 120, 140, 0.075);
+}
+
+.header-actions .icon-button--close {
+  font-size: 22px;
+  margin-top: -1px;
+}
