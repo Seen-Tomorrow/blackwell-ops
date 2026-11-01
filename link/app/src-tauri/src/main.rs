@@ -664,10 +664,6 @@ fn write_network_state(desired: bool, applied: bool, link: &str, session: &str) 
     }
 }
 
-#[tauri::command]
-fn link_network_status() -> bool {
-    !network_disabled()
-}
 
 #[tauri::command]
 fn link_network_state() -> NetworkStateView {
@@ -2167,7 +2163,6 @@ fn main() {
             helper_close,
             helper_forget,
             link_portable_start,
-            link_network_status,
             link_network_state,
             link_network_set,
             link_cloud_status,
