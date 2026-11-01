@@ -98,6 +98,7 @@ export default function App() {
   const [gateway, setGateway] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [boot, setBoot] = useState<Bootstrap | null>(null);
+  const [authRevoked, setAuthRevoked] = useState(false);
   const [service, setService] = useState<ServiceStatus | null>(null);
   const [serviceLog, setServiceLog] = useState("");
   const [serviceApply, setServiceApply] = useState<"install" | "uninstall" | null>(null);
@@ -281,6 +282,21 @@ export default function App() {
   }, [boot?.paired]);
 
   useEffect(() => {
+    if (!boot?.paired || boot.helper || service?.installed) {
+      setAuthRevoked(false);
+      return;
+    }
+    const check = () => {
+      void invoke<boolean>("link_auth_error")
+        .then(setAuthRevoked)
+        .catch(() => {});
+    };
+    check();
+    const timer = window.setInterval(check, 3000);
+    return () => window.clearInterval(timer);
+  }, [boot?.paired, boot?.helper, service?.installed]);
+
+  useEffect(() => {
     if (boot && !boot.paired && !boot.helper) setView("pair");
   }, [boot?.paired, boot?.helper]);
 
@@ -363,18 +379,33 @@ export default function App() {
     void invoke("link_hide").catch(() => {});
   }, []);
 
+  const openPair = useCallback(() => {
+    setGateway(settings.gatewayUrl || status.gateway || "");
+    setError(null);
+    setNotice(null);
+    setView("pair");
+  }, [settings.gatewayUrl, status.gateway]);
+
   const pair = useCallback(async () => {
     setError(null);
     setNotice(null);
     setBusy("pair");
     try {
+      await invoke("helper_stop").catch(() => {});
       const next = await invoke<Status>("link_pair", {
         code: code.trim(),
         server: gateway.trim(),
       });
       setStatus(next);
       setSettings((current) => ({ ...current, gatewayUrl: gateway.trim() }));
-      setNotice(next.connected ? "Paired and online." : "Paired. The gateway is not reachable yet.");
+      await invoke("link_auth_reset").catch(() => {});
+      setAuthRevoked(false);
+      if (service?.installed) {
+        setNotice("Paired. Reinstall the integrated service to use the new identity.");
+      } else {
+        await invoke("link_portable_start").catch(() => {});
+        setNotice(next.connected ? "Paired and online." : "Paired. The gateway is not reachable yet.");
+      }
       setCode("");
       setView("home");
     } catch (e) {
@@ -382,7 +413,7 @@ export default function App() {
     } finally {
       setBusy(null);
     }
-  }, [code, gateway, refresh]);
+  }, [code, gateway, refresh, service?.installed]);
 
   const startAssistant = useCallback(async (selected: "private" | "cloud" = provider) => {
     setError(null);
@@ -572,7 +603,7 @@ export default function App() {
     );
   }
 
-  const pairingRequired = Boolean(!boot.paired && !boot.helper);
+  const pairingRequired = Boolean((!boot.paired || authRevoked) && !boot.helper);
   const integrated = Boolean(service?.installed);
   const linked = integrated ? Boolean(service?.connected) : Boolean(helperLink?.linked);
   const sessionActive = integrated
@@ -659,6 +690,7 @@ export default function App() {
                   disabled={serviceApply !== null}
                   onClick={() => {
                     if (integrated) setPendingMode("portable");
+                    else setNotice("Already running in Portable mode.");
                   }}
                 >
                   PORTABLE
@@ -669,6 +701,7 @@ export default function App() {
                   disabled={serviceApply !== null}
                   onClick={() => {
                     if (!integrated) setPendingMode("integrated");
+                    else setNotice("Already running in Integrated mode.");
                   }}
                 >
                   INTEGRATED
@@ -765,6 +798,11 @@ export default function App() {
                 </button>
               )}
             </div>
+            {authRevoked && (
+              <p className="banner banner-bad">
+                Device access was revoked. Enter a new pairing code to reconnect.
+              </p>
+            )}
             <label className="field">
               <span>Gateway URL</span>
               <input
@@ -813,6 +851,9 @@ export default function App() {
                 onChange={(e) => setSettings({ ...settings, gatewayUrl: e.target.value })}
               />
             </label>
+            <button className="link-button" onClick={openPair}>
+              REPAIR DEVICE
+            </button>
             <label className="field">
               <span>Device name</span>
               <input
@@ -981,13 +1022,6 @@ export default function App() {
           <div className={`status-rail ${networkEnabled ? "" : "is-off"}`}>
             <div className="status-head">
               <div className="status-main">{operatorLabel}</div>
-              <button
-                type="button"
-                className={`access-toggle ${networkEnabled ? "is-stop" : "is-enable"}`}
-                onClick={() => void toggleNetwork()}
-              >
-                {networkEnabled ? "DISABLE ACCESS" : "ENABLE ACCESS"}
-              </button>
             </div>
             <div className="status-action">{actionLabel}</div>
             {serviceApply && (
@@ -995,6 +1029,13 @@ export default function App() {
                 <span />
               </div>
             )}
+            <button
+              type="button"
+              className={`access-toggle access-toggle--full ${networkEnabled ? "is-stop" : "is-enable"}`}
+              onClick={() => void toggleNetwork()}
+            >
+              {networkEnabled ? "DISABLE ACCESS" : "ENABLE ACCESS"}
+            </button>
           </div>
 
           <footer className="dash-footer">

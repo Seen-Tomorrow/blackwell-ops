@@ -654,6 +654,40 @@ fn link_cloud_status() -> String {
     }
 }
 
+fn auth_error_in(path: &std::path::Path) -> bool {
+    std::fs::read_to_string(path)
+        .map(|text| text.contains("401 Unauthorized") || text.contains("HTTP error: 401"))
+        .unwrap_or(false)
+}
+
+#[tauri::command]
+fn link_auth_error() -> bool {
+    if auth_error_in(&default_data_dir().join("link-client.log")) {
+        return true;
+    }
+    std::env::var_os("PROGRAMDATA")
+        .map(|dir| {
+            PathBuf::from(dir)
+                .join("OYM")
+                .join("Link")
+                .join("service-child.log")
+        })
+        .map(|path| auth_error_in(&path))
+        .unwrap_or(false)
+}
+
+#[tauri::command]
+fn link_auth_reset() {
+    let _ = std::fs::write(default_data_dir().join("link-client.log"), "");
+    if let Some(dir) = std::env::var_os("PROGRAMDATA") {
+        let path = PathBuf::from(dir)
+            .join("OYM")
+            .join("Link")
+            .join("service-child.log");
+        let _ = std::fs::write(path, "");
+    }
+}
+
 #[tauri::command]
 fn service_action_status() -> String {
     let Some(program_data) = std::env::var_os("PROGRAMDATA") else {
@@ -1859,6 +1893,8 @@ fn main() {
             link_network_status,
             link_network_set,
             link_cloud_status,
+            link_auth_error,
+            link_auth_reset,
             service_action_status,
             link_is_elevated,
             link_update_check,
