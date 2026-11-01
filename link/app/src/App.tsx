@@ -85,7 +85,7 @@ const DEFAULT_SETTINGS: Settings = {
 type SyncSnapshot = {
   at: number;
   integrated: boolean;
-  auth: string | null;
+  auth: { state?: string; at?: number } | null;
   network: {
     desired?: boolean;
     applied?: boolean;
@@ -1132,8 +1132,8 @@ export default function App() {
                 <div className="sync-rows">
                   <div className="sync-row">
                     <span>AUTH</span>
-                    <strong>{syncSnapshot.auth ?? "MISSING"}</strong>
-                    <em>—</em>
+                    <strong>{syncSnapshot.auth?.state ?? "MISSING"}</strong>
+                    <em>{syncAge(syncSnapshot.at, syncSnapshot.auth?.at)}</em>
                   </div>
                   <div className="sync-row">
                     <span>NETWORK</span>
@@ -1155,7 +1155,7 @@ export default function App() {
                             : "OFFLINE"
                         : "MISSING"}
                     </strong>
-                    <em>{syncAge(syncSnapshot.at, syncSnapshot.session?.lastActivityAt)}</em>
+                    <em>{syncAge(syncSnapshot.at, syncSnapshot.session?.lastActivityAt ?? syncSnapshot.session?.updatedAt)}</em>
                   </div>
                   <div className="sync-row">
                     <span>UPDATE</span>

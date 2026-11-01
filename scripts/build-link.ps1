@@ -23,6 +23,7 @@ $cliManifest = Join-Path $root "link/Cargo.toml"
 if ($Profile -eq "installer") {
     & $PSCommandPath -Profile rel
     if (-not $?) { throw "REL build failed; installer not built" }
+    & cargo clean -p oym-link-service --release --manifest-path (Join-Path $root "link/service/Cargo.toml")
     & cargo build --release --locked --manifest-path (Join-Path $root "link/service/Cargo.toml")
     if ($LASTEXITCODE -ne 0) { throw "service build failed with exit $LASTEXITCODE" }
     $installer = Join-Path $root "tmp/OYM-Link-Setup.exe"

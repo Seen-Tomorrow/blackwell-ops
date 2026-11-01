@@ -884,10 +884,27 @@ fn link_sync_snapshot() -> Value {
     let auth = if integrated {
         service_status
             .as_ref()
-            .and_then(|value| value.get("authState").cloned())
-            .or_else(|| local_auth.as_ref().and_then(|value| value.get("state").cloned()))
+            .and_then(|value| value.get("authState").map(|state| {
+                json!({
+                    "state": state,
+                    "at": value.get("authAt").cloned().unwrap_or(Value::Null),
+                })
+            }))
+            .or_else(|| {
+                local_auth.as_ref().map(|value| {
+                    json!({
+                        "state": value.get("state").cloned().unwrap_or(Value::Null),
+                        "at": value.get("at").cloned().unwrap_or(Value::Null),
+                    })
+                })
+            })
     } else {
-        local_auth.as_ref().and_then(|value| value.get("state").cloned())
+        local_auth.as_ref().map(|value| {
+            json!({
+                "state": value.get("state").cloned().unwrap_or(Value::Null),
+                "at": value.get("at").cloned().unwrap_or(Value::Null),
+            })
+        })
     };
     let network = if integrated {
         service_status

@@ -30,6 +30,7 @@ struct ServiceStatus {
     control_ack_at: u64,
     auth_state: Option<String>,
     http_status: Option<u16>,
+    auth_at: Option<u64>,
     started_at: u64,
     updated_at: u64,
     mode: &'static str,
@@ -53,14 +54,14 @@ fn data_dir() -> PathBuf {
     std::env::temp_dir().join("oym-link-service")
 }
 
-fn read_auth_state(data: &Path) -> (Option<String>, Option<u16>) {
+fn read_auth_state(data: &Path) -> (Option<String>, Option<u16>, Option<u64>) {
     let raw = match std::fs::read_to_string(data.join("auth-state.json")) {
         Ok(raw) => raw,
-        Err(_) => return (None, None),
+        Err(_) => return (None, None, None),
     };
     let value: Value = match serde_json::from_str(&raw) {
         Ok(value) => value,
-        Err(_) => return (None, None),
+        Err(_) => return (None, None, None),
     };
     (
         value.get("state").and_then(Value::as_str).map(str::to_string),
@@ -68,6 +69,7 @@ fn read_auth_state(data: &Path) -> (Option<String>, Option<u16>) {
             .get("httpStatus")
             .and_then(Value::as_u64)
             .map(|code| code as u16),
+        value.get("at").and_then(Value::as_u64),
     )
 }
 
@@ -85,6 +87,7 @@ fn write_status(
     control_ack_at: u64,
     auth_state: Option<String>,
     http_status: Option<u16>,
+    auth_at: Option<u64>,
     error: Option<String>,
 ) {
     let status = ServiceStatus {
@@ -101,6 +104,7 @@ fn write_status(
         control_ack_at,
         auth_state,
         http_status,
+        auth_at,
         started_at,
         updated_at: now(),
         mode: "integrated",
@@ -347,7 +351,7 @@ fn main() {
 
         let data = base.join("service-data");
         let (connected, session_active, session_started_at, last_activity_at) = read_link_status(&data);
-        let (auth_state, http_status) = read_auth_state(&data);
+        let (auth_state, http_status, auth_at) = read_auth_state(&data);
         if connected {
             last_error = None;
         }
@@ -371,6 +375,7 @@ fn main() {
             now(),
             auth_state,
             http_status,
+            auth_at,
             last_error.clone(),
         );
 
