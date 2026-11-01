@@ -44,6 +44,8 @@ type ServiceStatus = {
   sessionActive: boolean;
   sessionStartedAt: number | null;
   lastActivityAt: number | null;
+  bytesIn: number;
+  bytesOut: number;
   updatedAt: number | null;
   error: string | null;
 };
@@ -53,6 +55,8 @@ type HelperLink = {
   sessionActive: boolean;
   sessionStartedAt: number | null;
   lastActivityAt: number | null;
+  bytesIn: number;
+  bytesOut: number;
   updatedAt: number | null;
   error: string | null;
 };
@@ -80,6 +84,13 @@ const DEFAULT_SETTINGS: Settings = {
   cloudBaseUrl: "https://api.deepseek.com",
   cloudModel: "deepseek-flash",
   cloudKeyStored: false,
+};
+
+type TrafficRate = {
+  inBps: number;
+  outBps: number;
+  inTotal: number;
+  outTotal: number;
 };
 
 type SyncSnapshot = {
@@ -130,6 +141,21 @@ type LinkUpdateInfo = {
   publishedAt: string | null;
 };
 
+function formatRate(bps: number): string {
+  if (!Number.isFinite(bps) || bps <= 0) return "0 B/s";
+  if (bps >= 1024 * 1024) return `${(bps / (1024 * 1024)).toFixed(2)} MB/s`;
+  if (bps >= 1024) return `${(bps / 1024).toFixed(1)} KB/s`;
+  return `${Math.round(bps)} B/s`;
+}
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${Math.round(bytes)} B`;
+}
+
 function syncAge(now: number, at: number | null | undefined): string {
   if (!at) return "—";
   return `${Math.max(0, Math.round(now - at))}s`;
@@ -158,6 +184,8 @@ export default function App() {
   const [updateInfo, setUpdateInfo] = useState<LinkUpdateInfo | null>(null);
   const [updateState, setUpdateState] = useState<UpdateState | null>(null);
   const [syncSnapshot, setSyncSnapshot] = useState<SyncSnapshot | null>(null);
+  const [traffic, setTraffic] = useState<TrafficRate | null>(null);
+  const trafficRef = useRef<{ at: number; in: number; out: number } | null>(null);
   const [syncBusy, setSyncBusy] = useState(false);
   const [updateBusy, setUpdateBusy] = useState(false);
   const [theme, setTheme] = useState<"system" | "light" | "dark">(() => {
@@ -645,6 +673,25 @@ export default function App() {
       setUpdateBusy(false);
     }
   }, [updateInfo]);
+
+  useEffect(() => {
+    const source = service?.installed ? service : helperLink;
+    if (!source) return;
+    const bytesIn = source.bytesIn ?? 0;
+    const bytesOut = source.bytesOut ?? 0;
+    const now = Date.now();
+    const previous = trafficRef.current;
+    if (previous && now > previous.at) {
+      const seconds = (now - previous.at) / 1000;
+      setTraffic({
+        inBps: Math.max(0, (bytesIn - previous.in) / seconds),
+        outBps: Math.max(0, (bytesOut - previous.out) / seconds),
+        inTotal: bytesIn,
+        outTotal: bytesOut,
+      });
+    }
+    trafficRef.current = { at: now, in: bytesIn, out: bytesOut };
+  }, [service?.installed, service?.bytesIn, service?.bytesOut, helperLink?.bytesIn, helperLink?.bytesOut]);
 
   const runSyncCheck = useCallback(async () => {
     setError(null);
@@ -1181,6 +1228,19 @@ export default function App() {
                   Reads the explicit auth, network, session, update and service states together.
                 </p>
               )}
+              <div className="sync-row sync-traffic">
+                <span>BANDWIDTH</span>
+                <strong>
+                  {traffic
+                    ? `IN ${formatRate(traffic.inBps)} · OUT ${formatRate(traffic.outBps)}`
+                    : "WAITING"}
+                </strong>
+                <em>
+                  {traffic
+                    ? `${formatBytes(traffic.inTotal)} / ${formatBytes(traffic.outTotal)}`
+                    : "—"}
+                </em>
+              </div>
             </div>
             <p className="tagline">OYM {status.version} · BUILD {__LINK_BUILD__}</p>
           </section>

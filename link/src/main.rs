@@ -289,6 +289,9 @@ struct ModelHeadInfo {
     content_type: String,
 }
 
+static BYTES_IN: AtomicU64 = AtomicU64::new(0);
+static BYTES_OUT: AtomicU64 = AtomicU64::new(0);
+
 struct ProxyShared {
     outbound: mpsc::UnboundedSender<ClientMessage>,
     token: String,
@@ -1102,6 +1105,7 @@ async fn run(args: Args) -> Result<(), String> {
             let Ok(text) = serde_json::to_string(&message) else {
                 break;
             };
+            BYTES_OUT.fetch_add(text.len() as u64, Ordering::Relaxed);
             if socket_tx.send(Message::Text(text.into())).await.is_err() {
                 break;
             }
@@ -1142,6 +1146,14 @@ async fn run(args: Args) -> Result<(), String> {
 
     let mut pty: Option<PtySession> = None;
     while let Some(message) = socket_rx.next().await {
+        let inbound_len = match &message {
+            Ok(Message::Text(text)) => text.len(),
+            Ok(Message::Binary(data)) => data.len(),
+            Ok(Message::Ping(data)) | Ok(Message::Pong(data)) => data.len(),
+            Ok(Message::Close(_)) | Ok(Message::Frame(_)) => 0,
+            Err(_) => 0,
+        };
+        BYTES_IN.fetch_add(inbound_len as u64, Ordering::Relaxed);
         let message = match message {
             Ok(Message::Text(text)) => text.to_string(),
             Ok(Message::Ping(_)) | Ok(Message::Pong(_)) => continue,
@@ -1382,6 +1394,8 @@ fn write_link_status(
         "sessionActive": session_active,
         "sessionStartedAt": session_started_at,
         "lastActivityAt": last_activity_at,
+        "bytesIn": BYTES_IN.load(Ordering::Relaxed),
+        "bytesOut": BYTES_OUT.load(Ordering::Relaxed),
         "updatedAt": now,
         "pid": std::process::id(),
     });

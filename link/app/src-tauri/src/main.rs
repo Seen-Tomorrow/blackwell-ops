@@ -177,6 +177,8 @@ struct ServiceStatusView {
     session_active: bool,
     session_started_at: Option<u64>,
     last_activity_at: Option<u64>,
+    bytes_in: u64,
+    bytes_out: u64,
     updated_at: Option<u64>,
     error: Option<String>,
 }
@@ -487,6 +489,8 @@ fn service_status() -> ServiceStatusView {
         session_active: false,
         session_started_at: None,
         last_activity_at: None,
+        bytes_in: 0,
+        bytes_out: 0,
         updated_at: None,
         error: None,
     };
@@ -531,6 +535,8 @@ fn service_status() -> ServiceStatusView {
         .unwrap_or(false);
     view.session_started_at = value.get("sessionStartedAt").and_then(Value::as_u64);
     view.last_activity_at = value.get("lastActivityAt").and_then(Value::as_u64);
+    view.bytes_in = value.get("bytesIn").and_then(Value::as_u64).unwrap_or(0);
+    view.bytes_out = value.get("bytesOut").and_then(Value::as_u64).unwrap_or(0);
     view.updated_at = value.get("updatedAt").and_then(Value::as_u64);
     view.error = value
         .get("error")
@@ -1380,6 +1386,8 @@ struct HelperLinkStatus {
     session_active: bool,
     session_started_at: Option<u64>,
     last_activity_at: Option<u64>,
+    bytes_in: u64,
+    bytes_out: u64,
     updated_at: Option<u64>,
     error: Option<String>,
 }
@@ -1400,6 +1408,8 @@ fn helper_link_status() -> HelperLinkStatus {
         session_active: false,
         session_started_at: None,
         last_activity_at: None,
+        bytes_in: 0,
+        bytes_out: 0,
         updated_at: None,
         error: None,
     };
@@ -1432,6 +1442,8 @@ fn helper_link_status() -> HelperLinkStatus {
         status.linked && value.get("sessionActive").and_then(Value::as_bool).unwrap_or(false);
     status.session_started_at = value.get("sessionStartedAt").and_then(Value::as_u64);
     status.last_activity_at = value.get("lastActivityAt").and_then(Value::as_u64);
+    status.bytes_in = value.get("bytesIn").and_then(Value::as_u64).unwrap_or(0);
+    status.bytes_out = value.get("bytesOut").and_then(Value::as_u64).unwrap_or(0);
     status
 }
 
