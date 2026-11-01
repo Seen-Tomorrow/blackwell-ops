@@ -971,7 +971,7 @@ fn run_majestic_step(app: &tauri::AppHandle, mode_args: &[&str]) -> Result<(), S
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-    let output = std::process::Command::new("powershell.exe")
+    let output = std::process::Command::new("pwsh.exe")
         .args(&args)
         .current_dir(&root)
         .stdin(Stdio::null())
@@ -1084,7 +1084,7 @@ fn spawn_detached_chain(app: &tauri::AppHandle, action: &DevReleaseAction) -> Re
            Remove-Item \"Env:$n\" -ErrorAction SilentlyContinue }}; \
          $env:NODE_ENV='production'; \
          $wd='{root_s}'; $al=@({ps_arg_list}); \
-         $p=Start-Process -FilePath powershell.exe -WorkingDirectory $wd \
+         $p=Start-Process -FilePath pwsh.exe -WorkingDirectory $wd \
          -ArgumentList $al -WindowStyle Normal -PassThru; \
          if($null -eq $p){{ exit 1 }}; Write-Output $p.Id"
     );
@@ -1092,7 +1092,7 @@ fn spawn_detached_chain(app: &tauri::AppHandle, action: &DevReleaseAction) -> Re
     let mut child_pid: u32 = 0;
     let mut spawned = false;
 
-    match std::process::Command::new("powershell.exe")
+    match std::process::Command::new("pwsh.exe")
         .args([
             "-NoProfile",
             "-NonInteractive",
@@ -1145,7 +1145,7 @@ fn spawn_detached_chain(app: &tauri::AppHandle, action: &DevReleaseAction) -> Re
             "/C".into(),
             "start".into(),
             "".into(),
-            "powershell.exe".into(),
+            "pwsh.exe".into(),
             "-NoProfile".into(),
             "-ExecutionPolicy".into(),
             "Bypass".into(),
@@ -1185,7 +1185,7 @@ fn spawn_detached_chain(app: &tauri::AppHandle, action: &DevReleaseAction) -> Re
 
     // Last resort: CREATE_NEW_CONSOLE only (no breakaway — that was the access-denied bug).
     if !spawned {
-        let mut cmd = std::process::Command::new("powershell.exe");
+        let mut cmd = std::process::Command::new("pwsh.exe");
         cmd.args([
             "-NoProfile",
             "-ExecutionPolicy",

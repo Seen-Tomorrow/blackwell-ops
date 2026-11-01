@@ -28,8 +28,16 @@ if ($Profile -eq "installer") {
     $installer = Join-Path $root "tmp/OYM-Link-Setup.exe"
     & (Join-Path $root "scripts/make-link-installer.ps1") -OutFile $installer
     if (-not $?) { throw "NSIS installer build failed" }
+    $build = [int]((Get-Content -LiteralPath (Join-Path $root "link/app/.build_counter.json") -Raw | ConvertFrom-Json).count)
+    $manifest = [ordered]@{
+        build      = $build
+        installer  = $installer
+        builtAt    = (Get-Date).ToUniversalTime().ToString("o")
+    }
+    $manifest | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $root "tmp/link-installer-build.json") -Encoding utf8NoBOM
     Write-Host ""
     Write-Host "INSTALLER=$installer"
+    Write-Host "BUILD=$build"
     exit 0
 }
 

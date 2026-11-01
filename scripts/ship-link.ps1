@@ -1,4 +1,3 @@
-#requires -Version 7.0
 <#
 .SYNOPSIS
   Upload the newest LINK_OYM-Link-*.7z update asset to a GitHub release.
@@ -27,7 +26,7 @@ gh release view $Tag 2>$null | Out-Null
 if ($LASTEXITCODE -ne 0) {
     throw "Release $Tag does not exist. Ship the app first, then upload the link asset."
 }
-Write-Host "Uploading $Asset to $Tag…"
+Write-Host "Uploading $Asset to $Tag..."
 gh release upload $Tag $Asset --clobber
 if ($LASTEXITCODE -ne 0) {
     throw "gh release upload failed with exit $LASTEXITCODE"
