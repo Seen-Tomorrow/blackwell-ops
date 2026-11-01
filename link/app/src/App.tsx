@@ -282,7 +282,7 @@ export default function App() {
   }, [boot?.paired]);
 
   useEffect(() => {
-    if (!boot?.paired || boot.helper || service?.installed) {
+    if (!boot?.paired || boot.helper || serviceApply === "install") {
       setAuthRevoked(false);
       return;
     }
@@ -294,11 +294,11 @@ export default function App() {
     check();
     const timer = window.setInterval(check, 3000);
     return () => window.clearInterval(timer);
-  }, [boot?.paired, boot?.helper, service?.installed]);
+  }, [boot?.paired, boot?.helper, serviceApply]);
 
   useEffect(() => {
     if (boot && !boot.paired && !boot.helper) setView("pair");
-  }, [boot?.paired, boot?.helper]);
+  }, [boot?.paired, boot?.helper, serviceApply]);
 
   useEffect(() => {
     if (!boot?.paired) return;
@@ -401,7 +401,10 @@ export default function App() {
       await invoke("link_auth_reset").catch(() => {});
       setAuthRevoked(false);
       if (service?.installed) {
-        setNotice("Paired. Reinstall the integrated service to use the new identity.");
+        setNotice("Paired. Updating the integrated service with the new identity…");
+        setServiceApply("install");
+        setServiceStartedAt(Math.floor(Date.now() / 1000));
+        await invoke("service_install");
       } else {
         await invoke("link_portable_start").catch(() => {});
         setNotice(next.connected ? "Paired and online." : "Paired. The gateway is not reachable yet.");
@@ -409,6 +412,7 @@ export default function App() {
       setCode("");
       setView("home");
     } catch (e) {
+      setServiceApply(null);
       setError(typeof e === "string" ? e : String(e));
     } finally {
       setBusy(null);
