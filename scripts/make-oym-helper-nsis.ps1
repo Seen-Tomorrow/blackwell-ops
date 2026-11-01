@@ -99,6 +99,21 @@ OutFile "$outEscaped"
 $compressor
 
 Section "Install"
+  ; Help is often reinstalled while the old helper is still running. Kill both
+  ; processes, wipe the install tree, then unpack. Pairing identity and cloud
+  ; keys live outside $INSTDIR and are preserved.
+  nsExec::Exec 'taskkill /IM "OYM-Help.exe" /F'
+  nsExec::Exec 'taskkill /IM "oym-link.exe" /F'
+  Sleep 1500
+  RMDir /r "`$INSTDIR"
+  Delete "`$LOCALAPPDATA\OYM\Link\link-client.log"
+  Delete "`$LOCALAPPDATA\OYM\Link\link-status.json"
+  Delete "`$LOCALAPPDATA\OYM\Link\auth-state.json"
+  Delete "`$LOCALAPPDATA\OYM\Link\network-state.json"
+  Delete "`$LOCALAPPDATA\OYM\Link\update-state.json"
+  RMDir /r "`$LOCALAPPDATA\OYM\Link\WebView2"
+  RMDir /r "`$LOCALAPPDATA\OYM\Link\local-pi-home"
+  RMDir /r "`$LOCALAPPDATA\OYM\Link\pi-sessions"
   SetOutPath "`$INSTDIR"
   File "$stageEscaped\OYM-Help.exe"
   File "$stageEscaped\oym-link.exe"

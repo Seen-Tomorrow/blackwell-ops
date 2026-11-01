@@ -80,10 +80,22 @@ OutFile "$outEscaped"
 $compressor
 
 Section "Install"
-  ; Replace an existing install cleanly. Without this the old tray app keeps
-  ; the exe locked and the new copy starts a second, non-docked instance.
+  ; Replace an existing install cleanly. Kill the tray app and its link child,
+  ; then remove the whole install tree so files deleted between builds cannot
+  ; survive. User data lives outside $INSTDIR; identity.json/settings.json stay.
   nsExec::Exec 'taskkill /IM "OYM Link.exe" /F'
-  Sleep 900
+  nsExec::Exec 'taskkill /IM "oym-link.exe" /F'
+  Sleep 1500
+  RMDir /r "`$INSTDIR"
+  Delete "`$LOCALAPPDATA\OYM\Link\link-client.log"
+  Delete "`$LOCALAPPDATA\OYM\Link\link-status.json"
+  Delete "`$LOCALAPPDATA\OYM\Link\auth-state.json"
+  Delete "`$LOCALAPPDATA\OYM\Link\network-state.json"
+  Delete "`$LOCALAPPDATA\OYM\Link\update-state.json"
+  Delete "`$LOCALAPPDATA\OYM\Link\service-action.json"
+  RMDir /r "`$LOCALAPPDATA\OYM\Link\WebView2"
+  RMDir /r "`$LOCALAPPDATA\OYM\Link\local-pi-home"
+  RMDir /r "`$LOCALAPPDATA\OYM\Link\pi-sessions"
   SetOutPath "`$INSTDIR"
   File "$pkgEscaped\OYM Link.exe"
   File "$pkgEscaped\runtime\oym-link.exe"
