@@ -1,7 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::io::{Read, Write};
 use std::net::ToSocketAddrs;
 use std::path::PathBuf;
@@ -856,6 +856,93 @@ fn link_auth_reset() {
     let _ = std::fs::remove_file(default_data_dir().join("auth-state.json"));
 }
 
+fn read_state_json(path: &std::path::Path) -> Option<Value> {
+    let raw = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str(&raw).ok()
+}
+
+#[tauri::command]
+fn link_sync_snapshot() -> Value {
+    let data = default_data_dir();
+    let integrated = service_dir()
+        .map(|dir| dir.join("OymLink.xml").is_file())
+        .unwrap_or(false);
+    let service_status = std::env::var_os("PROGRAMDATA")
+        .map(|dir| {
+            PathBuf::from(dir)
+                .join("OYM")
+                .join("Link")
+                .join("service-status.json")
+        })
+        .and_then(|path| read_state_json(&path));
+    let local_link = read_state_json(&data.join("link-status.json"));
+    let local_auth = read_state_json(&data.join("auth-state.json"));
+    let local_network = read_state_json(&data.join("network-state.json"));
+    let local_update = read_state_json(&data.join("update-state.json"));
+
+    let link = if integrated {
+        service_status.clone()
+    } else {
+        local_link.clone()
+    };
+    let auth = if integrated {
+        service_status
+            .as_ref()
+            .and_then(|value| value.get("authState").cloned())
+            .or_else(|| local_auth.as_ref().and_then(|value| value.get("state").cloned()))
+    } else {
+        local_auth.as_ref().and_then(|value| value.get("state").cloned())
+    };
+    let network = if integrated {
+        service_status
+            .as_ref()
+            .map(|value| {
+                json!({
+                    "desired": value.get("networkDesired").cloned().unwrap_or(Value::Null),
+                    "applied": value.get("networkEnabled").cloned().unwrap_or(Value::Null),
+                    "link": value.get("linkState").cloned().unwrap_or(Value::Null),
+                    "ackAt": value.get("controlAckAt").cloned().unwrap_or(Value::Null),
+                })
+            })
+            .unwrap_or(Value::Null)
+    } else {
+        local_network.clone().unwrap_or(Value::Null)
+    };
+    let session = link
+        .as_ref()
+        .map(|value| {
+            json!({
+                "connected": value.get("connected").cloned().unwrap_or(Value::Bool(false)),
+                "active": value.get("sessionActive").cloned().unwrap_or(Value::Bool(false)),
+                "startedAt": value.get("sessionStartedAt").cloned().unwrap_or(Value::Null),
+                "lastActivityAt": value.get("lastActivityAt").cloned().unwrap_or(Value::Null),
+                "updatedAt": value.get("updatedAt").cloned().unwrap_or(Value::Null),
+            })
+        })
+        .unwrap_or(Value::Null);
+    let update = local_update
+        .as_ref()
+        .map(|value| {
+            json!({
+                "phase": value.get("phase").cloned().unwrap_or(Value::Null),
+                "at": value.get("at").cloned().unwrap_or(Value::Null),
+            })
+        })
+        .unwrap_or(Value::Null);
+
+    json!({
+        "at": std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_secs())
+            .unwrap_or(0),
+        "integrated": integrated,
+        "auth": auth.unwrap_or(Value::Null),
+        "network": network,
+        "session": session,
+        "update": update,
+        "service": service_status.unwrap_or(Value::Null),
+    })
+}
 #[tauri::command]
 fn service_action_status() -> String {
     let Some(program_data) = std::env::var_os("PROGRAMDATA") else {
@@ -2086,6 +2173,7 @@ fn main() {
             link_cloud_status,
             link_auth_state,
             link_auth_reset,
+            link_sync_snapshot,
             service_action_status,
             link_is_elevated,
             link_update_check,

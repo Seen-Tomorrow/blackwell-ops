@@ -212,21 +212,6 @@ fn spawn_link(cli: &Path, data: &Path, log_path: &Path) -> Result<Child, String>
         .map_err(|error| format!("start link client: {error}"))
 }
 
-fn read_log_tail(path: &Path) -> String {
-    let raw = std::fs::read_to_string(path).unwrap_or_default();
-    let trimmed = raw.trim();
-    if trimmed.chars().count() <= 2000 {
-        return trimmed.to_string();
-    }
-    trimmed
-        .chars()
-        .rev()
-        .take(2000)
-        .collect::<String>()
-        .chars()
-        .rev()
-        .collect()
-}
 
 /// Job object with KILL_ON_JOB_CLOSE: if the service is stopped or crashes, the
 /// link child cannot be orphaned in Session 0.
@@ -347,12 +332,7 @@ fn main() {
         if let Some(process) = child.as_mut() {
             match process.try_wait() {
                 Ok(Some(status)) => {
-                    let log = read_log_tail(&base.join("service-child.log"));
-                    last_error = Some(if log.is_empty() {
-                        format!("link client exited: {status}")
-                    } else {
-                        format!("link client exited: {status}\n{log}")
-                    });
+                    last_error = Some(format!("link client exited: {status}"));
                     child = None;
                     child_pid = None;
                 }

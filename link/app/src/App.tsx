@@ -82,6 +82,27 @@ const DEFAULT_SETTINGS: Settings = {
   cloudKeyStored: false,
 };
 
+type SyncSnapshot = {
+  at: number;
+  integrated: boolean;
+  auth: string | null;
+  network: {
+    desired?: boolean;
+    applied?: boolean;
+    link?: string;
+    ackAt?: number;
+  } | null;
+  session: {
+    connected?: boolean;
+    active?: boolean;
+    startedAt?: number | null;
+    lastActivityAt?: number | null;
+    updatedAt?: number | null;
+  } | null;
+  update: { phase?: string; at?: number } | null;
+  service: Record<string, unknown> | null;
+};
+
 type UpdateState = {
   phase: string;
   currentBuild: number;
@@ -109,6 +130,11 @@ type LinkUpdateInfo = {
   publishedAt: string | null;
 };
 
+function syncAge(now: number, at: number | null | undefined): string {
+  if (!at) return "—";
+  return `${Math.max(0, Math.round(now - at))}s`;
+}
+
 type View = "home" | "pair" | "settings";
 
 export default function App() {
@@ -131,6 +157,8 @@ export default function App() {
   const [pendingMode, setPendingMode] = useState<"portable" | "integrated" | null>(null);
   const [updateInfo, setUpdateInfo] = useState<LinkUpdateInfo | null>(null);
   const [updateState, setUpdateState] = useState<UpdateState | null>(null);
+  const [syncSnapshot, setSyncSnapshot] = useState<SyncSnapshot | null>(null);
+  const [syncBusy, setSyncBusy] = useState(false);
   const [updateBusy, setUpdateBusy] = useState(false);
   const [theme, setTheme] = useState<"system" | "light" | "dark">(() => {
     const saved = window.localStorage.getItem("oym.link.theme");
@@ -618,6 +646,19 @@ export default function App() {
     }
   }, [updateInfo]);
 
+  const runSyncCheck = useCallback(async () => {
+    setError(null);
+    setSyncBusy(true);
+    try {
+      const snapshot = await invoke<SyncSnapshot>("link_sync_snapshot");
+      setSyncSnapshot(snapshot);
+    } catch (e) {
+      setError(typeof e === "string" ? e : String(e));
+    } finally {
+      setSyncBusy(false);
+    }
+  }, []);
+
   const confirmMode = useCallback(async () => {
     const target = pendingMode;
     setPendingMode(null);
@@ -1076,6 +1117,71 @@ export default function App() {
                 </button>
               </div>
             )}
+            <div className="sync-test">
+              <div className="card-head">
+                <span className="label">STATE SYNC</span>
+                <button
+                  className="link-button"
+                  disabled={syncBusy}
+                  onClick={() => void runSyncCheck()}
+                >
+                  {syncBusy ? "CHECKING…" : "RUN CHECK"}
+                </button>
+              </div>
+              {syncSnapshot ? (
+                <div className="sync-rows">
+                  <div className="sync-row">
+                    <span>AUTH</span>
+                    <strong>{syncSnapshot.auth ?? "MISSING"}</strong>
+                    <em>—</em>
+                  </div>
+                  <div className="sync-row">
+                    <span>NETWORK</span>
+                    <strong>
+                      {syncSnapshot.network
+                        ? `${syncSnapshot.network.desired ? "ON" : "OFF"} → ${syncSnapshot.network.applied ? "ON" : "OFF"}`
+                        : "MISSING"}
+                    </strong>
+                    <em>{syncAge(syncSnapshot.at, syncSnapshot.network?.ackAt)}</em>
+                  </div>
+                  <div className="sync-row">
+                    <span>SESSION</span>
+                    <strong>
+                      {syncSnapshot.session
+                        ? syncSnapshot.session.active
+                          ? "ACTIVE"
+                          : syncSnapshot.session.connected
+                            ? "IDLE"
+                            : "OFFLINE"
+                        : "MISSING"}
+                    </strong>
+                    <em>{syncAge(syncSnapshot.at, syncSnapshot.session?.lastActivityAt)}</em>
+                  </div>
+                  <div className="sync-row">
+                    <span>UPDATE</span>
+                    <strong>{syncSnapshot.update?.phase ?? "MISSING"}</strong>
+                    <em>{syncAge(syncSnapshot.at, syncSnapshot.update?.at)}</em>
+                  </div>
+                  <div className="sync-row">
+                    <span>SERVICE</span>
+                    <strong>
+                      {syncSnapshot.integrated
+                        ? syncSnapshot.service?.running
+                          ? "RUNNING"
+                          : syncSnapshot.service?.installed
+                            ? "STOPPED"
+                            : "NOT INSTALLED"
+                        : "PORTABLE"}
+                    </strong>
+                    <em>{syncSnapshot.integrated ? "integrated" : "local"}</em>
+                  </div>
+                </div>
+              ) : (
+                <p className="copy">
+                  Reads the explicit auth, network, session, update and service states together.
+                </p>
+              )}
+            </div>
             <p className="tagline">OYM {status.version} · BUILD {__LINK_BUILD__}</p>
           </section>
         )}

@@ -1430,3 +1430,48 @@ body {
   font-size: 9px;
   letter-spacing: 0.08em;
 }
+
+.sync-test {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.sync-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sync-row {
+  display: grid;
+  grid-template-columns: 64px 1fr auto;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.sync-row span {
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.sync-row strong {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.sync-row em {
+  font-family: var(--mono);
+  font-size: 8px;
+  font-style: normal;
+  color: var(--muted);
+}
