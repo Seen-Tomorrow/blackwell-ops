@@ -253,6 +253,67 @@
   flex-shrink: 0;
 }
 
+/* Catalog list mute — DIM. Unstyled <input type="range"> falls back to the UA
+   default (~129px wide, native chrome) and blows out the filter row, so the
+   slider is sized here like every other slider in the app (hw-mon, cfg-poll). */
+.panel-dim-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 0 1 auto;
+  cursor: pointer;
+  user-select: none;
+}
+
+.panel-dim-control__label {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-hairline);
+  letter-spacing: 0.12em;
+  line-height: 1;
+  color: color-mix(in srgb, var(--theme-text-muted) 75%, transparent);
+}
+
+.panel-dim-control__slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 44px;
+  flex: 0 1 44px;
+  min-width: 24px;
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-border) 70%, transparent);
+  outline: none;
+  cursor: pointer;
+}
+
+.panel-dim-control__slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--theme-accent-bright);
+  border: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 40%, transparent);
+  box-shadow: 0 0 4px color-mix(in srgb, var(--theme-accent-glow) 45%, transparent);
+  cursor: pointer;
+}
+
+.panel-dim-control__slider::-moz-range-thumb {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--theme-accent-bright);
+  border: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 40%, transparent);
+  cursor: pointer;
+}
+
+.panel-dim-control__slider::-moz-range-track {
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-border) 70%, transparent);
+}
+
 /* ── Alt-B: filter/sort bar — same gunmetal chrome as the search bar, flush full width ── */
 .catalog-list-panel .catalog-list-panel__chrome-tools {
   flex-shrink: 0;
