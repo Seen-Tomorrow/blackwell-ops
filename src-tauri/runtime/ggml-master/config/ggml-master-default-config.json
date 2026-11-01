@@ -398,7 +398,7 @@
       ]
     },
     {
-      "default": 1,
+      "default": 2,
       "dock": "",
       "essentialsHiddenValues": [
         4,
@@ -426,12 +426,10 @@
       ]
     },
     {
-      "default": 0.25,
+      "default": 0,
       "dock": "",
       "essentialsHiddenValues": [
-        0.6,
-        0.75,
-        0.8
+        0.6
       ],
       "flag": "--spec-draft-p-min",
       "flag_pair": [],
@@ -446,12 +444,9 @@
       "ui_group": "SPECULATIVE-MTP",
       "values": [
         0,
-        0.01,
         0.25,
         0.5,
-        0.6,
-        0.75,
-        0.8
+        0.6
       ]
     },
     {
@@ -482,7 +477,7 @@
       ],
       "flag": "--spec-draft-n-max",
       "flag_pair": [],
-      "hidden_default": true,
+      "hidden_default": false,
       "key": "dflash_n_max",
       "label": "DRAFT-N-MAX",
       "note": "DFlash: maximum draft tokens per speculative step.",
@@ -499,11 +494,12 @@
         5,
         6,
         8,
-        12
+        12,
+        16
       ]
     },
     {
-      "default": 1,
+      "default": 2,
       "dock": "",
       "essentialsHiddenValues": [
         4,
@@ -511,7 +507,7 @@
       ],
       "flag": "--spec-draft-n-min",
       "flag_pair": [],
-      "hidden_default": true,
+      "hidden_default": false,
       "key": "dflash_n_min",
       "label": "DRAFT-N-MIN",
       "note": "DFlash: minimum draft tokens per speculative step.",
@@ -529,16 +525,11 @@
       ]
     },
     {
-      "default": 0.25,
+      "default": 0,
       "dock": "",
-      "essentialsHiddenValues": [
-        0.8,
-        0.75,
-        0.6
-      ],
       "flag": "--spec-draft-p-min",
       "flag_pair": [],
-      "hidden_default": true,
+      "hidden_default": false,
       "key": "dflash_p_min",
       "label": "DRAFT-P-MIN",
       "note": "DFlash: minimum speculative decoding probability (greedy).",
@@ -549,30 +540,8 @@
       "ui_group": "SPECULATIVE-DFLASH",
       "values": [
         0,
-        0.01,
         0.25,
-        0.6,
-        0.75,
-        0.8
-      ]
-    },
-    {
-      "default": "greedy",
-      "dock": "",
-      "flag": "--spec-draft-sampling",
-      "flag_pair": [],
-      "hidden_default": true,
-      "key": "dflash_sampling",
-      "label": "DRAFT-SAMPLING",
-      "note": "DFlash2: greedy argmax or probabilistic draft sampling with target rejection (DFlash1 ignores probabilistic).",
-      "pattern": "",
-      "ptype": "arg_select",
-      "step": null,
-      "sub_params": null,
-      "ui_group": "SPECULATIVE-DFLASH",
-      "values": [
-        "greedy",
-        "probabilistic"
+        0.5
       ]
     },
     {
@@ -580,7 +549,7 @@
       "dock": "",
       "flag": "--spec-draft-model",
       "flag_pair": [],
-      "hidden_default": true,
+      "hidden_default": false,
       "key": "dflash_draft_model",
       "label": "DRAFT-MODEL",
       "note": "External DFlash draft GGUF path. Set via Boost Get/Change draft.",
@@ -592,6 +561,25 @@
       "values": [
         "off",
         "auto"
+      ]
+    },
+    {
+      "default": "greedy",
+      "dock": "",
+      "flag": "--spec-draft-sampling",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "dflash_sampling",
+      "label": "DRAFT-SAMPLING",
+      "note": "DFlash2: greedy argmax or probabilistic draft sampling with target rejection (DFlash1 ignores probabilistic).",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SPECULATIVE-DFLASH",
+      "values": [
+        "greedy",
+        "probabilistic"
       ]
     },
     {
@@ -832,6 +820,6 @@
       "4"
     ]
   },
-  "templateVersion": 56,
+  "templateVersion": 57,
   "template_type": "ggml-llama"
 }
