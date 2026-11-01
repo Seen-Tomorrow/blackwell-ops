@@ -3,6 +3,8 @@
 OYM Link uses the same release-asset pattern as the main app: a 7z payload on
 GitHub, downloaded and applied by the app.
 
+All release scripts require PowerShell 7 (`pwsh`); the Distribution panel invokes `pwsh.exe` directly.
+
 ## Build and pack
 
 ```powershell

@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Majestic - private release automation for Blackwell Ops.
 # Usage: .\scripts\majestic\majestic.ps1 -Mode check|pack|ship|bump|ship-toolchain|pack-provider [-DryRun]
 #   pack-provider = rebuild engine packs (all enginePacks, or one with -ProviderId/-ProfileId)
@@ -352,8 +353,7 @@ function Invoke-PackLinkUpdate {
     param([string]$OutRoot)
     $installer = Join-Path $root 'tmp/OYM-Link-Setup.exe'
     if (-not (Test-Path -LiteralPath $installer)) {
-        Write-Majestic "Link installer not staged (tmp/OYM-Link-Setup.exe); skipping LINK asset." -Color DarkGray
-        return $null
+        throw "Link installer not staged: $installer. Run BUILD LINK INSTALLER before pack."
     }
     $pack_script = Join-Path $root 'scripts\pack-link-update.ps1'
     $log = & $pack_script *>&1

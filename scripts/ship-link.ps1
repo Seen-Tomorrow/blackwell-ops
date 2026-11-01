@@ -1,3 +1,4 @@
+#requires -Version 7.0
 <#
 .SYNOPSIS
   Upload the newest LINK_OYM-Link-*.7z update asset to a GitHub release.

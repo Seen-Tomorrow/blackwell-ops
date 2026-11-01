@@ -1,3 +1,4 @@
+#requires -Version 7.0
 <#
 .SYNOPSIS
   Pack the OYM Link installer into the GitHub update asset.
@@ -27,16 +28,10 @@ if (-not (Test-Path -LiteralPath $Installer)) {
 }
 if ($Build -le 0) {
     $marker = Join-Path $root "tmp/link-installer-build.json"
-    if (Test-Path -LiteralPath $marker) {
-        $Build = [int]((Get-Content -LiteralPath $marker -Raw | ConvertFrom-Json).build)
+    if (-not (Test-Path -LiteralPath $marker)) {
+        throw "Link installer build marker missing: $marker (run BUILD LINK INSTALLER first)"
     }
-    if ($Build -le 0) {
-        $counter = Join-Path $root "link/app/.build_counter.json"
-        if (-not (Test-Path -LiteralPath $counter)) {
-            throw "Link build counter missing: $counter"
-        }
-        $Build = [int]((Get-Content -LiteralPath $counter -Raw | ConvertFrom-Json).count)
-    }
+    $Build = [int]((Get-Content -LiteralPath $marker -Raw | ConvertFrom-Json).build)
 }
 if ($Build -le 0) {
     throw "Could not determine the link build number"

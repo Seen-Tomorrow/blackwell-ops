@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Detached Majestic chain - survives tauri dev restarts.
 # Visible console so long npm/cargo builds are not a black box.
 # Args: -Chain pack_full | pack_ship_app | ...  [-ProviderId x] [-ProfileId y]
