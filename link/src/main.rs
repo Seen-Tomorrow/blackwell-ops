@@ -29,7 +29,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot, Mutex, RwLock};
@@ -839,6 +839,7 @@ async fn start_pi_session(
     shared: Arc<ProxyShared>,
     args: &Args,
     session: &SessionOpen,
+    last_activity: Arc<AtomicU64>,
 ) -> Result<PtySession, String> {
     if !args.pi.is_file() {
         return Err(format!("pi executable not found: {}", args.pi.display()));
@@ -930,12 +931,14 @@ async fn start_pi_session(
         .map_err(|e| format!("pty writer: {e}"))?;
 
     let outbound = shared.outbound.clone();
+    let activity = last_activity.clone();
     std::thread::spawn(move || {
         let mut buffer = [0u8; 16 * 1024];
         loop {
             match reader.read(&mut buffer) {
                 Ok(0) => break,
                 Ok(n) => {
+                    activity.store(now_secs(), Ordering::Relaxed);
                     if outbound
                         .send(ClientMessage::PtyData {
                             data: encode_b64(&buffer[..n]),
@@ -1067,11 +1070,15 @@ async fn run(args: Args) -> Result<(), String> {
     let (out_tx, mut out_rx) = mpsc::unbounded_channel::<ClientMessage>();
 
     let session_active = Arc::new(AtomicBool::new(false));
+    let session_started = Arc::new(AtomicU64::new(0));
+    let last_activity = Arc::new(AtomicU64::new(0));
     let link_alive = Arc::new(AtomicBool::new(true));
-    write_link_status(&args.data_dir, true, false);
+    write_link_status(&args.data_dir, true, false, 0, 0);
     {
         let dir = args.data_dir.clone();
         let session_active = session_active.clone();
+        let session_started = session_started.clone();
+        let last_activity = last_activity.clone();
         let link_alive = link_alive.clone();
         tokio::spawn(async move {
             let mut ticker = tokio::time::interval(Duration::from_secs(4));
@@ -1084,6 +1091,8 @@ async fn run(args: Args) -> Result<(), String> {
                     &dir,
                     true,
                     session_active.load(Ordering::Relaxed),
+                    session_started.load(Ordering::Relaxed),
+                    last_activity.load(Ordering::Relaxed),
                 );
             }
         });
@@ -1166,12 +1175,15 @@ async fn run(args: Args) -> Result<(), String> {
                     public_url.as_deref().unwrap_or("no public URL")
                 );
                 if let Some(session) = session {
-                    match start_pi_session(shared.clone(), &args, &session).await {
+                    match start_pi_session(shared.clone(), &args, &session, last_activity.clone()).await {
                         Ok(next) => {
                             let pid = next.pid;
                             pty = Some(next);
                             session_active.store(true, Ordering::Relaxed);
-                            write_link_status(&args.data_dir, true, true);
+                            let started_at = now_secs();
+                            session_started.store(started_at, Ordering::Relaxed);
+                            last_activity.store(started_at, Ordering::Relaxed);
+                            write_link_status(&args.data_dir, true, true, started_at, started_at);
                             println!("session ready · pi pid {:?}", pid);
                             let _ = shared.outbound.send(ClientMessage::SessionReady {
                                 pid,
@@ -1183,7 +1195,9 @@ async fn run(args: Args) -> Result<(), String> {
                         }
                         Err(error) => {
                             session_active.store(false, Ordering::Relaxed);
-                            write_link_status(&args.data_dir, true, false);
+                            session_started.store(0, Ordering::Relaxed);
+                            last_activity.store(0, Ordering::Relaxed);
+                            write_link_status(&args.data_dir, true, false, 0, 0);
                             eprintln!("session start: {error}");
                             let _ = shared.outbound.send(ClientMessage::SessionExit { code: None });
                         }
@@ -1194,12 +1208,15 @@ async fn run(args: Args) -> Result<(), String> {
                 if let Some(mut current) = pty.take() {
                     current.kill();
                 }
-                match start_pi_session(shared.clone(), &args, &session).await {
+                match start_pi_session(shared.clone(), &args, &session, last_activity.clone()).await {
                     Ok(next) => {
                         let pid = next.pid;
                         pty = Some(next);
                         session_active.store(true, Ordering::Relaxed);
-                        write_link_status(&args.data_dir, true, true);
+                        let started_at = now_secs();
+                        session_started.store(started_at, Ordering::Relaxed);
+                        last_activity.store(started_at, Ordering::Relaxed);
+                        write_link_status(&args.data_dir, true, true, started_at, started_at);
                         println!("session ready · pi pid {:?}", pid);
                         let _ = shared.outbound.send(ClientMessage::SessionReady {
                             pid,
@@ -1211,7 +1228,9 @@ async fn run(args: Args) -> Result<(), String> {
                     }
                     Err(error) => {
                         session_active.store(false, Ordering::Relaxed);
-                        write_link_status(&args.data_dir, true, false);
+                        session_started.store(0, Ordering::Relaxed);
+                        last_activity.store(0, Ordering::Relaxed);
+                        write_link_status(&args.data_dir, true, false, 0, 0);
                         eprintln!("session start: {error}");
                         let _ = shared.outbound.send(ClientMessage::SessionExit { code: None });
                     }
@@ -1220,7 +1239,9 @@ async fn run(args: Args) -> Result<(), String> {
             ServerMessage::SessionStop { reason } => {
                 println!("session stop: {reason}");
                 session_active.store(false, Ordering::Relaxed);
-                write_link_status(&args.data_dir, true, false);
+                session_started.store(0, Ordering::Relaxed);
+                last_activity.store(0, Ordering::Relaxed);
+                write_link_status(&args.data_dir, true, false, 0, 0);
                 if let Some(mut current) = pty.take() {
                     current.kill();
                 }
@@ -1229,6 +1250,7 @@ async fn run(args: Args) -> Result<(), String> {
                 let _ = shared.outbound.send(ClientMessage::SessionExit { code: None });
             }
             ServerMessage::PtyInput { data } => {
+                last_activity.store(now_secs(), Ordering::Relaxed);
                 if let Some(current) = pty.as_mut() {
                     if let Some(bytes) = decode_b64(&data) {
                         current.write(&bytes);
@@ -1290,7 +1312,9 @@ async fn run(args: Args) -> Result<(), String> {
     );
     link_alive.store(false, Ordering::Relaxed);
     session_active.store(false, Ordering::Relaxed);
-    write_link_status(&args.data_dir, false, false);
+    session_started.store(0, Ordering::Relaxed);
+    last_activity.store(0, Ordering::Relaxed);
+    write_link_status(&args.data_dir, false, false, 0, 0);
     if let Some(mut current) = pty.take() {
         current.kill();
     }
@@ -1335,7 +1359,20 @@ fn write_auth_state(
         }
     }
 }
-fn write_link_status(data_dir: &Path, connected: bool, session_active: bool) {
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0)
+}
+
+fn write_link_status(
+    data_dir: &Path,
+    connected: bool,
+    session_active: bool,
+    session_started_at: u64,
+    last_activity_at: u64,
+) {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_secs())
@@ -1343,6 +1380,8 @@ fn write_link_status(data_dir: &Path, connected: bool, session_active: bool) {
     let value = json!({
         "connected": connected,
         "sessionActive": session_active,
+        "sessionStartedAt": session_started_at,
+        "lastActivityAt": last_activity_at,
         "updatedAt": now,
         "pid": std::process::id(),
     });

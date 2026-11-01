@@ -22,7 +22,12 @@ struct ServiceStatus {
     child_pid: Option<u32>,
     connected: bool,
     session_active: bool,
+    session_started_at: Option<u64>,
+    last_activity_at: Option<u64>,
     network_enabled: bool,
+    network_desired: bool,
+    link_state: String,
+    control_ack_at: u64,
     auth_state: Option<String>,
     http_status: Option<u16>,
     started_at: u64,
@@ -72,7 +77,12 @@ fn write_status(
     child_pid: Option<u32>,
     connected: bool,
     session_active: bool,
+    session_started_at: Option<u64>,
+    last_activity_at: Option<u64>,
     network_enabled: bool,
+    network_desired: bool,
+    link_state: String,
+    control_ack_at: u64,
     auth_state: Option<String>,
     http_status: Option<u16>,
     error: Option<String>,
@@ -83,7 +93,12 @@ fn write_status(
         child_pid,
         connected,
         session_active,
+        session_started_at,
+        last_activity_at,
         network_enabled,
+        network_desired,
+        link_state,
+        control_ack_at,
         auth_state,
         http_status,
         started_at,
@@ -263,14 +278,14 @@ fn assign_job(job: &Job, child_pid: u32) {
     }
 }
 
-fn read_link_status(data: &Path) -> (bool, bool) {
+fn read_link_status(data: &Path) -> (bool, bool, Option<u64>, Option<u64>) {
     let raw = match std::fs::read_to_string(data.join("link-status.json")) {
         Ok(raw) => raw,
-        Err(_) => return (false, false),
+        Err(_) => return (false, false, None, None),
     };
     let value: Value = match serde_json::from_str(&raw) {
         Ok(value) => value,
-        Err(_) => return (false, false),
+        Err(_) => return (false, false, None, None),
     };
     let updated = value
         .get("updatedAt")
@@ -287,7 +302,9 @@ fn read_link_status(data: &Path) -> (bool, bool) {
             .get("sessionActive")
             .and_then(Value::as_bool)
             .unwrap_or(false);
-    (connected, session)
+    let session_started_at = connected.then(|| value.get("sessionStartedAt").and_then(Value::as_u64)).flatten();
+    let last_activity_at = connected.then(|| value.get("lastActivityAt").and_then(Value::as_u64)).flatten();
+    (connected, session, session_started_at, last_activity_at)
 }
 
 fn main() {
@@ -349,7 +366,7 @@ fn main() {
         }
 
         let data = base.join("service-data");
-        let (connected, session_active) = read_link_status(&data);
+        let (connected, session_active, session_started_at, last_activity_at) = read_link_status(&data);
         let (auth_state, http_status) = read_auth_state(&data);
         if connected {
             last_error = None;
@@ -360,7 +377,18 @@ fn main() {
             child_pid,
             connected,
             session_active,
+            session_started_at,
+            last_activity_at,
             !network_off,
+            !network_off,
+            if network_off {
+                "stopped".to_string()
+            } else if child_pid.is_some() {
+                "running".to_string()
+            } else {
+                "starting".to_string()
+            },
+            now(),
             auth_state,
             http_status,
             last_error.clone(),

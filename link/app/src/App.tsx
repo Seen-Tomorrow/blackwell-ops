@@ -42,6 +42,8 @@ type ServiceStatus = {
   childPid: number | null;
   connected: boolean;
   sessionActive: boolean;
+  sessionStartedAt: number | null;
+  lastActivityAt: number | null;
   updatedAt: number | null;
   error: string | null;
 };
@@ -49,6 +51,8 @@ type ServiceStatus = {
 type HelperLink = {
   linked: boolean;
   sessionActive: boolean;
+  sessionStartedAt: number | null;
+  lastActivityAt: number | null;
   updatedAt: number | null;
   error: string | null;
 };
@@ -78,6 +82,23 @@ const DEFAULT_SETTINGS: Settings = {
   cloudKeyStored: false,
 };
 
+type UpdateState = {
+  phase: string;
+  currentBuild: number;
+  latestBuild: number | null;
+  name: string | null;
+  error: string | null;
+  at: number;
+};
+
+type NetworkState = {
+  desired: boolean;
+  applied: boolean;
+  link: string;
+  session: string;
+  ackAt: number;
+};
+
 type LinkUpdateInfo = {
   available: boolean;
   currentBuild: number;
@@ -105,9 +126,11 @@ export default function App() {
   const [serviceElapsed, setServiceElapsed] = useState(0);
   const [elevated, setElevated] = useState(false);
   const [networkEnabled, setNetworkEnabled] = useState(true);
+  const [networkDesired, setNetworkDesired] = useState(true);
   const [cloudStatus, setCloudStatus] = useState("checking");
   const [pendingMode, setPendingMode] = useState<"portable" | "integrated" | null>(null);
   const [updateInfo, setUpdateInfo] = useState<LinkUpdateInfo | null>(null);
+  const [updateState, setUpdateState] = useState<UpdateState | null>(null);
   const [updateBusy, setUpdateBusy] = useState(false);
   const [theme, setTheme] = useState<"system" | "light" | "dark">(() => {
     const saved = window.localStorage.getItem("oym.link.theme");
@@ -201,9 +224,17 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    void invoke<boolean>("link_network_status")
-      .then(setNetworkEnabled)
-      .catch(() => {});
+    const load = () => {
+      void invoke<NetworkState>("link_network_state")
+        .then((state) => {
+          setNetworkEnabled(state.applied);
+          setNetworkDesired(state.desired);
+        })
+        .catch(() => {});
+    };
+    load();
+    const timer = window.setInterval(load, 2000);
+    return () => window.clearInterval(timer);
   }, []);
 
   useEffect(() => {
@@ -290,6 +321,18 @@ export default function App() {
     void invoke<LinkUpdateInfo>("link_update_check", { currentBuild: __LINK_BUILD__ })
       .then(setUpdateInfo)
       .catch(() => {});
+  }, [boot?.paired]);
+
+  useEffect(() => {
+    if (!boot?.paired) return;
+    const load = () => {
+      void invoke<UpdateState | null>("link_update_state")
+        .then(setUpdateState)
+        .catch(() => {});
+    };
+    load();
+    const timer = window.setInterval(load, 2000);
+    return () => window.clearInterval(timer);
   }, [boot?.paired]);
 
   const stopHelper = useCallback(async () => {
@@ -534,12 +577,26 @@ export default function App() {
     const next = !networkEnabled;
     setError(null);
     setNotice(null);
+    setNetworkDesired(next);
     try {
       await invoke("link_network_set", { enabled: next });
-      setNetworkEnabled(next);
-      setCloudStatus(next ? "checking" : "disabled");
-      setNotice(next ? "Network access enabled." : "Network access stopped.");
+      const state = await invoke<NetworkState>("link_network_state");
+      setNetworkEnabled(state.applied);
+      setNetworkDesired(state.desired);
+      setCloudStatus(state.applied ? "checking" : "disabled");
+      setNotice(
+        state.applied === state.desired
+          ? state.applied
+            ? "Network access enabled."
+            : "Network access stopped."
+          : "Applying network change…",
+      );
     } catch (e) {
+      const state = await invoke<NetworkState>("link_network_state").catch(() => null);
+      if (state) {
+        setNetworkEnabled(state.applied);
+        setNetworkDesired(state.desired);
+      }
       setError(typeof e === "string" ? e : String(e));
     }
   }, [networkEnabled]);
@@ -596,14 +653,40 @@ export default function App() {
   const sessionActive = integrated
     ? Boolean(service?.sessionActive)
     : Boolean(helperLink?.sessionActive);
+  const lastActivityAt = integrated
+    ? service?.lastActivityAt
+    : helperLink?.lastActivityAt;
+  const activityAge = lastActivityAt
+    ? Date.now() / 1000 - lastActivityAt
+    : Number.POSITIVE_INFINITY;
+  const operatorActive = sessionActive && activityAge < 15;
+  const networkPending = networkDesired !== networkEnabled;
+  const updatePhase = updateState?.phase;
+  const updateActive =
+    updateBusy ||
+    updatePhase === "downloading" ||
+    updatePhase === "verifying" ||
+    updatePhase === "installing";
+  const updateLabel =
+    updatePhase === "downloading"
+      ? "DOWNLOADING…"
+      : updatePhase === "verifying"
+        ? "VERIFYING…"
+        : updatePhase === "installing"
+          ? "INSTALLING…"
+          : updateBusy
+            ? "UPDATING"
+            : `UPDATE ${updateInfo?.latestBuild ?? ""}`;
   const blackwellOnline = networkEnabled && linked;
   const cloudReady = networkEnabled && cloudStatus === "ready";
   const operatorLabel = !networkEnabled
     ? "REMOTE OFF"
     : sessionActive
-      ? "OPERATOR CONNECTED · ACTIVE"
+      ? operatorActive
+        ? "OPERATOR CONNECTED · ACTIVE"
+        : "OPERATOR CONNECTED · IDLE"
       : linked
-        ? "OPERATOR CONNECTED · IDLE"
+        ? "WAITING FOR OPERATOR"
         : "WAITING FOR OPERATOR";
   const actionLabel =
     serviceApply === "install"
@@ -633,11 +716,11 @@ export default function App() {
             <button
               type="button"
               className="update-button"
-              disabled={updateBusy}
+              disabled={updateActive}
               title={`Update OYM Link to build ${updateInfo.latestBuild ?? "?"}`}
               onClick={() => void installUpdate()}
             >
-              {updateBusy ? "UPDATING" : `UPDATE ${updateInfo.latestBuild ?? ""}`}
+              {updateLabel}
             </button>
           )}
           <button
@@ -1017,9 +1100,16 @@ export default function App() {
             <button
               type="button"
               className={`access-toggle access-toggle--full ${networkEnabled ? "is-stop" : "is-enable"}`}
+              disabled={networkPending}
               onClick={() => void toggleNetwork()}
             >
-              {networkEnabled ? "DISABLE ACCESS" : "ENABLE ACCESS"}
+              {networkPending
+                ? networkDesired
+                  ? "ENABLING…"
+                  : "STOPPING…"
+                : networkEnabled
+                  ? "DISABLE ACCESS"
+                  : "ENABLE ACCESS"}
             </button>
           </div>
 

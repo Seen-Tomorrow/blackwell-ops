@@ -175,6 +175,8 @@ struct ServiceStatusView {
     child_pid: Option<u32>,
     connected: bool,
     session_active: bool,
+    session_started_at: Option<u64>,
+    last_activity_at: Option<u64>,
     updated_at: Option<u64>,
     error: Option<String>,
 }
@@ -188,6 +190,54 @@ fn service_dir() -> Option<PathBuf> {
 const LINK_UPDATE_REPO: &str = "Seen-Tomorrow/blackwell-ops";
 const LINK_UPDATE_PREFIX: &str = "LINK_OYM-Link-";
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LinkUpdateState {
+    phase: String,
+    current_build: u64,
+    latest_build: Option<u64>,
+    name: Option<String>,
+    error: Option<String>,
+    at: u64,
+}
+
+fn write_update_state(
+    phase: &str,
+    current_build: u64,
+    latest_build: Option<u64>,
+    name: Option<&str>,
+    error: Option<&str>,
+) {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    let state = LinkUpdateState {
+        phase: phase.to_string(),
+        current_build,
+        latest_build,
+        name: name.map(str::to_string),
+        error: error.map(str::to_string),
+        at: now,
+    };
+    let dir = default_data_dir();
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("update-state.json");
+    let temporary = dir.join("update-state.json.tmp");
+    if let Ok(raw) = serde_json::to_string_pretty(&state) {
+        if std::fs::write(&temporary, raw).is_ok() {
+            let _ = std::fs::rename(&temporary, &path);
+        }
+    }
+}
+
+#[tauri::command]
+fn link_update_state() -> Option<LinkUpdateState> {
+    let path = default_data_dir().join("update-state.json");
+    let raw = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str(&raw).ok()
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -230,6 +280,7 @@ fn run_curl(args: &[String]) -> Result<std::process::Output, String> {
 #[tauri::command]
 async fn link_update_check(current_build: u64) -> Result<LinkUpdateInfo, String> {
     tauri::async_runtime::spawn_blocking(move || {
+        write_update_state("checking", current_build, None, None, None);
         let endpoint = format!(
             "https://api.github.com/repos/{LINK_UPDATE_REPO}/releases/tags/link-v{CLIENT_VERSION}"
         );
@@ -281,6 +332,7 @@ async fn link_update_check(current_build: u64) -> Result<LinkUpdateInfo, String>
             }
         }
         let Some((latest_build, name, url, size_bytes)) = best else {
+            write_update_state("idle", current_build, None, None, None);
             return Ok(LinkUpdateInfo {
                 available: false,
                 current_build,
@@ -291,6 +343,13 @@ async fn link_update_check(current_build: u64) -> Result<LinkUpdateInfo, String>
                 published_at,
             });
         };
+        write_update_state(
+            if latest_build > current_build { "available" } else { "idle" },
+            current_build,
+            Some(latest_build),
+            Some(&name),
+            None,
+        );
         Ok(LinkUpdateInfo {
             available: latest_build > current_build,
             current_build,
@@ -325,6 +384,7 @@ async fn link_update_install(
             let _ = std::fs::remove_dir_all(&dir);
         }
         std::fs::create_dir_all(&dir).map_err(|e| format!("create update dir: {e}"))?;
+        write_update_state("downloading", 0, None, Some(&name), None);
         let archive = dir.join("OYM-Link-Update.7z");
         let download = run_curl(&[
             "-L".into(),
@@ -350,6 +410,7 @@ async fn link_update_install(
             .into_iter()
             .find(|path| path.is_file())
             .ok_or_else(|| "bundled 7z.exe is missing".to_string())?;
+        write_update_state("verifying", 0, None, Some(&name), None);
         let staging = dir.join("staging");
         std::fs::create_dir_all(&staging).map_err(|e| format!("create staging: {e}"))?;
         let mut extract = Command::new(&seven);
@@ -390,6 +451,7 @@ async fn link_update_install(
             use std::os::windows::process::CommandExt;
             launch.creation_flags(CREATE_NO_WINDOW);
         }
+        write_update_state("installing", 0, None, Some(&name), None);
         launch
             .spawn()
             .map_err(|e| format!("start link installer: {e}"))?;
@@ -423,6 +485,8 @@ fn service_status() -> ServiceStatusView {
         child_pid: None,
         connected: false,
         session_active: false,
+        session_started_at: None,
+        last_activity_at: None,
         updated_at: None,
         error: None,
     };
@@ -465,6 +529,8 @@ fn service_status() -> ServiceStatusView {
         .get("sessionActive")
         .and_then(Value::as_bool)
         .unwrap_or(false);
+    view.session_started_at = value.get("sessionStartedAt").and_then(Value::as_u64);
+    view.last_activity_at = value.get("lastActivityAt").and_then(Value::as_u64);
     view.updated_at = value.get("updatedAt").and_then(Value::as_u64);
     view.error = value
         .get("error")
@@ -565,9 +631,124 @@ fn service_control_dir() -> Option<PathBuf> {
     })
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NetworkStateView {
+    desired: bool,
+    applied: bool,
+    link: String,
+    session: String,
+    ack_at: u64,
+}
+
+fn write_network_state(desired: bool, applied: bool, link: &str, session: &str) {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    let value = serde_json::json!({
+        "desired": desired,
+        "applied": applied,
+        "link": link,
+        "session": session,
+        "ackAt": now,
+    });
+    let dir = default_data_dir();
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("network-state.json");
+    let temporary = dir.join("network-state.json.tmp");
+    if let Ok(raw) = serde_json::to_string_pretty(&value) {
+        if std::fs::write(&temporary, raw).is_ok() {
+            let _ = std::fs::rename(&temporary, &path);
+        }
+    }
+}
+
 #[tauri::command]
 fn link_network_status() -> bool {
     !network_disabled()
+}
+
+#[tauri::command]
+fn link_network_state() -> NetworkStateView {
+    let fallback = NetworkStateView {
+        desired: !network_disabled(),
+        applied: !network_disabled(),
+        link: "unknown".into(),
+        session: "unknown".into(),
+        ack_at: 0,
+    };
+    if service_dir()
+        .map(|dir| dir.join("OymLink.xml").is_file())
+        .unwrap_or(false)
+    {
+        let Some(program_data) = std::env::var_os("PROGRAMDATA") else {
+            return fallback;
+        };
+        let path = PathBuf::from(program_data)
+            .join("OYM")
+            .join("Link")
+            .join("service-status.json");
+        let Ok(raw) = std::fs::read_to_string(path) else {
+            return fallback;
+        };
+        let Ok(value) = serde_json::from_str::<Value>(&raw) else {
+            return fallback;
+        };
+        return NetworkStateView {
+            desired: value
+                .get("networkDesired")
+                .and_then(Value::as_bool)
+                .unwrap_or(fallback.desired),
+            applied: value
+                .get("networkEnabled")
+                .and_then(Value::as_bool)
+                .unwrap_or(fallback.applied),
+            link: value
+                .get("linkState")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown")
+                .to_string(),
+            session: value
+                .get("sessionActive")
+                .and_then(Value::as_bool)
+                .map(|active| if active { "active" } else { "idle" })
+                .unwrap_or("none")
+                .to_string(),
+            ack_at: value
+                .get("controlAckAt")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+        };
+    }
+    let path = default_data_dir().join("network-state.json");
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return fallback;
+    };
+    let Ok(value) = serde_json::from_str::<Value>(&raw) else {
+        return fallback;
+    };
+    NetworkStateView {
+        desired: value
+            .get("desired")
+            .and_then(Value::as_bool)
+            .unwrap_or(fallback.desired),
+        applied: value
+            .get("applied")
+            .and_then(Value::as_bool)
+            .unwrap_or(fallback.applied),
+        link: value
+            .get("link")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown")
+            .to_string(),
+        session: value
+            .get("session")
+            .and_then(Value::as_str)
+            .unwrap_or("none")
+            .to_string(),
+        ack_at: value.get("ackAt").and_then(Value::as_u64).unwrap_or(0),
+    }
 }
 
 #[tauri::command]
@@ -588,16 +769,21 @@ fn link_network_set(app: AppHandle, enabled: bool) -> Result<(), String> {
                 .map_err(|error| format!("disable service network: {error}"))?;
         }
     }
+    let integrated = service_dir()
+        .map(|dir| dir.join("OymLink.xml").is_file())
+        .unwrap_or(false);
     if !enabled {
         stop_helper(&app);
         stop_assistant(&app);
-    }
-    else if !service_dir()
-        .map(|dir| dir.join("OymLink.xml").is_file())
-        .unwrap_or(false)
-    {
+    } else if !integrated {
         start_helper_client(&app)?;
     }
+    write_network_state(
+        enabled,
+        enabled,
+        if enabled { "running" } else { "stopped" },
+        "none",
+    );
     Ok(())
 }
 
@@ -1092,6 +1278,8 @@ fn stop_helper(app: &AppHandle) {
 struct HelperLinkStatus {
     linked: bool,
     session_active: bool,
+    session_started_at: Option<u64>,
+    last_activity_at: Option<u64>,
     updated_at: Option<u64>,
     error: Option<String>,
 }
@@ -1110,6 +1298,8 @@ fn helper_link_status() -> HelperLinkStatus {
     let mut status = HelperLinkStatus {
         linked: false,
         session_active: false,
+        session_started_at: None,
+        last_activity_at: None,
         updated_at: None,
         error: None,
     };
@@ -1140,6 +1330,8 @@ fn helper_link_status() -> HelperLinkStatus {
     status.linked = fresh && value.get("connected").and_then(Value::as_bool).unwrap_or(false);
     status.session_active =
         status.linked && value.get("sessionActive").and_then(Value::as_bool).unwrap_or(false);
+    status.session_started_at = value.get("sessionStartedAt").and_then(Value::as_u64);
+    status.last_activity_at = value.get("lastActivityAt").and_then(Value::as_u64);
     status
 }
 
@@ -1889,6 +2081,7 @@ fn main() {
             helper_forget,
             link_portable_start,
             link_network_status,
+            link_network_state,
             link_network_set,
             link_cloud_status,
             link_auth_state,
@@ -1896,6 +2089,7 @@ fn main() {
             service_action_status,
             link_is_elevated,
             link_update_check,
+            link_update_state,
             link_update_install,
             link_restart_elevated,
             link_restart_normal,
