@@ -1,13 +1,13 @@
 {
   "name": "blackwell-ops",
   "private": true,
-  "version": "1.1.7",
+  "version": "1.1.10",
   "type": "module",
   "scripts": {
     "vite": "vite --host 127.0.0.1 --port 1420",
     "server": "node scripts/warm-vite-dev.mjs",
     "remote:tunnel": "powershell -ExecutionPolicy Bypass -File scripts/remote-tunnel.ps1",
-    "predev": "powershell -ExecutionPolicy Bypass -File scripts/sync-dev-runtime.ps1",
+    "predev": "powershell -ExecutionPolicy Bypass -File scripts/sync-dev-runtime.ps1 && npm run check:lock",
     "sync:dev-runtime": "powershell -ExecutionPolicy Bypass -File scripts/sync-dev-runtime.ps1",
     "sync:dev-runtime:force": "powershell -ExecutionPolicy Bypass -File scripts/sync-dev-runtime.ps1 -Force",
     "dev": "tauri dev --no-watch --config src-tauri/tauri.conf.dev.json",
@@ -44,7 +44,6 @@
     "majestic:ship-toolchain": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode ship-toolchain",
     "majestic:pack:engines": "powershell -ExecutionPolicy Bypass -File scripts/pack-provider-runtime.ps1",
     "promote:provider": "node scripts/promote-user-provider-to-runtime.mjs",
-
     "test": "vitest run",
     "test:watch": "vitest",
     "bench:report": "node scripts/bench/report.mjs --dir src-tauri/target/debug/config/bench --out bench-out",
