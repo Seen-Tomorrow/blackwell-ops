@@ -720,7 +720,7 @@ fn link_restart_elevated(app: AppHandle) -> Result<(), String> {
     #[cfg(windows)]
     {
         use windows_sys::Win32::UI::Shell::ShellExecuteW;
-        use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+        use windows_sys::Win32::UI::WindowsAndMessaging::SW_HIDE;
 
         if link_is_elevated() {
             return Ok(());
@@ -729,16 +729,21 @@ fn link_restart_elevated(app: AppHandle) -> Result<(), String> {
             .map_err(|error| format!("current exe: {error}"))?
             .to_string_lossy()
             .to_string();
+        let escaped = exe.replace('\'', "''");
+        let command = format!(
+            "-NoProfile -WindowStyle Hidden -Command \"Start-Sleep -Milliseconds 3000; Start-Process -FilePath '{escaped}'\""
+        );
         let verb: Vec<u16> = "runas\0".encode_utf16().collect();
-        let file: Vec<u16> = exe.encode_utf16().chain(std::iter::once(0)).collect();
+        let file: Vec<u16> = "pwsh.exe\0".encode_utf16().collect();
+        let params: Vec<u16> = command.encode_utf16().chain(std::iter::once(0)).collect();
         let result = unsafe {
             ShellExecuteW(
                 std::ptr::null_mut(),
                 verb.as_ptr(),
                 file.as_ptr(),
+                params.as_ptr(),
                 std::ptr::null(),
-                std::ptr::null(),
-                SW_SHOWNORMAL,
+                SW_HIDE,
             )
         };
         if result as isize <= 32 {
@@ -746,7 +751,9 @@ fn link_restart_elevated(app: AppHandle) -> Result<(), String> {
         }
         let handle = app.clone();
         std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(700));
+            // Exit first; the elevated helper starts the new instance after the
+            // mutex and WebView profile are released.
+            std::thread::sleep(std::time::Duration::from_millis(300));
             handle.exit(0);
         });
         Ok(())
@@ -832,11 +839,19 @@ fn link_restart_normal(app: AppHandle) -> Result<(), String> {
                 ));
             }
 
-            let app_name: Vec<u16> = exe.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
-            let mut command_line: Vec<u16> = format!("\"{exe_string}\"")
-                .encode_utf16()
+            let comspec = std::env::var("ComSpec")
+                .unwrap_or_else(|_| "C:\\Windows\\System32\\cmd.exe".into());
+            let app_name: Vec<u16> = std::ffi::OsStr::new(&comspec)
+                .encode_wide()
                 .chain(std::iter::once(0))
                 .collect();
+            let escaped_exe = exe_string.replace('"', "");
+            let mut command_line: Vec<u16> = format!(
+                "\"{comspec}\" /d /s /c \"timeout /t 3 /nobreak >nul & start \"\" \"{escaped_exe}\"\""
+            )
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
             let current_dir: Vec<u16> = parent
                 .as_os_str()
                 .encode_wide()
@@ -844,13 +859,15 @@ fn link_restart_normal(app: AppHandle) -> Result<(), String> {
                 .collect();
             let mut startup: STARTUPINFOW = std::mem::zeroed();
             startup.cb = std::mem::size_of::<STARTUPINFOW>() as u32;
+            startup.dwFlags = 0x0000_0001; // STARTF_USESHOWWINDOW
+            startup.wShowWindow = 0; // SW_HIDE
             let mut info: PROCESS_INFORMATION = std::mem::zeroed();
             let created = CreateProcessWithTokenW(
                 primary,
                 LOGON_WITH_PROFILE,
                 app_name.as_ptr(),
                 command_line.as_mut_ptr(),
-                0,
+                0x0800_0000, // CREATE_NO_WINDOW
                 std::ptr::null(),
                 current_dir.as_ptr(),
                 &startup,
@@ -869,7 +886,7 @@ fn link_restart_normal(app: AppHandle) -> Result<(), String> {
 
         let handle = app.clone();
         std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(700));
+            std::thread::sleep(std::time::Duration::from_millis(300));
             handle.exit(0);
         });
         Ok(())
