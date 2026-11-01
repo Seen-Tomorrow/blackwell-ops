@@ -23,6 +23,8 @@ struct ServiceStatus {
     connected: bool,
     session_active: bool,
     network_enabled: bool,
+    auth_state: Option<String>,
+    http_status: Option<u16>,
     started_at: u64,
     updated_at: u64,
     mode: &'static str,
@@ -46,6 +48,24 @@ fn data_dir() -> PathBuf {
     std::env::temp_dir().join("oym-link-service")
 }
 
+fn read_auth_state(data: &Path) -> (Option<String>, Option<u16>) {
+    let raw = match std::fs::read_to_string(data.join("auth-state.json")) {
+        Ok(raw) => raw,
+        Err(_) => return (None, None),
+    };
+    let value: Value = match serde_json::from_str(&raw) {
+        Ok(value) => value,
+        Err(_) => return (None, None),
+    };
+    (
+        value.get("state").and_then(Value::as_str).map(str::to_string),
+        value
+            .get("httpStatus")
+            .and_then(Value::as_u64)
+            .map(|code| code as u16),
+    )
+}
+
 fn write_status(
     dir: &Path,
     started_at: u64,
@@ -53,6 +73,8 @@ fn write_status(
     connected: bool,
     session_active: bool,
     network_enabled: bool,
+    auth_state: Option<String>,
+    http_status: Option<u16>,
     error: Option<String>,
 ) {
     let status = ServiceStatus {
@@ -62,6 +84,8 @@ fn write_status(
         connected,
         session_active,
         network_enabled,
+        auth_state,
+        http_status,
         started_at,
         updated_at: now(),
         mode: "integrated",
@@ -106,6 +130,7 @@ fn prepare(base: &Path) -> Result<PathBuf, String> {
         .map_err(|error| format!("create service data dir: {error}"))?;
 
     if let Some((identity, token)) = consume_bootstrap(base)? {
+        let _ = std::fs::remove_file(data.join("auth-state.json"));
         std::fs::write(
             data.join("identity.json"),
             serde_json::to_string_pretty(&identity).map_err(|error| error.to_string())?,
@@ -325,6 +350,7 @@ fn main() {
 
         let data = base.join("service-data");
         let (connected, session_active) = read_link_status(&data);
+        let (auth_state, http_status) = read_auth_state(&data);
         if connected {
             last_error = None;
         }
@@ -335,6 +361,8 @@ fn main() {
             connected,
             session_active,
             !network_off,
+            auth_state,
+            http_status,
             last_error.clone(),
         );
 

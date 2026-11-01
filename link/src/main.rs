@@ -989,6 +989,15 @@ async fn run(args: Args) -> Result<(), String> {
         .unwrap_or_else(|| DEFAULT_SERVER.to_string());
     say(&format!("Server: {server}"));
     say("Looking up paired identity...");
+    if existing.is_none() {
+        write_auth_state(
+            &args.data_dir,
+            "unpaired",
+            None,
+            "no paired identity",
+            &server,
+        );
+    }
 
     let (identity, token) = if let Some(code) = args.pair.as_deref() {
         let (identity, token) = pair_device(&server, code, &args.name).await?;
@@ -999,6 +1008,13 @@ async fn run(args: Args) -> Result<(), String> {
         match load_token(&identity) {
             Ok(token) => (identity, token),
             Err(_) => {
+                write_auth_state(
+                    &args.data_dir,
+                    "unpaired",
+                    None,
+                    "device token unavailable",
+                    &server,
+                );
                 // Identity exists but Credential Manager lost the token
                 // (different Windows user, cleaned credentials, replaced
                 // profile). Fall back to a fresh pairing.
@@ -1028,9 +1044,24 @@ async fn run(args: Args) -> Result<(), String> {
             .parse()
             .map_err(|e| format!("authorization header: {e}"))?,
     );
-    let (socket, _) = tokio_tungstenite::connect_async(request)
-        .await
-        .map_err(|e| format!("connect {server}: {e}"))?;
+    let (socket, _) = match tokio_tungstenite::connect_async(request).await {
+        Ok(socket) => socket,
+        Err(error) => {
+            let text = error.to_string();
+            let lower = text.to_ascii_lowercase();
+            let unauthorized =
+                lower.contains("401") || lower.contains("unauthorized");
+            write_auth_state(
+                &args.data_dir,
+                if unauthorized { "unauthorized" } else { "offline" },
+                unauthorized.then_some(401),
+                &text,
+                &server,
+            );
+            return Err(format!("connect {server}: {error}"));
+        }
+    };
+    write_auth_state(&args.data_dir, "connected", None, "handshake ok", &server);
     say(&format!("Connected as {}", identity.name));
     let (mut socket_tx, mut socket_rx) = socket.split();
     let (out_tx, mut out_rx) = mpsc::unbounded_channel::<ClientMessage>();
@@ -1250,6 +1281,13 @@ async fn run(args: Args) -> Result<(), String> {
     }
 
     println!("gateway reader ended");
+    write_auth_state(
+        &args.data_dir,
+        "offline",
+        None,
+        "gateway reader ended",
+        &server,
+    );
     link_alive.store(false, Ordering::Relaxed);
     session_active.store(false, Ordering::Relaxed);
     write_link_status(&args.data_dir, false, false);
@@ -1270,6 +1308,33 @@ fn say(line: &str) {
 /// Local presence file for the tray helper. It is written by the link client in
 /// the same data dir, so the UI can distinguish "gateway online" from "operator
 /// has an active session".
+fn write_auth_state(
+    data_dir: &Path,
+    state: &str,
+    http_status: Option<u16>,
+    reason: &str,
+    server: &str,
+) {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    let value = json!({
+        "state": state,
+        "httpStatus": http_status,
+        "reason": reason,
+        "server": server,
+        "at": now,
+    });
+    let _ = std::fs::create_dir_all(data_dir);
+    let path = data_dir.join("auth-state.json");
+    let temporary = data_dir.join("auth-state.json.tmp");
+    if let Ok(raw) = serde_json::to_string_pretty(&value) {
+        if std::fs::write(&temporary, raw).is_ok() {
+            let _ = std::fs::rename(&temporary, &path);
+        }
+    }
+}
 fn write_link_status(data_dir: &Path, connected: bool, session_active: bool) {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

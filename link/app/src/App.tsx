@@ -100,7 +100,6 @@ export default function App() {
   const [boot, setBoot] = useState<Bootstrap | null>(null);
   const [authRevoked, setAuthRevoked] = useState(false);
   const [service, setService] = useState<ServiceStatus | null>(null);
-  const [serviceLog, setServiceLog] = useState("");
   const [serviceApply, setServiceApply] = useState<"install" | "uninstall" | null>(null);
   const [serviceStartedAt, setServiceStartedAt] = useState(0);
   const [serviceElapsed, setServiceElapsed] = useState(0);
@@ -155,20 +154,6 @@ export default function App() {
     return () => window.clearInterval(timer);
   }, [loadService]);
 
-  useEffect(() => {
-    if (!serviceApply) {
-      setServiceLog("");
-      return;
-    }
-    const load = () => {
-      void invoke<string>("service_install_log")
-        .then(setServiceLog)
-        .catch(() => {});
-    };
-    load();
-    const timer = window.setInterval(load, 1000);
-    return () => window.clearInterval(timer);
-  }, [serviceApply, serviceStartedAt]);
 
   useEffect(() => {
     if (!serviceApply) return;
@@ -287,8 +272,8 @@ export default function App() {
       return;
     }
     const check = () => {
-      void invoke<boolean>("link_auth_error")
-        .then(setAuthRevoked)
+      void invoke<string>("link_auth_state")
+        .then((state) => setAuthRevoked(state === "unauthorized"))
         .catch(() => {});
     };
     check();
@@ -490,7 +475,6 @@ export default function App() {
   const installService = useCallback(async () => {
     setError(null);
     setNotice(null);
-    setServiceLog("");
     setServiceApply("install");
     setServiceStartedAt(Math.floor(Date.now() / 1000));
     setBusy("service");
@@ -509,7 +493,6 @@ export default function App() {
   const uninstallService = useCallback(async () => {
     setError(null);
     setNotice(null);
-    setServiceLog("");
     setServiceApply("uninstall");
     setServiceStartedAt(Math.floor(Date.now() / 1000));
     setBusy("service");
@@ -963,9 +946,7 @@ export default function App() {
                   </div>
                 </div>
               )}
-              {serviceApply && serviceLog && (
-                <pre className="service-install-log">{serviceLog.slice(-2500)}</pre>
-              )}
+
               <div className="key-actions">
                 <button
                   className="button"

@@ -403,26 +403,6 @@ async fn link_update_install(
     .map_err(|error| format!("update install task: {error}"))?
 }
 
-#[tauri::command]
-fn service_install_log() -> String {
-    let Some(program_data) = std::env::var_os("PROGRAMDATA") else {
-        return String::new();
-    };
-    let path = PathBuf::from(program_data)
-        .join("OYM")
-        .join("Link")
-        .join("service-install.log");
-    let raw = std::fs::read_to_string(path).unwrap_or_default();
-    let trimmed = raw.trim();
-    trimmed
-        .chars()
-        .rev()
-        .take(8000)
-        .collect::<String>()
-        .chars()
-        .rev()
-        .collect()
-}
 
 #[tauri::command]
 fn service_status() -> ServiceStatusView {
@@ -654,38 +634,40 @@ fn link_cloud_status() -> String {
     }
 }
 
-fn auth_error_in(path: &std::path::Path) -> bool {
-    std::fs::read_to_string(path)
-        .map(|text| text.contains("401 Unauthorized") || text.contains("HTTP error: 401"))
-        .unwrap_or(false)
+fn auth_state_in(path: &std::path::Path) -> Option<String> {
+    let raw = std::fs::read_to_string(path).ok()?;
+    let value: Value = serde_json::from_str(&raw).ok()?;
+    value
+        .get("state")
+        .or_else(|| value.get("authState"))
+        .and_then(Value::as_str)
+        .map(str::to_string)
 }
 
 #[tauri::command]
-fn link_auth_error() -> bool {
-    if auth_error_in(&default_data_dir().join("link-client.log")) {
-        return true;
-    }
-    std::env::var_os("PROGRAMDATA")
-        .map(|dir| {
-            PathBuf::from(dir)
+fn link_auth_state() -> String {
+    // Integrated mode reports through the service status; never inspect logs.
+    if service_dir()
+        .map(|dir| dir.join("OymLink.xml").is_file())
+        .unwrap_or(false)
+    {
+        if let Some(dir) = std::env::var_os("PROGRAMDATA") {
+            let path = PathBuf::from(dir)
                 .join("OYM")
                 .join("Link")
-                .join("service-child.log")
-        })
-        .map(|path| auth_error_in(&path))
-        .unwrap_or(false)
+                .join("service-status.json");
+            if let Some(state) = auth_state_in(&path) {
+                return state;
+            }
+        }
+        return "unknown".into();
+    }
+    auth_state_in(&default_data_dir().join("auth-state.json")).unwrap_or_else(|| "unknown".into())
 }
 
 #[tauri::command]
 fn link_auth_reset() {
-    let _ = std::fs::write(default_data_dir().join("link-client.log"), "");
-    if let Some(dir) = std::env::var_os("PROGRAMDATA") {
-        let path = PathBuf::from(dir)
-            .join("OYM")
-            .join("Link")
-            .join("service-child.log");
-        let _ = std::fs::write(path, "");
-    }
+    let _ = std::fs::remove_file(default_data_dir().join("auth-state.json"));
 }
 
 #[tauri::command]
@@ -1897,7 +1879,6 @@ fn main() {
             cloud_key_set,
             cloud_key_clear,
             service_status,
-            service_install_log,
             service_install,
             service_uninstall,
             helper_stopped,
@@ -1910,7 +1891,7 @@ fn main() {
             link_network_status,
             link_network_set,
             link_cloud_status,
-            link_auth_error,
+            link_auth_state,
             link_auth_reset,
             service_action_status,
             link_is_elevated,
