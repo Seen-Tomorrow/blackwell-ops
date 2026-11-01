@@ -231,7 +231,7 @@ fn run_curl(args: &[String]) -> Result<std::process::Output, String> {
 async fn link_update_check(current_build: u64) -> Result<LinkUpdateInfo, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let endpoint = format!(
-            "https://api.github.com/repos/{LINK_UPDATE_REPO}/releases/latest"
+            "https://api.github.com/repos/{LINK_UPDATE_REPO}/releases/tags/link-v{CLIENT_VERSION}"
         );
         let output = run_curl(&[
             "-L".into(),

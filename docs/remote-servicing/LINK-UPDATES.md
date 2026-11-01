@@ -12,7 +12,7 @@ pwsh scripts/build-link.ps1 -Profile installer
 pwsh scripts/pack-link-update.ps1
 ```
 
-`pack-link-update.ps1` reads `link/app/.build_counter.json` and writes:
+`pack-link-update.ps1` reads the installer marker `tmp/link-installer-build.json` and writes:
 
 ```text
 .majestic-out/LINK_OYM-Link-<build>.7z
@@ -24,13 +24,13 @@ relaunching one instance.
 
 ## Ship
 
-`majestic pack` includes the link asset in its manifest when `tmp/OYM-Link-Setup.exe` exists; `majestic ship` uploads it with the app assets. The standalone command is useful for a link-only upload:
+Only **FULL BUNDLE** pack includes the link asset in the app manifest; `MAIN APP` never does. `majestic ship` routes `LINK_*` to the link release instead of the app release. The standalone command is useful for a link-only upload:
 
 ```powershell
-pwsh scripts/ship-link.ps1 -Tag v1.1.9
+pwsh scripts/ship-link.ps1
 ```
 
-The app queries the latest GitHub release for the highest
+The app queries the `link-v<version>` release for the highest
 `LINK_OYM-Link-<build>.7z` asset. It compares that build with its own compiled
 `BUILD` and shows **UPDATE** in the header when a newer asset exists.
 

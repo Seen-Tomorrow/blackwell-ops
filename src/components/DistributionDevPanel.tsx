@@ -53,6 +53,9 @@ type ReleaseAction =
   | "ship_provider"
   | "pack_ship_app"
   | "pack_ship_full"
+  | "pack_link"
+  | "ship_link"
+  | "pack_ship_link"
   | "pack_ship_provider"
   | "pack_ship_all_providers";
 
@@ -273,10 +276,8 @@ export default function DistributionDevPanel() {
           <div>
             <h2 className="text-xs font-mono theme-accent-text tracking-widest">DISTRIBUTION</h2>
             <p className="fnd-dev-desc type-body font-mono config-muted mt-1 max-w-2xl leading-relaxed">
-              Pack+Ship opens a <span className="fnd-dev-desc__hl">visible Majestic console</span>{" "}
-              (survives app restart / version bump). Full pack = multi-minute{" "}
-              <span className="fnd-dev-desc__hl--dim">npm run release</span>. Log also in{" "}
-              <span className="fnd-dev-desc__hl--dim">.majestic-out/job-log.txt</span>.
+              Jobs open a <span className="fnd-dev-desc__hl">visible Majestic console</span> and
+              survive app restart. Main App never carries the link asset; Full Bundle does.
             </p>
           </div>
           <div className="flex gap-2 flex-wrap">
@@ -377,91 +378,107 @@ export default function DistributionDevPanel() {
 
         <section className="space-y-2">
           <h3 className="fnd-dev-section-title--info type-body font-mono tracking-wider uppercase">
-            App update
+            Main app
           </h3>
           <div className="flex flex-wrap gap-2 items-center">
             <button
               type="button"
               disabled={busy}
-              onClick={() => void runAction("pack_ship_app")}
-              className="fnd-dev-btn fnd-dev-btn--info type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border disabled:opacity-40"
-              title="Bump patch + pack App .7z + ship (no YES prompt)"
-            >
-              Pack+Ship App
-            </button>
-            <span className="fnd-dev-btn fnd-dev-btn--info-ghost type-label font-mono uppercase px-2 py-0.5 rounded-sm border disabled:opacity-40">
-              <button type="button" disabled={busy} onClick={() => void runAction("check_app")} className="disabled:opacity-40">Check</button>
-            </span>
-            <button
-              type="button"
-              disabled={busy}
               onClick={() => void runAction("pack_app")}
-              className="fnd-dev-btn fnd-dev-btn--info-ghost type-tiny font-mono uppercase px-2 py-0.5 rounded-sm border disabled:opacity-40"
+              className="fnd-dev-btn fnd-dev-btn--info type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border disabled:opacity-40"
+              title="Pack the main App .7z and NSIS only. No link asset."
             >
-              Pack only
+              Pack
             </button>
             <button
               type="button"
               disabled={busy}
               onClick={() => void runAction("ship_app")}
-              className="fnd-dev-btn fnd-dev-btn--info-ghost type-tiny font-mono uppercase px-2 py-0.5 rounded-sm border disabled:opacity-40"
-              title="Ship staged App assets for current version tag (no pack)"
+              className="fnd-dev-btn fnd-dev-btn--info-ghost type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border disabled:opacity-40"
+              title="Ship staged main App assets for the current version tag."
             >
-              Ship only
+              Ship
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void runAction("pack_ship_app")}
+              className="fnd-dev-btn fnd-dev-btn--info type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border disabled:opacity-40"
+              title="Bump + pack main App + ship. No link asset."
+            >
+              Pack+Ship
             </button>
           </div>
         </section>
 
         <section className="space-y-2">
           <h3 className="fnd-dev-section-title--accent type-body font-mono tracking-wider uppercase">
-            Full bundle (ggml-master only)
+            Link app
           </h3>
           <div className="flex flex-wrap gap-2 items-center">
             <button
               type="button"
               disabled={busy}
-              onClick={() => void runAction("pack_ship_full")}
+              onClick={() => void runAction("pack_link")}
               className="fnd-dev-btn fnd-dev-btn--accent type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border disabled:opacity-40"
-              title="Bump patch + pack Full NSIS (ggml-master) + ship"
+              title="Build the link installer, then pack LINK_OYM-Link-<build>.7z."
             >
-              Pack+Ship Full
+              Pack
             </button>
             <button
               type="button"
               disabled={busy}
-              onClick={() => void runAction("check_full")}
-              className="fnd-dev-btn fnd-dev-btn--accent-ghost type-label font-mono uppercase tracking-wider px-2 py-1 rounded-sm border disabled:opacity-40"
+              onClick={() => void runAction("ship_link")}
+              className="fnd-dev-btn fnd-dev-btn--accent-ghost type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border disabled:opacity-40"
+              title="Upload the newest link asset to the link-v<version> release."
             >
-              Check
+              Ship
             </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void runAction("pack_ship_link")}
+              className="fnd-dev-btn fnd-dev-btn--accent type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border disabled:opacity-40"
+              title="Build link installer + pack + ship to the link-v<version> release."
+            >
+              Pack+Ship
+            </button>
+          </div>
+        </section>
+
+        <section className="space-y-2">
+          <h3 className="fnd-dev-section-title--accent type-body font-mono tracking-wider uppercase">
+            Full bundle
+          </h3>
+          <div className="flex flex-wrap gap-2 items-center">
             <button
               type="button"
               disabled={busy}
               onClick={() => void runAction("pack_full")}
-              className="fnd-dev-btn fnd-dev-btn--accent-ghost type-tiny font-mono uppercase px-2 py-0.5 rounded-sm border disabled:opacity-40"
+              className="fnd-dev-btn fnd-dev-btn--accent type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border disabled:opacity-40"
+              title="Pack Full NSIS + App .7z + LINK asset. Link asset ships to its own tag."
             >
-              Pack only
+              Pack
             </button>
             <button
               type="button"
               disabled={busy}
               onClick={() => void runAction("ship_full")}
-              className="fnd-dev-btn fnd-dev-btn--accent-ghost type-tiny font-mono uppercase px-2 py-0.5 rounded-sm border disabled:opacity-40"
-              title="Ship staged Full assets for current version tag (no pack)"
+              className="fnd-dev-btn fnd-dev-btn--accent-ghost type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border disabled:opacity-40"
+              title="Ship staged Full assets and the link asset to the link release."
             >
-              Ship only
+              Ship
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void runAction("pack_ship_full")}
+              className="fnd-dev-btn fnd-dev-btn--accent type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border disabled:opacity-40"
+              title="Bump + pack Full + ship App and link assets."
+            >
+              Pack+Ship
             </button>
           </div>
-          {dash?.workflowNotes && (
-            <ul className="fnd-dev-workflow-notes type-label font-mono config-muted space-y-0.5 list-disc list-inside">
-              {dash.workflowNotes.map((n) => (
-                <li key={n}>{n}</li>
-              ))}
-              <li>Pack+Ship App: bump → clean REL rebuild → PE assert → ship</li>
-              <li>Ship refuses DEV ProductName or version mismatch in App .7z</li>
-              <li>Plugin Pack+Ship uses current version tag (no bump)</li>
-            </ul>
-          )}
         </section>
 
         <section className="space-y-2">

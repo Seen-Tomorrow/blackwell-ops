@@ -6,7 +6,7 @@
 
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('check', 'pack', 'ship', 'bump', 'bump-pi', 'ship-toolchain', 'pack-provider', 'ship-provider')]
+    [ValidateSet('check', 'pack', 'ship', 'pack-link', 'ship-link', 'bump', 'bump-pi', 'ship-toolchain', 'pack-provider', 'ship-provider')]
     [string]$Mode,
 
     [ValidateSet('app', 'full')]
@@ -368,6 +368,23 @@ function Invoke-PackLinkUpdate {
     if (-not $asset) { throw "Link update asset missing after pack" }
     Write-Majestic "Link update staged: $($asset.Name) ($([math]::Round($asset.Length / 1MB, 1)) MB)" -Color Green
     return [string]$asset.FullName
+}
+
+function Invoke-MajesticLinkPack {
+    $builder = Join-Path $root 'scripts/build-link.ps1'
+    $packer = Join-Path $root 'scripts/pack-link-update.ps1'
+    Write-Majestic "Building OYM Link installer..." -Color Cyan
+    & $builder -Profile installer
+    if ($LASTEXITCODE -ne 0) { throw "build-link.ps1 failed (exit $LASTEXITCODE)" }
+    Write-Majestic "Packing LINK_OYM-Link update asset..." -Color Cyan
+    & $packer
+    if ($LASTEXITCODE -ne 0) { throw "pack-link-update.ps1 failed (exit $LASTEXITCODE)" }
+}
+
+function Invoke-MajesticLinkShip {
+    $shipper = Join-Path $root 'scripts/ship-link.ps1'
+    & $shipper
+    if ($LASTEXITCODE -ne 0) { throw "ship-link.ps1 failed (exit $LASTEXITCODE)" }
 }
 
 function Invoke-PackAppUpdateArchive {
@@ -910,12 +927,11 @@ function Invoke-MajesticPack {
         }
         $manifest_files += New-ManifestEntry -File (Get-Item -LiteralPath $app_archive)
 
-        $link_archive = Invoke-PackLinkUpdate -OutRoot $out_root
-        if ($link_archive) {
-            $manifest_files += New-ManifestEntry -File (Get-Item -LiteralPath $link_archive)
-        }
-
         if ($Variant -eq 'full') {
+            $link_archive = Invoke-PackLinkUpdate -OutRoot $out_root
+            if ($link_archive) {
+                $manifest_files += New-ManifestEntry -File (Get-Item -LiteralPath $link_archive)
+            }
             # NSIS needs full runtime-bundle (app + ggml-master engines) for the installer build artifacts.
             Invoke-PrepareReleaseBundle -Variant 'full'
             $dest_installer = Stage-InstallerForVariant -Version $version -Variant 'full' -OutRoot $out_root
@@ -1281,13 +1297,18 @@ function Invoke-MajesticShip {
     }
 
     $assets = @()
+    $link_assets = @()
     foreach ($entry in @($manifest.files)) {
         if (-not (Test-Path -LiteralPath $entry.path)) { continue }
         $leaf = Split-Path -Leaf $entry.path
+        if ($leaf -like 'LINK_OYM-Link-*.7z') {
+            $link_assets += $entry.path
+            continue
+        }
         # The pack manifest is the authority: App .7z, the NSIS setup and every verified
         # ENGINE_*.7z. Only the app-only variant filters (it must never carry an installer).
         if ($pack_kind -eq 'app') {
-            $is_app = ($leaf -like '*Blackwell-Ops-App*') -or ($leaf -like 'LINK_OYM-Link-*.7z')
+            $is_app = ($leaf -like '*Blackwell-Ops-App*')
             if (-not $is_app) {
                 Write-Majestic "Ship app: skipping non-App asset $leaf" -Color DarkGray
                 continue
@@ -1395,6 +1416,12 @@ function Invoke-MajesticShip {
         }
 
         Write-Majestic "SHIPPED $tag - https://github.com/$($Config.repo)/releases/tag/$tag" -Color Green
+
+        if ($link_assets.Count -gt 0) {
+            Write-Majestic "Shipping LINK asset to its own tag..." -Color Cyan
+            & (Join-Path $root 'scripts/ship-link.ps1') -Asset $link_assets[0]
+            if ($LASTEXITCODE -ne 0) { throw "ship-link.ps1 failed (exit $LASTEXITCODE)" }
+        }
     } finally {
         Pop-Location
         if (Test-Path -LiteralPath $lock_path) {
@@ -1498,6 +1525,8 @@ switch ($Mode) {
     }
     'pack' { Invoke-MajesticPack -Config $config -Variant $Variant }
     'ship' { Invoke-MajesticShip -Config $config }
+    'pack-link' { Invoke-MajesticLinkPack }
+    'ship-link' { Invoke-MajesticLinkShip }
     'bump' { Invoke-MajesticBump }
     'bump-pi' { Invoke-MajesticBumpPi }
     'ship-toolchain' { Invoke-MajesticShipToolchain -Config $config }

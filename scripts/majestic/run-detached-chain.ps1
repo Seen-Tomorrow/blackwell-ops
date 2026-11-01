@@ -160,6 +160,18 @@ try {
         'pack_app' {
             Invoke-Majestic -Params @{ Mode = 'pack'; Variant = 'app' }
         }
+        'pack_link' {
+            Invoke-Majestic -Params @{ Mode = 'pack-link' }
+        }
+        'ship_link' {
+            Invoke-Majestic -Params @{ Mode = 'ship-link' }
+        }
+        'pack_ship_link' {
+            Write-JobLog '=== pack link ==='
+            Invoke-Majestic -Params @{ Mode = 'pack-link' }
+            Write-JobLog '=== ship link ==='
+            Invoke-Majestic -Params @{ Mode = 'ship-link' }
+        }
         'pack_full' {
             Invoke-Majestic -Params @{ Mode = 'pack'; Variant = 'full' }
         }
