@@ -421,9 +421,9 @@ pub fn merge_catalogs(
         let skipped_incomplete = before_filter.saturating_sub(all_internal.len());
         if skipped_incomplete > 0 {
             lh.emit_console_line(
-                crate::output_console::BlackwellOutputConsoleCategory::Utils,
+                BlackwellOutputConsoleCategory::Utils,
                 &format!("[MERGE] Skipped {skipped_incomplete} incomplete shard set(s) from catalog"),
-                crate::output_console::BlackwellOutputConsoleLineStyle::Normal,
+                BlackwellOutputConsoleLineStyle::Normal,
             );
         }
     }
@@ -445,9 +445,9 @@ pub fn merge_catalogs(
                 let skipped = before.saturating_sub(all_internal.len());
                 if skipped > 0 {
                     lh.emit_console_line(
-                        crate::output_console::BlackwellOutputConsoleCategory::Utils,
+                        BlackwellOutputConsoleCategory::Utils,
                         &format!("[MERGE] Skipped {skipped} in-progress download(s) from catalog"),
-                        crate::output_console::BlackwellOutputConsoleLineStyle::Normal,
+                        BlackwellOutputConsoleLineStyle::Normal,
                     );
                 }
             }
@@ -984,30 +984,17 @@ pub fn shard_sibling_paths(model_path: &str) -> Vec<PathBuf> {
     siblings
 }
 
-pub fn get_total_model_size(model_path: &str) -> u64 {    let path = std::path::Path::new(model_path);
-    if let Some(parent) = path.parent() {
-        let filename = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
-        let base_name = strip_shard_pattern(filename);
-        // Only sum siblings if the file is actually sharded (base differs from original)
-        if base_name != filename && parent.exists() {
-            let base_without_ext = &base_name[..base_name.len().saturating_sub(5)];
-            let mut total: u64 = 0;
-            if let Ok(entries) = std::fs::read_dir(parent) {
-                for entry in entries.flatten() {
-                    let name = entry.file_name().to_string_lossy().to_string();
-                    let lower = name.to_lowercase();
-                    if !lower.ends_with(".gguf") || lower.contains("mmproj") {
-                        continue;
-                    }
-                    if name.starts_with(base_without_ext) {
-                        total += entry.metadata().ok().map(|m| m.len()).unwrap_or(0);
-                    }
-                }
-            }
-            return total;
-        }
-    }
-    std::fs::metadata(model_path).ok().map(|m| m.len()).unwrap_or(0)
+/// Sum the bytes of a model's shard set (or of the single file).
+///
+/// Expressed through `shard_sibling_paths` so there is one directory walk per model
+/// instead of two — the scan calls both, and this file only ever knew one rule for
+/// "which files belong to this model".
+pub fn get_total_model_size(model_path: &str) -> u64 {
+    shard_sibling_paths(model_path)
+        .iter()
+        .filter_map(|p| std::fs::metadata(p).ok())
+        .map(|m| m.len())
+        .sum()
 }
 
 /// Check HF GGUF files against local disk. Returns one DiskCheckResult per file.
