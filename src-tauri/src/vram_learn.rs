@@ -1325,6 +1325,81 @@ pub fn record_launch_memory_snapshot(
 
 #[tauri::command]
 #[allow(clippy::too_many_arguments)] // Tauri IPC: one param per wire field; bundling would change the invoke shape
+/// Fallback for callers that cannot supply the launch's topology tag.
+///
+/// The cockpit passes ram_topo (e.g. 2x96), which becomes the key's dev= token; the
+/// catalog seats only know a device name, so an otherwise identical config never matched its
+/// own measurement and the seat silently showed nothing. This matches every part of the
+/// fingerprint EXCEPT dev=, and takes the highest figure when several devices recorded one.
+fn lookup_learned_vram_any_device(
+    model_path: &str,
+    provider_id: &str,
+    ctx: &str,
+    kv_quant: &str,
+    split: &str,
+    memory_mode: &str,
+    offload_mode: &str,
+    cache_ram: &str,
+) -> Option<LearnedVramEntry> {
+    let store = load_store();
+    let prefix = format!("{}|", normalize_model_path_for_key(model_path));
+    let want = [
+        format!("ctx={}", normalize_ctx_key(ctx)),
+        format!("kv={}", kv_quant.trim().to_lowercase()),
+        format!("split={}", split.trim().to_lowercase()),
+        format!("mode={}", memory_mode.trim().to_lowercase()),
+        format!("offload={}", normalize_offload_mode(offload_mode)),
+    ];
+    let want_provider = provider_id.trim().to_string();
+    let ram = cache_ram.trim();
+    let want_cache = if ram.is_empty() || ram == "0" {
+        None
+    } else {
+        Some(format!("cache_ram={ram}"))
+    };
+
+    let mut best: Option<LearnedVramEntry> = None;
+    for (key, entry) in store.entries.iter() {
+        let Some(rest) = key.strip_prefix(&prefix) else {
+            continue;
+        };
+        let mut tokens = rest.split('|');
+        if tokens.next() != Some(want_provider.as_str()) {
+            continue;
+        }
+        let mut matched = 0usize;
+        let mut cache_ok = want_cache.is_none();
+        for token in tokens {
+            if token.starts_with("dev=") {
+                continue;
+            }
+            if want_cache.as_deref() == Some(token) {
+                cache_ok = true;
+                continue;
+            }
+            if token.starts_with("cache_ram=") {
+                continue;
+            }
+            if want.iter().any(|w| w == token) {
+                matched += 1;
+            }
+        }
+        if matched != want.len() || !cache_ok {
+            continue;
+        }
+        let better = best
+            .as_ref()
+            .map(|b| entry.vram_mib > b.vram_mib)
+            .unwrap_or(true);
+        if better {
+            best = Some(entry.clone());
+        }
+    }
+    best
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)] // Tauri IPC: one param per wire field; bundling would change the invoke shape
 pub fn get_learned_vram(
     model_path: String,
     provider_id: String,
@@ -1360,7 +1435,7 @@ pub fn get_learned_vram(
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .unwrap_or(device.as_str());
-    let mut entry = lookup_learned_vram_fuzzy(
+    let mut entry = match lookup_learned_vram_fuzzy(
         &model_path,
         &provider_id,
         &ctx,
@@ -1372,7 +1447,19 @@ pub fn get_learned_vram(
         spec,
         cache,
         &draft,
-    )?;
+    ) {
+        Some(entry) => entry,
+        None => lookup_learned_vram_any_device(
+            &model_path,
+            &provider_id,
+            &ctx,
+            &kv_quant,
+            &split,
+            &mode,
+            &offload,
+            cache,
+        )?,
+    };
     let wanted_batch = batch.unwrap_or(0);
     let wanted_ubatch = ubatch.unwrap_or(0);
     let wanted_spec = spec_key_for_learn(spec, &draft);
