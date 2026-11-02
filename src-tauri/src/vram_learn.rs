@@ -1323,6 +1323,46 @@ pub fn record_launch_memory_snapshot(
     Ok(())
 }
 
+/// Learned VRAM per model, knobs-agnostic — for callers that do not know the launch
+/// parameters (the catalog). The learned key embeds the path plus every launch param, so
+/// a plain lookup cannot be done without them; this groups by path prefix instead and
+/// reports the HIGHEST measured figure, which is the number a fit question has to answer.
+#[derive(serde::Serialize)]
+pub struct LearnedVramSummary {
+    pub vram_mib: f64,
+    pub host_mib: f64,
+}
+
+#[tauri::command]
+pub fn get_learned_vram_batch(model_paths: Vec<String>) -> HashMap<String, LearnedVramSummary> {
+    let mut out: HashMap<String, LearnedVramSummary> = HashMap::new();
+    let Ok(_guard) = STORE_MUTEX.lock() else {
+        return out;
+    };
+    let store = load_store();
+    for path in model_paths {
+        let prefix = format!("{}|", normalize_model_path_for_key(&path));
+        let mut best_vram = 0.0_f64;
+        let mut best_host = 0.0_f64;
+        for (key, entry) in store.entries.iter() {
+            if !key.starts_with(&prefix) || entry.vram_mib <= best_vram {
+                continue;
+            }
+            best_vram = entry.vram_mib;
+            best_host = entry.host_mib.unwrap_or(0.0);
+        }
+        if best_vram > 0.0 {
+            out.insert(
+                path,
+                LearnedVramSummary {
+                    vram_mib: best_vram,
+                    host_mib: best_host,
+                },
+            );
+        }
+    }
+    out
+}
 #[tauri::command]
 #[allow(clippy::too_many_arguments)] // Tauri IPC: one param per wire field; bundling would change the invoke shape
 pub fn get_learned_vram(

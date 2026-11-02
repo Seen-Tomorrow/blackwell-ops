@@ -104,7 +104,7 @@ interface ModelCardProps {
   pinned?: boolean;
   onTogglePin?: (model: ModelEntry) => void;
   seatRole?: CatalogSeatRole | null;
-  fitNow?: { verdict: FitNowVerdict; title: string } | null;
+  fitNow?: { verdict: FitNowVerdict; title: string; learnedMib?: number | null } | null;
   /** Transient result of the most recent update check — renders a fading bubble. */
   checkVerdict?: CatalogUpdateEntry | null;
   /** Click-to-dismiss the verdict-only bubble (UP TO DATE / NOT PAIRED). */
@@ -354,6 +354,15 @@ export default function ModelCard({
               states that need attention are printed - TIGHT / NO - while the filter in the
               catalog header still works on the full verdict. */}
           <span className="ml-auto flex items-center gap-1 shrink-0">
+            {/* Highest VRAM a real launch of this model used - measured, not probed. */}
+            {fitNow?.learnedMib != null && fitNow.learnedMib > 0 && (
+              <span
+                className="model-card-learned mcard-inkchip type-micro font-mono px-1 py-0.5 rounded-sm shrink-0"
+                title="Measured on a real launch (highest recorded VRAM need)"
+              >
+                {`${Math.round(fitNow.learnedMib / 1024)}G`}
+              </span>
+            )}
             {fitNow && (fitNow.verdict === "split" || fitNow.verdict === "host") && (
               <span
                 className={`model-card-fitnow model-card-fitnow--${fitNow.verdict} type-micro font-mono px-1 py-0.5 rounded-sm shrink-0`}
