@@ -253,12 +253,18 @@ fn param_suffix(
     cache_ram: &str,
     draft_key: &str,
 ) -> String {
+    let topo = device.trim();
+    let topo_seg = if topo.is_empty() {
+        String::new()
+    } else {
+        format!("|topo={topo}")
+    };
     format!(
-        "|{}|ctx={}|kv={}|dev={}|split={}|mode={}|offload={}{}",
+        "|{}|ctx={}|kv={}{}|split={}|mode={}|offload={}{}",
         provider_id,
         normalize_ctx_key(ctx),
         kv_quant.trim().to_lowercase(),
-        device.trim(),
+        topo_seg,
         split.trim().to_lowercase(),
         memory_mode.trim().to_lowercase(),
         normalize_offload_mode(offload_mode),
@@ -452,9 +458,9 @@ fn vram_device_token_from_config(config: &EngineConfig) -> String {
             return t.to_string();
         }
     }
-    config
-        .get_param_str("device")
-        .unwrap_or_else(|| "GPU-0".to_string())
+    // Topology only. A GPU index is a placement, not a memory fact: keying on it makes the
+    // same measurement unfindable from a caller that knows only the device name.
+    String::new()
 }
 
 fn device_token_is_vram_topo(token: &str) -> bool {
@@ -492,6 +498,13 @@ fn lookup_learned_vram_fuzzy(
     );
     if let Some(entry) = store.entries.get(&primary) {
         return Some(entry.clone());
+    }
+    // Keys written before the token was renamed carried `dev=<topology>`.
+    let legacy_topo = primary.replace("|topo=", "|dev=");
+    if legacy_topo != primary {
+        if let Some(entry) = store.entries.get(&legacy_topo) {
+            return Some(entry.clone());
+        }
     }
     // Pre-draft-suffix keys (same spec, no |draft=).
     if !draft_key.trim().is_empty() {
@@ -1535,11 +1548,13 @@ pub fn get_learned_vram(
     let spec = spec_type.as_deref().unwrap_or("none");
     let cache = cache_ram.as_deref().unwrap_or("0");
     let draft = draft_key_for_learn(spec, draft_model.as_deref().unwrap_or(""));
+    // Only a topology tag may enter the key; a device index must not (same reason as above).
+    let _ = &device;
     let device_token = vram_topo
         .as_deref()
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .unwrap_or(device.as_str());
+        .unwrap_or("");
     let mut entry = match lookup_learned_vram_fuzzy(
         &model_path,
         &provider_id,
@@ -1732,7 +1747,11 @@ fn key_matches_vram_topo(key: &str, want: &str) -> bool {
     if !device_token_is_vram_topo(want) {
         return true;
     }
-    let Some(rest) = key.split("|dev=").nth(1) else {
+    let rest = key
+        .split("|topo=")
+        .nth(1)
+        .or_else(|| key.split("|dev=").nth(1));
+    let Some(rest) = rest else {
         return true;
     };
     let got = rest.split('|').next().unwrap_or("").trim();
