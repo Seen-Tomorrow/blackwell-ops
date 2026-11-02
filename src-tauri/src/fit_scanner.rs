@@ -2308,17 +2308,15 @@ pub async fn fit_scan_model(
             } else {
                 "fail"
             };
+            // One line, Warning - not two Error lines. A model the fit tool cannot express
+            // (tensor split is mapped to layer before the probe) is a finding about that
+            // model, not an app failure; the caller still receives the Err.
             app.log_hub.emit_console_line(
-                BlackwellOutputConsoleCategory::Error,
+                BlackwellOutputConsoleCategory::Utils,
                 &format!(
-                    "[FIT] {tag}  FAILED  {decode}  {split_note}  ctx={ctx_int}  kv={kv_quant}  gpus={gpu_count}  mask={gpu_mask}  {model_name}"
+                    "[FIT] {tag}  failed  {decode}  {split_note}  ctx={ctx_int}  kv={kv_quant}  gpus={gpu_count}  mask={gpu_mask}  {model_name}  ·  {why}"
                 ),
-                BlackwellOutputConsoleLineStyle::Error,
-            );
-            app.log_hub.emit_console_line(
-                BlackwellOutputConsoleCategory::Error,
-                &format!("[FIT] {tag}  why: {why}"),
-                BlackwellOutputConsoleLineStyle::Error,
+                BlackwellOutputConsoleLineStyle::Warning,
             );
         }
     }
