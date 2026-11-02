@@ -575,7 +575,8 @@ pub fn merge_catalogs(
                 // Always use directory/filename derivation — proven consistent.
                 let resolved_name = internal.name.clone();
 
-                // Quant: prefer llama print_info / refined file_type_str from GGUF scan.
+                // Quant: the header reader's refined file_type_str (majority tensor type,
+                // then the author's filename quant when BPW agrees).
                 // Filename quant (internal.quant) only when header empty or shard-index noise.
                 let resolved_quant = {
                     let ft = meta.file_type_str.trim();

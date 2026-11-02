@@ -1,10 +1,10 @@
 //! Header-only facts about a GGUF file, read from the **tensor-info table**.
 //!
-//! `gguf_scan.rs` spawns `llama-server` and scrapes stderr, so it never sees tensor
-//! *names* — which is where the signals that actually distinguish a speculative
-//! draft live (`blk.N.nextn.*`, `markov_w1.weight`, trunk tensors). This module walks
-//! the same header `gguf_patch.rs` already walks (via `gguf_patch::parse_header`, not a
-//! second parser) and reports structure only. No tensor data touched, no engine spawned.
+//! Tensor *names* are where the signals that distinguish a speculative draft live
+//! (`blk.N.nextn.*`, `markov_w1.weight`, trunk tensors), and they exist only in the
+//! header. This module walks the same header `gguf_patch.rs` already walks (via
+//! `gguf_patch::parse_header`, not a second parser) and reports structure only. No
+//! tensor data touched, no engine spawned.
 //!
 //! Facts only — the role decision lives in the classifier (step 2), not here.
 #![allow(dead_code)] // Not everything here is consumed yet; `engine.rs` reads `architecture` today.
@@ -35,7 +35,7 @@ pub struct GgufShape {
     #[serde(default, rename = "hasTrunk")]
     pub has_trunk: bool,
     /// An embedding/output tensor is present. Replaces the broken
-    /// `vocab_size == 0` heuristic the stderr scraper produces.
+    /// `vocab_size == 0` heuristic the old stderr scrape produced.
     #[serde(default, rename = "hasVocab")]
     pub has_vocab: bool,
     /// 1 for a single file; >1 for a shard set.

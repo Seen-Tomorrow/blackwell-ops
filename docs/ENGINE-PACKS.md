@@ -328,9 +328,10 @@ Rules that must hold, in this order:
   `SELF-SUFFICIENT-INSTALL.md`. Gate the probe (and `check_binary_updates`' local half) on
   `cuda_runtime_ready_for_version(profile) && driver_ok(profile)`, and return "runtime missing" /
   "driver too old" instead of spawning.
-- **The GGUF scan waits for the runtime, silently.** `require_runtime_for_gguf_scan` already refuses;
-  make the refusal a queued state, not an error, and re-run the scan on the `runtime ready`
-  transition (the download-complete event already exists).
+- **The GGUF scan needs no runtime at all.** Catalog metadata is read from the header
+  in-process (`gguf_meta`), so a scan never waits on CUDA, never spawns an engine, and
+  cannot fail for a missing runtime. Anything still gating a scan on
+  `cuda_runtime_ready_for_version` is stale.
 - **Onboarding gate = "some engine can launch".**
   `engineReady = (seed && runtime13.4 && driver_ok(edge)) || (stable && runtime12.9 && driver_ok(stable))`.
   Not `all_ready`, not both CUDA versions. `check_runtime_ready` currently requires every profile

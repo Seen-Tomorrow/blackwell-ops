@@ -4,10 +4,8 @@
 //! (`gguf_scan`). That path is lossy (one real model came back with 70 of 96 KVs,
 //! zero layers, and the wrong expert counts), needs a CUDA runtime, and burns a 15 s
 //! window. `gguf_patch` already walks the same header in-process, so this module
-//! derives the fields from what it reads.
-//!
-//! What cannot come from a header: `raw_print_info` (the engine's own print_info
-//! block). It stays empty here, which is the one known delta against the scraper.
+//! derives every field from what it reads. The engine's own `print_info` block was the
+//! one thing a header cannot supply; nothing consumed it, so the field is gone.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -419,7 +417,6 @@ pub fn metadata_from_header(model_path: &str) -> Result<ModelMetadata, String> {
         nextn_predict_layers,
         raw_kvs,
         // The engine's own print_info block has no header equivalent.
-        raw_print_info: HashMap::new(),
         general_author: h.text("general.author"),
         general_repo_url: h.text("general.repo_url"),
         general_basename: h.text("general.basename"),

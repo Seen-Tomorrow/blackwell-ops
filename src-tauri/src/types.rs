@@ -260,9 +260,6 @@ pub struct ModelMetadata {
     /// All KV pairs from GGUF header — key → stringified value. Skips tokenizer arrays.
     #[serde(default, rename = "rawKvs")]
     pub raw_kvs: HashMap<String, String>,
-    /// All print_info lines — key → value string.
-    #[serde(default, rename = "rawPrintInfo")]
-    pub raw_print_info: HashMap<String, String>,
 
     // ── GGUF general.* convenience fields (extracted from raw) ─────────
     /// Author from general.author KV (if quantizer set it)

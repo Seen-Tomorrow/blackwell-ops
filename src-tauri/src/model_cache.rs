@@ -457,7 +457,6 @@ mod tests {
             file_created: 0,
             nextn_predict_layers: 0,
             raw_kvs: HashMap::new(),
-            raw_print_info: HashMap::new(),
             general_author: String::new(),
             general_repo_url: String::new(),
             general_basename: String::new(),
