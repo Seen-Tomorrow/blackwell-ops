@@ -701,7 +701,10 @@ pub fn gguf_artifact_extension(name: &str) -> Option<String> {
 }
 
 pub fn strip_shard_pattern(filename: &str) -> String {
-    if !filename.ends_with(".gguf") {
+    // Case-insensitive: the directory walkers accept `.GGUF` via `to_lowercase()`, so a
+    // case-sensitive guard here would list `…-00001-of-00002.GGUF` as four separate models
+    // while treating the same set in lowercase as one.
+    if filename.len() < 5 || !filename[filename.len() - 5..].eq_ignore_ascii_case(".gguf") {
         return filename.to_string();
     }
 
@@ -1236,6 +1239,18 @@ mod tests {
     use super::*;
     use crate::types::{DownloadStatus, DownloadTask, QuantBatchPart, QuantDownloadBatch};
 
+    /// Shard grouping must not depend on the extension's case: the directory walkers
+    /// accept .GGUF, so a case-sensitive guard here would show one split set as N models.
+    #[test]
+    fn shard_stripping_ignores_extension_case() {
+        assert_eq!(
+            strip_shard_pattern("Model-00001-of-00004.GGUF"),
+            strip_shard_pattern("Model-00001-of-00004.gguf")
+        );
+        assert_eq!(strip_shard_pattern("Model-00001-of-00004.GGUF"), "Model.gguf");
+        // Not a shard set — returned untouched, whatever the case.
+        assert_eq!(strip_shard_pattern("Qwen3-27B-Q4_K_M.GGUF"), "Qwen3-27B-Q4_K_M.GGUF");
+    }
     /// The empty-state diagnostics must not confuse "missing" with "unreadable".
     /// Sending a user hunting an ACL problem when the folder simply does not
     /// exist is worse than saying nothing — and "empty" is a third answer.
