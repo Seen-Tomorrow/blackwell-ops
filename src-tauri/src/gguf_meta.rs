@@ -366,6 +366,12 @@ pub fn metadata_from_header(model_path: &str) -> Result<ModelMetadata, String> {
 
     let mut raw_kvs = HashMap::with_capacity(h.kv.len());
     for (k, v) in h.kv.iter() {
+        // The chat template is the one bulky KV (up to ~18 KB) and nothing reads it from
+        // the catalog; it was 80% of the cache file. A template editor can ask for it on
+        // demand instead of every scan paying for it.
+        if k == "tokenizer.chat_template" {
+            continue;
+        }
         raw_kvs.insert(k.clone(), stringify(v));
     }
 
@@ -424,7 +430,6 @@ pub fn metadata_from_header(model_path: &str) -> Result<ModelMetadata, String> {
         general_license: h.text("general.license"),
         general_tags: h.str_vec("general.tags"),
         base_models,
-        chat_template: h.text("tokenizer.chat_template"),
     };
 
     refine_file_type(&mut meta, model_path, &bytes_by_type);

@@ -149,6 +149,8 @@ pub async fn scan_all_models_cmd(
     let concurrency = concurrency.unwrap_or(6); // header reads are cheap; match the scheduler
     type ScanHandle = tokio::task::JoinHandle<Result<crate::types::ModelMetadata, String>>;
     let mut handles: Vec<(usize, String, ScanHandle)> = Vec::new();
+    // Cache writes are batched: one file rewrite per 32 models, not per model.
+    let mut pending: Vec<(String, ModelMetadata)> = Vec::new();
 
     for (i, path) in all_paths.iter().enumerate() {
         // Check cancellation between models
@@ -177,7 +179,8 @@ pub async fn scan_all_models_cmd(
         // When we hit concurrency limit, await one before spawning next
         if handles.len() >= concurrency {
             let (_, p, h) = handles.remove(0);
-            handle_scan_result_with_sanity(h.await, &p, &mut scanned, &mut failed, &log_hub);
+            handle_scan_result_with_sanity(h.await, &p, &mut scanned, &mut failed, &log_hub, &mut pending);
+            flush_scan_cache(&mut pending);
 
             let lh = log_hub.clone();
             tokio::spawn(async move {
@@ -193,7 +196,8 @@ pub async fn scan_all_models_cmd(
 
     // Await remaining handles (let in-flight scans finish)
     for (_, p, h) in handles {
-        handle_scan_result(h.await, &p, &mut scanned, &mut failed);
+        handle_scan_result(h.await, &p, &mut scanned, &mut failed, &mut pending);
+        flush_scan_cache(&mut pending);
 
         let lh = log_hub.clone();
         tokio::spawn(async move {
@@ -204,6 +208,11 @@ pub async fn scan_all_models_cmd(
                 "current_model": p,
             }));
         });
+    }
+
+    // Flush whatever is left before reporting completion.
+    if let Err(e) = crate::model_cache::set_cached_batch(std::mem::take(&mut pending)) {
+        log::warn!("Failed to cache remaining scans: {}", e);
     }
 
     // Emit complete event + docked-console banner
@@ -234,12 +243,22 @@ pub async fn scan_all_models_cmd(
     Ok(scanned)
 }
 
+/// Persist buffered scan results once they reach the batch size.
+fn flush_scan_cache(pending: &mut Vec<(String, ModelMetadata)>) {
+    if pending.len() < 32 {
+        return;
+    }
+    if let Err(e) = crate::model_cache::set_cached_batch(std::mem::take(pending)) {
+        log::warn!("Failed to cache {} scans: {}", pending.len(), e);
+    }
+}
 /// Handle scan result — correct file size, cache, update counters.
 fn handle_scan_result(
     result: Result<Result<ModelMetadata, String>, tokio::task::JoinError>,
     path: &str,
     scanned: &mut usize,
     failed: &mut usize,
+    pending: &mut Vec<(String, ModelMetadata)>,
 ) {
     match result {
         Ok(Ok(mut metadata)) => {
@@ -248,9 +267,8 @@ fn handle_scan_result(
                 log::info!("[batch_scan] Corrected file_size for '{}': {} → {}", path, metadata.file_size_bytes, corrected_size);
                 metadata.file_size_bytes = corrected_size;
             }
-            if let Err(e) = crate::model_cache::set_cached(path, metadata.clone()) {
-                log::warn!("Failed to cache {}: {}", path, e);
-            }
+            // Buffered: the whole cache file is rewritten per flush, not per model.
+            pending.push((path.to_string(), metadata));
             *scanned += 1;
         }
         Ok(Err(e)) => {
@@ -271,6 +289,7 @@ fn handle_scan_result_with_sanity(
     scanned: &mut usize,
     failed: &mut usize,
     log_hub: &LogHub,
+    pending: &mut Vec<(String, ModelMetadata)>,
 ) {
     match result {
         Ok(Ok(mut metadata)) => {
@@ -279,9 +298,8 @@ fn handle_scan_result_with_sanity(
                 log::info!("[batch_scan] Corrected file_size for '{}': {} → {}", path, metadata.file_size_bytes, corrected_size);
                 metadata.file_size_bytes = corrected_size;
             }
-            if let Err(e) = crate::model_cache::set_cached(path, metadata.clone()) {
-                log::warn!("Failed to cache {}: {}", path, e);
-            }
+            // Buffered: the whole cache file is rewritten per flush, not per model.
+            pending.push((path.to_string(), metadata));
             *scanned += 1;
         }
         Ok(Err(e)) => {

@@ -236,9 +236,8 @@ pub fn apply_shapes(shapes: &[(String, GgufShape)]) -> Result<(), String> {
     })
 }
 
-/// Insert or update GGUF scan metadata for a model path.
-/// Preserves existing hf_meta if the entry already exists.
-pub fn set_cached(model_path: &str, metadata: ModelMetadata) -> Result<(), String> {
+/// Insert one entry into an already-loaded cache. Callers must hold `CACHE_WRITE_LOCK`.
+fn insert_cached(cache: &mut HashMap<String, CachedEntry>, model_path: &str, metadata: ModelMetadata) {
     let storage_key = storage_key_for(model_path);
     let file_mtime_ms = current_mtime_ms(model_path).unwrap_or(0);
 
@@ -249,31 +248,50 @@ pub fn set_cached(model_path: &str, metadata: ModelMetadata) -> Result<(), Strin
         metadata.architecture
     );
 
-    with_cache_write(|cache| {
-        // Preserve existing hf_meta from any alias key.
-        let existing_hf = keys_for_same_file(cache, model_path)
-            .iter()
-            .find_map(|k| cache.get(k).and_then(|e| e.hf_meta.clone()));
-        // A fresh engine scan says nothing about the tensor table — keep any shape we have.
-        let existing_shape = keys_for_same_file(cache, model_path)
-            .iter()
-            .find_map(|k| cache.get(k).and_then(|e| e.gguf_shape.clone()));
+    // Preserve existing hf_meta from any alias key.
+    let existing_hf = keys_for_same_file(cache, model_path)
+        .iter()
+        .find_map(|k| cache.get(k).and_then(|e| e.hf_meta.clone()));
+    // A fresh engine scan says nothing about the tensor table — keep any shape we have.
+    let existing_shape = keys_for_same_file(cache, model_path)
+        .iter()
+        .find_map(|k| cache.get(k).and_then(|e| e.gguf_shape.clone()));
 
-        for alias in keys_for_same_file(cache, model_path) {
-            if alias != storage_key {
-                cache.remove(&alias);
-            }
+    for alias in keys_for_same_file(cache, model_path) {
+        if alias != storage_key {
+            cache.remove(&alias);
         }
+    }
 
-        cache.insert(
-            storage_key.clone(),
-            CachedEntry {
-                hf_meta: existing_hf,
-                gguf_meta: Some(metadata),
-                gguf_shape: existing_shape,
-                file_mtime_ms,
-            },
-        );
+    cache.insert(
+        storage_key,
+        CachedEntry {
+            hf_meta: existing_hf,
+            gguf_meta: Some(metadata),
+            gguf_shape: existing_shape,
+            file_mtime_ms,
+        },
+    );
+}
+
+/// Insert or update GGUF scan metadata for a model path.
+/// Preserves existing hf_meta if the entry already exists.
+pub fn set_cached(model_path: &str, metadata: ModelMetadata) -> Result<(), String> {
+    with_cache_write(|cache| insert_cached(cache, model_path, metadata))
+}
+
+/// Cache many scans with ONE load and ONE save.
+///
+/// A library scan used to rewrite the whole cache file per model. Once the header reader
+/// made scanning cheap, that bookkeeping cost more than the scanning itself.
+pub fn set_cached_batch(entries: Vec<(String, ModelMetadata)>) -> Result<(), String> {
+    if entries.is_empty() {
+        return Ok(());
+    }
+    with_cache_write(|cache| {
+        for (path, metadata) in entries {
+            insert_cached(cache, &path, metadata);
+        }
     })
 }
 
@@ -464,7 +482,6 @@ mod tests {
             general_license: String::new(),
             general_tags: Vec::new(),
             base_models: Vec::new(),
-            chat_template: String::new(),
         }
     }
 

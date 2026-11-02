@@ -283,9 +283,6 @@ pub struct ModelMetadata {
     /// Base model info — captures ALL base models from general.base_model.N.*
     #[serde(default, rename = "base_models")]
     pub base_models: Vec<BaseModelInfo>,
-    /// Chat template from tokenizer.chat_template (~1-3KB Jinja2 string)
-    #[serde(default, rename = "chat_template")]
-    pub chat_template: String,
 }
 
 /// Internal representation used during catalog scanning (before dedup).
