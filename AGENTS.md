@@ -212,15 +212,20 @@ JSX, never hides them with CSS), and the OC panel is a header-triggered overlay 
 
 **DEV tools (header)** — `VIEW` = physical panel presets + live Windows scale (app zoom 100% when testing). `GPU+` = fake multi-GPU topo (real SKU names/VRAM) for layout + forecast stress — session only. Do not ship these in REL UX.
 
-**DEV "memory leak" = React's performance-track measures, not your objects** — the dev build emits
+**DEV renderer growth has two causes — one is React's performance-track, one was a real leak (fixed)** — the dev build emits
 `performance.measure("<ComponentName>")` for every component render. Those entries live in the renderer's
 **native** performance timeline, not the JS heap, so V8 cannot reclaim them: a DEV app left open for a day
 accumulated **3.4 M measures (~4 GB private WS)** in the WebView2 renderer while `JSHeapUsedSize` stayed at
-~60 MB and forced GC changed nothing. REL emits none, which is exactly why only DEV appeared to leak.
-`src/lib/perfTimelineGuard.ts` (installed from `main.tsx` in dev builds) clears the timeline past 20 k
-measures, so a short DevTools recording still works. Diagnose with
-`performance.getEntriesByType("measure").length`; a forced heap snapshot will look clean throughout, so do
-not conclude "not a leak" from heap numbers alone.
+~60 MB and forced GC changed nothing. REL emits none. `src/lib/perfTimelineGuard.ts` (installed from
+`main.tsx` in dev builds) clears the timeline past 20 k measures, so a short DevTools recording still works.
+Diagnose with `performance.getEntriesByType("measure").length`; a forced heap snapshot will look clean
+throughout, so do not conclude "not a leak" from heap numbers alone.
+
+That guard did **not** explain the leak that climbed to gigabytes in hours: the culprit was a second
+model-catalog instance inside the ENGINE CONFIG modal (reachable via the `/` shortcut), re-rendering every
+model and its props on a repeated poll. Removing it stopped the growth — DEV now runs for days with models
+loaded. If private WS climbs again, look for a component polling on a short interval and re-rendering a
+list, before blaming the performance timeline.
 
 ---
 
@@ -281,7 +286,9 @@ The bash tool mangles `$_`/`$p` in inline `powershell -Command` strings (eats th
 
 **Engine lifetime** — Engines join a private Job Object (`engine_job`, `KILL_ON_JOB_CLOSE`). Never bare `AppHandle::exit` without `engine::teardown_all_for_app_exit` (update path included). Stop is taskkill-by-PID only (no console CTRL+C). Startup runs `kill_orphans_of_dead_owners` then `sweep_stale_locks`.
 
-**App exit / heap corruption (`0xC0000374`)** — After engines are stopped, do **not** use `AppHandle::exit(0)` or `WebviewWindow::destroy()` for process death. Session logs showed STATUS_HEAP_CORRUPTION in ntdll immediately after “main window destroyed” / Tauri Drop, even when taskkill + fusion stop had completed cleanly. Close/update path: `teardown_all_for_app_exit` → `app_lifecycle::finish_process_exit` → `std::process::exit(0)` (skip webview destroy + Tauri Drop cascade). During shutdown: `app_lifecycle::begin_shutdown` suppresses fusion/IPC and pipe-EOF FIT work. Fusion warm-idle poll is 250ms (not 50ms) to avoid multi-engine HTTP stampede before exit.
+**App exit path (`teardown_all_for_app_exit` → `finish_process_exit` → `std::process::exit(0)`)** — After engines are stopped, do **not** use `AppHandle::exit(0)` or `WebviewWindow::destroy()` for process death: skip the WebView teardown and the whole Tauri Drop cascade. During shutdown `app_lifecycle::begin_shutdown` suppresses fusion/IPC and pipe-EOF FIT work; fusion warm-idle poll is 250ms (not 50ms) so multi-engine HTTP does not stampede on the way out.
+
+*History, so nobody re-derives it:* this was built around a `0xC0000374` STATUS_HEAP_CORRUPTION seen in ntdll right after "main window destroyed". That attribution turned out to be **wrong** — the crash cluster disappeared once a real renderer leak was fixed (a second model-catalog instance inside the ENGINE CONFIG modal, re-rendering on a poll several times a second; see the renderer-growth note above), and the exit path has been quiet for days since. The skip-teardown path **stays anyway**: it is cheap, and not running Tauri's Drop cascade is one less teardown hazard regardless of which bug used to fire there. Do not re-litigate the crash theory; do keep the exit path.
 
 **`0xC0000409` after reboot = `Instant` underflow, not WebView** — Windows `Instant` is boot-relative,
 so `Instant::now() - Duration` panics with `overflow when subtracting duration from instant` whenever

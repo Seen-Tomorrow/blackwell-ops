@@ -29,7 +29,7 @@ reads or writes, but first-class OMP:
 
 **Why not in-place + backup/restore** (rejected): "harness close" is not a reliable event
 (spawned/elevated console, user window-close, taskkill, power loss — and this app has a
-documented heap-corruption exit path), the agent dir holds live SQLite+WAL state plus the
+deliberate exit path that skips WebView teardown), the agent dir holds live SQLite+WAL state plus the
 user's OAuth credentials in `agent.db`, and a missed restore destroys the user's real OMP
 setup. Isolation's failure mode is invisible (user's own omp doesn't see app config);
 restore's failure mode is user data loss.

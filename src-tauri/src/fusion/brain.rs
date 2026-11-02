@@ -33,9 +33,8 @@ fn poll_idle_ms() -> u64 {
     crate::debug_flags::flags().fusion_idle_poll_ms
 }
 /// Warm idle: recently-used engine between agent turns — /slots only, no /metrics.
-/// Was 50ms: 10 engines ≈ 200 HTTP polls/s for a full minute after bench — correlated with
-/// ~60–90s idle `STATUS_ILLEGAL_INSTRUCTION` / latent heap corruption (close only *detects* it).
-/// 250ms keeps agent-turn responsiveness without sustained stampede.
+/// Was 50ms: 10 engines ≈ 200 HTTP polls/s for a full minute after bench — a needless CPU/HTTP
+/// stampede on the way to idle. 250ms keeps agent-turn responsiveness without it.
 const WARM_IDLE_POLL_MS: u64 = 250;
 
 /// Stay on warm cadence for this long after last slot activity (coding-session belt).
@@ -1182,8 +1181,8 @@ impl FusionBrain {
         // Owned by the handle so the registry is the single place that knows a slot's brain.
         let (tx, rx) = tokio::sync::mpsc::channel::<BrainInbound>(1024);
 
-        // JoinHandle (not AbortOnDrop): app exit must cancel+await cleanly.
-        // Abort-on-drop mid-HTTP/IPC with 10 brains correlated with STATUS_HEAP_CORRUPTION after teardown.
+        // JoinHandle (not AbortOnDrop): app exit must cancel+await cleanly, so no task is
+        // dropped mid-HTTP/IPC while the process is being torn down.
         let join = tokio::spawn(async move {
             Self::run(log_hub, config, cancel_spawn, rx).await;
         });
