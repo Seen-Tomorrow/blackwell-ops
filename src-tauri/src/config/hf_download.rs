@@ -63,7 +63,10 @@ pub fn validate_hf_model_id(model_id: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Download filenames must be a single `.gguf` leaf — no path traversal.
+/// Download filenames must be a single GGUF artifact leaf — no path traversal.
+///
+/// `.gguf_file` is not a typo: repos ship swappable pieces (`engram/…-MXFP8.gguf_file`)
+/// under a non-`.gguf` extension on purpose, so launchers do not glob them as models.
 pub fn validate_download_file_name(file_name: &str) -> Result<(), String> {
     let name = file_name.trim();
     if name.is_empty() {
@@ -75,8 +78,8 @@ pub fn validate_download_file_name(file_name: &str) -> Result<(), String> {
     if name.contains('/') || name.contains('\\') || name.contains("..") {
         return Err("Invalid file name".to_string());
     }
-    if !name.to_lowercase().ends_with(".gguf") {
-        return Err("Only .gguf files can be downloaded".to_string());
+    if crate::model_catalog::gguf_artifact_extension(name).is_none() {
+        return Err("Only GGUF files can be downloaded".to_string());
     }
     Ok(())
 }

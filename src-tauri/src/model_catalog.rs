@@ -682,6 +682,23 @@ pub fn merge_catalogs(
     Ok((final_catalog, conflicts))
 }
 
+/// Extension of a GGUF artifact as it appears on the Hub: `gguf` for `.gguf`,
+/// `gguf_file` for the `.gguf_file` renames repos use for swappable pieces.
+/// `None` for anything else — including download leftovers (`.gguf.part`).
+pub fn gguf_artifact_extension(name: &str) -> Option<String> {
+    let leaf = name.rsplit('/').next().unwrap_or(name).to_lowercase();
+    let idx = leaf.find(".gguf")?;
+    let tail = &leaf[idx + 5..];
+    if tail
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    {
+        Some(format!("gguf{tail}"))
+    } else {
+        None
+    }
+}
+
 pub fn strip_shard_pattern(filename: &str) -> String {
     if !filename.ends_with(".gguf") {
         return filename.to_string();
@@ -736,14 +753,16 @@ fn find_case_insensitive_rfind(s: &str, pattern: &str) -> Option<usize> {
 }
 
 /// Extract quant type from filename. Returns known quant string or fallback.
+/// Longest-first ordering matters: `Q2_K` is a prefix of `Q2_K_XL`, so a plain
+/// `contains` scan would truncate every Unsloth `*_XL` folder into the wrong label.
 const KNOWN_QUANTS: &[&str] = &[
-    "Q8_0", "Q8_K", "Q6_K", "Q6_K_XL", "Q6_K_L",
-    "Q5_0", "Q5_1", "Q5_K_M", "Q5_K_S",
-    "Q4_0", "Q4_1", "Q4_K_M", "Q4_K_S", "Q4_K_XL", "Q4_K_L",
-    "Q3_K_M", "Q3_K_S", "Q2_K",
-    "IQ4_NL", "IQ3_S", "IQ3_M", "IQ3_XS", "IQ3_XXS",
+    "Q8_0", "Q8_K_XL", "Q8_K", "Q6_K_XL", "Q6_K_L", "Q6_K",
+    "Q5_0", "Q5_1", "Q5_K_XL", "Q5_K_M", "Q5_K_S",
+    "Q4_0", "Q4_1", "Q4_K_XL", "Q4_K_M", "Q4_K_S", "Q4_K_L",
+    "Q3_K_XL", "Q3_K_M", "Q3_K_S", "Q2_K_XL", "Q2_K",
+    "IQ4_NL", "IQ4_XS", "IQ3_S", "IQ3_M", "IQ3_XS", "IQ3_XXS",
     "IQ2_S", "IQ2_XS", "IQ2_MS", "IQ2_L",
-    "IQ1_S", "IQ1_NL",
+    "IQ1_S", "IQ1_M", "IQ1_NL",
     "FP8_E4M3", "FP8_E5M2",
 ];
 
@@ -789,20 +808,27 @@ fn check_early_formats(filename: &str) -> Option<String> {
     if lower.contains("mxfp4") {
         return Some("MXFP4".to_string());
     }
+    if lower.contains("mxfp8") {
+        return Some("MXFP8".to_string());
+    }
     if lower.contains("nvfp4") {
         return Some("NVFP4".to_string());
+    }
+    if lower.contains("nvfp8") {
+        return Some("NVFP8".to_string());
     }
     None
 }
 
+/// Match a known quant tag inside `s`, preferring the LONGEST hit.
+/// `Q2_K` is a prefix of `Q2_K_XL`, so first-match would mislabel every `*_XL` set.
 fn match_known_quant_in(s: &str) -> Option<String> {
     let s_lower = s.to_lowercase();
-    for pattern in KNOWN_QUANTS {
-        if s_lower.contains(&pattern.to_lowercase()) {
-            return Some(pattern.to_string());
-        }
-    }
-    None
+    KNOWN_QUANTS
+        .iter()
+        .filter(|pattern| s_lower.contains(&pattern.to_lowercase()))
+        .max_by_key(|pattern| pattern.len())
+        .map(|pattern| pattern.to_string())
 }
 
 fn find_best_segment_match(filename: &str) -> Option<String> {
@@ -1024,9 +1050,12 @@ pub fn check_hf_files_against_disk(
         })
         .collect();
 
-    // Build indexes from scoped (repo-filtered) entries only
+    // Build indexes from scoped (repo-filtered) entries only.
+    // Identity is the FILE NAME — quant labels repeat across folders (`engram/Q6_K` vs
+    // `UD-Q6_K/Q6_K`), so label-only matching marks the wrong row as present on disk.
     let mut size_index: HashMap<(String, u64), &ModelEntryInternal> = HashMap::new();
     let mut quant_index: HashMap<String, &ModelEntryInternal> = HashMap::new();
+    let mut name_index: HashMap<String, &ModelEntryInternal> = HashMap::new();
     for (entry, _repo_id) in &scoped {
         let quant_key = entry.quant.clone();
         // Index by (quant, size) for exact match
@@ -1034,6 +1063,11 @@ pub fn check_hf_files_against_disk(
         size_index.entry(size_key).or_insert(*entry);
         // Index by quant alone for mismatch detection
         quant_index.entry(quant_key).or_insert(*entry);
+        if let Some(fname) = Path::new(&entry.path).file_name() {
+            name_index
+                .entry(fname.to_string_lossy().to_lowercase())
+                .or_insert(*entry);
+        }
     }
 
     // LOG: disk check start
@@ -1051,7 +1085,20 @@ pub fn check_hf_files_against_disk(
     let mut n_mismatch: usize = 0;
     let mut n_none: usize = 0;
 
-    let results: Vec<DiskCheckResult> = gguf_files.iter().map(|gf| {
+    let results: Vec<DiskCheckResult> = gguf_files
+        .iter()
+        .filter(|gf| gf.role.is_quant())
+        .map(|gf| {
+        let first_file_name = gf
+            .download_parts()
+            .first()
+            .map(|p| p.file_name.to_lowercase())
+            .unwrap_or_default();
+        let path_in_repo = gf
+            .download_parts()
+            .first()
+            .map(|p| p.path_in_repo.clone())
+            .unwrap_or_default();
         // Step 1: Check LFS OID against model cache
         let lfs_match = if !gf.lfs_oid.is_empty() {
             model_cache.values().find_map(|cached| {
@@ -1082,32 +1129,32 @@ pub fn check_hf_files_against_disk(
             n_lfs += 1;
             return DiskCheckResult {
                 quant_type: gf.r#type.clone(),
+                path_in_repo,
                 match_type: "lfs".to_string(),
                 disk_file_size: None,
                 disk_author: None,
             };
         }
 
-        // Step 2: Check file size match (scoped to same HF repo)
-        let size_match = size_index.get(&(gf.r#type.clone(), gf.size_bytes));
-        if let Some(_entry) = size_match {
-            if let Some(lh) = log_hub {
-                lh.emit_console_line(
-                    BlackwellOutputConsoleCategory::Debug,
-                    &format!("[DISK DEBUG] {} → size match ({} bytes)", gf.r#type, gf.size_bytes),
-                    BlackwellOutputConsoleLineStyle::Normal);
+        // Step 2: same file NAME and size — the file we would download is already here.
+        if let Some(entry) = name_index.get(&first_file_name) {
+            if entry.model_bytes == gf.size_bytes {
+                if let Some(lh) = log_hub {
+                    lh.emit_console_line(
+                        BlackwellOutputConsoleCategory::Debug,
+                        &format!("[DISK DEBUG] {} → size match ({} bytes)", gf.r#type, gf.size_bytes),
+                        BlackwellOutputConsoleLineStyle::Normal);
+                }
+                n_size += 1;
+                return DiskCheckResult {
+                    quant_type: gf.r#type.clone(),
+                    path_in_repo,
+                    match_type: "size".to_string(),
+                    disk_file_size: None,
+                    disk_author: None,
+                };
             }
-            n_size += 1;
-            return DiskCheckResult {
-                quant_type: gf.r#type.clone(),
-                match_type: "size".to_string(),
-                disk_file_size: None,
-                disk_author: None,
-            };
-        }
-
-        // Step 3: Check for size mismatch (same quant, different size)
-        if let Some(entry) = quant_index.get(&gf.r#type) {
+            // Same file name, different size → the Hub copy changed.
             if let Some(lh) = log_hub {
                 lh.emit_console_line(
                     BlackwellOutputConsoleCategory::Debug,
@@ -1118,13 +1165,51 @@ pub fn check_hf_files_against_disk(
             n_mismatch += 1;
             return DiskCheckResult {
                 quant_type: gf.r#type.clone(),
+                path_in_repo,
                 match_type: "mismatch".to_string(),
                 disk_file_size: Some(entry.model_bytes),
                 disk_author: Some(entry.author.clone()),
             };
         }
 
-        // Step 4: Not present
+        // Step 3: (quant, size) exact — handles files the user renamed on disk.
+        if size_index.get(&(gf.r#type.clone(), gf.size_bytes)).is_some() {
+            if let Some(lh) = log_hub {
+                lh.emit_console_line(
+                    BlackwellOutputConsoleCategory::Debug,
+                    &format!("[DISK DEBUG] {} → size match (renamed on disk)", gf.r#type),
+                    BlackwellOutputConsoleLineStyle::Normal);
+            }
+            n_size += 1;
+            return DiskCheckResult {
+                quant_type: gf.r#type.clone(),
+                path_in_repo,
+                match_type: "size".to_string(),
+                disk_file_size: None,
+                disk_author: None,
+            };
+        }
+
+        // Step 4: same quant label, different size
+        if let Some(entry) = quant_index.get(&gf.r#type) {
+            if let Some(lh) = log_hub {
+                lh.emit_console_line(
+                    BlackwellOutputConsoleCategory::Debug,
+                    &format!("[DISK DEBUG] {} → mismatch (label match, disk: {} bytes, HF: {} bytes, disk author: {})",
+                        gf.r#type, entry.model_bytes, gf.size_bytes, entry.author),
+                    BlackwellOutputConsoleLineStyle::Warning);
+            }
+            n_mismatch += 1;
+            return DiskCheckResult {
+                quant_type: gf.r#type.clone(),
+                path_in_repo,
+                match_type: "mismatch".to_string(),
+                disk_file_size: Some(entry.model_bytes),
+                disk_author: Some(entry.author.clone()),
+            };
+        }
+
+        // Step 5: Not present
         if let Some(lh) = log_hub {
             lh.emit_console_line(
                 BlackwellOutputConsoleCategory::Debug,
@@ -1135,6 +1220,7 @@ pub fn check_hf_files_against_disk(
 
         DiskCheckResult {
             quant_type: gf.r#type.clone(),
+            path_in_repo,
             match_type: "none".to_string(),
             disk_file_size: None,
             disk_author: None,
@@ -1237,6 +1323,28 @@ mod tests {
         );
         assert!(!is_shard_noise_quant("Q4_K_M"));
         assert!(is_shard_noise_quant("00004"));
+    }
+
+    /// `Q2_K` is a prefix of `Q2_K_XL` — a first-match scan truncated every Unsloth
+    /// `UD-*_XL` folder into a label that also collided with a real Q2_K quant.
+    #[test]
+    fn extract_quant_keeps_the_xl_suffix() {
+        assert_eq!(
+            extract_quant("DeepSeek-V4.1-Flash-1017-UD-Q2_K_XL-00001-of-00007.gguf"),
+            "Q2_K_XL"
+        );
+        assert_eq!(
+            extract_quant("DeepSeek-V4.1-Flash-1017-UD-Q8_K_XL-00001-of-00009.gguf"),
+            "Q8_K_XL"
+        );
+        assert_eq!(
+            extract_quant("DeepSeek-V4.1-Flash-1017-UD-IQ1_M-00001-of-00005.gguf"),
+            "IQ1_M"
+        );
+        assert_eq!(
+            extract_quant("DeepSeek-V4.1-Flash-1017-engram-MXFP8.gguf_file"),
+            "MXFP8"
+        );
     }
 
     #[test]

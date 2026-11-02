@@ -589,14 +589,25 @@ const QUANT_PREF = [
 
 function pickDflashQuant(files: GgufFile[], main: ModelEntry): GgufFile | null {
   if (!files.length) return null;
-  // Never offer full-size mains as "draft" (15GB Q4 of 27B, etc.).
+  // Never offer full-size mains as "draft" (15GB Q4 of 27B, etc.), and never offer a
+  // swap piece / sidecar — those are not launchable heads even when they are small.
   const usable = files.filter(
     (f) =>
+      (f.role ?? 'quant') !== 'swap' &&
+      (f.role ?? 'quant') !== 'aux' &&
+      (f.role ?? 'quant') !== 'extra' &&
       f.url?.trim() &&
       f.size_bytes > 0 &&
       f.size_bytes <= DFLASH_DRAFT_MAX_FILE_BYTES,
   );
   if (!usable.length) return null;
+
+  // A repo that ships its own draft head (`dspark/`) is the best possible match.
+  const draftFirst = usable.filter((f) => f.role === 'draft');
+  if (draftFirst.length > 0) {
+    const sortedDrafts = [...draftFirst].sort((a, b) => a.size_bytes - b.size_bytes);
+    return sortedDrafts[0];
+  }
 
   // Prefer files whose name/type still says dflash when available.
   const dflashFirst = usable.filter(

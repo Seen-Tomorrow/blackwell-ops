@@ -37,12 +37,6 @@
   border: 1px solid var(--theme-frame-border, var(--theme-border-subtle));
 }
 
-.theme-tag {
-  background: var(--theme-panel-accent);
-  border: 1px solid var(--theme-frame-border, var(--theme-border-subtle));
-  color: var(--theme-text-muted);
-}
-
 /* Model Hub split panels — themed hairline instead of white stealth rings */
 [data-model-hub] .theme-surface.divide-x > * + * {
   border-left-color: var(--theme-border-subtle);

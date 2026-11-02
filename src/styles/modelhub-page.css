@@ -1,6 +1,22 @@
 /* Split from modelhub.css: rules used only by the ModelHub lazy graph.
    Loaded with its chunk; do not re-import from index.css. */
 
+/* ── Page frame ────────────────────────────────────────────
+   The app footer (mini-console header + status bar) is FIXED chrome — it overlays the
+   page rather than sitting in the flex column, and the docked console's own footprint
+   is reserved on .app-main-frame. This page is a two-pane layout that fills its height,
+   so it must reserve the footer itself or its last row (the selection bar) ends up
+   under the console. Divide by the app zoom: the reserve has to land as *visual* px
+   above unscaled fixed chrome. */
+[data-model-hub] {
+  padding-bottom: calc((var(--app-footer-h) + var(--boc-launch-gap)) / var(--ui-text-scale, 1));
+}
+
+.app-shell--console-docked [data-model-hub] {
+  /* Docked console: .app-main-frame already reserves console + status bar. */
+  padding-bottom: 0;
+}
+
 
 
 /* ── ModelHubDownloadPaths ───────────────────────────────── */
@@ -134,42 +150,6 @@
   color: var(--theme-warn);
 }
 
-/* Confirm body (white/80) */
-.hub-confirm-body {
-  font-size: var(--type-sm);
-  color: color-mix(in srgb, var(--theme-text) 80%, transparent);
-}
-
-/* Confirm disk/HF comparison block (9px) */
-.hub-confirm-disk {
-  font-size: var(--type-label);
-}
-
-/* DISK / HF row label (stealth-muted) */
-.hub-confirm-disk-label {
-  color: var(--theme-text-muted);
-}
-
-/* Disk author (stealth-muted/70) */
-.hub-confirm-disk-author {
-  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
-}
-
-/* Disk quant type (yellow-400/80) */
-.hub-confirm-disk-type {
-  color: color-mix(in srgb, var(--theme-warn) 80%, transparent);
-}
-
-/* Disk/HF size (stealth-muted/50) */
-.hub-confirm-disk-size {
-  color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
-}
-
-/* HF quant type (nv-green/80) */
-.hub-confirm-hf-type {
-  color: color-mix(in srgb, var(--theme-accent) 80%, transparent);
-}
-
 /* Confirm fallback type line (stealth-muted) */
 .hub-confirm-fallback {
   font-size: var(--type-body);
@@ -277,14 +257,6 @@
 .hub-result-author {
   font-size: var(--type-label);
   color: var(--theme-text-muted);
-}
-
-/* GGUF badge (nv-green/30 border, /10 fill, /70 text) */
-.hub-result-gguf {
-  border-color: color-mix(in srgb, var(--theme-accent) 30%, transparent);
-  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
-  color: color-mix(in srgb, var(--theme-accent) 70%, transparent);
-  font-size: var(--type-tiny);
 }
 
 /* Result meta (downloads / likes, stealth-muted) */
@@ -471,22 +443,210 @@
   font-size: var(--type-body);
 }
 
-/* VRAM-fit badge — fits (nv-green) / tight (yellow-500) / over (red-500) / none (muted/30) */
-.hub-vramfit--fits {
-  background: var(--theme-accent);
+/* ── Repo artifacts: quants vs extras ─────────────────────
+   The list is one repo tree, not a quant whitelist. Role badges are the only
+   thing separating a launchable quant set from a draft head, a swap piece or a
+   sidecar — each gets its own token so role is readable without opening a row. */
+
+/* Result-card counts (quants / extras) */
+.hub-result-counts {
+  font-size: var(--type-tiny);
+  color: var(--theme-accent);
+}
+
+/* "+N EXTRAS" on a result card (stealth-muted/60) */
+.hub-result-extra {
+  font-size: var(--type-tiny);
+  color: color-mix(in srgb, var(--theme-text-muted) 60%, transparent);
+}
+
+/* Row checkbox — accent-tinted, square, compact */
+.hub-file-check {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  accent-color: var(--theme-accent);
+  cursor: pointer;
+}
+
+/* Selected row tint */
+.hub-file--selected {
+  border-color: color-mix(in srgb, var(--theme-accent) 40%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 8%, transparent);
+}
+
+/* Role badge — MAIN (accent) / DRAFT (warn) / SWAP (info) / sidecar + extra (muted) */
+.hub-role {
+  flex-shrink: 0;
+  padding: 1px 4px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  font-size: var(--type-tiny);
+  letter-spacing: 0.04em;
+}
+
+.hub-role--quant {
+  color: var(--theme-accent);
+  border-color: color-mix(in srgb, var(--theme-accent) 40%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
+}
+
+.hub-role--draft {
+  color: var(--theme-warn);
+  border-color: color-mix(in srgb, var(--theme-warn) 40%, transparent);
+  background: color-mix(in srgb, var(--theme-warn) 10%, transparent);
+}
+
+.hub-role--swap {
+  color: var(--theme-info);
+  border-color: color-mix(in srgb, var(--theme-info) 40%, transparent);
+  background: color-mix(in srgb, var(--theme-info) 10%, transparent);
+}
+
+.hub-role--aux,
+.hub-role--extra {
+  color: color-mix(in srgb, var(--theme-text-muted) 80%, transparent);
+  border-color: color-mix(in srgb, var(--theme-border) 60%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 50%, transparent);
+}
+
+/* VRAM fit verdict — text only, and only when a tier is selected.
+   A filled dot + solid block at 9px read as an empty red rectangle and stole
+   the role slot; the verdict is a comparison, not a status light. */
+.hub-fit {
+  flex-shrink: 0;
+  color: var(--theme-text-muted);
+}
+
+.hub-fit--ok {
+  color: var(--theme-accent);
+}
+
+.hub-fit--tight {
+  color: var(--theme-warn);
+}
+
+.hub-fit--over {
+  color: color-mix(in srgb, var(--theme-danger) 80%, transparent);
+}
+
+/* Repo folder chip — the thing the user matches against the HF page */
+.hub-file-folder {
+  flex-shrink: 0;
+  font-family: inherit;
+  font-size: var(--type-tiny);
+  color: color-mix(in srgb, var(--theme-text-muted) 55%, transparent);
+}
+
+/* Extra-row DOWNLOAD — same affordance, quieter chrome than a quant */
+.hub-file-extra {
+  background: color-mix(in srgb, var(--theme-text-muted) 12%, transparent);
+  color: color-mix(in srgb, var(--theme-text-muted) 90%, transparent);
+  border-color: color-mix(in srgb, var(--theme-border) 70%, transparent);
+  font-size: var(--type-label);
+}
+
+.hub-file-extra:hover {
+  background: color-mix(in srgb, var(--theme-text-muted) 22%, transparent);
+}
+
+/* EXTRAS toggle in the QUANTS heading.
+   Solid accent when closed: it is the only way into 9 hidden artifacts, and a muted
+   outline is invisible in a monochromatic face (SLATE). Open state inverts to an
+   outline so the heading does not compete with the section it revealed. */
+.hub-extras-toggle {
+  font-size: var(--type-label);
+  letter-spacing: 0.08em;
+  padding: 2px 8px;
   color: var(--theme-on-accent);
+  background: var(--theme-accent);
+  border-color: var(--theme-accent);
 }
 
-.hub-vramfit--tight {
-  background: var(--theme-warn);
-  color: var(--theme-on-warn);
+.hub-extras-toggle:hover {
+  background: color-mix(in srgb, var(--theme-accent) 78%, var(--theme-text));
 }
 
-.hub-vramfit--over {
-  background: var(--theme-danger);
-  color: var(--theme-on-danger);
+.hub-extras-toggle--on {
+  color: var(--theme-accent);
+  background: color-mix(in srgb, var(--theme-accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--theme-accent) 55%, transparent);
 }
 
-.hub-vramfit--none {
-  background: color-mix(in srgb, var(--theme-text-muted) 30%, transparent);
+.hub-extras-toggle--on:hover {
+  background: color-mix(in srgb, var(--theme-accent) 20%, transparent);
+}
+
+/* EXTRAS section heading */
+.hub-extras-head {
+  font-size: var(--type-tiny);
+  color: color-mix(in srgb, var(--theme-text-muted) 60%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent);
+  padding-top: 6px;
+}
+
+/* Selection bar (multiselect → one confirm step) */
+.hub-selection-bar {
+  border-color: color-mix(in srgb, var(--theme-border) 50%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 70%, transparent);
+}
+
+.hub-selection-count {
+  font-size: var(--type-tiny);
+  color: var(--theme-accent);
+}
+
+.hub-selection-clear {
+  font-size: var(--type-label);
+  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
+  border-color: color-mix(in srgb, var(--theme-border) 60%, transparent);
+}
+
+.hub-selection-clear:hover {
+  color: var(--theme-text-muted);
+}
+
+.hub-selection-download {
+  font-size: var(--type-label);
+  color: var(--theme-accent);
+  border-color: color-mix(in srgb, var(--theme-accent) 40%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 15%, transparent);
+}
+
+.hub-selection-download:hover {
+  background: color-mix(in srgb, var(--theme-accent) 25%, transparent);
+}
+
+/* Confirm modal — step 2: pick what to queue */
+.hub-confirm-sect {
+  font-size: var(--type-tiny);
+  color: var(--theme-accent);
+}
+
+.hub-confirm-sect--extras {
+  color: color-mix(in srgb, var(--theme-text-muted) 75%, transparent);
+}
+
+.hub-confirm-note {
+  font-size: var(--type-tiny);
+  color: color-mix(in srgb, var(--theme-text-muted) 55%, transparent);
+}
+
+.hub-confirm-row {
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-border) 30%, transparent);
+}
+
+.hub-confirm-row--extra:hover {
+  background: color-mix(in srgb, var(--theme-text-muted) 6%, transparent);
+}
+
+.hub-confirm-status {
+  font-size: var(--type-tiny);
+  color: color-mix(in srgb, var(--theme-text-muted) 60%, transparent);
+}
+
+.hub-confirm-total {
+  font-size: var(--type-tiny);
+  color: var(--theme-text-muted);
+  border-top: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent);
 }

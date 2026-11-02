@@ -105,6 +105,10 @@ pub struct DiskCheckResult {
     /// Quant type (e.g. "Q4_K_M")
     #[serde(rename = "quantType")]
     pub quant_type: String,
+    /// Repo-relative path of the first part — the identity of one row (labels repeat
+    /// across folders, so `quantType` alone is ambiguous).
+    #[serde(default, rename = "pathInRepo")]
+    pub path_in_repo: String,
     /// How the file matched on disk: "lfs" = exact LFS OID match, "size" = file size match, "mismatch" = same quant different size, "none" = not present
     #[serde(rename = "matchType")]
     pub match_type: String,
@@ -689,11 +693,37 @@ pub struct GgufShard {
     pub last_modified: String,
 }
 
-/// A single GGUF quantization variant available for download.
+/// What a repo entry is *for* — derived from its path, never from a repo-name list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum GgufRole {
+    /// A launchable quantization set (one shard group or one file).
+    Quant,
+    /// A launchable draft / speculative head (`dspark/`, `draft-*`, `-mtp`).
+    Draft,
+    /// A swappable piece shipped under a non-`.gguf` extension (`engram/*.gguf_file`).
+    Swap,
+    /// A llama.cpp sidecar (`mmproj`, `imatrix`) — never launched on its own.
+    Aux,
+    /// Anything else the repo ships — shown, not assumed away.
+    Extra,
+}
+
+fn default_gguf_role() -> GgufRole {
+    GgufRole::Quant
+}
+
+impl GgufRole {
+    pub fn is_quant(self) -> bool {
+        matches!(self, GgufRole::Quant)
+    }
+}
+
+/// A single GGUF artifact available for download.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GgufFile {
-    /// Display name (e.g. "Llama-3.1-8B-IQ1_Ms.gguf")
-    pub r#type: String,           // HF API calls this "type" — the quant tag like Q4_K_M
+    /// Display label — the quant tag (`Q4_K_M`) or, for extras, the file's own name.
+    pub r#type: String,
     pub size_bytes: u64,
     pub url: String,              // direct download URL from hf.co (first shard when sharded)
     /// LFS content hash (SHA-256) from HF tree endpoint for incremental scan.
@@ -708,6 +738,12 @@ pub struct GgufFile {
     /// ISO-8601 commit date — latest shard date when sharded.
     #[serde(default, rename = "lastModified")]
     pub last_modified: String,
+    /// Repo folder this entry lives in (`engram`, `UD-Q4_K_XL`); empty at the repo root.
+    #[serde(default)]
+    pub folder: String,
+    /// What the entry is for. Only `quant` rows are launchable model weights.
+    #[serde(default = "default_gguf_role")]
+    pub role: GgufRole,
 }
 
 fn default_shard_count() -> u32 {
