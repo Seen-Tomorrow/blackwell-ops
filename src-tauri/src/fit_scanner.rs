@@ -1365,7 +1365,7 @@ pub async fn scan_single_model_full(
     provider_id: &str,
     progress_tx: Option<&broadcast::Sender<FitScanProgress>>,
     cancelled: &AtomicBool,
-    log_hub: Option<&LogHub>,
+    _log_hub: Option<&LogHub>,
     force_rescan: bool,
     shared_cache: Option<&TokioMutex<HashMap<String, FitScanFull>>>,
 ) -> FitScanFull {
@@ -1444,14 +1444,11 @@ pub async fn scan_single_model_full(
 
         if let Some(note) = fit_adapter.point_skip_note(label, split_val) {
             skipped_points.insert((*label).to_string(), note.to_string());
-            emit_fit_scan_line(
-                log_hub,
-                BlackwellOutputConsoleCategory::Utils,
-                &format!(
-                    "[FIT-SCAN] {} | {label} | skipped | {note}",
-                    extract_model_name(model_path)
-                ),
-                BlackwellOutputConsoleLineStyle::Normal,
+            // Per-point chatter stays in the Rust log: a library scan runs this for
+            // every model × every SCAN_PLAN point, which buried the console.
+            log::debug!(
+                "[FIT-SCAN] {} | {label} | skipped | {note}",
+                extract_model_name(model_path)
             );
             if let Some(tx) = progress_tx {
                 let _ = tx.send(FitScanProgress {
@@ -1534,16 +1531,9 @@ pub async fn scan_single_model_full(
             }
             Err(e) => {
                 failures.push(format!("{}:{}", label, e));
-                log::warn!("Scan {} failed for {}: {}", label, model_path, e);
-                emit_fit_scan_line(
-                    log_hub,
-                    BlackwellOutputConsoleCategory::Error,
-                    &format!(
-                        "[FIT-SCAN] {} | {label} | {e}",
-                        extract_model_name(model_path)
-                    ),
-                    BlackwellOutputConsoleLineStyle::Error,
-                );
+                // Same reason as the skip note: one line per failed point, per model.
+                // The summary at the end of the scan reports the count.
+                log::debug!("[FIT-SCAN] {} | {label} | {e}", extract_model_name(model_path));
                 if let Some(tx) = progress_tx {
                     let _ = tx.send(FitScanProgress {
                         model_path: model_path.to_string(),
@@ -1767,6 +1757,24 @@ pub async fn scan_library(
     let failed = *failed_count.lock().await;
 
     save_full_scan_partition(fit_adapter, &final_results);
+
+    // One line for the whole scan. Per-point detail is in the Rust log; what belongs in
+    // the console is the outcome - and a failure here is normally a model the fit tool
+    // cannot express (tensor split), not an app error.
+    let style = if failed > 0 {
+        BlackwellOutputConsoleLineStyle::Warning
+    } else {
+        BlackwellOutputConsoleLineStyle::Success
+    };
+    emit_fit_scan_line(
+        hub_ref,
+        BlackwellOutputConsoleCategory::Utils,
+        &format!(
+            "[FIT-SCAN] {} model(s) · {} with FIT data · {} failed",
+            total, completed, failed
+        ),
+        style,
+    );
 
     FitScanComplete {
         provider_id,
