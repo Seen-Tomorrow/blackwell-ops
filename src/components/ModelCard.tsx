@@ -252,43 +252,50 @@ export default function ModelCard({
       {isDraftOnly && (
         <div className="model-card-draft-hatch" aria-hidden="true" />
       )}
-      {/* ── Path (dbl-click → Explorer) above author · GGUF / update badges ─── */}
-      <div className="flex items-start justify-between gap-1.5 mb-1">
-        <div className="min-w-0 flex flex-col gap-px">
-          {model.sourcePathLabel && (
-            <button
-              type="button"
-              onDoubleClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                void revealPathInExplorer(model.path);
-              }}
-              className="model-card-path self-start max-w-full type-micro font-mono truncate px-0 py-0 border-0 bg-transparent rounded-none cursor-default transition-colors"
-              title={`Double-click to open in Explorer:\n${model.path}`}
-            >
-              {model.sourcePathLabel}
-            </button>
-          )}
-          <span className="type-tiny font-mono mcard-author truncate">{model.author}</span>
-        </div>
+      {/* Path is hover-only and absolutely positioned — it must never take layout space
+          or its length would reflow the card. */}
+      {model.sourcePathLabel && (
+        <span
+          className="model-card-path-hover type-micro font-mono"
+          title={`Double-click to open in Explorer:\n${model.path}`}
+          onDoubleClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            void revealPathInExplorer(model.path);
+          }}
+        >
+          {model.sourcePathLabel}
+        </span>
+      )}
+
+      {/* Name leads, star alone on the right. Author sits beneath it. */}
+      <div className="flex items-start justify-between gap-1.5 mb-0.5">
+        <span className="type-md font-mono block truncate model-card-name min-w-0" title={model.name}>
+          {model.name}
+        </span>
+        {onTogglePin && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onTogglePin(model);
+            }}
+            className={`model-card-pin type-label leading-none px-0.5 py-0 border-0 bg-transparent cursor-pointer flex-shrink-0 ${
+              pinned ? "model-card-pin--on" : "model-card-pin--off"
+            }`}
+            title={pinned ? "Unpin from catalog quick strip" : "Pin to catalog quick strip"}
+            aria-label={pinned ? "Unpin model" : "Pin model"}
+            aria-pressed={pinned}
+          >
+            {pinned ? "\u2605" : "\u2606"}
+          </button>
+        )}
+      </div>
+
+      {/* Author line; seat + HF-update chips live here so the name row keeps only the star. */}
+      <div className="flex items-center justify-between gap-1.5 mb-1 min-w-0">
+        <span className="type-tiny font-mono mcard-author truncate min-w-0">{model.author}</span>
         <div className="flex items-center gap-1.5 flex-shrink-0">
-          {onTogglePin && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onTogglePin(model);
-              }}
-              className={`model-card-pin type-label leading-none px-0.5 py-0 border-0 bg-transparent cursor-pointer ${
-                pinned ? "model-card-pin--on" : "model-card-pin--off"
-              }`}
-              title={pinned ? "Unpin from catalog quick strip" : "Pin to catalog quick strip"}
-              aria-label={pinned ? "Unpin model" : "Pin model"}
-              aria-pressed={pinned}
-            >
-              {pinned ? "★" : "☆"}
-            </button>
-          )}
           {seatRole && (
             <span
               className={`model-card-seat model-card-seat--${seatRole} type-micro font-mono px-1 py-0.5 rounded-sm`}
@@ -297,9 +304,6 @@ export default function ModelCard({
               {CATALOG_SEAT_LABEL[seatRole]}
             </span>
           )}
-          <span className="type-tiny font-mono mcard-gguf px-1 py-0.5 rounded-sm border">
-            GGUF
-          </span>
           {hfUpdateKind === "header" && (
             <button
               type="button"
@@ -330,14 +334,6 @@ export default function ModelCard({
           )}
         </div>
       </div>
-
-      {/* ── Name + params ─── */}
-      <span
-        className="type-sm font-mono block truncate model-card-name"
-        title={model.name}
-      >
-        {model.name}
-      </span>
 
       {(paramsNum || hasMultimodal || fitNow || hasBakedMtp(model) || draftBadge) && (
         <div className="flex items-center gap-1 mt-0.5 min-w-0">

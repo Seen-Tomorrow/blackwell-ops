@@ -2414,10 +2414,29 @@
   color: var(--theme-text-muted);
 }
 
-.mcard-gguf {
-  border-color: color-mix(in srgb, var(--theme-border) 20%, transparent);
-  color: var(--theme-text-muted);
+/* Path overlay on a model card: hover-only and absolutely positioned, so a long library
+   path can never reflow the card it belongs to. */
+.model-catalog-card .model-card-path-hover {
+  position: absolute;
+  top: 0.4rem;
+  right: 1.9rem;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+  color: color-mix(in srgb, var(--theme-text-muted) 85%, transparent);
+  z-index: 3;
 }
+
+.model-catalog-card:hover .model-card-path-hover {
+  opacity: 1;
+  /* Interactive only while visible, so it cannot swallow a click on the star. */
+  pointer-events: auto;
+}
+
 
 /* HF update chips — header = info, full = warn */
 .mcard-hf--header {
