@@ -2414,21 +2414,22 @@
   color: var(--theme-text-muted);
 }
 
-/* Path overlay on a model card: hover-only and absolutely positioned, so a long library
-   path can never reflow the card it belongs to. */
-.model-catalog-card .model-card-path-hover {
-  position: absolute;
-  top: 0.4rem;
-  right: 1.9rem;
-  max-width: 55%;
+/* Reserved one-line row for the library path. The row always occupies its line, so the
+   path appearing on hover cannot reflow the card; the text itself fades in. */
+.model-card-path-row {
+  height: 1rem;
+  overflow: hidden;
+}
+
+.model-card-path-hover {
+  display: block;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
   opacity: 0;
   pointer-events: none;
   transition: opacity 120ms ease;
   color: color-mix(in srgb, var(--theme-text-muted) 85%, transparent);
-  z-index: 3;
 }
 
 .model-catalog-card:hover .model-card-path-hover {

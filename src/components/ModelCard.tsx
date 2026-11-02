@@ -252,21 +252,23 @@ export default function ModelCard({
       {isDraftOnly && (
         <div className="model-card-draft-hatch" aria-hidden="true" />
       )}
-      {/* Path is hover-only and absolutely positioned — it must never take layout space
-          or its length would reflow the card. */}
-      {model.sourcePathLabel && (
-        <span
-          className="model-card-path-hover type-micro font-mono"
-          title={`Double-click to open in Explorer:\n${model.path}`}
-          onDoubleClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            void revealPathInExplorer(model.path);
-          }}
-        >
-          {model.sourcePathLabel}
-        </span>
-      )}
+      {/* Reserved one-line row. It is always there (so nothing moves when it appears) and
+          only shows the library path while the card is hovered. */}
+      <div className="model-card-path-row">
+        {model.sourcePathLabel && (
+          <span
+            className="model-card-path-hover type-micro font-mono"
+            title={`Double-click to open in Explorer:\n${model.path}`}
+            onDoubleClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              void revealPathInExplorer(model.path);
+            }}
+          >
+            {model.sourcePathLabel}
+          </span>
+        )}
+      </div>
 
       {/* Name leads, star alone on the right. Author sits beneath it. */}
       <div className="flex items-start justify-between gap-1.5 mb-0.5">
@@ -348,19 +350,24 @@ export default function ModelCard({
               {draftBadge}
             </span>
           )}
-          {fitNow && fitNow.verdict !== "draft" && (
-            <span
-              className={`model-card-fitnow model-card-fitnow--${fitNow.verdict} type-micro font-mono px-1 py-0.5 rounded-sm shrink-0`}
-              title={fitNow.title}
-            >
-              {fitNowLabel(fitNow.verdict)}
-            </span>
-          )}
-          {hasMultimodal && (
-            <span className="model-card-mm-badge mcard-mm ml-auto type-micro font-mono px-1 py-0.5 rounded-sm border shrink-0 whitespace-nowrap">
-              MULTIMODAL
-            </span>
-          )}
+          {/* Right-aligned group. A green FITS on every card said nothing, so only the
+              states that need attention are printed - TIGHT / NO - while the filter in the
+              catalog header still works on the full verdict. */}
+          <span className="ml-auto flex items-center gap-1 shrink-0">
+            {fitNow && (fitNow.verdict === "tight" || fitNow.verdict === "no") && (
+              <span
+                className={`model-card-fitnow model-card-fitnow--${fitNow.verdict} type-micro font-mono px-1 py-0.5 rounded-sm shrink-0`}
+                title={fitNow.title}
+              >
+                {fitNowLabel(fitNow.verdict)}
+              </span>
+            )}
+            {hasMultimodal && (
+              <span className="model-card-mm-badge mcard-mm type-micro font-mono px-1 py-0.5 rounded-sm border shrink-0 whitespace-nowrap">
+                MULTIMODAL
+              </span>
+            )}
+          </span>
         </div>
       )}
 
