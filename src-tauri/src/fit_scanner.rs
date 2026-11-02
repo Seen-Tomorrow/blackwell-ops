@@ -2373,11 +2373,13 @@ pub async fn fit_scan_single_model(
         .map_err(crate::errors::classify_fit_probe)?;
 
     let (progress_tx, _progress_rx) = broadcast::channel::<FitScanProgress>(64);
+    // Subscribe BEFORE spawning the forwarder: a broadcast channel keeps no history, so a
+    // message sent before the task is first polled (the `library_meta` queue size) is
+    // dropped, leaving the UI with its seed as the denominator forever.
+    let mut forward_rx = progress_tx.subscribe();
     let log_hub_clone = app.log_hub.clone();
-    let prog_for_spawn = progress_tx.clone();
     tokio::spawn(async move {
-        let mut rx = prog_for_spawn.subscribe();
-        while let Ok(evt) = rx.recv().await {
+        while let Ok(evt) = forward_rx.recv().await {
             log_hub_clone.emit("fit-scan-progress", &evt);
         }
     });
@@ -2490,13 +2492,14 @@ pub async fn fit_scan_library(
     let total_gpu_mib: f64 = gpus.iter().map(|g| g.memory_total as f64).sum::<f64>() + (gpus.len() as f64 * FIT_OVERHEAD_PER_GPU);
 
     let (progress_tx, _progress_rx) = broadcast::channel::<FitScanProgress>(64);
+    // Subscribe BEFORE spawning the forwarder: a broadcast channel keeps no history, so a
+    // message sent before the task is first polled (the `library_meta` queue size) is
+    // dropped, leaving the UI with its seed as the denominator forever.
+    let mut forward_rx = progress_tx.subscribe();
     let log_hub_clone = app.log_hub.clone();
 
-    let prog_for_spawn = progress_tx.clone();
-
     tokio::spawn(async move {
-        let mut rx = prog_for_spawn.subscribe();
-        while let Ok(evt) = rx.recv().await {
+        while let Ok(evt) = forward_rx.recv().await {
             log_hub_clone.emit("fit-scan-progress", &evt);
         }
     });

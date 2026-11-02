@@ -248,9 +248,10 @@ function applyFitScanProgress(evt: FitScanProgress) {
   sessions[pid] = {
     ...ps,
     runCompleted,
-    // The denominator is the queue seeded at start; the results map also carries
-    // cached entries, so it must never grow the total mid-run.
-    totalModels: ps.totalModels > 0 ? ps.totalModels : (evt.total_models ?? 0),
+    // The results map also carries cached entries, so it must never grow the total
+    // mid-run; the queue size comes from `library_meta`, never from a per-model event
+    // (those carry total_models: 1, which is what made the bar read 1/1, 2/2...).
+    totalModels: Math.max(ps.totalModels ?? 0, runCompleted),
     activeModelPath:
       evt.status === "complete" || evt.status === "skipped" || evt.status === "point_skipped"
         ? undefined
