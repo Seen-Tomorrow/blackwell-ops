@@ -354,7 +354,7 @@ export default function ModelCard({
               states that need attention are printed - TIGHT / NO - while the filter in the
               catalog header still works on the full verdict. */}
           <span className="ml-auto flex items-center gap-1 shrink-0">
-            {fitNow && (fitNow.verdict === "tight" || fitNow.verdict === "no") && (
+            {fitNow && (fitNow.verdict === "split" || fitNow.verdict === "host") && (
               <span
                 className={`model-card-fitnow model-card-fitnow--${fitNow.verdict} type-micro font-mono px-1 py-0.5 rounded-sm shrink-0`}
                 title={fitNow.title}

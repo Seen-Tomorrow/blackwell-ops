@@ -59,6 +59,7 @@ import {
   fitNowTitle,
   fitNowVerdict,
   matchesFitNowFilter,
+  maxFreeSingleVramMib,
   totalFreeVramMib,
   type CatalogFitNowFilter,
   type FitNowVerdict,
@@ -767,11 +768,19 @@ export function useModelCatalog({
 
   // Fit-now + sorted/filtered list (after FIT cache is available; no forecast calls)
   const freeVramMib = useMemo(() => totalFreeVramMib(gpus), [gpus]);
+  // The FIT spine point is a split=none probe (one card), so the verdict needs BOTH
+  // denominators: one card for "fits", the sum for "needs a split".
+  const freeSingleVramMib = useMemo(() => maxFreeSingleVramMib(gpus), [gpus]);
 
   const getFitNowVerdict = useCallback(
     (model: ModelEntry): FitNowVerdict =>
-      fitNowVerdict({ model, fitResults: fitScanResults, freeVramMib }),
-    [fitScanResults, freeVramMib],
+      fitNowVerdict({
+        model,
+        fitResults: fitScanResults,
+        freeSingleMib: freeSingleVramMib,
+        freeTotalMib: freeVramMib,
+      }),
+    [fitScanResults, freeSingleVramMib, freeVramMib],
   );
 
   const getFitNowMeta = useCallback(
@@ -780,10 +789,10 @@ export function useModelCatalog({
       const need = fitNowNeedMib(model, fitScanResults);
       return {
         verdict,
-        title: fitNowTitle(verdict, need, freeVramMib),
+        title: fitNowTitle(verdict, need, freeSingleVramMib, freeVramMib),
       };
     },
-    [getFitNowVerdict, fitScanResults, freeVramMib],
+    [getFitNowVerdict, fitScanResults, freeSingleVramMib, freeVramMib],
   );
 
   const catalogModels = useMemo(() => {

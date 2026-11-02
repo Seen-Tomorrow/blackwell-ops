@@ -10,7 +10,7 @@ import type { FitDataPoint, FitScanFull, GpuInfo, ModelEntry } from "./types";
 import { findFitScanEntry, findFitScanPoint } from "./fitScanTable";
 import { isExternalDraftOnly } from "./specDraft";
 
-export type FitNowVerdict = "fits" | "tight" | "no" | "unknown" | "draft";
+export type FitNowVerdict = "fits" | "split" | "host" | "unknown" | "draft";
 
 export type CatalogFitNowFilter = "all" | "fits" | "room";
 
@@ -51,31 +51,50 @@ export function totalFreeVramMib(gpus: GpuInfo[]): number {
   return gpus.reduce((sum, g) => sum + Math.max(0, g.memory_free || 0), 0);
 }
 
+/** Free VRAM on the emptiest single card — the right denominator for a split=none probe. */
+export function maxFreeSingleVramMib(gpus: GpuInfo[]): number {
+  if (!gpus.length) return 0;
+  return gpus.reduce((best, g) => Math.max(best, Math.max(0, g.memory_free || 0)), 0);
+}
+
+/**
+ * Which class of launch a model needs, given the VRAM that is free right now.
+ *
+ * The spine point is a `split=none` probe, i.e. the model on ONE card, so it must be
+ * compared against one card's free VRAM - not the sum. Comparing it against the sum is
+ * what made every model read "fits" on a multi-GPU box.
+ *
+ * Classes are monotone in context length: a model that needs host spill at 32K needs it at
+ * 128K too, and one that fits a single card at 32K can only move UP a class as ctx grows.
+ * So the fixed probe ctx cannot produce a confidently wrong "fits" - it can only be
+ * conservative, which is the property a numeric verdict would lack.
+ */
 export function fitNowVerdict(opts: {
   model: ModelEntry;
   fitResults: Record<string, FitScanFull>;
-  freeVramMib: number;
+  freeSingleMib: number;
+  freeTotalMib: number;
 }): FitNowVerdict {
   if (isExternalDraftOnly(opts.model)) return "draft";
-  if (!(opts.freeVramMib > 0)) return "unknown";
+  if (!(opts.freeSingleMib > 0) || !(opts.freeTotalMib > 0)) return "unknown";
 
   const entry = findFitScanEntry(opts.fitResults, opts.model.path);
   const need = pickSpineNeedMib(entry);
   if (need == null || !(need > 0)) return "unknown";
 
-  if (need <= opts.freeVramMib * FITS_HEADROOM) return "fits";
-  if (need <= opts.freeVramMib * TIGHT_HEADROOM) return "tight";
-  return "no";
+  if (need <= opts.freeSingleMib * FITS_HEADROOM) return "fits";
+  if (need <= opts.freeTotalMib * FITS_HEADROOM) return "split";
+  return "host";
 }
 
 export function fitNowLabel(v: FitNowVerdict): string {
   switch (v) {
     case "fits":
       return "FITS";
-    case "tight":
-      return "TIGHT";
-    case "no":
-      return "NO";
+    case "split":
+      return "SPLIT";
+    case "host":
+      return "HOST";
     case "draft":
       return "DRAFT";
     default:
@@ -83,18 +102,29 @@ export function fitNowLabel(v: FitNowVerdict): string {
   }
 }
 
-export function fitNowTitle(v: FitNowVerdict, needMib?: number | null, freeMib?: number): string {
+export function fitNowTitle(
+  v: FitNowVerdict,
+  needMib?: number | null,
+  freeSingleMib?: number,
+  freeTotalMib?: number,
+): string {
   const need =
-    needMib != null && needMib > 0 ? ` · need ~${(needMib / 1024).toFixed(1)}G` : "";
-  const free =
-    freeMib != null && freeMib > 0 ? ` · free ~${(freeMib / 1024).toFixed(1)}G` : "";
+    needMib != null && needMib > 0 ? ` · needs ~${(needMib / 1024).toFixed(1)}G on one card` : "";
+  const single =
+    freeSingleMib != null && freeSingleMib > 0
+      ? ` · free per card ~${(freeSingleMib / 1024).toFixed(1)}G`
+      : "";
+  const total =
+    freeTotalMib != null && freeTotalMib > 0
+      ? ` · free in total ~${(freeTotalMib / 1024).toFixed(1)}G`
+      : "";
   switch (v) {
     case "fits":
-      return `Fits free VRAM now (FIT spine @ 32K/64K, none-split)${need}${free}`;
-    case "tight":
-      return `Tight on free VRAM (within ~5%)${need}${free}`;
-    case "no":
-      return `Does not fit free VRAM now${need}${free}`;
+      return `Fits one card at the probed context — no split needed${need}${single}`;
+    case "split":
+      return `Needs both cards (layer/tensor split)${need}${total}`;
+    case "host":
+      return `Exceeds free VRAM even split across cards — will spill to RAM${need}${total}`;
     case "draft":
       return "Draft pack — no main VRAM fit";
     default:
@@ -105,8 +135,8 @@ export function fitNowTitle(v: FitNowVerdict, needMib?: number | null, freeMib?:
 export function matchesFitNowFilter(v: FitNowVerdict, filter: CatalogFitNowFilter): boolean {
   if (filter === "all") return true;
   if (filter === "fits") return v === "fits";
-  // room = fits + tight
-  return v === "fits" || v === "tight";
+  // room = fits in VRAM at all (one card, or both cards via a split)
+  return v === "fits" || v === "split";
 }
 
 export function fitNowNeedMib(
