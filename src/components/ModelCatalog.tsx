@@ -6,7 +6,6 @@ import EngineConfigPanel from "./EngineConfigPanel";
 import ModelCard from "./ModelCard";
 import ModelSearchPalette from "./ModelSearchPalette";
 import CatalogQuickStrip from "./CatalogQuickStrip";
-import { type CatalogFitNowFilter } from "../lib/catalogFitNow";
 
 import { useModelCatalog, type SortField } from "../hooks/useModelCatalog";
 import type { ModelScanPatch } from "../lib/libraryJobs";
@@ -166,7 +165,6 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     catalogPins, catalogRecents, catalogSeats, activeSeatSet,
     handleTogglePin, handleTogglePinPath, handleAssignSeat, handleClearSeat, handleSelectSeatSet, handleSelectPath,
     isPinned, getSeatRole,
-    fitNowFilter, setFitNowFilter, getFitNowMeta,
     zone } = catalog;
 
   const catalogModels = useMemo(
@@ -188,7 +186,6 @@ export default function ModelCatalog(props: ModelCatalogProps) {
       const active: string[] = [];
       if (search.trim()) active.push(`SEARCH "${search.trim()}"`);
       if (draftFilter !== "all") active.push(`KIND ${draftFilterLabels[draftFilter]}`);
-      if (fitNowFilter !== "all") active.push(`FIT-NOW ${fitNowFilter.toUpperCase()}`);
       if (updatesOnly) active.push("UPDATES ONLY");
       return {
         kind: "filtered" as const,
@@ -212,7 +209,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
       return { kind: "uncataloged" as const, headline: "NO MODELS FOUND" };
     }
     return { kind: "unknown" as const, headline: "NO MODELS FOUND" };
-  }, [catalogModels.length, models.length, pathScans, search, draftFilter, fitNowFilter, updatesOnly]);
+  }, [catalogModels.length, models.length, pathScans, search, draftFilter, updatesOnly]);
 
 
   useEffect(() => {
@@ -671,34 +668,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                 {sortField === field ? (sortDirection === "asc" ? "▲" : "▼") : ""}
               </span>
             </button>
-          ))}
-          <span className="catalog-sort-sep" aria-hidden />
-          {([
-            ["all", "ALL"],
-            ["fits", "FITS"],
-            ["room", "ROOM"],
-          ] as const satisfies ReadonlyArray<readonly [CatalogFitNowFilter, string]>).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setFitNowFilter(id)}
-              className={`catalog-sort-btn type-tiny font-mono px-1.5 py-0.5 uppercase tracking-wider transition-colors rounded-sm ${
-                fitNowFilter === id
-                  ? "cat-sort-btn--active"
-                  : "cat-sort-btn"
-              }`}
-              title={
-                id === "all"
-                  ? "Show all models (no free-VRAM filter)"
-                  : id === "fits"
-                    ? "Only models that fit free VRAM now (FIT spine @ 32K/64K)"
-                    : "Fits or tight on free VRAM now"
-              }
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+          ))}        </div>
         <label
           className="panel-dim-control"
           title={`Catalog list mute — ${Math.round(catalogListDim * 100)}% (selected stays full; soft floor keeps cards readable)`}
@@ -978,7 +948,6 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                       onClick={() => {
                         setSearch("");
                         setCatalogDraftFilter("all");
-                        setFitNowFilter("all");
                         setUpdatesOnly(false);
                       }}
                       className="cat-paths-btn type-tiny font-mono px-2 py-0.5 tracking-widest rounded-sm border transition-colors"
@@ -1070,7 +1039,6 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                         pinned={isPinned(model.path)}
                         onTogglePin={handleTogglePin}
                         seatRole={getSeatRole(model.path)}
-                        fitNow={getFitNowMeta(model)}
                       />
                     </div>
                   );

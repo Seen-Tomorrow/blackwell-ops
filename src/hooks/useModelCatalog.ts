@@ -54,16 +54,6 @@ import {
   subscribeLibraryJobs,
   type ModelScanPatch,
 } from "../lib/libraryJobs";
-import {
-  fitNowNeedMib,
-  fitNowTitle,
-  fitNowVerdict,
-  matchesFitNowFilter,
-  maxFreeSingleVramMib,
-  totalFreeVramMib,
-  type CatalogFitNowFilter,
-  type FitNowVerdict,
-} from "../lib/catalogFitNow";
 
 export type SortField = (keyof ModelEntry) | "date";
 export type SortDirection = "asc" | "desc";
@@ -335,7 +325,6 @@ export function useModelCatalog({
   const [activeSeatSet, setActiveSeatSetState] = useState<CatalogSeatSetIndex>(() => loadCatalogActiveSeatSet());
   /** Temporary: only the favorite just clicked sits at catalog top. */
   const [floatFavoritePath, setFloatFavoritePath] = useState<string | null>(null);
-  const [fitNowFilter, setFitNowFilter] = useState<CatalogFitNowFilter>("all");
   // After onboarding — pick first scannable model when nothing is selected (fresh install has no lastModel).
   useEffect(() => {
     const handler = (e: Event) => {
@@ -767,34 +756,6 @@ export function useModelCatalog({
   }, [fitProviderId, providers]);
 
   // Fit-now + sorted/filtered list (after FIT cache is available; no forecast calls)
-  const freeVramMib = useMemo(() => totalFreeVramMib(gpus), [gpus]);
-  // The FIT spine point is a split=none probe (one card), so the verdict needs BOTH
-  // denominators: one card for "fits", the sum for "needs a split".
-  const freeSingleVramMib = useMemo(() => maxFreeSingleVramMib(gpus), [gpus]);
-
-  const getFitNowVerdict = useCallback(
-    (model: ModelEntry): FitNowVerdict =>
-      fitNowVerdict({
-        model,
-        fitResults: fitScanResults,
-        freeSingleMib: freeSingleVramMib,
-        freeTotalMib: freeVramMib,
-      }),
-    [fitScanResults, freeSingleVramMib, freeVramMib],
-  );
-
-  const getFitNowMeta = useCallback(
-    (model: ModelEntry) => {
-      const verdict = getFitNowVerdict(model);
-      const need = fitNowNeedMib(model, fitScanResults);
-      return {
-        verdict,
-        title: fitNowTitle(verdict, need, freeSingleVramMib, freeVramMib),
-      };
-    },
-    [getFitNowVerdict, fitScanResults, freeSingleVramMib, freeVramMib],
-  );
-
   const catalogModels = useMemo(() => {
     let sorted = [...models].sort((a, b) => {
       let comparison = 0;
@@ -825,9 +786,6 @@ export function useModelCatalog({
       sorted = sorted.filter(m => modelMatchesSearch(m, searchWords));
     }
 
-    if (fitNowFilter !== "all") {
-      sorted = sorted.filter((m) => matchesFitNowFilter(getFitNowVerdict(m), fitNowFilter));
-    }
 
     // Clicking a favorite briefly floats *that* card to top — not the whole pin list.
     if (floatFavoritePath) {
@@ -845,14 +803,12 @@ export function useModelCatalog({
     sortDirection,
     search,
     draftFilter,
-    fitNowFilter,
-    getFitNowVerdict,
     floatFavoritePath,
   ]);
 
   useEffect(() => {
     setFloatFavoritePath(null);
-  }, [sortField, sortDirection, search, draftFilter, fitNowFilter]);
+  }, [sortField, sortDirection, search, draftFilter]);
 
   const setCatalogDraftFilter = useCallback((filter: CatalogDraftFilter) => {
     setDraftFilter(filter);
@@ -969,8 +925,6 @@ export function useModelCatalog({
     catalogPins, catalogRecents, catalogSeats, activeSeatSet,
     handleTogglePin, handleTogglePinPath, handleAssignSeat, handleClearSeat, handleSelectSeatSet, handleSelectPath,
     isPinned, getSeatRole,
-    // Fit-now (FIT cache + free VRAM only — no forecast)
-    fitNowFilter, setFitNowFilter, getFitNowMeta, freeVramMib,
     zone,
   };
 }

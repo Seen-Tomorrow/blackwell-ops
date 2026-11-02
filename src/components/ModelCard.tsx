@@ -2,7 +2,6 @@ import type { ModelEntry, ModelMetadata, CatalogUpdateEntry } from "../lib/types
 import { BAKED_MTP_BADGE, draftRoleBadge, draftRoleFromModel, hasBakedMtp, isExternalDraftOnly } from "../lib/specDraft";
 import { revealPathInExplorer } from "../lib/utils";
 import { CATALOG_SEAT_LABEL, type CatalogSeatRole } from "../lib/catalogQuickAccess";
-import { fitNowLabel, type FitNowVerdict } from "../lib/catalogFitNow";
 
 /**
  * Compact param-count formatting with T/B/M suffix.
@@ -104,7 +103,6 @@ interface ModelCardProps {
   pinned?: boolean;
   onTogglePin?: (model: ModelEntry) => void;
   seatRole?: CatalogSeatRole | null;
-  fitNow?: { verdict: FitNowVerdict; title: string } | null;
   /** Transient result of the most recent update check — renders a fading bubble. */
   checkVerdict?: CatalogUpdateEntry | null;
   /** Click-to-dismiss the verdict-only bubble (UP TO DATE / NOT PAIRED). */
@@ -129,7 +127,6 @@ export default function ModelCard({
   pinned = false,
   onTogglePin,
   seatRole = null,
-  fitNow = null,
   checkVerdict = null,
   onBubbleDismiss,
 }: ModelCardProps) {
@@ -337,7 +334,7 @@ export default function ModelCard({
         </div>
       </div>
 
-      {(paramsNum || hasMultimodal || fitNow || hasBakedMtp(model) || draftBadge) && (
+      {(paramsNum || hasMultimodal || hasBakedMtp(model) || draftBadge) && (
         <div className="flex items-center gap-1 mt-0.5 min-w-0">
           {paramsNum && (
             <span className="type-tiny font-mono mcard-params shrink-0">{paramsNum}</span>
@@ -350,24 +347,6 @@ export default function ModelCard({
               {draftBadge}
             </span>
           )}
-          {/* Right-aligned group. A green FITS on every card said nothing, so only the
-              states that need attention are printed - TIGHT / NO - while the filter in the
-              catalog header still works on the full verdict. */}
-          <span className="ml-auto flex items-center gap-1 shrink-0">
-            {fitNow && (fitNow.verdict === "split" || fitNow.verdict === "host") && (
-              <span
-                className={`model-card-fitnow model-card-fitnow--${fitNow.verdict} type-micro font-mono px-1 py-0.5 rounded-sm shrink-0`}
-                title={fitNow.title}
-              >
-                {fitNowLabel(fitNow.verdict)}
-              </span>
-            )}
-            {hasMultimodal && (
-              <span className="model-card-mm-badge mcard-mm type-micro font-mono px-1 py-0.5 rounded-sm border shrink-0 whitespace-nowrap">
-                MULTIMODAL
-              </span>
-            )}
-          </span>
         </div>
       )}
 
