@@ -341,6 +341,32 @@ opts into the old fallback (SSE fusion then falls back to polling).
 
 ---
 ## APP/engine logs
+
+**Three different "consoles" ship in this app — never say "the console" without saying which.**
+Confusion here has already cost a debugging round trip: a fix was reported as "the console
+still spams", while the lines had in fact moved to the Rust log and the stale DEV binary was
+the one printing.
+
+| Name | What it is | Who sees it | Written by |
+|---|---|---|---|
+| **BOC** (Blackwell Output Console) | In-app panel, category tabs `engines / utils / foundry / error / scenarios / debug`, plus the docked one-line bar in the footer | Users, in DEV **and** REL | `log_hub.emit_console_line` / `output_console_cmds.rs`; categories in `src/lib/outputConsole.ts` + `output_console.rs` |
+| **Tauri/Rust console** | The app process's stdout/stderr — in DEV the terminal running `npm run dev` | Developers only | `log::info!` / `log::warn!` / `log::debug!` (and `println!`, which never belongs in status paths) |
+| **WebView console** | Chromium DevTools console for the renderer | Developers only (needs DevTools open) | `console.log` / `console.warn` from `src/` |
+
+Rules that follow from the split:
+
+- **User-facing status → BOC, developer tracing → Rust log.** A line the user should read
+  goes to `utils`; a line only a developer wants goes to `log::debug!` or the BOC `debug`
+  tab. Never `println!` a status line: it lands in the Tauri console, which REL users cannot see.
+- **The docked one-liner only shows non-debug lines** (`get_latest_line_across_categories`
+  skips `Debug`). Trace traffic can therefore be emitted to the `debug` tab freely without
+  claiming the one visible row — locked by tests in `output_console.rs`.
+- **A BOC change is not live until the app is rebuilt.** `npm run dev` is `--no-watch`, so a
+  Rust logging change keeps showing the old text until a rebuild/restart. If reported logs
+  do not match the source, check the binary before the code.
+- **Per-item chatter belongs in `debug`, not `utils`.** A library pass runs every scan point
+  for every model; one line each buried the panel. Emit a summary to `utils`, detail to `debug`.
+
 DEV session files (engine stderr/stdout + launch): `{exe_dir}/config/logs/sessions/`  
 → typically `src-tauri/target/debug/config/logs/sessions/session-*/`  
 Always ON in DEV and REL (CONFIG → RUNTIME). `BLACKWELL_SESSION_LOG=0` off, `=1` force-on. Last **25** sessions kept.
