@@ -1365,7 +1365,7 @@ pub async fn scan_single_model_full(
     provider_id: &str,
     progress_tx: Option<&broadcast::Sender<FitScanProgress>>,
     cancelled: &AtomicBool,
-    _log_hub: Option<&LogHub>,
+    log_hub: Option<&LogHub>,
     force_rescan: bool,
     shared_cache: Option<&TokioMutex<HashMap<String, FitScanFull>>>,
 ) -> FitScanFull {
@@ -1444,11 +1444,13 @@ pub async fn scan_single_model_full(
 
         if let Some(note) = fit_adapter.point_skip_note(label, split_val) {
             skipped_points.insert((*label).to_string(), note.to_string());
-            // Per-point chatter stays in the Rust log: a library scan runs this for
-            // every model × every SCAN_PLAN point, which buried the console.
-            log::debug!(
-                "[FIT-SCAN] {} | {label} | skipped | {note}",
-                extract_model_name(model_path)
+            // Per-point chatter goes to the console DEBUG tab: a library scan runs this
+            // for every model × every SCAN_PLAN point, which buried the Utils tab.
+            emit_fit_scan_line(
+                log_hub,
+                BlackwellOutputConsoleCategory::Debug,
+                &format!("[FIT-SCAN] {} | {label} | skipped | {note}", extract_model_name(model_path)),
+                BlackwellOutputConsoleLineStyle::Normal,
             );
             if let Some(tx) = progress_tx {
                 let _ = tx.send(FitScanProgress {
@@ -1532,8 +1534,14 @@ pub async fn scan_single_model_full(
             Err(e) => {
                 failures.push(format!("{}:{}", label, e));
                 // Same reason as the skip note: one line per failed point, per model.
-                // The summary at the end of the scan reports the count.
-                log::debug!("[FIT-SCAN] {} | {label} | {e}", extract_model_name(model_path));
+                // Debug, not Error - a fit tool that cannot express a model is not an
+                // app failure, and the summary reports the count.
+                emit_fit_scan_line(
+                    log_hub,
+                    BlackwellOutputConsoleCategory::Debug,
+                    &format!("[FIT-SCAN] {} | {label} | {e}", extract_model_name(model_path)),
+                    BlackwellOutputConsoleLineStyle::Normal,
+                );
                 if let Some(tx) = progress_tx {
                     let _ = tx.send(FitScanProgress {
                         model_path: model_path.to_string(),

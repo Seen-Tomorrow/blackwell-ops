@@ -367,11 +367,18 @@ impl BlackwellOutputConsoleManager {
     }
 
     /// Newest line across all category buffers (for the docked one-line preview).
+    ///
+    /// Debug is skipped: the docked bar is user-facing status, and debug lines are
+    /// per-point trace output (a library scan emits one per scan point). They stay in
+    /// the DEBUG tab, they just never claim the one visible row.
     pub fn get_latest_line_across_categories(&self) -> Option<BlackwellOutputConsoleLatestLine> {
         let buffers = self.category_buffers.lock().ok()?;
         let mut best: Option<(BlackwellOutputConsoleCategory, BlackwellOutputConsoleTextLine)> = None;
 
         for (category, buffer) in buffers.iter() {
+            if *category == BlackwellOutputConsoleCategory::Debug {
+                continue;
+            }
             let Some(line) = buffer.lines.back().cloned() else {
                 continue;
             };
@@ -454,4 +461,46 @@ pub fn emit_blackwell_output_console_utils_line(
     style: BlackwellOutputConsoleLineStyle,
 ) {
     emit_blackwell_output_console_line(BlackwellOutputConsoleCategory::Utils, content, style);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The docked one-line preview is user-facing; debug lines are per-point trace and
+    /// must never claim it, even when they are the newest thing in the console.
+    #[test]
+    fn docked_preview_skips_debug_lines() {
+        let manager = BlackwellOutputConsoleManager::new(16);
+        manager.emit_line_to_category(
+            BlackwellOutputConsoleCategory::Utils,
+            "model scanned".to_string(),
+            BlackwellOutputConsoleLineStyle::Normal,
+        );
+        manager.emit_line_to_category(
+            BlackwellOutputConsoleCategory::Debug,
+            "[FIT-SCAN] point skipped".to_string(),
+            BlackwellOutputConsoleLineStyle::Normal,
+        );
+
+        let latest = manager
+            .get_latest_line_across_categories()
+            .expect("the utils line is the only user-facing one");
+        assert_eq!(latest.content, "model scanned");
+        assert_eq!(latest.category, "utils");
+    }
+
+    /// Debug-only traffic leaves the dock on its previous message instead of surfacing
+    /// trace output there.
+    #[test]
+    fn docked_preview_ignores_debug_when_it_is_all_there_is() {
+        let manager = BlackwellOutputConsoleManager::new(16);
+        manager.emit_line_to_category(
+            BlackwellOutputConsoleCategory::Debug,
+            "trace".to_string(),
+            BlackwellOutputConsoleLineStyle::Normal,
+        );
+
+        assert!(manager.get_latest_line_across_categories().is_none());
+    }
 }
