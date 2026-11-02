@@ -538,7 +538,6 @@ async fn main() {
             fit_scanner::get_fit_scan_points,
             fit_scanner::get_fit_scan_cache_snapshot,
             vram_learn::get_learned_vram,
-            vram_learn::get_learned_vram_batch,
             vram_learn::get_learned_vram_curve,
             vram_learn::prune_learned_vram_curve,
             // GGUF Metadata Scanner commands

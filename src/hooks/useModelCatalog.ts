@@ -772,35 +772,6 @@ export function useModelCatalog({
   // denominators: one card for "fits", the sum for "needs a split".
   const freeSingleVramMib = useMemo(() => maxFreeSingleVramMib(gpus), [gpus]);
 
-  // Highest VRAM a real launch recorded, per model — one batch call for the whole catalog
-  // (the learned key embeds every launch knob, so a single-model lookup cannot be done
-  // without knowing them; the batch groups by path instead).
-  const [learnedVramByPath, setLearnedVramByPath] = useState<Record<string, number>>({});
-  const learnedPathsKey = useMemo(
-    () => models.map((m) => m.path).sort().join("\n"),
-    [models],
-  );
-  useEffect(() => {
-    if (!models.length) return;
-    let cancelled = false;
-    void invoke<Record<string, { vram_mib: number; host_mib: number }>>("get_learned_vram_batch", {
-      modelPaths: models.map((m) => m.path),
-    })
-      .then((map) => {
-        if (cancelled) return;
-        const next: Record<string, number> = {};
-        for (const [path, entry] of Object.entries(map ?? {})) next[path] = entry.vram_mib;
-        setLearnedVramByPath(next);
-      })
-      .catch(() => {
-        // A missing learned store is normal on a fresh install.
-      });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [learnedPathsKey]);
-
   const getFitNowVerdict = useCallback(
     (model: ModelEntry): FitNowVerdict =>
       fitNowVerdict({
@@ -819,10 +790,9 @@ export function useModelCatalog({
       return {
         verdict,
         title: fitNowTitle(verdict, need, freeSingleVramMib, freeVramMib),
-        learnedMib: learnedVramByPath[model.path] ?? null,
       };
     },
-    [getFitNowVerdict, fitScanResults, freeSingleVramMib, freeVramMib, learnedVramByPath],
+    [getFitNowVerdict, fitScanResults, freeSingleVramMib, freeVramMib],
   );
 
   const catalogModels = useMemo(() => {
