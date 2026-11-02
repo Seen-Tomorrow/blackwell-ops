@@ -13,7 +13,7 @@ use futures_util::StreamExt;
 use reqwest::header::RANGE;
 use serde::{Deserialize, Serialize};
 use tokio::fs::{self, OpenOptions};
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::RwLock;
 use crate::types::{
     DownloadStatus, DownloadTask, QuantBatchPart, QuantDownloadBatch, TASK_KIND_APP,
@@ -49,6 +49,14 @@ struct ManifestEntry {
     batch_id: Option<String>,
     #[serde(default = "default_manifest_task_kind", rename = "taskKind")]
     task_kind: String,
+    /// Bytes this row had on disk when it was written.
+    ///
+    /// The `.part` file itself stays authoritative for resuming; this is what lets a
+    /// restart tell "never started" from "280 GiB downloaded, and the file is no longer
+    /// where the row says it is" — the case that used to drop the row silently and
+    /// re-create it at 0 %.
+    #[serde(default, rename = "downloadedBytes")]
+    downloaded_bytes: u64,
 }
 
 fn default_manifest_task_kind() -> String {
@@ -242,6 +250,7 @@ fn persist_task_to_manifest(task: &DownloadTask) {
         expected_sha256: task.expected_sha256.clone(),
         batch_id: task.batch_id.clone(),
         task_kind: task.task_kind.clone(),
+        downloaded_bytes: task.downloaded_bytes.max(task.pause_offset),
     });
     save_manifest(&manifest);
 }
@@ -319,6 +328,30 @@ const SPEED_SAMPLE_COUNT: usize = 5;
 /// In-progress downloads write here; renamed to final `.gguf` only on completion.
 pub fn partial_download_path(dest_path: &str) -> String {
     format!("{dest_path}.part")
+}
+
+/// Bytes currently held by the `.part` file for `dest_path` (0 when absent).
+fn partial_len(dest_path: &str) -> u64 {
+    std::fs::metadata(partial_download_path(dest_path))
+        .map(|m| m.len())
+        .unwrap_or(0)
+}
+
+/// Offset a resume may continue from, given what the `.part` actually holds.
+///
+/// The file is the truth and the queue row is only a hint: that is what makes a
+/// resume safe after a restart, a moved file, or a row written while the file was
+/// not where the row expected it. A file longer than the remote can never be a
+/// clean prefix, so it restarts at 0 (the worker truncates it) rather than asking
+/// for a range past EOF.
+fn resume_offset(on_disk: u64, total_bytes: u64) -> u64 {
+    if on_disk == 0 {
+        return 0;
+    }
+    if total_bytes > 0 && on_disk > total_bytes {
+        return 0;
+    }
+    on_disk
 }
 
 /// Download manager singleton state.
@@ -893,21 +926,30 @@ impl DownloadManager {
 
         for (task_id, entry) in manifest {
             let partial_path = partial_download_path(&entry.dest_path);
-            if !Path::new(&partial_path).exists() {
-                stale += 1;
-                continue;
-            }
-
-            let part_size = std::fs::metadata(&partial_path)
+            let on_disk = std::fs::metadata(&partial_path)
                 .ok()
                 .map(|m| m.len())
                 .unwrap_or(0);
 
+            // Nothing on disk and nothing claimed: genuinely never started.
+            if on_disk == 0 && entry.downloaded_bytes == 0 {
+                stale += 1;
+                continue;
+            }
+
+            let resume_from = resume_offset(on_disk, entry.total_bytes);
             log::info!(
-                "[download] Recovering .part file: {} ({} bytes)",
+                "[download] Recovering .part file: {} ({} bytes on disk, row claimed {}, resume at {})",
                 partial_path,
-                part_size
+                on_disk,
+                entry.downloaded_bytes,
+                resume_from
             );
+
+            // Bytes that were already downloaded but are not where the row says they
+            // are: keep the row so the loss is visible and the batch stays registered,
+            // and let the worker start a clean file instead of appending at a stale offset.
+            let missing = on_disk == 0;
 
             recovered.push(DownloadTask {
                 id: task_id.clone(),
@@ -915,13 +957,20 @@ impl DownloadManager {
                 file_name: entry.file_name,
                 download_url: entry.download_url,
                 total_bytes: entry.total_bytes,
-                downloaded_bytes: part_size,
+                downloaded_bytes: resume_from,
                 status: DownloadStatus::Paused,
                 dest_path: entry.dest_path,
                 speed_bps: 0,
-                pause_offset: part_size,
+                pause_offset: resume_from,
                 error: None,
-                status_message: None,
+                status_message: if missing {
+                    Some(format!(
+                        "Partial data missing at the recorded path ({} already downloaded) — will restart from 0",
+                        crate::model_catalog::calc_size_str_from_bytes(entry.downloaded_bytes)
+                    ))
+                } else {
+                    None
+                },
                 retry_count: 0,
                 eta_seconds: 0,
                 hf_author: entry.hf_author,
@@ -994,11 +1043,7 @@ impl DownloadManager {
                     continue;
                 }
                 // Resume from whatever partial bytes already exist on disk.
-                let partial_path = partial_download_path(&part.dest_path);
-                let resume_offset = std::fs::metadata(&partial_path)
-                    .ok()
-                    .map(|m| m.len())
-                    .unwrap_or(0);
+                let resume_from = resume_offset(partial_len(&part.dest_path), part.total_bytes);
                 let task_id = generate_task_id();
                 // Paused (not Queued) → UI shows "Resume" button; Queued only shows "Cancel".
                 let task = DownloadTask {
@@ -1007,11 +1052,11 @@ impl DownloadManager {
                     file_name: part.file_name.clone(),
                     download_url: part.download_url.clone(),
                     total_bytes: part.total_bytes,
-                    downloaded_bytes: resume_offset,
+                    downloaded_bytes: resume_from,
                     status: DownloadStatus::Paused,
                     dest_path: part.dest_path.clone(),
                     speed_bps: 0,
-                    pause_offset: resume_offset,
+                    pause_offset: resume_from,
                     error: None,
                     status_message: None,
                     retry_count: 0,
@@ -1031,7 +1076,7 @@ impl DownloadManager {
                 log::info!(
                     "[download] Re-queued orphaned batch part {} (resume from {} bytes)",
                     part.file_name,
-                    resume_offset
+                    resume_from
                 );
             }
         }
@@ -1156,9 +1201,15 @@ impl DownloadManager {
         match self.tasks.get_mut(&task_id) {
             Some(task) => match task.status {
                 DownloadStatus::Paused => {
-                    task.pause_offset = task.downloaded_bytes;
+                    // Re-derive from the file instead of trusting the row. The row only
+                    // knows what a previous session saw; the `.part` may have been moved,
+                    // truncated, or left further along than the row claims.
+                    let resume_from = resume_offset(partial_len(&task.dest_path), task.total_bytes);
+                    task.downloaded_bytes = resume_from;
+                    task.pause_offset = resume_from;
                     task.status = DownloadStatus::Queued;
                     task.error = None;
+                    task.status_message = None;
                     task.speed_bps = 0;
                     task.eta_seconds = 0;
 
@@ -1366,20 +1417,26 @@ impl DownloadManager {
         }
 
         // Claim the task for this worker — bail if another worker already owns it.
-        let (url, dest_path, partial_path, start_offset, _total_bytes, use_github_auth) = {
+        let (url, dest_path, partial_path, start_offset, total_bytes, use_github_auth) = {
             let mut dm = manager.write().await;
             let Some(task) = dm.tasks.get_mut(&task_id) else {
                 return;
             };
             match task.status {
                 DownloadStatus::Queued => {
+                    // The `.part` on disk decides where this resume starts, whatever the
+                    // row claims. Opening an existing file at offset 0 would append a
+                    // second copy of the whole model, pass the byte-count gate, and then
+                    // be deleted by the digest gate.
+                    let start_offset = resume_offset(partial_len(&task.dest_path), task.total_bytes);
                     task.status = DownloadStatus::Downloading;
-                    task.downloaded_bytes = task.pause_offset;
+                    task.downloaded_bytes = start_offset;
+                    task.pause_offset = start_offset;
                     (
                         task.download_url.clone(),
                         task.dest_path.clone(),
                         partial_download_path(&task.dest_path),
-                        task.pause_offset,
+                        start_offset,
                         task.total_bytes,
                         needs_github_auth(task),
                     )
@@ -1392,6 +1449,14 @@ impl DownloadManager {
             }
         };
 
+        // Already whole on disk — a recovered row can be. Fetching would ask for a range
+        // past EOF (416); go straight to the digest gate, which also finalizes the batch
+        // when this was the last missing shard.
+        if total_bytes > 0 && start_offset >= total_bytes {
+            mark_completed_worker(&manager, &task_id, &dest_path).await;
+            return;
+        }
+
         if let Some(parent) = Path::new(&partial_path).parent() {
             if !parent.as_os_str().is_empty() {
                 if let Err(e) = fs::create_dir_all(parent).await {
@@ -1401,10 +1466,13 @@ impl DownloadManager {
             }
         }
 
-        // Open partial file in append mode (for resume support)
+        // Open the partial file at the reconciled offset — never a bare append: the
+        // offset may sit behind bytes already on disk (moved file) or the file may be
+        // longer than the remote, and `set_len` is what keeps the file a clean prefix.
         let mut file = match OpenOptions::new()
             .create(true)
-            .append(true)
+            .write(true)
+            .truncate(false)
             .open(&partial_path)
             .await
         {
@@ -1414,6 +1482,15 @@ impl DownloadManager {
                 return;
             }
         };
+
+        if let Err(e) = file.set_len(start_offset).await {
+            mark_failed(&manager, &task_id, format!("Failed to size partial file: {}", e)).await;
+            return;
+        }
+        if let Err(e) = file.seek(std::io::SeekFrom::Start(start_offset)).await {
+            mark_failed(&manager, &task_id, format!("Failed to seek partial file: {}", e)).await;
+            return;
+        }
 
         // Build HTTP request with optional Range header for resume.
         // HF's /resolve/main/ returns 302 → signed CAS URL; follow redirects manually to preserve Range.
@@ -1477,16 +1554,16 @@ impl DownloadManager {
         // Check response status for resume handling
         let status_code = resp.status();
         if start_offset > 0 && status_code.is_success() && status_code != reqwest::StatusCode::PARTIAL_CONTENT {
-            // Server doesn't support range requests — truncate and restart from beginning
+            // Server ignored the Range, so the body is the whole file and the bytes we
+            // already hold are worthless: truncate and count progress from 0.
             drop(file);
-            let _f = match tokio::fs::File::create(&partial_path).await {
-                Ok(f) => f,
-                Err(e) => {
-                    mark_failed(&manager, &task_id, format!("Failed to reset file: {}", e)).await;
-                    return;
+            {
+                let mut dm = manager.write().await;
+                if let Some(task) = dm.tasks.get_mut(&task_id) {
+                    task.downloaded_bytes = 0;
+                    task.pause_offset = 0;
                 }
-            };
-            // Re-open fresh
+            }
             file = match OpenOptions::new()
                 .create(true)
                 .write(true)
@@ -1663,11 +1740,17 @@ async fn finalize_paused_worker(manager: &Arc<RwLock<DownloadManager>>, task_id:
 
 fn batch_has_in_flight(dm: &DownloadManager, batch_id: &str) -> bool {
     dm.tasks.values().any(|t| {
-        t.batch_id.as_deref() == Some(batch_id)
-            && matches!(
-                t.status,
-                DownloadStatus::Queued | DownloadStatus::Downloading | DownloadStatus::Paused
-            )
+        if t.batch_id.as_deref() != Some(batch_id) {
+            return false;
+        }
+        match t.status {
+            DownloadStatus::Queued | DownloadStatus::Downloading => true,
+            // A paused row whose bytes are already on disk is not work in progress.
+            // Counting it blocks finalize forever, so the finished shards stay `.part`
+            // and the model never reaches the catalog.
+            DownloadStatus::Paused => !part_bytes_ready(&t.dest_path, t.total_bytes, &t.lfs_oid),
+            _ => false,
+        }
     })
 }
 
@@ -1764,6 +1847,29 @@ fn try_finalize_quant_batch_sync(dm: &mut DownloadManager, batch_id: &str) -> Re
 
     for part in &batch.parts {
         finalize_part_on_disk(part, &batch)?;
+    }
+
+    // Rows that only existed to wait for the batch are done now. Leaving them Paused
+    // at 100 % shows a finished shard as unfinished forever, and hands the next start a
+    // row whose `.part` no longer exists.
+    let mut finished_rows: Vec<String> = Vec::new();
+    for task in dm.tasks.values_mut() {
+        if task.batch_id.as_deref() != Some(batch_id) {
+            continue;
+        }
+        if !part_bytes_ready(&task.dest_path, task.total_bytes, &task.lfs_oid) {
+            continue;
+        }
+        task.status = DownloadStatus::Completed;
+        task.downloaded_bytes = task.total_bytes;
+        task.pause_offset = 0;
+        task.speed_bps = 0;
+        task.eta_seconds = 0;
+        task.status_message = None;
+        finished_rows.push(task.id.clone());
+    }
+    for id in finished_rows {
+        remove_task_from_manifest(&id);
     }
 
     dm.quant_batches.remove(batch_id);
@@ -2275,9 +2381,13 @@ async fn mark_failed(manager: &Arc<RwLock<DownloadManager>>, task_id: &str, erro
         let dm = manager.read().await;
         dm.tasks
             .get(task_id)
-            .map(is_post_download_task)
+            .map(|t| is_post_download_task(t) || t.batch_id.is_some())
             .unwrap_or(false)
     };
+
+    // A failed shard of a registered batch keeps its row: dropping it releases the only
+    // pointer to a part the batch is still waiting for, and the batch then re-creates it
+    // from scratch at 0 % on the next start.
 
     // Phase 1: Update in-memory state under lock — minimal hold.
     {
@@ -2386,6 +2496,52 @@ mod tests {
         assert!(!download_bytes_complete(100, 200));
         assert!(download_bytes_complete(200, 200));
         assert!(download_bytes_complete(250, 200));
+    }
+
+    #[test]
+    fn resume_offset_follows_the_file_not_the_row() {
+        // The file is ahead of what the row claims (moved/replaced .part): continue from
+        // the file, or a resume would append a second copy from offset 0.
+        assert_eq!(resume_offset(7, 100), 7);
+        // Nothing on disk: clean start.
+        assert_eq!(resume_offset(0, 100), 0);
+        // Longer than the remote can never be a clean prefix; the worker truncates.
+        assert_eq!(resume_offset(120, 100), 0);
+        // Unknown size (no Content-Length): whatever the file holds is the prefix.
+        assert_eq!(resume_offset(42, 0), 42);
+    }
+
+    #[test]
+    fn paused_shard_whose_bytes_are_complete_does_not_block_finalize() {
+        let dir = std::env::temp_dir().join(format!("boc-batch-{}", generate_task_id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let batch_id = "batch-deepseek".to_string();
+        let done_dest = dir.join("a-00001-of-00002.gguf").to_string_lossy().to_string();
+        let half_dest = dir.join("a-00002-of-00002.gguf").to_string_lossy().to_string();
+        std::fs::write(format!("{done_dest}.part"), vec![0u8; 100]).expect("seed full part");
+        std::fs::write(format!("{half_dest}.part"), vec![0u8; 50]).expect("seed half part");
+
+        let mut dm = DownloadManager::new();
+        for (id, dest, total) in [
+            ("s1", done_dest.as_str(), 100u64),
+            ("s2", half_dest.as_str(), 100u64),
+        ] {
+            let mut task = dummy_task(id, dest, Some(batch_id.clone()), DownloadStatus::Paused);
+            task.total_bytes = total;
+            task.downloaded_bytes = total;
+            dm.tasks.insert(id.to_string(), task);
+        }
+
+        // A paused row at 100 % is not work in progress; the unfinished sibling is.
+        assert!(batch_has_in_flight(&dm, &batch_id));
+
+        dm.tasks.get_mut("s2").unwrap().status = DownloadStatus::Completed;
+        assert!(
+            !batch_has_in_flight(&dm, &batch_id),
+            "a finished batch must not stay blocked by a paused row whose bytes are on disk"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
