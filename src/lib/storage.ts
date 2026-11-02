@@ -79,6 +79,8 @@ export const KEYS = {
   testFlags: `${STORAGE_PREFIX}test-flags`,
   testFlagsOn: `${STORAGE_PREFIX}test-flags-on`,
   testFlagsMode: `${STORAGE_PREFIX}test-flags-mode`,
+  /** VRAM badge FIT OFF — drop the forced `--fit on` so -ngl/-ts/-ot own placement. */
+  fitOff: `${STORAGE_PREFIX}fit-off`,
   /** sessionStorage — user acknowledged REPLACE launch confirm this session */
   customFlagsReplaceAck: `${STORAGE_PREFIX}custom-flags-replace-ack`,
   collapsedGroups: `${STORAGE_PREFIX}collapsed-groups`,

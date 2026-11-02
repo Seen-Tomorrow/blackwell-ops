@@ -188,3 +188,62 @@ export function fullAutoWorkloadLabel(workload: FullAutoWorkload | null): string
   if (!workload) return null;
   return FULL_AUTO_WORKLOADS.find((item) => item.id === workload)?.label ?? null;
 }
+
+/** Sampler keys a GGUF may publish under `general.sampling.*` (author recommendation). */
+const MODEL_SAMPLING_KEYS: readonly [string, string][] = [
+  ["general.sampling.temp", "temp"],
+  ["general.sampling.top_p", "top_p"],
+  ["general.sampling.top_k", "top_k"],
+  ["general.sampling.min_p", "min_p"],
+];
+
+/**
+ * Author sampler values read from the model header, or null when the file has none.
+ *
+ * Only keys the file actually declares come back. An absent `top_k` is not the same
+ * statement as `top_k 0`, so nothing is zeroed on the model's behalf — a model that
+ * publishes no recommendation leaves the profile's sampler untouched.
+ */
+export function modelSamplerFrom(
+  rawKvs: Record<string, string> | undefined | null,
+): Record<string, number> | null {
+  if (!rawKvs) return null;
+  const out: Record<string, number> = {};
+  for (const [kvKey, samplerKey] of MODEL_SAMPLING_KEYS) {
+    const raw = rawKvs[kvKey];
+    if (raw == null || raw === "") continue;
+    const n = Number(raw);
+    if (Number.isFinite(n)) out[samplerKey] = n;
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+/** f32 in the file leaves tails like 0.949999988 — keep 4 places for display and CLI. */
+function tidy(n: number): number {
+  return Math.round(n * 10_000) / 10_000;
+}
+
+/**
+ * Author sampler values from the in-process header read (`GgufShape`). This is the
+ * primary source: it needs no engine spawn, so it cannot be missing because a
+ * catalog scan came back short. `modelSamplerFrom` stays as the `rawKvs` fallback.
+ */
+export function modelSamplerFromShape(
+  shape:
+    | {
+        samplingTemp?: number | null;
+        samplingTopP?: number | null;
+        samplingTopK?: number | null;
+        samplingMinP?: number | null;
+      }
+    | null
+    | undefined,
+): Record<string, number> | null {
+  if (!shape) return null;
+  const out: Record<string, number> = {};
+  if (shape.samplingTemp != null) out.temp = tidy(shape.samplingTemp);
+  if (shape.samplingTopP != null) out.top_p = tidy(shape.samplingTopP);
+  if (shape.samplingTopK != null) out.top_k = tidy(shape.samplingTopK);
+  if (shape.samplingMinP != null) out.min_p = tidy(shape.samplingMinP);
+  return Object.keys(out).length > 0 ? out : null;
+}

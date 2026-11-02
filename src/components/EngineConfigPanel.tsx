@@ -100,6 +100,8 @@ import {
   FULL_AUTO_GOALS,
   FULL_AUTO_WORKLOADS,
   detectSamplerTask,
+  modelSamplerFrom,
+  modelSamplerFromShape,
   type FullAutoGoal,
   type FullAutoWorkload,
 } from "../lib/fullAutoGoals";
@@ -392,6 +394,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const [testFlagsMode, setTestFlagsMode] = useState<"add" | "replace">(() => {
     return readStorage(KEYS.testFlagsMode) === "replace" ? "replace" : "add";
   });
+  /** VRAM badge FIT OFF — suppress the auto-VRAM `--fit on`. */
+  const [fitOff, setFitOff] = useState(() => readStorage(KEYS.fitOff) === "1");
   const [customFlagsEditorOpen, setCustomFlagsEditorOpen] = useState(false);
   const [customFlagsDraft, setCustomFlagsDraft] = useState("");
   const [customFlagsPopoverPos, setCustomFlagsPopoverPos] = useState({
@@ -593,6 +597,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   useEffect(() => {
     writeStorage(KEYS.testFlagsMode, testFlagsMode);
   }, [testFlagsMode]);
+
+  useEffect(() => {
+    writeStorage(KEYS.fitOff, fitOff ? "1" : "0");
+  }, [fitOff]);
 
   useEffect(() => {
     const shell = document.querySelector(".app-shell");
@@ -920,11 +928,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     }
   }, [gpus, config.device, config.split, updateParam]);
 
-  const showChromeHints = useMemo(
-    () => !fullAutoMode && !stack.some((s) => s.status === "LOADING"),
-    [fullAutoMode, stack],
-  );
-
   const cockpit = useCockpit({
     model,
     models,
@@ -1085,6 +1088,23 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     fitStyle: spawnProfile?.fit_style ?? "",
     catalogModels: models,
   });
+
+  /** Author sampler: in-process header read first, catalog `rawKvs` as fallback. */
+  const modelSampler = useMemo(
+    () =>
+      modelSamplerFromShape(model?.ggufShape) ??
+      modelSamplerFrom(model?.metadata?.rawKvs),
+    [model],
+  );
+
+  /** M DEFAULTS: apply only what the model declares, leaving the rest of the profile. */
+  const applyModelDefaults = useCallback(() => {
+    if (!modelSampler) return;
+    for (const [key, value] of Object.entries(modelSampler)) {
+      if (!allParamsResolved.some((param) => param.key === key)) continue;
+      updateParam(key, value);
+    }
+  }, [modelSampler, allParamsResolved, updateParam]);
 
   /** Apply a task's explicit sampler + compat values. Shared by AUTOPILOT and ASSISTED. */
   const applyWorkloadPreset = useCallback(
@@ -2112,6 +2132,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       testFlagsEnabled,
       testFlags,
       testFlagsMode,
+      fitOff,
       smartBatchPush: false,
     });
   }, [
@@ -2136,6 +2157,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     testFlagsEnabled,
     testFlags,
     testFlagsMode,
+    fitOff,
   ]);
 
   /** HS button hint: panel model / CTX / parallel differ from the live seat. */
@@ -2386,6 +2408,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         testFlagsEnabled: false,
         testFlags: "",
         testFlagsMode: "add",
+        fitOff,
         smartBatchPush: false,
       });
       fullConfig.port = port;
@@ -3223,11 +3246,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             updateParam("split", "none");
           }
         }}
-        showChromeHints={showChromeHints}
         manifest={vramCalc.manifest}
         selectedGpuIndices={selectedGpuIndices}
         isValidating={vramCalc.isValidating}
         onValidate={vramCalc.validate}
+        fitOff={fitOff}
+        onToggleFitOff={() => setFitOff((v) => !v)}
         isModelRunning={isModelRunning}
         activeEngineAlias={activeEngineAlias}
         activeEnginePort={activeEnginePort}
@@ -3492,6 +3516,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               config={config}
               onChange={updateParam}
               onTask={applyWorkloadPreset}
+              modelSampler={modelSampler}
+              onModelDefaults={applyModelDefaults}
             />
           }
           autoGoal={fullAutoFixed ? autoGoal : null}
@@ -3510,6 +3536,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             config={config}
             onChange={updateParam}
             onTask={applyWorkloadPreset}
+            modelSampler={modelSampler}
+            onModelDefaults={applyModelDefaults}
             standalone
           />
         )}

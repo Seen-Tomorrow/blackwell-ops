@@ -25,7 +25,6 @@ import { computeForecastPhosphorHeightPx } from "../lib/onboardingDisplay";
 import { useFusionBenchTray } from "../hooks/useFusionBenchTray";
 import { stopAllEngines } from "../lib/engineStack";
 import GpuAssignPanel from "./GpuAssignPanel";
-import DisplayChromeHints from "./DisplayChromeHints";
 import { useTheme } from "../context/ThemeContext";
 import DisplayBezelGridControls from "./DisplayBezelGridControls";
 import VramBadge from "./VramBadge";
@@ -80,11 +79,12 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     onDeviceChange,
     onSplitChange,
     onDeviceSelect,
-    showChromeHints,
     manifest,
     selectedGpuIndices,
     isValidating,
     onValidate,
+    fitOff = false,
+    onToggleFitOff,
     isModelRunning,
     activeEngineAlias,
     activeEnginePort,
@@ -356,9 +356,6 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
               ) : null}
             </div>
           )}
-          {showChromeHints && (
-            <DisplayChromeHints policyReason={launchChrome.reason} />
-          )}
           <div
             ref={displayRef}
             key="forecast-phosphor"
@@ -373,6 +370,8 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
               onDeviceSelect={onDeviceSelect}
               isValidating={isValidating}
               onValidate={onValidate}
+              fitOff={fitOff}
+              onToggleFitOff={onToggleFitOff}
               activeEngineAlias={activeEngineAlias}
               activeEnginePort={activeEnginePort}
               selectedSlotIdx={selectedSlotIdx}
@@ -485,12 +484,14 @@ export interface EngineGpuForecastProps {
   onDeviceChange: (v: string) => void;
   onSplitChange: (v: string | number) => void;
   onDeviceSelect: (gpuIndex: number) => void;
-  showChromeHints: boolean;
   manifest: VramManifest | null;
   /** Highlighted GPU indices from the forecast — pass empty to hide. */
   selectedGpuIndices: number[];
   isValidating: boolean;
   onValidate: () => void;
+  /** VRAM badge FIT OFF — drop the auto-VRAM `--fit on`. */
+  fitOff?: boolean;
+  onToggleFitOff?: () => void;
   isModelRunning?: boolean;
   activeEngineAlias?: string;
   activeEnginePort?: number;

@@ -105,6 +105,11 @@ export type BuildLaunchConfigInput = {
   testFlagsEnabled: boolean;
   testFlags: string;
   testFlagsMode: "replace" | "add";
+  /**
+   * VRAM badge FIT OFF. Skips the auto-VRAM `--fit on` so the user's own
+   * -ngl / -ts / -ot flags decide placement (and the scenario `-ngl` emits).
+   */
+  fitOff?: boolean;
 };
 
 /**
@@ -159,6 +164,7 @@ export function buildLaunchConfig(input: BuildLaunchConfigInput): EngineConfig {
     testFlagsEnabled,
     testFlags,
     testFlagsMode,
+    fitOff = false,
   } = input;
 
   const factoryDefaults = factoryDefaultsFromParams(allParamsResolved);
@@ -269,6 +275,7 @@ export function buildLaunchConfig(input: BuildLaunchConfigInput): EngineConfig {
     binary_profile: selectedBinaryProfile,
     extra_params: {
       ...launchExtra,
+      ...(fitOff ? { __fit_off: true } : {}),
       parallel: parallelN,
       __memory_mode: fullAutoMode ? "full_auto" : "assisted",
       __launch_policy: policy.id,

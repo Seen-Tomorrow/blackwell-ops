@@ -554,9 +554,16 @@ impl ProviderTemplate {
 
         let moe_optimal_launch = extra_param_eq_ignore_ascii(config, "offload_mode", "moe_optimal");
         let external_draft_spec = external_draft_spec_needs_fit_off(config);
+        // Operator override from the VRAM badge: hand placement back to the user's own
+        // -ngl / -ts / -ot flags instead of letting --fit recompute the split.
+        let fit_off_forced = config
+            .extra_params
+            .get("__fit_off")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
 
         if auto_vram_launch {
-            if moe_optimal_launch || external_draft_spec {
+            if moe_optimal_launch || external_draft_spec || fit_off_forced {
                 args.extend(["--fit".into(), "off".into()]);
             } else {
                 args.extend(sp.spawn_flags.clone());
@@ -834,8 +841,10 @@ impl ProviderTemplate {
 
         // n_gpu_layers injection — computed by VRAM scenario factory at runtime.
         // Skip when Auto VRAM launch handles offload (--fit / --fit on).
-        let fit_handles_offload =
-            auto_vram_launch && !moe_optimal_launch && sp.fit_style.as_str() == "ggml_fit_params";
+        let fit_handles_offload = auto_vram_launch
+            && !moe_optimal_launch
+            && !fit_off_forced
+            && sp.fit_style.as_str() == "ggml_fit_params";
         if !fit_handles_offload {
             if let Some(ngl) = config.extra_params.get("__ngl") {
                 if let Some(flag) = sp.ngl_flag.first() {
@@ -1471,6 +1480,54 @@ mod build_cmd_tests {
             .any(|w| w[0] == "--fit" && w[1] == "off");
         assert!(!fit_on, "MOE_OPTIMAL must not launch with --fit on: {args:?}");
         assert!(fit_off, "MOE_OPTIMAL must launch with --fit off: {args:?}");
+    }
+
+    #[test]
+    fn badge_fit_off_suppresses_forced_fit_and_emits_ngl() {
+        let sp = SpawnProfile {
+            fit_style: "ggml_fit_params".to_string(),
+            ..SpawnProfile::default()
+        };
+
+        let template = ProviderTemplate {
+            binary_name: "llama-server.exe".to_string(),
+            description: "test".to_string(),
+            spawn_profile: sp,
+            params: Vec::new(),
+        };
+
+        let mut extra = HashMap::new();
+        extra.insert("__auto_vram".to_string(), serde_json::json!(true));
+        extra.insert("__fit_off".to_string(), serde_json::json!(true));
+        extra.insert("ctx".to_string(), serde_json::json!("131072"));
+        extra.insert("__ngl".to_string(), serde_json::json!(41));
+
+        let config = EngineConfig {
+            alias: String::new(),
+            model_path: "model.gguf".to_string(),
+            port: 8080,
+            backend_type: "ggml-master".to_string(),
+            binary_profile: String::new(),
+            extra_params: extra,
+        };
+
+        let args = template.build_command(&config, "", &[]);
+        assert!(
+            !args.windows(2).any(|w| w[0] == "--fit" && w[1] == "on"),
+            "FIT OFF must not force --fit on: {args:?}"
+        );
+        assert!(
+            args.windows(2).any(|w| w[0] == "--fit" && w[1] == "off"),
+            "FIT OFF must launch with --fit off: {args:?}"
+        );
+        assert!(
+            !args.windows(2).any(|w| w[0] == "--fit-ctx"),
+            "--fit-ctx must not be emitted under FIT OFF: {args:?}"
+        );
+        assert!(
+            args.windows(2).any(|w| w[0] == "--n-gpu-layers" && w[1] == "41"),
+            "FIT OFF must let the scenario -ngl through: {args:?}"
+        );
     }
 
     #[test]

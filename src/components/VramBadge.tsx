@@ -33,6 +33,9 @@ interface VramBadgeProps {
   onMoeSuggestionClick?: () => void;
   hideMoeBadge?: boolean;
   hideFitProbe?: boolean;
+  /** Operator override: drop the auto-VRAM `--fit on` so -ngl/-ts/-ot own placement. */
+  fitOff?: boolean;
+  onToggleFitOff?: () => void;
   /** External draft pack selected — no main forecast / FIT. */
   draftOnly?: boolean;
   className?: string;
@@ -76,6 +79,7 @@ export default function VramBadge({
   activeEngineAlias, activeEnginePort, selectedSlotIdx, supportsFusion = true, engineStatus,
   gpuMask = "", vramTargetMib, modelLayerTotal, gpuLoadTargetsMib, offloadMode, onMoeSuggestionClick, hideMoeBadge = false,
   hideFitProbe = false, draftOnly = false, className,
+  fitOff = false, onToggleFitOff,
   modelName, modelQuant, providerName, providerBuildVersion, profileLabel, cudaVersion, launchConfig, hwTopo,
   gpuIdleBaselineMib,
   gpuPerRow = 2,
@@ -299,6 +303,27 @@ export default function VramBadge({
             overFreeReprobe={s.launchPaint === "offload" || s.launchPaint === "nofit"}
           />
         ) : null}
+        {onToggleFitOff ? (
+          <span className="vram-fc-header__reprobe-pair">
+            <button
+              type="button"
+              className="vram-fc-source__reprobe vram-fc-header__reprobe"
+              data-fit-off={fitOff ? "1" : "0"}
+              aria-pressed={fitOff}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleFitOff();
+              }}
+              title={
+                fitOff
+                  ? "FIT OFF — placement comes only from your -ngl / -ts / -ot flags. Click for FIT ON."
+                  : "FIT ON — the engine fits placement to free VRAM. Click to hand placement to your own flags."
+              }
+            >
+              {fitOff ? "FIT OFF" : "FIT ON"}
+            </button>
+          </span>
+        ) : null}
       </div>
 
       <div className="vram-badge-body vram-fc__body vram-fc__body--assisted relative min-h-0 overflow-hidden">
@@ -443,11 +468,21 @@ export default function VramBadge({
                   className="vram-fc-bar__need-chip vram-fc-bar__need-chip--ram vram-fc-need-frame__need vram-fc-need-frame__need--ram"
                   data-need-tone={ramNeedTone}
                   data-ram-split={
-                    (manifest.ramWeightGb ?? 0) > 0.05 ? "1" : "buffer"
+                    (manifest.ramWeightGb ?? 0) > 0.05 || (manifest.ramEngramGb ?? 0) > 0.05
+                      ? "1"
+                      : "buffer"
                   }
                   title={
-                    (manifest.ramWeightGb ?? 0) > 0.05
-                      ? `Host ${displayRamNeedGb.toFixed(1)} GB = ${(manifest.ramBufferGb ?? 0).toFixed(1)} buffer + ${(manifest.ramWeightGb ?? 0).toFixed(1)} weight`
+                    (manifest.ramWeightGb ?? 0) > 0.05 || (manifest.ramEngramGb ?? 0) > 0.05
+                      ? `Host ${displayRamNeedGb.toFixed(1)} GB = ${(manifest.ramBufferGb ?? 0).toFixed(1)} buffer${
+                          (manifest.ramEngramGb ?? 0) > 0.05
+                            ? ` + ${(manifest.ramEngramGb ?? 0).toFixed(1)} lookup table (host by design)`
+                            : ""
+                        }${
+                          (manifest.ramWeightGb ?? 0) > 0.05
+                            ? ` + ${(manifest.ramWeightGb ?? 0).toFixed(1)} weight`
+                            : ""
+                        }`
                       : `Host ${displayRamNeedGb.toFixed(1)} GB buffer (not layer offload)`
                   }
                 >
@@ -456,7 +491,7 @@ export default function VramBadge({
                     {displayRamNeedGb.toFixed(1)}
                   </span>
                   <span className="vram-fc-bar__unit">GB</span>
-                  {(manifest.ramWeightGb ?? 0) > 0.05 ? (
+                  {(manifest.ramWeightGb ?? 0) > 0.05 || (manifest.ramEngramGb ?? 0) > 0.05 ? (
                     <span className="vram-fc-bar__need-split" aria-label="RAM need breakdown">
                       <span className="vram-fc-bar__need-split-line">
                         <span className="vram-fc-bar__need-split-val">
@@ -464,12 +499,22 @@ export default function VramBadge({
                         </span>
                         <span className="vram-fc-bar__need-split-lab">buffer</span>
                       </span>
-                      <span className="vram-fc-bar__need-split-line">
-                        <span className="vram-fc-bar__need-split-val">
-                          {(manifest.ramWeightGb ?? 0).toFixed(1)}GB
+                      {(manifest.ramEngramGb ?? 0) > 0.05 ? (
+                        <span className="vram-fc-bar__need-split-line">
+                          <span className="vram-fc-bar__need-split-val">
+                            {(manifest.ramEngramGb ?? 0).toFixed(1)}GB
+                          </span>
+                          <span className="vram-fc-bar__need-split-lab"> lookup</span>
                         </span>
-                        <span className="vram-fc-bar__need-split-lab"> weights</span>
-                      </span>
+                      ) : null}
+                      {(manifest.ramWeightGb ?? 0) > 0.05 ? (
+                        <span className="vram-fc-bar__need-split-line">
+                          <span className="vram-fc-bar__need-split-val">
+                            {(manifest.ramWeightGb ?? 0).toFixed(1)}GB
+                          </span>
+                          <span className="vram-fc-bar__need-split-lab"> weights</span>
+                        </span>
+                      ) : null}
                     </span>
                   ) : (
                     <span className="vram-fc-bar__need-split vram-fc-bar__need-split--buf" aria-label="RAM buffer only">

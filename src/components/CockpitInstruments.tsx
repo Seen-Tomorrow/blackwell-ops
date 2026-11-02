@@ -34,18 +34,38 @@ interface SamplerTaskProps {
   config: Record<string, unknown>;
   onChange: (key: string, value: string | number) => void;
   onTask: (task: FullAutoWorkload) => void;
+  /** Sampler the model header recommends (`general.sampling.*`); null = none published. */
+  modelSampler?: Record<string, number> | null;
+  onModelDefaults?: () => void;
   /** Current slot count — the penalty warning only matters at high concurrency. */
   parallel?: number;
 }
 
-const TASK_OPTIONS = [
-  ...FULL_AUTO_WORKLOADS.map((task) => ({
-    id: task.id,
-    label: task.label,
-    title: task.note,
-  })),
-  { id: "custom", label: "CUSTOM", title: "Custom sampler values" },
-];
+const BASE_TASK_OPTIONS = FULL_AUTO_WORKLOADS.map((task) => ({
+  id: task.id as string,
+  label: task.label,
+  title: task.note,
+}));
+
+/** TASK chips, plus M DEFAULTS when the model header publishes sampler values. */
+function taskOptionsWith(modelSampler: Record<string, number> | null) {
+  const modelChip = modelSampler
+    ? [
+        {
+          id: "model",
+          label: "M DEFAULTS",
+          title: `From the model header — ${Object.entries(modelSampler)
+            .map(([key, value]) => `${key} ${value}`)
+            .join(" · ")}`,
+        },
+      ]
+    : [];
+  return [
+    ...BASE_TASK_OPTIONS,
+    ...modelChip,
+    { id: "custom", label: "CUSTOM", title: "Custom sampler values" },
+  ];
+}
 
 const PENALTY_WARNING =
   "Presence / repeat penalty forces a full-vocab CPU scan. At high slot counts this can roughly halve TG throughput.";
@@ -65,6 +85,8 @@ export function SamplerTask({
   config,
   onChange,
   onTask,
+  modelSampler = null,
+  onModelDefaults,
   parallel,
 }: SamplerTaskProps) {
   const [open, setOpen] = useState(false);
@@ -82,7 +104,13 @@ export function SamplerTask({
   if (sampler.length === 0) return null;
 
   const parallelSlots = parallel ?? (Number(config.parallel ?? 1) || 1);
-  const active = detectSamplerTask(config);
+  const modelActive =
+    modelSampler != null &&
+    Object.keys(modelSampler).length > 0 &&
+    Object.entries(modelSampler).every(([key, value]) =>
+      sameParamValue(config[key], value),
+    );
+  const active = modelActive ? "model" : detectSamplerTask(config);
   const fingerprint = samplerFingerprint(sampler, config);
   const presence = Number(config.presence_penalty ?? 0);
   const repeat = Number(config.repeat_penalty ?? 1);
@@ -121,6 +149,12 @@ export function SamplerTask({
       setOpen((prev) => !prev);
       return;
     }
+    if (id === "model") {
+      flashPreview();
+      onModelDefaults?.();
+      setOpen(false);
+      return;
+    }
     const task = FULL_AUTO_WORKLOADS.find((item) => item.id === id);
     if (task) {
       flashPreview();
@@ -135,7 +169,7 @@ export function SamplerTask({
         <span className="cockpit-instrument__label">TASK</span>
         <CockpitNavSegment
           ariaLabel="Task sampler preset"
-          options={TASK_OPTIONS}
+          options={taskOptionsWith(modelSampler)}
           selectedId={open ? "custom" : active}
           onSelect={select}
           size="sub"
@@ -240,6 +274,9 @@ interface CockpitInstrumentsProps {
   config: Record<string, unknown>;
   onChange: (key: string, value: string | number) => void;
   onTask: (task: FullAutoWorkload) => void;
+  /** Sampler the model header recommends (`general.sampling.*`); null = none published. */
+  modelSampler?: Record<string, number> | null;
+  onModelDefaults?: () => void;
   /** No cockpit surface (custom provider) — own the outer face too. */
   standalone?: boolean;
 }
@@ -254,6 +291,8 @@ export function CockpitInstruments({
   config,
   onChange,
   onTask,
+  modelSampler = null,
+  onModelDefaults,
   standalone = false,
 }: CockpitInstrumentsProps) {
   return (
@@ -263,7 +302,14 @@ export function CockpitInstruments({
       }`}
     >
       <BatchRangeSlider defs={defs} config={config} onChange={onChange} />
-      <SamplerTask defs={defs} config={config} onChange={onChange} onTask={onTask} />
+      <SamplerTask
+        defs={defs}
+        config={config}
+        onChange={onChange}
+        onTask={onTask}
+        modelSampler={modelSampler}
+        onModelDefaults={onModelDefaults}
+      />
       <TweaksPanel defs={defs} config={config} onChange={onChange} />
     </div>
   );

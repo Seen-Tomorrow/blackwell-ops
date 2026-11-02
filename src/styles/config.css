@@ -305,42 +305,6 @@
   scrollbar-width: thin;
 }
 
-/* Pre-launch chrome hints — top bezel far right (empty rail after Device) */
-.display-chrome-hints {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 36px; /* match top chrome band */
-  pointer-events: none;
-  z-index: 35; /* under top-chrome controls (40), over phosphor */
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  box-sizing: border-box;
-  padding: 0 12px 0 0;
-}
-
-.display-chrome-hints__hint {
-  margin: 0;
-  padding: 0 2px;
-  font-size: var(--type-hairline);
-  font-family: ui-monospace, monospace;
-  line-height: 1.2;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.display-chrome-hints__hint--right {
-  position: relative;
-  right: auto;
-  left: auto;
-  max-width: min(42%, 14rem);
-  text-align: right;
-  color: color-mix(in srgb, var(--fixed-amber-500) 82%, var(--theme-text-muted));
-}
-
-
 .gpu-assign-panel--chrome-disabled .gpu-assign-panel__chips {
   position: relative;
 }

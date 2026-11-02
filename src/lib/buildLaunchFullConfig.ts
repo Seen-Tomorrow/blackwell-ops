@@ -34,6 +34,8 @@ export type BuildLaunchFullConfigInput = {
   testFlagsEnabled: boolean;
   testFlags: string;
   testFlagsMode: "replace" | "add";
+  /** VRAM badge FIT OFF — skip the auto-VRAM `--fit on`. */
+  fitOff?: boolean;
   /** When true and Full Auto Smart, inject high batch/ubatch for this launch only. */
   smartBatchPush?: boolean;
 };
@@ -58,6 +60,7 @@ export function buildLaunchFullConfig(input: BuildLaunchFullConfigInput): Engine
     testFlagsEnabled: input.testFlagsEnabled,
     testFlags: input.testFlags,
     testFlagsMode: input.testFlagsMode,
+    fitOff: input.fitOff,
     smartBatchPush: input.smartBatchPush,
   });
 }

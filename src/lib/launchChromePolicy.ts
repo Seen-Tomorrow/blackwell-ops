@@ -14,7 +14,6 @@ export interface LaunchChromePolicy {
   deviceLocked: boolean;
   splitLocked: boolean;
   hideSplitNone: boolean;
-  reason?: string;
 }
 
 function parseTargetGpuIdx(device: unknown): number {
@@ -66,24 +65,20 @@ export function resolveLaunchChromePolicy(opts: {
   const needsMultiGpu =
     !fitsOnSelected && needsAutoLayerSplit(estimateGb, perGpu);
 
-  if (opts.manifest && !opts.manifest.fits) {
-    return {
-      mode,
-      chromeDisabled: false,
-      deviceLocked: true,
-      splitLocked: true,
-      hideSplitNone: true,
-      reason: "Insufficient memory for this configuration",
-    };
-  }
+  // ASSISTED only: an explicit SPLIT=NONE is a placement decision, not a missing
+  // one. A deliberate single-GPU spill is legitimate whenever VRAM+RAM can hold the
+  // model, so a multi-GPU suggestion must never lock the device picker or hide NONE.
+  // AUTOPILOT keeps the old auto-promotion behaviour.
+  const explicitSingleGpu = mode === "assisted" && !splitActive;
 
-  if (needsMultiGpu) {
+  if (needsMultiGpu && !explicitSingleGpu) {
     return {
       mode,
       chromeDisabled: false,
       deviceLocked: true,
       splitLocked: false,
-      hideSplitNone: true,
+      /** AUTOPILOT returned above, so this is ASSISTED: always offer the way back to NONE. */
+      hideSplitNone: false,
       // No amber bezel banner — locks alone communicate multi-GPU.
     };
   }
