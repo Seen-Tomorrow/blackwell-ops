@@ -52,9 +52,8 @@ function parseActiveFromLabel(label: string): { val: number; suffix: string } | 
  * Resolve the TOTAL / ACTIVE param display for a scanned model.
  *
  * Sources (in order of authority):
- *   - total_params_str  → print_info "model params" (e.g. "284.33 B"). Authoritative total.
- *   - modelTypeLabel    → "230B.A10B" | "122B-A10B" | "256x8.4B" | "20B"
- *   - rawKvs[general.size_label] → original quantizer label (kept when print_info is ?B)
+ *   - total_params_str  → summed from the header's tensor table (e.g. "284.33 B")
+ *   - modelTypeLabel    → `general.size_label` verbatim: "230B.A10B" | "122B-A10B" | "20B"
  *
  * The "NxX" format means "N experts, X active params". It does NOT mean X params per
  * expert, so multiplying N × X to get a total is wrong (it produced bogus 2.2T for
@@ -64,13 +63,7 @@ function parseActiveFromLabel(label: string): { val: number; suffix: string } | 
 function resolveParamsDisplay(meta: ModelMetadata): { paramsNum: string; archBadge: string } {
   const isMoE = meta.n_expert_used > 0;
 
-  // Prefer rawKvs size_label when modelTypeLabel is unparseable (e.g. deepseek4 prints
-  // "?B" for model type, which would otherwise discard the informative "256x8.4B").
-  let label = meta.modelTypeLabel || "";
-  const rawLabel = meta.rawKvs?.["general.size_label"];
-  if (!label.trim() || label.trim().toLowerCase() === "?b" || label.trim() === "?B") {
-    label = rawLabel || label;
-  }
+  const label = meta.modelTypeLabel || "";
 
   const active = parseActiveFromLabel(label);
   // Authoritative total from print_info "model params".
