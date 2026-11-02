@@ -8,12 +8,51 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use crate::output_console::{BlackwellOutputConsoleCategory, BlackwellOutputConsoleLineStyle};
+use crate::output_console::{
+    format_console_completion, BlackwellOutputConsoleCategory, BlackwellOutputConsoleLineStyle,
+};
 use crate::types::{
     CatalogDedupConflict, DiskCheckResult, DownloadStatus, DownloadTask, GgufFile, ModelEntry,
     ModelEntryInternal, ModelPathEntry, QuantDownloadBatch,
 };
 
+/// True when the name ends in `.gguf`, whatever the extension's case.
+fn has_gguf_ext(name: &str) -> bool {
+    name.len() >= 5 && name[name.len() - 5..].eq_ignore_ascii_case(".gguf")
+}
+
+/// Drop shard sets whose file count does not match what the name declares.
+/// Returns how many entries were dropped.
+fn drop_incomplete_shard_sets(entries: &mut Vec<ModelEntryInternal>) -> usize {
+    let before = entries.len();
+    entries.retain(|entry| !is_incomplete_shard_entry(entry));
+    before.saturating_sub(entries.len())
+}
+
+/// Drop entries that belong to an in-progress download. Returns how many were dropped.
+fn drop_in_progress_downloads(
+    entries: &mut Vec<ModelEntryInternal>,
+    ex: &CatalogScanExclusions,
+) -> usize {
+    let before = entries.len();
+    entries.retain(|entry| {
+        let resolved = crate::config::resolve_path(&entry.path)
+            .to_string_lossy()
+            .to_string();
+        if ex.dest_paths.contains(&resolved) {
+            return false;
+        }
+        let group = shard_group_key_from_path(&entry.path);
+        !ex.shard_groups.contains(&group)
+    });
+    before.saturating_sub(entries.len())
+}
+
+/// One catalog progress line. Every scan/merge/dedup message is Utils-category; only the
+/// style varies - Normal for progress, Command for echoed paths, Success/Warning for outcomes.
+fn say(lh: &crate::log_hub::LogHub, style: BlackwellOutputConsoleLineStyle, msg: &str) {
+    lh.emit_console_line(BlackwellOutputConsoleCategory::Utils, msg, style);
+}
 /// Paths + shard groups to omit from catalog during active/incomplete downloads.
 #[derive(Debug, Clone, Default)]
 pub struct CatalogScanExclusions {
@@ -220,11 +259,15 @@ pub fn scan_path(
 
     // LOG: scan start
     if let Some(lh) = log_hub {
-        lh.emit_console_line(
-            BlackwellOutputConsoleCategory::Utils,
-            &format!("[SCAN] Walking '{}': found {} .gguf files", 
-                base_path.display(), gguf_files.len()),
-            BlackwellOutputConsoleLineStyle::Normal);
+        say(
+            lh,
+            BlackwellOutputConsoleLineStyle::Normal,
+            &format!(
+                "[SCAN] Walking '{}': found {} .gguf files",
+                base_path.display(),
+                gguf_files.len()
+            ),
+        );
     }
 
     // Group files by parent directory for mmproj detection — HashSet O(n) instead of Vec O(n²)
@@ -323,14 +366,17 @@ pub fn scan_path(
     if let Some(lh) = log_hub {
         let lm_studio_count = temp_catalog.values()
             .filter(|e| e.author != "Unknown").count();
-        lh.emit_console_line(
-            BlackwellOutputConsoleCategory::Utils,
-            &format!("[SCAN] '{}' → {} unique models ({} with directory author, {} shards total)", 
+        say(
+            lh,
+            BlackwellOutputConsoleLineStyle::Success,
+            &format!(
+                "[SCAN] '{}' → {} unique models ({} with directory author, {} shards total)",
                 base_path.display(),
                 temp_catalog.len(),
                 lm_studio_count,
-                temp_catalog.values().map(|e| e.shards).sum::<i32>()),
-            BlackwellOutputConsoleLineStyle::Success);
+                temp_catalog.values().map(|e| e.shards).sum::<i32>()
+            ),
+        );
     }
 
     Ok(temp_catalog.into_values().collect())
@@ -392,16 +438,10 @@ pub fn merge_catalogs(
 
     // LOG: merge start
     if let Some(lh) = log_hub {
-        lh.emit_console_line(
-            BlackwellOutputConsoleCategory::Utils,
-            &format!("[MERGE] Combining {} model paths", paths.len()),
-            BlackwellOutputConsoleLineStyle::Normal);
+        say(lh, BlackwellOutputConsoleLineStyle::Normal, &format!("[MERGE] Combining {} model paths", paths.len()));
         for (i, p) in paths.iter().enumerate() {
             let label = if p.label.is_empty() { "Default" } else { &p.label };
-            lh.emit_console_line(
-                BlackwellOutputConsoleCategory::Utils,
-                &format!("  [{}]: '{}' → '{}'", i + 1, label, p.path),
-                BlackwellOutputConsoleLineStyle::Command);
+            say(lh, BlackwellOutputConsoleLineStyle::Command, &format!(" [{}]: '{}' → '{}'", i + 1, label, p.path));
         }
     }
 
@@ -415,39 +455,26 @@ pub fn merge_catalogs(
         }
     }
 
-    let before_filter = all_internal.len();
-    all_internal.retain(|entry| !is_incomplete_shard_entry(entry));
-    if let Some(lh) = log_hub {
-        let skipped_incomplete = before_filter.saturating_sub(all_internal.len());
-        if skipped_incomplete > 0 {
-            lh.emit_console_line(
-                BlackwellOutputConsoleCategory::Utils,
-                &format!("[MERGE] Skipped {skipped_incomplete} incomplete shard set(s) from catalog"),
+    let skipped_incomplete = drop_incomplete_shard_sets(&mut all_internal);
+    if skipped_incomplete > 0 {
+        if let Some(lh) = log_hub {
+            say(
+                lh,
                 BlackwellOutputConsoleLineStyle::Normal,
+                &format!("[MERGE] Skipped {skipped_incomplete} incomplete shard set(s) from catalog"),
             );
         }
     }
 
     if let Some(ex) = exclusions {
         if !ex.is_empty() {
-            let before = all_internal.len();
-            all_internal.retain(|entry| {
-                let resolved = crate::config::resolve_path(&entry.path)
-                    .to_string_lossy()
-                    .to_string();
-                if ex.dest_paths.contains(&resolved) {
-                    return false;
-                }
-                let group = shard_group_key_from_path(&entry.path);
-                !ex.shard_groups.contains(&group)
-            });
-            if let Some(lh) = log_hub {
-                let skipped = before.saturating_sub(all_internal.len());
-                if skipped > 0 {
-                    lh.emit_console_line(
-                        BlackwellOutputConsoleCategory::Utils,
-                        &format!("[MERGE] Skipped {skipped} in-progress download(s) from catalog"),
+            let skipped = drop_in_progress_downloads(&mut all_internal, ex);
+            if skipped > 0 {
+                if let Some(lh) = log_hub {
+                    say(
+                        lh,
                         BlackwellOutputConsoleLineStyle::Normal,
+                        &format!("[MERGE] Skipped {skipped} in-progress download(s) from catalog"),
                     );
                 }
             }
@@ -480,21 +507,30 @@ pub fn merge_catalogs(
 
     // LOG: dedup results
     if let Some(lh) = log_hub {
-        lh.emit_console_line(
-            BlackwellOutputConsoleCategory::Utils,
-            &format!("[DEDUP] {} total → {} unique ({} conflicts across paths)", 
-                total_internal, deduped.len(), conflicts.len()),
-            if conflicts.is_empty() { 
-                BlackwellOutputConsoleLineStyle::Success 
-            } else { 
-                BlackwellOutputConsoleLineStyle::Warning 
-            });
+        let style = if conflicts.is_empty() {
+            BlackwellOutputConsoleLineStyle::Success
+        } else {
+            BlackwellOutputConsoleLineStyle::Warning
+        };
+        say(
+            lh,
+            style,
+            &format!(
+                "[DEDUP] {} total → {} unique ({} conflicts across paths)",
+                total_internal,
+                deduped.len(),
+                conflicts.len()
+            ),
+        );
         for c in &conflicts {
-            lh.emit_console_line(
-                BlackwellOutputConsoleCategory::Utils,
-                &format!("  ⚠ Duplicate: '{}' in '{}' and '{}'", 
-                    c.dedup_key, c.entry_a.source_path_label, c.entry_b.source_path_label),
-                BlackwellOutputConsoleLineStyle::Warning);
+            say(
+                lh,
+                BlackwellOutputConsoleLineStyle::Warning,
+                &format!(
+                    "  ⚠ Duplicate: '{}' in '{}' and '{}'",
+                    c.dedup_key, c.entry_a.source_path_label, c.entry_b.source_path_label
+                ),
+            );
         }
     }
 
@@ -673,11 +709,17 @@ pub fn merge_catalogs(
         let with_meta = final_catalog.iter().filter(|e| e.metadata.is_some()).count();
         let with_hf_full = final_catalog.iter().filter(|e| e.hf_meta.is_some()).count();
         let with_hf_id = final_catalog.iter().filter(|e| e.hf_model_id.is_some()).count();
-        lh.emit_console_line(
-            BlackwellOutputConsoleCategory::Utils,
-            &format!("[MERGE] ✅ {} models cataloged ({} with GGUF metadata, {} with HF data, {} paired to HF repo)",
-                final_catalog.len(), with_meta, with_hf_full, with_hf_id),
-            BlackwellOutputConsoleLineStyle::Success);
+        say(
+            lh,
+            BlackwellOutputConsoleLineStyle::Success,
+            &format!(
+                "[MERGE] ✅ {} models cataloged ({} with GGUF metadata, {} with HF data, {} paired to HF repo)",
+                final_catalog.len(),
+                with_meta,
+                with_hf_full,
+                with_hf_id
+            ),
+        );
     }
 
     Ok((final_catalog, conflicts))
@@ -704,7 +746,7 @@ pub fn strip_shard_pattern(filename: &str) -> String {
     // Case-insensitive: the directory walkers accept `.GGUF` via `to_lowercase()`, so a
     // case-sensitive guard here would list `…-00001-of-00002.GGUF` as four separate models
     // while treating the same set in lowercase as one.
-    if filename.len() < 5 || !filename[filename.len() - 5..].eq_ignore_ascii_case(".gguf") {
+    if !has_gguf_ext(filename) {
         return filename.to_string();
     }
 
@@ -885,13 +927,13 @@ fn find_quant_segment_reverse(filename: &str) -> Option<String> {
 }
 
 pub fn extract_quant(filename: &str) -> String {
-    let normalized = if filename.ends_with(".gguf") {
+    let normalized = if has_gguf_ext(filename) {
         strip_shard_pattern(filename)
     } else {
         filename.to_string()
     };
 
-    if !normalized.ends_with(".gguf") {
+    if !has_gguf_ext(&normalized) {
         return fallback_quant(&normalized);
     }
 
@@ -946,7 +988,16 @@ fn fallback_quant(filename: &str) -> String {
 }
 
 pub fn calc_size_str_from_bytes(total_bytes: u64) -> String {
-    format!("{:.1}GB", total_bytes as f64 / (1024.0_f64.powi(3)))
+    // Sub-gigabyte packs are real (mmproj, iq1 quants, partial downloads); "{:.1}GB"
+    // rendered every one of them as "0.0GB".
+    const MB: f64 = 1024.0 * 1024.0;
+    const GB: f64 = MB * 1024.0;
+    let bytes = total_bytes as f64;
+    if bytes < GB {
+        format!("{:.0}MB", bytes / MB)
+    } else {
+        format!("{:.1}GB", bytes / GB)
+    }
 }
 
 /// Every split of a split (sharded) GGUF set, sorted, this file first.
@@ -1064,10 +1115,7 @@ pub fn check_hf_files_against_disk(
     // LOG: disk check start
     if let Some(lh) = log_hub {
         let label = hf_model_id.unwrap_or("unknown");
-        lh.emit_console_line(
-            BlackwellOutputConsoleCategory::Utils,
-            &format!("[DISK CHECK] Scanning {} quants for {}", gguf_files.len(), label),
-            BlackwellOutputConsoleLineStyle::Normal);
+        say(lh, BlackwellOutputConsoleLineStyle::Normal, &format!("[DISK CHECK] Scanning {} quants for {}", gguf_files.len(), label));
     }
 
     // Counters for summary
@@ -1221,14 +1269,22 @@ pub fn check_hf_files_against_disk(
     // LOG: summary banner
     if let Some(lh) = log_hub {
         let label = hf_model_id.unwrap_or("unknown");
-        lh.emit_console_line(
-            BlackwellOutputConsoleCategory::Utils,
-            &crate::output_console::format_console_completion(
+        say(
+            lh,
+            BlackwellOutputConsoleLineStyle::Success,
+            &format_console_completion(
                 "HF disk check complete",
-                &format!("{} verified, {} on-disk, {} mismatch, {} missing out of {} total for {}",
-                    n_lfs, n_size, n_mismatch, n_none, results.len(), label),
+                &format!(
+                    "{} verified, {} on-disk, {} mismatch, {} missing out of {} total for {}",
+                    n_lfs,
+                    n_size,
+                    n_mismatch,
+                    n_none,
+                    results.len(),
+                    label
+                ),
             ),
-            BlackwellOutputConsoleLineStyle::Success);
+        );
     }
 
     results
