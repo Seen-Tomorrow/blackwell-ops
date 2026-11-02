@@ -1398,6 +1398,49 @@ fn lookup_learned_vram_any_device(
     best
 }
 
+/// Every recorded launch for one model, regardless of the knobs it ran with.
+///
+/// The catalog seats show what a seat ACTUALLY cost the last time it ran; the seat's saved
+/// knobs are not trusted to reconstruct the learned key (device token, topology tag, mode and
+/// offload all take part in it). This returns the highest recorded figure for the model, which
+/// is the number to show when the exact configuration cannot be matched.
+#[derive(serde::Serialize)]
+pub struct LearnedVramForModel {
+    pub vram_mib: f64,
+    pub host_mib: f64,
+    /// How many distinct configurations were recorded for this model.
+    pub entries: u32,
+}
+
+#[tauri::command]
+pub fn get_learned_vram_for_model(model_path: String) -> Option<LearnedVramForModel> {
+    let _guard = STORE_MUTEX.lock().ok()?;
+    let store = load_store();
+    let prefix = format!("{}|", normalize_model_path_for_key(&model_path));
+    let mut best: Option<LearnedVramForModel> = None;
+    for (key, entry) in store.entries.iter() {
+        if !key.starts_with(&prefix) || entry.vram_mib <= 0.0 {
+            continue;
+        }
+        match best.as_mut() {
+            Some(current) => {
+                current.entries += 1;
+                if entry.vram_mib > current.vram_mib {
+                    current.vram_mib = entry.vram_mib;
+                    current.host_mib = entry.host_mib.unwrap_or(0.0);
+                }
+            }
+            None => {
+                best = Some(LearnedVramForModel {
+                    vram_mib: entry.vram_mib,
+                    host_mib: entry.host_mib.unwrap_or(0.0),
+                    entries: 1,
+                });
+            }
+        }
+    }
+    best
+}
 #[tauri::command]
 #[allow(clippy::too_many_arguments)] // Tauri IPC: one param per wire field; bundling would change the invoke shape
 pub fn get_learned_vram(

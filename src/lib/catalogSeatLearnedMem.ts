@@ -66,9 +66,18 @@ export async function fetchLearnedMemForSeat(seat: LaunchSeat): Promise<LearnedM
       vramTopo: null,
     });
     const vram = entry?.vram_mib ?? entry?.launch_snapshot?.vram_mib;
-    if (vram == null || vram <= 0) return null;
     const host = entry?.host_mib ?? entry?.launch_snapshot?.host_mib ?? 0;
-    return { vramGb: vram / 1024, ramGb: Math.max(0, host) / 1024 };
+    if (vram != null && vram > 0) {
+      return { vramGb: vram / 1024, ramGb: Math.max(0, host) / 1024 };
+    }
+    // The exact configuration was not found. The seat still shows what that model actually
+    // cost on ANY recorded launch, rather than going blank while the data sits in the cache.
+    const any = await invoke<{ vram_mib: number; host_mib: number } | null>(
+      "get_learned_vram_for_model",
+      { modelPath: seat.modelPath },
+    );
+    if (!any || any.vram_mib <= 0) return null;
+    return { vramGb: any.vram_mib / 1024, ramGb: Math.max(0, any.host_mib) / 1024 };
   } catch {
     return null;
   }

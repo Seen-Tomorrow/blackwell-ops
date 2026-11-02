@@ -541,6 +541,15 @@ export default function CatalogQuickStrip({
                             {vramValueText(learnedMem[role])}
                           </span>
                           <span className="catalog-quick-seat__mem-unit">GB VRAM</span>
+                          {ramValueText(learnedMem[role]) && (
+                            <>
+                              <span className="catalog-quick-seat__mem-unit">·</span>
+                              <span className="catalog-quick-seat__mem-val">
+                                {ramValueText(learnedMem[role])}
+                              </span>
+                              <span className="catalog-quick-seat__mem-unit">GB RAM</span>
+                            </>
+                          )}
                         </div>
                       ) : null}
                       <div className="catalog-quick-seat__body">
