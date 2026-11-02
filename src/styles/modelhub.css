@@ -63,7 +63,11 @@
 }
 
 .hdr-maint-strip__current {
-  max-width: 14rem;
+  /* Fixed width, not max-width: the cell is the only variable-width item in the
+     strip, so a stable box is what keeps the progress and buttons from sliding. */
+  width: 13rem;
+  flex: 0 0 13rem;
+  text-align: right;
   overflow: hidden;
   text-overflow: ellipsis;
   color: color-mix(in srgb, var(--theme-text-muted) 75%, transparent);

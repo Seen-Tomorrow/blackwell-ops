@@ -158,12 +158,14 @@ function applyFitScanProgress(evt: FitScanProgress) {
     if (!pid) return;
     const ps = sessions[pid];
     if (!ps || ps.status !== "scanning") return;
+    const liveDone = runDone.get(pid)?.size ?? 0;
     sessions[pid] = {
       ...ps,
-      // The queue total is seeded from the catalog before the run starts; the
-      // backend's `library_meta` used to overwrite it per path, which made the
-      // progress read 1/5 → 1/9 → 1/32 while the scan was already underway.
-      totalModels: ps.totalModels > 0 ? ps.totalModels : (evt.total_models ?? 0),
+      // Monotone, never shrinking: the seeded queue is an ESTIMATE (the schedule knows
+      // what it queued, the backend scans every configured path), while `library_meta`
+      // carries the real size. Taking the max keeps the backend's number without letting
+      // the bar shrink mid-run the way per-path totals used to (1/5 → 1/9 → 1/32).
+      totalModels: Math.max(ps.totalModels ?? 0, evt.total_models ?? 0, liveDone),
       results: ps.results
         ? {
             ...ps.results,

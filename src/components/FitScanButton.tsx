@@ -31,10 +31,13 @@ export function FitScanButton() {
   const buttonBase = "px-3 py-1 type-label font-mono border transition-colors";
 
   if (running) {
-    const { completed, failed, totalModels, scanStartTime } = running.state;
+    // `runCompleted` is the live per-run counter; `completed` is only settled at the end.
+    const done = running.state.runCompleted ?? 0;
+    const total = Math.max(running.state.totalModels ?? 0, done);
+    const failed = running.state.failed ?? 0;
     const remaining =
-      completed > 0 && totalModels > completed
-        ? ((Date.now() - scanStartTime) / completed) * (totalModels - completed)
+      done > 0 && total > done
+        ? ((Date.now() - running.state.scanStartTime) / done) * (total - done)
         : NaN;
     const eta = formatRemaining(remaining);
     const detail = failed > 0 ? `${failed} failed` : eta ? `~${eta} left` : "";
@@ -45,9 +48,7 @@ export function FitScanButton() {
         title="VRAM fit scan running — click to stop"
         className={`${buttonBase} cfg-bord--dng--a30 cfg-dng hover:cfg-fill--dng--a15`}
       >
-        {detail
-          ? `FIT ${completed}/${totalModels} · ${detail} · STOP`
-          : `FIT ${completed}/${totalModels} · STOP`}
+        {detail ? `FIT ${done}/${total} · ${detail} · STOP` : `FIT ${done}/${total} · STOP`}
       </button>
     );
   }

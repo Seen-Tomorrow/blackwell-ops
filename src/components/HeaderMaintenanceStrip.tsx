@@ -60,7 +60,9 @@ export default function HeaderMaintenanceStrip() {
             // Models finished in this run — the results map also carries cached
             // entries, so counting it would show 60/12 on an incremental pass.
             done: fit.state.runCompleted ?? 0,
-            total: fit.state.totalModels,
+            // The queue the caller announced is an ESTIMATE: an incremental pass can pick up
+            // more models than it expected, which rendered as "3/1". Never show less than done.
+            total: Math.max(fit.state.totalModels ?? 0, fit.state.runCompleted ?? 0),
             manual: fit.state.manual ?? false,
             current: baseName(fit.state.activeModelPath ?? null),
             providerId: fit.providerId,
@@ -83,6 +85,14 @@ export default function HeaderMaintenanceStrip() {
       data-job={view.kind}
       title={view.current ? `${detail}\nModel ${view.current}` : detail}
     >
+      {/* Model first: it is the only variable-width cell. With a fixed width it is the
+          left edge that moves, and the strip is right-anchored — so the progress, mode and
+          buttons keep a stable position instead of sliding as names change. */}
+      {view.current && (
+        <span className="hdr-maint-strip__current" title={`Model ${view.current}`}>
+          Model {view.current}
+        </span>
+      )}
       <span className="hdr-maint-strip__label">{label}</span>
       <span className="hdr-maint-strip__count">
         {view.done}/{view.total || "?"}
@@ -98,9 +108,6 @@ export default function HeaderMaintenanceStrip() {
         <span className="hdr-maint-strip__fill" style={{ width: `${pct}%` }} />
       </span>
       <span className="hdr-maint-strip__mode">{mode}</span>
-      {view.current && (
-        <span className="hdr-maint-strip__current">Model {view.current}</span>
-      )}
       {isFit && view.providerId && (
         <button
           type="button"
