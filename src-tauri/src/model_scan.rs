@@ -1,8 +1,8 @@
 //! `model_scan` — the GGUF metadata scan pipeline and the metadata cache that backs it.
 //!
 //! Seam: moved out of `engine.rs`.
-//! This is the *model library* lifecycle — enumerate the catalog, probe each GGUF with
-//! `llama-server` so the UI can show real metadata, persist to the cache, and report
+//! This is the *model library* lifecycle — enumerate the catalog, read each GGUF header
+//! in-process so the UI can show real metadata, persist to the cache, and report
 //! progress. It never touches the engine stack: it reads `AppContext` only for the
 //! configured catalog paths and the log hub. The VRAM-probe sibling is `fit_scanner`.
 //!
@@ -10,11 +10,6 @@
 //! meaningful — a scan that silently cached nothing used to look like "no models".
 
 use crate::engine::AppContext;
-use crate::log_hub::LogHub;
-use crate::output_console::{
-    format_console_completion, BlackwellOutputConsoleCategory, BlackwellOutputConsoleLineStyle,
-};
-use crate::types::ModelMetadata;
 
 /// Total on-disk size for a GGUF path (sums multi-shard sets). Used for draft VRAM forecast.
 #[tauri::command]
@@ -34,6 +29,8 @@ pub fn get_path_size_bytes(path: String) -> Result<u64, String> {
 pub async fn scan_model_metadata_cmd(
     model_path: String,
     provider_id: Option<String>,
+    // Queue the cache write instead of rewriting the whole cache per scan.
+    buffered: Option<bool>,
     _app: tauri::State<'_, AppContext>,
 ) -> Result<crate::types::ModelEntry, String> {
     let pid = provider_id.unwrap_or_else(|| crate::config::DEFAULT_PROVIDER_ID.to_string());
@@ -59,7 +56,11 @@ pub async fn scan_model_metadata_cmd(
     log::info!("[scan_model_metadata_cmd] Scanned path='{}', arch={}", model_path, metadata.architecture);
     // Save to cache (clone metadata for both cache and return value)
     let cached_meta = metadata.clone();
-    crate::model_cache::set_cached(&model_path, cached_meta)
+    if buffered.unwrap_or(false) {
+        crate::model_cache::set_cached_buffered(&model_path, cached_meta)
+    } else {
+        crate::model_cache::set_cached(&model_path, cached_meta)
+    }
         .map_err(|e| format!("Cache save failed: {}", e))?;
 
     let file_size = total_file_size;
@@ -108,218 +109,8 @@ pub async fn scan_model_metadata_cmd(
 }
 
 #[tauri::command]
-#[allow(unused_variables)] // provider id is still sent by the UI; the scan needs no binary
-pub async fn scan_all_models_cmd(
-    _model_base: Option<String>,
-    provider_id: Option<String>,
-    concurrency: Option<usize>,
-    app: tauri::State<'_, AppContext>,
-) -> Result<usize, String> {
-    let (all_paths, total) = {
-        let cfg = app.config.lock().map_err(|e| e.to_string())?;
-        // Use all configured paths instead of single model_base
-        let paths = crate::config::get_model_paths(&cfg);
-        let (catalog, _) = crate::model_catalog::merge_catalogs(&paths, Some(&app.log_hub), None)?;
-        let total = catalog.len();
-        let all_paths: Vec<String> = catalog.iter().map(|e| e.path.clone()).collect();
-        if total == 0 {
-            return Ok(0);
-        }
-        (all_paths, total)
-    };
-    // No CUDA runtime gate here any more: the header reader needs no engine. The gate
-    // now lives on the scrape fallback, inside the per-model task.
-
-    // Clone log_hub for event emission (LogHub is Clone)
-    let log_hub = app.log_hub.clone();
-
-    // Reset cancellation flag at start of batch scan
-    crate::gguf_scan::reset_cancel();
-
-    tokio::spawn({
-        let log_hub_start = log_hub.clone();
-        async move {
-            log_hub_start.emit("gguf-scan-start", &serde_json::json!({ "total": total }));
-        }
-    });
-
-    // Run scans sequentially in batches — each spawn_blocking captures only Send types
-    let mut scanned: usize = 0;
-    let mut failed: usize = 0;
-    let concurrency = concurrency.unwrap_or(6); // header reads are cheap; match the scheduler
-    type ScanHandle = tokio::task::JoinHandle<Result<crate::types::ModelMetadata, String>>;
-    let mut handles: Vec<(usize, String, ScanHandle)> = Vec::new();
-    // Cache writes are batched: one file rewrite per 32 models, not per model.
-    let mut pending: Vec<(String, ModelMetadata)> = Vec::new();
-
-    for (i, path) in all_paths.iter().enumerate() {
-        // Check cancellation between models
-        if crate::gguf_scan::is_cancelled() {
-            log::info!("GGUF scan cancelled after {} models", scanned);
-            break;
-        }
-
-        // Incremental skip: check if cached metadata is still valid
-        let cached = crate::model_cache::get_cached(path);
-        if cached.is_some() {
-            log::debug!("[batch_scan] SKIP (cache HIT): {}", path);
-            scanned += 1;
-            continue;
-        }
-
-        let scan_path = path.clone();
-
-        log::debug!("[batch_scan] Scanning: {}", scan_path);
-        let handle = tokio::task::spawn_blocking(move || {
-            crate::gguf_meta::metadata_from_header(&scan_path)
-        });
-
-        handles.push((i, path.clone(), handle));
-
-        // When we hit concurrency limit, await one before spawning next
-        if handles.len() >= concurrency {
-            let (_, p, h) = handles.remove(0);
-            handle_scan_result_with_sanity(h.await, &p, &mut scanned, &mut failed, &log_hub, &mut pending);
-            flush_scan_cache(&mut pending);
-
-            let lh = log_hub.clone();
-            tokio::spawn(async move {
-                lh.emit("gguf-scan-progress", &serde_json::json!({
-                    "scanned": scanned,
-                    "failed": failed,
-                    "total": total,
-                    "current_model": p,
-                }));
-            });
-        }
-    }
-
-    // Await remaining handles (let in-flight scans finish)
-    for (_, p, h) in handles {
-        handle_scan_result(h.await, &p, &mut scanned, &mut failed, &mut pending);
-        flush_scan_cache(&mut pending);
-
-        let lh = log_hub.clone();
-        tokio::spawn(async move {
-            lh.emit("gguf-scan-progress", &serde_json::json!({
-                "scanned": scanned,
-                "failed": failed,
-                "total": total,
-                "current_model": p,
-            }));
-        });
-    }
-
-    // Flush whatever is left before reporting completion.
-    if let Err(e) = crate::model_cache::set_cached_batch(std::mem::take(&mut pending)) {
-        log::warn!("Failed to cache remaining scans: {}", e);
-    }
-
-    // Emit complete event + docked-console banner
-    let final_scanned = scanned;
-    let final_failed = failed;
-    let lh = log_hub.clone();
-    tokio::spawn(async move {
-        lh.emit("gguf-scan-complete", &serde_json::json!({
-            "scanned": final_scanned,
-            "failed": final_failed,
-            "total": total,
-        }));
-        let style = if final_failed > 0 {
-            BlackwellOutputConsoleLineStyle::Warning
-        } else {
-            BlackwellOutputConsoleLineStyle::Success
-        };
-        lh.emit_console_line(
-            BlackwellOutputConsoleCategory::Utils,
-            &format_console_completion(
-                "GGUF metadata scan complete",
-                &format!("{final_scanned} scanned, {final_failed} failed, {total} total"),
-            ),
-            style,
-        );
-    });
-
-    Ok(scanned)
-}
-
-/// Persist buffered scan results once they reach the batch size.
-fn flush_scan_cache(pending: &mut Vec<(String, ModelMetadata)>) {
-    if pending.len() < 32 {
-        return;
-    }
-    if let Err(e) = crate::model_cache::set_cached_batch(std::mem::take(pending)) {
-        log::warn!("Failed to cache {} scans: {}", pending.len(), e);
-    }
-}
-/// Handle scan result — correct file size, cache, update counters.
-fn handle_scan_result(
-    result: Result<Result<ModelMetadata, String>, tokio::task::JoinError>,
-    path: &str,
-    scanned: &mut usize,
-    failed: &mut usize,
-    pending: &mut Vec<(String, ModelMetadata)>,
-) {
-    match result {
-        Ok(Ok(mut metadata)) => {
-            let corrected_size = crate::model_catalog::get_total_model_size(path);
-            if corrected_size != metadata.file_size_bytes {
-                log::info!("[batch_scan] Corrected file_size for '{}': {} → {}", path, metadata.file_size_bytes, corrected_size);
-                metadata.file_size_bytes = corrected_size;
-            }
-            // Buffered: the whole cache file is rewritten per flush, not per model.
-            pending.push((path.to_string(), metadata));
-            *scanned += 1;
-        }
-        Ok(Err(e)) => {
-            log::warn!("[SCAN] {} failed: {}", path, e);
-            *failed += 1;
-        }
-        Err(e) => {
-            log::warn!("[SCAN] {} task panicked: {}", path, e);
-            *failed += 1;
-        }
-    }
-}
-
-/// Handle scan result with sanity box emission.
-fn handle_scan_result_with_sanity(
-    result: Result<Result<ModelMetadata, String>, tokio::task::JoinError>,
-    path: &str,
-    scanned: &mut usize,
-    failed: &mut usize,
-    log_hub: &LogHub,
-    pending: &mut Vec<(String, ModelMetadata)>,
-) {
-    match result {
-        Ok(Ok(mut metadata)) => {
-            let corrected_size = crate::model_catalog::get_total_model_size(path);
-            if corrected_size != metadata.file_size_bytes {
-                log::info!("[batch_scan] Corrected file_size for '{}': {} → {}", path, metadata.file_size_bytes, corrected_size);
-                metadata.file_size_bytes = corrected_size;
-            }
-            // Buffered: the whole cache file is rewritten per flush, not per model.
-            pending.push((path.to_string(), metadata));
-            *scanned += 1;
-        }
-        Ok(Err(e)) => {
-            let msg = format!("[SCAN] {} failed: {}", path, e);
-            log::warn!("{}", msg);
-            log_hub.emit_console_line(BlackwellOutputConsoleCategory::Error, &msg, BlackwellOutputConsoleLineStyle::Error);
-            *failed += 1;
-        }
-        Err(e) => {
-            let msg = format!("[SCAN] {} task panicked: {}", path, e);
-            log::warn!("{}", msg);
-            log_hub.emit_console_line(BlackwellOutputConsoleCategory::Error, &msg, BlackwellOutputConsoleLineStyle::Error);
-            *failed += 1;
-        }
-    }
-}
-
-#[tauri::command]
-pub fn cancel_gguf_scan_cmd() {
-    crate::gguf_scan::cancel();
+pub fn flush_scan_cache_cmd() -> Result<(), String> {
+    crate::model_cache::flush_cached()
 }
 
 #[tauri::command]

@@ -439,6 +439,7 @@ pub fn metadata_from_header(model_path: &str) -> Result<ModelMetadata, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn file_type_labels_match_the_engine_wording() {
         assert_eq!(file_type_name(21), "Q2_K - Small");

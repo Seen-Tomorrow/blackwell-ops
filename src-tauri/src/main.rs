@@ -37,7 +37,6 @@ mod burst_bench;
 mod bench_pp_burst;
 mod bench_cancel;
 mod llama_bench_cmd;
-mod gguf_scan;
 mod gguf_patch;
 mod gguf_meta;
 mod gguf_shape;
@@ -543,8 +542,7 @@ async fn main() {
             vram_learn::prune_learned_vram_curve,
             // GGUF Metadata Scanner commands
             model_scan::scan_model_metadata_cmd,
-            model_scan::scan_all_models_cmd,
-            model_scan::cancel_gguf_scan_cmd,
+            model_scan::flush_scan_cache_cmd,
             model_scan::clear_model_cache_cmd,
             burst_bench::cmd_burst_bench,
             bench_pp_burst::cmd_bench_pp_burst,

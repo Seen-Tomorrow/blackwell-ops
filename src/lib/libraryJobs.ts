@@ -194,6 +194,8 @@ export async function startMetadataScan({
         const entry = await invoke<ModelEntry>("scan_model_metadata_cmd", {
           modelPath: model.path,
           providerId: null,
+          // Bulk scan: the backend queues the cache write and flushes at job end.
+          buffered: true,
         });
         if (token !== metadataToken) return;
         onModelScanned?.(model.path, {
@@ -217,6 +219,12 @@ export async function startMetadataScan({
 
   const workers = Array.from({ length: Math.max(1, concurrency) }, () => worker());
   await Promise.all(workers);
+  // Persist whatever the scans queued (one cache rewrite, not one per model).
+  try {
+    await invoke("flush_scan_cache_cmd");
+  } catch (err) {
+    console.warn("[library-jobs] cache flush failed:", err);
+  }
 
   const finished = token === metadataToken;
   metadataJob = { ...IDLE_METADATA };

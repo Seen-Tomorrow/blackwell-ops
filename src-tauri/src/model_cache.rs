@@ -295,6 +295,31 @@ pub fn set_cached_batch(entries: Vec<(String, ModelMetadata)>) -> Result<(), Str
     })
 }
 
+/// Scan results waiting to be written. The library job scans one model per Tauri call,
+/// so without this each of the 76 scans paid a full 342 KB cache parse + rewrite
+/// (~10 ms each, serialised on the cache lock).
+static PENDING_SCANS: std::sync::Mutex<Vec<(String, ModelMetadata)>> = std::sync::Mutex::new(Vec::new());
+
+/// Queue a scan result for a batched write. Flushes automatically at 32 entries.
+pub fn set_cached_buffered(model_path: &str, metadata: ModelMetadata) -> Result<(), String> {
+    let mut pending = PENDING_SCANS.lock().map_err(|e| e.to_string())?;
+    pending.push((model_path.to_string(), metadata));
+    if pending.len() < 32 {
+        return Ok(());
+    }
+    let batch = std::mem::take(&mut *pending);
+    drop(pending);
+    set_cached_batch(batch)
+}
+
+/// Write whatever is queued. Called at the end of a library scan.
+pub fn flush_cached() -> Result<(), String> {
+    let batch = {
+        let mut pending = PENDING_SCANS.lock().map_err(|e| e.to_string())?;
+        std::mem::take(&mut *pending)
+    };
+    set_cached_batch(batch)
+}
 /// Set HF metadata for a model path. Preserves existing gguf_meta / gguf_shape if present.
 pub fn set_hf_metadata(model_path: &str, hf_meta: HfMetadata) -> Result<(), String> {
     let storage_key = storage_key_for(model_path);
