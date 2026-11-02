@@ -143,6 +143,13 @@ export interface GgufShape {
   shard_count?: number;
   tensor_count?: number;
   alignment?: number;
+  /** Bytes of the host-resident lookup table (Engram / PLE). Host by design, not VRAM. */
+  lookupTableBytes?: number;
+  /** Author sampler recommendation, read from the header in-process. */
+  samplingTemp?: number | null;
+  samplingTopP?: number | null;
+  samplingTopK?: number | null;
+  samplingMinP?: number | null;
   header_end?: number;
 }
 
@@ -922,6 +929,8 @@ export interface VramManifest {
   ramBufferGb?: number;
   /** Host weight-layer offload (FIT Host model column, or host − buffer). */
   ramWeightGb?: number;
+  /** Of those host weights: the lookup table (Engram / PLE), host by design. */
+  ramEngramGb?: number;
   ramManufacturedGb: number;
   ramAvailableGb: number;
   gpuAllocations: GpuAllocation[];
@@ -985,6 +994,8 @@ export interface FitScanResult {
   gpu_components_mib?: GpuComponentMib[];
   /** Host row model/ctx/compute from FIT `Host a b c`. */
   host_components_mib?: GpuComponentMib;
+  /** Host-resident lookup table (Engram / PLE), from the load's `lazy read` lines. */
+  engram_mib?: number;
   /** Fitted -ngl from low_vram free-aware probe (−1 = all GPU). */
   fitted_ngl?: number;
   /** `full` | `low_vram` */
@@ -1068,14 +1079,24 @@ export interface GgufShard {
   lastModified?: string;
 }
 
+/**
+ * What a repo entry is for — derived from its path on the Hub, never from a repo whitelist.
+ * Only `quant` is a launchable set of model weights.
+ */
+export type GgufRole = 'quant' | 'draft' | 'swap' | 'aux' | 'extra';
+
 export interface GgufFile {
-  type: string;        // quant tag like "Q4_K_M"
+  /** Quant tag (`Q4_K_M`), or the file's own name for sidecars / unrecognized extras. */
+  type: string;
   size_bytes: number;
   url: string;         // direct download URL (first shard when sharded)
   lfsOid?: string;     // LFS content hash for incremental scan
   shards?: GgufShard[];
   shardCount?: number;
   lastModified?: string;
+  /** Repo folder the entry lives in (`engram`, `UD-Q4_K_XL`); empty at the repo root. */
+  folder?: string;
+  role?: GgufRole;
 }
 
 export interface HfModel {
@@ -1152,6 +1173,8 @@ export interface DownloadTargetCheck {
 
 export interface DiskCheckResult {
   quantType: string;
+  /** Repo-relative path of the first part — the row identity (labels repeat across folders). */
+  pathInRepo: string;
   matchType: 'lfs' | 'size' | 'mismatch' | 'none';
   diskFileSize: number | null;
   diskAuthor: string | null;

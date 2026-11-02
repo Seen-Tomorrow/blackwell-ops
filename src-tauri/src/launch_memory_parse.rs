@@ -72,6 +72,10 @@ pub struct LaunchMemorySnapshot {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub host_components_mib: Option<GpuComponentMib>,
     pub host_pinned_mib: f64,
+    /// Host-resident lookup table (Engram / PLE) in MiB — the sum of tensors the
+    /// engine marked `lazy read enabled`. Lives on the host by design, never a spill.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub engram_mib: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mtp_estimate_mib: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -109,8 +113,36 @@ pub fn is_launch_memory_line(line: &str) -> bool {
         || lower.contains("projected to use")
         || lower.contains("common_memory_breakdown_print")
         || lower.contains("memory breakdown")
+        // Lookup-table announcement: `add: tensor per_layer_token_embd.weight (size = N MiB) lazy read enabled`
+        || lower.contains("lazy read enabled")
         // Draft GGUF size line (e.g. `print_info: file size = 10.53 GiB`) after draft load
         || (lower.contains("print_info:") && lower.contains("file size"))
+}
+
+/// Sum the sizes of tensors the engine marked `lazy read enabled`.
+///
+/// llama.cpp does that only for per-layer embedding tables (DeepSeek Engram, Qwen PLE),
+/// so this is the lookup table size without reading the GGUF header at all.
+fn parse_lookup_table_mib(region: &str) -> Option<f64> {
+    let mut total = 0.0_f64;
+    let mut found = false;
+    for line in region.lines() {
+        if !line.contains("lazy read enabled") {
+            continue;
+        }
+        let Some(at) = line.find("(size = ") else {
+            continue;
+        };
+        let rest = &line[at + "(size = ".len()..];
+        let Some(num) = rest.split_whitespace().next() else {
+            continue;
+        };
+        if let Ok(mib) = num.parse::<f64>() {
+            total += mib;
+            found = true;
+        }
+    }
+    found.then_some(total)
 }
 
 fn extract_number(s: &str) -> Option<f64> {
@@ -495,6 +527,7 @@ pub fn parse_launch_memory_snapshot(output: &str) -> Option<LaunchMemorySnapshot
         host_mib,
         host_components_mib,
         host_pinned_mib: host_pinned,
+        engram_mib: parse_lookup_table_mib(parse_region),
         mtp_estimate_mib,
         mtp_context_mib: mtp_context_mib_final,
         vision_estimate_mib,
@@ -561,6 +594,17 @@ mod tests {
 0.10.288.375 I srv    load_model: prompt cache is enabled, size limit: 8192 MiB
 0.10.334.874 I srv  llama_server: model loaded
 "#;
+
+    #[test]
+    fn lookup_table_sums_lazy_tensors_only() {
+        let region = "\
+0.03 I add: tensor per_layer_token_embd.weight (size = 128910 MiB) lazy read enabled
+0.03 I load_tensors:        CUDA0 model buffer size = 73127.60 MiB
+0.04 I add: tensor other.weight (size = 12 MiB) loaded
+";
+        assert_eq!(parse_lookup_table_mib(region), Some(128910.0));
+        assert_eq!(parse_lookup_table_mib("0.03 I load_tensors: CUDA0 = 1 MiB"), None);
+    }
 
     #[test]
     fn parses_qwen36_mtp_buffer_inventory() {

@@ -28,6 +28,8 @@ type ProbeSession = {
   validatedGpuBreakdownMib?: number[];
   validatedHostMib?: number;
   validatedHostModelMib?: number;
+  /** Host-resident lookup table (Engram / PLE) reported at load. */
+  validatedEngramMib?: number;
   validatedComponentsMib?: VramManifest["validatedComponentsMib"];
   fitProbeMeasuredAt: string;
   /** full = ngl999 need; low_vram = free-aware spill. */
@@ -37,6 +39,11 @@ type ProbeSession = {
   fittedNgl?: number;
 };
 
+/** Lookup-table size from the GGUF header — the only engram source that survives a knob change. */
+function ggufEngramMib(model: ModelEntry | null | undefined): number | undefined {
+  const bytes = model?.ggufShape?.lookupTableBytes;
+  return bytes != null && bytes > 0 ? bytes / 1_048_576 : undefined;
+}
 function placementConfigKey(config: Record<string, unknown>): string {
   return `${config.device || ""}|${config.split || ""}|${config.gpu_sync || ""}`;
 }
@@ -130,6 +137,7 @@ function probeScenarioFields(
     fitProbeVramMib: session.validatedVramMib,
     fitProbeHostMib: session.validatedHostMib,
     fitProbeHostModelMib: session.validatedHostModelMib,
+    fitProbeEngramMib: session.validatedEngramMib,
     fitProbeGpuBreakdownMib: placementMatches ? session.validatedGpuBreakdownMib : undefined,
     fitProbePlacementKey: session.placementKey,
     fitProbeAnchorCtx: session.anchorCtx,
@@ -178,6 +186,10 @@ interface LearnedLaunchSnapshot {
   gpu_components_mib?: VramManifest["validatedComponentsMib"];
   host_mib: number;
   host_pinned_mib?: number;
+  /** Host row model/ctx/compute — model_mib is host weights, not buffer. */
+  host_components_mib?: { model_mib?: number; ctx_mib?: number; compute_mib?: number };
+  /** Host-resident lookup table (Engram / PLE) — never VRAM by design. */
+  engram_mib?: number;
   mtp_context_mib?: number;
   vision_mib?: number;
   prompt_cache_limit_mib?: number;
@@ -195,6 +207,8 @@ interface LearnedVramEntry {
   measured_at?: string;
   gpu_breakdown_mib?: number[];
   host_mib?: number;
+  /** Host row model/ctx/compute from the learned launch — model_mib = host weights. */
+  host_components_mib?: { model_mib?: number; ctx_mib?: number; compute_mib?: number };
   gpu_components_mib?: VramManifest["validatedComponentsMib"];
   launch_snapshot?: LearnedLaunchSnapshot;
   fit_attempts?: LearnedVramFitAttempt[];
@@ -457,6 +471,10 @@ export function useScenarioEvaluator({
   const fitPointsRef = useRef<FitPoint[] | null>(null);
   const learnedVramRef = useRef<number | null>(null);
   const learnedHostRef = useRef<number | null>(null);
+  /** Host model column (lookup table + spilled weights) from the learned entry. */
+  const learnedHostModelRef = useRef<number | null>(null);
+  /** Host-resident lookup table (Engram / PLE) from the learned launch snapshot. */
+  const learnedEngramRef = useRef<number | null>(null);
   const learnedGpuBreakdownRef = useRef<number[] | null>(null);
   const learnedGpuComponentsRef = useRef<VramManifest["validatedComponentsMib"]>(null);
   const learnedLaunchProfileRef = useRef<string | undefined>(undefined);
@@ -625,6 +643,9 @@ export function useScenarioEvaluator({
       fitStyle: fitStyleRef.current,
       learnedVramMib: learnedVramRef.current ?? undefined,
       learnedHostMib: learnedHostRef.current ?? undefined,
+      learnedHostModelMib: learnedHostModelRef.current ?? undefined,
+      learnedEngramMib: learnedEngramRef.current ?? undefined,
+      modelEngramMib: ggufEngramMib(model),
       learnedGpuBreakdownMib: learnedGpuBreakdownRef.current ?? undefined,
       learnedGpuComponentsMib: learnedGpuComponentsRef.current ?? undefined,
       learnedLaunchProfile: learnedLaunchProfileRef.current,
@@ -735,6 +756,8 @@ export function useScenarioEvaluator({
     if (!model) {
       learnedVramRef.current = null;
       learnedHostRef.current = null;
+    learnedHostModelRef.current = null;
+    learnedEngramRef.current = null;
       learnedGpuBreakdownRef.current = null;
       learnedGpuComponentsRef.current = null;
       learnedLaunchProfileRef.current = undefined;
@@ -750,6 +773,8 @@ export function useScenarioEvaluator({
     learnedFetchPendingRef.current = true;
     learnedVramRef.current = null;
     learnedHostRef.current = null;
+    learnedHostModelRef.current = null;
+    learnedEngramRef.current = null;
     learnedGpuBreakdownRef.current = null;
     learnedGpuComponentsRef.current = null;
     learnedLaunchProfileRef.current = undefined;
@@ -828,6 +853,9 @@ export function useScenarioEvaluator({
         learnedVramRef.current = entry?.vram_mib ?? snap?.vram_mib ?? null;
         learnedHostRef.current =
           entry?.host_mib ?? snap?.host_mib ?? lastAttempt?.host_mib ?? null;
+        learnedHostModelRef.current =
+          entry?.host_components_mib?.model_mib ?? snap?.host_components_mib?.model_mib ?? null;
+        learnedEngramRef.current = snap?.engram_mib ?? null;
         learnedGpuBreakdownRef.current =
           entry?.gpu_breakdown_mib ?? snap?.gpu_breakdown_mib ?? lastAttempt?.gpu_breakdown_mib ?? null;
         learnedGpuComponentsRef.current =
@@ -850,6 +878,8 @@ export function useScenarioEvaluator({
         if (fetchGen !== learnedFetchGenRef.current) return;
         learnedVramRef.current = null;
         learnedHostRef.current = null;
+    learnedHostModelRef.current = null;
+    learnedEngramRef.current = null;
         learnedGpuBreakdownRef.current = null;
         learnedGpuComponentsRef.current = null;
         learnedLaunchProfileRef.current = undefined;
@@ -1114,6 +1144,9 @@ export function useScenarioEvaluator({
         fitStyle: fitStyleRef.current,
         learnedVramMib: learnedVramRef.current ?? undefined,
         learnedHostMib: learnedHostRef.current ?? undefined,
+        learnedHostModelMib: learnedHostModelRef.current ?? undefined,
+        learnedEngramMib: learnedEngramRef.current ?? undefined,
+        modelEngramMib: ggufEngramMib(model),
         learnedGpuBreakdownMib: learnedGpuBreakdownRef.current ?? undefined,
         learnedGpuComponentsMib: learnedGpuComponentsRef.current ?? undefined,
         learnedLaunchProfile: learnedLaunchProfileRef.current,
@@ -1131,6 +1164,7 @@ export function useScenarioEvaluator({
         fitProbeFreeFingerprint: liveFreeFp,
         fitProbeFittedNgl: result.fitted_ngl,
         fitProbeHostModelMib: result.host_components_mib?.model_mib,
+        fitProbeEngramMib: result.engram_mib,
       };
 
       const session: ProbeSession = {
@@ -1142,6 +1176,7 @@ export function useScenarioEvaluator({
         validatedGpuBreakdownMib: result.gpu_breakdown_mib,
         validatedHostMib: result.host_mib,
         validatedHostModelMib: result.host_components_mib?.model_mib,
+        validatedEngramMib: result.engram_mib,
         validatedComponentsMib: result.gpu_components_mib ?? null,
         fitProbeMeasuredAt: probeMeasuredAt,
         mode: resultMode,

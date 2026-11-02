@@ -422,10 +422,21 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     probeHostGb ?? 0,
     learnedHostGb ?? 0,
   );
+  // Lookup table (Engram / PLE): a model fact that survives any knob change. A
+  // measurement beats the header, but only the header exists before the first launch.
+  const engramNeedGb = Math.max(
+    0,
+    input.fitProbeEngramMib ?? input.learnedEngramMib ?? input.modelEngramMib ?? 0,
+  ) / 1024;
   const hostSplit = splitHostRamGb({
     hostGb: hostTotalGb,
     hostModelGb:
-      input.fitProbeHostModelMib != null ? input.fitProbeHostModelMib / 1024 : null,
+      input.fitProbeHostModelMib != null
+        ? input.fitProbeHostModelMib / 1024
+        : input.learnedHostModelMib != null
+          ? input.learnedHostModelMib / 1024
+          : null,
+    engramGb: engramNeedGb,
     bufferBaselineGb: curveHit?.hostGb,
     realSpill: spill,
   });
@@ -435,7 +446,10 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
         ? `OFFLOADING ${hostSplit.weightGb.toFixed(1)}GB TO RAM`
         : "OFFLOADING TO RAM";
   }
-  const ramNeedGb = hostSplit.bufferGb + hostSplit.weightGb;
+  // Total host need is unchanged: buffer + weights + the lookup table.
+  const ramNeedGb = hostSplit.bufferGb + hostSplit.weightGb + hostSplit.engramGb;
+  const engramGb = hostSplit.engramGb;
+  const spillWeightGb = hostSplit.weightGb;
 
   const base: VramManifest = {
     scenario: "AUTO_FIT",
@@ -475,7 +489,8 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     ramSpillGb: round2(hostSplit.weightGb),
     ramTotalGb: round2(ramNeedGb),
     ramBufferGb: round2(hostSplit.bufferGb),
-    ramWeightGb: round2(hostSplit.weightGb),
+    ramWeightGb: round2(spillWeightGb),
+    ramEngramGb: round2(engramGb),
     ramManufacturedGb: input.ramManufacturedGb,
     ramAvailableGb: input.ramAvailableGb,
     gpuAllocations: buildGpuAllocations(

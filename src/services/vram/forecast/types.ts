@@ -27,6 +27,12 @@ export interface ForecastInput {
 
   learnedVramMib?: number;
   learnedHostMib?: number;
+  /** Host model column from the learned entry — weights, not buffer. */
+  learnedHostModelMib?: number;
+  /** Host-resident lookup table (Engram / PLE) from the learned launch snapshot. */
+  learnedEngramMib?: number;
+  /** Model-level lookup table size from the GGUF header — survives any knob change. */
+  modelEngramMib?: number;
   learnedGpuBreakdownMib?: number[];
   learnedGpuComponentsMib?: Array<{ model_mib: number; ctx_mib: number; compute_mib: number }>;
   learnedLaunchProfile?: string;
@@ -39,6 +45,8 @@ export interface ForecastInput {
   fitProbeHostMib?: number;
   /** FIT Host model column (weight on host) when printed. */
   fitProbeHostModelMib?: number;
+  /** Host-resident lookup table (Engram / PLE) — never VRAM by design. */
+  fitProbeEngramMib?: number;
   fitProbeGpuBreakdownMib?: number[];
   fitProbePlacementKey?: string;
   fitProbeAnchorCtx?: number;

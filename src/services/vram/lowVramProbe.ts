@@ -23,30 +23,45 @@ export function isWeightClassHostSpill(hostGb: number | null | undefined): boole
 export function isFullGpuLearnedPoint(hostMib?: number | null): boolean {
   return !isWeightClassHostSpill((hostMib ?? 0) / 1024);
 }
-/** Split FIT Host row into buffer vs weight-layer offload (GB). */
+/** Split the FIT/LEARNED Host row into buffer, host weights and the lookup table (GB). */
 export function splitHostRamGb(opts: {
   hostGb: number;
   hostModelGb?: number | null;
+  /** Lookup table (Engram / PLE) size — host by design. */
+  engramGb?: number | null;
   /** Interpolated full-GPU LEARNED host at this CTX — fallback buffer. */
   bufferBaselineGb?: number | null;
   realSpill: boolean;
-}): { bufferGb: number; weightGb: number } {
+}): { bufferGb: number; weightGb: number; engramGb: number } {
   const host = opts.hostGb > 0 && Number.isFinite(opts.hostGb) ? opts.hostGb : 0;
-  if (host <= 0) return { bufferGb: 0, weightGb: 0 };
+  if (host <= 0) return { bufferGb: 0, weightGb: 0, engramGb: 0 };
+  const engram = Math.min(host, Math.max(0, opts.engramGb ?? 0));
   const model = opts.hostModelGb;
   const modelIsWeight =
     model != null && Number.isFinite(model) && model > HOST_BUFFER_CEILING_GB;
-  if (opts.realSpill && modelIsWeight) {
-    return { bufferGb: Math.max(0, host - model), weightGb: model };
+  // Host-resident weights are weights whether or not VRAM ran out. A lookup table
+  // (Engram / PLE) lives on the host by design, so gating this on `realSpill` made
+  // the same host row read as "buffer" on a normal probe and "weight" on a low-VRAM one.
+  if (modelIsWeight) {
+    return {
+      bufferGb: Math.max(0, host - model),
+      weightGb: Math.max(0, model - engram),
+      engramGb: engram,
+    };
+  }
+  // Host total measured but the model/compute columns were not printed. The lookup
+  // table is still a known model fact, so attribute it and leave the rest as buffer.
+  if (engram > 0) {
+    return { bufferGb: Math.max(0, host - engram), weightGb: 0, engramGb: engram };
   }
   if (opts.realSpill) {
     const baseline =
       opts.bufferBaselineGb != null && opts.bufferBaselineGb > 0.05
         ? Math.min(host, opts.bufferBaselineGb)
         : Math.min(host, HOST_BUFFER_CEILING_GB);
-    return { bufferGb: baseline, weightGb: Math.max(0, host - baseline) };
+    return { bufferGb: baseline, weightGb: Math.max(0, host - baseline), engramGb: 0 };
   }
-  return { bufferGb: host, weightGb: 0 };
+  return { bufferGb: host, weightGb: 0, engramGb: 0 };
 }
 /** Partial fitted ngl from a free-aware low_vram probe (−1 / 999 = all GPU). */
 function isPartialFittedNgl(ngl: number | null | undefined): boolean {
