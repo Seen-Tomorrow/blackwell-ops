@@ -1408,38 +1408,100 @@ fn lookup_learned_vram_any_device(
 pub struct LearnedVramForModel {
     pub vram_mib: f64,
     pub host_mib: f64,
-    /// How many distinct configurations were recorded for this model.
+    /// How many configurations were recorded for this model.
     pub entries: u32,
+    /// True when the ctx the caller asked for was among them.
+    pub ctx_matched: bool,
 }
 
+/// Parse a ctx token from a learned key or a config value: `262144`, `256k`, `256K`.
+fn ctx_tokens_from_str(raw: &str) -> Option<usize> {
+    let s = raw.trim().to_ascii_lowercase();
+    if s.is_empty() {
+        return None;
+    }
+    let (digits, mult) = match s.strip_suffix('k') {
+        Some(d) => (d, 1024usize),
+        None => match s.strip_suffix('m') {
+            Some(d) => (d, 1024usize * 1024),
+            None => (s.as_str(), 1usize),
+        },
+    };
+    digits.trim().parse::<usize>().ok().map(|n| n * mult)
+}
+
+/// Learned VRAM for one model, preferring the configuration the caller asked for.
+///
+/// The learned key embeds the topology tag, the device mask, the memory mode and the cache
+/// size, so a seat cannot reconstruct it from its saved knobs. Rather than going blank - or
+/// silently showing the highest figure ever recorded - this scores the recorded entries on the
+/// knobs the user actually chooses (ctx, then kv, then split) and reports whether ctx matched.
 #[tauri::command]
-pub fn get_learned_vram_for_model(model_path: String) -> Option<LearnedVramForModel> {
+pub fn get_learned_vram_for_model(
+    model_path: String,
+    ctx: Option<String>,
+    kv_quant: Option<String>,
+    split: Option<String>,
+) -> Option<LearnedVramForModel> {
     let _guard = STORE_MUTEX.lock().ok()?;
     let store = load_store();
     let prefix = format!("{}|", normalize_model_path_for_key(&model_path));
-    let mut best: Option<LearnedVramForModel> = None;
+    let want_ctx = ctx.as_deref().and_then(ctx_tokens_from_str);
+    let want_kv = kv_quant
+        .as_deref()
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty());
+    let want_split = split
+        .as_deref()
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty());
+
+    let mut best: Option<(u32, LearnedVramForModel)> = None;
+    let mut count = 0u32;
     for (key, entry) in store.entries.iter() {
         if !key.starts_with(&prefix) || entry.vram_mib <= 0.0 {
             continue;
         }
-        match best.as_mut() {
-            Some(current) => {
-                current.entries += 1;
-                if entry.vram_mib > current.vram_mib {
-                    current.vram_mib = entry.vram_mib;
-                    current.host_mib = entry.host_mib.unwrap_or(0.0);
+        count += 1;
+        let mut score = 0u32;
+        let mut ctx_hit = false;
+        for token in key[prefix.len()..].split('|') {
+            if let Some(v) = token.strip_prefix("ctx=") {
+                ctx_hit = want_ctx.is_some_and(|w| ctx_tokens_from_str(v) == Some(w));
+                if ctx_hit {
+                    score += 4;
+                }
+            } else if let Some(v) = token.strip_prefix("kv=") {
+                if want_kv.as_deref() == Some(v) {
+                    score += 2;
+                }
+            } else if let Some(v) = token.strip_prefix("split=") {
+                if want_split.as_deref() == Some(v) {
+                    score += 1;
                 }
             }
-            None => {
-                best = Some(LearnedVramForModel {
-                    vram_mib: entry.vram_mib,
-                    host_mib: entry.host_mib.unwrap_or(0.0),
-                    entries: 1,
-                });
+        }
+        let candidate = LearnedVramForModel {
+            vram_mib: entry.vram_mib,
+            host_mib: entry.host_mib.unwrap_or(0.0),
+            entries: count,
+            ctx_matched: ctx_hit,
+        };
+        let better = match &best {
+            None => true,
+            Some((best_score, best_entry)) => {
+                score > *best_score
+                    || (score == *best_score && candidate.vram_mib > best_entry.vram_mib)
             }
+        };
+        if better {
+            best = Some((score, candidate));
         }
     }
-    best
+    best.map(|(_, mut entry)| {
+        entry.entries = count;
+        entry
+    })
 }
 #[tauri::command]
 #[allow(clippy::too_many_arguments)] // Tauri IPC: one param per wire field; bundling would change the invoke shape
