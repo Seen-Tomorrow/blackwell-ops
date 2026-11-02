@@ -21,6 +21,11 @@ static FRONTEND_DETACHED: AtomicBool = AtomicBool::new(false);
 /// Mark app exit in progress. Idempotent. Call at the start of teardown (before stopping brains).
 pub fn begin_shutdown() {
     SHUTTING_DOWN.store(true, Ordering::SeqCst);
+    // Queued model-cache writes live in process memory; exit must not drop the last
+    // partial batch (up to 31 scans) just because the window closed mid-scan.
+    if let Err(e) = crate::model_cache::flush_cached() {
+        log::warn!("[lifecycle] cache flush on shutdown failed: {}", e);
+    }
     log::info!("[lifecycle] begin_shutdown — IPC and pipe-exit side work suppressed");
     crate::session_log::append_session_line("[lifecycle] begin_shutdown");
 }
