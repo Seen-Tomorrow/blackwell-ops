@@ -540,6 +540,11 @@ mod tests {
             alignment: 32,
             arch_mismatch: false,
             header_end: 0,
+            lookup_table_bytes: 0,
+            sampling_temp: None,
+            sampling_top_p: None,
+            sampling_top_k: None,
+            sampling_min_p: None,
         };
 
         // Fresh mtime → the entry survives, both halves present.

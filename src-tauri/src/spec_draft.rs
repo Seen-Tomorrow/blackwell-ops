@@ -582,6 +582,11 @@ mod tests {
             alignment: crate::gguf_patch::GGUF_DEFAULT_ALIGNMENT,
             arch_mismatch: false,
             header_end: 0,
+            lookup_table_bytes: 0,
+            sampling_temp: None,
+            sampling_top_p: None,
+            sampling_top_k: None,
+            sampling_min_p: None,
         };
         let path = r"C:\models\DFlash\Qwen3.6-27B\Qwen3.6-27B-UD-Q4_K_XL.gguf";
         let (role, facts) = classify_draft_role(Some(&shape), path, "", None, None);
@@ -638,6 +643,11 @@ mod tests {
             alignment: 32,
             arch_mismatch: true,
             header_end: 4096,
+            lookup_table_bytes: 0,
+            sampling_temp: None,
+            sampling_top_p: None,
+            sampling_top_k: None,
+            sampling_min_p: None,
         };
         let (role, facts) = classify_draft_role(
             Some(&shape),
@@ -676,6 +686,11 @@ mod tests {
             alignment: 32,
             arch_mismatch: false,
             header_end: 0,
+            lookup_table_bytes: 0,
+            sampling_temp: None,
+            sampling_top_p: None,
+            sampling_top_k: None,
+            sampling_min_p: None,
         };
         let (role, facts) = classify_draft_role(
             Some(&full_stack),

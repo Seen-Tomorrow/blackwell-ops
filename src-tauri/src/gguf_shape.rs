@@ -7,7 +7,7 @@
 //! second parser) and reports structure only. No tensor data touched, no engine spawned.
 //!
 //! Facts only — the role decision lives in the classifier (step 2), not here.
-#![allow(dead_code)] // Step 1 is additive — nothing consumes GgufShape until step 2.
+#![allow(dead_code)] // Not everything here is consumed yet; `engine.rs` reads `architecture` today.
 
 use std::path::{Path, PathBuf};
 
@@ -17,7 +17,7 @@ use crate::gguf_patch;
 
 /// Header-only facts about a GGUF file, read from the tensor-info table.
 /// No tensor data touched, no engine spawned.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GgufShape {
     /// Architecture name (e.g. "qwen35", "dflash", "dflash-draft").
     #[serde(default)]
@@ -57,6 +57,21 @@ pub struct GgufShape {
     /// Offset where tensor data starts (alignment-padded).
     #[serde(default)]
     pub header_end: u64,
+    /// Bytes of the host-resident lookup table (`per_layer_token_embd.weight`).
+    /// DeepSeek Engram and Qwen PLE both land on that one tensor name, and llama.cpp
+    /// marks it `TENSOR_READ_LAZY`: it lives on the host by design, never in VRAM.
+    #[serde(default, rename = "lookupTableBytes")]
+    pub lookup_table_bytes: u64,
+    /// Author sampler recommendation from `general.sampling.*`, when the file has one.
+    /// Read in-process so the M DEFAULTS preset never depends on the catalog scan.
+    #[serde(default, rename = "samplingTemp")]
+    pub sampling_temp: Option<f64>,
+    #[serde(default, rename = "samplingTopP")]
+    pub sampling_top_p: Option<f64>,
+    #[serde(default, rename = "samplingTopK")]
+    pub sampling_top_k: Option<f64>,
+    #[serde(default, rename = "samplingMinP")]
+    pub sampling_min_p: Option<f64>,
 }
 
 /// Tensor names that mean an embedding/output head is present.
@@ -188,7 +203,66 @@ fn shape_from_facts(facts: &gguf_patch::HeaderFacts, shard_count: u32) -> GgufSh
         alignment: facts.alignment,
         arch_mismatch,
         header_end: facts.header_end,
+        lookup_table_bytes: facts
+            .tensors
+            .iter()
+            .filter(|t| t.name.contains(LOOKUP_TABLE_TENSOR))
+            .map(tensor_bytes)
+            .sum(),
+        sampling_temp: facts.sampling_temp,
+        sampling_top_p: facts.sampling_top_p,
+        sampling_top_k: facts.sampling_top_k,
+        sampling_min_p: facts.sampling_min_p,
     }
+}
+
+/// Tensor name shared by every host-resident lookup table llama.cpp knows about:
+/// DeepSeek Engram, Qwen PLE, gemma3n/gemma4 per-layer embeddings.
+const LOOKUP_TABLE_TENSOR: &str = "per_layer_token_embd";
+
+/// Bytes a tensor occupies, from its GGML type block layout.
+///
+/// GGUF stores no size, so this mirrors `ggml_type_size / ggml_blck_size`. An unknown
+/// type contributes 0 rather than a guess: under-reporting a lookup table is safer
+/// than charging VRAM for bytes we cannot account for.
+pub(crate) fn tensor_bytes(t: &gguf_patch::TensorInfo) -> u64 {
+    let (block, size) = match t.ggml_type {
+        0 => (1, 4),      // F32
+        1 => (1, 2),      // F16
+        2 => (32, 18),    // Q4_0
+        3 => (32, 20),    // Q4_1
+        6 => (32, 22),    // Q5_0
+        7 => (32, 24),    // Q5_1
+        8 => (32, 34),    // Q8_0
+        9 => (32, 36),    // Q8_1
+        10 => (256, 84),  // Q2_K
+        11 => (256, 110), // Q3_K
+        12 => (256, 144), // Q4_K
+        13 => (256, 176), // Q5_K
+        14 => (256, 210), // Q6_K
+        15 => (256, 292), // Q8_K
+        16 => (256, 66),  // IQ2_XXS
+        17 => (256, 74),  // IQ2_XS
+        18 => (256, 98),  // IQ3_XXS
+        19 => (256, 50),  // IQ1_S
+        20 => (32, 18),   // IQ4_NL
+        21 => (256, 110), // IQ3_S
+        22 => (256, 82),  // IQ2_S
+        23 => (256, 136), // IQ4_XS
+        24 => (1, 1),     // I8
+        25 => (1, 2),     // I16
+        26 => (1, 4),     // I32
+        27 => (1, 8),     // I64
+        28 => (1, 8),     // F64
+        29 => (256, 56),  // IQ1_M
+        30 => (1, 2),     // BF16
+        34 => (256, 54),  // TQ1_0
+        35 => (256, 66),  // TQ2_0
+        39 => (32, 17),   // MXFP4
+        _ => return 0,
+    };
+    let n_el: u64 = t.dims.iter().product();
+    n_el.div_ceil(block).saturating_mul(size)
 }
 
 /// OR/max the facts of one split into the running merge.
@@ -205,6 +279,14 @@ fn merge_into(base: &mut GgufShape, split: GgufShape) {
     base.has_vocab |= split.has_vocab;
     base.arch_mismatch |= split.arch_mismatch;
     base.tensor_count = base.tensor_count.saturating_add(split.tensor_count);
+    base.lookup_table_bytes = base
+        .lookup_table_bytes
+        .saturating_add(split.lookup_table_bytes);
+    // Sampling KVs are declared once (first shard); keep the first shard that has them.
+    base.sampling_temp = base.sampling_temp.or(split.sampling_temp);
+    base.sampling_top_p = base.sampling_top_p.or(split.sampling_top_p);
+    base.sampling_top_k = base.sampling_top_k.or(split.sampling_top_k);
+    base.sampling_min_p = base.sampling_min_p.or(split.sampling_min_p);
 }
 
 /// Parse the `N` out of a `blk.N.` tensor-name prefix.
@@ -220,6 +302,38 @@ fn blk_index(name: &str) -> Option<u32> {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+
+    #[test]
+    fn lookup_table_bytes_follow_the_type_block_layout() {
+        // Q5_K is 256 elements per 176-byte block. The DeepSeek-V4.1 Engram table is
+        // {256, 768M rows}: 768e6 x 176 B = 128,907.7 MiB, which is what llama.cpp
+        // reports at load ("size = 128910 MiB").
+        let t = gguf_patch::TensorInfo {
+            name: "per_layer_token_embd.weight".to_string(),
+            dims: vec![256, 768_000_000],
+            ggml_type: 13,
+            data_offset: 0,
+        };
+        assert_eq!(tensor_bytes(&t), 768_000_000 * 176);
+        // Row-major dims are multiplied, so the shape order cannot change the total.
+        let flipped = gguf_patch::TensorInfo {
+            dims: vec![768_000_000, 256],
+            ..t.clone()
+        };
+        assert_eq!(tensor_bytes(&flipped), tensor_bytes(&t));
+    }
+
+    #[test]
+    fn unknown_tensor_type_contributes_nothing() {
+        let t = gguf_patch::TensorInfo {
+            name: "x.weight".to_string(),
+            dims: vec![1024],
+            ggml_type: 9999,
+            data_offset: 0,
+        };
+        assert_eq!(tensor_bytes(&t), 0);
+    }
+
     use std::io::Write;
 
     fn push_u32(buf: &mut Vec<u8>, v: u32) {
@@ -578,6 +692,11 @@ pub(crate) mod tests {
             alignment: 32,
             arch_mismatch: false,
             header_end: 1024,
+            lookup_table_bytes: 0,
+            sampling_temp: None,
+            sampling_top_p: None,
+            sampling_top_k: None,
+            sampling_min_p: None,
         };
         let json = serde_json::to_string(&shape).expect("serialize");
         for key in [

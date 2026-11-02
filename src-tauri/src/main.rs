@@ -39,6 +39,7 @@ mod bench_cancel;
 mod llama_bench_cmd;
 mod gguf_scan;
 mod gguf_patch;
+mod gguf_meta;
 mod gguf_shape;
 mod model_cache;
 mod download_manager;

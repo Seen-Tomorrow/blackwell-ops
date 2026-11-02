@@ -1339,21 +1339,6 @@ pub async fn ensure_driver_supports_profile(binary_profile: &str) -> Result<(), 
 /// binary's CUDA DLLs. Check the runtime for **that binary's profile** only: the old
 /// all-profiles check refused to scan anything while the other profile's runtime pack was not
 /// installed, and the refusal surfaced as "scan does nothing, no error".
-pub fn require_runtime_for_gguf_scan(binary_path: &str) -> Result<(), String> {
-    let profile = crate::engine_utils::binary_profile_from_path(std::path::Path::new(binary_path))
-        .unwrap_or_else(|| crate::config::DEFAULT_BINARY_PROFILE.to_string());
-    let cuda = cuda_version_for_binary_profile(&profile).ok_or_else(|| {
-        format!("Unknown binary profile '{profile}' — cannot resolve the CUDA runtime for the GGUF scan.")
-    })?;
-    if cuda_runtime_ready_for_version(&cuda) {
-        return Ok(());
-    }
-    let msg = format!(
-        "CUDA {cuda} runtime is not installed for profile '{profile}' — the GGUF metadata scan          needs it to start the engine binary. Install it in setup or CONFIG → Providers."
-    );
-    log::warn!("[gguf-scan] {msg}");
-    Err(msg)
-}
 
 pub fn check_all_profiles() -> Result<Vec<ProfileCheck>, String> {
     let manifest = load_manifest()?;

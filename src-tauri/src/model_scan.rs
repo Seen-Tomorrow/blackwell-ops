@@ -30,30 +30,26 @@ pub fn get_path_size_bytes(path: String) -> Result<u64, String> {
     Ok(n)
 }
 #[tauri::command]
+#[allow(unused_variables)] // provider id is still sent by the UI; the scan needs no binary
 pub async fn scan_model_metadata_cmd(
     model_path: String,
     provider_id: Option<String>,
-    app: tauri::State<'_, AppContext>,
+    _app: tauri::State<'_, AppContext>,
 ) -> Result<crate::types::ModelEntry, String> {
     let pid = provider_id.unwrap_or_else(|| crate::config::DEFAULT_PROVIDER_ID.to_string());
-    let bin_str = {
-        let cfg = app.config.lock().map_err(|e| e.to_string())?;
-        crate::engine_utils::find_provider_binary(&cfg, &pid, "")?.to_string_lossy().to_string()
-    };
-    // Gate on the runtime of the binary we will actually spawn, not on every profile.
-    crate::foundry_toolchain::require_runtime_for_gguf_scan(&bin_str)?;
 
-    // Run scan on a background thread — closure captures only Strings (Send types)
-    let metadata_result: Result<crate::types::ModelMetadata, String> = tokio::task::spawn_blocking({
+    // Header only — no engine spawn, no CUDA runtime, no 15 s window, and no scrape
+    // fallback: a file the reader cannot parse is a scan failure worth seeing.
+    let header_read: Result<crate::types::ModelMetadata, String> = tokio::task::spawn_blocking({
         let mp = model_path.clone();
-        move || crate::gguf_scan::scan_model_metadata(&mp, &bin_str)
+        move || crate::gguf_meta::metadata_from_header(&mp)
     })
     .await
     .map_err(|e| format!("Scan task failed: {}", e))?;
 
-    let mut metadata = metadata_result?;
+    let mut metadata = header_read?;
 
-    // Accumulate shard sizes — scanner only reads first shard's file size
+    // Accumulate shard sizes — the reader reports the shard set, the catalog total wins.
     let total_file_size = crate::model_catalog::get_total_model_size(&model_path);
     if total_file_size != metadata.file_size_bytes {
         log::info!("[scan_model_metadata_cmd] Corrected file_size for '{}': {} → {}", model_path, metadata.file_size_bytes, total_file_size);
@@ -112,16 +108,15 @@ pub async fn scan_model_metadata_cmd(
 }
 
 #[tauri::command]
+#[allow(unused_variables)] // provider id is still sent by the UI; the scan needs no binary
 pub async fn scan_all_models_cmd(
     _model_base: Option<String>,
     provider_id: Option<String>,
     concurrency: Option<usize>,
     app: tauri::State<'_, AppContext>,
 ) -> Result<usize, String> {
-    let (bin_str, all_paths, total) = {
+    let (all_paths, total) = {
         let cfg = app.config.lock().map_err(|e| e.to_string())?;
-        let pid = provider_id.unwrap_or_else(|| crate::config::DEFAULT_PROVIDER_ID.to_string());
-        let binary_path = crate::engine_utils::find_provider_binary(&cfg, &pid, "")?;
         // Use all configured paths instead of single model_base
         let paths = crate::config::get_model_paths(&cfg);
         let (catalog, _) = crate::model_catalog::merge_catalogs(&paths, Some(&app.log_hub), None)?;
@@ -130,10 +125,10 @@ pub async fn scan_all_models_cmd(
         if total == 0 {
             return Ok(0);
         }
-        (binary_path.to_string_lossy().to_string(), all_paths, total)
+        (all_paths, total)
     };
-    // Gate on the runtime of the binary we will actually spawn, not on every profile.
-    crate::foundry_toolchain::require_runtime_for_gguf_scan(&bin_str)?;
+    // No CUDA runtime gate here any more: the header reader needs no engine. The gate
+    // now lives on the scrape fallback, inside the per-model task.
 
     // Clone log_hub for event emission (LogHub is Clone)
     let log_hub = app.log_hub.clone();
@@ -151,7 +146,7 @@ pub async fn scan_all_models_cmd(
     // Run scans sequentially in batches — each spawn_blocking captures only Send types
     let mut scanned: usize = 0;
     let mut failed: usize = 0;
-    let concurrency = concurrency.unwrap_or(2); // default 2x, frontend can pass 4 or 8
+    let concurrency = concurrency.unwrap_or(6); // header reads are cheap; match the scheduler
     type ScanHandle = tokio::task::JoinHandle<Result<crate::types::ModelMetadata, String>>;
     let mut handles: Vec<(usize, String, ScanHandle)> = Vec::new();
 
@@ -171,11 +166,10 @@ pub async fn scan_all_models_cmd(
         }
 
         let scan_path = path.clone();
-        let bin = bin_str.clone();
 
         log::debug!("[batch_scan] Scanning: {}", scan_path);
         let handle = tokio::task::spawn_blocking(move || {
-            crate::gguf_scan::scan_model_metadata(&scan_path, &bin)
+            crate::gguf_meta::metadata_from_header(&scan_path)
         });
 
         handles.push((i, path.clone(), handle));
@@ -307,7 +301,7 @@ fn handle_scan_result_with_sanity(
 
 #[tauri::command]
 pub fn cancel_gguf_scan_cmd() {
-    crate::gguf_scan::GGUF_SCAN_CANCEL.store(true, std::sync::atomic::Ordering::Relaxed);
+    crate::gguf_scan::cancel();
 }
 
 #[tauri::command]

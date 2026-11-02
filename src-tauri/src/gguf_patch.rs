@@ -85,6 +85,22 @@ impl<R: Read> GgufReader<R> {
         Ok(String::from_utf8_lossy(&bytes).into_owned())
     }
 
+    /// Advance past `n` bytes without allocating. Bulk payload (tokenizer vocabularies)
+    /// is tens of MB; reading it element-by-element cost ~1.6 s per model.
+    fn skip_bytes(&mut self, n: u64) -> Result<(), String> {
+        let mut buf = [0u8; 16 * 1024];
+        let mut left = n;
+        while left > 0 {
+            let take = left.min(buf.len() as u64) as usize;
+            self.inner
+                .read_exact(&mut buf[..take])
+                .map_err(|e| format!("At offset {}: {}", self.offset, e))?;
+            self.offset += take as u64;
+            left -= take as u64;
+        }
+        Ok(())
+    }
+
     /// GGUF v2/v3 string: u64 length + UTF-8 bytes (not required to be valid UTF-8 to skip).
     fn skip_string(&mut self, what: &str, max_len: u64) -> Result<Vec<u8>, String> {
         let len = self.read_u64()?;
@@ -95,6 +111,18 @@ impl<R: Read> GgufReader<R> {
             ));
         }
         self.read_exact(len as usize)
+    }
+
+    /// Length-checked string skip: same limits, no allocation.
+    fn skip_string_bytes(&mut self, what: &str, max_len: u64) -> Result<(), String> {
+        let len = self.read_u64()?;
+        if len > max_len {
+            return Err(format!(
+                "{} length {} at offset {} exceeds sanity limit {}",
+                what, len, self.offset, max_len
+            ));
+        }
+        self.skip_bytes(len)
     }
 }
 
@@ -108,6 +136,96 @@ pub(crate) fn align_offset(offset: u64, alignment: u64) -> u64 {
     } else {
         offset + (alignment - rem)
     }
+}
+
+/// One GGUF KV value, typed. Mirrors the wire types the format defines.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum KvValue {
+    Int(i64),
+    Float(f64),
+    Str(String),
+    Bool(bool),
+    IntArray(Vec<i64>),
+    /// Small string arrays only (`general.tags`). Vocabularies go through `is_bulk_kv`.
+    StrArray(Vec<String>),
+}
+
+/// KV keys whose value is bulk payload, not metadata: tokenizer vocabularies.
+/// They are skipped by length, never materialised.
+fn is_bulk_kv(key: &str) -> bool {
+    matches!(
+        key,
+        "tokenizer.ggml.tokens" | "tokenizer.ggml.token_type" | "tokenizer.ggml.merges"
+    )
+}
+
+/// Read one KV value into a typed `KvValue`, always consuming the stream exactly.
+/// Returns `None` for shapes we do not keep (non-integer arrays) after skipping them.
+fn read_kv_value<R: Read>(
+    r: &mut GgufReader<R>,
+    value_type: u32,
+    key: &str,
+) -> Result<Option<KvValue>, String> {
+    if is_bulk_kv(key) {
+        skip_value(r, value_type)?;
+        return Ok(None);
+    }
+    Ok(match value_type {
+        0 => Some(KvValue::Int(r.read_exact(1)?[0] as i64)),
+        1 => Some(KvValue::Int(r.read_exact(1)?[0] as i8 as i64)),
+        2 => Some(KvValue::Int(u16::from_le_bytes(r.read_exact(2)?.try_into().unwrap()) as i64)),
+        3 => Some(KvValue::Int(i16::from_le_bytes(r.read_exact(2)?.try_into().unwrap()) as i64)),
+        4 => Some(KvValue::Int(u32::from_le_bytes(r.read_exact(4)?.try_into().unwrap()) as i64)),
+        5 => Some(KvValue::Int(i32::from_le_bytes(r.read_exact(4)?.try_into().unwrap()) as i64)),
+        6 => Some(KvValue::Float(
+            f32::from_le_bytes(r.read_exact(4)?.try_into().unwrap()) as f64,
+        )),
+        7 => Some(KvValue::Bool(r.read_exact(1)?[0] != 0)),
+        8 => Some(KvValue::Str(r.read_string("Metadata value", MAX_METADATA_STRING)?)),
+        9 => {
+            let elem_type = r.read_u32()?;
+            let count = r.read_u64()?;
+            if count > 50_000_000 {
+                return Err(format!(
+                    "Array count {} at offset {} exceeds sanity limit",
+                    count, r.offset
+                ));
+            }
+            if matches!(elem_type, 4 | 5 | 10 | 11) {
+                // Huge int arrays (e.g. an Engram token map) are not metadata we keep;
+                // skipping them wholesale keeps the scan at header speed.
+                if count > 4_096 {
+                    let width = fixed_width(elem_type).unwrap_or(4) as u64;
+                    r.skip_bytes(count.saturating_mul(width))?;
+                    Some(KvValue::IntArray(Vec::new()))
+                } else {
+                    let mut out = Vec::with_capacity(count as usize);
+                    for _ in 0..count {
+                        out.push(read_int_value(r, elem_type)?);
+                    }
+                    Some(KvValue::IntArray(out))
+                }
+            } else if elem_type == 8 && count <= 1_024 {
+                let mut out = Vec::with_capacity(count as usize);
+                for _ in 0..count {
+                    out.push(r.read_string("String array element", MAX_METADATA_STRING)?);
+                }
+                Some(KvValue::StrArray(out))
+            } else {
+                // Float arrays and bulk string arrays are not metadata we keep.
+                for _ in 0..count {
+                    skip_value(r, elem_type)?;
+                }
+                None
+            }
+        }
+        10 => Some(KvValue::Int(u64::from_le_bytes(r.read_exact(8)?.try_into().unwrap()) as i64)),
+        11 => Some(KvValue::Int(i64::from_le_bytes(r.read_exact(8)?.try_into().unwrap()))),
+        12 => Some(KvValue::Float(f64::from_le_bytes(
+            r.read_exact(8)?.try_into().unwrap(),
+        ))),
+        other => return Err(format!("Unsupported KV value type {other} at offset {}", r.offset)),
+    })
 }
 
 /// One tensor-info record from the header table. No tensor data is touched —
@@ -133,6 +251,13 @@ pub(crate) struct HeaderFacts {
     pub(crate) architecture: Option<String>,
     /// `<arch>.block_count`, when present.
     pub(crate) block_count: Option<i64>,
+    /// Author sampler recommendation from `general.sampling.*`. Kept because the
+    /// catalog scan cannot be trusted to deliver these (it missed them for one
+    /// s hard model); they are two floats in the header we already walk.
+    pub(crate) sampling_temp: Option<f64>,
+    pub(crate) sampling_top_p: Option<f64>,
+    pub(crate) sampling_top_k: Option<f64>,
+    pub(crate) sampling_min_p: Option<f64>,
     /// String KVs for the two keys above only — everything else is skipped, not
     /// materialised.
     pub(crate) kv_strings: HashMap<String, String>,
@@ -145,6 +270,11 @@ pub(crate) struct HeaderFacts {
     /// uses it to detect a non-registry architecture (e.g. a private `qwen4exp-mtp`,
     /// which shares the `qwen4exp` KV prefix but is not the `qwen4exp` arch).
     pub(crate) arch_keys: Vec<String>,
+    /// Every non-bulk KV in the header, typed. The stderr scraper this replaces is
+    /// lossy (it delivered 70 of 96 keys for one real model); this map is the file.
+    /// The three giant tokenizer arrays stay out — a 129k-entry string array is not
+    /// metadata anyone needs, and `skip_value` still consumes it to stay aligned.
+    pub(crate) kv_all: HashMap<String, KvValue>,
     pub(crate) tensors: Vec<TensorInfo>,
 }
 
@@ -184,24 +314,46 @@ pub(crate) fn parse_header<R: Read>(reader: R) -> Result<HeaderFacts, String> {
     for i in 0..metadata_count {
         let key = r.read_string(&format!("Metadata[{}] key", i), MAX_METADATA_STRING)?;
         let value_type = r.read_u32()?;
-        if key == "general.alignment" {
-            facts.alignment = read_alignment_value(&mut r, value_type)?;
-        } else if key == "general.architecture" && value_type == 8 {
-            let value = r.read_string(&format!("Metadata[{i}] value"), MAX_METADATA_STRING)?;
-            facts.architecture = Some(value.clone());
-            facts.kv_strings.insert(key, value.clone());
-            facts.arch_keys.push(value);
-        } else if key.ends_with(".block_count") && matches!(value_type, 4 | 5 | 10 | 11) {
-            let value = read_int_value(&mut r, value_type)?;
-            facts.block_count = Some(value);
-            facts.kv_ints.insert(key.clone(), value);
-            facts.arch_keys.push(key);
-        } else if key.ends_with(".ple.layers") && value_type == 9 {
-            let values = read_int_array_value(&mut r)?;
-            facts.kv_int_arrays.insert(key, values);
-        } else {
-            skip_value(&mut r, value_type)?;
+        // One read for every KV: keep it typed, then derive the handful of facts the
+        // callers need. Nothing is skipped except the bulk tokenizer arrays.
+        let Some(value) = read_kv_value(&mut r, value_type, &key)? else {
+            continue;
+        };
+        match (&*key, &value) {
+            ("general.alignment", KvValue::Int(n)) => facts.alignment = *n as u64,
+            ("general.architecture", KvValue::Str(s)) => {
+                facts.architecture = Some(s.clone());
+                facts.kv_strings.insert(key.clone(), s.clone());
+                facts.arch_keys.push(s.clone());
+            }
+            (k, KvValue::Int(n)) if k.ends_with(".block_count") => {
+                facts.block_count = Some(*n);
+                facts.kv_ints.insert(key.clone(), *n);
+                facts.arch_keys.push(key.clone());
+            }
+            (k, KvValue::IntArray(a)) if k.ends_with(".ple.layers") => {
+                facts.kv_int_arrays.insert(key.clone(), a.clone());
+            }
+            (k, _) if k.starts_with("general.sampling.") => {
+                // f32 (temp/top_p) and int (top_k) both appear in the wild.
+                let as_f64 = match &value {
+                    KvValue::Float(f) => Some(*f),
+                    KvValue::Int(n) => Some(*n as f64),
+                    _ => None,
+                };
+                if let Some(v) = as_f64 {
+                    match k {
+                        "general.sampling.temp" => facts.sampling_temp = Some(v),
+                        "general.sampling.top_p" => facts.sampling_top_p = Some(v),
+                        "general.sampling.top_k" => facts.sampling_top_k = Some(v),
+                        "general.sampling.min_p" => facts.sampling_min_p = Some(v),
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
         }
+        facts.kv_all.insert(key, value);
     }
 
     // The arch KV may be absent or unreadable; fall back to the first
@@ -273,12 +425,16 @@ pub(crate) fn parse_header_from_file(path: &Path) -> Result<HeaderFacts, String>
         return Err(format!("Model file not found: {}", path.display()));
     }
     let f = std::fs::File::open(path).map_err(|e| format!("Failed to open file: {}", e))?;
-    parse_header(f)
+    // Buffered: the walk does hundreds of thousands of small reads (every KV element,
+    // every tensor name/dim). Unbuffered, each one was a syscall and a model took ~1.5 s.
+    parse_header(std::io::BufReader::with_capacity(1 << 20, f))
 }
 
 pub(crate) fn find_header_end_from_bytes(bytes: &[u8]) -> Result<u64, String> {
     parse_header_end(Cursor::new(bytes))
 }
+
+
 
 fn read_int_value<R: Read>(r: &mut GgufReader<R>, value_type: u32) -> Result<i64, String> {
     match value_type {
@@ -293,62 +449,14 @@ fn read_int_value<R: Read>(r: &mut GgufReader<R>, value_type: u32) -> Result<i64
     }
 }
 
-/// GGUF v2/v3 array of integer elements (type 9 whose element type is 4/5/10/11).
-/// A non-integer element type is a parse error — the caller only routes
-/// `.ple.layers` here, which is an int array in every real file.
-fn read_int_array_value<R: Read>(r: &mut GgufReader<R>) -> Result<Vec<i64>, String> {
-    let elem_type = r.read_u32()?;
-    if !matches!(elem_type, 4 | 5 | 10 | 11) {
-        return Err(format!(
-            "Array element type {elem_type} at offset {} is not an integer type",
-            r.offset
-        ));
-    }
-    let count = r.read_u64()?;
-    if count > 1_000_000 {
-        return Err(format!(
-            "Array count {count} at offset {} exceeds sanity limit",
-            r.offset
-        ));
-    }
-    let mut values = Vec::with_capacity(count.min(4096) as usize);
-    for _ in 0..count {
-        values.push(read_int_value(r, elem_type)?);
-    }
-    Ok(values)
-}
 
-fn read_alignment_value<R: Read>(r: &mut GgufReader<R>, value_type: u32) -> Result<u64, String> {
-    match value_type {
-        4 => Ok(r.read_u32()? as u64), // UINT32
-        5 => Ok(r.read_u32()? as u64), // INT32
-        10 => r.read_u64(),            // UINT64
-        11 => r.read_u64(),            // INT64
-        other => {
-            skip_value(r, other)?;
-            Ok(GGUF_DEFAULT_ALIGNMENT)
-        }
-    }
-}
 
 fn skip_value<R: Read>(r: &mut GgufReader<R>, value_type: u32) -> Result<(), String> {
     match value_type {
-        0 | 1 | 7 => {
-            r.read_exact(1)?;
-            Ok(())
-        }
-        2 | 3 => {
-            r.read_exact(2)?;
-            Ok(())
-        }
-        4..=6 => {
-            r.read_exact(4)?;
-            Ok(())
-        }
-        8 => {
-            r.skip_string("String", MAX_METADATA_STRING)?;
-            Ok(())
-        }
+        0 | 1 | 7 => r.skip_bytes(1),
+        2 | 3 => r.skip_bytes(2),
+        4..=6 => r.skip_bytes(4),
+        8 => r.skip_string_bytes("String", MAX_METADATA_STRING),
         9 => {
             // Array: elem_type (u32) + count (u64) + elements
             let elem_type = r.read_u32()?;
@@ -359,19 +467,31 @@ fn skip_value<R: Read>(r: &mut GgufReader<R>, value_type: u32) -> Result<(), Str
                     count, r.offset
                 ));
             }
+            // Fixed-width elements skip in one go; only strings need a walk.
+            if let Some(width) = fixed_width(elem_type) {
+                return r.skip_bytes(count.saturating_mul(width as u64));
+            }
             for _ in 0..count {
                 skip_value(r, elem_type)?;
             }
             Ok(())
         }
-        10..=12 => {
-            r.read_exact(8)?;
-            Ok(())
-        }
+        10..=12 => r.skip_bytes(8),
         other => Err(format!(
             "Unknown GGUF metadata value type {} at offset {}",
             other, r.offset
         )),
+    }
+}
+
+/// Byte width of a fixed-size GGUF scalar type, if it has one.
+fn fixed_width(value_type: u32) -> Option<u32> {
+    match value_type {
+        0 | 1 | 7 => Some(1),
+        2 | 3 => Some(2),
+        4..=6 => Some(4),
+        10..=12 => Some(8),
+        _ => None,
     }
 }
 
