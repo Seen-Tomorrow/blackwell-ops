@@ -141,7 +141,7 @@ async fn handle_socket(
     };
 
     if routes_only {
-        log::info!("[remote] device {} connected (routes-only)", device.id);
+        log::debug!("[remote] device {} connected (routes-only)", device.id);
         let _ = tx
             .send(ServerMessage::Ready {
                 protocol_version: PROTOCOL_VERSION,
@@ -306,15 +306,11 @@ async fn handle_socket(
         }
     }
 
-    log::info!(
-        "[remote] device {} {} closed",
-        device.id,
-        if routes_only {
-            "routes-only socket"
-        } else {
-            "socket"
-        }
-    );
+    if routes_only {
+        log::debug!("[remote] device {} routes-only socket closed", device.id);
+    } else {
+        log::info!("[remote] device {} socket closed", device.id);
+    }
     shutdown.cancel();
     if let Some(connection_id) = connection_id {
         state.detach_connection(&device.id, connection_id).await;
