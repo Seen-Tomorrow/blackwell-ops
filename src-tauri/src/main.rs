@@ -615,7 +615,7 @@ async fn main() {
             hf_search::get_hf_model_info,
             hf_search::get_hf_quant_dates,
             hf_search::check_hf_repo_updates,
-            hf_search::check_catalog_hf_updates,
+            hf_search::check_model_hf_update,
             secrets::list_app_secrets,
             secrets::set_app_secret,
             secrets::delete_app_secret,

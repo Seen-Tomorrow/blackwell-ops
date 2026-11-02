@@ -191,7 +191,9 @@ export default function ModelCard({
       })
     : "--";
 
-  // Transient update-check bubble: UP TO DATE / NOT PAIRED / HEADER / FULL.
+  // Update-check verdict for this card: UP TO DATE / NOT PAIRED / HEADER / FULL.
+  // Persistent until applied or dismissed — a verdict that vanishes after 6 s cannot be
+  // re-read, which made the check feel like it had done nothing.
   const checkBubble = (() => {
     if (!checkVerdict) return null;
     if (checkVerdict.kind === "full") {

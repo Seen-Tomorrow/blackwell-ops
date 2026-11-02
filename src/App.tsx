@@ -77,12 +77,15 @@ function App() {
   // fusionUpdates removed — managed by useFusionData hook (single listener)
 
   const [catalogError, setCatalogError] = useState<string | null>(null);
-  const [catalogHfUpdates, setCatalogHfUpdates] = useState<CatalogUpdateEntry[]>([]);
   const [catalogUpdatesBusy, setCatalogUpdatesBusy] = useState(false);
-  // Transient per-path result of the most recent check — drives the card bubble
-  // (UP TO DATE / NOT PAIRED / update found). Expires so it isn't sticky forever.
+  // Per-path result of the model's last check — a persistent card chip, cleared only
+  // when the update is applied or dismissed. (It used to expire after 6 s.)
   const [catalogCheckVerdicts, setCatalogCheckVerdicts] = useState<Record<string, CatalogUpdateEntry>>({});
-  const checkVerdictTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  /** UPDATES filter + count derive from the verdicts — one source of truth. */
+  const catalogHfUpdates = useMemo(
+    () => Object.values(catalogCheckVerdicts).filter((v) => v.hasUpdate),
+    [catalogCheckVerdicts],
+  );
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
   const [scanningPath, setScanningPath] = useState<string | null>(null);
   const [batchScanState, setBatchScanState] = useState<{active: boolean; scanned: number; failed: number; total: number}>({ active: false, scanned: 0, failed: 0, total: 0 });
@@ -263,51 +266,37 @@ function App() {
     })();
   });
 
-  const checkCatalogHfUpdates = useCallback(async (onlyPath?: string) => {
+  /**
+   * Check ONE selected model against the Hub.
+   *
+   * The old sweep walked the whole library and fetched a tree per repo — HTTP cost
+   * scaled with library size, which is why it was unusable. The pairing is cached at
+   * download time, so a per-model check is one tree fetch + one OID comparison.
+   *
+   * The verdict is persistent (a card chip), not a 6 s bubble: a check you cannot
+   * re-read afterwards is a check you have to re-run.
+   */
+  const checkModelHfUpdate = useCallback(async (path: string) => {
     setCatalogUpdatesBusy(true);
     try {
-      const rows = await invoke<CatalogUpdateEntry[]>("check_catalog_hf_updates", {
-        onlyPath: onlyPath ?? null,
+      const entry = await invoke<CatalogUpdateEntry>("check_model_hf_update", {
+        localPath: path,
       });
-      const list = rows || [];
-      const fresh = list.filter((r) => r.hasUpdate && r.kind !== "current");
-      if (onlyPath) {
-        setCatalogHfUpdates((prev) => {
-          const rest = prev.filter((r) => r.path !== onlyPath);
-          return [...rest, ...fresh];
-        });
-      } else {
-        setCatalogHfUpdates(fresh);
-      }
-      // Bubble: every checked path gets a transient verdict for a few seconds.
-      const BUBBLE_MS = 6000;
-      setCatalogCheckVerdicts((prev) => {
-        const next = { ...prev };
-        for (const r of list) {
-          next[r.path] = r;
-          clearTimeout(checkVerdictTimers.current[r.path]);
-          checkVerdictTimers.current[r.path] = setTimeout(() => {
-            setCatalogCheckVerdicts((cur) => {
-              if (!cur[r.path]) return cur;
-              const cleared = { ...cur };
-              delete cleared[r.path];
-              return cleared;
-            });
-            delete checkVerdictTimers.current[r.path];
-          }, BUBBLE_MS);
-        }
-        return next;
-      });
+      setCatalogCheckVerdicts((prev) => ({ ...prev, [path]: entry }));
     } catch (err) {
-      console.error("Catalog HF update check failed:", err);
+      const msg = typeof err === "string" ? err : JSON.stringify(err);
+      console.error("Model HF update check failed:", msg);
+      void invoke("emit_to_blackwell_console", {
+        category: "utils",
+        content: `[hf-update] ${path} → ${msg}`,
+        style: "Warning",
+      });
     } finally {
       setCatalogUpdatesBusy(false);
     }
   }, []);
 
   const dismissCatalogCheckVerdict = useCallback((path: string) => {
-    clearTimeout(checkVerdictTimers.current[path]);
-    delete checkVerdictTimers.current[path];
     setCatalogCheckVerdicts((cur) => {
       if (!cur[path]) return cur;
       const cleared = { ...cur };
@@ -649,7 +638,7 @@ function App() {
             aria-hidden={activeTab !== "catalog"}
             inert={activeTab !== "catalog" ? true : undefined}
           >
-            <ModelCatalog models={models} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} setupGuide={setupGuide} onModelScanned={patchScannedModel} pathScans={pathScans} catalogHfUpdates={catalogHfUpdates} catalogUpdatesBusy={catalogUpdatesBusy} onCheckCatalogUpdates={checkCatalogHfUpdates} onClearCatalogUpdate={(path) => setCatalogHfUpdates((prev) => prev.filter((r) => r.path !== path))} catalogCheckVerdicts={catalogCheckVerdicts} onDismissCheckVerdict={dismissCatalogCheckVerdict} />
+            <ModelCatalog models={models} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} setupGuide={setupGuide} onModelScanned={patchScannedModel} pathScans={pathScans} catalogHfUpdates={catalogHfUpdates} catalogUpdatesBusy={catalogUpdatesBusy} onCheckModelUpdate={checkModelHfUpdate} catalogCheckVerdicts={catalogCheckVerdicts} onDismissCheckVerdict={dismissCatalogCheckVerdict} />
           </div>
         )}
 

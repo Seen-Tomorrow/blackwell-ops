@@ -30,6 +30,7 @@ pub async fn get_hf_quant_dates(
 ) -> Result<std::collections::HashMap<String, String>, String> {
     crate::config::validate_hf_model_id(&model_id)?;
     let hf_token = crate::secrets::get_secret("hf_token")?;
+    // Keyed by repo path, not quant label — a label is not unique across folders.
     crate::hf_api::fetch_quant_last_modified(&model_id, &paths, hf_token.as_deref()).await
 }
 
@@ -47,15 +48,12 @@ pub async fn check_hf_repo_updates(
     crate::hf_api::check_repo_for_updates(&model_id, &paths, hf_token.as_deref()).await
 }
 
+/// One local model file against its Hub repo. Cost is O(that repo), not O(library):
+/// the pairing comes from the download-time cache, so there is no catalog walk.
 #[tauri::command]
-pub async fn check_catalog_hf_updates(
-    app_config: tauri::State<'_, Arc<std::sync::Mutex<crate::config::AppConfig>>>,
-    only_path: Option<String>,
-) -> Result<Vec<crate::types::CatalogUpdateEntry>, String> {
-    let paths = {
-        let cfg = app_config.lock().map_err(|e| e.to_string())?;
-        crate::config::get_model_paths(&cfg)
-    };
+pub async fn check_model_hf_update(
+    local_path: String,
+) -> Result<crate::types::CatalogUpdateEntry, String> {
     let hf_token = crate::secrets::get_secret("hf_token")?;
-    crate::hf_api::check_catalog_hf_updates(&paths, hf_token.as_deref(), only_path.as_deref()).await
+    crate::hf_api::check_local_model_update(&local_path, hf_token.as_deref()).await
 }

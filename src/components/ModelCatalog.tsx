@@ -39,8 +39,8 @@ interface ModelCatalogProps {
   pathScans?: ModelPathScan[] | null;
   catalogHfUpdates?: CatalogUpdateEntry[];
   catalogUpdatesBusy?: boolean;
-  onCheckCatalogUpdates?: (onlyPath?: string) => void;
-  onClearCatalogUpdate?: (path: string) => void;
+  /** Check the selected model only — one repo tree, no library sweep. */
+  onCheckModelUpdate?: (path: string) => void;
   catalogCheckVerdicts?: Record<string, CatalogUpdateEntry>;
   onDismissCheckVerdict?: (path: string) => void;
 }
@@ -62,7 +62,7 @@ const draftFilterLabels: Record<CatalogDraftFilter, string> = {
 };
 
 export default function ModelCatalog(props: ModelCatalogProps) {
-  const { models, onLaunch, error, onReload, providers: externalProviders, committedVramMib, scanningPath, setScanningPath, batchScanState, setBatchScanState, stack, setupGuide, onModelScanned, catalogHfUpdates, catalogUpdatesBusy, onCheckCatalogUpdates, onClearCatalogUpdate, catalogCheckVerdicts, onDismissCheckVerdict, pathScans } = props;
+  const { models, onLaunch, error, onReload, providers: externalProviders, committedVramMib, scanningPath, setScanningPath, batchScanState, setBatchScanState, stack, setupGuide, onModelScanned, catalogHfUpdates, catalogUpdatesBusy, onCheckModelUpdate, catalogCheckVerdicts, onDismissCheckVerdict, pathScans } = props;
   const [updatesOnly, setUpdatesOnly] = useState(false);
   const [fullConfirm, setFullConfirm] = useState<CatalogUpdateEntry | null>(null);
   const [updateBusyPath, setUpdateBusyPath] = useState<string | null>(null);
@@ -124,20 +124,21 @@ export default function ModelCatalog(props: ModelCatalogProps) {
         remoteUrl: row.remoteUrl ?? "",
         remoteTotalSize: row.remoteTotalSize ?? 0,
       });
-      onClearCatalogUpdate?.(row.path);
       onDismissCheckVerdict?.(row.path);
     } catch (e) {
       console.error("Header patch failed:", e);
     } finally {
       setUpdateBusyPath(null);
     }
-  }, [onClearCatalogUpdate, onDismissCheckVerdict]);
+  }, [onDismissCheckVerdict]);
 
   const applyFullUpdate = useCallback(async (row: CatalogUpdateEntry) => {
     setUpdateBusyPath(row.path);
     try {
       const info = await invoke<HfModelInfo>("get_hf_model_info", { modelId: row.hfModelId });
-      const file = info.gguf_files.find((f) => f.type === row.quant);
+      const file = info.gguf_files.find(
+        (f) => f.type === row.quant && (f.role ?? "quant") === "quant",
+      );
       if (!file) throw new Error(`Quant ${row.quant} not on Hub`);
       const slash = row.hfModelId.indexOf("/");
       const hfAuthor = slash > 0 ? row.hfModelId.slice(0, slash) : info.author || "unknown";
@@ -147,7 +148,6 @@ export default function ModelCatalog(props: ModelCatalogProps) {
         quantType: file.type,
         ggufFile: file,
       });
-      onClearCatalogUpdate?.(row.path);
       onDismissCheckVerdict?.(row.path);
       setFullConfirm(null);
     } catch (e) {
@@ -155,7 +155,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     } finally {
       setUpdateBusyPath(null);
     }
-  }, [onClearCatalogUpdate, onDismissCheckVerdict]);
+  }, [onDismissCheckVerdict]);
 
   const { search, setSearch, draftFilter, setCatalogDraftFilter, catalogSelectedModel, panelActiveModel, handleSelect, handleSelectBySlot, selectedSlotIdx, sortField, sortDirection, handleSort,
     catalogModels: catalogModelsRaw, runningModelPaths,
@@ -628,24 +628,15 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           )}
           <button
             type="button"
-            onClick={() => onCheckCatalogUpdates?.()}
-            disabled={catalogUpdatesBusy}
-            className="catalog-cycle-btn value-chip type-micro font-mono px-1.5 py-0 uppercase rounded-sm transition-colors disabled:opacity-40 catalog-tools-hidden"
-            title="Check every local HF-paired model against the Hub (tree listing only unless size is close)"
-          >
-            {catalogUpdatesBusy ? "CHECKING…" : "CHECK ALL"}
-          </button>
-          <button
-            type="button"
             onClick={() => {
               const path = catalogSelectedModel?.path ?? panelActiveModel?.path;
-              if (path) onCheckCatalogUpdates?.(path);
+              if (path) onCheckModelUpdate?.(path);
             }}
             disabled={catalogUpdatesBusy || !(catalogSelectedModel || panelActiveModel)}
             className="catalog-cycle-btn value-chip type-micro font-mono px-1.5 py-0 uppercase rounded-sm transition-colors disabled:opacity-40"
-            title="Check only the selected model against Hugging Face"
+            title="Check this model against Hugging Face (one repo tree + one hash compare)"
           >
-            CHECK SELECTED MODEL UPDATES
+            {catalogUpdatesBusy ? "CHECKING…" : "CHECK UPDATE"}
           </button>
           <button
             type="button"
