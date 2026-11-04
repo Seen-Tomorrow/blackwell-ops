@@ -1824,6 +1824,20 @@ fn learned_vram_for_model_blocking(
             best = Some((bucket, score, ctx_distance, candidate));
         }
     }
+    // A caller that cannot state batch (0/None) or whose kv quant string does not line up
+    // must still find the model's own measurements: a near configuration beats a header
+    // upper bound that is ~7x off for a hybrid cache. Retry with the soft filters cleared.
+    if best.is_none() {
+        return learned_vram_for_model_blocking(
+            model_path,
+            ctx,
+            None,
+            split,
+            None,
+            None,
+        );
+    }
+
     let picked = best.map(|(_, _, _, mut entry)| {
         entry.entries = count;
         entry

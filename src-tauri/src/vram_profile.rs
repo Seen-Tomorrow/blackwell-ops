@@ -270,7 +270,11 @@ pub fn cold_forecast(
         let entry_ubatch = key_token(key, "ubatch=")
             .and_then(|v| v.parse::<u32>().ok())
             .unwrap_or(0);
-        if entry_batch != batch || entry_ubatch != ubatch {
+        // 0 means "the caller cannot state it" - wildcard, not a literal mismatch.
+        if batch != 0 && entry_batch != batch {
+            continue;
+        }
+        if ubatch != 0 && entry_ubatch != ubatch {
             continue;
         }
 
