@@ -215,7 +215,9 @@ export default function CockpitCtxStrip({
       </div>
 
       <div className="full-auto-cockpit__ctx-footer font-mono">
-        {/* DEV pruning lives at the far left: both buttons only matter while testing knobs. */}
+        {/* One grid cell for the left side: the footer is a 3-column grid, so the prune pair and
+            the hover readout must share column 1 or every column shifts. */}
+        <div className="full-auto-cockpit__ctx-footer-left">
         <span className="full-auto-cockpit__ctx-prune font-mono">
           {isDevBuild() && onPruneConfig && hasLearned ? (
             <button
@@ -246,6 +248,7 @@ export default function CockpitCtxStrip({
         <span className="full-auto-cockpit__ctx-footer-hover font-mono">
           {ribbonHover || "\u00a0"}
         </span>
+        </div>
 
         <div className="full-auto-cockpit__ctx-footer-readout" aria-label="Context length">
           <span className="full-auto-cockpit__ctx-value font-mono" title={`${ctxNumeric} tokens`}>

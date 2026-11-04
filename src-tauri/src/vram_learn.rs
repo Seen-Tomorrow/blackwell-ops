@@ -1752,8 +1752,12 @@ fn learned_vram_for_model_blocking(
                 }
             }
         }
-        // Batch is not a preference: a measurement at another batch is a different
-        // configuration, so it must not be picked even when ctx/kv/split match.
+        // Batch, kv quant and split are not preferences: a measurement at another value is a
+        // different configuration. Scoring kv at +2 was not enough - with no q8_0 row at that
+        // ctx, an f16 row won on ctx+split alone and the plan showed 8,192 MiB of KV for a q8_0
+        // config (1.88x the truth).
+        let mut entry_kv = "";
+        let mut entry_split = "";
         let mut entry_batch = "";
         let mut entry_ubatch = "";
         for token in key[prefix.len()..].split('|') {
@@ -1771,13 +1775,26 @@ fn learned_vram_for_model_blocking(
                     ctx_distance = w.abs_diff(got);
                 }
             } else if let Some(v) = token.strip_prefix("kv=") {
+                entry_kv = v;
                 if want_kv.as_deref() == Some(v) {
                     score += 2;
                 }
             } else if let Some(v) = token.strip_prefix("split=") {
+                entry_split = v;
                 if want_split.as_deref() == Some(v) {
                     score += 1;
                 }
+            }
+        }
+        // Hard filters: a row measured under different knobs is not a measurement of this one.
+        if let Some(want) = want_kv.as_deref() {
+            if !entry_kv.eq_ignore_ascii_case(want) {
+                continue;
+            }
+        }
+        if let Some(want) = want_split.as_deref() {
+            if entry_split.eq_ignore_ascii_case(want) == false {
+                continue;
             }
         }
         if let Some(want) = want_batch.as_deref() {
