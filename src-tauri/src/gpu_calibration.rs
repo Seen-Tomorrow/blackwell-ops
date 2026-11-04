@@ -54,12 +54,23 @@ pub fn forget_baseline(slot_idx: usize) {
 pub struct CalibrationSample {
     /// `nvml_used - buffers`, MiB.
     pub residual_mib: f64,
+    /// Processes NVML attributes to this device, with their size when the driver reports
+    /// one. Populated under TCC; WDDM returns no sizes, so the list only carries pids.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub processes: Vec<ProcessShare>,
     pub buffers_mib: f64,
     pub used_mib: f64,
     pub capacity_mib: f64,
     pub model: String,
     pub driver_model: String,
     pub taken_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProcessShare {
+    pub pid: u32,
+    /// MiB when the driver reports it (TCC), `None` under WDDM.
+    pub used_mib: Option<f64>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -178,6 +189,15 @@ pub fn capture(
         .ok()
         .and_then(|mut g| g.remove(&slot_idx));
 
+    let mut shares_per_device: std::collections::BTreeMap<u32, Vec<ProcessShare>> =
+        std::collections::BTreeMap::new();
+    for share in crate::gpu_process_mem::get_gpu_process_memory() {
+        shares_per_device.entry(share.gpu_index).or_default().push(ProcessShare {
+            pid: share.pid,
+            used_mib: share.used_mib,
+        });
+    }
+
     let mut store = load_store();
     let taken_at = chrono::Local::now().to_rfc3339();
     let mut recorded = 0usize;
@@ -206,6 +226,7 @@ pub fn capture(
         let device = store.devices.entry(gpu.index).or_default();
         device.samples.push(CalibrationSample {
             residual_mib: used_mib - buffers_mib,
+            processes: shares_per_device.get(&gpu.index).cloned().unwrap_or_default(),
             buffers_mib,
             used_mib,
             capacity_mib: gpu.memory_total_mib as f64,
@@ -238,6 +259,7 @@ mod tests {
     fn sample(residual: f64) -> CalibrationSample {
         CalibrationSample {
             residual_mib: residual,
+            processes: Vec::new(),
             buffers_mib: 1000.0,
             used_mib: 1000.0 + residual,
             capacity_mib: 97887.0,
