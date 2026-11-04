@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatTensorSplit, planLayerSplit } from "./vramLayerPlan";
+import { formatPlanTotal, formatTensorSplit, planLayerSplit } from "./vramLayerPlan";
 
 /** Real DeepSeek-V4.1 block sizes (GiB), as read from the tensor table. */
 const V41_BLOCKS_GIB = [
@@ -58,6 +58,20 @@ describe("layer split planning", () => {
     });
     expect(withKv!.totalMib[0] - withoutKv!.totalMib[0]).toBeCloseTo(260 * 22, 3);
     expect(withKv!.ts).toEqual(withoutKv!.ts);
+  });
+
+  it("reports the planned footprint and what it was fitted into", () => {
+    const plan = planLayerSplit({
+      perBlockMib: toMib(V41_BLOCKS_GIB),
+      tokenEmbdMib: 0.7 * 1024,
+      outputMib: 0.5 * 1024,
+      budgetsMib: [97 * 1024, 97 * 1024],
+    });
+    expect(plan).not.toBeNull();
+    // sum is the two device loads, and never exceeds the budgets it was fitted into
+    expect(plan!.sumMib).toBeCloseTo(plan!.totalMib[0] + plan!.totalMib[1], 3);
+    expect(plan!.sumMib).toBeLessThanOrEqual(plan!.budgetSumMib);
+    expect(formatPlanTotal(plan!)).toMatch(/GiB planned$/);
   });
 
   it("refuses inputs it cannot plan", () => {

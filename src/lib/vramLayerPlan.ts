@@ -39,6 +39,10 @@ export type LayerPlan = {
   /** total / budget per GPU; the plan minimises the worst of these. */
   util: number[];
   maxUtil: number;
+  /** Sum of totalMib across all devices — the whole planned footprint. */
+  sumMib: number;
+  /** Sum of the budgets the plan was fitted into. */
+  budgetSumMib: number;
 };
 
 const requirePositive = (values: number[]): boolean =>
@@ -83,6 +87,8 @@ export function planLayerSplit(input: LayerPlanInput): LayerPlan | null {
       totalMib,
       util,
       maxUtil: Math.max(util[0], util[1]),
+      sumMib: totalMib[0] + totalMib[1],
+      budgetSumMib: input.budgetsMib[0] + input.budgetsMib[1],
     };
   };
 
@@ -109,4 +115,9 @@ export function formatPlanLoads(plan: LayerPlan, budgetsMib: number[]): string[]
     const pct = budget > 0 ? Math.round((mib / budget) * 100) : 0;
     return `${(mib / 1024).toFixed(1)}/${(budget / 1024).toFixed(1)} GiB ${pct}%`;
   });
+}
+
+/** One line for the plan header: "151.4 / 194.0 GiB planned". */
+export function formatPlanTotal(plan: LayerPlan): string {
+  return `${(plan.sumMib / 1024).toFixed(1)} / ${(plan.budgetSumMib / 1024).toFixed(1)} GiB planned`;
 }
