@@ -1425,6 +1425,10 @@ pub struct LearnedVramForModel {
     pub entries: u32,
     /// True when the ctx the caller asked for was among them.
     pub ctx_matched: bool,
+    /// KV cache the launch actually allocated, summed over devices, MiB.
+    pub kv_mib: f64,
+    /// Context length of that launch — KV scales linearly from here.
+    pub ctx_tokens: Option<usize>,
 }
 
 /// Parse a ctx token from a learned key or a config value: `262144`, `256k`, `256K`.
@@ -1478,8 +1482,18 @@ pub fn get_learned_vram_for_model(
         count += 1;
         let mut score = 0u32;
         let mut ctx_hit = false;
+        let mut entry_ctx: Option<usize> = None;
+        let mut kv_mib = 0.0f64;
+        if let Some(snapshot) = entry.launch_snapshot.as_ref() {
+            for line in &snapshot.buffers {
+                if line.device.starts_with("CUDA") && line.category == "kv" {
+                    kv_mib += line.mib;
+                }
+            }
+        }
         for token in key[prefix.len()..].split('|') {
             if let Some(v) = token.strip_prefix("ctx=") {
+                entry_ctx = ctx_tokens_from_str(v);
                 ctx_hit = want_ctx.is_some_and(|w| ctx_tokens_from_str(v) == Some(w));
                 if ctx_hit {
                     score += 4;
@@ -1499,6 +1513,8 @@ pub fn get_learned_vram_for_model(
             host_mib: entry.host_mib.unwrap_or(0.0),
             entries: count,
             ctx_matched: ctx_hit,
+            kv_mib,
+            ctx_tokens: entry_ctx,
         };
         let better = match &best {
             None => true,

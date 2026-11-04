@@ -21,6 +21,9 @@ pub struct LayerBytes {
     pub output_mib: f64,
     /// Anything else (norms, biases).
     pub other_mib: f64,
+    /// Bytes of KV cache one token costs in ONE block, K and V together.
+    /// 0 when the header does not describe the attention geometry.
+    pub kv_bytes_per_token_per_layer: f64,
 }
 
 fn mib(bytes: u64) -> f64 {
@@ -39,8 +42,12 @@ pub fn layer_bytes_from_header(model_path: &str) -> Result<LayerBytes, String> {
     let mut output = 0u64;
     let mut other = 0u64;
 
+    let mut kv_geometry = 0.0f64;
     for path in &paths {
         let header = crate::gguf_patch::parse_header_from_file(path)?;
+        if kv_geometry <= 0.0 {
+            kv_geometry = kv_bytes_per_token_per_layer(&header);
+        }
         for tensor in &header.tensors {
             let bytes = crate::gguf_shape::tensor_bytes(tensor);
             if let Some(rest) = tensor.name.strip_prefix("blk.") {
@@ -79,9 +86,43 @@ pub fn layer_bytes_from_header(model_path: &str) -> Result<LayerBytes, String> {
         token_embd_mib: mib(token_embd),
         output_mib: mib(output),
         other_mib: mib(other),
+        kv_bytes_per_token_per_layer: kv_geometry,
     })
 }
 
+
+/// Bytes one token of KV costs in one block.
+///
+/// `attention.key_length` / `value_length` are authoritative when present: Qwen3.8-Flash
+/// (qwen4exp) has n_embd 2560 with 24 heads, so n_embd / n_head gives 106.7 while the real
+/// head size is 256. Deriving the head size from the embedding is how a KV estimate ends up
+/// 2.4x off.
+fn kv_bytes_per_token_per_layer(header: &crate::gguf_patch::HeaderFacts) -> f64 {
+    let Some(arch) = header.architecture.clone() else {
+        return 0.0;
+    };
+    let number = |suffix: &str| -> Option<f64> {
+        header.kv_ints.get(&format!("{arch}.{suffix}")).map(|v| *v as f64)
+    };
+    let heads = number("attention.head_count");
+    let heads_kv = number("attention.head_count_kv").or(heads);
+    let key_len = number("attention.key_length");
+    let value_len = number("attention.value_length");
+    let embd = number("embedding_length");
+    // f16 per element, two tensors (K and V).
+    let bytes = 2.0;
+    match (heads_kv, key_len, value_len) {
+        (Some(kv), Some(k), Some(v)) => kv * (k + v) * bytes,
+        (Some(kv), _, _) => match (embd, heads) {
+            (Some(e), Some(h)) if h > 0.0 => {
+                let head_dim = e / h;
+                kv * (head_dim + head_dim) * bytes
+            }
+            _ => 0.0,
+        },
+        _ => 0.0,
+    }
+}
 #[tauri::command]
 pub fn get_model_layer_bytes(model_path: String) -> Result<LayerBytes, String> {
     layer_bytes_from_header(&model_path)
@@ -100,6 +141,7 @@ mod tests {
             token_embd_mib: 0.0,
             output_mib: 0.0,
             other_mib: 0.0,
+            kv_bytes_per_token_per_layer: 0.0,
         };
         assert_eq!(bytes.per_block_mib.len(), 40);
     }

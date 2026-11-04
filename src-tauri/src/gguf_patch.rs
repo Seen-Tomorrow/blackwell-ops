@@ -331,6 +331,17 @@ pub(crate) fn parse_header<R: Read>(reader: R) -> Result<HeaderFacts, String> {
                 facts.kv_ints.insert(key.clone(), *n);
                 facts.arch_keys.push(key.clone());
             }
+            // Attention geometry: needed to size the KV cache from metadata. Small ints,
+            // and the head size cannot be derived from n_embd / n_head on every arch.
+            (k, KvValue::Int(n))
+                if k.ends_with(".attention.head_count")
+                    || k.ends_with(".attention.head_count_kv")
+                    || k.ends_with(".attention.key_length")
+                    || k.ends_with(".attention.value_length")
+                    || k.ends_with(".embedding_length") =>
+            {
+                facts.kv_ints.insert(key.clone(), *n);
+            }
             (k, KvValue::IntArray(a)) if k.ends_with(".ple.layers") => {
                 facts.kv_int_arrays.insert(key.clone(), a.clone());
             }
