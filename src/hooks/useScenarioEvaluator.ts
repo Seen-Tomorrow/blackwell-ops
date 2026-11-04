@@ -96,6 +96,13 @@ function liveEvalKey(
   return `${placementConfigKey(config)}|${learnedIdentityKey(config, autoVramLaunch)}|ctx=${config.ctx || ""}`;
 }
 
+/// A probe measures exactly one context. Reusing its number at another ctx mixes two
+/// configurations: the journal shows a 64K launch inheriting a 102,829 MiB estimate whose
+/// real launch was 18,039 MiB. The low-VRAM path always refused this; every probe does now.
+export function probeAppliesToCtx(anchorCtx: number, liveCtx?: number): boolean {
+  return liveCtx == null || anchorCtx === liveCtx;
+}
+
 function probeScenarioFields(
   session: ProbeSession | null,
   modelPath: string,
@@ -111,7 +118,7 @@ function probeScenarioFields(
   // A probe measures ONE ctx. Reusing it at another ctx reused the number wholesale - the
   // journal shows a 64K launch carrying a 102,829 MiB estimate whose launch was 18,039.
   // The low-VRAM path already refused this; every probe does now.
-  if (liveCtx != null && session.anchorCtx !== liveCtx) {
+  if (!probeAppliesToCtx(session.anchorCtx, liveCtx)) {
     return {};
   }
   if (
