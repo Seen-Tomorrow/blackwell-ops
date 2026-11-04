@@ -71,11 +71,22 @@ export function useLayerPlan(
     splitMode?: string;
     batch?: number;
     ubatch?: number;
+    /** Changes on every engine state change, so a finished launch is picked up without
+     *  nudging the ctx slider (`LOADING -> RUNNING -> IDLE`). */
+    stackSig?: string;
     modelMeta?: ModelMetadata | null;
   },
 ): { plan: LayerPlan | null; layerBytes: LayerBytes | null; kvMibPerLayer: number; loading: boolean } {
   const [layerBytes, setLayerBytes] = useState<LayerBytes | null>(null);
-  const [measuredKv, setMeasuredKv] = useState<{ kvMib: number; ctx: number; computeMib: number[] } | null>(null);
+  const [measuredKv, setMeasuredKv] = useState<{
+    kvMib: number;
+    ctx: number;
+    computeMib: number[];
+    /** Weights the engine actually held on the GPUs (GGUF total differs by host tensors). */
+    modelMib: number;
+    /** Recurrent-state + vision buffers, part of the launch inventory. */
+    rsMib: number;
+  } | null>(null);
   // No launch of this model yet: forecast it from launches of the same shape.
   const [cold, setCold] = useState<ColdForecast | null>(null);
   const [loading, setLoading] = useState(false);
@@ -142,7 +153,13 @@ export function useLayerPlan(
     let cancelled = false;
     // Debounce: the ctx slider changes this on every step.
     const timer = setTimeout(() => {
-    void invoke<{ kv_mib?: number; ctx_tokens?: number; compute_mib?: number[] } | null>("get_learned_vram_for_model", {
+    void invoke<{
+      kv_mib?: number;
+      ctx_tokens?: number;
+      compute_mib?: number[];
+      model_mib?: number;
+      rs_mib?: number;
+    } | null>("get_learned_vram_for_model", {
       modelPath,
       // Ask for the planned configuration: the nearest-ctx launch gives both the KV
       // baseline and the compute buffers that belong to that context.
@@ -157,6 +174,8 @@ export function useLayerPlan(
             kvMib: hit.kv_mib,
             ctx: hit.ctx_tokens,
             computeMib: Array.isArray(hit.compute_mib) ? hit.compute_mib : [],
+            modelMib: hit.model_mib ?? 0,
+            rsMib: hit.rs_mib ?? 0,
           });
         } else {
           setMeasuredKv(null);
@@ -170,7 +189,7 @@ export function useLayerPlan(
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [modelPath, knobs?.ctxTokens, knobs?.kvQuant, knobs?.splitMode, knobs?.batch, knobs?.ubatch]);
+  }, [modelPath, knobs?.ctxTokens, knobs?.kvQuant, knobs?.splitMode, knobs?.batch, knobs?.ubatch, knobs?.stackSig]);
 
   const kvPerLayer = kvMibPerLayer({
     ctxTokens: knobs?.ctxTokens,
@@ -193,22 +212,37 @@ export function useLayerPlan(
     return 0;
   }, [blocks, measuredKv, ctxForKv, kvPerLayer, cold]);
 
+  // The GGUF total counts tensors the engine keeps on the host; a launch reports what it
+  // actually placed on the GPUs (+1.3 GB on Q6_K, +0.7 GB on UD-IQ3_XXS). When a launch of
+  // this shape exists, match its weights instead of the file total.
+  const ggufWeightsMib = layerBytes
+    ? layerBytes.per_block_mib.reduce((sum, mib) => sum + mib, 0) +
+      (layerBytes.token_embd_mib ?? 0) +
+      (layerBytes.output_mib ?? 0) +
+      (layerBytes.other_mib ?? 0)
+    : 0;
+  const weightScale =
+    measuredKv && measuredKv.modelMib > 0 && ggufWeightsMib > 0
+      ? measuredKv.modelMib / ggufWeightsMib
+      : 1;
+
   const plan = useMemo(() => {
     if (!layerBytes || gpus.length !== 2) return null;
     return planFromLive({
-      perBlockMib: layerBytes.per_block_mib,
+      perBlockMib: layerBytes.per_block_mib.map((mib) => mib * weightScale),
       kvMibPerLayer: kvPerBlock > 0 ? kvPerBlock : undefined,
-      tokenEmbdMib: layerBytes.token_embd_mib,
-      outputMib: layerBytes.output_mib,
-      otherMib: layerBytes.other_mib,
+      tokenEmbdMib: (layerBytes.token_embd_mib ?? 0) * weightScale,
+      outputMib: (layerBytes.output_mib ?? 0) * weightScale,
+      otherMib: (layerBytes.other_mib ?? 0) * weightScale,
       freeMib: gpus.map((g) => Math.max(0, g.memory_free)),
       // Compute buffers are per device and were measured for this model; without them the
       // plan total is always below the forecast, which reads as error rather than scope.
       overheadMib: measuredKv?.computeMib ?? [],
-      overheadTotalMib: measuredKv ? undefined : cold?.compute_mib,
+      // rs + vision buffers belong to the launch inventory too (598 + 248 MiB on the 27B).
+      overheadTotalMib: measuredKv ? measuredKv.rsMib : cold?.compute_mib,
       calibration,
     });
-  }, [layerBytes, gpus, calibration, kvPerBlock, measuredKv, cold]);
+  }, [layerBytes, gpus, calibration, kvPerBlock, measuredKv, cold, weightScale]);
 
   // Journal the plan whenever the configuration changes, so it can be compared against the
   // FIT estimate and the measured launch in `forecast-log.jsonl` (same file, same join).

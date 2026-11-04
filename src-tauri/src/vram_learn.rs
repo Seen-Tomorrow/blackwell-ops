@@ -1478,6 +1478,13 @@ pub struct LearnedVramForModel {
     pub ctx_tokens: Option<usize>,
     /// Compute-graph buffer per device for that launch, MiB, indexed by CUDA index.
     pub compute_mib: Vec<f64>,
+    /// Weights the engine actually held on the GPUs, MiB. The GGUF total differs from this
+    /// by the tensors it keeps on the host, so a plan that wants to match the launch must
+    /// use this when it is known.
+    pub model_mib: f64,
+    /// Recurrent-state and vision-compute buffers on the GPUs, MiB - small but part of the
+    /// inventory the launch reports.
+    pub rs_mib: f64,
 }
 
 /// Parse a ctx token from a learned key or a config value: `262144`, `256k`, `256K`.
@@ -1531,6 +1538,24 @@ pub async fn get_learned_vram_for_model(
 /// KV is already linear in ctx; compute buffers are not, but between two neighbouring
 /// measurements a straight line is the best available answer and matches how the curve is
 /// drawn.
+/// One measured launch of the same shape, reduced to the numbers a plan needs.
+struct CtxPoint {
+    ctx: usize,
+    kv_mib: f64,
+    compute: Vec<f64>,
+    host_mib: f64,
+    vram_mib: f64,
+    model_mib: f64,
+    rs_mib: f64,
+}
+
+/// Linear interpolation of KV and compute between the two ctx points that bracket `want_ctx`.
+///
+/// The forecast's CURVE source interpolates the total between measured points; the plan used
+/// the NEAREST point's compute buffers instead, a step function. Between two points that reads
+/// as gigabytes of error, and it shrinks as more points are measured - exactly the symptom.
+/// KV is linear in ctx; compute buffers are affine in ctx for a fixed shape/batch/split, so a
+/// straight line between neighbours is the best available answer.
 fn interpolate_between_ctx(
     store: &LearnedVramStore,
     prefix: &str,
@@ -1540,7 +1565,7 @@ fn interpolate_between_ctx(
     want_batch: Option<&str>,
     want_ubatch: Option<&str>,
 ) -> Option<LearnedVramForModel> {
-    let mut points: Vec<(usize, f64, Vec<f64>, f64, f64)> = Vec::new();
+    let mut points: Vec<CtxPoint> = Vec::new();
     for (key, entry) in store.entries.iter() {
         if !key.starts_with(prefix) || entry.vram_mib <= 0.0 {
             continue;
@@ -1589,51 +1614,67 @@ fn interpolate_between_ctx(
             }
         }
         let mut kv_mib = 0.0;
+        let mut model_mib = 0.0;
+        let mut rs_mib = 0.0;
         let mut compute: Vec<f64> = Vec::new();
         if let Some(snapshot) = entry.launch_snapshot.as_ref() {
             for line in &snapshot.buffers {
                 let Some(idx) = cuda_device_index(&line.device) else {
                     continue;
                 };
-                if line.category == "kv" {
-                    kv_mib += line.mib;
-                } else if line.category == "compute" {
-                    if compute.len() <= idx {
-                        compute.resize(idx + 1, 0.0);
+                match line.category.as_str() {
+                    "kv" => kv_mib += line.mib,
+                    "model" => model_mib += line.mib,
+                    "rs" | "vision_compute" => rs_mib += line.mib,
+                    "compute" => {
+                        if compute.len() <= idx {
+                            compute.resize(idx + 1, 0.0);
+                        }
+                        compute[idx] += line.mib;
                     }
-                    compute[idx] += line.mib;
+                    _ => {}
                 }
             }
         }
-        points.push((ctx, kv_mib, compute, entry.host_mib.unwrap_or(0.0), entry.vram_mib));
+        points.push(CtxPoint {
+            ctx,
+            kv_mib,
+            compute,
+            host_mib: entry.host_mib.unwrap_or(0.0),
+            vram_mib: entry.vram_mib,
+            model_mib,
+            rs_mib,
+        });
     }
     if points.len() < 2 {
         return None;
     }
-    points.sort_by_key(|(ctx, ..)| *ctx);
-    let lower = points.iter().rev().find(|(ctx, ..)| *ctx <= want_ctx)?;
-    let upper = points.iter().find(|(ctx, ..)| *ctx >= want_ctx)?;
-    if lower.0 == upper.0 {
+    points.sort_by_key(|p| p.ctx);
+    let lower = points.iter().rev().find(|p| p.ctx <= want_ctx)?;
+    let upper = points.iter().find(|p| p.ctx >= want_ctx)?;
+    if lower.ctx == upper.ctx {
         return None;
     }
-    let span = (upper.0 - lower.0) as f64;
-    let t = (want_ctx.saturating_sub(lower.0)) as f64 / span;
+    let t = (want_ctx.saturating_sub(lower.ctx)) as f64 / (upper.ctx - lower.ctx) as f64;
     let lerp = |a: f64, b: f64| a + (b - a) * t;
-    let device_count = lower.2.len().max(upper.2.len());
+    let device_count = lower.compute.len().max(upper.compute.len());
     let mut compute = Vec::with_capacity(device_count);
     for i in 0..device_count {
-        let a = lower.2.get(i).copied().unwrap_or(0.0);
-        let b = upper.2.get(i).copied().unwrap_or(0.0);
+        let a = lower.compute.get(i).copied().unwrap_or(0.0);
+        let b = upper.compute.get(i).copied().unwrap_or(0.0);
         compute.push(lerp(a, b));
     }
     Some(LearnedVramForModel {
-        vram_mib: lerp(lower.3, upper.3),
-        host_mib: lerp(lower.3, upper.3),
+        vram_mib: lerp(lower.vram_mib, upper.vram_mib),
+        host_mib: lerp(lower.host_mib, upper.host_mib),
         entries: points.len() as u32,
         ctx_matched: false,
-        kv_mib: lerp(lower.1, upper.1),
+        kv_mib: lerp(lower.kv_mib, upper.kv_mib),
         ctx_tokens: Some(want_ctx),
         compute_mib: compute,
+        // Weights do not change with ctx: take the lower point rather than averaging sizes.
+        model_mib: lower.model_mib,
+        rs_mib: lerp(lower.rs_mib, upper.rs_mib),
     })
 }
 /// Index of a real CUDA device ("CUDA0", "CUDA1"), never the host pseudo-device.
@@ -1689,6 +1730,8 @@ fn learned_vram_for_model_blocking(
         let mut ctx_distance: usize = usize::MAX;
         let mut entry_ctx: Option<usize> = None;
         let mut kv_mib = 0.0f64;
+        let mut model_mib = 0.0f64;
+        let mut rs_mib = 0.0f64;
         let mut compute_by_device: Vec<f64> = Vec::new();
         if let Some(snapshot) = entry.launch_snapshot.as_ref() {
             for line in &snapshot.buffers {
@@ -1697,6 +1740,10 @@ fn learned_vram_for_model_blocking(
                 };
                 if line.category == "kv" {
                     kv_mib += line.mib;
+                } else if line.category == "model" {
+                    model_mib += line.mib;
+                } else if line.category == "rs" || line.category == "vision_compute" {
+                    rs_mib += line.mib;
                 } else if line.category == "compute" {
                     if compute_by_device.len() <= idx {
                         compute_by_device.resize(idx + 1, 0.0);
@@ -1751,6 +1798,8 @@ fn learned_vram_for_model_blocking(
             kv_mib,
             ctx_tokens: entry_ctx,
             compute_mib: compute_by_device,
+            model_mib,
+            rs_mib,
         };
         // Rank by (ctx bucket, score), then by how close the ctx is, then by size. The old
         // "tie -> highest vram" rule picked a stuffed-GPU spill run (27 GB of compute
