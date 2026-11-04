@@ -36,6 +36,10 @@ export type LayerPlan = {
   kvMib: number[];
   /** weights + KV per GPU in MiB. */
   totalMib: number[];
+  /** The budgets this plan was fitted into, per device, MiB. */
+  budgetsMib: number[];
+  /** Total block count, so the boundary reads "22 / 40". */
+  layerCount: number;
   /** total / budget per GPU; the plan minimises the worst of these. */
   util: number[];
   maxUtil: number;
@@ -84,6 +88,8 @@ export function planLayerSplit(input: LayerPlanInput): LayerPlan | null {
       ts: [firstLayers / blocks.length, lastLayers / blocks.length],
       weightsMib: [weights0, weights1],
       kvMib: [kv0, kv1],
+      budgetsMib: [input.budgetsMib[0], input.budgetsMib[1]],
+      layerCount: blocks.length,
       totalMib,
       util,
       maxUtil: Math.max(util[0], util[1]),

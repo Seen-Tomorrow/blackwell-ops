@@ -149,3 +149,107 @@
 .src-accent-border.src-accent--curve {
   border-color: color-mix(in srgb, var(--theme-warn) 40%, transparent);
 }
+/* ── PLAN popover (VramBadge header chip) ─────────────────────────────────────
+   Click-to-open comparison: per-GPU layer plan from the block table, beside what
+   FIT / LEARNED predict. Layout is absolute so it never reflows the glass. */
+.vram-plan-pop {
+  position: absolute;
+  top: 2.15rem;
+  right: 0.45rem;
+  z-index: 30;
+  min-width: 19rem;
+  padding: 0.5rem 0.65rem 0.55rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 94%, transparent);
+  box-shadow: 0 10px 26px color-mix(in srgb, #000 45%, transparent);
+  font-family: ui-monospace, "JetBrains Mono", monospace;
+}
+
+.vram-plan-pop__head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.vram-plan-pop__title {
+  font-size: var(--type-micro);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  color: var(--theme-accent);
+}
+
+.vram-plan-pop__ts {
+  margin-left: auto;
+  font-size: var(--type-micro);
+  color: var(--theme-text-muted);
+}
+
+.vram-plan-pop__copy,
+.vram-plan-pop__close {
+  border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
+  background: transparent;
+  color: var(--theme-text-muted);
+  font: inherit;
+  font-size: var(--type-micro);
+  padding: 0 0.3rem;
+  cursor: pointer;
+}
+
+.vram-plan-pop__copy:hover,
+.vram-plan-pop__close:hover {
+  color: var(--theme-accent);
+  border-color: color-mix(in srgb, var(--theme-accent) 45%, transparent);
+}
+
+.vram-plan-pop__row {
+  display: grid;
+  grid-template-columns: 2.6rem 1fr 2.4rem;
+  grid-template-areas: "gpu load pct" ". meta meta";
+  align-items: baseline;
+  gap: 0.1rem 0.35rem;
+  font-size: var(--type-tiny);
+  color: var(--theme-text);
+}
+
+.vram-plan-pop__gpu { grid-area: gpu; color: var(--theme-text-muted); }
+.vram-plan-pop__load { grid-area: load; }
+.vram-plan-pop__pct { grid-area: pct; text-align: right; }
+.vram-plan-pop__meta {
+  grid-area: meta;
+  font-size: var(--type-micro);
+  color: color-mix(in srgb, var(--theme-text-muted) 85%, transparent);
+}
+.vram-plan-pop__sep { color: var(--theme-text-muted); padding: 0 0.15rem; }
+
+.vram-plan-pop__row[data-tone="caution"] .vram-plan-pop__pct { color: var(--theme-warn); }
+.vram-plan-pop__row[data-tone="hot"] .vram-plan-pop__pct { color: var(--theme-danger); }
+
+.vram-plan-pop__total {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding-top: 0.25rem;
+  border-top: 1px solid color-mix(in srgb, var(--theme-border) 45%, transparent);
+  font-size: var(--type-micro);
+  color: var(--theme-text);
+}
+
+.vram-plan-pop__layers { color: var(--theme-text-muted); }
+
+.vram-plan-pop__forecast {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: var(--type-micro);
+  color: var(--theme-text-muted);
+}
+
+.vram-plan-pop__delta { color: color-mix(in srgb, var(--theme-text-muted) 80%, transparent); }
+
+.vram-plan-pop__empty {
+  font-size: var(--type-micro);
+  color: var(--theme-text-muted);
+}

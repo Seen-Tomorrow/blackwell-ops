@@ -1,8 +1,12 @@
+import { useState } from "react";
 import type { GpuInfo, VramManifest, ModelMetadata } from "../lib/types";
 import GpuTopology from "./GpuTopology";
 import FusionPane from "./FusionPane";
 import FusionDualStage, { type FusionPaneIdentity } from "./FusionDualStage";
 import MoeBadge from "./MoeBadge";
+import PlanPopover from "./PlanPopover";
+import { useLayerPlan } from "../hooks/useLayerPlan";
+import { useGpuCalibration } from "../hooks/useGpuCalibration";
 import MemorySourcePanel, {
   MemorySourceNeedOverlay,
   MemorySourceReprobe,
@@ -36,6 +40,8 @@ interface VramBadgeProps {
   /** Operator override: drop the auto-VRAM `--fit on` so -ngl/-ts/-ot own placement. */
   fitOff?: boolean;
   onToggleFitOff?: () => void;
+  /** Model whose layer table the planner reads; absent hides the PLAN chip. */
+  modelPath?: string;
   /** External draft pack selected — no main forecast / FIT. */
   draftOnly?: boolean;
   className?: string;
@@ -80,6 +86,7 @@ export default function VramBadge({
   gpuMask = "", vramTargetMib, modelLayerTotal, gpuLoadTargetsMib, offloadMode, onMoeSuggestionClick, hideMoeBadge = false,
   hideFitProbe = false, draftOnly = false, className,
   fitOff = false, onToggleFitOff,
+  modelPath,
   modelName, modelQuant, providerName, providerBuildVersion, profileLabel, cudaVersion, launchConfig, hwTopo,
   gpuIdleBaselineMib,
   gpuPerRow = 2,
@@ -87,6 +94,10 @@ export default function VramBadge({
   dualOrient = "side",
   secondaryPane = null,
 }: VramBadgeProps) {
+
+  const { calibration: gpuCalibration } = useGpuCalibration();
+  const { plan: layerPlan } = useLayerPlan(modelPath, gpus, gpuCalibration);
+  const [planOpen, setPlanOpen] = useState(false);
 
   const fusionOverlayActive =
     selectedSlotIdx !== null &&
@@ -322,9 +333,32 @@ export default function VramBadge({
             >
               {fitOff ? "FIT OFF" : "FIT ON"}
             </button>
+            <button
+              type="button"
+              className="vram-fc-source__reprobe vram-fc-header__reprobe"
+              data-plan-open={planOpen ? "1" : "0"}
+              aria-pressed={planOpen}
+              onClick={(e) => {
+                e.stopPropagation();
+                setPlanOpen((open: boolean) => !open);
+              }}
+              title={'Layer plan: per-GPU split from the block table, beside what FIT and LEARNED predict'}
+            >
+              PLAN
+            </button>
           </span>
         ) : null}
       </div>
+
+      {planOpen && (
+        <PlanPopover
+          plan={layerPlan}
+          calibration={gpuCalibration}
+          forecastNeedGb={displayVramNeedGb > 0 ? displayVramNeedGb : null}
+          forecastKind={sourceKind ?? null}
+          onClose={() => setPlanOpen(false)}
+        />
+      )}
 
       <div className="vram-badge-body vram-fc__body vram-fc__body--assisted relative min-h-0 overflow-hidden">
         <div className="vram-fc-measure relative">

@@ -85,6 +85,7 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     onValidate,
     fitOff = false,
     onToggleFitOff,
+    modelPath,
     isModelRunning,
     activeEngineAlias,
     activeEnginePort,
@@ -372,6 +373,7 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
               onValidate={onValidate}
               fitOff={fitOff}
               onToggleFitOff={onToggleFitOff}
+              modelPath={modelPath}
               activeEngineAlias={activeEngineAlias}
               activeEnginePort={activeEnginePort}
               selectedSlotIdx={selectedSlotIdx}
@@ -492,6 +494,8 @@ export interface EngineGpuForecastProps {
   /** VRAM badge FIT OFF — drop the auto-VRAM `--fit on`. */
   fitOff?: boolean;
   onToggleFitOff?: () => void;
+  /** Selected model path — the PLAN chip reads its block table. */
+  modelPath?: string;
   isModelRunning?: boolean;
   activeEngineAlias?: string;
   activeEnginePort?: number;

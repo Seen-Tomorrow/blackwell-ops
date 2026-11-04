@@ -3251,6 +3251,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         isValidating={vramCalc.isValidating}
         onValidate={vramCalc.validate}
         fitOff={fitOff}
+        modelPath={model?.path}
         onToggleFitOff={() => setFitOff((v) => !v)}
         isModelRunning={isModelRunning}
         activeEngineAlias={activeEngineAlias}
