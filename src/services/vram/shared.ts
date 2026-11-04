@@ -377,7 +377,16 @@ export function sanitizeLearnedCurve(
 export function interpolateLearnedCurveGb(
   curve: Array<{ ctx: number; vramMib: number; hostMib?: number }> | undefined,
   liveCtx: number,
-): { vramGb: number; hostGb: number | null; exact: boolean } | null {
+): {
+  vramGb: number;
+  hostGb: number | null;
+  exact: boolean;
+  /** The requested ctx is outside every measurement; the value is a clamp, not a curve.
+   *  Extrapolating the total linearly under-reads above the top point (compute buffers grow
+   *  faster than that), which is the dangerous direction: it would claim a fit that is not.
+   */
+  beyondMeasured?: boolean;
+} | null {
   const pts = sanitizeLearnedCurve(curve);
   if (pts.length === 0) return null;
   const exact = pts.find((p) => p.ctx === liveCtx);
@@ -398,12 +407,18 @@ export function interpolateLearnedCurveGb(
       break;
     }
   }
-  if (liveCtx <= pts[0].ctx) {
-    lo = pts[0];
-    hi = pts[1];
-  } else if (liveCtx >= pts[pts.length - 1].ctx) {
-    lo = pts[pts.length - 2];
-    hi = pts[pts.length - 1];
+  // Outside the measured range: clamp to the nearest measurement instead of extending the
+  // line. Extrapolation reads low above the top point, and a low forecast is the one that
+  // lets a launch spill unnoticed.
+  const beyondMeasured = liveCtx < pts[0].ctx || liveCtx > pts[pts.length - 1].ctx;
+  if (beyondMeasured) {
+    const edge = liveCtx < pts[0].ctx ? pts[0] : pts[pts.length - 1];
+    return {
+      vramGb: edge.vramMib / 1024,
+      hostGb: edge.hostMib != null ? edge.hostMib / 1024 : null,
+      exact: false,
+      beyondMeasured: true,
+    };
   }
   if (hi.ctx === lo.ctx) {
     return {

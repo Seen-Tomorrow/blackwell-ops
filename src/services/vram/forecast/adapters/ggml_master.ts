@@ -417,6 +417,11 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     fittedNgl,
     measurementAtLiveCtx,
   });
+  // A ctx outside the measured range is a clamp; ask for a real point instead of
+  // pretending the curve knows.
+  if (curveHit?.beyondMeasured) {
+    insets.needsReprobe = true;
+  }
   const spill = realSpill || insets.realSpill;
   const ramNeedTone = ramNeedToneForHost({
     overSystemMemory,

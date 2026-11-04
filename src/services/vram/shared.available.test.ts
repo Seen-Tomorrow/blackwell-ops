@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { GpuInfo } from "../../lib/types";
-import { computeGpuAvailableList, type RunningSlotInfo } from "./shared";
+import { computeGpuAvailableList, interpolateLearnedCurveGb, type RunningSlotInfo } from "./shared";
 
 /** Minimal GPU stub: NVML fields are what the function reads. */
 function gpu(overrides: Partial<GpuInfo>): GpuInfo {
@@ -61,5 +61,34 @@ describe("free VRAM for planning", () => {
       noSlots,
     );
     expect(free).toBeCloseTo((98304 - 1792) / 1024, 3);
+  });
+});
+describe("learned curve beyond its measured range", () => {
+  const curve = [
+    { ctx: 131_072, vramMib: 38_883 },
+    { ctx: 262_144, vramMib: 44_375 },
+    { ctx: 524_288, vramMib: 47_649 },
+  ];
+
+  it("interpolates between measured points", () => {
+    const hit = interpolateLearnedCurveGb(curve, 393_216);
+    expect(hit).not.toBeNull();
+    expect(hit!.beyondMeasured).toBeFalsy();
+    // Halfway between 262K and 512K.
+    expect(hit!.vramGb).toBeCloseTo((44_375 + 47_649) / 2 / 1024, 2);
+  });
+
+  it("clamps instead of extrapolating past the top point", () => {
+    const hit = interpolateLearnedCurveGb(curve, 1_048_576);
+    expect(hit).not.toBeNull();
+    expect(hit!.beyondMeasured).toBe(true);
+    // The extrapolated line would read ~52.9 GB here; the clamp reports the top point.
+    expect(hit!.vramGb).toBeCloseTo(47_649 / 1024, 3);
+  });
+
+  it("flags a ctx below the first point too", () => {
+    const hit = interpolateLearnedCurveGb(curve, 4_096);
+    expect(hit!.beyondMeasured).toBe(true);
+    expect(hit!.vramGb).toBeCloseTo(38_883 / 1024, 3);
   });
 });
