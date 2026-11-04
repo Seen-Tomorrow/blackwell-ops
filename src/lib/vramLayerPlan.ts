@@ -132,7 +132,7 @@ export function formatPlanTotal(plan: LayerPlan): string {
   return `${(plan.sumMib / 1024).toFixed(1)} / ${(plan.budgetSumMib / 1024).toFixed(1)} GiB planned`;
 }
 /** Conservative fallback when no calibration exists (a card that never launched here). */
-export const DEFAULT_CONTEXT_MIB = 768;
+export const DEFAULT_RUNTIME_OVERHEAD_MIB = 768;
 
 /** One row from get_gpu_calibration — the measured runtime cost per device. */
 export type GpuCalibrationRow = {
@@ -148,7 +148,7 @@ export type GpuCalibrationRow = {
  * does not grow with context length. Under WDDM the same figure cannot be attributed, so the
  * conservative default is used until a launch has been sampled there.
  */
-export function contextMibForDevice(
+export function runtimeOverheadMibForDevice(
   index: number,
   calibration?: GpuCalibrationRow[] | null,
 ): number {
@@ -156,19 +156,19 @@ export function contextMibForDevice(
   if (row && row.samples > 0 && Number.isFinite(row.median_residual_mib) && row.median_residual_mib > 0) {
     return row.median_residual_mib;
   }
-  return DEFAULT_CONTEXT_MIB;
+  return DEFAULT_RUNTIME_OVERHEAD_MIB;
 }
 
-/** Planner budgets: NVML free, minus the measured runtime cost and any draft model. */
+/** Planner budgets: NVML free, minus the measured runtime overhead and any draft model. */
 export function budgetsFromFree(
   freeMib: number[],
-  contextsMib: number[],
+  overheadMibList: number[],
   draftMib: number[] = [],
 ): number[] {
   return freeMib.map((free, i) => {
-    const context = contextsMib[i] ?? DEFAULT_CONTEXT_MIB;
+    const overhead = overheadMibList[i] ?? DEFAULT_RUNTIME_OVERHEAD_MIB;
     const draft = draftMib[i] ?? 0;
-    return Math.max(0, free - context - draft);
+    return Math.max(0, free - overhead - draft);
   });
 }
 
@@ -185,8 +185,8 @@ export function planFromLive(args: {
   calibration?: GpuCalibrationRow[] | null;
   draftMib?: number[];
 }): LayerPlan | null {
-  const contexts = args.freeMib.map((_, i) => contextMibForDevice(i, args.calibration));
-  const budgetsMib = budgetsFromFree(args.freeMib, contexts, args.draftMib);
+  const overheads = args.freeMib.map((_, i) => runtimeOverheadMibForDevice(i, args.calibration));
+  const budgetsMib = budgetsFromFree(args.freeMib, overheads, args.draftMib);
   return planLayerSplit({
     perBlockMib: args.perBlockMib,
     tokenEmbdMib: args.tokenEmbdMib,

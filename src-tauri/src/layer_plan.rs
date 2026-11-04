@@ -48,8 +48,15 @@ pub fn layer_bytes_from_header(model_path: &str) -> Result<LayerBytes, String> {
         if kv_geometry <= 0.0 {
             kv_geometry = kv_bytes_per_token_per_layer(&header);
         }
+        let file_len = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+        let by_span: std::collections::HashMap<String, u64> =
+            offsets_bytes(file_len, header.header_end, &header.tensors)
+                .into_iter()
+                .collect();
         for tensor in &header.tensors {
-            let bytes = crate::gguf_shape::tensor_bytes(tensor);
+            // A known type gives the exact size; an unknown one falls back to its offset span.
+            let bytes = crate::gguf_shape::tensor_bytes(tensor)
+                .max(by_span.get(&tensor.name).copied().unwrap_or(0));
             if let Some(rest) = tensor.name.strip_prefix("blk.") {
                 if let Some((index, _)) = rest.split_once('.') {
                     if let Ok(block) = index.parse::<usize>() {
@@ -122,6 +129,30 @@ fn kv_bytes_per_token_per_layer(header: &crate::gguf_patch::HeaderFacts) -> f64 
         },
         _ => 0.0,
     }
+}
+
+/// Byte span of every tensor in one shard, from the offsets GGUF already stores.
+///
+/// 	ensor_bytes needs a block-size table and returns 0 for a type it does not know -
+/// Qwen3.8-Flash Q2_0 ships 202 tensors of ggml type 42, which silently removed ~32 GiB of
+/// weights from the plan. Offsets cannot be wrong about how big a tensor is: sort them and
+/// take the next offset (the last one runs to the end of the data section).
+fn offsets_bytes(file_len: u64, header_end: u64, tensors: &[crate::gguf_patch::TensorInfo]) -> Vec<(String, u64)> {
+    let data_end = file_len.saturating_sub(header_end);
+    let mut by_offset: Vec<(u64, &str)> = tensors
+        .iter()
+        .map(|t| (t.data_offset, t.name.as_str()))
+        .collect();
+    by_offset.sort_by_key(|(offset, _)| *offset);
+    let mut out = Vec::with_capacity(by_offset.len());
+    for (i, (offset, name)) in by_offset.iter().enumerate() {
+        let end = by_offset
+            .get(i + 1)
+            .map(|(next, _)| *next)
+            .unwrap_or(data_end);
+        out.push(((*name).to_string(), end.saturating_sub(*offset)));
+    }
+    out
 }
 #[tauri::command]
 pub fn get_model_layer_bytes(model_path: String) -> Result<LayerBytes, String> {

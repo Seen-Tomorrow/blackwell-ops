@@ -12,12 +12,15 @@ export default function PlanPopover({
   calibration,
   forecastNeedGb,
   forecastKind,
+  kvMibPerLayer = 0,
   onClose,
 }: {
   plan: LayerPlan | null;
   calibration: GpuCalibrationRow[];
   forecastNeedGb: number | null;
   forecastKind: string | null;
+  /** KV per layer at the planned context, MiB (0 when the metadata cannot express it). */
+  kvMibPerLayer?: number;
   onClose: () => void;
 }) {
   if (!plan) {
@@ -37,8 +40,8 @@ export default function PlanPopover({
   const contextLabel = (index: number) => {
     const row = calibration.find((c) => c.index === index);
     return row && row.samples > 0
-      ? `ctx ${Math.round(row.median_residual_mib)} MiB · ${row.samples} launches`
-      : "ctx est. 768 MiB · no calibration";
+      ? `overhead ${Math.round(row.median_residual_mib)} MiB · ${row.samples} launches`
+      : "overhead est. 768 MiB · no calibration";
   };
 
   return (
@@ -82,7 +85,9 @@ export default function PlanPopover({
       <div className="vram-plan-pop__total">
         <span>{formatPlanTotal(plan)}</span>
         <span className="vram-plan-pop__layers">
-          {`${plan.boundary} / ${plan.layerCount} layers`}
+          {kvMibPerLayer > 0
+            ? `${plan.boundary} / ${plan.layerCount} layers · KV ${Math.round(kvMibPerLayer)} MiB/layer`
+            : `${plan.boundary} / ${plan.layerCount} layers · weights only`}
         </span>
       </div>
 

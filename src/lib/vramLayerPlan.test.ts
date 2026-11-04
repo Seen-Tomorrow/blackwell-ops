@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  DEFAULT_CONTEXT_MIB,
+  DEFAULT_RUNTIME_OVERHEAD_MIB,
   budgetsFromFree,
-  contextMibForDevice,
+  runtimeOverheadMibForDevice,
   formatPlanTotal,
   formatTensorSplit,
   planFromLive,
@@ -104,14 +104,14 @@ describe("calibrated budgets", () => {
       { index: 0, median_residual_mib: 628.1, samples: 2 },
       { index: 1, median_residual_mib: 632.6, samples: 2 },
     ];
-    expect(contextMibForDevice(0, calibration)).toBeCloseTo(628.1, 1);
-    expect(contextMibForDevice(1, calibration)).toBeCloseTo(632.6, 1);
+    expect(runtimeOverheadMibForDevice(0, calibration)).toBeCloseTo(628.1, 1);
+    expect(runtimeOverheadMibForDevice(1, calibration)).toBeCloseTo(632.6, 1);
     // A card that never launched here: default, not zero.
-    expect(contextMibForDevice(2, calibration)).toBe(DEFAULT_CONTEXT_MIB);
-    expect(contextMibForDevice(0, null)).toBe(DEFAULT_CONTEXT_MIB);
+    expect(runtimeOverheadMibForDevice(2, calibration)).toBe(DEFAULT_RUNTIME_OVERHEAD_MIB);
+    expect(runtimeOverheadMibForDevice(0, null)).toBe(DEFAULT_RUNTIME_OVERHEAD_MIB);
     // A row with no samples is not evidence of a zero-cost context.
-    expect(contextMibForDevice(0, [{ index: 0, median_residual_mib: 0, samples: 0 }])).toBe(
-      DEFAULT_CONTEXT_MIB,
+    expect(runtimeOverheadMibForDevice(0, [{ index: 0, median_residual_mib: 0, samples: 0 }])).toBe(
+      DEFAULT_RUNTIME_OVERHEAD_MIB,
     );
   });
 
