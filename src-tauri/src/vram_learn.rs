@@ -1456,7 +1456,23 @@ fn ctx_tokens_from_str(raw: &str) -> Option<usize> {
 /// silently showing the highest figure ever recorded - this scores the recorded entries on the
 /// knobs the user actually chooses (ctx, then kv, then split) and reports whether ctx matched.
 #[tauri::command]
-pub fn get_learned_vram_for_model(
+pub async fn get_learned_vram_for_model(
+    model_path: String,
+    ctx: Option<String>,
+    kv_quant: Option<String>,
+    split: Option<String>,
+) -> Option<LearnedVramForModel> {
+    // Loads the learned store (a few hundred KB) and scans it; off the UI thread.
+    tokio::task::spawn_blocking(move || {
+        learned_vram_for_model_blocking(model_path, ctx, kv_quant, split)
+    })
+    .await
+    .ok()
+    .flatten()
+}
+
+#[allow(clippy::needless_return)]
+fn learned_vram_for_model_blocking(
     model_path: String,
     ctx: Option<String>,
     kv_quant: Option<String>,

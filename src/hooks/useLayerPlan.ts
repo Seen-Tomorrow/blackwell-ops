@@ -83,7 +83,7 @@ export function useLayerPlan(
     return () => {
       cancelled = true;
     };
-  }, [modelPath, knobs?.ctxTokens, knobs?.kvQuant]);
+  }, [modelPath]);
 
   // KV from the last real launch beats any formula: hybrid-attention models (Qwen3.8-Flash
   // carries KV in 12 of 48 blocks) make a per-block estimate off by 4x.
@@ -93,6 +93,8 @@ export function useLayerPlan(
       return;
     }
     let cancelled = false;
+    // Debounce: the ctx slider changes this on every step.
+    const timer = setTimeout(() => {
     void invoke<{ kv_mib?: number; ctx_tokens?: number; compute_mib?: number[] } | null>("get_learned_vram_for_model", {
       modelPath,
       // Ask for the planned configuration: the nearest-ctx launch gives both the KV
@@ -116,8 +118,10 @@ export function useLayerPlan(
       .catch(() => {
         if (!cancelled) setMeasuredKv(null);
       });
+    }, 220);
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [modelPath, knobs?.ctxTokens, knobs?.kvQuant]);
 

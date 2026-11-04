@@ -154,9 +154,36 @@ fn offsets_bytes(file_len: u64, header_end: u64, tensors: &[crate::gguf_patch::T
     }
     out
 }
+/// Parsed tables keyed by path + mtime: reading a 35 GB model's headers is ~100 ms, and
+/// the plan asks again on every UI interaction.
+static LAYER_CACHE: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<(String, u64), LayerBytes>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
+/// Layer table for a model — cached, and parsed OFF the UI thread.
+///
+/// Tauri runs a plain `fn` command on the main thread, so the previous synchronous version
+/// froze the window (\"Not responding\") for seconds while it walked every shard header.
 #[tauri::command]
-pub fn get_model_layer_bytes(model_path: String) -> Result<LayerBytes, String> {
-    layer_bytes_from_header(&model_path)
+pub async fn get_model_layer_bytes(model_path: String) -> Result<LayerBytes, String> {
+    let mtime = std::fs::metadata(&model_path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let key = (model_path.clone(), mtime);
+    if let Ok(cache) = LAYER_CACHE.lock() {
+        if let Some(hit) = cache.get(&key) {
+            return Ok(hit.clone());
+        }
+    }
+    let computed = tokio::task::spawn_blocking(move || layer_bytes_from_header(&model_path))
+        .await
+        .map_err(|e| format!("layer table task failed: {e}"))??;
+    if let Ok(mut cache) = LAYER_CACHE.lock() {
+        cache.insert(key, computed.clone());
+    }
+    Ok(computed)
 }
 
 #[cfg(test)]
