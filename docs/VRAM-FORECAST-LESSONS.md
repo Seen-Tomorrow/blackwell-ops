@@ -98,3 +98,24 @@ A model shipped 202 tensors of ggml type 42 that the table did not know, silentl
 - ctx above `n_ctx_train` is capped by the engine ("exceeding the training context - capping"), so a
   forecast above that describes a configuration the launch will not run unless rope scaling
   (`--rope-scaling` / `--yarn-*`) is exposed in the template.
+## The engine's own fit log is the ground truth for "does it fit"
+
+On load with `-fit on`, llama-server prints the decision and the placement it will use. Parse these,
+do not infer them:
+
+```
+common_params_fit_impl: - CUDA0 (...): 97475 total, 80524 used, 16394 free vs. target of 1024
+common_params_fit_impl: projected to use 176042 MiB of device memory vs. 193840 MiB of free
+common_fit_params: targets for free memory can be met on all devices, no changes needed
+```
+
+- `no changes needed` = it fits as requested. Any other variant means it **shrunk something** - the
+  speed cliff (compute/batch reduced) with the model still loading.
+- Its per-device split can be very unbalanced (80,524 / 95,517 MiB seen on 2x96 GB), and it will not
+  match our plan's split. Painting our placement against free VRAM therefore contradicts the engine:
+  a 512K run printed `OVER FREE - SPILL` while the engine reported 176,042 vs 193,840 free.
+- Capture `fit_verdict`, `fit_projected_mib`, `fit_changed` and the per-device used/free into the
+  learned entry. That is the squeeze detector's input and it removes the guesswork from SPILL paint.
+
+- Runs here use `--mlock` + mmap: GPU inventory stays comparable, host accounting does not. Never
+  compare host totals across mlock/mmap runs; use GPU terms only.
