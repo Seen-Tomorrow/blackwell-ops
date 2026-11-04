@@ -96,6 +96,9 @@ export function useLayerPlan(
     rsMib: number;
     /** Compute buffers summed over devices; used when the per-device array is short. */
     computeTotalMib: number;
+    /** The launch total (vram_mib). Overhead = total - weights - KV, which cannot disagree
+     *  with the terms it is made of. */
+    vramMib: number;
   } | null>(null);
   // No launch of this model yet: forecast it from launches of the same shape.
   const [cold, setCold] = useState<ColdForecast | null>(null);
@@ -173,6 +176,7 @@ export function useLayerPlan(
       ctx_tokens?: number;
       compute_mib?: number[];
       compute_total_mib?: number;
+      vram_mib?: number;
       model_mib?: number;
       rs_mib?: number;
     } | null>("get_learned_vram_for_model", {
@@ -193,6 +197,7 @@ export function useLayerPlan(
             modelMib: hit.model_mib ?? 0,
             rsMib: hit.rs_mib ?? 0,
             computeTotalMib: hit.compute_total_mib ?? 0,
+            vramMib: hit.vram_mib ?? 0,
           });
         } else {
           setMeasuredKv(null);
@@ -254,12 +259,12 @@ export function useLayerPlan(
       freeMib: gpus.map((g) => Math.max(0, g.memory_free)),
       // Compute buffers are per device and were measured for this model; without them the
       // plan total is always below the forecast, which reads as error rather than scope.
-      // A short per-device array means a card would silently receive zero; fall back to the
-      // measured total split by layers instead.
-      overheadMib: measuredKv && measuredKv.computeMib.length >= gpus.length ? measuredKv.computeMib : [],
+      // Overhead is the measured total minus the terms we know: weights on the GPUs and KV.
+      // Deriving it beats transporting per-device compute arrays, which arrived short and
+      // made a card look free. Split by layer count, because compute buffers follow layers.
+      overheadMib: [],
       overheadTotalMib: measuredKv
-        ? measuredKv.rsMib +
-          (measuredKv.computeMib.length >= gpus.length ? 0 : measuredKv.computeTotalMib)
+        ? Math.max(0, measuredKv.vramMib - measuredKv.modelMib - measuredKv.kvMib)
         : cold?.compute_mib,
       // rs + vision buffers belong to the launch inventory too (598 + 248 MiB on the 27B).
       calibration,

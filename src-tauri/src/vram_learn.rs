@@ -1848,28 +1848,26 @@ fn learned_vram_for_model_blocking(
             best = Some((bucket, score, ctx_distance, candidate));
         }
     }
-    // No relaxed retry here. Falling back to a different kv quant or batch looked helpful
-    // and was not: the store holds f16 and q8_0 rows at the same ctx, so the fallback returned
-    // whichever it met first - the plan flipped between 22.9 and 17.6 GB at the same 131072.
-    // A missing configuration now returns None, and the cold/profile path (which labels its
-    // basis) or no plan at all is preferable to a mislabelled measurement.
-
-    let picked = best.map(|(_, _, _, mut entry)| {
-        entry.entries = count;
-        entry
-    });
-    match picked {
-        Some(entry) if entry.ctx_matched || want_ctx.is_none() => Some(entry),
-        Some(entry) => want_ctx
-            .and_then(|want| {
-                interpolate_between_ctx(&store, &prefix, want, want_kv.as_deref(), want_split.as_deref(), want_batch.as_deref(), want_ubatch.as_deref())
-            })
-            .or(Some(entry)),
-        None => want_ctx.and_then(|want| {
-            interpolate_between_ctx(&store, &prefix, want, want_kv.as_deref(), want_split.as_deref(), want_batch.as_deref(), want_ubatch.as_deref())
+    // One source per answer. An exact row is returned as-is; otherwise the two bracketing
+    // rows are interpolated; otherwise there is no measurement. The old `.or(Some(entry))`
+    // mixed an entry measured at another ctx into a result labelled with the requested one -
+    // KV from the 256K row with compute from the 64K row.
+    match best {
+        Some((_, _, _, entry)) if entry.ctx_matched || want_ctx.is_none() => Some(entry),
+        _ => want_ctx.and_then(|want| {
+            interpolate_between_ctx(
+                &store,
+                &prefix,
+                want,
+                want_kv.as_deref(),
+                want_split.as_deref(),
+                want_batch.as_deref(),
+                want_ubatch.as_deref(),
+            )
         }),
     }
 }
+
 #[tauri::command]
 #[allow(clippy::too_many_arguments)] // Tauri IPC: one param per wire field; bundling would change the invoke shape
 pub fn get_learned_vram(
