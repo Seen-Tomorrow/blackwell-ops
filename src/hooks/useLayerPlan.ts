@@ -302,6 +302,14 @@ export function useLayerPlan(
         // "measured" = scaled from a real launch; "geometry" = header-only guess, which is
         // an upper bound because hybrid-attention models do not cache every block.
         kv_source: measuredKv ? "measured" : cold ? "profile" : kvPerBlock > 0 ? "geometry" : "none",
+        // Diagnostics: which raw terms this plan used. The 400K case showed KV from the
+        // launch row but only a third of its compute buffers, so the next reproduction has to
+        // show the inputs, not just the result.
+        measured_compute_mib: measuredKv?.computeMib ?? null,
+        measured_model_mib: measuredKv?.modelMib ?? null,
+        measured_rs_mib: measuredKv?.rsMib ?? null,
+        cold_compute_mib: cold?.compute_mib ?? null,
+        weight_scale: weightScale,
       },
     }).catch(() => {
       // Journaling is diagnostic; never let it break the plan.
