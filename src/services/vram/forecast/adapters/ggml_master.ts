@@ -30,6 +30,7 @@ import {
   launchPaintFromGate,
   needToneFromLaunchPaint,
   parseCtx,
+  probeAppliesToCtx,
   resolveSplitTax,
   round2,
   sanitizeLearnedCurve,
@@ -97,8 +98,24 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     gb == null ? null : needsDraftAdd ? gb + draftAddon : gb;
   const splitMode = cfgStr(input.engineConfig, "split", "none");
   const splitTax = resolveSplitTax(splitMode, liveCtx, input.fitPoints);
-  const probeGb = input.fitProbeVramMib != null && input.fitProbeVramMib > 0
+  const probeAnchorCtx = input.fitProbeAnchorCtx ?? 0;
+  // A probe measured one ctx. At another ctx it is an estimate, not a measurement: scale it
+  // by the same ctx delta the learned points use, instead of reusing the raw number (which
+  // was off by tens of GB) or dropping it entirely (which left the glass stuck on EVALUATING).
+  const probeGbRaw = input.fitProbeVramMib != null && input.fitProbeVramMib > 0
     ? input.fitProbeVramMib / 1024
+    : null;
+  const probeGb = probeGbRaw != null
+    ? probeAppliesToCtx(probeAnchorCtx, liveCtx)
+      ? probeGbRaw
+      : adjustMeasuredGbForCtx(
+          probeGbRaw,
+          probeAnchorCtx,
+          liveCtx,
+          input.fitPoints,
+          input.modelMeta,
+          kvQuant,
+        )
     : null;
   const probeHostGb = input.fitProbeHostMib != null && input.fitProbeHostMib > 0
     ? input.fitProbeHostMib / 1024

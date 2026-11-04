@@ -304,6 +304,13 @@ function extrapolateVramFromPoints(
   return Math.max(0, totalMib);
 }
 
+/// A probe measures exactly one context. At another ctx it is still useful, but only as a
+/// scaled estimate: reusing it raw let a 64K launch carry a 102,829 MiB reading whose real
+/// launch was 18,039 MiB (forecast-log.jsonl).
+export function probeAppliesToCtx(anchorCtx: number, liveCtx?: number): boolean {
+  return liveCtx == null || anchorCtx <= 0 || anchorCtx === liveCtx;
+}
+
 /** Shift a measured GPU total from anchor ctx to the live slider ctx. */
 export function adjustMeasuredGbForCtx(
   measuredGb: number,

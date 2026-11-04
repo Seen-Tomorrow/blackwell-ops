@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { probeAppliesToCtx } from "./useScenarioEvaluator";
+import { probeAppliesToCtx } from "../services/vram/shared";
 
 /**
  * A FIT probe measures one configuration. Applying it at another ctx is what let a 64K launch
