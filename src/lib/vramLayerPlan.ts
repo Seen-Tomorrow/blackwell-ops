@@ -121,3 +121,66 @@ export function formatPlanLoads(plan: LayerPlan, budgetsMib: number[]): string[]
 export function formatPlanTotal(plan: LayerPlan): string {
   return `${(plan.sumMib / 1024).toFixed(1)} / ${(plan.budgetSumMib / 1024).toFixed(1)} GiB planned`;
 }
+/** Conservative fallback when no calibration exists (a card that never launched here). */
+export const DEFAULT_CONTEXT_MIB = 768;
+
+/** One row from get_gpu_calibration — the measured runtime cost per device. */
+export type GpuCalibrationRow = {
+  index: number;
+  median_residual_mib: number;
+  samples: number;
+};
+
+/**
+ * CUDA context + allocator slack for a device.
+ *
+ * Measured under TCC on this box at 64K and 512K: 627 and 629 MiB — flat, because a context
+ * does not grow with context length. Under WDDM the same figure cannot be attributed, so the
+ * conservative default is used until a launch has been sampled there.
+ */
+export function contextMibForDevice(
+  index: number,
+  calibration?: GpuCalibrationRow[] | null,
+): number {
+  const row = calibration?.find((c) => c.index === index);
+  if (row && row.samples > 0 && Number.isFinite(row.median_residual_mib) && row.median_residual_mib > 0) {
+    return row.median_residual_mib;
+  }
+  return DEFAULT_CONTEXT_MIB;
+}
+
+/** Planner budgets: NVML free, minus the measured runtime cost and any draft model. */
+export function budgetsFromFree(
+  freeMib: number[],
+  contextsMib: number[],
+  draftMib: number[] = [],
+): number[] {
+  return freeMib.map((free, i) => {
+    const context = contextsMib[i] ?? DEFAULT_CONTEXT_MIB;
+    const draft = draftMib[i] ?? 0;
+    return Math.max(0, free - context - draft);
+  });
+}
+
+/** End-to-end plan from live numbers: layer sizes + free VRAM + calibration. */
+export function planFromLive(args: {
+  perBlockMib: number[];
+  tokenEmbdMib?: number;
+  outputMib?: number;
+  otherMib?: number;
+  kvMibPerLayer?: number;
+  freeMib: number[];
+  calibration?: GpuCalibrationRow[] | null;
+  draftMib?: number[];
+}): LayerPlan | null {
+  const contexts = args.freeMib.map((_, i) => contextMibForDevice(i, args.calibration));
+  const budgetsMib = budgetsFromFree(args.freeMib, contexts, args.draftMib);
+  return planLayerSplit({
+    perBlockMib: args.perBlockMib,
+    tokenEmbdMib: args.tokenEmbdMib,
+    outputMib: args.outputMib,
+    otherMib: args.otherMib,
+    kvMibPerLayer: args.kvMibPerLayer,
+    budgetsMib,
+  });
+}

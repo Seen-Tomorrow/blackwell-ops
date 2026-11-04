@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { formatPlanTotal, formatTensorSplit, planLayerSplit } from "./vramLayerPlan";
+import {
+  DEFAULT_CONTEXT_MIB,
+  budgetsFromFree,
+  contextMibForDevice,
+  formatPlanTotal,
+  formatTensorSplit,
+  planFromLive,
+  planLayerSplit,
+} from "./vramLayerPlan";
 
 /** Real DeepSeek-V4.1 block sizes (GiB), as read from the tensor table. */
 const V41_BLOCKS_GIB = [
@@ -88,5 +96,49 @@ describe("layer split planning", () => {
       budgetsMib: [97 * GIB / 1024, 97 * GIB / 1024],
     });
     expect(plan).not.toBeNull();
+  });
+});
+describe("calibrated budgets", () => {
+  it("uses the measured median per device, and a conservative default without one", () => {
+    const calibration = [
+      { index: 0, median_residual_mib: 628.1, samples: 2 },
+      { index: 1, median_residual_mib: 632.6, samples: 2 },
+    ];
+    expect(contextMibForDevice(0, calibration)).toBeCloseTo(628.1, 1);
+    expect(contextMibForDevice(1, calibration)).toBeCloseTo(632.6, 1);
+    // A card that never launched here: default, not zero.
+    expect(contextMibForDevice(2, calibration)).toBe(DEFAULT_CONTEXT_MIB);
+    expect(contextMibForDevice(0, null)).toBe(DEFAULT_CONTEXT_MIB);
+    // A row with no samples is not evidence of a zero-cost context.
+    expect(contextMibForDevice(0, [{ index: 0, median_residual_mib: 0, samples: 0 }])).toBe(
+      DEFAULT_CONTEXT_MIB,
+    );
+  });
+
+  it("subtracts context and draft, and never goes negative", () => {
+    expect(budgetsFromFree([67_802, 68_622], [628.1, 632.6])).toEqual([
+      67_173.9, 67_989.4,
+    ]);
+    expect(budgetsFromFree([1000], [800], [400])).toEqual([0]);
+  });
+
+  it("plans from live free VRAM with calibration applied", () => {
+    const calibration = [
+      { index: 0, median_residual_mib: 628.1, samples: 2 },
+      { index: 1, median_residual_mib: 632.6, samples: 2 },
+    ];
+    const plan = planFromLive({
+      perBlockMib: toMib(V41_BLOCKS_GIB),
+      tokenEmbdMib: 0.7 * 1024,
+      outputMib: 0.5 * 1024,
+      // Idle cards under TCC (no engine loaded): 97,475 MiB free each.
+      freeMib: [97_475, 97_475],
+      calibration,
+    });
+    expect(plan).not.toBeNull();
+    // Budgets are free minus context, so the plan must fit inside those.
+    expect(plan!.totalMib[0]).toBeLessThanOrEqual(97_475 - 628.1);
+    expect(plan!.totalMib[1]).toBeLessThanOrEqual(97_475 - 632.6);
+    expect(plan!.sumMib).toBeLessThanOrEqual(plan!.budgetSumMib);
   });
 });
