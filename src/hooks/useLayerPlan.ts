@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useTauriListen } from "./useTauriListen";
 import type { GpuInfo, ModelMetadata } from "../lib/types";
 import {
   planFromLive,
@@ -97,6 +98,11 @@ export function useLayerPlan(
   // No launch of this model yet: forecast it from launches of the same shape.
   const [cold, setCold] = useState<ColdForecast | null>(null);
   const [loading, setLoading] = useState(false);
+  // Bumped whenever a launch persists a learned row; feeds the lookup deps below.
+  const [storeVersion, setStoreVersion] = useState(0);
+  useTauriListen<null>("learned-vram-changed", () => {
+    setStoreVersion((v) => v + 1);
+  });
 
   useEffect(() => {
     if (!modelPath) {
@@ -196,7 +202,7 @@ export function useLayerPlan(
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [modelPath, knobs?.ctxTokens, knobs?.kvQuant, knobs?.splitMode, knobs?.batch, knobs?.ubatch, knobs?.stackSig]);
+  }, [modelPath, knobs?.ctxTokens, knobs?.kvQuant, knobs?.splitMode, knobs?.batch, knobs?.ubatch, knobs?.stackSig, storeVersion]);
 
   const kvPerLayer = kvMibPerLayer({
     ctxTokens: knobs?.ctxTokens,

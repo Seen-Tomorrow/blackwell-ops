@@ -406,6 +406,9 @@ impl LogHub {
                                 {
                                     tables_persisted = total;
                                     tables_seen = total;
+                                    // The plan reads this store; tell it a launch landed so it
+                                    // re-reads without waiting for the ctx slider to move.
+                                    let _ = app_handle.emit("learned-vram-changed", ());
                                     let added = total.saturating_sub(prev);
                                     if added > 0 {
                                         Self::emit_vram_learn_progress(
