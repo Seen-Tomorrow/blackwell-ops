@@ -1511,7 +1511,7 @@ fn interpolate_between_ctx(
         let mut compute: Vec<f64> = Vec::new();
         if let Some(snapshot) = entry.launch_snapshot.as_ref() {
             for line in &snapshot.buffers {
-                let Some(idx) = line.device.strip_prefix("CUDA").and_then(|d| d.parse::<usize>().ok()) else {
+                let Some(idx) = cuda_device_index(&line.device) else {
                     continue;
                 };
                 if line.category == "kv" {
@@ -1555,6 +1555,18 @@ fn interpolate_between_ctx(
         compute_mib: compute,
     })
 }
+/// Index of a real CUDA device ("CUDA0", "CUDA1"), never the host pseudo-device.
+///
+/// `CUDA_Host` starts with "CUDA" and carries a large `compute` buffer (9 GB on a 27B at
+/// 262K), so a prefix test charged host memory to every GPU total.
+fn cuda_device_index(device: &str) -> Option<usize> {
+    let rest = device.strip_prefix("CUDA")?;
+    if rest.is_empty() || !rest.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    rest.parse().ok()
+}
+
 fn learned_vram_for_model_blocking(
     model_path: String,
     ctx: Option<String>,
@@ -1589,7 +1601,7 @@ fn learned_vram_for_model_blocking(
         let mut compute_by_device: Vec<f64> = Vec::new();
         if let Some(snapshot) = entry.launch_snapshot.as_ref() {
             for line in &snapshot.buffers {
-                let Some(idx) = line.device.strip_prefix("CUDA").and_then(|d| d.parse::<usize>().ok()) else {
+                let Some(idx) = cuda_device_index(&line.device) else {
                     continue;
                 };
                 if line.category == "kv" {
@@ -2264,4 +2276,17 @@ pub fn prune_learned_vram_curve(
         );
     }
     Ok(removed)
+}
+#[cfg(test)]
+mod cuda_device_tests {
+    use super::cuda_device_index;
+
+    #[test]
+    fn rejects_host_pseudo_devices() {
+        assert_eq!(cuda_device_index("CUDA0"), Some(0));
+        assert_eq!(cuda_device_index("CUDA12"), Some(12));
+        assert_eq!(cuda_device_index("CUDA_Host"), None);
+        assert_eq!(cuda_device_index("CPU"), None);
+        assert_eq!(cuda_device_index("CUDA"), None);
+    }
 }
