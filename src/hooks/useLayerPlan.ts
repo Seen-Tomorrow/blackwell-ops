@@ -94,8 +94,6 @@ export function useLayerPlan(
     modelMib: number;
     /** Recurrent-state + vision buffers, part of the launch inventory. */
     rsMib: number;
-    /** Compute buffers summed over devices; used when the per-device array is short. */
-    computeTotalMib: number;
     /** The launch total (vram_mib). Overhead = total - weights - KV, which cannot disagree
      *  with the terms it is made of. */
     vramMib: number;
@@ -175,7 +173,6 @@ export function useLayerPlan(
       kv_mib?: number;
       ctx_tokens?: number;
       compute_mib?: number[];
-      compute_total_mib?: number;
       vram_mib?: number;
       model_mib?: number;
       rs_mib?: number;
@@ -196,7 +193,6 @@ export function useLayerPlan(
             computeMib: Array.isArray(hit.compute_mib) ? hit.compute_mib : [],
             modelMib: hit.model_mib ?? 0,
             rsMib: hit.rs_mib ?? 0,
-            computeTotalMib: hit.compute_total_mib ?? 0,
             vramMib: hit.vram_mib ?? 0,
           });
         } else {
