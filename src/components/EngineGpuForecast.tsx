@@ -89,6 +89,8 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     ctxTokens,
     kvQuant,
     splitMode,
+    batch,
+    ubatch,
     isModelRunning,
     activeEngineAlias,
     activeEnginePort,
@@ -380,6 +382,8 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
               ctxTokens={ctxTokens}
               kvQuant={kvQuant}
               splitMode={splitMode}
+              batch={batch}
+              ubatch={ubatch}
               activeEngineAlias={activeEngineAlias}
               activeEnginePort={activeEnginePort}
               selectedSlotIdx={selectedSlotIdx}
@@ -506,6 +510,8 @@ export interface EngineGpuForecastProps {
   ctxTokens?: number;
   kvQuant?: string;
   splitMode?: string;
+  batch?: number;
+  ubatch?: number;
   isModelRunning?: boolean;
   activeEngineAlias?: string;
   activeEnginePort?: number;

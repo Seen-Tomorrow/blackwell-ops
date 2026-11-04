@@ -57,7 +57,14 @@ export function useLayerPlan(
   modelPath: string | null | undefined,
   gpus: GpuInfo[],
   calibration: GpuCalibrationRow[],
-  knobs?: { ctxTokens?: number; kvQuant?: string; splitMode?: string; modelMeta?: ModelMetadata | null },
+  knobs?: {
+    ctxTokens?: number;
+    kvQuant?: string;
+    splitMode?: string;
+    batch?: number;
+    ubatch?: number;
+    modelMeta?: ModelMetadata | null;
+  },
 ): { plan: LayerPlan | null; layerBytes: LayerBytes | null; kvMibPerLayer: number; loading: boolean } {
   const [layerBytes, setLayerBytes] = useState<LayerBytes | null>(null);
   const [measuredKv, setMeasuredKv] = useState<{ kvMib: number; ctx: number; computeMib: number[] } | null>(null);
@@ -123,7 +130,7 @@ export function useLayerPlan(
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [modelPath, knobs?.ctxTokens, knobs?.kvQuant, knobs?.splitMode]);
+  }, [modelPath, knobs?.ctxTokens, knobs?.kvQuant, knobs?.splitMode, knobs?.batch, knobs?.ubatch]);
 
   const kvPerLayer = kvMibPerLayer({
     ctxTokens: knobs?.ctxTokens,

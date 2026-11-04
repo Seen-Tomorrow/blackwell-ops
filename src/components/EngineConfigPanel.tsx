@@ -3257,6 +3257,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         }
         kvQuant={String(config.kv_quant ?? "f16")}
         splitMode={String(config.split ?? "none")}
+        batch={Number(config.batch ?? 0) || undefined}
+        ubatch={Number(config.ubatch ?? 0) || undefined}
         onToggleFitOff={() => setFitOff((v) => !v)}
         isModelRunning={isModelRunning}
         activeEngineAlias={activeEngineAlias}

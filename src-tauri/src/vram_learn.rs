@@ -247,11 +247,13 @@ fn param_suffix(
     kv_quant: &str,
     device: &str,
     split: &str,
-    memory_mode: &str,
+    _memory_mode: &str,
     offload_mode: &str,
     spec_type: &str,
     cache_ram: &str,
     draft_key: &str,
+    batch: &str,
+    ubatch: &str,
 ) -> String {
     let topo = device.trim();
     let topo_seg = if topo.is_empty() {
@@ -259,14 +261,22 @@ fn param_suffix(
     } else {
         format!("|topo={topo}")
     };
+    // `mode` (assisted/full_auto) is a UI mode and changes nothing about memory, so it must
+    // not split the history. `batch`/`ubatch` DO change memory - measured +6,055 MiB at the
+    // same ctx (14,064 vs 20,119) - so they belong in the identity.
+    let batch_token = 
+        if batch.trim().is_empty() { "0".to_string() } else { batch.trim().to_string() };
+    let ubatch_token = 
+        if ubatch.trim().is_empty() { "0".to_string() } else { ubatch.trim().to_string() };
     format!(
-        "|{}|ctx={}|kv={}{}|split={}|mode={}|offload={}{}",
+        "|{}|ctx={}|kv={}{}|split={}|batch={}|ubatch={}|offload={}{}",
         provider_id,
         normalize_ctx_key(ctx),
         kv_quant.trim().to_lowercase(),
         topo_seg,
         split.trim().to_lowercase(),
-        memory_mode.trim().to_lowercase(),
+        batch_token,
+        ubatch_token,
         normalize_offload_mode(offload_mode),
         optional_launch_suffix(spec_type, cache_ram, draft_key),
     )
@@ -321,6 +331,8 @@ pub fn learned_vram_key(
     )
 }
 
+/// Key without batch/ubatch, for legacy fallback shapes.
+#[allow(clippy::too_many_arguments)]
 pub fn learned_vram_key_with_draft(
     model_path: &str,
     provider_id: &str,
@@ -333,6 +345,27 @@ pub fn learned_vram_key_with_draft(
     spec_type: &str,
     cache_ram: &str,
     draft_key: &str,
+) -> String {
+    learned_vram_key_with_draft_batched(
+        model_path, provider_id, ctx, kv_quant, device, split, memory_mode, offload_mode,
+        spec_type, cache_ram, draft_key, "", "",
+    )
+}
+
+pub fn learned_vram_key_with_draft_batched(
+    model_path: &str,
+    provider_id: &str,
+    ctx: &str,
+    kv_quant: &str,
+    device: &str,
+    split: &str,
+    memory_mode: &str,
+    offload_mode: &str,
+    spec_type: &str,
+    cache_ram: &str,
+    draft_key: &str,
+    batch: &str,
+    ubatch: &str,
 ) -> String {
     let normalized_path = normalize_model_path_for_key(model_path);
     format!(
@@ -349,6 +382,8 @@ pub fn learned_vram_key_with_draft(
             spec_type,
             cache_ram,
             draft_key,
+            batch,
+            ubatch,
         ),
     )
 }
@@ -429,7 +464,9 @@ fn memory_mode_from_config(config: &EngineConfig) -> String {
 
 pub fn learned_vram_key_from_config(model_path: &str, provider_id: &str, config: &EngineConfig) -> String {
     let device_token = vram_device_token_from_config(config);
-    learned_vram_key_with_draft(
+    let batch = config.get_param_str("batch").unwrap_or_default();
+    let ubatch = config.get_param_str("ubatch").unwrap_or_default();
+    learned_vram_key_with_draft_batched(
         model_path,
         provider_id,
         &config.get_param_str("ctx").unwrap_or_else(|| "32768".to_string()),
@@ -447,6 +484,8 @@ pub fn learned_vram_key_from_config(model_path: &str, provider_id: &str, config:
             .get_param_str("cache_ram")
             .unwrap_or_else(|| "0".to_string()),
         &draft_path_from_config(config),
+        &batch,
+        &ubatch,
     )
 }
 
@@ -480,10 +519,12 @@ fn lookup_learned_vram_fuzzy(
     spec_type: &str,
     cache_ram: &str,
     draft_key: &str,
+    batch: &str,
+    ubatch: &str,
 ) -> Option<LearnedVramEntry> {
     let store = load_store();
     let normalized_path = normalize_model_path_for_key(model_path);
-    let primary = learned_vram_key_with_draft(
+    let primary = learned_vram_key_with_draft_batched(
         model_path,
         provider_id,
         ctx,
@@ -495,6 +536,8 @@ fn lookup_learned_vram_fuzzy(
         spec_type,
         cache_ram,
         draft_key,
+        batch,
+        ubatch,
     );
     if let Some(entry) = store.entries.get(&primary) {
         return Some(entry.clone());
@@ -677,8 +720,10 @@ pub fn lookup_learned_vram_for_config(
     model_path: &str,
     provider_id: &str,
     config: &EngineConfig,
-) -> Option<LearnedVramEntry> {
+ ) -> Option<LearnedVramEntry> {
     let _guard = STORE_MUTEX.lock().ok()?;
+    let batch = config.get_param_str("batch").unwrap_or_default();
+    let ubatch = config.get_param_str("ubatch").unwrap_or_default();
     lookup_learned_vram_fuzzy(
         model_path,
         provider_id,
@@ -697,6 +742,8 @@ pub fn lookup_learned_vram_for_config(
             .get_param_str("cache_ram")
             .unwrap_or_else(|| "0".to_string()),
         &draft_path_from_config(config),
+        &batch,
+        &ubatch,
     )
 }
 
@@ -1461,10 +1508,14 @@ pub async fn get_learned_vram_for_model(
     ctx: Option<String>,
     kv_quant: Option<String>,
     split: Option<String>,
+    batch: Option<u32>,
+    ubatch: Option<u32>,
 ) -> Option<LearnedVramForModel> {
+    let batch = batch.map(|b| b.to_string());
+    let ubatch = ubatch.map(|b| b.to_string());
     // Loads the learned store (a few hundred KB) and scans it; off the UI thread.
     tokio::task::spawn_blocking(move || {
-        learned_vram_for_model_blocking(model_path, ctx, kv_quant, split)
+        learned_vram_for_model_blocking(model_path, ctx, kv_quant, split, batch, ubatch)
     })
     .await
     .ok()
@@ -1486,6 +1537,8 @@ fn interpolate_between_ctx(
     want_ctx: usize,
     want_kv: Option<&str>,
     want_split: Option<&str>,
+    want_batch: Option<&str>,
+    want_ubatch: Option<&str>,
 ) -> Option<LearnedVramForModel> {
     let mut points: Vec<(usize, f64, Vec<f64>, f64, f64)> = Vec::new();
     for (key, entry) in store.entries.iter() {
@@ -1495,6 +1548,8 @@ fn interpolate_between_ctx(
         let mut ctx_tokens = None;
         let mut kv_token = "";
         let mut split_token = "";
+        let mut batch_token = "";
+        let mut ubatch_token = "";
         for token in key[prefix.len()..].split('|') {
             if let Some(v) = token.strip_prefix("ctx=") {
                 ctx_tokens = ctx_tokens_from_str(v);
@@ -1502,6 +1557,10 @@ fn interpolate_between_ctx(
                 kv_token = v;
             } else if let Some(v) = token.strip_prefix("split=") {
                 split_token = v;
+            } else if let Some(v) = token.strip_prefix("batch=") {
+                batch_token = v;
+            } else if let Some(v) = token.strip_prefix("ubatch=") {
+                ubatch_token = v;
             }
         }
         let Some(ctx) = ctx_tokens else { continue };
@@ -1514,6 +1573,18 @@ fn interpolate_between_ctx(
         // interpolating across those two families would average two different engines.
         if let Some(want) = want_split {
             if split_token != want {
+                continue;
+            }
+        }
+        // Compute buffers scale with batch (~10x between 2048 and 8192), so a curve that mixes
+        // them is not a curve.
+        if let Some(want) = want_batch {
+            if batch_token != want {
+                continue;
+            }
+        }
+        if let Some(want) = want_ubatch {
+            if ubatch_token != want {
                 continue;
             }
         }
@@ -1582,6 +1653,8 @@ fn learned_vram_for_model_blocking(
     ctx: Option<String>,
     kv_quant: Option<String>,
     split: Option<String>,
+    batch: Option<String>,
+    ubatch: Option<String>,
 ) -> Option<LearnedVramForModel> {
     let _guard = STORE_MUTEX.lock().ok()?;
     let store = load_store();
@@ -1595,6 +1668,14 @@ fn learned_vram_for_model_blocking(
         .as_deref()
         .map(|s| s.trim().to_lowercase())
         .filter(|s| !s.is_empty());
+    let want_batch = batch
+        .as_deref()
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty() && s != "0");
+    let want_ubatch = ubatch
+        .as_deref()
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty() && s != "0");
 
     let mut best: Option<(usize, u32, usize, LearnedVramForModel)> = None;
     let mut count = 0u32;
@@ -1624,8 +1705,16 @@ fn learned_vram_for_model_blocking(
                 }
             }
         }
+        // Batch is not a preference: a measurement at another batch is a different
+        // configuration, so it must not be picked even when ctx/kv/split match.
+        let mut entry_batch = "";
+        let mut entry_ubatch = "";
         for token in key[prefix.len()..].split('|') {
-            if let Some(v) = token.strip_prefix("ctx=") {
+            if let Some(v) = token.strip_prefix("batch=") {
+                entry_batch = v;
+            } else if let Some(v) = token.strip_prefix("ubatch=") {
+                entry_ubatch = v;
+            } else if let Some(v) = token.strip_prefix("ctx=") {
                 entry_ctx = ctx_tokens_from_str(v);
                 ctx_hit = want_ctx.is_some_and(|w| ctx_tokens_from_str(v) == Some(w));
                 if ctx_hit {
@@ -1642,6 +1731,16 @@ fn learned_vram_for_model_blocking(
                 if want_split.as_deref() == Some(v) {
                     score += 1;
                 }
+            }
+        }
+        if let Some(want) = want_batch.as_deref() {
+            if entry_batch != want {
+                continue;
+            }
+        }
+        if let Some(want) = want_ubatch.as_deref() {
+            if entry_ubatch != want {
+                continue;
             }
         }
         let candidate = LearnedVramForModel {
@@ -1684,11 +1783,11 @@ fn learned_vram_for_model_blocking(
         Some(entry) if entry.ctx_matched || want_ctx.is_none() => Some(entry),
         Some(entry) => want_ctx
             .and_then(|want| {
-                interpolate_between_ctx(&store, &prefix, want, want_kv.as_deref(), want_split.as_deref())
+                interpolate_between_ctx(&store, &prefix, want, want_kv.as_deref(), want_split.as_deref(), want_batch.as_deref(), want_ubatch.as_deref())
             })
             .or(Some(entry)),
         None => want_ctx.and_then(|want| {
-            interpolate_between_ctx(&store, &prefix, want, want_kv.as_deref(), want_split.as_deref())
+            interpolate_between_ctx(&store, &prefix, want, want_kv.as_deref(), want_split.as_deref(), want_batch.as_deref(), want_ubatch.as_deref())
         }),
     }
 }
@@ -1743,6 +1842,8 @@ pub fn get_learned_vram(
         spec,
         cache,
         &draft,
+        &batch.map(|b| b.to_string()).unwrap_or_default(),
+        &ubatch.map(|b| b.to_string()).unwrap_or_default(),
     ) {
         Some(entry) => entry,
         None => lookup_learned_vram_any_device(

@@ -47,6 +47,9 @@ interface VramBadgeProps {
   kvQuant?: string;
   /** Split mode of the plan — compute buffers differ ~4x between none and layer. */
   splitMode?: string;
+  /** Batch/ubatch of the plan — compute buffers scale with them (~10x 2048 → 8192). */
+  batch?: number;
+  ubatch?: number;
   /** External draft pack selected — no main forecast / FIT. */
   draftOnly?: boolean;
   className?: string;
