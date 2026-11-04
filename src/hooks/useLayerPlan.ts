@@ -94,6 +94,8 @@ export function useLayerPlan(
     modelMib: number;
     /** Recurrent-state + vision buffers, part of the launch inventory. */
     rsMib: number;
+    /** Compute buffers summed over devices; used when the per-device array is short. */
+    computeTotalMib: number;
   } | null>(null);
   // No launch of this model yet: forecast it from launches of the same shape.
   const [cold, setCold] = useState<ColdForecast | null>(null);
@@ -170,6 +172,7 @@ export function useLayerPlan(
       kv_mib?: number;
       ctx_tokens?: number;
       compute_mib?: number[];
+      compute_total_mib?: number;
       model_mib?: number;
       rs_mib?: number;
     } | null>("get_learned_vram_for_model", {
@@ -189,6 +192,7 @@ export function useLayerPlan(
             computeMib: Array.isArray(hit.compute_mib) ? hit.compute_mib : [],
             modelMib: hit.model_mib ?? 0,
             rsMib: hit.rs_mib ?? 0,
+            computeTotalMib: hit.compute_total_mib ?? 0,
           });
         } else {
           setMeasuredKv(null);
@@ -250,9 +254,14 @@ export function useLayerPlan(
       freeMib: gpus.map((g) => Math.max(0, g.memory_free)),
       // Compute buffers are per device and were measured for this model; without them the
       // plan total is always below the forecast, which reads as error rather than scope.
-      overheadMib: measuredKv?.computeMib ?? [],
+      // A short per-device array means a card would silently receive zero; fall back to the
+      // measured total split by layers instead.
+      overheadMib: measuredKv && measuredKv.computeMib.length >= gpus.length ? measuredKv.computeMib : [],
+      overheadTotalMib: measuredKv
+        ? measuredKv.rsMib +
+          (measuredKv.computeMib.length >= gpus.length ? 0 : measuredKv.computeTotalMib)
+        : cold?.compute_mib,
       // rs + vision buffers belong to the launch inventory too (598 + 248 MiB on the 27B).
-      overheadTotalMib: measuredKv ? measuredKv.rsMib : cold?.compute_mib,
       calibration,
     });
   }, [layerBytes, gpus, calibration, kvPerBlock, measuredKv, cold, weightScale]);

@@ -1478,6 +1478,9 @@ pub struct LearnedVramForModel {
     pub ctx_tokens: Option<usize>,
     /// Compute-graph buffer per device for that launch, MiB, indexed by CUDA index.
     pub compute_mib: Vec<f64>,
+    /// Compute buffers summed over devices, MiB. Kept separately because a per-device
+    /// array that is short by one card must not silently halve the plan.
+    pub compute_total_mib: f64,
     /// Weights the engine actually held on the GPUs, MiB. The GGUF total differs from this
     /// by the tensors it keeps on the host, so a plan that wants to match the launch must
     /// use this when it is known.
@@ -1671,6 +1674,7 @@ fn interpolate_between_ctx(
         ctx_matched: false,
         kv_mib: lerp(lower.kv_mib, upper.kv_mib),
         ctx_tokens: Some(want_ctx),
+        compute_total_mib: compute.iter().sum(),
         compute_mib: compute,
         // Weights do not change with ctx: take the lower point rather than averaging sizes.
         model_mib: lower.model_mib,
@@ -1732,6 +1736,7 @@ fn learned_vram_for_model_blocking(
         let mut kv_mib = 0.0f64;
         let mut model_mib = 0.0f64;
         let mut rs_mib = 0.0f64;
+        let mut compute_total = 0.0f64;
         let mut compute_by_device: Vec<f64> = Vec::new();
         if let Some(snapshot) = entry.launch_snapshot.as_ref() {
             for line in &snapshot.buffers {
@@ -1745,6 +1750,7 @@ fn learned_vram_for_model_blocking(
                 } else if line.category == "rs" || line.category == "vision_compute" {
                     rs_mib += line.mib;
                 } else if line.category == "compute" {
+                    compute_total += line.mib;
                     if compute_by_device.len() <= idx {
                         compute_by_device.resize(idx + 1, 0.0);
                     }
@@ -1814,6 +1820,7 @@ fn learned_vram_for_model_blocking(
             ctx_matched: ctx_hit,
             kv_mib,
             ctx_tokens: entry_ctx,
+            compute_total_mib: compute_total,
             compute_mib: compute_by_device,
             model_mib,
             rs_mib,
