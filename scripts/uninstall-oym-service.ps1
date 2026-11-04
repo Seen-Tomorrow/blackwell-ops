@@ -1,4 +1,4 @@
-#requires -Version 7.0
+#requires -Version 5.1
 <#
 .SYNOPSIS
   Stop and uninstall the OYM Link integrated service skeleton.
@@ -46,5 +46,5 @@ else {
 }
 
 sc.exe query OymLink 2>$null
-@{ action = "uninstall"; ok = $true; at = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() } |
-    ConvertTo-Json | Set-Content $actionMarker -Encoding utf8NoBOM
+$marker = @{ action = "uninstall"; ok = $true; at = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() } | ConvertTo-Json
+[IO.File]::WriteAllText($actionMarker, $marker, (New-Object System.Text.UTF8Encoding($false)))

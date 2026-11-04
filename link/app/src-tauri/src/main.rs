@@ -575,6 +575,13 @@ fn repo_script(name: &str) -> Result<PathBuf, String> {
 }
 
 #[cfg(windows)]
+fn windows_powershell() -> String {
+    std::env::var("SystemRoot")
+        .map(|root| format!("{root}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"))
+        .unwrap_or_else(|_| "powershell.exe".into())
+}
+
+#[cfg(windows)]
 fn launch_elevated_script(name: &str, extra: &str) -> Result<(), String> {
     use windows_sys::Win32::UI::Shell::ShellExecuteW;
     use windows_sys::Win32::UI::WindowsAndMessaging::SW_HIDE;
@@ -590,7 +597,7 @@ fn launch_elevated_script(name: &str, extra: &str) -> Result<(), String> {
         }
     );
     let verb: Vec<u16> = "runas\0".encode_utf16().collect();
-    let file: Vec<u16> = "pwsh.exe\0".encode_utf16().collect();
+    let file: Vec<u16> = windows_powershell().encode_utf16().chain(std::iter::once(0)).collect();
     let params: Vec<u16> = params.encode_utf16().chain(std::iter::once(0)).collect();
     let result = unsafe {
         ShellExecuteW(
@@ -1005,10 +1012,10 @@ fn link_restart_elevated(app: AppHandle) -> Result<(), String> {
             .to_string();
         let escaped = exe.replace('\'', "''");
         let command = format!(
-            "-NoProfile -WindowStyle Hidden -Command \"Start-Sleep -Milliseconds 3000; Start-Process -FilePath '{escaped}'\""
+            "-NoProfile -WindowStyle Hidden -Command \"Start-Sleep -Seconds 3; Start-Process -FilePath '{escaped}'\""
         );
         let verb: Vec<u16> = "runas\0".encode_utf16().collect();
-        let file: Vec<u16> = "pwsh.exe\0".encode_utf16().collect();
+        let file: Vec<u16> = windows_powershell().encode_utf16().chain(std::iter::once(0)).collect();
         let params: Vec<u16> = command.encode_utf16().chain(std::iter::once(0)).collect();
         let result = unsafe {
             ShellExecuteW(

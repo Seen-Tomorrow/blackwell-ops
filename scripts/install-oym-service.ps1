@@ -1,4 +1,4 @@
-#requires -Version 7.0
+#requires -Version 5.1
 <#
 .SYNOPSIS
   Install the OYM Link integrated service skeleton (WinSW host, LocalSystem).
@@ -147,5 +147,5 @@ Start-Sleep -Seconds 2
 sc.exe query OymLink
 Get-Content "$env:ProgramData\OYM\Link\service-status.json" -ErrorAction SilentlyContinue
 try { Stop-Transcript | Out-Null } catch {}
-@{ action = "install"; ok = $true; at = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() } |
-    ConvertTo-Json | Set-Content $actionMarker -Encoding utf8NoBOM
+$marker = @{ action = "install"; ok = $true; at = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() } | ConvertTo-Json
+[IO.File]::WriteAllText($actionMarker, $marker, (New-Object System.Text.UTF8Encoding($false)))
