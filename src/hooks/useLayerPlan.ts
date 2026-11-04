@@ -195,10 +195,13 @@ export function useLayerPlan(
         boundary: plan.boundary,
         layers: plan.layerCount,
         kv_mib_per_layer: kvPerBlock,
+        // "measured" = scaled from a real launch; "geometry" = header-only guess, which is
+        // an upper bound because hybrid-attention models do not cache every block.
+        kv_source: measuredKv ? "measured" : kvPerBlock > 0 ? "geometry" : "none",
       },
     }).catch(() => {
       // Journaling is diagnostic; never let it break the plan.
     });
-  }, [plan, modelPath, knobs?.ctxTokens, knobs?.kvQuant, knobs?.splitMode, kvPerBlock]);
+  }, [plan, modelPath, knobs?.ctxTokens, knobs?.kvQuant, knobs?.splitMode, kvPerBlock, measuredKv]);
   return { plan, layerBytes, kvMibPerLayer: kvPerBlock, loading };
 }
