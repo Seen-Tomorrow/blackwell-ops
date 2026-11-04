@@ -8,6 +8,14 @@ import {
 } from "../lib/vramLayerPlan";
 
 /** Exact per-block sizes, as read from the GGUF tensor table. */
+type ColdForecast = {
+  weights_mib: number;
+  kv_mib: number;
+  compute_mib: number;
+  total_mib: number;
+  basis?: { arch?: string; layers?: number; points?: unknown[]; kv_layer_ratio?: number };
+};
+
 type LayerBytes = {
   per_block_mib: number[];
   /** Bytes one token of KV costs in one attention block (0 when unknown). */
@@ -68,6 +76,8 @@ export function useLayerPlan(
 ): { plan: LayerPlan | null; layerBytes: LayerBytes | null; kvMibPerLayer: number; loading: boolean } {
   const [layerBytes, setLayerBytes] = useState<LayerBytes | null>(null);
   const [measuredKv, setMeasuredKv] = useState<{ kvMib: number; ctx: number; computeMib: number[] } | null>(null);
+  // No launch of this model yet: forecast it from launches of the same shape.
+  const [cold, setCold] = useState<ColdForecast | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -92,6 +102,36 @@ export function useLayerPlan(
     };
   }, [modelPath]);
 
+  const shapesKey = [modelPath, measuredKv ? 1 : 0, knobs?.ctxTokens, knobs?.kvQuant, knobs?.splitMode, knobs?.batch, knobs?.ubatch].join("|");
+  useEffect(() => {
+    if (!modelPath || measuredKv) {
+      setCold(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void invoke<ColdForecast>("get_cold_forecast", {
+        modelPath,
+        ctx: knobs?.ctxTokens ?? 0,
+        kvQuant: knobs?.kvQuant ?? "",
+        split: knobs?.splitMode ?? "none",
+        batch: knobs?.batch ?? 0,
+        ubatch: knobs?.ubatch ?? 0,
+        excludeModel: null,
+      })
+        .then((hit) => {
+          if (!cancelled) setCold(hit && hit.total_mib > 0 ? hit : null);
+        })
+        .catch(() => {
+          if (!cancelled) setCold(null);
+        });
+    }, 260);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shapesKey]);
   // KV from the last real launch beats any formula: hybrid-attention models (Qwen3.8-Flash
   // carries KV in 12 of 48 blocks) make a per-block estimate off by 4x.
   useEffect(() => {
@@ -148,9 +188,10 @@ export function useLayerPlan(
       // KV is linear in ctx; scale the measured figure to the planned context.
       return (measuredKv.kvMib * (ctxForKv / measuredKv.ctx)) / blocks;
     }
+    if (cold && cold.kv_mib > 0) return cold.kv_mib / blocks;
     if (kvPerLayer > 0) return kvPerLayer;
     return 0;
-  }, [blocks, measuredKv, ctxForKv, kvPerLayer]);
+  }, [blocks, measuredKv, ctxForKv, kvPerLayer, cold]);
 
   const plan = useMemo(() => {
     if (!layerBytes || gpus.length !== 2) return null;
@@ -164,9 +205,10 @@ export function useLayerPlan(
       // Compute buffers are per device and were measured for this model; without them the
       // plan total is always below the forecast, which reads as error rather than scope.
       overheadMib: measuredKv?.computeMib ?? [],
+      overheadTotalMib: measuredKv ? undefined : cold?.compute_mib,
       calibration,
     });
-  }, [layerBytes, gpus, calibration, kvPerBlock, measuredKv]);
+  }, [layerBytes, gpus, calibration, kvPerBlock, measuredKv, cold]);
 
   // Journal the plan whenever the configuration changes, so it can be compared against the
   // FIT estimate and the measured launch in `forecast-log.jsonl` (same file, same join).
@@ -204,11 +246,11 @@ export function useLayerPlan(
         kv_mib_per_layer: kvPerBlock,
         // "measured" = scaled from a real launch; "geometry" = header-only guess, which is
         // an upper bound because hybrid-attention models do not cache every block.
-        kv_source: measuredKv ? "measured" : kvPerBlock > 0 ? "geometry" : "none",
+        kv_source: measuredKv ? "measured" : cold ? "profile" : kvPerBlock > 0 ? "geometry" : "none",
       },
     }).catch(() => {
       // Journaling is diagnostic; never let it break the plan.
     });
-  }, [plan, modelPath, knobs?.ctxTokens, knobs?.kvQuant, knobs?.splitMode, kvPerBlock, measuredKv]);
+  }, [plan, modelPath, knobs?.ctxTokens, knobs?.kvQuant, knobs?.splitMode, kvPerBlock, measuredKv, cold]);
   return { plan, layerBytes, kvMibPerLayer: kvPerBlock, loading };
 }

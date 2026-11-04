@@ -31,6 +31,7 @@ mod fit_low_vram;
 mod vram_learn;
 mod forecast_log;
 mod automation;
+mod vram_profile;
 mod launch_memory_parse;
 mod bench_prompts;
 mod bench_archive;
@@ -553,6 +554,7 @@ async fn main() {
             layer_plan::get_model_layer_bytes,
             gpu_process_mem::get_gpu_process_memory,
             gpu_calibration::get_gpu_calibration,
+            vram_profile::get_cold_forecast,
             forecast_log::record_plan_forecast,
             forecast_log::record_fit_forecast,
             forecast_log::read_forecast_journal,

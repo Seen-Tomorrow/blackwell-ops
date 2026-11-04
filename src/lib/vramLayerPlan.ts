@@ -25,6 +25,9 @@ export type LayerPlanInput = {
   kvMibPerLayer?: number;
   /** Per-device overhead the launch will also allocate (compute graph buffers), MiB. */
   overheadMib?: number[];
+  /** The same overhead as one total, split by layer count. A cold forecast knows the shape
+   *  total but not where the boundary will land, and compute buffers follow layers. */
+  overheadTotalMib?: number;
 };
 
 export type LayerPlan = {
@@ -83,8 +86,15 @@ export function planLayerSplit(input: LayerPlanInput): LayerPlan | null {
     const weights1 = total - prefix[boundary] + output + other / 2;
     const kv0 = kvPerLayer * firstLayers;
     const kv1 = kvPerLayer * lastLayers;
-    const extra0 = Math.max(0, input.overheadMib?.[0] ?? 0);
-    const extra1 = Math.max(0, input.overheadMib?.[1] ?? 0);
+    const shapeOverhead = Math.max(0, input.overheadTotalMib ?? 0);
+    const extra0 = Math.max(
+      0,
+      input.overheadMib?.[0] ?? (shapeOverhead * firstLayers) / Math.max(blocks.length, 1),
+    );
+    const extra1 = Math.max(
+      0,
+      input.overheadMib?.[1] ?? (shapeOverhead * lastLayers) / Math.max(blocks.length, 1),
+    );
     const totalMib = [weights0 + kv0 + extra0, weights1 + kv1 + extra1];
     const util = [totalMib[0] / input.budgetsMib[0], totalMib[1] / input.budgetsMib[1]];
     return {
@@ -181,6 +191,9 @@ export function planFromLive(args: {
   kvMibPerLayer?: number;
   /** Per-device overhead the launch also allocates (compute graph buffers), MiB. */
   overheadMib?: number[];
+  /** Same overhead as one total, split by layer count - for a cold forecast, which knows
+   *  the shape total but not how the boundary will land. */
+  overheadTotalMib?: number;
   freeMib: number[];
   calibration?: GpuCalibrationRow[] | null;
   draftMib?: number[];
@@ -194,6 +207,7 @@ export function planFromLive(args: {
     otherMib: args.otherMib,
     kvMibPerLayer: args.kvMibPerLayer,
     overheadMib: args.overheadMib,
+    overheadTotalMib: args.overheadTotalMib,
     budgetsMib,
   });
 }

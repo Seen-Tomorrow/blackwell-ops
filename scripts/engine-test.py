@@ -100,6 +100,18 @@ def print_result(payload: dict) -> int:
         for key in ("slot", "port", "alias", "ready", "startup_ms", "stopped", "stop_error"):
             if key in result:
                 print(f"  {key:12} {result[key]}")
+        for key in ("weights_mib", "kv_mib", "compute_mib", "total_mib"):
+            if key in result:
+                print(f"  {key:12} {result[key]:.0f}")
+        basis = result.get("basis") or {}
+        if basis:
+            points = basis.get("points") or []
+            ratio = basis.get("kv_layer_ratio") or 0
+            print(
+                f"  basis        {basis.get('arch')} L{basis.get('layers')} "
+                f"split={basis.get('split')} b{basis.get('batch')}/{basis.get('ubatch')} "
+                f"points={len(points)} kv_ratio={ratio:.3f}"
+            )
         return 0
     print("FAILED")
     print(f"  {payload.get('error')}")
@@ -108,7 +120,7 @@ def print_result(payload: dict) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("action", choices=["launch", "status", "stop"])
+    ap.add_argument("action", choices=["launch", "cold", "status", "stop"])
     ap.add_argument("--app-root", default=DEFAULT_APP_ROOT)
     ap.add_argument("--hold", type=int, default=0, help="ms to hold after RUNNING, then stop (0 = leave running)")
     ap.add_argument("--timeout", type=float, default=240.0, help="seconds to wait for the result")
@@ -128,6 +140,7 @@ def main() -> int:
     ap.add_argument("--provider", default="ggml-master")
     ap.add_argument("--profile", default="edge")
     ap.add_argument("--slot", type=int)
+    ap.add_argument("--exclude-model", dest="exclude_model")
     ap.add_argument("--id")
     args = ap.parse_args()
 
@@ -142,6 +155,19 @@ def main() -> int:
         job["timeout_ms"] = int(args.timeout * 1000)
         if args.hold:
             job["hold_ms"] = args.hold
+    elif args.action == "cold":
+        if not args.model:
+            print("cold needs --model", file=sys.stderr)
+            return 2
+        job["params"] = {
+            "model_path": args.model,
+            "ctx": args.ctx,
+            "kv_quant": args.kv,
+            "split": args.split,
+            "batch": args.batch,
+            "ubatch": args.ubatch,
+            "exclude_model": args.exclude_model,
+        }
     elif args.action == "stop":
         if args.slot is None:
             print("stop needs --slot", file=sys.stderr)

@@ -39,6 +39,9 @@ struct Job {
     slot: Option<usize>,
     #[serde(default)]
     timeout_ms: Option<u64>,
+    /// Free-form parameters for actions that take more than a slot/config.
+    #[serde(default)]
+    params: Option<Value>,
 }
 
 fn base_dir() -> PathBuf {
@@ -189,6 +192,33 @@ async fn run_job(app: &AppHandle, job: &Job) -> Result<Value, String> {
                 })
                 .collect();
             Ok(json!({ "slots": slots }))
+        }
+        "cold" => {
+            let params = job
+                .params
+                .clone()
+                .ok_or_else(|| "cold needs params".to_string())?;
+            let field = |name: &str| params.get(name).cloned().unwrap_or(Value::Null);
+            let model_path = field("model_path")
+                .as_str()
+                .ok_or_else(|| "cold needs model_path".to_string())?
+                .to_string();
+            let ctx = field("ctx").as_u64().unwrap_or(32768);
+            let kv_quant = field("kv_quant").as_str().unwrap_or("q8_0").to_string();
+            let split = field("split").as_str().unwrap_or("none").to_string();
+            let batch = field("batch").as_u64().unwrap_or(0) as u32;
+            let ubatch = field("ubatch").as_u64().unwrap_or(0) as u32;
+            let exclude = field("exclude_model").as_str().map(str::to_string);
+            crate::vram_profile::cold_forecast(
+                &model_path,
+                ctx,
+                &kv_quant,
+                &split,
+                batch,
+                ubatch,
+                exclude.as_deref(),
+            )
+            .and_then(|forecast| serde_json::to_value(forecast).map_err(|e| e.to_string()))
         }
         other => Err(format!("unknown action: {other}")),
     }
