@@ -1494,16 +1494,26 @@ fn interpolate_between_ctx(
         }
         let mut ctx_tokens = None;
         let mut kv_token = "";
+        let mut split_token = "";
         for token in key[prefix.len()..].split('|') {
             if let Some(v) = token.strip_prefix("ctx=") {
                 ctx_tokens = ctx_tokens_from_str(v);
             } else if let Some(v) = token.strip_prefix("kv=") {
                 kv_token = v;
+            } else if let Some(v) = token.strip_prefix("split=") {
+                split_token = v;
             }
         }
         let Some(ctx) = ctx_tokens else { continue };
         if let Some(want) = want_kv {
             if kv_token != want {
+                continue;
+            }
+        }
+        // Compute buffers differ ~4x between split=none and split=layer at the same ctx;
+        // interpolating across those two families would average two different engines.
+        if let Some(want) = want_split {
+            if split_token != want {
                 continue;
             }
         }

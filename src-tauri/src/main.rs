@@ -30,6 +30,7 @@ mod fit_scanner;
 mod fit_low_vram;
 mod vram_learn;
 mod forecast_log;
+mod automation;
 mod launch_memory_parse;
 mod bench_prompts;
 mod bench_archive;
@@ -319,6 +320,8 @@ async fn main() {
             };
 
             app.manage(ctx);
+            // DEV-only: folder-driven engine automation for test loops.
+            crate::automation::spawn(app.handle().clone());
 
             // ── Remote control room gateway (DEV only for now) ─────────────
             // The REMOTE surface is an incomplete servicing feature. It is
