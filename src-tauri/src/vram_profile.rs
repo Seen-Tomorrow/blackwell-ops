@@ -244,62 +244,74 @@ pub fn cold_forecast(
     let mut points: Vec<(f64, f64)> = Vec::new();
     let mut point_rows: Vec<ProfilePoint> = Vec::new();
     let mut kv_ratios: Vec<f64> = Vec::new();
+    let mut used_ubatch = ubatch;
 
-    for (key, entry) in entries.iter() {
-        let model = model_path_from_key(key);
-        if let Some(exclude) = excluded.as_deref() {
-            if model.replace('\\', "/").to_lowercase() == exclude {
+    // ubatch is the usual mismatch: the cockpit's default differs from what a launch
+    // recorded, and it barely moves compute buffers compared with batch. Relax it before
+    // giving up on a profile; relax batch only as a last resort, and say so in the basis.
+    for (ignore_ubatch, ignore_batch) in [(false, false), (true, false), (true, true)] {
+        points.clear();
+        point_rows.clear();
+        kv_ratios.clear();
+        used_ubatch = if ignore_ubatch { 0 } else { ubatch };
+
+        for (key, entry) in entries.iter() {
+            let model = model_path_from_key(key);
+            if let Some(exclude) = excluded.as_deref() {
+                if model.replace('\\', "/").to_lowercase() == exclude {
+                    continue;
+                }
+            }
+            let Some(info) = shape_info(model, &mut cache) else {
+                continue;
+            };
+            if info.arch != target.arch || info.layers != target.layers {
                 continue;
             }
-        }
-        let Some(info) = shape_info(model, &mut cache) else {
-            continue;
-        };
-        if info.arch != target.arch || info.layers != target.layers {
-            continue;
-        }
-        let Some(entry_ctx) = key_token(key, "ctx=").and_then(|v| v.parse::<u64>().ok()) else {
-            continue;
-        };
-        if key_token(key, "split=") != Some(split_norm.as_str()) {
-            continue;
-        }
-        let entry_batch = key_token(key, "batch=")
-            .and_then(|v| v.parse::<u32>().ok())
-            .unwrap_or(0);
-        let entry_ubatch = key_token(key, "ubatch=")
-            .and_then(|v| v.parse::<u32>().ok())
-            .unwrap_or(0);
-        // 0 means "the caller cannot state it" - wildcard, not a literal mismatch.
-        if batch != 0 && entry_batch != batch {
-            continue;
-        }
-        if ubatch != 0 && entry_ubatch != ubatch {
-            continue;
-        }
+            let Some(entry_ctx) = key_token(key, "ctx=").and_then(|v| v.parse::<u64>().ok()) else {
+                continue;
+            };
+            if key_token(key, "split=") != Some(split_norm.as_str()) {
+                continue;
+            }
+            let entry_batch = key_token(key, "batch=")
+                .and_then(|v| v.parse::<u32>().ok())
+                .unwrap_or(0);
+            let entry_ubatch = key_token(key, "ubatch=")
+                .and_then(|v| v.parse::<u32>().ok())
+                .unwrap_or(0);
+            if !ignore_batch && batch != 0 && entry_batch != batch {
+                continue;
+            }
+            if !ignore_ubatch && ubatch != 0 && entry_ubatch != ubatch {
+                continue;
+            }
 
-        let compute = cuda_compute_mib(entry);
-        if compute > 0.0 {
-            points.push((entry_ctx as f64, compute));
-            point_rows.push(ProfilePoint {
-                ctx: entry_ctx,
-                compute_mib: compute,
-                model: model.to_string(),
-            });
-        }
+            let compute = cuda_compute_mib(entry);
+            if compute > 0.0 {
+                points.push((entry_ctx as f64, compute));
+                point_rows.push(ProfilePoint {
+                    ctx: entry_ctx,
+                    compute_mib: compute,
+                    model: model.to_string(),
+                });
+            }
 
-        // KV ratio: measured KV / (geometry x ctx x blocks). A hybrid architecture keeps KV in
-        // only some blocks and this is how that shows up without hardcoding it.
-        if key_token(key, "kv=") == Some(kv_norm.as_str()) && info.kv_bytes_per_token_per_layer > 0.0
-        {
-            let measured = cuda_kv_mib(entry);
-            let expected = info.kv_bytes_per_token_per_layer * entry_ctx as f64 * info.layers as f64 / MIB;
-            if measured > 0.0 && expected > 0.0 {
-                kv_ratios.push(measured / expected);
+            if key_token(key, "kv=") == Some(kv_norm.as_str())
+                && info.kv_bytes_per_token_per_layer > 0.0
+            {
+                let measured = cuda_kv_mib(entry);
+                let expected =
+                    info.kv_bytes_per_token_per_layer * entry_ctx as f64 * info.layers as f64 / MIB;
+                if measured > 0.0 && expected > 0.0 {
+                    kv_ratios.push(measured / expected);
+                }
             }
         }
+        if points.len() >= 2 {
+            break;
+        }
     }
-
     if points.len() < 2 {
         return Err(format!(
             "need two launches of the shape to fit compute buffers, found {}",
@@ -327,7 +339,7 @@ pub fn cold_forecast(
             layers: target.layers,
             split: split_norm,
             batch,
-            ubatch,
+            ubatch: used_ubatch,
             points: point_rows,
             intercept_mib: intercept,
             slope_mib_per_token: slope,
@@ -339,7 +351,7 @@ pub fn cold_forecast(
 
 /// Cold forecast for the app: what a never-launched model should cost at this configuration.
 #[tauri::command]
-pub fn get_cold_forecast(
+pub async fn get_cold_forecast(
     model_path: String,
     ctx: u64,
     kv_quant: String,
@@ -348,7 +360,9 @@ pub fn get_cold_forecast(
     ubatch: u32,
     exclude_model: Option<String>,
 ) -> Result<ColdForecast, String> {
-    tokio::task::block_in_place(|| {
+    // Reads the store and parses GGUF headers: off the UI thread, and no block_in_place
+    // (which panics on a current-thread runtime).
+    tokio::task::spawn_blocking(move || {
         cold_forecast(
             &model_path,
             ctx,
@@ -359,6 +373,8 @@ pub fn get_cold_forecast(
             exclude_model.as_deref(),
         )
     })
+    .await
+    .map_err(|e| format!("cold forecast task failed: {e}"))?
 }
 
 #[cfg(test)]

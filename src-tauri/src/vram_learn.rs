@@ -1827,7 +1827,11 @@ fn learned_vram_for_model_blocking(
     // A caller that cannot state batch (0/None) or whose kv quant string does not line up
     // must still find the model's own measurements: a near configuration beats a header
     // upper bound that is ~7x off for a hybrid cache. Retry with the soft filters cleared.
-    if best.is_none() {
+    if best.is_none() && (kv_quant.is_some() || batch.is_some() || ubatch.is_some()) {
+        // Release the store lock before recursing: it is a plain std mutex, so re-entering
+        // this function while holding it deadlocks and the command never answers (the UI
+        // freezes on a spinner). The filter check above also stops an infinite retry loop.
+        drop(_guard);
         return learned_vram_for_model_blocking(
             model_path,
             ctx,
