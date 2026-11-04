@@ -13,6 +13,7 @@ export default function PlanPopover({
   forecastNeedGb,
   forecastKind,
   kvMibPerLayer = 0,
+  kvSource = "none",
   onClose,
 }: {
   plan: LayerPlan | null;
@@ -21,6 +22,8 @@ export default function PlanPopover({
   forecastKind: string | null;
   /** KV per layer at the planned context, MiB (0 when the metadata cannot express it). */
   kvMibPerLayer?: number;
+  /** How the KV term was obtained; "geometry" is an upper bound, not a forecast. */
+  kvSource?: "measured" | "profile" | "geometry" | "none";
   onClose: () => void;
 }) {
   if (!plan) {

@@ -107,7 +107,7 @@ export default function VramBadge({
 }: VramBadgeProps) {
 
   const { calibration: gpuCalibration } = useGpuCalibration();
-  const { plan: layerPlan, kvMibPerLayer } = useLayerPlan(modelPath, gpus, gpuCalibration, {
+  const { plan: layerPlan, kvMibPerLayer, kvSource: planKvSource } = useLayerPlan(modelPath, gpus, gpuCalibration, {
     ctxTokens,
     kvQuant,
     splitMode,
@@ -373,6 +373,7 @@ export default function VramBadge({
           forecastNeedGb={displayVramNeedGb > 0 ? displayVramNeedGb : null}
           forecastKind={sourceKind ?? null}
           kvMibPerLayer={kvMibPerLayer}
+          kvSource={planKvSource}
           onClose={() => setPlanOpen(false)}
         />
       )}
@@ -512,7 +513,7 @@ export default function VramBadge({
                   {displayVramNeedGb.toFixed(1)}
                 </span>
                 <span className="vram-fc-bar__unit">GB</span>
-                {layerPlan && (
+                {layerPlan && planKvSource !== "geometry" && (
                   <span
                     className="vram-fc-bar__need-plan"
                     title={`Layer plan: ${(layerPlan.sumMib / 1024).toFixed(1)} GB over both cards, -ts ${layerPlan.ts.map((v) => v.toFixed(3)).join(",")}`}

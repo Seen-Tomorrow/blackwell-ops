@@ -76,7 +76,14 @@ export function useLayerPlan(
     stackSig?: string;
     modelMeta?: ModelMetadata | null;
   },
-): { plan: LayerPlan | null; layerBytes: LayerBytes | null; kvMibPerLayer: number; loading: boolean } {
+): {
+  plan: LayerPlan | null;
+  layerBytes: LayerBytes | null;
+  kvMibPerLayer: number;
+  /** measured | profile | geometry | none — geometry is an upper bound, not a forecast. */
+  kvSource: "measured" | "profile" | "geometry" | "none";
+  loading: boolean;
+} {
   const [layerBytes, setLayerBytes] = useState<LayerBytes | null>(null);
   const [measuredKv, setMeasuredKv] = useState<{
     kvMib: number;
@@ -286,5 +293,13 @@ export function useLayerPlan(
       // Journaling is diagnostic; never let it break the plan.
     });
   }, [plan, modelPath, knobs?.ctxTokens, knobs?.kvQuant, knobs?.splitMode, kvPerBlock, measuredKv, cold]);
-  return { plan, layerBytes, kvMibPerLayer: kvPerBlock, loading };
+  const kvSource: "measured" | "profile" | "geometry" | "none" =
+    measuredKv && measuredKv.kvMib > 0
+      ? "measured"
+      : cold && cold.kv_mib > 0
+        ? "profile"
+        : kvPerBlock > 0
+          ? "geometry"
+          : "none";
+  return { plan, layerBytes, kvMibPerLayer: kvPerBlock, kvSource, loading };
 }
