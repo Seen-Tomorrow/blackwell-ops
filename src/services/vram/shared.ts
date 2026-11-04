@@ -567,7 +567,15 @@ export function splitGpuTopoBarUsage(
   };
 }
 
-/** TCC: measured OOM ~1 GB leftover. WDDM: ~1.75 GB (pack ceiling ~94.3 / 96). */
+/**
+ * TCC: measured OOM ~1 GB leftover. WDDM: ~1.75 GB (pack ceiling ~94.3 / 96).
+ *
+ * Kept for the hardware-monitor readout only. It must NOT be subtracted from the forecast's
+ * free pool any more: NVML's `memory_total` already comes back below the card's marketing
+ * capacity (97,887 of 98,304 MiB on a 96 GB card — the driver's own reservation), and
+ * `memory_free` is `total - used`, so it is already net of everything the driver keeps.
+ * Subtracting this again made every forecast under-read free VRAM by ~1.3 GiB per card.
+ */
 const HW_RESERVED_TCC_MIB = 1024;
 const HW_RESERVED_WDDM_MIB = 1792;
 
@@ -577,17 +585,34 @@ export function hwReservedMib(driverModel?: string): number {
   return HW_RESERVED_WDDM_MIB;
 }
 
+/**
+ * Free VRAM per GPU for planning, in MiB.
+ *
+ * NVML is the authority: `memory_free` is what a process can still allocate, and its
+ * `memory_total` is already reduced by the hardware reservation, so nothing is subtracted
+ * twice. The stack's own reservation is only used to correct a launch whose allocation NVML
+ * has not reported yet (a brief window right after spawn).
+ */
 export function computeGpuAvailableList(gpus: GpuInfo[], runningSlots: RunningSlotInfo[]): number[] {
   return gpus.map((g) => {
-    const manufactured = gpuManufacturedMib(g) / 1024;
-    const nvmlUsed = g.memory_used / 1024;
     const stackUsed = getRunningEnginesOnGpu(g.index, runningSlots).reduce(
       (sum, e) => sum + e.vramUsedMib / 1024,
       0,
     );
+
+    if (g.memory_free > 0) {
+      const nvmlFree = g.memory_free / 1024;
+      const nvmlUsed = g.memory_used / 1024;
+      // Only correct upward: an engine we just spawned may not be attributed yet.
+      const lagGb = Math.max(0, stackUsed - nvmlUsed);
+      return Math.max(0, nvmlFree - lagGb);
+    }
+
+    // No NVML reading (CLI fallback or a driver that refused the query): fall back to the
+    // conservative estimate so the UI still has a number.
+    const manufactured = gpuManufacturedMib(g) / 1024;
     const reserved = hwReservedMib(g.driver_model) / 1024;
-    const committed = Math.max(nvmlUsed, stackUsed);
-    return Math.max(0, manufactured - reserved - committed);
+    return Math.max(0, manufactured - reserved - stackUsed);
   });
 }
 
