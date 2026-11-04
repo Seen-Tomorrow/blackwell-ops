@@ -50,7 +50,7 @@ pub struct BufferLine {
     pub source: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct LaunchMemorySnapshot {
     pub parser_id: String,
     /// Human reference profile when heuristics match (e.g. QWEN3.6-27B MTP).

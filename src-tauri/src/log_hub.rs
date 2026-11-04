@@ -887,6 +887,10 @@ impl LogHub {
         let host_mib = snapshot.host_mib;
         let gpu_breakdown = Some(snapshot.gpu_breakdown_mib.clone());
         let profile = snapshot.reference_profile.clone();
+        // Sample the per-device runtime cost while the allocation is fresh (see gpu_calibration).
+        if let Err(e) = crate::gpu_calibration::capture(&learn_snapshot.model_path, &snapshot) {
+            log::debug!("[gpu_calibration] capture skipped: {}", e);
+        }
 
         if let Some(ctx) = app_handle.try_state::<crate::engine::AppContext>() {
             {
