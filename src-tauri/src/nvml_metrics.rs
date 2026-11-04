@@ -119,7 +119,7 @@ struct NvmlUtilization {
     memory: u32,
 }
 
-fn with_lib<T>(f: impl FnOnce(&Library) -> T) -> Option<T> {
+pub(crate) fn with_lib<T>(f: impl FnOnce(&Library) -> T) -> Option<T> {
     let mut guard = NVML_LIB.lock().ok()?;
     if guard.is_none() {
         let lib = unsafe { Library::new("nvml.dll").ok()? };
@@ -148,7 +148,7 @@ unsafe fn handle_by_bus(lib: &Library, bus_id: &str) -> Option<*mut c_void> {
     (get(bus.as_ptr(), &mut dev) == 0 && !dev.is_null()).then_some(dev)
 }
 
-unsafe fn handle_by_index(lib: &Library, index: u32) -> Option<*mut c_void> {
+pub(crate) unsafe fn handle_by_index(lib: &Library, index: u32) -> Option<*mut c_void> {
     let get = lib
         .get::<unsafe extern "C" fn(u32, *mut *mut c_void) -> u32>(b"nvmlDeviceGetHandleByIndex_v2\0")
         .or_else(|_| lib.get::<unsafe extern "C" fn(u32, *mut *mut c_void) -> u32>(b"nvmlDeviceGetHandleByIndex\0"))

@@ -39,6 +39,7 @@ mod bench_cancel;
 mod llama_bench_cmd;
 mod gguf_patch;
 mod gguf_meta;
+mod gpu_process_mem;
 mod layer_plan;
 mod gguf_shape;
 mod model_cache;
@@ -546,6 +547,7 @@ async fn main() {
             model_scan::scan_model_metadata_cmd,
             model_scan::flush_scan_cache_cmd,
             layer_plan::get_model_layer_bytes,
+            gpu_process_mem::get_gpu_process_memory,
             model_scan::clear_model_cache_cmd,
             burst_bench::cmd_burst_bench,
             bench_pp_burst::cmd_bench_pp_burst,
