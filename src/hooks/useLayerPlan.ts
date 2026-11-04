@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { GpuInfo, ModelMetadata } from "../lib/types";
 import {
@@ -161,5 +161,44 @@ export function useLayerPlan(
     });
   }, [layerBytes, gpus, calibration, kvPerBlock, measuredKv]);
 
+  // Journal the plan whenever the configuration changes, so it can be compared against the
+  // FIT estimate and the measured launch in `forecast-log.jsonl` (same file, same join).
+  const planSigRef = useRef<string>("");
+  useEffect(() => {
+    if (!plan || !modelPath) return;
+    const signature = [
+      modelPath,
+      knobs?.ctxTokens ?? 0,
+      knobs?.kvQuant ?? "",
+      knobs?.splitMode ?? "",
+      plan.boundary,
+      Math.round(plan.sumMib),
+    ].join("|");
+    if (planSigRef.current === signature) return;
+    planSigRef.current = signature;
+    const overheadMib = plan.totalMib.map(
+      (mib, i) => mib - (plan.weightsMib[i] ?? 0) - (plan.kvMib[i] ?? 0),
+    );
+    void invoke("record_plan_forecast", {
+      row: {
+        model_path: modelPath,
+        ctx: knobs?.ctxTokens ?? null,
+        kv_quant: knobs?.kvQuant ?? null,
+        split: knobs?.splitMode ?? null,
+        plan_total_mib: plan.sumMib,
+        gpu_mib: plan.totalMib,
+        weights_mib: plan.weightsMib,
+        kv_mib: plan.kvMib,
+        overhead_mib: overheadMib,
+        budgets_mib: plan.budgetsMib,
+        ts: plan.ts,
+        boundary: plan.boundary,
+        layers: plan.layerCount,
+        kv_mib_per_layer: kvPerBlock,
+      },
+    }).catch(() => {
+      // Journaling is diagnostic; never let it break the plan.
+    });
+  }, [plan, modelPath, knobs?.ctxTokens, knobs?.kvQuant, knobs?.splitMode, kvPerBlock]);
   return { plan, layerBytes, kvMibPerLayer: kvPerBlock, loading };
 }

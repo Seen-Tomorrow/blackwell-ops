@@ -86,3 +86,54 @@ pub fn record_measured(learn_key: &str, vram_mib: f64, host_mib: Option<f64>, ph
         "host_mib": host_mib,
     }));
 }
+/// Append a row of a caller-defined kind, stamping kind and t.
+///
+/// The file already joins FIT (prelaunch) with the launch (measured) on learn_key.
+/// Our layer plan is a third opinion on the same launch, so it rides the same journal with
+/// kind: "plan" — same file, same join, no second source of truth.
+fn append_kind(mut row: Value, kind: &str) -> Value {
+    if let Some(obj) = row.as_object_mut() {
+        obj.insert("kind".into(), json!(kind));
+        obj.entry("at".to_string())
+            .or_insert_with(|| json!(chrono::Utc::now().to_rfc3339()));
+    }
+    append_row(&row);
+    row
+}
+
+/// The layer plan we computed for a configuration (per device, MiB), recorded for comparison
+/// against the FIT estimate and the measured launch.
+#[tauri::command]
+pub fn record_plan_forecast(row: Value) {
+    let _ = append_kind(row, "plan");
+}
+
+/// A standalone FIT probe (not a launch): the tool's estimate for one configuration.
+#[tauri::command]
+pub fn record_fit_forecast(row: Value) {
+    let _ = append_kind(row, "fit_probe");
+}
+
+/// Rows for one model, newest last — used by the plan/forecast comparison.
+#[tauri::command]
+pub fn read_forecast_journal(model_path: Option<String>, limit: Option<usize>) -> Vec<Value> {
+    let path = log_path();
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    let slashed = |value: &str| value.replace('\\', "/");
+    let wanted = model_path.as_deref().map(slashed);
+    let mut out: Vec<Value> = text
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .filter(|row| match (&wanted, row.get("model_path").and_then(|v| v.as_str())) {
+            (Some(want), Some(model)) => slashed(model) == *want,
+            _ => true,
+        })
+        .collect();
+    let keep = limit.unwrap_or(usize::MAX);
+    if out.len() > keep {
+        out = out.split_off(out.len() - keep);
+    }
+    out
+}
