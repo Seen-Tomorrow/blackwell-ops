@@ -253,3 +253,12 @@
   font-size: var(--type-micro);
   color: var(--theme-text-muted);
 }
+/* PLAN total, inline beside NEED — same comparison at a glance, no click required. */
+.vram-fc-bar__need-plan {
+  margin-left: 0.35rem;
+  padding-left: 0.35rem;
+  border-left: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent);
+  font-size: var(--type-micro);
+  color: color-mix(in srgb, var(--theme-text-muted) 90%, transparent);
+  white-space: nowrap;
+}

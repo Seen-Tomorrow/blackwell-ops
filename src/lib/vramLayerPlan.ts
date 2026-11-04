@@ -23,6 +23,8 @@ export type LayerPlanInput = {
   budgetsMib: number[];
   /** KV cache per layer in MiB (scales with layers, so it follows the boundary). */
   kvMibPerLayer?: number;
+  /** Per-device overhead the launch will also allocate (compute graph buffers), MiB. */
+  overheadMib?: number[];
 };
 
 export type LayerPlan = {
@@ -81,7 +83,9 @@ export function planLayerSplit(input: LayerPlanInput): LayerPlan | null {
     const weights1 = total - prefix[boundary] + output + other / 2;
     const kv0 = kvPerLayer * firstLayers;
     const kv1 = kvPerLayer * lastLayers;
-    const totalMib = [weights0 + kv0, weights1 + kv1];
+    const extra0 = Math.max(0, input.overheadMib?.[0] ?? 0);
+    const extra1 = Math.max(0, input.overheadMib?.[1] ?? 0);
+    const totalMib = [weights0 + kv0 + extra0, weights1 + kv1 + extra1];
     const util = [totalMib[0] / input.budgetsMib[0], totalMib[1] / input.budgetsMib[1]];
     return {
       boundary,
@@ -175,6 +179,8 @@ export function planFromLive(args: {
   outputMib?: number;
   otherMib?: number;
   kvMibPerLayer?: number;
+  /** Per-device overhead the launch also allocates (compute graph buffers), MiB. */
+  overheadMib?: number[];
   freeMib: number[];
   calibration?: GpuCalibrationRow[] | null;
   draftMib?: number[];
@@ -187,6 +193,7 @@ export function planFromLive(args: {
     outputMib: args.outputMib,
     otherMib: args.otherMib,
     kvMibPerLayer: args.kvMibPerLayer,
+    overheadMib: args.overheadMib,
     budgetsMib,
   });
 }

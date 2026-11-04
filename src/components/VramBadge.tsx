@@ -42,6 +42,9 @@ interface VramBadgeProps {
   onToggleFitOff?: () => void;
   /** Model whose layer table the planner reads; absent hides the PLAN chip. */
   modelPath?: string;
+  /** Planned context length and KV quantisation — the plan must follow these knobs. */
+  ctxTokens?: number;
+  kvQuant?: string;
   /** External draft pack selected — no main forecast / FIT. */
   draftOnly?: boolean;
   className?: string;
@@ -87,6 +90,8 @@ export default function VramBadge({
   hideFitProbe = false, draftOnly = false, className,
   fitOff = false, onToggleFitOff,
   modelPath,
+  ctxTokens,
+  kvQuant,
   modelName, modelQuant, providerName, providerBuildVersion, profileLabel, cudaVersion, launchConfig, hwTopo,
   gpuIdleBaselineMib,
   gpuPerRow = 2,
@@ -96,7 +101,11 @@ export default function VramBadge({
 }: VramBadgeProps) {
 
   const { calibration: gpuCalibration } = useGpuCalibration();
-  const { plan: layerPlan } = useLayerPlan(modelPath, gpus, gpuCalibration);
+  const { plan: layerPlan, kvMibPerLayer } = useLayerPlan(modelPath, gpus, gpuCalibration, {
+    ctxTokens,
+    kvQuant,
+    modelMeta,
+  });
   const [planOpen, setPlanOpen] = useState(false);
 
   const fusionOverlayActive =
@@ -356,6 +365,7 @@ export default function VramBadge({
           calibration={gpuCalibration}
           forecastNeedGb={displayVramNeedGb > 0 ? displayVramNeedGb : null}
           forecastKind={sourceKind ?? null}
+          kvMibPerLayer={kvMibPerLayer}
           onClose={() => setPlanOpen(false)}
         />
       )}
@@ -495,6 +505,14 @@ export default function VramBadge({
                   {displayVramNeedGb.toFixed(1)}
                 </span>
                 <span className="vram-fc-bar__unit">GB</span>
+                {layerPlan && (
+                  <span
+                    className="vram-fc-bar__need-plan"
+                    title={`Layer plan: ${(layerPlan.sumMib / 1024).toFixed(1)} GB over both cards, -ts ${layerPlan.ts.map((v) => v.toFixed(3)).join(",")}`}
+                  >
+                    {`plan ${(layerPlan.sumMib / 1024).toFixed(1)}`}
+                  </span>
+                )}
               </span>
 
               {showRamBar ? (

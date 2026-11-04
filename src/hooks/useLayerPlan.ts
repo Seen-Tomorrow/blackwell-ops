@@ -60,7 +60,7 @@ export function useLayerPlan(
   knobs?: { ctxTokens?: number; kvQuant?: string; modelMeta?: ModelMetadata | null },
 ): { plan: LayerPlan | null; layerBytes: LayerBytes | null; kvMibPerLayer: number; loading: boolean } {
   const [layerBytes, setLayerBytes] = useState<LayerBytes | null>(null);
-  const [measuredKv, setMeasuredKv] = useState<{ kvMib: number; ctx: number } | null>(null);
+  const [measuredKv, setMeasuredKv] = useState<{ kvMib: number; ctx: number; computeMib: number[] } | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -93,7 +93,7 @@ export function useLayerPlan(
       return;
     }
     let cancelled = false;
-    void invoke<{ kv_mib?: number; ctx_tokens?: number } | null>("get_learned_vram_for_model", {
+    void invoke<{ kv_mib?: number; ctx_tokens?: number; compute_mib?: number[] } | null>("get_learned_vram_for_model", {
       modelPath,
       ctx: null,
       kvQuant: null,
@@ -102,7 +102,11 @@ export function useLayerPlan(
       .then((hit) => {
         if (cancelled) return;
         if (hit && hit.kv_mib && hit.kv_mib > 0 && hit.ctx_tokens && hit.ctx_tokens > 0) {
-          setMeasuredKv({ kvMib: hit.kv_mib, ctx: hit.ctx_tokens });
+          setMeasuredKv({
+            kvMib: hit.kv_mib,
+            ctx: hit.ctx_tokens,
+            computeMib: Array.isArray(hit.compute_mib) ? hit.compute_mib : [],
+          });
         } else {
           setMeasuredKv(null);
         }
@@ -144,9 +148,12 @@ export function useLayerPlan(
       outputMib: layerBytes.output_mib,
       otherMib: layerBytes.other_mib,
       freeMib: gpus.map((g) => Math.max(0, g.memory_free)),
+      // Compute buffers are per device and were measured for this model; without them the
+      // plan total is always below the forecast, which reads as error rather than scope.
+      overheadMib: measuredKv?.computeMib ?? [],
       calibration,
     });
-  }, [layerBytes, gpus, calibration, kvPerBlock]);
+  }, [layerBytes, gpus, calibration, kvPerBlock, measuredKv]);
 
   return { plan, layerBytes, kvMibPerLayer: kvPerBlock, loading };
 }

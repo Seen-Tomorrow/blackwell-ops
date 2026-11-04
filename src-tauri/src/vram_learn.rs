@@ -1429,6 +1429,8 @@ pub struct LearnedVramForModel {
     pub kv_mib: f64,
     /// Context length of that launch — KV scales linearly from here.
     pub ctx_tokens: Option<usize>,
+    /// Compute-graph buffer per device for that launch, MiB, indexed by CUDA index.
+    pub compute_mib: Vec<f64>,
 }
 
 /// Parse a ctx token from a learned key or a config value: `262144`, `256k`, `256K`.
@@ -1484,10 +1486,19 @@ pub fn get_learned_vram_for_model(
         let mut ctx_hit = false;
         let mut entry_ctx: Option<usize> = None;
         let mut kv_mib = 0.0f64;
+        let mut compute_by_device: Vec<f64> = Vec::new();
         if let Some(snapshot) = entry.launch_snapshot.as_ref() {
             for line in &snapshot.buffers {
-                if line.device.starts_with("CUDA") && line.category == "kv" {
+                let Some(idx) = line.device.strip_prefix("CUDA").and_then(|d| d.parse::<usize>().ok()) else {
+                    continue;
+                };
+                if line.category == "kv" {
                     kv_mib += line.mib;
+                } else if line.category == "compute" {
+                    if compute_by_device.len() <= idx {
+                        compute_by_device.resize(idx + 1, 0.0);
+                    }
+                    compute_by_device[idx] += line.mib;
                 }
             }
         }
@@ -1515,6 +1526,7 @@ pub fn get_learned_vram_for_model(
             ctx_matched: ctx_hit,
             kv_mib,
             ctx_tokens: entry_ctx,
+            compute_mib: compute_by_device,
         };
         let better = match &best {
             None => true,
