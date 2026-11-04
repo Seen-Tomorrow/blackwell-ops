@@ -2567,4 +2567,14 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 .err-reload:hover {
   background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
 }
+/* DEV prune pair, far left of the CTX footer (test loops) */
+.full-auto-cockpit__ctx-prune {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-right: 0.45rem;
+}
 
+.full-auto-cockpit__ctx-prune:empty {
+  display: none;
+}

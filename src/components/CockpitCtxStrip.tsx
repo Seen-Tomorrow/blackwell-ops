@@ -79,6 +79,8 @@ export interface CockpitCtxStripProps {
   forecastCurve?: Array<{ ctx: number; gb: number }>;
   forecastFreeGb?: number;
   onPruneCustom?: (ctxs: number[]) => void | Promise<number | void>;
+  /** DEV: wipe every LEARNED point for the current model + kv/split, to restart a test. */
+  onPruneConfig?: () => void | Promise<number | void>;
   standalone?: boolean;
   /** Unified KV toggle — one cache pool across slots. */
   kvUnified?: boolean;
@@ -100,6 +102,7 @@ export default function CockpitCtxStrip({
   forecastCurve,
   forecastFreeGb,
   onPruneCustom,
+  onPruneConfig,
   standalone = true,
   kvUnified = true,
   onToggleKvUnified,
@@ -212,6 +215,34 @@ export default function CockpitCtxStrip({
       </div>
 
       <div className="full-auto-cockpit__ctx-footer font-mono">
+        {/* DEV pruning lives at the far left: both buttons only matter while testing knobs. */}
+        <span className="full-auto-cockpit__ctx-prune font-mono">
+          {isDevBuild() && onPruneConfig && hasLearned ? (
+            <button
+              type="button"
+              className="full-auto-cockpit__ctx-marks-toggle full-auto-cockpit__ctx-marks-toggle--prune font-mono"
+              onClick={() => {
+                void onPruneConfig();
+              }}
+              title="DEV: remove every LEARNED point for this model + kv/split/batch, so the current knob set starts clean"
+            >
+              PRUNE CFG
+            </button>
+          ) : null}
+          {onPruneCustom && customCtxs.length > 0 ? (
+            <button
+              type="button"
+              className="full-auto-cockpit__ctx-marks-toggle full-auto-cockpit__ctx-marks-toggle--prune font-mono"
+              onClick={() => {
+                void onPruneCustom(customCtxs);
+              }}
+              title={`Remove ${customCtxs.length} custom LEARNED CTX mark${customCtxs.length === 1 ? "" : "s"} for this model + kv/spec/split (preset ticks stay)`}
+            >
+              PRUNE {customCtxs.length}
+            </button>
+          ) : null}
+        </span>
+
         <span className="full-auto-cockpit__ctx-footer-hover font-mono">
           {ribbonHover || "\u00a0"}
         </span>
@@ -299,18 +330,6 @@ export default function CockpitCtxStrip({
             ) : null}
             {hasLearned ? (
               <>
-                {onPruneCustom && customCtxs.length > 0 ? (
-                  <button
-                    type="button"
-                    className="full-auto-cockpit__ctx-marks-toggle full-auto-cockpit__ctx-marks-toggle--prune font-mono"
-                    onClick={() => {
-                      void onPruneCustom(customCtxs);
-                    }}
-                    title={`Remove ${customCtxs.length} custom LEARNED CTX mark${customCtxs.length === 1 ? "" : "s"} for this model + kv/spec/split (preset ticks stay)`}
-                  >
-                    PRUNE {customCtxs.length}
-                  </button>
-                ) : null}
                 <CtxLearnedMarkToggle mode={mode} onCycle={cycle} visible />
               </>
             ) : (

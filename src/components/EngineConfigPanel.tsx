@@ -1875,6 +1875,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       forecastCurve: vramCalc.manifest?.forecastCurve,
       forecastFreeGb: vramCalc.manifest?.forecastFreeGb,
       onPruneCustom: vramCalc.pruneLearnedCtxs,
+      onPruneConfig: () => vramCalc.pruneLearnedCtxs(vramCalc.learnedCurveCtxs ?? []),
       kvUnified,
       onToggleKvUnified: hasUnifiedKvParam
         ? () => updateParam("unified_kv", kvUnified ? "off" : "on")
