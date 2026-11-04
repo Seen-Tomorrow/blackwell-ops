@@ -1475,7 +1475,7 @@ pub fn get_learned_vram_for_model(
         .map(|s| s.trim().to_lowercase())
         .filter(|s| !s.is_empty());
 
-    let mut best: Option<(u32, LearnedVramForModel)> = None;
+    let mut best: Option<(usize, u32, usize, LearnedVramForModel)> = None;
     let mut count = 0u32;
     for (key, entry) in store.entries.iter() {
         if !key.starts_with(&prefix) || entry.vram_mib <= 0.0 {
@@ -1484,6 +1484,7 @@ pub fn get_learned_vram_for_model(
         count += 1;
         let mut score = 0u32;
         let mut ctx_hit = false;
+        let mut ctx_distance: usize = usize::MAX;
         let mut entry_ctx: Option<usize> = None;
         let mut kv_mib = 0.0f64;
         let mut compute_by_device: Vec<f64> = Vec::new();
@@ -1509,6 +1510,9 @@ pub fn get_learned_vram_for_model(
                 if ctx_hit {
                     score += 4;
                 }
+                if let (Some(w), Some(got)) = (want_ctx, entry_ctx) {
+                    ctx_distance = w.abs_diff(got);
+                }
             } else if let Some(v) = token.strip_prefix("kv=") {
                 if want_kv.as_deref() == Some(v) {
                     score += 2;
@@ -1528,18 +1532,30 @@ pub fn get_learned_vram_for_model(
             ctx_tokens: entry_ctx,
             compute_mib: compute_by_device,
         };
+        // Rank by (ctx bucket, score), then by how close the ctx is, then by size. The old
+        // "tie -> highest vram" rule picked a stuffed-GPU spill run (27 GB of compute
+        // buffers) for an ordinary 128K plan.
+        let bucket = if want_ctx.is_some() {
+            if ctx_hit { 0usize } else { 1 }
+        } else {
+            0
+        };
         let better = match &best {
             None => true,
-            Some((best_score, best_entry)) => {
-                score > *best_score
-                    || (score == *best_score && candidate.vram_mib > best_entry.vram_mib)
+            Some((best_bucket, best_score, best_distance, best_entry)) => {
+                (bucket, std::cmp::Reverse(score), ctx_distance)
+                    < (*best_bucket, std::cmp::Reverse(*best_score), *best_distance)
+                    || (bucket == *best_bucket
+                        && score == *best_score
+                        && ctx_distance == *best_distance
+                        && candidate.vram_mib > best_entry.vram_mib)
             }
         };
         if better {
-            best = Some((score, candidate));
+            best = Some((bucket, score, ctx_distance, candidate));
         }
     }
-    best.map(|(_, mut entry)| {
+    best.map(|(_, _, _, mut entry)| {
         entry.entries = count;
         entry
     })

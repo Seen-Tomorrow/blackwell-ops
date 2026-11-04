@@ -83,7 +83,7 @@ export function useLayerPlan(
     return () => {
       cancelled = true;
     };
-  }, [modelPath]);
+  }, [modelPath, knobs?.ctxTokens, knobs?.kvQuant]);
 
   // KV from the last real launch beats any formula: hybrid-attention models (Qwen3.8-Flash
   // carries KV in 12 of 48 blocks) make a per-block estimate off by 4x.
@@ -95,8 +95,10 @@ export function useLayerPlan(
     let cancelled = false;
     void invoke<{ kv_mib?: number; ctx_tokens?: number; compute_mib?: number[] } | null>("get_learned_vram_for_model", {
       modelPath,
-      ctx: null,
-      kvQuant: null,
+      // Ask for the planned configuration: the nearest-ctx launch gives both the KV
+      // baseline and the compute buffers that belong to that context.
+      ctx: knobs?.ctxTokens != null ? String(knobs.ctxTokens) : null,
+      kvQuant: knobs?.kvQuant ?? null,
       split: null,
     })
       .then((hit) => {
@@ -117,7 +119,7 @@ export function useLayerPlan(
     return () => {
       cancelled = true;
     };
-  }, [modelPath]);
+  }, [modelPath, knobs?.ctxTokens, knobs?.kvQuant]);
 
   const kvPerLayer = kvMibPerLayer({
     ctxTokens: knobs?.ctxTokens,
