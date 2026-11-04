@@ -2,17 +2,20 @@
 //!
 //! The engine prints its buffer inventory at load (`model`, `KV`, `compute` per device) and
 //! `launch_memory_parse` turns those into MiB. NVML reports what the device actually holds.
-//! The difference is the CUDA context plus allocator slack — and, on Windows/WDDM, whatever
-//! the driver keeps unreachable:
 //!
 //! ```text
-//! residual_i = nvml_used_i - sum(parsed buffers on device i)
+//! residual_i = (used_after - used_before) - sum(parsed buffers on device i)
 //! ```
 //!
-//! Per-process memory is not available on WDDM (`usedGpuMemory` comes back
-//! NOT_AVAILABLE, `nvidia-smi` prints `[N/A]`), so this device-level difference is the only
-//! way to measure it without TCC. It is sampled once per launch, at load time, because later
-//! the KV cache grows with context and foreign apps may appear.
+//! The **delta around the launch** is the whole point. An absolute reading mixes in whatever
+//! else holds memory on the card — a browser, a desktop compositor, a stale engine — and on
+//! this box that drift is over a gigabyte and keeps growing while the engine sits idle with
+//! no requests. `note_baseline` samples immediately before spawn, `capture` right after the
+//! buffer inventory is parsed.
+//!
+//! Per-process memory is not available on WDDM (`usedGpuMemory` comes back NOT_AVAILABLE,
+//! `nvidia-smi` prints `[N/A]`), so a device-level difference is the only way to measure it
+//! without TCC.
 //!
 //! Store: `{app_root}/config/cache/gpu-calibration.json`. Separate from `learned-vram.json`
 //! on purpose — this is infrastructure calibration, not a model measurement, and deleting
@@ -22,6 +25,30 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 const SAMPLES_PER_DEVICE: usize = 10;
+
+static LAUNCH_BASELINES: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<usize, std::collections::BTreeMap<u32, u64>>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
+/// Remember per-device usage immediately before an engine is spawned.
+pub fn note_baseline(slot_idx: usize) {
+    let Some(samples) = crate::nvml_metrics::scan() else {
+        return;
+    };
+    let mut used = std::collections::BTreeMap::new();
+    for gpu in &samples {
+        used.insert(gpu.index, gpu.memory_used_mib);
+    }
+    if let Ok(mut guard) = LAUNCH_BASELINES.lock() {
+        guard.insert(slot_idx, used);
+    }
+}
+
+/// Drop a baseline for a launch that never produced buffers (spawn failure, cancel).
+pub fn forget_baseline(slot_idx: usize) {
+    if let Ok(mut guard) = LAUNCH_BASELINES.lock() {
+        guard.remove(&slot_idx);
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CalibrationSample {
@@ -136,6 +163,7 @@ fn summarize(store: &CalibrationStore) -> Vec<DeviceCalibrationSummary> {
 /// parsed — later the KV cache has grown and the difference stops being runtime overhead.
 pub fn capture(
     model_path: &str,
+    slot_idx: usize,
     snapshot: &crate::launch_memory_parse::LaunchMemorySnapshot,
 ) -> Result<(), String> {
     let buffers = buffers_by_device(snapshot);
@@ -145,6 +173,10 @@ pub fn capture(
     let Some(samples) = crate::nvml_metrics::scan() else {
         return Ok(());
     };
+    let baseline = LAUNCH_BASELINES
+        .lock()
+        .ok()
+        .and_then(|mut g| g.remove(&slot_idx));
 
     let mut store = load_store();
     let taken_at = chrono::Local::now().to_rfc3339();
@@ -157,7 +189,15 @@ pub fn capture(
         if buffers_mib <= 0.0 {
             continue;
         }
-        let used_mib = gpu.memory_used_mib as f64;
+        // Delta around the launch: `after - before` is what OUR engine added, so a
+        // browser or a desktop compositor holding memory on the same card cancels out.
+        let after_mib = gpu.memory_used_mib as f64;
+        let before_mib = baseline.as_ref().and_then(|b| b.get(&gpu.index)).map(|v| *v as f64);
+        let used_mib = match before_mib {
+            Some(before) if after_mib >= before => after_mib - before,
+            // No baseline (or the card lost memory since): fall back to the absolute reading.
+            _ => after_mib,
+        };
         // A launch cannot hold less than its own buffers; if NVML says so, the sample is
         // taken while the allocation is still settling and must not be stored.
         if used_mib < buffers_mib {
@@ -205,8 +245,7 @@ mod tests {
             driver_model: "WDDM".into(),
             taken_at: "t".into(),
         }
-    }
-    #[test]
+    }    #[test]
     fn median_ignores_the_outlier_from_a_noisy_launch() {
         let mut values = vec![550.0, 618.0, 2450.0];
         assert_eq!(median(&mut values), 618.0);

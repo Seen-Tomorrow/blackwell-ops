@@ -408,9 +408,15 @@ impl EngineStack {
             .as_ref()
             .map(|w| w.nsys_exe.display().to_string())
             .unwrap_or_else(|| binary_path.display().to_string());
+        // Sample the pre-launch usage so the calibration measures OUR delta, not whatever
+        // else holds memory on these cards.
+        crate::gpu_calibration::note_baseline(slot_idx);
         let mut child = match cmd.spawn() {
             Ok(c) => c,
-            Err(e) => return Err(format!("Failed to spawn {spawn_label}: {e}")),
+            Err(e) => {
+                crate::gpu_calibration::forget_baseline(slot_idx);
+                return Err(format!("Failed to spawn {spawn_label}: {e}"));
+            }
         };
 
         let spawned_pid = child.id();
