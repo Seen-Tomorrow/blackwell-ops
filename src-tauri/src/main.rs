@@ -39,6 +39,7 @@ mod bench_cancel;
 mod llama_bench_cmd;
 mod gguf_patch;
 mod gguf_meta;
+mod layer_plan;
 mod gguf_shape;
 mod model_cache;
 mod download_manager;
@@ -544,6 +545,7 @@ async fn main() {
             // GGUF Metadata Scanner commands
             model_scan::scan_model_metadata_cmd,
             model_scan::flush_scan_cache_cmd,
+            layer_plan::get_model_layer_bytes,
             model_scan::clear_model_cache_cmd,
             burst_bench::cmd_burst_bench,
             bench_pp_burst::cmd_bench_pp_burst,
