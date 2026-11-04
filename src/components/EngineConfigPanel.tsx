@@ -3252,6 +3252,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         onValidate={vramCalc.validate}
         fitOff={fitOff}
         modelPath={model?.path}
+        ctxTokens={
+          typeof config.ctx === "number" ? config.ctx : parseInt(String(config.ctx ?? ""), 10) || undefined
+        }
+        kvQuant={String(config.kv_quant ?? "f16")}
+        splitMode={String(config.split ?? "none")}
         onToggleFitOff={() => setFitOff((v) => !v)}
         isModelRunning={isModelRunning}
         activeEngineAlias={activeEngineAlias}

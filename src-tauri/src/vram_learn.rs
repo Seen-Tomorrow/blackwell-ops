@@ -1472,6 +1472,89 @@ pub async fn get_learned_vram_for_model(
 }
 
 #[allow(clippy::needless_return)]
+/// Linear interpolation of KV and compute between the two ctx points that bracket want_ctx.
+///
+/// The forecast's CURVE source interpolates the total between measured points; the plan used
+/// the NEAREST point's compute buffers instead, a step function. Between two points that reads
+/// as gigabytes of error, and it shrinks as more points are measured - exactly the symptom.
+/// KV is already linear in ctx; compute buffers are not, but between two neighbouring
+/// measurements a straight line is the best available answer and matches how the curve is
+/// drawn.
+fn interpolate_between_ctx(
+    store: &LearnedVramStore,
+    prefix: &str,
+    want_ctx: usize,
+    want_kv: Option<&str>,
+    want_split: Option<&str>,
+) -> Option<LearnedVramForModel> {
+    let mut points: Vec<(usize, f64, Vec<f64>, f64, f64)> = Vec::new();
+    for (key, entry) in store.entries.iter() {
+        if !key.starts_with(prefix) || entry.vram_mib <= 0.0 {
+            continue;
+        }
+        let mut ctx_tokens = None;
+        let mut kv_token = "";
+        for token in key[prefix.len()..].split('|') {
+            if let Some(v) = token.strip_prefix("ctx=") {
+                ctx_tokens = ctx_tokens_from_str(v);
+            } else if let Some(v) = token.strip_prefix("kv=") {
+                kv_token = v;
+            }
+        }
+        let Some(ctx) = ctx_tokens else { continue };
+        if let Some(want) = want_kv {
+            if kv_token != want {
+                continue;
+            }
+        }
+        let mut kv_mib = 0.0;
+        let mut compute: Vec<f64> = Vec::new();
+        if let Some(snapshot) = entry.launch_snapshot.as_ref() {
+            for line in &snapshot.buffers {
+                let Some(idx) = line.device.strip_prefix("CUDA").and_then(|d| d.parse::<usize>().ok()) else {
+                    continue;
+                };
+                if line.category == "kv" {
+                    kv_mib += line.mib;
+                } else if line.category == "compute" {
+                    if compute.len() <= idx {
+                        compute.resize(idx + 1, 0.0);
+                    }
+                    compute[idx] += line.mib;
+                }
+            }
+        }
+        points.push((ctx, kv_mib, compute, entry.host_mib.unwrap_or(0.0), entry.vram_mib));
+    }
+    if points.len() < 2 {
+        return None;
+    }
+    points.sort_by_key(|(ctx, ..)| *ctx);
+    let lower = points.iter().rev().find(|(ctx, ..)| *ctx <= want_ctx)?;
+    let upper = points.iter().find(|(ctx, ..)| *ctx >= want_ctx)?;
+    if lower.0 == upper.0 {
+        return None;
+    }
+    let span = (upper.0 - lower.0) as f64;
+    let t = (want_ctx.saturating_sub(lower.0)) as f64 / span;
+    let lerp = |a: f64, b: f64| a + (b - a) * t;
+    let device_count = lower.2.len().max(upper.2.len());
+    let mut compute = Vec::with_capacity(device_count);
+    for i in 0..device_count {
+        let a = lower.2.get(i).copied().unwrap_or(0.0);
+        let b = upper.2.get(i).copied().unwrap_or(0.0);
+        compute.push(lerp(a, b));
+    }
+    Some(LearnedVramForModel {
+        vram_mib: lerp(lower.3, upper.3),
+        host_mib: lerp(lower.3, upper.3),
+        entries: points.len() as u32,
+        ctx_matched: false,
+        kv_mib: lerp(lower.1, upper.1),
+        ctx_tokens: Some(want_ctx),
+        compute_mib: compute,
+    })
+}
 fn learned_vram_for_model_blocking(
     model_path: String,
     ctx: Option<String>,
@@ -1571,10 +1654,21 @@ fn learned_vram_for_model_blocking(
             best = Some((bucket, score, ctx_distance, candidate));
         }
     }
-    best.map(|(_, _, _, mut entry)| {
+    let picked = best.map(|(_, _, _, mut entry)| {
         entry.entries = count;
         entry
-    })
+    });
+    match picked {
+        Some(entry) if entry.ctx_matched || want_ctx.is_none() => Some(entry),
+        Some(entry) => want_ctx
+            .and_then(|want| {
+                interpolate_between_ctx(&store, &prefix, want, want_kv.as_deref(), want_split.as_deref())
+            })
+            .or(Some(entry)),
+        None => want_ctx.and_then(|want| {
+            interpolate_between_ctx(&store, &prefix, want, want_kv.as_deref(), want_split.as_deref())
+        }),
+    }
 }
 #[tauri::command]
 #[allow(clippy::too_many_arguments)] // Tauri IPC: one param per wire field; bundling would change the invoke shape

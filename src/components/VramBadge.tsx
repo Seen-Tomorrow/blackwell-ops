@@ -45,6 +45,8 @@ interface VramBadgeProps {
   /** Planned context length and KV quantisation — the plan must follow these knobs. */
   ctxTokens?: number;
   kvQuant?: string;
+  /** Split mode of the plan — compute buffers differ ~4x between none and layer. */
+  splitMode?: string;
   /** External draft pack selected — no main forecast / FIT. */
   draftOnly?: boolean;
   className?: string;
@@ -92,6 +94,7 @@ export default function VramBadge({
   modelPath,
   ctxTokens,
   kvQuant,
+  splitMode,
   modelName, modelQuant, providerName, providerBuildVersion, profileLabel, cudaVersion, launchConfig, hwTopo,
   gpuIdleBaselineMib,
   gpuPerRow = 2,
@@ -104,6 +107,7 @@ export default function VramBadge({
   const { plan: layerPlan, kvMibPerLayer } = useLayerPlan(modelPath, gpus, gpuCalibration, {
     ctxTokens,
     kvQuant,
+    splitMode,
     modelMeta,
   });
   const [planOpen, setPlanOpen] = useState(false);

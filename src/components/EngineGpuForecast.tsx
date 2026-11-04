@@ -86,6 +86,9 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     fitOff = false,
     onToggleFitOff,
     modelPath,
+    ctxTokens,
+    kvQuant,
+    splitMode,
     isModelRunning,
     activeEngineAlias,
     activeEnginePort,
@@ -374,6 +377,9 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
               fitOff={fitOff}
               onToggleFitOff={onToggleFitOff}
               modelPath={modelPath}
+              ctxTokens={ctxTokens}
+              kvQuant={kvQuant}
+              splitMode={splitMode}
               activeEngineAlias={activeEngineAlias}
               activeEnginePort={activeEnginePort}
               selectedSlotIdx={selectedSlotIdx}
@@ -496,6 +502,10 @@ export interface EngineGpuForecastProps {
   onToggleFitOff?: () => void;
   /** Selected model path — the PLAN chip reads its block table. */
   modelPath?: string;
+  /** Planned ctx / KV quant, so the plan follows the knobs instead of a fixed context. */
+  ctxTokens?: number;
+  kvQuant?: string;
+  splitMode?: string;
   isModelRunning?: boolean;
   activeEngineAlias?: string;
   activeEnginePort?: number;
