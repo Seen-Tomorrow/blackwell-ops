@@ -108,11 +108,10 @@ function probeScenarioFields(
   if (!session || session.modelPath !== modelPath || session.hardKey !== hardKey) {
     return {};
   }
-  if (
-    session.mode === "low_vram"
-    && liveCtx != null
-    && session.anchorCtx !== liveCtx
-  ) {
+  // A probe measures ONE ctx. Reusing it at another ctx reused the number wholesale - the
+  // journal shows a 64K launch carrying a 102,829 MiB estimate whose launch was 18,039.
+  // The low-VRAM path already refused this; every probe does now.
+  if (liveCtx != null && session.anchorCtx !== liveCtx) {
     return {};
   }
   if (
@@ -1183,6 +1182,27 @@ export function useScenarioEvaluator({
         freeFingerprint: liveFreeFp,
         fittedNgl: result.fitted_ngl,
       };
+
+      // Journal the probe itself: without a row we cannot tell which ctx a later launch
+      // inherited its estimate from.
+      void invoke("record_fit_forecast", {
+        row: {
+          model_path: model.path,
+          ctx: anchorCtx,
+          kv_quant: String(curConfig.kv_quant ?? ""),
+          split: String(curConfig.split ?? "none"),
+          batch: curConfig.batch ?? null,
+          ubatch: curConfig.ubatch ?? null,
+          validated_mib: result.vram_mib,
+          host_mib: result.host_mib,
+          gpu_breakdown_mib: result.gpu_breakdown_mib,
+          gpu_components_mib: result.gpu_components_mib ?? null,
+          fitted_ngl: result.fitted_ngl,
+          mode: session.mode,
+        },
+      }).catch(() => {
+        // Diagnostic only.
+      });
 
       probeSessionRef.current = session;
       const painted = evaluate(input);

@@ -28,6 +28,12 @@ export function forecastSnapshotFromManifest(
     auto_split: manifest?.autoLayerSplit === true || driver?.willSplit === true,
     fits: manifest?.fits ?? null,
     memory_source: manifest?.memorySource?.kind ?? null,
+    // Whether the number is exact for this ctx, and how it was derived ("estimate from
+    // probe @ 512K"): without this a probe taken at another ctx looks like a measurement
+    // of the ctx actually launched.
+    memory_source_exact: manifest?.memorySource?.exact ?? null,
+    memory_source_detail: manifest?.memorySource?.detail ?? null,
+    valid_at_ctx: manifest?.memorySource?.exact === true ? (extra.ctx ?? null) : null,
     ctx: extra.ctx ?? null,
     kv_quant: extra.kv_quant ?? extra["kv_quant"] ?? null,
     batch: extra.batch ?? null,
