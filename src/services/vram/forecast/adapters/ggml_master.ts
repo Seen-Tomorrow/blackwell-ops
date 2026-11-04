@@ -250,9 +250,16 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   const probeHostAtLive =
     probeHostGb != null && probeAnchor === liveCtx ? probeHostGb : null;
   const hostMeasuredGb = learnedHostGb ?? probeHostAtLive;
-  const hostOffloadGb = isWeightClassHostSpill(hostMeasuredGb)
-    ? (hostMeasuredGb as number)
-    : 0;
+  // Lookup table (Engram / PLE): host by design, and usually the bulk of the measured
+  // host figure (125.9 GB on DeepSeek-V4.1). Counting it as spill made every such model
+  // paint OVER FREE · SPILL even when the launch offloads nothing.
+  const engramNeedGb = Math.max(
+    0,
+    input.fitProbeEngramMib ?? input.learnedEngramMib ?? input.modelEngramMib ?? 0,
+  ) / 1024;
+  // Only host bytes ABOVE the by-design table can be a weight spill.
+  const hostSpillLikeGb = Math.max(0, (hostMeasuredGb ?? 0) - engramNeedGb);
+  const hostOffloadGb = isWeightClassHostSpill(hostSpillLikeGb) ? hostSpillLikeGb : 0;
   const currentPlacementKey = `${input.engineConfig.extra_params?.device || ""}|${input.engineConfig.extra_params?.split || ""}|${input.engineConfig.extra_params?.gpu_sync || ""}`;
   const probePlacementMatches =
     input.fitProbePlacementKey == null || input.fitProbePlacementKey === currentPlacementKey;
@@ -314,13 +321,13 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   const realSpill = isLiveWeightSpill({
     estimateGb,
     freeGb: targetAvail,
-    hostGb: hostMeasuredGb,
+    hostGb: hostSpillLikeGb,
     probeMode: input.fitProbeMode,
     fittedNgl,
     measurementAtLiveCtx,
   });
   const displayHostGb = realSpill
-    ? Math.max(hostOffloadGb, isWeightClassHostSpill(hostMeasuredGb) ? (hostMeasuredGb as number) : 0)
+    ? Math.max(hostOffloadGb, hostSpillLikeGb)
     : 0;
   const showHostRam = showHostRamBar({
     hostOffloadGb: displayHostGb,
@@ -402,7 +409,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     freeUtil: vramFreeUtil,
     freeGb: targetAvail,
     estimateGb,
-    hostOffloadGb: hostMeasuredGb ?? 0,
+    hostOffloadGb: hostSpillLikeGb,
     overSystemMemory,
     probeMode: input.fitProbeMode,
     probeFreeFingerprint: input.fitProbeFreeFingerprint,
@@ -422,12 +429,6 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     probeHostGb ?? 0,
     learnedHostGb ?? 0,
   );
-  // Lookup table (Engram / PLE): a model fact that survives any knob change. A
-  // measurement beats the header, but only the header exists before the first launch.
-  const engramNeedGb = Math.max(
-    0,
-    input.fitProbeEngramMib ?? input.learnedEngramMib ?? input.modelEngramMib ?? 0,
-  ) / 1024;
   const hostSplit = splitHostRamGb({
     hostGb: hostTotalGb,
     hostModelGb:
