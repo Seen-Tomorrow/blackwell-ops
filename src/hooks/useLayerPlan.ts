@@ -251,6 +251,15 @@ export function useLayerPlan(
     });
   }, [layerBytes, gpus, calibration, kvPerBlock, measuredKv, cold, weightScale]);
 
+  const kvSource: "measured" | "profile" | "geometry" | "none" =
+    measuredKv && measuredKv.kvMib > 0
+      ? "measured"
+      : cold && cold.kv_mib > 0
+        ? "profile"
+        : kvPerBlock > 0
+          ? "geometry"
+          : "none";
+
   // Journal the plan whenever the configuration changes, so it can be compared against the
   // FIT estimate and the measured launch in `forecast-log.jsonl` (same file, same join).
   const planSigRef = useRef<string>("");
@@ -261,8 +270,7 @@ export function useLayerPlan(
       knobs?.ctxTokens ?? 0,
       knobs?.kvQuant ?? "",
       knobs?.splitMode ?? "",
-      plan.boundary,
-      Math.round(plan.sumMib),
+      kvSource,
     ].join("|");
     if (planSigRef.current === signature) return;
     planSigRef.current = signature;
@@ -292,14 +300,6 @@ export function useLayerPlan(
     }).catch(() => {
       // Journaling is diagnostic; never let it break the plan.
     });
-  }, [plan, modelPath, knobs?.ctxTokens, knobs?.kvQuant, knobs?.splitMode, kvPerBlock, measuredKv, cold]);
-  const kvSource: "measured" | "profile" | "geometry" | "none" =
-    measuredKv && measuredKv.kvMib > 0
-      ? "measured"
-      : cold && cold.kv_mib > 0
-        ? "profile"
-        : kvPerBlock > 0
-          ? "geometry"
-          : "none";
+  }, [plan, modelPath, knobs?.ctxTokens, knobs?.kvQuant, knobs?.splitMode, kvPerBlock, measuredKv, cold, kvSource]);
   return { plan, layerBytes, kvMibPerLayer: kvPerBlock, kvSource, loading };
 }

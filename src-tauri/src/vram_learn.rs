@@ -1824,23 +1824,11 @@ fn learned_vram_for_model_blocking(
             best = Some((bucket, score, ctx_distance, candidate));
         }
     }
-    // A caller that cannot state batch (0/None) or whose kv quant string does not line up
-    // must still find the model's own measurements: a near configuration beats a header
-    // upper bound that is ~7x off for a hybrid cache. Retry with the soft filters cleared.
-    if best.is_none() && (kv_quant.is_some() || batch.is_some() || ubatch.is_some()) {
-        // Release the store lock before recursing: it is a plain std mutex, so re-entering
-        // this function while holding it deadlocks and the command never answers (the UI
-        // freezes on a spinner). The filter check above also stops an infinite retry loop.
-        drop(_guard);
-        return learned_vram_for_model_blocking(
-            model_path,
-            ctx,
-            None,
-            split,
-            None,
-            None,
-        );
-    }
+    // No relaxed retry here. Falling back to a different kv quant or batch looked helpful
+    // and was not: the store holds f16 and q8_0 rows at the same ctx, so the fallback returned
+    // whichever it met first - the plan flipped between 22.9 and 17.6 GB at the same 131072.
+    // A missing configuration now returns None, and the cold/profile path (which labels its
+    // basis) or no plan at all is preferable to a mislabelled measurement.
 
     let picked = best.map(|(_, _, _, mut entry)| {
         entry.entries = count;
