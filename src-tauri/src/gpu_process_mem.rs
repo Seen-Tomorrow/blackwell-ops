@@ -19,7 +19,10 @@ use serde::Serialize;
 use std::ffi::c_void;
 
 /// `NVML_VALUE_NOT_AVAILABLE` — usedGpuMemory is `(unsigned long long)-1` when the driver
-/// will not report it (some Windows/WDDM combinations).
+/// will not report it. **That is the normal case on Windows/WDDM**: measured on this box with
+/// a live engine, every process came back `None` (nvidia-smi prints `[N/A]` for the same
+/// reason). Only TCC mode reports per-process sizes, so on this stack the list gives
+/// ATTRIBUTION (which pid sits on which device) but not a byte count.
 const NVML_VALUE_NOT_AVAILABLE: u64 = u64::MAX;
 
 #[derive(Debug, Clone, Serialize)]
@@ -54,17 +57,28 @@ unsafe fn processes_for_device(lib: &Library, device: *mut c_void) -> Option<Vec
         })
         .ok()?;
 
-    // First call with a null buffer asks for the count only.
+    // The null-buffer probe returns NVML_ERROR_INSUFFICIENT_SIZE (7) on Windows, but it
+    // still writes the required count - treating that rc as failure reported "no processes"
+    // while an engine was live.
     let mut count: u32 = 0;
-    if get(device, &mut count, std::ptr::null_mut()) != 0 || count == 0 {
-        return Some(Vec::new());
+    let probe = get(device, &mut count, std::ptr::null_mut());
+    if count == 0 {
+        return if probe == 0 { Some(Vec::new()) } else { None };
     }
     let mut infos = vec![NvmlProcessInfo::default(); count as usize];
-    if get(device, &mut count, infos.as_mut_ptr()) != 0 {
+    let mut written: u32 = count;
+    if get(device, &mut written, infos.as_mut_ptr()) != 0 {
         return None;
     }
-    infos.truncate(count as usize);
-    Some(infos.into_iter().map(|i| (i.pid, i.used_gpu_memory)).collect())
+    infos.truncate(written.min(count) as usize);
+    Some(
+        infos
+            .into_iter()
+            // NVML pads the tail with placeholder rows when it over-estimates the count.
+            .filter(|i| i.pid != 0 && i.pid != u32::MAX)
+            .map(|i| (i.pid, i.used_gpu_memory))
+            .collect(),
+    )
 }
 
 fn collect(lib: &Library) -> Vec<GpuProcessUsage> {
