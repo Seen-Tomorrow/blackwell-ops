@@ -75,6 +75,10 @@ def launch_config(args) -> dict:
         "flash_attn": args.flash_attn,
         "offload_mode": "regular",
         "cache_ram": args.cache_ram,
+        # Match the cockpit's key shape: without these the same launch lands under
+        # mode=full_auto / no topo and is invisible to every UI lookup.
+        "__memory_mode": args.mode,
+        "__vram_topo": args.topo,
     }
     if args.device:
         extra["device"] = args.device
@@ -117,6 +121,8 @@ def main() -> int:
     ap.add_argument("--flash-attn", default="on", dest="flash_attn")
     ap.add_argument("--cache-ram", type=int, default=16384)
     ap.add_argument("--device", default="")
+    ap.add_argument("--mode", default="assisted", help="__memory_mode (assisted|full_auto)")
+    ap.add_argument("--topo", default="96", help="__vram_topo token (manufactured GB per card)")
     ap.add_argument("--port", type=int, default=8899)
     ap.add_argument("--alias")
     ap.add_argument("--provider", default="ggml-master")
