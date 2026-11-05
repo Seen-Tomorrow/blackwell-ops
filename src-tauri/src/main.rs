@@ -556,6 +556,7 @@ async fn main() {
             gpu_calibration::get_gpu_calibration,
             vram_profile::get_cold_forecast,
             vram_profile::get_fit_projection,
+            automation::record_ui_state,
             forecast_log::record_plan_forecast,
             forecast_log::record_fit_forecast,
             forecast_log::read_forecast_journal,

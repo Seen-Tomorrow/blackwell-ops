@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import type { GpuInfo, VramManifest, ModelMetadata } from "../lib/types";
 import GpuTopology from "./GpuTopology";
 import FusionPane from "./FusionPane";
@@ -101,6 +102,8 @@ export default function VramBadge({
   ctxTokens,
   kvQuant,
   splitMode,
+  batch,
+  ubatch,
   onApplyPlan,
 
   modelName, modelQuant, providerName, providerBuildVersion, profileLabel, cudaVersion, launchConfig, hwTopo,
@@ -116,8 +119,56 @@ export default function VramBadge({
     ctxTokens,
     kvQuant,
     splitMode,
+    batch,
+    ubatch,
     modelMeta,
   });
+
+  // Publish what this glass shows, so an agent can read it instead of asking for a
+  // screenshot. DEV builds write config/automation/ui/vram-badge.json.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void invoke("record_ui_state", {
+        name: "vram-badge",
+        state: {
+          modelPath: modelPath ?? null,
+          modelName: modelName ?? null,
+          ctx: ctxTokens ?? null,
+          kvQuant: kvQuant ?? null,
+          splitMode: splitMode ?? null,
+          batch: batch ?? null,
+          ubatch: ubatch ?? null,
+          fitOff: fitOff === true,
+          sourceKind: manifest.memorySource?.kind ?? null,
+          sourceExact: manifest.memorySource?.exact ?? null,
+          sourceDetail: manifest.memorySource?.detail ?? null,
+          vramNeedGb: manifest.vramTotalGb ?? null,
+          ramNeedGb: manifest.ramTotalGb ?? null,
+          fits: manifest.fits ?? null,
+          needTone: manifest.style.vramNeedTone ?? null,
+          launchPaint: manifest.style.launchPaint ?? null,
+          plan: layerPlan
+            ? {
+                totalMib: layerPlan.sumMib,
+                budgetSumMib: layerPlan.budgetSumMib,
+                gpuMib: layerPlan.totalMib,
+                ts: layerPlan.ts,
+                boundary: layerPlan.boundary,
+                kvSource: planKvSource,
+                squeezed: planSqueezed,
+              }
+            : null,
+        },
+      }).catch(() => {
+        // Diagnostics only.
+      });
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [
+    modelPath, modelName, ctxTokens, kvQuant, splitMode, batch, ubatch, fitOff,
+    manifest, layerPlan, planKvSource, planSqueezed,
+  ]);
+
   const [planOpen, setPlanOpen] = useState(false);
 
   const fusionOverlayActive =

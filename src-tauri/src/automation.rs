@@ -246,3 +246,26 @@ async fn wait_for_running(app: &AppHandle, slot_idx: usize, timeout: Duration) -
         tokio::time::sleep(Duration::from_millis(150)).await;
     }
 }
+/// Persist a UI snapshot (the forecast glass, the plan panel) for agent inspection.
+///
+/// The automation queue can drive engines but cannot see the screen; without this, every
+/// question about "what does the badge show" costs a human screenshot. DEV builds write the
+/// payload to `config/automation/ui/<name>.json`; release builds ignore it.
+#[tauri::command]
+pub fn record_ui_state(name: String, state: Value) -> Result<(), String> {
+    if !cfg!(debug_assertions) {
+        return Ok(());
+    }
+    let safe: String = name
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .collect();
+    let dir = base_dir().join("ui");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let body = serde_json::json!({
+        "at": chrono::Utc::now().to_rfc3339(),
+        "state": state,
+    });
+    let text = serde_json::to_string_pretty(&body).map_err(|e| e.to_string())?;
+    std::fs::write(dir.join(format!("{safe}.json")), text).map_err(|e| e.to_string())
+}
