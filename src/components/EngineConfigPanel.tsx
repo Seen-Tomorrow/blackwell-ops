@@ -3269,6 +3269,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             key: "tensor_split",
             value: tensorSplit,
           }).catch((err) => console.warn("[plan] persist tensor_split failed:", err));
+          // Repaint the glass with the new split (no probe).
+          requestAnimationFrame(() => vramCalc.reevaluate());
         }}
         batch={Number(config.batch ?? 0) || undefined}
         ubatch={Number(config.ubatch ?? 0) || undefined}

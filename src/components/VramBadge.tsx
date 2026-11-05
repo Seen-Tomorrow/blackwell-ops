@@ -149,6 +149,7 @@ export default function VramBadge({
           fits: manifest.fits ?? null,
           needTone: manifest.style.vramNeedTone ?? null,
           launchPaint: manifest.style.launchPaint ?? null,
+          gpuLoadsGb: manifest.gpuAllocations?.map((alloc) => alloc.projectedLoadGb) ?? null,
           plan: layerPlan
             ? {
                 totalMib: layerPlan.sumMib,

@@ -638,7 +638,10 @@ export function computeGpuAvailableList(gpus: GpuInfo[], runningSlots: RunningSl
 }
 
 export function cfgStr(cfg: EngineConfig, key: string, fallback: string): string {
-  const v = cfg.extra_params?.[key];
+  // The config carries launch params both as flat keys (`updateParam` writes there) and under
+  // `extra_params` (the launcher shape). Reading only one is how an applied `-ts` reached the
+  // CLI but never the bars.
+  const v = cfg.extra_params?.[key] ?? (cfg as unknown as Record<string, unknown>)?.[key];
   if (v == null || v === "") return fallback;
   return String(v);
 }

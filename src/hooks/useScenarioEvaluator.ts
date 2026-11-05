@@ -1335,5 +1335,11 @@ export function useScenarioEvaluator({
     }
   }, [model?.path, refreshLearnedVram]);
 
-  return { manifest, isEvaluating, isValidating, validate, learnedCurveCtxs, pruneLearnedCtxs };
+  // Repaint without probing: used when the config changes in a way the evaluator does not see
+  // as an input change (e.g. a parameter written straight to the config object).
+  const reevaluate = useCallback(() => {
+    scheduleEvaluationRef.current(true);
+  }, []);
+
+  return { manifest, isEvaluating, isValidating, validate, reevaluate, learnedCurveCtxs, pruneLearnedCtxs };
 }
