@@ -499,12 +499,41 @@ pub(crate) fn parse_fit_verdict(output: &str) -> Vec<FitAttempt> {
 
     attempts
 }
+/// Byte offset where the LAST launch in a slot log begins.
+///
+/// A slot's stderr is appended across relaunches into the same slot (and older files still hold
+/// launches written before streams were rotated per launch), so a snapshot must describe the run
+/// that just finished, never a mixture. Observed 2026-11-05: ctx 65536 and 262144 in one file,
+/// and the parser returned the 65536 buffers for both — a flat learned curve.
+fn last_launch_start(text: &str) -> Option<usize> {
+    let lower = text.to_lowercase();
+    // Any of these starts one engine process. The latest one that appears wins, so a loader
+    // that prints per-shard lines still cannot cut a launch in half.
+    const MARKERS: [&str; 3] = [
+        "llama_server: initializing",
+        "ggml_cuda_init: found",
+        "llama_model_loader: loaded meta data",
+    ];
+    let mut last = None;
+    for marker in MARKERS {
+        let mut from = 0;
+        while let Some(pos) = lower[from..].find(marker) {
+            let at = from + pos;
+            last = Some(last.map_or(at, |best: usize| best.max(at)));
+            from = at + marker.len();
+        }
+    }
+    last
+}
+
 pub fn parse_launch_memory_snapshot(output: &str) -> Option<LaunchMemorySnapshot> {
+    // Only the launch that just finished.
+    let launch_text = last_launch_start(output).map(|idx| &output[idx..]).unwrap_or(output);
     let marker = "model loaded";
-    let parse_region = if let Some(idx) = output.to_lowercase().find(marker) {
-        &output[..idx]
+    let parse_region = if let Some(idx) = launch_text.to_lowercase().find(marker) {
+        &launch_text[..idx]
     } else {
-        output
+        launch_text
     };
 
     if !parse_region.to_lowercase().contains("buffer size =") {
@@ -786,6 +815,43 @@ mod tests {
         assert!(snap.vram_mib > 27_000.0);
         assert!(snap.vram_mib < 28_000.0);
         assert!(snap.host_mib > 1400.0);
+    }
+
+    /// A slot's stderr is appended across relaunches into the same slot. The snapshot must
+    /// describe the launch that just finished: measured 2026-11-05, the 65536 run and the
+    /// 262144 run landed in one file and the second learned row recorded the first one's
+    /// KV (960 MiB instead of 3,840), which flattened the learned curve.
+    #[test]
+    fn a_relaunched_slot_log_snapshots_only_the_last_launch() {
+        const TWO_LAUNCHES: &str = r#"0.00 I srv  llama_server: initializing ...
+0.00 I load_tensors: CUDA0 model buffer size = 18290.83 MiB
+0.00 I load_tensors: CUDA1 model buffer size = 17318.97 MiB
+0.00 I llama_kv_cache: CUDA0 KV buffer size =   768.00 MiB
+0.00 I llama_kv_cache: CUDA1 KV buffer size =   768.00 MiB
+0.00 I llama_kv_cache: CUDA0 KV buffer size =   192.00 MiB
+0.00 I llama_kv_cache: CUDA1 KV buffer size =   192.00 MiB
+0.00 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 65536, kv_unified = 'false'
+0.00 I srv  server_run_i: model loaded
+0.02 I srv  update_slots: all slots are idle
+0.00 I srv  llama_server: initializing ...
+0.00 I load_tensors: CUDA0 model buffer size = 18290.83 MiB
+0.00 I load_tensors: CUDA1 model buffer size = 17318.97 MiB
+0.00 I llama_kv_cache: CUDA0 KV buffer size =  3072.00 MiB
+0.00 I llama_kv_cache: CUDA1 KV buffer size =  3072.00 MiB
+0.00 I llama_kv_cache: CUDA0 KV buffer size =   768.00 MiB
+0.00 I llama_kv_cache: CUDA1 KV buffer size =   768.00 MiB
+0.00 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 262144, kv_unified = 'false'
+0.00 I srv  server_run_i: model loaded
+"#;
+        let snap = parse_launch_memory_snapshot(TWO_LAUNCHES).expect("second launch snapshot");
+        // 3072 + 768 per card, not the 768 + 192 the first launch wrote.
+        let kv0 = snap
+            .gpu_components_mib
+            .as_ref()
+            .map(|rows| rows[0].ctx_mib)
+            .unwrap_or_default();
+        assert!((kv0 - 3840.0).abs() < 1.0, "ctx_mib was {kv0}");
+        assert!(snap.vram_mib > 43_000.0 && snap.vram_mib < 43_600.0, "vram {}", snap.vram_mib);
     }
 }
 #[cfg(test)]

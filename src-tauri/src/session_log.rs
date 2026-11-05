@@ -282,6 +282,40 @@ fn slot_dir(session_dir: &std::path::Path, slot_idx: usize, alias: &str) -> Path
     session_dir.join(format!("slot-{slot_idx}_{safe_alias}"))
 }
 
+/// Close this slot's streams and move them aside before a new launch opens them again.
+///
+/// The writers are keyed by slot index and dropped on stop, so a relaunch reopens the same
+/// `stderr.log` in append mode — the file then holds two launches. The learned launch snapshot
+/// is parsed FROM that file (`launch_memory_parse`), and it stops at the first "model loaded",
+/// so the second launch inherited the first one's buffers: measured 2026-11-05, ctx 65536 and
+/// 262144 produced the same 39,926 MiB row (KV 960 MiB at both, where 262144 really holds
+/// 3,840), which flattened the learned curve and froze the glass at one number for every ctx.
+fn rotate_slot_streams(
+    guard: &mut SessionState,
+    session_dir: &std::path::Path,
+    slot_idx: usize,
+    alias: &str,
+) {
+    if let Some(mut writers) = guard.slots.remove(&slot_idx) {
+        if let Some(w) = writers.stderr.as_mut() {
+            let _ = w.flush();
+        }
+        if let Some(w) = writers.stdout.as_mut() {
+            let _ = w.flush();
+        }
+    }
+    let dir = slot_dir(session_dir, slot_idx, alias);
+    for (current, previous) in [
+        ("stderr.log", "stderr.prev.log"),
+        ("stdout.log", "stdout.prev.log"),
+    ] {
+        let from = dir.join(current);
+        if from.exists() {
+            let _ = fs::rename(&from, dir.join(previous));
+        }
+    }
+}
+
 fn ensure_slot_writers(guard: &mut SessionState, session_dir: &std::path::Path, slot_idx: usize, alias: &str) {
     if guard.slots.contains_key(&slot_idx) {
         return;
@@ -413,8 +447,7 @@ pub fn append_crash_line(line: &str) {
     }
 }
 
-pub fn record_launch(slot_idx: usize, alias: &str, pid: u32, port: u16, launch_cmd: &str) {
-    // Remember the launch even when session logging is off — the bench archive depends on it.
+pub fn record_launch(slot_idx: usize, alias: &str, pid: u32, port: u16, launch_cmd: &str) {    // Remember the launch even when session logging is off — the bench archive depends on it.
     {
         use std::hash::{Hash, Hasher};
         let started_unix = chrono::Utc::now().timestamp();
@@ -441,6 +474,10 @@ pub fn record_launch(slot_idx: usize, alias: &str, pid: u32, port: u16, launch_c
         Ok(g) => g,
         Err(_) => return,
     };
+    // A relaunch into the same slot reuses the alias, so the writers come back and the files
+    // would be appended to. Start this launch with clean streams; the previous launch is kept
+    // as `<stream>.prev.log`.
+    rotate_slot_streams(&mut guard, &session_dir, slot_idx, alias);
     ensure_slot_writers(&mut guard, &session_dir, slot_idx, alias);
     drop(guard);
 
