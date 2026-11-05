@@ -12,7 +12,7 @@ for speed. One glass (`VramBadge`), one plan, one journal.
 
 ## State
 
-- `main` = `db5650a70`, gate green (`npm run check`: 198 TS, 451 Rust). Tree clean, level with origin.
+- `main` = `82cd0a920`, gate green (`npm run check`: 198 TS, 451 Rust). Tree clean.
 - **`main` is a protected branch** — no force push. Fix forward with a new commit; do not rebase
   published commits (one attempt cost a diverged branch and an interrupted rebase).
 - DEV app: `npm run dev` (no watch; Rust changes need restart, TS reloads via Vite). App root is
@@ -76,23 +76,34 @@ for speed. One glass (`VramBadge`), one plan, one journal.
 3. `python scripts/forecast-compare.py [model]` — fit / plan / measured per configuration.
 4. `config/cache/forecast-log.jsonl` rows: `prelaunch`, `measured`, `plan`, `fit_probe`.
 5. Screenshots only for layout, and small crops.
+6. `node scripts/ui-probe.mjs "<js>"` — press a control and read the glass without a screenshot.
+   Start the app with `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS='--remote-debugging-port=9222'`, then
+   `node scripts/ui-probe.mjs "document.querySelector('[data-takeover]').click()"`. The badge file
+   above is still the artifact to read; this only clicks and evaluates JS (`--reload`, `--console`).
 
 ## Known open items (in the order I would take them)
 
-1. **Taught `-ts` round trip is only half verified**: `config/ggml-master-user-config.json` now stores
-   `defaultValue: "0.550,0.450"` via `set_provider_param_value`, and the CLI receives it; the bars
-   follow it. Confirm the PLAN popover numbers also follow (commit `db5650a70` made the plan
-   distribute by explicit `-ts`).
-2. **GPU topo bars vs plan** — bars now honour `-ts`; verify they repaint on TAKEOVER without restart
-   (repaint wired through `reevaluate`).
+1. **`-ts` round trip — done, and it needed a correction.** `-ts` is a fraction of LAYERS and
+   llama.cpp ceils it (`il < ts*n_layer`, float fractions): `-ts 0.550` loaded 23 of 40 blocks,
+   not 22. The plan now reads an applied split that way and writes `0.549` for 22/40; TAKEOVER
+   persists it through `save_provider` (a file-only write left the provider state stale, so the
+   glass and the CLI disagreed until restart). The bars paint the plan's per-card MiB, not the
+   fraction. Verified: 22/40 → 89.7/91.4 GB painted against 92.1/91.9 measured.
+2. **Bars repaint on TAKEOVER without restart — verified.**
 3. **SPEC/draft is not in the learned key** and has no budget term — DSpark and non-spec runs collide.
 4. **Auto-arming the handover** (plan over free, or previous run `fit_changed: true`) with the
    `arch_capabilities::tensor_split_denial` guard. Today TAKEOVER is a click only.
-5. **`ptype: text` in the config editor** — the param persists and reaches the CLI, but the UI has no
-   row for it; decide whether it should be visible in SYSTEM.
+5. **`ptype: text` in the config editor** — root cause of "persists and reaches the CLI but the UI
+   has no row": `useConfigResolver` skips params with no `values` (line ~147), so `config` never
+   carries `tensor_split`. The glass reads the param's `defaultValue` instead; the editor row is
+   still missing.
 6. **Runtime residual sampling** — a second sample is taken 8 s after load; decide if a settled
    30 s sample is better for the accuracy/speed trade.
-7. Deferred: multi-GPU (>2) planning, per-layer KV variance, `split=tensor` keys.
+7. **Per-card compute at an unmeasured ctx** — the plan splits the compute total evenly when the
+   planned ctx has no learned row (DSV4.1 @795648: painted 89.7/91.4 vs measured 92.1/91.9).
+   The measured per-device pair is used when the ctx matches; a components-bearing learned curve
+   would let it follow the placement, since the last device's buffer is ~1.7× the first.
+8. Deferred: multi-GPU (>2) planning, per-layer KV variance, `split=tensor` keys.
 
 ## Traps that cost real time here
 
