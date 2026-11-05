@@ -388,6 +388,13 @@ export default function VramBadge({
           overflowGb={
             layerPlan ? Math.max(0, (layerPlan.sumMib - layerPlan.budgetSumMib) / 1024) : 0
           }
+          strain={
+            // The plan can fit while the forecast still expects a spill (a card over its own
+            // free, or the measured run was squeezed). Those are the cases worth taking over.
+            vramNeedTone === "hot" ||
+            s.launchPaint === "offload" ||
+            s.launchPaint === "nofit"
+          }
           onTakeover={
             onApplyPlan && layerPlan
               ? () => {

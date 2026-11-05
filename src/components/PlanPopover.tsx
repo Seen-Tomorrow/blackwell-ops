@@ -18,6 +18,7 @@ export default function PlanPopover({
   onApply,
   onTakeover,
   overflowGb = 0,
+  strain = false,
   onClose,
 }: {
   plan: LayerPlan | null;
@@ -36,6 +37,8 @@ export default function PlanPopover({
   onTakeover?: () => void;
   /** How much the plan exceeds the free budget, GB (0 when it fits). */
   overflowGb?: number;
+  /** The forecast paints spill/over-free for this configuration. */
+  strain?: boolean;
   onClose: () => void;
 }) {
   if (!plan) {
@@ -126,13 +129,15 @@ export default function PlanPopover({
         </span>
       </div>
 
-      {(overflowGb > 0 || squeezed) && onTakeover && (
+      {(overflowGb > 0 || squeezed || strain) && onTakeover && (
         <div className="vram-plan-pop__forecast">
           <span className="vram-plan-pop__meta">TAKEOVER</span>
           <span>
             {overflowGb > 0
               ? `plan is ${overflowGb.toFixed(1)} GB over free — place it yourself`
-              : "engine had to shrink to fit — place it yourself"}
+              : squeezed
+                ? "engine had to shrink to fit — place it yourself"
+                : "forecast expects a spill — place it yourself"}
           </span>
           <button type="button" className="vram-plan-pop__copy" onClick={onTakeover} title="FIT OFF + this tensor split, pinned batch: the engine stops shaving the graph">
             FIT OFF
