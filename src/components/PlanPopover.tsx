@@ -16,6 +16,8 @@ export default function PlanPopover({
   kvSource = "none",
   squeezed = false,
   onApply,
+  onTakeover,
+  overflowGb = 0,
   onClose,
 }: {
   plan: LayerPlan | null;
@@ -30,6 +32,10 @@ export default function PlanPopover({
   squeezed?: boolean;
   /** Write this plan into the launch config (-ts), so placement is chosen, not fitted. */
   onApply?: () => void;
+  /** FIT OFF + this plan: placement chosen here instead of shaved by the engine. */
+  onTakeover?: () => void;
+  /** How much the plan exceeds the free budget, GB (0 when it fits). */
+  overflowGb?: number;
   onClose: () => void;
 }) {
   if (!plan) {
@@ -119,6 +125,20 @@ export default function PlanPopover({
             : `${plan.boundary} / ${plan.layerCount} layers · weights only`}
         </span>
       </div>
+
+      {(overflowGb > 0 || squeezed) && onTakeover && (
+        <div className="vram-plan-pop__forecast">
+          <span className="vram-plan-pop__meta">TAKEOVER</span>
+          <span>
+            {overflowGb > 0
+              ? `plan is ${overflowGb.toFixed(1)} GB over free — place it yourself`
+              : "engine had to shrink to fit — place it yourself"}
+          </span>
+          <button type="button" className="vram-plan-pop__copy" onClick={onTakeover} title="FIT OFF + this tensor split, pinned batch: the engine stops shaving the graph">
+            FIT OFF
+          </button>
+        </div>
+      )}
 
       {squeezed && (
         <div className="vram-plan-pop__forecast">

@@ -385,6 +385,18 @@ export default function VramBadge({
               ? () => onApplyPlan(formatTensorSplit(layerPlan.ts))
               : undefined
           }
+          overflowGb={
+            layerPlan ? Math.max(0, (layerPlan.sumMib - layerPlan.budgetSumMib) / 1024) : 0
+          }
+          onTakeover={
+            onApplyPlan && layerPlan
+              ? () => {
+                  // Take placement away from FIT: the plan sets the split, FIT stays off.
+                  onApplyPlan(formatTensorSplit(layerPlan.ts));
+                  if (!fitOff) onToggleFitOff?.();
+                }
+              : undefined
+          }
           onClose={() => setPlanOpen(false)}
         />
       )}
