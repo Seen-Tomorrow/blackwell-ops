@@ -5,7 +5,6 @@ import GpuTopology from "./GpuTopology";
 import FusionPane from "./FusionPane";
 import FusionDualStage, { type FusionPaneIdentity } from "./FusionDualStage";
 import MoeBadge from "./MoeBadge";
-import PlanPopover from "./PlanPopover";
 import { formatTensorSplit, type GpuCalibrationRow, type LayerPlan } from "../lib/vramLayerPlan";
 import MemorySourcePanel, {
   MemorySourceNeedOverlay,
@@ -44,7 +43,6 @@ interface VramBadgeProps {
   layerPlan?: LayerPlan | null;
   /** `-ts` TAKEOVER writes — the byte-balanced proposal, not the applied string. */
   planApplyTs?: number[] | null;
-  planKvMibPerLayer?: number;
   planKvSource?: "measured" | "profile" | "geometry" | "none";
   planSqueezed?: boolean;
   /** Measured per-device runtime cost, used for the glass's one shared number. */
@@ -107,7 +105,6 @@ export default function VramBadge({
   fitOff = false, onToggleFitOff,
   layerPlan = null,
   planApplyTs = null,
-  planKvMibPerLayer = 0,
   planKvSource = "none",
   planSqueezed = false,
   gpuCalibration = [],
@@ -185,7 +182,6 @@ export default function VramBadge({
     manifest, layerPlan, planKvSource, planSqueezed,
   ]);
 
-  const [planOpen, setPlanOpen] = useState(false);
   const [takeoverState, setTakeoverState] = useState<"idle" | "busy" | "done">("idle");
 
   const fusionOverlayActive =
@@ -437,24 +433,6 @@ export default function VramBadge({
           {takeoverState === "done" ? "TAKEN OVER" : takeoverState === "busy" ? "APPLYING…" : "TAKEOVER"}
         </button>
       </div>
-
-      {planOpen && (
-        <PlanPopover
-          plan={layerPlan}
-          calibration={gpuCalibration}
-          forecastNeedGb={displayVramNeedGb > 0 ? displayVramNeedGb : null}
-          forecastKind={sourceKind ?? null}
-          kvMibPerLayer={planKvMibPerLayer}
-          kvSource={planKvSource}
-          squeezed={planSqueezed}
-          onApply={
-            onApplyPlan && applyTs
-              ? () => onApplyPlan(formatTensorSplit(applyTs))
-              : undefined
-          }
-          onClose={() => setPlanOpen(false)}
-        />
-      )}
 
       <div className="vram-badge-body vram-fc__body vram-fc__body--assisted relative min-h-0 overflow-hidden">
         <div className="vram-fc-measure relative">

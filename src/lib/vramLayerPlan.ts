@@ -200,19 +200,6 @@ export function formatTensorSplit(ts: number[]): string {
   return ts.map((f) => f.toFixed(3)).join(",");
 }
 
-/** Per-device utilisation text for the plan row, e.g. "75.0/97.0 GiB 77%". */
-export function formatPlanLoads(plan: LayerPlan, budgetsMib: number[]): string[] {
-  return plan.totalMib.map((mib, i) => {
-    const budget = budgetsMib[i] > 0 ? budgetsMib[i] : 0;
-    const pct = budget > 0 ? Math.round((mib / budget) * 100) : 0;
-    return `${(mib / 1024).toFixed(1)}/${(budget / 1024).toFixed(1)} GiB ${pct}%`;
-  });
-}
-
-/** One line for the plan header: "151.4 / 194.0 GiB planned". */
-export function formatPlanTotal(plan: LayerPlan): string {
-  return `${(plan.sumMib / 1024).toFixed(1)} / ${(plan.budgetSumMib / 1024).toFixed(1)} GiB planned`;
-}
 /** Conservative fallback when no calibration exists (a card that never launched here). */
 export const DEFAULT_RUNTIME_OVERHEAD_MIB = 768;
 

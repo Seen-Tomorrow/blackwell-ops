@@ -1117,7 +1117,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const {
     plan: layerPlan,
     applyTs: planApplyTs,
-    kvMibPerLayer: planKvMibPerLayer,
     kvSource: planKvSource,
     squeezed: planSqueezed,
   } = useLayerPlan(planModelPath, gpus, gpuCalibration, planKnobs);
@@ -3317,7 +3316,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         fitOff={fitOff}
         layerPlan={layerPlan}
         planApplyTs={planApplyTs}
-        planKvMibPerLayer={planKvMibPerLayer}
         planKvSource={planKvSource}
         planSqueezed={planSqueezed}
         gpuCalibration={gpuCalibration}

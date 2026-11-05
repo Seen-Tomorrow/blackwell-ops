@@ -3,7 +3,6 @@ import {
   DEFAULT_RUNTIME_OVERHEAD_MIB,
   budgetsFromFree,
   runtimeOverheadMibForDevice,
-  formatPlanTotal,
   formatTensorSplit,
   planFromLive,
   planLayerSplit,
@@ -117,7 +116,6 @@ describe("layer split planning", () => {
     // sum is the two device loads, and never exceeds the budgets it was fitted into
     expect(plan!.sumMib).toBeCloseTo(plan!.totalMib[0] + plan!.totalMib[1], 3);
     expect(plan!.sumMib).toBeLessThanOrEqual(plan!.budgetSumMib);
-    expect(formatPlanTotal(plan!)).toMatch(/GiB planned$/);
   });
 
   it("refuses inputs it cannot plan", () => {

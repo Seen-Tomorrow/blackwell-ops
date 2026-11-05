@@ -88,7 +88,6 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     onToggleFitOff,
     layerPlan = null,
     planApplyTs = null,
-    planKvMibPerLayer = 0,
     planKvSource = "none",
     planSqueezed = false,
     gpuCalibration = [],
@@ -388,7 +387,6 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
               onToggleFitOff={onToggleFitOff}
               layerPlan={layerPlan}
               planApplyTs={planApplyTs}
-              planKvMibPerLayer={planKvMibPerLayer}
               planKvSource={planKvSource}
               planSqueezed={planSqueezed}
               gpuCalibration={gpuCalibration}
@@ -523,7 +521,6 @@ export interface EngineGpuForecastProps {
   layerPlan?: LayerPlan | null;
   /** `-ts` the TAKEOVER button writes (the byte-balanced boundary). */
   planApplyTs?: number[] | null;
-  planKvMibPerLayer?: number;
   planKvSource?: "measured" | "profile" | "geometry" | "none";
   planSqueezed?: boolean;
   gpuCalibration?: GpuCalibrationRow[];
