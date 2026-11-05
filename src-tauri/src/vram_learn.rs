@@ -625,6 +625,30 @@ fn lookup_learned_vram_fuzzy(
         }
     }
 
+    // The cockpit may pass cache_ram=0 while the launch recorded a real value (or the other
+    // way round), which is enough to miss an exact row and fall back to FIT. Retry without the
+    // launch suffix, then without spec as well.
+    for (spec_alt, cache_alt) in [(spec_type, ""), ("none", "")] {
+        let key_alt = learned_vram_key_with_draft_batched(
+            model_path,
+            provider_id,
+            ctx,
+            kv_quant,
+            device,
+            split,
+            memory_mode,
+            offload_mode,
+            spec_alt,
+            cache_alt,
+            draft_key,
+            batch,
+            ubatch,
+        );
+        if let Some(entry) = store.entries.get(&key_alt) {
+            return Some(entry.clone());
+        }
+    }
+
     // Device often differs UI vs launch (GPU-0 default vs freest GPU-1). Match by
     // model path + ctx/kv/split/spec/draft ignoring device — but NEVER cross-match
     // boost-on (draft-dspark) rows when the UI is Boost-off, or wrong KV quant.
@@ -1948,10 +1972,6 @@ pub fn get_learned_vram(
         &ubatch.map(|b| b.to_string()).unwrap_or_default(),
     ) {
         Some(entry) => entry,
-        // Key lookup missed. The plan resolves by (model, ctx, kv, split, batch, ubatch)
-        // instead of building a key, and the two disagreed: a point that exists could show as
-        // FIT PROBE while the plan read it as measured. Fall back to that resolver and
-        // synthesise the entry shape this command returns.
         None => lookup_learned_vram_any_device(
             &model_path,
             &provider_id,
@@ -1961,25 +1981,7 @@ pub fn get_learned_vram(
             &mode,
             &offload,
             cache,
-        )
-        .or_else(|| {
-            let resolved = learned_vram_for_model_blocking(
-                model_path.clone(),
-                Some(ctx.clone()),
-                Some(kv_quant.clone()),
-                Some(split.clone()),
-                batch.map(|b| b.to_string()),
-                ubatch.map(|b| b.to_string()),
-            )?;
-            serde_json::from_value::<LearnedVramEntry>(serde_json::json!({
-                "vram_mib": resolved.vram_mib,
-                "host_mib": resolved.host_mib,
-                "measured_at": "",
-                "reference_batch": batch,
-                "reference_ubatch": ubatch,
-            }))
-            .ok()
-        })?,
+        )?,
     };
     let wanted_batch = batch.unwrap_or(0);
     let wanted_ubatch = ubatch.unwrap_or(0);
