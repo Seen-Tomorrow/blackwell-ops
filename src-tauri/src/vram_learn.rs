@@ -1198,6 +1198,9 @@ mod dedup_tests {
             vision_estimate_mib: None,
             vision_mib: None,
             prompt_cache_limit_mib: None,
+        fit_projected_mib: None,
+        fit_free_device_mib: None,
+        fit_changed: None,
             buffers: vec![],
             phase: "loaded".into(),
             measured_at: "new".into(),
@@ -1273,6 +1276,9 @@ mod dedup_tests {
             vision_estimate_mib: None,
             vision_mib: None,
             prompt_cache_limit_mib: None,
+        fit_projected_mib: None,
+        fit_free_device_mib: None,
+        fit_changed: None,
             buffers: vec![],
             phase: "loaded".into(),
             measured_at: "spill".into(),
@@ -1488,6 +1494,10 @@ pub struct LearnedVramForModel {
     /// Recurrent-state and vision-compute buffers on the GPUs, MiB - small but part of the
     /// inventory the launch reports.
     pub rs_mib: f64,
+    /// `Some(false)` = the engine fitted without changing parameters; `Some(true)` = it had to
+    /// shrink something to fit. A squeezed run is slower for the same inventory, so it must not
+    /// be compared with its neighbours as an equal.
+    pub fit_changed: Option<bool>,
 }
 
 /// Parse a ctx token from a learned key or a config value: `262144`, `256k`, `256K`.
@@ -1550,6 +1560,7 @@ struct CtxPoint {
     vram_mib: f64,
     model_mib: f64,
     rs_mib: f64,
+    fit_changed: Option<bool>,
 }
 
 /// Linear interpolation of KV and compute between the two ctx points that bracket `want_ctx`.
@@ -1647,6 +1658,10 @@ fn interpolate_between_ctx(
             vram_mib: entry.vram_mib,
             model_mib,
             rs_mib,
+            fit_changed: entry
+                .launch_snapshot
+                .as_ref()
+                .and_then(|snap| snap.fit_changed),
         });
     }
     if points.len() < 2 {
@@ -1679,6 +1694,10 @@ fn interpolate_between_ctx(
         // Weights do not change with ctx: take the lower point rather than averaging sizes.
         model_mib: lower.model_mib,
         rs_mib: lerp(lower.rs_mib, upper.rs_mib),
+        fit_changed: match (lower.fit_changed, upper.fit_changed) {
+            (None, None) => None,
+            (a, b) => Some(a == Some(true) || b == Some(true)),
+        },
     })
 }
 /// Index of a real CUDA device ("CUDA0", "CUDA1"), never the host pseudo-device.
@@ -1824,6 +1843,10 @@ fn learned_vram_for_model_blocking(
             compute_mib: compute_by_device,
             model_mib,
             rs_mib,
+            fit_changed: entry
+                .launch_snapshot
+                .as_ref()
+                .and_then(|snap| snap.fit_changed),
         };
         // Rank by (ctx bucket, score), then by how close the ctx is, then by size. The old
         // "tie -> highest vram" rule picked a stuffed-GPU spill run (27 GB of compute

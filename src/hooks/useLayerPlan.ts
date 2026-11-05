@@ -97,6 +97,8 @@ export function useLayerPlan(
     /** The launch total (vram_mib). Overhead = total - weights - KV, which cannot disagree
      *  with the terms it is made of. */
     vramMib: number;
+    /** true = the engine shrank parameters to fit (slower for the same inventory). */
+    fitChanged: boolean | null;
   } | null>(null);
   // No launch of this model yet: forecast it from launches of the same shape.
   const [cold, setCold] = useState<ColdForecast | null>(null);
@@ -174,6 +176,7 @@ export function useLayerPlan(
       ctx_tokens?: number;
       compute_mib?: number[];
       vram_mib?: number;
+      fit_changed?: boolean | null;
       model_mib?: number;
       rs_mib?: number;
     } | null>("get_learned_vram_for_model", {
@@ -194,6 +197,7 @@ export function useLayerPlan(
             modelMib: hit.model_mib ?? 0,
             rsMib: hit.rs_mib ?? 0,
             vramMib: hit.vram_mib ?? 0,
+            fitChanged: hit.fit_changed ?? null,
           });
         } else {
           setMeasuredKv(null);
@@ -320,6 +324,7 @@ export function useLayerPlan(
         measured_rs_mib: measuredKv?.rsMib ?? null,
         cold_compute_mib: cold?.compute_mib ?? null,
         weight_scale: weightScale,
+        fit_changed: measuredKv?.fitChanged ?? null,
       },
     }).catch(() => {
       // Journaling is diagnostic; never let it break the plan.

@@ -86,6 +86,16 @@ pub struct LaunchMemorySnapshot {
     pub vision_mib: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt_cache_limit_mib: Option<f64>,
+    /// The engine's own fit verdict (`-fit on`): how much it projected to place on the
+    /// devices, and how much free device memory it compared against.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fit_projected_mib: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fit_free_device_mib: Option<f64>,
+    /// `Some(false)` when it said "no changes needed"; `Some(true)` when it had to shrink
+    /// something to fit (the speed cliff: model loads, tokens/s falls).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fit_changed: Option<bool>,
     pub buffers: Vec<BufferLine>,
     pub phase: String,
     pub measured_at: String,
@@ -372,6 +382,41 @@ fn components_from_buffers(buffers: &[BufferLine], gpu_count: usize) -> Option<V
 }
 
 /// Parse stderr accumulated through load; prefer region before `model loaded`.
+/// Read llama.cpp's own fit verdict from the load log.
+///
+/// `-fit on` prints, before the buffers:
+///   projected to use 176042 MiB of device memory vs. 193840 MiB of free device memory
+///   ... targets for free memory can be met on all devices, no changes needed
+/// When it cannot meet the targets it shrinks parameters instead and the model still loads -
+/// that is the performance cliff (smaller compute graph, slower tokens), and it is invisible in
+/// the buffer inventory alone.
+fn parse_fit_verdict(output: &str) -> (Option<f64>, Option<f64>, Option<bool>) {
+    let mut projected = None;
+    let mut free = None;
+    let mut changed = None;
+    for line in output.lines() {
+        let lower = line.to_lowercase();
+        if lower.contains("projected to use ") {
+            if let Some(pos) = lower.find("projected to use ") {
+                let nums: Vec<f64> = line[pos..]
+                    .split(|c: char| !c.is_ascii_digit() && c != '.')
+                    .filter(|part| !part.is_empty())
+                    .filter_map(|part| part.parse::<f64>().ok())
+                    .collect();
+                if nums.len() >= 2 {
+                    projected = Some(nums[0]);
+                    free = Some(nums[1]);
+                }
+            }
+        }
+        if lower.contains("no changes needed") {
+            changed = Some(false);
+        } else if changed.is_none() && lower.contains("successfully fit params") {
+            changed = Some(true);
+        }
+    }
+    (projected, free, changed)
+}
 pub fn parse_launch_memory_snapshot(output: &str) -> Option<LaunchMemorySnapshot> {
     let marker = "model loaded";
     let parse_region = if let Some(idx) = output.to_lowercase().find(marker) {
@@ -383,6 +428,8 @@ pub fn parse_launch_memory_snapshot(output: &str) -> Option<LaunchMemorySnapshot
     if !parse_region.to_lowercase().contains("buffer size =") {
         return None;
     }
+
+    let (fit_projected_mib, fit_free_device_mib, fit_changed) = parse_fit_verdict(parse_region);
 
     let mut buffers: Vec<BufferLine> = Vec::new();
     let mut per_gpu: HashMap<String, f64> = HashMap::new();
@@ -533,6 +580,9 @@ pub fn parse_launch_memory_snapshot(output: &str) -> Option<LaunchMemorySnapshot
         vision_estimate_mib,
         vision_mib,
         prompt_cache_limit_mib,
+        fit_projected_mib,
+        fit_free_device_mib,
+        fit_changed,
         buffers,
         phase: "loaded".to_string(),
         measured_at: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
@@ -650,5 +700,36 @@ mod tests {
         assert!(snap.vram_mib > 27_000.0);
         assert!(snap.vram_mib < 28_000.0);
         assert!(snap.host_mib > 1400.0);
+    }
+}
+#[cfg(test)]
+mod fit_verdict_tests {
+    use super::parse_fit_verdict;
+
+    #[test]
+    fn reads_the_projection_and_the_no_change_verdict() {
+        let log = "\
+common_params_fit_impl: - CUDA0 (RTX PRO 6000): 97475 total, 80524 used, 16394 free vs. target of 1024
+common_params_fit_impl: projected to use 176042 MiB of device memory vs. 193840 MiB of free device memory
+common_fit_params: targets for free memory can be met on all devices, no changes needed
+common_fit_params: successfully fit params to free device memory";
+        let (projected, free, changed) = parse_fit_verdict(log);
+        assert_eq!(projected, Some(176042.0));
+        assert_eq!(free, Some(193840.0));
+        assert_eq!(changed, Some(false));
+    }
+
+    #[test]
+    fn a_fit_without_the_no_change_notice_means_it_shrank_something() {
+        let log = "common_params_fit_impl: projected to use 190000 MiB of device memory vs. 193840 MiB of free device memory
+common_fit_params: successfully fit params to free device memory";
+        let (projected, _, changed) = parse_fit_verdict(log);
+        assert_eq!(projected, Some(190000.0));
+        assert_eq!(changed, Some(true));
+    }
+
+    #[test]
+    fn a_run_without_fit_lines_reports_nothing() {
+        assert_eq!(parse_fit_verdict("buffer size = 100 MiB"), (None, None, None));
     }
 }
