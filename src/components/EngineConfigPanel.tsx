@@ -3258,6 +3258,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         }
         kvQuant={String(config.kv_quant ?? "f16")}
         splitMode={String(config.split ?? "none")}
+        onApplyPlan={(tensorSplit: string) => {
+          // Taking placement away from FIT: split=layer plus the plan's fraction.
+          updateParam("split", "layer");
+          updateParam("tensor_split", tensorSplit);
+        }}
         batch={Number(config.batch ?? 0) || undefined}
         ubatch={Number(config.ubatch ?? 0) || undefined}
         onToggleFitOff={() => setFitOff((v) => !v)}

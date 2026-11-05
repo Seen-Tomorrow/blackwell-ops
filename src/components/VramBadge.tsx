@@ -6,6 +6,7 @@ import FusionDualStage, { type FusionPaneIdentity } from "./FusionDualStage";
 import MoeBadge from "./MoeBadge";
 import PlanPopover from "./PlanPopover";
 import { useLayerPlan } from "../hooks/useLayerPlan";
+import { formatTensorSplit } from "../lib/vramLayerPlan";
 import { useGpuCalibration } from "../hooks/useGpuCalibration";
 import MemorySourcePanel, {
   MemorySourceNeedOverlay,
@@ -49,6 +50,8 @@ interface VramBadgeProps {
   splitMode?: string;
   /** Batch/ubatch of the plan — compute buffers scale with them (~10x 2048 → 8192). */
   batch?: number;
+  /** Write the plan into the launch config: `-ts` from the plan, split=layer. */
+  onApplyPlan?: (tensorSplit: string) => void;
   ubatch?: number;
   /** External draft pack selected — no main forecast / FIT. */
   draftOnly?: boolean;
@@ -98,6 +101,8 @@ export default function VramBadge({
   ctxTokens,
   kvQuant,
   splitMode,
+  onApplyPlan,
+
   modelName, modelQuant, providerName, providerBuildVersion, profileLabel, cudaVersion, launchConfig, hwTopo,
   gpuIdleBaselineMib,
   gpuPerRow = 2,
@@ -375,6 +380,11 @@ export default function VramBadge({
           kvMibPerLayer={kvMibPerLayer}
           kvSource={planKvSource}
           squeezed={planSqueezed}
+          onApply={
+            onApplyPlan && layerPlan
+              ? () => onApplyPlan(formatTensorSplit(layerPlan.ts))
+              : undefined
+          }
           onClose={() => setPlanOpen(false)}
         />
       )}

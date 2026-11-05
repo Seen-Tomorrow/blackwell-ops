@@ -89,6 +89,7 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     ctxTokens,
     kvQuant,
     splitMode,
+    onApplyPlan,
     batch,
     ubatch,
     isModelRunning,
@@ -382,6 +383,7 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
               ctxTokens={ctxTokens}
               kvQuant={kvQuant}
               splitMode={splitMode}
+              onApplyPlan={onApplyPlan}
               batch={batch}
               ubatch={ubatch}
               activeEngineAlias={activeEngineAlias}
@@ -510,6 +512,8 @@ export interface EngineGpuForecastProps {
   ctxTokens?: number;
   kvQuant?: string;
   splitMode?: string;
+  /** Apply the layer plan to the launch config (writes -ts + split=layer). */
+  onApplyPlan?: (tensorSplit: string) => void;
   batch?: number;
   ubatch?: number;
   isModelRunning?: boolean;

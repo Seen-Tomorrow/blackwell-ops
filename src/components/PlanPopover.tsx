@@ -15,6 +15,7 @@ export default function PlanPopover({
   kvMibPerLayer = 0,
   kvSource = "none",
   squeezed = false,
+  onApply,
   onClose,
 }: {
   plan: LayerPlan | null;
@@ -27,6 +28,8 @@ export default function PlanPopover({
   kvSource?: "measured" | "profile" | "geometry" | "none";
   /** The measured run had to shrink parameters to fit: same inventory, lower speed. */
   squeezed?: boolean;
+  /** Write this plan into the launch config (-ts), so placement is chosen, not fitted. */
+  onApply?: () => void;
   onClose: () => void;
 }) {
   if (!plan) {
@@ -34,7 +37,17 @@ export default function PlanPopover({
       <div className="vram-plan-pop" role="dialog" aria-label="Layer plan">
         <div className="vram-plan-pop__head">
           <span className="vram-plan-pop__title">PLAN</span>
-          <button type="button" className="vram-plan-pop__close" onClick={onClose} aria-label="Close plan">
+          {onApply ? (
+          <button
+            type="button"
+            className="vram-plan-pop__copy"
+            title={`Apply -ts ${formatTensorSplit(plan.ts)} and split=layer to the launch config`}
+            onClick={onApply}
+          >
+            APPLY
+          </button>
+        ) : null}
+        <button type="button" className="vram-plan-pop__close" onClick={onClose} aria-label="Close plan">
             ✕
           </button>
         </div>
@@ -65,6 +78,16 @@ export default function PlanPopover({
         >
           COPY
         </button>
+        {onApply ? (
+          <button
+            type="button"
+            className="vram-plan-pop__copy"
+            title={`Apply -ts ${formatTensorSplit(plan.ts)} and split=layer to the launch config`}
+            onClick={onApply}
+          >
+            APPLY
+          </button>
+        ) : null}
         <button type="button" className="vram-plan-pop__close" onClick={onClose} aria-label="Close plan">
           ✕
         </button>
