@@ -86,6 +86,7 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     onValidate,
     fitOff = false,
     onToggleFitOff,
+    onReleasePlacement,
     layerPlan = null,
     planApplyTs = null,
     planKvSource = "none",
@@ -385,6 +386,7 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
               onValidate={onValidate}
               fitOff={fitOff}
               onToggleFitOff={onToggleFitOff}
+              onReleasePlacement={onReleasePlacement}
               layerPlan={layerPlan}
               planApplyTs={planApplyTs}
               planKvSource={planKvSource}
@@ -517,6 +519,8 @@ export interface EngineGpuForecastProps {
   /** VRAM badge FIT OFF — drop the auto-VRAM `--fit on`. */
   fitOff?: boolean;
   onToggleFitOff?: () => void;
+  /** Give placement back to the engine: clear -ts and turn fit on. */
+  onReleasePlacement?: () => void;
   /** The single layer plan the glass prints and the bars paint. */
   layerPlan?: LayerPlan | null;
   /** `-ts` the TAKEOVER button writes (the byte-balanced boundary). */

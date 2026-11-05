@@ -39,6 +39,8 @@ interface VramBadgeProps {
   /** Operator override: drop the auto-VRAM `--fit on` so -ngl/-ts/-ot own placement. */
   fitOff?: boolean;
   onToggleFitOff?: () => void;
+  /** Hand placement back to the engine: clear -ts and turn `--fit on`. */
+  onReleasePlacement?: () => void;
   /** The one layer plan: printed here, painted by the bars, written by TAKEOVER. */
   layerPlan?: LayerPlan | null;
   /** `-ts` TAKEOVER writes — the byte-balanced proposal, not the applied string. */
@@ -102,7 +104,7 @@ export default function VramBadge({
   activeEngineAlias, activeEnginePort, selectedSlotIdx, supportsFusion = true, engineStatus,
   gpuMask = "", vramTargetMib, modelLayerTotal, gpuLoadTargetsMib, offloadMode, onMoeSuggestionClick, hideMoeBadge = false,
   hideFitProbe = false, draftOnly = false, className,
-  fitOff = false, onToggleFitOff,
+  fitOff = false, onToggleFitOff, onReleasePlacement,
   layerPlan = null,
   planApplyTs = null,
   planKvSource = "none",
@@ -409,28 +411,50 @@ export default function VramBadge({
             overFreeReprobe={s.launchPaint === "offload" || s.launchPaint === "nofit"}
           />
         ) : null}
-        {/* Placement handover: FIT off + the plan's split. Replaces the old FIT ON/OFF toggle —
-            taking placement away from the engine is the thing worth a button here. */}
+        {/* Placement handover, one control both ways: TAKEOVER applies the plan's -ts and turns
+            fit off; FIT ON gives placement back to the engine (clears -ts first — a leftover one
+            makes --fit bail with "tensor_split already set by user"). */}
         <button
           type="button"
           className="vram-fc-source__reprobe vram-fc-header__reprobe"
           data-takeover={takeoverState}
-          disabled={!onApplyPlan || !layerPlan || !applyTs || takeoverState !== "idle"}
+          disabled={
+            takeoverState !== "idle" ||
+            (fitOff ? !onReleasePlacement : !onApplyPlan || !layerPlan || !applyTs)
+          }
           onClick={() => {
+            if (fitOff) {
+              if (!onReleasePlacement) return;
+              setTakeoverState("busy");
+              onReleasePlacement();
+              setTimeout(() => setTakeoverState("done"), 450);
+              setTimeout(() => setTakeoverState("idle"), 2200);
+              return;
+            }
             if (!onApplyPlan || !layerPlan || !applyTs) return;
             setTakeoverState("busy");
             onApplyPlan(formatTensorSplit(applyTs));
-            if (!fitOff) onToggleFitOff?.();
+            onToggleFitOff?.();
             setTimeout(() => setTakeoverState("done"), 450);
             setTimeout(() => setTakeoverState("idle"), 2200);
           }}
           title={
-            !layerPlan || !applyTs
-              ? "No layer plan for this model yet"
-              : `${fitOff ? "Re-apply" : "FIT OFF + apply"} -ts ${formatTensorSplit(applyTs)} (${layerPlan.optimalBoundary} / ${layerPlan.layerCount} layers): the engine stops shaving the graph`
+            fitOff
+              ? "FIT ON — hand placement back to the engine: clears -ts and lets --fit choose the split"
+              : !layerPlan || !applyTs
+                ? "No layer plan for this model yet"
+                : `FIT OFF + apply -ts ${formatTensorSplit(applyTs)} (${layerPlan.optimalBoundary} / ${layerPlan.layerCount} layers): the engine stops shaving the graph`
           }
         >
-          {takeoverState === "done" ? "TAKEN OVER" : takeoverState === "busy" ? "APPLYING…" : "TAKEOVER"}
+          {takeoverState === "busy"
+            ? "APPLYING…"
+            : takeoverState === "done"
+              ? fitOff
+                ? "TAKEN OVER"
+                : "RELEASED"
+              : fitOff
+                ? "FIT ON"
+                : "TAKEOVER"}
         </button>
       </div>
 

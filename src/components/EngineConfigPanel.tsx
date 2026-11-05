@@ -3357,6 +3357,27 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         batch={Number(config.batch ?? 0) || undefined}
         ubatch={Number(config.ubatch ?? 0) || undefined}
         onToggleFitOff={() => setFitOff((v) => !v)}
+        onReleasePlacement={() => {
+          // Hand placement back to the engine: clear the saved -ts first (a leftover one makes
+          // --fit bail with "tensor_split already set by user, abort"), then turn fit back on.
+          updateParam("tensor_split", "");
+          const provider = currentProvider;
+          if (provider) {
+            const nextParams = (provider.userEditedTemplateParams || []).map((row) =>
+              row.key === "tensor_split" ? { ...row, defaultValue: "" } : row,
+            );
+            void invoke("save_provider", {
+              provider: { ...provider, userEditedTemplateParams: nextParams },
+            })
+              .then(() => {
+                dispatchAppEvent(EVENTS.reloadProviders);
+                dispatchAppEvent(EVENTS.paramConfigChanged);
+              })
+              .catch((err) => console.warn("[plan] clear tensor_split failed:", err));
+          }
+          setFitOff(false);
+          requestAnimationFrame(() => vramCalc.reevaluate());
+        }}
         isModelRunning={isModelRunning}
         activeEngineAlias={activeEngineAlias}
         activeEnginePort={activeEnginePort}

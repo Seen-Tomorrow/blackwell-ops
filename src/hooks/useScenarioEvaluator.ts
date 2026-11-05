@@ -59,7 +59,7 @@ function draftBaseName(config: Record<string, unknown>): string {
  * split-mode. `n_batch` alone changes no buffer — measured 2026-11-05, batch 512 vs 2048 were
  * identical (docs/ENGINE-MEMORY-MEASUREMENTS.md) — so a batch change must not drop the probe
  * session or force a re-probe.
- * Thinking / parallel / samplers / threads are not FIT inputs — ignore them.
+ * Parallel is not a FIT input either, but it is part of this identity: a probe taken at one\n * slot count must not be shown as current for another.
  */
 function fitProbeKey(config: Record<string, unknown>, autoVramLaunch: boolean): string {
   const split = String(config.split ?? "none").trim().toLowerCase() || "none";
@@ -74,6 +74,10 @@ function fitProbeKey(config: Record<string, unknown>, autoVramLaunch: boolean): 
     String(config.ubatch ?? ""),
     config["flash_attn"] || "",
     split,
+    // Slot count moves the compute buffers, so a probe taken at one count must not be presented
+    // as current for another. (llama-fit-params itself is parallel-blind, so a probe can never
+    // measure the delta — only a launch's learned row can.)
+    String(config.parallel ?? 1),
     spec,
     draftBase,
     autoVramLaunch ? "1" : "0",
@@ -87,8 +91,6 @@ function learnedIdentityKey(config: Record<string, unknown>, autoVramLaunch: boo
     effectiveSpecTypeFromConfig(config),
     draftBaseName(config),
     String(config.split ?? "none"),
-    // Parallel is part of the learned key: an explicit slot count moves the compute buffers.
-    String(config.parallel ?? 1),
   ].join("|");
 }
 
