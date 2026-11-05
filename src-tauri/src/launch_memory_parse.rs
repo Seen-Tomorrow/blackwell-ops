@@ -69,6 +69,9 @@ pub struct FitAttempt {
     pub free_mib: f64,
     /// false = "no changes needed"; true = it had to change parameters to fit.
     pub changed: bool,
+    /// Single-device form: `will leave 17902 >= 2160 MiB of free device memory`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub will_leave_mib: Option<f64>,
     pub devices: Vec<FitDevicePlacement>,
 }
 
@@ -467,6 +470,7 @@ fn parse_fit_verdict(output: &str) -> Vec<FitAttempt> {
                     free_mib: free,
                     // It cannot meet the request as-is, so it will shrink something.
                     changed: projected > free,
+                    will_leave_mib: None,
                     devices: std::mem::take(&mut pending_devices),
                 });
             }
@@ -477,8 +481,15 @@ fn parse_fit_verdict(output: &str) -> Vec<FitAttempt> {
             if lower.contains("no changes needed") {
                 last.changed = false;
             } else if lower.contains("will leave") && lower.contains("free device memory") {
-                // Single-device notice without the "no changes needed" tail: it trimmed something.
-                last.changed = true;
+                // Single-device form reports the margin instead of per-card lines.
+                let numbers: Vec<f64> = line
+                    .split(|c: char| !c.is_ascii_digit() && c != '.')
+                    .filter(|part| !part.is_empty())
+                    .filter_map(|part| part.parse::<f64>().ok())
+                    .collect();
+                if let Some(first) = numbers.first() {
+                    last.will_leave_mib = Some(*first);
+                }
             }
         }
     }
