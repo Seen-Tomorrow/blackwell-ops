@@ -50,6 +50,28 @@ pub struct BufferLine {
     pub source: String,
 }
 
+/// One device line of a fit attempt:
+/// `- CUDA0 (...):  97475 total,   6962 used,  89881 free vs. target of   2160`
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct FitDevicePlacement {
+    pub device: String,
+    pub used_mib: f64,
+    pub free_mib: f64,
+    pub target_mib: f64,
+}
+
+/// One `-fit` attempt. The engine retries placement near the VRAM margin, so a launch can
+/// print several; the last one is what it actually used, and the sequence is the shrink
+/// trajectory that produced the speed cliff.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct FitAttempt {
+    pub projected_mib: f64,
+    pub free_mib: f64,
+    /// false = "no changes needed"; true = it had to change parameters to fit.
+    pub changed: bool,
+    pub devices: Vec<FitDevicePlacement>,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct LaunchMemorySnapshot {
     pub parser_id: String,
@@ -96,6 +118,9 @@ pub struct LaunchMemorySnapshot {
     /// something to fit (the speed cliff: model loads, tokens/s falls).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fit_changed: Option<bool>,
+    /// Every fit attempt the engine printed, in order. The last one is what it ran.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fit_attempts: Vec<FitAttempt>,
     pub buffers: Vec<BufferLine>,
     pub phase: String,
     pub measured_at: String,
@@ -390,32 +415,74 @@ fn components_from_buffers(buffers: &[BufferLine], gpu_count: usize) -> Option<V
 /// When it cannot meet the targets it shrinks parameters instead and the model still loads -
 /// that is the performance cliff (smaller compute graph, slower tokens), and it is invisible in
 /// the buffer inventory alone.
-fn parse_fit_verdict(output: &str) -> (Option<f64>, Option<f64>, Option<bool>) {
-    let mut projected = None;
-    let mut free = None;
-    let mut changed = None;
+fn parse_fit_verdict(output: &str) -> Vec<FitAttempt> {
+    let mut attempts: Vec<FitAttempt> = Vec::new();
+    let mut pending_devices: Vec<FitDevicePlacement> = Vec::new();
     for line in output.lines() {
         let lower = line.to_lowercase();
-        if lower.contains("projected to use ") {
-            if let Some(pos) = lower.find("projected to use ") {
-                let nums: Vec<f64> = line[pos..]
-                    .split(|c: char| !c.is_ascii_digit() && c != '.')
-                    .filter(|part| !part.is_empty())
-                    .filter_map(|part| part.parse::<f64>().ok())
-                    .collect();
-                if nums.len() >= 2 {
-                    projected = Some(nums[0]);
-                    free = Some(nums[1]);
-                }
+
+        // `- CUDA0 (name):  97475 total,   6962 used,  89881 free vs. target of   2160`
+        if lower.contains("total,") && lower.contains("used,") && lower.contains("vs. target of") {
+            let numbers: Vec<f64> = line
+                .split(|c: char| !c.is_ascii_digit() && c != '.')
+                .filter(|part| !part.is_empty())
+                .filter_map(|part| part.parse::<f64>().ok())
+                .collect();
+            // The device index is the first number only when the line starts with one;
+            // `CUDA0` is parsed as 0 because the name follows, so take the last four numbers.
+            if numbers.len() >= 4 {
+                let tail = &numbers[numbers.len() - 4..];
+                let device = if lower.contains("cuda0") {
+                    "CUDA0"
+                } else if lower.contains("cuda1") {
+                    "CUDA1"
+                } else if lower.contains("cuda2") {
+                    "CUDA2"
+                } else if lower.contains("cuda3") {
+                    "CUDA3"
+                } else {
+                    ""
+                };
+                pending_devices.push(FitDevicePlacement {
+                    device: device.to_string(),
+                    used_mib: tail[1],
+                    free_mib: tail[2],
+                    target_mib: tail[3],
+                });
+            }
+            continue;
+        }
+
+        if let Some(pos) = lower.find("projected to use ") {
+            let numbers: Vec<f64> = line[pos..]
+                .split(|c: char| !c.is_ascii_digit() && c != '.')
+                .filter(|part| !part.is_empty())
+                .filter_map(|part| part.parse::<f64>().ok())
+                .collect();
+            if numbers.len() >= 2 {
+                let projected = numbers[0];
+                let free = numbers[1];
+                attempts.push(FitAttempt {
+                    projected_mib: projected,
+                    free_mib: free,
+                    // It cannot meet the request as-is, so it will shrink something.
+                    changed: projected > free,
+                    devices: std::mem::take(&mut pending_devices),
+                });
+            }
+            continue;
+        }
+
+        if let Some(last) = attempts.last_mut() {
+            if lower.contains("no changes needed") {
+                last.changed = false;
+            } else if lower.contains("will leave") && lower.contains("free device memory") {
+                // Single-device notice without the "no changes needed" tail: it trimmed something.
+                last.changed = true;
             }
         }
-        if lower.contains("no changes needed") {
-            changed = Some(false);
-        } else if changed.is_none() && lower.contains("successfully fit params") {
-            changed = Some(true);
-        }
     }
-    (projected, free, changed)
+    attempts
 }
 pub fn parse_launch_memory_snapshot(output: &str) -> Option<LaunchMemorySnapshot> {
     let marker = "model loaded";
@@ -429,7 +496,10 @@ pub fn parse_launch_memory_snapshot(output: &str) -> Option<LaunchMemorySnapshot
         return None;
     }
 
-    let (fit_projected_mib, fit_free_device_mib, fit_changed) = parse_fit_verdict(parse_region);
+    let fit_attempts = parse_fit_verdict(parse_region);
+    let fit_projected_mib = fit_attempts.last().map(|a| a.projected_mib);
+    let fit_free_device_mib = fit_attempts.last().map(|a| a.free_mib);
+    let fit_changed = fit_attempts.last().map(|a| a.changed);
 
     let mut buffers: Vec<BufferLine> = Vec::new();
     let mut per_gpu: HashMap<String, f64> = HashMap::new();
@@ -583,6 +653,7 @@ pub fn parse_launch_memory_snapshot(output: &str) -> Option<LaunchMemorySnapshot
         fit_projected_mib,
         fit_free_device_mib,
         fit_changed,
+        fit_attempts: fit_attempts.clone(),
         buffers,
         phase: "loaded".to_string(),
         measured_at: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
@@ -713,23 +784,31 @@ common_params_fit_impl: - CUDA0 (RTX PRO 6000): 97475 total, 80524 used, 16394 f
 common_params_fit_impl: projected to use 176042 MiB of device memory vs. 193840 MiB of free device memory
 common_fit_params: targets for free memory can be met on all devices, no changes needed
 common_fit_params: successfully fit params to free device memory";
-        let (projected, free, changed) = parse_fit_verdict(log);
-        assert_eq!(projected, Some(176042.0));
-        assert_eq!(free, Some(193840.0));
-        assert_eq!(changed, Some(false));
+        let attempts = parse_fit_verdict(log);
+        assert_eq!(attempts.len(), 1);
+        assert_eq!(attempts[0].projected_mib, 176042.0);
+        assert_eq!(attempts[0].free_mib, 193840.0);
+        assert!(!attempts[0].changed);
+        assert_eq!(attempts[0].devices.len(), 1);
+        assert_eq!(attempts[0].devices[0].used_mib, 80524.0);
     }
 
     #[test]
-    fn a_fit_without_the_no_change_notice_means_it_shrank_something() {
-        let log = "common_params_fit_impl: projected to use 190000 MiB of device memory vs. 193840 MiB of free device memory
+    fn collects_every_attempt_in_order() {
+        let log = "\
+common_params_fit_impl: projected to use 80000 MiB of device memory vs. 90000 MiB of free device memory
+common_fit_params: targets for free memory can be met on all devices, no changes needed
+common_init_: fitting params to device memory ...
+common_params_fit_impl: projected to use 95000 MiB of device memory vs. 90000 MiB of free device memory
 common_fit_params: successfully fit params to free device memory";
-        let (projected, _, changed) = parse_fit_verdict(log);
-        assert_eq!(projected, Some(190000.0));
-        assert_eq!(changed, Some(true));
+        let attempts = parse_fit_verdict(log);
+        assert_eq!(attempts.len(), 2);
+        assert!(!attempts[0].changed);
+        assert!(attempts[1].changed);
     }
 
     #[test]
     fn a_run_without_fit_lines_reports_nothing() {
-        assert_eq!(parse_fit_verdict("buffer size = 100 MiB"), (None, None, None));
+        assert!(parse_fit_verdict("buffer size = 100 MiB").is_empty());
     }
 }
