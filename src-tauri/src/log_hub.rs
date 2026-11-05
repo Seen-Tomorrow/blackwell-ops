@@ -884,7 +884,10 @@ impl LogHub {
         learn_snapshot: &crate::vram_learn::VramLearnSnapshot,
         line_buf: &[String],
     ) -> Option<(f64, Option<Vec<f64>>, Option<String>, f64)> {
-        let combined = line_buf.join("\n");
+        // Prefer the complete stderr file: the rolling buffer is a window and the per-device
+        // fit placements can already have scrolled out of it by the time we build the snapshot.
+        let combined = crate::session_log::slot_stderr_text(slot_idx, alias)
+            .unwrap_or_else(|| line_buf.join("\n"));
         let snapshot = crate::launch_memory_parse::parse_launch_memory_snapshot(&combined)?;
         let mib = snapshot.vram_mib;
         let host_mib = snapshot.host_mib;

@@ -263,6 +263,17 @@ fn open_append(path: &std::path::Path) -> Option<BufWriter<File>> {
         .map(BufWriter::new)
 }
 
+/// Full stderr for a slot of the current session, when session logging is on.
+///
+/// The rolling buffer in `log_hub` is a window: by the time a snapshot is built, early lines
+/// (the per-device fit placements) may already have scrolled out. The file has everything.
+pub fn slot_stderr_text(slot_idx: usize, alias: &str) -> Option<String> {
+    let dir = current_dir()?;
+    let path = slot_dir(&dir, slot_idx, alias).join("stderr.log");
+    let text = std::fs::read_to_string(path).ok()?;
+    (!text.trim().is_empty()).then_some(text)
+}
+
 fn slot_dir(session_dir: &std::path::Path, slot_idx: usize, alias: &str) -> PathBuf {
     let safe_alias: String = alias
         .chars()
