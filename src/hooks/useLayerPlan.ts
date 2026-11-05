@@ -75,6 +75,9 @@ export function useLayerPlan(
     /** Changes on every engine state change, so a finished launch is picked up without
      *  nudging the ctx slider (`LOADING -> RUNNING -> IDLE`). */
     stackSig?: string;
+    /** Applied tensor split ("0.55,0.45"). When set it is the placement, so the plan
+     *  distributes by it instead of proposing its own boundary. */
+    tensorSplit?: string;
     modelMeta?: ModelMetadata | null;
   },
 ): {
@@ -279,6 +282,24 @@ export function useLayerPlan(
     });
   }, [layerBytes, gpus, calibration, kvPerBlock, measuredKv, cold, weightScale]);
 
+  // An applied -ts is the placement. Split the planned total by those fractions so the
+  // popover and the per-card bars cannot disagree.
+  const effectivePlan: LayerPlan | null = useMemo(() => {
+    if (!plan) return plan;
+    const parts = (knobs?.tensorSplit ?? "").split(",").map((v) => Number(v.trim())).filter((v) => Number.isFinite(v) && v > 0);
+    if (parts.length !== gpus.length) return plan;
+    const sum = parts.reduce((a, b) => a + b, 0);
+    const total = parts.map((f) => (plan.sumMib * f) / sum);
+    const util = total.map((mib, i) => (plan.budgetsMib[i] > 0 ? mib / plan.budgetsMib[i] : 0));
+    return {
+    plan: effectivePlan,
+      ...plan,
+      totalMib: total,
+      util,
+      maxUtil: Math.max(...util),
+    };
+  }, [plan, knobs?.tensorSplit, gpus.length]);
+
   const kvSource: "measured" | "profile" | "geometry" | "none" =
     measuredKv && measuredKv.kvMib > 0
       ? "measured"
@@ -368,6 +389,7 @@ export function useLayerPlan(
     });
   }, [plan, modelPath, knobs?.ctxTokens, knobs?.kvQuant, knobs?.splitMode, kvPerBlock, measuredKv, cold, kvSource]);
   return {
+    plan: effectivePlan,
     plan,
     layerBytes,
     kvMibPerLayer: kvPerBlock,
