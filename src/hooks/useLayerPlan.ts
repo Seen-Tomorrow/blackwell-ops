@@ -83,6 +83,8 @@ export function useLayerPlan(
   kvMibPerLayer: number;
   /** measured | profile | geometry | none — geometry is an upper bound, not a forecast. */
   kvSource: "measured" | "profile" | "geometry" | "none";
+  /** true when the measured run had to shrink parameters to fit (slower, same inventory). */
+  squeezed: boolean;
   loading: boolean;
 } {
   const [layerBytes, setLayerBytes] = useState<LayerBytes | null>(null);
@@ -330,5 +332,12 @@ export function useLayerPlan(
       // Journaling is diagnostic; never let it break the plan.
     });
   }, [plan, modelPath, knobs?.ctxTokens, knobs?.kvQuant, knobs?.splitMode, kvPerBlock, measuredKv, cold, kvSource]);
-  return { plan, layerBytes, kvMibPerLayer: kvPerBlock, kvSource, loading };
+  return {
+    plan,
+    layerBytes,
+    kvMibPerLayer: kvPerBlock,
+    kvSource,
+    squeezed: measuredKv?.fitChanged === true,
+    loading,
+  };
 }

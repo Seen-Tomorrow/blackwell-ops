@@ -107,7 +107,7 @@ export default function VramBadge({
 }: VramBadgeProps) {
 
   const { calibration: gpuCalibration } = useGpuCalibration();
-  const { plan: layerPlan, kvMibPerLayer, kvSource: planKvSource } = useLayerPlan(modelPath, gpus, gpuCalibration, {
+  const { plan: layerPlan, kvMibPerLayer, kvSource: planKvSource, squeezed: planSqueezed } = useLayerPlan(modelPath, gpus, gpuCalibration, {
     ctxTokens,
     kvQuant,
     splitMode,
@@ -374,6 +374,7 @@ export default function VramBadge({
           forecastKind={sourceKind ?? null}
           kvMibPerLayer={kvMibPerLayer}
           kvSource={planKvSource}
+          squeezed={planSqueezed}
           onClose={() => setPlanOpen(false)}
         />
       )}

@@ -14,6 +14,7 @@ export default function PlanPopover({
   forecastKind,
   kvMibPerLayer = 0,
   kvSource = "none",
+  squeezed = false,
   onClose,
 }: {
   plan: LayerPlan | null;
@@ -24,6 +25,8 @@ export default function PlanPopover({
   kvMibPerLayer?: number;
   /** How the KV term was obtained; "geometry" is an upper bound, not a forecast. */
   kvSource?: "measured" | "profile" | "geometry" | "none";
+  /** The measured run had to shrink parameters to fit: same inventory, lower speed. */
+  squeezed?: boolean;
   onClose: () => void;
 }) {
   if (!plan) {
@@ -93,6 +96,13 @@ export default function PlanPopover({
             : `${plan.boundary} / ${plan.layerCount} layers · weights only`}
         </span>
       </div>
+
+      {squeezed && (
+        <div className="vram-plan-pop__forecast">
+          <span className="vram-plan-pop__meta">SQUEEZED</span>
+          <span>engine shrank to fit — slower for the same VRAM</span>
+        </div>
+      )}
 
       {forecastNeedGb != null && forecastNeedGb > 0 && (
         <div className="vram-plan-pop__forecast">
