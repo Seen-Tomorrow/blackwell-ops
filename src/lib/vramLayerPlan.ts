@@ -33,9 +33,6 @@ export type LayerPlanInput = {
   appliedTs?: number[];
 };
 
-/** Upper bound on the `-ts` nudge loop (0.001 steps); a bug must not spin. */
-const TS_NUDGE_STEPS = 20;
-
 export type LayerPlan = {
   /** Blocks on the first GPU; the rest follow in order. */
   boundary: number;
@@ -162,36 +159,32 @@ export function planLayerSplit(input: LayerPlanInput): LayerPlan | null {
 /**
  * Boundary a `-ts` really gets.
  *
- * `-ts` is a fraction of LAYERS, and llama.cpp puts layer `il` on device 0 while
- * `il < ts * n_layer`. The fractions are `float`, so a value that looks exact can sit a hair
- * above it: measured on DeepSeek-V4.1 (40 blocks), `-ts 0.550,0.450` loaded blocks 0..22 —
- * 23 layers, CUDA0 model buffer 81,241.01 MiB, which is exactly the first 23 blocks — while
- * 22/40 would be 22. Hence the ceiling, not the round: `0.55f * 40 = 22.0000005`.
+ * Measured on DeepSeek-V4.1 (40 blocks, `--fit off`), CUDA0 model buffer = prefix[boundary]:
+ * `0.550 → 23 blocks` (81,240.99 MiB), `0.575 → 24` (85,297.72), `0.563 → 24` (85,297.72).
+ * That is `ceil(ts * (n_layer + 1))` — the engine counts the output layer as one more slot,
+ * and ceils: 0.55*41 = 22.55 → 23, 0.575*41 = 23.575 → 24, 0.563*41 = 23.083 → 24. Neither
+ * `ts * n_layer` nor rounding fits the 0.563 point, which is what pinned the rule.
  */
 export function tensorSplitBoundary(ts: number[], layerCount: number): number | null {
   if (layerCount < 2 || ts.length !== 2) return null;
   if (!ts.every((v) => Number.isFinite(v) && v > 0)) return null;
   const sum = ts[0] + ts[1];
   if (!(sum > 0)) return null;
-  // Math.fround models the `float` the engine parses, not a `double`.
-  const boundary = Math.ceil(Math.fround(ts[0] / sum) * layerCount);
-  return Math.min(Math.max(boundary, 1), layerCount - 1);
+  const boundary = Math.ceil(Math.fround(ts[0] / sum) * (layerCount + 1));
+  return Math.min(Math.max(boundary, 1), layerCount);
 }
 
 /**
- * The `-ts` (3 decimals) that makes `tensorSplitBoundary` return this boundary.
+ * The `-ts` that makes the engine put exactly `boundary` blocks on the first device.
  *
- * Stepping down by 0.001 when the read-back overshoots is what keeps 22/40 = 0.55 from
- * becoming 23 layers; the value written is 0.549, which the engine maps back to 22.
+ * The value sits in the MIDDLE of the band that maps to this boundary,
+ * `(boundary - 0.5) / (n_layer + 1)`, because the engine ceils `ts * (n_layer + 1)`:
+ * the band for `boundary` is `((b-1)/(n+1), b/(n+1)]`, and writing 22/40 = 0.55 lands on 23.
+ * Mid-band also survives float dust. 3 decimals, because that is what `-ts` carries.
  */
 export function tensorSplitForBoundary(boundary: number, layerCount: number): number[] {
   const target = Math.min(Math.max(boundary, 1), layerCount - 1);
-  let first = Math.round((target / layerCount) * 1000) / 1000;
-  for (let i = 0; i < TS_NUDGE_STEPS; i += 1) {
-    const readBack = Math.ceil(Math.fround(first) * layerCount);
-    if (readBack === target) break;
-    first = Math.round((first - 0.001) * 1000) / 1000;
-  }
+  const first = Math.round(((target - 0.5) / (layerCount + 1)) * 1000) / 1000;
   return [first, Math.round((1 - first) * 1000) / 1000];
 }
 

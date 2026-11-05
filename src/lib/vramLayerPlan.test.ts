@@ -59,18 +59,19 @@ describe("layer split planning", () => {
   });
 
   it("reads a -ts back the way llama.cpp does, and writes one that lands where it says", () => {
-    // Measured on DeepSeek-V4.1 (40 blocks): -ts 0.550,0.450 loaded blocks 0..22 — 23 layers,
-    // CUDA0 model buffer 81,241.01 MiB, exactly the first 23 blocks — because the fractions
-    // are float and 0.55f * 40 = 22.0000005, which the engine's `il < ts*n` test admits.
+    // Measured on DeepSeek-V4.1 (40 blocks, --fit off), CUDA0 model buffer = prefix[boundary]:
+    // 0.550 -> 23 blocks (81,240.99 MiB), 0.575 -> 24 (85,297.72), 0.563 -> 24 (85,297.72).
+    // That is ceil(ts * (n_layer + 1)); the 0.563 point rules out rounding.
     expect(tensorSplitBoundary([0.55, 0.45], 40)).toBe(23);
-    expect(tensorSplitBoundary([0.549, 0.451], 40)).toBe(22);
-    expect(tensorSplitBoundary([0.5, 0.5], 40)).toBe(20);
+    expect(tensorSplitBoundary([0.575, 0.425], 40)).toBe(24);
+    expect(tensorSplitBoundary([0.563, 0.437], 40)).toBe(24);
+    expect(tensorSplitBoundary([0.5, 0.5], 40)).toBe(21);
     expect(tensorSplitBoundary([0, 1], 40)).toBeNull();
     expect(tensorSplitBoundary([1], 40)).toBeNull();
     // Round trip: whatever boundary we mean, the value we write reads back as that boundary.
     for (const boundary of [1, 7, 20, 22, 23, 39]) {
       const ts = tensorSplitForBoundary(boundary, 40);
-      expect(tensorSplitBoundary(ts, 40)).toBe(boundary);
+      expect(tensorSplitBoundary(ts, 40), JSON.stringify(ts)).toBe(boundary);
       expect(ts[0] + ts[1]).toBeCloseTo(1, 6);
       expect(formatTensorSplit(ts).split(",")).toHaveLength(2);
     }
@@ -80,15 +81,15 @@ describe("layer split planning", () => {
     const plan = planLayerSplit({
       perBlockMib: toMib(V41_BLOCKS_GIB),
       budgetsMib: [97 * 1024, 97 * 1024],
-      appliedTs: [0.55, 0.45],
+      appliedTs: [0.575, 0.425],
     });
     expect(plan).not.toBeNull();
     // The geometry on screen is the one the CLI will produce, not the one we would pick.
-    expect(plan!.appliedBoundary).toBe(23);
-    expect(plan!.boundary).toBe(23);
-    expect(plan!.optimalBoundary).toBe(22);
-    expect(plan!.ts).toEqual([0.55, 0.45]);
-    expect(tensorSplitBoundary(plan!.applyTs, 40)).toBe(22);
+    expect(plan!.appliedBoundary).toBe(24);
+    expect(plan!.boundary).toBe(24);
+    expect(plan!.ts).toEqual([0.575, 0.425]);
+    // The proposal is mid-band, so applying it lands on the boundary it names.
+    expect(tensorSplitBoundary(plan!.applyTs, 40)).toBe(plan!.optimalBoundary);
   });
 
   it("keeps KV with the layers that carry it", () => {

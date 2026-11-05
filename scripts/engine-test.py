@@ -86,10 +86,20 @@ def launch_config(args) -> dict:
     }
     if args.device:
         extra["device"] = args.device
+    # Match the cockpit: the AUTO_FIT path is what emits a --fit flag at all, and the handover
+    # (TAKEOVER) runs with fit off so -ngl/-ts own placement.
+    extra["__auto_vram"] = True
+    # llama-server defaults --parallel to auto (4 slots, unified KV = 4x the cache); the
+    # cockpit always sends 1, so a measurement without it is not the product footprint.
+    extra["parallel"] = args.parallel
+    extra["__fit_off"] = not args.fit_on
     if args.ts is not None:
         # An empty string is a real value: it overrides the provider's saved -ts row and means
         # "engine chooses", which is what a no-placement measurement needs.
         extra["tensor_split"] = args.ts
+    # The cockpit's launches use --load-mode mlock; the engine default is mmap, which boots the
+    # same model roughly 3x slower (and timed the readiness check out at 63 s on DeepSeek-V4.1).
+    extra["load_mode"] = args.load_mode
     config = {
         "alias": args.alias or f"TEST_{uuid.uuid4().hex[:4].upper()}",
         "model_path": args.model,
@@ -141,6 +151,19 @@ def main() -> int:
     ap.add_argument("--flash-attn", default="on", dest="flash_attn")
     ap.add_argument("--cache-ram", type=int, default=16384)
     ap.add_argument("--device", default="")
+    ap.add_argument("--parallel", type=int, default=1, help="--parallel slots; the cockpit uses 1")
+    ap.add_argument(
+        "--load-mode",
+        default="mlock",
+        dest="load_mode",
+        help="--load-mode value; the cockpit uses mlock (mmap boots ~3x slower)",
+    )
+    ap.add_argument(
+        "--fit-on",
+        action="store_true",
+        dest="fit_on",
+        help="let --fit on choose placement instead of the -ts value",
+    )
     ap.add_argument(
         "--ts",
         default=None,

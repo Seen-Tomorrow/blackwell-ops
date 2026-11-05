@@ -77,19 +77,37 @@ A model shipped 202 tensors of ggml type 42 that the table did not know, silentl
 
 ## `-ts` is a fraction of LAYERS, and llama.cpp ceils it
 
-- `-ts` names a fraction of **layers**, not bytes, and the engine assigns layer `il` to device 0
-  while `il < ts * n_layer` (fractions are `float`). A value that looks exact can sit a hair
-  above the product: on DeepSeek-V4.1 (40 blocks) `-ts 0.550,0.450` loaded blocks **0..22 — 23
-  layers**, CUDA0 model buffer 81,241.01 MiB = the first 23 blocks (session
-  `2026-11-05_145746`), while 22/40 would be 22. To get the boundary you mean, write 0.549.
+- `-ts` names a fraction of **layers**, not bytes. Measured on DeepSeek-V4.1 (40 blocks, `--fit
+  off`), CUDA0 model buffer = prefix[boundary]: `0.550 → 23 blocks` (81,240.99 MiB),
+  `0.575 → 24` (85,297.72), `0.563 → 24` (85,297.72). That is **`ceil(ts * (n_layer + 1))`** —
+  the output layer counts as one more slot. Neither `ts * n_layer` nor rounding fits all three.
+- Therefore never write `boundary / n_layer` (22/40 = 0.55 lands on 23). Write the middle of the
+  band, `(boundary - 0.5) / (n_layer + 1)`, at 3 decimals: 23 → `0.549,0.451`, 22 → `0.524,0.476`.
+  Verified end to end at ctx 262144: `-ts 0.549,0.451` loaded 23 blocks and the cards landed
+  **85.62 / 85.54 GiB** (76 MiB apart), against 90.7 / 86.75 for 0.575 and 79.1 / 95.4 (GPU1 at
+  0 free) for the engine's own split.
+- `-ts` and `--fit on` are incompatible: the engine prints `failed to fit params to free device
+  memory: model_params::tensor_split already set by user, abort`, then loads anyway. The handover
+  must pass `--fit off`.
 - So do not split GB by the `-ts` fraction: at 0.550 the byte split was 51.8 / 48.2 of weights
-  (92,133 / 91,878 MiB with compute and KV) because blocks grow 2.9 → 4.5 GiB. A proportional
-  split put 99.6 GB on a 95.6 GiB card while the launch fit with 1.6 / 1.5 GB free.
+  because blocks grow 2.9 → 4.5 GiB. A proportional split put 99.6 GB on a 95.6 GiB card.
 - Compute buffers are **not** layer-proportional either: measured 6,539 / 11,328 MiB at 512K on
-  the 23/17 split, and 1,655 / 1,385 MiB on Qwen3.8-27B at 64K. The last device carries more,
-  and the two signs can flip — use the measured per-device pair, never "split by layer count".
+  the 21/19 split, 5,989 / 11,685 at 262144 on 23/17, and 9,877 / 12,375 when four slots were
+  allocated. Use the measured per-device pair, never "split by layer count".
 - `token_embd` is a CUDA_Host buffer, not a GPU0 one: the plan's weights0 = prefix + token_embd
   overcharges the first card by 670 MiB on DSV4.1 (the engine keeps it on CUDA_Host).
+
+## Measuring from the CLI: three ways to get a different model footprint
+
+`engine-test.py` drives the app's launch path, so it inherits the cockpit only if it sends the same
+knobs. Three defaults that silently changed the footprint (all fixed in the script now):
+
+- `--load-mode`: omitted = **mmap**, and the same model boots ~3x slower (63 s vs 24.5 s on
+  DeepSeek-V4.1; the readiness check times out). The cockpit sends `mlock`.
+- `--parallel`: omitted = **auto → 4 slots with unified KV**, i.e. 4x the cache (2,486 vs 621 MiB)
+  and different compute buffers. The cockpit sends `1`.
+- `--fit`: `__fit_off` only emits `--fit off` when `__auto_vram` is also set; without it the launch
+  has no fit flag at all and the engine's own fit runs.
 
 ## Dev tooling built today (keep)
 
