@@ -142,7 +142,9 @@ export default function VramBadge({
           sourceKind: manifest.memorySource?.kind ?? null,
           sourceExact: manifest.memorySource?.exact ?? null,
           sourceDetail: manifest.memorySource?.detail ?? null,
-          vramNeedGb: manifest.vramTotalGb ?? null,
+          vramNeedGb: displayVramNeedGb,
+          vramInventoryGb: inventoryVramNeedGb,
+          runtimeOverheadGb: runtimeOverheadMib / 1024,
           ramNeedGb: manifest.ramTotalGb ?? null,
           fits: manifest.fits ?? null,
           needTone: manifest.style.vramNeedTone ?? null,
@@ -334,7 +336,17 @@ export default function VramBadge({
       })
     : null;
 
-  const displayVramNeedGb = Math.max(0, manifest.vramTotalGb);
+  const inventoryVramNeedGb = Math.max(0, manifest.vramTotalGb);
+  // The glass prints ONE number: what the cards will actually lose. The recorded inventory
+  // (model + KV + compute + rs + vision) is not that - NVML also charges the CUDA context and
+  // the allocator/graph pools, which the engine never prints as buffer lines. That gap is
+  // measured per device by gpu_calibration at load (`used - buffers`), so the total below is
+  // inventory + measured runtime, per launch, and it self-corrects as samples accumulate.
+  const runtimeOverheadMib = gpuCalibration.reduce(
+    (sum, row) => sum + (row.samples > 0 ? row.median_residual_mib : 0),
+    0,
+  );
+  const displayVramNeedGb = inventoryVramNeedGb + runtimeOverheadMib / 1024;
   const displayRamNeedGb = isFitProbe
     ? (manifest.validatedHostMib != null && manifest.validatedHostMib > 0
         ? manifest.validatedHostMib / 1024
@@ -587,7 +599,7 @@ export default function VramBadge({
               <span
                 className="vram-fc-bar__need-chip vram-fc-need-frame__need vram-fc-need-frame__need--vram"
                 data-need-tone={vramNeedTone}
-                title="Projected VRAM need"
+                title={`Projected VRAM: ${displayVramNeedGb.toFixed(1)} GB = ${inventoryVramNeedGb.toFixed(1)} inventory + ${(runtimeOverheadMib / 1024).toFixed(1)} runtime (CUDA context, graph pools)`}
               >
                 <span className="vram-fc-bar__need-prefix">need</span>
                 <span className={`vram-fc-bar__need vram-fc-bar__need--${vramNeedTone}`}>
