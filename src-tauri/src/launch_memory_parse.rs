@@ -478,10 +478,10 @@ fn parse_fit_verdict(output: &str) -> Vec<FitAttempt> {
         }
 
         if let Some(last) = attempts.last_mut() {
-            if lower.contains("no changes needed") {
-                last.changed = false;
-            } else if lower.contains("will leave") && lower.contains("free device memory") {
-                // Single-device form reports the margin instead of per-card lines.
+            // The same line can carry both the margin and the verdict
+            // (`will leave 17902 >= 2160 MiB ... , no changes needed`), so these are
+            // independent checks rather than else-if branches.
+            if lower.contains("will leave") {
                 let numbers: Vec<f64> = line
                     .split(|c: char| !c.is_ascii_digit() && c != '.')
                     .filter(|part| !part.is_empty())
@@ -491,8 +491,12 @@ fn parse_fit_verdict(output: &str) -> Vec<FitAttempt> {
                     last.will_leave_mib = Some(*first);
                 }
             }
+            if lower.contains("no changes needed") || lower.contains("targets for free memory can be met") {
+                last.changed = false;
+            }
         }
     }
+
     attempts
 }
 pub fn parse_launch_memory_snapshot(output: &str) -> Option<LaunchMemorySnapshot> {
@@ -816,6 +820,20 @@ common_fit_params: successfully fit params to free device memory";
         assert_eq!(attempts.len(), 2);
         assert!(!attempts[0].changed);
         assert!(attempts[1].changed);
+    }
+
+    #[test]
+    fn captures_multi_device_placement() {
+        let log = "\
+0.00.430.703 I common_params_fit_impl: projected memory use with initial parameters [MiB]:
+0.00.430.708 I common_params_fit_impl:   - CUDA0 (NVIDIA RTX PRO 6000):  97859 total,   6263 used,  88755 free vs. target of   2160
+0.00.430.708 I common_params_fit_impl:   - CUDA1 (NVIDIA RTX PRO 6000):  97859 total,   7592 used,  87450 free vs. target of   1024
+0.00.430.709 I common_params_fit_impl: projected to use 13855 MiB of device memory vs. 190062 MiB of free device memory
+0.00.430.709 I common_params_fit_impl: targets for free memory can be met on all devices, no changes needed";
+        let attempts = parse_fit_verdict(log);
+        assert_eq!(attempts.len(), 1);
+        assert_eq!(attempts[0].devices.len(), 2);
+        assert_eq!(attempts[0].devices[1].used_mib, 7592.0);
     }
 
     #[test]
