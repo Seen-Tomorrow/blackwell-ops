@@ -283,25 +283,6 @@ fn param_suffix(
 }
 
 /// Pre-offload suffix — keys written before offload_mode was part of the fingerprint.
-fn param_suffix_legacy(
-    provider_id: &str,
-    ctx: &str,
-    kv_quant: &str,
-    device: &str,
-    split: &str,
-    memory_mode: &str,
-) -> String {
-    format!(
-        "|{}|ctx={}|kv={}|dev={}|split={}|mode={}",
-        provider_id,
-        normalize_ctx_key(ctx),
-        kv_quant.trim().to_lowercase(),
-        device.trim(),
-        split.trim().to_lowercase(),
-        memory_mode.trim().to_lowercase(),
-    )
-}
-
 /// Fingerprint for learned VRAM — model + provider + launch-relevant params.
 #[allow(dead_code)] // Public API / tests; runtime uses `learned_vram_key_with_draft`.
 pub fn learned_vram_key(
@@ -331,7 +312,7 @@ pub fn learned_vram_key(
     )
 }
 
-/// Key without batch/ubatch, for legacy fallback shapes.
+/// Key without batch/ubatch (see `learned_vram_key_with_draft_batched` for the real one).
 #[allow(clippy::too_many_arguments)]
 pub fn learned_vram_key_with_draft(
     model_path: &str,
@@ -523,7 +504,6 @@ fn lookup_learned_vram_fuzzy(
     ubatch: &str,
 ) -> Option<LearnedVramEntry> {
     let store = load_store();
-    let normalized_path = normalize_model_path_for_key(model_path);
     let primary = learned_vram_key_with_draft_batched(
         model_path,
         provider_id,
@@ -542,88 +522,12 @@ fn lookup_learned_vram_fuzzy(
     if let Some(entry) = store.entries.get(&primary) {
         return Some(entry.clone());
     }
-    // Keys written before the token was renamed carried `dev=<topology>`.
-    let legacy_topo = primary.replace("|topo=", "|dev=");
-    if legacy_topo != primary {
-        if let Some(entry) = store.entries.get(&legacy_topo) {
-            return Some(entry.clone());
-        }
-    }
-    // Pre-draft-suffix keys (same spec, no |draft=).
-    if !draft_key.trim().is_empty() {
-        let no_draft = learned_vram_key_with_draft(
-            model_path,
-            provider_id,
-            ctx,
-            kv_quant,
-            device,
-            split,
-            memory_mode,
-            offload_mode,
-            spec_type,
-            cache_ram,
-            "",
-        );
-        if no_draft != primary {
-            if let Some(entry) = store.entries.get(&no_draft) {
-                return Some(entry.clone());
-            }
-        }
-    }
-    // Without spec/cache_ram suffix (pre-MTP keys).
-    if normalize_spec_type(spec_type) == "none" && (cache_ram.trim().is_empty() || cache_ram == "0") {
-        let without_launch = learned_vram_key_with_draft(
-            model_path,
-            provider_id,
-            ctx,
-            kv_quant,
-            device,
-            split,
-            memory_mode,
-            offload_mode,
-            "none",
-            "0",
-            "",
-        );
-        if without_launch != primary {
-            if let Some(entry) = store.entries.get(&without_launch) {
-                return Some(entry.clone());
-            }
-        }
-    }
-    // Legacy entries lack |offload= — only reuse for regular offload, never MOE_OPTIMAL.
-    if normalize_offload_mode(offload_mode) == "regular" {
-        let legacy_key = format!(
-            "{}{}",
-            normalized_path,
-            param_suffix_legacy(provider_id, ctx, kv_quant, device, split, memory_mode),
-        );
-        if let Some(entry) = store.entries.get(&legacy_key) {
-            return Some(entry.clone());
-        }
-    }
-    // Launch may omit __memory_mode — entry stored under full_auto while UI reads assisted (or vice versa).
-    for alt_mode in ["assisted", "full_auto"] {
-        if alt_mode == memory_mode {
-            continue;
-        }
-        let alt_key = learned_vram_key_with_draft(
-            model_path,
-            provider_id,
-            ctx,
-            kv_quant,
-            device,
-            split,
-            alt_mode,
-            offload_mode,
-            spec_type,
-            cache_ram,
-            draft_key,
-        );
-        if let Some(entry) = store.entries.get(&alt_key) {
-            return Some(entry.clone());
-        }
-    }
+    // There is ONE key shape. The `dev=` token, pre-draft keys, pre-`|offload=` keys and the
+    // `mode=` token all belong to formats that no longer exist: `mode` is not in the key (it is
+    // a UI mode), nothing is written without spec/cache_ram/offload, and the token has always
+    // been `topo`. Rows in those shapes are simply stale data — the cache is reset, not migrated
+    // (no installed base yet). Keep the lookup exact; a guess here once handed a q8 config an
+    // f16 row's KV (+5 GB, c8dd2ba26).
 
     // The cockpit may pass cache_ram=0 while the launch recorded a real value (or the other
     // way round), which is enough to miss an exact row and fall back to FIT. Retry without the
