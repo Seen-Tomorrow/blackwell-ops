@@ -93,7 +93,18 @@ A model shipped 202 tensors of ggml type 42 that the table did not know, silentl
   because blocks grow 2.9 → 4.5 GiB. A proportional split put 99.6 GB on a 95.6 GiB card.
 - Compute buffers are **not** layer-proportional either: measured 6,539 / 11,328 MiB at 512K on
   the 21/19 split, 5,989 / 11,685 at 262144 on 23/17, and 9,877 / 12,375 when four slots were
-  allocated. Use the measured per-device pair, never "split by layer count".
+  allocated. The last device carries more, and the two signs can flip — use the measured per-device
+  pair, never "split by layer count". Measured rules, tables and the parallel/ctx-cap traps:
+  `docs/ENGINE-MEMORY-MEASUREMENTS.md`.
+- `--parallel` must always be passed. Explicit N splits the ctx per slot (`n_ctx_slot = ctx/N`,
+  KV total constant, compute shrinks then grows at 32); *omitting* it makes llama pick 4 **with
+  `kv_unified=true`**, where every slot gets the full ctx and the cache quadruples (measured
+  +1.9 GB KV, +4.6 GB compute on DSV4.1). Same flag, two regimes.
+- Requesting ctx above `n_ctx_train` logs "capping" but allocates the KV for the **requested**
+  ctx: 1M requested on a 256K model = 17,408 MiB/card KV and 4× the compute, for a quarter of
+  the usable context. Forecast the request, not the cap.
+- `ubatch` moves the compute buffers (+338/+248 MiB per +512); `batch` alone does not (512 vs 2048
+  identical). Earlier "batch 2048 vs 8192" differences were ubatch.
 - `token_embd` is a CUDA_Host buffer, not a GPU0 one: the plan's weights0 = prefix + token_embd
   overcharges the first card by 670 MiB on DSV4.1 (the engine keeps it on CUDA_Host).
 
@@ -114,6 +125,7 @@ knobs. Three defaults that silently changed the footprint (all fixed in the scri
 - `scripts/engine-test.py` + `src-tauri/src/automation.rs` — DEV-only folder queue
   (`config/automation/queue|results`) that runs the app's own `launch_engine`: launch/hold/stop,
   status, and `cold` forecasts. No UI, no screenshots, no second launch path. ~5 s per launch.
+- `scripts/engine-matrix.py` — runs a launch matrix (parallel / ctx / ubatch / kv) through the app's own launch path and tabulates the engine's per-device buffers; writes `tmp/engine-matrix.json`.
 - `scripts/forecast-compare.py` — prints fit / plan / measured per configuration from
   `forecast-log.jsonl`, recovering a `measured` row's config from its `learn_key`.
 - `forecast-log.jsonl` rows: `prelaunch` (FIT), `measured` (launch), `plan` (with `kv_source` and

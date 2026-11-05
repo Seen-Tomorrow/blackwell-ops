@@ -1,0 +1,136 @@
+# Engine memory — what the buffers are and what actually moves them
+
+Measured 2026-11-05 on 2 × RTX PRO 6000 (96 GB, TCC) with `scripts/engine-matrix.py`, which runs
+launches through the app's own `launch_engine` (the UI path: `--load-mode mlock`, explicit
+`--parallel`, `--fit off`, no `-ts`) and reads the engine's own buffer lines. Model:
+`Qwen3.8-27B-UD-IQ3_XXS.gguf` unless marked DSV4.1.
+
+Every number is **MiB per device**, from `load_tensors` / `llama_kv_cache` / `sched_reserve`, and
+excludes the CUDA context (~625 MiB/device, calibrated separately). `total` is all CUDA buffers on
+that card, including the ~78 MiB of auxiliary buffers.
+
+Why this file exists: **the FIT probe ignores `--parallel` and omits the compute buffers**
+(10–15 GB on a 400B-class model). A forecast built only from it OOMs on a machine that is at the
+edge of its VRAM — which this one is.
+
+## Parallel
+
+ctx 32768, batch 2048, ubatch 512, KV q8_0, explicit `--parallel N`:
+
+| par | slots | ctx/slot | KV/card | compute 0/1 | total 0/1 | all |
+|---|---|---|---|---|---|---|
+| 1 | 1 | 32768 | 544 | 715 / 377 | 5,478 / 6,537 | 12,015 |
+| 2 | 2 | 16384 | 544 | 651 / 313 | 5,492 / 6,545 | 12,037 |
+| 4 | 4 | 8192 | 544 | 619 / 281 | 5,616 / 6,656 | 12,272 |
+| 8 | 8 | 4096 | 544 | 603 / 265 | 5,912 / 6,927 | 12,839 |
+| 16 | 16 | 2048 | 544 | 595 / 257 | 6,527 / 7,492 | 14,020 |
+| 32 | 32 | 1024 | 544 | 655 / 317 | 7,834 / 8,699 | 16,533 |
+
+- **KV does not change with an explicit `--parallel`.** `n_ctx_slot = ctx / N`, `kv_unified=false`:
+  the total context is fixed, so the cache is fixed.
+- **Compute moves**: it dips to parallel 16 and then jumps hard at 32 (+4.5 GB total vs par 1).
+  A 4-slot launch is *cheaper* than 1 slot at the same total context (−4.5 GB at 1M-request, see
+  below) — this is the "parallel 4 used less VRAM" result, and it is real.
+- **Omitting `--parallel` is a different regime.** llama picks `n_parallel = 4` **and flips
+  `kv_unified = true`**, so every slot gets the *full* ctx and the KV cache quadruples. Observed on
+  DeepSeek-V4.1 at ctx 262144: KV 621.6 MiB with `--parallel 1` vs 2,486.3 MiB with auto-4
+  (+1.9 GB), plus compute 5,989/11,685 → 9,877/12,375 (+3.9/+0.7 GB).
+  One flag, two behaviours — always pass it.
+
+## Context length
+
+`--parallel 1`, batch 2048, ubatch 512, KV q8_0:
+
+| ctx | KV/card | compute 0/1 | total 0/1 | all |
+|---|---|---|---|---|
+| 32768 | 544 | 715 / 377 | 5,478 / 6,537 | 12,015 |
+| 65536 | 1,088 | 971 / 633 | 6,278 / 7,337 | 13,615 |
+| 131072 | 2,176 | 1,483 / 1,145 | 7,878 / 8,937 | 16,815 |
+| 262144 | 4,352 | 2,507 / 2,169 | 11,078 / 12,137 | 23,215 |
+
+- KV is exactly linear (544 → 1,088 → 2,176 → 4,352; ×2 per doubling).
+- Compute is affine in ctx, with the **same slope on both devices** here
+  (≈ 8 MiB per 1k tokens) and different intercepts (≈ 459 on GPU0, 121 on GPU1). On DSV4.1 the
+  slope differs per device, so this is per model+placement — measure it.
+
+## `ubatch` moves compute; `batch` does not
+
+ctx 32768, KV q8_0, parallel 1:
+
+| batch/ubatch | compute 0/1 | all |
+|---|---|---|
+| 512 / 512 | 715 / 377 | 12,015 |
+| 1024 / 512 | 715 / 377 | 12,015 |
+| 2048 / 512 | 715 / 377 | 12,015 |
+| 2048 / 1024 | 1,053 / 625 | 12,601 |
+| 3072 / 1536 | 1,391 / 873 | 13,187 |
+
+- **`batch` alone changes nothing** in the buffer inventory (512 vs 2048 identical).
+- **`ubatch` does**: +338 MiB on GPU0 and +248 on GPU1 per +512 ubatch, linear.
+- Consequence: the learned key's `batch` token splits history for no memory reason; `ubatch` is the
+  one that belongs in the identity. (Earlier "batch 2048 vs 8192 differ by 43 %" was an ubatch
+  difference: 512 vs 1536.)
+
+## KV quantisation
+
+ctx 32768, batch 2048/512, parallel 1:
+
+| kv | KV/card | compute 0/1 | all |
+|---|---|---|---|
+| q4_0 | 288 | 715 / 377 | 11,503 |
+| q8_0 | 544 | 715 / 377 | 12,015 |
+| f16 | 1,024 | 628 / 290 | 12,801 |
+
+- KV scales exactly with bits-per-element: q4_0 = 0.28125 × f16, q8_0 = 0.53125 × f16 (18/32 and
+  34/32 bytes over 2 bytes). Predictable, no measurement needed beyond the f16 size.
+- A quantised cache costs a little **compute** (f16 628 vs q8 715 on GPU0) — the dequant step is in
+  the graph. Small, but in the direction of the fitted card.
+
+## Requesting more context than the model has
+
+`--ctx-size 1048576` on this 262,144-token model, `--parallel 1`, q8_0:
+
+```
+srv load_model: the slot context (1048576) exceeds the training context of the model (262144) - capping
+srv load_model: initializing, n_slots = 1, n_ctx_slot = 262144, kv_unified = 'false'
+GPU0: model 4,141 + KV 17,408 + compute 8,403 (+248)   GPU1: model 5,544 + KV 17,408 + compute 8,313
+```
+
+**The cap applies to the slot, not to the allocation.** KV was allocated for the requested 1M
+(17,408/card = 4× the 4,352 at 262K), and compute grew 3.4×, for a context only a quarter of which
+is usable. Total 61,466 MiB vs 23,215 at the same knobs with a 262K request. The forecast must
+therefore treat "ctx above `n_ctx_train`" as fully allocated, not as capped.
+
+## Distribution is not even
+
+- Compute buffers are **not** split evenly and the skew is per model/placement, not a rule:
+  Qwen3.8-27B at ctx 32K → **715 on GPU0 vs 377 on GPU1** (GPU0 heavier); DeepSeek-V4.1 at ctx
+  262K → **5,989 on GPU0 vs 11,685 on GPU1** (GPU1 heavier, 2×). A 50/50 guess is wrong on both.
+- Weights follow the layer split: DSV4.1 blocks grow 2.9 → 4.5 GiB, so 23/17 layers is
+  81,241 / 75,728 MiB. Qwen's default split is 4,141 / 5,544 (fewer, smaller early layers).
+- Painting a per-card forecast from a total split "by layer count" or 50/50 therefore invents GiB
+  on whichever card carries less, in the direction that hides a spill.
+
+## What follows for the forecast
+
+1. **Compute must come from the engine, per device.** It is affine in ctx but the slope/intercept
+   are per model+placement, and ubatch, KV quant and parallel all move it. The learned row already
+   stores `gpu_components_mib` per device — use it, and treat a config with no row as unmeasured
+   rather than guessing.
+2. **FIT alone OOMs at the edge.** It has no parallel term and no compute buffers (10–15 GB on a
+   model this size). It is a lower bound, not a forecast.
+3. **Identity**: `ubatch` changes the footprint, `batch` does not; `parallel` has two regimes
+   (explicit vs auto) and belongs in the identity only when it differs from the default; `-ts`
+   changes the split, not the total, so it does not belong in the key — the split is planned from
+   the layer table.
+4. **Always pass `--parallel`** on a launch, even 1. Without it llama silently switches to 4 slots
+   with a unified 4× cache.
+
+## Open questions
+
+- Why the graph at 1 slot / 1M request is 3.4× the 256K graph (it looks sized by the requested ctx,
+  not the usable one).
+- Why parallel 32 is more expensive than parallel 16 per slot (graph replication? scheduling
+  buffers?).
+- Whether `batch` matters at high ctx (only measured to 32K; one 256K run with batch 512 vs 2048
+  would settle it).
