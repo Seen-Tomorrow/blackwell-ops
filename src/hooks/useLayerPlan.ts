@@ -390,7 +390,6 @@ export function useLayerPlan(
   }, [plan, modelPath, knobs?.ctxTokens, knobs?.kvQuant, knobs?.splitMode, kvPerBlock, measuredKv, cold, kvSource]);
   return {
     plan: effectivePlan,
-    plan,
     layerBytes,
     kvMibPerLayer: kvPerBlock,
     kvSource,
