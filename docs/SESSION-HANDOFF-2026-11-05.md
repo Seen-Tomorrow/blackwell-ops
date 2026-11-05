@@ -12,7 +12,7 @@ for speed. One glass (`VramBadge`), one plan, one journal.
 
 ## State
 
-- `main` = `82cd0a920`, gate green (`npm run check`: 198 TS, 451 Rust). Tree clean.
+- `main` = `081034cc4`, gate green (`npm run check`: 198 TS, 451 Rust). Tree clean.
 - **`main` is a protected branch** — no force push. Fix forward with a new commit; do not rebase
   published commits (one attempt cost a diverged branch and an interrupted rebase).
 - DEV app: `npm run dev` (no watch; Rust changes need restart, TS reloads via Vite). App root is
