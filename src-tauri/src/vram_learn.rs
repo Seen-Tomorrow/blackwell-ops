@@ -282,7 +282,6 @@ fn param_suffix(
     )
 }
 
-/// Pre-offload suffix — keys written before offload_mode was part of the fingerprint.
 /// Fingerprint for learned VRAM — model + provider + launch-relevant params.
 #[allow(dead_code)] // Public API / tests; runtime uses `learned_vram_key_with_draft`.
 pub fn learned_vram_key(
