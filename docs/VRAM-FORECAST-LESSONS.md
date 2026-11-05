@@ -75,6 +75,22 @@ A model shipped 202 tensors of ggml type 42 that the table did not know, silentl
   model (`weights + kv + a + b·ctx`), which is the only way to extrapolate past the last point.
 - Foregoing the last point's extrapolation cost us a mis-read at 1M until it was measured.
 
+## `-ts` is a fraction of LAYERS, and llama.cpp ceils it
+
+- `-ts` names a fraction of **layers**, not bytes, and the engine assigns layer `il` to device 0
+  while `il < ts * n_layer` (fractions are `float`). A value that looks exact can sit a hair
+  above the product: on DeepSeek-V4.1 (40 blocks) `-ts 0.550,0.450` loaded blocks **0..22 — 23
+  layers**, CUDA0 model buffer 81,241.01 MiB = the first 23 blocks (session
+  `2026-11-05_145746`), while 22/40 would be 22. To get the boundary you mean, write 0.549.
+- So do not split GB by the `-ts` fraction: at 0.550 the byte split was 51.8 / 48.2 of weights
+  (92,133 / 91,878 MiB with compute and KV) because blocks grow 2.9 → 4.5 GiB. A proportional
+  split put 99.6 GB on a 95.6 GiB card while the launch fit with 1.6 / 1.5 GB free.
+- Compute buffers are **not** layer-proportional either: measured 6,539 / 11,328 MiB at 512K on
+  the 23/17 split, and 1,655 / 1,385 MiB on Qwen3.8-27B at 64K. The last device carries more,
+  and the two signs can flip — use the measured per-device pair, never "split by layer count".
+- `token_embd` is a CUDA_Host buffer, not a GPU0 one: the plan's weights0 = prefix + token_embd
+  overcharges the first card by 670 MiB on DSV4.1 (the engine keeps it on CUDA_Host).
+
 ## Dev tooling built today (keep)
 
 - `scripts/engine-test.py` + `src-tauri/src/automation.rs` — DEV-only folder queue

@@ -328,16 +328,17 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     perGpuLoad[tgt] = gpuProjectionGb;
   }
 
-  // An explicit `-ts` (written by APPLY/TAKEOVER) is the user's chosen placement: split the
-  // projected total by those fractions so the bars show what will actually happen, instead of
-  // the forecast's own assumption. Falls through to the branches above when unset/malformed.
-  const explicitTs = cfgStr(input.engineConfig, "tensor_split", "")
-    .split(",")
-    .map((part) => Number(part.trim()))
-    .filter((value) => Number.isFinite(value) && value > 0);
-  if (explicitTs.length === input.gpus.length && gpuProjectionGb > 0) {
-    const tsSum = explicitTs.reduce((a, b) => a + b, 0);
-    perGpuLoad = explicitTs.map((fraction) => (gpuProjectionGb * fraction) / tsSum);
+  // An applied `-ts` is a fraction of LAYERS, and layer bytes are not that fraction: on
+  // DeepSeek-V4.1 the blocks grow 2.9 -> 4.5 GiB, so `-ts 0.550` put 81,241 MiB on CUDA0
+  // (51.8% of weights) where a proportional split claimed 99.6 GB on a 95.6 GiB card.
+  // The layer plan converts the split into per-card MiB; the bars paint that placement.
+  if (input.layerSplitMib?.length === input.gpus.length && gpuProjectionGb > 0) {
+    const splitSum = input.layerSplitMib.reduce((sum, mib) => sum + Math.max(0, mib), 0);
+    if (splitSum > 0) {
+      perGpuLoad = input.layerSplitMib.map(
+        (mib) => (gpuProjectionGb * Math.max(0, mib)) / splitSum,
+      );
+    }
   }
 
   const liveFreeFp = freeFingerprintFromGb(targetAvail);

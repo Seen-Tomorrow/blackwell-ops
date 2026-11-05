@@ -28,13 +28,28 @@ export type LayerPlanInput = {
   /** The same overhead as one total, split by layer count. A cold forecast knows the shape
    *  total but not where the boundary will land, and compute buffers follow layers. */
   overheadTotalMib?: number;
+  /** `-ts` already in the launch config. It pins the placement, so the plan reports the
+   *  layers that split really gets instead of proposing its own. */
+  appliedTs?: number[];
 };
+
+/** Upper bound on the `-ts` nudge loop (0.001 steps); a bug must not spin. */
+const TS_NUDGE_STEPS = 20;
 
 export type LayerPlan = {
   /** Blocks on the first GPU; the rest follow in order. */
   boundary: number;
-  /** `-ts` fractions, layer-proportional (0.55, 0.45 for 22/18 of 40). */
+  /** The `-ts` this geometry corresponds to: the split found in the config when one is
+   *  applied, otherwise the value that realises `boundary`. Always 3 decimals, because
+   *  that is what the CLI receives. */
   ts: number[];
+  /** The `-ts` to WRITE for the byte-balanced plan. Differs from `ts` when the config
+   *  already holds a split that lands somewhere else. */
+  applyTs: number[];
+  /** Boundary the applied `-ts` really gets (llama.cpp ceiling), when one is set. */
+  appliedBoundary?: number;
+  /** Boundary the byte-balanced scan would pick. */
+  optimalBoundary: number;
   /** Weights per GPU in MiB, excluding KV. */
   weightsMib: number[];
   /** KV per GPU in MiB. */
@@ -79,7 +94,9 @@ export function planLayerSplit(input: LayerPlanInput): LayerPlan | null {
   for (let i = 0; i < blocks.length; i += 1) prefix[i + 1] = prefix[i] + blocks[i];
   const total = prefix[blocks.length];
 
-  const evaluate = (boundary: number): LayerPlan => {
+  const evaluate = (
+    boundary: number,
+  ): Omit<LayerPlan, "applyTs" | "optimalBoundary" | "appliedBoundary"> => {
     const firstLayers = boundary;
     const lastLayers = blocks.length - boundary;
     const weights0 = prefix[boundary] + tokenEmbd + other / 2;
@@ -112,7 +129,7 @@ export function planLayerSplit(input: LayerPlanInput): LayerPlan | null {
     };
   };
 
-  let best: LayerPlan | null = null;
+  let best: Omit<LayerPlan, "applyTs" | "optimalBoundary" | "appliedBoundary"> | null = null;
   // Every boundary is tried: the block sizes are not monotone (dense layers are much
   // smaller than the MoE ones), so a greedy walk can stop at a local dip that leaves
   // several GiB on one card.
@@ -120,7 +137,62 @@ export function planLayerSplit(input: LayerPlanInput): LayerPlan | null {
     const plan = evaluate(boundary);
     if (best == null || plan.maxUtil < best.maxUtil) best = plan;
   }
-  return best;
+  if (best == null) return null;
+
+  // An applied `-ts` pins the placement: report the layers it really gets, so the bars and
+  // the plan describe the launch that will happen, not the one we would have chosen.
+  const appliedBoundary = input.appliedTs
+    ? tensorSplitBoundary(input.appliedTs, blocks.length)
+    : null;
+  const display = appliedBoundary != null ? evaluate(appliedBoundary) : best;
+  const displayTs =
+    appliedBoundary != null && input.appliedTs
+      ? [input.appliedTs[0], input.appliedTs[1]]
+      : tensorSplitForBoundary(display.boundary, blocks.length);
+
+  return {
+    ...display,
+    ts: displayTs,
+    applyTs: tensorSplitForBoundary(best.boundary, blocks.length),
+    optimalBoundary: best.boundary,
+    appliedBoundary: appliedBoundary ?? undefined,
+  };
+}
+
+/**
+ * Boundary a `-ts` really gets.
+ *
+ * `-ts` is a fraction of LAYERS, and llama.cpp puts layer `il` on device 0 while
+ * `il < ts * n_layer`. The fractions are `float`, so a value that looks exact can sit a hair
+ * above it: measured on DeepSeek-V4.1 (40 blocks), `-ts 0.550,0.450` loaded blocks 0..22 —
+ * 23 layers, CUDA0 model buffer 81,241.01 MiB, which is exactly the first 23 blocks — while
+ * 22/40 would be 22. Hence the ceiling, not the round: `0.55f * 40 = 22.0000005`.
+ */
+export function tensorSplitBoundary(ts: number[], layerCount: number): number | null {
+  if (layerCount < 2 || ts.length !== 2) return null;
+  if (!ts.every((v) => Number.isFinite(v) && v > 0)) return null;
+  const sum = ts[0] + ts[1];
+  if (!(sum > 0)) return null;
+  // Math.fround models the `float` the engine parses, not a `double`.
+  const boundary = Math.ceil(Math.fround(ts[0] / sum) * layerCount);
+  return Math.min(Math.max(boundary, 1), layerCount - 1);
+}
+
+/**
+ * The `-ts` (3 decimals) that makes `tensorSplitBoundary` return this boundary.
+ *
+ * Stepping down by 0.001 when the read-back overshoots is what keeps 22/40 = 0.55 from
+ * becoming 23 layers; the value written is 0.549, which the engine maps back to 22.
+ */
+export function tensorSplitForBoundary(boundary: number, layerCount: number): number[] {
+  const target = Math.min(Math.max(boundary, 1), layerCount - 1);
+  let first = Math.round((target / layerCount) * 1000) / 1000;
+  for (let i = 0; i < TS_NUDGE_STEPS; i += 1) {
+    const readBack = Math.ceil(Math.fround(first) * layerCount);
+    if (readBack === target) break;
+    first = Math.round((first - 0.001) * 1000) / 1000;
+  }
+  return [first, Math.round((1 - first) * 1000) / 1000];
 }
 
 /** `-ts` value llama.cpp expects, e.g. "0.550,0.450". */
@@ -197,6 +269,8 @@ export function planFromLive(args: {
   freeMib: number[];
   calibration?: GpuCalibrationRow[] | null;
   draftMib?: number[];
+  /** `-ts` from the launch config — the placement the engine will really get. */
+  appliedTs?: number[];
 }): LayerPlan | null {
   const overheads = args.freeMib.map((_, i) => runtimeOverheadMibForDevice(i, args.calibration));
   const budgetsMib = budgetsFromFree(args.freeMib, overheads, args.draftMib);
@@ -209,5 +283,6 @@ export function planFromLive(args: {
     overheadMib: args.overheadMib,
     overheadTotalMib: args.overheadTotalMib,
     budgetsMib,
+    appliedTs: args.appliedTs,
   });
 }

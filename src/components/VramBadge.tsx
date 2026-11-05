@@ -6,9 +6,7 @@ import FusionPane from "./FusionPane";
 import FusionDualStage, { type FusionPaneIdentity } from "./FusionDualStage";
 import MoeBadge from "./MoeBadge";
 import PlanPopover from "./PlanPopover";
-import { useLayerPlan } from "../hooks/useLayerPlan";
-import { formatTensorSplit } from "../lib/vramLayerPlan";
-import { useGpuCalibration } from "../hooks/useGpuCalibration";
+import { formatTensorSplit, type GpuCalibrationRow, type LayerPlan } from "../lib/vramLayerPlan";
 import MemorySourcePanel, {
   MemorySourceNeedOverlay,
   MemorySourceReprobe,
@@ -42,6 +40,15 @@ interface VramBadgeProps {
   /** Operator override: drop the auto-VRAM `--fit on` so -ngl/-ts/-ot own placement. */
   fitOff?: boolean;
   onToggleFitOff?: () => void;
+  /** The one layer plan: printed here, painted by the bars, written by TAKEOVER. */
+  layerPlan?: LayerPlan | null;
+  /** `-ts` TAKEOVER writes — the byte-balanced proposal, not the applied string. */
+  planApplyTs?: number[] | null;
+  planKvMibPerLayer?: number;
+  planKvSource?: "measured" | "profile" | "geometry" | "none";
+  planSqueezed?: boolean;
+  /** Measured per-device runtime cost, used for the glass's one shared number. */
+  gpuCalibration?: GpuCalibrationRow[];
   /** Model whose layer table the planner reads; absent hides the PLAN chip. */
   modelPath?: string;
   /** Planned context length and KV quantisation — the plan must follow these knobs. */
@@ -98,6 +105,12 @@ export default function VramBadge({
   gpuMask = "", vramTargetMib, modelLayerTotal, gpuLoadTargetsMib, offloadMode, onMoeSuggestionClick, hideMoeBadge = false,
   hideFitProbe = false, draftOnly = false, className,
   fitOff = false, onToggleFitOff,
+  layerPlan = null,
+  planApplyTs = null,
+  planKvMibPerLayer = 0,
+  planKvSource = "none",
+  planSqueezed = false,
+  gpuCalibration = [],
   modelPath,
   ctxTokens,
   kvQuant,
@@ -114,15 +127,9 @@ export default function VramBadge({
   secondaryPane = null,
 }: VramBadgeProps) {
 
-  const { calibration: gpuCalibration } = useGpuCalibration();
-  const { plan: layerPlan, kvMibPerLayer, kvSource: planKvSource, squeezed: planSqueezed } = useLayerPlan(modelPath, gpus, gpuCalibration, {
-    ctxTokens,
-    kvQuant,
-    splitMode,
-    batch,
-    ubatch,
-    modelMeta,
-  });
+  // The plan arrives from EngineConfigPanel: the same object feeds the manifest's per-card
+  // split, so what the bars paint and what this glass prints cannot disagree.
+  const applyTs = planApplyTs ?? layerPlan?.applyTs ?? null;
 
   // Publish what this glass shows, so an agent can read it instead of asking for a
   // screenshot. DEV builds write config/automation/ui/vram-badge.json.
@@ -155,8 +162,14 @@ export default function VramBadge({
                 totalMib: layerPlan.sumMib,
                 budgetSumMib: layerPlan.budgetSumMib,
                 gpuMib: layerPlan.totalMib,
-                ts: layerPlan.ts,
+                /** Geometry on screen: the applied `-ts` when one is set, else the proposal. */
                 boundary: layerPlan.boundary,
+                layers: layerPlan.layerCount,
+                ts: layerPlan.ts,
+                /** `-ts` TAKEOVER writes (the byte-balanced boundary). */
+                applyTs: layerPlan.applyTs,
+                optimalBoundary: layerPlan.optimalBoundary,
+                appliedBoundary: layerPlan.appliedBoundary ?? null,
                 kvSource: planKvSource,
                 squeezed: planSqueezed,
               }
@@ -406,19 +419,19 @@ export default function VramBadge({
           type="button"
           className="vram-fc-source__reprobe vram-fc-header__reprobe"
           data-takeover={takeoverState}
-          disabled={!onApplyPlan || !layerPlan || takeoverState !== "idle"}
+          disabled={!onApplyPlan || !layerPlan || !applyTs || takeoverState !== "idle"}
           onClick={() => {
-            if (!onApplyPlan || !layerPlan) return;
+            if (!onApplyPlan || !layerPlan || !applyTs) return;
             setTakeoverState("busy");
-            onApplyPlan(formatTensorSplit(layerPlan.ts));
+            onApplyPlan(formatTensorSplit(applyTs));
             if (!fitOff) onToggleFitOff?.();
             setTimeout(() => setTakeoverState("done"), 450);
             setTimeout(() => setTakeoverState("idle"), 2200);
           }}
           title={
-            !layerPlan
+            !layerPlan || !applyTs
               ? "No layer plan for this model yet"
-              : `${fitOff ? "Re-apply" : "FIT OFF + apply"} -ts ${formatTensorSplit(layerPlan.ts)}: the engine stops shaving the graph`
+              : `${fitOff ? "Re-apply" : "FIT OFF + apply"} -ts ${formatTensorSplit(applyTs)} (${layerPlan.optimalBoundary} / ${layerPlan.layerCount} layers): the engine stops shaving the graph`
           }
         >
           {takeoverState === "done" ? "TAKEN OVER" : takeoverState === "busy" ? "APPLYING…" : "TAKEOVER"}
@@ -431,12 +444,12 @@ export default function VramBadge({
           calibration={gpuCalibration}
           forecastNeedGb={displayVramNeedGb > 0 ? displayVramNeedGb : null}
           forecastKind={sourceKind ?? null}
-          kvMibPerLayer={kvMibPerLayer}
+          kvMibPerLayer={planKvMibPerLayer}
           kvSource={planKvSource}
           squeezed={planSqueezed}
           onApply={
-            onApplyPlan && layerPlan
-              ? () => onApplyPlan(formatTensorSplit(layerPlan.ts))
+            onApplyPlan && applyTs
+              ? () => onApplyPlan(formatTensorSplit(applyTs))
               : undefined
           }
           onClose={() => setPlanOpen(false)}
@@ -581,7 +594,11 @@ export default function VramBadge({
                 {layerPlan && planKvSource !== "geometry" && (
                   <span
                     className="vram-fc-bar__need-plan"
-                    title={`Layer plan: ${(layerPlan.sumMib / 1024).toFixed(1)} GB over both cards, -ts ${layerPlan.ts.map((v) => v.toFixed(3)).join(",")}`}
+                    title={`Layer plan: ${(layerPlan.sumMib / 1024).toFixed(1)} GB over both cards · ${layerPlan.boundary} / ${layerPlan.layerCount} layers at -ts ${formatTensorSplit(layerPlan.ts)}${
+                      layerPlan.boundary !== layerPlan.optimalBoundary
+                        ? ` · plan wants ${layerPlan.optimalBoundary} / ${layerPlan.layerCount} (-ts ${formatTensorSplit(layerPlan.applyTs)})`
+                        : ""
+                    }`}
                   >
                     {`plan ${(layerPlan.sumMib / 1024).toFixed(1)}`}
                   </span>

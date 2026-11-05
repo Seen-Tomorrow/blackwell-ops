@@ -216,6 +216,8 @@ import { buildLaunchFullConfig } from "../lib/buildLaunchFullConfig";
 import { resolveLaunchChromePolicy } from "../lib/launchChromePolicy";
 import { committedSlotsFromStack } from "../services/vram/scenarios/scenarios_factory";
 import { useGpuIdleBaseline } from "../hooks/useGpuIdleBaseline";
+import { useGpuCalibration } from "../hooks/useGpuCalibration";
+import { useLayerPlan } from "../hooks/useLayerPlan";
 import { formatShareHwTopo, type FusionShareLaunchConfig } from "../lib/fusionShareCapture";
 
 
@@ -1077,6 +1079,55 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     };
   }, [autoDecision?.plan.specType, config, effectiveBackendType, fullAutoFixed, fullAutoMode, speedBoost]);
 
+  // One plan for the glass, the bars and the popover: computing it here (instead of inside
+  // VramBadge) lets the manifest take its per-card split from the same numbers the plan
+  // prints. `-ts` names a fraction of LAYERS, and layer bytes are not that fraction.
+  const { calibration: gpuCalibration } = useGpuCalibration();
+  // `tensor_split` is a `ptype: text` row, and the config resolver skips params with no
+  // `values` (useConfigResolver:147), so the panel's `config` never carries it even though
+  // the launcher writes it to the CLI. Read the param's own value — that is the real -ts.
+  const tensorSplitParam = allParamsResolved.find((param) => param.key === "tensor_split");
+  const appliedTensorSplit = String(
+    config.tensor_split || tensorSplitParam?.defaultValue || "",
+  ).trim();
+  const planKnobs = useMemo(
+    () => ({
+      ctxTokens:
+        typeof config.ctx === "number"
+          ? config.ctx
+          : parseInt(String(config.ctx ?? ""), 10) || undefined,
+      kvQuant: String(config.kv_quant ?? "f16"),
+      splitMode: String(config.split ?? "none"),
+      batch: Number(config.batch ?? 0) || undefined,
+      ubatch: Number(config.ubatch ?? 0) || undefined,
+      tensorSplit: appliedTensorSplit,
+      modelMeta: model?.metadata,
+    }),
+    [
+      config.ctx,
+      config.kv_quant,
+      config.split,
+      config.batch,
+      config.ubatch,
+      appliedTensorSplit,
+      model?.metadata,
+    ],
+  );
+  const planModelPath = model && !isExternalDraftOnly(model) ? model.path : null;
+  const {
+    plan: layerPlan,
+    applyTs: planApplyTs,
+    kvMibPerLayer: planKvMibPerLayer,
+    kvSource: planKvSource,
+    squeezed: planSqueezed,
+  } = useLayerPlan(planModelPath, gpus, gpuCalibration, planKnobs);
+  // Only a layer split with an explicit -ts pins the placement; anything else keeps the
+  // learned/probe breakdown, which describes what the engine did (or would do) itself.
+  const layerSplitMib =
+    layerPlan && String(config.split ?? "none") === "layer" && appliedTensorSplit
+      ? layerPlan.totalMib
+      : undefined;
+
   const vramCalc = useScenarioEvaluator({
     model,
     config: scenarioConfig,
@@ -1087,7 +1138,19 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     fullAutoMode,
     fitStyle: spawnProfile?.fit_style ?? "",
     catalogModels: models,
+    layerSplitMib,
   });
+
+  // The plan resolves after the first paint (layer table + cold forecast are IPC). Repaint
+  // the bars once its split is known, and whenever it moves (a TAKEOVER changes the -ts).
+  const planSplitKey = layerSplitMib
+    ? layerSplitMib.map((mib) => Math.round(mib)).join("|")
+    : "";
+  const reevaluateVram = vramCalc.reevaluate;
+  useEffect(() => {
+    if (!planSplitKey) return;
+    reevaluateVram();
+  }, [planSplitKey, reevaluateVram]);
 
   /** Author sampler: in-process header read first, catalog `rawKvs` as fallback. */
   const modelSampler = useMemo(
@@ -3252,6 +3315,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         isValidating={vramCalc.isValidating}
         onValidate={vramCalc.validate}
         fitOff={fitOff}
+        layerPlan={layerPlan}
+        planApplyTs={planApplyTs}
+        planKvMibPerLayer={planKvMibPerLayer}
+        planKvSource={planKvSource}
+        planSqueezed={planSqueezed}
+        gpuCalibration={gpuCalibration}
         modelPath={model?.path}
         ctxTokens={
           typeof config.ctx === "number" ? config.ctx : parseInt(String(config.ctx ?? ""), 10) || undefined
@@ -3264,11 +3333,24 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           updateParam("tensor_split", tensorSplit);
           // Persist it: a value that only lives in component state never reaches the launcher
           // (this is how an applied -ts vanished while the config row stayed empty).
-          void invoke("set_provider_param_value", {
-            providerId: config.backend_type || "ggml-master",
-            key: "tensor_split",
-            value: tensorSplit,
-          }).catch((err) => console.warn("[plan] persist tensor_split failed:", err));
+          // Persist it through save_provider, not just set_provider_param_value: that command
+          // writes the file but leaves the app's provider state (what list_providers returns
+          // and what the launcher merges) on the old value for the rest of the session, so the
+          // glass and the CLI would disagree until a restart.
+          const provider = currentProvider;
+          if (provider) {
+            const nextParams = (provider.userEditedTemplateParams || []).map((row) =>
+              row.key === "tensor_split" ? { ...row, defaultValue: tensorSplit } : row,
+            );
+            void invoke("save_provider", {
+              provider: { ...provider, userEditedTemplateParams: nextParams },
+            })
+              .then(() => {
+                dispatchAppEvent(EVENTS.reloadProviders);
+                dispatchAppEvent(EVENTS.paramConfigChanged);
+              })
+              .catch((err) => console.warn("[plan] persist tensor_split failed:", err));
+          }
           // Repaint the glass with the new split (no probe).
           requestAnimationFrame(() => vramCalc.reevaluate());
         }}

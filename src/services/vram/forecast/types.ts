@@ -24,6 +24,12 @@ export interface ForecastInput {
   autoVramLaunch?: boolean;
   fullAutoMode?: boolean;
   fitStyle?: string;
+  /**
+   * Per-card planned MiB from the layer table when the launch carries an applied `-ts`.
+   * `-ts` is a fraction of layers and layer bytes are not that fraction, so the bars must
+   * paint this instead of splitting the total by the fraction.
+   */
+  layerSplitMib?: number[];
 
   learnedVramMib?: number;
   learnedHostMib?: number;

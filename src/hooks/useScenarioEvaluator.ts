@@ -220,6 +220,8 @@ interface UseScenarioEvaluatorProps {
   fitStyle?: string;
   /** Full catalog — used to resolve external draft GGUF file size for measured forecast. */
   catalogModels?: ModelEntry[];
+  /** Per-card planned MiB when the config carries an applied `-ts` (see ForecastInput). */
+  layerSplitMib?: number[];
 }
 
 /** Effective CLI spec_type for forecast/learn — cockpit may only have Boost state until launch. */
@@ -412,6 +414,7 @@ export function useScenarioEvaluator({
   fullAutoMode = true,
   fitStyle = "",
   catalogModels,
+  layerSplitMib,
 }: UseScenarioEvaluatorProps) {
   // GPU count/capacity — stable across NVML noise (needed before useState seed).
   const gpuTopologyKeyInit = gpus.length > 0
@@ -508,10 +511,13 @@ export function useScenarioEvaluator({
   const stackRef = useRef(stack);
   const systemInfoRef = useRef(systemInfo);
   const configRef = useRef(config);
+  /** Applied `-ts` split from the layer plan — read per eval, so a plan change repaints. */
+  const layerSplitRef = useRef<number[] | undefined>(layerSplitMib);
   gpusRef.current = gpus;
   stackRef.current = stack;
   systemInfoRef.current = systemInfo;
   configRef.current = config;
+  layerSplitRef.current = layerSplitMib;
 
   // Combined key triggers re-eval / cache / learned fetch.
   // Split is a probe hard-key — none/layer/tensor drops the session and re-probes.
@@ -648,6 +654,7 @@ export function useScenarioEvaluator({
       learnedSpecContextMib: learnedMtpContextRef.current,
       learnedAnchorCtx: learnedAnchorCtxRef.current,
       learnedCurve: learnedCurveRef.current,
+      layerSplitMib: layerSplitRef.current,
       ...sessionFields,
     };
 
@@ -1149,6 +1156,7 @@ export function useScenarioEvaluator({
         learnedSpecContextMib: learnedMtpContextRef.current,
         learnedAnchorCtx: learnedAnchorCtxRef.current,
         learnedCurve: learnedCurveRef.current,
+        layerSplitMib: layerSplitRef.current,
         fitProbeVramMib: result.vram_mib,
         fitProbeHostMib: result.host_mib,
         fitProbeGpuBreakdownMib: result.gpu_breakdown_mib,

@@ -7,6 +7,8 @@ import {
   formatTensorSplit,
   planFromLive,
   planLayerSplit,
+  tensorSplitBoundary,
+  tensorSplitForBoundary,
 } from "./vramLayerPlan";
 
 /** Real DeepSeek-V4.1 block sizes (GiB), as read from the tensor table. */
@@ -29,7 +31,10 @@ describe("layer split planning", () => {
     expect(plan).not.toBeNull();
     // The blocks grow towards the end, so the boundary sits above the halfway mark.
     expect(plan!.boundary).toBe(22);
-    expect(formatTensorSplit(plan!.ts)).toBe("0.550,0.450");
+    // The written -ts must read back as the boundary it means (0.55f * 40 = 22.0000005,
+    // which the engine ceils to 23 layers), so the writer steps down.
+    expect(tensorSplitBoundary(plan!.ts, 40)).toBe(plan!.boundary);
+    expect(formatTensorSplit(plan!.applyTs)).toBe(formatTensorSplit(plan!.ts));
 
     const imbalance = Math.abs(plan!.weightsMib[0] - plan!.weightsMib[1]) / 1024;
     const evenSplitImbalance =
@@ -52,6 +57,39 @@ describe("layer split planning", () => {
     // Neither card is asked to exceed its budget.
     expect(plan!.util[0]).toBeLessThanOrEqual(1);
     expect(plan!.util[1]).toBeLessThanOrEqual(1);
+  });
+
+  it("reads a -ts back the way llama.cpp does, and writes one that lands where it says", () => {
+    // Measured on DeepSeek-V4.1 (40 blocks): -ts 0.550,0.450 loaded blocks 0..22 — 23 layers,
+    // CUDA0 model buffer 81,241.01 MiB, exactly the first 23 blocks — because the fractions
+    // are float and 0.55f * 40 = 22.0000005, which the engine's `il < ts*n` test admits.
+    expect(tensorSplitBoundary([0.55, 0.45], 40)).toBe(23);
+    expect(tensorSplitBoundary([0.549, 0.451], 40)).toBe(22);
+    expect(tensorSplitBoundary([0.5, 0.5], 40)).toBe(20);
+    expect(tensorSplitBoundary([0, 1], 40)).toBeNull();
+    expect(tensorSplitBoundary([1], 40)).toBeNull();
+    // Round trip: whatever boundary we mean, the value we write reads back as that boundary.
+    for (const boundary of [1, 7, 20, 22, 23, 39]) {
+      const ts = tensorSplitForBoundary(boundary, 40);
+      expect(tensorSplitBoundary(ts, 40)).toBe(boundary);
+      expect(ts[0] + ts[1]).toBeCloseTo(1, 6);
+      expect(formatTensorSplit(ts).split(",")).toHaveLength(2);
+    }
+  });
+
+  it("reports the layers an applied -ts really gets, and keeps its own proposal", () => {
+    const plan = planLayerSplit({
+      perBlockMib: toMib(V41_BLOCKS_GIB),
+      budgetsMib: [97 * 1024, 97 * 1024],
+      appliedTs: [0.55, 0.45],
+    });
+    expect(plan).not.toBeNull();
+    // The geometry on screen is the one the CLI will produce, not the one we would pick.
+    expect(plan!.appliedBoundary).toBe(23);
+    expect(plan!.boundary).toBe(23);
+    expect(plan!.optimalBoundary).toBe(22);
+    expect(plan!.ts).toEqual([0.55, 0.45]);
+    expect(tensorSplitBoundary(plan!.applyTs, 40)).toBe(22);
   });
 
   it("keeps KV with the layers that carry it", () => {

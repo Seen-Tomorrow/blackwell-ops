@@ -62,6 +62,15 @@ function kvMibPerLayer(args: {
   return bytes / (1024 * 1024);
 }
 
+/** Parse a written `-ts` ("0.550,0.450"); null unless it names one fraction per device. */
+function parseTensorSplit(raw: string | undefined, devices: number): number[] | null {
+  if (!raw) return null;
+  const parts = raw.split(",").map((part) => Number(part.trim()));
+  if (parts.length !== devices) return null;
+  if (!parts.every((value) => Number.isFinite(value) && value > 0)) return null;
+  return parts;
+}
+
 export function useLayerPlan(
   modelPath: string | null | undefined,
   gpus: GpuInfo[],
@@ -75,13 +84,15 @@ export function useLayerPlan(
     /** Changes on every engine state change, so a finished launch is picked up without
      *  nudging the ctx slider (`LOADING -> RUNNING -> IDLE`). */
     stackSig?: string;
-    /** Applied tensor split ("0.55,0.45"). When set it is the placement, so the plan
-     *  distributes by it instead of proposing its own boundary. */
+    /** Applied tensor split ("0.55,0.45"). It pins the placement, so the plan reports the
+     *  layers that split really gets instead of proposing its own boundary. */
     tensorSplit?: string;
     modelMeta?: ModelMetadata | null;
   },
 ): {
   plan: LayerPlan | null;
+  /** `-ts` TAKEOVER should write for the byte-balanced boundary; null before the table lands. */
+  applyTs: number[] | null;
   layerBytes: LayerBytes | null;
   kvMibPerLayer: number;
   /** measured | profile | geometry | none — geometry is an upper bound, not a forecast. */
@@ -259,7 +270,36 @@ export function useLayerPlan(
       ? measuredKv.modelMib / ggufWeightsMib
       : 1;
 
-  const plan = useMemo(() => {
+  const appliedTs = useMemo(
+    () => parseTensorSplit(knobs?.tensorSplit, gpus.length),
+    [knobs?.tensorSplit, gpus.length],
+  );
+
+  // Overhead is the measured total minus the terms we know: weights on the GPUs and KV.
+  // Deriving it beats transporting per-device compute arrays, which arrived short and made a
+  // card look free. The per-device SPLIT is not layer-proportional, though: measured compute
+  // was 6,539/11,328 MiB on DeepSeek-V4.1 at 512K and 1,655/1,385 MiB on Qwen3.8-27B at 64K,
+  // so the sign flips with shape. Use the measured pair only when the ctx matches, else an
+  // even split — a layer-count split invents GiB on whichever card carries fewer bytes.
+  const overheadTotalMib = measuredKv
+    ? Math.max(0, measuredKv.vramMib - measuredKv.modelMib - measuredKv.kvMib)
+    : cold?.compute_mib;
+  const overheadMib = useMemo(() => {
+    if (!overheadTotalMib || overheadTotalMib <= 0) return [];
+    const perDevice = measuredKv?.computeMib;
+    if (
+      perDevice
+      && perDevice.length === gpus.length
+      && measuredKv?.ctx === ctxForKv
+      && perDevice.every((mib) => Number.isFinite(mib) && mib >= 0)
+    ) {
+      const sum = perDevice.reduce((total, mib) => total + mib, 0);
+      if (sum > 0) return perDevice.map((mib) => (overheadTotalMib * mib) / sum);
+    }
+    return gpus.map(() => overheadTotalMib / gpus.length);
+  }, [overheadTotalMib, measuredKv, ctxForKv, gpus.length]);
+
+  const plan: LayerPlan | null = useMemo(() => {
     if (!layerBytes || gpus.length !== 2) return null;
     return planFromLive({
       perBlockMib: layerBytes.per_block_mib.map((mib) => mib * weightScale),
@@ -268,37 +308,15 @@ export function useLayerPlan(
       outputMib: (layerBytes.output_mib ?? 0) * weightScale,
       otherMib: (layerBytes.other_mib ?? 0) * weightScale,
       freeMib: gpus.map((g) => Math.max(0, g.memory_free)),
-      // Compute buffers are per device and were measured for this model; without them the
-      // plan total is always below the forecast, which reads as error rather than scope.
-      // Overhead is the measured total minus the terms we know: weights on the GPUs and KV.
-      // Deriving it beats transporting per-device compute arrays, which arrived short and
-      // made a card look free. Split by layer count, because compute buffers follow layers.
-      overheadMib: [],
-      overheadTotalMib: measuredKv
-        ? Math.max(0, measuredKv.vramMib - measuredKv.modelMib - measuredKv.kvMib)
-        : cold?.compute_mib,
+      overheadMib,
+      overheadTotalMib,
       // rs + vision buffers belong to the launch inventory too (598 + 248 MiB on the 27B).
       calibration,
+      // A `-ts` in the config is the placement the engine will really get; the plan reports
+      // that geometry and keeps the byte-balanced proposal in `applyTs`.
+      appliedTs: appliedTs ?? undefined,
     });
-  }, [layerBytes, gpus, calibration, kvPerBlock, measuredKv, cold, weightScale]);
-
-  // An applied -ts is the placement. Split the planned total by those fractions so the
-  // popover and the per-card bars cannot disagree.
-  const effectivePlan: LayerPlan | null = useMemo(() => {
-    if (!plan) return plan;
-    const parts = (knobs?.tensorSplit ?? "").split(",").map((v) => Number(v.trim())).filter((v) => Number.isFinite(v) && v > 0);
-    if (parts.length !== gpus.length) return plan;
-    const sum = parts.reduce((a, b) => a + b, 0);
-    const total = parts.map((f) => (plan.sumMib * f) / sum);
-    const util = total.map((mib, i) => (plan.budgetsMib[i] > 0 ? mib / plan.budgetsMib[i] : 0));
-    return {
-    plan: effectivePlan,
-      ...plan,
-      totalMib: total,
-      util,
-      maxUtil: Math.max(...util),
-    };
-  }, [plan, knobs?.tensorSplit, gpus.length]);
+  }, [layerBytes, gpus, calibration, kvPerBlock, measuredKv, cold, weightScale, overheadMib, overheadTotalMib, appliedTs]);
 
   const kvSource: "measured" | "profile" | "geometry" | "none" =
     measuredKv && measuredKv.kvMib > 0
@@ -348,6 +366,8 @@ export function useLayerPlan(
       knobs?.kvQuant ?? "",
       knobs?.splitMode ?? "",
       kvSource,
+      // The applied -ts moves the boundary, so it is part of the plan's identity.
+      appliedTs?.join(",") ?? "",
     ].join("|");
     if (planSigRef.current === signature) return;
     planSigRef.current = signature;
@@ -389,7 +409,9 @@ export function useLayerPlan(
     });
   }, [plan, modelPath, knobs?.ctxTokens, knobs?.kvQuant, knobs?.splitMode, kvPerBlock, measuredKv, cold, kvSource]);
   return {
-    plan: effectivePlan,
+    plan,
+    /** `-ts` the TAKEOVER/APPLY button should write for the byte-balanced boundary. */
+    applyTs: plan?.applyTs ?? null,
     layerBytes,
     kvMibPerLayer: kvPerBlock,
     kvSource,

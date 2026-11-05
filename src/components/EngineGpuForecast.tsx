@@ -7,6 +7,7 @@ import type {
   VramManifest,
 } from "../lib/types";
 import type { LaunchChromePolicy } from "../lib/launchChromePolicy";
+import type { GpuCalibrationRow, LayerPlan } from "../lib/vramLayerPlan";
 import type { FusionShareLaunchConfig } from "../lib/fusionShareCapture";
 import type { DisplayCardsPerRow, FusionDualOrient } from "../lib/storage";
 import {
@@ -85,6 +86,12 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     onValidate,
     fitOff = false,
     onToggleFitOff,
+    layerPlan = null,
+    planApplyTs = null,
+    planKvMibPerLayer = 0,
+    planKvSource = "none",
+    planSqueezed = false,
+    gpuCalibration = [],
     modelPath,
     ctxTokens,
     kvQuant,
@@ -379,6 +386,12 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
               onValidate={onValidate}
               fitOff={fitOff}
               onToggleFitOff={onToggleFitOff}
+              layerPlan={layerPlan}
+              planApplyTs={planApplyTs}
+              planKvMibPerLayer={planKvMibPerLayer}
+              planKvSource={planKvSource}
+              planSqueezed={planSqueezed}
+              gpuCalibration={gpuCalibration}
               modelPath={modelPath}
               ctxTokens={ctxTokens}
               kvQuant={kvQuant}
@@ -506,6 +519,14 @@ export interface EngineGpuForecastProps {
   /** VRAM badge FIT OFF — drop the auto-VRAM `--fit on`. */
   fitOff?: boolean;
   onToggleFitOff?: () => void;
+  /** The single layer plan the glass prints and the bars paint. */
+  layerPlan?: LayerPlan | null;
+  /** `-ts` the TAKEOVER button writes (the byte-balanced boundary). */
+  planApplyTs?: number[] | null;
+  planKvMibPerLayer?: number;
+  planKvSource?: "measured" | "profile" | "geometry" | "none";
+  planSqueezed?: boolean;
+  gpuCalibration?: GpuCalibrationRow[];
   /** Selected model path — the PLAN chip reads its block table. */
   modelPath?: string;
   /** Planned ctx / KV quant, so the plan follows the knobs instead of a fixed context. */
