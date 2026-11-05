@@ -414,18 +414,17 @@ export function interpolateLearnedCurveGb(
       break;
     }
   }
-  // Outside the measured range: clamp to the nearest measurement instead of extending the
-  // line. Extrapolation reads low above the top point, and a low forecast is the one that
-  // lets a launch spill unnoticed.
+  // Outside the measured range: keep forecasting instead of freezing. Clamping made the
+  // number stop changing for any ctx past the last launch, which users read as broken; the
+  // totals are near-linear in ctx (kv exactly, compute affine), so extrapolate and let the UI
+  // label it as beyond the measured range.
   const beyondMeasured = liveCtx < pts[0].ctx || liveCtx > pts[pts.length - 1].ctx;
-  if (beyondMeasured) {
-    const edge = liveCtx < pts[0].ctx ? pts[0] : pts[pts.length - 1];
-    return {
-      vramGb: edge.vramMib / 1024,
-      hostGb: edge.hostMib != null ? edge.hostMib / 1024 : null,
-      exact: false,
-      beyondMeasured: true,
-    };
+  if (liveCtx <= pts[0].ctx) {
+    lo = pts[0];
+    hi = pts[1];
+  } else if (liveCtx >= pts[pts.length - 1].ctx) {
+    lo = pts[pts.length - 2];
+    hi = pts[pts.length - 1];
   }
   if (hi.ctx === lo.ctx) {
     return {
@@ -440,7 +439,7 @@ export function interpolateLearnedCurveGb(
   if (lo.hostMib != null && hi.hostMib != null) {
     hostGb = (lo.hostMib + t * (hi.hostMib - lo.hostMib)) / 1024;
   }
-  return { vramGb: vramMib / 1024, hostGb, exact: false };
+  return { vramGb: vramMib / 1024, hostGb, exact: false, beyondMeasured };
 }
 
 function gpuManufacturedMib(g: GpuInfo): number {

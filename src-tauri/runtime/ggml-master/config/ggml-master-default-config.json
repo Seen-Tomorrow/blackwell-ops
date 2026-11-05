@@ -775,6 +775,22 @@
         8888,
         9090
       ]
+    },
+    {
+      "default": "",
+      "dock": "",
+      "flag": "-ts",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "tensor_split",
+      "label": "Tensor Split",
+      "note": "Per-GPU fraction of layers, in order (-ts). Written by the layer plan when it is applied; empty means the engine chooses.",
+      "pattern": "",
+      "ptype": "text",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SYSTEM",
+      "values": []
     }
   ],
   "protectedGroups": [
@@ -820,6 +836,6 @@
       "4"
     ]
   },
-  "templateVersion": 57,
+  "templateVersion": 58,
   "template_type": "ggml-llama"
 }

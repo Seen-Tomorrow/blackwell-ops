@@ -72,8 +72,8 @@ fn validate_user_edited_param(ep: &crate::types::UserEditedTemplateParam) -> Vec
     }
 
     // Valid ptype
-    static VALID_PTYPES: [&str; 8] = [
-        "arg_select", "arg_select_double", "slider", "switch_onoff", "switch_inverted", "path_scanner", "logic_only", "",
+    static VALID_PTYPES: [&str; 9] = [
+        "arg_select", "arg_select_double", "slider", "switch_onoff", "switch_inverted", "path_scanner", "logic_only", "text", "",
     ];
     if !VALID_PTYPES.contains(&ep.ptype.as_str()) {
         errors.push(format!("invalid ptype '{}' (valid: {:?})", ep.ptype, VALID_PTYPES));

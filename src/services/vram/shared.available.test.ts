@@ -78,17 +78,18 @@ describe("learned curve beyond its measured range", () => {
     expect(hit!.vramGb).toBeCloseTo((44_375 + 47_649) / 2 / 1024, 2);
   });
 
-  it("clamps instead of extrapolating past the top point", () => {
+  it("extrapolates past the top point and says so", () => {
     const hit = interpolateLearnedCurveGb(curve, 1_048_576);
     expect(hit).not.toBeNull();
     expect(hit!.beyondMeasured).toBe(true);
-    // The extrapolated line would read ~52.9 GB here; the clamp reports the top point.
-    expect(hit!.vramGb).toBeCloseTo(47_649 / 1024, 3);
+    // slope of the last two points, extended to 1M
+    const slope = (47_649 - 44_375) / (524_288 - 262_144);
+    expect(hit!.vramGb).toBeCloseTo((47_649 + slope * (1_048_576 - 524_288)) / 1024, 2);
   });
 
-  it("flags a ctx below the first point too", () => {
+  it("extrapolates below the first point too", () => {
     const hit = interpolateLearnedCurveGb(curve, 4_096);
     expect(hit!.beyondMeasured).toBe(true);
-    expect(hit!.vramGb).toBeCloseTo(38_883 / 1024, 3);
+    expect(hit!.vramGb).toBeLessThan(38_883 / 1024);
   });
 });

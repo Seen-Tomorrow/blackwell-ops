@@ -706,6 +706,16 @@ impl ProviderTemplate {
                         }
                     }
                 },
+                // Free text: emitted as `flag value` when non-empty. Needed for flags the
+                // launcher must own rather than a fixed choice list (e.g. `-ts 0.55,0.45`).
+                "text" => {
+                    let value = final_value_str.trim();
+                    if !value.is_empty() {
+                        if let Some(flag) = param.flag.clone() {
+                            args.extend([flag, value.to_string()]);
+                        }
+                    }
+                },
                 "logic_only" => {
                     // Draft path: legacy key or profile key `dflash_draft_model` / `mtp_draft_model`
                     let is_draft_key = param.key.eq_ignore_ascii_case("spec_draft_model")
