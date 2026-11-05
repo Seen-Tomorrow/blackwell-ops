@@ -335,3 +335,40 @@ pub fn sanitize_model_paths(config: &mut AppConfig) -> bool {
 
     changed
 }
+/// Persist one launch parameter value into the provider's user config.
+///
+/// `updateParam` in the frontend keeps a value in component state, but nothing guaranteed it
+/// reached disk for a param the profile did not already know - which is how an applied `-ts`
+/// vanished: the config row stayed `defaultValue: ""` and the engine never saw the fraction.
+/// This writes `defaultValue` on the matching row, wherever it sits in the file.
+#[tauri::command]
+pub fn set_provider_param_value(provider_id: String, key: String, value: String) -> Result<(), String> {
+    let path = crate::config::app_root_dir()
+        .join("config")
+        .join(format!("{provider_id}-user-config.json"));
+    let text = std::fs::read_to_string(&path)
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    let mut doc: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+
+    fn set_in(node: &mut serde_json::Value, key: &str, value: &str) -> bool {
+        match node {
+            serde_json::Value::Object(map) => {
+                if map.get("key").and_then(|k| k.as_str()) == Some(key) {
+                    map.insert("defaultValue".into(), serde_json::Value::String(value.into()));
+                    map.insert("factoryDefault".into(), serde_json::Value::String(value.into()));
+                    return true;
+                }
+                map.values_mut().any(|child| set_in(child, key, value))
+            }
+            serde_json::Value::Array(items) => items.iter_mut().any(|child| set_in(child, key, value)),
+            _ => false,
+        }
+    }
+
+    if !set_in(&mut doc, &key, &value) {
+        return Err(format!("no param '{key}' in {}", path.display()));
+    }
+    let out = serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?;
+    std::fs::write(&path, out).map_err(|e| format!("{}: {e}", path.display()))
+}

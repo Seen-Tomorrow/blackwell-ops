@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { formatPlanTotal, formatTensorSplit, type GpuCalibrationRow, type LayerPlan } from "../lib/vramLayerPlan";
 
 /**
@@ -41,6 +42,8 @@ export default function PlanPopover({
   strain?: boolean;
   onClose: () => void;
 }) {
+  // Local acknowledgement: the click must be visible even when the numbers do not move yet.
+  const [applied, setApplied] = useState<"idle" | "busy" | "done">("idle");
   if (!plan) {
     return (
       <div className="vram-plan-pop" role="dialog" aria-label="Layer plan">
@@ -141,8 +144,19 @@ export default function PlanPopover({
                   ? "forecast expects a spill — place it yourself"
                   : "place it yourself — FIT will not get to shave the graph"}
           </span>
-          <button type="button" className="vram-plan-pop__copy" onClick={onTakeover} title="FIT OFF + this tensor split, pinned batch: the engine stops shaving the graph">
-            FIT OFF
+          <button
+            type="button"
+            className="vram-plan-pop__copy"
+            disabled={applied !== "idle"}
+            onClick={() => {
+              setApplied("busy");
+              onTakeover();
+              setTimeout(() => setApplied("done"), 500);
+              setTimeout(() => setApplied("idle"), 2000);
+            }}
+            title="FIT OFF + this tensor split: the engine stops shaving the graph"
+          >
+            {applied === "done" ? "TAKEN OVER" : "FIT OFF"}
           </button>
         </div>
       )}

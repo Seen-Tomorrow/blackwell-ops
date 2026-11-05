@@ -557,6 +557,7 @@ async fn main() {
             vram_profile::get_cold_forecast,
             vram_profile::get_fit_projection,
             automation::record_ui_state,
+            config::commands::set_provider_param_value,
             forecast_log::record_plan_forecast,
             forecast_log::record_fit_forecast,
             forecast_log::read_forecast_journal,
