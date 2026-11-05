@@ -418,7 +418,7 @@ fn components_from_buffers(buffers: &[BufferLine], gpu_count: usize) -> Option<V
 /// When it cannot meet the targets it shrinks parameters instead and the model still loads -
 /// that is the performance cliff (smaller compute graph, slower tokens), and it is invisible in
 /// the buffer inventory alone.
-fn parse_fit_verdict(output: &str) -> Vec<FitAttempt> {
+pub(crate) fn parse_fit_verdict(output: &str) -> Vec<FitAttempt> {
     let mut attempts: Vec<FitAttempt> = Vec::new();
     let mut pending_devices: Vec<FitDevicePlacement> = Vec::new();
     for line in output.lines() {

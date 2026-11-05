@@ -159,6 +159,7 @@ pub fn parse_scan_output(stdout: &str, stderr: &str) -> Option<FitScanRaw> {
         gpu_components_mib,
         host_components_mib: None,
         fitted_ngl: None,
+        fit_attempts: Vec::new(),
     })
 }
 

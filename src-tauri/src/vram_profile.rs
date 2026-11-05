@@ -402,3 +402,132 @@ mod tests {
         assert!(fit_affine(&[]).is_none());
     }
 }
+/// The FIT scanner's own projection for a configuration, from `fit_scan_full.json`.
+///
+/// The scanner runs the same fit the launch runs (~0.2 s per point, no weights loaded), so
+/// these points are a model-specific prior - better than a shape average, ~1.5 % below the
+/// real inventory because the projection is computed before allocation.
+#[derive(Clone, Debug, Serialize)]
+pub struct FitProjection {
+    pub vram_mib: f64,
+    pub from_ctx: u64,
+    pub to_ctx: u64,
+    pub kv_quant: String,
+    pub batch: u32,
+    /// True when the request sat exactly on a scanned point.
+    pub exact: bool,
+}
+
+fn fit_points(model_path: &str) -> Vec<serde_json::Value> {
+    let path = crate::config::cache_dir().join("fit_scan_full.json");
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return Vec::new();
+    };
+    let want = model_path.replace('\\', "/").to_lowercase();
+    // Partition by fit adapter; behave like the scanner's default for this box.
+    for partition in ["ggml_master", "ggml_tom"] {
+        let Some(rows) = value
+            .get("partitions")
+            .and_then(|p| p.get(partition))
+            .and_then(|m| m.as_object())
+        else {
+            continue;
+        };
+        for (key, row) in rows {
+            if key.replace('\\', "/").to_lowercase() != want {
+                continue;
+            }
+            if let Some(points) = row.get("points").and_then(|p| p.as_array()) {
+                return points.clone();
+            }
+        }
+    }
+    Vec::new()
+}
+
+/// Interpolate the scanner's projection at `ctx`; `None` when the model was never scanned.
+pub fn fit_projection(
+    model_path: &str,
+    ctx: u64,
+    kv_quant: &str,
+    batch: u32,
+) -> Option<FitProjection> {
+    let mut pts: Vec<(u64, f64)> = fit_points(model_path)
+        .into_iter()
+        .filter(|p| {
+            let kv_ok = p
+                .get("kv_quant")
+                .and_then(|v| v.as_str())
+                .map(|v| v.eq_ignore_ascii_case(kv_quant))
+                .unwrap_or(true);
+            let batch_ok = p
+                .get("batch")
+                .and_then(|v| v.as_u64())
+                .map(|v| batch == 0 || v == batch as u64)
+                .unwrap_or(true);
+            kv_ok && batch_ok
+        })
+        .filter_map(|p| {
+            let ctx = p.get("ctx").and_then(|v| v.as_u64())?;
+            let vram = p.get("vram_mib").and_then(|v| v.as_f64())?;
+            (vram > 0.0).then_some((ctx, vram))
+        })
+        .collect();
+    if pts.is_empty() {
+        return None;
+    }
+    pts.sort_by_key(|(ctx, _)| *ctx);
+    let exact = pts.iter().find(|(c, _)| *c == ctx);
+    if let Some((c, v)) = exact {
+        return Some(FitProjection {
+            vram_mib: *v,
+            from_ctx: *c,
+            to_ctx: *c,
+            kv_quant: kv_quant.to_string(),
+            batch,
+            exact: true,
+        });
+    }
+    if pts.len() == 1 {
+        return Some(FitProjection {
+            vram_mib: pts[0].1,
+            from_ctx: pts[0].0,
+            to_ctx: pts[0].0,
+            kv_quant: kv_quant.to_string(),
+            batch,
+            exact: false,
+        });
+    }
+    let lower = pts.iter().rev().find(|(c, _)| *c <= ctx)?;
+    let upper = pts.iter().find(|(c, _)| *c >= ctx)?;
+    let span = upper.0.saturating_sub(lower.0);
+    if span == 0 {
+        return None;
+    }
+    let t = ctx.saturating_sub(lower.0) as f64 / span as f64;
+    Some(FitProjection {
+        vram_mib: lower.1 + (upper.1 - lower.1) * t,
+        from_ctx: lower.0,
+        to_ctx: upper.0,
+        kv_quant: kv_quant.to_string(),
+        batch,
+        exact: false,
+    })
+}
+
+/// The scanner's projection for a configuration — a labelled prior, never a measurement.
+#[tauri::command]
+pub async fn get_fit_projection(
+    model_path: String,
+    ctx: u64,
+    kv_quant: String,
+    batch: u32,
+) -> Option<FitProjection> {
+    tokio::task::spawn_blocking(move || fit_projection(&model_path, ctx, &kv_quant, batch))
+        .await
+        .ok()
+        .flatten()
+}

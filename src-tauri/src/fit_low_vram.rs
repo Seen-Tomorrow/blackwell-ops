@@ -111,6 +111,8 @@ pub fn enrich_raw_with_fitted_ngl(raw: &mut FitScanRaw, combined_logs: &str) {
     if let Some(ngl) = parse_fitted_ngl(combined_logs) {
         raw.fitted_ngl = Some(ngl);
     }
+    // The probe runs the same multi-step fit as a launch; keep the attempts for placement.
+    raw.fit_attempts = crate::launch_memory_parse::parse_fit_verdict(combined_logs);
 }
 
 #[cfg(test)]

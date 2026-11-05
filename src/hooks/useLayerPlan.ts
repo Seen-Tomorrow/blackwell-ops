@@ -85,6 +85,9 @@ export function useLayerPlan(
   kvSource: "measured" | "profile" | "geometry" | "none";
   /** true when the measured run had to shrink parameters to fit (slower, same inventory). */
   squeezed: boolean;
+  /** Scanner projection for this config, when the model has no measurement here. */
+  fitProjectionMib: number | null;
+  fitProjectionExact: boolean;
   loading: boolean;
 } {
   const [layerBytes, setLayerBytes] = useState<LayerBytes | null>(null);
@@ -104,6 +107,9 @@ export function useLayerPlan(
   } | null>(null);
   // No launch of this model yet: forecast it from launches of the same shape.
   const [cold, setCold] = useState<ColdForecast | null>(null);
+  // The FIT scanner's own projection for this config - a model-specific prior (~1.5% below the
+  // real inventory), used when this model has no measurement at this ctx.
+  const [fitProj, setFitProj] = useState<{ vramMib: number; exact: boolean } | null>(null);
   const [loading, setLoading] = useState(false);
   // Bumped whenever a launch persists a learned row; feeds the lookup deps below.
   const [storeVersion, setStoreVersion] = useState(0);
@@ -282,6 +288,34 @@ export function useLayerPlan(
           ? "geometry"
           : "none";
 
+  const fitKey = [modelPath, measuredKv ? 1 : 0, knobs?.ctxTokens, knobs?.kvQuant, knobs?.batch].join("|");
+  useEffect(() => {
+    if (!modelPath || measuredKv) {
+      setFitProj(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void invoke<{ vram_mib: number; exact: boolean } | null>("get_fit_projection", {
+        modelPath,
+        ctx: knobs?.ctxTokens ?? 0,
+        kvQuant: knobs?.kvQuant ?? "",
+        batch: knobs?.batch ?? 0,
+      })
+        .then((hit) => {
+          if (!cancelled) setFitProj(hit && hit.vram_mib > 0 ? { vramMib: hit.vram_mib, exact: hit.exact } : null);
+        })
+        .catch(() => {
+          if (!cancelled) setFitProj(null);
+        });
+    }, 260);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fitKey]);
+
   // Journal the plan whenever the configuration changes, so it can be compared against the
   // FIT estimate and the measured launch in `forecast-log.jsonl` (same file, same join).
   const planSigRef = useRef<string>("");
@@ -327,6 +361,7 @@ export function useLayerPlan(
         cold_compute_mib: cold?.compute_mib ?? null,
         weight_scale: weightScale,
         fit_changed: measuredKv?.fitChanged ?? null,
+        fit_projection_mib: fitProj?.vramMib ?? null,
       },
     }).catch(() => {
       // Journaling is diagnostic; never let it break the plan.
@@ -338,6 +373,8 @@ export function useLayerPlan(
     kvMibPerLayer: kvPerBlock,
     kvSource,
     squeezed: measuredKv?.fitChanged === true,
+    fitProjectionMib: fitProj?.vramMib ?? null,
+    fitProjectionExact: fitProj?.exact ?? false,
     loading,
   };
 }

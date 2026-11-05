@@ -467,6 +467,7 @@ pub fn parse_fit_print_stdout(stdout: &str) -> Option<FitScanRaw> {
         gpu_components_mib: Some(gpu_components),
         host_components_mib,
         fitted_ngl: None,
+        fit_attempts: Vec::new(),
     })
 }
 
@@ -581,6 +582,8 @@ pub struct FitScanRaw {
     pub host_components_mib: Option<GpuComponentMib>,
     /// Optional fitted ngl from free-aware fit logs.
     pub fitted_ngl: Option<i32>,
+    /// Every fit attempt the binary printed, in order - the same shape the launch records.
+    pub fit_attempts: Vec<crate::launch_memory_parse::FitAttempt>,
 }
 
 #[derive(Debug, Clone)]
