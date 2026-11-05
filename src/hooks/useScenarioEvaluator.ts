@@ -55,8 +55,10 @@ function draftBaseName(config: Record<string, unknown>): string {
 
 /**
  * llama-fit-params loads model + context with no_alloc.
- * Memory actually moves with: model, n_ctx, n_batch, n_ubatch, cache-type k/v,
- * flash-attn, ngl, split-mode. Probe uses live split (none/layer/tensor).
+ * Memory actually moves with: model, n_ctx, n_ubatch, cache-type k/v, flash-attn, ngl,
+ * split-mode. `n_batch` alone changes no buffer — measured 2026-11-05, batch 512 vs 2048 were
+ * identical (docs/ENGINE-MEMORY-MEASUREMENTS.md) — so a batch change must not drop the probe
+ * session or force a re-probe.
  * Thinking / parallel / samplers / threads are not FIT inputs — ignore them.
  */
 function fitProbeKey(config: Record<string, unknown>, autoVramLaunch: boolean): string {
@@ -69,7 +71,6 @@ function fitProbeKey(config: Record<string, unknown>, autoVramLaunch: boolean): 
   return [
     config.backend_type || "",
     config["kv_quant"] || "",
-    String(config.batch ?? ""),
     String(config.ubatch ?? ""),
     config["flash_attn"] || "",
     split,
@@ -502,7 +503,7 @@ export function useScenarioEvaluator({
   const validatingRef = useRef(false);
   /** Last probeKey whose FIT failed — do not auto-loop radar. */
   const fitFailKeyRef = useRef<string | null>(null);
-  /** Hard knob changed (kv/batch/ubatch/flash/split) — learned data must not skip the probe. */
+  /** Hard knob changed (kv/ubatch/flash/split) — learned data must not skip the probe. */
   const forceProbeRef = useRef(false);
   const hadSysInfoRef = useRef(systemInfo != null);
   const hadMetaRef = useRef(Boolean(model?.metadata));
@@ -539,10 +540,8 @@ export function useScenarioEvaluator({
     }
     paintIdentityRef.current = { modelPath: path, probeKey };
     if (hardKnobsChanged) {
-      // KV / batch / ubatch / flash / split changed: a learned row for the old
-      // hard knobs must not suppress the fresh probe. Defer the kick until the
-      // learned fetch for the new key lands — a matching batch delta can clear
-      // the force without probing at all.
+      // KV / ubatch / flash / split changed: a learned row for the old hard knobs must not
+      // suppress the fresh probe. Batch is not here — it moves no memory.
       forceProbeRef.current = true;
     }
   }, [probeKey, model?.path, commitManifest]);
@@ -829,25 +828,17 @@ export function useScenarioEvaluator({
     ])
       .then(([entry, curve]) => {
         if (fetchGen !== learnedFetchGenRef.current) return;
-        const curBatch = Number(curConfig.batch ?? 0);
-        const curUbatch = Number(curConfig.ubatch ?? 0);
-        const referenceMatch =
-          entry?.reference_batch === curBatch && entry?.reference_ubatch === curUbatch;
-        const deltaMatch = Boolean(
-          entry?.batch_deltas?.[`${curBatch}|${curUbatch}`],
-        );
         const specKey = specKeyForLearned(curConfig);
-        const jointKey = `${curBatch}|${curUbatch}|${specKey}`;
-        const jointMatch = Boolean(entry?.joint_deltas?.[jointKey]);
         const specMatch = Boolean(
           entry
           && (entry.reference_spec_key === specKey || entry.spec_deltas?.[specKey]),
         );
-        const batchValid = referenceMatch || deltaMatch || jointMatch;
-        const specValid = entry?.reference_spec_key === specKey || specMatch || jointMatch;
-        if (entry && batchValid && specValid) {
-          // A measured base or a learned batch/spec/joint addition is valid for
-          // this config; do not waste a FIT probe just because the key changed.
+        // `batch` is not in the learned key (it moves no memory), so a row is valid for this
+        // config whatever batch it was measured at. `ubatch` is in the key, so it always matches.
+        const specValid = Boolean(entry?.reference_spec_key === specKey || specMatch);
+        if (entry && specValid) {
+          // A measured base or a learned spec addition is valid for this config; do not waste
+          // a FIT probe just because the config changed.
           forceProbeRef.current = false;
         }
         const snap = entry?.launch_snapshot;

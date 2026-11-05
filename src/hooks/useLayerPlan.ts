@@ -330,7 +330,14 @@ export function useLayerPlan(
           ? "geometry"
           : "none";
 
-  const fitKey = [modelPath, measuredKv ? 1 : 0, knobs?.ctxTokens, knobs?.kvQuant, knobs?.batch].join("|");
+  // `batch` is not an input: the FIT projection moves with ctx/ubatch, not batch.
+  const fitKey = [
+    modelPath,
+    measuredKv ? 1 : 0,
+    knobs?.ctxTokens,
+    knobs?.kvQuant,
+    knobs?.ubatch,
+  ].join("|");
   useEffect(() => {
     if (!modelPath || measuredKv) {
       setFitProj(null);
