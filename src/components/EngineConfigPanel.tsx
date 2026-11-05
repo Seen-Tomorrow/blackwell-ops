@@ -3262,6 +3262,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           // Taking placement away from FIT: split=layer plus the plan's fraction.
           updateParam("split", "layer");
           updateParam("tensor_split", tensorSplit);
+          // No explicit re-evaluate: the config change re-runs the evaluator, and the bars read
+          // tensor_split now, so they repaint on their own (validate() would run a probe).
         }}
         batch={Number(config.batch ?? 0) || undefined}
         ubatch={Number(config.ubatch ?? 0) || undefined}

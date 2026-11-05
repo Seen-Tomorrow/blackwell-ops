@@ -328,6 +328,18 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     perGpuLoad[tgt] = gpuProjectionGb;
   }
 
+  // An explicit `-ts` (written by APPLY/TAKEOVER) is the user's chosen placement: split the
+  // projected total by those fractions so the bars show what will actually happen, instead of
+  // the forecast's own assumption. Falls through to the branches above when unset/malformed.
+  const explicitTs = cfgStr(input.engineConfig, "tensor_split", "")
+    .split(",")
+    .map((part) => Number(part.trim()))
+    .filter((value) => Number.isFinite(value) && value > 0);
+  if (explicitTs.length === input.gpus.length && gpuProjectionGb > 0) {
+    const tsSum = explicitTs.reduce((a, b) => a + b, 0);
+    perGpuLoad = explicitTs.map((fraction) => (gpuProjectionGb * fraction) / tsSum);
+  }
+
   const liveFreeFp = freeFingerprintFromGb(targetAvail);
   const fittedNgl = input.fitProbeFittedNgl;
   const measurementAtLiveCtx =
