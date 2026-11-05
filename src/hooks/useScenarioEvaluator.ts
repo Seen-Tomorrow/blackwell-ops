@@ -86,6 +86,8 @@ function learnedIdentityKey(config: Record<string, unknown>, autoVramLaunch: boo
     effectiveSpecTypeFromConfig(config),
     draftBaseName(config),
     String(config.split ?? "none"),
+    // Parallel is part of the learned key: an explicit slot count moves the compute buffers.
+    String(config.parallel ?? 1),
   ].join("|");
 }
 
@@ -810,7 +812,7 @@ export function useScenarioEvaluator({
         cacheRam: String(curConfig.cache_ram ?? "0"),
         draftModel,
         vramTopo: vramTopo || null,
-        batch: Number(curConfig.batch ?? 0),
+        parallel: Number(curConfig.parallel ?? 1),
         ubatch: Number(curConfig.ubatch ?? 0),
       }),
       invoke<Array<{ ctx: number; vram_mib: number; host_mib?: number }>>("get_learned_vram_curve", {
@@ -821,7 +823,7 @@ export function useScenarioEvaluator({
         draftModel,
         split: String(curConfig.split ?? "none"),
         vramTopo: vramTopo || null,
-        batch: Number(curConfig.batch ?? 0),
+        parallel: Number(curConfig.parallel ?? 1),
         ubatch: Number(curConfig.ubatch ?? 0),
       }).catch(() => []),
     ])

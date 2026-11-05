@@ -47,10 +47,12 @@ A model shipped 202 tensors of ggml type 42 that the table did not know, silentl
 
 ## Learned store
 
-- Key: `provider|ctx|kv|topo|split|batch|ubatch|offload|cache_ram` (+ draft when external).
+- Key: `provider|ctx|kv|topo|split|ubatch|offload|cache_ram` (+ spec/draft; `|par=N` only when
+  parallel > 1). `batch` is **not** in it: measured 2026-11-05, batch 512 vs 2048 changed no
+  buffer at all (docs/ENGINE-MEMORY-MEASUREMENTS.md).
   `mode` (assisted/full_auto) is **not** in it — a UI mode, no memory effect.
-- `batch`/`ubatch` **must** be in the key: same model/ctx/kv/split differed by 43 % between batch
-  2048 and 8192.
+- `ubatch` **must** be in the key: same model/ctx/kv/split differed by 43 % between ubatch 512
+  and 1536 (the old reading called that a batch difference).
 - Lookup: exact ctx → interpolation between the two bracketing rows → nothing. Never splice rows:
   an earlier `.or(Some(entry))` produced KV from the 256K row with compute from the 64K row.
 - kv / split / batch / ubatch are **hard filters**, not score bonuses. Scoring kv at +2 let an f16

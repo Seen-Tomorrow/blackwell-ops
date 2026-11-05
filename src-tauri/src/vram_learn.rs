@@ -252,8 +252,8 @@ fn param_suffix(
     spec_type: &str,
     cache_ram: &str,
     draft_key: &str,
-    batch: &str,
     ubatch: &str,
+    parallel: u32,
 ) -> String {
     let topo = device.trim();
     let topo_seg = if topo.is_empty() {
@@ -262,23 +262,26 @@ fn param_suffix(
         format!("|topo={topo}")
     };
     // `mode` (assisted/full_auto) is a UI mode and changes nothing about memory, so it must
-    // not split the history. `batch`/`ubatch` DO change memory - measured +6,055 MiB at the
-    // same ctx (14,064 vs 20,119) - so they belong in the identity.
-    let batch_token = 
-        if batch.trim().is_empty() { "0".to_string() } else { batch.trim().to_string() };
+    // not split the history. `batch` is NOT in the identity: measured 2026-11-05, batch 512 vs
+    // 2048 changed no buffer at all (docs/ENGINE-MEMORY-MEASUREMENTS.md). `ubatch` does move
+    // the graph (+338/+248 MiB per +512), so it stays.
     let ubatch_token = 
         if ubatch.trim().is_empty() { "0".to_string() } else { ubatch.trim().to_string() };
+    // `parallel` only when it is not the default. An explicit N splits the context per slot
+    // (KV constant, compute moves); omitting the flag makes llama pick 4 with `kv_unified` and
+    // quadruple the cache, so those two must never share a row.
+    let par_seg = if parallel > 1 { format!("|par={parallel}") } else { String::new() };
     format!(
-        "|{}|ctx={}|kv={}{}|split={}|batch={}|ubatch={}|offload={}{}",
+        "|{}|ctx={}|kv={}{}|split={}|ubatch={}|offload={}{}{}",
         provider_id,
         normalize_ctx_key(ctx),
         kv_quant.trim().to_lowercase(),
         topo_seg,
         split.trim().to_lowercase(),
-        batch_token,
         ubatch_token,
         normalize_offload_mode(offload_mode),
         optional_launch_suffix(spec_type, cache_ram, draft_key),
+        par_seg,
     )
 }
 
@@ -311,7 +314,7 @@ pub fn learned_vram_key(
     )
 }
 
-/// Key without batch/ubatch (see `learned_vram_key_with_draft_batched` for the real one).
+/// Key without the ubatch/parallel knobs (see `learned_vram_key_with_draft_ubatch`).
 #[allow(clippy::too_many_arguments)]
 pub fn learned_vram_key_with_draft(
     model_path: &str,
@@ -326,13 +329,13 @@ pub fn learned_vram_key_with_draft(
     cache_ram: &str,
     draft_key: &str,
 ) -> String {
-    learned_vram_key_with_draft_batched(
+    learned_vram_key_with_draft_ubatch(
         model_path, provider_id, ctx, kv_quant, device, split, memory_mode, offload_mode,
-        spec_type, cache_ram, draft_key, "", "",
+        spec_type, cache_ram, draft_key, "", 1,
     )
 }
 
-pub fn learned_vram_key_with_draft_batched(
+pub fn learned_vram_key_with_draft_ubatch(
     model_path: &str,
     provider_id: &str,
     ctx: &str,
@@ -344,8 +347,8 @@ pub fn learned_vram_key_with_draft_batched(
     spec_type: &str,
     cache_ram: &str,
     draft_key: &str,
-    batch: &str,
     ubatch: &str,
+    parallel: u32,
 ) -> String {
     let normalized_path = normalize_model_path_for_key(model_path);
     format!(
@@ -362,8 +365,8 @@ pub fn learned_vram_key_with_draft_batched(
             spec_type,
             cache_ram,
             draft_key,
-            batch,
             ubatch,
+            parallel,
         ),
     )
 }
@@ -444,9 +447,14 @@ fn memory_mode_from_config(config: &EngineConfig) -> String {
 
 pub fn learned_vram_key_from_config(model_path: &str, provider_id: &str, config: &EngineConfig) -> String {
     let device_token = vram_device_token_from_config(config);
-    let batch = config.get_param_str("batch").unwrap_or_default();
     let ubatch = config.get_param_str("ubatch").unwrap_or_default();
-    learned_vram_key_with_draft_batched(
+    // The app always sends parallel (1 by default) precisely because llama picks 4 with a
+    // unified 4x cache when the flag is absent.
+    let parallel = config
+        .get_param_str("parallel")
+        .and_then(|value| value.parse::<u32>().ok())
+        .unwrap_or(1);
+    learned_vram_key_with_draft_ubatch(
         model_path,
         provider_id,
         &config.get_param_str("ctx").unwrap_or_else(|| "32768".to_string()),
@@ -464,8 +472,8 @@ pub fn learned_vram_key_from_config(model_path: &str, provider_id: &str, config:
             .get_param_str("cache_ram")
             .unwrap_or_else(|| "0".to_string()),
         &draft_path_from_config(config),
-        &batch,
         &ubatch,
+        parallel,
     )
 }
 
@@ -499,11 +507,11 @@ fn lookup_learned_vram_fuzzy(
     spec_type: &str,
     cache_ram: &str,
     draft_key: &str,
-    batch: &str,
     ubatch: &str,
+    parallel: u32,
 ) -> Option<LearnedVramEntry> {
     let store = load_store();
-    let primary = learned_vram_key_with_draft_batched(
+    let primary = learned_vram_key_with_draft_ubatch(
         model_path,
         provider_id,
         ctx,
@@ -515,8 +523,8 @@ fn lookup_learned_vram_fuzzy(
         spec_type,
         cache_ram,
         draft_key,
-        batch,
         ubatch,
+        parallel,
     );
     if let Some(entry) = store.entries.get(&primary) {
         return Some(entry.clone());
@@ -532,7 +540,7 @@ fn lookup_learned_vram_fuzzy(
     // way round), which is enough to miss an exact row and fall back to FIT. Retry without the
     // launch suffix, then without spec as well.
     for (spec_alt, cache_alt) in [(spec_type, ""), ("none", "")] {
-        let key_alt = learned_vram_key_with_draft_batched(
+        let key_alt = learned_vram_key_with_draft_ubatch(
             model_path,
             provider_id,
             ctx,
@@ -544,8 +552,8 @@ fn lookup_learned_vram_fuzzy(
             spec_alt,
             cache_alt,
             draft_key,
-            batch,
             ubatch,
+            parallel,
         );
         if let Some(entry) = store.entries.get(&key_alt) {
             return Some(entry.clone());
@@ -649,8 +657,11 @@ pub fn lookup_learned_vram_for_config(
     config: &EngineConfig,
  ) -> Option<LearnedVramEntry> {
     let _guard = STORE_MUTEX.lock().ok()?;
-    let batch = config.get_param_str("batch").unwrap_or_default();
     let ubatch = config.get_param_str("ubatch").unwrap_or_default();
+    let parallel = config
+        .get_param_str("parallel")
+        .and_then(|value| value.parse::<u32>().ok())
+        .unwrap_or(1);
     lookup_learned_vram_fuzzy(
         model_path,
         provider_id,
@@ -669,8 +680,8 @@ pub fn lookup_learned_vram_for_config(
             .get_param_str("cache_ram")
             .unwrap_or_else(|| "0".to_string()),
         &draft_path_from_config(config),
-        &batch,
         &ubatch,
+        parallel,
     )
 }
 
@@ -1457,14 +1468,13 @@ pub async fn get_learned_vram_for_model(
     ctx: Option<String>,
     kv_quant: Option<String>,
     split: Option<String>,
-    batch: Option<u32>,
     ubatch: Option<u32>,
+    parallel: Option<u32>,
 ) -> Option<LearnedVramForModel> {
-    let batch = batch.map(|b| b.to_string());
     let ubatch = ubatch.map(|b| b.to_string());
     // Loads the learned store (a few hundred KB) and scans it; off the UI thread.
     tokio::task::spawn_blocking(move || {
-        learned_vram_for_model_blocking(model_path, ctx, kv_quant, split, batch, ubatch)
+        learned_vram_for_model_blocking(model_path, ctx, kv_quant, split, ubatch, parallel)
     })
     .await
     .ok()
@@ -1505,8 +1515,8 @@ fn interpolate_between_ctx(
     want_ctx: usize,
     want_kv: Option<&str>,
     want_split: Option<&str>,
-    want_batch: Option<&str>,
     want_ubatch: Option<&str>,
+    want_parallel: u32,
 ) -> Option<LearnedVramForModel> {
     let mut points: Vec<CtxPoint> = Vec::new();
     for (key, entry) in store.entries.iter() {
@@ -1544,12 +1554,10 @@ fn interpolate_between_ctx(
                 continue;
             }
         }
-        // Compute buffers scale with batch (~10x between 2048 and 8192), so a curve that mixes
-        // them is not a curve.
-        if let Some(want) = want_batch {
-            if batch_token != want {
-                continue;
-            }
+        // `parallel` changes the compute buffers (docs/ENGINE-MEMORY-MEASUREMENTS.md), so a
+        // curve must not mix slot counts. Only rows with parallel > 1 carry the token.
+        if learn_key_parallel(key) != want_parallel {
+            continue;
         }
         if let Some(want) = want_ubatch {
             if ubatch_token != want {
@@ -1646,8 +1654,8 @@ fn learned_vram_for_model_blocking(
     ctx: Option<String>,
     kv_quant: Option<String>,
     split: Option<String>,
-    batch: Option<String>,
     ubatch: Option<String>,
+    parallel: Option<u32>,
 ) -> Option<LearnedVramForModel> {
     let _guard = STORE_MUTEX.lock().ok()?;
     let store = load_store();
@@ -1661,10 +1669,7 @@ fn learned_vram_for_model_blocking(
         .as_deref()
         .map(|s| s.trim().to_lowercase())
         .filter(|s| !s.is_empty());
-    let want_batch = batch
-        .as_deref()
-        .map(|s| s.trim().to_lowercase())
-        .filter(|s| !s.is_empty() && s != "0");
+    let want_parallel = parallel.unwrap_or(1);
     let want_ubatch = ubatch
         .as_deref()
         .map(|s| s.trim().to_lowercase())
@@ -1751,10 +1756,8 @@ fn learned_vram_for_model_blocking(
                 continue;
             }
         }
-        if let Some(want) = want_batch.as_deref() {
-            if entry_batch != want {
-                continue;
-            }
+        if learn_key_parallel(key) != want_parallel {
+            continue;
         }
         if let Some(want) = want_ubatch.as_deref() {
             if entry_ubatch != want {
@@ -1813,8 +1816,8 @@ fn learned_vram_for_model_blocking(
                 want,
                 want_kv.as_deref(),
                 want_split.as_deref(),
-                want_batch.as_deref(),
                 want_ubatch.as_deref(),
+                want_parallel,
             )
         }),
     }
@@ -1835,8 +1838,8 @@ pub fn get_learned_vram(
     cache_ram: Option<String>,
     draft_model: Option<String>,
     vram_topo: Option<String>,
-    batch: Option<u32>,
     ubatch: Option<u32>,
+    parallel: Option<u32>,
 ) -> Option<LearnedVramEntry> {
     let _guard = STORE_MUTEX.lock().ok()?;
     let mode = memory_mode
@@ -1871,8 +1874,8 @@ pub fn get_learned_vram(
         spec,
         cache,
         &draft,
-        &batch.map(|b| b.to_string()).unwrap_or_default(),
         &ubatch.map(|b| b.to_string()).unwrap_or_default(),
+        parallel.unwrap_or(1),
     ) {
         Some(entry) => entry,
         None => lookup_learned_vram_any_device(
@@ -1886,88 +1889,38 @@ pub fn get_learned_vram(
             cache,
         )?,
     };
-    let wanted_batch = batch.unwrap_or(0);
-    let wanted_ubatch = ubatch.unwrap_or(0);
+    // `batch` is not a memory knob: measured 2026-11-05, batch 512 vs 2048 changed no buffer at
+    // all, so it is out of the identity and a different batch is still the same measurement.
+    // `ubatch` is part of the key now, so a mismatch there cannot reach this row. What can still
+    // differ is the spec/draft identity, when the fuzzy retry matched a boost-off row.
     let wanted_spec = spec_key_for_learn(spec, &draft);
     let path_norm = normalize_model_path_for_key(&model_path);
     let kv_n = kv_quant.trim().to_lowercase();
     let split_n = normalize_split_mode(&split);
-    let batch_mismatch = entry
-        .reference_batch
-        .zip(entry.reference_ubatch)
-        .map(|(rb, ru)| rb != wanted_batch || ru != wanted_ubatch)
-        .unwrap_or(false);
     let spec_mismatch = entry
         .reference_spec_key
         .as_deref()
         .map(|reference| reference != wanted_spec)
         .unwrap_or(false);
-    if batch_mismatch || spec_mismatch {
+    if spec_mismatch {
         let base_v = entry.paint_vram_mib();
         let base_h = entry.paint_host_mib();
-        let mut delta_v = 0.0;
-        let mut delta_h = 0.0;
-        let pair = batch_pair(wanted_batch, wanted_ubatch);
-        let mut joint_applied = false;
-        if batch_mismatch && spec_mismatch {
-            let live_ctx = normalize_ctx_key(&ctx).parse::<usize>().ok()?;
-            let points = {
-                let store = load_store();
-                find_joint_delta_points(
-                    &store.entries,
-                    &path_norm,
-                    &provider_id,
-                    &kv_n,
-                    &split_n,
-                    vram_topo.as_deref(),
-                    &pair,
-                    &wanted_spec,
-                )
-            };
-            if let Some((joint_v, joint_h)) = interpolate_spec_delta(&points, live_ctx) {
-                delta_v += joint_v;
-                delta_h += joint_h;
-                joint_applied = true;
-            }
-        }
-        if !joint_applied {
-            if batch_mismatch {
-                let delta = entry.batch_deltas.get(&pair).cloned().or_else(|| {
-                    let store = load_store();
-                    find_batch_delta(
-                        &store.entries,
-                        &path_norm,
-                        &provider_id,
-                        &kv_n,
-                        &split_n,
-                        vram_topo.as_deref(),
-                        &pair,
-                    )
-                })?;
-                delta_v += delta.vram_mib;
-                delta_h += delta.host_mib.unwrap_or(0.0);
-            }
-            if spec_mismatch {
-                let points = {
-                    let store = load_store();
-                    find_spec_delta_points(
-                        &store.entries,
-                        &path_norm,
-                        &provider_id,
-                        &kv_n,
-                        &split_n,
-                        vram_topo.as_deref(),
-                        &wanted_spec,
-                    )
-                };
-                let live_ctx = normalize_ctx_key(&ctx).parse::<usize>().ok()?;
-                let (spec_v, spec_h) = interpolate_spec_delta(&points, live_ctx)?;
-                delta_v += spec_v;
-                delta_h += spec_h;
-            }
-        }
-        entry.vram_mib = base_v + delta_v;
-        entry.host_mib = match (base_h, delta_h) {
+        let points = {
+            let store = load_store();
+            find_spec_delta_points(
+                &store.entries,
+                &path_norm,
+                &provider_id,
+                &kv_n,
+                &split_n,
+                vram_topo.as_deref(),
+                &wanted_spec,
+            )
+        };
+        let live_ctx = normalize_ctx_key(&ctx).parse::<usize>().ok()?;
+        let (spec_v, spec_h) = interpolate_spec_delta(&points, live_ctx)?;
+        entry.vram_mib = base_v + spec_v;
+        entry.host_mib = match (base_h, spec_h) {
             (Some(base), extra) => Some(base + extra),
             (None, extra) if extra != 0.0 => Some(extra),
             (base, _) => base,
@@ -1993,6 +1946,14 @@ pub struct LearnedVramCurvePoint {
     pub ctx: usize,
     pub vram_mib: f64,
     pub host_mib: Option<f64>,
+}
+
+/// Slot count of a learned key. Rows written for the default carry no token.
+fn learn_key_parallel(key: &str) -> u32 {
+    key.split('|')
+        .find_map(|token| token.strip_prefix("par="))
+        .and_then(|value| value.parse::<u32>().ok())
+        .unwrap_or(1)
 }
 
 fn ctx_from_learn_key(key: &str) -> Option<usize> {
@@ -2223,6 +2184,7 @@ pub fn get_learned_vram_curve(
     vram_topo: Option<String>,
     batch: Option<u32>,
     ubatch: Option<u32>,
+    parallel: Option<u32>,
 ) -> Vec<LearnedVramCurvePoint> {
     let Some(_guard) = STORE_MUTEX.lock().ok() else {
         return Vec::new();
@@ -2237,6 +2199,7 @@ pub fn get_learned_vram_curve(
     let split_n = normalize_split_mode(split.as_deref().unwrap_or("none"));
     let wanted_batch = batch.unwrap_or(0);
     let wanted_ubatch = ubatch.unwrap_or(0);
+    let wanted_parallel = parallel.unwrap_or(1);
     let wanted_pair = batch_pair(wanted_batch, wanted_ubatch);
     let global_delta = find_batch_delta(
         &store.entries,
@@ -2275,6 +2238,10 @@ pub fn get_learned_vram_curve(
         if !key_matches_split(k, &split_n) {
             continue;
         }
+        // A curve must not mix slot counts: parallel moves the compute buffers.
+        if learn_key_parallel(k) != wanted_parallel {
+            continue;
+        }
         if let Some(topo) = vram_topo.as_deref() {
             if !key_matches_vram_topo(k, topo) {
                 continue;
@@ -2308,15 +2275,16 @@ pub fn get_learned_vram_curve(
         };
         if !joint_applied {
             if batch_mismatch {
-                let delta = entry
+                // A batch difference is not a memory difference (measured 2026-11-05: batch 512
+                // vs 2048 changed no buffer), so a missing delta must not drop the point.
+                if let Some(delta) = entry
                     .batch_deltas
                     .get(&wanted_pair)
-                    .or(global_delta.as_ref());
-                let Some(delta) = delta else {
-                    continue;
-                };
-                delta_v += delta.vram_mib;
-                delta_h += delta.host_mib.unwrap_or(0.0);
+                    .or(global_delta.as_ref())
+                {
+                    delta_v += delta.vram_mib;
+                    delta_h += delta.host_mib.unwrap_or(0.0);
+                }
             }
             if spec_mismatch {
                 let Some((spec_v, spec_h)) = interpolate_spec_delta(&spec_points, ctx) else {

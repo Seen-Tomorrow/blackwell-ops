@@ -46,9 +46,10 @@ for speed. One glass (`VramBadge`), one plan, one journal.
 
 ## Learned store rules (hard-won)
 
-- Key: `provider|ctx|kv|topo|split|batch|ubatch|offload|cache_ram` (+ draft when external).
-  `mode` is **not** in it. `batch`/`ubatch` **must** be: 14,064 vs 15,299 MiB at 64K for 2048/1536.
-- `kv`, `split`, `batch`, `ubatch` are **hard filters** in lookups. Soft scoring let an f16 row win
+- Key: `provider|ctx|kv|topo|split|ubatch|offload|cache_ram` (+ spec/draft; `|par=N` only when
+  parallel > 1). `batch` and `mode` are **not** in it — measured 2026-11-05, batch 512 vs
+  2048 changed no buffer; `ubatch` does (14,064 vs 15,299 MiB at 64K was ubatch 512 vs 1536).
+- `kv`, `split`, `ubatch` are **hard filters** in lookups. Soft scoring let an f16 row win
   for a q8_0 config (1.88× the KV).
 - Lookup returns: exact row → interpolation between the two bracketing rows → nothing. **Never
   splice** rows from different ctx (that produced KV from 256K with compute from 64K).

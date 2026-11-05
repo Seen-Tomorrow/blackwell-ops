@@ -81,6 +81,8 @@ export function useLayerPlan(
     splitMode?: string;
     batch?: number;
     ubatch?: number;
+    /** Slot count of the launch — it moves the compute buffers and is part of the key. */
+    parallel?: number;
     /** Changes on every engine state change, so a finished launch is picked up without
      *  nudging the ctx slider (`LOADING -> RUNNING -> IDLE`). */
     stackSig?: string;
@@ -208,6 +210,7 @@ export function useLayerPlan(
       ctx: knobs?.ctxTokens != null ? String(knobs.ctxTokens) : null,
       kvQuant: knobs?.kvQuant ?? null,
       split: null,
+      parallel: knobs?.parallel ?? 1,
     })
       .then((hit) => {
         if (cancelled) return;
@@ -233,7 +236,7 @@ export function useLayerPlan(
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [modelPath, knobs?.ctxTokens, knobs?.kvQuant, knobs?.splitMode, knobs?.batch, knobs?.ubatch, knobs?.stackSig, storeVersion]);
+  }, [modelPath, knobs?.ctxTokens, knobs?.kvQuant, knobs?.splitMode, knobs?.batch, knobs?.ubatch, knobs?.parallel, knobs?.stackSig, storeVersion]);
 
   const kvPerLayer = kvMibPerLayer({
     ctxTokens: knobs?.ctxTokens,
