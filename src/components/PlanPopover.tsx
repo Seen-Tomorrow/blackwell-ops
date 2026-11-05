@@ -17,9 +17,6 @@ export default function PlanPopover({
   kvSource = "none",
   squeezed = false,
   onApply,
-  onTakeover,
-  overflowGb = 0,
-  strain = false,
   onClose,
 }: {
   plan: LayerPlan | null;
@@ -34,8 +31,6 @@ export default function PlanPopover({
   squeezed?: boolean;
   /** Write this plan into the launch config (-ts), so placement is chosen, not fitted. */
   onApply?: () => void;
-  /** FIT OFF + this plan: placement chosen here instead of shaved by the engine. */
-  onTakeover?: () => void;
   /** How much the plan exceeds the free budget, GB (0 when it fits). */
   overflowGb?: number;
   /** The forecast paints spill/over-free for this configuration. */
@@ -132,34 +127,6 @@ export default function PlanPopover({
         </span>
       </div>
 
-      {onTakeover && (
-        <div className="vram-plan-pop__forecast">
-          <span className="vram-plan-pop__meta">TAKEOVER</span>
-          <span>
-            {overflowGb > 0
-              ? `plan is ${overflowGb.toFixed(1)} GB over free — place it yourself`
-              : squeezed
-                ? "engine had to shrink to fit — place it yourself"
-                : strain
-                  ? "forecast expects a spill — place it yourself"
-                  : "place it yourself — FIT will not get to shave the graph"}
-          </span>
-          <button
-            type="button"
-            className="vram-plan-pop__copy"
-            disabled={applied !== "idle"}
-            onClick={() => {
-              setApplied("busy");
-              onTakeover();
-              setTimeout(() => setApplied("done"), 500);
-              setTimeout(() => setApplied("idle"), 2000);
-            }}
-            title="FIT OFF + this tensor split: the engine stops shaving the graph"
-          >
-            {applied === "done" ? "TAKEN OVER" : "FIT OFF"}
-          </button>
-        </div>
-      )}
 
       {squeezed && (
         <div className="vram-plan-pop__forecast">

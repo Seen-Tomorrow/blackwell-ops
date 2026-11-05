@@ -220,6 +220,16 @@ async fn run_job(app: &AppHandle, job: &Job) -> Result<Value, String> {
             )
             .and_then(|forecast| serde_json::to_value(forecast).map_err(|e| e.to_string()))
         }
+        "param" => {
+            let params = job
+                .params
+                .clone()
+                .ok_or_else(|| "param needs params".to_string())?;
+            let get = |name: &str| params.get(name).and_then(|v| v.as_str()).unwrap_or("").to_string();
+            crate::config::commands::set_provider_param_value(get("provider_id"), get("key"), get("value"))
+                .map(|_| json!({ "message": "stored" }))
+                .map_err(|e| e.to_string())
+        }
         other => Err(format!("unknown action: {other}")),
     }
 }

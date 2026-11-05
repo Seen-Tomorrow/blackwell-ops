@@ -172,6 +172,7 @@ export default function VramBadge({
   ]);
 
   const [planOpen, setPlanOpen] = useState(false);
+  const [takeoverState, setTakeoverState] = useState<"idle" | "busy" | "done">("idle");
 
   const fusionOverlayActive =
     selectedSlotIdx !== null &&
@@ -398,40 +399,29 @@ export default function VramBadge({
             overFreeReprobe={s.launchPaint === "offload" || s.launchPaint === "nofit"}
           />
         ) : null}
-        {onToggleFitOff ? (
-          <span className="vram-fc-header__reprobe-pair">
-            <button
-              type="button"
-              className="vram-fc-source__reprobe vram-fc-header__reprobe"
-              data-fit-off={fitOff ? "1" : "0"}
-              aria-pressed={fitOff}
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleFitOff();
-              }}
-              title={
-                fitOff
-                  ? "FIT OFF — placement comes only from your -ngl / -ts / -ot flags. Click for FIT ON."
-                  : "FIT ON — the engine fits placement to free VRAM. Click to hand placement to your own flags."
-              }
-            >
-              {fitOff ? "FIT OFF" : "FIT ON"}
-            </button>
-            <button
-              type="button"
-              className="vram-fc-source__reprobe vram-fc-header__reprobe"
-              data-plan-open={planOpen ? "1" : "0"}
-              aria-pressed={planOpen}
-              onClick={(e) => {
-                e.stopPropagation();
-                setPlanOpen((open: boolean) => !open);
-              }}
-              title={'Layer plan: per-GPU split from the block table, beside what FIT and LEARNED predict'}
-            >
-              PLAN
-            </button>
-          </span>
-        ) : null}
+        {/* Placement handover: FIT off + the plan's split. Replaces the old FIT ON/OFF toggle —
+            taking placement away from the engine is the thing worth a button here. */}
+        <button
+          type="button"
+          className="vram-fc-source__reprobe vram-fc-header__reprobe"
+          data-takeover={takeoverState}
+          disabled={!onApplyPlan || !layerPlan || takeoverState !== "idle"}
+          onClick={() => {
+            if (!onApplyPlan || !layerPlan) return;
+            setTakeoverState("busy");
+            onApplyPlan(formatTensorSplit(layerPlan.ts));
+            if (!fitOff) onToggleFitOff?.();
+            setTimeout(() => setTakeoverState("done"), 450);
+            setTimeout(() => setTakeoverState("idle"), 2200);
+          }}
+          title={
+            !layerPlan
+              ? "No layer plan for this model yet"
+              : `${fitOff ? "Re-apply" : "FIT OFF + apply"} -ts ${formatTensorSplit(layerPlan.ts)}: the engine stops shaving the graph`
+          }
+        >
+          {takeoverState === "done" ? "TAKEN OVER" : takeoverState === "busy" ? "APPLYING…" : "TAKEOVER"}
+        </button>
       </div>
 
       {planOpen && (
@@ -446,25 +436,6 @@ export default function VramBadge({
           onApply={
             onApplyPlan && layerPlan
               ? () => onApplyPlan(formatTensorSplit(layerPlan.ts))
-              : undefined
-          }
-          overflowGb={
-            layerPlan ? Math.max(0, (layerPlan.sumMib - layerPlan.budgetSumMib) / 1024) : 0
-          }
-          strain={
-            // The plan can fit while the forecast still expects a spill (a card over its own
-            // free, or the measured run was squeezed). Those are the cases worth taking over.
-            vramNeedTone === "hot" ||
-            s.launchPaint === "offload" ||
-            s.launchPaint === "nofit"
-          }
-          onTakeover={
-            onApplyPlan && layerPlan
-              ? () => {
-                  // Take placement away from FIT: the plan sets the split, FIT stays off.
-                  onApplyPlan(formatTensorSplit(layerPlan.ts));
-                  if (!fitOff) onToggleFitOff?.();
-                }
               : undefined
           }
           onClose={() => setPlanOpen(false)}
