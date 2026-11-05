@@ -10,6 +10,10 @@ Examples (DEV app root is src-tauri/target/debug):
 
     python scripts/engine-test.py launch --model C:/AI-MASTER/models/.../x.gguf --ctx 65536 --kv q8_0 --hold 12
     python scripts/engine-test.py launch --model ... --ctx 131072 --kv q8_0 --hold 12 --split layer
+    python scripts/engine-test.py launch --model ... --ctx 131072 --hold 12 --ts 0.6,0.4
+
+`--ts` is the placement the CLI gets: omit it to use the provider's saved `-ts` row, pass a value
+to pin one, or pass `--ts ""` to force "engine chooses" (extra_params overrides the saved row).
     python scripts/engine-test.py status
     python scripts/engine-test.py stop --slot 0
 
@@ -82,6 +86,10 @@ def launch_config(args) -> dict:
     }
     if args.device:
         extra["device"] = args.device
+    if args.ts is not None:
+        # An empty string is a real value: it overrides the provider's saved -ts row and means
+        # "engine chooses", which is what a no-placement measurement needs.
+        extra["tensor_split"] = args.ts
     config = {
         "alias": args.alias or f"TEST_{uuid.uuid4().hex[:4].upper()}",
         "model_path": args.model,
@@ -133,6 +141,11 @@ def main() -> int:
     ap.add_argument("--flash-attn", default="on", dest="flash_attn")
     ap.add_argument("--cache-ram", type=int, default=16384)
     ap.add_argument("--device", default="")
+    ap.add_argument(
+        "--ts",
+        default=None,
+        help="-ts the CLI receives; '' forces 'engine chooses'. Omit to use the provider's saved row.",
+    )
     ap.add_argument("--mode", default="assisted", help="__memory_mode (assisted|full_auto)")
     ap.add_argument("--topo", default="96", help="__vram_topo token (manufactured GB per card)")
     ap.add_argument("--port", type=int, default=8899)

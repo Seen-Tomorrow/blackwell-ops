@@ -644,8 +644,21 @@ impl ProviderTemplate {
 
             // Whitelist launch — AUTO_FIT always; MANUAL when frontend sent a filtered extra_params
             // set (Essentials vs Full). Without user keys in extra_params, emit all visible params.
+            // A `text` row with a value is exempt: it has no choice list to filter, the launcher is
+            // its only consumer (the panel cannot hold it — useConfigResolver skips params without
+            // `values`), and dropping it is what left `-ts` out of the CLI: TAKEOVER wrote the
+            // provider row, the launch still used the engine's own split (measured 2026-11-05 20:17,
+            // 73,127.6 / 83,841.81 MiB with GPU1 at 0 MiB free).
+            let text_row_has_value = param.ptype == "text"
+                && !param.default_value.is_null()
+                && param
+                    .default_value
+                    .as_str()
+                    .map(|value| !value.trim().is_empty())
+                    .unwrap_or(true);
             if launch_uses_extra_params_whitelist(config)
                 && !key_in_extra
+                && !text_row_has_value
             {
                 continue;
             }
@@ -1322,6 +1335,45 @@ mod build_cmd_tests {
         let joined = args.join(" ");
         assert!(joined.contains("--ctx-size"));
         assert!(!joined.contains("--batch-size"));
+    }
+
+    /// A saved placement has to reach the CLI. `tensor_split` is a `text` row the panel cannot
+    /// hold (useConfigResolver skips params without `values`), so the extra_params whitelist used
+    /// to drop it: TAKEOVER wrote the provider row, and the engine still chose its own split —
+    /// measured 2026-11-05 20:17, 73,127.6 / 83,841.81 MiB with GPU1 at 0 MiB free, while the
+    /// glass painted the planned 22/40.
+    #[test]
+    fn text_param_with_a_saved_value_survives_the_whitelist() {
+        let mut ctx = arg_param("ctx", "--ctx-size", "32768");
+        ctx.order = 0;
+        let mut tensor_split = arg_param("tensor_split", "-ts", "0.549,0.451");
+        tensor_split.ptype = "text".to_string();
+        tensor_split.values = Vec::new();
+        tensor_split.order = 1;
+        let mut blank = tensor_split.clone();
+        blank.default_value = serde_json::json!("");
+
+        let mut extra = HashMap::new();
+        extra.insert("ctx".to_string(), serde_json::json!("32768"));
+        let config = EngineConfig {
+            alias: "test".to_string(),
+            model_path: "model.gguf".to_string(),
+            port: 8080,
+            backend_type: "ggml-master".to_string(),
+            binary_profile: String::new(),
+            extra_params: extra,
+        };
+
+        let joined = sample_template()
+            .build_command(&config, "", &[ctx.clone(), tensor_split])
+            .join(" ");
+        assert!(joined.contains("-ts 0.549,0.451"), "{joined}");
+
+        // An empty row is still "engine chooses" — the whitelist may skip it.
+        let joined = sample_template()
+            .build_command(&config, "", &[ctx, blank])
+            .join(" ");
+        assert!(!joined.contains("-ts"), "{joined}");
     }
 
     #[test]
