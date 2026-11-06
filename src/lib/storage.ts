@@ -167,8 +167,6 @@ export const KEYS = {
   catalogListCollapsed: `${STORAGE_PREFIX}catalog-list-collapsed`,
   /** Harness seats block in the catalog quick strip — "0" = collapsed. Absent = open. */
   catalogSeatsOpen: `${STORAGE_PREFIX}catalog-seats-open`,
-  /** OPERATIONS catalog list body opacity (0.2–1); search chrome excluded. */
-  catalogListDim: `${STORAGE_PREFIX}catalog-list-dim`,
   /** OPERATIONS catalog pins / recents / sticky seats (path-only). */
   catalogQuickAccess: `${STORAGE_PREFIX}catalog-quick-access`,
   /** OPERATIONS model list: auto | open | closed */
@@ -537,19 +535,6 @@ export function savePcieThroughputEnabled(enabled: boolean): void {
   writeStorage(KEYS.telemetryPcieThroughput, enabled ? "1" : "0");
 }
 
-
-/** Catalog list body opacity (sort + cards). Range 0.2–1, default 1. Search chrome stays full. */
-export function loadCatalogListDim(): number {
-  const raw = readStorage(KEYS.catalogListDim);
-  const n = raw ? Number(raw) : 1;
-  if (!Number.isFinite(n)) return 1;
-  return Math.min(1, Math.max(0.2, n));
-}
-
-export function saveCatalogListDim(dim: number): void {
-  const n = Math.min(1, Math.max(0.2, dim));
-  writeStorage(KEYS.catalogListDim, String(Math.round(n * 100) / 100));
-}
 
 export function loadEnginesInRail(): boolean {
   return readStorage(KEYS.enginesInRail) === "1";

@@ -107,8 +107,8 @@
 
 /*
  * Catalog chrome header — industrial panel face (same stack as app header /
- * provider bar / bezel frame). Always full opacity; dim does not apply here.
- * Row 1: search · Row 2: sort + MAIN/MAX + DIM
+ * provider bar / bezel frame).
+ * Row 1: search · Row 2: sort + MAIN/DRAFT/ALL
  */
 .catalog-list-panel__chrome {
   display: flex;
@@ -248,72 +248,6 @@
   width: 100%;
 }
 
-.catalog-list-panel__chrome-tools .panel-dim-control {
-  margin-left: auto;
-  flex-shrink: 0;
-}
-
-/* Catalog list mute — DIM. Unstyled <input type="range"> falls back to the UA
-   default (~129px wide, native chrome) and blows out the filter row, so the
-   slider is sized here like every other slider in the app (hw-mon, cfg-poll). */
-.panel-dim-control {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  flex: 0 1 auto;
-  cursor: pointer;
-  user-select: none;
-}
-
-.panel-dim-control__label {
-  font-family: ui-monospace, monospace;
-  font-size: var(--type-hairline);
-  letter-spacing: 0.12em;
-  line-height: 1;
-  color: color-mix(in srgb, var(--theme-text-muted) 75%, transparent);
-}
-
-.panel-dim-control__slider {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 44px;
-  flex: 0 1 44px;
-  min-width: 24px;
-  height: 3px;
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--theme-border) 70%, transparent);
-  outline: none;
-  cursor: pointer;
-}
-
-.panel-dim-control__slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--theme-accent-bright);
-  border: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 40%, transparent);
-  box-shadow: 0 0 4px color-mix(in srgb, var(--theme-accent-glow) 45%, transparent);
-  cursor: pointer;
-}
-
-.panel-dim-control__slider::-moz-range-thumb {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--theme-accent-bright);
-  border: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 40%, transparent);
-  cursor: pointer;
-}
-
-.panel-dim-control__slider::-moz-range-track {
-  height: 3px;
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--theme-border) 70%, transparent);
-}
-
 /* ── Alt-B: filter/sort bar — same gunmetal chrome as the search bar, flush full width ── */
 .catalog-list-panel .catalog-list-panel__chrome-tools {
   flex-shrink: 0;
@@ -417,7 +351,7 @@
   flex-shrink: 0;
 }
 
-/* Card list only — dim is per-card (selected stays full) */
+/* Card list body — the scroll area owns the remaining height */
 .catalog-list-panel__body {
   display: flex;
   flex-direction: column;
@@ -426,13 +360,8 @@
   min-width: 0;
 }
 
-.catalog-list-card-wrap {
-  transition: opacity 0.15s ease;
-}
-
-/* Selected model — full opacity + full chroma under quiet-wing desaturate */
+/* Selected model — raised above its neighbours under quiet-wing desaturate */
 .catalog-list-card-wrap--selected {
-  opacity: 1 !important;
   position: relative;
   z-index: 1;
 }
@@ -478,7 +407,6 @@
 
 /*
  * Quiet wing on list body only — chrome keeps full industrial chroma/texture.
- * Opacity dim is separate (per unselected card).
  */
 [data-model-catalog] .catalog-list-panel__body {
   filter: saturate(0.42) brightness(0.97);
@@ -675,14 +603,10 @@
 .catalog-sort-group {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 2px;
-  overflow: hidden;
   min-width: 0;
   width: 100%;
-}
-
-.catalog-sort-group::-webkit-scrollbar {
-  display: none;
 }
 
 .catalog-sort-btn {
@@ -795,7 +719,7 @@
   box-shadow: var(--theme-catalog-card-hover-shadow);
 }
 
-/* Selected — lifted accent face + left rail (must read at dim=100% on dark themes) */
+/* Selected — lifted accent face + left rail (must read on dark themes) */
 [data-model-catalog] .model-catalog-card.gunmetal-card,
 [data-model-catalog] .gunmetal-card {
   background-color: var(--theme-catalog-card-selected-bg);

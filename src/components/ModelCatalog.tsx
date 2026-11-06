@@ -13,7 +13,6 @@ import type { SetupGuideState } from "../hooks/useSetupGuide";
 import { useCatalogSplitResize } from "../hooks/useCatalogSplitResize";
 import { useGpuFitTelemetry } from "../context/TelemetryContext";
 import { dispatchNavigateConfig } from "../lib/events";
-import { loadCatalogListDim, saveCatalogListDim } from "../lib/storage";
 import TabPageHeader from "./TabPageHeader";
 
 
@@ -51,6 +50,11 @@ const sortLabels: Record<string, string> = {
   size_str: "SIZE",
   date: "DATE",
 };
+/** Active chip names the order on screen, so "SIZE ▲" never has to be decoded. */
+const sortOrderLabels: Partial<Record<string, Record<"asc" | "desc", string>>> = {
+  size_str: { asc: "SMALLEST", desc: "BIGGEST" },
+  date: { asc: "OLDEST", desc: "NEWEST" },
+};
 
 const DRAFT_FILTER_CYCLE: CatalogDraftFilter[] = ["regular", "draft", "all"];
 
@@ -78,13 +82,6 @@ export default function ModelCatalog(props: ModelCatalogProps) {
   const { gpus, systemInfo } = useGpuFitTelemetry();
   const [showScanMenu, setShowScanMenu] = useState(false);
   const [editMode, setEditMode] = useState(false);
-  /** Opacity of sort + model cards (search chrome stays full). Same range as HW monitor dim. */
-  const [catalogListDim, setCatalogListDim] = useState(loadCatalogListDim);
-  const onCatalogListDimChange = useCallback((value: number) => {
-    const next = Math.min(1, Math.max(0.2, value));
-    setCatalogListDim(next);
-    saveCatalogListDim(next);
-  }, []);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameValue, setRenameValue] = useState("");
@@ -653,38 +650,30 @@ export default function ModelCatalog(props: ModelCatalogProps) {
       </div>
       <div className="catalog-chrome-row catalog-chrome-row--sort">
         <div className="catalog-sort-group">
-          {CATALOG_SORT_FIELDS.map((field) => (
-            <button
-              key={field}
-              onClick={() => handleSort(field)}
-              className={`catalog-sort-btn type-tiny font-mono px-1.5 py-0.5 uppercase tracking-wider transition-colors rounded-sm ${
-                sortField === field
-                  ? "cat-sort-btn--active"
-                  : "cat-sort-btn"
-              }`}
-            >
-              <span>{sortLabels[field] || field.replace("_", " ")}</span>
-              <span className="catalog-sort-arrow" aria-hidden="true">
-                {sortField === field ? (sortDirection === "asc" ? "▲" : "▼") : ""}
-              </span>
-            </button>
-          ))}        </div>
-        <label
-          className="panel-dim-control"
-          title={`Catalog list mute — ${Math.round(catalogListDim * 100)}% (selected stays full; soft floor keeps cards readable)`}
-        >
-          <span className="panel-dim-control__label">DIM</span>
-          <input
-            type="range"
-            className="panel-dim-control__slider"
-            min={20}
-            max={100}
-            step={1}
-            value={Math.round(catalogListDim * 100)}
-            onChange={(e) => onCatalogListDimChange(Number(e.target.value) / 100)}
-            aria-label="Catalog list dim"
-          />
-        </label>
+          {CATALOG_SORT_FIELDS.map((field) => {
+            const active = sortField === field;
+            // Big/small and new/old say the direction themselves; only fields
+            // without an order word keep the arrow.
+            const orderWord = active ? sortOrderLabels[field]?.[sortDirection] : undefined;
+            return (
+              <button
+                key={field}
+                onClick={() => handleSort(field)}
+                aria-pressed={active}
+                className={`catalog-sort-btn type-tiny font-mono px-1.5 py-0.5 uppercase tracking-wider transition-colors rounded-sm ${
+                  active ? "cat-sort-btn--active" : "cat-sort-btn"
+                }`}
+              >
+                <span>{orderWord ?? sortLabels[field] ?? field.replace("_", " ")}</span>
+                {!orderWord && (
+                  <span className="catalog-sort-arrow" aria-hidden="true">
+                    {active ? (sortDirection === "asc" ? "▲" : "▼") : ""}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -929,10 +918,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
             className="catalog-list-scroll overflow-y-auto eink-scrollbar pt-3 px-3 pb-5 flex-1 min-h-0"
           >
             {catalogModels.length === 0 ? (
-              <div
-                className="flex flex-col items-center justify-center h-full min-h-[8rem] text-center px-4 py-6 gap-3"
-                style={{ opacity: catalogListDim }}
-              >
+              <div className="flex flex-col items-center justify-center h-full min-h-[8rem] text-center px-4 py-6 gap-3">
                 <p className="cat-mut text-xs font-mono opacity-50">
                   {emptyState?.headline ?? "NO MODELS FOUND"}
                 </p>
@@ -1000,9 +986,6 @@ export default function ModelCatalog(props: ModelCatalogProps) {
               <div className="grid grid-cols-1 gap-2">
                 {catalogModels.map((model) => {
                   const isSelected = catalogSelectedModel?.path === model.path;
-                  // Soft mute: slider 20–100% → opacity ~0.52–1.0 so the list calms
-                  // without looking disabled. Selected always full strength.
-                  const unselectedOpacity = 0.4 + catalogListDim * 0.6;
                   return (
                     <div
                       key={model.path}
@@ -1012,7 +995,6 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                           ? "catalog-list-card-wrap catalog-list-card-wrap--selected"
                           : "catalog-list-card-wrap"
                       }
-                      style={isSelected ? undefined : { opacity: unselectedOpacity }}
                     >
                       <ModelCard
                         model={model}
