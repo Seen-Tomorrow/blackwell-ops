@@ -1,12 +1,8 @@
-# One text convention for the whole tree: LF in the index, CRLF in the Windows
-# checkout. `core.autocrlf=true` already does this; stating it here makes the
-# stored bytes independent of a machine's git config, and `text=auto` lets git
-# decide text vs binary by content so a media file is never normalized.
-* text=auto eol=crlf
+# Every text file: LF in the index AND in the checkout. Only agents edit this
+# tree, on Windows, and nothing here needs CRLF — one form means `git diff` is
+# raw bytes and `git add` never rewrites a file.
+* text=auto eol=lf
 
-# Generated IPC wire-key list: pin to LF so the committed bytes are stable across
-# checkouts. The freshness gate in src-tauri/src/ipc_contract.rs normalizes EOL
-# before comparing (the Windows CI runner checks out CRLF via core.autocrlf), so a
-# CRLF working copy no longer fails it — but pinning keeps the file from
-# flip-flopping in `git status` on machines that rewrite line endings.
-src/lib/generated/** text eol=lf
+# cmd.exe still wants CRLF inside a .bat/.cmd (labels and parenthesized blocks).
+*.bat text eol=crlf
+*.cmd text eol=crlf

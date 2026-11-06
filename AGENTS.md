@@ -67,21 +67,23 @@ user's own CUDA toolkit so the bundled one always wins. Do not treat the pack as
 
 ---
 
-## Line endings — CR / LF / CRLF
+## Line endings — LF everywhere
 
-`CR` = carriage return (0x0D), `LF` = line feed (0x0A); "CRLF" is the two in sequence. That is the
-whole subject. `.gitattributes` pins the convention: **LF in the index, CRLF in the Windows
-checkout** — normal, not a bug, and not worth reporting.
+`.gitattributes` pins `* text=auto eol=lf`; only `*.bat` / `*.cmd` stay CRLF (cmd.exe parses
+parenthesized blocks badly without it). Agents are the only writers and nothing else consumes
+this tree, so there is no CRLF checkout to manage — one form means `git diff` is raw bytes and
+`git add` never rewrites a file.
 
-- **Check, don't guess**: `git ls-files --eol <file>` → `i/lf w/crlf` is the healthy state.
-- **`i/crlf` or `i/-text` on a source file is a defect**: that blob was committed with CRLF, so git
-  normalizes the working side and not the blob — every later edit diffs as a whole-file rewrite.
-  Repair it once with `git add --renormalize <file>`; never "preserve its bytes" with
-  `-c core.autocrlf=false add` (that is how `ModelCatalog.tsx` stayed broken).
-- **Never rewrite a file to change its EOLs**, and never stage a file round-tripped through a
-  script for an unrelated edit. One-line edits must stay one-line diffs.
-- **Read a suspicious diff**: `git diff --ignore-cr-at-eol` (empty ⇒ EOL-only, no content change),
-  `git diff --numstat` (a whole-file count on a small edit is the signature above).
+- **Healthy**: `git ls-files --eol <file>` → `i/lf w/lf`.
+- **`i/crlf`** (blob committed with CRLF): every later edit diffs as a whole-file rewrite.
+  `git add --renormalize <file>` and commit — do not "preserve its bytes" with
+  `-c core.autocrlf=false add`.
+- **`w/crlf` only**: something converted the file; git sees no content change and will not
+  restore it. Delete it and `git checkout -- <file>`, or rewrite the bytes as LF.
+- **A whole-file diff with no content change is that signature**; `git diff --ignore-cr-at-eol`
+  empty confirms it. Never "fix" it by editing the file.
+- **Write UTF-8 / LF**, keep one-line edits to one-line diffs, and check for `\r\r` after
+  scripted writes (the CSS note above).
 
 ---
 
