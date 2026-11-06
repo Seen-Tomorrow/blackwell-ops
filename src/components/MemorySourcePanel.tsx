@@ -160,7 +160,11 @@ function collectRecap(
 }
 
 function sourceRecapLabel(memorySource: MemorySource): string {
-  if (memorySource.kind === "learned") return "LEARNED · EXACT (previous launch)";
+  if (memorySource.kind === "learned") {
+    return memorySource.exact === false
+      ? "LEARNED · ESTIMATE (measured at another CTX)"
+      : "LEARNED · EXACT (previous launch)";
+  }
   if (memorySource.kind === "learned_curve") return "LEARNED · CURVE";
   if (memorySource.kind === "fit_probe") {
     return memorySource.exact === false ? "FIT PROBE · ESTIMATE" : "FIT PROBE · MEASURED";
@@ -175,15 +179,17 @@ export function getMemorySourceView(
 ): MemorySourceView {
   const isCurve = memorySource.kind === "learned_curve";
   const isFitProbe = memorySource.kind === "fit_probe";
-  const isLearnedExact = memorySource.kind === "learned";
+  // EXACT is a promise about THIS CTX: a learned row measured somewhere else is ESTIMATE.
+  const isLearnedExact = memorySource.kind === "learned" && memorySource.exact !== false;
   const isExact = memorySource.exact !== false && !isCurve;
-  const isEstimate = isCurve || (isFitProbe && memorySource.exact === false);
-  const idleStatus = ((): MemorySourceView["idleStatus"] => {
-    if (isLearnedExact) return "EXACT";
-    if (isCurve) return "CURVE";
-    if (isFitProbe) return isExact ? "MEASURED" : "ESTIMATE";
-    return null;
-  })();
+  const isEstimate = isCurve || memorySource.exact === false;
+  const idleStatus: MemorySourceView["idleStatus"] = isLearnedExact
+    ? "EXACT"
+    : isCurve
+      ? "CURVE"
+      : isExact
+        ? "MEASURED"
+        : "ESTIMATE";
 
   return {
     kindLabel: kindDisplayLabel(memorySource.kind),
@@ -343,9 +349,11 @@ export function MemorySourceStatusMark({
               ? "EXACT · 4/4 — launch measurement at this CTX"
               : view.isCurve
                 ? "CURVE · 3/4 — between two LEARNED launches (~95%)"
-                : view.isExact
-                  ? "MEASURED · 2/4 — FIT probe at this CTX"
-                  : "ESTIMATE · 1/4 — FIT walked off its probe CTX"
+                : view.isFitProbe
+                  ? view.isExact
+                    ? "MEASURED · 2/4 — FIT probe at this CTX"
+                    : "ESTIMATE · 1/4 — FIT walked off its probe CTX"
+                  : "ESTIMATE · 1/4 — measured at another CTX, shown unscaled"
           }
         >
           {view.idleStatus}

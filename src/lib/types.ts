@@ -895,6 +895,17 @@ export interface GpuAllocation {
 
 type MemorySourceKind = "fit_probe" | "learned" | "learned_curve";
 
+/**
+ * Which measured thing the NEED number came from — exactly one per painted manifest.
+ * A point is only valid at the context it was measured at; there is no scaling state.
+ */
+export type MemorySourceState =
+  | "launch_exact"
+  | "launch_curve"
+  | "probe_exact"
+  | "probe_other"
+  | "launch_other";
+
 
 export interface MemorySource {
   kind: MemorySourceKind;
@@ -965,6 +976,13 @@ export interface VramManifest {
   autoLayerSplit?: boolean;
   /** Active memory estimation path — drives SOURCE panel and GB accent color. */
   memorySource?: MemorySource;
+  /** Resolver state that produced vramTotalGb — the SOURCE panel is built from it. */
+  memorySourceState?: MemorySourceState;
+  /** Measured CTX of the point the number came from (single-point estimate only). */
+  memorySourceAnchorCtx?: number;
+  /** Host weights the LAST launch of this config put in RAM — history, never gated. */
+  lastLaunchSpillGb?: number;
+  lastLaunchSpillAt?: string;
   /** Display timestamp for on-demand FIT PROBE (set when user runs validate). */
   fitProbeMeasuredAt?: string;
 }

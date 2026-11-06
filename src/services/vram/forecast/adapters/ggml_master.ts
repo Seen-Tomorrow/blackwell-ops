@@ -1,16 +1,16 @@
 /**
- * GGML-MASTER forecast adapter — measured only.
+ * GGML-MASTER forecast adapter — measured only, one number, one source.
  *
- * Priority:
- *   1. LEARNED exact @ live ctx (per-split identity)
- *   2. LEARNED≈ curve (probe may seed curve when split=none only)
- *   3. live FIT PROBE at split=none (carries user hard knobs)
- *        + independent split tax @ live CTX from library FIT Δ
- *        (fallback constants only when library Δ missing / non-positive)
- *   4. LEARNED row ctx-delta'd
- *   else null → skeleton / auto-probe
+ *   launch point EXACTLY at this CTX      → EXACT
+ *   two or more launch points             → CURVE (line between them)
+ *   probe point EXACTLY at this CTX       → MEASURED
+ *   one point, any other CTX              → ESTIMATE (shown where it was measured)
+ *   else                                  → null, skeleton / auto-probe
  *
- * No GGUF formula path. Split tax does not depend on live KV/batch/quant.
+ * No ctx scaling, no split tax: a point is only valid at the CTX it was measured at, a
+ * launch measured the split it ran, and a probe runs with the split it is asked for.
+ * Library FIT points are deliberately not consumed — they run fixed q4_0 knobs.
+ * A launch that spilled weights to the host is an outcome, not a need.
  */
 import type { VramManifest } from "../../../../lib/types";
 import { pickFullAutoSingleGpuListPos } from "../../../../lib/fullAutoGpuPick";
@@ -19,7 +19,6 @@ import {
   needsAutoLayerSplit,
 } from "../../../../lib/autoVramLaunch";
 import {
-  adjustMeasuredGbForCtx,
   buildGpuAllocations,
   barStyleFromNeedTone,
   cfgStr,
@@ -30,17 +29,13 @@ import {
   launchPaintFromGate,
   needToneFromLaunchPaint,
   parseCtx,
-  probeAppliesToCtx,
-  resolveSplitTax,
   round2,
   sanitizeLearnedCurve,
 } from "../../shared";
 import {
   freeFingerprintFromGb,
-  isFullGpuLearnedPoint,
   isLiveWeightSpill,
   isWeightClassHostSpill,
-  learnedLooksLikeFreeDependentSpill,
   lowVramBarInsets,
   ramNeedToneForHost,
   showHostRamBar,
@@ -49,7 +44,6 @@ import {
 import { attachMemorySource } from "../memorySource";
 import { specDraftPathConfigured } from "../draftPath";
 import { resolveSpecAdapter } from "../../../../lib/spec/adapters";
-import { isDevBuild } from "../../../../lib/build";
 import type { ForecastAdapter, ForecastInput } from "../types";
 
 function draftAddonGb(input: ForecastInput): number {
@@ -78,7 +72,6 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   if (input.gpus.length === 0) return null;
 
   const liveCtx = parseCtx(String(input.engineConfig.extra_params?.ctx ?? "32768"));
-  const kvQuant = String(input.engineConfig.extra_params?.kv_quant ?? "f16");
   const fullAuto = input.fullAutoMode === true;
   const gpuAvailable = computeGpuAvailableList(input.gpus, input.runningSlots);
   const multiTotalAvailable = gpuAvailable.reduce((a, b) => a + b, 0);
@@ -94,151 +87,155 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   );
   const learnedHasDraft = adapter ? adapter.memory.learnedIncludesDraft(draftPathConfigured) : false;
   const needsDraftAdd = draftAddon > 0 && !learnedHasDraft;
-  const withDraft = (gb: number | null): number | null =>
-    gb == null ? null : needsDraftAdd ? gb + draftAddon : gb;
-  const splitMode = cfgStr(input.engineConfig, "split", "none");
-  const splitTax = resolveSplitTax(splitMode, liveCtx, input.fitPoints);
+  // A point is only valid at the context it was measured at — nothing is scaled to another
+  // CTX, and nothing is added for split mode: a launch measured the split it ran, and a
+  // probe is run with the split it is asked for.
   const probeAnchorCtx = input.fitProbeAnchorCtx ?? 0;
-  // A probe measured one ctx. At another ctx it is an estimate, not a measurement: scale it
-  // by the same ctx delta the learned points use, instead of reusing the raw number (which
-  // was off by tens of GB) or dropping it entirely (which left the glass stuck on EVALUATING).
-  const probeGbRaw = input.fitProbeVramMib != null && input.fitProbeVramMib > 0
-    ? input.fitProbeVramMib / 1024
-    : null;
-  const probeGb = probeGbRaw != null
-    ? probeAppliesToCtx(probeAnchorCtx, liveCtx)
-      ? probeGbRaw
-      : adjustMeasuredGbForCtx(
-          probeGbRaw,
-          probeAnchorCtx,
-          liveCtx,
-          input.fitPoints,
-          input.modelMeta,
-          kvQuant,
-        )
-    : null;
-  const probeHostGb = input.fitProbeHostMib != null && input.fitProbeHostMib > 0
-    ? input.fitProbeHostMib / 1024
-    : null;
-  const probeAnchor = input.fitProbeAnchorCtx ?? 0;
-  // FIT cannot tensor — probe ran as layer. Add Δ(tensor−layer) if library has it.
-  const tensorProxyTaxGb =
-    splitMode.toLowerCase() === "tensor" && probeGb != null
-      ? Math.max(
-          0,
-          resolveSplitTax("tensor", liveCtx, input.fitPoints).taxGb
-            - resolveSplitTax("layer", liveCtx, input.fitPoints).taxGb,
-        )
-      : 0;
-  const splitTaxGb = probeGb != null ? tensorProxyTaxGb : splitTax.taxGb;
-  const probeAppliesToCurve = probeGb != null;
+  const probeGbRaw =
+    input.fitProbeVramMib != null && input.fitProbeVramMib > 0
+      ? input.fitProbeVramMib / 1024
+      : null;
+  const probeHostGb =
+    input.fitProbeHostMib != null && input.fitProbeHostMib > 0
+      ? input.fitProbeHostMib / 1024
+      : null;
 
-  const allLearnedPts = sanitizeLearnedCurve(input.learnedCurve);
-  // GPU lerp uses every launch at this split. Host>2.5 must not drop a 1M
-  // point or the slider cliffs to FIT (~42G) one tick off the mark.
-  const mergedCurve = allLearnedPts.map((p) => ({ ...p }));
-  if (
-    probeAppliesToCurve
-    && allLearnedPts.length < 2
-    && probeAnchor > 0
-    && isFullGpuLearnedPoint(probeHostGb != null ? probeHostGb * 1024 : undefined)
-    && !mergedCurve.some((p) => p.ctx === probeAnchor)
-  ) {
-    mergedCurve.push({
-      ctx: probeAnchor,
-      vramMib: (probeGb + draftAddon) * 1024,
-      hostMib: probeHostGb != null ? probeHostGb * 1024 : undefined,
-    });
+  /** By-design host lookup tables (Engram / PLE) are not spill. */
+  const engramGb = Math.max(
+    0,
+    input.fitProbeEngramMib ?? input.learnedEngramMib ?? input.modelEngramMib ?? 0,
+  ) / 1024;
+
+  /** A launch that put weight-class bytes on the host is an outcome, not a need. */
+  const hostLooksSpilled = (
+    modelMib: number | null | undefined,
+    hostMib: number | null | undefined,
+  ): boolean => {
+    const baseGb =
+      modelMib != null && modelMib > 0 ? modelMib / 1024 : (hostMib ?? 0) / 1024;
+    return isWeightClassHostSpill(Math.max(0, baseGb - engramGb));
+  };
+
+  type ForecastPoint = {
+    ctx: number;
+    gb: number;
+    hostGb: number | null;
+    kind: "launch" | "probe";
+  };
+
+  // A low-VRAM probe away from its CTX is a spill outcome, not a need — never a point.
+  const probeAtLiveCtx = probeAnchorCtx <= 0 || probeAnchorCtx === liveCtx;
+  const probePoint: ForecastPoint | null =
+    probeGbRaw != null && (input.fitProbeMode !== "low_vram" || probeAtLiveCtx)
+      ? {
+          ctx: probeAnchorCtx > 0 ? probeAnchorCtx : liveCtx,
+          gb: probeGbRaw,
+          hostGb: probeHostGb,
+          kind: "probe",
+        }
+      : null;
+
+  // Launch points: measured launches only, and never one that pushed weights to the host.
+  const launchPoints: ForecastPoint[] = sanitizeLearnedCurve(input.learnedCurve)
+    .filter((p) => !hostLooksSpilled(undefined, p.hostMib))
+    .map((p) => ({
+      ctx: p.ctx,
+      gb: p.vramMib / 1024,
+      hostGb: p.hostMib != null ? p.hostMib / 1024 : null,
+      kind: "launch" as const,
+    }));
+  // The exact-key row is the authority at its own CTX; the curve is the broad read.
+  const entryCtx = input.learnedAnchorCtx ?? liveCtx;
+  const entryGb =
+    input.learnedVramMib != null && input.learnedVramMib > 0
+      ? input.learnedVramMib / 1024
+      : null;
+  const entrySpilled = hostLooksSpilled(input.learnedHostModelMib, input.learnedHostMib);
+  if (entryGb != null && !entrySpilled) {
+    const at = launchPoints.findIndex((p) => p.ctx === entryCtx);
+    const entryPoint: ForecastPoint = {
+      ctx: entryCtx,
+      gb: entryGb,
+      hostGb: input.learnedHostMib != null ? input.learnedHostMib / 1024 : null,
+      kind: "launch",
+    };
+    if (at >= 0) launchPoints[at] = entryPoint;
+    else launchPoints.push(entryPoint);
+    launchPoints.sort((a, b) => a.ctx - b.ctx);
   }
 
-  const liveLowVram =
-    input.fitProbeMode === "low_vram"
-    && probeGb != null
-    && probeAnchor === liveCtx;
-
-  const exactPt = liveLowVram ? undefined : allLearnedPts.find((p) => p.ctx === liveCtx);
-  const curveHit = interpolateLearnedCurveGb(mergedCurve, liveCtx);
-  const learnedExactGbRaw =
-    exactPt != null && exactPt.vramMib > 0 ? exactPt.vramMib / 1024 : null;
-  const curveGbRaw =
-    !liveLowVram
-    && learnedExactGbRaw == null
-    && curveHit
-    && mergedCurve.length >= 2
-      ? curveHit.vramGb
-      : null;
-
-  const rawLearnedGb = input.learnedVramMib != null && input.learnedVramMib > 0
-    ? input.learnedVramMib / 1024
-    : null;
-  const learnedBaseGb =
-    rawLearnedGb != null
-      ? rawLearnedGb + (needsDraftAdd ? draftAddon : 0)
-      : null;
-  const learnedDeltaGbRaw =
-    !liveLowVram
-    && learnedBaseGb != null
-    && learnedExactGbRaw == null
-    && curveGbRaw == null
-      ? adjustMeasuredGbForCtx(
-          learnedBaseGb,
-          input.learnedAnchorCtx ?? liveCtx,
+  const curveHit =
+    launchPoints.length >= 2
+      ? interpolateLearnedCurveGb(
+          launchPoints.map((p) => ({
+            ctx: p.ctx,
+            vramMib: p.gb * 1024,
+            hostMib: p.hostGb != null ? p.hostGb * 1024 : undefined,
+          })),
           liveCtx,
-          input.fitPoints,
-          input.modelMeta,
-          kvQuant,
         )
       : null;
 
-  // Exact CTX host, else lerp host from full-GPU curve (buffer only).
-  const learnedHostGbRaw = liveLowVram
-    ? probeHostGb
-    : exactPt != null && exactPt.hostMib != null
-      ? exactPt.hostMib / 1024
-      : learnedExactGbRaw != null && input.learnedHostMib != null && input.learnedHostMib > 0
-        ? input.learnedHostMib / 1024
-        : curveHit?.hostGb ?? null;
-  const targetAvailForGate = gpuAvailable[tgt] ?? Math.max(...gpuAvailable, 0);
-  const discardSpillLearned =
-    !liveLowVram
-    && isDevBuild()
-    // Exact launches and the multi-point curve are measurements — trust them.
-    // Only a lone learned base can be a free-dependent spill leftover.
-    && learnedExactGbRaw == null
-    && curveGbRaw == null
-    && learnedLooksLikeFreeDependentSpill(
-      learnedDeltaGbRaw,
-      learnedHostGbRaw,
-      targetAvailForGate,
-    );
+  // One number, one source. An exact launch beats the line; the line beats a single point.
+  const exactLaunch = launchPoints.find((p) => p.ctx === liveCtx) ?? null;
+  const nearestPoint =
+    [...launchPoints, ...(probePoint ? [probePoint] : [])]
+      .slice()
+      .sort((a, b) => {
+        const byCtx = Math.abs(a.ctx - liveCtx) - Math.abs(b.ctx - liveCtx);
+        if (byCtx !== 0) return byCtx;
+        return (a.kind === "launch" ? 0 : 1) - (b.kind === "launch" ? 0 : 1);
+      })[0] ?? null;
 
-  const learnedExactGb = discardSpillLearned ? null : learnedExactGbRaw;
-  const curveGb = discardSpillLearned ? null : curveGbRaw;
-  const learnedDeltaGb = discardSpillLearned ? null : learnedDeltaGbRaw;
-  const learnedHostGb = discardSpillLearned ? null : learnedHostGbRaw;
+  type SourceState =
+    | "launch_exact"
+    | "launch_curve"
+    | "probe_exact"
+    | "probe_other"
+    | "launch_other";
+  let source: SourceState;
+  let baseGb: number | null = null;
+  let chosenHostGb: number | null = null;
+  let chosenCtx = liveCtx;
+  if (probePoint && probePoint.ctx === liveCtx && input.fitProbeMode === "low_vram") {
+    source = "probe_exact";
+    baseGb = probePoint.gb;
+    chosenHostGb = probePoint.hostGb;
+  } else if (exactLaunch) {
+    source = "launch_exact";
+    baseGb = exactLaunch.gb;
+    chosenHostGb = exactLaunch.hostGb;
+  } else if (curveHit) {
+    source = "launch_curve";
+    baseGb = curveHit.vramGb;
+    chosenHostGb = curveHit.hostGb;
+  } else if (nearestPoint) {
+    source =
+      nearestPoint.kind === "probe"
+        ? nearestPoint.ctx === liveCtx
+          ? "probe_exact"
+          : "probe_other"
+        : "launch_other";
+    baseGb = nearestPoint.gb;
+    chosenHostGb = nearestPoint.hostGb;
+    chosenCtx = nearestPoint.ctx;
+  } else {
+    return null;
+  }
 
-  const probeNoneAtLiveGb =
-    liveLowVram || (curveGb == null && learnedExactGb == null && probeGb != null)
-      ? adjustMeasuredGbForCtx(
-          probeGb + draftAddon,
-          probeAnchor || liveCtx,
-          liveCtx,
-          input.fitPoints,
-          input.modelMeta,
-          kvQuant,
-        )
-      : null;
-  const probeWithDraftGb =
-    probeNoneAtLiveGb != null ? probeNoneAtLiveGb + splitTaxGb : null;
-
-  const estimateGb = liveLowVram
-    ? probeWithDraftGb
-    : withDraft(learnedExactGb) ?? withDraft(curveGb) ?? withDraft(learnedDeltaGb) ?? probeWithDraftGb;
+  const isProbeSource = source === "probe_exact" || source === "probe_other";
+  // A probe never loads the draft head; a launch add-on is only needed when its snapshot
+  // did not already include it.
+  const withDraft = (gb: number | null): number | null =>
+    gb == null ? null : isProbeSource || needsDraftAdd ? gb + draftAddon : gb;
+  const estimateGb = withDraft(baseGb);
   if (estimateGb == null || !Number.isFinite(estimateGb) || estimateGb <= 0) return null;
 
-  const learnedGb = discardSpillLearned
-    ? null
-    : withDraft(learnedExactGb) ?? withDraft(curveGb) ?? learnedDeltaGb;
+  const learnedGb = source.startsWith("launch") ? estimateGb : null;
+  const hostMeasuredGb = chosenHostGb;
+  const measurementAtLiveCtx =
+    source === "launch_exact" || (isProbeSource && probePoint?.ctx === liveCtx);
+
 
   // ASSISTED: NONE means this GPU + offload, never auto-promote to layer.
   // FULL AUTO may still shift when need exceeds the best single card.
@@ -264,16 +261,10 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     !overSystemMemory && (trustFitAtLoad || estimateGb <= targetAvail - headroomGb);
 
   const gpuProjectionGb = estimateGb;
-  const probeHostAtLive =
-    probeHostGb != null && probeAnchor === liveCtx ? probeHostGb : null;
-  const hostMeasuredGb = learnedHostGb ?? probeHostAtLive;
   // Lookup table (Engram / PLE): host by design, and usually the bulk of the measured
   // host figure (125.9 GB on DeepSeek-V4.1). Counting it as spill made every such model
   // paint OVER FREE · SPILL even when the launch offloads nothing.
-  const engramNeedGb = Math.max(
-    0,
-    input.fitProbeEngramMib ?? input.learnedEngramMib ?? input.modelEngramMib ?? 0,
-  ) / 1024;
+  const engramNeedGb = engramGb;
   // Only host bytes ABOVE the by-design table can be a weight spill.
   const hostSpillLikeGb = Math.max(0, (hostMeasuredGb ?? 0) - engramNeedGb);
   const hostOffloadGb = isWeightClassHostSpill(hostSpillLikeGb) ? hostSpillLikeGb : 0;
@@ -343,11 +334,6 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
 
   const liveFreeFp = freeFingerprintFromGb(targetAvail);
   const fittedNgl = input.fitProbeFittedNgl;
-  const measurementAtLiveCtx =
-    exactPt != null
-    || (input.fitProbeMode === "low_vram"
-      && input.fitProbeAnchorCtx != null
-      && input.fitProbeAnchorCtx === liveCtx);
   const realSpill = isLiveWeightSpill({
     estimateGb,
     freeGb: targetAvail,
@@ -417,14 +403,17 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
       ? `${gpuProjectionGb.toFixed(1)} GB GPU measured — ${splitHint}`
       : `${gpuProjectionGb.toFixed(1)} GB GPU measured — ${splitHint}`;
 
-  const isProbePrimary =
-    learnedExactGb == null && curveGb == null && probeWithDraftGb != null;
-  const validatedVramMib = isProbePrimary
-    ? Math.round(gpuProjectionGb * 1024)
-    : input.fitProbeVramMib;
-  const validatedHostMib = isProbePrimary
-    ? input.fitProbeHostMib
-    : input.fitProbeHostMib ?? (learnedHostGb != null ? Math.round(learnedHostGb * 1024) : undefined);
+  const validatedVramMib = isProbeSource ? Math.round(gpuProjectionGb * 1024) : undefined;
+  const validatedHostMib = isProbeSource ? input.fitProbeHostMib : undefined;
+  // History, never gated: what the LAST launch of this config put on the host.
+  const lastLaunchSpillGb = entrySpilled
+    ? Math.max(
+        0,
+        (input.learnedHostModelMib != null && input.learnedHostModelMib > 0
+          ? input.learnedHostModelMib / 1024
+          : (input.learnedHostMib ?? 0) / 1024) - engramNeedGb,
+      )
+    : 0;
 
   const launchPaint = launchPaintFromGate(fits, useOffloadPalette);
   const vramFreeUtil = freePoolUtil(estimateGb, targetAvail);
@@ -459,11 +448,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     realSpill: spill,
   });
 
-  const hostTotalGb = Math.max(
-    hostMeasuredGb ?? 0,
-    probeHostGb ?? 0,
-    learnedHostGb ?? 0,
-  );
+  const hostTotalGb = hostMeasuredGb ?? 0;
   const hostSplit = splitHostRamGb({
     hostGb: hostTotalGb,
     hostModelGb:
@@ -484,7 +469,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   }
   // Total host need is unchanged: buffer + weights + the lookup table.
   const ramNeedGb = hostSplit.bufferGb + hostSplit.weightGb + hostSplit.engramGb;
-  const engramGb = hostSplit.engramGb;
+  const hostEngramGb = hostSplit.engramGb;
   const spillWeightGb = hostSplit.weightGb;
 
   const base: VramManifest = {
@@ -526,7 +511,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     ramTotalGb: round2(ramNeedGb),
     ramBufferGb: round2(hostSplit.bufferGb),
     ramWeightGb: round2(spillWeightGb),
-    ramEngramGb: round2(engramGb),
+    ramEngramGb: round2(hostEngramGb),
     ramManufacturedGb: input.ramManufacturedGb,
     ramAvailableGb: input.ramAvailableGb,
     gpuAllocations: buildGpuAllocations(
@@ -540,14 +525,11 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     gpuLayers: 0,
     ramLayers: 0,
     autoLayerSplit: autoSplit,
-    learnedFromPreviousRun: learnedExactGb != null,
-    learnedInterpolated: curveGb != null,
-    learnedCurveCtxs: allLearnedPts.map((p) => p.ctx),
+    learnedFromPreviousRun: source === "launch_exact",
+    learnedInterpolated: source === "launch_curve",
+    learnedCurveCtxs: launchPoints.map((p) => p.ctx),
     forecastCurve: (() => {
-      const pts = mergedCurve.map((p) => ({
-        ctx: p.ctx,
-        gb: round2(p.vramMib / 1024),
-      }));
+      const pts = launchPoints.map((p) => ({ ctx: p.ctx, gb: round2(p.gb) }));
       if (!pts.some((p) => p.ctx === liveCtx)) {
         pts.push({ ctx: liveCtx, gb: round2(estimateGb) });
       }
@@ -556,10 +538,16 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     forecastFreeGb: round2(targetAvail),
     validatedVramMib,
     validatedHostMib,
-    validatedGpuBreakdownMib: probePlacementMatches
-      ? input.fitProbeGpuBreakdownMib
-      : undefined,
-    fitProbeMeasuredAt: input.fitProbeMeasuredAt,
+    validatedGpuBreakdownMib:
+      isProbeSource && probePlacementMatches ? input.fitProbeGpuBreakdownMib : undefined,
+    validatedComponentsMib:
+      isProbeSource && probePlacementMatches ? input.fitProbeComponentsMib ?? null : null,
+    memorySourceState: source,
+    memorySourceAnchorCtx:
+      source === "launch_other" || source === "probe_other" ? chosenCtx : undefined,
+    lastLaunchSpillGb: lastLaunchSpillGb > 0.05 ? round2(lastLaunchSpillGb) : undefined,
+    lastLaunchSpillAt: lastLaunchSpillGb > 0.05 ? input.learnedMeasuredAt : undefined,
+    fitProbeMeasuredAt: isProbeSource ? input.fitProbeMeasuredAt : undefined,
   };
 
   return attachMemorySource(base, input);

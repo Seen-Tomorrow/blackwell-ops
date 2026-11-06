@@ -4,11 +4,12 @@ import type {
   ModelMetadata,
   VramManifest,
 } from "../../../lib/types";
-import type { FitPoint, RunningSlotInfo } from "../shared";
+import type { RunningSlotInfo } from "../shared";
 
 /**
  * Measured-only forecast input.
- * No GGUF formula path — paint requires LEARNED / LEARNED≈ / FIT PROBE.
+ * No GGUF formula path — paint requires a launch point, a launch curve, or a FIT probe.
+ * The FIT library sweep is deliberately not an input: it measures fixed q4_0 knobs.
  */
 export interface ForecastInput {
   modelMeta: ModelMetadata;
@@ -20,7 +21,6 @@ export interface ForecastInput {
   mmprojSizeMib?: number;
   /** External draft GGUF size (MiB) — FIT probe never loads draft. */
   draftSizeMib?: number;
-  fitPoints?: FitPoint[];
   autoVramLaunch?: boolean;
   fullAutoMode?: boolean;
   fitStyle?: string;
@@ -54,6 +54,8 @@ export interface ForecastInput {
   /** Host-resident lookup table (Engram / PLE) — never VRAM by design. */
   fitProbeEngramMib?: number;
   fitProbeGpuBreakdownMib?: number[];
+  /** Per-GPU model/ctx/compute from the probe table — tooltip breakdown. */
+  fitProbeComponentsMib?: VramManifest["validatedComponentsMib"];
   fitProbePlacementKey?: string;
   fitProbeAnchorCtx?: number;
   /** Display clock when probe completed (session). */

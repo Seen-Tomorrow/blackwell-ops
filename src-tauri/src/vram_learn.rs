@@ -1840,6 +1840,10 @@ pub fn get_learned_vram(
     vram_topo: Option<String>,
     ubatch: Option<u32>,
     parallel: Option<u32>,
+    // Forecast only: a row recorded at ANOTHER ctx is not a measurement of this one, and
+    // presenting it as such made every ctx look EXACT. Seats keep the any-device fallback
+    // (they ask "what did this model cost anywhere"), the forecast never does.
+    strict_ctx: Option<bool>,
 ) -> Option<LearnedVramEntry> {
     let _guard = STORE_MUTEX.lock().ok()?;
     let mode = memory_mode
@@ -1878,16 +1882,21 @@ pub fn get_learned_vram(
         parallel.unwrap_or(1),
     ) {
         Some(entry) => entry,
-        None => lookup_learned_vram_any_device(
-            &model_path,
-            &provider_id,
-            &ctx,
-            &kv_quant,
-            &split,
-            &mode,
-            &offload,
-            cache,
-        )?,
+        None => {
+            if strict_ctx.unwrap_or(false) {
+                return None;
+            }
+            lookup_learned_vram_any_device(
+                &model_path,
+                &provider_id,
+                &ctx,
+                &kv_quant,
+                &split,
+                &mode,
+                &offload,
+                cache,
+            )?
+        }
     };
     // `batch` is not a memory knob: measured 2026-11-05, batch 512 vs 2048 changed no buffer at
     // all, so it is out of the identity and a different batch is still the same measurement.

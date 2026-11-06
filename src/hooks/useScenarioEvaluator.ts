@@ -4,13 +4,14 @@ import type { ModelEntry, EngineConfig, GpuInfo, StackEntry, SystemInfo, VramMan
 import { evaluate, committedSlotsFromStack, committedStackKey, parseCtx, computeGpuAvailableList, type ScenarioInput, type FitPoint } from "../services/vram/scenarios/scenarios_factory";
 import {
   freeFingerprintFromGb,
+  isWeightClassHostSpill,
   learnedLooksLikeFreeDependentSpill,
   shouldApplyLowVramSession,
   type FitProbeMode,
 } from "../services/vram/lowVramProbe";
 import { isDevBuild } from "../lib/build";
 import { gpuMemoryBucketKey, vramManifestSnapshotEqual, vramTopoTag } from "../lib/telemetryGpu";
-import { attachMemorySource, MEMORY_SOURCE_LABELS } from "../services/vram/memorySource";
+import { MEMORY_SOURCE_LABELS } from "../services/vram/memorySource";
 import { sanitizeLearnedCurve } from "../services/vram/shared";
 import { tomMtpBlocked, toastTomMtpSkip, TOM_MTP_SKIP_MESSAGE } from "../lib/tomMtp";
 import { errorKind, errorMessage } from "../lib/blackwellError";
@@ -43,6 +44,20 @@ type ProbeSession = {
 function ggufEngramMib(model: ModelEntry | null | undefined): number | undefined {
   const bytes = model?.ggufShape?.lookupTableBytes;
   return bytes != null && bytes > 0 ? bytes / 1_048_576 : undefined;
+}
+/**
+ * Mirrors the forecast adapter: host bytes above the by-design lookup table are a weight
+ * spill. Such a launch is an outcome, not a measurement of what the config needs, so it
+ * must not suppress the probe that would produce a real need.
+ */
+function learnedLaunchSpilled(
+  hostModelMib: number | null | undefined,
+  hostMib: number | null | undefined,
+  engramMib: number | null | undefined,
+): boolean {
+  const baseGb =
+    hostModelMib != null && hostModelMib > 0 ? hostModelMib / 1024 : (hostMib ?? 0) / 1024;
+  return isWeightClassHostSpill(Math.max(0, baseGb - (engramMib ?? 0) / 1024));
 }
 function placementConfigKey(config: Record<string, unknown>): string {
   return `${config.device || ""}|${config.split || ""}|${config.gpu_sync || ""}`;
@@ -139,6 +154,7 @@ function probeScenarioFields(
     fitProbeHostModelMib: session.validatedHostModelMib,
     fitProbeEngramMib: session.validatedEngramMib,
     fitProbeGpuBreakdownMib: placementMatches ? session.validatedGpuBreakdownMib : undefined,
+    fitProbeComponentsMib: placementMatches ? session.validatedComponentsMib : undefined,
     fitProbePlacementKey: session.placementKey,
     fitProbeAnchorCtx: session.anchorCtx,
     fitProbeMeasuredAt: session.fitProbeMeasuredAt,
@@ -146,29 +162,6 @@ function probeScenarioFields(
     fitProbeFreeFingerprint: session.freeFingerprint,
     fitProbeFittedNgl: session.fittedNgl,
   };
-}
-
-function attachProbeManifest(
-  manifest: VramManifest | null,
-  session: ProbeSession,
-  input: ScenarioInput,
-  placementMatches: boolean,
-): VramManifest | null {
-  if (!manifest) return null;
-  const breakdownMib = placementMatches
-    ? session.validatedGpuBreakdownMib
-    : manifest.gpuAllocations.map((a) => a.projectedLoadGb * 1024);
-  return attachMemorySource(
-    {
-      ...manifest,
-      validatedVramMib: session.validatedVramMib,
-      validatedGpuBreakdownMib: breakdownMib,
-      validatedHostMib: session.validatedHostMib,
-      validatedComponentsMib: placementMatches ? session.validatedComponentsMib : null,
-      fitProbeMeasuredAt: session.fitProbeMeasuredAt,
-    },
-    input,
-  );
 }
 
 
@@ -485,6 +478,8 @@ export function useScenarioEvaluator({
   const learnedMtpContextRef = useRef<number | undefined>(undefined);
   const learnedAnchorCtxRef = useRef<number | undefined>(undefined);
   const learnedCurveRef = useRef<Array<{ ctx: number; vramMib: number; hostMib?: number }>>([]);
+  /** Last entry spilled weights to host — an outcome, not a usable need measurement. */
+  const learnedSpilledRef = useRef(false);
   const catalogModelsRef = useRef(catalogModels);
   catalogModelsRef.current = catalogModels;
   /** Disk-stat fallback for draft GGUF size when not in catalog metadata (MiB). */
@@ -641,7 +636,6 @@ export function useScenarioEvaluator({
       draftSizeMib:
         resolveDraftSizeMib(curConfig, catalogModelsRef.current)
         ?? draftDiskSizeRef.current,
-      fitPoints: fitPointsRef.current || undefined,
       autoVramLaunch: autoVramLaunchRef.current,
       fullAutoMode: fullAutoModeRef.current,
       fitStyle: fitStyleRef.current,
@@ -662,20 +656,7 @@ export function useScenarioEvaluator({
     };
 
     try {
-      let result = evaluate(input);
-      if (
-        session
-        && session.modelPath === model.path
-        && session.hardKey === curProbeKey
-        && sessionFields.fitProbeMode
-      ) {
-        result = attachProbeManifest(
-          result,
-          session,
-          input,
-          session.placementKey === curPlacementKey,
-        );
-      }
+      const result = evaluate(input);
       // Hold previous paint only for soft refresh of the *same* model + hard knobs
       // (LEARNED re-fetch / RE-PROBE). Model switch and hard-knob changes must show
       // EVALUATING radar — holding across identity made the skeleton disappear entirely.
@@ -770,6 +751,7 @@ export function useScenarioEvaluator({
       learnedMtpContextRef.current = undefined;
       learnedAnchorCtxRef.current = undefined;
       learnedCurveRef.current = [];
+      learnedSpilledRef.current = false;
       setLearnedCurveCtxs([]);
       learnedFetchPendingRef.current = false;
       return;
@@ -815,6 +797,8 @@ export function useScenarioEvaluator({
         vramTopo: vramTopo || null,
         parallel: Number(curConfig.parallel ?? 1),
         ubatch: Number(curConfig.ubatch ?? 0),
+        // A row recorded at another ctx must not masquerade as this one.
+        strictCtx: true,
       }),
       invoke<Array<{ ctx: number; vram_mib: number; host_mib?: number }>>("get_learned_vram_curve", {
         modelPath: model.path,
@@ -861,13 +845,18 @@ export function useScenarioEvaluator({
         learnedMeasuredAtRef.current = entry?.measured_at;
         learnedMtpContextRef.current = snap?.mtp_context_mib;
         learnedAnchorCtxRef.current = learnedVramRef.current ? queryCtx : undefined;
+        learnedSpilledRef.current = learnedLaunchSpilled(
+          learnedHostModelRef.current,
+          learnedHostRef.current,
+          learnedEngramRef.current ?? ggufEngramMib(model),
+        );
         const cleanCurve = sanitizeLearnedCurve(
           (curve ?? []).map((p) => ({
             ctx: p.ctx,
             vramMib: p.vram_mib,
             hostMib: p.host_mib,
           })),
-        );
+        ).filter((p) => !learnedLaunchSpilled(undefined, p.hostMib, ggufEngramMib(model)));
         learnedCurveRef.current = cleanCurve;
         setLearnedCurveCtxs(cleanCurve.map((p) => p.ctx));
       })
@@ -884,6 +873,7 @@ export function useScenarioEvaluator({
         learnedMtpContextRef.current = undefined;
         learnedAnchorCtxRef.current = undefined;
         learnedCurveRef.current = [];
+        learnedSpilledRef.current = false;
         setLearnedCurveCtxs([]);
       })
       .finally(() => {
@@ -1135,7 +1125,6 @@ export function useScenarioEvaluator({
         draftSizeMib:
           resolveDraftSizeMib(curConfig, catalogModelsRef.current)
           ?? draftDiskSizeRef.current,
-        fitPoints: fitPointsRef.current || undefined,
         autoVramLaunch: autoVramLaunchRef.current,
         fullAutoMode: fullAutoModeRef.current,
         fitStyle: fitStyleRef.current,
@@ -1155,6 +1144,7 @@ export function useScenarioEvaluator({
         fitProbeVramMib: result.vram_mib,
         fitProbeHostMib: result.host_mib,
         fitProbeGpuBreakdownMib: result.gpu_breakdown_mib,
+        fitProbeComponentsMib: result.gpu_components_mib,
         fitProbePlacementKey: curPlacementKey,
         fitProbeAnchorCtx: anchorCtx,
         fitProbeMeasuredAt: probeMeasuredAt,
@@ -1281,9 +1271,15 @@ export function useScenarioEvaluator({
         return;
       }
     }
-    // Skip auto-probe only for an identity-matched LEARNED row that is still
-    // usable. A hard-knob change forces a fresh probe.
-    if (!forceProbe && learnedVramRef.current != null) {
+    // Any usable launch history for this model means the forecast can paint a point or a
+    // curve; a CTX move alone must not fire a probe (the glass says ESTIMATE, RE-PROBE or
+    // move on). A spilled launch is history but not a need — it must not block the probe
+    // that would measure one. A hard-knob change forces a fresh probe.
+    if (
+      !forceProbe
+      && ((learnedVramRef.current != null && !learnedSpilledRef.current)
+        || (learnedCurveRef.current?.length ?? 0) > 0)
+    ) {
       const freeList = computeGpuAvailableList(
         gpusRef.current,
         committedSlotsFromStack(stackRef.current),
@@ -1291,6 +1287,7 @@ export function useScenarioEvaluator({
       const freeGb = Math.max(...freeList, 0);
       const spillLearned =
         isDevBuild()
+        && learnedVramRef.current != null
         && learnedLooksLikeFreeDependentSpill(
           learnedVramRef.current / 1024,
           (learnedHostRef.current ?? 0) / 1024,

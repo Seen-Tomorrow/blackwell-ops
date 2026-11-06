@@ -1,6 +1,6 @@
-import type { EngineConfig, MemorySource, VramManifest } from "../../../lib/types";
+import type { MemorySource, VramManifest } from "../../../lib/types";
 import type { ForecastInput } from "./types";
-import { cfgStr, parseCtx, resolveSplitTax } from "../shared";
+import { cfgStr } from "../shared";
 import { resolveSpecAdapter } from "../../../lib/spec/adapters";
 import { specDraftPathConfigured } from "./draftPath";
 
@@ -97,26 +97,42 @@ function draftLabel(input: ForecastInput): string {
   return adapter?.id === "mtp" ? "mtp" : "draft/spec";
 }
 
-/** Resolve SOURCE for measured manifests only. Returns null if nothing measured. */
+function ctxLabel(ctx: number | null | undefined): string {
+  if (ctx == null || !(ctx > 0)) return "another CTX";
+  return ctx >= 1024 ? `${Math.round(ctx / 1024)}K` : String(ctx);
+}
+
+/**
+ * SOURCE is built from the resolver state — one state per painted manifest.
+ * The label promises what the number is: EXACT only when a launch measured this CTX,
+ * ESTIMATE whenever the point was measured somewhere else (it is never scaled).
+ */
 function resolveMemorySource(
   manifest: VramManifest,
   input: ForecastInput,
 ): MemorySource | null {
+  const state = manifest.memorySourceState;
+  if (!state) return null;
   const split = cfgStr(input.engineConfig, "split", "none");
   const activeSplit = split.length > 0 && split.toUpperCase() !== "NONE" ? split : undefined;
   const weightFileBytes = input.modelMeta.file_size_bytes;
 
-  if (manifest.learnedFromPreviousRun) {
+  if (state === "launch_exact" || state === "launch_other") {
     const draftCtx = input.learnedSpecContextMib;
     // Display note only — the decision lives in the adapter (ggml_master).
     const draftNote =
       draftCtx != null && draftCtx > 0
         ? ` · ${draftLabel(input)} ~${(draftCtx / 1024).toFixed(1)} GB`
         : "";
+    const exact = state === "launch_exact";
     return {
       kind: "learned",
-      exact: true,
-      detail: `Launch at this ctx · ${formatMeasuredAt(input.learnedMeasuredAt)}${draftNote}`,
+      exact,
+      detail: exact
+        ? `Launch at this ctx · ${formatMeasuredAt(input.learnedMeasuredAt)}${draftNote}`
+        : `Measured at ${ctxLabel(manifest.memorySourceAnchorCtx)} · ${formatMeasuredAt(
+            input.learnedMeasuredAt,
+          )} · shown unscaled${draftNote}`,
       ...formatBreakdown(
         input.learnedGpuBreakdownMib,
         input.learnedHostMib,
@@ -125,11 +141,11 @@ function resolveMemorySource(
         activeSplit,
         weightFileBytes,
       ),
-      confidence: 4,
+      confidence: exact ? 4 : 1,
     };
   }
 
-  if (manifest.learnedInterpolated) {
+  if (state === "launch_curve") {
     const marks = (manifest.learnedCurveCtxs ?? [])
       .slice()
       .sort((a, b) => a - b)
@@ -142,49 +158,31 @@ function resolveMemorySource(
       confidence: 3,
     };
   }
-  if (manifest.fitProbeMeasuredAt != null && manifest.validatedVramMib != null) {
-    const liveCtx = parseCtx(String(input.engineConfig.extra_params?.ctx ?? "32768"));
-    const probeAnchor = input.fitProbeAnchorCtx ?? 0;
-    // Exact only when still parked on the CTX the probe was taken at.
-    const exact = probeAnchor > 0 ? liveCtx === probeAnchor : true;
-    const tax = resolveSplitTax(split, liveCtx, input.fitPoints);
-    let taxNote = "";
-    if (tax.taxGb > 0) {
-      const modeLab = formatSplitModeLabel(split) ?? split;
-      if (tax.source === "library") {
-        taxNote = ` · +${tax.taxGb.toFixed(1)} GB ${modeLab} tax (library FIT ×${tax.anchors})`;
-      } else {
-        taxNote = ` · +${tax.taxGb.toFixed(1)} GB ${modeLab} tax (fallback — no library Δ)`;
-      }
-    }
-    const bd = formatBreakdown(
-      manifest.validatedGpuBreakdownMib,
-      manifest.validatedHostMib,
-      manifest.validatedComponentsMib ?? undefined,
-      undefined,
-      activeSplit,
-      weightFileBytes,
-    );
-    // Inline detail stays short; GPU/host/tax live in tooltip recap only.
-    const tipBits = [
-      bd.breakdown,
-      bd.breakdownSecondary,
-      taxNote.replace(/^ · /, "") || undefined,
-      "via llama-fit-params",
-    ].filter(Boolean);
-    return {
-      kind: "fit_probe",
-      exact,
-      detail: exact
-        ? `measured ${manifest.fitProbeMeasuredAt}`
-        : `estimate from probe @ ${probeAnchor >= 1024 ? `${Math.round(probeAnchor / 1024)}K` : probeAnchor} · ${manifest.fitProbeMeasuredAt}`,
-      breakdown: tipBits.length > 0 ? tipBits.join(" · ") : bd.breakdown,
-      breakdownSecondary: undefined,
-      confidence: exact ? 2 : 1,
-    };
-  }
 
-  return null;
+  // probe_exact | probe_other
+  const exact = state === "probe_exact";
+  const probeAnchor = manifest.memorySourceAnchorCtx ?? input.fitProbeAnchorCtx ?? 0;
+  const bd = formatBreakdown(
+    manifest.validatedGpuBreakdownMib,
+    manifest.validatedHostMib,
+    manifest.validatedComponentsMib ?? undefined,
+    undefined,
+    activeSplit,
+    weightFileBytes,
+  );
+  const tipBits = [bd.breakdown, bd.breakdownSecondary, "via llama-fit-params"].filter(
+    Boolean,
+  );
+  return {
+    kind: "fit_probe",
+    exact,
+    detail: exact
+      ? `measured ${manifest.fitProbeMeasuredAt ?? "just now"}`
+      : `estimate from probe @ ${ctxLabel(probeAnchor)} · ${manifest.fitProbeMeasuredAt ?? "just now"}`,
+    breakdown: tipBits.length > 0 ? tipBits.join(" · ") : bd.breakdown,
+    breakdownSecondary: undefined,
+    confidence: exact ? 2 : 1,
+  };
 }
 
 export function attachMemorySource(
@@ -192,21 +190,11 @@ export function attachMemorySource(
   input: ForecastInput,
 ): VramManifest | null {
   const memorySource = resolveMemorySource(manifest, input);
-  if (memorySource) return { ...manifest, memorySource };
-  // FIT/LEARNED number exists but SOURCE kind missed — still paint, don't radar.
-  if (manifest.vramTotalGb > 0 || manifest.validatedVramMib != null) {
-    return {
-      ...manifest,
-      memorySource: {
-        kind: input.fitProbeVramMib != null ? "fit_probe" : "learned",
-        exact: false,
-        detail: "measured (source kind recovered)",
-        confidence: 2,
-      },
-    };
-  }
-  return null;
+  // No state means the adapter painted nothing it can name — do not invent a label.
+  if (!memorySource) return null;
+  return { ...manifest, memorySource };
 }
+
 
 export const MEMORY_SOURCE_LABELS: Record<MemorySource["kind"], string> = {
   fit_probe: "FIT PROBE",

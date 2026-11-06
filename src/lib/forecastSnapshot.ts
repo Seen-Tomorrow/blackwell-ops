@@ -28,6 +28,10 @@ export function forecastSnapshotFromManifest(
     auto_split: manifest?.autoLayerSplit === true || driver?.willSplit === true,
     fits: manifest?.fits ?? null,
     memory_source: manifest?.memorySource?.kind ?? null,
+    /** Which measured point produced the number — journaled for the drift scoreboard. */
+    memory_source_state: manifest?.memorySourceState ?? null,
+    /** CTX of that point when it is not the live one (shown unscaled). */
+    memory_source_anchor_ctx: manifest?.memorySourceAnchorCtx ?? null,
     // Whether the number is exact for this ctx, and how it was derived ("estimate from
     // probe @ 512K"): without this a probe taken at another ctx looks like a measurement
     // of the ctx actually launched.
