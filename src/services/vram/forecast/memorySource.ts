@@ -126,6 +126,7 @@ function resolveMemorySource(
         : "";
     const exact = state === "launch_exact";
     return {
+      state,
       kind: "learned",
       exact,
       detail: exact
@@ -152,10 +153,24 @@ function resolveMemorySource(
       .map((c) => (c >= 1024 ? `${Math.round(c / 1024)}K` : String(c)))
       .join(" · ");
     return {
+      state: "launch_curve",
       kind: "learned_curve",
       exact: false,
       detail: marks ? `Between launches ${marks}` : "Between stored launches",
       confidence: 3,
+    };
+  }
+
+  if (state === "probe_curve" || state === "probe_anchored") {
+    return {
+      state,
+      kind: "fit_probe",
+      exact: false,
+      detail:
+        state === "probe_anchored"
+          ? "Incomplete curve · launch level + FIT probe line"
+          : "Incomplete curve · FIT probe line",
+      confidence: 1,
     };
   }
 
@@ -174,6 +189,7 @@ function resolveMemorySource(
     Boolean,
   );
   return {
+    state,
     kind: "fit_probe",
     exact,
     detail: exact

@@ -903,10 +903,14 @@ export type MemorySourceState =
   | "launch_curve"
   | "probe_exact"
   | "probe_other"
-  | "launch_other";
+  | "launch_other"
+  | "probe_curve"
+  | "probe_anchored";
 
 
 export interface MemorySource {
+  /** Which resolver state produced this number (drives the recap wording). */
+  state?: MemorySourceState;
   kind: MemorySourceKind;
   /**
    * True when GB is an exact measurement at this CTX

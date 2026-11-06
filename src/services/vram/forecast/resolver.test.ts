@@ -175,6 +175,46 @@ describe("forecast resolver states", () => {
     expect(m?.lastLaunchSpillGb).toBeCloseTo(58, 1);
   });
 
+  it("INCOMPLETE CURVE: two probes give a line the KV slope cannot", () => {
+    const m = evaluate(
+      input({
+        fitProbeCurve: [
+          { ctx: 65_536, vramMib: 30 * GIB },
+          { ctx: 196_608, vramMib: 60 * GIB },
+        ],
+        engineConfig: {
+          ...input({}).engineConfig,
+          extra_params: { ctx: 131_072, split: "none", device: "GPU-0" },
+        },
+      }),
+    );
+    expect(m?.memorySourceState).toBe("probe_curve");
+    expect(m?.memorySource?.kind).toBe("fit_probe");
+    expect(m?.memorySource?.exact).toBe(false);
+    // 30 @64K → 60 @192K, so 45 @128K.
+    expect(m?.vramTotalGb).toBeCloseTo(45, 1);
+  });
+
+  it("INCOMPLETE CURVE: a launch level anchored on a probe slope", () => {
+    const m = evaluate(
+      input({
+        learnedCurve: [launchPoint(65_536, 40)],
+        fitProbeCurve: [
+          { ctx: 65_536, vramMib: 30 * GIB },
+          { ctx: 196_608, vramMib: 60 * GIB },
+        ],
+        engineConfig: {
+          ...input({}).engineConfig,
+          extra_params: { ctx: 131_072, split: "none", device: "GPU-0" },
+        },
+      }),
+    );
+    expect(m?.memorySourceState).toBe("probe_anchored");
+    // The launch measured 40 at 64K where the probe said 30; the +15 the probe predicts
+    // by 128K is added to the measured level → 55, not 45.
+    expect(m?.vramTotalGb).toBeCloseTo(55, 1);
+  });
+
   it("a by-design host lookup table is not spill", () => {
     // 120 GB host row, all of it the model's Engram table: still a full-GPU launch point.
     const m = evaluate(

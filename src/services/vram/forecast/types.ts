@@ -56,6 +56,12 @@ export interface ForecastInput {
   fitProbeGpuBreakdownMib?: number[];
   /** Per-GPU model/ctx/compute from the probe table — tooltip breakdown. */
   fitProbeComponentsMib?: VramManifest["validatedComponentsMib"];
+  /**
+   * A short probe sequence at two CTXs, run on demand when no launch curve exists.
+   * Two points make the footprint affine in CTX, so the incomplete curve captures compute
+   * growth instead of only KV.
+   */
+  fitProbeCurve?: Array<{ ctx: number; vramMib: number; hostMib?: number; kvMib?: number }>;
   fitProbePlacementKey?: string;
   fitProbeAnchorCtx?: number;
   /** Display clock when probe completed (session). */

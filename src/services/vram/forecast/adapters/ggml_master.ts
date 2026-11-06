@@ -164,6 +164,32 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
         }
       : null;
 
+  // An on-demand probe pair (or the probe that just ran) — two points make the footprint
+  // affine in CTX, so the predicted line captures compute growth, not only KV.
+  const probePoints: ForecastPoint[] =
+    input.fitProbeMode !== "low_vram"
+      ? (input.fitProbeCurve ?? []).map((p) => ({
+          ctx: p.ctx,
+          gb: p.vramMib / 1024,
+          hostGb: p.hostMib != null ? p.hostMib / 1024 : null,
+          kvMib: p.kvMib ?? null,
+          kind: "probe" as const,
+        }))
+      : [];
+  if (probePoint && !probePoints.some((p) => p.ctx === probePoint.ctx)) {
+    probePoints.push(probePoint);
+  }
+  const probeAsCurve = probePoints.map((p) => ({
+    ctx: p.ctx,
+    vramMib: p.gb * 1024,
+    hostMib: p.hostGb != null ? p.hostGb * 1024 : undefined,
+  }));
+  const probeLineHit =
+    probePoints.length >= 2 ? interpolateLearnedCurveGb(probeAsCurve, liveCtx) : null;
+  const probeLineAt = (ctx: number) =>
+    probePoints.length >= 2 ? interpolateLearnedCurveGb(probeAsCurve, ctx) : null;
+  const probeAtLive = probePoints.find((p) => p.ctx === liveCtx) ?? null;
+
   // Launch points: measured launches only, and never one that pushed weights to the host.
   const launchPoints: ForecastPoint[] = sanitizeLearnedCurve(input.learnedCurve)
     .filter((p) => !hostLooksSpilled(undefined, p.hostMib))
@@ -210,7 +236,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   // One number, one source. An exact launch beats the line; the line beats a single point.
   const exactLaunch = launchPoints.find((p) => p.ctx === liveCtx) ?? null;
   const nearestPoint =
-    [...launchPoints, ...(probePoint ? [probePoint] : [])]
+    [...launchPoints, ...probePoints]
       .slice()
       .sort((a, b) => {
         const byCtx = Math.abs(a.ctx - liveCtx) - Math.abs(b.ctx - liveCtx);
@@ -223,7 +249,9 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     | "launch_curve"
     | "probe_exact"
     | "probe_other"
-    | "launch_other";
+    | "launch_other"
+    | "probe_curve"
+    | "probe_anchored";
   let source: SourceState;
   let baseGb: number | null = null;
   let chosenHostGb: number | null = null;
@@ -240,6 +268,23 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     source = "launch_curve";
     baseGb = curveHit.vramGb;
     chosenHostGb = curveHit.hostGb;
+  } else if (probeAtLive) {
+    source = "probe_exact";
+    baseGb = probeAtLive.gb;
+    chosenHostGb = probeAtLive.hostGb;
+  } else if (probeLineHit) {
+    // A launch level with a probe slope is the best of both: the measurement fixes the
+    // offset, the line fixes the CTX delta.
+    const launchAnchor = launchPoints[0] ?? null;
+    const atAnchor = launchAnchor ? probeLineAt(launchAnchor.ctx) : null;
+    if (launchAnchor && atAnchor) {
+      source = "probe_anchored";
+      baseGb = Math.max(0, launchAnchor.gb + (probeLineHit.vramGb - atAnchor.vramGb));
+    } else {
+      source = "probe_curve";
+      baseGb = probeLineHit.vramGb;
+    }
+    chosenHostGb = probeLineHit.hostGb;
   } else if (nearestPoint) {
     source =
       nearestPoint.kind === "probe"
@@ -260,7 +305,12 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     return null;
   }
 
-  const isProbeSource = source === "probe_exact" || source === "probe_other";
+  const isProbeSource =
+    source === "probe_exact"
+    || source === "probe_other"
+    || source === "probe_curve"
+    || source === "probe_anchored";
+  const isSingleProbe = source === "probe_exact" || source === "probe_other";
   // A probe never loads the draft head; a launch add-on is only needed when its snapshot
   // did not already include it.
   const withDraft = (gb: number | null): number | null =>
@@ -441,7 +491,13 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
       : `${gpuProjectionGb.toFixed(1)} GB GPU measured — ${splitHint}`;
 
   const validatedVramMib = isProbeSource ? Math.round(gpuProjectionGb * 1024) : undefined;
-  const validatedHostMib = isProbeSource ? input.fitProbeHostMib : undefined;
+  const validatedHostMib = !isProbeSource
+    ? undefined
+    : isSingleProbe
+      ? input.fitProbeHostMib
+      : chosenHostGb != null
+        ? Math.round(chosenHostGb * 1024)
+        : undefined;
   // History, never gated: what the LAST launch of this config put on the host.
   const lastLaunchSpillGb = entrySpilled
     ? Math.max(
@@ -569,9 +625,9 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     validatedVramMib,
     validatedHostMib,
     validatedGpuBreakdownMib:
-      isProbeSource && probePlacementMatches ? input.fitProbeGpuBreakdownMib : undefined,
+      isSingleProbe && probePlacementMatches ? input.fitProbeGpuBreakdownMib : undefined,
     validatedComponentsMib:
-      isProbeSource && probePlacementMatches ? input.fitProbeComponentsMib ?? null : null,
+      isSingleProbe && probePlacementMatches ? input.fitProbeComponentsMib ?? null : null,
     memorySourceState: source,
     memorySourceAnchorCtx:
       source === "launch_other" || source === "probe_other" ? chosenCtx : undefined,

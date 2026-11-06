@@ -167,6 +167,12 @@ function sourceRecapLabel(memorySource: MemorySource): string {
   }
   if (memorySource.kind === "learned_curve") return "LEARNED · CURVE";
   if (memorySource.kind === "fit_probe") {
+    if (memorySource.state === "probe_curve") {
+      return "FIT PROBE · INCOMPLETE CURVE (2 probes)";
+    }
+    if (memorySource.state === "probe_anchored") {
+      return "FIT PROBE · INCOMPLETE CURVE (launch + probes)";
+    }
     return memorySource.exact === false
       ? "FIT PROBE · INCOMPLETE (scaled from its probe CTX)"
       : "FIT PROBE · MEASURED";
@@ -354,7 +360,10 @@ export function MemorySourceStatusMark({
                 : view.isFitProbe
                   ? view.isExact
                     ? "MEASURED · 2/4 — FIT probe at this CTX"
-                    : "INCOMPLETE · 1/4 — one probe, scaled by its measured KV"
+                    : memorySource.state === "probe_curve"
+                      || memorySource.state === "probe_anchored"
+                      ? "INCOMPLETE · 1/4 — FIT probe line, not a launch"
+                      : "INCOMPLETE · 1/4 — one probe, scaled by its measured KV"
                   : "INCOMPLETE · 1/4 — one launch, scaled by its measured KV"
           }
         >

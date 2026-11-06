@@ -36,6 +36,8 @@ type ProbeSession = {
   /** Free-pool fingerprint at probe time. */
   freeFingerprint: string;
   fittedNgl?: number;
+  /** On-demand probe pair at two CTXs — makes the incomplete curve affine. */
+  curve?: Array<{ ctx: number; vramMib: number; hostMib?: number; kvMib?: number }>;
 };
 
 /** Lookup-table size from the GGUF header — the only engram source that survives a knob change. */
@@ -43,6 +45,25 @@ function ggufEngramMib(model: ModelEntry | null | undefined): number | undefined
   const bytes = model?.ggufShape?.lookupTableBytes;
   return bytes != null && bytes > 0 ? bytes / 1_048_576 : undefined;
 }
+/**
+ * Second CTX for the on-demand probe pair: far enough from live to give the line a slope,
+ * and inside the range users actually slide.
+ */
+function probePairCtx(liveCtx: number): number {
+  if (liveCtx <= 8192) return 262_144;
+  if (liveCtx >= 262_144) return 32_768;
+  return liveCtx >= 65_536 ? 32_768 : 262_144;
+}
+
+/** Measured KV at one probe — the probe's own `ctx` column, summed over devices. */
+function probeKvMib(
+  components: Array<{ ctx_mib?: number }> | null | undefined,
+): number | undefined {
+  if (!components?.length) return undefined;
+  const kv = components.reduce((sum, row) => sum + (row.ctx_mib ?? 0), 0);
+  return kv > 0 ? kv : undefined;
+}
+
 /**
  * Mirrors the forecast adapter: host bytes above the by-design lookup table are a weight
  * spill. Such a launch is an outcome, not a measurement of what the config needs, so it
@@ -153,6 +174,7 @@ function probeScenarioFields(
     fitProbeEngramMib: session.validatedEngramMib,
     fitProbeGpuBreakdownMib: placementMatches ? session.validatedGpuBreakdownMib : undefined,
     fitProbeComponentsMib: placementMatches ? session.validatedComponentsMib : undefined,
+    fitProbeCurve: session.curve,
     fitProbePlacementKey: session.placementKey,
     fitProbeAnchorCtx: session.anchorCtx,
     fitProbeMeasuredAt: session.fitProbeMeasuredAt,
@@ -1018,10 +1040,10 @@ export function useScenarioEvaluator({
       const freeBudgetMib = targetFreeGb * 1024;
       const liveFreeFp = freeFingerprintFromGb(targetFreeGb);
 
-      const result: FitScanResult = await invoke("fit_scan_model", {
+      const probeArgs = (ctxSize: number) => ({
         modelPath: model.path,
         providerId: curConfig.backend_type || null,
-        ctxSize: parseCtx(curConfig.ctx ?? "32768"),
+        ctxSize,
         kvQuant: curConfig["kv_quant"] || "f16",
         device: curConfig.device || "GPU-0",
         splitMode: String(curConfig.split ?? "none"),
@@ -1032,6 +1054,39 @@ export function useScenarioEvaluator({
         mode: probeMode,
         freeBudgetMib: probeMode === "low_vram" ? freeBudgetMib : null,
       });
+
+      const anchorCtx = parseCtx(curConfig.ctx ?? "32768");
+      const result: FitScanResult = await invoke("fit_scan_model", probeArgs(anchorCtx));
+
+      // One launch point is not a curve. A short probe pair makes the footprint affine in
+      // CTX, so the predicted line carries the compute growth the KV slope cannot see.
+      let probeCurve: Array<{ ctx: number; vramMib: number; hostMib?: number; kvMib?: number }>
+        | undefined;
+      const pairCtx = probePairCtx(anchorCtx);
+      if (probeMode === "full" && learnedCurveRef.current.length < 2 && pairCtx !== anchorCtx) {
+        const points = [
+          {
+            ctx: anchorCtx,
+            vramMib: result.vram_mib,
+            hostMib: result.host_mib,
+            kvMib: probeKvMib(result.gpu_components_mib),
+          },
+        ];
+        try {
+          const extra: FitScanResult = await invoke("fit_scan_model", probeArgs(pairCtx));
+          if (extra.vram_mib > 0) {
+            points.push({
+              ctx: pairCtx,
+              vramMib: extra.vram_mib,
+              hostMib: extra.host_mib,
+              kvMib: probeKvMib(extra.gpu_components_mib),
+            });
+          }
+        } catch {
+          // One point is still a point; the line is a bonus, not a requirement.
+        }
+        if (points.length >= 2) probeCurve = points.sort((a, b) => a.ctx - b.ctx);
+      }
 
       const engineConfig: EngineConfig = {
         alias: "",
@@ -1054,7 +1109,6 @@ export function useScenarioEvaluator({
       });
       const curProbeKey = fitProbeKey(curConfig, autoVramLaunchRef.current);
       const curPlacementKey = placementConfigKey(curConfig);
-      const anchorCtx = parseCtx(curConfig.ctx ?? "32768");
       const resultMode: FitProbeMode =
         result.probe_mode === "low_vram" ? "low_vram" : probeMode;
 
@@ -1088,6 +1142,7 @@ export function useScenarioEvaluator({
         fitProbeHostMib: result.host_mib,
         fitProbeGpuBreakdownMib: result.gpu_breakdown_mib,
         fitProbeComponentsMib: result.gpu_components_mib,
+        fitProbeCurve: probeCurve,
         fitProbePlacementKey: curPlacementKey,
         fitProbeAnchorCtx: anchorCtx,
         fitProbeMeasuredAt: probeMeasuredAt,
@@ -1113,6 +1168,7 @@ export function useScenarioEvaluator({
         mode: resultMode,
         freeFingerprint: liveFreeFp,
         fittedNgl: result.fitted_ngl,
+        curve: probeCurve,
       };
 
       // Journal the probe itself: without a row we cannot tell which ctx a later launch
