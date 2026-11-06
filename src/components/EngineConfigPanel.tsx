@@ -1137,6 +1137,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     systemInfo,
     autoVramLaunch: fitLaunchSupported,
     fullAutoMode,
+    gpuCalibration,
     catalogModels: models,
     layerSplitMib,
   });
@@ -3318,7 +3319,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         planApplyTs={planApplyTs}
         planKvSource={planKvSource}
         planSqueezed={planSqueezed}
-        gpuCalibration={gpuCalibration}
         modelPath={model?.path}
         ctxTokens={
           typeof config.ctx === "number" ? config.ctx : parseInt(String(config.ctx ?? ""), 10) || undefined

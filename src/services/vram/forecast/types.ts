@@ -5,6 +5,7 @@ import type {
   VramManifest,
 } from "../../../lib/types";
 import type { RunningSlotInfo } from "../shared";
+import type { GpuCalibrationRow } from "../../../lib/vramLayerPlan";
 
 /**
  * Measured-only forecast input.
@@ -18,6 +19,12 @@ export interface ForecastInput {
   runningSlots: RunningSlotInfo[];
   ramAvailableGb: number;
   ramManufacturedGb: number;
+  /**
+   * Per-device measured runtime cost (CUDA context, graph pools, allocator slack).
+   * The engine's buffer table never prints these bytes, so the number and the gate both
+   * have to add them or "fits" is a promise the card cannot keep.
+   */
+  gpuCalibration?: GpuCalibrationRow[];
   mmprojSizeMib?: number;
   /** External draft GGUF size (MiB) — FIT probe never loads draft. */
   draftSizeMib?: number;

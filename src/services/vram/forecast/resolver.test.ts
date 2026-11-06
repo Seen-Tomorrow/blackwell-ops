@@ -46,6 +46,8 @@ function input(over: Partial<ForecastInput>): ForecastInput {
     runningSlots: [],
     ramAvailableGb: 64,
     ramManufacturedGb: 128,
+    // The number and the gate both carry the measured per-device runtime; pin it at 512 MiB.
+    gpuCalibration: [{ index: 0, median_residual_mib: 512, samples: 1 }],
     fullAutoMode: false,
     ...over,
   };
@@ -63,7 +65,7 @@ describe("forecast resolver states", () => {
     expect(m?.memorySourceState).toBe("launch_exact");
     expect(m?.memorySource?.kind).toBe("learned");
     expect(m?.memorySource?.exact).toBe(true);
-    expect(m?.vramTotalGb).toBeCloseTo(40, 1);
+    expect(m?.vramTotalGb).toBeCloseTo(40.5, 1);
   });
 
   it("INCOMPLETE: a lone launch is scaled by its own measured KV", () => {
@@ -80,7 +82,7 @@ describe("forecast resolver states", () => {
     expect(m?.memorySourceState).toBe("launch_other");
     expect(m?.memorySource?.kind).toBe("learned");
     expect(m?.memorySource?.exact).toBe(false);
-    expect(m?.vramTotalGb).toBeCloseTo(44, 1);
+    expect(m?.vramTotalGb).toBeCloseTo(44.5, 1);
     expect(m?.memorySourceAnchorCtx).toBe(65_536);
   });
 
@@ -95,7 +97,7 @@ describe("forecast resolver states", () => {
         },
       }),
     );
-    expect(m?.vramTotalGb).toBeCloseTo(50, 1);
+    expect(m?.vramTotalGb).toBeCloseTo(50.5, 1);
   });
 
   it("CURVE: two launches define a line at any CTX", () => {
@@ -112,7 +114,7 @@ describe("forecast resolver states", () => {
     expect(m?.memorySource?.kind).toBe("learned_curve");
     expect(m?.learnedInterpolated).toBe(true);
     // Linear between 40 @64K and 60 @256K → 46.67 @128K.
-    expect(m?.vramTotalGb).toBeCloseTo(46.67, 1);
+    expect(m?.vramTotalGb).toBeCloseTo(47.17, 1);
   });
 
   it("MEASURED: a probe at this CTX", () => {
@@ -128,7 +130,7 @@ describe("forecast resolver states", () => {
     expect(m?.memorySourceState).toBe("probe_exact");
     expect(m?.memorySource?.kind).toBe("fit_probe");
     expect(m?.memorySource?.exact).toBe(true);
-    expect(m?.vramTotalGb).toBeCloseTo(50, 1);
+    expect(m?.vramTotalGb).toBeCloseTo(50.5, 1);
   });
 
   it("a probe is not painted at another CTX — there is no launch point to scale", () => {
@@ -166,7 +168,7 @@ describe("forecast resolver states", () => {
       }),
     );
     expect(m?.memorySourceState).toBe("probe_exact");
-    expect(m?.vramTotalGb).toBeCloseTo(72, 1);
+    expect(m?.vramTotalGb).toBeCloseTo(72.5, 1);
     expect(m?.lastLaunchSpillGb).toBeCloseTo(58, 1);
   });
 
@@ -187,7 +189,7 @@ describe("forecast resolver states", () => {
     expect(m?.memorySource?.kind).toBe("fit_probe");
     expect(m?.memorySource?.exact).toBe(false);
     // 30 @64K → 60 @192K, so 45 @128K.
-    expect(m?.vramTotalGb).toBeCloseTo(45, 1);
+    expect(m?.vramTotalGb).toBeCloseTo(45.5, 1);
   });
 
   it("INCOMPLETE CURVE: a launch level anchored on a probe slope", () => {
@@ -207,7 +209,7 @@ describe("forecast resolver states", () => {
     expect(m?.memorySourceState).toBe("probe_anchored");
     // The launch measured 40 at 64K where the probe said 30; the +15 the probe predicts
     // by 128K is added to the measured level → 55, not 45.
-    expect(m?.vramTotalGb).toBeCloseTo(55, 1);
+    expect(m?.vramTotalGb).toBeCloseTo(55.5, 1);
   });
 
   it("a measured lookup table keeps a huge host row from reading as spill", () => {
@@ -227,6 +229,28 @@ describe("forecast resolver states", () => {
     );
     expect(m?.memorySourceState).toBe("launch_exact");
     expect(m?.lastLaunchSpillGb).toBeUndefined();
+  });
+
+  it("verdict FITS: one card holds the whole launch", () => {
+    const m = evaluate(input({ learnedCurve: [launchPoint(65_536, 40)] }));
+    expect(m?.fits).toBe(true);
+    expect(m?.style.launchPaint).toBe("fit");
+    expect(m?.style.uiTemplate.launchSummary).toBe("Fits — full on GPU");
+  });
+
+  it("verdict SPILL: over the card but inside VRAM+RAM", () => {
+    // 95.5 GB on a 96 GB card with 87.9 free: over its headroom, far inside 151.9.
+    const m = evaluate(input({ learnedCurve: [launchPoint(65_536, 95)] }));
+    expect(m?.fits).toBe(true);
+    expect(m?.style.launchPaint).toBe("offload");
+    expect(m?.style.uiTemplate.launchSummary).toMatch(/^Fits with spill/);
+  });
+
+  it("verdict WON'T RUN: over VRAM plus RAM", () => {
+    const m = evaluate(input({ learnedCurve: [launchPoint(65_536, 200)] }));
+    expect(m?.fits).toBe(false);
+    expect(m?.style.launchPaint).toBe("nofit");
+    expect(m?.style.uiTemplate.launchSummary).toMatch(/^Won't run/);
   });
 
   it("a by-design host lookup table is not spill", () => {

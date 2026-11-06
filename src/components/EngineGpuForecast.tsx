@@ -7,7 +7,7 @@ import type {
   VramManifest,
 } from "../lib/types";
 import type { LaunchChromePolicy } from "../lib/launchChromePolicy";
-import type { GpuCalibrationRow, LayerPlan } from "../lib/vramLayerPlan";
+import type { LayerPlan } from "../lib/vramLayerPlan";
 import type { FusionShareLaunchConfig } from "../lib/fusionShareCapture";
 import type { DisplayCardsPerRow, FusionDualOrient } from "../lib/storage";
 import {
@@ -91,7 +91,6 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     planApplyTs = null,
     planKvSource = "none",
     planSqueezed = false,
-    gpuCalibration = [],
     modelPath,
     ctxTokens,
     kvQuant,
@@ -391,7 +390,6 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
               planApplyTs={planApplyTs}
               planKvSource={planKvSource}
               planSqueezed={planSqueezed}
-              gpuCalibration={gpuCalibration}
               modelPath={modelPath}
               ctxTokens={ctxTokens}
               kvQuant={kvQuant}
@@ -527,7 +525,6 @@ export interface EngineGpuForecastProps {
   planApplyTs?: number[] | null;
   planKvSource?: "measured" | "profile" | "geometry" | "none";
   planSqueezed?: boolean;
-  gpuCalibration?: GpuCalibrationRow[];
   /** Selected model path — the PLAN chip reads its block table. */
   modelPath?: string;
   /** Planned ctx / KV quant, so the plan follows the knobs instead of a fixed context. */

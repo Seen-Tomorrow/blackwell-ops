@@ -6,7 +6,7 @@ import FusionPane from "./FusionPane";
 import FusionDualStage, { type FusionPaneIdentity } from "./FusionDualStage";
 import MoeBadge from "./MoeBadge";
 import SegmentSwitch from "./SegmentSwitch";
-import { formatTensorSplit, type GpuCalibrationRow, type LayerPlan } from "../lib/vramLayerPlan";
+import { formatTensorSplit, type LayerPlan } from "../lib/vramLayerPlan";
 import MemorySourcePanel, {
   MemorySourceNeedOverlay,
   MemorySourceReprobe,
@@ -48,8 +48,6 @@ interface VramBadgeProps {
   planApplyTs?: number[] | null;
   planKvSource?: "measured" | "profile" | "geometry" | "none";
   planSqueezed?: boolean;
-  /** Measured per-device runtime cost, used for the glass's one shared number. */
-  gpuCalibration?: GpuCalibrationRow[];
   /** Model whose layer table the planner reads; absent hides the PLAN chip. */
   modelPath?: string;
   /** Planned context length and KV quantisation — the plan must follow these knobs. */
@@ -110,7 +108,6 @@ export default function VramBadge({
   planApplyTs = null,
   planKvSource = "none",
   planSqueezed = false,
-  gpuCalibration = [],
   modelPath,
   ctxTokens,
   kvQuant,
@@ -150,8 +147,6 @@ export default function VramBadge({
           sourceExact: manifest.memorySource?.exact ?? null,
           sourceDetail: manifest.memorySource?.detail ?? null,
           vramNeedGb: displayVramNeedGb,
-          vramInventoryGb: inventoryVramNeedGb,
-          runtimeOverheadGb: runtimeOverheadMib / 1024,
           ramNeedGb: manifest.ramTotalGb ?? null,
           fits: manifest.fits ?? null,
           needTone: manifest.style.vramNeedTone ?? null,
@@ -371,17 +366,10 @@ export default function VramBadge({
       })
     : null;
 
-  const inventoryVramNeedGb = Math.max(0, manifest.vramTotalGb);
-  // The glass prints ONE number: what the cards will actually lose. The recorded inventory
-  // (model + KV + compute + rs + vision) is not that - NVML also charges the CUDA context and
-  // the allocator/graph pools, which the engine never prints as buffer lines. That gap is
-  // measured per device by gpu_calibration at load (`used - buffers`), so the total below is
-  // inventory + measured runtime, per launch, and it self-corrects as samples accumulate.
-  const runtimeOverheadMib = gpuCalibration.reduce(
-    (sum, row) => sum + (row.samples > 0 ? row.median_residual_mib : 0),
-    0,
-  );
-  const displayVramNeedGb = inventoryVramNeedGb + runtimeOverheadMib / 1024;
+  // The adapter owns the whole number now: engine buffers plus the measured per-card
+  // runtime (CUDA context, graph pools, allocator slack). The glass prints exactly what the
+  // gate uses — there is no second accounting here.
+  const displayVramNeedGb = Math.max(0, manifest.vramTotalGb);
   const displayRamNeedGb = isFitProbe
     ? (manifest.validatedHostMib != null && manifest.validatedHostMib > 0
         ? manifest.validatedHostMib / 1024
@@ -631,7 +619,7 @@ export default function VramBadge({
               <span
                 className="vram-fc-bar__need-chip vram-fc-need-frame__need vram-fc-need-frame__need--vram"
                 data-need-tone={vramNeedTone}
-                title={`Projected VRAM: ${displayVramNeedGb.toFixed(1)} GB = ${inventoryVramNeedGb.toFixed(1)} inventory + ${(runtimeOverheadMib / 1024).toFixed(1)} runtime (CUDA context, graph pools)`}
+                title={`Projected VRAM: ${displayVramNeedGb.toFixed(1)} GB — engine buffers plus the measured per-card runtime (CUDA context, graph pools)`}
               >
                 <span className="vram-fc-bar__need-prefix">need</span>
                 <span className={`vram-fc-bar__need vram-fc-bar__need--${vramNeedTone}`}>

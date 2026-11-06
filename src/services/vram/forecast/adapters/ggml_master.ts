@@ -44,6 +44,7 @@ import {
   splitHostRamGb,
 } from "../../lowVramProbe";
 import { attachMemorySource } from "../memorySource";
+import { runtimeOverheadMibForDevice } from "../../../../lib/vramLayerPlan";
 import { specDraftPathConfigured } from "../draftPath";
 import { resolveSpecAdapter } from "../../../../lib/spec/adapters";
 import type { ForecastAdapter, ForecastInput } from "../types";
@@ -330,23 +331,11 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   const targetAvail = autoSplit || userSplitMultiGpu
     ? multiTotalAvailable
     : (gpuAvailable[tgt] ?? Math.max(...gpuAvailable, 0));
-  const headroomGb = freePoolHeadroomGb(targetAvail);
-  const exceedsGpuPool = estimateGb > targetAvail - headroomGb;
 
-  // System pool gate — weight file + measured host if known.
+  // System pool numbers — the verdict is decided once the per-card loads are true loads.
   const weightGb = input.modelMeta.file_size_bytes / 1024 ** 3;
   const systemAvailableGb = multiTotalAvailable + input.ramAvailableGb;
   const systemHeadroom = Math.max(2.0, systemAvailableGb * 0.02);
-  const modelFootprintGb = Math.max(estimateGb, weightGb);
-  const overSystemMemory = modelFootprintGb > systemAvailableGb - systemHeadroom;
-
-  // learnedHostGb is often a leftover from a stuffed-GPU spill launch — do not
-  // treat "we have a host number" as proof this launch will offload.
-  const trustFitAtLoad = !overSystemMemory && exceedsGpuPool;
-  const fits =
-    !overSystemMemory && (trustFitAtLoad || estimateGb <= targetAvail - headroomGb);
-
-  const gpuProjectionGb = estimateGb;
   // Lookup table (Engram / PLE): host by design, and usually the bulk of the measured
   // host figure (125.9 GB on DeepSeek-V4.1). Counting it as spill made every such model
   // paint OVER FREE · SPILL even when the launch offloads nothing.
@@ -363,8 +352,8 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
 
   const scaleLoads = (loadsGb: number[]): number[] => {
     const sum = loadsGb.reduce((a, b) => a + b, 0);
-    if (!(sum > 0.05) || !(gpuProjectionGb > 0)) return loadsGb;
-    return loadsGb.map((x) => (gpuProjectionGb * x) / sum);
+    if (!(sum > 0.05) || !(estimateGb > 0)) return loadsGb;
+    return loadsGb.map((x) => (estimateGb * x) / sum);
   };
 
   let perGpuLoad: number[];
@@ -377,10 +366,10 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     perGpuLoad = !userSplitMultiGpu || breakdownSpansMultipleGpus(loads)
       ? scaleLoads(loads)
       : autoSplit || userSplitMultiGpu
-        ? autoSplitPerGpuLoad(gpuProjectionGb, input.gpus, gpuAvailable)
+        ? autoSplitPerGpuLoad(estimateGb, input.gpus, gpuAvailable)
         : (() => {
             const loads0 = Array(input.gpus.length).fill(0);
-            loads0[tgt] = gpuProjectionGb;
+            loads0[tgt] = estimateGb;
             return loads0;
           })();
   } else if (
@@ -392,36 +381,78 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     perGpuLoad = !userSplitMultiGpu || breakdownSpansMultipleGpus(loads)
       ? scaleLoads(loads)
       : autoSplit || userSplitMultiGpu
-        ? autoSplitPerGpuLoad(gpuProjectionGb, input.gpus, gpuAvailable)
+        ? autoSplitPerGpuLoad(estimateGb, input.gpus, gpuAvailable)
         : (() => {
             const loads0 = Array(input.gpus.length).fill(0);
-            loads0[tgt] = gpuProjectionGb;
+            loads0[tgt] = estimateGb;
             return loads0;
           })();
   } else if (autoSplit || userSplitMultiGpu) {
-    perGpuLoad = autoSplitPerGpuLoad(gpuProjectionGb, input.gpus, gpuAvailable);
+    perGpuLoad = autoSplitPerGpuLoad(estimateGb, input.gpus, gpuAvailable);
   } else {
     perGpuLoad = Array(input.gpus.length).fill(0);
-    perGpuLoad[tgt] = gpuProjectionGb;
+    perGpuLoad[tgt] = estimateGb;
   }
 
   // An applied `-ts` is a fraction of LAYERS, and layer bytes are not that fraction: on
   // DeepSeek-V4.1 the blocks grow 2.9 -> 4.5 GiB, so `-ts 0.550` put 81,241 MiB on CUDA0
   // (51.8% of weights) where a proportional split claimed 99.6 GB on a 95.6 GiB card.
   // The layer plan converts the split into per-card MiB; the bars paint that placement.
-  if (input.layerSplitMib?.length === input.gpus.length && gpuProjectionGb > 0) {
+  if (input.layerSplitMib?.length === input.gpus.length && estimateGb > 0) {
     const splitSum = input.layerSplitMib.reduce((sum, mib) => sum + Math.max(0, mib), 0);
     if (splitSum > 0) {
       perGpuLoad = input.layerSplitMib.map(
-        (mib) => (gpuProjectionGb * Math.max(0, mib)) / splitSum,
+        (mib) => (estimateGb * Math.max(0, mib)) / splitSum,
       );
     }
   }
 
+  // What the card actually loses, not what the engine prints: every touched device also
+  // carries the CUDA context, graph pools and allocator slack. Measured per device
+  // (median residual); the conservative default covers a card that never launched here.
+  // The same figure now feeds the number, the per-card bars and the gate.
+  perGpuLoad = perGpuLoad.map((gb, i) =>
+    gb > 0.1
+      ? gb + runtimeOverheadMibForDevice(input.gpus[i].index, input.gpuCalibration) / 1024
+      : gb,
+  );
+  const gpuProjectionGb = perGpuLoad.reduce((sum, gb) => sum + gb, 0);
+
+  // Per-CARD gate. A pool sum can hide one card overflow — the exact failure mode that
+  // matters for an honest "fits".
+  const cardFits = perGpuLoad.map((gb, i) => {
+    if (!(gb > 0.1)) return true;
+    const free = gpuAvailable[i] ?? 0;
+    return gb <= free - freePoolHeadroomGb(free);
+  });
+  const fitsAllCards = cardFits.every(Boolean);
+  const exceedsGpuPool = !fitsAllCards;
+
+  const modelFootprintGb = Math.max(gpuProjectionGb, weightGb);
+  const overSystemMemory = modelFootprintGb > systemAvailableGb - systemHeadroom;
+
+  // learnedHostGb is often a leftover from a stuffed-GPU spill launch — do not
+  // treat "we have a host number" as proof this launch will offload.
+  const trustFitAtLoad = !overSystemMemory && exceedsGpuPool;
+  // `fits` is the hard gate: does the launch have anywhere to go (VRAM+RAM)? The three
+  // verdicts below separate "fully on GPU" from "fits with spill/split".
+  const fits = !overSystemMemory;
+  const verdict: "fits" | "spill" | "none" = !fits
+    ? "none"
+    : fitsAllCards && !autoSplit && !userSplitMultiGpu
+      ? "fits"
+      : "spill";
+  // Soft tone bands follow the worst CARD, not the pool.
+  const vramFreeUtil = perGpuLoad.reduce((worst, gb, i) => {
+    if (!(gb > 0.1)) return worst;
+    const free = gpuAvailable[i] ?? 0;
+    return Math.max(worst, freePoolUtil(gb, free));
+  }, 0);
+
   const liveFreeFp = freeFingerprintFromGb(targetAvail);
   const fittedNgl = input.fitProbeFittedNgl;
   const realSpill = isLiveWeightSpill({
-    estimateGb,
+    estimateGb: gpuProjectionGb,
     freeGb: targetAvail,
     hostGb: hostSpillLikeGb,
     probeMode: input.fitProbeMode,
@@ -460,27 +491,26 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
 
   const recommendation = overSystemMemory
     ? `needs ~${modelFootprintGb.toFixed(0)}G but only ~${systemAvailableGb.toFixed(0)}G free (VRAM+RAM)`
-    : !fits && !trustFitAtLoad
-      ? "needs more free VRAM — lower CTX or free a GPU"
-      : "";
+    : "";
 
   // Compact chip label (scenario style). Glass always uses launchSummary.
-  const fitLabel = !fits
-    ? "NO FIT"
-    : hostOffloadLaunch
-      ? "OFFLOAD"
-      : multiNote
-        ? "MULTI"
-        : "SINGLE";
+  const fitLabel =
+    verdict === "none" ? "NO FIT" : verdict === "spill" ? (hostOffloadLaunch ? "OFFLOAD" : "MULTI") : "SINGLE";
 
-  /** Compact header — offload/slower live on bars, not here. */
-  const launchSummary = !fits
-    ? recommendation
-      ? `Won't launch — ${recommendation}`
-      : "Won't launch — over available memory"
-    : multiNote
-      ? `Will launch — ${gpuWord}`
-      : "Will launch alright";
+  /**
+   * Three verdicts, and they mean what they say: FITS is fully on the GPU, the spill tier
+   * names the outcome, and WON'T RUN is the only hard no.
+   */
+  const launchSummary =
+    verdict === "none"
+      ? recommendation
+        ? `Won't run — ${recommendation}`
+        : "Won't run — over available memory"
+      : !fitsAllCards
+        ? hostOffloadGb > 0.05
+          ? `Fits with spill — +${hostOffloadGb.toFixed(1)} GB to RAM`
+          : "Fits with spill — RAM offload expected"
+        : `Fits — ${gpuWord}`;
 
   const heroText = launchSummary;
 
@@ -508,7 +538,6 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     : 0;
 
   const launchPaint = launchPaintFromGate(fits, useOffloadPalette);
-  const vramFreeUtil = freePoolUtil(estimateGb, targetAvail);
   // Soft OOM only when still full-GPU fit; spill path skips OOM risk copy.
   const vramNeedTone = needToneFromLaunchPaint(
     launchPaint,
@@ -519,7 +548,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     launchPaint,
     freeUtil: vramFreeUtil,
     freeGb: targetAvail,
-    estimateGb,
+    estimateGb: gpuProjectionGb,
     hostOffloadGb: hostSpillLikeGb,
     overSystemMemory,
     probeMode: input.fitProbeMode,

@@ -12,6 +12,7 @@ import { isDevBuild } from "../lib/build";
 import { gpuMemoryBucketKey, vramManifestSnapshotEqual, vramTopoTag } from "../lib/telemetryGpu";
 import { MEMORY_SOURCE_LABELS } from "../services/vram/forecast/memorySource";
 import { sanitizeLearnedCurve } from "../services/vram/shared";
+import type { GpuCalibrationRow } from "../lib/vramLayerPlan";
 import { tomMtpBlocked, toastTomMtpSkip, TOM_MTP_SKIP_MESSAGE } from "../lib/tomMtp";
 import { errorKind, errorMessage } from "../lib/blackwellError";
 import { isExternalDraftOnly } from "../lib/specDraft";
@@ -236,6 +237,8 @@ interface UseScenarioEvaluatorProps {
   systemInfo?: SystemInfo | null;
   autoVramLaunch?: boolean;
   fullAutoMode?: boolean;
+  /** Per-device measured runtime cost — the number and the gate both include it. */
+  gpuCalibration?: GpuCalibrationRow[];
   /** Full catalog — used to resolve external draft GGUF file size for measured forecast. */
   catalogModels?: ModelEntry[];
   /** Per-card planned MiB when the config carries an applied `-ts` (see ForecastInput). */
@@ -411,6 +414,7 @@ export function useScenarioEvaluator({
   systemInfo,
   autoVramLaunch = false,
   fullAutoMode = true,
+  gpuCalibration,
   catalogModels,
   layerSplitMib,
 }: UseScenarioEvaluatorProps) {
@@ -496,8 +500,10 @@ export function useScenarioEvaluator({
   const learnedFetchPendingRef = useRef(false);
   const autoVramLaunchRef = useRef(autoVramLaunch);
   const fullAutoModeRef = useRef(fullAutoMode);
+  const gpuCalibrationRef = useRef(gpuCalibration);
   autoVramLaunchRef.current = autoVramLaunch;
   fullAutoModeRef.current = fullAutoMode;
+  gpuCalibrationRef.current = gpuCalibration;
   const lastScenarioDebugModelRef = useRef("");
   const lastScenarioDebugNameRef = useRef("");
   const probeSessionRef = useRef<ProbeSession | null>(null);
@@ -642,6 +648,7 @@ export function useScenarioEvaluator({
         ?? draftDiskSizeRef.current,
       autoVramLaunch: autoVramLaunchRef.current,
       fullAutoMode: fullAutoModeRef.current,
+      gpuCalibration: gpuCalibrationRef.current,
       learnedVramMib: learnedVramRef.current ?? undefined,
       learnedHostMib: learnedHostRef.current ?? undefined,
       learnedHostModelMib: learnedHostModelRef.current ?? undefined,
@@ -1154,6 +1161,7 @@ export function useScenarioEvaluator({
           ?? draftDiskSizeRef.current,
         autoVramLaunch: autoVramLaunchRef.current,
         fullAutoMode: fullAutoModeRef.current,
+        gpuCalibration: gpuCalibrationRef.current,
         learnedVramMib: learnedVramRef.current ?? undefined,
         learnedHostMib: learnedHostRef.current ?? undefined,
         learnedHostModelMib: learnedHostModelRef.current ?? undefined,
