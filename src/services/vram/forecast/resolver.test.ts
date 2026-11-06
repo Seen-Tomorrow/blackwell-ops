@@ -253,6 +253,52 @@ describe("forecast resolver states", () => {
     expect(m?.style.uiTemplate.launchSummary).toMatch(/^Won't run/);
   });
 
+  it("a probe adds the vision projector; an anchored curve does not double it", () => {
+    // 50 GB probe + 2 GB mmproj.
+    const probe = evaluate(
+      input({
+        mmprojSizeMib: 2048,
+        fitProbeVramMib: 50 * GIB,
+        fitProbeAnchorCtx: 65_536,
+        fitProbeMode: "full",
+        fitProbeMeasuredAt: "Nov 6, 12:00",
+      }),
+    );
+    expect(probe?.vramTotalGb).toBeCloseTo(52.5, 1);
+
+    // Anchored: the launch level included the projector, the probe delta did not — no add.
+    const anchored = evaluate(
+      input({
+        mmprojSizeMib: 2048,
+        learnedCurve: [launchPoint(65_536, 40)],
+        fitProbeCurve: [
+          { ctx: 65_536, vramMib: 30 * GIB },
+          { ctx: 196_608, vramMib: 60 * GIB },
+        ],
+        engineConfig: {
+          ...input({}).engineConfig,
+          extra_params: { ctx: 131_072, split: "none", device: "GPU-0" },
+        },
+      }),
+    );
+    expect(anchored?.memorySourceState).toBe("probe_anchored");
+    expect(anchored?.vramTotalGb).toBeCloseTo(55.5, 1);
+  });
+
+  it("a probe adds the external draft head on our side", () => {
+    // 2 GB draft weights + max(0.4, 55%) overhead = 3.1 GB.
+    const m = evaluate(
+      input({
+        draftSizeMib: 2048,
+        fitProbeVramMib: 50 * GIB,
+        fitProbeAnchorCtx: 65_536,
+        fitProbeMode: "full",
+        fitProbeMeasuredAt: "Nov 6, 12:00",
+      }),
+    );
+    expect(m?.vramTotalGb).toBeCloseTo(53.6, 1);
+  });
+
   it("a by-design host lookup table is not spill", () => {
     // 120 GB host row, all of it the model's Engram table: still a full-GPU launch point.
     const m = evaluate(

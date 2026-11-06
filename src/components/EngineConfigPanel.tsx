@@ -1121,7 +1121,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     applyTs: planApplyTs,
     kvSource: planKvSource,
     squeezed: planSqueezed,
-  } = useLayerPlan(planModelPath, gpus, gpuCalibration, planKnobs);
+  } = useLayerPlan(
+    planModelPath,
+    gpus,
+    gpuCalibration,
+    planKnobs,
+    committedSlotsFromStack(stack),
+  );
   // Only a layer split with an explicit -ts pins the placement; anything else keeps the
   // learned/probe breakdown, which describes what the engine did (or would do) itself.
   const layerSplitMib =

@@ -7,6 +7,10 @@ import {
   type GpuCalibrationRow,
   type LayerPlan,
 } from "../lib/vramLayerPlan";
+import {
+  computeGpuAvailableList,
+  type RunningSlotInfo,
+} from "../services/vram/scenarios/scenarios_factory";
 
 /** Exact per-block sizes, as read from the GGUF tensor table. */
 type ColdForecast = {
@@ -91,6 +95,12 @@ export function useLayerPlan(
     tensorSplit?: string;
     modelMeta?: ModelMetadata | null;
   },
+  /**
+   * Live committed engines. The plan must budget from the SAME free VRAM the gate uses:
+   * NVML free minus our own not-yet-attributed allocation. Raw `memory_free` made the plan
+   * and the forecast disagree for the first seconds after a launch.
+   */
+  runningSlots: RunningSlotInfo[] = [],
 ): {
   plan: LayerPlan | null;
   /** `-ts` TAKEOVER should write for the byte-balanced boundary; null before the table lands. */
@@ -302,6 +312,17 @@ export function useLayerPlan(
     return gpus.map(() => overheadTotalMib / gpus.length);
   }, [overheadTotalMib, measuredKv, ctxForKv, gpus.length]);
 
+  // Same free pool the gate/forecast uses (NVML free minus our own lag). A value key keeps
+  // a freshly-allocated stack array from rebuilding the plan on every render.
+  const slotsKey = runningSlots
+    .map(
+      (s) =>
+        `${s.alias}:${Math.round(s.vramMib)}:${(s.gpuBreakdownMib ?? [])
+          .map((mib) => Math.round(mib))
+          .join("+")}`,
+    )
+    .join("|");
+
   const plan: LayerPlan | null = useMemo(() => {
     if (!layerBytes || gpus.length !== 2) return null;
     return planFromLive({
@@ -310,7 +331,9 @@ export function useLayerPlan(
       tokenEmbdMib: (layerBytes.token_embd_mib ?? 0) * weightScale,
       outputMib: (layerBytes.output_mib ?? 0) * weightScale,
       otherMib: (layerBytes.other_mib ?? 0) * weightScale,
-      freeMib: gpus.map((g) => Math.max(0, g.memory_free)),
+      freeMib: computeGpuAvailableList(gpus, runningSlots).map(
+        (gb) => Math.max(0, gb) * 1024,
+      ),
       overheadMib,
       overheadTotalMib,
       // rs + vision buffers belong to the launch inventory too (598 + 248 MiB on the 27B).
@@ -319,7 +342,8 @@ export function useLayerPlan(
       // that geometry and keeps the byte-balanced proposal in `applyTs`.
       appliedTs: appliedTs ?? undefined,
     });
-  }, [layerBytes, gpus, calibration, kvPerBlock, measuredKv, cold, weightScale, overheadMib, overheadTotalMib, appliedTs]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- slotsKey stands in for the array
+  }, [layerBytes, gpus, slotsKey, calibration, kvPerBlock, measuredKv, cold, weightScale, overheadMib, overheadTotalMib, appliedTs]);
 
   const kvSource: "measured" | "profile" | "geometry" | "none" =
     measuredKv && measuredKv.kvMib > 0

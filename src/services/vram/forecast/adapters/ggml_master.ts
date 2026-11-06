@@ -311,12 +311,23 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     || source === "probe_curve"
     || source === "probe_anchored";
   const isSingleProbe = source === "probe_exact";
-  // A probe never loads the draft head; a launch add-on is only needed when its snapshot
-  // did not already include it.
+
+  // FIT never loads the draft head or the vision projector, so a pure probe needs them on
+  // top. An anchored curve already carries the launch's level (which included both) and its
+  // delta comes from two probes that excluded both — adding either would double-count.
+  const addDraft =
+    needsDraftAdd || source === "probe_exact" || source === "probe_curve";
   const withDraft = (gb: number | null): number | null =>
-    gb == null ? null : isProbeSource || needsDraftAdd ? gb + draftAddon : gb;
-  const estimateGb = withDraft(baseGb);
-  if (estimateGb == null || !Number.isFinite(estimateGb) || estimateGb <= 0) return null;
+    gb == null ? null : addDraft ? gb + draftAddon : gb;
+  const mmprojAddonGb =
+    source === "probe_exact" || source === "probe_curve"
+      ? Math.max(0, input.mmprojSizeMib ?? 0) / 1024
+      : 0;
+  const baseWithDraft = withDraft(baseGb);
+  if (baseWithDraft == null || !Number.isFinite(baseWithDraft) || baseWithDraft <= 0) {
+    return null;
+  }
+  const estimateGb = baseWithDraft + mmprojAddonGb;
 
   const learnedGb = source.startsWith("launch") ? estimateGb : null;
   const hostMeasuredGb = chosenHostGb;
