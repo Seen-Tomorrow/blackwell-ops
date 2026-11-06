@@ -476,7 +476,13 @@ export function useScenarioEvaluator({
   const learnedMtpContextRef = useRef<number | undefined>(undefined);
   const learnedAnchorCtxRef = useRef<number | undefined>(undefined);
   const learnedCurveRef = useRef<
-    Array<{ ctx: number; vramMib: number; hostMib?: number; kvMib?: number }>
+    Array<{
+      ctx: number;
+      vramMib: number;
+      hostMib?: number;
+      kvMib?: number;
+      engramMib?: number;
+    }>
   >([]);
   /** Last entry spilled weights to host — an outcome, not a usable need measurement. */
   const learnedSpilledRef = useRef(false);
@@ -794,7 +800,7 @@ export function useScenarioEvaluator({
         // A row recorded at another ctx must not masquerade as this one.
         strictCtx: true,
       }),
-      invoke<Array<{ ctx: number; vram_mib: number; host_mib?: number; kv_mib?: number }>>("get_learned_vram_curve", {
+      invoke<Array<{ ctx: number; vram_mib: number; host_mib?: number; kv_mib?: number; engram_mib?: number }>>("get_learned_vram_curve", {
         modelPath: model.path,
         providerId: curConfig.backend_type || "ggml-master",
         kvQuant,
@@ -850,8 +856,15 @@ export function useScenarioEvaluator({
             vramMib: p.vram_mib,
             hostMib: p.host_mib,
             kvMib: p.kv_mib,
+            engramMib: p.engram_mib,
           })),
-        ).filter((p) => !learnedLaunchSpilled(undefined, p.hostMib, ggufEngramMib(model)));
+        ).filter((p) =>
+          !learnedLaunchSpilled(
+            undefined,
+            p.hostMib,
+            p.engramMib ?? ggufEngramMib(model),
+          ),
+        );
         learnedCurveRef.current = cleanCurve;
         setLearnedCurveCtxs(cleanCurve.map((p) => p.ctx));
       })
@@ -877,7 +890,14 @@ export function useScenarioEvaluator({
         maybeAutoFitRef.current();
         scheduleEvaluationRef.current(true);
       });
-  }, [model?.path, learnedKey, commitManifest]);
+  }, [
+    model?.path,
+    // The shape arrives after the path (catalog scan). The spill filter subtracts the
+    // lookup table, so a late shape must re-run the read instead of leaving a stale model.
+    model?.ggufShape?.lookupTableBytes,
+    learnedKey,
+    commitManifest,
+  ]);
 
   useEffect(() => {
     refreshLearnedVram();

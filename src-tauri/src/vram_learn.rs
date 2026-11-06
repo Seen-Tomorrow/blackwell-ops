@@ -1959,6 +1959,11 @@ pub struct LearnedVramCurvePoint {
     /// scaling a single launch to another CTX by its own measured KV beats a header guess.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kv_mib: Option<f64>,
+    /// Host-resident lookup table (Engram / PLE) this launch carried, MiB. It is host by
+    /// design, so the spill filter must subtract THIS figure, not a GGUF-header guess:
+    /// the header read can be missing while the launch snapshot already measured it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub engram_mib: Option<f64>,
 }
 
 /// Measured KV bytes for one launch: per-GPU `ctx` columns, summed.
@@ -1969,6 +1974,15 @@ fn measured_kv_mib(entry: &LearnedVramEntry) -> Option<f64> {
         .and_then(|s| s.gpu_components_mib.as_ref())
         .or(entry.gpu_components_mib.as_ref())
         .map(|rows| rows.iter().map(|g| g.ctx_mib).sum::<f64>())
+        .filter(|mib| *mib > 0.0)
+}
+
+/// Host-resident lookup table measured at this launch, MiB.
+fn measured_engram_mib(entry: &LearnedVramEntry) -> Option<f64> {
+    entry
+        .launch_snapshot
+        .as_ref()
+        .and_then(|s| s.engram_mib)
         .filter(|mib| *mib > 0.0)
 }
 
@@ -2332,6 +2346,7 @@ pub fn get_learned_vram_curve(
             vram_mib: vram,
             host_mib,
             kv_mib: measured_kv_mib(entry),
+            engram_mib: measured_engram_mib(entry),
         };
         match best.get(&ctx) {
             Some((at, _)) if entry.measured_at < *at => {}

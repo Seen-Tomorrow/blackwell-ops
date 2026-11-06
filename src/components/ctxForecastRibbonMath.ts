@@ -85,7 +85,7 @@ export function ribbonTooltip(
 ): string {
   const exact = learnedMarks.some((m) => m === Math.round(ctx) || Math.abs(m - ctx) < 1);
   const tone = ribbonToneAt(gb, freeGb);
-  const kind = exact ? "EXACT" : learnedMarks.length >= 2 ? "CURVE" : "ESTIMATE";
+  const kind = exact ? "EXACT" : learnedMarks.length >= 2 ? "CURVE" : "INCOMPLETE";
   const tok =
     ctx >= 1024 ? `${(ctx / 1024).toFixed(ctx >= 10240 ? 0 : 1)}k` : `${Math.round(ctx)}`;
   return `${tok} · ${gb.toFixed(1)}G · ${kind}${tone === "hot" ? " · OVER FREE" : ""}`;

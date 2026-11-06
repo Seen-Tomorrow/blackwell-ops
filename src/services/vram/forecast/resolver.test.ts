@@ -210,6 +210,25 @@ describe("forecast resolver states", () => {
     expect(m?.vramTotalGb).toBeCloseTo(55, 1);
   });
 
+  it("a measured lookup table keeps a huge host row from reading as spill", () => {
+    // DeepSeek-V4.1: 127 GB host, 125.9 GB of it the by-design Engram table. The header
+    // size may be missing; the launch's own measurement must win.
+    const m = evaluate(
+      input({
+        learnedCurve: [
+          {
+            ctx: 65_536,
+            vramMib: 162_953,
+            hostMib: 130_636,
+            engramMib: 128_910,
+          },
+        ],
+      }),
+    );
+    expect(m?.memorySourceState).toBe("launch_exact");
+    expect(m?.lastLaunchSpillGb).toBeUndefined();
+  });
+
   it("a by-design host lookup table is not spill", () => {
     // 120 GB host row, all of it the model's Engram table: still a full-GPU launch point.
     const m = evaluate(

@@ -113,10 +113,14 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   const hostLooksSpilled = (
     modelMib: number | null | undefined,
     hostMib: number | null | undefined,
+    engramMib?: number | null,
   ): boolean => {
     const baseGb =
       modelMib != null && modelMib > 0 ? modelMib / 1024 : (hostMib ?? 0) / 1024;
-    return isWeightClassHostSpill(Math.max(0, baseGb - engramGb));
+    // Prefer the launch's own measured lookup table; the GGUF header can be missing.
+    const engram =
+      engramMib != null && engramMib > 0 ? engramMib / 1024 : engramGb;
+    return isWeightClassHostSpill(Math.max(0, baseGb - engram));
   };
 
   type ForecastPoint = {
@@ -193,7 +197,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
 
   // Launch points: measured launches only, and never one that pushed weights to the host.
   const launchPoints: ForecastPoint[] = sanitizeLearnedCurve(input.learnedCurve)
-    .filter((p) => !hostLooksSpilled(undefined, p.hostMib))
+    .filter((p) => !hostLooksSpilled(undefined, p.hostMib, p.engramMib))
     .map((p) => ({
       ctx: p.ctx,
       gb: p.vramMib / 1024,

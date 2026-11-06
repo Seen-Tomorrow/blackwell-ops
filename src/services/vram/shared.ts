@@ -101,6 +101,8 @@ export interface LearnedCurvePoint {
   hostMib?: number;
   /** Measured KV (ctx) at this point — the slope a lone point can be scaled by. */
   kvMib?: number;
+  /** Host-resident lookup table measured at this launch — never spill by design. */
+  engramMib?: number;
 }
 
 /**
@@ -129,6 +131,10 @@ export function sanitizeLearnedCurve(
       kvMib:
         p.kvMib != null && Number.isFinite(p.kvMib) && p.kvMib > 0
           ? p.kvMib
+          : undefined,
+      engramMib:
+        p.engramMib != null && Number.isFinite(p.engramMib) && p.engramMib > 0
+          ? p.engramMib
           : undefined,
     }))
     .sort((a, b) => a.ctx - b.ctx);

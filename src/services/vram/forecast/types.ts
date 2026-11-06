@@ -45,7 +45,13 @@ export interface ForecastInput {
   learnedMeasuredAt?: string;
   learnedSpecContextMib?: number;
   learnedAnchorCtx?: number;
-  learnedCurve?: Array<{ ctx: number; vramMib: number; hostMib?: number; kvMib?: number }>;
+  learnedCurve?: Array<{
+    ctx: number;
+    vramMib: number;
+    hostMib?: number;
+    kvMib?: number;
+    engramMib?: number;
+  }>;
 
   fitProbeVramMib?: number;
   fitProbeHostMib?: number;
