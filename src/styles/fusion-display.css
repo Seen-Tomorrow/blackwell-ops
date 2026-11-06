@@ -1435,6 +1435,12 @@
 .vram-fc-need-frame__status.is-estimate {
   opacity: 0.96;
 }
+/* One point, scaled: the word is longer than the measured states — keep the frame calm. */
+.vram-fc-need-frame__status[data-status="INCOMPLETE"] {
+  font-size: calc(10.5px * var(--vram-fc-scale, 1.12));
+  letter-spacing: 0.06em;
+  opacity: 0.94;
+}
 .vram-fc-need-frame[data-source-kind="learned"] .vram-fc-need-frame__status,
 .vram-fc-need-frame[data-source-kind="learned_curve"] .vram-fc-need-frame__status {
   color: color-mix(in srgb, var(--theme-telemetry-amber) 82%, var(--fixed-amber-200) 28%);

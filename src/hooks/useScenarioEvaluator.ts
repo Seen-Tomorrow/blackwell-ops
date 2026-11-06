@@ -1,22 +1,20 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { ModelEntry, EngineConfig, GpuInfo, StackEntry, SystemInfo, VramManifest, FitScanResult } from "../lib/types";
-import { evaluate, committedSlotsFromStack, committedStackKey, parseCtx, computeGpuAvailableList, type ScenarioInput, type FitPoint } from "../services/vram/scenarios/scenarios_factory";
+import { evaluate, committedSlotsFromStack, committedStackKey, parseCtx, computeGpuAvailableList, type ScenarioInput } from "../services/vram/scenarios/scenarios_factory";
 import {
   freeFingerprintFromGb,
   isWeightClassHostSpill,
-  learnedLooksLikeFreeDependentSpill,
   shouldApplyLowVramSession,
   type FitProbeMode,
 } from "../services/vram/lowVramProbe";
 import { isDevBuild } from "../lib/build";
 import { gpuMemoryBucketKey, vramManifestSnapshotEqual, vramTopoTag } from "../lib/telemetryGpu";
-import { MEMORY_SOURCE_LABELS } from "../services/vram/memorySource";
+import { MEMORY_SOURCE_LABELS } from "../services/vram/forecast/memorySource";
 import { sanitizeLearnedCurve } from "../services/vram/shared";
 import { tomMtpBlocked, toastTomMtpSkip, TOM_MTP_SKIP_MESSAGE } from "../lib/tomMtp";
 import { errorKind, errorMessage } from "../lib/blackwellError";
 import { isExternalDraftOnly } from "../lib/specDraft";
-import { EVENTS } from "../lib/events";
 import { useTauriListen } from "./useTauriListen";
 type ProbeSession = {
   modelPath: string;
@@ -215,7 +213,6 @@ interface UseScenarioEvaluatorProps {
   systemInfo?: SystemInfo | null;
   autoVramLaunch?: boolean;
   fullAutoMode?: boolean;
-  fitStyle?: string;
   /** Full catalog — used to resolve external draft GGUF file size for measured forecast. */
   catalogModels?: ModelEntry[];
   /** Per-card planned MiB when the config carries an applied `-ts` (see ForecastInput). */
@@ -303,15 +300,10 @@ function specKeyForLearned(config: Record<string, unknown>): string {
 function emitScenarioConsole(
   modelName: string,
   modelMeta: any,
-  fps: FitPoint[] | null,
   scenario: string,
   vramWeightsGb: number,
-  vramKvGb: number,
-  vramOverheadGb: number,
   totalNeedGb: number,
   gpuAllocations: any[],
-  gpuLayers: number,
-  ramLayers: number,
   validatedVramMib: number | null,
   validatedComponentsMib: any[] | null,
   uiTemplate: any,
@@ -321,21 +313,7 @@ function emitScenarioConsole(
   const lines: string[] = [];
   lines.push(`[SCENARIO] Model: ${modelName} | Meta: ${modelMeta ? 'YES' : 'NO'} | Arch: ${modelMeta?.architecture || '?'} | Layers: ${modelMeta?.n_layer ?? '?'} | Params: ${modelMeta?.total_params_str || '?'} | Size: ${(modelMeta?.file_size_bytes / (1024**3)).toFixed(1)}G`);
 
-  if (fps && fps.length > 0) {
-    const labels = fps.map(fp => fp.label.toLowerCase());
-    const hasBase = labels.some(l => l.includes('base'));
-    const hasQuant = labels.some(l => l.includes('quant') || l.includes('q4') || l.includes('q8') || l.includes('f16'));
-    const hasCtxSweep = labels.filter(l => l.includes('ctx')).length >= 2;
-    const missingLabels: string[] = [];
-    if (!hasBase) missingLabels.push('base');
-    if (!hasQuant) missingLabels.push('quant variants');
-    if (!hasCtxSweep) missingLabels.push('ctx sweep');
-    lines.push(`[SCENARIO] FIT: ${fps.length}pts loaded${missingLabels.length > 0 ? ' | MISSING: ' + missingLabels.join(', ') : ''}`);
-  } else {
-    lines.push('[SCENARIO] FIT: NO SCAN DATA');
-  }
-
-  lines.push(`[SCENARIO] Scenario: ${scenario} | W:${vramWeightsGb.toFixed(1)}G KV:${vramKvGb.toFixed(1)}G OH:${vramOverheadGb.toFixed(1)}G Total:${totalNeedGb.toFixed(1)}G`);
+  lines.push(`[SCENARIO] Scenario: ${scenario} | W:${vramWeightsGb.toFixed(1)}G Total:${totalNeedGb.toFixed(1)}G`);
 
   if (memorySourceLabel) {
     lines.push(`[SCENARIO] SOURCE: ${memorySourceLabel}`);
@@ -345,7 +323,7 @@ function emitScenarioConsole(
     const pct = ((a.projectedLoadGb / a.vramManufacturedGb) * 100).toFixed(0);
     return `GPU-${a.gpuIndex}=${a.projectedLoadGb.toFixed(1)}G(${pct}%)`;
   }).join(', ');
-  lines.push(`[SCENARIO] GPU: ${allocText} | Layers: ${gpuLayers} GPU / ${ramLayers} RAM`);
+  lines.push(`[SCENARIO] GPU: ${allocText}`);
 
   if (validatedVramMib) {
     lines.push(`[SCENARIO] Measured: ${(validatedVramMib / 1024).toFixed(1)}G`);
@@ -410,7 +388,6 @@ export function useScenarioEvaluator({
   systemInfo,
   autoVramLaunch = false,
   fullAutoMode = true,
-  fitStyle = "",
   catalogModels,
   layerSplitMib,
 }: UseScenarioEvaluatorProps) {
@@ -464,7 +441,6 @@ export function useScenarioEvaluator({
   const lastHardKeyRef = useRef<string>("");
   const lastPlacementKeyRef = useRef<string>("");
   const lastStackKeyRef = useRef<string>("");
-  const fitPointsRef = useRef<FitPoint[] | null>(null);
   const learnedVramRef = useRef<number | null>(null);
   const learnedHostRef = useRef<number | null>(null);
   /** Host model column (lookup table + spilled weights) from the learned entry. */
@@ -477,7 +453,9 @@ export function useScenarioEvaluator({
   const learnedMeasuredAtRef = useRef<string | undefined>(undefined);
   const learnedMtpContextRef = useRef<number | undefined>(undefined);
   const learnedAnchorCtxRef = useRef<number | undefined>(undefined);
-  const learnedCurveRef = useRef<Array<{ ctx: number; vramMib: number; hostMib?: number }>>([]);
+  const learnedCurveRef = useRef<
+    Array<{ ctx: number; vramMib: number; hostMib?: number; kvMib?: number }>
+  >([]);
   /** Last entry spilled weights to host — an outcome, not a usable need measurement. */
   const learnedSpilledRef = useRef(false);
   const catalogModelsRef = useRef(catalogModels);
@@ -485,15 +463,12 @@ export function useScenarioEvaluator({
   /** Disk-stat fallback for draft GGUF size when not in catalog metadata (MiB). */
   const draftDiskSizeRef = useRef<number | undefined>(undefined);
   const draftDiskPathRef = useRef("");
-  const lastFitModelPathRef = useRef("");
   const learnedFetchGenRef = useRef(0);
   const learnedFetchPendingRef = useRef(false);
   const autoVramLaunchRef = useRef(autoVramLaunch);
   const fullAutoModeRef = useRef(fullAutoMode);
-  const fitStyleRef = useRef(fitStyle);
   autoVramLaunchRef.current = autoVramLaunch;
   fullAutoModeRef.current = fullAutoMode;
-  fitStyleRef.current = fitStyle;
   const lastScenarioDebugModelRef = useRef("");
   const lastScenarioDebugNameRef = useRef("");
   const probeSessionRef = useRef<ProbeSession | null>(null);
@@ -638,7 +613,6 @@ export function useScenarioEvaluator({
         ?? draftDiskSizeRef.current,
       autoVramLaunch: autoVramLaunchRef.current,
       fullAutoMode: fullAutoModeRef.current,
-      fitStyle: fitStyleRef.current,
       learnedVramMib: learnedVramRef.current ?? undefined,
       learnedHostMib: learnedHostRef.current ?? undefined,
       learnedHostModelMib: learnedHostModelRef.current ?? undefined,
@@ -687,11 +661,9 @@ export function useScenarioEvaluator({
           || result.scenario !== lastScenarioDebugNameRef.current)
       ) {
         const modelName = model.path.split(/[\/\\]/).pop() || model.path;
-        const fps = fitPointsRef.current;
         emitScenarioConsole(
-          modelName, model.metadata, fps, result.scenario,
-          result.vramWeightsGb, result.vramKvGb, result.vramOverheadGb,
-          result.vramTotalGb, result.gpuAllocations, result.gpuLayers, result.ramLayers,
+          modelName, model.metadata, result.scenario,
+          result.vramWeightsGb, result.vramTotalGb, result.gpuAllocations,
           result.validatedVramMib ?? null, result.validatedComponentsMib ?? null,
           result.style.uiTemplate, engineConfig,
           result.memorySource ? MEMORY_SOURCE_LABELS[result.memorySource.kind] : undefined,
@@ -800,7 +772,7 @@ export function useScenarioEvaluator({
         // A row recorded at another ctx must not masquerade as this one.
         strictCtx: true,
       }),
-      invoke<Array<{ ctx: number; vram_mib: number; host_mib?: number }>>("get_learned_vram_curve", {
+      invoke<Array<{ ctx: number; vram_mib: number; host_mib?: number; kv_mib?: number }>>("get_learned_vram_curve", {
         modelPath: model.path,
         providerId: curConfig.backend_type || "ggml-master",
         kvQuant,
@@ -855,6 +827,7 @@ export function useScenarioEvaluator({
             ctx: p.ctx,
             vramMib: p.vram_mib,
             hostMib: p.host_mib,
+            kvMib: p.kv_mib,
           })),
         ).filter((p) => !learnedLaunchSpilled(undefined, p.hostMib, ggufEngramMib(model)));
         learnedCurveRef.current = cleanCurve;
@@ -940,34 +913,6 @@ export function useScenarioEvaluator({
     [refreshLearnedVram],
   );
 
-  const loadFitScanPoints = useCallback(() => {
-    if (!model) {
-      fitPointsRef.current = null;
-      lastFitModelPathRef.current = "";
-      return;
-    }
-    lastFitModelPathRef.current = model.path;
-    const providerId = (config.backend_type as string) || "ggml-master";
-    invoke("get_fit_scan_points", { modelPath: model.path, providerId })
-      .then((result: any) => {
-        fitPointsRef.current = result ?? null;
-        scheduleEvaluationRef.current(true);
-      })
-      .catch(() => {
-        fitPointsRef.current = null;
-      });
-  }, [model?.path, config.backend_type]);
-
-  useEffect(() => {
-    loadFitScanPoints();
-  }, [loadFitScanPoints]);
-
-  useEffect(() => {
-    const onFitCacheChanged = () => loadFitScanPoints();
-    window.addEventListener(EVENTS.fitScanCacheChanged, onFitCacheChanged);
-    return () => window.removeEventListener(EVENTS.fitScanCacheChanged, onFitCacheChanged);
-  }, [loadFitScanPoints]);
-
   useEffect(() => {
     if (!model || gpus.length === 0) {
       lastWrittenCacheKeyRef.current = "";
@@ -977,7 +922,6 @@ export function useScenarioEvaluator({
       lastModelPathRef.current = "";
       lastConfigKeyRef.current = "";
       lastStackKeyRef.current = "";
-      fitPointsRef.current = null;
       hadMetaRef.current = false;
       return;
     }
@@ -1127,7 +1071,6 @@ export function useScenarioEvaluator({
           ?? draftDiskSizeRef.current,
         autoVramLaunch: autoVramLaunchRef.current,
         fullAutoMode: fullAutoModeRef.current,
-        fitStyle: fitStyleRef.current,
         learnedVramMib: learnedVramRef.current ?? undefined,
         learnedHostMib: learnedHostRef.current ?? undefined,
         learnedHostModelMib: learnedHostModelRef.current ?? undefined,
@@ -1280,20 +1223,7 @@ export function useScenarioEvaluator({
       && ((learnedVramRef.current != null && !learnedSpilledRef.current)
         || (learnedCurveRef.current?.length ?? 0) > 0)
     ) {
-      const freeList = computeGpuAvailableList(
-        gpusRef.current,
-        committedSlotsFromStack(stackRef.current),
-      );
-      const freeGb = Math.max(...freeList, 0);
-      const spillLearned =
-        isDevBuild()
-        && learnedVramRef.current != null
-        && learnedLooksLikeFreeDependentSpill(
-          learnedVramRef.current / 1024,
-          (learnedHostRef.current ?? 0) / 1024,
-          freeGb,
-        );
-      if (!spillLearned) return;
+      return;
     }
     const free = computeGpuAvailableList(
       gpusRef.current,

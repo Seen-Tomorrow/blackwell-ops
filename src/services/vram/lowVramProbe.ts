@@ -95,22 +95,6 @@ export function isLiveWeightSpill(args: {
   return isWeightClassHostSpill(args.hostGb);
 }
 
-/**
- * DEV: LEARNED row looks like a free-dependent spill (small GPU + fat host)
- * and the GPU slice already fits live free — do not paint it as full need.
- * Full-GPU + leftover host (host << GPU) stays usable.
- */
-export function learnedLooksLikeFreeDependentSpill(
-  gpuGb: number | null | undefined,
-  hostGb: number | null | undefined,
-  freeGb: number,
-): boolean {
-  if (gpuGb == null || !(gpuGb > 0) || !isWeightClassHostSpill(hostGb)) return false;
-  const headroom = freePoolHeadroomGb(freeGb);
-  if (gpuGb > freeGb - headroom) return false;
-  return (hostGb as number) >= Math.max(HOST_BUFFER_CEILING_GB, gpuGb * 0.35);
-}
-
 /** low_vram session is CTX-specific — ngl/host from 800k must not paint 610k. */
 export function shouldApplyLowVramSession(args: {
   mode?: FitProbeMode | null;

@@ -66,10 +66,11 @@ describe("forecast resolver states", () => {
     expect(m?.vramTotalGb).toBeCloseTo(40, 1);
   });
 
-  it("ESTIMATE: a lone launch is shown where it was measured, never scaled", () => {
+  it("INCOMPLETE: a lone launch is scaled by its own measured KV", () => {
+    // 40 GB @64K, 4 GB of it KV → +4 GB per +64K tokens → 44 GB @128K.
     const m = evaluate(
       input({
-        learnedCurve: [launchPoint(65_536, 40)],
+        learnedCurve: [{ ctx: 65_536, vramMib: 40 * GIB, hostMib: GIB, kvMib: 4 * GIB }],
         engineConfig: {
           ...input({}).engineConfig,
           extra_params: { ctx: 131_072, split: "none", device: "GPU-0" },
@@ -79,9 +80,22 @@ describe("forecast resolver states", () => {
     expect(m?.memorySourceState).toBe("launch_other");
     expect(m?.memorySource?.kind).toBe("learned");
     expect(m?.memorySource?.exact).toBe(false);
-    // The 64K figure, unchanged — not a ctx-scaled 80-ish number.
-    expect(m?.vramTotalGb).toBeCloseTo(40, 1);
+    expect(m?.vramTotalGb).toBeCloseTo(44, 1);
     expect(m?.memorySourceAnchorCtx).toBe(65_536);
+  });
+
+  it("INCOMPLETE: falls back to header KV geometry when the row carries no KV", () => {
+    // 40 blocks, 8 KV heads, head_dim 128, f16 → 0.15625 MiB per token.
+    const m = evaluate(
+      input({
+        learnedCurve: [{ ctx: 65_536, vramMib: 40 * GIB, hostMib: GIB }],
+        engineConfig: {
+          ...input({}).engineConfig,
+          extra_params: { ctx: 131_072, split: "none", device: "GPU-0" },
+        },
+      }),
+    );
+    expect(m?.vramTotalGb).toBeCloseTo(50, 1);
   });
 
   it("CURVE: two launches define a line at any CTX", () => {
@@ -117,10 +131,14 @@ describe("forecast resolver states", () => {
     expect(m?.vramTotalGb).toBeCloseTo(50, 1);
   });
 
-  it("ESTIMATE: a probe is not applied at another CTX", () => {
+  it("INCOMPLETE: a probe is scaled from its CTX, not presented as this one", () => {
+    // 50 GB @128K with 8 GB of KV → -4 GB at 64K.
     const m = evaluate(
       input({
         fitProbeVramMib: 50 * GIB,
+        fitProbeComponentsMib: [
+          { model_mib: 30 * GIB, ctx_mib: 8 * GIB, compute_mib: 12 * GIB },
+        ],
         fitProbeAnchorCtx: 131_072,
         fitProbeMode: "full",
         fitProbeMeasuredAt: "Nov 6, 12:00",
@@ -129,7 +147,7 @@ describe("forecast resolver states", () => {
     expect(m?.memorySourceState).toBe("probe_other");
     expect(m?.memorySource?.kind).toBe("fit_probe");
     expect(m?.memorySource?.exact).toBe(false);
-    expect(m?.vramTotalGb).toBeCloseTo(50, 1);
+    expect(m?.vramTotalGb).toBeCloseTo(46, 1);
     expect(m?.memorySourceAnchorCtx).toBe(131_072);
   });
 

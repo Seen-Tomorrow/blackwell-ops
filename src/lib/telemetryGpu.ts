@@ -85,8 +85,6 @@ export function vramManifestSnapshotEqual(
     prev.scenario !== next.scenario
     || prev.fits !== next.fits
     || prev.recommendation !== next.recommendation
-    || prev.gpuLayers !== next.gpuLayers
-    || prev.ramLayers !== next.ramLayers
     || prev.validatedVramMib !== next.validatedVramMib
     || prev.fitProbeMeasuredAt !== next.fitProbeMeasuredAt
     || prev.learnedFromPreviousRun !== next.learnedFromPreviousRun
@@ -103,8 +101,6 @@ export function vramManifestSnapshotEqual(
   if (
     !nums(prev.vramTotalGb, next.vramTotalGb)
     || !nums(prev.vramWeightsGb, next.vramWeightsGb)
-    || !nums(prev.vramKvGb, next.vramKvGb)
-    || !nums(prev.vramOverheadGb, next.vramOverheadGb)
     || !nums(prev.ramTotalGb, next.ramTotalGb)
   ) {
     return false;

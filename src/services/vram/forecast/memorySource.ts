@@ -130,9 +130,9 @@ function resolveMemorySource(
       exact,
       detail: exact
         ? `Launch at this ctx · ${formatMeasuredAt(input.learnedMeasuredAt)}${draftNote}`
-        : `Measured at ${ctxLabel(manifest.memorySourceAnchorCtx)} · ${formatMeasuredAt(
+        : `Incomplete curve · 1 launch at ${ctxLabel(manifest.memorySourceAnchorCtx)} · ${formatMeasuredAt(
             input.learnedMeasuredAt,
-          )} · shown unscaled${draftNote}`,
+          )}${draftNote}`,
       ...formatBreakdown(
         input.learnedGpuBreakdownMib,
         input.learnedHostMib,
@@ -178,7 +178,7 @@ function resolveMemorySource(
     exact,
     detail: exact
       ? `measured ${manifest.fitProbeMeasuredAt ?? "just now"}`
-      : `estimate from probe @ ${ctxLabel(probeAnchor)} · ${manifest.fitProbeMeasuredAt ?? "just now"}`,
+      : `Incomplete curve · 1 probe at ${ctxLabel(probeAnchor)} · ${manifest.fitProbeMeasuredAt ?? "just now"}`,
     breakdown: tipBits.length > 0 ? tipBits.join(" · ") : bd.breakdown,
     breakdownSecondary: undefined,
     confidence: exact ? 2 : 1,

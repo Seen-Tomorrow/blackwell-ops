@@ -4,7 +4,7 @@ import type { FitProbeMode } from "../services/vram/lowVramProbe";
 import {
   MEMORY_SOURCE_ACCENT,
   MEMORY_SOURCE_LABELS,
-} from "../services/vram/memorySource";
+} from "../services/vram/forecast/memorySource";
 import {
   EVENTS,
   type CtxSliderDraggingDetail,
@@ -24,8 +24,8 @@ export interface MemorySourceView {
   isLearnedExact: boolean;
   isExact: boolean;
   isEstimate: boolean;
-  /** Hero quality mark — EXACT / CURVE / MEASURED / ESTIMATE */
-  idleStatus: "EXACT" | "CURVE" | "MEASURED" | "ESTIMATE" | null;
+  /** Hero quality mark — EXACT / CURVE / MEASURED / INCOMPLETE */
+  idleStatus: "EXACT" | "CURVE" | "MEASURED" | "INCOMPLETE" | null;
   showStatus: boolean;
   canProbe: boolean;
 }
@@ -162,12 +162,14 @@ function collectRecap(
 function sourceRecapLabel(memorySource: MemorySource): string {
   if (memorySource.kind === "learned") {
     return memorySource.exact === false
-      ? "LEARNED · ESTIMATE (measured at another CTX)"
+      ? "LEARNED · INCOMPLETE CURVE (1 point, KV-scaled)"
       : "LEARNED · EXACT (previous launch)";
   }
   if (memorySource.kind === "learned_curve") return "LEARNED · CURVE";
   if (memorySource.kind === "fit_probe") {
-    return memorySource.exact === false ? "FIT PROBE · ESTIMATE" : "FIT PROBE · MEASURED";
+    return memorySource.exact === false
+      ? "FIT PROBE · INCOMPLETE (scaled from its probe CTX)"
+      : "FIT PROBE · MEASURED";
   }
   return MEMORY_SOURCE_LABELS[memorySource.kind];
 }
@@ -189,7 +191,7 @@ export function getMemorySourceView(
       ? "CURVE"
       : isExact
         ? "MEASURED"
-        : "ESTIMATE";
+        : "INCOMPLETE";
 
   return {
     kindLabel: kindDisplayLabel(memorySource.kind),
@@ -352,8 +354,8 @@ export function MemorySourceStatusMark({
                 : view.isFitProbe
                   ? view.isExact
                     ? "MEASURED · 2/4 — FIT probe at this CTX"
-                    : "ESTIMATE · 1/4 — FIT walked off its probe CTX"
-                  : "ESTIMATE · 1/4 — measured at another CTX, shown unscaled"
+                    : "INCOMPLETE · 1/4 — one probe, scaled by its measured KV"
+                  : "INCOMPLETE · 1/4 — one launch, scaled by its measured KV"
           }
         >
           {view.idleStatus}

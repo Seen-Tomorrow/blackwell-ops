@@ -860,7 +860,6 @@ interface StyleObject {
   badgeBg: string;
   icon: string;
   label: string;
-  ramVisible: boolean;
   /** KV cache may spill to system RAM — honest warning, not certainty */
   kvSpillCritical?: boolean;
   /** Launch gate palette (fit / offload / nofit). */
@@ -929,11 +928,7 @@ export interface VramManifest {
   scenario: Scenario;
   style: StyleObject;
   vramWeightsGb: number;
-  vramKvGb: number;
-  vramOverheadGb: number;
   vramTotalGb: number;
-  ramWeightsGb: number;
-  ramKvGb: number;
   ramSpillGb: number;
   ramTotalGb: number;
   /** Host buffer (ctx+compute or residual when not spilling). */
@@ -947,8 +942,6 @@ export interface VramManifest {
   gpuAllocations: GpuAllocation[];
   fits: boolean;
   recommendation: string;
-  gpuLayers: number;
-  ramLayers: number;
   validatedVramMib?: number;
   /** Forecast uses VRAM measured on a prior launch at this exact ctx. */
   learnedFromPreviousRun?: boolean;

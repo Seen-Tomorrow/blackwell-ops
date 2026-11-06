@@ -1137,7 +1137,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     systemInfo,
     autoVramLaunch: fitLaunchSupported,
     fullAutoMode,
-    fitStyle: spawnProfile?.fit_style ?? "",
     catalogModels: models,
     layerSplitMib,
   });
@@ -1848,7 +1847,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     return {
       gpuMask: entry?.gpu || maskFromConfig || "",
       vramTargetMib: entry?.vram_mib ?? committedVramMib,
-      modelLayerTotal: model?.metadata?.n_layer ?? vramCalc.manifest?.gpuLayers ?? 0,
+      modelLayerTotal: model?.metadata?.n_layer ?? 0,
       gpuLoadTargetsMib,
     };
   }, [
@@ -1857,7 +1856,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     committedVramMib,
     model,
     config.device,
-    vramCalc.manifest?.gpuLayers,
     vramCalc.manifest?.gpuAllocations,
   ]);
 

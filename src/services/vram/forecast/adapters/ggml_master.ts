@@ -26,6 +26,7 @@ import {
   freePoolHeadroomGb,
   freePoolUtil,
   interpolateLearnedCurveGb,
+  kvBytesForQuant,
   launchPaintFromGate,
   needToneFromLaunchPaint,
   parseCtx,
@@ -72,6 +73,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   if (input.gpus.length === 0) return null;
 
   const liveCtx = parseCtx(String(input.engineConfig.extra_params?.ctx ?? "32768"));
+  const kvQuant = String(input.engineConfig.extra_params?.kv_quant ?? "f16");
   const fullAuto = input.fullAutoMode === true;
   const gpuAvailable = computeGpuAvailableList(input.gpus, input.runningSlots);
   const multiTotalAvailable = gpuAvailable.reduce((a, b) => a + b, 0);
@@ -120,7 +122,33 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     ctx: number;
     gb: number;
     hostGb: number | null;
+    /** Measured KV (ctx) at this point, MiB — the only honest slope for a single point. */
+    kvMib: number | null;
     kind: "launch" | "probe";
+  };
+
+  const componentsKvMib = (
+    rows: Array<{ ctx_mib?: number }> | null | undefined,
+  ): number | null => {
+    if (!rows?.length) return null;
+    const kv = rows.reduce((sum, row) => sum + (row.ctx_mib ?? 0), 0);
+    return kv > 0 ? kv : null;
+  };
+
+  // A lone point is scaled by its own measured KV — the part of the footprint that really
+  // moves with CTX. Weights and compute are held constant, so the figure is an incomplete
+  // curve, not a measurement.
+  const measuredKvRateGb = (p: ForecastPoint): number | null =>
+    p.kvMib != null && p.kvMib > 0 && p.ctx > 0 ? p.kvMib / p.ctx / 1024 : null;
+
+  /** Header geometry, used only when the point carries no measured KV. */
+  const geometryKvRateGb = (): number | null => {
+    const meta = input.modelMeta;
+    const headDim = meta.n_head > 0 ? meta.n_embd / meta.n_head : 0;
+    if (!(meta.n_layer > 0) || !(meta.n_head_kv > 0) || !(headDim > 0)) return null;
+    const bytesPerToken =
+      2 * meta.n_layer * meta.n_head_kv * headDim * kvBytesForQuant(kvQuant);
+    return bytesPerToken / 1024 ** 3;
   };
 
   // A low-VRAM probe away from its CTX is a spill outcome, not a need — never a point.
@@ -131,6 +159,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
           ctx: probeAnchorCtx > 0 ? probeAnchorCtx : liveCtx,
           gb: probeGbRaw,
           hostGb: probeHostGb,
+          kvMib: componentsKvMib(input.fitProbeComponentsMib),
           kind: "probe",
         }
       : null;
@@ -142,6 +171,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
       ctx: p.ctx,
       gb: p.vramMib / 1024,
       hostGb: p.hostMib != null ? p.hostMib / 1024 : null,
+      kvMib: p.kvMib ?? null,
       kind: "launch" as const,
     }));
   // The exact-key row is the authority at its own CTX; the curve is the broad read.
@@ -157,6 +187,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
       ctx: entryCtx,
       gb: entryGb,
       hostGb: input.learnedHostMib != null ? input.learnedHostMib / 1024 : null,
+      kvMib: componentsKvMib(input.learnedGpuComponentsMib),
       kind: "launch",
     };
     if (at >= 0) launchPoints[at] = entryPoint;
@@ -216,7 +247,13 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
           ? "probe_exact"
           : "probe_other"
         : "launch_other";
-    baseGb = nearestPoint.gb;
+    // A single point is not a constant: scale it by its own measured KV. No measured KV
+    // (a curve row from an older build) → header geometry; neither → show it unscaled.
+    const kvRate = measuredKvRateGb(nearestPoint) ?? geometryKvRateGb();
+    baseGb =
+      kvRate != null
+        ? Math.max(0, nearestPoint.gb + (liveCtx - nearestPoint.ctx) * kvRate)
+        : nearestPoint.gb;
     chosenHostGb = nearestPoint.hostGb;
     chosenCtx = nearestPoint.ctx;
   } else {
@@ -478,7 +515,6 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
       ...paintClasses,
       icon: vramNeedTone === "ok" ? "*" : "o",
       label: fitLabel,
-      ramVisible: ramNeedGb > 0.05,
       launchPaint,
       vramNeedTone,
       ramNeedTone: hostSplit.weightGb > 0.05 ? ramNeedTone : "ok",
@@ -502,11 +538,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
       },
     },
     vramWeightsGb: round2(weightGb),
-    vramKvGb: 0,
-    vramOverheadGb: 0,
     vramTotalGb: round2(gpuProjectionGb),
-    ramWeightsGb: 0,
-    ramKvGb: 0,
     ramSpillGb: round2(hostSplit.weightGb),
     ramTotalGb: round2(ramNeedGb),
     ramBufferGb: round2(hostSplit.bufferGb),
@@ -522,8 +554,6 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     ),
     fits,
     recommendation,
-    gpuLayers: 0,
-    ramLayers: 0,
     autoLayerSplit: autoSplit,
     learnedFromPreviousRun: source === "launch_exact",
     learnedInterpolated: source === "launch_curve",

@@ -1,6 +1,5 @@
 import type {
   GpuInfo,
-  ModelMetadata,
   RunningEngine,
   GpuAllocation,
   EngineConfig,
@@ -90,142 +89,8 @@ export function parseCtx(ctxSize: string | number): number {
   return parsed > 0 ? parsed : 32768;
 }
 
-/**
- * Split tax is a **measured delta**, independent of live hard knobs (KV quant, batch, …):
- *
- *   live_estimate(split) = live_none_probe(user knobs, live ctx) + tax(mode, live ctx)
- *
- * Library FIT measures both legs at fixed scan knobs (q4_0 / batch 512):
- *   tax_anchor(ctx) = max(0, VRAM(split,ctx) − VRAM(none,ctx))
- * then piecewise-linear interpolate tax vs CTX (tax grows with CTX).
- *
- * Tensor FIT often reports Δ≈0 (Meta path) — then we fall back to launch-calibrated
- * constants. Prefer LEARNED for the active split when a row exists (adapter priority).
- */
-type SplitTaxSource = "library" | "fallback" | "none";
-
-export interface SplitTaxResult {
-  taxGb: number;
-  source: SplitTaxSource;
-  /** Number of positive library anchors used (0 if fallback). */
-  anchors: number;
-}
-
-/** Launch-calibrated midpoints when library split Δ is missing / non-positive. */
-function measuredSplitTaxGbFallback(splitMode: string): number {
-  const s = String(splitMode || "none").trim().toLowerCase();
-  if (!s || s === "none") return 0;
-  if (s === "layer") return 6.0;
-  if (s === "tensor" || s === "row") return 2.0;
-  return 0;
-}
-
-function normalizeSplitMode(splitMode: string): "none" | "layer" | "tensor" | string {
-  const s = String(splitMode || "none").trim().toLowerCase();
-  if (!s || s === "none") return "none";
-  if (s === "row") return "tensor";
-  return s;
-}
-
-function librarySplitTaxAnchors(
-  mode: "layer" | "tensor",
-  points: FitPoint[],
-): Array<{ ctx: number; taxMib: number }> {
-  const splitPts = points
-    .filter((p) => {
-      const sm = (p.split_mode || "").toLowerCase();
-      const byMode = sm === mode || (mode === "tensor" && sm === "row");
-      const byLabel = p.label.toLowerCase().startsWith(`split_${mode}_`);
-      return (byMode || byLabel) && p.vram_mib > 0;
-    })
-    .slice()
-    .sort((a, b) => a.ctx - b.ctx);
-
-  const anchors: Array<{ ctx: number; taxMib: number }> = [];
-  for (const sp of splitPts) {
-    const noneAt = points.find((p) => {
-      const sm = (p.split_mode || "none").toLowerCase();
-      const isNone = !sm || sm === "none";
-      const isSpine =
-        p.label.startsWith("ctx_") || p.label === "base" || p.label === "base_no_batch";
-      return isNone && isSpine && p.ctx === sp.ctx && p.vram_mib > 0;
-    });
-    let noneMib = noneAt?.vram_mib;
-    if (noneMib == null) {
-      const ext = extrapolateVramFromPoints(points, sp.ctx, "", sp.batch || 512, "", 0);
-      if (ext != null) noneMib = ext;
-    }
-    if (noneMib == null) continue;
-    const taxMib = sp.vram_mib - noneMib;
-    // Ignore noise / Meta() tensor under-read (Δ≤0). Need a real positive tax anchor.
-    if (taxMib > 64) anchors.push({ ctx: sp.ctx, taxMib });
-  }
-  return anchors;
-}
-
-function interpolateTaxGb(
-  anchors: Array<{ ctx: number; taxMib: number }>,
-  liveCtx: number,
-): number {
-  if (anchors.length === 0) return 0;
-  if (anchors.length === 1) return Math.max(0, anchors[0].taxMib / 1024);
-  let lo = anchors[0];
-  let hi = anchors[anchors.length - 1];
-  for (let i = 0; i < anchors.length - 1; i++) {
-    if (liveCtx >= anchors[i].ctx && liveCtx <= anchors[i + 1].ctx) {
-      lo = anchors[i];
-      hi = anchors[i + 1];
-      break;
-    }
-  }
-  if (liveCtx <= anchors[0].ctx) {
-    lo = anchors[0];
-    hi = anchors[1];
-  } else if (liveCtx >= anchors[anchors.length - 1].ctx) {
-    lo = anchors[anchors.length - 2];
-    hi = anchors[anchors.length - 1];
-  }
-  if (hi.ctx === lo.ctx) return Math.max(0, lo.taxMib / 1024);
-  const t = (liveCtx - lo.ctx) / (hi.ctx - lo.ctx);
-  return Math.max(0, (lo.taxMib + t * (hi.taxMib - lo.taxMib)) / 1024);
-}
-
-/** Resolve split tax at live CTX from library FIT points, else calibrated fallback. */
-export function resolveSplitTax(
-  splitMode: string,
-  liveCtx: number,
-  points?: FitPoint[] | null,
-): SplitTaxResult {
-  const mode = normalizeSplitMode(splitMode);
-  if (mode === "none") return { taxGb: 0, source: "none", anchors: 0 };
-  if (mode !== "layer" && mode !== "tensor") {
-    return { taxGb: 0, source: "none", anchors: 0 };
-  }
-  if (points && points.length > 0 && liveCtx > 0) {
-    const anchors = librarySplitTaxAnchors(mode, points);
-    if (anchors.length > 0) {
-      return {
-        taxGb: interpolateTaxGb(anchors, liveCtx),
-        source: "library",
-        anchors: anchors.length,
-      };
-    }
-  }
-  const fb = measuredSplitTaxGbFallback(mode);
-  return { taxGb: fb, source: fb > 0 ? "fallback" : "none", anchors: 0 };
-}
-
-/** @deprecated Prefer {@link resolveSplitTax} — kept for call-site simplicity. */
-function measuredSplitTaxGb(
-  splitMode: string,
-  liveCtx?: number,
-  points?: FitPoint[],
-): number {
-  return resolveSplitTax(splitMode, liveCtx ?? 0, points).taxGb;
-}
-
-
-function kvBytesForQuant(kvQuant: string): number {
+/** KV bytes per element for the quantisations the launcher supports. */
+export function kvBytesForQuant(kvQuant: string): number {
   const key = kvQuant.toLowerCase();
   const kvMap: [string, number][] = [
     ["q4_0", 0.5],
@@ -241,103 +106,12 @@ function kvBytesForQuant(kvQuant: string): number {
   return 2.0;
 }
 
-function findFitPoint(points: FitPoint[], label: string): FitPoint | undefined {
-  return points.find((p) => p.label === label);
-}
-
-function estimateActivationPerBatchToken(points: FitPoint[]): number | null {
-  const base = findFitPoint(points, "base");
-  const noBatch = findFitPoint(points, "base_no_batch");
-  if (!base || !noBatch) return null;
-  return (base.vram_mib - noBatch.vram_mib) / 512;
-}
-
-/** Piecewise-linear VRAM vs ctx from library CTX points. */
-function extrapolateVramFromPoints(
-  points: FitPoint[],
-  userCtx: number,
-  _userKvQuant: string,
-  userBatch: number,
-  _splitMode: string,
-  _weightsGb: number,
-): number | null {
-  const ctxPoints = points
-    .filter((p) => p.label.startsWith("ctx_") || p.label === "base" || p.label === "base_no_batch")
-    .slice()
-    .sort((a, b) => a.ctx - b.ctx);
-  if (ctxPoints.length === 0) return null;
-
-  let totalMib: number;
-  if (ctxPoints.length === 1) {
-    totalMib = ctxPoints[0].vram_mib;
-  } else {
-    let lo = ctxPoints[0];
-    let hi = ctxPoints[ctxPoints.length - 1];
-    for (let i = 0; i < ctxPoints.length - 1; i++) {
-      if (userCtx >= ctxPoints[i].ctx && userCtx <= ctxPoints[i + 1].ctx) {
-        lo = ctxPoints[i];
-        hi = ctxPoints[i + 1];
-        break;
-      }
-    }
-    if (userCtx <= ctxPoints[0].ctx) {
-      lo = ctxPoints[0];
-      hi = ctxPoints[1];
-    } else if (userCtx >= ctxPoints[ctxPoints.length - 1].ctx) {
-      lo = ctxPoints[ctxPoints.length - 2];
-      hi = ctxPoints[ctxPoints.length - 1];
-    }
-    if (hi.ctx === lo.ctx) {
-      totalMib = lo.vram_mib;
-    } else {
-      const t = (userCtx - lo.ctx) / (hi.ctx - lo.ctx);
-      totalMib = lo.vram_mib + t * (hi.vram_mib - lo.vram_mib);
-    }
-  }
-
-  const actPerToken = estimateActivationPerBatchToken(points);
-  const baseForBatch = findFitPoint(points, "base") || ctxPoints[0];
-  if (actPerToken !== null && userBatch !== baseForBatch.batch) {
-    totalMib += actPerToken * (userBatch - baseForBatch.batch);
-  }
-
-  return Math.max(0, totalMib);
-}
-
-/// A probe measures exactly one context. At another ctx it is still useful, but only as a
-/// scaled estimate: reusing it raw let a 64K launch carry a 102,829 MiB reading whose real
-/// launch was 18,039 MiB (forecast-log.jsonl).
-export function probeAppliesToCtx(anchorCtx: number, liveCtx?: number): boolean {
-  return liveCtx == null || anchorCtx <= 0 || anchorCtx === liveCtx;
-}
-
-/** Shift a measured GPU total from anchor ctx to the live slider ctx. */
-export function adjustMeasuredGbForCtx(
-  measuredGb: number,
-  anchorCtx: number,
-  liveCtx: number,
-  points: FitPoint[] | undefined,
-  meta: ModelMetadata,
-  kvQuant: string,
-): number {
-  if (anchorCtx <= 0 || liveCtx === anchorCtx) return measuredGb;
-  if (points && points.length >= 2) {
-    const a = extrapolateVramFromPoints(points, anchorCtx, kvQuant, 512, "", 0);
-    const b = extrapolateVramFromPoints(points, liveCtx, kvQuant, 512, "", 0);
-    if (a != null && b != null) return Math.max(0, measuredGb + (b - a) / 1024);
-  }
-  const headDim = meta.n_head > 0 ? meta.n_embd / meta.n_head : 128;
-  const bytes = kvBytesForQuant(kvQuant);
-  if (meta.n_layer <= 0 || meta.n_head_kv <= 0) return measuredGb;
-  const delta =
-    (2 * meta.n_layer * meta.n_head_kv * headDim * (liveCtx - anchorCtx) * bytes) / 1024 ** 3;
-  return Math.max(0, measuredGb + delta);
-}
-
 export interface LearnedCurvePoint {
   ctx: number;
   vramMib: number;
   hostMib?: number;
+  /** Measured KV (ctx) at this point — the slope a lone point can be scaled by. */
+  kvMib?: number;
 }
 
 /**
@@ -362,6 +136,10 @@ export function sanitizeLearnedCurve(
       hostMib:
         p.hostMib != null && Number.isFinite(p.hostMib) && p.hostMib > 0
           ? p.hostMib
+          : undefined,
+      kvMib:
+        p.kvMib != null && Number.isFinite(p.kvMib) && p.kvMib > 0
+          ? p.kvMib
           : undefined,
     }))
     .sort((a, b) => a.ctx - b.ctx);

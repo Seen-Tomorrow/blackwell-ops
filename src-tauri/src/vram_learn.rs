@@ -1955,6 +1955,21 @@ pub struct LearnedVramCurvePoint {
     pub ctx: usize,
     pub vram_mib: f64,
     pub host_mib: Option<f64>,
+    /// Measured KV (ctx) buffer at this point, MiB. The only slope a lone point can offer:
+    /// scaling a single launch to another CTX by its own measured KV beats a header guess.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kv_mib: Option<f64>,
+}
+
+/// Measured KV bytes for one launch: per-GPU `ctx` columns, summed.
+fn measured_kv_mib(entry: &LearnedVramEntry) -> Option<f64> {
+    entry
+        .launch_snapshot
+        .as_ref()
+        .and_then(|s| s.gpu_components_mib.as_ref())
+        .or(entry.gpu_components_mib.as_ref())
+        .map(|rows| rows.iter().map(|g| g.ctx_mib).sum::<f64>())
+        .filter(|mib| *mib > 0.0)
 }
 
 /// Slot count of a learned key. Rows written for the default carry no token.
@@ -2316,6 +2331,7 @@ pub fn get_learned_vram_curve(
             ctx,
             vram_mib: vram,
             host_mib,
+            kv_mib: measured_kv_mib(entry),
         };
         match best.get(&ctx) {
             Some((at, _)) if entry.measured_at < *at => {}
