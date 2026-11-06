@@ -131,8 +131,7 @@ describe("forecast resolver states", () => {
     expect(m?.vramTotalGb).toBeCloseTo(50, 1);
   });
 
-  it("INCOMPLETE: a probe is scaled from its CTX, not presented as this one", () => {
-    // 50 GB @128K with 8 GB of KV → -4 GB at 64K.
+  it("a probe is not painted at another CTX — there is no launch point to scale", () => {
     const m = evaluate(
       input({
         fitProbeVramMib: 50 * GIB,
@@ -144,11 +143,7 @@ describe("forecast resolver states", () => {
         fitProbeMeasuredAt: "Nov 6, 12:00",
       }),
     );
-    expect(m?.memorySourceState).toBe("probe_other");
-    expect(m?.memorySource?.kind).toBe("fit_probe");
-    expect(m?.memorySource?.exact).toBe(false);
-    expect(m?.vramTotalGb).toBeCloseTo(46, 1);
-    expect(m?.memorySourceAnchorCtx).toBe(131_072);
+    expect(m).toBeNull();
   });
 
   it("a launch that spilled weights to host is not a need measurement", () => {

@@ -4,8 +4,9 @@
  *   launch point EXACTLY at this CTX      → EXACT
  *   two or more launch points             → CURVE (line between them)
  *   probe point EXACTLY at this CTX       → MEASURED
- *   one point, any other CTX              → ESTIMATE (shown where it was measured)
- *   else                                  → null, skeleton / auto-probe
+ *   one launch point, any other CTX       → INCOMPLETE (scaled by its measured KV)
+ *   two probe points (explicit pair)      → INCOMPLETE CURVE (predicted line)
+ *   else                                  → null, skeleton / probe button
  *
  * No ctx scaling, no split tax: a point is only valid at the CTX it was measured at, a
  * launch measured the split it ran, and a probe runs with the split it is asked for.
@@ -234,9 +235,10 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
       : null;
 
   // One number, one source. An exact launch beats the line; the line beats a single point.
+  // A probe is only used where it was taken — it is never dragged to another CTX.
   const exactLaunch = launchPoints.find((p) => p.ctx === liveCtx) ?? null;
   const nearestPoint =
-    [...launchPoints, ...probePoints]
+    launchPoints
       .slice()
       .sort((a, b) => {
         const byCtx = Math.abs(a.ctx - liveCtx) - Math.abs(b.ctx - liveCtx);
@@ -248,7 +250,6 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     | "launch_exact"
     | "launch_curve"
     | "probe_exact"
-    | "probe_other"
     | "launch_other"
     | "probe_curve"
     | "probe_anchored";
@@ -286,12 +287,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     }
     chosenHostGb = probeLineHit.hostGb;
   } else if (nearestPoint) {
-    source =
-      nearestPoint.kind === "probe"
-        ? nearestPoint.ctx === liveCtx
-          ? "probe_exact"
-          : "probe_other"
-        : "launch_other";
+    source = "launch_other";
     // A single point is not a constant: scale it by its own measured KV. No measured KV
     // (a curve row from an older build) → header geometry; neither → show it unscaled.
     const kvRate = measuredKvRateGb(nearestPoint) ?? geometryKvRateGb();
@@ -307,10 +303,9 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
 
   const isProbeSource =
     source === "probe_exact"
-    || source === "probe_other"
     || source === "probe_curve"
     || source === "probe_anchored";
-  const isSingleProbe = source === "probe_exact" || source === "probe_other";
+  const isSingleProbe = source === "probe_exact";
   // A probe never loads the draft head; a launch add-on is only needed when its snapshot
   // did not already include it.
   const withDraft = (gb: number | null): number | null =>
@@ -629,8 +624,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     validatedComponentsMib:
       isSingleProbe && probePlacementMatches ? input.fitProbeComponentsMib ?? null : null,
     memorySourceState: source,
-    memorySourceAnchorCtx:
-      source === "launch_other" || source === "probe_other" ? chosenCtx : undefined,
+    memorySourceAnchorCtx: source === "launch_other" ? chosenCtx : undefined,
     lastLaunchSpillGb: lastLaunchSpillGb > 0.05 ? round2(lastLaunchSpillGb) : undefined,
     lastLaunchSpillAt: lastLaunchSpillGb > 0.05 ? input.learnedMeasuredAt : undefined,
     fitProbeMeasuredAt: isProbeSource ? input.fitProbeMeasuredAt : undefined,

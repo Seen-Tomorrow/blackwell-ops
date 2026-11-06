@@ -170,21 +170,6 @@
 .gpu-card--hoverable:hover {
   border-color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
 }
-.gpu-ram-divider {
-  border-color: color-mix(in srgb, var(--theme-border) 20%, transparent);
-}
-.gpu-ram-label {
-  color: var(--theme-accent);
-}
-.gpu-ram-note {
-  color: color-mix(in srgb, var(--theme-text-muted) 60%, transparent);
-}
-.gpu-ram-track {
-  border-color: color-mix(in srgb, var(--theme-border) 30%, transparent);
-}
-.gpu-ram-fill {
-  background: var(--theme-accent);
-}
 
 /* ── StackView ─────────────────────────────────────────────────── */
 .eng-stop-all {

@@ -515,7 +515,7 @@ export interface EngineGpuForecastProps {
   /** Highlighted GPU indices from the forecast — pass empty to hide. */
   selectedGpuIndices: number[];
   isValidating: boolean;
-  onValidate: () => void;
+  onValidate: (mode?: "full" | "low_vram") => void;
   /** VRAM badge FIT OFF — drop the auto-VRAM `--fit on`. */
   fitOff?: boolean;
   onToggleFitOff?: () => void;

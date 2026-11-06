@@ -860,8 +860,6 @@ interface StyleObject {
   badgeBg: string;
   icon: string;
   label: string;
-  /** KV cache may spill to system RAM — honest warning, not certainty */
-  kvSpillCritical?: boolean;
   /** Launch gate palette (fit / offload / nofit). */
   launchPaint?: ForecastLaunchPaint;
   /** VRAM NEED chip tone — free-pool aligned (+ soft OOM tiers). */
@@ -902,7 +900,6 @@ export type MemorySourceState =
   | "launch_exact"
   | "launch_curve"
   | "probe_exact"
-  | "probe_other"
   | "launch_other"
   | "probe_curve"
   | "probe_anchored";
@@ -924,7 +921,7 @@ export interface MemorySource {
   breakdown?: string;
   /** Breakdown line 2 — W/KV/OH components + host RAM when learned. */
   breakdownSecondary?: string;
-  /** Precision: ESTIMATE=1 MEASURED=2 CURVE=3 EXACT=4 */
+  /** Precision: INCOMPLETE=1 MEASURED=2 CURVE=3 EXACT=4 */
   confidence: 1 | 2 | 3 | 4;
 }
 

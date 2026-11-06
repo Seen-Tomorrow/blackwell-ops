@@ -23,7 +23,7 @@ interface VramBadgeProps {
   selectedGpuIndices?: number[];
   onDeviceSelect?: (gpuIndex: number) => void;
   isValidating?: boolean;
-  onValidate?: () => void;
+  onValidate?: (mode?: "full" | "low_vram") => void;
   activeEngineAlias?: string;
   activeEnginePort?: number;
   selectedSlotIdx?: number | null;
@@ -329,6 +329,17 @@ export default function VramBadge({
             <div className="vram-forecast-measuring__bar" aria-hidden>
               <span className="vram-forecast-measuring__bar-fill" />
             </div>
+            {onValidate ? (
+              <button
+                type="button"
+                className="vram-fc-source__reprobe vram-fc-skeleton__probe"
+                onClick={() => onValidate("full")}
+                disabled={isValidating}
+                title="Run FIT at this CTX — two CTXs are measured when no launch curve exists"
+              >
+                {isValidating ? "PROBING…" : "PROBE THIS CTX"}
+              </button>
+            ) : null}
           </div>
 
           <div className="vram-forecast-measuring__flank vram-forecast-measuring__flank--right font-mono" aria-hidden>
@@ -725,9 +736,6 @@ export default function VramBadge({
               gpuAllocations={manifest.gpuAllocations}
               gpuBarColor={s.gpuBarColor}
               needTone={vramNeedTone}
-              ramVisible={false}
-              ramTotalGb={manifest.ramTotalGb}
-              ramManufacturedGb={manifest.ramManufacturedGb}
               gpuIdleBaselineMib={gpuIdleBaselineMib}
               selectedGpuIndices={selectedGpuIndices}
               onDeviceSelect={onDeviceSelect}

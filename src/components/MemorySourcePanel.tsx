@@ -23,7 +23,7 @@ export interface MemorySourceView {
   isFitProbe: boolean;
   isLearnedExact: boolean;
   isExact: boolean;
-  isEstimate: boolean;
+  isIncomplete: boolean;
   /** Hero quality mark — EXACT / CURVE / MEASURED / INCOMPLETE */
   idleStatus: "EXACT" | "CURVE" | "MEASURED" | "INCOMPLETE" | null;
   showStatus: boolean;
@@ -187,10 +187,10 @@ export function getMemorySourceView(
 ): MemorySourceView {
   const isCurve = memorySource.kind === "learned_curve";
   const isFitProbe = memorySource.kind === "fit_probe";
-  // EXACT is a promise about THIS CTX: a learned row measured somewhere else is ESTIMATE.
+  // EXACT is a promise about THIS CTX: a learned row measured somewhere else is INCOMPLETE.
   const isLearnedExact = memorySource.kind === "learned" && memorySource.exact !== false;
   const isExact = memorySource.exact !== false && !isCurve;
-  const isEstimate = isCurve || memorySource.exact === false;
+  const isIncomplete = isCurve || memorySource.exact === false;
   const idleStatus: MemorySourceView["idleStatus"] = isLearnedExact
     ? "EXACT"
     : isCurve
@@ -206,7 +206,7 @@ export function getMemorySourceView(
     isFitProbe,
     isLearnedExact,
     isExact,
-    isEstimate,
+    isIncomplete,
     idleStatus,
     showStatus: Boolean(idleStatus),
     // Exact LEARNED is a quality mark, not a lock — border/offload points need a re-probe.
@@ -235,7 +235,7 @@ export function MemorySourceNeedOverlay({
   const view = getMemorySourceView(memorySource, { onValidate, hideValidate });
   const ctxDragging = useCtxSliderDragging();
   const scrubbing =
-    ctxDragging && (view.isEstimate || view.isFitProbe || view.isCurve);
+    ctxDragging && (view.isIncomplete || view.isFitProbe || view.isCurve);
   const probing = isValidating;
   const liveActive = probing || scrubbing;
   const mode: "full" | "scan" = probing ? "full" : "scan";
@@ -349,7 +349,7 @@ export function MemorySourceStatusMark({
       <div className="vram-fc-need-frame__status-stack">
         <span
           className={`vram-fc-need-frame__status${
-            view.isExact ? " is-exact" : " is-estimate"
+            view.isExact ? " is-exact" : " is-incomplete"
           }`}
           data-status={view.idleStatus}
           title={
@@ -466,9 +466,9 @@ export default function MemorySourcePanel({
               <span className="vram-fc-recap__v vram-fc-recap__v--mono">{recap.secondary}</span>
             </div>
           ) : null}
-          {view.isEstimate ? (
+          {view.isIncomplete ? (
             <div className="vram-fc-recap__foot">
-              estimate — RE-PROBE at this CTX to lock a measured point
+              prediction — RE-PROBE at this CTX to lock a measured point
             </div>
           ) : (
             <div className="vram-fc-recap__foot">hover recap · cockpit has the knobs</div>

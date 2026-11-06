@@ -1063,7 +1063,15 @@ export function useScenarioEvaluator({
       let probeCurve: Array<{ ctx: number; vramMib: number; hostMib?: number; kvMib?: number }>
         | undefined;
       const pairCtx = probePairCtx(anchorCtx);
-      if (probeMode === "full" && learnedCurveRef.current.length < 2 && pairCtx !== anchorCtx) {
+      // The pair is an explicit user action: one probe is enough for an automatic first
+      // paint, and a launch curve needs no probe line at all.
+      const wantsPair =
+        requestedMode != null
+        && probeMode === "full"
+        && pairCtx !== anchorCtx
+        && (learnedCurveRef.current.length < 2
+          || manifestRef.current?.memorySourceState === "launch_other");
+      if (wantsPair) {
         const points = [
           {
             ctx: anchorCtx,
@@ -1289,7 +1297,7 @@ export function useScenarioEvaluator({
     const providerId = String(configRef.current.backend_type || "");
     if (tomMtpBlocked(providerId, model)) return;
     forceProbeRef.current = false;
-    void validate("full");
+    void validate();
   };
 
   const pruneLearnedCtxs = useCallback(async (removeCtxs: number[]) => {

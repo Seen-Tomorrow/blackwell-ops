@@ -9,9 +9,6 @@ interface GpuTopologyProps {
   gpuBarColor: string;
   /** Free-pool NEED tone for projected load G (manufactured % stays uncolored). */
   needTone?: ForecastNeedTone;
-  ramVisible: boolean;
-  ramTotalGb: number;
-  ramManufacturedGb: number;
   /** Per-GPU NVML used (MiB) while idle — session baseline before first engine launch. */
   gpuIdleBaselineMib?: Record<number, number>;
   selectedGpuIndices?: number[];
@@ -50,9 +47,6 @@ export default function GpuTopology({
   gpuAllocations,
   gpuBarColor,
   needTone = "ok",
-  ramVisible,
-  ramTotalGb,
-  ramManufacturedGb,
   gpuIdleBaselineMib,
   selectedGpuIndices,
   onDeviceSelect,
@@ -248,44 +242,6 @@ export default function GpuTopology({
           );
         })}
       </div>
-
-      {ramVisible && (
-        <div className="pt-2 border-t gpu-ram-enter gpu-ram-divider">
-          <div className="flex items-center gap-2 mb-1.5">
-            <span className="type-label font-mono font-semibold gpu-ram-label">
-              SYSTEM RAM OFFLOAD
-            </span>
-            {ramManufacturedGb > 0 ? (
-              <span className="type-tiny font-mono gpu-ram-label">
-                {ramTotalGb.toFixed(0)} GB spill / {ramManufacturedGb.toFixed(0)} GB ({((ramTotalGb / ramManufacturedGb) * 100).toFixed(0)}%)
-              </span>
-            ) : (
-              <span className="type-tiny font-mono gpu-ram-note">
-                RAM offload active — {ramTotalGb.toFixed(1)} GB in system memory
-              </span>
-            )}
-          </div>
-
-
-          <div
-            style={{ backgroundColor: "rgb(20,20,20)" }}
-            className="relative h-4 rounded-sm overflow-hidden border gpu-ram-track"
-          >
-            <div
-              style={{
-                width: `${ramManufacturedGb > 0 ? Math.min((ramTotalGb / ramManufacturedGb) * 100, 100) : 0}%`,
-              }}
-              className="h-full rounded-sm gpu-ram-fill gpu-bar-fill"
-            />
-          </div>
-
-          <div className="flex justify-start mt-1">
-            <span className="type-tiny font-mono gpu-ram-label">
-              {ramTotalGb.toFixed(0)} GB will spill to RAM — expect slower inference
-            </span>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

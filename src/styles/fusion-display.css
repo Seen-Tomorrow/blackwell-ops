@@ -1432,7 +1432,7 @@
   opacity: 1;
   letter-spacing: 0.12em;
 }
-.vram-fc-need-frame__status.is-estimate {
+.vram-fc-need-frame__status.is-incomplete {
   opacity: 0.96;
 }
 /* One point, scaled: the word is longer than the measured states — keep the frame calm. */
@@ -1919,6 +1919,12 @@
 .vram-forecast-bar__inset-label--ram.vram-forecast-bar__inset-label--hot {
   color: var(--theme-telemetry-red);
   -webkit-text-fill-color: var(--theme-telemetry-red);
+}
+
+/* Empty state is actionable: the only way to get a number at this CTX. */
+.vram-fc-skeleton__probe {
+  margin-top: calc(2px * var(--vram-fc-scale, 1.12));
+  pointer-events: auto;
 }
 
 /* RAM bar history — the LAST recorded launch's host spill, measured, inside the bar

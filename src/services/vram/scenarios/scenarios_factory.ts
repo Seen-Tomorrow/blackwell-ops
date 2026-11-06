@@ -15,7 +15,6 @@ export {
 } from "../shared";
 
 export type {
-  FitPoint,
   RunningSlotInfo,
 } from "../shared";
 export type { ForecastInput as ScenarioInput } from "../forecast/types";

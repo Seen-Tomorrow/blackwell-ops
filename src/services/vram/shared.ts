@@ -9,17 +9,6 @@ import type {
 
 export type { ForecastLaunchPaint, ForecastNeedTone };
 
-/** Library FIT scan point (ctx curve / batch deltas). */
-export interface FitPoint {
-  label: string;
-  ctx: number;
-  kv_quant: string;
-  batch: number;
-  parallel: number;
-  split_mode: string;
-  vram_mib: number;
-}
-
 export interface RunningSlotInfo {
   alias: string;
   modelShort: string;

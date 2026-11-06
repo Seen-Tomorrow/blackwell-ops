@@ -467,21 +467,6 @@
    #f59e0b, red #f87171, yellow #facc15) on every theme, and the ink/border tokens
    (--theme-industrial-*) are the face tokens that already own the muted/green/border
    paint. */
-.industrial-display-area .gpu-ram-note {
-  color: var(--theme-industrial-muted);
-}
-
-.industrial-display-area .gpu-ram-label {
-  color: var(--theme-industrial-text);
-}
-
-/* VRAM/RAM bar tracks on display bg — colour-theme token only (pattern never changes ink).
-   Re-keyed to .gpu-ram-track, the class that replaced the old utility on GpuTopology's RAM bar. */
-.industrial-display-area .gpu-ram-track {
-  border-color: var(--theme-industrial-gpu-border);
-  background-color: var(--theme-industrial-bar-track);
-}
-
 /* Always on (was crt-only): kills halo/filter. Uses no face token, so CLEAN == DOTTED. */
 
 

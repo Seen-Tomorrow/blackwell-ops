@@ -104,8 +104,8 @@ function ctxLabel(ctx: number | null | undefined): string {
 
 /**
  * SOURCE is built from the resolver state — one state per painted manifest.
- * The label promises what the number is: EXACT only when a launch measured this CTX,
- * ESTIMATE whenever the point was measured somewhere else (it is never scaled).
+ * The label promises what the number is: EXACT only when a launch measured this CTX;
+ * INCOMPLETE whenever the number is scaled or predicted rather than measured here.
  */
 function resolveMemorySource(
   manifest: VramManifest,
@@ -174,9 +174,8 @@ function resolveMemorySource(
     };
   }
 
-  // probe_exact | probe_other
-  const exact = state === "probe_exact";
-  const probeAnchor = manifest.memorySourceAnchorCtx ?? input.fitProbeAnchorCtx ?? 0;
+  // probe_exact
+  // probe_exact — the only probe that paints here; a probe away from its CTX is not used.
   const bd = formatBreakdown(
     manifest.validatedGpuBreakdownMib,
     manifest.validatedHostMib,
@@ -189,15 +188,13 @@ function resolveMemorySource(
     Boolean,
   );
   return {
-    state,
+    state: "probe_exact",
     kind: "fit_probe",
-    exact,
-    detail: exact
-      ? `measured ${manifest.fitProbeMeasuredAt ?? "just now"}`
-      : `Incomplete curve · 1 probe at ${ctxLabel(probeAnchor)} · ${manifest.fitProbeMeasuredAt ?? "just now"}`,
+    exact: true,
+    detail: `measured ${manifest.fitProbeMeasuredAt ?? "just now"}`,
     breakdown: tipBits.length > 0 ? tipBits.join(" · ") : bd.breakdown,
     breakdownSecondary: undefined,
-    confidence: exact ? 2 : 1,
+    confidence: 2,
   };
 }
 
@@ -218,27 +215,23 @@ export const MEMORY_SOURCE_LABELS: Record<MemorySource["kind"], string> = {
   learned_curve: "LEARNED",
 };
 
-/** Surface classes for the SOURCE readout (paint in src/styles/badges.css).
- *  gbGradient is legacy chrome — no consumer reads it; kept empty for shape. */
+/** Surface classes for the SOURCE readout (paint in src/styles/badges.css). */
 export const MEMORY_SOURCE_ACCENT: Record<
   MemorySource["kind"],
-  { text: string; border: string; gbGradient: string }
+  { text: string; border: string }
 > = {
   /* Instrument / active measure */
   fit_probe: {
     text: "src-accent src-accent--probe",
     border: "src-accent-border src-accent--probe",
-    gbGradient: "",
   },
   /* Premium locked / trusted launches */
   learned: {
     text: "src-accent src-accent--learned",
     border: "src-accent-border src-accent--learned",
-    gbGradient: "",
   },
   learned_curve: {
     text: "src-accent src-accent--learned",
     border: "src-accent-border src-accent--curve",
-    gbGradient: "",
   },
 };
