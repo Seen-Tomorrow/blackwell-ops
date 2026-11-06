@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { GpuInfo, VramManifest, ModelMetadata } from "../lib/types";
 import GpuTopology from "./GpuTopology";
@@ -186,7 +186,17 @@ export default function VramBadge({
   ]);
 
   const [takeoverState, setTakeoverState] = useState<"idle" | "busy">("idle");
-
+  // A mode switch must be visible even when the numbers land in the same place: the topo runs
+  // a short re-scan and the bars ease to their new widths.
+  const [placementFlash, setPlacementFlash] = useState(false);
+  const prevFitOff = useRef(fitOff);
+  useEffect(() => {
+    if (prevFitOff.current === fitOff) return;
+    prevFitOff.current = fitOff;
+    setPlacementFlash(true);
+    const timer = setTimeout(() => setPlacementFlash(false), 700);
+    return () => clearTimeout(timer);
+  }, [fitOff]);
   const fusionOverlayActive =
     selectedSlotIdx !== null &&
     selectedSlotIdx !== undefined &&
@@ -681,7 +691,10 @@ export default function VramBadge({
         </div>
 
         {manifest.gpuAllocations.length > 0 && (
-          <div className="vram-fc__topo vram-fc__topo--compact">
+          <div
+            className="vram-fc__topo vram-fc__topo--compact"
+            data-placement-flash={placementFlash ? "1" : undefined}
+          >
             <GpuTopology
               gpuAllocations={manifest.gpuAllocations}
               gpuBarColor={s.gpuBarColor}

@@ -1486,6 +1486,35 @@
   padding-top: calc(2px * var(--vram-fc-scale, 1.12));
 }
 
+/* Placement switch feedback: the numbers can land in the same place (a launch measured with our
+   -ts is also the learned row), so the topo re-scans and the bars ease to their new widths
+   instead of jumping. A mode switch must always be visible. */
+.vram-fc__topo .gpu-card__bar-fill {
+  transition: width 0.32s ease-out;
+}
+
+.vram-fc__topo[data-placement-flash="1"] {
+  animation: vram-placement-scan 0.6s ease-out;
+}
+
+@keyframes vram-placement-scan {
+  0% {
+    filter: brightness(1.4);
+  }
+  100% {
+    filter: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vram-fc__topo .gpu-card__bar-fill {
+    transition: none;
+  }
+  .vram-fc__topo[data-placement-flash="1"] {
+    animation: none;
+  }
+}
+
 
 /* topo scroll/container rules live with GPU topology block */
 
