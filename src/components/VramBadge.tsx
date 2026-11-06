@@ -397,6 +397,22 @@ export default function VramBadge({
   const ramNeedTone = s.ramNeedTone ?? "ok";
   const vramBarInset = t.kvSpillRiskText?.trim() || null;
   const ramBarInset = t.offloadWarningText?.trim() || null;
+  // History, not a projection: what the last recorded launch actually put in system RAM.
+  // Shown only when the current projection is not already saying OFFLOADING — the measured
+  // figure is the news exactly when the forecast has stopped spilling.
+  const ramHistoryGb = manifest.lastLaunchSpillGb ?? 0;
+  const ramHistoryAt = (() => {
+    if (!manifest.lastLaunchSpillAt) return null;
+    const d = new Date(manifest.lastLaunchSpillAt);
+    if (!Number.isFinite(d.getTime())) return null;
+    return d.toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  })();
+  const showRamHistory = ramHistoryGb > 0.05 && !ramBarInset;
 
 
   return (
@@ -567,6 +583,16 @@ export default function VramBadge({
                           title={ramBarInset}
                         >
                           {ramBarInset}
+                        </span>
+                      ) : null}
+                      {showRamHistory ? (
+                        <span
+                          className="vram-fc-bar__history"
+                          title={`Last recorded launch put ${ramHistoryGb.toFixed(1)} GB of weights in system RAM${
+                            ramHistoryAt ? ` · ${ramHistoryAt}` : ""
+                          }`}
+                        >
+                          {`last launch +${ramHistoryGb.toFixed(1)}G → RAM`}
                         </span>
                       ) : null}
                     </div>

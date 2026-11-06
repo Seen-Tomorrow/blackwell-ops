@@ -1915,6 +1915,28 @@
   -webkit-text-fill-color: var(--theme-telemetry-red);
 }
 
+/* RAM bar history — the LAST recorded launch's host spill, measured, inside the bar
+   bottom. History only: it never feeds the gate or the need total. */
+.vram-fc-bar__history {
+  position: absolute;
+  left: calc(7px * var(--vram-fc-scale, 1.12));
+  bottom: 1px;
+  z-index: 2;
+  max-width: 62%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: calc(6.4px * var(--vram-fc-scale, 1.12));
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1;
+  color: color-mix(in srgb, var(--display-face-text) 66%, transparent);
+  text-shadow: 0 1px 2px color-mix(in srgb, var(--fixed-black) 72%, transparent);
+  pointer-events: none;
+}
+
 
 
 
