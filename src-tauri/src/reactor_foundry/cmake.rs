@@ -149,7 +149,9 @@ pub(crate) async fn prepare_foundry_build_dir(
     }
 
     if build_dir.exists() {
-        tokio::fs::remove_dir_all(build_dir)
+        // The cold path often runs seconds after a previous build released its handles, so
+        // retry (up to 8 s) instead of failing the whole build on a transient `os error 32`.
+        super::fstree::remove_dir_all_retrying(build_dir)
             .await
             .map_err(|e| format!("Failed to reset Foundry build dir: {e}"))?;
     }

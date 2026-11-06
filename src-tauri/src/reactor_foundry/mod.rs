@@ -15,6 +15,7 @@
 mod artifacts;
 mod batch;
 mod cmake;
+mod fstree;
 mod git;
 mod progress;
 
@@ -1076,6 +1077,22 @@ async fn stage_cmake_configure<'a>(ctx: &BuildCtx<'a>) -> Result<String, String>
 
     let toolchain_id = profile.toolchain_id(manifest);
     let cache_fingerprint = foundry_cache_fingerprint(profile_id, &cmake_configure_line, &toolchain_id);
+
+    // Guard BEFORE the reset touches disk: a fingerprint miss wipes `build-{profile}`, so a
+    // slot that is not this build's (cancel, stale/second window) must never be allowed to
+    // delete a tree a live compile still owns. Same rule CLEAR CACHE applies;
+    // `prepare_foundry_build_dir` itself is guard-free by design.
+    if is_cancelled() {
+        return Err("Build cancelled by user.".to_string());
+    }
+    let reset_slot = require_build_state("build dir reset").await?;
+    if reset_slot.provider_id != provider_id {
+        return Err(format!(
+            "Foundry build slot belongs to '{}', not '{}' — refusing to reset the build tree.",
+            reset_slot.provider_id, provider_id
+        ));
+    }
+
     let cache_reused = match prepare_foundry_build_dir(&build_dir, &cache_fingerprint).await {
         Ok(reused) => reused,
         Err(e) => {
@@ -3034,35 +3051,18 @@ pub async fn foundry_work_cache_status(
 
 /// Remove a retained Foundry tree and verify it is actually gone.
 ///
-/// Windows occasionally keeps a handle briefly after the last compiler/ninja child
-/// exits; a single `remove_dir_all` then leaves a partial tree, which reads as
-/// "CLEAR CACHE did nothing" and invites 2–3 clicks. Retry with a short backoff and
-/// fail loudly if the tree survives, so the UI can show the real error.
+/// Windows keeps the last handle on a just-finished build tree open for a beat after the
+/// final compiler/linker child exits (an AV scan of a freshly linked DLL does the same),
+/// so a single `remove_dir_all` reports `os error 32` on a tree that is already dead —
+/// which reads as "CLEAR CACHE did nothing". [`fstree::remove_dir_all_retrying`] backs off
+/// for up to 8 s, then fails loudly and names the entry that still holds the handle.
 async fn remove_foundry_tree_verified(
     path: &std::path::Path,
     label: &str,
 ) -> Result<(), String> {
-    if !path.exists() {
-        return Ok(());
-    }
-    let mut last_error: Option<String> = None;
-    for attempt in 0..3u64 {
-        match tokio::fs::remove_dir_all(path).await {
-            Ok(()) => {}
-            Err(e) => last_error = Some(e.to_string()),
-        }
-        if !path.exists() {
-            return Ok(());
-        }
-        if attempt < 2 {
-            tokio::time::sleep(std::time::Duration::from_millis(150 * (attempt + 1))).await;
-        }
-    }
-    let detail = last_error.unwrap_or_else(|| "tree still present".to_string());
-    Err(format!(
-        "{label} could not be removed ({detail}): {}",
-        path.display()
-    ))
+    fstree::remove_dir_all_retrying(path)
+        .await
+        .map_err(|detail| format!("{label} could not be removed ({detail}): {}", path.display()))
 }
 
 /// Delete `foundry/engines/<provider>/work/` or one `build-{profile}/` subtree.
