@@ -1,0 +1,5 @@
+# Commits that rewrite every line without changing content — hide them in blame:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# Line-ending normalization of ModelCatalog.tsx (CRLF blob -> LF index). No content change.
+1c15c2b561740500571fe5b1c12f52882193b69c

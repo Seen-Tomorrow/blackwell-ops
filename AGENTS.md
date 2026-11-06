@@ -67,6 +67,24 @@ user's own CUDA toolkit so the bundled one always wins. Do not treat the pack as
 
 ---
 
+## Line endings — CR / LF / CRLF
+
+`CR` = carriage return (0x0D), `LF` = line feed (0x0A); "CRLF" is the two in sequence. That is the
+whole subject. `.gitattributes` pins the convention: **LF in the index, CRLF in the Windows
+checkout** — normal, not a bug, and not worth reporting.
+
+- **Check, don't guess**: `git ls-files --eol <file>` → `i/lf w/crlf` is the healthy state.
+- **`i/crlf` or `i/-text` on a source file is a defect**: that blob was committed with CRLF, so git
+  normalizes the working side and not the blob — every later edit diffs as a whole-file rewrite.
+  Repair it once with `git add --renormalize <file>`; never "preserve its bytes" with
+  `-c core.autocrlf=false add` (that is how `ModelCatalog.tsx` stayed broken).
+- **Never rewrite a file to change its EOLs**, and never stage a file round-tripped through a
+  script for an unrelated edit. One-line edits must stay one-line diffs.
+- **Read a suspicious diff**: `git diff --ignore-cr-at-eol` (empty ⇒ EOL-only, no content change),
+  `git diff --numstat` (a whole-file count on a small edit is the signature above).
+
+---
+
 ## CSS / themes (frontend)
 
 **Themes law** — Color lives in `src/themes/app-themes.ts` + `src/styles/tokens-base.css`. CSS/TSX only *name* tokens. To recolor an element: grep the class → if it’s a `var(--token)`, edit the token (all three themes, or base if shared); if it’s a hex, that site is the source of truth until someone wires a token. Frozen set: MATRIX / SLATE / ARCTIC × DOTTED / CLEAN. Do not add themes, faces, `[data-theme="…"]` forks, or `var(--x, #hex)` “just in case.”
