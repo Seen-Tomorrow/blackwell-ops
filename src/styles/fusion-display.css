@@ -967,6 +967,28 @@
   margin-left: calc(8px * var(--vram-fc-scale, 1.12));
 }
 
+/* VRAM PLACEMENT — which side owns the split; the engaged mode is always on screen.
+   Compact segment switch (same amber chrome as the RUNTIME MODE bar, one step smaller). */
+.vram-fc-placement {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--vram-fc-scale, 1.12));
+  flex: 0 0 auto;
+  min-width: 0;
+  align-self: center;
+}
+
+.vram-fc-placement__label {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: calc(9px * var(--vram-fc-scale, 1.12));
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: color-mix(in srgb, var(--display-face-text-muted) 92%, transparent);
+}
+
 
 
 

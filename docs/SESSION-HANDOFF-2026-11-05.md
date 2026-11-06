@@ -90,7 +90,13 @@ for speed. One glass (`VramBadge`), one plan, one journal.
    persists it through `save_provider` (a file-only write left the provider state stale, so the
    glass and the CLI disagreed until restart). The bars paint the plan's per-card MiB, not the
    fraction. Verified: 22/40 → 89.7/91.4 GB painted against 92.1/91.9 measured.
-2. **Bars repaint on TAKEOVER without restart — verified.**
+2. **Placement is a labelled segment switch on the glass — VRAM PLACEMENT / ENGINE FIT |
+   APP TAKEOVER — and it always shows which side owns the split. APP TAKEOVER writes the
+   plan's -ts and --fit off; ENGINE FIT clears the saved -ts (param row **and** provider
+   file, otherwise `--fit` bails with `tensor_split already set by user`) and turns fit back on.
+   Bars repaint without restart; the switch publishes data-takeover for the dev tools.
+   A parallel change re-arms the FIT probe (parallel is in the probe identity) but the probe is
+   parallel-blind — only a launch's learned row measures the slot count.
 3. **SPEC/draft is not in the learned key** and has no budget term — DSpark and non-spec runs collide.
 4. **Auto-arming the handover** (plan over free, or previous run `fit_changed: true`) with the
    `arch_capabilities::tensor_split_denial` guard. Today TAKEOVER is a click only.

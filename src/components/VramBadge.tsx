@@ -5,6 +5,7 @@ import GpuTopology from "./GpuTopology";
 import FusionPane from "./FusionPane";
 import FusionDualStage, { type FusionPaneIdentity } from "./FusionDualStage";
 import MoeBadge from "./MoeBadge";
+import SegmentSwitch from "./SegmentSwitch";
 import { formatTensorSplit, type GpuCalibrationRow, type LayerPlan } from "../lib/vramLayerPlan";
 import MemorySourcePanel, {
   MemorySourceNeedOverlay,
@@ -184,7 +185,7 @@ export default function VramBadge({
     manifest, layerPlan, planKvSource, planSqueezed,
   ]);
 
-  const [takeoverState, setTakeoverState] = useState<"idle" | "busy" | "done">("idle");
+  const [takeoverState, setTakeoverState] = useState<"idle" | "busy">("idle");
 
   const fusionOverlayActive =
     selectedSlotIdx !== null &&
@@ -411,51 +412,48 @@ export default function VramBadge({
             overFreeReprobe={s.launchPaint === "offload" || s.launchPaint === "nofit"}
           />
         ) : null}
-        {/* Placement handover, one control both ways: TAKEOVER applies the plan's -ts and turns
-            fit off; FIT ON gives placement back to the engine (clears -ts first — a leftover one
-            makes --fit bail with "tensor_split already set by user"). */}
-        <button
-          type="button"
-          className="vram-fc-source__reprobe vram-fc-header__reprobe"
-          data-takeover={takeoverState}
-          disabled={
-            takeoverState !== "idle" ||
-            (fitOff ? !onReleasePlacement : !onApplyPlan || !layerPlan || !applyTs)
-          }
-          onClick={() => {
-            if (fitOff) {
-              if (!onReleasePlacement) return;
+        {/* Placement handover, visible both ways: which side owns placement is always on screen.
+            APP TAKEOVER writes the plan's -ts and turns fit off; ENGINE FIT gives placement back
+            (clears -ts first — a leftover one makes --fit bail with "tensor_split already set"). */}
+        <div className="vram-fc-placement" data-takeover={takeoverState}>
+          <span className="vram-fc-placement__label">VRAM PLACEMENT</span>
+          <SegmentSwitch
+            ariaLabel="VRAM placement"
+            size="compact"
+            tone="amber"
+            selectedId={fitOff ? "takeover" : "fit"}
+            disabled={takeoverState !== "idle"}
+            options={[
+              {
+                id: "fit",
+                label: "ENGINE FIT",
+                disabled: !onReleasePlacement,
+                title: "The engine's --fit chooses the split (clears -ts)",
+              },
+              {
+                id: "takeover",
+                label: "APP TAKEOVER",
+                disabled: !onApplyPlan || !layerPlan || !applyTs,
+                title:
+                  layerPlan && applyTs
+                    ? `Apply -ts ${formatTensorSplit(applyTs)} (${layerPlan.optimalBoundary} / ${layerPlan.layerCount} layers) and FIT off: the engine stops shaving the graph`
+                    : "No layer plan for this model yet",
+              },
+            ]}
+            onSelect={(id) => {
+              if (id === (fitOff ? "takeover" : "fit")) return;
               setTakeoverState("busy");
-              onReleasePlacement();
-              setTimeout(() => setTakeoverState("done"), 450);
-              setTimeout(() => setTakeoverState("idle"), 2200);
-              return;
-            }
-            if (!onApplyPlan || !layerPlan || !applyTs) return;
-            setTakeoverState("busy");
-            onApplyPlan(formatTensorSplit(applyTs));
-            onToggleFitOff?.();
-            setTimeout(() => setTakeoverState("done"), 450);
-            setTimeout(() => setTakeoverState("idle"), 2200);
-          }}
-          title={
-            fitOff
-              ? "FIT ON — hand placement back to the engine: clears -ts and lets --fit choose the split"
-              : !layerPlan || !applyTs
-                ? "No layer plan for this model yet"
-                : `FIT OFF + apply -ts ${formatTensorSplit(applyTs)} (${layerPlan.optimalBoundary} / ${layerPlan.layerCount} layers): the engine stops shaving the graph`
-          }
-        >
-          {takeoverState === "busy"
-            ? "APPLYING…"
-            : takeoverState === "done"
-              ? fitOff
-                ? "TAKEN OVER"
-                : "RELEASED"
-              : fitOff
-                ? "FIT ON"
-                : "TAKEOVER"}
-        </button>
+              if (id === "fit") {
+                onReleasePlacement?.();
+              } else if (onApplyPlan && applyTs) {
+                onApplyPlan(formatTensorSplit(applyTs));
+                onToggleFitOff?.();
+              }
+              // The selection itself shows the engaged mode; the lock is only anti-double-click.
+              setTimeout(() => setTakeoverState("idle"), 600);
+            }}
+          />
+        </div>
       </div>
 
       <div className="vram-badge-body vram-fc__body vram-fc__body--assisted relative min-h-0 overflow-hidden">
