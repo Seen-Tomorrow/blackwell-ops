@@ -567,6 +567,7 @@ fn lookup_learned_vram_fuzzy(
     let ctx_n = normalize_ctx_key(ctx);
     let kv_n = kv_quant.trim().to_lowercase();
     let split_n = split.trim().to_lowercase();
+    let ub_n = ubatch.trim().parse::<u32>().unwrap_or(0);
     let spec_n = normalize_spec_type(spec_type);
     let draft_base = {
         let d = draft_key.trim();
@@ -599,6 +600,11 @@ fn lookup_learned_vram_fuzzy(
             if k.contains("|split=") {
                 continue;
             }
+        }
+        // The entry key carries ubatch because it moves the compute graph; a broad match
+        // must not hand a 512 row to a 1024 launch.
+        if !key_matches_ubatch(k, ub_n) {
+            continue;
         }
 
         let key_has_spec = k.contains("|spec=");
@@ -1060,6 +1066,19 @@ mod dedup_tests {
         assert!(key_matches_split(layer, "layer"));
         assert!(!key_matches_split(none, "layer"));
         assert!(key_matches_split(tensor, "tensor"));
+    }
+
+    #[test]
+    fn curve_does_not_mix_ubatch_values() {
+        let k512 = "C:/m.gguf|ggml-master|ctx=65536|kv=q8_0|topo=96|split=layer|ubatch=512|offload=regular";
+        let k1024 = "C:/m.gguf|ggml-master|ctx=65536|kv=q8_0|topo=96|split=layer|ubatch=1024|offload=regular";
+        let legacy = "C:/m.gguf|ggml-master|ctx=65536|kv=q8_0|split=layer";
+        assert!(key_matches_ubatch(k512, 512));
+        assert!(!key_matches_ubatch(k512, 1024));
+        assert!(key_matches_ubatch(k1024, 1024));
+        assert!(!key_matches_ubatch(k1024, 512));
+        // Keys written before the token existed belong to the default row.
+        assert!(key_matches_ubatch(legacy, 0));
     }
 
     #[test]
@@ -1994,6 +2013,19 @@ fn learn_key_parallel(key: &str) -> u32 {
         .unwrap_or(1)
 }
 
+/// Ubatch of a learned key. It moves the compute graph (+338/+248 MiB per +512), so a
+/// curve must never mix ubatch values even though the entry lookup keys them apart.
+fn learn_key_ubatch(key: &str) -> u32 {
+    key.split('|')
+        .find_map(|token| token.strip_prefix("ubatch="))
+        .and_then(|value| value.parse::<u32>().ok())
+        .unwrap_or(0)
+}
+
+fn key_matches_ubatch(key: &str, want: u32) -> bool {
+    learn_key_ubatch(key) == want
+}
+
 fn ctx_from_learn_key(key: &str) -> Option<usize> {
     let marker = "|ctx=";
     let start = key.find(marker)? + marker.len();
@@ -2278,6 +2310,10 @@ pub fn get_learned_vram_curve(
         }
         // A curve must not mix slot counts: parallel moves the compute buffers.
         if learn_key_parallel(k) != wanted_parallel {
+            continue;
+        }
+        // Nor ubatch: it keys the row apart and moves the graph.
+        if !key_matches_ubatch(k, wanted_ubatch) {
             continue;
         }
         if let Some(topo) = vram_topo.as_deref() {
