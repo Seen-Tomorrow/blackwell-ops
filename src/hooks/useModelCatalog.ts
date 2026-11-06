@@ -6,6 +6,12 @@ import { useKeyboardNav } from "./useKeyboardNav";
 import { useTauriListen } from "./useTauriListen";
 import { KEYS, loadLastModel, normalizeModelPathKey, readStorage, saveLastModel, subscribeStorage, writeStorage } from "../lib/storage";
 import { dispatchAppEvent, EVENTS } from "../lib/events";
+import {
+  compareCatalogModels,
+  SORT_FIRST_DIRECTION,
+  type SortDirection,
+  type SortField,
+} from "../lib/catalogSort";
 import { bootstrapFitScanCache } from "../lib/fitScanSessionStore";
 import {
   FIT_SCAN_POINTS_TOTAL,
@@ -55,8 +61,9 @@ import {
   type ModelScanPatch,
 } from "../lib/libraryJobs";
 
-export type SortField = (keyof ModelEntry) | "date";
-export type SortDirection = "asc" | "desc";
+// Sort types and the ordering rule belong to the sort module; re-exported here
+// because the catalog component has always imported its SortField from the hook.
+export type { SortDirection, SortField } from "../lib/catalogSort";
 function modelFileName(path: string): string {
   const normalized = path.replace(/[/\\]+$/, "");
   const slash = Math.max(normalized.lastIndexOf("/"), normalized.lastIndexOf("\\"));
@@ -469,7 +476,7 @@ export function useModelCatalog({
       setSortDirection(d => (d === "asc" ? "desc" : "asc"));
     } else {
       setSortField(field);
-      setSortDirection("asc");
+      setSortDirection(SORT_FIRST_DIRECTION[field] ?? "asc");
     }
   }, [sortField]);
 
@@ -757,24 +764,9 @@ export function useModelCatalog({
 
   // Fit-now + sorted/filtered list (after FIT cache is available; no forecast calls)
   const catalogModels = useMemo(() => {
-    let sorted = [...models].sort((a, b) => {
-      let comparison = 0;
-      if (sortField === "date") {
-        comparison = (a.metadata?.file_created ?? 0) - (b.metadata?.file_created ?? 0);
-      } else {
-        const aVal = a[sortField];
-        const bVal = b[sortField];
-        if (sortField === "size_str") {
-          const parseGb = (s: string) => parseFloat(String(s).replace(/[^0-9.]/g, "")) || 0;
-          comparison = parseGb(aVal as string) - parseGb(bVal as string);
-        } else if (typeof aVal === "string" && typeof bVal === "string") {
-          comparison = aVal.localeCompare(bVal);
-        } else if (typeof aVal === "boolean" && typeof bVal === "boolean") {
-          comparison = Number(aVal) - Number(bVal);
-        }
-      }
-      return sortDirection === "asc" ? comparison : -comparison;
-    });
+    let sorted = [...models].sort((a, b) =>
+      compareCatalogModels(a, b, sortField, sortDirection),
+    );
 
     const searchWords = search.trim()
       ? search.toLowerCase().trim().split(/\s+/)

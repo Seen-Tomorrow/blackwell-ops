@@ -28,6 +28,7 @@ import {
   stopFitScanLocal,
 } from "./fitScanSessionStore";
 import { loadLibraryBackfill, saveLibraryBackfill } from "./storage";
+import { sizeLabelBytes } from "./modelSize";
 
 /** Model shape the scan order needs — the catalog already carries both fields. */
 interface ScanOrderModel {
@@ -36,30 +37,12 @@ interface ScanOrderModel {
   metadata?: unknown;
 }
 
-const SIZE_UNITS: Record<string, number> = {
-  b: 1,
-  kib: 1024,
-  mib: 1024 ** 2,
-  gib: 1024 ** 3,
-  tib: 1024 ** 4,
-  kb: 1000,
-  mb: 1000 ** 2,
-  gb: 1000 ** 3,
-  tb: 1000 ** 4,
-};
-
 /**
- * `"46.20 GiB"` → bytes. Anything unparseable sorts last, so a formatting change
- * can never put an unknown model at the front of the queue.
+ * Bytes for a model's label. Anything unparseable sorts last, so a formatting
+ * change can never put an unknown model at the front of the queue.
  */
 function parseSizeLabel(label: string | undefined): number {
-  if (!label) return Number.POSITIVE_INFINITY;
-  const match = label.trim().match(/^([\d.]+)\s*([a-zA-Z]+)$/);
-  if (!match) return Number.POSITIVE_INFINITY;
-  const value = Number.parseFloat(match[1]);
-  const unit = SIZE_UNITS[match[2].toLowerCase()];
-  if (!Number.isFinite(value) || unit == null) return Number.POSITIVE_INFINITY;
-  return value * unit;
+  return sizeLabelBytes(label) ?? Number.POSITIVE_INFINITY;
 }
 
 function pathKey(path: string): string {
