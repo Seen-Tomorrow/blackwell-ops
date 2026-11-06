@@ -46,13 +46,14 @@ function ggufEngramMib(model: ModelEntry | null | undefined): number | undefined
   return bytes != null && bytes > 0 ? bytes / 1_048_576 : undefined;
 }
 /**
- * Second CTX for the on-demand probe pair: far enough from live to give the line a slope,
- * and inside the range users actually slide.
+ * Second CTX for the on-demand probe pair. It must sit on the far side of the useful range:
+ * two points only describe the span between them, so an anchor 32K apart from live would
+ * force an extrapolation for every larger context. At/above 256K the anchor looks down;
+ * below it, the anchor looks up to 512K.
  */
 function probePairCtx(liveCtx: number): number {
-  if (liveCtx <= 8192) return 262_144;
   if (liveCtx >= 262_144) return 32_768;
-  return liveCtx >= 65_536 ? 32_768 : 262_144;
+  return 524_288;
 }
 
 /** Measured KV at one probe — the probe's own `ctx` column, summed over devices. */
@@ -501,8 +502,8 @@ export function useScenarioEvaluator({
   const lastScenarioDebugNameRef = useRef("");
   const probeSessionRef = useRef<ProbeSession | null>(null);
   const validatingRef = useRef(false);
-  /** Last probeKey whose FIT failed — do not auto-loop radar. */
-  const fitFailKeyRef = useRef<string | null>(null);
+  /** Last auto-probe attempt (identity + CTX) — one try per point, never a radar loop. */
+  const autoProbeKeyRef = useRef<string | null>(null);
   /** Hard knob changed (kv/ubatch/flash/split) — learned data must not skip the probe. */
   const forceProbeRef = useRef(false);
   const hadSysInfoRef = useRef(systemInfo != null);
@@ -534,7 +535,7 @@ export function useScenarioEvaluator({
     if (path === prev.modelPath && probeKey === prev.probeKey) return;
     const hardKnobsChanged = path === prev.modelPath && probeKey !== prev.probeKey;
     probeSessionRef.current = null;
-    fitFailKeyRef.current = null;
+    autoProbeKeyRef.current = null;
     if (manifestRef.current != null) {
       commitManifest(null);
     }
@@ -1231,7 +1232,6 @@ export function useScenarioEvaluator({
       // `fit_scan_model` rejects with the serialized `BlackwellError`, not an `Error`.
       const msg = errorMessage(e);
       console.error("[FitValidate]", e);
-      fitFailKeyRef.current = probeKey;
       switch (errorKind(e)) {
         case "fit_probe_skipped":
           // Only a real skip is informational; the message names the reason.
@@ -1270,14 +1270,21 @@ export function useScenarioEvaluator({
     if (isExternalDraftOnly(model)) return;
     if (validatingRef.current) return;
     const forceProbe = forceProbeRef.current;
-    if (forceProbe) fitFailKeyRef.current = null;
-    if (fitFailKeyRef.current === probeKey) return;
+    const liveCtx = parseCtx(configRef.current.ctx ?? "32768");
+    // One automatic attempt per identity+CTX. A failed probe must not loop, but a CTX the
+    // glass cannot paint must not go blank either — moving there earns one new try.
+    const attemptKey = `${probeKey}|ctx=${liveCtx}`;
+    if (forceProbe) autoProbeKeyRef.current = null;
+    if (autoProbeKeyRef.current === attemptKey) return;
     if (learnedFetchPendingRef.current) return;
+    const sess = probeSessionRef.current;
     if (
-      probeSessionRef.current?.modelPath === model.path
-      && probeSessionRef.current.hardKey === probeKey
+      sess
+      && sess.modelPath === model.path
+      && sess.hardKey === probeKey
+      // A probe covers this CTX only when taken here; a probe pair is a line and covers all.
+      && (sess.anchorCtx === liveCtx || (sess.curve?.length ?? 0) >= 2)
     ) {
-      const sess = probeSessionRef.current;
       const freeList = computeGpuAvailableList(
         gpusRef.current,
         committedSlotsFromStack(stackRef.current),
@@ -1317,6 +1324,7 @@ export function useScenarioEvaluator({
     const providerId = String(configRef.current.backend_type || "");
     if (tomMtpBlocked(providerId, model)) return;
     forceProbeRef.current = false;
+    autoProbeKeyRef.current = attemptKey;
     void validate();
   };
 
@@ -1340,6 +1348,9 @@ export function useScenarioEvaluator({
           "success",
         );
       }
+      // The prune may have removed the only point the glass could paint — allow the
+      // automatic probe again instead of leaving the user with an empty frame.
+      autoProbeKeyRef.current = null;
       refreshLearnedVram();
       return n;
     } catch (e) {
