@@ -147,12 +147,12 @@ export default function FoundryPage({
                   </div>
                   <div className="fnd-page-field">
                     <span className="fnd-page-field__label">PROFILE</span>
-                    <div className="fnd-page-env" role="group" aria-label="Cache profile">
+                    <div className="fnd-mode" role="group" aria-label="Cache profile">
                       {ENV_ORDER.map((option) => (
                         <button
                           key={option}
                           type="button"
-                          className={`fnd-page-env__btn${cacheProfile === option ? " fnd-page-env__btn--active" : ""}`}
+                          className={`fnd-mode__btn${cacheProfile === option ? " fnd-mode__btn--active" : ""}`}
                           aria-pressed={cacheProfile === option}
                           onClick={() => setCacheProfile(option)}
                         >

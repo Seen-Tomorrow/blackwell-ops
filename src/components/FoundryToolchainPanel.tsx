@@ -174,9 +174,26 @@ export default function FoundryToolchainPanel({
   const foundryReady = info.profiles_total > 0 && info.profiles_ready >= info.profiles_total;
   const readyBadge = foundryReady && !info.pack_outdated;
 
-  // A completed setup is the only state worth collapsing into one line.
+  // A completed setup is the only state worth collapsing into one line — but it
+  // still names the toolchain that will actually compile, so READY is verifiable.
   if (compact && !onboarding && readyBadge) {
-    return <div className="fnd-tc-ready type-tiny font-mono">✓ Foundry package ready</div>;
+    const readyCheck =
+      info.profile_checks.find(
+        (c) => c.id.toLowerCase() === (requiredProfile ?? "").toLowerCase(),
+      ) ?? info.profile_checks.find((c) => c.ready);
+    return (
+      <div className="fnd-ready-strip">
+        <span className="fnd-ready-strip__label">TOOLCHAIN</span>
+        <span className="fnd-ready-strip__state">
+          <span className="fnd-ready-strip__tick" aria-hidden>✓</span> READY
+        </span>
+        {readyCheck && (
+          <span className="fnd-ready-strip__detail">
+            {readyCheck.vs_label} · CUDA {readyCheck.cuda}
+          </span>
+        )}
+      </div>
+    );
   }
 
   const runtimeRow = (profile: string, label: string) => {
@@ -188,49 +205,50 @@ export default function FoundryToolchainPanel({
     const installed = runtime.ready || pack.installed;
     const active = profile === DEFAULT_BINARY_PROFILE;
     return (
-      <div
-        key={profile}
-        className="flex items-center justify-between gap-2 py-1"
-      >
-        <div className="min-w-0">
-          <div className="type-tiny font-mono uppercase tracking-wide">
-            {label}
-            {active && <span className="type-micro font-mono uppercase config-muted"> active</span>}
-          </div>
-          <div className="type-micro font-mono config-muted">CUDA {runtime.cuda}</div>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
+      <div key={profile} className={`fnd-tc-row${installed ? " fnd-tc-row--ready" : ""}`}>
+        <span className="fnd-tc-row__dot" aria-hidden />
+        <span className="fnd-tc-row__name">
+          {label}
+          {active && <span className="fnd-tc-row__tag">ACTIVE</span>}
+        </span>
+        <span className="fnd-tc-row__meta">CUDA {runtime.cuda}</span>
+        <span
+          className={`fnd-tc-row__state${
+            busy ? " fnd-tc-row__state--busy" : installed ? " fnd-tc-row__state--ready" : ""
+          }`}
+        >
+          {busy ? task?.status ?? "QUEUED" : installed ? "INSTALLED" : "NOT INSTALLED"}
+        </span>
+        <span className="fnd-tc-row__action">
           {busy ? (
-            <>
-              <span className="type-micro font-mono config-muted">{task?.status}</span>
-              {task && (
-                <button
-                  type="button"
-                  className="foundry-toolchain-btn foundry-toolchain-btn--neutral"
-                  onClick={() => void cancelTask(task.id)}
-                >
-                  CANCEL
-                </button>
-              )}
-            </>
-          ) : installed ? (
-            <span className="type-micro font-mono config-muted">installed</span>
-          ) : (
+            task && (
+              <button
+                type="button"
+                className="foundry-toolchain-btn foundry-toolchain-btn--neutral"
+                onClick={() => void cancelTask(task.id)}
+              >
+                CANCEL
+              </button>
+            )
+          ) : installed ? null : (
             <button
               type="button"
               className="foundry-toolchain-btn foundry-toolchain-btn--action"
               onClick={() => void startPack(pack.id)}
             >
-              DOWNLOAD {formatSize(pack.size_bytes)}
+              INSTALL {formatSize(pack.size_bytes)}
             </button>
           )}
-        </div>
+        </span>
       </div>
     );
   };
 
   const buildTask = buildPack ? taskForPack(tasks, buildPack.id) : undefined;
   const buildBusy = Boolean(buildTask && ACTIVE_STATUSES.includes(buildTask.status));
+  const buildInstalled = foundryReady;
+  const buildOutdated = buildInstalled && info.pack_outdated;
+  const runtimeRows = [runtimeRow("edge", "EDGE"), runtimeRow("stable", "STABLE")].filter(Boolean);
 
   if (onboarding) {
     const seed = runtimeForProfile(requiredProfile ?? DEFAULT_BINARY_PROFILE);
@@ -264,48 +282,76 @@ export default function FoundryToolchainPanel({
   }
 
   return (
-    <div className="w-full space-y-2">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <section className="rounded-sm border p-2.5 space-y-1.5">
-          <p className="type-tiny font-mono uppercase tracking-wide config-muted">CUDA profiles</p>
-          {runtimeRow("edge", "EDGE")}
-          {runtimeRow("stable", "STABLE")}
-        </section>
-        <section className="rounded-sm border p-2.5 space-y-1.5">
-          <p className="type-tiny font-mono uppercase tracking-wide config-muted">Foundry</p>
-          <p className="type-micro font-mono config-muted leading-relaxed">
-            Compiles engines on this machine. Running them does not need it.
-          </p>
-          <div className="flex items-center gap-2">
+    <section className="fnd-tc-setup">
+      <div className="fnd-tc-setup__head">
+        <span className="fnd-tc-setup__label">TOOLCHAIN</span>
+        <span className="fnd-tc-setup__state">SETUP NEEDED</span>
+        <span className="fnd-tc-setup__note">
+          Foundry compiles engines here — running them does not need it.
+        </span>
+      </div>
+
+      <div className="fnd-tc-setup__rows">
+        {runtimeRows.length > 0 && (
+          <>
+            <p className="fnd-tc-setup__group">CUDA RUNTIMES</p>
+            {runtimeRows}
+          </>
+        )}
+
+        <p className="fnd-tc-setup__group">COMPILER PACK</p>
+        <div
+          className={`fnd-tc-row${
+            buildInstalled && !buildOutdated ? " fnd-tc-row--ready" : ""
+          }`}
+        >
+          <span className="fnd-tc-row__dot" aria-hidden />
+          <span className="fnd-tc-row__name">BUILD TOOLS</span>
+          <span className="fnd-tc-row__meta">VS Build Tools · CMake · ninja</span>
+          <span
+            className={`fnd-tc-row__state${
+              buildBusy
+                ? " fnd-tc-row__state--busy"
+                : buildInstalled && !buildOutdated
+                  ? " fnd-tc-row__state--ready"
+                  : ""
+            }`}
+          >
+            {buildBusy
+              ? buildTask?.status ?? "QUEUED"
+              : !buildInstalled
+                ? "NOT INSTALLED"
+                : buildOutdated
+                  ? "OUTDATED"
+                  : "INSTALLED"}
+          </span>
+          <span className="fnd-tc-row__action">
             {buildBusy ? (
-              <>
-                <span className="type-micro font-mono config-muted">{buildTask?.status}</span>
-                {buildTask && (
-                  <button
-                    type="button"
-                    className="foundry-toolchain-btn foundry-toolchain-btn--neutral"
-                    onClick={() => void cancelTask(buildTask.id)}
-                  >
-                    CANCEL
-                  </button>
-                )}
-              </>
-            ) : readyBadge ? (
-              <span className="type-micro font-mono config-muted">installed</span>
-            ) : (
+              buildTask && (
+                <button
+                  type="button"
+                  className="foundry-toolchain-btn foundry-toolchain-btn--neutral"
+                  onClick={() => void cancelTask(buildTask.id)}
+                >
+                  CANCEL
+                </button>
+              )
+            ) : buildInstalled && !buildOutdated ? null : (
               <button
                 type="button"
                 className="foundry-toolchain-btn foundry-toolchain-btn--action"
                 onClick={() => buildPack && void startPack(buildPack.id)}
                 disabled={!buildPack}
               >
-                INSTALL {buildPack ? formatSize(buildPack.size_bytes) : ""}
+                {buildOutdated ? "UPDATE" : "INSTALL"}{" "}
+                {buildPack ? formatSize(buildPack.size_bytes) : ""}
               </button>
             )}
-          </div>
-        </section>
+          </span>
+        </div>
       </div>
-      {error && <p className="type-micro font-mono">{error}</p>}
-    </div>
+
+      {error && <p className="fnd-tc-setup__error">{error}</p>}
+    </section>
   );
 }

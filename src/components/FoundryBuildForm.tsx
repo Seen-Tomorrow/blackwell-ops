@@ -235,14 +235,28 @@ export default function FoundryBuildForm({
   const shortCommit = (value?: string | null) => (value ? value.slice(0, 8) : "—");
   const localShort = shortCommit(sourcePreview?.local_commit);
   const remoteShort = shortCommit(sourcePreview?.remote_commit);
-  const installedShort = sourcePreview?.installed_commit
-    ? shortCommit(sourcePreview.installed_commit)
-    : "—";
   const installedInfo = profileEnvLookup(provider.buildInfoPerEnv, environment);
   const installedEngine = engineVersionParts(
     sourcePreview?.installed_version ?? installedInfo?.version,
   );
   const installedBuildDate = installedInfo?.buildDate ?? "";
+  // The engine knows its version/build long before the source revision is recorded,
+  // so the INSTALLED column shows whichever identity we actually have.
+  const installedName = installedEngine.name || installedEngine.build || "";
+  const installedCommit = sourcePreview?.installed_commit
+    ? shortCommit(sourcePreview.installed_commit)
+    : "";
+  const installedValue = installedCommit || installedName || "NONE";
+  const installedNote = installedCommit
+    ? [
+        installedEngine.build ? `build ${installedEngine.build}` : null,
+        installedBuildDate ? `built ${installedBuildDate}` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : installedName
+      ? "source revision not recorded"
+      : "not built here yet";
   const relation = !sourcePreview?.remote_commit
     ? "?"
     : sourcePreview.local_commit && sourcePreview.local_commit === sourcePreview.remote_commit
@@ -381,9 +395,7 @@ export default function FoundryBuildForm({
           </div>
         </div>
 
-        <span className="fnd-form__meta">
-          CUDA {envMeta.cuda} · {envMeta.vs}
-        </span>
+        <span className="fnd-form__meta">CUDA {envMeta.cuda}</span>
       </section>
 
       <section className={`fnd-source fnd-source--${verdict.tone}`}>
@@ -396,46 +408,38 @@ export default function FoundryBuildForm({
         </div>
 
         <div className="fnd-source__commits">
-          <div className="fnd-source__commit fnd-source__commit--local">
+          <div className="fnd-source__commit">
             <span className="fnd-source__commit-label">LOCAL COMMIT</span>
             <strong className="fnd-source__commit-value">{localShort}</strong>
           </div>
           <span className="fnd-source__relation" aria-hidden>{relation}</span>
-          <div className="fnd-source__commit fnd-source__commit--remote">
+          <div className="fnd-source__commit">
             <span className="fnd-source__commit-label">REMOTE COMMIT</span>
             <strong className="fnd-source__commit-value">{remoteShort}</strong>
-            <button
-              type="button"
-              className="fnd-form__btn fnd-source__changelog-btn"
-              onClick={() => void toggleChangelog()}
-            >
-              {changelogOpen ? "HIDE CHANGELOG" : "VIEW CHANGELOG"}
-            </button>
           </div>
           <div className="fnd-source__commit fnd-source__commit--installed">
-            <span className="fnd-source__commit-label">INSTALLED COMMIT</span>
+            <span className="fnd-source__commit-label">INSTALLED · {envLabel}</span>
             <strong
               className="fnd-source__commit-value"
               title={sourcePreview?.installed_version ?? undefined}
             >
-              {installedShort}
+              {installedValue}
             </strong>
+            <span className="fnd-source__commit-note">{installedNote}</span>
           </div>
         </div>
 
         <p className="fnd-source__line">{verdict.line}</p>
 
-        <p className="fnd-source__engine">
-          <span className="fnd-source__engine-env">{envLabel} ENGINE</span>
-          {installedEngine.name && <span>version: {installedEngine.name}</span>}
-          {installedEngine.build && <span>build: {installedEngine.build}</span>}
-          {installedBuildDate && <span>built: {installedBuildDate}</span>}
-          {!installedEngine.name && !installedEngine.build && (
-            <span>no installed engine</span>
-          )}
-        </p>
-
         <div className="fnd-source__actions">
+          <button
+            type="button"
+            className="fnd-form__btn fnd-source__changelog-btn"
+            aria-expanded={changelogOpen}
+            onClick={() => void toggleChangelog()}
+          >
+            {changelogOpen ? "HIDE CHANGELOG" : "VIEW CHANGELOG"}
+          </button>
           {sourcePreview?.message && (
             <details className="fnd-source__details">
               <summary>DETAILS</summary>

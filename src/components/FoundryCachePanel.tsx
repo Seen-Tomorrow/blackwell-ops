@@ -106,19 +106,35 @@ export default function FoundryCachePanel({
   }, [clearKind, clearBusy, providerId, profile, refreshWorkCache]);
 
   if (variant === "summary") {
-    const state = !workCache
+    const tree = !workCache
       ? "CHECKING…"
+      : workCache.cmakeCachePresent
+        ? `TREE ${workCache.sizeLabel}`
+        : "COLD TREE";
+    const sccache = !workCache
+      ? ""
       : workCache.sccacheAvailable
-        ? "Files + objects"
-        : "Files only";
-    const ok = Boolean(workCache);
+        ? `SCCACHE ON${workCache.sccacheSizeLabel ? ` · ${workCache.sccacheSizeLabel}` : ""}`
+        : "SCCACHE OFF";
     return (
       <div className="fnd-cache-summary">
         <span className="fnd-cache-summary__label">CACHING</span>
-        <span className="fnd-cache-summary__state">{state}</span>
-        <span className={`fnd-cache-summary__check${ok ? " fnd-cache-summary__check--on" : ""}`} aria-hidden>
-          {ok ? "✓" : "…"}
+        <span
+          className={`fnd-cache-summary__state${
+            workCache?.cmakeCachePresent ? " fnd-cache-summary__state--warm" : ""
+          }`}
+        >
+          {tree}
         </span>
+        {sccache && (
+          <span
+            className={`fnd-cache-summary__sccache${
+              workCache?.sccacheAvailable ? " fnd-cache-summary__sccache--on" : ""
+            }`}
+          >
+            {sccache}
+          </span>
+        )}
         <button
           type="button"
           className="fnd-cache-summary__manage"
