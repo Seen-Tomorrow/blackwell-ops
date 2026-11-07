@@ -164,6 +164,8 @@ export const KEYS = {
   /** Running engines under display — cards per row (2 | 3). */
   runningEnginesPerRow: `${STORAGE_PREFIX}running-engines-per-row`,
   catalogSplitWidth: `${STORAGE_PREFIX}catalog-split-width`,
+  /** DISTRIBUTION: control/log split width (px). */
+  distributionSplitWidth: `${STORAGE_PREFIX}distribution-split-width`,
   catalogListCollapsed: `${STORAGE_PREFIX}catalog-list-collapsed`,
   /** Harness seats block in the catalog quick strip — "0" = collapsed. Absent = open. */
   catalogSeatsOpen: `${STORAGE_PREFIX}catalog-seats-open`,
@@ -1139,6 +1141,29 @@ export function saveCatalogSplitWidth(width: number): void {
     Math.max(CATALOG_SPLIT_WIDTH_MIN, Math.round(width)),
   );
   writeStorage(KEYS.catalogSplitWidth, String(clamped));
+}
+
+export const DISTRIBUTION_SPLIT_WIDTH_DEFAULT = 460;
+export const DISTRIBUTION_SPLIT_WIDTH_MIN = 360;
+export const DISTRIBUTION_SPLIT_WIDTH_MAX = 900;
+
+export function loadDistributionSplitWidth(): number {
+  const raw = readStorage(KEYS.distributionSplitWidth);
+  if (!raw) return DISTRIBUTION_SPLIT_WIDTH_DEFAULT;
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n)) return DISTRIBUTION_SPLIT_WIDTH_DEFAULT;
+  return Math.min(
+    DISTRIBUTION_SPLIT_WIDTH_MAX,
+    Math.max(DISTRIBUTION_SPLIT_WIDTH_MIN, n),
+  );
+}
+
+export function saveDistributionSplitWidth(width: number): void {
+  const clamped = Math.min(
+    DISTRIBUTION_SPLIT_WIDTH_MAX,
+    Math.max(DISTRIBUTION_SPLIT_WIDTH_MIN, Math.round(width)),
+  );
+  writeStorage(KEYS.distributionSplitWidth, String(clamped));
 }
 
 function loadCatalogListCollapsed(): boolean {

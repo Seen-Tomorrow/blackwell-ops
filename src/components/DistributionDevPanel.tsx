@@ -1,78 +1,58 @@
 /**
- * DEV-only: distribution policy + thin wrappers over Majestic pack/ship scripts.
- * Job output goes to the Tauri/cargo console (log::info) + a plain text panel log.
+ * DEV-only DISTRIBUTION — release dashboard + plan runner.
+ * Spec: docs/DISTRIBUTION-PANEL.md.
+ *
+ * Artifact state comes from get_distribution_state (staged vs published); every pack/ship
+ * action is a ReleasePlan executed by the detached runner, never an ad-hoc action string.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { useTauriListen } from "@/hooks/useTauriListen";
 import { isDevBuild } from "@/lib/build";
-import { dispatchAppEvent, EVENTS } from "@/lib/events";
+import { useDistributionSplitResize } from "@/hooks/useCatalogSplitResize";
 
-interface ProfileReadiness {
-  profile: string;
-  runtimeBinary: boolean;
-  foundryArtifact: boolean;
-  ready: boolean;
-}
+type Tab = "app" | "engines" | "link" | "toolchain";
 
-interface ProviderDistributionRow {
+interface ArtifactStatus {
   id: string;
-  displayName: string;
-  role: string;
-  optionalDownload: boolean;
-  factoryExists: boolean;
-  profiles: string[];
-  readiness: ProfileReadiness[];
-  allReady: boolean;
-  packCommands: string[];
+  kind: string;
+  channel: string;
+  label: string;
+  version: string;
+  build: string;
+  staged: boolean;
+  stagedBytes: number;
+  stagedSha256: string;
+  published: boolean;
+  publishedVersion: string;
+  publishedBuild: string;
+  packedVersion: string;
+  packedBuild: string;
+  state: string;
   notes: string[];
 }
 
-export interface DistributionDashboard {
-  policyPath: string;
-  catalogPath: string;
-  appVersion: string;
-  nsisCore: Record<string, string[]>;
-  plugins: Record<string, string[]>;
-  providers: ProviderDistributionRow[];
-  releaseJobRunning: boolean;
-  workflowNotes: string[];
+interface Preflight {
+  shipUnlocked: boolean;
+  releaseExe: boolean;
+  piPinned: string;
+  foundryReady: string[];
+  foundryMissing: string[];
 }
 
-type ReleaseAction =
-  | "bump"
-  | "bump_pi"
-  | "update_harness"
-  | "pack_app"
-  | "ship_app"
-  | "pack_full"
-  | "ship_full"
-  | "check_app"
-  | "check_full"
-  | "pack_provider"
-  | "ship_provider"
-  | "pack_ship_app"
-  | "pack_ship_full"
-  | "pack_link"
-  | "ship_link"
-  | "pack_ship_link"
-  | "pack_ship_provider"
-  | "pack_ship_all_providers";
-
-function roleBadge(role: string): string {
-  if (role === "core") return "fnd-dev-role-badge--core";
-  if (role === "plugin") return "fnd-dev-role-badge--plugin";
-  // local = Plugin OFF (shipping), still optional product on disk
-  return "fnd-dev-role-badge--local";
+interface ChannelStatus {
+  tag: string;
+  title: string;
+  latestVersion: string;
+  latestBuild: string;
 }
 
-function roleLabel(role: string): string {
-  if (role === "core") return "core (NSIS)";
-  if (role === "plugin") return "catalog ON";
-  return "catalog OFF";
+interface JobStepStatus {
+  id: string;
+  label: string;
+  state: string;
 }
 
-interface DevReleaseJobStatus {
+interface JobStatus {
   state: string;
   chain: string;
   message: string;
@@ -80,68 +60,181 @@ interface DevReleaseJobStatus {
   providerId: string;
   profileId: string;
   logTail: string[];
+  steps: JobStepStatus[];
   running: boolean;
 }
 
-export default function DistributionDevPanel() {
-  const [dash, setDash] = useState<DistributionDashboard | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [logLines, setLogLines] = useState<string[]>([]);
-  const [job, setJob] = useState<DevReleaseJobStatus | null>(null);
-  /** True once we have observed a detached job as running — used to clear busy only on job end. */
-  const sawJobRunningRef = useRef(false);
+interface JobSummary {
+  id: string;
+  startedAt: string;
+  endedAt: string;
+  result: string;
+  summary: string;
+}
 
-  const refresh = useCallback(async () => {
+interface DistributionState {
+  appVersion: string;
+  policyPath: string;
+  artifacts: ArtifactStatus[];
+  preflight: Preflight;
+  channels: ChannelStatus[];
+  job: JobStatus;
+  history: JobSummary[];
+}
+
+interface PlannedJob {
+  id: string;
+  version: string;
+  summary: string;
+  steps: { id: string; label: string }[];
+}
+
+type Phase = "pack" | "ship";
+
+interface ReleasePlan {
+  artifacts: string[];
+  phases: Phase[];
+  bump: "none" | "patch";
+  dryRun: boolean;
+  allowRepair: boolean;
+}
+
+function formatMb(bytes: number): string {
+  return bytes > 0 ? `${Math.round(bytes / (1024 * 1024))} MB` : "—";
+}
+
+function stateLabel(state: string): string {
+  switch (state) {
+    case "published":
+      return "published";
+    case "needs-pack":
+      return "needs pack";
+    case "needs-ship":
+      return "needs ship";
+    case "packed":
+      return "staged";
+    default:
+      return "not packed";
+  }
+}
+
+function Chip({ ok, label, title }: { ok: boolean; label: string; title?: string }) {
+  return (
+    <span className={`dist-chip${ok ? " dist-chip--ok" : " dist-chip--bad"}`} title={title}>
+      {ok ? "✓" : "✕"} {label}
+    </span>
+  );
+}
+
+function ArtifactRow({
+  artifact,
+  checked,
+  onToggle,
+  children,
+}: {
+  artifact: ArtifactStatus;
+  checked: boolean;
+  onToggle: () => void;
+  children?: React.ReactNode;
+}) {
+  const meta = [
+    artifact.version || null,
+    artifact.build || null,
+    artifact.staged ? formatMb(artifact.stagedBytes) : null,
+  ].filter(Boolean) as string[];
+  const packed = artifact.packedBuild
+    ? `packed ${[artifact.packedVersion, artifact.packedBuild].filter(Boolean).join(" ")}`
+    : "";
+  return (
+    <div className={`dist-artifact${artifact.state === "published" ? " dist-artifact--published" : ""}`}>
+      <label className="dist-artifact__check">
+        <input type="checkbox" checked={checked} onChange={onToggle} />
+      </label>
+      <div className="dist-artifact__body min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="dist-artifact__label type-body font-mono">{artifact.label}</span>
+          <span className={`dist-state dist-state--${artifact.state}`}>{stateLabel(artifact.state)}</span>
+          <span className="dist-artifact__meta type-tiny font-mono">{meta.join(" · ")}</span>
+        </div>
+        <div className="dist-artifact__sub type-tiny font-mono">
+          {artifact.published
+            ? `channel: ${artifact.publishedVersion || "?"}${artifact.publishedBuild ? ` (${artifact.publishedBuild})` : ""}`
+            : "channel: not published"}
+          {packed ? ` · ${packed}` : ""}
+          {artifact.notes.length > 0 ? ` — ${artifact.notes[0]}` : ""}
+        </div>
+      </div>
+      {children && <div className="dist-artifact__actions flex gap-1 shrink-0">{children}</div>}
+    </div>
+  );
+}
+
+export default function DistributionDevPanel() {
+  const [dash, setDash] = useState<DistributionState | null>(null);
+  const [tab, setTab] = useState<Tab>("app");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bump, setBump] = useState(true);
+  const [dryRun, setDryRun] = useState(false);
+  const [busy, setBusy] = useState(false);
+  /** True only after run_release_plan returned — polling earlier reads the *previous* job
+   *  and can stop on "idle" while the new plan is still being built. */
+  const [pollJob, setPollJob] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [planned, setPlanned] = useState<PlannedJob | null>(null);
+  /** Server-computed plan for the current selection (same validation as the run). */
+  const [preview, setPreview] = useState<PlannedJob | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const logRef = useRef<HTMLPreElement>(null);
+  const { containerRef, panelWidth, isDragging, startDrag, resetWidth } =
+    useDistributionSplitResize();
+
+  const job = dash?.job ?? null;
+
+  const refresh = useCallback(async (force = false) => {
     if (!isDevBuild()) return;
     try {
-      const d = await invoke<DistributionDashboard>("get_distribution_dashboard");
-      setDash(d);
+      const next = await invoke<DistributionState>("get_distribution_state", { force });
+      setDash(next);
       setError(null);
     } catch (e) {
       setError(typeof e === "string" ? e : String(e));
     }
   }, []);
 
-  const pollJob = useCallback(async () => {
-    if (!isDevBuild()) return null;
-    try {
-      const j = await invoke<DevReleaseJobStatus>("get_dev_release_job_status");
-      setJob(j);
-      if (j.logTail?.length) {
-        setLogLines(j.logTail);
-      }
-      // Only drive busy from pack/ship job lifecycle — not idle status during Catalog toggle etc.
-      if (j.running) {
-        sawJobRunningRef.current = true;
-        setBusy(true);
-      } else if (sawJobRunningRef.current) {
-        sawJobRunningRef.current = false;
-        setBusy(false);
-        void refresh();
-      }
-      return j;
-    } catch {
-      return null;
-    }
+  useEffect(() => {
+    void refresh(false);
   }, [refresh]);
 
-  useEffect(() => {
-    void refresh();
-    void pollJob();
-  }, [refresh, pollJob]);
+  const idlePollsRef = useRef(0);
 
-  // Poll while busy (Pack click / spawn) or job.running. Depending only on
-  // job.running missed completion until remount when the interval never started.
+  // Poll the job only after the plan has been spawned; refresh the dashboard when it ends.
   useEffect(() => {
-    if (!busy && !job?.running) return;
+    if (!pollJob) return;
     let cancelled = false;
-
     const tick = async () => {
       if (cancelled) return;
-      await pollJob();
+      try {
+        const j = await invoke<JobStatus>("get_dev_release_job_status");
+        if (cancelled) return;
+        // A single "idle" read can be a status file being replaced; only a terminal state, or
+        // three consecutive idle polls, may stop polling (that used to freeze a live job).
+        if (j.running || j.state === "running") {
+          idlePollsRef.current = 0;
+          setDash((prev) => (prev ? { ...prev, job: j } : prev));
+          return;
+        }
+        if (j.state !== "ok" && j.state !== "failed") {
+          idlePollsRef.current += 1;
+          if (idlePollsRef.current < 3) return;
+        }
+        setDash((prev) => (prev ? { ...prev, job: j } : prev));
+        setPollJob(false);
+        setBusy(false);
+        await refresh(false);
+      } catch {
+        /* keep polling */
+      }
     };
-
     void tick();
     const id = window.setInterval(() => {
       void tick();
@@ -150,115 +243,211 @@ export default function DistributionDevPanel() {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [busy, job?.running, pollJob]);
+  }, [pollJob, refresh]);
 
-  useTauriListen<{ line: string }>("dev-release-log", (payload) => {
-    if (payload?.line) {
-      setLogLines((prev) => [...prev.slice(-200), payload.line]);
-    }
-  });
-
-  const setRole = useCallback(
-    async (providerId: string, role: "plugin" | "local") => {
+  // A job may already be running when the panel mounts (started before a reload).
+  useEffect(() => {
+    if (job?.running && !pollJob) {
+      idlePollsRef.current = 0;
+      setPollJob(true);
       setBusy(true);
+    }
+  }, [job?.running, pollJob]);
+
+  const logLines = useMemo(
+    () => (job?.logTail ?? []).filter((line) => !line.includes("@@STEP")),
+    [job?.logTail],
+  );
+
+  useEffect(() => {
+    const el = logRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [logLines.length]);
+
+  const runPlan = useCallback(
+    async (plan: ReleasePlan) => {
+      setBusy(true);
+      setPollJob(false);
+      idlePollsRef.current = 0;
       setError(null);
+      setPlanned(null);
       try {
-        const d = await invoke<DistributionDashboard>("set_provider_distribution", {
-          input: { providerId, role },
-        });
-        setDash(d);
-        dispatchAppEvent(EVENTS.reloadProviders);
+        const plannedJob = await invoke<PlannedJob>("run_release_plan", { plan });
+        setPlanned(plannedJob);
+        // Seed the job immediately so the step strip appears before the first poll.
+        setDash((prev) =>
+          prev
+            ? {
+                ...prev,
+                job: {
+                  ...prev.job,
+                  state: "running",
+                  running: true,
+                  message: plannedJob.summary,
+                  steps: plannedJob.steps.map((s) => ({ ...s, state: "pending" })),
+                },
+              }
+            : prev,
+        );
+        // Only now may polling start: before the spawn, get_dev_release_job_status still
+        // describes the previous job and would report "idle", stopping the poller.
+        setPollJob(true);
       } catch (e) {
         setError(typeof e === "string" ? e : String(e));
-      } finally {
+        setPollJob(false);
         setBusy(false);
       }
     },
     [],
   );
 
-  const regenCatalog = useCallback(async () => {
+  const refreshLocalRel = useCallback(async () => {
     setBusy(true);
+    setPollJob(false);
+    idlePollsRef.current = 0;
+    setError(null);
+    setPlanned(null);
     try {
-      const path = await invoke<string>("regenerate_distribution_catalog");
-      setLogLines((p) => [...p, `Catalog regenerated: ${path}`]);
-      await refresh();
+      const p = await invoke<PlannedJob>("run_local_rel_refresh");
+      setPlanned(p);
+      setDash((prev) =>
+        prev
+          ? {
+              ...prev,
+              job: {
+                ...prev.job,
+                state: "running",
+                running: true,
+                message: p.summary,
+                steps: p.steps.map((s) => ({ ...s, state: "pending" })),
+              },
+            }
+          : prev,
+      );
+      setPollJob(true);
     } catch (e) {
       setError(typeof e === "string" ? e : String(e));
-    } finally {
+      setPollJob(false);
       setBusy(false);
     }
-  }, [refresh]);
+  }, []);
 
-  const runAction = useCallback(
-    async (action: ReleaseAction, providerId?: string, profileId?: string) => {
+  const runInline = useCallback(
+    async (action: string) => {
       setBusy(true);
       setError(null);
-      setLogLines((p) => [
-        ...p,
-        `--- ${action}${providerId ? ` ${providerId}/${profileId ?? ""}` : ""} ---`,
-      ]);
       try {
-        const result = await invoke<string>("run_dev_release_action", {
-          action: {
-            action,
-            providerId: providerId ?? null,
-            profileId: profileId ?? null,
-          },
-        });
-        if (result === "detached") {
-          setLogLines((p) => [
-            ...p,
-            "Detached job started — a Majestic console window should open. Polling job-log.txt …",
-          ]);
-          // Seed running so the poll effect keeps ticking even if the first status read lags.
-          sawJobRunningRef.current = true;
-          setJob((prev) => ({
-            state: "running",
-            chain: action,
-            message: "Detached spawn returned",
-            updatedAt: new Date().toISOString(),
-            providerId: providerId ?? "",
-            profileId: profileId ?? "",
-            logTail: prev?.logTail ?? [],
-            running: true,
-          }));
-          void pollJob();
-          // busy stays true until poll sees job end
-        } else {
-          // Inline actions may return a summary (e.g. the harness refresh report);
-          // "ok" and "detached" are handled separately.
-          setLogLines((p) => [
-            ...p,
-            result && result !== "ok" ? result : `OK: ${action}`,
-          ]);
-          setBusy(false);
-          await refresh();
-          if (action === "bump") {
-            setLogLines((p) => [
-              ...p,
-              "Version bumped — Pack+Ship App/Full will use the new tag. (Dev rebuild may pick up Cargo.toml on next cargo run.)",
-            ]);
-          } else if (action === "bump_pi") {
-            setLogLines((p) => [
-              ...p,
-              "pi pinned to the DEV-installed (tested) version — Pack Full/App will embed it. Bundle should already be refreshed via Harness UPDATE.",
-            ]);
-          } else if (action === "update_harness") {
-            setLogLines((p) => [
-              ...p,
-              "Harness updated and pinned together. Pack Full/App now ships this pi + pi-subagents pair.",
-            ]);
-          }
-        }
+        await invoke("run_dev_release_action", { action: { action } });
+        await refresh(false);
       } catch (e) {
-        const msg = typeof e === "string" ? e : String(e);
-        setError(msg);
-        setLogLines((p) => [...p, `FAIL: ${msg}`]);
+        setError(typeof e === "string" ? e : String(e));
+      } finally {
         setBusy(false);
       }
     },
-    [refresh, pollJob],
+    [refresh],
+  );
+
+  const toggle = useCallback((id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const artifactsByKind = useCallback(
+    (kinds: string[]): ArtifactStatus[] =>
+      (dash?.artifacts ?? []).filter((a) => kinds.includes(a.kind)),
+    [dash],
+  );
+
+  const selectedArtifacts = useMemo(
+    () => (dash?.artifacts ?? []).filter((a) => selected.has(a.id)),
+    [dash, selected],
+  );
+
+  // Preview uses the server's own planner, so the shown steps/version guard cannot drift from
+  // what run_release_plan will accept. Phases are "pack+ship"; a run with fewer phases re-checks.
+  useEffect(() => {
+    if (!dash || busy) return;
+    const ids = selectedArtifacts.map((a) => a.id);
+    if (ids.length === 0) {
+      setPreview(null);
+      setPreviewError(null);
+      return;
+    }
+    const bumpMode: "none" | "patch" =
+      bump && ids.some((id) => id === "app" || id === "full") ? "patch" : "none";
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void invoke<PlannedJob>("preview_release_plan", {
+        plan: {
+          artifacts: ids,
+          phases: ["pack", "ship"],
+          bump: bumpMode,
+          dryRun,
+          allowRepair: false,
+        },
+      })
+        .then((p) => {
+          if (cancelled) return;
+          setPreview(p);
+          setPreviewError(null);
+        })
+        .catch((e) => {
+          if (cancelled) return;
+          setPreview(null);
+          setPreviewError(typeof e === "string" ? e : String(e));
+        });
+    }, 350);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [dash, busy, selectedArtifacts, bump, dryRun]);
+
+  const planText = useMemo(() => {
+    if (!dash) return "";
+    if (busy && job?.message) return "";
+    if (previewError) return previewError;
+    if (preview) return preview.summary;
+    const ids = selectedArtifacts.map((a) => a.id);
+    if (ids.length === 0) return "Select artifacts to pack or ship.";
+    return `${ids.length} artifact(s) selected`;
+  }, [dash, busy, job?.message, preview, previewError, selectedArtifacts]);
+
+  const actionsFor = useCallback(
+    (phases: Phase[]) => {
+      const ids = selectedArtifacts.map((a) => a.id);
+      if (ids.length === 0) return;
+      const bumpMode: "none" | "patch" =
+        bump && ids.some((id) => id === "app" || id === "full") ? "patch" : "none";
+      void runPlan({ artifacts: ids, phases, bump: bumpMode, dryRun, allowRepair: false });
+    },
+    [selectedArtifacts, bump, dryRun, runPlan],
+  );
+
+  const runPreset = useCallback(
+    (kind: "app" | "full" | "link") => {
+      void runPlan({
+        artifacts: [kind],
+        phases: ["pack", "ship"],
+        bump: kind === "link" ? "none" : "patch",
+        dryRun,
+        allowRepair: false,
+      });
+    },
+    [dryRun, runPlan],
+  );
+
+  const runEngine = useCallback(
+    (ids: string[], phases: Phase[]) => {
+      if (ids.length === 0) return;
+      void runPlan({ artifacts: ids, phases, bump: "none", dryRun, allowRepair: false });
+    },
+    [dryRun, runPlan],
   );
 
   if (!isDevBuild()) {
@@ -269,332 +458,397 @@ export default function DistributionDevPanel() {
     );
   }
 
+  const preflight = dash?.preflight;
+  const engineRows = artifactsByKind(["engine"]);
+  const selectedEngineIds = engineRows.filter((a) => selected.has(a.id)).map((a) => a.id);
+
   return (
-    <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-      <div className="fnd-dev-header px-4 py-3 space-y-2">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      <header className="fnd-dev-header px-4 py-2.5 space-y-1.5 shrink-0">
         <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div>
+          <div className="flex items-baseline gap-3 flex-wrap">
             <h2 className="text-xs font-mono theme-accent-text tracking-widest">DISTRIBUTION</h2>
-            <p className="fnd-dev-desc type-body font-mono config-muted mt-1 max-w-2xl leading-relaxed">
-              Jobs open a <span className="fnd-dev-desc__hl">visible Majestic console</span> and
-              survive app restart. Main App never carries the link asset; Full Bundle does.
-            </p>
+            <span className="dist-version type-tiny font-mono">v{dash?.appVersion ?? "…"}</span>
+            {(dash?.channels ?? []).map((c) => (
+              <span key={c.tag} className="dist-channel type-tiny font-mono" title={c.title}>
+                {c.tag} {c.latestVersion}
+                {c.latestBuild ? ` · ${c.latestBuild}` : ""}
+              </span>
+            ))}
           </div>
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
             <button
               type="button"
               disabled={busy}
-              onClick={() => void refresh()}
-              className="value-chip fnd-dev-action type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm disabled:opacity-40"
+              onClick={() => void refresh(true)}
+              className="value-chip fnd-dev-btn fnd-dev-btn--info-ghost type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border disabled:opacity-40"
+              title="Re-read staged files and channel manifests"
             >
               Refresh
             </button>
             <button
               type="button"
               disabled={busy}
-              onClick={() => void regenCatalog()}
-              className="value-chip fnd-dev-action type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm disabled:opacity-40"
+              onClick={() => void runInline("check_full")}
+              className="value-chip fnd-dev-btn fnd-dev-btn--accent-ghost type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border disabled:opacity-40"
+              title="Run the full release check (foundry artifacts, pi pin)"
             >
-              Regen catalog
+              Check
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void runInline("bump")}
+              className="value-chip fnd-dev-btn fnd-dev-btn--accent-ghost type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border disabled:opacity-40"
+              title="Bump patch version only"
+            >
+              Bump
             </button>
           </div>
         </div>
-        {dash && (
-          <p className="fnd-dev-version type-tiny font-mono break-all">
-            v{dash.appVersion} · policy: {dash.policyPath}
-          </p>
+
+        {preflight && (
+          <div className="dist-preflight flex flex-wrap gap-1.5">
+            <Chip ok={preflight.shipUnlocked} label="ship unlock" />
+            <Chip ok={preflight.releaseExe} label="REL exe" />
+            <Chip ok={!!preflight.piPinned} label={`pi ${preflight.piPinned || "?"}`} />
+            <Chip
+              ok={preflight.foundryMissing.length === 0}
+              label={
+                preflight.foundryMissing.length === 0
+                  ? `foundry ${preflight.foundryReady.length}/${preflight.foundryReady.length}`
+                  : `foundry missing ${preflight.foundryMissing.join(", ")}`
+              }
+              title={`Ready: ${preflight.foundryReady.join(", ") || "none"}`}
+            />
+          </div>
         )}
-      </div>
 
-      {job?.running && (
-        <p className="fnd-dev-job-running px-4 py-2 type-body font-mono">
-          Job running: {job.chain}
-          {job.message ? ` — ${job.message}` : ""} — watch the console window (not stuck on first
-          log line).
-        </p>
-      )}
-      {job && !job.running && job.state === "ok" && (
-        <p className="fnd-dev-job-ok px-4 py-2 type-body font-mono">
-          Last job OK: {job.chain}
-        </p>
-      )}
-      {job && !job.running && job.state === "failed" && (
-        <div className="fnd-dev-job-failed px-4 py-2 type-body font-mono space-y-1">
-          <p>
-            Last job FAILED: {job.chain} — {job.message}
-          </p>
-          <p className="fnd-dev-job-failed__note">
-            Scroll the job log below (or open .majestic-out/job-log.txt). Retry after fixing the
-            error.
-          </p>
-        </div>
-      )}
-      {error && (
-        <p className="fnd-dev-error px-4 py-2 type-body font-mono">
-          {error}
-        </p>
-      )}
+        {error && <p className="dist-error type-label font-mono">{error}</p>}
+      </header>
 
-      <div className="flex-1 overflow-auto px-4 py-4 space-y-5">
-        <section className="space-y-2">
-          <h3 className="fnd-dev-section-title type-body font-mono tracking-wider uppercase">
-            Version
-          </h3>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void runAction("bump")}
-              className="fnd-dev-btn fnd-dev-btn--warn type-body font-mono uppercase tracking-wider px-3 py-1.5 rounded-sm border disabled:opacity-40"
-              title="Bump patch version only (e.g. 1.0.18 → 1.0.19). No pack/ship."
-            >
-              BUMP
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void runAction("update_harness")}
-              className="fnd-dev-btn fnd-dev-btn--accent type-body font-mono uppercase tracking-wider px-3 py-1.5 rounded-sm border disabled:opacity-40"
-              title="One click: fetch the latest pi release, refresh the pi-subagents bundle from npm, pin pi to it, and verify the pair actually loads. Close any pi console window first."
-            >
-              UPDATE HARNESS
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void runAction("bump_pi")}
-              className="fnd-dev-btn fnd-dev-btn--danger type-body font-mono uppercase tracking-wider px-3 py-1.5 rounded-sm border disabled:opacity-40"
-              title="Pin the shipped pi to the DEV-installed (tested) version (src-tauri/pi-pinned-version.txt). Release binary embeds it. No pack/ship."
-            >
-              BUMP HARNESS
-            </button>
-            {dash && (
-              <span className="fnd-dev-current type-label font-mono config-muted">
-                current <span className="fnd-dev-current__v">v{dash.appVersion}</span> → patch only
-              </span>
-            )}
-          </div>
-        </section>
-
-        <section className="space-y-2">
-          <h3 className="fnd-dev-section-title--info type-body font-mono tracking-wider uppercase">
-            Main app
-          </h3>
-          <div className="flex flex-wrap gap-2 items-center">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void runAction("pack_app")}
-              className="fnd-dev-btn fnd-dev-btn--info type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border disabled:opacity-40"
-              title="Pack the main App .7z and NSIS only. No link asset."
-            >
-              Pack
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void runAction("ship_app")}
-              className="fnd-dev-btn fnd-dev-btn--info-ghost type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border disabled:opacity-40"
-              title="Ship staged main App assets for the current version tag."
-            >
-              Ship
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void runAction("pack_ship_app")}
-              className="fnd-dev-btn fnd-dev-btn--info type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border disabled:opacity-40"
-              title="Bump + pack main App + ship. No link asset."
-            >
-              Pack+Ship
-            </button>
-          </div>
-        </section>
-
-        <section className="space-y-2">
-          <h3 className="fnd-dev-section-title--accent type-body font-mono tracking-wider uppercase">
-            Link app
-          </h3>
-          <div className="flex flex-wrap gap-2 items-center">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void runAction("pack_link")}
-              className="fnd-dev-btn fnd-dev-btn--accent type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border disabled:opacity-40"
-              title="Build the link installer, then pack LINK_OYM-Link-<build>.7z."
-            >
-              Pack
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void runAction("ship_link")}
-              className="fnd-dev-btn fnd-dev-btn--accent-ghost type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border disabled:opacity-40"
-              title="Upload the newest link asset to the link-v<version> release."
-            >
-              Ship
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void runAction("pack_ship_link")}
-              className="fnd-dev-btn fnd-dev-btn--accent type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border disabled:opacity-40"
-              title="Build link installer + pack + ship to the link-v<version> release."
-            >
-              Pack+Ship
-            </button>
-          </div>
-        </section>
-
-        <section className="space-y-2">
-          <h3 className="fnd-dev-section-title--accent type-body font-mono tracking-wider uppercase">
-            Full bundle
-          </h3>
-          <div className="flex flex-wrap gap-2 items-center">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void runAction("pack_full")}
-              className="fnd-dev-btn fnd-dev-btn--accent type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border disabled:opacity-40"
-              title="Pack Full NSIS + App .7z + LINK asset. Link asset ships to its own tag."
-            >
-              Pack
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void runAction("ship_full")}
-              className="fnd-dev-btn fnd-dev-btn--accent-ghost type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border disabled:opacity-40"
-              title="Ship staged Full assets and the link asset to the link release."
-            >
-              Ship
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void runAction("pack_ship_full")}
-              className="fnd-dev-btn fnd-dev-btn--accent type-label font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border disabled:opacity-40"
-              title="Bump + pack Full + ship App and link assets."
-            >
-              Pack+Ship
-            </button>
-          </div>
-        </section>
-
-        <section className="space-y-2">
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <h3 className="fnd-dev-section-title--warn type-body font-mono tracking-wider uppercase">
-              Providers (engine packs)
-            </h3>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void runAction("pack_ship_all_providers")}
-              className="fnd-dev-btn fnd-dev-btn--warn type-label font-mono uppercase tracking-wider px-3 py-1.5 rounded-sm border disabled:opacity-40"
-              title="Pack + ship EVERY provider/profile in distribution-policy.json in one pass (plugins + core ggml-master), one after another. Uses current version tag (no bump)."
-            >
-              Pack+Ship All Providers (Plugins + Core GGML)
-            </button>
-          </div>
-          <div className="space-y-2">
-            {(dash?.providers ?? []).map((row) => (
-              <div
-                key={row.id}
-                className="fnd-dev-provider-card config-form-panel rounded-sm p-3 space-y-2"
+      <div ref={containerRef} className="catalog-split-workspace flex flex-1 overflow-hidden min-h-0">
+        <div className="dist-controls flex flex-col min-h-0 overflow-hidden" style={{ width: panelWidth }}>
+          <nav className="dist-tabs flex gap-1 px-3 pt-2 pb-1 shrink-0">
+            {(
+              [
+                ["app", "MAIN APP"],
+                ["engines", "ENGINES"],
+                ["link", "LINK"],
+                ["toolchain", "TOOLCHAIN"],
+              ] as [Tab, string][]
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => {
+                  setTab(id);
+                  setSelected(new Set());
+                }}
+                className={`dist-tab type-tiny font-mono uppercase tracking-wider px-2 py-1 rounded-sm border${
+                  tab === id ? " dist-tab--active" : ""
+                }`}
               >
-                <div className="flex items-start justify-between gap-2 flex-wrap">
-                  <div className="space-y-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="fnd-dev-provider-name type-body font-mono">{row.displayName}</span>
-                      <span className="fnd-dev-provider-id type-tiny font-mono">{row.id}</span>
-                      <span
-                        className={`fnd-dev-role-badge type-tiny font-mono px-1.5 py-0.5 rounded-sm border uppercase tracking-wider ${roleBadge(row.role)}`}
-                      >
-                        {roleLabel(row.role)}
-                      </span>
-                      {row.factoryExists ? (
-                        <span className="fnd-dev-factory type-tiny font-mono">factory</span>
-                      ) : (
-                        <span className="fnd-dev-no-factory type-tiny font-mono">no factory</span>
-                      )}
-                    </div>
-                    <div className="fnd-dev-readiness flex flex-wrap gap-2 type-tiny font-mono config-muted">
-                      {row.readiness.map((r) => (
-                        <span
-                          key={r.profile}
-                          className={r.ready ? "fnd-dev-readiness__ready" : "fnd-dev-readiness__missing"}
-                        >
-                          {r.profile}:
-                          {r.runtimeBinary ? " runtime" : ""}
-                          {r.foundryArtifact ? " foundry" : ""}
-                          {!r.ready ? " MISSING" : " ok"}
-                        </span>
-                      ))}
-                    </div>
-                    {row.notes.length > 0 && (
-                      <ul className="fnd-dev-provider-notes type-tiny font-mono space-y-0.5">
-                        {row.notes.map((n) => (
-                          <li key={n}>{n}</li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
+                {label}
+              </button>
+            ))}
+          </nav>
 
-                  <div className="flex flex-col gap-1.5 items-end shrink-0">
-                    {row.role !== "core" && (
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() =>
-                          void setRole(row.id, row.role === "plugin" ? "local" : "plugin")
-                        }
-                        className={`fnd-dev-catalog-btn type-tiny font-mono uppercase px-2.5 py-1 rounded-sm border disabled:opacity-40 ${
-                          row.role === "plugin"
-                            ? "fnd-dev-catalog-btn--on"
-                            : "fnd-dev-catalog-btn--off"
-                        }`}
-                        title={
-                          row.role === "plugin"
-                            ? "Catalog shipping ON — click to turn OFF (engines stay; not in App catalog)"
-                            : "Catalog shipping OFF — click to turn ON (include in App catalog + Majestic packs)"
-                        }
-                      >
-                        Catalog {row.role === "plugin" ? "ON" : "OFF"}
-                      </button>
-                    )}
-                    {(row.role === "plugin" || row.role === "core") && (
-                      <div className="flex flex-wrap gap-1 justify-end">
-                        {row.profiles.map((pr) => (
-                          <button
-                            key={pr}
-                            type="button"
-                            disabled={busy}
-                            onClick={() => void runAction("pack_ship_provider", row.id, pr)}
-                            className="fnd-dev-pack-btn type-tiny font-mono uppercase px-1.5 py-0.5 rounded-sm border disabled:opacity-40"
-                            title={`Pack + ship ${row.id}-${pr}.7z (current tag, no bump). Plugin ON required for catalog.`}
-                          >
-                            Pack+Ship {pr}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+          <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2 eink-scrollbar">
+            {tab === "app" && (
+              <>
+                <div className="dist-presets grid gap-2">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => runPreset("app")}
+                    className="dist-preset"
+                  >
+                    <span className="dist-preset__title type-body font-mono uppercase tracking-wider">
+                      App update
+                    </span>
+                    <span className="dist-preset__sub type-tiny font-mono">
+                      bump → pack App .7z → ship app channel
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => runPreset("full")}
+                    className="dist-preset"
+                  >
+                    <span className="dist-preset__title type-body font-mono uppercase tracking-wider">
+                      Full release
+                    </span>
+                    <span className="dist-preset__sub type-tiny font-mono">
+                      bump → engines → app + NSIS → ship app/full/engines
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void refreshLocalRel()}
+                    className="dist-preset dist-preset--local"
+                    title="Build a REL exe and copy it + the EDGE artifact + factory template into the local portable install. No release is published."
+                  >
+                    <span className="dist-preset__title type-body font-mono uppercase tracking-wider">
+                      Refresh local REL
+                    </span>
+                    <span className="dist-preset__sub type-tiny font-mono">
+                      build REL → copy exe + EDGE + template + learned cache to the portable test install · no release
+                    </span>
+                  </button>
+                </div>
+                {artifactsByKind(["app", "full"]).map((a) => (
+                  <ArtifactRow
+                    key={a.id}
+                    artifact={a}
+                    checked={selected.has(a.id)}
+                    onToggle={() => toggle(a.id)}
+                  />
+                ))}
+              </>
+            )}
+
+            {tab === "engines" && (
+              <>
+                <div className="flex gap-1.5 flex-wrap">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => runEngine(engineRows.map((a) => a.id), ["pack"])}
+                    className="value-chip fnd-dev-btn fnd-dev-btn--accent-ghost type-tiny font-mono uppercase px-2 py-1 rounded-sm border disabled:opacity-40"
+                  >
+                    Pack all
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => runEngine(engineRows.map((a) => a.id), ["pack", "ship"])}
+                    className="value-chip fnd-dev-btn fnd-dev-btn--accent type-tiny font-mono uppercase px-2 py-1 rounded-sm border disabled:opacity-40"
+                  >
+                    Pack+Ship all
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy || selectedEngineIds.length === 0}
+                    onClick={() => runEngine(selectedEngineIds, ["pack", "ship"])}
+                    className="value-chip fnd-dev-btn fnd-dev-btn--warn type-tiny font-mono uppercase px-2 py-1 rounded-sm border disabled:opacity-40"
+                  >
+                    Pack+Ship selected
+                  </button>
+                </div>
+                {engineRows.map((a) => (
+                  <ArtifactRow
+                    key={a.id}
+                    artifact={a}
+                    checked={selected.has(a.id)}
+                    onToggle={() => toggle(a.id)}
+                  >
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => runEngine([a.id], ["pack"])}
+                      className="dist-rowbtn type-tiny font-mono uppercase px-1.5 py-0.5 rounded-sm border disabled:opacity-40"
+                    >
+                      Pack
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy || !a.staged || a.state === "published"}
+                      onClick={() => runEngine([a.id], ["ship"])}
+                      className="dist-rowbtn type-tiny font-mono uppercase px-1.5 py-0.5 rounded-sm border disabled:opacity-40"
+                      title={a.staged ? "Publish the staged pack" : "Nothing staged — pack first"}
+                    >
+                      Ship
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => runEngine([a.id], ["pack", "ship"])}
+                      className="dist-rowbtn dist-rowbtn--accent type-tiny font-mono uppercase px-1.5 py-0.5 rounded-sm border disabled:opacity-40"
+                    >
+                      Pack+Ship
+                    </button>
+                  </ArtifactRow>
+                ))}
+                {engineRows.length === 0 && (
+                  <p className="type-label font-mono config-muted">
+                    No engine packs declared in this build's engines.json.
+                  </p>
+                )}
+              </>
+            )}
+
+            {tab === "link" && (
+              <div className="space-y-2">
+                <p className="type-label font-mono config-muted leading-relaxed">
+                  OYM-Link is its own product line. It still publishes to its legacy
+                  <span className="font-mono"> link-v* </span>
+                  tag until its client migrates to the <span className="font-mono">link</span> /{" "}
+                  <span className="font-mono">link-setup</span> channels.
+                </p>
+                <div className="flex gap-1.5 flex-wrap">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() =>
+                      void runPlan({
+                        artifacts: ["link"],
+                        phases: ["pack"],
+                        bump: "none",
+                        dryRun,
+                        allowRepair: false,
+                      })
+                    }
+                    className="value-chip fnd-dev-btn fnd-dev-btn--accent-ghost type-tiny font-mono uppercase px-2 py-1 rounded-sm border disabled:opacity-40"
+                  >
+                    Pack link
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => runPreset("link")}
+                    className="value-chip fnd-dev-btn fnd-dev-btn--accent type-tiny font-mono uppercase px-2 py-1 rounded-sm border disabled:opacity-40"
+                  >
+                    Pack+Ship link
+                  </button>
                 </div>
               </div>
-            ))}
-            {!dash && (
-              <p className="type-body font-mono config-muted">Loading policy…</p>
+            )}
+
+            {tab === "toolchain" && (
+              <div className="space-y-2">
+                <p className="type-label font-mono config-muted leading-relaxed">
+                  CUDA runtimes and Foundry build tools. Changes rarely; the installer and the
+                  setup wizard normally cover it.
+                </p>
+                <div className="flex gap-1.5 flex-wrap">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => runEngine(["toolchain"], ["ship"])}
+                    className="value-chip fnd-dev-btn fnd-dev-btn--warn type-tiny font-mono uppercase px-2 py-1 rounded-sm border disabled:opacity-40"
+                  >
+                    Ship toolchain
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => runEngine(["toolchain"], ["pack", "ship"])}
+                    className="value-chip fnd-dev-btn fnd-dev-btn--accent-ghost type-tiny font-mono uppercase px-2 py-1 rounded-sm border disabled:opacity-40"
+                  >
+                    Build + ship
+                  </button>
+                </div>
+              </div>
             )}
           </div>
-        </section>
 
-        <section className="space-y-1">
-          <h3 className="fnd-dev-section-title type-body font-mono tracking-wider uppercase">
-            Job log (also in Tauri console)
-          </h3>
-          <pre className="fnd-dev-job-log type-tiny font-mono config-muted rounded-sm p-2 max-h-48 overflow-auto whitespace-pre-wrap">
-            {logLines.length === 0 ? "(empty — watch Tauri console for [majestic] lines)" : logLines.join("\n")}
+          <div className="dist-actionbar shrink-0 px-3 py-2 space-y-1.5">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <span className={`dist-plan type-tiny font-mono${previewError ? " dist-plan--error" : ""}`}>
+                {planText}
+              </span>
+              <div className="flex items-center gap-2">
+                <label className="dist-opt type-tiny font-mono">
+                  <input
+                    type="checkbox"
+                    checked={bump}
+                    onChange={(e) => setBump(e.target.checked)}
+                  />{" "}
+                  bump
+                </label>
+                <label className="dist-opt type-tiny font-mono">
+                  <input
+                    type="checkbox"
+                    checked={dryRun}
+                    onChange={(e) => setDryRun(e.target.checked)}
+                  />{" "}
+                  dry run
+                </label>
+              </div>
+            </div>
+            <div className="flex gap-1.5 flex-wrap">
+              <button
+                type="button"
+                disabled={busy || selected.size === 0}
+                onClick={() => actionsFor(["pack"])}
+                className="value-chip fnd-dev-btn fnd-dev-btn--accent-ghost type-tiny font-mono uppercase px-2 py-1 rounded-sm border disabled:opacity-40"
+              >
+                Pack
+              </button>
+              <button
+                type="button"
+                disabled={busy || selected.size === 0}
+                onClick={() => actionsFor(["ship"])}
+                className="value-chip fnd-dev-btn fnd-dev-btn--accent-ghost type-tiny font-mono uppercase px-2 py-1 rounded-sm border disabled:opacity-40"
+              >
+                Ship
+              </button>
+              <button
+                type="button"
+                disabled={busy || selected.size === 0}
+                onClick={() => actionsFor(["pack", "ship"])}
+                className="value-chip fnd-dev-btn fnd-dev-btn--accent type-tiny font-mono uppercase px-2 py-1 rounded-sm border disabled:opacity-40"
+              >
+                Pack+Ship
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div
+          className={`catalog-split-handle${isDragging ? " is-dragging" : ""}`}
+          onMouseDown={startDrag}
+          onDoubleClick={resetWidth}
+          role="separator"
+          aria-orientation="vertical"
+          title="Drag to resize · double-click to reset"
+        />
+
+        <section className="dist-output flex-1 flex flex-col min-w-0 min-h-0">
+          <div className="dist-jobbar px-3 py-1.5 flex items-center justify-between gap-2 shrink-0">
+            <span className="type-tiny font-mono uppercase tracking-wider">
+              Job · {job?.state ?? "idle"}
+              {job?.running ? ` · ${job.message}` : planned ? ` · ${planned.summary}` : ""}
+            </span>
+            <span className="type-tiny font-mono dist-muted">
+              {job?.updatedAt ? new Date(job.updatedAt).toLocaleTimeString() : ""}
+            </span>
+          </div>
+
+          {(job?.steps?.length ?? 0) > 0 && (
+            <div className="dist-steps flex flex-wrap gap-1 px-3 py-1.5 shrink-0">
+              {job?.steps.map((s) => (
+                <span key={s.id} className={`dist-step dist-step--${s.state}`} title={s.label}>
+                  {s.state === "ok" ? "✓" : s.state === "failed" ? "✕" : s.state === "running" ? "●" : "○"}{" "}
+                  {s.label}
+                </span>
+              ))}
+            </div>
+          )}
+
+          <pre ref={logRef} className="dist-log flex-1 min-h-0 overflow-auto type-tiny font-mono px-3 py-2 whitespace-pre-wrap eink-scrollbar">
+            {logLines.length > 0 ? logLines.join("\n") : "(no job output yet)"}
           </pre>
+
+          <div className="dist-history px-3 py-1.5 shrink-0">
+            <div className="type-tiny font-mono uppercase tracking-wider dist-muted mb-1">
+              Recent
+            </div>
+            <div className="space-y-0.5">
+              {(dash?.history ?? []).slice(0, 5).map((h) => (
+                <div key={h.id} className="type-tiny font-mono flex gap-2">
+                  <span className={`dist-hist dist-hist--${h.result}`}>{h.result}</span>
+                  <span className="truncate">{h.summary || h.id}</span>
+                </div>
+              ))}
+              {(dash?.history?.length ?? 0) === 0 && (
+                <span className="type-tiny font-mono dist-muted">no jobs yet</span>
+              )}
+            </div>
+          </div>
         </section>
       </div>
     </div>

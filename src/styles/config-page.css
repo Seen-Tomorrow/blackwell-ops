@@ -70,138 +70,250 @@
   border-bottom: 1px solid color-mix(in srgb, var(--theme-text) 6%, transparent);
 }
 
-.fnd-dev-desc__hl {
-  color: color-mix(in srgb, var(--theme-text) 70%, transparent);
-}
-
-.fnd-dev-desc__hl--dim {
-  color: color-mix(in srgb, var(--theme-text) 60%, transparent);
-}
-
-.fnd-dev-version {
-  color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
-}
-
-.fnd-dev-job-running {
-  color: color-mix(in srgb, var(--theme-warn) 90%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--theme-warn) 25%, transparent);
-  background: color-mix(in srgb, var(--theme-warn) 6%, transparent);
-}
-
-.fnd-dev-job-ok {
-  color: color-mix(in srgb, var(--theme-accent) 90%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--theme-text) 6%, transparent);
-}
-
-.fnd-dev-job-failed {
-  color: var(--theme-danger);
-  border-bottom: 1px solid color-mix(in srgb, var(--theme-danger) 30%, transparent);
-  background: color-mix(in srgb, var(--theme-danger) 6%, transparent);
-}
-
-.fnd-dev-job-failed__note {
-  color: color-mix(in srgb, var(--theme-text) 50%, transparent);
-}
-
-.fnd-dev-error {
-  color: var(--theme-danger);
-  border-bottom: 1px solid color-mix(in srgb, var(--theme-text) 6%, transparent);
-}
-
-.fnd-dev-section-title {
-  color: var(--theme-accent);
-}
-
-.fnd-dev-section-title--info {
-  color: color-mix(in srgb, var(--theme-info) 90%, transparent);
-}
-
-.fnd-dev-section-title--accent {
-  color: color-mix(in srgb, var(--theme-accent) 90%, transparent);
-}
-
-.fnd-dev-section-title--warn {
-  color: color-mix(in srgb, var(--theme-warn) 90%, transparent);
-}
-
 .fnd-dev-btn:hover {
   background-color: color-mix(in srgb, var(--fnd-tone) var(--fnd-bg-mix-hover, 15%), transparent);
 }
 
-.fnd-dev-current__v {
-  color: color-mix(in srgb, var(--theme-text) 80%, transparent);
+/* ── DISTRIBUTION panel (docs/DISTRIBUTION-PANEL.md) ───────────────────── */
+
+.dist-version {
+  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
 }
 
-.fnd-dev-workflow-notes {
-  color: var(--theme-text-muted);
+.dist-channel {
+  padding: 0 4px;
+  border: 1px solid color-mix(in srgb, var(--theme-text) 12%, transparent);
+  border-radius: 2px;
+  color: color-mix(in srgb, var(--theme-text-muted) 75%, transparent);
 }
 
-.fnd-dev-provider-card {
-  border-color: color-mix(in srgb, var(--theme-text) 10%, transparent);
-}
-
-.fnd-dev-provider-name {
-  color: color-mix(in srgb, var(--theme-text) 90%, transparent);
-}
-
-.fnd-dev-provider-id {
-  color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
-}
-
-.fnd-dev-role-badge {
+.dist-chip {
   font-size: var(--type-tiny);
+  padding: 0 5px;
+  border: 1px solid;
+  border-radius: 2px;
+  white-space: nowrap;
 }
 
-.fnd-dev-role-badge--core {
+.dist-chip--ok {
+  border-color: color-mix(in srgb, var(--theme-accent) 35%, transparent);
+  color: color-mix(in srgb, var(--theme-accent) 90%, transparent);
+}
+
+.dist-chip--bad {
+  border-color: color-mix(in srgb, var(--theme-danger) 40%, transparent);
+  color: var(--theme-danger);
+}
+
+.dist-error {
+  color: var(--theme-danger);
+}
+
+.dist-tabs {
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-text) 7%, transparent);
+}
+
+.dist-tab {
+  border-color: color-mix(in srgb, var(--theme-text) 12%, transparent);
+  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
+}
+
+.dist-tab:hover {
+  background: color-mix(in srgb, var(--theme-text) 5%, transparent);
+}
+
+.dist-tab--active {
   border-color: color-mix(in srgb, var(--theme-accent) 40%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 8%, transparent);
   color: var(--theme-accent);
 }
 
-.fnd-dev-role-badge--plugin {
+.dist-presets {
+  grid-template-columns: 1fr;
+}
+
+.dist-preset {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  padding: 7px 9px;
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 30%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-accent) 5%, transparent);
+}
+
+.dist-preset:hover {
+  background: color-mix(in srgb, var(--theme-accent) 11%, transparent);
+}
+
+.dist-preset__title {
+  color: var(--theme-accent);
+}
+
+.dist-preset__sub {
+  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
+}
+
+.dist-artifact {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--theme-text) 9%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-text) 3%, var(--theme-panel-accent));
+}
+
+.dist-artifact--published {
+  border-color: color-mix(in srgb, var(--theme-accent) 22%, transparent);
+}
+
+.dist-artifact__check input {
+  accent-color: var(--theme-accent);
+}
+
+.dist-artifact__label {
+  color: color-mix(in srgb, var(--theme-text) 90%, transparent);
+}
+
+.dist-artifact__meta {
+  color: color-mix(in srgb, var(--theme-text-muted) 60%, transparent);
+}
+
+.dist-artifact__sub {
+  color: color-mix(in srgb, var(--theme-text-muted) 60%, transparent);
+}
+
+.dist-state {
+  font-size: var(--type-tiny);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0 4px;
+  border: 1px solid;
+  border-radius: 2px;
+}
+
+.dist-state--published {
+  border-color: color-mix(in srgb, var(--theme-accent) 30%, transparent);
+  color: color-mix(in srgb, var(--theme-accent) 90%, transparent);
+}
+
+.dist-state--packed {
   border-color: color-mix(in srgb, var(--theme-warn) 40%, transparent);
-  color: var(--theme-warn);
-}
-
-.fnd-dev-role-badge--local {
-  border-color: color-mix(in srgb, var(--theme-text) 20%, transparent);
-  color: color-mix(in srgb, var(--theme-text) 70%, transparent);
-}
-
-.fnd-dev-factory {
-  color: color-mix(in srgb, var(--theme-accent) 70%, transparent);
-}
-
-.fnd-dev-no-factory {
-  color: color-mix(in srgb, var(--theme-danger) 80%, transparent);
-}
-
-.fnd-dev-readiness__ready {
-  color: color-mix(in srgb, var(--theme-accent) 80%, transparent);
-}
-
-.fnd-dev-readiness__missing {
-  color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
-}
-
-.fnd-dev-provider-notes {
-  color: color-mix(in srgb, var(--theme-warn) 70%, transparent);
-}
-
-.fnd-dev-catalog-btn {
-  font-size: var(--type-tiny);
-}
-
-.fnd-dev-pack-btn {
-  font-size: var(--type-tiny);
-  border-color: color-mix(in srgb, var(--theme-warn) 35%, transparent);
   color: color-mix(in srgb, var(--theme-warn) 90%, transparent);
 }
 
-.fnd-dev-pack-btn:hover {
-  background: color-mix(in srgb, var(--theme-warn) 10%, transparent);
+.dist-state--absent {
+  border-color: color-mix(in srgb, var(--theme-text) 16%, transparent);
+  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
 }
 
-.fnd-dev-job-log {
-  background: color-mix(in srgb, var(--theme-panel) 30%, black);
-  border: 1px solid color-mix(in srgb, var(--theme-text) 6%, transparent);
+.dist-rowbtn {
+  border-color: color-mix(in srgb, var(--theme-text) 16%, transparent);
+  color: color-mix(in srgb, var(--theme-text) 80%, transparent);
+}
+
+.dist-rowbtn--accent {
+  border-color: color-mix(in srgb, var(--theme-accent) 35%, transparent);
+  color: color-mix(in srgb, var(--theme-accent) 90%, transparent);
+}
+
+.dist-actionbar {
+  border-top: 1px solid color-mix(in srgb, var(--theme-text) 8%, transparent);
+  background: color-mix(in srgb, var(--theme-text) 3%, var(--theme-panel-accent));
+}
+
+.dist-plan {
+  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
+}
+
+.dist-opt {
+  color: color-mix(in srgb, var(--theme-text-muted) 80%, transparent);
+}
+
+.dist-opt input {
+  accent-color: var(--theme-accent);
+}
+
+.dist-jobbar {
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-text) 8%, transparent);
+  background: color-mix(in srgb, var(--theme-text) 4%, var(--theme-panel-accent));
+}
+
+.dist-muted {
+  color: color-mix(in srgb, var(--theme-text-muted) 55%, transparent);
+}
+
+.dist-steps {
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-text) 6%, transparent);
+}
+
+.dist-step {
+  font-size: var(--type-tiny);
+  padding: 0 5px;
+  border: 1px solid color-mix(in srgb, var(--theme-text) 12%, transparent);
+  border-radius: 2px;
+  color: color-mix(in srgb, var(--theme-text-muted) 75%, transparent);
+}
+
+.dist-step--ok {
+  border-color: color-mix(in srgb, var(--theme-accent) 30%, transparent);
+  color: color-mix(in srgb, var(--theme-accent) 90%, transparent);
+}
+
+.dist-step--running {
+  border-color: color-mix(in srgb, var(--theme-warn) 45%, transparent);
+  color: color-mix(in srgb, var(--theme-warn) 95%, transparent);
+}
+
+.dist-step--failed {
+  border-color: color-mix(in srgb, var(--theme-danger) 45%, transparent);
+  color: var(--theme-danger);
+}
+
+.dist-log {
+  border-top: 1px solid color-mix(in srgb, var(--theme-text) 6%, transparent);
+  background: color-mix(in srgb, var(--theme-text) 5%, var(--theme-panel-accent));
+  color: color-mix(in srgb, var(--theme-text) 85%, transparent);
+}
+
+.dist-history {
+  border-top: 1px solid color-mix(in srgb, var(--theme-text) 8%, transparent);
+}
+
+.dist-hist {
+  text-transform: uppercase;
+}
+
+.dist-hist--ok {
+  color: color-mix(in srgb, var(--theme-accent) 90%, transparent);
+}
+
+.dist-hist--failed {
+  color: var(--theme-danger);
+}
+.dist-state--needs-pack {
+  border-color: color-mix(in srgb, var(--theme-warn) 45%, transparent);
+  color: color-mix(in srgb, var(--theme-warn) 95%, transparent);
+}
+
+.dist-state--needs-ship {
+  border-color: color-mix(in srgb, var(--theme-accent) 35%, transparent);
+  color: color-mix(in srgb, var(--theme-accent) 90%, transparent);
+}
+.dist-plan--error {
+  color: var(--theme-danger);
+}
+.dist-preset--local {
+  border-color: color-mix(in srgb, var(--theme-info) 32%, transparent);
+  background: color-mix(in srgb, var(--theme-info) 5%, transparent);
+}
+
+.dist-preset--local:hover {
+  background: color-mix(in srgb, var(--theme-info) 11%, transparent);
+}
+
+.dist-preset--local .dist-preset__title {
+  color: var(--theme-info);
 }

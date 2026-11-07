@@ -8,9 +8,13 @@ import {
   CATALOG_SPLIT_WIDTH_DEFAULT,
   CATALOG_SPLIT_WIDTH_MAX,
   CATALOG_SPLIT_WIDTH_MIN,
+  DISTRIBUTION_SPLIT_WIDTH_DEFAULT,
+  DISTRIBUTION_SPLIT_WIDTH_MAX,
+  DISTRIBUTION_SPLIT_WIDTH_MIN,
   type CatalogPresentation,
   loadCatalogPresentation,
   loadCatalogSplitWidth,
+  loadDistributionSplitWidth,
   loadLaunchDockRailWidth,
   loadModelHubSplitRatio,
   MODEL_HUB_SPLIT_RATIO_DEFAULT,
@@ -19,6 +23,7 @@ import {
   saveCatalogListCollapsed,
   saveCatalogPresentation,
   saveCatalogSplitWidth,
+  saveDistributionSplitWidth,
   saveLaunchDockRailWidth,
   saveModelHubSplitRatio,
 } from "../lib/storage";
@@ -162,6 +167,17 @@ export function useCatalogSplitResize() {
     softCollapseIfAuto,
     startDrag: startCatalogDrag,
   };
+}
+
+/** DISTRIBUTION: controls left / job output right. Same drag + double-click reset behaviour. */
+export function useDistributionSplitResize() {
+  return usePanelSplitResize({
+    loadWidth: loadDistributionSplitWidth,
+    saveWidth: saveDistributionSplitWidth,
+    defaultWidth: DISTRIBUTION_SPLIT_WIDTH_DEFAULT,
+    minWidth: DISTRIBUTION_SPLIT_WIDTH_MIN,
+    maxWidth: DISTRIBUTION_SPLIT_WIDTH_MAX,
+  });
 }
 
 /** Right launch rail — drag handle sits on the rail's left edge. */

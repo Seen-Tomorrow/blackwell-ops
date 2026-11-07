@@ -73,6 +73,11 @@ export default defineConfig(async () => ({
       // WebView window. The sub-patterns below are kept for explicitness (target, runtime).
       ignored: [
         "**/src-tauri/**",
+        // `majestic pack` runs `npm run build` (rewrites dist/) and `majestic bump`
+        // rewrites the root package.json while a DEV release job is running. Watching
+        // either reloads the WebView and kills the DISTRIBUTION panel's job polling.
+        "**/dist/**",
+        "**/package.json",
         "**/scripts/distribution-policy.json",
         "**/foundry/**",
         "**/work/**",
